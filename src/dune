@@ -1,0 +1,3 @@
+(executable
+ (name bop)
+ (libraries bop menhirLib))

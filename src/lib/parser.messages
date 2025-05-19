@@ -1,0 +1,629 @@
+grammar: XOR
+##
+## Ends in an error in state: 0.
+##
+## grammar' -> . grammar [ # ]
+##
+## The known suffix of the stack is as follows:
+##
+##
+
+<YOUR SYNTAX ERROR MESSAGE HERE>
+
+grammar: KEY_DEFINE XOR
+##
+## Ends in an error in state: 2.
+##
+## endian_definition -> KEY_DEFINE . KEY_ENDIAN ASSIGN endian SEMI [ KEY_DEFINE KEY_ATTACH ID EOF COLON ]
+##
+## The known suffix of the stack is as follows:
+## KEY_DEFINE
+##
+
+<YOUR SYNTAX ERROR MESSAGE HERE>
+
+grammar: KEY_DEFINE KEY_ENDIAN XOR
+##
+## Ends in an error in state: 3.
+##
+## endian_definition -> KEY_DEFINE KEY_ENDIAN . ASSIGN endian SEMI [ KEY_DEFINE KEY_ATTACH ID EOF COLON ]
+##
+## The known suffix of the stack is as follows:
+## KEY_DEFINE KEY_ENDIAN
+##
+
+<YOUR SYNTAX ERROR MESSAGE HERE>
+
+grammar: KEY_DEFINE KEY_ENDIAN ASSIGN XOR
+##
+## Ends in an error in state: 4.
+##
+## endian_definition -> KEY_DEFINE KEY_ENDIAN ASSIGN . endian SEMI [ KEY_DEFINE KEY_ATTACH ID EOF COLON ]
+##
+## The known suffix of the stack is as follows:
+## KEY_DEFINE KEY_ENDIAN ASSIGN
+##
+
+<YOUR SYNTAX ERROR MESSAGE HERE>
+
+grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG XOR
+##
+## Ends in an error in state: 7.
+##
+## endian_definition -> KEY_DEFINE KEY_ENDIAN ASSIGN endian . SEMI [ KEY_DEFINE KEY_ATTACH ID EOF COLON ]
+##
+## The known suffix of the stack is as follows:
+## KEY_DEFINE KEY_ENDIAN ASSIGN endian
+##
+
+<YOUR SYNTAX ERROR MESSAGE HERE>
+
+grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI XOR
+##
+## Ends in an error in state: 10.
+##
+## definitions -> endian_definition . loption(separated_nonempty_list(COMMA,definition)) [ EOF ]
+##
+## The known suffix of the stack is as follows:
+## endian_definition
+##
+
+<YOUR SYNTAX ERROR MESSAGE HERE>
+
+grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI KEY_DEFINE XOR
+##
+## Ends in an error in state: 11.
+##
+## align_definition -> KEY_DEFINE . KEY_ALIGNMENT ASSIGN integer [ EOF COMMA ]
+## pcodeop_definition -> KEY_DEFINE . KEY_PCODEOP identifier [ EOF COMMA ]
+## space_definition -> KEY_DEFINE . KEY_SPACE identifier space_type size word_size space_is_default [ EOF COMMA ]
+## token_definition -> KEY_DEFINE . KEY_TOKEN identifier LPAREN integer RPAREN nonempty_list(token_field) [ EOF COMMA ]
+## varnode_definition -> KEY_DEFINE . RES_REGISTER size offset LBRACKET loption(separated_nonempty_list(SPACE,identifier)) RBRACKET [ EOF COMMA ]
+##
+## The known suffix of the stack is as follows:
+## KEY_DEFINE
+##
+
+<YOUR SYNTAX ERROR MESSAGE HERE>
+
+grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI KEY_DEFINE RES_REGISTER XOR
+##
+## Ends in an error in state: 12.
+##
+## varnode_definition -> KEY_DEFINE RES_REGISTER . size offset LBRACKET loption(separated_nonempty_list(SPACE,identifier)) RBRACKET [ EOF COMMA ]
+##
+## The known suffix of the stack is as follows:
+## KEY_DEFINE RES_REGISTER
+##
+
+<YOUR SYNTAX ERROR MESSAGE HERE>
+
+grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI KEY_DEFINE RES_REGISTER KEY_SIZE XOR
+##
+## Ends in an error in state: 13.
+##
+## size -> KEY_SIZE . ASSIGN constant [ KEY_WORDSIZE KEY_OFFSET ]
+##
+## The known suffix of the stack is as follows:
+## KEY_SIZE
+##
+
+<YOUR SYNTAX ERROR MESSAGE HERE>
+
+grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI KEY_DEFINE RES_REGISTER KEY_SIZE ASSIGN XOR
+##
+## Ends in an error in state: 14.
+##
+## size -> KEY_SIZE ASSIGN . constant [ KEY_WORDSIZE KEY_OFFSET ]
+##
+## The known suffix of the stack is as follows:
+## KEY_SIZE ASSIGN
+##
+
+<YOUR SYNTAX ERROR MESSAGE HERE>
+
+grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI KEY_DEFINE RES_REGISTER KEY_SIZE ASSIGN BIN_INT XOR
+##
+## Ends in an error in state: 20.
+##
+## varnode_definition -> KEY_DEFINE RES_REGISTER size . offset LBRACKET loption(separated_nonempty_list(SPACE,identifier)) RBRACKET [ EOF COMMA ]
+##
+## The known suffix of the stack is as follows:
+## KEY_DEFINE RES_REGISTER size
+##
+
+<YOUR SYNTAX ERROR MESSAGE HERE>
+
+grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI KEY_DEFINE RES_REGISTER KEY_SIZE ASSIGN BIN_INT KEY_OFFSET XOR
+##
+## Ends in an error in state: 21.
+##
+## offset -> KEY_OFFSET . ASSIGN constant [ LBRACKET ]
+##
+## The known suffix of the stack is as follows:
+## KEY_OFFSET
+##
+
+<YOUR SYNTAX ERROR MESSAGE HERE>
+
+grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI KEY_DEFINE RES_REGISTER KEY_SIZE ASSIGN BIN_INT KEY_OFFSET ASSIGN XOR
+##
+## Ends in an error in state: 22.
+##
+## offset -> KEY_OFFSET ASSIGN . constant [ LBRACKET ]
+##
+## The known suffix of the stack is as follows:
+## KEY_OFFSET ASSIGN
+##
+
+<YOUR SYNTAX ERROR MESSAGE HERE>
+
+grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI KEY_DEFINE RES_REGISTER KEY_SIZE ASSIGN BIN_INT KEY_OFFSET ASSIGN BIN_INT XOR
+##
+## Ends in an error in state: 24.
+##
+## varnode_definition -> KEY_DEFINE RES_REGISTER size offset . LBRACKET loption(separated_nonempty_list(SPACE,identifier)) RBRACKET [ EOF COMMA ]
+##
+## The known suffix of the stack is as follows:
+## KEY_DEFINE RES_REGISTER size offset
+##
+
+<YOUR SYNTAX ERROR MESSAGE HERE>
+
+grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI KEY_DEFINE RES_REGISTER KEY_SIZE ASSIGN BIN_INT KEY_OFFSET ASSIGN BIN_INT LBRACKET XOR
+##
+## Ends in an error in state: 25.
+##
+## varnode_definition -> KEY_DEFINE RES_REGISTER size offset LBRACKET . loption(separated_nonempty_list(SPACE,identifier)) RBRACKET [ EOF COMMA ]
+##
+## The known suffix of the stack is as follows:
+## KEY_DEFINE RES_REGISTER size offset LBRACKET
+##
+
+<YOUR SYNTAX ERROR MESSAGE HERE>
+
+grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI KEY_ATTACH KEY_VARIABLES LBRACKET ID XOR
+##
+## Ends in an error in state: 30.
+##
+## separated_nonempty_list(SPACE,identifier) -> identifier . [ RBRACKET ]
+## separated_nonempty_list(SPACE,identifier) -> identifier . SPACE separated_nonempty_list(SPACE,identifier) [ RBRACKET ]
+##
+## The known suffix of the stack is as follows:
+## identifier
+##
+
+<YOUR SYNTAX ERROR MESSAGE HERE>
+
+grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI KEY_ATTACH KEY_VARIABLES LBRACKET ID SPACE XOR
+##
+## Ends in an error in state: 31.
+##
+## separated_nonempty_list(SPACE,identifier) -> identifier SPACE . separated_nonempty_list(SPACE,identifier) [ RBRACKET ]
+##
+## The known suffix of the stack is as follows:
+## identifier SPACE
+##
+
+<YOUR SYNTAX ERROR MESSAGE HERE>
+
+grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI KEY_DEFINE KEY_TOKEN XOR
+##
+## Ends in an error in state: 33.
+##
+## token_definition -> KEY_DEFINE KEY_TOKEN . identifier LPAREN integer RPAREN nonempty_list(token_field) [ EOF COMMA ]
+##
+## The known suffix of the stack is as follows:
+## KEY_DEFINE KEY_TOKEN
+##
+
+<YOUR SYNTAX ERROR MESSAGE HERE>
+
+grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI KEY_DEFINE KEY_TOKEN ID XOR
+##
+## Ends in an error in state: 34.
+##
+## token_definition -> KEY_DEFINE KEY_TOKEN identifier . LPAREN integer RPAREN nonempty_list(token_field) [ EOF COMMA ]
+##
+## The known suffix of the stack is as follows:
+## KEY_DEFINE KEY_TOKEN identifier
+##
+
+<YOUR SYNTAX ERROR MESSAGE HERE>
+
+grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI KEY_DEFINE KEY_TOKEN ID LPAREN XOR
+##
+## Ends in an error in state: 35.
+##
+## token_definition -> KEY_DEFINE KEY_TOKEN identifier LPAREN . integer RPAREN nonempty_list(token_field) [ EOF COMMA ]
+##
+## The known suffix of the stack is as follows:
+## KEY_DEFINE KEY_TOKEN identifier LPAREN
+##
+
+<YOUR SYNTAX ERROR MESSAGE HERE>
+
+grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI KEY_DEFINE KEY_TOKEN ID LPAREN BIN_INT XOR
+##
+## Ends in an error in state: 36.
+##
+## token_definition -> KEY_DEFINE KEY_TOKEN identifier LPAREN integer . RPAREN nonempty_list(token_field) [ EOF COMMA ]
+##
+## The known suffix of the stack is as follows:
+## KEY_DEFINE KEY_TOKEN identifier LPAREN integer
+##
+
+<YOUR SYNTAX ERROR MESSAGE HERE>
+
+grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI KEY_DEFINE KEY_TOKEN ID LPAREN BIN_INT RPAREN XOR
+##
+## Ends in an error in state: 37.
+##
+## token_definition -> KEY_DEFINE KEY_TOKEN identifier LPAREN integer RPAREN . nonempty_list(token_field) [ EOF COMMA ]
+##
+## The known suffix of the stack is as follows:
+## KEY_DEFINE KEY_TOKEN identifier LPAREN integer RPAREN
+##
+
+<YOUR SYNTAX ERROR MESSAGE HERE>
+
+grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI KEY_DEFINE KEY_TOKEN ID LPAREN BIN_INT RPAREN ID LPAREN BIN_INT COMMA BIN_INT RPAREN KEY_DEC XOR
+##
+## Ends in an error in state: 38.
+##
+## nonempty_list(token_field) -> token_field . [ EOF COMMA ]
+## nonempty_list(token_field) -> token_field . nonempty_list(token_field) [ EOF COMMA ]
+##
+## The known suffix of the stack is as follows:
+## token_field
+##
+
+<YOUR SYNTAX ERROR MESSAGE HERE>
+
+grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI KEY_DEFINE KEY_TOKEN ID LPAREN BIN_INT RPAREN ID XOR
+##
+## Ends in an error in state: 40.
+##
+## token_field -> identifier . LPAREN constant COMMA constant RPAREN signed hex [ ID EOF COMMA ]
+##
+## The known suffix of the stack is as follows:
+## identifier
+##
+
+<YOUR SYNTAX ERROR MESSAGE HERE>
+
+grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI KEY_DEFINE KEY_TOKEN ID LPAREN BIN_INT RPAREN ID LPAREN XOR
+##
+## Ends in an error in state: 41.
+##
+## token_field -> identifier LPAREN . constant COMMA constant RPAREN signed hex [ ID EOF COMMA ]
+##
+## The known suffix of the stack is as follows:
+## identifier LPAREN
+##
+
+<YOUR SYNTAX ERROR MESSAGE HERE>
+
+grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI KEY_DEFINE KEY_TOKEN ID LPAREN BIN_INT RPAREN ID LPAREN BIN_INT XOR
+##
+## Ends in an error in state: 42.
+##
+## token_field -> identifier LPAREN constant . COMMA constant RPAREN signed hex [ ID EOF COMMA ]
+##
+## The known suffix of the stack is as follows:
+## identifier LPAREN constant
+##
+
+<YOUR SYNTAX ERROR MESSAGE HERE>
+
+grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI KEY_DEFINE KEY_TOKEN ID LPAREN BIN_INT RPAREN ID LPAREN BIN_INT COMMA XOR
+##
+## Ends in an error in state: 43.
+##
+## token_field -> identifier LPAREN constant COMMA . constant RPAREN signed hex [ ID EOF COMMA ]
+##
+## The known suffix of the stack is as follows:
+## identifier LPAREN constant COMMA
+##
+
+<YOUR SYNTAX ERROR MESSAGE HERE>
+
+grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI KEY_DEFINE KEY_TOKEN ID LPAREN BIN_INT RPAREN ID LPAREN BIN_INT COMMA BIN_INT XOR
+##
+## Ends in an error in state: 44.
+##
+## token_field -> identifier LPAREN constant COMMA constant . RPAREN signed hex [ ID EOF COMMA ]
+##
+## The known suffix of the stack is as follows:
+## identifier LPAREN constant COMMA constant
+##
+
+<YOUR SYNTAX ERROR MESSAGE HERE>
+
+grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI KEY_DEFINE KEY_TOKEN ID LPAREN BIN_INT RPAREN ID LPAREN BIN_INT COMMA BIN_INT RPAREN XOR
+##
+## Ends in an error in state: 45.
+##
+## token_field -> identifier LPAREN constant COMMA constant RPAREN . signed hex [ ID EOF COMMA ]
+##
+## The known suffix of the stack is as follows:
+## identifier LPAREN constant COMMA constant RPAREN
+##
+
+<YOUR SYNTAX ERROR MESSAGE HERE>
+
+grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI KEY_DEFINE KEY_TOKEN ID LPAREN BIN_INT RPAREN ID LPAREN BIN_INT COMMA BIN_INT RPAREN KEY_SIGNED XOR
+##
+## Ends in an error in state: 47.
+##
+## token_field -> identifier LPAREN constant COMMA constant RPAREN signed . hex [ ID EOF COMMA ]
+##
+## The known suffix of the stack is as follows:
+## identifier LPAREN constant COMMA constant RPAREN signed
+##
+
+<YOUR SYNTAX ERROR MESSAGE HERE>
+
+grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI KEY_DEFINE KEY_SPACE XOR
+##
+## Ends in an error in state: 52.
+##
+## space_definition -> KEY_DEFINE KEY_SPACE . identifier space_type size word_size space_is_default [ EOF COMMA ]
+##
+## The known suffix of the stack is as follows:
+## KEY_DEFINE KEY_SPACE
+##
+
+<YOUR SYNTAX ERROR MESSAGE HERE>
+
+grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI KEY_DEFINE KEY_SPACE ID XOR
+##
+## Ends in an error in state: 53.
+##
+## space_definition -> KEY_DEFINE KEY_SPACE identifier . space_type size word_size space_is_default [ EOF COMMA ]
+##
+## The known suffix of the stack is as follows:
+## KEY_DEFINE KEY_SPACE identifier
+##
+
+<YOUR SYNTAX ERROR MESSAGE HERE>
+
+grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI KEY_DEFINE KEY_SPACE ID RES_RAM_SPACE XOR
+##
+## Ends in an error in state: 57.
+##
+## space_definition -> KEY_DEFINE KEY_SPACE identifier space_type . size word_size space_is_default [ EOF COMMA ]
+##
+## The known suffix of the stack is as follows:
+## KEY_DEFINE KEY_SPACE identifier space_type
+##
+
+<YOUR SYNTAX ERROR MESSAGE HERE>
+
+grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI KEY_DEFINE KEY_SPACE ID RES_RAM_SPACE KEY_SIZE ASSIGN BIN_INT XOR
+##
+## Ends in an error in state: 58.
+##
+## space_definition -> KEY_DEFINE KEY_SPACE identifier space_type size . word_size space_is_default [ EOF COMMA ]
+##
+## The known suffix of the stack is as follows:
+## KEY_DEFINE KEY_SPACE identifier space_type size
+##
+
+<YOUR SYNTAX ERROR MESSAGE HERE>
+
+grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI KEY_DEFINE KEY_SPACE ID RES_RAM_SPACE KEY_SIZE ASSIGN BIN_INT KEY_WORDSIZE XOR
+##
+## Ends in an error in state: 59.
+##
+## word_size -> KEY_WORDSIZE . ASSIGN constant [ KEY_DEFAULT EOF COMMA ]
+##
+## The known suffix of the stack is as follows:
+## KEY_WORDSIZE
+##
+
+<YOUR SYNTAX ERROR MESSAGE HERE>
+
+grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI KEY_DEFINE KEY_SPACE ID RES_RAM_SPACE KEY_SIZE ASSIGN BIN_INT KEY_WORDSIZE ASSIGN XOR
+##
+## Ends in an error in state: 60.
+##
+## word_size -> KEY_WORDSIZE ASSIGN . constant [ KEY_DEFAULT EOF COMMA ]
+##
+## The known suffix of the stack is as follows:
+## KEY_WORDSIZE ASSIGN
+##
+
+<YOUR SYNTAX ERROR MESSAGE HERE>
+
+grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI KEY_DEFINE KEY_SPACE ID RES_RAM_SPACE KEY_SIZE ASSIGN BIN_INT KEY_WORDSIZE ASSIGN BIN_INT XOR
+##
+## Ends in an error in state: 62.
+##
+## space_definition -> KEY_DEFINE KEY_SPACE identifier space_type size word_size . space_is_default [ EOF COMMA ]
+##
+## The known suffix of the stack is as follows:
+## KEY_DEFINE KEY_SPACE identifier space_type size word_size
+##
+
+<YOUR SYNTAX ERROR MESSAGE HERE>
+
+grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI KEY_DEFINE KEY_PCODEOP XOR
+##
+## Ends in an error in state: 65.
+##
+## pcodeop_definition -> KEY_DEFINE KEY_PCODEOP . identifier [ EOF COMMA ]
+##
+## The known suffix of the stack is as follows:
+## KEY_DEFINE KEY_PCODEOP
+##
+
+<YOUR SYNTAX ERROR MESSAGE HERE>
+
+grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI KEY_DEFINE KEY_ALIGNMENT XOR
+##
+## Ends in an error in state: 67.
+##
+## align_definition -> KEY_DEFINE KEY_ALIGNMENT . ASSIGN integer [ EOF COMMA ]
+##
+## The known suffix of the stack is as follows:
+## KEY_DEFINE KEY_ALIGNMENT
+##
+
+<YOUR SYNTAX ERROR MESSAGE HERE>
+
+grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI KEY_DEFINE KEY_ALIGNMENT ASSIGN XOR
+##
+## Ends in an error in state: 68.
+##
+## align_definition -> KEY_DEFINE KEY_ALIGNMENT ASSIGN . integer [ EOF COMMA ]
+##
+## The known suffix of the stack is as follows:
+## KEY_DEFINE KEY_ALIGNMENT ASSIGN
+##
+
+<YOUR SYNTAX ERROR MESSAGE HERE>
+
+grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI KEY_ATTACH XOR
+##
+## Ends in an error in state: 70.
+##
+## varnode_attach_definition -> KEY_ATTACH . KEY_VARIABLES LBRACKET loption(separated_nonempty_list(SPACE,identifier)) RBRACKET LBRACKET loption(separated_nonempty_list(SPACE,identifier)) RBRACKET [ EOF COMMA ]
+##
+## The known suffix of the stack is as follows:
+## KEY_ATTACH
+##
+
+<YOUR SYNTAX ERROR MESSAGE HERE>
+
+grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI KEY_ATTACH KEY_VARIABLES XOR
+##
+## Ends in an error in state: 71.
+##
+## varnode_attach_definition -> KEY_ATTACH KEY_VARIABLES . LBRACKET loption(separated_nonempty_list(SPACE,identifier)) RBRACKET LBRACKET loption(separated_nonempty_list(SPACE,identifier)) RBRACKET [ EOF COMMA ]
+##
+## The known suffix of the stack is as follows:
+## KEY_ATTACH KEY_VARIABLES
+##
+
+<YOUR SYNTAX ERROR MESSAGE HERE>
+
+grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI KEY_ATTACH KEY_VARIABLES LBRACKET XOR
+##
+## Ends in an error in state: 72.
+##
+## varnode_attach_definition -> KEY_ATTACH KEY_VARIABLES LBRACKET . loption(separated_nonempty_list(SPACE,identifier)) RBRACKET LBRACKET loption(separated_nonempty_list(SPACE,identifier)) RBRACKET [ EOF COMMA ]
+##
+## The known suffix of the stack is as follows:
+## KEY_ATTACH KEY_VARIABLES LBRACKET
+##
+
+<YOUR SYNTAX ERROR MESSAGE HERE>
+
+grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI KEY_ATTACH KEY_VARIABLES LBRACKET RBRACKET XOR
+##
+## Ends in an error in state: 74.
+##
+## varnode_attach_definition -> KEY_ATTACH KEY_VARIABLES LBRACKET loption(separated_nonempty_list(SPACE,identifier)) RBRACKET . LBRACKET loption(separated_nonempty_list(SPACE,identifier)) RBRACKET [ EOF COMMA ]
+##
+## The known suffix of the stack is as follows:
+## KEY_ATTACH KEY_VARIABLES LBRACKET loption(separated_nonempty_list(SPACE,identifier)) RBRACKET
+##
+
+<YOUR SYNTAX ERROR MESSAGE HERE>
+
+grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI KEY_ATTACH KEY_VARIABLES LBRACKET RBRACKET LBRACKET XOR
+##
+## Ends in an error in state: 75.
+##
+## varnode_attach_definition -> KEY_ATTACH KEY_VARIABLES LBRACKET loption(separated_nonempty_list(SPACE,identifier)) RBRACKET LBRACKET . loption(separated_nonempty_list(SPACE,identifier)) RBRACKET [ EOF COMMA ]
+##
+## The known suffix of the stack is as follows:
+## KEY_ATTACH KEY_VARIABLES LBRACKET loption(separated_nonempty_list(SPACE,identifier)) RBRACKET LBRACKET
+##
+
+<YOUR SYNTAX ERROR MESSAGE HERE>
+
+grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI ID XOR
+##
+## Ends in an error in state: 84.
+##
+## constructor_definition -> option(identifier) . COLON constructor_display RES_IS constructor_pattern constructor_context constructor_body [ EOF COMMA ]
+##
+## The known suffix of the stack is as follows:
+## option(identifier)
+##
+
+<YOUR SYNTAX ERROR MESSAGE HERE>
+
+grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON XOR
+##
+## Ends in an error in state: 85.
+##
+## constructor_definition -> option(identifier) COLON . constructor_display RES_IS constructor_pattern constructor_context constructor_body [ EOF COMMA ]
+##
+## The known suffix of the stack is as follows:
+## option(identifier) COLON
+##
+
+<YOUR SYNTAX ERROR MESSAGE HERE>
+
+grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON ID XOR
+##
+## Ends in an error in state: 91.
+##
+## nonempty_list(display_piece) -> display_piece . [ SPACE RES_IS ID CARET ]
+## nonempty_list(display_piece) -> display_piece . nonempty_list(display_piece) [ SPACE RES_IS ID CARET ]
+##
+## The known suffix of the stack is as follows:
+## display_piece
+##
+
+<YOUR SYNTAX ERROR MESSAGE HERE>
+
+grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON ID RES_IS
+##
+## Ends in an error in state: 94.
+##
+## constructor_output -> flip_output_parsing_mode . display_pieces flip_output_parsing_mode [ RES_IS ]
+##
+## The known suffix of the stack is as follows:
+## flip_output_parsing_mode
+##
+## WARNING: This example involves spurious reductions.
+## This implies that, although the LR(1) items shown above provide an
+## accurate view of the past (what has been recognized so far), they
+## may provide an INCOMPLETE view of the future (what was expected next).
+## In state 91, spurious reduction of production nonempty_list(display_piece) -> display_piece
+## In state 88, spurious reduction of production display_pieces -> nonempty_list(display_piece)
+## In state 90, spurious reduction of production constructor_mnemonic -> display_pieces
+## In state 93, spurious reduction of production flip_output_parsing_mode ->
+##
+
+<YOUR SYNTAX ERROR MESSAGE HERE>
+
+grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI KEY_DEFINE KEY_PCODEOP ID XOR
+##
+## Ends in an error in state: 303.
+##
+## separated_nonempty_list(COMMA,definition) -> definition . [ EOF ]
+## separated_nonempty_list(COMMA,definition) -> definition . COMMA separated_nonempty_list(COMMA,definition) [ EOF ]
+##
+## The known suffix of the stack is as follows:
+## definition
+##
+
+<YOUR SYNTAX ERROR MESSAGE HERE>
+
+grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI KEY_DEFINE KEY_PCODEOP ID COMMA XOR
+##
+## Ends in an error in state: 304.
+##
+## separated_nonempty_list(COMMA,definition) -> definition COMMA . separated_nonempty_list(COMMA,definition) [ EOF ]
+##
+## The known suffix of the stack is as follows:
+## definition COMMA
+##
+
+<YOUR SYNTAX ERROR MESSAGE HERE>
+
