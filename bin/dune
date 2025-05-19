@@ -1,0 +1,4 @@
+(executable
+ (public_name bee)
+ (name main)
+ (libraries bee))

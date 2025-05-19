@@ -1,0 +1,11 @@
+[revset-aliases]
+"trunk()" = "master@origin"
+"immutable_heads()" = "none()"
+
+[aliases]
+push = ['git', 'push']
+sync = ['git', 'fetch', '--all-remotes']
+evolve = ['rebase', '--skip-emptied', '-d', 'master']
+
+[snapshot]
+max-new-file-size = 1479557
