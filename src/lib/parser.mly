@@ -1,8 +1,7 @@
 %{
 open AST
 open Position
-
-let output_parsing_mode = ref false
+open Util
 %}
 
 %token <int> DEC_INT
@@ -10,6 +9,7 @@ let output_parsing_mode = ref false
 %token <int> HEX_INT
 %token <string> STRING
 %token <string> ID
+%token <string> TEXT
 %token RES_IS
 %token RES_IF 
 %token RES_RAM_SPACE
@@ -37,6 +37,7 @@ let output_parsing_mode = ref false
 %token KEY_SIZE
 %token KEY_SPACE
 %token KEY_TOKEN
+%token KEY_TYPE
 %token KEY_UNIMPL
 %token KEY_VARIABLES
 %token KEY_WORDSIZE
@@ -100,21 +101,26 @@ let output_parsing_mode = ref false
 %left STAR SLASH      /* medium precedence */
 %nonassoc SEMI UMINUS /* highest precedence */
 
+%on_error_reduce separated_nonempty_list(SEMI, definition)
+
 %start <AST.t> grammar
 %%
 
 grammar:
-	| definitions EOF    { $1 }
-	| e = located(error) { Error.error "parsing" e.position "Syntax error." }
+	| endian_definition definitions EOF { $1 :: $2 }
+	| e = located(error)     { Error.error "parsing" e.position "Syntax error." }
 
 identifier:
 	located(ID) { $1 }
+
+text:
+	located(TEXT) { $1 }
 
 %inline located(X):
 	x=X { Position.with_poss $startpos $endpos x }
 
 definitions:
-	endian_definition separated_list(COMMA, definition) { $1 :: $2 } 
+	separated_list(SEMI, definition) { $1 } 
 
 endian_definition:
 	KEY_DEFINE KEY_ENDIAN ASSIGN located(endian) SEMI { Endian $4 } 
@@ -142,23 +148,33 @@ align_definition:
 	KEY_DEFINE KEY_ALIGNMENT ASSIGN constant { Alignment $4 }
 	
 space_definition:
-	KEY_DEFINE KEY_SPACE identifier  
-	located(space_type) size word_size space_is_default
-		{ Space { id = $3; kind = $4; size = $5; word_size = $6; is_default = $7 } }
+	KEY_DEFINE KEY_SPACE space_name space_mod+
+		{ Space { id = $3; mods = $4 } } 
+
+space_mod:
+	| space_type_mod   { Type $1 }
+	| size             { Size $1 }
+	| word_size        { WordSize $1 }
+	| space_is_default { Default $1 }
+
+space_name:
+	| RES_REGISTER { Position.with_poss $startpos $endpos "register" }
+	| identifier   { $1 }
 
 varnode_definition:
-	KEY_DEFINE RES_REGISTER size offset LBRACKET spaced_ids RBRACKET
-		{ VarNode { offset = $4; size = $3; registers = $6 } }
+	KEY_DEFINE RES_REGISTER varnode_mod+ LBRACKET identifiers RBRACKET
+		{ VarNode { mods = $3; registers = $5 } }
 
-spaced_ids:
-	| separated_list(SPACE, identifier) { $1 }
+varnode_mod:
+	| size   { Size $1 }
+	| offset { Offset $1 }
 
 token_definition:
 	KEY_DEFINE KEY_TOKEN identifier LPAREN constant RPAREN token_field+
 		{ Token { id = $3; bit_size = $5; fields = $7 } }
 
 varnode_attach_definition:
-	KEY_ATTACH KEY_VARIABLES LBRACKET spaced_ids RBRACKET LBRACKET spaced_ids RBRACKET
+	KEY_ATTACH KEY_VARIABLES LBRACKET identifiers RBRACKET LBRACKET identifiers RBRACKET
 		{ VarNodeAttach { nodes = $4; values = $7 } }
 
 pcodeop_definition:
@@ -175,27 +191,22 @@ and constructor =
 */
 
 constructor_definition:
-	identifier? COLON display RES_IS pattern? context constructor_body
-		{ Constructor { id = $1; display = $3; pattern = $5; context = $6; body = $7 } }
+	identifier? COLON display pattern? context constructor_body
+		{ Constructor { id = $1; display = $3; pattern = $4; context = $5; body = $6 } }
 	
 display:
-	| mnemonic output  { { mnemonic = $1; output = $2 } }
+	| mnemonic output { { mnemonic = $1; output = $2 } }
 
 mnemonic:
-	| display_pieces { $1 }
+	| collect_whitespace display_piece* SPACE skip_whitespace { $2 }
 
 output:
-	flip_output_parsing_mode
-	pieces = display_pieces
-	flip_output_parsing_mode
-		{ pieces }
+	| flip_lexer display_piece* RES_IS flip_lexer { $2 }
 
-display_pieces:
-	display_piece+ { $1 }
-	
 display_piece:
 	| CARET      { Caret }
 	| identifier { Id $1 }
+	| text       { Text $1 }
 
 pattern:
 	pattern_expr { $1 }
@@ -397,10 +408,19 @@ expr_op:
     | FLOAT_LESS_EQUAL     { OpFloatLe }
 	| FLOAT_LESS_THAN      { OpFloatLt }
 
+identifiers:
+	identifier+ { $1 }
+
 token_field:
-	id = identifier LPAREN start_bit = constant COMMA end_bit = constant RPAREN
-	is_signed = signed is_hex = hex
-		{ { id; start_bit; end_bit; is_signed; is_hex } }
+	identifier ASSIGN LPAREN constant COMMA constant RPAREN token_field_mod*
+		{ { id = $1; start_bit = $4; end_bit = $6; mods = $8 } }
+
+token_field_mod:
+	| signed { Signed $1 }
+	| hex    { Hex $1 }
+
+space_type_mod:
+	| KEY_TYPE ASSIGN located(space_type) { $3 }
 
 space_type:
 	| RES_RAM_SPACE      { Ram }
@@ -409,7 +429,6 @@ space_type:
 
 space_is_default:
 	| KEY_DEFAULT { true }
-	|             { false }
 
 size:
 	KEY_SIZE ASSIGN constant { $3 }
@@ -430,12 +449,16 @@ integer:
 
 signed:
 	| KEY_SIGNED { true }
-	|            { false }
 
 hex:
 	| KEY_HEX { true }
 	| KEY_DEC { false }
-	|         { false }
 
-flip_output_parsing_mode: { output_parsing_mode := !output_parsing_mode }
+collect_whitespace:
+	| { skip_whitespace := false }
 
+skip_whitespace:
+	| { skip_whitespace := true }
+
+flip_lexer:
+	| { flip_lexer_state () }

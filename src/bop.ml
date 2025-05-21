@@ -1,5 +1,5 @@
 open Bop
-open Ast_gen
+open Driver
 open Settings
 
 let print_version () =
@@ -36,7 +36,7 @@ let () =
 let () = Arg.parse args (fun f -> filename := f) usage
 
 let () =
-  let g = ast_from_file !filename in
+  let g = parse !filename in
   match g with
   | Error msg ->
     Printf.eprintf "Could not load grammar from %s.\n%s%!\n" !filename msg;

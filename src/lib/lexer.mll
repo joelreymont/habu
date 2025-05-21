@@ -38,6 +38,7 @@ let keyword_table =
       "size", KEY_SIZE;
       "space", KEY_SPACE;
       "token", KEY_TOKEN;
+      "type", KEY_TYPE;
       "unimpl", KEY_UNIMPL;
       "variables", KEY_VARIABLES;
       "wordsize", KEY_WORDSIZE;
@@ -47,6 +48,15 @@ let lexing_error lexbuf msg =
   let line, column = Util.get_lexing_position lexbuf in
   raise (Syntax_error (Some (line, column), msg))
 
+let dummy_lexer _ = EOF 
+
+let regular_lexer = ref dummy_lexer
+let display_lexer = ref dummy_lexer
+
+let token lexbuf = 
+  match get_lexer_state () with
+    | Regular -> !regular_lexer lexbuf
+    | Display -> !display_lexer lexbuf
 }
 
 let alphaup = ['a'- 'z' 'A'-'Z' '_' '.']
@@ -57,10 +67,12 @@ let bindigit = ['0' '1']
 let decimal = digit+
 let hex = "0x" hexdigit+
 let binary = "0b" bindigit+
+let text = [^ ' ']+
 
-rule token = parse
+rule regular_token = parse
 | '\n' { Lexing.new_line lexbuf; token lexbuf }
-| ['\t' '\r' ' ']+ { token lexbuf }
+| ['\t' '\r']+ { token lexbuf }
+| ' '+   { if !skip_whitespace then token lexbuf else SPACE }
 | "..."  { ELLIPSIS }
 | '{'    { LBRACE }
 | '}'    { RBRACE }
@@ -117,12 +129,33 @@ rule token = parse
 | decimal as i { DEC_INT (int_of_string i) }
 | binary as i { BIN_INT (int_of_string i) }
 | hex as i { HEX_INT (int_of_string i) }
-| ident as s {
+| ident as s
+  {
     try KeywordTable.find s keyword_table
     with Not_found -> ID s
   }
+| '#' { comments lexbuf }
+| '"' { read_double_quoted_string (Buffer.create 16) lexbuf }
 | _ as bad_char
-{ lexing_error lexbuf (Printf.sprintf "Unexpected character \'%c\'" bad_char) }
+  {
+    lexing_error lexbuf (Printf.sprintf "Unexpected character \'%c\'" bad_char)
+  }
+
+and display_token = parse
+| '\n'                { Lexing.new_line lexbuf; token lexbuf }
+| ['\t' '\r' ' ']+        { token lexbuf }
+| ['i' 'I'] ['s' 'S'] { RES_IS }
+| ident as s          { ID s }
+| text as s           { TEXT s }
+| _ as bad_char
+  {
+    lexing_error lexbuf (Printf.sprintf "Unexpected character \'%c\'" bad_char)
+  }
+
+and comments = parse
+| '\n' { Lexing.new_line lexbuf; token lexbuf }
+| _    { comments lexbuf }
+| eof  {  raise End_of_file }
 
 and read_double_quoted_string buf =
   parse
@@ -135,11 +168,24 @@ and read_double_quoted_string buf =
   | '\\' 'r'  { Buffer.add_char buf '\r'; read_double_quoted_string buf lexbuf }
   | '\\' 't'  { Buffer.add_char buf '\t'; read_double_quoted_string buf lexbuf }
   | '\\' '\'' { Buffer.add_char buf '\''; read_double_quoted_string buf lexbuf }
-  | '\\' '"' { Buffer.add_char buf '"'; read_double_quoted_string buf lexbuf }
-  | '\n'      { Lexing.new_line lexbuf; Buffer.add_char buf '\n'; read_double_quoted_string buf lexbuf }
-  | [^ '"' '\\']+
-    { Buffer.add_string buf (Lexing.lexeme lexbuf);
+  | '\\' '"'  { Buffer.add_char buf '"'; read_double_quoted_string buf lexbuf }
+  | '\n'
+    {
+      Lexing.new_line lexbuf;
+      Buffer.add_char buf '\n';
       read_double_quoted_string buf lexbuf
     }
-  | eof { lexing_error lexbuf "Quoted string is missing the closing double quote" }
+  | [^ '"' '\\']+
+    {
+      Buffer.add_string buf (Lexing.lexeme lexbuf);
+      read_double_quoted_string buf lexbuf
+    }
+  | eof
+    {
+      lexing_error lexbuf "Quoted string is missing the closing double quote"
+    }
 
+{
+  regular_lexer := regular_token;
+  display_lexer := display_token;
+}

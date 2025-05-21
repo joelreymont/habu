@@ -28,17 +28,23 @@ and definition =
 
 and space =
   { id : identifier
-  ; size : integer
-  ; word_size : integer
-  ; is_default : bool
-  ; kind : space_type located
+  ; mods : space_mod list
   }
 
+and space_mod =
+  | Size of integer
+  | WordSize of integer
+  | Default of bool
+  | Type of space_type located
+
 and varnode =
-  { offset : integer
-  ; size : integer
+  { mods : varnode_mod list
   ; registers : identifier list
   }
+
+and varnode_mod =
+  | Size of integer
+  | Offset of integer
 
 and varnode_attach =
   { nodes : identifier list
@@ -156,9 +162,12 @@ and token_field =
   { id : identifier
   ; start_bit : integer
   ; end_bit : integer
-  ; is_signed : bool
-  ; is_hex : bool
+  ; mods : token_field_mod list
   }
+
+and token_field_mod =
+  | Signed of bool
+  | Hex of bool
 
 and statement =
   | Assign of expr * expr

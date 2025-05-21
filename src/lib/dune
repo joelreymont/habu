@@ -6,7 +6,7 @@
 
 (menhir
  (modules parser)
- (flags --dump --table)
+ (flags --dump --exn-carries-state)
  (infer true))
 
 (rule
