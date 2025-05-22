@@ -59,7 +59,7 @@ let token lexbuf =
     | Display -> !display_lexer lexbuf
 }
 
-let alphaup = ['a'- 'z' 'A'-'Z' '_' '.']
+let alphaup = ['a'-'z' 'A'-'Z' '_' '.']
 let digit = ['0'-'9']
 let ident = alphaup (alphaup | digit)*
 let hexdigit = digit | ['a'-'f' 'A'-'F']
@@ -67,12 +67,11 @@ let bindigit = ['0' '1']
 let decimal = digit+
 let hex = "0x" hexdigit+
 let binary = "0b" bindigit+
-let text = [^ ' ']+
+let text = [^ ' ' 'a'-'z' 'A'-'Z' '_' '.'] [^ ' ']*
 
 rule regular_token = parse
 | '\n' { Lexing.new_line lexbuf; token lexbuf }
-| ['\t' '\r']+ { token lexbuf }
-| ' '+   { if !skip_whitespace then token lexbuf else SPACE }
+| ['\t' '\r' ' ']+ { token lexbuf }
 | "..."  { ELLIPSIS }
 | '{'    { LBRACE }
 | '}'    { RBRACE }
@@ -84,7 +83,7 @@ rule regular_token = parse
 | ','    { COMMA }
 | '!'    { BANG }
 | '~'    { TILDE }
-| ';'    { SEMI } 
+| ';'    { if !semi_is_join then JOIN else SEMI } 
 | '='    { ASSIGN }
 | '<'    { LESS_THAN }
 | '>'    { GREATER_THAN }
@@ -135,7 +134,6 @@ rule regular_token = parse
     with Not_found -> ID s
   }
 | '#' { comments lexbuf }
-| '"' { read_double_quoted_string (Buffer.create 16) lexbuf }
 | _ as bad_char
   {
     lexing_error lexbuf (Printf.sprintf "Unexpected character \'%c\'" bad_char)
@@ -143,7 +141,8 @@ rule regular_token = parse
 
 and display_token = parse
 | '\n'                { Lexing.new_line lexbuf; token lexbuf }
-| ['\t' '\r' ' ']+        { token lexbuf }
+| ['\t' '\r']+        { token lexbuf }
+| ' '+                { if !skip_whitespace then token lexbuf else SPACE }
 | ['i' 'I'] ['s' 'S'] { RES_IS }
 | ident as s          { ID s }
 | text as s           { TEXT s }
@@ -156,34 +155,6 @@ and comments = parse
 | '\n' { Lexing.new_line lexbuf; token lexbuf }
 | _    { comments lexbuf }
 | eof  {  raise End_of_file }
-
-and read_double_quoted_string buf =
-  parse
-  | '"'       { STRING (Buffer.contents buf) }
-  | '\\' '/'  { Buffer.add_char buf '/'; read_double_quoted_string buf lexbuf }
-  | '\\' '\\' { Buffer.add_char buf '\\'; read_double_quoted_string buf lexbuf }
-  | '\\' 'b'  { Buffer.add_char buf '\b'; read_double_quoted_string buf lexbuf }
-  | '\\' 'f'  { Buffer.add_char buf '\012'; read_double_quoted_string buf lexbuf }
-  | '\\' 'n'  { Buffer.add_char buf '\n'; read_double_quoted_string buf lexbuf }
-  | '\\' 'r'  { Buffer.add_char buf '\r'; read_double_quoted_string buf lexbuf }
-  | '\\' 't'  { Buffer.add_char buf '\t'; read_double_quoted_string buf lexbuf }
-  | '\\' '\'' { Buffer.add_char buf '\''; read_double_quoted_string buf lexbuf }
-  | '\\' '"'  { Buffer.add_char buf '"'; read_double_quoted_string buf lexbuf }
-  | '\n'
-    {
-      Lexing.new_line lexbuf;
-      Buffer.add_char buf '\n';
-      read_double_quoted_string buf lexbuf
-    }
-  | [^ '"' '\\']+
-    {
-      Buffer.add_string buf (Lexing.lexeme lexbuf);
-      read_double_quoted_string buf lexbuf
-    }
-  | eof
-    {
-      lexing_error lexbuf "Quoted string is missing the closing double quote"
-    }
 
 {
   regular_lexer := regular_token;

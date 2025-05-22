@@ -1,6 +1,8 @@
 (library
  (name bop)
- (libraries menhirLib stdint))
+ (preprocess
+  (pps ppx_sexp_conv))
+ (libraries menhirLib sexplib stdint))
 
 (ocamllex lexer)
 
@@ -8,6 +10,14 @@
  (modules parser)
  (flags --dump --exn-carries-state)
  (infer true))
+
+(rule
+ (targets parser.messages)
+ (mode fallback)
+ (action
+  (with-stdout-to
+   %{targets}
+   (run menhir --list-errors %{targets}))))
 
 (rule
  (targets parser_messages.ml)

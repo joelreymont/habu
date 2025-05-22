@@ -7,7 +7,6 @@ open Util
 %token <int> DEC_INT
 %token <int> BIN_INT
 %token <int> HEX_INT
-%token <string> STRING
 %token <string> ID
 %token <string> TEXT
 %token RES_IS
@@ -53,6 +52,7 @@ open Util
 %token BANG
 %token TILDE
 %token SEMI
+%token JOIN
 %token ASSIGN
 %token LESS_THAN
 %token GREATER_THAN
@@ -97,18 +97,34 @@ open Util
 %token SPACE
 %token EOF
 
-%left PLUS MINUS      /* lowest precedence */
-%left STAR SLASH      /* medium precedence */
-%nonassoc SEMI UMINUS /* highest precedence */
+%left JOIN
+%left PIPE
+%left AMPERSAND
 
-%on_error_reduce separated_nonempty_list(SEMI, definition)
+%left OR SPEC_OR
+%left CARET XOR SPEC_XOR
+%left AND SPEC_AND 
+
+%nonassoc EQUAL NOT_EQUAL FLOAT_EQUAL FLOAT_NOT_EQUAL
+%nonassoc LESS_THAN GREATER_THAN LESS_EQUAL GREATER_EQUAL
+          SIGNED_LESS_THAN SIGNED_GREATER_THAN SIGNED_LESS_EQUAL
+		  SIGNED_GREATER_EQUAL FLOAT_LESS_THAN FLOAT_GREATER_THAN
+		  FLOAT_LESS_EQUAL FLOAT_GREATER_EQUAL
+
+%left SHIFT_LEFT SHIFT_RIGHT SIGNED_SHIFT_RIGHT SIGNED_SHIFT_LEFT
+%left PLUS MINUS FLOAT_MINUS FLOAT_PLUS
+%left STAR SLASH PERCENT FLOAT_DIV FLOAT_MUL SIGNED_DIV SIGNED_MOD
+
+%nonassoc UNARY
 
 %start <AST.t> grammar
 %%
 
 grammar:
-	| endian_definition definitions EOF { $1 :: $2 }
-	| e = located(error)     { Error.error "parsing" e.position "Syntax error." }
+	| endian_definition other_definition* EOF
+		{ $1 :: $2 }
+	| e = located(error)
+		{ Error.error "parsing" e.position "Syntax error." }
 
 identifier:
 	located(ID) { $1 }
@@ -119,8 +135,9 @@ text:
 %inline located(X):
 	x=X { Position.with_poss $startpos $endpos x }
 
-definitions:
-	separated_list(SEMI, definition) { $1 } 
+other_definition:
+	| definition SEMI { $1 }
+	| constructor     { $1 }
 
 endian_definition:
 	KEY_DEFINE KEY_ENDIAN ASSIGN located(endian) SEMI { Endian $4 } 
@@ -136,7 +153,6 @@ definition:
 	| token_definition          { $1 }
 	| varnode_attach_definition { $1 }
 	| pcodeop_definition        { $1 }
-	| constructor_definition    { $1 }
 	(*
 	| context_definition { Context $1 }
 	| bitrange_definition { BitRange $1 }
@@ -190,18 +206,27 @@ and constructor =
   }
 */
 
-constructor_definition:
-	identifier? COLON display pattern? context constructor_body
+constructor:
+	ctr_name COLON display pattern? context constructor_body
 		{ Constructor { id = $1; display = $3; pattern = $4; context = $5; body = $6 } }
 	
+ctr_name:
+	identifier?
+	midrule(flip_lexer_state)
+	midrule(collect_whitespace)
+	midrule(semi_is_join)
+		{ $1 }
+
 display:
-	| mnemonic output { { mnemonic = $1; output = $2 } }
+	mnemonic output
+		{ { mnemonic = $1; output = $2 } }
 
 mnemonic:
-	| collect_whitespace display_piece* SPACE skip_whitespace { $2 }
+	display_piece* midrule(skip_whitespace) SPACE
+		{ $1 }
 
 output:
-	| flip_lexer display_piece* RES_IS flip_lexer { $2 }
+	| display_piece* midrule(flip_lexer_state) RES_IS { $1 }
 
 display_piece:
 	| CARET      { Caret }
@@ -209,7 +234,7 @@ display_piece:
 	| text       { Text $1 }
 
 pattern:
-	pattern_expr { $1 }
+	pattern_expr midrule(semi_is_semi) { $1 }
 
 context:
 	| LBRACKET statements RBRACKET { $2 }
@@ -226,20 +251,27 @@ pattern_expr:
 	| pattern_expr pattern_op pattern_expr { Binary ($2, $1, $3) }
 	| ELLIPSIS pattern_atomic              { Unary (OpAlignRight, $2) }
 	| pattern_atomic ELLIPSIS              { Unary (OpAlignLeft, $1) }
+	| pattern_atomic                       { $1 }
 	 
+pattern_op:
+	| JOIN      { OpJoin }
+	| PIPE      { OpBoolOr }
+	| AMPERSAND { OpBoolAnd }
+
 pattern_atomic:
 	| condition { $1 }
 	| LPAREN pattern_expr RPAREN { Paren $2 }
 
 condition:
-	identifier condition_op  condition_expr { Binary ($2, Id $1, $3)}
+	| identifier                             { Id $1 }
+	| identifier condition_op condition_expr { Binary ($2, Id $1, $3)}
 
 condition_expr:
-	| condition_expr condition_expr_op condition_expr { Binary ($2, $1, $3) }
-	| condition_expr_unary_op condition_expr          { Unary ($1, $2) }
-	| identifier                                      { Id $1 }
-	| constant                                        { Int $1 }
-	| LPAREN expr = condition_expr RPAREN             { Paren expr }
+	| condition_expr condition_expr_op condition_expr    { Binary ($2, $1, $3) }
+	| condition_expr_unary_op condition_expr %prec UNARY { Unary ($1, $2) }
+	| identifier                                         { Id $1 }
+	| constant                                           { Int $1 }
+	| LPAREN expr = condition_expr RPAREN                { Paren expr }
 
 statement:
 	| separated SEMI { $1 }
@@ -303,11 +335,11 @@ lvalue:
 	| sized_pointer(expr)       { $1 }
 	
 expr:
-	| expr expr_op expr  { Binary ($2, $1, $3) }
-	| expr_unary_op expr { Unary ($1, $2) }
-	| LPAREN expr RPAREN { Paren $2 }
-	| identifier         { Id $1 }
-	| constant           { Int $1 }
+	| expr expr_op expr              { Binary ($2, $1, $3) }
+	| expr_unary_op expr %prec UNARY { Unary ($1, $2) }
+	| LPAREN expr RPAREN             { Paren $2 }
+	| identifier                     { Id $1 }
+	| constant                       { Int $1 }
 
 varnode:
 	| constant                  { Int $1 }
@@ -338,11 +370,6 @@ id_expr:
 args:
 	separated_list(COMMA, expr) { $1 }
 
-pattern_op:
-	| SEMI      { OpJoin }
-	| PIPE      { OpBoolOr }
-	| AMPERSAND { OpBoolAnd }
-
 condition_op:
 	| ASSIGN        { OpEq }
 	| NOT_EQUAL     { OpNe }
@@ -369,7 +396,7 @@ expr_unary_op:
 	| TILDE { OpTilde }
 	| BANG  { OpBang }
 
-expr_op:
+%inline expr_op:
 	| OR                   { OpBoolOr }
 	| AND                  { OpBoolAnd }
 	| XOR                  { OpBoolXor }
@@ -454,11 +481,17 @@ hex:
 	| KEY_HEX { true }
 	| KEY_DEC { false }
 
-collect_whitespace:
-	| { skip_whitespace := false }
+flip_lexer_state:
+	| { flip_lexer_state() }
 
 skip_whitespace:
 	| { skip_whitespace := true }
 
-flip_lexer:
-	| { flip_lexer_state () }
+collect_whitespace:
+	| { skip_whitespace := false }
+
+semi_is_join:
+	| { semi_is_join := true }
+
+semi_is_semi:
+	| { semi_is_join := false }

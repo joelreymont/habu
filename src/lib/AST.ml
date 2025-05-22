@@ -1,3 +1,4 @@
+open Sexplib.Std
 open Position
 
 type annotation = [ `Location of int * int ]
@@ -5,14 +6,16 @@ type annotation = [ `Location of int * int ]
 type endian =
   | Big
   | Little
+[@@deriving sexp]
 
 type space_type =
   | Rom
   | Ram
   | Register
+[@@deriving sexp]
 
-type integer = int located
-type identifier = string located
+type integer = int located [@@deriving sexp]
+type identifier = string located [@@deriving sexp]
 
 type program = definition list
 
@@ -149,9 +152,11 @@ and range =
   }
 
 and display =
-  { mnemonic : piece list
-  ; output : piece list
+  { mnemonic : pieces
+  ; output : pieces
   }
+
+and pieces = piece list
 
 and piece =
   | Id of identifier
@@ -197,5 +202,6 @@ and jump_target =
   | IndirectJump of expr
   | RelativeJump of integer * identifier
   | LabelJump of identifier
+[@@deriving sexp]
 
 and t = program

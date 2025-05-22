@@ -18,6 +18,7 @@ let flip_lexer_state () =
 ;;
 
 let skip_whitespace = ref true
+let semi_is_join = ref false
 
 exception Syntax_error of ((int * int) option * string)
 
