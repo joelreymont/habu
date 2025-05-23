@@ -100,21 +100,17 @@ open Util
 %left JOIN
 %left PIPE
 %left AMPERSAND
-
 %left OR SPEC_OR
 %left CARET XOR SPEC_XOR
 %left AND SPEC_AND 
-
 %nonassoc EQUAL NOT_EQUAL FLOAT_EQUAL FLOAT_NOT_EQUAL
 %nonassoc LESS_THAN GREATER_THAN LESS_EQUAL GREATER_EQUAL
           SIGNED_LESS_THAN SIGNED_GREATER_THAN SIGNED_LESS_EQUAL
 		  SIGNED_GREATER_EQUAL FLOAT_LESS_THAN FLOAT_GREATER_THAN
 		  FLOAT_LESS_EQUAL FLOAT_GREATER_EQUAL
-
 %left SHIFT_LEFT SHIFT_RIGHT SIGNED_SHIFT_RIGHT SIGNED_SHIFT_LEFT
 %left PLUS MINUS FLOAT_MINUS FLOAT_PLUS
 %left STAR SLASH PERCENT FLOAT_DIV FLOAT_MUL SIGNED_DIV SIGNED_MOD
-
 %nonassoc UNARY
 
 %start <AST.t> grammar
@@ -253,7 +249,7 @@ pattern_expr:
 	| pattern_atomic ELLIPSIS              { Unary (OpAlignLeft, $1) }
 	| pattern_atomic                       { $1 }
 	 
-pattern_op:
+%inline pattern_op:
 	| JOIN      { OpJoin }
 	| PIPE      { OpBoolOr }
 	| AMPERSAND { OpBoolAnd }
@@ -370,7 +366,7 @@ id_expr:
 args:
 	separated_list(COMMA, expr) { $1 }
 
-condition_op:
+%inline condition_op:
 	| ASSIGN        { OpEq }
 	| NOT_EQUAL     { OpNe }
 	| LESS_THAN     { OpLt }
@@ -378,7 +374,7 @@ condition_op:
 	| GREATER_THAN  { OpGt }
 	| GREATER_EQUAL { OpGe }
 
-condition_expr_op:
+%inline condition_expr_op:
 	| SPEC_OR     { OpOr }
 	| SPEC_AND    { OpAnd }
 	| SPEC_XOR    { OpXor }

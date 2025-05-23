@@ -676,7 +676,12 @@ grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS ID XOR
 ## Ends in an error in state: 130.
 ##
 ## condition -> identifier . [ RPAREN PIPE LBRACKET LBRACE KEY_UNIMPL JOIN ELLIPSIS AMPERSAND ]
-## condition -> identifier . condition_op condition_expr [ RPAREN PIPE LBRACKET LBRACE KEY_UNIMPL JOIN ELLIPSIS AMPERSAND ]
+## condition -> identifier . ASSIGN condition_expr [ RPAREN PIPE LBRACKET LBRACE KEY_UNIMPL JOIN ELLIPSIS AMPERSAND ]
+## condition -> identifier . NOT_EQUAL condition_expr [ RPAREN PIPE LBRACKET LBRACE KEY_UNIMPL JOIN ELLIPSIS AMPERSAND ]
+## condition -> identifier . LESS_THAN condition_expr [ RPAREN PIPE LBRACKET LBRACE KEY_UNIMPL JOIN ELLIPSIS AMPERSAND ]
+## condition -> identifier . LESS_EQUAL condition_expr [ RPAREN PIPE LBRACKET LBRACE KEY_UNIMPL JOIN ELLIPSIS AMPERSAND ]
+## condition -> identifier . GREATER_THAN condition_expr [ RPAREN PIPE LBRACKET LBRACE KEY_UNIMPL JOIN ELLIPSIS AMPERSAND ]
+## condition -> identifier . GREATER_EQUAL condition_expr [ RPAREN PIPE LBRACKET LBRACE KEY_UNIMPL JOIN ELLIPSIS AMPERSAND ]
 ##
 ## The known suffix of the stack is as follows:
 ## identifier
@@ -684,21 +689,21 @@ grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS ID XOR
 
 <YOUR SYNTAX ERROR MESSAGE HERE>
 
-grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS ID ASSIGN XOR
+grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS ID NOT_EQUAL XOR
 ##
-## Ends in an error in state: 137.
+## Ends in an error in state: 131.
 ##
-## condition -> identifier condition_op . condition_expr [ RPAREN PIPE LBRACKET LBRACE KEY_UNIMPL JOIN ELLIPSIS AMPERSAND ]
+## condition -> identifier NOT_EQUAL . condition_expr [ RPAREN PIPE LBRACKET LBRACE KEY_UNIMPL JOIN ELLIPSIS AMPERSAND ]
 ##
 ## The known suffix of the stack is as follows:
-## identifier condition_op
+## identifier NOT_EQUAL
 ##
 
 <YOUR SYNTAX ERROR MESSAGE HERE>
 
 grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS ID ASSIGN LPAREN XOR
 ##
-## Ends in an error in state: 140.
+## Ends in an error in state: 134.
 ##
 ## condition_expr -> LPAREN . condition_expr RPAREN [ SPEC_XOR SPEC_OR SPEC_AND SHIFT_RIGHT SHIFT_LEFT RPAREN PLUS PIPE MINUS LBRACKET LBRACE KEY_UNIMPL JOIN ELLIPSIS AMPERSAND ]
 ##
@@ -710,7 +715,7 @@ grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS ID ASSIGN 
 
 grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS ID ASSIGN MINUS XOR
 ##
-## Ends in an error in state: 143.
+## Ends in an error in state: 137.
 ##
 ## condition_expr -> condition_expr_unary_op . condition_expr [ SPEC_XOR SPEC_OR SPEC_AND SHIFT_RIGHT SHIFT_LEFT RPAREN PLUS PIPE MINUS LBRACKET LBRACE KEY_UNIMPL JOIN ELLIPSIS AMPERSAND ]
 ##
@@ -720,36 +725,17 @@ grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS ID ASSIGN 
 
 <YOUR SYNTAX ERROR MESSAGE HERE>
 
-grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS ID ASSIGN BIN_INT MINUS XOR
-##
-## Ends in an error in state: 145.
-##
-## condition_expr -> condition_expr condition_expr_op . condition_expr [ SPEC_XOR SPEC_OR SPEC_AND SHIFT_RIGHT SHIFT_LEFT RPAREN PLUS PIPE MINUS LBRACKET LBRACE KEY_UNIMPL JOIN ELLIPSIS AMPERSAND ]
-##
-## The known suffix of the stack is as follows:
-## condition_expr condition_expr_op
-##
-
-<YOUR SYNTAX ERROR MESSAGE HERE>
-
-grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS ID ASSIGN BIN_INT MINUS BIN_INT XOR
-##
-## Ends in an error in state: 146.
-##
-## condition_expr -> condition_expr . condition_expr_op condition_expr [ SPEC_XOR SPEC_OR SPEC_AND SHIFT_RIGHT SHIFT_LEFT RPAREN PLUS PIPE MINUS LBRACKET LBRACE KEY_UNIMPL JOIN ELLIPSIS AMPERSAND ]
-## condition_expr -> condition_expr condition_expr_op condition_expr . [ SPEC_XOR SPEC_OR SPEC_AND SHIFT_RIGHT SHIFT_LEFT RPAREN PLUS PIPE MINUS LBRACKET LBRACE KEY_UNIMPL JOIN ELLIPSIS AMPERSAND ]
-##
-## The known suffix of the stack is as follows:
-## condition_expr condition_expr_op condition_expr
-##
-
-<YOUR SYNTAX ERROR MESSAGE HERE>
-
 grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS ID ASSIGN LPAREN BIN_INT PIPE
 ##
-## Ends in an error in state: 154.
+## Ends in an error in state: 139.
 ##
-## condition_expr -> condition_expr . condition_expr_op condition_expr [ SPEC_XOR SPEC_OR SPEC_AND SHIFT_RIGHT SHIFT_LEFT RPAREN PLUS MINUS ]
+## condition_expr -> condition_expr . SPEC_OR condition_expr [ SPEC_XOR SPEC_OR SPEC_AND SHIFT_RIGHT SHIFT_LEFT RPAREN PLUS MINUS ]
+## condition_expr -> condition_expr . SPEC_AND condition_expr [ SPEC_XOR SPEC_OR SPEC_AND SHIFT_RIGHT SHIFT_LEFT RPAREN PLUS MINUS ]
+## condition_expr -> condition_expr . SPEC_XOR condition_expr [ SPEC_XOR SPEC_OR SPEC_AND SHIFT_RIGHT SHIFT_LEFT RPAREN PLUS MINUS ]
+## condition_expr -> condition_expr . SHIFT_LEFT condition_expr [ SPEC_XOR SPEC_OR SPEC_AND SHIFT_RIGHT SHIFT_LEFT RPAREN PLUS MINUS ]
+## condition_expr -> condition_expr . SHIFT_RIGHT condition_expr [ SPEC_XOR SPEC_OR SPEC_AND SHIFT_RIGHT SHIFT_LEFT RPAREN PLUS MINUS ]
+## condition_expr -> condition_expr . PLUS condition_expr [ SPEC_XOR SPEC_OR SPEC_AND SHIFT_RIGHT SHIFT_LEFT RPAREN PLUS MINUS ]
+## condition_expr -> condition_expr . MINUS condition_expr [ SPEC_XOR SPEC_OR SPEC_AND SHIFT_RIGHT SHIFT_LEFT RPAREN PLUS MINUS ]
 ## condition_expr -> LPAREN condition_expr . RPAREN [ SPEC_XOR SPEC_OR SPEC_AND SHIFT_RIGHT SHIFT_LEFT RPAREN PLUS PIPE MINUS LBRACKET LBRACE KEY_UNIMPL JOIN ELLIPSIS AMPERSAND ]
 ##
 ## The known suffix of the stack is as follows:
@@ -758,25 +744,367 @@ grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS ID ASSIGN 
 
 <YOUR SYNTAX ERROR MESSAGE HERE>
 
-grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS ID ASSIGN BIN_INT XOR
+grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS ID ASSIGN BIN_INT SPEC_XOR XOR
+##
+## Ends in an error in state: 140.
+##
+## condition_expr -> condition_expr SPEC_XOR . condition_expr [ SPEC_XOR SPEC_OR SPEC_AND SHIFT_RIGHT SHIFT_LEFT RPAREN PLUS PIPE MINUS LBRACKET LBRACE KEY_UNIMPL JOIN ELLIPSIS AMPERSAND ]
+##
+## The known suffix of the stack is as follows:
+## condition_expr SPEC_XOR
+##
+
+<YOUR SYNTAX ERROR MESSAGE HERE>
+
+grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS ID ASSIGN BIN_INT SPEC_XOR BIN_INT XOR
+##
+## Ends in an error in state: 141.
+##
+## condition_expr -> condition_expr . SPEC_OR condition_expr [ SPEC_XOR SPEC_OR SPEC_AND SHIFT_RIGHT SHIFT_LEFT RPAREN PLUS PIPE MINUS LBRACKET LBRACE KEY_UNIMPL JOIN ELLIPSIS AMPERSAND ]
+## condition_expr -> condition_expr . SPEC_AND condition_expr [ SPEC_XOR SPEC_OR SPEC_AND SHIFT_RIGHT SHIFT_LEFT RPAREN PLUS PIPE MINUS LBRACKET LBRACE KEY_UNIMPL JOIN ELLIPSIS AMPERSAND ]
+## condition_expr -> condition_expr . SPEC_XOR condition_expr [ SPEC_XOR SPEC_OR SPEC_AND SHIFT_RIGHT SHIFT_LEFT RPAREN PLUS PIPE MINUS LBRACKET LBRACE KEY_UNIMPL JOIN ELLIPSIS AMPERSAND ]
+## condition_expr -> condition_expr SPEC_XOR condition_expr . [ SPEC_XOR SPEC_OR SPEC_AND SHIFT_RIGHT SHIFT_LEFT RPAREN PLUS PIPE MINUS LBRACKET LBRACE KEY_UNIMPL JOIN ELLIPSIS AMPERSAND ]
+## condition_expr -> condition_expr . SHIFT_LEFT condition_expr [ SPEC_XOR SPEC_OR SPEC_AND SHIFT_RIGHT SHIFT_LEFT RPAREN PLUS PIPE MINUS LBRACKET LBRACE KEY_UNIMPL JOIN ELLIPSIS AMPERSAND ]
+## condition_expr -> condition_expr . SHIFT_RIGHT condition_expr [ SPEC_XOR SPEC_OR SPEC_AND SHIFT_RIGHT SHIFT_LEFT RPAREN PLUS PIPE MINUS LBRACKET LBRACE KEY_UNIMPL JOIN ELLIPSIS AMPERSAND ]
+## condition_expr -> condition_expr . PLUS condition_expr [ SPEC_XOR SPEC_OR SPEC_AND SHIFT_RIGHT SHIFT_LEFT RPAREN PLUS PIPE MINUS LBRACKET LBRACE KEY_UNIMPL JOIN ELLIPSIS AMPERSAND ]
+## condition_expr -> condition_expr . MINUS condition_expr [ SPEC_XOR SPEC_OR SPEC_AND SHIFT_RIGHT SHIFT_LEFT RPAREN PLUS PIPE MINUS LBRACKET LBRACE KEY_UNIMPL JOIN ELLIPSIS AMPERSAND ]
+##
+## The known suffix of the stack is as follows:
+## condition_expr SPEC_XOR condition_expr
+##
+
+<YOUR SYNTAX ERROR MESSAGE HERE>
+
+grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS ID ASSIGN BIN_INT SPEC_AND XOR
+##
+## Ends in an error in state: 142.
+##
+## condition_expr -> condition_expr SPEC_AND . condition_expr [ SPEC_XOR SPEC_OR SPEC_AND SHIFT_RIGHT SHIFT_LEFT RPAREN PLUS PIPE MINUS LBRACKET LBRACE KEY_UNIMPL JOIN ELLIPSIS AMPERSAND ]
+##
+## The known suffix of the stack is as follows:
+## condition_expr SPEC_AND
+##
+
+<YOUR SYNTAX ERROR MESSAGE HERE>
+
+grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS ID ASSIGN BIN_INT SPEC_AND BIN_INT XOR
+##
+## Ends in an error in state: 143.
+##
+## condition_expr -> condition_expr . SPEC_OR condition_expr [ SPEC_XOR SPEC_OR SPEC_AND SHIFT_RIGHT SHIFT_LEFT RPAREN PLUS PIPE MINUS LBRACKET LBRACE KEY_UNIMPL JOIN ELLIPSIS AMPERSAND ]
+## condition_expr -> condition_expr . SPEC_AND condition_expr [ SPEC_XOR SPEC_OR SPEC_AND SHIFT_RIGHT SHIFT_LEFT RPAREN PLUS PIPE MINUS LBRACKET LBRACE KEY_UNIMPL JOIN ELLIPSIS AMPERSAND ]
+## condition_expr -> condition_expr SPEC_AND condition_expr . [ SPEC_XOR SPEC_OR SPEC_AND SHIFT_RIGHT SHIFT_LEFT RPAREN PLUS PIPE MINUS LBRACKET LBRACE KEY_UNIMPL JOIN ELLIPSIS AMPERSAND ]
+## condition_expr -> condition_expr . SPEC_XOR condition_expr [ SPEC_XOR SPEC_OR SPEC_AND SHIFT_RIGHT SHIFT_LEFT RPAREN PLUS PIPE MINUS LBRACKET LBRACE KEY_UNIMPL JOIN ELLIPSIS AMPERSAND ]
+## condition_expr -> condition_expr . SHIFT_LEFT condition_expr [ SPEC_XOR SPEC_OR SPEC_AND SHIFT_RIGHT SHIFT_LEFT RPAREN PLUS PIPE MINUS LBRACKET LBRACE KEY_UNIMPL JOIN ELLIPSIS AMPERSAND ]
+## condition_expr -> condition_expr . SHIFT_RIGHT condition_expr [ SPEC_XOR SPEC_OR SPEC_AND SHIFT_RIGHT SHIFT_LEFT RPAREN PLUS PIPE MINUS LBRACKET LBRACE KEY_UNIMPL JOIN ELLIPSIS AMPERSAND ]
+## condition_expr -> condition_expr . PLUS condition_expr [ SPEC_XOR SPEC_OR SPEC_AND SHIFT_RIGHT SHIFT_LEFT RPAREN PLUS PIPE MINUS LBRACKET LBRACE KEY_UNIMPL JOIN ELLIPSIS AMPERSAND ]
+## condition_expr -> condition_expr . MINUS condition_expr [ SPEC_XOR SPEC_OR SPEC_AND SHIFT_RIGHT SHIFT_LEFT RPAREN PLUS PIPE MINUS LBRACKET LBRACE KEY_UNIMPL JOIN ELLIPSIS AMPERSAND ]
+##
+## The known suffix of the stack is as follows:
+## condition_expr SPEC_AND condition_expr
+##
+
+<YOUR SYNTAX ERROR MESSAGE HERE>
+
+grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS ID ASSIGN BIN_INT SHIFT_RIGHT XOR
+##
+## Ends in an error in state: 144.
+##
+## condition_expr -> condition_expr SHIFT_RIGHT . condition_expr [ SPEC_XOR SPEC_OR SPEC_AND SHIFT_RIGHT SHIFT_LEFT RPAREN PLUS PIPE MINUS LBRACKET LBRACE KEY_UNIMPL JOIN ELLIPSIS AMPERSAND ]
+##
+## The known suffix of the stack is as follows:
+## condition_expr SHIFT_RIGHT
+##
+
+<YOUR SYNTAX ERROR MESSAGE HERE>
+
+grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS ID ASSIGN BIN_INT SHIFT_RIGHT BIN_INT XOR
+##
+## Ends in an error in state: 145.
+##
+## condition_expr -> condition_expr . SPEC_OR condition_expr [ SPEC_XOR SPEC_OR SPEC_AND SHIFT_RIGHT SHIFT_LEFT RPAREN PLUS PIPE MINUS LBRACKET LBRACE KEY_UNIMPL JOIN ELLIPSIS AMPERSAND ]
+## condition_expr -> condition_expr . SPEC_AND condition_expr [ SPEC_XOR SPEC_OR SPEC_AND SHIFT_RIGHT SHIFT_LEFT RPAREN PLUS PIPE MINUS LBRACKET LBRACE KEY_UNIMPL JOIN ELLIPSIS AMPERSAND ]
+## condition_expr -> condition_expr . SPEC_XOR condition_expr [ SPEC_XOR SPEC_OR SPEC_AND SHIFT_RIGHT SHIFT_LEFT RPAREN PLUS PIPE MINUS LBRACKET LBRACE KEY_UNIMPL JOIN ELLIPSIS AMPERSAND ]
+## condition_expr -> condition_expr . SHIFT_LEFT condition_expr [ SPEC_XOR SPEC_OR SPEC_AND SHIFT_RIGHT SHIFT_LEFT RPAREN PLUS PIPE MINUS LBRACKET LBRACE KEY_UNIMPL JOIN ELLIPSIS AMPERSAND ]
+## condition_expr -> condition_expr . SHIFT_RIGHT condition_expr [ SPEC_XOR SPEC_OR SPEC_AND SHIFT_RIGHT SHIFT_LEFT RPAREN PLUS PIPE MINUS LBRACKET LBRACE KEY_UNIMPL JOIN ELLIPSIS AMPERSAND ]
+## condition_expr -> condition_expr SHIFT_RIGHT condition_expr . [ SPEC_XOR SPEC_OR SPEC_AND SHIFT_RIGHT SHIFT_LEFT RPAREN PLUS PIPE MINUS LBRACKET LBRACE KEY_UNIMPL JOIN ELLIPSIS AMPERSAND ]
+## condition_expr -> condition_expr . PLUS condition_expr [ SPEC_XOR SPEC_OR SPEC_AND SHIFT_RIGHT SHIFT_LEFT RPAREN PLUS PIPE MINUS LBRACKET LBRACE KEY_UNIMPL JOIN ELLIPSIS AMPERSAND ]
+## condition_expr -> condition_expr . MINUS condition_expr [ SPEC_XOR SPEC_OR SPEC_AND SHIFT_RIGHT SHIFT_LEFT RPAREN PLUS PIPE MINUS LBRACKET LBRACE KEY_UNIMPL JOIN ELLIPSIS AMPERSAND ]
+##
+## The known suffix of the stack is as follows:
+## condition_expr SHIFT_RIGHT condition_expr
+##
+
+<YOUR SYNTAX ERROR MESSAGE HERE>
+
+grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS ID ASSIGN BIN_INT PLUS XOR
+##
+## Ends in an error in state: 146.
+##
+## condition_expr -> condition_expr PLUS . condition_expr [ SPEC_XOR SPEC_OR SPEC_AND SHIFT_RIGHT SHIFT_LEFT RPAREN PLUS PIPE MINUS LBRACKET LBRACE KEY_UNIMPL JOIN ELLIPSIS AMPERSAND ]
+##
+## The known suffix of the stack is as follows:
+## condition_expr PLUS
+##
+
+<YOUR SYNTAX ERROR MESSAGE HERE>
+
+grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS ID ASSIGN BIN_INT MINUS XOR
+##
+## Ends in an error in state: 148.
+##
+## condition_expr -> condition_expr MINUS . condition_expr [ SPEC_XOR SPEC_OR SPEC_AND SHIFT_RIGHT SHIFT_LEFT RPAREN PLUS PIPE MINUS LBRACKET LBRACE KEY_UNIMPL JOIN ELLIPSIS AMPERSAND ]
+##
+## The known suffix of the stack is as follows:
+## condition_expr MINUS
+##
+
+<YOUR SYNTAX ERROR MESSAGE HERE>
+
+grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS ID ASSIGN BIN_INT SHIFT_LEFT XOR
+##
+## Ends in an error in state: 150.
+##
+## condition_expr -> condition_expr SHIFT_LEFT . condition_expr [ SPEC_XOR SPEC_OR SPEC_AND SHIFT_RIGHT SHIFT_LEFT RPAREN PLUS PIPE MINUS LBRACKET LBRACE KEY_UNIMPL JOIN ELLIPSIS AMPERSAND ]
+##
+## The known suffix of the stack is as follows:
+## condition_expr SHIFT_LEFT
+##
+
+<YOUR SYNTAX ERROR MESSAGE HERE>
+
+grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS ID ASSIGN BIN_INT SHIFT_LEFT BIN_INT XOR
+##
+## Ends in an error in state: 151.
+##
+## condition_expr -> condition_expr . SPEC_OR condition_expr [ SPEC_XOR SPEC_OR SPEC_AND SHIFT_RIGHT SHIFT_LEFT RPAREN PLUS PIPE MINUS LBRACKET LBRACE KEY_UNIMPL JOIN ELLIPSIS AMPERSAND ]
+## condition_expr -> condition_expr . SPEC_AND condition_expr [ SPEC_XOR SPEC_OR SPEC_AND SHIFT_RIGHT SHIFT_LEFT RPAREN PLUS PIPE MINUS LBRACKET LBRACE KEY_UNIMPL JOIN ELLIPSIS AMPERSAND ]
+## condition_expr -> condition_expr . SPEC_XOR condition_expr [ SPEC_XOR SPEC_OR SPEC_AND SHIFT_RIGHT SHIFT_LEFT RPAREN PLUS PIPE MINUS LBRACKET LBRACE KEY_UNIMPL JOIN ELLIPSIS AMPERSAND ]
+## condition_expr -> condition_expr . SHIFT_LEFT condition_expr [ SPEC_XOR SPEC_OR SPEC_AND SHIFT_RIGHT SHIFT_LEFT RPAREN PLUS PIPE MINUS LBRACKET LBRACE KEY_UNIMPL JOIN ELLIPSIS AMPERSAND ]
+## condition_expr -> condition_expr SHIFT_LEFT condition_expr . [ SPEC_XOR SPEC_OR SPEC_AND SHIFT_RIGHT SHIFT_LEFT RPAREN PLUS PIPE MINUS LBRACKET LBRACE KEY_UNIMPL JOIN ELLIPSIS AMPERSAND ]
+## condition_expr -> condition_expr . SHIFT_RIGHT condition_expr [ SPEC_XOR SPEC_OR SPEC_AND SHIFT_RIGHT SHIFT_LEFT RPAREN PLUS PIPE MINUS LBRACKET LBRACE KEY_UNIMPL JOIN ELLIPSIS AMPERSAND ]
+## condition_expr -> condition_expr . PLUS condition_expr [ SPEC_XOR SPEC_OR SPEC_AND SHIFT_RIGHT SHIFT_LEFT RPAREN PLUS PIPE MINUS LBRACKET LBRACE KEY_UNIMPL JOIN ELLIPSIS AMPERSAND ]
+## condition_expr -> condition_expr . MINUS condition_expr [ SPEC_XOR SPEC_OR SPEC_AND SHIFT_RIGHT SHIFT_LEFT RPAREN PLUS PIPE MINUS LBRACKET LBRACE KEY_UNIMPL JOIN ELLIPSIS AMPERSAND ]
+##
+## The known suffix of the stack is as follows:
+## condition_expr SHIFT_LEFT condition_expr
+##
+
+<YOUR SYNTAX ERROR MESSAGE HERE>
+
+grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS ID ASSIGN BIN_INT SPEC_OR XOR
+##
+## Ends in an error in state: 152.
+##
+## condition_expr -> condition_expr SPEC_OR . condition_expr [ SPEC_XOR SPEC_OR SPEC_AND SHIFT_RIGHT SHIFT_LEFT RPAREN PLUS PIPE MINUS LBRACKET LBRACE KEY_UNIMPL JOIN ELLIPSIS AMPERSAND ]
+##
+## The known suffix of the stack is as follows:
+## condition_expr SPEC_OR
+##
+
+<YOUR SYNTAX ERROR MESSAGE HERE>
+
+grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS ID ASSIGN BIN_INT SPEC_OR BIN_INT XOR
+##
+## Ends in an error in state: 153.
+##
+## condition_expr -> condition_expr . SPEC_OR condition_expr [ SPEC_XOR SPEC_OR SPEC_AND SHIFT_RIGHT SHIFT_LEFT RPAREN PLUS PIPE MINUS LBRACKET LBRACE KEY_UNIMPL JOIN ELLIPSIS AMPERSAND ]
+## condition_expr -> condition_expr SPEC_OR condition_expr . [ SPEC_XOR SPEC_OR SPEC_AND SHIFT_RIGHT SHIFT_LEFT RPAREN PLUS PIPE MINUS LBRACKET LBRACE KEY_UNIMPL JOIN ELLIPSIS AMPERSAND ]
+## condition_expr -> condition_expr . SPEC_AND condition_expr [ SPEC_XOR SPEC_OR SPEC_AND SHIFT_RIGHT SHIFT_LEFT RPAREN PLUS PIPE MINUS LBRACKET LBRACE KEY_UNIMPL JOIN ELLIPSIS AMPERSAND ]
+## condition_expr -> condition_expr . SPEC_XOR condition_expr [ SPEC_XOR SPEC_OR SPEC_AND SHIFT_RIGHT SHIFT_LEFT RPAREN PLUS PIPE MINUS LBRACKET LBRACE KEY_UNIMPL JOIN ELLIPSIS AMPERSAND ]
+## condition_expr -> condition_expr . SHIFT_LEFT condition_expr [ SPEC_XOR SPEC_OR SPEC_AND SHIFT_RIGHT SHIFT_LEFT RPAREN PLUS PIPE MINUS LBRACKET LBRACE KEY_UNIMPL JOIN ELLIPSIS AMPERSAND ]
+## condition_expr -> condition_expr . SHIFT_RIGHT condition_expr [ SPEC_XOR SPEC_OR SPEC_AND SHIFT_RIGHT SHIFT_LEFT RPAREN PLUS PIPE MINUS LBRACKET LBRACE KEY_UNIMPL JOIN ELLIPSIS AMPERSAND ]
+## condition_expr -> condition_expr . PLUS condition_expr [ SPEC_XOR SPEC_OR SPEC_AND SHIFT_RIGHT SHIFT_LEFT RPAREN PLUS PIPE MINUS LBRACKET LBRACE KEY_UNIMPL JOIN ELLIPSIS AMPERSAND ]
+## condition_expr -> condition_expr . MINUS condition_expr [ SPEC_XOR SPEC_OR SPEC_AND SHIFT_RIGHT SHIFT_LEFT RPAREN PLUS PIPE MINUS LBRACKET LBRACE KEY_UNIMPL JOIN ELLIPSIS AMPERSAND ]
+##
+## The known suffix of the stack is as follows:
+## condition_expr SPEC_OR condition_expr
+##
+
+<YOUR SYNTAX ERROR MESSAGE HERE>
+
+grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS ID NOT_EQUAL BIN_INT XOR
+##
+## Ends in an error in state: 155.
+##
+## condition -> identifier NOT_EQUAL condition_expr . [ RPAREN PIPE LBRACKET LBRACE KEY_UNIMPL JOIN ELLIPSIS AMPERSAND ]
+## condition_expr -> condition_expr . SPEC_OR condition_expr [ SPEC_XOR SPEC_OR SPEC_AND SHIFT_RIGHT SHIFT_LEFT RPAREN PLUS PIPE MINUS LBRACKET LBRACE KEY_UNIMPL JOIN ELLIPSIS AMPERSAND ]
+## condition_expr -> condition_expr . SPEC_AND condition_expr [ SPEC_XOR SPEC_OR SPEC_AND SHIFT_RIGHT SHIFT_LEFT RPAREN PLUS PIPE MINUS LBRACKET LBRACE KEY_UNIMPL JOIN ELLIPSIS AMPERSAND ]
+## condition_expr -> condition_expr . SPEC_XOR condition_expr [ SPEC_XOR SPEC_OR SPEC_AND SHIFT_RIGHT SHIFT_LEFT RPAREN PLUS PIPE MINUS LBRACKET LBRACE KEY_UNIMPL JOIN ELLIPSIS AMPERSAND ]
+## condition_expr -> condition_expr . SHIFT_LEFT condition_expr [ SPEC_XOR SPEC_OR SPEC_AND SHIFT_RIGHT SHIFT_LEFT RPAREN PLUS PIPE MINUS LBRACKET LBRACE KEY_UNIMPL JOIN ELLIPSIS AMPERSAND ]
+## condition_expr -> condition_expr . SHIFT_RIGHT condition_expr [ SPEC_XOR SPEC_OR SPEC_AND SHIFT_RIGHT SHIFT_LEFT RPAREN PLUS PIPE MINUS LBRACKET LBRACE KEY_UNIMPL JOIN ELLIPSIS AMPERSAND ]
+## condition_expr -> condition_expr . PLUS condition_expr [ SPEC_XOR SPEC_OR SPEC_AND SHIFT_RIGHT SHIFT_LEFT RPAREN PLUS PIPE MINUS LBRACKET LBRACE KEY_UNIMPL JOIN ELLIPSIS AMPERSAND ]
+## condition_expr -> condition_expr . MINUS condition_expr [ SPEC_XOR SPEC_OR SPEC_AND SHIFT_RIGHT SHIFT_LEFT RPAREN PLUS PIPE MINUS LBRACKET LBRACE KEY_UNIMPL JOIN ELLIPSIS AMPERSAND ]
+##
+## The known suffix of the stack is as follows:
+## identifier NOT_EQUAL condition_expr
+##
+
+<YOUR SYNTAX ERROR MESSAGE HERE>
+
+grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS ID LESS_THAN XOR
 ##
 ## Ends in an error in state: 156.
 ##
-## condition -> identifier condition_op condition_expr . [ RPAREN PIPE LBRACKET LBRACE KEY_UNIMPL JOIN ELLIPSIS AMPERSAND ]
-## condition_expr -> condition_expr . condition_expr_op condition_expr [ SPEC_XOR SPEC_OR SPEC_AND SHIFT_RIGHT SHIFT_LEFT RPAREN PLUS PIPE MINUS LBRACKET LBRACE KEY_UNIMPL JOIN ELLIPSIS AMPERSAND ]
+## condition -> identifier LESS_THAN . condition_expr [ RPAREN PIPE LBRACKET LBRACE KEY_UNIMPL JOIN ELLIPSIS AMPERSAND ]
 ##
 ## The known suffix of the stack is as follows:
-## identifier condition_op condition_expr
+## identifier LESS_THAN
+##
+
+<YOUR SYNTAX ERROR MESSAGE HERE>
+
+grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS ID LESS_THAN BIN_INT XOR
+##
+## Ends in an error in state: 157.
+##
+## condition -> identifier LESS_THAN condition_expr . [ RPAREN PIPE LBRACKET LBRACE KEY_UNIMPL JOIN ELLIPSIS AMPERSAND ]
+## condition_expr -> condition_expr . SPEC_OR condition_expr [ SPEC_XOR SPEC_OR SPEC_AND SHIFT_RIGHT SHIFT_LEFT RPAREN PLUS PIPE MINUS LBRACKET LBRACE KEY_UNIMPL JOIN ELLIPSIS AMPERSAND ]
+## condition_expr -> condition_expr . SPEC_AND condition_expr [ SPEC_XOR SPEC_OR SPEC_AND SHIFT_RIGHT SHIFT_LEFT RPAREN PLUS PIPE MINUS LBRACKET LBRACE KEY_UNIMPL JOIN ELLIPSIS AMPERSAND ]
+## condition_expr -> condition_expr . SPEC_XOR condition_expr [ SPEC_XOR SPEC_OR SPEC_AND SHIFT_RIGHT SHIFT_LEFT RPAREN PLUS PIPE MINUS LBRACKET LBRACE KEY_UNIMPL JOIN ELLIPSIS AMPERSAND ]
+## condition_expr -> condition_expr . SHIFT_LEFT condition_expr [ SPEC_XOR SPEC_OR SPEC_AND SHIFT_RIGHT SHIFT_LEFT RPAREN PLUS PIPE MINUS LBRACKET LBRACE KEY_UNIMPL JOIN ELLIPSIS AMPERSAND ]
+## condition_expr -> condition_expr . SHIFT_RIGHT condition_expr [ SPEC_XOR SPEC_OR SPEC_AND SHIFT_RIGHT SHIFT_LEFT RPAREN PLUS PIPE MINUS LBRACKET LBRACE KEY_UNIMPL JOIN ELLIPSIS AMPERSAND ]
+## condition_expr -> condition_expr . PLUS condition_expr [ SPEC_XOR SPEC_OR SPEC_AND SHIFT_RIGHT SHIFT_LEFT RPAREN PLUS PIPE MINUS LBRACKET LBRACE KEY_UNIMPL JOIN ELLIPSIS AMPERSAND ]
+## condition_expr -> condition_expr . MINUS condition_expr [ SPEC_XOR SPEC_OR SPEC_AND SHIFT_RIGHT SHIFT_LEFT RPAREN PLUS PIPE MINUS LBRACKET LBRACE KEY_UNIMPL JOIN ELLIPSIS AMPERSAND ]
+##
+## The known suffix of the stack is as follows:
+## identifier LESS_THAN condition_expr
+##
+
+<YOUR SYNTAX ERROR MESSAGE HERE>
+
+grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS ID LESS_EQUAL XOR
+##
+## Ends in an error in state: 158.
+##
+## condition -> identifier LESS_EQUAL . condition_expr [ RPAREN PIPE LBRACKET LBRACE KEY_UNIMPL JOIN ELLIPSIS AMPERSAND ]
+##
+## The known suffix of the stack is as follows:
+## identifier LESS_EQUAL
+##
+
+<YOUR SYNTAX ERROR MESSAGE HERE>
+
+grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS ID LESS_EQUAL BIN_INT XOR
+##
+## Ends in an error in state: 159.
+##
+## condition -> identifier LESS_EQUAL condition_expr . [ RPAREN PIPE LBRACKET LBRACE KEY_UNIMPL JOIN ELLIPSIS AMPERSAND ]
+## condition_expr -> condition_expr . SPEC_OR condition_expr [ SPEC_XOR SPEC_OR SPEC_AND SHIFT_RIGHT SHIFT_LEFT RPAREN PLUS PIPE MINUS LBRACKET LBRACE KEY_UNIMPL JOIN ELLIPSIS AMPERSAND ]
+## condition_expr -> condition_expr . SPEC_AND condition_expr [ SPEC_XOR SPEC_OR SPEC_AND SHIFT_RIGHT SHIFT_LEFT RPAREN PLUS PIPE MINUS LBRACKET LBRACE KEY_UNIMPL JOIN ELLIPSIS AMPERSAND ]
+## condition_expr -> condition_expr . SPEC_XOR condition_expr [ SPEC_XOR SPEC_OR SPEC_AND SHIFT_RIGHT SHIFT_LEFT RPAREN PLUS PIPE MINUS LBRACKET LBRACE KEY_UNIMPL JOIN ELLIPSIS AMPERSAND ]
+## condition_expr -> condition_expr . SHIFT_LEFT condition_expr [ SPEC_XOR SPEC_OR SPEC_AND SHIFT_RIGHT SHIFT_LEFT RPAREN PLUS PIPE MINUS LBRACKET LBRACE KEY_UNIMPL JOIN ELLIPSIS AMPERSAND ]
+## condition_expr -> condition_expr . SHIFT_RIGHT condition_expr [ SPEC_XOR SPEC_OR SPEC_AND SHIFT_RIGHT SHIFT_LEFT RPAREN PLUS PIPE MINUS LBRACKET LBRACE KEY_UNIMPL JOIN ELLIPSIS AMPERSAND ]
+## condition_expr -> condition_expr . PLUS condition_expr [ SPEC_XOR SPEC_OR SPEC_AND SHIFT_RIGHT SHIFT_LEFT RPAREN PLUS PIPE MINUS LBRACKET LBRACE KEY_UNIMPL JOIN ELLIPSIS AMPERSAND ]
+## condition_expr -> condition_expr . MINUS condition_expr [ SPEC_XOR SPEC_OR SPEC_AND SHIFT_RIGHT SHIFT_LEFT RPAREN PLUS PIPE MINUS LBRACKET LBRACE KEY_UNIMPL JOIN ELLIPSIS AMPERSAND ]
+##
+## The known suffix of the stack is as follows:
+## identifier LESS_EQUAL condition_expr
+##
+
+<YOUR SYNTAX ERROR MESSAGE HERE>
+
+grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS ID GREATER_THAN XOR
+##
+## Ends in an error in state: 160.
+##
+## condition -> identifier GREATER_THAN . condition_expr [ RPAREN PIPE LBRACKET LBRACE KEY_UNIMPL JOIN ELLIPSIS AMPERSAND ]
+##
+## The known suffix of the stack is as follows:
+## identifier GREATER_THAN
+##
+
+<YOUR SYNTAX ERROR MESSAGE HERE>
+
+grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS ID GREATER_THAN BIN_INT XOR
+##
+## Ends in an error in state: 161.
+##
+## condition -> identifier GREATER_THAN condition_expr . [ RPAREN PIPE LBRACKET LBRACE KEY_UNIMPL JOIN ELLIPSIS AMPERSAND ]
+## condition_expr -> condition_expr . SPEC_OR condition_expr [ SPEC_XOR SPEC_OR SPEC_AND SHIFT_RIGHT SHIFT_LEFT RPAREN PLUS PIPE MINUS LBRACKET LBRACE KEY_UNIMPL JOIN ELLIPSIS AMPERSAND ]
+## condition_expr -> condition_expr . SPEC_AND condition_expr [ SPEC_XOR SPEC_OR SPEC_AND SHIFT_RIGHT SHIFT_LEFT RPAREN PLUS PIPE MINUS LBRACKET LBRACE KEY_UNIMPL JOIN ELLIPSIS AMPERSAND ]
+## condition_expr -> condition_expr . SPEC_XOR condition_expr [ SPEC_XOR SPEC_OR SPEC_AND SHIFT_RIGHT SHIFT_LEFT RPAREN PLUS PIPE MINUS LBRACKET LBRACE KEY_UNIMPL JOIN ELLIPSIS AMPERSAND ]
+## condition_expr -> condition_expr . SHIFT_LEFT condition_expr [ SPEC_XOR SPEC_OR SPEC_AND SHIFT_RIGHT SHIFT_LEFT RPAREN PLUS PIPE MINUS LBRACKET LBRACE KEY_UNIMPL JOIN ELLIPSIS AMPERSAND ]
+## condition_expr -> condition_expr . SHIFT_RIGHT condition_expr [ SPEC_XOR SPEC_OR SPEC_AND SHIFT_RIGHT SHIFT_LEFT RPAREN PLUS PIPE MINUS LBRACKET LBRACE KEY_UNIMPL JOIN ELLIPSIS AMPERSAND ]
+## condition_expr -> condition_expr . PLUS condition_expr [ SPEC_XOR SPEC_OR SPEC_AND SHIFT_RIGHT SHIFT_LEFT RPAREN PLUS PIPE MINUS LBRACKET LBRACE KEY_UNIMPL JOIN ELLIPSIS AMPERSAND ]
+## condition_expr -> condition_expr . MINUS condition_expr [ SPEC_XOR SPEC_OR SPEC_AND SHIFT_RIGHT SHIFT_LEFT RPAREN PLUS PIPE MINUS LBRACKET LBRACE KEY_UNIMPL JOIN ELLIPSIS AMPERSAND ]
+##
+## The known suffix of the stack is as follows:
+## identifier GREATER_THAN condition_expr
+##
+
+<YOUR SYNTAX ERROR MESSAGE HERE>
+
+grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS ID GREATER_EQUAL XOR
+##
+## Ends in an error in state: 162.
+##
+## condition -> identifier GREATER_EQUAL . condition_expr [ RPAREN PIPE LBRACKET LBRACE KEY_UNIMPL JOIN ELLIPSIS AMPERSAND ]
+##
+## The known suffix of the stack is as follows:
+## identifier GREATER_EQUAL
+##
+
+<YOUR SYNTAX ERROR MESSAGE HERE>
+
+grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS ID GREATER_EQUAL BIN_INT XOR
+##
+## Ends in an error in state: 163.
+##
+## condition -> identifier GREATER_EQUAL condition_expr . [ RPAREN PIPE LBRACKET LBRACE KEY_UNIMPL JOIN ELLIPSIS AMPERSAND ]
+## condition_expr -> condition_expr . SPEC_OR condition_expr [ SPEC_XOR SPEC_OR SPEC_AND SHIFT_RIGHT SHIFT_LEFT RPAREN PLUS PIPE MINUS LBRACKET LBRACE KEY_UNIMPL JOIN ELLIPSIS AMPERSAND ]
+## condition_expr -> condition_expr . SPEC_AND condition_expr [ SPEC_XOR SPEC_OR SPEC_AND SHIFT_RIGHT SHIFT_LEFT RPAREN PLUS PIPE MINUS LBRACKET LBRACE KEY_UNIMPL JOIN ELLIPSIS AMPERSAND ]
+## condition_expr -> condition_expr . SPEC_XOR condition_expr [ SPEC_XOR SPEC_OR SPEC_AND SHIFT_RIGHT SHIFT_LEFT RPAREN PLUS PIPE MINUS LBRACKET LBRACE KEY_UNIMPL JOIN ELLIPSIS AMPERSAND ]
+## condition_expr -> condition_expr . SHIFT_LEFT condition_expr [ SPEC_XOR SPEC_OR SPEC_AND SHIFT_RIGHT SHIFT_LEFT RPAREN PLUS PIPE MINUS LBRACKET LBRACE KEY_UNIMPL JOIN ELLIPSIS AMPERSAND ]
+## condition_expr -> condition_expr . SHIFT_RIGHT condition_expr [ SPEC_XOR SPEC_OR SPEC_AND SHIFT_RIGHT SHIFT_LEFT RPAREN PLUS PIPE MINUS LBRACKET LBRACE KEY_UNIMPL JOIN ELLIPSIS AMPERSAND ]
+## condition_expr -> condition_expr . PLUS condition_expr [ SPEC_XOR SPEC_OR SPEC_AND SHIFT_RIGHT SHIFT_LEFT RPAREN PLUS PIPE MINUS LBRACKET LBRACE KEY_UNIMPL JOIN ELLIPSIS AMPERSAND ]
+## condition_expr -> condition_expr . MINUS condition_expr [ SPEC_XOR SPEC_OR SPEC_AND SHIFT_RIGHT SHIFT_LEFT RPAREN PLUS PIPE MINUS LBRACKET LBRACE KEY_UNIMPL JOIN ELLIPSIS AMPERSAND ]
+##
+## The known suffix of the stack is as follows:
+## identifier GREATER_EQUAL condition_expr
+##
+
+<YOUR SYNTAX ERROR MESSAGE HERE>
+
+grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS ID ASSIGN XOR
+##
+## Ends in an error in state: 164.
+##
+## condition -> identifier ASSIGN . condition_expr [ RPAREN PIPE LBRACKET LBRACE KEY_UNIMPL JOIN ELLIPSIS AMPERSAND ]
+##
+## The known suffix of the stack is as follows:
+## identifier ASSIGN
+##
+
+<YOUR SYNTAX ERROR MESSAGE HERE>
+
+grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS ID ASSIGN BIN_INT XOR
+##
+## Ends in an error in state: 165.
+##
+## condition -> identifier ASSIGN condition_expr . [ RPAREN PIPE LBRACKET LBRACE KEY_UNIMPL JOIN ELLIPSIS AMPERSAND ]
+## condition_expr -> condition_expr . SPEC_OR condition_expr [ SPEC_XOR SPEC_OR SPEC_AND SHIFT_RIGHT SHIFT_LEFT RPAREN PLUS PIPE MINUS LBRACKET LBRACE KEY_UNIMPL JOIN ELLIPSIS AMPERSAND ]
+## condition_expr -> condition_expr . SPEC_AND condition_expr [ SPEC_XOR SPEC_OR SPEC_AND SHIFT_RIGHT SHIFT_LEFT RPAREN PLUS PIPE MINUS LBRACKET LBRACE KEY_UNIMPL JOIN ELLIPSIS AMPERSAND ]
+## condition_expr -> condition_expr . SPEC_XOR condition_expr [ SPEC_XOR SPEC_OR SPEC_AND SHIFT_RIGHT SHIFT_LEFT RPAREN PLUS PIPE MINUS LBRACKET LBRACE KEY_UNIMPL JOIN ELLIPSIS AMPERSAND ]
+## condition_expr -> condition_expr . SHIFT_LEFT condition_expr [ SPEC_XOR SPEC_OR SPEC_AND SHIFT_RIGHT SHIFT_LEFT RPAREN PLUS PIPE MINUS LBRACKET LBRACE KEY_UNIMPL JOIN ELLIPSIS AMPERSAND ]
+## condition_expr -> condition_expr . SHIFT_RIGHT condition_expr [ SPEC_XOR SPEC_OR SPEC_AND SHIFT_RIGHT SHIFT_LEFT RPAREN PLUS PIPE MINUS LBRACKET LBRACE KEY_UNIMPL JOIN ELLIPSIS AMPERSAND ]
+## condition_expr -> condition_expr . PLUS condition_expr [ SPEC_XOR SPEC_OR SPEC_AND SHIFT_RIGHT SHIFT_LEFT RPAREN PLUS PIPE MINUS LBRACKET LBRACE KEY_UNIMPL JOIN ELLIPSIS AMPERSAND ]
+## condition_expr -> condition_expr . MINUS condition_expr [ SPEC_XOR SPEC_OR SPEC_AND SHIFT_RIGHT SHIFT_LEFT RPAREN PLUS PIPE MINUS LBRACKET LBRACE KEY_UNIMPL JOIN ELLIPSIS AMPERSAND ]
+##
+## The known suffix of the stack is as follows:
+## identifier ASSIGN condition_expr
 ##
 
 <YOUR SYNTAX ERROR MESSAGE HERE>
 
 grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LPAREN ID LBRACKET
 ##
-## Ends in an error in state: 158.
+## Ends in an error in state: 167.
 ##
 ## pattern_atomic -> LPAREN pattern_expr . RPAREN [ RPAREN PIPE LBRACKET LBRACE KEY_UNIMPL JOIN ELLIPSIS AMPERSAND ]
-## pattern_expr -> pattern_expr . pattern_op pattern_expr [ RPAREN PIPE JOIN AMPERSAND ]
+## pattern_expr -> pattern_expr . JOIN pattern_expr [ RPAREN PIPE JOIN AMPERSAND ]
+## pattern_expr -> pattern_expr . PIPE pattern_expr [ RPAREN PIPE JOIN AMPERSAND ]
+## pattern_expr -> pattern_expr . AMPERSAND pattern_expr [ RPAREN PIPE JOIN AMPERSAND ]
 ##
 ## The known suffix of the stack is as follows:
 ## LPAREN pattern_expr
@@ -786,40 +1114,54 @@ grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LPAREN ID 
 ## accurate view of the past (what has been recognized so far), they
 ## may provide an INCOMPLETE view of the future (what was expected next).
 ## In state 130, spurious reduction of production condition -> identifier
-## In state 157, spurious reduction of production pattern_atomic -> condition
-## In state 165, spurious reduction of production pattern_expr -> pattern_atomic
+## In state 166, spurious reduction of production pattern_atomic -> condition
+## In state 173, spurious reduction of production pattern_expr -> pattern_atomic
+##
+
+<YOUR SYNTAX ERROR MESSAGE HERE>
+
+grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS ID PIPE XOR
+##
+## Ends in an error in state: 169.
+##
+## pattern_expr -> pattern_expr PIPE . pattern_expr [ RPAREN PIPE LBRACKET LBRACE KEY_UNIMPL JOIN AMPERSAND ]
+##
+## The known suffix of the stack is as follows:
+## pattern_expr PIPE
+##
+
+<YOUR SYNTAX ERROR MESSAGE HERE>
+
+grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS ID PIPE ID ELLIPSIS ELLIPSIS
+##
+## Ends in an error in state: 170.
+##
+## pattern_expr -> pattern_expr . JOIN pattern_expr [ RPAREN PIPE LBRACKET LBRACE KEY_UNIMPL JOIN AMPERSAND ]
+## pattern_expr -> pattern_expr . PIPE pattern_expr [ RPAREN PIPE LBRACKET LBRACE KEY_UNIMPL JOIN AMPERSAND ]
+## pattern_expr -> pattern_expr PIPE pattern_expr . [ RPAREN PIPE LBRACKET LBRACE KEY_UNIMPL JOIN AMPERSAND ]
+## pattern_expr -> pattern_expr . AMPERSAND pattern_expr [ RPAREN PIPE LBRACKET LBRACE KEY_UNIMPL JOIN AMPERSAND ]
+##
+## The known suffix of the stack is as follows:
+## pattern_expr PIPE pattern_expr
 ##
 
 <YOUR SYNTAX ERROR MESSAGE HERE>
 
 grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS ID AMPERSAND XOR
 ##
-## Ends in an error in state: 163.
+## Ends in an error in state: 171.
 ##
-## pattern_expr -> pattern_expr pattern_op . pattern_expr [ RPAREN PIPE LBRACKET LBRACE KEY_UNIMPL JOIN AMPERSAND ]
-##
-## The known suffix of the stack is as follows:
-## pattern_expr pattern_op
-##
-
-<YOUR SYNTAX ERROR MESSAGE HERE>
-
-grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS ID AMPERSAND ID ELLIPSIS XOR
-##
-## Ends in an error in state: 164.
-##
-## pattern_expr -> pattern_expr . pattern_op pattern_expr [ RPAREN PIPE LBRACKET LBRACE KEY_UNIMPL JOIN AMPERSAND ]
-## pattern_expr -> pattern_expr pattern_op pattern_expr . [ RPAREN PIPE LBRACKET LBRACE KEY_UNIMPL JOIN AMPERSAND ]
+## pattern_expr -> pattern_expr AMPERSAND . pattern_expr [ RPAREN PIPE LBRACKET LBRACE KEY_UNIMPL JOIN AMPERSAND ]
 ##
 ## The known suffix of the stack is as follows:
-## pattern_expr pattern_op pattern_expr
+## pattern_expr AMPERSAND
 ##
 
 <YOUR SYNTAX ERROR MESSAGE HERE>
 
 grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LPAREN ID RPAREN XOR
 ##
-## Ends in an error in state: 165.
+## Ends in an error in state: 173.
 ##
 ## pattern_expr -> pattern_atomic . ELLIPSIS [ RPAREN PIPE LBRACKET LBRACE KEY_UNIMPL JOIN AMPERSAND ]
 ## pattern_expr -> pattern_atomic . [ RPAREN PIPE LBRACKET LBRACE KEY_UNIMPL JOIN AMPERSAND ]
@@ -830,12 +1172,41 @@ grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LPAREN ID 
 
 <YOUR SYNTAX ERROR MESSAGE HERE>
 
+grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS ID JOIN XOR
+##
+## Ends in an error in state: 175.
+##
+## pattern_expr -> pattern_expr JOIN . pattern_expr [ RPAREN PIPE LBRACKET LBRACE KEY_UNIMPL JOIN AMPERSAND ]
+##
+## The known suffix of the stack is as follows:
+## pattern_expr JOIN
+##
+
+<YOUR SYNTAX ERROR MESSAGE HERE>
+
+grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS ID JOIN ID ELLIPSIS ELLIPSIS
+##
+## Ends in an error in state: 176.
+##
+## pattern_expr -> pattern_expr . JOIN pattern_expr [ RPAREN PIPE LBRACKET LBRACE KEY_UNIMPL JOIN AMPERSAND ]
+## pattern_expr -> pattern_expr JOIN pattern_expr . [ RPAREN PIPE LBRACKET LBRACE KEY_UNIMPL JOIN AMPERSAND ]
+## pattern_expr -> pattern_expr . PIPE pattern_expr [ RPAREN PIPE LBRACKET LBRACE KEY_UNIMPL JOIN AMPERSAND ]
+## pattern_expr -> pattern_expr . AMPERSAND pattern_expr [ RPAREN PIPE LBRACKET LBRACE KEY_UNIMPL JOIN AMPERSAND ]
+##
+## The known suffix of the stack is as follows:
+## pattern_expr JOIN pattern_expr
+##
+
+<YOUR SYNTAX ERROR MESSAGE HERE>
+
 grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS ID RPAREN
 ##
-## Ends in an error in state: 167.
+## Ends in an error in state: 177.
 ##
 ## pattern -> pattern_expr . midrule(semi_is_semi) [ LBRACKET LBRACE KEY_UNIMPL ]
-## pattern_expr -> pattern_expr . pattern_op pattern_expr [ PIPE LBRACKET LBRACE KEY_UNIMPL JOIN AMPERSAND ]
+## pattern_expr -> pattern_expr . JOIN pattern_expr [ PIPE LBRACKET LBRACE KEY_UNIMPL JOIN AMPERSAND ]
+## pattern_expr -> pattern_expr . PIPE pattern_expr [ PIPE LBRACKET LBRACE KEY_UNIMPL JOIN AMPERSAND ]
+## pattern_expr -> pattern_expr . AMPERSAND pattern_expr [ PIPE LBRACKET LBRACE KEY_UNIMPL JOIN AMPERSAND ]
 ##
 ## The known suffix of the stack is as follows:
 ## pattern_expr
@@ -845,15 +1216,15 @@ grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS ID RPAREN
 ## accurate view of the past (what has been recognized so far), they
 ## may provide an INCOMPLETE view of the future (what was expected next).
 ## In state 130, spurious reduction of production condition -> identifier
-## In state 157, spurious reduction of production pattern_atomic -> condition
-## In state 165, spurious reduction of production pattern_expr -> pattern_atomic
+## In state 166, spurious reduction of production pattern_atomic -> condition
+## In state 173, spurious reduction of production pattern_expr -> pattern_atomic
 ##
 
 <YOUR SYNTAX ERROR MESSAGE HERE>
 
 grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET XOR
 ##
-## Ends in an error in state: 172.
+## Ends in an error in state: 182.
 ##
 ## context -> LBRACKET . statements RBRACKET [ LBRACE KEY_UNIMPL ]
 ##
@@ -865,7 +1236,7 @@ grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET X
 
 grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET STAR XOR
 ##
-## Ends in an error in state: 173.
+## Ends in an error in state: 183.
 ##
 ## lvalue -> STAR . LBRACKET identifier RBRACKET COLON constant expr [ ASSIGN ]
 ## lvalue -> STAR . LBRACKET identifier RBRACKET expr [ ASSIGN ]
@@ -880,7 +1251,7 @@ grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET S
 
 grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET RES_IF LPAREN XOR
 ##
-## Ends in an error in state: 176.
+## Ends in an error in state: 186.
 ##
 ## expr -> LPAREN . expr RPAREN [ XOR STAR SLASH SIGNED_SHIFT_RIGHT SIGNED_SHIFT_LEFT SIGNED_MOD SIGNED_LESS_THAN SIGNED_LESS_EQUAL SIGNED_GREATER_THAN SIGNED_GREATER_EQUAL SIGNED_DIV SHIFT_RIGHT SHIFT_LEFT SEMI RPAREN RBRACKET PLUS PIPE PERCENT OR NOT_EQUAL MINUS LESS_THAN LESS_EQUAL KEY_GOTO GREATER_THAN GREATER_EQUAL FLOAT_PLUS FLOAT_NOT_EQUAL FLOAT_MUL FLOAT_MINUS FLOAT_LESS_THAN FLOAT_LESS_EQUAL FLOAT_GREATER_THAN FLOAT_GREATER_EQUAL FLOAT_EQUAL FLOAT_DIV EQUAL COMMA CARET ASSIGN AND AMPERSAND ]
 ##
@@ -892,7 +1263,7 @@ grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET R
 
 grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET RES_IF BANG XOR
 ##
-## Ends in an error in state: 179.
+## Ends in an error in state: 189.
 ##
 ## expr -> expr_unary_op . expr [ XOR STAR SLASH SIGNED_SHIFT_RIGHT SIGNED_SHIFT_LEFT SIGNED_MOD SIGNED_LESS_THAN SIGNED_LESS_EQUAL SIGNED_GREATER_THAN SIGNED_GREATER_EQUAL SIGNED_DIV SHIFT_RIGHT SHIFT_LEFT SEMI RPAREN RBRACKET PLUS PIPE PERCENT OR NOT_EQUAL MINUS LESS_THAN LESS_EQUAL KEY_GOTO GREATER_THAN GREATER_EQUAL FLOAT_PLUS FLOAT_NOT_EQUAL FLOAT_MUL FLOAT_MINUS FLOAT_LESS_THAN FLOAT_LESS_EQUAL FLOAT_GREATER_THAN FLOAT_GREATER_EQUAL FLOAT_EQUAL FLOAT_DIV EQUAL COMMA CARET ASSIGN AND AMPERSAND ]
 ##
@@ -904,7 +1275,7 @@ grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET R
 
 grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET RES_IF LPAREN BIN_INT SEMI
 ##
-## Ends in an error in state: 182.
+## Ends in an error in state: 192.
 ##
 ## expr -> expr . OR expr [ XOR STAR SLASH SIGNED_SHIFT_RIGHT SIGNED_SHIFT_LEFT SIGNED_MOD SIGNED_LESS_THAN SIGNED_LESS_EQUAL SIGNED_GREATER_THAN SIGNED_GREATER_EQUAL SIGNED_DIV SHIFT_RIGHT SHIFT_LEFT RPAREN PLUS PIPE PERCENT OR NOT_EQUAL MINUS LESS_THAN LESS_EQUAL GREATER_THAN GREATER_EQUAL FLOAT_PLUS FLOAT_NOT_EQUAL FLOAT_MUL FLOAT_MINUS FLOAT_LESS_THAN FLOAT_LESS_EQUAL FLOAT_GREATER_THAN FLOAT_GREATER_EQUAL FLOAT_EQUAL FLOAT_DIV EQUAL CARET AND AMPERSAND ]
 ## expr -> expr . AND expr [ XOR STAR SLASH SIGNED_SHIFT_RIGHT SIGNED_SHIFT_LEFT SIGNED_MOD SIGNED_LESS_THAN SIGNED_LESS_EQUAL SIGNED_GREATER_THAN SIGNED_GREATER_EQUAL SIGNED_DIV SHIFT_RIGHT SHIFT_LEFT RPAREN PLUS PIPE PERCENT OR NOT_EQUAL MINUS LESS_THAN LESS_EQUAL GREATER_THAN GREATER_EQUAL FLOAT_PLUS FLOAT_NOT_EQUAL FLOAT_MUL FLOAT_MINUS FLOAT_LESS_THAN FLOAT_LESS_EQUAL FLOAT_GREATER_THAN FLOAT_GREATER_EQUAL FLOAT_EQUAL FLOAT_DIV EQUAL CARET AND AMPERSAND ]
@@ -953,7 +1324,7 @@ grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET R
 
 grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET RES_IF BIN_INT XOR XOR
 ##
-## Ends in an error in state: 183.
+## Ends in an error in state: 193.
 ##
 ## expr -> expr XOR . expr [ XOR STAR SLASH SIGNED_SHIFT_RIGHT SIGNED_SHIFT_LEFT SIGNED_MOD SIGNED_LESS_THAN SIGNED_LESS_EQUAL SIGNED_GREATER_THAN SIGNED_GREATER_EQUAL SIGNED_DIV SHIFT_RIGHT SHIFT_LEFT SEMI RPAREN RBRACKET PLUS PIPE PERCENT OR NOT_EQUAL MINUS LESS_THAN LESS_EQUAL KEY_GOTO GREATER_THAN GREATER_EQUAL FLOAT_PLUS FLOAT_NOT_EQUAL FLOAT_MUL FLOAT_MINUS FLOAT_LESS_THAN FLOAT_LESS_EQUAL FLOAT_GREATER_THAN FLOAT_GREATER_EQUAL FLOAT_EQUAL FLOAT_DIV EQUAL COMMA CARET ASSIGN AND AMPERSAND ]
 ##
@@ -965,7 +1336,7 @@ grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET R
 
 grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET RES_IF BIN_INT XOR BIN_INT TILDE
 ##
-## Ends in an error in state: 184.
+## Ends in an error in state: 194.
 ##
 ## expr -> expr . OR expr [ XOR STAR SLASH SIGNED_SHIFT_RIGHT SIGNED_SHIFT_LEFT SIGNED_MOD SIGNED_LESS_THAN SIGNED_LESS_EQUAL SIGNED_GREATER_THAN SIGNED_GREATER_EQUAL SIGNED_DIV SHIFT_RIGHT SHIFT_LEFT SEMI RPAREN RBRACKET PLUS PIPE PERCENT OR NOT_EQUAL MINUS LESS_THAN LESS_EQUAL KEY_GOTO GREATER_THAN GREATER_EQUAL FLOAT_PLUS FLOAT_NOT_EQUAL FLOAT_MUL FLOAT_MINUS FLOAT_LESS_THAN FLOAT_LESS_EQUAL FLOAT_GREATER_THAN FLOAT_GREATER_EQUAL FLOAT_EQUAL FLOAT_DIV EQUAL COMMA CARET ASSIGN AND AMPERSAND ]
 ## expr -> expr . AND expr [ XOR STAR SLASH SIGNED_SHIFT_RIGHT SIGNED_SHIFT_LEFT SIGNED_MOD SIGNED_LESS_THAN SIGNED_LESS_EQUAL SIGNED_GREATER_THAN SIGNED_GREATER_EQUAL SIGNED_DIV SHIFT_RIGHT SHIFT_LEFT SEMI RPAREN RBRACKET PLUS PIPE PERCENT OR NOT_EQUAL MINUS LESS_THAN LESS_EQUAL KEY_GOTO GREATER_THAN GREATER_EQUAL FLOAT_PLUS FLOAT_NOT_EQUAL FLOAT_MUL FLOAT_MINUS FLOAT_LESS_THAN FLOAT_LESS_EQUAL FLOAT_GREATER_THAN FLOAT_GREATER_EQUAL FLOAT_EQUAL FLOAT_DIV EQUAL COMMA CARET ASSIGN AND AMPERSAND ]
@@ -1014,7 +1385,7 @@ grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET R
 
 grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET RES_IF BIN_INT STAR XOR
 ##
-## Ends in an error in state: 185.
+## Ends in an error in state: 195.
 ##
 ## expr -> expr STAR . expr [ XOR STAR SLASH SIGNED_SHIFT_RIGHT SIGNED_SHIFT_LEFT SIGNED_MOD SIGNED_LESS_THAN SIGNED_LESS_EQUAL SIGNED_GREATER_THAN SIGNED_GREATER_EQUAL SIGNED_DIV SHIFT_RIGHT SHIFT_LEFT SEMI RPAREN RBRACKET PLUS PIPE PERCENT OR NOT_EQUAL MINUS LESS_THAN LESS_EQUAL KEY_GOTO GREATER_THAN GREATER_EQUAL FLOAT_PLUS FLOAT_NOT_EQUAL FLOAT_MUL FLOAT_MINUS FLOAT_LESS_THAN FLOAT_LESS_EQUAL FLOAT_GREATER_THAN FLOAT_GREATER_EQUAL FLOAT_EQUAL FLOAT_DIV EQUAL COMMA CARET ASSIGN AND AMPERSAND ]
 ##
@@ -1026,7 +1397,7 @@ grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET R
 
 grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET RES_IF BIN_INT SLASH XOR
 ##
-## Ends in an error in state: 187.
+## Ends in an error in state: 197.
 ##
 ## expr -> expr SLASH . expr [ XOR STAR SLASH SIGNED_SHIFT_RIGHT SIGNED_SHIFT_LEFT SIGNED_MOD SIGNED_LESS_THAN SIGNED_LESS_EQUAL SIGNED_GREATER_THAN SIGNED_GREATER_EQUAL SIGNED_DIV SHIFT_RIGHT SHIFT_LEFT SEMI RPAREN RBRACKET PLUS PIPE PERCENT OR NOT_EQUAL MINUS LESS_THAN LESS_EQUAL KEY_GOTO GREATER_THAN GREATER_EQUAL FLOAT_PLUS FLOAT_NOT_EQUAL FLOAT_MUL FLOAT_MINUS FLOAT_LESS_THAN FLOAT_LESS_EQUAL FLOAT_GREATER_THAN FLOAT_GREATER_EQUAL FLOAT_EQUAL FLOAT_DIV EQUAL COMMA CARET ASSIGN AND AMPERSAND ]
 ##
@@ -1038,7 +1409,7 @@ grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET R
 
 grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET RES_IF BIN_INT SIGNED_SHIFT_RIGHT XOR
 ##
-## Ends in an error in state: 189.
+## Ends in an error in state: 199.
 ##
 ## expr -> expr SIGNED_SHIFT_RIGHT . expr [ XOR STAR SLASH SIGNED_SHIFT_RIGHT SIGNED_SHIFT_LEFT SIGNED_MOD SIGNED_LESS_THAN SIGNED_LESS_EQUAL SIGNED_GREATER_THAN SIGNED_GREATER_EQUAL SIGNED_DIV SHIFT_RIGHT SHIFT_LEFT SEMI RPAREN RBRACKET PLUS PIPE PERCENT OR NOT_EQUAL MINUS LESS_THAN LESS_EQUAL KEY_GOTO GREATER_THAN GREATER_EQUAL FLOAT_PLUS FLOAT_NOT_EQUAL FLOAT_MUL FLOAT_MINUS FLOAT_LESS_THAN FLOAT_LESS_EQUAL FLOAT_GREATER_THAN FLOAT_GREATER_EQUAL FLOAT_EQUAL FLOAT_DIV EQUAL COMMA CARET ASSIGN AND AMPERSAND ]
 ##
@@ -1050,7 +1421,7 @@ grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET R
 
 grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET RES_IF BIN_INT SIGNED_SHIFT_RIGHT BIN_INT TILDE
 ##
-## Ends in an error in state: 190.
+## Ends in an error in state: 200.
 ##
 ## expr -> expr . OR expr [ XOR STAR SLASH SIGNED_SHIFT_RIGHT SIGNED_SHIFT_LEFT SIGNED_MOD SIGNED_LESS_THAN SIGNED_LESS_EQUAL SIGNED_GREATER_THAN SIGNED_GREATER_EQUAL SIGNED_DIV SHIFT_RIGHT SHIFT_LEFT SEMI RPAREN RBRACKET PLUS PIPE PERCENT OR NOT_EQUAL MINUS LESS_THAN LESS_EQUAL KEY_GOTO GREATER_THAN GREATER_EQUAL FLOAT_PLUS FLOAT_NOT_EQUAL FLOAT_MUL FLOAT_MINUS FLOAT_LESS_THAN FLOAT_LESS_EQUAL FLOAT_GREATER_THAN FLOAT_GREATER_EQUAL FLOAT_EQUAL FLOAT_DIV EQUAL COMMA CARET ASSIGN AND AMPERSAND ]
 ## expr -> expr . AND expr [ XOR STAR SLASH SIGNED_SHIFT_RIGHT SIGNED_SHIFT_LEFT SIGNED_MOD SIGNED_LESS_THAN SIGNED_LESS_EQUAL SIGNED_GREATER_THAN SIGNED_GREATER_EQUAL SIGNED_DIV SHIFT_RIGHT SHIFT_LEFT SEMI RPAREN RBRACKET PLUS PIPE PERCENT OR NOT_EQUAL MINUS LESS_THAN LESS_EQUAL KEY_GOTO GREATER_THAN GREATER_EQUAL FLOAT_PLUS FLOAT_NOT_EQUAL FLOAT_MUL FLOAT_MINUS FLOAT_LESS_THAN FLOAT_LESS_EQUAL FLOAT_GREATER_THAN FLOAT_GREATER_EQUAL FLOAT_EQUAL FLOAT_DIV EQUAL COMMA CARET ASSIGN AND AMPERSAND ]
@@ -1099,7 +1470,7 @@ grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET R
 
 grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET RES_IF BIN_INT SIGNED_MOD XOR
 ##
-## Ends in an error in state: 191.
+## Ends in an error in state: 201.
 ##
 ## expr -> expr SIGNED_MOD . expr [ XOR STAR SLASH SIGNED_SHIFT_RIGHT SIGNED_SHIFT_LEFT SIGNED_MOD SIGNED_LESS_THAN SIGNED_LESS_EQUAL SIGNED_GREATER_THAN SIGNED_GREATER_EQUAL SIGNED_DIV SHIFT_RIGHT SHIFT_LEFT SEMI RPAREN RBRACKET PLUS PIPE PERCENT OR NOT_EQUAL MINUS LESS_THAN LESS_EQUAL KEY_GOTO GREATER_THAN GREATER_EQUAL FLOAT_PLUS FLOAT_NOT_EQUAL FLOAT_MUL FLOAT_MINUS FLOAT_LESS_THAN FLOAT_LESS_EQUAL FLOAT_GREATER_THAN FLOAT_GREATER_EQUAL FLOAT_EQUAL FLOAT_DIV EQUAL COMMA CARET ASSIGN AND AMPERSAND ]
 ##
@@ -1111,7 +1482,7 @@ grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET R
 
 grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET RES_IF BIN_INT SIGNED_DIV XOR
 ##
-## Ends in an error in state: 193.
+## Ends in an error in state: 203.
 ##
 ## expr -> expr SIGNED_DIV . expr [ XOR STAR SLASH SIGNED_SHIFT_RIGHT SIGNED_SHIFT_LEFT SIGNED_MOD SIGNED_LESS_THAN SIGNED_LESS_EQUAL SIGNED_GREATER_THAN SIGNED_GREATER_EQUAL SIGNED_DIV SHIFT_RIGHT SHIFT_LEFT SEMI RPAREN RBRACKET PLUS PIPE PERCENT OR NOT_EQUAL MINUS LESS_THAN LESS_EQUAL KEY_GOTO GREATER_THAN GREATER_EQUAL FLOAT_PLUS FLOAT_NOT_EQUAL FLOAT_MUL FLOAT_MINUS FLOAT_LESS_THAN FLOAT_LESS_EQUAL FLOAT_GREATER_THAN FLOAT_GREATER_EQUAL FLOAT_EQUAL FLOAT_DIV EQUAL COMMA CARET ASSIGN AND AMPERSAND ]
 ##
@@ -1123,7 +1494,7 @@ grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET R
 
 grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET RES_IF BIN_INT PLUS XOR
 ##
-## Ends in an error in state: 195.
+## Ends in an error in state: 205.
 ##
 ## expr -> expr PLUS . expr [ XOR STAR SLASH SIGNED_SHIFT_RIGHT SIGNED_SHIFT_LEFT SIGNED_MOD SIGNED_LESS_THAN SIGNED_LESS_EQUAL SIGNED_GREATER_THAN SIGNED_GREATER_EQUAL SIGNED_DIV SHIFT_RIGHT SHIFT_LEFT SEMI RPAREN RBRACKET PLUS PIPE PERCENT OR NOT_EQUAL MINUS LESS_THAN LESS_EQUAL KEY_GOTO GREATER_THAN GREATER_EQUAL FLOAT_PLUS FLOAT_NOT_EQUAL FLOAT_MUL FLOAT_MINUS FLOAT_LESS_THAN FLOAT_LESS_EQUAL FLOAT_GREATER_THAN FLOAT_GREATER_EQUAL FLOAT_EQUAL FLOAT_DIV EQUAL COMMA CARET ASSIGN AND AMPERSAND ]
 ##
@@ -1135,7 +1506,7 @@ grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET R
 
 grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET RES_IF BIN_INT PLUS BIN_INT TILDE
 ##
-## Ends in an error in state: 196.
+## Ends in an error in state: 206.
 ##
 ## expr -> expr . OR expr [ XOR STAR SLASH SIGNED_SHIFT_RIGHT SIGNED_SHIFT_LEFT SIGNED_MOD SIGNED_LESS_THAN SIGNED_LESS_EQUAL SIGNED_GREATER_THAN SIGNED_GREATER_EQUAL SIGNED_DIV SHIFT_RIGHT SHIFT_LEFT SEMI RPAREN RBRACKET PLUS PIPE PERCENT OR NOT_EQUAL MINUS LESS_THAN LESS_EQUAL KEY_GOTO GREATER_THAN GREATER_EQUAL FLOAT_PLUS FLOAT_NOT_EQUAL FLOAT_MUL FLOAT_MINUS FLOAT_LESS_THAN FLOAT_LESS_EQUAL FLOAT_GREATER_THAN FLOAT_GREATER_EQUAL FLOAT_EQUAL FLOAT_DIV EQUAL COMMA CARET ASSIGN AND AMPERSAND ]
 ## expr -> expr . AND expr [ XOR STAR SLASH SIGNED_SHIFT_RIGHT SIGNED_SHIFT_LEFT SIGNED_MOD SIGNED_LESS_THAN SIGNED_LESS_EQUAL SIGNED_GREATER_THAN SIGNED_GREATER_EQUAL SIGNED_DIV SHIFT_RIGHT SHIFT_LEFT SEMI RPAREN RBRACKET PLUS PIPE PERCENT OR NOT_EQUAL MINUS LESS_THAN LESS_EQUAL KEY_GOTO GREATER_THAN GREATER_EQUAL FLOAT_PLUS FLOAT_NOT_EQUAL FLOAT_MUL FLOAT_MINUS FLOAT_LESS_THAN FLOAT_LESS_EQUAL FLOAT_GREATER_THAN FLOAT_GREATER_EQUAL FLOAT_EQUAL FLOAT_DIV EQUAL COMMA CARET ASSIGN AND AMPERSAND ]
@@ -1184,7 +1555,7 @@ grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET R
 
 grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET RES_IF BIN_INT PERCENT XOR
 ##
-## Ends in an error in state: 197.
+## Ends in an error in state: 207.
 ##
 ## expr -> expr PERCENT . expr [ XOR STAR SLASH SIGNED_SHIFT_RIGHT SIGNED_SHIFT_LEFT SIGNED_MOD SIGNED_LESS_THAN SIGNED_LESS_EQUAL SIGNED_GREATER_THAN SIGNED_GREATER_EQUAL SIGNED_DIV SHIFT_RIGHT SHIFT_LEFT SEMI RPAREN RBRACKET PLUS PIPE PERCENT OR NOT_EQUAL MINUS LESS_THAN LESS_EQUAL KEY_GOTO GREATER_THAN GREATER_EQUAL FLOAT_PLUS FLOAT_NOT_EQUAL FLOAT_MUL FLOAT_MINUS FLOAT_LESS_THAN FLOAT_LESS_EQUAL FLOAT_GREATER_THAN FLOAT_GREATER_EQUAL FLOAT_EQUAL FLOAT_DIV EQUAL COMMA CARET ASSIGN AND AMPERSAND ]
 ##
@@ -1196,7 +1567,7 @@ grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET R
 
 grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET RES_IF BIN_INT FLOAT_MUL XOR
 ##
-## Ends in an error in state: 199.
+## Ends in an error in state: 209.
 ##
 ## expr -> expr FLOAT_MUL . expr [ XOR STAR SLASH SIGNED_SHIFT_RIGHT SIGNED_SHIFT_LEFT SIGNED_MOD SIGNED_LESS_THAN SIGNED_LESS_EQUAL SIGNED_GREATER_THAN SIGNED_GREATER_EQUAL SIGNED_DIV SHIFT_RIGHT SHIFT_LEFT SEMI RPAREN RBRACKET PLUS PIPE PERCENT OR NOT_EQUAL MINUS LESS_THAN LESS_EQUAL KEY_GOTO GREATER_THAN GREATER_EQUAL FLOAT_PLUS FLOAT_NOT_EQUAL FLOAT_MUL FLOAT_MINUS FLOAT_LESS_THAN FLOAT_LESS_EQUAL FLOAT_GREATER_THAN FLOAT_GREATER_EQUAL FLOAT_EQUAL FLOAT_DIV EQUAL COMMA CARET ASSIGN AND AMPERSAND ]
 ##
@@ -1208,7 +1579,7 @@ grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET R
 
 grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET RES_IF BIN_INT FLOAT_DIV XOR
 ##
-## Ends in an error in state: 201.
+## Ends in an error in state: 211.
 ##
 ## expr -> expr FLOAT_DIV . expr [ XOR STAR SLASH SIGNED_SHIFT_RIGHT SIGNED_SHIFT_LEFT SIGNED_MOD SIGNED_LESS_THAN SIGNED_LESS_EQUAL SIGNED_GREATER_THAN SIGNED_GREATER_EQUAL SIGNED_DIV SHIFT_RIGHT SHIFT_LEFT SEMI RPAREN RBRACKET PLUS PIPE PERCENT OR NOT_EQUAL MINUS LESS_THAN LESS_EQUAL KEY_GOTO GREATER_THAN GREATER_EQUAL FLOAT_PLUS FLOAT_NOT_EQUAL FLOAT_MUL FLOAT_MINUS FLOAT_LESS_THAN FLOAT_LESS_EQUAL FLOAT_GREATER_THAN FLOAT_GREATER_EQUAL FLOAT_EQUAL FLOAT_DIV EQUAL COMMA CARET ASSIGN AND AMPERSAND ]
 ##
@@ -1220,7 +1591,7 @@ grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET R
 
 grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET RES_IF BIN_INT MINUS XOR
 ##
-## Ends in an error in state: 203.
+## Ends in an error in state: 213.
 ##
 ## expr -> expr MINUS . expr [ XOR STAR SLASH SIGNED_SHIFT_RIGHT SIGNED_SHIFT_LEFT SIGNED_MOD SIGNED_LESS_THAN SIGNED_LESS_EQUAL SIGNED_GREATER_THAN SIGNED_GREATER_EQUAL SIGNED_DIV SHIFT_RIGHT SHIFT_LEFT SEMI RPAREN RBRACKET PLUS PIPE PERCENT OR NOT_EQUAL MINUS LESS_THAN LESS_EQUAL KEY_GOTO GREATER_THAN GREATER_EQUAL FLOAT_PLUS FLOAT_NOT_EQUAL FLOAT_MUL FLOAT_MINUS FLOAT_LESS_THAN FLOAT_LESS_EQUAL FLOAT_GREATER_THAN FLOAT_GREATER_EQUAL FLOAT_EQUAL FLOAT_DIV EQUAL COMMA CARET ASSIGN AND AMPERSAND ]
 ##
@@ -1232,7 +1603,7 @@ grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET R
 
 grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET RES_IF BIN_INT MINUS BIN_INT TILDE
 ##
-## Ends in an error in state: 204.
+## Ends in an error in state: 214.
 ##
 ## expr -> expr . OR expr [ XOR STAR SLASH SIGNED_SHIFT_RIGHT SIGNED_SHIFT_LEFT SIGNED_MOD SIGNED_LESS_THAN SIGNED_LESS_EQUAL SIGNED_GREATER_THAN SIGNED_GREATER_EQUAL SIGNED_DIV SHIFT_RIGHT SHIFT_LEFT SEMI RPAREN RBRACKET PLUS PIPE PERCENT OR NOT_EQUAL MINUS LESS_THAN LESS_EQUAL KEY_GOTO GREATER_THAN GREATER_EQUAL FLOAT_PLUS FLOAT_NOT_EQUAL FLOAT_MUL FLOAT_MINUS FLOAT_LESS_THAN FLOAT_LESS_EQUAL FLOAT_GREATER_THAN FLOAT_GREATER_EQUAL FLOAT_EQUAL FLOAT_DIV EQUAL COMMA CARET ASSIGN AND AMPERSAND ]
 ## expr -> expr . AND expr [ XOR STAR SLASH SIGNED_SHIFT_RIGHT SIGNED_SHIFT_LEFT SIGNED_MOD SIGNED_LESS_THAN SIGNED_LESS_EQUAL SIGNED_GREATER_THAN SIGNED_GREATER_EQUAL SIGNED_DIV SHIFT_RIGHT SHIFT_LEFT SEMI RPAREN RBRACKET PLUS PIPE PERCENT OR NOT_EQUAL MINUS LESS_THAN LESS_EQUAL KEY_GOTO GREATER_THAN GREATER_EQUAL FLOAT_PLUS FLOAT_NOT_EQUAL FLOAT_MUL FLOAT_MINUS FLOAT_LESS_THAN FLOAT_LESS_EQUAL FLOAT_GREATER_THAN FLOAT_GREATER_EQUAL FLOAT_EQUAL FLOAT_DIV EQUAL COMMA CARET ASSIGN AND AMPERSAND ]
@@ -1281,7 +1652,7 @@ grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET R
 
 grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET RES_IF BIN_INT FLOAT_PLUS XOR
 ##
-## Ends in an error in state: 205.
+## Ends in an error in state: 215.
 ##
 ## expr -> expr FLOAT_PLUS . expr [ XOR STAR SLASH SIGNED_SHIFT_RIGHT SIGNED_SHIFT_LEFT SIGNED_MOD SIGNED_LESS_THAN SIGNED_LESS_EQUAL SIGNED_GREATER_THAN SIGNED_GREATER_EQUAL SIGNED_DIV SHIFT_RIGHT SHIFT_LEFT SEMI RPAREN RBRACKET PLUS PIPE PERCENT OR NOT_EQUAL MINUS LESS_THAN LESS_EQUAL KEY_GOTO GREATER_THAN GREATER_EQUAL FLOAT_PLUS FLOAT_NOT_EQUAL FLOAT_MUL FLOAT_MINUS FLOAT_LESS_THAN FLOAT_LESS_EQUAL FLOAT_GREATER_THAN FLOAT_GREATER_EQUAL FLOAT_EQUAL FLOAT_DIV EQUAL COMMA CARET ASSIGN AND AMPERSAND ]
 ##
@@ -1293,7 +1664,7 @@ grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET R
 
 grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET RES_IF BIN_INT FLOAT_PLUS BIN_INT TILDE
 ##
-## Ends in an error in state: 206.
+## Ends in an error in state: 216.
 ##
 ## expr -> expr . OR expr [ XOR STAR SLASH SIGNED_SHIFT_RIGHT SIGNED_SHIFT_LEFT SIGNED_MOD SIGNED_LESS_THAN SIGNED_LESS_EQUAL SIGNED_GREATER_THAN SIGNED_GREATER_EQUAL SIGNED_DIV SHIFT_RIGHT SHIFT_LEFT SEMI RPAREN RBRACKET PLUS PIPE PERCENT OR NOT_EQUAL MINUS LESS_THAN LESS_EQUAL KEY_GOTO GREATER_THAN GREATER_EQUAL FLOAT_PLUS FLOAT_NOT_EQUAL FLOAT_MUL FLOAT_MINUS FLOAT_LESS_THAN FLOAT_LESS_EQUAL FLOAT_GREATER_THAN FLOAT_GREATER_EQUAL FLOAT_EQUAL FLOAT_DIV EQUAL COMMA CARET ASSIGN AND AMPERSAND ]
 ## expr -> expr . AND expr [ XOR STAR SLASH SIGNED_SHIFT_RIGHT SIGNED_SHIFT_LEFT SIGNED_MOD SIGNED_LESS_THAN SIGNED_LESS_EQUAL SIGNED_GREATER_THAN SIGNED_GREATER_EQUAL SIGNED_DIV SHIFT_RIGHT SHIFT_LEFT SEMI RPAREN RBRACKET PLUS PIPE PERCENT OR NOT_EQUAL MINUS LESS_THAN LESS_EQUAL KEY_GOTO GREATER_THAN GREATER_EQUAL FLOAT_PLUS FLOAT_NOT_EQUAL FLOAT_MUL FLOAT_MINUS FLOAT_LESS_THAN FLOAT_LESS_EQUAL FLOAT_GREATER_THAN FLOAT_GREATER_EQUAL FLOAT_EQUAL FLOAT_DIV EQUAL COMMA CARET ASSIGN AND AMPERSAND ]
@@ -1342,7 +1713,7 @@ grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET R
 
 grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET RES_IF BIN_INT FLOAT_MINUS XOR
 ##
-## Ends in an error in state: 207.
+## Ends in an error in state: 217.
 ##
 ## expr -> expr FLOAT_MINUS . expr [ XOR STAR SLASH SIGNED_SHIFT_RIGHT SIGNED_SHIFT_LEFT SIGNED_MOD SIGNED_LESS_THAN SIGNED_LESS_EQUAL SIGNED_GREATER_THAN SIGNED_GREATER_EQUAL SIGNED_DIV SHIFT_RIGHT SHIFT_LEFT SEMI RPAREN RBRACKET PLUS PIPE PERCENT OR NOT_EQUAL MINUS LESS_THAN LESS_EQUAL KEY_GOTO GREATER_THAN GREATER_EQUAL FLOAT_PLUS FLOAT_NOT_EQUAL FLOAT_MUL FLOAT_MINUS FLOAT_LESS_THAN FLOAT_LESS_EQUAL FLOAT_GREATER_THAN FLOAT_GREATER_EQUAL FLOAT_EQUAL FLOAT_DIV EQUAL COMMA CARET ASSIGN AND AMPERSAND ]
 ##
@@ -1354,7 +1725,7 @@ grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET R
 
 grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET RES_IF BIN_INT FLOAT_MINUS BIN_INT TILDE
 ##
-## Ends in an error in state: 208.
+## Ends in an error in state: 218.
 ##
 ## expr -> expr . OR expr [ XOR STAR SLASH SIGNED_SHIFT_RIGHT SIGNED_SHIFT_LEFT SIGNED_MOD SIGNED_LESS_THAN SIGNED_LESS_EQUAL SIGNED_GREATER_THAN SIGNED_GREATER_EQUAL SIGNED_DIV SHIFT_RIGHT SHIFT_LEFT SEMI RPAREN RBRACKET PLUS PIPE PERCENT OR NOT_EQUAL MINUS LESS_THAN LESS_EQUAL KEY_GOTO GREATER_THAN GREATER_EQUAL FLOAT_PLUS FLOAT_NOT_EQUAL FLOAT_MUL FLOAT_MINUS FLOAT_LESS_THAN FLOAT_LESS_EQUAL FLOAT_GREATER_THAN FLOAT_GREATER_EQUAL FLOAT_EQUAL FLOAT_DIV EQUAL COMMA CARET ASSIGN AND AMPERSAND ]
 ## expr -> expr . AND expr [ XOR STAR SLASH SIGNED_SHIFT_RIGHT SIGNED_SHIFT_LEFT SIGNED_MOD SIGNED_LESS_THAN SIGNED_LESS_EQUAL SIGNED_GREATER_THAN SIGNED_GREATER_EQUAL SIGNED_DIV SHIFT_RIGHT SHIFT_LEFT SEMI RPAREN RBRACKET PLUS PIPE PERCENT OR NOT_EQUAL MINUS LESS_THAN LESS_EQUAL KEY_GOTO GREATER_THAN GREATER_EQUAL FLOAT_PLUS FLOAT_NOT_EQUAL FLOAT_MUL FLOAT_MINUS FLOAT_LESS_THAN FLOAT_LESS_EQUAL FLOAT_GREATER_THAN FLOAT_GREATER_EQUAL FLOAT_EQUAL FLOAT_DIV EQUAL COMMA CARET ASSIGN AND AMPERSAND ]
@@ -1403,7 +1774,7 @@ grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET R
 
 grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET RES_IF BIN_INT SIGNED_SHIFT_LEFT XOR
 ##
-## Ends in an error in state: 209.
+## Ends in an error in state: 219.
 ##
 ## expr -> expr SIGNED_SHIFT_LEFT . expr [ XOR STAR SLASH SIGNED_SHIFT_RIGHT SIGNED_SHIFT_LEFT SIGNED_MOD SIGNED_LESS_THAN SIGNED_LESS_EQUAL SIGNED_GREATER_THAN SIGNED_GREATER_EQUAL SIGNED_DIV SHIFT_RIGHT SHIFT_LEFT SEMI RPAREN RBRACKET PLUS PIPE PERCENT OR NOT_EQUAL MINUS LESS_THAN LESS_EQUAL KEY_GOTO GREATER_THAN GREATER_EQUAL FLOAT_PLUS FLOAT_NOT_EQUAL FLOAT_MUL FLOAT_MINUS FLOAT_LESS_THAN FLOAT_LESS_EQUAL FLOAT_GREATER_THAN FLOAT_GREATER_EQUAL FLOAT_EQUAL FLOAT_DIV EQUAL COMMA CARET ASSIGN AND AMPERSAND ]
 ##
@@ -1415,7 +1786,7 @@ grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET R
 
 grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET RES_IF BIN_INT SIGNED_SHIFT_LEFT BIN_INT TILDE
 ##
-## Ends in an error in state: 210.
+## Ends in an error in state: 220.
 ##
 ## expr -> expr . OR expr [ XOR STAR SLASH SIGNED_SHIFT_RIGHT SIGNED_SHIFT_LEFT SIGNED_MOD SIGNED_LESS_THAN SIGNED_LESS_EQUAL SIGNED_GREATER_THAN SIGNED_GREATER_EQUAL SIGNED_DIV SHIFT_RIGHT SHIFT_LEFT SEMI RPAREN RBRACKET PLUS PIPE PERCENT OR NOT_EQUAL MINUS LESS_THAN LESS_EQUAL KEY_GOTO GREATER_THAN GREATER_EQUAL FLOAT_PLUS FLOAT_NOT_EQUAL FLOAT_MUL FLOAT_MINUS FLOAT_LESS_THAN FLOAT_LESS_EQUAL FLOAT_GREATER_THAN FLOAT_GREATER_EQUAL FLOAT_EQUAL FLOAT_DIV EQUAL COMMA CARET ASSIGN AND AMPERSAND ]
 ## expr -> expr . AND expr [ XOR STAR SLASH SIGNED_SHIFT_RIGHT SIGNED_SHIFT_LEFT SIGNED_MOD SIGNED_LESS_THAN SIGNED_LESS_EQUAL SIGNED_GREATER_THAN SIGNED_GREATER_EQUAL SIGNED_DIV SHIFT_RIGHT SHIFT_LEFT SEMI RPAREN RBRACKET PLUS PIPE PERCENT OR NOT_EQUAL MINUS LESS_THAN LESS_EQUAL KEY_GOTO GREATER_THAN GREATER_EQUAL FLOAT_PLUS FLOAT_NOT_EQUAL FLOAT_MUL FLOAT_MINUS FLOAT_LESS_THAN FLOAT_LESS_EQUAL FLOAT_GREATER_THAN FLOAT_GREATER_EQUAL FLOAT_EQUAL FLOAT_DIV EQUAL COMMA CARET ASSIGN AND AMPERSAND ]
@@ -1464,7 +1835,7 @@ grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET R
 
 grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET RES_IF BIN_INT SIGNED_LESS_THAN XOR
 ##
-## Ends in an error in state: 211.
+## Ends in an error in state: 221.
 ##
 ## expr -> expr SIGNED_LESS_THAN . expr [ XOR STAR SLASH SIGNED_SHIFT_RIGHT SIGNED_SHIFT_LEFT SIGNED_MOD SIGNED_LESS_THAN SIGNED_LESS_EQUAL SIGNED_GREATER_THAN SIGNED_GREATER_EQUAL SIGNED_DIV SHIFT_RIGHT SHIFT_LEFT SEMI RPAREN RBRACKET PLUS PIPE PERCENT OR NOT_EQUAL MINUS LESS_THAN LESS_EQUAL KEY_GOTO GREATER_THAN GREATER_EQUAL FLOAT_PLUS FLOAT_NOT_EQUAL FLOAT_MUL FLOAT_MINUS FLOAT_LESS_THAN FLOAT_LESS_EQUAL FLOAT_GREATER_THAN FLOAT_GREATER_EQUAL FLOAT_EQUAL FLOAT_DIV EQUAL COMMA CARET ASSIGN AND AMPERSAND ]
 ##
@@ -1476,7 +1847,7 @@ grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET R
 
 grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET RES_IF BIN_INT SIGNED_LESS_THAN BIN_INT SIGNED_LESS_THAN
 ##
-## Ends in an error in state: 212.
+## Ends in an error in state: 222.
 ##
 ## expr -> expr . OR expr [ XOR STAR SLASH SIGNED_SHIFT_RIGHT SIGNED_SHIFT_LEFT SIGNED_MOD SIGNED_LESS_THAN SIGNED_LESS_EQUAL SIGNED_GREATER_THAN SIGNED_GREATER_EQUAL SIGNED_DIV SHIFT_RIGHT SHIFT_LEFT SEMI RPAREN RBRACKET PLUS PIPE PERCENT OR NOT_EQUAL MINUS LESS_THAN LESS_EQUAL KEY_GOTO GREATER_THAN GREATER_EQUAL FLOAT_PLUS FLOAT_NOT_EQUAL FLOAT_MUL FLOAT_MINUS FLOAT_LESS_THAN FLOAT_LESS_EQUAL FLOAT_GREATER_THAN FLOAT_GREATER_EQUAL FLOAT_EQUAL FLOAT_DIV EQUAL COMMA CARET ASSIGN AND AMPERSAND ]
 ## expr -> expr . AND expr [ XOR STAR SLASH SIGNED_SHIFT_RIGHT SIGNED_SHIFT_LEFT SIGNED_MOD SIGNED_LESS_THAN SIGNED_LESS_EQUAL SIGNED_GREATER_THAN SIGNED_GREATER_EQUAL SIGNED_DIV SHIFT_RIGHT SHIFT_LEFT SEMI RPAREN RBRACKET PLUS PIPE PERCENT OR NOT_EQUAL MINUS LESS_THAN LESS_EQUAL KEY_GOTO GREATER_THAN GREATER_EQUAL FLOAT_PLUS FLOAT_NOT_EQUAL FLOAT_MUL FLOAT_MINUS FLOAT_LESS_THAN FLOAT_LESS_EQUAL FLOAT_GREATER_THAN FLOAT_GREATER_EQUAL FLOAT_EQUAL FLOAT_DIV EQUAL COMMA CARET ASSIGN AND AMPERSAND ]
@@ -1525,7 +1896,7 @@ grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET R
 
 grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET RES_IF BIN_INT SHIFT_RIGHT XOR
 ##
-## Ends in an error in state: 213.
+## Ends in an error in state: 223.
 ##
 ## expr -> expr SHIFT_RIGHT . expr [ XOR STAR SLASH SIGNED_SHIFT_RIGHT SIGNED_SHIFT_LEFT SIGNED_MOD SIGNED_LESS_THAN SIGNED_LESS_EQUAL SIGNED_GREATER_THAN SIGNED_GREATER_EQUAL SIGNED_DIV SHIFT_RIGHT SHIFT_LEFT SEMI RPAREN RBRACKET PLUS PIPE PERCENT OR NOT_EQUAL MINUS LESS_THAN LESS_EQUAL KEY_GOTO GREATER_THAN GREATER_EQUAL FLOAT_PLUS FLOAT_NOT_EQUAL FLOAT_MUL FLOAT_MINUS FLOAT_LESS_THAN FLOAT_LESS_EQUAL FLOAT_GREATER_THAN FLOAT_GREATER_EQUAL FLOAT_EQUAL FLOAT_DIV EQUAL COMMA CARET ASSIGN AND AMPERSAND ]
 ##
@@ -1537,7 +1908,7 @@ grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET R
 
 grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET RES_IF BIN_INT SHIFT_RIGHT BIN_INT TILDE
 ##
-## Ends in an error in state: 214.
+## Ends in an error in state: 224.
 ##
 ## expr -> expr . OR expr [ XOR STAR SLASH SIGNED_SHIFT_RIGHT SIGNED_SHIFT_LEFT SIGNED_MOD SIGNED_LESS_THAN SIGNED_LESS_EQUAL SIGNED_GREATER_THAN SIGNED_GREATER_EQUAL SIGNED_DIV SHIFT_RIGHT SHIFT_LEFT SEMI RPAREN RBRACKET PLUS PIPE PERCENT OR NOT_EQUAL MINUS LESS_THAN LESS_EQUAL KEY_GOTO GREATER_THAN GREATER_EQUAL FLOAT_PLUS FLOAT_NOT_EQUAL FLOAT_MUL FLOAT_MINUS FLOAT_LESS_THAN FLOAT_LESS_EQUAL FLOAT_GREATER_THAN FLOAT_GREATER_EQUAL FLOAT_EQUAL FLOAT_DIV EQUAL COMMA CARET ASSIGN AND AMPERSAND ]
 ## expr -> expr . AND expr [ XOR STAR SLASH SIGNED_SHIFT_RIGHT SIGNED_SHIFT_LEFT SIGNED_MOD SIGNED_LESS_THAN SIGNED_LESS_EQUAL SIGNED_GREATER_THAN SIGNED_GREATER_EQUAL SIGNED_DIV SHIFT_RIGHT SHIFT_LEFT SEMI RPAREN RBRACKET PLUS PIPE PERCENT OR NOT_EQUAL MINUS LESS_THAN LESS_EQUAL KEY_GOTO GREATER_THAN GREATER_EQUAL FLOAT_PLUS FLOAT_NOT_EQUAL FLOAT_MUL FLOAT_MINUS FLOAT_LESS_THAN FLOAT_LESS_EQUAL FLOAT_GREATER_THAN FLOAT_GREATER_EQUAL FLOAT_EQUAL FLOAT_DIV EQUAL COMMA CARET ASSIGN AND AMPERSAND ]
@@ -1586,7 +1957,7 @@ grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET R
 
 grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET RES_IF BIN_INT SHIFT_LEFT XOR
 ##
-## Ends in an error in state: 215.
+## Ends in an error in state: 225.
 ##
 ## expr -> expr SHIFT_LEFT . expr [ XOR STAR SLASH SIGNED_SHIFT_RIGHT SIGNED_SHIFT_LEFT SIGNED_MOD SIGNED_LESS_THAN SIGNED_LESS_EQUAL SIGNED_GREATER_THAN SIGNED_GREATER_EQUAL SIGNED_DIV SHIFT_RIGHT SHIFT_LEFT SEMI RPAREN RBRACKET PLUS PIPE PERCENT OR NOT_EQUAL MINUS LESS_THAN LESS_EQUAL KEY_GOTO GREATER_THAN GREATER_EQUAL FLOAT_PLUS FLOAT_NOT_EQUAL FLOAT_MUL FLOAT_MINUS FLOAT_LESS_THAN FLOAT_LESS_EQUAL FLOAT_GREATER_THAN FLOAT_GREATER_EQUAL FLOAT_EQUAL FLOAT_DIV EQUAL COMMA CARET ASSIGN AND AMPERSAND ]
 ##
@@ -1598,7 +1969,7 @@ grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET R
 
 grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET RES_IF BIN_INT SHIFT_LEFT BIN_INT TILDE
 ##
-## Ends in an error in state: 216.
+## Ends in an error in state: 226.
 ##
 ## expr -> expr . OR expr [ XOR STAR SLASH SIGNED_SHIFT_RIGHT SIGNED_SHIFT_LEFT SIGNED_MOD SIGNED_LESS_THAN SIGNED_LESS_EQUAL SIGNED_GREATER_THAN SIGNED_GREATER_EQUAL SIGNED_DIV SHIFT_RIGHT SHIFT_LEFT SEMI RPAREN RBRACKET PLUS PIPE PERCENT OR NOT_EQUAL MINUS LESS_THAN LESS_EQUAL KEY_GOTO GREATER_THAN GREATER_EQUAL FLOAT_PLUS FLOAT_NOT_EQUAL FLOAT_MUL FLOAT_MINUS FLOAT_LESS_THAN FLOAT_LESS_EQUAL FLOAT_GREATER_THAN FLOAT_GREATER_EQUAL FLOAT_EQUAL FLOAT_DIV EQUAL COMMA CARET ASSIGN AND AMPERSAND ]
 ## expr -> expr . AND expr [ XOR STAR SLASH SIGNED_SHIFT_RIGHT SIGNED_SHIFT_LEFT SIGNED_MOD SIGNED_LESS_THAN SIGNED_LESS_EQUAL SIGNED_GREATER_THAN SIGNED_GREATER_EQUAL SIGNED_DIV SHIFT_RIGHT SHIFT_LEFT SEMI RPAREN RBRACKET PLUS PIPE PERCENT OR NOT_EQUAL MINUS LESS_THAN LESS_EQUAL KEY_GOTO GREATER_THAN GREATER_EQUAL FLOAT_PLUS FLOAT_NOT_EQUAL FLOAT_MUL FLOAT_MINUS FLOAT_LESS_THAN FLOAT_LESS_EQUAL FLOAT_GREATER_THAN FLOAT_GREATER_EQUAL FLOAT_EQUAL FLOAT_DIV EQUAL COMMA CARET ASSIGN AND AMPERSAND ]
@@ -1647,7 +2018,7 @@ grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET R
 
 grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET RES_IF BIN_INT SIGNED_LESS_EQUAL XOR
 ##
-## Ends in an error in state: 217.
+## Ends in an error in state: 227.
 ##
 ## expr -> expr SIGNED_LESS_EQUAL . expr [ XOR STAR SLASH SIGNED_SHIFT_RIGHT SIGNED_SHIFT_LEFT SIGNED_MOD SIGNED_LESS_THAN SIGNED_LESS_EQUAL SIGNED_GREATER_THAN SIGNED_GREATER_EQUAL SIGNED_DIV SHIFT_RIGHT SHIFT_LEFT SEMI RPAREN RBRACKET PLUS PIPE PERCENT OR NOT_EQUAL MINUS LESS_THAN LESS_EQUAL KEY_GOTO GREATER_THAN GREATER_EQUAL FLOAT_PLUS FLOAT_NOT_EQUAL FLOAT_MUL FLOAT_MINUS FLOAT_LESS_THAN FLOAT_LESS_EQUAL FLOAT_GREATER_THAN FLOAT_GREATER_EQUAL FLOAT_EQUAL FLOAT_DIV EQUAL COMMA CARET ASSIGN AND AMPERSAND ]
 ##
@@ -1659,7 +2030,7 @@ grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET R
 
 grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET RES_IF BIN_INT SIGNED_LESS_EQUAL BIN_INT SIGNED_LESS_THAN
 ##
-## Ends in an error in state: 218.
+## Ends in an error in state: 228.
 ##
 ## expr -> expr . OR expr [ XOR STAR SLASH SIGNED_SHIFT_RIGHT SIGNED_SHIFT_LEFT SIGNED_MOD SIGNED_LESS_THAN SIGNED_LESS_EQUAL SIGNED_GREATER_THAN SIGNED_GREATER_EQUAL SIGNED_DIV SHIFT_RIGHT SHIFT_LEFT SEMI RPAREN RBRACKET PLUS PIPE PERCENT OR NOT_EQUAL MINUS LESS_THAN LESS_EQUAL KEY_GOTO GREATER_THAN GREATER_EQUAL FLOAT_PLUS FLOAT_NOT_EQUAL FLOAT_MUL FLOAT_MINUS FLOAT_LESS_THAN FLOAT_LESS_EQUAL FLOAT_GREATER_THAN FLOAT_GREATER_EQUAL FLOAT_EQUAL FLOAT_DIV EQUAL COMMA CARET ASSIGN AND AMPERSAND ]
 ## expr -> expr . AND expr [ XOR STAR SLASH SIGNED_SHIFT_RIGHT SIGNED_SHIFT_LEFT SIGNED_MOD SIGNED_LESS_THAN SIGNED_LESS_EQUAL SIGNED_GREATER_THAN SIGNED_GREATER_EQUAL SIGNED_DIV SHIFT_RIGHT SHIFT_LEFT SEMI RPAREN RBRACKET PLUS PIPE PERCENT OR NOT_EQUAL MINUS LESS_THAN LESS_EQUAL KEY_GOTO GREATER_THAN GREATER_EQUAL FLOAT_PLUS FLOAT_NOT_EQUAL FLOAT_MUL FLOAT_MINUS FLOAT_LESS_THAN FLOAT_LESS_EQUAL FLOAT_GREATER_THAN FLOAT_GREATER_EQUAL FLOAT_EQUAL FLOAT_DIV EQUAL COMMA CARET ASSIGN AND AMPERSAND ]
@@ -1708,7 +2079,7 @@ grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET R
 
 grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET RES_IF BIN_INT SIGNED_GREATER_THAN XOR
 ##
-## Ends in an error in state: 219.
+## Ends in an error in state: 229.
 ##
 ## expr -> expr SIGNED_GREATER_THAN . expr [ XOR STAR SLASH SIGNED_SHIFT_RIGHT SIGNED_SHIFT_LEFT SIGNED_MOD SIGNED_LESS_THAN SIGNED_LESS_EQUAL SIGNED_GREATER_THAN SIGNED_GREATER_EQUAL SIGNED_DIV SHIFT_RIGHT SHIFT_LEFT SEMI RPAREN RBRACKET PLUS PIPE PERCENT OR NOT_EQUAL MINUS LESS_THAN LESS_EQUAL KEY_GOTO GREATER_THAN GREATER_EQUAL FLOAT_PLUS FLOAT_NOT_EQUAL FLOAT_MUL FLOAT_MINUS FLOAT_LESS_THAN FLOAT_LESS_EQUAL FLOAT_GREATER_THAN FLOAT_GREATER_EQUAL FLOAT_EQUAL FLOAT_DIV EQUAL COMMA CARET ASSIGN AND AMPERSAND ]
 ##
@@ -1720,7 +2091,7 @@ grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET R
 
 grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET RES_IF BIN_INT SIGNED_GREATER_THAN BIN_INT SIGNED_LESS_THAN
 ##
-## Ends in an error in state: 220.
+## Ends in an error in state: 230.
 ##
 ## expr -> expr . OR expr [ XOR STAR SLASH SIGNED_SHIFT_RIGHT SIGNED_SHIFT_LEFT SIGNED_MOD SIGNED_LESS_THAN SIGNED_LESS_EQUAL SIGNED_GREATER_THAN SIGNED_GREATER_EQUAL SIGNED_DIV SHIFT_RIGHT SHIFT_LEFT SEMI RPAREN RBRACKET PLUS PIPE PERCENT OR NOT_EQUAL MINUS LESS_THAN LESS_EQUAL KEY_GOTO GREATER_THAN GREATER_EQUAL FLOAT_PLUS FLOAT_NOT_EQUAL FLOAT_MUL FLOAT_MINUS FLOAT_LESS_THAN FLOAT_LESS_EQUAL FLOAT_GREATER_THAN FLOAT_GREATER_EQUAL FLOAT_EQUAL FLOAT_DIV EQUAL COMMA CARET ASSIGN AND AMPERSAND ]
 ## expr -> expr . AND expr [ XOR STAR SLASH SIGNED_SHIFT_RIGHT SIGNED_SHIFT_LEFT SIGNED_MOD SIGNED_LESS_THAN SIGNED_LESS_EQUAL SIGNED_GREATER_THAN SIGNED_GREATER_EQUAL SIGNED_DIV SHIFT_RIGHT SHIFT_LEFT SEMI RPAREN RBRACKET PLUS PIPE PERCENT OR NOT_EQUAL MINUS LESS_THAN LESS_EQUAL KEY_GOTO GREATER_THAN GREATER_EQUAL FLOAT_PLUS FLOAT_NOT_EQUAL FLOAT_MUL FLOAT_MINUS FLOAT_LESS_THAN FLOAT_LESS_EQUAL FLOAT_GREATER_THAN FLOAT_GREATER_EQUAL FLOAT_EQUAL FLOAT_DIV EQUAL COMMA CARET ASSIGN AND AMPERSAND ]
@@ -1769,7 +2140,7 @@ grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET R
 
 grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET RES_IF BIN_INT SIGNED_GREATER_EQUAL XOR
 ##
-## Ends in an error in state: 221.
+## Ends in an error in state: 231.
 ##
 ## expr -> expr SIGNED_GREATER_EQUAL . expr [ XOR STAR SLASH SIGNED_SHIFT_RIGHT SIGNED_SHIFT_LEFT SIGNED_MOD SIGNED_LESS_THAN SIGNED_LESS_EQUAL SIGNED_GREATER_THAN SIGNED_GREATER_EQUAL SIGNED_DIV SHIFT_RIGHT SHIFT_LEFT SEMI RPAREN RBRACKET PLUS PIPE PERCENT OR NOT_EQUAL MINUS LESS_THAN LESS_EQUAL KEY_GOTO GREATER_THAN GREATER_EQUAL FLOAT_PLUS FLOAT_NOT_EQUAL FLOAT_MUL FLOAT_MINUS FLOAT_LESS_THAN FLOAT_LESS_EQUAL FLOAT_GREATER_THAN FLOAT_GREATER_EQUAL FLOAT_EQUAL FLOAT_DIV EQUAL COMMA CARET ASSIGN AND AMPERSAND ]
 ##
@@ -1781,7 +2152,7 @@ grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET R
 
 grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET RES_IF BIN_INT SIGNED_GREATER_EQUAL BIN_INT SIGNED_LESS_THAN
 ##
-## Ends in an error in state: 222.
+## Ends in an error in state: 232.
 ##
 ## expr -> expr . OR expr [ XOR STAR SLASH SIGNED_SHIFT_RIGHT SIGNED_SHIFT_LEFT SIGNED_MOD SIGNED_LESS_THAN SIGNED_LESS_EQUAL SIGNED_GREATER_THAN SIGNED_GREATER_EQUAL SIGNED_DIV SHIFT_RIGHT SHIFT_LEFT SEMI RPAREN RBRACKET PLUS PIPE PERCENT OR NOT_EQUAL MINUS LESS_THAN LESS_EQUAL KEY_GOTO GREATER_THAN GREATER_EQUAL FLOAT_PLUS FLOAT_NOT_EQUAL FLOAT_MUL FLOAT_MINUS FLOAT_LESS_THAN FLOAT_LESS_EQUAL FLOAT_GREATER_THAN FLOAT_GREATER_EQUAL FLOAT_EQUAL FLOAT_DIV EQUAL COMMA CARET ASSIGN AND AMPERSAND ]
 ## expr -> expr . AND expr [ XOR STAR SLASH SIGNED_SHIFT_RIGHT SIGNED_SHIFT_LEFT SIGNED_MOD SIGNED_LESS_THAN SIGNED_LESS_EQUAL SIGNED_GREATER_THAN SIGNED_GREATER_EQUAL SIGNED_DIV SHIFT_RIGHT SHIFT_LEFT SEMI RPAREN RBRACKET PLUS PIPE PERCENT OR NOT_EQUAL MINUS LESS_THAN LESS_EQUAL KEY_GOTO GREATER_THAN GREATER_EQUAL FLOAT_PLUS FLOAT_NOT_EQUAL FLOAT_MUL FLOAT_MINUS FLOAT_LESS_THAN FLOAT_LESS_EQUAL FLOAT_GREATER_THAN FLOAT_GREATER_EQUAL FLOAT_EQUAL FLOAT_DIV EQUAL COMMA CARET ASSIGN AND AMPERSAND ]
@@ -1830,7 +2201,7 @@ grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET R
 
 grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET RES_IF BIN_INT NOT_EQUAL XOR
 ##
-## Ends in an error in state: 223.
+## Ends in an error in state: 233.
 ##
 ## expr -> expr NOT_EQUAL . expr [ XOR STAR SLASH SIGNED_SHIFT_RIGHT SIGNED_SHIFT_LEFT SIGNED_MOD SIGNED_LESS_THAN SIGNED_LESS_EQUAL SIGNED_GREATER_THAN SIGNED_GREATER_EQUAL SIGNED_DIV SHIFT_RIGHT SHIFT_LEFT SEMI RPAREN RBRACKET PLUS PIPE PERCENT OR NOT_EQUAL MINUS LESS_THAN LESS_EQUAL KEY_GOTO GREATER_THAN GREATER_EQUAL FLOAT_PLUS FLOAT_NOT_EQUAL FLOAT_MUL FLOAT_MINUS FLOAT_LESS_THAN FLOAT_LESS_EQUAL FLOAT_GREATER_THAN FLOAT_GREATER_EQUAL FLOAT_EQUAL FLOAT_DIV EQUAL COMMA CARET ASSIGN AND AMPERSAND ]
 ##
@@ -1842,7 +2213,7 @@ grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET R
 
 grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET RES_IF BIN_INT NOT_EQUAL BIN_INT NOT_EQUAL
 ##
-## Ends in an error in state: 224.
+## Ends in an error in state: 234.
 ##
 ## expr -> expr . OR expr [ XOR STAR SLASH SIGNED_SHIFT_RIGHT SIGNED_SHIFT_LEFT SIGNED_MOD SIGNED_LESS_THAN SIGNED_LESS_EQUAL SIGNED_GREATER_THAN SIGNED_GREATER_EQUAL SIGNED_DIV SHIFT_RIGHT SHIFT_LEFT SEMI RPAREN RBRACKET PLUS PIPE PERCENT OR NOT_EQUAL MINUS LESS_THAN LESS_EQUAL KEY_GOTO GREATER_THAN GREATER_EQUAL FLOAT_PLUS FLOAT_NOT_EQUAL FLOAT_MUL FLOAT_MINUS FLOAT_LESS_THAN FLOAT_LESS_EQUAL FLOAT_GREATER_THAN FLOAT_GREATER_EQUAL FLOAT_EQUAL FLOAT_DIV EQUAL COMMA CARET ASSIGN AND AMPERSAND ]
 ## expr -> expr . AND expr [ XOR STAR SLASH SIGNED_SHIFT_RIGHT SIGNED_SHIFT_LEFT SIGNED_MOD SIGNED_LESS_THAN SIGNED_LESS_EQUAL SIGNED_GREATER_THAN SIGNED_GREATER_EQUAL SIGNED_DIV SHIFT_RIGHT SHIFT_LEFT SEMI RPAREN RBRACKET PLUS PIPE PERCENT OR NOT_EQUAL MINUS LESS_THAN LESS_EQUAL KEY_GOTO GREATER_THAN GREATER_EQUAL FLOAT_PLUS FLOAT_NOT_EQUAL FLOAT_MUL FLOAT_MINUS FLOAT_LESS_THAN FLOAT_LESS_EQUAL FLOAT_GREATER_THAN FLOAT_GREATER_EQUAL FLOAT_EQUAL FLOAT_DIV EQUAL COMMA CARET ASSIGN AND AMPERSAND ]
@@ -1891,7 +2262,7 @@ grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET R
 
 grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET RES_IF BIN_INT LESS_THAN XOR
 ##
-## Ends in an error in state: 225.
+## Ends in an error in state: 235.
 ##
 ## expr -> expr LESS_THAN . expr [ XOR STAR SLASH SIGNED_SHIFT_RIGHT SIGNED_SHIFT_LEFT SIGNED_MOD SIGNED_LESS_THAN SIGNED_LESS_EQUAL SIGNED_GREATER_THAN SIGNED_GREATER_EQUAL SIGNED_DIV SHIFT_RIGHT SHIFT_LEFT SEMI RPAREN RBRACKET PLUS PIPE PERCENT OR NOT_EQUAL MINUS LESS_THAN LESS_EQUAL KEY_GOTO GREATER_THAN GREATER_EQUAL FLOAT_PLUS FLOAT_NOT_EQUAL FLOAT_MUL FLOAT_MINUS FLOAT_LESS_THAN FLOAT_LESS_EQUAL FLOAT_GREATER_THAN FLOAT_GREATER_EQUAL FLOAT_EQUAL FLOAT_DIV EQUAL COMMA CARET ASSIGN AND AMPERSAND ]
 ##
@@ -1903,7 +2274,7 @@ grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET R
 
 grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET RES_IF BIN_INT LESS_THAN BIN_INT SIGNED_LESS_THAN
 ##
-## Ends in an error in state: 226.
+## Ends in an error in state: 236.
 ##
 ## expr -> expr . OR expr [ XOR STAR SLASH SIGNED_SHIFT_RIGHT SIGNED_SHIFT_LEFT SIGNED_MOD SIGNED_LESS_THAN SIGNED_LESS_EQUAL SIGNED_GREATER_THAN SIGNED_GREATER_EQUAL SIGNED_DIV SHIFT_RIGHT SHIFT_LEFT SEMI RPAREN RBRACKET PLUS PIPE PERCENT OR NOT_EQUAL MINUS LESS_THAN LESS_EQUAL KEY_GOTO GREATER_THAN GREATER_EQUAL FLOAT_PLUS FLOAT_NOT_EQUAL FLOAT_MUL FLOAT_MINUS FLOAT_LESS_THAN FLOAT_LESS_EQUAL FLOAT_GREATER_THAN FLOAT_GREATER_EQUAL FLOAT_EQUAL FLOAT_DIV EQUAL COMMA CARET ASSIGN AND AMPERSAND ]
 ## expr -> expr . AND expr [ XOR STAR SLASH SIGNED_SHIFT_RIGHT SIGNED_SHIFT_LEFT SIGNED_MOD SIGNED_LESS_THAN SIGNED_LESS_EQUAL SIGNED_GREATER_THAN SIGNED_GREATER_EQUAL SIGNED_DIV SHIFT_RIGHT SHIFT_LEFT SEMI RPAREN RBRACKET PLUS PIPE PERCENT OR NOT_EQUAL MINUS LESS_THAN LESS_EQUAL KEY_GOTO GREATER_THAN GREATER_EQUAL FLOAT_PLUS FLOAT_NOT_EQUAL FLOAT_MUL FLOAT_MINUS FLOAT_LESS_THAN FLOAT_LESS_EQUAL FLOAT_GREATER_THAN FLOAT_GREATER_EQUAL FLOAT_EQUAL FLOAT_DIV EQUAL COMMA CARET ASSIGN AND AMPERSAND ]
@@ -1952,7 +2323,7 @@ grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET R
 
 grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET RES_IF BIN_INT LESS_EQUAL XOR
 ##
-## Ends in an error in state: 227.
+## Ends in an error in state: 237.
 ##
 ## expr -> expr LESS_EQUAL . expr [ XOR STAR SLASH SIGNED_SHIFT_RIGHT SIGNED_SHIFT_LEFT SIGNED_MOD SIGNED_LESS_THAN SIGNED_LESS_EQUAL SIGNED_GREATER_THAN SIGNED_GREATER_EQUAL SIGNED_DIV SHIFT_RIGHT SHIFT_LEFT SEMI RPAREN RBRACKET PLUS PIPE PERCENT OR NOT_EQUAL MINUS LESS_THAN LESS_EQUAL KEY_GOTO GREATER_THAN GREATER_EQUAL FLOAT_PLUS FLOAT_NOT_EQUAL FLOAT_MUL FLOAT_MINUS FLOAT_LESS_THAN FLOAT_LESS_EQUAL FLOAT_GREATER_THAN FLOAT_GREATER_EQUAL FLOAT_EQUAL FLOAT_DIV EQUAL COMMA CARET ASSIGN AND AMPERSAND ]
 ##
@@ -1964,7 +2335,7 @@ grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET R
 
 grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET RES_IF BIN_INT LESS_EQUAL BIN_INT SIGNED_LESS_THAN
 ##
-## Ends in an error in state: 228.
+## Ends in an error in state: 238.
 ##
 ## expr -> expr . OR expr [ XOR STAR SLASH SIGNED_SHIFT_RIGHT SIGNED_SHIFT_LEFT SIGNED_MOD SIGNED_LESS_THAN SIGNED_LESS_EQUAL SIGNED_GREATER_THAN SIGNED_GREATER_EQUAL SIGNED_DIV SHIFT_RIGHT SHIFT_LEFT SEMI RPAREN RBRACKET PLUS PIPE PERCENT OR NOT_EQUAL MINUS LESS_THAN LESS_EQUAL KEY_GOTO GREATER_THAN GREATER_EQUAL FLOAT_PLUS FLOAT_NOT_EQUAL FLOAT_MUL FLOAT_MINUS FLOAT_LESS_THAN FLOAT_LESS_EQUAL FLOAT_GREATER_THAN FLOAT_GREATER_EQUAL FLOAT_EQUAL FLOAT_DIV EQUAL COMMA CARET ASSIGN AND AMPERSAND ]
 ## expr -> expr . AND expr [ XOR STAR SLASH SIGNED_SHIFT_RIGHT SIGNED_SHIFT_LEFT SIGNED_MOD SIGNED_LESS_THAN SIGNED_LESS_EQUAL SIGNED_GREATER_THAN SIGNED_GREATER_EQUAL SIGNED_DIV SHIFT_RIGHT SHIFT_LEFT SEMI RPAREN RBRACKET PLUS PIPE PERCENT OR NOT_EQUAL MINUS LESS_THAN LESS_EQUAL KEY_GOTO GREATER_THAN GREATER_EQUAL FLOAT_PLUS FLOAT_NOT_EQUAL FLOAT_MUL FLOAT_MINUS FLOAT_LESS_THAN FLOAT_LESS_EQUAL FLOAT_GREATER_THAN FLOAT_GREATER_EQUAL FLOAT_EQUAL FLOAT_DIV EQUAL COMMA CARET ASSIGN AND AMPERSAND ]
@@ -2013,7 +2384,7 @@ grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET R
 
 grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET RES_IF BIN_INT GREATER_THAN XOR
 ##
-## Ends in an error in state: 229.
+## Ends in an error in state: 239.
 ##
 ## expr -> expr GREATER_THAN . expr [ XOR STAR SLASH SIGNED_SHIFT_RIGHT SIGNED_SHIFT_LEFT SIGNED_MOD SIGNED_LESS_THAN SIGNED_LESS_EQUAL SIGNED_GREATER_THAN SIGNED_GREATER_EQUAL SIGNED_DIV SHIFT_RIGHT SHIFT_LEFT SEMI RPAREN RBRACKET PLUS PIPE PERCENT OR NOT_EQUAL MINUS LESS_THAN LESS_EQUAL KEY_GOTO GREATER_THAN GREATER_EQUAL FLOAT_PLUS FLOAT_NOT_EQUAL FLOAT_MUL FLOAT_MINUS FLOAT_LESS_THAN FLOAT_LESS_EQUAL FLOAT_GREATER_THAN FLOAT_GREATER_EQUAL FLOAT_EQUAL FLOAT_DIV EQUAL COMMA CARET ASSIGN AND AMPERSAND ]
 ##
@@ -2025,7 +2396,7 @@ grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET R
 
 grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET RES_IF BIN_INT GREATER_THAN BIN_INT SIGNED_LESS_THAN
 ##
-## Ends in an error in state: 230.
+## Ends in an error in state: 240.
 ##
 ## expr -> expr . OR expr [ XOR STAR SLASH SIGNED_SHIFT_RIGHT SIGNED_SHIFT_LEFT SIGNED_MOD SIGNED_LESS_THAN SIGNED_LESS_EQUAL SIGNED_GREATER_THAN SIGNED_GREATER_EQUAL SIGNED_DIV SHIFT_RIGHT SHIFT_LEFT SEMI RPAREN RBRACKET PLUS PIPE PERCENT OR NOT_EQUAL MINUS LESS_THAN LESS_EQUAL KEY_GOTO GREATER_THAN GREATER_EQUAL FLOAT_PLUS FLOAT_NOT_EQUAL FLOAT_MUL FLOAT_MINUS FLOAT_LESS_THAN FLOAT_LESS_EQUAL FLOAT_GREATER_THAN FLOAT_GREATER_EQUAL FLOAT_EQUAL FLOAT_DIV EQUAL COMMA CARET ASSIGN AND AMPERSAND ]
 ## expr -> expr . AND expr [ XOR STAR SLASH SIGNED_SHIFT_RIGHT SIGNED_SHIFT_LEFT SIGNED_MOD SIGNED_LESS_THAN SIGNED_LESS_EQUAL SIGNED_GREATER_THAN SIGNED_GREATER_EQUAL SIGNED_DIV SHIFT_RIGHT SHIFT_LEFT SEMI RPAREN RBRACKET PLUS PIPE PERCENT OR NOT_EQUAL MINUS LESS_THAN LESS_EQUAL KEY_GOTO GREATER_THAN GREATER_EQUAL FLOAT_PLUS FLOAT_NOT_EQUAL FLOAT_MUL FLOAT_MINUS FLOAT_LESS_THAN FLOAT_LESS_EQUAL FLOAT_GREATER_THAN FLOAT_GREATER_EQUAL FLOAT_EQUAL FLOAT_DIV EQUAL COMMA CARET ASSIGN AND AMPERSAND ]
@@ -2074,7 +2445,7 @@ grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET R
 
 grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET RES_IF BIN_INT GREATER_EQUAL XOR
 ##
-## Ends in an error in state: 231.
+## Ends in an error in state: 241.
 ##
 ## expr -> expr GREATER_EQUAL . expr [ XOR STAR SLASH SIGNED_SHIFT_RIGHT SIGNED_SHIFT_LEFT SIGNED_MOD SIGNED_LESS_THAN SIGNED_LESS_EQUAL SIGNED_GREATER_THAN SIGNED_GREATER_EQUAL SIGNED_DIV SHIFT_RIGHT SHIFT_LEFT SEMI RPAREN RBRACKET PLUS PIPE PERCENT OR NOT_EQUAL MINUS LESS_THAN LESS_EQUAL KEY_GOTO GREATER_THAN GREATER_EQUAL FLOAT_PLUS FLOAT_NOT_EQUAL FLOAT_MUL FLOAT_MINUS FLOAT_LESS_THAN FLOAT_LESS_EQUAL FLOAT_GREATER_THAN FLOAT_GREATER_EQUAL FLOAT_EQUAL FLOAT_DIV EQUAL COMMA CARET ASSIGN AND AMPERSAND ]
 ##
@@ -2086,7 +2457,7 @@ grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET R
 
 grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET RES_IF BIN_INT GREATER_EQUAL BIN_INT SIGNED_LESS_THAN
 ##
-## Ends in an error in state: 232.
+## Ends in an error in state: 242.
 ##
 ## expr -> expr . OR expr [ XOR STAR SLASH SIGNED_SHIFT_RIGHT SIGNED_SHIFT_LEFT SIGNED_MOD SIGNED_LESS_THAN SIGNED_LESS_EQUAL SIGNED_GREATER_THAN SIGNED_GREATER_EQUAL SIGNED_DIV SHIFT_RIGHT SHIFT_LEFT SEMI RPAREN RBRACKET PLUS PIPE PERCENT OR NOT_EQUAL MINUS LESS_THAN LESS_EQUAL KEY_GOTO GREATER_THAN GREATER_EQUAL FLOAT_PLUS FLOAT_NOT_EQUAL FLOAT_MUL FLOAT_MINUS FLOAT_LESS_THAN FLOAT_LESS_EQUAL FLOAT_GREATER_THAN FLOAT_GREATER_EQUAL FLOAT_EQUAL FLOAT_DIV EQUAL COMMA CARET ASSIGN AND AMPERSAND ]
 ## expr -> expr . AND expr [ XOR STAR SLASH SIGNED_SHIFT_RIGHT SIGNED_SHIFT_LEFT SIGNED_MOD SIGNED_LESS_THAN SIGNED_LESS_EQUAL SIGNED_GREATER_THAN SIGNED_GREATER_EQUAL SIGNED_DIV SHIFT_RIGHT SHIFT_LEFT SEMI RPAREN RBRACKET PLUS PIPE PERCENT OR NOT_EQUAL MINUS LESS_THAN LESS_EQUAL KEY_GOTO GREATER_THAN GREATER_EQUAL FLOAT_PLUS FLOAT_NOT_EQUAL FLOAT_MUL FLOAT_MINUS FLOAT_LESS_THAN FLOAT_LESS_EQUAL FLOAT_GREATER_THAN FLOAT_GREATER_EQUAL FLOAT_EQUAL FLOAT_DIV EQUAL COMMA CARET ASSIGN AND AMPERSAND ]
@@ -2135,7 +2506,7 @@ grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET R
 
 grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET RES_IF BIN_INT FLOAT_LESS_THAN XOR
 ##
-## Ends in an error in state: 233.
+## Ends in an error in state: 243.
 ##
 ## expr -> expr FLOAT_LESS_THAN . expr [ XOR STAR SLASH SIGNED_SHIFT_RIGHT SIGNED_SHIFT_LEFT SIGNED_MOD SIGNED_LESS_THAN SIGNED_LESS_EQUAL SIGNED_GREATER_THAN SIGNED_GREATER_EQUAL SIGNED_DIV SHIFT_RIGHT SHIFT_LEFT SEMI RPAREN RBRACKET PLUS PIPE PERCENT OR NOT_EQUAL MINUS LESS_THAN LESS_EQUAL KEY_GOTO GREATER_THAN GREATER_EQUAL FLOAT_PLUS FLOAT_NOT_EQUAL FLOAT_MUL FLOAT_MINUS FLOAT_LESS_THAN FLOAT_LESS_EQUAL FLOAT_GREATER_THAN FLOAT_GREATER_EQUAL FLOAT_EQUAL FLOAT_DIV EQUAL COMMA CARET ASSIGN AND AMPERSAND ]
 ##
@@ -2147,7 +2518,7 @@ grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET R
 
 grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET RES_IF BIN_INT FLOAT_LESS_THAN BIN_INT SIGNED_LESS_THAN
 ##
-## Ends in an error in state: 234.
+## Ends in an error in state: 244.
 ##
 ## expr -> expr . OR expr [ XOR STAR SLASH SIGNED_SHIFT_RIGHT SIGNED_SHIFT_LEFT SIGNED_MOD SIGNED_LESS_THAN SIGNED_LESS_EQUAL SIGNED_GREATER_THAN SIGNED_GREATER_EQUAL SIGNED_DIV SHIFT_RIGHT SHIFT_LEFT SEMI RPAREN RBRACKET PLUS PIPE PERCENT OR NOT_EQUAL MINUS LESS_THAN LESS_EQUAL KEY_GOTO GREATER_THAN GREATER_EQUAL FLOAT_PLUS FLOAT_NOT_EQUAL FLOAT_MUL FLOAT_MINUS FLOAT_LESS_THAN FLOAT_LESS_EQUAL FLOAT_GREATER_THAN FLOAT_GREATER_EQUAL FLOAT_EQUAL FLOAT_DIV EQUAL COMMA CARET ASSIGN AND AMPERSAND ]
 ## expr -> expr . AND expr [ XOR STAR SLASH SIGNED_SHIFT_RIGHT SIGNED_SHIFT_LEFT SIGNED_MOD SIGNED_LESS_THAN SIGNED_LESS_EQUAL SIGNED_GREATER_THAN SIGNED_GREATER_EQUAL SIGNED_DIV SHIFT_RIGHT SHIFT_LEFT SEMI RPAREN RBRACKET PLUS PIPE PERCENT OR NOT_EQUAL MINUS LESS_THAN LESS_EQUAL KEY_GOTO GREATER_THAN GREATER_EQUAL FLOAT_PLUS FLOAT_NOT_EQUAL FLOAT_MUL FLOAT_MINUS FLOAT_LESS_THAN FLOAT_LESS_EQUAL FLOAT_GREATER_THAN FLOAT_GREATER_EQUAL FLOAT_EQUAL FLOAT_DIV EQUAL COMMA CARET ASSIGN AND AMPERSAND ]
@@ -2196,7 +2567,7 @@ grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET R
 
 grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET RES_IF BIN_INT FLOAT_LESS_EQUAL XOR
 ##
-## Ends in an error in state: 235.
+## Ends in an error in state: 245.
 ##
 ## expr -> expr FLOAT_LESS_EQUAL . expr [ XOR STAR SLASH SIGNED_SHIFT_RIGHT SIGNED_SHIFT_LEFT SIGNED_MOD SIGNED_LESS_THAN SIGNED_LESS_EQUAL SIGNED_GREATER_THAN SIGNED_GREATER_EQUAL SIGNED_DIV SHIFT_RIGHT SHIFT_LEFT SEMI RPAREN RBRACKET PLUS PIPE PERCENT OR NOT_EQUAL MINUS LESS_THAN LESS_EQUAL KEY_GOTO GREATER_THAN GREATER_EQUAL FLOAT_PLUS FLOAT_NOT_EQUAL FLOAT_MUL FLOAT_MINUS FLOAT_LESS_THAN FLOAT_LESS_EQUAL FLOAT_GREATER_THAN FLOAT_GREATER_EQUAL FLOAT_EQUAL FLOAT_DIV EQUAL COMMA CARET ASSIGN AND AMPERSAND ]
 ##
@@ -2208,7 +2579,7 @@ grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET R
 
 grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET RES_IF BIN_INT FLOAT_LESS_EQUAL BIN_INT SIGNED_LESS_THAN
 ##
-## Ends in an error in state: 236.
+## Ends in an error in state: 246.
 ##
 ## expr -> expr . OR expr [ XOR STAR SLASH SIGNED_SHIFT_RIGHT SIGNED_SHIFT_LEFT SIGNED_MOD SIGNED_LESS_THAN SIGNED_LESS_EQUAL SIGNED_GREATER_THAN SIGNED_GREATER_EQUAL SIGNED_DIV SHIFT_RIGHT SHIFT_LEFT SEMI RPAREN RBRACKET PLUS PIPE PERCENT OR NOT_EQUAL MINUS LESS_THAN LESS_EQUAL KEY_GOTO GREATER_THAN GREATER_EQUAL FLOAT_PLUS FLOAT_NOT_EQUAL FLOAT_MUL FLOAT_MINUS FLOAT_LESS_THAN FLOAT_LESS_EQUAL FLOAT_GREATER_THAN FLOAT_GREATER_EQUAL FLOAT_EQUAL FLOAT_DIV EQUAL COMMA CARET ASSIGN AND AMPERSAND ]
 ## expr -> expr . AND expr [ XOR STAR SLASH SIGNED_SHIFT_RIGHT SIGNED_SHIFT_LEFT SIGNED_MOD SIGNED_LESS_THAN SIGNED_LESS_EQUAL SIGNED_GREATER_THAN SIGNED_GREATER_EQUAL SIGNED_DIV SHIFT_RIGHT SHIFT_LEFT SEMI RPAREN RBRACKET PLUS PIPE PERCENT OR NOT_EQUAL MINUS LESS_THAN LESS_EQUAL KEY_GOTO GREATER_THAN GREATER_EQUAL FLOAT_PLUS FLOAT_NOT_EQUAL FLOAT_MUL FLOAT_MINUS FLOAT_LESS_THAN FLOAT_LESS_EQUAL FLOAT_GREATER_THAN FLOAT_GREATER_EQUAL FLOAT_EQUAL FLOAT_DIV EQUAL COMMA CARET ASSIGN AND AMPERSAND ]
@@ -2257,7 +2628,7 @@ grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET R
 
 grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET RES_IF BIN_INT FLOAT_GREATER_THAN XOR
 ##
-## Ends in an error in state: 237.
+## Ends in an error in state: 247.
 ##
 ## expr -> expr FLOAT_GREATER_THAN . expr [ XOR STAR SLASH SIGNED_SHIFT_RIGHT SIGNED_SHIFT_LEFT SIGNED_MOD SIGNED_LESS_THAN SIGNED_LESS_EQUAL SIGNED_GREATER_THAN SIGNED_GREATER_EQUAL SIGNED_DIV SHIFT_RIGHT SHIFT_LEFT SEMI RPAREN RBRACKET PLUS PIPE PERCENT OR NOT_EQUAL MINUS LESS_THAN LESS_EQUAL KEY_GOTO GREATER_THAN GREATER_EQUAL FLOAT_PLUS FLOAT_NOT_EQUAL FLOAT_MUL FLOAT_MINUS FLOAT_LESS_THAN FLOAT_LESS_EQUAL FLOAT_GREATER_THAN FLOAT_GREATER_EQUAL FLOAT_EQUAL FLOAT_DIV EQUAL COMMA CARET ASSIGN AND AMPERSAND ]
 ##
@@ -2269,7 +2640,7 @@ grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET R
 
 grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET RES_IF BIN_INT FLOAT_GREATER_THAN BIN_INT SIGNED_LESS_THAN
 ##
-## Ends in an error in state: 238.
+## Ends in an error in state: 248.
 ##
 ## expr -> expr . OR expr [ XOR STAR SLASH SIGNED_SHIFT_RIGHT SIGNED_SHIFT_LEFT SIGNED_MOD SIGNED_LESS_THAN SIGNED_LESS_EQUAL SIGNED_GREATER_THAN SIGNED_GREATER_EQUAL SIGNED_DIV SHIFT_RIGHT SHIFT_LEFT SEMI RPAREN RBRACKET PLUS PIPE PERCENT OR NOT_EQUAL MINUS LESS_THAN LESS_EQUAL KEY_GOTO GREATER_THAN GREATER_EQUAL FLOAT_PLUS FLOAT_NOT_EQUAL FLOAT_MUL FLOAT_MINUS FLOAT_LESS_THAN FLOAT_LESS_EQUAL FLOAT_GREATER_THAN FLOAT_GREATER_EQUAL FLOAT_EQUAL FLOAT_DIV EQUAL COMMA CARET ASSIGN AND AMPERSAND ]
 ## expr -> expr . AND expr [ XOR STAR SLASH SIGNED_SHIFT_RIGHT SIGNED_SHIFT_LEFT SIGNED_MOD SIGNED_LESS_THAN SIGNED_LESS_EQUAL SIGNED_GREATER_THAN SIGNED_GREATER_EQUAL SIGNED_DIV SHIFT_RIGHT SHIFT_LEFT SEMI RPAREN RBRACKET PLUS PIPE PERCENT OR NOT_EQUAL MINUS LESS_THAN LESS_EQUAL KEY_GOTO GREATER_THAN GREATER_EQUAL FLOAT_PLUS FLOAT_NOT_EQUAL FLOAT_MUL FLOAT_MINUS FLOAT_LESS_THAN FLOAT_LESS_EQUAL FLOAT_GREATER_THAN FLOAT_GREATER_EQUAL FLOAT_EQUAL FLOAT_DIV EQUAL COMMA CARET ASSIGN AND AMPERSAND ]
@@ -2318,7 +2689,7 @@ grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET R
 
 grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET RES_IF BIN_INT FLOAT_GREATER_EQUAL XOR
 ##
-## Ends in an error in state: 239.
+## Ends in an error in state: 249.
 ##
 ## expr -> expr FLOAT_GREATER_EQUAL . expr [ XOR STAR SLASH SIGNED_SHIFT_RIGHT SIGNED_SHIFT_LEFT SIGNED_MOD SIGNED_LESS_THAN SIGNED_LESS_EQUAL SIGNED_GREATER_THAN SIGNED_GREATER_EQUAL SIGNED_DIV SHIFT_RIGHT SHIFT_LEFT SEMI RPAREN RBRACKET PLUS PIPE PERCENT OR NOT_EQUAL MINUS LESS_THAN LESS_EQUAL KEY_GOTO GREATER_THAN GREATER_EQUAL FLOAT_PLUS FLOAT_NOT_EQUAL FLOAT_MUL FLOAT_MINUS FLOAT_LESS_THAN FLOAT_LESS_EQUAL FLOAT_GREATER_THAN FLOAT_GREATER_EQUAL FLOAT_EQUAL FLOAT_DIV EQUAL COMMA CARET ASSIGN AND AMPERSAND ]
 ##
@@ -2330,7 +2701,7 @@ grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET R
 
 grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET RES_IF BIN_INT FLOAT_GREATER_EQUAL BIN_INT SIGNED_LESS_THAN
 ##
-## Ends in an error in state: 240.
+## Ends in an error in state: 250.
 ##
 ## expr -> expr . OR expr [ XOR STAR SLASH SIGNED_SHIFT_RIGHT SIGNED_SHIFT_LEFT SIGNED_MOD SIGNED_LESS_THAN SIGNED_LESS_EQUAL SIGNED_GREATER_THAN SIGNED_GREATER_EQUAL SIGNED_DIV SHIFT_RIGHT SHIFT_LEFT SEMI RPAREN RBRACKET PLUS PIPE PERCENT OR NOT_EQUAL MINUS LESS_THAN LESS_EQUAL KEY_GOTO GREATER_THAN GREATER_EQUAL FLOAT_PLUS FLOAT_NOT_EQUAL FLOAT_MUL FLOAT_MINUS FLOAT_LESS_THAN FLOAT_LESS_EQUAL FLOAT_GREATER_THAN FLOAT_GREATER_EQUAL FLOAT_EQUAL FLOAT_DIV EQUAL COMMA CARET ASSIGN AND AMPERSAND ]
 ## expr -> expr . AND expr [ XOR STAR SLASH SIGNED_SHIFT_RIGHT SIGNED_SHIFT_LEFT SIGNED_MOD SIGNED_LESS_THAN SIGNED_LESS_EQUAL SIGNED_GREATER_THAN SIGNED_GREATER_EQUAL SIGNED_DIV SHIFT_RIGHT SHIFT_LEFT SEMI RPAREN RBRACKET PLUS PIPE PERCENT OR NOT_EQUAL MINUS LESS_THAN LESS_EQUAL KEY_GOTO GREATER_THAN GREATER_EQUAL FLOAT_PLUS FLOAT_NOT_EQUAL FLOAT_MUL FLOAT_MINUS FLOAT_LESS_THAN FLOAT_LESS_EQUAL FLOAT_GREATER_THAN FLOAT_GREATER_EQUAL FLOAT_EQUAL FLOAT_DIV EQUAL COMMA CARET ASSIGN AND AMPERSAND ]
@@ -2379,7 +2750,7 @@ grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET R
 
 grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET RES_IF BIN_INT FLOAT_NOT_EQUAL XOR
 ##
-## Ends in an error in state: 241.
+## Ends in an error in state: 251.
 ##
 ## expr -> expr FLOAT_NOT_EQUAL . expr [ XOR STAR SLASH SIGNED_SHIFT_RIGHT SIGNED_SHIFT_LEFT SIGNED_MOD SIGNED_LESS_THAN SIGNED_LESS_EQUAL SIGNED_GREATER_THAN SIGNED_GREATER_EQUAL SIGNED_DIV SHIFT_RIGHT SHIFT_LEFT SEMI RPAREN RBRACKET PLUS PIPE PERCENT OR NOT_EQUAL MINUS LESS_THAN LESS_EQUAL KEY_GOTO GREATER_THAN GREATER_EQUAL FLOAT_PLUS FLOAT_NOT_EQUAL FLOAT_MUL FLOAT_MINUS FLOAT_LESS_THAN FLOAT_LESS_EQUAL FLOAT_GREATER_THAN FLOAT_GREATER_EQUAL FLOAT_EQUAL FLOAT_DIV EQUAL COMMA CARET ASSIGN AND AMPERSAND ]
 ##
@@ -2391,7 +2762,7 @@ grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET R
 
 grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET RES_IF BIN_INT FLOAT_NOT_EQUAL BIN_INT NOT_EQUAL
 ##
-## Ends in an error in state: 242.
+## Ends in an error in state: 252.
 ##
 ## expr -> expr . OR expr [ XOR STAR SLASH SIGNED_SHIFT_RIGHT SIGNED_SHIFT_LEFT SIGNED_MOD SIGNED_LESS_THAN SIGNED_LESS_EQUAL SIGNED_GREATER_THAN SIGNED_GREATER_EQUAL SIGNED_DIV SHIFT_RIGHT SHIFT_LEFT SEMI RPAREN RBRACKET PLUS PIPE PERCENT OR NOT_EQUAL MINUS LESS_THAN LESS_EQUAL KEY_GOTO GREATER_THAN GREATER_EQUAL FLOAT_PLUS FLOAT_NOT_EQUAL FLOAT_MUL FLOAT_MINUS FLOAT_LESS_THAN FLOAT_LESS_EQUAL FLOAT_GREATER_THAN FLOAT_GREATER_EQUAL FLOAT_EQUAL FLOAT_DIV EQUAL COMMA CARET ASSIGN AND AMPERSAND ]
 ## expr -> expr . AND expr [ XOR STAR SLASH SIGNED_SHIFT_RIGHT SIGNED_SHIFT_LEFT SIGNED_MOD SIGNED_LESS_THAN SIGNED_LESS_EQUAL SIGNED_GREATER_THAN SIGNED_GREATER_EQUAL SIGNED_DIV SHIFT_RIGHT SHIFT_LEFT SEMI RPAREN RBRACKET PLUS PIPE PERCENT OR NOT_EQUAL MINUS LESS_THAN LESS_EQUAL KEY_GOTO GREATER_THAN GREATER_EQUAL FLOAT_PLUS FLOAT_NOT_EQUAL FLOAT_MUL FLOAT_MINUS FLOAT_LESS_THAN FLOAT_LESS_EQUAL FLOAT_GREATER_THAN FLOAT_GREATER_EQUAL FLOAT_EQUAL FLOAT_DIV EQUAL COMMA CARET ASSIGN AND AMPERSAND ]
@@ -2440,7 +2811,7 @@ grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET R
 
 grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET RES_IF BIN_INT FLOAT_EQUAL XOR
 ##
-## Ends in an error in state: 243.
+## Ends in an error in state: 253.
 ##
 ## expr -> expr FLOAT_EQUAL . expr [ XOR STAR SLASH SIGNED_SHIFT_RIGHT SIGNED_SHIFT_LEFT SIGNED_MOD SIGNED_LESS_THAN SIGNED_LESS_EQUAL SIGNED_GREATER_THAN SIGNED_GREATER_EQUAL SIGNED_DIV SHIFT_RIGHT SHIFT_LEFT SEMI RPAREN RBRACKET PLUS PIPE PERCENT OR NOT_EQUAL MINUS LESS_THAN LESS_EQUAL KEY_GOTO GREATER_THAN GREATER_EQUAL FLOAT_PLUS FLOAT_NOT_EQUAL FLOAT_MUL FLOAT_MINUS FLOAT_LESS_THAN FLOAT_LESS_EQUAL FLOAT_GREATER_THAN FLOAT_GREATER_EQUAL FLOAT_EQUAL FLOAT_DIV EQUAL COMMA CARET ASSIGN AND AMPERSAND ]
 ##
@@ -2452,7 +2823,7 @@ grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET R
 
 grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET RES_IF BIN_INT FLOAT_EQUAL BIN_INT NOT_EQUAL
 ##
-## Ends in an error in state: 244.
+## Ends in an error in state: 254.
 ##
 ## expr -> expr . OR expr [ XOR STAR SLASH SIGNED_SHIFT_RIGHT SIGNED_SHIFT_LEFT SIGNED_MOD SIGNED_LESS_THAN SIGNED_LESS_EQUAL SIGNED_GREATER_THAN SIGNED_GREATER_EQUAL SIGNED_DIV SHIFT_RIGHT SHIFT_LEFT SEMI RPAREN RBRACKET PLUS PIPE PERCENT OR NOT_EQUAL MINUS LESS_THAN LESS_EQUAL KEY_GOTO GREATER_THAN GREATER_EQUAL FLOAT_PLUS FLOAT_NOT_EQUAL FLOAT_MUL FLOAT_MINUS FLOAT_LESS_THAN FLOAT_LESS_EQUAL FLOAT_GREATER_THAN FLOAT_GREATER_EQUAL FLOAT_EQUAL FLOAT_DIV EQUAL COMMA CARET ASSIGN AND AMPERSAND ]
 ## expr -> expr . AND expr [ XOR STAR SLASH SIGNED_SHIFT_RIGHT SIGNED_SHIFT_LEFT SIGNED_MOD SIGNED_LESS_THAN SIGNED_LESS_EQUAL SIGNED_GREATER_THAN SIGNED_GREATER_EQUAL SIGNED_DIV SHIFT_RIGHT SHIFT_LEFT SEMI RPAREN RBRACKET PLUS PIPE PERCENT OR NOT_EQUAL MINUS LESS_THAN LESS_EQUAL KEY_GOTO GREATER_THAN GREATER_EQUAL FLOAT_PLUS FLOAT_NOT_EQUAL FLOAT_MUL FLOAT_MINUS FLOAT_LESS_THAN FLOAT_LESS_EQUAL FLOAT_GREATER_THAN FLOAT_GREATER_EQUAL FLOAT_EQUAL FLOAT_DIV EQUAL COMMA CARET ASSIGN AND AMPERSAND ]
@@ -2501,7 +2872,7 @@ grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET R
 
 grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET RES_IF BIN_INT EQUAL XOR
 ##
-## Ends in an error in state: 245.
+## Ends in an error in state: 255.
 ##
 ## expr -> expr EQUAL . expr [ XOR STAR SLASH SIGNED_SHIFT_RIGHT SIGNED_SHIFT_LEFT SIGNED_MOD SIGNED_LESS_THAN SIGNED_LESS_EQUAL SIGNED_GREATER_THAN SIGNED_GREATER_EQUAL SIGNED_DIV SHIFT_RIGHT SHIFT_LEFT SEMI RPAREN RBRACKET PLUS PIPE PERCENT OR NOT_EQUAL MINUS LESS_THAN LESS_EQUAL KEY_GOTO GREATER_THAN GREATER_EQUAL FLOAT_PLUS FLOAT_NOT_EQUAL FLOAT_MUL FLOAT_MINUS FLOAT_LESS_THAN FLOAT_LESS_EQUAL FLOAT_GREATER_THAN FLOAT_GREATER_EQUAL FLOAT_EQUAL FLOAT_DIV EQUAL COMMA CARET ASSIGN AND AMPERSAND ]
 ##
@@ -2513,7 +2884,7 @@ grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET R
 
 grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET RES_IF BIN_INT EQUAL BIN_INT NOT_EQUAL
 ##
-## Ends in an error in state: 246.
+## Ends in an error in state: 256.
 ##
 ## expr -> expr . OR expr [ XOR STAR SLASH SIGNED_SHIFT_RIGHT SIGNED_SHIFT_LEFT SIGNED_MOD SIGNED_LESS_THAN SIGNED_LESS_EQUAL SIGNED_GREATER_THAN SIGNED_GREATER_EQUAL SIGNED_DIV SHIFT_RIGHT SHIFT_LEFT SEMI RPAREN RBRACKET PLUS PIPE PERCENT OR NOT_EQUAL MINUS LESS_THAN LESS_EQUAL KEY_GOTO GREATER_THAN GREATER_EQUAL FLOAT_PLUS FLOAT_NOT_EQUAL FLOAT_MUL FLOAT_MINUS FLOAT_LESS_THAN FLOAT_LESS_EQUAL FLOAT_GREATER_THAN FLOAT_GREATER_EQUAL FLOAT_EQUAL FLOAT_DIV EQUAL COMMA CARET ASSIGN AND AMPERSAND ]
 ## expr -> expr . AND expr [ XOR STAR SLASH SIGNED_SHIFT_RIGHT SIGNED_SHIFT_LEFT SIGNED_MOD SIGNED_LESS_THAN SIGNED_LESS_EQUAL SIGNED_GREATER_THAN SIGNED_GREATER_EQUAL SIGNED_DIV SHIFT_RIGHT SHIFT_LEFT SEMI RPAREN RBRACKET PLUS PIPE PERCENT OR NOT_EQUAL MINUS LESS_THAN LESS_EQUAL KEY_GOTO GREATER_THAN GREATER_EQUAL FLOAT_PLUS FLOAT_NOT_EQUAL FLOAT_MUL FLOAT_MINUS FLOAT_LESS_THAN FLOAT_LESS_EQUAL FLOAT_GREATER_THAN FLOAT_GREATER_EQUAL FLOAT_EQUAL FLOAT_DIV EQUAL COMMA CARET ASSIGN AND AMPERSAND ]
@@ -2562,7 +2933,7 @@ grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET R
 
 grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET RES_IF BIN_INT AND XOR
 ##
-## Ends in an error in state: 247.
+## Ends in an error in state: 257.
 ##
 ## expr -> expr AND . expr [ XOR STAR SLASH SIGNED_SHIFT_RIGHT SIGNED_SHIFT_LEFT SIGNED_MOD SIGNED_LESS_THAN SIGNED_LESS_EQUAL SIGNED_GREATER_THAN SIGNED_GREATER_EQUAL SIGNED_DIV SHIFT_RIGHT SHIFT_LEFT SEMI RPAREN RBRACKET PLUS PIPE PERCENT OR NOT_EQUAL MINUS LESS_THAN LESS_EQUAL KEY_GOTO GREATER_THAN GREATER_EQUAL FLOAT_PLUS FLOAT_NOT_EQUAL FLOAT_MUL FLOAT_MINUS FLOAT_LESS_THAN FLOAT_LESS_EQUAL FLOAT_GREATER_THAN FLOAT_GREATER_EQUAL FLOAT_EQUAL FLOAT_DIV EQUAL COMMA CARET ASSIGN AND AMPERSAND ]
 ##
@@ -2574,7 +2945,7 @@ grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET R
 
 grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET RES_IF BIN_INT AND BIN_INT TILDE
 ##
-## Ends in an error in state: 248.
+## Ends in an error in state: 258.
 ##
 ## expr -> expr . OR expr [ XOR STAR SLASH SIGNED_SHIFT_RIGHT SIGNED_SHIFT_LEFT SIGNED_MOD SIGNED_LESS_THAN SIGNED_LESS_EQUAL SIGNED_GREATER_THAN SIGNED_GREATER_EQUAL SIGNED_DIV SHIFT_RIGHT SHIFT_LEFT SEMI RPAREN RBRACKET PLUS PIPE PERCENT OR NOT_EQUAL MINUS LESS_THAN LESS_EQUAL KEY_GOTO GREATER_THAN GREATER_EQUAL FLOAT_PLUS FLOAT_NOT_EQUAL FLOAT_MUL FLOAT_MINUS FLOAT_LESS_THAN FLOAT_LESS_EQUAL FLOAT_GREATER_THAN FLOAT_GREATER_EQUAL FLOAT_EQUAL FLOAT_DIV EQUAL COMMA CARET ASSIGN AND AMPERSAND ]
 ## expr -> expr . AND expr [ XOR STAR SLASH SIGNED_SHIFT_RIGHT SIGNED_SHIFT_LEFT SIGNED_MOD SIGNED_LESS_THAN SIGNED_LESS_EQUAL SIGNED_GREATER_THAN SIGNED_GREATER_EQUAL SIGNED_DIV SHIFT_RIGHT SHIFT_LEFT SEMI RPAREN RBRACKET PLUS PIPE PERCENT OR NOT_EQUAL MINUS LESS_THAN LESS_EQUAL KEY_GOTO GREATER_THAN GREATER_EQUAL FLOAT_PLUS FLOAT_NOT_EQUAL FLOAT_MUL FLOAT_MINUS FLOAT_LESS_THAN FLOAT_LESS_EQUAL FLOAT_GREATER_THAN FLOAT_GREATER_EQUAL FLOAT_EQUAL FLOAT_DIV EQUAL COMMA CARET ASSIGN AND AMPERSAND ]
@@ -2623,7 +2994,7 @@ grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET R
 
 grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET RES_IF BIN_INT PIPE XOR
 ##
-## Ends in an error in state: 250.
+## Ends in an error in state: 260.
 ##
 ## expr -> expr PIPE . expr [ XOR STAR SLASH SIGNED_SHIFT_RIGHT SIGNED_SHIFT_LEFT SIGNED_MOD SIGNED_LESS_THAN SIGNED_LESS_EQUAL SIGNED_GREATER_THAN SIGNED_GREATER_EQUAL SIGNED_DIV SHIFT_RIGHT SHIFT_LEFT SEMI RPAREN RBRACKET PLUS PIPE PERCENT OR NOT_EQUAL MINUS LESS_THAN LESS_EQUAL KEY_GOTO GREATER_THAN GREATER_EQUAL FLOAT_PLUS FLOAT_NOT_EQUAL FLOAT_MUL FLOAT_MINUS FLOAT_LESS_THAN FLOAT_LESS_EQUAL FLOAT_GREATER_THAN FLOAT_GREATER_EQUAL FLOAT_EQUAL FLOAT_DIV EQUAL COMMA CARET ASSIGN AND AMPERSAND ]
 ##
@@ -2635,7 +3006,7 @@ grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET R
 
 grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET RES_IF BIN_INT PIPE BIN_INT TILDE
 ##
-## Ends in an error in state: 251.
+## Ends in an error in state: 261.
 ##
 ## expr -> expr . OR expr [ XOR STAR SLASH SIGNED_SHIFT_RIGHT SIGNED_SHIFT_LEFT SIGNED_MOD SIGNED_LESS_THAN SIGNED_LESS_EQUAL SIGNED_GREATER_THAN SIGNED_GREATER_EQUAL SIGNED_DIV SHIFT_RIGHT SHIFT_LEFT SEMI RPAREN RBRACKET PLUS PIPE PERCENT OR NOT_EQUAL MINUS LESS_THAN LESS_EQUAL KEY_GOTO GREATER_THAN GREATER_EQUAL FLOAT_PLUS FLOAT_NOT_EQUAL FLOAT_MUL FLOAT_MINUS FLOAT_LESS_THAN FLOAT_LESS_EQUAL FLOAT_GREATER_THAN FLOAT_GREATER_EQUAL FLOAT_EQUAL FLOAT_DIV EQUAL COMMA CARET ASSIGN AND AMPERSAND ]
 ## expr -> expr . AND expr [ XOR STAR SLASH SIGNED_SHIFT_RIGHT SIGNED_SHIFT_LEFT SIGNED_MOD SIGNED_LESS_THAN SIGNED_LESS_EQUAL SIGNED_GREATER_THAN SIGNED_GREATER_EQUAL SIGNED_DIV SHIFT_RIGHT SHIFT_LEFT SEMI RPAREN RBRACKET PLUS PIPE PERCENT OR NOT_EQUAL MINUS LESS_THAN LESS_EQUAL KEY_GOTO GREATER_THAN GREATER_EQUAL FLOAT_PLUS FLOAT_NOT_EQUAL FLOAT_MUL FLOAT_MINUS FLOAT_LESS_THAN FLOAT_LESS_EQUAL FLOAT_GREATER_THAN FLOAT_GREATER_EQUAL FLOAT_EQUAL FLOAT_DIV EQUAL COMMA CARET ASSIGN AND AMPERSAND ]
@@ -2684,7 +3055,7 @@ grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET R
 
 grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET RES_IF BIN_INT OR XOR
 ##
-## Ends in an error in state: 252.
+## Ends in an error in state: 262.
 ##
 ## expr -> expr OR . expr [ XOR STAR SLASH SIGNED_SHIFT_RIGHT SIGNED_SHIFT_LEFT SIGNED_MOD SIGNED_LESS_THAN SIGNED_LESS_EQUAL SIGNED_GREATER_THAN SIGNED_GREATER_EQUAL SIGNED_DIV SHIFT_RIGHT SHIFT_LEFT SEMI RPAREN RBRACKET PLUS PIPE PERCENT OR NOT_EQUAL MINUS LESS_THAN LESS_EQUAL KEY_GOTO GREATER_THAN GREATER_EQUAL FLOAT_PLUS FLOAT_NOT_EQUAL FLOAT_MUL FLOAT_MINUS FLOAT_LESS_THAN FLOAT_LESS_EQUAL FLOAT_GREATER_THAN FLOAT_GREATER_EQUAL FLOAT_EQUAL FLOAT_DIV EQUAL COMMA CARET ASSIGN AND AMPERSAND ]
 ##
@@ -2696,7 +3067,7 @@ grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET R
 
 grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET RES_IF BIN_INT OR BIN_INT TILDE
 ##
-## Ends in an error in state: 253.
+## Ends in an error in state: 263.
 ##
 ## expr -> expr . OR expr [ XOR STAR SLASH SIGNED_SHIFT_RIGHT SIGNED_SHIFT_LEFT SIGNED_MOD SIGNED_LESS_THAN SIGNED_LESS_EQUAL SIGNED_GREATER_THAN SIGNED_GREATER_EQUAL SIGNED_DIV SHIFT_RIGHT SHIFT_LEFT SEMI RPAREN RBRACKET PLUS PIPE PERCENT OR NOT_EQUAL MINUS LESS_THAN LESS_EQUAL KEY_GOTO GREATER_THAN GREATER_EQUAL FLOAT_PLUS FLOAT_NOT_EQUAL FLOAT_MUL FLOAT_MINUS FLOAT_LESS_THAN FLOAT_LESS_EQUAL FLOAT_GREATER_THAN FLOAT_GREATER_EQUAL FLOAT_EQUAL FLOAT_DIV EQUAL COMMA CARET ASSIGN AND AMPERSAND ]
 ## expr -> expr OR expr . [ XOR STAR SLASH SIGNED_SHIFT_RIGHT SIGNED_SHIFT_LEFT SIGNED_MOD SIGNED_LESS_THAN SIGNED_LESS_EQUAL SIGNED_GREATER_THAN SIGNED_GREATER_EQUAL SIGNED_DIV SHIFT_RIGHT SHIFT_LEFT SEMI RPAREN RBRACKET PLUS PIPE PERCENT OR NOT_EQUAL MINUS LESS_THAN LESS_EQUAL KEY_GOTO GREATER_THAN GREATER_EQUAL FLOAT_PLUS FLOAT_NOT_EQUAL FLOAT_MUL FLOAT_MINUS FLOAT_LESS_THAN FLOAT_LESS_EQUAL FLOAT_GREATER_THAN FLOAT_GREATER_EQUAL FLOAT_EQUAL FLOAT_DIV EQUAL COMMA CARET ASSIGN AND AMPERSAND ]
@@ -2745,7 +3116,7 @@ grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET R
 
 grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET RES_IF BIN_INT CARET XOR
 ##
-## Ends in an error in state: 254.
+## Ends in an error in state: 264.
 ##
 ## expr -> expr CARET . expr [ XOR STAR SLASH SIGNED_SHIFT_RIGHT SIGNED_SHIFT_LEFT SIGNED_MOD SIGNED_LESS_THAN SIGNED_LESS_EQUAL SIGNED_GREATER_THAN SIGNED_GREATER_EQUAL SIGNED_DIV SHIFT_RIGHT SHIFT_LEFT SEMI RPAREN RBRACKET PLUS PIPE PERCENT OR NOT_EQUAL MINUS LESS_THAN LESS_EQUAL KEY_GOTO GREATER_THAN GREATER_EQUAL FLOAT_PLUS FLOAT_NOT_EQUAL FLOAT_MUL FLOAT_MINUS FLOAT_LESS_THAN FLOAT_LESS_EQUAL FLOAT_GREATER_THAN FLOAT_GREATER_EQUAL FLOAT_EQUAL FLOAT_DIV EQUAL COMMA CARET ASSIGN AND AMPERSAND ]
 ##
@@ -2757,7 +3128,7 @@ grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET R
 
 grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET RES_IF BIN_INT CARET BIN_INT TILDE
 ##
-## Ends in an error in state: 255.
+## Ends in an error in state: 265.
 ##
 ## expr -> expr . OR expr [ XOR STAR SLASH SIGNED_SHIFT_RIGHT SIGNED_SHIFT_LEFT SIGNED_MOD SIGNED_LESS_THAN SIGNED_LESS_EQUAL SIGNED_GREATER_THAN SIGNED_GREATER_EQUAL SIGNED_DIV SHIFT_RIGHT SHIFT_LEFT SEMI RPAREN RBRACKET PLUS PIPE PERCENT OR NOT_EQUAL MINUS LESS_THAN LESS_EQUAL KEY_GOTO GREATER_THAN GREATER_EQUAL FLOAT_PLUS FLOAT_NOT_EQUAL FLOAT_MUL FLOAT_MINUS FLOAT_LESS_THAN FLOAT_LESS_EQUAL FLOAT_GREATER_THAN FLOAT_GREATER_EQUAL FLOAT_EQUAL FLOAT_DIV EQUAL COMMA CARET ASSIGN AND AMPERSAND ]
 ## expr -> expr . AND expr [ XOR STAR SLASH SIGNED_SHIFT_RIGHT SIGNED_SHIFT_LEFT SIGNED_MOD SIGNED_LESS_THAN SIGNED_LESS_EQUAL SIGNED_GREATER_THAN SIGNED_GREATER_EQUAL SIGNED_DIV SHIFT_RIGHT SHIFT_LEFT SEMI RPAREN RBRACKET PLUS PIPE PERCENT OR NOT_EQUAL MINUS LESS_THAN LESS_EQUAL KEY_GOTO GREATER_THAN GREATER_EQUAL FLOAT_PLUS FLOAT_NOT_EQUAL FLOAT_MUL FLOAT_MINUS FLOAT_LESS_THAN FLOAT_LESS_EQUAL FLOAT_GREATER_THAN FLOAT_GREATER_EQUAL FLOAT_EQUAL FLOAT_DIV EQUAL COMMA CARET ASSIGN AND AMPERSAND ]
@@ -2806,7 +3177,7 @@ grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET R
 
 grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET RES_IF BIN_INT AMPERSAND XOR
 ##
-## Ends in an error in state: 256.
+## Ends in an error in state: 266.
 ##
 ## expr -> expr AMPERSAND . expr [ XOR STAR SLASH SIGNED_SHIFT_RIGHT SIGNED_SHIFT_LEFT SIGNED_MOD SIGNED_LESS_THAN SIGNED_LESS_EQUAL SIGNED_GREATER_THAN SIGNED_GREATER_EQUAL SIGNED_DIV SHIFT_RIGHT SHIFT_LEFT SEMI RPAREN RBRACKET PLUS PIPE PERCENT OR NOT_EQUAL MINUS LESS_THAN LESS_EQUAL KEY_GOTO GREATER_THAN GREATER_EQUAL FLOAT_PLUS FLOAT_NOT_EQUAL FLOAT_MUL FLOAT_MINUS FLOAT_LESS_THAN FLOAT_LESS_EQUAL FLOAT_GREATER_THAN FLOAT_GREATER_EQUAL FLOAT_EQUAL FLOAT_DIV EQUAL COMMA CARET ASSIGN AND AMPERSAND ]
 ##
@@ -2818,7 +3189,7 @@ grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET R
 
 grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET RES_IF BIN_INT AMPERSAND BIN_INT TILDE
 ##
-## Ends in an error in state: 257.
+## Ends in an error in state: 267.
 ##
 ## expr -> expr . OR expr [ XOR STAR SLASH SIGNED_SHIFT_RIGHT SIGNED_SHIFT_LEFT SIGNED_MOD SIGNED_LESS_THAN SIGNED_LESS_EQUAL SIGNED_GREATER_THAN SIGNED_GREATER_EQUAL SIGNED_DIV SHIFT_RIGHT SHIFT_LEFT SEMI RPAREN RBRACKET PLUS PIPE PERCENT OR NOT_EQUAL MINUS LESS_THAN LESS_EQUAL KEY_GOTO GREATER_THAN GREATER_EQUAL FLOAT_PLUS FLOAT_NOT_EQUAL FLOAT_MUL FLOAT_MINUS FLOAT_LESS_THAN FLOAT_LESS_EQUAL FLOAT_GREATER_THAN FLOAT_GREATER_EQUAL FLOAT_EQUAL FLOAT_DIV EQUAL COMMA CARET ASSIGN AND AMPERSAND ]
 ## expr -> expr . AND expr [ XOR STAR SLASH SIGNED_SHIFT_RIGHT SIGNED_SHIFT_LEFT SIGNED_MOD SIGNED_LESS_THAN SIGNED_LESS_EQUAL SIGNED_GREATER_THAN SIGNED_GREATER_EQUAL SIGNED_DIV SHIFT_RIGHT SHIFT_LEFT SEMI RPAREN RBRACKET PLUS PIPE PERCENT OR NOT_EQUAL MINUS LESS_THAN LESS_EQUAL KEY_GOTO GREATER_THAN GREATER_EQUAL FLOAT_PLUS FLOAT_NOT_EQUAL FLOAT_MUL FLOAT_MINUS FLOAT_LESS_THAN FLOAT_LESS_EQUAL FLOAT_GREATER_THAN FLOAT_GREATER_EQUAL FLOAT_EQUAL FLOAT_DIV EQUAL COMMA CARET ASSIGN AND AMPERSAND ]
@@ -2867,7 +3238,7 @@ grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET R
 
 grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET STAR LBRACKET XOR
 ##
-## Ends in an error in state: 258.
+## Ends in an error in state: 268.
 ##
 ## lvalue -> STAR LBRACKET . identifier RBRACKET COLON constant expr [ ASSIGN ]
 ## lvalue -> STAR LBRACKET . identifier RBRACKET expr [ ASSIGN ]
@@ -2880,7 +3251,7 @@ grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET S
 
 grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET STAR LBRACKET ID XOR
 ##
-## Ends in an error in state: 259.
+## Ends in an error in state: 269.
 ##
 ## lvalue -> STAR LBRACKET identifier . RBRACKET COLON constant expr [ ASSIGN ]
 ## lvalue -> STAR LBRACKET identifier . RBRACKET expr [ ASSIGN ]
@@ -2893,7 +3264,7 @@ grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET S
 
 grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET STAR LBRACKET ID RBRACKET XOR
 ##
-## Ends in an error in state: 260.
+## Ends in an error in state: 270.
 ##
 ## lvalue -> STAR LBRACKET identifier RBRACKET . COLON constant expr [ ASSIGN ]
 ## lvalue -> STAR LBRACKET identifier RBRACKET . expr [ ASSIGN ]
@@ -2906,7 +3277,7 @@ grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET S
 
 grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET STAR LBRACKET ID RBRACKET COLON XOR
 ##
-## Ends in an error in state: 261.
+## Ends in an error in state: 271.
 ##
 ## lvalue -> STAR LBRACKET identifier RBRACKET COLON . constant expr [ ASSIGN ]
 ##
@@ -2918,7 +3289,7 @@ grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET S
 
 grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET STAR LBRACKET ID RBRACKET COLON BIN_INT XOR
 ##
-## Ends in an error in state: 262.
+## Ends in an error in state: 272.
 ##
 ## lvalue -> STAR LBRACKET identifier RBRACKET COLON constant . expr [ ASSIGN ]
 ##
@@ -2930,7 +3301,7 @@ grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET S
 
 grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET STAR LBRACKET ID RBRACKET COLON BIN_INT BIN_INT SEMI
 ##
-## Ends in an error in state: 263.
+## Ends in an error in state: 273.
 ##
 ## expr -> expr . OR expr [ XOR STAR SLASH SIGNED_SHIFT_RIGHT SIGNED_SHIFT_LEFT SIGNED_MOD SIGNED_LESS_THAN SIGNED_LESS_EQUAL SIGNED_GREATER_THAN SIGNED_GREATER_EQUAL SIGNED_DIV SHIFT_RIGHT SHIFT_LEFT PLUS PIPE PERCENT OR NOT_EQUAL MINUS LESS_THAN LESS_EQUAL GREATER_THAN GREATER_EQUAL FLOAT_PLUS FLOAT_NOT_EQUAL FLOAT_MUL FLOAT_MINUS FLOAT_LESS_THAN FLOAT_LESS_EQUAL FLOAT_GREATER_THAN FLOAT_GREATER_EQUAL FLOAT_EQUAL FLOAT_DIV EQUAL CARET ASSIGN AND AMPERSAND ]
 ## expr -> expr . AND expr [ XOR STAR SLASH SIGNED_SHIFT_RIGHT SIGNED_SHIFT_LEFT SIGNED_MOD SIGNED_LESS_THAN SIGNED_LESS_EQUAL SIGNED_GREATER_THAN SIGNED_GREATER_EQUAL SIGNED_DIV SHIFT_RIGHT SHIFT_LEFT PLUS PIPE PERCENT OR NOT_EQUAL MINUS LESS_THAN LESS_EQUAL GREATER_THAN GREATER_EQUAL FLOAT_PLUS FLOAT_NOT_EQUAL FLOAT_MUL FLOAT_MINUS FLOAT_LESS_THAN FLOAT_LESS_EQUAL FLOAT_GREATER_THAN FLOAT_GREATER_EQUAL FLOAT_EQUAL FLOAT_DIV EQUAL CARET ASSIGN AND AMPERSAND ]
@@ -2979,7 +3350,7 @@ grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET S
 
 grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET STAR LBRACKET ID RBRACKET BIN_INT SEMI
 ##
-## Ends in an error in state: 264.
+## Ends in an error in state: 274.
 ##
 ## expr -> expr . OR expr [ XOR STAR SLASH SIGNED_SHIFT_RIGHT SIGNED_SHIFT_LEFT SIGNED_MOD SIGNED_LESS_THAN SIGNED_LESS_EQUAL SIGNED_GREATER_THAN SIGNED_GREATER_EQUAL SIGNED_DIV SHIFT_RIGHT SHIFT_LEFT PLUS PIPE PERCENT OR NOT_EQUAL MINUS LESS_THAN LESS_EQUAL GREATER_THAN GREATER_EQUAL FLOAT_PLUS FLOAT_NOT_EQUAL FLOAT_MUL FLOAT_MINUS FLOAT_LESS_THAN FLOAT_LESS_EQUAL FLOAT_GREATER_THAN FLOAT_GREATER_EQUAL FLOAT_EQUAL FLOAT_DIV EQUAL CARET ASSIGN AND AMPERSAND ]
 ## expr -> expr . AND expr [ XOR STAR SLASH SIGNED_SHIFT_RIGHT SIGNED_SHIFT_LEFT SIGNED_MOD SIGNED_LESS_THAN SIGNED_LESS_EQUAL SIGNED_GREATER_THAN SIGNED_GREATER_EQUAL SIGNED_DIV SHIFT_RIGHT SHIFT_LEFT PLUS PIPE PERCENT OR NOT_EQUAL MINUS LESS_THAN LESS_EQUAL GREATER_THAN GREATER_EQUAL FLOAT_PLUS FLOAT_NOT_EQUAL FLOAT_MUL FLOAT_MINUS FLOAT_LESS_THAN FLOAT_LESS_EQUAL FLOAT_GREATER_THAN FLOAT_GREATER_EQUAL FLOAT_EQUAL FLOAT_DIV EQUAL CARET ASSIGN AND AMPERSAND ]
@@ -3028,7 +3399,7 @@ grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET S
 
 grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET STAR COLON XOR
 ##
-## Ends in an error in state: 265.
+## Ends in an error in state: 275.
 ##
 ## lvalue -> STAR COLON . constant expr [ ASSIGN ]
 ##
@@ -3040,7 +3411,7 @@ grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET S
 
 grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET STAR COLON BIN_INT XOR
 ##
-## Ends in an error in state: 266.
+## Ends in an error in state: 276.
 ##
 ## lvalue -> STAR COLON constant . expr [ ASSIGN ]
 ##
@@ -3052,7 +3423,7 @@ grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET S
 
 grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET STAR COLON BIN_INT BIN_INT SEMI
 ##
-## Ends in an error in state: 267.
+## Ends in an error in state: 277.
 ##
 ## expr -> expr . OR expr [ XOR STAR SLASH SIGNED_SHIFT_RIGHT SIGNED_SHIFT_LEFT SIGNED_MOD SIGNED_LESS_THAN SIGNED_LESS_EQUAL SIGNED_GREATER_THAN SIGNED_GREATER_EQUAL SIGNED_DIV SHIFT_RIGHT SHIFT_LEFT PLUS PIPE PERCENT OR NOT_EQUAL MINUS LESS_THAN LESS_EQUAL GREATER_THAN GREATER_EQUAL FLOAT_PLUS FLOAT_NOT_EQUAL FLOAT_MUL FLOAT_MINUS FLOAT_LESS_THAN FLOAT_LESS_EQUAL FLOAT_GREATER_THAN FLOAT_GREATER_EQUAL FLOAT_EQUAL FLOAT_DIV EQUAL CARET ASSIGN AND AMPERSAND ]
 ## expr -> expr . AND expr [ XOR STAR SLASH SIGNED_SHIFT_RIGHT SIGNED_SHIFT_LEFT SIGNED_MOD SIGNED_LESS_THAN SIGNED_LESS_EQUAL SIGNED_GREATER_THAN SIGNED_GREATER_EQUAL SIGNED_DIV SHIFT_RIGHT SHIFT_LEFT PLUS PIPE PERCENT OR NOT_EQUAL MINUS LESS_THAN LESS_EQUAL GREATER_THAN GREATER_EQUAL FLOAT_PLUS FLOAT_NOT_EQUAL FLOAT_MUL FLOAT_MINUS FLOAT_LESS_THAN FLOAT_LESS_EQUAL FLOAT_GREATER_THAN FLOAT_GREATER_EQUAL FLOAT_EQUAL FLOAT_DIV EQUAL CARET ASSIGN AND AMPERSAND ]
@@ -3101,7 +3472,7 @@ grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET S
 
 grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET STAR BIN_INT SEMI
 ##
-## Ends in an error in state: 268.
+## Ends in an error in state: 278.
 ##
 ## expr -> expr . OR expr [ XOR STAR SLASH SIGNED_SHIFT_RIGHT SIGNED_SHIFT_LEFT SIGNED_MOD SIGNED_LESS_THAN SIGNED_LESS_EQUAL SIGNED_GREATER_THAN SIGNED_GREATER_EQUAL SIGNED_DIV SHIFT_RIGHT SHIFT_LEFT PLUS PIPE PERCENT OR NOT_EQUAL MINUS LESS_THAN LESS_EQUAL GREATER_THAN GREATER_EQUAL FLOAT_PLUS FLOAT_NOT_EQUAL FLOAT_MUL FLOAT_MINUS FLOAT_LESS_THAN FLOAT_LESS_EQUAL FLOAT_GREATER_THAN FLOAT_GREATER_EQUAL FLOAT_EQUAL FLOAT_DIV EQUAL CARET ASSIGN AND AMPERSAND ]
 ## expr -> expr . AND expr [ XOR STAR SLASH SIGNED_SHIFT_RIGHT SIGNED_SHIFT_LEFT SIGNED_MOD SIGNED_LESS_THAN SIGNED_LESS_EQUAL SIGNED_GREATER_THAN SIGNED_GREATER_EQUAL SIGNED_DIV SHIFT_RIGHT SHIFT_LEFT PLUS PIPE PERCENT OR NOT_EQUAL MINUS LESS_THAN LESS_EQUAL GREATER_THAN GREATER_EQUAL FLOAT_PLUS FLOAT_NOT_EQUAL FLOAT_MUL FLOAT_MINUS FLOAT_LESS_THAN FLOAT_LESS_EQUAL FLOAT_GREATER_THAN FLOAT_GREATER_EQUAL FLOAT_EQUAL FLOAT_DIV EQUAL CARET ASSIGN AND AMPERSAND ]
@@ -3150,7 +3521,7 @@ grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET S
 
 grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET RES_IF XOR
 ##
-## Ends in an error in state: 269.
+## Ends in an error in state: 279.
 ##
 ## branch -> RES_IF . expr KEY_GOTO jump_target [ SEMI ]
 ##
@@ -3162,7 +3533,7 @@ grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET R
 
 grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET RES_IF BIN_INT SEMI
 ##
-## Ends in an error in state: 270.
+## Ends in an error in state: 280.
 ##
 ## branch -> RES_IF expr . KEY_GOTO jump_target [ SEMI ]
 ## expr -> expr . OR expr [ XOR STAR SLASH SIGNED_SHIFT_RIGHT SIGNED_SHIFT_LEFT SIGNED_MOD SIGNED_LESS_THAN SIGNED_LESS_EQUAL SIGNED_GREATER_THAN SIGNED_GREATER_EQUAL SIGNED_DIV SHIFT_RIGHT SHIFT_LEFT PLUS PIPE PERCENT OR NOT_EQUAL MINUS LESS_THAN LESS_EQUAL KEY_GOTO GREATER_THAN GREATER_EQUAL FLOAT_PLUS FLOAT_NOT_EQUAL FLOAT_MUL FLOAT_MINUS FLOAT_LESS_THAN FLOAT_LESS_EQUAL FLOAT_GREATER_THAN FLOAT_GREATER_EQUAL FLOAT_EQUAL FLOAT_DIV EQUAL CARET AND AMPERSAND ]
@@ -3211,7 +3582,7 @@ grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET R
 
 grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET RES_IF BIN_INT KEY_GOTO XOR
 ##
-## Ends in an error in state: 271.
+## Ends in an error in state: 281.
 ##
 ## branch -> RES_IF expr KEY_GOTO . jump_target [ SEMI ]
 ##
@@ -3223,7 +3594,7 @@ grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET R
 
 grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET LESS_THAN XOR
 ##
-## Ends in an error in state: 272.
+## Ends in an error in state: 282.
 ##
 ## label -> LESS_THAN . identifier GREATER_THAN [ SEMI RBRACKET RBRACE COMMA ]
 ##
@@ -3235,7 +3606,7 @@ grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET L
 
 grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET LESS_THAN ID XOR
 ##
-## Ends in an error in state: 273.
+## Ends in an error in state: 283.
 ##
 ## label -> LESS_THAN identifier . GREATER_THAN [ SEMI RBRACKET RBRACE COMMA ]
 ##
@@ -3247,7 +3618,7 @@ grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET L
 
 grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET KEY_CALL LBRACKET XOR
 ##
-## Ends in an error in state: 275.
+## Ends in an error in state: 285.
 ##
 ## jump_target -> LBRACKET . expr RBRACKET [ SEMI RBRACKET ]
 ##
@@ -3259,7 +3630,7 @@ grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET K
 
 grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET KEY_CALL LBRACKET BIN_INT SEMI
 ##
-## Ends in an error in state: 276.
+## Ends in an error in state: 286.
 ##
 ## expr -> expr . OR expr [ XOR STAR SLASH SIGNED_SHIFT_RIGHT SIGNED_SHIFT_LEFT SIGNED_MOD SIGNED_LESS_THAN SIGNED_LESS_EQUAL SIGNED_GREATER_THAN SIGNED_GREATER_EQUAL SIGNED_DIV SHIFT_RIGHT SHIFT_LEFT RBRACKET PLUS PIPE PERCENT OR NOT_EQUAL MINUS LESS_THAN LESS_EQUAL GREATER_THAN GREATER_EQUAL FLOAT_PLUS FLOAT_NOT_EQUAL FLOAT_MUL FLOAT_MINUS FLOAT_LESS_THAN FLOAT_LESS_EQUAL FLOAT_GREATER_THAN FLOAT_GREATER_EQUAL FLOAT_EQUAL FLOAT_DIV EQUAL CARET AND AMPERSAND ]
 ## expr -> expr . AND expr [ XOR STAR SLASH SIGNED_SHIFT_RIGHT SIGNED_SHIFT_LEFT SIGNED_MOD SIGNED_LESS_THAN SIGNED_LESS_EQUAL SIGNED_GREATER_THAN SIGNED_GREATER_EQUAL SIGNED_DIV SHIFT_RIGHT SHIFT_LEFT RBRACKET PLUS PIPE PERCENT OR NOT_EQUAL MINUS LESS_THAN LESS_EQUAL GREATER_THAN GREATER_EQUAL FLOAT_PLUS FLOAT_NOT_EQUAL FLOAT_MUL FLOAT_MINUS FLOAT_LESS_THAN FLOAT_LESS_EQUAL FLOAT_GREATER_THAN FLOAT_GREATER_EQUAL FLOAT_EQUAL FLOAT_DIV EQUAL CARET AND AMPERSAND ]
@@ -3308,7 +3679,7 @@ grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET K
 
 grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET KEY_CALL BIN_INT XOR
 ##
-## Ends in an error in state: 281.
+## Ends in an error in state: 291.
 ##
 ## jump_target -> constant . LBRACKET identifier RBRACKET [ SEMI RBRACKET ]
 ## jump_target -> constant . [ SEMI RBRACKET ]
@@ -3321,7 +3692,7 @@ grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET K
 
 grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET KEY_CALL BIN_INT LBRACKET XOR
 ##
-## Ends in an error in state: 282.
+## Ends in an error in state: 292.
 ##
 ## jump_target -> constant LBRACKET . identifier RBRACKET [ SEMI RBRACKET ]
 ##
@@ -3333,7 +3704,7 @@ grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET K
 
 grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET KEY_CALL BIN_INT LBRACKET ID XOR
 ##
-## Ends in an error in state: 283.
+## Ends in an error in state: 293.
 ##
 ## jump_target -> constant LBRACKET identifier . RBRACKET [ SEMI RBRACKET ]
 ##
@@ -3345,7 +3716,7 @@ grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET K
 
 grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET KEY_RETURN XOR
 ##
-## Ends in an error in state: 285.
+## Ends in an error in state: 295.
 ##
 ## return -> KEY_RETURN . LBRACKET jump_target RBRACKET [ SEMI ]
 ##
@@ -3357,7 +3728,7 @@ grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET K
 
 grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET KEY_RETURN LBRACKET XOR
 ##
-## Ends in an error in state: 286.
+## Ends in an error in state: 296.
 ##
 ## return -> KEY_RETURN LBRACKET . jump_target RBRACKET [ SEMI ]
 ##
@@ -3369,7 +3740,7 @@ grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET K
 
 grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET KEY_RETURN LBRACKET BIN_INT SEMI
 ##
-## Ends in an error in state: 287.
+## Ends in an error in state: 297.
 ##
 ## return -> KEY_RETURN LBRACKET jump_target . RBRACKET [ SEMI ]
 ##
@@ -3380,14 +3751,14 @@ grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET K
 ## This implies that, although the LR(1) items shown above provide an
 ## accurate view of the past (what has been recognized so far), they
 ## may provide an INCOMPLETE view of the future (what was expected next).
-## In state 281, spurious reduction of production jump_target -> constant
+## In state 291, spurious reduction of production jump_target -> constant
 ##
 
 <YOUR SYNTAX ERROR MESSAGE HERE>
 
 grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET KEY_LOCAL XOR
 ##
-## Ends in an error in state: 289.
+## Ends in an error in state: 299.
 ##
 ## assignment -> KEY_LOCAL . lvalue ASSIGN expr [ SEMI ]
 ## declaration -> KEY_LOCAL . identifier COLON constant [ SEMI ]
@@ -3401,7 +3772,7 @@ grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET K
 
 grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET KEY_LOCAL ID LBRACKET BIN_INT COMMA BIN_INT RBRACKET XOR
 ##
-## Ends in an error in state: 290.
+## Ends in an error in state: 300.
 ##
 ## assignment -> KEY_LOCAL lvalue . ASSIGN expr [ SEMI ]
 ##
@@ -3413,7 +3784,7 @@ grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET K
 
 grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET KEY_LOCAL ID ASSIGN XOR
 ##
-## Ends in an error in state: 291.
+## Ends in an error in state: 301.
 ##
 ## assignment -> KEY_LOCAL lvalue ASSIGN . expr [ SEMI ]
 ##
@@ -3425,7 +3796,7 @@ grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET K
 
 grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET KEY_LOCAL ID ASSIGN BIN_INT RPAREN
 ##
-## Ends in an error in state: 292.
+## Ends in an error in state: 302.
 ##
 ## assignment -> KEY_LOCAL lvalue ASSIGN expr . [ SEMI ]
 ## expr -> expr . OR expr [ XOR STAR SLASH SIGNED_SHIFT_RIGHT SIGNED_SHIFT_LEFT SIGNED_MOD SIGNED_LESS_THAN SIGNED_LESS_EQUAL SIGNED_GREATER_THAN SIGNED_GREATER_EQUAL SIGNED_DIV SHIFT_RIGHT SHIFT_LEFT SEMI PLUS PIPE PERCENT OR NOT_EQUAL MINUS LESS_THAN LESS_EQUAL GREATER_THAN GREATER_EQUAL FLOAT_PLUS FLOAT_NOT_EQUAL FLOAT_MUL FLOAT_MINUS FLOAT_LESS_THAN FLOAT_LESS_EQUAL FLOAT_GREATER_THAN FLOAT_GREATER_EQUAL FLOAT_EQUAL FLOAT_DIV EQUAL CARET AND AMPERSAND ]
@@ -3474,7 +3845,7 @@ grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET K
 
 grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET KEY_LOCAL ID XOR
 ##
-## Ends in an error in state: 293.
+## Ends in an error in state: 303.
 ##
 ## bitrange -> identifier . LBRACKET constant COMMA constant RBRACKET [ ASSIGN ]
 ## declaration -> KEY_LOCAL identifier . COLON constant [ SEMI ]
@@ -3490,7 +3861,7 @@ grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET K
 
 grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET ID LBRACKET XOR
 ##
-## Ends in an error in state: 294.
+## Ends in an error in state: 304.
 ##
 ## bitrange -> identifier LBRACKET . constant COMMA constant RBRACKET [ ASSIGN ]
 ##
@@ -3502,7 +3873,7 @@ grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET I
 
 grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET ID LBRACKET BIN_INT XOR
 ##
-## Ends in an error in state: 295.
+## Ends in an error in state: 305.
 ##
 ## bitrange -> identifier LBRACKET constant . COMMA constant RBRACKET [ ASSIGN ]
 ##
@@ -3514,7 +3885,7 @@ grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET I
 
 grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET ID LBRACKET BIN_INT COMMA XOR
 ##
-## Ends in an error in state: 296.
+## Ends in an error in state: 306.
 ##
 ## bitrange -> identifier LBRACKET constant COMMA . constant RBRACKET [ ASSIGN ]
 ##
@@ -3526,7 +3897,7 @@ grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET I
 
 grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET ID LBRACKET BIN_INT COMMA BIN_INT XOR
 ##
-## Ends in an error in state: 297.
+## Ends in an error in state: 307.
 ##
 ## bitrange -> identifier LBRACKET constant COMMA constant . RBRACKET [ ASSIGN ]
 ##
@@ -3538,7 +3909,7 @@ grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET I
 
 grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET KEY_LOCAL ID COLON XOR
 ##
-## Ends in an error in state: 299.
+## Ends in an error in state: 309.
 ##
 ## declaration -> KEY_LOCAL identifier COLON . constant [ SEMI ]
 ## lvalue -> identifier COLON . constant [ ASSIGN ]
@@ -3551,7 +3922,7 @@ grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET K
 
 grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET KEY_LOCAL ID COLON BIN_INT XOR
 ##
-## Ends in an error in state: 300.
+## Ends in an error in state: 310.
 ##
 ## declaration -> KEY_LOCAL identifier COLON constant . [ SEMI ]
 ## lvalue -> identifier COLON constant . [ ASSIGN ]
@@ -3564,7 +3935,7 @@ grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET K
 
 grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET KEY_GOTO XOR
 ##
-## Ends in an error in state: 302.
+## Ends in an error in state: 312.
 ##
 ## goto -> KEY_GOTO . jump_target [ SEMI ]
 ##
@@ -3576,7 +3947,7 @@ grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET K
 
 grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET KEY_EXPORT XOR
 ##
-## Ends in an error in state: 304.
+## Ends in an error in state: 314.
 ##
 ## export -> KEY_EXPORT . sized_export [ SEMI ]
 ## export -> KEY_EXPORT . varnode [ SEMI ]
@@ -3589,7 +3960,7 @@ grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET K
 
 grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET KEY_EXPORT STAR XOR
 ##
-## Ends in an error in state: 305.
+## Ends in an error in state: 315.
 ##
 ## sized_export -> STAR . LBRACKET identifier RBRACKET COLON constant id_expr [ SEMI ]
 ## sized_export -> STAR . LBRACKET identifier RBRACKET id_expr [ SEMI ]
@@ -3604,7 +3975,7 @@ grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET K
 
 grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET KEY_EXPORT STAR LBRACKET XOR
 ##
-## Ends in an error in state: 306.
+## Ends in an error in state: 316.
 ##
 ## sized_export -> STAR LBRACKET . identifier RBRACKET COLON constant id_expr [ SEMI ]
 ## sized_export -> STAR LBRACKET . identifier RBRACKET id_expr [ SEMI ]
@@ -3617,7 +3988,7 @@ grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET K
 
 grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET KEY_EXPORT STAR LBRACKET ID XOR
 ##
-## Ends in an error in state: 307.
+## Ends in an error in state: 317.
 ##
 ## sized_export -> STAR LBRACKET identifier . RBRACKET COLON constant id_expr [ SEMI ]
 ## sized_export -> STAR LBRACKET identifier . RBRACKET id_expr [ SEMI ]
@@ -3630,7 +4001,7 @@ grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET K
 
 grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET KEY_EXPORT STAR LBRACKET ID RBRACKET XOR
 ##
-## Ends in an error in state: 308.
+## Ends in an error in state: 318.
 ##
 ## sized_export -> STAR LBRACKET identifier RBRACKET . COLON constant id_expr [ SEMI ]
 ## sized_export -> STAR LBRACKET identifier RBRACKET . id_expr [ SEMI ]
@@ -3643,7 +4014,7 @@ grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET K
 
 grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET KEY_EXPORT STAR LBRACKET ID RBRACKET COLON XOR
 ##
-## Ends in an error in state: 309.
+## Ends in an error in state: 319.
 ##
 ## sized_export -> STAR LBRACKET identifier RBRACKET COLON . constant id_expr [ SEMI ]
 ##
@@ -3655,7 +4026,7 @@ grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET K
 
 grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET KEY_EXPORT STAR LBRACKET ID RBRACKET COLON BIN_INT XOR
 ##
-## Ends in an error in state: 310.
+## Ends in an error in state: 320.
 ##
 ## sized_export -> STAR LBRACKET identifier RBRACKET COLON constant . id_expr [ SEMI ]
 ##
@@ -3667,7 +4038,7 @@ grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET K
 
 grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET KEY_EXPORT STAR COLON XOR
 ##
-## Ends in an error in state: 314.
+## Ends in an error in state: 324.
 ##
 ## sized_export -> STAR COLON . constant id_expr [ SEMI ]
 ##
@@ -3679,7 +4050,7 @@ grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET K
 
 grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET KEY_EXPORT STAR COLON BIN_INT XOR
 ##
-## Ends in an error in state: 315.
+## Ends in an error in state: 325.
 ##
 ## sized_export -> STAR COLON constant . id_expr [ SEMI ]
 ##
@@ -3691,7 +4062,7 @@ grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET K
 
 grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET KEY_EXPORT ID XOR
 ##
-## Ends in an error in state: 320.
+## Ends in an error in state: 330.
 ##
 ## varnode -> identifier . [ SEMI ]
 ## varnode -> identifier . COLON constant [ SEMI ]
@@ -3704,7 +4075,7 @@ grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET K
 
 grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET KEY_EXPORT ID COLON XOR
 ##
-## Ends in an error in state: 321.
+## Ends in an error in state: 331.
 ##
 ## varnode -> identifier COLON . constant [ SEMI ]
 ##
@@ -3716,7 +4087,7 @@ grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET K
 
 grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET KEY_CALL XOR
 ##
-## Ends in an error in state: 324.
+## Ends in an error in state: 334.
 ##
 ## call -> KEY_CALL . jump_target [ SEMI ]
 ##
@@ -3728,7 +4099,7 @@ grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET K
 
 grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET KEY_BUILD XOR
 ##
-## Ends in an error in state: 326.
+## Ends in an error in state: 336.
 ##
 ## build -> KEY_BUILD . identifier [ SEMI ]
 ##
@@ -3740,7 +4111,7 @@ grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET K
 
 grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET LESS_THAN ID GREATER_THAN RBRACE
 ##
-## Ends in an error in state: 328.
+## Ends in an error in state: 338.
 ##
 ## context -> LBRACKET statements . RBRACKET [ LBRACE KEY_UNIMPL ]
 ##
@@ -3751,16 +4122,16 @@ grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET L
 ## This implies that, although the LR(1) items shown above provide an
 ## accurate view of the past (what has been recognized so far), they
 ## may provide an INCOMPLETE view of the future (what was expected next).
-## In state 330, spurious reduction of production separated_nonempty_list(COMMA,statement) -> statement
-## In state 359, spurious reduction of production loption(separated_nonempty_list(COMMA,statement)) -> separated_nonempty_list(COMMA,statement)
-## In state 360, spurious reduction of production statements -> loption(separated_nonempty_list(COMMA,statement))
+## In state 340, spurious reduction of production separated_nonempty_list(COMMA,statement) -> statement
+## In state 369, spurious reduction of production loption(separated_nonempty_list(COMMA,statement)) -> separated_nonempty_list(COMMA,statement)
+## In state 370, spurious reduction of production statements -> loption(separated_nonempty_list(COMMA,statement))
 ##
 
 <YOUR SYNTAX ERROR MESSAGE HERE>
 
 grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET LESS_THAN ID GREATER_THAN XOR
 ##
-## Ends in an error in state: 330.
+## Ends in an error in state: 340.
 ##
 ## separated_nonempty_list(COMMA,statement) -> statement . [ RBRACKET RBRACE ]
 ## separated_nonempty_list(COMMA,statement) -> statement . COMMA separated_nonempty_list(COMMA,statement) [ RBRACKET RBRACE ]
@@ -3773,7 +4144,7 @@ grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET L
 
 grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET LESS_THAN ID GREATER_THAN COMMA XOR
 ##
-## Ends in an error in state: 331.
+## Ends in an error in state: 341.
 ##
 ## separated_nonempty_list(COMMA,statement) -> statement COMMA . separated_nonempty_list(COMMA,statement) [ RBRACKET RBRACE ]
 ##
@@ -3785,7 +4156,7 @@ grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET L
 
 grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET KEY_BUILD ID XOR
 ##
-## Ends in an error in state: 333.
+## Ends in an error in state: 343.
 ##
 ## statement -> separated . SEMI [ RBRACKET RBRACE COMMA ]
 ##
@@ -3797,7 +4168,7 @@ grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET K
 
 grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET ID COLON BIN_INT XOR
 ##
-## Ends in an error in state: 336.
+## Ends in an error in state: 346.
 ##
 ## assignment -> lvalue . ASSIGN expr [ SEMI ]
 ##
@@ -3809,7 +4180,7 @@ grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET I
 
 grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET ID ASSIGN XOR
 ##
-## Ends in an error in state: 337.
+## Ends in an error in state: 347.
 ##
 ## assignment -> lvalue ASSIGN . expr [ SEMI ]
 ##
@@ -3821,7 +4192,7 @@ grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET I
 
 grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET ID ASSIGN BIN_INT RPAREN
 ##
-## Ends in an error in state: 338.
+## Ends in an error in state: 348.
 ##
 ## assignment -> lvalue ASSIGN expr . [ SEMI ]
 ## expr -> expr . OR expr [ XOR STAR SLASH SIGNED_SHIFT_RIGHT SIGNED_SHIFT_LEFT SIGNED_MOD SIGNED_LESS_THAN SIGNED_LESS_EQUAL SIGNED_GREATER_THAN SIGNED_GREATER_EQUAL SIGNED_DIV SHIFT_RIGHT SHIFT_LEFT SEMI PLUS PIPE PERCENT OR NOT_EQUAL MINUS LESS_THAN LESS_EQUAL GREATER_THAN GREATER_EQUAL FLOAT_PLUS FLOAT_NOT_EQUAL FLOAT_MUL FLOAT_MINUS FLOAT_LESS_THAN FLOAT_LESS_EQUAL FLOAT_GREATER_THAN FLOAT_GREATER_EQUAL FLOAT_EQUAL FLOAT_DIV EQUAL CARET AND AMPERSAND ]
@@ -3870,7 +4241,7 @@ grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET I
 
 grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET ID XOR
 ##
-## Ends in an error in state: 340.
+## Ends in an error in state: 350.
 ##
 ## bitrange -> identifier . LBRACKET constant COMMA constant RBRACKET [ ASSIGN ]
 ## funcall -> identifier . LPAREN args RPAREN [ SEMI ]
@@ -3885,7 +4256,7 @@ grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET I
 
 grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET ID LPAREN XOR
 ##
-## Ends in an error in state: 341.
+## Ends in an error in state: 351.
 ##
 ## funcall -> identifier LPAREN . args RPAREN [ SEMI ]
 ##
@@ -3897,7 +4268,7 @@ grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET I
 
 grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET ID LPAREN BIN_INT SEMI
 ##
-## Ends in an error in state: 344.
+## Ends in an error in state: 354.
 ##
 ## expr -> expr . OR expr [ XOR STAR SLASH SIGNED_SHIFT_RIGHT SIGNED_SHIFT_LEFT SIGNED_MOD SIGNED_LESS_THAN SIGNED_LESS_EQUAL SIGNED_GREATER_THAN SIGNED_GREATER_EQUAL SIGNED_DIV SHIFT_RIGHT SHIFT_LEFT RPAREN PLUS PIPE PERCENT OR NOT_EQUAL MINUS LESS_THAN LESS_EQUAL GREATER_THAN GREATER_EQUAL FLOAT_PLUS FLOAT_NOT_EQUAL FLOAT_MUL FLOAT_MINUS FLOAT_LESS_THAN FLOAT_LESS_EQUAL FLOAT_GREATER_THAN FLOAT_GREATER_EQUAL FLOAT_EQUAL FLOAT_DIV EQUAL COMMA CARET AND AMPERSAND ]
 ## expr -> expr . AND expr [ XOR STAR SLASH SIGNED_SHIFT_RIGHT SIGNED_SHIFT_LEFT SIGNED_MOD SIGNED_LESS_THAN SIGNED_LESS_EQUAL SIGNED_GREATER_THAN SIGNED_GREATER_EQUAL SIGNED_DIV SHIFT_RIGHT SHIFT_LEFT RPAREN PLUS PIPE PERCENT OR NOT_EQUAL MINUS LESS_THAN LESS_EQUAL GREATER_THAN GREATER_EQUAL FLOAT_PLUS FLOAT_NOT_EQUAL FLOAT_MUL FLOAT_MINUS FLOAT_LESS_THAN FLOAT_LESS_EQUAL FLOAT_GREATER_THAN FLOAT_GREATER_EQUAL FLOAT_EQUAL FLOAT_DIV EQUAL COMMA CARET AND AMPERSAND ]
@@ -3947,7 +4318,7 @@ grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET I
 
 grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET ID LPAREN BIN_INT COMMA XOR
 ##
-## Ends in an error in state: 345.
+## Ends in an error in state: 355.
 ##
 ## separated_nonempty_list(COMMA,expr) -> expr COMMA . separated_nonempty_list(COMMA,expr) [ RPAREN ]
 ##
@@ -3959,7 +4330,7 @@ grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET I
 
 grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET ID COLON XOR
 ##
-## Ends in an error in state: 349.
+## Ends in an error in state: 359.
 ##
 ## lvalue -> identifier COLON . constant [ ASSIGN ]
 ##
@@ -3971,7 +4342,7 @@ grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET I
 
 grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET RBRACKET XOR
 ##
-## Ends in an error in state: 361.
+## Ends in an error in state: 371.
 ##
 ## constructor -> ctr_name COLON display option(pattern) context . constructor_body [ KEY_DEFINE KEY_ATTACH ID EOF COLON ]
 ##
@@ -3983,7 +4354,7 @@ grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACKET R
 
 grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACE XOR
 ##
-## Ends in an error in state: 362.
+## Ends in an error in state: 372.
 ##
 ## constructor_body -> LBRACE . statements RBRACE [ KEY_DEFINE KEY_ATTACH ID EOF COLON ]
 ##
@@ -3995,7 +4366,7 @@ grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACE XOR
 
 grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACE LESS_THAN ID GREATER_THAN RBRACKET
 ##
-## Ends in an error in state: 363.
+## Ends in an error in state: 373.
 ##
 ## constructor_body -> LBRACE statements . RBRACE [ KEY_DEFINE KEY_ATTACH ID EOF COLON ]
 ##
@@ -4006,9 +4377,9 @@ grammar: KEY_DEFINE KEY_ENDIAN ASSIGN KEY_BIG SEMI COLON SPACE RES_IS LBRACE LES
 ## This implies that, although the LR(1) items shown above provide an
 ## accurate view of the past (what has been recognized so far), they
 ## may provide an INCOMPLETE view of the future (what was expected next).
-## In state 330, spurious reduction of production separated_nonempty_list(COMMA,statement) -> statement
-## In state 359, spurious reduction of production loption(separated_nonempty_list(COMMA,statement)) -> separated_nonempty_list(COMMA,statement)
-## In state 360, spurious reduction of production statements -> loption(separated_nonempty_list(COMMA,statement))
+## In state 340, spurious reduction of production separated_nonempty_list(COMMA,statement) -> statement
+## In state 369, spurious reduction of production loption(separated_nonempty_list(COMMA,statement)) -> separated_nonempty_list(COMMA,statement)
+## In state 370, spurious reduction of production statements -> loption(separated_nonempty_list(COMMA,statement))
 ##
 
 <YOUR SYNTAX ERROR MESSAGE HERE>
