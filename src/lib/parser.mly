@@ -29,6 +29,7 @@ open Util
 %token KEY_GOTO
 %token KEY_HEX
 %token KEY_LOCAL
+%token KEY_MACRO
 %token KEY_OFFSET
 %token KEY_PCODEOP
 %token KEY_RETURN
@@ -122,18 +123,10 @@ grammar:
 	| e = located(error)
 		{ Error.error "parsing" e.position "Syntax error." }
 
-identifier:
-	located(ID) { $1 }
-
-text:
-	located(TEXT) { $1 }
-
-%inline located(X):
-	x=X { Position.with_poss $startpos $endpos x }
-
 other_definition:
 	| definition SEMI { $1 }
 	| constructor     { $1 }
+	| macro           { $1 }
 
 endian_definition:
 	KEY_DEFINE KEY_ENDIAN ASSIGN located(endian) SEMI { Endian $4 } 
@@ -192,19 +185,10 @@ varnode_attach_definition:
 pcodeop_definition:
 	KEY_DEFINE KEY_PCODEOP identifier { PCodeOp $3 }
 
-/*
-and constructor =
-  { id: identifier;
-    display: display;
-    bit_pattern: expr option;
-    context: context option;
-    body: statement list;
-  }
-*/
-
 constructor:
+	midrule(enable_expr_parser)
 	ctr_name COLON display pattern? context constructor_body
-		{ Constructor { id = $1; display = $3; pattern = $4; context = $5; body = $6 } }
+		{ Constructor { id = $2; display = $4; pattern = $5; context = $6; body = $7 } }
 	
 ctr_name:
 	identifier?
@@ -233,15 +217,16 @@ pattern:
 	pattern_expr midrule(semi_is_semi) { $1 }
 
 context:
-	| LBRACKET statements RBRACKET { $2 }
-	|                              { [] }
+	| LBRACKET context_statement* RBRACKET { $2 }
+	|                                      { [] }
 
 constructor_body:
-	| LBRACE statements RBRACE { $2 }
-	| KEY_UNIMPL               { [] }
+	| LBRACE semantic_body midrule(disable_expr_parser) RBRACE { $2 }
+	| midrule(disable_expr_parser) KEY_UNIMPL                  { [] }
 
-statements:
-	separated_list(COMMA, statement) { $1 }
+context_statement: 
+	| assignment SEMI { $1 }
+	| funcall SEMI    { $1 }
 
 pattern_expr: 
 	| pattern_expr pattern_op pattern_expr { Binary ($2, $1, $3) }
@@ -269,11 +254,21 @@ condition_expr:
 	| constant                                           { Int $1 }
 	| LPAREN expr = condition_expr RPAREN                { Paren expr }
 
-statement:
-	| separated SEMI { $1 }
-	| label          { Label $1 }
+semantic_body:
+	statement* { $1 }
 	
-separated: 
+macro:
+	KEY_MACRO identifier LPAREN arg_names RPAREN midrule(enable_expr_parser) macro_body
+		{ Macro { id = $2; args = $4; body = $7 } }
+
+macro_body:
+	| LBRACE semantic_body midrule(disable_expr_parser) RBRACE { $2 }
+
+statement:
+	| label          { Label $1 }
+	| non_label SEMI { $1 }
+	
+non_label: 
 	| assignment  { $1 }
 	| declaration { $1 }
 	| funcall     { $1 }
@@ -331,17 +326,28 @@ lvalue:
 	| sized_pointer(expr)       { $1 }
 	
 expr:
-	| expr expr_op expr              { Binary ($2, $1, $3) }
-	| expr_unary_op expr %prec UNARY { Unary ($1, $2) }
-	| LPAREN expr RPAREN             { Paren $2 }
-	| identifier                     { Id $1 }
-	| constant                       { Int $1 }
+	| expr expr_op expr         { Binary ($2, $1, $3) }
+	| expr_unary_op expr_unary  { Unary ($1, $2) }
+	| sized_pointer(expr_unary) { $1 }
+	| expr_unary                { $1 }
+
+expr_unary:
+	| expr_funcall { $1 }
+	| expr_term    { $1 }
+
+expr_term:
+	| LPAREN expr RPAREN                   { Paren $2 }
+	| varnode                              { $1 }
+	| bitrange                             { $1 }
+
+expr_funcall:
+	identifier LPAREN args RPAREN { FunCall ($1, $3) }
 
 varnode:
 	| constant                  { Int $1 }
 	| identifier                { Id $1 }
 	| identifier COLON constant { Sized { expr = Id $1; size = $3 } }
-	/*| integer COLON constant { }*/
+	| constant COLON constant   { Sized { expr = Int $1; size = $3 } }
 
 bitrange:
 	id = identifier LBRACKET start_bit = constant COMMA width = constant RBRACKET
@@ -366,6 +372,9 @@ id_expr:
 args:
 	separated_list(COMMA, expr) { $1 }
 
+arg_names:
+	separated_list(COMMA, identifier) { $1 }
+
 %inline condition_op:
 	| ASSIGN        { OpEq }
 	| NOT_EQUAL     { OpNe }
@@ -384,13 +393,13 @@ args:
 	| MINUS       { OpMinus }
 
 condition_expr_unary_op:
-	| MINUS { OpNeg }
-	| TILDE { OpTilde }
+	| MINUS { OpNegate }
+	| TILDE { OpInvert }
 
 expr_unary_op:
-	| MINUS { OpNeg }
-	| TILDE { OpTilde }
-	| BANG  { OpBang }
+	| MINUS { OpNegate }
+	| TILDE { OpInvert }
+	| BANG  { OpNot }
 
 %inline expr_op:
 	| OR                   { OpBoolOr }
@@ -462,6 +471,15 @@ word_size:
 offset:
 	KEY_OFFSET ASSIGN constant { $3 }
 
+identifier:
+	located(ID) { $1 }
+
+text:
+	located(TEXT) { $1 }
+
+%inline located(X):
+	x=X { Position.with_poss $startpos $endpos x }
+
 constant:
 	| located(integer) { $1 }
 
@@ -491,3 +509,9 @@ semi_is_join:
 
 semi_is_semi:
 	| { semi_is_join := false }
+
+enable_expr_parser:
+	| { expr_parser := true }
+
+disable_expr_parser:
+	| { expr_parser := false }

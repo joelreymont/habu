@@ -28,6 +28,7 @@ and definition =
   | Token of tok
   | PCodeOp of identifier
   | Constructor of constructor
+  | Macro of macro
 
 and space =
   { id : identifier
@@ -130,10 +131,10 @@ and binary_op =
 and unary_op =
   | OpAlignLeft
   | OpAlignRight
-  | OpBang
-  | OpTilde
-  | OpNeg
-  | OpFloatNeg
+  | OpNot
+  | OpInvert
+  | OpNegate
+  | OpFloatNegate
 
 and pointer =
   { space : identifier option

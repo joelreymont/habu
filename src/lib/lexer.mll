@@ -31,6 +31,7 @@ let keyword_table =
       "hex", KEY_HEX;
       "little", KEY_LITTLE;
       "local", KEY_LOCAL;
+      "macro", KEY_MACRO;
       "offset", KEY_OFFSET;
       "pcodeop", KEY_PCODEOP;
       "return", KEY_RETURN;
@@ -42,6 +43,18 @@ let keyword_table =
       "unimpl", KEY_UNIMPL;
       "variables", KEY_VARIABLES;
       "wordsize", KEY_WORDSIZE;
+    ]
+
+let expr_keyword_table =
+  KeywordTable.of_seq @@ List.to_seq [
+      "if", RES_IF;
+      "build", KEY_BUILD;
+      "call", KEY_CALL;
+      "export", KEY_EXPORT;
+      "goto", KEY_GOTO;
+      "local", KEY_LOCAL;
+      "return", KEY_RETURN;
+      "unimpl", KEY_UNIMPL;
     ]
 
 let lexing_error lexbuf msg =
@@ -130,10 +143,16 @@ rule regular_token = parse
 | hex as i { HEX_INT (int_of_string i) }
 | ident as s
   {
-    try KeywordTable.find s keyword_table
+    let table = if !expr_parser then begin
+      expr_keyword_table
+    end else begin
+      keyword_table
+    end in
+    try KeywordTable.find s table
     with Not_found -> ID s
   }
 | '#' { comments lexbuf }
+| eof                 { EOF }
 | _ as bad_char
   {
     lexing_error lexbuf (Printf.sprintf "Unexpected character \'%c\'" bad_char)
@@ -146,6 +165,7 @@ and display_token = parse
 | ['i' 'I'] ['s' 'S'] { RES_IS }
 | ident as s          { ID s }
 | text as s           { TEXT s }
+| eof                 { EOF }
 | _ as bad_char
   {
     lexing_error lexbuf (Printf.sprintf "Unexpected character \'%c\'" bad_char)
