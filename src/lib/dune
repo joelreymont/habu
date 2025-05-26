@@ -8,21 +8,5 @@
 
 (menhir
  (modules parser)
- (flags --dump --exn-carries-state)
+ (flags --dump)
  (infer true))
-
-(rule
- (targets parser.messages)
- (mode fallback)
- (action
-  (with-stdout-to
-   %{targets}
-   (run menhir --list-errors %{targets}))))
-
-(rule
- (targets parser_messages.ml)
- (deps parser.messages parser.mly)
- (action
-  (with-stdout-to
-   %{targets}
-   (run menhir --compile-errors %{deps}))))
