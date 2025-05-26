@@ -1,5 +1,5 @@
 %{
-open AST
+open Parsetree
 open Position
 open Util
 %}
@@ -11,18 +11,15 @@ open Util
 %token <string> TEXT
 %token RES_IS
 %token RES_IF 
-%token RES_RAM_SPACE
-%token RES_ROM_SPACE
-%token RES_REGISTER_SPACE
 %token RES_REGISTER
 %token KEY_ALIGNMENT
 %token KEY_ATTACH
 %token KEY_BIG
+%token KEY_DEFAULT
 %token KEY_LITTLE
 %token KEY_BUILD
 %token KEY_CALL
 %token KEY_DEC
-%token KEY_DEFAULT
 %token KEY_DEFINE
 %token KEY_ENDIAN
 %token KEY_EXPORT
@@ -30,17 +27,13 @@ open Util
 %token KEY_HEX
 %token KEY_LOCAL
 %token KEY_MACRO
-%token KEY_OFFSET
 %token KEY_PCODEOP
 %token KEY_RETURN
 %token KEY_SIGNED
-%token KEY_SIZE
 %token KEY_SPACE
 %token KEY_TOKEN
-%token KEY_TYPE
 %token KEY_UNIMPL
 %token KEY_VARIABLES
-%token KEY_WORDSIZE
 %token ELLIPSIS
 %token LBRACE
 %token RBRACE
@@ -114,7 +107,7 @@ open Util
 %left STAR SLASH PERCENT FLOAT_DIV FLOAT_MUL SIGNED_DIV SIGNED_MOD
 %nonassoc UNARY
 
-%start <AST.t> grammar
+%start <Parsetree.t> grammar
 %%
 
 grammar:
@@ -157,10 +150,9 @@ space_definition:
 		{ Space { id = $3; mods = $4 } } 
 
 space_mod:
-	| space_type_mod   { Type $1 }
-	| size             { Size $1 }
-	| word_size        { WordSize $1 }
-	| space_is_default { Default $1 }
+	| identifier ASSIGN identifier { IdMod ($1, $3) }
+	| identifier ASSIGN constant   { IntMod ($1, $3) }
+	| space_is_default             { Default $1 }
 
 space_name:
 	| RES_REGISTER { Position.with_poss $startpos $endpos "register" }
@@ -171,8 +163,7 @@ varnode_definition:
 		{ VarNode { mods = $3; registers = $5 } }
 
 varnode_mod:
-	| size   { Size $1 }
-	| offset { Offset $1 }
+	identifier ASSIGN constant { ($1, $3) }
 
 token_definition:
 	KEY_DEFINE KEY_TOKEN identifier LPAREN constant RPAREN token_field+
@@ -186,14 +177,12 @@ pcodeop_definition:
 	KEY_DEFINE KEY_PCODEOP identifier { PCodeOp $3 }
 
 constructor:
-	midrule(enable_expr_parser)
 	ctr_name COLON display pattern? context constructor_body
-		{ Constructor { id = $2; display = $4; pattern = $5; context = $6; body = $7 } }
+		{ Constructor { id = $1; display = $3; pattern = $4; context = $5; body = $6 } }
 	
 ctr_name:
 	identifier?
-	midrule(flip_lexer_state)
-	midrule(collect_whitespace)
+	midrule(display_lexer_on)
 	midrule(semi_is_join)
 		{ $1 }
 
@@ -202,14 +191,20 @@ display:
 		{ { mnemonic = $1; output = $2 } }
 
 mnemonic:
-	display_piece* midrule(skip_whitespace) SPACE
+	display_piece* SPACE
 		{ $1 }
 
 output:
-	| display_piece* midrule(flip_lexer_state) RES_IS { $1 }
+	| output_piece* midrule(display_lexer_off) RES_IS { $1 }
 
 display_piece:
 	| CARET      { Caret }
+	| identifier { Id $1 }
+	| text       { Text $1 }
+
+output_piece:
+	| CARET      { Caret }
+	| SPACE      { Whitespace }
 	| identifier { Id $1 }
 	| text       { Text $1 }
 
@@ -221,8 +216,8 @@ context:
 	|                                      { [] }
 
 constructor_body:
-	| LBRACE semantic_body midrule(disable_expr_parser) RBRACE { $2 }
-	| midrule(disable_expr_parser) KEY_UNIMPL                  { [] }
+	| LBRACE semantic_body RBRACE { $2 }
+	|                      KEY_UNIMPL { [] }
 
 context_statement: 
 	| assignment SEMI { $1 }
@@ -258,11 +253,11 @@ semantic_body:
 	statement* { $1 }
 	
 macro:
-	KEY_MACRO identifier LPAREN arg_names RPAREN midrule(enable_expr_parser) macro_body
-		{ Macro { id = $2; args = $4; body = $7 } }
+	KEY_MACRO identifier LPAREN arg_names RPAREN macro_body
+		{ Macro { id = $2; args = $4; body = $6 } }
 
 macro_body:
-	| LBRACE semantic_body midrule(disable_expr_parser) RBRACE { $2 }
+	| LBRACE semantic_body RBRACE { $2 }
 
 statement:
 	| label          { Label $1 }
@@ -451,25 +446,8 @@ token_field_mod:
 	| signed { Signed $1 }
 	| hex    { Hex $1 }
 
-space_type_mod:
-	| KEY_TYPE ASSIGN located(space_type) { $3 }
-
-space_type:
-	| RES_RAM_SPACE      { Ram }
-	| RES_ROM_SPACE      { Rom }
-	| RES_REGISTER_SPACE { Register }
-
 space_is_default:
 	| KEY_DEFAULT { true }
-
-size:
-	KEY_SIZE ASSIGN constant { $3 }
-
-word_size:
-	KEY_WORDSIZE ASSIGN constant { $3 }
-
-offset:
-	KEY_OFFSET ASSIGN constant { $3 }
 
 identifier:
 	located(ID) { $1 }
@@ -495,14 +473,11 @@ hex:
 	| KEY_HEX { true }
 	| KEY_DEC { false }
 
-flip_lexer_state:
-	| { flip_lexer_state() }
+display_lexer_on:
+	| { display_lexer_on() }
 
-skip_whitespace:
-	| { skip_whitespace := true }
-
-collect_whitespace:
-	| { skip_whitespace := false }
+display_lexer_off:
+	| { display_lexer_off() }
 
 semi_is_join:
 	| { semi_is_join := true }
@@ -510,8 +485,3 @@ semi_is_join:
 semi_is_semi:
 	| { semi_is_join := false }
 
-enable_expr_parser:
-	| { expr_parser := true }
-
-disable_expr_parser:
-	| { expr_parser := false }

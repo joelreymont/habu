@@ -13,9 +13,6 @@ let keyword_table =
   KeywordTable.of_seq @@ List.to_seq [
       "is", RES_IS;
       "if", RES_IF;
-      "ram_space", RES_RAM_SPACE;
-      "rom_space", RES_ROM_SPACE;
-      "register_space", RES_REGISTER_SPACE;
       "register", RES_REGISTER;
       "alignment", KEY_ALIGNMENT;
       "attach", KEY_ATTACH;
@@ -32,29 +29,13 @@ let keyword_table =
       "little", KEY_LITTLE;
       "local", KEY_LOCAL;
       "macro", KEY_MACRO;
-      "offset", KEY_OFFSET;
       "pcodeop", KEY_PCODEOP;
       "return", KEY_RETURN;
       "signed", KEY_SIGNED;
-      "size", KEY_SIZE;
       "space", KEY_SPACE;
       "token", KEY_TOKEN;
-      "type", KEY_TYPE;
       "unimpl", KEY_UNIMPL;
       "variables", KEY_VARIABLES;
-      "wordsize", KEY_WORDSIZE;
-    ]
-
-let expr_keyword_table =
-  KeywordTable.of_seq @@ List.to_seq [
-      "if", RES_IF;
-      "build", KEY_BUILD;
-      "call", KEY_CALL;
-      "export", KEY_EXPORT;
-      "goto", KEY_GOTO;
-      "local", KEY_LOCAL;
-      "return", KEY_RETURN;
-      "unimpl", KEY_UNIMPL;
     ]
 
 let lexing_error lexbuf msg =
@@ -67,7 +48,7 @@ let regular_lexer = ref dummy_lexer
 let display_lexer = ref dummy_lexer
 
 let token lexbuf = 
-  match get_lexer_state () with
+  match get_lexer_type () with
     | Regular -> !regular_lexer lexbuf
     | Display -> !display_lexer lexbuf
 }
@@ -143,12 +124,7 @@ rule regular_token = parse
 | hex as i { HEX_INT (int_of_string i) }
 | ident as s
   {
-    let table = if !expr_parser then begin
-      expr_keyword_table
-    end else begin
-      keyword_table
-    end in
-    try KeywordTable.find s table
+    try KeywordTable.find s keyword_table
     with Not_found -> ID s
   }
 | '#' { comments lexbuf }
@@ -161,7 +137,7 @@ rule regular_token = parse
 and display_token = parse
 | '\n'                { Lexing.new_line lexbuf; token lexbuf }
 | ['\t' '\r']+        { token lexbuf }
-| ' '+                { if !skip_whitespace then token lexbuf else SPACE }
+| ' '+                { SPACE }
 | ['i' 'I'] ['s' 'S'] { RES_IS }
 | ident as s          { ID s }
 | text as s           { TEXT s }
