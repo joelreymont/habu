@@ -1,6 +1,8 @@
 open Printf
 module E = MenhirLib.ErrorReports
 module L = MenhirLib.LexerUtil
+module Lexer = Sleigh_lexer
+module Parser = Sleigh_parser
 
 (* [show text (pos1, pos2)] displays a range of the input text [text]
    delimited by the positions [pos1] and [pos2]. *)

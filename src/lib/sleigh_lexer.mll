@@ -1,6 +1,6 @@
 {
 open Util
-open Parser
+open Sleigh_parser
 
 module KeywordTable =
   Map.Make(struct

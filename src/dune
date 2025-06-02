@@ -1,4 +1,4 @@
 (executable
  (name bop)
  (public_name bop)
- (libraries bop menhirLib))
+ (libraries bop))

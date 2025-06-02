@@ -2,11 +2,11 @@
  (name bop)
  (preprocess
   (pps ppx_sexp_conv))
- (libraries menhirLib sexplib stdint))
+ (libraries menhirLib stdint sexplib))
 
-(ocamllex lexer)
+(ocamllex sleigh_lexer)
 
 (menhir
- (modules parser)
+ (modules sleigh_parser)
  (flags --dump)
  (infer true))

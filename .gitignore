@@ -11,6 +11,9 @@
 # ocamlbuild working directory
 _build/
 
+# dune
+dune.lock/
+
 # ocamlbuild targets
 *.byte
 *.native
