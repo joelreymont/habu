@@ -1,196 +1,329 @@
-open Sexplib.Std
+open Util
 open Position
 
-type endian =
-  | Send_big
-  | Send_little
-[@@deriving sexp]
+type integer = int located
+type id = string located
 
-type integer = int located [@@deriving sexp]
-type identifier = string located [@@deriving sexp]
+let strcmp a b =
+  let open String in
+  equal (lowercase_ascii a) (lowercase_ascii b)
+;;
 
-type program = definition list
+let lower = String.lowercase_ascii
 
-and definition =
-  | Sdef_endian of endian located
-  | Sdef_alignment of integer
-  | Sdef_space of space
-  | Sdef_varnode of varnode
-  | Sdef_varnode_attach of varnode_attach
-  | Sdef_token of tok
-  | Sdef_pcode_op of identifier
-  | Sdef_constructor of constructor
-  | Sdef_macro of macro
+let syntax_error token =
+  let pos = position token in
+  Error.error "Syntax error" pos ""
+;;
 
-and space =
-  { ssp_id : identifier
-  ; ssp_mods : space_mod list
-  }
+(* define endian=big; *)
+module Endian = struct
+  type t =
+    | Big
+    | Little
+end
 
-and space_mod =
-  | Sspmod_id of identifier * identifier
-  | Sspmod_int of identifier * integer
-  | Sspmod_is_default of bool
+(*
+   define space ram type=ram_space size=4 wordsize=1 default;
+   define space register type=register_space size=4;
+*)
+module Space = struct
+  type t =
+    { id : id
+    ; kind : k
+    ; size : int
+    ; word_size : int
+    ; is_default : bool
+    }
 
-and varnode =
-  { svn_mods : (identifier * integer) list
-  ; svn_registers : identifier list
-  }
+  and m =
+    [ `Kind of k
+    | `Size of integer
+    | `WordSize of integer
+    | `Default of bool
+    ]
 
-and varnode_attach =
-  { svna_nodes : identifier list
-  ; svna_values : identifier list
-  }
+  and k =
+    | Rom
+    | Ram
+    | Register
 
-and tok =
-  { stok_id : identifier
-  ; stok_bit_size : integer
-  ; stok_fields : token_field list
-  }
+  let make ~id ~mods =
+    let kind = ref None
+    and size = ref None
+    and word_size = ref 1
+    and is_default = ref false in
+    let f = function
+      | `Kind k -> kind := Some k
+      | `Size n -> size := Some n
+      | `WordSize n -> word_size := n.value
+      | `Default _ -> is_default := true
+    in
+    List.iter f mods;
+    if !kind == None then syntax_error id "missing space type";
+    match !size with
+    | None -> syntax_error id "missing space type"
+    | Some n when n.value == 0 -> syntax_error id "size must not be 0"
+    | _ ->
+      ();
+      let kind = Option.get !kind
+      and size = (Option.get !size).value
+      and word_size = !word_size
+      and is_default = !is_default in
+      { id; kind; size; word_size; is_default }
+  ;;
 
-and constructor =
-  { sctr_id : identifier option
-  ; sctr_display : display
-  ; sctr_pattern : expr option
-  ; sctr_context : statement list
-  ; sctr_body : statement list
-  }
+  let make_kind id1 id2 =
+    if not (strcmp id1.value "type") then syntax_error id1 "expecting 'type'";
+    let kind = lower id2.value in
+    let kind =
+      match kind with
+      | "rom" -> Rom
+      | "ram" -> Ram
+      | "register" -> Register
+      | _ ->
+        let pos = get_position id2 in
+        raise (Syntax_error (Some pos, "expecting 'rom', 'ram' or 'register'"))
+    in
+    `Kind kind
+  ;;
 
-and macro =
-  { smac_id : identifier
-  ; smac_args : identifier list
-  ; smac_body : statement list
-  }
+  let make_size id n =
+    if n.value == 0 then syntax_error n "size must not be 0";
+    match lower id.value with
+    | "size" -> `Size n
+    | "wordsize" -> `WordSize n
+    | _ -> syntax_error id "expecting 'size' or 'wordsize'"
+  ;;
 
-and expr =
-  | Sexp_binary of binary_op * expr * expr
-  | Sexp_unary of unary_op * expr
-  | Sexp_paren of expr
-  | Sexp_fun_call of identifier * args
-  | Sexp_id of identifier
-  | Sexp_int of integer
-  | Sexp_bit_range of range
-  | Sexp_pointer of pointer
-  | Sexp_sized of sized
+  let make_default b = `Default b
+end
 
-and args = expr list
+(* define register offset=0 size=4 [r0 r1 r2 r3]; *)
+module Varnode = struct
+  type t =
+    { registers : id list
+    ; size : int
+    ; offset : int
+    }
 
-and binary_op =
-  | Sexp_op_join
-  | Sexp_op_bool_or
-  | Sexp_op_bool_and
-  | Sexp_op_bool_xor
-  | Sexp_op_or
-  | Sexp_op_and
-  | Sexp_op_xor
-  | Sexp_op_eq
-  | Sexp_op_ne
-  | Sexp_op_float_eq
-  | Sexp_op_float_ne
-  | Sexp_op_gt
-  | Sexp_op_lt
-  | Sexp_op_ge
-  | Sexp_op_le
-  | Sexp_op_signed_gt
-  | Sexp_op_signed_lt
-  | Sexp_op_signed_ge
-  | Sexp_op_signed_le
-  | Sexp_op_float_gt
-  | Sexp_op_float_lt
-  | Sexp_op_float_ge
-  | Sexp_op_float_le
-  | Sexp_op_shift_left
-  | Sexp_op_shift_right
-  | Sexp_op_signed_shift_left
-  | Sexp_op_signed_shift_right
-  | Sexp_op_plus
-  | Sexp_op_minus
-  | Sexp_op_float_plus
-  | Sexp_op_float_minus
-  | Sexp_op_mul
-  | Sexp_op_div
-  | Sexp_op_mod
-  | Sexp_op_signed_div
-  | Sexp_op_signed_mod
-  | Sexp_op_float_mul
-  | Sexp_op_float_div
+  type m =
+    | Offset of int
+    | Size of int
 
-and unary_op =
-  | Sexp_op_align_left
-  | Sexp_op_align_right
-  | Sexp_op_not
-  | Sexp_op_invert
-  | Sexp_op_negate
-  | Sexp_op_float_negate
+  let make ~pos ~mods ~registers =
+    let size = ref None
+    and offset = ref None in
+    let f = function
+      | Size n -> size := Some n
+      | Offset n -> offset := Some n
+    in
+    List.iter f mods;
+    if !size == None then syntax_error pos "missing varnode size";
+    if !offset == None then syntax_error pos "missing varnode offset";
+    if List.is_empty registers then
+      syntax_error pos "register list must not be empty";
+    let size = Option.get !size
+    and offset = Option.get !offset in
+    { size; offset; registers }
+  ;;
 
-and pointer =
-  { sptr_space : identifier option
-  ; sptr_expr : expr
-  }
+  let make_mod id n =
+    match lower id.value with
+    | "offset" -> Offset n.value
+    | "size" ->
+      if n.value == 0 then syntax_error n "size must not be 0";
+      Size n.value
+    | _ -> syntax_error id "expecting 'size' or 'offset'"
+  ;;
+end
 
-and sized =
-  { ssz_expr : expr
-  ; ssz_size : integer
-  }
+(* attach variables [Rt Rs] [r0 r1];*)
+module Varnode_attach = struct
+  type t =
+    { fields : id list
+    ; registers : id list
+    }
 
-and range =
-  { srng_id : identifier
-  ; srng_start_bit : integer
-  ; srng_width : integer
-  }
+  let make ~pos ~fields ~registers =
+    if List.is_empty fields then syntax_error pos "field list must not be empty";
+    if List.is_empty registers then
+      syntax_error pos "register list must not be empty";
+    { fields; registers }
+  ;;
+end
 
-and display =
-  { sdsp_mnemonic : pieces
-  ; sdsp_output : pieces
-  }
+module Token_field = struct
+  type t =
+    { id : id
+    ; start_bit : integer
+    ; end_bit : integer
+    ; is_signed : bool
+    ; is_hex : bool
+    }
 
-and pieces = piece list
+  and m =
+    | Signed of bool
+    | Hex of bool
 
-and piece =
-  | Spc_id of identifier
-  | Spc_text of identifier
-  | Spc_caret
-  | Spc_whitespace
+  let make ~id ~start_bit ~end_bit ~mods =
+    let is_signed = ref false
+    and is_hex = ref false in
+    let f = function
+      | Signed flag -> is_signed := flag
+      | Hex flag -> is_hex := flag
+    in
+    List.iter f mods;
+    let is_signed = !is_signed
+    and is_hex = !is_hex in
+    { id; start_bit; end_bit; is_signed; is_hex }
+  ;;
+end
 
-and token_field =
-  { stf_id : identifier
-  ; stf_start_bit : integer
-  ; stf_end_bit : integer
-  ; stf_mods : token_field_mod list
-  }
+module Token = struct
+  type t =
+    { id : id
+    ; bit_size : integer
+    ; fields : Token_field.t list
+    }
 
-and token_field_mod =
-  | Stfm_signed of bool
-  | Stfm_hex of bool
+  let make ~id ~bit_size ~fields = { id; bit_size; fields }
+end
 
-and statement =
-  | Sstm_assign of expr * expr
-  | Sstm_declare of declare
-  | Sstm_fun_call of identifier * args
-  | Sstm_build of identifier
-  | Sstm_goto of jump_target
-  | Sstm_call of jump_target
-  | Sstm_return of jump_target
-  | Sstm_branch of branch
-  | Sstm_label of identifier
-  | Sstm_export of expr
+module Expr = struct
+  type binary_op =
+    | JOIN
+    | BOR
+    | BAND
+    | BXOR
+    | OR
+    | AND
+    | XOR
+    | EQ
+    | NE
+    | GT
+    | LT
+    | GE
+    | LE
+    | SGT
+    | SLT
+    | SGE
+    | SLE
+    | FEQ
+    | FNE
+    | FGT
+    | FLT
+    | FGE
+    | FLE
+    | LSHIFT
+    | RSHIFT
+    | SLSHIFT
+    | SRSHIFT
+    | PLUS
+    | MINUS
+    | FPLUS
+    | FMINUS
+    | MUL
+    | DIV
+    | MOD
+    | SDIV
+    | SMOD
+    | FMUL
+    | FDIV
 
-and declare =
-  { sdecl_id : identifier
-  ; sdecl_size : integer option
-  }
+  and unary_op =
+    | ALEFT
+    | ARIGHT
+    | NOT
+    | INV
+    | NEG
+    | FNEG
 
-and branch =
-  { sbr_condition : expr
-  ; sbr_target : jump_target
-  }
+  type t =
+    | Binary of binary_op * t * t
+    | Unary of unary_op * t
+    | Paren of t
+    | FunCall of id * t list
+    | Id of id
+    | Int of integer
+    | BitRange of id * integer * integer
+    | Pointer of t * id option
+    | Sized of t * integer
+end
 
-and jump_target =
-  | Sjmp_fixed of integer * identifier option
-  | Sjmp_direct of identifier
-  | Sjmp_indirect of expr
-  | Sjmp_relative of integer * identifier
-  | Sjmp_label of identifier
-[@@deriving sexp]
+module Display = struct
+  type t =
+    { mnemonic : piece list
+    ; output : piece list
+    }
 
-and t = program
+  and piece =
+    | Id of id
+    | Text of id
+    | Caret
+    | Whitespace
+
+  let make ~mnemonic ~output = { mnemonic; output }
+end
+
+module Jump_target = struct
+  type t =
+    | Fixed of integer * id option
+    | Direct of id
+    | Indirect of Expr.t
+    | Relative of integer * id
+    | Label of id
+end
+
+module Statement = struct
+  type t =
+    | Assign of Expr.t * Expr.t
+    | Declare of id * integer option
+    | Fun_call of id * Expr.t list
+    | Build of id
+    | Goto of Jump_target.t
+    | Call of Jump_target.t
+    | Return of Jump_target.t
+    | Branch of Expr.t * Jump_target.t
+    | Label of id
+    | Export of Expr.t
+end
+
+module Macro = struct
+  type t =
+    { id : id
+    ; args : id list
+    ; body : Statement.t list
+    }
+
+  let make ~id ~args ~body = { id; args; body }
+end
+
+module Constructor = struct
+  type t =
+    { id : id option
+    ; display : Display.t
+    ; pattern : Expr.t option
+    ; context : Statement.t list
+    ; body : Statement.t list
+    }
+
+  let make ~id ~display ~pattern ~context ~body =
+    { id; display; pattern; context; body }
+  ;;
+end
+
+module Definition = struct
+  type t =
+    | Endian of Endian.t located
+    | Alignment of integer
+    | Space of Space.t
+    | Varnode of Varnode.t
+    | Varnode_attach of Varnode_attach.t
+    | Token of Token.t
+    | Pcode_op of id
+    | Constructor of Constructor.t
+    | Macro of Macro.t
+end
+
+type t = Definition.t list

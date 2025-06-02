@@ -1,11 +1,11 @@
 (lang dune 3.18)
 
-(name bop)
+(name habu)
 
 (using menhir 3.0)
 
 (package
- (name bop)
+ (name habu)
  (allow_empty)
  (depends
   (ocaml

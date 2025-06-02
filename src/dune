@@ -1,4 +1,4 @@
 (executable
- (name bop)
- (public_name bop)
- (libraries bop))
+ (name habu)
+ (public_name habu)
+ (libraries habu))

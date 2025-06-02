@@ -1,7 +1,5 @@
 (library
- (name bop)
- (preprocess
-  (pps ppx_sexp_conv))
+ (name habu)
  (libraries menhirLib stdint sexplib))
 
 (ocamllex sleigh_lexer)

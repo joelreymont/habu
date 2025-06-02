@@ -1,4 +1,4 @@
-open Bop
+open Habu
 open Driver
 open Settings
 
@@ -9,11 +9,19 @@ let print_version () =
 
 let () = Random.self_init ()
 let filename = ref ""
-let settings = ref { default_settings with debug_fun = Printf.eprintf "%s\n%!" }
+
+let settings =
+  ref
+    { default_settings with
+      debug_fun = Printf.eprintf "%s\n%!"
+    }
+;;
 
 let args =
   [ ( "--debug"
-    , Arg.Unit (fun () -> settings := { !settings with debug = true })
+    , Arg.Unit
+        (fun () ->
+          settings := { !settings with debug = true })
     , "Print debugging information to stderr" )
   ; ( "--version"
     , Arg.Unit
@@ -24,13 +32,17 @@ let args =
   ]
 ;;
 
-let usage = Printf.sprintf "Usage: %s [OPTIONS] <Sleigh file>" Sys.argv.(0)
+let usage =
+  Printf.sprintf
+    "Usage: %s [OPTIONS] <Sleigh file>"
+    Sys.argv.(0)
+;;
 
 let () =
-  if Array.length Sys.argv = 1
-  then (
+  if Array.length Sys.argv = 1 then (
     Arg.usage args usage;
-    exit 1)
+    exit 1
+  )
 ;;
 
 let () = Arg.parse args (fun f -> filename := f) usage
@@ -39,7 +51,10 @@ let () =
   let g = parse !filename in
   match g with
   | Error msg ->
-    Printf.eprintf "Could not load grammar from %s.\n%s%!\n" !filename msg;
+    Printf.eprintf
+      "Could not load grammar from %s.\n%s%!\n"
+      !filename
+      msg;
     exit 1
   | Ok _ -> print_endline "All good!"
 ;;
