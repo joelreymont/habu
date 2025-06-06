@@ -191,6 +191,16 @@ module Type = struct
     | Pcode_op : Pcode_op.t t
 end
 
+let term_of_value : type a. a -> a Type.t -> a Term.t =
+  fun value -> function
+  | Register -> Term.Register value
+  | Register_index -> Term.Register_index value
+  | Bit_field -> Term.Bit_field value
+  | Macro -> Term.Macro value
+  | Memory_segment -> Memory_segment value
+  | Pcode_op -> Pcode_op value
+;;
+
 module Type_env = struct
   type t =
     | Nil
@@ -225,6 +235,19 @@ module Type_env = struct
         | None -> assert false
       ) else
         lookup rest name ty
+  ;;
+
+  type value_type = Value_type : ('a * 'a Type.t) -> value_type [@@unboxed]
+
+  let rec find : type a. t -> string -> value_type option =
+    fun env name ->
+    match env with
+    | Nil -> None
+    | Cons (xname, ty, value, rest) ->
+      if name = xname then
+        Some (Value_type (value, ty))
+      else
+        find rest name
   ;;
 end
 
@@ -349,6 +372,27 @@ let lift_macro_exn env (m : S.Macro.t) =
     env := Type_env.append ~env:!env ~name ~ty ~value
 ;;
 
+let lift_expr_exn env (expr : S.Expr.t) =
+  (* | Binary of binary_op * t * t *)
+  (* | Unary of unary_op * t *)
+  (* | Paren of t *)
+  (* | FunCall of id * t list *)
+  (* | Id of id *)
+  (* | Int of integer *)
+  (* | BitRange of id * integer * integer *)
+  (* | Pointer of t * id option *)
+  (* | Sized of t * integer *)
+  match expr with
+  | Id id ->
+    let name = id.value in
+    (match Type_env.find !env name with
+     | None ->
+       let pos = position id in
+       Error.error pos (Printf.sprintf "Unknown register '%s'" name)
+     | Some (value, ty) -> ())
+  | _ -> ()
+;;
+
 let lift_defs_exn defs =
   let env = ref (Type_env.make ())
   and endian = ref None
@@ -380,3 +424,4 @@ let gensym prefix =
     incr count;
     prefix ^ string_of_int !count
 ;;
+| _ -> ()

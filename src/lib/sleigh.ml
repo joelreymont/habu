@@ -187,8 +187,59 @@ module Token = struct
   let make ~id ~bit_size ~fields = { id; bit_size; fields }
 end
 
+module Pattern = struct
+  type t = pattern list
+
+  and pattern =
+    | Pattern of pattern * pattern_op * pattern
+    | Constraint of condition
+
+  and condition =
+    | Condition of id * condition_op * expr
+    | Symbol of id
+
+  and expr =
+    | Binary of id * binary_op * expr
+    | Unary of unary_op * expr
+    | Id of id
+    | Constant of integer
+
+  and condition_op =
+    | EQ
+    | NE
+    | GT
+    | LT
+
+  and pattern_op =
+    | OR
+    | AND
+
+  and binary_op =
+    | PLUS
+    | MINUS
+    | MUL
+    | DIV
+    | LSHIFT
+    | RSHIFT
+    | AND
+    | OR
+    | XOR
+    | NEG
+end
+
 module Expr = struct
-  type binary_op =
+  type t =
+    | Binary of binary_op * t * t
+    | Unary of unary_op * t
+    | Paren of t
+    | FunCall of id * t list
+    | Id of id
+    | Int of integer
+    | BitRange of id * integer * integer
+    | Pointer of t * id option
+    | Sized of t * integer
+
+  and binary_op =
     | JOIN
     | BOR
     | BAND
@@ -235,17 +286,6 @@ module Expr = struct
     | INV
     | NEG
     | FNEG
-
-  type t =
-    | Binary of binary_op * t * t
-    | Unary of unary_op * t
-    | Paren of t
-    | FunCall of id * t list
-    | Id of id
-    | Int of integer
-    | BitRange of id * integer * integer
-    | Pointer of t * id option
-    | Sized of t * integer
 end
 
 module Display = struct
