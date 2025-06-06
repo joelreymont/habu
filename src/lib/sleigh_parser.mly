@@ -1,10 +1,11 @@
 %{
 open Sleigh
 open Position
-open Util
+open Sleigh_lexer_util
 
 (* Prevent the parser from depending on the library *)
 module Habu = struct end
+
 %}
 
 %token <int> DEC_INT
@@ -117,7 +118,7 @@ grammar:
 	| endian_definition other_definition* EOF
 		{ $1 :: $2 }
 	| e = located(error)
-		{ Error.error "parsing" e.position "Syntax error." }
+		{ Error.error e.position "Syntax error" }
 
 other_definition:
 	| definition SEMI { $1 }

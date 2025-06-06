@@ -7,7 +7,10 @@ module Parser = Sleigh_parser
 (* [show text (pos1, pos2)] displays a range of the input text [text]
    delimited by the positions [pos1] and [pos2]. *)
 let show text positions =
-  E.extract text positions |> E.sanitize |> E.compress |> E.shorten 20 (* max width 43 *)
+  E.extract text positions
+  |> E.sanitize
+  |> E.compress
+  |> E.shorten 20 (* max width 43 *)
 ;;
 
 let fail text buffer =
@@ -25,9 +28,7 @@ let parse filename =
   let text, lexbuf = L.read filename in
   try Ok (Parser.grammar lexer lexbuf) with
   | Parser.Error -> Error (fail text buffer)
-  | Util.Syntax_error (pos, err) ->
-    (match pos with
-     | Some (line, pos) ->
-       Error (Printf.sprintf "Syntax error on line %d, character %d: %s" line pos err)
-     | None -> Error (Printf.sprintf "Syntax error: %s" err))
+  | Error.Error (poss, msg) ->
+    output_string stderr (Error.print_error poss msg);
+    Error (fail text buffer)
 ;;

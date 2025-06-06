@@ -1,4 +1,3 @@
-open Util
 open Position
 
 type integer = int located
@@ -13,7 +12,7 @@ let lower = String.lowercase_ascii
 
 let syntax_error token =
   let pos = position token in
-  Error.error "Syntax error" pos ""
+  Error.error pos
 ;;
 
 (* define endian=big; *)
@@ -81,9 +80,7 @@ module Space = struct
       | "rom" -> Rom
       | "ram" -> Ram
       | "register" -> Register
-      | _ ->
-        let pos = get_position id2 in
-        raise (Syntax_error (Some pos, "expecting 'rom', 'ram' or 'register'"))
+      | _ -> syntax_error id2 "expecting 'rom', 'ram' or 'register'"
     in
     `Kind kind
   ;;

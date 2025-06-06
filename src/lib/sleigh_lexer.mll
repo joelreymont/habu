@@ -1,5 +1,5 @@
 {
-open Util
+open Sleigh_lexer_util
 open Sleigh_parser
 
 module KeywordTable =
@@ -38,9 +38,9 @@ let keyword_table =
       "variables", KEY_VARIABLES;
     ]
 
-let lexing_error lexbuf msg =
-  let line, column = Util.get_lexing_position lexbuf in
-  raise (Syntax_error (Some (line, column), msg))
+let lexing_error lexbuf =
+  let pos = Position.cpos lexbuf in
+  Error.error pos
 
 let dummy_lexer _ = EOF 
 
@@ -48,7 +48,7 @@ let regular_lexer = ref dummy_lexer
 let display_lexer = ref dummy_lexer
 
 let token lexbuf = 
-  match get_lexer_type () with
+  match !lexer_type with
     | Regular -> !regular_lexer lexbuf
     | Display -> !display_lexer lexbuf
 }
