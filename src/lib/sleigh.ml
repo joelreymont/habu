@@ -1,8 +1,8 @@
 open Sexplib.Std
-open Position
+open Annot
 
-type integer = int located [@@deriving sexp]
-type id = string located [@@deriving sexp]
+type 'a integer = (int, 'a) annotated [@@deriving sexp]
+type 'a id = (string, 'a) annotated [@@deriving sexp]
 
 let strcmp a b =
   let open String in
@@ -10,11 +10,6 @@ let strcmp a b =
 ;;
 
 let lower = String.lowercase_ascii
-
-let syntax_error token =
-  let pos = position token in
-  Error.error pos
-;;
 
 (* define endian=big; *)
 module Endian = struct
@@ -29,18 +24,18 @@ end
    define space register type=register_space size=4;
 *)
 module Space = struct
-  type t =
-    { id : id
+  type 'a t =
+    { id : 'a id
     ; kind : k
     ; size : int
     ; word_size : int
     ; is_default : bool
     }
 
-  and m =
+  and 'a m =
     [ `Kind of k
-    | `Size of integer
-    | `WordSize of integer
+    | `Size of 'a integer
+    | `WordSize of 'a integer
     | `Default of bool
     ]
 
@@ -50,7 +45,7 @@ module Space = struct
     | Register
   [@@deriving sexp]
 
-  let make ~id ~mods =
+  let make ~(id : 'a id) ~mods =
     let kind = ref None
     and size = ref None
     and word_size = ref 1
@@ -62,10 +57,10 @@ module Space = struct
       | `Default _ -> is_default := true
     in
     List.iter f mods;
-    if !kind == None then syntax_error id "missing space type";
+    if !kind == None then error id.note "missing space type";
     match !size with
-    | None -> syntax_error id "missing space type"
-    | Some n when n.value == 0 -> syntax_error id "size must not be 0"
+    | None -> error id.note "missing space type"
+    | Some n when n.value == 0 -> error id.note "size must not be 0"
     | _ ->
       ();
       let kind = Option.get !kind
@@ -76,24 +71,24 @@ module Space = struct
   ;;
 
   let make_kind id1 id2 =
-    if not (strcmp id1.value "type") then syntax_error id1 "expecting 'type'";
+    if not (strcmp id1.value "type") then error id1.note "expecting 'type'";
     let kind = lower id2.value in
     let kind =
       match kind with
       | "rom" -> Rom
       | "ram" -> Ram
       | "register" -> Register
-      | _ -> syntax_error id2 "expecting 'rom', 'ram' or 'register'"
+      | _ -> error id2.note "expecting 'rom', 'ram' or 'register'"
     in
     `Kind kind
   ;;
 
   let make_size id n =
-    if n.value == 0 then syntax_error n "size must not be 0";
+    if n.value == 0 then error n "size must not be 0";
     match lower id.value with
     | "size" -> `Size n
     | "wordsize" -> `WordSize n
-    | _ -> syntax_error id "expecting 'size' or 'wordsize'"
+    | _ -> error id.note "expecting 'size' or 'wordsize'"
   ;;
 
   let make_default b = `Default b
@@ -101,8 +96,8 @@ end
 
 (* define register offset=0 size=4 [r0 r1 r2 r3]; *)
 module Varnode = struct
-  type t =
-    { registers : id list
+  type 'a t =
+    { registers : 'a id list
     ; size : int
     ; offset : int
     }
@@ -121,10 +116,9 @@ module Varnode = struct
       | Offset n -> offset := Some n
     in
     List.iter f mods;
-    if !size == None then syntax_error pos "missing varnode size";
-    if !offset == None then syntax_error pos "missing varnode offset";
-    if List.is_empty registers then
-      syntax_error pos "register list must not be empty";
+    if !size == None then error pos "missing varnode size";
+    if !offset == None then error pos "missing varnode offset";
+    if List.is_empty registers then error pos "register list must not be empty";
     let size = Option.get !size
     and offset = Option.get !offset in
     { size; offset; registers }
@@ -134,33 +128,32 @@ module Varnode = struct
     match lower id.value with
     | "offset" -> Offset n.value
     | "size" ->
-      if n.value == 0 then syntax_error n "size must not be 0";
+      if n.value == 0 then error n "size must not be 0";
       Size n.value
-    | _ -> syntax_error id "expecting 'size' or 'offset'"
+    | _ -> error id.note "expecting 'size' or 'offset'"
   ;;
 end
 
 (* attach variables [Rt Rs] [r0 r1];*)
 module Varnode_attach = struct
-  type t =
-    { fields : id list
-    ; registers : id list
+  type 'a t =
+    { fields : 'a id list
+    ; registers : 'a id list
     }
   [@@deriving sexp]
 
   let make ~pos ~fields ~registers =
-    if List.is_empty fields then syntax_error pos "field list must not be empty";
-    if List.is_empty registers then
-      syntax_error pos "register list must not be empty";
+    if List.is_empty fields then error pos "field list must not be empty";
+    if List.is_empty registers then error pos "register list must not be empty";
     { fields; registers }
   ;;
 end
 
 module Token_field = struct
-  type t =
-    { id : id
-    ; start_bit : integer
-    ; end_bit : integer
+  type 'a t =
+    { id : 'a id
+    ; start_bit : 'a integer
+    ; end_bit : 'a integer
     ; is_signed : bool
     ; is_hex : bool
     }
@@ -185,10 +178,10 @@ module Token_field = struct
 end
 
 module Token = struct
-  type t =
-    { id : id
-    ; bit_size : integer
-    ; fields : Token_field.t list
+  type 'a t =
+    { id : 'a id
+    ; bit_size : 'a integer
+    ; fields : 'a Token_field.t list
     }
   [@@deriving sexp]
 
@@ -196,16 +189,16 @@ module Token = struct
 end
 
 module Expr = struct
-  type t =
-    | Binary of binary_op * t * t
-    | Unary of unary_op * t
-    | Paren of t
-    | FunCall of id * t list
-    | Id of id
-    | Int of integer
-    | BitRange of id * integer * integer
-    | Pointer of t * id option
-    | Sized of t * integer
+  type 'a t =
+    | Binary of binary_op * 'a t * 'a t
+    | Unary of unary_op * 'a t
+    | Paren of 'a t
+    | FunCall of 'a id * 'a t list
+    | Id of 'a id
+    | Int of 'a integer
+    | BitRange of 'a id * 'a integer * 'a integer
+    | Pointer of 'a t * 'a id option
+    | Sized of 'a t * 'a integer
 
   and binary_op =
     | JOIN
@@ -258,17 +251,17 @@ module Expr = struct
 end
 
 module Pattern = struct
-  type t = pattern list
+  type 'a t = 'a pattern list
 
-  and pattern =
-    | Pattern of pattern * pattern_op * pattern
-    | Constraint of condition
+  and 'a pattern =
+    | Pattern of 'a pattern * pattern_op * 'a pattern
+    | Constraint of 'a condition
 
-  and condition =
-    | Condition of id * condition_op * expr
-    | Symbol of id
+  and 'a condition =
+    | Condition of 'a id * condition_op * 'a expr
+    | Symbol of 'a id
 
-  and expr = Expr.t
+  and 'a expr = 'a Expr.t
 
   and condition_op =
     | EQ
@@ -283,14 +276,14 @@ module Pattern = struct
 end
 
 module Display = struct
-  type t =
-    { mnemonic : piece list
-    ; output : piece list
+  type 'a t =
+    { mnemonic : 'a piece list
+    ; output : 'a piece list
     }
 
-  and piece =
-    | Id of id
-    | Text of id
+  and 'a piece =
+    | Id of 'a id
+    | Text of 'a id
     | Caret
     | Whitespace
   [@@deriving sexp]
@@ -299,35 +292,35 @@ module Display = struct
 end
 
 module Jump_target = struct
-  type t =
-    | Fixed of integer * id option
-    | Direct of id
-    | Indirect of Expr.t
-    | Relative of integer * id
-    | Label of id
+  type 'a t =
+    | Fixed of 'a integer * 'a id option
+    | Direct of 'a id
+    | Indirect of 'a Expr.t
+    | Relative of 'a integer * 'a id
+    | Label of 'a id
   [@@deriving sexp]
 end
 
 module Statement = struct
-  type t =
-    | Assign of Expr.t * Expr.t
-    | Declare of id * integer option
-    | Fun_call of id * Expr.t list
-    | Build of id
-    | Goto of Jump_target.t
-    | Call of Jump_target.t
-    | Return of Jump_target.t
-    | Branch of Expr.t * Jump_target.t
-    | Label of id
-    | Export of Expr.t
+  type 'a t =
+    | Assign of 'a Expr.t * 'a Expr.t
+    | Declare of 'a id * 'a integer option
+    | Fun_call of 'a id * 'a Expr.t list
+    | Build of 'a id
+    | Goto of 'a Jump_target.t
+    | Call of 'a Jump_target.t
+    | Return of 'a Jump_target.t
+    | Branch of 'a Expr.t * 'a Jump_target.t
+    | Label of 'a id
+    | Export of 'a Expr.t
   [@@deriving sexp]
 end
 
 module Macro = struct
-  type t =
-    { id : id
-    ; args : id list
-    ; body : Statement.t list
+  type 'a t =
+    { id : 'a id
+    ; args : 'a id list
+    ; body : 'a Statement.t list
     }
   [@@deriving sexp]
 
@@ -335,12 +328,12 @@ module Macro = struct
 end
 
 module Constructor = struct
-  type t =
-    { id : id option
-    ; display : Display.t
-    ; pattern : Expr.t option
-    ; context : Statement.t list
-    ; body : Statement.t list
+  type 'a t =
+    { id : 'a id option
+    ; display : 'a Display.t
+    ; pattern : 'a Expr.t option
+    ; context : 'a Statement.t list
+    ; body : 'a Statement.t list
     }
   [@@deriving sexp]
 
@@ -350,17 +343,17 @@ module Constructor = struct
 end
 
 module Definition = struct
-  type t =
-    | Endian of Endian.t located
-    | Alignment of integer
-    | Space of Space.t
-    | Varnode of Varnode.t
-    | Varnode_attach of Varnode_attach.t
-    | Token of Token.t
-    | Pcode_op of id
-    | Constructor of Constructor.t
-    | Macro of Macro.t
+  type 'a t =
+    | Endian of (Endian.t, 'a) annotated
+    | Alignment of 'a integer
+    | Space of 'a Space.t
+    | Varnode of 'a Varnode.t
+    | Varnode_attach of 'a Varnode_attach.t
+    | Token of 'a Token.t
+    | Pcode_op of 'a id
+    | Constructor of 'a Constructor.t
+    | Macro of 'a Macro.t
   [@@deriving sexp]
 end
 
-type t = Definition.t list [@@deriving sexp]
+type 'a t = 'a Definition.t list [@@deriving sexp]

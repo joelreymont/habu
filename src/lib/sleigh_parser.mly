@@ -1,6 +1,6 @@
 %{
+open Annot
 open Sleigh
-open Position
 open Sleigh_lexer_util
 
 (* Prevent the parser from depending on the library *)
@@ -111,15 +111,15 @@ module Habu = struct end
 %left STAR SLASH PERCENT FLOAT_DIV FLOAT_MUL SIGNED_DIV SIGNED_MOD
 %nonassoc UNARY
 
-%start <Sleigh.t> grammar
-%start <Sleigh.Definition.t> endian_definition
+%start <Position.t Sleigh.t> grammar
+%start <Position.t Sleigh.Definition.t> endian_definition
 %%
 
 grammar:
 	| endian_definition other_definition* EOF
 		{ $1 :: $2 }
 	| e = located(error)
-		{ Error.error e.position "Syntax error" }
+		{ error e.note "Syntax error" }
 
 other_definition:
 	| definition SEMI { $1 }
@@ -160,8 +160,8 @@ space_mod:
 	| space_is_default   { Space.make_default $1 }
 
 space_name:
-	| RES_REGISTER { Position.with_poss $startpos $endpos "register" }
-	| id   { $1 }
+	| RES_REGISTER { with_pos Position.(lex_join $startpos $endpos) "register" }
+	| id           { $1 }
 
 varnode_definition:
 	varnode_start RES_REGISTER varnode_mod+ LBRACKET id+ RBRACKET
@@ -458,7 +458,7 @@ text:
 	located(TEXT) { $1 }
 
 %inline located(X):
-	x=X { Position.with_poss $startpos $endpos x }
+	x=X { with_pos Position.(lex_join $startpos $endpos) x }
 
 constant:
 	| located(integer) { $1 }

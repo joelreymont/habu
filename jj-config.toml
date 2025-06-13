@@ -1,3 +1,0 @@
-[revset-aliases]
-"trunk()" = "main@origin"
-"immutable_heads()" = "none()"

@@ -120,8 +120,8 @@ rule regular_token = parse
 | "s/"   { SIGNED_DIV }
 | "s%"   { SIGNED_MOD }
 | decimal as i { DEC_INT (int_of_string i) }
-| binary as i { BIN_INT (int_of_string i) }
-| hex as i { HEX_INT (int_of_string i) }
+| binary as i  { BIN_INT (int_of_string i) }
+| hex as i     { HEX_INT (int_of_string i) }
 | ident as s
   {
     try KeywordTable.find s keyword_table

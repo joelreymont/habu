@@ -12,5 +12,5 @@ let%expect_test "parse endian" =
   |> Sexp.to_string
   |> print_endline;
   [%expect
-    {|((Endian((value Big)(position((start_p(""1 0 16))(end_p(""1 0 19)))))))|}]
+    {||}]
 ;;

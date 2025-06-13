@@ -1,16 +1,16 @@
 open Sexplib.Std
-open Position
+open Annot
 module S = Sleigh
 
 type endian = S.Endian.t [@@deriving sexp]
-type integer = S.integer [@@deriving sexp]
-type id = S.id [@@deriving sexp]
+type 'n integer = 'n S.integer [@@deriving sexp]
+type 'n id = 'n S.id [@@deriving sexp]
 
 module rec Memory_region : sig
   type kind = S.Space.k [@@deriving sexp]
 
-  type t =
-    { id : id
+  type 'n t =
+    { id : 'n id
     ; kind : kind
     ; size : int
     ; word_size : int
@@ -21,17 +21,17 @@ end =
   Memory_region
 
 and Address : sig
-  type t =
+  type 'n t =
     { offset : int
-    ; segment : Memory_region.t option
+    ; segment : 'n Memory_region.t option
     }
   [@@deriving sexp]
 end =
   Address
 
 and Register : sig
-  type t =
-    { id : id
+  type 'n t =
+    { id : 'n id
     ; size : int
     }
   [@@deriving sexp]
@@ -39,13 +39,13 @@ end =
   Register
 
 and Register_map : sig
-  type t : value = Register.t option array [@@deriving sexp]
+  type 'n t : value = 'n Register.t option array [@@deriving sexp]
 end =
   Register_map
 
 and Bit_field : sig
-  type t =
-    { id : id
+  type 'n t =
+    { id : 'n id
     ; size : int
     ; start_bit : int
     ; end_bit : int
@@ -55,19 +55,19 @@ end =
   Bit_field
 
 and Register_index : sig
-  type t =
-    { id : id
-    ; map : Register_map.t
+  type 'n t =
+    { id : 'n id
+    ; map : 'n Register_map.t
     ; index : int
-    ; field : Bit_field.t
+    ; field : 'n Bit_field.t
     }
   [@@deriving sexp]
 end =
   Register_index
 
 and Variable : sig
-  type t =
-    { id : id
+  type 'n t =
+    { id : 'n id
     ; size : int
     }
   [@@deriving sexp]
@@ -75,22 +75,22 @@ end =
   Variable
 
 and Intrinsic : sig
-  type t = id [@@deriving sexp]
+  type 'n t = 'n id [@@deriving sexp]
 end =
   Intrinsic
 
 and Expr : sig
-  type t =
-    | Binary of t * binary_op * t
-    | Unary of unary_op * t
-    | Pointer of t * Memory_region.t option
-    | TakeBits of int * int (* start, width *)
-    | TakeBytes of int * bytes_from * int (* n, from, bit width *)
-    | FunCall of id * t list
-    | Register of Register.t
-    | Register_index of Register_index.t
-    | Bit_field of Bit_field.t
-    | Number of int
+  type 'n t =
+    | Binary of 'n t * binary_op * 'n t
+    | Unary of unary_op * 'n t
+    | Pointer of 'n t * 'n Memory_region.t option
+    | TakeBits of int * int * 'n (* start, width *)
+    | TakeBytes of int * bytes_from * int * 'n (* n, from, bit width *)
+    | FunCall of 'n id * 'n t list
+    | Register of 'n Register.t
+    | Register_index of 'n Register_index.t
+    | Bit_field of 'n Bit_field.t
+    | Number of 'n integer
 
   and bytes_from =
     | Top
@@ -126,56 +126,56 @@ end =
   Expr
 
 and Jump_target : sig
-  type t =
-    | Fixed of Address.t
-    | Direct of Expr.t
-    | Indirect of Expr.t
-    | Label of id
+  type 'n t =
+    | Fixed of 'n Address.t
+    | Direct of 'n Expr.t
+    | Indirect of 'n Expr.t
+    | Label of 'n id
   [@@deriving sexp]
 end =
   Jump_target
 
 and Transfer : sig
-  type t =
-    | Goto of Jump_target.t
-    | Call of Jump_target.t
-    | Return of Jump_target.t
+  type 'n t =
+    | Goto of 'n Jump_target.t
+    | Call of 'n Jump_target.t
+    | Return of 'n Jump_target.t
   [@@deriving sexp]
 end =
   Transfer
 
 and Statement : sig
-  type t =
-    | Assign of Expr.t * Expr.t
-    | Macro_call of id * Expr.t list
-    | Fun_call of id * Expr.t list
-    | Transfer of Transfer.t
-    | Branch of Expr.t * t
-    | Export of Expr.t
-    | Build of id
-    | Label of id
+  type 'n t =
+    | Assign of 'n Expr.t * 'n Expr.t
+    | Macro_call of 'n id * 'n Expr.t list
+    | Fun_call of 'n id * 'n Expr.t list
+    | Transfer of 'n Transfer.t
+    | Branch of 'n Expr.t * 'n t
+    | Export of 'n Expr.t
+    | Build of 'n id
+    | Label of 'n id
   [@@deriving sexp]
 end =
   Statement
 
 and Macro : sig
-  type t =
-    { id : id
-    ; args : id list
-    ; statements : Statement.t list
+  type 'n t =
+    { id : 'n id
+    ; args : 'n id list
+    ; statements : 'n Statement.t list
     }
   [@@deriving sexp]
 end =
   Macro
 
 and Pcode_op : sig
-  type t : value = string [@@deriving sexp]
+  type 'n t : value = 'n id [@@deriving sexp]
 end =
   Pcode_op
 
 and Scanner : sig
-  type t =
-    { rules : Rule.t list
+  type 'n t =
+    { rules : 'n Rule.t list
     ; is_instruction : bool
     }
   [@@deriving sexp]
@@ -183,13 +183,13 @@ end =
   Scanner
 
 and Rule : sig
-  type t =
-    { id : id
-    ; mnemonic : Output.t list
-    ; output : Output.t list
-    ; setup : Statement.t list
-    ; effects : Statement.t list
-    ; pattern : Expr.t option
+  type 'n t =
+    { id : 'n id
+    ; mnemonic : 'n Output.t list
+    ; output : 'n Output.t list
+    ; setup : 'n Statement.t list
+    ; effects : 'n Statement.t list
+    ; pattern : 'n Expr.t option
     ; byte_width : int
     ; alignment : int
     }
@@ -198,38 +198,41 @@ end =
   Rule
 
 and Output : sig
-  type t =
-    | Text : string -> t
-    | Register : Register.t -> t
-    | Register_index : Register_index.t -> t
-    | Bit_field : Bit_field.t -> t
-    | Scanner : Scanner.t -> t
+  type 'n t =
+    | Text : string -> 'n t
+    | Register : 'n Register.t -> 'n t
+    | Register_index : 'n Register_index.t -> 'n t
+    | Bit_field : 'n Bit_field.t -> 'n t
+    | Scanner : 'n Scanner.t -> 'n t
 end =
   Output
 
 and Type : sig
-  type _ t =
-    | Register : Register.t t
-    | Register_index : Register_index.t t
-    | Bit_field : Bit_field.t t
-    | Macro : Macro.t t
-    | Memory_region : Memory_region.t t
-    | Pcode_op : Pcode_op.t t
-    | Scanner : Scanner.t t
+  type (_, _) t =
+    | Register : ('n Register.t, 'n) t
+    | Register_index : ('n Register_index.t, 'n) t
+    | Bit_field : ('n Bit_field.t, 'n) t
+    | Macro : ('n Macro.t, 'n) t
+    | Memory_region : ('n Memory_region.t, 'n) t
+    | Pcode_op : ('n Pcode_op.t, 'n) t
+    | Scanner : ('n Scanner.t, 'n) t
   [@@deriving sexp]
 end =
   Type
 
 module Type_env = struct
-  type t =
+  type 'n t =
     | Nil
-    | Cons : string * 'a Type.t * 'a * t -> t
+    | Cons : string * ('a, 'n) Type.t * 'a * 'n t -> 'n t
 
-  type ('a, 'b) eq = Refl : ('a, 'a) eq
+  type ('a, 'b, 'na, 'nb) eq = Refl : ('a, 'a, 'na, 'na) eq
 
   let make () = Nil
 
-  let types_equal : type a b. a Type.t -> b Type.t -> (a, b) eq option =
+  let types_equal
+    : type a b n.
+      (a, n) Type.t -> (b, n) Type.t -> (a, b, n, n) eq option
+    =
     fun a b ->
     let open Type in
     match a, b with
@@ -243,7 +246,7 @@ module Type_env = struct
 
   let append ~env ~name ~ty ~value = Cons (name, ty, value, env)
 
-  let rec lookup : type a. t -> string -> a Type.t -> a option =
+  let rec lookup : type a n. n t -> string -> (a, n) Type.t -> a option =
     fun env name ty ->
     match env with
     | Nil -> None
@@ -256,25 +259,25 @@ module Type_env = struct
         lookup rest name ty
   ;;
 
-  type value_type = Value_type : ('a * 'a Type.t) -> value_type [@@unboxed]
+  type 'n value = Value : ('a * ('a, 'n) Type.t) -> 'n value [@@unboxed]
 
-  let rec find : t -> string -> value_type option =
+  let rec find : 'n t -> string -> 'n value option =
     fun env name ->
     match env with
     | Nil -> None
     | Cons (xname, ty, value, rest) ->
       if name = xname then
-        Some (Value_type (value, ty))
+        Some (Value (value, ty))
       else
         find rest name
   ;;
 end
 
-type t =
+type 'a t =
   { endian : endian
   ; alignment : int
-  ; default_segment : Memory_region.t option
-  ; scanners : Scanner.t array
+  ; default_segment : 'a Memory_region.t option
+  ; scanners : 'a Scanner.t array
   }
 [@@deriving sexp]
 
@@ -283,7 +286,7 @@ let dummy_id () =
   with_pos dummy ""
 ;;
 
-let lift_space (space : S.Space.t) =
+let lift_space (space : 'a S.Space.t) =
   Memory_region.
     { id = space.id
     ; kind = space.kind
@@ -293,13 +296,11 @@ let lift_space (space : S.Space.t) =
     }
 ;;
 
-let lift_varnode_exn env (v : S.Varnode.t) =
+let lift_varnode_exn env (v : 'a S.Varnode.t) =
   let f id =
     let name = id.value in
     (match Type_env.lookup !env name Type.Register with
-     | None ->
-       let pos = position id in
-       Error.error pos (Printf.sprintf "Duplicate register '%s'" name)
+     | None -> error id.note (Printf.sprintf "Duplicate register '%s'" name)
      | _ -> ());
     let ty = Type.Register
     and value = Register.{ id; size = v.size } in
@@ -308,7 +309,7 @@ let lift_varnode_exn env (v : S.Varnode.t) =
   List.iter f v.registers
 ;;
 
-let lift_space_exn env (s : S.Space.t) =
+let lift_space_exn env (s : 'a S.Space.t) =
   let name = s.id.value
   and ty = Type.Memory_region
   and value = lift_space s in
@@ -322,24 +323,20 @@ let make_register_map_exn env registers =
       None
     else (
       match Type_env.lookup !env name Type.Register with
-      | None ->
-        let pos = position id in
-        Error.error pos (Printf.sprintf "Unknown register '%s'" name)
+      | None -> error id.note (Printf.sprintf "Unknown register '%s'" name)
       | x -> x
     )
   in
   Array.of_list (List.map f registers)
 ;;
 
-let lift_varnode_attach_exn env (vna : S.Varnode_attach.t) =
+let lift_varnode_attach_exn env (vna : 'a S.Varnode_attach.t) =
   let map = make_register_map_exn env vna.registers in
   let f index id =
     let name = id.value in
     let field =
       match Type_env.lookup !env name Type.Bit_field with
-      | None ->
-        let pos = position id in
-        Error.error pos (Printf.sprintf "Unknown bit field '%s'" name)
+      | None -> error id.note (Printf.sprintf "Unknown bit field '%s'" name)
       | Some value -> value
     in
     let ty = Type.Register_index
@@ -352,12 +349,10 @@ let lift_varnode_attach_exn env (vna : S.Varnode_attach.t) =
 let lift_pcode_op_exn env id =
   let name = id.value in
   match Type_env.lookup !env name Type.Pcode_op with
-  | Some _ ->
-    let pos = position id in
-    Error.error pos (Printf.sprintf "Duplicate pcode op '%s'" name)
+  | Some _ -> error id.note (Printf.sprintf "Duplicate pcode op '%s'" name)
   | None ->
     let ty = Type.Pcode_op
-    and value : Pcode_op.t = name in
+    and value : 'a Pcode_op.t = id in
     env := Type_env.append ~env:!env ~name ~ty ~value
 ;;
 
@@ -376,7 +371,7 @@ let lift_pcode_op_exn env id =
     env := Type_env.append ~env:!env ~name ~ty ~value
 ;;
 *)
-let lift_expr_exn env (expr : S.Expr.t) =
+let lift_expr_exn env (expr : 'a S.Expr.t) =
   (* | Binary of binary_op * t * t *)
   (* | Unary of unary_op * t *)
   (* | Paren of t *)
@@ -390,9 +385,7 @@ let lift_expr_exn env (expr : S.Expr.t) =
   | Id id ->
     let name = id.value in
     (match Type_env.find !env name with
-     | None ->
-       let pos = position id in
-       Error.error pos (Printf.sprintf "Unknown register '%s'" name)
+     | None -> error id.note (Printf.sprintf "Unknown register '%s'" name)
      | Some _value -> ())
   | _ -> ()
 ;;
