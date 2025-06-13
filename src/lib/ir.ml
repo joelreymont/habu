@@ -1,12 +1,13 @@
+open Sexplib.Std
 open Position
 module S = Sleigh
 
-type endian = S.Endian.t
-type integer = S.integer
-type id = S.id
+type endian = S.Endian.t [@@deriving sexp]
+type integer = S.integer [@@deriving sexp]
+type id = S.id [@@deriving sexp]
 
-module Memory_segment = struct
-  type kind = S.Space.k
+module rec Memory_region : sig
+  type kind = S.Space.k [@@deriving sexp]
 
   type t =
     { id : id
@@ -15,98 +16,80 @@ module Memory_segment = struct
     ; word_size : int
     ; is_default : bool
     }
+  [@@deriving sexp]
+end =
+  Memory_region
 
-  let lift (space : S.Space.t) =
-    { id = space.id
-    ; kind = space.kind
-    ; size = space.size
-    ; word_size = space.word_size
-    ; is_default = space.is_default
-    }
-  ;;
-end
-
-module Address = struct
+and Address : sig
   type t =
     { offset : int
-    ; segment : Memory_segment.t option
+    ; segment : Memory_region.t option
     }
-end
+  [@@deriving sexp]
+end =
+  Address
 
-module Register = struct
+and Register : sig
   type t =
     { id : id
     ; size : int
     }
+  [@@deriving sexp]
+end =
+  Register
 
-  let make ~id ~size = { id; size }
-end
+and Register_map : sig
+  type t : value = Register.t option array [@@deriving sexp]
+end =
+  Register_map
 
-module Register_map = struct
-  type t = Register.t option array
-
-  let make ~arr : t = arr
-end
-
-module Bit_field = struct
+and Bit_field : sig
   type t =
     { id : id
     ; size : int
     ; start_bit : int
     ; end_bit : int
     }
-end
+  [@@deriving sexp]
+end =
+  Bit_field
 
-module Register_index = struct
+and Register_index : sig
   type t =
     { id : id
     ; map : Register_map.t
-    ; map_index : int
-    ; bit_field : Bit_field.t
+    ; index : int
+    ; field : Bit_field.t
     }
+  [@@deriving sexp]
+end =
+  Register_index
 
-  let make ~id ~map ~index ~field =
-    { id; map; map_index = index; bit_field = field }
-  ;;
-end
-
-module Variable = struct
+and Variable : sig
   type t =
     { id : id
     ; size : int
     }
-end
+  [@@deriving sexp]
+end =
+  Variable
 
-module Intrinsic = struct
-  type t = id
-end
+and Intrinsic : sig
+  type t = id [@@deriving sexp]
+end =
+  Intrinsic
 
-module Term = struct
-  type _ t =
-    | Memory_segment : Memory_segment.t -> Memory_segment.t t
-    | Register : Register.t -> Register.t t
-    | Register_index : Register_index.t -> Register_index.t t
-    | Bit_field : Bit_field.t -> Bit_field.t t
-
-  let value : type a. a t -> a = function
-    | Memory_segment x -> x
-    | Register x -> x
-    | Register_index x -> x
-    | Bit_field x -> x
-  ;;
-end
-
-type term' = Term : 'a Term.t -> term' [@@unboxed]
-
-module Expr = struct
+and Expr : sig
   type t =
     | Binary of t * binary_op * t
     | Unary of unary_op * t
-    | Pointer of t * Memory_segment.t option
+    | Pointer of t * Memory_region.t option
     | TakeBits of int * int (* start, width *)
     | TakeBytes of int * bytes_from * int (* n, from, bit width *)
     | FunCall of id * t list
-    | Term of term'
+    | Register of Register.t
+    | Register_index of Register_index.t
+    | Bit_field of Bit_field.t
     | Number of int
 
   and bytes_from =
@@ -138,24 +121,30 @@ module Expr = struct
     | NOT
     | INV
     | NEG
-end
+  [@@deriving sexp]
+end =
+  Expr
 
-module Jump_target = struct
+and Jump_target : sig
   type t =
     | Fixed of Address.t
     | Direct of Expr.t
     | Indirect of Expr.t
     | Label of id
-end
+  [@@deriving sexp]
+end =
+  Jump_target
 
-module Transfer = struct
+and Transfer : sig
   type t =
     | Goto of Jump_target.t
     | Call of Jump_target.t
     | Return of Jump_target.t
-end
+  [@@deriving sexp]
+end =
+  Transfer
 
-module Statement = struct
+and Statement : sig
   type t =
     | Assign of Expr.t * Expr.t
     | Macro_call of id * Expr.t list
@@ -165,41 +154,71 @@ module Statement = struct
     | Export of Expr.t
     | Build of id
     | Label of id
-end
+  [@@deriving sexp]
+end =
+  Statement
 
-module Macro = struct
+and Macro : sig
   type t =
     { id : id
     ; args : id list
     ; statements : Statement.t list
     }
+  [@@deriving sexp]
+end =
+  Macro
 
-  let make ~id ~args ~statements = { id; args; statements }
-end
+and Pcode_op : sig
+  type t : value = string [@@deriving sexp]
+end =
+  Pcode_op
 
-module Pcode_op = struct
-  type t = string
-end
+and Scanner : sig
+  type t =
+    { rules : Rule.t list
+    ; is_instruction : bool
+    }
+  [@@deriving sexp]
+end =
+  Scanner
 
-module Type = struct
+and Rule : sig
+  type t =
+    { id : id
+    ; mnemonic : Output.t list
+    ; output : Output.t list
+    ; setup : Statement.t list
+    ; effects : Statement.t list
+    ; pattern : Expr.t option
+    ; byte_width : int
+    ; alignment : int
+    }
+  [@@deriving sexp]
+end =
+  Rule
+
+and Output : sig
+  type t =
+    | Text : string -> t
+    | Register : Register.t -> t
+    | Register_index : Register_index.t -> t
+    | Bit_field : Bit_field.t -> t
+    | Scanner : Scanner.t -> t
+end =
+  Output
+
+and Type : sig
   type _ t =
     | Register : Register.t t
     | Register_index : Register_index.t t
     | Bit_field : Bit_field.t t
     | Macro : Macro.t t
-    | Memory_segment : Memory_segment.t t
+    | Memory_region : Memory_region.t t
     | Pcode_op : Pcode_op.t t
-end
-
-let term_of_value : type a. a -> a Type.t -> a Term.t =
-  fun value -> function
-  | Register -> Term.Register value
-  | Register_index -> Term.Register_index value
-  | Bit_field -> Term.Bit_field value
-  | Macro -> Term.Macro value
-  | Memory_segment -> Memory_segment value
-  | Pcode_op -> Pcode_op value
-;;
+    | Scanner : Scanner.t t
+  [@@deriving sexp]
+end =
+  Type
 
 module Type_env = struct
   type t =
@@ -218,7 +237,7 @@ module Type_env = struct
     | Register_index, Register_index -> Some Refl
     | Bit_field, Bit_field -> Some Refl
     | Macro, Macro -> Some Refl
-    | Memory_segment, Memory_segment -> Some Refl
+    | Memory_region, Memory_region -> Some Refl
     | _, _ -> None
   ;;
 
@@ -239,7 +258,7 @@ module Type_env = struct
 
   type value_type = Value_type : ('a * 'a Type.t) -> value_type [@@unboxed]
 
-  let rec find : type a. t -> string -> value_type option =
+  let rec find : t -> string -> value_type option =
     fun env name ->
     match env with
     | Nil -> None
@@ -251,42 +270,27 @@ module Type_env = struct
   ;;
 end
 
-module Output = struct
-  type t =
-    | Text : string -> t
-    | Term : 'a Term.t -> t
-end
-
-module Rule = struct
-  type t =
-    { id : id
-    ; mnemonic : Output.t list
-    ; output : Output.t list
-    ; setup : Statement.t list
-    ; effects : Statement.t list
-    ; pattern : Expr.t option
-    ; byte_width : int
-    ; alignment : int
-    }
-end
-
-module Scanner = struct
-  type t =
-    { rules : Rule.t list
-    ; is_instruction : bool
-    }
-end
-
 type t =
   { endian : endian
   ; alignment : int
-  ; default_segment : Memory_segment.t option
+  ; default_segment : Memory_region.t option
   ; scanners : Scanner.t array
   }
+[@@deriving sexp]
 
 let dummy_id () =
   let open Position in
   with_pos dummy ""
+;;
+
+let lift_space (space : S.Space.t) =
+  Memory_region.
+    { id = space.id
+    ; kind = space.kind
+    ; size = space.size
+    ; word_size = space.word_size
+    ; is_default = space.is_default
+    }
 ;;
 
 let lift_varnode_exn env (v : S.Varnode.t) =
@@ -298,7 +302,7 @@ let lift_varnode_exn env (v : S.Varnode.t) =
        Error.error pos (Printf.sprintf "Duplicate register '%s'" name)
      | _ -> ());
     let ty = Type.Register
-    and value = Register.make ~id ~size:v.size in
+    and value = Register.{ id; size = v.size } in
     env := Type_env.append ~env:!env ~name ~ty ~value
   in
   List.iter f v.registers
@@ -306,8 +310,8 @@ let lift_varnode_exn env (v : S.Varnode.t) =
 
 let lift_space_exn env (s : S.Space.t) =
   let name = s.id.value
-  and ty = Type.Memory_segment
-  and value = Memory_segment.lift s in
+  and ty = Type.Memory_region
+  and value = lift_space s in
   env := Type_env.append ~env:!env ~name ~ty ~value
 ;;
 
@@ -324,8 +328,7 @@ let make_register_map_exn env registers =
       | x -> x
     )
   in
-  let arr = Array.of_list (List.map f registers) in
-  Register_map.make ~arr
+  Array.of_list (List.map f registers)
 ;;
 
 let lift_varnode_attach_exn env (vna : S.Varnode_attach.t) =
@@ -340,7 +343,7 @@ let lift_varnode_attach_exn env (vna : S.Varnode_attach.t) =
       | Some value -> value
     in
     let ty = Type.Register_index
-    and value = Register_index.make ~id ~map ~index ~field in
+    and value = Register_index.{ id; map; index; field } in
     env := Type_env.append ~env:!env ~name ~ty ~value
   in
   List.iteri f vna.fields
@@ -358,7 +361,8 @@ let lift_pcode_op_exn env id =
     env := Type_env.append ~env:!env ~name ~ty ~value
 ;;
 
-let lift_macro_exn env (m : S.Macro.t) =
+(*
+   let lift_macro_exn env (m : S.Macro.t) =
   let name = m.id.value in
   match Type_env.lookup !env name Type.Pcode_op with
   | Some _ ->
@@ -371,7 +375,7 @@ let lift_macro_exn env (m : S.Macro.t) =
     and value = Macro.make ~id:m.id ~args:m.args ~statements in
     env := Type_env.append ~env:!env ~name ~ty ~value
 ;;
-
+*)
 let lift_expr_exn env (expr : S.Expr.t) =
   (* | Binary of binary_op * t * t *)
   (* | Unary of unary_op * t *)
@@ -389,7 +393,7 @@ let lift_expr_exn env (expr : S.Expr.t) =
      | None ->
        let pos = position id in
        Error.error pos (Printf.sprintf "Unknown register '%s'" name)
-     | Some (value, ty) -> ())
+     | Some _value -> ())
   | _ -> ()
 ;;
 
@@ -407,7 +411,7 @@ let lift_defs_exn defs =
     | D.Varnode vn -> lift_varnode_exn env vn
     | D.Varnode_attach vna -> lift_varnode_attach_exn env vna
     | D.Pcode_op op -> lift_pcode_op_exn env op
-    | D.Macro m -> lift_macro_exn env m
+    (* | D.Macro m -> lift_macro_exn env m *)
     | _ -> assert false
   in
   List.iter f defs;
@@ -424,4 +428,3 @@ let gensym prefix =
     incr count;
     prefix ^ string_of_int !count
 ;;
-| _ -> ()

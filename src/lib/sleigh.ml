@@ -1,7 +1,8 @@
+open Sexplib.Std
 open Position
 
-type integer = int located
-type id = string located
+type integer = int located [@@deriving sexp]
+type id = string located [@@deriving sexp]
 
 let strcmp a b =
   let open String in
@@ -20,6 +21,7 @@ module Endian = struct
   type t =
     | Big
     | Little
+  [@@deriving sexp]
 end
 
 (*
@@ -46,6 +48,7 @@ module Space = struct
     | Rom
     | Ram
     | Register
+  [@@deriving sexp]
 
   let make ~id ~mods =
     let kind = ref None
@@ -103,10 +106,12 @@ module Varnode = struct
     ; size : int
     ; offset : int
     }
+  [@@deriving sexp]
 
   type m =
     | Offset of int
     | Size of int
+  [@@deriving sexp]
 
   let make ~pos ~mods ~registers =
     let size = ref None
@@ -141,6 +146,7 @@ module Varnode_attach = struct
     { fields : id list
     ; registers : id list
     }
+  [@@deriving sexp]
 
   let make ~pos ~fields ~registers =
     if List.is_empty fields then syntax_error pos "field list must not be empty";
@@ -162,6 +168,7 @@ module Token_field = struct
   and m =
     | Signed of bool
     | Hex of bool
+  [@@deriving sexp]
 
   let make ~id ~start_bit ~end_bit ~mods =
     let is_signed = ref false
@@ -183,48 +190,9 @@ module Token = struct
     ; bit_size : integer
     ; fields : Token_field.t list
     }
+  [@@deriving sexp]
 
   let make ~id ~bit_size ~fields = { id; bit_size; fields }
-end
-
-module Pattern = struct
-  type t = pattern list
-
-  and pattern =
-    | Pattern of pattern * pattern_op * pattern
-    | Constraint of condition
-
-  and condition =
-    | Condition of id * condition_op * expr
-    | Symbol of id
-
-  and expr =
-    | Binary of id * binary_op * expr
-    | Unary of unary_op * expr
-    | Id of id
-    | Constant of integer
-
-  and condition_op =
-    | EQ
-    | NE
-    | GT
-    | LT
-
-  and pattern_op =
-    | OR
-    | AND
-
-  and binary_op =
-    | PLUS
-    | MINUS
-    | MUL
-    | DIV
-    | LSHIFT
-    | RSHIFT
-    | AND
-    | OR
-    | XOR
-    | NEG
 end
 
 module Expr = struct
@@ -286,6 +254,32 @@ module Expr = struct
     | INV
     | NEG
     | FNEG
+  [@@deriving sexp]
+end
+
+module Pattern = struct
+  type t = pattern list
+
+  and pattern =
+    | Pattern of pattern * pattern_op * pattern
+    | Constraint of condition
+
+  and condition =
+    | Condition of id * condition_op * expr
+    | Symbol of id
+
+  and expr = Expr.t
+
+  and condition_op =
+    | EQ
+    | NE
+    | GT
+    | LT
+
+  and pattern_op =
+    | OR
+    | AND
+  [@@deriving sexp]
 end
 
 module Display = struct
@@ -299,6 +293,7 @@ module Display = struct
     | Text of id
     | Caret
     | Whitespace
+  [@@deriving sexp]
 
   let make ~mnemonic ~output = { mnemonic; output }
 end
@@ -310,6 +305,7 @@ module Jump_target = struct
     | Indirect of Expr.t
     | Relative of integer * id
     | Label of id
+  [@@deriving sexp]
 end
 
 module Statement = struct
@@ -324,6 +320,7 @@ module Statement = struct
     | Branch of Expr.t * Jump_target.t
     | Label of id
     | Export of Expr.t
+  [@@deriving sexp]
 end
 
 module Macro = struct
@@ -332,6 +329,7 @@ module Macro = struct
     ; args : id list
     ; body : Statement.t list
     }
+  [@@deriving sexp]
 
   let make ~id ~args ~body = { id; args; body }
 end
@@ -344,6 +342,7 @@ module Constructor = struct
     ; context : Statement.t list
     ; body : Statement.t list
     }
+  [@@deriving sexp]
 
   let make ~id ~display ~pattern ~context ~body =
     { id; display; pattern; context; body }
@@ -361,6 +360,7 @@ module Definition = struct
     | Pcode_op of id
     | Constructor of Constructor.t
     | Macro of Macro.t
+  [@@deriving sexp]
 end
 
-type t = Definition.t list
+type t = Definition.t list [@@deriving sexp]

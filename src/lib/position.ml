@@ -1,22 +1,24 @@
+open Sexplib.Std
 open Lexing
 
 type lexing_position = Lexing.position
-(*
-   let lexing_position_of_sexp p =
+
+let lexing_position_of_sexp p =
   [%of_sexp: string * int * int * int] p
   |> fun (pos_fname, pos_lnum, pos_bol, pos_cnum) ->
   { pos_fname; pos_lnum; pos_bol; pos_cnum }
 ;;
 
 let sexp_of_lexing_position p =
-  [%sexp_of: string * int * int * int] (p.pos_fname, p.pos_lnum, p.pos_bol, p.pos_cnum)
+  [%sexp_of: string * int * int * int]
+    (p.pos_fname, p.pos_lnum, p.pos_bol, p.pos_cnum)
 ;;
-*)
 
 type t =
   { start_p : lexing_position
   ; end_p : lexing_position
   }
+[@@deriving sexp]
 
 type position = t
 
@@ -24,6 +26,7 @@ type 'a located =
   { value : 'a
   ; position : t
   }
+[@@deriving sexp]
 
 let value { value = v; position = _ } = v
 let position { position = p; value = _ } = p
@@ -53,8 +56,16 @@ let characters p1 p2 = column p1, p2.pos_cnum - p1.pos_bol
 (* intentionally [p1.pos_bol] *)
 
 let join x1 x2 =
-  { start_p = (if x1 = dummy then x2.start_p else x1.start_p)
-  ; end_p = (if x2 = dummy then x1.end_p else x2.end_p)
+  { start_p =
+      (if x1 = dummy then
+         x2.start_p
+       else
+         x1.start_p)
+  ; end_p =
+      (if x2 = dummy then
+         x1.end_p
+       else
+         x2.end_p)
   }
 ;;
 
@@ -69,9 +80,10 @@ let string_of_pos p =
   let filename = filename_of_position p in
   let l = line p.start_p in
   let c1, c2 = characters p.start_p p.end_p in
-  if filename = ""
-  then Printf.sprintf "Line %d, characters %d-%d" l c1 c2
-  else Printf.sprintf "File \"%s\", line %d, characters %d-%d" filename l c1 c2
+  if filename = "" then
+    Printf.sprintf "Line %d, characters %d-%d" l c1 c2
+  else
+    Printf.sprintf "File \"%s\", line %d, characters %d-%d" filename l c1 c2
 ;;
 
 let pos_or_undef = function

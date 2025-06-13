@@ -15,4 +15,6 @@
   stdint
   menhir
   sexplib
-  ppx_sexp_conv))
+  ppx_sexp_conv
+  ppx_expect
+  ppx_inline_test))

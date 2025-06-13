@@ -22,13 +22,18 @@ let fail text buffer =
   sprintf "%s%s%!" location indication
 ;;
 
-let parse filename =
+let parse text lexbuf parser =
   (* Keep track of the last two tokens in a buffer. *)
   let buffer, lexer = MenhirLib.ErrorReports.wrap Lexer.token in
-  let text, lexbuf = L.read filename in
-  try Ok (Parser.grammar lexer lexbuf) with
+  (* and lexbuf = Lexing.from_string text in *)
+  try Ok (parser lexer lexbuf) with
   | Parser.Error -> Error (fail text buffer)
   | Error.Error (poss, msg) ->
     output_string stderr (Error.print_error poss msg);
     Error (fail text buffer)
+;;
+
+let parse_file filename =
+  let text, lexbuf = L.read filename in
+  parse text lexbuf Parser.grammar
 ;;

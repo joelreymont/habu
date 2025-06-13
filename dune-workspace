@@ -10,3 +10,5 @@
 (repository
  (name ox)
  (url "git+https://github.com/joelreymont/opam-repository.git#with-extensions"))
+
+(env (dev (flags (:standard -warn-error -A))))
