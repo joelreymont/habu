@@ -8,9 +8,10 @@
  (name habu)
  (allow_empty)
  (depends
-  (ocaml
-   (>= 5.3.0))
-  dune
+  ocaml
+  (ocaml-variants
+   (= 5.2.0+ox))
+  ppxlib
   stdint
   menhir
   sexplib
