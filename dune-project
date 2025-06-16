@@ -8,12 +8,15 @@
  (name habu)
  (allow_empty)
  (depends
-  ocaml
+  (ocaml
+   (= 5.2.0))
   (ocaml-variants
    (= 5.2.0+ox))
+  ; (ocaml-base-compiler
+  ;  (= 5.2.0))
   ppxlib
-  stdint
   menhir
+  stdint
   sexplib
   ppx_sexp_conv
   ppx_expect

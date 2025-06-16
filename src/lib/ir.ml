@@ -1,5 +1,5 @@
 open Sexplib.Std
-open Annot
+open Tag
 module S = Sleigh
 
 type endian = S.Endian.t [@@deriving sexp]
@@ -230,8 +230,7 @@ module Type_env = struct
   let make () = Nil
 
   let types_equal
-    : type a b n.
-      (a, n) Type.t -> (b, n) Type.t -> (a, b, n, n) eq option
+    : type a b n. (a, n) Type.t -> (b, n) Type.t -> (a, b, n, n) eq option
     =
     fun a b ->
     let open Type in
@@ -300,7 +299,7 @@ let lift_varnode_exn env (v : 'a S.Varnode.t) =
   let f id =
     let name = id.value in
     (match Type_env.lookup !env name Type.Register with
-     | None -> error id.note (Printf.sprintf "Duplicate register '%s'" name)
+     | None -> error (tag id) (Printf.sprintf "Duplicate register '%s'" name)
      | _ -> ());
     let ty = Type.Register
     and value = Register.{ id; size = v.size } in
@@ -323,7 +322,7 @@ let make_register_map_exn env registers =
       None
     else (
       match Type_env.lookup !env name Type.Register with
-      | None -> error id.note (Printf.sprintf "Unknown register '%s'" name)
+      | None -> error (tag id) (Printf.sprintf "Unknown register '%s'" name)
       | x -> x
     )
   in
@@ -336,7 +335,7 @@ let lift_varnode_attach_exn env (vna : 'a S.Varnode_attach.t) =
     let name = id.value in
     let field =
       match Type_env.lookup !env name Type.Bit_field with
-      | None -> error id.note (Printf.sprintf "Unknown bit field '%s'" name)
+      | None -> error (tag id) (Printf.sprintf "Unknown bit field '%s'" name)
       | Some value -> value
     in
     let ty = Type.Register_index
@@ -349,7 +348,7 @@ let lift_varnode_attach_exn env (vna : 'a S.Varnode_attach.t) =
 let lift_pcode_op_exn env id =
   let name = id.value in
   match Type_env.lookup !env name Type.Pcode_op with
-  | Some _ -> error id.note (Printf.sprintf "Duplicate pcode op '%s'" name)
+  | Some _ -> error (tag id) (Printf.sprintf "Duplicate pcode op '%s'" name)
   | None ->
     let ty = Type.Pcode_op
     and value : 'a Pcode_op.t = id in
@@ -385,7 +384,7 @@ let lift_expr_exn env (expr : 'a S.Expr.t) =
   | Id id ->
     let name = id.value in
     (match Type_env.find !env name with
-     | None -> error id.note (Printf.sprintf "Unknown register '%s'" name)
+     | None -> error (tag id) (Printf.sprintf "Unknown register '%s'" name)
      | Some _value -> ())
   | _ -> ()
 ;;

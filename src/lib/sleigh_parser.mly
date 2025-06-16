@@ -1,5 +1,5 @@
 %{
-open Annot
+open Tag
 open Sleigh
 open Sleigh_lexer_util
 
@@ -119,7 +119,7 @@ grammar:
 	| endian_definition other_definition* EOF
 		{ $1 :: $2 }
 	| e = located(error)
-		{ error e.note "Syntax error" }
+		{ error (tag e) "Syntax error" }
 
 other_definition:
 	| definition SEMI { $1 }
@@ -152,7 +152,7 @@ align_definition:
 	
 space_definition:
 	KEY_DEFINE KEY_SPACE space_name space_mod+
-		{ Space.make ~id:$3 ~mods:$4 } 
+		{ Space.make ~id:$3 ~mods:$4 }
 
 space_mod:
 	| id ASSIGN id       { Space.make_kind $1 $3 }
@@ -175,7 +175,7 @@ varnode_mod:
 
 token_definition:
 	KEY_DEFINE KEY_TOKEN id LPAREN constant RPAREN token_field+
-		{ Token.make ~id:$3 ~bit_size:$5 ~fields:$7 }
+		{ Token.{id = $3; bit_size = $5; fields = $7} }
 
 varnode_attach_definition:
 	varnode_attach_start KEY_VARIABLES LBRACKET id+ RBRACKET LBRACKET id+ RBRACKET
@@ -189,7 +189,7 @@ pcodeop_definition:
 
 constructor:
 	ctr_name COLON display pattern? context constructor_body
-		{ Constructor.make ~id:$1 ~display:$3 ~pattern:$4 ~context:$5 ~body:$6 }
+		{ Constructor.{id = $1; display = $3; pattern = $4; context = $5; body = $6} }
 	
 ctr_name:
 	id?
@@ -198,7 +198,7 @@ ctr_name:
 		{ $1 }
 
 display:
-	mnemonic output { Display.make ~mnemonic:$1 ~output:$2 }
+	mnemonic output { Display.{mnemonic = $1; output = $2} }
 
 mnemonic:
 	display_piece* SPACE { $1 }
@@ -263,7 +263,7 @@ semantic_body:
 	
 macro:
 	KEY_MACRO id LPAREN arg_names RPAREN macro_body
-		{ Macro.make ~id:$2 ~args:$4 ~body:$6 }
+		{ Macro.{id = $2; args = $4; body = $6} }
 
 macro_body:
 	| LBRACE semantic_body RBRACE { $2 }

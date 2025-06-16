@@ -1,14 +1,10 @@
 (lang dune 3.17)
 
 (lock_dir
- (repositories ox default overlay))
-
-(repository
- (name default)
- (url "git+https://github.com/ocaml/opam-repository.git"))
+ (repositories ox :standard))
 
 (repository
  (name ox)
- (url "git+https://github.com/joelreymont/opam-repository.git#with-extensions"))
+ (url "git+https://github.com/oxcaml/opam-repository.git"))
 
 (env (dev (flags (:standard -warn-error -A))))

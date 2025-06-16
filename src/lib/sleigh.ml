@@ -1,8 +1,8 @@
 open Sexplib.Std
-open Annot
+open Tag
 
-type 'a integer = (int, 'a) annotated [@@deriving sexp]
-type 'a id = (string, 'a) annotated [@@deriving sexp]
+type 'a integer = (int, 'a) tagged [@@deriving sexp]
+type 'a id = (string, 'a) tagged [@@deriving sexp]
 
 let strcmp a b =
   let open String in
@@ -57,10 +57,10 @@ module Space = struct
       | `Default _ -> is_default := true
     in
     List.iter f mods;
-    if !kind == None then error id.note "missing space type";
+    if !kind == None then error (tag id) "missing space type";
     match !size with
-    | None -> error id.note "missing space type"
-    | Some n when n.value == 0 -> error id.note "size must not be 0"
+    | None -> error (tag id) "missing space type"
+    | Some n when n.value == 0 -> error (tag id) "size must not be 0"
     | _ ->
       ();
       let kind = Option.get !kind
@@ -71,14 +71,14 @@ module Space = struct
   ;;
 
   let make_kind id1 id2 =
-    if not (strcmp id1.value "type") then error id1.note "expecting 'type'";
+    if not (strcmp id1.value "type") then error (tag id1) "expecting 'type'";
     let kind = lower id2.value in
     let kind =
       match kind with
       | "rom" -> Rom
       | "ram" -> Ram
       | "register" -> Register
-      | _ -> error id2.note "expecting 'rom', 'ram' or 'register'"
+      | _ -> error (tag id2) "expecting 'rom', 'ram' or 'register'"
     in
     `Kind kind
   ;;
@@ -88,10 +88,15 @@ module Space = struct
     match lower id.value with
     | "size" -> `Size n
     | "wordsize" -> `WordSize n
-    | _ -> error id.note "expecting 'size' or 'wordsize'"
+    | _ -> error (tag id) "expecting 'size' or 'wordsize'"
   ;;
 
   let make_default b = `Default b
+
+  let strip_tags space =
+    let id = retag () space.id in
+    { space with id }
+  ;;
 end
 
 (* define register offset=0 size=4 [r0 r1 r2 r3]; *)
@@ -130,7 +135,12 @@ module Varnode = struct
     | "size" ->
       if n.value == 0 then error n "size must not be 0";
       Size n.value
-    | _ -> error id.note "expecting 'size' or 'offset'"
+    | _ -> error (tag id) "expecting 'size' or 'offset'"
+  ;;
+
+  let strip_tags vn =
+    let registers = List.map (retag ()) vn.registers in
+    { vn with registers }
   ;;
 end
 
@@ -145,6 +155,12 @@ module Varnode_attach = struct
   let make ~pos ~fields ~registers =
     if List.is_empty fields then error pos "field list must not be empty";
     if List.is_empty registers then error pos "register list must not be empty";
+    { fields; registers }
+  ;;
+
+  let strip_tags va =
+    let fields = List.map (retag ()) va.fields
+    and registers = List.map (retag ()) va.registers in
     { fields; registers }
   ;;
 end
@@ -175,6 +191,13 @@ module Token_field = struct
     and is_hex = !is_hex in
     { id; start_bit; end_bit; is_signed; is_hex }
   ;;
+
+  let strip_tags tf =
+    let id = retag () tf.id
+    and start_bit = retag () tf.start_bit
+    and end_bit = retag () tf.end_bit in
+    { tf with id; start_bit; end_bit }
+  ;;
 end
 
 module Token = struct
@@ -185,7 +208,12 @@ module Token = struct
     }
   [@@deriving sexp]
 
-  let make ~id ~bit_size ~fields = { id; bit_size; fields }
+  let strip_tags tok =
+    let id = retag () tok.id
+    and bit_size = retag () tok.bit_size
+    and fields = List.map Token_field.strip_tags tok.fields in
+    { id; bit_size; fields }
+  ;;
 end
 
 module Expr = struct
@@ -248,6 +276,36 @@ module Expr = struct
     | NEG
     | FNEG
   [@@deriving sexp]
+
+  let rec strip_tags = function
+    | Binary (op, lhs, rhs) ->
+      let lhs = strip_tags lhs
+      and rhs = strip_tags rhs in
+      Binary (op, lhs, rhs)
+    | Unary (op, rhs) ->
+      let rhs = strip_tags rhs in
+      Unary (op, rhs)
+    | Paren x -> Paren (strip_tags x)
+    | FunCall (id, args) ->
+      let id = retag () id
+      and args = List.map strip_tags args in
+      FunCall (id, args)
+    | Id x -> Id (retag () x)
+    | Int x -> Int (retag () x)
+    | BitRange (id, n, m) ->
+      let id = retag () id
+      and n = retag () n
+      and m = retag () m in
+      BitRange (id, n, m)
+    | Pointer (expr, space) ->
+      let expr = strip_tags expr
+      and space = Option.map (retag ()) space in
+      Pointer (expr, space)
+    | Sized (expr, n) ->
+      let expr = strip_tags expr
+      and n = retag () n in
+      Sized (expr, n)
+  ;;
 end
 
 module Pattern = struct
@@ -288,7 +346,17 @@ module Display = struct
     | Whitespace
   [@@deriving sexp]
 
-  let make ~mnemonic ~output = { mnemonic; output }
+  let strip_tags disp =
+    let strip_piece_tags = function
+      | Id x -> Id (retag () x)
+      | Text x -> Text (retag () x)
+      | Caret -> Caret
+      | Whitespace -> Whitespace
+    in
+    let mnemonic = List.map strip_piece_tags disp.mnemonic
+    and output = List.map strip_piece_tags disp.output in
+    { mnemonic; output }
+  ;;
 end
 
 module Jump_target = struct
@@ -299,6 +367,20 @@ module Jump_target = struct
     | Relative of 'a integer * 'a id
     | Label of 'a id
   [@@deriving sexp]
+
+  let strip_tags = function
+    | Fixed (addr, space) ->
+      let addr = retag () addr
+      and space = Option.map (retag ()) space in
+      Fixed (addr, space)
+    | Direct id -> Direct (retag () id)
+    | Indirect expr -> Indirect (Expr.strip_tags expr)
+    | Relative (ofs, space) ->
+      let ofs = retag () ofs
+      and space = retag () space in
+      Relative (ofs, space)
+    | Label id -> Label (retag () id)
+  ;;
 end
 
 module Statement = struct
@@ -314,6 +396,31 @@ module Statement = struct
     | Label of 'a id
     | Export of 'a Expr.t
   [@@deriving sexp]
+
+  let strip_tags = function
+    | Assign (lhs, rhs) ->
+      let lhs = Expr.strip_tags lhs
+      and rhs = Expr.strip_tags rhs in
+      Assign (lhs, rhs)
+    | Declare (id, size) ->
+      let id = retag () id
+      and size = Option.map (retag ()) size in
+      Declare (id, size)
+    | Fun_call (id, args) ->
+      let id = retag () id
+      and args = List.map Expr.strip_tags args in
+      Fun_call (id, args)
+    | Build id -> Build (retag () id)
+    | Goto target -> Goto (Jump_target.strip_tags target)
+    | Call target -> Call (Jump_target.strip_tags target)
+    | Return target -> Return (Jump_target.strip_tags target)
+    | Branch (expr, target) ->
+      let expr = Expr.strip_tags expr
+      and target = Jump_target.strip_tags target in
+      Branch (expr, target)
+    | Label id -> Label (retag () id)
+    | Export expr -> Export (Expr.strip_tags expr)
+  ;;
 end
 
 module Macro = struct
@@ -324,7 +431,12 @@ module Macro = struct
     }
   [@@deriving sexp]
 
-  let make ~id ~args ~body = { id; args; body }
+  let strip_tags m =
+    let id = retag () m.id
+    and args = List.map (retag ()) m.args
+    and body = List.map Statement.strip_tags m.body in
+    { id; args; body }
+  ;;
 end
 
 module Constructor = struct
@@ -337,14 +449,19 @@ module Constructor = struct
     }
   [@@deriving sexp]
 
-  let make ~id ~display ~pattern ~context ~body =
+  let strip_tags ctr =
+    let id = Option.map (retag ()) ctr.id
+    and display = Display.strip_tags ctr.display
+    and pattern = Option.map Expr.strip_tags ctr.pattern
+    and context = List.map Statement.strip_tags ctr.context
+    and body = List.map Statement.strip_tags ctr.body in
     { id; display; pattern; context; body }
   ;;
 end
 
 module Definition = struct
   type 'a t =
-    | Endian of (Endian.t, 'a) annotated
+    | Endian of (Endian.t, 'a) tagged
     | Alignment of 'a integer
     | Space of 'a Space.t
     | Varnode of 'a Varnode.t
@@ -354,6 +471,20 @@ module Definition = struct
     | Constructor of 'a Constructor.t
     | Macro of 'a Macro.t
   [@@deriving sexp]
+
+  let strip_tags = function
+    | Endian x -> Endian (retag () x)
+    | Alignment x -> Alignment (retag () x)
+    | Space x -> Space (Space.strip_tags x)
+    | Varnode x -> Varnode (Varnode.strip_tags x)
+    | Varnode_attach x -> Varnode_attach (Varnode_attach.strip_tags x)
+    | Token x -> Token (Token.strip_tags x)
+    | Pcode_op x -> Pcode_op (retag () x)
+    | Constructor x -> Constructor (Constructor.strip_tags x)
+    | Macro x -> Macro (Macro.strip_tags x)
+  ;;
 end
 
 type 'a t = 'a Definition.t list [@@deriving sexp]
+
+let strip_tags tree = List.map Definition.strip_tags tree
