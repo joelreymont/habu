@@ -1,9 +1,10 @@
 open Sexplib.Std
-open Error
 open Tag
+open Error
 
-type integer = (int, Position.t) tagged [@@deriving sexp]
-type id = (string, Position.t) tagged [@@deriving sexp]
+type loc = Position.t [@@deriving sexp]
+type integer = (int, loc) tagged [@@deriving sexp]
+type id = (string, loc) tagged [@@deriving sexp]
 
 let strcmp a b =
   let open String in
@@ -22,7 +23,7 @@ end
 
 (*
    define space ram type=ram_space size=4 wordsize=1 default;
-   define space register type=register_space size=4;
+    define space register type=register_space size=4;
 *)
 module Space = struct
   type t =
@@ -35,8 +36,8 @@ module Space = struct
 
   and m =
     [ `Kind of k
-    | `Size of integer
-    | `WordSize of integer
+    | `Size of int
+    | `Word_size of int
     | `Default of bool
     ]
 
@@ -47,52 +48,41 @@ module Space = struct
   [@@deriving sexp]
 
   let make ~(id : id) ~mods =
-    let kind = ref None
-    and size = ref None
-    and word_size = ref 1
-    and is_default = ref false in
-    let f = function
-      | `Kind k -> kind := Some k
-      | `Size n -> size := Some n
-      | `WordSize n -> word_size := value n
-      | `Default _ -> is_default := true
+    let space =
+      { id; kind = Ram; size = 0; word_size = 1; is_default = false }
+    and f space = function
+      | `Kind k -> { space with kind = k }
+      | `Size n -> { space with size = n.value }
+      | `Word_size n -> { space with word_size = n.value }
+      | `Default _ -> { space with is_default = true }
     in
-    List.iter f mods;
-    if !kind == None then error (tag id) "missing space type";
-    match !size with
-    | None -> error (tag id) "missing space type"
-    | Some n when value n == 0 -> error (tag id) "size must not be 0"
-    | _ ->
-      ();
-      let kind = Option.get !kind
-      and size = value (Option.get !size)
-      and word_size = !word_size
-      and is_default = !is_default in
-      { id; kind; size; word_size; is_default }
+    let pred space = space.size > 0 && space.word_size > 0 in
+    let* space = Result.fold f space mods in
+    Result.of_value pred (with_pos (tag id) space)
   ;;
 
-  let make_kind id1 id2 =
-    if not (strcmp (value id1) "type") then error (tag id1) "expecting 'type'";
-    let kind = value id2 |> lower in
-    let kind =
+  let make_kind key value =
+    let* _ = Result.of_value (fun _ -> strcmp key.value "type") key in
+    let kind = lower value.value in
+    let* kind =
       match kind with
-      | "rom_space" -> Rom
-      | "ram_space" -> Ram
-      | "register_space" -> Register
-      | _ -> error (tag id2) "expecting 'rom', 'ram' or 'register'"
+      | "rom" -> Ok Rom
+      | "ram" -> Ok Ram
+      | "register" -> Ok Register
+      | _ -> Error (`Invalid (tag value))
     in
-    `Kind kind
+    Ok (`Kind kind)
   ;;
 
-  let make_size id n =
-    if value n == 0 then error (tag n) "size must not be 0";
-    match value id |> lower with
-    | "size" -> `Size n
-    | "wordsize" -> `WordSize n
-    | _ -> error (tag id) "expecting 'size' or 'wordsize'"
+  let make_size key value =
+    let* _ = Result.ensure_positive value in
+    match lower key.value with
+    | "size" -> Ok (`Size value)
+    | "wordsize" -> Ok (`Word_size value)
+    | _ -> Error (`Invalid (tag key))
   ;;
 
-  let make_default b = `Default b
+  let make_default b = Ok (`Default b)
 end
 
 (* define register offset=0 size=4 [r0 r1 r2 r3]; *)
@@ -110,28 +100,25 @@ module Varnode = struct
   [@@deriving sexp]
 
   let make ~pos ~mods ~registers =
-    let size = ref None
-    and offset = ref None in
-    let f = function
-      | Size n -> size := Some n
-      | Offset n -> offset := Some n
+    let node = { registers; size = 0; offset = 0 } in
+    let f node = function
+      | Size n -> { node with size = n }
+      | Offset n -> { node with offset = n }
     in
-    List.iter f mods;
-    if !size == None then error pos "missing varnode size";
-    if !offset == None then error pos "missing varnode offset";
-    if List.is_empty registers then error pos "register list must not be empty";
-    let size = Option.get !size
-    and offset = Option.get !offset in
-    { size; offset; registers }
+    let* node = Result.fold f node mods in
+    let pred _ =
+      node.size > 0
+      && node.offset >= 0
+      && not (List.is_empty node.registers)
+    in
+    Result.of_value pred (with_loc pos node)
   ;;
 
-  let make_mod id n =
-    match value id |> lower with
-    | "offset" -> Offset (value n)
-    | "size" ->
-      if value n == 0 then error (tag n) "size must not be 0";
-      Size (value n)
-    | _ -> error (tag id) "expecting 'size' or 'offset'"
+  let make_mod key value =
+    match lower key.value with
+    | "offset" -> Ok (Offset value.value)
+    | "size" -> Ok (Size value.value)
+    | _ -> Error (`Invalid (tag key))
   ;;
 end
 
@@ -144,9 +131,9 @@ module Varnode_attach = struct
   [@@deriving sexp]
 
   let make ~pos ~fields ~registers =
-    if List.is_empty fields then error pos "field list must not be empty";
-    if List.is_empty registers then error pos "register list must not be empty";
-    { fields; registers }
+    let* _ = Result.ensure_not_empty (with_loc pos fields) in
+    let* _ = Result.ensure_not_empty (with_loc pos registers) in
+    Ok { fields; registers }
   ;;
 end
 
@@ -165,16 +152,14 @@ module Token_field = struct
   [@@deriving sexp]
 
   let make ~id ~start_bit ~end_bit ~mods =
-    let is_signed = ref false
-    and is_hex = ref false in
-    let f = function
-      | Signed flag -> is_signed := flag
-      | Hex flag -> is_hex := flag
+    let field =
+      { id; start_bit; end_bit; is_signed = false; is_hex = false }
     in
-    List.iter f mods;
-    let is_signed = !is_signed
-    and is_hex = !is_hex in
-    { id; start_bit; end_bit; is_signed; is_hex }
+    let f field = function
+      | Signed flag -> { field with is_signed = flag }
+      | Hex flag -> { field with is_hex = flag }
+    in
+    List.fold_left f field mods
   ;;
 end
 
@@ -200,6 +185,7 @@ module Expr = struct
     | Sized of t * integer
 
   and binary_op =
+    | JOIN
     | BOR
     | BAND
     | BXOR
@@ -239,6 +225,8 @@ module Expr = struct
     | FDIV
 
   and unary_op =
+    | ALEFT
+    | ARIGHT
     | NOT
     | INV
     | NEG
@@ -247,11 +235,10 @@ module Expr = struct
 end
 
 module Pattern = struct
-  type t =
-    | Binary of t * pattern_op * t
-    | Paren of t
-    | Align_left of t
-    | Align_right of t
+  type t = pattern list
+
+  and pattern =
+    | Pattern of pattern * pattern_op * pattern
     | Constraint of condition
 
   and condition =
@@ -260,17 +247,11 @@ module Pattern = struct
 
   and expr = Expr.t
 
-  and alignment =
-    | Left
-    | Right
-
   and condition_op =
     | EQ
     | NE
     | GT
     | LT
-    | GE
-    | LE
 
   and pattern_op =
     | OR
@@ -297,6 +278,7 @@ module Jump_target = struct
     | Fixed of integer * id option
     | Direct of id
     | Indirect of Expr.t
+    | Relative of integer * id
     | Label of id
   [@@deriving sexp]
 end
@@ -327,9 +309,9 @@ end
 
 module Constructor = struct
   type t =
-    { id : id
+    { id : id option
     ; display : Display.t
-    ; pattern : Pattern.t list
+    ; pattern : Expr.t option
     ; context : Statement.t list
     ; body : Statement.t list
     }
@@ -338,7 +320,7 @@ end
 
 module Definition = struct
   type t =
-    | Endian of (Endian.t, Position.t) tagged
+    | Endian of (Endian.t, loc) tagged
     | Alignment of integer
     | Space of Space.t
     | Varnode of Varnode.t
@@ -348,6 +330,16 @@ module Definition = struct
     | Constructor of Constructor.t
     | Macro of Macro.t
   [@@deriving sexp]
+
+  let make_endian r = Result.map (fun x -> Endian x) r
+  let make_alignment r = Result.map (fun x -> Alignment x) r
+  let make_space r = Result.map (fun x -> Space x) r
+  let make_varnode r = Result.map (fun x -> Varnode x) r
+  let make_varnode_attach r = Result.map (fun x -> Varnode_attach x) r
+  let make_token r = Result.map (fun x -> Token x) r
+  let make_pcode_op r = Result.map (fun x -> Pcode_op x) r
+  let make_constructor r = Result.map (fun x -> Constructor x) r
+  let make_macro r = Result.map (fun x -> Macro x) r
 end
 
 type t = Definition.t list [@@deriving sexp]

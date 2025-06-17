@@ -9,8 +9,6 @@ type t
 val t_of_sexp : Sexp.t -> t
 val sexp_of_t : t -> Sexp.t
 
-(** Abstract type for pairs of positions in the lexing stream. *)
-
 type position = t [@@deriving sexp]
 
 type 'a located = { value : 'a; position : t } [@@deriving sexp]

@@ -38,10 +38,6 @@ let keyword_table =
       "variables", KEY_VARIABLES;
     ]
 
-let lexing_error lexbuf =
-  let pos = Position.cpos lexbuf in
-  Error.error pos 
-
 let dummy_lexer _ = EOF 
 
 let regular_lexer = ref dummy_lexer
@@ -128,11 +124,8 @@ rule regular_token = parse
     with Not_found -> ID s
   }
 | '#' { comments lexbuf }
-| eof                 { EOF }
-| _ as bad_char
-  {
-    lexing_error lexbuf (Printf.sprintf "Unexpected character \'%c\'" bad_char)
-  }
+| eof { EOF }
+| _   { BAD_CHAR }
 
 and display_token = parse
 | '\n'                { Lexing.new_line lexbuf; token lexbuf }
@@ -143,10 +136,7 @@ and display_token = parse
 | ident as s          { ID s }
 | text as s           { TEXT s }
 | eof                 { EOF }
-| _ as bad_char
-  {
-    lexing_error lexbuf (Printf.sprintf "Unexpected character \'%c\'" bad_char)
-  }
+| _                   { BAD_CHAR }
 
 and comments = parse
 | '\n' { Lexing.new_line lexbuf; token lexbuf }

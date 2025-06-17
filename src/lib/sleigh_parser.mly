@@ -91,6 +91,7 @@ module Habu = struct end
 %token SIGNED_DIV
 %token SIGNED_MOD
 %token SPACE
+%token BAD_CHAR
 %token EOF
 
 %left PIPE
@@ -108,26 +109,39 @@ module Habu = struct end
 %left STAR SLASH PERCENT FLOAT_DIV FLOAT_MUL SIGNED_DIV SIGNED_MOD
 %nonassoc UNARY
 
-%start <Sleigh_tree.t> grammar
+%start <Sleigh.t Error.result> grammar
+%start <Sleigh.Definition.t Error.result> endian_definition
 %%
 
 grammar:
-	| definition+ EOF    { $1 }
-	| e = located(error) { Error.error (Tag.tag e) "Syntax error" }
+	| endian_definition result_list(other_definition) EOF {
+		let (let*) = Result.bind in
+		let* x = $1 in
+		let* xs = $2 in
+		Ok (x :: xs)
+	}
+	| e = located(error)
+		{ Error (`Syntax_error (tag e)) }
+
+other_definition:
+	| definition SEMI { $1 }
+	| constructor     { Definition.make_constructor $1 }
+	| macro           { Definition.make_macro $1 }
+
+endian_definition:
+	KEY_DEFINE KEY_ENDIAN ASSIGN endian SEMI { Definition.make_endian $4 } 
+
+endian:
+	| located(KEY_BIG)    { Ok (with_pos (tag $1) Endian.Big) }
+	| located(KEY_LITTLE) { Ok (with_pos (tag $1) Endian.Little) }
 
 definition:
-	| definition_semi SEMI { $1 }
-	| constructor          { Definition.Constructor $1 }
-	| macro                { Definition.Macro $1 }
-	
-definition_semi:
-	| endian_definition         { Definition.Endian $1 }
-	| align_definition          { Definition.Alignment $1 }
-	| space_definition          { Definition.Space $1 }
-	| varnode_definition        { Definition.Varnode $1 }
-	| token_definition          { Definition.Token $1 }
-	| varnode_attach_definition { Definition.Varnode_attach $1 }
-	| pcodeop_definition        { Definition.Pcode_op $1 }
+	| align_definition          { Definition.make_alignment $1 }
+	| space_definition          { Definition.make_space $1 }
+	| varnode_definition        { Definition.make_varnode $1 }
+	| token_definition          { Definition.make_token $1 }
+	| varnode_attach_definition { Definition.make_varnode_attach $1 }
+	| pcodeop_definition        { Definition.make_pcode_op $1 }
 	(*
 	| context_definition      { Context $1 }
 	| bitrange_definition     { Bit_range $1 }
@@ -135,15 +149,8 @@ definition_semi:
 	| name_attach_definition  { Name_attach $1 }
 	*)
 
-endian_definition:
-	KEY_DEFINE KEY_ENDIAN ASSIGN located(endian) { $4 } 
-
-endian:
-	| KEY_BIG    { Endian.Big }
-	| KEY_LITTLE { Endian.Little }
-
 align_definition:
-	KEY_DEFINE KEY_ALIGNMENT ASSIGN constant { $4 }
+	KEY_DEFINE KEY_ALIGNMENT ASSIGN constant { Ok $4 }
 	
 space_definition:
 	KEY_DEFINE KEY_SPACE space_name space_mod+
@@ -170,7 +177,7 @@ varnode_mod:
 
 token_definition:
 	KEY_DEFINE KEY_TOKEN id LPAREN constant RPAREN token_field+
-		{ Token.{id = $3; bit_size = $5; fields = $7} }
+		{ Ok (Token.{id = $3; bit_size = $5; fields = $7}) }
 
 varnode_attach_definition:
 	varnode_attach_start KEY_VARIABLES LBRACKET id+ RBRACKET LBRACKET id+ RBRACKET
@@ -180,13 +187,24 @@ varnode_attach_start:
 	KEY_ATTACH { Position.with_poss $startpos $endpos () }
 
 pcodeop_definition:
-	KEY_DEFINE KEY_PCODEOP id { $3 }
+	KEY_DEFINE KEY_PCODEOP id { Ok $3 }
 
 constructor:
 	| id midrule(display_lexer_on) COLON display pattern context constructor_body
 		{ Constructor.{id = $1; display = $4; pattern = $5; context = $6; body = $7} }
 	| COLON midrule(display_lexer_on) id display pattern context constructor_body
 		{ Constructor.{id = $3; display = $4; pattern = $5; context = $6; body = $7} }
+%%%%%%% Changes from base to side #2
+ 	ctr_name COLON display pattern? context constructor_body
+-		{ Constructor.{id = $1; display = $3; pattern = $4; context = $5; body = $6} }
++		{ Ok (Constructor.{id = $1; display = $3; pattern = $4; context = $5; body = $6}) }
+ 	
+ ctr_name:
+ 	id?
+ 	midrule(display_lexer_on)
+ 	midrule(semi_is_join)
+ 		{ $1 }
+>>>>>>> Conflict 4 of 4 ends
 
 display:
 	mnemonic output { Display.{mnemonic = $1; output = $2} }
@@ -253,7 +271,7 @@ semantic_body:
 	
 macro:
 	KEY_MACRO id LPAREN arg_names RPAREN macro_body
-		{ Macro.{id = $2; args = $4; body = $6} }
+		{ Ok (Macro.{id = $2; args = $4; body = $6}) }
 
 macro_body:
 	| LBRACE semantic_body RBRACE { $2 }
@@ -472,3 +490,13 @@ display_lexer_off:
 	| { display_lexer_off() }
 
 
+result_list(X):
+| x = X {
+	Result.map (fun x -> [ x ]) x
+}
+| x = X; xs = result_list(X) {
+	let (let*) = Result.bind in
+	let* x = x in
+	let* xs = xs in
+	Ok (x :: xs)
+}
