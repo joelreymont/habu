@@ -1,6 +1,6 @@
 %{
 open Tag
-open Sleigh
+open Sleigh_tree
 open Sleigh_lexer_util
 
 (* Prevent the parser from depending on the library *)
@@ -50,7 +50,6 @@ module Habu = struct end
 %token BANG
 %token TILDE
 %token SEMI
-%token JOIN
 %token ASSIGN
 %token LESS_THAN
 %token GREATER_THAN
@@ -95,7 +94,6 @@ module Habu = struct end
 %token SPACE
 %token EOF
 
-%left JOIN
 %left PIPE
 %left AMPERSAND
 %left OR SPEC_OR
@@ -111,8 +109,8 @@ module Habu = struct end
 %left STAR SLASH PERCENT FLOAT_DIV FLOAT_MUL SIGNED_DIV SIGNED_MOD
 %nonassoc UNARY
 
-%start <Position.t Sleigh.t> grammar
-%start <Position.t Sleigh.Definition.t> endian_definition
+%start <Sleigh_tree.t> grammar
+%start <Sleigh_tree.Definition.t> endian_definition
 %%
 
 grammar:
@@ -188,13 +186,14 @@ pcodeop_definition:
 	KEY_DEFINE KEY_PCODEOP id { $3 }
 
 constructor:
-	ctr_name COLON display pattern? context constructor_body
+	| ctr_name COLON display pattern context constructor_body
 		{ Constructor.{id = $1; display = $3; pattern = $4; context = $5; body = $6} }
+	| COLON ctr_name SPACE display pattern context constructor_body
+		{ Constructor.{id = $2; display = $4; pattern = $5; context = $6; body = $7} }
 	
 ctr_name:
-	id?
+	id
 	midrule(display_lexer_on)
-	midrule(semi_is_join)
 		{ $1 }
 
 display:
@@ -218,7 +217,7 @@ output_piece:
 	| text  { Display.Text $1 }
 
 pattern:
-	pattern_expr midrule(semi_is_semi) { $1 }
+	separated_list(SEMI, pattern_expr) { $1 }
 
 context:
 	| LBRACKET context_statement* RBRACKET { $2 }
@@ -233,23 +232,22 @@ context_statement:
 	| funcall SEMI    { $1 }
 
 pattern_expr: 
-	| pattern_expr pattern_op pattern_expr { Expr.Binary ($2, $1, $3) }
-	| ELLIPSIS pattern_atomic              { Expr.Unary (Expr.ARIGHT, $2) }
-	| pattern_atomic ELLIPSIS              { Expr.Unary (Expr.ALEFT, $1) }
+	| pattern_expr pattern_op pattern_expr { Pattern.Binary ($1, $2, $3) }
+	| ELLIPSIS pattern_atomic              { Pattern.Align_right $2 }
+	| pattern_atomic ELLIPSIS              { Pattern.Align_left $1 }
 	| pattern_atomic                       { $1 }
 	 
 %inline pattern_op:
-	| JOIN      { Expr.JOIN }
-	| PIPE      { Expr.BOR }
-	| AMPERSAND { Expr.BAND }
+	| PIPE      { Pattern.OR }
+	| AMPERSAND { Pattern.AND }
 
 pattern_atomic:
-	| condition                  { $1 }
-	| LPAREN pattern_expr RPAREN { Expr.Paren $2 }
+	| condition                  { Pattern.Constraint $1 }
+	| LPAREN pattern_expr RPAREN { Pattern.Paren $2 }
 
 condition:
-	| id                             { Expr.Id $1 }
-	| id condition_op condition_expr { Expr.Binary ($2, Expr.Id $1, $3) }
+	| id                             { Symbol $1 }
+	| id condition_op condition_expr { Condition ($1, $2, $3) }
 
 condition_expr:
 	| condition_expr condition_expr_op condition_expr    { Expr.Binary ($2, $1, $3) }
@@ -345,7 +343,7 @@ expr_term:
 	| bitrange           { $1 }
 
 expr_funcall:
-	id LPAREN args RPAREN { Expr.FunCall ($1, $3) }
+	id LPAREN args RPAREN { Expr.Fun_call ($1, $3) }
 
 varnode:
 	| constant                { Expr.Int $1 }
@@ -355,7 +353,7 @@ varnode:
 
 bitrange:
 	id LBRACKET constant COMMA constant RBRACKET
-		{ Expr.BitRange ($1, $3, $5) }
+		{ Expr.Bit_range ($1, $3, $5) }
 
 sized_export:
 	| sized_pointer(id_expr) { $1 }
@@ -376,12 +374,12 @@ arg_names:
 	separated_list(COMMA, id) { $1 }
 
 %inline condition_op:
-	| ASSIGN        { Expr.EQ }
-	| NOT_EQUAL     { Expr.NE }
-	| LESS_THAN     { Expr.LT}
-	| LESS_EQUAL    { Expr.LE}
-	| GREATER_THAN  { Expr.GT }
-	| GREATER_EQUAL { Expr.GE }
+	| ASSIGN        { Pattern.EQ }
+	| NOT_EQUAL     { Pattern.NE }
+	| LESS_THAN     { Pattern.LT}
+	| LESS_EQUAL    { Pattern.LE }
+	| GREATER_THAN  { Pattern.GT }
+	| GREATER_EQUAL { Pattern.GE }
 
 %inline condition_expr_op:
 	| SPEC_OR     { Expr.OR }
@@ -481,9 +479,4 @@ display_lexer_on:
 display_lexer_off:
 	| { display_lexer_off() }
 
-semi_is_join:
-	| { semi_is_join := true }
-
-semi_is_semi:
-	| { semi_is_join := false }
 

@@ -1,6 +1,0 @@
-[revset-aliases]
-"trunk()" = "main@origin"
-"immutable_heads()" = "none()"
-
-[aliases]
-evolve = ['rebase', '--skip-emptied', '-d', 'main']

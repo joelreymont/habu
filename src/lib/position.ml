@@ -3,7 +3,8 @@ open Lexing
 
 type lexing_position = Lexing.position
 
-let lexing_position_of_sexp p =
+(*
+   let lexing_position_of_sexp p =
   [%of_sexp: string * int * int * int] p
   |> fun (pos_fname, pos_lnum, pos_bol, pos_cnum) ->
   { pos_fname; pos_lnum; pos_bol; pos_cnum }
@@ -13,14 +14,20 @@ let sexp_of_lexing_position p =
   [%sexp_of: string * int * int * int]
     (p.pos_fname, p.pos_lnum, p.pos_bol, p.pos_cnum)
 ;;
+*)
 
 type t =
   { start_p : lexing_position
   ; end_p : lexing_position
   }
-[@@deriving sexp]
 
 type position = t
+
+let dummy = { start_p = Lexing.dummy_pos; end_p = Lexing.dummy_pos }
+let t_of_sexp _ = dummy
+let sexp_of_t _ = sexp_of_unit ()
+let sexp_of_position = sexp_of_t
+let position_of_sexp = t_of_sexp
 
 type 'a located =
   { value : 'a
@@ -44,7 +51,6 @@ let mapd f v =
   { value = w1; position = pos }, { value = w2; position = pos }
 ;;
 
-let dummy = { start_p = Lexing.dummy_pos; end_p = Lexing.dummy_pos }
 let unknown_pos v = { value = v; position = dummy }
 let start_of_position p = p.start_p
 let end_of_position p = p.end_p

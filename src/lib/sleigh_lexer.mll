@@ -77,7 +77,7 @@ rule regular_token = parse
 | ','    { COMMA }
 | '!'    { BANG }
 | '~'    { TILDE }
-| ';'    { if !semi_is_join then JOIN else SEMI } 
+| ';'    { SEMI } 
 | '='    { ASSIGN }
 | '<'    { LESS_THAN }
 | '>'    { GREATER_THAN }
