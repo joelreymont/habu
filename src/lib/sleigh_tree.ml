@@ -75,9 +75,9 @@ module Space = struct
     let kind = value id2 |> lower in
     let kind =
       match kind with
-      | "rom" -> Rom
-      | "ram" -> Ram
-      | "register" -> Register
+      | "rom_space" -> Rom
+      | "ram_space" -> Ram
+      | "register_space" -> Register
       | _ -> error (tag id2) "expecting 'rom', 'ram' or 'register'"
     in
     `Kind kind

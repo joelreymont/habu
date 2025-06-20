@@ -110,7 +110,6 @@ module Habu = struct end
 %nonassoc UNARY
 
 %start <Sleigh_tree.t> grammar
-%start <Sleigh_tree.Definition.t> endian_definition
 %%
 
 grammar:
