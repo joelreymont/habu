@@ -1,4 +1,4 @@
-let exit_flag = ref true
+let exit_flag = ref false
 let exit_on_error () = exit_flag := true
 let resume_on_error () = exit_flag := false
 

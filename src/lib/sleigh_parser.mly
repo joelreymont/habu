@@ -1,5 +1,4 @@
 %{
-open Tag
 open Sleigh_tree
 open Sleigh_lexer_util
 
@@ -113,10 +112,15 @@ module Habu = struct end
 %%
 
 grammar:
-	| terminated(definition, SEMI)+ EOF { $1 }
-	| e = located(error)                { error (tag e) "Syntax error" }
+	| definition+ EOF    { $1 }
+	| e = located(error) { Error.error (Tag.tag e) "Syntax error" }
 
 definition:
+	| definition_semi SEMI { $1 }
+	| constructor          { Definition.Constructor $1 }
+	| macro                { Definition.Macro $1 }
+	
+definition_semi:
 	| endian_definition         { Definition.Endian $1 }
 	| align_definition          { Definition.Alignment $1 }
 	| space_definition          { Definition.Space $1 }
@@ -124,8 +128,6 @@ definition:
 	| token_definition          { Definition.Token $1 }
 	| varnode_attach_definition { Definition.Varnode_attach $1 }
 	| pcodeop_definition        { Definition.Pcode_op $1 }
-	| constructor               { Definition.Constructor $1 }
-	| macro                     { Definition.Macro $1 }
 	(*
 	| context_definition      { Context $1 }
 	| bitrange_definition     { Bit_range $1 }
@@ -153,12 +155,12 @@ space_mod:
 	| space_is_default   { Space.make_default $1 }
 
 space_name:
-	| RES_REGISTER { with_pos Position.(lex_join $startpos $endpos) "register" }
+	| RES_REGISTER { Tag.with_pos Position.(lex_join $startpos $endpos) "register" }
 	| id           { $1 }
 
 varnode_definition:
 	varnode_start RES_REGISTER varnode_mod+ LBRACKET id+ RBRACKET
-		{ Varnode.make ~pos:$1 ~mods:$3 ~registers:$5 }
+		{ Varnode.make ~pos:(Position.position $1) ~mods:$3 ~registers:$5 }
 
 varnode_start:
 	KEY_DEFINE { Position.with_poss $startpos $endpos () }
@@ -172,7 +174,7 @@ token_definition:
 
 varnode_attach_definition:
 	varnode_attach_start KEY_VARIABLES LBRACKET id+ RBRACKET LBRACKET id+ RBRACKET
-		{ Varnode_attach.make ~pos:$1 ~fields:$4 ~registers:$7 }
+		{ Varnode_attach.make ~pos:(Position.position $1) ~fields:$4 ~registers:$7 }
 
 varnode_attach_start:
 	KEY_ATTACH { Position.with_poss $startpos $endpos () }
@@ -181,15 +183,10 @@ pcodeop_definition:
 	KEY_DEFINE KEY_PCODEOP id { $3 }
 
 constructor:
-	| ctr_name COLON display pattern context constructor_body
-		{ Constructor.{id = $1; display = $3; pattern = $4; context = $5; body = $6} }
-	| COLON ctr_name SPACE display pattern context constructor_body
-		{ Constructor.{id = $2; display = $4; pattern = $5; context = $6; body = $7} }
-	
-ctr_name:
-	id
-	midrule(display_lexer_on)
-		{ $1 }
+	| id midrule(display_lexer_on) COLON display pattern context constructor_body
+		{ Constructor.{id = $1; display = $4; pattern = $5; context = $6; body = $7} }
+	| COLON midrule(display_lexer_on) id display pattern context constructor_body
+		{ Constructor.{id = $3; display = $4; pattern = $5; context = $6; body = $7} }
 
 display:
 	mnemonic output { Display.{mnemonic = $1; output = $2} }
@@ -451,7 +448,7 @@ text:
 	located(TEXT) { $1 }
 
 %inline located(X):
-	x=X { with_pos Position.(lex_join $startpos $endpos) x }
+	x=X { Tag.with_pos Position.(lex_join $startpos $endpos) x }
 
 constant:
 	| located(integer) { $1 }

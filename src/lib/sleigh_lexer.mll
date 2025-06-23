@@ -40,7 +40,7 @@ let keyword_table =
 
 let lexing_error lexbuf =
   let pos = Position.cpos lexbuf in
-  Error.error pos
+  Error.error pos 
 
 let dummy_lexer _ = EOF 
 
@@ -139,6 +139,7 @@ and display_token = parse
 | ['\t' '\r']+        { token lexbuf }
 | ' '+                { SPACE }
 | ['i' 'I'] ['s' 'S'] { RES_IS }
+| '^'                 { CARET }
 | ident as s          { ID s }
 | text as s           { TEXT s }
 | eof                 { EOF }

@@ -1,4 +1,5 @@
 open Sexplib.Std
+open Error
 open Tag
 module S = Sleigh_tree
 module StringMap = Map.Make (String)
@@ -343,7 +344,7 @@ module Bit_field = struct
     and pos = tag id in
     let sym = Symbol.make name in
     match Value.find env sym with
-    | Some _ -> error tag (Printf.sprintf "Duplicate bit field '%s'" name)
+    | Some _ -> error pos (Printf.sprintf "Duplicate bit field '%s'" name)
     | None ->
       let size = Some (value tok.bit_size lsr 3) in
       let lift (field : S.Token_field.t) =
@@ -637,7 +638,7 @@ module Pcode_op = struct
     and pos = tag id in
     let sym = Symbol.make name in
     match Value.find env sym with
-    | Some _ -> error tag (Printf.sprintf "Duplicate pcode op '%s'" name)
+    | Some _ -> error pos (Printf.sprintf "Duplicate pcode op '%s'" name)
     | None ->
       let tag = { Tag.empty with pos } in
       let value = Value.Pcode_op { tag } in

@@ -2,7 +2,13 @@ type ('a, 'b) tagged =
   { value : 'a
   ; tag : 'b
   }
-[@@deriving sexp]
+
+let sexp_of_tagged sexp_of_a _ { value; tag = _ } = sexp_of_a value
+
+let tagged_of_sexp _ _ _ =
+  let exception Exc of string in
+  raise (Exc "tagged_of_sexp unimplemented!")
+;;
 
 type 'a located = ('a, Position.t) tagged
 
@@ -13,8 +19,3 @@ let set_value tagged value = { tagged with value }
 let clear_tag tagged = { tagged with tag = () }
 let tag a = a.tag
 let value a = a.value
-
-let error (type n) (a : n) s =
-  let exception Exc of (n * string) in
-  raise (Exc (a, s))
-;;

@@ -1,4 +1,9 @@
-type ('a, 'b) tagged [@@deriving sexp]
+open Sexplib
+
+type ('a, 'b) tagged 
+
+val sexp_of_tagged : ('a -> Sexp.t) -> ('b -> Sexp.t) -> ('a, 'b) tagged -> Sexp.t
+val tagged_of_sexp : (Sexp.t -> 'a) -> (Sexp.t -> 'b) -> Sexp.t -> ('a, 'b) tagged
 
 type 'a located
 
@@ -13,5 +18,3 @@ val clear_tag : ('a, 'b) tagged -> ('a, unit) tagged
 
 val tag : (_, 'a) tagged -> 'a
 val value: ('a, _) tagged -> 'a
-
-val error : 'n -> string -> 'a

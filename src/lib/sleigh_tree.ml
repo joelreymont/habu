@@ -1,4 +1,5 @@
 open Sexplib.Std
+open Error
 open Tag
 
 type integer = (int, Position.t) tagged [@@deriving sexp]
@@ -84,7 +85,7 @@ module Space = struct
   ;;
 
   let make_size id n =
-    if value n == 0 then error n "size must not be 0";
+    if value n == 0 then error (tag n) "size must not be 0";
     match value id |> lower with
     | "size" -> `Size n
     | "wordsize" -> `WordSize n
@@ -128,7 +129,7 @@ module Varnode = struct
     match value id |> lower with
     | "offset" -> Offset (value n)
     | "size" ->
-      if value n == 0 then error n "size must not be 0";
+      if value n == 0 then error (tag n) "size must not be 0";
       Size (value n)
     | _ -> error (tag id) "expecting 'size' or 'offset'"
   ;;
