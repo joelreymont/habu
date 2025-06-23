@@ -113,36 +113,32 @@ module Habu = struct end
 %%
 
 grammar:
-	| endian_definition other_definition* EOF
-		{ $1 :: $2 }
-	| e = located(error)
-		{ error (tag e) "Syntax error" }
-
-other_definition:
-	| definition SEMI { $1 }
-	| constructor     { Definition.Constructor $1 }
-	| macro           { Definition.Macro $1 }
-
-endian_definition:
-	KEY_DEFINE KEY_ENDIAN ASSIGN located(endian) SEMI { Definition.Endian $4 } 
-
-endian:
-	| KEY_BIG    { Endian.Big }
-	| KEY_LITTLE { Endian.Little }
+	| terminated(definition, SEMI)+ EOF { $1 }
+	| e = located(error)                { error (tag e) "Syntax error" }
 
 definition:
+	| endian_definition         { Definition.Endian $1 }
 	| align_definition          { Definition.Alignment $1 }
 	| space_definition          { Definition.Space $1 }
 	| varnode_definition        { Definition.Varnode $1 }
 	| token_definition          { Definition.Token $1 }
 	| varnode_attach_definition { Definition.Varnode_attach $1 }
 	| pcodeop_definition        { Definition.Pcode_op $1 }
+	| constructor               { Definition.Constructor $1 }
+	| macro                     { Definition.Macro $1 }
 	(*
 	| context_definition      { Context $1 }
 	| bitrange_definition     { Bit_range $1 }
 	| value_attach_definition { Value_attach $1 }
 	| name_attach_definition  { Name_attach $1 }
 	*)
+
+endian_definition:
+	KEY_DEFINE KEY_ENDIAN ASSIGN located(endian) { $4 } 
+
+endian:
+	| KEY_BIG    { Endian.Big }
+	| KEY_LITTLE { Endian.Little }
 
 align_definition:
 	KEY_DEFINE KEY_ALIGNMENT ASSIGN constant { $4 }
