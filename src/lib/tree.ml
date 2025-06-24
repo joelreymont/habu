@@ -216,6 +216,7 @@ and Macro' : sig
   type t =
     { args : Id.t list
     ; statements : Statement'.t list
+    ; tag : Tag.t
     }
   [@@deriving sexp]
 end =
@@ -242,6 +243,7 @@ and Rule' : sig
     ; setup : Statement'.t list
     ; effects : Statement'.t list
     ; pattern : Expr'.t list
+    ; tag : Tag.t
     }
   [@@deriving sexp]
 end =
@@ -599,10 +601,14 @@ module Statement = struct
       let name = value id in
       let sym = Symbol.make name in
       (match Value.find env sym with
-       | None -> error (tag id) (Printf.sprintf "Unknown function '%s'" name)
+       | None ->
+         error (tag id) (Printf.sprintf "Unknown function or macro '%s'" name)
        | Some (Intrinsic f) ->
          let args = List.map (Expr.lift_exn env) args in
          Fun_call (f, args)
+       | Some (Macro m) ->
+         let args = List.map (Expr.lift_exn env) args in
+         Macro_call (m, args)
        | _ ->
          error (tag id) (Printf.sprintf "Not a built-in function '%s'" name))
     | Build id -> Build (Id.lift id)
@@ -630,6 +636,21 @@ end
 
 module Macro = struct
   include Macro'
+
+  let lift_exn env (macro : S.Macro.t) =
+    let id = macro.id in
+    let name = value id
+    and pos = tag id in
+    let sym = Symbol.make name in
+    match Value.find env sym with
+    | Some _ -> error pos (Printf.sprintf "Duplicate macro '%s'" name)
+    | None ->
+      let args = List.map Id.lift macro.args
+      and statements = List.map (Statement.lift_exn env) macro.body
+      and tag = { Tag.empty with pos } in
+      let value = Value.Macro { args; statements; tag } in
+      Value.add env sym value
+  ;;
 end
 
 module Pcode_op = struct
@@ -674,38 +695,6 @@ module Output = struct
   ;;
 end
 
-(*
-   module Pattern = struct
-  type t =
-    | Binary of t * pattern_op * t
-    | Paren of t
-    | Align_left of t
-    | Align_right of t
-    | Constraint of condition
-
-  and condition =
-    | Condition of id * condition_op * expr
-    | Symbol of id
-
-  and expr = Expr.t
-
-  and alignment =
-    | Left
-    | Right
-
-  and condition_op =
-    | EQ
-    | NE
-    | GT
-    | LT
-
-  and pattern_op =
-    | OR
-    | AND
-  [@@deriving sexp]
-end
-*)
-
 module Rule = struct
   include Rule'
 
@@ -743,12 +732,14 @@ module Rule = struct
            Binary (lhs, op, rhs)
          | Symbol id -> Expr.lift_exn env (S.Expr.Id id))
     in
-    let mnemonic = List.filter_map (Output.lift_exn env) ctr.display.mnemonic
+    let pos = tag ctr.id in
+    let tag = { Tag.empty with pos }
+    and mnemonic = List.filter_map (Output.lift_exn env) ctr.display.mnemonic
     and output = List.filter_map (Output.lift_exn env) ctr.display.output
     and setup = List.map (Statement.lift_exn env) ctr.context
     and effects = List.map (Statement.lift_exn env) ctr.body
     and pattern = List.map (lift_pat env) ctr.pattern in
-    { mnemonic; output; setup; effects; pattern }
+    { mnemonic; output; setup; effects; pattern; tag }
   ;;
 end
 
@@ -808,10 +799,7 @@ let lift_defs_exn defs =
     | Token tok -> Bit_field.lift_exn env tok
     | Pcode_op op -> Pcode_op.lift_exn env op
     | Constructor ctr -> Scanner.lift_exn env ctr
-    (*
-       | D.Macro m -> lift_macro_exn env m
-    *)
-    | _ -> assert false
+    | Macro m -> Macro.lift_exn env m
   in
   List.iter f defs;
   { endian = Option.get !endian
