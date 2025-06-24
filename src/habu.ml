@@ -3,8 +3,8 @@ open Driver
 open Settings
 
 let print_version () =
-  print_endline "bop 0.0.1";
-  print_endline "Copyright 2025, Joel Reymont et al."
+  print_endline "habu 0.0.1";
+  print_endline "Copyright 2025, Joel Reymont"
 ;;
 
 let () = Random.self_init ()
@@ -34,12 +34,16 @@ let () =
 ;;
 
 let () = Arg.parse args (fun f -> filename := f) usage
+let ( let* ) = Result.bind
 
 let () =
-  let g = parse_file !filename in
-  match g with
+  let f () =
+    let* tree, text, buffer = parse_file !filename in
+    Tree.lift tree text buffer
+  in
+  match f () with
   | Error msg ->
-    Printf.eprintf "Could not load grammar from %s.\n%s%!\n" !filename msg;
+    Printf.eprintf "Could not process %s.\n%s%!\n" !filename msg;
     exit 1
   | Ok _ -> print_endline "All good!"
 ;;

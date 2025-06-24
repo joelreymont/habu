@@ -5,7 +5,8 @@ let parse s =
   let lexbuf = Lexing.from_string s in
   let result = Driver.parse s lexbuf Sleigh_parser.grammar in
   match result with
-  | Ok tree -> Sleigh_tree.sexp_of_t tree |> Sexp.to_string |> print_endline
+  | Ok (tree, _, _) ->
+    Sleigh_tree.sexp_of_t tree |> Sexp.to_string |> print_endline
   | Error s -> print_endline s
 ;;
 

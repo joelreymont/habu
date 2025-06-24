@@ -1,3 +1,6 @@
+module E = MenhirLib.ErrorReports
+module L = Lexing
+
 (** This module provides a uniform way of reporting (located) error message. *)
 
 val exit_on_error : unit -> unit
@@ -24,3 +27,5 @@ val errorN : Position.t list -> string -> 'a
 
 val global_error : string -> 'a
 (** [global_error msg] prints [msg] and stops the program. *)
+
+val fail : string -> (L.position * L.position) E.buffer -> string

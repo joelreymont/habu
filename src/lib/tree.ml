@@ -4,6 +4,8 @@ open Tag
 module S = Sleigh_tree
 module StringMap = Map.Make (String)
 
+let ( let* ) = Result.bind
+
 module Tag = struct
   type t =
     { size : int option
@@ -825,4 +827,19 @@ let gensym prefix =
   fun () ->
     incr count;
     prefix ^ string_of_int !count
+;;
+
+let inline_macros tree = Ok tree
+let inline_scanners tree = Ok tree
+
+let lift defs text buffer =
+  let* tree =
+    try Ok (lift_defs_exn defs) with
+    | Error.Error (poss, msg) ->
+      output_string stderr (Error.print_error poss msg);
+      Error (fail text buffer)
+  in
+  let* tree = inline_macros tree in
+  let* tree = inline_scanners tree in
+  Ok tree
 ;;

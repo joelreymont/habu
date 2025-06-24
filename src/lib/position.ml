@@ -1,5 +1,4 @@
 open Sexplib.Std
-open Lexing
 
 type lexing_position = Lexing.position
 
