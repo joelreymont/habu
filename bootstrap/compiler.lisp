@@ -338,6 +338,20 @@
                   (list #x48 #xC1 #xE0 #x04)    ; shl rax, 4
                   (list #x48 #x83 #xC4 #x08)))
 
+         ((eq op 'car)
+          ;; Compile (car cons) - load car field
+          ;; cons cells have car at offset 16 (after header)
+          (append (emit-x86_64 (first args) env)
+                  (list #x48 #x83 #xE0 #xF0)    ; and rax, ~0xF (clear tag)
+                  (list #x48 #x8B #x40 #x10))) ; mov rax, [rax + 16]
+
+         ((eq op 'cdr)
+          ;; Compile (cdr cons) - load cdr field
+          ;; cdr is at offset 24 (header + car)
+          (append (emit-x86_64 (first args) env)
+                  (list #x48 #x83 #xE0 #xF0)    ; and rax, ~0xF (clear tag)
+                  (list #x48 #x8B #x40 #x18))) ; mov rax, [rax + 24]
+
          (t
           (error "Unknown operator: ~S" op)))))))
 
@@ -617,6 +631,18 @@
                   (list #xE0 #xA7 #x9F #x9A)       ; cset x0, ge (greater or equal)
                   (list #x00 #x10 #x00 #xD3)       ; lsl x0, x0, #4
                   (list #xFD #x7B #xC1 #xA8)))
+
+         ((eq op 'car)
+          ;; Compile (car cons) for ARM64 - load car field
+          (append (emit-arm64 (first args) env)
+                  (list #x00 #x3C #x40 #x92)       ; and x0, x0, #~0xF (clear tag)
+                  (list #x00 #x08 #x40 #xF9)))    ; ldr x0, [x0, #16]
+
+         ((eq op 'cdr)
+          ;; Compile (cdr cons) for ARM64 - load cdr field
+          (append (emit-arm64 (first args) env)
+                  (list #x00 #x3C #x40 #x92)       ; and x0, x0, #~0xF (clear tag)
+                  (list #x00 #x0C #x40 #xF9)))    ; ldr x0, [x0, #24]
 
          (t
           (error "Unknown operator: ~S" op)))))))
