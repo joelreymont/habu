@@ -41,11 +41,35 @@
 
     ((and (consp form) (eq (first form) 'let))
      ;; Special form: (let ((var1 val1) (var2 val2) ...) body)
-     (let ((bindings (second form))
-           (body (third form)))
-       (make-expr :type 'let
-                  :value bindings  ; Store binding pairs
-                  :args (list (parse body)))))
+     ;; OR named-let: (let name ((var1 val1) ...) body) for recursion
+     (let ((second-elem (second form)))
+       (if (symbolp second-elem)
+           ;; Named-let for recursion: (let name ((x 1) (y 2)) body)
+           ;; Transform to: ((lambda (name) (name name init1 init2...))
+           ;;                (lambda (name x y) body-with-name-calls))
+           (let* ((name second-elem)
+                  (bindings (third form))
+                  (body (fourth form))
+                  (vars (mapcar #'first bindings))
+                  (inits (mapcar #'second bindings)))
+             ;; Replace recursive calls (name ...) with (name name ...)
+             (labels ((transform-recursive-calls (expr)
+                        (cond
+                          ((atom expr) expr)
+                          ((and (consp expr) (eq (first expr) name))
+                           ;; Recursive call: add name as first argument
+                           `(,name ,name ,@(mapcar #'transform-recursive-calls (rest expr))))
+                          (t
+                           (mapcar #'transform-recursive-calls expr)))))
+               (let ((transformed-body (transform-recursive-calls body)))
+                 (parse `((lambda (,name)
+                            (,name ,name ,@inits))
+                          (lambda (,name ,@vars)
+                            ,transformed-body))))))
+           ;; Regular let
+           (make-expr :type 'let
+                      :value second-elem  ; bindings
+                      :args (list (parse (third form)))))))
 
     ((and (consp form) (eq (first form) 'lambda))
      ;; Special form: (lambda (params) body)
@@ -541,6 +565,57 @@
                   (list #x48 #x83 #xE0 #xF0)    ; and rax, ~0xF (clear tag)
                   (list #x48 #x8B #x40 #x18))) ; mov rax, [rax + 24]
 
+         ((eq op 'logand)
+          ;; Compile (logand a b) - bitwise AND
+          (append (emit-x86_64 (first args) env)
+                  (list #x50)                   ; push rax
+                  (emit-x86_64 (second args) env)
+                  (list #x48 #x8B #x1C #x24)    ; mov rbx, [rsp]
+                  (list #x48 #x21 #xD8)         ; and rax, rbx
+                  (list #x48 #x83 #xC4 #x08))) ; add rsp, 8
+
+         ((eq op 'logior)
+          ;; Compile (logior a b) - bitwise OR
+          (append (emit-x86_64 (first args) env)
+                  (list #x50)
+                  (emit-x86_64 (second args) env)
+                  (list #x48 #x8B #x1C #x24)    ; mov rbx, [rsp]
+                  (list #x48 #x09 #xD8)         ; or rax, rbx
+                  (list #x48 #x83 #xC4 #x08)))
+
+         ((eq op 'logxor)
+          ;; Compile (logxor a b) - bitwise XOR
+          (append (emit-x86_64 (first args) env)
+                  (list #x50)
+                  (emit-x86_64 (second args) env)
+                  (list #x48 #x8B #x1C #x24)    ; mov rbx, [rsp]
+                  (list #x48 #x31 #xD8)         ; xor rax, rbx
+                  (list #x48 #x83 #xC4 #x08)))
+
+         ((eq op 'lognot)
+          ;; Compile (lognot a) - bitwise NOT
+          (append (emit-x86_64 (first args) env)
+                  (list #x48 #xF7 #xD0)))       ; not rax
+
+         ((eq op 'ash)
+          ;; Compile (ash a b) - arithmetic shift
+          ;; Positive b: left shift, negative b: right shift
+          (append (emit-x86_64 (second args) env)  ; shift count in rax
+                  (list #x50)                     ; push rax
+                  (emit-x86_64 (first args) env)   ; value in rax
+                  (list #x48 #x8B #x0C #x24)      ; mov rcx, [rsp] (shift count)
+                  (list #x48 #xC1 #xF9 #x04)      ; sar rcx, 4 (untag)
+                  (list #x48 #x85 #xC9)           ; test rcx, rcx
+                  (list #x78)                     ; js (jump if negative)
+                  (list 6)                        ; offset to right shift
+                  ;; Left shift
+                  (list #x48 #xD3 #xE0)           ; shl rax, cl
+                  (list #xEB)                     ; jmp
+                  (list 2)                        ; offset to end
+                  ;; Right shift
+                  (list #x48 #xD3 #xF8)           ; sar rax, cl
+                  (list #x48 #x83 #xC4 #x08)))   ; add rsp, 8
+
          (t
           (error "Unknown operator: ~S" op)))))))
 
@@ -968,6 +1043,56 @@
           (append (emit-arm64 (first args) env)
                   (list #x00 #x3C #x40 #x92)       ; and x0, x0, #~0xF (clear tag)
                   (list #x00 #x0C #x40 #xF9)))    ; ldr x0, [x0, #24]
+
+         ((eq op 'logand)
+          ;; Compile (logand a b) for ARM64 - bitwise AND
+          (append (emit-arm64 (first args) env)
+                  (list #xE0 #x0F #x1F #xF8)      ; str x0, [sp, #-8]!
+                  (emit-arm64 (second args) env)
+                  (list #xE1 #x03 #x40 #xF9)      ; ldr x1, [sp]
+                  (list #x00 #x00 #x01 #x8A)      ; and x0, x0, x1
+                  (list #xFF #x07 #x00 #x91)))    ; add sp, sp, #8
+
+         ((eq op 'logior)
+          ;; Compile (logior a b) for ARM64 - bitwise OR
+          (append (emit-arm64 (first args) env)
+                  (list #xE0 #x0F #x1F #xF8)
+                  (emit-arm64 (second args) env)
+                  (list #xE1 #x03 #x40 #xF9)
+                  (list #x00 #x00 #x01 #xAA)      ; orr x0, x0, x1
+                  (list #xFF #x07 #x00 #x91)))
+
+         ((eq op 'logxor)
+          ;; Compile (logxor a b) for ARM64 - bitwise XOR
+          (append (emit-arm64 (first args) env)
+                  (list #xE0 #x0F #x1F #xF8)
+                  (emit-arm64 (second args) env)
+                  (list #xE1 #x03 #x40 #xF9)
+                  (list #x00 #x00 #x01 #xCA)      ; eor x0, x0, x1
+                  (list #xFF #x07 #x00 #x91)))
+
+         ((eq op 'lognot)
+          ;; Compile (lognot a) for ARM64 - bitwise NOT
+          (append (emit-arm64 (first args) env)
+                  (list #x00 #x00 #x20 #xAA)))    ; mvn x0, x0
+
+         ((eq op 'ash)
+          ;; Compile (ash a b) for ARM64 - arithmetic shift
+          (append (emit-arm64 (second args) env)  ; shift count in x0
+                  (list #xE0 #x0F #x1F #xF8)      ; str x0, [sp, #-8]!
+                  (emit-arm64 (first args) env)   ; value in x0
+                  (list #xE1 #x03 #x40 #xF9)      ; ldr x1, [sp] (shift count)
+                  (list #x21 #x10 #x40 #xD3)      ; lsr x1, x1, #4 (untag)
+                  (list #x3F #x00 #x00 #xF1)      ; cmp x1, #0
+                  ;; b.ge to left shift (skip right shift)
+                  (list #x42 #x00 #x00 #x54)      ; b.ge #8
+                  ;; Right shift (negative count)
+                  (list #x21 #x00 #x00 #xCB)      ; neg x1, x1
+                  (list #x00 #xFC #xC1 #x9A)      ; asr x0, x0, x1
+                  (list #x01 #x00 #x00 #x14)      ; b #4 (skip left shift)
+                  ;; Left shift
+                  (list #x00 #x20 #xC1 #x9A)      ; lsl x0, x0, x1
+                  (list #xFF #x07 #x00 #x91)))    ; add sp, sp, #8
 
          (t
           (error "Unknown operator: ~S" op)))))))
