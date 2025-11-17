@@ -278,6 +278,47 @@
           (floor (expt (interpret-expr (first args) env)
                        (interpret-expr (second args) env))))
 
+         ;; Association list operations
+         ((eq op 'assoc)
+          (let ((key (interpret-expr (first args) env))
+                (alist (interpret-expr (second args) env)))
+            (cl:assoc key alist :test #'equal)))
+
+         ((eq op 'pairlis)
+          (let ((keys (interpret-expr (first args) env))
+                (values (interpret-expr (second args) env)))
+            (cl:pairlis keys values)))
+
+         ;; List utilities
+         ((eq op 'make-list)
+          (let ((n (interpret-expr (first args) env))
+                (init (if (second args)
+                          (interpret-expr (second args) env)
+                          0)))
+            (make-list n :initial-element init)))
+
+         ((eq op 'remove)
+          (let ((item (interpret-expr (first args) env))
+                (lst (interpret-expr (second args) env)))
+            (cl:remove item lst :test #'equal)))
+
+         ((eq op 'find)
+          (let ((item (interpret-expr (first args) env))
+                (lst (interpret-expr (second args) env)))
+            (if (cl:find item lst :test #'equal)
+                1  ; Found
+                0)))  ; Not found
+
+         ((eq op 'position)
+          (let ((item (interpret-expr (first args) env))
+                (lst (interpret-expr (second args) env)))
+            (or (cl:position item lst :test #'equal) -1)))
+
+         ((eq op 'count)
+          (let ((item (interpret-expr (first args) env))
+                (lst (interpret-expr (second args) env)))
+            (cl:count item lst :test #'equal)))
+
          (t
           (error "Unknown operator: ~S" op)))))
 
@@ -354,7 +395,9 @@
      length reverse append nth
      first second third fourth rest
      last butlast nthcdr member
-     listp numberp integerp symbolp)
+     listp numberp integerp symbolp
+     make-list remove find position count
+     assoc pairlis)
    ;; REPL commands
    '(:quit :q :help :h :clear :macros :functions :history)
    ;; User-defined functions
@@ -411,6 +454,9 @@
   (format t "  - Lists: cons, car, cdr, list, caar, cadr, cdar, cddr, caddr, cadddr~%")
   (format t "  - List ops: length, reverse, append, nth, first, second, third, fourth~%")
   (format t "  - List utils: rest, last, butlast, nthcdr, member~%")
+  (format t "  - List search: find, position, count, remove~%")
+  (format t "  - List create: make-list~%")
+  (format t "  - Assoc lists: assoc, pairlis~%")
   (format t "  - Control: if, let, progn~%")
   (format t "  - Macros: defmacro~%")
   (format t "~%")
