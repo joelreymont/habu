@@ -112,6 +112,17 @@
                   (list #x00 #x00 #x01 #x8B)       ; add x0, x0, x1
                   (list #xFD #x7B #xC1 #xA8)))     ; ldp x29, x30, [sp], #16
 
+         ((eq op '-)
+          ;; Compile (- a b) for ARM64
+          (append (emit-arm64 (first args))        ; Result in X0 (first arg)
+                  (list #xFD #x7B #xBF #xA9)       ; stp x29, x30, [sp, #-16]!
+                  (list #xE2 #x03 #x00 #xAA)       ; mov x2, x0 (save first)
+                  (emit-arm64 (second args))        ; Result in X0 (second arg)
+                  (list #xE1 #x03 #x00 #xAA)       ; mov x1, x0 (second to x1)
+                  (list #xE0 #x03 #x02 #xAA)       ; mov x0, x2 (first back to x0)
+                  (list #x00 #x00 #x01 #xCB)       ; sub x0, x0, x1
+                  (list #xFD #x7B #xC1 #xA8)))     ; ldp x29, x30, [sp], #16
+
          (t
           (error "Unknown operator: ~S" op)))))))
 

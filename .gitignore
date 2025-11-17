@@ -6,6 +6,7 @@ tests/test_*
 !tests/*.c
 benchmarks/bench_*
 !benchmarks/*.c
+!benchmarks/*.lisp
 examples/drone_control_demo
 .DS_Store
 *.dSYM/
