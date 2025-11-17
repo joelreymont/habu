@@ -98,11 +98,21 @@ Habu is a Common Lisp implementation for bare-metal ARM64 systems with hard real
 
 **Linux x86_64 (GCC 13.3.0):**
 ```
-Platform verification:  10/10 tests passed
-Region allocator:       12/12 tests passed
-Garbage collector:      15/15 tests passed
+Platform verification:   10/10 tests passed
+Region allocator:        12/12 tests passed
+Garbage collector:       15/15 tests passed
+Compiler (basic):         1/1  tests passed
+Compiled execution:       4/4  tests passed
 ────────────────────────────────────────────
-Total:                  37/37 tests passed
+Total:                   42/42 tests passed
+```
+
+**Compiler Tests (SBCL):**
+```
+Operator compilation:    ✓ All operators compile
+Conditionals:            ✓ If statements work
+Division/modulo:         ✓ All math operators work
+Code execution:          ✓ Generated code runs correctly
 ```
 
 **Performance (Linux x86_64):**
@@ -157,19 +167,60 @@ Examples:        ~200 LOC
 Total C code:    ~2450 LOC
 ```
 
+### Phase 5: Bootstrap Compiler
+
+**Implementation** (Common Lisp/SBCL)
+- Parser: S-expression → IR
+- x86_64 code generator
+- ARM64 code generator
+- Direct machine code emission
+
+**Supported Features**
+- **Literals:** Fixnum integers
+- **Arithmetic:** +, -, *, /, mod
+- **Comparison:** <, >, =, <=, >=
+- **Conditionals:** if (with then/else branches)
+
+**Performance** (compilation speed)
+- Fixnum: 0.41 μs (2.5M compilations/sec)
+- Addition: 1.41 μs (706K compilations/sec)
+- Nested expr: 4.09 μs (244K compilations/sec)
+- **25-60x faster than SBCL** for simple expressions
+- **14x less memory** (3.9 KB vs 54.5 KB per compilation)
+
+**Code Generation**
+- x86_64: 10-152 bytes per expression
+- ARM64: 4-116 bytes per expression
+- Direct bytecode emission (no intermediate C)
+- Both architectures produce working executable code
+
+**Test Coverage**
+- Bootstrap compiler tests (all pass)
+- Operator tests (all pass)
+- Conditional tests (all pass)
+- Division/modulo tests (all pass)
+- Execution tests: 4/4 pass (validates code correctness)
+
+**Documentation**
+- COMPILER.md: Complete compiler documentation
+- BENCHMARKS.md: Performance analysis and optimization guide
+
 ## Next Steps
 
 ### Immediate (Week 1-2)
+1. ✅ Bootstrap Lisp compiler in SBCL
+2. ✅ S-expression reader
+3. ✅ Basic x86_64 and ARM64 code generators
+4. ✅ Compile simple expressions to native code
+5. Add variable support and let bindings
+6. Implement function calls and lambda
+7. Add cons/car/cdr list operations
+
+### Short-term (Week 3-4)
 1. Implement GC sweep phase
 2. Complete young generation copying collector
 3. Add write barriers for generational GC
-4. Extend benchmarks for incremental collection
-
-### Short-term (Week 3-4)
-1. Bootstrap Lisp compiler in SBCL
-2. S-expression reader
-3. Basic ARM64 code generator
-4. Compile simple expressions to native code
+4. Integrate compiler with runtime
 
 ### Medium-term (Month 2)
 1. Complete standard library primitives
@@ -205,13 +256,22 @@ Total C code:    ~2450 LOC
 
 ## Known Limitations
 
+### Runtime
 1. Young generation copying not yet implemented
 2. Old generation sweep phase incomplete
 3. No write barriers (limits generational efficiency)
 4. GC statistics tracking basic
 5. No multicore support
 6. No bare-metal support yet
-7. Lisp compiler not started
+
+### Compiler
+1. No variable support or let bindings
+2. No function calls or lambda expressions
+3. No list operations (cons, car, cdr)
+4. No constant folding optimization
+5. Naive code generation (heavy stack usage)
+6. No register allocation
+7. Bootstrap only (not self-hosting yet)
 
 ## Questions Answered
 
@@ -247,6 +307,8 @@ Total C code:    ~2450 LOC
 ```
 habu/
 ├── DESIGN.md              # Architecture documentation
+├── COMPILER.md            # Compiler documentation
+├── BENCHMARKS.md          # Performance analysis
 ├── README.md              # User guide
 ├── STATUS.md              # This file
 ├── Makefile               # Build system
@@ -256,18 +318,38 @@ habu/
 │   ├── runtime.c          # I/O, accessors
 │   ├── region.c           # Region allocator
 │   └── gc.c               # Garbage collector
+├── bootstrap/
+│   ├── compiler.lisp      # Bootstrap compiler (SBCL)
+│   ├── reader.lisp        # S-expression reader
+│   ├── elf-writer.lisp    # ELF binary writer
+│   ├── test-compiler.lisp # Compiler tests
+│   └── test_*.lisp        # Feature tests
 ├── tests/
+│   ├── test_platform.c    # Platform verification
 │   ├── test_region.c      # Region tests
-│   └── test_gc.c          # GC tests
+│   ├── test_gc.c          # GC tests
+│   ├── test_compiler.c    # Compiler integration
+│   └── test_compiled_execution.c  # Code execution tests
 ├── benchmarks/
 │   ├── bench_region.c     # Region benchmarks
-│   └── bench_gc.c         # GC benchmarks
+│   ├── bench_gc.c         # GC benchmarks
+│   └── bench_compiler.lisp # Compiler benchmarks
 └── examples/
     └── drone_control_demo.c  # Control loop demo
 ```
 
 ## Conclusion
 
-The foundation for Habu is complete and proven. Hybrid memory management successfully meets sub-millisecond latency requirements. The architecture supports both hard real-time (region allocator) and soft real-time (incremental GC) workloads.
+The foundation for Habu is complete and proven:
 
-Next phase: Implement the Lisp compiler to enable writing GC orchestration and higher-level functionality in Lisp itself.
+1. **Runtime:** Hybrid memory management successfully meets sub-millisecond latency requirements. The architecture supports both hard real-time (region allocator) and soft real-time (incremental GC) workloads.
+
+2. **Compiler:** Bootstrap compiler implemented in SBCL generates working native code for both x86_64 and ARM64. Compilation is 25-60x faster than SBCL with 14x less memory usage. Generated code executes correctly and produces expected results.
+
+3. **Testing:** All 42 tests pass. Compiled code has been validated to execute correctly through actual machine code execution tests.
+
+4. **Performance:** All real-time targets met - control loop <1ms, region allocation <10 cycles, GC pause <1ms.
+
+**Current Status:** Habu can compile arithmetic expressions, comparisons, and conditionals to native machine code. The runtime provides proven real-time memory management.
+
+**Next Phase:** Extend compiler with variables, functions, and list operations to enable self-hosting and writing GC orchestration in Lisp.
