@@ -123,11 +123,17 @@ make examples
 
 ## Platform Support
 
-**Current**: x86_64 Linux (development and testing)
+**Tier 1 (Fully Supported):**
+- x86_64 Linux - all tests passing
+- macOS ARM64 (Apple Silicon) - primary development target
 
-**Planned**: ARM64 bare-metal (primary target)
+**Tier 2 (In Progress):**
+- ARM64 Linux - cross-compilation ready, not yet tested
+- ARM64 bare-metal - planned primary deployment target
 
-**Cross-compilation**: Ready (aarch64-linux-gnu-gcc installed)
+**Cross-compilation:**
+- x86_64 → ARM64 Linux: Ready (aarch64-linux-gnu-gcc)
+- macOS ARM64 → ARM64 bare-metal: Planned
 
 ## Code Statistics
 

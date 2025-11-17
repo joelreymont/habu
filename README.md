@@ -7,8 +7,19 @@ A Common Lisp implementation for bare-metal ARM64 systems with real-time constra
 - Sub-millisecond latency for control loops
 - GC-free execution mode using region allocators
 - Incremental generational GC for background tasks
-- Direct compilation to ARM64 machine code
+- Direct compilation to native machine code
 - Minimal runtime footprint
+- Cross-platform development and testing
+
+## Supported Platforms
+
+**Development Platforms:**
+- macOS ARM64 (Apple Silicon) - primary development target
+- Linux x86_64 - testing and CI
+
+**Deployment Targets:**
+- ARM64 bare-metal (planned)
+- ARM64 Linux (planned)
 
 ## Building
 
@@ -16,14 +27,27 @@ A Common Lisp implementation for bare-metal ARM64 systems with real-time constra
 make              # Build runtime and tests
 make test         # Run tests
 make benchmark    # Run benchmarks
+make examples     # Build example programs
+```
+
+### Platform-Specific Builds
+
+```bash
+# Native build (auto-detects platform)
+make clean && make test
+
+# Cross-compile for ARM64 (from x86_64)
+make cross
 ```
 
 ## Requirements
 
-- GCC or Clang with ARM64 cross-compilation support
-- SBCL (for bootstrap compiler)
+- GCC or Clang
 - Make
-- QEMU (optional, for testing)
+- SBCL (for bootstrap compiler, planned)
+
+**For cross-compilation:**
+- aarch64-linux-gnu-gcc (ARM64 toolchain)
 
 ## Usage
 
