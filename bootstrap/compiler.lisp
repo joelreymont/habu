@@ -15,11 +15,61 @@
 ;;; Global function table for defun
 (defvar *function-table* (make-hash-table :test 'eq))
 
+;;; Global macro table for defmacro
+(defvar *macro-table* (make-hash-table :test 'eq))
+
 ;;; Compiler intermediate representation
 (defstruct expr
   type
   value
   args)
+
+;;; Quasiquote expansion
+(defun expand-quasiquote (form)
+  "Expand quasiquote (backquote) forms with unquote and unquote-splicing"
+  (cond
+    ;; Unquote: (unquote x) => x
+    ((and (consp form) (eq (first form) 'unquote))
+     (second form))
+
+    ;; Atom: just quote it
+    ((atom form)
+     `(quote ,form))
+
+    ;; List starting with unquote-splicing in car position - error
+    ((and (consp (first form)) (eq (first (first form)) 'unquote-splicing))
+     (error "Unquote-splicing ,@~S in illegal position" (second (first form))))
+
+    ;; List: process each element
+    (t
+     (expand-quasiquote-list form))))
+
+(defun expand-quasiquote-list (forms)
+  "Expand a list within quasiquote, handling unquote-splicing"
+  (cond
+    ;; Empty list
+    ((null forms)
+     '(quote ()))
+
+    ;; Car is (unquote-splicing x): splice x into the list
+    ((and (consp (first forms))
+          (eq (first (first forms)) 'unquote-splicing))
+     (let ((splicee (second (first forms)))
+           (rest-expansion (expand-quasiquote-list (rest forms))))
+       `(append ,splicee ,rest-expansion)))
+
+    ;; Car is (unquote x): cons x onto the rest
+    ((and (consp (first forms))
+          (eq (first (first forms)) 'unquote))
+     (let ((element (second (first forms)))
+           (rest-expansion (expand-quasiquote-list (rest forms))))
+       `(cons ,element ,rest-expansion)))
+
+    ;; Recursively process car and cdr
+    (t
+     (let ((car-expansion (expand-quasiquote (first forms)))
+           (cdr-expansion (expand-quasiquote-list (rest forms))))
+       `(cons ,car-expansion ,cdr-expansion)))))
 
 ;;; Parse Lisp expression to IR
 (defun parse (form)
@@ -117,6 +167,11 @@
                   :value datum
                   :args nil)))
 
+    ((and (consp form) (eq (first form) 'quasiquote))
+     ;; Special form: (quasiquote template)
+     ;; Backquote ` - allows selective evaluation with unquote
+     (parse (expand-quasiquote (second form))))
+
     ((and (consp form) (eq (first form) 'not))
      ;; Special form: (not expr) - logical not
      (let ((expr (second form)))
@@ -187,6 +242,17 @@
        ;; Return 0 as a placeholder (defun doesn't produce a meaningful value in our compiler)
        (make-expr :type 'fixnum :value 0)))
 
+    ((and (consp form) (eq (first form) 'defmacro))
+     ;; Special form: (defmacro name (params) body)
+     ;; Store macro definition in global table
+     ;; Macros are expanded at compile-time, not runtime
+     (let ((name (second form))
+           (params (third form))
+           (body (fourth form)))
+       (setf (gethash name *macro-table*) (cons params body))
+       ;; Return 0 as a placeholder
+       (make-expr :type 'fixnum :value 0)))
+
     ((and (consp form) (eq (first form) 'setq))
      ;; Special form: (setq var value)
      ;; Mutate a lexical variable
@@ -232,17 +298,30 @@
     ((and (consp form) (symbolp (first form)))
      (let ((op (first form))
            (args (rest form)))
-       ;; Check if this is a user-defined function
-       (let ((fn-def (gethash op *function-table*)))
-         (if fn-def
-             ;; User-defined function: transform to ((lambda params body) args...)
-             (let ((params (car fn-def))
-                   (body (cdr fn-def)))
-               (parse `((lambda ,params ,body) ,@args)))
-             ;; Primitive operator
-             (make-expr :type 'call
-                        :value op
-                        :args (mapcar #'parse args))))))
+       ;; Check if this is a macro first (macros expand at compile-time)
+       (let ((macro-def (gethash op *macro-table*)))
+         (if macro-def
+             ;; Macro: expand and re-parse
+             (let ((params (car macro-def))
+                   (body (cdr macro-def)))
+               ;; Create binding list for macro parameters
+               (let ((bindings (mapcar #'list params args)))
+                 ;; Expand macro body with substitutions
+                 (let ((expanded (sublis (mapcar (lambda (b) (cons (first b) (second b))) bindings)
+                                         body)))
+                   ;; Re-parse the expanded form
+                   (parse expanded))))
+             ;; Not a macro, check if this is a user-defined function
+             (let ((fn-def (gethash op *function-table*)))
+               (if fn-def
+                   ;; User-defined function: transform to ((lambda params body) args...)
+                   (let ((params (car fn-def))
+                         (body (cdr fn-def)))
+                     (parse `((lambda ,params ,body) ,@args)))
+                   ;; Primitive operator
+                   (make-expr :type 'call
+                              :value op
+                              :args (mapcar #'parse args))))))))
 
     (t
      (error "Cannot parse form: ~S" form))))

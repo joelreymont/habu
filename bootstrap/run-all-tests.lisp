@@ -423,6 +423,33 @@
                                   (+ n n)))
                             10))))
 
+;;; Test macros
+(test-group "Macros"
+  (test-case defmacro-simple
+    (clrhash *macro-table*)
+    (assert-compiles-both '(defmacro square (x) (* x x))))
+
+  (test-case macro-expansion
+    (clrhash *macro-table*)
+    (compile-expression '(defmacro double (x) (+ x x)))
+    (assert-compiles-both '(double 5)))
+
+  (test-case macro-multiple-params
+    (clrhash *macro-table*)
+    (compile-expression '(defmacro add-and-double (a b) (* (+ a b) 2)))
+    (assert-compiles-both '(add-and-double 3 4)))
+
+  (test-case macro-conditional
+    (clrhash *macro-table*)
+    (compile-expression '(defmacro abs-diff (a b) (if (> a b) (- a b) (- b a))))
+    (assert-compiles-both '(abs-diff 10 5)))
+
+  (test-case macro-nested
+    (clrhash *macro-table*)
+    (compile-expression '(defmacro square (x) (* x x)))
+    (compile-expression '(defmacro quad (x) (square (square x))))
+    (assert-compiles-both '(quad 2))))
+
 ;;; Test error cases
 (test-group "Error Handling"
   (test-case unbound-variable
