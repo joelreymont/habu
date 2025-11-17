@@ -91,6 +91,13 @@
                   :value nil
                   :args (mapcar #'parse exprs))))
 
+    ((and (consp form) (eq (first form) 'cond))
+     ;; Special form: (cond (test1 result1) (test2 result2) ... (t default))
+     (let ((clauses (rest form)))
+       (make-expr :type 'cond
+                  :value clauses  ; Store raw clauses (will parse during code gen)
+                  :args nil)))
+
     ((and (consp form) (consp (first form)))
      ;; Function call: ((lambda ...) args) or ((fn) args)
      (let ((fn (first form))
@@ -265,6 +272,39 @@
                                               (list (length result))))) ; offset to end
                            (setf result (append code test-and-jump result)))))
             result)))))
+
+    (cond
+     ;; Compile (cond (test1 result1) (test2 result2) ... (t default))
+     ;; Transform to nested ifs: (if test1 result1 (if test2 result2 ... default))
+     (let ((clauses (expr-value expr)))
+       (labels ((compile-cond-clauses (clauses)
+                  (if (null clauses)
+                      ;; No clauses: return 0 (or could be error)
+                      (emit-x86_64 (make-expr :type 'fixnum :value 0) env)
+                      (let* ((clause (first clauses))
+                             (test (first clause))
+                             (result (second clause))
+                             (rest-clauses (rest clauses)))
+                        (if (or (eq test t) (null rest-clauses))
+                            ;; Last clause or (t ...) clause: just eval result
+                            (emit-x86_64 (parse result) env)
+                            ;; Not last: compile as (if test result (rest...))
+                            (let* ((test-code (emit-x86_64 (parse test) env))
+                                   (then-code (emit-x86_64 (parse result) env))
+                                   (else-code (compile-cond-clauses rest-clauses))
+                                   (then-size (length then-code))
+                                   (else-size (length else-code))
+                                   (jmp-to-end-size 5)
+                                   (jz-to-else-size 6))
+                              (append test-code
+                                      (list #x48 #x85 #xC0)  ; test rax, rax
+                                      (list #x0F #x84)  ; jz to else
+                                      (int-to-bytes (+ then-size jmp-to-end-size) 4)
+                                      then-code
+                                      (list #xE9)  ; jmp to end
+                                      (int-to-bytes else-size 4)
+                                      else-code)))))))
+         (compile-cond-clauses clauses))))
 
     (funcall
      ;; Compile ((lambda (params) body) args)
@@ -648,6 +688,44 @@
                                                      #x54)))) ; conditional branch
                            (setf result (append code test-and-jump result)))))
             result)))))
+
+    (cond
+     ;; Compile (cond (test1 result1) (test2 result2) ... (t default)) for ARM64
+     ;; Transform to nested ifs
+     (let ((clauses (expr-value expr)))
+       (labels ((compile-cond-clauses (clauses)
+                  (if (null clauses)
+                      (emit-arm64 (make-expr :type 'fixnum :value 0) env)
+                      (let* ((clause (first clauses))
+                             (test (first clause))
+                             (result (second clause))
+                             (rest-clauses (rest clauses)))
+                        (if (or (eq test t) (null rest-clauses))
+                            (emit-arm64 (parse result) env)
+                            (let* ((test-code (emit-arm64 (parse test) env))
+                                   (then-code (emit-arm64 (parse result) env))
+                                   (else-code (compile-cond-clauses rest-clauses))
+                                   (then-size (length then-code))
+                                   (else-size (length else-code))
+                                   (b-to-end-size 4)
+                                   (beq-to-else-size 4))
+                              (append test-code
+                                      (list #x1F #x00 #x00 #xF1)  ; cmp x0, #0
+                                      ;; b.eq to else-branch
+                                      (let ((offset-bytes (+ then-size b-to-end-size)))
+                                        (list #x40  ; condition code 0 = eq
+                                              (logand (ash offset-bytes -2) #xFF)
+                                              (logand (ash offset-bytes -10) #xFF)
+                                              #x54))
+                                      then-code
+                                      ;; b to end (unconditional branch)
+                                      (let ((offset-bytes else-size))
+                                        (list (logand (ash offset-bytes -2) #xFF)
+                                              (logand (ash offset-bytes -10) #xFF)
+                                              (logand (ash offset-bytes -18) #xFF)
+                                              #x14))
+                                      else-code)))))))
+         (compile-cond-clauses clauses))))
 
     (funcall
      ;; Compile ((lambda (params) body) args) for ARM64
