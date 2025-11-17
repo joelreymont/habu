@@ -156,6 +156,36 @@
           (max (interpret-expr (first args) env)
                (interpret-expr (second args) env)))
 
+         ;; List operations (using CL cons cells for now)
+         ((eq op 'cons)
+          (cons (interpret-expr (first args) env)
+                (interpret-expr (second args) env)))
+
+         ((eq op 'car)
+          (let ((val (interpret-expr (first args) env)))
+            (if (consp val)
+                (car val)
+                (error "car: argument is not a cons cell"))))
+
+         ((eq op 'cdr)
+          (let ((val (interpret-expr (first args) env)))
+            (if (consp val)
+                (cdr val)
+                (error "cdr: argument is not a cons cell"))))
+
+         ((eq op 'list)
+          (mapcar (lambda (arg) (interpret-expr arg env)) args))
+
+         ((eq op 'consp)
+          (if (consp (interpret-expr (first args) env)) 1 0))
+
+         ((eq op 'atom)
+          (if (atom (interpret-expr (first args) env)) 1 0))
+
+         ((eq op 'null)
+          (let ((val (interpret-expr (first args) env)))
+            (if (or (null val) (zerop val)) 1 0)))
+
          (t
           (error "Unknown operator: ~S" op)))))
 
@@ -227,7 +257,7 @@
      1+ 1- abs min max
      if cond case when unless progn begin let let*
      lambda defun defmacro setq incf decf
-     quote car cdr cons list)
+     quote car cdr cons list consp atom)
    ;; REPL commands
    '(:quit :q :help :h :clear :macros :functions :history)
    ;; User-defined functions
@@ -278,8 +308,9 @@
   (format t "  - Comparison: <, >, =, <=, >=~%")
   (format t "  - Logic: and, or, not~%")
   (format t "  - Bitwise: logand, logior, logxor, lognot~%")
-  (format t "  - Predicates: zerop, plusp, minusp, evenp, oddp~%")
+  (format t "  - Predicates: zerop, plusp, minusp, evenp, oddp, null, consp, atom~%")
   (format t "  - Numeric: 1+, 1-, abs, min, max~%")
+  (format t "  - Lists: cons, car, cdr, list~%")
   (format t "  - Control: if, let, progn~%")
   (format t "  - Macros: defmacro~%")
   (format t "~%")
@@ -313,7 +344,9 @@
 (defun repl-print (result)
   "Print evaluation result"
   (when result
-    (format t "=> ~D~%" result)))
+    (if (integerp result)
+        (format t "=> ~D~%" result)
+        (format t "=> ~S~%" result))))
 
 (defun repl-handle-command (command)
   "Handle REPL commands"
