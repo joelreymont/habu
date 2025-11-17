@@ -28,6 +28,17 @@
     ((symbolp form)
      (make-expr :type 'variable :value form))
 
+    ((and (consp form) (eq (first form) 'if))
+     ;; Special form: (if condition then-expr else-expr)
+     (let ((condition (second form))
+           (then-expr (third form))
+           (else-expr (fourth form)))
+       (make-expr :type 'if
+                  :value nil
+                  :args (list (parse condition)
+                              (parse then-expr)
+                              (parse else-expr)))))
+
     ((and (consp form) (symbolp (first form)))
      (let ((op (first form))
            (args (rest form)))
@@ -48,6 +59,30 @@
      (let ((val (* (expr-value expr) 16))) ; Tag as fixnum (shift left 4)
        (append (list #x48 #xB8)           ; REX.W + mov rax prefix
                (int-to-bytes val 8))))
+
+    (if
+     ;; Compile (if condition then-expr else-expr)
+     (let* ((condition (first (expr-args expr)))
+            (then-expr (second (expr-args expr)))
+            (else-expr (third (expr-args expr)))
+            (then-code (emit-x86_64 then-expr))
+            (else-code (emit-x86_64 else-expr))
+            (then-size (length then-code))
+            (else-size (length else-code))
+            ;; Jump over else to end: 5 bytes for jmp rel32
+            (jmp-to-end-size 5)
+            ;; Jump to else if zero: 6 bytes for jz rel32
+            (jz-to-else-size 6))
+       (append (emit-x86_64 condition)               ; Evaluate condition
+               (list #x48 #x85 #xC0)                 ; test rax, rax
+               ;; jz to else-branch (6 bytes total: 0F 84 + 4-byte offset)
+               (list #x0F #x84)
+               (int-to-bytes (+ then-size jmp-to-end-size) 4)
+               then-code                              ; Then branch
+               ;; jmp to end (5 bytes: E9 + 4-byte offset)
+               (list #xE9)
+               (int-to-bytes else-size 4)
+               else-code)))                          ; Else branch
 
     (call
      (let ((op (expr-value expr))
@@ -71,6 +106,109 @@
                   (list #x48 #x89 #xD9)         ; mov rcx, rbx
                   (list #x48 #x29 #xC1)         ; sub rcx, rax
                   (list #x48 #x89 #xC8)         ; mov rax, rcx
+                  (list #x48 #x83 #xC4 #x08)))
+
+         ((eq op '*)
+          ;; Compile (* a b)
+          ;; Since fixnums are value*16, after multiply we need to divide by 16
+          (append (emit-x86_64 (first args))
+                  (list #x50)                   ; push rax
+                  (emit-x86_64 (second args))
+                  (list #x48 #x8B #x1C #x24)    ; mov rbx, [rsp]
+                  (list #x48 #x0F #xAF #xD8)    ; imul rbx, rax
+                  (list #x48 #x89 #xD8)         ; mov rax, rbx
+                  (list #x48 #xC1 #xF8 #x04)    ; sar rax, 4 (adjust for tag)
+                  (list #x48 #x83 #xC4 #x08))) ; add rsp, 8
+
+         ((eq op '/)
+          ;; Compile (/ a b) - integer division
+          ;; Need to untag before division, then retag result
+          (append (emit-x86_64 (first args))
+                  (list #x50)                   ; push rax
+                  (emit-x86_64 (second args))
+                  (list #x48 #x89 #xC3)         ; mov rbx, rax (divisor)
+                  (list #x48 #x8B #x04 #x24)    ; mov rax, [rsp] (dividend)
+                  (list #x48 #xC1 #xF8 #x04)    ; sar rax, 4 (untag dividend)
+                  (list #x48 #xC1 #xFB #x04)    ; sar rbx, 4 (untag divisor)
+                  (list #x48 #x99)              ; cqo (sign extend rax to rdx:rax)
+                  (list #x48 #xF7 #xFB)         ; idiv rbx (rax = rax / rbx)
+                  (list #x48 #xC1 #xE0 #x04)    ; shl rax, 4 (retag result)
+                  (list #x48 #x83 #xC4 #x08))) ; add rsp, 8
+
+         ((eq op 'mod)
+          ;; Compile (mod a b) - modulo operation
+          ;; Similar to division but return remainder from RDX
+          (append (emit-x86_64 (first args))
+                  (list #x50)                   ; push rax
+                  (emit-x86_64 (second args))
+                  (list #x48 #x89 #xC3)         ; mov rbx, rax (divisor)
+                  (list #x48 #x8B #x04 #x24)    ; mov rax, [rsp] (dividend)
+                  (list #x48 #xC1 #xF8 #x04)    ; sar rax, 4 (untag dividend)
+                  (list #x48 #xC1 #xFB #x04)    ; sar rbx, 4 (untag divisor)
+                  (list #x48 #x99)              ; cqo (sign extend)
+                  (list #x48 #xF7 #xFB)         ; idiv rbx (rdx = remainder)
+                  (list #x48 #x89 #xD0)         ; mov rax, rdx (move remainder to rax)
+                  (list #x48 #xC1 #xE0 #x04)    ; shl rax, 4 (retag result)
+                  (list #x48 #x83 #xC4 #x08))) ; add rsp, 8
+
+         ((eq op '<)
+          ;; Compile (< a b) - returns 1 (true) or 0 (false) as fixnum
+          (append (emit-x86_64 (first args))
+                  (list #x50)                   ; push rax
+                  (emit-x86_64 (second args))
+                  (list #x48 #x8B #x1C #x24)    ; mov rbx, [rsp]
+                  (list #x48 #x39 #xC3)         ; cmp rbx, rax
+                  (list #x0F #x9C #xC0)         ; setl al (set if less)
+                  (list #x48 #x0F #xB6 #xC0)    ; movzx rax, al
+                  (list #x48 #xC1 #xE0 #x04)    ; shl rax, 4 (tag as fixnum)
+                  (list #x48 #x83 #xC4 #x08))) ; add rsp, 8
+
+         ((eq op '>)
+          ;; Compile (> a b)
+          (append (emit-x86_64 (first args))
+                  (list #x50)
+                  (emit-x86_64 (second args))
+                  (list #x48 #x8B #x1C #x24)    ; mov rbx, [rsp]
+                  (list #x48 #x39 #xC3)         ; cmp rbx, rax
+                  (list #x0F #x9F #xC0)         ; setg al (set if greater)
+                  (list #x48 #x0F #xB6 #xC0)    ; movzx rax, al
+                  (list #x48 #xC1 #xE0 #x04)    ; shl rax, 4
+                  (list #x48 #x83 #xC4 #x08)))
+
+         ((eq op '=)
+          ;; Compile (= a b)
+          (append (emit-x86_64 (first args))
+                  (list #x50)
+                  (emit-x86_64 (second args))
+                  (list #x48 #x8B #x1C #x24)    ; mov rbx, [rsp]
+                  (list #x48 #x39 #xC3)         ; cmp rbx, rax
+                  (list #x0F #x94 #xC0)         ; sete al (set if equal)
+                  (list #x48 #x0F #xB6 #xC0)    ; movzx rax, al
+                  (list #x48 #xC1 #xE0 #x04)    ; shl rax, 4
+                  (list #x48 #x83 #xC4 #x08)))
+
+         ((eq op '<=)
+          ;; Compile (<= a b)
+          (append (emit-x86_64 (first args))
+                  (list #x50)
+                  (emit-x86_64 (second args))
+                  (list #x48 #x8B #x1C #x24)    ; mov rbx, [rsp]
+                  (list #x48 #x39 #xC3)         ; cmp rbx, rax
+                  (list #x0F #x9E #xC0)         ; setle al (set if less or equal)
+                  (list #x48 #x0F #xB6 #xC0)    ; movzx rax, al
+                  (list #x48 #xC1 #xE0 #x04)    ; shl rax, 4
+                  (list #x48 #x83 #xC4 #x08)))
+
+         ((eq op '>=)
+          ;; Compile (>= a b)
+          (append (emit-x86_64 (first args))
+                  (list #x50)
+                  (emit-x86_64 (second args))
+                  (list #x48 #x8B #x1C #x24)    ; mov rbx, [rsp]
+                  (list #x48 #x39 #xC3)         ; cmp rbx, rax
+                  (list #x0F #x9D #xC0)         ; setge al (set if greater or equal)
+                  (list #x48 #x0F #xB6 #xC0)    ; movzx rax, al
+                  (list #x48 #xC1 #xE0 #x04)    ; shl rax, 4
                   (list #x48 #x83 #xC4 #x08)))
 
          (t
@@ -97,6 +235,38 @@
                                          (ash (logand (ash val -16) #xFFFF) 5))
                                  4)))))
 
+    (if
+     ;; Compile (if condition then-expr else-expr) for ARM64
+     (let* ((condition (first (expr-args expr)))
+            (then-expr (second (expr-args expr)))
+            (else-expr (third (expr-args expr)))
+            (then-code (emit-arm64 then-expr))
+            (else-code (emit-arm64 else-expr))
+            (then-size (length then-code))
+            (else-size (length else-code))
+            ;; Branch to end: 4 bytes for b (unconditional branch)
+            (b-to-end-size 4)
+            ;; Conditional branch to else: 4 bytes for b.eq
+            (beq-to-else-size 4))
+       (append (emit-arm64 condition)               ; Evaluate condition
+               ;; Compare x0 with 0
+               (list #x1F #x00 #x00 #xF1)           ; cmp x0, #0
+               ;; b.eq to else-branch (4 bytes: 54 + 3-byte offset in bits [23:5])
+               ;; Offset is in instructions (4-byte units), and encoded specially
+               (let ((offset-bytes (+ then-size b-to-end-size)))
+                 (list #x40
+                       (logand (ash offset-bytes -2) #xFF)
+                       (logand (ash offset-bytes -10) #xFF)
+                       #x54))  ; b.eq (condition code 0)
+               then-code                            ; Then branch
+               ;; b to end (unconditional branch)
+               (let ((offset-bytes else-size))
+                 (list (logand (ash offset-bytes -2) #xFF)
+                       (logand (ash offset-bytes -10) #xFF)
+                       (logand (ash offset-bytes -18) #xFF)
+                       #x14))  ; b (unconditional)
+               else-code)))                         ; Else branch
+
     (call
      (let ((op (expr-value expr))
            (args (expr-args expr)))
@@ -122,6 +292,110 @@
                   (list #xE0 #x03 #x02 #xAA)       ; mov x0, x2 (first back to x0)
                   (list #x00 #x00 #x01 #xCB)       ; sub x0, x0, x1
                   (list #xFD #x7B #xC1 #xA8)))     ; ldp x29, x30, [sp], #16
+
+         ((eq op '*)
+          ;; Compile (* a b) for ARM64
+          (append (emit-arm64 (first args))
+                  (list #xFD #x7B #xBF #xA9)       ; stp x29, x30, [sp, #-16]!
+                  (list #xE2 #x03 #x00 #xAA)       ; mov x2, x0 (save first)
+                  (emit-arm64 (second args))
+                  (list #xE1 #x03 #x00 #xAA)       ; mov x1, x0 (second to x1)
+                  (list #xE0 #x03 #x02 #xAA)       ; mov x0, x2 (first back to x0)
+                  (list #x00 #x7C #x01 #x9B)       ; mul x0, x0, x1
+                  (list #x00 #x10 #x44 #xD3)       ; lsr x0, x0, #4 (adjust for tag)
+                  (list #xFD #x7B #xC1 #xA8)))     ; ldp x29, x30, [sp], #16
+
+         ((eq op '/)
+          ;; Compile (/ a b) for ARM64 - integer division
+          (append (emit-arm64 (first args))
+                  (list #xFD #x7B #xBF #xA9)       ; stp x29, x30, [sp, #-16]!
+                  (list #xE2 #x03 #x00 #xAA)       ; mov x2, x0 (save dividend)
+                  (emit-arm64 (second args))
+                  (list #xE1 #x03 #x00 #xAA)       ; mov x1, x0 (divisor to x1)
+                  (list #xE0 #x03 #x02 #xAA)       ; mov x0, x2 (dividend back to x0)
+                  (list #x00 #x10 #x44 #xD3)       ; lsr x0, x0, #4 (untag dividend)
+                  (list #x21 #x10 #x44 #xD3)       ; lsr x1, x1, #4 (untag divisor)
+                  (list #x00 #x0C #xC1 #x9A)       ; sdiv x0, x0, x1 (signed divide)
+                  (list #x00 #x10 #x00 #xD3)       ; lsl x0, x0, #4 (retag result)
+                  (list #xFD #x7B #xC1 #xA8)))     ; ldp x29, x30, [sp], #16
+
+         ((eq op 'mod)
+          ;; Compile (mod a b) for ARM64
+          ;; remainder = dividend - (quotient * divisor)
+          ;; Use MSUB: msub Xd, Xn, Xm, Xa = Xa - (Xn * Xm)
+          (append (emit-arm64 (first args))
+                  (list #xFD #x7B #xBF #xA9)       ; stp x29, x30, [sp, #-16]!
+                  (list #xE2 #x03 #x00 #xAA)       ; mov x2, x0 (save dividend)
+                  (emit-arm64 (second args))
+                  (list #xE1 #x03 #x00 #xAA)       ; mov x1, x0 (divisor to x1)
+                  (list #xE0 #x03 #x02 #xAA)       ; mov x0, x2 (dividend back to x0)
+                  (list #x00 #x10 #x44 #xD3)       ; lsr x0, x0, #4 (untag dividend)
+                  (list #x21 #x10 #x44 #xD3)       ; lsr x1, x1, #4 (untag divisor)
+                  (list #xE3 #x0C #xC1 #x9A)       ; sdiv x3, x0, x1 (quotient in x3)
+                  ;; msub x0, x3, x1, x0  = x0 - (x3 * x1) = dividend - quotient*divisor
+                  (list #x00 #x80 #x01 #x9B)       ; msub x0, x0, x1, x3
+                  (list #x00 #x10 #x00 #xD3)       ; lsl x0, x0, #4 (retag result)
+                  (list #xFD #x7B #xC1 #xA8)))     ; ldp x29, x30, [sp], #16
+
+         ((eq op '<)
+          ;; Compile (< a b) for ARM64
+          (append (emit-arm64 (first args))
+                  (list #xFD #x7B #xBF #xA9)       ; stp x29, x30, [sp, #-16]!
+                  (list #xE2 #x03 #x00 #xAA)       ; mov x2, x0
+                  (emit-arm64 (second args))
+                  (list #xE1 #x03 #x00 #xAA)       ; mov x1, x0
+                  (list #x5F #x00 #x01 #xEB)       ; cmp x2, x1
+                  (list #xE0 #xB7 #x9F #x9A)       ; cset x0, lt (less than)
+                  (list #x00 #x10 #x00 #xD3)       ; lsl x0, x0, #4 (tag as fixnum)
+                  (list #xFD #x7B #xC1 #xA8)))     ; ldp x29, x30, [sp], #16
+
+         ((eq op '>)
+          ;; Compile (> a b) for ARM64
+          (append (emit-arm64 (first args))
+                  (list #xFD #x7B #xBF #xA9)       ; stp x29, x30, [sp, #-16]!
+                  (list #xE2 #x03 #x00 #xAA)       ; mov x2, x0
+                  (emit-arm64 (second args))
+                  (list #xE1 #x03 #x00 #xAA)       ; mov x1, x0
+                  (list #x5F #x00 #x01 #xEB)       ; cmp x2, x1
+                  (list #xE0 #xC7 #x9F #x9A)       ; cset x0, gt (greater than)
+                  (list #x00 #x10 #x00 #xD3)       ; lsl x0, x0, #4
+                  (list #xFD #x7B #xC1 #xA8)))
+
+         ((eq op '=)
+          ;; Compile (= a b) for ARM64
+          (append (emit-arm64 (first args))
+                  (list #xFD #x7B #xBF #xA9)       ; stp x29, x30, [sp, #-16]!
+                  (list #xE2 #x03 #x00 #xAA)       ; mov x2, x0
+                  (emit-arm64 (second args))
+                  (list #xE1 #x03 #x00 #xAA)       ; mov x1, x0
+                  (list #x5F #x00 #x01 #xEB)       ; cmp x2, x1
+                  (list #xE0 #x07 #x9F #x9A)       ; cset x0, eq (equal)
+                  (list #x00 #x10 #x00 #xD3)       ; lsl x0, x0, #4
+                  (list #xFD #x7B #xC1 #xA8)))
+
+         ((eq op '<=)
+          ;; Compile (<= a b) for ARM64
+          (append (emit-arm64 (first args))
+                  (list #xFD #x7B #xBF #xA9)       ; stp x29, x30, [sp, #-16]!
+                  (list #xE2 #x03 #x00 #xAA)       ; mov x2, x0
+                  (emit-arm64 (second args))
+                  (list #xE1 #x03 #x00 #xAA)       ; mov x1, x0
+                  (list #x5F #x00 #x01 #xEB)       ; cmp x2, x1
+                  (list #xE0 #xD7 #x9F #x9A)       ; cset x0, le (less or equal)
+                  (list #x00 #x10 #x00 #xD3)       ; lsl x0, x0, #4
+                  (list #xFD #x7B #xC1 #xA8)))
+
+         ((eq op '>=)
+          ;; Compile (>= a b) for ARM64
+          (append (emit-arm64 (first args))
+                  (list #xFD #x7B #xBF #xA9)       ; stp x29, x30, [sp, #-16]!
+                  (list #xE2 #x03 #x00 #xAA)       ; mov x2, x0
+                  (emit-arm64 (second args))
+                  (list #xE1 #x03 #x00 #xAA)       ; mov x1, x0
+                  (list #x5F #x00 #x01 #xEB)       ; cmp x2, x1
+                  (list #xE0 #xA7 #x9F #x9A)       ; cset x0, ge (greater or equal)
+                  (list #x00 #x10 #x00 #xD3)       ; lsl x0, x0, #4
+                  (list #xFD #x7B #xC1 #xA8)))
 
          (t
           (error "Unknown operator: ~S" op)))))))
