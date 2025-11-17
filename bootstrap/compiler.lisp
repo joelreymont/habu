@@ -74,6 +74,22 @@
                       :value second-elem  ; bindings
                       :args (list (parse (third form)))))))
 
+    ((and (consp form) (eq (first form) 'let*))
+     ;; Special form: (let* ((var1 val1) (var2 val2) ...) body)
+     ;; Sequential bindings - transform to nested lets
+     (let ((bindings (second form))
+           (body (third form)))
+       (if (null bindings)
+           ;; No bindings: (let* () body) -> body
+           (parse body)
+           ;; Transform to nested lets: (let* ((x 1) (y 2)) body) -> (let ((x 1)) (let* ((y 2)) body))
+           (if (= (length bindings) 1)
+               ;; Last binding: (let* ((x 1)) body) -> (let ((x 1)) body)
+               (parse `(let (,(first bindings)) ,body))
+               ;; Multiple bindings: recurse
+               (parse `(let (,(first bindings))
+                         (let* ,(rest bindings) ,body)))))))
+
     ((and (consp form) (eq (first form) 'lambda))
      ;; Special form: (lambda (params) body)
      (let ((params (second form))
@@ -195,6 +211,15 @@
     ((and (consp form) (eq (first form) 'equal))
      ;; Alias for = (for compatibility)
      (parse `(= ,@(rest form))))
+
+    ((and (consp form) (eq (first form) 'null))
+     ;; Predicate: (null x) - check if x is 0/nil
+     ;; Alias for zerop
+     (parse `(zerop ,@(rest form))))
+
+    ((and (consp form) (eq (first form) 'identity))
+     ;; Function: (identity x) - returns its argument
+     (parse (second form)))
 
     ((and (consp form) (consp (first form)))
      ;; Function call: ((lambda ...) args) or ((fn) args)

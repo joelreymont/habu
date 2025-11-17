@@ -125,6 +125,23 @@
   (test-case let-complex
     (assert-compiles-both '(let ((a 3) (b 4)) (* (+ a b) 2)))))
 
+;;; Test let* (sequential bindings)
+(test-group "Let* (Sequential Bindings)"
+  (test-case let*-simple
+    (assert-compiles-both '(let* ((x 1) (y 2)) (+ x y))))
+
+  (test-case let*-dependent
+    (assert-compiles-both '(let* ((x 5) (y (+ x 1))) y)))
+
+  (test-case let*-multiple-dependent
+    (assert-compiles-both '(let* ((x 1) (y (+ x 1)) (z (+ y 1))) z)))
+
+  (test-case let*-empty
+    (assert-compiles-both '(let* () 42)))
+
+  (test-case let*-nested
+    (assert-compiles-both '(let* ((a 1) (b 2)) (let* ((c 3) (d (+ a b c))) d)))))
+
 ;;; Test lambda and functions
 (test-group "Lambda and Functions"
   (test-case lambda-identity
@@ -259,6 +276,23 @@
 
   (test-case predicate-in-conditional
     (assert-compiles-both '(if (zerop (mod 10 2)) (evenp 10) (oddp 10)))))
+
+;;; Test utility functions
+(test-group "Utility Functions"
+  (test-case null-zero
+    (assert-compiles-both '(null 0)))
+
+  (test-case null-nonzero
+    (assert-compiles-both '(null 5)))
+
+  (test-case identity-simple
+    (assert-compiles-both '(identity 42)))
+
+  (test-case identity-expression
+    (assert-compiles-both '(identity (+ 10 20))))
+
+  (test-case null-in-conditional
+    (assert-compiles-both '(if (null 0) 100 200))))
 
 ;;; Test case pattern matching
 (test-group "Case Pattern Matching"
