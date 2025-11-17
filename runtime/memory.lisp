@@ -205,6 +205,31 @@
            ;; Mark car and cdr
            (gc-mark-object heap (read-u64 heap data-addr))
            (gc-mark-object heap (read-u64 heap (+ data-addr 8))))
+          (#.+tag-symbol+
+           ;; Mark symbol's name, value, function, plist
+           (let ((name-ptr (read-u64 heap data-addr))
+                 (value (read-u64 heap (+ data-addr 8)))
+                 (fn (read-u64 heap (+ data-addr 16)))
+                 (plist (read-u64 heap (+ data-addr 24))))
+             ;; Mark name if it's a pointer (not fixnum)
+             (when (and (not (zerop name-ptr))
+                        (not (= (logand name-ptr #xF) +tag-fixnum+)))
+               (gc-mark-object heap name-ptr))
+             ;; Mark value if bound and is a pointer
+             (when (and (not (zerop value))
+                        (not (= (logand value #xF) +tag-fixnum+)))
+               (gc-mark-object heap value))
+             ;; Mark function if bound and is a pointer
+             (when (and (not (zerop fn))
+                        (not (= (logand fn #xF) +tag-fixnum+)))
+               (gc-mark-object heap fn))
+             ;; Mark plist if it's a cons
+             (when (and (not (zerop plist))
+                        (= (logand plist #xF) +tag-cons+))
+               (gc-mark-object heap plist))))
+          (#.+tag-string+
+           ;; Strings have no pointers, just mark the object
+           nil)
           ;; Other types would be handled here
           )))))
 
