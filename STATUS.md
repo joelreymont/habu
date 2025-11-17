@@ -96,14 +96,20 @@ Habu is a Common Lisp implementation for bare-metal ARM64 systems with hard real
 
 ## Test Results
 
+**Linux x86_64 (GCC 13.3.0):**
 ```
-Region allocator tests:
-  12/12 tests passed
+Platform verification:  10/10 tests passed
+Region allocator:       12/12 tests passed
+Garbage collector:      15/15 tests passed
+────────────────────────────────────────────
+Total:                  37/37 tests passed
+```
 
-Garbage collector tests:
-  15/15 tests passed
-
-Total: 27/27 tests passed
+**Performance (Linux x86_64):**
+```
+Control loop: 95 ns average, 400 ns max
+Region alloc: 1.25 ns per allocation
+GC pause:     0.31 us (1000 objects)
 ```
 
 ## Build and Run
