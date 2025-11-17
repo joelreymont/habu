@@ -16,7 +16,7 @@ RUNTIME_SRCS = runtime/runtime.c runtime/region.c runtime/gc.c
 RUNTIME_OBJS = $(RUNTIME_SRCS:.c=.o)
 
 # Test files
-TEST_SRCS = tests/test_platform.c tests/test_region.c tests/test_gc.c tests/test_compiler.c
+TEST_SRCS = tests/test_platform.c tests/test_region.c tests/test_gc.c tests/test_compiler.c tests/test_compiled_execution.c
 TEST_PROGS = $(TEST_SRCS:.c=)
 
 # Benchmark files
