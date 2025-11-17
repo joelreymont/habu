@@ -230,6 +230,14 @@
           (#.+tag-string+
            ;; Strings have no pointers, just mark the object
            nil)
+          (#.+tag-array+
+           ;; Mark array elements that are pointers
+           (let* ((length (read-u64 heap data-addr)))
+             (loop for i from 0 below length
+                   for element = (read-u64 heap (+ data-addr 8 (* i 8)))
+                   do (when (and (not (zerop element))
+                                 (not (= (logand element #xF) +tag-fixnum+)))
+                        (gc-mark-object heap element)))))
           ;; Other types would be handled here
           )))))
 
