@@ -72,10 +72,14 @@ This session continued from a previous context-limited session, implementing maj
 - **Smart mode detection**: Raw mode for interactive, cooked mode for scripts
 - **Error handling**: Graceful error reporting
 - **Operations supported**: All arithmetic, comparison, logic, bitwise, predicates, control flow, lists
-- **List operations**: cons, car, cdr, list, consp, atom, null
-- **List helpers**: caar, cadr, cdar, cddr, caddr, cadddr ⭐ NEW
-- **List functions**: length, reverse, append, nth ⭐ NEW
+- **List operations**: cons, car, cdr, list, consp, atom, null (7 functions)
+- **List helpers**: caar, cadr, cdar, cddr, caddr, cadddr (6 functions)
+- **List functions**: length, reverse, append, nth, first, second, third, fourth (8 functions)
+- **List utilities**: rest, last, butlast, nthcdr, member (5 functions) ⭐ NEW
+- **Type predicates**: listp, numberp, integerp, symbolp (4 functions) ⭐ NEW
+- **Mathematical**: sqrt, expt (2 functions) ⭐ NEW
 - **Environment**: Let bindings with proper scoping
+- **Total**: 32 list/type/math functions in REPL interpreter ⭐ NEW
 
 ### 8. Comprehensive Planning Documents
 - **FULL_LISP_PLAN.md**: 15-phase roadmap to production Lisp
