@@ -2,12 +2,15 @@
 ;;;; Interactive environment for Habu Lisp
 
 (load "compiler.lisp")
+(load "readline.lisp")
 (in-package :habu-compiler)
 
 ;;; REPL state
 (defvar *repl-running* t)
 (defvar *repl-history* nil)
 (defvar *repl-env* nil)
+(defvar *history-file* (merge-pathnames ".habu_history" (user-homedir-pathname)))
+(defvar *history-max-size* 1000)
 
 ;;; Simple interpreter for fixnum expressions
 (defun interpret-expr (expr env)
@@ -180,6 +183,81 @@
                    return val
                  finally (return 0)))))))
 
+;;; History management
+(defun load-history ()
+  "Load command history from file"
+  (when (probe-file *history-file*)
+    (with-open-file (in *history-file* :direction :input :if-does-not-exist nil)
+      (when in
+        (loop for line = (read-line in nil nil)
+              while line
+              collect line into lines
+              finally (setf *repl-history* (nreverse lines)))))))
+
+(defun save-history ()
+  "Save command history to file"
+  (with-open-file (out *history-file* :direction :output
+                       :if-exists :supersede
+                       :if-does-not-exist :create)
+    ;; Only save the most recent entries
+    (let ((recent (if (> (length *repl-history*) *history-max-size*)
+                      (subseq *repl-history* 0 *history-max-size*)
+                      *repl-history*)))
+      (dolist (entry (reverse recent))
+        (when (stringp entry)
+          (write-line entry out))))))
+
+(defun add-to-history (expr)
+  "Add expression to history"
+  (let ((expr-str (prin1-to-string expr)))
+    (push expr-str *repl-history*)
+    ;; Trim history if too long
+    (when (> (length *repl-history*) *history-max-size*)
+      (setf *repl-history* (subseq *repl-history* 0 *history-max-size*)))))
+
+;;; Tab completion support
+(defun get-completion-candidates ()
+  "Get list of symbols available for completion"
+  (append
+   ;; Operators
+   '(+ - * / mod < > = <= >= /= equal
+     logand logior logxor lognot ash
+     and or not
+     zerop plusp minusp evenp oddp null
+     1+ 1- abs min max
+     if cond case when unless progn begin let let*
+     lambda defun defmacro setq incf decf
+     quote car cdr cons list)
+   ;; REPL commands
+   '(:quit :q :help :h :clear :macros :functions :history)
+   ;; User-defined functions
+   (loop for name being the hash-keys of *function-table* collect name)
+   ;; User-defined macros
+   (loop for name being the hash-keys of *macro-table* collect name)))
+
+(defun find-completions (prefix)
+  "Find all symbols that start with PREFIX"
+  (let ((prefix-str (string-upcase (if (symbolp prefix) (symbol-name prefix) prefix)))
+        (candidates (get-completion-candidates)))
+    (remove-if-not (lambda (sym)
+                     (let ((sym-str (string-upcase (if (symbolp sym) (symbol-name sym) (string sym)))))
+                       (and (>= (length sym-str) (length prefix-str))
+                            (string= prefix-str sym-str :end2 (length prefix-str)))))
+                   candidates)))
+
+(defun show-completions (prefix)
+  "Show all possible completions for PREFIX"
+  (let ((completions (find-completions prefix)))
+    (cond
+      ((null completions)
+       (format t "No completions found for '~A'~%" prefix))
+      ((= (length completions) 1)
+       (format t "~A~%" (first completions)))
+      (t
+       (format t "~%Possible completions:~%")
+       (dolist (c completions)
+         (format t "  ~A~%" c))))))
+
 ;;; REPL utilities
 (defun repl-prompt ()
   "Display REPL prompt"
@@ -210,6 +288,15 @@
   (format t "  :help or :h     - Show this help~%")
   (format t "  :clear          - Clear function and macro tables~%")
   (format t "  :macros         - List defined macros~%")
+  (format t "  :functions      - List defined functions~%")
+  (format t "  :history        - Show command history~%")
+  (format t "  :complete <sym> - Show completions for symbol~%")
+  (format t "~%")
+  (format t "Tips:~%")
+  (format t "  - Arrow keys for line editing and history navigation~%")
+  (format t "  - Tab for completion~%")
+  (format t "  - Ctrl-A/E for beginning/end of line~%")
+  (format t "  - History saved to: ~A~%" *history-file*)
   (format t "~%")
   (format t "Note: This is an interpreter-based REPL (fixnums only).~%")
   (format t "~%"))
@@ -253,14 +340,53 @@
                       (format t "  ~A ~A~%" name (car def)))
                     *macro-table*))))
 
+    ((string= command ":functions")
+     (if (zerop (hash-table-count *function-table*))
+         (format t "No functions defined.~%")
+         (progn
+           (format t "Defined functions:~%")
+           (maphash (lambda (name def)
+                      (format t "  ~A ~A~%" name (car def)))
+                    *function-table*))))
+
+    ((string= command ":history")
+     (if (null *repl-history*)
+         (format t "No history.~%")
+         (progn
+           (format t "Command history (most recent first):~%")
+           (loop for i from 0
+                 for entry in *repl-history*
+                 when (< i 20)  ; Show last 20 entries
+                 do (format t "  ~3D: ~A~%" (1+ i) entry)))))
+
+    ;; Handle commands with arguments like ":complete foo"
+    ((and (> (length command) 9)
+          (string= ":complete" command :end2 9))
+     (let ((prefix (string-trim " " (subseq command 9))))
+       (if (zerop (length prefix))
+           (format t "Usage: :complete <symbol>~%")
+           (show-completions prefix))))
+
     (t
      (format t "Unknown command: ~A~%" command)
      (format t "Type :help for available commands.~%"))))
 
+(defun complete-symbol (prefix)
+  "Completion function for readline"
+  (find-completions prefix))
+
+(defvar *use-readline* (interactive-stream-p *standard-input*))
+
 (defun repl-read-command ()
   "Read a command or expression from user"
   (handler-case
-      (let ((input (read-line)))
+      (let ((input (if *use-readline*
+                       (read-line-with-editing "~%habu> "
+                                              :history *repl-history*
+                                              :completion-fn #'complete-symbol)
+                       (read-line))))
+        (unless input
+          (return-from repl-read-command (values :eof nil)))
         (if (and (> (length input) 0)
                  (char= (char input 0) #\:))
             (values :command input)
@@ -273,29 +399,45 @@
 
 (defun repl ()
   "Main REPL loop"
-  (repl-print-banner)
+  ;; Load history from file
+  (load-history)
 
-  (loop while *repl-running* do
-    (repl-prompt)
+  ;; Set raw mode if using readline
+  (when *use-readline*
+    (set-raw-mode))
 
-    (multiple-value-bind (type value) (repl-read-command)
-      (case type
-        (:eof
-         (format t "~%")
-         (setf *repl-running* nil))
+  (unwind-protect
+      (progn
+        (repl-print-banner)
 
-        (:command
-         (repl-handle-command value))
+        (loop while *repl-running* do
+          ;; Only show prompt if not using readline (readline handles it)
+          (unless *use-readline*
+            (repl-prompt))
 
-        (:expression
-         (when value
-           (push value *repl-history*)
-           (let ((result (repl-eval value)))
-             (repl-print result))))
+          (multiple-value-bind (type value) (repl-read-command)
+            (case type
+              (:eof
+               (format t "~%")
+               (setf *repl-running* nil))
 
-        (:error
-         ;; Error already printed, continue
-         nil)))))
+              (:command
+               (repl-handle-command value))
+
+              (:expression
+               (when value
+                 (add-to-history value)
+                 (let ((result (repl-eval value)))
+                   (repl-print result))))
+
+              (:error
+               ;; Error already printed, continue
+               nil)))))
+
+    ;; Cleanup: restore terminal and save history
+    (when *use-readline*
+      (restore-cooked-mode))
+    (save-history)))
 
 ;;; Start REPL
 (format t "~%Starting Habu REPL...~%")
