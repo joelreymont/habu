@@ -72,7 +72,9 @@ This session continued from a previous context-limited session, implementing maj
 - **Smart mode detection**: Raw mode for interactive, cooked mode for scripts
 - **Error handling**: Graceful error reporting
 - **Operations supported**: All arithmetic, comparison, logic, bitwise, predicates, control flow, lists
-- **List operations**: cons, car, cdr, list, consp, atom, null ⭐ NEW
+- **List operations**: cons, car, cdr, list, consp, atom, null
+- **List helpers**: caar, cadr, cdar, cddr, caddr, cadddr ⭐ NEW
+- **List functions**: length, reverse, append, nth ⭐ NEW
 - **Environment**: Let bindings with proper scoping
 
 ### 8. Comprehensive Planning Documents

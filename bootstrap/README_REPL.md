@@ -86,6 +86,36 @@ Defined macros:
   SQUARE (N)
 ```
 
+### List Operations
+```
+habu> (list 1 2 3 4 5)
+=> (1 2 3 4 5)
+
+habu> (car (list 10 20 30))
+=> 10
+
+habu> (cdr (list 10 20 30))
+=> (20 30)
+
+habu> (cadr (list 1 2 3 4))
+=> 2
+
+habu> (caddr (list 1 2 3 4))
+=> 3
+
+habu> (length (list 1 2 3 4 5))
+=> 5
+
+habu> (reverse (list 1 2 3))
+=> (3 2 1)
+
+habu> (append (list 1 2) (list 3 4))
+=> (1 2 3 4)
+
+habu> (nth 2 (list 10 20 30 40))
+=> 30
+```
+
 ### Tab Completion
 Type `(lo` and press Tab to see:
 ```
@@ -145,12 +175,21 @@ The REPL logic:
 ### Functions and Macros
 `lambda`, `defun`, `defmacro`, `setq`, `incf`, `decf`
 
+### Lists
+`cons`, `car`, `cdr`, `list`, `consp`, `atom`, `null`
+
+### List Helpers
+`caar`, `cadr`, `cdar`, `cddr`, `caddr`, `cadddr`
+
+### List Operations
+`length`, `reverse`, `append`, `nth`
+
 ## Limitations
 
-- Currently supports fixnum operations only
-- No runtime integration yet (cons, symbols, strings, arrays)
 - Interpreter-based evaluation (not compiled)
-- Terminal must support ANSI escape codes
+- Compiler does not yet support list operations (needs runtime integration)
+- List operations in REPL use Common Lisp cons cells
+- Terminal must support ANSI escape codes for readline features
 
 ## Future Enhancements
 
