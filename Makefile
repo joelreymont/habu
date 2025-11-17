@@ -12,11 +12,11 @@ CROSS_CFLAGS = $(CFLAGS)
 CROSS_LDFLAGS = $(LDFLAGS)
 
 # Source files
-RUNTIME_SRCS = runtime/runtime.c runtime/region.c
+RUNTIME_SRCS = runtime/runtime.c runtime/region.c runtime/gc.c
 RUNTIME_OBJS = $(RUNTIME_SRCS:.c=.o)
 
 # Test files
-TEST_SRCS = tests/test_region.c
+TEST_SRCS = tests/test_region.c tests/test_gc.c
 TEST_PROGS = $(TEST_SRCS:.c=)
 
 # Benchmark files
@@ -32,7 +32,7 @@ runtime/%.o: runtime/%.c runtime/*.h
 	$(CC) $(CFLAGS) -c -o $@ $<
 
 # Build tests
-tests/test_region: tests/test_region.c $(RUNTIME_OBJS)
+tests/test_%: tests/test_%.c $(RUNTIME_OBJS)
 	$(CC) $(CFLAGS) -o $@ $< $(RUNTIME_OBJS) $(LDLIBS)
 
 # Build benchmarks

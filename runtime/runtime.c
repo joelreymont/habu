@@ -7,15 +7,6 @@
 
 bool habu_gc_enabled = true;
 
-void habu_init(size_t heap_size) {
-    /* TODO: Initialize GC heap */
-    (void)heap_size;
-}
-
-void habu_shutdown(void) {
-    /* TODO: Cleanup GC heap */
-}
-
 /* I/O functions */
 
 void habu_write_byte(uint8_t byte) {
@@ -92,56 +83,4 @@ void habu_vector_set(habu_value_t vector, size_t index, habu_value_t value) {
     /* TODO: Write barrier */
 }
 
-/* Placeholder GC functions - will be implemented later */
-
-void *habu_gc_alloc(size_t bytes, uint64_t type) {
-    (void)type;
-    /* TODO: Implement GC allocation */
-    return malloc(bytes);
-}
-
-void habu_gc_collect(void) {
-    /* TODO: Implement GC collection */
-}
-
-size_t habu_gc_heap_size(void) {
-    return 0;  /* TODO */
-}
-
-size_t habu_gc_heap_used(void) {
-    return 0;  /* TODO */
-}
-
-void habu_gc_get_stats(habu_gc_stats_t *stats) {
-    memset(stats, 0, sizeof(habu_gc_stats_t));
-}
-
-void habu_gc_reset_stats(void) {
-    /* TODO */
-}
-
-habu_value_t habu_cons(habu_value_t car, habu_value_t cdr) {
-    /* TODO: Use GC allocator */
-    (void)car;
-    (void)cdr;
-    return NIL;
-}
-
-habu_value_t habu_make_vector(size_t length) {
-    /* TODO: Use GC allocator */
-    (void)length;
-    return NIL;
-}
-
-habu_value_t habu_make_string(const char *str, size_t length) {
-    /* TODO: Use GC allocator */
-    (void)str;
-    (void)length;
-    return NIL;
-}
-
-habu_value_t habu_make_symbol(const char *name) {
-    /* TODO: Use GC allocator */
-    (void)name;
-    return NIL;
-}
+/* GC functions implemented in gc.c */
