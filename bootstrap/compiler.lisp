@@ -616,6 +616,85 @@
                   (list #x48 #xD3 #xF8)           ; sar rax, cl
                   (list #x48 #x83 #xC4 #x08)))   ; add rsp, 8
 
+         ;; Numeric operators
+         ((eq op 'min)
+          ;; Compile (min a b) - return smaller value
+          (append (emit-x86_64 (first args) env)
+                  (list #x50)                   ; push rax
+                  (emit-x86_64 (second args) env)
+                  (list #x48 #x8B #x1C #x24)    ; mov rbx, [rsp]
+                  (list #x48 #x39 #xC3)         ; cmp rbx, rax
+                  (list #x0F #x4C #xC3)         ; cmovl rax, rbx (move if less)
+                  (list #x48 #x83 #xC4 #x08))) ; add rsp, 8
+
+         ((eq op 'max)
+          ;; Compile (max a b) - return larger value
+          (append (emit-x86_64 (first args) env)
+                  (list #x50)
+                  (emit-x86_64 (second args) env)
+                  (list #x48 #x8B #x1C #x24)    ; mov rbx, [rsp]
+                  (list #x48 #x39 #xC3)         ; cmp rbx, rax
+                  (list #x0F #x4F #xC3)         ; cmovg rax, rbx (move if greater)
+                  (list #x48 #x83 #xC4 #x08)))
+
+         ((eq op 'abs)
+          ;; Compile (abs a) - absolute value
+          (append (emit-x86_64 (first args) env)
+                  (list #x48 #x89 #xC3)         ; mov rbx, rax
+                  (list #x48 #xC1 #xFB #x3F)    ; sar rbx, 63 (sign bit)
+                  (list #x48 #x31 #xD8)         ; xor rax, rbx
+                  (list #x48 #x29 #xD8)))       ; sub rax, rbx
+
+         ((eq op '1+)
+          ;; Compile (1+ a) - increment by 1
+          (append (emit-x86_64 (first args) env)
+                  (list #x48 #x83 #xC0 #x10))) ; add rax, 16 (1 << 4)
+
+         ((eq op '1-)
+          ;; Compile (1- a) - decrement by 1
+          (append (emit-x86_64 (first args) env)
+                  (list #x48 #x83 #xE8 #x10))) ; sub rax, 16 (1 << 4)
+
+         ;; Predicates
+         ((eq op 'zerop)
+          ;; Compile (zerop a) - test if zero
+          (append (emit-x86_64 (first args) env)
+                  (list #x48 #x85 #xC0)         ; test rax, rax
+                  (list #x0F #x94 #xC0)         ; setz al
+                  (list #x48 #x0F #xB6 #xC0)    ; movzx rax, al
+                  (list #x48 #xC1 #xE0 #x04))) ; shl rax, 4
+
+         ((eq op 'plusp)
+          ;; Compile (plusp a) - test if positive
+          (append (emit-x86_64 (first args) env)
+                  (list #x48 #x85 #xC0)         ; test rax, rax
+                  (list #x0F #x9F #xC0)         ; setg al
+                  (list #x48 #x0F #xB6 #xC0)
+                  (list #x48 #xC1 #xE0 #x04)))
+
+         ((eq op 'minusp)
+          ;; Compile (minusp a) - test if negative
+          (append (emit-x86_64 (first args) env)
+                  (list #x48 #x85 #xC0)         ; test rax, rax
+                  (list #x0F #x9C #xC0)         ; setl al
+                  (list #x48 #x0F #xB6 #xC0)
+                  (list #x48 #xC1 #xE0 #x04)))
+
+         ((eq op 'evenp)
+          ;; Compile (evenp a) - test if even
+          (append (emit-x86_64 (first args) env)
+                  (list #x48 #xC1 #xF8 #x04)    ; sar rax, 4 (untag)
+                  (list #x48 #x83 #xE0 #x01)    ; and rax, 1 (get low bit)
+                  (list #x48 #x83 #xF0 #x01)    ; xor rax, 1 (invert)
+                  (list #x48 #xC1 #xE0 #x04))) ; shl rax, 4 (retag)
+
+         ((eq op 'oddp)
+          ;; Compile (oddp a) - test if odd
+          (append (emit-x86_64 (first args) env)
+                  (list #x48 #xC1 #xF8 #x04)    ; sar rax, 4 (untag)
+                  (list #x48 #x83 #xE0 #x01)    ; and rax, 1 (get low bit)
+                  (list #x48 #xC1 #xE0 #x04))) ; shl rax, 4 (retag)
+
          (t
           (error "Unknown operator: ~S" op)))))))
 
@@ -1093,6 +1172,81 @@
                   ;; Left shift
                   (list #x00 #x20 #xC1 #x9A)      ; lsl x0, x0, x1
                   (list #xFF #x07 #x00 #x91)))    ; add sp, sp, #8
+
+         ;; Numeric operators
+         ((eq op 'min)
+          ;; Compile (min a b) for ARM64
+          (append (emit-arm64 (first args) env)
+                  (list #xE0 #x0F #x1F #xF8)      ; str x0, [sp, #-8]!
+                  (emit-arm64 (second args) env)
+                  (list #xE1 #x03 #x40 #xF9)      ; ldr x1, [sp]
+                  (list #x3F #x00 #x00 #xEB)      ; cmp x1, x0
+                  (list #x20 #xD0 #x81 #x9A)      ; csel x0, x1, x1, le (select x1 if x1 <= x0)
+                  (list #xFF #x07 #x00 #x91)))    ; add sp, sp, #8
+
+         ((eq op 'max)
+          ;; Compile (max a b) for ARM64
+          (append (emit-arm64 (first args) env)
+                  (list #xE0 #x0F #x1F #xF8)
+                  (emit-arm64 (second args) env)
+                  (list #xE1 #x03 #x40 #xF9)
+                  (list #x3F #x00 #x00 #xEB)      ; cmp x1, x0
+                  (list #x20 #xC0 #x81 #x9A)      ; csel x0, x1, x1, gt (select x1 if x1 > x0)
+                  (list #xFF #x07 #x00 #x91)))
+
+         ((eq op 'abs)
+          ;; Compile (abs a) for ARM64
+          (append (emit-arm64 (first args) env)
+                  (list #x01 #xFC #x7F #xD3)      ; lsr x1, x0, #63 (sign bit)
+                  (list #x00 #x00 #x01 #xCA)      ; eor x0, x0, x1
+                  (list #x00 #x00 #x01 #xCB)))    ; sub x0, x0, x1
+
+         ((eq op '1+)
+          ;; Compile (1+ a) for ARM64
+          (append (emit-arm64 (first args) env)
+                  (list #x00 #x40 #x00 #x91)))    ; add x0, x0, #16
+
+         ((eq op '1-)
+          ;; Compile (1- a) for ARM64
+          (append (emit-arm64 (first args) env)
+                  (list #x00 #x40 #x00 #xD1)))    ; sub x0, x0, #16
+
+         ;; Predicates
+         ((eq op 'zerop)
+          ;; Compile (zerop a) for ARM64
+          (append (emit-arm64 (first args) env)
+                  (list #x1F #x00 #x00 #xF1)      ; cmp x0, #0
+                  (list #xE0 #x07 #x9F #x9A)      ; cset x0, eq
+                  (list #x00 #x10 #x00 #xD3)))    ; lsl x0, x0, #4
+
+         ((eq op 'plusp)
+          ;; Compile (plusp a) for ARM64
+          (append (emit-arm64 (first args) env)
+                  (list #x1F #x00 #x00 #xF1)      ; cmp x0, #0
+                  (list #xE0 #xC7 #x9F #x9A)      ; cset x0, gt
+                  (list #x00 #x10 #x00 #xD3)))
+
+         ((eq op 'minusp)
+          ;; Compile (minusp a) for ARM64
+          (append (emit-arm64 (first args) env)
+                  (list #x1F #x00 #x00 #xF1)      ; cmp x0, #0
+                  (list #xE0 #xB7 #x9F #x9A)      ; cset x0, lt
+                  (list #x00 #x10 #x00 #xD3)))
+
+         ((eq op 'evenp)
+          ;; Compile (evenp a) for ARM64
+          (append (emit-arm64 (first args) env)
+                  (list #x00 #x10 #x40 #xD3)      ; lsr x0, x0, #4 (untag)
+                  (list #x00 #x04 #x00 #x92)      ; and x0, x0, #1
+                  (list #x00 #x04 #x00 #xD2)      ; eor x0, x0, #1 (invert)
+                  (list #x00 #x10 #x00 #xD3)))    ; lsl x0, x0, #4
+
+         ((eq op 'oddp)
+          ;; Compile (oddp a) for ARM64
+          (append (emit-arm64 (first args) env)
+                  (list #x00 #x10 #x40 #xD3)      ; lsr x0, x0, #4 (untag)
+                  (list #x00 #x04 #x00 #x92)      ; and x0, x0, #1
+                  (list #x00 #x10 #x00 #xD3)))    ; lsl x0, x0, #4
 
          (t
           (error "Unknown operator: ~S" op)))))))
