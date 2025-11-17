@@ -98,6 +98,18 @@
                   :value clauses  ; Store raw clauses (will parse during code gen)
                   :args nil)))
 
+    ((and (consp form) (eq (first form) 'when))
+     ;; Special form: (when test body...) => (if test (progn body...) 0)
+     (let ((test (second form))
+           (body (cddr form)))
+       (parse `(if ,test (progn ,@body) 0))))
+
+    ((and (consp form) (eq (first form) 'unless))
+     ;; Special form: (unless test body...) => (if (not test) (progn body...) 0)
+     (let ((test (second form))
+           (body (cddr form)))
+       (parse `(if (not ,test) (progn ,@body) 0))))
+
     ((and (consp form) (consp (first form)))
      ;; Function call: ((lambda ...) args) or ((fn) args)
      (let ((fn (first form))

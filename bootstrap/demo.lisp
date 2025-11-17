@@ -89,7 +89,13 @@
 (demo-expr '(let ((x 5)) (cond ((< x 3) 1) ((< x 7) 2) (t 3))))
 (demo-expr '(cond ((and (> 5 3) (< 5 10)) (* 2 10)) (t (+ 1 1))))
 
-(format t "11. COMPLEX EXPRESSIONS~%")
+(format t "11. WHEN/UNLESS~%")
+(format t "===============~%")
+(demo-expr '(when (< 5 10) (* 2 21)))
+(demo-expr '(unless (> 5 10) (+ 10 32)))
+(demo-expr '(let ((x 5)) (when (< x 10) (+ x 1))))
+
+(format t "12. COMPLEX EXPRESSIONS~%")
 (format t "======================~%")
 (demo-expr '(+ (* 3 4) (/ 20 2)))
 (demo-expr '(if (< (* 2 3) (+ 5 2)) 100 200))
@@ -117,7 +123,7 @@
 (format t "Arithmetic:   + - * / mod~%")
 (format t "Comparison:   < > = <= >=~%")
 (format t "Boolean:      and, or, not (short-circuit)~%")
-(format t "Control:      if, cond, progn~%")
+(format t "Control:      if, cond, when, unless, progn~%")
 (format t "Variables:    let bindings~%")
 (format t "Functions:    lambda expressions~%")
 (format t "Quote:        Literal data (fixnums)~%")
