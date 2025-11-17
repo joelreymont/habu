@@ -220,6 +220,43 @@
           (cl:nth (interpret-expr (first args) env)
                   (interpret-expr (second args) env)))
 
+         ;; Convenient aliases
+         ((eq op 'first)
+          (car (interpret-expr (first args) env)))
+
+         ((eq op 'second)
+          (car (cdr (interpret-expr (first args) env))))
+
+         ((eq op 'third)
+          (car (cdr (cdr (interpret-expr (first args) env)))))
+
+         ((eq op 'fourth)
+          (car (cdr (cdr (cdr (interpret-expr (first args) env))))))
+
+         ((eq op 'rest)
+          (cdr (interpret-expr (first args) env)))
+
+         ;; Additional list utilities
+         ((eq op 'last)
+          (let ((lst (interpret-expr (first args) env)))
+            (if (consp lst)
+                (cl:last lst)
+                (error "last: argument is not a list"))))
+
+         ((eq op 'butlast)
+          (cl:butlast (interpret-expr (first args) env)))
+
+         ((eq op 'nthcdr)
+          (cl:nthcdr (interpret-expr (first args) env)
+                     (interpret-expr (second args) env)))
+
+         ((eq op 'member)
+          (let ((item (interpret-expr (first args) env))
+                (lst (interpret-expr (second args) env)))
+            (if (cl:member item lst :test #'equal)
+                1  ; Return 1 for true (found)
+                0)))  ; Return 0 for false (not found)
+
          (t
           (error "Unknown operator: ~S" op)))))
 
@@ -293,7 +330,9 @@
      lambda defun defmacro setq incf decf
      quote car cdr cons list consp atom
      caar cadr cdar cddr caddr cadddr
-     length reverse append nth)
+     length reverse append nth
+     first second third fourth rest
+     last butlast nthcdr member)
    ;; REPL commands
    '(:quit :q :help :h :clear :macros :functions :history)
    ;; User-defined functions
@@ -347,7 +386,8 @@
   (format t "  - Predicates: zerop, plusp, minusp, evenp, oddp, null, consp, atom~%")
   (format t "  - Numeric: 1+, 1-, abs, min, max~%")
   (format t "  - Lists: cons, car, cdr, list, caar, cadr, cdar, cddr, caddr, cadddr~%")
-  (format t "  - List ops: length, reverse, append, nth~%")
+  (format t "  - List ops: length, reverse, append, nth, first, second, third, fourth~%")
+  (format t "  - List utils: rest, last, butlast, nthcdr, member~%")
   (format t "  - Control: if, let, progn~%")
   (format t "  - Macros: defmacro~%")
   (format t "~%")
