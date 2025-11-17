@@ -20,7 +20,7 @@ TEST_SRCS = tests/test_region.c tests/test_gc.c
 TEST_PROGS = $(TEST_SRCS:.c=)
 
 # Benchmark files
-BENCH_SRCS = benchmarks/bench_region.c
+BENCH_SRCS = benchmarks/bench_region.c benchmarks/bench_gc.c
 BENCH_PROGS = $(BENCH_SRCS:.c=)
 
 .PHONY: all clean test benchmark
@@ -36,7 +36,7 @@ tests/test_%: tests/test_%.c $(RUNTIME_OBJS)
 	$(CC) $(CFLAGS) -o $@ $< $(RUNTIME_OBJS) $(LDLIBS)
 
 # Build benchmarks
-benchmarks/bench_region: benchmarks/bench_region.c $(RUNTIME_OBJS)
+benchmarks/bench_%: benchmarks/bench_%.c $(RUNTIME_OBJS)
 	$(CC) $(CFLAGS) -o $@ $< $(RUNTIME_OBJS) $(LDLIBS)
 
 # Run tests
