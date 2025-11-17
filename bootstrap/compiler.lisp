@@ -62,6 +62,35 @@
                   :value nil
                   :args (mapcar #'parse exprs))))
 
+    ((and (consp form) (eq (first form) 'quote))
+     ;; Special form: (quote datum)
+     ;; Note: Don't recursively parse - keep quoted value as-is
+     (let ((datum (second form)))
+       (make-expr :type 'quote
+                  :value datum
+                  :args nil)))
+
+    ((and (consp form) (eq (first form) 'not))
+     ;; Special form: (not expr) - logical not
+     (let ((expr (second form)))
+       (make-expr :type 'not
+                  :value nil
+                  :args (list (parse expr)))))
+
+    ((and (consp form) (eq (first form) 'and))
+     ;; Special form: (and expr1 expr2 ...) - short-circuit and
+     (let ((exprs (rest form)))
+       (make-expr :type 'and
+                  :value nil
+                  :args (mapcar #'parse exprs))))
+
+    ((and (consp form) (eq (first form) 'or))
+     ;; Special form: (or expr1 expr2 ...) - short-circuit or
+     (let ((exprs (rest form)))
+       (make-expr :type 'or
+                  :value nil
+                  :args (mapcar #'parse exprs))))
+
     ((and (consp form) (consp (first form)))
      ;; Function call: ((lambda ...) args) or ((fn) args)
      (let ((fn (first form))
@@ -148,6 +177,94 @@
              (dolist (e exprs)
                (setf code (append code (emit-x86_64 e env))))
              code))))
+
+    (quote
+     ;; Compile (quote datum)
+     ;; Return the quoted value without evaluation
+     (let ((datum (expr-value expr)))
+       (cond
+         ((integerp datum)
+          ;; Quoted integer - just return as fixnum
+          (emit-x86_64 (make-expr :type 'fixnum :value datum) env))
+         ((null datum)
+          ;; Quoted nil - return as fixnum 0 (or special nil value)
+          (emit-x86_64 (make-expr :type 'fixnum :value 0) env))
+         (t
+          ;; Symbols and lists need runtime support
+          (error "Quote of ~S not yet supported - need runtime symbols/lists" datum)))))
+
+    (not
+     ;; Compile (not expr)
+     ;; Returns 1 (true) if expr is 0 (false), else 0
+     (let* ((arg-expr (first (expr-args expr)))
+            (arg-code (emit-x86_64 arg-expr env)))
+       (append arg-code
+               (list #x48 #x85 #xC0)        ; test rax, rax
+               (list #x0F #x94 #xC0)        ; setz al
+               (list #x48 #x0F #xB6 #xC0)   ; movzx rax, al
+               (list #x48 #xC1 #xE0 #x04)))) ; shl rax, 4 (tag as fixnum)
+
+    (and
+     ;; Compile (and expr1 expr2 ...)
+     ;; Short-circuit evaluation: return first false value, else last value
+     (let ((exprs (expr-args expr)))
+       (cond
+         ((null exprs)
+          ;; Empty and is true (return 1)
+          (emit-x86_64 (make-expr :type 'fixnum :value 1) env))
+         ((= (length exprs) 1)
+          ;; Single expression: just evaluate it
+          (emit-x86_64 (first exprs) env))
+         (t
+          ;; Multiple expressions: short-circuit evaluation
+          ;; First, generate code for each expression
+          (let ((expr-codes (mapcar (lambda (e) (emit-x86_64 e env)) exprs))
+                (result nil))
+            ;; Build code from right to left
+            (loop for i from (1- (length expr-codes)) downto 0
+                  for code = (nth i expr-codes)
+                  for last = (= i (1- (length expr-codes)))
+                  do (if last
+                         ;; Last expression: just its code
+                         (setf result code)
+                         ;; Not last: code + test + conditional jump to end
+                         (let ((test-and-jump (append
+                                              (list #x48 #x85 #xC0)  ; test rax, rax
+                                              (list #x74)            ; jz (short jump)
+                                              (list (length result))))) ; offset to end
+                           (setf result (append code test-and-jump result)))))
+            result)))))
+
+    (or
+     ;; Compile (or expr1 expr2 ...)
+     ;; Short-circuit evaluation: return first non-zero value, else last value
+     (let ((exprs (expr-args expr)))
+       (cond
+         ((null exprs)
+          ;; Empty or is false (return 0)
+          (emit-x86_64 (make-expr :type 'fixnum :value 0) env))
+         ((= (length exprs) 1)
+          ;; Single expression: just evaluate it
+          (emit-x86_64 (first exprs) env))
+         (t
+          ;; Multiple expressions: short-circuit evaluation
+          ;; First, generate code for each expression
+          (let ((expr-codes (mapcar (lambda (e) (emit-x86_64 e env)) exprs))
+                (result nil))
+            ;; Build code from right to left
+            (loop for i from (1- (length expr-codes)) downto 0
+                  for code = (nth i expr-codes)
+                  for last = (= i (1- (length expr-codes)))
+                  do (if last
+                         ;; Last expression: just its code
+                         (setf result code)
+                         ;; Not last: code + test + conditional jump to end
+                         (let ((test-and-jump (append
+                                              (list #x48 #x85 #xC0)  ; test rax, rax
+                                              (list #x75)            ; jnz (short jump)
+                                              (list (length result))))) ; offset to end
+                           (setf result (append code test-and-jump result)))))
+            result)))))
 
     (funcall
      ;; Compile ((lambda (params) body) args)
@@ -433,6 +550,104 @@
              (dolist (e exprs)
                (setf code (append code (emit-arm64 e env))))
              code))))
+
+    (quote
+     ;; Compile (quote datum) for ARM64
+     ;; Return the quoted value without evaluation
+     (let ((datum (expr-value expr)))
+       (cond
+         ((integerp datum)
+          ;; Quoted integer - just return as fixnum
+          (emit-arm64 (make-expr :type 'fixnum :value datum) env))
+         ((null datum)
+          ;; Quoted nil - return as fixnum 0 (or special nil value)
+          (emit-arm64 (make-expr :type 'fixnum :value 0) env))
+         (t
+          ;; Symbols and lists need runtime support
+          (error "Quote of ~S not yet supported - need runtime symbols/lists" datum)))))
+
+    (not
+     ;; Compile (not expr) for ARM64
+     ;; Returns 1 (true) if expr is 0 (false), else 0
+     (let* ((arg-expr (first (expr-args expr)))
+            (arg-code (emit-arm64 arg-expr env)))
+       (append arg-code
+               ;; Compare x0 with 0
+               (list #x1F #x00 #x00 #xF1)         ; cmp x0, #0
+               ;; cset x0, eq - set x0 to 1 if equal, 0 otherwise
+               (list #xE0 #x17 #x9F #x9A)         ; cset x0, eq
+               ;; Shift left by 4 to tag as fixnum
+               (list #xE0 #x13 #x00 #xD3))))      ; lsl x0, x0, #4
+
+    (and
+     ;; Compile (and expr1 expr2 ...) for ARM64
+     ;; Short-circuit evaluation: return first false value, else last value
+     (let ((exprs (expr-args expr)))
+       (cond
+         ((null exprs)
+          ;; Empty and is true (return 1)
+          (emit-arm64 (make-expr :type 'fixnum :value 1) env))
+         ((= (length exprs) 1)
+          ;; Single expression: just evaluate it
+          (emit-arm64 (first exprs) env))
+         (t
+          ;; Multiple expressions: short-circuit evaluation
+          (let ((expr-codes (mapcar (lambda (e) (emit-arm64 e env)) exprs))
+                (result nil))
+            ;; Build code from right to left
+            (loop for i from (1- (length expr-codes)) downto 0
+                  for code = (nth i expr-codes)
+                  for last = (= i (1- (length expr-codes)))
+                  do (if last
+                         ;; Last expression: just its code
+                         (setf result code)
+                         ;; Not last: code + cmp + b.eq to end
+                         (let* ((offset-bytes (length result))
+                                (offset-insns (/ offset-bytes 4))
+                                (test-and-jump (append
+                                               (list #x1F #x00 #x00 #xF1)  ; cmp x0, #0
+                                               ;; b.eq offset (branch if equal to zero)
+                                               (list #x00  ; low byte of offset
+                                                     (logand offset-insns #xFF)
+                                                     (logand (ash offset-insns -8) #xFF)
+                                                     #x54)))) ; b.eq condition code
+                           (setf result (append code test-and-jump result)))))
+            result)))))
+
+    (or
+     ;; Compile (or expr1 expr2 ...) for ARM64
+     ;; Short-circuit evaluation: return first non-zero value, else last value
+     (let ((exprs (expr-args expr)))
+       (cond
+         ((null exprs)
+          ;; Empty or is false (return 0)
+          (emit-arm64 (make-expr :type 'fixnum :value 0) env))
+         ((= (length exprs) 1)
+          ;; Single expression: just evaluate it
+          (emit-arm64 (first exprs) env))
+         (t
+          ;; Multiple expressions: short-circuit evaluation
+          (let ((expr-codes (mapcar (lambda (e) (emit-arm64 e env)) exprs))
+                (result nil))
+            ;; Build code from right to left
+            (loop for i from (1- (length expr-codes)) downto 0
+                  for code = (nth i expr-codes)
+                  for last = (= i (1- (length expr-codes)))
+                  do (if last
+                         ;; Last expression: just its code
+                         (setf result code)
+                         ;; Not last: code + cmp + b.ne to end
+                         (let* ((offset-bytes (length result))
+                                (offset-insns (/ offset-bytes 4))
+                                (test-and-jump (append
+                                               (list #x1F #x00 #x00 #xF1)  ; cmp x0, #0
+                                               ;; b.ne offset (branch if not equal to zero)
+                                               (list #x01  ; condition code 1 = ne
+                                                     (logand offset-insns #xFF)
+                                                     (logand (ash offset-insns -8) #xFF)
+                                                     #x54)))) ; conditional branch
+                           (setf result (append code test-and-jump result)))))
+            result)))))
 
     (funcall
      ;; Compile ((lambda (params) body) args) for ARM64
