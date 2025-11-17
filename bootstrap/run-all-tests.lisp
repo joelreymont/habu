@@ -173,6 +173,129 @@
 ;;; Note: car and cdr compile but require runtime cons cells to be useful
 ;;; They are tested separately in test_car_cdr.lisp
 
+;;; Test bitwise operators
+(test-group "Bitwise Operators"
+  (test-case logand-simple
+    (assert-compiles-both '(logand 15 7)))
+
+  (test-case logior-simple
+    (assert-compiles-both '(logior 8 4)))
+
+  (test-case logxor-simple
+    (assert-compiles-both '(logxor 15 9)))
+
+  (test-case lognot-simple
+    (assert-compiles-both '(lognot 0)))
+
+  (test-case ash-left-shift
+    (assert-compiles-both '(ash 5 2)))
+
+  (test-case ash-right-shift
+    (assert-compiles-both '(ash 20 -2)))
+
+  (test-case bitwise-nested
+    (assert-compiles-both '(logand (logior 8 4) 15))))
+
+;;; Test numeric operators
+(test-group "Numeric Operators"
+  (test-case min-simple
+    (assert-compiles-both '(min 5 10)))
+
+  (test-case max-simple
+    (assert-compiles-both '(max 5 10)))
+
+  (test-case abs-negative
+    (assert-compiles-both '(abs -10)))
+
+  (test-case abs-positive
+    (assert-compiles-both '(abs 10)))
+
+  (test-case 1+-simple
+    (assert-compiles-both '(1+ 5)))
+
+  (test-case 1--simple
+    (assert-compiles-both '(1- 5)))
+
+  (test-case numeric-nested
+    (assert-compiles-both '(max (min 10 20) (abs -15)))))
+
+;;; Test predicates
+(test-group "Predicates"
+  (test-case zerop-zero
+    (assert-compiles-both '(zerop 0)))
+
+  (test-case zerop-nonzero
+    (assert-compiles-both '(zerop 5)))
+
+  (test-case plusp-positive
+    (assert-compiles-both '(plusp 5)))
+
+  (test-case plusp-negative
+    (assert-compiles-both '(plusp -5)))
+
+  (test-case minusp-negative
+    (assert-compiles-both '(minusp -5)))
+
+  (test-case minusp-positive
+    (assert-compiles-both '(minusp 5)))
+
+  (test-case evenp-even
+    (assert-compiles-both '(evenp 4)))
+
+  (test-case evenp-odd
+    (assert-compiles-both '(evenp 5)))
+
+  (test-case oddp-odd
+    (assert-compiles-both '(oddp 5)))
+
+  (test-case oddp-even
+    (assert-compiles-both '(oddp 4)))
+
+  (test-case predicate-in-conditional
+    (assert-compiles-both '(if (zerop (mod 10 2)) (evenp 10) (oddp 10)))))
+
+;;; Test case pattern matching
+(test-group "Case Pattern Matching"
+  (test-case case-simple
+    (assert-compiles-both '(case 2 (1 100) (2 200) (t 300))))
+
+  (test-case case-multiple-keys
+    (assert-compiles-both '(case 3 ((1 2) 100) ((3 4) 200) (t 300))))
+
+  (test-case case-with-expression
+    (assert-compiles-both '(case (+ 1 1) (1 100) (2 200) (t 300)))))
+
+;;; Test defun (global function definitions)
+(test-group "Defun (Global Functions)"
+  (test-case defun-simple
+    ;; Clear function table first
+    (clrhash *function-table*)
+    (assert-compiles-both '(defun square (x) (* x x))))
+
+  (test-case defun-call
+    (assert-compiles-both '(square 5)))
+
+  (test-case defun-multiple-params
+    (assert-compiles-both '(defun add (a b) (+ a b))))
+
+  (test-case defun-call-multiple
+    (assert-compiles-both '(add 10 20)))
+
+  (test-case defun-with-if
+    (assert-compiles-both '(defun abs-val (n) (if (< n 0) (- 0 n) n))))
+
+  (test-case defun-nested-call
+    (assert-compiles-both '(defun double (x) (+ x x)))
+    (assert-compiles-both '(defun quadruple (x) (double (double x))))
+    (assert-compiles-both '(quadruple 3)))
+
+  (test-case defun-with-let
+    (assert-compiles-both '(defun pythag (a b) (let ((a2 (* a a)) (b2 (* b b))) (+ a2 b2)))))
+
+  (test-case defun-zero-params
+    (assert-compiles-both '(defun answer () 42))
+    (assert-compiles-both '(answer))))
+
 ;;; Test complex expressions
 (test-group "Complex Expressions"
   (test-case arithmetic-nested

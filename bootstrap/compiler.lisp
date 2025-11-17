@@ -12,6 +12,9 @@
 ;;; Target architecture (x86_64 or arm64)
 (defvar *target-arch* :x86_64)
 
+;;; Global function table for defun
+(defvar *function-table* (make-hash-table :test 'eq))
+
 ;;; Compiler intermediate representation
 (defstruct expr
   type
@@ -154,6 +157,16 @@
                                              `((= ,temp-var ,keys) ,result)))))
                                  clauses))))))
 
+    ((and (consp form) (eq (first form) 'defun))
+     ;; Special form: (defun name (params) body)
+     ;; Store function definition in global table
+     (let ((name (second form))
+           (params (third form))
+           (body (fourth form)))
+       (setf (gethash name *function-table*) (cons params body))
+       ;; Return 0 as a placeholder (defun doesn't produce a meaningful value in our compiler)
+       (make-expr :type 'fixnum :value 0)))
+
     ((and (consp form) (consp (first form)))
      ;; Function call: ((lambda ...) args) or ((fn) args)
      (let ((fn (first form))
@@ -165,9 +178,17 @@
     ((and (consp form) (symbolp (first form)))
      (let ((op (first form))
            (args (rest form)))
-       (make-expr :type 'call
-                  :value op
-                  :args (mapcar #'parse args))))
+       ;; Check if this is a user-defined function
+       (let ((fn-def (gethash op *function-table*)))
+         (if fn-def
+             ;; User-defined function: transform to ((lambda params body) args...)
+             (let ((params (car fn-def))
+                   (body (cdr fn-def)))
+               (parse `((lambda ,params ,body) ,@args)))
+             ;; Primitive operator
+             (make-expr :type 'call
+                        :value op
+                        :args (mapcar #'parse args))))))
 
     (t
      (error "Cannot parse form: ~S" form))))
