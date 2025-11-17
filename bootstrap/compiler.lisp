@@ -878,6 +878,19 @@
                   (list #x48 #x83 #xE0 #x01)    ; and rax, 1 (get low bit)
                   (list #x48 #xC1 #xE0 #x04))) ; shl rax, 4 (retag)
 
+         ;; List operations - require runtime integration
+         ((eq op 'cons)
+          (error "cons requires runtime heap integration - use REPL for now"))
+
+         ((eq op 'car)
+          (error "car requires runtime heap integration - use REPL for now"))
+
+         ((eq op 'cdr)
+          (error "cdr requires runtime heap integration - use REPL for now"))
+
+         ((eq op 'list)
+          (error "list requires runtime heap integration - use REPL for now"))
+
          (t
           (error "Unknown operator: ~S" op)))))))
 
@@ -1461,6 +1474,19 @@
                   (list #x00 #x10 #x40 #xD3)      ; lsr x0, x0, #4 (untag)
                   (list #x00 #x04 #x00 #x92)      ; and x0, x0, #1
                   (list #x00 #x10 #x00 #xD3)))    ; lsl x0, x0, #4
+
+         ;; List operations - require runtime integration
+         ((eq op 'cons)
+          (error "cons requires runtime heap integration - use REPL for now"))
+
+         ((eq op 'car)
+          (error "car requires runtime heap integration - use REPL for now"))
+
+         ((eq op 'cdr)
+          (error "cdr requires runtime heap integration - use REPL for now"))
+
+         ((eq op 'list)
+          (error "list requires runtime heap integration - use REPL for now"))
 
          (t
           (error "Unknown operator: ~S" op)))))))
