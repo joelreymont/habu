@@ -58,12 +58,18 @@ This session continued from a previous context-limited session, implementing maj
 - **Pointer support**: Arrays can store fixnums or pointers to other objects
 - **Bounds checking**: Out-of-bounds access properly detected
 
-### 7. REPL Implementation ⭐ NEW
+### 7. REPL Implementation with Native Readline ⭐ NEW
 - **Interactive interpreter**: Read-eval-print loop for Habu Lisp
+- **Native line editing**: Full readline implementation in pure Common Lisp
 - **Expression evaluation**: Interpreter-based evaluation (fixnums only)
-- **REPL commands**: :quit, :help, :clear, :macros
+- **Arrow key support**: Left/right for cursor, up/down for history
+- **Keyboard shortcuts**: Ctrl-A/E (line start/end), Ctrl-K/U (kill line), Ctrl-L (clear screen)
+- **Tab completion**: Complete operators, keywords, functions, macros, commands
+- **Command history**: Persistent history in ~/.habu_history (1000 entries)
+- **History navigation**: Up/down arrows with original line preservation
+- **REPL commands**: :quit, :help, :clear, :macros, :functions, :history, :complete
 - **Macro support**: Define and use macros in the REPL
-- **History tracking**: Track all evaluated expressions
+- **Smart mode detection**: Raw mode for interactive, cooked mode for scripts
 - **Error handling**: Graceful error reporting
 - **Operations supported**: All arithmetic, comparison, logic, bitwise, predicates, control flow
 - **Environment**: Let bindings with proper scoping
@@ -119,7 +125,9 @@ This session continued from a previous context-limited session, implementing maj
 habu/
 ├── bootstrap/
 │   ├── compiler.lisp          # Main compiler (~1,580 lines)
-│   ├── repl.lisp              # Interactive REPL (~300 lines) ⭐ NEW
+│   ├── repl.lisp              # Interactive REPL (~440 lines) ⭐ NEW
+│   ├── readline.lisp          # Native readline (~300 lines) ⭐ NEW
+│   ├── README_REPL.md         # REPL documentation ⭐ NEW
 │   ├── demo.lisp              # Feature demonstrations (22 sections)
 │   ├── test-harness.lisp      # Testing framework
 │   ├── run-all-tests.lisp     # 125 comprehensive tests
@@ -138,7 +146,8 @@ habu/
 │   ├── SESSION_SUMMARY.md     # Session accomplishments
 │   ├── FULL_LISP_PLAN.md      # Complete implementation plan
 │   ├── TEST_FRAMEWORK_SPEC.md # Test framework design
-│   └── BENCHMARK_SPEC.md      # Benchmarking design
+│   ├── BENCHMARK_SPEC.md      # Benchmarking design
+│   └── TCO_DESIGN.md          # Tail-call optimization design ⭐ NEW
 └── README.md
 ```
 
@@ -339,11 +348,12 @@ habu/
 
 ### Lines of Code
 - **Compiler**: ~1,580 lines
-- **REPL**: ~300 lines ⭐ NEW
+- **REPL**: ~440 lines (repl.lisp) ⭐ NEW
+- **Readline**: ~300 lines (readline.lisp) ⭐ NEW
 - **Runtime**: ~860 lines (memory + symbols + strings + arrays)
 - **Tests**: ~2,200 lines
-- **Documentation**: ~2,000 lines
-- **Total**: ~6,940 lines
+- **Documentation**: ~2,500 lines (+500 for REPL docs and TCO design)
+- **Total**: ~7,880 lines
 
 ### Test Coverage
 - **Compiler**: 125 tests (including 5 macro tests)
