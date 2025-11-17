@@ -257,6 +257,27 @@
                 1  ; Return 1 for true (found)
                 0)))  ; Return 0 for false (not found)
 
+         ;; Type predicates
+         ((eq op 'listp)
+          (if (listp (interpret-expr (first args) env)) 1 0))
+
+         ((eq op 'numberp)
+          (if (numberp (interpret-expr (first args) env)) 1 0))
+
+         ((eq op 'integerp)
+          (if (integerp (interpret-expr (first args) env)) 1 0))
+
+         ((eq op 'symbolp)
+          (if (symbolp (interpret-expr (first args) env)) 1 0))
+
+         ;; Mathematical functions
+         ((eq op 'sqrt)
+          (floor (sqrt (interpret-expr (first args) env))))
+
+         ((eq op 'expt)
+          (floor (expt (interpret-expr (first args) env)
+                       (interpret-expr (second args) env))))
+
          (t
           (error "Unknown operator: ~S" op)))))
 
@@ -325,14 +346,15 @@
      logand logior logxor lognot ash
      and or not
      zerop plusp minusp evenp oddp null
-     1+ 1- abs min max
+     1+ 1- abs min max sqrt expt
      if cond case when unless progn begin let let*
      lambda defun defmacro setq incf decf
      quote car cdr cons list consp atom
      caar cadr cdar cddr caddr cadddr
      length reverse append nth
      first second third fourth rest
-     last butlast nthcdr member)
+     last butlast nthcdr member
+     listp numberp integerp symbolp)
    ;; REPL commands
    '(:quit :q :help :h :clear :macros :functions :history)
    ;; User-defined functions
@@ -384,7 +406,8 @@
   (format t "  - Logic: and, or, not~%")
   (format t "  - Bitwise: logand, logior, logxor, lognot~%")
   (format t "  - Predicates: zerop, plusp, minusp, evenp, oddp, null, consp, atom~%")
-  (format t "  - Numeric: 1+, 1-, abs, min, max~%")
+  (format t "  - Type checks: listp, numberp, integerp, symbolp~%")
+  (format t "  - Numeric: 1+, 1-, abs, min, max, sqrt, expt~%")
   (format t "  - Lists: cons, car, cdr, list, caar, cadr, cdar, cddr, caddr, cadddr~%")
   (format t "  - List ops: length, reverse, append, nth, first, second, third, fourth~%")
   (format t "  - List utils: rest, last, butlast, nthcdr, member~%")
