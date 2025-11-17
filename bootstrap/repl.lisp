@@ -186,6 +186,40 @@
           (let ((val (interpret-expr (first args) env)))
             (if (or (null val) (zerop val)) 1 0)))
 
+         ;; List helper functions
+         ((eq op 'caar)
+          (car (car (interpret-expr (first args) env))))
+
+         ((eq op 'cadr)
+          (car (cdr (interpret-expr (first args) env))))
+
+         ((eq op 'cdar)
+          (cdr (car (interpret-expr (first args) env))))
+
+         ((eq op 'cddr)
+          (cdr (cdr (interpret-expr (first args) env))))
+
+         ((eq op 'caddr)
+          (car (cdr (cdr (interpret-expr (first args) env)))))
+
+         ((eq op 'cadddr)
+          (car (cdr (cdr (cdr (interpret-expr (first args) env))))))
+
+         ((eq op 'length)
+          (cl:length (interpret-expr (first args) env)))
+
+         ((eq op 'reverse)
+          (cl:reverse (interpret-expr (first args) env)))
+
+         ((eq op 'append)
+          (let ((list1 (interpret-expr (first args) env))
+                (list2 (interpret-expr (second args) env)))
+            (cl:append list1 list2)))
+
+         ((eq op 'nth)
+          (cl:nth (interpret-expr (first args) env)
+                  (interpret-expr (second args) env)))
+
          (t
           (error "Unknown operator: ~S" op)))))
 
@@ -257,7 +291,9 @@
      1+ 1- abs min max
      if cond case when unless progn begin let let*
      lambda defun defmacro setq incf decf
-     quote car cdr cons list consp atom)
+     quote car cdr cons list consp atom
+     caar cadr cdar cddr caddr cadddr
+     length reverse append nth)
    ;; REPL commands
    '(:quit :q :help :h :clear :macros :functions :history)
    ;; User-defined functions
@@ -310,7 +346,8 @@
   (format t "  - Bitwise: logand, logior, logxor, lognot~%")
   (format t "  - Predicates: zerop, plusp, minusp, evenp, oddp, null, consp, atom~%")
   (format t "  - Numeric: 1+, 1-, abs, min, max~%")
-  (format t "  - Lists: cons, car, cdr, list~%")
+  (format t "  - Lists: cons, car, cdr, list, caar, cadr, cdar, cddr, caddr, cadddr~%")
+  (format t "  - List ops: length, reverse, append, nth~%")
   (format t "  - Control: if, let, progn~%")
   (format t "  - Macros: defmacro~%")
   (format t "~%")
