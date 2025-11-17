@@ -23,9 +23,15 @@ TEST_PROGS = $(TEST_SRCS:.c=)
 BENCH_SRCS = benchmarks/bench_region.c benchmarks/bench_gc.c
 BENCH_PROGS = $(BENCH_SRCS:.c=)
 
-.PHONY: all clean test benchmark
+# Example programs
+EXAMPLE_SRCS = examples/drone_control_demo.c
+EXAMPLE_PROGS = $(EXAMPLE_SRCS:.c=)
+
+.PHONY: all clean test benchmark examples
 
 all: $(TEST_PROGS)
+
+examples: $(EXAMPLE_PROGS)
 
 # Build runtime object files
 runtime/%.o: runtime/%.c runtime/*.h
@@ -37,6 +43,10 @@ tests/test_%: tests/test_%.c $(RUNTIME_OBJS)
 
 # Build benchmarks
 benchmarks/bench_%: benchmarks/bench_%.c $(RUNTIME_OBJS)
+	$(CC) $(CFLAGS) -o $@ $< $(RUNTIME_OBJS) $(LDLIBS)
+
+# Build examples
+examples/%: examples/%.c $(RUNTIME_OBJS)
 	$(CC) $(CFLAGS) -o $@ $< $(RUNTIME_OBJS) $(LDLIBS)
 
 # Run tests
@@ -62,6 +72,7 @@ clean:
 	rm -f $(RUNTIME_OBJS)
 	rm -f $(TEST_PROGS)
 	rm -f $(BENCH_PROGS)
+	rm -f $(EXAMPLE_PROGS)
 
 # Cross-compile for ARM64
 cross: CC = $(CROSS_CC)
