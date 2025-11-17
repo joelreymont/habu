@@ -47,6 +47,29 @@
                   :value bindings  ; Store binding pairs
                   :args (list (parse body)))))
 
+    ((and (consp form) (eq (first form) 'lambda))
+     ;; Special form: (lambda (params) body)
+     (let ((params (second form))
+           (body (third form)))
+       (make-expr :type 'lambda
+                  :value params  ; Parameter list
+                  :args (list (parse body)))))
+
+    ((and (consp form) (eq (first form) 'progn))
+     ;; Special form: (progn expr1 expr2 ... exprN)
+     (let ((exprs (rest form)))
+       (make-expr :type 'progn
+                  :value nil
+                  :args (mapcar #'parse exprs))))
+
+    ((and (consp form) (consp (first form)))
+     ;; Function call: ((lambda ...) args) or ((fn) args)
+     (let ((fn (first form))
+           (args (rest form)))
+       (make-expr :type 'funcall
+                  :value (parse fn)  ; The function expression
+                  :args (mapcar #'parse args))))  ; The arguments
+
     ((and (consp form) (symbolp (first form)))
      (let ((op (first form))
            (args (rest form)))
@@ -107,6 +130,62 @@
                      (list #x48 #x83 #xC4 (* num-bindings 8))  ; add rsp, imm8
                      (append (list #x48 #x81 #xC4)  ; add rsp, imm32
                              (int-to-bytes (* num-bindings 8) 4)))))))
+
+    (lambda
+     ;; Lambda expressions are not directly compiled to code
+     ;; They only make sense in funcall context
+     (error "Lambda expression cannot be compiled standalone: ~S" expr))
+
+    (progn
+     ;; Compile (progn expr1 expr2 ... exprN)
+     ;; Evaluate each expression, keeping only the last result
+     (let ((exprs (expr-args expr)))
+       (if (null exprs)
+           ;; Empty progn returns 0
+           (emit-x86_64 (make-expr :type 'fixnum :value 0) env)
+           ;; Evaluate each expression in sequence
+           (let ((code nil))
+             (dolist (e exprs)
+               (setf code (append code (emit-x86_64 e env))))
+             code))))
+
+    (funcall
+     ;; Compile ((lambda (params) body) args)
+     ;; This is like let: bind args to params, then evaluate body
+     (let* ((fn-expr (expr-value expr))
+            (arg-exprs (expr-args expr)))
+       (if (eq (expr-type fn-expr) 'lambda)
+           ;; Inline lambda call
+           (let* ((params (expr-value fn-expr))
+                  (body (first (expr-args fn-expr)))
+                  (num-params (length params))
+                  (num-args (length arg-exprs))
+                  (new-env env)
+                  (binding-code nil))
+             (unless (= num-params num-args)
+               (error "Argument count mismatch: expected ~D, got ~D"
+                      num-params num-args))
+             ;; Evaluate each argument and push on stack
+             (loop for arg-expr in arg-exprs
+                   for param in params
+                   for offset from 0 by 8
+                   do (let ((arg-code (emit-x86_64 arg-expr env)))
+                        (setf binding-code
+                              (append binding-code
+                                      arg-code
+                                      (list #x50)))  ; push rax
+                        ;; Add parameter to environment
+                        (push (cons param (* offset 8)) new-env)))
+             ;; Compile body with parameters bound
+             (let ((body-code (emit-x86_64 body (reverse new-env))))
+               (append binding-code
+                       body-code
+                       ;; Clean up stack
+                       (if (<= (* num-params 8) 127)
+                           (list #x48 #x83 #xC4 (* num-params 8))
+                           (append (list #x48 #x81 #xC4)
+                                   (int-to-bytes (* num-params 8) 4))))))
+           (error "Can only call lambda expressions for now"))))
 
     (if
      ;; Compile (if condition then-expr else-expr)
@@ -326,6 +405,56 @@
                                            (ash (* num-bindings 8) 10))  ; imm12 in bits [21:10]
                                    4)
                      (error "Too many bindings for immediate encoding"))))))
+
+    (lambda
+     ;; Lambda expressions are not directly compiled to code
+     (error "Lambda expression cannot be compiled standalone: ~S" expr))
+
+    (progn
+     ;; Compile (progn expr1 expr2 ... exprN) for ARM64
+     (let ((exprs (expr-args expr)))
+       (if (null exprs)
+           (emit-arm64 (make-expr :type 'fixnum :value 0) env)
+           (let ((code nil))
+             (dolist (e exprs)
+               (setf code (append code (emit-arm64 e env))))
+             code))))
+
+    (funcall
+     ;; Compile ((lambda (params) body) args) for ARM64
+     (let* ((fn-expr (expr-value expr))
+            (arg-exprs (expr-args expr)))
+       (if (eq (expr-type fn-expr) 'lambda)
+           (let* ((params (expr-value fn-expr))
+                  (body (first (expr-args fn-expr)))
+                  (num-params (length params))
+                  (num-args (length arg-exprs))
+                  (new-env env)
+                  (binding-code nil))
+             (unless (= num-params num-args)
+               (error "Argument count mismatch: expected ~D, got ~D"
+                      num-params num-args))
+             ;; Evaluate and push each argument
+             (loop for arg-expr in arg-exprs
+                   for param in params
+                   for offset from 0 by 8
+                   do (let ((arg-code (emit-arm64 arg-expr env)))
+                        (setf binding-code
+                              (append binding-code
+                                      arg-code
+                                      (list #xE0 #x0F #x1F #xF8)))  ; str x0, [sp, #-8]!
+                        (push (cons param (* offset 8)) new-env)))
+             ;; Compile body with parameters bound
+             (let ((body-code (emit-arm64 body (reverse new-env))))
+               (append binding-code
+                       body-code
+                       ;; Clean up stack
+                       (if (<= (* num-params 8) 4095)
+                           (int-to-bytes (logior #x910003E0
+                                                 (ash (* num-params 8) 10))
+                                         4)
+                           (error "Too many parameters for immediate encoding")))))
+           (error "Can only call lambda expressions for now"))))
 
     (if
      ;; Compile (if condition then-expr else-expr) for ARM64
