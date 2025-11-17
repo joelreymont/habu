@@ -145,7 +145,7 @@
   (test-case lambda-with-if
     (assert-compiles-both '((lambda (n) (if (< n 2) n (+ n n))) 10))))
 
-;;; Test progn
+;;; Test progn and begin
 (test-group "Progn (Sequential Evaluation)"
   (test-case progn-simple
     (assert-compiles-both '(progn 1 2 3)))
@@ -154,7 +154,13 @@
     (assert-compiles-both '(progn (+ 1 2) (* 3 4) (- 10 5))))
 
   (test-case progn-in-lambda
-    (assert-compiles-both '((lambda (x) (progn (+ x 1) (* x 2))) 10))))
+    (assert-compiles-both '((lambda (x) (progn (+ x 1) (* x 2))) 10)))
+
+  (test-case begin-alias
+    (assert-compiles-both '(begin 1 2 3)))
+
+  (test-case begin-with-expressions
+    (assert-compiles-both '(begin (+ 1 2) (* 3 4)))))
 
 ;;; Test quote
 (test-group "Quote"
@@ -295,6 +301,63 @@
   (test-case defun-zero-params
     (assert-compiles-both '(defun answer () 42))
     (assert-compiles-both '(answer))))
+
+;;; Test setq (variable mutation)
+(test-group "Setq (Variable Mutation)"
+  (test-case setq-simple
+    (assert-compiles-both '(let ((x 5)) (setq x 10) x)))
+
+  (test-case setq-with-expression
+    (assert-compiles-both '(let ((x 5)) (setq x (+ x 1)) x)))
+
+  (test-case setq-multiple
+    (assert-compiles-both '(let ((x 1) (y 2)) (setq x 10) (setq y 20) (+ x y))))
+
+  (test-case setq-in-progn
+    (assert-compiles-both '(let ((x 5)) (progn (setq x 10) (setq x (* x 2)) x))))
+
+  (test-case setq-in-conditional
+    (assert-compiles-both '(let ((x 5)) (if (< x 10) (setq x 100) (setq x 200)) x)))
+
+  (test-case setq-nested-let
+    (assert-compiles-both '(let ((x 1)) (let ((y 2)) (setq x (+ x y)) x))))
+
+  (test-case setq-in-lambda
+    (assert-compiles-both '((lambda (x) (setq x (* x x)) x) 5)))
+
+  (test-case setq-accumulator
+    (assert-compiles-both '(let ((sum 0)) (setq sum (+ sum 1)) (setq sum (+ sum 2)) (setq sum (+ sum 3)) sum))))
+
+;;; Test incf and decf (increment/decrement macros)
+(test-group "Incf/Decf (Increment/Decrement)"
+  (test-case incf-simple
+    (assert-compiles-both '(let ((x 5)) (incf x) x)))
+
+  (test-case incf-with-delta
+    (assert-compiles-both '(let ((x 10)) (incf x 5) x)))
+
+  (test-case decf-simple
+    (assert-compiles-both '(let ((x 10)) (decf x) x)))
+
+  (test-case decf-with-delta
+    (assert-compiles-both '(let ((x 20)) (decf x 7) x)))
+
+  (test-case incf-decf-combined
+    (assert-compiles-both '(let ((x 10)) (incf x 5) (decf x 3) x))))
+
+;;; Test additional comparison operators
+(test-group "Additional Comparison Operators"
+  (test-case not-equal-true
+    (assert-compiles-both '(/= 5 10)))
+
+  (test-case not-equal-false
+    (assert-compiles-both '(/= 5 5)))
+
+  (test-case equal-alias
+    (assert-compiles-both '(equal 10 10)))
+
+  (test-case not-equal-in-conditional
+    (assert-compiles-both '(if (/= 5 10) 100 200))))
 
 ;;; Test complex expressions
 (test-group "Complex Expressions"

@@ -89,6 +89,10 @@
                   :value nil
                   :args (mapcar #'parse exprs))))
 
+    ((and (consp form) (eq (first form) 'begin))
+     ;; Scheme-style alias for progn
+     (parse `(progn ,@(rest form))))
+
     ((and (consp form) (eq (first form) 'quote))
      ;; Special form: (quote datum)
      ;; Note: Don't recursively parse - keep quoted value as-is
@@ -167,6 +171,31 @@
        ;; Return 0 as a placeholder (defun doesn't produce a meaningful value in our compiler)
        (make-expr :type 'fixnum :value 0)))
 
+    ((and (consp form) (eq (first form) 'setq))
+     ;; Special form: (setq var value)
+     ;; Mutate a lexical variable
+     (let ((var (second form))
+           (value (third form)))
+       (make-expr :type 'setq
+                  :value var  ; Variable name
+                  :args (list (parse value)))))  ; Value expression
+
+    ((and (consp form) (eq (first form) 'incf))
+     ;; Macro: (incf var [delta]) -> (setq var (+ var delta))
+     (let ((var (second form))
+           (delta (if (third form) (third form) 1)))
+       (parse `(setq ,var (+ ,var ,delta)))))
+
+    ((and (consp form) (eq (first form) 'decf))
+     ;; Macro: (decf var [delta]) -> (setq var (- var delta))
+     (let ((var (second form))
+           (delta (if (third form) (third form) 1)))
+       (parse `(setq ,var (- ,var ,delta)))))
+
+    ((and (consp form) (eq (first form) 'equal))
+     ;; Alias for = (for compatibility)
+     (parse `(= ,@(rest form))))
+
     ((and (consp form) (consp (first form)))
      ;; Function call: ((lambda ...) args) or ((fn) args)
      (let ((fn (first form))
@@ -216,6 +245,23 @@
                  (append (list #x48 #x8B #x84 #x24)  ; mov rax, [rsp + disp32]
                          (int-to-bytes offset 4))))
            (error "Unbound variable: ~S" var-name))))
+
+    (setq
+     ;; Compile (setq var value) - mutate a lexical variable
+     (let* ((var-name (expr-value expr))
+            (value-expr (first (expr-args expr)))
+            (binding (assoc var-name env)))
+       (if binding
+           (let ((offset (cdr binding)))
+             (append
+              ;; First, evaluate the value expression into RAX
+              (emit-x86_64 value-expr env)
+              ;; Then store RAX to the variable's stack location
+              (if (zerop offset)
+                  (list #x48 #x89 #x04 #x24)  ; mov [rsp], rax
+                  (append (list #x48 #x89 #x84 #x24)  ; mov [rsp + disp32], rax
+                          (int-to-bytes offset 4)))))
+           (error "Cannot setq unbound variable: ~S" var-name))))
 
     (let
      ;; Compile (let ((var val) ...) body)
@@ -572,6 +618,18 @@
                   (list #x48 #xC1 #xE0 #x04)    ; shl rax, 4
                   (list #x48 #x83 #xC4 #x08)))
 
+         ((eq op '/=)
+          ;; Compile (/= a b) - not equal
+          (append (emit-x86_64 (first args) env)
+                  (list #x50)
+                  (emit-x86_64 (second args) env)
+                  (list #x48 #x8B #x1C #x24)    ; mov rbx, [rsp]
+                  (list #x48 #x39 #xC3)         ; cmp rbx, rax
+                  (list #x0F #x95 #xC0)         ; setne al (set if not equal)
+                  (list #x48 #x0F #xB6 #xC0)    ; movzx rax, al
+                  (list #x48 #xC1 #xE0 #x04)    ; shl rax, 4
+                  (list #x48 #x83 #xC4 #x08)))
+
          ((eq op 'car)
           ;; Compile (car cons) - load car field
           ;; cons cells have car at offset 16 (after header)
@@ -754,6 +812,25 @@
                              4)
                  (error "Variable offset too large: ~D" offset)))
            (error "Unbound variable: ~S" var-name))))
+
+    (setq
+     ;; Compile (setq var value) - mutate a lexical variable
+     (let* ((var-name (expr-value expr))
+            (value-expr (first (expr-args expr)))
+            (binding (assoc var-name env)))
+       (if binding
+           (let ((offset (cdr binding)))
+             (if (< offset 256)
+                 (append
+                  ;; First, evaluate the value expression into X0
+                  (emit-arm64 value-expr env)
+                  ;; Then store X0 to the variable's stack location
+                  ;; str x0, [sp, #offset]
+                  (int-to-bytes (logior #xF9000000  ; str x0, [sp, #imm]
+                                        (ash (/ offset 8) 10))  ; offset in bits [21:10]
+                                4))
+                 (error "Variable offset too large: ~D" offset)))
+           (error "Cannot setq unbound variable: ~S" var-name))))
 
     (let
      ;; Compile (let ((var val) ...) body) for ARM64
@@ -1129,6 +1206,18 @@
                   (list #xE1 #x03 #x00 #xAA)       ; mov x1, x0
                   (list #x5F #x00 #x01 #xEB)       ; cmp x2, x1
                   (list #xE0 #xA7 #x9F #x9A)       ; cset x0, ge (greater or equal)
+                  (list #x00 #x10 #x00 #xD3)       ; lsl x0, x0, #4
+                  (list #xFD #x7B #xC1 #xA8)))
+
+         ((eq op '/=)
+          ;; Compile (/= a b) - not equal for ARM64
+          (append (emit-arm64 (first args) env)
+                  (list #xFD #x7B #xBF #xA9)       ; stp x29, x30, [sp, #-16]!
+                  (list #xE2 #x03 #x00 #xAA)       ; mov x2, x0
+                  (emit-arm64 (second args) env)
+                  (list #xE1 #x03 #x00 #xAA)       ; mov x1, x0
+                  (list #x5F #x00 #x01 #xEB)       ; cmp x2, x1
+                  (list #xE0 #x17 #x9F #x9A)       ; cset x0, ne (not equal)
                   (list #x00 #x10 #x00 #xD3)       ; lsl x0, x0, #4
                   (list #xFD #x7B #xC1 #xA8)))
 
