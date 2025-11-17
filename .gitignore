@@ -1,0 +1,10 @@
+*.o
+*.so
+*.a
+*.dylib
+tests/test_*
+!tests/*.c
+benchmarks/bench_*
+!benchmarks/*.c
+.DS_Store
+*.dSYM/
