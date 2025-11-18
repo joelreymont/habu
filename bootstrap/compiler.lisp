@@ -312,6 +312,101 @@
     (t
      (error "Cannot parse form: ~S" form))))
 
+;;; Algebraic simplification for mixed constant/variable expressions
+(defun simplify-algebraic (op args)
+  "Apply algebraic simplifications like (* x 0) => 0, (+ x 0) => x"
+  (when (and args (= (length args) 2))
+    (let ((arg1 (first args))
+          (arg2 (second args)))
+      (case op
+        ;; Multiplication simplifications
+        (*
+         (cond
+           ;; (* x 0) => 0 or (* 0 x) => 0
+           ((and (eq (expr-type arg1) 'fixnum) (zerop (expr-value arg1)))
+            (make-expr :type 'fixnum :value 0))
+           ((and (eq (expr-type arg2) 'fixnum) (zerop (expr-value arg2)))
+            (make-expr :type 'fixnum :value 0))
+           ;; (* x 1) => x
+           ((and (eq (expr-type arg2) 'fixnum) (= (expr-value arg2) 1))
+            arg1)
+           ;; (* 1 x) => x
+           ((and (eq (expr-type arg1) 'fixnum) (= (expr-value arg1) 1))
+            arg2)
+           (t nil)))
+
+        ;; Addition simplifications
+        (+
+         (cond
+           ;; (+ x 0) => x
+           ((and (eq (expr-type arg2) 'fixnum) (zerop (expr-value arg2)))
+            arg1)
+           ;; (+ 0 x) => x
+           ((and (eq (expr-type arg1) 'fixnum) (zerop (expr-value arg1)))
+            arg2)
+           (t nil)))
+
+        ;; Subtraction simplifications
+        (-
+         (cond
+           ;; (- x 0) => x
+           ((and (eq (expr-type arg2) 'fixnum) (zerop (expr-value arg2)))
+            arg1)
+           ;; (- 0 x) => (- x) but needs negation, skip for now
+           (t nil)))
+
+        ;; Division simplifications
+        (/
+         (cond
+           ;; (/ x 1) => x
+           ((and (eq (expr-type arg2) 'fixnum) (= (expr-value arg2) 1))
+            arg1)
+           ;; (/ 0 x) => 0 (when x != 0)
+           ((and (eq (expr-type arg1) 'fixnum) (zerop (expr-value arg1)))
+            (make-expr :type 'fixnum :value 0))
+           (t nil)))
+
+        ;; Bitwise AND simplifications
+        (logand
+         (cond
+           ;; (logand x 0) => 0
+           ((and (eq (expr-type arg2) 'fixnum) (zerop (expr-value arg2)))
+            (make-expr :type 'fixnum :value 0))
+           ;; (logand 0 x) => 0
+           ((and (eq (expr-type arg1) 'fixnum) (zerop (expr-value arg1)))
+            (make-expr :type 'fixnum :value 0))
+           ;; (logand x -1) => x
+           ((and (eq (expr-type arg2) 'fixnum) (= (expr-value arg2) -1))
+            arg1)
+           ;; (logand -1 x) => x
+           ((and (eq (expr-type arg1) 'fixnum) (= (expr-value arg1) -1))
+            arg2)
+           (t nil)))
+
+        ;; Bitwise OR simplifications
+        (logior
+         (cond
+           ;; (logior x 0) => x
+           ((and (eq (expr-type arg2) 'fixnum) (zerop (expr-value arg2)))
+            arg1)
+           ;; (logior 0 x) => x
+           ((and (eq (expr-type arg1) 'fixnum) (zerop (expr-value arg1)))
+            arg2)
+           (t nil)))
+
+        ;; Bitwise XOR simplifications
+        (logxor
+         (cond
+           ;; (logxor x 0) => x
+           ((and (eq (expr-type arg2) 'fixnum) (zerop (expr-value arg2)))
+            arg1)
+           ;; (logxor 0 x) => x
+           ((and (eq (expr-type arg1) 'fixnum) (zerop (expr-value arg1)))
+            arg2)
+           (t nil)))
+
+        (t nil)))))
+
 ;;; Constant folding optimization
 (defun constant-fold (expr)
   "Optimize expression by evaluating constant operations at compile time"
@@ -384,8 +479,11 @@
                           (t ; Non-foldable operation
                            (return-from constant-fold
                              (make-expr :type 'call :value op :args args))))))
-           ; Not all constants - keep the call but with optimized args
-           (make-expr :type 'call :value op :args args))))
+           ; Not all constants - apply algebraic simplifications
+           (let ((simplified (simplify-algebraic op args)))
+             (if simplified
+                 simplified
+                 (make-expr :type 'call :value op :args args))))))
 
     (progn
      ; Optimize progn - fold each expression

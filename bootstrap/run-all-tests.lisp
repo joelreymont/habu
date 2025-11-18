@@ -769,6 +769,40 @@
     ; Test deeply nested conditionals
     (assert-compiles-both '(if (< 1 2) (if (< 2 3) (if (< 3 4) 100 200) 300) 400))))
 
+;;; Test algebraic simplifications
+(test-group "Algebraic Simplifications"
+  (test-case multiply-by-zero
+    ; (* x 0) should simplify to 0
+    (assert-compiles-both '(let ((x 5)) (* x 0))))
+
+  (test-case multiply-by-one
+    ; (* x 1) should simplify to x
+    (assert-compiles-both '(let ((x 5)) (* x 1))))
+
+  (test-case add-zero
+    ; (+ x 0) should simplify to x
+    (assert-compiles-both '(let ((x 5)) (+ x 0))))
+
+  (test-case subtract-zero
+    ; (- x 0) should simplify to x
+    (assert-compiles-both '(let ((x 5)) (- x 0))))
+
+  (test-case divide-by-one
+    ; (/ x 1) should simplify to x
+    (assert-compiles-both '(let ((x 5)) (/ x 1))))
+
+  (test-case logand-with-zero
+    ; (logand x 0) should simplify to 0
+    (assert-compiles-both '(let ((x 5)) (logand x 0))))
+
+  (test-case logior-with-zero
+    ; (logior x 0) should simplify to x
+    (assert-compiles-both '(let ((x 5)) (logior x 0))))
+
+  (test-case logxor-with-zero
+    ; (logxor x 0) should simplify to x
+    (assert-compiles-both '(let ((x 5)) (logxor x 0)))))
+
 ;;; Test error cases
 (test-group "Error Handling"
   (test-case unbound-variable
