@@ -899,17 +899,29 @@
                   (list #x48 #xC1 #xE0 #x04))) ; shl rax, 4 (retag to 0)
 
          ;; List operations - require runtime integration
+         ;; These operations need heap allocation and are not yet integrated with compiled code.
+         ;; They work in the REPL (interpreted mode) which has access to the runtime heap.
+         ;; Future work: Implement FFI or compile runtime functions to machine code.
+         ;; See docs/RUNTIME_INTEGRATION.md for implementation plan.
          ((eq op 'cons)
-          (error "cons requires runtime heap integration - use REPL for now"))
+          (error "cons requires runtime heap integration~%~
+                  Hint: cons works in the REPL. For compiled code, runtime integration is needed.~%~
+                  See docs/RUNTIME_INTEGRATION.md for details."))
 
          ((eq op 'car)
-          (error "car requires runtime heap integration - use REPL for now"))
+          (error "car requires runtime heap integration~%~
+                  Hint: car works in the REPL. For compiled code, runtime integration is needed.~%~
+                  See docs/RUNTIME_INTEGRATION.md for details."))
 
          ((eq op 'cdr)
-          (error "cdr requires runtime heap integration - use REPL for now"))
+          (error "cdr requires runtime heap integration~%~
+                  Hint: cdr works in the REPL. For compiled code, runtime integration is needed.~%~
+                  See docs/RUNTIME_INTEGRATION.md for details."))
 
          ((eq op 'list)
-          (error "list requires runtime heap integration - use REPL for now"))
+          (error "list requires runtime heap integration~%~
+                  Hint: list works in the REPL. For compiled code, runtime integration is needed.~%~
+                  See docs/RUNTIME_INTEGRATION.md for details."))
 
          (t
           (error "Unknown operator: ~S" op)))))))
@@ -1508,17 +1520,29 @@
                   (list #x00 #x10 #x00 #xD3)))    ; lsl x0, x0, #4 (retag)
 
          ;; List operations - require runtime integration
+         ;; These operations need heap allocation and are not yet integrated with compiled code.
+         ;; They work in the REPL (interpreted mode) which has access to the runtime heap.
+         ;; Future work: Implement FFI or compile runtime functions to machine code.
+         ;; See docs/RUNTIME_INTEGRATION.md for implementation plan.
          ((eq op 'cons)
-          (error "cons requires runtime heap integration - use REPL for now"))
+          (error "cons requires runtime heap integration~%~
+                  Hint: cons works in the REPL. For compiled code, runtime integration is needed.~%~
+                  See docs/RUNTIME_INTEGRATION.md for details."))
 
          ((eq op 'car)
-          (error "car requires runtime heap integration - use REPL for now"))
+          (error "car requires runtime heap integration~%~
+                  Hint: car works in the REPL. For compiled code, runtime integration is needed.~%~
+                  See docs/RUNTIME_INTEGRATION.md for details."))
 
          ((eq op 'cdr)
-          (error "cdr requires runtime heap integration - use REPL for now"))
+          (error "cdr requires runtime heap integration~%~
+                  Hint: cdr works in the REPL. For compiled code, runtime integration is needed.~%~
+                  See docs/RUNTIME_INTEGRATION.md for details."))
 
          ((eq op 'list)
-          (error "list requires runtime heap integration - use REPL for now"))
+          (error "list requires runtime heap integration~%~
+                  Hint: list works in the REPL. For compiled code, runtime integration is needed.~%~
+                  See docs/RUNTIME_INTEGRATION.md for details."))
 
          (t
           (error "Unknown operator: ~S" op)))))))
