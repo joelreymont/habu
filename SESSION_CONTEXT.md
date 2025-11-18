@@ -36,6 +36,15 @@ This session focused on improving compiler usability and documenting the path fo
 - Added 4 tests, all passing
 - Total tests: 193 (up from 189)
 
+### 5. Control Flow Operators (3 operators)
+- Implemented when, unless, case for both x86_64 and ARM64
+- when: executes body when test is true
+- unless: executes body when test is false
+- case: multi-way branch based on key value (like switch statement)
+- All compile to efficient conditional branches
+- Tests already existed, all passing
+- Total tests: 193 (unchanged, tests already present)
+
 ### Previous: New Operator: signum
 - Implemented signum operator for both x86_64 and ARM64
 - Returns -1 for negative numbers, 0 for zero, 1 for positive
@@ -563,12 +572,18 @@ less /home/user/habu/FULL_LISP_PLAN.md
 - `SESSION_EXTENDED_SUMMARY.md`: Created extended technical summary (303 lines)
 
 ### Session Metrics
-- **New operators this session**: 16 (floor, ceiling, truncate, round, ffloor, fceiling, ftruncate, fround, numberp, integerp, atom, listp, consp, symbolp, eql, eq)
+- **New operators this session**: 19 total
+  - Rounding: floor, ceiling, truncate, round (4)
+  - Division rounding: ffloor, fceiling, ftruncate, fround (4)
+  - Type predicates: numberp, integerp, atom, listp, consp, symbolp (6)
+  - Equality: eql, eq (2)
+  - Control flow: when, unless, case (3)
 - **New operators from previous session**: 9 (signum, rem, logcount, logtest, gcd, isqrt, integer-length, lcm, expt)
-- **Total new operators**: 25
+- **Total new operators**: 28
+- **Total operators in compiler**: ~90 (x86_64) and ~90 (ARM64)
 - **Documentation**: ~1,750 lines (roadmap, operator reference, summaries, index)
-- **Test coverage**: 100% pass rate maintained (359 tests total)
-- **Commits**: 24 focused commits with clear messages (20 previous + 4 new)
+- **Test coverage**: 100% pass rate maintained (359 tests total: 193 compiler + 166 runtime)
+- **Commits**: 25 focused commits with clear messages (20 previous + 5 new)
 - **Architectures**: All changes support both x86_64 and ARM64
 
 ---
