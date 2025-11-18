@@ -303,7 +303,22 @@
     (assert-compiles-both '(integer-length 8)))
 
   (test-case integer-length-negative
-    (assert-compiles-both '(integer-length -8))))
+    (assert-compiles-both '(integer-length -8)))
+
+  (test-case lcm-simple
+    (assert-compiles-both '(lcm 4 6)))
+
+  (test-case lcm-coprime
+    (assert-compiles-both '(lcm 5 7)))
+
+  (test-case lcm-with-zero
+    (assert-compiles-both '(lcm 12 0)))
+
+  (test-case lcm-negative
+    (assert-compiles-both '(lcm -4 6)))
+
+  (test-case lcm-both-negative
+    (assert-compiles-both '(lcm -6 -8))))
 
 ;;; Test predicates
 (test-group "Predicates"

@@ -979,6 +979,60 @@
                   (list #x48 #xC1 #xE0 #x04)    ; shl rax, 4 (retag)
                   (list #x48 #x83 #xC4 #x08))) ; add rsp, 8
 
+         ((eq op 'lcm)
+          ;; Compile (lcm a b) - least common multiple
+          ;; Formula: lcm(a,b) = |a*b| / gcd(a,b), with lcm(a,0) = 0
+          (append (emit-x86_64 (first args) env)
+                  (list #x50)                   ; push rax (first arg)
+                  (emit-x86_64 (second args) env)
+                  (list #x48 #x89 #xC3)         ; mov rbx, rax (second arg)
+                  (list #x48 #x8B #x04 #x24)    ; mov rax, [rsp] (first arg)
+                  (list #x48 #xC1 #xF8 #x04)    ; sar rax, 4 (untag first)
+                  (list #x48 #xC1 #xFB #x04)    ; sar rbx, 4 (untag second)
+                  ;; Check for zero: if either is 0, return 0
+                  (list #x48 #x85 #xC0)         ; test rax, rax
+                  (list #x74 #x52)              ; jz +82 (return 0)
+                  (list #x48 #x85 #xDB)         ; test rbx, rbx
+                  (list #x74 #x4E)              ; jz +78 (return 0)
+                  ;; Get absolute value of rax
+                  (list #x48 #x89 #xC1)         ; mov rcx, rax
+                  (list #x48 #xC1 #xF9 #x3F)    ; sar rcx, 63
+                  (list #x48 #x31 #xC8)         ; xor rax, rcx
+                  (list #x48 #x29 #xC8)         ; sub rax, rcx
+                  (list #x50)                   ; push rax (save |a|)
+                  ;; Get absolute value of rbx
+                  (list #x48 #x89 #xD9)         ; mov rcx, rbx
+                  (list #x48 #xC1 #xF9 #x3F)    ; sar rcx, 63
+                  (list #x48 #x31 #xD9)         ; xor rbx, rcx
+                  (list #x48 #x29 #xD9)         ; sub rbx, rcx
+                  (list #x53)                   ; push rbx (save |b|)
+                  ;; Compute product |a| * |b|
+                  (list #x48 #x0F #xAF #xC3)    ; imul rax, rbx
+                  (list #x50)                   ; push rax (save product)
+                  ;; Compute GCD of |a| and |b|
+                  (list #x48 #x8B #x44 #x24 #x10) ; mov rax, [rsp+16] (|a|)
+                  (list #x48 #x8B #x5C #x24 #x08) ; mov rbx, [rsp+8] (|b|)
+                  ;; GCD loop
+                  (list #x48 #x85 #xDB)         ; test rbx, rbx
+                  (list #x74 #x0D)              ; jz +13
+                  (list #x48 #x99)              ; cqo
+                  (list #x48 #xF7 #xFB)         ; idiv rbx
+                  (list #x48 #x89 #xD8)         ; mov rax, rbx
+                  (list #x48 #x89 #xD3)         ; mov rbx, rdx
+                  (list #xEB #xEF)              ; jmp -17
+                  ;; rax = gcd, compute product/gcd
+                  (list #x48 #x89 #xC3)         ; mov rbx, rax (gcd)
+                  (list #x48 #x58)              ; pop rax (product)
+                  (list #x48 #x99)              ; cqo
+                  (list #x48 #xF7 #xFB)         ; idiv rbx (product / gcd)
+                  (list #x48 #xC1 #xE0 #x04)    ; shl rax, 4 (retag)
+                  (list #x48 #x83 #xC4 #x18)    ; add rsp, 24 (clean all pushes)
+                  (list #xEB #x05)              ; jmp +5 (skip zero case)
+                  ;; Zero case
+                  (list #x48 #x31 #xC0)         ; xor rax, rax
+                  (list #x48 #xC1 #xE0 #x04)    ; shl rax, 4
+                  (list #x48 #x83 #xC4 #x08))) ; add rsp, 8
+
          ((eq op 'isqrt)
           ;; Compile (isqrt n) - integer square root using Newton's method
           ;; Algorithm: x_new = (x + n/x) / 2, iterate until convergence
@@ -1727,6 +1781,58 @@
                   (list #xFA #xFF #xFF #x17)       ; b -6 (back to cmp)
                   ;; Done: x0 has GCD
                   (list #x00 #x10 #x00 #xD3)       ; lsl x0, x0, #4 (retag)
+                  (list #xFD #x7B #xC1 #xA8)))     ; ldp x29, x30, [sp], #16
+
+         ((eq op 'lcm)
+          ;; Compile (lcm a b) for ARM64 - least common multiple
+          ;; Formula: lcm(a,b) = |a*b| / gcd(a,b)
+          (append (emit-arm64 (first args) env)
+                  (list #xFD #x7B #xBF #xA9)       ; stp x29, x30, [sp, #-16]!
+                  (list #xE2 #x03 #x00 #xAA)       ; mov x2, x0 (save first)
+                  (emit-arm64 (second args) env)
+                  (list #xE1 #x03 #x00 #xAA)       ; mov x1, x0 (second to x1)
+                  (list #xE0 #x03 #x02 #xAA)       ; mov x0, x2 (first back to x0)
+                  (list #x00 #x10 #x44 #xD3)       ; lsr x0, x0, #4 (untag)
+                  (list #x21 #x10 #x44 #xD3)       ; lsr x1, x1, #4 (untag)
+                  ;; Check for zero
+                  (list #x1F #x00 #x00 #xF1)       ; cmp x0, #0
+                  (list #xE0 #x01 #x00 #x54)       ; b.eq +15 (return 0)
+                  (list #x3F #x00 #x00 #xF1)       ; cmp x1, #0
+                  (list #xC0 #x01 #x00 #x54)       ; b.eq +14 (return 0)
+                  ;; abs(x0)
+                  (list #x02 #xFC #x47 #x93)       ; asr x2, x0, #63
+                  (list #x00 #x00 #x02 #xCA)       ; eor x0, x0, x2
+                  (list #x00 #x00 #x02 #xCB)       ; sub x0, x0, x2
+                  (list #xE3 #x03 #x00 #xAA)       ; mov x3, x0 (save |a|)
+                  ;; abs(x1)
+                  (list #x02 #xFC #x47 #x93)       ; asr x2, x1, #63
+                  (list #x21 #x00 #x02 #xCA)       ; eor x1, x1, x2
+                  (list #x21 #x00 #x02 #xCB)       ; sub x1, x1, x2
+                  (list #xE4 #x03 #x01 #xAA)       ; mov x4, x1 (save |b|)
+                  ;; Compute product |a| * |b|
+                  (list #x60 #x7C #x01 #x9B)       ; mul x0, x3, x1 (x0 = |a| * |b|)
+                  (list #xE5 #x03 #x00 #xAA)       ; mov x5, x0 (save product)
+                  ;; Compute GCD(|a|, |b|) - x3=|a|, x4=|b|
+                  (list #xE0 #x03 #x03 #xAA)       ; mov x0, x3 (|a|)
+                  (list #xE1 #x03 #x04 #xAA)       ; mov x1, x4 (|b|)
+                  ;; GCD loop
+                  (list #x3F #x00 #x00 #xF1)       ; cmp x1, #0
+                  (list #x03 #x00 #x00 #x54)       ; b.eq +6
+                  (list #xE2 #x0C #xC1 #x9A)       ; sdiv x2, x0, x1
+                  (list #x03 #x7C #x01 #x9B)       ; msub x3, x0, x1, x2
+                  (list #xE0 #x03 #x01 #xAA)       ; mov x0, x1
+                  (list #xE1 #x03 #x03 #xAA)       ; mov x1, x3
+                  (list #xFA #xFF #xFF #x17)       ; b -6
+                  ;; x0 = gcd, compute product/gcd
+                  (list #xE1 #x03 #x00 #xAA)       ; mov x1, x0 (gcd)
+                  (list #xE0 #x03 #x05 #xAA)       ; mov x0, x5 (product)
+                  (list #xE0 #x0C #xC1 #x9A)       ; sdiv x0, x0, x1
+                  (list #x00 #x10 #x00 #xD3)       ; lsl x0, x0, #4 (retag)
+                  (list #xFD #x7B #xC1 #xA8)       ; ldp x29, x30, [sp], #16
+                  (list #x00 #x08 #x00 #x14)       ; b +8 (skip zero case)
+                  ;; Zero case
+                  (list #x00 #x00 #x80 #xD2)       ; mov x0, #0
+                  (list #x00 #x10 #x00 #xD3)       ; lsl x0, x0, #4
                   (list #xFD #x7B #xC1 #xA8)))     ; ldp x29, x30, [sp], #16
 
          ((eq op 'isqrt)
