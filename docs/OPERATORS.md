@@ -4,8 +4,8 @@
 
 This document provides a comprehensive reference for all operators implemented in the Habu Lisp compiler. All operators are implemented for both x86_64 and ARM64 architectures and work with tagged fixnum integers.
 
-**Total Operators**: 129 (101 core + 28 c[ad]r combinations)
-**Test Coverage**: 284 compiler tests (100% passing)
+**Total Operators**: 146 (118 core + 28 c[ad]r combinations)
+**Test Coverage**: 332 compiler tests (100% passing)
 **Architectures**: x86_64, ARM64
 **Optimizations**: Constant folding, algebraic simplifications
 
@@ -19,12 +19,12 @@ All integers are tagged fixnums:
 ## Operator Categories
 
 Summary:
-- **Arithmetic** (20): +, -, *, /, mod, rem, min, max, abs, 1+, 1-, signum, gcd, lcm, isqrt, integer-length, expt, square, neg, log2
+- **Arithmetic** (25): +, -, *, /, mod, rem, min, max, abs, 1+, 1-, signum, gcd, lcm, isqrt, integer-length, expt, square, neg, log2, cube, double, half, avg, range
 - **Rounding** (8): floor, ceiling, truncate, round, ffloor, fceiling, ftruncate, fround
-- **Comparison** (9): <, >, =, <=, >=, /=, equal, eql, eq
+- **Comparison** (12): <, >, =, <=, >=, /=, equal, eql, eq, min3, max3, sign
 - **Boolean** (3): and, or, not
-- **Bitwise** (15): logand, logior, logxor, lognot, ash, logcount, logtest, logbitp, lognand, lognor, logeqv, logandc1, logandc2, logorc1, logorc2
-- **Predicates** (15): zerop, plusp, minusp, evenp, oddp, null, numberp, integerp, atom, listp, consp, symbolp, between, power-of-2?, aligned?
+- **Bitwise** (20): logand, logior, logxor, lognot, ash, logcount, logtest, logbitp, lognand, lognor, logeqv, logandc1, logandc2, logorc1, logorc2, set-bit, clear-bit, toggle-bit, mask, low-bits
+- **Predicates** (19): zerop, plusp, minusp, evenp, oddp, null, numberp, integerp, atom, listp, consp, symbolp, between, power-of-2?, aligned?, high-bit?, within?, outside?, same-sign?
 - **Scheme Aliases** (6): zero?, positive?, negative?, even?, odd?, number?
 - **Control Flow** (7): if, cond, case, when, unless, progn, begin
 - **Variables** (6): let, let*, let1, setq, incf, decf
@@ -34,7 +34,7 @@ Summary:
 - **Utility** (4): identity, clamp, align-up, align-down
 - **C[ad]r** (28): caar, cadr, cdar, cddr, caaar, caadr, cadar, caddr, cdaar, cdadr, cddar, cdddr, caaaar, caaadr, caadar, caaddr, cadaar, cadadr, caddar, cadddr, cdaaar, cdaadr, cdadar, cdaddr, cddaar, cddadr, cdddar, cddddr
 
-**Total: 101 core operators + 28 c[ad]r combinations = 129 operators**
+**Total: 118 core operators + 28 c[ad]r combinations = 146 operators**
 
 ### Arithmetic Operators (17 operators)
 
