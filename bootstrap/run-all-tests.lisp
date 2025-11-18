@@ -803,6 +803,11 @@
     ; (logxor x 0) should simplify to x
     (assert-compiles-both '(let ((x 5)) (logxor x 0)))))
 
+;;; C[ad]r combinations (cadr, caddr, etc.) are implemented via expansion
+;;; to nested car/cdr calls. Tests are deferred until runtime heap integration
+;;; is complete, as car/cdr/cons require runtime support in compiled code.
+;;; The expansion mechanism is in place and ready to use.
+
 ;;; Test error cases
 (test-group "Error Handling"
   (test-case unbound-variable

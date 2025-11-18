@@ -71,6 +71,30 @@
            (cdr-expansion (expand-quasiquote-list (rest forms))))
        `(cons ,car-expansion ,cdr-expansion)))))
 
+;;; Expand c[ad]r combinations
+(defun expand-cadr (op arg)
+  "Expand c[ad]{2,4}r combinations to nested car/cdr calls.
+   Examples: cadr => (car (cdr x)), caddr => (car (cdr (cdr x)))"
+  (let* ((name (symbol-name op))
+         (len (length name)))
+    ;; Check if it matches pattern c[ad]{2,4}r
+    (when (and (>= len 4) (<= len 6)
+               (char= (char name 0) #\C)
+               (char= (char name (1- len)) #\R))
+      ;; Extract the middle part (ad sequence)
+      (let ((middle (subseq name 1 (1- len))))
+        ;; Check all chars are 'A' or 'D'
+        (when (every (lambda (c) (or (char= c #\A) (char= c #\D))) middle)
+          ;; Build nested calls from right to left
+          ;; E.g., "ADR" => (car (cdr arg))
+          (let ((result arg))
+            (loop for i from (1- (length middle)) downto 0
+                  do (setf result
+                          (if (char= (char middle i) #\A)
+                              `(car ,result)
+                              `(cdr ,result))))
+            result))))))
+
 ;;; Parse Lisp expression to IR
 (defun parse (form)
   "Parse a Lisp form into compiler IR"
@@ -284,30 +308,34 @@
     ((and (consp form) (symbolp (first form)))
      (let ((op (first form))
            (args (rest form)))
-       ;; Check if this is a macro first (macros expand at compile-time)
-       (let ((macro-def (gethash op *macro-table*)))
-         (if macro-def
-             ;; Macro: expand and re-parse
-             (let ((params (car macro-def))
-                   (body (cdr macro-def)))
-               ;; Create binding list for macro parameters
-               (let ((bindings (mapcar #'list params args)))
-                 ;; Expand macro body with substitutions
-                 (let ((expanded (sublis (mapcar (lambda (b) (cons (first b) (second b))) bindings)
-                                         body)))
-                   ;; Re-parse the expanded form
-                   (parse expanded))))
-             ;; Not a macro, check if this is a user-defined function
-             (let ((fn-def (gethash op *function-table*)))
-               (if fn-def
-                   ;; User-defined function: transform to ((lambda params body) args...)
-                   (let ((params (car fn-def))
-                         (body (cdr fn-def)))
-                     (parse `((lambda ,params ,body) ,@args)))
-                   ;; Primitive operator
-                   (make-expr :type 'call
-                              :value op
-                              :args (mapcar #'parse args))))))))
+       ;; First check if this is a c[ad]r combination (cadr, caddr, etc.)
+       (let ((expansion (expand-cadr op (first args))))
+         (if expansion
+             (parse expansion)
+             ;; Not a c[ad]r, check if this is a macro (macros expand at compile-time)
+             (let ((macro-def (gethash op *macro-table*)))
+               (if macro-def
+                   ;; Macro: expand and re-parse
+                   (let ((params (car macro-def))
+                         (body (cdr macro-def)))
+                     ;; Create binding list for macro parameters
+                     (let ((bindings (mapcar #'list params args)))
+                       ;; Expand macro body with substitutions
+                       (let ((expanded (sublis (mapcar (lambda (b) (cons (first b) (second b))) bindings)
+                                               body)))
+                         ;; Re-parse the expanded form
+                         (parse expanded))))
+                   ;; Not a macro, check if this is a user-defined function
+                   (let ((fn-def (gethash op *function-table*)))
+                     (if fn-def
+                         ;; User-defined function: transform to ((lambda params body) args...)
+                         (let ((params (car fn-def))
+                               (body (cdr fn-def)))
+                           (parse `((lambda ,params ,body) ,@args)))
+                         ;; Primitive operator
+                         (make-expr :type 'call
+                                    :value op
+                                    :args (mapcar #'parse args))))))))))
 
     (t
      (error "Cannot parse form: ~S" form))))
