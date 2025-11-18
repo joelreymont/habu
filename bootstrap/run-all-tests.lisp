@@ -852,7 +852,50 @@
     (assert-compiles-both '(between 0 1 10)))
 
   (test-case between-false-high
-    (assert-compiles-both '(between 15 1 10))))
+    (assert-compiles-both '(between 15 1 10)))
+
+  (test-case neg-simple
+    ; (neg x) => (- x)
+    (assert-compiles-both '(neg 5)))
+
+  (test-case let1-simple
+    ; (let1 var val body) => (let ((var val)) body)
+    (assert-compiles-both '(let1 x 10 (+ x 5)))))
+
+;;; Test Scheme-style aliases
+(test-group "Scheme-style Aliases"
+  (test-case zero?-true
+    (assert-compiles-both '(zero? 0)))
+
+  (test-case zero?-false
+    (assert-compiles-both '(zero? 5)))
+
+  (test-case positive?-true
+    (assert-compiles-both '(positive? 5)))
+
+  (test-case positive?-false
+    (assert-compiles-both '(positive? -5)))
+
+  (test-case negative?-true
+    (assert-compiles-both '(negative? -5)))
+
+  (test-case negative?-false
+    (assert-compiles-both '(negative? 5)))
+
+  (test-case even?-true
+    (assert-compiles-both '(even? 4)))
+
+  (test-case even?-false
+    (assert-compiles-both '(even? 5)))
+
+  (test-case odd?-true
+    (assert-compiles-both '(odd? 5)))
+
+  (test-case odd?-false
+    (assert-compiles-both '(odd? 4)))
+
+  (test-case number?-true
+    (assert-compiles-both '(number? 42))))
 
 ;;; Test error cases
 (test-group "Error Handling"

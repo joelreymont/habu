@@ -332,6 +332,39 @@
      (parse `(and (>= ,(second form) ,(third form))
                   (<= ,(second form) ,(fourth form)))))
 
+    ((and (consp form) (eq (first form) 'neg))
+     ;; Function: (neg x) => (- x) - unary negation
+     (parse `(- ,(second form))))
+
+    ((and (consp form) (eq (first form) 'let1))
+     ;; Macro: (let1 var val body) => (let ((var val)) body)
+     (parse `(let ((,(second form) ,(third form))) ,(fourth form))))
+
+    ;; Scheme-style predicate aliases
+    ((and (consp form) (eq (first form) 'zero?))
+     ;; Alias for zerop
+     (parse `(zerop ,(second form))))
+
+    ((and (consp form) (eq (first form) 'positive?))
+     ;; Alias for plusp
+     (parse `(plusp ,(second form))))
+
+    ((and (consp form) (eq (first form) 'negative?))
+     ;; Alias for minusp
+     (parse `(minusp ,(second form))))
+
+    ((and (consp form) (eq (first form) 'even?))
+     ;; Alias for evenp
+     (parse `(evenp ,(second form))))
+
+    ((and (consp form) (eq (first form) 'odd?))
+     ;; Alias for oddp
+     (parse `(oddp ,(second form))))
+
+    ((and (consp form) (eq (first form) 'number?))
+     ;; Alias for numberp
+     (parse `(numberp ,(second form))))
+
     ((and (consp form) (consp (first form)))
      ;; Function call: ((lambda ...) args) or ((fn) args)
      (let ((fn (first form))
