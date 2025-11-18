@@ -1472,6 +1472,136 @@
   (test-case square-number?-expression
     (assert-compiles-both '(square-number? (* 5 5)))))
 
+;;; Boolean and utility conversion tests
+(test-group "Conversion and Utility Functions"
+  (test-case bool->int-true
+    ; Convert true to 1
+    (assert-compiles-both '(bool->int (= 5 5))))
+
+  (test-case bool->int-false
+    ; Convert false to 0
+    (assert-compiles-both '(bool->int (= 5 6))))
+
+  (test-case int->bool-nonzero
+    ; Nonzero is true
+    (assert-compiles-both '(int->bool 42)))
+
+  (test-case int->bool-zero
+    ; Zero is false
+    (assert-compiles-both '(int->bool 0)))
+
+  (test-case negate-if-true
+    ; Negate when condition is true
+    (assert-compiles-both '(negate-if (> 5 3) 10)))
+
+  (test-case negate-if-false
+    ; Don't negate when condition is false
+    (assert-compiles-both '(negate-if (< 5 3) 10)))
+
+  (test-case select-true
+    ; Select first value when condition is true
+    (assert-compiles-both '(select (> 5 3) 100 200)))
+
+  (test-case select-false
+    ; Select second value when condition is false
+    (assert-compiles-both '(select (< 5 3) 100 200))))
+
+;;; Advanced bit manipulation tests
+(test-group "Advanced Bit Operations"
+  (test-case count-leading-zeros-one
+    ; CLZ of 1 should be 59 (60 - 1 bit)
+    (assert-compiles-both '(count-leading-zeros 1)))
+
+  (test-case count-leading-zeros-eight
+    ; CLZ of 8 (0b1000) should be 56 (60 - 4 bits)
+    (assert-compiles-both '(count-leading-zeros 8)))
+
+  (test-case count-leading-zeros-large
+    ; CLZ of large number
+    (assert-compiles-both '(count-leading-zeros 65536)))
+
+  (test-case count-trailing-zeros-one
+    ; CTZ of 1 should be 0
+    (assert-compiles-both '(count-trailing-zeros 1)))
+
+  (test-case count-trailing-zeros-eight
+    ; CTZ of 8 (0b1000) should be 3
+    (assert-compiles-both '(count-trailing-zeros 8)))
+
+  (test-case count-trailing-zeros-sixteen
+    ; CTZ of 16 (0b10000) should be 4
+    (assert-compiles-both '(count-trailing-zeros 16)))
+
+  (test-case next-power-of-2-exact
+    ; Already a power of 2
+    (assert-compiles-both '(next-power-of-2 16)))
+
+  (test-case next-power-of-2-round-up
+    ; Round up to next power of 2
+    (assert-compiles-both '(next-power-of-2 17)))
+
+  (test-case next-power-of-2-one
+    ; Next power of 2 for 1
+    (assert-compiles-both '(next-power-of-2 1)))
+
+  (test-case next-power-of-2-expression
+    ; Next power of 2 with expression
+    (assert-compiles-both '(next-power-of-2 (+ 10 5))))
+
+  (test-case prev-power-of-2-exact
+    ; Already a power of 2
+    (assert-compiles-both '(prev-power-of-2 16)))
+
+  (test-case prev-power-of-2-round-down
+    ; Round down to previous power of 2
+    (assert-compiles-both '(prev-power-of-2 17)))
+
+  (test-case prev-power-of-2-large
+    ; Previous power of 2 for larger number
+    (assert-compiles-both '(prev-power-of-2 100))))
+
+;;; Range wrapping tests
+(test-group "Range Wrapping Functions"
+  (test-case in-range?-true
+    ; Value in range (alias for within?)
+    (assert-compiles-both '(in-range? 5 1 10)))
+
+  (test-case in-range?-false
+    ; Value out of range
+    (assert-compiles-both '(in-range? 15 1 10)))
+
+  (test-case out-of-range?-true
+    ; Value outside range
+    (assert-compiles-both '(out-of-range? 15 1 10)))
+
+  (test-case out-of-range?-false
+    ; Value inside range
+    (assert-compiles-both '(out-of-range? 5 1 10)))
+
+  (test-case wrap-positive
+    ; Wrap positive value
+    (assert-compiles-both '(wrap 15 10)))
+
+  (test-case wrap-in-range
+    ; Value already in range
+    (assert-compiles-both '(wrap 5 10)))
+
+  (test-case wrap-negative
+    ; Wrap negative value
+    (assert-compiles-both '(wrap -3 10)))
+
+  (test-case wrap-range-positive
+    ; Wrap to range [10, 20)
+    (assert-compiles-both '(wrap-range 25 10 20)))
+
+  (test-case wrap-range-in-range
+    ; Value already in range
+    (assert-compiles-both '(wrap-range 15 10 20)))
+
+  (test-case wrap-range-negative
+    ; Wrap negative to range
+    (assert-compiles-both '(wrap-range 5 10 20))))
+
 ;;; Test error cases
 (test-group "Error Handling"
   (test-case unbound-variable

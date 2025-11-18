@@ -760,6 +760,113 @@
              (parse `(let ((,root (isqrt ,n)))
                        (= (* ,root ,root) ,n)))))))
 
+    ;; Additional utility predicates and functions
+    ((and (consp form) (eq (first form) 'bool->int))
+     ;; Function: Convert boolean to integer (0 or 1)
+     (parse `(if ,(second form) 1 0)))
+
+    ((and (consp form) (eq (first form) 'int->bool))
+     ;; Function: Convert integer to boolean (nonzero is true)
+     (parse `(not (zerop ,(second form)))))
+
+    ((and (consp form) (eq (first form) 'negate-if))
+     ;; Function: Negate value if condition is true
+     ;; (negate-if condition value) => (if condition (- value) value)
+     (let ((condition (second form))
+           (x (third form)))
+       (if (and (consp x) (not (eq (first x) 'quote)))
+           (let ((temp (gensym "NEG")))
+             (parse `(let ((,temp ,x))
+                       (if ,condition (- ,temp) ,temp))))
+           (parse `(if ,condition (- ,x) ,x)))))
+
+    ((and (consp form) (eq (first form) 'select))
+     ;; Function: Select one of two values based on condition
+     ;; (select cond then-val else-val) => (if cond then-val else-val)
+     (parse `(if ,(second form) ,(third form) ,(fourth form))))
+
+    ((and (consp form) (eq (first form) 'swap-if))
+     ;; Macro: Conditionally swap two variables
+     ;; (swap-if cond a b) => (if cond (progn (setq temp a) (setq a b) (setq b temp)))
+     (let ((cond (second form))
+           (a (third form))
+           (b (fourth form))
+           (temp (gensym "SWAP")))
+       (parse `(when ,cond
+                 (let ((,temp ,a))
+                   (setq ,a ,b)
+                   (setq ,b ,temp))))))
+
+    ;; More bit manipulation utilities
+    ((and (consp form) (eq (first form) 'count-leading-zeros))
+     ;; Function: Count leading zeros in integer
+     ;; clz(x) = 64 - integer-length(x) for 64-bit values
+     ;; For tagged fixnums, we use 60 bits
+     (parse `(- 60 (integer-length ,(second form)))))
+
+    ((and (consp form) (eq (first form) 'count-trailing-zeros))
+     ;; Function: Count trailing zeros
+     ;; Find position of lowest set bit
+     ;; ctz(x) = integer-length(x & -x) - 1
+     (let ((x (second form))
+           (val (gensym "CTZ")))
+       (parse `(if (zerop ,x)
+                   60
+                   (let ((,val ,x))
+                     (1- (integer-length (logand ,val (- 0 ,val)))))))))
+
+    ((and (consp form) (eq (first form) 'next-power-of-2))
+     ;; Function: Find next power of 2 >= n
+     ;; Algorithm: Set all bits after highest bit, then add 1
+     (let ((n (second form))
+           (v (gensym "POW")))
+       (if (and (consp n) (not (eq (first n) 'quote)))
+           (let ((temp (gensym "N")))
+             (parse `(let ((,temp (1- ,n)))
+                       (let ((,v ,temp))
+                         (setq ,v (logior ,v (ash ,v -1)))
+                         (setq ,v (logior ,v (ash ,v -2)))
+                         (setq ,v (logior ,v (ash ,v -4)))
+                         (setq ,v (logior ,v (ash ,v -8)))
+                         (setq ,v (logior ,v (ash ,v -16)))
+                         (setq ,v (logior ,v (ash ,v -32)))
+                         (1+ ,v)))))
+           (parse `(let ((,v (1- ,n)))
+                     (setq ,v (logior ,v (ash ,v -1)))
+                     (setq ,v (logior ,v (ash ,v -2)))
+                     (setq ,v (logior ,v (ash ,v -4)))
+                     (setq ,v (logior ,v (ash ,v -8)))
+                     (setq ,v (logior ,v (ash ,v -16)))
+                     (setq ,v (logior ,v (ash ,v -32)))
+                     (1+ ,v))))))
+
+    ((and (consp form) (eq (first form) 'prev-power-of-2))
+     ;; Function: Find previous power of 2 <= n
+     ;; Just shift right by (integer-length - 1)
+     (parse `(ash 1 (1- (integer-length ,(second form))))))
+
+    ;; Mathematical predicates and utilities
+    ((and (consp form) (eq (first form) 'in-range?))
+     ;; Alias for within?
+     (parse `(within? ,(second form) ,(third form) ,(fourth form))))
+
+    ((and (consp form) (eq (first form) 'out-of-range?))
+     ;; Alias for outside?
+     (parse `(outside? ,(second form) ,(third form) ,(fourth form))))
+
+    ((and (consp form) (eq (first form) 'wrap))
+     ;; Function: Wrap value to range [0, max)
+     ;; wrap(x, max) = mod(x, max) with proper handling of negatives
+     (parse `(mod (+ (mod ,(second form) ,(third form)) ,(third form)) ,(third form))))
+
+    ((and (consp form) (eq (first form) 'wrap-range))
+     ;; Function: Wrap value to range [min, max)
+     ;; wrap-range(x, min, max) = min + wrap(x - min, max - min)
+     (let ((x (second form))
+           (min-val (third form))
+           (max-val (fourth form)))
+       (parse `(+ ,min-val (wrap (- ,x ,min-val) (- ,max-val ,min-val))))))
+
     ((and (consp form) (consp (first form)))
      ;; Function call: ((lambda ...) args) or ((fn) args)
      (let ((fn (first form))
