@@ -5,7 +5,7 @@
 This document provides a comprehensive reference for all operators implemented in the Habu Lisp compiler. All operators are implemented for both x86_64 and ARM64 architectures and work with tagged fixnum integers.
 
 **Total Operators**: 81
-**Test Coverage**: 204 compiler tests, 370 total tests (100% passing)
+**Test Coverage**: 222 compiler tests, 388 total tests (100% passing)
 **Architectures**: x86_64, ARM64
 **Optimizations**: Constant folding (compile-time evaluation)
 
