@@ -98,27 +98,13 @@
      (let ((second-elem (second form)))
        (if (symbolp second-elem)
            ;; Named-let for recursion: (let name ((x 1) (y 2)) body)
-           ;; Transform to: ((lambda (name) (name name init1 init2...))
-           ;;                (lambda (name x y) body-with-name-calls))
+           ;; Compile as a loop structure instead of lambda transformation
            (let* ((name second-elem)
                   (bindings (third form))
-                  (body (fourth form))
-                  (vars (mapcar #'first bindings))
-                  (inits (mapcar #'second bindings)))
-             ;; Replace recursive calls (name ...) with (name name ...)
-             (labels ((transform-recursive-calls (expr)
-                        (cond
-                          ((atom expr) expr)
-                          ((and (consp expr) (eq (first expr) name))
-                           ;; Recursive call: add name as first argument
-                           `(,name ,name ,@(mapcar #'transform-recursive-calls (rest expr))))
-                          (t
-                           (mapcar #'transform-recursive-calls expr)))))
-               (let ((transformed-body (transform-recursive-calls body)))
-                 (parse `((lambda (,name)
-                            (,name ,name ,@inits))
-                          (lambda (,name ,@vars)
-                            ,transformed-body))))))
+                  (body (fourth form)))
+             (make-expr :type 'named-let
+                        :value (list name bindings)  ; store name and bindings
+                        :args (list (parse body))))
            ;; Regular let
            (make-expr :type 'let
                       :value second-elem  ; bindings
@@ -414,9 +400,31 @@
                   :value bindings
                   :args (mapcar #'constant-fold body))))
 
+    (named-let
+     ; Optimize named-let - fold body only
+     (let ((name-and-bindings (expr-value expr))
+           (body (expr-args expr)))
+       (make-expr :type 'named-let
+                  :value name-and-bindings
+                  :args (mapcar #'constant-fold body))))
+
     (t
      ; Unknown type - don't optimize
      expr)))
+
+;;; Helper function to detect recursive calls in named-let
+(defun find-recursive-calls (name expr)
+  "Check if expr contains any calls to name"
+  (cond
+    ((null expr) nil)
+    ((atom expr) nil)
+    ((and (eq (expr-type expr) 'call)
+          (eq (expr-value expr) name))
+     t)
+    ((expr-args expr)
+     (some (lambda (arg) (find-recursive-calls name arg))
+           (expr-args expr)))
+    (t nil)))
 
 ;;; Code generation for x86_64
 (defun emit-x86_64 (expr &optional (env nil))
@@ -490,6 +498,44 @@
      ;; Lambda expressions are not directly compiled to code
      ;; They only make sense in funcall context
      (error "Lambda expression cannot be compiled standalone: ~S" expr))
+
+    (named-let
+     ;; Compile (let name ((var val) ...) body)
+     ;; For now, compile as regular let - recursive calls will need TCO support
+     (let* ((name-and-bindings (expr-value expr))
+            (loop-name (first name-and-bindings))
+            (bindings (second name-and-bindings))
+            (body (first (expr-args expr)))
+            (vars (mapcar #'first bindings))
+            (num-bindings (length bindings)))
+       ;; Warn about recursive calls (they won't work without TCO)
+       (when (find-recursive-calls loop-name body)
+         (warn "Named-let '~A' contains recursive calls. Tail-call optimization not yet implemented. Recursive calls will cause errors." loop-name))
+       ;; Compile as regular let for now
+       (let ((binding-code nil)
+             (new-env env))
+         ;; Evaluate and push each binding
+         (dolist (binding bindings)
+           (let ((var (first binding))
+                 (val (second binding)))
+             (setf binding-code
+                   (append binding-code
+                           (emit-x86_64 (parse val) env)
+                           (list #x50)))))  ; push rax
+         ;; Build environment with variable offsets
+         (let ((offset 0))
+           (dolist (var (reverse vars))
+             (setf new-env (cons (cons var offset) new-env))
+             (setf offset (+ offset 8))))
+         ;; Compile body with new environment
+         (let ((body-code (emit-x86_64 body new-env)))
+           (append binding-code
+                   body-code
+                   ;; Clean up stack
+                   (if (<= num-bindings 255)
+                       (list #x48 #x83 #xC4 (* num-bindings 8))  ; add rsp, imm8
+                       (append (list #x48 #x81 #xC4)  ; add rsp, imm32
+                               (int-to-bytes (* num-bindings 8) 4))))))))
 
     (progn
      ;; Compile (progn expr1 expr2 ... exprN)
@@ -1617,6 +1663,42 @@
     (lambda
      ;; Lambda expressions are not directly compiled to code
      (error "Lambda expression cannot be compiled standalone: ~S" expr))
+
+    (named-let
+     ;; Compile (let name ((var val) ...) body) for ARM64
+     ;; For now, compile as regular let - recursive calls will need TCO support
+     (let* ((name-and-bindings (expr-value expr))
+            (loop-name (first name-and-bindings))
+            (bindings (second name-and-bindings))
+            (body (first (expr-args expr)))
+            (vars (mapcar #'first bindings))
+            (num-bindings (length bindings)))
+       ;; Warn about recursive calls (they won't work without TCO)
+       (when (find-recursive-calls loop-name body)
+         (warn "Named-let '~A' contains recursive calls. Tail-call optimization not yet implemented. Recursive calls will cause errors." loop-name))
+       ;; Compile as regular let for now
+       (let ((binding-code nil)
+             (new-env env))
+         ;; Evaluate and push each binding
+         (dolist (binding bindings)
+           (let ((var (first binding))
+                 (val (second binding)))
+             (setf binding-code
+                   (append binding-code
+                           (emit-arm64 (parse val) env)
+                           (list #xFD #x7B #xBF #xA9)))))  ; stp x29, x30, [sp, #-16]!
+         ;; Build environment with variable offsets
+         (let ((offset 0))
+           (dolist (var (reverse vars))
+             (setf new-env (cons (cons var offset) new-env))
+             (setf offset (+ offset 16))))  ; ARM64 uses 16-byte alignment
+         ;; Compile body with new environment
+         (let ((body-code (emit-arm64 body new-env)))
+           (append binding-code
+                   body-code
+                   ;; Clean up stack
+                   (loop repeat num-bindings
+                         append (list #xFD #x7B #xC1 #xA8)))))))  ; ldp x29, x30, [sp], #16
 
     (progn
      ;; Compile (progn expr1 expr2 ... exprN) for ARM64
