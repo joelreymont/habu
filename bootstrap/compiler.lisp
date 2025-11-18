@@ -487,6 +487,49 @@
      ;; => (minusp x)
      (parse `(minusp ,(second form))))
 
+    ;; Comparison and range utilities
+    ((and (consp form) (eq (first form) 'min3))
+     ;; Function: Minimum of three values
+     (parse `(min ,(second form) (min ,(third form) ,(fourth form)))))
+
+    ((and (consp form) (eq (first form) 'max3))
+     ;; Function: Maximum of three values
+     (parse `(max ,(second form) (max ,(third form) ,(fourth form)))))
+
+    ((and (consp form) (eq (first form) 'within?))
+     ;; Predicate: Check if value is within range (inclusive)
+     ;; Same as between but more descriptive name
+     (parse `(and (>= ,(second form) ,(third form))
+                  (<= ,(second form) ,(fourth form)))))
+
+    ((and (consp form) (eq (first form) 'outside?))
+     ;; Predicate: Check if value is outside range (exclusive)
+     (parse `(or (< ,(second form) ,(third form))
+                 (> ,(second form) ,(fourth form)))))
+
+    ((and (consp form) (eq (first form) 'sign))
+     ;; Function: Return sign of number (-1, 0, or 1)
+     ;; Same as signum
+     (parse `(signum ,(second form))))
+
+    ((and (consp form) (eq (first form) 'same-sign?))
+     ;; Predicate: Check if two numbers have same sign
+     (let ((x (second form))
+           (y (third form)))
+       (if (or (and (consp x) (not (eq (first x) 'quote)))
+               (and (consp y) (not (eq (first y) 'quote))))
+           ;; Complex expression: bind to temp vars
+           (let ((tx (gensym "SIGN-X"))
+                 (ty (gensym "SIGN-Y")))
+             (parse `(let ((,tx ,x) (,ty ,y))
+                       (or (and (zerop ,tx) (zerop ,ty))
+                           (and (plusp ,tx) (plusp ,ty))
+                           (and (minusp ,tx) (minusp ,ty))))))
+           ;; Simple expressions: safe to duplicate
+           (parse `(or (and (zerop ,x) (zerop ,y))
+                       (and (plusp ,x) (plusp ,y))
+                       (and (minusp ,x) (minusp ,y)))))))
+
     ((and (consp form) (consp (first form)))
      ;; Function call: ((lambda ...) args) or ((fn) args)
      (let ((fn (first form))

@@ -1111,6 +1111,77 @@
     ; high-bit? on negative number
     (assert-compiles-both '(high-bit? -5))))
 
+;;; Test comparison and range utilities
+(test-group "Comparison and Range Utilities"
+  (test-case min3-simple
+    ; Minimum of three values
+    (assert-compiles-both '(min3 5 3 8)))
+
+  (test-case min3-first-smallest
+    (assert-compiles-both '(min3 1 10 20)))
+
+  (test-case min3-last-smallest
+    (assert-compiles-both '(min3 20 10 1)))
+
+  (test-case max3-simple
+    ; Maximum of three values
+    (assert-compiles-both '(max3 5 3 8)))
+
+  (test-case max3-first-largest
+    (assert-compiles-both '(max3 20 10 1)))
+
+  (test-case max3-last-largest
+    (assert-compiles-both '(max3 1 10 20)))
+
+  (test-case within?-true
+    ; Check if value is within range (inclusive)
+    (assert-compiles-both '(within? 5 1 10)))
+
+  (test-case within?-false-low
+    (assert-compiles-both '(within? 0 1 10)))
+
+  (test-case within?-false-high
+    (assert-compiles-both '(within? 15 1 10)))
+
+  (test-case within?-boundary
+    (assert-compiles-both '(within? 10 1 10)))
+
+  (test-case outside?-true-low
+    ; Check if value is outside range
+    (assert-compiles-both '(outside? 0 1 10)))
+
+  (test-case outside?-true-high
+    (assert-compiles-both '(outside? 15 1 10)))
+
+  (test-case outside?-false
+    (assert-compiles-both '(outside? 5 1 10)))
+
+  (test-case sign-positive
+    ; Return sign of number (-1, 0, or 1)
+    (assert-compiles-both '(sign 10)))
+
+  (test-case sign-negative
+    (assert-compiles-both '(sign -10)))
+
+  (test-case sign-zero
+    (assert-compiles-both '(sign 0)))
+
+  (test-case same-sign?-both-positive
+    ; Check if two numbers have same sign
+    (assert-compiles-both '(same-sign? 5 10)))
+
+  (test-case same-sign?-both-negative
+    (assert-compiles-both '(same-sign? -5 -10)))
+
+  (test-case same-sign?-both-zero
+    (assert-compiles-both '(same-sign? 0 0)))
+
+  (test-case same-sign?-different
+    (assert-compiles-both '(same-sign? 5 -10)))
+
+  (test-case same-sign?-expression
+    (assert-compiles-both '(same-sign? (+ 2 3) (* -2 3)))))
+
 ;;; Test error cases
 (test-group "Error Handling"
   (test-case unbound-variable
