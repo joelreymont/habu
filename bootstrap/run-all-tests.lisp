@@ -1230,6 +1230,53 @@
   (test-case when-let-multiple-forms
     (assert-compiles-both '(when-let x 5 (+ x 1) (+ x 2)))))
 
+;;; Test additional predicates and utilities
+(test-group "Additional Predicates and Utilities"
+  (test-case nonzero?-true
+    ; Opposite of zerop
+    (assert-compiles-both '(nonzero? 5)))
+
+  (test-case nonzero?-false
+    (assert-compiles-both '(nonzero? 0)))
+
+  (test-case divisible?-true
+    ; Check if x is divisible by y
+    (assert-compiles-both '(divisible? 10 5)))
+
+  (test-case divisible?-false
+    (assert-compiles-both '(divisible? 10 3)))
+
+  (test-case divisible?-exact
+    (assert-compiles-both '(divisible? 20 4)))
+
+  (test-case multiple-of?-true
+    ; Same as divisible?
+    (assert-compiles-both '(multiple-of? 15 3)))
+
+  (test-case multiple-of?-false
+    (assert-compiles-both '(multiple-of? 15 4)))
+
+  (test-case quot-simple
+    ; Quotient (same as /)
+    (assert-compiles-both '(quot 20 5)))
+
+  (test-case quot-truncate
+    (assert-compiles-both '(quot 22 5)))
+
+  (test-case reciprocal-simple
+    ; Reciprocal (1/x)
+    (assert-compiles-both '(reciprocal 5)))
+
+  (test-case reciprocal-large
+    (assert-compiles-both '(reciprocal 100)))
+
+  (test-case sqr-simple
+    ; Square (alias for square)
+    (assert-compiles-both '(sqr 7)))
+
+  (test-case sqr-expression
+    (assert-compiles-both '(sqr (+ 2 3)))))
+
 ;;; Test error cases
 (test-group "Error Handling"
   (test-case unbound-variable

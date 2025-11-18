@@ -572,6 +572,34 @@
        (parse `(let ((,var ,test))
                  (when ,var (progn ,@body))))))
 
+    ;; Additional predicates and utilities
+    ((and (consp form) (eq (first form) 'nonzero?))
+     ;; Predicate: Check if value is non-zero
+     ;; Opposite of zerop
+     (parse `(not (zerop ,(second form)))))
+
+    ((and (consp form) (eq (first form) 'divisible?))
+     ;; Predicate: Check if x is divisible by y
+     ;; (divisible? x y) => (zerop (mod x y))
+     (parse `(zerop (mod ,(second form) ,(third form)))))
+
+    ((and (consp form) (eq (first form) 'multiple-of?))
+     ;; Predicate: Same as divisible?
+     (parse `(zerop (mod ,(second form) ,(third form)))))
+
+    ((and (consp form) (eq (first form) 'quot))
+     ;; Function: Quotient (same as /)
+     ;; Common Lisp style alias
+     (parse `(/ ,(second form) ,(third form))))
+
+    ((and (consp form) (eq (first form) 'reciprocal))
+     ;; Function: Reciprocal (1/x)
+     (parse `(/ 1 ,(second form))))
+
+    ((and (consp form) (eq (first form) 'sqr))
+     ;; Function: Square (alias for square)
+     (parse `(square ,(second form))))
+
     ((and (consp form) (consp (first form)))
      ;; Function call: ((lambda ...) args) or ((fn) args)
      (let ((fn (first form))
