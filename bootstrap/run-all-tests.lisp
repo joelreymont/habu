@@ -669,6 +669,32 @@
     (compile-expression '(defmacro quad (x) (square (square x))))
     (assert-compiles-both '(quad 2))))
 
+;;; Test constant folding optimization
+(test-group "Constant Folding"
+  (test-case constant-arithmetic
+    ; (+ 2 3) should compile to the constant 5
+    (assert-compiles-both '(+ 2 3)))
+
+  (test-case constant-nested
+    ; Nested constants should all be folded
+    (assert-compiles-both '(* (+ 2 3) (- 10 4))))
+
+  (test-case constant-comparison
+    ; Constant comparisons should be folded
+    (assert-compiles-both '(< 3 5)))
+
+  (test-case constant-if-true
+    ; (if 1 x y) with constant condition should optimize
+    (assert-compiles-both '(if 1 42 99)))
+
+  (test-case constant-if-false
+    ; (if 0 x y) should eliminate dead branch
+    (assert-compiles-both '(if 0 42 99)))
+
+  (test-case mixed-constant-variable
+    ; Mix of constants and variables - only constants folded
+    (assert-compiles-both '(let ((x 10)) (+ (* 2 3) x)))))
+
 ;;; Test error cases
 (test-group "Error Handling"
   (test-case unbound-variable

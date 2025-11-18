@@ -2,7 +2,11 @@
 
 ## Session Summary
 
-This session focused on expanding the compiler's operator coverage and updating documentation to reflect the current state. Key accomplishments include adding 4 new bitwise operators (logbitp, lognand, lognor, logeqv) and comprehensively updating the OPERATORS.md documentation to reflect all 81 implemented operators.
+This session focused on expanding the compiler's operator coverage, implementing a major optimization (constant folding), and updating documentation. Key accomplishments include:
+- Added 4 new bitwise operators (logbitp, lognand, lognor, logeqv)
+- Implemented compile-time constant folding optimization
+- Updated OPERATORS.md to document all 81 operators
+- Added comprehensive tests (now 204 total, all passing)
 
 ## Session Accomplishments (2025-11-18 - Continued Session 3)
 
@@ -15,7 +19,21 @@ This session focused on expanding the compiler's operator coverage and updating 
 - Added 6 tests (2 for logbitp, 1 each for others), all passing
 - Total tests: 198 (up from 193)
 
-### 2. Documentation Updates
+### 2. Constant Folding Optimization
+- Implemented compile-time constant expression evaluation
+- Optimizes arithmetic operations on constants (e.g., (+ 2 3) => 5)
+- Optimizes constant conditionals and eliminates dead branches
+- Reduces generated code size significantly for constant expressions
+- Properly handles all expression types (lambda, let, progn, if, call, etc.)
+- Supported operations: arithmetic, comparisons, bitwise, min/max, abs, gcd, lcm
+- Added 6 comprehensive tests for constant folding
+- All 204 tests passing
+- Benefits:
+  - Smaller generated code (fewer instructions)
+  - Faster compilation (less code to generate)
+  - Improved runtime performance (constants pre-computed)
+
+### 3. Documentation Updates
 - Updated OPERATORS.md with all new operators from recent sessions
 - Added Rounding Operators section (8 operators)
 - Added new arithmetic operators (gcd, lcm, isqrt, integer-length, expt)
