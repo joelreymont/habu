@@ -1005,6 +1005,29 @@
                   ;; Retag and return
                   (list #x48 #xC1 #xE0 #x04)))  ; shl rax, 4 (retag)
 
+         ((eq op 'integer-length)
+          ;; Compile (integer-length n) - number of bits needed to represent n
+          ;; For n >= 0: position of highest 1 bit + 1
+          ;; For n < 0: integer-length(NOT n)
+          (append (emit-x86_64 (first args) env)
+                  (list #x48 #xC1 #xF8 #x04)    ; sar rax, 4 (untag)
+                  ;; Check if negative
+                  (list #x48 #x85 #xC0)         ; test rax, rax
+                  (list #x79 #x06)              ; jns +6 (skip to positive case)
+                  ;; Negative: compute NOT n = -n - 1
+                  (list #x48 #xF7 #xD8)         ; neg rax
+                  (list #x48 #xFF #xC8)         ; dec rax
+                  (list #xEB #x00)              ; jmp +0 (nop, continue)
+                  ;; Positive or converted: use BSR to find highest bit
+                  (list #x48 #x85 #xC0)         ; test rax, rax
+                  (list #x74 #x0A)              ; jz +10 (zero case, return 0)
+                  (list #x48 #x0F #xBD #xC8)    ; bsr rcx, rax (find highest set bit)
+                  (list #x48 #xFF #xC1)         ; inc rcx (position + 1)
+                  (list #x48 #x89 #xC8)         ; mov rax, rcx
+                  (list #xEB #x02)              ; jmp +2 (skip zero case)
+                  (list #x48 #x31 #xC0)         ; xor rax, rax (return 0)
+                  (list #x48 #xC1 #xE0 #x04)))  ; shl rax, 4 (retag)
+
          ;; List operations - require runtime integration
          ;; These operations need heap allocation and are not yet integrated with compiled code.
          ;; They work in the REPL (interpreted mode) which has access to the runtime heap.
@@ -1728,6 +1751,27 @@
                   (list #xF9 #xFF #xFF #x17)       ; b -7 (back to loop)
                   ;; Use old value (converged)
                   (list #xE0 #x03 #x03 #xAA)       ; mov x0, x3 (result)
+                  ;; Retag and return
+                  (list #x00 #x10 #x00 #xD3)))     ; lsl x0, x0, #4 (retag)
+
+         ((eq op 'integer-length)
+          ;; Compile (integer-length n) for ARM64
+          ;; Returns number of bits needed to represent n
+          (append (emit-arm64 (first args) env)
+                  (list #x00 #x10 #x44 #xD3)       ; lsr x0, x0, #4 (untag)
+                  ;; Check if negative
+                  (list #x1F #x00 #x00 #xF1)       ; cmp x0, #0
+                  (list #x4A #x00 #x00 #x54)       ; b.ge +2 (if positive, skip)
+                  ;; Negative: compute -n - 1
+                  (list #x00 #x00 #x00 #xCB)       ; neg x0, x0
+                  (list #x00 #x04 #x00 #xD1)       ; sub x0, x0, #1
+                  ;; Check for zero
+                  (list #x1F #x00 #x00 #xF1)       ; cmp x0, #0
+                  (list #x60 #x00 #x00 #x54)       ; b.eq +3 (return 0 if zero)
+                  ;; Use CLZ then compute 64 - clz
+                  (list #xE1 #x10 #xC0 #xDA)       ; clz x1, x0 (count leading zeros)
+                  (list #x00 #x00 #x80 #xD2)       ; mov x0, #64
+                  (list #x00 #x00 #x01 #xCB)       ; sub x0, x0, x1 (64 - clz = bit position + 1)
                   ;; Retag and return
                   (list #x00 #x10 #x00 #xD3)))     ; lsl x0, x0, #4 (retag)
 

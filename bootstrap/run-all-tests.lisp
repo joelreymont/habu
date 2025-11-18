@@ -288,7 +288,22 @@
     (assert-compiles-both '(isqrt 1)))
 
   (test-case isqrt-large
-    (assert-compiles-both '(isqrt 100))))
+    (assert-compiles-both '(isqrt 100)))
+
+  (test-case integer-length-zero
+    (assert-compiles-both '(integer-length 0)))
+
+  (test-case integer-length-one
+    (assert-compiles-both '(integer-length 1)))
+
+  (test-case integer-length-seven
+    (assert-compiles-both '(integer-length 7)))
+
+  (test-case integer-length-eight
+    (assert-compiles-both '(integer-length 8)))
+
+  (test-case integer-length-negative
+    (assert-compiles-both '(integer-length -8))))
 
 ;;; Test predicates
 (test-group "Predicates"
