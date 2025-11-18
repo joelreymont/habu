@@ -4,8 +4,8 @@
 
 This document provides a comprehensive reference for all operators implemented in the Habu Lisp compiler. All operators are implemented for both x86_64 and ARM64 architectures and work with tagged fixnum integers.
 
-**Total Operators**: 156 (128 core + 28 c[ad]r combinations)
-**Test Coverage**: 356 compiler tests (100% passing)
+**Total Operators**: 164 (136 core + 28 c[ad]r combinations)
+**Test Coverage**: 378 compiler tests (100% passing)
 **Architectures**: x86_64, ARM64
 **Optimizations**: Constant folding, algebraic simplifications
 
@@ -19,22 +19,22 @@ All integers are tagged fixnums:
 ## Operator Categories
 
 Summary:
-- **Arithmetic** (28): +, -, *, /, mod, rem, min, max, abs, 1+, 1-, signum, gcd, lcm, isqrt, integer-length, expt, square, neg, log2, cube, double, half, avg, range, quot, reciprocal, sqr
+- **Arithmetic** (31): +, -, *, /, mod, rem, min, max, abs, 1+, 1-, signum, gcd, lcm, isqrt, integer-length, expt, square, neg, log2, cube, double, half, avg, range, quot, reciprocal, sqr, lerp, median3, map-range
 - **Rounding** (8): floor, ceiling, truncate, round, ffloor, fceiling, ftruncate, fround
 - **Comparison** (12): <, >, =, <=, >=, /=, equal, eql, eq, min3, max3, sign
 - **Boolean** (3): and, or, not
-- **Bitwise** (22): logand, logior, logxor, lognot, ash, logcount, logtest, logbitp, lognand, lognor, logeqv, logandc1, logandc2, logorc1, logorc2, set-bit, clear-bit, toggle-bit, mask, low-bits, rotl, rotr
-- **Predicates** (22): zerop, plusp, minusp, evenp, oddp, null, numberp, integerp, atom, listp, consp, symbolp, between, power-of-2?, aligned?, high-bit?, within?, outside?, same-sign?, nonzero?, divisible?, multiple-of?
+- **Bitwise** (24): logand, logior, logxor, lognot, ash, logcount, logtest, logbitp, lognand, lognor, logeqv, logandc1, logandc2, logorc1, logorc2, set-bit, clear-bit, toggle-bit, mask, low-bits, rotl, rotr, bit-field, bit-field-set
+- **Predicates** (24): zerop, plusp, minusp, evenp, oddp, null, numberp, integerp, atom, listp, consp, symbolp, between, power-of-2?, aligned?, high-bit?, within?, outside?, same-sign?, nonzero?, divisible?, multiple-of?, divides?, coprime?
 - **Scheme Aliases** (6): zero?, positive?, negative?, even?, odd?, number?
 - **Control Flow** (9): if, cond, case, when, unless, progn, begin, if-let, when-let
 - **Variables** (6): let, let*, let1, setq, incf, decf
 - **Functions** (2): lambda, defun
 - **Macros** (1): defmacro
 - **Data** (5): quote, cons, car, cdr, list
-- **Utility** (4): identity, clamp, align-up, align-down
+- **Utility** (5): identity, clamp, align-up, align-down, constrain
 - **C[ad]r** (28): caar, cadr, cdar, cddr, caaar, caadr, cadar, caddr, cdaar, cdadr, cddar, cdddr, caaaar, caaadr, caadar, caaddr, cadaar, cadadr, caddar, cadddr, cdaaar, cdaadr, cdadar, cdaddr, cddaar, cddadr, cdddar, cddddr
 
-**Total: 128 core operators + 28 c[ad]r combinations = 156 operators**
+**Total: 136 core operators + 28 c[ad]r combinations = 164 operators**
 
 ### Arithmetic Operators (17 operators)
 
