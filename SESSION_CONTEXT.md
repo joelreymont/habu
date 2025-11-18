@@ -487,7 +487,7 @@ less /home/user/habu/FULL_LISP_PLAN.md
 
 ## Current Session Summary (2025-11-18)
 
-### Commits Made (12 total)
+### Commits Made (14 total)
 1. `213ecf8` - Add signum operator for x86_64 and ARM64
 2. `c81a482` - Improve error messages for list operations
 3. `94f3057` - Add comprehensive next steps documentation
@@ -499,19 +499,21 @@ less /home/user/habu/FULL_LISP_PLAN.md
 9. `94d39f8` - Update SESSION_CONTEXT with bitwise utilities
 10. `3bda272` - Add comprehensive extended session summary
 11. `cca270a` - Add comprehensive operator reference documentation
+12. `290cdab` - Add documentation index and update session context
+13. `1da96ab` - Add gcd (greatest common divisor) operator
 
 ### Test Status
-- **Compiler Tests**: 134/134 passing (100%)
+- **Compiler Tests**: 139/139 passing (100%)
 - **Runtime Tests**: 166/166 passing (100%)
   - Memory: 40/40
   - Symbols: 42/42
   - Strings: 37/37
   - Arrays: 47/47
-- **Total**: 300 tests passing
+- **Total**: 305 tests passing
 
 ### Files Modified
-- `bootstrap/compiler.lisp`: Added signum, rem, logcount, logtest operators; improved error messages
-- `bootstrap/run-all-tests.lisp`: Added 9 tests (3 signum, 1 rem, 5 bitwise utilities)
+- `bootstrap/compiler.lisp`: Added signum, rem, logcount, logtest, gcd operators; improved error messages
+- `bootstrap/run-all-tests.lisp`: Added 14 tests (3 signum, 1 rem, 5 bitwise utilities, 5 gcd)
 - `docs/NEXT_STEPS.md`: Created comprehensive roadmap (444 lines)
 - `docs/OPERATORS.md`: Created complete operator reference (642 lines)
 - `docs/README.md`: Created documentation index and navigation guide
@@ -520,10 +522,10 @@ less /home/user/habu/FULL_LISP_PLAN.md
 - `SESSION_EXTENDED_SUMMARY.md`: Created extended technical summary (303 lines)
 
 ### Session Metrics
-- **New operators**: 4 (signum, rem, logcount, logtest)
+- **New operators**: 5 (signum, rem, logcount, logtest, gcd)
 - **Documentation**: ~1,750 lines (roadmap, operator reference, summaries, index)
-- **Test coverage**: 100% pass rate maintained (300 tests total)
-- **Commits**: 11 focused commits with clear messages
+- **Test coverage**: 100% pass rate maintained (305 tests total)
+- **Commits**: 13 focused commits with clear messages
 - **Architectures**: All changes support both x86_64 and ARM64
 
 ---
