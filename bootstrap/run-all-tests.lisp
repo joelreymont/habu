@@ -695,6 +695,80 @@
     ; Mix of constants and variables - only constants folded
     (assert-compiles-both '(let ((x 10)) (+ (* 2 3) x)))))
 
+;;; Test edge cases
+(test-group "Edge Cases"
+  (test-case large-fixnum
+    ; Test large fixnum values
+    (assert-compiles-both '1000000))
+
+  (test-case negative-large
+    ; Test large negative values
+    (assert-compiles-both '-1000000))
+
+  (test-case division-truncation
+    ; Test that integer division truncates
+    (assert-compiles-both '(/ 7 3)))
+
+  (test-case modulo-negative-dividend
+    ; Test modulo with negative dividend
+    (assert-compiles-both '(mod -10 3)))
+
+  (test-case modulo-negative-divisor
+    ; Test modulo with negative divisor
+    (assert-compiles-both '(mod 10 -3)))
+
+  (test-case comparison-equal-values
+    ; Test comparison with equal values
+    (assert-compiles-both '(< 5 5)))
+
+  (test-case nested-arithmetic-deep
+    ; Test deeply nested arithmetic
+    (assert-compiles-both '(+ (+ (+ 1 2) (+ 3 4)) (+ (+ 5 6) (+ 7 8)))))
+
+  (test-case bitwise-zero
+    ; Test bitwise operations with zero
+    (assert-compiles-both '(logand 0 -1)))
+
+  (test-case bitwise-all-ones
+    ; Test bitwise operations with all bits set
+    (assert-compiles-both '(logior 0 -1)))
+
+  (test-case shift-by-zero
+    ; Test shifting by zero
+    (assert-compiles-both '(ash 42 0)))
+
+  (test-case shift-negative
+    ; Test right shift (negative amount)
+    (assert-compiles-both '(ash 100 -2)))
+
+  (test-case gcd-coprime
+    ; Test GCD of coprime numbers
+    (assert-compiles-both '(gcd 17 19)))
+
+  (test-case gcd-with-zero
+    ; Test GCD with zero
+    (assert-compiles-both '(gcd 42 0)))
+
+  (test-case lcm-one
+    ; Test LCM with 1
+    (assert-compiles-both '(lcm 42 1)))
+
+  (test-case isqrt-perfect-square
+    ; Test integer square root of perfect square
+    (assert-compiles-both '(isqrt 144)))
+
+  (test-case isqrt-non-perfect
+    ; Test integer square root rounds down
+    (assert-compiles-both '(isqrt 145)))
+
+  (test-case let-shadowing
+    ; Test variable shadowing in nested let
+    (assert-compiles-both '(let ((x 5)) (let ((x 10)) x))))
+
+  (test-case if-nested-deep
+    ; Test deeply nested conditionals
+    (assert-compiles-both '(if (< 1 2) (if (< 2 3) (if (< 3 4) 100 200) 300) 400))))
+
 ;;; Test error cases
 (test-group "Error Handling"
   (test-case unbound-variable
