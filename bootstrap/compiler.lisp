@@ -326,6 +326,98 @@
     (t
      (error "Cannot parse form: ~S" form))))
 
+;;; Constant folding optimization
+(defun constant-fold (expr)
+  "Optimize expression by evaluating constant operations at compile time"
+  (case (expr-type expr)
+    (fixnum expr) ; Already a constant
+
+    (variable expr) ; Variables can't be folded
+
+    (quote expr) ; Quoted forms are already constant
+
+    (lambda
+     ; Fold lambda body but keep lambda structure
+     (let ((params (expr-value expr))
+           (body (expr-args expr)))
+       (make-expr :type 'lambda
+                  :value params
+                  :args (mapcar #'constant-fold body))))
+
+    (if
+     ; Optimize if expressions
+     (let ((condition (constant-fold (first (expr-args expr))))
+           (then-expr (constant-fold (second (expr-args expr))))
+           (else-expr (constant-fold (third (expr-args expr)))))
+       (if (and (eq (expr-type condition) 'fixnum))
+           ; Constant condition - evaluate at compile time
+           (if (zerop (expr-value condition))
+               else-expr
+               then-expr)
+           ; Non-constant condition - keep the if
+           (make-expr :type 'if :value nil
+                      :args (list condition then-expr else-expr)))))
+
+    (call
+     ; Optimize arithmetic operations on constants
+     (let* ((op (expr-value expr))
+            (args (mapcar #'constant-fold (expr-args expr))))
+       (if (and args (every (lambda (arg) (eq (expr-type arg) 'fixnum)) args))
+           ; All arguments are constants - evaluate at compile time
+           (let ((values (mapcar #'expr-value args)))
+             (make-expr :type 'fixnum
+                        :value
+                        (case op
+                          (+ (apply #'+ values))
+                          (- (apply #'- values))
+                          (* (apply #'* values))
+                          (/ (if (zerop (second values))
+                                 (return-from constant-fold
+                                   (make-expr :type 'call :value op :args args))
+                                 (truncate (first values) (second values))))
+                          (mod (mod (first values) (second values)))
+                          (rem (rem (first values) (second values)))
+                          (< (if (< (first values) (second values)) 1 0))
+                          (> (if (> (first values) (second values)) 1 0))
+                          (= (if (= (first values) (second values)) 1 0))
+                          (<= (if (<= (first values) (second values)) 1 0))
+                          (>= (if (>= (first values) (second values)) 1 0))
+                          (/= (if (/= (first values) (second values)) 1 0))
+                          (logand (apply #'logand values))
+                          (logior (apply #'logior values))
+                          (logxor (apply #'logxor values))
+                          (lognot (lognot (first values)))
+                          (ash (ash (first values) (second values)))
+                          (min (apply #'min values))
+                          (max (apply #'max values))
+                          (abs (abs (first values)))
+                          (1+ (1+ (first values)))
+                          (1- (1- (first values)))
+                          (gcd (apply #'gcd values))
+                          (lcm (apply #'lcm values))
+                          (t ; Non-foldable operation
+                           (return-from constant-fold
+                             (make-expr :type 'call :value op :args args))))))
+           ; Not all constants - keep the call but with optimized args
+           (make-expr :type 'call :value op :args args))))
+
+    (progn
+     ; Optimize progn - fold each expression
+     (let ((folded-args (mapcar #'constant-fold (expr-args expr))))
+       (make-expr :type 'progn :value nil :args folded-args)))
+
+    (let
+     ; Optimize let - fold body only (bindings are in raw form, not parsed)
+     (let ((bindings (expr-value expr))
+           (body (expr-args expr)))
+       (make-expr :type 'let
+                  :value bindings
+                  :args (mapcar #'constant-fold body))))
+
+    (t
+     ; Unknown type - don't optimize
+     expr)))
+
 ;;; Code generation for x86_64
 (defun emit-x86_64 (expr &optional (env nil))
   "Generate x86_64 machine code for expression with environment"
@@ -2607,9 +2699,10 @@
   "Compile a Lisp form to machine code for the target architecture"
   (let ((*target-arch* arch))
     (let* ((ir (parse form))
+           (optimized-ir (constant-fold ir))
            (code (ecase arch
-                   (:x86_64 (emit-x86_64 ir))
-                   (:arm64 (emit-arm64 ir)))))
+                   (:x86_64 (emit-x86_64 optimized-ir))
+                   (:arm64 (emit-arm64 optimized-ir)))))
       (bytes-to-vector code))))
 
 ;;; Write machine code to binary file with minimal ELF wrapper
