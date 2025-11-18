@@ -274,6 +274,15 @@
   (test-case oddp-even
     (assert-compiles-both '(oddp 4)))
 
+  (test-case signum-negative
+    (assert-compiles-both '(signum -5)))
+
+  (test-case signum-zero
+    (assert-compiles-both '(signum 0)))
+
+  (test-case signum-positive
+    (assert-compiles-both '(signum 5)))
+
   (test-case predicate-in-conditional
     (assert-compiles-both '(if (zerop (mod 10 2)) (evenp 10) (oddp 10)))))
 

@@ -878,6 +878,26 @@
                   (list #x48 #x83 #xE0 #x01)    ; and rax, 1 (get low bit)
                   (list #x48 #xC1 #xE0 #x04))) ; shl rax, 4 (retag)
 
+         ((eq op 'signum)
+          ;; Compile (signum a) - return -1, 0, or 1 based on sign
+          ;; Algorithm: (if (< a 0) -1 (if (> a 0) 1 0))
+          (append (emit-x86_64 (first args) env)
+                  (list #x48 #xC1 #xF8 #x04)    ; sar rax, 4 (untag)
+                  ;; Check if zero
+                  (list #x48 #x85 #xC0)         ; test rax, rax
+                  (list #x74 #x0E)              ; jz +14 (zero case)
+                  ;; Not zero: check sign
+                  (list #x48 #x31 #xDB)         ; xor rbx, rbx
+                  (list #x48 #x0F #x9E #xC3)    ; setle bl (1 if rax <= 0)
+                  (list #x48 #xD1 #xE3)         ; shl rbx, 1 (multiply by 2)
+                  (list #x48 #xFF #xCB)         ; dec rbx (2 -> 1, 0 -> -1)
+                  (list #x48 #x89 #xD8)         ; mov rax, rbx
+                  (list #x48 #xC1 #xE0 #x04)    ; shl rax, 4 (retag)
+                  (list #xEB #x05)              ; jmp +5 (skip zero case)
+                  ;; Zero case:
+                  (list #x48 #x31 #xC0)         ; xor rax, rax (rax = 0)
+                  (list #x48 #xC1 #xE0 #x04))) ; shl rax, 4 (retag to 0)
+
          ;; List operations - require runtime integration
          ((eq op 'cons)
           (error "cons requires runtime heap integration - use REPL for now"))
@@ -1474,6 +1494,18 @@
                   (list #x00 #x10 #x40 #xD3)      ; lsr x0, x0, #4 (untag)
                   (list #x00 #x04 #x00 #x92)      ; and x0, x0, #1
                   (list #x00 #x10 #x00 #xD3)))    ; lsl x0, x0, #4
+
+         ((eq op 'signum)
+          ;; Compile (signum a) - return -1, 0, or 1 based on sign
+          ;; Use conditional select: x < 0 ? -1 : (x > 0 ? 1 : 0)
+          (append (emit-arm64 (first args) env)
+                  (list #x00 #x10 #x44 #xD3)      ; lsr x0, x0, #4 (untag)
+                  (list #x1F #x00 #x00 #xF1)      ; cmp x0, #0
+                  (list #xE1 #xB3 #x9F #x1A)      ; csetm x1, lt (x1 = -1 if neg else 0)
+                  (list #xE2 #xC7 #x9A #x9A)      ; cset x2, gt (x2 = 1 if pos else 0)
+                  (list #x00 #x00 #x82 #x8B)      ; add x0, x0, x2 (combine)
+                  (list #x00 #x00 #x01 #x8B)      ; add x0, x0, x1
+                  (list #x00 #x10 #x00 #xD3)))    ; lsl x0, x0, #4 (retag)
 
          ;; List operations - require runtime integration
          ((eq op 'cons)
