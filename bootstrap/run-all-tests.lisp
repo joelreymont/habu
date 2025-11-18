@@ -42,6 +42,9 @@
   (test-case modulo
     (assert-compiles-both '(mod 17 5)))
 
+  (test-case remainder
+    (assert-compiles-both '(rem 17 5)))
+
   (test-case nested-arithmetic
     (assert-compiles-both '(+ (* 3 4) (/ 20 2)))))
 

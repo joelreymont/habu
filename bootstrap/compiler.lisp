@@ -662,6 +662,22 @@
                   (list #x48 #xC1 #xE0 #x04)    ; shl rax, 4 (retag result)
                   (list #x48 #x83 #xC4 #x08))) ; add rsp, 8
 
+         ((eq op 'rem)
+          ;; Compile (rem a b) - remainder operation (same as mod for positive numbers)
+          ;; For x86_64, idiv gives remainder in rdx (same as mod implementation)
+          (append (emit-x86_64 (first args) env)
+                  (list #x50)                   ; push rax
+                  (emit-x86_64 (second args) env)
+                  (list #x48 #x89 #xC3)         ; mov rbx, rax (divisor)
+                  (list #x48 #x8B #x04 #x24)    ; mov rax, [rsp] (dividend)
+                  (list #x48 #xC1 #xF8 #x04)    ; sar rax, 4 (untag dividend)
+                  (list #x48 #xC1 #xFB #x04)    ; sar rbx, 4 (untag divisor)
+                  (list #x48 #x99)              ; cqo (sign extend)
+                  (list #x48 #xF7 #xFB)         ; idiv rbx (rdx = remainder)
+                  (list #x48 #x89 #xD0)         ; mov rax, rdx (move remainder to rax)
+                  (list #x48 #xC1 #xE0 #x04)    ; shl rax, 4 (retag result)
+                  (list #x48 #x83 #xC4 #x08))) ; add rsp, 8
+
          ((eq op '<)
           ;; Compile (< a b) - returns 1 (true) or 0 (false) as fixnum
           (append (emit-x86_64 (first args) env)
@@ -1294,6 +1310,22 @@
                   (list #x21 #x10 #x44 #xD3)       ; lsr x1, x1, #4 (untag divisor)
                   (list #xE3 #x0C #xC1 #x9A)       ; sdiv x3, x0, x1 (quotient in x3)
                   ;; msub x0, x3, x1, x0  = x0 - (x3 * x1) = dividend - quotient*divisor
+                  (list #x00 #x80 #x01 #x9B)       ; msub x0, x0, x1, x3
+                  (list #x00 #x10 #x00 #xD3)       ; lsl x0, x0, #4 (retag result)
+                  (list #xFD #x7B #xC1 #xA8)))     ; ldp x29, x30, [sp], #16
+
+         ((eq op 'rem)
+          ;; Compile (rem a b) for ARM64 - remainder operation
+          ;; Same as mod (ARM64 sdiv gives truncating division, same as rem)
+          (append (emit-arm64 (first args) env)
+                  (list #xFD #x7B #xBF #xA9)       ; stp x29, x30, [sp, #-16]!
+                  (list #xE2 #x03 #x00 #xAA)       ; mov x2, x0 (save dividend)
+                  (emit-arm64 (second args) env)
+                  (list #xE1 #x03 #x00 #xAA)       ; mov x1, x0 (divisor to x1)
+                  (list #xE0 #x03 #x02 #xAA)       ; mov x0, x2 (dividend back to x0)
+                  (list #x00 #x10 #x44 #xD3)       ; lsr x0, x0, #4 (untag dividend)
+                  (list #x21 #x10 #x44 #xD3)       ; lsr x1, x1, #4 (untag divisor)
+                  (list #xE3 #x0C #xC1 #x9A)       ; sdiv x3, x0, x1 (quotient in x3)
                   (list #x00 #x80 #x01 #x9B)       ; msub x0, x0, x1, x3
                   (list #x00 #x10 #x00 #xD3)       ; lsl x0, x0, #4 (retag result)
                   (list #xFD #x7B #xC1 #xA8)))     ; ldp x29, x30, [sp], #16
