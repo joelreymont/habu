@@ -235,7 +235,22 @@
     (assert-compiles-both '(logtest 7 3)))
 
   (test-case logtest-false
-    (assert-compiles-both '(logtest 8 4))))
+    (assert-compiles-both '(logtest 8 4)))
+
+  (test-case logbitp-set
+    (assert-compiles-both '(logbitp 2 7)))
+
+  (test-case logbitp-unset
+    (assert-compiles-both '(logbitp 3 7)))
+
+  (test-case lognand-simple
+    (assert-compiles-both '(lognand 15 7)))
+
+  (test-case lognor-simple
+    (assert-compiles-both '(lognor 8 4)))
+
+  (test-case logeqv-simple
+    (assert-compiles-both '(logeqv 15 7))))
 
 ;;; Test numeric operators
 (test-group "Numeric Operators"

@@ -1088,6 +1088,53 @@
                   (list #x48 #xC1 #xE0 #x04)    ; shl rax, 4 (retag)
                   (list #x48 #x83 #xC4 #x08))) ; add rsp, 8
 
+         ((eq op 'logbitp)
+          ;; Compile (logbitp position integer) - test if bit at position is set
+          ;; Returns 1 if bit is set, 0 otherwise
+          (append (emit-x86_64 (first args) env)   ; position
+                  (list #x50)                        ; push rax
+                  (emit-x86_64 (second args) env)    ; integer
+                  (list #x48 #x8B #x0C #x24)         ; mov rcx, [rsp] (position)
+                  (list #x48 #xC1 #xF9 #x04)         ; sar rcx, 4 (untag position)
+                  (list #x48 #xC1 #xF8 #x04)         ; sar rax, 4 (untag integer)
+                  (list #x48 #xD3 #xF8)              ; sar rax, cl (shift right by position)
+                  (list #x48 #x83 #xE0 #x01)         ; and rax, 1 (get bit)
+                  (list #x48 #xC1 #xE0 #x04)         ; shl rax, 4 (retag)
+                  (list #x48 #x83 #xC4 #x08)))       ; add rsp, 8
+
+         ((eq op 'lognand)
+          ;; Compile (lognand a b) - bitwise NAND: ~(a & b)
+          (append (emit-x86_64 (first args) env)
+                  (list #x50)                   ; push rax
+                  (emit-x86_64 (second args) env)
+                  (list #x48 #x8B #x1C #x24)    ; mov rbx, [rsp]
+                  (list #x48 #x21 #xD8)         ; and rax, rbx
+                  (list #x48 #xF7 #xD0)         ; not rax
+                  (list #x48 #x83 #xE0 #xF0)    ; and rax, ~0xF (keep only data bits, preserve tag)
+                  (list #x48 #x83 #xC4 #x08))) ; add rsp, 8
+
+         ((eq op 'lognor)
+          ;; Compile (lognor a b) - bitwise NOR: ~(a | b)
+          (append (emit-x86_64 (first args) env)
+                  (list #x50)                   ; push rax
+                  (emit-x86_64 (second args) env)
+                  (list #x48 #x8B #x1C #x24)    ; mov rbx, [rsp]
+                  (list #x48 #x09 #xD8)         ; or rax, rbx
+                  (list #x48 #xF7 #xD0)         ; not rax
+                  (list #x48 #x83 #xE0 #xF0)    ; and rax, ~0xF (keep only data bits)
+                  (list #x48 #x83 #xC4 #x08))) ; add rsp, 8
+
+         ((eq op 'logeqv)
+          ;; Compile (logeqv a b) - bitwise equivalence: ~(a ^ b)
+          (append (emit-x86_64 (first args) env)
+                  (list #x50)                   ; push rax
+                  (emit-x86_64 (second args) env)
+                  (list #x48 #x8B #x1C #x24)    ; mov rbx, [rsp]
+                  (list #x48 #x31 #xD8)         ; xor rax, rbx
+                  (list #x48 #xF7 #xD0)         ; not rax
+                  (list #x48 #x83 #xE0 #xF0)    ; and rax, ~0xF (keep only data bits)
+                  (list #x48 #x83 #xC4 #x08))) ; add rsp, 8
+
          ((eq op 'gcd)
           ;; Compile (gcd a b) - greatest common divisor using Euclidean algorithm
           ;; Algorithm: gcd(a,0) = |a|, gcd(a,b) = gcd(b, a mod b)
@@ -2183,6 +2230,58 @@
                   (list #x00 #x00 #x01 #x8A)      ; and x0, x0, x1
                   (list #xE0 #x17 #x9F #x9A)      ; cset x0, ne (1 if result != 0)
                   (list #x00 #x10 #x00 #xD3)      ; lsl x0, x0, #4 (retag)
+                  (list #xFD #x7B #xC1 #xA8)))    ; ldp x29, x30, [sp], #16
+
+         ((eq op 'logbitp)
+          ;; Compile (logbitp position integer) for ARM64
+          (append (emit-arm64 (first args) env)       ; position
+                  (list #xFD #x7B #xBF #xA9)           ; stp x29, x30, [sp, #-16]!
+                  (list #xE2 #x03 #x00 #xAA)           ; mov x2, x0 (save position)
+                  (emit-arm64 (second args) env)       ; integer
+                  (list #x42 #x10 #x44 #xD3)           ; lsr x2, x2, #4 (untag position)
+                  (list #x00 #x10 #x44 #xD3)           ; lsr x0, x0, #4 (untag integer)
+                  (list #x00 #x24 #xC2 #x9A)           ; lsr x0, x0, x2 (shift right by position)
+                  (list #x00 #x04 #x00 #x92)           ; and x0, x0, #1 (get bit)
+                  (list #x00 #x10 #x00 #xD3)           ; lsl x0, x0, #4 (retag)
+                  (list #xFD #x7B #xC1 #xA8)))         ; ldp x29, x30, [sp], #16
+
+         ((eq op 'lognand)
+          ;; Compile (lognand a b) for ARM64 - bitwise NAND
+          (append (emit-arm64 (first args) env)
+                  (list #xFD #x7B #xBF #xA9)      ; stp x29, x30, [sp, #-16]!
+                  (list #xE2 #x03 #x00 #xAA)      ; mov x2, x0
+                  (emit-arm64 (second args) env)
+                  (list #xE1 #x03 #x00 #xAA)      ; mov x1, x0
+                  (list #xE0 #x03 #x02 #xAA)      ; mov x0, x2
+                  (list #x00 #x00 #x01 #x8A)      ; and x0, x0, x1
+                  (list #x00 #x00 #x20 #xAA)      ; mvn x0, x0 (bitwise not)
+                  (list #x00 #x3C #x00 #x92)      ; and x0, x0, #~0xF (keep only data bits)
+                  (list #xFD #x7B #xC1 #xA8)))    ; ldp x29, x30, [sp], #16
+
+         ((eq op 'lognor)
+          ;; Compile (lognor a b) for ARM64 - bitwise NOR
+          (append (emit-arm64 (first args) env)
+                  (list #xFD #x7B #xBF #xA9)      ; stp x29, x30, [sp, #-16]!
+                  (list #xE2 #x03 #x00 #xAA)      ; mov x2, x0
+                  (emit-arm64 (second args) env)
+                  (list #xE1 #x03 #x00 #xAA)      ; mov x1, x0
+                  (list #xE0 #x03 #x02 #xAA)      ; mov x0, x2
+                  (list #x00 #x00 #x01 #xAA)      ; orr x0, x0, x1
+                  (list #x00 #x00 #x20 #xAA)      ; mvn x0, x0 (bitwise not)
+                  (list #x00 #x3C #x00 #x92)      ; and x0, x0, #~0xF (keep only data bits)
+                  (list #xFD #x7B #xC1 #xA8)))    ; ldp x29, x30, [sp], #16
+
+         ((eq op 'logeqv)
+          ;; Compile (logeqv a b) for ARM64 - bitwise equivalence
+          (append (emit-arm64 (first args) env)
+                  (list #xFD #x7B #xBF #xA9)      ; stp x29, x30, [sp, #-16]!
+                  (list #xE2 #x03 #x00 #xAA)      ; mov x2, x0
+                  (emit-arm64 (second args) env)
+                  (list #xE1 #x03 #x00 #xAA)      ; mov x1, x0
+                  (list #xE0 #x03 #x02 #xAA)      ; mov x0, x2
+                  (list #x00 #x00 #x01 #xCA)      ; eor x0, x0, x1
+                  (list #x00 #x00 #x20 #xAA)      ; mvn x0, x0 (bitwise not)
+                  (list #x00 #x3C #x00 #x92)      ; and x0, x0, #~0xF (keep only data bits)
                   (list #xFD #x7B #xC1 #xA8)))    ; ldp x29, x30, [sp], #16
 
          ((eq op 'gcd)
