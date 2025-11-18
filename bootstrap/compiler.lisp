@@ -429,6 +429,64 @@
            ;; Simple expressions: safe to duplicate
            (parse `(zerop (logand ,x (1- ,boundary)))))))
 
+    ;; Additional utility functions
+    ((and (consp form) (eq (first form) 'cube))
+     ;; Function: (cube x) => (* x x x)
+     (let ((x (second form)))
+       (if (and (consp x) (not (eq (first x) 'quote)))
+           ;; Complex expression: bind to temp var
+           (let ((temp (gensym "CUBE")))
+             (parse `(let ((,temp ,x)) (* ,temp ,temp ,temp))))
+           ;; Simple expression: safe to duplicate
+           (parse `(* ,x ,x ,x)))))
+
+    ((and (consp form) (eq (first form) 'double))
+     ;; Function: (double x) => (* x 2)
+     (parse `(* ,(second form) 2)))
+
+    ((and (consp form) (eq (first form) 'half))
+     ;; Function: (half x) => (/ x 2)
+     (parse `(/ ,(second form) 2)))
+
+    ((and (consp form) (eq (first form) 'avg))
+     ;; Function: (avg x y) => (/ (+ x y) 2)
+     (parse `(/ (+ ,(second form) ,(third form)) 2)))
+
+    ((and (consp form) (eq (first form) 'range))
+     ;; Function: (range x y) => (- y x) - difference/range
+     (parse `(- ,(third form) ,(second form))))
+
+    ;; Bit manipulation utilities
+    ((and (consp form) (eq (first form) 'set-bit))
+     ;; Function: (set-bit x n) - set bit n in x
+     ;; => (logior x (ash 1 n))
+     (parse `(logior ,(second form) (ash 1 ,(third form)))))
+
+    ((and (consp form) (eq (first form) 'clear-bit))
+     ;; Function: (clear-bit x n) - clear bit n in x
+     ;; => (logand x (lognot (ash 1 n)))
+     (parse `(logand ,(second form) (lognot (ash 1 ,(third form))))))
+
+    ((and (consp form) (eq (first form) 'toggle-bit))
+     ;; Function: (toggle-bit x n) - flip bit n in x
+     ;; => (logxor x (ash 1 n))
+     (parse `(logxor ,(second form) (ash 1 ,(third form)))))
+
+    ((and (consp form) (eq (first form) 'mask))
+     ;; Function: (mask n) - create n-bit mask (2^n - 1)
+     ;; => (1- (ash 1 n))
+     (parse `(1- (ash 1 ,(second form)))))
+
+    ((and (consp form) (eq (first form) 'low-bits))
+     ;; Function: (low-bits x n) - extract low n bits
+     ;; => (logand x (mask n))
+     (parse `(logand ,(second form) (1- (ash 1 ,(third form))))))
+
+    ((and (consp form) (eq (first form) 'high-bit?))
+     ;; Predicate: Check if highest bit is set (negative in 2's complement)
+     ;; => (minusp x)
+     (parse `(minusp ,(second form))))
+
     ((and (consp form) (consp (first form)))
      ;; Function call: ((lambda ...) args) or ((fn) args)
      (let ((fn (first form))

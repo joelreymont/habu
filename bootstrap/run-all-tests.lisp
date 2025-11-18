@@ -1004,6 +1004,113 @@
   (test-case aligned?-expression
     (assert-compiles-both '(aligned? (* 4 8) 16))))
 
+;;; Test additional utility functions
+(test-group "Additional Utilities"
+  (test-case cube-simple
+    ; (cube x) => (* x x x)
+    (assert-compiles-both '(cube 3)))
+
+  (test-case cube-expression
+    (assert-compiles-both '(cube (+ 1 2))))
+
+  (test-case double-simple
+    ; (double x) => (* x 2)
+    (assert-compiles-both '(double 5)))
+
+  (test-case double-expression
+    (assert-compiles-both '(double (+ 3 4))))
+
+  (test-case half-simple
+    ; (half x) => (/ x 2)
+    (assert-compiles-both '(half 10)))
+
+  (test-case half-expression
+    (assert-compiles-both '(half (* 3 4))))
+
+  (test-case avg-simple
+    ; (avg x y) => (/ (+ x y) 2)
+    (assert-compiles-both '(avg 10 20)))
+
+  (test-case avg-expression
+    (assert-compiles-both '(avg (+ 5 5) (* 2 10))))
+
+  (test-case range-simple
+    ; (range x y) => (- y x)
+    (assert-compiles-both '(range 5 15)))
+
+  (test-case range-expression
+    (assert-compiles-both '(range (* 2 3) (+ 10 5)))))
+
+;;; Test bit manipulation utilities
+(test-group "Bit Manipulation Utilities"
+  (test-case set-bit-simple
+    ; (set-bit x n) => (logior x (ash 1 n))
+    ; set-bit(0, 2) = 4
+    (assert-compiles-both '(set-bit 0 2)))
+
+  (test-case set-bit-already-set
+    ; set-bit(7, 1) = 7 (bit already set)
+    (assert-compiles-both '(set-bit 7 1)))
+
+  (test-case set-bit-expression
+    (assert-compiles-both '(set-bit (+ 1 2) 3)))
+
+  (test-case clear-bit-simple
+    ; (clear-bit x n) => (logand x (lognot (ash 1 n)))
+    ; clear-bit(7, 1) = 5
+    (assert-compiles-both '(clear-bit 7 1)))
+
+  (test-case clear-bit-already-clear
+    ; clear-bit(5, 1) = 5 (bit already clear)
+    (assert-compiles-both '(clear-bit 5 1)))
+
+  (test-case clear-bit-expression
+    (assert-compiles-both '(clear-bit (* 2 4) 2)))
+
+  (test-case toggle-bit-simple
+    ; (toggle-bit x n) => (logxor x (ash 1 n))
+    ; toggle-bit(7, 3) = 15
+    (assert-compiles-both '(toggle-bit 7 3)))
+
+  (test-case toggle-bit-back
+    ; toggle-bit(7, 1) = 5
+    (assert-compiles-both '(toggle-bit 7 1)))
+
+  (test-case toggle-bit-expression
+    (assert-compiles-both '(toggle-bit (+ 4 3) 2)))
+
+  (test-case mask-simple
+    ; (mask n) => (1- (ash 1 n))
+    ; mask(3) = 7
+    (assert-compiles-both '(mask 3)))
+
+  (test-case mask-8
+    ; mask(8) = 255
+    (assert-compiles-both '(mask 8)))
+
+  (test-case mask-expression
+    (assert-compiles-both '(mask (+ 2 2))))
+
+  (test-case low-bits-simple
+    ; (low-bits x n) => (logand x (mask n))
+    ; low-bits(255, 4) = 15
+    (assert-compiles-both '(low-bits 255 4)))
+
+  (test-case low-bits-extract
+    ; low-bits(23, 3) = 7
+    (assert-compiles-both '(low-bits 23 3)))
+
+  (test-case low-bits-expression
+    (assert-compiles-both '(low-bits (* 8 3) 4)))
+
+  (test-case high-bit?-positive
+    ; high-bit? on positive number
+    (assert-compiles-both '(high-bit? 10)))
+
+  (test-case high-bit?-negative
+    ; high-bit? on negative number
+    (assert-compiles-both '(high-bit? -5))))
+
 ;;; Test error cases
 (test-group "Error Handling"
   (test-case unbound-variable
