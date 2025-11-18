@@ -600,6 +600,65 @@
      ;; Function: Square (alias for square)
      (parse `(square ,(second form))))
 
+    ;; Bit field operations
+    ((and (consp form) (eq (first form) 'bit-field))
+     ;; Function: Extract bit field from position with width
+     ;; (bit-field x pos width) => extract width bits starting at pos
+     ;; Formula: (logand (ash x (- pos)) (mask width))
+     (parse `(logand (ash ,(second form) (- ,(third form))) (mask ,(fourth form)))))
+
+    ((and (consp form) (eq (first form) 'bit-field-set))
+     ;; Function: Set bit field at position with width to value
+     ;; Clear the field, then OR in the new value
+     (let ((x (second form))
+           (pos (third form))
+           (width (fourth form))
+           (val (fifth form)))
+       (parse `(logior (logand ,x (lognot (ash (mask ,width) ,pos)))
+                       (ash (logand ,val (mask ,width)) ,pos)))))
+
+    ;; Additional math utilities
+    ((and (consp form) (eq (first form) 'divides?))
+     ;; Predicate: Check if x divides y (opposite of divisible?)
+     ;; (divides? x y) => (zerop (mod y x))
+     (parse `(zerop (mod ,(third form) ,(second form)))))
+
+    ((and (consp form) (eq (first form) 'coprime?))
+     ;; Predicate: Check if x and y are coprime (gcd = 1)
+     (parse `(= (gcd ,(second form) ,(third form)) 1)))
+
+    ((and (consp form) (eq (first form) 'lerp))
+     ;; Function: Linear interpolation
+     ;; lerp(a, b, t) = a + t * (b - a)
+     ;; For integer arithmetic: a + (t * (b - a)) / 100 (assuming t is 0-100)
+     (parse `(+ ,(second form)
+                (/ (* ,(fourth form) (- ,(third form) ,(second form))) 100))))
+
+    ((and (consp form) (eq (first form) 'median3))
+     ;; Function: Median of three values
+     ;; median3(a,b,c) = max(min(a,b), min(max(a,b), c))
+     (let ((a (second form))
+           (b (third form))
+           (c (fourth form)))
+       (parse `(max (min ,a ,b) (min (max ,a ,b) ,c)))))
+
+    ((and (consp form) (eq (first form) 'constrain))
+     ;; Function: Alias for clamp
+     (parse `(clamp ,(second form) ,(third form) ,(fourth form))))
+
+    ((and (consp form) (eq (first form) 'map-range))
+     ;; Function: Map value from one range to another
+     ;; map-range(x, in-min, in-max, out-min, out-max)
+     ;; = out-min + (x - in-min) * (out-max - out-min) / (in-max - in-min)
+     (let ((x (second form))
+           (in-min (third form))
+           (in-max (fourth form))
+           (out-min (fifth form))
+           (out-max (sixth form)))
+       (parse `(+ ,out-min
+                  (/ (* (- ,x ,in-min) (- ,out-max ,out-min))
+                     (- ,in-max ,in-min))))))
+
     ((and (consp form) (consp (first form)))
      ;; Function call: ((lambda ...) args) or ((fn) args)
      (let ((fn (first form))

@@ -1277,6 +1277,94 @@
   (test-case sqr-expression
     (assert-compiles-both '(sqr (+ 2 3)))))
 
+;;; Test bit field operations
+(test-group "Bit Field Operations"
+  (test-case bit-field-extract-simple
+    ; Extract 4 bits starting at position 2 from 0xFF (255)
+    ; 11111111 >> 2 = 00111111, mask 4 bits = 0x0F (15)
+    (assert-compiles-both '(bit-field 255 2 4)))
+
+  (test-case bit-field-extract-zero
+    ; Extract from position 0
+    (assert-compiles-both '(bit-field 170 0 4)))
+
+  (test-case bit-field-extract-high
+    ; Extract high bits
+    (assert-compiles-both '(bit-field 240 4 4)))
+
+  (test-case bit-field-set-simple
+    ; Set 4 bits at position 2 to value 5
+    (assert-compiles-both '(bit-field-set 0 2 4 5)))
+
+  (test-case bit-field-set-replace
+    ; Replace existing bits
+    (assert-compiles-both '(bit-field-set 255 2 4 0)))
+
+  (test-case bit-field-set-partial
+    (assert-compiles-both '(bit-field-set 128 0 4 15))))
+
+;;; Test additional math utilities
+(test-group "Additional Math Utilities"
+  (test-case divides?-true
+    ; Check if x divides y (opposite of divisible?)
+    ; (divides? 5 15) => true (5 divides 15)
+    (assert-compiles-both '(divides? 5 15)))
+
+  (test-case divides?-false
+    (assert-compiles-both '(divides? 5 17)))
+
+  (test-case coprime?-true
+    ; Check if x and y are coprime (gcd = 1)
+    (assert-compiles-both '(coprime? 15 28)))
+
+  (test-case coprime?-false
+    (assert-compiles-both '(coprime? 12 18)))
+
+  (test-case lerp-simple
+    ; Linear interpolation: lerp(0, 100, 50) = 50
+    (assert-compiles-both '(lerp 0 100 50)))
+
+  (test-case lerp-quarter
+    ; lerp(0, 100, 25) = 25
+    (assert-compiles-both '(lerp 0 100 25)))
+
+  (test-case lerp-offset
+    ; lerp(10, 20, 50) = 15
+    (assert-compiles-both '(lerp 10 20 50)))
+
+  (test-case median3-middle
+    ; Median of three values
+    (assert-compiles-both '(median3 5 10 15)))
+
+  (test-case median3-first
+    (assert-compiles-both '(median3 10 5 15)))
+
+  (test-case median3-last
+    (assert-compiles-both '(median3 5 15 10)))
+
+  (test-case constrain-simple
+    ; Alias for clamp
+    (assert-compiles-both '(constrain 5 0 10)))
+
+  (test-case constrain-low
+    (assert-compiles-both '(constrain -5 0 10)))
+
+  (test-case constrain-high
+    (assert-compiles-both '(constrain 15 0 10)))
+
+  (test-case map-range-simple
+    ; Map value from one range to another
+    ; map-range(5, 0, 10, 0, 100) = 50
+    (assert-compiles-both '(map-range 5 0 10 0 100)))
+
+  (test-case map-range-offset
+    ; map-range(15, 10, 20, 0, 100) = 50
+    (assert-compiles-both '(map-range 15 10 20 0 100)))
+
+  (test-case map-range-reverse
+    ; Reverse mapping
+    (assert-compiles-both '(map-range 5 0 10 100 0))))
+
 ;;; Test error cases
 (test-group "Error Handling"
   (test-case unbound-variable
