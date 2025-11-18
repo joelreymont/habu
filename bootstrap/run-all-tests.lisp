@@ -2028,6 +2028,226 @@
     ; 1 is not composite
     (assert-compiles-both '(composite? 1))))
 
+;;; Additional mathematical operations
+(test-group "Additional Mathematical Operations"
+  (test-case min*-two
+    ; Minimum of 2 values
+    (assert-compiles-both '(min* 5 3)))
+
+  (test-case min*-three
+    ; Minimum of 3 values
+    (assert-compiles-both '(min* 5 3 7)))
+
+  (test-case min*-four
+    ; Minimum of 4 values
+    (assert-compiles-both '(min* 10 3 7 5)))
+
+  (test-case max*-two
+    ; Maximum of 2 values
+    (assert-compiles-both '(max* 5 3)))
+
+  (test-case max*-three
+    ; Maximum of 3 values
+    (assert-compiles-both '(max* 5 3 7)))
+
+  (test-case max*-four
+    ; Maximum of 4 values
+    (assert-compiles-both '(max* 10 3 7 5)))
+
+  (test-case sum-empty
+    ; Sum of no values = 0
+    (assert-compiles-both '(sum)))
+
+  (test-case sum-one
+    ; Sum of one value
+    (assert-compiles-both '(sum 5)))
+
+  (test-case sum-many
+    ; Sum of multiple values
+    (assert-compiles-both '(sum 1 2 3 4 5)))
+
+  (test-case product-empty
+    ; Product of no values = 1
+    (assert-compiles-both '(product)))
+
+  (test-case product-one
+    ; Product of one value
+    (assert-compiles-both '(product 5)))
+
+  (test-case product-many
+    ; Product of multiple values
+    (assert-compiles-both '(product 2 3 4)))
+
+  (test-case negate-positive
+    ; Negate positive
+    (assert-compiles-both '(negate 5)))
+
+  (test-case negate-negative
+    ; Negate negative
+    (assert-compiles-both '(negate -5)))
+
+  (test-case sqr-diff-simple
+    ; (5 - 3)^2 = 4
+    (assert-compiles-both '(sqr-diff 5 3)))
+
+  (test-case sqr-diff-negative
+    ; (3 - 5)^2 = 4
+    (assert-compiles-both '(sqr-diff 3 5))))
+
+;;; More predicates
+(test-group "More Predicates"
+  (test-case negative?-true
+    ; -5 is negative
+    (assert-compiles-both '(negative? -5)))
+
+  (test-case negative?-false
+    ; 5 is not negative
+    (assert-compiles-both '(negative? 5)))
+
+  (test-case nonnegative?-positive
+    ; 5 is non-negative
+    (assert-compiles-both '(nonnegative? 5)))
+
+  (test-case nonnegative?-zero
+    ; 0 is non-negative
+    (assert-compiles-both '(nonnegative? 0)))
+
+  (test-case nonnegative?-negative
+    ; -5 is not non-negative
+    (assert-compiles-both '(nonnegative? -5)))
+
+  (test-case nonpositive?-negative
+    ; -5 is non-positive
+    (assert-compiles-both '(nonpositive? -5)))
+
+  (test-case nonpositive?-zero
+    ; 0 is non-positive
+    (assert-compiles-both '(nonpositive? 0)))
+
+  (test-case nonpositive?-positive
+    ; 5 is not non-positive
+    (assert-compiles-both '(nonpositive? 5)))
+
+  (test-case exact-power-of-2?-true
+    ; 8 is exactly 2^3
+    (assert-compiles-both '(exact-power-of-2? 8)))
+
+  (test-case exact-power-of-2?-false
+    ; 7 is not a power of 2
+    (assert-compiles-both '(exact-power-of-2? 7)))
+
+  (test-case multiple?-true
+    ; 12 is a multiple of 3
+    (assert-compiles-both '(multiple? 12 3)))
+
+  (test-case multiple?-false
+    ; 13 is not a multiple of 3
+    (assert-compiles-both '(multiple? 13 3)))
+
+  (test-case factor?-true
+    ; 3 is a factor of 12
+    (assert-compiles-both '(factor? 3 12)))
+
+  (test-case factor?-false
+    ; 5 is not a factor of 12
+    (assert-compiles-both '(factor? 5 12))))
+
+;;; Conditional expressions
+(test-group "Conditional Expressions"
+  (test-case and-let*-all-truthy
+    ; All bindings truthy
+    (assert-compiles-both '(and-let* ((x 5) (y 10)) (+ x y))))
+
+  (test-case and-let*-first-falsy
+    ; First binding falsy - short circuit
+    (assert-compiles-both '(and-let* ((x 0) (y 10)) (+ x y))))
+
+  (test-case or-let-first-truthy
+    ; Return first truthy value
+    (assert-compiles-both '(or-let (x 5) (y 10)))))
+
+;;; More bitwise utilities
+(test-group "More Bitwise Utilities"
+  (test-case bit-count-simple
+    ; Count bits in 7 (0b111)
+    (assert-compiles-both '(bit-count 7)))
+
+  (test-case popcount-simple
+    ; popcount is alias
+    (assert-compiles-both '(popcount 15)))
+
+  (test-case all-bits-set?-true
+    ; All bits of 0b111 are set in 0b1111
+    (assert-compiles-both '(all-bits-set? 15 7)))
+
+  (test-case all-bits-set?-false
+    ; Not all bits of 0b111 are set in 0b110
+    (assert-compiles-both '(all-bits-set? 6 7)))
+
+  (test-case any-bits-set?-true
+    ; Some bits match
+    (assert-compiles-both '(any-bits-set? 12 5)))
+
+  (test-case any-bits-set?-false
+    ; No bits match
+    (assert-compiles-both '(any-bits-set? 8 4)))
+
+  (test-case no-bits-set?-true
+    ; No bits match
+    (assert-compiles-both '(no-bits-set? 8 4)))
+
+  (test-case no-bits-set?-false
+    ; Some bits match
+    (assert-compiles-both '(no-bits-set? 12 5))))
+
+;;; More range utilities
+(test-group "More Range Utilities"
+  (test-case clamp-positive-negative
+    ; Clamp -5 to positive = 0
+    (assert-compiles-both '(clamp-positive -5)))
+
+  (test-case clamp-positive-already
+    ; 5 already positive
+    (assert-compiles-both '(clamp-positive 5)))
+
+  (test-case clamp-negative-positive
+    ; Clamp 5 to negative = 0
+    (assert-compiles-both '(clamp-negative 5)))
+
+  (test-case clamp-negative-already
+    ; -5 already negative
+    (assert-compiles-both '(clamp-negative -5)))
+
+  (test-case saturate-simple
+    ; Saturate is alias for clamp
+    (assert-compiles-both '(saturate 15 0 10))))
+
+;;; Misc utilities
+(test-group "Misc Utilities"
+  (test-case identity?-true
+    ; 5 equals 5
+    (assert-compiles-both '(identity? 5 5)))
+
+  (test-case identity?-false
+    ; 5 doesn't equal 6
+    (assert-compiles-both '(identity? 5 6)))
+
+  (test-case different?-true
+    ; 5 differs from 6
+    (assert-compiles-both '(different? 5 6)))
+
+  (test-case different?-false
+    ; 5 doesn't differ from 5
+    (assert-compiles-both '(different? 5 5)))
+
+  (test-case max-of-3-simple
+    ; Maximum of 3 values
+    (assert-compiles-both '(max-of-3 5 10 3)))
+
+  (test-case min-of-3-simple
+    ; Minimum of 3 values
+    (assert-compiles-both '(min-of-3 5 10 3))))
+
 ;;; Test error cases
 (test-group "Error Handling"
   (test-case unbound-variable

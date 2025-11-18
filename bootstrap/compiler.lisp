@@ -1194,6 +1194,189 @@
              (parse (if (and (> n 1) (not (is-prime n))) 1 0)))
            (error "composite? only supports compile-time constants"))))
 
+    ;; Additional mathematical operations
+    ((and (consp form) (eq (first form) 'min*))
+     ;; Function: Minimum of multiple values (varargs)
+     (let ((args (rest form)))
+       (cond ((null args) (error "min* requires at least one argument"))
+             ((null (cdr args)) (parse (first args)))
+             ((null (cddr args)) (parse `(min ,(first args) ,(second args))))
+             (t (parse `(min ,(first args) (min* ,@(cdr args))))))))
+
+    ((and (consp form) (eq (first form) 'max*))
+     ;; Function: Maximum of multiple values (varargs)
+     (let ((args (rest form)))
+       (cond ((null args) (error "max* requires at least one argument"))
+             ((null (cdr args)) (parse (first args)))
+             ((null (cddr args)) (parse `(max ,(first args) ,(second args))))
+             (t (parse `(max ,(first args) (max* ,@(cdr args))))))))
+
+    ((and (consp form) (eq (first form) 'sum))
+     ;; Function: Sum of multiple values
+     (let ((args (rest form)))
+       (cond ((null args) (parse 0))
+             ((null (cdr args)) (parse (first args)))
+             (t (parse `(+ ,@args))))))
+
+    ((and (consp form) (eq (first form) 'product))
+     ;; Function: Product of multiple values
+     (let ((args (rest form)))
+       (cond ((null args) (parse 1))
+             ((null (cdr args)) (parse (first args)))
+             (t (parse `(* ,@args))))))
+
+    ((and (consp form) (eq (first form) 'negate))
+     ;; Function: Negate value (unary minus)
+     (parse `(- ,(second form))))
+
+    ((and (consp form) (eq (first form) 'sqr-diff))
+     ;; Function: Square of difference (a - b)^2
+     (let ((a (second form))
+           (b (third form))
+           (diff (gensym "DIFF")))
+       (if (or (and (consp a) (not (eq (first a) 'quote)))
+               (and (consp b) (not (eq (first b) 'quote))))
+           (let ((temp-a (gensym "A"))
+                 (temp-b (gensym "B")))
+             (parse `(let ((,temp-a ,a))
+                       (let ((,temp-b ,b))
+                         (let ((,diff (- ,temp-a ,temp-b)))
+                           (* ,diff ,diff))))))
+           (parse `(let ((,diff (- ,a ,b)))
+                     (* ,diff ,diff))))))
+
+    ;; More predicates
+    ((and (consp form) (eq (first form) 'negative?))
+     ;; Predicate: Is value negative? (Scheme-style alias)
+     (parse `(minusp ,(second form))))
+
+    ((and (consp form) (eq (first form) 'nonnegative?))
+     ;; Predicate: Is value >= 0?
+     (parse `(not (minusp ,(second form)))))
+
+    ((and (consp form) (eq (first form) 'nonpositive?))
+     ;; Predicate: Is value <= 0?
+     (parse `(not (plusp ,(second form)))))
+
+    ((and (consp form) (eq (first form) 'exact-power-of-2?))
+     ;; Predicate: Is value exactly 2^n for some n >= 0?
+     (parse `(and (plusp ,(second form)) (power-of-2? ,(second form)))))
+
+    ((and (consp form) (eq (first form) 'multiple?))
+     ;; Predicate: Is a a multiple of b? (same as divisible?)
+     (parse `(divisible? ,(second form) ,(third form))))
+
+    ((and (consp form) (eq (first form) 'factor?))
+     ;; Predicate: Is a a factor of b? (same as divides?)
+     (parse `(divides? ,(second form) ,(third form))))
+
+    ;; Conditional expressions
+    ((and (consp form) (eq (first form) 'and-let*))
+     ;; Macro: Sequential binding with short-circuit
+     ;; (and-let* ((x expr1) (y expr2)) body) - stops if any binding is falsy
+     (let ((bindings (second form))
+           (body (cddr form)))
+       (if (null bindings)
+           (parse `(progn ,@body))
+           (let ((first-binding (first bindings))
+                 (rest-bindings (rest bindings)))
+             (parse `(let ((,(first first-binding) ,(second first-binding)))
+                       (when ,(first first-binding)
+                         (and-let* ,rest-bindings ,@body))))))))
+
+    ((and (consp form) (eq (first form) 'or-let))
+     ;; Macro: Bind and return first truthy value
+     ;; (or-let (x val1) (y val2)) - returns first truthy binding
+     (let ((bindings (rest form)))
+       (if (null bindings)
+           (parse 0)  ; Return 0 (falsy) if no bindings
+           (let ((binding (first bindings)))
+             (parse `(let ((,(first binding) ,(second binding)))
+                       (if ,(first binding)
+                           ,(first binding)
+                           (or-let ,@(rest bindings)))))))))
+
+    ((and (consp form) (eq (first form) 'dotimes))
+     ;; Macro: Execute body n times with counter
+     ;; (dotimes (i n) body...)
+     (let ((var (first (second form)))
+           (count (second (second form)))
+           (body (cddr form))
+           (counter (gensym "CNT"))
+           (limit (gensym "LIM")))
+       (parse `(let ((,limit ,count))
+                 (let ((,counter 0))
+                   (labels ((loop-fn ()
+                              (when (< ,counter ,limit)
+                                (let ((,var ,counter))
+                                  ,@body
+                                  (setq ,counter (1+ ,counter))
+                                  (loop-fn)))))
+                     (loop-fn)))))))
+
+    ;; More bitwise utilities
+    ((and (consp form) (eq (first form) 'bit-count))
+     ;; Function: Alias for logcount (population count)
+     (parse `(logcount ,(second form))))
+
+    ((and (consp form) (eq (first form) 'popcount))
+     ;; Function: Alias for logcount (population count)
+     (parse `(logcount ,(second form))))
+
+    ((and (consp form) (eq (first form) 'all-bits-set?))
+     ;; Predicate: Check if all bits in mask are set in value
+     ;; (value & mask) == mask
+     (let ((value (second form))
+           (mask (third form)))
+       (if (or (and (consp value) (not (eq (first value) 'quote)))
+               (and (consp mask) (not (eq (first mask) 'quote))))
+           (let ((temp-v (gensym "VAL"))
+                 (temp-m (gensym "MSK")))
+             (parse `(let ((,temp-v ,value))
+                       (let ((,temp-m ,mask))
+                         (= (logand ,temp-v ,temp-m) ,temp-m)))))
+           (parse `(= (logand ,value ,mask) ,mask)))))
+
+    ((and (consp form) (eq (first form) 'any-bits-set?))
+     ;; Predicate: Check if any bits in mask are set in value
+     ;; (value & mask) != 0
+     (parse `(logtest ,(third form) ,(second form))))
+
+    ((and (consp form) (eq (first form) 'no-bits-set?))
+     ;; Predicate: Check if no bits in mask are set in value
+     ;; (value & mask) == 0
+     (parse `(not (logtest ,(third form) ,(second form)))))
+
+    ;; More range utilities
+    ((and (consp form) (eq (first form) 'clamp-positive))
+     ;; Function: Clamp to positive values (max 0)
+     (parse `(max 0 ,(second form))))
+
+    ((and (consp form) (eq (first form) 'clamp-negative))
+     ;; Function: Clamp to negative values (min 0)
+     (parse `(min 0 ,(second form))))
+
+    ((and (consp form) (eq (first form) 'saturate))
+     ;; Function: Saturate to [min, max] - alias for clamp
+     (parse `(clamp ,(second form) ,(third form) ,(fourth form))))
+
+    ;; Misc utilities
+    ((and (consp form) (eq (first form) 'identity?))
+     ;; Predicate: Check if two values are identical
+     (parse `(= ,(second form) ,(third form))))
+
+    ((and (consp form) (eq (first form) 'different?))
+     ;; Predicate: Check if two values are different
+     (parse `(/= ,(second form) ,(third form))))
+
+    ((and (consp form) (eq (first form) 'max-of-3))
+     ;; Function: Alias for max3
+     (parse `(max3 ,(second form) ,(third form) ,(fourth form))))
+
+    ((and (consp form) (eq (first form) 'min-of-3))
+     ;; Function: Alias for min3
+     (parse `(min3 ,(second form) ,(third form) ,(fourth form))))
+
     ((and (consp form) (consp (first form)))
      ;; Function call: ((lambda ...) args) or ((fn) args)
      (let ((fn (first form))
