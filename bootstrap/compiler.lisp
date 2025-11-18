@@ -750,6 +750,32 @@
                   (list #x48 #xC1 #xE0 #x04)    ; shl rax, 4
                   (list #x48 #x83 #xC4 #x08)))
 
+         ((eq op 'eql)
+          ;; Compile (eql a b) - object identity
+          ;; For fixnums, same as =
+          (append (emit-x86_64 (first args) env)
+                  (list #x50)
+                  (emit-x86_64 (second args) env)
+                  (list #x48 #x8B #x1C #x24)    ; mov rbx, [rsp]
+                  (list #x48 #x39 #xC3)         ; cmp rbx, rax
+                  (list #x0F #x94 #xC0)         ; sete al (set if equal)
+                  (list #x48 #x0F #xB6 #xC0)    ; movzx rax, al
+                  (list #x48 #xC1 #xE0 #x04)    ; shl rax, 4
+                  (list #x48 #x83 #xC4 #x08)))
+
+         ((eq op 'eq)
+          ;; Compile (eq a b) - pointer equality
+          ;; For fixnums, same as =
+          (append (emit-x86_64 (first args) env)
+                  (list #x50)
+                  (emit-x86_64 (second args) env)
+                  (list #x48 #x8B #x1C #x24)    ; mov rbx, [rsp]
+                  (list #x48 #x39 #xC3)         ; cmp rbx, rax
+                  (list #x0F #x94 #xC0)         ; sete al (set if equal)
+                  (list #x48 #x0F #xB6 #xC0)    ; movzx rax, al
+                  (list #x48 #xC1 #xE0 #x04)    ; shl rax, 4
+                  (list #x48 #x83 #xC4 #x08)))
+
          ((eq op 'car)
           ;; Compile (car cons) - load car field
           ;; cons cells have car at offset 16 (after header)
@@ -1738,6 +1764,32 @@
                   (list #xE1 #x03 #x00 #xAA)       ; mov x1, x0
                   (list #x5F #x00 #x01 #xEB)       ; cmp x2, x1
                   (list #xE0 #x17 #x9F #x9A)       ; cset x0, ne (not equal)
+                  (list #x00 #x10 #x00 #xD3)       ; lsl x0, x0, #4
+                  (list #xFD #x7B #xC1 #xA8)))
+
+         ((eq op 'eql)
+          ;; Compile (eql a b) - object identity for ARM64
+          ;; For fixnums, same as =
+          (append (emit-arm64 (first args) env)
+                  (list #xFD #x7B #xBF #xA9)       ; stp x29, x30, [sp, #-16]!
+                  (list #xE2 #x03 #x00 #xAA)       ; mov x2, x0
+                  (emit-arm64 (second args) env)
+                  (list #xE1 #x03 #x00 #xAA)       ; mov x1, x0
+                  (list #x5F #x00 #x01 #xEB)       ; cmp x2, x1
+                  (list #xE0 #x07 #x9F #x9A)       ; cset x0, eq (equal)
+                  (list #x00 #x10 #x00 #xD3)       ; lsl x0, x0, #4
+                  (list #xFD #x7B #xC1 #xA8)))
+
+         ((eq op 'eq)
+          ;; Compile (eq a b) - pointer equality for ARM64
+          ;; For fixnums, same as =
+          (append (emit-arm64 (first args) env)
+                  (list #xFD #x7B #xBF #xA9)       ; stp x29, x30, [sp, #-16]!
+                  (list #xE2 #x03 #x00 #xAA)       ; mov x2, x0
+                  (emit-arm64 (second args) env)
+                  (list #xE1 #x03 #x00 #xAA)       ; mov x1, x0
+                  (list #x5F #x00 #x01 #xEB)       ; cmp x2, x1
+                  (list #xE0 #x07 #x9F #x9A)       ; cset x0, eq (equal)
                   (list #x00 #x10 #x00 #xD3)       ; lsl x0, x0, #4
                   (list #xFD #x7B #xC1 #xA8)))
 

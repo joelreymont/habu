@@ -583,7 +583,19 @@
     (assert-compiles-both '(equal 10 10)))
 
   (test-case not-equal-in-conditional
-    (assert-compiles-both '(if (/= 5 10) 100 200))))
+    (assert-compiles-both '(if (/= 5 10) 100 200)))
+
+  (test-case eql-equal
+    (assert-compiles-both '(eql 42 42)))
+
+  (test-case eql-not-equal
+    (assert-compiles-both '(eql 10 20)))
+
+  (test-case eq-equal
+    (assert-compiles-both '(eq 42 42)))
+
+  (test-case eq-not-equal
+    (assert-compiles-both '(eq 10 20))))
 
 ;;; Test complex expressions
 (test-group "Complex Expressions"
