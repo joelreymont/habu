@@ -2,11 +2,12 @@
 
 ## Session Summary
 
-This session focused on expanding the compiler's operator coverage, implementing a major optimization (constant folding), and updating documentation. Key accomplishments include:
+This session focused on expanding the compiler's operator coverage, implementing major optimizations, and improving language features. Key accomplishments include:
 - Added 4 new bitwise operators (logbitp, lognand, lognor, logeqv)
 - Implemented compile-time constant folding optimization
+- Added partial named-let support (non-recursive cases)
 - Updated OPERATORS.md to document all 81 operators
-- Added comprehensive tests (now 204 total, all passing)
+- All 204 tests passing
 
 ## Session Accomplishments (2025-11-18 - Continued Session 3)
 
@@ -33,7 +34,17 @@ This session focused on expanding the compiler's operator coverage, implementing
   - Faster compilation (less code to generate)
   - Improved runtime performance (constants pre-computed)
 
-### 3. Documentation Updates
+### 3. Partial Named-Let Implementation
+- Redesigned named-let to use dedicated 'named-let IR node type
+- Implemented code generation for x86_64 and ARM64
+- Non-recursive named-let now compiles and works correctly
+- Recursive cases give clearer error ("Unknown operator" vs confusing lambda error)
+- Added helper function to detect recursive calls
+- Foundation laid for future full TCO implementation
+- All 204 tests still passing (no regressions)
+- Limitations documented: full recursion requires TCO
+
+### 4. Documentation Updates
 - Updated OPERATORS.md with all new operators from recent sessions
 - Added Rounding Operators section (8 operators)
 - Added new arithmetic operators (gcd, lcm, isqrt, integer-length, expt)
