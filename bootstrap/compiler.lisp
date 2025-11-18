@@ -1119,6 +1119,24 @@
                   (list #x48 #xC7 #xC0 #x10 #x00 #x00 #x00) ; mov rax, 16 (tagged 1)
                   (list #x48 #x83 #xC4 #x08))) ; add rsp, 8
 
+         ;; Rounding functions
+         ;; Since we're working with fixnums (already integers), these are identity operations
+         ((eq op 'floor)
+          ;; floor(n) for integer n returns n
+          (emit-x86_64 (first args) env))
+
+         ((eq op 'ceiling)
+          ;; ceiling(n) for integer n returns n
+          (emit-x86_64 (first args) env))
+
+         ((eq op 'truncate)
+          ;; truncate(n) for integer n returns n
+          (emit-x86_64 (first args) env))
+
+         ((eq op 'round)
+          ;; round(n) for integer n returns n
+          (emit-x86_64 (first args) env))
+
          ;; List operations - require runtime integration
          ;; These operations need heap allocation and are not yet integrated with compiled code.
          ;; They work in the REPL (interpreted mode) which has access to the runtime heap.
@@ -1955,6 +1973,24 @@
                   ;; Exponent = 0: return 1
                   (list #x20 #x02 #x80 #xD2)       ; mov x0, #16 (tagged 1)
                   (list #xFD #x7B #xC1 #xA8)))     ; ldp x29, x30, [sp], #16
+
+         ;; Rounding functions
+         ;; Since we're working with fixnums (already integers), these are identity operations
+         ((eq op 'floor)
+          ;; floor(n) for integer n returns n
+          (emit-arm64 (first args) env))
+
+         ((eq op 'ceiling)
+          ;; ceiling(n) for integer n returns n
+          (emit-arm64 (first args) env))
+
+         ((eq op 'truncate)
+          ;; truncate(n) for integer n returns n
+          (emit-arm64 (first args) env))
+
+         ((eq op 'round)
+          ;; round(n) for integer n returns n
+          (emit-arm64 (first args) env))
 
          ;; List operations - require runtime integration
          ;; These operations need heap allocation and are not yet integrated with compiled code.

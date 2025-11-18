@@ -333,7 +333,43 @@
     (assert-compiles-both '(expt 3 4)))
 
   (test-case expt-base-one
-    (assert-compiles-both '(expt 1 10))))
+    (assert-compiles-both '(expt 1 10)))
+
+  (test-case floor-positive
+    (assert-compiles-both '(floor 42)))
+
+  (test-case floor-negative
+    (assert-compiles-both '(floor -17)))
+
+  (test-case floor-zero
+    (assert-compiles-both '(floor 0)))
+
+  (test-case ceiling-positive
+    (assert-compiles-both '(ceiling 42)))
+
+  (test-case ceiling-negative
+    (assert-compiles-both '(ceiling -17)))
+
+  (test-case ceiling-zero
+    (assert-compiles-both '(ceiling 0)))
+
+  (test-case truncate-positive
+    (assert-compiles-both '(truncate 42)))
+
+  (test-case truncate-negative
+    (assert-compiles-both '(truncate -17)))
+
+  (test-case truncate-zero
+    (assert-compiles-both '(truncate 0)))
+
+  (test-case round-positive
+    (assert-compiles-both '(round 42)))
+
+  (test-case round-negative
+    (assert-compiles-both '(round -17)))
+
+  (test-case round-zero
+    (assert-compiles-both '(round 0))))
 
 ;;; Test predicates
 (test-group "Predicates"
