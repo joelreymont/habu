@@ -18,14 +18,24 @@
 ;;; Global macro table for defmacro
 (defvar *macro-table* (make-hash-table :test 'eq))
 
-;;; Runtime integration - function addresses for FFI
+;;; Runtime integration - Bootstrap Phase 1
+;;;
+;;; BOOTSTRAP APPROACH (see docs/BOOTSTRAP_VS_STANDALONE.md):
+;;;   - Phase 1 (NOW): Use SBCL's alien-callable to create FFI trampolines
+;;;     Generated code calls runtime functions for heap allocation
+;;;     SBCL-dependent but allows rapid development and testing
+;;;
+;;;   - Phase 2 (FUTURE): Inline allocation in generated machine code
+;;;     No FFI dependencies, truly standalone operation
+;;;     Requires compiling runtime/memory.lisp to machine code
+;;;
 (defvar *runtime-heap* nil "Reference to the runtime heap structure")
 (defvar *runtime-cons-addr* nil "Address of runtime-cons trampoline")
 (defvar *runtime-car-addr* nil "Address of runtime-car trampoline")
 (defvar *runtime-cdr-addr* nil "Address of runtime-cdr trampoline")
 
 (defun initialize-runtime-integration ()
-  "Initialize runtime integration by loading runtime and getting function addresses"
+  "Initialize runtime integration (Phase 1: Bootstrap mode with FFI trampolines)"
   ;; Load runtime if not already loaded
   (unless (find-package :habu-runtime)
     (let ((runtime-path (merge-pathnames "../runtime/memory.lisp"
