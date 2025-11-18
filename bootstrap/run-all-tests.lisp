@@ -449,7 +449,25 @@
     (assert-compiles-both '(signum 5)))
 
   (test-case predicate-in-conditional
-    (assert-compiles-both '(if (zerop (mod 10 2)) (evenp 10) (oddp 10)))))
+    (assert-compiles-both '(if (zerop (mod 10 2)) (evenp 10) (oddp 10))))
+
+  (test-case numberp-fixnum
+    (assert-compiles-both '(numberp 42)))
+
+  (test-case integerp-fixnum
+    (assert-compiles-both '(integerp 42)))
+
+  (test-case atom-fixnum
+    (assert-compiles-both '(atom 42)))
+
+  (test-case listp-fixnum
+    (assert-compiles-both '(listp 42)))
+
+  (test-case consp-fixnum
+    (assert-compiles-both '(consp 42)))
+
+  (test-case symbolp-fixnum
+    (assert-compiles-both '(symbolp 42))))
 
 ;;; Test utility functions
 (test-group "Utility Functions"

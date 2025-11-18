@@ -894,6 +894,37 @@
                   (list #x48 #x83 #xE0 #x01)    ; and rax, 1 (get low bit)
                   (list #x48 #xC1 #xE0 #x04))) ; shl rax, 4 (retag)
 
+         ;; Type predicates (for fixnum-only system)
+         ((eq op 'numberp)
+          ;; numberp always returns true for fixnums
+          (append (emit-x86_64 (first args) env)  ; Evaluate arg (for side effects)
+                  (list #x48 #xC7 #xC0 #x10 #x00 #x00 #x00))) ; mov rax, 16 (tagged 1)
+
+         ((eq op 'integerp)
+          ;; integerp always returns true for fixnums
+          (append (emit-x86_64 (first args) env)
+                  (list #x48 #xC7 #xC0 #x10 #x00 #x00 #x00))) ; mov rax, 16 (tagged 1)
+
+         ((eq op 'atom)
+          ;; atom always returns true for fixnums (not conses)
+          (append (emit-x86_64 (first args) env)
+                  (list #x48 #xC7 #xC0 #x10 #x00 #x00 #x00))) ; mov rax, 16 (tagged 1)
+
+         ((eq op 'listp)
+          ;; listp always returns false for fixnums
+          (append (emit-x86_64 (first args) env)
+                  (list #x48 #x31 #xC0))) ; xor rax, rax (tagged 0)
+
+         ((eq op 'consp)
+          ;; consp always returns false for fixnums
+          (append (emit-x86_64 (first args) env)
+                  (list #x48 #x31 #xC0))) ; xor rax, rax (tagged 0)
+
+         ((eq op 'symbolp)
+          ;; symbolp always returns false for fixnums
+          (append (emit-x86_64 (first args) env)
+                  (list #x48 #x31 #xC0))) ; xor rax, rax (tagged 0)
+
          ((eq op 'signum)
           ;; Compile (signum a) - return -1, 0, or 1 based on sign
           ;; Algorithm: (if (< a 0) -1 (if (> a 0) 1 0))
@@ -1846,6 +1877,37 @@
                   (list #x00 #x10 #x40 #xD3)      ; lsr x0, x0, #4 (untag)
                   (list #x00 #x04 #x00 #x92)      ; and x0, x0, #1
                   (list #x00 #x10 #x00 #xD3)))    ; lsl x0, x0, #4
+
+         ;; Type predicates (for fixnum-only system)
+         ((eq op 'numberp)
+          ;; numberp always returns true for fixnums
+          (append (emit-arm64 (first args) env)
+                  (list #x20 #x02 #x80 #xD2)))    ; mov x0, #16 (tagged 1)
+
+         ((eq op 'integerp)
+          ;; integerp always returns true for fixnums
+          (append (emit-arm64 (first args) env)
+                  (list #x20 #x02 #x80 #xD2)))    ; mov x0, #16 (tagged 1)
+
+         ((eq op 'atom)
+          ;; atom always returns true for fixnums (not conses)
+          (append (emit-arm64 (first args) env)
+                  (list #x20 #x02 #x80 #xD2)))    ; mov x0, #16 (tagged 1)
+
+         ((eq op 'listp)
+          ;; listp always returns false for fixnums
+          (append (emit-arm64 (first args) env)
+                  (list #xE0 #x03 #x1F #xAA)))    ; mov x0, xzr (tagged 0)
+
+         ((eq op 'consp)
+          ;; consp always returns false for fixnums
+          (append (emit-arm64 (first args) env)
+                  (list #xE0 #x03 #x1F #xAA)))    ; mov x0, xzr (tagged 0)
+
+         ((eq op 'symbolp)
+          ;; symbolp always returns false for fixnums
+          (append (emit-arm64 (first args) env)
+                  (list #xE0 #x03 #x1F #xAA)))    ; mov x0, xzr (tagged 0)
 
          ((eq op 'signum)
           ;; Compile (signum a) - return -1, 0, or 1 based on sign
