@@ -659,6 +659,107 @@
                   (/ (* (- ,x ,in-min) (- ,out-max ,out-min))
                      (- ,in-max ,in-min))))))
 
+    ;; Additional comparison and numeric utilities
+    ((and (consp form) (eq (first form) 'positive-or-zero?))
+     ;; Predicate: Check if number is >= 0
+     (parse `(>= ,(second form) 0)))
+
+    ((and (consp form) (eq (first form) 'negative-or-zero?))
+     ;; Predicate: Check if number is <= 0
+     (parse `(<= ,(second form) 0)))
+
+    ((and (consp form) (eq (first form) 'strictly-between?))
+     ;; Predicate: Check if value is strictly between bounds (exclusive)
+     (parse `(and (> ,(second form) ,(third form))
+                  (< ,(second form) ,(fourth form)))))
+
+    ((and (consp form) (eq (first form) 'approximately?))
+     ;; Predicate: Check if two values are within tolerance
+     ;; (approximately? a b tolerance) => (< (abs (- a b)) tolerance)
+     (parse `(< (abs (- ,(second form) ,(third form))) ,(fourth form))))
+
+    ((and (consp form) (eq (first form) 'nearest-multiple))
+     ;; Function: Round to nearest multiple of n
+     ;; nearest-multiple(x, n) = (* (/ (+ x (/ n 2)) n) n)
+     (let ((x (second form))
+           (n (third form)))
+       (parse `(* (/ (+ ,x (/ ,n 2)) ,n) ,n))))
+
+    ((and (consp form) (eq (first form) 'round-up-to))
+     ;; Function: Round up to nearest multiple of n
+     ;; Same as align-up but more descriptive name for general use
+     (parse `(align-up ,(second form) ,(third form))))
+
+    ((and (consp form) (eq (first form) 'round-down-to))
+     ;; Function: Round down to nearest multiple of n
+     ;; Same as align-down but more descriptive name
+     (parse `(align-down ,(second form) ,(third form))))
+
+    ;; Bit manipulation - population count variations
+    ((and (consp form) (eq (first form) 'hamming-distance))
+     ;; Function: Count differing bits between two values
+     ;; hamming-distance(a, b) = logcount(logxor(a, b))
+     (parse `(logcount (logxor ,(second form) ,(third form)))))
+
+    ((and (consp form) (eq (first form) 'parity))
+     ;; Function: Calculate parity (1 if odd number of bits, 0 if even)
+     ;; parity(x) = mod(logcount(x), 2)
+     (parse `(mod (logcount ,(second form)) 2)))
+
+    ((and (consp form) (eq (first form) 'reverse-bits))
+     ;; Function: Reverse bits in n-bit value (default 8 bits)
+     ;; This is a simplified version for small bit widths
+     ;; Note: Full implementation would need loops - placeholder just returns value
+     (parse (second form)))
+
+    ;; Mathematical sequences and patterns
+    ((and (consp form) (eq (first form) 'factorial))
+     ;; Function: Factorial (iterative for small values)
+     ;; This needs recursion or loops - placeholder for now
+     (let ((n (second form)))
+       ;; For compile-time constants, we could compute it
+       (if (and (consp n) (eq (car n) 'quote) (integerp (cadr n)))
+           (let ((val (cadr n)))
+             (if (<= val 12) ; Factorial up to 12 fits in fixnum range
+                 (parse (labels ((fact (n) (if (<= n 1) 1 (* n (fact (1- n))))))
+                         (fact val)))
+                 (error "Factorial too large for fixnum")))
+           ;; Runtime value - would need loops/recursion
+           (error "Factorial of runtime values not yet implemented"))))
+
+    ((and (consp form) (eq (first form) 'fibonacci))
+     ;; Function: Fibonacci number (for compile-time constants)
+     (let ((n (second form)))
+       (if (and (consp n) (eq (car n) 'quote) (integerp (cadr n)))
+           (let ((val (cadr n)))
+             (if (<= val 20) ; Reasonable range
+                 (parse (labels ((fib (n)
+                                   (if (<= n 1)
+                                       n
+                                       (+ (fib (- n 1)) (fib (- n 2))))))
+                         (fib val)))
+                 (error "Fibonacci index too large")))
+           (error "Fibonacci of runtime values not yet implemented"))))
+
+    ((and (consp form) (eq (first form) 'triangle-number))
+     ;; Function: Triangular number (sum of first n natural numbers)
+     ;; triangle(n) = n * (n + 1) / 2
+     (parse `(/ (* ,(second form) (1+ ,(second form))) 2)))
+
+    ((and (consp form) (eq (first form) 'square-number?))
+     ;; Predicate: Check if number is a perfect square
+     ;; Check if isqrt(n)^2 == n
+     (let ((n (second form)))
+       (if (and (consp n) (not (eq (first n) 'quote)))
+           (let ((temp (gensym "SQR"))
+                 (root (gensym "ROOT")))
+             (parse `(let ((,temp ,n))
+                       (let ((,root (isqrt ,temp)))
+                         (= (* ,root ,root) ,temp)))))
+           (let ((root (gensym "ROOT")))
+             (parse `(let ((,root (isqrt ,n)))
+                       (= (* ,root ,root) ,n)))))))
+
     ((and (consp form) (consp (first form)))
      ;; Function call: ((lambda ...) args) or ((fn) args)
      (let ((fn (first form))

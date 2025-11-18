@@ -1365,6 +1365,113 @@
     ; Reverse mapping
     (assert-compiles-both '(map-range 5 0 10 100 0))))
 
+;;; Test additional comparison and numeric utilities
+(test-group "Additional Comparison and Numeric Utilities"
+  (test-case positive-or-zero?-positive
+    ; Check if number is >= 0
+    (assert-compiles-both '(positive-or-zero? 5)))
+
+  (test-case positive-or-zero?-zero
+    (assert-compiles-both '(positive-or-zero? 0)))
+
+  (test-case positive-or-zero?-negative
+    (assert-compiles-both '(positive-or-zero? -5)))
+
+  (test-case negative-or-zero?-negative
+    ; Check if number is <= 0
+    (assert-compiles-both '(negative-or-zero? -5)))
+
+  (test-case negative-or-zero?-zero
+    (assert-compiles-both '(negative-or-zero? 0)))
+
+  (test-case negative-or-zero?-positive
+    (assert-compiles-both '(negative-or-zero? 5)))
+
+  (test-case strictly-between?-true
+    ; Check if strictly between (exclusive)
+    (assert-compiles-both '(strictly-between? 5 1 10)))
+
+  (test-case strictly-between?-false-equal
+    (assert-compiles-both '(strictly-between? 1 1 10)))
+
+  (test-case strictly-between?-false-outside
+    (assert-compiles-both '(strictly-between? 15 1 10)))
+
+  (test-case approximately?-true
+    ; Check if within tolerance
+    (assert-compiles-both '(approximately? 10 12 3)))
+
+  (test-case approximately?-false
+    (assert-compiles-both '(approximately? 10 20 5)))
+
+  (test-case nearest-multiple-exact
+    ; Round to nearest multiple
+    (assert-compiles-both '(nearest-multiple 15 5)))
+
+  (test-case nearest-multiple-round-up
+    (assert-compiles-both '(nearest-multiple 17 5)))
+
+  (test-case nearest-multiple-round-down
+    (assert-compiles-both '(nearest-multiple 13 5)))
+
+  (test-case round-up-to-simple
+    ; Alias for align-up
+    (assert-compiles-both '(round-up-to 17 5)))
+
+  (test-case round-down-to-simple
+    ; Alias for align-down
+    (assert-compiles-both '(round-down-to 17 5))))
+
+;;; Test bit manipulation variations
+(test-group "Bit Manipulation Variations"
+  (test-case hamming-distance-same
+    ; Count differing bits
+    (assert-compiles-both '(hamming-distance 5 5)))
+
+  (test-case hamming-distance-different
+    (assert-compiles-both '(hamming-distance 5 10)))
+
+  (test-case hamming-distance-complement
+    (assert-compiles-both '(hamming-distance 255 0)))
+
+  (test-case parity-even
+    ; Parity: 0 if even number of bits, 1 if odd
+    (assert-compiles-both '(parity 7)))
+
+  (test-case parity-odd
+    (assert-compiles-both '(parity 15)))
+
+  (test-case parity-zero
+    (assert-compiles-both '(parity 0))))
+
+;;; Test mathematical sequences
+(test-group "Mathematical Sequences"
+  (test-case triangle-number-simple
+    ; Triangular number: n * (n + 1) / 2
+    (assert-compiles-both '(triangle-number 5)))
+
+  (test-case triangle-number-zero
+    (assert-compiles-both '(triangle-number 0)))
+
+  (test-case triangle-number-ten
+    (assert-compiles-both '(triangle-number 10)))
+
+  (test-case square-number?-true
+    ; Check if perfect square
+    (assert-compiles-both '(square-number? 16)))
+
+  (test-case square-number?-false
+    (assert-compiles-both '(square-number? 15)))
+
+  (test-case square-number?-one
+    (assert-compiles-both '(square-number? 1)))
+
+  (test-case square-number?-zero
+    (assert-compiles-both '(square-number? 0)))
+
+  (test-case square-number?-expression
+    (assert-compiles-both '(square-number? (* 5 5)))))
+
 ;;; Test error cases
 (test-group "Error Handling"
   (test-case unbound-variable
