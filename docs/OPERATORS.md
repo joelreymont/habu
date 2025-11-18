@@ -4,8 +4,8 @@
 
 This document provides a comprehensive reference for all operators implemented in the Habu Lisp compiler. All operators are implemented for both x86_64 and ARM64 architectures and work with tagged fixnum integers.
 
-**Total Operators**: 66
-**Test Coverage**: 134 compiler tests, 300 total tests (100% passing)
+**Total Operators**: 81
+**Test Coverage**: 198 compiler tests, 364 total tests (100% passing)
 **Architectures**: x86_64, ARM64
 
 ## Fixnum Tagging
@@ -17,7 +17,23 @@ All integers are tagged fixnums:
 
 ## Operator Categories
 
-### Arithmetic Operators (12 operators)
+Summary:
+- **Arithmetic** (17): +, -, *, /, mod, rem, min, max, abs, 1+, 1-, signum, gcd, lcm, isqrt, integer-length, expt
+- **Rounding** (8): floor, ceiling, truncate, round, ffloor, fceiling, ftruncate, fround
+- **Comparison** (9): <, >, =, <=, >=, /=, equal, eql, eq
+- **Boolean** (3): and, or, not
+- **Bitwise** (11): logand, logior, logxor, lognot, ash, logcount, logtest, logbitp, lognand, lognor, logeqv
+- **Predicates** (12): zerop, plusp, minusp, evenp, oddp, null, numberp, integerp, atom, listp, consp, symbolp
+- **Control Flow** (7): if, cond, case, when, unless, progn, begin
+- **Variables** (5): let, let*, setq, incf, decf
+- **Functions** (2): lambda, defun
+- **Macros** (1): defmacro
+- **Data** (5): quote, cons, car, cdr, list
+- **Utility** (1): identity
+
+**Total: 81 operators**
+
+### Arithmetic Operators (17 operators)
 
 #### `+` - Addition
 ```lisp
@@ -115,7 +131,104 @@ All integers are tagged fixnums:
 - x86_64: TEST, SETLE, conditional jumps
 - ARM64: CMP, CSETM, CSET (branchless)
 
-### Comparison Operators (7 operators)
+#### `gcd` - Greatest Common Divisor
+```lisp
+(gcd 48 18)      ; => 6
+(gcd 100 35)     ; => 5
+(gcd 17 13)      ; => 1
+```
+**Implementation**: Euclidean algorithm with loop
+
+#### `lcm` - Least Common Multiple
+```lisp
+(lcm 12 18)      ; => 36
+(lcm 4 6)        ; => 12
+```
+**Implementation**: Formula lcm(a,b) = |a*b|/gcd(a,b)
+
+#### `isqrt` - Integer Square Root
+```lisp
+(isqrt 16)       ; => 4
+(isqrt 17)       ; => 4
+(isqrt 100)      ; => 10
+```
+**Implementation**: Newton's method iteration
+
+#### `integer-length` - Bit Length
+```lisp
+(integer-length 7)    ; => 3
+(integer-length 255)  ; => 8
+(integer-length -1)   ; => 0
+```
+**Implementation**: BSR (bit scan reverse) instruction
+
+#### `expt` - Integer Exponentiation
+```lisp
+(expt 2 10)      ; => 1024
+(expt 3 4)       ; => 81
+(expt 5 0)       ; => 1
+```
+**Implementation**: Repeated multiplication loop
+
+### Rounding Operators (8 operators)
+
+#### `floor` - Floor (Identity for Fixnums)
+```lisp
+(floor 5)        ; => 5 (integers are already floored)
+(floor -3)       ; => -3
+```
+**Implementation**: Identity operation (fixnums are integers)
+
+#### `ceiling` - Ceiling (Identity for Fixnums)
+```lisp
+(ceiling 5)      ; => 5 (integers are already ceiled)
+(ceiling -3)     ; => -3
+```
+**Implementation**: Identity operation (fixnums are integers)
+
+#### `truncate` - Truncate (Identity for Fixnums)
+```lisp
+(truncate 5)     ; => 5 (integers are already truncated)
+(truncate -3)    ; => -3
+```
+**Implementation**: Identity operation (fixnums are integers)
+
+#### `round` - Round (Identity for Fixnums)
+```lisp
+(round 5)        ; => 5 (integers are already rounded)
+(round -3)       ; => -3
+```
+**Implementation**: Identity operation (fixnums are integers)
+
+#### `ffloor` - Floor Division
+```lisp
+(ffloor 7 3)     ; => 2 (floor of 7/3)
+(ffloor -7 3)    ; => -3 (rounds toward -infinity)
+```
+**Implementation**: Division with floor rounding adjustment
+
+#### `fceiling` - Ceiling Division
+```lisp
+(fceiling 7 3)   ; => 3 (ceiling of 7/3)
+(fceiling -7 3)  ; => -2 (rounds toward +infinity)
+```
+**Implementation**: Division with ceiling rounding adjustment
+
+#### `ftruncate` - Truncating Division
+```lisp
+(ftruncate 7 3)  ; => 2 (truncates toward zero)
+(ftruncate -7 3) ; => -2
+```
+**Implementation**: Standard integer division (IDIV)
+
+#### `fround` - Rounding Division
+```lisp
+(fround 7 3)     ; => 2 (rounds to nearest)
+(fround 8 3)     ; => 3
+```
+**Implementation**: Division with banker's rounding
+
+### Comparison Operators (9 operators)
 
 #### `<` - Less Than
 ```lisp
@@ -168,6 +281,20 @@ All integers are tagged fixnums:
 ```
 **Implementation**: Same as `=`
 
+#### `eql` - EQL Equality
+```lisp
+(eql 5 5)        ; => 1
+(eql 5 3)        ; => 0
+```
+**Implementation**: Fixnum comparison (same as `=` for fixnums)
+
+#### `eq` - EQ Identity
+```lisp
+(eq 5 5)         ; => 1
+(eq 5 3)         ; => 0
+```
+**Implementation**: Pointer/fixnum comparison (same as `=` for fixnums)
+
 ### Boolean Operators (3 operators)
 
 #### `and` - Logical AND
@@ -195,7 +322,7 @@ All integers are tagged fixnums:
 ```
 **Implementation**: TEST + SETZ/CSET
 
-### Bitwise Operators (7 operators)
+### Bitwise Operators (11 operators)
 
 #### `logand` - Bitwise AND
 ```lisp
@@ -249,7 +376,36 @@ All integers are tagged fixnums:
 **Implementation**: AND + test for zero
 **Returns**: 1 if any bits are set in both arguments, 0 otherwise
 
-### Predicates (6 operators)
+#### `logbitp` - Test Bit at Position
+```lisp
+(logbitp 2 7)    ; => 1 (bit 2 of 0111 is set)
+(logbitp 3 7)    ; => 0 (bit 3 of 0111 is not set)
+```
+**Implementation**: Shift right by position, test lowest bit
+**Returns**: 1 if bit at position is set, 0 otherwise
+
+#### `lognand` - Bitwise NAND
+```lisp
+(lognand 15 7)   ; => -8 (NOT (1111 & 0111))
+(lognand 3 3)    ; => -4 (NOT 0011)
+```
+**Implementation**: AND followed by NOT, with tag preservation
+
+#### `lognor` - Bitwise NOR
+```lisp
+(lognor 8 4)     ; => -13 (NOT (1000 | 0100))
+(lognor 0 0)     ; => -1 (NOT 0)
+```
+**Implementation**: OR followed by NOT, with tag preservation
+
+#### `logeqv` - Bitwise Equivalence (XNOR)
+```lisp
+(logeqv 15 7)    ; => -7 (NOT (1111 ^ 0111))
+(logeqv 5 5)     ; => -1 (NOT 0)
+```
+**Implementation**: XOR followed by NOT, with tag preservation
+
+### Predicates (12 operators)
 
 #### `zerop` - Test for Zero
 ```lisp
@@ -295,6 +451,44 @@ All integers are tagged fixnums:
 (null 5)         ; => 0 (false)
 ```
 **Implementation**: Same as `zerop`
+
+#### `numberp` - Test for Number
+```lisp
+(numberp 5)      ; => 1 (always true for fixnums)
+(numberp 0)      ; => 1
+```
+**Implementation**: Always returns 1 (fixnum-only system)
+
+#### `integerp` - Test for Integer
+```lisp
+(integerp 5)     ; => 1 (always true for fixnums)
+(integerp -10)   ; => 1
+```
+**Implementation**: Always returns 1 (fixnum-only system)
+
+#### `atom` - Test for Atom
+```lisp
+(atom 5)         ; => 1 (always true for fixnums)
+```
+**Implementation**: Always returns 1 (no cons cells yet)
+
+#### `listp` - Test for List
+```lisp
+(listp 5)        ; => 0 (always false for fixnums)
+```
+**Implementation**: Always returns 0 (fixnum-only system)
+
+#### `consp` - Test for Cons Cell
+```lisp
+(consp 5)        ; => 0 (always false for fixnums)
+```
+**Implementation**: Always returns 0 (no cons cells yet)
+
+#### `symbolp` - Test for Symbol
+```lisp
+(symbolp 5)      ; => 0 (always false for fixnums)
+```
+**Implementation**: Always returns 0 (fixnum-only system)
 
 ### Control Flow (7 operators)
 
@@ -536,11 +730,10 @@ All operators are implemented for both architectures:
 ### Future Additions
 
 Planned operators (see docs/NEXT_STEPS.md):
-- `gcd`, `lcm` - Number theory
-- `floor`, `ceiling`, `truncate`, `round` - Rounding
-- `expt` - Integer exponentiation
-- `sqrt`, `sin`, `cos`, `tan` - Math (requires floating point)
-- `random` - Random numbers
+- Heap-based list operations: runtime integration needed
+- Floating point: `sqrt`, `sin`, `cos`, `tan` (requires FPU support)
+- String operations: requires heap and string objects
+- `random` - Random number generation
 
 ## Testing
 
