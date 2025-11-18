@@ -383,6 +383,52 @@
      ;; log2(x) = integer-length(x) - 1
      (parse `(1- (integer-length ,(second form)))))
 
+    ;; Alignment utilities (boundary must be power of 2)
+    ((and (consp form) (eq (first form) 'align-up))
+     ;; Function: Align value up to boundary
+     ;; align-up(x, b) = (x + b - 1) & ~(b - 1)
+     (let ((x (second form))
+           (boundary (third form)))
+       (if (or (and (consp x) (not (eq (first x) 'quote)))
+               (and (consp boundary) (not (eq (first boundary) 'quote))))
+           ;; Complex expression: bind to temp vars
+           (let ((tx (gensym "ALIGN-X"))
+                 (tb (gensym "ALIGN-B")))
+             (parse `(let ((,tx ,x) (,tb ,boundary))
+                       (logand (+ ,tx (1- ,tb)) (lognot (1- ,tb))))))
+           ;; Simple expressions: safe to duplicate
+           (parse `(logand (+ ,x (1- ,boundary)) (lognot (1- ,boundary)))))))
+
+    ((and (consp form) (eq (first form) 'align-down))
+     ;; Function: Align value down to boundary
+     ;; align-down(x, b) = x & ~(b - 1)
+     (let ((x (second form))
+           (boundary (third form)))
+       (if (or (and (consp x) (not (eq (first x) 'quote)))
+               (and (consp boundary) (not (eq (first boundary) 'quote))))
+           ;; Complex expression: bind to temp vars
+           (let ((tx (gensym "ALIGN-X"))
+                 (tb (gensym "ALIGN-B")))
+             (parse `(let ((,tx ,x) (,tb ,boundary))
+                       (logand ,tx (lognot (1- ,tb))))))
+           ;; Simple expressions: safe to duplicate
+           (parse `(logand ,x (lognot (1- ,boundary)))))))
+
+    ((and (consp form) (eq (first form) 'aligned?))
+     ;; Predicate: Check if value is aligned to boundary
+     ;; aligned?(x, b) = (x & (b - 1)) == 0
+     (let ((x (second form))
+           (boundary (third form)))
+       (if (or (and (consp x) (not (eq (first x) 'quote)))
+               (and (consp boundary) (not (eq (first boundary) 'quote))))
+           ;; Complex expression: bind to temp vars
+           (let ((tx (gensym "ALIGN-X"))
+                 (tb (gensym "ALIGN-B")))
+             (parse `(let ((,tx ,x) (,tb ,boundary))
+                       (zerop (logand ,tx (1- ,tb))))))
+           ;; Simple expressions: safe to duplicate
+           (parse `(zerop (logand ,x (1- ,boundary)))))))
+
     ((and (consp form) (consp (first form)))
      ;; Function call: ((lambda ...) args) or ((fn) args)
      (let ((fn (first form))

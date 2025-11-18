@@ -945,6 +945,65 @@
   (test-case log2-expression
     (assert-compiles-both '(log2 (* 2 8)))))
 
+;;; Test alignment utilities
+(test-group "Alignment Utilities"
+  (test-case align-up-already-aligned
+    ; align-up(16, 8) = 16
+    (assert-compiles-both '(align-up 16 8)))
+
+  (test-case align-up-not-aligned
+    ; align-up(17, 8) = 24
+    (assert-compiles-both '(align-up 17 8)))
+
+  (test-case align-up-zero
+    ; align-up(0, 8) = 0
+    (assert-compiles-both '(align-up 0 8)))
+
+  (test-case align-up-boundary-16
+    ; align-up(23, 16) = 32
+    (assert-compiles-both '(align-up 23 16)))
+
+  (test-case align-up-expression
+    (assert-compiles-both '(align-up (+ 10 7) 8)))
+
+  (test-case align-down-already-aligned
+    ; align-down(16, 8) = 16
+    (assert-compiles-both '(align-down 16 8)))
+
+  (test-case align-down-not-aligned
+    ; align-down(17, 8) = 16
+    (assert-compiles-both '(align-down 17 8)))
+
+  (test-case align-down-zero
+    ; align-down(0, 8) = 0
+    (assert-compiles-both '(align-down 0 8)))
+
+  (test-case align-down-boundary-16
+    ; align-down(23, 16) = 16
+    (assert-compiles-both '(align-down 23 16)))
+
+  (test-case align-down-expression
+    (assert-compiles-both '(align-down (+ 10 7) 8)))
+
+  (test-case aligned?-true
+    ; aligned?(16, 8) = true
+    (assert-compiles-both '(aligned? 16 8)))
+
+  (test-case aligned?-false
+    ; aligned?(17, 8) = false
+    (assert-compiles-both '(aligned? 17 8)))
+
+  (test-case aligned?-zero
+    ; aligned?(0, 8) = true
+    (assert-compiles-both '(aligned? 0 8)))
+
+  (test-case aligned?-boundary-16
+    ; aligned?(32, 16) = true
+    (assert-compiles-both '(aligned? 32 16)))
+
+  (test-case aligned?-expression
+    (assert-compiles-both '(aligned? (* 4 8) 16))))
+
 ;;; Test error cases
 (test-group "Error Handling"
   (test-case unbound-variable
