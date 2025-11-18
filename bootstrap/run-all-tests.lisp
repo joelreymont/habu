@@ -318,7 +318,22 @@
     (assert-compiles-both '(lcm -4 6)))
 
   (test-case lcm-both-negative
-    (assert-compiles-both '(lcm -6 -8))))
+    (assert-compiles-both '(lcm -6 -8)))
+
+  (test-case expt-simple
+    (assert-compiles-both '(expt 2 3)))
+
+  (test-case expt-zero-exponent
+    (assert-compiles-both '(expt 5 0)))
+
+  (test-case expt-one-exponent
+    (assert-compiles-both '(expt 7 1)))
+
+  (test-case expt-larger
+    (assert-compiles-both '(expt 3 4)))
+
+  (test-case expt-base-one
+    (assert-compiles-both '(expt 1 10))))
 
 ;;; Test predicates
 (test-group "Predicates"

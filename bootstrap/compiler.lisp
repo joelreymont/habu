@@ -1082,6 +1082,43 @@
                   (list #x48 #x31 #xC0)         ; xor rax, rax (return 0)
                   (list #x48 #xC1 #xE0 #x04)))  ; shl rax, 4 (retag)
 
+         ((eq op 'expt)
+          ;; Compile (expt base exponent) - integer exponentiation
+          ;; Algorithm: repeated multiplication, result = base^exponent
+          (append (emit-x86_64 (first args) env)
+                  (list #x50)                   ; push rax (base)
+                  (emit-x86_64 (second args) env)
+                  (list #x48 #x89 #xC1)         ; mov rcx, rax (exponent)
+                  (list #x48 #x8B #x04 #x24)    ; mov rax, [rsp] (base)
+                  (list #x48 #xC1 #xF8 #x04)    ; sar rax, 4 (untag base)
+                  (list #x48 #xC1 #xF9 #x04)    ; sar rcx, 4 (untag exponent)
+                  ;; Handle special cases
+                  (list #x48 #x85 #xC9)         ; test rcx, rcx
+                  (list #x7C #x25)              ; jl +37 (negative exponent = 0)
+                  (list #x74 #x1C)              ; jz +28 (exponent = 0, return 1)
+                  (list #x48 #x83 #xF9 #x01)    ; cmp rcx, 1
+                  (list #x74 #x1A)              ; jz +26 (exponent = 1, return base)
+                  ;; Initialize result = 1, save base in rbx
+                  (list #x48 #x89 #xC3)         ; mov rbx, rax (save base)
+                  (list #x48 #xC7 #xC0 #x01 #x00 #x00 #x00) ; mov rax, 1
+                  ;; Loop: while (rcx > 0)
+                  (list #x48 #x85 #xC9)         ; test rcx, rcx
+                  (list #x74 #x09)              ; jz +9 (done)
+                  (list #x48 #x0F #xAF #xC3)    ; imul rax, rbx (result *= base)
+                  (list #x48 #xFF #xC9)         ; dec rcx
+                  (list #xEB #xF3)              ; jmp -13 (loop back)
+                  ;; Done: rax has result
+                  (list #x48 #xC1 #xE0 #x04)    ; shl rax, 4 (retag)
+                  (list #x48 #x83 #xC4 #x08)    ; add rsp, 8
+                  (list #xEB #x0C)              ; jmp +12 (skip special cases)
+                  ;; Exponent = 1: return base
+                  (list #x48 #xC1 #xE0 #x04)    ; shl rax, 4
+                  (list #x48 #x83 #xC4 #x08)    ; add rsp, 8
+                  (list #xEB #x05)              ; jmp +5
+                  ;; Exponent = 0: return 1
+                  (list #x48 #xC7 #xC0 #x10 #x00 #x00 #x00) ; mov rax, 16 (tagged 1)
+                  (list #x48 #x83 #xC4 #x08))) ; add rsp, 8
+
          ;; List operations - require runtime integration
          ;; These operations need heap allocation and are not yet integrated with compiled code.
          ;; They work in the REPL (interpreted mode) which has access to the runtime heap.
@@ -1880,6 +1917,44 @@
                   (list #x00 #x00 #x01 #xCB)       ; sub x0, x0, x1 (64 - clz = bit position + 1)
                   ;; Retag and return
                   (list #x00 #x10 #x00 #xD3)))     ; lsl x0, x0, #4 (retag)
+
+         ((eq op 'expt)
+          ;; Compile (expt base exponent) for ARM64
+          (append (emit-arm64 (first args) env)
+                  (list #xFD #x7B #xBF #xA9)       ; stp x29, x30, [sp, #-16]!
+                  (list #xE2 #x03 #x00 #xAA)       ; mov x2, x0 (save base)
+                  (emit-arm64 (second args) env)
+                  (list #xE1 #x03 #x00 #xAA)       ; mov x1, x0 (exponent to x1)
+                  (list #xE0 #x03 #x02 #xAA)       ; mov x0, x2 (base back to x0)
+                  (list #x00 #x10 #x44 #xD3)       ; lsr x0, x0, #4 (untag base)
+                  (list #x21 #x10 #x44 #xD3)       ; lsr x1, x1, #4 (untag exponent)
+                  ;; Check for special cases
+                  (list #x3F #x00 #x00 #xF1)       ; cmp x1, #0
+                  (list #x0A #x00 #x00 #x54)       ; b.lt +1 (negative exp)
+                  (list #x60 #x01 #x00 #x54)       ; b.eq +11 (exp = 0, return 1)
+                  (list #x3F #x04 #x00 #xF1)       ; cmp x1, #1
+                  (list #x80 #x01 #x00 #x54)       ; b.eq +12 (exp = 1, return base)
+                  ;; Initialize: x2 = result = 1, x3 = base
+                  (list #xE3 #x03 #x00 #xAA)       ; mov x3, x0 (save base)
+                  (list #x22 #x00 #x80 #xD2)       ; mov x2, #1 (result = 1)
+                  ;; Loop: while x1 > 0
+                  (list #x3F #x00 #x00 #xF1)       ; cmp x1, #0
+                  (list #x60 #x00 #x00 #x54)       ; b.eq +3 (done)
+                  (list #x42 #x7C #x03 #x9B)       ; mul x2, x2, x3 (result *= base)
+                  (list #x21 #x04 #x00 #xD1)       ; sub x1, x1, #1
+                  (list #xFD #xFF #xFF #x17)       ; b -3
+                  ;; Done: x2 has result
+                  (list #xE0 #x03 #x02 #xAA)       ; mov x0, x2
+                  (list #x00 #x10 #x00 #xD3)       ; lsl x0, x0, #4 (retag)
+                  (list #xFD #x7B #xC1 #xA8)       ; ldp x29, x30, [sp], #16
+                  (list #x03 #x08 #x00 #x14)       ; b +3 (skip special cases)
+                  ;; Exponent = 1: return base
+                  (list #x00 #x10 #x00 #xD3)       ; lsl x0, x0, #4
+                  (list #xFD #x7B #xC1 #xA8)       ; ldp x29, x30, [sp], #16
+                  (list #xC0 #x03 #x5F #xD6)       ; ret
+                  ;; Exponent = 0: return 1
+                  (list #x20 #x02 #x80 #xD2)       ; mov x0, #16 (tagged 1)
+                  (list #xFD #x7B #xC1 #xA8)))     ; ldp x29, x30, [sp], #16
 
          ;; List operations - require runtime integration
          ;; These operations need heap allocation and are not yet integrated with compiled code.
