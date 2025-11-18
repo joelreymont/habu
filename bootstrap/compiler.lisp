@@ -530,6 +530,48 @@
                        (and (plusp ,x) (plusp ,y))
                        (and (minusp ,x) (minusp ,y)))))))
 
+    ;; Bit rotation (circular shift)
+    ((and (consp form) (eq (first form) 'rotl))
+     ;; Function: Rotate left
+     ;; rotl(x, n, width) = (logior (ash (logand x (mask width)) n)
+     ;;                              (ash (logand x (mask width)) (- n width)))
+     ;; Simplified for fixnums: just use logior of left and right shifts
+     (let ((x (second form))
+           (n (third form))
+           (width (or (fourth form) 32))) ; default to 32-bit rotation
+       (parse `(let ((#1=#:val (logand ,x (mask ,width)))
+                     (#2=#:shift (mod ,n ,width)))
+                 (logior (logand (ash #1# #2#) (mask ,width))
+                         (ash #1# (- #2# ,width)))))))
+
+    ((and (consp form) (eq (first form) 'rotr))
+     ;; Function: Rotate right
+     ;; Same as rotl with negative shift
+     (let ((x (second form))
+           (n (third form))
+           (width (or (fourth form) 32)))
+       (parse `(rotl ,x (- ,width (mod ,n ,width)) ,width))))
+
+    ;; Conditional expressions
+    ((and (consp form) (eq (first form) 'if-let))
+     ;; Macro: (if-let var test then else)
+     ;; Bind var to test result, execute then if true, else otherwise
+     (let ((var (second form))
+           (test (third form))
+           (then-expr (fourth form))
+           (else-expr (fifth form)))
+       (parse `(let ((,var ,test))
+                 (if ,var ,then-expr ,else-expr)))))
+
+    ((and (consp form) (eq (first form) 'when-let))
+     ;; Macro: (when-let var test body...)
+     ;; Bind var to test result, execute body if true
+     (let ((var (second form))
+           (test (third form))
+           (body (cdddr form)))
+       (parse `(let ((,var ,test))
+                 (when ,var (progn ,@body))))))
+
     ((and (consp form) (consp (first form)))
      ;; Function call: ((lambda ...) args) or ((fn) args)
      (let ((fn (first form))

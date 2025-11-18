@@ -1182,6 +1182,54 @@
   (test-case same-sign?-expression
     (assert-compiles-both '(same-sign? (+ 2 3) (* -2 3)))))
 
+;;; Test bit rotation
+(test-group "Bit Rotation"
+  (test-case rotl-simple
+    ; Rotate left - (rotl 5 1 8) = 10
+    ; 00000101 << 1 = 00001010
+    (assert-compiles-both '(rotl 5 1 8)))
+
+  (test-case rotl-wrap
+    ; Rotate with wrap - (rotl 128 1 8) = 1
+    ; 10000000 << 1 = 00000001
+    (assert-compiles-both '(rotl 128 1 8)))
+
+  (test-case rotl-32bit
+    ; 32-bit rotation (default)
+    (assert-compiles-both '(rotl 1 1)))
+
+  (test-case rotr-simple
+    ; Rotate right - (rotr 10 1 8) = 5
+    ; 00001010 >> 1 = 00000101
+    (assert-compiles-both '(rotr 10 1 8)))
+
+  (test-case rotr-wrap
+    ; Rotate right with wrap - (rotr 1 1 8) = 128
+    ; 00000001 >> 1 = 10000000
+    (assert-compiles-both '(rotr 1 1 8))))
+
+;;; Test conditional macros
+(test-group "Conditional Macros"
+  (test-case if-let-truthy
+    ; (if-let var test then else)
+    (assert-compiles-both '(if-let x 5 (+ x 1) 0)))
+
+  (test-case if-let-falsy
+    (assert-compiles-both '(if-let x 0 (+ x 1) 99)))
+
+  (test-case if-let-expression
+    (assert-compiles-both '(if-let x (+ 2 3) (* x 2) 0)))
+
+  (test-case when-let-truthy
+    ; (when-let var test body...)
+    (assert-compiles-both '(when-let x 10 (+ x 5))))
+
+  (test-case when-let-falsy
+    (assert-compiles-both '(when-let x 0 (+ x 5))))
+
+  (test-case when-let-multiple-forms
+    (assert-compiles-both '(when-let x 5 (+ x 1) (+ x 2)))))
+
 ;;; Test error cases
 (test-group "Error Handling"
   (test-case unbound-variable
