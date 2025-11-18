@@ -18,6 +18,63 @@
 ;;; Global macro table for defmacro
 (defvar *macro-table* (make-hash-table :test 'eq))
 
+;;; Runtime integration - function addresses for FFI
+(defvar *runtime-heap* nil "Reference to the runtime heap structure")
+(defvar *runtime-cons-addr* nil "Address of runtime-cons trampoline")
+(defvar *runtime-car-addr* nil "Address of runtime-car trampoline")
+(defvar *runtime-cdr-addr* nil "Address of runtime-cdr trampoline")
+
+(defun initialize-runtime-integration ()
+  "Initialize runtime integration by loading runtime and getting function addresses"
+  ;; Load runtime if not already loaded
+  (unless (find-package :habu-runtime)
+    (let ((runtime-path (merge-pathnames "../runtime/memory.lisp"
+                                         (or *load-truename* *default-pathname-defaults*))))
+      (if (probe-file runtime-path)
+          (load runtime-path)
+          (error "Cannot find runtime/memory.lisp at ~A" runtime-path))))
+
+  ;; Initialize runtime heap
+  (let ((heap-sym (find-symbol "*HEAP*" :habu-runtime)))
+    (unless (and heap-sym (symbol-value heap-sym))
+      (funcall (find-symbol "INITIALIZE-RUNTIME" :habu-runtime)))
+    (setf *runtime-heap* (symbol-value heap-sym)))
+
+  ;; Create C-callable wrappers for runtime functions using SBCL's alien FFI
+  #+sbcl
+  (progn
+    ;; Define alien-callable wrappers that can be called from machine code
+    (sb-alien:define-alien-callable habu-cons-trampoline
+        sb-alien:unsigned-long ((car sb-alien:unsigned-long) (cdr sb-alien:unsigned-long))
+      (funcall (find-symbol "RUNTIME-CONS" :habu-runtime) car cdr))
+
+    (sb-alien:define-alien-callable habu-car-trampoline
+        sb-alien:unsigned-long ((cons-ptr sb-alien:unsigned-long))
+      (funcall (find-symbol "RUNTIME-CAR" :habu-runtime) cons-ptr))
+
+    (sb-alien:define-alien-callable habu-cdr-trampoline
+        sb-alien:unsigned-long ((cons-ptr sb-alien:unsigned-long))
+      (funcall (find-symbol "RUNTIME-CDR" :habu-runtime) cons-ptr))
+
+    ;; Get addresses of the trampolines using the correct SBCL mechanism:
+    ;; 1. alien-callable-function gets the callable object
+    ;; 2. alien-sap converts to System Area Pointer
+    ;; 3. sap-int gets the integer address
+    (setf *runtime-cons-addr*
+          (sb-alien:alien-sap (sb-alien:alien-callable-function 'habu-cons-trampoline)))
+    (setf *runtime-car-addr*
+          (sb-alien:alien-sap (sb-alien:alien-callable-function 'habu-car-trampoline)))
+    (setf *runtime-cdr-addr*
+          (sb-alien:alien-sap (sb-alien:alien-callable-function 'habu-cdr-trampoline))))
+
+  #-sbcl
+  (error "Runtime integration only supported on SBCL currently")
+
+  (format t "Runtime integration initialized:~%")
+  (format t "  cons trampoline: ~X~%" (sb-sys:sap-int *runtime-cons-addr*))
+  (format t "  car trampoline:  ~X~%" (sb-sys:sap-int *runtime-car-addr*))
+  (format t "  cdr trampoline:  ~X~%" (sb-sys:sap-int *runtime-cdr-addr*)))
+
 ;;; Compiler intermediate representation
 (defstruct expr
   type
@@ -2754,30 +2811,78 @@
                   (list #x48 #xC1 #xE0 #x04)    ; shl rax, 4 (retag result)
                   (list #x48 #x83 #xC4 #x08))) ; add rsp, 8
 
-         ;; List operations - require runtime integration
-         ;; These operations need heap allocation and are not yet integrated with compiled code.
-         ;; They work in the REPL (interpreted mode) which has access to the runtime heap.
-         ;; Future work: Implement FFI or compile runtime functions to machine code.
-         ;; See docs/RUNTIME_INTEGRATION.md for implementation plan.
+         ;; List operations - integrated with runtime heap via FFI trampolines
          ((eq op 'cons)
-          (error "cons requires runtime heap integration~%~
-                  Hint: cons works in the REPL. For compiled code, runtime integration is needed.~%~
-                  See docs/RUNTIME_INTEGRATION.md for details."))
+          ;; (cons car cdr) - allocate cons cell on heap
+          ;; Call runtime-cons trampoline following System V AMD64 ABI:
+          ;; Args: RDI (car), RSI (cdr), Return: RAX
+          (unless *runtime-cons-addr*
+            (error "Runtime not initialized. Call (initialize-runtime-integration) first."))
+          (let ((func-addr (sb-sys:sap-int *runtime-cons-addr*)))
+            (append
+             ;; Evaluate car into RAX
+             (emit-x86_64 (first args) env)
+             ;; Save car on stack
+             (list #x50)                          ; push rax
+             ;; Evaluate cdr into RAX
+             (emit-x86_64 (second args) env)
+             ;; Setup call: RDI=car, RSI=cdr
+             (list #x48 #x89 #xC6)                ; mov rsi, rax (cdr in RSI)
+             (list #x48 #x8B #x3C #x24)           ; mov rdi, [rsp] (car in RDI)
+             (list #x48 #x83 #xC4 #x08)           ; add rsp, 8 (pop car)
+             ;; Load function address and call
+             (list #x48 #xB8)                     ; movabs rax, imm64
+             (int-to-bytes func-addr 8)
+             (list #xFF #xD0))))                  ; call rax
 
          ((eq op 'car)
-          (error "car requires runtime heap integration~%~
-                  Hint: car works in the REPL. For compiled code, runtime integration is needed.~%~
-                  See docs/RUNTIME_INTEGRATION.md for details."))
+          ;; (car cons-ptr) - read car field from cons cell
+          ;; Call runtime-car trampoline: Arg: RDI (cons-ptr), Return: RAX
+          (unless *runtime-car-addr*
+            (error "Runtime not initialized. Call (initialize-runtime-integration) first."))
+          (let ((func-addr (sb-sys:sap-int *runtime-car-addr*)))
+            (append
+             ;; Evaluate cons expression into RAX
+             (emit-x86_64 (first args) env)
+             ;; Setup call: RDI=cons-ptr
+             (list #x48 #x89 #xC7)                ; mov rdi, rax
+             ;; Load function address and call
+             (list #x48 #xB8)                     ; movabs rax, imm64
+             (int-to-bytes func-addr 8)
+             (list #xFF #xD0))))                  ; call rax
 
          ((eq op 'cdr)
-          (error "cdr requires runtime heap integration~%~
-                  Hint: cdr works in the REPL. For compiled code, runtime integration is needed.~%~
-                  See docs/RUNTIME_INTEGRATION.md for details."))
+          ;; (cdr cons-ptr) - read cdr field from cons cell
+          ;; Call runtime-cdr trampoline: Arg: RDI (cons-ptr), Return: RAX
+          (unless *runtime-cdr-addr*
+            (error "Runtime not initialized. Call (initialize-runtime-integration) first."))
+          (let ((func-addr (sb-sys:sap-int *runtime-cdr-addr*)))
+            (append
+             ;; Evaluate cons expression into RAX
+             (emit-x86_64 (first args) env)
+             ;; Setup call: RDI=cons-ptr
+             (list #x48 #x89 #xC7)                ; mov rdi, rax
+             ;; Load function address and call
+             (list #x48 #xB8)                     ; movabs rax, imm64
+             (int-to-bytes func-addr 8)
+             (list #xFF #xD0))))                  ; call rax
 
          ((eq op 'list)
-          (error "list requires runtime heap integration~%~
-                  Hint: list works in the REPL. For compiled code, runtime integration is needed.~%~
-                  See docs/RUNTIME_INTEGRATION.md for details."))
+          ;; (list a b c ...) - build list by repeated cons
+          ;; Build from right to left using parsed cons operations
+          (if (null args)
+              ;; Empty list is 0 (nil)
+              (list #x48 #x31 #xC0)              ; xor rax, rax
+              ;; Build nested cons expressions with already-parsed args
+              (let ((cons-expr (reduce (lambda (rest-expr elem-expr)
+                                         (make-expr :type 'call
+                                                    :value 'cons
+                                                    :args (list elem-expr rest-expr)))
+                                       (reverse args)
+                                       :initial-value (make-expr :type 'fixnum
+                                                                 :value 0
+                                                                 :args nil))))
+                (emit-x86_64 cons-expr env))))
 
          (t
           (error "Unknown operator: ~S" op)))))))

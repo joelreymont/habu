@@ -2248,6 +2248,39 @@
     ; Minimum of 3 values
     (assert-compiles-both '(min-of-3 5 10 3))))
 
+;;; Test runtime integration (requires initialization)
+(test-group "Runtime Integration - List Operations"
+  ;; Initialize runtime before running these tests
+  (initialize-runtime-integration)
+
+  (test-case cons-simple
+    ; (cons 1 2) allocates cons cell
+    (assert-compiles '(cons 1 2) :x86_64 40))
+
+  (test-case car-simple
+    ; (car (cons 1 2)) reads car field
+    (assert-compiles '(car (cons 1 2)) :x86_64 50))
+
+  (test-case cdr-simple
+    ; (cdr (cons 1 2)) reads cdr field
+    (assert-compiles '(cdr (cons 1 2)) :x86_64 50))
+
+  (test-case list-empty
+    ; Empty list
+    (assert-compiles '(list) :x86_64 3))
+
+  (test-case list-simple
+    ; (list 1 2 3) creates linked list
+    (assert-compiles '(list 1 2 3) :x86_64 100))
+
+  (test-case list-nested-car-cdr
+    ; Nested list operations
+    (assert-compiles '(car (cdr (list 10 20 30))) :x86_64 100))
+
+  (test-case list-with-arithmetic
+    ; List with computed values
+    (assert-compiles '(list (+ 1 2) (* 3 4) (- 5 1)) :x86_64 100)))
+
 ;;; Test error cases
 (test-group "Error Handling"
   (test-case unbound-variable
