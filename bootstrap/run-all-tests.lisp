@@ -273,7 +273,22 @@
     (assert-compiles-both '(gcd -12 8)))
 
   (test-case gcd-both-negative
-    (assert-compiles-both '(gcd -24 -36))))
+    (assert-compiles-both '(gcd -24 -36)))
+
+  (test-case isqrt-perfect-square
+    (assert-compiles-both '(isqrt 16)))
+
+  (test-case isqrt-non-perfect
+    (assert-compiles-both '(isqrt 17)))
+
+  (test-case isqrt-zero
+    (assert-compiles-both '(isqrt 0)))
+
+  (test-case isqrt-one
+    (assert-compiles-both '(isqrt 1)))
+
+  (test-case isqrt-large
+    (assert-compiles-both '(isqrt 100))))
 
 ;;; Test predicates
 (test-group "Predicates"

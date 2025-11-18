@@ -979,6 +979,32 @@
                   (list #x48 #xC1 #xE0 #x04)    ; shl rax, 4 (retag)
                   (list #x48 #x83 #xC4 #x08))) ; add rsp, 8
 
+         ((eq op 'isqrt)
+          ;; Compile (isqrt n) - integer square root using Newton's method
+          ;; Algorithm: x_new = (x + n/x) / 2, iterate until convergence
+          (append (emit-x86_64 (first args) env)
+                  (list #x48 #xC1 #xF8 #x04)    ; sar rax, 4 (untag)
+                  ;; Handle special cases
+                  (list #x48 #x83 #xF8 #x01)    ; cmp rax, 1
+                  (list #x76 #x1E)              ; jbe +30 (return rax if <= 1)
+                  ;; Initialize: x = n/2
+                  (list #x48 #x89 #xC3)         ; mov rbx, rax (save n in rbx)
+                  (list #x48 #xD1 #xE8)         ; shr rax, 1 (x = n/2)
+                  ;; Newton loop: while (true)
+                  (list #x48 #x89 #xC1)         ; mov rcx, rax (save old x)
+                  (list #x48 #x89 #xD8)         ; mov rax, rbx (n)
+                  (list #x48 #x99)              ; cqo
+                  (list #x48 #xF7 #xF9)         ; idiv rcx (n/x)
+                  (list #x48 #x01 #xC8)         ; add rax, rcx (n/x + x)
+                  (list #x48 #xD1 #xE8)         ; shr rax, 1 ((n/x + x)/2)
+                  (list #x48 #x39 #xC1)         ; cmp rcx, rax
+                  (list #x7F #x02)              ; jg +2 (if old > new, continue)
+                  (list #xEB #x05)              ; jmp +5 (converged, use old value)
+                  (list #xEB #xE9)              ; jmp -23 (back to loop start)
+                  (list #x48 #x89 #xC8)         ; mov rax, rcx (use old x)
+                  ;; Retag and return
+                  (list #x48 #xC1 #xE0 #x04)))  ; shl rax, 4 (retag)
+
          ;; List operations - require runtime integration
          ;; These operations need heap allocation and are not yet integrated with compiled code.
          ;; They work in the REPL (interpreted mode) which has access to the runtime heap.
@@ -1679,6 +1705,31 @@
                   ;; Done: x0 has GCD
                   (list #x00 #x10 #x00 #xD3)       ; lsl x0, x0, #4 (retag)
                   (list #xFD #x7B #xC1 #xA8)))     ; ldp x29, x30, [sp], #16
+
+         ((eq op 'isqrt)
+          ;; Compile (isqrt n) for ARM64 - integer square root using Newton's method
+          (append (emit-arm64 (first args) env)
+                  (list #x00 #x10 #x44 #xD3)       ; lsr x0, x0, #4 (untag)
+                  ;; Handle special cases: if n <= 1, return n
+                  (list #x1F #x08 #x00 #xF1)       ; cmp x0, #2
+                  (list #xC3 #x00 #x00 #x54)       ; b.lo +6 (skip to retag if < 2)
+                  ;; Initialize: x1 = n, x2 = n/2 (initial guess)
+                  (list #xE1 #x03 #x00 #xAA)       ; mov x1, x0 (save n)
+                  (list #x02 #x08 #x40 #xD3)       ; lsr x2, x0, #1 (x2 = n/2)
+                  ;; Newton loop
+                  (list #xE3 #x03 #x02 #xAA)       ; mov x3, x2 (save old guess)
+                  (list #xE0 #x03 #x01 #xAA)       ; mov x0, x1 (n)
+                  (list #xE0 #x0C #xC3 #x9A)       ; sdiv x0, x0, x3 (n/x)
+                  (list #x00 #x00 #x03 #x8B)       ; add x0, x0, x3 (n/x + x)
+                  (list #x02 #x08 #x40 #xD3)       ; lsr x2, x0, #1 ((n/x + x)/2)
+                  ;; Check convergence: if old >= new, done
+                  (list #x7F #x00 #x02 #xEB)       ; cmp x3, x2
+                  (list #x42 #x00 #x00 #x54)       ; b.hs +2 (if old >= new, use old)
+                  (list #xF9 #xFF #xFF #x17)       ; b -7 (back to loop)
+                  ;; Use old value (converged)
+                  (list #xE0 #x03 #x03 #xAA)       ; mov x0, x3 (result)
+                  ;; Retag and return
+                  (list #x00 #x10 #x00 #xD3)))     ; lsl x0, x0, #4 (retag)
 
          ;; List operations - require runtime integration
          ;; These operations need heap allocation and are not yet integrated with compiled code.
