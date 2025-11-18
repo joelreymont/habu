@@ -4,8 +4,8 @@
 
 This document provides a comprehensive reference for all operators implemented in the Habu Lisp compiler. All operators are implemented for both x86_64 and ARM64 architectures and work with tagged fixnum integers.
 
-**Total Operators**: 191 (163 core + 28 c[ad]r combinations)
-**Test Coverage**: 439 compiler tests (100% passing)
+**Total Operators**: 210 (182 core + 28 c[ad]r combinations)
+**Test Coverage**: 493 compiler tests (100% passing)
 **Architectures**: x86_64, ARM64
 **Optimizations**: Constant folding, algebraic simplifications
 
@@ -19,12 +19,13 @@ All integers are tagged fixnums:
 ## Operator Categories
 
 Summary:
-- **Arithmetic** (36): +, -, *, /, mod, rem, min, max, abs, 1+, 1-, signum, gcd, lcm, isqrt, integer-length, expt, square, neg, log2, cube, double, half, avg, range, quot, reciprocal, sqr, lerp, median3, map-range, nearest-multiple, triangle-number, factorial, fibonacci, next-power-of-2, prev-power-of-2
+- **Arithmetic** (38): +, -, *, /, mod, rem, min, max, abs, 1+, 1-, signum, gcd, lcm, isqrt, integer-length, expt, square, neg, log2, cube, double, half, avg, range, quot, reciprocal, sqr, lerp, median3, map-range, nearest-multiple, triangle-number, factorial, fibonacci, next-power-of-2, prev-power-of-2, pentagonal-number, hexagonal-number
+- **Arithmetic Aliases** (2): inc, dec
 - **Rounding** (10): floor, ceiling, truncate, round, ffloor, fceiling, ftruncate, fround, round-up-to, round-down-to
-- **Comparison** (12): <, >, =, <=, >=, /=, equal, eql, eq, min3, max3, sign
-- **Boolean** (3): and, or, not
-- **Bitwise** (29): logand, logior, logxor, lognot, ash, logcount, logtest, logbitp, lognand, lognor, logeqv, logandc1, logandc2, logorc1, logorc2, set-bit, clear-bit, toggle-bit, mask, low-bits, rotl, rotr, bit-field, bit-field-set, hamming-distance, parity, reverse-bits, count-leading-zeros, count-trailing-zeros
-- **Predicates** (32): zerop, plusp, minusp, evenp, oddp, null, numberp, integerp, atom, listp, consp, symbolp, between, power-of-2?, aligned?, high-bit?, within?, outside?, same-sign?, nonzero?, divisible?, multiple-of?, divides?, coprime?, positive-or-zero?, negative-or-zero?, strictly-between?, approximately?, square-number?, in-range?, out-of-range?
+- **Comparison** (14): <, >, =, <=, >=, /=, equal, eql, eq, min3, max3, sign, compare, clamp-01
+- **Boolean** (7): and, or, not, implies, xnor, nand, nor
+- **Bitwise** (32): logand, logior, logxor, lognot, ash, logcount, logtest, logbitp, lognand, lognor, logeqv, logandc1, logandc2, logorc1, logorc2, set-bit, clear-bit, toggle-bit, mask, low-bits, rotl, rotr, bit-field, bit-field-set, hamming-distance, parity, reverse-bits, count-leading-zeros, count-trailing-zeros, bit-width, msb-position, lsb-position
+- **Predicates** (38): zerop, plusp, minusp, evenp, oddp, null, numberp, integerp, atom, listp, consp, symbolp, between, power-of-2?, aligned?, high-bit?, within?, outside?, same-sign?, nonzero?, divisible?, multiple-of?, divides?, coprime?, positive-or-zero?, negative-or-zero?, strictly-between?, approximately?, square-number?, in-range?, out-of-range?, triangular-number?, pentagonal-number?, hexagonal-number?, one?, negative-one?, positive-power-of-2?
 - **Scheme Aliases** (6): zero?, positive?, negative?, even?, odd?, number?
 - **Control Flow** (10): if, cond, case, when, unless, progn, begin, if-let, when-let, select
 - **Variables** (6): let, let*, let1, setq, incf, decf
@@ -34,7 +35,7 @@ Summary:
 - **Utility** (11): identity, clamp, align-up, align-down, constrain, bool->int, int->bool, negate-if, swap-if, wrap, wrap-range
 - **C[ad]r** (28): caar, cadr, cdar, cddr, caaar, caadr, cadar, caddr, cdaar, cdadr, cddar, cdddr, caaaar, caaadr, caadar, caaddr, cadaar, cadadr, caddar, cadddr, cdaaar, cdaadr, cdadar, cdaddr, cddaar, cddadr, cdddar, cddddr
 
-**Total: 163 core operators + 28 c[ad]r combinations = 191 operators**
+**Total: 182 core operators + 28 c[ad]r combinations = 210 operators**
 
 ### Arithmetic Operators (17 operators)
 

@@ -1602,6 +1602,236 @@
     ; Wrap negative to range
     (assert-compiles-both '(wrap-range 5 10 20))))
 
+;;; Additional bit utilities
+(test-group "Additional Bit Utilities"
+  (test-case bit-width-one
+    ; 1 requires 1 bit
+    (assert-compiles-both '(bit-width 1)))
+
+  (test-case bit-width-seven
+    ; 7 requires 3 bits
+    (assert-compiles-both '(bit-width 7)))
+
+  (test-case bit-width-sixteen
+    ; 16 requires 5 bits
+    (assert-compiles-both '(bit-width 16)))
+
+  (test-case msb-position-one
+    ; MSB of 1 is at position 0
+    (assert-compiles-both '(msb-position 1)))
+
+  (test-case msb-position-eight
+    ; MSB of 8 is at position 3
+    (assert-compiles-both '(msb-position 8)))
+
+  (test-case msb-position-large
+    ; MSB of 255
+    (assert-compiles-both '(msb-position 255)))
+
+  (test-case lsb-position-one
+    ; LSB of 1 is at position 0
+    (assert-compiles-both '(lsb-position 1)))
+
+  (test-case lsb-position-eight
+    ; LSB of 8 is at position 3
+    (assert-compiles-both '(lsb-position 8)))
+
+  (test-case lsb-position-six
+    ; LSB of 6 (0b110) is at position 1
+    (assert-compiles-both '(lsb-position 6))))
+
+;;; Arithmetic aliases
+(test-group "Arithmetic Aliases"
+  (test-case inc-simple
+    ; Increment 5
+    (assert-compiles-both '(inc 5)))
+
+  (test-case inc-zero
+    ; Increment 0
+    (assert-compiles-both '(inc 0)))
+
+  (test-case dec-simple
+    ; Decrement 5
+    (assert-compiles-both '(dec 5)))
+
+  (test-case dec-one
+    ; Decrement 1
+    (assert-compiles-both '(dec 1))))
+
+;;; Comparison utilities
+(test-group "Comparison Utilities"
+  (test-case compare-less
+    ; 3 < 5 returns -1
+    (assert-compiles-both '(compare 3 5)))
+
+  (test-case compare-equal
+    ; 5 = 5 returns 0
+    (assert-compiles-both '(compare 5 5)))
+
+  (test-case compare-greater
+    ; 7 > 5 returns 1
+    (assert-compiles-both '(compare 7 5)))
+
+  (test-case compare-expression
+    ; Compare with expressions
+    (assert-compiles-both '(compare (* 2 3) (+ 4 2))))
+
+  (test-case clamp-01-in-range
+    ; 0.5 clamped to [0, 1] stays 0.5 (but we use 0 since no floats)
+    (assert-compiles-both '(clamp-01 0)))
+
+  (test-case clamp-01-below
+    ; -5 clamped to [0, 1] becomes 0
+    (assert-compiles-both '(clamp-01 -5)))
+
+  (test-case clamp-01-above
+    ; 10 clamped to [0, 1] becomes 1
+    (assert-compiles-both '(clamp-01 10))))
+
+;;; Logical operators
+(test-group "Logical Operators"
+  (test-case implies-true-true
+    ; true => true = true
+    (assert-compiles-both '(implies (= 1 1) (= 2 2))))
+
+  (test-case implies-true-false
+    ; true => false = false
+    (assert-compiles-both '(implies (= 1 1) (= 1 2))))
+
+  (test-case implies-false-true
+    ; false => true = true
+    (assert-compiles-both '(implies (= 1 2) (= 1 1))))
+
+  (test-case implies-false-false
+    ; false => false = true
+    (assert-compiles-both '(implies (= 1 2) (= 3 4))))
+
+  (test-case xnor-same-true
+    ; true xnor true = true
+    (assert-compiles-both '(xnor 1 1)))
+
+  (test-case xnor-same-false
+    ; false xnor false = true
+    (assert-compiles-both '(xnor 0 0)))
+
+  (test-case xnor-different
+    ; true xnor false = false
+    (assert-compiles-both '(xnor 1 0)))
+
+  (test-case nand-both-true
+    ; true nand true = false
+    (assert-compiles-both '(nand (= 1 1) (= 2 2))))
+
+  (test-case nand-one-false
+    ; true nand false = true
+    (assert-compiles-both '(nand (= 1 1) (= 1 2))))
+
+  (test-case nor-both-false
+    ; false nor false = true
+    (assert-compiles-both '(nor (= 1 2) (= 3 4))))
+
+  (test-case nor-one-true
+    ; true nor false = false
+    (assert-compiles-both '(nor (= 1 1) (= 1 2)))))
+
+;;; Number theory predicates
+(test-group "Number Theory Predicates"
+  (test-case triangular-number?-true
+    ; 6 is triangular (1+2+3)
+    (assert-compiles-both '(triangular-number? 6)))
+
+  (test-case triangular-number?-false
+    ; 7 is not triangular
+    (assert-compiles-both '(triangular-number? 7)))
+
+  (test-case triangular-number?-ten
+    ; 10 is triangular (1+2+3+4)
+    (assert-compiles-both '(triangular-number? 10)))
+
+  (test-case triangular-number?-one
+    ; 1 is triangular
+    (assert-compiles-both '(triangular-number? 1)))
+
+  (test-case pentagonal-number?-true
+    ; 12 is pentagonal
+    (assert-compiles-both '(pentagonal-number? 12)))
+
+  (test-case pentagonal-number?-false
+    ; 13 is not pentagonal
+    (assert-compiles-both '(pentagonal-number? 13)))
+
+  (test-case pentagonal-number?-one
+    ; 1 is pentagonal
+    (assert-compiles-both '(pentagonal-number? 1)))
+
+  (test-case hexagonal-number?-true
+    ; 6 is hexagonal
+    (assert-compiles-both '(hexagonal-number? 6)))
+
+  (test-case hexagonal-number?-false
+    ; 7 is not hexagonal
+    (assert-compiles-both '(hexagonal-number? 7)))
+
+  (test-case hexagonal-number?-one
+    ; 1 is hexagonal
+    (assert-compiles-both '(hexagonal-number? 1))))
+
+;;; Additional sequence functions
+(test-group "Additional Sequence Functions"
+  (test-case pentagonal-number-one
+    ; P(1) = 1
+    (assert-compiles-both '(pentagonal-number 1)))
+
+  (test-case pentagonal-number-two
+    ; P(2) = 5
+    (assert-compiles-both '(pentagonal-number 2)))
+
+  (test-case pentagonal-number-three
+    ; P(3) = 12
+    (assert-compiles-both '(pentagonal-number 3)))
+
+  (test-case hexagonal-number-one
+    ; H(1) = 1
+    (assert-compiles-both '(hexagonal-number 1)))
+
+  (test-case hexagonal-number-two
+    ; H(2) = 6
+    (assert-compiles-both '(hexagonal-number 2)))
+
+  (test-case hexagonal-number-three
+    ; H(3) = 15
+    (assert-compiles-both '(hexagonal-number 3))))
+
+;;; More utility predicates
+(test-group "More Utility Predicates"
+  (test-case one?-true
+    ; 1 equals 1
+    (assert-compiles-both '(one? 1)))
+
+  (test-case one?-false
+    ; 2 does not equal 1
+    (assert-compiles-both '(one? 2)))
+
+  (test-case negative-one?-true
+    ; -1 equals -1
+    (assert-compiles-both '(negative-one? -1)))
+
+  (test-case negative-one?-false
+    ; 1 does not equal -1
+    (assert-compiles-both '(negative-one? 1)))
+
+  (test-case positive-power-of-2?-true
+    ; 8 is a positive power of 2
+    (assert-compiles-both '(positive-power-of-2? 8)))
+
+  (test-case positive-power-of-2?-false-not-power
+    ; 7 is not a power of 2
+    (assert-compiles-both '(positive-power-of-2? 7)))
+
+  (test-case positive-power-of-2?-false-negative
+    ; -8 is not a positive power of 2
+    (assert-compiles-both '(positive-power-of-2? -8))))
+
 ;;; Test error cases
 (test-group "Error Handling"
   (test-case unbound-variable

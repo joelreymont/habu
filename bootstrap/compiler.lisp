@@ -867,6 +867,151 @@
            (max-val (fourth form)))
        (parse `(+ ,min-val (wrap (- ,x ,min-val) (- ,max-val ,min-val))))))
 
+    ;; Additional bit utilities
+    ((and (consp form) (eq (first form) 'bit-width))
+     ;; Function: Number of bits needed to represent value
+     ;; bit-width(x) = integer-length(x)
+     (parse `(integer-length ,(second form))))
+
+    ((and (consp form) (eq (first form) 'msb-position))
+     ;; Function: Position of most significant bit (0-indexed from right)
+     ;; msb-position(x) = integer-length(x) - 1
+     (parse `(1- (integer-length ,(second form)))))
+
+    ((and (consp form) (eq (first form) 'lsb-position))
+     ;; Function: Position of least significant bit (0-indexed from right)
+     ;; lsb-position(x) = count-trailing-zeros(x)
+     (parse `(count-trailing-zeros ,(second form))))
+
+    ;; Arithmetic aliases
+    ((and (consp form) (eq (first form) 'inc))
+     ;; Function: Increment by 1 (alias for 1+)
+     (parse `(1+ ,(second form))))
+
+    ((and (consp form) (eq (first form) 'dec))
+     ;; Function: Decrement by 1 (alias for 1-)
+     (parse `(1- ,(second form))))
+
+    ;; Comparison utilities
+    ((and (consp form) (eq (first form) 'compare))
+     ;; Function: Three-way comparison (spaceship operator)
+     ;; Returns -1 if a < b, 0 if a = b, 1 if a > b
+     (let ((a (second form))
+           (b (third form)))
+       (if (or (and (consp a) (not (eq (first a) 'quote)))
+               (and (consp b) (not (eq (first b) 'quote))))
+           (let ((temp-a (gensym "CMP-A"))
+                 (temp-b (gensym "CMP-B")))
+             (parse `(let ((,temp-a ,a))
+                       (let ((,temp-b ,b))
+                         (cond ((< ,temp-a ,temp-b) -1)
+                               ((> ,temp-a ,temp-b) 1)
+                               (t 0))))))
+           (parse `(cond ((< ,a ,b) -1)
+                         ((> ,a ,b) 1)
+                         (t 0))))))
+
+    ((and (consp form) (eq (first form) 'clamp-01))
+     ;; Function: Clamp value to [0, 1]
+     (parse `(clamp ,(second form) 0 1)))
+
+    ;; Logical operators (for boolean logic)
+    ((and (consp form) (eq (first form) 'implies))
+     ;; Function: Logical implication (a => b)
+     ;; a => b is equivalent to (not a) or b
+     (parse `(or (not ,(second form)) ,(third form))))
+
+    ((and (consp form) (eq (first form) 'xnor))
+     ;; Function: Logical equivalence (XNOR)
+     ;; Returns true if both arguments have the same truth value
+     (parse `(not (logxor ,(second form) ,(third form)))))
+
+    ((and (consp form) (eq (first form) 'nand))
+     ;; Function: Logical NAND (not and)
+     (parse `(not (and ,(second form) ,(third form)))))
+
+    ((and (consp form) (eq (first form) 'nor))
+     ;; Function: Logical NOR (not or)
+     (parse `(not (or ,(second form) ,(third form)))))
+
+    ;; Number theory predicates
+    ((and (consp form) (eq (first form) 'triangular-number?))
+     ;; Predicate: Check if number is a triangular number
+     ;; n is triangular if (8n + 1) is a perfect square
+     (let ((n (second form))
+           (test (gensym "TRI")))
+       (if (and (consp n) (not (eq (first n) 'quote)))
+           (let ((temp (gensym "N")))
+             (parse `(let ((,temp ,n))
+                       (let ((,test (1+ (* 8 ,temp))))
+                         (square-number? ,test)))))
+           (parse `(let ((,test (1+ (* 8 ,n))))
+                     (square-number? ,test))))))
+
+    ((and (consp form) (eq (first form) 'pentagonal-number?))
+     ;; Predicate: Check if number is a pentagonal number
+     ;; n is pentagonal if (24n + 1) is a perfect square
+     (let ((n (second form))
+           (test (gensym "PENT")))
+       (if (and (consp n) (not (eq (first n) 'quote)))
+           (let ((temp (gensym "N")))
+             (parse `(let ((,temp ,n))
+                       (let ((,test (1+ (* 24 ,temp))))
+                         (square-number? ,test)))))
+           (parse `(let ((,test (1+ (* 24 ,n))))
+                     (square-number? ,test))))))
+
+    ((and (consp form) (eq (first form) 'hexagonal-number?))
+     ;; Predicate: Check if number is a hexagonal number
+     ;; All hexagonal numbers are also triangular
+     ;; n is hexagonal if (8n + 1) is a perfect square AND the root is odd
+     (let ((n (second form))
+           (test (gensym "HEX"))
+           (root (gensym "ROOT")))
+       (if (and (consp n) (not (eq (first n) 'quote)))
+           (let ((temp (gensym "N")))
+             (parse `(let ((,temp ,n))
+                       (let ((,test (1+ (* 8 ,temp))))
+                         (let ((,root (isqrt ,test)))
+                           (and (= (* ,root ,root) ,test)
+                                (oddp ,root)))))))
+           (parse `(let ((,test (1+ (* 8 ,n))))
+                     (let ((,root (isqrt ,test)))
+                       (and (= (* ,root ,root) ,test)
+                            (oddp ,root))))))))
+
+    ;; Additional sequence functions
+    ((and (consp form) (eq (first form) 'pentagonal-number))
+     ;; Function: Calculate nth pentagonal number
+     ;; P(n) = n(3n - 1) / 2
+     (let ((n (second form)))
+       (if (numberp n)
+           ;; Compile-time evaluation
+           (parse (/ (* n (- (* 3 n) 1)) 2))
+           (parse `(/ (* ,n (- (* 3 ,n) 1)) 2)))))
+
+    ((and (consp form) (eq (first form) 'hexagonal-number))
+     ;; Function: Calculate nth hexagonal number
+     ;; H(n) = n(2n - 1)
+     (let ((n (second form)))
+       (if (numberp n)
+           ;; Compile-time evaluation
+           (parse (* n (- (* 2 n) 1)))
+           (parse `(* ,n (- (* 2 ,n) 1))))))
+
+    ;; More utility predicates
+    ((and (consp form) (eq (first form) 'one?))
+     ;; Predicate: Check if value equals 1
+     (parse `(= ,(second form) 1)))
+
+    ((and (consp form) (eq (first form) 'negative-one?))
+     ;; Predicate: Check if value equals -1
+     (parse `(= ,(second form) -1)))
+
+    ((and (consp form) (eq (first form) 'positive-power-of-2?))
+     ;; Predicate: Check if value is a positive power of 2
+     (parse `(and (plusp ,(second form)) (power-of-2? ,(second form)))))
+
     ((and (consp form) (consp (first form)))
      ;; Function call: ((lambda ...) args) or ((fn) args)
      (let ((fn (first form))
