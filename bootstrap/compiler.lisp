@@ -533,6 +533,90 @@
                                       else-code)))))))
          (compile-cond-clauses clauses))))
 
+    (when
+     ;; Compile (when test body...)
+     ;; Transform to (if test (progn body...) 0)
+     (let* ((test-expr (first (expr-args expr)))
+            (body-exprs (rest (expr-args expr)))
+            (test-code (emit-x86_64 test-expr env))
+            (body-code (if (null body-exprs)
+                           (emit-x86_64 (make-expr :type 'fixnum :value 0) env)
+                           (if (= (length body-exprs) 1)
+                               (emit-x86_64 (first body-exprs) env)
+                               (emit-x86_64 (make-expr :type 'progn :args body-exprs) env))))
+            (body-size (length body-code)))
+       (append test-code
+               (list #x48 #x85 #xC0)           ; test rax, rax
+               (list #x0F #x84)                ; jz (skip body if test is false)
+               (int-to-bytes body-size 4)
+               body-code)))
+
+    (unless
+     ;; Compile (unless test body...)
+     ;; Transform to (if (not test) (progn body...) 0)
+     (let* ((test-expr (first (expr-args expr)))
+            (body-exprs (rest (expr-args expr)))
+            (test-code (emit-x86_64 test-expr env))
+            (body-code (if (null body-exprs)
+                           (emit-x86_64 (make-expr :type 'fixnum :value 0) env)
+                           (if (= (length body-exprs) 1)
+                               (emit-x86_64 (first body-exprs) env)
+                               (emit-x86_64 (make-expr :type 'progn :args body-exprs) env))))
+            (body-size (length body-code)))
+       (append test-code
+               (list #x48 #x85 #xC0)           ; test rax, rax
+               (list #x0F #x85)                ; jnz (skip body if test is true)
+               (int-to-bytes body-size 4)
+               body-code)))
+
+    (case
+     ;; Compile (case keyform (key1 result1) (key2 result2) (t default))
+     ;; Transform to (let ((#:key keyform)) (cond ((eql #:key key1) result1) ...))
+     (let* ((keyform (first (expr-args expr)))
+            (clauses (expr-value expr))
+            (key-var (gensym "CASE-KEY")))
+       ;; Evaluate keyform once and bind to temporary variable
+       (let ((key-code (emit-x86_64 keyform env))
+             (new-env (cons (cons key-var 0) env)))
+         (labels ((compile-case-clauses (clauses)
+                    (if (null clauses)
+                        (emit-x86_64 (make-expr :type 'fixnum :value 0) new-env)
+                        (let* ((clause (first clauses))
+                               (keys (first clause))
+                               (result (second clause))
+                               (rest-clauses (rest clauses)))
+                          (if (or (eq keys t) (null rest-clauses))
+                              ;; Default clause or last clause
+                              (emit-x86_64 (parse result) new-env)
+                              ;; Test clause: (eql key-var key)
+                              (let* ((key-value (if (listp keys) (first keys) keys))
+                                     (test-code (append
+                                                 ;; Load key-var from stack
+                                                 (list #x48 #x8B #x04 #x24)  ; mov rax, [rsp]
+                                                 ;; Compare with key
+                                                 (list #x48 #xBD)            ; mov rbp, imm64
+                                                 (int-to-bytes (* key-value 16) 8)
+                                                 (list #x48 #x39 #xE8)       ; cmp rax, rbp
+                                                 (list #x0F #x94 #xC0)       ; sete al
+                                                 (list #x48 #x0F #xB6 #xC0)  ; movzx rax, al
+                                                 (list #x48 #xC1 #xE0 #x04))) ; shl rax, 4
+                                     (then-code (emit-x86_64 (parse result) new-env))
+                                     (else-code (compile-case-clauses rest-clauses))
+                                     (then-size (length then-code))
+                                     (else-size (length else-code)))
+                                (append test-code
+                                        (list #x48 #x85 #xC0)  ; test rax, rax
+                                        (list #x0F #x84)       ; jz to else
+                                        (int-to-bytes (+ then-size 5) 4)
+                                        then-code
+                                        (list #xE9)  ; jmp to end
+                                        (int-to-bytes else-size 4)
+                                        else-code)))))))
+           (append key-code
+                   (list #x50)  ; push rax (save key)
+                   (compile-case-clauses clauses)
+                   (list #x48 #x83 #xC4 #x08)))))) ; pop stack
+
     (funcall
      ;; Compile ((lambda (params) body) args)
      ;; This is like let: bind args to params, then evaluate body
@@ -1540,6 +1624,103 @@
                                               #x14))
                                       else-code)))))))
          (compile-cond-clauses clauses))))
+
+    (when
+     ;; Compile (when test body...) for ARM64
+     (let* ((test-expr (first (expr-args expr)))
+            (body-exprs (rest (expr-args expr)))
+            (test-code (emit-arm64 test-expr env))
+            (body-code (if (null body-exprs)
+                           (emit-arm64 (make-expr :type 'fixnum :value 0) env)
+                           (if (= (length body-exprs) 1)
+                               (emit-arm64 (first body-exprs) env)
+                               (emit-arm64 (make-expr :type 'progn :args body-exprs) env))))
+            (body-size (length body-code)))
+       (append test-code
+               (list #x1F #x00 #x00 #xF1)      ; cmp x0, #0
+               ;; b.eq (skip body if test is false)
+               (let ((offset-bytes body-size))
+                 (list #x40  ; condition code 0 = eq
+                       (logand (ash offset-bytes -2) #xFF)
+                       (logand (ash offset-bytes -10) #xFF)
+                       #x54))
+               body-code)))
+
+    (unless
+     ;; Compile (unless test body...) for ARM64
+     (let* ((test-expr (first (expr-args expr)))
+            (body-exprs (rest (expr-args expr)))
+            (test-code (emit-arm64 test-expr env))
+            (body-code (if (null body-exprs)
+                           (emit-arm64 (make-expr :type 'fixnum :value 0) env)
+                           (if (= (length body-exprs) 1)
+                               (emit-arm64 (first body-exprs) env)
+                               (emit-arm64 (make-expr :type 'progn :args body-exprs) env))))
+            (body-size (length body-code)))
+       (append test-code
+               (list #x1F #x00 #x00 #xF1)      ; cmp x0, #0
+               ;; b.ne (skip body if test is true)
+               (let ((offset-bytes body-size))
+                 (list #x41  ; condition code 1 = ne
+                       (logand (ash offset-bytes -2) #xFF)
+                       (logand (ash offset-bytes -10) #xFF)
+                       #x54))
+               body-code)))
+
+    (case
+     ;; Compile (case keyform (key1 result1) (key2 result2) (t default)) for ARM64
+     (let* ((keyform (first (expr-args expr)))
+            (clauses (expr-value expr))
+            (key-var (gensym "CASE-KEY")))
+       (let ((key-code (emit-arm64 keyform env))
+             (new-env (cons (cons key-var 0) env)))
+         (labels ((compile-case-clauses (clauses)
+                    (if (null clauses)
+                        (emit-arm64 (make-expr :type 'fixnum :value 0) new-env)
+                        (let* ((clause (first clauses))
+                               (keys (first clause))
+                               (result (second clause))
+                               (rest-clauses (rest clauses)))
+                          (if (or (eq keys t) (null rest-clauses))
+                              (emit-arm64 (parse result) new-env)
+                              (let* ((key-value (if (listp keys) (first keys) keys))
+                                     ;; Generate test code: load key from stack, compare with key-value
+                                     (test-code (append
+                                                 (list #xE1 #x03 #x40 #xF9)  ; ldr x1, [sp]
+                                                 ;; Compare with key-value
+                                                 (let ((tagged-key (* key-value 16)))
+                                                   (if (< tagged-key 4096)
+                                                       (list (logand tagged-key #xFF)
+                                                             (logand (ash tagged-key -8) #xFF)
+                                                             #x00 #x91)  ; add x0, xzr, #tagged-key
+                                                       (append (list #xE0 #x03 #x1F #xAA)  ; mov x0, xzr
+                                                               (list (logand tagged-key #xFF)
+                                                                     (logand (ash tagged-key -8) #x1F)
+                                                                     #x80 #xD2))))  ; mov x0, #tagged-key
+                                                 (list #x3F #x00 #x00 #xEB)   ; cmp x1, x0
+                                                 (list #xE0 #x07 #x9F #x9A))) ; cset x0, eq
+                                     (then-code (emit-arm64 (parse result) new-env))
+                                     (else-code (compile-case-clauses rest-clauses))
+                                     (then-size (length then-code))
+                                     (else-size (length else-code)))
+                                (append test-code
+                                        (list #x1F #x00 #x00 #xF1)  ; cmp x0, #0
+                                        (let ((offset-bytes (+ then-size 4)))
+                                          (list #x40  ; b.eq
+                                                (logand (ash offset-bytes -2) #xFF)
+                                                (logand (ash offset-bytes -10) #xFF)
+                                                #x54))
+                                        then-code
+                                        (let ((offset-bytes else-size))
+                                          (list (logand (ash offset-bytes -2) #xFF)
+                                                (logand (ash offset-bytes -10) #xFF)
+                                                (logand (ash offset-bytes -18) #xFF)
+                                                #x14))
+                                        else-code)))))))
+           (append key-code
+                   (list #xE0 #x0F #x1F #xF8)  ; str x0, [sp, #-8]!
+                   (compile-case-clauses clauses)
+                   (list #xFF #x07 #x00 #x91)))))) ; add sp, sp, #8
 
     (funcall
      ;; Compile ((lambda (params) body) args) for ARM64
