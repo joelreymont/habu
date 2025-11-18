@@ -258,7 +258,22 @@
     (assert-compiles-both '(1- 5)))
 
   (test-case numeric-nested
-    (assert-compiles-both '(max (min 10 20) (abs -15)))))
+    (assert-compiles-both '(max (min 10 20) (abs -15))))
+
+  (test-case gcd-simple
+    (assert-compiles-both '(gcd 12 8)))
+
+  (test-case gcd-coprime
+    (assert-compiles-both '(gcd 17 19)))
+
+  (test-case gcd-with-zero
+    (assert-compiles-both '(gcd 42 0)))
+
+  (test-case gcd-negative
+    (assert-compiles-both '(gcd -12 8)))
+
+  (test-case gcd-both-negative
+    (assert-compiles-both '(gcd -24 -36))))
 
 ;;; Test predicates
 (test-group "Predicates"

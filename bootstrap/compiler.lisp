@@ -947,6 +947,38 @@
                   (list #x48 #xC1 #xE0 #x04)    ; shl rax, 4 (retag)
                   (list #x48 #x83 #xC4 #x08))) ; add rsp, 8
 
+         ((eq op 'gcd)
+          ;; Compile (gcd a b) - greatest common divisor using Euclidean algorithm
+          ;; Algorithm: gcd(a,0) = |a|, gcd(a,b) = gcd(b, a mod b)
+          (append (emit-x86_64 (first args) env)
+                  (list #x50)                   ; push rax
+                  (emit-x86_64 (second args) env)
+                  (list #x48 #x89 #xC3)         ; mov rbx, rax (second arg)
+                  (list #x48 #x8B #x04 #x24)    ; mov rax, [rsp] (first arg)
+                  (list #x48 #xC1 #xF8 #x04)    ; sar rax, 4 (untag)
+                  (list #x48 #xC1 #xFB #x04)    ; sar rbx, 4 (untag)
+                  ;; Get absolute value of rax (a = abs(a))
+                  (list #x48 #x89 #xC1)         ; mov rcx, rax
+                  (list #x48 #xC1 #xF9 #x3F)    ; sar rcx, 63 (sign bit)
+                  (list #x48 #x31 #xC8)         ; xor rax, rcx
+                  (list #x48 #x29 #xC8)         ; sub rax, rcx
+                  ;; Get absolute value of rbx (b = abs(b))
+                  (list #x48 #x89 #xD9)         ; mov rcx, rbx
+                  (list #x48 #xC1 #xF9 #x3F)    ; sar rcx, 63
+                  (list #x48 #x31 #xD9)         ; xor rbx, rcx
+                  (list #x48 #x29 #xD9)         ; sub rbx, rcx
+                  ;; GCD loop: while (b != 0) { temp = a % b; a = b; b = temp; }
+                  (list #x48 #x85 #xDB)         ; test rbx, rbx
+                  (list #x74 #x0D)              ; jz +13 (done, skip to retag)
+                  (list #x48 #x99)              ; cqo (sign extend rax to rdx:rax)
+                  (list #x48 #xF7 #xFB)         ; idiv rbx (rdx = remainder)
+                  (list #x48 #x89 #xD8)         ; mov rax, rbx (a = b)
+                  (list #x48 #x89 #xD3)         ; mov rbx, rdx (b = remainder)
+                  (list #xEB #xEF)              ; jmp -17 (back to test)
+                  ;; Done: rax contains GCD
+                  (list #x48 #xC1 #xE0 #x04)    ; shl rax, 4 (retag)
+                  (list #x48 #x83 #xC4 #x08))) ; add rsp, 8
+
          ;; List operations - require runtime integration
          ;; These operations need heap allocation and are not yet integrated with compiled code.
          ;; They work in the REPL (interpreted mode) which has access to the runtime heap.
@@ -1614,6 +1646,39 @@
                   (list #xE0 #x17 #x9F #x9A)      ; cset x0, ne (1 if result != 0)
                   (list #x00 #x10 #x00 #xD3)      ; lsl x0, x0, #4 (retag)
                   (list #xFD #x7B #xC1 #xA8)))    ; ldp x29, x30, [sp], #16
+
+         ((eq op 'gcd)
+          ;; Compile (gcd a b) for ARM64 - greatest common divisor
+          ;; Using Euclidean algorithm with loop
+          (append (emit-arm64 (first args) env)
+                  (list #xFD #x7B #xBF #xA9)       ; stp x29, x30, [sp, #-16]!
+                  (list #xE2 #x03 #x00 #xAA)       ; mov x2, x0 (save first)
+                  (emit-arm64 (second args) env)
+                  (list #xE1 #x03 #x00 #xAA)       ; mov x1, x0 (second to x1)
+                  (list #xE0 #x03 #x02 #xAA)       ; mov x0, x2 (first back to x0)
+                  (list #x00 #x10 #x44 #xD3)       ; lsr x0, x0, #4 (untag)
+                  (list #x21 #x10 #x44 #xD3)       ; lsr x1, x1, #4 (untag)
+                  ;; abs(x0): x0 = (x0 XOR (x0>>63)) - (x0>>63)
+                  (list #x02 #xFC #x47 #x93)       ; asr x2, x0, #63 (sign extend)
+                  (list #x00 #x00 #x02 #xCA)       ; eor x0, x0, x2
+                  (list #x00 #x00 #x02 #xCB)       ; sub x0, x0, x2
+                  ;; abs(x1): x1 = (x1 XOR (x1>>63)) - (x1>>63)
+                  (list #x22 #xFC #x47 #x93)       ; asr x2, x1, #63
+                  (list #x21 #x00 #x02 #xCA)       ; eor x1, x1, x2
+                  (list #x21 #x00 #x02 #xCB)       ; sub x1, x1, x2
+                  ;; GCD loop: while x1 != 0
+                  ;; Check if x1 == 0, use cmp and conditional select approach
+                  (list #x3F #x00 #x01 #xEB)       ; cmp x1, #0
+                  (list #x03 #x00 #x00 #x54)       ; b.eq +6 (to done, skip 6 instructions)
+                  ;; Compute remainder: x3 = x0 - (x0/x1)*x1
+                  (list #xE2 #x0C #xC1 #x9A)       ; sdiv x2, x0, x1 (quotient)
+                  (list #x03 #x7C #x01 #x9B)       ; msub x3, x0, x1, x2 (remainder)
+                  (list #xE0 #x03 #x01 #xAA)       ; mov x0, x1 (a = b)
+                  (list #xE1 #x03 #x03 #xAA)       ; mov x1, x3 (b = remainder)
+                  (list #xFA #xFF #xFF #x17)       ; b -6 (back to cmp)
+                  ;; Done: x0 has GCD
+                  (list #x00 #x10 #x00 #xD3)       ; lsl x0, x0, #4 (retag)
+                  (list #xFD #x7B #xC1 #xA8)))     ; ldp x29, x30, [sp], #16
 
          ;; List operations - require runtime integration
          ;; These operations need heap allocation and are not yet integrated with compiled code.
