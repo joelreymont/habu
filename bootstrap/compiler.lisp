@@ -297,6 +297,41 @@
      ;; Function: (identity x) - returns its argument
      (parse (second form)))
 
+    ((and (consp form) (eq (first form) 'logandc1))
+     ;; Function: (logandc1 x y) => (logand (lognot x) y)
+     (parse `(logand (lognot ,(second form)) ,(third form))))
+
+    ((and (consp form) (eq (first form) 'logandc2))
+     ;; Function: (logandc2 x y) => (logand x (lognot y))
+     (parse `(logand ,(second form) (lognot ,(third form)))))
+
+    ((and (consp form) (eq (first form) 'logorc1))
+     ;; Function: (logorc1 x y) => (logior (lognot x) y)
+     (parse `(logior (lognot ,(second form)) ,(third form))))
+
+    ((and (consp form) (eq (first form) 'logorc2))
+     ;; Function: (logorc2 x y) => (logior x (lognot y))
+     (parse `(logior ,(second form) (lognot ,(third form)))))
+
+    ((and (consp form) (eq (first form) 'square))
+     ;; Function: (square x) => (* x x)
+     (let ((x (second form)))
+       (if (and (consp x) (not (eq (first x) 'quote)))
+           ;; Complex expression: bind to temp var to avoid double evaluation
+           (let ((temp (gensym "SQ")))
+             (parse `(let ((,temp ,x)) (* ,temp ,temp))))
+           ;; Simple expression: safe to duplicate
+           (parse `(* ,x ,x)))))
+
+    ((and (consp form) (eq (first form) 'clamp))
+     ;; Function: (clamp x low high) => (max low (min high x))
+     (parse `(max ,(third form) (min ,(fourth form) ,(second form)))))
+
+    ((and (consp form) (eq (first form) 'between))
+     ;; Predicate: (between x low high) => (and (>= x low) (<= x high))
+     (parse `(and (>= ,(second form) ,(third form))
+                  (<= ,(second form) ,(fourth form)))))
+
     ((and (consp form) (consp (first form)))
      ;; Function call: ((lambda ...) args) or ((fn) args)
      (let ((fn (first form))

@@ -250,7 +250,23 @@
     (assert-compiles-both '(lognor 8 4)))
 
   (test-case logeqv-simple
-    (assert-compiles-both '(logeqv 15 7))))
+    (assert-compiles-both '(logeqv 15 7)))
+
+  (test-case logandc1-simple
+    ; (logandc1 x y) => (logand (lognot x) y) = ~x & y
+    (assert-compiles-both '(logandc1 15 7)))
+
+  (test-case logandc2-simple
+    ; (logandc2 x y) => (logand x (lognot y)) = x & ~y
+    (assert-compiles-both '(logandc2 15 7)))
+
+  (test-case logorc1-simple
+    ; (logorc1 x y) => (logior (lognot x) y) = ~x | y
+    (assert-compiles-both '(logorc1 8 4)))
+
+  (test-case logorc2-simple
+    ; (logorc2 x y) => (logior x (lognot y)) = x | ~y
+    (assert-compiles-both '(logorc2 8 4))))
 
 ;;; Test numeric operators
 (test-group "Numeric Operators"
@@ -807,6 +823,36 @@
 ;;; to nested car/cdr calls. Tests are deferred until runtime heap integration
 ;;; is complete, as car/cdr/cons require runtime support in compiled code.
 ;;; The expansion mechanism is in place and ready to use.
+
+;;; Test utility functions
+(test-group "Utility Functions"
+  (test-case square-simple
+    ; (square x) => (* x x)
+    (assert-compiles-both '(square 5)))
+
+  (test-case square-expression
+    ; Should bind to temp var to avoid double evaluation
+    (assert-compiles-both '(square (+ 3 2))))
+
+  (test-case clamp-within-range
+    ; (clamp x low high) => (max low (min high x))
+    (assert-compiles-both '(clamp 5 1 10)))
+
+  (test-case clamp-below-range
+    (assert-compiles-both '(clamp -5 0 10)))
+
+  (test-case clamp-above-range
+    (assert-compiles-both '(clamp 15 0 10)))
+
+  (test-case between-true
+    ; (between x low high) => (and (>= x low) (<= x high))
+    (assert-compiles-both '(between 5 1 10)))
+
+  (test-case between-false-low
+    (assert-compiles-both '(between 0 1 10)))
+
+  (test-case between-false-high
+    (assert-compiles-both '(between 15 1 10))))
 
 ;;; Test error cases
 (test-group "Error Handling"
