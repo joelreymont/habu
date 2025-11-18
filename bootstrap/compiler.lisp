@@ -1012,6 +1012,188 @@
      ;; Predicate: Check if value is a positive power of 2
      (parse `(and (plusp ,(second form)) (power-of-2? ,(second form)))))
 
+    ;; Additional conditional macros
+    ((and (consp form) (eq (first form) 'if-not))
+     ;; Macro: if-not condition then else
+     ;; Inverted if - runs then branch when condition is false
+     (parse `(if (not ,(second form)) ,(third form) ,(fourth form))))
+
+    ((and (consp form) (eq (first form) 'when-not))
+     ;; Macro: when-not condition body...
+     ;; Runs body when condition is false
+     (parse `(when (not ,(second form)) ,@(cddr form))))
+
+    ((and (consp form) (eq (first form) 'unless-let))
+     ;; Macro: unless-let (var value) body...
+     ;; Bind var to value and execute body if value is falsy
+     (let ((binding (second form))
+           (body (cddr form)))
+       (parse `(let ((,(first binding) ,(second binding)))
+                 (unless ,(first binding) ,@body)))))
+
+    ((and (consp form) (eq (first form) 'cond-let))
+     ;; Macro: cond-let var (test1 val1) (test2 val2) ...
+     ;; Like cond but binds result to var in each branch
+     (let ((var (second form))
+           (clauses (cddr form)))
+       (parse `(cond ,@(mapcar (lambda (clause)
+                                 `(,(first clause)
+                                   (let ((,var ,(second clause)))
+                                     ,var)))
+                               clauses)))))
+
+    ;; List and cons aliases
+    ((and (consp form) (eq (first form) 'pair?))
+     ;; Predicate: Alias for consp
+     (parse `(consp ,(second form))))
+
+    ((and (consp form) (eq (first form) 'empty?))
+     ;; Predicate: Alias for null
+     (parse `(null ,(second form))))
+
+    ((and (consp form) (eq (first form) 'first))
+     ;; Function: Alias for car
+     (parse `(car ,(second form))))
+
+    ((and (consp form) (eq (first form) 'rest))
+     ;; Function: Alias for cdr
+     (parse `(cdr ,(second form))))
+
+    ((and (consp form) (eq (first form) 'second))
+     ;; Function: Alias for cadr
+     (parse `(cadr ,(second form))))
+
+    ((and (consp form) (eq (first form) 'third))
+     ;; Function: Alias for caddr
+     (parse `(caddr ,(second form))))
+
+    ((and (consp form) (eq (first form) 'fourth))
+     ;; Function: Alias for cadddr
+     (parse `(cadddr ,(second form))))
+
+    ;; More numeric utilities
+    ((and (consp form) (eq (first form) 'abs-diff))
+     ;; Function: Absolute difference |a - b|
+     (parse `(abs (- ,(second form) ,(third form)))))
+
+    ((and (consp form) (eq (first form) 'distance))
+     ;; Function: Alias for abs-diff (1D distance)
+     (parse `(abs-diff ,(second form) ,(third form))))
+
+    ((and (consp form) (eq (first form) 'pow2))
+     ;; Function: Raise 2 to the power of n
+     (let ((n (second form)))
+       (if (numberp n)
+           ;; Compile-time evaluation
+           (parse (expt 2 n))
+           (parse `(expt 2 ,n)))))
+
+    ((and (consp form) (eq (first form) 'pow10))
+     ;; Function: Raise 10 to the power of n
+     (let ((n (second form)))
+       (if (numberp n)
+           ;; Compile-time evaluation
+           (parse (expt 10 n))
+           (parse `(expt 10 ,n)))))
+
+    ;; Bit manipulation aliases and utilities
+    ((and (consp form) (eq (first form) 'bit-set?))
+     ;; Predicate: Check if bit is set (alias for logbitp)
+     (parse `(logbitp ,(second form) ,(third form))))
+
+    ((and (consp form) (eq (first form) 'bit-clear?))
+     ;; Predicate: Check if bit is clear (not set)
+     (parse `(not (logbitp ,(second form) ,(third form)))))
+
+    ((and (consp form) (eq (first form) 'test-bit))
+     ;; Function: Alias for logbitp
+     (parse `(logbitp ,(second form) ,(third form))))
+
+    ;; More range predicates
+    ((and (consp form) (eq (first form) 'in-open-range?))
+     ;; Predicate: Check if value in open range (min, max) - exclusive
+     (parse `(strictly-between? ,(second form) ,(third form) ,(fourth form))))
+
+    ((and (consp form) (eq (first form) 'in-closed-range?))
+     ;; Predicate: Check if value in closed range [min, max] - inclusive
+     (parse `(within? ,(second form) ,(third form) ,(fourth form))))
+
+    ;; More sequence numbers
+    ((and (consp form) (eq (first form) 'lucas-number))
+     ;; Function: Calculate nth Lucas number
+     ;; L(0) = 2, L(1) = 1, L(n) = L(n-1) + L(n-2)
+     ;; For small constants, compute at compile time
+     (let ((n (second form)))
+       (if (and (numberp n) (<= n 20))
+           ;; Compile-time evaluation for small n
+           (labels ((lucas (k)
+                      (cond ((= k 0) 2)
+                            ((= k 1) 1)
+                            (t (+ (lucas (- k 1)) (lucas (- k 2)))))))
+             (parse (lucas n)))
+           ;; Runtime computation
+           (parse `(cond ((= ,n 0) 2)
+                         ((= ,n 1) 1)
+                         (t (+ (lucas-number (- ,n 1))
+                               (lucas-number (- ,n 2)))))))))
+
+    ;; More utility functions
+    ((and (consp form) (eq (first form) 'toggle))
+     ;; Function: Toggle between 0 and 1
+     ;; toggle(x) = 1 - x for 0/1 values
+     (parse `(- 1 ,(second form))))
+
+    ((and (consp form) (eq (first form) 'flip))
+     ;; Function: Alias for toggle
+     (parse `(toggle ,(second form))))
+
+    ((and (consp form) (eq (first form) 'normalize))
+     ;; Function: Normalize value to [0, 1] range given min and max
+     ;; normalize(x, min, max) = (x - min) / (max - min)
+     (let ((x (second form))
+           (min-val (third form))
+           (max-val (fourth form)))
+       (parse `(/ (- ,x ,min-val) (- ,max-val ,min-val)))))
+
+    ((and (consp form) (eq (first form) 'denormalize))
+     ;; Function: Denormalize value from [0, 1] to [min, max]
+     ;; denormalize(x, min, max) = min + x * (max - min)
+     (let ((x (second form))
+           (min-val (third form))
+           (max-val (fourth form)))
+       (parse `(+ ,min-val (* ,x (- ,max-val ,min-val))))))
+
+    ;; Prime checking (compile-time only for constants)
+    ((and (consp form) (eq (first form) 'prime?))
+     ;; Predicate: Check if number is prime (compile-time for constants)
+     (let ((n (second form)))
+       (if (numberp n)
+           ;; Compile-time prime check
+           (labels ((is-prime (num)
+                      (cond ((<= num 1) nil)
+                            ((<= num 3) t)
+                            ((or (zerop (mod num 2)) (zerop (mod num 3))) nil)
+                            (t (loop for i from 5 to (isqrt num) by 6
+                                     never (or (zerop (mod num i))
+                                               (zerop (mod num (+ i 2)))))))))
+             (parse (if (is-prime n) 1 0)))
+           ;; Runtime: Not supported - would be too slow
+           (error "prime? only supports compile-time constants"))))
+
+    ((and (consp form) (eq (first form) 'composite?))
+     ;; Predicate: Check if number is composite (not prime, > 1)
+     (let ((n (second form)))
+       (if (numberp n)
+           (labels ((is-prime (num)
+                      (cond ((<= num 1) nil)
+                            ((<= num 3) t)
+                            ((or (zerop (mod num 2)) (zerop (mod num 3))) nil)
+                            (t (loop for i from 5 to (isqrt num) by 6
+                                     never (or (zerop (mod num i))
+                                               (zerop (mod num (+ i 2)))))))))
+             (parse (if (and (> n 1) (not (is-prime n))) 1 0)))
+           (error "composite? only supports compile-time constants"))))
+
     ((and (consp form) (consp (first form)))
      ;; Function call: ((lambda ...) args) or ((fn) args)
      (let ((fn (first form))

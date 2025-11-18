@@ -1832,6 +1832,202 @@
     ; -8 is not a positive power of 2
     (assert-compiles-both '(positive-power-of-2? -8))))
 
+;;; Additional conditional macros
+(test-group "Additional Conditional Macros"
+  (test-case if-not-false
+    ; if-not runs then branch when false
+    (assert-compiles-both '(if-not (= 1 2) 10 20)))
+
+  (test-case if-not-true
+    ; if-not runs else branch when true
+    (assert-compiles-both '(if-not (= 1 1) 10 20)))
+
+  (test-case when-not-false
+    ; when-not runs when false
+    (assert-compiles-both '(when-not (= 1 2) 42)))
+
+  (test-case when-not-true
+    ; when-not doesn't run when true
+    (assert-compiles-both '(when-not (= 1 1) 42)))
+
+  (test-case unless-let-truthy
+    ; unless-let doesn't run with truthy value
+    (assert-compiles-both '(unless-let (x 5) x)))
+
+  (test-case unless-let-falsy
+    ; unless-let runs with falsy value (0)
+    (assert-compiles-both '(unless-let (x 0) 42))))
+
+;;; List and cons aliases
+(test-group "List and Cons Aliases"
+  (test-case empty?-null
+    ; null list is empty
+    (assert-compiles-both '(empty? (quote ())))))
+
+;;; Numeric utilities
+(test-group "Numeric Utilities"
+  (test-case abs-diff-positive
+    ; |10 - 3| = 7
+    (assert-compiles-both '(abs-diff 10 3)))
+
+  (test-case abs-diff-negative
+    ; |3 - 10| = 7
+    (assert-compiles-both '(abs-diff 3 10)))
+
+  (test-case distance-simple
+    ; distance is alias for abs-diff
+    (assert-compiles-both '(distance 5 12)))
+
+  (test-case pow2-small
+    ; 2^3 = 8
+    (assert-compiles-both '(pow2 3)))
+
+  (test-case pow2-large
+    ; 2^10 = 1024
+    (assert-compiles-both '(pow2 10)))
+
+  (test-case pow10-small
+    ; 10^2 = 100
+    (assert-compiles-both '(pow10 2)))
+
+  (test-case pow10-large
+    ; 10^3 = 1000
+    (assert-compiles-both '(pow10 3))))
+
+;;; Bit manipulation aliases
+(test-group "Bit Manipulation Aliases"
+  (test-case bit-set?-true
+    ; Bit 3 is set in 8
+    (assert-compiles-both '(bit-set? 3 8)))
+
+  (test-case bit-set?-false
+    ; Bit 2 is not set in 8
+    (assert-compiles-both '(bit-set? 2 8)))
+
+  (test-case bit-clear?-true
+    ; Bit 2 is clear in 8
+    (assert-compiles-both '(bit-clear? 2 8)))
+
+  (test-case bit-clear?-false
+    ; Bit 3 is not clear in 8
+    (assert-compiles-both '(bit-clear? 3 8)))
+
+  (test-case test-bit-set
+    ; Test bit is alias for logbitp
+    (assert-compiles-both '(test-bit 0 1))))
+
+;;; More range predicates
+(test-group "More Range Predicates"
+  (test-case in-open-range?-true
+    ; 5 in (1, 10) = true
+    (assert-compiles-both '(in-open-range? 5 1 10)))
+
+  (test-case in-open-range?-false-boundary
+    ; 1 in (1, 10) = false (exclusive)
+    (assert-compiles-both '(in-open-range? 1 1 10)))
+
+  (test-case in-closed-range?-true
+    ; 5 in [1, 10] = true
+    (assert-compiles-both '(in-closed-range? 5 1 10)))
+
+  (test-case in-closed-range?-boundary
+    ; 1 in [1, 10] = true (inclusive)
+    (assert-compiles-both '(in-closed-range? 1 1 10))))
+
+;;; Sequence numbers
+(test-group "Sequence Numbers"
+  (test-case lucas-number-zero
+    ; L(0) = 2
+    (assert-compiles-both '(lucas-number 0)))
+
+  (test-case lucas-number-one
+    ; L(1) = 1
+    (assert-compiles-both '(lucas-number 1)))
+
+  (test-case lucas-number-two
+    ; L(2) = 3
+    (assert-compiles-both '(lucas-number 2)))
+
+  (test-case lucas-number-three
+    ; L(3) = 4
+    (assert-compiles-both '(lucas-number 3)))
+
+  (test-case lucas-number-five
+    ; L(5) = 11
+    (assert-compiles-both '(lucas-number 5))))
+
+;;; Utility functions
+(test-group "Utility Functions"
+  (test-case toggle-zero
+    ; toggle(0) = 1
+    (assert-compiles-both '(toggle 0)))
+
+  (test-case toggle-one
+    ; toggle(1) = 0
+    (assert-compiles-both '(toggle 1)))
+
+  (test-case flip-zero
+    ; flip is alias for toggle
+    (assert-compiles-both '(flip 0)))
+
+  (test-case normalize-simple
+    ; normalize(5, 0, 10) = 0.5 (but integer division)
+    (assert-compiles-both '(normalize 5 0 10)))
+
+  (test-case denormalize-simple
+    ; denormalize(0, 10, 20) = 10
+    (assert-compiles-both '(denormalize 0 10 20)))
+
+  (test-case denormalize-half
+    ; denormalize(1, 10, 20) = 20
+    (assert-compiles-both '(denormalize 1 10 20))))
+
+;;; Prime and composite predicates
+(test-group "Prime and Composite Predicates"
+  (test-case prime?-two
+    ; 2 is prime
+    (assert-compiles-both '(prime? 2)))
+
+  (test-case prime?-three
+    ; 3 is prime
+    (assert-compiles-both '(prime? 3)))
+
+  (test-case prime?-five
+    ; 5 is prime
+    (assert-compiles-both '(prime? 5)))
+
+  (test-case prime?-seven
+    ; 7 is prime
+    (assert-compiles-both '(prime? 7)))
+
+  (test-case prime?-eleven
+    ; 11 is prime
+    (assert-compiles-both '(prime? 11)))
+
+  (test-case prime?-false-four
+    ; 4 is not prime
+    (assert-compiles-both '(prime? 4)))
+
+  (test-case prime?-false-nine
+    ; 9 is not prime
+    (assert-compiles-both '(prime? 9)))
+
+  (test-case composite?-four
+    ; 4 is composite
+    (assert-compiles-both '(composite? 4)))
+
+  (test-case composite?-nine
+    ; 9 is composite
+    (assert-compiles-both '(composite? 9)))
+
+  (test-case composite?-false-two
+    ; 2 is not composite
+    (assert-compiles-both '(composite? 2)))
+
+  (test-case composite?-false-one
+    ; 1 is not composite
+    (assert-compiles-both '(composite? 1))))
+
 ;;; Test error cases
 (test-group "Error Handling"
   (test-case unbound-variable
