@@ -220,7 +220,22 @@
     (assert-compiles-both '(ash 20 -2)))
 
   (test-case bitwise-nested
-    (assert-compiles-both '(logand (logior 8 4) 15))))
+    (assert-compiles-both '(logand (logior 8 4) 15)))
+
+  (test-case logcount-simple
+    (assert-compiles-both '(logcount 7)))
+
+  (test-case logcount-zero
+    (assert-compiles-both '(logcount 0)))
+
+  (test-case logcount-power-of-two
+    (assert-compiles-both '(logcount 16)))
+
+  (test-case logtest-true
+    (assert-compiles-both '(logtest 7 3)))
+
+  (test-case logtest-false
+    (assert-compiles-both '(logtest 8 4))))
 
 ;;; Test numeric operators
 (test-group "Numeric Operators"

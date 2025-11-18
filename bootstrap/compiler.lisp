@@ -914,6 +914,39 @@
                   (list #x48 #x31 #xC0)         ; xor rax, rax (rax = 0)
                   (list #x48 #xC1 #xE0 #x04))) ; shl rax, 4 (retag to 0)
 
+         ((eq op 'logcount)
+          ;; Compile (logcount a) - count number of set bits (population count)
+          ;; Uses Brian Kernighan's algorithm: repeatedly clear lowest set bit
+          (append (emit-x86_64 (first args) env)
+                  (list #x48 #xC1 #xF8 #x04)    ; sar rax, 4 (untag)
+                  (list #x48 #x31 #xDB)         ; xor rbx, rbx (counter = 0)
+                  ;; Loop: while (rax != 0)
+                  (list #x48 #x85 #xC0)         ; test rax, rax
+                  (list #x74 #x0D)              ; jz +13 (exit loop)
+                  (list #x48 #xFF #xC3)         ; inc rbx (counter++)
+                  (list #x48 #x89 #xC1)         ; mov rcx, rax
+                  (list #x48 #xFF #xC9)         ; dec rcx
+                  (list #x48 #x21 #xC8)         ; and rax, rcx (clear lowest set bit)
+                  (list #xEB #xF1)              ; jmp -15 (back to test)
+                  ;; Exit: rbx has count
+                  (list #x48 #x89 #xD8)         ; mov rax, rbx
+                  (list #x48 #xC1 #xE0 #x04))) ; shl rax, 4 (retag)
+
+         ((eq op 'logtest)
+          ;; Compile (logtest a b) - test if any bits are set in both args
+          ;; Returns 1 if (logand a b) != 0, else 0
+          (append (emit-x86_64 (first args) env)
+                  (list #x50)                   ; push rax
+                  (emit-x86_64 (second args) env)
+                  (list #x48 #x8B #x1C #x24)    ; mov rbx, [rsp]
+                  (list #x48 #xC1 #xFB #x04)    ; sar rbx, 4 (untag first)
+                  (list #x48 #xC1 #xF8 #x04)    ; sar rax, 4 (untag second)
+                  (list #x48 #x21 #xD8)         ; and rax, rbx
+                  (list #x48 #x0F #x95 #xC0)    ; setnz al (1 if result != 0)
+                  (list #x48 #x0F #xB6 #xC0)    ; movzx rax, al
+                  (list #x48 #xC1 #xE0 #x04)    ; shl rax, 4 (retag)
+                  (list #x48 #x83 #xC4 #x08))) ; add rsp, 8
+
          ;; List operations - require runtime integration
          ;; These operations need heap allocation and are not yet integrated with compiled code.
          ;; They work in the REPL (interpreted mode) which has access to the runtime heap.
@@ -1550,6 +1583,37 @@
                   (list #x00 #x00 #x82 #x8B)      ; add x0, x0, x2 (combine)
                   (list #x00 #x00 #x01 #x8B)      ; add x0, x0, x1
                   (list #x00 #x10 #x00 #xD3)))    ; lsl x0, x0, #4 (retag)
+
+         ((eq op 'logcount)
+          ;; Compile (logcount a) - count number of set bits
+          ;; Uses loop to count bits (ARM64 has no single instruction for this in base ISA)
+          (append (emit-arm64 (first args) env)
+                  (list #x00 #x10 #x44 #xD3)      ; lsr x0, x0, #4 (untag)
+                  (list #x01 #x00 #x80 #xD2)      ; mov x1, #0 (counter)
+                  ;; Loop start
+                  (list #x1F #x00 #x00 #xF1)      ; cmp x0, #0
+                  (list #x60 #x00 #x00 #x54)      ; b.eq +12 (exit if zero)
+                  (list #x21 #x04 #x00 #x91)      ; add x1, x1, #1 (counter++)
+                  (list #x02 #x00 #x00 #xD1)      ; sub x2, x0, #1
+                  (list #x00 #x00 #x02 #x8A)      ; and x0, x0, x2 (clear lowest bit)
+                  (list #xE0 #xFF #xFF #x17)      ; b -8 (loop back)
+                  ;; Exit
+                  (list #x00 #x00 #x01 #xAA)      ; mov x0, x1 (result = counter)
+                  (list #x00 #x10 #x00 #xD3)))    ; lsl x0, x0, #4 (retag)
+
+         ((eq op 'logtest)
+          ;; Compile (logtest a b) - test if any bits are set in both
+          (append (emit-arm64 (first args) env)
+                  (list #xFD #x7B #xBF #xA9)      ; stp x29, x30, [sp, #-16]!
+                  (list #xE2 #x03 #x00 #xAA)      ; mov x2, x0 (save first)
+                  (emit-arm64 (second args) env)
+                  (list #xE1 #x03 #x00 #xAA)      ; mov x1, x0 (second to x1)
+                  (list #x40 #x10 #x44 #xD3)      ; lsr x0, x2, #4 (untag first)
+                  (list #x21 #x10 #x44 #xD3)      ; lsr x1, x1, #4 (untag second)
+                  (list #x00 #x00 #x01 #x8A)      ; and x0, x0, x1
+                  (list #xE0 #x17 #x9F #x9A)      ; cset x0, ne (1 if result != 0)
+                  (list #x00 #x10 #x00 #xD3)      ; lsl x0, x0, #4 (retag)
+                  (list #xFD #x7B #xC1 #xA8)))    ; ldp x29, x30, [sp], #16
 
          ;; List operations - require runtime integration
          ;; These operations need heap allocation and are not yet integrated with compiled code.
