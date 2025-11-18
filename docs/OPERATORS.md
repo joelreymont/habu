@@ -5,8 +5,9 @@
 This document provides a comprehensive reference for all operators implemented in the Habu Lisp compiler. All operators are implemented for both x86_64 and ARM64 architectures and work with tagged fixnum integers.
 
 **Total Operators**: 81
-**Test Coverage**: 198 compiler tests, 364 total tests (100% passing)
+**Test Coverage**: 204 compiler tests, 370 total tests (100% passing)
 **Architectures**: x86_64, ARM64
+**Optimizations**: Constant folding (compile-time evaluation)
 
 ## Fixnum Tagging
 
@@ -718,6 +719,24 @@ All operators are implemented for both architectures:
 - Population count: logcount (~15 instructions in loop)
 - Control flow: if, cond, case (varies)
 - Functions: lambda, defun (inline expansion)
+
+### Compiler Optimizations
+
+**Constant Folding** (implemented):
+- Evaluates constant expressions at compile time
+- Reduces code size and improves runtime performance
+- Examples:
+  - `(+ 2 3)` compiles directly to the constant `5`
+  - `(* 10 (+ 3 2))` compiles to `50`
+  - `(if 0 x y)` eliminates dead branch, compiles only `y`
+- Supported operations: arithmetic, comparisons, bitwise, min/max, abs, gcd, lcm
+- Recursive folding: nested constant expressions fully evaluated
+
+**Benefits**:
+- Smaller generated code (fewer machine code instructions)
+- Faster compilation (less code generation needed)
+- Better runtime performance (no overhead for constant computation)
+- Dead code elimination for constant conditionals
 
 ### Limitations
 
