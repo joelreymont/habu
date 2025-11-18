@@ -365,6 +365,24 @@
      ;; Alias for numberp
      (parse `(numberp ,(second form))))
 
+    ;; Power-of-2 utilities
+    ((and (consp form) (eq (first form) 'power-of-2?))
+     ;; Predicate: Check if x is a power of 2
+     ;; A number is a power of 2 if x > 0 and (x & (x-1)) == 0
+     (let ((x (second form)))
+       (if (and (consp x) (not (eq (first x) 'quote)))
+           ;; Complex expression: bind to temp var to avoid double evaluation
+           (let ((temp (gensym "POW2")))
+             (parse `(let ((,temp ,x))
+                       (and (> ,temp 0) (zerop (logand ,temp (1- ,temp)))))))
+           ;; Simple expression: safe to duplicate
+           (parse `(and (> ,x 0) (zerop (logand ,x (1- ,x))))))))
+
+    ((and (consp form) (eq (first form) 'log2))
+     ;; Function: Integer log base 2 (position of highest set bit)
+     ;; log2(x) = integer-length(x) - 1
+     (parse `(1- (integer-length ,(second form)))))
+
     ((and (consp form) (consp (first form)))
      ;; Function call: ((lambda ...) args) or ((fn) args)
      (let ((fn (first form))

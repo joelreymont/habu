@@ -897,6 +897,54 @@
   (test-case number?-true
     (assert-compiles-both '(number? 42))))
 
+;;; Test power-of-2 utilities
+(test-group "Power-of-2 Utilities"
+  (test-case power-of-2?-true-1
+    (assert-compiles-both '(power-of-2? 1)))
+
+  (test-case power-of-2?-true-2
+    (assert-compiles-both '(power-of-2? 2)))
+
+  (test-case power-of-2?-true-16
+    (assert-compiles-both '(power-of-2? 16)))
+
+  (test-case power-of-2?-true-256
+    (assert-compiles-both '(power-of-2? 256)))
+
+  (test-case power-of-2?-false-3
+    (assert-compiles-both '(power-of-2? 3)))
+
+  (test-case power-of-2?-false-7
+    (assert-compiles-both '(power-of-2? 7)))
+
+  (test-case power-of-2?-false-zero
+    (assert-compiles-both '(power-of-2? 0)))
+
+  (test-case power-of-2?-false-negative
+    (assert-compiles-both '(power-of-2? -8)))
+
+  (test-case power-of-2?-expression
+    (assert-compiles-both '(power-of-2? (+ 8 8))))
+
+  (test-case log2-1
+    ; log2(1) = 0
+    (assert-compiles-both '(log2 1)))
+
+  (test-case log2-2
+    ; log2(2) = 1
+    (assert-compiles-both '(log2 2)))
+
+  (test-case log2-16
+    ; log2(16) = 4
+    (assert-compiles-both '(log2 16)))
+
+  (test-case log2-256
+    ; log2(256) = 8
+    (assert-compiles-both '(log2 256)))
+
+  (test-case log2-expression
+    (assert-compiles-both '(log2 (* 2 8)))))
+
 ;;; Test error cases
 (test-group "Error Handling"
   (test-case unbound-variable
