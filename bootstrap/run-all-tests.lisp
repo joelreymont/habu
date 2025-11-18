@@ -369,7 +369,43 @@
     (assert-compiles-both '(round -17)))
 
   (test-case round-zero
-    (assert-compiles-both '(round 0))))
+    (assert-compiles-both '(round 0)))
+
+  (test-case ffloor-positive
+    (assert-compiles-both '(ffloor 7 3)))
+
+  (test-case ffloor-negative-dividend
+    (assert-compiles-both '(ffloor -7 3)))
+
+  (test-case ffloor-negative-divisor
+    (assert-compiles-both '(ffloor 7 -3)))
+
+  (test-case fceiling-positive
+    (assert-compiles-both '(fceiling 7 3)))
+
+  (test-case fceiling-negative-dividend
+    (assert-compiles-both '(fceiling -7 3)))
+
+  (test-case fceiling-negative-divisor
+    (assert-compiles-both '(fceiling 7 -3)))
+
+  (test-case ftruncate-positive
+    (assert-compiles-both '(ftruncate 7 3)))
+
+  (test-case ftruncate-negative-dividend
+    (assert-compiles-both '(ftruncate -7 3)))
+
+  (test-case ftruncate-negative-divisor
+    (assert-compiles-both '(ftruncate 7 -3)))
+
+  (test-case fround-positive
+    (assert-compiles-both '(fround 7 3)))
+
+  (test-case fround-negative-dividend
+    (assert-compiles-both '(fround -7 3)))
+
+  (test-case fround-negative-divisor
+    (assert-compiles-both '(fround 7 -3))))
 
 ;;; Test predicates
 (test-group "Predicates"

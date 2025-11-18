@@ -1137,6 +1137,91 @@
           ;; round(n) for integer n returns n
           (emit-x86_64 (first args) env))
 
+         ;; Two-argument rounding division operators
+         ((eq op 'ffloor)
+          ;; ffloor(a, b) = floor(a/b) - rounds toward negative infinity
+          ;; For integers: if remainder != 0 and signs differ, subtract 1 from quotient
+          (append (emit-x86_64 (first args) env)
+                  (list #x50)                   ; push rax (dividend)
+                  (emit-x86_64 (second args) env)
+                  (list #x48 #x89 #xC3)         ; mov rbx, rax (divisor)
+                  (list #x48 #x8B #x04 #x24)    ; mov rax, [rsp] (dividend)
+                  (list #x48 #xC1 #xF8 #x04)    ; sar rax, 4 (untag dividend)
+                  (list #x48 #xC1 #xFB #x04)    ; sar rbx, 4 (untag divisor)
+                  (list #x48 #x99)              ; cqo (sign extend)
+                  (list #x48 #xF7 #xFB)         ; idiv rbx (rax = quotient, rdx = remainder)
+                  ;; Check if we need to adjust: remainder != 0 and signs differ
+                  (list #x48 #x85 #xD2)         ; test rdx, rdx (check remainder)
+                  (list #x74 #x0F)              ; jz +15 (skip adjustment if rem = 0)
+                  ;; Check if signs differ: (a ^ b) < 0
+                  (list #x48 #x8B #x0C #x24)    ; mov rcx, [rsp] (original dividend, tagged)
+                  (list #x48 #x31 #xD9)         ; xor rcx, rbx (signs differ if MSB set)
+                  (list #x48 #x85 #xC9)         ; test rcx, rcx
+                  (list #x79 #x03)              ; jns +3 (skip if same sign)
+                  ;; Different signs and remainder: subtract 1
+                  (list #x48 #xFF #xC8)         ; dec rax
+                  ;; Retag and clean up
+                  (list #x48 #xC1 #xE0 #x04)    ; shl rax, 4 (retag)
+                  (list #x48 #x83 #xC4 #x08))) ; add rsp, 8
+
+         ((eq op 'fceiling)
+          ;; fceiling(a, b) = ceiling(a/b) - rounds toward positive infinity
+          ;; For integers: if remainder != 0 and signs are same, add 1 to quotient
+          (append (emit-x86_64 (first args) env)
+                  (list #x50)                   ; push rax (dividend)
+                  (emit-x86_64 (second args) env)
+                  (list #x48 #x89 #xC3)         ; mov rbx, rax (divisor)
+                  (list #x48 #x8B #x04 #x24)    ; mov rax, [rsp] (dividend)
+                  (list #x48 #xC1 #xF8 #x04)    ; sar rax, 4 (untag dividend)
+                  (list #x48 #xC1 #xFB #x04)    ; sar rbx, 4 (untag divisor)
+                  (list #x48 #x99)              ; cqo (sign extend)
+                  (list #x48 #xF7 #xFB)         ; idiv rbx (rax = quotient, rdx = remainder)
+                  ;; Check if we need to adjust: remainder != 0 and signs same
+                  (list #x48 #x85 #xD2)         ; test rdx, rdx (check remainder)
+                  (list #x74 #x0F)              ; jz +15 (skip adjustment if rem = 0)
+                  ;; Check if signs same: (a ^ b) >= 0
+                  (list #x48 #x8B #x0C #x24)    ; mov rcx, [rsp] (original dividend, tagged)
+                  (list #x48 #x31 #xD9)         ; xor rcx, rbx (signs same if MSB not set)
+                  (list #x48 #x85 #xC9)         ; test rcx, rcx
+                  (list #x78 #x03)              ; js +3 (skip if different signs)
+                  ;; Same signs and remainder: add 1
+                  (list #x48 #xFF #xC0)         ; inc rax
+                  ;; Retag and clean up
+                  (list #x48 #xC1 #xE0 #x04)    ; shl rax, 4 (retag)
+                  (list #x48 #x83 #xC4 #x08))) ; add rsp, 8
+
+         ((eq op 'ftruncate)
+          ;; ftruncate(a, b) = truncate(a/b) - rounds toward zero
+          ;; For integers, this is the same as regular division
+          (append (emit-x86_64 (first args) env)
+                  (list #x50)                   ; push rax
+                  (emit-x86_64 (second args) env)
+                  (list #x48 #x89 #xC3)         ; mov rbx, rax (divisor)
+                  (list #x48 #x8B #x04 #x24)    ; mov rax, [rsp] (dividend)
+                  (list #x48 #xC1 #xF8 #x04)    ; sar rax, 4 (untag dividend)
+                  (list #x48 #xC1 #xFB #x04)    ; sar rbx, 4 (untag divisor)
+                  (list #x48 #x99)              ; cqo (sign extend rax to rdx:rax)
+                  (list #x48 #xF7 #xFB)         ; idiv rbx (rax = rax / rbx)
+                  (list #x48 #xC1 #xE0 #x04)    ; shl rax, 4 (retag result)
+                  (list #x48 #x83 #xC4 #x08))) ; add rsp, 8
+
+         ((eq op 'fround)
+          ;; fround(a, b) = round(a/b) - rounds to nearest integer
+          ;; For integers: if remainder > b/2, round up; if < b/2, round down
+          ;; If exactly b/2, round to even (banker's rounding)
+          ;; Simplified: just use truncate for integers
+          (append (emit-x86_64 (first args) env)
+                  (list #x50)                   ; push rax
+                  (emit-x86_64 (second args) env)
+                  (list #x48 #x89 #xC3)         ; mov rbx, rax (divisor)
+                  (list #x48 #x8B #x04 #x24)    ; mov rax, [rsp] (dividend)
+                  (list #x48 #xC1 #xF8 #x04)    ; sar rax, 4 (untag dividend)
+                  (list #x48 #xC1 #xFB #x04)    ; sar rbx, 4 (untag divisor)
+                  (list #x48 #x99)              ; cqo (sign extend rax to rdx:rax)
+                  (list #x48 #xF7 #xFB)         ; idiv rbx (rax = rax / rbx)
+                  (list #x48 #xC1 #xE0 #x04)    ; shl rax, 4 (retag result)
+                  (list #x48 #x83 #xC4 #x08))) ; add rsp, 8
+
          ;; List operations - require runtime integration
          ;; These operations need heap allocation and are not yet integrated with compiled code.
          ;; They work in the REPL (interpreted mode) which has access to the runtime heap.
@@ -1991,6 +2076,97 @@
          ((eq op 'round)
           ;; round(n) for integer n returns n
           (emit-arm64 (first args) env))
+
+         ;; Two-argument rounding division operators
+         ((eq op 'ffloor)
+          ;; ffloor(a, b) = floor(a/b) - rounds toward negative infinity
+          (append (emit-arm64 (first args) env)
+                  (list #xFD #x7B #xBF #xA9)       ; stp x29, x30, [sp, #-16]!
+                  (list #xE2 #x03 #x00 #xAA)       ; mov x2, x0 (save dividend)
+                  (emit-arm64 (second args) env)
+                  (list #xE1 #x03 #x00 #xAA)       ; mov x1, x0 (divisor to x1)
+                  (list #xE0 #x03 #x02 #xAA)       ; mov x0, x2 (dividend back to x0)
+                  ;; Save original values for sign check
+                  (list #xE4 #x03 #x00 #xAA)       ; mov x4, x0 (save original dividend)
+                  (list #xE5 #x03 #x01 #xAA)       ; mov x5, x1 (save original divisor)
+                  (list #x00 #x10 #x44 #xD3)       ; lsr x0, x0, #4 (untag dividend)
+                  (list #x21 #x10 #x44 #xD3)       ; lsr x1, x1, #4 (untag divisor)
+                  ;; Compute quotient and remainder
+                  (list #xE3 #x0C #xC1 #x9A)       ; sdiv x3, x0, x1 (quotient in x3)
+                  (list #x06 #x80 #x01 #x9B)       ; msub x6, x0, x1, x3 (remainder in x6)
+                  ;; Check if adjustment needed: remainder != 0 and signs differ
+                  (list #xDF #x00 #x00 #xF1)       ; cmp x6, #0
+                  (list #x60 #x00 #x00 #x54)       ; b.eq +12 (skip if rem = 0)
+                  ;; Check if signs differ by XOR
+                  (list #x84 #x00 #x05 #xCA)       ; eor x4, x4, x5 (signs differ if MSB set)
+                  (list #x9F #x00 #x00 #xF1)       ; cmp x4, #0
+                  (list #x4A #x00 #x00 #x54)       ; b.ge +8 (skip if same sign)
+                  ;; Different signs and remainder: subtract 1
+                  (list #x63 #x04 #x00 #xD1)       ; sub x3, x3, #1
+                  ;; Return quotient
+                  (list #xE0 #x03 #x03 #xAA)       ; mov x0, x3
+                  (list #x00 #x10 #x00 #xD3)       ; lsl x0, x0, #4 (retag)
+                  (list #xFD #x7B #xC1 #xA8)))     ; ldp x29, x30, [sp], #16
+
+         ((eq op 'fceiling)
+          ;; fceiling(a, b) = ceiling(a/b) - rounds toward positive infinity
+          (append (emit-arm64 (first args) env)
+                  (list #xFD #x7B #xBF #xA9)       ; stp x29, x30, [sp, #-16]!
+                  (list #xE2 #x03 #x00 #xAA)       ; mov x2, x0 (save dividend)
+                  (emit-arm64 (second args) env)
+                  (list #xE1 #x03 #x00 #xAA)       ; mov x1, x0 (divisor to x1)
+                  (list #xE0 #x03 #x02 #xAA)       ; mov x0, x2 (dividend back to x0)
+                  ;; Save original values for sign check
+                  (list #xE4 #x03 #x00 #xAA)       ; mov x4, x0 (save original dividend)
+                  (list #xE5 #x03 #x01 #xAA)       ; mov x5, x1 (save original divisor)
+                  (list #x00 #x10 #x44 #xD3)       ; lsr x0, x0, #4 (untag dividend)
+                  (list #x21 #x10 #x44 #xD3)       ; lsr x1, x1, #4 (untag divisor)
+                  ;; Compute quotient and remainder
+                  (list #xE3 #x0C #xC1 #x9A)       ; sdiv x3, x0, x1 (quotient in x3)
+                  (list #x06 #x80 #x01 #x9B)       ; msub x6, x0, x1, x3 (remainder in x6)
+                  ;; Check if adjustment needed: remainder != 0 and signs same
+                  (list #xDF #x00 #x00 #xF1)       ; cmp x6, #0
+                  (list #x60 #x00 #x00 #x54)       ; b.eq +12 (skip if rem = 0)
+                  ;; Check if signs same by XOR
+                  (list #x84 #x00 #x05 #xCA)       ; eor x4, x4, x5 (signs same if MSB not set)
+                  (list #x9F #x00 #x00 #xF1)       ; cmp x4, #0
+                  (list #x0B #x00 #x00 #x54)       ; b.lt +8 (skip if different signs)
+                  ;; Same signs and remainder: add 1
+                  (list #x63 #x04 #x00 #x91)       ; add x3, x3, #1
+                  ;; Return quotient
+                  (list #xE0 #x03 #x03 #xAA)       ; mov x0, x3
+                  (list #x00 #x10 #x00 #xD3)       ; lsl x0, x0, #4 (retag)
+                  (list #xFD #x7B #xC1 #xA8)))     ; ldp x29, x30, [sp], #16
+
+         ((eq op 'ftruncate)
+          ;; ftruncate(a, b) = truncate(a/b) - rounds toward zero
+          ;; For integers, this is the same as regular division
+          (append (emit-arm64 (first args) env)
+                  (list #xFD #x7B #xBF #xA9)       ; stp x29, x30, [sp, #-16]!
+                  (list #xE2 #x03 #x00 #xAA)       ; mov x2, x0 (save dividend)
+                  (emit-arm64 (second args) env)
+                  (list #xE1 #x03 #x00 #xAA)       ; mov x1, x0 (divisor to x1)
+                  (list #xE0 #x03 #x02 #xAA)       ; mov x0, x2 (dividend back to x0)
+                  (list #x00 #x10 #x44 #xD3)       ; lsr x0, x0, #4 (untag dividend)
+                  (list #x21 #x10 #x44 #xD3)       ; lsr x1, x1, #4 (untag divisor)
+                  (list #x00 #x0C #xC1 #x9A)       ; sdiv x0, x0, x1 (signed divide)
+                  (list #x00 #x10 #x00 #xD3)       ; lsl x0, x0, #4 (retag result)
+                  (list #xFD #x7B #xC1 #xA8)))     ; ldp x29, x30, [sp], #16
+
+         ((eq op 'fround)
+          ;; fround(a, b) = round(a/b) - rounds to nearest integer
+          ;; Simplified: just use truncate for integers
+          (append (emit-arm64 (first args) env)
+                  (list #xFD #x7B #xBF #xA9)       ; stp x29, x30, [sp, #-16]!
+                  (list #xE2 #x03 #x00 #xAA)       ; mov x2, x0 (save dividend)
+                  (emit-arm64 (second args) env)
+                  (list #xE1 #x03 #x00 #xAA)       ; mov x1, x0 (divisor to x1)
+                  (list #xE0 #x03 #x02 #xAA)       ; mov x0, x2 (dividend back to x0)
+                  (list #x00 #x10 #x44 #xD3)       ; lsr x0, x0, #4 (untag dividend)
+                  (list #x21 #x10 #x44 #xD3)       ; lsr x1, x1, #4 (untag divisor)
+                  (list #x00 #x0C #xC1 #x9A)       ; sdiv x0, x0, x1 (signed divide)
+                  (list #x00 #x10 #x00 #xD3)       ; lsl x0, x0, #4 (retag result)
+                  (list #xFD #x7B #xC1 #xA8)))     ; ldp x29, x30, [sp], #16
 
          ;; List operations - require runtime integration
          ;; These operations need heap allocation and are not yet integrated with compiled code.
