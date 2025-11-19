@@ -37,6 +37,10 @@
 (defvar *runtime-nth-addr* nil "Address of runtime-nth trampoline")
 (defvar *runtime-append-addr* nil "Address of runtime-append trampoline")
 (defvar *runtime-reverse-addr* nil "Address of runtime-reverse trampoline")
+(defvar *runtime-make-closure-0-addr* nil "Address of make-closure-0 trampoline")
+(defvar *runtime-make-closure-1-addr* nil "Address of make-closure-1 trampoline")
+(defvar *runtime-make-closure-2-addr* nil "Address of make-closure-2 trampoline")
+(defvar *runtime-make-closure-3-addr* nil "Address of make-closure-3 trampoline")
 
 (defun initialize-runtime-integration ()
   "Initialize runtime integration (Phase 1: Bootstrap mode with FFI trampolines)"
@@ -47,7 +51,9 @@
           (symbols-path (merge-pathnames "../runtime/symbols.lisp"
                                          (or *load-truename* *default-pathname-defaults*)))
           (lists-path (merge-pathnames "../runtime/lists.lisp"
-                                       (or *load-truename* *default-pathname-defaults*))))
+                                       (or *load-truename* *default-pathname-defaults*)))
+          (closures-path (merge-pathnames "../runtime/closures.lisp"
+                                          (or *load-truename* *default-pathname-defaults*))))
       (if (probe-file runtime-path)
           (progn
             (load runtime-path)
@@ -56,7 +62,10 @@
               (load symbols-path))
             ;; Load list operations
             (when (probe-file lists-path)
-              (load lists-path)))
+              (load lists-path))
+            ;; Load closure support
+            (when (probe-file closures-path)
+              (load closures-path)))
           (error "Cannot find runtime/memory.lisp at ~A" runtime-path))))
 
   ;; Initialize runtime heap
@@ -97,6 +106,26 @@
         sb-alien:unsigned-long ((list-ptr sb-alien:unsigned-long))
       (funcall (find-symbol "RUNTIME-REVERSE" :habu-runtime) list-ptr))
 
+    (sb-alien:define-alien-callable habu-make-closure-0-trampoline
+        sb-alien:unsigned-long ((code-ptr sb-alien:unsigned-long) (arity sb-alien:unsigned-long))
+      (funcall (find-symbol "MAKE-CLOSURE-0" :habu-runtime) code-ptr arity))
+
+    (sb-alien:define-alien-callable habu-make-closure-1-trampoline
+        sb-alien:unsigned-long ((code-ptr sb-alien:unsigned-long) (arity sb-alien:unsigned-long)
+                                (var1 sb-alien:unsigned-long))
+      (funcall (find-symbol "MAKE-CLOSURE-1" :habu-runtime) code-ptr arity var1))
+
+    (sb-alien:define-alien-callable habu-make-closure-2-trampoline
+        sb-alien:unsigned-long ((code-ptr sb-alien:unsigned-long) (arity sb-alien:unsigned-long)
+                                (var1 sb-alien:unsigned-long) (var2 sb-alien:unsigned-long))
+      (funcall (find-symbol "MAKE-CLOSURE-2" :habu-runtime) code-ptr arity var1 var2))
+
+    (sb-alien:define-alien-callable habu-make-closure-3-trampoline
+        sb-alien:unsigned-long ((code-ptr sb-alien:unsigned-long) (arity sb-alien:unsigned-long)
+                                (var1 sb-alien:unsigned-long) (var2 sb-alien:unsigned-long)
+                                (var3 sb-alien:unsigned-long))
+      (funcall (find-symbol "MAKE-CLOSURE-3" :habu-runtime) code-ptr arity var1 var2 var3))
+
     ;; Get addresses of the trampolines using the correct SBCL mechanism:
     ;; 1. alien-callable-function gets the callable object
     ;; 2. alien-sap converts to System Area Pointer
@@ -114,7 +143,15 @@
     (setf *runtime-append-addr*
           (sb-alien:alien-sap (sb-alien:alien-callable-function 'habu-append-trampoline)))
     (setf *runtime-reverse-addr*
-          (sb-alien:alien-sap (sb-alien:alien-callable-function 'habu-reverse-trampoline))))
+          (sb-alien:alien-sap (sb-alien:alien-callable-function 'habu-reverse-trampoline)))
+    (setf *runtime-make-closure-0-addr*
+          (sb-alien:alien-sap (sb-alien:alien-callable-function 'habu-make-closure-0-trampoline)))
+    (setf *runtime-make-closure-1-addr*
+          (sb-alien:alien-sap (sb-alien:alien-callable-function 'habu-make-closure-1-trampoline)))
+    (setf *runtime-make-closure-2-addr*
+          (sb-alien:alien-sap (sb-alien:alien-callable-function 'habu-make-closure-2-trampoline)))
+    (setf *runtime-make-closure-3-addr*
+          (sb-alien:alien-sap (sb-alien:alien-callable-function 'habu-make-closure-3-trampoline))))
 
   #-sbcl
   (error "Runtime integration only supported on SBCL currently")
@@ -2045,6 +2082,13 @@
      ;; Lambda expressions are not directly compiled to code
      ;; They only make sense in funcall context
      (error "Lambda expression cannot be compiled standalone: ~S" expr))
+
+    (closure
+     ;; Closures with captured variables
+     ;; Phase 1 Limitation: Closures can only be used inline via funcall
+     ;; They cannot be created as standalone first-class values  
+     ;; For now, closures work via funcall inline expansion (see funcall case)
+     (error "Closures cannot be created as standalone values in Phase 1. Use them directly in funcall: ((lambda (x) ...) arg)"))
 
     (named-let
      ;; Compile (let name ((var val) ...) body)
