@@ -451,6 +451,37 @@
                  (error "Runtime functions not available")))
            (error "Runtime not loaded"))))
 
+    ((and (consp form) (eq (first form) 'set))
+     ;; Special form: (set 'name value)
+     ;; Set a global variable's value at compile-time
+     (let* ((sym-name-expr (second form))
+            (value-expr (third form))
+            ;; Extract the symbol name from the quoted symbol
+            (sym-name (if (and (consp sym-name-expr)
+                              (eq (first sym-name-expr) 'quote))
+                         (second sym-name-expr)
+                         (error "set requires quoted symbol name: ~S" sym-name-expr))))
+       ;; Compile the value expression first
+       (let ((value-ir (parse value-expr)))
+         ;; For now, only support constant values (like defvar)
+         (unless (eq (expr-type value-ir) 'fixnum)
+           (error "set currently only supports constant fixnum values"))
+
+         ;; Set the symbol's value in the runtime
+         (when (find-package :habu-runtime)
+           (let ((intern-fn (find-symbol "RUNTIME-INTERN" :habu-runtime))
+                 (set-val-fn (find-symbol "SET-SYMBOL-VALUE" :habu-runtime)))
+             (when (and intern-fn set-val-fn)
+               (let* ((name-str (string sym-name))
+                      (sym (funcall intern-fn name-str))
+                      (tagged-value (ash (expr-value value-ir) 4)))
+                 (funcall set-val-fn sym tagged-value)
+                 (format t "; set ~A = ~D -> symbol ~X~%"
+                         sym-name (expr-value value-ir) sym)))))
+
+         ;; Return the value as the result
+         value-ir)))
+
     ((and (consp form) (eq (first form) 'setq))
      ;; Special form: (setq var value)
      ;; Mutate a lexical variable
