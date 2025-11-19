@@ -383,19 +383,52 @@
        ;; Store in function table (for compile-time inlining)
        (setf (gethash name *function-table*) (cons params body))
 
-       ;; ALSO store in symbol's function slot (for future runtime funcall)
-       ;; This integrates with the symbol system
+       ;; ALSO compile to executable code and store in symbol's function slot
+       ;; This enables runtime funcall
        (when (find-package :habu-runtime)
          (let ((intern-fn (find-symbol "RUNTIME-INTERN" :habu-runtime))
                (set-fn-fn (find-symbol "SET-SYMBOL-FUNCTION" :habu-runtime)))
            (when (and intern-fn set-fn-fn)
              (let* ((name-str (string name))
                     (sym (funcall intern-fn name-str))
-                    ;; For now, store a marker value in the function slot
-                    ;; Future: this would be a pointer to compiled code
-                    (fn-marker (ash (sxhash (list params body)) 4)))
-               (funcall set-fn-fn sym fn-marker)
-               (format t "; defun ~A -> symbol ~X~%" name sym)))))
+                    ;; Create alien-callable wrapper for this function
+                    ;; This allows calling from generated machine code
+                    (callable-name (intern (format nil "HABU-FUNCTION-~A" (string-upcase (string name)))
+                                          (find-package :habu-compiler))))
+               ;; Create the Lisp function that implements the body
+               (eval `(defun ,callable-name ,params ,body))
+
+               ;; Create alien-callable wrapper (SBCL-specific for Phase 1)
+               #+sbcl
+               (let ((num-params (length params)))
+                 (cond
+                   ((= num-params 0)
+                    (eval `(sb-alien:define-alien-callable ,callable-name
+                               sb-alien:unsigned-long ()
+                             (,callable-name))))
+                   ((= num-params 1)
+                    (eval `(sb-alien:define-alien-callable ,callable-name
+                               sb-alien:unsigned-long ((,(first params) sb-alien:unsigned-long))
+                             (,callable-name ,(first params)))))
+                   ((= num-params 2)
+                    (eval `(sb-alien:define-alien-callable ,callable-name
+                               sb-alien:unsigned-long ((,(first params) sb-alien:unsigned-long)
+                                                       (,(second params) sb-alien:unsigned-long))
+                             (,callable-name ,(first params) ,(second params)))))
+                   ((= num-params 3)
+                    (eval `(sb-alien:define-alien-callable ,callable-name
+                               sb-alien:unsigned-long ((,(first params) sb-alien:unsigned-long)
+                                                       (,(second params) sb-alien:unsigned-long)
+                                                       (,(third params) sb-alien:unsigned-long))
+                             (,callable-name ,(first params) ,(second params) ,(third params)))))
+                   (t (error "defun currently supports up to 3 parameters for runtime funcall")))
+
+                 ;; Get the function pointer address
+                 (let ((func-addr (sb-sys:sap-int
+                                  (sb-alien:alien-sap
+                                   (sb-alien:alien-callable-function callable-name)))))
+                   (funcall set-fn-fn sym func-addr)
+                   (format t "; defun ~A -> symbol ~X, code at ~X~%" name sym func-addr)))))))
 
        ;; Return 0 as a placeholder (defun doesn't produce runtime value)
        ;; The symbol is interned and function slot is set as a side effect
@@ -445,7 +478,7 @@
 
     ((and (consp form) (eq (first form) 'funcall))
      ;; Special form: (funcall 'name arg1 arg2 ...)
-     ;; Look up function in *function-table* and inline it
+     ;; Generate runtime function call via symbol-function slot
      (let* ((fn-name-expr (second form))
             (args (cddr form))
             ;; Extract the function name from the quoted symbol
@@ -456,10 +489,11 @@
             (fn-def (gethash fn-name *function-table*)))
        (unless fn-def
          (error "Undefined function: ~S" fn-name))
-       ;; Transform (funcall 'name arg1 arg2) to ((lambda params body) arg1 arg2)
-       (let ((params (car fn-def))
-             (body (cdr fn-def)))
-         (parse `((lambda ,params ,body) ,@args)))))
+       ;; Create runtime-call IR node instead of inlining
+       ;; This will generate code to call via the stored function pointer
+       (make-expr :type 'runtime-call
+                  :value fn-name
+                  :args (mapcar #'parse args))))
 
     ((and (consp form) (eq (first form) 'symbol-value))
      ;; Special form: (symbol-value 'name)
@@ -3151,7 +3185,85 @@
              (int-to-bytes func-addr 8)
              (list #xFF #xD0))))                  ; call rax
          (t
-          (error "Unknown operator: ~S" op)))))))
+          (error "Unknown operator: ~S" op)))))
+
+    (runtime-call
+     ;; Generate code to call function via symbol-function slot
+     ;; (funcall 'name arg1 arg2 ...)
+     (let* ((fn-name (expr-value expr))
+            (args (expr-args expr))
+            (num-args (length args)))
+       ;; Phase 1: Only support 0-3 arguments (matching defun limitation)
+       (when (> num-args 3)
+         (error "Runtime funcall currently supports up to 3 arguments"))
+
+       ;; Get symbol address at compile time
+       (let ((intern-fn (find-symbol "RUNTIME-INTERN" :habu-runtime))
+             (sym-addr 0))
+         (unless intern-fn
+           (error "Runtime not initialized"))
+         (unless (symbolp fn-name)
+           (error "fn-name should be a symbol, got ~S (type ~S, value ~S)"
+                  fn-name (type-of fn-name) (expr-value expr)))
+         (setf sym-addr (funcall intern-fn (string fn-name)))
+
+         ;; Generate code:
+         ;; 1. Load symbol address
+         ;; 2. Read symbol-function slot (offset 24)
+         ;; 3. Push function pointer to stack
+         ;; 4. Evaluate arguments and setup registers
+         ;; 5. Call function pointer
+         (append
+          ;; Load symbol address into RAX
+          (list #x48 #xB8)                      ; movabs rax, imm64
+          (int-to-bytes sym-addr 8)
+          ;; Read symbol-function slot [rax + 24] into RAX
+          (list #x48 #x8B #x40 #x18)            ; mov rax, [rax + 24]
+          ;; Save function pointer on stack
+          (list #x50)                           ; push rax
+
+          ;; Evaluate arguments and setup registers
+          ;; System V AMD64 ABI: RDI, RSI, RDX, RCX, R8, R9
+          (cond
+            ((= num-args 0)
+             ;; No arguments, just call
+             nil)
+
+            ((= num-args 1)
+             ;; Evaluate arg into RAX, move to RDI
+             (append
+              (emit-x86_64 (first args) env)
+              (list #x48 #x89 #xC7)))           ; mov rdi, rax
+
+            ((= num-args 2)
+             ;; Eval arg1 -> RDI, arg2 -> RSI
+             (append
+              (emit-x86_64 (first args) env)
+              (list #x50)                       ; push rax (save arg1)
+              (emit-x86_64 (second args) env)
+              (list #x48 #x89 #xC6)             ; mov rsi, rax (arg2 -> RSI)
+              (list #x48 #x8B #x3C #x24)        ; mov rdi, [rsp] (arg1 -> RDI)
+              (list #x48 #x83 #xC4 #x08)))      ; add rsp, 8 (pop arg1)
+
+            ((= num-args 3)
+             ;; Eval arg1 -> RDI, arg2 -> RSI, arg3 -> RDX
+             (append
+              (emit-x86_64 (first args) env)
+              (list #x50)                       ; push rax (save arg1)
+              (emit-x86_64 (second args) env)
+              (list #x50)                       ; push rax (save arg2)
+              (emit-x86_64 (third args) env)
+              (list #x48 #x89 #xC2)             ; mov rdx, rax (arg3 -> RDX)
+              (list #x48 #x8B #x34 #x24)        ; mov rsi, [rsp] (arg2 -> RSI)
+              (list #x48 #x8B #x7C #x24 #x08)   ; mov rdi, [rsp + 8] (arg1 -> RDI)
+              (list #x48 #x83 #xC4 #x10)))      ; add rsp, 16 (pop arg2 and arg1)
+
+            (t (error "Unsupported number of arguments: ~D" num-args)))
+
+          ;; Pop function pointer from stack to R11 and call
+          (list #x49 #x8B #x1C #x24)            ; mov r11, [rsp]
+          (list #x48 #x83 #xC4 #x08)            ; add rsp, 8 (pop fn ptr)
+          (list #x41 #xFF #xD3)))))))           ; call r11
 
 ;;; Code generation for ARM64
 (defun emit-arm64 (expr &optional (env nil))
@@ -4339,7 +4451,82 @@
                   See docs/RUNTIME_INTEGRATION.md for details."))
 
          (t
-          (error "Unknown operator: ~S" op)))))))
+          (error "Unknown operator: ~S" op)))))
+
+    (runtime-call
+     ;; Generate ARM64 code to call function via symbol-function slot
+     ;; (funcall 'name arg1 arg2 ...)
+     (let* ((fn-name (expr-value expr))
+            (args (expr-args expr))
+            (num-args (length args)))
+       ;; Phase 1: Only support 0-3 arguments (matching defun limitation)
+       (when (> num-args 3)
+         (error "Runtime funcall currently supports up to 3 arguments"))
+
+       ;; Get symbol address at compile time
+       (let ((intern-fn (find-symbol "RUNTIME-INTERN" :habu-runtime))
+             (sym-addr 0))
+         (unless intern-fn
+           (error "Runtime not initialized"))
+         (unless (symbolp fn-name)
+           (error "fn-name should be a symbol, got ~S (type ~S, value ~S)"
+                  fn-name (type-of fn-name) (expr-value expr)))
+         (setf sym-addr (funcall intern-fn (string fn-name)))
+
+         ;; Generate code:
+         ;; 1. Load symbol address into X9
+         ;; 2. Read symbol-function slot [X9 + 24] into X9
+         ;; 3. Evaluate arguments into X0-X2
+         ;; 4. Call via blr x9
+         (append
+          ;; Load symbol address into X9 (64-bit immediate)
+          ;; movz x9, #(sym-addr & 0xFFFF), lsl #0
+          (list #x09 (logand (ash sym-addr 0) #xFF) (logand (ash sym-addr -8) #xFF) #xD2)
+          ;; movk x9, #((sym-addr >> 16) & 0xFFFF), lsl #16
+          (list #x09 (logand (ash sym-addr -16) #xFF) (logand (ash sym-addr -24) #xFF) #xF2)
+          ;; movk x9, #((sym-addr >> 32) & 0xFFFF), lsl #32
+          (list #x09 (logand (ash sym-addr -32) #xFF) (logand (ash sym-addr -40) #xFF) #xF2)
+          ;; movk x9, #((sym-addr >> 48) & 0xFFFF), lsl #48
+          (list #x09 (logand (ash sym-addr -48) #xFF) (logand (ash sym-addr -56) #xFF) #xF2)
+
+          ;; Read symbol-function slot: ldr x9, [x9, #24]
+          (list #x29 #x31 #x40 #xF9)            ; ldr x9, [x9, #24]
+
+          ;; Evaluate arguments and setup registers (X0, X1, X2)
+          (cond
+            ((= num-args 0)
+             ;; No arguments, just call
+             nil)
+
+            ((= num-args 1)
+             ;; Evaluate arg into X0 (already there by default)
+             (emit-arm64 (first args) env))
+
+            ((= num-args 2)
+             ;; Eval arg1 -> X0, then save; eval arg2 -> X0, move to X1; restore X0
+             (append
+              (emit-arm64 (first args) env)
+              (list #xEA #x03 #x00 #xAA)        ; mov x10, x0 (save arg1)
+              (emit-arm64 (second args) env)
+              (list #xE1 #x03 #x00 #xAA)        ; mov x1, x0 (arg2 -> X1)
+              (list #xE0 #x03 #x0A #xAA)))      ; mov x0, x10 (arg1 -> X0)
+
+            ((= num-args 3)
+             ;; Eval arg1 -> X0, save; arg2 -> X0, save; arg3 -> X0, move to X2; restore X1, X0
+             (append
+              (emit-arm64 (first args) env)
+              (list #xEA #x03 #x00 #xAA)        ; mov x10, x0 (save arg1)
+              (emit-arm64 (second args) env)
+              (list #xEB #x03 #x00 #xAA)        ; mov x11, x0 (save arg2)
+              (emit-arm64 (third args) env)
+              (list #xE2 #x03 #x00 #xAA)        ; mov x2, x0 (arg3 -> X2)
+              (list #xE1 #x03 #x0B #xAA)        ; mov x1, x11 (arg2 -> X1)
+              (list #xE0 #x03 #x0A #xAA)))      ; mov x0, x10 (arg1 -> X0)
+
+            (t (error "Unsupported number of arguments: ~D" num-args)))
+
+          ;; Call function pointer: blr x9
+          (list #x20 #x01 #x3F #xD6)))))))      ; blr x9
 
 ;;; Helper: Convert integer to little-endian byte list
 (defun int-to-bytes (n size)
