@@ -182,10 +182,135 @@ docs/SYMBOLS.md               - NEW: Symbol documentation
 SESSION_SUMMARY.md            - NEW: This summary
 ```
 
+## Session 2: defun, funcall, and defvar
+
+### 4. Global Function Definitions (defun) ✓
+
+**Implemented:**
+- Enhanced defun to integrate with symbol system
+- Stores function definition in *function-table* for compile-time inlining
+- Interns symbol and sets symbol-function slot
+- Prints confirmation: "; defun NAME -> symbol ADDR"
+
+**Files Modified:**
+- `bootstrap/compiler.lisp` - defun integration (lines 318-343)
+- `bootstrap/test-defun.lisp` - NEW: defun test suite
+
+**Features:**
+- ✅ Symbol interning on defun compilation
+- ✅ Function slot populated with hash marker
+- ✅ Existing inline behavior preserved
+- ✅ Foundation for future funcall implementation
+
+**Commits:**
+- `cb4aed1` - Integrate defun with symbol system for future funcall support
+
+### 5. Function Calls by Name (funcall) ✓
+
+**Implemented:**
+- funcall special form: (funcall 'name args...)
+- Looks up function in *function-table*
+- Transforms to lambda call: ((lambda params body) args...)
+- Validates function is defined (errors if not)
+
+**Files Modified:**
+- `bootstrap/compiler.lisp` - funcall implementation (lines 356-372)
+- `bootstrap/test-defun-funcall.lisp` - NEW: Comprehensive funcall tests
+
+**Features:**
+- ✅ Requires quoted function name
+- ✅ Works with any user-defined function
+- ✅ Supports nested calls
+- ✅ Error handling for undefined functions
+
+**Commits:**
+- `2486103` - Implement funcall for calling global functions by name
+
+### 6. Global Variable Definitions (defvar) ✓
+
+**Implemented:**
+- defvar special form: (defvar name initial-value)
+- Interns symbol and sets symbol-value slot
+- symbol-value special form: (symbol-value 'name)
+- Reads symbol-value slot and embeds as constant
+
+**Files Modified:**
+- `bootstrap/compiler.lisp` - defvar + symbol-value (lines 345-370, 401-422)
+- `bootstrap/test-defvar.lisp` - NEW: Global variable tests
+
+**Features:**
+- ✅ Global variable bindings via symbol-value slots
+- ✅ Compile-time value embedding
+- ✅ Works in expressions: (+ (symbol-value '*x*) 10)
+- ⚠️  Limitation: Can't use 0 or nil (conflicts with unbound marker)
+
+**Known Issue:**
+- Runtime uses 0 as unbound marker
+- Fixnum 0 is represented as 0 (0 << 4)
+- Setting variable to 0 or nil makes it appear unbound
+- **Future fix:** Change unbound marker to 0xFFFFFFFFFFFFFFFF
+
+**Commits:**
+- `b5395e3` - Implement defvar and symbol-value for global variables
+
+## Test Statistics
+
+**Session 2 Results:**
+- Total tests: 597 (all passing ✅)
+- New test files: 3
+  - test-defun.lisp
+  - test-defun-funcall.lisp
+  - test-defvar.lisp
+
+**Session 2 Commits:**
+- 3 feature commits
+- 0 bug fixes
+- All existing tests still passing
+
+## Updated Next Steps
+
+### Completed This Session:
+✅ Implement defun - Global function definitions
+✅ Implement funcall - Call functions by name
+✅ Implement defvar - Global variable definitions
+
+### Remaining (Next Session):
+1. **Fix unbound marker conflict**
+   - Change +unbound+ from 0 to 0xFFFFFFFFFFFFFFFF
+   - Enable 0 and nil as valid values
+   - Update runtime symbol functions
+
+2. **Macro System Expansion**
+   - Already have basic defmacro
+   - Add more macro expansion features
+   - Support backquote/comma in macros
+
+3. **Runtime funcall**
+   - Generate code to call functions via symbol-function slot
+   - Store actual code pointers (not hash markers)
+   - Enable true runtime function calls
+
+### Future (Phase 2):
+1. **Inline Allocation** - Eliminate FFI dependencies
+2. **Conservative GC** - Stack scanning for safety
+3. **String Support** - For proper symbol names
+4. **Symbol Packages** - Namespace isolation
+
+## Files Changed Session 2
+
+```
+bootstrap/compiler.lisp            - defun, funcall, defvar, symbol-value
+bootstrap/test-defun.lisp          - NEW: defun tests
+bootstrap/test-defun-funcall.lisp  - NEW: funcall tests
+bootstrap/test-defvar.lisp         - NEW: defvar tests
+bootstrap/SESSION_SUMMARY.md       - Updated with session 2 work
+```
+
 ## Conclusion
 
-Successful implementation of two major subsystems (GC and Symbols) with
-comprehensive testing and documentation. The bootstrap foundation is
-solid and ready for higher-level features like defun and macros.
+Successful implementation of three major language features (defun, funcall, defvar)
+with comprehensive testing. Global functions and variables now work via the symbol
+system, enabling more sophisticated Lisp programs.
 
-All tests passing. Ready to continue!
+All 597 tests passing. Discovered runtime limitation with unbound marker that needs
+addressing. Ready to continue!
