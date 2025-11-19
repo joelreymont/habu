@@ -34,6 +34,7 @@
 ;; Load commands
 (defconstant +LC_SEGMENT_64+      #x19)  ; 64-bit segment
 (defconstant +LC_UNIXTHREAD+      #x05)  ; Unix thread state (old-style)
+(defconstant +LC_UUID+            #x1B)  ; 128-bit UUID
 (defconstant +LC_SYMTAB+          #x02)  ; Symbol table
 (defconstant +LC_DYSYMTAB+        #x0B)  ; Dynamic symbol table
 (defconstant +LC_MAIN+            #x28)  ; Entry point (modern, like SBCL)
@@ -212,6 +213,37 @@
    'vector))
 
 ;;; ============================================================
+;;; UUID COMMAND
+;;; ============================================================
+
+(defun emit-uuid-command ()
+  "Emit LC_UUID command with generated UUID"
+  (coerce
+   (append
+    (int-to-bytes +LC_UUID+ 4)
+    (int-to-bytes 24 4)              ; cmdsize (fixed 24 bytes: 8 + 16)
+    ;; Generate a simple UUID (16 bytes)
+    ;; For simplicity, use hash of timestamp + random
+    (let ((time (get-universal-time)))
+      (list (mod (+ time 0) 256)
+            (mod (+ time 1) 256)
+            (mod (+ time 2) 256)
+            (mod (+ time 3) 256)
+            (mod (+ time 4) 256)
+            (mod (+ time 5) 256)
+            (mod (+ time 6) 256)
+            (mod (+ time 7) 256)
+            (mod (+ time 8) 256)
+            (mod (+ time 9) 256)
+            (mod (+ time 10) 256)
+            (mod (+ time 11) 256)
+            (mod (+ time 12) 256)
+            (mod (+ time 13) 256)
+            (mod (+ time 14) 256)
+            (mod (+ time 15) 256))))
+   'vector))
+
+;;; ============================================================
 ;;; BUILD VERSION COMMAND
 ;;; ============================================================
 
@@ -347,11 +379,12 @@
          (dylib-cmd-size 52)          ; LC_LOAD_DYLIB ("/usr/lib/libSystem.B.dylib" = 27 + null + padding = 52)
          (symtab-cmd-size 24)         ; LC_SYMTAB (empty)
          (dysymtab-cmd-size 80)       ; LC_DYSYMTAB (empty)
+         (uuid-cmd-size 24)           ; LC_UUID (16-byte UUID)
          (build-version-cmd-size 32)  ; LC_BUILD_VERSION
          (source-version-cmd-size 16) ; LC_SOURCE_VERSION
-         ;; Modern approach: segment + dylinker + dylib + symtabs + main + versions
+         ;; Modern approach: segment + dylinker + dylib + symtabs + uuid + main + versions
          (load-cmds-size (+ segment-cmd-size section-size dylinker-cmd-size dylib-cmd-size
-                           symtab-cmd-size dysymtab-cmd-size
+                           symtab-cmd-size dysymtab-cmd-size uuid-cmd-size
                            main-cmd-size build-version-cmd-size source-version-cmd-size))
          (headers-size (+ header-size load-cmds-size))
          (code-offset 4096)           ; Start code at page boundary
@@ -366,7 +399,7 @@
                   :cpusubtype (ecase arch
                                (:x86_64 +CPU_SUBTYPE_X86_64_ALL+)
                                (:arm64  +CPU_SUBTYPE_ARM64_ALL+))
-                  :ncmds 8  ; Segment + dylinker + dylib + symtab + dysymtab + main + build_version + source_version
+                  :ncmds 9  ; Segment + dylinker + dylib + symtab + dysymtab + uuid + main + build_version + source_version
                   :sizeofcmds load-cmds-size))
 
          (segment (make-segment-command-64
@@ -407,6 +440,9 @@
       ;; Write symbol table commands (empty, but required for codesign)
       (write-sequence (emit-symtab-command) out)
       (write-sequence (emit-dysymtab-command) out)
+
+      ;; Write UUID command (required for code signing)
+      (write-sequence (emit-uuid-command) out)
 
       ;; Write main command (modern entry point)
       (write-sequence (emit-main-command entryoff 0) out)

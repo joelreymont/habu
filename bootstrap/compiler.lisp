@@ -2447,6 +2447,45 @@
    ;; Load cdr (offset 8)
    '(#x48 #x8B #x40 #x08))) ; mov rax, [rax+8]
 
+;;; ARM64 inline allocation helpers
+(defun emit-inline-cons-arm64 (car-code cdr-code)
+  "Generate inline cons allocation for ARM64 (Phase 2)"
+  ;; TODO: Implement inline allocation
+  ;; For now, this is a placeholder
+  (append
+   car-code
+   ;; Save car in x19 (callee-saved, won't be clobbered)
+   '(#xF3 #x03 #x00 #xAA)   ; mov x19, x0
+   cdr-code
+   ;; Now x0 has cdr, x19 has car
+   ;; TODO: Inline heap allocation goes here
+   ;; For Phase 2.1, we'll implement:
+   ;; - Get heap_ptr from global
+   ;; - Check heap_limit
+   ;; - Allocate 16 bytes
+   ;; - Store car/cdr
+   ;; - Update heap_ptr
+   ;; - Tag pointer with 0x1
+   ))
+
+(defun emit-inline-car-arm64 (cons-code)
+  "Generate inline car access for ARM64 (Phase 2)"
+  (append
+   cons-code
+   ;; Untag pointer (remove 0x1): and x0, x0, #~1
+   '(#x00 #xFC #x7F #x92)   ; and x0, x0, #0xFFFFFFFFFFFFFFFE
+   ;; Load car (offset 0): ldr x0, [x0]
+   '(#x00 #x00 #x40 #xF9))) ; ldr x0, [x0, #0]
+
+(defun emit-inline-cdr-arm64 (cons-code)
+  "Generate inline cdr access for ARM64 (Phase 2)"
+  (append
+   cons-code
+   ;; Untag pointer (remove 0x1): and x0, x0, #~1
+   '(#x00 #xFC #x7F #x92)   ; and x0, x0, #0xFFFFFFFFFFFFFFFE
+   ;; Load cdr (offset 8): ldr x0, [x0, #8]
+   '(#x00 #x04 #x40 #xF9))) ; ldr x0, [x0, #8]
+
 ;;; Code generation for x86_64
 (defun emit-x86_64 (expr &optional (env nil))
   "Generate x86_64 machine code for expression with environment"
