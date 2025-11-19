@@ -1,5 +1,32 @@
 # Habu Lisp - Session Context (2025-11-18)
 
+## IMPORTANT DIRECTIVE
+
+**⚠️ DO NOT GENERATE C CODE** - Only generate C code for:
+1. The minimal runtime (primitives like get-tag, cons, car, cdr, string-ref, etc.)
+2. Primitives required by the REPL (line editing, terminal I/O)
+
+All other functionality must be implemented in Lisp, not C. The runtime follows the SBCL model: minimal C primitives, maximum Lisp implementation.
+
+## Current REPL Implementation
+
+**Status**: ✅ COMPLETE - Full working REPL with minimal runtime
+- **Executable**: `habu-extended` (56KB)
+- **Line editing**: Full readline features (arrows, Ctrl-A/E, insert mode)
+- **Reader**: Parses numbers, operators (+,-,*,/), and lists
+- **Evaluator**: Handles arithmetic expressions
+- **Runtime**: Minimal C (get-tag, string-ref, cons, car, cdr, arithmetic, I/O)
+- **Type system**: Implemented in Lisp using get-tag
+- **String ops**: Implemented in Lisp using string-ref loops
+
+**Test**:
+```bash
+./habu-extended
+habu> 42        → 42
+habu> (+ 10 20) → 30
+habu> (* 6 7)   → 42
+```
+
 ## Session Summary
 
 This session focused on expanding the compiler's operator coverage, implementing major optimizations, and improving language features. Key accomplishments include:
