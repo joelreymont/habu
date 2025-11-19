@@ -47,6 +47,12 @@
 (defvar *runtime-string-substring-addr* nil "Address of runtime-string-substring trampoline")
 (defvar *runtime-read-from-string-addr* nil "Address of runtime-read-from-string trampoline")
 (defvar *runtime-print-to-string-addr* nil "Address of runtime-print-to-string trampoline")
+(defvar *runtime-file-open-addr* nil "Address of runtime-file-open trampoline")
+(defvar *runtime-file-read-addr* nil "Address of runtime-file-read trampoline")
+(defvar *runtime-file-write-addr* nil "Address of runtime-file-write trampoline")
+(defvar *runtime-file-close-addr* nil "Address of runtime-file-close trampoline")
+(defvar *runtime-read-file-addr* nil "Address of runtime-read-file trampoline")
+(defvar *runtime-write-file-addr* nil "Address of runtime-write-file trampoline")
 
 (defun initialize-runtime-integration ()
   "Initialize runtime integration (Phase 1: Bootstrap mode with FFI trampolines)"
@@ -63,7 +69,9 @@
           (strings-path (merge-pathnames "../runtime/strings.lisp"
                                          (or *load-truename* *default-pathname-defaults*)))
           (reader-path (merge-pathnames "../runtime/reader.lisp"
-                                        (or *load-truename* *default-pathname-defaults*))))
+                                        (or *load-truename* *default-pathname-defaults*)))
+          (files-path (merge-pathnames "../runtime/files.lisp"
+                                       (or *load-truename* *default-pathname-defaults*))))
       (if (probe-file runtime-path)
           (progn
             (load runtime-path)
@@ -81,7 +89,10 @@
               (load strings-path))
             ;; Load reader/printer support
             (when (probe-file reader-path)
-              (load reader-path)))
+              (load reader-path))
+            ;; Load file I/O support
+            (when (probe-file files-path)
+              (load files-path)))
           (error "Cannot find runtime/memory.lisp at ~A" runtime-path))))
 
   ;; Initialize runtime heap
@@ -169,6 +180,30 @@
         sb-alien:unsigned-long ((value sb-alien:unsigned-long))
       (funcall (find-symbol "RUNTIME-PRINT-TO-STRING" :habu-runtime) value))
 
+    (sb-alien:define-alien-callable habu-file-open-trampoline
+        sb-alien:unsigned-long ((path-ptr sb-alien:unsigned-long) (mode-ptr sb-alien:unsigned-long))
+      (funcall (find-symbol "RUNTIME-FILE-OPEN" :habu-runtime) path-ptr mode-ptr))
+
+    (sb-alien:define-alien-callable habu-file-read-trampoline
+        sb-alien:unsigned-long ((handle sb-alien:unsigned-long))
+      (funcall (find-symbol "RUNTIME-FILE-READ" :habu-runtime) handle))
+
+    (sb-alien:define-alien-callable habu-file-write-trampoline
+        sb-alien:unsigned-long ((handle sb-alien:unsigned-long) (data-ptr sb-alien:unsigned-long))
+      (funcall (find-symbol "RUNTIME-FILE-WRITE" :habu-runtime) handle data-ptr))
+
+    (sb-alien:define-alien-callable habu-file-close-trampoline
+        sb-alien:unsigned-long ((handle sb-alien:unsigned-long))
+      (funcall (find-symbol "RUNTIME-FILE-CLOSE" :habu-runtime) handle))
+
+    (sb-alien:define-alien-callable habu-read-file-trampoline
+        sb-alien:unsigned-long ((path-ptr sb-alien:unsigned-long))
+      (funcall (find-symbol "RUNTIME-READ-FILE" :habu-runtime) path-ptr))
+
+    (sb-alien:define-alien-callable habu-write-file-trampoline
+        sb-alien:unsigned-long ((path-ptr sb-alien:unsigned-long) (data-ptr sb-alien:unsigned-long))
+      (funcall (find-symbol "RUNTIME-WRITE-FILE" :habu-runtime) path-ptr data-ptr))
+
     ;; Get addresses of the trampolines using the correct SBCL mechanism:
     ;; 1. alien-callable-function gets the callable object
     ;; 2. alien-sap converts to System Area Pointer
@@ -206,7 +241,19 @@
     (setf *runtime-read-from-string-addr*
           (sb-alien:alien-sap (sb-alien:alien-callable-function 'habu-read-from-string-trampoline)))
     (setf *runtime-print-to-string-addr*
-          (sb-alien:alien-sap (sb-alien:alien-callable-function 'habu-print-to-string-trampoline))))
+          (sb-alien:alien-sap (sb-alien:alien-callable-function 'habu-print-to-string-trampoline)))
+    (setf *runtime-file-open-addr*
+          (sb-alien:alien-sap (sb-alien:alien-callable-function 'habu-file-open-trampoline)))
+    (setf *runtime-file-read-addr*
+          (sb-alien:alien-sap (sb-alien:alien-callable-function 'habu-file-read-trampoline)))
+    (setf *runtime-file-write-addr*
+          (sb-alien:alien-sap (sb-alien:alien-callable-function 'habu-file-write-trampoline)))
+    (setf *runtime-file-close-addr*
+          (sb-alien:alien-sap (sb-alien:alien-callable-function 'habu-file-close-trampoline)))
+    (setf *runtime-read-file-addr*
+          (sb-alien:alien-sap (sb-alien:alien-callable-function 'habu-read-file-trampoline)))
+    (setf *runtime-write-file-addr*
+          (sb-alien:alien-sap (sb-alien:alien-callable-function 'habu-write-file-trampoline))))
 
   #-sbcl
   (error "Runtime integration only supported on SBCL currently")
@@ -330,6 +377,7 @@
     length nth append reverse
     string-length string-concat string-equal string-substring
     read print
+    file-open file-read file-write file-close read-file write-file
     ;; Add more operators as needed
     ))
 
@@ -3691,6 +3739,121 @@
              (emit-x86_64 (first args) env)
              ;; Setup call: RDI=value
              '(#x48 #x89 #xC7)                ; mov rdi, rax
+             ;; Load function address and call
+             '(#x48 #xB8)                     ; movabs rax, imm64
+             (int-to-bytes func-addr 8)
+             '(#xFF #xD0))))                  ; call rax
+
+         ;; File I/O operations
+         ((eq op 'file-open)
+          ;; (file-open path-str mode-str) - open file
+          ;; Call runtime-file-open trampoline: Args: RDI (path), RSI (mode), Return: RAX (handle)
+          (unless *runtime-file-open-addr*
+            (error "Runtime not initialized. Call (initialize-runtime-integration) first."))
+          (let ((func-addr (sb-sys:sap-int *runtime-file-open-addr*)))
+            (append
+             ;; Evaluate path into RAX
+             (emit-x86_64 (first args) env)
+             ;; Save path on stack
+             '(#x50)                          ; push rax
+             ;; Evaluate mode into RAX
+             (emit-x86_64 (second args) env)
+             ;; Setup call: RDI=path, RSI=mode
+             '(#x48 #x89 #xC6)                ; mov rsi, rax (mode in RSI)
+             '(#x48 #x8B #x3C #x24)           ; mov rdi, [rsp] (path in RDI)
+             '(#x48 #x83 #xC4 #x08)           ; add rsp, 8 (pop path)
+             ;; Load function address and call
+             '(#x48 #xB8)                     ; movabs rax, imm64
+             (int-to-bytes func-addr 8)
+             '(#xFF #xD0))))                  ; call rax
+
+         ((eq op 'file-read)
+          ;; (file-read handle) - read from file
+          ;; Call runtime-file-read trampoline: Arg: RDI (handle), Return: RAX (string)
+          (unless *runtime-file-read-addr*
+            (error "Runtime not initialized. Call (initialize-runtime-integration) first."))
+          (let ((func-addr (sb-sys:sap-int *runtime-file-read-addr*)))
+            (append
+             ;; Evaluate handle into RAX
+             (emit-x86_64 (first args) env)
+             ;; Setup call: RDI=handle
+             '(#x48 #x89 #xC7)                ; mov rdi, rax
+             ;; Load function address and call
+             '(#x48 #xB8)                     ; movabs rax, imm64
+             (int-to-bytes func-addr 8)
+             '(#xFF #xD0))))                  ; call rax
+
+         ((eq op 'file-write)
+          ;; (file-write handle data-str) - write to file
+          ;; Call runtime-file-write trampoline: Args: RDI (handle), RSI (data), Return: RAX (bytes written)
+          (unless *runtime-file-write-addr*
+            (error "Runtime not initialized. Call (initialize-runtime-integration) first."))
+          (let ((func-addr (sb-sys:sap-int *runtime-file-write-addr*)))
+            (append
+             ;; Evaluate handle into RAX
+             (emit-x86_64 (first args) env)
+             ;; Save handle on stack
+             '(#x50)                          ; push rax
+             ;; Evaluate data into RAX
+             (emit-x86_64 (second args) env)
+             ;; Setup call: RDI=handle, RSI=data
+             '(#x48 #x89 #xC6)                ; mov rsi, rax (data in RSI)
+             '(#x48 #x8B #x3C #x24)           ; mov rdi, [rsp] (handle in RDI)
+             '(#x48 #x83 #xC4 #x08)           ; add rsp, 8 (pop handle)
+             ;; Load function address and call
+             '(#x48 #xB8)                     ; movabs rax, imm64
+             (int-to-bytes func-addr 8)
+             '(#xFF #xD0))))                  ; call rax
+
+         ((eq op 'file-close)
+          ;; (file-close handle) - close file
+          ;; Call runtime-file-close trampoline: Arg: RDI (handle), Return: RAX (success)
+          (unless *runtime-file-close-addr*
+            (error "Runtime not initialized. Call (initialize-runtime-integration) first."))
+          (let ((func-addr (sb-sys:sap-int *runtime-file-close-addr*)))
+            (append
+             ;; Evaluate handle into RAX
+             (emit-x86_64 (first args) env)
+             ;; Setup call: RDI=handle
+             '(#x48 #x89 #xC7)                ; mov rdi, rax
+             ;; Load function address and call
+             '(#x48 #xB8)                     ; movabs rax, imm64
+             (int-to-bytes func-addr 8)
+             '(#xFF #xD0))))                  ; call rax
+
+         ((eq op 'read-file)
+          ;; (read-file path-str) - convenience: read entire file
+          ;; Call runtime-read-file trampoline: Arg: RDI (path), Return: RAX (contents)
+          (unless *runtime-read-file-addr*
+            (error "Runtime not initialized. Call (initialize-runtime-integration) first."))
+          (let ((func-addr (sb-sys:sap-int *runtime-read-file-addr*)))
+            (append
+             ;; Evaluate path into RAX
+             (emit-x86_64 (first args) env)
+             ;; Setup call: RDI=path
+             '(#x48 #x89 #xC7)                ; mov rdi, rax
+             ;; Load function address and call
+             '(#x48 #xB8)                     ; movabs rax, imm64
+             (int-to-bytes func-addr 8)
+             '(#xFF #xD0))))                  ; call rax
+
+         ((eq op 'write-file)
+          ;; (write-file path-str data-str) - convenience: write entire file
+          ;; Call runtime-write-file trampoline: Args: RDI (path), RSI (data), Return: RAX (success)
+          (unless *runtime-write-file-addr*
+            (error "Runtime not initialized. Call (initialize-runtime-integration) first."))
+          (let ((func-addr (sb-sys:sap-int *runtime-write-file-addr*)))
+            (append
+             ;; Evaluate path into RAX
+             (emit-x86_64 (first args) env)
+             ;; Save path on stack
+             '(#x50)                          ; push rax
+             ;; Evaluate data into RAX
+             (emit-x86_64 (second args) env)
+             ;; Setup call: RDI=path, RSI=data
+             '(#x48 #x89 #xC6)                ; mov rsi, rax (data in RSI)
+             '(#x48 #x8B #x3C #x24)           ; mov rdi, [rsp] (path in RDI)
+             '(#x48 #x83 #xC4 #x08)           ; add rsp, 8 (pop path)
              ;; Load function address and call
              '(#x48 #xB8)                     ; movabs rax, imm64
              (int-to-bytes func-addr 8)

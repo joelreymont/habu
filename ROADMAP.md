@@ -47,12 +47,20 @@ Using SBCL's runtime via FFI for rapid development while maintaining a clean arc
 - ✅ print operation - convert runtime value to string
 - ✅ Round-trip tested (read then print)
 - ✅ x86_64 code generation via FFI trampolines
-**Note:** File I/O not yet implemented - currently reads/prints from/to strings only
+**Note:** Basic file I/O now implemented! Can read/write files programmatically.
 
-#### File I/O
-- Open, read, write files
-- Load compiled code
-- Needed for multi-file projects
+#### File I/O ✅
+**Status:** Complete (Session 6)
+**Implementation:**
+- ✅ file-open: Open file with mode ("r", "w", "a"), returns file handle
+- ✅ file-read: Read contents from file handle
+- ✅ file-write: Write string to file handle
+- ✅ file-close: Close file handle
+- ✅ read-file: Convenience function to read entire file
+- ✅ write-file: Convenience function to write entire file
+- ✅ File handle table for managing open files
+- ✅ x86_64 code generation via FFI trampolines
+**Note:** Load compiled code not yet implemented
 
 #### Error Handling
 - Basic condition system
@@ -348,7 +356,7 @@ The hybrid bootstrap approach allows:
 
 ### Short Term (Next Sessions)
 1. ✅ Reader/printer for S-expressions
-2. Basic file I/O
+2. ✅ Basic file I/O
 3. Error handling/condition system
 4. More control flow (do, dotimes, dolist)
 5. Hash tables
