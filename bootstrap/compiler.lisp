@@ -55,6 +55,8 @@
 (defvar *runtime-write-file-addr* nil "Address of runtime-write-file trampoline")
 (defvar *runtime-catch-addr* nil "Address of runtime-catch trampoline")
 (defvar *runtime-throw-addr* nil "Address of runtime-throw trampoline")
+(defvar *runtime-dotimes-addr* nil "Address of runtime-dotimes trampoline")
+(defvar *runtime-dolist-addr* nil "Address of runtime-dolist trampoline")
 
 (defun initialize-runtime-integration ()
   "Initialize runtime integration (Phase 1: Bootstrap mode with FFI trampolines)"
@@ -75,7 +77,9 @@
           (files-path (merge-pathnames "../runtime/files.lisp"
                                        (or *load-truename* *default-pathname-defaults*)))
           (errors-path (merge-pathnames "../runtime/errors.lisp"
-                                        (or *load-truename* *default-pathname-defaults*))))
+                                        (or *load-truename* *default-pathname-defaults*)))
+          (loops-path (merge-pathnames "../runtime/loops.lisp"
+                                       (or *load-truename* *default-pathname-defaults*))))
       (if (probe-file runtime-path)
           (progn
             (load runtime-path)
@@ -99,7 +103,10 @@
               (load files-path))
             ;; Load error handling support
             (when (probe-file errors-path)
-              (load errors-path)))
+              (load errors-path))
+            ;; Load loop support
+            (when (probe-file loops-path)
+              (load loops-path)))
           (error "Cannot find runtime/memory.lisp at ~A" runtime-path))))
 
   ;; Initialize runtime heap
@@ -219,6 +226,16 @@
         sb-alien:unsigned-long ((tag sb-alien:unsigned-long) (value sb-alien:unsigned-long))
       (funcall (find-symbol "RUNTIME-THROW" :habu-runtime) tag value))
 
+    (sb-alien:define-alien-callable habu-dotimes-trampoline
+        sb-alien:unsigned-long ((count sb-alien:unsigned-long) (body-fn sb-alien:unsigned-long)
+                                (result sb-alien:unsigned-long))
+      (funcall (find-symbol "RUNTIME-DOTIMES" :habu-runtime) count body-fn result))
+
+    (sb-alien:define-alien-callable habu-dolist-trampoline
+        sb-alien:unsigned-long ((list-val sb-alien:unsigned-long) (body-fn sb-alien:unsigned-long)
+                                (result sb-alien:unsigned-long))
+      (funcall (find-symbol "RUNTIME-DOLIST" :habu-runtime) list-val body-fn result))
+
     ;; Get addresses of the trampolines using the correct SBCL mechanism:
     ;; 1. alien-callable-function gets the callable object
     ;; 2. alien-sap converts to System Area Pointer
@@ -272,7 +289,11 @@
     (setf *runtime-catch-addr*
           (sb-alien:alien-sap (sb-alien:alien-callable-function 'habu-catch-trampoline)))
     (setf *runtime-throw-addr*
-          (sb-alien:alien-sap (sb-alien:alien-callable-function 'habu-throw-trampoline))))
+          (sb-alien:alien-sap (sb-alien:alien-callable-function 'habu-throw-trampoline)))
+    (setf *runtime-dotimes-addr*
+          (sb-alien:alien-sap (sb-alien:alien-callable-function 'habu-dotimes-trampoline)))
+    (setf *runtime-dolist-addr*
+          (sb-alien:alien-sap (sb-alien:alien-callable-function 'habu-dolist-trampoline))))
 
   #-sbcl
   (error "Runtime integration only supported on SBCL currently")
@@ -398,6 +419,8 @@
     read print
     file-open file-read file-write file-close read-file write-file
     catch throw
+    block return-from
+    ;; dotimes dolist - TODO: implement (requires better closure support or inline codegen)
     ;; Add more operators as needed
     ))
 
@@ -618,6 +641,36 @@
        (make-expr :type 'throw
                   :value tag  ; Tag (will be evaluated)
                   :args (list (parse value)))))  ; Value to return from catch
+
+    ((and (consp form) (eq (first form) 'block))
+     ;; Special form: (block name body...)
+     ;; Transform to catch for Phase 1
+     ;; Use hash of symbol name as fixnum tag
+     (let* ((name (second form))
+            (body (cddr form))
+            (tag (if (symbolp name)
+                     (sxhash (string name))
+                     name)))  ; If already a number, use it
+       (parse `(catch ,tag (progn ,@body)))))
+
+    ((and (consp form) (eq (first form) 'return-from))
+     ;; Special form: (return-from name [value])
+     ;; Transform to throw for Phase 1
+     ;; Use hash of symbol name as fixnum tag
+     (let* ((name (second form))
+            (value (or (third form) 0))  ; Default to 0 (nil) if no value
+            (tag (if (symbolp name)
+                     (sxhash (string name))
+                     name)))  ; If already a number, use it
+       (parse `(throw ,tag ,value))))
+
+    ;; NOTE: dotimes/dolist temporarily disabled
+    ;; The runtime function approach requires first-class closures which
+    ;; aren't fully supported yet. Future implementation options:
+    ;;   1. Inline loop code generation (no runtime calls)
+    ;;   2. Improved closure support for passing functions as values
+    ;;   3. Macro-based transformation to explicit recursion
+    ;; For now, users can use named-let or explicit recursion patterns.
 
     ((and (consp form) (eq (first form) 'defun))
      ;; Special form: (defun name (params) body)
@@ -3898,6 +3951,102 @@
              (int-to-bytes func-addr 8)
              '(#xFF #xD0))))                  ; call rax
 
+         ((eq op 'runtime-dotimes)
+          ;; (runtime-dotimes count body-fn-form result)
+          ;; Create body function at compile time using eval
+          (unless *runtime-dotimes-addr*
+            (error "Runtime not initialized. Call (initialize-runtime-integration) first."))
+          (let* ((count-arg (first args))
+                 (body-fn-let (second args))  ; This is a LET expression
+                 ;; Extract the lambda from the let binding
+                 (let-bindings (second (expr-value body-fn-let)))
+                 (lambda-expr (second (first let-bindings)))  ; The lambda value
+                 (lambda-param (first (expr-value lambda-expr)))
+                 (lambda-body (first (expr-args lambda-expr)))
+                 (result-arg (third args))
+                 (fn-name (gensym "DOTIMES-BODY"))
+                 (func-addr (sb-sys:sap-int *runtime-dotimes-addr*)))
+            ;;Create 1-arg function for loop body using eval
+            (let ((callable-name (intern (format nil "HABU-DOTIMES-BODY-~A" (string-upcase (string fn-name)))
+                                        (find-package :habu-compiler))))
+              ;; Define the function
+              (eval `(defun ,callable-name (,lambda-param) ,@(list (third (expr-value lambda-body)))))
+              ;; Create alien-callable wrapper
+              #+sbcl
+              (eval `(sb-alien:define-alien-callable ,callable-name sb-alien:unsigned-long
+                                                    ((,(intern (string lambda-param)) sb-alien:unsigned-long))
+                      (,callable-name ,(intern (string lambda-param)))))
+              ;; Get function pointer
+              (let ((body-fn-ptr (sb-sys:sap-int (sb-alien:alien-sap (sb-alien:alien-callable-function callable-name)))))
+                (append
+                 ;; Evaluate count into RAX
+                 (emit-x86_64 count-arg env)
+                 '(#x50)                          ; push rax (save count)
+                 ;; Load body function pointer into RAX
+                 '(#x48 #xB8)                     ; movabs rax, imm64
+                 (int-to-bytes body-fn-ptr 8)
+                 '(#x50)                          ; push rax (save body-fn)
+                 ;; Evaluate result into RAX
+                 (emit-x86_64 result-arg env)
+                 ;; Setup call: RDI=count, RSI=body-fn, RDX=result
+                 '(#x48 #x89 #xC2)                ; mov rdx, rax (result in RDX)
+                 '(#x48 #x8B #x34 #x24)           ; mov rsi, [rsp] (body-fn in RSI)
+                 '(#x48 #x83 #xC4 #x08)           ; add rsp, 8 (pop body-fn)
+                 '(#x48 #x8B #x3C #x24)           ; mov rdi, [rsp] (count in RDI)
+                 '(#x48 #x83 #xC4 #x08)           ; add rsp, 8 (pop count)
+                 ;; Load runtime-dotimes address and call
+                 '(#x48 #xB8)                     ; movabs rax, imm64
+                 (int-to-bytes func-addr 8)
+                 '(#xFF #xD0))))))                ; call rax
+
+         ((eq op 'runtime-dolist)
+          ;; (runtime-dolist list body-fn-form result)
+          ;; Create body function at compile time using eval
+          (unless *runtime-dolist-addr*
+            (error "Runtime not initialized. Call (initialize-runtime-integration) first."))
+          (let* ((list-arg (first args))
+                 (body-fn-let (second args))  ; This is a LET expression
+                 ;; Extract the lambda from the let binding
+                 (let-bindings (second (expr-value body-fn-let)))
+                 (lambda-expr (second (first let-bindings)))  ; The lambda value
+                 (lambda-param (first (expr-value lambda-expr)))
+                 (lambda-body (first (expr-args lambda-expr)))
+                 (result-arg (third args))
+                 (fn-name (gensym "DOLIST-BODY"))
+                 (func-addr (sb-sys:sap-int *runtime-dolist-addr*)))
+            ;; Create 1-arg function for loop body using eval
+            (let ((callable-name (intern (format nil "HABU-DOLIST-BODY-~A" (string-upcase (string fn-name)))
+                                        (find-package :habu-compiler))))
+              ;; Define the function
+              (eval `(defun ,callable-name (,lambda-param) ,@(list (third (expr-value lambda-body)))))
+              ;; Create alien-callable wrapper
+              #+sbcl
+              (eval `(sb-alien:define-alien-callable ,callable-name sb-alien:unsigned-long
+                                                    ((,(intern (string lambda-param)) sb-alien:unsigned-long))
+                      (,callable-name ,(intern (string lambda-param)))))
+              ;; Get function pointer
+              (let ((body-fn-ptr (sb-sys:sap-int (sb-alien:alien-sap (sb-alien:alien-callable-function callable-name)))))
+                (append
+                 ;; Evaluate list into RAX
+                 (emit-x86_64 list-arg env)
+                 '(#x50)                          ; push rax (save list)
+                 ;; Load body function pointer into RAX
+                 '(#x48 #xB8)                     ; movabs rax, imm64
+                 (int-to-bytes body-fn-ptr 8)
+                 '(#x50)                          ; push rax (save body-fn)
+                 ;; Evaluate result into RAX
+                 (emit-x86_64 result-arg env)
+                 ;; Setup call: RDI=list, RSI=body-fn, RDX=result
+                 '(#x48 #x89 #xC2)                ; mov rdx, rax (result in RDX)
+                 '(#x48 #x8B #x34 #x24)           ; mov rsi, [rsp] (body-fn in RSI)
+                 '(#x48 #x83 #xC4 #x08)           ; add rsp, 8 (pop body-fn)
+                 '(#x48 #x8B #x3C #x24)           ; mov rdi, [rsp] (list in RDI)
+                 '(#x48 #x83 #xC4 #x08)           ; add rsp, 8 (pop list)
+                 ;; Load runtime-dolist address and call
+                 '(#x48 #xB8)                     ; movabs rax, imm64
+                 (int-to-bytes func-addr 8)
+                 '(#xFF #xD0))))))                ; call rax
+
          (t
           (error "Unknown operator: ~S" op)))))
 
@@ -5685,6 +5834,56 @@
              '(#xE1 #x03 #x00 #xAA)            ; mov x1, x0 (data in X1)
              '(#xE0 #x03 #x0A #xAA)            ; mov x0, x10 (path in X0)
              ;; Load function address into X9 and call
+             (arm64-load-imm64 9 func-addr)
+             '(#x20 #x01 #x3F #xD6))))        ; blr x9
+
+         ((eq op 'runtime-dotimes)
+          ;; (runtime-dotimes count body-fn result) - ARM64
+          ;; Three arguments: count (fixnum), body-fn (closure), result (value)
+          (unless *runtime-dotimes-addr*
+            (error "Runtime not initialized. Call (initialize-runtime-integration) first."))
+          (let ((func-addr (sb-sys:sap-int *runtime-dotimes-addr*)))
+            (append
+             ;; Evaluate count into X0
+             (emit-arm64 (first args) env)
+             ;; Save count in X10
+             '(#xEA #x03 #x00 #xAA)            ; mov x10, x0
+             ;; Evaluate body-fn into X0
+             (emit-arm64 (second args) env)
+             ;; Save body-fn in X11
+             '(#xEB #x03 #x00 #xAA)            ; mov x11, x0
+             ;; Evaluate result into X0
+             (emit-arm64 (third args) env)
+             ;; Setup call: X0=count, X1=body-fn, X2=result
+             '(#xE2 #x03 #x00 #xAA)            ; mov x2, x0 (result in X2)
+             '(#xE1 #x03 #x0B #xAA)            ; mov x1, x11 (body-fn in X1)
+             '(#xE0 #x03 #x0A #xAA)            ; mov x0, x10 (count in X0)
+             ;; Load runtime-dotimes address into X9 and call
+             (arm64-load-imm64 9 func-addr)
+             '(#x20 #x01 #x3F #xD6))))        ; blr x9
+
+         ((eq op 'runtime-dolist)
+          ;; (runtime-dolist list body-fn result) - ARM64
+          ;; Three arguments: list (cons/nil), body-fn (closure), result (value)
+          (unless *runtime-dolist-addr*
+            (error "Runtime not initialized. Call (initialize-runtime-integration) first."))
+          (let ((func-addr (sb-sys:sap-int *runtime-dolist-addr*)))
+            (append
+             ;; Evaluate list into X0
+             (emit-arm64 (first args) env)
+             ;; Save list in X10
+             '(#xEA #x03 #x00 #xAA)            ; mov x10, x0
+             ;; Evaluate body-fn into X0
+             (emit-arm64 (second args) env)
+             ;; Save body-fn in X11
+             '(#xEB #x03 #x00 #xAA)            ; mov x11, x0
+             ;; Evaluate result into X0
+             (emit-arm64 (third args) env)
+             ;; Setup call: X0=list, X1=body-fn, X2=result
+             '(#xE2 #x03 #x00 #xAA)            ; mov x2, x0 (result in X2)
+             '(#xE1 #x03 #x0B #xAA)            ; mov x1, x11 (body-fn in X1)
+             '(#xE0 #x03 #x0A #xAA)            ; mov x0, x10 (list in X0)
+             ;; Load runtime-dolist address into X9 and call
              (arm64-load-imm64 9 func-addr)
              '(#x20 #x01 #x3F #xD6))))        ; blr x9
 

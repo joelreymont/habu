@@ -73,11 +73,20 @@ Using SBCL's runtime via FFI for rapid development while maintaining a clean arc
 - ⏳ Stack traces and error messages (Phase 2)
 
 #### More Control Flow
-- do, dotimes, dolist
-- block, return-from
-- tagbody, go (for complex control flow)
+**Status:** Partially complete
+**Implementation:**
+- ✅ block, return-from for labeled exits (Phase 1: via catch/throw with sxhash tags)
+- ✅ Both x86_64 and ARM64 support
+- ✅ Documentation: docs/CONTROL_FLOW.md
+- ⏳ do, dotimes, dolist (deferred - requires first-class closures or inline codegen)
+- ⏳ tagbody, go (not yet implemented)
 
-**Benefit:** True bootstrapping - compiler compiles itself
+**Note:** dotimes/dolist require either:
+1. First-class closure support (closures as values)
+2. Inline loop code generation without runtime calls
+3. Macro-based transformation to explicit recursion
+
+**Benefit:** Enables early exit from nested computations
 
 ---
 
