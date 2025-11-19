@@ -9,8 +9,8 @@ Habu's symbol system provides interning, value/function bindings, and property l
 Each symbol occupies 48 bytes total:
 - **Header** (8 bytes): Size, tag (0x2), mark bit
 - **Name pointer** (8 bytes): Pointer to string or fixnum hash
-- **Value** (8 bytes): Current value binding (or 0 = unbound)
-- **Function** (8 bytes): Function definition (or 0 = unbound)
+- **Value** (8 bytes): Current value binding (or 0xFFFFFFFFFFFFFFFF = unbound)
+- **Function** (8 bytes): Function definition (or 0xFFFFFFFFFFFFFFFF = unbound)
 - **Property list** (8 bytes): Cons-based plist
 
 ## Runtime Functions

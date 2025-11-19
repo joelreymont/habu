@@ -24,7 +24,7 @@
 ;;; function: function definition (or unbound marker)
 ;;; plist: property list
 
-(defconstant +unbound+ 0)  ; Marker for unbound symbol
+(defconstant +unbound+ #xFFFFFFFFFFFFFFFF)  ; Marker for unbound symbol (all bits set)
 
 ;;; Global symbol table (name -> symbol pointer)
 (defvar *symbol-table* (make-hash-table :test 'equal)

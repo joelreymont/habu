@@ -12,8 +12,8 @@
 (format t "1. Defining global variables~%")
 (compile-expression '(defvar *x* 42) :arch :x86_64)
 (compile-expression '(defvar *y* 100) :arch :x86_64)
-(compile-expression '(defvar *z* 7) :arch :x86_64)
-(format t "  NOTE: Can't use 0 or nil - conflicts with unbound marker~%")
+(compile-expression '(defvar *z* 0) :arch :x86_64)
+(format t "  (includes 0 - now supported!)~%")
 
 ;; Test 2: Read global variables using symbol-value
 (format t "~%2. Reading global variables~%")
