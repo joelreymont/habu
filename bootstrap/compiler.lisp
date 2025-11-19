@@ -2303,12 +2303,13 @@
                    (list #x48 #x83 #xC4 #x08)))))) ; pop stack
 
     (funcall
-     ;; Compile ((lambda (params) body) args)
+     ;; Compile ((lambda (params) body) args) or ((closure ...) args)
      ;; This is like let: bind args to params, then evaluate body
      (let* ((fn-expr (expr-value expr))
             (arg-exprs (expr-args expr)))
-       (if (eq (expr-type fn-expr) 'lambda)
-           ;; Inline lambda call
+       (if (or (eq (expr-type fn-expr) 'lambda)
+               (eq (expr-type fn-expr) 'closure))
+           ;; Inline lambda/closure call
            (let* ((params (expr-value fn-expr))
                   (body (first (expr-args fn-expr)))
                   (num-params (length params))
@@ -2330,6 +2331,7 @@
                         ;; Add parameter to environment
                         (push (cons param (* offset 8)) new-env)))
              ;; Compile body with parameters bound
+             ;; For closures, free variables should already be in env
              (let ((body-code (emit-x86_64 body (reverse new-env))))
                (append binding-code
                        body-code
@@ -2338,7 +2340,7 @@
                            (list #x48 #x83 #xC4 (* num-params 8))
                            (append (list #x48 #x81 #xC4)
                                    (int-to-bytes (* num-params 8) 4))))))
-           (error "Can only call lambda expressions for now"))))
+           (error "Can only call lambda/closure expressions for now"))))
 
     (if
      ;; Compile (if condition then-expr else-expr)
@@ -3693,10 +3695,11 @@
                    (list #xFF #x07 #x00 #x91)))))) ; add sp, sp, #8
 
     (funcall
-     ;; Compile ((lambda (params) body) args) for ARM64
+     ;; Compile ((lambda (params) body) args) or ((closure ...) args) for ARM64
      (let* ((fn-expr (expr-value expr))
             (arg-exprs (expr-args expr)))
-       (if (eq (expr-type fn-expr) 'lambda)
+       (if (or (eq (expr-type fn-expr) 'lambda)
+               (eq (expr-type fn-expr) 'closure))
            (let* ((params (expr-value fn-expr))
                   (body (first (expr-args fn-expr)))
                   (num-params (length params))
@@ -3717,6 +3720,7 @@
                                       (list #xE0 #x0F #x1F #xF8)))  ; str x0, [sp, #-8]!
                         (push (cons param (* offset 8)) new-env)))
              ;; Compile body with parameters bound
+             ;; For closures, free variables should already be in env
              (let ((body-code (emit-arm64 body (reverse new-env))))
                (append binding-code
                        body-code
@@ -3726,7 +3730,7 @@
                                                  (ash (* num-params 8) 10))
                                          4)
                            (error "Too many parameters for immediate encoding")))))
-           (error "Can only call lambda expressions for now"))))
+           (error "Can only call lambda/closure expressions for now"))))
 
     (if
      ;; Compile (if condition then-expr else-expr) for ARM64
