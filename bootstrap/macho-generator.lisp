@@ -32,9 +32,12 @@
 (defconstant +MH_PIE+      #x00200000)  ; Position-independent executable
 
 ;; Load commands
-(defconstant +LC_SEGMENT_64+ #x19)  ; 64-bit segment
-(defconstant +LC_UNIXTHREAD+ #x05)  ; Unix thread state
-(defconstant +LC_MAIN+       #x28)  ; Entry point (LC_MAIN, modern)
+(defconstant +LC_SEGMENT_64+     #x19)  ; 64-bit segment
+(defconstant +LC_SYMTAB+         #x02)  ; Symbol table
+(defconstant +LC_DYSYMTAB+       #x0B)  ; Dynamic symbol table
+(defconstant +LC_LOAD_DYLINKER+  #x0E)  ; Load dynamic linker
+(defconstant +LC_DYLD_INFO_ONLY+ #x80000022)  ; Dynamic linker info
+(defconstant +LC_MAIN+           #x28)  ; Entry point (LC_MAIN, modern)
 
 ;; Section flags
 (defconstant +S_ATTR_PURE_INSTRUCTIONS+ #x80000000)
@@ -170,6 +173,62 @@
    (int-to-bytes (entry-point-command-stacksize ep) 8)))
 
 ;;; ============================================================
+;;; DYLINKER COMMAND
+;;; ============================================================
+
+(defun emit-dylinker-command ()
+  "Emit LC_LOAD_DYLINKER command (points to /usr/lib/dyld)"
+  (let* ((dylinker-path "/usr/lib/dyld")
+         (path-len (length dylinker-path))
+         ;; Path starts at offset 12 (after cmd, cmdsize, and offset fields)
+         (path-offset 12)
+         ;; Pad to 4-byte alignment (Mach-O standard)
+         (string-with-null (+ path-len 1))  ; +1 for null terminator
+         (padded-len (+ string-with-null
+                       (mod (- 4 (mod string-with-null 4)) 4)))
+         (cmdsize (+ path-offset padded-len)))
+
+    (coerce
+     (append
+      (int-to-bytes +LC_LOAD_DYLINKER+ 4)
+      (int-to-bytes cmdsize 4)
+      (int-to-bytes path-offset 4)
+      ;; Dylinker path (null-terminated, padded)
+      (map 'list #'char-code dylinker-path)
+      (make-list (- padded-len path-len) :initial-element 0))
+     'vector)))
+
+;;; ============================================================
+;;; SYMTAB COMMAND
+;;; ============================================================
+
+(defun emit-symtab-command ()
+  "Emit LC_SYMTAB command (empty symbol table)"
+  (coerce
+   (append
+    (int-to-bytes +LC_SYMTAB+ 4)
+    (int-to-bytes 24 4)           ; cmdsize
+    (int-to-bytes 0 4)            ; symoff (no symbols)
+    (int-to-bytes 0 4)            ; nsyms (no symbols)
+    (int-to-bytes 0 4)            ; stroff (no strings)
+    (int-to-bytes 0 4))           ; strsize (no strings)
+   'vector))
+
+;;; ============================================================
+;;; DYSYMTAB COMMAND
+;;; ============================================================
+
+(defun emit-dysymtab-command ()
+  "Emit LC_DYSYMTAB command (empty dynamic symbol table)"
+  (coerce
+   (append
+    (int-to-bytes +LC_DYSYMTAB+ 4)
+    (int-to-bytes 80 4)           ; cmdsize (fixed size)
+    ;; All offsets and counts are 0 for empty table
+    (make-list 72 :initial-element 0))
+   'vector))
+
+;;; ============================================================
 ;;; MACH-O GENERATOR
 ;;; ============================================================
 
@@ -188,7 +247,11 @@
          (segment-cmd-size 72)
          (section-size 80)
          (entry-cmd-size 24)
-         (load-cmds-size (+ segment-cmd-size section-size entry-cmd-size))
+         (dylinker-cmd-size 28)   ; 12 + "/usr/lib/dyld\0" (14) + pad to 16 = 28
+         (symtab-cmd-size 24)
+         (dysymtab-cmd-size 80)
+         (load-cmds-size (+ segment-cmd-size section-size entry-cmd-size
+                           dylinker-cmd-size symtab-cmd-size dysymtab-cmd-size))
          (headers-size (+ header-size load-cmds-size))
          (code-offset 4096)  ; Start code at page boundary
          (vm-addr #x100001000)
@@ -201,7 +264,7 @@
                   :cpusubtype (ecase arch
                                (:x86_64 +CPU_SUBTYPE_X86_64_ALL+)
                                (:arm64  +CPU_SUBTYPE_ARM64_ALL+))
-                  :ncmds 2
+                  :ncmds 5  ; segment, entry, dylinker, symtab, dysymtab
                   :sizeofcmds load-cmds-size))
 
          (segment (make-segment-command-64
@@ -238,6 +301,15 @@
 
       ;; Write entry point command
       (write-sequence (emit-entry-point-command entry-point) out)
+
+      ;; Write dylinker command
+      (write-sequence (emit-dylinker-command) out)
+
+      ;; Write symtab command
+      (write-sequence (emit-symtab-command) out)
+
+      ;; Write dysymtab command
+      (write-sequence (emit-dysymtab-command) out)
 
       ;; Pad to code offset
       (let ((padding (- code-offset (file-position out))))
