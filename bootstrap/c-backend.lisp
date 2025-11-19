@@ -21,7 +21,7 @@
   '(+ - * / = < > <= >= cons car cdr list if cond progn begin setq while
     quote make-vector vector-ref vector-set print read-file write-file funcall
     print-value println string-length
-    make-string-from-cstr string-ref fgets-line readline
+    make-string-from-cstr make-string-from-vector string-ref fgets-line readline
     fixnum? cons? string? nil? symbol? vector?
     string=? make-symbol symbol-name symbol=?)
   "Built-in operators that should not be treated as free variables")
@@ -279,6 +279,11 @@
       ;; Make-string-from-cstr (char* to habu string)
       ((and (consp expr) (eq (car expr) 'make-string-from-cstr))
        (format nil "({char* s = (char*)~A; s ? habu_make_string(s, strlen(s)) : NIL;})"
+               (habu-expr-to-c (second expr) indent)))
+
+      ;; Make-string-from-vector (vector of char codes to string, for reader)
+      ((and (consp expr) (eq (car expr) 'make-string-from-vector))
+       (format nil "habu_make_string_from_vector(~A)"
                (habu-expr-to-c (second expr) indent)))
 
       ;; String-ref (get character at index, returns fixnum)

@@ -185,6 +185,35 @@ const char* habu_string_to_cstr(habu_value_t str_val) {
     return str->data;
 }
 
+/* Create string from vector of character codes (for reader) */
+habu_value_t habu_make_string_from_vector(habu_value_t vec_val) {
+    if (get_tag(vec_val) != TAG_VECTOR) {
+        return NIL;
+    }
+    habu_vector_t *vec = value_to_vector(vec_val);
+    size_t len = vec->length;
+
+    // Allocate string buffer
+    char *buf = (char*)malloc(len + 1);
+    if (!buf) return NIL;
+
+    // Convert fixnums to characters
+    for (size_t i = 0; i < len; i++) {
+        habu_value_t ch_val = vec->data[i];
+        if (!is_fixnum(ch_val)) {
+            free(buf);
+            return NIL;
+        }
+        buf[i] = (char)value_to_fixnum(ch_val);
+    }
+    buf[len] = '\0';
+
+    // Create string
+    habu_value_t result = habu_make_string(buf, len);
+    free(buf);
+    return result;
+}
+
 /* Symbol operations */
 
 habu_value_t habu_make_symbol_from_string(habu_value_t str_val) {

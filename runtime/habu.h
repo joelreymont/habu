@@ -99,6 +99,7 @@ void habu_vector_set(habu_value_t vector, size_t index, habu_value_t value);
 habu_value_t habu_string_ref(habu_value_t str_val, size_t index);
 size_t habu_string_length_raw(habu_value_t str_val);
 const char* habu_string_to_cstr(habu_value_t str_val);
+habu_value_t habu_make_string_from_vector(habu_value_t vec_val);  /* For reader - convert char codes to string */
 
 /* Symbol operations */
 habu_value_t habu_make_symbol_from_string(habu_value_t str_val);
