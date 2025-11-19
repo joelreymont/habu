@@ -342,6 +342,33 @@
        ;; The symbol is interned and function slot is set as a side effect
        (make-expr :type 'fixnum :value 0)))
 
+    ((and (consp form) (eq (first form) 'defvar))
+     ;; Special form: (defvar name initial-value)
+     ;; Store global variable definition and set symbol-value slot
+     (let ((name (second form))
+           (initial-value (if (third form) (third form) nil)))
+       ;; Intern the symbol and set its value slot
+       (when (find-package :habu-runtime)
+         (let ((intern-fn (find-symbol "RUNTIME-INTERN" :habu-runtime))
+               (set-val-fn (find-symbol "SET-SYMBOL-VALUE" :habu-runtime)))
+           (when (and intern-fn set-val-fn)
+             (let* ((name-str (string name))
+                    (sym (funcall intern-fn name-str))
+                    ;; Convert the initial value to a tagged fixnum
+                    ;; For now, only support fixnum constants and nil
+                    (tagged-value
+                     (cond
+                       ((null initial-value) 0)  ; nil = 0
+                       ((numberp initial-value) (ash initial-value 4))  ; tag as fixnum
+                       ((eq initial-value t) (ash 1 4))  ; t = 1 << 4
+                       (t (error "defvar only supports constant fixnum/nil/t values for now: ~S"
+                                initial-value)))))
+               (funcall set-val-fn sym tagged-value)
+               (format t "; defvar ~A = ~A -> symbol ~X~%" name initial-value sym)))))
+
+       ;; Return 0 as a placeholder (defvar doesn't produce runtime value)
+       (make-expr :type 'fixnum :value 0)))
+
     ((and (consp form) (eq (first form) 'defmacro))
      ;; Special form: (defmacro name (params) body)
      ;; Store macro definition in global table
@@ -370,6 +397,29 @@
        (let ((params (car fn-def))
              (body (cdr fn-def)))
          (parse `((lambda ,params ,body) ,@args)))))
+
+    ((and (consp form) (eq (first form) 'symbol-value))
+     ;; Special form: (symbol-value 'name)
+     ;; Look up the symbol's value slot and embed it as a constant
+     (let* ((sym-name-expr (second form))
+            ;; Extract the symbol name from the quoted symbol
+            (sym-name (if (and (consp sym-name-expr)
+                              (eq (first sym-name-expr) 'quote))
+                         (second sym-name-expr)
+                         (error "symbol-value requires quoted symbol name: ~S" sym-name-expr))))
+       ;; Look up the symbol and get its value
+       (if (find-package :habu-runtime)
+           (let ((intern-fn (find-symbol "RUNTIME-INTERN" :habu-runtime))
+                 (get-val-fn (find-symbol "RUNTIME-SYMBOL-VALUE" :habu-runtime)))
+             (if (and intern-fn get-val-fn)
+                 (let* ((name-str (string sym-name))
+                        (sym (funcall intern-fn name-str))
+                        (tagged-value (funcall get-val-fn sym)))
+                   ;; Embed the value as a fixnum constant
+                   ;; The value is already tagged, so untag it
+                   (make-expr :type 'fixnum :value (ash tagged-value -4)))
+                 (error "Runtime functions not available")))
+           (error "Runtime not loaded"))))
 
     ((and (consp form) (eq (first form) 'setq))
      ;; Special form: (setq var value)
