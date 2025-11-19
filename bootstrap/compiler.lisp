@@ -69,6 +69,12 @@
 (defvar *runtime-position-addr* nil "Address of runtime-position trampoline")
 (defvar *runtime-count-addr* nil "Address of runtime-count trampoline")
 (defvar *runtime-remove-addr* nil "Address of runtime-remove trampoline")
+(defvar *runtime-values-0-addr* nil "Address of runtime-values-0 trampoline")
+(defvar *runtime-values-1-addr* nil "Address of runtime-values-1 trampoline")
+(defvar *runtime-values-2-addr* nil "Address of runtime-values-2 trampoline")
+(defvar *runtime-values-3-addr* nil "Address of runtime-values-3 trampoline")
+(defvar *runtime-values-4-addr* nil "Address of runtime-values-4 trampoline")
+(defvar *runtime-values-get-addr* nil "Address of runtime-values-get trampoline")
 
 (defun initialize-runtime-integration ()
   "Initialize runtime integration (Phase 1: Bootstrap mode with FFI trampolines)"
@@ -93,7 +99,9 @@
           (loops-path (merge-pathnames "../runtime/loops.lisp"
                                        (or *load-truename* *default-pathname-defaults*)))
           (hash-tables-path (merge-pathnames "../runtime/hash-tables.lisp"
-                                             (or *load-truename* *default-pathname-defaults*))))
+                                             (or *load-truename* *default-pathname-defaults*)))
+          (multiple-values-path (merge-pathnames "../runtime/multiple-values.lisp"
+                                                 (or *load-truename* *default-pathname-defaults*))))
       (if (probe-file runtime-path)
           (progn
             (load runtime-path)
@@ -123,7 +131,10 @@
               (load loops-path))
             ;; Load hash table support
             (when (probe-file hash-tables-path)
-              (load hash-tables-path)))
+              (load hash-tables-path))
+            ;; Load multiple values support
+            (when (probe-file multiple-values-path)
+              (load multiple-values-path)))
           (error "Cannot find runtime/memory.lisp at ~A" runtime-path))))
 
   ;; Initialize runtime heap
@@ -302,6 +313,32 @@
         sb-alien:unsigned-long ((item sb-alien:unsigned-long) (list-ptr sb-alien:unsigned-long))
       (funcall (find-symbol "RUNTIME-REMOVE" :habu-runtime) item list-ptr))
 
+    (sb-alien:define-alien-callable habu-values-0-trampoline
+        sb-alien:unsigned-long ()
+      (funcall (find-symbol "RUNTIME-VALUES-0" :habu-runtime)))
+
+    (sb-alien:define-alien-callable habu-values-1-trampoline
+        sb-alien:unsigned-long ((val1 sb-alien:unsigned-long))
+      (funcall (find-symbol "RUNTIME-VALUES-1" :habu-runtime) val1))
+
+    (sb-alien:define-alien-callable habu-values-2-trampoline
+        sb-alien:unsigned-long ((val1 sb-alien:unsigned-long) (val2 sb-alien:unsigned-long))
+      (funcall (find-symbol "RUNTIME-VALUES-2" :habu-runtime) val1 val2))
+
+    (sb-alien:define-alien-callable habu-values-3-trampoline
+        sb-alien:unsigned-long ((val1 sb-alien:unsigned-long) (val2 sb-alien:unsigned-long)
+                                (val3 sb-alien:unsigned-long))
+      (funcall (find-symbol "RUNTIME-VALUES-3" :habu-runtime) val1 val2 val3))
+
+    (sb-alien:define-alien-callable habu-values-4-trampoline
+        sb-alien:unsigned-long ((val1 sb-alien:unsigned-long) (val2 sb-alien:unsigned-long)
+                                (val3 sb-alien:unsigned-long) (val4 sb-alien:unsigned-long))
+      (funcall (find-symbol "RUNTIME-VALUES-4" :habu-runtime) val1 val2 val3 val4))
+
+    (sb-alien:define-alien-callable habu-values-get-trampoline
+        sb-alien:unsigned-long ((index sb-alien:unsigned-long) (primary-value sb-alien:unsigned-long))
+      (funcall (find-symbol "RUNTIME-VALUES-GET" :habu-runtime) index primary-value))
+
     ;; Get addresses of the trampolines using the correct SBCL mechanism:
     ;; 1. alien-callable-function gets the callable object
     ;; 2. alien-sap converts to System Area Pointer
@@ -383,7 +420,19 @@
     (setf *runtime-count-addr*
           (sb-alien:alien-sap (sb-alien:alien-callable-function 'habu-count-trampoline)))
     (setf *runtime-remove-addr*
-          (sb-alien:alien-sap (sb-alien:alien-callable-function 'habu-remove-trampoline))))
+          (sb-alien:alien-sap (sb-alien:alien-callable-function 'habu-remove-trampoline)))
+    (setf *runtime-values-0-addr*
+          (sb-alien:alien-sap (sb-alien:alien-callable-function 'habu-values-0-trampoline)))
+    (setf *runtime-values-1-addr*
+          (sb-alien:alien-sap (sb-alien:alien-callable-function 'habu-values-1-trampoline)))
+    (setf *runtime-values-2-addr*
+          (sb-alien:alien-sap (sb-alien:alien-callable-function 'habu-values-2-trampoline)))
+    (setf *runtime-values-3-addr*
+          (sb-alien:alien-sap (sb-alien:alien-callable-function 'habu-values-3-trampoline)))
+    (setf *runtime-values-4-addr*
+          (sb-alien:alien-sap (sb-alien:alien-callable-function 'habu-values-4-trampoline)))
+    (setf *runtime-values-get-addr*
+          (sb-alien:alien-sap (sb-alien:alien-callable-function 'habu-values-get-trampoline))))
 
   #-sbcl
   (error "Runtime integration only supported on SBCL currently")
@@ -511,6 +560,7 @@
     catch throw
     block return-from
     make-hash-table gethash puthash remhash hash-table-count
+    values multiple-value-bind
     ;; dotimes dolist - TODO: implement (requires better closure support or inline codegen)
     ;; Add more operators as needed
     ))
@@ -564,6 +614,14 @@
 
     ((stringp form)
      (make-expr :type 'string :value form))
+
+    ((eq form t)
+     ;; Special symbol t is a constant true value (represented as fixnum 1)
+     (make-expr :type 'fixnum :value 1))
+
+    ((eq form nil)
+     ;; Special symbol nil is a constant false/zero value (represented as fixnum 0)
+     (make-expr :type 'fixnum :value 0))
 
     ((symbolp form)
      (make-expr :type 'variable :value form))
@@ -754,6 +812,19 @@
                      (sxhash (string name))
                      name)))  ; If already a number, use it
        (parse `(throw ,tag ,value))))
+
+    ((and (consp form) (eq (first form) 'multiple-value-bind))
+     ;; Special form: (multiple-value-bind (var1 var2 ...) values-form body...)
+     ;; vars: list of variable names (not parsed)
+     ;; values-form: expression that returns multiple values
+     ;; body: one or more body forms (combined into progn)
+     (let ((vars (second form))
+           (values-form (third form))
+           (body-forms (cdddr form)))
+       (make-expr :type 'multiple-value-bind
+                  :value vars  ; Variable names (raw list, not parsed)
+                  :args (list (parse values-form)
+                              (parse `(progn ,@body-forms))))))
 
     ;; NOTE: dotimes/dolist temporarily disabled
     ;; The runtime function approach requires first-class closures which
@@ -2566,6 +2637,59 @@
                (setf code (append code (emit-x86_64 e env))))
              code))))
 
+    (multiple-value-bind
+     ;; Compile (multiple-value-bind (var1 var2 ...) values-form body...)
+     ;; Evaluate values-form, bind variables to returned values, evaluate body
+     (let ((vars (expr-value expr))
+           (values-form (first (expr-args expr)))
+           (body (second (expr-args expr))))
+       (unless *runtime-values-get-addr*
+         (error "Runtime not initialized. Call (initialize-runtime-integration) first."))
+
+       ;; Build new environment with variable bindings
+       (let* ((num-vars (length vars))
+              (new-env (copy-list env))
+              (get-func-addr (sb-sys:sap-int *runtime-values-get-addr*)))
+
+         ;; Evaluate values-form (primary value ends up in RAX)
+         (append
+          (emit-x86_64 values-form env)
+
+          ;; Save primary value on stack (we'll need it for runtime-values-get calls)
+          '(#x50)                        ; push rax
+
+          ;; For each variable, get the corresponding value and bind it
+          (loop for var in vars
+                for i from 0
+                append
+                (progn
+                  ;; Add variable to environment (pointing to stack)
+                  (push (cons var (- (* (+ i 1) 8))) new-env)
+
+                  (if (= i 0)
+                      ;; First variable gets primary value (already on stack)
+                      nil
+                      ;; Subsequent variables: call runtime-values-get(i, primary)
+                      (append
+                       ;; Load index into RDI
+                       '(#x48 #xC7 #xC7)     ; mov rdi, imm32
+                       (int-to-bytes (ash i 4) 4)  ; Tagged fixnum index
+                       ;; Load primary value into RSI
+                       (list #x48 #x8B #x34 #x24) ; mov rsi, [rsp] (primary still on stack)
+                       ;; Call runtime-values-get
+                       '(#x48 #xB8)          ; movabs rax, imm64
+                       (int-to-bytes get-func-addr 8)
+                       '(#xFF #xD0)          ; call rax
+                       ;; Push result onto stack (binding for this variable)
+                       '(#x50)))))           ; push rax
+
+          ;; Evaluate body with new environment
+          (emit-x86_64 body new-env)
+
+          ;; Clean up stack: pop all bindings + primary value
+          '(#x48 #x83 #xC4)              ; add rsp, imm8
+          (list (* (+ num-vars 1) 8))))))  ; pop all vars + primary
+
     (quote
      ;; Compile (quote datum)
      ;; Return the quoted value without evaluation
@@ -4304,6 +4428,106 @@
              (int-to-bytes func-addr 8)
              '(#xFF #xD0))))                  ; call rax
 
+         ;; Multiple return values
+         ((eq op 'values)
+          ;; (values [val1 val2 ...]) - return multiple values
+          ;; Dispatch based on number of arguments (0-4 supported in Phase 1)
+          (let ((num-values (length args)))
+            (cond
+              ((= num-values 0)
+               ;; (values) - return 0 values
+               (unless *runtime-values-0-addr*
+                 (error "Runtime not initialized. Call (initialize-runtime-integration) first."))
+               (let ((func-addr (sb-sys:sap-int *runtime-values-0-addr*)))
+                 (append
+                  '(#x48 #xB8)                ; movabs rax, imm64
+                  (int-to-bytes func-addr 8)
+                  '(#xFF #xD0))))             ; call rax
+
+              ((= num-values 1)
+               ;; (values val1) - return 1 value
+               (unless *runtime-values-1-addr*
+                 (error "Runtime not initialized. Call (initialize-runtime-integration) first."))
+               (let ((func-addr (sb-sys:sap-int *runtime-values-1-addr*)))
+                 (append
+                  (emit-x86_64 (first args) env)
+                  '(#x48 #x89 #xC7)           ; mov rdi, rax (val1 in RDI)
+                  '(#x48 #xB8)                ; movabs rax, imm64
+                  (int-to-bytes func-addr 8)
+                  '(#xFF #xD0))))             ; call rax
+
+              ((= num-values 2)
+               ;; (values val1 val2) - return 2 values
+               (unless *runtime-values-2-addr*
+                 (error "Runtime not initialized. Call (initialize-runtime-integration) first."))
+               (let ((func-addr (sb-sys:sap-int *runtime-values-2-addr*)))
+                 (append
+                  ;; Evaluate val1
+                  (emit-x86_64 (first args) env)
+                  '(#x50)                     ; push rax (save val1)
+                  ;; Evaluate val2
+                  (emit-x86_64 (second args) env)
+                  ;; Setup call: RDI=val1, RSI=val2
+                  '(#x48 #x89 #xC6)           ; mov rsi, rax (val2 in RSI)
+                  '(#x48 #x8B #x3C #x24)      ; mov rdi, [rsp] (val1 in RDI)
+                  '(#x48 #x83 #xC4 #x08)      ; add rsp, 8 (pop val1)
+                  '(#x48 #xB8)                ; movabs rax, imm64
+                  (int-to-bytes func-addr 8)
+                  '(#xFF #xD0))))             ; call rax
+
+              ((= num-values 3)
+               ;; (values val1 val2 val3) - return 3 values
+               (unless *runtime-values-3-addr*
+                 (error "Runtime not initialized. Call (initialize-runtime-integration) first."))
+               (let ((func-addr (sb-sys:sap-int *runtime-values-3-addr*)))
+                 (append
+                  ;; Evaluate val1
+                  (emit-x86_64 (first args) env)
+                  '(#x50)                     ; push rax
+                  ;; Evaluate val2
+                  (emit-x86_64 (second args) env)
+                  '(#x50)                     ; push rax
+                  ;; Evaluate val3
+                  (emit-x86_64 (third args) env)
+                  ;; Setup call: RDI=val1, RSI=val2, RDX=val3
+                  '(#x48 #x89 #xC2)           ; mov rdx, rax (val3 in RDX)
+                  '(#x48 #x8B #x34 #x24)      ; mov rsi, [rsp] (val2 in RSI)
+                  '(#x48 #x8B #x7C #x24 #x08) ; mov rdi, [rsp+8] (val1 in RDI)
+                  '(#x48 #x83 #xC4 #x10)      ; add rsp, 16 (pop both)
+                  '(#x48 #xB8)                ; movabs rax, imm64
+                  (int-to-bytes func-addr 8)
+                  '(#xFF #xD0))))             ; call rax
+
+              ((= num-values 4)
+               ;; (values val1 val2 val3 val4) - return 4 values
+               (unless *runtime-values-4-addr*
+                 (error "Runtime not initialized. Call (initialize-runtime-integration) first."))
+               (let ((func-addr (sb-sys:sap-int *runtime-values-4-addr*)))
+                 (append
+                  ;; Evaluate val1
+                  (emit-x86_64 (first args) env)
+                  '(#x50)                     ; push rax
+                  ;; Evaluate val2
+                  (emit-x86_64 (second args) env)
+                  '(#x50)                     ; push rax
+                  ;; Evaluate val3
+                  (emit-x86_64 (third args) env)
+                  '(#x50)                     ; push rax
+                  ;; Evaluate val4
+                  (emit-x86_64 (fourth args) env)
+                  ;; Setup call: RDI=val1, RSI=val2, RDX=val3, RCX=val4
+                  '(#x48 #x89 #xC1)           ; mov rcx, rax (val4 in RCX)
+                  '(#x48 #x8B #x14 #x24)      ; mov rdx, [rsp] (val3 in RDX)
+                  '(#x48 #x8B #x74 #x24 #x08) ; mov rsi, [rsp+8] (val2 in RSI)
+                  '(#x48 #x8B #x7C #x24 #x10) ; mov rdi, [rsp+16] (val1 in RDI)
+                  '(#x48 #x83 #xC4 #x18)      ; add rsp, 24 (pop all 3)
+                  '(#x48 #xB8)                ; movabs rax, imm64
+                  (int-to-bytes func-addr 8)
+                  '(#xFF #xD0))))             ; call rax
+
+              (t
+               (error "Too many values: ~D (max 4 in Phase 1)" num-values)))))
+
          ((eq op 'runtime-dotimes)
           ;; (runtime-dotimes count body-fn-form result)
           ;; Create body function at compile time using eval
@@ -4822,6 +5046,64 @@
              (dolist (e exprs)
                (setf code (append code (emit-arm64 e env))))
              code))))
+
+    (multiple-value-bind
+     ;; Compile (multiple-value-bind (var1 var2 ...) values-form body...) - ARM64
+     ;; Evaluate values-form, bind variables to returned values, evaluate body
+     (let ((vars (expr-value expr))
+           (values-form (first (expr-args expr)))
+           (body (second (expr-args expr))))
+       (unless *runtime-values-get-addr*
+         (error "Runtime not initialized. Call (initialize-runtime-integration) first."))
+
+       ;; Build new environment with variable bindings
+       (let* ((num-vars (length vars))
+              (new-env (copy-list env))
+              (get-func-addr (sb-sys:sap-int *runtime-values-get-addr*))
+              ;; Calculate stack size (ARM64 requires 16-byte alignment)
+              (stack-size-initial (* 8 (+ num-vars 1)))  ; vars + primary
+              (stack-size (if (zerop (mod stack-size-initial 16))
+                              stack-size-initial
+                              (+ stack-size-initial 8))))
+
+         ;; Evaluate values-form (primary value ends up in X0)
+         (append
+          (emit-arm64 values-form env)
+
+          ;; Save primary value on stack
+          ;; Use pre-decrement store
+          (list #xF8 #x1F (- 256 stack-size) #xF8)  ; str x0, [sp, #-stack-size]!
+
+          ;; For each variable, get the corresponding value and bind it
+          (loop for var in vars
+                for i from 0
+                append
+                (progn
+                  ;; Add variable to environment (pointing to stack)
+                  (push (cons var (- (* i 8))) new-env)
+
+                  (if (= i 0)
+                      ;; First variable gets primary value (already on stack)
+                      nil
+                      ;; Subsequent variables: call runtime-values-get(i, primary)
+                      (append
+                       ;; Load index into X0 (tagged fixnum)
+                       (arm64-load-imm64 0 (ash i 4))
+                       ;; Load primary value into X1 (from stack)
+                       (list #xF9 #x40 #x00 #xF9)  ; ldr x1, [sp]
+                       ;; Call runtime-values-get
+                       (arm64-load-imm64 9 get-func-addr)
+                       '(#x20 #x01 #x3F #xD6)      ; blr x9
+                       ;; Store result on stack (next binding slot)
+                       (list #xF8 #x00 #x0F #xF8)  ; str x0, [sp, #-8]!
+                       ))))
+
+          ;; Evaluate body with new environment
+          (emit-arm64 body new-env)
+
+          ;; Clean up stack: pop all bindings + primary value
+          ;; add sp, sp, #stack-size
+          (list #x91 #x00 (logand (ash stack-size -2) #xFF) #x91)))))
 
     (quote
      ;; Compile (quote datum) for ARM64
@@ -6426,6 +6708,98 @@
              ;; Load function address into X9 and call
              (arm64-load-imm64 9 func-addr)
              '(#x20 #x01 #x3F #xD6))))        ; blr x9
+
+         ;; Multiple return values (ARM64)
+         ((eq op 'values)
+          ;; (values [val1 val2 ...]) - return multiple values (ARM64)
+          ;; Dispatch based on number of arguments (0-4 supported in Phase 1)
+          (let ((num-values (length args)))
+            (cond
+              ((= num-values 0)
+               ;; (values) - return 0 values
+               (unless *runtime-values-0-addr*
+                 (error "Runtime not initialized. Call (initialize-runtime-integration) first."))
+               (let ((func-addr (sb-sys:sap-int *runtime-values-0-addr*)))
+                 (append
+                  (arm64-load-imm64 9 func-addr)
+                  '(#x20 #x01 #x3F #xD6))))   ; blr x9
+
+              ((= num-values 1)
+               ;; (values val1) - return 1 value
+               (unless *runtime-values-1-addr*
+                 (error "Runtime not initialized. Call (initialize-runtime-integration) first."))
+               (let ((func-addr (sb-sys:sap-int *runtime-values-1-addr*)))
+                 (append
+                  (emit-arm64 (first args) env)
+                  ;; X0 already contains val1
+                  (arm64-load-imm64 9 func-addr)
+                  '(#x20 #x01 #x3F #xD6))))   ; blr x9
+
+              ((= num-values 2)
+               ;; (values val1 val2) - return 2 values
+               (unless *runtime-values-2-addr*
+                 (error "Runtime not initialized. Call (initialize-runtime-integration) first."))
+               (let ((func-addr (sb-sys:sap-int *runtime-values-2-addr*)))
+                 (append
+                  ;; Evaluate val1
+                  (emit-arm64 (first args) env)
+                  '(#xEA #x03 #x00 #xAA)      ; mov x10, x0 (save val1)
+                  ;; Evaluate val2
+                  (emit-arm64 (second args) env)
+                  ;; Setup call: X0=val1, X1=val2
+                  '(#xE1 #x03 #x00 #xAA)      ; mov x1, x0 (val2 in X1)
+                  '(#xE0 #x03 #x0A #xAA)      ; mov x0, x10 (val1 in X0)
+                  (arm64-load-imm64 9 func-addr)
+                  '(#x20 #x01 #x3F #xD6))))   ; blr x9
+
+              ((= num-values 3)
+               ;; (values val1 val2 val3) - return 3 values
+               (unless *runtime-values-3-addr*
+                 (error "Runtime not initialized. Call (initialize-runtime-integration) first."))
+               (let ((func-addr (sb-sys:sap-int *runtime-values-3-addr*)))
+                 (append
+                  ;; Evaluate val1
+                  (emit-arm64 (first args) env)
+                  '(#xEA #x03 #x00 #xAA)      ; mov x10, x0 (save val1)
+                  ;; Evaluate val2
+                  (emit-arm64 (second args) env)
+                  '(#xEB #x03 #x00 #xAA)      ; mov x11, x0 (save val2)
+                  ;; Evaluate val3
+                  (emit-arm64 (third args) env)
+                  ;; Setup call: X0=val1, X1=val2, X2=val3
+                  '(#xE2 #x03 #x00 #xAA)      ; mov x2, x0 (val3 in X2)
+                  '(#xE1 #x03 #x0B #xAA)      ; mov x1, x11 (val2 in X1)
+                  '(#xE0 #x03 #x0A #xAA)      ; mov x0, x10 (val1 in X0)
+                  (arm64-load-imm64 9 func-addr)
+                  '(#x20 #x01 #x3F #xD6))))   ; blr x9
+
+              ((= num-values 4)
+               ;; (values val1 val2 val3 val4) - return 4 values
+               (unless *runtime-values-4-addr*
+                 (error "Runtime not initialized. Call (initialize-runtime-integration) first."))
+               (let ((func-addr (sb-sys:sap-int *runtime-values-4-addr*)))
+                 (append
+                  ;; Evaluate val1
+                  (emit-arm64 (first args) env)
+                  '(#xEA #x03 #x00 #xAA)      ; mov x10, x0 (save val1)
+                  ;; Evaluate val2
+                  (emit-arm64 (second args) env)
+                  '(#xEB #x03 #x00 #xAA)      ; mov x11, x0 (save val2)
+                  ;; Evaluate val3
+                  (emit-arm64 (third args) env)
+                  '(#xEC #x03 #x00 #xAA)      ; mov x12, x0 (save val3)
+                  ;; Evaluate val4
+                  (emit-arm64 (fourth args) env)
+                  ;; Setup call: X0=val1, X1=val2, X2=val3, X3=val4
+                  '(#xE3 #x03 #x00 #xAA)      ; mov x3, x0 (val4 in X3)
+                  '(#xE2 #x03 #x0C #xAA)      ; mov x2, x12 (val3 in X2)
+                  '(#xE1 #x03 #x0B #xAA)      ; mov x1, x11 (val2 in X1)
+                  '(#xE0 #x03 #x0A #xAA)      ; mov x0, x10 (val1 in X0)
+                  (arm64-load-imm64 9 func-addr)
+                  '(#x20 #x01 #x3F #xD6))))   ; blr x9
+
+              (t
+               (error "Too many values: ~D (max 4 in Phase 1)" num-values)))))
 
          ((eq op 'runtime-dotimes)
           ;; (runtime-dotimes count body-fn result) - ARM64
