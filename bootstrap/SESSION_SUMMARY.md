@@ -268,19 +268,56 @@ SESSION_SUMMARY.md            - NEW: This summary
 **Commits:**
 - `f393c58` - Fix unbound marker conflict - enable 0 and nil as variable values
 
+### 8. Enhanced Macro System ✓
+
+**Problem:**
+- Original macro expansion used simple symbol substitution (sublis)
+- Didn't support quasiquote/backquote syntax
+- Nested macro calls (macro calling another macro) failed
+
+**Solution:**
+- Implemented expand-macros-in-form() for recursive macro expansion
+- Macros now evaluated as lambdas (properly handles quasiquote)
+- For each defmacro, define delegating function in SBCL
+- This allows nested macro calls to work correctly
+
+**Files Modified:**
+- `bootstrap/compiler.lisp` - expand-macros-in-form(), enhanced defmacro
+- `bootstrap/test-macro-quasiquote.lisp` - NEW: Quasiquote and nesting tests
+
+**Features:**
+- ✅ Quasiquote (backquote `) in macro bodies
+- ✅ Unquote (,) and unquote-splicing (,@)
+- ✅ Nested macro calls (macro using another macro)
+- ✅ All existing macro tests still pass
+
+**Examples:**
+```lisp
+(defmacro my-when (test body)
+  `(if ,test ,body 0))  ; quasiquote works!
+
+(defmacro square (x) (* x x))
+(defmacro quad (x) (square (square x)))  ; nested macros work!
+```
+
+**Commits:**
+- `3e7da6a` - Enhance macro system with quasiquote and nested macro support
+
 ## Test Statistics
 
 **Session 2 Results:**
 - Total tests: 597 (all passing ✅)
-- New test files: 4
+- New test files: 5
   - test-defun.lisp
   - test-defun-funcall.lisp
   - test-defvar.lisp
   - test-defvar-zero-nil.lisp
+  - test-macro-quasiquote.lisp
 
 **Session 2 Commits:**
-- 4 feature commits
+- 5 feature commits
 - 1 bug fix (unbound marker)
+- 2 documentation updates
 - All existing tests still passing
 
 ## Updated Next Steps
@@ -290,14 +327,10 @@ SESSION_SUMMARY.md            - NEW: This summary
 ✅ Implement funcall - Call functions by name
 ✅ Implement defvar - Global variable definitions
 ✅ Fix unbound marker conflict - 0 and nil now work
+✅ Enhanced macro system - quasiquote and nested macros
 
 ### Remaining (Next Session):
-1. **Macro System Expansion**
-   - Already have basic defmacro
-   - Add more macro expansion features
-   - Support backquote/comma in macros
-
-3. **Runtime funcall**
+1. **Runtime funcall**
    - Generate code to call functions via symbol-function slot
    - Store actual code pointers (not hash markers)
    - Enable true runtime function calls
@@ -311,11 +344,12 @@ SESSION_SUMMARY.md            - NEW: This summary
 ## Files Changed Session 2
 
 ```
-bootstrap/compiler.lisp              - defun, funcall, defvar, symbol-value
+bootstrap/compiler.lisp              - defun, funcall, defvar, symbol-value, macro expansion
 bootstrap/test-defun.lisp            - NEW: defun tests
 bootstrap/test-defun-funcall.lisp    - NEW: funcall tests
 bootstrap/test-defvar.lisp           - NEW: defvar tests
 bootstrap/test-defvar-zero-nil.lisp  - NEW: 0 and nil tests
+bootstrap/test-macro-quasiquote.lisp - NEW: macro quasiquote tests
 runtime/symbols.lisp                 - Fixed +unbound+ marker
 docs/SYMBOLS.md                      - Updated unbound marker docs
 bootstrap/SESSION_SUMMARY.md         - Updated with session 2 work
@@ -323,8 +357,13 @@ bootstrap/SESSION_SUMMARY.md         - Updated with session 2 work
 
 ## Conclusion
 
-Successful implementation of three major language features (defun, funcall, defvar)
-plus a critical bug fix for the unbound marker. Global functions and variables now
-work via the symbol system, with full support for all fixnum values including 0 and nil.
+Successful implementation of four major language features:
+1. **defun/funcall** - Global function definitions and calls by name
+2. **defvar/symbol-value** - Global variable definitions with full fixnum support
+3. **Unbound marker fix** - 0 and nil now work as variable values
+4. **Enhanced macros** - Quasiquote and nested macro support
 
-All 597 tests passing. Ready to continue with macro system expansion!
+All 597 tests passing. The compiler now has a complete macro system with quasiquote,
+global functions and variables via symbols, and proper fixnum handling.
+
+Ready to continue!
