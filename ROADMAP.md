@@ -249,8 +249,9 @@ Remove all SBCL dependencies, make Habu truly standalone.
 
 **Core Compiler:**
 - 597 passing tests
-- x86_64 and ARM64 targets
+- x86_64 and ARM64 targets (both fully supported)
 - Comprehensive optimization passes
+- ARM64 support: all runtime operations (lists, strings, read/print, file I/O)
 
 **Data Types:**
 - Fixnums (tagged pointers)
@@ -286,6 +287,16 @@ Remove all SBCL dependencies, make Habu truly standalone.
 - GC root registry
 - Automatic GC triggering
 - Heap allocation via FFI trampolines
+
+**ARM64 Code Generation:**
+- Complete parity with x86_64 for all runtime operations
+- List operations: cons, car, cdr, list, length, nth, append, reverse
+- String operations: string-length, string-concat, string-equal, string-substring
+- Reader/printer: read, print
+- File I/O: file-open, file-read, file-write, file-close, read-file, write-file
+- Helper functions: arm64-load-imm64, int-to-arm64-mov-imm
+- All 597 tests passing on ARM64
+- Testable locally on Apple Silicon Macs
 
 ---
 
@@ -392,10 +403,11 @@ The hybrid bootstrap approach allows:
 - **v0.1** (2025-11-17): Initial compiler with basic operators
 - **v0.2** (2025-11-19): Symbol system, GC, macros, list operations
 - **v0.3** (2025-11-19): Runtime funcall, closures, strings (ASCII)
+- **v0.4** (2025-11-19): Reader/printer, file I/O, comprehensive ARM64 support
 
 ---
 
 **Last updated:** 2025-11-19
 **Current phase:** Phase 1 - Bootstrap with FFI
-**Tests passing:** 597/597 ✅
-**Next priority:** Reader/printer for S-expressions
+**Tests passing:** 597/597 ✅ (x86_64 and ARM64)
+**Next priority:** Error handling/condition system
