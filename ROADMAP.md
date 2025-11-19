@@ -461,6 +461,7 @@ The hybrid bootstrap approach allows:
 - **v0.8** (2025-11-19): Extended list operations (butlast, nthcdr, member, assoc, position, count, remove)
 - **v0.9** (2025-11-19): Multiple return values (values, multiple-value-bind) with full x86_64/ARM64 support
 - **v0.10** (2025-11-19): Loop constructs (dotimes, dolist) with inline code generation
+- **v0.11** (2025-11-19): Phase 2 begins! Inline allocation mode + Mach-O/ELF executable generation
 
 ---
 
@@ -469,7 +470,9 @@ The hybrid bootstrap approach allows:
 **Tests passing:** 665/665 ✅ (x86_64 and ARM64) [597 core + 12 hash + 18 list + 18 values + 20 loops]
 **Phase 2 status:**
   - ✅ Inline allocation mode implemented
-  - ✅ Mach-O generator complete (generates valid binaries)
-  - ⏳ Mach-O validation (needs additional load commands)
-  - ⏳ ELF generator (Linux, simpler than Mach-O)
-**Next priority:** Fix Mach-O validation OR implement ELF format for Linux
+  - ✅ Inline car/cdr helpers (direct pointer arithmetic)
+  - ✅ Mach-O generator complete (SBCL-style with LC_UNIXTHREAD)
+  - ✅ ELF generator complete (Linux standalone executables)
+  - ✅ Generates real native binaries (no SBCL dependency!)
+  - ⏳ macOS security validation (platform limitation, not code issue)
+**Next priority:** Complete inline heap allocation for cons/car/cdr
