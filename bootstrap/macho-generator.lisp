@@ -589,20 +589,216 @@
 ;;; ============================================================
 
 (defun machine-code-to-assembly (code arch)
-  "Convert machine code bytes to assembly file format
-   This generates a .s file that can be assembled with 'as'"
+  "Convert machine code bytes to assembly file format with heap support
+
+   This generates:
+   - _start entry point that initializes heap and calls _main
+   - _heap_init function that uses mmap to allocate heap memory
+   - _main containing the user's compiled code
+   - Heap management globals in .data section"
+
   (with-output-to-string (s)
+    ;; Text section
     (format s ".section __TEXT,__text~%")
-    (format s ".globl _main~%")
+    (format s ".globl _start~%")
     (format s ".p2align 4~%~%")
+
+    ;; Start function - entry point
+    (format s "_start:~%")
+    (format s "    ; Initialize heap before running user code~%")
+    (format s "    bl _heap_init~%")
+    (format s "~%")
+    (format s "    ; Call user code~%")
+    (format s "    bl _main~%")
+    (format s "~%")
+    (format s "    ; Exit with result from main~%")
+    (format s "    mov x16, #1      ; sys_exit~%")
+    (format s "    svc #0x80~%")
+    (format s "~%")
+
+    ;; Heap initialization function
+    (format s "_heap_init:~%")
+    (format s "    ; Save return address~%")
+    (format s "    stp x29, x30, [sp, #-16]!~%")
+    (format s "    mov x29, sp~%")
+    (format s "~%")
+
+    (format s "    ; mmap(NULL, heap_size, PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_ANONYMOUS, -1, 0)~%")
+    (format s "    mov x0, #0              ; addr = NULL~%")
+    (format s "    adrp x1, _heap_size@PAGE~%")
+    (format s "    ldr x1, [x1, _heap_size@PAGEOFF]  ; length = heap_size~%")
+    (format s "    mov x2, #3              ; prot = PROT_READ | PROT_WRITE~%")
+    (format s "    mov w3, #0x1002         ; flags = MAP_PRIVATE | MAP_ANONYMOUS~%")
+    (format s "    mov x4, #-1             ; fd = -1~%")
+    (format s "    mov x5, #0              ; offset = 0~%")
+    (format s "    mov x16, #197           ; sys_mmap~%")
+    (format s "    svc #0x80~%")
+    (format s "~%")
+
+    (format s "    ; Check for error (x0 == -1 or x0 >= -4096)~%")
+    (format s "    mov x1, #-1~%")
+    (format s "    cmp x0, x1~%")
+    (format s "    b.eq _mmap_failed~%")
+    (format s "~%")
+
+    (format s "    ; Store heap_start~%")
+    (format s "    adrp x1, _heap_start@PAGE~%")
+    (format s "    str x0, [x1, _heap_start@PAGEOFF]~%")
+    (format s "~%")
+
+    (format s "    ; Store heap_ptr (initially same as heap_start)~%")
+    (format s "    adrp x1, _heap_ptr@PAGE~%")
+    (format s "    str x0, [x1, _heap_ptr@PAGEOFF]~%")
+    (format s "~%")
+
+    (format s "    ; Calculate and store heap_limit = heap_start + heap_size~%")
+    (format s "    adrp x2, _heap_size@PAGE~%")
+    (format s "    ldr x2, [x2, _heap_size@PAGEOFF]~%")
+    (format s "    add x2, x0, x2~%")
+    (format s "    adrp x1, _heap_limit@PAGE~%")
+    (format s "    str x2, [x1, _heap_limit@PAGEOFF]~%")
+    (format s "~%")
+
+    (format s "    ; Restore and return~%")
+    (format s "    ldp x29, x30, [sp], #16~%")
+    (format s "    ret~%")
+    (format s "~%")
+
+    (format s "_mmap_failed:~%")
+    (format s "    ; mmap failed, exit with code 1~%")
+    (format s "    mov x0, #1~%")
+    (format s "    mov x16, #1      ; sys_exit~%")
+    (format s "    svc #0x80~%")
+    (format s "~%")
+
+    ;; Heap allocation helpers
+    (format s "; Cons cell allocation~%")
+    (format s "; Input: x0 = car (tagged), x1 = cdr (tagged)~%")
+    (format s "; Output: x0 = pointer to cons cell (tagged with 0x1)~%")
+    (format s ".globl _habu_cons~%")
+    (format s "_habu_cons:~%")
+    (format s "    ; Save car and cdr~%")
+    (format s "    mov x19, x0~%")
+    (format s "    mov x20, x1~%")
+    (format s "~%")
+
+    (format s "    ; Load heap_ptr~%")
+    (format s "    adrp x0, _heap_ptr@PAGE~%")
+    (format s "    ldr x0, [x0, _heap_ptr@PAGEOFF]~%")
+    (format s "~%")
+
+    (format s "    ; Check if heap_ptr + 16 <= heap_limit~%")
+    (format s "    add x1, x0, #16~%")
+    (format s "    adrp x2, _heap_limit@PAGE~%")
+    (format s "    ldr x2, [x2, _heap_limit@PAGEOFF]~%")
+    (format s "    cmp x1, x2~%")
+    (format s "    b.hi _heap_overflow~%")
+    (format s "~%")
+
+    (format s "    ; Store car at [heap_ptr]~%")
+    (format s "    str x19, [x0]~%")
+    (format s "~%")
+
+    (format s "    ; Store cdr at [heap_ptr+8]~%")
+    (format s "    str x20, [x0, #8]~%")
+    (format s "~%")
+
+    (format s "    ; Update heap_ptr~%")
+    (format s "    adrp x2, _heap_ptr@PAGE~%")
+    (format s "    str x1, [x2, _heap_ptr@PAGEOFF]~%")
+    (format s "~%")
+
+    (format s "    ; Tag pointer with 0x1 and return~%")
+    (format s "    orr x0, x0, #1~%")
+    (format s "    ret~%")
+    (format s "~%")
+
+    (format s "_heap_overflow:~%")
+    (format s "    ; Heap overflow - exit with code 2~%")
+    (format s "    mov x0, #2~%")
+    (format s "    mov x16, #1~%")
+    (format s "    svc #0x80~%")
+    (format s "~%")
+
+    (format s "; Car accessor~%")
+    (format s "; Input: x0 = cons pointer (tagged)~%")
+    (format s "; Output: x0 = car value~%")
+    (format s ".globl _habu_car~%")
+    (format s "_habu_car:~%")
+    (format s "    ; Untag pointer~%")
+    (format s "    and x0, x0, #-2~%")
+    (format s "    ; Load car~%")
+    (format s "    ldr x0, [x0]~%")
+    (format s "    ret~%")
+    (format s "~%")
+
+    (format s "; Cdr accessor~%")
+    (format s "; Input: x0 = cons pointer (tagged)~%")
+    (format s "; Output: x0 = cdr value~%")
+    (format s ".globl _habu_cdr~%")
+    (format s "_habu_cdr:~%")
+    (format s "    ; Untag pointer~%")
+    (format s "    and x0, x0, #-2~%")
+    (format s "    ; Load cdr~%")
+    (format s "    ldr x0, [x0, #8]~%")
+    (format s "    ret~%")
+    (format s "~%")
+
+    ;; User code
     (format s "_main:~%")
+    (let ((bytes (coerce code 'list))
+          (pos 0))
+      ;; Process bytes, detecting special markers for function calls
+      (loop while bytes do
+        (cond
+          ;; Marker for bl _habu_cons: #xFF #xFF #xFF #x01
+          ((and (>= (length bytes) 4)
+                (= (first bytes) #xFF)
+                (= (second bytes) #xFF)
+                (= (third bytes) #xFF)
+                (= (fourth bytes) #x01))
+           (format t "  [DEBUG] Found cons marker at position ~D~%" pos)
+           (format s "    bl _habu_cons~%")
+           (setf bytes (nthcdr 4 bytes))
+           (incf pos 4))
 
-    ;; Output machine code as .byte directives
-    (let ((bytes (coerce code 'list)))
-      (loop for byte in bytes
-            do (format s "    .byte 0x~2,'0X~%" byte)))
+          ;; Marker for bl _habu_car: #xFF #xFF #xFF #x02
+          ((and (>= (length bytes) 4)
+                (= (first bytes) #xFF)
+                (= (second bytes) #xFF)
+                (= (third bytes) #xFF)
+                (= (fourth bytes) #x02))
+           (format t "  [DEBUG] Found car marker at position ~D~%" pos)
+           (format s "    bl _habu_car~%")
+           (setf bytes (nthcdr 4 bytes))
+           (incf pos 4))
 
-    (format s "~%")))
+          ;; Marker for bl _habu_cdr: #xFF #xFF #xFF #x03
+          ((and (>= (length bytes) 4)
+                (= (first bytes) #xFF)
+                (= (second bytes) #xFF)
+                (= (third bytes) #xFF)
+                (= (fourth bytes) #x03))
+           (format t "  [DEBUG] Found cdr marker at position ~D~%" pos)
+           (format s "    bl _habu_cdr~%")
+           (setf bytes (nthcdr 4 bytes))
+           (incf pos 4))
+
+          ;; Regular byte
+          (t
+           (format s "    .byte 0x~2,'0X~%" (first bytes))
+           (setf bytes (rest bytes))
+           (incf pos 1)))))
+    (format s "~%")
+
+    ;; Data section with heap globals
+    (format s ".section __DATA,__data~%")
+    (format s ".p2align 3~%")
+    (format s ".globl _heap_start, _heap_ptr, _heap_limit, _heap_size~%")
+    (format s "_heap_start:  .quad 0~%")
+    (format s "_heap_ptr:    .quad 0~%")
+    (format s "_heap_limit:  .quad 0~%")
+    (format s "_heap_size:   .quad 1048576  ; 1MB initial heap~%")))
 
 (defun generate-executable-via-linker (code &key (arch :arm64) (output-file "a.out"))
   "Generate executable using system toolchain (as + ld)
@@ -654,7 +850,7 @@
            (sdk-path (string-trim '(#\Newline #\Space)
                                  (read-line (sb-ext:process-output sdk-path-proc))))
            (arch-str (string-downcase (string arch)))
-           (ld-cmd (format nil "ld -o ~A ~A -lSystem -syslibroot ~A -e _main -arch ~A"
+           (ld-cmd (format nil "ld -o ~A ~A -lSystem -syslibroot ~A -e _start -arch ~A"
                           output-file obj-file sdk-path arch-str)))
 
       ;; Link to executable
@@ -679,9 +875,9 @@
             (format t "  ✓ Code signature present~%")
             (format t "  ⚠ No code signature found~%")))
 
-      ;; Clean up intermediate files
-      (delete-file asm-file)
-      (delete-file obj-file)
+      ;; Clean up intermediate files (comment out for debugging)
+      ;; (delete-file asm-file)
+      ;; (delete-file obj-file)
 
       (format t "~%Done! Run with: ./~A~%" output-file)
       output-file)))

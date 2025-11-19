@@ -2449,42 +2449,48 @@
 
 ;;; ARM64 inline allocation helpers
 (defun emit-inline-cons-arm64 (car-code cdr-code)
-  "Generate inline cons allocation for ARM64 (Phase 2)"
-  ;; TODO: Implement inline allocation
-  ;; For now, this is a placeholder
+  "Generate cons allocation for ARM64 by calling _habu_cons
+
+   Convention: _habu_cons(x0=car, x1=cdr) -> x0=cons_ptr
+
+   Uses special marker bytes that machine-code-to-assembly will
+   replace with 'bl _habu_cons' instruction."
   (append
    car-code
-   ;; Save car in x19 (callee-saved, won't be clobbered)
-   '(#xF3 #x03 #x00 #xAA)   ; mov x19, x0
+   ;; Save car on stack: str x0, [sp, #-16]!
+   '(#xE0 #x0F #x1F #xF8)
+
    cdr-code
-   ;; Now x0 has cdr, x19 has car
-   ;; TODO: Inline heap allocation goes here
-   ;; For Phase 2.1, we'll implement:
-   ;; - Get heap_ptr from global
-   ;; - Check heap_limit
-   ;; - Allocate 16 bytes
-   ;; - Store car/cdr
-   ;; - Update heap_ptr
-   ;; - Tag pointer with 0x1
-   ))
+   ;; Move cdr to x1: mov x1, x0
+   '(#xE1 #x03 #x00 #xAA)
+   ;; Restore car to x0: ldr x0, [sp], #16
+   '(#xE0 #x07 #x41 #xF8)
+
+   ;; Special marker for bl _habu_cons (replaced by assembler)
+   '(#xFF #xFF #xFF #x01)))
 
 (defun emit-inline-car-arm64 (cons-code)
-  "Generate inline car access for ARM64 (Phase 2)"
-  (append
-   cons-code
-   ;; Untag pointer (remove 0x1): and x0, x0, #~1
-   '(#x00 #xFC #x7F #x92)   ; and x0, x0, #0xFFFFFFFFFFFFFFFE
-   ;; Load car (offset 0): ldr x0, [x0]
-   '(#x00 #x00 #x40 #xF9))) ; ldr x0, [x0, #0]
+  "Generate car access for ARM64 by calling _habu_car
+
+   Convention: _habu_car(x0=cons_ptr) -> x0=car_value"
+  (format t "[DEBUG] emit-inline-car-arm64 called, cons-code length: ~D~%" (length cons-code))
+  (let ((result (append
+                 cons-code
+                 ;; Special marker for bl _habu_car (replaced by assembler)
+                 '(#xFF #xFF #xFF #x02))))
+    (format t "[DEBUG] emit-inline-car-arm64 returning length: ~D, last 4 bytes: ~{~2,'0X ~}~%"
+            (length result)
+            (last result 4))
+    result))
 
 (defun emit-inline-cdr-arm64 (cons-code)
-  "Generate inline cdr access for ARM64 (Phase 2)"
+  "Generate cdr access for ARM64 by calling _habu_cdr
+
+   Convention: _habu_cdr(x0=cons_ptr) -> x0=cdr_value"
   (append
    cons-code
-   ;; Untag pointer (remove 0x1): and x0, x0, #~1
-   '(#x00 #xFC #x7F #x92)   ; and x0, x0, #0xFFFFFFFFFFFFFFFE
-   ;; Load cdr (offset 8): ldr x0, [x0, #8]
-   '(#x00 #x04 #x40 #xF9))) ; ldr x0, [x0, #8]
+   ;; Special marker for bl _habu_cdr (replaced by assembler)
+   '(#xFF #xFF #xFF #x03)))
 
 ;;; Code generation for x86_64
 (defun emit-x86_64 (expr &optional (env nil))
@@ -5986,17 +5992,18 @@
                   (list #x00 #x10 #x00 #xD3)       ; lsl x0, x0, #4
                   (list #xFD #x7B #xC1 #xA8)))
 
-         ((eq op 'car)
-          ;; Compile (car cons) for ARM64 - load car field
-          (append (emit-arm64 (first args) env)
-                  (list #x00 #x3C #x40 #x92)       ; and x0, x0, #~0xF (clear tag)
-                  (list #x00 #x08 #x40 #xF9)))    ; ldr x0, [x0, #16]
+         ;; OLD car/cdr handlers - commented out, now using allocation-mode-aware versions below
+         ;; ((eq op 'car)
+         ;;  ;; Compile (car cons) for ARM64 - load car field
+         ;;  (append (emit-arm64 (first args) env)
+         ;;          (list #x00 #x3C #x40 #x92)       ; and x0, x0, #~0xF (clear tag)
+         ;;          (list #x00 #x08 #x40 #xF9)))    ; ldr x0, [x0, #16]
 
-         ((eq op 'cdr)
-          ;; Compile (cdr cons) for ARM64 - load cdr field
-          (append (emit-arm64 (first args) env)
-                  (list #x00 #x3C #x40 #x92)       ; and x0, x0, #~0xF (clear tag)
-                  (list #x00 #x0C #x40 #xF9)))    ; ldr x0, [x0, #24]
+         ;; ((eq op 'cdr)
+         ;;  ;; Compile (cdr cons) for ARM64 - load cdr field
+         ;;  (append (emit-arm64 (first args) env)
+         ;;          (list #x00 #x3C #x40 #x92)       ; and x0, x0, #~0xF (clear tag)
+         ;;          (list #x00 #x0C #x40 #xF9)))    ; ldr x0, [x0, #24]
 
          ((eq op 'logand)
           ;; Compile (logand a b) for ARM64 - bitwise AND
@@ -6530,49 +6537,75 @@
          ;; List operations - integrated with runtime heap via FFI trampolines
          ((eq op 'cons)
           ;; (cons car cdr) - allocate cons cell on heap
-          ;; ARM64 calling convention: X0 (car), X1 (cdr), Return: X0
-          (unless *runtime-cons-addr*
-            (error "Runtime not initialized. Call (initialize-runtime-integration) first."))
-          (let ((func-addr (sb-sys:sap-int *runtime-cons-addr*)))
-            (append
-             ;; Evaluate car into X0
-             (emit-arm64 (first args) env)
-             ;; Save car in X10
-             '(#xEA #x03 #x00 #xAA)            ; mov x10, x0
-             ;; Evaluate cdr into X0
-             (emit-arm64 (second args) env)
-             ;; Setup call: X0=car, X1=cdr
-             '(#xE1 #x03 #x00 #xAA)            ; mov x1, x0 (cdr in X1)
-             '(#xE0 #x03 #x0A #xAA)            ; mov x0, x10 (car in X0)
-             ;; Load function address into X9 and call
-             (arm64-load-imm64 9 func-addr)
-             '(#x20 #x01 #x3F #xD6))))        ; blr x9
+          (ecase *allocation-mode*
+            (:ffi
+             ;; Phase 1: Call FFI trampoline to SBCL runtime
+             ;; ARM64 calling convention: X0 (car), X1 (cdr), Return: X0
+             (unless *runtime-cons-addr*
+               (error "Runtime not initialized. Call (initialize-runtime-integration) first."))
+             (let ((func-addr (sb-sys:sap-int *runtime-cons-addr*)))
+               (append
+                ;; Evaluate car into X0
+                (emit-arm64 (first args) env)
+                ;; Save car in X10
+                '(#xEA #x03 #x00 #xAA)            ; mov x10, x0
+                ;; Evaluate cdr into X0
+                (emit-arm64 (second args) env)
+                ;; Setup call: X0=car, X1=cdr
+                '(#xE1 #x03 #x00 #xAA)            ; mov x1, x0 (cdr in X1)
+                '(#xE0 #x03 #x0A #xAA)            ; mov x0, x10 (car in X0)
+                ;; Load function address into X9 and call
+                (arm64-load-imm64 9 func-addr)
+                '(#x20 #x01 #x3F #xD6))))        ; blr x9
+
+            (:inline
+             ;; Phase 2: Call standalone heap cons function
+             (emit-inline-cons-arm64
+              (emit-arm64 (first args) env)
+              (emit-arm64 (second args) env)))))
 
          ((eq op 'car)
           ;; (car cons-ptr) - read car field from cons cell
-          ;; ARM64 calling convention: X0 (cons-ptr), Return: X0
-          (unless *runtime-car-addr*
-            (error "Runtime not initialized. Call (initialize-runtime-integration) first."))
-          (let ((func-addr (sb-sys:sap-int *runtime-car-addr*)))
-            (append
-             ;; Evaluate cons expression into X0
-             (emit-arm64 (first args) env)
-             ;; Load function address into X9 and call
-             (arm64-load-imm64 9 func-addr)
-             '(#x20 #x01 #x3F #xD6))))        ; blr x9
+          (format t "[DEBUG ARM64] car handler: *allocation-mode* = ~S~%" *allocation-mode*)
+          (ecase *allocation-mode*
+            (:ffi
+             ;; Phase 1: Call FFI trampoline
+             ;; ARM64 calling convention: X0 (cons-ptr), Return: X0
+             (unless *runtime-car-addr*
+               (error "Runtime not initialized. Call (initialize-runtime-integration) first."))
+             (let ((func-addr (sb-sys:sap-int *runtime-car-addr*)))
+               (append
+                ;; Evaluate cons expression into X0
+                (emit-arm64 (first args) env)
+                ;; Load function address into X9 and call
+                (arm64-load-imm64 9 func-addr)
+                '(#x20 #x01 #x3F #xD6))))        ; blr x9
+
+            (:inline
+             ;; Phase 2: Call standalone car function
+             (emit-inline-car-arm64
+              (emit-arm64 (first args) env)))))
 
          ((eq op 'cdr)
           ;; (cdr cons-ptr) - read cdr field from cons cell
-          ;; ARM64 calling convention: X0 (cons-ptr), Return: X0
-          (unless *runtime-cdr-addr*
-            (error "Runtime not initialized. Call (initialize-runtime-integration) first."))
-          (let ((func-addr (sb-sys:sap-int *runtime-cdr-addr*)))
-            (append
-             ;; Evaluate cons expression into X0
-             (emit-arm64 (first args) env)
-             ;; Load function address into X9 and call
-             (arm64-load-imm64 9 func-addr)
-             '(#x20 #x01 #x3F #xD6))))        ; blr x9
+          (ecase *allocation-mode*
+            (:ffi
+             ;; Phase 1: Call FFI trampoline
+             ;; ARM64 calling convention: X0 (cons-ptr), Return: X0
+             (unless *runtime-cdr-addr*
+               (error "Runtime not initialized. Call (initialize-runtime-integration) first."))
+             (let ((func-addr (sb-sys:sap-int *runtime-cdr-addr*)))
+               (append
+                ;; Evaluate cons expression into X0
+                (emit-arm64 (first args) env)
+                ;; Load function address into X9 and call
+                (arm64-load-imm64 9 func-addr)
+                '(#x20 #x01 #x3F #xD6))))        ; blr x9
+
+            (:inline
+             ;; Phase 2: Call standalone cdr function
+             (emit-inline-cdr-arm64
+              (emit-arm64 (first args) env)))))
 
          ((eq op 'list)
           ;; (list a b c ...) - build list by repeated cons
