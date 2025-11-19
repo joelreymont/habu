@@ -45,6 +45,8 @@
 (defvar *runtime-string-concat-addr* nil "Address of runtime-string-concat trampoline")
 (defvar *runtime-string-equal-addr* nil "Address of runtime-string-equal trampoline")
 (defvar *runtime-string-substring-addr* nil "Address of runtime-string-substring trampoline")
+(defvar *runtime-read-from-string-addr* nil "Address of runtime-read-from-string trampoline")
+(defvar *runtime-print-to-string-addr* nil "Address of runtime-print-to-string trampoline")
 
 (defun initialize-runtime-integration ()
   "Initialize runtime integration (Phase 1: Bootstrap mode with FFI trampolines)"
@@ -59,7 +61,9 @@
           (closures-path (merge-pathnames "../runtime/closures.lisp"
                                           (or *load-truename* *default-pathname-defaults*)))
           (strings-path (merge-pathnames "../runtime/strings.lisp"
-                                         (or *load-truename* *default-pathname-defaults*))))
+                                         (or *load-truename* *default-pathname-defaults*)))
+          (reader-path (merge-pathnames "../runtime/reader.lisp"
+                                        (or *load-truename* *default-pathname-defaults*))))
       (if (probe-file runtime-path)
           (progn
             (load runtime-path)
@@ -74,7 +78,10 @@
               (load closures-path))
             ;; Load string support
             (when (probe-file strings-path)
-              (load strings-path)))
+              (load strings-path))
+            ;; Load reader/printer support
+            (when (probe-file reader-path)
+              (load reader-path)))
           (error "Cannot find runtime/memory.lisp at ~A" runtime-path))))
 
   ;; Initialize runtime heap
@@ -154,6 +161,14 @@
                                 (end sb-alien:unsigned-long))
       (funcall (find-symbol "RUNTIME-STRING-SUBSTRING" :habu-runtime) str-ptr start end))
 
+    (sb-alien:define-alien-callable habu-read-from-string-trampoline
+        sb-alien:unsigned-long ((str-ptr sb-alien:unsigned-long))
+      (funcall (find-symbol "RUNTIME-READ-FROM-STRING" :habu-runtime) str-ptr))
+
+    (sb-alien:define-alien-callable habu-print-to-string-trampoline
+        sb-alien:unsigned-long ((value sb-alien:unsigned-long))
+      (funcall (find-symbol "RUNTIME-PRINT-TO-STRING" :habu-runtime) value))
+
     ;; Get addresses of the trampolines using the correct SBCL mechanism:
     ;; 1. alien-callable-function gets the callable object
     ;; 2. alien-sap converts to System Area Pointer
@@ -187,7 +202,11 @@
     (setf *runtime-string-equal-addr*
           (sb-alien:alien-sap (sb-alien:alien-callable-function 'habu-string-equal-trampoline)))
     (setf *runtime-string-substring-addr*
-          (sb-alien:alien-sap (sb-alien:alien-callable-function 'habu-string-substring-trampoline))))
+          (sb-alien:alien-sap (sb-alien:alien-callable-function 'habu-string-substring-trampoline)))
+    (setf *runtime-read-from-string-addr*
+          (sb-alien:alien-sap (sb-alien:alien-callable-function 'habu-read-from-string-trampoline)))
+    (setf *runtime-print-to-string-addr*
+          (sb-alien:alien-sap (sb-alien:alien-callable-function 'habu-print-to-string-trampoline))))
 
   #-sbcl
   (error "Runtime integration only supported on SBCL currently")
@@ -310,6 +329,7 @@
     lambda let let* defun defvar defmacro funcall symbol-value set
     length nth append reverse
     string-length string-concat string-equal string-substring
+    read print
     ;; Add more operators as needed
     ))
 
@@ -3638,6 +3658,39 @@
              '(#x48 #x8B #x34 #x24)           ; mov rsi, [rsp] (start in RSI)
              '(#x48 #x8B #x7C #x24 #x08)      ; mov rdi, [rsp + 8] (str in RDI)
              '(#x48 #x83 #xC4 #x10)           ; add rsp, 16 (pop start and str)
+             ;; Load function address and call
+             '(#x48 #xB8)                     ; movabs rax, imm64
+             (int-to-bytes func-addr 8)
+             '(#xFF #xD0))))                  ; call rax
+
+         ;; Reader/Printer operations
+         ((eq op 'read)
+          ;; (read str-ptr) - read S-expression from string
+          ;; Call runtime-read-from-string trampoline: Arg: RDI (str-ptr), Return: RAX
+          (unless *runtime-read-from-string-addr*
+            (error "Runtime not initialized. Call (initialize-runtime-integration) first."))
+          (let ((func-addr (sb-sys:sap-int *runtime-read-from-string-addr*)))
+            (append
+             ;; Evaluate string expression into RAX
+             (emit-x86_64 (first args) env)
+             ;; Setup call: RDI=str-ptr
+             '(#x48 #x89 #xC7)                ; mov rdi, rax
+             ;; Load function address and call
+             '(#x48 #xB8)                     ; movabs rax, imm64
+             (int-to-bytes func-addr 8)
+             '(#xFF #xD0))))                  ; call rax
+
+         ((eq op 'print)
+          ;; (print value) - print value to string
+          ;; Call runtime-print-to-string trampoline: Arg: RDI (value), Return: RAX
+          (unless *runtime-print-to-string-addr*
+            (error "Runtime not initialized. Call (initialize-runtime-integration) first."))
+          (let ((func-addr (sb-sys:sap-int *runtime-print-to-string-addr*)))
+            (append
+             ;; Evaluate value expression into RAX
+             (emit-x86_64 (first args) env)
+             ;; Setup call: RDI=value
+             '(#x48 #x89 #xC7)                ; mov rdi, rax
              ;; Load function address and call
              '(#x48 #xB8)                     ; movabs rax, imm64
              (int-to-bytes func-addr 8)

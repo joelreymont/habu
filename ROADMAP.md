@@ -37,10 +37,17 @@ Using SBCL's runtime via FFI for rapid development while maintaining a clean arc
 
 **Missing Components:**
 
-#### Reader/Printer
-- Read S-expressions from strings/files
-- Print S-expressions for debugging
-- Currently using SBCL's reader during bootstrap
+#### Reader/Printer ✅
+**Status:** Complete (Session 6)
+**Implementation:**
+- ✅ Tokenizer for S-expressions (numbers, symbols, strings, lists, quotes)
+- ✅ Parser with support for lists, dotted pairs, and quoted expressions
+- ✅ Printer for all runtime values (fixnums, strings, cons cells, symbols, closures)
+- ✅ read operation - parse S-expression from string
+- ✅ print operation - convert runtime value to string
+- ✅ Round-trip tested (read then print)
+- ✅ x86_64 code generation via FFI trampolines
+**Note:** File I/O not yet implemented - currently reads/prints from/to strings only
 
 #### File I/O
 - Open, read, write files
@@ -340,7 +347,7 @@ The hybrid bootstrap approach allows:
 5. ✅ String type implementation (ASCII)
 
 ### Short Term (Next Sessions)
-1. Reader/printer for S-expressions
+1. ✅ Reader/printer for S-expressions
 2. Basic file I/O
 3. Error handling/condition system
 4. More control flow (do, dotimes, dolist)
