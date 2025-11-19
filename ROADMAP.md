@@ -12,25 +12,19 @@ Habu is a Lisp compiler being built in two phases:
 
 Using SBCL's runtime via FFI for rapid development while maintaining a clean architecture for eventual standalone operation.
 
-### 1. Runtime Funcall (Next Priority) 🎯
+### 1. Runtime Funcall ✅
 
-**Status:** Planned
-**Goal:** Enable true runtime function calls via symbol-function slots
+**Status:** Complete
+**Completed:** Session 4
 
-**Current Limitation:**
-- `funcall` only works at compile-time
-- Looks up functions in `*function-table*`
-- Inlines as `((lambda params body) args...)`
-- Cannot call functions determined at runtime
+**Implementation:**
+- ✅ Store compiled code pointers in symbol-function slots
+- ✅ Generate machine code for runtime function lookup
+- ✅ Support calling conventions (0-3 parameters via registers)
+- ✅ Integrated with defun/symbol system via alien-callables
+- ✅ Both x86_64 and ARM64 support
 
-**What's Needed:**
-- Store actual compiled code pointers in symbol-function slots (not hash markers)
-- Generate machine code to:
-  1. Look up symbol at runtime
-  2. Read symbol-function slot
-  3. Call the function pointer
-- Handle calling convention (arguments, return values)
-- Integrate with existing defun/symbol system
+**Testing:** 597/597 tests passing + 15 infrastructure tests
 
 **Benefit:** Enables higher-order functions, dynamic dispatch, true functional programming
 
@@ -71,20 +65,33 @@ Using SBCL's runtime via FFI for rapid development while maintaining a clean arc
 
 **Status:** Partially complete
 
-#### Strings
-**Current:** Using fixnum hashes for symbol names
-**Needed:**
-- String type with heap allocation
-- String operations: concatenate, substring, length
-- String comparison
-- Symbol names as actual strings
+#### Strings ✅
+**Status:** Complete (Session 6) - Basic ASCII support
+**Implementation:**
+- ✅ String type with heap allocation (tag 0x3)
+- ✅ String literals in compiler ("hello")
+- ✅ String operations: string-concat, string-substring, string-length
+- ✅ String comparison: string-equal
+- ✅ x86_64 and ARM64 code generation
+- ✅ FFI trampolines for runtime operations
+**Limitations:**
+- ASCII only (no UTF-8 support yet)
+- Symbol names still use fixnum hashes
+**Note:** Symbol names as actual strings pending future work
 
-#### Closures
-**Current:** Lambda works for immediate calls
-**Needed:**
-- Lexical function values
-- Captured environment
-- First-class functions that can be stored and passed
+#### Closures ✅
+**Status:** Complete (Session 5)
+**Implementation:**
+- ✅ Free variable analysis
+- ✅ Heap-allocated closure objects (tag 0x7)
+- ✅ Captured environment support (0-3 variables in Phase 1)
+- ✅ First-class functions that can be stored, passed, and returned
+- ✅ Closure factories (functions returning closures)
+- ✅ Runtime wrapper creation via eval
+- ✅ Both inline and standalone closure creation
+- ✅ x86_64 and ARM64 support
+
+**Testing:** All tests passing (inline, standalone, factories)
 
 #### Hash Tables
 **Current:** None
@@ -328,14 +335,16 @@ The hybrid bootstrap approach allows:
 ### Immediate (This Session)
 1. ✅ Global variable modification (set)
 2. ✅ List operations (length, nth, append, reverse)
-3. 🚧 Runtime funcall design and implementation
+3. ✅ Runtime funcall design and implementation
+4. ✅ Closures (lexical function values)
+5. ✅ String type implementation (ASCII)
 
 ### Short Term (Next Sessions)
-1. Runtime funcall completion
-2. Closures (lexical function values)
-3. String type implementation
-4. Reader/printer for S-expressions
-5. Basic file I/O
+1. Reader/printer for S-expressions
+2. Basic file I/O
+3. Error handling/condition system
+4. More control flow (do, dotimes, dolist)
+5. Hash tables
 
 ### Medium Term (Phase 1 Completion)
 1. Self-hosting capability
@@ -367,11 +376,11 @@ The hybrid bootstrap approach allows:
 
 - **v0.1** (2025-11-17): Initial compiler with basic operators
 - **v0.2** (2025-11-19): Symbol system, GC, macros, list operations
-- **v0.3** (Planned): Runtime funcall, closures, strings
+- **v0.3** (2025-11-19): Runtime funcall, closures, strings (ASCII)
 
 ---
 
 **Last updated:** 2025-11-19
 **Current phase:** Phase 1 - Bootstrap with FFI
 **Tests passing:** 597/597 ✅
-**Next priority:** Runtime funcall
+**Next priority:** Reader/printer for S-expressions

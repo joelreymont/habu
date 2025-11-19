@@ -41,6 +41,10 @@
 (defvar *runtime-make-closure-1-addr* nil "Address of make-closure-1 trampoline")
 (defvar *runtime-make-closure-2-addr* nil "Address of make-closure-2 trampoline")
 (defvar *runtime-make-closure-3-addr* nil "Address of make-closure-3 trampoline")
+(defvar *runtime-string-length-addr* nil "Address of runtime-string-length trampoline")
+(defvar *runtime-string-concat-addr* nil "Address of runtime-string-concat trampoline")
+(defvar *runtime-string-equal-addr* nil "Address of runtime-string-equal trampoline")
+(defvar *runtime-string-substring-addr* nil "Address of runtime-string-substring trampoline")
 
 (defun initialize-runtime-integration ()
   "Initialize runtime integration (Phase 1: Bootstrap mode with FFI trampolines)"
@@ -53,7 +57,9 @@
           (lists-path (merge-pathnames "../runtime/lists.lisp"
                                        (or *load-truename* *default-pathname-defaults*)))
           (closures-path (merge-pathnames "../runtime/closures.lisp"
-                                          (or *load-truename* *default-pathname-defaults*))))
+                                          (or *load-truename* *default-pathname-defaults*)))
+          (strings-path (merge-pathnames "../runtime/strings.lisp"
+                                         (or *load-truename* *default-pathname-defaults*))))
       (if (probe-file runtime-path)
           (progn
             (load runtime-path)
@@ -65,7 +71,10 @@
               (load lists-path))
             ;; Load closure support
             (when (probe-file closures-path)
-              (load closures-path)))
+              (load closures-path))
+            ;; Load string support
+            (when (probe-file strings-path)
+              (load strings-path)))
           (error "Cannot find runtime/memory.lisp at ~A" runtime-path))))
 
   ;; Initialize runtime heap
@@ -126,6 +135,25 @@
                                 (var3 sb-alien:unsigned-long))
       (funcall (find-symbol "MAKE-CLOSURE-3" :habu-runtime) code-ptr arity var1 var2 var3))
 
+    (sb-alien:define-alien-callable habu-string-length-trampoline
+        sb-alien:unsigned-long ((str-ptr sb-alien:unsigned-long))
+      (funcall (find-symbol "RUNTIME-STRING-LENGTH" :habu-runtime) str-ptr))
+
+    (sb-alien:define-alien-callable habu-string-concat-trampoline
+        sb-alien:unsigned-long ((str1-ptr sb-alien:unsigned-long) (str2-ptr sb-alien:unsigned-long))
+      (funcall (find-symbol "RUNTIME-STRING-CONCAT" :habu-runtime) str1-ptr str2-ptr))
+
+    (sb-alien:define-alien-callable habu-string-equal-trampoline
+        sb-alien:unsigned-long ((str1-ptr sb-alien:unsigned-long) (str2-ptr sb-alien:unsigned-long))
+      (if (funcall (find-symbol "RUNTIME-STRING-EQUAL" :habu-runtime) str1-ptr str2-ptr)
+          #x10  ; Tagged true (1 << 4)
+          #x00)); Tagged false (0 << 4)
+
+    (sb-alien:define-alien-callable habu-string-substring-trampoline
+        sb-alien:unsigned-long ((str-ptr sb-alien:unsigned-long) (start sb-alien:unsigned-long)
+                                (end sb-alien:unsigned-long))
+      (funcall (find-symbol "RUNTIME-STRING-SUBSTRING" :habu-runtime) str-ptr start end))
+
     ;; Get addresses of the trampolines using the correct SBCL mechanism:
     ;; 1. alien-callable-function gets the callable object
     ;; 2. alien-sap converts to System Area Pointer
@@ -151,7 +179,15 @@
     (setf *runtime-make-closure-2-addr*
           (sb-alien:alien-sap (sb-alien:alien-callable-function 'habu-make-closure-2-trampoline)))
     (setf *runtime-make-closure-3-addr*
-          (sb-alien:alien-sap (sb-alien:alien-callable-function 'habu-make-closure-3-trampoline))))
+          (sb-alien:alien-sap (sb-alien:alien-callable-function 'habu-make-closure-3-trampoline)))
+    (setf *runtime-string-length-addr*
+          (sb-alien:alien-sap (sb-alien:alien-callable-function 'habu-string-length-trampoline)))
+    (setf *runtime-string-concat-addr*
+          (sb-alien:alien-sap (sb-alien:alien-callable-function 'habu-string-concat-trampoline)))
+    (setf *runtime-string-equal-addr*
+          (sb-alien:alien-sap (sb-alien:alien-callable-function 'habu-string-equal-trampoline)))
+    (setf *runtime-string-substring-addr*
+          (sb-alien:alien-sap (sb-alien:alien-callable-function 'habu-string-substring-trampoline))))
 
   #-sbcl
   (error "Runtime integration only supported on SBCL currently")
@@ -273,6 +309,7 @@
     progn begin quote quasiquote unquote unquote-splicing
     lambda let let* defun defvar defmacro funcall symbol-value set
     length nth append reverse
+    string-length string-concat string-equal string-substring
     ;; Add more operators as needed
     ))
 
@@ -322,6 +359,9 @@
   (cond
     ((integerp form)
      (make-expr :type 'fixnum :value form))
+
+    ((stringp form)
+     (make-expr :type 'string :value form))
 
     ((symbolp form)
      (make-expr :type 'variable :value form))
@@ -2025,6 +2065,15 @@
        (append (list #x48 #xB8)           ; REX.W + mov rax prefix
                (int-to-bytes val 8))))
 
+    (string
+     ;; Create string on heap at compile time and load pointer into RAX
+     ;; mov rax, imm64
+     (let* ((lisp-string (expr-value expr))
+            (make-string-fn (find-symbol "RUNTIME-MAKE-STRING" :habu-runtime))
+            (string-ptr (funcall make-string-fn lisp-string)))
+       (append '(#x48 #xB8)               ; REX.W + mov rax prefix
+               (int-to-bytes string-ptr 8))))
+
     (variable
      ;; Look up variable in environment and load from stack
      (let* ((var-name (expr-value expr))
@@ -3499,6 +3548,101 @@
              (list #x48 #xB8)                     ; movabs rax, imm64
              (int-to-bytes func-addr 8)
              (list #xFF #xD0))))                  ; call rax
+
+         ;; String operations
+         ((eq op 'string-length)
+          ;; (string-length str-ptr) - get length of string
+          ;; Call runtime-string-length trampoline: Arg: RDI (str-ptr), Return: RAX (raw length)
+          ;; Need to tag result as fixnum
+          (unless *runtime-string-length-addr*
+            (error "Runtime not initialized. Call (initialize-runtime-integration) first."))
+          (let ((func-addr (sb-sys:sap-int *runtime-string-length-addr*)))
+            (append
+             ;; Evaluate string expression into RAX
+             (emit-x86_64 (first args) env)
+             ;; Setup call: RDI=str-ptr
+             '(#x48 #x89 #xC7)                ; mov rdi, rax
+             ;; Load function address and call
+             '(#x48 #xB8)                     ; movabs rax, imm64
+             (int-to-bytes func-addr 8)
+             '(#xFF #xD0)                     ; call rax
+             ;; Tag result as fixnum
+             '(#x48 #xC1 #xE0 #x04))))        ; shl rax, 4
+
+         ((eq op 'string-concat)
+          ;; (string-concat str1 str2) - concatenate two strings
+          ;; Call runtime-string-concat trampoline: Args: RDI (str1), RSI (str2), Return: RAX
+          (unless *runtime-string-concat-addr*
+            (error "Runtime not initialized. Call (initialize-runtime-integration) first."))
+          (let ((func-addr (sb-sys:sap-int *runtime-string-concat-addr*)))
+            (append
+             ;; Evaluate str1 into RAX
+             (emit-x86_64 (first args) env)
+             ;; Save str1 on stack
+             '(#x50)                          ; push rax
+             ;; Evaluate str2 into RAX
+             (emit-x86_64 (second args) env)
+             ;; Setup call: RDI=str1, RSI=str2
+             '(#x48 #x89 #xC6)                ; mov rsi, rax (str2 in RSI)
+             '(#x48 #x8B #x3C #x24)           ; mov rdi, [rsp] (str1 in RDI)
+             '(#x48 #x83 #xC4 #x08)           ; add rsp, 8 (pop str1)
+             ;; Load function address and call
+             '(#x48 #xB8)                     ; movabs rax, imm64
+             (int-to-bytes func-addr 8)
+             '(#xFF #xD0))))                  ; call rax
+
+         ((eq op 'string-equal)
+          ;; (string-equal str1 str2) - compare two strings for equality
+          ;; Call runtime-string-equal trampoline: Args: RDI (str1), RSI (str2), Return: RAX (tagged boolean)
+          (unless *runtime-string-equal-addr*
+            (error "Runtime not initialized. Call (initialize-runtime-integration) first."))
+          (let ((func-addr (sb-sys:sap-int *runtime-string-equal-addr*)))
+            (append
+             ;; Evaluate str1 into RAX
+             (emit-x86_64 (first args) env)
+             ;; Save str1 on stack
+             '(#x50)                          ; push rax
+             ;; Evaluate str2 into RAX
+             (emit-x86_64 (second args) env)
+             ;; Setup call: RDI=str1, RSI=str2
+             '(#x48 #x89 #xC6)                ; mov rsi, rax (str2 in RSI)
+             '(#x48 #x8B #x3C #x24)           ; mov rdi, [rsp] (str1 in RDI)
+             '(#x48 #x83 #xC4 #x08)           ; add rsp, 8 (pop str1)
+             ;; Load function address and call
+             '(#x48 #xB8)                     ; movabs rax, imm64
+             (int-to-bytes func-addr 8)
+             '(#xFF #xD0))))                  ; call rax (returns tagged boolean)
+
+         ((eq op 'string-substring)
+          ;; (string-substring str start end) - extract substring
+          ;; Call runtime-string-substring trampoline: Args: RDI (str), RSI (start), RDX (end), Return: RAX
+          ;; start and end are tagged fixnums, need to untag them
+          (unless *runtime-string-substring-addr*
+            (error "Runtime not initialized. Call (initialize-runtime-integration) first."))
+          (let ((func-addr (sb-sys:sap-int *runtime-string-substring-addr*)))
+            (append
+             ;; Evaluate str into RAX
+             (emit-x86_64 (first args) env)
+             ;; Save str on stack
+             '(#x50)                          ; push rax
+             ;; Evaluate start into RAX (tagged fixnum)
+             (emit-x86_64 (second args) env)
+             '(#x48 #xC1 #xF8 #x04)           ; sar rax, 4 (untag start)
+             ;; Save start on stack
+             '(#x50)                          ; push rax
+             ;; Evaluate end into RAX (tagged fixnum)
+             (emit-x86_64 (third args) env)
+             '(#x48 #xC1 #xF8 #x04)           ; sar rax, 4 (untag end)
+             ;; Setup call: RDI=str, RSI=start, RDX=end
+             '(#x48 #x89 #xC2)                ; mov rdx, rax (end in RDX)
+             '(#x48 #x8B #x34 #x24)           ; mov rsi, [rsp] (start in RSI)
+             '(#x48 #x8B #x7C #x24 #x08)      ; mov rdi, [rsp + 8] (str in RDI)
+             '(#x48 #x83 #xC4 #x10)           ; add rsp, 16 (pop start and str)
+             ;; Load function address and call
+             '(#x48 #xB8)                     ; movabs rax, imm64
+             (int-to-bytes func-addr 8)
+             '(#xFF #xD0))))                  ; call rax
+
          (t
           (error "Unknown operator: ~S" op)))))
 
@@ -3600,6 +3744,30 @@
                    (int-to-bytes (logior #xF2A00000 ; MOVK X0, imm16, LSL#16
                                          (ash (logand (ash val -16) #xFFFF) 5))
                                  4)))))
+
+    (string
+     ;; Create string on heap at compile time and load pointer into X0
+     ;; Load 64-bit pointer using MOVZ + MOVK sequence
+     (let* ((lisp-string (expr-value expr))
+            (make-string-fn (find-symbol "RUNTIME-MAKE-STRING" :habu-runtime))
+            (ptr (funcall make-string-fn lisp-string)))
+       (append
+        ;; MOVZ X0, #(ptr[15:0])
+        (int-to-bytes (logior #xD2800000
+                              (ash (logand ptr #xFFFF) 5))
+                      4)
+        ;; MOVK X0, #(ptr[31:16]), LSL#16
+        (int-to-bytes (logior #xF2A00000
+                              (ash (logand (ash ptr -16) #xFFFF) 5))
+                      4)
+        ;; MOVK X0, #(ptr[47:32]), LSL#32
+        (int-to-bytes (logior #xF2C00000
+                              (ash (logand (ash ptr -32) #xFFFF) 5))
+                      4)
+        ;; MOVK X0, #(ptr[63:48]), LSL#48
+        (int-to-bytes (logior #xF2E00000
+                              (ash (logand (ash ptr -48) #xFFFF) 5))
+                      4))))
 
     (variable
      ;; Look up variable in environment and load from stack
