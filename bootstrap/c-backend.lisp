@@ -21,7 +21,7 @@
   '(+ - * / = < > <= >= cons car cdr list if cond progn begin setq while
     quote make-vector vector-ref vector-set print read-file write-file funcall
     print-value println string-length
-    make-string-from-cstr string-ref fgets-line
+    make-string-from-cstr string-ref fgets-line readline
     fixnum? cons? string? nil? symbol? vector?
     string=? make-symbol symbol-name symbol=?)
   "Built-in operators that should not be treated as free variables")
@@ -295,6 +295,21 @@
       ;; Fgets-line (read line from stdin, returns char* as habu_value_t)
       ((and (consp expr) (eq (car expr) 'fgets-line))
        (format nil "(habu_value_t)habu_fgets_line()"))
+
+      ;; Readline (line editing with prompt, returns char* as habu_value_t)
+      ((and (consp expr) (eq (car expr) 'readline))
+       (let ((prompt-arg (second expr)))
+         (cond
+           ;; Direct string literal
+           ((stringp prompt-arg)
+            (format nil "(habu_value_t)lineedit_readline(~S)" prompt-arg))
+           ;; Quoted string literal
+           ((and (consp prompt-arg) (eq (car prompt-arg) 'quote) (stringp (cadr prompt-arg)))
+            (format nil "(habu_value_t)lineedit_readline(~S)" (cadr prompt-arg)))
+           ;; General expression - extract C string from habu string
+           (t
+            (format nil "({habu_value_t str = ~A; (habu_value_t)lineedit_readline(habu_string_to_cstr(str));})"
+                    (habu-expr-to-c prompt-arg indent))))))
 
       ;; Get-tag (fundamental primitive for type checking)
       ((and (consp expr) (eq (car expr) 'get-tag))
