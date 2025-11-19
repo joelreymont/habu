@@ -39,9 +39,15 @@
   ;; Load runtime if not already loaded
   (unless (find-package :habu-runtime)
     (let ((runtime-path (merge-pathnames "../runtime/memory.lisp"
+                                         (or *load-truename* *default-pathname-defaults*)))
+          (symbols-path (merge-pathnames "../runtime/symbols.lisp"
                                          (or *load-truename* *default-pathname-defaults*))))
       (if (probe-file runtime-path)
-          (load runtime-path)
+          (progn
+            (load runtime-path)
+            ;; Load symbol support
+            (when (probe-file symbols-path)
+              (load symbols-path)))
           (error "Cannot find runtime/memory.lisp at ~A" runtime-path))))
 
   ;; Initialize runtime heap
