@@ -27,9 +27,11 @@
 (defconstant +MH_EXECUTE+ 2)  ; Executable file
 
 ;; Flags
-(defconstant +MH_NOUNDEFS+ #x00000001)
-(defconstant +MH_DYLDLINK+ #x00000004)
-(defconstant +MH_PIE+      #x00200000)  ; Position-independent executable
+(defconstant +MH_NOUNDEFS+             #x00000001)  ; No undefined references
+(defconstant +MH_DYLDLINK+             #x00000004)  ; Dynamic link object
+(defconstant +MH_TWOLEVEL+             #x00000080)  ; Two-level namespace
+(defconstant +MH_PIE+                  #x00200000)  ; Position-independent executable
+(defconstant +MH_HAS_TLV_DESCRIPTORS+  #x00800000)  ; Has TLV descriptors
 
 ;; Load commands
 (defconstant +LC_SEGMENT_64+      #x19)  ; 64-bit segment
@@ -64,7 +66,8 @@
   (filetype   +MH_EXECUTE+)
   (ncmds      0)            ; Number of load commands
   (sizeofcmds 0)            ; Size of load commands
-  (flags      (logior +MH_NOUNDEFS+ +MH_DYLDLINK+ +MH_PIE+))
+  (flags      (logior +MH_NOUNDEFS+ +MH_DYLDLINK+ +MH_TWOLEVEL+
+                     +MH_PIE+ +MH_HAS_TLV_DESCRIPTORS+))
   (reserved   0))
 
 (defun emit-mach-header (header)
@@ -507,11 +510,11 @@
 
        (:arm64
         ;; Exit syscall on macOS ARM64:
-        ;; mov x16, #1     ; sys_exit
-        ;; mov x0, x0      ; Exit code already in x0
+        ;; mov x16, #1     ; sys_exit (BSD syscall #1)
+        ;; (x0 already has exit code)
         ;; svc #0x80       ; Syscall
         (append code-list
-                '(#x10 #x00 #x80 #xD2)         ; mov x16, #1
+                '(#x30 #x00 #x80 #xD2)         ; mov x16, #1 (correct encoding!)
                 '(#x01 #x10 #x00 #xD4))))      ; svc #0x80
      'vector)))
 
