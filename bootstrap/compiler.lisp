@@ -353,6 +353,24 @@
        ;; Return 0 as a placeholder
        (make-expr :type 'fixnum :value 0)))
 
+    ((and (consp form) (eq (first form) 'funcall))
+     ;; Special form: (funcall 'name arg1 arg2 ...)
+     ;; Look up function in *function-table* and inline it
+     (let* ((fn-name-expr (second form))
+            (args (cddr form))
+            ;; Extract the function name from the quoted symbol
+            (fn-name (if (and (consp fn-name-expr)
+                             (eq (first fn-name-expr) 'quote))
+                        (second fn-name-expr)
+                        (error "funcall requires quoted function name: ~S" fn-name-expr)))
+            (fn-def (gethash fn-name *function-table*)))
+       (unless fn-def
+         (error "Undefined function: ~S" fn-name))
+       ;; Transform (funcall 'name arg1 arg2) to ((lambda params body) arg1 arg2)
+       (let ((params (car fn-def))
+             (body (cdr fn-def)))
+         (parse `((lambda ,params ,body) ,@args)))))
+
     ((and (consp form) (eq (first form) 'setq))
      ;; Special form: (setq var value)
      ;; Mutate a lexical variable
