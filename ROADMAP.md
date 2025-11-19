@@ -471,8 +471,11 @@ The hybrid bootstrap approach allows:
 **Phase 2 status:**
   - ✅ Inline allocation mode implemented
   - ✅ Inline car/cdr helpers (direct pointer arithmetic)
-  - ✅ Mach-O generator complete (SBCL-style with LC_UNIXTHREAD)
+  - ✅ Mach-O generator complete (modern LC_MAIN approach for ARM64)
+  - ✅ All required load commands: LC_SEGMENT_64, LC_LOAD_DYLINKER, LC_LOAD_DYLIB, LC_SYMTAB, LC_DYSYMTAB, LC_MAIN, LC_BUILD_VERSION, LC_SOURCE_VERSION
+  - ✅ Links libSystem.B.dylib (macOS requirement)
   - ✅ ELF generator complete (Linux standalone executables)
   - ✅ Generates real native binaries (no SBCL dependency!)
-  - ⏳ macOS security validation (platform limitation, not code issue)
-**Next priority:** Complete inline heap allocation for cons/car/cdr
+  - ⏳ macOS code signing (requires Apple Developer cert or SIP disabled)
+**Current focus:** ARM64 on macOS (Apple Silicon)
+**Next priority:** Complete inline heap allocation for cons/car/cdr on ARM64
