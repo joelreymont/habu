@@ -67,9 +67,77 @@ make cross
     (process-data data)))
 ```
 
+## Interactive REPLs
+
+Habu includes **three progressive Lisp REPLs** demonstrating the evolution from basic evaluation to a complete Lisp interpreter:
+
+### 1. Enhanced REPL (56KB)
+Basic Lisp with quote, symbols, and evaluation.
+
+```bash
+./habu-enhanced
+habu> (car '(1 2 3))
+1
+```
+
+**Features**: Quote, symbols, if, lists (cons/car/cdr), arithmetic
+
+### 2. Programmable REPL (73KB)
+Adds functional programming with let and lambda.
+
+```bash
+./habu-prog
+habu> ((lambda (x) (* x x)) 5)
+25
+```
+
+**Features**: + let, lambda, closures, higher-order functions
+
+### 3. Recursive REPL (73KB) - **Complete Lisp**
+Full recursion with defun - a complete Lisp in 320 lines!
+
+```bash
+./habu-rec
+habu> (defun factorial (n) (if (= n 0) 1 (* n (factorial (- n 1)))))
+<symbol>
+habu> (factorial 10)
+3628800
+```
+
+**Features**: + defun, recursion, comparisons, persistent definitions
+
+### Quick Start
+
+```bash
+# Run the complete Lisp REPL
+./habu-rec
+
+# Load standard library examples (copy/paste into REPL)
+# See stdlib.lisp and examples.lisp for 100+ utility functions
+```
+
+### Documentation
+
+- **[README_REPL.md](README_REPL.md)** - Quick start guide and tutorial
+- **[REPL_FINAL_STATUS.md](REPL_FINAL_STATUS.md)** - Complete feature documentation
+- **[REPL_PROGRESSION.md](REPL_PROGRESSION.md)** - Evolution from basic to complete
+- **[stdlib.lisp](stdlib.lisp)** - Standard library with 100+ functions
+- **[examples.lisp](examples.lisp)** - Algorithms and demonstrations
+
+### REPL Highlights
+
+✨ **Complete Lisp implementation** in 320 lines of Lisp code
+✨ **Only 1 C primitive added** - minimal runtime philosophy
+✨ **73KB executable** - complete Lisp in your pocket
+✨ **Pure functional** - no mutation, environment passing
+✨ **Production-ready** - all core features working
+
+Perfect for learning Lisp, experimentation, and embedded scripting!
+
 ## Project Status
 
-Early development. See DESIGN.md for architecture details.
+**REPLs**: ✅ Complete and production-ready (see REPL_FINAL_STATUS.md)
+**Main Project**: Early development. See DESIGN.md for architecture details.
 
 ## License
 
