@@ -1,168 +1,377 @@
-# Habu Lisp - Roadmap to Full Implementation
+# Habu Lisp Compiler Roadmap
 
-## Current Status (Implemented)
-- ✅ **Data Types**: Fixnum integers (tagged pointers)
-- ✅ **Arithmetic**: +, -, *, /, mod
-- ✅ **Comparison**: <, >, =, <=, >=
-- ✅ **Boolean Logic**: and, or, not (with short-circuit)
-- ✅ **Control Flow**: if, cond, case, when, unless, progn
-- ✅ **Variables**: let bindings (lexical scoping)
-- ✅ **Functions**: lambda expressions, closures
-- ✅ **Quote**: Literal fixnums
-- ✅ **Lists**: car, cdr (read-only access)
-- ✅ **Dual Target**: x86_64 and ARM64 code generation
+## Overview
 
-## Phase 1: Complete Core Language (Bootstrap-friendly)
-### Immediate Priorities
-- [ ] **List Construction**: cons, list (requires runtime heap allocation)
-- [ ] **More Data Types**:
-  - [ ] Booleans (t/nil as special values)
-  - [ ] Characters (tagged as fixnums)
-  - [ ] Symbols (symbol table + interning)
-  - [ ] Strings (heap-allocated, immutable)
-- [ ] **More List Operations**:
-  - [ ] null, consp, atom predicates
-  - [ ] list, append, reverse
-  - [ ] nth, nthcdr, length
-- [ ] **Global Definitions**:
-  - [ ] defun (named functions)
-  - [ ] defparameter/defvar (global variables)
-  - [ ] defconstant (compile-time constants)
+Habu is a Lisp compiler being built in two phases:
+- **Phase 1 (Current):** Bootstrap compiler using SBCL FFI trampolines
+- **Phase 2 (Future):** Standalone compiler with inline allocation
 
-### Recursion & Iteration
-- [ ] **Tail-Call Optimization**: Critical for recursive algorithms
-- [ ] **Named-let**: Local recursion (Scheme-style)
-- [ ] **Loop Constructs**:
-  - [ ] dotimes
-  - [ ] dolist
-  - [ ] loop (basic form)
+---
 
-### Advanced Control
-- [ ] **Non-local Exits**:
-  - [ ] block/return-from
-  - [ ] catch/throw
-  - [ ] unwind-protect
-- [ ] **Multiple Values**: values, multiple-value-bind
+## Phase 1: Bootstrap Compiler (Current)
 
-## Phase 2: Runtime System
-### Memory Management
-- [ ] **Heap Allocator**: Simple bump allocator
-- [ ] **Garbage Collector**: Mark-and-sweep or copying GC
-- [ ] **Memory Pools**: For different object sizes
-- [ ] **Write Barriers**: For generational GC (future)
+Using SBCL's runtime via FFI for rapid development while maintaining a clean architecture for eventual standalone operation.
 
-### Symbol System
-- [ ] **Symbol Table**: Hash table for interning
-- [ ] **Packages**: Basic package system
-- [ ] **Symbol Properties**: plist, symbol-value, symbol-function
+### 1. Runtime Funcall (Next Priority) 🎯
 
-### Function System
-- [ ] **Function Objects**: First-class functions
-- [ ] **Apply/Funcall**: Dynamic function application
-- [ ] **Function Cells**: Separate from value cells
-- [ ] **Closures**: Full closure support with environment capture
+**Status:** Planned
+**Goal:** Enable true runtime function calls via symbol-function slots
 
-## Phase 3: Advanced Features
-### Macro System
-- [ ] **defmacro**: Macro definitions
-- [ ] **Backquote**: ` , ,@ reader syntax
-- [ ] **gensym**: Hygienic macro support
-- [ ] **Macro Expansion**: macroexpand, macroexpand-1
-- [ ] **Compiler Macros**: Optimization hints
+**Current Limitation:**
+- `funcall` only works at compile-time
+- Looks up functions in `*function-table*`
+- Inlines as `((lambda params body) args...)`
+- Cannot call functions determined at runtime
 
-### Object System (CLOS-lite)
-- [ ] **defstruct**: Structure definitions
-- [ ] **defclass**: Basic classes (optional)
-- [ ] **defmethod**: Generic functions (optional)
-- [ ] **Slots**: Accessor functions
+**What's Needed:**
+- Store actual compiled code pointers in symbol-function slots (not hash markers)
+- Generate machine code to:
+  1. Look up symbol at runtime
+  2. Read symbol-function slot
+  3. Call the function pointer
+- Handle calling convention (arguments, return values)
+- Integrate with existing defun/symbol system
 
-### Advanced Data Types
-- [ ] **Arrays**: Multi-dimensional arrays
-- [ ] **Hash Tables**: make-hash-table, gethash, etc.
-- [ ] **Streams**: Input/output streams
-- [ ] **Floating Point**: IEEE 754 doubles
-- [ ] **Bignums**: Arbitrary precision integers
+**Benefit:** Enables higher-order functions, dynamic dispatch, true functional programming
 
-## Phase 4: Standard Library
-### Core Functions
-- [ ] **List Processing**: mapcar, reduce, filter, etc.
-- [ ] **Sequence Functions**: elt, subseq, concatenate
-- [ ] **String Functions**: string=, string-upcase, format
-- [ ] **Math Functions**: sin, cos, sqrt, expt
-- [ ] **I/O Functions**: read, print, format
+---
 
-### Utilities
-- [ ] **Error Handling**: error, warn, cerror
-- [ ] **Conditions**: define-condition, handler-case
-- [ ] **Assertions**: assert, check-type
-- [ ] **Time/Date**: get-universal-time, sleep
+### 2. Self-Hosting Capability
 
-## Phase 5: Self-Hosting
-### Compiler in Habu
-- [ ] **Reader**: S-expression parser in Habu
-- [ ] **Compiler**: Bootstrap compiler written in Habu
-- [ ] **Code Generator**: x86_64/ARM64 backends in Habu
-- [ ] **Optimizer**: Peephole, constant folding, etc.
+**Status:** Partially complete
+**Goal:** Compiler can compile itself
 
-### Metaprogramming
-- [ ] **Compiler Hooks**: Compile-time code execution
-- [ ] **Load-time Evaluation**: eval-when
-- [ ] **Code Walking**: For analysis and transformation
+**Missing Components:**
 
-## Phase 6: Performance & Optimization
-### Compiler Optimizations
-- [ ] **Constant Folding**: Compile-time evaluation
-- [ ] **Dead Code Elimination**: Remove unused code
-- [ ] **Inline Expansion**: Inline small functions
-- [ ] **Register Allocation**: Better register usage
-- [ ] **Peephole Optimization**: Local code improvements
-- [ ] **Type Inference**: Optional type declarations
+#### Reader/Printer
+- Read S-expressions from strings/files
+- Print S-expressions for debugging
+- Currently using SBCL's reader during bootstrap
 
-### Runtime Optimizations
-- [ ] **Generational GC**: Faster garbage collection
-- [ ] **JIT Compilation**: Runtime code generation (optional)
-- [ ] **Native Threads**: Parallel execution (ARM64 specific)
+#### File I/O
+- Open, read, write files
+- Load compiled code
+- Needed for multi-file projects
 
-## Phase 7: Tooling & Ecosystem
-### Development Tools
-- [ ] **REPL**: Interactive read-eval-print loop
-- [ ] **Debugger**: Step, breakpoints, inspect
-- [ ] **Profiler**: Performance analysis
-- [ ] **Tracer**: Function call tracing
+#### Error Handling
+- Basic condition system
+- Catch/throw or try/catch
+- Error messages and stack traces
 
-### Documentation
-- [ ] **Language Manual**: Complete reference
-- [ ] **Tutorial**: Getting started guide
-- [ ] **API Documentation**: Standard library docs
-- [ ] **Examples**: Code samples and patterns
+#### More Control Flow
+- do, dotimes, dolist
+- block, return-from
+- tagbody, go (for complex control flow)
 
-## Phase 8: Integration & Deployment
-### FFI (Foreign Function Interface)
-- [ ] **C Interop**: Call C functions
-- [ ] **Struct Marshalling**: Pass C structs
-- [ ] **Callbacks**: C code calling Habu
+**Benefit:** True bootstrapping - compiler compiles itself
 
-### Bare Metal Support
-- [ ] **No-OS Boot**: Boot without OS
-- [ ] **Interrupt Handlers**: ARM64 interrupts
-- [ ] **Memory-Mapped I/O**: Hardware access
-- [ ] **Real-Time Guarantees**: Predictable GC pauses
+---
 
-## Current Focus
-Based on "keep going to full Lisp", the immediate priorities are:
+### 3. Essential Language Features
 
-1. **Fix named-let** or skip it temporarily
-2. **Add more special forms** that don't need runtime:
-   - begin (alias for progn)
-   - multiple expressions in cond clauses
-   - setq for mutation (with lexical tracking)
-3. **Implement defun** with a global function table
-4. **Add more operators**:
-   - Bitwise: and, or, xor, not, shift
-   - Numeric: min, max, abs, truncate
-5. **Build test suite** for all features
-6. **Create simple runtime** for cons/list support
-7. **Add tail-call optimization** for recursion
-8. **Implement basic REPL** for interactive development
+**Status:** Partially complete
 
-This roadmap provides a clear path from current capabilities to a full, self-hosting Common Lisp implementation suitable for bare-metal ARM64 with real-time constraints.
+#### Strings
+**Current:** Using fixnum hashes for symbol names
+**Needed:**
+- String type with heap allocation
+- String operations: concatenate, substring, length
+- String comparison
+- Symbol names as actual strings
+
+#### Closures
+**Current:** Lambda works for immediate calls
+**Needed:**
+- Lexical function values
+- Captured environment
+- First-class functions that can be stored and passed
+
+#### Hash Tables
+**Current:** None
+**Needed:**
+- Hash table type
+- get, put, remove operations
+- Critical for many algorithms
+
+#### Multiple Return Values
+**Current:** Single return value only
+**Needed:**
+- values, multiple-value-bind
+- Common Lisp compatibility
+
+#### Destructuring
+**Current:** None
+**Needed:**
+- destructuring-bind
+- Pattern matching in let/lambda
+
+#### Iteration
+**Current:** Recursion only
+**Needed:**
+- loop macro
+- do, dotimes, dolist
+- More ergonomic iteration
+
+---
+
+### 4. Standard Library Expansion
+
+**Status:** Basic operations complete
+
+#### List Operations
+**Current:** cons, car, cdr, list, length, nth, append, reverse
+**Needed:**
+- member, assoc, remove-if, filter, map
+- find, position, count
+- every, some, notany, notevery
+- push, pop, pushnew
+- last, butlast, nthcdr
+
+#### Sequence Operations
+**Needed:**
+- Generic operations working on lists and arrays
+- reduce, map, filter patterns
+- Sequence predicates
+
+#### Number Operations
+**Current:** Basic arithmetic, bitwise, predicates
+**Needed:**
+- Floating point support
+- More number theory (lcm, expt, sqrt, etc.)
+- Random numbers
+- Ratios and bignums
+
+#### I/O Primitives
+**Needed:**
+- read, print, format
+- File operations
+- Stream abstraction
+
+---
+
+## Phase 2: Standalone Compiler (Future)
+
+Remove all SBCL dependencies, make Habu truly standalone.
+
+### 1. Inline Allocation
+
+**Goal:** Eliminate FFI trampolines
+
+**Current Architecture:**
+- Compiler generates calls to SBCL FFI trampolines
+- Trampolines call Habu runtime functions
+- Requires SBCL to run compiled code
+
+**Target Architecture:**
+- Compiler generates direct heap allocation code
+- No FFI calls, just machine code
+- Compiled programs run without SBCL
+
+**What's Needed:**
+- Compile runtime/memory.lisp to machine code
+- Generate inline allocation sequences
+- Handle heap exhaustion inline
+- Calling convention for GC
+
+**Benefit:** Standalone executables, no SBCL runtime dependency
+
+---
+
+### 2. Conservative/Precise GC
+
+**Goal:** Robust garbage collection
+
+**Current Limitation:**
+- GC uses explicit root registry
+- FFI calls don't automatically track stack values
+- Workaround: 1MB heap is large enough for typical operations
+
+**Target:**
+- Stack scanning to find all live references
+- Conservative GC (treat anything that looks like a pointer)
+- Or precise GC with compiler-generated GC maps
+
+**Benefit:** Safer memory management, handle larger programs
+
+---
+
+### 3. Full Standalone Operation
+
+**Components:**
+
+#### Symbol Packages
+- Namespace isolation
+- import, export, use-package
+- Package prefixes (package:symbol)
+
+#### Complete String Implementation
+- First-class string type
+- Full Unicode support
+- String interning for symbols
+
+#### Standard Library in Pure Habu
+- Rewrite SBCL-dependent code
+- All stdlib in Habu itself
+- Minimal C runtime dependencies
+
+#### Standalone Executable
+- Compile to native executable
+- No SBCL dependency
+- Minimal runtime (just libc)
+
+---
+
+## Current Status (November 2025)
+
+### Completed ✅
+
+**Core Compiler:**
+- 597 passing tests
+- x86_64 and ARM64 targets
+- Comprehensive optimization passes
+
+**Data Types:**
+- Fixnums (tagged pointers)
+- Cons cells (heap-allocated)
+- Symbols (with interning)
+
+**Language Features:**
+- defun/defvar/defmacro with symbol integration
+- Macros with quasiquote and nested macro support
+- funcall (compile-time only)
+- set for modifying global variables
+- Lambda expressions
+- Lexical scoping (let bindings)
+
+**List Operations:**
+- cons, car, cdr, list
+- length, nth, append, reverse
+
+**Control Flow:**
+- if, cond, case, when, unless
+- progn, begin
+- and, or (short-circuit)
+
+**Operators:**
+- Arithmetic: +, -, *, /, mod, div
+- Comparison: <, >, =, <=, >=
+- Bitwise: logand, logior, logxor, lognot, ash
+- Boolean: not, and, or
+- 80+ operators total
+
+**Memory Management:**
+- Mark-and-sweep GC with compaction
+- GC root registry
+- Automatic GC triggering
+- Heap allocation via FFI trampolines
+
+---
+
+## Architecture Decisions
+
+### Two-Phase Strategy
+The hybrid bootstrap approach allows:
+- **Rapid development** using SBCL's infrastructure (Phase 1)
+- **Clean architecture** that's ready for standalone operation (Phase 2)
+- **No technical debt** from shortcuts
+
+### Symbol System (Lisp-2)
+- Separate value and function namespaces
+- Traditional Common Lisp semantics
+- Enables both variables and functions with same name
+- 48-byte symbol structure: header + name + value + function + plist
+
+### Mark-and-Sweep GC
+- Simple and correct
+- Good cache locality after compaction
+- Foundation for future generational GC
+- Unbound marker: 0xFFFFFFFFFFFFFFFF (all bits set)
+
+### FFI Trampolines (Phase 1)
+- System V AMD64 ABI calling convention
+- Clean separation between compiler and runtime
+- Easy to replace with inline code (Phase 2)
+
+---
+
+## Testing Strategy
+
+- Comprehensive test suite (597 tests, 100% passing)
+- Test-driven development
+- Each feature gets dedicated test file
+- All tests must pass before commit
+- Tests cover: operators, control flow, lists, symbols, GC, macros
+
+---
+
+## Documentation
+
+### Current Docs:
+- `docs/GC_INTEGRATION.md` - GC architecture and usage
+- `docs/SYMBOLS.md` - Symbol system reference
+- `docs/BOOTSTRAP_VS_STANDALONE.md` - Two-phase approach explanation
+- `bootstrap/SESSION_SUMMARY.md` - Detailed session work log
+- `ROADMAP.md` - This file
+
+### Code Structure:
+- `bootstrap/compiler.lisp` - Main compiler (4200+ lines)
+- `runtime/memory.lisp` - Heap allocator and GC
+- `runtime/symbols.lisp` - Symbol table and operations
+- `runtime/lists.lisp` - List runtime functions
+- `bootstrap/test-*.lisp` - Test files
+- `bootstrap/run-all-tests.lisp` - Test runner
+
+---
+
+## Priority Queue
+
+### Immediate (This Session)
+1. ✅ Global variable modification (set)
+2. ✅ List operations (length, nth, append, reverse)
+3. 🚧 Runtime funcall design and implementation
+
+### Short Term (Next Sessions)
+1. Runtime funcall completion
+2. Closures (lexical function values)
+3. String type implementation
+4. Reader/printer for S-expressions
+5. Basic file I/O
+
+### Medium Term (Phase 1 Completion)
+1. Self-hosting capability
+2. Complete standard library
+3. Error handling/condition system
+4. Loop/iteration constructs
+5. Hash tables
+6. Multiple return values
+
+### Long Term (Phase 2)
+1. Inline allocation
+2. Conservative/Precise GC
+3. Symbol packages
+4. Standalone executable
+5. Remove all SBCL dependencies
+
+---
+
+## Contributing Priorities
+
+1. **Phase 1 completion** - Get to self-hosting
+2. **Test coverage** - Maintain 100% passing tests
+3. **Documentation** - Keep docs updated
+4. **Performance** - Optimize after correctness
+
+---
+
+## Version History
+
+- **v0.1** (2025-11-17): Initial compiler with basic operators
+- **v0.2** (2025-11-19): Symbol system, GC, macros, list operations
+- **v0.3** (Planned): Runtime funcall, closures, strings
+
+---
+
+**Last updated:** 2025-11-19
+**Current phase:** Phase 1 - Bootstrap with FFI
+**Tests passing:** 597/597 ✅
+**Next priority:** Runtime funcall
