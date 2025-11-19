@@ -33,6 +33,10 @@
 (defvar *runtime-cons-addr* nil "Address of runtime-cons trampoline")
 (defvar *runtime-car-addr* nil "Address of runtime-car trampoline")
 (defvar *runtime-cdr-addr* nil "Address of runtime-cdr trampoline")
+(defvar *runtime-length-addr* nil "Address of runtime-length trampoline")
+(defvar *runtime-nth-addr* nil "Address of runtime-nth trampoline")
+(defvar *runtime-append-addr* nil "Address of runtime-append trampoline")
+(defvar *runtime-reverse-addr* nil "Address of runtime-reverse trampoline")
 
 (defun initialize-runtime-integration ()
   "Initialize runtime integration (Phase 1: Bootstrap mode with FFI trampolines)"
@@ -41,13 +45,18 @@
     (let ((runtime-path (merge-pathnames "../runtime/memory.lisp"
                                          (or *load-truename* *default-pathname-defaults*)))
           (symbols-path (merge-pathnames "../runtime/symbols.lisp"
-                                         (or *load-truename* *default-pathname-defaults*))))
+                                         (or *load-truename* *default-pathname-defaults*)))
+          (lists-path (merge-pathnames "../runtime/lists.lisp"
+                                       (or *load-truename* *default-pathname-defaults*))))
       (if (probe-file runtime-path)
           (progn
             (load runtime-path)
             ;; Load symbol support
             (when (probe-file symbols-path)
-              (load symbols-path)))
+              (load symbols-path))
+            ;; Load list operations
+            (when (probe-file lists-path)
+              (load lists-path)))
           (error "Cannot find runtime/memory.lisp at ~A" runtime-path))))
 
   ;; Initialize runtime heap
@@ -72,6 +81,22 @@
         sb-alien:unsigned-long ((cons-ptr sb-alien:unsigned-long))
       (funcall (find-symbol "RUNTIME-CDR" :habu-runtime) cons-ptr))
 
+    (sb-alien:define-alien-callable habu-length-trampoline
+        sb-alien:unsigned-long ((list-ptr sb-alien:unsigned-long))
+      (funcall (find-symbol "RUNTIME-LENGTH" :habu-runtime) list-ptr))
+
+    (sb-alien:define-alien-callable habu-nth-trampoline
+        sb-alien:unsigned-long ((n sb-alien:unsigned-long) (list-ptr sb-alien:unsigned-long))
+      (funcall (find-symbol "RUNTIME-NTH" :habu-runtime) n list-ptr))
+
+    (sb-alien:define-alien-callable habu-append-trampoline
+        sb-alien:unsigned-long ((list1-ptr sb-alien:unsigned-long) (list2-ptr sb-alien:unsigned-long))
+      (funcall (find-symbol "RUNTIME-APPEND" :habu-runtime) list1-ptr list2-ptr))
+
+    (sb-alien:define-alien-callable habu-reverse-trampoline
+        sb-alien:unsigned-long ((list-ptr sb-alien:unsigned-long))
+      (funcall (find-symbol "RUNTIME-REVERSE" :habu-runtime) list-ptr))
+
     ;; Get addresses of the trampolines using the correct SBCL mechanism:
     ;; 1. alien-callable-function gets the callable object
     ;; 2. alien-sap converts to System Area Pointer
@@ -81,7 +106,15 @@
     (setf *runtime-car-addr*
           (sb-alien:alien-sap (sb-alien:alien-callable-function 'habu-car-trampoline)))
     (setf *runtime-cdr-addr*
-          (sb-alien:alien-sap (sb-alien:alien-callable-function 'habu-cdr-trampoline))))
+          (sb-alien:alien-sap (sb-alien:alien-callable-function 'habu-cdr-trampoline)))
+    (setf *runtime-length-addr*
+          (sb-alien:alien-sap (sb-alien:alien-callable-function 'habu-length-trampoline)))
+    (setf *runtime-nth-addr*
+          (sb-alien:alien-sap (sb-alien:alien-callable-function 'habu-nth-trampoline)))
+    (setf *runtime-append-addr*
+          (sb-alien:alien-sap (sb-alien:alien-callable-function 'habu-append-trampoline)))
+    (setf *runtime-reverse-addr*
+          (sb-alien:alien-sap (sb-alien:alien-callable-function 'habu-reverse-trampoline))))
 
   #-sbcl
   (error "Runtime integration only supported on SBCL currently")
@@ -3041,6 +3074,82 @@
                                                                  :args nil))))
                 (emit-x86_64 cons-expr env))))
 
+
+         ((eq op 'length)
+          ;; (length list-ptr) - count elements in list
+          ;; Call runtime-length trampoline: Arg: RDI (list-ptr), Return: RAX
+          (unless *runtime-length-addr*
+            (error "Runtime not initialized. Call (initialize-runtime-integration) first."))
+          (let ((func-addr (sb-sys:sap-int *runtime-length-addr*)))
+            (append
+             ;; Evaluate list expression into RAX
+             (emit-x86_64 (first args) env)
+             ;; Setup call: RDI=list-ptr
+             (list #x48 #x89 #xC7)                ; mov rdi, rax
+             ;; Load function address and call
+             (list #x48 #xB8)                     ; movabs rax, imm64
+             (int-to-bytes func-addr 8)
+             (list #xFF #xD0))))                  ; call rax
+
+         ((eq op 'nth)
+          ;; (nth n list-ptr) - get nth element
+          ;; Call runtime-nth trampoline: Args: RDI (n), RSI (list-ptr), Return: RAX
+          (unless *runtime-nth-addr*
+            (error "Runtime not initialized. Call (initialize-runtime-integration) first."))
+          (let ((func-addr (sb-sys:sap-int *runtime-nth-addr*)))
+            (append
+             ;; Evaluate n into RAX
+             (emit-x86_64 (first args) env)
+             ;; Save n on stack
+             (list #x50)                          ; push rax
+             ;; Evaluate list into RAX
+             (emit-x86_64 (second args) env)
+             ;; Setup call: RDI=n, RSI=list
+             (list #x48 #x89 #xC6)                ; mov rsi, rax (list in RSI)
+             (list #x48 #x8B #x3C #x24)           ; mov rdi, [rsp] (n in RDI)
+             (list #x48 #x83 #xC4 #x08)           ; add rsp, 8 (pop n)
+             ;; Load function address and call
+             (list #x48 #xB8)                     ; movabs rax, imm64
+             (int-to-bytes func-addr 8)
+             (list #xFF #xD0))))                  ; call rax
+
+         ((eq op 'append)
+          ;; (append list1 list2) - concatenate lists
+          ;; Call runtime-append trampoline: Args: RDI (list1), RSI (list2), Return: RAX
+          (unless *runtime-append-addr*
+            (error "Runtime not initialized. Call (initialize-runtime-integration) first."))
+          (let ((func-addr (sb-sys:sap-int *runtime-append-addr*)))
+            (append
+             ;; Evaluate list1 into RAX
+             (emit-x86_64 (first args) env)
+             ;; Save list1 on stack
+             (list #x50)                          ; push rax
+             ;; Evaluate list2 into RAX
+             (emit-x86_64 (second args) env)
+             ;; Setup call: RDI=list1, RSI=list2
+             (list #x48 #x89 #xC6)                ; mov rsi, rax (list2 in RSI)
+             (list #x48 #x8B #x3C #x24)           ; mov rdi, [rsp] (list1 in RDI)
+             (list #x48 #x83 #xC4 #x08)           ; add rsp, 8 (pop list1)
+             ;; Load function address and call
+             (list #x48 #xB8)                     ; movabs rax, imm64
+             (int-to-bytes func-addr 8)
+             (list #xFF #xD0))))                  ; call rax
+
+         ((eq op 'reverse)
+          ;; (reverse list-ptr) - reverse a list
+          ;; Call runtime-reverse trampoline: Arg: RDI (list-ptr), Return: RAX
+          (unless *runtime-reverse-addr*
+            (error "Runtime not initialized. Call (initialize-runtime-integration) first."))
+          (let ((func-addr (sb-sys:sap-int *runtime-reverse-addr*)))
+            (append
+             ;; Evaluate list expression into RAX
+             (emit-x86_64 (first args) env)
+             ;; Setup call: RDI=list-ptr
+             (list #x48 #x89 #xC7)                ; mov rdi, rax
+             ;; Load function address and call
+             (list #x48 #xB8)                     ; movabs rax, imm64
+             (int-to-bytes func-addr 8)
+             (list #xFF #xD0))))                  ; call rax
          (t
           (error "Unknown operator: ~S" op)))))))
 
