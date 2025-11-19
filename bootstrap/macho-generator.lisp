@@ -32,13 +32,12 @@
 (defconstant +MH_PIE+      #x00200000)  ; Position-independent executable
 
 ;; Load commands
-(defconstant +LC_SEGMENT_64+     #x19)  ; 64-bit segment
-(defconstant +LC_UNIXTHREAD+     #x05)  ; Unix thread state (old-style, like SBCL)
-(defconstant +LC_SYMTAB+         #x02)  ; Symbol table
-(defconstant +LC_DYSYMTAB+       #x0B)  ; Dynamic symbol table
-(defconstant +LC_LOAD_DYLINKER+  #x0E)  ; Load dynamic linker
-(defconstant +LC_DYLD_INFO_ONLY+ #x80000022)  ; Dynamic linker info
-(defconstant +LC_MAIN+           #x28)  ; Entry point (LC_MAIN, modern)
+(defconstant +LC_SEGMENT_64+      #x19)  ; 64-bit segment
+(defconstant +LC_UNIXTHREAD+      #x05)  ; Unix thread state (old-style)
+(defconstant +LC_MAIN+            #x28)  ; Entry point (modern, like SBCL)
+(defconstant +LC_LOAD_DYLINKER+   #x0E)  ; Load dynamic linker
+(defconstant +LC_SOURCE_VERSION+  #x2A)  ; Source version
+(defconstant +LC_BUILD_VERSION+   #x32)  ; Build version
 
 ;; Section flags
 (defconstant +S_ATTR_PURE_INSTRUCTIONS+ #x80000000)
@@ -196,6 +195,51 @@
    'vector))
 
 ;;; ============================================================
+;;; MAIN COMMAND (Modern entry point, like SBCL)
+;;; ============================================================
+
+(defun emit-main-command (entryoff stacksize)
+  "Emit LC_MAIN command (modern entry point)"
+  (coerce
+   (append
+    (int-to-bytes +LC_MAIN+ 4)
+    (int-to-bytes 24 4)              ; cmdsize (fixed 24 bytes)
+    (int-to-bytes entryoff 8)        ; Entry point offset from __TEXT
+    (int-to-bytes stacksize 8))      ; Stack size
+   'vector))
+
+;;; ============================================================
+;;; BUILD VERSION COMMAND
+;;; ============================================================
+
+(defun emit-build-version-command ()
+  "Emit LC_BUILD_VERSION command (macOS 11.0+)"
+  (coerce
+   (append
+    (int-to-bytes +LC_BUILD_VERSION+ 4)
+    (int-to-bytes 32 4)              ; cmdsize (fixed 32 bytes)
+    (int-to-bytes 1 4)               ; platform (1 = macOS)
+    (int-to-bytes #x000B0000 4)      ; minos (11.0.0)
+    (int-to-bytes #x000F0000 4)      ; sdk (15.0.0)
+    (int-to-bytes 1 4)               ; ntools
+    (int-to-bytes 3 4)               ; tool (3 = ld)
+    (int-to-bytes #x03570000 4))     ; version (855.0.0)
+   'vector))
+
+;;; ============================================================
+;;; SOURCE VERSION COMMAND
+;;; ============================================================
+
+(defun emit-source-version-command ()
+  "Emit LC_SOURCE_VERSION command"
+  (coerce
+   (append
+    (int-to-bytes +LC_SOURCE_VERSION+ 4)
+    (int-to-bytes 16 4)              ; cmdsize (fixed 16 bytes)
+    (int-to-bytes 0 8))              ; version (0.0.0.0.0)
+   'vector))
+
+;;; ============================================================
 ;;; DYLINKER COMMAND
 ;;; ============================================================
 
@@ -269,14 +313,17 @@
          (header-size 32)
          (segment-cmd-size 72)
          (section-size 80)
-         (thread-cmd-size (ecase arch
-                           (:x86_64 184)  ; LC_UNIXTHREAD for x86_64
-                           (:arm64  284))) ; LC_UNIXTHREAD for ARM64
-         ;; Minimal like SBCL: just segment + thread state
-         (load-cmds-size (+ segment-cmd-size section-size thread-cmd-size))
+         (main-cmd-size 24)           ; LC_MAIN command
+         (dylinker-cmd-size 28)       ; LC_LOAD_DYLINKER ("/usr/lib/dyld" = 13 + null + padding = 28)
+         (build-version-cmd-size 32)  ; LC_BUILD_VERSION
+         (source-version-cmd-size 16) ; LC_SOURCE_VERSION
+         ;; Modern approach: segment + dylinker + main + versions
+         (load-cmds-size (+ segment-cmd-size section-size dylinker-cmd-size main-cmd-size
+                           build-version-cmd-size source-version-cmd-size))
          (headers-size (+ header-size load-cmds-size))
-         (code-offset 4096)  ; Start code at page boundary
+         (code-offset 4096)           ; Start code at page boundary
          (vm-addr #x100001000)
+         (entryoff (- vm-addr #x100000000))  ; Offset from __TEXT base
 
          ;; Create structures
          (header (make-mach-header-64
@@ -286,7 +333,7 @@
                   :cpusubtype (ecase arch
                                (:x86_64 +CPU_SUBTYPE_X86_64_ALL+)
                                (:arm64  +CPU_SUBTYPE_ARM64_ALL+))
-                  :ncmds 2  ; Just segment + thread state (like SBCL)
+                  :ncmds 5  ; Segment + dylinker + main + build_version + source_version
                   :sizeofcmds load-cmds-size))
 
          (segment (make-segment-command-64
@@ -318,11 +365,17 @@
       ;; Write section
       (write-sequence (emit-section section) out)
 
-      ;; Write thread state command (like SBCL - no dyld needed!)
-      (write-sequence (ecase arch
-                       (:x86_64 (emit-unix-thread-command-x86_64 vm-addr))
-                       (:arm64  (emit-unix-thread-command-arm64 vm-addr)))
-                     out)
+      ;; Write dylinker command (load /usr/lib/dyld)
+      (write-sequence (emit-dylinker-command) out)
+
+      ;; Write main command (modern entry point)
+      (write-sequence (emit-main-command entryoff 0) out)
+
+      ;; Write build version command (required for modern macOS)
+      (write-sequence (emit-build-version-command) out)
+
+      ;; Write source version command
+      (write-sequence (emit-source-version-command) out)
 
       ;; Pad to code offset
       (let ((padding (- code-offset (file-position out))))
@@ -337,6 +390,18 @@
     ;; Make executable
     #+sbcl
     (sb-ext:run-program "/bin/chmod" (list "+x" output-file))
+
+    ;; Add ad-hoc code signature (required on modern macOS)
+    #+sbcl
+    (progn
+      (format t "~%Adding ad-hoc code signature...~%")
+      (let ((result (sb-ext:run-program "/usr/bin/codesign"
+                                       (list "-s" "-" "-f" output-file)
+                                       :output t
+                                       :error t
+                                       :wait t)))
+        (unless (zerop (sb-ext:process-exit-code result))
+          (format t "Warning: Code signing failed~%"))))
 
     (format t "~%Generated Mach-O executable: ~A~%" output-file)
     (format t "  Architecture: ~A~%" arch)
