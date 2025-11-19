@@ -227,6 +227,58 @@
     ;; Not a macro call - recursively expand sub-forms
     (t (mapcar #'expand-macros-in-form form))))
 
+;;; Free variable analysis for closures
+(defparameter *builtin-operators*
+  '(+ - * / mod rem div < > = <= >= not and or
+    cons car cdr list null? cons? list? eq? equal?
+    logand logior logxor lognot ash
+    if cond case when unless
+    progn begin quote quasiquote unquote unquote-splicing
+    lambda let let* defun defvar defmacro funcall symbol-value set
+    length nth append reverse
+    ;; Add more operators as needed
+    ))
+
+(defun builtin-operator-p (sym)
+  "Check if symbol is a built-in operator"
+  (member sym *builtin-operators*))
+
+(defun collect-variables (form)
+  "Collect all variable references in a form (excluding built-in operators)"
+  (cond
+    ((null form) nil)
+    ((symbolp form)
+     (if (builtin-operator-p form)
+         nil
+         (list form)))
+    ((not (consp form)) nil)
+    ((eq (first form) 'quote) nil)  ; Quoted forms don't reference variables
+    ((eq (first form) 'lambda)
+     ;; In lambda, collect from body but exclude parameters
+     (let ((params (second form))
+           (body (third form)))
+       (set-difference (collect-variables body) params)))
+    ((eq (first form) 'let)
+     ;; In let, collect from values and body, exclude bound variables
+     (let* ((bindings (second form))
+            (body (third form))
+            (vars (mapcar #'first bindings))
+            (vals (mapcar #'second bindings)))
+       (append (apply #'append (mapcar #'collect-variables vals))
+               (set-difference (collect-variables body) vars))))
+    ((eq (first form) 'defun)
+     ;; Don't analyze defun bodies for free variables at this level
+     nil)
+    (t
+     ;; Regular form - collect from all subforms, skip the operator
+     (apply #'append (mapcar #'collect-variables (rest form))))))
+
+(defun find-free-variables (body params &optional (env nil))
+  "Find free variables in body that are not in params or env"
+  (let* ((all-vars (collect-variables body))
+         (bound-vars (append params env)))
+    (remove-duplicates (set-difference all-vars bound-vars))))
+
 ;;; Parse Lisp expression to IR
 (defun parse (form)
   "Parse a Lisp form into compiler IR"
@@ -284,11 +336,19 @@
 
     ((and (consp form) (eq (first form) 'lambda))
      ;; Special form: (lambda (params) body)
-     (let ((params (second form))
-           (body (third form)))
-       (make-expr :type 'lambda
-                  :value params  ; Parameter list
-                  :args (list (parse body)))))
+     ;; Analyze for free variables to determine if closure is needed
+     (let* ((params (second form))
+            (body (third form))
+            (free-vars (find-free-variables body params)))
+       (if free-vars
+           ;; Lambda with free variables - needs closure
+           (make-expr :type 'closure
+                      :value params      ; Parameter list
+                      :args (list (parse body) free-vars))
+           ;; Lambda with no free variables - simple lambda
+           (make-expr :type 'lambda
+                      :value params      ; Parameter list
+                      :args (list (parse body))))))
 
     ((and (consp form) (eq (first form) 'progn))
      ;; Special form: (progn expr1 expr2 ... exprN)
