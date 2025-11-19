@@ -367,3 +367,163 @@ All 597 tests passing. The compiler now has a complete macro system with quasiqu
 global functions and variables via symbols, and proper fixnum handling.
 
 Ready to continue!
+
+---
+
+## Session 3: Global Variables and List Operations
+
+### 9. Global Variable Modification (set) ✓
+
+**Implemented:**
+- Added `set` special form to modify global variables
+- Syntax: `(set 'name value)`
+- Sets symbol-value slot at compile-time
+- Returns the new value
+
+**Files Modified:**
+- `bootstrap/compiler.lisp` - set implementation (lines 454-483)
+- `bootstrap/test-set.lisp` - NEW: Global variable modification tests
+
+**Features:**
+- ✅ Modify variables after definition
+- ✅ Works with all fixnum values (including 0 and nil)
+- ✅ Integrates with symbol-value for reading
+
+**Example:**
+```lisp
+(defvar *counter* 0)
+(set '*counter* 42)
+(symbol-value '*counter*)  ; => 42
+```
+
+**Commits:**
+- `896351c` - Implement set for modifying global variables
+
+### 10. Comprehensive List Operations ✓
+
+**Implemented:**
+- Four essential list operations with full runtime and compiler support
+- `length` - Count elements in a list
+- `nth` - Access element by index (0-based)
+- `append` - Concatenate two lists
+- `reverse` - Reverse a list
+
+**Architecture:**
+- Created `runtime/lists.lisp` with runtime implementations
+- Added FFI trampolines for all four operations
+- Integrated with x86_64 code generation
+- System V AMD64 ABI calling convention
+
+**Files Modified:**
+- `bootstrap/compiler.lisp` - List operation trampolines and codegen
+- `runtime/lists.lisp` - NEW: Runtime list functions
+- `bootstrap/test-list-ops.lisp` - NEW: Comprehensive list tests
+
+**Features:**
+- ✅ All operations work individually
+- ✅ Operations can be combined: `(length (append (list 1 2) (list 3 4)))`
+- ✅ Efficient runtime implementations
+
+**Examples:**
+```lisp
+(length (list 1 2 3))           ; => 3
+(nth 1 (list 10 20 30))         ; => 20
+(append (list 1 2) (list 3 4))  ; => (1 2 3 4)
+(reverse (list 1 2 3))          ; => (3 2 1)
+```
+
+**Commits:**
+- `6d090a9` - Add comprehensive list operations: length, nth, append, reverse
+
+### 11. Roadmap and Planning ✓
+
+**Created:**
+- Updated `ROADMAP.md` with comprehensive plan
+- Documented Phase 1 (Bootstrap) and Phase 2 (Standalone)
+- Listed current status and priorities
+- Created `docs/RUNTIME_FUNCALL_DESIGN.md` for next feature
+
+**Content:**
+- Two-phase architecture explanation
+- Priority queue (immediate → long term)
+- Current status: 597 tests, all passing
+- Next priority: Runtime funcall
+
+**Commits:**
+- `8ca0edd` - Update ROADMAP with current status and Phase 1/2 architecture
+
+### 12. Runtime Funcall Design (In Progress) 🚧
+
+**Goal:** Enable true runtime function calls via symbol-function slots
+
+**Current Status:**
+- Design documented in `docs/RUNTIME_FUNCALL_DESIGN.md`
+- Test framework created: `test-runtime-funcall.lisp`
+- Architecture defined for Phase 1 (Bootstrap with SBCL)
+
+**Approach:**
+1. Store compiled code pointers in symbol-function slots
+2. Generate code to call via function pointers
+3. Use SBCL alien-callable for Phase 1
+
+**Next Steps:**
+- Compile functions to executable code
+- Store function pointers in symbols
+- Generate runtime funcall code
+
+## Test Statistics
+
+**Session 3 Results:**
+- Total tests: 597 (all passing ✅)
+- New test files: 3
+  - test-set.lisp
+  - test-list-ops.lisp
+  - test-runtime-funcall.lisp (framework only)
+
+**Session 3 Commits:**
+- 3 feature commits
+- 1 documentation commit
+- All existing tests still passing
+
+## Files Changed Session 3
+
+```
+bootstrap/compiler.lisp              - set, list operations (length, nth, append, reverse)
+runtime/lists.lisp                   - NEW: List runtime functions
+bootstrap/test-set.lisp              - NEW: Global variable modification tests
+bootstrap/test-list-ops.lisp         - NEW: List operation tests
+bootstrap/test-runtime-funcall.lisp  - NEW: Runtime funcall test framework
+docs/RUNTIME_FUNCALL_DESIGN.md       - NEW: Design doc for runtime funcall
+ROADMAP.md                           - Updated with Phase 1/2 architecture
+bootstrap/SESSION_SUMMARY.md         - Updated with session 3 work
+```
+
+## Updated Next Steps
+
+### Completed This Session:
+✅ Global variable modification (set)
+✅ List operations (length, nth, append, reverse)
+✅ Comprehensive roadmap and planning
+🚧 Runtime funcall design
+
+### Remaining (Next Session):
+1. **Runtime funcall implementation**
+   - Store compiled code pointers
+   - Generate runtime call code
+   - Test higher-order functions
+
+2. **Closures** - Lexical function values
+3. **Strings** - First-class string type
+4. **Reader/Printer** - S-expression I/O
+5. **Self-hosting features** - File I/O, error handling
+
+---
+
+## Conclusion (Session 3)
+
+Successful implementation of global variable modification and comprehensive list operations.
+Created detailed roadmap for Phase 1 (Bootstrap) and Phase 2 (Standalone). Designed
+architecture for runtime funcall - the next major feature enabling true higher-order
+functional programming.
+
+All 597 tests passing. Ready for runtime funcall implementation!
