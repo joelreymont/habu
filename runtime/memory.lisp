@@ -33,6 +33,22 @@
 (defvar *heap* nil
   "Global heap for runtime allocation")
 
+;;; GC roots registry
+(defvar *gc-roots* nil
+  "List of GC root pointers - objects that should not be collected")
+
+(defun register-gc-root (ptr)
+  "Register a pointer as a GC root (prevents collection)"
+  (pushnew ptr *gc-roots*))
+
+(defun unregister-gc-root (ptr)
+  "Unregister a GC root"
+  (setf *gc-roots* (delete ptr *gc-roots*)))
+
+(defun clear-gc-roots ()
+  "Clear all registered GC roots"
+  (setf *gc-roots* nil))
+
 ;;; Object tags (lower 4 bits)
 (defconstant +tag-fixnum+     #x0)  ; Fixnum (already shifted left 4)
 (defconstant +tag-cons+       #x1)  ; Cons cell
@@ -127,13 +143,13 @@
          (free-ptr (heap-free-pointer heap)))
     ;; Check if we have space
     (when (> (+ free-ptr aligned-size) (heap-size heap))
-      ;; Try GC first
-      (gc heap)
+      ;; Try GC first with registered roots
+      (gc heap *gc-roots*)
       (setf free-ptr (heap-free-pointer heap))
       ;; Check again
       (when (> (+ free-ptr aligned-size) (heap-size heap))
-        (error "Out of heap memory: need ~D bytes, have ~D"
-               aligned-size (- (heap-size heap) free-ptr))))
+        (error "Out of heap memory: need ~D bytes, have ~D (after GC with ~D roots)"
+               aligned-size (- (heap-size heap) free-ptr) (length *gc-roots*))))
 
     ;; Allocate
     (let ((header (make-header tag size-bytes 0)))
