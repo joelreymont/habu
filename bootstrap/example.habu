@@ -1,0 +1,31 @@
+;;;; example.habu - Simple Habu program to demonstrate compilation
+
+;;; Define some functions
+(defun square (x)
+  (* x x))
+
+(defun sum-of-squares (a b)
+  (+ (square a) (square b)))
+
+;;; Use loops
+(defun factorial (n)
+  (let ((result 1))
+    (dotimes (i n result)
+      (setq result (* result (+ i 1))))))
+
+;;; Use lists
+(defun list-length (lst)
+  (let ((count 0))
+    (dolist (x lst count)
+      (setq count (+ count 1)))))
+
+;;; Use multiple values
+(defun divide-with-remainder (a b)
+  (values (/ a b) (mod a b)))
+
+;;; Main calculation
+(let ((x 5)
+      (y 12))
+  (multiple-value-bind (quot rem)
+      (divide-with-remainder y x)
+    (sum-of-squares quot rem)))

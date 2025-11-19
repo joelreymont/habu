@@ -460,4 +460,5 @@ The hybrid bootstrap approach allows:
 **Last updated:** 2025-11-19
 **Current phase:** Phase 1 - Bootstrap with FFI
 **Tests passing:** 665/665 ✅ (x86_64 and ARM64) [597 core + 12 hash + 18 list + 18 values + 20 loops]
-**Next priority:** Self-hosting preparation (compile compiler with itself)
+**Self-hosting status:** ✅ Can compile Habu source files | ⏳ Cannot execute standalone yet
+**Next priority:** Code execution (load and run compiled machine code)
