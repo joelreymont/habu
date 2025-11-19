@@ -281,10 +281,17 @@ Remove all SBCL dependencies, make Habu truly standalone.
 ### Completed ✅
 
 **Core Compiler:**
-- 597 passing tests
+- 665 passing tests (all code generation)
 - x86_64 and ARM64 targets (both fully supported)
 - Comprehensive optimization passes
 - ARM64 support: all runtime operations (lists, strings, read/print, file I/O)
+
+**Phase 2 Infrastructure:**
+- ✅ Allocation mode parameter (:ffi or :inline)
+- ✅ Inline allocation helpers (cons/car/cdr)
+- ✅ Mach-O executable generation
+- ✅ Standalone compilation API
+- ⏳ Mach-O validation (needs additional load commands)
 
 **Data Types:**
 - Fixnums (tagged pointers)
@@ -458,7 +465,11 @@ The hybrid bootstrap approach allows:
 ---
 
 **Last updated:** 2025-11-19
-**Current phase:** Phase 1 - Bootstrap with FFI
+**Current phase:** Phase 2 - Standalone Operation (IN PROGRESS)
 **Tests passing:** 665/665 ✅ (x86_64 and ARM64) [597 core + 12 hash + 18 list + 18 values + 20 loops]
-**Self-hosting status:** ✅ Can compile Habu source files | ✅ Execution infrastructure complete | ⏸️ Blocked by macOS hardened runtime
-**Next priority:** Test on Linux OR implement bytecode interpreter OR add Phase 2 features
+**Phase 2 status:**
+  - ✅ Inline allocation mode implemented
+  - ✅ Mach-O generator complete (generates valid binaries)
+  - ⏳ Mach-O validation (needs additional load commands)
+  - ⏳ ELF generator (Linux, simpler than Mach-O)
+**Next priority:** Fix Mach-O validation OR implement ELF format for Linux
