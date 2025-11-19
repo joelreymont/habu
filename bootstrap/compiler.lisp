@@ -826,13 +826,31 @@
                   :args (list (parse values-form)
                               (parse `(progn ,@body-forms))))))
 
-    ;; NOTE: dotimes/dolist temporarily disabled
-    ;; The runtime function approach requires first-class closures which
-    ;; aren't fully supported yet. Future implementation options:
-    ;;   1. Inline loop code generation (no runtime calls)
-    ;;   2. Improved closure support for passing functions as values
-    ;;   3. Macro-based transformation to explicit recursion
-    ;; For now, users can use named-let or explicit recursion patterns.
+    ((and (consp form) (eq (first form) 'dotimes))
+     ;; Special form: (dotimes (var count [result]) body...)
+     ;; Inline code generation - no runtime functions needed
+     (let* ((spec (second form))
+            (var (first spec))
+            (count-form (second spec))
+            (result-form (or (third spec) 0))  ; default to nil (0)
+            (body-forms (cddr form)))
+       (make-expr :type 'dotimes
+                  :value (list var result-form)  ; (var result-form)
+                  :args (list (parse count-form)
+                              (parse `(progn ,@body-forms))))))
+
+    ((and (consp form) (eq (first form) 'dolist))
+     ;; Special form: (dolist (var list [result]) body...)
+     ;; Inline code generation - no runtime functions needed
+     (let* ((spec (second form))
+            (var (first spec))
+            (list-form (second spec))
+            (result-form (or (third spec) 0))  ; default to nil (0)
+            (body-forms (cddr form)))
+       (make-expr :type 'dolist
+                  :value (list var result-form)  ; (var result-form)
+                  :args (list (parse list-form)
+                              (parse `(progn ,@body-forms))))))
 
     ((and (consp form) (eq (first form) 'defun))
      ;; Special form: (defun name (params) body)
@@ -2689,6 +2707,135 @@
           ;; Clean up stack: pop all bindings + primary value
           '(#x48 #x83 #xC4)              ; add rsp, imm8
           (list (* (+ num-vars 1) 8))))))  ; pop all vars + primary
+
+    (dotimes
+     ;; Compile (dotimes (var count [result]) body...)
+     ;; Inline loop with direct jumps
+     (let* ((var (first (expr-value expr)))
+            (result-form (second (expr-value expr)))
+            (count-form (first (expr-args expr)))
+            (body (second (expr-args expr)))
+            (new-env (copy-list env)))
+
+       ;; Add loop variable to environment (will be on stack)
+       (push (cons var -8) new-env)
+
+       ;; Generate code pieces
+       (let* ((count-code (emit-x86_64 count-form env))
+              (body-code (emit-x86_64 body new-env))
+              (result-code (emit-x86_64 (parse result-form) env))
+
+              ;; Calculate jump offsets
+              ;; Body size + increment + jmp back
+              (body-size (+ (length body-code)
+                           1    ; pop rcx
+                           3    ; inc rcx (48 FF C1)
+                           5))  ; jmp loop_start (E9 offset)
+
+              ;; Forward jump offset (from cmp to after jmp)
+              (forward-offset (+ 2   ; push rcx
+                                (length body-code)
+                                1    ; pop rcx
+                                3    ; inc rcx
+                                5))  ; jmp
+
+              ;; Backward jump offset (from jmp to cmp)
+              (backward-offset (- (+ 6   ; cmp + jge
+                                    2   ; push
+                                    (length body-code)
+                                    1   ; pop
+                                    3)))) ; inc
+
+         (append
+          ;; Evaluate count-form -> RAX (tagged fixnum)
+          count-code
+          '(#x48 #x89 #xC3)           ; mov rbx, rax (save count in RBX)
+          '(#x48 #xC7 #xC1 #x00 #x00 #x00 #x00)  ; mov rcx, 0 (i = 0, tagged)
+
+          ;; loop_start:
+          '(#x48 #x39 #xD9)           ; cmp rcx, rbx (compare i with count)
+          '(#x0F #x8D)                ; jge loop_end (signed comparison)
+          (int-to-bytes forward-offset 4)
+
+          '(#x51)                     ; push rcx (bind variable)
+          body-code                   ; execute body
+          '(#x59)                     ; pop rcx (restore counter)
+          '(#x48 #x83 #xC1 #x10)      ; add rcx, 16 (increment by 1, tagged)
+          '(#xE9)                     ; jmp loop_start
+          (int-to-bytes backward-offset 4)
+
+          ;; loop_end:
+          result-code))))              ; evaluate result form
+
+    (dolist
+     ;; Compile (dolist (var list [result]) body...)
+     ;; Inline loop with direct jumps
+     (let* ((var (first (expr-value expr)))
+            (result-form (second (expr-value expr)))
+            (list-form (first (expr-args expr)))
+            (body (second (expr-args expr)))
+            (new-env (copy-list env)))
+
+       ;; Add loop variable to environment (will be on stack)
+       (push (cons var -8) new-env)
+
+       ;; Generate code pieces
+       (let* ((list-code (emit-x86_64 list-form env))
+              (body-code (emit-x86_64 body new-env))
+              (result-code (emit-x86_64 (parse result-form) env))
+
+              ;; Car/cdr trampoline addresses
+              (car-addr (sb-sys:sap-int *runtime-car-addr*))
+              (cdr-addr (sb-sys:sap-int *runtime-cdr-addr*))
+
+              ;; Calculate jump offsets
+              (forward-offset (+ 2    ; push rax (car)
+                                (length body-code)
+                                1     ; pop rax
+                                10    ; mov rax, rbx
+                                12    ; movabs + call cdr
+                                3))   ; mov rbx, rax
+
+              (backward-offset (- (+ 6    ; cmp + je
+                                    10   ; movabs car-addr
+                                    2    ; call
+                                    2    ; push
+                                    (length body-code)
+                                    1    ; pop
+                                    3    ; mov rax, rbx
+                                    10   ; movabs cdr-addr
+                                    2))))  ; call
+
+         (append
+          ;; Evaluate list-form -> RAX
+          list-code
+          '(#x48 #x89 #xC3)           ; mov rbx, rax (current list in RBX)
+
+          ;; loop_start:
+          '(#x48 #x83 #xFB #x00)      ; cmp rbx, 0 (check for nil)
+          '(#x0F #x84)                ; je loop_end
+          (int-to-bytes forward-offset 4)
+
+          ;; Get car(current)
+          '(#x48 #x89 #xD8)           ; mov rax, rbx (list in RAX for car)
+          '(#x48 #xB8)                ; movabs rax, car-addr
+          (int-to-bytes car-addr 8)
+          '(#xFF #xD0)                ; call rax
+          '(#x50)                     ; push rax (bind variable to car)
+
+          body-code                   ; execute body
+
+          '(#x58)                     ; pop rax (unbind variable)
+          '(#x48 #x89 #xD8)           ; mov rax, rbx (current list)
+          '(#x48 #xB8)                ; movabs rax, cdr-addr
+          (int-to-bytes cdr-addr 8)
+          '(#xFF #xD0)                ; call rax
+          '(#x48 #x89 #xC3)           ; mov rbx, rax (advance to next)
+          '(#xE9)                     ; jmp loop_start
+          (int-to-bytes backward-offset 4)
+
+          ;; loop_end:
+          result-code))))              ; evaluate result form
 
     (quote
      ;; Compile (quote datum)
@@ -5104,6 +5251,143 @@
           ;; Clean up stack: pop all bindings + primary value
           ;; add sp, sp, #stack-size
           (list #x91 #x00 (logand (ash stack-size -2) #xFF) #x91)))))
+
+    (dotimes
+     ;; Compile (dotimes (var count [result]) body...) - ARM64
+     ;; Inline loop with direct branches
+     (let* ((var (first (expr-value expr)))
+            (result-form (second (expr-value expr)))
+            (count-form (first (expr-args expr)))
+            (body (second (expr-args expr)))
+            (new-env (copy-list env)))
+
+       ;; Add loop variable to environment (will be on stack)
+       (push (cons var 0) new-env)  ; At sp offset 0
+
+       ;; Generate code pieces
+       (let* ((count-code (emit-arm64 count-form env))
+              (body-code (emit-arm64 body new-env))
+              (result-code (emit-arm64 (parse result-form) env))
+
+              ;; Calculate instruction counts and byte offsets
+              ;; Forward jump (b.ge): skip loop body
+              (forward-bytes (+ 8    ; str x10, [sp, #-8]!
+                               (length body-code)
+                               4    ; ldr x10, [sp], #8
+                               8    ; add x10, x10, #16
+                               4))  ; b loop_start
+
+              ;; Backward jump (b): back to cmp
+              (backward-bytes (- (+ 4    ; cmp
+                                   4    ; b.ge
+                                   8    ; str
+                                   (length body-code)
+                                   4    ; ldr
+                                   8))) ; add
+
+              ;; ARM64 branch offsets are in units of 4 bytes (instructions)
+              (forward-offset (ash forward-bytes -2))
+              (backward-offset (ash backward-bytes -2)))
+
+         (append
+          ;; Evaluate count-form -> X0 (tagged fixnum)
+          count-code
+          '(#xEB #x03 #x00 #xAA)      ; mov x11, x0 (save count in X11)
+          (arm64-load-imm64 10 0)     ; mov x10, 0 (i = 0, tagged)
+
+          ;; loop_start:
+          '(#x6B #x01 #x01 #xEB)      ; cmp x10, x11
+          '(#x0A)                     ; b.ge loop_end (conditional branch)
+          (list (logand forward-offset #xFF) #x00 #x00)
+
+          '(#xEA #x0F #x1F #xF8)      ; str x10, [sp, #-8]! (bind variable)
+          body-code                   ; execute body
+          '(#xEA #x07 #x41 #xF8)      ; ldr x10, [sp], #8 (restore counter)
+          '(#x4A #x01 #x00 #x91)      ; add x10, x10, #0
+          (list #x04 #x00)            ; immediate = 16 (tagged 1)
+          '(#x00)                     ; b loop_start (unconditional branch back)
+          (list (logand backward-offset #xFF) (logand (ash backward-offset -8) #xFF) #xFF)
+
+          ;; loop_end:
+          result-code))))              ; evaluate result form
+
+    (dolist
+     ;; Compile (dolist (var list [result]) body...) - ARM64
+     ;; Inline loop with direct branches
+     (let* ((var (first (expr-value expr)))
+            (result-form (second (expr-value expr)))
+            (list-form (first (expr-args expr)))
+            (body (second (expr-args expr)))
+            (new-env (copy-list env)))
+
+       ;; Add loop variable to environment (will be on stack)
+       (push (cons var 0) new-env)  ; At sp offset 0
+
+       ;; Generate code pieces
+       (let* ((list-code (emit-arm64 list-form env))
+              (body-code (emit-arm64 body new-env))
+              (result-code (emit-arm64 (parse result-form) env))
+
+              ;; Car/cdr trampoline addresses
+              (car-addr (sb-sys:sap-int *runtime-car-addr*))
+              (cdr-addr (sb-sys:sap-int *runtime-cdr-addr*))
+
+              ;; Calculate branch offsets
+              (forward-bytes (+ 4    ; mov x0, x11
+                               (length (arm64-load-imm64 9 car-addr))
+                               4    ; blr x9
+                               8    ; str x0
+                               (length body-code)
+                               4    ; ldr x0
+                               4    ; mov x0, x11
+                               (length (arm64-load-imm64 9 cdr-addr))
+                               4    ; blr x9
+                               4    ; mov x11, x0
+                               4))  ; b loop_start
+
+              (backward-bytes (- (+ 8    ; cmp + b.eq
+                                   4    ; mov
+                                   (length (arm64-load-imm64 9 car-addr))
+                                   4    ; blr
+                                   8    ; str
+                                   (length body-code)
+                                   4    ; ldr
+                                   4    ; mov
+                                   (length (arm64-load-imm64 9 cdr-addr))
+                                   4    ; blr
+                                   4))) ; mov
+
+              (forward-offset (ash forward-bytes -2))
+              (backward-offset (ash backward-bytes -2)))
+
+         (append
+          ;; Evaluate list-form -> X0
+          list-code
+          '(#xEB #x03 #x00 #xAA)      ; mov x11, x0 (current list in X11)
+
+          ;; loop_start:
+          '(#x7F #x01 #x00 #xF1)      ; cmp x11, #0 (check for nil)
+          '(#x0B)                     ; b.eq loop_end
+          (list (logand forward-offset #xFF) #x00 #x00)
+
+          ;; Get car(current)
+          '(#xE0 #x03 #x0B #xAA)      ; mov x0, x11 (list in X0 for car)
+          (arm64-load-imm64 9 car-addr)
+          '(#x20 #x01 #x3F #xD6)      ; blr x9
+          '(#xE0 #x0F #x1F #xF8)      ; str x0, [sp, #-8]! (bind variable)
+
+          body-code                   ; execute body
+
+          '(#xE0 #x07 #x41 #xF8)      ; ldr x0, [sp], #8 (unbind)
+          '(#xE0 #x03 #x0B #xAA)      ; mov x0, x11 (current list for cdr)
+          (arm64-load-imm64 9 cdr-addr)
+          '(#x20 #x01 #x3F #xD6)      ; blr x9
+          '(#xEB #x03 #x00 #xAA)      ; mov x11, x0 (advance to next)
+          '(#x00)                     ; b loop_start
+          (list (logand backward-offset #xFF) (logand (ash backward-offset -8) #xFF) #xFF)
+
+          ;; loop_end:
+          result-code))))              ; evaluate result form
 
     (quote
      ;; Compile (quote datum) for ARM64

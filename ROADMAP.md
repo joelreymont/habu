@@ -153,12 +153,20 @@ Using SBCL's runtime via FFI for rapid development while maintaining a clean arc
 - destructuring-bind
 - Pattern matching in let/lambda
 
-#### Iteration
-**Current:** Recursion only
-**Needed:**
-- loop macro
-- do, dotimes, dolist
-- More ergonomic iteration
+#### Iteration ✅
+**Status:** Complete (Session 10)
+**Implementation:**
+- ✅ dotimes for counted iteration
+- ✅ dolist for list traversal
+- ✅ Inline code generation (no runtime calls)
+- ✅ Direct jumps for loop control
+- ✅ Both x86_64 and ARM64 support
+- ✅ Documentation: docs/LOOPS.md
+**Testing:** 20/20 tests passing
+**Still Needed:**
+- loop macro with collection clauses
+- do and do* for general iteration
+- Early exit (return, break)
 
 ---
 
@@ -405,14 +413,15 @@ The hybrid bootstrap approach allows:
 4. ✅ Error handling (catch/throw)
 5. ✅ More control flow (block/return-from)
 6. ✅ Multiple return values
-7. Complete standard library expansion
-8. Loop constructs (dotimes/dolist - requires closures or inline codegen)
+7. ✅ Loop constructs (dotimes/dolist with inline codegen)
+8. Complete standard library expansion
+9. Self-hosting preparation
 
 ### Medium Term (Phase 1 Completion)
 1. Self-hosting capability
 2. Complete standard library
 3. Improved error handling (handler-case, unwind-protect)
-4. Loop/iteration constructs (inline codegen)
+4. Advanced loop constructs (loop macro, do/do*)
 5. Destructuring
 
 ### Long Term (Phase 2)
@@ -444,10 +453,11 @@ The hybrid bootstrap approach allows:
 - **v0.7** (2025-11-19): Hash tables with all core operations
 - **v0.8** (2025-11-19): Extended list operations (butlast, nthcdr, member, assoc, position, count, remove)
 - **v0.9** (2025-11-19): Multiple return values (values, multiple-value-bind) with full x86_64/ARM64 support
+- **v0.10** (2025-11-19): Loop constructs (dotimes, dolist) with inline code generation
 
 ---
 
 **Last updated:** 2025-11-19
 **Current phase:** Phase 1 - Bootstrap with FFI
-**Tests passing:** 645/645 ✅ (x86_64 and ARM64) [597 core + 12 hash tables + 18 list ops + 18 multiple values]
-**Next priority:** More standard library functions OR Loop constructs
+**Tests passing:** 665/665 ✅ (x86_64 and ARM64) [597 core + 12 hash + 18 list + 18 values + 20 loops]
+**Next priority:** Self-hosting preparation (compile compiler with itself)
