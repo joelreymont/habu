@@ -39,12 +39,12 @@
         (when (= current 0)  ; nil is 0
           (return))
 
-        ;; Verify it's a cons cell (tag 0x2)
-        (unless (= (logand current #xF) #x2)
+        ;; Verify it's a cons cell (tag 0x1 = TAG_CONS)
+        (unless (= (logand current #xF) #x1)
           (error "dolist list must be proper list, got ~X at position" current))
 
         ;; Get car and cdr
-        (let* ((cons-addr (- current #x2))  ; Remove cons tag
+        (let* ((cons-addr (- current #x1))  ; Remove cons tag
                (car-val (sb-sys:sap-ref-64 (sb-sys:int-sap cons-addr) 0))
                (cdr-val (sb-sys:sap-ref-64 (sb-sys:int-sap cons-addr) 8)))
 

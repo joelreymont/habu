@@ -1,37 +1,48 @@
-;;;; Test defun symbol integration
+;;;; Test defun support
 
-(load "compiler.lisp")
+(load (merge-pathnames "compiler.lisp" *load-truename*))
+(load (merge-pathnames "c-backend.lisp" *load-truename*))
+
 (in-package :habu-compiler)
 
-(initialize-runtime-integration)
+(format t "~%=== Testing Defun Support ===~%")
 
-(format t "~%Testing defun Symbol Integration~%")
-(format t "=================================~%~%")
+;; Test 1: Simple function
+(format t "~%Test 1: (defun double (x) (* x 2))~%")
+(generate-c-standalone '(progn
+                          (defun double (x) (* x (quote 2)))
+                          (double (quote 21)))
+                      :output-file "/tmp/test_defun1.c")
+(compile-and-run-c "/tmp/test_defun1.c")
 
-;; Compile defun - this should intern the symbol
-(format t "1. Compiling defun...~%")
-(compile-expression '(defun add (x y) (+ x y)) :arch :x86_64)
+;; Test 2: Function with multiple parameters
+(format t "~%Test 2: (defun add3 (a b c) (+ a (+ b c)))~%")
+(generate-c-standalone '(progn
+                          (defun add3 (a b c) (+ a (+ b c)))
+                          (add3 (quote 10) (quote 20) (quote 30)))
+                      :output-file "/tmp/test_defun2.c")
+(compile-and-run-c "/tmp/test_defun2.c")
 
-;; Check if symbol was interned
-(format t "~%2. Checking if 'ADD was interned...~%")
-(let ((sym-table (symbol-value (find-symbol "*SYMBOL-TABLE*" :habu-runtime))))
-  (let ((add-sym (gethash "ADD" sym-table)))
-    (if add-sym
-        (progn
-          (format t "  ✓ Symbol 'ADD interned: ~X~%" add-sym)
-          ;; Check function slot
-          (let ((get-fn (find-symbol "RUNTIME-SYMBOL-FUNCTION" :habu-runtime)))
-            (handler-case
-                (let ((fn-val (funcall get-fn add-sym)))
-                  (format t "  ✓ Function slot set: ~X~%~%" fn-val))
-              (error (e)
-                (format t "  Function slot: ~A~%~%" e)))))
-        (format t "  ✗ Symbol 'ADD not found~%~%"))))
+;; Test 3: Recursive function (factorial)
+(format t "~%Test 3: Factorial~%")
+(generate-c-standalone '(progn
+                          (defun fact (n)
+                            (if (= n (quote 0))
+                                (quote 1)
+                                (* n (fact (- n (quote 1))))))
+                          (fact (quote 5)))
+                      :output-file "/tmp/test_factorial.c")
+(compile-and-run-c "/tmp/test_factorial.c")
 
-;; Test function call (inline expansion)
-(format t "3. Testing function call (inline)~%")
-(let ((code (compile-expression '(add 3 4) :arch :x86_64)))
-  (format t "  (add 3 4) compiles to ~D bytes~%~%" (length code)))
+;; Test 4: Multiple functions
+(format t "~%Test 4: Multiple functions~%")
+(generate-c-standalone '(progn
+                          (defun square (x) (* x x))
+                          (defun sum-of-squares (a b)
+                            (+ (square a) (square b)))
+                          (sum-of-squares (quote 3) (quote 4)))
+                      :output-file "/tmp/test_multi.c")
+(compile-and-run-c "/tmp/test_multi.c")
 
-(format t "✓ Tests complete!~%")
+(format t "~%~%=== Defun Tests Complete ===~%")
 (sb-ext:quit)

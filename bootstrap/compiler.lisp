@@ -2408,26 +2408,33 @@
 ;;; standalone operation without FFI dependencies.
 
 (defun emit-inline-cons-x86_64 (car-code cdr-code)
-  "Generate inline cons allocation for x86_64 (Phase 2)"
-  ;; TODO: Implement inline allocation
-  ;; For now, this is a placeholder that will be implemented
-  ;; when we add heap globals and GC integration
+  "Generate inline cons allocation for x86_64 (Phase 2)
+
+   For standalone mode, this calls habu_cons directly from the C runtime.
+   Later this will be optimized to inline bump-pointer allocation.
+
+   System V AMD64 ABI: Args in RDI/RSI, Return in RAX"
+
+  ;; Simple version for now: just call habu_cons(car, cdr)
+  ;; This works in standalone mode when linked with runtime.o
   (append
+   ;; Evaluate car
    car-code
-   '(#x50)                  ; push rax (save car)
+   '(#x50)                          ; push rax (save car)
+
+   ;; Evaluate cdr
    cdr-code
-   '(#x48 #x89 #xC6)        ; mov rsi, rax (cdr in RSI)
-   '(#x48 #x8B #x3C #x24)   ; mov rdi, [rsp] (car in RDI)
-   '(#x48 #x83 #xC4 #x08)   ; add rsp, 8 (pop car)
-   ;; TODO: Inline heap allocation goes here
-   ;; For Phase 2.1, we'll implement:
-   ;; - Get heap_ptr from global
-   ;; - Check heap_limit
-   ;; - Allocate 16 bytes
-   ;; - Store car/cdr
-   ;; - Update heap_ptr
-   ;; - Tag pointer with 0x1
-   ))
+   '(#x48 #x89 #xC6)                ; mov rsi, rax (cdr in RSI)
+
+   ;; Get car from stack
+   '(#x48 #x8B #x3C #x24)           ; mov rdi, [rsp] (car in RDI)
+   '(#x48 #x83 #xC4 #x08)           ; add rsp, 8 (pop car)
+
+   ;; Call habu_cons - address will be resolved by linker
+   ;; For now, use a placeholder that will be patched
+   '(#x48 #xB8)                     ; movabs rax, imm64 (address of habu_cons)
+   '(#x00 #x00 #x00 #x00 #x00 #x00 #x00 #x00)  ; Placeholder - will be resolved at link time
+   '(#xFF #xD0)))                   ; call rax
 
 (defun emit-inline-car-x86_64 (cons-code)
   "Generate inline car access for x86_64 (Phase 2)"
@@ -2453,8 +2460,7 @@
 
    Convention: _habu_cons(x0=car, x1=cdr) -> x0=cons_ptr
 
-   Uses special marker bytes that machine-code-to-assembly will
-   replace with 'bl _habu_cons' instruction."
+   ARM64 procedure call standard: Args in x0-x7, Return in x0"
   (append
    car-code
    ;; Save car on stack: str x0, [sp, #-16]!
@@ -2466,7 +2472,9 @@
    ;; Restore car to x0: ldr x0, [sp], #16
    '(#xE0 #x07 #x41 #xF8)
 
-   ;; Special marker for bl _habu_cons (replaced by assembler)
+   ;; Call habu_cons - will be resolved by linker/assembler
+   ;; bl habu_cons (relative branch with link)
+   ;; Using special marker that will be replaced during assembly
    '(#xFF #xFF #xFF #x01)))
 
 (defun emit-inline-car-arm64 (cons-code)

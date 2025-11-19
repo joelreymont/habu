@@ -5,26 +5,75 @@
 #include <stddef.h>
 #include <stdbool.h>
 
-/* Object representation for Habu
+/* ============================================================================
+ * HABU OBJECT REPRESENTATION
+ * ============================================================================
  *
- * 64-bit tagged pointers:
- * - Fixnums: [60-bit value][0000]
- * - Pointers: [60-bit address][type-tag]
+ * Habu uses a 64-bit tagged pointer representation. Every Habu value is a
+ * single 64-bit integer that encodes either an immediate value or a pointer
+ * to a heap-allocated object.
  *
- * All heap objects have an 8-byte header before the object pointer.
+ * TAGGING SCHEME (lower 4 bits):
+ *
+ *   Tag 0x0: Fixnum (immediate integer)
+ *     Format: [60-bit signed value][0000]
+ *     Example: 42 → 0x000000000000002A0 (42 << 4)
+ *     Range: -2^59 to 2^59-1
+ *
+ *   Tag 0x1: Cons cell (pair)
+ *     Format: [60-bit address][0001]
+ *     Points to: habu_cons_t (car and cdr)
+ *
+ *   Tag 0x2: Symbol
+ *     Format: [60-bit address][0010]
+ *     Points to: habu_symbol_t (name, value, plist)
+ *
+ *   Tag 0x3: Vector (array)
+ *     Format: [60-bit address][0011]
+ *     Points to: habu_vector_t (length + data)
+ *
+ *   Tag 0x4: String
+ *     Format: [60-bit address][0100]
+ *     Points to: habu_string_t (length + characters)
+ *
+ *   Tag 0x5: Closure (function)
+ *     Format: [60-bit address][0101]
+ *     Points to: habu_closure_t (code + environment)
+ *
+ * WHY 16-BYTE ALIGNMENT?
+ *
+ * All heap objects are aligned to 16-byte boundaries. This means the lower
+ * 4 bits of any pointer are always zero. We can "borrow" these bits to store
+ * type information without losing the pointer!
+ *
+ * To get the actual pointer: value & ~0xF (clear lower 4 bits)
+ * To get the tag: value & 0xF (extract lower 4 bits)
+ *
+ * MEMORY LAYOUT OF HEAP OBJECTS:
+ *
+ *   [habu_header_t: 16 bytes]  ← This is BEFORE the pointer
+ *   [object data: variable]     ← Pointer points HERE
+ *
+ * Example for cons cell at address 0x1000:
+ *   0x1000: [header: type=1, size=16, gc_color=0, ...]
+ *   0x1010: [car: habu_value_t]  ← Tagged pointer value = 0x1011
+ *   0x1018: [cdr: habu_value_t]
+ *
+ * The tagged pointer 0x1011 points to 0x1010 (data), not to the header.
+ * To get the header: (habu_header_t *)((char *)ptr - sizeof(habu_header_t))
  */
 
-typedef uint64_t habu_value_t;
-typedef int64_t habu_fixnum_t;
+typedef uint64_t habu_value_t;   /* Universal value type - either immediate or tagged pointer */
+typedef int64_t habu_fixnum_t;   /* Untagged integer type */
 
-/* Type tags (lower 4 bits) */
-#define TAG_FIXNUM  0x0
-#define TAG_CONS    0x1
-#define TAG_SYMBOL  0x2
-#define TAG_VECTOR  0x3
-#define TAG_STRING  0x4
-#define TAG_CLOSURE 0x5
-#define TAG_MASK    0xF
+/* Type tags (lower 4 bits of habu_value_t) */
+#define TAG_FIXNUM  0x0  /* Immediate integer (no heap allocation) */
+#define TAG_CONS    0x1  /* Pointer to cons cell */
+#define TAG_SYMBOL  0x2  /* Pointer to symbol */
+#define TAG_VECTOR  0x3  /* Pointer to vector */
+#define TAG_STRING  0x4  /* Pointer to string */
+#define TAG_CLOSURE 0x5  /* Pointer to closure */
+#define TAG_MASK    0xF  /* Mask for extracting tag bits */
 
 /* Object header
  *

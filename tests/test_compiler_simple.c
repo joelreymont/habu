@@ -23,7 +23,8 @@ static int tests_passed = 0;
 #define RUN_TEST(name) run_test_##name()
 
 TEST(compiler_generates_fixnum_code) {
-    int ret = system("cd /home/user/habu/bootstrap && sbcl --noinform --disable-debugger --load test-compiler.lisp --quit > /dev/null 2>&1");
+    /* Tests run from project root, so bootstrap/ is relative to root */
+    int ret = system("cd bootstrap && sbcl --noinform --disable-debugger --load test-compiler.lisp --quit > /dev/null 2>&1");
     assert(ret == 0);
 }
 

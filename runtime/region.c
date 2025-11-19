@@ -17,16 +17,18 @@ habu_region_t *habu_region_create(size_t size) {
     }
 
     /* Allocate aligned memory for the region */
-    void *mem = aligned_alloc(16, size);
+    /* aligned_alloc requires size to be a multiple of alignment */
+    size_t aligned_size = (size + 15) & ~15;  /* Round up to multiple of 16 */
+    void *mem = aligned_alloc(16, aligned_size);
     if (!mem) {
         free(region);
         return NULL;
     }
 
     region->start = mem;
-    region->end = (char *)mem + size;
+    region->end = (char *)mem + aligned_size;
     region->free_ptr = mem;
-    region->size = size;
+    region->size = aligned_size;
 
     return region;
 }

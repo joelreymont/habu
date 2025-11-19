@@ -17,8 +17,9 @@
 typedef int64_t (*compiled_func_t)(void);
 
 int64_t execute_code(const uint8_t *code, size_t code_size) {
-    /* Allocate executable memory */
-    void *exec_mem = mmap(NULL, code_size + 1,  /* +1 for ret instruction */
+    /* Allocate executable memory - need 4 bytes for ARM64 ret instruction */
+    size_t alloc_size = code_size + 4;
+    void *exec_mem = mmap(NULL, alloc_size,
                           PROT_READ | PROT_WRITE | PROT_EXEC,
                           MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
     if (exec_mem == MAP_FAILED) {
@@ -31,14 +32,13 @@ int64_t execute_code(const uint8_t *code, size_t code_size) {
 
     /* Add return instruction */
     #ifdef __x86_64__
-    ((uint8_t *)exec_mem)[code_size] = 0xC3;  /* ret */
+    ((uint8_t *)exec_mem)[code_size] = 0xC3;  /* ret (1 byte) */
     #elif defined(__aarch64__)
-    /* ARM64 ret instruction: C0 03 5F D6 */
+    /* ARM64 ret instruction: C0 03 5F D6 (4 bytes) */
     ((uint8_t *)exec_mem)[code_size + 0] = 0xC0;
     ((uint8_t *)exec_mem)[code_size + 1] = 0x03;
     ((uint8_t *)exec_mem)[code_size + 2] = 0x5F;
     ((uint8_t *)exec_mem)[code_size + 3] = 0xD6;
-    code_size += 3;  /* Adjust for 4-byte ret */
     #endif
 
     /* Execute the code */
@@ -46,7 +46,7 @@ int64_t execute_code(const uint8_t *code, size_t code_size) {
     int64_t result = func();
 
     /* Clean up */
-    munmap(exec_mem, code_size + 1);
+    munmap(exec_mem, alloc_size);
 
     return result;
 }
@@ -75,7 +75,7 @@ void test_fixnum_literal() {
     int64_t result = execute_code(code, sizeof(code));
     int64_t value = untag_fixnum(result);
 
-    printf("  Result: %ld (expected 42)\n", value);
+    printf("  Result: %lld (expected 42)\n", (long long)value);
     if (value != 42) {
         printf("  FAIL!\n");
         exit(TEST_FAIL);
@@ -126,7 +126,7 @@ void test_addition() {
     int64_t result = execute_code(code, sizeof(code));
     int64_t value = untag_fixnum(result);
 
-    printf("  Result: %ld (expected 30)\n", value);
+    printf("  Result: %lld (expected 30)\n", (long long)value);
     if (value != 30) {
         printf("  FAIL!\n");
         exit(TEST_FAIL);
@@ -163,7 +163,7 @@ void test_subtraction() {
     int64_t result = execute_code(code, sizeof(code));
     int64_t value = untag_fixnum(result);
 
-    printf("  Result: %ld (expected 25)\n", value);
+    printf("  Result: %lld (expected 25)\n", (long long)value);
     if (value != 25) {
         printf("  FAIL!\n");
         exit(TEST_FAIL);
@@ -203,7 +203,7 @@ void test_comparison() {
     int64_t result = execute_code(code, sizeof(code));
     int64_t value = untag_fixnum(result);
 
-    printf("  Result: %ld (expected 1)\n", value);
+    printf("  Result: %lld (expected 1)\n", (long long)value);
     if (value != 1) {
         printf("  FAIL!\n");
         exit(TEST_FAIL);

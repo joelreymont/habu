@@ -140,8 +140,16 @@
            (error "Missing closing parenthesis"))
 
          (values (if dotted
-                     ;; Dotted pair: (a . b)
-                     (cons (first (nreverse elems)) cdr-expr)
+                     ;; Dotted list: (a b c . d)
+                     ;; Build full prefix list, then set cdr-expr as final cdr
+                     (let ((reversed-elems (nreverse elems)))
+                       (if (null reversed-elems)
+                           cdr-expr  ; Just `. x)` => x
+                           ;; Build list from right to left
+                           (reduce (lambda (acc elem) (cons elem acc))
+                                   reversed-elems
+                                   :from-end t
+                                   :initial-value cdr-expr)))
                      ;; Regular list
                      (nreverse elems))
                  (rest rest-tokens))))
