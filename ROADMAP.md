@@ -63,9 +63,14 @@ Using SBCL's runtime via FFI for rapid development while maintaining a clean arc
 **Note:** Load compiled code not yet implemented
 
 #### Error Handling
-- Basic condition system
-- Catch/throw or try/catch
-- Error messages and stack traces
+**Status:** Partially complete
+**Implementation:**
+- ✅ Catch/throw for non-local exits (Phase 1)
+- ✅ Both x86_64 and ARM64 support
+- ✅ FFI trampolines to SBCL's catch/throw
+- ⏳ handler-case/handler-bind (not yet implemented)
+- ⏳ unwind-protect for cleanup (not yet implemented)
+- ⏳ Stack traces and error messages (Phase 2)
 
 #### More Control Flow
 - do, dotimes, dolist
@@ -294,9 +299,17 @@ Remove all SBCL dependencies, make Habu truly standalone.
 - String operations: string-length, string-concat, string-equal, string-substring
 - Reader/printer: read, print
 - File I/O: file-open, file-read, file-write, file-close, read-file, write-file
+- Error handling: catch, throw
 - Helper functions: arm64-load-imm64, int-to-arm64-mov-imm
 - All 597 tests passing on ARM64
 - Testable locally on Apple Silicon Macs
+
+**Error Handling:**
+- catch/throw for non-local exits
+- Both x86_64 and ARM64 support
+- Fixnum and symbol tags
+- Phase 1 implementation via SBCL's catch/throw
+- Documentation: docs/ERROR_HANDLING.md
 
 ---
 
@@ -404,10 +417,11 @@ The hybrid bootstrap approach allows:
 - **v0.2** (2025-11-19): Symbol system, GC, macros, list operations
 - **v0.3** (2025-11-19): Runtime funcall, closures, strings (ASCII)
 - **v0.4** (2025-11-19): Reader/printer, file I/O, comprehensive ARM64 support
+- **v0.5** (2025-11-19): Error handling with catch/throw
 
 ---
 
 **Last updated:** 2025-11-19
 **Current phase:** Phase 1 - Bootstrap with FFI
 **Tests passing:** 597/597 ✅ (x86_64 and ARM64)
-**Next priority:** Error handling/condition system
+**Next priority:** More control flow (do, dotimes, dolist) OR Hash tables
