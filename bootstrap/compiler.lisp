@@ -57,6 +57,11 @@
 (defvar *runtime-throw-addr* nil "Address of runtime-throw trampoline")
 (defvar *runtime-dotimes-addr* nil "Address of runtime-dotimes trampoline")
 (defvar *runtime-dolist-addr* nil "Address of runtime-dolist trampoline")
+(defvar *runtime-make-hash-table-addr* nil "Address of runtime-make-hash-table trampoline")
+(defvar *runtime-gethash-addr* nil "Address of runtime-gethash trampoline")
+(defvar *runtime-puthash-addr* nil "Address of runtime-puthash trampoline")
+(defvar *runtime-remhash-addr* nil "Address of runtime-remhash trampoline")
+(defvar *runtime-hash-table-count-addr* nil "Address of runtime-hash-table-count trampoline")
 
 (defun initialize-runtime-integration ()
   "Initialize runtime integration (Phase 1: Bootstrap mode with FFI trampolines)"
@@ -79,7 +84,9 @@
           (errors-path (merge-pathnames "../runtime/errors.lisp"
                                         (or *load-truename* *default-pathname-defaults*)))
           (loops-path (merge-pathnames "../runtime/loops.lisp"
-                                       (or *load-truename* *default-pathname-defaults*))))
+                                       (or *load-truename* *default-pathname-defaults*)))
+          (hash-tables-path (merge-pathnames "../runtime/hash-tables.lisp"
+                                             (or *load-truename* *default-pathname-defaults*))))
       (if (probe-file runtime-path)
           (progn
             (load runtime-path)
@@ -106,7 +113,10 @@
               (load errors-path))
             ;; Load loop support
             (when (probe-file loops-path)
-              (load loops-path)))
+              (load loops-path))
+            ;; Load hash table support
+            (when (probe-file hash-tables-path)
+              (load hash-tables-path)))
           (error "Cannot find runtime/memory.lisp at ~A" runtime-path))))
 
   ;; Initialize runtime heap
@@ -236,6 +246,27 @@
                                 (result sb-alien:unsigned-long))
       (funcall (find-symbol "RUNTIME-DOLIST" :habu-runtime) list-val body-fn result))
 
+    (sb-alien:define-alien-callable habu-make-hash-table-trampoline
+        sb-alien:unsigned-long ((capacity sb-alien:unsigned-long))
+      (funcall (find-symbol "RUNTIME-MAKE-HASH-TABLE" :habu-runtime) capacity))
+
+    (sb-alien:define-alien-callable habu-gethash-trampoline
+        sb-alien:unsigned-long ((key sb-alien:unsigned-long) (ht sb-alien:unsigned-long))
+      (funcall (find-symbol "RUNTIME-GETHASH" :habu-runtime) key ht))
+
+    (sb-alien:define-alien-callable habu-puthash-trampoline
+        sb-alien:unsigned-long ((key sb-alien:unsigned-long) (value sb-alien:unsigned-long)
+                                (ht sb-alien:unsigned-long))
+      (funcall (find-symbol "RUNTIME-PUTHASH" :habu-runtime) key value ht))
+
+    (sb-alien:define-alien-callable habu-remhash-trampoline
+        sb-alien:unsigned-long ((key sb-alien:unsigned-long) (ht sb-alien:unsigned-long))
+      (funcall (find-symbol "RUNTIME-REMHASH" :habu-runtime) key ht))
+
+    (sb-alien:define-alien-callable habu-hash-table-count-trampoline
+        sb-alien:unsigned-long ((ht sb-alien:unsigned-long))
+      (funcall (find-symbol "RUNTIME-HASH-TABLE-COUNT" :habu-runtime) ht))
+
     ;; Get addresses of the trampolines using the correct SBCL mechanism:
     ;; 1. alien-callable-function gets the callable object
     ;; 2. alien-sap converts to System Area Pointer
@@ -293,7 +324,17 @@
     (setf *runtime-dotimes-addr*
           (sb-alien:alien-sap (sb-alien:alien-callable-function 'habu-dotimes-trampoline)))
     (setf *runtime-dolist-addr*
-          (sb-alien:alien-sap (sb-alien:alien-callable-function 'habu-dolist-trampoline))))
+          (sb-alien:alien-sap (sb-alien:alien-callable-function 'habu-dolist-trampoline)))
+    (setf *runtime-make-hash-table-addr*
+          (sb-alien:alien-sap (sb-alien:alien-callable-function 'habu-make-hash-table-trampoline)))
+    (setf *runtime-gethash-addr*
+          (sb-alien:alien-sap (sb-alien:alien-callable-function 'habu-gethash-trampoline)))
+    (setf *runtime-puthash-addr*
+          (sb-alien:alien-sap (sb-alien:alien-callable-function 'habu-puthash-trampoline)))
+    (setf *runtime-remhash-addr*
+          (sb-alien:alien-sap (sb-alien:alien-callable-function 'habu-remhash-trampoline)))
+    (setf *runtime-hash-table-count-addr*
+          (sb-alien:alien-sap (sb-alien:alien-callable-function 'habu-hash-table-count-trampoline))))
 
   #-sbcl
   (error "Runtime integration only supported on SBCL currently")
@@ -420,6 +461,7 @@
     file-open file-read file-write file-close read-file write-file
     catch throw
     block return-from
+    make-hash-table gethash puthash remhash hash-table-count
     ;; dotimes dolist - TODO: implement (requires better closure support or inline codegen)
     ;; Add more operators as needed
     ))
@@ -3951,6 +3993,112 @@
              (int-to-bytes func-addr 8)
              '(#xFF #xD0))))                  ; call rax
 
+         ((eq op 'make-hash-table)
+          ;; (make-hash-table [capacity]) - create new hash table
+          ;; Call runtime-make-hash-table trampoline: Arg: RDI (capacity), Return: RAX (hash table)
+          (unless *runtime-make-hash-table-addr*
+            (error "Runtime not initialized. Call (initialize-runtime-integration) first."))
+          (let ((func-addr (sb-sys:sap-int *runtime-make-hash-table-addr*))
+                (capacity-arg (if args (first args) nil)))
+            (append
+             (if capacity-arg
+                 ;; Evaluate capacity into RAX
+                 (emit-x86_64 capacity-arg env)
+                 ;; Use 0 (default capacity)
+                 '(#x48 #x31 #xC0))           ; xor rax, rax
+             ;; Setup call: RDI=capacity
+             '(#x48 #x89 #xC7)                ; mov rdi, rax
+             ;; Load function address and call
+             '(#x48 #xB8)                     ; movabs rax, imm64
+             (int-to-bytes func-addr 8)
+             '(#xFF #xD0))))                  ; call rax
+
+         ((eq op 'gethash)
+          ;; (gethash key hash-table) - lookup key in hash table
+          ;; Call runtime-gethash trampoline: Args: RDI (key), RSI (ht), Return: RAX (value)
+          (unless *runtime-gethash-addr*
+            (error "Runtime not initialized. Call (initialize-runtime-integration) first."))
+          (let ((func-addr (sb-sys:sap-int *runtime-gethash-addr*)))
+            (append
+             ;; Evaluate key into RAX
+             (emit-x86_64 (first args) env)
+             ;; Save key on stack
+             '(#x50)                          ; push rax
+             ;; Evaluate hash table into RAX
+             (emit-x86_64 (second args) env)
+             ;; Setup call: RDI=key, RSI=ht
+             '(#x48 #x89 #xC6)                ; mov rsi, rax (ht in RSI)
+             '(#x48 #x8B #x3C #x24)           ; mov rdi, [rsp] (key in RDI)
+             '(#x48 #x83 #xC4 #x08)           ; add rsp, 8 (pop key)
+             ;; Load function address and call
+             '(#x48 #xB8)                     ; movabs rax, imm64
+             (int-to-bytes func-addr 8)
+             '(#xFF #xD0))))                  ; call rax
+
+         ((eq op 'puthash)
+          ;; (puthash key value hash-table) - insert/update key-value pair
+          ;; Call runtime-puthash trampoline: Args: RDI (key), RSI (value), RDX (ht), Return: RAX (value)
+          (unless *runtime-puthash-addr*
+            (error "Runtime not initialized. Call (initialize-runtime-integration) first."))
+          (let ((func-addr (sb-sys:sap-int *runtime-puthash-addr*)))
+            (append
+             ;; Evaluate key into RAX
+             (emit-x86_64 (first args) env)
+             '(#x50)                          ; push rax (save key)
+             ;; Evaluate value into RAX
+             (emit-x86_64 (second args) env)
+             '(#x50)                          ; push rax (save value)
+             ;; Evaluate hash table into RAX
+             (emit-x86_64 (third args) env)
+             ;; Setup call: RDI=key, RSI=value, RDX=ht
+             '(#x48 #x89 #xC2)                ; mov rdx, rax (ht in RDX)
+             '(#x48 #x8B #x34 #x24)           ; mov rsi, [rsp] (value in RSI)
+             '(#x48 #x83 #xC4 #x08)           ; add rsp, 8 (pop value)
+             '(#x48 #x8B #x3C #x24)           ; mov rdi, [rsp] (key in RDI)
+             '(#x48 #x83 #xC4 #x08)           ; add rsp, 8 (pop key)
+             ;; Load function address and call
+             '(#x48 #xB8)                     ; movabs rax, imm64
+             (int-to-bytes func-addr 8)
+             '(#xFF #xD0))))                  ; call rax
+
+         ((eq op 'remhash)
+          ;; (remhash key hash-table) - remove key from hash table
+          ;; Call runtime-remhash trampoline: Args: RDI (key), RSI (ht), Return: RAX (found?)
+          (unless *runtime-remhash-addr*
+            (error "Runtime not initialized. Call (initialize-runtime-integration) first."))
+          (let ((func-addr (sb-sys:sap-int *runtime-remhash-addr*)))
+            (append
+             ;; Evaluate key into RAX
+             (emit-x86_64 (first args) env)
+             ;; Save key on stack
+             '(#x50)                          ; push rax
+             ;; Evaluate hash table into RAX
+             (emit-x86_64 (second args) env)
+             ;; Setup call: RDI=key, RSI=ht
+             '(#x48 #x89 #xC6)                ; mov rsi, rax (ht in RSI)
+             '(#x48 #x8B #x3C #x24)           ; mov rdi, [rsp] (key in RDI)
+             '(#x48 #x83 #xC4 #x08)           ; add rsp, 8 (pop key)
+             ;; Load function address and call
+             '(#x48 #xB8)                     ; movabs rax, imm64
+             (int-to-bytes func-addr 8)
+             '(#xFF #xD0))))                  ; call rax
+
+         ((eq op 'hash-table-count)
+          ;; (hash-table-count hash-table) - get number of entries
+          ;; Call runtime-hash-table-count trampoline: Arg: RDI (ht), Return: RAX (count)
+          (unless *runtime-hash-table-count-addr*
+            (error "Runtime not initialized. Call (initialize-runtime-integration) first."))
+          (let ((func-addr (sb-sys:sap-int *runtime-hash-table-count-addr*)))
+            (append
+             ;; Evaluate hash table into RAX
+             (emit-x86_64 (first args) env)
+             ;; Setup call: RDI=ht
+             '(#x48 #x89 #xC7)                ; mov rdi, rax
+             ;; Load function address and call
+             '(#x48 #xB8)                     ; movabs rax, imm64
+             (int-to-bytes func-addr 8)
+             '(#xFF #xD0))))                  ; call rax
+
          ((eq op 'runtime-dotimes)
           ;; (runtime-dotimes count body-fn-form result)
           ;; Create body function at compile time using eval
@@ -5833,6 +5981,101 @@
              ;; Setup call: X0=path, X1=data
              '(#xE1 #x03 #x00 #xAA)            ; mov x1, x0 (data in X1)
              '(#xE0 #x03 #x0A #xAA)            ; mov x0, x10 (path in X0)
+             ;; Load function address into X9 and call
+             (arm64-load-imm64 9 func-addr)
+             '(#x20 #x01 #x3F #xD6))))        ; blr x9
+
+         ((eq op 'make-hash-table)
+          ;; (make-hash-table [capacity]) - create new hash table (ARM64)
+          ;; ARM64 calling convention: X0 (capacity), Return: X0 (hash table)
+          (unless *runtime-make-hash-table-addr*
+            (error "Runtime not initialized. Call (initialize-runtime-integration) first."))
+          (let ((func-addr (sb-sys:sap-int *runtime-make-hash-table-addr*))
+                (capacity-arg (if args (first args) nil)))
+            (append
+             (if capacity-arg
+                 ;; Evaluate capacity into X0
+                 (emit-arm64 capacity-arg env)
+                 ;; Use 0 (default capacity)
+                 '(#xE0 #x03 #x1F #xAA))      ; mov x0, xzr
+             ;; Load function address into X9 and call
+             (arm64-load-imm64 9 func-addr)
+             '(#x20 #x01 #x3F #xD6))))        ; blr x9
+
+         ((eq op 'gethash)
+          ;; (gethash key hash-table) - lookup key in hash table (ARM64)
+          ;; ARM64 calling convention: X0 (key), X1 (ht), Return: X0 (value)
+          (unless *runtime-gethash-addr*
+            (error "Runtime not initialized. Call (initialize-runtime-integration) first."))
+          (let ((func-addr (sb-sys:sap-int *runtime-gethash-addr*)))
+            (append
+             ;; Evaluate key into X0
+             (emit-arm64 (first args) env)
+             ;; Save key in X10
+             '(#xEA #x03 #x00 #xAA)            ; mov x10, x0
+             ;; Evaluate hash table into X0
+             (emit-arm64 (second args) env)
+             ;; Setup call: X0=key, X1=ht
+             '(#xE1 #x03 #x00 #xAA)            ; mov x1, x0 (ht in X1)
+             '(#xE0 #x03 #x0A #xAA)            ; mov x0, x10 (key in X0)
+             ;; Load function address into X9 and call
+             (arm64-load-imm64 9 func-addr)
+             '(#x20 #x01 #x3F #xD6))))        ; blr x9
+
+         ((eq op 'puthash)
+          ;; (puthash key value hash-table) - insert/update key-value pair (ARM64)
+          ;; ARM64 calling convention: X0 (key), X1 (value), X2 (ht), Return: X0 (value)
+          (unless *runtime-puthash-addr*
+            (error "Runtime not initialized. Call (initialize-runtime-integration) first."))
+          (let ((func-addr (sb-sys:sap-int *runtime-puthash-addr*)))
+            (append
+             ;; Evaluate key into X0
+             (emit-arm64 (first args) env)
+             ;; Save key in X10
+             '(#xEA #x03 #x00 #xAA)            ; mov x10, x0
+             ;; Evaluate value into X0
+             (emit-arm64 (second args) env)
+             ;; Save value in X11
+             '(#xEB #x03 #x00 #xAA)            ; mov x11, x0
+             ;; Evaluate hash table into X0
+             (emit-arm64 (third args) env)
+             ;; Setup call: X0=key, X1=value, X2=ht
+             '(#xE2 #x03 #x00 #xAA)            ; mov x2, x0 (ht in X2)
+             '(#xE1 #x03 #x0B #xAA)            ; mov x1, x11 (value in X1)
+             '(#xE0 #x03 #x0A #xAA)            ; mov x0, x10 (key in X0)
+             ;; Load function address into X9 and call
+             (arm64-load-imm64 9 func-addr)
+             '(#x20 #x01 #x3F #xD6))))        ; blr x9
+
+         ((eq op 'remhash)
+          ;; (remhash key hash-table) - remove key from hash table (ARM64)
+          ;; ARM64 calling convention: X0 (key), X1 (ht), Return: X0 (found?)
+          (unless *runtime-remhash-addr*
+            (error "Runtime not initialized. Call (initialize-runtime-integration) first."))
+          (let ((func-addr (sb-sys:sap-int *runtime-remhash-addr*)))
+            (append
+             ;; Evaluate key into X0
+             (emit-arm64 (first args) env)
+             ;; Save key in X10
+             '(#xEA #x03 #x00 #xAA)            ; mov x10, x0
+             ;; Evaluate hash table into X0
+             (emit-arm64 (second args) env)
+             ;; Setup call: X0=key, X1=ht
+             '(#xE1 #x03 #x00 #xAA)            ; mov x1, x0 (ht in X1)
+             '(#xE0 #x03 #x0A #xAA)            ; mov x0, x10 (key in X0)
+             ;; Load function address into X9 and call
+             (arm64-load-imm64 9 func-addr)
+             '(#x20 #x01 #x3F #xD6))))        ; blr x9
+
+         ((eq op 'hash-table-count)
+          ;; (hash-table-count hash-table) - get number of entries (ARM64)
+          ;; ARM64 calling convention: X0 (ht), Return: X0 (count)
+          (unless *runtime-hash-table-count-addr*
+            (error "Runtime not initialized. Call (initialize-runtime-integration) first."))
+          (let ((func-addr (sb-sys:sap-int *runtime-hash-table-count-addr*)))
+            (append
+             ;; Evaluate hash table into X0
+             (emit-arm64 (first args) env)
              ;; Load function address into X9 and call
              (arm64-load-imm64 9 func-addr)
              '(#x20 #x01 #x3F #xD6))))        ; blr x9

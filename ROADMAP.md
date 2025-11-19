@@ -122,12 +122,18 @@ Using SBCL's runtime via FFI for rapid development while maintaining a clean arc
 
 **Testing:** All tests passing (inline, standalone, factories)
 
-#### Hash Tables
-**Current:** None
-**Needed:**
-- Hash table type
-- get, put, remove operations
-- Critical for many algorithms
+#### Hash Tables ✅
+**Status:** Complete (Session 7)
+**Implementation:**
+- ✅ Hash table type with heap allocation (tag 0x6)
+- ✅ Core operations: make-hash-table, gethash, puthash, remhash, hash-table-count
+- ✅ Chaining collision resolution with association lists
+- ✅ Hash function for fixnums, strings, and symbols
+- ✅ Both x86_64 and ARM64 support
+- ✅ Phase 1: Fixed-size tables (no auto-resizing)
+- ✅ Documentation: docs/HASH_TABLES.md
+**Testing:** 12/12 tests passing
+**Limitation:** No automatic resizing in Phase 1
 
 #### Multiple Return Values
 **Current:** Single return value only
@@ -390,17 +396,20 @@ The hybrid bootstrap approach allows:
 ### Short Term (Next Sessions)
 1. ✅ Reader/printer for S-expressions
 2. ✅ Basic file I/O
-3. Error handling/condition system
-4. More control flow (do, dotimes, dolist)
-5. Hash tables
+3. ✅ Hash tables
+4. ✅ Error handling (catch/throw)
+5. ✅ More control flow (block/return-from)
+6. Complete standard library expansion
+7. Multiple return values
+8. Loop constructs (dotimes/dolist - requires closures or inline codegen)
 
 ### Medium Term (Phase 1 Completion)
 1. Self-hosting capability
 2. Complete standard library
-3. Error handling/condition system
-4. Loop/iteration constructs
-5. Hash tables
-6. Multiple return values
+3. Improved error handling (handler-case, unwind-protect)
+4. Loop/iteration constructs (inline codegen)
+5. Multiple return values
+6. Destructuring
 
 ### Long Term (Phase 2)
 1. Inline allocation
@@ -427,10 +436,12 @@ The hybrid bootstrap approach allows:
 - **v0.3** (2025-11-19): Runtime funcall, closures, strings (ASCII)
 - **v0.4** (2025-11-19): Reader/printer, file I/O, comprehensive ARM64 support
 - **v0.5** (2025-11-19): Error handling with catch/throw
+- **v0.6** (2025-11-19): Control flow: block/return-from (dotimes/dolist deferred)
+- **v0.7** (2025-11-19): Hash tables with all core operations
 
 ---
 
 **Last updated:** 2025-11-19
 **Current phase:** Phase 1 - Bootstrap with FFI
-**Tests passing:** 597/597 ✅ (x86_64 and ARM64)
-**Next priority:** More control flow (do, dotimes, dolist) OR Hash tables
+**Tests passing:** 609/609 ✅ (x86_64 and ARM64) [597 core + 12 hash tables]
+**Next priority:** Standard library expansion OR Multiple return values
