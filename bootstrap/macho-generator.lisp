@@ -85,6 +85,27 @@
    'vector))
 
 ;;; ============================================================
+;;; PAGEZERO SEGMENT
+;;; ============================================================
+
+(defun emit-pagezero-segment ()
+  "Emit __PAGEZERO segment (null pointer guard)"
+  (coerce
+   (append
+    (int-to-bytes +LC_SEGMENT_64+ 4)
+    (int-to-bytes 72 4)                       ; cmdsize (no sections)
+    (pad-string "__PAGEZERO" 16)              ; segname
+    (int-to-bytes 0 8)                        ; vmaddr = 0
+    (int-to-bytes #x100000000 8)              ; vmsize = 4GB
+    (int-to-bytes 0 8)                        ; fileoff = 0
+    (int-to-bytes 0 8)                        ; filesize = 0 (not in file)
+    (int-to-bytes 0 4)                        ; maxprot = 0 (no access)
+    (int-to-bytes 0 4)                        ; initprot = 0 (no access)
+    (int-to-bytes 0 4)                        ; nsects = 0
+    (int-to-bytes 0 4))                       ; flags = 0
+   'vector))
+
+;;; ============================================================
 ;;; SEGMENT COMMAND
 ;;; ============================================================
 
@@ -375,6 +396,7 @@
 
   (let* ((code-size (length code))
          (header-size 32)
+         (pagezero-cmd-size 72)       ; LC_SEGMENT_64 for __PAGEZERO (no sections)
          (segment-cmd-size 72)
          (section-size 80)
          (main-cmd-size 24)           ; LC_MAIN command
@@ -385,8 +407,8 @@
          (uuid-cmd-size 24)           ; LC_UUID (16-byte UUID)
          (build-version-cmd-size 32)  ; LC_BUILD_VERSION
          (source-version-cmd-size 16) ; LC_SOURCE_VERSION
-         ;; Modern approach: segment + dylinker + dylib + symtabs + uuid + main + versions
-         (load-cmds-size (+ segment-cmd-size section-size dylinker-cmd-size dylib-cmd-size
+         ;; Modern approach: pagezero + segment + dylinker + dylib + symtabs + uuid + main + versions
+         (load-cmds-size (+ pagezero-cmd-size segment-cmd-size section-size dylinker-cmd-size dylib-cmd-size
                            symtab-cmd-size dysymtab-cmd-size uuid-cmd-size
                            main-cmd-size build-version-cmd-size source-version-cmd-size))
          (headers-size (+ header-size load-cmds-size))
@@ -402,7 +424,7 @@
                   :cpusubtype (ecase arch
                                (:x86_64 +CPU_SUBTYPE_X86_64_ALL+)
                                (:arm64  +CPU_SUBTYPE_ARM64_ALL+))
-                  :ncmds 9  ; Segment + dylinker + dylib + symtab + dysymtab + uuid + main + build_version + source_version
+                  :ncmds 10  ; PAGEZERO + Segment + dylinker + dylib + symtab + dysymtab + uuid + main + build_version + source_version
                   :sizeofcmds load-cmds-size))
 
          (segment (make-segment-command-64
@@ -428,7 +450,10 @@
       ;; Write header
       (write-sequence (emit-mach-header header) out)
 
-      ;; Write segment command
+      ;; Write __PAGEZERO segment (null pointer guard, required for code signing)
+      (write-sequence (emit-pagezero-segment) out)
+
+      ;; Write __TEXT segment command
       (write-sequence (emit-segment-command segment) out)
 
       ;; Write section
@@ -518,7 +543,8 @@
                 '(#x01 #x10 #x00 #xD4))))      ; svc #0x80
      'vector)))
 
-(defun compile-to-executable (expr &key (arch :x86_64) (output-file "a.out"))
+(defun compile-to-executable (expr &key (arch :arm64) (output-file "a.out")
+                                        (use-linker t))
   "Compile expression and generate standalone executable
 
    USAGE:
@@ -527,6 +553,11 @@
    This creates a standalone executable that can be run:
    $ ./hello
    $ echo $?  ; Shows exit code (80 = 5 << 4, tagged fixnum)
+
+   OPTIONS:
+   :arch - Target architecture (:arm64 or :x86_64, default :arm64)
+   :output-file - Name of output executable (default \"a.out\")
+   :use-linker - Use system linker (recommended on macOS, default t)
    "
 
   (format t "~%Compiling expression: ~S~%" expr)
@@ -541,12 +572,120 @@
 
       (format t "  Generated ~D bytes of machine code~%" (length full-code))
 
-      ;; Generate executable
-      (generate-macho-executable full-code :arch arch :output-file output-file)
+      ;; Choose generation method
+      (if use-linker
+          ;; Use system linker (recommended on macOS for proper code signing)
+          (generate-executable-via-linker full-code :arch arch :output-file output-file)
+          ;; Use manual Mach-O generation (may not run on macOS due to code signing)
+          (progn
+            (generate-macho-executable full-code :arch arch :output-file output-file)
+            (format t "~%Done! Run with: ./~A~%" output-file)
+            (format t "Exit code will be the result (tagged fixnum)~%")))
+
+      output-file)))
+
+;;; ============================================================
+;;; SYSTEM LINKER APPROACH (Recommended for macOS)
+;;; ============================================================
+
+(defun machine-code-to-assembly (code arch)
+  "Convert machine code bytes to assembly file format
+   This generates a .s file that can be assembled with 'as'"
+  (with-output-to-string (s)
+    (format s ".section __TEXT,__text~%")
+    (format s ".globl _main~%")
+    (format s ".p2align 4~%~%")
+    (format s "_main:~%")
+
+    ;; Output machine code as .byte directives
+    (let ((bytes (coerce code 'list)))
+      (loop for byte in bytes
+            do (format s "    .byte 0x~2,'0X~%" byte)))
+
+    (format s "~%")))
+
+(defun generate-executable-via-linker (code &key (arch :arm64) (output-file "a.out"))
+  "Generate executable using system toolchain (as + ld)
+
+   This approach:
+   1. Converts machine code to assembly (.s file)
+   2. Uses 'as' to assemble to object file (.o)
+   3. Uses 'ld' to link to executable
+   4. System linker automatically adds LC_CODE_SIGNATURE
+
+   BENEFITS:
+   - Produces properly signed executables that run on macOS
+   - No manual LC_CODE_SIGNATURE implementation needed
+   - Matches how SBCL and clang work
+   "
+
+  (format t "~%Generating executable via system linker...~%")
+  (format t "  Architecture: ~A~%" (string-upcase (string arch)))
+  (format t "  Code size: ~D bytes~%" (length code))
+
+  ;; Generate assembly file
+  (let* ((asm-file (format nil "~A.s" output-file))
+         (obj-file (format nil "~A.o" output-file))
+         (asm-code (machine-code-to-assembly code arch)))
+
+    ;; Write assembly to file
+    (with-open-file (out asm-file
+                         :direction :output
+                         :if-exists :supersede)
+      (write-string asm-code out))
+
+    (format t "  Generated assembly: ~A~%" asm-file)
+
+    ;; Assemble to object file
+    (let* ((arch-str (string-downcase (string arch)))
+           (as-cmd (format nil "as -arch ~A -o ~A ~A" arch-str obj-file asm-file)))
+      (sb-ext:run-program "/bin/sh" (list "-c" as-cmd)
+                         :search t
+                         :output t
+                         :error t)
+      (format t "  Assembled: ~A~%" obj-file))
+
+    ;; Get SDK path
+    (let* ((sdk-path-proc (sb-ext:run-program "/bin/sh"
+                                             (list "-c" "xcrun --show-sdk-path")
+                                             :search t
+                                             :output :stream
+                                             :wait t))
+           (sdk-path (string-trim '(#\Newline #\Space)
+                                 (read-line (sb-ext:process-output sdk-path-proc))))
+           (arch-str (string-downcase (string arch)))
+           (ld-cmd (format nil "ld -o ~A ~A -lSystem -syslibroot ~A -e _main -arch ~A"
+                          output-file obj-file sdk-path arch-str)))
+
+      ;; Link to executable
+      (sb-ext:run-program "/bin/sh" (list "-c" ld-cmd)
+                         :search t
+                         :output t
+                         :error t)
+      (format t "  Linked: ~A~%" output-file)
+
+      ;; Verify code signature was added
+      (let* ((otool-proc (sb-ext:run-program "/bin/sh"
+                                            (list "-c" (format nil "otool -l ~A" output-file))
+                                            :search t
+                                            :output :stream
+                                            :wait t))
+             (otool-stream (sb-ext:process-output otool-proc))
+             (otool-output (with-output-to-string (s)
+                            (loop for line = (read-line otool-stream nil nil)
+                                  while line
+                                  do (write-line line s)))))
+        (if (search "LC_CODE_SIGNATURE" otool-output)
+            (format t "  ✓ Code signature present~%")
+            (format t "  ⚠ No code signature found~%")))
+
+      ;; Clean up intermediate files
+      (delete-file asm-file)
+      (delete-file obj-file)
 
       (format t "~%Done! Run with: ./~A~%" output-file)
-      (format t "Exit code will be the result (tagged fixnum)~%")
       output-file)))
 
 (export '(generate-macho-executable
-          compile-to-executable))
+          compile-to-executable
+          generate-executable-via-linker))
