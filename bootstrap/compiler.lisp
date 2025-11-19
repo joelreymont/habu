@@ -379,9 +379,10 @@
             (free-vars (find-free-variables body params)))
        (if free-vars
            ;; Lambda with free variables - needs closure
+           ;; Store: parsed-body, free-vars, original-body (for runtime wrapper creation)
            (make-expr :type 'closure
                       :value params      ; Parameter list
-                      :args (list (parse body) free-vars))
+                      :args (list (parse body) free-vars body))
            ;; Lambda with no free variables - simple lambda
            (make-expr :type 'lambda
                       :value params      ; Parameter list
@@ -574,23 +575,26 @@
        (make-expr :type 'fixnum :value 0)))
 
     ((and (consp form) (eq (first form) 'funcall))
-     ;; Special form: (funcall 'name arg1 arg2 ...)
-     ;; Generate runtime function call via symbol-function slot
-     (let* ((fn-name-expr (second form))
-            (args (cddr form))
-            ;; Extract the function name from the quoted symbol
-            (fn-name (if (and (consp fn-name-expr)
-                             (eq (first fn-name-expr) 'quote))
-                        (second fn-name-expr)
-                        (error "funcall requires quoted function name: ~S" fn-name-expr)))
-            (fn-def (gethash fn-name *function-table*)))
-       (unless fn-def
-         (error "Undefined function: ~S" fn-name))
-       ;; Create runtime-call IR node instead of inlining
-       ;; This will generate code to call via the stored function pointer
-       (make-expr :type 'runtime-call
-                  :value fn-name
-                  :args (mapcar #'parse args))))
+     ;; Special form: (funcall fn-expr arg1 arg2 ...)
+     ;; Two cases:
+     ;;   1. (funcall 'name ...) - runtime function call via symbol
+     ;;   2. (funcall expr ...) - call closure value
+     (let* ((fn-expr (second form))
+            (args (cddr form)))
+       (if (and (consp fn-expr) (eq (first fn-expr) 'quote))
+           ;; Case 1: Quoted function name - runtime-call
+           (let ((fn-name (second fn-expr))
+                 (fn-def (gethash (second fn-expr) *function-table*)))
+             (unless fn-def
+               (error "Undefined function: ~S" fn-name))
+             ;; Create runtime-call IR node
+             (make-expr :type 'runtime-call
+                        :value fn-name
+                        :args (mapcar #'parse args)))
+           ;; Case 2: Expression that evaluates to closure - funcall
+           (make-expr :type 'funcall
+                      :value (parse fn-expr)
+                      :args (mapcar #'parse args)))))
 
     ((and (consp form) (eq (first form) 'symbol-value))
      ;; Special form: (symbol-value 'name)
@@ -2084,11 +2088,132 @@
      (error "Lambda expression cannot be compiled standalone: ~S" expr))
 
     (closure
-     ;; Closures with captured variables
-     ;; Phase 1 Limitation: Closures can only be used inline via funcall
-     ;; They cannot be created as standalone first-class values  
-     ;; For now, closures work via funcall inline expansion (see funcall case)
-     (error "Closures cannot be created as standalone values in Phase 1. Use them directly in funcall: ((lambda (x) ...) arg)"))
+     ;; Create a heap-allocated closure object as a first-class value
+     ;; Phase 1: Use runtime make-closure-N trampolines with eval'd wrapper
+     (let* ((params (expr-value expr))
+            (body (first (expr-args expr)))
+            (free-vars (second (expr-args expr)))
+            (original-body (third (expr-args expr)))  ; Original Lisp form
+            (num-free (length free-vars))
+            (arity (length params))
+            (closure-name (gensym "CLOSURE"))
+            (wrapper-params (append free-vars params)))
+
+       ;; Phase 1 limitation: only support 0-3 captured variables
+       (when (> num-free 3)
+         (error "Phase 1 only supports closures with up to 3 captured variables, got ~D" num-free))
+
+       ;; Create wrapper function via eval: (lambda (free-vars... params...) body)
+       ;; This will be called with captured vars as first args, then regular args
+       (let ((callable-name (intern (format nil "HABU-CLOSURE-~A" (string-upcase (string closure-name)))
+                                    (find-package :habu-compiler))))
+         ;; Create the Lisp function that implements the closure body
+         (eval `(defun ,callable-name ,wrapper-params ,original-body))
+
+         ;; Create alien-callable wrapper (SBCL-specific for Phase 1)
+         #+sbcl
+         (let ((num-wrapper-params (length wrapper-params)))
+           (cond
+             ((<= num-wrapper-params 0)
+              (eval `(sb-alien:define-alien-callable ,callable-name
+                         sb-alien:unsigned-long ()
+                       (,callable-name))))
+             ((<= num-wrapper-params 1)
+              (eval `(sb-alien:define-alien-callable ,callable-name
+                         sb-alien:unsigned-long ((,(first wrapper-params) sb-alien:unsigned-long))
+                       (,callable-name ,(first wrapper-params)))))
+             ((<= num-wrapper-params 2)
+              (eval `(sb-alien:define-alien-callable ,callable-name
+                         sb-alien:unsigned-long ((,(first wrapper-params) sb-alien:unsigned-long)
+                                                 (,(second wrapper-params) sb-alien:unsigned-long))
+                       (,callable-name ,(first wrapper-params) ,(second wrapper-params)))))
+             ((<= num-wrapper-params 3)
+              (eval `(sb-alien:define-alien-callable ,callable-name
+                         sb-alien:unsigned-long ((,(first wrapper-params) sb-alien:unsigned-long)
+                                                 (,(second wrapper-params) sb-alien:unsigned-long)
+                                                 (,(third wrapper-params) sb-alien:unsigned-long))
+                       (,callable-name ,(first wrapper-params) ,(second wrapper-params) ,(third wrapper-params)))))
+             ((<= num-wrapper-params 4)
+              (eval `(sb-alien:define-alien-callable ,callable-name
+                         sb-alien:unsigned-long ((,(first wrapper-params) sb-alien:unsigned-long)
+                                                 (,(second wrapper-params) sb-alien:unsigned-long)
+                                                 (,(third wrapper-params) sb-alien:unsigned-long)
+                                                 (,(fourth wrapper-params) sb-alien:unsigned-long))
+                       (,callable-name ,(first wrapper-params) ,(second wrapper-params) ,(third wrapper-params) ,(fourth wrapper-params)))))
+             (t (error "Wrapper function with ~D parameters not supported" num-wrapper-params))))
+
+         ;; Store wrapper function pointer in runtime symbol table
+         (let ((intern-fn (find-symbol "RUNTIME-INTERN" :habu-runtime))
+               (set-fn-fn (find-symbol "SET-SYMBOL-FUNCTION" :habu-runtime)))
+           (when (and intern-fn set-fn-fn)
+             (let* ((name-str (string closure-name))
+                    (sym (funcall intern-fn name-str))
+                    (fn-ptr (sb-sys:sap-int (sb-alien:alien-sap (sb-alien:alien-callable-function callable-name)))))
+               (funcall set-fn-fn sym fn-ptr))))
+
+         ;; Now generate code to call make-closure-N trampoline
+         (let ((trampoline-addr
+                (case num-free
+                  (0 *runtime-make-closure-0-addr*)
+                  (1 *runtime-make-closure-1-addr*)
+                  (2 *runtime-make-closure-2-addr*)
+                  (3 *runtime-make-closure-3-addr*)
+                  (t (error "Unsupported number of captured vars: ~D" num-free)))))
+           (unless trampoline-addr
+             (error "Runtime not initialized. Call (initialize-runtime-integration) first."))
+           (let ((func-addr (sb-sys:sap-int trampoline-addr))
+                 (intern-fn (find-symbol "RUNTIME-INTERN" :habu-runtime)))
+             (unless intern-fn
+               (error "Runtime not initialized"))
+
+             ;; Get symbol address for wrapper function
+             (let ((sym-addr (funcall intern-fn (string closure-name))))
+               (append
+                ;; Setup arguments for make-closure-N call
+                ;; Arg1 (RDI): code pointer from symbol-function slot
+                (list #x48 #xB8)                    ; movabs rax, imm64 (symbol addr)
+                (int-to-bytes sym-addr 8)
+                (list #x48 #x8B #x78 #x18)          ; mov rdi, [rax + 24] (load function ptr to RDI)
+
+                ;; Arg2 (RSI): arity (number of declared parameters, not including captured vars)
+                (list #x48 #xBE)                    ; movabs rsi, imm64 (arity)
+                (int-to-bytes arity 8)
+
+                ;; Args 3-5 (RDX, RCX, R8): captured variable values
+                (case num-free
+                  (0
+                   ;; No captured vars, just call make-closure-0(code-ptr, arity)
+                   nil)
+                  (1
+                   ;; Arg3 (RDX): captured var 1
+                   (append
+                    (emit-x86_64 (make-expr :type 'variable :value (first free-vars)) env)
+                    (list #x48 #x89 #xC2)))         ; mov rdx, rax
+                  (2
+                   ;; Arg3 (RDX): captured var 1, Arg4 (RCX): captured var 2
+                   (append
+                    (emit-x86_64 (make-expr :type 'variable :value (first free-vars)) env)
+                    (list #x50)                     ; push rax (save var1)
+                    (emit-x86_64 (make-expr :type 'variable :value (second free-vars)) env)
+                    (list #x48 #x89 #xC1)           ; mov rcx, rax (var2 -> RCX)
+                    (list #x5A)))                   ; pop rdx (var1 -> RDX)
+                  (3
+                   ;; Arg3 (RDX): captured var 1, Arg4 (RCX): captured var 2, Arg5 (R8): captured var 3
+                   (append
+                    (emit-x86_64 (make-expr :type 'variable :value (first free-vars)) env)
+                    (list #x50)                     ; push rax (save var1)
+                    (emit-x86_64 (make-expr :type 'variable :value (second free-vars)) env)
+                    (list #x50)                     ; push rax (save var2)
+                    (emit-x86_64 (make-expr :type 'variable :value (third free-vars)) env)
+                    (list #x49 #x89 #xC0)           ; mov r8, rax (var3 -> R8)
+                    (list #x59)                     ; pop rcx (var2 -> RCX)
+                    (list #x5A)))                   ; pop rdx (var1 -> RDX)
+                  (t (error "Unsupported num-free: ~D" num-free)))
+
+                ;; Call make-closure-N trampoline
+                (list #x48 #xB8)                    ; movabs rax, imm64
+                (int-to-bytes func-addr 8)
+                (list #xFF #xD0))))))))
 
     (named-let
      ;; Compile (let name ((var val) ...) body)
@@ -2347,8 +2472,7 @@
                    (list #x48 #x83 #xC4 #x08)))))) ; pop stack
 
     (funcall
-     ;; Compile ((lambda (params) body) args) or ((closure ...) args)
-     ;; This is like let: bind args to params, then evaluate body
+     ;; Compile function calls: ((lambda ...) args) or (closure-value args)
      (let* ((fn-expr (expr-value expr))
             (arg-exprs (expr-args expr)))
        (if (or (eq (expr-type fn-expr) 'lambda)
@@ -2371,20 +2495,105 @@
                         (setf binding-code
                               (append binding-code
                                       arg-code
-                                      (list #x50)))  ; push rax
+                                      '(#x50)))  ; push rax
                         ;; Add parameter to environment
                         (push (cons param (* offset 8)) new-env)))
              ;; Compile body with parameters bound
-             ;; For closures, free variables should already be in env
              (let ((body-code (emit-x86_64 body (reverse new-env))))
                (append binding-code
                        body-code
                        ;; Clean up stack
                        (if (<= (* num-params 8) 127)
-                           (list #x48 #x83 #xC4 (* num-params 8))
-                           (append (list #x48 #x81 #xC4)
-                                   (int-to-bytes (* num-params 8) 4))))))
-           (error "Can only call lambda/closure expressions for now"))))
+                           '(#x48 #x83 #xC4)
+                           (append '(#x48 #x81 #xC4)
+                                   (int-to-bytes (* num-params 8) 4)))
+                       (int-to-bytes (* num-params 8) (if (<= (* num-params 8) 127) 1 4)))))
+           ;; Calling a closure value (not inline)
+           ;; Evaluate fn-expr to get closure pointer, then call it
+           (let ((num-args (length arg-exprs)))
+             (append
+              ;; Evaluate closure expression into RAX
+              (emit-x86_64 fn-expr env)
+              ;; Save closure pointer on stack
+              '(#x50)                                  ; push rax
+
+              ;; Verify it's a closure (tag 0x7)
+              '(#x48 #x89 #xC1)                        ; mov rcx, rax
+              '(#x48 #x83 #xE1 #x0F)                   ; and rcx, 0xF
+              '(#x48 #x83 #xF9 #x07)                   ; cmp rcx, 7
+              ;; TODO: Add error handling for non-closure
+
+              ;; Get closure pointer back from stack (don't pop yet)
+              '(#x48 #x8B #x04 #x24)                   ; mov rax, [rsp]
+
+              ;; Extract arity from [rax + 16] and verify
+              '(#x48 #x8B #x48 #x10)                   ; mov rcx, [rax + 16]
+              '(#x48 #xC1 #xE9 #x04)                   ; shr rcx, 4 (untag)
+              ;; Compare with num-args
+              '(#x48 #x83 #xF9)                        ; cmp rcx, imm8
+              (list num-args)
+              ;; TODO: Add error handling for arity mismatch
+
+              ;; Extract env-size from [rax + 24]
+              '(#x48 #x8B #x50 #x18)                   ; mov rdx, [rax + 24]
+              '(#x48 #xC1 #xEA #x04)                   ; shr rdx, 4 (untag env-size)
+
+              ;; Push captured variables onto stack
+              ;; For i from env-size-1 down to 0: push [rax + 32 + i*8]
+              '(#x48 #x85 #xD2)                        ; test rdx, rdx
+              '(#x74 #x0E)                             ; jz skip-push-env (14 bytes ahead)
+              ;; rdx = env-size, rax = closure ptr (from [rsp])
+              '(#x4C #x8D #x04 #xD5 #x00 #x00 #x00 #x00) ; lea r8, [rdx*8 + 0] (total bytes)
+              '(#x49 #x83 #xE8 #x08)                   ; sub r8, 8 (start from last)
+              ;; Loop: push [rax + 32 + r8]
+              ;; .loop:
+              '(#x4A #xFF #x74 #x00 #x20)              ; push qword [rax + r8 + 32]
+              '(#x49 #x83 #xE8 #x08)                   ; sub r8, 8
+              '(#x4D #x83 #xF8 #xFF)                   ; cmp r8, -1
+              '(#x75 #xF3)                             ; jne .loop (back 13 bytes)
+              ;; skip-push-env:
+
+              ;; Now evaluate and push arguments (in order)
+              (apply #'append
+                     (loop for arg-expr in arg-exprs
+                           collect (append
+                                    (emit-x86_64 arg-expr env)
+                                    '(#x50))))        ; push rax
+
+              ;; Get closure pointer from bottom of our pushed values
+              ;; Stack: [closure-ptr][env-vars...][args...]
+              ;; Calculate offset: (env-size + num-args) * 8
+              '(#x48 #x8B #x04 #x24)                   ; mov rax, [rsp] (just to get it, will recalc)
+              ;; Actually, closure ptr is at rsp + (env-size + num-args) * 8
+              ;; Let's use a different approach: save env-size and use it
+              '(#x52)                                  ; push rdx (save env-size)
+
+              ;; Recalculate stack offset to closure ptr
+              ;; closure is at: rsp + 8 + (env-size + num-args) * 8
+              '(#x48 #x8D #x04 #xD5)                   ; lea rax, [rdx*8 + ...
+              (int-to-bytes (+ 8 (* num-args 8)) 4)    ; ... + 8 + num-args*8]
+              '(#x48 #x03 #x04 #x24)                   ; add rax, [rsp] (add saved rdx*8)
+              '(#x48 #x8B #x04 #x04)                   ; mov rax, [rsp + rax]
+
+              ;; Extract code pointer from [rax + 8]
+              '(#x48 #x8B #x48 #x08)                   ; mov rcx, [rax + 8]
+
+              ;; Pop saved env-size
+              '(#x5A)                                  ; pop rdx
+
+              ;; Calculate total stack cleanup: (env-size + num-args + 1) * 8
+              '(#x48 #x8D #x44 #x15)                   ; lea rax, [rdx + rdx*1 + ...
+              (int-to-bytes (+ num-args 1) 1)          ; ... + num-args + 1]
+              '(#x48 #xC1 #xE0 #x03)                   ; shl rax, 3 (multiply by 8)
+              '(#x50)                                  ; push rax (save cleanup amount)
+
+              ;; Call the code pointer
+              '(#xFF #xD1)                             ; call rcx
+
+              ;; Clean up stack: pop cleanup amount, then adjust rsp
+              '(#x59)                                  ; pop rcx (cleanup amount)
+              '(#x48 #x01 #xCC)                        ; add rsp, rcx
+              )))))
 
     (if
      ;; Compile (if condition then-expr else-expr)
@@ -3458,6 +3667,124 @@
     (lambda
      ;; Lambda expressions are not directly compiled to code
      (error "Lambda expression cannot be compiled standalone: ~S" expr))
+
+    (closure
+     ;; Create a heap-allocated closure object as a first-class value (ARM64)
+     ;; Phase 1: Use runtime make-closure-N trampolines with eval'd wrapper
+     (let* ((params (expr-value expr))
+            (body (first (expr-args expr)))
+            (free-vars (second (expr-args expr)))
+            (original-body (third (expr-args expr)))  ; Original Lisp form
+            (num-free (length free-vars))
+            (arity (length params))
+            (closure-name (gensym "CLOSURE"))
+            (wrapper-params (append free-vars params)))
+
+       ;; Phase 1 limitation: only support 0-3 captured variables
+       (when (> num-free 3)
+         (error "Phase 1 only supports closures with up to 3 captured variables, got ~D" num-free))
+
+       ;; Create wrapper function via eval (same as x86_64)
+       (let ((callable-name (intern (format nil "HABU-CLOSURE-~A" (string-upcase (string closure-name)))
+                                    (find-package :habu-compiler))))
+         (eval `(defun ,callable-name ,wrapper-params ,original-body))
+
+         #+sbcl
+         (let ((num-wrapper-params (length wrapper-params)))
+           (cond
+             ((<= num-wrapper-params 0)
+              (eval `(sb-alien:define-alien-callable ,callable-name sb-alien:unsigned-long () (,callable-name))))
+             ((<= num-wrapper-params 1)
+              (eval `(sb-alien:define-alien-callable ,callable-name sb-alien:unsigned-long
+                       ((,(first wrapper-params) sb-alien:unsigned-long))
+                       (,callable-name ,(first wrapper-params)))))
+             ((<= num-wrapper-params 2)
+              (eval `(sb-alien:define-alien-callable ,callable-name sb-alien:unsigned-long
+                       ((,(first wrapper-params) sb-alien:unsigned-long)
+                        (,(second wrapper-params) sb-alien:unsigned-long))
+                       (,callable-name ,(first wrapper-params) ,(second wrapper-params)))))
+             ((<= num-wrapper-params 3)
+              (eval `(sb-alien:define-alien-callable ,callable-name sb-alien:unsigned-long
+                       ((,(first wrapper-params) sb-alien:unsigned-long)
+                        (,(second wrapper-params) sb-alien:unsigned-long)
+                        (,(third wrapper-params) sb-alien:unsigned-long))
+                       (,callable-name ,(first wrapper-params) ,(second wrapper-params) ,(third wrapper-params)))))
+             ((<= num-wrapper-params 4)
+              (eval `(sb-alien:define-alien-callable ,callable-name sb-alien:unsigned-long
+                       ((,(first wrapper-params) sb-alien:unsigned-long)
+                        (,(second wrapper-params) sb-alien:unsigned-long)
+                        (,(third wrapper-params) sb-alien:unsigned-long)
+                        (,(fourth wrapper-params) sb-alien:unsigned-long))
+                       (,callable-name ,(first wrapper-params) ,(second wrapper-params) ,(third wrapper-params) ,(fourth wrapper-params)))))
+             (t (error "Wrapper function with ~D parameters not supported" num-wrapper-params))))
+
+         ;; Store wrapper function pointer in runtime symbol table
+         (let ((intern-fn (find-symbol "RUNTIME-INTERN" :habu-runtime))
+               (set-fn-fn (find-symbol "SET-SYMBOL-FUNCTION" :habu-runtime)))
+           (when (and intern-fn set-fn-fn)
+             (let* ((name-str (string closure-name))
+                    (sym (funcall intern-fn name-str))
+                    (fn-ptr (sb-sys:sap-int (sb-alien:alien-sap (sb-alien:alien-callable-function callable-name)))))
+               (funcall set-fn-fn sym fn-ptr))))
+
+         ;; Generate ARM64 code to call make-closure-N trampoline
+         (let ((trampoline-addr
+                (case num-free
+                  (0 *runtime-make-closure-0-addr*)
+                  (1 *runtime-make-closure-1-addr*)
+                  (2 *runtime-make-closure-2-addr*)
+                  (3 *runtime-make-closure-3-addr*)
+                  (t (error "Unsupported number of captured vars: ~D" num-free)))))
+           (unless trampoline-addr
+             (error "Runtime not initialized. Call (initialize-runtime-integration) first."))
+           (let ((func-addr (sb-sys:sap-int trampoline-addr))
+                 (intern-fn (find-symbol "RUNTIME-INTERN" :habu-runtime)))
+             (unless intern-fn
+               (error "Runtime not initialized"))
+
+             ;; Get symbol address for wrapper function
+             (let ((sym-addr (funcall intern-fn (string closure-name))))
+               ;; ARM64 calling convention: X0-X7 for first 8 args
+               ;; X0 = code pointer, X1 = arity, X2-X4 = captured vars
+               (append
+                ;; Load symbol address into X9 (temp register)
+                '(#xE9 #x01 #x00 #x58)             ; ldr x9, [pc + offset to data]
+                '(#x03 #x00 #x00 #x14)             ; b skip_data (3 instructions)
+                (int-to-bytes sym-addr 8)          ; .data: symbol address
+
+                ;; skip_data:
+                ;; Load function pointer from symbol [x9 + 24] into X0
+                '(#x20 #x61 #x40 #xF9)             ; ldr x0, [x9, #24*8]
+
+                ;; Load arity into X1
+                (int-to-arm64-mov-imm 'x1 arity)
+
+                ;; Load captured variables into X2, X3, X4
+                (case num-free
+                  (0 nil)
+                  (1 (append (emit-arm64 (make-expr :type 'variable :value (first free-vars)) env)
+                             '(#xE2 #x03 #x00 #xAA)))  ; mov x2, x0
+                  (2 (append (emit-arm64 (make-expr :type 'variable :value (first free-vars)) env)
+                             '(#xF0 #x03 #x00 #xF8)    ; str x0, [sp, #-16]!
+                             (emit-arm64 (make-expr :type 'variable :value (second free-vars)) env)
+                             '(#xE3 #x03 #x00 #xAA)    ; mov x3, x0
+                             '(#xF0 #x07 #x40 #xF8)))  ; ldr x2, [sp], #16
+                  (3 (append (emit-arm64 (make-expr :type 'variable :value (first free-vars)) env)
+                             '(#xF0 #x03 #x00 #xF8)    ; str x0, [sp, #-16]!
+                             (emit-arm64 (make-expr :type 'variable :value (second free-vars)) env)
+                             '(#xF0 #x03 #x00 #xF8)    ; str x0, [sp, #-16]!
+                             (emit-arm64 (make-expr :type 'variable :value (third free-vars)) env)
+                             '(#xE4 #x03 #x00 #xAA)    ; mov x4, x0
+                             '(#xF0 #x07 #x40 #xF8)    ; ldr x3, [sp], #16
+                             '(#xF0 #x07 #x40 #xF8)))  ; ldr x2, [sp], #16
+                  (t (error "Unsupported num-free: ~D" num-free)))
+
+                ;; Load trampoline address and call
+                '(#xE9 #x01 #x00 #x58)             ; ldr x9, [pc + offset]
+                '(#x03 #x00 #x00 #x14)             ; b skip_data2
+                (int-to-bytes func-addr 8)         ; .data: trampoline address
+                ;; skip_data2:
+                '(#x20 #x01 #x3F #xD6))))))))      ; blr x9
 
     (named-let
      ;; Compile (let name ((var val) ...) body) for ARM64
