@@ -33,6 +33,7 @@
 
 ;; Load commands
 (defconstant +LC_SEGMENT_64+     #x19)  ; 64-bit segment
+(defconstant +LC_UNIXTHREAD+     #x05)  ; Unix thread state (old-style, like SBCL)
 (defconstant +LC_SYMTAB+         #x02)  ; Symbol table
 (defconstant +LC_DYSYMTAB+       #x0B)  ; Dynamic symbol table
 (defconstant +LC_LOAD_DYLINKER+  #x0E)  ; Load dynamic linker
@@ -154,23 +155,45 @@
    (int-to-bytes (section-64-reserved3 sec) 4)))
 
 ;;; ============================================================
-;;; ENTRY POINT COMMAND
+;;; THREAD STATE COMMAND (like SBCL)
 ;;; ============================================================
 
-(defstruct entry-point-command
-  "LC_MAIN - Modern entry point"
-  (cmd        +LC_MAIN+)
-  (cmdsize    24)           ; Fixed size
-  (entryoff   0)            ; File offset of entry point
-  (stacksize  0))           ; Initial stack size (0 = default)
+(defun emit-unix-thread-command-x86_64 (entry-point)
+  "Emit LC_UNIXTHREAD command for x86_64 (like SBCL does)"
+  ;; LC_UNIXTHREAD doesn't need dyld - direct execution!
+  ;; Thread state for x86_64: flavor 4 (x86_THREAD_STATE64), count 42
+  (coerce
+   (append
+    (int-to-bytes +LC_UNIXTHREAD+ 4)
+    (int-to-bytes 184 4)          ; cmdsize = 8 + 8 + (42 * 4) = 184
+    (int-to-bytes 4 4)            ; flavor = x86_THREAD_STATE64
+    (int-to-bytes 42 4)           ; count = 42 (number of uint32_t values)
 
-(defun emit-entry-point-command (ep)
-  "Emit LC_MAIN command as bytes (24 bytes)"
-  (append
-   (int-to-bytes (entry-point-command-cmd ep) 4)
-   (int-to-bytes (entry-point-command-cmdsize ep) 4)
-   (int-to-bytes (entry-point-command-entryoff ep) 8)
-   (int-to-bytes (entry-point-command-stacksize ep) 8)))
+    ;; Thread state (42 * 4 = 168 bytes)
+    ;; Register layout: RAX, RBX, RCX, RDX, RDI, RSI, RBP, RSP,
+    ;;                  R8-R15, RIP, RFLAGS, CS, FS, GS
+    ;; Each register is 8 bytes (64-bit)
+    ;; RIP is at offset 128 bytes (16 registers * 8)
+    (make-list 128 :initial-element 0)  ; RAX through R15 (128 bytes)
+    (int-to-bytes entry-point 8)        ; RIP = entry point
+    (make-list 32 :initial-element 0))  ; RFLAGS through GS (32 bytes)
+   'vector))
+
+(defun emit-unix-thread-command-arm64 (entry-point)
+  "Emit LC_UNIXTHREAD command for ARM64"
+  ;; Thread state for ARM64: flavor 6 (ARM_THREAD_STATE64), count 68
+  (coerce
+   (append
+    (int-to-bytes +LC_UNIXTHREAD+ 4)
+    (int-to-bytes 284 4)          ; cmdsize = 8 + 8 + (68 * 4) = 284
+    (int-to-bytes 6 4)            ; flavor = ARM_THREAD_STATE64
+    (int-to-bytes 68 4)           ; count = 68
+
+    ;; Thread state (68 * 4 = 272 bytes)
+    (make-list 256 :initial-element 0)  ; X0-X28, FP, LR (256 bytes)
+    (int-to-bytes entry-point 8)        ; PC = entry point
+    (make-list 8 :initial-element 0))   ; CPSR (8 bytes)
+   'vector))
 
 ;;; ============================================================
 ;;; DYLINKER COMMAND
@@ -246,12 +269,11 @@
          (header-size 32)
          (segment-cmd-size 72)
          (section-size 80)
-         (entry-cmd-size 24)
-         (dylinker-cmd-size 28)   ; 12 + "/usr/lib/dyld\0" (14) + pad to 16 = 28
-         (symtab-cmd-size 24)
-         (dysymtab-cmd-size 80)
-         (load-cmds-size (+ segment-cmd-size section-size entry-cmd-size
-                           dylinker-cmd-size symtab-cmd-size dysymtab-cmd-size))
+         (thread-cmd-size (ecase arch
+                           (:x86_64 184)  ; LC_UNIXTHREAD for x86_64
+                           (:arm64  284))) ; LC_UNIXTHREAD for ARM64
+         ;; Minimal like SBCL: just segment + thread state
+         (load-cmds-size (+ segment-cmd-size section-size thread-cmd-size))
          (headers-size (+ header-size load-cmds-size))
          (code-offset 4096)  ; Start code at page boundary
          (vm-addr #x100001000)
@@ -264,7 +286,7 @@
                   :cpusubtype (ecase arch
                                (:x86_64 +CPU_SUBTYPE_X86_64_ALL+)
                                (:arm64  +CPU_SUBTYPE_ARM64_ALL+))
-                  :ncmds 5  ; segment, entry, dylinker, symtab, dysymtab
+                  :ncmds 2  ; Just segment + thread state (like SBCL)
                   :sizeofcmds load-cmds-size))
 
          (segment (make-segment-command-64
@@ -279,10 +301,7 @@
                    :addr vm-addr
                    :size code-size
                    :offset code-offset
-                   :align 4))
-
-         (entry-point (make-entry-point-command
-                       :entryoff code-offset)))
+                   :align 4)))
 
     ;; Write executable
     (with-open-file (out output-file
@@ -299,17 +318,11 @@
       ;; Write section
       (write-sequence (emit-section section) out)
 
-      ;; Write entry point command
-      (write-sequence (emit-entry-point-command entry-point) out)
-
-      ;; Write dylinker command
-      (write-sequence (emit-dylinker-command) out)
-
-      ;; Write symtab command
-      (write-sequence (emit-symtab-command) out)
-
-      ;; Write dysymtab command
-      (write-sequence (emit-dysymtab-command) out)
+      ;; Write thread state command (like SBCL - no dyld needed!)
+      (write-sequence (ecase arch
+                       (:x86_64 (emit-unix-thread-command-x86_64 vm-addr))
+                       (:arm64  (emit-unix-thread-command-arm64 vm-addr)))
+                     out)
 
       ;; Pad to code offset
       (let ((padding (- code-offset (file-position out))))
