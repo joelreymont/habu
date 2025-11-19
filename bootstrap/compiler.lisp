@@ -53,6 +53,8 @@
 (defvar *runtime-file-close-addr* nil "Address of runtime-file-close trampoline")
 (defvar *runtime-read-file-addr* nil "Address of runtime-read-file trampoline")
 (defvar *runtime-write-file-addr* nil "Address of runtime-write-file trampoline")
+(defvar *runtime-catch-addr* nil "Address of runtime-catch trampoline")
+(defvar *runtime-throw-addr* nil "Address of runtime-throw trampoline")
 
 (defun initialize-runtime-integration ()
   "Initialize runtime integration (Phase 1: Bootstrap mode with FFI trampolines)"
@@ -71,7 +73,9 @@
           (reader-path (merge-pathnames "../runtime/reader.lisp"
                                         (or *load-truename* *default-pathname-defaults*)))
           (files-path (merge-pathnames "../runtime/files.lisp"
-                                       (or *load-truename* *default-pathname-defaults*))))
+                                       (or *load-truename* *default-pathname-defaults*)))
+          (errors-path (merge-pathnames "../runtime/errors.lisp"
+                                        (or *load-truename* *default-pathname-defaults*))))
       (if (probe-file runtime-path)
           (progn
             (load runtime-path)
@@ -92,7 +96,10 @@
               (load reader-path))
             ;; Load file I/O support
             (when (probe-file files-path)
-              (load files-path)))
+              (load files-path))
+            ;; Load error handling support
+            (when (probe-file errors-path)
+              (load errors-path)))
           (error "Cannot find runtime/memory.lisp at ~A" runtime-path))))
 
   ;; Initialize runtime heap
@@ -204,6 +211,14 @@
         sb-alien:unsigned-long ((path-ptr sb-alien:unsigned-long) (data-ptr sb-alien:unsigned-long))
       (funcall (find-symbol "RUNTIME-WRITE-FILE" :habu-runtime) path-ptr data-ptr))
 
+    (sb-alien:define-alien-callable habu-catch-trampoline
+        sb-alien:unsigned-long ((tag sb-alien:unsigned-long) (body-fn sb-alien:unsigned-long))
+      (funcall (find-symbol "RUNTIME-CATCH" :habu-runtime) tag body-fn))
+
+    (sb-alien:define-alien-callable habu-throw-trampoline
+        sb-alien:unsigned-long ((tag sb-alien:unsigned-long) (value sb-alien:unsigned-long))
+      (funcall (find-symbol "RUNTIME-THROW" :habu-runtime) tag value))
+
     ;; Get addresses of the trampolines using the correct SBCL mechanism:
     ;; 1. alien-callable-function gets the callable object
     ;; 2. alien-sap converts to System Area Pointer
@@ -253,7 +268,11 @@
     (setf *runtime-read-file-addr*
           (sb-alien:alien-sap (sb-alien:alien-callable-function 'habu-read-file-trampoline)))
     (setf *runtime-write-file-addr*
-          (sb-alien:alien-sap (sb-alien:alien-callable-function 'habu-write-file-trampoline))))
+          (sb-alien:alien-sap (sb-alien:alien-callable-function 'habu-write-file-trampoline)))
+    (setf *runtime-catch-addr*
+          (sb-alien:alien-sap (sb-alien:alien-callable-function 'habu-catch-trampoline)))
+    (setf *runtime-throw-addr*
+          (sb-alien:alien-sap (sb-alien:alien-callable-function 'habu-throw-trampoline))))
 
   #-sbcl
   (error "Runtime integration only supported on SBCL currently")
@@ -378,6 +397,7 @@
     string-length string-concat string-equal string-substring
     read print
     file-open file-read file-write file-close read-file write-file
+    catch throw
     ;; Add more operators as needed
     ))
 
@@ -579,6 +599,25 @@
                                              ;; Single key
                                              `((= ,temp-var ,keys) ,result)))))
                                  clauses))))))
+
+    ((and (consp form) (eq (first form) 'catch))
+     ;; Special form: (catch tag body)
+     ;; Establishes a catch point and executes body
+     ;; Tag is evaluated, body is wrapped in a 0-argument closure
+     (let ((tag (second form))
+           (body (third form)))
+       (make-expr :type 'catch
+                  :value (cons tag body)  ; Store both tag and body (original forms)
+                  :args (list (parse body)))))  ; Parsed body
+
+    ((and (consp form) (eq (first form) 'throw))
+     ;; Special form: (throw tag value)
+     ;; Throws to matching catch (both arguments evaluated)
+     (let ((tag (second form))
+           (value (third form)))
+       (make-expr :type 'throw
+                  :value tag  ; Tag (will be evaluated)
+                  :args (list (parse value)))))  ; Value to return from catch
 
     ((and (consp form) (eq (first form) 'defun))
      ;; Special form: (defun name (params) body)
@@ -3862,6 +3901,72 @@
          (t
           (error "Unknown operator: ~S" op)))))
 
+    (catch
+     ;; (catch tag body) - establish catch point
+     ;; Evaluate tag, create 0-arg closure for body, call runtime-catch
+     (unless *runtime-catch-addr*
+       (error "Runtime not initialized. Call (initialize-runtime-integration) first."))
+     (let* ((tag-and-body (expr-value expr))
+            (tag-form (car tag-and-body))
+            (body-form (cdr tag-and-body))
+            (tag-expr (parse tag-form))
+            (closure-name (gensym "CATCH-BODY"))
+            (func-addr (sb-sys:sap-int *runtime-catch-addr*)))
+
+       ;; Create a 0-argument callable for the body
+       (let ((callable-name (intern (format nil "HABU-CATCH-BODY-~A" (string-upcase (string closure-name)))
+                                    (find-package :habu-compiler))))
+         ;; Define the function using the original body form
+         (eval `(defun ,callable-name () ,body-form))
+
+         ;; Create alien-callable wrapper
+         #+sbcl
+         (eval `(sb-alien:define-alien-callable ,callable-name sb-alien:unsigned-long ()
+                  (,callable-name)))
+
+         ;; Get the function pointer
+         (let ((body-fn-ptr (sb-sys:sap-int (sb-alien:alien-sap (sb-alien:alien-callable-function callable-name)))))
+           (append
+            ;; Evaluate tag into RAX
+            (emit-x86_64 tag-expr env)
+            ;; Save tag on stack
+            '(#x50)                          ; push rax
+            ;; Load body function pointer into RAX
+            '(#x48 #xB8)                     ; movabs rax, imm64
+            (int-to-bytes body-fn-ptr 8)
+            ;; Setup call: RDI=tag, RSI=body-fn
+            '(#x48 #x89 #xC6)                ; mov rsi, rax (body-fn in RSI)
+            '(#x48 #x8B #x3C #x24)           ; mov rdi, [rsp] (tag in RDI)
+            '(#x48 #x83 #xC4 #x08)           ; add rsp, 8 (pop tag)
+            ;; Load runtime-catch address and call
+            '(#x48 #xB8)                     ; movabs rax, imm64
+            (int-to-bytes func-addr 8)
+            '(#xFF #xD0))))))                ; call rax
+
+    (throw
+     ;; (throw tag value) - throw to matching catch (never returns)
+     ;; Evaluate tag and value, call runtime-throw
+     (unless *runtime-throw-addr*
+       (error "Runtime not initialized. Call (initialize-runtime-integration) first."))
+     (let* ((tag-expr (parse (expr-value expr)))
+            (value-expr (first (expr-args expr)))
+            (func-addr (sb-sys:sap-int *runtime-throw-addr*)))
+       (append
+        ;; Evaluate tag into RAX
+        (emit-x86_64 tag-expr env)
+        ;; Save tag on stack
+        '(#x50)                          ; push rax
+        ;; Evaluate value into RAX
+        (emit-x86_64 value-expr env)
+        ;; Setup call: RDI=tag, RSI=value
+        '(#x48 #x89 #xC6)                ; mov rsi, rax (value in RSI)
+        '(#x48 #x8B #x3C #x24)           ; mov rdi, [rsp] (tag in RDI)
+        '(#x48 #x83 #xC4 #x08)           ; add rsp, 8 (pop tag)
+        ;; Load runtime-throw address and call (never returns)
+        '(#x48 #xB8)                     ; movabs rax, imm64
+        (int-to-bytes func-addr 8)
+        '(#xFF #xD0))))
+
     (runtime-call
      ;; Generate code to call function via symbol-function slot
      ;; (funcall 'name arg1 arg2 ...)
@@ -5585,6 +5690,67 @@
 
          (t
           (error "Unknown operator: ~S" op)))))
+
+    (catch
+     ;; (catch tag body) - establish catch point (ARM64)
+     ;; Evaluate tag, create 0-arg closure for body, call runtime-catch
+     (unless *runtime-catch-addr*
+       (error "Runtime not initialized. Call (initialize-runtime-integration) first."))
+     (let* ((tag-and-body (expr-value expr))
+            (tag-form (car tag-and-body))
+            (body-form (cdr tag-and-body))
+            (tag-expr (parse tag-form))
+            (closure-name (gensym "CATCH-BODY"))
+            (func-addr (sb-sys:sap-int *runtime-catch-addr*)))
+
+       ;; Create a 0-argument callable for the body
+       (let ((callable-name (intern (format nil "HABU-CATCH-BODY-~A" (string-upcase (string closure-name)))
+                                    (find-package :habu-compiler))))
+         ;; Define the function using the original body form
+         (eval `(defun ,callable-name () ,body-form))
+
+         ;; Create alien-callable wrapper
+         #+sbcl
+         (eval `(sb-alien:define-alien-callable ,callable-name sb-alien:unsigned-long ()
+                  (,callable-name)))
+
+         ;; Get the function pointer
+         (let ((body-fn-ptr (sb-sys:sap-int (sb-alien:alien-sap (sb-alien:alien-callable-function callable-name)))))
+           (append
+            ;; Evaluate tag into X0
+            (emit-arm64 tag-expr env)
+            ;; Save tag in X10
+            '(#xEA #x03 #x00 #xAA)            ; mov x10, x0
+            ;; Load body function pointer into X0
+            (arm64-load-imm64 0 body-fn-ptr)
+            ;; Setup call: X0=tag, X1=body-fn
+            '(#xE1 #x03 #x00 #xAA)            ; mov x1, x0 (body-fn in X1)
+            '(#xE0 #x03 #x0A #xAA)            ; mov x0, x10 (tag in X0)
+            ;; Load runtime-catch address into X9 and call
+            (arm64-load-imm64 9 func-addr)
+            '(#x20 #x01 #x3F #xD6))))))      ; blr x9
+
+    (throw
+     ;; (throw tag value) - throw to matching catch (ARM64, never returns)
+     ;; Evaluate tag and value, call runtime-throw
+     (unless *runtime-throw-addr*
+       (error "Runtime not initialized. Call (initialize-runtime-integration) first."))
+     (let* ((tag-expr (parse (expr-value expr)))
+            (value-expr (first (expr-args expr)))
+            (func-addr (sb-sys:sap-int *runtime-throw-addr*)))
+       (append
+        ;; Evaluate tag into X0
+        (emit-arm64 tag-expr env)
+        ;; Save tag in X10
+        '(#xEA #x03 #x00 #xAA)            ; mov x10, x0
+        ;; Evaluate value into X0
+        (emit-arm64 value-expr env)
+        ;; Setup call: X0=tag, X1=value
+        '(#xE1 #x03 #x00 #xAA)            ; mov x1, x0 (value in X1)
+        '(#xE0 #x03 #x0A #xAA)            ; mov x0, x10 (tag in X0)
+        ;; Load runtime-throw address into X9 and call (never returns)
+        (arm64-load-imm64 9 func-addr)
+        '(#x20 #x01 #x3F #xD6))))
 
     (runtime-call
      ;; Generate ARM64 code to call function via symbol-function slot
