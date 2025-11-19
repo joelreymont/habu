@@ -5244,30 +5244,344 @@
                   (list #x00 #x10 #x00 #xD3)       ; lsl x0, x0, #4 (retag result)
                   (list #xFD #x7B #xC1 #xA8)))     ; ldp x29, x30, [sp], #16
 
-         ;; List operations - require runtime integration
-         ;; These operations need heap allocation and are not yet integrated with compiled code.
-         ;; They work in the REPL (interpreted mode) which has access to the runtime heap.
-         ;; Future work: Implement FFI or compile runtime functions to machine code.
-         ;; See docs/RUNTIME_INTEGRATION.md for implementation plan.
+         ;; List operations - integrated with runtime heap via FFI trampolines
          ((eq op 'cons)
-          (error "cons requires runtime heap integration~%~
-                  Hint: cons works in the REPL. For compiled code, runtime integration is needed.~%~
-                  See docs/RUNTIME_INTEGRATION.md for details."))
+          ;; (cons car cdr) - allocate cons cell on heap
+          ;; ARM64 calling convention: X0 (car), X1 (cdr), Return: X0
+          (unless *runtime-cons-addr*
+            (error "Runtime not initialized. Call (initialize-runtime-integration) first."))
+          (let ((func-addr (sb-sys:sap-int *runtime-cons-addr*)))
+            (append
+             ;; Evaluate car into X0
+             (emit-arm64 (first args) env)
+             ;; Save car in X10
+             '(#xEA #x03 #x00 #xAA)            ; mov x10, x0
+             ;; Evaluate cdr into X0
+             (emit-arm64 (second args) env)
+             ;; Setup call: X0=car, X1=cdr
+             '(#xE1 #x03 #x00 #xAA)            ; mov x1, x0 (cdr in X1)
+             '(#xE0 #x03 #x0A #xAA)            ; mov x0, x10 (car in X0)
+             ;; Load function address into X9 and call
+             (arm64-load-imm64 9 func-addr)
+             '(#x20 #x01 #x3F #xD6))))        ; blr x9
 
          ((eq op 'car)
-          (error "car requires runtime heap integration~%~
-                  Hint: car works in the REPL. For compiled code, runtime integration is needed.~%~
-                  See docs/RUNTIME_INTEGRATION.md for details."))
+          ;; (car cons-ptr) - read car field from cons cell
+          ;; ARM64 calling convention: X0 (cons-ptr), Return: X0
+          (unless *runtime-car-addr*
+            (error "Runtime not initialized. Call (initialize-runtime-integration) first."))
+          (let ((func-addr (sb-sys:sap-int *runtime-car-addr*)))
+            (append
+             ;; Evaluate cons expression into X0
+             (emit-arm64 (first args) env)
+             ;; Load function address into X9 and call
+             (arm64-load-imm64 9 func-addr)
+             '(#x20 #x01 #x3F #xD6))))        ; blr x9
 
          ((eq op 'cdr)
-          (error "cdr requires runtime heap integration~%~
-                  Hint: cdr works in the REPL. For compiled code, runtime integration is needed.~%~
-                  See docs/RUNTIME_INTEGRATION.md for details."))
+          ;; (cdr cons-ptr) - read cdr field from cons cell
+          ;; ARM64 calling convention: X0 (cons-ptr), Return: X0
+          (unless *runtime-cdr-addr*
+            (error "Runtime not initialized. Call (initialize-runtime-integration) first."))
+          (let ((func-addr (sb-sys:sap-int *runtime-cdr-addr*)))
+            (append
+             ;; Evaluate cons expression into X0
+             (emit-arm64 (first args) env)
+             ;; Load function address into X9 and call
+             (arm64-load-imm64 9 func-addr)
+             '(#x20 #x01 #x3F #xD6))))        ; blr x9
 
          ((eq op 'list)
-          (error "list requires runtime heap integration~%~
-                  Hint: list works in the REPL. For compiled code, runtime integration is needed.~%~
-                  See docs/RUNTIME_INTEGRATION.md for details."))
+          ;; (list a b c ...) - build list by repeated cons
+          (if (null args)
+              ;; Empty list is 0 (nil)
+              (int-to-bytes (logior #xD2800000  ; MOVZ X0, #0
+                                    (ash 0 5))
+                            4)
+              ;; Build nested cons expressions
+              (let ((cons-expr (reduce (lambda (rest-expr elem-expr)
+                                         (make-expr :type 'call
+                                                    :value 'cons
+                                                    :args (list elem-expr rest-expr)))
+                                       (reverse args)
+                                       :initial-value (make-expr :type 'fixnum
+                                                                 :value 0
+                                                                 :args nil))))
+                (emit-arm64 cons-expr env))))
+
+         ((eq op 'length)
+          ;; (length list-ptr) - count elements in list
+          ;; ARM64 calling convention: X0 (list-ptr), Return: X0
+          (unless *runtime-length-addr*
+            (error "Runtime not initialized. Call (initialize-runtime-integration) first."))
+          (let ((func-addr (sb-sys:sap-int *runtime-length-addr*)))
+            (append
+             ;; Evaluate list expression into X0
+             (emit-arm64 (first args) env)
+             ;; Load function address into X9 and call
+             (arm64-load-imm64 9 func-addr)
+             '(#x20 #x01 #x3F #xD6))))        ; blr x9
+
+         ((eq op 'nth)
+          ;; (nth n list-ptr) - get nth element
+          ;; ARM64 calling convention: X0 (n), X1 (list-ptr), Return: X0
+          (unless *runtime-nth-addr*
+            (error "Runtime not initialized. Call (initialize-runtime-integration) first."))
+          (let ((func-addr (sb-sys:sap-int *runtime-nth-addr*)))
+            (append
+             ;; Evaluate n into X0
+             (emit-arm64 (first args) env)
+             ;; Save n in X10
+             '(#xEA #x03 #x00 #xAA)            ; mov x10, x0
+             ;; Evaluate list into X0
+             (emit-arm64 (second args) env)
+             ;; Setup call: X0=n, X1=list
+             '(#xE1 #x03 #x00 #xAA)            ; mov x1, x0 (list in X1)
+             '(#xE0 #x03 #x0A #xAA)            ; mov x0, x10 (n in X0)
+             ;; Load function address into X9 and call
+             (arm64-load-imm64 9 func-addr)
+             '(#x20 #x01 #x3F #xD6))))        ; blr x9
+
+         ((eq op 'append)
+          ;; (append list1 list2) - concatenate lists
+          ;; ARM64 calling convention: X0 (list1), X1 (list2), Return: X0
+          (unless *runtime-append-addr*
+            (error "Runtime not initialized. Call (initialize-runtime-integration) first."))
+          (let ((func-addr (sb-sys:sap-int *runtime-append-addr*)))
+            (append
+             ;; Evaluate list1 into X0
+             (emit-arm64 (first args) env)
+             ;; Save list1 in X10
+             '(#xEA #x03 #x00 #xAA)            ; mov x10, x0
+             ;; Evaluate list2 into X0
+             (emit-arm64 (second args) env)
+             ;; Setup call: X0=list1, X1=list2
+             '(#xE1 #x03 #x00 #xAA)            ; mov x1, x0 (list2 in X1)
+             '(#xE0 #x03 #x0A #xAA)            ; mov x0, x10 (list1 in X0)
+             ;; Load function address into X9 and call
+             (arm64-load-imm64 9 func-addr)
+             '(#x20 #x01 #x3F #xD6))))        ; blr x9
+
+         ((eq op 'reverse)
+          ;; (reverse list-ptr) - reverse a list
+          ;; ARM64 calling convention: X0 (list-ptr), Return: X0
+          (unless *runtime-reverse-addr*
+            (error "Runtime not initialized. Call (initialize-runtime-integration) first."))
+          (let ((func-addr (sb-sys:sap-int *runtime-reverse-addr*)))
+            (append
+             ;; Evaluate list expression into X0
+             (emit-arm64 (first args) env)
+             ;; Load function address into X9 and call
+             (arm64-load-imm64 9 func-addr)
+             '(#x20 #x01 #x3F #xD6))))        ; blr x9
+
+         ;; String operations
+         ((eq op 'string-length)
+          ;; (string-length str-ptr) - get length of string
+          ;; ARM64 calling convention: X0 (str-ptr), Return: X0 (raw length, need to tag)
+          (unless *runtime-string-length-addr*
+            (error "Runtime not initialized. Call (initialize-runtime-integration) first."))
+          (let ((func-addr (sb-sys:sap-int *runtime-string-length-addr*)))
+            (append
+             ;; Evaluate string expression into X0
+             (emit-arm64 (first args) env)
+             ;; Load function address into X9 and call
+             (arm64-load-imm64 9 func-addr)
+             '(#x20 #x01 #x3F #xD6)            ; blr x9
+             ;; Tag result as fixnum: lsl x0, x0, #4
+             '(#x00 #x10 #x00 #xD3))))         ; lsl x0, x0, #4
+
+         ((eq op 'string-concat)
+          ;; (string-concat str1 str2) - concatenate two strings
+          ;; ARM64 calling convention: X0 (str1), X1 (str2), Return: X0
+          (unless *runtime-string-concat-addr*
+            (error "Runtime not initialized. Call (initialize-runtime-integration) first."))
+          (let ((func-addr (sb-sys:sap-int *runtime-string-concat-addr*)))
+            (append
+             ;; Evaluate str1 into X0
+             (emit-arm64 (first args) env)
+             ;; Save str1 in X10
+             '(#xEA #x03 #x00 #xAA)            ; mov x10, x0
+             ;; Evaluate str2 into X0
+             (emit-arm64 (second args) env)
+             ;; Setup call: X0=str1, X1=str2
+             '(#xE1 #x03 #x00 #xAA)            ; mov x1, x0 (str2 in X1)
+             '(#xE0 #x03 #x0A #xAA)            ; mov x0, x10 (str1 in X0)
+             ;; Load function address into X9 and call
+             (arm64-load-imm64 9 func-addr)
+             '(#x20 #x01 #x3F #xD6))))        ; blr x9
+
+         ((eq op 'string-equal)
+          ;; (string-equal str1 str2) - compare two strings for equality
+          ;; ARM64 calling convention: X0 (str1), X1 (str2), Return: X0 (tagged boolean)
+          (unless *runtime-string-equal-addr*
+            (error "Runtime not initialized. Call (initialize-runtime-integration) first."))
+          (let ((func-addr (sb-sys:sap-int *runtime-string-equal-addr*)))
+            (append
+             ;; Evaluate str1 into X0
+             (emit-arm64 (first args) env)
+             ;; Save str1 in X10
+             '(#xEA #x03 #x00 #xAA)            ; mov x10, x0
+             ;; Evaluate str2 into X0
+             (emit-arm64 (second args) env)
+             ;; Setup call: X0=str1, X1=str2
+             '(#xE1 #x03 #x00 #xAA)            ; mov x1, x0 (str2 in X1)
+             '(#xE0 #x03 #x0A #xAA)            ; mov x0, x10 (str1 in X0)
+             ;; Load function address into X9 and call
+             (arm64-load-imm64 9 func-addr)
+             '(#x20 #x01 #x3F #xD6))))        ; blr x9 (returns tagged boolean)
+
+         ((eq op 'string-substring)
+          ;; (string-substring str start end) - extract substring
+          ;; ARM64 calling convention: X0 (str), X1 (start), X2 (end), Return: X0
+          (unless *runtime-string-substring-addr*
+            (error "Runtime not initialized. Call (initialize-runtime-integration) first."))
+          (let ((func-addr (sb-sys:sap-int *runtime-string-substring-addr*)))
+            (append
+             ;; Evaluate str into X0
+             (emit-arm64 (first args) env)
+             ;; Push X0 to stack (str)
+             '(#xE0 #x0F #x1F #xF8)            ; str x0, [sp, #-16]!
+             ;; Evaluate start into X0
+             (emit-arm64 (second args) env)
+             ;; Push X0 to stack (start)
+             '(#xE0 #x0F #x1F #xF8)            ; str x0, [sp, #-16]!
+             ;; Evaluate end into X0
+             (emit-arm64 (third args) env)
+             ;; Setup call: X2=end, X1=start, X0=str
+             '(#xE2 #x03 #x00 #xAA)            ; mov x2, x0 (end in X2)
+             '(#xE1 #x07 #x41 #xF8)            ; ldr x1, [sp], #16 (start in X1)
+             '(#xE0 #x07 #x41 #xF8)            ; ldr x0, [sp], #16 (str in X0)
+             ;; Load function address into X9 and call
+             (arm64-load-imm64 9 func-addr)
+             '(#x20 #x01 #x3F #xD6))))        ; blr x9
+
+         ;; Reader/Printer operations
+         ((eq op 'read)
+          ;; (read string) - parse S-expression from string
+          ;; ARM64 calling convention: X0 (string-ptr), Return: X0
+          (unless *runtime-read-from-string-addr*
+            (error "Runtime not initialized. Call (initialize-runtime-integration) first."))
+          (let ((func-addr (sb-sys:sap-int *runtime-read-from-string-addr*)))
+            (append
+             ;; Evaluate string expression into X0
+             (emit-arm64 (first args) env)
+             ;; Load function address into X9 and call
+             (arm64-load-imm64 9 func-addr)
+             '(#x20 #x01 #x3F #xD6))))        ; blr x9
+
+         ((eq op 'print)
+          ;; (print value) - convert value to string representation
+          ;; ARM64 calling convention: X0 (value), Return: X0 (string-ptr)
+          (unless *runtime-print-to-string-addr*
+            (error "Runtime not initialized. Call (initialize-runtime-integration) first."))
+          (let ((func-addr (sb-sys:sap-int *runtime-print-to-string-addr*)))
+            (append
+             ;; Evaluate value expression into X0
+             (emit-arm64 (first args) env)
+             ;; Load function address into X9 and call
+             (arm64-load-imm64 9 func-addr)
+             '(#x20 #x01 #x3F #xD6))))        ; blr x9
+
+         ;; File I/O operations
+         ((eq op 'file-open)
+          ;; (file-open path-str mode-str) - open file
+          ;; ARM64 calling convention: X0 (path), X1 (mode), Return: X0 (handle)
+          (unless *runtime-file-open-addr*
+            (error "Runtime not initialized. Call (initialize-runtime-integration) first."))
+          (let ((func-addr (sb-sys:sap-int *runtime-file-open-addr*)))
+            (append
+             ;; Evaluate path into X0
+             (emit-arm64 (first args) env)
+             ;; Save path in X10
+             '(#xEA #x03 #x00 #xAA)            ; mov x10, x0
+             ;; Evaluate mode into X0
+             (emit-arm64 (second args) env)
+             ;; Setup call: X0=path, X1=mode
+             '(#xE1 #x03 #x00 #xAA)            ; mov x1, x0 (mode in X1)
+             '(#xE0 #x03 #x0A #xAA)            ; mov x0, x10 (path in X0)
+             ;; Load function address into X9 and call
+             (arm64-load-imm64 9 func-addr)
+             '(#x20 #x01 #x3F #xD6))))        ; blr x9
+
+         ((eq op 'file-read)
+          ;; (file-read handle) - read from file
+          ;; ARM64 calling convention: X0 (handle), Return: X0 (string)
+          (unless *runtime-file-read-addr*
+            (error "Runtime not initialized. Call (initialize-runtime-integration) first."))
+          (let ((func-addr (sb-sys:sap-int *runtime-file-read-addr*)))
+            (append
+             ;; Evaluate handle into X0
+             (emit-arm64 (first args) env)
+             ;; Load function address into X9 and call
+             (arm64-load-imm64 9 func-addr)
+             '(#x20 #x01 #x3F #xD6))))        ; blr x9
+
+         ((eq op 'file-write)
+          ;; (file-write handle data-str) - write to file
+          ;; ARM64 calling convention: X0 (handle), X1 (data), Return: X0 (bytes written)
+          (unless *runtime-file-write-addr*
+            (error "Runtime not initialized. Call (initialize-runtime-integration) first."))
+          (let ((func-addr (sb-sys:sap-int *runtime-file-write-addr*)))
+            (append
+             ;; Evaluate handle into X0
+             (emit-arm64 (first args) env)
+             ;; Save handle in X10
+             '(#xEA #x03 #x00 #xAA)            ; mov x10, x0
+             ;; Evaluate data into X0
+             (emit-arm64 (second args) env)
+             ;; Setup call: X0=handle, X1=data
+             '(#xE1 #x03 #x00 #xAA)            ; mov x1, x0 (data in X1)
+             '(#xE0 #x03 #x0A #xAA)            ; mov x0, x10 (handle in X0)
+             ;; Load function address into X9 and call
+             (arm64-load-imm64 9 func-addr)
+             '(#x20 #x01 #x3F #xD6))))        ; blr x9
+
+         ((eq op 'file-close)
+          ;; (file-close handle) - close file
+          ;; ARM64 calling convention: X0 (handle), Return: X0 (success)
+          (unless *runtime-file-close-addr*
+            (error "Runtime not initialized. Call (initialize-runtime-integration) first."))
+          (let ((func-addr (sb-sys:sap-int *runtime-file-close-addr*)))
+            (append
+             ;; Evaluate handle into X0
+             (emit-arm64 (first args) env)
+             ;; Load function address into X9 and call
+             (arm64-load-imm64 9 func-addr)
+             '(#x20 #x01 #x3F #xD6))))        ; blr x9
+
+         ((eq op 'read-file)
+          ;; (read-file path-str) - convenience: read entire file
+          ;; ARM64 calling convention: X0 (path), Return: X0 (contents)
+          (unless *runtime-read-file-addr*
+            (error "Runtime not initialized. Call (initialize-runtime-integration) first."))
+          (let ((func-addr (sb-sys:sap-int *runtime-read-file-addr*)))
+            (append
+             ;; Evaluate path into X0
+             (emit-arm64 (first args) env)
+             ;; Load function address into X9 and call
+             (arm64-load-imm64 9 func-addr)
+             '(#x20 #x01 #x3F #xD6))))        ; blr x9
+
+         ((eq op 'write-file)
+          ;; (write-file path-str data-str) - convenience: write entire file
+          ;; ARM64 calling convention: X0 (path), X1 (data), Return: X0 (success)
+          (unless *runtime-write-file-addr*
+            (error "Runtime not initialized. Call (initialize-runtime-integration) first."))
+          (let ((func-addr (sb-sys:sap-int *runtime-write-file-addr*)))
+            (append
+             ;; Evaluate path into X0
+             (emit-arm64 (first args) env)
+             ;; Save path in X10
+             '(#xEA #x03 #x00 #xAA)            ; mov x10, x0
+             ;; Evaluate data into X0
+             (emit-arm64 (second args) env)
+             ;; Setup call: X0=path, X1=data
+             '(#xE1 #x03 #x00 #xAA)            ; mov x1, x0 (data in X1)
+             '(#xE0 #x03 #x0A #xAA)            ; mov x0, x10 (path in X0)
+             ;; Load function address into X9 and call
+             (arm64-load-imm64 9 func-addr)
+             '(#x20 #x01 #x3F #xD6))))        ; blr x9
 
          (t
           (error "Unknown operator: ~S" op)))))
@@ -5346,6 +5660,47 @@
 
           ;; Call function pointer: blr x9
           (list #x20 #x01 #x3F #xD6)))))))      ; blr x9
+
+;;; ARM64 Helper: Load 64-bit immediate into register
+(defun arm64-load-imm64 (reg-num value)
+  "Generate ARM64 code to load 64-bit VALUE into register X<reg-num> using MOVZ+MOVK sequence"
+  (append
+   ;; MOVZ X<reg>, #(value[15:0]), LSL #0
+   (int-to-bytes (logior #xD2800000
+                         (ash reg-num 0)
+                         (ash (logand value #xFFFF) 5))
+                 4)
+   ;; MOVK X<reg>, #(value[31:16]), LSL #16
+   (int-to-bytes (logior #xF2A00000
+                         (ash reg-num 0)
+                         (ash (logand (ash value -16) #xFFFF) 5))
+                 4)
+   ;; MOVK X<reg>, #(value[47:32]), LSL #32
+   (int-to-bytes (logior #xF2C00000
+                         (ash reg-num 0)
+                         (ash (logand (ash value -32) #xFFFF) 5))
+                 4)
+   ;; MOVK X<reg>, #(value[63:48]), LSL #48
+   (int-to-bytes (logior #xF2E00000
+                         (ash reg-num 0)
+                         (ash (logand (ash value -48) #xFFFF) 5))
+                 4)))
+
+;;; ARM64 Helper: Load small immediate into register
+(defun int-to-arm64-mov-imm (reg imm)
+  "Generate ARM64 code to move small immediate into register (simplified version)"
+  (let ((reg-num (case reg
+                   (x0 0) (x1 1) (x2 2) (x3 3) (x4 4)
+                   (x9 9) (x10 10) (x11 11)
+                   (t (error "Unsupported register: ~S" reg)))))
+    (if (< imm 65536)
+        ;; Small immediate - use MOVZ
+        (int-to-bytes (logior #xD2800000
+                              (ash reg-num 0)
+                              (ash (logand imm #xFFFF) 5))
+                      4)
+        ;; Larger immediate - use full 64-bit load
+        (arm64-load-imm64 reg-num imm))))
 
 ;;; Helper: Convert integer to little-endian byte list
 (defun int-to-bytes (n size)
