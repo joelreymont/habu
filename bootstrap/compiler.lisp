@@ -62,6 +62,13 @@
 (defvar *runtime-puthash-addr* nil "Address of runtime-puthash trampoline")
 (defvar *runtime-remhash-addr* nil "Address of runtime-remhash trampoline")
 (defvar *runtime-hash-table-count-addr* nil "Address of runtime-hash-table-count trampoline")
+(defvar *runtime-butlast-addr* nil "Address of runtime-butlast trampoline")
+(defvar *runtime-nthcdr-addr* nil "Address of runtime-nthcdr trampoline")
+(defvar *runtime-member-addr* nil "Address of runtime-member trampoline")
+(defvar *runtime-assoc-addr* nil "Address of runtime-assoc trampoline")
+(defvar *runtime-position-addr* nil "Address of runtime-position trampoline")
+(defvar *runtime-count-addr* nil "Address of runtime-count trampoline")
+(defvar *runtime-remove-addr* nil "Address of runtime-remove trampoline")
 
 (defun initialize-runtime-integration ()
   "Initialize runtime integration (Phase 1: Bootstrap mode with FFI trampolines)"
@@ -267,6 +274,34 @@
         sb-alien:unsigned-long ((ht sb-alien:unsigned-long))
       (funcall (find-symbol "RUNTIME-HASH-TABLE-COUNT" :habu-runtime) ht))
 
+    (sb-alien:define-alien-callable habu-butlast-trampoline
+        sb-alien:unsigned-long ((list-ptr sb-alien:unsigned-long) (n sb-alien:unsigned-long))
+      (funcall (find-symbol "RUNTIME-BUTLAST" :habu-runtime) list-ptr n))
+
+    (sb-alien:define-alien-callable habu-nthcdr-trampoline
+        sb-alien:unsigned-long ((n sb-alien:unsigned-long) (list-ptr sb-alien:unsigned-long))
+      (funcall (find-symbol "RUNTIME-NTHCDR" :habu-runtime) n list-ptr))
+
+    (sb-alien:define-alien-callable habu-member-trampoline
+        sb-alien:unsigned-long ((item sb-alien:unsigned-long) (list-ptr sb-alien:unsigned-long))
+      (funcall (find-symbol "RUNTIME-MEMBER" :habu-runtime) item list-ptr))
+
+    (sb-alien:define-alien-callable habu-assoc-trampoline
+        sb-alien:unsigned-long ((key sb-alien:unsigned-long) (alist-ptr sb-alien:unsigned-long))
+      (funcall (find-symbol "RUNTIME-ASSOC" :habu-runtime) key alist-ptr))
+
+    (sb-alien:define-alien-callable habu-position-trampoline
+        sb-alien:unsigned-long ((item sb-alien:unsigned-long) (list-ptr sb-alien:unsigned-long))
+      (funcall (find-symbol "RUNTIME-POSITION" :habu-runtime) item list-ptr))
+
+    (sb-alien:define-alien-callable habu-count-trampoline
+        sb-alien:unsigned-long ((item sb-alien:unsigned-long) (list-ptr sb-alien:unsigned-long))
+      (funcall (find-symbol "RUNTIME-COUNT" :habu-runtime) item list-ptr))
+
+    (sb-alien:define-alien-callable habu-remove-trampoline
+        sb-alien:unsigned-long ((item sb-alien:unsigned-long) (list-ptr sb-alien:unsigned-long))
+      (funcall (find-symbol "RUNTIME-REMOVE" :habu-runtime) item list-ptr))
+
     ;; Get addresses of the trampolines using the correct SBCL mechanism:
     ;; 1. alien-callable-function gets the callable object
     ;; 2. alien-sap converts to System Area Pointer
@@ -334,7 +369,21 @@
     (setf *runtime-remhash-addr*
           (sb-alien:alien-sap (sb-alien:alien-callable-function 'habu-remhash-trampoline)))
     (setf *runtime-hash-table-count-addr*
-          (sb-alien:alien-sap (sb-alien:alien-callable-function 'habu-hash-table-count-trampoline))))
+          (sb-alien:alien-sap (sb-alien:alien-callable-function 'habu-hash-table-count-trampoline)))
+    (setf *runtime-butlast-addr*
+          (sb-alien:alien-sap (sb-alien:alien-callable-function 'habu-butlast-trampoline)))
+    (setf *runtime-nthcdr-addr*
+          (sb-alien:alien-sap (sb-alien:alien-callable-function 'habu-nthcdr-trampoline)))
+    (setf *runtime-member-addr*
+          (sb-alien:alien-sap (sb-alien:alien-callable-function 'habu-member-trampoline)))
+    (setf *runtime-assoc-addr*
+          (sb-alien:alien-sap (sb-alien:alien-callable-function 'habu-assoc-trampoline)))
+    (setf *runtime-position-addr*
+          (sb-alien:alien-sap (sb-alien:alien-callable-function 'habu-position-trampoline)))
+    (setf *runtime-count-addr*
+          (sb-alien:alien-sap (sb-alien:alien-callable-function 'habu-count-trampoline)))
+    (setf *runtime-remove-addr*
+          (sb-alien:alien-sap (sb-alien:alien-callable-function 'habu-remove-trampoline))))
 
   #-sbcl
   (error "Runtime integration only supported on SBCL currently")
@@ -455,7 +504,7 @@
     if cond case when unless
     progn begin quote quasiquote unquote unquote-splicing
     lambda let let* defun defvar defmacro funcall symbol-value set
-    length nth append reverse
+    length nth append reverse butlast nthcdr member assoc position count remove
     string-length string-concat string-equal string-substring
     read print
     file-open file-read file-write file-close read-file write-file
@@ -3751,6 +3800,162 @@
              (int-to-bytes func-addr 8)
              (list #xFF #xD0))))                  ; call rax
 
+         ((eq op 'butlast)
+          ;; (butlast list-ptr [n]) - all but last n elements
+          ;; Call runtime-butlast trampoline: Args: RDI (list-ptr), RSI (n), Return: RAX
+          (unless *runtime-butlast-addr*
+            (error "Runtime not initialized. Call (initialize-runtime-integration) first."))
+          (let ((func-addr (sb-sys:sap-int *runtime-butlast-addr*)))
+            (append
+             ;; Evaluate list expression into RAX
+             (emit-x86_64 (first args) env)
+             ;; Save list on stack
+             (list #x50)                          ; push rax
+             ;; Evaluate optional n argument (defaults to 1)
+             (if (second args)
+                 (emit-x86_64 (second args) env)
+                 (list #x48 #xC7 #xC0 #x10 #x00 #x00 #x00)) ; mov rax, 0x10 (tagged 1)
+             ;; Setup call: RDI=list, RSI=n
+             (list #x48 #x89 #xC6)                ; mov rsi, rax (n in RSI)
+             (list #x48 #x8B #x3C #x24)           ; mov rdi, [rsp] (list in RDI)
+             (list #x48 #x83 #xC4 #x08)           ; add rsp, 8
+             ;; Load function address and call
+             (list #x48 #xB8)                     ; movabs rax, imm64
+             (int-to-bytes func-addr 8)
+             (list #xFF #xD0))))                  ; call rax
+
+         ((eq op 'nthcdr)
+          ;; (nthcdr n list-ptr) - skip n elements
+          ;; Call runtime-nthcdr trampoline: Args: RDI (n), RSI (list-ptr), Return: RAX
+          (unless *runtime-nthcdr-addr*
+            (error "Runtime not initialized. Call (initialize-runtime-integration) first."))
+          (let ((func-addr (sb-sys:sap-int *runtime-nthcdr-addr*)))
+            (append
+             ;; Evaluate n into RAX
+             (emit-x86_64 (first args) env)
+             ;; Save n on stack
+             (list #x50)                          ; push rax
+             ;; Evaluate list into RAX
+             (emit-x86_64 (second args) env)
+             ;; Setup call: RDI=n, RSI=list
+             (list #x48 #x89 #xC6)                ; mov rsi, rax (list in RSI)
+             (list #x48 #x8B #x3C #x24)           ; mov rdi, [rsp] (n in RDI)
+             (list #x48 #x83 #xC4 #x08)           ; add rsp, 8
+             ;; Load function address and call
+             (list #x48 #xB8)                     ; movabs rax, imm64
+             (int-to-bytes func-addr 8)
+             (list #xFF #xD0))))                  ; call rax
+
+         ((eq op 'member)
+          ;; (member item list) - find item in list
+          ;; Call runtime-member trampoline: Args: RDI (item), RSI (list), Return: RAX
+          (unless *runtime-member-addr*
+            (error "Runtime not initialized. Call (initialize-runtime-integration) first."))
+          (let ((func-addr (sb-sys:sap-int *runtime-member-addr*)))
+            (append
+             ;; Evaluate item into RAX
+             (emit-x86_64 (first args) env)
+             ;; Save item on stack
+             (list #x50)                          ; push rax
+             ;; Evaluate list into RAX
+             (emit-x86_64 (second args) env)
+             ;; Setup call: RDI=item, RSI=list
+             (list #x48 #x89 #xC6)                ; mov rsi, rax (list in RSI)
+             (list #x48 #x8B #x3C #x24)           ; mov rdi, [rsp] (item in RDI)
+             (list #x48 #x83 #xC4 #x08)           ; add rsp, 8
+             ;; Load function address and call
+             (list #x48 #xB8)                     ; movabs rax, imm64
+             (int-to-bytes func-addr 8)
+             (list #xFF #xD0))))                  ; call rax
+
+         ((eq op 'assoc)
+          ;; (assoc key alist) - find key in association list
+          ;; Call runtime-assoc trampoline: Args: RDI (key), RSI (alist), Return: RAX
+          (unless *runtime-assoc-addr*
+            (error "Runtime not initialized. Call (initialize-runtime-integration) first."))
+          (let ((func-addr (sb-sys:sap-int *runtime-assoc-addr*)))
+            (append
+             ;; Evaluate key into RAX
+             (emit-x86_64 (first args) env)
+             ;; Save key on stack
+             (list #x50)                          ; push rax
+             ;; Evaluate alist into RAX
+             (emit-x86_64 (second args) env)
+             ;; Setup call: RDI=key, RSI=alist
+             (list #x48 #x89 #xC6)                ; mov rsi, rax (alist in RSI)
+             (list #x48 #x8B #x3C #x24)           ; mov rdi, [rsp] (key in RDI)
+             (list #x48 #x83 #xC4 #x08)           ; add rsp, 8
+             ;; Load function address and call
+             (list #x48 #xB8)                     ; movabs rax, imm64
+             (int-to-bytes func-addr 8)
+             (list #xFF #xD0))))                  ; call rax
+
+         ((eq op 'position)
+          ;; (position item list) - find index of item
+          ;; Call runtime-position trampoline: Args: RDI (item), RSI (list), Return: RAX
+          (unless *runtime-position-addr*
+            (error "Runtime not initialized. Call (initialize-runtime-integration) first."))
+          (let ((func-addr (sb-sys:sap-int *runtime-position-addr*)))
+            (append
+             ;; Evaluate item into RAX
+             (emit-x86_64 (first args) env)
+             ;; Save item on stack
+             (list #x50)                          ; push rax
+             ;; Evaluate list into RAX
+             (emit-x86_64 (second args) env)
+             ;; Setup call: RDI=item, RSI=list
+             (list #x48 #x89 #xC6)                ; mov rsi, rax (list in RSI)
+             (list #x48 #x8B #x3C #x24)           ; mov rdi, [rsp] (item in RDI)
+             (list #x48 #x83 #xC4 #x08)           ; add rsp, 8
+             ;; Load function address and call
+             (list #x48 #xB8)                     ; movabs rax, imm64
+             (int-to-bytes func-addr 8)
+             (list #xFF #xD0))))                  ; call rax
+
+         ((eq op 'count)
+          ;; (count item list) - count occurrences of item
+          ;; Call runtime-count trampoline: Args: RDI (item), RSI (list), Return: RAX
+          (unless *runtime-count-addr*
+            (error "Runtime not initialized. Call (initialize-runtime-integration) first."))
+          (let ((func-addr (sb-sys:sap-int *runtime-count-addr*)))
+            (append
+             ;; Evaluate item into RAX
+             (emit-x86_64 (first args) env)
+             ;; Save item on stack
+             (list #x50)                          ; push rax
+             ;; Evaluate list into RAX
+             (emit-x86_64 (second args) env)
+             ;; Setup call: RDI=item, RSI=list
+             (list #x48 #x89 #xC6)                ; mov rsi, rax (list in RSI)
+             (list #x48 #x8B #x3C #x24)           ; mov rdi, [rsp] (item in RDI)
+             (list #x48 #x83 #xC4 #x08)           ; add rsp, 8
+             ;; Load function address and call
+             (list #x48 #xB8)                     ; movabs rax, imm64
+             (int-to-bytes func-addr 8)
+             (list #xFF #xD0))))                  ; call rax
+
+         ((eq op 'remove)
+          ;; (remove item list) - remove all occurrences of item
+          ;; Call runtime-remove trampoline: Args: RDI (item), RSI (list), Return: RAX
+          (unless *runtime-remove-addr*
+            (error "Runtime not initialized. Call (initialize-runtime-integration) first."))
+          (let ((func-addr (sb-sys:sap-int *runtime-remove-addr*)))
+            (append
+             ;; Evaluate item into RAX
+             (emit-x86_64 (first args) env)
+             ;; Save item on stack
+             (list #x50)                          ; push rax
+             ;; Evaluate list into RAX
+             (emit-x86_64 (second args) env)
+             ;; Setup call: RDI=item, RSI=list
+             (list #x48 #x89 #xC6)                ; mov rsi, rax (list in RSI)
+             (list #x48 #x8B #x3C #x24)           ; mov rdi, [rsp] (item in RDI)
+             (list #x48 #x83 #xC4 #x08)           ; add rsp, 8
+             ;; Load function address and call
+             (list #x48 #xB8)                     ; movabs rax, imm64
+             (int-to-bytes func-addr 8)
+             (list #xFF #xD0))))                  ; call rax
+
          ;; String operations
          ((eq op 'string-length)
           ;; (string-length str-ptr) - get length of string
@@ -5773,6 +5978,148 @@
             (append
              ;; Evaluate list expression into X0
              (emit-arm64 (first args) env)
+             ;; Load function address into X9 and call
+             (arm64-load-imm64 9 func-addr)
+             '(#x20 #x01 #x3F #xD6))))        ; blr x9
+
+         ((eq op 'butlast)
+          ;; (butlast list-ptr [n]) - all but last n elements
+          ;; ARM64 calling convention: X0 (list-ptr), X1 (n), Return: X0
+          (unless *runtime-butlast-addr*
+            (error "Runtime not initialized. Call (initialize-runtime-integration) first."))
+          (let ((func-addr (sb-sys:sap-int *runtime-butlast-addr*)))
+            (append
+             ;; Evaluate list expression into X0
+             (emit-arm64 (first args) env)
+             ;; Save list in X10
+             '(#xEA #x03 #x00 #xAA)            ; mov x10, x0
+             ;; Evaluate optional n argument (defaults to 1)
+             (if (second args)
+                 (emit-arm64 (second args) env)
+                 '(#x20 #x02 #x80 #xD2))       ; mov x0, #0x10 (tagged 1)
+             ;; Setup call: X0=list, X1=n
+             '(#xE1 #x03 #x00 #xAA)            ; mov x1, x0 (n in X1)
+             '(#xE0 #x03 #x0A #xAA)            ; mov x0, x10 (list in X0)
+             ;; Load function address into X9 and call
+             (arm64-load-imm64 9 func-addr)
+             '(#x20 #x01 #x3F #xD6))))        ; blr x9
+
+         ((eq op 'nthcdr)
+          ;; (nthcdr n list-ptr) - skip n elements
+          ;; ARM64 calling convention: X0 (n), X1 (list-ptr), Return: X0
+          (unless *runtime-nthcdr-addr*
+            (error "Runtime not initialized. Call (initialize-runtime-integration) first."))
+          (let ((func-addr (sb-sys:sap-int *runtime-nthcdr-addr*)))
+            (append
+             ;; Evaluate n into X0
+             (emit-arm64 (first args) env)
+             ;; Save n in X10
+             '(#xEA #x03 #x00 #xAA)            ; mov x10, x0
+             ;; Evaluate list into X0
+             (emit-arm64 (second args) env)
+             ;; Setup call: X0=n, X1=list
+             '(#xE1 #x03 #x00 #xAA)            ; mov x1, x0 (list in X1)
+             '(#xE0 #x03 #x0A #xAA)            ; mov x0, x10 (n in X0)
+             ;; Load function address into X9 and call
+             (arm64-load-imm64 9 func-addr)
+             '(#x20 #x01 #x3F #xD6))))        ; blr x9
+
+         ((eq op 'member)
+          ;; (member item list) - find item in list
+          ;; ARM64 calling convention: X0 (item), X1 (list), Return: X0
+          (unless *runtime-member-addr*
+            (error "Runtime not initialized. Call (initialize-runtime-integration) first."))
+          (let ((func-addr (sb-sys:sap-int *runtime-member-addr*)))
+            (append
+             ;; Evaluate item into X0
+             (emit-arm64 (first args) env)
+             ;; Save item in X10
+             '(#xEA #x03 #x00 #xAA)            ; mov x10, x0
+             ;; Evaluate list into X0
+             (emit-arm64 (second args) env)
+             ;; Setup call: X0=item, X1=list
+             '(#xE1 #x03 #x00 #xAA)            ; mov x1, x0 (list in X1)
+             '(#xE0 #x03 #x0A #xAA)            ; mov x0, x10 (item in X0)
+             ;; Load function address into X9 and call
+             (arm64-load-imm64 9 func-addr)
+             '(#x20 #x01 #x3F #xD6))))        ; blr x9
+
+         ((eq op 'assoc)
+          ;; (assoc key alist) - find key in association list
+          ;; ARM64 calling convention: X0 (key), X1 (alist), Return: X0
+          (unless *runtime-assoc-addr*
+            (error "Runtime not initialized. Call (initialize-runtime-integration) first."))
+          (let ((func-addr (sb-sys:sap-int *runtime-assoc-addr*)))
+            (append
+             ;; Evaluate key into X0
+             (emit-arm64 (first args) env)
+             ;; Save key in X10
+             '(#xEA #x03 #x00 #xAA)            ; mov x10, x0
+             ;; Evaluate alist into X0
+             (emit-arm64 (second args) env)
+             ;; Setup call: X0=key, X1=alist
+             '(#xE1 #x03 #x00 #xAA)            ; mov x1, x0 (alist in X1)
+             '(#xE0 #x03 #x0A #xAA)            ; mov x0, x10 (key in X0)
+             ;; Load function address into X9 and call
+             (arm64-load-imm64 9 func-addr)
+             '(#x20 #x01 #x3F #xD6))))        ; blr x9
+
+         ((eq op 'position)
+          ;; (position item list) - find index of item
+          ;; ARM64 calling convention: X0 (item), X1 (list), Return: X0
+          (unless *runtime-position-addr*
+            (error "Runtime not initialized. Call (initialize-runtime-integration) first."))
+          (let ((func-addr (sb-sys:sap-int *runtime-position-addr*)))
+            (append
+             ;; Evaluate item into X0
+             (emit-arm64 (first args) env)
+             ;; Save item in X10
+             '(#xEA #x03 #x00 #xAA)            ; mov x10, x0
+             ;; Evaluate list into X0
+             (emit-arm64 (second args) env)
+             ;; Setup call: X0=item, X1=list
+             '(#xE1 #x03 #x00 #xAA)            ; mov x1, x0 (list in X1)
+             '(#xE0 #x03 #x0A #xAA)            ; mov x0, x10 (item in X0)
+             ;; Load function address into X9 and call
+             (arm64-load-imm64 9 func-addr)
+             '(#x20 #x01 #x3F #xD6))))        ; blr x9
+
+         ((eq op 'count)
+          ;; (count item list) - count occurrences of item
+          ;; ARM64 calling convention: X0 (item), X1 (list), Return: X0
+          (unless *runtime-count-addr*
+            (error "Runtime not initialized. Call (initialize-runtime-integration) first."))
+          (let ((func-addr (sb-sys:sap-int *runtime-count-addr*)))
+            (append
+             ;; Evaluate item into X0
+             (emit-arm64 (first args) env)
+             ;; Save item in X10
+             '(#xEA #x03 #x00 #xAA)            ; mov x10, x0
+             ;; Evaluate list into X0
+             (emit-arm64 (second args) env)
+             ;; Setup call: X0=item, X1=list
+             '(#xE1 #x03 #x00 #xAA)            ; mov x1, x0 (list in X1)
+             '(#xE0 #x03 #x0A #xAA)            ; mov x0, x10 (item in X0)
+             ;; Load function address into X9 and call
+             (arm64-load-imm64 9 func-addr)
+             '(#x20 #x01 #x3F #xD6))))        ; blr x9
+
+         ((eq op 'remove)
+          ;; (remove item list) - remove all occurrences of item
+          ;; ARM64 calling convention: X0 (item), X1 (list), Return: X0
+          (unless *runtime-remove-addr*
+            (error "Runtime not initialized. Call (initialize-runtime-integration) first."))
+          (let ((func-addr (sb-sys:sap-int *runtime-remove-addr*)))
+            (append
+             ;; Evaluate item into X0
+             (emit-arm64 (first args) env)
+             ;; Save item in X10
+             '(#xEA #x03 #x00 #xAA)            ; mov x10, x0
+             ;; Evaluate list into X0
+             (emit-arm64 (second args) env)
+             ;; Setup call: X0=item, X1=list
+             '(#xE1 #x03 #x00 #xAA)            ; mov x1, x0 (list in X1)
+             '(#xE0 #x03 #x0A #xAA)            ; mov x0, x10 (item in X0)
              ;; Load function address into X9 and call
              (arm64-load-imm64 9 func-addr)
              '(#x20 #x01 #x3F #xD6))))        ; blr x9

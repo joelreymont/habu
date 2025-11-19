@@ -158,16 +158,15 @@ Using SBCL's runtime via FFI for rapid development while maintaining a clean arc
 
 ### 4. Standard Library Expansion
 
-**Status:** Basic operations complete
+**Status:** Partially complete (Session 8)
 
-#### List Operations
-**Current:** cons, car, cdr, list, length, nth, append, reverse
-**Needed:**
-- member, assoc, remove-if, filter, map
-- find, position, count
-- every, some, notany, notevery
-- push, pop, pushnew
-- last, butlast, nthcdr
+#### List Operations ✅
+**Current:** cons, car, cdr, list, length, nth, append, reverse, butlast, nthcdr, member, assoc, position, count, remove
+**Still Needed:**
+- Predicate-based operations: remove-if, filter, map, find-if
+- Predicates: every, some, notany, notevery
+- Macros: push, pop, pushnew
+- Additional utilities: last-n, take, drop
 
 #### Sequence Operations
 **Needed:**
@@ -438,10 +437,11 @@ The hybrid bootstrap approach allows:
 - **v0.5** (2025-11-19): Error handling with catch/throw
 - **v0.6** (2025-11-19): Control flow: block/return-from (dotimes/dolist deferred)
 - **v0.7** (2025-11-19): Hash tables with all core operations
+- **v0.8** (2025-11-19): Extended list operations (butlast, nthcdr, member, assoc, position, count, remove)
 
 ---
 
 **Last updated:** 2025-11-19
 **Current phase:** Phase 1 - Bootstrap with FFI
-**Tests passing:** 609/609 ✅ (x86_64 and ARM64) [597 core + 12 hash tables]
-**Next priority:** Standard library expansion OR Multiple return values
+**Tests passing:** 627/627 ✅ (x86_64 and ARM64) [597 core + 12 hash tables + 18 list ops]
+**Next priority:** Multiple return values OR More standard library functions
