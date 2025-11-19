@@ -168,6 +168,32 @@
                               `(cdr ,result))))
             result))))))
 
+;;; Recursively expand macros in a form
+(defun expand-macros-in-form (form)
+  "Recursively expand all macro calls in a form"
+  (cond
+    ;; Atoms don't need expansion
+    ((not (consp form)) form)
+
+    ;; Check if this is a macro call
+    ((and (symbolp (first form))
+          (gethash (first form) *macro-table*))
+     ;; Expand the macro and recursively expand the result
+     (let* ((macro-def (gethash (first form) *macro-table*))
+            (params (car macro-def))
+            (body (cdr macro-def))
+            (args (rest form)))
+       ;; Evaluate the lambda to do parameter substitution
+       ;; Then recursively expand any macros in the result
+       (let* ((macro-lambda `(lambda ,params ,body))
+              (macro-fn (eval macro-lambda))
+              (expanded (apply macro-fn args)))
+         ;; Recursively expand macros in the result
+         (expand-macros-in-form expanded))))
+
+    ;; Not a macro call - recursively expand sub-forms
+    (t (mapcar #'expand-macros-in-form form))))
+
 ;;; Parse Lisp expression to IR
 (defun parse (form)
   "Parse a Lisp form into compiler IR"
@@ -377,6 +403,10 @@
            (params (third form))
            (body (fourth form)))
        (setf (gethash name *macro-table*) (cons params body))
+       ;; ALSO define a function in SBCL that delegates to our macro expander
+       ;; This allows nested macro calls in macro bodies to work
+       (eval `(defun ,name (&rest args)
+                (expand-macros-in-form (cons ',name args))))
        ;; Return 0 as a placeholder
        (make-expr :type 'fixnum :value 0)))
 
@@ -1554,15 +1584,10 @@
              (let ((macro-def (gethash op *macro-table*)))
                (if macro-def
                    ;; Macro: expand and re-parse
-                   (let ((params (car macro-def))
-                         (body (cdr macro-def)))
-                     ;; Create binding list for macro parameters
-                     (let ((bindings (mapcar #'list params args)))
-                       ;; Expand macro body with substitutions
-                       (let ((expanded (sublis (mapcar (lambda (b) (cons (first b) (second b))) bindings)
-                                               body)))
-                         ;; Re-parse the expanded form
-                         (parse expanded))))
+                   ;; Use expand-macros-in-form to handle nested macros properly
+                   (let* ((expanded (expand-macros-in-form form)))
+                     ;; Re-parse the expanded form
+                     (parse expanded))
                    ;; Not a macro, check if this is a user-defined function
                    (let ((fn-def (gethash op *function-table*)))
                      (if fn-def
