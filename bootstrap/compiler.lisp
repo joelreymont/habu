@@ -317,12 +317,29 @@
 
     ((and (consp form) (eq (first form) 'defun))
      ;; Special form: (defun name (params) body)
-     ;; Store function definition in global table
+     ;; Store function definition in global table for compile-time inlining
      (let ((name (second form))
            (params (third form))
            (body (fourth form)))
+       ;; Store in function table (for compile-time inlining)
        (setf (gethash name *function-table*) (cons params body))
-       ;; Return 0 as a placeholder (defun doesn't produce a meaningful value in our compiler)
+
+       ;; ALSO store in symbol's function slot (for future runtime funcall)
+       ;; This integrates with the symbol system
+       (when (find-package :habu-runtime)
+         (let ((intern-fn (find-symbol "RUNTIME-INTERN" :habu-runtime))
+               (set-fn-fn (find-symbol "SET-SYMBOL-FUNCTION" :habu-runtime)))
+           (when (and intern-fn set-fn-fn)
+             (let* ((name-str (string name))
+                    (sym (funcall intern-fn name-str))
+                    ;; For now, store a marker value in the function slot
+                    ;; Future: this would be a pointer to compiled code
+                    (fn-marker (ash (sxhash (list params body)) 4)))
+               (funcall set-fn-fn sym fn-marker)
+               (format t "; defun ~A -> symbol ~X~%" name sym)))))
+
+       ;; Return 0 as a placeholder (defun doesn't produce runtime value)
+       ;; The symbol is interned and function slot is set as a side effect
        (make-expr :type 'fixnum :value 0)))
 
     ((and (consp form) (eq (first form) 'defmacro))
