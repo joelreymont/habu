@@ -34,8 +34,11 @@
 ;; Load commands
 (defconstant +LC_SEGMENT_64+      #x19)  ; 64-bit segment
 (defconstant +LC_UNIXTHREAD+      #x05)  ; Unix thread state (old-style)
+(defconstant +LC_SYMTAB+          #x02)  ; Symbol table
+(defconstant +LC_DYSYMTAB+        #x0B)  ; Dynamic symbol table
 (defconstant +LC_MAIN+            #x28)  ; Entry point (modern, like SBCL)
 (defconstant +LC_LOAD_DYLINKER+   #x0E)  ; Load dynamic linker
+(defconstant +LC_LOAD_DYLIB+      #x0C)  ; Load dynamic library
 (defconstant +LC_SOURCE_VERSION+  #x2A)  ; Source version
 (defconstant +LC_BUILD_VERSION+   #x32)  ; Build version
 
@@ -240,6 +243,32 @@
    'vector))
 
 ;;; ============================================================
+;;; DYLIB COMMAND
+;;; ============================================================
+
+(defun emit-dylib-command (lib-path)
+  "Emit LC_LOAD_DYLIB command for a dynamic library"
+  (let* ((path-len (length lib-path))
+         (path-offset 24)             ; After cmd, cmdsize, name offset, timestamp, current_version, compat_version
+         (string-with-null (+ path-len 1))
+         (padded-len (+ string-with-null
+                       (mod (- 4 (mod string-with-null 4)) 4)))
+         (cmdsize (+ path-offset padded-len)))
+
+    (coerce
+     (append
+      (int-to-bytes +LC_LOAD_DYLIB+ 4)
+      (int-to-bytes cmdsize 4)
+      (int-to-bytes path-offset 4)             ; name offset
+      (int-to-bytes 2 4)                       ; timestamp
+      (int-to-bytes #x05480000 4)              ; current_version (1352.0.0)
+      (int-to-bytes #x00010000 4)              ; compatibility_version (1.0.0)
+      ;; Library path (null-terminated, padded)
+      (map 'list #'char-code lib-path)
+      (make-list (- padded-len path-len) :initial-element 0))
+     'vector)))
+
+;;; ============================================================
 ;;; DYLINKER COMMAND
 ;;; ============================================================
 
@@ -315,11 +344,15 @@
          (section-size 80)
          (main-cmd-size 24)           ; LC_MAIN command
          (dylinker-cmd-size 28)       ; LC_LOAD_DYLINKER ("/usr/lib/dyld" = 13 + null + padding = 28)
+         (dylib-cmd-size 52)          ; LC_LOAD_DYLIB ("/usr/lib/libSystem.B.dylib" = 27 + null + padding = 52)
+         (symtab-cmd-size 24)         ; LC_SYMTAB (empty)
+         (dysymtab-cmd-size 80)       ; LC_DYSYMTAB (empty)
          (build-version-cmd-size 32)  ; LC_BUILD_VERSION
          (source-version-cmd-size 16) ; LC_SOURCE_VERSION
-         ;; Modern approach: segment + dylinker + main + versions
-         (load-cmds-size (+ segment-cmd-size section-size dylinker-cmd-size main-cmd-size
-                           build-version-cmd-size source-version-cmd-size))
+         ;; Modern approach: segment + dylinker + dylib + symtabs + main + versions
+         (load-cmds-size (+ segment-cmd-size section-size dylinker-cmd-size dylib-cmd-size
+                           symtab-cmd-size dysymtab-cmd-size
+                           main-cmd-size build-version-cmd-size source-version-cmd-size))
          (headers-size (+ header-size load-cmds-size))
          (code-offset 4096)           ; Start code at page boundary
          (vm-addr #x100001000)
@@ -333,7 +366,7 @@
                   :cpusubtype (ecase arch
                                (:x86_64 +CPU_SUBTYPE_X86_64_ALL+)
                                (:arm64  +CPU_SUBTYPE_ARM64_ALL+))
-                  :ncmds 5  ; Segment + dylinker + main + build_version + source_version
+                  :ncmds 8  ; Segment + dylinker + dylib + symtab + dysymtab + main + build_version + source_version
                   :sizeofcmds load-cmds-size))
 
          (segment (make-segment-command-64
@@ -367,6 +400,13 @@
 
       ;; Write dylinker command (load /usr/lib/dyld)
       (write-sequence (emit-dylinker-command) out)
+
+      ;; Write dylib command (link libSystem)
+      (write-sequence (emit-dylib-command "/usr/lib/libSystem.B.dylib") out)
+
+      ;; Write symbol table commands (empty, but required for codesign)
+      (write-sequence (emit-symtab-command) out)
+      (write-sequence (emit-dysymtab-command) out)
 
       ;; Write main command (modern entry point)
       (write-sequence (emit-main-command entryoff 0) out)
