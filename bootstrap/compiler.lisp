@@ -12,6 +12,12 @@
 ;;; Target architecture (x86_64 or arm64)
 (defvar *target-arch* :x86_64)
 
+;;; Allocation mode: :ffi (Phase 1) or :inline (Phase 2)
+(defvar *allocation-mode* :ffi
+  "Heap allocation strategy:
+   :ffi    - Use FFI trampolines to SBCL runtime (Phase 1, current)
+   :inline - Generate inline allocation code (Phase 2, standalone)")
+
 ;;; Global function table for defun
 (defvar *function-table* (make-hash-table :test 'eq))
 
@@ -2394,6 +2400,53 @@
            (expr-args expr)))
     (t nil)))
 
+;;; ============================================================
+;;; INLINE ALLOCATION HELPERS (Phase 2)
+;;; ============================================================
+;;;
+;;; These functions generate inline heap allocation code for
+;;; standalone operation without FFI dependencies.
+
+(defun emit-inline-cons-x86_64 (car-code cdr-code)
+  "Generate inline cons allocation for x86_64 (Phase 2)"
+  ;; TODO: Implement inline allocation
+  ;; For now, this is a placeholder that will be implemented
+  ;; when we add heap globals and GC integration
+  (append
+   car-code
+   '(#x50)                  ; push rax (save car)
+   cdr-code
+   '(#x48 #x89 #xC6)        ; mov rsi, rax (cdr in RSI)
+   '(#x48 #x8B #x3C #x24)   ; mov rdi, [rsp] (car in RDI)
+   '(#x48 #x83 #xC4 #x08)   ; add rsp, 8 (pop car)
+   ;; TODO: Inline heap allocation goes here
+   ;; For Phase 2.1, we'll implement:
+   ;; - Get heap_ptr from global
+   ;; - Check heap_limit
+   ;; - Allocate 16 bytes
+   ;; - Store car/cdr
+   ;; - Update heap_ptr
+   ;; - Tag pointer with 0x1
+   ))
+
+(defun emit-inline-car-x86_64 (cons-code)
+  "Generate inline car access for x86_64 (Phase 2)"
+  (append
+   cons-code
+   ;; Untag pointer (remove 0x1)
+   '(#x48 #x83 #xE0 #xFE)   ; and rax, ~1
+   ;; Load car (offset 0)
+   '(#x48 #x8B #x00)))      ; mov rax, [rax]
+
+(defun emit-inline-cdr-x86_64 (cons-code)
+  "Generate inline cdr access for x86_64 (Phase 2)"
+  (append
+   cons-code
+   ;; Untag pointer (remove 0x1)
+   '(#x48 #x83 #xE0 #xFE)   ; and rax, ~1
+   ;; Load cdr (offset 8)
+   '(#x48 #x8B #x40 #x08))) ; mov rax, [rax+8]
+
 ;;; Code generation for x86_64
 (defun emit-x86_64 (expr &optional (env nil))
   "Generate x86_64 machine code for expression with environment"
@@ -3921,61 +3974,79 @@
                   (list #x48 #xC1 #xE0 #x04)    ; shl rax, 4 (retag result)
                   (list #x48 #x83 #xC4 #x08))) ; add rsp, 8
 
-         ;; List operations - integrated with runtime heap via FFI trampolines
+         ;;; ============================================================
+         ;;; INLINE ALLOCATION HELPERS (Phase 2) - x86_64
+         ;;; ============================================================
+         ;;;
+         ;;; These generate inline heap allocation code instead of
+         ;;; calling FFI trampolines. Enables standalone operation.
+
+         ;; List operations - integrated with runtime heap
          ((eq op 'cons)
           ;; (cons car cdr) - allocate cons cell on heap
-          ;; Call runtime-cons trampoline following System V AMD64 ABI:
-          ;; Args: RDI (car), RSI (cdr), Return: RAX
-          (unless *runtime-cons-addr*
-            (error "Runtime not initialized. Call (initialize-runtime-integration) first."))
-          (let ((func-addr (sb-sys:sap-int *runtime-cons-addr*)))
-            (append
-             ;; Evaluate car into RAX
-             (emit-x86_64 (first args) env)
-             ;; Save car on stack
-             (list #x50)                          ; push rax
-             ;; Evaluate cdr into RAX
-             (emit-x86_64 (second args) env)
-             ;; Setup call: RDI=car, RSI=cdr
-             (list #x48 #x89 #xC6)                ; mov rsi, rax (cdr in RSI)
-             (list #x48 #x8B #x3C #x24)           ; mov rdi, [rsp] (car in RDI)
-             (list #x48 #x83 #xC4 #x08)           ; add rsp, 8 (pop car)
-             ;; Load function address and call
-             (list #x48 #xB8)                     ; movabs rax, imm64
-             (int-to-bytes func-addr 8)
-             (list #xFF #xD0))))                  ; call rax
+          (ecase *allocation-mode*
+            (:ffi
+             ;; Phase 1: Call FFI trampoline to SBCL runtime
+             ;; System V AMD64 ABI: Args in RDI/RSI, Return in RAX
+             (unless *runtime-cons-addr*
+               (error "Runtime not initialized. Call (initialize-runtime-integration) first."))
+             (let ((func-addr (sb-sys:sap-int *runtime-cons-addr*)))
+               (append
+                (emit-x86_64 (first args) env)
+                (list #x50)                          ; push rax
+                (emit-x86_64 (second args) env)
+                (list #x48 #x89 #xC6)                ; mov rsi, rax (cdr in RSI)
+                (list #x48 #x8B #x3C #x24)           ; mov rdi, [rsp] (car in RDI)
+                (list #x48 #x83 #xC4 #x08)           ; add rsp, 8 (pop car)
+                (list #x48 #xB8)                     ; movabs rax, imm64
+                (int-to-bytes func-addr 8)
+                (list #xFF #xD0))))                  ; call rax
+
+            (:inline
+             ;; Phase 2: Generate inline allocation code
+             (emit-inline-cons-x86_64
+              (emit-x86_64 (first args) env)
+              (emit-x86_64 (second args) env)))))
 
          ((eq op 'car)
           ;; (car cons-ptr) - read car field from cons cell
-          ;; Call runtime-car trampoline: Arg: RDI (cons-ptr), Return: RAX
-          (unless *runtime-car-addr*
-            (error "Runtime not initialized. Call (initialize-runtime-integration) first."))
-          (let ((func-addr (sb-sys:sap-int *runtime-car-addr*)))
-            (append
-             ;; Evaluate cons expression into RAX
-             (emit-x86_64 (first args) env)
-             ;; Setup call: RDI=cons-ptr
-             (list #x48 #x89 #xC7)                ; mov rdi, rax
-             ;; Load function address and call
-             (list #x48 #xB8)                     ; movabs rax, imm64
-             (int-to-bytes func-addr 8)
-             (list #xFF #xD0))))                  ; call rax
+          (ecase *allocation-mode*
+            (:ffi
+             ;; Phase 1: Call FFI trampoline
+             (unless *runtime-car-addr*
+               (error "Runtime not initialized. Call (initialize-runtime-integration) first."))
+             (let ((func-addr (sb-sys:sap-int *runtime-car-addr*)))
+               (append
+                (emit-x86_64 (first args) env)
+                (list #x48 #x89 #xC7)                ; mov rdi, rax
+                (list #x48 #xB8)                     ; movabs rax, imm64
+                (int-to-bytes func-addr 8)
+                (list #xFF #xD0))))                  ; call rax
+
+            (:inline
+             ;; Phase 2: Inline pointer access
+             (emit-inline-car-x86_64
+              (emit-x86_64 (first args) env)))))
 
          ((eq op 'cdr)
           ;; (cdr cons-ptr) - read cdr field from cons cell
-          ;; Call runtime-cdr trampoline: Arg: RDI (cons-ptr), Return: RAX
-          (unless *runtime-cdr-addr*
-            (error "Runtime not initialized. Call (initialize-runtime-integration) first."))
-          (let ((func-addr (sb-sys:sap-int *runtime-cdr-addr*)))
-            (append
-             ;; Evaluate cons expression into RAX
-             (emit-x86_64 (first args) env)
-             ;; Setup call: RDI=cons-ptr
-             (list #x48 #x89 #xC7)                ; mov rdi, rax
-             ;; Load function address and call
-             (list #x48 #xB8)                     ; movabs rax, imm64
-             (int-to-bytes func-addr 8)
-             (list #xFF #xD0))))                  ; call rax
+          (ecase *allocation-mode*
+            (:ffi
+             ;; Phase 1: Call FFI trampoline
+             (unless *runtime-cdr-addr*
+               (error "Runtime not initialized. Call (initialize-runtime-integration) first."))
+             (let ((func-addr (sb-sys:sap-int *runtime-cdr-addr*)))
+               (append
+                (emit-x86_64 (first args) env)
+                (list #x48 #x89 #xC7)                ; mov rdi, rax
+                (list #x48 #xB8)                     ; movabs rax, imm64
+                (int-to-bytes func-addr 8)
+                (list #xFF #xD0))))                  ; call rax
+
+            (:inline
+             ;; Phase 2: Inline pointer access
+             (emit-inline-cdr-x86_64
+              (emit-x86_64 (first args) env)))))
 
          ((eq op 'list)
           ;; (list a b c ...) - build list by repeated cons
