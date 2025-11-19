@@ -242,29 +242,45 @@ SESSION_SUMMARY.md            - NEW: This summary
 - ✅ Global variable bindings via symbol-value slots
 - ✅ Compile-time value embedding
 - ✅ Works in expressions: (+ (symbol-value '*x*) 10)
-- ⚠️  Limitation: Can't use 0 or nil (conflicts with unbound marker)
-
-**Known Issue:**
-- Runtime uses 0 as unbound marker
-- Fixnum 0 is represented as 0 (0 << 4)
-- Setting variable to 0 or nil makes it appear unbound
-- **Future fix:** Change unbound marker to 0xFFFFFFFFFFFFFFFF
+- ✅ Supports all fixnum values including 0 and nil
 
 **Commits:**
 - `b5395e3` - Implement defvar and symbol-value for global variables
+
+### 7. Unbound Marker Fix ✓
+
+**Problem:**
+- Original +unbound+ marker was 0
+- Fixnum 0 is represented as 0 (0 << 4)
+- Setting variable to 0 or nil made it appear unbound
+
+**Solution:**
+- Changed +unbound+ from 0 to 0xFFFFFFFFFFFFFFFF (all bits set)
+- Now 0 and nil work correctly as variable values
+- No conflict between unbound marker and valid fixnum
+
+**Files Modified:**
+- `runtime/symbols.lisp` - Changed +unbound+ constant
+- `bootstrap/test-defvar.lisp` - Updated to test with 0
+- `bootstrap/test-defvar-zero-nil.lisp` - NEW: Comprehensive 0/nil tests
+- `docs/SYMBOLS.md` - Updated documentation
+
+**Commits:**
+- `f393c58` - Fix unbound marker conflict - enable 0 and nil as variable values
 
 ## Test Statistics
 
 **Session 2 Results:**
 - Total tests: 597 (all passing ✅)
-- New test files: 3
+- New test files: 4
   - test-defun.lisp
   - test-defun-funcall.lisp
   - test-defvar.lisp
+  - test-defvar-zero-nil.lisp
 
 **Session 2 Commits:**
-- 3 feature commits
-- 0 bug fixes
+- 4 feature commits
+- 1 bug fix (unbound marker)
 - All existing tests still passing
 
 ## Updated Next Steps
@@ -273,14 +289,10 @@ SESSION_SUMMARY.md            - NEW: This summary
 ✅ Implement defun - Global function definitions
 ✅ Implement funcall - Call functions by name
 ✅ Implement defvar - Global variable definitions
+✅ Fix unbound marker conflict - 0 and nil now work
 
 ### Remaining (Next Session):
-1. **Fix unbound marker conflict**
-   - Change +unbound+ from 0 to 0xFFFFFFFFFFFFFFFF
-   - Enable 0 and nil as valid values
-   - Update runtime symbol functions
-
-2. **Macro System Expansion**
+1. **Macro System Expansion**
    - Already have basic defmacro
    - Add more macro expansion features
    - Support backquote/comma in macros
@@ -299,18 +311,20 @@ SESSION_SUMMARY.md            - NEW: This summary
 ## Files Changed Session 2
 
 ```
-bootstrap/compiler.lisp            - defun, funcall, defvar, symbol-value
-bootstrap/test-defun.lisp          - NEW: defun tests
-bootstrap/test-defun-funcall.lisp  - NEW: funcall tests
-bootstrap/test-defvar.lisp         - NEW: defvar tests
-bootstrap/SESSION_SUMMARY.md       - Updated with session 2 work
+bootstrap/compiler.lisp              - defun, funcall, defvar, symbol-value
+bootstrap/test-defun.lisp            - NEW: defun tests
+bootstrap/test-defun-funcall.lisp    - NEW: funcall tests
+bootstrap/test-defvar.lisp           - NEW: defvar tests
+bootstrap/test-defvar-zero-nil.lisp  - NEW: 0 and nil tests
+runtime/symbols.lisp                 - Fixed +unbound+ marker
+docs/SYMBOLS.md                      - Updated unbound marker docs
+bootstrap/SESSION_SUMMARY.md         - Updated with session 2 work
 ```
 
 ## Conclusion
 
 Successful implementation of three major language features (defun, funcall, defvar)
-with comprehensive testing. Global functions and variables now work via the symbol
-system, enabling more sophisticated Lisp programs.
+plus a critical bug fix for the unbound marker. Global functions and variables now
+work via the symbol system, with full support for all fixnum values including 0 and nil.
 
-All 597 tests passing. Discovered runtime limitation with unbound marker that needs
-addressing. Ready to continue!
+All 597 tests passing. Ready to continue with macro system expansion!
