@@ -4,9 +4,19 @@
 #include <assert.h>
 #include <stdlib.h>
 #include <unistd.h>
+#include <string.h>
 
 static int tests_run = 0;
 static int tests_passed = 0;
+
+/* Get temporary directory (portable) */
+static const char* get_temp_dir(void) {
+    const char *tmpdir = getenv("TMPDIR");
+    if (!tmpdir) tmpdir = getenv("TEMP");
+    if (!tmpdir) tmpdir = getenv("TMP");
+    if (!tmpdir) tmpdir = "/tmp";
+    return tmpdir;
+}
 
 #define TEST(name) \
     static void test_##name(void); \
@@ -29,12 +39,22 @@ TEST(compiler_generates_fixnum_code) {
 }
 
 TEST(compiled_binaries_exist) {
-    assert(access("/tmp/test-x86_64.bin", F_OK) == 0);
-    assert(access("/tmp/test-arm64.bin", F_OK) == 0);
+    char path[512];
+    const char *tmpdir = get_temp_dir();
+
+    snprintf(path, sizeof(path), "%s/test-x86_64.bin", tmpdir);
+    assert(access(path, F_OK) == 0);
+
+    snprintf(path, sizeof(path), "%s/test-arm64.bin", tmpdir);
+    assert(access(path, F_OK) == 0);
 }
 
 TEST(x86_64_code_size_reasonable) {
-    FILE *f = fopen("/tmp/test-x86_64.bin", "rb");
+    char path[512];
+    const char *tmpdir = get_temp_dir();
+
+    snprintf(path, sizeof(path), "%s/test-x86_64.bin", tmpdir);
+    FILE *f = fopen(path, "rb");
     assert(f != NULL);
 
     fseek(f, 0, SEEK_END);
@@ -45,7 +65,11 @@ TEST(x86_64_code_size_reasonable) {
 }
 
 TEST(arm64_code_size_reasonable) {
-    FILE *f = fopen("/tmp/test-arm64.bin", "rb");
+    char path[512];
+    const char *tmpdir = get_temp_dir();
+
+    snprintf(path, sizeof(path), "%s/test-arm64.bin", tmpdir);
+    FILE *f = fopen(path, "rb");
     assert(f != NULL);
 
     fseek(f, 0, SEEK_END);
