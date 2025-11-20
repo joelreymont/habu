@@ -129,6 +129,9 @@ habu_value_t habu_string_ref(habu_value_t str_val, size_t index);
 size_t habu_string_length_raw(habu_value_t str_val);
 const char* habu_string_to_cstr(habu_value_t str_val);
 habu_value_t habu_make_string_from_vector(habu_value_t vec_val);  /* For reader - convert char codes to string */
+habu_value_t habu_string_concat(habu_value_t str1_val, habu_value_t str2_val);  /* Concatenate two strings */
+habu_value_t habu_string_substring(habu_value_t str_val, habu_value_t start_val, habu_value_t end_val);  /* Extract substring */
+habu_value_t habu_fixnum_to_string(habu_value_t num_val);  /* Convert fixnum to string */
 
 /* Symbol operations */
 habu_value_t habu_make_symbol_from_string(habu_value_t str_val);

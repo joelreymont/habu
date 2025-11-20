@@ -1,4 +1,4 @@
-#define _POSIX_C_SOURCE 199309L
+#define _POSIX_C_SOURCE 200112L  /* POSIX.1-2001 for snprintf */
 #include "habu.h"
 #include <stdio.h>
 #include <stdlib.h>
@@ -216,6 +216,100 @@ habu_value_t habu_make_string_from_vector(habu_value_t vec_val) {
     habu_value_t result = habu_make_string(buf, len);
     free(buf);
     return result;
+}
+
+/* String concatenation */
+habu_value_t habu_string_concat(habu_value_t str1_val, habu_value_t str2_val) {
+    if (get_tag(str1_val) != TAG_STRING || get_tag(str2_val) != TAG_STRING) {
+        return NIL;
+    }
+
+    /* Root inputs - concatenation triggers allocation which can trigger GC */
+    habu_gc_add_root(&str1_val);
+    habu_gc_add_root(&str2_val);
+
+    habu_string_t *str1 = value_to_string(str1_val);
+    habu_string_t *str2 = value_to_string(str2_val);
+
+    size_t len1 = str1->length;
+    size_t len2 = str2->length;
+    size_t total_len = len1 + len2;
+
+    /* Allocate concatenated string buffer */
+    char *buf = (char*)malloc(total_len + 1);
+    if (!buf) {
+        habu_gc_remove_root(&str2_val);
+        habu_gc_remove_root(&str1_val);
+        return NIL;
+    }
+
+    /* Copy both strings */
+    memcpy(buf, str1->data, len1);
+    memcpy(buf + len1, str2->data, len2);
+    buf[total_len] = '\0';
+
+    /* Create result string */
+    habu_value_t result = habu_make_string(buf, total_len);
+    free(buf);
+
+    habu_gc_remove_root(&str2_val);
+    habu_gc_remove_root(&str1_val);
+    return result;
+}
+
+/* String substring */
+habu_value_t habu_string_substring(habu_value_t str_val, habu_value_t start_val, habu_value_t end_val) {
+    if (get_tag(str_val) != TAG_STRING || !is_fixnum(start_val) || !is_fixnum(end_val)) {
+        return NIL;
+    }
+
+    /* Root input string */
+    habu_gc_add_root(&str_val);
+
+    habu_string_t *str = value_to_string(str_val);
+    int64_t start = value_to_fixnum(start_val);
+    int64_t end = value_to_fixnum(end_val);
+
+    /* Bounds checking */
+    if (start < 0) start = 0;
+    if (end > (int64_t)str->length) end = str->length;
+    if (start >= end) {
+        habu_gc_remove_root(&str_val);
+        return habu_make_string("", 0);  /* Empty string */
+    }
+
+    size_t sub_len = end - start;
+
+    /* Allocate substring buffer */
+    char *buf = (char*)malloc(sub_len + 1);
+    if (!buf) {
+        habu_gc_remove_root(&str_val);
+        return NIL;
+    }
+
+    /* Copy substring */
+    memcpy(buf, str->data + start, sub_len);
+    buf[sub_len] = '\0';
+
+    /* Create result string */
+    habu_value_t result = habu_make_string(buf, sub_len);
+    free(buf);
+
+    habu_gc_remove_root(&str_val);
+    return result;
+}
+
+/* Convert fixnum to string */
+habu_value_t habu_fixnum_to_string(habu_value_t num_val) {
+    if (!is_fixnum(num_val)) {
+        return NIL;
+    }
+
+    int64_t num = value_to_fixnum(num_val);
+    char buf[32];  /* Enough for 64-bit integer */
+    snprintf(buf, sizeof(buf), "%lld", (long long)num);
+
+    return habu_make_string(buf, strlen(buf));
 }
 
 /* Symbol operations */
