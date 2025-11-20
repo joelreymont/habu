@@ -102,7 +102,7 @@ habu-enhanced: enhanced-repl.lisp bootstrap/compiler.lisp bootstrap/c-backend.li
 		            (let ((expr (read-from-string (format nil "(progn ~A)" file-contents)))) \
 		              (generate-c-standalone expr :output-file "habu-enhanced.c"))))' \
 		--quit
-	$(CC) $(CFLAGS) -Iruntime -o habu-enhanced habu-enhanced.c $(RUNTIME_OBJS) $(LDLIBS)
+	$(CC) $(CFLAGS) -Wno-unused-value -Iruntime -o habu-enhanced habu-enhanced.c $(RUNTIME_OBJS) $(LDLIBS)
 	@echo "✓ Enhanced REPL built (56KB)"
 
 habu-prog: programmable-repl.lisp bootstrap/compiler.lisp bootstrap/c-backend.lisp $(RUNTIME_OBJS)
@@ -117,7 +117,7 @@ habu-prog: programmable-repl.lisp bootstrap/compiler.lisp bootstrap/c-backend.li
 		            (let ((expr (read-from-string (format nil "(progn ~A)" file-contents)))) \
 		              (generate-c-standalone expr :output-file "habu-prog.c"))))' \
 		--quit
-	$(CC) $(CFLAGS) -Iruntime -o habu-prog habu-prog.c $(RUNTIME_OBJS) $(LDLIBS)
+	$(CC) $(CFLAGS) -Wno-unused-value -Iruntime -o habu-prog habu-prog.c $(RUNTIME_OBJS) $(LDLIBS)
 	@echo "✓ Programmable REPL built (73KB)"
 
 habu-rec: recursive-repl.lisp bootstrap/compiler.lisp bootstrap/c-backend.lisp $(RUNTIME_OBJS)
@@ -132,7 +132,7 @@ habu-rec: recursive-repl.lisp bootstrap/compiler.lisp bootstrap/c-backend.lisp $
 		            (let ((expr (read-from-string (format nil "(progn ~A)" file-contents)))) \
 		              (generate-c-standalone expr :output-file "habu-rec.c"))))' \
 		--quit
-	$(CC) $(CFLAGS) -Iruntime -o habu-rec habu-rec.c $(RUNTIME_OBJS) $(LDLIBS)
+	$(CC) $(CFLAGS) -Wno-unused-value -Iruntime -o habu-rec habu-rec.c $(RUNTIME_OBJS) $(LDLIBS)
 	@echo "✓ Recursive REPL built (73KB) - Complete Lisp!"
 
 habu-extended: extended-recursive-repl.lisp bootstrap/compiler.lisp bootstrap/c-backend.lisp $(RUNTIME_OBJS)
@@ -147,7 +147,7 @@ habu-extended: extended-recursive-repl.lisp bootstrap/compiler.lisp bootstrap/c-
 		            (let ((expr (read-from-string (format nil "(progn ~A)" file-contents)))) \
 		              (generate-c-standalone expr :output-file "habu-extended.c"))))' \
 		--quit
-	$(CC) $(CFLAGS) -Iruntime -o habu-extended habu-extended.c $(RUNTIME_OBJS) $(LDLIBS)
+	$(CC) $(CFLAGS) -Wno-unused-value -Iruntime -o habu-extended habu-extended.c $(RUNTIME_OBJS) $(LDLIBS)
 	@echo "✓ Extended REPL (v1.2) built (75KB) - Adds and, or, not, cond, <=, >="
 
 # Test all REPLs

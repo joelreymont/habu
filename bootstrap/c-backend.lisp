@@ -330,21 +330,34 @@
        (format nil "habu_symbol_name(~A)"
                (habu-expr-to-c (second expr) indent)))
 
-      ;; Let bindings
+      ;; Let bindings with automatic rooting
       ((and (consp expr) (eq (car expr) 'let))
        (let* ((bindings (second expr))
               (body (third expr))
-              (ind (make-string indent :initial-element #\Space)))
+              (ind (make-string indent :initial-element #\Space))
+              (var-names (mapcar (lambda (b) (sanitize-c-name (first b))) bindings))
+              (temp-name (format nil "__let_result_~D" (random 100000))))
          (with-output-to-string (s)
            (format s "({~%")  ; GCC statement expression
+           ;; Declare all variables
            (dolist (binding bindings)
              (format s "~Ahabu_value_t ~A = ~A;~%"
                      ind
                      (sanitize-c-name (first binding))
                      (habu-expr-to-c (second binding) (+ indent 2))))
-           (format s "~A~A;~%"
+           ;; Register roots for all variables
+           (dolist (var-name var-names)
+             (format s "~Ahabu_gc_add_root(&~A);~%" ind var-name))
+           ;; Evaluate body and save to temp
+           (format s "~Ahabu_value_t ~A = ~A;~%"
                    ind
+                   temp-name
                    (habu-expr-to-c body (+ indent 2)))
+           ;; Unregister roots (in reverse order)
+           (dolist (var-name (reverse var-names))
+             (format s "~Ahabu_gc_remove_root(&~A);~%" ind var-name))
+           ;; Return temp value
+           (format s "~A~A;~%" ind temp-name)
            (format s "~A})" ind))))
 
       ;; Progn/begin - sequential evaluation
@@ -467,7 +480,8 @@
   "Generate a C function from a defun expression"
   (let* ((name (second defun-expr))
          (params (third defun-expr))
-         (body (fourth defun-expr)))
+         (body (fourth defun-expr))
+         (param-names (mapcar #'sanitize-c-name params)))
     (with-output-to-string (s)
       (format s "habu_value_t ~A(" (sanitize-c-name name))
       (loop for param in params
@@ -475,7 +489,16 @@
             do (when (> i 0) (format s ", "))
             do (format s "habu_value_t ~A" (sanitize-c-name param)))
       (format s ") {~%")
-      (format s "    return ~A;~%" (habu-expr-to-c body 4))
+      ;; Root all parameters
+      (dolist (param-name param-names)
+        (format s "    habu_gc_add_root(&~A);~%" param-name))
+      ;; Generate body
+      (format s "    habu_value_t __result = ~A;~%" (habu-expr-to-c body 4))
+      ;; Unroot all parameters (in reverse order)
+      (dolist (param-name (reverse param-names))
+        (format s "    habu_gc_remove_root(&~A);~%" param-name))
+      ;; Return result
+      (format s "    return __result;~%")
       (format s "}~%"))))
 
 (defun generate-c-lambda (lambda-spec)
@@ -484,7 +507,9 @@
   (let* ((name (first lambda-spec))
          (params (second lambda-spec))
          (body (third lambda-spec))
-         (captured (fourth lambda-spec)))
+         (captured (fourth lambda-spec))
+         (param-names (mapcar #'sanitize-c-name params))
+         (all-vars (append param-names '("env"))))
     (with-output-to-string (s)
       (format s "habu_value_t ~A(" name)
       (loop for param in params
@@ -495,14 +520,32 @@
       (when params (format s ", "))
       (format s "habu_value_t env) {~%")
 
+      ;; Root all parameters including env
+      (dolist (var all-vars)
+        (format s "    habu_gc_add_root(&~A);~%" var))
+
       ;; Extract captured variables from environment
       (when captured
         (loop for var in captured
               for i from 0
               do (format s "    habu_value_t ~A = habu_vector_ref(env, ~D);~%"
-                         (sanitize-c-name var) i)))
+                         (sanitize-c-name var) i)
+              do (format s "    habu_gc_add_root(&~A);~%" (sanitize-c-name var))))
 
-      (format s "    return ~A;~%" (habu-expr-to-c body 4))
+      ;; Generate body
+      (format s "    habu_value_t __result = ~A;~%" (habu-expr-to-c body 4))
+
+      ;; Unroot captured variables (in reverse order)
+      (when captured
+        (loop for var in (reverse captured)
+              do (format s "    habu_gc_remove_root(&~A);~%" (sanitize-c-name var))))
+
+      ;; Unroot all parameters (in reverse order)
+      (dolist (var (reverse all-vars))
+        (format s "    habu_gc_remove_root(&~A);~%" var))
+
+      ;; Return result
+      (format s "    return __result;~%")
       (format s "}~%"))))
 
 (defun generate-c-standalone (expr &key (output-file "habu_generated.c"))
