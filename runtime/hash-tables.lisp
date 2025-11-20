@@ -52,9 +52,9 @@
       ((= tag 0)
        (abs (ash key-value -4)))
 
-      ;; String (tag 0x3): hash the string content
-      ((= tag #x3)
-       (let* ((str-addr (- key-value #x3))
+      ;; String (tag 0x4): hash the string content
+      ((= tag #x4)
+       (let* ((str-addr (- key-value #x4))
               (len (sb-sys:sap-ref-64 (sb-sys:int-sap str-addr) 0))
               ;; Read string bytes and compute hash
               (hash 0))
@@ -64,9 +64,9 @@
                                (+ (* hash 31) byte)))))
          (abs hash)))
 
-      ;; Symbol (tag 0x5): hash the symbol name
-      ((= tag #x5)
-       (let* ((sym-addr (- key-value #x5))
+      ;; Symbol (tag 0x2): hash the symbol name
+      ((= tag #x2)
+       (let* ((sym-addr (- key-value #x2))
               (name-hash (sb-sys:sap-ref-64 (sb-sys:int-sap sym-addr) 0)))
          (abs name-hash)))
 
@@ -84,10 +84,10 @@
       ;; Different tags => not equal
       ((/= tag1 tag2) nil)
 
-      ;; String comparison (tag 0x3)
-      ((= tag1 #x3)
-       (let* ((addr1 (- key1 #x3))
-              (addr2 (- key2 #x3))
+      ;; String comparison (tag 0x4)
+      ((= tag1 #x4)
+       (let* ((addr1 (- key1 #x4))
+              (addr2 (- key2 #x4))
               (len1 (sb-sys:sap-ref-64 (sb-sys:int-sap addr1) 0))
               (len2 (sb-sys:sap-ref-64 (sb-sys:int-sap addr2) 0)))
          (and (= len1 len2)

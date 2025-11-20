@@ -50,14 +50,15 @@
   (setf *gc-roots* nil))
 
 ;;; Object tags (lower 4 bits)
+;;; MUST MATCH runtime/object.h tag definitions!
 (defconstant +tag-fixnum+     #x0)  ; Fixnum (already shifted left 4)
 (defconstant +tag-cons+       #x1)  ; Cons cell
 (defconstant +tag-symbol+     #x2)  ; Symbol
-(defconstant +tag-string+     #x3)  ; String
-(defconstant +tag-array+      #x4)  ; Array
-(defconstant +tag-float+      #x5)  ; Float (boxed)
-(defconstant +tag-bignum+     #x6)  ; Bignum
-(defconstant +tag-function+   #x7)  ; Function closure
+(defconstant +tag-vector+     #x3)  ; Vector (array) - MATCHES C TAG_VECTOR
+(defconstant +tag-string+     #x4)  ; String - MATCHES C TAG_STRING
+(defconstant +tag-closure+    #x5)  ; Function closure - MATCHES C TAG_CLOSURE
+(defconstant +tag-float+      #x6)  ; Float (boxed) - FUTURE
+(defconstant +tag-bignum+     #x7)  ; Bignum - FUTURE
 (defconstant +tag-forward+    #xE)  ; Forwarding pointer (for GC)
 (defconstant +tag-free+       #xF)  ; Free block marker
 
@@ -243,17 +244,17 @@
              (when (and (not (zerop plist))
                         (= (logand plist #xF) +tag-cons+))
                (gc-mark-object heap plist))))
-          (#.+tag-string+
-           ;; Strings have no pointers, just mark the object
-           nil)
-          (#.+tag-array+
-           ;; Mark array elements that are pointers
+          (#.+tag-vector+
+           ;; Mark vector elements that are pointers
            (let* ((length (read-u64 heap data-addr)))
              (loop for i from 0 below length
                    for element = (read-u64 heap (+ data-addr 8 (* i 8)))
                    do (when (and (not (zerop element))
                                  (not (= (logand element #xF) +tag-fixnum+)))
                         (gc-mark-object heap element)))))
+          (#.+tag-string+
+           ;; Strings have no pointers, just mark the object
+           nil)
           ;; Other types would be handled here
           )))))
 
