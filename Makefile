@@ -27,7 +27,7 @@ BENCH_PROGS = $(BENCH_SRCS:.c=)
 EXAMPLE_SRCS = examples/drone_control_demo.c examples/root_examples.c
 EXAMPLE_PROGS = $(EXAMPLE_SRCS:.c=)
 
-.PHONY: all clean test benchmark examples habu clean-habu
+.PHONY: all clean test benchmark examples
 
 all: $(TEST_PROGS)
 
@@ -80,35 +80,6 @@ cross: CFLAGS = $(CROSS_CFLAGS)
 cross: LDFLAGS = $(CROSS_LDFLAGS)
 cross: all
 
-# ============================================
-# REPL Targets
-# ============================================
-
-# Build Habu Lisp (requires SBCL)
-# Like SBCL, the binary is just 'habu' and launches REPL by default
-habu: habu-repl.lisp bootstrap/compiler.lisp bootstrap/c-backend.lisp $(RUNTIME_OBJS)
-	@echo "Building Habu Lisp..."
-	@sbcl --noinform --non-interactive \
-		--eval '(load "bootstrap/compiler.lisp")' \
-		--eval '(load "bootstrap/c-backend.lisp")' \
-		--eval '(in-package :habu-compiler)' \
-		--eval '(with-open-file (in "habu-repl.lisp" :direction :input) \
-		          (let ((file-contents (make-string (file-length in)))) \
-		            (read-sequence file-contents in) \
-		            (let ((expr (read-from-string (format nil "(progn ~A)" file-contents)))) \
-		              (generate-c-standalone expr :output-file "habu.c"))))' \
-		--quit 2>&1 | grep -v "^;"
-	@echo "Generated C code: habu.c"
-	$(CC) $(CFLAGS) -Wno-unused-value -Iruntime -Wl,-stack_size,0x10000000 -o habu habu.c $(RUNTIME_OBJS) $(LDLIBS)
-	@echo "✓ Habu Lisp built ($(shell ls -lh habu | awk '{print $$5}'))"
-	@echo ""
-	@echo "Usage:"
-	@echo "  ./habu              # Launch REPL"
-	@echo "  echo '(+ 1 2)' | ./habu   # Evaluate expression"
-
-# Clean Habu artifacts
-clean-habu:
-	rm -f habu habu.c
-
-# Update clean target to include Habu
-clean: clean-habu
+# Clean build artifacts (runtime objs, tests, benches, examples)
+clean:
+	rm -f $(TEST_PROGS) $(BENCH_PROGS) $(EXAMPLE_PROGS) $(RUNTIME_OBJS)
