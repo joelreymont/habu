@@ -24,7 +24,7 @@ BENCH_SRCS = benchmarks/bench_region.c benchmarks/bench_gc.c
 BENCH_PROGS = $(BENCH_SRCS:.c=)
 
 # Example programs
-EXAMPLE_SRCS = examples/drone_control_demo.c
+EXAMPLE_SRCS = examples/drone_control_demo.c examples/root_examples.c
 EXAMPLE_PROGS = $(EXAMPLE_SRCS:.c=)
 
 .PHONY: all clean test benchmark examples repls repl-test repl-demo repl-bench clean-repls
