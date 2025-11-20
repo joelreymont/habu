@@ -8,7 +8,7 @@
 
 ## 🎯 Current Task List
 
-### ✅ Completed Tasks (11 items)
+### ✅ Completed Tasks (15 items)
 
 1. ✅ Create comprehensive self-hosting roadmap
 2. ✅ Verify existing compiler features work
@@ -23,23 +23,22 @@
 11. ✅ Add car/cdr code generation to compiler
 12. ✅ Create JIT test with actual runtime addresses
 13. ✅ **Verify cons/car/cdr work with JIT execution** - **BREAKTHROUGH!**
+14. ✅ Wire load into habu REPL (string literals + multi-form files)
+15. ✅ Thread runtime cons/car/cdr addresses through ARM64 codegen via runtime table
 
 ### ⏳ In Progress (1 item)
 
-14. ⏳ Add load function to habu REPL (80% complete)
-    - Basic load-file function added
-    - load-eval-string helper added
-    - TODO: Wire into REPL eval loop
-    - TODO: Handle multiple expressions in file
+16. ⏳ Test load path in REPL (compiler + sample programs)
+    - Confirm multi-expression file execution
+    - Verify env updates persist across load
 
-### 📋 Pending Tasks (6 items)
+### 📋 Pending Tasks (5 items)
 
-15. 📋 Test loading compiler in REPL
-16. 📋 Test recursive function calls (factorial)
-17. 📋 Compile simple programs end-to-end
-18. 📋 Test self-compilation (compiler compiles itself)
-19. 📋 Achieve fixed-point bootstrap
-20. 📋 Full Common Lisp spec implementation (long-term)
+17. 📋 Test recursive function calls (factorial)
+18. 📋 Compile simple programs end-to-end
+19. 📋 Test self-compilation (compiler compiles itself)
+20. 📋 Achieve fixed-point bootstrap
+21. 📋 Full Common Lisp spec implementation (long-term)
 
 ---
 
@@ -96,11 +95,11 @@ Previously thought missing, actually COMPLETE:
 ### 5. REPL Enhancement (1 hour)
 
 **Added to habu-repl.lisp**:
-- `load-file` function - Load and evaluate file
-- `load-eval-string` - Helper for string evaluation
-- Updated feature list to include load
+- `(load ...)` special form wired into eval loop
+- String literal reader + multi-expression loader
+- `load-file`/`load-eval-string` thread env across forms
 
-**Status**: 80% complete, needs wiring into eval loop
+**Status**: Complete - ready to test with real files
 
 ---
 
@@ -122,7 +121,8 @@ Previously thought missing, actually COMPLETE:
 - ✅ **JIT execution verified** - NEW!
 
 **What's Missing**:
-- ⏳ load function (in progress)
+- ⏳ Pass real runtime addresses into compiler pipeline and re-test
+- ⏳ Exercise new load path with compiler + programs
 - 📋 Quasiquote/unquote (not blocking)
 - 📋 defmacro (not blocking)
 - 📋 More data structures (not blocking)
@@ -267,17 +267,15 @@ Previously thought missing, actually COMPLETE:
 
 ### Immediate (Next 1-2 hours)
 
-1. **Complete load function integration**
-   - Wire into eval loop
-   - Handle multiple expressions
-   - Test with simple files
-   - Add to initial environment
+1. **Test new load path**
+   - Create simple file (defs + expression)
+   - Load with `(load "test.lisp")`
+   - Verify env persistence + multi-form handling
 
-2. **Test loading files**
-   - Create test Lisp file
-   - Load with (load "test.lisp")
-   - Verify definitions persist
-   - Test with factorial
+2. **Pass runtime addresses from host**
+   - Build runtime table with `make-runtime-addrs`
+   - Use `compile-to-arm64-with-runtime` / program-with-functions variant
+   - Re-run cons/car/cdr JIT checks with real addresses
 
 ### Soon (Next 2-4 hours)
 
@@ -403,30 +401,24 @@ Previously thought missing, actually COMPLETE:
 - habu_car: Get at runtime with `(void*)habu_car`
 - habu_cdr: Get at runtime with `(void*)habu_cdr`
 
-**Current**: Placeholder 0 in code
-**Fix**: Thread addresses through compile functions
-**Effort**: 30-60 minutes
+**Current**: Runtime address table threaded through codegen
+- New helper: `make-runtime-addrs` builds (cons/car/cdr) table
+- New entry points: `compile-to-arm64-with-runtime`, `compile-program-with-functions-with-runtime`
+- Default wrappers still work (use #x0 placeholders)
+
+**Next**: Pass real `(void*)` addresses from C/JIT harness during compilation
 
 ### Load Function Status
 
-**Added to habu-repl.lisp** (line 360-383):
-```lisp
-(defun load-file (filename env)
-  "Load and evaluate all expressions in a file"
-  (let ((contents (read-file filename)))
-    (if contents
-      (load-eval-string contents env)
-      (progn
-        (print (quote "Error: Could not read file"))
-        (println)
-        (cons (quote nil) env)))))
-```
+**Added to habu-repl.lisp** (load now COMPLETE):
+- String literal reader + `(load ...)` special form in eval loop
+- `read-all-exprs` parses multiple forms per file
+- `load-file` normalizes string/symbol filenames and threads updated env
 
 **TODO**:
-1. Wire into eval loop (add as special form)
-2. Handle multiple expressions in file
-3. Test with actual files
-4. Add error handling
+1. Test with real files (compiler + sample programs)
+2. Verify env persistence after load
+3. Add better error messaging for missing files
 
 ### Known Issues
 
@@ -435,16 +427,9 @@ Previously thought missing, actually COMPLETE:
    - Can convert for testing
    - Not blocking
 
-2. **Load function incomplete** - Needs wiring
-   - Basic implementation done
-   - Need special form handling
-   - Need multi-expression support
-   - 1-2 hours work
-
-3. **Runtime addresses** - Currently placeholders
-   - Need actual addresses
-   - Easy to pass at compile time
-   - 30-60 minutes work
+2. **Runtime addresses** - Defaults to #x0 unless provided
+   - Need to pass real addresses from host before codegen
+   - Support exists via runtime addrs table
 
 **None of these block progress!**
 
@@ -581,14 +566,14 @@ Just need to:
 
 ### Key Files to Work On Next
 
-1. `habu-repl.lisp` - Complete load function
-2. `habu-arm64-codegen.lisp` - Pass runtime addresses
-3. Test files - Verify load works
+1. `habu-repl.lisp` - Validate `(load ...)` with real files
+2. `habu-arm64-codegen.lisp` - Supply runtime address table to codegen
+3. Test harnesses - Re-run JIT tests with real runtime pointers
 
 ### Key Functions to Test
 
-1. `load-file` - Load and eval file
-2. `compile-expr` - With runtime addresses
+1. `(load "...")` - Multi-form load + env persistence
+2. `compile-to-arm64-with-runtime` - With real runtime addresses
 3. Recursive factorial
 4. Self-compilation
 
@@ -610,9 +595,9 @@ sbcl --load habu-arm64-codegen.lisp
 
 ---
 
-**Last Updated**: November 20, 2025, 11:00 PM
+**Last Updated**: November 20, 2025, 8:25 PM EET
 **Status**: 🎉 BREAKTHROUGH - JIT execution working!
-**Next Session**: Complete load, test recursive, self-compile
+**Next Session**: Test load pipeline + runtime address plumbing, then recursion/self-compile
 **Timeline**: 1-3 days to self-hosting
 **Confidence**: ⭐⭐⭐⭐⭐ (5/5)
 

@@ -94,6 +94,14 @@
         (fill-vec chars vec (quote 0))
         (make-symbol (make-string-from-vector vec))))))
 
+(defun make-string-from-chars (chars)
+  "Create Lisp string from list of character codes"
+  (let ((len (list-length chars #x0)))
+    (let ((vec (make-vector len)))
+      (progn
+        (fill-vec chars vec #x0)
+        (make-string-from-vector vec)))))
+
 (defun list-length (lst acc)
   (if (nil? lst) acc
     (list-length (cdr lst) (+ acc (quote 1)))))
@@ -120,6 +128,18 @@
     (let ((chars (reverse-list (car result))))
       (cons (make-sym-from-chars chars) (cdr result)))))
 
+;;; Parse string literal "..."
+(defun parse-string-helper (str idx acc)
+  (if (>= idx (string-length-raw str))
+    (cons (quote nil) idx)
+    (let ((ch (string-ref str idx)))
+      (if (= ch #x22)  ; closing "
+        (cons (make-string-from-chars (reverse-list acc)) (+ idx #x1))
+        (parse-string-helper str (+ idx #x1) (cons ch acc))))))
+
+(defun parse-string (str idx)
+  (parse-string-helper str (+ idx #x1) (quote nil)))
+
 ;;; Parse list
 (defun parse-list (str idx acc)
   (let ((idx2 (skip-ws str idx)))
@@ -145,14 +165,31 @@
               (cons (cons (make-symbol (quote "quote"))
                          (cons (car quoted-result) (quote nil)))
                    (cdr quoted-result)))
-            (if (is-digit? ch)
-              (parse-num str idx2 (quote 0))
-              (if (is-symbol-start? ch)
-                (parse-sym str idx2)
-                (cons (quote nil) idx2)))))))))
+            (if (= ch #x22)  ; "
+              (parse-string str idx2)
+              (if (is-digit? ch)
+                (parse-num str idx2 (quote 0))
+                (if (is-symbol-start? ch)
+                  (parse-sym str idx2)
+                  (cons (quote nil) idx2)))))))))))
 
 (defun read-str (str)
-  (car (parse-one str (quote 0))))
+  (car (parse-one str #x0)))
+
+(defun parse-all-exprs (str idx acc)
+  "Parse all expressions from string, accumulating in acc"
+  (let ((next-idx (skip-ws str idx)))
+    (if (>= next-idx (string-length-raw str))
+      (reverse-list acc)
+      (let ((result (parse-one str next-idx)))
+        (let ((expr (car result)))
+          (let ((end-idx (cdr result)))
+            (if (nil? expr)
+              (reverse-list acc)
+              (parse-all-exprs str end-idx (cons expr acc)))))))))
+
+(defun read-all-exprs (str)
+  (parse-all-exprs str #x0 (quote nil)))
 
 ;;;; Evaluator with quote, if, let, lambda
 
@@ -299,14 +336,24 @@
     (symbol=? (car expr) (make-symbol (quote "defun")))
     (quote nil)))
 
+(defun is-load? (expr)
+  (if (cons? expr)
+    (symbol=? (car expr) (make-symbol (quote "load")))
+    (quote nil)))
+
 (defun eval-toplevel (expr env)
-  (if (is-defun? expr)
-    (let ((name (car (cdr expr))))
-      (let ((params (car (cdr (cdr expr)))))
-        (let ((body (car (cdr (cdr (cdr expr))))))
-          (let ((closure (cons (make-symbol (quote "closure")) (cons env (cons params (cons body (quote nil)))))))
-            (cons name (env-extend name closure env))))))
-    (cons (eval-expr expr env) env)))
+  (if (is-load? expr)
+    (let ((args (cdr expr)))
+      (if (nil? args)
+        (cons (quote nil) env)
+        (load-file (eval-expr (car args) env) env)))
+    (if (is-defun? expr)
+      (let ((name (car (cdr expr))))
+        (let ((params (car (cdr (cdr expr)))))
+          (let ((body (car (cdr (cdr (cdr expr))))))
+            (let ((closure (cons (make-symbol (quote "closure")) (cons env (cons params (cons body (quote nil)))))))
+              (cons name (env-extend name closure env))))))
+      (cons (eval-expr expr env) env))))
 
 ;;;; REPL
 
@@ -358,29 +405,42 @@
             env5))))))
 
 ;;;; Load function - loads and evaluates a file
+(defun normalize-filename (filename)
+  (if (string? filename)
+    filename
+    (if (symbol? filename)
+      (symbol-name filename)
+      filename)))
+
+(defun eval-expr-list (exprs env)
+  "Evaluate each expression, returning last result with updated environment"
+  (if (nil? exprs)
+    (cons (quote nil) env)
+    (let ((result-env (eval-toplevel (car exprs) env)))
+      (let ((result (car result-env)))
+        (let ((new-env (cdr result-env)))
+          (if (nil? (cdr exprs))
+            (cons result new-env)
+            (eval-expr-list (cdr exprs) new-env)))))))
+
 (defun load-file (filename env)
   "Load and evaluate all expressions in a file"
-  (let ((contents (read-file filename)))
-    (if contents
-      (load-eval-string contents env)
-      (progn
-        (print (quote "Error: Could not read file"))
-        (println)
-        (cons (quote nil) env)))))
+  (let ((path (normalize-filename filename)))
+    (if path
+      (let ((contents (read-file path)))
+        (if contents
+          (load-eval-string contents env)
+          (progn
+            (print (quote "Error: Could not read file"))
+            (println)
+            (cons (quote nil) env))))
+      (cons (quote nil) env))))
 
 (defun load-eval-string (str env)
   "Evaluate all expressions in a string, returning final result and environment"
-  (if (= (string-length-raw str) (quote 0))
+  (if (= (string-length-raw str) #x0)
     (cons (quote nil) env)
-    (let ((expr (read-str str)))
-      (if (nil? expr)
-        (cons (quote nil) env)
-        (let ((result-env (eval-toplevel expr env)))
-          (let ((result (car result-env)))
-            (let ((new-env (cdr result-env)))
-              ;;; TODO: Parse remaining expressions from string
-              ;;; For now, just evaluate first expression
-              (cons result new-env))))))))
+    (eval-expr-list (read-all-exprs str) env)))
 
 (defun repl-start ()
   (progn

@@ -333,42 +333,60 @@
       (quote nil))
     (quote nil)))
 
-(defun codegen-progn-list (exprs)
+(defun runtime-lookup (name runtime-addrs)
+  "Lookup runtime function address by name from association list"
+  (if (nil? runtime-addrs)
+    #x0
+    (let ((entry (car runtime-addrs)))
+      (let ((entry-name (car entry)))
+        (let ((entry-addr (cdr entry)))
+          (if (symbol=? name entry-name)
+            entry-addr
+            (runtime-lookup name (cdr runtime-addrs))))))))
+
+(defun make-runtime-addrs (cons-addr car-addr cdr-addr)
+  "Create runtime address table for cons/car/cdr"
+  (cons (cons (quote habu_cons) cons-addr)
+    (cons (cons (quote habu_car) car-addr)
+      (cons (cons (quote habu_cdr) cdr-addr)
+        (quote nil)))))
+
+(defun codegen-progn-list (exprs runtime-addrs)
   "Generate code for list of expressions, returning last result"
   (if (cons? exprs)
-    (let ((first-code (codegen-expr (car exprs))))
+    (let ((first-code (codegen-expr (car exprs) runtime-addrs)))
       (let ((rest (cdr exprs)))
         (if (cons? rest)
           ;;; More expressions: append this code and continue
-          (append-code first-code (codegen-progn-list rest))
+          (append-code first-code (codegen-progn-list rest runtime-addrs))
           ;;; Last expression: just return its code
           first-code)))
     ;;; Empty list: return 0
-    (arm64-movz 0 0)))
+    (arm64-movz 0 #x0)))
 
-(defun codegen-save-bindings (bindings)
+(defun codegen-save-bindings (bindings runtime-addrs)
   "Generate code to evaluate and save all bindings to stack
    Each binding is (var value-ir offset)"
   (if (cons? bindings)
     (let ((binding (car bindings)))
       (let ((value-ir (car (cdr binding))))
         ;;; Generate code for this value
-        (let ((value-code (codegen-expr value-ir)))
+        (let ((value-code (codegen-expr value-ir runtime-addrs)))
           ;;; Save to stack
           (let ((save-code (arm64-str 0 31 -16)))
             ;;; Continue with rest of bindings
-            (let ((rest-code (codegen-save-bindings (cdr bindings))))
+            (let ((rest-code (codegen-save-bindings (cdr bindings) runtime-addrs)))
               (append-code value-code
                 (append-code save-code rest-code)))))))
     nil))
 
-(defun codegen-eval-args-push (args-ir)
+(defun codegen-eval-args-push (args-ir runtime-addrs)
   "Generate code to evaluate each argument and push to stack"
   (if (cons? args-ir)
     (let ((arg (car args-ir)))
-      (let ((code (codegen-expr arg)))
+      (let ((code (codegen-expr arg runtime-addrs)))
         (let ((push (arm64-str 0 31 -16)))
-          (let ((rest-code (codegen-eval-args-push (cdr args-ir))))
+          (let ((rest-code (codegen-eval-args-push (cdr args-ir) runtime-addrs)))
             (append-code code
               (append-code push rest-code))))))
     nil))
@@ -387,17 +405,17 @@
                      (arm64-ldr-post 0 31 16))
         (if (= num-args 3)
           ;;; Pop three args: x2, x1, x0
-          (append-code (arm64-ldr-post 2 31 16)
-            (append-code (arm64-ldr-post 1 31 16)
-                         (arm64-ldr-post 0 31 16)))
+        (append-code (arm64-ldr-post 2 31 16)
+          (append-code (arm64-ldr-post 1 31 16)
+                       (arm64-ldr-post 0 31 16)))
           ;;; More than 3 args not supported yet
           nil)))))
 
-(defun codegen-eval-args-to-regs (args-ir)
+(defun codegen-eval-args-to-regs (args-ir runtime-addrs)
   "Generate code to evaluate arguments and place in registers x0-x2
    Strategy: eval and push all, then pop to registers in correct order"
   (let ((num-args (count-args args-ir)))
-    (let ((push-code (codegen-eval-args-push args-ir)))
+    (let ((push-code (codegen-eval-args-push args-ir runtime-addrs)))
       (let ((pop-code (codegen-pop-args-to-regs num-args)))
         (append-code push-code pop-code)))))
 
@@ -413,7 +431,7 @@
     (+ 1 (count-bindings (cdr bindings)))
     0))
 
-(defun codegen-cond-clauses (clauses)
+(defun codegen-cond-clauses (clauses runtime-addrs)
   "Generate code for cond clauses - returns code that leaves result in x0"
   (if (cons? clauses)
     ;;; Process one clause
@@ -422,12 +440,12 @@
         (let ((result (car (cdr clause))))
           (let ((rest-clauses (cdr clauses)))
             ;;; Generate code for test and result
-            (let ((test-code (codegen-expr test)))
-              (let ((result-code (codegen-expr result)))
+            (let ((test-code (codegen-expr test runtime-addrs)))
+              (let ((result-code (codegen-expr result runtime-addrs)))
                 ;;; Generate code for remaining clauses + default
                 (let ((rest-code (if (cons? rest-clauses)
-                                   (codegen-cond-clauses rest-clauses)
-                                   (arm64-movz 0 0))))  ; default: return nil
+                                   (codegen-cond-clauses rest-clauses runtime-addrs)
+                                   (arm64-movz 0 #x0))))  ; default: return nil
                   ;;; Calculate sizes
                   (let ((result-size (count-instrs result-code)))
                     (let ((rest-size (count-instrs rest-code)))
@@ -449,7 +467,7 @@
     ;;; No clauses - return nil (this is the default case)
     (arm64-movz 0 0)))
 
-(defun codegen-expr (ir)
+(defun codegen-expr (ir runtime-addrs)
   "Generate ARM64 code for expression (result in x0)"
   (if (has-tag? ir (quote lit))
     ;;; Literal: movz x0, #(value << 4)
@@ -470,11 +488,11 @@
           (let ((value-ir (car (cdr (cdr ir)))))
             (let ((body-ir (car (cdr (cdr (cdr ir))))))
               ;;; Generate code for value
-              (let ((value-code (codegen-expr value-ir)))
+              (let ((value-code (codegen-expr value-ir runtime-addrs)))
                 ;;; Save x0 on stack: str x0, [sp, #-16]!
                 (let ((save-code (arm64-str 0 31 -16)))
                   ;;; Generate code for body
-                  (let ((body-code (codegen-expr body-ir)))
+                  (let ((body-code (codegen-expr body-ir runtime-addrs)))
                     ;;; Restore stack: add sp, sp, #16
                     (let ((restore-code (arm64-add-imm 31 31 16)))
                       (append-code value-code
@@ -485,8 +503,8 @@
           ;;; Multiple let bindings: evaluate and save all values, then evaluate body
           (let ((bindings (car (cdr ir))))
             (let ((body-ir (car (cdr (cdr ir)))))
-              (let ((save-code (codegen-save-bindings bindings)))
-                (let ((body-code (codegen-expr body-ir)))
+              (let ((save-code (codegen-save-bindings bindings runtime-addrs)))
+                (let ((body-code (codegen-expr body-ir runtime-addrs)))
                   (let ((binding-count (count-bindings bindings)))
                     (let ((restore-code (arm64-add-imm 31 31 (* binding-count 16))))
                       (append-code save-code
@@ -497,7 +515,7 @@
             (let ((fname (car (cdr ir))))
               (let ((args-ir (car (cdr (cdr ir)))))
                 ;;; Evaluate arguments and place in x0-x2
-                (let ((args-code (codegen-eval-args-to-regs args-ir)))
+                (let ((args-code (codegen-eval-args-to-regs args-ir runtime-addrs)))
                   ;;; TODO: Look up function offset from fn-offsets table
                   ;;; TODO: Calculate BL offset from current position
                   ;;; For now, use dummy offset of 0 (calls next instruction)
@@ -511,7 +529,7 @@
           (let ((arg2 (car (cdr (cdr (cdr ir))))))
             (if (nil? arg2)
               ;;; Unary operation (e.g., not, fixnum?)
-              (let ((code1 (codegen-expr arg1)))
+              (let ((code1 (codegen-expr arg1 runtime-addrs)))
                 (if (symbol=? op (quote not))
                   ;;; NOT: invert boolean
                   (append-code code1
@@ -540,14 +558,14 @@
                               (arm64-lsl 0 0 4))))
                         (if (symbol=? op (quote car))
                           ;;; CAR: call habu_car with value in x0
-                          (let ((habu-car-addr 0))  ; PLACEHOLDER
+                          (let ((habu-car-addr (runtime-lookup (quote habu_car) runtime-addrs)))
                             (let ((load-addr (load-address-to-reg 2 habu-car-addr)))
                               (let ((call-code (arm64-blr 2)))
                                 (append-code code1
                                   (append-code load-addr call-code)))))
                           (if (symbol=? op (quote cdr))
                             ;;; CDR: call habu_cdr with value in x0
-                            (let ((habu-cdr-addr 0))  ; PLACEHOLDER
+                            (let ((habu-cdr-addr (runtime-lookup (quote habu_cdr) runtime-addrs)))
                               (let ((load-addr (load-address-to-reg 2 habu-cdr-addr)))
                                 (let ((call-code (arm64-blr 2)))
                                   (append-code code1
@@ -558,12 +576,10 @@
               ;;; First check for cons/car/cdr (runtime calls)
               (if (symbol=? op (quote cons))
                 ;;; CONS: (cons a b) - call habu_cons
-                ;;; Need runtime address - for now use placeholder 0
-                ;;; TODO: Pass runtime addresses as parameter
-                (let ((habu-cons-addr 0))  ; PLACEHOLDER
-                  (let ((code1 (codegen-expr arg1)))      ; arg1 → x0
+                (let ((habu-cons-addr (runtime-lookup (quote habu_cons) runtime-addrs)))
+                  (let ((code1 (codegen-expr arg1 runtime-addrs)))      ; arg1 → x0
                     (let ((save-code (arm64-str 0 31 -16)))  ; push x0
-                      (let ((code2 (codegen-expr arg2)))     ; arg2 → x0
+                      (let ((code2 (codegen-expr arg2 runtime-addrs)))     ; arg2 → x0
                         (let ((move-code (arm64-mov 1 0)))   ; x0 → x1
                           (let ((load-code (arm64-ldr-post 0 31 16)))  ; pop to x0
                             (let ((load-addr (load-address-to-reg 2 habu-cons-addr)))
@@ -574,11 +590,11 @@
                                       (append-code move-code
                                         (append-code load-code
                                           (append-code load-addr call-code))))))))))))))
-              (let ((code1 (codegen-expr arg1)))
+              (let ((code1 (codegen-expr arg1 runtime-addrs)))
               ;;; Save arg1: str x0, [sp, #-16]!
               (let ((save-code (arm64-str 0 31 -16)))
                 ;;; Generate code for arg2
-                (let ((code2 (codegen-expr arg2)))
+                (let ((code2 (codegen-expr arg2 runtime-addrs)))
                   ;;; Move arg2 to x1: mov x1, x0
                   (let ((move-code (arm64-mov 1 0)))
                     ;;; Load arg1 to x0: ldr x0, [sp], #16
@@ -693,12 +709,12 @@
           (let ((then-expr (car (cdr (cdr ir)))))
             (let ((else-expr (car (cdr (cdr (cdr ir))))))
               ;;; Compile test
-              (let ((test-code (codegen-expr test-expr)))
+              (let ((test-code (codegen-expr test-expr runtime-addrs)))
                 ;;; Compare result with zero (nil/false)
                 (let ((cmp-code (cmp-zero)))
                   ;;; Compile then and else branches
-                  (let ((then-code (codegen-expr then-expr)))
-                    (let ((else-code (codegen-expr else-expr)))
+                  (let ((then-code (codegen-expr then-expr runtime-addrs)))
+                    (let ((else-code (codegen-expr else-expr runtime-addrs)))
                       ;;; Calculate offsets
                       (let ((then-size (count-instrs then-code)))
                         (let ((else-size (count-instrs else-code)))
@@ -718,26 +734,30 @@
         (if (has-tag? ir (quote progn))
           ;;; Progn: sequential execution
           (let ((exprs (car (cdr ir))))
-            (codegen-progn-list exprs))
+            (codegen-progn-list exprs runtime-addrs))
 
           (if (has-tag? ir (quote cond))
             ;;; Cond: multi-way conditional
             (let ((clauses (car (cdr ir))))
-              (codegen-cond-clauses clauses))
+              (codegen-cond-clauses clauses runtime-addrs))
 
               ;;; Unknown
-              (arm64-movz 0 0)))))))))
+              (arm64-movz 0 #x0)))))))))
 
-(defun codegen-main (ir)
+(defun codegen-main-with-runtime (ir runtime-addrs)
   "Generate complete main function"
   (let ((prologue (append-code (arm64-stp 29 30 31 -16) (arm64-add-imm 29 31 0))))
-    (let ((body (codegen-expr ir)))
+    (let ((body (codegen-expr ir runtime-addrs)))
       (let ((untag (arm64-lsr 0 0 4)))
         (let ((epilogue (append-code (arm64-add-imm 31 29 0)
                           (append-code (arm64-ldp 29 30 31 16) (arm64-ret)))))
           (append-code prologue
             (append-code body
               (append-code untag epilogue))))))))
+
+(defun codegen-main (ir)
+  "Generate main function without runtime addresses (defaults to zero)"
+  (codegen-main-with-runtime ir (quote nil)))
 
 ;;; ============================================
 ;;; Compiler Integration
@@ -862,14 +882,14 @@
             (append-code (arm64-str 1 31 -16)
                          (arm64-str 2 31 -16))))))))
 
-(defun codegen-function (params body-ir)
+(defun codegen-function-with-runtime (params body-ir runtime-addrs)
   "Generate code for a complete function with parameters
    Returns machine code with prologue, parameter saves, body, epilogue"
   (let ((param-count (count-params params)))
     (let ((prologue (append-code (arm64-stp 29 30 31 -16)
                                  (arm64-add-imm 29 31 0))))
       (let ((save-params (codegen-save-params-helper param-count)))
-        (let ((body-code (codegen-expr body-ir)))
+        (let ((body-code (codegen-expr body-ir runtime-addrs)))
           (let ((restore-stack (arm64-add-imm 31 31 (* param-count 16))))
             (let ((untag (arm64-lsr 0 0 4)))
               (let ((epilogue (append-code (arm64-add-imm 31 29 0)
@@ -1080,9 +1100,13 @@
                                     (list (quote call) op (compile-expr arg1 env fenv)))))
                               (list (quote call) op)))))))))))
 
+(defun compile-to-arm64-with-runtime (expr runtime-addrs)
+  "Full pipeline with explicit runtime addresses: Habu expr → IR → ARM64 bytes"
+  (codegen-main-with-runtime (compile-expr expr nil nil) runtime-addrs))
+
 (defun compile-to-arm64 (expr)
   "Full pipeline: Habu expr → IR → ARM64 bytes"
-  (codegen-main (compile-expr expr nil nil)))
+  (compile-to-arm64-with-runtime expr (quote nil)))
 
 ;;; ============================================
 ;;; Function Definition and Multi-Form Compilation
@@ -1138,7 +1162,7 @@
    Returns: (list-of-compiled-functions main-expression-ir)"
   (compile-forms-helper forms nil nil))
 
-(defun codegen-functions-helper (compiled-fns current-offset)
+(defun codegen-functions-helper (compiled-fns current-offset runtime-addrs)
   "Generate machine code for all compiled functions
    Returns: (total-code function-offsets)
    function-offsets is list of (name offset-in-instructions)"
@@ -1148,11 +1172,12 @@
         (let ((param-count (car (cdr fn))))
           (let ((body-ir (car (cdr (cdr fn)))))
             ;;; Generate code for this function
-            (let ((fn-code (codegen-function-with-params param-count body-ir)))
+            (let ((fn-code (codegen-function-with-params param-count body-ir runtime-addrs)))
               (let ((fn-size (count-instrs fn-code)))
                 ;;; Recurse for rest of functions
                 (let ((rest-result (codegen-functions-helper (cdr compiled-fns)
-                                                             (+ current-offset fn-size))))
+                                                             (+ current-offset fn-size)
+                                                             runtime-addrs)))
                   (let ((rest-code (car rest-result)))
                     (let ((rest-offsets (car (cdr rest-result))))
                       (list (append-code fn-code rest-code)
@@ -1160,13 +1185,13 @@
     ;;; No more functions
     (list nil nil)))
 
-(defun codegen-function-with-params (param-count body-ir)
+(defun codegen-function-with-params (param-count body-ir runtime-addrs)
   "Generate code for function with parameter count
    Parameters come in x0, x1, etc. and are saved to stack"
   (let ((prologue (append-code (arm64-stp 29 30 31 -16)
                                (arm64-add-imm 29 31 0))))
     (let ((save-params (codegen-save-params-helper param-count)))
-      (let ((body-code (codegen-expr body-ir)))
+      (let ((body-code (codegen-expr body-ir runtime-addrs)))
         (let ((restore-stack (if (= param-count 0)
                                nil
                                (arm64-add-imm 31 31 (* param-count 16)))))
@@ -1180,21 +1205,29 @@
                     (append-code restore-stack
                       (append-code untag epilogue))))))))))))
 
-(defun compile-program-with-functions (forms)
+(defun codegen-function (params body-ir)
+  "Generate function code using default runtime addresses"
+  (codegen-function-with-runtime params body-ir (quote nil)))
+
+(defun compile-program-with-functions-with-runtime (forms runtime-addrs)
   "Compile entire program with function definitions
    Returns: complete machine code with all functions + main"
   (let ((compile-result (compile-forms forms)))
     (let ((compiled-fns (car compile-result)))
       (let ((main-ir (car (cdr compile-result))))
         ;;; Generate code for all functions
-        (let ((fns-result (codegen-functions-helper compiled-fns 0)))
+        (let ((fns-result (codegen-functions-helper compiled-fns 0 runtime-addrs)))
           (let ((fns-code (car fns-result)))
             (let ((fn-offsets (car (cdr fns-result))))
               (let ((fns-size (count-instrs fns-code)))
                 ;;; Generate main code
-                (let ((main-code (codegen-main main-ir)))
+                (let ((main-code (codegen-main-with-runtime main-ir runtime-addrs)))
                   ;;; Combine: functions first, then main
                   (append-code fns-code main-code))))))))))
+
+(defun compile-program-with-functions (forms)
+  "Compile program using default runtime addresses (nil placeholders)"
+  (compile-program-with-functions-with-runtime forms (quote nil)))
 
 ;;; ============================================
 ;;; Tests (commented out - run manually if needed)
