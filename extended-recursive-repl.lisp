@@ -131,7 +131,7 @@
           (cons (reverse-list acc) (+ idx2 (quote 1)))
           (let ((elem-result (parse-one str idx2)))
             (parse-list str (cdr elem-result)
-                       (cons (car elem-result) acc))))))))
+                       (cons (car elem-result) acc)))))))
 
 ;;; Main parser
 (defun parse-one (str idx)
