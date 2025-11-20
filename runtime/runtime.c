@@ -224,8 +224,15 @@ habu_value_t habu_make_symbol_from_string(habu_value_t str_val) {
     if (get_tag(str_val) != TAG_STRING) {
         return NIL;
     }
+
+    /* Root the input string - habu_make_symbol can trigger GC */
+    habu_gc_add_root(&str_val);
+
     habu_string_t *str = value_to_string(str_val);
-    return habu_make_symbol(str->data);
+    habu_value_t result = habu_make_symbol(str->data);
+
+    habu_gc_remove_root(&str_val);
+    return result;
 }
 
 habu_value_t habu_symbol_name(habu_value_t sym_val) {

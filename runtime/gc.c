@@ -1199,12 +1199,22 @@ habu_value_t habu_make_symbol(const char *name) {
         return NIL;
     }
 
+    /* CRITICAL: Root the symbol before nested allocation
+     * habu_make_string can trigger GC, which would invalidate 'mem' */
     habu_symbol_t *sym = (habu_symbol_t *)mem;
+    habu_value_t sym_value = tag_pointer(sym, TAG_SYMBOL);
+    habu_gc_add_root(&sym_value);
+
+    /* Now safe to allocate string - if GC runs, sym_value will be updated */
+    sym = (habu_symbol_t *)untag_pointer(sym_value);  /* Refresh pointer */
     sym->name = habu_make_string(name, strlen(name));
     sym->value = NIL;
     sym->plist = NIL;
 
-    return tag_pointer(sym, TAG_SYMBOL);
+    /* Unroot before returning */
+    habu_gc_remove_root(&sym_value);
+
+    return sym_value;
 }
 
 /* Statistics */
