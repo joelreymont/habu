@@ -12,7 +12,7 @@ CROSS_CFLAGS = $(CFLAGS)
 CROSS_LDFLAGS = $(LDFLAGS)
 
 # Source files
-RUNTIME_SRCS = runtime/runtime.c runtime/region.c runtime/gc.c
+RUNTIME_SRCS = runtime/runtime.c runtime/region.c runtime/gc.c runtime/lineedit.c runtime/io.c
 RUNTIME_OBJS = $(RUNTIME_SRCS:.c=.o)
 
 # Test files
