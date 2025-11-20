@@ -99,7 +99,7 @@ habu: habu-repl.lisp bootstrap/compiler.lisp bootstrap/c-backend.lisp $(RUNTIME_
 		              (generate-c-standalone expr :output-file "habu.c"))))' \
 		--quit 2>&1 | grep -v "^;"
 	@echo "Generated C code: habu.c"
-	$(CC) $(CFLAGS) -Wno-unused-value -Iruntime -o habu habu.c $(RUNTIME_OBJS) $(LDLIBS)
+	$(CC) $(CFLAGS) -Wno-unused-value -Iruntime -Wl,-stack_size,0x10000000 -o habu habu.c $(RUNTIME_OBJS) $(LDLIBS)
 	@echo "✓ Habu Lisp built ($(shell ls -lh habu | awk '{print $$5}'))"
 	@echo ""
 	@echo "Usage:"
