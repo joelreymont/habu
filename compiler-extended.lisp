@@ -1,0 +1,62 @@
+;;;; Extended Habu Self-Hosting Compiler
+;;;; Supports: literals, variables, calls, if, let, lambda, defun
+
+(defun compile-expr (expr)
+  (if (fixnum? expr)
+    (list (quote lit) expr)
+    (if (symbol? expr)
+      (list (quote var) expr)
+      (if (cons? expr)
+        (let ((op (car expr)))
+          (let ((args (cdr expr)))
+            (if (symbol=? op (quote if))
+              (compile-if args)
+              (if (symbol=? op (quote let))
+                (compile-let args)
+                (if (symbol=? op (quote lambda))
+                  (compile-lambda args)
+                  (if (symbol=? op (quote defun))
+                    (compile-defun args)
+                    (compile-call op args)))))))
+        expr))))
+
+(defun compile-if (args)
+  (list (quote if-expr)
+        (compile-expr (car args))
+        (compile-expr (car (cdr args)))
+        (compile-expr (car (cdr (cdr args))))))
+
+(defun compile-let (args)
+  (list (quote let-expr)
+        (car args)
+        (compile-expr (car (cdr args)))))
+
+(defun compile-lambda (args)
+  (list (quote lambda-expr)
+        (car args)
+        (compile-expr (car (cdr args)))))
+
+(defun compile-defun (args)
+  (list (quote defun-expr)
+        (car args)
+        (car (cdr args))
+        (compile-expr (car (cdr (cdr args))))))
+
+(defun compile-call (op args)
+  (if (cons? args)
+    (let ((arg1 (car args)))
+      (let ((rest (cdr args)))
+        (if (cons? rest)
+          (list (quote call) op
+                (compile-expr arg1)
+                (compile-expr (car rest)))
+          (list (quote call) op (compile-expr arg1)))))
+    (list (quote call) op)))
+
+;;; Test Suite
+(compile-expr 42)
+(compile-expr (quote x))
+(compile-expr (quote (+ 1 2)))
+(compile-expr (quote (if (= x 0) 1 2)))
+(compile-expr (quote (let ((y 5)) (+ y 1))))
+(compile-expr (quote (lambda (n) (* n n))))
