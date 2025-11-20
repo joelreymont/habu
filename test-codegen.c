@@ -18,9 +18,9 @@ int main() {
 
     size_t code_size = sizeof(code);
 
-    /* Allocate executable memory */
+    /* Allocate executable memory with all permissions at once (like SBCL) */
     void *mem = mmap(NULL, code_size,
-                     PROT_READ | PROT_WRITE,
+                     PROT_READ | PROT_WRITE | PROT_EXEC,
                      MAP_PRIVATE | MAP_ANON,
                      -1, 0);
 
@@ -31,13 +31,6 @@ int main() {
 
     /* Copy code to executable memory */
     memcpy(mem, code, code_size);
-
-    /* Make memory executable */
-    if (mprotect(mem, code_size, PROT_READ | PROT_EXEC) != 0) {
-        perror("mprotect");
-        munmap(mem, code_size);
-        return 1;
-    }
 
     /* Cast to function pointer and call */
     habu_fn_t fn = (habu_fn_t)mem;
