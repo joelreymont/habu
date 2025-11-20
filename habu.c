@@ -651,7 +651,7 @@ habu_value_t REPL_START() {
     habu_value_t __result = ({
   habu_print_value(habu_make_string("Habu REPL - Recursive (Self-Hosting)", 36));
   ({printf("\n"); NIL;});
-  habu_print_value(habu_make_string("Features: let, lambda, defun, fixnum?, cons?, symbol?, nil?", 59));
+  habu_print_value(habu_make_string("Features: let, lambda, defun, progn, fixnum?, cons?, symbol?, nil?, symbol=?, file-io", 85));
   ({printf("\n"); NIL;});
   REPL_LOOP(MAKE_INITIAL_ENV());
 });

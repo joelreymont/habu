@@ -366,7 +366,7 @@
   (progn
     (print (quote "Habu REPL - Recursive (Self-Hosting)"))
     (println)
-    (print (quote "Features: let, lambda, defun, fixnum?, cons?, symbol?, nil?"))
+    (print (quote "Features: let, lambda, defun, progn, fixnum?, cons?, symbol?, nil?, symbol=?, file-io"))
     (println)
     (repl-loop (make-initial-env))))
 
