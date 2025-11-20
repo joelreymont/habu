@@ -63,6 +63,32 @@ size_t habu_gc_heap_used(void);
 void habu_gc_add_root(habu_value_t *root_location);
 void habu_gc_remove_root(habu_value_t *root_location);
 
+/* Scoped root helpers - RAII style root management
+ *
+ * Example usage:
+ *   HABU_ROOT(obj, habu_cons(a, b));
+ *   // obj is now rooted for this scope
+ *   // ... use obj, can trigger GC safely ...
+ *   HABU_UNROOT(obj);
+ */
+#define HABU_ROOT(var, value) \
+    habu_value_t var = (value); \
+    habu_gc_add_root(&var)
+
+#define HABU_UNROOT(var) \
+    habu_gc_remove_root(&var)
+
+/* Multi-value rooting - root up to 4 values at once */
+#define HABU_ROOT2(v1, val1, v2, val2) \
+    habu_value_t v1 = (val1); \
+    habu_value_t v2 = (val2); \
+    habu_gc_add_root(&v1); \
+    habu_gc_add_root(&v2)
+
+#define HABU_UNROOT2(v1, v2) \
+    habu_gc_remove_root(&v2); \
+    habu_gc_remove_root(&v1)
+
 /* Write barrier - call when storing pointer into object */
 void habu_write_barrier(void *obj, habu_value_t value);
 
