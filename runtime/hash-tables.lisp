@@ -55,11 +55,13 @@
       ;; String (tag 0x4): hash the string content
       ((= tag #x4)
        (let* ((str-addr (- key-value #x4))
-              (len (sb-sys:sap-ref-64 (sb-sys:int-sap str-addr) 0))
+              ;; Skip 8-byte header to get to data (length is first field)
+              (len (sb-sys:sap-ref-64 (sb-sys:int-sap str-addr) 8))
               ;; Read string bytes and compute hash
               (hash 0))
          (dotimes (i len)
-           (let ((byte (sb-sys:sap-ref-8 (sb-sys:int-sap str-addr) (+ 8 i))))
+           ;; String data starts at offset 16 (8-byte header + 8-byte length)
+           (let ((byte (sb-sys:sap-ref-8 (sb-sys:int-sap str-addr) (+ 16 i))))
              (setf hash (logand #xFFFFFFFFFFFFFFFF
                                (+ (* hash 31) byte)))))
          (abs hash)))
@@ -67,8 +69,10 @@
       ;; Symbol (tag 0x2): hash the symbol name
       ((= tag #x2)
        (let* ((sym-addr (- key-value #x2))
-              (name-hash (sb-sys:sap-ref-64 (sb-sys:int-sap sym-addr) 0)))
-         (abs name-hash)))
+              ;; Skip 8-byte header, name pointer is first field
+              (name-ptr (sb-sys:sap-ref-64 (sb-sys:int-sap sym-addr) 8)))
+         ;; Hash the name string (which itself is a tagged pointer)
+         (hash-key name-ptr)))
 
       ;; Other types: use address as hash
       (t (abs key-value)))))
@@ -88,12 +92,14 @@
       ((= tag1 #x4)
        (let* ((addr1 (- key1 #x4))
               (addr2 (- key2 #x4))
-              (len1 (sb-sys:sap-ref-64 (sb-sys:int-sap addr1) 0))
-              (len2 (sb-sys:sap-ref-64 (sb-sys:int-sap addr2) 0)))
+              ;; Skip 8-byte header to read length
+              (len1 (sb-sys:sap-ref-64 (sb-sys:int-sap addr1) 8))
+              (len2 (sb-sys:sap-ref-64 (sb-sys:int-sap addr2) 8)))
          (and (= len1 len2)
               (dotimes (i len1 t)
-                (unless (= (sb-sys:sap-ref-8 (sb-sys:int-sap addr1) (+ 8 i))
-                          (sb-sys:sap-ref-8 (sb-sys:int-sap addr2) (+ 8 i)))
+                ;; String data starts at offset 16
+                (unless (= (sb-sys:sap-ref-8 (sb-sys:int-sap addr1) (+ 16 i))
+                          (sb-sys:sap-ref-8 (sb-sys:int-sap addr2) (+ 16 i)))
                   (return nil))))))
 
       ;; Default: not equal
