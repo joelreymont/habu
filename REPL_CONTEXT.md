@@ -44,8 +44,15 @@ The Habu REPL project successfully implemented **three progressive Lisp REPLs** 
 ### Primary Documentation
 - `README.md` - Main project README with REPL section
 - `README_REPL.md` (578 lines) - Quick start guide and tutorial
+- `QUICK_REFERENCE.md` (400+ lines) - Syntax reference card
+- `CONTRIBUTING.md` (460+ lines) - Contributor's guide
+- `EXAMPLE_SESSION.md` (370+ lines) - Annotated REPL session
+- `FAQ.md` (550+ lines) - Frequently asked questions
+- `ARCHITECTURE.md` (900+ lines) - Architecture deep-dive
 - `REPL_FINAL_STATUS.md` (393 lines) - Complete feature documentation
 - `REPL_PROGRESSION.md` (240 lines) - Evolution from simple to complete
+- `REPL_ROADMAP.md` (300+ lines) - Development roadmap
+- `REPL_CHANGELOG.md` (267 lines) - Version history
 - `REPL_CONTEXT.md` (this file) - Current project context
 
 ### Summaries
@@ -57,8 +64,11 @@ The Habu REPL project successfully implemented **three progressive Lisp REPLs** 
 - `stdlib.lisp` (193 lines) - Standard library with 100+ utility functions
 - `examples.lisp` (384 lines) - Comprehensive example programs
 
-### Testing
-- `test-repls.sh` - Automated test suite for all three REPLs
+### Testing & Automation
+- `test-repls.sh` - Automated test suite (100% pass rate)
+- `demo.sh` - Interactive demonstration (12 sections)
+- `bench-repls.sh` - Performance benchmarks (15+ tests)
+- `Makefile` - Build targets (repls, test, demo, bench)
 
 ## Runtime Modifications
 
