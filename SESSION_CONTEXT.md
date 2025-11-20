@@ -258,15 +258,29 @@ $ diff habu-compiler-stage1 habu-compiler-stage2
 
 ---
 
-## Core Design Principle ⭐
+## Core Design Principles ⭐
 
-**"Implement as much as possible in Lisp, add as little as possible to C runtime."**
+### 1. **"Implement as much as possible in Lisp, add as little as possible to C runtime."**
 
 This is CRITICAL for self-hosting:
 - More Lisp = easier to understand and modify
 - Less C = less to port when self-hosting
 - Keep runtime minimal (only what's impossible in Lisp)
 - Prefer Lisp implementations even if slightly slower
+
+### 2. **"The REPL should be written in Lisp."**
+
+The REPL itself must be Lisp code, not C:
+- habu-repl.lisp is the REPL implementation (correct approach)
+- It gets compiled to C for bootstrapping
+- Eventually the REPL will run on self-hosted Habu
+- REPL functions must be available to user code at runtime
+
+### 3. **"Follow the SBCL example on what goes into the runtime."**
+
+Look to SBCL for guidance on C vs Lisp split:
+- C runtime: memory allocation, GC, system calls, basic primitives
+- Lisp: everything else including the compiler, REPL, standard library
 
 ## Progress This Session ✅
 
