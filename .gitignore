@@ -20,12 +20,11 @@ examples/drone_control_demo
 habu-enhanced.c
 habu-prog.c
 habu-rec.c
+habu-extended.c
 
 # Intermediate REPL executables (from development)
 habu-complete
 habu-complete.c
-habu-extended
-habu-extended.c
 habu-full
 habu-full.c
 habu-minimal

@@ -85,10 +85,10 @@ cross: all
 # ============================================
 
 # REPL executables
-REPL_PROGS = habu-enhanced habu-prog habu-rec
+REPL_PROGS = habu-enhanced habu-prog habu-rec habu-extended
 
-# Build all three REPLs (requires SBCL)
-repls: habu-enhanced habu-prog habu-rec
+# Build all REPLs (requires SBCL)
+repls: habu-enhanced habu-prog habu-rec habu-extended
 
 habu-enhanced: enhanced-repl.lisp bootstrap/compiler.lisp bootstrap/c-backend.lisp $(RUNTIME_OBJS)
 	@echo "Building Enhanced REPL..."
@@ -135,6 +135,21 @@ habu-rec: recursive-repl.lisp bootstrap/compiler.lisp bootstrap/c-backend.lisp $
 	$(CC) $(CFLAGS) -Iruntime -o habu-rec habu-rec.c $(RUNTIME_OBJS) $(LDLIBS)
 	@echo "✓ Recursive REPL built (73KB) - Complete Lisp!"
 
+habu-extended: extended-recursive-repl.lisp bootstrap/compiler.lisp bootstrap/c-backend.lisp $(RUNTIME_OBJS)
+	@echo "Building Extended REPL (v1.2)..."
+	@sbcl --noinform --non-interactive \
+		--eval '(load "bootstrap/compiler.lisp")' \
+		--eval '(load "bootstrap/c-backend.lisp")' \
+		--eval '(in-package :habu-compiler)' \
+		--eval '(with-open-file (in "extended-recursive-repl.lisp" :direction :input) \
+		          (let ((file-contents (make-string (file-length in)))) \
+		            (read-sequence file-contents in) \
+		            (let ((expr (read-from-string (format nil "(progn ~A)" file-contents)))) \
+		              (generate-c-standalone expr :output-file "habu-extended.c"))))' \
+		--quit
+	$(CC) $(CFLAGS) -Iruntime -o habu-extended habu-extended.c $(RUNTIME_OBJS) $(LDLIBS)
+	@echo "✓ Extended REPL (v1.2) built (75KB) - Adds and, or, not, cond, <=, >="
+
 # Test all REPLs
 repl-test: $(REPL_PROGS)
 	@./test-repls.sh
@@ -150,7 +165,7 @@ repl-bench: habu-rec
 # Clean REPL artifacts
 clean-repls:
 	rm -f $(REPL_PROGS)
-	rm -f habu-enhanced.c habu-prog.c habu-rec.c
+	rm -f habu-enhanced.c habu-prog.c habu-rec.c habu-extended.c
 
 # Update clean target to include REPLs
 clean: clean-repls
