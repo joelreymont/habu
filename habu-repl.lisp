@@ -96,10 +96,10 @@
 
 (defun make-string-from-chars (chars)
   "Create Lisp string from list of character codes"
-  (let ((len (list-length chars #x0)))
+  (let ((len (list-length chars (quote #x0))))
     (let ((vec (make-vector len)))
       (progn
-        (fill-vec chars vec #x0)
+        (fill-vec chars vec (quote #x0))
         (make-string-from-vector vec)))))
 
 (defun list-length (lst acc)
@@ -133,12 +133,12 @@
   (if (>= idx (string-length-raw str))
     (cons (quote nil) idx)
     (let ((ch (string-ref str idx)))
-      (if (= ch #x22)  ; closing "
-        (cons (make-string-from-chars (reverse-list acc)) (+ idx #x1))
-        (parse-string-helper str (+ idx #x1) (cons ch acc))))))
+      (if (= ch (quote #x22))  ; closing "
+        (cons (make-string-from-chars (reverse-list acc)) (+ idx (quote #x1)))
+        (parse-string-helper str (+ idx (quote #x1)) (cons ch acc))))))
 
 (defun parse-string (str idx)
-  (parse-string-helper str (+ idx #x1) (quote nil)))
+  (parse-string-helper str (+ idx (quote #x1)) (quote nil)))
 
 ;;; Parse list
 (defun parse-list (str idx acc)
@@ -165,7 +165,7 @@
               (cons (cons (make-symbol (quote "quote"))
                          (cons (car quoted-result) (quote nil)))
                    (cdr quoted-result)))
-            (if (= ch #x22)  ; "
+            (if (= ch (quote #x22))  ; "
               (parse-string str idx2)
               (if (is-digit? ch)
                 (parse-num str idx2 (quote 0))
@@ -174,7 +174,7 @@
                   (cons (quote nil) idx2)))))))))))
 
 (defun read-str (str)
-  (car (parse-one str #x0)))
+  (car (parse-one str (quote #x0))))
 
 (defun parse-all-exprs (str idx acc)
   "Parse all expressions from string, accumulating in acc"
@@ -189,7 +189,7 @@
               (parse-all-exprs str end-idx (cons expr acc)))))))))
 
 (defun read-all-exprs (str)
-  (parse-all-exprs str #x0 (quote nil)))
+  (parse-all-exprs str (quote #x0) (quote nil)))
 
 ;;;; Evaluator with quote, if, let, lambda
 
@@ -438,7 +438,7 @@
 
 (defun load-eval-string (str env)
   "Evaluate all expressions in a string, returning final result and environment"
-  (if (= (string-length-raw str) #x0)
+  (if (= (string-length-raw str) (quote #x0))
     (cons (quote nil) env)
     (eval-expr-list (read-all-exprs str) env)))
 

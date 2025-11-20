@@ -276,6 +276,7 @@ Previously thought missing, actually COMPLETE:
    - Build runtime table with `make-runtime-addrs`
    - Use `compile-to-arm64-with-runtime` / program-with-functions variant
    - Re-run cons/car/cdr JIT checks with real addresses
+   - Investigate habu C backend output (current `./habu` prints `Result: 0` with no REPL)
 
 ### Soon (Next 2-4 hours)
 
@@ -430,6 +431,10 @@ Previously thought missing, actually COMPLETE:
 2. **Runtime addresses** - Defaults to #x0 unless provided
    - Need to pass real addresses from host before codegen
    - Support exists via runtime addrs table
+
+3. **habu binary from C backend currently inert**
+   - `make habu` builds but the generated `habu.c` main just returns NIL (prints `Result: 0`)
+   - REPL not launching; need to debug c-backend emission for full file/progn
 
 **None of these block progress!**
 
@@ -595,7 +600,7 @@ sbcl --load habu-arm64-codegen.lisp
 
 ---
 
-**Last Updated**: November 20, 2025, 8:25 PM EET
+**Last Updated**: November 20, 2025, 8:50 PM EET
 **Status**: 🎉 BREAKTHROUGH - JIT execution working!
 **Next Session**: Test load pipeline + runtime address plumbing, then recursion/self-compile
 **Timeline**: 1-3 days to self-hosting
