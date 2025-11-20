@@ -3,6 +3,23 @@
 
 (in-package :habu-runtime)
 
+;;; Foreign memory allocation for hash tables
+;;; NOTE: This uses malloc/free, not the Habu GC heap
+;;; Hash tables allocated this way are NOT garbage collected
+;;; This is a temporary solution - proper GC integration needed (Bug 3.4)
+(sb-alien:define-alien-routine "malloc" sb-alien:unsigned-long
+  (size sb-alien:unsigned-long))
+
+(sb-alien:define-alien-routine "free" sb-alien:void
+  (ptr sb-alien:unsigned-long))
+
+(defun allocate (size)
+  "Allocate SIZE bytes of memory, return untagged address"
+  (let ((addr (malloc size)))
+    (when (zerop addr)
+      (error "Out of memory: failed to allocate ~D bytes" size))
+    addr))
+
 ;;; Hash table representation:
 ;;; Tag: 0x6
 ;;; Layout:
