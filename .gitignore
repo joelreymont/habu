@@ -32,8 +32,15 @@ habu-minimal
 habu-minimal.c
 habu-repl
 habu-repl.c
+habu-repl-lisp
+habu-repl-lisp.c
+habu-repl-minimal
+habu-repl-minimal.c
+habu-repl-pure
+habu-repl-pure.c
 habu-simple
 habu-simple.c
+habu-test-orig.c
 
 # Archive directory (development history)
 archive/
