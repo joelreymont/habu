@@ -207,22 +207,38 @@ The `stdlib.lisp` file provides 100+ utility functions:
 - **Sorting**: `insert`, `sort`
 - **Functional**: `compose`, `twice`, `flip`, `identity`, `const`
 
+## Repository Structure
+
+The repository has been cleaned up to maintain only production-ready files:
+
+### Active REPL Files
+- `habu-enhanced` (56KB) - Enhanced REPL executable
+- `habu-prog` (73KB) - Programmable REPL executable
+- `habu-rec` (73KB) - Recursive REPL executable (Complete Lisp)
+- `enhanced-repl.lisp` - Source for enhanced REPL
+- `programmable-repl.lisp` - Source for programmable REPL
+- `recursive-repl.lisp` - Source for recursive REPL
+
+### Ignored Files (Auto-Generated)
+- `habu-*.c` - Generated C code (regenerated from .lisp source)
+- All intermediate REPL executables (development artifacts)
+
 ## Git Repository Status
 
 ```
 Branch: claude/habu-read-markdown-01TyZUStKoi7uEHenU5E28VZ
-Status: 67 commits ahead
+Status: 79 commits ahead
 Working tree: Clean
 ```
 
 ### Recent Commits
 ```
-cd05f4e Update README.md with comprehensive REPL documentation
-1e83ff5 Add comprehensive final status document for Habu REPL project
-1fbf277 Document complete REPL evolution from simple to full Lisp
-2e410ad Implement recursive REPL with defun and full recursion support
-299ea2f Implement programmable REPL with let, lambda, and closures
-a247c77 Implement enhanced REPL with quote, symbols, if, and list operations
+04c4500 Remove obsolete test files from tracking
+ca87f04 Clean up repository: remove intermediate REPL files from tracking
+f19844c Document bootstrap vs standalone approach for runtime integration
+4437838 Implement runtime integration with heap allocation for list operations
+7720bf8 Add 29 operators: varargs, predicates, conditionals, and bit utilities
+94f6c52 Add 27 operators: conditionals, aliases, utilities, and prime checking
 ```
 
 ## Testing Status
