@@ -118,11 +118,26 @@ habu> (factorial 10)
 
 ### Documentation
 
+**Getting Started:**
 - **[README_REPL.md](README_REPL.md)** - Quick start guide and tutorial
+- **[QUICK_REFERENCE.md](QUICK_REFERENCE.md)** - Syntax reference card
+- **[EXAMPLE_SESSION.md](EXAMPLE_SESSION.md)** - Annotated REPL session
+- **[FAQ.md](FAQ.md)** - Frequently asked questions
+
+**Reference:**
 - **[REPL_FINAL_STATUS.md](REPL_FINAL_STATUS.md)** - Complete feature documentation
 - **[REPL_PROGRESSION.md](REPL_PROGRESSION.md)** - Evolution from basic to complete
+- **[CONTRIBUTING.md](CONTRIBUTING.md)** - Contributor's guide
+
+**Code Resources:**
 - **[stdlib.lisp](stdlib.lisp)** - Standard library with 100+ functions
 - **[examples.lisp](examples.lisp)** - Algorithms and demonstrations
+
+**Testing:**
+- Run `./test-repls.sh` - Automated test suite
+- Run `./demo.sh` - Interactive demonstration
+- Run `./bench-repls.sh` - Performance benchmarks
+- Or use `make repl-test`, `make repl-demo`, `make repl-bench`
 
 ### REPL Highlights
 

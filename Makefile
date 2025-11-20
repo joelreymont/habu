@@ -27,7 +27,7 @@ BENCH_PROGS = $(BENCH_SRCS:.c=)
 EXAMPLE_SRCS = examples/drone_control_demo.c
 EXAMPLE_PROGS = $(EXAMPLE_SRCS:.c=)
 
-.PHONY: all clean test benchmark examples repls repl-test repl-demo
+.PHONY: all clean test benchmark examples repls repl-test repl-demo repl-bench clean-repls
 
 all: $(TEST_PROGS)
 
@@ -142,6 +142,10 @@ repl-test: $(REPL_PROGS)
 # Run interactive demo
 repl-demo: habu-rec
 	@./demo.sh
+
+# Run performance benchmarks
+repl-bench: habu-rec
+	@./bench-repls.sh
 
 # Clean REPL artifacts
 clean-repls:
