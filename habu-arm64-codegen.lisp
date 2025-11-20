@@ -276,6 +276,39 @@
     (let ((encoded (+ base offset)))
       (encode-word encoded))))
 
+(defun arm64-movk (rd imm shift)
+  "MOVK Xd, #imm, LSL #shift - Move 16-bit immediate, keeping other bits
+   Encoding: 1111 0010 1ss. .... iiii iiii iiid dddd
+   Base: 0xF2800000 | (shift_sel << 21) | (imm << 5) | rd
+   shift must be 0, 16, 32, or 48"
+  (let ((base 0xF2800000))
+    (let ((shift-sel (/ shift 16)))
+      (let ((shifted-sel (* shift-sel 2097152)))  ; shift-sel << 21
+        (let ((shifted-imm (* imm 32)))           ; imm << 5
+          (let ((encoded (+ base (+ shifted-sel (+ shifted-imm rd)))))
+            (encode-word encoded)))))))
+
+(defun arm64-blr (rn)
+  "BLR Xn - Branch to address in register Xn
+   Encoding: 1101 0110 0011 1111 0000 00nn nnn0 0000
+   Base: 0xD63F0000 | (rn << 5)"
+  (let ((base 0xD63F0000))
+    (let ((shifted-rn (* rn 32)))  ; rn << 5
+      (let ((encoded (+ base shifted-rn)))
+        (encode-word encoded)))))
+
+(defun load-address-to-reg (rd addr)
+  "Load 64-bit address into register rd using movz + movk sequence
+   Breaks address into four 16-bit chunks and loads them"
+  (let ((bits0-15 (my-mod addr 65536)))
+    (let ((bits16-31 (my-mod (/ addr 65536) 65536)))
+      (let ((bits32-47 (my-mod (/ addr 4294967296) 65536)))
+        (let ((bits48-63 (/ addr 281474976710656)))
+          (append-code (arm64-movz rd bits0-15)
+            (append-code (arm64-movk rd bits16-31 16)
+              (append-code (arm64-movk rd bits32-47 32)
+                (arm64-movk rd bits48-63 48)))))))))
+
 (defun append-code (c1 c2)
   (if (nil? c1) c2 (cons (car c1) (append-code (cdr c1) c2))))
 
@@ -505,9 +538,42 @@
                           (append-code (arm64-cmp 0 31)  ; cmp x0, xzr
                             (append-code (arm64-cset 0 0)  ; cset x0, EQ
                               (arm64-lsl 0 0 4))))
-                        ;;; Unknown unary op
-                        code1)))))
+                        (if (symbol=? op (quote car))
+                          ;;; CAR: call habu_car with value in x0
+                          (let ((habu-car-addr 0))  ; PLACEHOLDER
+                            (let ((load-addr (load-address-to-reg 2 habu-car-addr)))
+                              (let ((call-code (arm64-blr 2)))
+                                (append-code code1
+                                  (append-code load-addr call-code)))))
+                          (if (symbol=? op (quote cdr))
+                            ;;; CDR: call habu_cdr with value in x0
+                            (let ((habu-cdr-addr 0))  ; PLACEHOLDER
+                              (let ((load-addr (load-address-to-reg 2 habu-cdr-addr)))
+                                (let ((call-code (arm64-blr 2)))
+                                  (append-code code1
+                                    (append-code load-addr call-code)))))
+                            ;;; Unknown unary op
+                            code1))))))
               ;;; Binary operation with nested args
+              ;;; First check for cons/car/cdr (runtime calls)
+              (if (symbol=? op (quote cons))
+                ;;; CONS: (cons a b) - call habu_cons
+                ;;; Need runtime address - for now use placeholder 0
+                ;;; TODO: Pass runtime addresses as parameter
+                (let ((habu-cons-addr 0))  ; PLACEHOLDER
+                  (let ((code1 (codegen-expr arg1)))      ; arg1 → x0
+                    (let ((save-code (arm64-str 0 31 -16)))  ; push x0
+                      (let ((code2 (codegen-expr arg2)))     ; arg2 → x0
+                        (let ((move-code (arm64-mov 1 0)))   ; x0 → x1
+                          (let ((load-code (arm64-ldr-post 0 31 16)))  ; pop to x0
+                            (let ((load-addr (load-address-to-reg 2 habu-cons-addr)))
+                              (let ((call-code (arm64-blr 2)))
+                                (append-code code1
+                                  (append-code save-code
+                                    (append-code code2
+                                      (append-code move-code
+                                        (append-code load-code
+                                          (append-code load-addr call-code))))))))))))))
               (let ((code1 (codegen-expr arg1)))
               ;;; Save arg1: str x0, [sp, #-16]!
               (let ((save-code (arm64-str 0 31 -16)))
