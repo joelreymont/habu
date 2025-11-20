@@ -127,6 +127,10 @@ void habu_vector_set(habu_value_t vector, size_t index, habu_value_t value) {
 habu_value_t habu_make_closure(void *code_ptr, habu_value_t env) {
     size_t size = sizeof(habu_closure_t);
     habu_closure_t *closure = habu_gc_alloc(size, TYPE_CLOSURE);
+    if (!closure) {
+        fprintf(stderr, "ERROR: Out of memory in habu_make_closure\n");
+        abort();
+    }
     closure->code = code_ptr;
     closure->env = env;
     return tag_pointer(closure, TAG_CLOSURE);
