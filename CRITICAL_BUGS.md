@@ -21,7 +21,7 @@ Multiple critical bugs have been identified in the runtime system that affect me
 ### Bug 1.1: Root Registration Broken
 **Location**: `runtime/gc.c:969-1009`
 **Severity**: CRITICAL - Memory corruption
-**Status**: 🔴 Unfixed
+**Status**: ✅ FIXED
 
 **Problem**:
 - `gc_heap->roots` stores raw object pointers
@@ -482,11 +482,28 @@ After each fix:
 ## Status Tracking
 
 **Total Bugs**: 12 identified
-**Fixed**: 0
+**Fixed**: 9
 **In Progress**: 0
-**Unfixed**: 12
+**Unfixed**: 3
 
-**Next Action**: Begin Phase 1 critical GC fixes
+### Fixed Bugs (9):
+- ✅ Bug 1.1: Pointer-to-pointer root registration (P0) - CRITICAL FIX
+- ✅ Bug 1.4: NULL check in habu_make_closure (P0)
+- ✅ Bug 2.3: Tag value mismatch between CL and C (P1)
+- ✅ Bug 3.1: Hash table allocate function (P2)
+- ✅ Bug 3.2: Hash table header access (P2)
+- ✅ Bug 3.3: Incorrect symbol tag assumption (P2)
+- ✅ Bug 4.1: Reader unterminated strings (P3)
+- ✅ Bug 5.1: Region allocator alignment (P2) - was already fixed
+- ✅ Bug 6.1: Test buffer overflow (P3) - was already fixed
+- ✅ Bug 6.2: Test portability (P4)
+
+### Remaining Bugs (3):
+- 🔴 Bug 1.2: Production root registration calls (P0) - No code calls habu_gc_add_root
+- 🔴 Bug 1.3: Constructor rooting (P1) - Intermediate allocations not rooted
+- 🔴 Bug 2.1: CL runtime compaction pointer updates (P0) - Heap corruption in mark-sweep
+
+**Next Action**: Fix remaining P0 bugs (1.2, 2.1) and P1 bug (1.3)
 
 ---
 
