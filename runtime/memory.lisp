@@ -264,30 +264,83 @@
     (gc-mark-object heap root)))
 
 (defun gc-sweep (heap)
-  "Sweep unmarked objects and compact heap"
+  "Sweep unmarked objects and compact heap with proper pointer fixup"
   (let ((read-ptr 0)
         (write-ptr 0)
         (freed-bytes 0)
-        (freed-objects 0))
+        (freed-objects 0)
+        (forwarding-table (make-hash-table)))  ;; Maps old-addr -> new-addr
+
+    ;; PASS 1: Calculate new addresses and build forwarding table
     (loop while (< read-ptr (heap-free-pointer heap))
           do (let* ((header (read-u64 heap read-ptr))
                     (tag (header-tag header))
                     (size (header-size header))
                     (total-size (* 16 (ceiling (+ 8 size) 16))))
-               (cond
-                 ((header-marked-p header)
-                  ;; Live object - clear mark and keep
-                  (write-u64 heap write-ptr (header-clear-mark header))
-                  ;; Copy object data if compacting
-                  (unless (= read-ptr write-ptr)
+               (if (header-marked-p header)
+                   ;; Live object - record forwarding address
+                   (progn
+                     (setf (gethash read-ptr forwarding-table) write-ptr)
+                     (incf write-ptr total-size))
+                   ;; Dead object - count as freed
+                   (progn
+                     (incf freed-bytes total-size)
+                     (incf freed-objects)))
+               (incf read-ptr total-size)))
+
+    ;; PASS 2: Copy objects and update pointers
+    (setf read-ptr 0)
+    (setf write-ptr 0)
+    (loop while (< read-ptr (heap-free-pointer heap))
+          do (let* ((header (read-u64 heap read-ptr))
+                    (tag (header-tag header))
+                    (size (header-size header))
+                    (total-size (* 16 (ceiling (+ 8 size) 16))))
+               (when (header-marked-p header)
+                 ;; Copy header with mark cleared
+                 (write-u64 heap write-ptr (header-clear-mark header))
+
+                 ;; Copy and fixup object data
+                 (case tag
+                   (#.+tag-cons+
+                    ;; Cons: car and cdr are pointers that need fixing
+                    (let ((car (read-u64 heap (+ read-ptr 8)))
+                          (cdr (read-u64 heap (+ read-ptr 16))))
+                      (write-u64 heap (+ write-ptr 8) (fixup-pointer car forwarding-table))
+                      (write-u64 heap (+ write-ptr 16) (fixup-pointer cdr forwarding-table))))
+
+                   (#.+tag-symbol+
+                    ;; Symbol: name, value, plist are pointers
+                    (let ((name (read-u64 heap (+ read-ptr 8)))
+                          (value (read-u64 heap (+ read-ptr 16)))
+                          (plist (read-u64 heap (+ read-ptr 24))))
+                      (write-u64 heap (+ write-ptr 8) (fixup-pointer name forwarding-table))
+                      (write-u64 heap (+ write-ptr 16) (fixup-pointer value forwarding-table))
+                      (write-u64 heap (+ write-ptr 24) (fixup-pointer plist forwarding-table))))
+
+                   (#.+tag-vector+
+                    ;; Vector: length + array of pointers
+                    (let ((length (read-u64 heap (+ read-ptr 8))))
+                      (write-u64 heap (+ write-ptr 8) length)
+                      (loop for i from 0 below length
+                            for elem-offset = (+ read-ptr 16 (* i 8))
+                            do (let ((elem (read-u64 heap elem-offset)))
+                                 (write-u64 heap (+ write-ptr 16 (* i 8))
+                                           (fixup-pointer elem forwarding-table))))))
+
+                   (#.+tag-string+
+                    ;; String: length + bytes (no pointers)
                     (loop for i from 8 below total-size
                           do (setf (aref (heap-memory heap) (+ write-ptr i))
                                    (aref (heap-memory heap) (+ read-ptr i)))))
-                  (incf write-ptr total-size))
-                 (t
-                  ;; Dead object - skip
-                  (incf freed-bytes total-size)
-                  (incf freed-objects)))
+
+                   (t
+                    ;; Unknown type: just copy bytes
+                    (loop for i from 8 below total-size
+                          do (setf (aref (heap-memory heap) (+ write-ptr i))
+                                   (aref (heap-memory heap) (+ read-ptr i))))))
+
+                 (incf write-ptr total-size))
                (incf read-ptr total-size)))
 
     ;; Update heap state
@@ -296,6 +349,22 @@
     (decf (heap-objects heap) freed-objects)
 
     (list :freed-bytes freed-bytes :freed-objects freed-objects)))
+
+(defun fixup-pointer (ptr forwarding-table)
+  "Update pointer using forwarding table, or return as-is if not relocated"
+  (cond
+    ;; NIL (0) - no fixup needed
+    ((zerop ptr) 0)
+    ;; Fixnum - no fixup needed
+    ((= (logand ptr #xF) +tag-fixnum+) ptr)
+    ;; Pointer - check forwarding table
+    (t
+     (let* ((tag (logand ptr #xF))
+            (old-addr (- ptr tag))
+            (new-addr (gethash old-addr forwarding-table)))
+       (if new-addr
+           (logior new-addr tag)  ;; Relocated - return new address with tag
+           ptr)))))  ;; Not relocated (maybe in old gen) - return as-is
 
 (defun gc (&optional (heap *heap*) (roots nil))
   "Perform garbage collection"
