@@ -42,6 +42,7 @@ habu_value_t ENV_EXTEND(habu_value_t, habu_value_t, habu_value_t);
 habu_value_t ENV_EXTEND_LIST(habu_value_t, habu_value_t, habu_value_t);
 habu_value_t IS_DEFUN_P(habu_value_t);
 habu_value_t EVAL_TOPLEVEL(habu_value_t, habu_value_t);
+habu_value_t MAKE_INITIAL_ENV();
 habu_value_t REPL_START();
 habu_value_t REPL_LOOP(habu_value_t);
 
@@ -455,13 +456,13 @@ habu_value_t EVAL_APPLY(habu_value_t OP, habu_value_t ARGS, habu_value_t ENV) {
     habu_gc_add_root(&OP);
     habu_gc_add_root(&ARGS);
     habu_gc_add_root(&ENV);
-    habu_value_t __result = (is_nil(SYMBOL_EQ_P(OP, habu_make_symbol_from_string(habu_make_string("+", 1)))) ? (is_nil(SYMBOL_EQ_P(OP, habu_make_symbol_from_string(habu_make_string("-", 1)))) ? (is_nil(SYMBOL_EQ_P(OP, habu_make_symbol_from_string(habu_make_string("*", 1)))) ? (is_nil(SYMBOL_EQ_P(OP, habu_make_symbol_from_string(habu_make_string("/", 1)))) ? (is_nil(SYMBOL_EQ_P(OP, habu_make_symbol_from_string(habu_make_string("=", 1)))) ? (is_nil(SYMBOL_EQ_P(OP, habu_make_symbol_from_string(habu_make_string("<", 1)))) ? (is_nil(SYMBOL_EQ_P(OP, habu_make_symbol_from_string(habu_make_string(">", 1)))) ? (is_nil(SYMBOL_EQ_P(OP, habu_make_symbol_from_string(habu_make_string("cons", 4)))) ? (is_nil(SYMBOL_EQ_P(OP, habu_make_symbol_from_string(habu_make_string("car", 3)))) ? (is_nil(SYMBOL_EQ_P(OP, habu_make_symbol_from_string(habu_make_string("cdr", 3)))) ? (is_nil(SYMBOL_EQ_P(OP, habu_make_symbol_from_string(habu_make_string("list", 4)))) ? ({
+    habu_value_t __result = (is_nil(SYMBOL_EQ_P(OP, habu_make_symbol_from_string(habu_make_string("+", 1)))) ? (is_nil(SYMBOL_EQ_P(OP, habu_make_symbol_from_string(habu_make_string("-", 1)))) ? (is_nil(SYMBOL_EQ_P(OP, habu_make_symbol_from_string(habu_make_string("*", 1)))) ? (is_nil(SYMBOL_EQ_P(OP, habu_make_symbol_from_string(habu_make_string("/", 1)))) ? (is_nil(SYMBOL_EQ_P(OP, habu_make_symbol_from_string(habu_make_string("=", 1)))) ? (is_nil(SYMBOL_EQ_P(OP, habu_make_symbol_from_string(habu_make_string("<", 1)))) ? (is_nil(SYMBOL_EQ_P(OP, habu_make_symbol_from_string(habu_make_string(">", 1)))) ? (is_nil(SYMBOL_EQ_P(OP, habu_make_symbol_from_string(habu_make_string("cons", 4)))) ? (is_nil(SYMBOL_EQ_P(OP, habu_make_symbol_from_string(habu_make_string("car", 3)))) ? (is_nil(SYMBOL_EQ_P(OP, habu_make_symbol_from_string(habu_make_string("cdr", 3)))) ? (is_nil(SYMBOL_EQ_P(OP, habu_make_symbol_from_string(habu_make_string("list", 4)))) ? (is_nil(SYMBOL_EQ_P(OP, habu_make_symbol_from_string(habu_make_string("get-tag", 7)))) ? ({
     habu_value_t FN = EVAL_EXPR(OP, ENV);
     habu_gc_add_root(&FN);
     habu_value_t __let_result_35889 = (is_nil(CONS_P(FN)) ? NIL : (is_nil(SYMBOL_EQ_P(habu_car(FN), habu_make_symbol_from_string(habu_make_string("closure", 7)))) ? NIL : APPLY_LAMBDA(FN, EVAL_LIST(ARGS, ENV), ENV)));
     habu_gc_remove_root(&FN);
     __let_result_35889;
-    }) : EVAL_LIST(ARGS, ENV)) : habu_cdr(EVAL_EXPR(habu_car(ARGS), ENV))) : habu_car(EVAL_EXPR(habu_car(ARGS), ENV))) : habu_cons(EVAL_EXPR(habu_car(ARGS), ENV), EVAL_EXPR(habu_car(habu_cdr(ARGS)), ENV))) : (is_nil((value_to_fixnum(EVAL_EXPR(habu_car(ARGS), ENV)) > value_to_fixnum(EVAL_EXPR(habu_car(habu_cdr(ARGS)), ENV)) ? fixnum_to_value(1) : NIL)) ? NIL : fixnum_to_value(1))) : (is_nil((value_to_fixnum(EVAL_EXPR(habu_car(ARGS), ENV)) < value_to_fixnum(EVAL_EXPR(habu_car(habu_cdr(ARGS)), ENV)) ? fixnum_to_value(1) : NIL)) ? NIL : fixnum_to_value(1))) : (is_nil((value_to_fixnum(EVAL_EXPR(habu_car(ARGS), ENV)) == value_to_fixnum(EVAL_EXPR(habu_car(habu_cdr(ARGS)), ENV)) ? fixnum_to_value(1) : NIL)) ? NIL : fixnum_to_value(1))) : fixnum_to_value(value_to_fixnum(EVAL_EXPR(habu_car(ARGS), ENV)) / value_to_fixnum(EVAL_EXPR(habu_car(habu_cdr(ARGS)), ENV)))) : fixnum_to_value(value_to_fixnum(EVAL_EXPR(habu_car(ARGS), ENV)) * value_to_fixnum(EVAL_EXPR(habu_car(habu_cdr(ARGS)), ENV)))) : fixnum_to_value(value_to_fixnum(EVAL_EXPR(habu_car(ARGS), ENV)) - value_to_fixnum(EVAL_EXPR(habu_car(habu_cdr(ARGS)), ENV)))) : fixnum_to_value(value_to_fixnum(EVAL_EXPR(habu_car(ARGS), ENV)) + value_to_fixnum(EVAL_EXPR(habu_car(habu_cdr(ARGS)), ENV))));
+    }) : habu_get_tag(EVAL_EXPR(habu_car(ARGS), ENV))) : EVAL_LIST(ARGS, ENV)) : habu_cdr(EVAL_EXPR(habu_car(ARGS), ENV))) : habu_car(EVAL_EXPR(habu_car(ARGS), ENV))) : habu_cons(EVAL_EXPR(habu_car(ARGS), ENV), EVAL_EXPR(habu_car(habu_cdr(ARGS)), ENV))) : (is_nil((value_to_fixnum(EVAL_EXPR(habu_car(ARGS), ENV)) > value_to_fixnum(EVAL_EXPR(habu_car(habu_cdr(ARGS)), ENV)) ? fixnum_to_value(1) : NIL)) ? NIL : fixnum_to_value(1))) : (is_nil((value_to_fixnum(EVAL_EXPR(habu_car(ARGS), ENV)) < value_to_fixnum(EVAL_EXPR(habu_car(habu_cdr(ARGS)), ENV)) ? fixnum_to_value(1) : NIL)) ? NIL : fixnum_to_value(1))) : (is_nil((value_to_fixnum(EVAL_EXPR(habu_car(ARGS), ENV)) == value_to_fixnum(EVAL_EXPR(habu_car(habu_cdr(ARGS)), ENV)) ? fixnum_to_value(1) : NIL)) ? NIL : fixnum_to_value(1))) : fixnum_to_value(value_to_fixnum(EVAL_EXPR(habu_car(ARGS), ENV)) / value_to_fixnum(EVAL_EXPR(habu_car(habu_cdr(ARGS)), ENV)))) : fixnum_to_value(value_to_fixnum(EVAL_EXPR(habu_car(ARGS), ENV)) * value_to_fixnum(EVAL_EXPR(habu_car(habu_cdr(ARGS)), ENV)))) : fixnum_to_value(value_to_fixnum(EVAL_EXPR(habu_car(ARGS), ENV)) - value_to_fixnum(EVAL_EXPR(habu_car(habu_cdr(ARGS)), ENV)))) : fixnum_to_value(value_to_fixnum(EVAL_EXPR(habu_car(ARGS), ENV)) + value_to_fixnum(EVAL_EXPR(habu_car(habu_cdr(ARGS)), ENV))));
     habu_gc_remove_root(&ENV);
     habu_gc_remove_root(&ARGS);
     habu_gc_remove_root(&OP);
@@ -595,13 +596,48 @@ habu_value_t EVAL_TOPLEVEL(habu_value_t EXPR, habu_value_t ENV) {
     return __result;
 }
 
+habu_value_t MAKE_INITIAL_ENV() {
+    habu_value_t __result = ({
+    habu_value_t ENV = NIL;
+    habu_gc_add_root(&ENV);
+    habu_value_t __let_result_11885 = ({
+      habu_value_t ENV2 = ENV_EXTEND(habu_make_symbol_from_string(habu_make_string("fixnum?", 7)), habu_cons(habu_make_symbol_from_string(habu_make_string("closure", 7)), habu_cons(NIL, habu_cons(habu_cons(habu_make_symbol_from_string(habu_make_string("x", 1)), NIL), habu_cons(habu_cons(habu_make_symbol_from_string(habu_make_string("=", 1)), habu_cons(habu_cons(habu_make_symbol_from_string(habu_make_string("get-tag", 7)), habu_cons(habu_make_symbol_from_string(habu_make_string("x", 1)), NIL)), habu_cons(fixnum_to_value(0), NIL))), NIL)))), ENV);
+      habu_gc_add_root(&ENV2);
+      habu_value_t __let_result_82370 = ({
+        habu_value_t ENV3 = ENV_EXTEND(habu_make_symbol_from_string(habu_make_string("cons?", 5)), habu_cons(habu_make_symbol_from_string(habu_make_string("closure", 7)), habu_cons(NIL, habu_cons(habu_cons(habu_make_symbol_from_string(habu_make_string("x", 1)), NIL), habu_cons(habu_cons(habu_make_symbol_from_string(habu_make_string("=", 1)), habu_cons(habu_cons(habu_make_symbol_from_string(habu_make_string("get-tag", 7)), habu_cons(habu_make_symbol_from_string(habu_make_string("x", 1)), NIL)), habu_cons(fixnum_to_value(1), NIL))), NIL)))), ENV2);
+        habu_gc_add_root(&ENV3);
+        habu_value_t __let_result_69325 = ({
+          habu_value_t ENV4 = ENV_EXTEND(habu_make_symbol_from_string(habu_make_string("symbol?", 7)), habu_cons(habu_make_symbol_from_string(habu_make_string("closure", 7)), habu_cons(NIL, habu_cons(habu_cons(habu_make_symbol_from_string(habu_make_string("x", 1)), NIL), habu_cons(habu_cons(habu_make_symbol_from_string(habu_make_string("=", 1)), habu_cons(habu_cons(habu_make_symbol_from_string(habu_make_string("get-tag", 7)), habu_cons(habu_make_symbol_from_string(habu_make_string("x", 1)), NIL)), habu_cons(fixnum_to_value(2), NIL))), NIL)))), ENV3);
+          habu_gc_add_root(&ENV4);
+          habu_value_t __let_result_64878 = ({
+            habu_value_t ENV5 = ENV_EXTEND(habu_make_symbol_from_string(habu_make_string("nil?", 4)), habu_cons(habu_make_symbol_from_string(habu_make_string("closure", 7)), habu_cons(NIL, habu_cons(habu_cons(habu_make_symbol_from_string(habu_make_string("x", 1)), NIL), habu_cons(habu_cons(habu_make_symbol_from_string(habu_make_string("=", 1)), habu_cons(habu_make_symbol_from_string(habu_make_string("x", 1)), habu_cons(fixnum_to_value(0), NIL))), NIL)))), ENV4);
+            habu_gc_add_root(&ENV5);
+            habu_value_t __let_result_91700 = ENV5;
+            habu_gc_remove_root(&ENV5);
+            __let_result_91700;
+            });
+          habu_gc_remove_root(&ENV4);
+          __let_result_64878;
+          });
+        habu_gc_remove_root(&ENV3);
+        __let_result_69325;
+        });
+      habu_gc_remove_root(&ENV2);
+      __let_result_82370;
+      });
+    habu_gc_remove_root(&ENV);
+    __let_result_11885;
+    });
+    return __result;
+}
+
 habu_value_t REPL_START() {
     habu_value_t __result = ({
-  habu_print_value(habu_make_string("Habu REPL - Recursive", 21));
+  habu_print_value(habu_make_string("Habu REPL - Recursive (Self-Hosting)", 36));
   ({printf("\n"); NIL;});
-  habu_print_value(habu_make_string("Features: let, lambda, defun", 28));
+  habu_print_value(habu_make_string("Features: let, lambda, defun, fixnum?, cons?, symbol?, nil?", 59));
   ({printf("\n"); NIL;});
-  REPL_LOOP(NIL);
+  REPL_LOOP(MAKE_INITIAL_ENV());
 });
     return __result;
 }
@@ -611,7 +647,7 @@ habu_value_t REPL_LOOP(habu_value_t ENV) {
     habu_value_t __result = ({
     habu_value_t LINE = (habu_value_t)lineedit_readline("habu> ");
     habu_gc_add_root(&LINE);
-    habu_value_t __let_result_11885 = (is_nil(LINE) ? ({
+    habu_value_t __let_result_28043 = (is_nil(LINE) ? ({
   ({printf("\n"); NIL;});
   habu_print_value(habu_make_string("Goodbye!", 8));
   ({printf("\n"); NIL;});
@@ -619,42 +655,42 @@ habu_value_t REPL_LOOP(habu_value_t ENV) {
   ({
         habu_value_t STR = ({char* s = (char*)LINE; s ? habu_make_string(s, strlen(s)) : NIL;});
         habu_gc_add_root(&STR);
-        habu_value_t __let_result_82370 = ({
+        habu_value_t __let_result_58386 = ({
           habu_value_t EXPR = READ_STR(STR);
           habu_gc_add_root(&EXPR);
-          habu_value_t __let_result_69325 = ({
+          habu_value_t __let_result_11710 = ({
             habu_value_t RESULT_ENV = EVAL_TOPLEVEL(EXPR, ENV);
             habu_gc_add_root(&RESULT_ENV);
-            habu_value_t __let_result_64878 = ({
+            habu_value_t __let_result_94119 = ({
               habu_value_t RESULT = habu_car(RESULT_ENV);
               habu_gc_add_root(&RESULT);
-              habu_value_t __let_result_91700 = ({
+              habu_value_t __let_result_35161 = ({
                 habu_value_t NEW_ENV = habu_cdr(RESULT_ENV);
                 habu_gc_add_root(&NEW_ENV);
-                habu_value_t __let_result_28043 = ({
+                habu_value_t __let_result_12930 = ({
   habu_print_value(RESULT);
   ({printf("\n"); NIL;});
   REPL_LOOP(NEW_ENV);
 });
                 habu_gc_remove_root(&NEW_ENV);
-                __let_result_28043;
+                __let_result_12930;
                 });
               habu_gc_remove_root(&RESULT);
-              __let_result_91700;
+              __let_result_35161;
               });
             habu_gc_remove_root(&RESULT_ENV);
-            __let_result_64878;
+            __let_result_94119;
             });
           habu_gc_remove_root(&EXPR);
-          __let_result_69325;
+          __let_result_11710;
           });
         habu_gc_remove_root(&STR);
-        __let_result_82370;
+        __let_result_58386;
         });
   NIL;
 }));
     habu_gc_remove_root(&LINE);
-    __let_result_11885;
+    __let_result_28043;
     });
     habu_gc_remove_root(&ENV);
     return __result;
