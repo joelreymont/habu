@@ -84,7 +84,10 @@
                    (progn
                      (push (char string i) chars)
                      (incf i))))
-             (when (< i len) (incf i)) ; skip closing quote
+             ;; Check for unterminated string
+             (if (>= i len)
+                 (error "Unterminated string literal starting at position ~A" start)
+                 (incf i)) ; skip closing quote
              (push (make-token :type :string
                               :value (coerce (nreverse chars) 'string))
                    tokens)))
