@@ -47,7 +47,7 @@ Multiple critical bugs have been identified in the runtime system that affect me
 ### Bug 1.2: No Production Root Registration
 **Location**: Throughout codebase
 **Severity**: CRITICAL - All objects treated as garbage
-**Status**: 🔴 Unfixed
+**Status**: ✅ FIXED
 
 **Problem**:
 - NO production code calls `habu_gc_add_root`
@@ -482,12 +482,13 @@ After each fix:
 ## Status Tracking
 
 **Total Bugs**: 12 identified
-**Fixed**: 11
-**Partially Fixed**: 1
+**Fixed**: 12
+**Partially Fixed**: 0
 **Unfixed**: 0
 
-### Fully Fixed Bugs (11):
+### Fully Fixed Bugs (12):
 - ✅ Bug 1.1: Pointer-to-pointer root registration (P0) - CRITICAL FIX
+- ✅ Bug 1.2: Automatic root registration (P0) - C backend now generates rooting code automatically
 - ✅ Bug 1.3: Constructor rooting (P1) - habu_make_symbol now roots intermediate allocations
 - ✅ Bug 1.4: NULL check in habu_make_closure (P0)
 - ✅ Bug 2.1: CL runtime compaction pointer updates (P0) - Two-pass compaction with forwarding table
@@ -500,13 +501,7 @@ After each fix:
 - ✅ Bug 6.1: Test buffer overflow (P3) - was already fixed
 - ✅ Bug 6.2: Test portability (P4)
 
-### Partially Fixed (1):
-- 🟡 Bug 1.2: Production root registration (P0)
-  - ✅ Infrastructure complete: HABU_ROOT macros, ROOT_USAGE_GUIDE.md
-  - ⏳ Integration pending: REPL and compiler need to use macros
-  - **What's needed**: Update REPL top-level bindings and compiler-generated code
-
-**Status**: All critical bugs addressed. System safe for development with manual rooting.
+**Status**: 🎉 ALL CRITICAL BUGS FIXED! System is now memory-safe with automatic rooting.
 
 ---
 
