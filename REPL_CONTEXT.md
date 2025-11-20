@@ -6,9 +6,9 @@ Date: November 20, 2024
 
 ## Overview
 
-The Habu REPL project successfully implemented **three progressive Lisp REPLs** demonstrating the evolution from basic evaluation to a complete Lisp interpreter, all while maintaining a minimal C runtime philosophy.
+The Habu REPL project successfully implemented **four progressive Lisp REPLs** demonstrating the evolution from basic evaluation to an enhanced Lisp interpreter, all while maintaining a minimal C runtime philosophy.
 
-## Three Working REPLs
+## Four Working REPLs
 
 ### 1. Enhanced REPL
 - **File**: `enhanced-repl.lisp` (234 lines)
@@ -30,6 +30,13 @@ The Habu REPL project successfully implemented **three progressive Lisp REPLs** 
 - **C Generated**: `habu-rec.c` (19KB)
 - **Features**: + defun, recursion, comparisons (=, <, >)
 - **Status**: ✅ Production-ready, **COMPLETE LISP**
+
+### 4. Extended REPL (v1.2)
+- **File**: `extended-recursive-repl.lisp` (374 lines)
+- **Executable**: `habu-extended` (73KB)
+- **C Generated**: `habu-extended.c` (22KB)
+- **Features**: + and, or, not, cond, <=, >=
+- **Status**: ✅ Production-ready, **ENHANCED LISP**
 
 ## Key Achievements
 
@@ -216,9 +223,11 @@ The repository has been cleaned up to maintain only production-ready files:
 - `habu-enhanced` (56KB) - Enhanced REPL executable
 - `habu-prog` (73KB) - Programmable REPL executable
 - `habu-rec` (73KB) - Recursive REPL executable (Complete Lisp)
+- `habu-extended` (73KB) - Extended REPL executable (v1.2)
 - `enhanced-repl.lisp` - Source for enhanced REPL
 - `programmable-repl.lisp` - Source for programmable REPL
 - `recursive-repl.lisp` - Source for recursive REPL
+- `extended-recursive-repl.lisp` - Source for extended REPL
 
 ### Ignored Files (Auto-Generated)
 - `habu-*.c` - Generated C code (regenerated from .lisp source)
@@ -228,18 +237,18 @@ The repository has been cleaned up to maintain only production-ready files:
 
 ```
 Branch: claude/habu-read-markdown-01TyZUStKoi7uEHenU5E28VZ
-Status: 81 commits ahead
-Working tree: Clean
+Status: 85 commits ahead
+Working tree: Modified (documentation updates in progress)
 ```
 
 ### Recent Commits
 ```
+2419e33 Add Extended Recursive REPL (v1.2) with new language features
+f9f4c69 Add gap analysis document to documentation index
+609b484 Add comprehensive Lisp compliance and self-hosting gap analysis
 9000c97 Archive obsolete development documentation
 aee474f Update REPL_CONTEXT.md with repository cleanup status
 04c4500 Remove obsolete test files from tracking
-ca87f04 Clean up repository: remove intermediate REPL files from tracking
-ddd3188 Update REPL_CONTEXT.md with all new documentation files
-18b8d37 Add architecture documentation and REPL development roadmap
 ```
 
 ## Testing Status
