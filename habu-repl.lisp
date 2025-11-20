@@ -357,11 +357,36 @@
                                  env4)))
             env5))))))
 
+;;;; Load function - loads and evaluates a file
+(defun load-file (filename env)
+  "Load and evaluate all expressions in a file"
+  (let ((contents (read-file filename)))
+    (if contents
+      (load-eval-string contents env)
+      (progn
+        (print (quote "Error: Could not read file"))
+        (println)
+        (cons (quote nil) env)))))
+
+(defun load-eval-string (str env)
+  "Evaluate all expressions in a string, returning final result and environment"
+  (if (= (string-length-raw str) (quote 0))
+    (cons (quote nil) env)
+    (let ((expr (read-str str)))
+      (if (nil? expr)
+        (cons (quote nil) env)
+        (let ((result-env (eval-toplevel expr env)))
+          (let ((result (car result-env)))
+            (let ((new-env (cdr result-env)))
+              ;;; TODO: Parse remaining expressions from string
+              ;;; For now, just evaluate first expression
+              (cons result new-env))))))))
+
 (defun repl-start ()
   (progn
     (print (quote "Habu REPL - Recursive (Self-Hosting)"))
     (println)
-    (print (quote "Features: let, lambda, defun, fixnum?, cons?, symbol?, nil?"))
+    (print (quote "Features: let, lambda, defun, fixnum?, cons?, symbol?, nil?, load"))
     (println)
     (repl-loop (make-initial-env))))
 
