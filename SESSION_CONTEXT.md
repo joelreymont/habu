@@ -130,43 +130,55 @@
 - Debug extensively
 - Very long path
 
-**Path B: Write Simple Compiler in Habu** (RECOMMENDED)
+**Path B: Write Compiler in Habu** (RECOMMENDED)
 - Start fresh with simpler design
 - Use only features Habu has now
-- Generate C code first (easier than native)
-- Gradually add features
-- Faster path to self-hosting
+- **Generate NATIVE MACHINE CODE directly (like SBCL)**
+- Port code emitters from bootstrap/compiler.lisp
+- True self-hosting from the start
+
+---
+
+## Core Design Principle ⭐⭐⭐
+
+**"Generate NATIVE MACHINE CODE directly, like SBCL - NOT C code as intermediate."**
+
+This is the SBCL approach and the correct architecture for a self-hosting Lisp compiler.
 
 ---
 
 ## Recommended Strategy
 
-### Stage 1: Minimal Self-Hosting (2-4 weeks)
+### Stage 1: Minimal Native Code Compiler
 
-**Goal:** Habu can compile itself (generating C)
+**Goal:** Habu compiles itself (generating native x86_64/ARM64)
 
 **Steps:**
-1. Write minimal compiler in Habu (habu-compiler.lisp)
-2. Compile only subset: arithmetic, if, let, defun
-3. Generate C code (like current c-backend.lisp)
-4. Test: habu compiles habu-compiler.lisp → C → binary
+1. ✅ Write compiler in Habu (habu-self-hosting-compiler.lisp) - DONE!
+2. ⏳ Add native code emitters (x86_64, ARM64)
+   - Port from bootstrap/compiler.lisp
+   - Emit machine code instructions directly
+   - No C intermediate step
+3. Link with runtime
+4. Test: habu compiles habu-compiler.lisp → native binary
 5. Binary can compile itself (fixed point!)
 
 **Advantages:**
-- Uses existing c-backend.lisp as model
-- C generation is well-understood
-- Can test incrementally
-- Achieves self-hosting milestone quickly
+- Follow SBCL architecture
+- Direct machine code generation
+- No C compiler dependency at runtime
+- True self-hosting
+- Cleaner architecture
 
-### Stage 2: Native Code Generation (1-2 months)
+### Stage 2: Optimization & Features
 
-**Goal:** Generate native code directly (no C)
+**Goal:** Optimize generated code
 
 **Steps:**
-1. Add native code emitters (x86_64, ARM64)
-2. Port from bootstrap/compiler.lisp
-3. Test against bootstrap output
-4. Achieve true native self-hosting
+1. Register allocation
+2. Tail call optimization
+3. Inline primitives
+4. Peephole optimization
 
 ### Stage 3: Feature Complete (2-3 months)
 
