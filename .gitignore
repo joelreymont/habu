@@ -1,12 +1,55 @@
+# Object files and libraries
 *.o
 *.so
 *.a
 *.dylib
+
+# Test executables
 tests/test_*
 !tests/*.c
+
+# Benchmark executables
 benchmarks/bench_*
 !benchmarks/*.c
 !benchmarks/*.lisp
+
+# Example executables
 examples/drone_control_demo
+
+# REPL generated C code (regenerated from .lisp source)
+habu-enhanced.c
+habu-prog.c
+habu-rec.c
+
+# Intermediate REPL executables (from development)
+habu-complete
+habu-complete.c
+habu-extended
+habu-extended.c
+habu-full
+habu-full.c
+habu-minimal
+habu-minimal.c
+habu-repl
+habu-repl.c
+habu-simple
+habu-simple.c
+
+# Archive directory (development history)
+archive/
+
+# macOS
 .DS_Store
 *.dSYM/
+
+# Editor files
+*.swp
+*.swo
+*~
+.vscode/
+.idea/
+*.sublime-*
+
+# Temporary files
+/tmp/*.txt
+/tmp/*.lisp
