@@ -56,9 +56,12 @@ void habu_gc_collect(void);
 size_t habu_gc_heap_size(void);
 size_t habu_gc_heap_used(void);
 
-/* Root registration API */
-void habu_gc_add_root(void *ptr);
-void habu_gc_remove_root(void *ptr);
+/* Root registration API
+ * Pass POINTER to habu_value_t (e.g., &my_variable)
+ * This allows GC to update your variable when objects are relocated
+ */
+void habu_gc_add_root(habu_value_t *root_location);
+void habu_gc_remove_root(habu_value_t *root_location);
 
 /* Write barrier - call when storing pointer into object */
 void habu_write_barrier(void *obj, habu_value_t value);

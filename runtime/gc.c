@@ -119,8 +119,11 @@ typedef struct gc_heap {
      *
      * Since we don't have automatic stack scanning yet, roots must be
      * registered explicitly using habu_gc_add_root().
+     *
+     * IMPORTANT: roots is an array of POINTERS to habu_value_t locations.
+     * This allows us to update the caller's variable when GC relocates objects.
      */
-    void **roots;               /* Array of root pointers */
+    habu_value_t **roots;       /* Array of pointers to root locations */
     size_t roots_size;          /* Number of registered roots */
     size_t roots_capacity;      /* Capacity (grows as needed) */
 
@@ -889,16 +892,26 @@ void habu_gc_collect(void) {
      *
      * Roots are the starting points for reachability. Any object not
      * reachable from a root is garbage. We copy all root objects first.
+     *
+     * CRITICAL: roots[i] is a POINTER to a habu_value_t location (e.g., &variable).
+     * We must dereference it to get the value, then UPDATE the caller's location.
      */
     for (size_t i = 0; i < gc_heap->roots_size; i++) {
-        if (gc_heap->roots[i]) {
-            void *root = gc_heap->roots[i];
+        habu_value_t *root_location = gc_heap->roots[i];
+        if (root_location && *root_location != NIL) {
+            habu_value_t root_value = *root_location;
 
-            /* Copy root object to new from-space */
-            void *new_root = copy_object(root);
-            if (new_root) {
-                /* Update root pointer to new location */
-                gc_heap->roots[i] = new_root;
+            /* Only process if it's a pointer (not a fixnum) */
+            if (is_pointer(root_value)) {
+                void *root_ptr = untag_pointer(root_value);
+                uint64_t tag = get_tag(root_value);
+
+                /* Copy root object to new from-space */
+                void *new_ptr = copy_object(root_ptr);
+                if (new_ptr) {
+                    /* CRITICAL: Update the CALLER'S variable, not our internal array */
+                    *root_location = tag_pointer(new_ptr, tag);
+                }
             }
         }
     }
@@ -964,16 +977,26 @@ void habu_gc_collect(void) {
     }
 }
 
-/* Root registration API */
+/* Root registration API
+ *
+ * Takes a POINTER to a habu_value_t, not the value itself.
+ * This allows GC to update the caller's variable when objects are relocated.
+ *
+ * Example usage:
+ *   habu_value_t my_obj = habu_cons(a, b);
+ *   habu_gc_add_root(&my_obj);  // Pass ADDRESS of variable
+ *   // ... allocations that might trigger GC ...
+ *   habu_gc_remove_root(&my_obj);
+ */
 
-void habu_gc_add_root(void *ptr) {
-    if (!gc_heap || !ptr) {
+void habu_gc_add_root(habu_value_t *root_location) {
+    if (!gc_heap || !root_location) {
         return;
     }
 
     /* Check if already registered */
     for (size_t i = 0; i < gc_heap->roots_size; i++) {
-        if (gc_heap->roots[i] == ptr) {
+        if (gc_heap->roots[i] == root_location) {
             return;  /* Already registered */
         }
     }
@@ -981,7 +1004,7 @@ void habu_gc_add_root(void *ptr) {
     /* Grow array if needed */
     if (gc_heap->roots_size >= gc_heap->roots_capacity) {
         size_t new_capacity = gc_heap->roots_capacity * 2;
-        void **new_roots = realloc(gc_heap->roots, new_capacity * sizeof(void *));
+        habu_value_t **new_roots = realloc(gc_heap->roots, new_capacity * sizeof(habu_value_t *));
         if (!new_roots) {
             return;  /* Failed to grow, silently ignore */
         }
@@ -989,17 +1012,17 @@ void habu_gc_add_root(void *ptr) {
         gc_heap->roots_capacity = new_capacity;
     }
 
-    gc_heap->roots[gc_heap->roots_size++] = ptr;
+    gc_heap->roots[gc_heap->roots_size++] = root_location;
 }
 
-void habu_gc_remove_root(void *ptr) {
-    if (!gc_heap || !ptr) {
+void habu_gc_remove_root(habu_value_t *root_location) {
+    if (!gc_heap || !root_location) {
         return;
     }
 
     /* Find and remove the root */
     for (size_t i = 0; i < gc_heap->roots_size; i++) {
-        if (gc_heap->roots[i] == ptr) {
+        if (gc_heap->roots[i] == root_location) {
             /* Shift remaining elements down */
             for (size_t j = i; j < gc_heap->roots_size - 1; j++) {
                 gc_heap->roots[j] = gc_heap->roots[j + 1];

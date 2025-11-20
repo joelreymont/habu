@@ -203,9 +203,9 @@ TEST(gc_stats_tracking) {
 
 TEST(gc_root_registration) {
     habu_value_t obj = habu_cons(fixnum_to_value(42), fixnum_to_value(43));
-    void *obj_ptr = untag_pointer(obj);
 
-    habu_gc_add_root(obj_ptr);
+    /* NEW API: Pass address of variable, not value */
+    habu_gc_add_root(&obj);
 
     /* Allocate enough to trigger GC */
     for (int i = 0; i < 10000; i++) {
@@ -214,20 +214,19 @@ TEST(gc_root_registration) {
 
     habu_gc_collect();
 
-    /* Object may have moved - get updated pointer from roots
-     * For now, just verify GC ran without crashing
-     * TODO: Add API to retrieve updated root pointers */
+    /* Object was automatically updated by GC if it moved!
+     * We can verify it's still a valid cons cell */
     habu_gc_stats_t stats;
     habu_gc_get_stats(&stats);
     assert(stats.young_collections > 0);
+    assert(get_tag(obj) == TAG_CONS);  /* Verify still valid */
 
-    habu_gc_remove_root(obj_ptr);
+    habu_gc_remove_root(&obj);
 }
 
 TEST(gc_promotion) {
     habu_value_t obj = habu_cons(fixnum_to_value(1), fixnum_to_value(2));
-    void *obj_ptr = untag_pointer(obj);
-    habu_gc_add_root(obj_ptr);
+    habu_gc_add_root(&obj);
 
     habu_gc_reset_stats();
 
@@ -244,15 +243,15 @@ TEST(gc_promotion) {
     habu_gc_stats_t stats;
     habu_gc_get_stats(&stats);
     assert(stats.young_collections >= 10);
+    assert(get_tag(obj) == TAG_CONS);  /* Still valid after promotion */
 
-    habu_gc_remove_root(obj_ptr);
+    habu_gc_remove_root(&obj);
 }
 
 TEST(gc_write_barrier) {
     /* Create an old gen object (via promotion) */
     habu_value_t old_vec = habu_make_vector(5);
-    void *old_ptr = untag_pointer(old_vec);
-    habu_gc_add_root(old_ptr);
+    habu_gc_add_root(&old_vec);
 
     habu_gc_reset_stats();
 
@@ -268,11 +267,11 @@ TEST(gc_write_barrier) {
     habu_gc_stats_t stats;
     habu_gc_get_stats(&stats);
     assert(stats.young_collections >= 10);
+    assert(get_tag(old_vec) == TAG_VECTOR);  /* Still valid */
 
     /* Now create a young object */
     habu_value_t young_obj = habu_cons(fixnum_to_value(99), NIL);
-    void *young_ptr = untag_pointer(young_obj);
-    habu_gc_add_root(young_ptr);
+    habu_gc_add_root(&young_obj);
 
     /* Trigger more GCs - both objects should survive */
     for (int i = 0; i < 5; i++) {
@@ -285,9 +284,11 @@ TEST(gc_write_barrier) {
     /* Both objects survived */
     habu_gc_get_stats(&stats);
     assert(stats.young_collections >= 15);
+    assert(get_tag(old_vec) == TAG_VECTOR);  /* Still valid */
+    assert(get_tag(young_obj) == TAG_CONS);  /* Still valid */
 
-    habu_gc_remove_root(old_ptr);
-    habu_gc_remove_root(young_ptr);
+    habu_gc_remove_root(&old_vec);
+    habu_gc_remove_root(&young_obj);
 }
 
 TEST(gc_old_generation_collection) {
