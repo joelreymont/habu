@@ -193,5 +193,16 @@ int main(int argc, char **argv) {
     system(chmod_cmd);
 
     printf("Created executable: %s\n", argv[2]);
+
+    /* Add ad-hoc code signature (required on modern macOS, like SBCL does) */
+    printf("Adding ad-hoc code signature...\n");
+    char codesign_cmd[1024];
+    snprintf(codesign_cmd, sizeof(codesign_cmd), "/usr/bin/codesign -s - -f %s 2>&1", argv[2]);
+    int result = system(codesign_cmd);
+    if (result != 0) {
+        fprintf(stderr, "Warning: Code signing failed (code %d)\n", result);
+        fprintf(stderr, "This is expected for minimal Mach-O. Try with full headers.\n");
+    }
+
     return 0;
 }
