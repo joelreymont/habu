@@ -53,6 +53,7 @@ The Habu REPL project successfully implemented **three progressive Lisp REPLs** 
 - `REPL_PROGRESSION.md` (381 lines) - Evolution from simple to complete
 - `REPL_ROADMAP.md` (293 lines) - Development roadmap
 - `REPL_CHANGELOG.md` (267 lines) - Version history
+- `LISP_COMPLIANCE_GAP_ANALYSIS.md` (541 lines) - Spec compliance and self-hosting analysis
 - `REPL_CONTEXT.md` (this file) - Current project context
 
 ### Summaries

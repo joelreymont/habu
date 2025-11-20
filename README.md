@@ -128,6 +128,7 @@ habu> (factorial 10)
 - **[REPL_FINAL_STATUS.md](REPL_FINAL_STATUS.md)** - Complete feature documentation
 - **[REPL_PROGRESSION.md](REPL_PROGRESSION.md)** - Evolution from basic to complete
 - **[CONTRIBUTING.md](CONTRIBUTING.md)** - Contributor's guide
+- **[LISP_COMPLIANCE_GAP_ANALYSIS.md](LISP_COMPLIANCE_GAP_ANALYSIS.md)** - Spec compliance & self-hosting analysis
 
 **Code Resources:**
 - **[stdlib.lisp](stdlib.lisp)** - Standard library with 100+ functions
