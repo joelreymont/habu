@@ -10,7 +10,10 @@
 - [x] #x10 Provide SBCL shim package with predicates/string helpers (`sbcl-habu-shim.lisp`).
 - [x] #x11 Add SBCL-only stub codegen module exporting `compile-to-arm64` for bring-up.
 - [x] #x12 Make `run-habu.lisp` load only Lisp path (no C backend), then run smoke compile.
-- [ ] #x13 Add SBCL harness to print hexdump of stubbed bytes and exit zero on success.
+- [x] #x13 Add SBCL harness to print hexdump of stubbed bytes and exit zero on success.
+  - [x] #x13a Make stub codegen emit deterministic non-empty hex bytes (prologue + ret placeholder).
+  - [x] #x13b Add simple hexdump formatter in `run-habu.lisp` showing length and hex pairs.
+  - [x] #x13c Ensure smoke path exits zero after hexdump even with stub runtime.
 - [ ] #x14 Add CI-style script to run bring-up (`run-habu-lisp.sh`) and capture log.
 
 ## Stage #x02: C-Backend Cleanup (Tiny C Runtime Only)

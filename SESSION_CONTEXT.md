@@ -11,7 +11,7 @@
 - Created `SELF_HOSTING_FULL_SPEC_PLAN.md` with small-step checklist to full-spec, self-hosted Lisp.
 - Archived legacy C backend scripts/binaries into `archive/legacy-c-backend` (keeping only the tiny C runtime/JIT helper in the main tree).
 - SBCL bring-up path uses stubs only; need to finish smoke compile in `run-habu.lisp` and wire runtime addresses.
-- SBCL smoke run now loads and returns 0-byte stub output; next: thread runtime addresses and hexdump emitted code.
+- SBCL smoke run now emits deterministic stub bytes (16 bytes) and prints a hexdump; next: thread runtime addresses to produce realistic output.
 - Will commit frequently; all new literals stay hex-friendly where applicable.
 
 ### Tiny C Surface (kept)

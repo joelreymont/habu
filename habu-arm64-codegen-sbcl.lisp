@@ -7,6 +7,13 @@
 
 (in-package :habu-sbcl-codegen)
 
+(defun encode-word-le (word)
+  "Encode 32-bit word into little-endian byte list for smoke output."
+  (list (logand word #xFF)
+        (logand (ash word -8) #xFF)
+        (logand (ash word -16) #xFF)
+        (logand (ash word -24) #xFF)))
+
 (defun has-tag? (ir tag)
   (and (consp ir) (eq (car ir) tag)))
 
@@ -14,14 +21,40 @@
   (declare (ignore sym env))
   nil)
 
-;; Minimal ARM64 stubs for SBCL bring-up (return empty code fragments)
-(defun arm64-movz (rd imm) (declare (ignore rd imm)) (list))
-(defun arm64-ldr (rt rn offset) (declare (ignore rt rn offset)) (list))
-(defun arm64-lsr (rd rn shift) (declare (ignore rd rn shift)) (list))
-(defun arm64-add-imm (rd rn imm) (declare (ignore rd rn imm)) (list))
-(defun arm64-stp (rt1 rt2 rn imm) (declare (ignore rt1 rt2 rn imm)) (list))
-(defun arm64-ldp (rt1 rt2 rn imm) (declare (ignore rt1 rt2 rn imm)) (list))
-(defun arm64-ret () (list))
+;; Minimal ARM64 stubs for SBCL bring-up (return deterministic code fragments)
+(defun arm64-movz (rd imm)
+  (declare (ignore rd imm))
+  ;; MOVZ X0, #0
+  (encode-word-le #xD2800000))
+
+(defun arm64-ldr (rt rn offset)
+  (declare (ignore rt rn offset))
+  ;; LDR X0, [SP]
+  (encode-word-le #xF94003E0))
+
+(defun arm64-lsr (rd rn shift)
+  (declare (ignore rd rn shift))
+  ;; LSR X0, X0, #0
+  (encode-word-le #xD3400000))
+
+(defun arm64-add-imm (rd rn imm)
+  (declare (ignore rd rn imm))
+  ;; ADD X0, SP, #0
+  (encode-word-le #x910003E0))
+
+(defun arm64-stp (rt1 rt2 rn imm)
+  (declare (ignore rt1 rt2 rn imm))
+  ;; STP X29, X30, [SP,#-16]!
+  (encode-word-le #xA9BF7BFD))
+
+(defun arm64-ldp (rt1 rt2 rn imm)
+  (declare (ignore rt1 rt2 rn imm))
+  ;; LDP X29, X30, [SP],#16
+  (encode-word-le #xA8C17BFD))
+
+(defun arm64-ret ()
+  ;; RET
+  (encode-word-le #xD65F03C0))
 
 (defun codegen-expr (ir runtime-addrs)
   "SBCL shim: simplified codegen to allow loading; returns move of literal/var or zero."

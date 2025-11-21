@@ -5,6 +5,16 @@
 (load "sbcl-habu-shim.lisp")
 (load "habu-arm64-codegen-sbcl.lisp")
 
+(defun hexdump-bytes (bytes)
+  "Print bytes as hex pairs for quick smoke visibility."
+  (loop for b in bytes
+        for idx from 0
+        do (progn
+             (when (and (> idx 0) (zerop (mod idx #x10)))
+               (format t "~%"))
+             (format t "~2,'0X " b)))
+  (when bytes (format t "~%")))
+
 (defpackage :habu-sbcl
   (:use :cl :habu-shim :habu-sbcl-codegen)
   (:export :compile-to-arm64 :compile-to-arm64-with-runtime))
@@ -20,7 +30,9 @@
           (let* ((*package* (find-package :habu-sbcl)))
             (let ((bytes (habu-sbcl:compile-to-arm64 42)))
               (format t "[SMOKE] compile-to-arm64 42 produced ~D bytes.~%"
-                      (length bytes))))
+                      (length bytes))
+              (format t "[HEXDUMP]~%")
+              (hexdump-bytes bytes)))
         (error (e)
           (format t "[WARN] Smoke compile failed: ~A~%" e))))
   (error (e)
