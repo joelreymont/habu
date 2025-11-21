@@ -122,6 +122,7 @@ int64_t habu_jit_execute(unsigned char *code, size_t code_len) {
  * We need to convert it to a C array and execute.
  */
 int64_t habu_jit_execute_list(void *list_ptr) {
+    (void)list_ptr;
     /* For now, assume list is already a C array for testing */
     /* In real integration, we'd walk the Habu cons cells */
     fprintf(stderr, "habu_jit_execute_list not yet implemented\n");

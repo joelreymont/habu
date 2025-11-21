@@ -45,12 +45,13 @@
           (when (and (not *c-jit-exec*) (probe-file path))
             (ignore-errors
               (sb-alien:load-shared-object path)
-              (setf *jit-lib* path
-                    *c-jit-exec*
-                      (sb-alien:extern-alien "habu_jit_execute"
-                                             (sb-alien:function sb-alien:long
-                                                                (sb-alien:* sb-alien:unsigned-char)
-                                                                sb-alien:size-t)))))))
+              (setf *jit-lib* path)
+              (setf *c-jit-exec*
+                     (sb-alien:extern-alien
+                      "habu_jit_execute"
+                      (sb-alien:function sb-alien:long
+                                         (sb-alien:* sb-alien:unsigned-char)
+                                         sb-alien:size-t))))))
         *c-jit-exec*)))
 
 (defun align-size (n align)
