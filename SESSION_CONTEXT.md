@@ -8,20 +8,14 @@
 
 ## 🔄 Current Run Notes
 
-- Created `SELF_HOSTING_FULL_SPEC_PLAN.md` with small-step checklist to full-spec, self-hosted Lisp.
-- Archived legacy C backend scripts/binaries into `archive/legacy-c-backend` (keeping only the tiny C runtime/JIT helper in the main tree).
-- SBCL bring-up path uses stubs only; need to finish smoke compile in `run-habu.lisp` and wire runtime addresses.
-- SBCL smoke run now emits deterministic stub bytes (16 bytes) and prints a hexdump; next: thread runtime addresses to produce realistic output.
-- Added CI wrapper `run-habu-lisp-ci.sh` that captures smoke logs to `ci-logs/run-habu-lisp.log`.
-- Threaded runtime address table through SBCL stub codegen; smoke now uses sample hex addresses and reflects them in MOVZ immediate (see hexdump).
-- Stub now exports and defines `make-runtime-addrs`/`runtime-lookup`; runner sample uses it for table construction.
-- Added SBCL-only JIT scaffolding (mmap RWX, optional icache invalidate) in `run-habu.lisp`; execution is disabled by default (`*enable-jit-smoke*` nil) to avoid macOS SEGV—enable for manual runs on JIT-tolerant hosts.
-- Next JIT step: use tiny C helper (`habu-jit.c`) or signed binary with `MAP_JIT`/entitlement; thread real runtime addresses into non-stub codegen.
-- JIT in runner now auto-skips on non-ARM64 hosts; enable via `*enable-jit-smoke*` when running on ARM64 with JIT-friendly OS setup.
-- Added optional path to call tiny C helper (`libhabu-jit.*`) if present; otherwise falls back to SBCL mmap path.
-- Makefile now builds `libhabu-jit.dylib`/`.so` via `make jit` for the helper path.
-- Rewrote `SELF_HOSTING_FULL_SPEC_PLAN.md` with a concise staged checklist toward full self-hosting; plan stored in repo.
-- Will commit frequently; all new literals stay hex-friendly where applicable.
+- `SELF_HOSTING_FULL_SPEC_PLAN.md` refreshed with staged, small-step checklist to full self-hosting (tiny C runtime only).
+- SBCL stub smoke stable: deterministic 16-byte output + hexdump; JIT opt-in and ARM64-gated; defaults to skip to avoid macOS faults.
+- Runtime helpers exported in stub (`make-runtime-addrs`/`runtime-lookup`); runner uses sample table. Real runtime address threading into non-stub codegen remains TODO.
+- Tiny C JIT helper buildable via `make jit` (`libhabu-jit.{dylib,so}`); runner auto-loads helper if present, else uses SBCL mmap path (icache flush optional).
+- Legacy C backend artifacts archived; only tiny runtime + helper remain active paths.
+- Next focus: Stage #x02 runtime wiring—expose real runtime table from tiny C runtime to Lisp, thread through ARM64 codegen, and re-run JIT paths with real addresses.
+- CI wrapper `run-habu-lisp-ci.sh` covers stub smoke; add hexdump/content assertion later.
+- Will commit frequently; all literals stay hex-friendly where applicable.
 
 ### Tiny C Surface (kept)
 - `runtime/` C runtime (alloc/GC/primitives).
