@@ -166,6 +166,7 @@
   (ensure-runtime-addrs)
   (when (not (arm64-host-p))
     (error "JIT only supported on ARM64 hosts for now."))
+  (format t "[JIT] ARM64 eval using runtime addrs: ~S~%" habu-sbcl-codegen:*runtime-addrs*)
   (let* ((runtime-addrs habu-sbcl-codegen:*runtime-addrs*)
          (bytes (habu-sbcl:compile-to-arm64-with-runtime expr runtime-addrs)))
     (jit-execute-bytes bytes)))
