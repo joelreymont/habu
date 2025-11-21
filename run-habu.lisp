@@ -28,9 +28,13 @@
       (format t "[READY] Compiler definitions loaded in SBCL environment.~%")
       (handler-case
           (let* ((*package* (find-package :habu-sbcl)))
-            (let ((bytes (habu-sbcl:compile-to-arm64 42)))
+            (let* ((runtime-addrs '((habu-cons . #xABCDEF01)
+                                   (habu-car . #x1234)
+                                   (habu-cdr . #x5678)))
+                   (bytes (habu-sbcl:compile-to-arm64-with-runtime 42 runtime-addrs)))
               (format t "[SMOKE] compile-to-arm64 42 produced ~D bytes.~%"
                       (length bytes))
+              (format t "[RUNTIME-ADDRS] ~S~%" runtime-addrs)
               (format t "[HEXDUMP]~%")
               (hexdump-bytes bytes)))
         (error (e)

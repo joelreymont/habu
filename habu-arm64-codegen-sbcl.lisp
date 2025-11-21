@@ -14,6 +14,13 @@
         (logand (ash word -16) #xFF)
         (logand (ash word -24) #xFF)))
 
+(defun pick-runtime-imm (runtime-addrs fallback)
+  "Choose a low 16-bit immediate from runtime-addrs (alist), else fallback."
+  (let ((entry (car runtime-addrs)))
+    (if entry
+        (logand (cdr entry) #xFFFF)
+        (logand fallback #xFFFF))))
+
 (defun has-tag? (ir tag)
   (and (consp ir) (eq (car ir) tag)))
 
@@ -23,9 +30,12 @@
 
 ;; Minimal ARM64 stubs for SBCL bring-up (return deterministic code fragments)
 (defun arm64-movz (rd imm)
-  (declare (ignore rd imm))
-  ;; MOVZ X0, #0
-  (encode-word-le #xD2800000))
+  (declare (ignore rd))
+  ;; MOVZ X0, #imm16
+  (let* ((imm16 (logand imm #xFFFF))
+         (base #xD2800000)
+         (encoded (logior base (ash imm16 5))))
+    (encode-word-le encoded)))
 
 (defun arm64-ldr (rt rn offset)
   (declare (ignore rt rn offset))
@@ -60,12 +70,13 @@
   "SBCL shim: simplified codegen to allow loading; returns move of literal/var or zero."
   (cond
     ((has-tag? ir 'lit)
-     (let ((value (cadr ir)))
-       (arm64-movz 0 (* value 16))))
+     (let* ((value (cadr ir))
+            (imm (pick-runtime-imm runtime-addrs value)))
+       (arm64-movz 0 imm)))
     ((has-tag? ir 'var)
      (let ((offset (cadr ir)))
        (arm64-ldr 0 31 (* offset 16))))
-    (t (arm64-movz 0 #x0))))
+    (t (arm64-movz 0 (pick-runtime-imm runtime-addrs #x0)))))
 
 (defun compile-expr (expr env fenv)
   "SBCL shim: return trivial IR for literals/vars; else zero."
@@ -77,8 +88,7 @@
     (t (list 'lit 0))))
 
 (defun codegen-main-with-runtime (ir runtime-addrs)
-  (declare (ignore runtime-addrs))
-  (let ((body (codegen-expr ir nil)))
+  (let ((body (codegen-expr ir runtime-addrs)))
     (append (arm64-stp 29 30 31 -16)
             body
             (arm64-ldp 29 30 31 16)
