@@ -227,6 +227,22 @@ void arm64_encode_ret(uint8_t *dest) {
     dest[3] = 0xD6;
 }
 
+/* encode_mov: MOV Xd, Xm
+ * Move register to register
+ * Implemented as ORR Xd, XZR, Xm
+ * Encoding: 1010 1010 000m mmmm 0000 0011 111d dddd
+ * Base: 0xAA0003E0 | (rm << 16) | rd
+ */
+void arm64_encode_mov(uint8_t *dest, uint8_t rd, uint8_t rm) {
+    uint32_t base = 0xAA0003E0;
+    uint32_t encoded = base | ((uint32_t)rm << 16) | rd;
+
+    dest[0] = (encoded >> 0) & 0xFF;
+    dest[1] = (encoded >> 8) & 0xFF;
+    dest[2] = (encoded >> 16) & 0xFF;
+    dest[3] = (encoded >> 24) & 0xFF;
+}
+
 /* encode_cmp: CMP Xn, Xm
  * Compare registers (sets flags)
  * Implemented as SUBS XZR, Xn, Xm

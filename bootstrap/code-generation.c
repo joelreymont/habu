@@ -30,6 +30,7 @@ extern void arm64_encode_ldp(uint8_t *dest, uint8_t rt1, uint8_t rt2, uint8_t rn
 extern void arm64_encode_b(uint8_t *dest, int32_t offset);
 extern void arm64_encode_bl(uint8_t *dest, int32_t offset);
 extern void arm64_encode_ret(uint8_t *dest);
+extern void arm64_encode_mov(uint8_t *dest, uint8_t rd, uint8_t rm);
 extern void arm64_encode_cmp(uint8_t *dest, uint8_t rn, uint8_t rm);
 extern void arm64_encode_cset(uint8_t *dest, uint8_t rd, uint8_t cond);
 extern void arm64_encode_and_imm_0xF(uint8_t *dest, uint8_t rd, uint8_t rn);
@@ -143,26 +144,23 @@ void codegen_binop(code_buffer_t *cb, habu_value_t ir) {
     /* Generate code for first operand (result in x0) */
     codegen_expr(cb, a_ir);
 
-    /* Save first operand to stack */
+    /* Save first operand to stack - use sub sp to allocate space */
     uint8_t instr[4];
-    arm64_encode_str(instr, 0, 31, 0);  /* str x0, [sp, #0] */
+    /* For now, use x2 as a temporary register to avoid stack issues */
+    /* mov x2, x0 - save first operand in x2 */
+    arm64_encode_mov(instr, 2, 0);
     emit(cb, instr);
-
-    /* Adjust stack */
-    /* TODO: Use proper stack management */
 
     /* Generate code for second operand (result in x0) */
     codegen_expr(cb, b_ir);
 
-    /* Move second operand to x1 */
+    /* Move second operand from x0 to x1 */
     uint8_t mov_instr[4];
-    arm64_encode_add(mov_instr, 1, 31, 0);  /* x1 = xzr + x0 */
-    /* Actually, we need a proper MOV. For now use: add x1, x0, xzr */
-    /* This is wrong - need to fix. Use ORR instead */
-    /* TODO: Add arm64_encode_mov to encoders */
+    arm64_encode_mov(mov_instr, 1, 0);  /* x1 = x0 */
+    emit(cb, mov_instr);
 
-    /* Load first operand from stack to x0 */
-    arm64_encode_ldr(instr, 0, 31, 0);
+    /* Move first operand from x2 to x0 */
+    arm64_encode_mov(instr, 0, 2);  /* x0 = x2 */
     emit(cb, instr);
 
     /* Determine operation and emit appropriate instruction */
