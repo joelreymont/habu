@@ -5,7 +5,9 @@
 (load "sbcl-habu-shim.lisp")
 (load "habu-arm64-codegen-sbcl.lisp")
 
-(defpackage :habu-sbcl (:use :cl :habu-shim :habu-sbcl-codegen))
+(defpackage :habu-sbcl
+  (:use :cl :habu-shim :habu-sbcl-codegen)
+  (:export :compile-to-arm64 :compile-to-arm64-with-runtime))
 
 (format t "[Habu Lisp] Attempting to load habu-arm64-codegen.lisp (pure Lisp)...~%")
 (handler-case
@@ -16,7 +18,7 @@
       (format t "[READY] Compiler definitions loaded in SBCL environment.~%")
       (handler-case
           (let* ((*package* (find-package :habu-sbcl)))
-            (let ((bytes (compile-to-arm64 42)))
+            (let ((bytes (habu-sbcl:compile-to-arm64 42)))
               (format t "[SMOKE] compile-to-arm64 42 produced ~D bytes.~%"
                       (length bytes))))
         (error (e)

@@ -6,6 +6,22 @@
 
 ---
 
+## 🔄 Current Run Notes
+
+- Created `SELF_HOSTING_FULL_SPEC_PLAN.md` with small-step checklist to full-spec, self-hosted Lisp.
+- Archived legacy C backend scripts/binaries into `archive/legacy-c-backend` (keeping only the tiny C runtime/JIT helper in the main tree).
+- SBCL bring-up path uses stubs only; need to finish smoke compile in `run-habu.lisp` and wire runtime addresses.
+- SBCL smoke run now loads and returns 0-byte stub output; next: thread runtime addresses and hexdump emitted code.
+- Will commit frequently; all new literals stay hex-friendly where applicable.
+
+### Tiny C Surface (kept)
+- `runtime/` C runtime (alloc/GC/primitives).
+- `habu-jit.c` JIT mmap/exec helper (reachable from Lisp).
+- `bytes-to-executable.c` utility to wrap byte sequences into a Mach-O for quick execution until pure-Lisp Mach-O emitter lands.
+- All other C backend artifacts moved to `archive/legacy-c-backend/`.
+
+---
+
 ## 🎯 Current Task List
 
 ### ✅ Completed Tasks (15 items)

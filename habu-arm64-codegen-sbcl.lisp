@@ -43,13 +43,6 @@
        (if off (list 'var off) (list 'lit 0))))
     (t (list 'lit 0))))
 
-(defun compile-to-arm64-with-runtime (expr runtime-addrs)
-  (codegen-main-with-runtime (compile-expr expr nil nil) runtime-addrs))
-
-(defun compile-to-arm64 (expr)
-  (compile-to-arm64-with-runtime expr nil))
-
-;; Minimal main stub: wrap body code with empty prologue/epilogue
 (defun codegen-main-with-runtime (ir runtime-addrs)
   (declare (ignore runtime-addrs))
   (let ((body (codegen-expr ir nil)))
@@ -57,3 +50,9 @@
             body
             (arm64-ldp 29 30 31 16)
             (arm64-ret))))
+
+(defun compile-to-arm64-with-runtime (expr runtime-addrs)
+  (codegen-main-with-runtime (compile-expr expr nil nil) runtime-addrs))
+
+(defun compile-to-arm64 (expr)
+  (compile-to-arm64-with-runtime expr nil))
