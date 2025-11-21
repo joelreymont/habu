@@ -30,9 +30,28 @@
                                               sb-alien:system-area-pointer
                                               sb-alien:unsigned-long))))
 (defparameter *enable-jit-smoke* nil)
+(defparameter *jit-lib* nil)
+(defparameter *c-jit-exec* nil)
+(defparameter *jit-lib-candidates* '("libhabu-jit.dylib" "libhabu-jit.so"))
 
 (defun arm64-host-p ()
   (member :arm64 *features*))
+
+(defun ensure-c-jit ()
+  "Attempt to load tiny C JIT helper (libhabu-jit.*); returns alien fn or NIL."
+  (or *c-jit-exec*
+      (progn
+        (dolist (path *jit-lib-candidates*)
+          (when (and (not *c-jit-exec*) (probe-file path))
+            (ignore-errors
+              (sb-alien:load-shared-object path)
+              (setf *jit-lib* path
+                    *c-jit-exec*
+                      (sb-alien:extern-alien "habu_jit_execute"
+                                             (sb-alien:function sb-alien:long
+                                                                (sb-alien:* sb-alien:unsigned-char)
+                                                                sb-alien:size-t)))))))
+        *c-jit-exec*)))
 
 (defun align-size (n align)
   (let ((rem (mod n align)))
@@ -41,25 +60,30 @@
 (defun jit-execute-bytes (bytes)
   "SBCL-only JIT: mmap RWX memory, copy bytes, call, and return int64 result."
   (let* ((byte-vec (coerce bytes '(simple-array (unsigned-byte 8) (*))))
-         (size (length byte-vec))
-         (page-size (sb-posix:getpagesize))
-         (aligned (align-size size page-size))
-         (prot (logior sb-posix:prot-read sb-posix:prot-write sb-posix:prot-exec))
-         (flags (logior sb-posix:map-private sb-posix:map-anon +map-jit+))
-         (sap (sb-posix:mmap nil aligned prot flags -1 0)))
-    (when (= (sb-sys:sap-int sap) (lognot 0))
-      (error "[JIT] mmap failed"))
-    (unwind-protect
-         (progn
-           (loop for i from 0 below size
-                 do (setf (sb-sys:sap-ref-8 sap i) (aref byte-vec i)))
-           (when *icache-invalidate-fn*
-             (ignore-errors
-               (sb-alien:alien-funcall *icache-invalidate-fn* sap size)))
-           (let ((fn (sb-alien:sap-alien sap
-                                         (sb-alien:* (sb-alien:function sb-alien:long)))))
-             (sb-alien:alien-funcall fn)))
-      (sb-posix:munmap sap aligned))))
+         (size (length byte-vec)))
+    (cond
+      ((ensure-c-jit)
+       (sb-sys:with-pinned-objects (byte-vec)
+         (sb-alien:alien-funcall *c-jit-exec* (sb-sys:vector-sap byte-vec) size)))
+      (t
+       (let* ((page-size (sb-posix:getpagesize))
+              (aligned (align-size size page-size))
+              (prot (logior sb-posix:prot-read sb-posix:prot-write sb-posix:prot-exec))
+              (flags (logior sb-posix:map-private sb-posix:map-anon +map-jit+))
+              (sap (sb-posix:mmap nil aligned prot flags -1 0)))
+         (when (= (sb-sys:sap-int sap) (lognot 0))
+           (error "[JIT] mmap failed"))
+         (unwind-protect
+              (progn
+                (loop for i from 0 below size
+                      do (setf (sb-sys:sap-ref-8 sap i) (aref byte-vec i)))
+                (when *icache-invalidate-fn*
+                  (ignore-errors
+                    (sb-alien:alien-funcall *icache-invalidate-fn* sap size)))
+                (let ((fn (sb-alien:sap-alien sap
+                                              (sb-alien:* (sb-alien:function sb-alien:long)))))
+                  (sb-alien:alien-funcall fn)))
+           (sb-posix:munmap sap aligned)))))))
 
 (format t "[Habu Lisp] Attempting to load habu-arm64-codegen.lisp (pure Lisp)...~%")
 (handler-case
@@ -83,8 +107,10 @@
                  (format t "[JIT RUN] skipped (non-ARM64 host).~%"))
                 (*enable-jit-smoke*
                  (handler-case
-                     (let ((result (jit-execute-bytes bytes)))
-                       (format t "[JIT RUN] returned ~D~%" result))
+                     (let* ((using-c (ensure-c-jit))
+                            (result (jit-execute-bytes bytes)))
+                       (format t "[JIT RUN] returned ~D (~:[SBCL mmap~;C helper~])~%"
+                               result using-c))
                    (error (je)
                      (format t "[WARN] JIT execution failed: ~A~%" je))))
                 (t

@@ -18,6 +18,7 @@
 - Added SBCL-only JIT scaffolding (mmap RWX, optional icache invalidate) in `run-habu.lisp`; execution is disabled by default (`*enable-jit-smoke*` nil) to avoid macOS SEGV—enable for manual runs on JIT-tolerant hosts.
 - Next JIT step: use tiny C helper (`habu-jit.c`) or signed binary with `MAP_JIT`/entitlement; thread real runtime addresses into non-stub codegen.
 - JIT in runner now auto-skips on non-ARM64 hosts; enable via `*enable-jit-smoke*` when running on ARM64 with JIT-friendly OS setup.
+- Added optional path to call tiny C helper (`libhabu-jit.*`) if present; otherwise falls back to SBCL mmap path.
 - Will commit frequently; all new literals stay hex-friendly where applicable.
 
 ### Tiny C Surface (kept)
