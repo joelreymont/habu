@@ -1250,6 +1250,8 @@
 ;;; (compile-to-arm64 42)
 ;;; (compile-to-arm64 (quote (+ 5 7)))
 
+)
+
 #+sbcl
 (progn
   (defun codegen-expr (ir runtime-addrs)
