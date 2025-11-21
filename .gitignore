@@ -3,6 +3,8 @@
 *.so
 *.a
 *.dylib
+ci-logs/
+.DS_Store
 
 # Test executables
 tests/test_*
