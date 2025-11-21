@@ -10,26 +10,65 @@
 
 ### Session Summary
 
-After fixing compiler syntax, began testing function execution with manual ARM64 machine code. Created test infrastructure for validating function prologue/epilogue and basic computation.
+Systematic testing of ARM64 function execution via JIT. Built up from simple constants to complex loops and multiplication. Created comprehensive test suite demonstrating all core features work correctly.
 
 ### Completed Tasks
 
-1. **Test Infrastructure** (COMPLETED)
-   - Created test-function-simple.c - validates basic function execution
-   - Verified function prologue/epilogue work correctly
-   - Test PASS: Function returns constant 120
-   - Demonstrates: stack frame setup, constant loading, proper return
+1. **Basic Function Execution** (PASS)
+   - test-function-simple.c: Return constant 120
+   - Verified: prologue/epilogue, stack frames, JIT execution
 
-2. **Understanding** (COMPLETED)
-   - Confirmed habu-exec pattern works for custom tests
-   - JIT execution via mmap/mprotect functional
-   - Ready to build up to recursive functions
+2. **Multiplication** (PASS)
+   - test-multiply.c: 5 × 24 = 120
+   - Verified: MUL instruction, untagging/retagging
+
+3. **Loops** (PASS)
+   - test-loop.c: Countdown from 5 to 0
+   - Verified: CMP, conditional branch (B.EQ), unconditional branch (B)
+   - Fixed: Branch offset encoding (words not bytes)
+
+4. **Iterative Factorial** (PASS)
+   - test-factorial-iterative.c: factorial(5) = 120
+   - Combines: loops + multiplication
+   - Algorithm: result=1; while(n>0) result*=n, n--
+
+5. **BL Instruction** (PASS - forward calls)
+   - test-bl.c: Call subroutine via BL
+   - Verified: Branch and Link sets x30 (link register)
+   - Forward calls work correctly
+
+### Test Results Summary
+
+- ✅ test-function-simple: PASS
+- ✅ test-multiply: PASS
+- ✅ test-loop: PASS
+- ✅ test-factorial-iterative: PASS
+- ✅ test-bl: PASS
+- ⏳ test-factorial-recursive: WIP (backward BL debugging)
+
+### Technical Notes
+
+**ARM64 Instruction Encodings Verified:**
+- `stp x29, x30, [sp, #-16]!` - Save FP/LR
+- `ldp x29, x30, [sp], #16` - Restore FP/LR
+- `lsr x0, x0, #4` - Untag fixnum
+- `add x0, xzr, x0, lsl #4` - Tag fixnum
+- `mul x0, x1, x2` - Multiply
+- `cmp x0, #imm` - Compare
+- `b.eq offset` - Conditional branch
+- `b offset` - Unconditional branch
+- `bl offset` - Branch and link (forward)
+
+**Branch Offset Encoding:**
+- B/BL use signed offset in **words** (4-byte units)
+- Forward: positive offset
+- Backward: two's complement negative
 
 ### Next Steps
 
-1. Build iterative factorial (loops but no recursion)
-2. Build recursive factorial (actual function calls)
-3. Document patterns and commit progress
+1. Debug backward BL for recursion
+2. Complete recursive factorial test
+3. Commit all working tests
 
 ---
 

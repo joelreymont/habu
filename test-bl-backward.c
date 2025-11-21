@@ -1,0 +1,77 @@
+/* Test backward BL (for recursion) */
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <stdint.h>
+#include <sys/mman.h>
+#include <string.h>
+
+#ifndef MAP_JIT
+#define MAP_JIT 0x0800
+#endif
+
+typedef int64_t (*main_fn_t)(int64_t);
+
+int64_t execute_code(const uint8_t *code, size_t size, int64_t input) {
+    size_t page_size = 4096;
+    void *mem = mmap(NULL, page_size, PROT_READ | PROT_WRITE,
+                     MAP_PRIVATE | MAP_ANON | MAP_JIT, -1, 0);
+    if (mem == MAP_FAILED) {
+        perror("mmap");
+        return -1;
+    }
+
+    memcpy(mem, code, size);
+
+    if (mprotect(mem, page_size, PROT_READ | PROT_EXEC) != 0) {
+        perror("mprotect");
+        munmap(mem, page_size);
+        return -1;
+    }
+
+    main_fn_t fn = (main_fn_t)mem;
+    int64_t result = fn(input);
+
+    munmap(mem, page_size);
+    return result;
+}
+
+void test_countdown(void) {
+    printf("Test: Countdown using recursive BL (5 -> 4 -> 3 -> 2 -> 1 -> 0)\n");
+
+    uint8_t code[] = {
+        /* countdown: */
+        0xFD, 0x7B, 0xBF, 0xA9,  /* stp x29, x30, [sp, #-16]! (offset 0) */
+        
+        /* if x0 == 0, return 0 */
+        0x1F, 0x00, 0x00, 0xF1,  /* cmp x0, #0 (offset 4) */
+        0x41, 0x00, 0x00, 0x54,  /* b.ne +2 (to recursive) (offset 8) */
+        0x01, 0x00, 0x00, 0x14,  /* b +1 (to epilogue) (offset 12) */
+        
+        /* recursive: (offset 16) */
+        0x00, 0x04, 0x00, 0xD1,  /* sub x0, x0, #1 (offset 16) */
+        
+        /* BL to self: from offset 20 to offset 0 = -20 bytes = -5 words */
+        /* -5 = 0x3FFFFFB in 26 bits */
+        0xFB, 0xFF, 0xFF, 0x97,  /* bl -5 (offset 20) */
+        
+        /* epilogue: (offset 24) */
+        0xFD, 0x7B, 0xC1, 0xA8,  /* ldp x29, x30, [sp], #16 */
+        0xC0, 0x03, 0x5F, 0xD6   /* ret */
+    };
+
+    int64_t result = execute_code(code, sizeof(code), 5);
+
+    printf("  Result: %lld\n", (long long)result);
+    if (result == 0) {
+        printf("  PASS - Recursive BL works!\n\n");
+    } else {
+        printf("  FAIL (expected 0, got %lld)\n\n", (long long)result);
+    }
+}
+
+int main(void) {
+    printf("=== Backward BL Test ===\n\n");
+    test_countdown();
+    return 0;
+}
