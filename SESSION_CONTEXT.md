@@ -574,6 +574,8 @@ Just need to:
 
 ### New Artifact
 - `SELF_HOSTING_TODO.md` - Full checklist to reach self-hosting/full-spec Lisp (runtime, reader, compiler, codegen, packages, numeric tower, conditions, testing, bootstrap milestones)
+- `PURE_LISP_PLAN.md` - Small-step plan to stand up a pure-Lisp runner (no C backend)
+- `run-habu.lisp` / `run-habu-lisp.sh` - SBCL-only driver + wrapper to load compiler code without generating C
 
 ### Key Files to Work On Next
 
