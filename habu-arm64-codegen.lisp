@@ -3,8 +3,6 @@
 ;;;; ARM64 Machine Code Generator - Pure Habu Lisp
 ;;;; Generates raw ARM64 bytes following SBCL model
 
-(defparameter *runtime-addrs* nil)
-
 ;;; ============================================
 ;;; Byte Utilities
 ;;; ============================================
@@ -747,7 +745,7 @@
               (codegen-cond-clauses clauses runtime-addrs))
 
               ;;; Unknown
-              (arm64-movz 0 #x0)))))))))
+              (arm64-movz 0 #x0))))))))))))))))))
 
 #-sbcl
 (defun codegen-main-with-runtime (ir runtime-addrs)
@@ -958,7 +956,7 @@
               (compile-cond-clauses (cdr clauses) env fenv))))
         ;;; Malformed clause
         (compile-cond-clauses (cdr clauses) env fenv))))
-    nil))
+    nil)
 
 #-sbcl
 #-sbcl
@@ -1111,7 +1109,7 @@
                                           (compile-expr arg1 env fenv)
                                           (compile-expr (car rest) env))
                                     (list (quote call) op (compile-expr arg1 env fenv)))))
-                              (list (quote call) op)))))))))))
+                              (list (quote call) op)))))))))))))))))
 
 (defun compile-to-arm64-with-runtime (expr runtime-addrs)
   "Full pipeline with explicit runtime addresses: Habu expr → IR → ARM64 bytes"
@@ -1120,7 +1118,7 @@
 #-sbcl
 (defun compile-to-arm64 (expr)
   "Full pipeline: Habu expr → IR → ARM64 bytes"
-  (compile-to-arm64-with-runtime expr *runtime-addrs*))
+  (compile-to-arm64-with-runtime expr (quote nil)))
 
 ;;; ============================================
 ;;; Function Definition and Multi-Form Compilation
@@ -1241,7 +1239,7 @@
 
 (defun compile-program-with-functions (forms)
   "Compile program using default runtime addresses (nil placeholders)"
-  (compile-program-with-functions-with-runtime forms *runtime-addrs*))
+  (compile-program-with-functions-with-runtime forms (quote nil)))
 
 ;;; ============================================
 ;;; Tests (commented out - run manually if needed)
@@ -1252,4 +1250,4 @@
 ;;; (compile-to-arm64 42)
 ;;; (compile-to-arm64 (quote (+ 5 7)))
 
-))))))))))))))))))
+)))) ; end #-sbcl progn and close nested forms
