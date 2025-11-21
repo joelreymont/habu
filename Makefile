@@ -27,11 +27,16 @@ BENCH_PROGS = $(BENCH_SRCS:.c=)
 EXAMPLE_SRCS = examples/drone_control_demo.c examples/root_examples.c
 EXAMPLE_PROGS = $(EXAMPLE_SRCS:.c=)
 
+# JIT helper library
+JIT_LIB_DYLIB = libhabu-jit.dylib
+JIT_LIB_SO = libhabu-jit.so
+
 .PHONY: all clean test benchmark examples
 
 all: $(TEST_PROGS)
 
 examples: $(EXAMPLE_PROGS)
+jit: $(JIT_LIB_DYLIB) $(JIT_LIB_SO)
 
 # Build runtime object files
 runtime/%.o: runtime/%.c runtime/*.h
@@ -48,6 +53,13 @@ benchmarks/bench_%: benchmarks/bench_%.c $(RUNTIME_OBJS)
 # Build examples
 examples/%: examples/%.c $(RUNTIME_OBJS)
 	$(CC) $(CFLAGS) -o $@ $< $(RUNTIME_OBJS) $(LDLIBS)
+
+# Build tiny JIT helper (macOS .dylib and generic .so)
+$(JIT_LIB_DYLIB): habu-jit.c runtime/habu.h
+	$(CC) $(CFLAGS) -shared -fPIC -o $@ $< $(LDLIBS)
+
+$(JIT_LIB_SO): habu-jit.c runtime/habu.h
+	$(CC) $(CFLAGS) -shared -fPIC -o $@ $< $(LDLIBS)
 
 # Run tests
 test: $(TEST_PROGS)
@@ -73,6 +85,7 @@ clean:
 	rm -f $(TEST_PROGS)
 	rm -f $(BENCH_PROGS)
 	rm -f $(EXAMPLE_PROGS)
+	rm -f $(JIT_LIB_DYLIB) $(JIT_LIB_SO)
 
 # Cross-compile for ARM64
 cross: CC = $(CROSS_CC)
