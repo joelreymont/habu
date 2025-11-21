@@ -38,6 +38,40 @@
   #+sbcl (sb-posix:getenv name)
   #-sbcl nil)
 
+(defun parse-runtime-lines (lines)
+  (let ((cons-addr nil) (car-addr nil) (cdr-addr nil))
+    (dolist (ln lines)
+      (when (search "HABU_CONS_ADDR=" ln)
+        (setf cons-addr (parse-hex-int (subseq ln (length "HABU_CONS_ADDR=")))))
+      (when (search "HABU_CAR_ADDR=" ln)
+        (setf car-addr (parse-hex-int (subseq ln (length "HABU_CAR_ADDR=")))))
+      (when (search "HABU_CDR_ADDR=" ln)
+        (setf cdr-addr (parse-hex-int (subseq ln (length "HABU_CDR_ADDR="))))))
+    (when (and cons-addr car-addr cdr-addr)
+      (list cons-addr car-addr cdr-addr))))
+
+(defun read-runtime-addrs ()
+  "Try env vars, then bin/print-runtime-addrs, else fallback sample values."
+  (let ((env-addrs (list (env-addr "HABU_CONS_ADDR" nil)
+                         (env-addr "HABU_CAR_ADDR" nil)
+                         (env-addr "HABU_CDR_ADDR" nil))))
+    (if (every #'identity env-addrs)
+        env-addrs
+        (let ((helper (merge-pathnames "bin/print-runtime-addrs" (truename "."))))
+          (if (probe-file helper)
+              (ignore-errors
+                (let ((p (sb-ext:run-program (namestring helper) nil
+                                             :output :stream
+                                             :error :output
+                                             :search t)))
+                  (unwind-protect
+                       (let* ((s (sb-ext:process-output p))
+                              (lines (loop for line = (read-line s nil nil)
+                                           while line collect line)))
+                         (or (parse-runtime-lines lines) env-addrs))
+                    (sb-ext:process-close p))))
+              nil)))))
+
 (defun arm64-host-p ()
   (member :arm64 *features*))
 
