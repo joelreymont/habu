@@ -4,7 +4,8 @@
 (defpackage :habu-sbcl-codegen
   (:use :cl :habu-shim)
   (:export codegen-expr compile-expr compile-to-arm64-with-runtime compile-to-arm64
-           make-runtime-addrs runtime-lookup *runtime-addrs*))
+           make-runtime-addrs runtime-lookup *runtime-addrs*
+           compile-program-with-functions-with-runtime compile-program-with-functions))
 
 (in-package :habu-sbcl-codegen)
 
@@ -119,3 +120,95 @@
 
 (defun compile-to-arm64 (expr)
   (compile-to-arm64-with-runtime expr nil))
+
+;;; ============================================
+;;; Multi-Function Compilation Stubs
+;;; ============================================
+
+(defun count-instrs (code)
+  "Count number of 4-byte instructions in code list"
+  (if (null code)
+      0
+      (+ 1 (count-instrs (nthcdr 4 code)))))
+
+(defun compile-defun (name params body env fenv)
+  "Stub: compile defun into (name param-count body-ir)"
+  (declare (ignore env fenv))
+  (list name (length params) (compile-expr body nil nil)))
+
+(defun compile-forms-helper (forms env fenv)
+  "Stub: compile list of forms, separating defuns from main expression
+   Returns: (list-of-compiled-functions main-expression-ir)"
+  (if (consp forms)
+      (let ((form (car forms)))
+        (if (and (consp form) (eq (car form) 'defun))
+            ;; It's a defun
+            (let* ((name (cadr form))
+                   (params (caddr form))
+                   (body (cadddr form))
+                   (compiled-fn (compile-defun name params body env fenv))
+                   (new-fenv (cons compiled-fn fenv))
+                   (rest-result (compile-forms-helper (cdr forms) env new-fenv))
+                   (rest-fns (car rest-result))
+                   (main-ir (cadr rest-result)))
+              (list (cons compiled-fn rest-fns) main-ir))
+            ;; Not a defun - treat as main expression
+            (list fenv (compile-expr form env fenv))))
+      ;; No more forms
+      (list fenv '(lit 0))))
+
+(defun compile-forms (forms)
+  "Stub: compile list of top-level forms"
+  (compile-forms-helper forms nil nil))
+
+(defun codegen-function-with-params (param-count body-ir runtime-addrs)
+  "Stub: generate code for function with parameters
+   Returns dummy prologue + body + epilogue"
+  (declare (ignore param-count))
+  (let ((body (codegen-expr body-ir runtime-addrs)))
+    (append (arm64-stp 29 30 31 -16)
+            body
+            (arm64-ldp 29 30 31 16)
+            (arm64-ret))))
+
+(defun codegen-functions-helper (compiled-fns current-offset runtime-addrs)
+  "Stub: generate code for all compiled functions
+   Returns: (total-code function-offsets)"
+  (if (consp compiled-fns)
+      (let* ((fn (car compiled-fns))
+             (name (car fn))
+             (param-count (cadr fn))
+             (body-ir (caddr fn))
+             (fn-code (codegen-function-with-params param-count body-ir runtime-addrs))
+             (fn-size (count-instrs fn-code))
+             (rest-result (codegen-functions-helper (cdr compiled-fns)
+                                                    (+ current-offset fn-size)
+                                                    runtime-addrs))
+             (rest-code (car rest-result))
+             (rest-offsets (cadr rest-result)))
+        (list (append fn-code rest-code)
+              (cons (list name current-offset) rest-offsets)))
+      ;; No more functions
+      (list nil nil)))
+
+(defun codegen-main-with-runtime-and-fns (ir runtime-addrs fn-offsets current-offset)
+  "Stub: generate main code with function offsets (ignored in stub)"
+  (declare (ignore fn-offsets current-offset))
+  (codegen-main-with-runtime ir runtime-addrs))
+
+(defun compile-program-with-functions-with-runtime (forms runtime-addrs)
+  "Stub: compile entire program with function definitions
+   Returns: complete machine code with all functions + main"
+  (let* ((compile-result (compile-forms forms))
+         (compiled-fns (car compile-result))
+         (main-ir (cadr compile-result))
+         (fns-result (codegen-functions-helper compiled-fns 0 runtime-addrs))
+         (fns-code (car fns-result))
+         (fn-offsets (cadr fns-result))
+         (fns-size (count-instrs fns-code))
+         (main-code (codegen-main-with-runtime-and-fns main-ir runtime-addrs fn-offsets fns-size)))
+    (append fns-code main-code)))
+
+(defun compile-program-with-functions (forms)
+  "Stub: compile program using default runtime addresses"
+  (compile-program-with-functions-with-runtime forms nil))

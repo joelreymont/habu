@@ -14,9 +14,9 @@
 
 ### Active Milestones:
 1. ✅ **Recursive Functions** - COMPLETE (factorial(5) = 120 working!)
-2. ⏳ **Fix Function Prologue** - IN PROGRESS (using safe stack pattern)
-3. 📋 **Tail-Call Optimization** - NEXT (convert tail recursion to iteration)
-4. 📋 **Port to SBCL** - SOON (enable multi-function compilation in SBCL)
+2. ✅ **Fix Function Prologue** - COMPLETE (safe stack pattern implemented)
+3. ✅ **Tail-Call Optimization** - COMPLETE (tail recursion → iteration)
+4. ⏳ **Port to SBCL** - IN PROGRESS (enable multi-function compilation in SBCL)
 
 **Timeline to Self-Hosting:** ~2 weeks
 - Week 1: Immediate fixes, runtime threading, stdlib
@@ -26,7 +26,50 @@
 
 ---
 
-## Latest Session (November 21, 2025 - Part 5)
+## Latest Session (November 21, 2025 - Part 6)
+
+### Session Summary
+
+**MAJOR MILESTONE**: Phase 1.1 (Safe Function Prologue) and Phase 1.2 (Tail-Call Optimization) COMPLETE!
+
+**Phase 1.1 - Safe Function Prologue** ✅
+- Created `make-safe-prologue()` and `make-safe-epilogue()` helper functions
+- Pattern: `sub sp, sp, #32` FIRST, then `stp x29, x30, [sp, #0]` (no pre-decrement)
+- Updated all 3 function generators to use safe pattern:
+  * `codegen-function-with-runtime` (habu-arm64-codegen.lisp:950-959)
+  * `codegen-main-with-runtime` (habu-arm64-codegen.lisp:788-801)
+  * `codegen-function-with-params` (habu-arm64-codegen.lisp:1254-1265)
+- Eliminates page boundary crashes from `stp x29, x30, [sp, #-16]!` pattern
+- Test results: factorial(5) = 120 works perfectly with safe pattern
+
+**Phase 1.2 - Tail-Call Optimization** ✅
+- Added `tail?` parameter to `codegen-expr` signature (line 486)
+- Threaded tail position through all codegen-expr call sites
+- Tail position detection:
+  * Function bodies: always tail position
+  * let/let-multi bodies: inherit parent tail position
+  * if then/else branches: inherit parent tail position
+  * Main body: not tail position (returns to OS)
+- Updated fncall case to detect tail calls (habu-arm64-codegen.lisp:548-559)
+- Tail calls compile to direct jump (B instruction) instead of call (BL)
+- **Key insight**: Tail call jumps directly without touching stack/frame (reuses current frame!)
+- Created test-tail-recursive-factorial.c proving TCO works
+- Test results:
+  * factorial_tail(5, 1) = 120 ✓
+  * factorial_tail(10, 1) = 3628800 ✓
+  * Zero stack growth with tail recursion!
+
+**Technical Details**:
+- Tail-call pattern: `(append-code args-code (arm64-b jump-offset))`
+- Normal call pattern: `(append-code args-code (arm64-bl bl-offset))`
+- Tail recursion now compiles to constant-space iteration at machine code level
+- Critical fix during implementation: Initially tried restoring frame before jump (wrong!), corrected to direct jump
+
+**Next**: Phase 1.3 - Port multi-function compilation to SBCL version
+
+---
+
+## Previous Session (November 21, 2025 - Part 5)
 
 ### Session Summary
 
