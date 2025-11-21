@@ -1,6 +1,14 @@
 #define _POSIX_C_SOURCE 200112L  /* POSIX.1-2001 for snprintf */
 #include "habu.h"
 #include <stdio.h>
+
+/* Export runtime function addresses for host/JIT plumbing */
+void habu_print_runtime_addrs(void) {
+    printf("HABU_CONS_ADDR=0x%lx\n", (unsigned long)(void*)habu_cons);
+    printf("HABU_CAR_ADDR=0x%lx\n", (unsigned long)(void*)habu_car);
+    printf("HABU_CDR_ADDR=0x%lx\n", (unsigned long)(void*)habu_cdr);
+}
+#include <stdio.h>
 #include <stdlib.h>
 #include <time.h>
 #include <string.h>

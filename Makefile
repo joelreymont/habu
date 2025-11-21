@@ -30,6 +30,7 @@ EXAMPLE_PROGS = $(EXAMPLE_SRCS:.c=)
 # JIT helper library
 JIT_LIB_DYLIB = libhabu-jit.dylib
 JIT_LIB_SO = libhabu-jit.so
+PRINT_RUNTIME = bin/print-runtime-addrs
 
 .PHONY: all clean test benchmark examples
 
@@ -37,6 +38,7 @@ all: $(TEST_PROGS)
 
 examples: $(EXAMPLE_PROGS)
 jit: $(JIT_LIB_DYLIB) $(JIT_LIB_SO)
+runtime-addrs: $(PRINT_RUNTIME)
 
 # Build runtime object files
 runtime/%.o: runtime/%.c runtime/*.h
@@ -60,6 +62,9 @@ $(JIT_LIB_DYLIB): habu-jit.c runtime/habu.h
 
 $(JIT_LIB_SO): habu-jit.c runtime/habu.h
 	$(CC) $(CFLAGS) -shared -fPIC -o $@ $< $(LDLIBS)
+
+$(PRINT_RUNTIME): bin/print-runtime-addrs.c runtime/habu.h
+	$(CC) $(CFLAGS) -o $@ $< $(RUNTIME_OBJS) $(LDLIBS)
 
 # Run tests
 test: $(TEST_PROGS)
@@ -86,6 +91,7 @@ clean:
 	rm -f $(BENCH_PROGS)
 	rm -f $(EXAMPLE_PROGS)
 	rm -f $(JIT_LIB_DYLIB) $(JIT_LIB_SO)
+	rm -f $(PRINT_RUNTIME)
 
 # Cross-compile for ARM64
 cross: CC = $(CROSS_CC)
