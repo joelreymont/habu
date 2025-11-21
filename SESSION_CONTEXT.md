@@ -21,6 +21,20 @@
 - `jit-eval` added (logs runtime addrs, untags fixnums). Opt-in ARM64 JIT test `tests/jit-cons-car-cdr.lisp` added; skips if values look like stub output or JIT not enabled (`HABU_JIT_TEST=1`).
 - Will commit frequently; all literals stay hex-friendly where applicable.
 
+### Master TODO to Full Self-Hosting & CL Compliance
+- Runtime: expose full runtime table (cons/car/cdr/strings/vectors/symbols/IO/errors/GC hooks); helper to emit hex addrs; document call ABI; harden GC + alloc fast paths.
+- Reader/Printer: implement remaining reader macros (#', `, ,@, #(), #., char literals, #|...|#, dispatch table); radix ints; printer with cycle/share detection and readable/unreadable modes.
+- Evaluator/Compiler: fill special forms (block/return, tagbody/go, catch/throw, unwind-protect, progv); defmacro/macrolet/symbol-macrolet + macroexpansion; multiple values plumbing; env model (lexical/dynamic, globals, packages); parse declarations (optimize/type/the) as no-ops; condition/restart stubs (signal/error/warn/handler-case/restart-case).
+- IR/Transforms: closure conversion + free-var capture; tail-position analysis; basic opts (const-fold, DCE for progn/if, small inlining); spill analysis scaffold (ARM64 first).
+- ARM64 Codegen: thread real runtime table across calls; codegen for strings/vectors/symbols/IO/errors; block/return/tagbody/go; catch/throw/unwind-protect; MV ABI; closures/env alloc/load; call frames with spills/varargs; GC safepoints policy; hex literals + hexdump/disasm helper.
+- JIT (ARM64): prefer tiny C helper (`libhabu-jit.*`) or entitlements; add JIT tests for arithmetic/control/cons/strings/vectors/closures/recursion/mv/errors using real runtime addrs; load→compile→JIT integration; small benchmarks.
+- REPL/Loader: harden `(load ...)` with packages/readtable conditionals; pure-Lisp REPL with history (runtime lineedit), error trapping, restarts, :reload/:jit/:disasm commands; ensure REPL uses runtime table.
+- Self-Hosting: compile simple programs with real runtime addrs; recursion tests via JIT; self-compile (stage1→stage2 fixed point); bootstrap script (SBCL host + tiny runtime → stage2).
+- x86_64: port ARM64 lowering to x86_64 encoders; runtime plumbing; JIT executor and parity tests.
+- Compliance/Data Structures: numeric tower (bignum/ratio/float/complex); full packages; hash tables and sequences (adjustable/fill-pointer/bit-vectors); conditions/restarts tests and runtime integration.
+- Tooling/Docs: document calling conventions, runtime table, reader/printer, bootstrap; compliance checklist; profiling/tracing hooks; optional disassembler/hexdump verifier.
+- Hygiene: keep repo free of generated C/backend artifacts; scripts for pure-Lisp workflows; tag milestones and log in SESSION_CONTEXT.md.
+
 ### Implementation Design (next steps)
 - Goal: thread real tiny-runtime addresses through ARM64 codegen and JIT from Lisp.
 - Steps:
