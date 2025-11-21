@@ -11,7 +11,7 @@
 (handler-case
     (progn
       (let ((*package* (find-package :habu-sbcl)))
-        (load "habu-arm64-codegen.lisp")
+        ;; For SBCL bring-up, load only the stub file; skip the real codegen.
         (load "habu-arm64-codegen-sbcl.lisp"))
       (format t "[READY] Compiler definitions loaded in SBCL environment.~%")
       (handler-case
