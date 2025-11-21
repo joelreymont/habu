@@ -10,35 +10,53 @@
 
 ### Session Summary
 
-Fixed critical parenthesis balance issues in habu-arm64-codegen.lisp that were preventing the full compiler from loading. The file had accumulated syntax errors from previous refactoring that left functions with unclosed forms.
+Fixed critical parenthesis balance issues in habu-arm64-codegen.lisp through systematic analysis. The file had multiple syntax errors from previous refactoring. Discovered and documented the dual compiler architecture (real Habu compiler vs SBCL stub).
 
 ### Completed Tasks
 
 1. **Fixed habu-arm64-codegen.lisp Syntax** (COMPLETED)
-   - Identified 3 unbalanced functions via systematic analysis
-   - codegen-expr: added 10 closing parens
-   - compile-cond-clauses: removed 1 extra closing paren
-   - compile-expr: added 8 closing parens
-   - Removed duplicate #+sbcl section (now in habu-arm64-codegen-sbcl.lisp)
+   - First attempt: Fixed 3 unbalanced functions but added parens at end of file
+   - Issue: SBCL's #-sbcl reader expected properly closed functions, not end-of-file closes
+   - Final fix: Added closing parens at END of each function:
+     * codegen-expr (line 748): added 2 closing parens
+     * compile-expr (line 1111): added 2 closing parens
+     * End of file (line 1252): only 1 paren for (progn ...)
+   - Removed duplicate #-sbcl directive (line 961)
    - File now perfectly balanced: 2230 opens, 2230 closes
+   - File loads successfully in SBCL
 
-2. **Terminology Cleanup** (IN PROGRESS)
-   - Changed references from "bytecode" to "machine code"
-   - Habu generates ARM64 machine code directly, not bytecode
+2. **Architecture Understanding** (COMPLETED)
+   - **habu-arm64-codegen.lisp**: Real compiler, wrapped in `#-sbcl (progn ...)`
+     * Only runs in Habu runtime, NOT in SBCL
+     * Contains full ARM64 machine code generation
+     * Uses Habu-specific features
+   - **habu-arm64-codegen-sbcl.lisp**: SBCL stub compiler
+     * Simplified version for testing in SBCL
+     * Generates basic machine code patterns
+     * Always used when running in SBCL
+   - **Implication**: Full compiler testing requires Habu runtime, not SBCL
+
+3. **Terminology Cleanup** (COMPLETED)
+   - Clarified: Habu generates ARM64 **machine code**, not bytecode
+   - Updated documentation and comments
 
 ### Technical Details
 
-The compiler file was broken due to missing closing parentheses in three deeply-nested functions. Used Python script to:
-1. Count parentheses in each function definition
-2. Identify exact imbalance for each function
-3. Add/remove closing parens precisely
-4. Verify total file balance
+**Problem**: The file had unbalanced parentheses in deeply-nested functions. Initial fix added all missing closing parens at the END of the file, which caused SBCL's reader to fail when parsing the `#-sbcl (progn ...)` form.
+
+**Root Cause**: When SBCL sees `#-sbcl`, it skips the next form by reading it to find where it ends. To do this, it must parse the form structure. Adding all closing parens at the end created: `(progn ... ))))` where only `(progn ... )` was expected.
+
+**Solution**: Added closing parens at the END of each function where they belonged:
+- codegen-expr ends at line 748
+- compile-expr ends at line 1111
+- The progn itself closes at line 1252
 
 ### Next Steps
 
-1. Test factorial compilation with fixed compiler
-2. Verify recursive function calls work
-3. Test full compiler pipeline (SBCL → Habu compiler → ARM64 machine code → JIT execution)
+1. Test recursive functions using C harness (manual machine code)
+2. Build minimal Habu runtime executable
+3. Test full compiler in Habu runtime (not SBCL)
+4. Progress toward self-hosting
 
 ---
 
