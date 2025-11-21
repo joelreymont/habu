@@ -12,6 +12,7 @@
 - Archived legacy C backend scripts/binaries into `archive/legacy-c-backend` (keeping only the tiny C runtime/JIT helper in the main tree).
 - SBCL bring-up path uses stubs only; need to finish smoke compile in `run-habu.lisp` and wire runtime addresses.
 - SBCL smoke run now emits deterministic stub bytes (16 bytes) and prints a hexdump; next: thread runtime addresses to produce realistic output.
+- Added CI wrapper `run-habu-lisp-ci.sh` that captures smoke logs to `ci-logs/run-habu-lisp.log`.
 - Will commit frequently; all new literals stay hex-friendly where applicable.
 
 ### Tiny C Surface (kept)

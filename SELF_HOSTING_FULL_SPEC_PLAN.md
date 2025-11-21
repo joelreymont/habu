@@ -14,7 +14,7 @@
   - [x] #x13a Make stub codegen emit deterministic non-empty hex bytes (prologue + ret placeholder).
   - [x] #x13b Add simple hexdump formatter in `run-habu.lisp` showing length and hex pairs.
   - [x] #x13c Ensure smoke path exits zero after hexdump even with stub runtime.
-- [ ] #x14 Add CI-style script to run bring-up (`run-habu-lisp.sh`) and capture log.
+- [x] #x14 Add CI-style script to run bring-up (`run-habu-lisp.sh`) and capture log.
 
 ## Stage #x02: C-Backend Cleanup (Tiny C Runtime Only)
 - [x] #x20 Move legacy C codegen scripts (`c-codegen.lisp`, `ir-to-c.lisp`, `compile-habu.sh`) into `archive/legacy-c-backend/`.
