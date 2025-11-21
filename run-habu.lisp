@@ -38,6 +38,20 @@
   #+sbcl (sb-posix:getenv name)
   #-sbcl nil)
 
+(defun parse-hex-int (str)
+  (let* ((s (string-upcase (string str)))
+         (trimmed (if (and (> (length s) 2)
+                           (string= (subseq s 0 2) "0X"))
+                      (subseq s 2)
+                      s)))
+    (parse-integer trimmed :radix 16)))
+
+(defun env-addr (name fallback)
+  (let ((val (getenv name)))
+    (if val
+        (ignore-errors (parse-hex-int val))
+        fallback)))
+
 (defun parse-runtime-lines (lines)
   (let ((cons-addr nil) (car-addr nil) (cdr-addr nil))
     (dolist (ln lines)
@@ -57,20 +71,20 @@
                          (env-addr "HABU_CDR_ADDR" nil))))
     (if (every #'identity env-addrs)
         env-addrs
-        (let ((helper (merge-pathnames "bin/print-runtime-addrs" (truename "."))))
-          (if (probe-file helper)
-              (ignore-errors
-                (let ((p (sb-ext:run-program (namestring helper) nil
-                                             :output :stream
-                                             :error :output
-                                             :search t)))
-                  (unwind-protect
-                       (let* ((s (sb-ext:process-output p))
-                              (lines (loop for line = (read-line s nil nil)
-                                           while line collect line)))
-                         (or (parse-runtime-lines lines) env-addrs))
-                    (sb-ext:process-close p))))
-              nil)))))
+      (let ((helper (merge-pathnames "bin/print-runtime-addrs" (truename "."))))
+        (if (probe-file helper)
+            (ignore-errors
+              (let ((p (sb-ext:run-program (namestring helper) nil
+                                           :output :stream
+                                           :error :output
+                                           :search t)))
+                (unwind-protect
+                     (let* ((s (sb-ext:process-output p))
+                            (lines (loop for line = (read-line s nil nil)
+                                         while line collect line)))
+                       (or (parse-runtime-lines lines) env-addrs))
+                  (sb-ext:process-close p))))
+            nil)))))
 
 (defun arm64-host-p ()
   (member :arm64 *features*))
