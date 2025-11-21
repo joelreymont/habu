@@ -23,6 +23,10 @@
              (format t "~2,'0X " b)))
   (when bytes (format t "~%")))
 
+(defun getenv (name)
+  #+sbcl (sb-posix:getenv name)
+  #-sbcl nil)
+
 (defparameter +map-jit+ #x800)
 (defparameter *icache-invalidate-fn*
   (ignore-errors
@@ -36,10 +40,6 @@
 (defparameter *jit-lib* nil)
 (defparameter *c-jit-exec* nil)
 (defparameter *jit-lib-candidates* '("libhabu-jit.dylib" "libhabu-jit.so"))
-
-(defun getenv (name)
-  #+sbcl (sb-posix:getenv name)
-  #-sbcl nil)
 
 (defun parse-hex-int (str)
   (let* ((s (string-upcase (string str)))
