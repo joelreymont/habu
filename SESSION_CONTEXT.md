@@ -20,6 +20,7 @@
 - JIT in runner now auto-skips on non-ARM64 hosts; enable via `*enable-jit-smoke*` when running on ARM64 with JIT-friendly OS setup.
 - Added optional path to call tiny C helper (`libhabu-jit.*`) if present; otherwise falls back to SBCL mmap path.
 - Makefile now builds `libhabu-jit.dylib`/`.so` via `make jit` for the helper path.
+- Rewrote `SELF_HOSTING_FULL_SPEC_PLAN.md` with a concise staged checklist toward full self-hosting; plan stored in repo.
 - Will commit frequently; all new literals stay hex-friendly where applicable.
 
 ### Tiny C Surface (kept)
