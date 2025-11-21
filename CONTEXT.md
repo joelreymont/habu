@@ -14,10 +14,22 @@
 
 ### Key Achievement
 
-**Recursive Functions Working** ✅
+**Simple Recursion Working** ✅
 - test-simple-recursion.c: countdown(2) → 0 (PASS, 100% reliable)
 - Backward BL instruction verified working correctly
-- Stack management during recursion validated
+- Stack management during recursion validated for simple cases
+
+**Critical Bug Found** ⚠️
+- Recursive factorial returns INPUT instead of computed result
+- factorial(3) returns 3 instead of 6
+- factorial(5) returns 5 instead of 120
+- Root cause: **x0 corrupted after BL returns**
+  - Test shows x0 = original input value, not recursive result
+  - factorial(2) should return 1, but x0=2 after BL
+  - factorial(3) should return 1, but x0=3 after BL
+  - Happens when STR saves value to stack before recursion
+  - Same bug with frame pointers or without
+  - Same bug with LDP or individual LDR/STR instructions
 
 ### Critical Issues Resolved
 
@@ -43,6 +55,17 @@ ldp x29, x30, [sp]
 add sp, sp, #64
 ret
 ```
+
+### Next Steps
+
+The x0 corruption bug needs investigation. Possible causes:
+1. STR/LDR offset calculation error
+2. sp value corruption during nested recursion
+3. ARM64 calling convention violation
+4. Stack frame overlap between recursion levels
+
+Verified working: Simple recursion without stack saves (countdown)
+Broken: Recursion with stack saves + operations on loaded values
 
 ## Previous Session (November 21, 2025 - Part 3)
 
