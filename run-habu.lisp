@@ -34,6 +34,10 @@
 (defparameter *c-jit-exec* nil)
 (defparameter *jit-lib-candidates* '("libhabu-jit.dylib" "libhabu-jit.so"))
 
+(defun getenv (name)
+  #+sbcl (sb-posix:getenv name)
+  #-sbcl nil)
+
 (defun arm64-host-p ()
   (member :arm64 *features*))
 
@@ -47,12 +51,26 @@
               (sb-alien:load-shared-object path)
               (setf *jit-lib* path)
               (setf *c-jit-exec*
-                     (sb-alien:extern-alien
-                      "habu_jit_execute"
-                      (sb-alien:function sb-alien:long
-                                         (sb-alien:* sb-alien:unsigned-char)
-                                         sb-alien:size-t))))))
+                    (sb-alien:extern-alien
+                     "habu_jit_execute"
+                     (sb-alien:function sb-alien:long
+                                        (sb-alien:* sb-alien:unsigned-char)
+                                        sb-alien:size-t))))))
         *c-jit-exec*)))
+
+(defun parse-hex-int (str)
+  (let* ((s (string-upcase (string str)))
+         (trimmed (if (and (> (length s) 2)
+                           (string= (subseq s 0 2) "0X"))
+                      (subseq s 2)
+                      s)))
+    (parse-integer trimmed :radix 16)))
+
+(defun env-addr (name fallback)
+  (let ((val (getenv name)))
+    (if val
+        (ignore-errors (parse-hex-int val))
+        fallback)))
 
 (defun align-size (n align)
   (let ((rem (mod n align)))
@@ -95,8 +113,10 @@
       (format t "[READY] Compiler definitions loaded in SBCL environment.~%")
       (handler-case
           (let* ((*package* (find-package :habu-sbcl)))
-            (let* ((runtime-addrs (habu-sbcl-codegen:make-runtime-addrs
-                                   #xABCDEF01 #x1234 #x5678))
+            (let* ((cons-addr (env-addr "HABU_CONS_ADDR" #xABCDEF01))
+                   (car-addr (env-addr "HABU_CAR_ADDR" #x1234))
+                   (cdr-addr (env-addr "HABU_CDR_ADDR" #x5678))
+                   (runtime-addrs (habu-sbcl-codegen:make-runtime-addrs cons-addr car-addr cdr-addr))
                    (bytes (habu-sbcl:compile-to-arm64-with-runtime 42 runtime-addrs)))
               (format t "[SMOKE] compile-to-arm64 42 produced ~D bytes.~%"
                       (length bytes))

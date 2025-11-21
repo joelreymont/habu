@@ -22,4 +22,15 @@ if ! grep -q "HEXDUMP" "${LOG_FILE}"; then
   exit 1
 fi
 
+# Expect stub prologue word and total length 16 bytes (current SBCL stub path)
+if ! grep -q "FD 7B BF A9" "${LOG_FILE}"; then
+  echo "[CI] hexdump missing expected stp prologue" >&2
+  exit 1
+fi
+
+if ! grep -q "produced 16 bytes" "${LOG_FILE}"; then
+  echo "[CI] unexpected stub length (expected 16 bytes)" >&2
+  exit 1
+fi
+
 echo "[CI] smoke check passed"
