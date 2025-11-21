@@ -34,8 +34,8 @@
 (defun arm64-movz (rd imm)
   "MOVZ Xd, #imm - Move 16-bit immediate to register (zero extended)
    Encoding: 1101 0010 1... .... ...i iiii iiid dddd
-   Base: 0xD2800000 | (imm << 5) | rd"
-  (let ((base 0xD2800000))
+   Base: #xD2800000 | (imm << 5) | rd"
+  (let ((base #xD2800000))
     (let ((shifted-imm (* imm 32)))  ; imm << 5
       (let ((encoded (+ base (+ shifted-imm rd))))
         (encode-word encoded)))))
@@ -43,8 +43,8 @@
 (defun arm64-add (rd rn rm)
   "ADD Xd, Xn, Xm - Add registers
    Encoding: 1000 1011 000m mmmm 0000 00nn nnn d dddd
-   Base: 0x8B000000 | (rm << 16) | (rn << 5) | rd"
-  (let ((base 0x8B000000))
+   Base: #x8B000000 | (rm << 16) | (rn << 5) | rd"
+  (let ((base #x8B000000))
     (let ((shifted-rm (* rm 65536)))  ; rm << 16
       (let ((shifted-rn (* rn 32)))   ; rn << 5
         (let ((encoded (+ base (+ shifted-rm (+ shifted-rn rd)))))
@@ -53,8 +53,8 @@
 (defun arm64-sub (rd rn rm)
   "SUB Xd, Xn, Xm - Subtract registers
    Encoding: 1100 1011 000m mmmm 0000 00nn nnnd dddd
-   Base: 0xCB000000 | (rm << 16) | (rn << 5) | rd"
-  (let ((base 0xCB000000))
+   Base: #xCB000000 | (rm << 16) | (rn << 5) | rd"
+  (let ((base #xCB000000))
     (let ((shifted-rm (* rm 65536)))
       (let ((shifted-rn (* rn 32)))
         (let ((encoded (+ base (+ shifted-rm (+ shifted-rn rd)))))
@@ -63,8 +63,8 @@
 (defun arm64-mul (rd rn rm)
   "MUL Xd, Xn, Xm - Multiply registers
    Encoding: 1001 1011 000m mmmm 0111 11nn nnnd dddd
-   Base: 0x9B007C00 | (rm << 16) | (rn << 5) | rd"
-  (let ((base 0x9B007C00))
+   Base: #x9B007C00 | (rm << 16) | (rn << 5) | rd"
+  (let ((base #x9B007C00))
     (let ((shifted-rm (* rm 65536)))
       (let ((shifted-rn (* rn 32)))
         (let ((encoded (+ base (+ shifted-rm (+ shifted-rn rd)))))
@@ -73,8 +73,8 @@
 (defun arm64-udiv (rd rn rm)
   "UDIV Xd, Xn, Xm - Unsigned divide
    Encoding: 1001 1010 110m mmmm 0000 10nn nnnd dddd
-   Base: 0x9AC00800 | (rm << 16) | (rn << 5) | rd"
-  (let ((base 0x9AC00800))
+   Base: #x9AC00800 | (rm << 16) | (rn << 5) | rd"
+  (let ((base #x9AC00800))
     (let ((shifted-rm (* rm 65536)))
       (let ((shifted-rn (* rn 32)))
         (let ((encoded (+ base (+ shifted-rm (+ shifted-rn rd)))))
@@ -83,8 +83,8 @@
 (defun arm64-msub (rd rn rm ra)
   "MSUB Xd, Xn, Xm, Xa - Multiply-subtract: Xd = Xa - Xn*Xm
    Encoding: 1001 1011 000m mmmm 1aaa aann nnnd dddd
-   Base: 0x9B008000 | (rm << 16) | (ra << 10) | (rn << 5) | rd"
-  (let ((base 0x9B008000))
+   Base: #x9B008000 | (rm << 16) | (ra << 10) | (rn << 5) | rd"
+  (let ((base #x9B008000))
     (let ((shifted-rm (* rm 65536)))
       (let ((shifted-ra (* ra 1024)))
         (let ((shifted-rn (* rn 32)))
@@ -94,8 +94,8 @@
 (defun arm64-and (rd rn rm)
   "AND Xd, Xn, Xm - Bitwise AND registers
    Encoding: 1000 1010 000m mmmm 0000 00nn nnnd dddd
-   Base: 0x8A000000 | (rm << 16) | (rn << 5) | rd"
-  (let ((base 0x8A000000))
+   Base: #x8A000000 | (rm << 16) | (rn << 5) | rd"
+  (let ((base #x8A000000))
     (let ((shifted-rm (* rm 65536)))
       (let ((shifted-rn (* rn 32)))
         (let ((encoded (+ base (+ shifted-rm (+ shifted-rn rd)))))
@@ -104,8 +104,8 @@
 (defun arm64-orr (rd rn rm)
   "ORR Xd, Xn, Xm - Bitwise OR registers
    Encoding: 1010 1010 000m mmmm 0000 00nn nnnd dddd
-   Base: 0xAA000000 | (rm << 16) | (rn << 5) | rd"
-  (let ((base 0xAA000000))
+   Base: #xAA000000 | (rm << 16) | (rn << 5) | rd"
+  (let ((base #xAA000000))
     (let ((shifted-rm (* rm 65536)))
       (let ((shifted-rn (* rn 32)))
         (let ((encoded (+ base (+ shifted-rm (+ shifted-rn rd)))))
@@ -114,9 +114,9 @@
 (defun arm64-lsr (rd rn shift)
   "LSR Xd, Xn, #shift - Logical shift right
    Encoding: 1101 0011 01.. .... ssss ssnn nnnd dddd
-   Base: 0xD340FC00 | (shift << 16) | (rn << 5) | rd
+   Base: #xD340FC00 | (shift << 16) | (rn << 5) | rd
    For shifts 0-63"
-  (let ((base 0xD3400000))
+  (let ((base #xD3400000))
     (let ((imms 63))  ; all 1s for LSR (bits 15:10)
       (let ((shifted-shift (* shift 65536)))  ; shift amount in immr
         (let ((shifted-rn (* rn 32)))
@@ -126,8 +126,8 @@
 (defun arm64-lsl (rd rn shift)
   "LSL Xd, Xn, #shift - Logical shift left
    Encoding: Uses UBFM with immr = -shift mod 64, imms = 63-shift
-   Base: 0xD3400000"
-  (let ((base 0xD3400000))
+   Base: #xD3400000"
+  (let ((base #xD3400000))
     (let ((immr (my-mod (- 0 shift) 64)))  ; -shift mod 64
       (let ((imms (- 63 shift)))  ; 63 - shift
         (let ((shifted-immr (* immr 65536)))
@@ -163,7 +163,7 @@
 
 (defun arm64-ldr (rt rn offset)
   "LDR Xt, [Xn, #offset]"
-  (let ((base 0xF9400000))
+  (let ((base #xF9400000))
     (let ((imm12 (/ offset 8)))
       (let ((shifted-imm (* imm12 1024)))
         (let ((shifted-rn (* rn 32)))
@@ -173,8 +173,8 @@
 (defun arm64-mov (rd rn)
   "MOV Xd, Xn - Move register (implemented as ORR Xd, XZR, Xn)
    Encoding: 1010 1010 000m mmmm 0000 00nn nnnd dddd
-   Base: 0xAA0003E0 | (rn << 16) | rd"
-  (let ((base 0xAA0003E0))
+   Base: #xAA0003E0 | (rn << 16) | rd"
+  (let ((base #xAA0003E0))
     (let ((shifted-rn (* rn 65536)))  ; rn << 16
       (let ((encoded (+ base (+ shifted-rn rd))))
         (encode-word encoded)))))
@@ -210,8 +210,8 @@
 (defun arm64-add-imm (rd rn imm)
   "ADD Xd, Xn, #imm - Add immediate (for sp operations)
    Encoding: 1001 0001 00.. iiii iiii iinn nnnd dddd
-   Base: 0x91000000 | (imm << 10) | (rn << 5) | rd"
-  (let ((base 0x91000000))
+   Base: #x91000000 | (imm << 10) | (rn << 5) | rd"
+  (let ((base #x91000000))
     (let ((shifted-imm (* imm 1024)))  ; imm << 10
       (let ((shifted-rn (* rn 32)))  ; rn << 5
         (let ((encoded (+ base (+ shifted-imm (+ shifted-rn rd)))))
@@ -226,8 +226,8 @@
   "CMP Xn, Xm - Compare registers (sets flags)
    Implemented as SUBS XZR, Xn, Xm
    Encoding: 1110 1011 000m mmmm 0000 00nn nnn1 1111
-   Base: 0xEB00001F | (rm << 16) | (rn << 5)"
-  (let ((base 0xEB00001F))
+   Base: #xEB00001F | (rm << 16) | (rn << 5)"
+  (let ((base #xEB00001F))
     (let ((shifted-rm (* rm 65536)))  ; rm << 16
       (let ((shifted-rn (* rn 32)))   ; rn << 5
         (let ((encoded (+ base (+ shifted-rm shifted-rn))))
@@ -237,10 +237,10 @@
   "CSET Xd, cond - Conditional set (1 if condition true, else 0)
    Implemented as CSINC Xd, XZR, XZR, invert(cond)
    Encoding: 1001 1010 1001 1111 cccc 0111 111d dddd
-   Base: 0x9A9F07E0 | (inverted_cond << 12) | rd
+   Base: #x9A9F07E0 | (inverted_cond << 12) | rd
    Condition codes: EQ=0, NE=1, LT=11, LE=13, GT=12, GE=10
    Inversion: cond XOR 1"
-  (let ((base 0x9A9F07E0))
+  (let ((base #x9A9F07E0))
     (let ((inverted-cond (if (= (my-mod cond 2) 0) (+ cond 1) (- cond 1))))  ; XOR 1
       (let ((shifted-cond (* inverted-cond 4096)))  ; inverted_cond << 12
         (let ((encoded (+ base (+ shifted-cond rd))))
@@ -249,10 +249,10 @@
 (defun arm64-b-cond (cond offset)
   "B.cond <label> - Conditional branch
    Encoding: 0101 0100 iiii iiii iiii iiii iii0 cccc
-   Base: 0x54000000 | (offset << 5) | cond
+   Base: #x54000000 | (offset << 5) | cond
    offset is signed 19-bit, in units of 4 bytes (instructions)
    Condition codes: EQ=0, NE=1, LT=11, GT=12, etc."
-  (let ((base 0x54000000))
+  (let ((base #x54000000))
     (let ((shifted-offset (* offset 32)))  ; offset << 5 (in instruction units)
       (let ((encoded (+ base (+ shifted-offset cond))))
         (encode-word encoded)))))
@@ -260,28 +260,28 @@
 (defun arm64-b (offset)
   "B <label> - Unconditional branch
    Encoding: 0001 01ii iiii iiii iiii iiii iiii iiii
-   Base: 0x14000000 | offset
+   Base: #x14000000 | offset
    offset is signed 26-bit, in units of 4 bytes (instructions)"
-  (let ((base 0x14000000))
+  (let ((base #x14000000))
     (let ((encoded (+ base offset)))
       (encode-word encoded))))
 
 (defun arm64-bl (offset)
   "BL <label> - Branch with link (function call)
    Encoding: 1001 01ii iiii iiii iiii iiii iiii iiii
-   Base: 0x94000000 | offset
+   Base: #x94000000 | offset
    offset is signed 26-bit, in units of 4 bytes (instructions)
    Saves return address in x30 (LR)"
-  (let ((base 0x94000000))
+  (let ((base #x94000000))
     (let ((encoded (+ base offset)))
       (encode-word encoded))))
 
 (defun arm64-movk (rd imm shift)
   "MOVK Xd, #imm, LSL #shift - Move 16-bit immediate, keeping other bits
    Encoding: 1111 0010 1ss. .... iiii iiii iiid dddd
-   Base: 0xF2800000 | (shift_sel << 21) | (imm << 5) | rd
+   Base: #xF2800000 | (shift_sel << 21) | (imm << 5) | rd
    shift must be 0, 16, 32, or 48"
-  (let ((base 0xF2800000))
+  (let ((base #xF2800000))
     (let ((shift-sel (/ shift 16)))
       (let ((shifted-sel (* shift-sel 2097152)))  ; shift-sel << 21
         (let ((shifted-imm (* imm 32)))           ; imm << 5
@@ -291,8 +291,8 @@
 (defun arm64-blr (rn)
   "BLR Xn - Branch to address in register Xn
    Encoding: 1101 0110 0011 1111 0000 00nn nnn0 0000
-   Base: 0xD63F0000 | (rn << 5)"
-  (let ((base 0xD63F0000))
+   Base: #xD63F0000 | (rn << 5)"
+  (let ((base #xD63F0000))
     (let ((shifted-rn (* rn 32)))  ; rn << 5
       (let ((encoded (+ base shifted-rn)))
         (encode-word encoded)))))
