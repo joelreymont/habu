@@ -9,6 +9,12 @@ LOG_FILE="${LOG_FILE:-${LOG_DIR}/run-habu-lisp.log}"
 
 mkdir -p "${LOG_DIR}"
 
+# If runtime helper exists, source its env output to feed real addresses.
+if [ -x "${SCRIPT_DIR}/bin/print-runtime-addrs" ]; then
+  echo "[CI] loading runtime addrs from helper"
+  eval "$("${SCRIPT_DIR}/bin/print-runtime-addrs")"
+fi
+
 echo "[CI] running run-habu-lisp.sh; log -> ${LOG_FILE}"
 (cd "${SCRIPT_DIR}" && ./run-habu-lisp.sh) | tee "${LOG_FILE}"
 

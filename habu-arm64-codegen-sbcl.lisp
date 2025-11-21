@@ -4,9 +4,11 @@
 (defpackage :habu-sbcl-codegen
   (:use :cl :habu-shim)
   (:export codegen-expr compile-expr compile-to-arm64-with-runtime compile-to-arm64
-           make-runtime-addrs runtime-lookup))
+           make-runtime-addrs runtime-lookup *runtime-addrs*))
 
 (in-package :habu-sbcl-codegen)
+
+(defparameter *runtime-addrs* nil)
 
 (defun encode-word-le (word)
   "Encode 32-bit word into little-endian byte list for smoke output."
