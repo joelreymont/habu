@@ -152,6 +152,24 @@
                   (sb-alien:alien-funcall fn)))
            (sb-posix:munmap sap aligned)))))))
 
+(defun ensure-runtime-addrs ()
+  "Ensure habu-sbcl-codegen:*runtime-addrs* is populated from env/helper."
+  (or habu-sbcl-codegen:*runtime-addrs*
+      (let* ((triplet (read-runtime-addrs)))
+        (when triplet
+          (setf habu-sbcl-codegen:*runtime-addrs*
+                (apply #'habu-sbcl-codegen:make-runtime-addrs triplet)))))
+  habu-sbcl-codegen:*runtime-addrs*)
+
+(defun jit-eval (expr)
+  "Compile EXPR to ARM64 with runtime addresses and execute it (ARM64 only)."
+  (ensure-runtime-addrs)
+  (when (not (arm64-host-p))
+    (error "JIT only supported on ARM64 hosts for now."))
+  (let* ((runtime-addrs habu-sbcl-codegen:*runtime-addrs*)
+         (bytes (habu-sbcl:compile-to-arm64-with-runtime expr runtime-addrs)))
+    (jit-execute-bytes bytes)))
+
 (format t "[Habu Lisp] Attempting to load habu-arm64-codegen.lisp (pure Lisp)...~%")
 (handler-case
     (progn
