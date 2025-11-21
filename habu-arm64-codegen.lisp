@@ -1229,6 +1229,28 @@
 ;;; (compile-to-arm64 42)
 ;;; (compile-to-arm64 (quote (+ 5 7)))
 
+#+sbcl
+(progn
+  (defun codegen-expr (ir runtime-addrs)
+    "SBCL shim: simplified codegen to allow loading; returns move of literal/var or zero."
+    (cond
+      ((has-tag? ir 'lit)
+       (let ((value (cadr ir)))
+         (arm64-movz 0 (* value 16))))
+      ((has-tag? ir 'var)
+       (let ((offset (cadr ir)))
+         (arm64-ldr 0 31 (* offset 16))))
+      (t (arm64-movz 0 #x0))))
+
+  (defun compile-expr (expr env fenv)
+    "SBCL shim: return trivial IR for literals/vars; else zero."
+    (cond
+      ((fixnum? expr) (list 'lit expr))
+      ((symbol? expr)
+       (let ((off (env-lookup expr env)))
+         (if off (list 'var off) (list 'lit 0))))
+      (t (list 'lit 0)))))
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Extra closing parens to satisfy SBCL reader for now (balance alignment)
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
