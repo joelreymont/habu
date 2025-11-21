@@ -8,7 +8,8 @@
 
 (defpackage :habu-sbcl
   (:use :cl :habu-shim :habu-sbcl-codegen)
-  (:export :compile-to-arm64 :compile-to-arm64-with-runtime))
+  (:export :compile-to-arm64 :compile-to-arm64-with-runtime
+           :ensure-runtime-addrs :jit-eval))
 
 (in-package :habu-sbcl)
 
@@ -169,7 +170,11 @@
   (format t "[JIT] ARM64 eval using runtime addrs: ~S~%" habu-sbcl-codegen:*runtime-addrs*)
   (let* ((runtime-addrs habu-sbcl-codegen:*runtime-addrs*)
          (bytes (habu-sbcl:compile-to-arm64-with-runtime expr runtime-addrs)))
-    (jit-execute-bytes bytes)))
+    ;; JIT returns tagged value from generated code; untag fixnums for convenience.
+    (let ((raw (jit-execute-bytes bytes)))
+      (if (and (integerp raw) (zerop (logand raw #xF)))
+          (/ raw 16)
+          raw))))
 
 (format t "[Habu Lisp] Attempting to load habu-arm64-codegen.lisp (pure Lisp)...~%")
 (handler-case
