@@ -1241,7 +1241,7 @@
 
 (defun compile-program-with-functions (forms)
   "Compile program using default runtime addresses (nil placeholders)"
-  (compile-program-with-functions-with-runtime forms (quote nil)))
+  (compile-program-with-functions-with-runtime forms *runtime-addrs*))
 
 ;;; ============================================
 ;;; Tests (commented out - run manually if needed)
