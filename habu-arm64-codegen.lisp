@@ -1118,7 +1118,7 @@
 #-sbcl
 (defun compile-to-arm64 (expr)
   "Full pipeline: Habu expr → IR → ARM64 bytes"
-  (compile-to-arm64-with-runtime expr (quote nil)))
+  (compile-to-arm64-with-runtime expr *runtime-addrs*))
 
 ;;; ============================================
 ;;; Function Definition and Multi-Form Compilation
@@ -1278,4 +1278,4 @@
     (codegen-main-with-runtime (compile-expr expr nil nil) runtime-addrs))
 
   (defun compile-to-arm64 (expr)
-    (compile-to-arm64-with-runtime expr nil))))
+    (compile-to-arm64-with-runtime expr *runtime-addrs*))))
