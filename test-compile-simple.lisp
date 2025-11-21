@@ -1,10 +1,31 @@
-(load "habu-arm64-codegen.lisp")
-(print "=== Testing simple addition ===")
-(print (compile-expr (quote (+ 2 3))))
-(print "\n")
-(print "=== Testing if expression ===")
-(print (compile-expr (quote (if (> 5 3) 10 20))))
-(print "\n")
-(print "=== Testing cond expression ===")
-(print (compile-expr (quote (cond ((> 5 3) 100)))))
-(print "\n")
+;;;; Test simple compilation with fixed compiler
+
+(load "run-habu.lisp")
+
+(in-package :habu-sbcl-codegen)
+
+(defun dump-bytes (bytes)
+  "Print bytes as hex"
+  (loop for b in bytes
+        for i from 0
+        do (progn
+             (when (and (> i 0) (zerop (mod i 16)))
+               (format t "~%"))
+             (format t "~2,'0X " b)))
+  (format t "~%"))
+
+(format t "~%=== Testing Fixed Compiler ===~%~%")
+
+;; Test 1: Simple literal
+(format t "Test 1: Compiling literal 42~%")
+(let ((bytes (compile-to-arm64-with-runtime 42 *runtime-addrs*)))
+  (format t "Generated ~D bytes~%" (length bytes))
+  (dump-bytes bytes))
+
+;; Test 2: Simple addition
+(format t "~%Test 2: Compiling (+ 10 32)~%")
+(let ((bytes (compile-to-arm64-with-runtime '(+ 10 32) *runtime-addrs*)))
+  (format t "Generated ~D bytes~%" (length bytes))
+  (dump-bytes bytes))
+
+(format t "~%Done~%")
