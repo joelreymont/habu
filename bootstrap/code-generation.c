@@ -14,7 +14,7 @@
 #include <stdlib.h>
 #include <stdint.h>
 #include <string.h>
-#include "../runtime/habu.h"
+#include "habu-minimal.h"
 
 /* Encoder function declarations from Tier 2 */
 extern void arm64_encode_movz(uint8_t *dest, uint8_t rd, uint16_t imm);

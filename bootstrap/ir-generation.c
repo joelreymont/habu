@@ -15,7 +15,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
-#include "../runtime/habu.h"
+#include "habu-minimal.h"
 
 /* ============================================
  * IR Node Creation
