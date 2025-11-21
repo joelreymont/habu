@@ -1,0 +1,34 @@
+;;;; SBCL-only loader stubs for Habu codegen (keeps main file standalone)
+;;;; Do NOT use in production; only for bring-up/testing in SBCL host
+
+(defpackage :habu-sbcl-codegen
+  (:use :cl :habu-shim)
+  (:export codegen-expr compile-expr compile-to-arm64-with-runtime compile-to-arm64))
+
+(in-package :habu-sbcl-codegen)
+
+(defun codegen-expr (ir runtime-addrs)
+  "SBCL shim: simplified codegen to allow loading; returns move of literal/var or zero."
+  (cond
+    ((has-tag? ir 'lit)
+     (let ((value (cadr ir)))
+       (arm64-movz 0 (* value 16))))
+    ((has-tag? ir 'var)
+     (let ((offset (cadr ir)))
+       (arm64-ldr 0 31 (* offset 16))))
+    (t (arm64-movz 0 #x0))))
+
+(defun compile-expr (expr env fenv)
+  "SBCL shim: return trivial IR for literals/vars; else zero."
+  (cond
+    ((fixnum? expr) (list 'lit expr))
+    ((symbol? expr)
+     (let ((off (env-lookup expr env)))
+       (if off (list 'var off) (list 'lit 0))))
+    (t (list 'lit 0))))
+
+(defun compile-to-arm64-with-runtime (expr runtime-addrs)
+  (codegen-main-with-runtime (compile-expr expr nil nil) runtime-addrs))
+
+(defun compile-to-arm64 (expr)
+  (compile-to-arm64-with-runtime expr nil))
