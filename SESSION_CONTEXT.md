@@ -18,6 +18,7 @@
 - CI wrapper now asserts hexdump content/length (stp prologue + 16 bytes stub).
 - SBCL smoke accepts runtime addresses from env vars (`HABU_CONS_ADDR`, `HABU_CAR_ADDR`, `HABU_CDR_ADDR`) parsed as hex.
 - SBCL smoke now auto-shells to `bin/print-runtime-addrs` if env is absent, and caches table in `*runtime-addrs*`.
+- `jit-eval` added (logs runtime addrs, untags fixnums). Opt-in ARM64 JIT test `tests/jit-cons-car-cdr.lisp` added; skips if values look like stub output or JIT not enabled (`HABU_JIT_TEST=1`).
 - Will commit frequently; all literals stay hex-friendly where applicable.
 
 ### Implementation Design (next steps)
