@@ -31,6 +31,8 @@
                                               sb-alien:system-area-pointer
                                               sb-alien:unsigned-long))))
 (defparameter *enable-jit-smoke* nil)
+(defparameter *use-real-codegen*
+  (string= (or (getenv "HABU_USE_REAL_CODEGEN") "") "1"))
 (defparameter *jit-lib* nil)
 (defparameter *c-jit-exec* nil)
 (defparameter *jit-lib-candidates* '("libhabu-jit.dylib" "libhabu-jit.so"))
@@ -165,23 +167,30 @@
 (defun jit-eval (expr)
   "Compile EXPR to ARM64 with runtime addresses and execute it (ARM64 only)."
   (ensure-runtime-addrs)
-  (when (not (arm64-host-p))
-    (error "JIT only supported on ARM64 hosts for now."))
-  (format t "[JIT] ARM64 eval using runtime addrs: ~S~%" habu-sbcl-codegen:*runtime-addrs*)
-  (let* ((runtime-addrs habu-sbcl-codegen:*runtime-addrs*)
-         (bytes (habu-sbcl:compile-to-arm64-with-runtime expr runtime-addrs)))
-    ;; JIT returns tagged value from generated code; untag fixnums for convenience.
-    (let ((raw (jit-execute-bytes bytes)))
-      (if (and (integerp raw) (zerop (logand raw #xF)))
-          (/ raw 16)
-          raw))))
+  (if (not *use-real-codegen*)
+      (progn
+        (format t "[JIT] Stub mode eval (no real codegen), returning host eval.~%")
+        (eval expr))
+      (progn
+        (when (not (arm64-host-p))
+          (error "JIT only supported on ARM64 hosts for now."))
+        (format t "[JIT] ARM64 eval using runtime addrs: ~S~%" habu-sbcl-codegen:*runtime-addrs*)
+        (let* ((runtime-addrs habu-sbcl-codegen:*runtime-addrs*)
+               (bytes (habu-sbcl:compile-to-arm64-with-runtime expr runtime-addrs)))
+          ;; JIT returns tagged value from generated code; untag fixnums for convenience.
+          (let ((raw (jit-execute-bytes bytes)))
+            (if (and (integerp raw) (zerop (logand raw #xF)))
+                (/ raw 16)
+                raw)))))))
 
 (format t "[Habu Lisp] Attempting to load habu-arm64-codegen.lisp (pure Lisp)...~%")
 (handler-case
     (progn
       (let ((*package* (find-package :habu-sbcl)))
-        ;; For SBCL bring-up, load only the stub file; skip the real codegen.
-        (load "habu-arm64-codegen-sbcl.lisp"))
+        ;; Default: load stub; if HABU_USE_REAL_CODEGEN=1, load real codegen too.
+        (load "habu-arm64-codegen-sbcl.lisp")
+        (when (string= (or (getenv "HABU_USE_REAL_CODEGEN") "") "1")
+          (load "habu-arm64-codegen.lisp")))
       (format t "[READY] Compiler definitions loaded in SBCL environment.~%")
       (handler-case
           (let* ((*package* (find-package :habu-sbcl)))
