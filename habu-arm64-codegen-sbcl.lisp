@@ -7,6 +7,22 @@
 
 (in-package :habu-sbcl-codegen)
 
+(defun has-tag? (ir tag)
+  (and (consp ir) (eq (car ir) tag)))
+
+(defun env-lookup (sym env)
+  (declare (ignore sym env))
+  nil)
+
+;; Minimal ARM64 stubs for SBCL bring-up (return empty code fragments)
+(defun arm64-movz (rd imm) (declare (ignore rd imm)) (list))
+(defun arm64-ldr (rt rn offset) (declare (ignore rt rn offset)) (list))
+(defun arm64-lsr (rd rn shift) (declare (ignore rd rn shift)) (list))
+(defun arm64-add-imm (rd rn imm) (declare (ignore rd rn imm)) (list))
+(defun arm64-stp (rt1 rt2 rn imm) (declare (ignore rt1 rt2 rn imm)) (list))
+(defun arm64-ldp (rt1 rt2 rn imm) (declare (ignore rt1 rt2 rn imm)) (list))
+(defun arm64-ret () (list))
+
 (defun codegen-expr (ir runtime-addrs)
   "SBCL shim: simplified codegen to allow loading; returns move of literal/var or zero."
   (cond
@@ -32,3 +48,12 @@
 
 (defun compile-to-arm64 (expr)
   (compile-to-arm64-with-runtime expr nil))
+
+;; Minimal main stub: wrap body code with empty prologue/epilogue
+(defun codegen-main-with-runtime (ir runtime-addrs)
+  (declare (ignore runtime-addrs))
+  (let ((body (codegen-expr ir nil)))
+    (append (arm64-stp 29 30 31 -16)
+            body
+            (arm64-ldp 29 30 31 16)
+            (arm64-ret))))
