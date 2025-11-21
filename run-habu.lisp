@@ -11,7 +11,14 @@
     (progn
       (let ((*package* (find-package :habu-sbcl)))
         (load "habu-arm64-codegen.lisp"))
-      (format t "[READY] Compiler definitions loaded in SBCL environment.~%"))
+      (format t "[READY] Compiler definitions loaded in SBCL environment.~%")
+      (handler-case
+          (let* ((*package* (find-package :habu-sbcl)))
+            (let ((bytes (compile-to-arm64 42)))
+              (format t "[SMOKE] compile-to-arm64 42 produced ~D bytes.~%"
+                      (length bytes))))
+        (error (e)
+          (format t "[WARN] Smoke compile failed: ~A~%" e))))
   (error (e)
     (format t "[WARN] Could not load compiler in SBCL: ~A~%" e)
     (format t "[NOTE] Source expects Habu runtime helpers; add SBCL shims or load runtime first.~%")))
