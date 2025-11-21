@@ -19,6 +19,16 @@
 - SBCL smoke accepts runtime addresses from env vars (`HABU_CONS_ADDR`, `HABU_CAR_ADDR`, `HABU_CDR_ADDR`) parsed as hex.
 - Will commit frequently; all literals stay hex-friendly where applicable.
 
+### Implementation Design (next steps)
+- Goal: thread real tiny-runtime addresses through ARM64 codegen and JIT from Lisp.
+- Steps:
+  1) Add tiny C helper/CLI to print runtime addresses (cons/car/cdr first) as hex; keep in runtime/ or bin/.
+  2) Add Lisp loader to call helper (or read env) and cache `*runtime-addrs*` via `make-runtime-addrs`.
+  3) Default non-stub `compile-to-arm64(-with-runtime)` to use `*runtime-addrs*` when not provided.
+  4) Add Lisp JIT entry to compile and execute `(cons 1 2)` using real table via `libhabu-jit` when present (fallback mmap on ARM64).
+  5) Add test script that sets env addrs, runs `run-habu-lisp.sh`, asserts hexdump imm matches env.
+  6) Add Lisp-side JIT tests (cons/car/cdr) using real runtime addrs, no manual C harness.
+
 ### Tiny C Surface (kept)
 - `runtime/` C runtime (alloc/GC/primitives).
 - `habu-jit.c` JIT mmap/exec helper (reachable from Lisp).
