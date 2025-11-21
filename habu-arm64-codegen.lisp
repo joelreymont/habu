@@ -1,3 +1,5 @@
+#-sbcl
+(progn
 ;;;; ARM64 Machine Code Generator - Pure Habu Lisp
 ;;;; Generates raw ARM64 bytes following SBCL model
 
@@ -351,6 +353,7 @@
       (cons (cons (quote habu_cdr) cdr-addr)
         (quote nil)))))
 
+#-sbcl
 (defun codegen-progn-list (exprs runtime-addrs)
   "Generate code for list of expressions, returning last result"
   (if (cons? exprs)
@@ -364,6 +367,7 @@
     ;;; Empty list: return 0
     (arm64-movz 0 #x0)))
 
+#-sbcl
 (defun codegen-save-bindings (bindings runtime-addrs)
   "Generate code to evaluate and save all bindings to stack
    Each binding is (var value-ir offset)"
@@ -380,6 +384,7 @@
                 (append-code save-code rest-code)))))))
     nil))
 
+#-sbcl
 (defun codegen-eval-args-push (args-ir runtime-addrs)
   "Generate code to evaluate each argument and push to stack"
   (if (cons? args-ir)
@@ -391,6 +396,7 @@
               (append-code push rest-code))))))
     nil))
 
+#-sbcl
 (defun codegen-pop-args-to-regs (num-args)
   "Generate code to pop arguments from stack to registers x0-x2
    Pops in reverse order: last arg first"
@@ -411,6 +417,7 @@
           ;;; More than 3 args not supported yet
           nil)))))
 
+#-sbcl
 (defun codegen-eval-args-to-regs (args-ir runtime-addrs)
   "Generate code to evaluate arguments and place in registers x0-x2
    Strategy: eval and push all, then pop to registers in correct order"
@@ -419,18 +426,21 @@
       (let ((pop-code (codegen-pop-args-to-regs num-args)))
         (append-code push-code pop-code)))))
 
+#-sbcl
 (defun count-args (args)
   "Count number of arguments in list"
   (if (cons? args)
     (+ 1 (count-args (cdr args)))
     0))
 
+#-sbcl
 (defun count-bindings (bindings)
   "Count number of bindings in list"
   (if (cons? bindings)
     (+ 1 (count-bindings (cdr bindings)))
     0))
 
+#-sbcl
 (defun codegen-cond-clauses (clauses runtime-addrs)
   "Generate code for cond clauses - returns code that leaves result in x0"
   (if (cons? clauses)
@@ -458,6 +468,7 @@
     ;;; No clauses - return nil (this is the default case)
     (arm64-movz 0 #x0)))
 
+#-sbcl
 #-sbcl
 (defun codegen-expr (ir runtime-addrs)
   "Generate ARM64 code for expression (result in x0)"
@@ -736,6 +747,7 @@
               ;;; Unknown
               (arm64-movz 0 #x0)))))))))
 
+#-sbcl
 (defun codegen-main-with-runtime (ir runtime-addrs)
   "Generate complete main function"
   (let ((prologue (append-code (arm64-stp 29 30 31 -16) (arm64-add-imm 29 31 0))))
@@ -747,6 +759,7 @@
             (append-code body
               (append-code untag epilogue))))))))
 
+#-sbcl
 (defun codegen-main (ir)
   "Generate main function without runtime addresses (defaults to zero)"
   (codegen-main-with-runtime ir (quote nil)))
@@ -755,6 +768,7 @@
 ;;; Compiler Integration
 ;;; ============================================
 
+#-sbcl
 (defun compile-progn-list (exprs env fenv)
   "Compile list of expressions for progn with environment and function environment"
   (if (cons? exprs)
@@ -893,6 +907,7 @@
                       (append-code restore-stack
                         (append-code untag epilogue)))))))))))))
 
+#-sbcl
 (defun compile-let-bindings (bindings offset env fenv)
   "Compile list of let bindings, each with incrementing offset"
   (if (cons? bindings)
@@ -909,6 +924,7 @@
         nil))  ; malformed binding
     nil))
 
+#-sbcl
 (defun extend-env-with-bindings (bindings offset env)
   "Extend environment with all bindings at sequential offsets"
   (if (cons? bindings)
@@ -921,6 +937,7 @@
         env))  ; skip malformed
     env))
 
+#-sbcl
 (defun compile-cond-clauses (clauses env fenv)
   "Compile list of (test result) pairs for cond with environment and function environment"
   (if (cons? clauses)
@@ -941,6 +958,7 @@
         (compile-cond-clauses (cdr clauses) env fenv))))
     nil))
 
+#-sbcl
 #-sbcl
 (defun compile-expr (expr env fenv)
   "Compile expression to IR with environment for variable bindings and function environment"
@@ -1097,6 +1115,7 @@
   "Full pipeline with explicit runtime addresses: Habu expr → IR → ARM64 bytes"
   (codegen-main-with-runtime (compile-expr expr nil nil) runtime-addrs))
 
+#-sbcl
 (defun compile-to-arm64 (expr)
   "Full pipeline: Habu expr → IR → ARM64 bytes"
   (compile-to-arm64-with-runtime expr (quote nil)))
