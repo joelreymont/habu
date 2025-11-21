@@ -388,7 +388,7 @@
     (let ((binding (car bindings)))
       (let ((value-ir (car (cdr binding))))
         ;;; Generate code for this value
-        (let ((value-code (codegen-expr value-ir runtime-addrs (quote nil) 0)))
+        (let ((value-code (codegen-expr value-ir runtime-addrs (quote nil) 0 nil)))
           ;;; Save to stack
           (let ((save-code (arm64-str 0 31 -16)))
             ;;; Continue with rest of bindings
@@ -402,7 +402,7 @@
   "Generate code to evaluate each argument and push to stack"
   (if (cons? args-ir)
     (let ((arg (car args-ir)))
-      (let ((code (codegen-expr arg runtime-addrs (quote nil) 0)))
+      (let ((code (codegen-expr arg runtime-addrs (quote nil) 0 nil)))
         (let ((push (arm64-str 0 31 -16)))
           (let ((rest-code (codegen-eval-args-push (cdr args-ir) runtime-addrs)))
             (append-code code
@@ -461,8 +461,8 @@
            (test (car clause))
            (result (car (cdr clause)))
            (rest-clauses (cdr clauses))
-           (test-code (codegen-expr test runtime-addrs (quote nil) 0))
-           (result-code (codegen-expr result runtime-addrs (quote nil) 0))
+           (test-code (codegen-expr test runtime-addrs (quote nil) 0 nil))
+           (result-code (codegen-expr result runtime-addrs (quote nil) 0 nil))
            (rest-code (if (cons? rest-clauses)
                         (codegen-cond-clauses rest-clauses runtime-addrs)
                         (arm64-movz 0 #x0)))  ; default: return nil
@@ -483,10 +483,11 @@
 
 #-sbcl
 #-sbcl
-(defun codegen-expr (ir runtime-addrs fn-offsets current-offset)
+(defun codegen-expr (ir runtime-addrs fn-offsets current-offset tail?)
   "Generate ARM64 code for expression (result in x0)
    fn-offsets: list of (fname offset-in-instructions)
-   current-offset: current position in instructions for BL offset calculation"
+   current-offset: current position in instructions for BL offset calculation
+   tail?: true if this expression is in tail position (can use tail-call optimization)"
   (if (has-tag? ir (quote lit))
     ;;; Literal: movz x0, #(value << 4)
     (let ((value (car (cdr ir))))
@@ -506,12 +507,13 @@
           (let ((value-ir (car (cdr (cdr ir)))))
             (let ((body-ir (car (cdr (cdr (cdr ir))))))
               ;;; Generate code for value
-              (let ((value-code (codegen-expr value-ir runtime-addrs fn-offsets current-offset)))
+              (let ((value-code (codegen-expr value-ir runtime-addrs fn-offsets current-offset nil)))
                 ;;; Save x0 on stack: str x0, [sp, #-16]!
                 (let ((save-code (arm64-str 0 31 -16)))
                   ;;; Generate code for body (offset updated by value-code + save-code)
+                  ;;; Body is in tail position if the let is in tail position
                   (let ((body-offset (+ current-offset (+ (count-instrs value-code) (count-instrs save-code)))))
-                    (let ((body-code (codegen-expr body-ir runtime-addrs fn-offsets body-offset)))
+                    (let ((body-code (codegen-expr body-ir runtime-addrs fn-offsets body-offset tail?)))
                       ;;; Restore stack: add sp, sp, #16
                       (let ((restore-code (arm64-add-imm 31 31 16)))
                         (append-code value-code
@@ -523,7 +525,8 @@
           (let ((bindings (car (cdr ir))))
             (let ((body-ir (car (cdr (cdr ir)))))
               (let ((save-code (codegen-save-bindings bindings runtime-addrs)))
-                (let ((body-code (codegen-expr body-ir runtime-addrs fn-offsets current-offset)))
+                ;;; Body is in tail position if the let-multi is in tail position
+                (let ((body-code (codegen-expr body-ir runtime-addrs fn-offsets current-offset tail?)))
                   (let ((binding-count (count-bindings bindings)))
                     (let ((restore-code (arm64-add-imm 31 31 (* binding-count 16))))
                       (append-code save-code
@@ -541,11 +544,19 @@
                       ;;; Function not found - use dummy BL 0 (for backwards compat)
                       (let ((bl-instr (arm64-bl 0)))
                         (append-code args-code bl-instr))
-                      ;;; Calculate BL offset: target - (current + args-code-size)
-                      (let ((bl-position (+ current-offset (count-instrs args-code))))
-                        (let ((bl-offset (- target-offset bl-position)))
-                          (let ((bl-instr (arm64-bl bl-offset)))
-                            (append-code args-code bl-instr)))))))))
+                      ;;; Check for tail-call optimization
+                      (if tail?
+                        ;;; TAIL CALL: jump directly (reuse current frame, no stack changes)
+                        ;;; This turns recursion into iteration!
+                        (let ((jump-position (+ current-offset (count-instrs args-code))))
+                          (let ((jump-offset (- target-offset jump-position)))
+                            (let ((jump-instr (arm64-b jump-offset)))
+                              (append-code args-code jump-instr))))
+                        ;;; NORMAL CALL: use BL instruction
+                        (let ((bl-position (+ current-offset (count-instrs args-code))))
+                          (let ((bl-offset (- target-offset bl-position)))
+                            (let ((bl-instr (arm64-bl bl-offset)))
+                              (append-code args-code bl-instr))))))))))
 
           (if (has-tag? ir (quote call))
             ;;; Operation (unary or binary)
@@ -554,7 +565,7 @@
           (let ((arg2 (car (cdr (cdr (cdr ir))))))
             (if (nil? arg2)
               ;;; Unary operation (e.g., not, fixnum?)
-              (let ((code1 (codegen-expr arg1 runtime-addrs fn-offsets current-offset)))
+              (let ((code1 (codegen-expr arg1 runtime-addrs fn-offsets current-offset nil)))
                 (if (symbol=? op (quote not))
                   ;;; NOT: invert boolean
                   (append-code code1
@@ -602,9 +613,9 @@
               (if (symbol=? op (quote cons))
                 ;;; CONS: (cons a b) - call habu_cons
                 (let ((habu-cons-addr (runtime-lookup (quote habu_cons) runtime-addrs)))
-                  (let ((code1 (codegen-expr arg1 runtime-addrs fn-offsets current-offset)))      ; arg1 → x0
+                  (let ((code1 (codegen-expr arg1 runtime-addrs fn-offsets current-offset nil)))      ; arg1 → x0
                     (let ((save-code (arm64-str 0 31 -16)))  ; push x0
-                      (let ((code2 (codegen-expr arg2 runtime-addrs fn-offsets current-offset)))     ; arg2 → x0
+                      (let ((code2 (codegen-expr arg2 runtime-addrs fn-offsets current-offset nil)))     ; arg2 → x0
                         (let ((move-code (arm64-mov 1 0)))   ; x0 → x1
                           (let ((load-code (arm64-ldr-post 0 31 16)))  ; pop to x0
                             (let ((load-addr (load-address-to-reg 2 habu-cons-addr)))
@@ -615,11 +626,11 @@
                                       (append-code move-code
                                         (append-code load-code
                                           (append-code load-addr call-code))))))))))))))
-              (let ((code1 (codegen-expr arg1 runtime-addrs fn-offsets current-offset)))
+              (let ((code1 (codegen-expr arg1 runtime-addrs fn-offsets current-offset nil)))
               ;;; Save arg1: str x0, [sp, #-16]!
               (let ((save-code (arm64-str 0 31 -16)))
                 ;;; Generate code for arg2
-                (let ((code2 (codegen-expr arg2 runtime-addrs fn-offsets current-offset)))
+                (let ((code2 (codegen-expr arg2 runtime-addrs fn-offsets current-offset nil)))
                   ;;; Move arg2 to x1: mov x1, x0
                   (let ((move-code (arm64-mov 1 0)))
                     ;;; Load arg1 to x0: ldr x0, [sp], #16
@@ -734,12 +745,12 @@
           (let ((then-expr (car (cdr (cdr ir)))))
             (let ((else-expr (car (cdr (cdr (cdr ir))))))
               ;;; Compile test
-              (let ((test-code (codegen-expr test-expr runtime-addrs fn-offsets current-offset)))
+              (let ((test-code (codegen-expr test-expr runtime-addrs fn-offsets current-offset nil)))
                 ;;; Compare result with zero (nil/false)
                 (let ((cmp-code (cmp-zero)))
-                  ;;; Compile then and else branches
-                  (let ((then-code (codegen-expr then-expr runtime-addrs fn-offsets current-offset)))
-                    (let ((else-code (codegen-expr else-expr runtime-addrs fn-offsets current-offset)))
+                  ;;; Compile then and else branches - both in tail position if the if is
+                  (let ((then-code (codegen-expr then-expr runtime-addrs fn-offsets current-offset tail?)))
+                    (let ((else-code (codegen-expr else-expr runtime-addrs fn-offsets current-offset tail?)))
                       ;;; Calculate offsets
                       (let ((then-size (count-instrs then-code)))
                         (let ((else-size (count-instrs else-code)))
@@ -777,7 +788,8 @@
   (let ((prologue (make-safe-prologue)))
     (let ((prologue-size (count-instrs prologue)))
       (let ((body-offset (+ starting-offset prologue-size)))
-        (let ((body (codegen-expr ir runtime-addrs fn-offsets body-offset)))
+        ;;; Main body not in tail position (returns to OS)
+        (let ((body (codegen-expr ir runtime-addrs fn-offsets body-offset nil)))
           (let ((untag (arm64-lsr 0 0 4)))
             (let ((epilogue (make-safe-epilogue)))
               (append-code prologue
@@ -936,7 +948,8 @@
   (let ((param-count (count-params params)))
     (let ((prologue (make-safe-prologue)))
       (let ((save-params (codegen-save-params-helper param-count)))
-        (let ((body-code (codegen-expr body-ir runtime-addrs (quote nil) 0)))
+        ;;; Function body is in tail position (can use tail-call optimization)
+        (let ((body-code (codegen-expr body-ir runtime-addrs (quote nil) 0 (quote true))))
           (let ((restore-stack (arm64-add-imm 31 31 (* param-count 16))))
             (let ((untag (arm64-lsr 0 0 4)))
               (let ((epilogue (make-safe-epilogue)))
@@ -1240,7 +1253,8 @@
    Parameters come in x0, x1, etc. and are saved to stack"
   (let ((prologue (make-safe-prologue)))
     (let ((save-params (codegen-save-params-helper param-count)))
-      (let ((body-code (codegen-expr body-ir runtime-addrs (quote nil) 0)))
+      ;;; Function body is in tail position
+      (let ((body-code (codegen-expr body-ir runtime-addrs (quote nil) 0 (quote true))))
         (let ((restore-stack (if (= param-count 0)
                                nil
                                (arm64-add-imm 31 31 (* param-count 16)))))
