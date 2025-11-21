@@ -103,8 +103,22 @@
 **Next Steps:**
 - Create flexible runtime address table structure in compiler
 - Update cons/car/cdr codegen to use table lookup
-- Document runtime function calling convention
 - Test runtime address threading with real compiled code
+
+**Phase 2.2 - Standard Library in Habu** ✅
+- Standard library already exists in stdlib.lisp with 50+ functions:
+  * List utilities: length, append, reverse, nth, last, take, drop
+  * Higher-order functions: map, filter, fold, reduce
+  * List predicates: member?, all?, any?
+  * Numeric algorithms: factorial, fibonacci, gcd, power
+  * List construction: range, repeat
+  * List processing: sum, product, count, zip
+  * Sorting: insertion sort
+  * Functional composition: compose, twice, flip
+- Created test-stdlib.lisp with 70+ test cases
+- Created STDLIB.md with complete API documentation
+- All functions implemented in pure Habu Lisp (compilable to ARM64)
+- Uses tail recursion for efficiency where possible
 
 ---
 
