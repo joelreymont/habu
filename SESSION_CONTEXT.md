@@ -16,6 +16,7 @@
 - Next focus: Stage #x02 runtime wiring—expose real runtime table from tiny C runtime to Lisp, thread through ARM64 codegen, and re-run JIT paths with real addresses.
 - CI wrapper `run-habu-lisp-ci.sh` covers stub smoke; add hexdump/content assertion later.
 - CI wrapper now asserts hexdump content/length (stp prologue + 16 bytes stub).
+- SBCL smoke accepts runtime addresses from env vars (`HABU_CONS_ADDR`, `HABU_CAR_ADDR`, `HABU_CDR_ADDR`) parsed as hex.
 - Will commit frequently; all literals stay hex-friendly where applicable.
 
 ### Tiny C Surface (kept)
