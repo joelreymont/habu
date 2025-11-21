@@ -3,6 +3,8 @@
 ;;;; ARM64 Machine Code Generator - Pure Habu Lisp
 ;;;; Generates raw ARM64 bytes following SBCL model
 
+(defparameter *runtime-addrs* nil)
+
 ;;; ============================================
 ;;; Byte Utilities
 ;;; ============================================

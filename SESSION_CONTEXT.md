@@ -17,6 +17,7 @@
 - CI wrapper `run-habu-lisp-ci.sh` covers stub smoke; add hexdump/content assertion later.
 - CI wrapper now asserts hexdump content/length (stp prologue + 16 bytes stub).
 - SBCL smoke accepts runtime addresses from env vars (`HABU_CONS_ADDR`, `HABU_CAR_ADDR`, `HABU_CDR_ADDR`) parsed as hex.
+- SBCL smoke now auto-shells to `bin/print-runtime-addrs` if env is absent, and caches table in `*runtime-addrs*`.
 - Will commit frequently; all literals stay hex-friendly where applicable.
 
 ### Implementation Design (next steps)

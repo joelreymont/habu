@@ -147,29 +147,32 @@
       (format t "[READY] Compiler definitions loaded in SBCL environment.~%")
       (handler-case
           (let* ((*package* (find-package :habu-sbcl)))
-            (let* ((cons-addr (env-addr "HABU_CONS_ADDR" #xABCDEF01))
-                   (car-addr (env-addr "HABU_CAR_ADDR" #x1234))
-                   (cdr-addr (env-addr "HABU_CDR_ADDR" #x5678))
-                   (runtime-addrs (habu-sbcl-codegen:make-runtime-addrs cons-addr car-addr cdr-addr))
-                   (bytes (habu-sbcl:compile-to-arm64-with-runtime 42 runtime-addrs)))
-              (format t "[SMOKE] compile-to-arm64 42 produced ~D bytes.~%"
-                      (length bytes))
-              (format t "[RUNTIME-ADDRS] ~S~%" runtime-addrs)
-              (format t "[HEXDUMP]~%")
-              (hexdump-bytes bytes)
-              (cond
-                ((not (arm64-host-p))
-                 (format t "[JIT RUN] skipped (non-ARM64 host).~%"))
-                (*enable-jit-smoke*
-                 (handler-case
-                     (let* ((using-c (ensure-c-jit))
-                            (result (jit-execute-bytes bytes)))
-                       (format t "[JIT RUN] returned ~D (~:[SBCL mmap~;C helper~])~%"
-                               result using-c))
-                   (error (je)
-                     (format t "[WARN] JIT execution failed: ~A~%" je))))
-                (t
-                 (format t "[JIT RUN] skipped (set *enable-jit-smoke* to T to run).~%")))))
+            (let* ((addr-triplet (or (read-runtime-addrs)
+                                     (list #xABCDEF01 #x1234 #x5678)))
+                   (cons-addr (first addr-triplet))
+                   (car-addr (second addr-triplet))
+                   (cdr-addr (third addr-triplet))
+                   (runtime-addrs (habu-sbcl-codegen:make-runtime-addrs cons-addr car-addr cdr-addr)))
+              (setf habu-sbcl-codegen:*runtime-addrs* runtime-addrs)
+              (let ((bytes (habu-sbcl:compile-to-arm64-with-runtime 42 runtime-addrs)))
+                (format t "[SMOKE] compile-to-arm64 42 produced ~D bytes.~%"
+                        (length bytes))
+                (format t "[RUNTIME-ADDRS] ~S~%" runtime-addrs)
+                (format t "[HEXDUMP]~%")
+                (hexdump-bytes bytes)
+                (cond
+                  ((not (arm64-host-p))
+                   (format t "[JIT RUN] skipped (non-ARM64 host).~%"))
+                  (*enable-jit-smoke*
+                   (handler-case
+                       (let* ((using-c (ensure-c-jit))
+                              (result (jit-execute-bytes bytes)))
+                         (format t "[JIT RUN] returned ~D (~:[SBCL mmap~;C helper~])~%"
+                                 result using-c))
+                     (error (je)
+                       (format t "[WARN] JIT execution failed: ~A~%" je))))
+                  (t
+                   (format t "[JIT RUN] skipped (set *enable-jit-smoke* to T to run).~%"))))))
         (error (e)
           (format t "[WARN] Smoke compile failed: ~A~%" e))))
   (error (e)
