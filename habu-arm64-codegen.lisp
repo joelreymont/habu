@@ -745,7 +745,7 @@
               (codegen-cond-clauses clauses runtime-addrs))
 
               ;;; Unknown
-              (arm64-movz 0 #x0))))))))))))))))))
+              (arm64-movz 0 #x0))))))))))))))))))) ; close codegen-expr
 
 #-sbcl
 (defun codegen-main-with-runtime (ir runtime-addrs)
@@ -959,7 +959,6 @@
     nil)
 
 #-sbcl
-#-sbcl
 (defun compile-expr (expr env fenv)
   "Compile expression to IR with environment for variable bindings and function environment"
   (if (fixnum? expr)
@@ -1109,7 +1108,7 @@
                                           (compile-expr arg1 env fenv)
                                           (compile-expr (car rest) env))
                                     (list (quote call) op (compile-expr arg1 env fenv)))))
-                              (list (quote call) op)))))))))))))))))
+                              (list (quote call) op))))))))))))))))))) ; close compile-expr
 
 (defun compile-to-arm64-with-runtime (expr runtime-addrs)
   "Full pipeline with explicit runtime addresses: Habu expr → IR → ARM64 bytes"
@@ -1250,4 +1249,4 @@
 ;;; (compile-to-arm64 42)
 ;;; (compile-to-arm64 (quote (+ 5 7)))
 
-)))) ; end #-sbcl progn and close nested forms
+) ; end #-sbcl progn
