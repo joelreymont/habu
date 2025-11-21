@@ -54,13 +54,63 @@ add sp, sp, #64
 ret
 ```
 
+### Compiler Integration Status
+
+**Hand-coded tests WORKING** ✅
+- test-simple-recursion.c: countdown working (backward BL to self)
+- test-factorial-recursive.c: factorial(5) = 120 working (full recursion with saves/loads/multiply)
+
+**Compiler Integration Needed** 📋
+The habu-arm64-codegen.lisp compiler needs these changes to support recursion:
+
+1. **Fix fncall BL offset calculation** (lines 516-526 in habu-arm64-codegen.lisp)
+   - Currently uses dummy `(arm64-bl 0)`
+   - Need to: Look up target function offset from fn-offsets
+   - Calculate: `(target-offset - current-offset)` in words (can be negative!)
+   - Handle both forward calls (main → function) and backward calls (function → self)
+
+2. **Thread fn-offsets through codegen**
+   - fn-offsets is created (line 1232) but NOT passed to main code generation (line 1235)
+   - Need to add fn-offsets parameter to: codegen-expr, codegen-main-with-runtime
+   - Alternative: Use dynamic variables (*fn-offsets*, *current-offset*)
+
+3. **Track current position during codegen**
+   - codegen-expr needs to know its byte offset to calculate BL distances
+   - Either thread current-offset through all calls, or use dynamic variable
+
+4. **Fix function prologue** (line 1202-1203)
+   - Currently: `(arm64-stp 29 30 31 -16)` with pre-decrement (UNSAFE!)
+   - Change to: `(arm64-sub-imm 31 31 N)` then `(arm64-stp 29 30 31 0)`
+   - This avoids page boundary segfaults
+
+5. **Port multi-function compilation to SBCL version**
+   - compile-program-with-functions-with-runtime exists in pure Habu version
+   - habu-arm64-codegen-sbcl.lisp needs this functionality added
+   - Or: conditional compilation to include it in SBCL builds
+
+### Key Learnings - BL Offset Calculation
+
+**Critical:** BL offset is relative to current instruction, in words (not bytes!)
+- From offset A to offset B: `offset = B - A` (in 4-byte instruction units)
+- Negative offsets for backward calls (recursion, loops)
+- Must be in range: -33554432 to +33554431 words (±128MB)
+
+**Example:**
+```
+offset 0: factorial:
+  ...
+offset 36: bl factorial  ; Need offset = 0 - 36 = -36 bytes = -9 words
+  ; Encoding: 0xF7, 0xFF, 0xFF, 0x97  (-9 in 26-bit two's complement)
+```
+
 ### Next Steps
 
-Recursive functions now fully working! Ready to integrate into the Habu compiler:
-1. Update emit_call_direct to use backward BL for recursion
-2. Implement proper stack frame management (sub sp first, then stp)
-3. Add recursive function support to compilation pipeline
-4. Test with Habu Lisp recursive functions
+When ready to integrate:
+1. Start with step 1-3 above (pass fn-offsets, track position, calculate BL)
+2. Test with simple recursive countdown first
+3. Then test factorial
+4. Fix prologue (step 4) if segfaults occur
+5. Port to SBCL version (step 5) for full system integration
 
 ## Previous Session (November 21, 2025 - Part 3)
 
