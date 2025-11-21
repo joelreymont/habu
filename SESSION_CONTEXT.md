@@ -16,6 +16,7 @@
 - Threaded runtime address table through SBCL stub codegen; smoke now uses sample hex addresses and reflects them in MOVZ immediate (see hexdump).
 - Stub now exports and defines `make-runtime-addrs`/`runtime-lookup`; runner sample uses it for table construction.
 - Added SBCL-only JIT scaffolding (mmap RWX, optional icache invalidate) in `run-habu.lisp`; execution is disabled by default (`*enable-jit-smoke*` nil) to avoid macOS SEGV—enable for manual runs on JIT-tolerant hosts.
+- Next JIT step: use tiny C helper (`habu-jit.c`) or signed binary with `MAP_JIT`/entitlement; thread real runtime addresses into non-stub codegen.
 - Will commit frequently; all new literals stay hex-friendly where applicable.
 
 ### Tiny C Surface (kept)
