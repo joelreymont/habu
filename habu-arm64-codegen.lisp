@@ -1251,7 +1251,13 @@
       ((symbol? expr)
        (let ((off (env-lookup expr env)))
          (if off (list 'var off) (list 'lit 0))))
-      (t (list 'lit 0)))))
+      (t (list 'lit 0))))
+
+  (defun compile-to-arm64-with-runtime (expr runtime-addrs)
+    (codegen-main-with-runtime (compile-expr expr nil nil) runtime-addrs))
+
+  (defun compile-to-arm64 (expr)
+    (compile-to-arm64-with-runtime expr nil))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Extra closing parens to satisfy SBCL reader for now (balance alignment)
