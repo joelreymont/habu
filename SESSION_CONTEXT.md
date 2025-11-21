@@ -15,6 +15,7 @@
 - Legacy C backend artifacts archived; only tiny runtime + helper remain active paths.
 - Next focus: Stage #x02 runtime wiring—expose real runtime table from tiny C runtime to Lisp, thread through ARM64 codegen, and re-run JIT paths with real addresses.
 - CI wrapper `run-habu-lisp-ci.sh` covers stub smoke; add hexdump/content assertion later.
+- CI wrapper now asserts hexdump content/length (stp prologue + 16 bytes stub).
 - Will commit frequently; all literals stay hex-friendly where applicable.
 
 ### Tiny C Surface (kept)

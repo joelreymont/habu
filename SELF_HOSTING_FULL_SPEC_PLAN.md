@@ -12,7 +12,7 @@
 - [x] #x12 Smoke compile in `run-habu.lisp` (no C backend) with hexdump.
 - [x] #x13 CI wrapper `run-habu-lisp-ci.sh` checking smoke output.
 - [x] #x14 Optional SBCL JIT scaffold (opt-in) + tiny C helper autodetect (`libhabu-jit.*`).
-- [ ] #x15 Add SBCL hexdump content assertion (length/opcodes) to CI wrapper.
+- [x] #x15 Add SBCL hexdump content assertion (length/opcodes) to CI wrapper.
 
 ## Stage #x02: Runtime Wiring (Tiny C Only)
 - [ ] #x20 Expose runtime addresses from tiny C runtime (`habu_cons`/`car`/`cdr` etc.) via one table builder callable from Lisp.
