@@ -774,13 +774,12 @@
   "Generate complete main function
    fn-offsets: list of (fname offset) for function calls
    starting-offset: offset where main starts (after all functions)"
-  (let ((prologue (append-code (arm64-stp 29 30 31 -16) (arm64-add-imm 29 31 0))))
+  (let ((prologue (make-safe-prologue)))
     (let ((prologue-size (count-instrs prologue)))
       (let ((body-offset (+ starting-offset prologue-size)))
         (let ((body (codegen-expr ir runtime-addrs fn-offsets body-offset)))
           (let ((untag (arm64-lsr 0 0 4)))
-            (let ((epilogue (append-code (arm64-add-imm 31 29 0)
-                              (append-code (arm64-ldp 29 30 31 16) (arm64-ret)))))
+            (let ((epilogue (make-safe-epilogue)))
               (append-code prologue
                 (append-code body
                   (append-code untag epilogue))))))))))
@@ -914,19 +913,33 @@
             (append-code (arm64-str 1 31 -16)
                          (arm64-str 2 31 -16))))))))
 
+#-sbcl
+(defun make-safe-prologue ()
+  "Generate safe function prologue: sub sp, stp, mov x29
+   Avoids page boundary crashes by allocating stack first"
+  (let ((sub-sp (arm64-sub-imm 31 31 32)))
+    (let ((save-fp-lr (arm64-stp 29 30 31 0)))
+      (let ((set-fp (arm64-add-imm 29 31 0)))
+        (append-code sub-sp (append-code save-fp-lr set-fp))))))
+
+#-sbcl
+(defun make-safe-epilogue ()
+  "Generate safe function epilogue: ldp, add sp, ret
+   Matches safe prologue pattern"
+  (let ((restore-fp-lr (arm64-ldp 29 30 31 0)))
+    (let ((restore-sp (arm64-add-imm 31 31 32)))
+      (append-code restore-fp-lr (append-code restore-sp (arm64-ret))))))
+
 (defun codegen-function-with-runtime (params body-ir runtime-addrs)
   "Generate code for a complete function with parameters
    Returns machine code with prologue, parameter saves, body, epilogue"
   (let ((param-count (count-params params)))
-    (let ((prologue (append-code (arm64-stp 29 30 31 -16)
-                                 (arm64-add-imm 29 31 0))))
+    (let ((prologue (make-safe-prologue)))
       (let ((save-params (codegen-save-params-helper param-count)))
         (let ((body-code (codegen-expr body-ir runtime-addrs (quote nil) 0)))
           (let ((restore-stack (arm64-add-imm 31 31 (* param-count 16))))
             (let ((untag (arm64-lsr 0 0 4)))
-              (let ((epilogue (append-code (arm64-add-imm 31 29 0)
-                                (append-code (arm64-ldp 29 30 31 16)
-                                             (arm64-ret)))))
+              (let ((epilogue (make-safe-epilogue)))
                 (append-code prologue
                   (append-code save-params
                     (append-code body-code
@@ -1225,17 +1238,14 @@
 (defun codegen-function-with-params (param-count body-ir runtime-addrs)
   "Generate code for function with parameter count
    Parameters come in x0, x1, etc. and are saved to stack"
-  (let ((prologue (append-code (arm64-stp 29 30 31 -16)
-                               (arm64-add-imm 29 31 0))))
+  (let ((prologue (make-safe-prologue)))
     (let ((save-params (codegen-save-params-helper param-count)))
       (let ((body-code (codegen-expr body-ir runtime-addrs (quote nil) 0)))
         (let ((restore-stack (if (= param-count 0)
                                nil
                                (arm64-add-imm 31 31 (* param-count 16)))))
           (let ((untag (arm64-lsr 0 0 4)))
-            (let ((epilogue (append-code (arm64-add-imm 31 29 0)
-                              (append-code (arm64-ldp 29 30 31 16)
-                                           (arm64-ret)))))
+            (let ((epilogue (make-safe-epilogue)))
               (append-code prologue
                 (append-code save-params
                   (append-code body-code

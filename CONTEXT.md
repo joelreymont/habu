@@ -1,8 +1,50 @@
 # Current Session Context
 
 **Date**: November 21, 2025
-**Session Duration**: ~9 hours total
-**Status**: Compiler fixed, testing function execution
+**Session Duration**: ~10 hours total
+**Status**: Recursive functions complete, implementing self-hosting plan
+
+---
+
+## 🎯 CURRENT PLAN: Path to Self-Hosting and Full Lisp Compliance
+
+**See:** `SELF_HOSTING_AND_COMPLIANCE_PLAN.md` for complete detailed plan
+
+**Current Phase:** Phase 1 - Immediate Fixes (1-2 days)
+
+### Active Milestones:
+1. ✅ **Recursive Functions** - COMPLETE (factorial(5) = 120 working!)
+2. ⏳ **Fix Function Prologue** - IN PROGRESS (using safe stack pattern)
+3. 📋 **Tail-Call Optimization** - NEXT (convert tail recursion to iteration)
+4. 📋 **Port to SBCL** - SOON (enable multi-function compilation in SBCL)
+
+**Timeline to Self-Hosting:** ~2 weeks
+- Week 1: Immediate fixes, runtime threading, stdlib
+- Week 2: Self-compilation, bootstrap
+
+**Timeline to Full CL Compliance:** 6-12 months
+
+---
+
+## Latest Session (November 21, 2025 - Part 5)
+
+### Session Summary
+
+**MAJOR MILESTONE ACHIEVED**: Recursive function support fully integrated into the Habu ARM64 compiler! The compiler now generates correct BL offsets for function-to-function calls, including recursive calls. Comprehensive testing confirms factorial(5) = 120 works perfectly.
+
+**New Implementation:**
+- Added `fn-offset-lookup` to look up function offsets by name
+- Modified `codegen-expr` to accept `fn-offsets` and `current-offset` parameters
+- Updated `fncall` IR case to calculate correct BL offsets: `target_offset - current_offset`
+- Modified `compile-program-with-functions-with-runtime` to pass fn-offsets to main
+- Updated all codegen-expr call sites (internal: real params, external: dummy params)
+
+**Test Results:**
+- ✅ test-factorial-recursive.c: factorial(5) = 120
+- ✅ test-compiler-integration-factorial.c: multi-function pattern works
+- ✅ All previous tests still passing (49/49)
+
+**Next:** Implement safe function prologue pattern
 
 ---
 
