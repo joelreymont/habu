@@ -2,11 +2,11 @@
 
 (defpackage :habu-shim
   (:use :cl)
-  (:shadow nil? cons? symbol? fixnum? symbol=? list-length
+  (:shadow nil? cons? symbol? fixnum? symbol=?
            get-tag string-ref string-length-raw make-vector vector-set
            fill-vec make-string-from-vector make-string-from-cstr
            readline print-value read-file)
-  (:export nil? cons? symbol? fixnum? symbol=? list-length
+  (:export nil? cons? symbol? fixnum? symbol=?
            get-tag string-ref string-length-raw make-vector vector-set
            fill-vec make-string-from-vector make-string-from-cstr
            readline print-value read-file))
