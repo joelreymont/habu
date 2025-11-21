@@ -572,6 +572,9 @@ Just need to:
 
 ## 📝 Quick Reference
 
+### New Artifact
+- `SELF_HOSTING_TODO.md` - Full checklist to reach self-hosting/full-spec Lisp (runtime, reader, compiler, codegen, packages, numeric tower, conditions, testing, bootstrap milestones)
+
 ### Key Files to Work On Next
 
 1. `habu-repl.lisp` - Validate `(load ...)` with real files
@@ -603,7 +606,7 @@ sbcl --load habu-arm64-codegen.lisp
 
 ---
 
-**Last Updated**: November 20, 2025, 9:00 PM EET
+**Last Updated**: November 20, 2025, 9:05 PM EET
 **Status**: 🎉 BREAKTHROUGH - JIT execution working!
 **Next Session**: Test load pipeline + runtime address plumbing, then recursion/self-compile
 **Timeline**: 1-3 days to self-hosting
