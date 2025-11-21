@@ -170,20 +170,32 @@ bootstrap/
 **Total:** ~1,700 lines of C code
 **Tests:** 38/38 passing
 
-## Current Status
+## Current Status (Updated)
 
-✅ **Tier 1 Complete:** Primitives working, fully tested
-✅ **Tier 2 Complete:** Encoders working, fully tested
+✅ **Tier 1 Complete:** Primitives working, fully tested (18/18 tests)
+✅ **Tier 2 Complete:** Encoders working, fully tested (20/20 tests)
 ✅ **Tier 3 Complete:** IR generation implemented
-✅ **Tier 4 Complete:** Code generation framework implemented
+✅ **Tier 4 Complete:** Code generation implemented
+✅ **Tier 5 In Progress:** Integration testing
+
+### Integration Tests Passing:
+- ✅ **Literal compilation** (1/1): Compiles 42 → executes → returns 672
+- ✅ **Arithmetic operations** (6/6):
+  - Addition: (+ 5 7) → 12, (+ 10 20) → 30
+  - Subtraction: (- 10 3) → 7, (- 20 5) → 15
+  - Multiplication: (* 5 6) → 30, (* 7 8) → 56
+
+**Total Integration Tests:** 7/7 passing ✓
 
 ## Next Steps
 
-### Immediate (Tier 5): Integration Testing
-1. Create test harness linking all components
-2. Test full pipeline: Lisp → IR → Machine Code → Execution
-3. Fix issues found during integration
-4. Complete TODOs in code generation
+### Immediate: Complete Integration Testing
+1. ✅ Test literals
+2. ✅ Test arithmetic
+3. ⏳ Test comparisons (=, <, >)
+4. ⏳ Test conditionals (if)
+5. ⏳ Test let bindings
+6. Build minimal compiler driver
 
 ### Near-term: Minimal Compiler
 1. Create driver program
