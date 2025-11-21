@@ -31,6 +31,9 @@
                                               sb-alien:unsigned-long))))
 (defparameter *enable-jit-smoke* nil)
 
+(defun arm64-host-p ()
+  (member :arm64 *features*))
+
 (defun align-size (n align)
   (let ((rem (mod n align)))
     (if (zerop rem) n (+ n (- align rem)))))
@@ -75,13 +78,17 @@
               (format t "[RUNTIME-ADDRS] ~S~%" runtime-addrs)
               (format t "[HEXDUMP]~%")
               (hexdump-bytes bytes)
-              (if *enable-jit-smoke*
-                  (handler-case
-                      (let ((result (jit-execute-bytes bytes)))
-                        (format t "[JIT RUN] returned ~D~%" result))
-                    (error (je)
-                      (format t "[WARN] JIT execution failed: ~A~%" je)))
-                  (format t "[JIT RUN] skipped (set *enable-jit-smoke* to T to run).~%"))))
+              (cond
+                ((not (arm64-host-p))
+                 (format t "[JIT RUN] skipped (non-ARM64 host).~%"))
+                (*enable-jit-smoke*
+                 (handler-case
+                     (let ((result (jit-execute-bytes bytes)))
+                       (format t "[JIT RUN] returned ~D~%" result))
+                   (error (je)
+                     (format t "[WARN] JIT execution failed: ~A~%" je))))
+                (t
+                 (format t "[JIT RUN] skipped (set *enable-jit-smoke* to T to run).~%")))))
         (error (e)
           (format t "[WARN] Smoke compile failed: ~A~%" e))))
   (error (e)
