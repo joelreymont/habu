@@ -6,7 +6,45 @@
 
 ---
 
-## Current Session (November 21, 2025 - Part 3)
+## Current Session (November 21, 2025 - Part 4)
+
+### Session Summary
+
+**MILESTONE**: Recursive functions with backward BL now working! After extensive debugging, identified and fixed two critical issues: (1) stack allocation strategy to avoid page boundaries, and (2) branch logic bug in base case.
+
+### Key Achievement
+
+**Recursive Functions Working** ✅
+- test-simple-recursion.c: countdown(2) → 0 (PASS, 100% reliable)
+- Backward BL instruction verified working correctly
+- Stack management during recursion validated
+
+### Critical Issues Resolved
+
+1. **Stack Boundary Problem**
+   - Issue: macOS JIT code sometimes gets sp at page boundaries
+   - When `stp x29, x30, [sp, #-16]!` executes with sp at page start, it writes to guard page → segfault
+   - Solution: Use `sub sp, sp, #N` FIRST, then `stp` without pre-decrement
+   - Requires large guard buffers (16-32KB) in calling C code
+
+2. **Branch Logic Bug**
+   - Issue: Base case (x0==0) was branching to offset 28 (BL instruction) instead of offset 32 (epilogue)
+   - Caused infinite recursion instead of returning
+   - Fix: Changed `b +2` to `b +3` to correctly jump to epilogue
+
+### Working Code Pattern
+
+```armasm
+sub sp, sp, #64      ; Allocate stack FIRST (safe)
+stp x29, x30, [sp]   ; Then store (no pre-decrement)
+mov x29, sp
+; ... function body ...
+ldp x29, x30, [sp]
+add sp, sp, #64
+ret
+```
+
+## Previous Session (November 21, 2025 - Part 3)
 
 ### Session Summary
 
@@ -43,8 +81,9 @@ Systematic testing of ARM64 function execution via JIT. Built up from simple con
 - ✅ test-multiply: PASS
 - ✅ test-loop: PASS
 - ✅ test-factorial-iterative: PASS
-- ✅ test-bl: PASS
-- ⏳ test-factorial-recursive: WIP (backward BL debugging)
+- ✅ test-bl: PASS (forward calls)
+- ✅ test-simple-recursion: PASS (backward BL, recursion)
+- ⏳ test-factorial-recursive: Next (will adapt for stack allocation pattern)
 
 ### Technical Notes
 
