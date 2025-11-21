@@ -3,7 +3,8 @@
 
 (defpackage :habu-sbcl-codegen
   (:use :cl :habu-shim)
-  (:export codegen-expr compile-expr compile-to-arm64-with-runtime compile-to-arm64))
+  (:export codegen-expr compile-expr compile-to-arm64-with-runtime compile-to-arm64
+           make-runtime-addrs runtime-lookup))
 
 (in-package :habu-sbcl-codegen)
 
@@ -27,6 +28,23 @@
 (defun env-lookup (sym env)
   (declare (ignore sym env))
   nil)
+
+(defun runtime-lookup (name runtime-addrs)
+  "SBCL shim: lookup name in alist runtime-addrs (symbol . addr)."
+  (if (nil? runtime-addrs)
+      #x0
+      (let* ((entry (car runtime-addrs))
+             (entry-name (car entry))
+             (entry-addr (cdr entry)))
+        (if (eq name entry-name)
+            entry-addr
+            (runtime-lookup name (cdr runtime-addrs))))))
+
+(defun make-runtime-addrs (cons-addr car-addr cdr-addr)
+  "Create runtime address table for cons/car/cdr."
+  (list (cons 'habu_cons cons-addr)
+        (cons 'habu_car car-addr)
+        (cons 'habu_cdr cdr-addr)))
 
 ;; Minimal ARM64 stubs for SBCL bring-up (return deterministic code fragments)
 (defun arm64-movz (rd imm)

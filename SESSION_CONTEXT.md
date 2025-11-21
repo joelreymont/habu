@@ -14,6 +14,7 @@
 - SBCL smoke run now emits deterministic stub bytes (16 bytes) and prints a hexdump; next: thread runtime addresses to produce realistic output.
 - Added CI wrapper `run-habu-lisp-ci.sh` that captures smoke logs to `ci-logs/run-habu-lisp.log`.
 - Threaded runtime address table through SBCL stub codegen; smoke now uses sample hex addresses and reflects them in MOVZ immediate (see hexdump).
+- Stub now exports and defines `make-runtime-addrs`/`runtime-lookup`; runner sample uses it for table construction.
 - Will commit frequently; all new literals stay hex-friendly where applicable.
 
 ### Tiny C Surface (kept)
