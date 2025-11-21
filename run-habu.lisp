@@ -3,6 +3,7 @@
 
 (format t "~%[Habu Lisp] Loading SBCL shim for Habu predicates...~%")
 (load "sbcl-habu-shim.lisp")
+(load "habu-arm64-codegen-sbcl.lisp")
 
 (defpackage :habu-sbcl (:use :cl :habu-shim :habu-sbcl-codegen))
 
