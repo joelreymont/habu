@@ -5,6 +5,10 @@
   (:shadow nil? cons? symbol? fixnum? symbol=? list-length
            get-tag string-ref string-length-raw make-vector vector-set
            fill-vec make-string-from-vector make-string-from-cstr
+           readline print-value read-file)
+  (:export nil? cons? symbol? fixnum? symbol=? list-length
+           get-tag string-ref string-length-raw make-vector vector-set
+           fill-vec make-string-from-vector make-string-from-cstr
            readline print-value read-file))
 
 (in-package :habu-shim)

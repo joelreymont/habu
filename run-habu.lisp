@@ -14,7 +14,7 @@
       (format t "[READY] Compiler definitions loaded in SBCL environment.~%")
       (handler-case
           (let* ((*package* (find-package :habu-sbcl)))
-            (let ((bytes (compile-to-arm64 42)))
+            (let ((bytes (habu-sbcl::compile-to-arm64 42)))
               (format t "[SMOKE] compile-to-arm64 42 produced ~D bytes.~%"
                       (length bytes))))
         (error (e)

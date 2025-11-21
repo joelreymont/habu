@@ -458,6 +458,7 @@
     ;;; No clauses - return nil (this is the default case)
     (arm64-movz 0 #x0)))
 
+#-sbcl
 (defun codegen-expr (ir runtime-addrs)
   "Generate ARM64 code for expression (result in x0)"
   (if (has-tag? ir (quote lit))
@@ -940,6 +941,7 @@
         (compile-cond-clauses (cdr clauses) env fenv))))
     nil))
 
+#-sbcl
 (defun compile-expr (expr env fenv)
   "Compile expression to IR with environment for variable bindings and function environment"
   (if (fixnum? expr)
