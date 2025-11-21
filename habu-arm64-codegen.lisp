@@ -434,38 +434,29 @@
 (defun codegen-cond-clauses (clauses runtime-addrs)
   "Generate code for cond clauses - returns code that leaves result in x0"
   (if (cons? clauses)
-    ;;; Process one clause
-    (let ((clause (car clauses)))
-      (let ((test (car clause)))
-        (let ((result (car (cdr clause))))
-          (let ((rest-clauses (cdr clauses)))
-            ;;; Generate code for test and result
-            (let ((test-code (codegen-expr test runtime-addrs)))
-              (let ((result-code (codegen-expr result runtime-addrs)))
-                ;;; Generate code for remaining clauses + default
-                (let ((rest-code (if (cons? rest-clauses)
-                                   (codegen-cond-clauses rest-clauses runtime-addrs)
-                                   (arm64-movz 0 #x0))))  ; default: return nil
-                  ;;; Calculate sizes
-                  (let ((result-size (count-instrs result-code)))
-                    (let ((rest-size (count-instrs rest-code)))
-                      ;;; beq: skip result and b instruction to reach rest
-                      ;;; offset includes: beq itself + result + b = result + 2
-                      (let ((beq-offset (+ (+ result-size 1) 1)))
-                        ;;; b: skip rest-code to reach end
-                        ;;; offset includes: b itself + rest = rest + 1
-                        (let ((b-offset (+ rest-size 1)))
-                          (let ((cmp-code (cmp-zero)))
-                            (let ((beq-instr (arm64-b-cond 0 beq-offset)))  ; EQ=0
-                              (let ((b-instr (arm64-b b-offset)))
-                                ;;; Assemble: test, cmp, beq, result, b, rest
-                                (append-code test-code
-                                  (append-code cmp-code
-                                    (append-code beq-instr
-                                      (append-code result-code
-                                        (append-code b-instr rest-code))))))))))))))))))))
+    (let* ((clause (car clauses))
+           (test (car clause))
+           (result (car (cdr clause)))
+           (rest-clauses (cdr clauses))
+           (test-code (codegen-expr test runtime-addrs))
+           (result-code (codegen-expr result runtime-addrs))
+           (rest-code (if (cons? rest-clauses)
+                        (codegen-cond-clauses rest-clauses runtime-addrs)
+                        (arm64-movz 0 #x0)))  ; default: return nil
+           (result-size (count-instrs result-code))
+           (rest-size (count-instrs rest-code))
+           (beq-offset (+ result-size 2))   ; result + beq + b
+           (b-offset (+ rest-size 1))       ; rest + b
+           (cmp-code (cmp-zero))
+           (beq-instr (arm64-b-cond 0 beq-offset))  ; EQ=0
+           (b-instr (arm64-b b-offset)))
+      (append-code test-code
+        (append-code cmp-code
+          (append-code beq-instr
+            (append-code result-code
+              (append-code b-instr rest-code))))))
     ;;; No clauses - return nil (this is the default case)
-    (arm64-movz 0 0)))
+    (arm64-movz 0 #x0)))
 
 (defun codegen-expr (ir runtime-addrs)
   "Generate ARM64 code for expression (result in x0)"

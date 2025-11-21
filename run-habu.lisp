@@ -1,7 +1,10 @@
 ;;;; Pure-Lisp driver (no C backend) to load compiler code
 ;;;; TODO: wire runtime address table and load pipeline here
 
-(format t "~%[Habu Lisp] Attempting to load habu-arm64-codegen.lisp (pure Lisp)...~%")
+(format t "~%[Habu Lisp] Loading SBCL shim for Habu predicates...~%")
+(load "sbcl-habu-shim.lisp")
+(load "habu-repl.lisp")
+(format t "[Habu Lisp] Attempting to load habu-arm64-codegen.lisp (pure Lisp)...~%")
 (handler-case
     (progn
       (load "habu-arm64-codegen.lisp")
