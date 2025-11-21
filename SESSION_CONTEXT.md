@@ -15,6 +15,7 @@
 - Added CI wrapper `run-habu-lisp-ci.sh` that captures smoke logs to `ci-logs/run-habu-lisp.log`.
 - Threaded runtime address table through SBCL stub codegen; smoke now uses sample hex addresses and reflects them in MOVZ immediate (see hexdump).
 - Stub now exports and defines `make-runtime-addrs`/`runtime-lookup`; runner sample uses it for table construction.
+- Added SBCL-only JIT scaffolding (mmap RWX, optional icache invalidate) in `run-habu.lisp`; execution is disabled by default (`*enable-jit-smoke*` nil) to avoid macOS SEGV—enable for manual runs on JIT-tolerant hosts.
 - Will commit frequently; all new literals stay hex-friendly where applicable.
 
 ### Tiny C Surface (kept)
