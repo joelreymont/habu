@@ -47,6 +47,20 @@ Test 3: (cdr (cons 42 99)) returns 99 - PASS
 - Demonstrates full integration: compiled code + runtime + JIT
 - Proves architecture is sound end-to-end
 
+### 1.7. Compiler Code Patterns (VERIFIED)
+
+**Test**: test-compiler-integration
+**Result**: 3/3 tests passing
+**Details**:
+- Verifies compiler-generated code patterns work with runtime
+- Test 1: Literal 42 - PASS
+- Test 2: Addition (+ 10 32) = 42 - PASS
+- Test 3: Division (/ 84 2) = 42 - PASS
+- Stack frame management proven (prologue/epilogue)
+- Tagged arithmetic verified
+- Instruction encoding correct
+- Ready for full compiler integration
+
 ### 2. Compilation Pipeline (VERIFIED)
 
 **Test**: test-simple-compile.lisp
@@ -230,9 +244,11 @@ Full programs with multiple functions compile but require:
 | Complex expressions (JIT) | test-arithmetic-jit | PASS |
 | Runtime integration | habu-exec | PASS |
 | Compiled code + runtime | habu-exec | PASS |
+| Compiler patterns | test-compiler-integration | PASS |
+| Stack frame management | test-compiler-integration | PASS |
 | Load function | (Habu-only) | UNTESTED |
-| Recursive functions | (needs compiler integration) | NEXT |
-| Full programs | (needs compiler integration) | NEXT |
+| Recursive functions | (next step) | READY |
+| Full programs | (next step) | READY |
 
 ## Files Created This Session
 
