@@ -10,26 +10,16 @@
 
 ### Session Summary
 
-**MILESTONE**: Recursive functions with backward BL now working! After extensive debugging, identified and fixed two critical issues: (1) stack allocation strategy to avoid page boundaries, and (2) branch logic bug in base case.
+**MILESTONE**: Recursive functions fully working! After extensive debugging (9+ hours), identified and fixed three critical issues: (1) stack allocation strategy to avoid page boundaries, (2) branch logic bug in base case, and (3) **B.NE offset bug in factorial**.
 
 ### Key Achievement
 
-**Simple Recursion Working** ✅
+**Recursive Functions Working** ✅
 - test-simple-recursion.c: countdown(2) → 0 (PASS, 100% reliable)
+- test-factorial-recursive.c: factorial(5) → 120 (PASS, 100% reliable)
 - Backward BL instruction verified working correctly
-- Stack management during recursion validated for simple cases
-
-**Critical Bug Found** ⚠️
-- Recursive factorial returns INPUT instead of computed result
-- factorial(3) returns 3 instead of 6
-- factorial(5) returns 5 instead of 120
-- Root cause: **x0 corrupted after BL returns**
-  - Test shows x0 = original input value, not recursive result
-  - factorial(2) should return 1, but x0=2 after BL
-  - factorial(3) should return 1, but x0=3 after BL
-  - Happens when STR saves value to stack before recursion
-  - Same bug with frame pointers or without
-  - Same bug with LDP or individual LDR/STR instructions
+- Stack management during recursion validated for complex cases
+- STR/LDR for saving values across recursive calls works correctly
 
 ### Critical Issues Resolved
 
@@ -39,10 +29,18 @@
    - Solution: Use `sub sp, sp, #N` FIRST, then `stp` without pre-decrement
    - Requires large guard buffers (16-32KB) in calling C code
 
-2. **Branch Logic Bug**
+2. **Branch Logic Bug** (countdown)
    - Issue: Base case (x0==0) was branching to offset 28 (BL instruction) instead of offset 32 (epilogue)
    - Caused infinite recursion instead of returning
    - Fix: Changed `b +2` to `b +3` to correctly jump to epilogue
+
+3. **B.NE Offset Bug** (factorial) ⚠️ **CRITICAL FIX**
+   - Issue: `b.ne +2` was branching to offset 0x18 instead of 0x1C (recursive case)
+   - Caused factorial to fall through to base case (movz x0, #1) even when x0 != 0
+   - This made factorial return the INPUT value instead of computed result
+   - Encoding: Used 0x41 (offset +2) instead of 0x61 (offset +3)
+   - Fix: Changed `0x41, 0x00, 0x00, 0x54` to `0x61, 0x00, 0x00, 0x54`
+   - Result: factorial(5) now correctly returns 120!
 
 ### Working Code Pattern
 
@@ -58,14 +56,11 @@ ret
 
 ### Next Steps
 
-The x0 corruption bug needs investigation. Possible causes:
-1. STR/LDR offset calculation error
-2. sp value corruption during nested recursion
-3. ARM64 calling convention violation
-4. Stack frame overlap between recursion levels
-
-Verified working: Simple recursion without stack saves (countdown)
-Broken: Recursion with stack saves + operations on loaded values
+Recursive functions now fully working! Ready to integrate into the Habu compiler:
+1. Update emit_call_direct to use backward BL for recursion
+2. Implement proper stack frame management (sub sp first, then stp)
+3. Add recursive function support to compilation pipeline
+4. Test with Habu Lisp recursive functions
 
 ## Previous Session (November 21, 2025 - Part 3)
 

@@ -56,7 +56,7 @@ void test_factorial_recursive(void) {
 
         /* if x0 == 0 return 1 */
         0x1F, 0x00, 0x00, 0xF1,  /* cmp x0, #0 (offset 12) */
-        0x41, 0x00, 0x00, 0x54,  /* b.ne +2 (offset 16) */
+        0x61, 0x00, 0x00, 0x54,  /* b.ne +3 (to offset 0x1C, recursive case) (offset 16) */
         0x20, 0x00, 0x80, 0xD2,  /* movz x0, #1 (offset 20) */
         0x06, 0x00, 0x00, 0x14,  /* b +6 (to epilogue at offset 48) (offset 24) */
 
