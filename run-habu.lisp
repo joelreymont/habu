@@ -181,7 +181,7 @@
           (let ((raw (jit-execute-bytes bytes)))
             (if (and (integerp raw) (zerop (logand raw #xF)))
                 (/ raw 16)
-                raw)))))))
+                raw))))))
 
 (format t "[Habu Lisp] Attempting to load habu-arm64-codegen.lisp (pure Lisp)...~%")
 (handler-case

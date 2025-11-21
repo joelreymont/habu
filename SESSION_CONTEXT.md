@@ -19,6 +19,7 @@
 - SBCL smoke accepts runtime addresses from env vars (`HABU_CONS_ADDR`, `HABU_CAR_ADDR`, `HABU_CDR_ADDR`) parsed as hex.
 - SBCL smoke now auto-shells to `bin/print-runtime-addrs` if env is absent, and caches table in `*runtime-addrs*`.
 - `jit-eval` added (logs runtime addrs, untags fixnums). Opt-in ARM64 JIT test `tests/jit-cons-car-cdr.lisp` added; skips if values look like stub output or JIT not enabled (`HABU_JIT_TEST=1`).
+- Fixed paren balance in `run-habu.lisp`; added `HABU_USE_REAL_CODEGEN` flag (default stub) and stub-mode `jit-eval` fallback. Real codegen still gated by flag and may need cleanup before SBCL load.
 - Will commit frequently; all literals stay hex-friendly where applicable.
 
 ### Master TODO to Full Self-Hosting & CL Compliance
