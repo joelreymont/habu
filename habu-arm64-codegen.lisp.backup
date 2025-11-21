@@ -1,3 +1,5 @@
+#-sbcl
+(progn
 ;;;; ARM64 Machine Code Generator - Pure Habu Lisp
 ;;;; Generates raw ARM64 bytes following SBCL model
 
@@ -34,8 +36,8 @@
 (defun arm64-movz (rd imm)
   "MOVZ Xd, #imm - Move 16-bit immediate to register (zero extended)
    Encoding: 1101 0010 1... .... ...i iiii iiid dddd
-   Base: 0xD2800000 | (imm << 5) | rd"
-  (let ((base 3530014720))  ; 0xD2800000
+   Base: #xD2800000 | (imm << 5) | rd"
+  (let ((base #xD2800000))
     (let ((shifted-imm (* imm 32)))  ; imm << 5
       (let ((encoded (+ base (+ shifted-imm rd))))
         (encode-word encoded)))))
@@ -43,8 +45,8 @@
 (defun arm64-add (rd rn rm)
   "ADD Xd, Xn, Xm - Add registers
    Encoding: 1000 1011 000m mmmm 0000 00nn nnn d dddd
-   Base: 0x8B000000 | (rm << 16) | (rn << 5) | rd"
-  (let ((base 2331049984))  ; 0x8B000000
+   Base: #x8B000000 | (rm << 16) | (rn << 5) | rd"
+  (let ((base #x8B000000))
     (let ((shifted-rm (* rm 65536)))  ; rm << 16
       (let ((shifted-rn (* rn 32)))   ; rn << 5
         (let ((encoded (+ base (+ shifted-rm (+ shifted-rn rd)))))
@@ -53,8 +55,8 @@
 (defun arm64-sub (rd rn rm)
   "SUB Xd, Xn, Xm - Subtract registers
    Encoding: 1100 1011 000m mmmm 0000 00nn nnnd dddd
-   Base: 0xCB000000 | (rm << 16) | (rn << 5) | rd"
-  (let ((base 3405774848))  ; 0xCB000000
+   Base: #xCB000000 | (rm << 16) | (rn << 5) | rd"
+  (let ((base #xCB000000))
     (let ((shifted-rm (* rm 65536)))
       (let ((shifted-rn (* rn 32)))
         (let ((encoded (+ base (+ shifted-rm (+ shifted-rn rd)))))
@@ -63,8 +65,8 @@
 (defun arm64-mul (rd rn rm)
   "MUL Xd, Xn, Xm - Multiply registers
    Encoding: 1001 1011 000m mmmm 0111 11nn nnnd dddd
-   Base: 0x9B007C00 | (rm << 16) | (rn << 5) | rd"
-  (let ((base 2600664064))  ; 0x9B007C00
+   Base: #x9B007C00 | (rm << 16) | (rn << 5) | rd"
+  (let ((base #x9B007C00))
     (let ((shifted-rm (* rm 65536)))
       (let ((shifted-rn (* rn 32)))
         (let ((encoded (+ base (+ shifted-rm (+ shifted-rn rd)))))
@@ -73,8 +75,8 @@
 (defun arm64-udiv (rd rn rm)
   "UDIV Xd, Xn, Xm - Unsigned divide
    Encoding: 1001 1010 110m mmmm 0000 10nn nnnd dddd
-   Base: 0x9AC00800 | (rm << 16) | (rn << 5) | rd"
-  (let ((base 2597095424))  ; 0x9AC00800
+   Base: #x9AC00800 | (rm << 16) | (rn << 5) | rd"
+  (let ((base #x9AC00800))
     (let ((shifted-rm (* rm 65536)))
       (let ((shifted-rn (* rn 32)))
         (let ((encoded (+ base (+ shifted-rm (+ shifted-rn rd)))))
@@ -83,8 +85,8 @@
 (defun arm64-msub (rd rn rm ra)
   "MSUB Xd, Xn, Xm, Xa - Multiply-subtract: Xd = Xa - Xn*Xm
    Encoding: 1001 1011 000m mmmm 1aaa aann nnnd dddd
-   Base: 0x9B008000 | (rm << 16) | (ra << 10) | (rn << 5) | rd"
-  (let ((base 2600992768))  ; 0x9B008000
+   Base: #x9B008000 | (rm << 16) | (ra << 10) | (rn << 5) | rd"
+  (let ((base #x9B008000))
     (let ((shifted-rm (* rm 65536)))
       (let ((shifted-ra (* ra 1024)))
         (let ((shifted-rn (* rn 32)))
@@ -94,8 +96,8 @@
 (defun arm64-and (rd rn rm)
   "AND Xd, Xn, Xm - Bitwise AND registers
    Encoding: 1000 1010 000m mmmm 0000 00nn nnnd dddd
-   Base: 0x8A000000 | (rm << 16) | (rn << 5) | rd"
-  (let ((base 2315255808))  ; 0x8A000000
+   Base: #x8A000000 | (rm << 16) | (rn << 5) | rd"
+  (let ((base #x8A000000))
     (let ((shifted-rm (* rm 65536)))
       (let ((shifted-rn (* rn 32)))
         (let ((encoded (+ base (+ shifted-rm (+ shifted-rn rd)))))
@@ -104,8 +106,8 @@
 (defun arm64-orr (rd rn rm)
   "ORR Xd, Xn, Xm - Bitwise OR registers
    Encoding: 1010 1010 000m mmmm 0000 00nn nnnd dddd
-   Base: 0xAA000000 | (rm << 16) | (rn << 5) | rd"
-  (let ((base 2852126720))  ; 0xAA000000
+   Base: #xAA000000 | (rm << 16) | (rn << 5) | rd"
+  (let ((base #xAA000000))
     (let ((shifted-rm (* rm 65536)))
       (let ((shifted-rn (* rn 32)))
         (let ((encoded (+ base (+ shifted-rm (+ shifted-rn rd)))))
@@ -114,9 +116,9 @@
 (defun arm64-lsr (rd rn shift)
   "LSR Xd, Xn, #shift - Logical shift right
    Encoding: 1101 0011 01.. .... ssss ssnn nnnd dddd
-   Base: 0xD340FC00 | (shift << 16) | (rn << 5) | rd
+   Base: #xD340FC00 | (shift << 16) | (rn << 5) | rd
    For shifts 0-63"
-  (let ((base 3544924160))  ; 0xD3400000 base for LSR
+  (let ((base #xD3400000))
     (let ((imms 63))  ; all 1s for LSR (bits 15:10)
       (let ((shifted-shift (* shift 65536)))  ; shift amount in immr
         (let ((shifted-rn (* rn 32)))
@@ -126,8 +128,8 @@
 (defun arm64-lsl (rd rn shift)
   "LSL Xd, Xn, #shift - Logical shift left
    Encoding: Uses UBFM with immr = -shift mod 64, imms = 63-shift
-   Base: 0xD3400000"
-  (let ((base 3544924160))  ; 0xD3400000
+   Base: #xD3400000"
+  (let ((base #xD3400000))
     (let ((immr (my-mod (- 0 shift) 64)))  ; -shift mod 64
       (let ((imms (- 63 shift)))  ; 63 - shift
         (let ((shifted-immr (* immr 65536)))
@@ -163,7 +165,7 @@
 
 (defun arm64-ldr (rt rn offset)
   "LDR Xt, [Xn, #offset]"
-  (let ((base 0xF9400000))
+  (let ((base #xF9400000))
     (let ((imm12 (/ offset 8)))
       (let ((shifted-imm (* imm12 1024)))
         (let ((shifted-rn (* rn 32)))
@@ -173,8 +175,8 @@
 (defun arm64-mov (rd rn)
   "MOV Xd, Xn - Move register (implemented as ORR Xd, XZR, Xn)
    Encoding: 1010 1010 000m mmmm 0000 00nn nnnd dddd
-   Base: 0xAA0003E0 | (rn << 16) | rd"
-  (let ((base 2852192224))  ; 0xAA0003E0 (ORR Xd, XZR, Xn)
+   Base: #xAA0003E0 | (rn << 16) | rd"
+  (let ((base #xAA0003E0))
     (let ((shifted-rn (* rn 65536)))  ; rn << 16
       (let ((encoded (+ base (+ shifted-rn rd))))
         (encode-word encoded)))))
@@ -210,8 +212,8 @@
 (defun arm64-add-imm (rd rn imm)
   "ADD Xd, Xn, #imm - Add immediate (for sp operations)
    Encoding: 1001 0001 00.. iiii iiii iinn nnnd dddd
-   Base: 0x91000000 | (imm << 10) | (rn << 5) | rd"
-  (let ((base 2432696320))  ; 0x91000000
+   Base: #x91000000 | (imm << 10) | (rn << 5) | rd"
+  (let ((base #x91000000))
     (let ((shifted-imm (* imm 1024)))  ; imm << 10
       (let ((shifted-rn (* rn 32)))  ; rn << 5
         (let ((encoded (+ base (+ shifted-imm (+ shifted-rn rd)))))
@@ -226,8 +228,8 @@
   "CMP Xn, Xm - Compare registers (sets flags)
    Implemented as SUBS XZR, Xn, Xm
    Encoding: 1110 1011 000m mmmm 0000 00nn nnn1 1111
-   Base: 0xEB00001F | (rm << 16) | (rn << 5)"
-  (let ((base 3942645791))  ; 0xEB00001F
+   Base: #xEB00001F | (rm << 16) | (rn << 5)"
+  (let ((base #xEB00001F))
     (let ((shifted-rm (* rm 65536)))  ; rm << 16
       (let ((shifted-rn (* rn 32)))   ; rn << 5
         (let ((encoded (+ base (+ shifted-rm shifted-rn))))
@@ -237,10 +239,10 @@
   "CSET Xd, cond - Conditional set (1 if condition true, else 0)
    Implemented as CSINC Xd, XZR, XZR, invert(cond)
    Encoding: 1001 1010 1001 1111 cccc 0111 111d dddd
-   Base: 0x9A9F07E0 | (inverted_cond << 12) | rd
+   Base: #x9A9F07E0 | (inverted_cond << 12) | rd
    Condition codes: EQ=0, NE=1, LT=11, LE=13, GT=12, GE=10
    Inversion: cond XOR 1"
-  (let ((base 2595127264))  ; 0x9A9F07E0
+  (let ((base #x9A9F07E0))
     (let ((inverted-cond (if (= (my-mod cond 2) 0) (+ cond 1) (- cond 1))))  ; XOR 1
       (let ((shifted-cond (* inverted-cond 4096)))  ; inverted_cond << 12
         (let ((encoded (+ base (+ shifted-cond rd))))
@@ -249,10 +251,10 @@
 (defun arm64-b-cond (cond offset)
   "B.cond <label> - Conditional branch
    Encoding: 0101 0100 iiii iiii iiii iiii iii0 cccc
-   Base: 0x54000000 | (offset << 5) | cond
+   Base: #x54000000 | (offset << 5) | cond
    offset is signed 19-bit, in units of 4 bytes (instructions)
    Condition codes: EQ=0, NE=1, LT=11, GT=12, etc."
-  (let ((base 1409286144))  ; 0x54000000
+  (let ((base #x54000000))
     (let ((shifted-offset (* offset 32)))  ; offset << 5 (in instruction units)
       (let ((encoded (+ base (+ shifted-offset cond))))
         (encode-word encoded)))))
@@ -260,11 +262,54 @@
 (defun arm64-b (offset)
   "B <label> - Unconditional branch
    Encoding: 0001 01ii iiii iiii iiii iiii iiii iiii
-   Base: 0x14000000 | offset
+   Base: #x14000000 | offset
    offset is signed 26-bit, in units of 4 bytes (instructions)"
-  (let ((base 335544320))  ; 0x14000000
+  (let ((base #x14000000))
     (let ((encoded (+ base offset)))
       (encode-word encoded))))
+
+(defun arm64-bl (offset)
+  "BL <label> - Branch with link (function call)
+   Encoding: 1001 01ii iiii iiii iiii iiii iiii iiii
+   Base: #x94000000 | offset
+   offset is signed 26-bit, in units of 4 bytes (instructions)
+   Saves return address in x30 (LR)"
+  (let ((base #x94000000))
+    (let ((encoded (+ base offset)))
+      (encode-word encoded))))
+
+(defun arm64-movk (rd imm shift)
+  "MOVK Xd, #imm, LSL #shift - Move 16-bit immediate, keeping other bits
+   Encoding: 1111 0010 1ss. .... iiii iiii iiid dddd
+   Base: #xF2800000 | (shift_sel << 21) | (imm << 5) | rd
+   shift must be 0, 16, 32, or 48"
+  (let ((base #xF2800000))
+    (let ((shift-sel (/ shift 16)))
+      (let ((shifted-sel (* shift-sel 2097152)))  ; shift-sel << 21
+        (let ((shifted-imm (* imm 32)))           ; imm << 5
+          (let ((encoded (+ base (+ shifted-sel (+ shifted-imm rd)))))
+            (encode-word encoded)))))))
+
+(defun arm64-blr (rn)
+  "BLR Xn - Branch to address in register Xn
+   Encoding: 1101 0110 0011 1111 0000 00nn nnn0 0000
+   Base: #xD63F0000 | (rn << 5)"
+  (let ((base #xD63F0000))
+    (let ((shifted-rn (* rn 32)))  ; rn << 5
+      (let ((encoded (+ base shifted-rn)))
+        (encode-word encoded)))))
+
+(defun load-address-to-reg (rd addr)
+  "Load 64-bit address into register rd using movz + movk sequence
+   Breaks address into four 16-bit chunks and loads them"
+  (let ((bits0-15 (my-mod addr 65536)))
+    (let ((bits16-31 (my-mod (/ addr 65536) 65536)))
+      (let ((bits32-47 (my-mod (/ addr 4294967296) 65536)))
+        (let ((bits48-63 (/ addr 281474976710656)))
+          (append-code (arm64-movz rd bits0-15)
+            (append-code (arm64-movk rd bits16-31 16)
+              (append-code (arm64-movk rd bits32-47 32)
+                (arm64-movk rd bits48-63 48)))))))))
 
 (defun append-code (c1 c2)
   (if (nil? c1) c2 (cons (car c1) (append-code (cdr c1) c2))))
@@ -290,57 +335,158 @@
       (quote nil))
     (quote nil)))
 
-(defun codegen-progn-list (exprs)
+(defun runtime-lookup (name runtime-addrs)
+  "Lookup runtime function address by name from association list"
+  (if (nil? runtime-addrs)
+    #x0
+    (let ((entry (car runtime-addrs)))
+      (let ((entry-name (car entry)))
+        (let ((entry-addr (cdr entry)))
+          (if (symbol=? name entry-name)
+            entry-addr
+            (runtime-lookup name (cdr runtime-addrs))))))))
+
+(defun make-runtime-addrs (cons-addr car-addr cdr-addr)
+  "Create runtime address table for cons/car/cdr"
+  (cons (cons (quote habu_cons) cons-addr)
+    (cons (cons (quote habu_car) car-addr)
+      (cons (cons (quote habu_cdr) cdr-addr)
+        (quote nil)))))
+
+(defun fn-offset-lookup (fname fn-offsets)
+  "Lookup function offset by name from fn-offsets list
+   fn-offsets is list of (name offset-in-instructions)
+   Returns offset or nil if not found"
+  (if (nil? fn-offsets)
+    (quote nil)
+    (let ((entry (car fn-offsets)))
+      (let ((entry-name (car entry)))
+        (let ((entry-offset (car (cdr entry))))
+          (if (symbol=? fname entry-name)
+            entry-offset
+            (fn-offset-lookup fname (cdr fn-offsets))))))))
+
+#-sbcl
+(defun codegen-progn-list (exprs runtime-addrs)
   "Generate code for list of expressions, returning last result"
   (if (cons? exprs)
-    (let ((first-code (codegen-expr (car exprs))))
+    (let ((first-code (codegen-expr (car exprs) runtime-addrs)))
       (let ((rest (cdr exprs)))
         (if (cons? rest)
           ;;; More expressions: append this code and continue
-          (append-code first-code (codegen-progn-list rest))
+          (append-code first-code (codegen-progn-list rest runtime-addrs))
           ;;; Last expression: just return its code
           first-code)))
     ;;; Empty list: return 0
-    (arm64-movz 0 0)))
+    (arm64-movz 0 #x0)))
 
-(defun codegen-cond-clauses (clauses)
+#-sbcl
+(defun codegen-save-bindings (bindings runtime-addrs)
+  "Generate code to evaluate and save all bindings to stack
+   Each binding is (var value-ir offset)"
+  (if (cons? bindings)
+    (let ((binding (car bindings)))
+      (let ((value-ir (car (cdr binding))))
+        ;;; Generate code for this value
+        (let ((value-code (codegen-expr value-ir runtime-addrs)))
+          ;;; Save to stack
+          (let ((save-code (arm64-str 0 31 -16)))
+            ;;; Continue with rest of bindings
+            (let ((rest-code (codegen-save-bindings (cdr bindings) runtime-addrs)))
+              (append-code value-code
+                (append-code save-code rest-code)))))))
+    nil))
+
+#-sbcl
+(defun codegen-eval-args-push (args-ir runtime-addrs)
+  "Generate code to evaluate each argument and push to stack"
+  (if (cons? args-ir)
+    (let ((arg (car args-ir)))
+      (let ((code (codegen-expr arg runtime-addrs)))
+        (let ((push (arm64-str 0 31 -16)))
+          (let ((rest-code (codegen-eval-args-push (cdr args-ir) runtime-addrs)))
+            (append-code code
+              (append-code push rest-code))))))
+    nil))
+
+#-sbcl
+(defun codegen-pop-args-to-regs (num-args)
+  "Generate code to pop arguments from stack to registers x0-x2
+   Pops in reverse order: last arg first"
+  (if (= num-args 0)
+    nil
+    (if (= num-args 1)
+      ;;; Pop single arg to x0
+      (arm64-ldr-post 0 31 16)
+      (if (= num-args 2)
+        ;;; Pop two args: x1 then x0
+        (append-code (arm64-ldr-post 1 31 16)
+                     (arm64-ldr-post 0 31 16))
+        (if (= num-args 3)
+          ;;; Pop three args: x2, x1, x0
+        (append-code (arm64-ldr-post 2 31 16)
+          (append-code (arm64-ldr-post 1 31 16)
+                       (arm64-ldr-post 0 31 16)))
+          ;;; More than 3 args not supported yet
+          nil)))))
+
+#-sbcl
+(defun codegen-eval-args-to-regs (args-ir runtime-addrs)
+  "Generate code to evaluate arguments and place in registers x0-x2
+   Strategy: eval and push all, then pop to registers in correct order"
+  (let ((num-args (count-args args-ir)))
+    (let ((push-code (codegen-eval-args-push args-ir runtime-addrs)))
+      (let ((pop-code (codegen-pop-args-to-regs num-args)))
+        (append-code push-code pop-code)))))
+
+#-sbcl
+(defun count-args (args)
+  "Count number of arguments in list"
+  (if (cons? args)
+    (+ 1 (count-args (cdr args)))
+    0))
+
+#-sbcl
+(defun count-bindings (bindings)
+  "Count number of bindings in list"
+  (if (cons? bindings)
+    (+ 1 (count-bindings (cdr bindings)))
+    0))
+
+#-sbcl
+(defun codegen-cond-clauses (clauses runtime-addrs)
   "Generate code for cond clauses - returns code that leaves result in x0"
   (if (cons? clauses)
-    ;;; Process one clause
-    (let ((clause (car clauses)))
-      (let ((test (car clause)))
-        (let ((result (car (cdr clause))))
-          (let ((rest-clauses (cdr clauses)))
-            ;;; Generate code for test and result
-            (let ((test-code (codegen-expr test)))
-              (let ((result-code (codegen-expr result)))
-                ;;; Generate code for remaining clauses + default
-                (let ((rest-code (if (cons? rest-clauses)
-                                   (codegen-cond-clauses rest-clauses)
-                                   (arm64-movz 0 0))))  ; default: return nil
-                  ;;; Calculate sizes
-                  (let ((result-size (count-instrs result-code)))
-                    (let ((rest-size (count-instrs rest-code)))
-                      ;;; beq: skip result and b instruction to reach rest
-                      ;;; offset includes: beq itself + result + b = result + 2
-                      (let ((beq-offset (+ (+ result-size 1) 1)))
-                        ;;; b: skip rest-code to reach end
-                        ;;; offset includes: b itself + rest = rest + 1
-                        (let ((b-offset (+ rest-size 1)))
-                          (let ((cmp-code (cmp-zero)))
-                            (let ((beq-instr (arm64-b-cond 0 beq-offset)))  ; EQ=0
-                              (let ((b-instr (arm64-b b-offset)))
-                                ;;; Assemble: test, cmp, beq, result, b, rest
-                                (append-code test-code
-                                  (append-code cmp-code
-                                    (append-code beq-instr
-                                      (append-code result-code
-                                        (append-code b-instr rest-code))))))))))))))))))))
+    (let* ((clause (car clauses))
+           (test (car clause))
+           (result (car (cdr clause)))
+           (rest-clauses (cdr clauses))
+           (test-code (codegen-expr test runtime-addrs))
+           (result-code (codegen-expr result runtime-addrs))
+           (rest-code (if (cons? rest-clauses)
+                        (codegen-cond-clauses rest-clauses runtime-addrs)
+                        (arm64-movz 0 #x0)))  ; default: return nil
+           (result-size (count-instrs result-code))
+           (rest-size (count-instrs rest-code))
+           (beq-offset (+ result-size 2))   ; result + beq + b
+           (b-offset (+ rest-size 1))       ; rest + b
+           (cmp-code (cmp-zero))
+           (beq-instr (arm64-b-cond 0 beq-offset))  ; EQ=0
+           (b-instr (arm64-b b-offset)))
+      (append-code test-code
+        (append-code cmp-code
+          (append-code beq-instr
+            (append-code result-code
+              (append-code b-instr rest-code))))))
     ;;; No clauses - return nil (this is the default case)
-    (arm64-movz 0 0)))
+    (arm64-movz 0 #x0)))
 
-(defun codegen-expr (ir)
-  "Generate ARM64 code for expression (result in x0)"
+#-sbcl
+#-sbcl
+(defun codegen-expr (ir runtime-addrs fn-offsets current-offset)
+  "Generate ARM64 code for expression (result in x0)
+   fn-offsets: list of (fname offset-in-instructions)
+   current-offset: current position in instructions for BL offset calculation"
   (if (has-tag? ir (quote lit))
     ;;; Literal: movz x0, #(value << 4)
     (let ((value (car (cdr ir))))
@@ -360,16 +506,40 @@
           (let ((value-ir (car (cdr (cdr ir)))))
             (let ((body-ir (car (cdr (cdr (cdr ir))))))
               ;;; Generate code for value
-              (let ((value-code (codegen-expr value-ir)))
+              (let ((value-code (codegen-expr value-ir runtime-addrs fn-offsets current-offset)))
                 ;;; Save x0 on stack: str x0, [sp, #-16]!
                 (let ((save-code (arm64-str 0 31 -16)))
-                  ;;; Generate code for body
-                  (let ((body-code (codegen-expr body-ir)))
-                    ;;; Restore stack: add sp, sp, #16
-                    (let ((restore-code (arm64-add-imm 31 31 16)))
-                      (append-code value-code
+                  ;;; Generate code for body (offset updated by value-code + save-code)
+                  (let ((body-offset (+ current-offset (+ (count-instrs value-code) (count-instrs save-code)))))
+                    (let ((body-code (codegen-expr body-ir runtime-addrs fn-offsets body-offset)))
+                      ;;; Restore stack: add sp, sp, #16
+                      (let ((restore-code (arm64-add-imm 31 31 16)))
+                        (append-code value-code
                         (append-code save-code
                           (append-code body-code restore-code))))))))))
+
+        (if (has-tag? ir (quote let-multi))
+          ;;; Multiple let bindings: evaluate and save all values, then evaluate body
+          (let ((bindings (car (cdr ir))))
+            (let ((body-ir (car (cdr (cdr ir)))))
+              (let ((save-code (codegen-save-bindings bindings runtime-addrs)))
+                (let ((body-code (codegen-expr body-ir runtime-addrs)))
+                  (let ((binding-count (count-bindings bindings)))
+                    (let ((restore-code (arm64-add-imm 31 31 (* binding-count 16))))
+                      (append-code save-code
+                        (append-code body-code restore-code))))))))
+
+          (if (has-tag? ir (quote fncall))
+            ;;; Function call with BL instruction
+            (let ((fname (car (cdr ir))))
+              (let ((args-ir (car (cdr (cdr ir)))))
+                ;;; Evaluate arguments and place in x0-x2
+                (let ((args-code (codegen-eval-args-to-regs args-ir runtime-addrs)))
+                  ;;; TODO: Look up function offset from fn-offsets table
+                  ;;; TODO: Calculate BL offset from current position
+                  ;;; For now, use dummy offset of 0 (calls next instruction)
+                  (let ((bl-instr (arm64-bl 0)))
+                    (append-code args-code bl-instr)))))
 
           (if (has-tag? ir (quote call))
             ;;; Operation (unary or binary)
@@ -378,7 +548,7 @@
           (let ((arg2 (car (cdr (cdr (cdr ir))))))
             (if (nil? arg2)
               ;;; Unary operation (e.g., not, fixnum?)
-              (let ((code1 (codegen-expr arg1)))
+              (let ((code1 (codegen-expr arg1 runtime-addrs)))
                 (if (symbol=? op (quote not))
                   ;;; NOT: invert boolean
                   (append-code code1
@@ -405,14 +575,45 @@
                           (append-code (arm64-cmp 0 31)  ; cmp x0, xzr
                             (append-code (arm64-cset 0 0)  ; cset x0, EQ
                               (arm64-lsl 0 0 4))))
-                        ;;; Unknown unary op
-                        code1)))))
+                        (if (symbol=? op (quote car))
+                          ;;; CAR: call habu_car with value in x0
+                          (let ((habu-car-addr (runtime-lookup (quote habu_car) runtime-addrs)))
+                            (let ((load-addr (load-address-to-reg 2 habu-car-addr)))
+                              (let ((call-code (arm64-blr 2)))
+                                (append-code code1
+                                  (append-code load-addr call-code)))))
+                          (if (symbol=? op (quote cdr))
+                            ;;; CDR: call habu_cdr with value in x0
+                            (let ((habu-cdr-addr (runtime-lookup (quote habu_cdr) runtime-addrs)))
+                              (let ((load-addr (load-address-to-reg 2 habu-cdr-addr)))
+                                (let ((call-code (arm64-blr 2)))
+                                  (append-code code1
+                                    (append-code load-addr call-code)))))
+                            ;;; Unknown unary op
+                            code1))))))
               ;;; Binary operation with nested args
-              (let ((code1 (codegen-expr arg1)))
+              ;;; First check for cons/car/cdr (runtime calls)
+              (if (symbol=? op (quote cons))
+                ;;; CONS: (cons a b) - call habu_cons
+                (let ((habu-cons-addr (runtime-lookup (quote habu_cons) runtime-addrs)))
+                  (let ((code1 (codegen-expr arg1 runtime-addrs)))      ; arg1 → x0
+                    (let ((save-code (arm64-str 0 31 -16)))  ; push x0
+                      (let ((code2 (codegen-expr arg2 runtime-addrs)))     ; arg2 → x0
+                        (let ((move-code (arm64-mov 1 0)))   ; x0 → x1
+                          (let ((load-code (arm64-ldr-post 0 31 16)))  ; pop to x0
+                            (let ((load-addr (load-address-to-reg 2 habu-cons-addr)))
+                              (let ((call-code (arm64-blr 2)))
+                                (append-code code1
+                                  (append-code save-code
+                                    (append-code code2
+                                      (append-code move-code
+                                        (append-code load-code
+                                          (append-code load-addr call-code))))))))))))))
+              (let ((code1 (codegen-expr arg1 runtime-addrs)))
               ;;; Save arg1: str x0, [sp, #-16]!
               (let ((save-code (arm64-str 0 31 -16)))
                 ;;; Generate code for arg2
-                (let ((code2 (codegen-expr arg2)))
+                (let ((code2 (codegen-expr arg2 runtime-addrs)))
                   ;;; Move arg2 to x1: mov x1, x0
                   (let ((move-code (arm64-mov 1 0)))
                     ;;; Load arg1 to x0: ldr x0, [sp], #16
@@ -527,12 +728,12 @@
           (let ((then-expr (car (cdr (cdr ir)))))
             (let ((else-expr (car (cdr (cdr (cdr ir))))))
               ;;; Compile test
-              (let ((test-code (codegen-expr test-expr)))
+              (let ((test-code (codegen-expr test-expr runtime-addrs)))
                 ;;; Compare result with zero (nil/false)
                 (let ((cmp-code (cmp-zero)))
                   ;;; Compile then and else branches
-                  (let ((then-code (codegen-expr then-expr)))
-                    (let ((else-code (codegen-expr else-expr)))
+                  (let ((then-code (codegen-expr then-expr runtime-addrs)))
+                    (let ((else-code (codegen-expr else-expr runtime-addrs)))
                       ;;; Calculate offsets
                       (let ((then-size (count-instrs then-code)))
                         (let ((else-size (count-instrs else-code)))
@@ -552,20 +753,21 @@
         (if (has-tag? ir (quote progn))
           ;;; Progn: sequential execution
           (let ((exprs (car (cdr ir))))
-            (codegen-progn-list exprs))
+            (codegen-progn-list exprs runtime-addrs))
 
           (if (has-tag? ir (quote cond))
             ;;; Cond: multi-way conditional
             (let ((clauses (car (cdr ir))))
-              (codegen-cond-clauses clauses))
+              (codegen-cond-clauses clauses runtime-addrs))
 
               ;;; Unknown
-              (arm64-movz 0 0)))))))))
+              (arm64-movz 0 #x0))))))))))))))))))) ; close codegen-expr
 
-(defun codegen-main (ir)
+#-sbcl
+(defun codegen-main-with-runtime (ir runtime-addrs)
   "Generate complete main function"
   (let ((prologue (append-code (arm64-stp 29 30 31 -16) (arm64-add-imm 29 31 0))))
-    (let ((body (codegen-expr ir)))
+    (let ((body (codegen-expr ir runtime-addrs)))
       (let ((untag (arm64-lsr 0 0 4)))
         (let ((epilogue (append-code (arm64-add-imm 31 29 0)
                           (append-code (arm64-ldp 29 30 31 16) (arm64-ret)))))
@@ -573,19 +775,56 @@
             (append-code body
               (append-code untag epilogue))))))))
 
+#-sbcl
+(defun codegen-main (ir)
+  "Generate main function without runtime addresses (defaults to zero)"
+  (codegen-main-with-runtime ir (quote nil)))
+
 ;;; ============================================
 ;;; Compiler Integration
 ;;; ============================================
 
-(defun compile-progn-list (exprs env)
-  "Compile list of expressions for progn with environment"
+#-sbcl
+(defun compile-progn-list (exprs env fenv)
+  "Compile list of expressions for progn with environment and function environment"
   (if (cons? exprs)
-    (let ((first (compile-expr (car exprs) env)))
+    (let ((first (compile-expr (car exprs) env fenv)))
       (let ((rest (cdr exprs)))
         (if (cons? rest)
-          (cons first (compile-progn-list rest env))
+          (cons first (compile-progn-list rest env fenv))
           (list first))))  ; Last expression
     nil))
+
+(defun compile-lambda-args (args env fenv)
+  "Compile list of lambda arguments"
+  (if (cons? args)
+    (cons (compile-expr (car args) env fenv)
+          (compile-lambda-args (cdr args) env fenv))
+    nil))
+
+(defun pair-params-args-helper (params compiled-args offset)
+  "Pair parameters with their compiled argument values at sequential offsets"
+  (if (cons? params)
+    (if (cons? compiled-args)
+      (let ((param (car params)))
+        (let ((arg-ir (car compiled-args)))
+          (cons (list param arg-ir offset)
+                (pair-params-args-helper (cdr params) (cdr compiled-args) (+ offset 1)))))
+      nil)  ; not enough args
+    nil))
+
+(defun pair-params-args (params compiled-args offset)
+  "Pair parameters with their compiled argument values starting at offset"
+  (pair-params-args-helper params compiled-args offset))
+
+(defun extend-env-with-lambda-params (params offset env)
+  "Extend environment with lambda parameters at sequential offsets"
+  (if (cons? params)
+    (let ((param (car params)))
+      (extend-env-with-lambda-params (cdr params)
+                                     (+ offset 1)
+                                     (env-extend param offset env)))
+    env))
 
 ;;; ============================================
 ;;; Environment Handling
@@ -605,7 +844,87 @@
   "Extend environment with new binding"
   (cons (list var offset) env))
 
-(defun compile-let-bindings (bindings offset env)
+;;; ============================================
+;;; Function Environment
+;;; ============================================
+
+(defun fenv-lookup (fname fenv)
+  "Look up function in function environment, return function info or nil"
+  (if (cons? fenv)
+    (let ((binding (car fenv)))
+      (let ((name (car binding)))
+        (if (symbol=? fname name)
+          (cdr binding)  ; return function info (params, body)
+          (fenv-lookup fname (cdr fenv)))))
+    nil))
+
+(defun fenv-extend (fname params body fenv)
+  "Extend function environment with new function definition"
+  (cons (list fname params body) fenv))
+
+(defun compile-param-bindings-helper (params offset)
+  "Helper to create environment bindings for function parameters
+   Returns list of (param offset) bindings with sequential offsets"
+  (if (cons? params)
+    (let ((param (car params)))
+      (let ((rest (cdr params)))
+        (cons (list param offset)
+              (compile-param-bindings-helper rest (+ offset 1)))))
+    nil))
+
+(defun compile-param-bindings (params)
+  "Create environment bindings for function parameters starting at offset 0"
+  (compile-param-bindings-helper params 0))
+
+(defun count-params (params)
+  "Count number of parameters in list"
+  (if (cons? params)
+    (+ 1 (count-params (cdr params)))
+    0))
+
+(defun codegen-save-params-helper (n)
+  "Generate code to save first n parameters from x0-xn to stack
+   Saves x0, x1, x2, ... sequentially"
+  (if (= n 0)
+    nil
+    (if (= n 1)
+      ;;; Save just x0
+      (arm64-str 0 31 -16)
+      (if (= n 2)
+        ;;; Save x0 then x1
+        (append-code (arm64-str 0 31 -16)
+                     (arm64-str 1 31 -16))
+        (if (= n 3)
+          ;;; Save x0, x1, x2
+          (append-code (arm64-str 0 31 -16)
+            (append-code (arm64-str 1 31 -16)
+                         (arm64-str 2 31 -16)))
+          ;;; For now, support up to 3 params
+          (append-code (arm64-str 0 31 -16)
+            (append-code (arm64-str 1 31 -16)
+                         (arm64-str 2 31 -16))))))))
+
+(defun codegen-function-with-runtime (params body-ir runtime-addrs)
+  "Generate code for a complete function with parameters
+   Returns machine code with prologue, parameter saves, body, epilogue"
+  (let ((param-count (count-params params)))
+    (let ((prologue (append-code (arm64-stp 29 30 31 -16)
+                                 (arm64-add-imm 29 31 0))))
+      (let ((save-params (codegen-save-params-helper param-count)))
+        (let ((body-code (codegen-expr body-ir runtime-addrs)))
+          (let ((restore-stack (arm64-add-imm 31 31 (* param-count 16))))
+            (let ((untag (arm64-lsr 0 0 4)))
+              (let ((epilogue (append-code (arm64-add-imm 31 29 0)
+                                (append-code (arm64-ldp 29 30 31 16)
+                                             (arm64-ret)))))
+                (append-code prologue
+                  (append-code save-params
+                    (append-code body-code
+                      (append-code restore-stack
+                        (append-code untag epilogue)))))))))))))
+
+#-sbcl
+(defun compile-let-bindings (bindings offset env fenv)
   "Compile list of let bindings, each with incrementing offset"
   (if (cons? bindings)
     (let ((binding (car bindings)))
@@ -615,12 +934,13 @@
             (if (cons? rest)
               (let ((value (car rest)))
                 ;;; Compile this binding's value in current env
-                (cons (list var (compile-expr value env) offset)
-                      (compile-let-bindings (cdr bindings) (+ offset 1) env)))
+                (cons (list var (compile-expr value env fenv) offset)
+                      (compile-let-bindings (cdr bindings) (+ offset 1) env fenv)))
               nil)))  ; malformed binding
         nil))  ; malformed binding
     nil))
 
+#-sbcl
 (defun extend-env-with-bindings (bindings offset env)
   "Extend environment with all bindings at sequential offsets"
   (if (cons? bindings)
@@ -633,8 +953,9 @@
         env))  ; skip malformed
     env))
 
-(defun compile-cond-clauses (clauses env)
-  "Compile list of (test result) pairs for cond with environment"
+#-sbcl
+(defun compile-cond-clauses (clauses env fenv)
+  "Compile list of (test result) pairs for cond with environment and function environment"
   (if (cons? clauses)
     (let ((clause (car clauses)))
       (if (cons? clause)
@@ -643,18 +964,19 @@
             (if (cons? rest)
               (let ((result (car rest)))
                 (let ((rest-clauses (cdr clauses)))
-                  (cons (list (compile-expr test env) (compile-expr result env))
+                  (cons (list (compile-expr test env fenv) (compile-expr result env fenv))
                         (if (cons? rest-clauses)
-                          (compile-cond-clauses rest-clauses env)
+                          (compile-cond-clauses rest-clauses env fenv)
                           nil))))
               ;;; Malformed clause
-              (compile-cond-clauses (cdr clauses) env))))
+              (compile-cond-clauses (cdr clauses) env fenv))))
         ;;; Malformed clause
-        (compile-cond-clauses (cdr clauses) env))))
-    nil))
+        (compile-cond-clauses (cdr clauses) env fenv))))
+    nil)
 
-(defun compile-expr (expr env)
-  "Compile expression to IR with environment for variable bindings"
+#-sbcl
+(defun compile-expr (expr env fenv)
+  "Compile expression to IR with environment for variable bindings and function environment"
   (if (fixnum? expr)
     (list (quote lit) expr)
     (if (symbol? expr)
@@ -662,7 +984,7 @@
       (let ((offset (env-lookup expr env)))
         (if offset
           (list (quote var) offset)  ; found in environment
-          (list (quote lit) 0)))  ; unbound variable returns 0 and close let
+          (list (quote lit) 0)))  ; unbound variable returns 0
       (if (cons? expr)
         (let ((op (car expr)))
         (let ((args (cdr expr)))
@@ -676,12 +998,12 @@
                       (let ((else-rest (cdr rest)))
                         (if (cons? else-rest)
                           (list (quote if)
-                                (compile-expr test env)
-                                (compile-expr then-expr env)
-                                (compile-expr (car else-rest) env))
+                                (compile-expr test env fenv)
+                                (compile-expr then-expr env fenv)
+                                (compile-expr (car else-rest) env fenv))
                           (list (quote if)
-                                (compile-expr test env)
-                                (compile-expr then-expr env)
+                                (compile-expr test env fenv)
+                                (compile-expr then-expr env fenv)
                                 (list (quote lit) 0)))))  ; default else: 0
                     (list (quote lit) 0))))  ; malformed
               (list (quote lit) 0))  ; malformed
@@ -689,7 +1011,7 @@
             (if (symbol=? op (quote progn))
               (if (cons? args)
                 ;;; Compile all expressions in sequence
-                (list (quote progn) (compile-progn-list args env))
+                (list (quote progn) (compile-progn-list args env fenv))
                 (list (quote lit) 0))  ; empty progn returns 0
               ;;; Special form: quote
               (if (symbol=? op (quote quote))
@@ -709,9 +1031,9 @@
                           (if (cons? body-exprs)
                             ;;; Compile all bindings with sequential offsets
                             (list (quote let-multi)
-                                  (compile-let-bindings bindings 0 env)
+                                  (compile-let-bindings bindings 0 env fenv)
                                   (compile-expr (car body-exprs)
-                                    (extend-env-with-bindings bindings 0 env)))
+                                    (extend-env-with-bindings bindings 0 env) fenv))
                             (list (quote lit) 0)))  ; malformed - no body
                         (list (quote lit) 0)))  ; malformed - empty bindings
                     (list (quote lit) 0))  ; malformed
@@ -719,21 +1041,31 @@
                   (if (symbol=? op (quote cond))
                   (if (cons? args)
                     ;;; Compile all cond clauses
-                    (list (quote cond) (compile-cond-clauses args env))
+                    (list (quote cond) (compile-cond-clauses args env fenv))
                     (list (quote lit) 0))  ; empty cond returns 0
-                  ;;; Special form: when
-                  (if (symbol=? op (quote when))
+                  ;;; Special form: lambda
+                  (if (symbol=? op (quote lambda))
                     (if (cons? args)
-                      (let ((test (car args)))
-                        (let ((rest (cdr args)))
-                          (if (cons? rest)
-                            ;;; (when test body) expands to (if test body nil)
-                            (list (quote if)
-                                  (compile-expr test env)
-                                  (compile-expr (car rest) env)
-                                  (list (quote lit) 0))
-                            (list (quote lit) 0))))  ; malformed
+                      (let ((params (car args)))
+                        (let ((body-exprs (cdr args)))
+                          (if (cons? body-exprs)
+                            ;;; Return lambda IR with params and body
+                            (list (quote lambda) params (car body-exprs))
+                            (list (quote lit) 0))))  ; malformed - no body
                       (list (quote lit) 0))  ; malformed
+                    ;;; Special form: when
+                    (if (symbol=? op (quote when))
+                      (if (cons? args)
+                        (let ((test (car args)))
+                          (let ((rest (cdr args)))
+                            (if (cons? rest)
+                              ;;; (when test body) expands to (if test body nil)
+                              (list (quote if)
+                                    (compile-expr test env fenv)
+                                    (compile-expr (car rest) env fenv)
+                                    (list (quote lit) 0))
+                              (list (quote lit) 0))))  ; malformed
+                        (list (quote lit) 0))  ; malformed
                     ;;; Special form: unless
                     (if (symbol=? op (quote unless))
                       (if (cons? args)
@@ -742,26 +1074,187 @@
                             (if (cons? rest)
                               ;;; (unless test body) expands to (if test nil body)
                               (list (quote if)
-                                    (compile-expr test env)
+                                    (compile-expr test env fenv)
                                     (list (quote lit) 0)
-                                    (compile-expr (car rest) env))
+                                    (compile-expr (car rest) env fenv))
                               (list (quote lit) 0))))  ; malformed
                         (list (quote lit) 0))  ; malformed
-                      ;;; Regular call
-                      (if (cons? args)
-                        (let ((arg1 (car args)))
-                          (let ((rest (cdr args)))
-                            (if (cons? rest)
-                              (list (quote call) op
-                                    (compile-expr arg1 env)
-                                    (compile-expr (car rest) env))
-                              (list (quote call) op (compile-expr arg1 env)))))
-                        (list (quote call) op))))))))))
-        expr))))
+                      ;;; Check if this is a lambda application ((lambda ...) args)
+                      (if (cons? op)
+                        (if (symbol=? (car op) (quote lambda))
+                          ;;; Lambda application: ((lambda (x) body) arg)
+                          (let ((lambda-args (cdr op)))
+                            (if (cons? lambda-args)
+                              (let ((params (car lambda-args)))
+                                (let ((lambda-body-list (cdr lambda-args)))
+                                  (if (cons? lambda-body-list)
+                                    (let ((body (car lambda-body-list)))
+                                      (if (cons? args)
+                                        ;;; Compile as let bindings
+                                        (let ((arg-values (compile-lambda-args args env fenv)))
+                                          (list (quote let-multi)
+                                                (pair-params-args params arg-values 0)
+                                                (compile-expr body
+                                                  (extend-env-with-lambda-params params 0 env) fenv)))
+                                        (list (quote lit) 0)))  ; no args
+                                    (list (quote lit) 0))))  ; malformed
+                              (list (quote lit) 0)))  ; malformed
+                          ;;; Regular call
+                          (if (cons? args)
+                            (let ((arg1 (car args)))
+                              (let ((rest (cdr args)))
+                                (if (cons? rest)
+                                  (list (quote call) op
+                                        (compile-expr arg1 env fenv)
+                                        (compile-expr (car rest) env))
+                                  (list (quote call) op (compile-expr arg1 env fenv)))))
+                            (list (quote call) op)))
+                        ;;; Regular call with symbol operator
+                        ;;; Check if it's a known function
+                        (let ((fn-info (fenv-lookup op fenv)))
+                          (if fn-info
+                            ;;; It's a defined function - compile as function call
+                            (list (quote fncall) op (compile-lambda-args args env))
+                            ;;; Regular built-in operation
+                            (if (cons? args)
+                              (let ((arg1 (car args)))
+                                (let ((rest (cdr args)))
+                                  (if (cons? rest)
+                                    (list (quote call) op
+                                          (compile-expr arg1 env fenv)
+                                          (compile-expr (car rest) env))
+                                    (list (quote call) op (compile-expr arg1 env fenv)))))
+                              (list (quote call) op))))))))))))))))))) ; close compile-expr
 
+(defun compile-to-arm64-with-runtime (expr runtime-addrs)
+  "Full pipeline with explicit runtime addresses: Habu expr → IR → ARM64 bytes"
+  (codegen-main-with-runtime (compile-expr expr nil nil) runtime-addrs))
+
+#-sbcl
 (defun compile-to-arm64 (expr)
   "Full pipeline: Habu expr → IR → ARM64 bytes"
-  (codegen-main (compile-expr expr nil)))
+  (compile-to-arm64-with-runtime expr (quote nil)))
+
+;;; ============================================
+;;; Function Definition and Multi-Form Compilation
+;;; ============================================
+
+(defun compile-defun (name params body env fenv)
+  "Compile a function definition
+   Returns: (name params-count compiled-body-ir)"
+  (let ((param-count (count-params params)))
+    (let ((param-env (compile-param-bindings params)))
+      (let ((body-ir (compile-expr body param-env fenv)))
+        (list name param-count body-ir)))))
+
+(defun compile-forms-helper (forms env fenv)
+  "Compile list of top-level forms, separating defuns from main expression"
+  (if (cons? forms)
+    (let ((form (car forms)))
+      (if (cons? form)
+        (let ((op (car form)))
+          (if (symbol=? op (quote defun))
+            ;;; It's a defun - compile it and add to function environment
+            (if (cons? (cdr form))
+              (let ((name (car (cdr form))))
+                (let ((rest (cdr (cdr form))))
+                  (if (cons? rest)
+                    (let ((params (car rest)))
+                      (let ((body-rest (cdr rest)))
+                        (if (cons? body-rest)
+                          (let ((body (car body-rest)))
+                            ;;; Compile this defun
+                            (let ((compiled-fn (compile-defun name params body env fenv)))
+                              ;;; Add to fenv and continue
+                              (let ((new-fenv (cons compiled-fn fenv)))
+                                (let ((rest-result (compile-forms-helper (cdr forms) env new-fenv)))
+                                  (let ((rest-fns (car rest-result)))
+                                    (let ((main-ir (car (cdr rest-result))))
+                                      (list (cons compiled-fn rest-fns) main-ir)))))))
+                          ;;; Malformed defun - skip
+                          (compile-forms-helper (cdr forms) env fenv))))
+                    ;;; Malformed defun - skip
+                    (compile-forms-helper (cdr forms) env fenv))))
+              ;;; Malformed defun - skip
+              (compile-forms-helper (cdr forms) env fenv))
+            ;;; Not a defun - treat as main expression
+            (list fenv (compile-expr form env fenv))))
+        ;;; Not a list - treat as main expression
+        (list fenv (compile-expr form env fenv))))
+    ;;; No more forms - return empty
+    (list fenv (list (quote lit) 0))))
+
+(defun compile-forms (forms)
+  "Compile list of top-level forms
+   Returns: (list-of-compiled-functions main-expression-ir)"
+  (compile-forms-helper forms nil nil))
+
+(defun codegen-functions-helper (compiled-fns current-offset runtime-addrs)
+  "Generate machine code for all compiled functions
+   Returns: (total-code function-offsets)
+   function-offsets is list of (name offset-in-instructions)"
+  (if (cons? compiled-fns)
+    (let ((fn (car compiled-fns)))
+      (let ((name (car fn)))
+        (let ((param-count (car (cdr fn))))
+          (let ((body-ir (car (cdr (cdr fn)))))
+            ;;; Generate code for this function
+            (let ((fn-code (codegen-function-with-params param-count body-ir runtime-addrs)))
+              (let ((fn-size (count-instrs fn-code)))
+                ;;; Recurse for rest of functions
+                (let ((rest-result (codegen-functions-helper (cdr compiled-fns)
+                                                             (+ current-offset fn-size)
+                                                             runtime-addrs)))
+                  (let ((rest-code (car rest-result)))
+                    (let ((rest-offsets (car (cdr rest-result))))
+                      (list (append-code fn-code rest-code)
+                            (cons (list name current-offset) rest-offsets)))))))))))
+    ;;; No more functions
+    (list nil nil)))
+
+(defun codegen-function-with-params (param-count body-ir runtime-addrs)
+  "Generate code for function with parameter count
+   Parameters come in x0, x1, etc. and are saved to stack"
+  (let ((prologue (append-code (arm64-stp 29 30 31 -16)
+                               (arm64-add-imm 29 31 0))))
+    (let ((save-params (codegen-save-params-helper param-count)))
+      (let ((body-code (codegen-expr body-ir runtime-addrs)))
+        (let ((restore-stack (if (= param-count 0)
+                               nil
+                               (arm64-add-imm 31 31 (* param-count 16)))))
+          (let ((untag (arm64-lsr 0 0 4)))
+            (let ((epilogue (append-code (arm64-add-imm 31 29 0)
+                              (append-code (arm64-ldp 29 30 31 16)
+                                           (arm64-ret)))))
+              (append-code prologue
+                (append-code save-params
+                  (append-code body-code
+                    (append-code restore-stack
+                      (append-code untag epilogue))))))))))))
+
+(defun codegen-function (params body-ir)
+  "Generate function code using default runtime addresses"
+  (codegen-function-with-runtime params body-ir (quote nil)))
+
+(defun compile-program-with-functions-with-runtime (forms runtime-addrs)
+  "Compile entire program with function definitions
+   Returns: complete machine code with all functions + main"
+  (let ((compile-result (compile-forms forms)))
+    (let ((compiled-fns (car compile-result)))
+      (let ((main-ir (car (cdr compile-result))))
+        ;;; Generate code for all functions
+        (let ((fns-result (codegen-functions-helper compiled-fns 0 runtime-addrs)))
+          (let ((fns-code (car fns-result)))
+            (let ((fn-offsets (car (cdr fns-result))))
+              (let ((fns-size (count-instrs fns-code)))
+                ;;; Generate main code
+                (let ((main-code (codegen-main-with-runtime main-ir runtime-addrs)))
+                  ;;; Combine: functions first, then main
+                  (append-code fns-code main-code))))))))))
+
+(defun compile-program-with-functions (forms)
+  "Compile program using default runtime addresses (nil placeholders)"
+  (compile-program-with-functions-with-runtime forms (quote nil)))
 
 ;;; ============================================
 ;;; Tests (commented out - run manually if needed)
@@ -771,3 +1264,5 @@
 ;;; (compile-expr (quote (+ 3 4)) nil)
 ;;; (compile-to-arm64 42)
 ;;; (compile-to-arm64 (quote (+ 5 7)))
+
+) ; end #-sbcl progn

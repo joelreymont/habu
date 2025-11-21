@@ -388,7 +388,7 @@
     (let ((binding (car bindings)))
       (let ((value-ir (car (cdr binding))))
         ;;; Generate code for this value
-        (let ((value-code (codegen-expr value-ir runtime-addrs (quote nil) 0)))
+        (let ((value-code (codegen-expr value-ir runtime-addrs)))
           ;;; Save to stack
           (let ((save-code (arm64-str 0 31 -16)))
             ;;; Continue with rest of bindings
@@ -402,7 +402,7 @@
   "Generate code to evaluate each argument and push to stack"
   (if (cons? args-ir)
     (let ((arg (car args-ir)))
-      (let ((code (codegen-expr arg runtime-addrs (quote nil) 0)))
+      (let ((code (codegen-expr arg runtime-addrs)))
         (let ((push (arm64-str 0 31 -16)))
           (let ((rest-code (codegen-eval-args-push (cdr args-ir) runtime-addrs)))
             (append-code code
@@ -461,8 +461,8 @@
            (test (car clause))
            (result (car (cdr clause)))
            (rest-clauses (cdr clauses))
-           (test-code (codegen-expr test runtime-addrs (quote nil) 0))
-           (result-code (codegen-expr result runtime-addrs (quote nil) 0))
+           (test-code (codegen-expr test runtime-addrs))
+           (result-code (codegen-expr result runtime-addrs))
            (rest-code (if (cons? rest-clauses)
                         (codegen-cond-clauses rest-clauses runtime-addrs)
                         (arm64-movz 0 #x0)))  ; default: return nil
@@ -523,7 +523,7 @@
           (let ((bindings (car (cdr ir))))
             (let ((body-ir (car (cdr (cdr ir)))))
               (let ((save-code (codegen-save-bindings bindings runtime-addrs)))
-                (let ((body-code (codegen-expr body-ir runtime-addrs fn-offsets current-offset)))
+                (let ((body-code (codegen-expr body-ir runtime-addrs)))
                   (let ((binding-count (count-bindings bindings)))
                     (let ((restore-code (arm64-add-imm 31 31 (* binding-count 16))))
                       (append-code save-code
@@ -538,7 +538,7 @@
                   ;;; Look up target function offset
                   (let ((target-offset (fn-offset-lookup fname fn-offsets)))
                     (if (nil? target-offset)
-                      ;;; Function not found - use dummy BL 0 (for backwards compat)
+                      ;;; Function not found - use dummy BL 0 (will fail at runtime)
                       (let ((bl-instr (arm64-bl 0)))
                         (append-code args-code bl-instr))
                       ;;; Calculate BL offset: target - (current + args-code-size)
@@ -554,7 +554,7 @@
           (let ((arg2 (car (cdr (cdr (cdr ir))))))
             (if (nil? arg2)
               ;;; Unary operation (e.g., not, fixnum?)
-              (let ((code1 (codegen-expr arg1 runtime-addrs fn-offsets current-offset)))
+              (let ((code1 (codegen-expr arg1 runtime-addrs)))
                 (if (symbol=? op (quote not))
                   ;;; NOT: invert boolean
                   (append-code code1
@@ -602,9 +602,9 @@
               (if (symbol=? op (quote cons))
                 ;;; CONS: (cons a b) - call habu_cons
                 (let ((habu-cons-addr (runtime-lookup (quote habu_cons) runtime-addrs)))
-                  (let ((code1 (codegen-expr arg1 runtime-addrs fn-offsets current-offset)))      ; arg1 → x0
+                  (let ((code1 (codegen-expr arg1 runtime-addrs)))      ; arg1 → x0
                     (let ((save-code (arm64-str 0 31 -16)))  ; push x0
-                      (let ((code2 (codegen-expr arg2 runtime-addrs fn-offsets current-offset)))     ; arg2 → x0
+                      (let ((code2 (codegen-expr arg2 runtime-addrs)))     ; arg2 → x0
                         (let ((move-code (arm64-mov 1 0)))   ; x0 → x1
                           (let ((load-code (arm64-ldr-post 0 31 16)))  ; pop to x0
                             (let ((load-addr (load-address-to-reg 2 habu-cons-addr)))
@@ -615,11 +615,11 @@
                                       (append-code move-code
                                         (append-code load-code
                                           (append-code load-addr call-code))))))))))))))
-              (let ((code1 (codegen-expr arg1 runtime-addrs fn-offsets current-offset)))
+              (let ((code1 (codegen-expr arg1 runtime-addrs)))
               ;;; Save arg1: str x0, [sp, #-16]!
               (let ((save-code (arm64-str 0 31 -16)))
                 ;;; Generate code for arg2
-                (let ((code2 (codegen-expr arg2 runtime-addrs fn-offsets current-offset)))
+                (let ((code2 (codegen-expr arg2 runtime-addrs)))
                   ;;; Move arg2 to x1: mov x1, x0
                   (let ((move-code (arm64-mov 1 0)))
                     ;;; Load arg1 to x0: ldr x0, [sp], #16
@@ -734,12 +734,12 @@
           (let ((then-expr (car (cdr (cdr ir)))))
             (let ((else-expr (car (cdr (cdr (cdr ir))))))
               ;;; Compile test
-              (let ((test-code (codegen-expr test-expr runtime-addrs fn-offsets current-offset)))
+              (let ((test-code (codegen-expr test-expr runtime-addrs)))
                 ;;; Compare result with zero (nil/false)
                 (let ((cmp-code (cmp-zero)))
                   ;;; Compile then and else branches
-                  (let ((then-code (codegen-expr then-expr runtime-addrs fn-offsets current-offset)))
-                    (let ((else-code (codegen-expr else-expr runtime-addrs fn-offsets current-offset)))
+                  (let ((then-code (codegen-expr then-expr runtime-addrs)))
+                    (let ((else-code (codegen-expr else-expr runtime-addrs)))
                       ;;; Calculate offsets
                       (let ((then-size (count-instrs then-code)))
                         (let ((else-size (count-instrs else-code)))
@@ -770,25 +770,21 @@
               (arm64-movz 0 #x0))))))))))))))))))) ; close codegen-expr
 
 #-sbcl
-(defun codegen-main-with-runtime (ir runtime-addrs fn-offsets starting-offset)
-  "Generate complete main function
-   fn-offsets: list of (fname offset) for function calls
-   starting-offset: offset where main starts (after all functions)"
+(defun codegen-main-with-runtime (ir runtime-addrs)
+  "Generate complete main function"
   (let ((prologue (append-code (arm64-stp 29 30 31 -16) (arm64-add-imm 29 31 0))))
-    (let ((prologue-size (count-instrs prologue)))
-      (let ((body-offset (+ starting-offset prologue-size)))
-        (let ((body (codegen-expr ir runtime-addrs fn-offsets body-offset)))
-          (let ((untag (arm64-lsr 0 0 4)))
-            (let ((epilogue (append-code (arm64-add-imm 31 29 0)
-                              (append-code (arm64-ldp 29 30 31 16) (arm64-ret)))))
-              (append-code prologue
-                (append-code body
-                  (append-code untag epilogue))))))))))
+    (let ((body (codegen-expr ir runtime-addrs)))
+      (let ((untag (arm64-lsr 0 0 4)))
+        (let ((epilogue (append-code (arm64-add-imm 31 29 0)
+                          (append-code (arm64-ldp 29 30 31 16) (arm64-ret)))))
+          (append-code prologue
+            (append-code body
+              (append-code untag epilogue))))))))
 
 #-sbcl
 (defun codegen-main (ir)
   "Generate main function without runtime addresses (defaults to zero)"
-  (codegen-main-with-runtime ir (quote nil) (quote nil) 0))
+  (codegen-main-with-runtime ir (quote nil)))
 
 ;;; ============================================
 ;;; Compiler Integration
@@ -921,7 +917,7 @@
     (let ((prologue (append-code (arm64-stp 29 30 31 -16)
                                  (arm64-add-imm 29 31 0))))
       (let ((save-params (codegen-save-params-helper param-count)))
-        (let ((body-code (codegen-expr body-ir runtime-addrs (quote nil) 0)))
+        (let ((body-code (codegen-expr body-ir runtime-addrs)))
           (let ((restore-stack (arm64-add-imm 31 31 (* param-count 16))))
             (let ((untag (arm64-lsr 0 0 4)))
               (let ((epilogue (append-code (arm64-add-imm 31 29 0)
@@ -1138,7 +1134,7 @@
 
 (defun compile-to-arm64-with-runtime (expr runtime-addrs)
   "Full pipeline with explicit runtime addresses: Habu expr → IR → ARM64 bytes"
-  (codegen-main-with-runtime (compile-expr expr nil nil) runtime-addrs (quote nil) 0))
+  (codegen-main-with-runtime (compile-expr expr nil nil) runtime-addrs))
 
 #-sbcl
 (defun compile-to-arm64 (expr)
@@ -1228,7 +1224,7 @@
   (let ((prologue (append-code (arm64-stp 29 30 31 -16)
                                (arm64-add-imm 29 31 0))))
     (let ((save-params (codegen-save-params-helper param-count)))
-      (let ((body-code (codegen-expr body-ir runtime-addrs (quote nil) 0)))
+      (let ((body-code (codegen-expr body-ir runtime-addrs)))
         (let ((restore-stack (if (= param-count 0)
                                nil
                                (arm64-add-imm 31 31 (* param-count 16)))))
@@ -1257,8 +1253,8 @@
           (let ((fns-code (car fns-result)))
             (let ((fn-offsets (car (cdr fns-result))))
               (let ((fns-size (count-instrs fns-code)))
-                ;;; Generate main code (starts after all functions)
-                (let ((main-code (codegen-main-with-runtime main-ir runtime-addrs fn-offsets fns-size)))
+                ;;; Generate main code
+                (let ((main-code (codegen-main-with-runtime main-ir runtime-addrs)))
                   ;;; Combine: functions first, then main
                   (append-code fns-code main-code))))))))))
 
