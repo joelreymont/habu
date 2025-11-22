@@ -244,6 +244,36 @@ Raw result: 0x2a (42)
 
 ---
 
-**Last Updated**: November 22, 2025, 15:45 PST
-**Status**: Phase 1 infrastructure complete, ready for codegen enhancement
-**Next Session**: Enhance SBCL stub compiler for functional code generation
+**Last Updated**: November 22, 2025, 16:30 PST
+**Status**: Phase 1 codegen enhancement in progress - arithmetic working, conditionals debugging
+**Next Session**: Fix conditional branches, add runtime calls (cons/car/cdr), update docs
+
+## Latest Progress (November 22, 16:00-16:30)
+
+### Implemented and Working ✅
+1. **ARM64 Encoders**: add, sub, mul, lsl, lsr, mov, cmp, cset, b, b-cond
+2. **Arithmetic Operations**:
+   - Addition: (+ 5 7) → 12 ✓
+   - Subtraction: (- 10 3) → 7 ✓
+   - Multiplication: (* 6 7) → 42 ✓
+3. **Fixnum Tagging**: All values properly tagged (value << 4)
+4. **Comparisons**: (= 5 5) → 1 ✓
+
+### In Progress / Debugging 🔧
+5. **Conditionals**: (if test then else)
+   - IR generation working
+   - Codegen implemented
+   - **Issue**: Always taking else branch (debugging branch logic)
+
+### Test Results
+```bash
+# Working tests:
+(+ 5 7) → 12 ✓
+(- 10 3) → 7 ✓
+(* 6 7) → 42 ✓
+(= 5 5) → 1 ✓
+(= 5 7) → 0 ✓
+
+# Not working yet:
+(if (= 5 5) 42 99) → should be 42, getting 99 ✗
+```
