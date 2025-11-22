@@ -118,6 +118,16 @@
       (incf passed))
     (incf total)
 
+    ;; Test 7: Nested multiplication uses separate temp slots
+    (when (test-defun-expr
+           '((defun nested-mul ()
+               (* 2 (* 3 4)))
+             (nested-mul))
+           24
+           "Test 7: Nested multiplication")
+      (incf passed))
+    (incf total)
+
     (format t "=== Summary ===~%")
     (format t "Passed: ~D/~D tests~%" passed total)
     (if (= passed total)

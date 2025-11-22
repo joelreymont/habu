@@ -1,9 +1,16 @@
 # Session Context - Habu Defun Implementation
 
 **Session Date**: November 22-23, 2025
-**Duration**: ~5 hours
-**Focus**: Debugging and fixing defun (function definition) implementation
-**Last Updated**: November 23, 2025
+**Duration**: ~6 hours
+**Focus**: Stabilizing defun recursion and temporary allocation
+**Last Updated**: November 22, 2025 (21:06 EET)
+
+## Latest Updates (November 22, 2025)
+
+- Added depth-tracked temporary slots (`temp-slot-offset` with base #x40 and #x8 stride) and threaded `temp-depth` through codegen to prevent nested arithmetic from overwriting saved operands.
+- Corrected `if` branch offset bookkeeping; else blocks now start after the test and branch instructions, and then blocks account for else length, fixing recursive BL targets (factorial calls now branch to offset #xF instead of landing in main).
+- Adjusted cons push/pop offset accounting and added a nested multiplication regression in `test-defun.lisp`; `./test-defun.lisp` now passes 7/7 tests including factorial.
+- Added a Lisp-based bytecode decoder (`decode-bytecode.lisp`) so inspection no longer depends on the Python helper.
 
 ## Major Breakthroughs
 
@@ -92,7 +99,7 @@ The issue appears to be in the function prologue or environment setup. Despite c
   - Updated `codegen-expr` to thread function offsets through
 
 ### Test Infrastructure
-- `test-defun.lisp`: Comprehensive test suite (1/6 passing)
+- `test-defun.lisp`: Comprehensive test suite (7/7 passing; added nested multiplication regression)
 - Various debug scripts in `/tmp/`:
   - `test-simple-defun.lisp`
   - `debug-add.lisp`
@@ -121,18 +128,8 @@ ADD x20, sp, #248     ; Set environment base
 - Offset calculation: `[x20 - (offset * 8)]`
 - x1 used as temp register for address computation
 
-## Next Steps
-
-1. **Immediate**: Debug why second parameter isn't accessible
-   - Add runtime tracing to see actual register values
-   - Check if x20 is being corrupted
-   - Verify stack alignment
-
-2. **After Fix**:
-   - Complete remaining defun tests
-   - Implement recursive functions (factorial)
-   - Add support for >3 parameters
-   - Begin closure implementation
+### Temporary Storage
+- Depth-indexed temp slots start at `sp + #x40` with `#x8` stride; `temp-depth` increments for right operands so nested arithmetic keeps previously stored values intact within the #x100 frame.
 
 ## Progress Metrics
 
@@ -140,7 +137,7 @@ ADD x20, sp, #248     ; Set environment base
 - ✅ Comparison operators (6/6)
 - ✅ Let bindings (single and nested)
 - ✅ Variable shadowing
-- 🔧 Function definitions (75% - single-param works)
+- ✅ Function definitions (includes recursion and nested arithmetic)
 - 📋 Closures (not started)
 - 📋 Macros (not started)
 
@@ -149,7 +146,7 @@ ADD x20, sp, #248     ; Set environment base
 - Comparisons: 19/19 ✓
 - Arithmetic: All ✓
 - Runtime calls: All ✓
-- Defun: 5/6 (tests 1-4 and 6 passing, test 5 recursive factorial fails)
+- Defun: 7/7 (factorial and nested multiplication now pass)
 
 ## Key Insights
 
@@ -187,66 +184,36 @@ ADD x20, sp, #248     ; Set environment base
 - **Solution**: Changed all binary operations to use x22 (a callee-saved register) instead of x2
 - **Also Fixed**: Updated offset calculations to account for the additional instructions between left and right operand evaluation
 
+### 6. Depth-Tracked Temps and `if` Offset Fix (November 22, 2025)
+- **Problem**: Nested arithmetic reused shared temp slots and `if` offset math overcounted else/then layout, so recursive BL targets jumped into main (offset #xD) instead of the function entry (#xF).
+- **Solution**: Added `temp-slot-offset` (base #x40, stride #x8) with `temp-depth` threading through `codegen-expr`, and corrected else/then `current-offset` calculations (`else` starts after test + branch; `then` includes else length + skip branch).
+- **Result**: Factorial and nested multiplication now return correct results; recursive calls branch to the correct entry point.
+
 ## Current Issues
 
-### Complex Nested Operations Bug
-- **Symptom**: Nested operations of the same type overwrite each other's temporary storage
-- **Discovery Process**:
-  1. Initially found factorial returning 16x larger values (tagging issue)
-  2. Fixed stack memory usage (was using memory below sp, dangerous)
-  3. Tried using callee-saved registers (x21, x22, x23) but nested operations still conflicted
-  4. Tried using fixed stack locations (sp+64, sp+72, etc.) but same-type operations still conflict
-  5. Current status: factorial returns 0 or incorrect values
-- **Root Cause**: Each operation type uses a fixed location/register, so nested operations of the same type overwrite each other
-- **Example**: In `(* 2 (* 3 4))`:
-  - Outer multiplication saves 2 at location X
-  - Inner multiplication saves 3 at THE SAME location X (overwrites 2!)
-  - Result: 3 * 12 = 36 instead of 2 * 12 = 24
-- **Current Results**:
-  - fact(0) = 1 ✓
-  - fact(1) = 1 ✓
-  - fact(2) = 0 (expected 2) ✗
-  - Nested multiplication: 2*(3*4) = 36 (expected 24) ✗
-  - Recursive sum: sum-to(5) = 4 (expected 15) ✗
-- **Status**: Need proper stack allocation strategy for temporaries
+- No failing defun regressions after adding depth-tracked temp slots and fixing `if` offsets. Need to stress temp-slot depth vs. large environments to ensure the #x100 frame leaves enough space for bindings.
 
-## Session End State (November 23, 2025)
+## Session End State (November 22, 2025)
 
-- ✅ Multi-parameter functions working correctly
-- ✅ Basic defun tests (1-4, 6) passing
-- ✅ Fixed critical BL offset calculation bug
-- ✅ Functions calling other functions working
-- ✅ Two-pass compilation implemented for proper function offsets
+- ✅ Multi-parameter and recursive functions working correctly
+- ✅ Defun regression suite (7/7) passing, including factorial and nested multiplication
+- ✅ Fixed critical BL offset calculation bug and corrected `if` offset bookkeeping
+- ✅ Depth-indexed temp slots prevent nested arithmetic overwrites
+- ✅ Functions calling other functions working with two-pass offset calculation
 - ✅ Recursive function calls compile correctly
-- ✅ Fixed register clobbering issue in binary operations (partial)
-- ✅ Fixed stack memory safety (no longer using memory below sp)
-- ✅ Added x23/x24 to prologue/epilogue for additional callee-saved registers
-- 🔧 Nested operations still conflict due to shared temporary storage
-- 📋 Test results: 5/6 defun tests passing (recursive factorial fails with 0 result)
+- ✅ Stack frame uses callee-saved temporaries (x21-x24) and avoids writing below sp
+- 📋 Next validation: stress temp allocator with deep expressions and large environments
 
 ## Next Steps for New Session
 
-1. **Implement proper temporary allocation**:
-   - Issue: Nested operations of same type overwrite each other's temporaries
-   - Solution needed: Dynamic stack allocation or register allocation with spilling
-   - Consider: Tracking nesting depth or using a temporary stack pointer
+1. Stress the depth-tracked temp slots with deeper nesting and larger let environments; add a guard if temp offsets approach the environment region within the #x100 frame.
+2. Move on to closure implementation now that defun recursion and nested arithmetic are stable.
+3. Audit codegen for hex literal consistency and broaden regression coverage beyond defun (integration and stdlib paths).
 
-2. **Alternative simpler solution**:
-   - Use different registers/locations for different nesting levels
-   - Or implement a proper register allocator with spilling
+## Validation Notes
 
-3. **Complete defun implementation**: Fix the nested operations issue
-
-4. **Implement closures**: After defun is fully working
-
-5. **Begin macro implementation**: Final phase 2 feature
-
-## Debugging Hints for Factorial Issue
-
-- The IR generation is correct: `(MUL (VAR 0) (CALL-FN FACT ...))`
-- The recursive call compiles correctly after our fix
-- Problem appears to be in the runtime behavior of multiplication with recursive return values
-- Test simple recursive functions that don't use multiplication to isolate the issue
+- BL targets verified: recursive `fact` call now branches to offset #xF instead of falling into main.
+- Factorial outputs correct values for n=0..5 after temp-slot and `if` offset fixes.
 
 ## Commits Made
 
@@ -256,19 +223,17 @@ ADD x20, sp, #248     ; Set environment base
 3. **Commit c41868c**: "Enable recursive function calls by adding function to its own environment"
 
 ### This Session (November 22, 2025)
-4. **To be committed**: "Fix register clobbering in binary operations"
-   - Changed binary operations to use x22 (callee-saved) instead of x2 (caller-saved)
-   - Updated offset calculations for right operand evaluation
-   - Fixes issue where function calls in right operand would corrupt saved left operand
-   - Partial fix for recursive functions (5/6 defun tests now pass)
+4. **Pending**: Depth-tracked temporaries and `if` offset corrections
+   - Threaded `temp-depth` through codegen with `temp-slot-offset` (base #x40, #x8 stride) to avoid nested arithmetic overwrites
+   - Fixed else/then `current-offset` math so recursive BL targets land on function entry points
+   - Added nested multiplication regression in `test-defun.lisp`; factorial now passes (7/7)
 
 ## Files Modified
 
-- **habu-arm64-codegen-sbcl.lisp**: Main compiler with register clobbering fix
-  - Changed x2 to x22 in all binary operations (lines 283-427)
-  - Updated offset calculations for right operand evaluation
-- **CONTEXT.md**: Session documentation updated with findings
-- **test-defun.lisp**: Test suite unchanged (5/6 tests passing)
+- **habu-arm64-codegen-sbcl.lisp**: Added depth-tracked temp slots, corrected `if` current-offset math, and fixed cons push/pop offset accounting.
+- **decode-bytecode.lisp**: New Lisp decoder for ARM64 bytecode to replace ad-hoc Python inspection.
+- **CONTEXT.md**: Updated session log with latest fixes and test status.
+- **test-defun.lisp**: Added nested multiplication regression; suite now runs 7 tests.
 
 ## Key Technical Details
 
@@ -288,4 +253,4 @@ ADD x20, sp, #248     ; Set environment base
 
 ---
 
-**Session End Status**: Three major bugs fixed. Recursive factorial still has arithmetic issues (returns powers of 2). Ready for next session to debug arithmetic problem in recursive multiplication.
+**Session End Status**: Temp-slot depth tracking and `if` offset fixes landed; defun regression suite (7/7) is green with correct factorial results. Ready to validate temp depth under heavier nesting and move toward closures.
