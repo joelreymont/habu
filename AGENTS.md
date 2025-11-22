@@ -7,6 +7,7 @@ You target ARM64 first and x86_64 second for code generation.
 Bootstrapping should be done in Lisp, compiled by SBCL.
 You should be using Lisp hex numbers everywhere!
 Write session context to CONTEXT.md, save it frequently and keep it up to date.
+Use the Lisp tracing facility for debugging.
 Commit frequently.
 
 Use this git author: Joel Reymont <18791+joelreymont@users.noreply.github.com>

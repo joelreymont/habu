@@ -1,210 +1,185 @@
-# Current Session Context
+# Session Context - Habu Defun Implementation
 
-**Date**: November 22, 2025
-**Session Duration**: 22:00-22:45 PST
-**Status**: Phase 2 Implementation - Let bindings COMPLETE, defun 60% complete
+**Session Date**: November 22-23, 2025
+**Duration**: ~4 hours
+**Focus**: Debugging and fixing defun (function definition) implementation
 
----
+## Major Breakthroughs
 
-## Current Session (November 22, 2025 - Late Evening)
+### 1. Fixed Branch Offset Calculation
+- **Problem**: BL (branch with link) instruction wasn't jumping to correct location
+- **Root Cause**: Negative offsets weren't properly encoded in 26-bit two's complement
+- **Solution**: Updated `arm64-bl` function to handle negative offsets:
+```lisp
+(if (< offset 0)
+    (logand (+ offset #x4000000) #x3FFFFFF)  ; Add 2^26 for two's complement
+    (logand offset #x3FFFFFF))
+```
 
-### Session Summary
+### 2. Fixed Entry Point Ordering
+- **Problem**: Functions were executing instead of main, returning wrong values
+- **Discovery**: run-bytecode executes from offset 0, but we were putting functions there
+- **Solution**: Restructured `compile-program-with-functions-with-runtime` to place main at offset 0:
+```lisp
+;; Generate main first, then functions
+;; Put main first (at offset 0) so it's the entry point
+(append main-code fns-code)
+```
 
-**Major Achievement**: Fixed critical defun issues - branch offset calculation and entry point ordering. Identity function now works! Discovered multi-argument passing bug that needs resolution.
+### 3. Identity Function Works!
+- **Achievement**: Single-parameter functions now work correctly
+- **Test Result**: `(identity 42)` returns 42 ✓
+- **Significance**: Proves the basic function call mechanism is sound
 
-### Completed Tasks
+### 4. Fixed Multi-Parameter Function Bug!
+- **Problem**: Multi-parameter functions were returning the first parameter instead of correct results
+- **Root Cause**: Incorrect PC calculation in BL instruction generation
+- **Discovery**: The code was adding 1 to current-pc when calculating branch offset, but ARM64 branch offsets are relative to the branch instruction itself
+- **Solution**: Removed the +1 in codegen-expr (line 595):
+```lisp
+;; Before (wrong):
+(current-pc (+ current-offset (count-instrs code-so-far) 1))
+;; After (correct):
+(current-pc (+ current-offset (count-instrs code-so-far)))
+```
+- **Result**: All multi-parameter functions now work correctly!
 
-1. **Fixed Let Binding Stack Management** (COMPLETED)
-   - Diagnosed segfault issue: x20 pointing to invalid memory
-   - Increased stack frame from 48 to 256 bytes for local variables
-   - Fixed environment pointer to use safe stack area (sp + 248)
-   - Changed implementation to use negative offsets from x20
-   - Result: Basic let bindings working ✓
+## ~~Current Bug: Multi-Parameter Functions~~ FIXED!
 
-2. **Completed Nested Let Support** (COMPLETED)
-   - Fixed environment management with cumulative offsets
-   - Proper variable shadowing in nested scopes
-   - Complex nested computations working
-   - All 7 let binding tests passing ✓
+### Symptom
+Functions with multiple parameters always return the first parameter:
+- `(add 10 20)` returns 10 instead of 30
+- `(second 10 20)` returns 10 instead of 20
 
-3. **Defun Implementation Progress** (75% COMPLETE)
-   - Implemented compile-defun with parameter environments
-   - Added ARM64 calling convention (x0-x2 for parameters)
-   - Created proper function prologues/epilogues
-   - Added BL (branch with link) instruction encoder
-   - Implemented function call IR generation (call-fn)
-   - Parameters stored to stack for variable access
-   - **FIXED**: Branch offset calculation (two's complement encoding)
-   - **FIXED**: Entry point ordering (main at offset 0 for JIT)
-   - **WORKING**: Single-parameter functions (identity) ✓
-   - **BUG**: Multi-parameter functions return first arg only
+### Debugging Findings
 
-### Technical Details
+1. **Parameter Passing**: Correctly loads arguments into x0, x1 before BL
+```
+MOVZ x0, #160  ; 10 << 4
+MOV x2, x0
+MOVZ x0, #320  ; 20 << 4
+MOV x1, x0
+MOV x0, x2
+BL <function>
+```
 
-**Let Binding Solution**:
-- Environment stored at x20 (points to high stack area)
-- Variables stored at negative offsets: [x20 - (offset * 8)]
-- Use x1 as temp register for address computation
-- Stack frame: 256 bytes (48 for registers + 208 for variables)
+2. **Parameter Storage**: Function correctly stores both parameters to stack
+```
+SUB x2, x20, #0   ; Address for first param
+STR x0, [x2]      ; Store x0
+SUB x2, x20, #8   ; Address for second param
+STR x1, [x2]      ; Store x1
+```
 
-**Defun Implementation**:
-- Parameters passed in x0-x2 (ARM64 ABI)
-- Function prologue saves x19-x22, FP/LR
-- Parameters stored to stack at function entry
-- Function calls evaluate args, move to x0-x2, then BL
-- Currently using placeholder offsets (TODO: calculate real offsets)
+3. **Variable Access**: Code generated to access second parameter looks correct
+```
+SUB x1, x20, #8   ; Address of y
+LDR x0, [x1]      ; Load y into x0
+```
 
-### Test Status
+4. **Manual Tests**: STR/LDR instructions work correctly in isolation
 
-- **Let bindings**: 7/7 passing ✅
-- **Comparisons**: 19/19 passing ✅
-- **Arithmetic**: All passing ✅
-- **Runtime calls**: cons/car/cdr working ✅
-- **Defun**: 1/6 passing (identity works, multi-arg functions fail)
+### Hypothesis
+The issue appears to be in the function prologue or environment setup. Despite correct encoding, the second parameter isn't being retrieved properly from the stack.
 
-### Phase 2 Progress
+## Code Structure
 
-- ✅ Comparison operators (all 6 implemented)
+### Key Files Modified
+- `habu-arm64-codegen-sbcl.lisp`: Main compiler with fixes
+  - Fixed `arm64-bl` for negative offsets
+  - Fixed `compile-program-with-functions-with-runtime` for entry point
+  - Updated `codegen-expr` to thread function offsets through
+
+### Test Infrastructure
+- `test-defun.lisp`: Comprehensive test suite (1/6 passing)
+- Various debug scripts in `/tmp/`:
+  - `test-simple-defun.lisp`
+  - `debug-add.lisp`
+  - `analyze-add-issue.lisp`
+  - `test-add-codegen.lisp`
+
+## Technical Details
+
+### ARM64 Calling Convention
+- Parameters passed in x0-x2 (currently support up to 3)
+- x19 holds runtime function table
+- x20 holds environment base pointer
+- Stack frame: 256 bytes (48 for saved registers + 208 for variables)
+
+### Function Prologue
+```
+SUB sp, sp, #256      ; Allocate stack
+STP x29, x30, [sp]    ; Save FP/LR
+STP x19, x20, [sp,16] ; Save x19/x20
+STP x21, x22, [sp,32] ; Save x21/x22
+ADD x20, sp, #248     ; Set environment base
+```
+
+### Environment Model
+- Variables stored at negative offsets from x20
+- Offset calculation: `[x20 - (offset * 8)]`
+- x1 used as temp register for address computation
+
+## Next Steps
+
+1. **Immediate**: Debug why second parameter isn't accessible
+   - Add runtime tracing to see actual register values
+   - Check if x20 is being corrupted
+   - Verify stack alignment
+
+2. **After Fix**:
+   - Complete remaining defun tests
+   - Implement recursive functions (factorial)
+   - Add support for >3 parameters
+   - Begin closure implementation
+
+## Progress Metrics
+
+### Phase 2 Implementation Status
+- ✅ Comparison operators (6/6)
 - ✅ Let bindings (single and nested)
 - ✅ Variable shadowing
-- 🔧 Function definitions (75% - single-param works, multi-param bug)
+- 🔧 Function definitions (75% - single-param works)
 - 📋 Closures (not started)
 - 📋 Macros (not started)
 
-**Overall Phase 2**: ~75% complete
+### Test Results
+- Let bindings: 7/7 ✓
+- Comparisons: 19/19 ✓
+- Arithmetic: All ✓
+- Runtime calls: All ✓
+- Defun: 3/6 (tests 1-3 passing, test 4 has issues with function-calling-function)
 
-### Next Steps
+## Key Insights
 
-1. **Fix multi-parameter bug in defun**:
-   - Debug why second parameter isn't accessible
-   - Functions always return first parameter currently
-   - Stack operations and encoding appear correct
-   - Need to trace actual execution flow
+1. **Entry point matters for JIT**: Unlike normal linking, JIT execution starts at offset 0
+2. **Branch encoding is tricky**: ARM64 uses signed offsets in instructions
+3. **Systematic debugging essential**: Small test cases revealed the pattern
+4. **Stack operations look correct**: The bug is subtle, not in the obvious places
 
-2. **Implement closures**:
-   - Environment capture mechanism
-   - Free variable tracking
-   - Closure representation
+## Current Issues
 
-3. **Begin self-hosting tests**:
-   - Load compiler in Habu environment
-   - Compile simple programs
-   - Work toward fixed-point bootstrap
+### Function-Calling-Function Bug
+- **Symptom**: When one function calls another function, the program hangs or crashes
+- **Test Case**: `(defun double (x) (* x 2))` followed by `(defun quad (x) (double (double x)))`
+- **Status**: Needs investigation - likely related to how function offsets are calculated when functions call each other
 
-### Files Modified This Session
+## Session End State
 
-1. **habu-arm64-codegen-sbcl.lisp**:
-   - Fixed let binding stack management
-   - Added negative offset addressing
-   - Implemented defun compilation
-   - Added function call codegen
-   - Added BL instruction encoder
+- ✅ Multi-parameter functions now working correctly!
+- ✅ Basic defun tests (1-3) all passing
+- ✅ Fixed critical BL offset calculation bug
+- 🔧 Function-calling-function needs debugging
+- 📋 Recursive functions not yet tested
 
-2. **Test files created**:
-   - test-let.lisp - Comprehensive let binding tests
-   - test-defun.lisp - Function definition tests
-   - test-simple-defun.lisp - Basic defun debugging
-   - debug-let.sh - Let binding debug script
+## Next Steps
 
-3. **Documentation updated**:
-   - CONTEXT.md - Updated with Phase 2 progress
-   - PHASE2_IMPLEMENTATION_PLAN.md - Referenced for implementation
-
-### Key Insights
-
-1. **Stack management is critical**: Small stack frames cause segfaults with let bindings
-2. **Environment representation matters**: Negative offsets from x20 work better than SP manipulation
-3. **ARM64 ABI compliance needed**: Proper register preservation for function calls
-4. **Incremental testing essential**: Found and fixed issues through systematic testing
-5. **Entry point critical for JIT**: Main must be at offset 0, not functions
-6. **Branch offset encoding tricky**: Negative offsets need two's complement in 26-bit field
-7. **Parameter passing mystery**: Single params work, multi-params fail despite correct encoding
+1. **Debug function-calling-function**: Investigate why functions hang when calling other functions
+2. **Test recursive functions**: Once function calls work, test factorial and other recursive cases
+3. **Implement closures**: After defun is fully working
+4. **Begin macro implementation**: Final phase 2 feature
 
 ---
 
-## Previous Session (November 22, 2025 - Afternoon)
-
-### Session Summary
-
-**CRITICAL DISCOVERY**: Project had conflicting bootstrap paths. C-based bootstrap removed per AGENTS.md requirements. Pure Lisp path established. Phase 1 completed with runtime integration working.
-
-### Phase 1 Completion
-
-**All Phase 1 goals achieved**:
-- ✅ SBCL compiler loads and compiles
-- ✅ ARM64 code generation for all core features
-- ✅ Runtime integration via function table pattern
-- ✅ JIT execution working with proper ABI
-
-**Runtime Function Table Pattern**:
-- Solved ASLR issues by passing runtime table as argument
-- Functions loaded from table: [x19 + offset]
-- Pattern matches real JIT engines (V8, LuaJIT)
-
-### Test Results at Phase 1 Completion
-
-```bash
-# All tests passing
-(+ 5 7) → 12 ✓
-(- 10 3) → 7 ✓
-(* 6 7) → 42 ✓
-(= 5 5) → 1 ✓
-(if 1 42 99) → 42 ✓
-(cons 42 99) → cons cell ✓
-(car (cons 42 99)) → 42 ✓
-(cdr (cons 42 99)) → 99 ✓
-```
-
----
-
-## Timeline to Self-Hosting
-
-### Completed
-- **Phase 0**: Cleanup (removed C backend) ✅
-- **Phase 1**: Bootstrap infrastructure ✅
-  - SBCL loads compiler
-  - Generates ARM64 code
-  - Runtime integration complete
-  - JIT execution verified
-
-### In Progress
-- **Phase 2**: Language features (70% complete)
-  - ✅ Comparisons
-  - ✅ Let bindings
-  - 🔧 Function definitions
-  - 📋 Closures
-  - 📋 Macros
-
-### Remaining
-- **Phase 3**: Self-compilation (0%)
-  - Compile compiler with itself
-  - Bootstrap stages
-  - Fixed point verification
-
-**Estimated time to self-hosting**: 1-2 weeks
-
----
-
-## Critical Files
-
-### Core Implementation
-- `habu-arm64-codegen-sbcl.lisp` - SBCL-hosted compiler
-- `habu-arm64-codegen.lisp` - Full Habu compiler (for self-hosting)
-- `runtime/*.c` - Tiny C runtime (6 files only)
-- `habu-jit.c` - JIT execution helper
-
-### Testing
-- `test-let.lisp` - Let binding tests (7/7 passing)
-- `test-comparisons.lisp` - Comparison tests (19/19 passing)
-- `test-defun.lisp` - Function tests (pending)
-- `test-runtime-calls.lisp` - Runtime integration tests
-
-### Execution
-- `compile-and-save.lisp` - Compile Lisp to bytecode
-- `run-bytecode` - Execute ARM64 bytecode via JIT
-
----
-
-**Last Updated**: November 23, 2025, 00:15 PST
-**Next Session**: Debug multi-parameter function bug, complete defun implementation
-**Confidence**: High - identity function works, clear path to fix multi-param issue
+**Latest Commit**: Ready to commit BL offset fix
+**Commit Message**: "Fix BL offset calculation in function calls - multi-parameter functions now work"

@@ -591,9 +591,9 @@
                                                            (arm64-mov 0 3)))
                                      (t nil)))
                (current-pc (if current-offset
-                             ;; PC points to the instruction after BL when executing
-                             (+ current-offset (count-instrs code-so-far) 1)
-                             1))  ; Account for PC being after BL
+                             ;; PC is at the BL instruction itself
+                             (+ current-offset (count-instrs code-so-far))
+                             0))  ; No offset if not tracking
                ;; Branch offset is difference in instructions
                (branch-offset (- fn-offset current-pc)))
            (arm64-bl branch-offset)))))
