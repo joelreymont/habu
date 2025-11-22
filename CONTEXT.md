@@ -9,7 +9,7 @@
 
 - Added depth-tracked temporary slots (`temp-slot-offset` with base #x40 and #x8 stride) and threaded `temp-depth` through codegen to prevent nested arithmetic from overwriting saved operands.
 - Corrected `if` branch offset bookkeeping; else blocks now start after the test and branch instructions, and then blocks account for else length, fixing recursive BL targets (factorial calls now branch to offset #xF instead of landing in main).
-- Adjusted cons push/pop offset accounting and added nested multiplication regression in `test-defun.lisp`; `./test-defun.lisp` now passes 7/7 tests including factorial.
+- Adjusted cons push/pop offset accounting and added nested multiplication regression in `test-defun.lisp`; `./test-defun.lisp` now passes 9/9 tests including factorial and deep nesting.
 - Added a Lisp-based bytecode decoder (`decode-bytecode.lisp`) so inspection no longer depends on the Python helper.
 
 ## Major Breakthroughs
@@ -233,7 +233,7 @@ ADD x20, sp, #248     ; Set environment base
 - **habu-arm64-codegen-sbcl.lisp**: Added depth-tracked temp slots with guard against env overlap, corrected `if` current-offset math, and fixed cons push/pop offset accounting.
 - **decode-bytecode.lisp**: New Lisp decoder for ARM64 bytecode to replace ad-hoc Python inspection.
 - **CONTEXT.md**: Updated session log with latest fixes and test status.
-- **test-defun.lisp**: Added nested multiplication and deep-nesting regressions; suite now runs 8 tests.
+- **test-defun.lisp**: Added nested multiplication and deep-nesting regressions; suite now runs 9 tests.
 
 ## Key Technical Details
 

@@ -138,6 +138,16 @@
       (incf passed))
     (incf total)
 
+    ;; Test 9: Very deep nesting stays within temp guard
+    (when (test-defun-expr
+           '((defun very-deep ()
+               (+ 1 (+ 2 (+ 3 (+ 4 (+ 5 (+ 6 (+ 7 (+ 8 (+ 9 (+ 10 (+ 11 (+ 12 (+ 13 (+ 14 (+ 15 (+ 16 (+ 17 18))))))))))))))))))
+             (very-deep))
+           171
+           "Test 9: Very deep nested addition")
+      (incf passed))
+    (incf total)
+
     (format t "=== Summary ===~%")
     (format t "Passed: ~D/~D tests~%" passed total)
     (if (= passed total)
