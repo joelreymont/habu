@@ -199,6 +199,24 @@ void arm64_encode_b(uint8_t *dest, int32_t offset) {
     dest[3] = (encoded >> 24) & 0xFF;
 }
 
+/* encode_b_cond: B.cond <label>
+ * Conditional branch
+ * Encoding: 0101 0100 iiii iiii iiii iiii iii0 cccc
+ * Base: 0x54000000 | (offset << 5) | cond
+ * offset is signed 19-bit in instruction units
+ * Condition codes: EQ=0, NE=1, LT=11, GT=12, etc.
+ */
+void arm64_encode_b_cond(uint8_t *dest, uint8_t cond, int32_t offset) {
+    uint32_t base = 0x54000000;
+    uint32_t offset_masked = (offset & 0x7FFFF) << 5;  /* 19-bit offset, shifted left 5 */
+    uint32_t encoded = base | offset_masked | cond;
+
+    dest[0] = (encoded >> 0) & 0xFF;
+    dest[1] = (encoded >> 8) & 0xFF;
+    dest[2] = (encoded >> 16) & 0xFF;
+    dest[3] = (encoded >> 24) & 0xFF;
+}
+
 /* encode_bl: BL <label>
  * Branch with link (function call)
  * Encoding: 1001 01ii iiii iiii iiii iiii iiii iiii

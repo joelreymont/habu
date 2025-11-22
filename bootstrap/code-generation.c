@@ -28,6 +28,7 @@ extern void arm64_encode_str(uint8_t *dest, uint8_t rt, uint8_t rn, uint16_t off
 extern void arm64_encode_stp(uint8_t *dest, uint8_t rt1, uint8_t rt2, uint8_t rn, int16_t imm);
 extern void arm64_encode_ldp(uint8_t *dest, uint8_t rt1, uint8_t rt2, uint8_t rn, int16_t imm);
 extern void arm64_encode_b(uint8_t *dest, int32_t offset);
+extern void arm64_encode_b_cond(uint8_t *dest, uint8_t cond, int32_t offset);
 extern void arm64_encode_bl(uint8_t *dest, int32_t offset);
 extern void arm64_encode_ret(uint8_t *dest);
 extern void arm64_encode_mov(uint8_t *dest, uint8_t rd, uint8_t rm);
@@ -235,32 +236,49 @@ void codegen_if(code_buffer_t *cb, habu_value_t ir) {
     arm64_encode_cmp_imm(instr, 0, 0);  /* cmp x0, #0 */
     emit(cb, instr);
 
-    /* Remember position for branch offset fixup */
-    int branch_pos = get_instr_offset(cb);
+    /* We need to generate then and else first, then calculate offsets */
+    /* Use a temporary buffer approach */
 
-    /* Emit placeholder branch (b.eq else) - will be fixed up */
-    arm64_encode_b(instr, 0);  /* Placeholder */
-    int beq_patch_offset = cb->size;
+    /* Save current position */
+    int beq_pos = get_instr_offset(cb);
+
+    /* Emit placeholder conditional branch (b.eq else_label) */
+    /* When test is 0 (false), branch to else */
+    /* When test is non-zero (true), continue to then */
+    arm64_encode_b_cond(instr, 0, 0);  /* EQ=0, offset=0 placeholder */
+    int beq_byte_offset = cb->size;
     emit(cb, instr);
 
-    /* Generate then code */
-    int then_start = get_instr_offset(cb);
+    /* Generate then code (executed when test != 0) */
     codegen_expr(cb, then_ir);
 
-    /* Branch over else code */
-    int b_patch_offset = cb->size;
-    arm64_encode_b(instr, 0);  /* Placeholder */
+    /* Emit placeholder unconditional branch (b end_label) */
+    int b_pos = get_instr_offset(cb);
+    arm64_encode_b(instr, 0);  /* offset=0 placeholder */
+    int b_byte_offset = cb->size;
     emit(cb, instr);
 
-    /* Generate else code */
-    int else_start = get_instr_offset(cb);
+    /* else_label: Generate else code (executed when test == 0) */
+    int else_pos = get_instr_offset(cb);
     codegen_expr(cb, else_ir);
 
-    int end_offset = get_instr_offset(cb);
+    /* end_label: */
+    int end_pos = get_instr_offset(cb);
 
-    /* Fix up branch offsets */
-    /* TODO: Implement branch fixup */
-    /* This requires patching the branch instructions with correct offsets */
+    /* Calculate offsets (in instruction units) */
+    /* ARM branches are PC-relative where PC = current instruction */
+    /* b.eq offset: from beq instruction to else_label */
+    int beq_offset = else_pos - beq_pos;
+
+    /* b offset: from b instruction to end_label */
+    int b_offset = end_pos - b_pos;
+
+    /* Patch the branch instructions */
+    arm64_encode_b_cond(instr, 0, beq_offset);  /* EQ=0: branch to else when x0 == 0 */
+    memcpy(cb->buffer + beq_byte_offset, instr, 4);
+
+    arm64_encode_b(instr, b_offset);
+    memcpy(cb->buffer + b_byte_offset, instr, 4);
 }
 
 /* Generate code for let expression: (let bindings body) */
