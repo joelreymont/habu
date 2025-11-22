@@ -134,6 +134,33 @@
   ;; LDP X29, X30, [SP],#16
   (encode-word-le #xA8C17BFD))
 
+(defun arm64-cmp (rn rm)
+  "CMP Xn, Xm - Compare registers (sets flags)"
+  (let* ((base #xEB00001F)  ; SUBS XZR, Xn, Xm
+         (encoded (logior base (ash rm 16) (ash rn 5))))
+    (encode-word-le encoded)))
+
+(defun arm64-cset (rd cond)
+  "CSET Xd, cond - Conditional set (1 if condition, else 0)"
+  (let* ((base #x9A9F07E0)  ; CSINC Xd, XZR, XZR, invert(cond)
+         (inv-cond (logxor cond 1))  ; Invert condition
+         (encoded (logior base (ash inv-cond 12) rd)))
+    (encode-word-le encoded)))
+
+(defun arm64-b (offset)
+  "B offset - Unconditional branch (offset in instructions, signed 26-bit)"
+  (let* ((base #x14000000)
+         (offset-bits (logand offset #x3FFFFFF))
+         (encoded (logior base offset-bits)))
+    (encode-word-le encoded)))
+
+(defun arm64-b-cond (cond offset)
+  "B.cond offset - Conditional branch (offset in instructions, signed 19-bit)"
+  (let* ((base #x54000000)
+         (offset-bits (logand (ash offset 5) #xFFFFE0))  ; offset << 5
+         (encoded (logior base offset-bits cond)))
+    (encode-word-le encoded)))
+
 (defun arm64-ret ()
   "RET - Return from subroutine"
   (encode-word-le #xD65F03C0))
@@ -194,6 +221,38 @@
                (arm64-mul 0 0 1)           ; Multiply
                (arm64-lsl 0 0 4))))        ; Retag result
 
+    ;; Comparison: (cmp-eq left right) - returns tagged 1 or 0
+    ((has-tag? ir 'cmp-eq)
+     (let* ((left-ir (cadr ir))
+            (right-ir (caddr ir))
+            (left-code (codegen-expr left-ir runtime-addrs))
+            (right-code (codegen-expr right-ir runtime-addrs)))
+       (append left-code
+               (arm64-mov 2 0)             ; Save left in x2
+               right-code
+               (arm64-mov 1 0)             ; Move right to x1
+               (arm64-mov 0 2)             ; Restore left
+               (arm64-cmp 0 1)             ; Compare
+               (arm64-cset 0 0)            ; x0 = 1 if equal, else 0
+               (arm64-lsl 0 0 4))))        ; Tag result
+
+    ;; Conditional: (if-expr test then else)
+    ((has-tag? ir 'if-expr)
+     (let* ((test-ir (cadr ir))
+            (then-ir (caddr ir))
+            (else-ir (cadddr ir))
+            (test-code (codegen-expr test-ir runtime-addrs))
+            (then-code (codegen-expr then-ir runtime-addrs))
+            (else-code (codegen-expr else-ir runtime-addrs))
+            (then-len (/ (length then-code) 4))
+            (else-len (/ (length else-code) 4)))
+       (append test-code
+               (arm64-cmp 0 31)            ; Compare result with 0 (XZR)
+               (arm64-b-cond 0 (+ else-len 1))  ; Branch if equal (false) to else
+               then-code
+               (arm64-b else-len)          ; Skip else
+               else-code)))
+
     ;; Default: zero
     (t (arm64-movz 0 0))))
 
@@ -235,6 +294,25 @@
               (list 'mul
                     (compile-expr (cadr expr) env fenv)
                     (compile-expr (caddr expr) env fenv))
+              (list 'lit 0)))
+
+         ;; Equality comparison
+         ((eq op '=)
+          (if (and (consp (cdr expr)) (consp (cddr expr)))
+              (list 'cmp-eq
+                    (compile-expr (cadr expr) env fenv)
+                    (compile-expr (caddr expr) env fenv))
+              (list 'lit 0)))
+
+         ;; Conditional
+         ((eq op 'if)
+          (if (and (consp (cdr expr))
+                   (consp (cddr expr))
+                   (consp (cdddr expr)))
+              (list 'if-expr
+                    (compile-expr (cadr expr) env fenv)   ; test
+                    (compile-expr (caddr expr) env fenv)  ; then
+                    (compile-expr (cadddr expr) env fenv)) ; else
               (list 'lit 0)))
 
          ;; Unknown operation
