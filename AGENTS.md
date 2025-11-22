@@ -8,7 +8,6 @@ Bootstrapping should be done in Lisp, compiled by SBCL.
 You should be using Lisp hex numbers everywhere!
 Write session context to SESSION_CONTEXT.md, save it frequently and keep it up to date.
 Commit frequently.
-Use 2-space indent for Lisp and other code.
 
 Use this git author: Joel Reymont <18791+joelreymont@users.noreply.github.com>
 

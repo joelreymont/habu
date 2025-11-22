@@ -29,8 +29,24 @@
   (and (consp ir) (eq (car ir) tag)))
 
 (defun env-lookup (sym env)
-  (declare (ignore sym env))
-  nil)
+  "Look up a symbol in the environment, returns stack offset or nil"
+  (cond
+    ((null env) nil)
+    ((eq (caar env) sym) (cdar env))
+    (t (env-lookup sym (cdr env)))))
+
+(defun env-extend (bindings env)
+  "Extend environment with new bindings, allocating stack offsets"
+  (let ((offset (if env
+                    (+ (cdar env) 1)  ; Next offset after last binding
+                    0)))              ; First binding at offset 0
+    (append
+      (mapcar (lambda (binding)
+                (cons (car binding)   ; Variable name
+                      (prog1 offset   ; Current offset
+                        (incf offset)))) ; Increment for next
+              bindings)
+      env)))
 
 (defun runtime-lookup (name runtime-addrs)
   "SBCL shim: lookup name in alist runtime-addrs (symbol . addr)."
@@ -111,22 +127,36 @@
   "LDR Xt, [Xn, #offset] - Load register from memory
    offset is in bytes, must be 8-byte aligned, encoded as offset/8"
   (let* ((base #xF9400000)
-           (imm12 (logand (/ offset 8) #xFFF))
+         (imm12 (logand (/ offset 8) #xFFF))
+         (encoded (logior base (ash imm12 10) (ash rn 5) rt)))
+    (encode-word-le encoded)))
+
+(defun arm64-str (rt rn offset)
+  "STR Xt, [Xn, #offset] - Store register to memory
+   offset is in bytes, must be 8-byte aligned, encoded as offset/8"
+  (let* ((base #xF9000000)
+         (imm12 (logand (/ offset 8) #xFFF))
          (encoded (logior base (ash imm12 10) (ash rn 5) rt)))
     (encode-word-le encoded)))
 
 (defun arm64-add-imm (rd rn imm)
-  "ADD Xd, Xn, #imm12 - Add immediate"
+  "ADD Xd, Xn, #imm12 - Add immediate (use sp register properly)"
   (let* ((base #x91000000)
          (imm12 (logand imm #xFFF))
-         (encoded (logior base (ash imm12 10) (ash rn 5) rd)))
+         ;; ARM64 uses reg 31 to mean SP in some contexts
+         (rn-bits (if (= rn 31) 31 rn))
+         (rd-bits (if (= rd 31) 31 rd))
+         (encoded (logior base (ash imm12 10) (ash rn-bits 5) rd-bits)))
     (encode-word-le encoded)))
 
 (defun arm64-sub-imm (rd rn imm)
-  "SUB Xd, Xn, #imm12 - Subtract immediate"
+  "SUB Xd, Xn, #imm12 - Subtract immediate (use sp register properly)"
   (let* ((base #xD1000000)
          (imm12 (logand imm #xFFF))
-         (encoded (logior base (ash imm12 10) (ash rn 5) rd)))
+         ;; ARM64 uses reg 31 to mean SP in some contexts
+         (rn-bits (if (= rn 31) 31 rn))
+         (rd-bits (if (= rd 31) 31 rd))
+         (encoded (logior base (ash imm12 10) (ash rn-bits 5) rd-bits)))
     (encode-word-le encoded)))
 
 (defun arm64-stp (rt1 rt2 rn imm)
@@ -217,10 +247,11 @@
             (tagged (ash value 4)))  ; Tag fixnum: value << 4
        (arm64-movz 0 (logand tagged #xFFFF))))
 
-    ;; Variable: load from stack
+    ;; Variable: load from stack (offset from x20 = environment base)
     ((has-tag? ir 'var)
      (let ((offset (cadr ir)))
-       (arm64-ldr 0 31 (* offset 16))))
+       ;; Variables are stored at negative offsets from x20
+       (arm64-ldr 0 20 (* offset 8))))
 
     ;; Addition: (add left right)
     ((has-tag? ir 'add)
@@ -277,6 +308,81 @@
                (arm64-mov 0 2)             ; Restore left
                (arm64-cmp 0 1)             ; Compare
                (arm64-cset 0 0)            ; x0 = 1 if equal, else 0
+               (arm64-lsl 0 0 4))))        ; Tag result
+
+    ;; Less than: (cmp-lt left right)
+    ((has-tag? ir 'cmp-lt)
+     (let* ((left-ir (cadr ir))
+            (right-ir (caddr ir))
+            (left-code (codegen-expr left-ir runtime-addrs))
+            (right-code (codegen-expr right-ir runtime-addrs)))
+       (append left-code
+               (arm64-mov 2 0)             ; Save left in x2
+               right-code
+               (arm64-mov 1 0)             ; Move right to x1
+               (arm64-mov 0 2)             ; Restore left
+               (arm64-cmp 0 1)             ; Compare
+               (arm64-cset 0 11)           ; x0 = 1 if less than, else 0
+               (arm64-lsl 0 0 4))))        ; Tag result
+
+    ;; Greater than: (cmp-gt left right)
+    ((has-tag? ir 'cmp-gt)
+     (let* ((left-ir (cadr ir))
+            (right-ir (caddr ir))
+            (left-code (codegen-expr left-ir runtime-addrs))
+            (right-code (codegen-expr right-ir runtime-addrs)))
+       (append left-code
+               (arm64-mov 2 0)             ; Save left in x2
+               right-code
+               (arm64-mov 1 0)             ; Move right to x1
+               (arm64-mov 0 2)             ; Restore left
+               (arm64-cmp 0 1)             ; Compare
+               (arm64-cset 0 12)           ; x0 = 1 if greater than, else 0
+               (arm64-lsl 0 0 4))))        ; Tag result
+
+    ;; Less than or equal: (cmp-le left right)
+    ((has-tag? ir 'cmp-le)
+     (let* ((left-ir (cadr ir))
+            (right-ir (caddr ir))
+            (left-code (codegen-expr left-ir runtime-addrs))
+            (right-code (codegen-expr right-ir runtime-addrs)))
+       (append left-code
+               (arm64-mov 2 0)             ; Save left in x2
+               right-code
+               (arm64-mov 1 0)             ; Move right to x1
+               (arm64-mov 0 2)             ; Restore left
+               (arm64-cmp 0 1)             ; Compare
+               (arm64-cset 0 13)           ; x0 = 1 if less or equal, else 0
+               (arm64-lsl 0 0 4))))        ; Tag result
+
+    ;; Greater than or equal: (cmp-ge left right)
+    ((has-tag? ir 'cmp-ge)
+     (let* ((left-ir (cadr ir))
+            (right-ir (caddr ir))
+            (left-code (codegen-expr left-ir runtime-addrs))
+            (right-code (codegen-expr right-ir runtime-addrs)))
+       (append left-code
+               (arm64-mov 2 0)             ; Save left in x2
+               right-code
+               (arm64-mov 1 0)             ; Move right to x1
+               (arm64-mov 0 2)             ; Restore left
+               (arm64-cmp 0 1)             ; Compare
+               (arm64-cset 0 10)           ; x0 = 1 if greater or equal, else 0
+               (arm64-lsl 0 0 4))))        ; Tag result
+
+    ;; Not equal: (cmp-ne left right)
+    ((has-tag? ir 'cmp-ne)
+     (let* ((left-ir (cadr ir))
+            (right-ir (caddr ir))
+            (left-code (codegen-expr left-ir runtime-addrs))
+            (right-code (codegen-expr right-ir runtime-addrs)))
+       (append left-code
+               (arm64-mov 2 0)             ; Save left in x2
+               right-code
+               (arm64-mov 1 0)             ; Move right to x1
+               (arm64-mov 0 2)             ; Restore left
+               (arm64-cmp 0 1)             ; Compare
+               (arm64-cset 0 1)            ; x0 = 1 if not equal, else 0
                (arm64-lsl 0 0 4))))        ; Tag result
 
     ;; Conditional: (if-expr test then else)
@@ -344,6 +450,38 @@
                (arm64-ldr 9 19 16)          ; Load cdr from table: LDR x9, [x19, #16]
                (arm64-blr 9))))             ; Call cdr(x0) → result in x0
 
+    ;; Let expression: (let-expr bind-values body-ir num-bindings)
+    ((has-tag? ir 'let-expr)
+     (let* ((bind-values (cadr ir))
+            (body-ir (caddr ir))
+            (num-bindings (cadddr ir))
+            ;; Generate code for each binding value
+            (bind-codes (mapcar (lambda (val-ir)
+                                  (codegen-expr val-ir runtime-addrs))
+                                bind-values)))
+       ;; Save current environment base and allocate space
+       (append
+         (arm64-mov 21 20)                        ; Save old env base in x21
+         (arm64-sub-imm 31 31 (* num-bindings 8)) ; Allocate stack space FIRST
+         (arm64-mov 20 31)                        ; New env base = NEW SP (after allocation)
+
+         ;; Store each binding value (they're evaluated in x0)
+         (let ((offset 0))
+           (apply #'append
+                  (mapcar (lambda (bind-code)
+                            (prog1
+                              (append bind-code
+                                      (arm64-str 0 20 offset)) ; Store at [x20 + offset]
+                              (incf offset 8)))
+                          bind-codes)))
+
+         ;; Execute body with bindings available
+         (codegen-expr body-ir runtime-addrs)
+
+         ;; Restore stack and environment base
+         (arm64-add-imm 31 31 (* num-bindings 8)) ; Deallocate stack
+         (arm64-mov 20 21))))                      ; Restore old env base
+
     ;; Default: zero
     (t (arm64-movz 0 0))))
 
@@ -395,6 +533,67 @@
                     (compile-expr (caddr expr) env fenv))
               (list 'lit 0)))
 
+         ;; Less than
+         ((eq op '<)
+          (if (and (consp (cdr expr)) (consp (cddr expr)))
+              (list 'cmp-lt
+                    (compile-expr (cadr expr) env fenv)
+                    (compile-expr (caddr expr) env fenv))
+              (list 'lit 0)))
+
+         ;; Greater than
+         ((eq op '>)
+          (if (and (consp (cdr expr)) (consp (cddr expr)))
+              (list 'cmp-gt
+                    (compile-expr (cadr expr) env fenv)
+                    (compile-expr (caddr expr) env fenv))
+              (list 'lit 0)))
+
+         ;; Less than or equal
+         ((eq op '<=)
+          (if (and (consp (cdr expr)) (consp (cddr expr)))
+              (list 'cmp-le
+                    (compile-expr (cadr expr) env fenv)
+                    (compile-expr (caddr expr) env fenv))
+              (list 'lit 0)))
+
+         ;; Greater than or equal
+         ((eq op '>=)
+          (if (and (consp (cdr expr)) (consp (cddr expr)))
+              (list 'cmp-ge
+                    (compile-expr (cadr expr) env fenv)
+                    (compile-expr (caddr expr) env fenv))
+              (list 'lit 0)))
+
+         ;; Not equal (standard Lisp /=)
+         ((eq op '/=)
+          (if (and (consp (cdr expr)) (consp (cddr expr)))
+              (list 'cmp-ne
+                    (compile-expr (cadr expr) env fenv)
+                    (compile-expr (caddr expr) env fenv))
+              (list 'lit 0)))
+
+         ;; Let binding
+         ((eq op 'let)
+          (if (and (consp (cdr expr)) (consp (cddr expr)))
+              (let* ((bindings (cadr expr))
+                     (body (caddr expr))
+                     ;; Extract binding pairs
+                     (bind-pairs (mapcar (lambda (b)
+                                          (if (consp b)
+                                              (list (car b)
+                                                    (compile-expr (cadr b) env fenv))
+                                              (list b (list 'lit 0))))
+                                        bindings))
+                     ;; Create new environment with binding names
+                     (bind-names (mapcar #'car bind-pairs))
+                     (bind-values (mapcar #'cadr bind-pairs))
+                     (new-env (env-extend (mapcar #'list bind-names) env))
+                     ;; Compile body in new environment
+                     (body-ir (compile-expr body new-env fenv)))
+                (list 'let-expr bind-values body-ir (length bindings)))
+              (list 'lit 0)))
+
          ;; Conditional
          ((eq op 'if)
           (if (and (consp (cdr expr))
@@ -437,16 +636,19 @@
 (defun codegen-main-with-runtime (ir runtime-addrs)
   "Generate main function with runtime table support
    Calling convention: x0 = runtime table pointer
-   Prologue saves x19 (used for runtime table) and sets it up"
+   Prologue saves x19 (runtime table) and x20-x21 (environment registers)"
   (let ((body (codegen-expr ir runtime-addrs)))
-    (append (arm64-sub-imm 31 31 32)      ; SUB sp, sp, #32 (reserve stack)
+    (append (arm64-sub-imm 31 31 48)      ; SUB sp, sp, #48 (reserve stack)
             (arm64-stp 29 30 31 0)        ; STP x29, x30, [sp, #0]
             (arm64-stp 19 20 31 16)       ; STP x19, x20, [sp, #16]
+            (arm64-stp 21 22 31 32)       ; STP x21, x22, [sp, #32]
             (arm64-mov 19 0)              ; MOV x19, x0 (save runtime table)
+            (arm64-mov 20 31)             ; MOV x20, sp (initial env base = sp)
             body                           ; Function body
+            (arm64-ldp 21 22 31 32)       ; LDP x21, x22, [sp, #32]
             (arm64-ldp 19 20 31 16)       ; LDP x19, x20, [sp, #16]
             (arm64-ldp 29 30 31 0)        ; LDP x29, x30, [sp, #0]
-            (arm64-add-imm 31 31 32)      ; ADD sp, sp, #32 (restore stack)
+            (arm64-add-imm 31 31 48)      ; ADD sp, sp, #48 (restore stack)
             (arm64-ret))))
 
 (defun compile-to-arm64-with-runtime (expr runtime-addrs)
