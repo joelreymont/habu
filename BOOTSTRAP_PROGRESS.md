@@ -156,19 +156,31 @@ Generate ARM64 machine code from IR:
 
 ```
 bootstrap/
-├── primitives.c              (287 lines) - Tier 1
-├── encoders.c               (337 lines) - Tier 2
-├── ir-generation.c          (333 lines) - Tier 3
-├── code-generation.c        (365 lines) - Tier 4
+├── README.md                     # Complete documentation
+├── Makefile                      # Build system
+├── habu-bootstrap.c       (195 lines) - Main driver
+├── habu-minimal.h          (36 lines) - Runtime interface
+├── runtime-minimal.c       (62 lines) - Minimal runtime
+├── primitives.c           (287 lines) - Tier 1: ARM64 primitives
+├── encoders.c             (337 lines) - Tier 2: Instruction encoders
+├── ir-generation.c        (333 lines) - Tier 3: IR generation
+├── code-generation.c      (365 lines) - Tier 4: Code generation
 └── tests/
-    ├── test-inline.c        (Arithmetic tests - 4/4 ✓)
-    ├── test-comparisons.c   (Comparison tests - 6/6 ✓)
-    ├── test-predicates.c    (Predicate tests - 8/8 ✓)
-    └── test-encoders.c      (Encoder tests - 20/20 ✓)
+    ├── Makefile                  # Test build system
+    ├── test-inline.c             # Arithmetic (4/4 ✓)
+    ├── test-comparisons.c        # Comparisons (6/6 ✓)
+    ├── test-predicates.c         # Predicates (8/8 ✓)
+    ├── test-encoders.c           # Encoders (21/21 ✓)
+    ├── test-integration-simple.c # Literals (1/1 ✓)
+    ├── test-integration-arithmetic.c # Arithmetic (6/6 ✓)
+    ├── test-integration-comparisons.c # Comparisons (9/9 ✓)
+    └── test-integration-if.c     # Conditionals (3/3 ✓)
 ```
 
-**Total:** ~1,700 lines of C code
-**Tests:** 38/38 passing
+**Total:** ~2,400 lines of C code
+**Unit Tests:** 39/39 passing
+**Integration Tests:** 19/19 passing
+**Total Tests:** 58/58 passing ✓
 
 ## Current Status (Final Update)
 
