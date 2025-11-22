@@ -11,10 +11,12 @@
 #include <stdint.h>
 #include <sys/mman.h>
 #include <string.h>
+#include "runtime/habu.h"
 
 /* Habu tagged value representation */
 #define HABU_TAG_FIXNUM(n) ((int64_t)(n) << 4)
 #define HABU_UNTAG_FIXNUM(v) ((int64_t)(v) >> 4)
+#define HABU_IS_CONS(v) (((v) & 0xF) == 1)
 
 /* Function pointer type for compiled code */
 typedef int64_t (*compiled_fn_t)(void);
@@ -85,6 +87,9 @@ int main(int argc, char **argv) {
         return 1;
     }
 
+    /* Initialize Habu runtime (GC, etc.) */
+    habu_init(1024 * 1024);  /* 1MB heap */
+
     /* Execute code */
     printf("Executing bytecode...\n");
     compiled_fn_t fn = (compiled_fn_t)exec_mem;
@@ -92,7 +97,11 @@ int main(int argc, char **argv) {
 
     /* Print result */
     printf("Raw result: 0x%llx (%lld)\n", result, result);
-    printf("Untagged fixnum: %lld\n", HABU_UNTAG_FIXNUM(result));
+    if (HABU_IS_CONS(result)) {
+        printf("Result is a cons cell\n");
+    } else {
+        printf("Untagged fixnum: %lld\n", HABU_UNTAG_FIXNUM(result));
+    }
 
     /* Cleanup */
     munmap(exec_mem, size);

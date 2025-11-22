@@ -168,6 +168,34 @@
   "RET - Return from subroutine"
   (encode-word-le #xD65F03C0))
 
+(defun arm64-movk (rd imm shift)
+  "MOVK Xd, #imm16, LSL #shift - Move with keep (loads 16 bits without clearing others)
+   shift must be 0, 16, 32, or 48"
+  (let* ((imm16 (logand imm #xFFFF))
+         (hw (/ shift 16))  ; Which 16-bit chunk (0, 1, 2, or 3)
+         (base #xF2800000)
+         (imm-bits (ash imm16 5))
+         (hw-bits (ash hw 21))
+         (encoded (logior base hw-bits imm-bits rd)))
+    (encode-word-le encoded)))
+
+(defun arm64-blr (rn)
+  "BLR Xn - Branch with link to register"
+  (let* ((base #xD63F0000)
+         (encoded (logior base (ash rn 5))))
+    (encode-word-le encoded)))
+
+(defun arm64-load-addr (rd addr)
+  "Load 64-bit address into register using MOVZ + MOVK sequence"
+  (let ((bits-0-15 (logand addr #xFFFF))
+        (bits-16-31 (logand (ash addr -16) #xFFFF))
+        (bits-32-47 (logand (ash addr -32) #xFFFF))
+        (bits-48-63 (logand (ash addr -48) #xFFFF)))
+    (append (arm64-movz rd bits-0-15)
+            (arm64-movk rd bits-16-31 16)
+            (arm64-movk rd bits-32-47 32)
+            (arm64-movk rd bits-48-63 48))))
+
 (defun codegen-expr (ir runtime-addrs)
   "Enhanced codegen: literals, arithmetic, runtime calls"
   (cond
@@ -249,15 +277,69 @@
             (else-code (codegen-expr else-ir runtime-addrs))
             (then-len (/ (length then-code) 4))
             (else-len (/ (length else-code) 4)))
+       ;; Layout after test:
+       ;;   CMP x0, xzr         (position N)
+       ;;   B.EQ offset         (position N+1) <-- branch from here
+       ;;   then-code           (position N+2, then-len instructions)
+       ;;   B else-skip         (position N+2+then-len)
+       ;;   else-code           (position N+3+then-len) <-- target
+       ;; Offset from N+1 to N+3+then-len = 2+then-len
+       ;; Layout: CMP, B.NE, else-code, B, then-code
+       ;; If truthy (non-zero): B.NE skips else-code and B, lands on then-code
+       ;; If falsy (zero): execute else-code, B skips then-code
        (append test-code
                (arm64-cmp 0 31)            ; Compare result with 0 (XZR)
-               ;; Branch if equal (result = 0, i.e., false) to else
-               ;; Skip: then-code (then-len instrs) + unconditional branch (1 instr)
-               (arm64-b-cond 0 (+ then-len 1))
-               then-code
-               ;; Unconditional branch to skip else-code
-               (arm64-b else-len)
-               else-code)))
+               ;; Branch if NOT equal (non-zero/true) to then-code
+               ;; Skip: else-code (else-len) + B instruction (1) = else-len + 1
+               ;; From current position: +1 for B.NE itself, +else-len for else, +1 for B = +2+else-len
+               (arm64-b-cond 1 (+ 2 else-len))  ; B.NE: jump to then if true
+               else-code
+               ;; Unconditional branch to skip then-code
+               ;; From B instruction to end of then-code: then-len instructions to skip
+               ;; Plus implicit +1 because branch is PC-relative from current instruction
+               (arm64-b (+ 1 then-len))
+               then-code)))
+
+    ;; Cons: (cons-call left right) - call runtime cons
+    ((has-tag? ir 'cons-call)
+     (let* ((left-ir (cadr ir))
+            (right-ir (caddr ir))
+            (left-code (codegen-expr left-ir runtime-addrs))
+            (right-code (codegen-expr right-ir runtime-addrs))
+            (cons-addr (runtime-lookup 'habu_cons_addr runtime-addrs)))
+       (if (= cons-addr 0)
+           ;; No runtime - return 0
+           (arm64-movz 0 0)
+           ;; Call cons(left, right)
+           (append left-code                    ; Compute left → x0
+                   (arm64-mov 2 0)              ; Save left in x2
+                   right-code                   ; Compute right → x0
+                   (arm64-mov 1 0)              ; Move right to x1
+                   (arm64-mov 0 2)              ; Move left to x0
+                   (arm64-load-addr 9 cons-addr) ; Load cons address to x9
+                   (arm64-blr 9)))))            ; Call cons(x0, x1) → result in x0
+
+    ;; Car: (car-call arg) - call runtime car
+    ((has-tag? ir 'car-call)
+     (let* ((arg-ir (cadr ir))
+            (arg-code (codegen-expr arg-ir runtime-addrs))
+            (car-addr (runtime-lookup 'habu_car_addr runtime-addrs)))
+       (if (= car-addr 0)
+           (arm64-movz 0 0)
+           (append arg-code                     ; Compute arg → x0
+                   (arm64-load-addr 9 car-addr) ; Load car address to x9
+                   (arm64-blr 9)))))            ; Call car(x0) → result in x0
+
+    ;; Cdr: (cdr-call arg) - call runtime cdr
+    ((has-tag? ir 'cdr-call)
+     (let* ((arg-ir (cadr ir))
+            (arg-code (codegen-expr arg-ir runtime-addrs))
+            (cdr-addr (runtime-lookup 'habu_cdr_addr runtime-addrs)))
+       (if (= cdr-addr 0)
+           (arm64-movz 0 0)
+           (append arg-code                     ; Compute arg → x0
+                   (arm64-load-addr 9 cdr-addr) ; Load cdr address to x9
+                   (arm64-blr 9)))))            ; Call cdr(x0) → result in x0
 
     ;; Default: zero
     (t (arm64-movz 0 0))))
@@ -319,6 +401,28 @@
                     (compile-expr (cadr expr) env fenv)   ; test
                     (compile-expr (caddr expr) env fenv)  ; then
                     (compile-expr (cadddr expr) env fenv)) ; else
+              (list 'lit 0)))
+
+         ;; Cons
+         ((eq op 'cons)
+          (if (and (consp (cdr expr)) (consp (cddr expr)))
+              (list 'cons-call
+                    (compile-expr (cadr expr) env fenv)
+                    (compile-expr (caddr expr) env fenv))
+              (list 'lit 0)))
+
+         ;; Car
+         ((eq op 'car)
+          (if (consp (cdr expr))
+              (list 'car-call
+                    (compile-expr (cadr expr) env fenv))
+              (list 'lit 0)))
+
+         ;; Cdr
+         ((eq op 'cdr)
+          (if (consp (cdr expr))
+              (list 'cdr-call
+                    (compile-expr (cadr expr) env fenv))
               (list 'lit 0)))
 
          ;; Unknown operation
