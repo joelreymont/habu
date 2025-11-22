@@ -6,7 +6,7 @@
   (:export codegen-expr compile-expr compile-to-arm64-with-runtime compile-to-arm64
            make-runtime-addrs runtime-lookup *runtime-addrs*
            compile-program-with-functions-with-runtime compile-program-with-functions
-           env-lookup env-extend))
+           env-lookup env-extend compile-forms))
 
 (in-package :habu-sbcl-codegen)
 
@@ -198,6 +198,13 @@
 (defun arm64-b (offset)
   "B offset - Unconditional branch (offset in instructions, signed 26-bit)"
   (let* ((base #x14000000)
+         (offset-bits (logand offset #x3FFFFFF))
+         (encoded (logior base offset-bits)))
+    (encode-word-le encoded)))
+
+(defun arm64-bl (offset)
+  "BL offset - Branch with link (offset in instructions, signed 26-bit)"
+  (let* ((base #x94000000)
          (offset-bits (logand offset #x3FFFFFF))
          (encoded (logior base offset-bits)))
     (encode-word-le encoded)))
@@ -483,6 +490,45 @@
          ;; Execute body with bindings available
          (codegen-expr body-ir runtime-addrs))))
 
+    ;; Function call: (call-fn name arg-irs)
+    ((has-tag? ir 'call-fn)
+     (let* ((fn-name (cadr ir))
+            (arg-irs (caddr ir))
+            (arg-codes (mapcar (lambda (arg-ir)
+                                (codegen-expr arg-ir runtime-addrs))
+                              arg-irs))
+            (num-args (length arg-irs)))
+       ;; Generate code to evaluate each argument and move to x0-x2
+       (append
+         ;; Evaluate and move arguments to x0-x2
+         (cond
+           ((= num-args 0)
+            nil)  ; No arguments
+           ((= num-args 1)
+            (car arg-codes))  ; Single arg already in x0
+           ((= num-args 2)
+            (append
+              (car arg-codes)             ; First arg → x0
+              (arm64-mov 2 0)             ; Save in x2
+              (cadr arg-codes)            ; Second arg → x0
+              (arm64-mov 1 0)             ; Move to x1
+              (arm64-mov 0 2)))           ; Restore first to x0
+           ((= num-args 3)
+            (append
+              (car arg-codes)             ; First arg → x0
+              (arm64-mov 3 0)             ; Save in x3
+              (cadr arg-codes)            ; Second arg → x0
+              (arm64-mov 4 0)             ; Save in x4
+              (caddr arg-codes)           ; Third arg → x0
+              (arm64-mov 2 0)             ; Move to x2
+              (arm64-mov 1 4)             ; Second to x1
+              (arm64-mov 0 3)))           ; First to x0
+           (t nil))  ; TODO: Handle more arguments
+
+         ;; Generate BL to function
+         ;; For now use placeholder, need to track offsets properly
+         (arm64-bl 0))))  ; TODO: Calculate actual offset
+
     ;; Default: zero
     (t (arm64-movz 0 0))))
 
@@ -632,8 +678,16 @@
                     (compile-expr (cadr expr) env fenv))
               (list 'lit 0)))
 
-         ;; Unknown operation
-         (t (list 'lit 0)))))
+         ;; Function call - check if it's a user-defined function
+         (t
+          ;; Try to look up as a user function
+          (if (and fenv (assoc op fenv))
+              ;; It's a user-defined function
+              (let ((args (cdr expr)))
+                (list 'call-fn op
+                      (mapcar (lambda (arg) (compile-expr arg env fenv)) args)))
+              ;; Unknown operation
+              (list 'lit 0))))))
 
     ;; Unknown
     (t (list 'lit 0))))
@@ -675,12 +729,15 @@
       (+ 1 (count-instrs (nthcdr 4 code)))))
 
 (defun compile-defun (name params body env fenv)
-  "Stub: compile defun into (name param-count body-ir)"
-  (declare (ignore env fenv))
-  (list name (length params) (compile-expr body nil nil)))
+  "Compile defun into (name params body-ir)"
+  ;; Create environment with parameters as the initial bindings
+  (let* ((param-env (env-extend (mapcar #'list params) nil))
+         ;; Compile body in the parameter environment
+         (body-ir (compile-expr body param-env fenv)))
+    (list name params body-ir)))
 
 (defun compile-forms-helper (forms env fenv)
-  "Stub: compile list of forms, separating defuns from main expression
+  "Compile list of forms, separating defuns from main expression
    Returns: (list-of-compiled-functions main-expression-ir)"
   (if (consp forms)
       (let ((form (car forms)))
@@ -690,29 +747,70 @@
                    (params (caddr form))
                    (body (cadddr form))
                    (compiled-fn (compile-defun name params body env fenv))
-                   (new-fenv (cons compiled-fn fenv))
+                   ;; Add to function environment
+                   (new-fenv (cons (cons name compiled-fn) fenv))
+                   ;; Compile rest of forms
                    (rest-result (compile-forms-helper (cdr forms) env new-fenv))
                    (rest-fns (car rest-result))
                    (main-ir (cadr rest-result)))
+              ;; Return accumulated functions and main expression
               (list (cons compiled-fn rest-fns) main-ir))
-            ;; Not a defun - treat as main expression
-            (list fenv (compile-expr form env fenv))))
+            ;; Not a defun - this is the main expression
+            (list nil (compile-expr form env fenv))))
       ;; No more forms
-      (list fenv '(lit 0))))
+      (list nil '(lit 0))))
 
 (defun compile-forms (forms)
   "Stub: compile list of top-level forms"
   (compile-forms-helper forms nil nil))
 
-(defun codegen-function-with-params (param-count body-ir runtime-addrs)
-  "Stub: generate code for function with parameters
-   Returns dummy prologue + body + epilogue"
-  (declare (ignore param-count))
-  (let ((body (codegen-expr body-ir runtime-addrs)))
-    (append (arm64-stp 29 30 31 -16)
-            body
-            (arm64-ldp 29 30 31 16)
-            (arm64-ret))))
+(defun codegen-function-with-params (params body-ir runtime-addrs)
+  "Generate code for function with parameters
+   Parameters are passed in x0-x7, stored to stack for access as variables"
+  (let* ((param-count (length params))
+         (body (codegen-expr body-ir runtime-addrs)))
+    (append
+      ;; Function prologue
+      (arm64-sub-imm 31 31 256)      ; Allocate stack frame
+      (arm64-stp 29 30 31 0)         ; Save FP/LR
+      (arm64-stp 19 20 31 16)        ; Save x19/x20
+      (arm64-stp 21 22 31 32)        ; Save x21/x22
+      (arm64-mov 19 0)               ; x0 has runtime table (if passed)
+      (arm64-add-imm 20 31 248)      ; Set environment base
+
+      ;; Store parameters to stack
+      ;; Parameters are in x0-x2, store them at offsets 0, 1, 2...
+      (cond
+        ((= param-count 0) nil)
+        ((= param-count 1)
+         (append
+           (arm64-sub-imm 1 20 0)     ; x1 = x20 - 0
+           (arm64-str 0 1 0)))         ; Store x0 at [x1]
+        ((= param-count 2)
+         (append
+           (arm64-sub-imm 2 20 0)     ; x2 = x20 - 0
+           (arm64-str 0 2 0)           ; Store x0 at offset 0
+           (arm64-sub-imm 2 20 8)     ; x2 = x20 - 8
+           (arm64-str 1 2 0)))         ; Store x1 at offset 1
+        ((= param-count 3)
+         (append
+           (arm64-sub-imm 3 20 0)     ; x3 = x20 - 0
+           (arm64-str 0 3 0)           ; Store x0 at offset 0
+           (arm64-sub-imm 3 20 8)     ; x3 = x20 - 8
+           (arm64-str 1 3 0)           ; Store x1 at offset 1
+           (arm64-sub-imm 3 20 16)    ; x3 = x20 - 16
+           (arm64-str 2 3 0)))         ; Store x2 at offset 2
+        (t nil))  ; TODO: Handle more parameters
+
+      ;; Function body
+      body
+
+      ;; Function epilogue
+      (arm64-ldp 21 22 31 32)        ; Restore x21/x22
+      (arm64-ldp 19 20 31 16)        ; Restore x19/x20
+      (arm64-ldp 29 30 31 0)         ; Restore FP/LR
+      (arm64-add-imm 31 31 256)      ; Deallocate stack
+      (arm64-ret))))
 
 (defun codegen-functions-helper (compiled-fns current-offset runtime-addrs)
   "Stub: generate code for all compiled functions
@@ -720,9 +818,9 @@
   (if (consp compiled-fns)
       (let* ((fn (car compiled-fns))
              (name (car fn))
-             (param-count (cadr fn))
+             (params (cadr fn))
              (body-ir (caddr fn))
-             (fn-code (codegen-function-with-params param-count body-ir runtime-addrs))
+             (fn-code (codegen-function-with-params params body-ir runtime-addrs))
              (fn-size (count-instrs fn-code))
              (rest-result (codegen-functions-helper (cdr compiled-fns)
                                                     (+ current-offset fn-size)
@@ -734,10 +832,29 @@
       ;; No more functions
       (list nil nil)))
 
-(defun codegen-main-with-runtime-and-fns (ir runtime-addrs fn-offsets current-offset)
-  "Stub: generate main code with function offsets (ignored in stub)"
+(defun codegen-expr-with-fns (ir runtime-addrs fn-offsets current-offset)
+  "Codegen with function offset tracking (simplified for now)"
+  ;; For now, just use regular codegen - TODO: thread offsets through
   (declare (ignore fn-offsets current-offset))
-  (codegen-main-with-runtime ir runtime-addrs))
+  (codegen-expr ir runtime-addrs))
+
+(defun codegen-main-with-runtime-and-fns (ir runtime-addrs fn-offsets current-offset)
+  "Generate main code with function offsets for calls"
+  ;; Pass function offsets through to codegen
+  (let ((body (codegen-expr-with-fns ir runtime-addrs fn-offsets current-offset)))
+    ;; Same prologue/epilogue as before
+    (append (arm64-sub-imm 31 31 256)     ; SUB sp, sp, #256 (large stack frame)
+            (arm64-stp 29 30 31 0)        ; STP x29, x30, [sp, #0]
+            (arm64-stp 19 20 31 16)       ; STP x19, x20, [sp, #16]
+            (arm64-stp 21 22 31 32)       ; STP x21, x22, [sp, #32]
+            (arm64-mov 19 0)              ; MOV x19, x0 (save runtime table)
+            (arm64-add-imm 20 31 248)     ; ADD x20, sp, #248
+            body                           ; Function body
+            (arm64-ldp 21 22 31 32)       ; LDP x21, x22, [sp, #32]
+            (arm64-ldp 19 20 31 16)       ; LDP x19, x20, [sp, #16]
+            (arm64-ldp 29 30 31 0)        ; LDP x29, x30, [sp, #0]
+            (arm64-add-imm 31 31 256)     ; ADD sp, sp, #256 (restore stack)
+            (arm64-ret))))
 
 (defun compile-program-with-functions-with-runtime (forms runtime-addrs)
   "Stub: compile entire program with function definitions
