@@ -108,14 +108,32 @@ Stage 2: Full Self-Hosting
 
 **Total: 2-3 weeks to self-hosting**
 
+### Phase 1 Bootstrap Progress
+
+**Completed:**
+1. ✓ SBCL stub compiler loads and works
+2. ✓ Generates ARM64 bytecode (16 bytes for literals)
+3. ✓ Tiny C runtime built (runtime/*.c)
+4. ✓ JIT helper built (libhabu-jit.dylib/so)
+5. ✓ Runtime address printer working (27 functions exported)
+6. ✓ Created end-to-end pipeline:
+   - compile-and-save.lisp: Compile Lisp → ARM64 bytecode file
+   - run-bytecode: Execute bytecode via JIT
+7. ✓ First successful JIT execution: literal 42 executes and returns
+
+**Issues Found:**
+- Stub compiler returns untagged values (42 instead of 42 << 4)
+- Stub generates same code for all expressions (placeholder)
+- Need to enhance stub or use real compiler
+
 ### Next Steps
 
-1. Remove unnecessary C files (IN PROGRESS)
-2. Update Makefile (build only runtime + JIT helper)
-3. Verify Lisp compiler in SBCL
-4. Runtime integration (export all functions)
-5. Close language gaps (let, closures, macros)
-6. Self-compilation
+1. Enhance SBCL stub compiler to generate functional code
+2. Implement proper fixnum tagging in generated code
+3. Add runtime function calls (cons, car, cdr)
+4. Test arithmetic operations
+5. Test conditionals
+6. Expand to closures, let bindings, macros
 
 ### Files Created This Session
 
