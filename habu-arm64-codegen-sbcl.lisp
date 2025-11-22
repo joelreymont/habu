@@ -5,7 +5,8 @@
   (:use :cl :habu-shim)
   (:export codegen-expr compile-expr compile-to-arm64-with-runtime compile-to-arm64
            make-runtime-addrs runtime-lookup *runtime-addrs*
-           compile-program-with-functions-with-runtime compile-program-with-functions))
+           compile-program-with-functions-with-runtime compile-program-with-functions
+           env-lookup env-extend))
 
 (in-package :habu-sbcl-codegen)
 
@@ -37,13 +38,12 @@
 
 (defun env-extend (bindings env)
   "Extend environment with new bindings, allocating stack offsets"
-  (let ((offset (if env
-                    (+ (cdar env) 1)  ; Next offset after last binding
-                    0)))              ; First binding at offset 0
+  ;; Each let starts with offset 0 for its bindings
+  (let ((offset 0))
     (append
       (mapcar (lambda (binding)
                 (cons (car binding)   ; Variable name
-                      (prog1 offset   ; Current offset
+                      (prog1 offset   ; Current offset (0, 1, 2...)
                         (incf offset)))) ; Increment for next
               bindings)
       env)))
@@ -459,27 +459,29 @@
             (bind-codes (mapcar (lambda (val-ir)
                                   (codegen-expr val-ir runtime-addrs))
                                 bind-values)))
-       ;; Save current environment base and allocate space
+       ;; Use stack without modifying SP during execution
        (append
+         ;; Save current environment base in x21
          (arm64-mov 21 20)                        ; Save old env base in x21
-         (arm64-sub-imm 31 31 (* num-bindings 8)) ; Allocate stack space FIRST
-         (arm64-mov 20 31)                        ; New env base = NEW SP (after allocation)
+         ;; Allocate stack space and adjust environment pointer
+         (arm64-sub-imm 20 20 (* num-bindings 8)) ; Move env pointer down
 
-         ;; Store each binding value (they're evaluated in x0)
+         ;; Store each binding value at negative offsets (stack grows down)
          (let ((offset 0))
            (apply #'append
                   (mapcar (lambda (bind-code)
                             (prog1
                               (append bind-code
-                                      (arm64-str 0 20 offset)) ; Store at [x20 + offset]
-                              (incf offset 8)))
+                                      ;; Store value at [x20 - offset - 8]
+                                      ;; Since we already moved x20 down, store going back up
+                                      (arm64-str 0 20 offset))
+                              (setq offset (+ offset 8))))
                           bind-codes)))
 
          ;; Execute body with bindings available
          (codegen-expr body-ir runtime-addrs)
 
-         ;; Restore stack and environment base
-         (arm64-add-imm 31 31 (* num-bindings 8)) ; Deallocate stack
+         ;; Restore environment base (no need to adjust SP)
          (arm64-mov 20 21))))                      ; Restore old env base
 
     ;; Default: zero
@@ -638,17 +640,19 @@
    Calling convention: x0 = runtime table pointer
    Prologue saves x19 (runtime table) and x20-x21 (environment registers)"
   (let ((body (codegen-expr ir runtime-addrs)))
-    (append (arm64-sub-imm 31 31 48)      ; SUB sp, sp, #48 (reserve stack)
+    ;; Allocate 256 bytes: 48 for saved registers + 208 for local variables/let bindings
+    (append (arm64-sub-imm 31 31 256)     ; SUB sp, sp, #256 (large stack frame)
             (arm64-stp 29 30 31 0)        ; STP x29, x30, [sp, #0]
             (arm64-stp 19 20 31 16)       ; STP x19, x20, [sp, #16]
             (arm64-stp 21 22 31 32)       ; STP x21, x22, [sp, #32]
             (arm64-mov 19 0)              ; MOV x19, x0 (save runtime table)
-            (arm64-mov 20 31)             ; MOV x20, sp (initial env base = sp)
+            ;; Set x20 to point to end of stack frame (grows downward for let bindings)
+            (arm64-add-imm 20 31 248)     ; ADD x20, sp, #248 (near top of frame)
             body                           ; Function body
             (arm64-ldp 21 22 31 32)       ; LDP x21, x22, [sp, #32]
             (arm64-ldp 19 20 31 16)       ; LDP x19, x20, [sp, #16]
             (arm64-ldp 29 30 31 0)        ; LDP x29, x30, [sp, #0]
-            (arm64-add-imm 31 31 48)      ; ADD sp, sp, #48 (restore stack)
+            (arm64-add-imm 31 31 256)     ; ADD sp, sp, #256 (restore stack)
             (arm64-ret))))
 
 (defun compile-to-arm64-with-runtime (expr runtime-addrs)
