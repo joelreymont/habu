@@ -76,12 +76,14 @@
     (encode-word-le encoded)))
 
 (defun arm64-lsl (rd rn shift)
-  "LSL Xd, Xn, #shift - Logical shift left immediate"
+  "LSL Xd, Xn, #shift - Logical shift left immediate (alias for UBFM)"
   (let* ((base #xD3400000)
          (shift-bits (logand shift #x3F))
+         (immr (logand (- 64 shift-bits) #x3F))  ; -shift mod 64
+         (imms (logand (- 63 shift-bits) #x3F))  ; 63 - shift
          (encoded (logior base
-                          (ash (- 63 shift-bits) 16)  ; immr
-                          (ash (- 63 shift-bits) 10)  ; imms
+                          (ash immr 16)
+                          (ash imms 10)
                           (ash rn 5)
                           rd)))
     (encode-word-le encoded)))
