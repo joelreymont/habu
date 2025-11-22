@@ -3,6 +3,7 @@
 **Session Date**: November 22-23, 2025
 **Duration**: ~5 hours
 **Focus**: Debugging and fixing defun (function definition) implementation
+**Last Updated**: November 23, 2025
 
 ## Major Breakthroughs
 
@@ -157,9 +158,9 @@ ADD x20, sp, #248     ; Set environment base
 3. **Systematic debugging essential**: Small test cases revealed the pattern
 4. **Stack operations look correct**: The bug is subtle, not in the obvious places
 
-## Current Issues
+## Fixed Issues Summary
 
-### ~~Function-Calling-Function Bug~~ FIXED!
+### 1. ~~Function-Calling-Function Bug~~ FIXED!
 - **Problem**: Functions calling other functions were hanging/crashing
 - **Root Cause**: `codegen-function-with-params` wasn't receiving `fn-offsets`, so function bodies couldn't generate correct BL instructions to call other functions
 - **Solution**: Implemented two-pass compilation:
@@ -179,36 +180,100 @@ ADD x20, sp, #248     ; Set environment base
 ```
 - **Result**: Recursive calls now compile correctly to `(CALL-FN fact ...)`
 
+### 3. ~~Register Clobbering in Binary Operations~~ FIXED!
+- **Problem**: Binary operations (add, sub, mul, comparisons) were using x2 to save the left operand while evaluating the right operand
+- **Root Cause**: x2 is a caller-saved register that gets clobbered by function calls
+- **Symptom**: When the right operand contained a function call (including recursive calls), x2 would be corrupted
+- **Solution**: Changed all binary operations to use x22 (a callee-saved register) instead of x2
+- **Also Fixed**: Updated offset calculations to account for the additional instructions between left and right operand evaluation
+
+## Current Issues
+
 ### Remaining Recursive Function Bug
-- **Symptom**: Recursive factorial returns wrong values (65536 instead of 120 for fact(5))
+- **Symptom**: Recursive functions still return incorrect values after register fix
 - **Current Results**:
   - fact(0) = 1 ✓
   - fact(1) = 1 ✓
-  - fact(2) = 16 (expected 2) ✗
-  - fact(3) = 256 (expected 6) ✗
-  - fact(5) = 65536 (expected 120) ✗
-- **Pattern**: Results appear to be powers of 2 (2^4, 2^8, 2^16)
-- **Status**: Likely an arithmetic or return value issue during recursion, not a compilation issue
+  - fact(2) = 32 (expected 2) ✗
+  - fact(3) = 96 (expected 6) ✗
+  - fact(4) = 192 (expected 24) ✗
+  - fact(5) = 320 (expected 120) ✗
+  - fact(6) = 480 (expected 720) ✗
+- **Pattern**: Results are consistently 16x too large (e.g., 32 = 2 * 16, 96 = 6 * 16)
+- **Key Observation**: `(* (recursive) constant)` works correctly, but `(* constant (recursive))` fails
+- **Status**: Appears to be a tagging/untagging issue specific to recursive multiplication
 
-## Session End State
+## Session End State (November 22, 2025)
 
-- ✅ Multi-parameter functions now working correctly!
-- ✅ Basic defun tests (1-3) all passing
+- ✅ Multi-parameter functions working correctly
+- ✅ Basic defun tests (1-4, 6) passing
 - ✅ Fixed critical BL offset calculation bug
-- ✅ Functions calling other functions now working!
+- ✅ Functions calling other functions working
 - ✅ Two-pass compilation implemented for proper function offsets
-- ✅ Recursive function calls now compile correctly
-- 🔧 Recursive functions produce wrong results (arithmetic issue)
-- 📋 Test results: 5/6 defun tests passing
+- ✅ Recursive function calls compile correctly
+- ✅ Fixed register clobbering issue in binary operations
+- 🔧 Recursive functions still produce wrong results (16x too large)
+- 📋 Test results: 5/6 defun tests passing (recursive factorial fails)
 
-## Next Steps
+## Next Steps for New Session
 
-1. **Debug recursive factorial arithmetic**: Investigate why factorial returns wrong values (powers of 2)
-2. **Complete defun implementation**: Fix the remaining recursive function arithmetic issue
+1. **Debug remaining recursive multiplication bug**:
+   - Issue: Results are 16x too large (e.g., fact(2) = 32 instead of 2)
+   - Pattern: `(* constant (recursive-call))` fails, but `(* (recursive-call) constant)` works
+   - Likely a tagging/untagging issue when first operand is saved before recursive call
+   - Check if the issue is in how we handle the saved value in x22 after recursion
+
+2. **Complete defun implementation**: Fix the remaining recursive function issue
+
 3. **Implement closures**: After defun is fully working
+
 4. **Begin macro implementation**: Final phase 2 feature
+
+## Debugging Hints for Factorial Issue
+
+- The IR generation is correct: `(MUL (VAR 0) (CALL-FN FACT ...))`
+- The recursive call compiles correctly after our fix
+- Problem appears to be in the runtime behavior of multiplication with recursive return values
+- Test simple recursive functions that don't use multiplication to isolate the issue
+
+## Commits Made
+
+### Previous Session
+1. **Commit b77229f**: "Fix BL offset calculation in function calls - multi-parameter functions now work"
+2. **Commit 7440411**: "Fix function-calling-function with two-pass compilation"
+3. **Commit c41868c**: "Enable recursive function calls by adding function to its own environment"
+
+### This Session (November 22, 2025)
+4. **To be committed**: "Fix register clobbering in binary operations"
+   - Changed binary operations to use x22 (callee-saved) instead of x2 (caller-saved)
+   - Updated offset calculations for right operand evaluation
+   - Fixes issue where function calls in right operand would corrupt saved left operand
+   - Partial fix for recursive functions (5/6 defun tests now pass)
+
+## Files Modified
+
+- **habu-arm64-codegen-sbcl.lisp**: Main compiler with register clobbering fix
+  - Changed x2 to x22 in all binary operations (lines 283-427)
+  - Updated offset calculations for right operand evaluation
+- **CONTEXT.md**: Session documentation updated with findings
+- **test-defun.lisp**: Test suite unchanged (5/6 tests passing)
+
+## Key Technical Details
+
+### Function Compilation Flow
+1. `compile-forms` separates defuns from main expression
+2. `compile-defun` creates IR for each function with recursive-fenv support
+3. Two-pass codegen:
+   - First pass: Calculate function offsets without fn-offsets
+   - Second pass: Generate code with correct offsets
+4. Functions stored at offsets after main code
+
+### Important Functions
+- `codegen-function-with-params`: Generates function prologue/epilogue and body
+- `calculate-function-offsets`: First pass to determine function locations
+- `codegen-functions-with-offsets`: Second pass with proper BL targets
+- `compile-defun`: Now adds function to its own environment for recursion
 
 ---
 
-**Latest Commit**: Ready to commit recursive function compilation fix
-**Commit Message**: "Enable recursive function calls by adding function to its own environment during compilation"
+**Session End Status**: Three major bugs fixed. Recursive factorial still has arithmetic issues (returns powers of 2). Ready for next session to debug arithmetic problem in recursive multiplication.

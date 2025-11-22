@@ -277,13 +277,13 @@
             (left-code (codegen-expr left-ir runtime-addrs fn-offsets current-offset))
             (right-code (codegen-expr right-ir runtime-addrs fn-offsets
                                     (if current-offset
-                                        (+ current-offset (count-instrs left-code))
+                                        (+ current-offset (count-instrs left-code) 1)
                                         nil))))
        (append left-code                   ; Compute left → x0
-               (arm64-mov 2 0)             ; Save left in x2
+               (arm64-mov 22 0)            ; Save left in x21 (callee-saved)
                right-code                  ; Compute right → x0
                (arm64-mov 1 0)             ; Move right to x1
-               (arm64-mov 0 2)             ; Move left to x0
+               (arm64-mov 0 22)            ; Restore left from x21
                (arm64-add 0 0 1))))        ; x0 = x0 + x1
 
     ;; Subtraction: (sub left right)
@@ -293,13 +293,13 @@
             (left-code (codegen-expr left-ir runtime-addrs fn-offsets current-offset))
             (right-code (codegen-expr right-ir runtime-addrs fn-offsets
                                     (if current-offset
-                                        (+ current-offset (count-instrs left-code))
+                                        (+ current-offset (count-instrs left-code) 1)
                                         nil))))
        (append left-code
-               (arm64-mov 2 0)
+               (arm64-mov 22 0)            ; Save left in x21 (callee-saved)
                right-code
                (arm64-mov 1 0)
-               (arm64-mov 0 2)
+               (arm64-mov 0 22)            ; Restore left from x21
                (arm64-sub 0 0 1))))
 
     ;; Multiplication: (mul left right) - must untag/retag
@@ -309,15 +309,15 @@
             (left-code (codegen-expr left-ir runtime-addrs fn-offsets current-offset))
             (right-code (codegen-expr right-ir runtime-addrs fn-offsets
                                     (if current-offset
-                                        (+ current-offset (count-instrs left-code))
+                                        (+ current-offset (count-instrs left-code) 2)
                                         nil))))
        (append left-code
                (arm64-lsr 0 0 4)           ; Untag left
-               (arm64-mov 2 0)             ; Save in x2
+               (arm64-mov 22 0)            ; Save in x21 (callee-saved)
                right-code
                (arm64-lsr 0 0 4)           ; Untag right
                (arm64-mov 1 0)             ; Move to x1
-               (arm64-mov 0 2)             ; Restore left
+               (arm64-mov 0 22)            ; Restore left from x21
                (arm64-mul 0 0 1)           ; Multiply
                (arm64-lsl 0 0 4))))        ; Retag result
 
@@ -328,13 +328,13 @@
             (left-code (codegen-expr left-ir runtime-addrs fn-offsets current-offset))
             (right-code (codegen-expr right-ir runtime-addrs fn-offsets
                                     (if current-offset
-                                        (+ current-offset (count-instrs left-code))
+                                        (+ current-offset (count-instrs left-code) 1)
                                         nil))))
        (append left-code
-               (arm64-mov 2 0)             ; Save left in x2
+               (arm64-mov 22 0)            ; Save left in x21 (callee-saved)
                right-code
                (arm64-mov 1 0)             ; Move right to x1
-               (arm64-mov 0 2)             ; Restore left
+               (arm64-mov 0 22)            ; Restore left from x21
                (arm64-cmp 0 1)             ; Compare
                (arm64-cset 0 0)            ; x0 = 1 if equal, else 0
                (arm64-lsl 0 0 4))))        ; Tag result
@@ -346,13 +346,13 @@
             (left-code (codegen-expr left-ir runtime-addrs fn-offsets current-offset))
             (right-code (codegen-expr right-ir runtime-addrs fn-offsets
                                     (if current-offset
-                                        (+ current-offset (count-instrs left-code))
+                                        (+ current-offset (count-instrs left-code) 1)
                                         nil))))
        (append left-code
-               (arm64-mov 2 0)             ; Save left in x2
+               (arm64-mov 22 0)            ; Save left in x21 (callee-saved)
                right-code
                (arm64-mov 1 0)             ; Move right to x1
-               (arm64-mov 0 2)             ; Restore left
+               (arm64-mov 0 22)            ; Restore left from x21
                (arm64-cmp 0 1)             ; Compare
                (arm64-cset 0 11)           ; x0 = 1 if less than, else 0
                (arm64-lsl 0 0 4))))        ; Tag result
@@ -364,13 +364,13 @@
             (left-code (codegen-expr left-ir runtime-addrs fn-offsets current-offset))
             (right-code (codegen-expr right-ir runtime-addrs fn-offsets
                                     (if current-offset
-                                        (+ current-offset (count-instrs left-code))
+                                        (+ current-offset (count-instrs left-code) 1)
                                         nil))))
        (append left-code
-               (arm64-mov 2 0)             ; Save left in x2
+               (arm64-mov 22 0)            ; Save left in x21 (callee-saved)
                right-code
                (arm64-mov 1 0)             ; Move right to x1
-               (arm64-mov 0 2)             ; Restore left
+               (arm64-mov 0 22)            ; Restore left from x21
                (arm64-cmp 0 1)             ; Compare
                (arm64-cset 0 12)           ; x0 = 1 if greater than, else 0
                (arm64-lsl 0 0 4))))        ; Tag result
@@ -382,13 +382,13 @@
             (left-code (codegen-expr left-ir runtime-addrs fn-offsets current-offset))
             (right-code (codegen-expr right-ir runtime-addrs fn-offsets
                                     (if current-offset
-                                        (+ current-offset (count-instrs left-code))
+                                        (+ current-offset (count-instrs left-code) 1)
                                         nil))))
        (append left-code
-               (arm64-mov 2 0)             ; Save left in x2
+               (arm64-mov 22 0)            ; Save left in x21 (callee-saved)
                right-code
                (arm64-mov 1 0)             ; Move right to x1
-               (arm64-mov 0 2)             ; Restore left
+               (arm64-mov 0 22)            ; Restore left from x21
                (arm64-cmp 0 1)             ; Compare
                (arm64-cset 0 13)           ; x0 = 1 if less or equal, else 0
                (arm64-lsl 0 0 4))))        ; Tag result
@@ -400,13 +400,13 @@
             (left-code (codegen-expr left-ir runtime-addrs fn-offsets current-offset))
             (right-code (codegen-expr right-ir runtime-addrs fn-offsets
                                     (if current-offset
-                                        (+ current-offset (count-instrs left-code))
+                                        (+ current-offset (count-instrs left-code) 1)
                                         nil))))
        (append left-code
-               (arm64-mov 2 0)             ; Save left in x2
+               (arm64-mov 22 0)            ; Save left in x21 (callee-saved)
                right-code
                (arm64-mov 1 0)             ; Move right to x1
-               (arm64-mov 0 2)             ; Restore left
+               (arm64-mov 0 22)            ; Restore left from x21
                (arm64-cmp 0 1)             ; Compare
                (arm64-cset 0 10)           ; x0 = 1 if greater or equal, else 0
                (arm64-lsl 0 0 4))))        ; Tag result
@@ -418,13 +418,13 @@
             (left-code (codegen-expr left-ir runtime-addrs fn-offsets current-offset))
             (right-code (codegen-expr right-ir runtime-addrs fn-offsets
                                     (if current-offset
-                                        (+ current-offset (count-instrs left-code))
+                                        (+ current-offset (count-instrs left-code) 1)
                                         nil))))
        (append left-code
-               (arm64-mov 2 0)             ; Save left in x2
+               (arm64-mov 22 0)            ; Save left in x21 (callee-saved)
                right-code
                (arm64-mov 1 0)             ; Move right to x1
-               (arm64-mov 0 2)             ; Restore left
+               (arm64-mov 0 22)            ; Restore left from x21
                (arm64-cmp 0 1)             ; Compare
                (arm64-cset 0 1)            ; x0 = 1 if not equal, else 0
                (arm64-lsl 0 0 4))))        ; Tag result
@@ -477,14 +477,14 @@
             (left-code (codegen-expr left-ir runtime-addrs fn-offsets current-offset))
             (right-code (codegen-expr right-ir runtime-addrs fn-offsets
                                     (if current-offset
-                                        (+ current-offset (count-instrs left-code))
+                                        (+ current-offset (count-instrs left-code) 1)
                                         nil))))
        ;; Call cons(left, right) using runtime table[0]
        (append left-code                    ; Compute left → x0
-               (arm64-mov 2 0)              ; Save left in x2
+               (arm64-mov 22 0)             ; Save left in x21 (callee-saved)
                right-code                   ; Compute right → x0
                (arm64-mov 1 0)              ; Move right to x1
-               (arm64-mov 0 2)              ; Move left to x0
+               (arm64-mov 0 22)             ; Restore left from x21
                (arm64-ldr 9 19 0)           ; Load cons from table: LDR x9, [x19, #0]
                (arm64-blr 9))))             ; Call cons(x0, x1) → result in x0
 
