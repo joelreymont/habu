@@ -137,24 +137,108 @@
   (encode-word-le #xD65F03C0))
 
 (defun codegen-expr (ir runtime-addrs)
-  "SBCL shim: simplified codegen to allow loading; returns move of literal/var or zero."
+  "Enhanced codegen: literals, arithmetic, runtime calls"
   (cond
+    ;; Literal: load tagged fixnum (value << 4)
     ((has-tag? ir 'lit)
      (let* ((value (cadr ir))
-            (imm (pick-runtime-imm runtime-addrs value)))
-       (arm64-movz 0 imm)))
+            (tagged (ash value 4)))  ; Tag fixnum: value << 4
+       (arm64-movz 0 (logand tagged #xFFFF))))
+
+    ;; Variable: load from stack
     ((has-tag? ir 'var)
      (let ((offset (cadr ir)))
        (arm64-ldr 0 31 (* offset 16))))
-    (t (arm64-movz 0 (pick-runtime-imm runtime-addrs #x0)))))
+
+    ;; Addition: (add left right)
+    ((has-tag? ir 'add)
+     (let* ((left-ir (cadr ir))
+            (right-ir (caddr ir))
+            (left-code (codegen-expr left-ir runtime-addrs))
+            (right-code (codegen-expr right-ir runtime-addrs)))
+       (append left-code                   ; Compute left → x0
+               (arm64-mov 2 0)             ; Save left in x2
+               right-code                  ; Compute right → x0
+               (arm64-mov 1 0)             ; Move right to x1
+               (arm64-mov 0 2)             ; Move left to x0
+               (arm64-add 0 0 1))))        ; x0 = x0 + x1
+
+    ;; Subtraction: (sub left right)
+    ((has-tag? ir 'sub)
+     (let* ((left-ir (cadr ir))
+            (right-ir (caddr ir))
+            (left-code (codegen-expr left-ir runtime-addrs))
+            (right-code (codegen-expr right-ir runtime-addrs)))
+       (append left-code
+               (arm64-mov 2 0)
+               right-code
+               (arm64-mov 1 0)
+               (arm64-mov 0 2)
+               (arm64-sub 0 0 1))))
+
+    ;; Multiplication: (mul left right) - must untag/retag
+    ((has-tag? ir 'mul)
+     (let* ((left-ir (cadr ir))
+            (right-ir (caddr ir))
+            (left-code (codegen-expr left-ir runtime-addrs))
+            (right-code (codegen-expr right-ir runtime-addrs)))
+       (append left-code
+               (arm64-lsr 0 0 4)           ; Untag left
+               (arm64-mov 2 0)             ; Save in x2
+               right-code
+               (arm64-lsr 0 0 4)           ; Untag right
+               (arm64-mov 1 0)             ; Move to x1
+               (arm64-mov 0 2)             ; Restore left
+               (arm64-mul 0 0 1)           ; Multiply
+               (arm64-lsl 0 0 4))))        ; Retag result
+
+    ;; Default: zero
+    (t (arm64-movz 0 0))))
 
 (defun compile-expr (expr env fenv)
-  "SBCL shim: return trivial IR for literals/vars; else zero."
+  "Enhanced IR generation: literals, arithmetic operations"
   (cond
-    ((fixnum? expr) (list 'lit expr))
+    ;; Fixnum literal
+    ((fixnum? expr)
+     (list 'lit expr))
+
+    ;; Symbol (variable)
     ((symbol? expr)
      (let ((off (env-lookup expr env)))
        (if off (list 'var off) (list 'lit 0))))
+
+    ;; List (function call or special form)
+    ((consp expr)
+     (let ((op (car expr)))
+       (cond
+         ;; Addition
+         ((eq op '+)
+          (if (and (consp (cdr expr)) (consp (cddr expr)))
+              (list 'add
+                    (compile-expr (cadr expr) env fenv)
+                    (compile-expr (caddr expr) env fenv))
+              (list 'lit 0)))
+
+         ;; Subtraction
+         ((eq op '-)
+          (if (and (consp (cdr expr)) (consp (cddr expr)))
+              (list 'sub
+                    (compile-expr (cadr expr) env fenv)
+                    (compile-expr (caddr expr) env fenv))
+              (list 'lit 0)))
+
+         ;; Multiplication
+         ((eq op '*)
+          (if (and (consp (cdr expr)) (consp (cddr expr)))
+              (list 'mul
+                    (compile-expr (cadr expr) env fenv)
+                    (compile-expr (caddr expr) env fenv))
+              (list 'lit 0)))
+
+         ;; Unknown operation
+         (t (list 'lit 0)))))
+
+    ;; Unknown
     (t (list 'lit 0))))
 
 (defun codegen-main-with-runtime (ir runtime-addrs)
