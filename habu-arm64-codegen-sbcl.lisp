@@ -271,6 +271,7 @@
          (arm64-ldr 0 1 0))))                ; Load from [x1 + 0]
 
     ;; Addition: (add left right)
+    ;; Use pre-allocated stack space at sp+72 for temporary storage
     ((has-tag? ir 'add)
      (let* ((left-ir (cadr ir))
             (right-ir (caddr ir))
@@ -280,13 +281,14 @@
                                         (+ current-offset (count-instrs left-code) 1)
                                         nil))))
        (append left-code                   ; Compute left → x0
-               (arm64-mov 22 0)            ; Save left in x21 (callee-saved)
+               (arm64-str 0 31 72)         ; Store left at [sp+72]
                right-code                  ; Compute right → x0
                (arm64-mov 1 0)             ; Move right to x1
-               (arm64-mov 0 22)            ; Restore left from x21
+               (arm64-ldr 0 31 72)         ; Load left from [sp+72]
                (arm64-add 0 0 1))))        ; x0 = x0 + x1
 
     ;; Subtraction: (sub left right)
+    ;; Use pre-allocated stack space at sp+80 for temporary storage
     ((has-tag? ir 'sub)
      (let* ((left-ir (cadr ir))
             (right-ir (caddr ir))
@@ -296,13 +298,14 @@
                                         (+ current-offset (count-instrs left-code) 1)
                                         nil))))
        (append left-code
-               (arm64-mov 22 0)            ; Save left in x21 (callee-saved)
+               (arm64-str 0 31 80)         ; Store left at [sp+80]
                right-code
-               (arm64-mov 1 0)
-               (arm64-mov 0 22)            ; Restore left from x21
-               (arm64-sub 0 0 1))))
+               (arm64-mov 1 0)             ; Move right to x1
+               (arm64-ldr 0 31 80)         ; Load left from [sp+80]
+               (arm64-sub 0 0 1))))        ; x0 = x0 - x1
 
     ;; Multiplication: (mul left right) - must untag/retag
+    ;; Use x23 register with save/restore
     ((has-tag? ir 'mul)
      (let* ((left-ir (cadr ir))
             (right-ir (caddr ir))
@@ -313,12 +316,12 @@
                                         nil))))
        (append left-code
                (arm64-lsr 0 0 4)           ; Untag left
-               (arm64-mov 22 0)            ; Save in x21 (callee-saved)
+               (arm64-mov 23 0)            ; Save untagged left in x23
                right-code
                (arm64-lsr 0 0 4)           ; Untag right
-               (arm64-mov 1 0)             ; Move to x1
-               (arm64-mov 0 22)            ; Restore left from x21
-               (arm64-mul 0 0 1)           ; Multiply
+               (arm64-mov 1 0)             ; Move untagged right to x1
+               (arm64-mov 0 23)            ; Restore untagged left from x23
+               (arm64-mul 0 0 1)           ; Multiply x0 = x0 * x1
                (arm64-lsl 0 0 4))))        ; Retag result
 
     ;; Comparison: (cmp-eq left right) - returns tagged 1 or 0
@@ -331,10 +334,10 @@
                                         (+ current-offset (count-instrs left-code) 1)
                                         nil))))
        (append left-code
-               (arm64-mov 22 0)            ; Save left in x21 (callee-saved)
+               (arm64-str 0 31 88)         ; Store left at [sp+88]
                right-code
                (arm64-mov 1 0)             ; Move right to x1
-               (arm64-mov 0 22)            ; Restore left from x21
+               (arm64-ldr 0 31 88)         ; Load left from [sp+88]
                (arm64-cmp 0 1)             ; Compare
                (arm64-cset 0 0)            ; x0 = 1 if equal, else 0
                (arm64-lsl 0 0 4))))        ; Tag result
@@ -349,10 +352,10 @@
                                         (+ current-offset (count-instrs left-code) 1)
                                         nil))))
        (append left-code
-               (arm64-mov 22 0)            ; Save left in x21 (callee-saved)
+               (arm64-str 0 31 88)         ; Store left at [sp+88]
                right-code
                (arm64-mov 1 0)             ; Move right to x1
-               (arm64-mov 0 22)            ; Restore left from x21
+               (arm64-ldr 0 31 88)         ; Load left from [sp+88]
                (arm64-cmp 0 1)             ; Compare
                (arm64-cset 0 11)           ; x0 = 1 if less than, else 0
                (arm64-lsl 0 0 4))))        ; Tag result
@@ -367,10 +370,10 @@
                                         (+ current-offset (count-instrs left-code) 1)
                                         nil))))
        (append left-code
-               (arm64-mov 22 0)            ; Save left in x21 (callee-saved)
+               (arm64-str 0 31 88)         ; Store left at [sp+88]
                right-code
                (arm64-mov 1 0)             ; Move right to x1
-               (arm64-mov 0 22)            ; Restore left from x21
+               (arm64-ldr 0 31 88)         ; Load left from [sp+88]
                (arm64-cmp 0 1)             ; Compare
                (arm64-cset 0 12)           ; x0 = 1 if greater than, else 0
                (arm64-lsl 0 0 4))))        ; Tag result
@@ -385,10 +388,10 @@
                                         (+ current-offset (count-instrs left-code) 1)
                                         nil))))
        (append left-code
-               (arm64-mov 22 0)            ; Save left in x21 (callee-saved)
+               (arm64-str 0 31 88)         ; Store left at [sp+88]
                right-code
                (arm64-mov 1 0)             ; Move right to x1
-               (arm64-mov 0 22)            ; Restore left from x21
+               (arm64-ldr 0 31 88)         ; Load left from [sp+88]
                (arm64-cmp 0 1)             ; Compare
                (arm64-cset 0 13)           ; x0 = 1 if less or equal, else 0
                (arm64-lsl 0 0 4))))        ; Tag result
@@ -403,10 +406,10 @@
                                         (+ current-offset (count-instrs left-code) 1)
                                         nil))))
        (append left-code
-               (arm64-mov 22 0)            ; Save left in x21 (callee-saved)
+               (arm64-str 0 31 88)         ; Store left at [sp+88]
                right-code
                (arm64-mov 1 0)             ; Move right to x1
-               (arm64-mov 0 22)            ; Restore left from x21
+               (arm64-ldr 0 31 88)         ; Load left from [sp+88]
                (arm64-cmp 0 1)             ; Compare
                (arm64-cset 0 10)           ; x0 = 1 if greater or equal, else 0
                (arm64-lsl 0 0 4))))        ; Tag result
@@ -421,10 +424,10 @@
                                         (+ current-offset (count-instrs left-code) 1)
                                         nil))))
        (append left-code
-               (arm64-mov 22 0)            ; Save left in x21 (callee-saved)
+               (arm64-str 0 31 88)         ; Store left at [sp+88]
                right-code
                (arm64-mov 1 0)             ; Move right to x1
-               (arm64-mov 0 22)            ; Restore left from x21
+               (arm64-ldr 0 31 88)         ; Load left from [sp+88]
                (arm64-cmp 0 1)             ; Compare
                (arm64-cset 0 1)            ; x0 = 1 if not equal, else 0
                (arm64-lsl 0 0 4))))        ; Tag result
@@ -481,10 +484,10 @@
                                         nil))))
        ;; Call cons(left, right) using runtime table[0]
        (append left-code                    ; Compute left → x0
-               (arm64-mov 22 0)             ; Save left in x21 (callee-saved)
+               (arm64-mov 22 0)             ; Save left in x22 (callee-saved)
                right-code                   ; Compute right → x0
                (arm64-mov 1 0)              ; Move right to x1
-               (arm64-mov 0 22)             ; Restore left from x21
+               (arm64-mov 0 22)             ; Restore left from x22
                (arm64-ldr 9 19 0)           ; Load cons from table: LDR x9, [x19, #0]
                (arm64-blr 9))))             ; Call cons(x0, x1) → result in x0
 
@@ -766,15 +769,17 @@
    Calling convention: x0 = runtime table pointer
    Prologue saves x19 (runtime table) and x20-x21 (environment registers)"
   (let ((body (codegen-expr ir runtime-addrs nil nil)))
-    ;; Allocate 256 bytes: 48 for saved registers + 208 for local variables/let bindings
+    ;; Allocate 256 bytes: 64 for saved registers + 192 for local variables/let bindings
     (append (arm64-sub-imm 31 31 256)     ; SUB sp, sp, #256 (large stack frame)
             (arm64-stp 29 30 31 0)        ; STP x29, x30, [sp, #0]
             (arm64-stp 19 20 31 16)       ; STP x19, x20, [sp, #16]
             (arm64-stp 21 22 31 32)       ; STP x21, x22, [sp, #32]
+            (arm64-stp 23 24 31 48)       ; STP x23, x24, [sp, #48]
             (arm64-mov 19 0)              ; MOV x19, x0 (save runtime table)
             ;; Set x20 to point to end of stack frame (grows downward for let bindings)
             (arm64-add-imm 20 31 248)     ; ADD x20, sp, #248 (near top of frame)
             body                           ; Function body
+            (arm64-ldp 23 24 31 48)       ; LDP x23, x24, [sp, #48]
             (arm64-ldp 21 22 31 32)       ; LDP x21, x22, [sp, #32]
             (arm64-ldp 19 20 31 16)       ; LDP x19, x20, [sp, #16]
             (arm64-ldp 29 30 31 0)        ; LDP x29, x30, [sp, #0]
@@ -841,9 +846,9 @@
    Parameters are passed in x0-x7, stored to stack for access as variables"
   (let* ((param-count (length params))
          ;; Calculate where body starts (after prologue and parameter storage)
-         ;; Prologue: 5 instructions (SUB, 3xSTP, ADD)
+         ;; Prologue: 6 instructions (SUB, 4xSTP, ADD)
          ;; Parameter storage: varies by param-count
-         (prologue-size 5)
+         (prologue-size 6)
          (param-store-size (cond ((= param-count 0) 0)
                                  ((= param-count 1) 2)  ; 2 instructions
                                  ((= param-count 2) 4)  ; 4 instructions
@@ -860,6 +865,7 @@
       (arm64-stp 29 30 31 0)         ; Save FP/LR
       (arm64-stp 19 20 31 16)        ; Save x19/x20
       (arm64-stp 21 22 31 32)        ; Save x21/x22
+      (arm64-stp 23 24 31 48)        ; Save x23/x24
       ;; x19 already has runtime table from caller - don't overwrite!
       (arm64-add-imm 20 31 248)      ; Set environment base
 
@@ -891,6 +897,7 @@
       body
 
       ;; Function epilogue
+      (arm64-ldp 23 24 31 48)        ; Restore x23/x24
       (arm64-ldp 21 22 31 32)        ; Restore x21/x22
       (arm64-ldp 19 20 31 16)        ; Restore x19/x20
       (arm64-ldp 29 30 31 0)         ; Restore FP/LR
@@ -947,16 +954,18 @@
 (defun codegen-main-with-runtime-and-fns (ir runtime-addrs fn-offsets current-offset)
   "Generate main code with function offsets for calls"
   ;; Pass function offsets through to codegen
-  ;; The body comes after the 6-instruction prologue
-  (let ((body (codegen-expr-with-fns ir runtime-addrs fn-offsets (+ current-offset 6))))
+  ;; The body comes after the 7-instruction prologue
+  (let ((body (codegen-expr-with-fns ir runtime-addrs fn-offsets (+ current-offset 7))))
     ;; Same prologue/epilogue as before
     (append (arm64-sub-imm 31 31 256)     ; SUB sp, sp, #256 (large stack frame)
             (arm64-stp 29 30 31 0)        ; STP x29, x30, [sp, #0]
             (arm64-stp 19 20 31 16)       ; STP x19, x20, [sp, #16]
             (arm64-stp 21 22 31 32)       ; STP x21, x22, [sp, #32]
+            (arm64-stp 23 24 31 48)       ; STP x23, x24, [sp, #48]
             (arm64-mov 19 0)              ; MOV x19, x0 (save runtime table)
             (arm64-add-imm 20 31 248)     ; ADD x20, sp, #248
             body                           ; Function body
+            (arm64-ldp 23 24 31 48)       ; LDP x23, x24, [sp, #48]
             (arm64-ldp 21 22 31 32)       ; LDP x21, x22, [sp, #32]
             (arm64-ldp 19 20 31 16)       ; LDP x19, x20, [sp, #16]
             (arm64-ldp 29 30 31 0)        ; LDP x29, x30, [sp, #0]

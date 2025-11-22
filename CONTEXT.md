@@ -189,21 +189,28 @@ ADD x20, sp, #248     ; Set environment base
 
 ## Current Issues
 
-### Remaining Recursive Function Bug
-- **Symptom**: Recursive functions still return incorrect values after register fix
+### Complex Nested Operations Bug
+- **Symptom**: Nested operations of the same type overwrite each other's temporary storage
+- **Discovery Process**:
+  1. Initially found factorial returning 16x larger values (tagging issue)
+  2. Fixed stack memory usage (was using memory below sp, dangerous)
+  3. Tried using callee-saved registers (x21, x22, x23) but nested operations still conflicted
+  4. Tried using fixed stack locations (sp+64, sp+72, etc.) but same-type operations still conflict
+  5. Current status: factorial returns 0 or incorrect values
+- **Root Cause**: Each operation type uses a fixed location/register, so nested operations of the same type overwrite each other
+- **Example**: In `(* 2 (* 3 4))`:
+  - Outer multiplication saves 2 at location X
+  - Inner multiplication saves 3 at THE SAME location X (overwrites 2!)
+  - Result: 3 * 12 = 36 instead of 2 * 12 = 24
 - **Current Results**:
   - fact(0) = 1 ✓
   - fact(1) = 1 ✓
-  - fact(2) = 32 (expected 2) ✗
-  - fact(3) = 96 (expected 6) ✗
-  - fact(4) = 192 (expected 24) ✗
-  - fact(5) = 320 (expected 120) ✗
-  - fact(6) = 480 (expected 720) ✗
-- **Pattern**: Results are consistently 16x too large (e.g., 32 = 2 * 16, 96 = 6 * 16)
-- **Key Observation**: `(* (recursive) constant)` works correctly, but `(* constant (recursive))` fails
-- **Status**: Appears to be a tagging/untagging issue specific to recursive multiplication
+  - fact(2) = 0 (expected 2) ✗
+  - Nested multiplication: 2*(3*4) = 36 (expected 24) ✗
+  - Recursive sum: sum-to(5) = 4 (expected 15) ✗
+- **Status**: Need proper stack allocation strategy for temporaries
 
-## Session End State (November 22, 2025)
+## Session End State (November 23, 2025)
 
 - ✅ Multi-parameter functions working correctly
 - ✅ Basic defun tests (1-4, 6) passing
@@ -211,23 +218,28 @@ ADD x20, sp, #248     ; Set environment base
 - ✅ Functions calling other functions working
 - ✅ Two-pass compilation implemented for proper function offsets
 - ✅ Recursive function calls compile correctly
-- ✅ Fixed register clobbering issue in binary operations
-- 🔧 Recursive functions still produce wrong results (16x too large)
-- 📋 Test results: 5/6 defun tests passing (recursive factorial fails)
+- ✅ Fixed register clobbering issue in binary operations (partial)
+- ✅ Fixed stack memory safety (no longer using memory below sp)
+- ✅ Added x23/x24 to prologue/epilogue for additional callee-saved registers
+- 🔧 Nested operations still conflict due to shared temporary storage
+- 📋 Test results: 5/6 defun tests passing (recursive factorial fails with 0 result)
 
 ## Next Steps for New Session
 
-1. **Debug remaining recursive multiplication bug**:
-   - Issue: Results are 16x too large (e.g., fact(2) = 32 instead of 2)
-   - Pattern: `(* constant (recursive-call))` fails, but `(* (recursive-call) constant)` works
-   - Likely a tagging/untagging issue when first operand is saved before recursive call
-   - Check if the issue is in how we handle the saved value in x22 after recursion
+1. **Implement proper temporary allocation**:
+   - Issue: Nested operations of same type overwrite each other's temporaries
+   - Solution needed: Dynamic stack allocation or register allocation with spilling
+   - Consider: Tracking nesting depth or using a temporary stack pointer
 
-2. **Complete defun implementation**: Fix the remaining recursive function issue
+2. **Alternative simpler solution**:
+   - Use different registers/locations for different nesting levels
+   - Or implement a proper register allocator with spilling
 
-3. **Implement closures**: After defun is fully working
+3. **Complete defun implementation**: Fix the nested operations issue
 
-4. **Begin macro implementation**: Final phase 2 feature
+4. **Implement closures**: After defun is fully working
+
+5. **Begin macro implementation**: Final phase 2 feature
 
 ## Debugging Hints for Factorial Issue
 
