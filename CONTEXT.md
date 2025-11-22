@@ -3,13 +3,13 @@
 **Session Date**: November 22-23, 2025
 **Duration**: ~6 hours
 **Focus**: Stabilizing defun recursion and temporary allocation
-**Last Updated**: November 22, 2025 (21:06 EET)
+**Last Updated**: November 22, 2025 (post-commit)
 
 ## Latest Updates (November 22, 2025)
 
 - Added depth-tracked temporary slots (`temp-slot-offset` with base #x40 and #x8 stride) and threaded `temp-depth` through codegen to prevent nested arithmetic from overwriting saved operands.
 - Corrected `if` branch offset bookkeeping; else blocks now start after the test and branch instructions, and then blocks account for else length, fixing recursive BL targets (factorial calls now branch to offset #xF instead of landing in main).
-- Adjusted cons push/pop offset accounting and added a nested multiplication regression in `test-defun.lisp`; `./test-defun.lisp` now passes 7/7 tests including factorial.
+- Adjusted cons push/pop offset accounting and added nested multiplication regression in `test-defun.lisp`; `./test-defun.lisp` now passes 7/7 tests including factorial.
 - Added a Lisp-based bytecode decoder (`decode-bytecode.lisp`) so inspection no longer depends on the Python helper.
 
 ## Major Breakthroughs
@@ -129,7 +129,7 @@ ADD x20, sp, #248     ; Set environment base
 - x1 used as temp register for address computation
 
 ### Temporary Storage
-- Depth-indexed temp slots start at `sp + #x40` with `#x8` stride; `temp-depth` increments for right operands so nested arithmetic keeps previously stored values intact within the #x100 frame.
+- Depth-indexed temp slots start at `sp + #x40` with `#x8` stride; `temp-depth` increments for right operands so nested arithmetic keeps previously stored values intact within the #x100 frame. Guard raises if `temp-depth` would reach offset `#xF8` (env base).
 
 ## Progress Metrics
 
@@ -230,10 +230,10 @@ ADD x20, sp, #248     ; Set environment base
 
 ## Files Modified
 
-- **habu-arm64-codegen-sbcl.lisp**: Added depth-tracked temp slots, corrected `if` current-offset math, and fixed cons push/pop offset accounting.
+- **habu-arm64-codegen-sbcl.lisp**: Added depth-tracked temp slots with guard against env overlap, corrected `if` current-offset math, and fixed cons push/pop offset accounting.
 - **decode-bytecode.lisp**: New Lisp decoder for ARM64 bytecode to replace ad-hoc Python inspection.
 - **CONTEXT.md**: Updated session log with latest fixes and test status.
-- **test-defun.lisp**: Added nested multiplication regression; suite now runs 7 tests.
+- **test-defun.lisp**: Added nested multiplication and deep-nesting regressions; suite now runs 8 tests.
 
 ## Key Technical Details
 

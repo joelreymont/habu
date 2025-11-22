@@ -128,6 +128,16 @@
       (incf passed))
     (incf total)
 
+    ;; Test 8: Deep nested addition stresses temp-depth
+    (when (test-defun-expr
+           '((defun deep-nested ()
+               (+ 1 (+ 2 (+ 3 (+ 4 (+ 5 (+ 6 (+ 7 8))))))))
+             (deep-nested))
+           36
+           "Test 8: Deep nested addition")
+      (incf passed))
+    (incf total)
+
     (format t "=== Summary ===~%")
     (format t "Passed: ~D/~D tests~%" passed total)
     (if (= passed total)

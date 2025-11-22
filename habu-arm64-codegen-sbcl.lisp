@@ -286,7 +286,11 @@
 
 (defun temp-slot-offset (temp-depth)
   "Stack offset (bytes) for temporary storage at a given nesting depth."
-  (+ #x40 (* temp-depth #x8)))
+  (let ((offset (+ #x40 (* temp-depth #x8))))
+    ;; Keep temps within the 256-byte frame and below env base at sp+#xF8
+    (when (>= offset #xF8)
+      (error "temp-depth ~A exceeds frame temp area (offset #x~X)" temp-depth offset))
+    offset))
 
 (defun codegen-expr (ir runtime-addrs &optional fn-offsets current-offset (temp-depth 0))
   "Enhanced codegen: literals, arithmetic, runtime calls with depth-tracked temps"
