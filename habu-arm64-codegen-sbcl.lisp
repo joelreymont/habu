@@ -49,29 +49,78 @@
         (cons 'habu_car car-addr)
         (cons 'habu_cdr cdr-addr)))
 
-;; Minimal ARM64 stubs for SBCL bring-up (return deterministic code fragments)
+;; ARM64 Instruction Encoders (Functional)
 (defun arm64-movz (rd imm)
-  (declare (ignore rd))
-  ;; MOVZ X0, #imm16
+  "MOVZ Xd, #imm16 - Move zero-extended 16-bit immediate"
   (let* ((imm16 (logand imm #xFFFF))
          (base #xD2800000)
-         (encoded (logior base (ash imm16 5))))
+         (encoded (logior base (ash imm16 5) rd)))
+    (encode-word-le encoded)))
+
+(defun arm64-add (rd rn rm)
+  "ADD Xd, Xn, Xm - Add registers"
+  (let* ((base #x8B000000)
+         (encoded (logior base (ash rm 16) (ash rn 5) rd)))
+    (encode-word-le encoded)))
+
+(defun arm64-sub (rd rn rm)
+  "SUB Xd, Xn, Xm - Subtract registers"
+  (let* ((base #xCB000000)
+         (encoded (logior base (ash rm 16) (ash rn 5) rd)))
+    (encode-word-le encoded)))
+
+(defun arm64-mul (rd rn rm)
+  "MUL Xd, Xn, Xm - Multiply registers"
+  (let* ((base #x9B007C00)
+         (encoded (logior base (ash rm 16) (ash rn 5) rd)))
+    (encode-word-le encoded)))
+
+(defun arm64-lsl (rd rn shift)
+  "LSL Xd, Xn, #shift - Logical shift left immediate"
+  (let* ((base #xD3400000)
+         (shift-bits (logand shift #x3F))
+         (encoded (logior base
+                          (ash (- 63 shift-bits) 16)  ; immr
+                          (ash (- 63 shift-bits) 10)  ; imms
+                          (ash rn 5)
+                          rd)))
+    (encode-word-le encoded)))
+
+(defun arm64-lsr (rd rn shift)
+  "LSR Xd, Xn, #shift - Logical shift right immediate"
+  (let* ((base #xD3400000)
+         (shift-bits (logand shift #x3F))
+         (encoded (logior base
+                          (ash shift-bits 16)  ; immr
+                          (ash 63 10)          ; imms = 63
+                          (ash rn 5)
+                          rd)))
+    (encode-word-le encoded)))
+
+(defun arm64-mov (rd rm)
+  "MOV Xd, Xm - Move register (via ORR)"
+  (let* ((base #xAA0003E0)
+         (encoded (logior base (ash rm 16) rd)))
     (encode-word-le encoded)))
 
 (defun arm64-ldr (rt rn offset)
   (declare (ignore rt rn offset))
-  ;; LDR X0, [SP]
+  ;; LDR X0, [SP] - TODO: make parametric
   (encode-word-le #xF94003E0))
 
-(defun arm64-lsr (rd rn shift)
-  (declare (ignore rd rn shift))
-  ;; LSR X0, X0, #0
-  (encode-word-le #xD3400000))
-
 (defun arm64-add-imm (rd rn imm)
-  (declare (ignore rd rn imm))
-  ;; ADD X0, SP, #0
-  (encode-word-le #x910003E0))
+  "ADD Xd, Xn, #imm12 - Add immediate"
+  (let* ((base #x91000000)
+         (imm12 (logand imm #xFFF))
+         (encoded (logior base (ash imm12 10) (ash rn 5) rd)))
+    (encode-word-le encoded)))
+
+(defun arm64-sub-imm (rd rn imm)
+  "SUB Xd, Xn, #imm12 - Subtract immediate"
+  (let* ((base #xD1000000)
+         (imm12 (logand imm #xFFF))
+         (encoded (logior base (ash imm12 10) (ash rn 5) rd)))
+    (encode-word-le encoded)))
 
 (defun arm64-stp (rt1 rt2 rn imm)
   (declare (ignore rt1 rt2 rn imm))
@@ -84,7 +133,7 @@
   (encode-word-le #xA8C17BFD))
 
 (defun arm64-ret ()
-  ;; RET
+  "RET - Return from subroutine"
   (encode-word-le #xD65F03C0))
 
 (defun codegen-expr (ir runtime-addrs)
