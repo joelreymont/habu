@@ -114,6 +114,10 @@ int main(int argc, char **argv) {
     g_runtime_table[0] = (void*)habu_cons;
     g_runtime_table[1] = (void*)habu_car;
     g_runtime_table[2] = (void*)habu_cdr;
+    g_runtime_table[3] = (void*)habu_make_closure;
+    g_runtime_table[4] = (void*)habu_closure_code;
+    g_runtime_table[5] = (void*)habu_closure_env;
+    g_runtime_table[6] = exec_mem;  /* Code base pointer for closures */
 
     /* Execute code - pass runtime table as argument */
     printf("Executing bytecode...\n");

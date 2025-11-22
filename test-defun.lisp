@@ -148,6 +148,23 @@
       (incf passed))
     (incf total)
 
+    ;; Test 10: Inline lambda call
+    (when (test-defun-expr
+           '(((lambda (x) (+ x 1)) 5))
+           6
+           "Test 10: Inline lambda call")
+      (incf passed))
+    (incf total)
+
+    ;; Test 11: Funcall of returned closure (no capture)
+    (when (test-defun-expr
+           '((defun make-adder () (lambda (y) (+ y 2)))
+             (funcall (make-adder) 3))
+           5
+           "Test 11: Funcall of returned closure")
+      (incf passed))
+    (incf total)
+
     (format t "=== Summary ===~%")
     (format t "Passed: ~D/~D tests~%" passed total)
     (if (= passed total)

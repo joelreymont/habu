@@ -11,6 +11,7 @@
 (in-package :habu-sbcl-codegen)
 
 (defparameter *runtime-addrs* nil)
+(defparameter *collected-lambdas* nil)
 
 (defun encode-word-le (word)
   "Encode 32-bit word into little-endian byte list for smoke output."
@@ -584,6 +585,69 @@
          ;; Execute body with bindings available
          (codegen-expr body-ir runtime-addrs fn-offsets current-offset temp-depth))))
 
+    ;; Lambda reference: build closure for compiled lambda
+    ((has-tag? ir 'lambda-ref)
+     (let* ((lambda-name (cadr ir))
+            (fn-entry (assoc lambda-name fn-offsets))
+            (fn-offset (if fn-entry (cadr fn-entry) 0))
+            (offset-bytes (* fn-offset 4)))
+       ;; Runtime table layout:
+       ;;   [0] cons, [8] car, [16] cdr, [24] make-closure, [32] closure-code, [40] closure-env, [48] code base
+       (append
+         (arm64-ldr 9 19 48)              ; x9 = code base
+         (arm64-load-addr 10 offset-bytes); x10 = offset bytes
+         (arm64-add 0 9 10)               ; x0 = code base + offset
+         (arm64-movz 1 0)                 ; x1 = NIL env
+         (arm64-ldr 11 19 24)             ; x11 = habu_make_closure
+         (arm64-blr 11))))                ; x0 = closure
+
+    ;; Call closure: evaluate fn-expr to closure, load code pointer, call with args
+    ((has-tag? ir 'call-closure)
+     (let* ((fn-ir (cadr ir))
+            (arg-irs (caddr ir))
+            (temp-offset (temp-slot-offset temp-depth))
+            (fn-code (codegen-expr fn-ir runtime-addrs fn-offsets current-offset temp-depth))
+            (arg-codes (mapcar (lambda (arg-ir)
+                                 (codegen-expr arg-ir runtime-addrs fn-offsets
+                                               (if current-offset
+                                                   (+ current-offset (count-instrs fn-code) 3)
+                                                   nil)
+                                               (+ temp-depth 1)))
+                               arg-irs))
+            (num-args (length arg-irs)))
+       (append
+         fn-code                           ; closure in x0
+         ;; Get code pointer via runtime helper
+         (arm64-ldr 9 19 32)               ; x9 = closure_code
+         (arm64-blr 9)                     ; x0 = code pointer
+         (arm64-str 0 31 temp-offset)      ; save code pointer
+         ;; Evaluate args into x0-x2
+         (cond
+           ((= num-args 0) nil)
+           ((= num-args 1)
+            (car arg-codes))
+           ((= num-args 2)
+            (append
+              (car arg-codes)
+              (arm64-mov 2 0)
+              (cadr arg-codes)
+              (arm64-mov 1 0)
+              (arm64-mov 0 2)))
+           ((= num-args 3)
+            (append
+              (car arg-codes)
+              (arm64-mov 3 0)
+              (cadr arg-codes)
+              (arm64-mov 4 0)
+              (caddr arg-codes)
+              (arm64-mov 2 0)
+              (arm64-mov 1 4)
+              (arm64-mov 0 3)))
+           (t nil))
+         ;; Call closure code pointer
+         (arm64-ldr 9 31 temp-offset)      ; x9 = code pointer
+         (arm64-blr 9))))                  ; call
+
     ;; Function call: (call-fn name arg-irs)
     ((has-tag? ir 'call-fn)
      (let* ((fn-name (cadr ir))
@@ -779,13 +843,24 @@
                     (compile-expr (cadddr expr) env fenv)) ; else
               (list 'lit 0)))
 
-         ;; Cons
-         ((eq op 'cons)
-          (if (and (consp (cdr expr)) (consp (cddr expr)))
-              (list 'cons-call
-                    (compile-expr (cadr expr) env fenv)
-                    (compile-expr (caddr expr) env fenv))
-              (list 'lit 0)))
+        ;; Cons
+        ((eq op 'cons)
+         (if (and (consp (cdr expr)) (consp (cddr expr)))
+             (list 'cons-call
+                   (compile-expr (cadr expr) env fenv)
+                   (compile-expr (caddr expr) env fenv))
+             (list 'lit 0)))
+
+         ;; Lambda/closure (no capture yet) - treat as literal 0 placeholder
+         ((eq op 'lambda)
+          (let* ((params (cadr expr))
+                 (body (caddr expr))
+                 (lambda-name (gensym "lambda-"))
+                 (param-env (env-extend (mapcar #'list params) env))
+                 (body-ir (compile-expr body param-env fenv))
+                 (compiled (list lambda-name params body-ir)))
+            (push compiled *collected-lambdas*)
+            (list 'lambda-ref lambda-name)))
 
          ;; Car
          ((eq op 'car)
@@ -800,6 +875,20 @@
               (list 'cdr-call
                     (compile-expr (cadr expr) env fenv))
               (list 'lit 0)))
+
+         ;; Funcall: call closure value
+         ((eq op 'funcall)
+          (let ((fn-expr (cadr expr))
+                (args (cddr expr)))
+            (list 'call-closure
+                  (compile-expr fn-expr env fenv)
+                  (mapcar (lambda (arg) (compile-expr arg env fenv)) args))))
+
+         ;; Inline lambda application: ((lambda (...) ...) args...)
+         ((consp op)
+          (let ((fn (compile-expr op env fenv))
+                (args (mapcar (lambda (arg) (compile-expr arg env fenv)) (cdr expr))))
+            (list 'call-closure fn args)))
 
          ;; Function call - check if it's a user-defined function
          (t
@@ -890,7 +979,11 @@
 
 (defun compile-forms (forms)
   "Stub: compile list of top-level forms"
-  (compile-forms-helper forms nil nil))
+  (let ((*collected-lambdas* nil))
+    (let* ((result (compile-forms-helper forms nil nil))
+           (fns (car result))
+           (main-ir (cadr result)))
+      (list (append fns (nreverse *collected-lambdas*)) main-ir))))
 
 (defun codegen-function-with-params (params body-ir runtime-addrs &optional fn-offsets current-offset)
   "Generate code for function with parameters
