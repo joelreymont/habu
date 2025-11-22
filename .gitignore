@@ -66,3 +66,9 @@ archive/
 # Temporary files
 /tmp/*.txt
 /tmp/*.lisp
+
+# Debug scripts
+debug-*.lisp
+test-*.bin
+get-runtime-addrs.lisp
+test-codegen-direct.lisp
