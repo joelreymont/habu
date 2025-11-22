@@ -108,9 +108,12 @@
     (encode-word-le encoded)))
 
 (defun arm64-ldr (rt rn offset)
-  (declare (ignore rt rn offset))
-  ;; LDR X0, [SP] - TODO: make parametric
-  (encode-word-le #xF94003E0))
+  "LDR Xt, [Xn, #offset] - Load register from memory
+   offset is in bytes, must be 8-byte aligned, encoded as offset/8"
+  (let* ((base #xF9400000)
+           (imm12 (logand (/ offset 8) #xFFF))
+         (encoded (logior base (ash imm12 10) (ash rn 5) rt)))
+    (encode-word-le encoded)))
 
 (defun arm64-add-imm (rd rn imm)
   "ADD Xd, Xn, #imm12 - Add immediate"
@@ -127,14 +130,23 @@
     (encode-word-le encoded)))
 
 (defun arm64-stp (rt1 rt2 rn imm)
-  (declare (ignore rt1 rt2 rn imm))
-  ;; STP X29, X30, [SP,#-16]!
-  (encode-word-le #xA9BF7BFD))
+  "STP Xt1, Xt2, [Xn, #imm] - Store pair of registers
+   imm is in bytes, must be multiple of 8, encoded as imm/8"
+  (let* ((base #xA9000000)
+         (pre-index (if (< imm 0) #x00800000 0))  ; Pre-index if negative
+         (post-index 0)  ; Not used for now
+         (imm7 (logand (/ (abs imm) 8) #x7F))
+         (encoded (logior base pre-index post-index (ash imm7 15) (ash rt2 10) (ash rn 5) rt1)))
+    (encode-word-le encoded)))
 
 (defun arm64-ldp (rt1 rt2 rn imm)
-  (declare (ignore rt1 rt2 rn imm))
-  ;; LDP X29, X30, [SP],#16
-  (encode-word-le #xA8C17BFD))
+  "LDP Xt1, Xt2, [Xn, #imm] - Load pair of registers
+   Uses offset mode for imm >= 0, post-index for negative (though we don't use negative)
+   imm is in bytes, must be multiple of 8, encoded as imm/8"
+  (let* ((base #xA9400000)  ; Offset mode
+         (imm7 (logand (/ imm 8) #x7F))
+         (encoded (logior base (ash imm7 15) (ash rt2 10) (ash rn 5) rt1)))
+    (encode-word-le encoded)))
 
 (defun arm64-cmp (rn rm)
   "CMP Xn, Xm - Compare registers (sets flags)"
@@ -300,46 +312,37 @@
                (arm64-b (+ 1 then-len))
                then-code)))
 
-    ;; Cons: (cons-call left right) - call runtime cons
+    ;; Cons: (cons-call left right) - call runtime cons via table
+    ;;   Runtime table pointer is in x19 (saved by prologue)
     ((has-tag? ir 'cons-call)
      (let* ((left-ir (cadr ir))
             (right-ir (caddr ir))
             (left-code (codegen-expr left-ir runtime-addrs))
-            (right-code (codegen-expr right-ir runtime-addrs))
-            (cons-addr (runtime-lookup 'habu_cons_addr runtime-addrs)))
-       (if (= cons-addr 0)
-           ;; No runtime - return 0
-           (arm64-movz 0 0)
-           ;; Call cons(left, right)
-           (append left-code                    ; Compute left → x0
-                   (arm64-mov 2 0)              ; Save left in x2
-                   right-code                   ; Compute right → x0
-                   (arm64-mov 1 0)              ; Move right to x1
-                   (arm64-mov 0 2)              ; Move left to x0
-                   (arm64-load-addr 9 cons-addr) ; Load cons address to x9
-                   (arm64-blr 9)))))            ; Call cons(x0, x1) → result in x0
+            (right-code (codegen-expr right-ir runtime-addrs)))
+       ;; Call cons(left, right) using runtime table[0]
+       (append left-code                    ; Compute left → x0
+               (arm64-mov 2 0)              ; Save left in x2
+               right-code                   ; Compute right → x0
+               (arm64-mov 1 0)              ; Move right to x1
+               (arm64-mov 0 2)              ; Move left to x0
+               (arm64-ldr 9 19 0)           ; Load cons from table: LDR x9, [x19, #0]
+               (arm64-blr 9))))             ; Call cons(x0, x1) → result in x0
 
-    ;; Car: (car-call arg) - call runtime car
+    ;; Car: (car-call arg) - call runtime car via table
     ((has-tag? ir 'car-call)
      (let* ((arg-ir (cadr ir))
-            (arg-code (codegen-expr arg-ir runtime-addrs))
-            (car-addr (runtime-lookup 'habu_car_addr runtime-addrs)))
-       (if (= car-addr 0)
-           (arm64-movz 0 0)
-           (append arg-code                     ; Compute arg → x0
-                   (arm64-load-addr 9 car-addr) ; Load car address to x9
-                   (arm64-blr 9)))))            ; Call car(x0) → result in x0
+            (arg-code (codegen-expr arg-ir runtime-addrs)))
+       (append arg-code                     ; Compute arg → x0
+               (arm64-ldr 9 19 8)           ; Load car from table: LDR x9, [x19, #8]
+               (arm64-blr 9))))             ; Call car(x0) → result in x0
 
-    ;; Cdr: (cdr-call arg) - call runtime cdr
+    ;; Cdr: (cdr-call arg) - call runtime cdr via table
     ((has-tag? ir 'cdr-call)
      (let* ((arg-ir (cadr ir))
-            (arg-code (codegen-expr arg-ir runtime-addrs))
-            (cdr-addr (runtime-lookup 'habu_cdr_addr runtime-addrs)))
-       (if (= cdr-addr 0)
-           (arm64-movz 0 0)
-           (append arg-code                     ; Compute arg → x0
-                   (arm64-load-addr 9 cdr-addr) ; Load cdr address to x9
-                   (arm64-blr 9)))))            ; Call cdr(x0) → result in x0
+            (arg-code (codegen-expr arg-ir runtime-addrs)))
+       (append arg-code                     ; Compute arg → x0
+               (arm64-ldr 9 19 16)          ; Load cdr from table: LDR x9, [x19, #16]
+               (arm64-blr 9))))             ; Call cdr(x0) → result in x0
 
     ;; Default: zero
     (t (arm64-movz 0 0))))
@@ -432,10 +435,18 @@
     (t (list 'lit 0))))
 
 (defun codegen-main-with-runtime (ir runtime-addrs)
+  "Generate main function with runtime table support
+   Calling convention: x0 = runtime table pointer
+   Prologue saves x19 (used for runtime table) and sets it up"
   (let ((body (codegen-expr ir runtime-addrs)))
-    (append (arm64-stp 29 30 31 -16)
-            body
-            (arm64-ldp 29 30 31 16)
+    (append (arm64-sub-imm 31 31 32)      ; SUB sp, sp, #32 (reserve stack)
+            (arm64-stp 29 30 31 0)        ; STP x29, x30, [sp, #0]
+            (arm64-stp 19 20 31 16)       ; STP x19, x20, [sp, #16]
+            (arm64-mov 19 0)              ; MOV x19, x0 (save runtime table)
+            body                           ; Function body
+            (arm64-ldp 19 20 31 16)       ; LDP x19, x20, [sp, #16]
+            (arm64-ldp 29 30 31 0)        ; LDP x29, x30, [sp, #0]
+            (arm64-add-imm 31 31 32)      ; ADD sp, sp, #32 (restore stack)
             (arm64-ret))))
 
 (defun compile-to-arm64-with-runtime (expr runtime-addrs)

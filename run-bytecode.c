@@ -18,10 +18,30 @@
 #define HABU_UNTAG_FIXNUM(v) ((int64_t)(v) >> 4)
 #define HABU_IS_CONS(v) (((v) & 0xF) == 1)
 
-/* Function pointer type for compiled code */
-typedef int64_t (*compiled_fn_t)(void);
+/* Runtime functions are declared in habu.h with habu_value_t */
+
+/* Function pointer type for compiled code - receives runtime function table */
+typedef int64_t (*compiled_fn_t)(void** runtime_table);
+
+/* Runtime function table */
+void* g_runtime_table[32];
+
+void print_runtime_addresses(void) {
+    printf("Runtime function addresses in this process:\n");
+    printf("  habu_cons: %p\n", (void*)habu_cons);
+    printf("  habu_car:  %p\n", (void*)habu_car);
+    printf("  habu_cdr:  %p\n", (void*)habu_cdr);
+    printf("\n");
+}
 
 int main(int argc, char **argv) {
+    if (argc > 1 && strcmp(argv[1], "--print-addrs") == 0) {
+        habu_init(1024 * 1024);
+        printf("HABU_CONS_ADDR=0x%llx\n", (unsigned long long)habu_cons);
+        printf("HABU_CAR_ADDR=0x%llx\n", (unsigned long long)habu_car);
+        printf("HABU_CDR_ADDR=0x%llx\n", (unsigned long long)habu_cdr);
+        return 0;
+    }
     if (argc != 2) {
         fprintf(stderr, "Usage: %s <bytecode-file>\n", argv[0]);
         return 1;
@@ -90,10 +110,15 @@ int main(int argc, char **argv) {
     /* Initialize Habu runtime (GC, etc.) */
     habu_init(1024 * 1024);  /* 1MB heap */
 
-    /* Execute code */
+    /* Setup runtime function table */
+    g_runtime_table[0] = (void*)habu_cons;
+    g_runtime_table[1] = (void*)habu_car;
+    g_runtime_table[2] = (void*)habu_cdr;
+
+    /* Execute code - pass runtime table as argument */
     printf("Executing bytecode...\n");
     compiled_fn_t fn = (compiled_fn_t)exec_mem;
-    int64_t result = fn();
+    int64_t result = fn(g_runtime_table);
 
     /* Print result */
     printf("Raw result: 0x%llx (%lld)\n", result, result);

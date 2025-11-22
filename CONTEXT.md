@@ -218,19 +218,28 @@ Raw result: 0x2a (42)
 - ✅ JIT execution working
 - ⚠️ Stub compiler needs enhancement for functional code
 
-**Test Results:**
+**Test Results (November 22, 19:30):**
 - End-to-end pipeline: ✅ Working
-- Literal compilation: ✅ 16 bytes generated
-- JIT execution: ✅ Returns result
-- Functional codegen: ⚠️ Placeholder (needs work)
+- Arithmetic: ✅ (+, -, *) all working with fixnum tagging
+- Comparisons: ✅ (=) working, returns tagged boolean
+- Conditionals: ✅ (if) with correct branch logic
+- Runtime calls: ✅ (cons, car, cdr) via function table pattern
+- JIT execution: ✅ Proper ARM64 ABI calling convention
 
 **Progress to Self-Hosting:**
 - Phase 0 (Cleanup): 100% ✅
-- Phase 1 (Bootstrap): 60% (infrastructure done, codegen needs enhancement)
+- Phase 1 (Bootstrap): 100% ✅ **COMPLETE!**
+  * ✅ SBCL compiler loads and compiles
+  * ✅ ARM64 code generation (all core features)
+  * ✅ Runtime integration (function table pattern)
+  * ✅ JIT execution working
 - Phase 2 (Language): 0%
+  * ⏳ Stack-based let bindings
+  * ⏳ Closures with free variables
+  * ⏳ defun and function calls
 - Phase 3 (Self-compile): 0%
 
-**Overall: ~15% to self-hosting** (2-3 weeks estimated)
+**Overall: ~30% to self-hosting** (1-2 weeks estimated)
 
 ---
 
@@ -244,11 +253,72 @@ Raw result: 0x2a (42)
 
 ---
 
-**Last Updated**: November 22, 2025, 18:45 PST
-**Status**: Phase 1 codegen complete - arithmetic, conditionals, runtime calls implemented
-**Next Session**: Debug runtime call crashes (ABI/calling convention issues), complete Phase 1
+**Last Updated**: November 22, 2025, 19:30 PST
+**Status**: Phase 1 COMPLETE ✅ - All features working (arithmetic, conditionals, runtime calls)
+**Next Session**: Expand language features (let bindings, closures, defun)
 
-## Latest Progress (November 22, 18:30-18:45)
+## Latest Progress (November 22, 19:00-19:30) - Runtime Calls Fixed! 🎉
+
+### Problem Identified
+Runtime function calls were crashing due to **Address Space Layout Randomization (ASLR)**:
+- Bytecode was pre-compiled with runtime addresses from SBCL's address space
+- `run-bytecode` loaded runtime library at different addresses
+- Generated code called invalid addresses → bus error (exit code 138)
+
+### Solution: Runtime Function Table Pattern
+Implemented proper JIT calling convention using runtime function tables:
+
+1. **Modified run-bytecode.c** (run-bytecode.c:23-27, 113-116, 120-121)
+   - Changed signature: `int64_t (*compiled_fn_t)(void** runtime_table)`
+   - Created global runtime table with function pointers
+   - Passes table as first argument (x0) to compiled code
+
+2. **Enhanced ARM64 Instruction Set**
+   - Fixed LDR encoder for parametric memory loads (habu-arm64-codegen-sbcl.lisp:110-116)
+   - Fixed STP/LDP encoders for proper offset mode (habu-arm64-codegen-sbcl.lisp:132-149)
+   - Added ADD/SUB immediate instructions for stack management
+
+3. **Updated Code Generation**
+   - New prologue/epilogue saves x19 (callee-saved register) (habu-arm64-codegen-sbcl.lisp:436-449)
+   - Moves runtime table pointer (x0) to x19 for preservation
+   - Runtime calls now load function pointers from table via LDR (habu-arm64-codegen-sbcl.lisp:306-336):
+     ```lisp
+     cons: LDR x9, [x19, #0]  ; table[0] = habu_cons
+     car:  LDR x9, [x19, #8]  ; table[1] = habu_car
+     cdr:  LDR x9, [x19, #16] ; table[2] = habu_cdr
+     ```
+
+4. **Calling Convention (ARM64 AAPCS64 compliant)**
+   - Entry: x0 = runtime table pointer
+   - Prologue: Reserve 32 bytes, save x29/x30/x19/x20, move x0→x19
+   - Body: Load function pointers from [x19 + offset], call via BLR
+   - Epilogue: Restore registers, adjust stack, return
+
+### Test Results - ALL PASSING ✅
+```bash
+$ ./run-bytecode test-cons.bin
+Raw result: 0xad3410011 (46493925393)
+Result is a cons cell ✓
+
+$ ./run-bytecode test-car.bin
+Raw result: 0x2a0 (672)
+Untagged fixnum: 42 ✓
+
+$ ./run-bytecode test-cdr.bin
+Raw result: 0x630 (1584)
+Untagged fixnum: 99 ✓
+```
+
+### Key Insight
+This is the **correct pattern for JIT compilers**:
+- Generated code cannot embed absolute addresses (ASLR breaks them)
+- Pass runtime functions via tables/contexts as arguments
+- Use callee-saved registers to preserve runtime context
+- This matches how real JIT engines (V8, LuaJIT, etc.) work
+
+---
+
+## Progress Summary (November 22, 18:30-18:45)
 
 ### Completed This Session ✅
 1. **Fixed Conditional Branches** (habu-arm64-codegen-sbcl.lisp:260-273)
