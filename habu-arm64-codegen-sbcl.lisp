@@ -205,7 +205,10 @@
 (defun arm64-bl (offset)
   "BL offset - Branch with link (offset in instructions, signed 26-bit)"
   (let* ((base #x94000000)
-         (offset-bits (logand offset #x3FFFFFF))
+         ;; Handle negative offsets properly with 26-bit two's complement
+         (offset-bits (if (< offset 0)
+                         (logand (+ offset #x4000000) #x3FFFFFF)  ; Add 2^26 for two's complement
+                         (logand offset #x3FFFFFF)))
          (encoded (logior base offset-bits)))
     (encode-word-le encoded)))
 
@@ -249,7 +252,7 @@
             (arm64-movk rd bits-32-47 32)
             (arm64-movk rd bits-48-63 48))))
 
-(defun codegen-expr (ir runtime-addrs)
+(defun codegen-expr (ir runtime-addrs &optional fn-offsets current-offset)
   "Enhanced codegen: literals, arithmetic, runtime calls"
   (cond
     ;; Literal: load tagged fixnum (value << 4)
@@ -271,8 +274,11 @@
     ((has-tag? ir 'add)
      (let* ((left-ir (cadr ir))
             (right-ir (caddr ir))
-            (left-code (codegen-expr left-ir runtime-addrs))
-            (right-code (codegen-expr right-ir runtime-addrs)))
+            (left-code (codegen-expr left-ir runtime-addrs fn-offsets current-offset))
+            (right-code (codegen-expr right-ir runtime-addrs fn-offsets
+                                    (if current-offset
+                                        (+ current-offset (count-instrs left-code))
+                                        nil))))
        (append left-code                   ; Compute left → x0
                (arm64-mov 2 0)             ; Save left in x2
                right-code                  ; Compute right → x0
@@ -284,8 +290,11 @@
     ((has-tag? ir 'sub)
      (let* ((left-ir (cadr ir))
             (right-ir (caddr ir))
-            (left-code (codegen-expr left-ir runtime-addrs))
-            (right-code (codegen-expr right-ir runtime-addrs)))
+            (left-code (codegen-expr left-ir runtime-addrs fn-offsets current-offset))
+            (right-code (codegen-expr right-ir runtime-addrs fn-offsets
+                                    (if current-offset
+                                        (+ current-offset (count-instrs left-code))
+                                        nil))))
        (append left-code
                (arm64-mov 2 0)
                right-code
@@ -297,8 +306,11 @@
     ((has-tag? ir 'mul)
      (let* ((left-ir (cadr ir))
             (right-ir (caddr ir))
-            (left-code (codegen-expr left-ir runtime-addrs))
-            (right-code (codegen-expr right-ir runtime-addrs)))
+            (left-code (codegen-expr left-ir runtime-addrs fn-offsets current-offset))
+            (right-code (codegen-expr right-ir runtime-addrs fn-offsets
+                                    (if current-offset
+                                        (+ current-offset (count-instrs left-code))
+                                        nil))))
        (append left-code
                (arm64-lsr 0 0 4)           ; Untag left
                (arm64-mov 2 0)             ; Save in x2
@@ -313,8 +325,11 @@
     ((has-tag? ir 'cmp-eq)
      (let* ((left-ir (cadr ir))
             (right-ir (caddr ir))
-            (left-code (codegen-expr left-ir runtime-addrs))
-            (right-code (codegen-expr right-ir runtime-addrs)))
+            (left-code (codegen-expr left-ir runtime-addrs fn-offsets current-offset))
+            (right-code (codegen-expr right-ir runtime-addrs fn-offsets
+                                    (if current-offset
+                                        (+ current-offset (count-instrs left-code))
+                                        nil))))
        (append left-code
                (arm64-mov 2 0)             ; Save left in x2
                right-code
@@ -328,8 +343,11 @@
     ((has-tag? ir 'cmp-lt)
      (let* ((left-ir (cadr ir))
             (right-ir (caddr ir))
-            (left-code (codegen-expr left-ir runtime-addrs))
-            (right-code (codegen-expr right-ir runtime-addrs)))
+            (left-code (codegen-expr left-ir runtime-addrs fn-offsets current-offset))
+            (right-code (codegen-expr right-ir runtime-addrs fn-offsets
+                                    (if current-offset
+                                        (+ current-offset (count-instrs left-code))
+                                        nil))))
        (append left-code
                (arm64-mov 2 0)             ; Save left in x2
                right-code
@@ -343,8 +361,11 @@
     ((has-tag? ir 'cmp-gt)
      (let* ((left-ir (cadr ir))
             (right-ir (caddr ir))
-            (left-code (codegen-expr left-ir runtime-addrs))
-            (right-code (codegen-expr right-ir runtime-addrs)))
+            (left-code (codegen-expr left-ir runtime-addrs fn-offsets current-offset))
+            (right-code (codegen-expr right-ir runtime-addrs fn-offsets
+                                    (if current-offset
+                                        (+ current-offset (count-instrs left-code))
+                                        nil))))
        (append left-code
                (arm64-mov 2 0)             ; Save left in x2
                right-code
@@ -358,8 +379,11 @@
     ((has-tag? ir 'cmp-le)
      (let* ((left-ir (cadr ir))
             (right-ir (caddr ir))
-            (left-code (codegen-expr left-ir runtime-addrs))
-            (right-code (codegen-expr right-ir runtime-addrs)))
+            (left-code (codegen-expr left-ir runtime-addrs fn-offsets current-offset))
+            (right-code (codegen-expr right-ir runtime-addrs fn-offsets
+                                    (if current-offset
+                                        (+ current-offset (count-instrs left-code))
+                                        nil))))
        (append left-code
                (arm64-mov 2 0)             ; Save left in x2
                right-code
@@ -373,8 +397,11 @@
     ((has-tag? ir 'cmp-ge)
      (let* ((left-ir (cadr ir))
             (right-ir (caddr ir))
-            (left-code (codegen-expr left-ir runtime-addrs))
-            (right-code (codegen-expr right-ir runtime-addrs)))
+            (left-code (codegen-expr left-ir runtime-addrs fn-offsets current-offset))
+            (right-code (codegen-expr right-ir runtime-addrs fn-offsets
+                                    (if current-offset
+                                        (+ current-offset (count-instrs left-code))
+                                        nil))))
        (append left-code
                (arm64-mov 2 0)             ; Save left in x2
                right-code
@@ -388,8 +415,11 @@
     ((has-tag? ir 'cmp-ne)
      (let* ((left-ir (cadr ir))
             (right-ir (caddr ir))
-            (left-code (codegen-expr left-ir runtime-addrs))
-            (right-code (codegen-expr right-ir runtime-addrs)))
+            (left-code (codegen-expr left-ir runtime-addrs fn-offsets current-offset))
+            (right-code (codegen-expr right-ir runtime-addrs fn-offsets
+                                    (if current-offset
+                                        (+ current-offset (count-instrs left-code))
+                                        nil))))
        (append left-code
                (arm64-mov 2 0)             ; Save left in x2
                right-code
@@ -404,9 +434,16 @@
      (let* ((test-ir (cadr ir))
             (then-ir (caddr ir))
             (else-ir (cadddr ir))
-            (test-code (codegen-expr test-ir runtime-addrs))
-            (then-code (codegen-expr then-ir runtime-addrs))
-            (else-code (codegen-expr else-ir runtime-addrs))
+            (test-code (codegen-expr test-ir runtime-addrs fn-offsets current-offset))
+            (then-code (codegen-expr then-ir runtime-addrs fn-offsets
+                                    (if current-offset
+                                        (+ current-offset (count-instrs test-code) 2)
+                                        nil)))
+            (else-code (codegen-expr else-ir runtime-addrs fn-offsets
+                                    (if current-offset
+                                        (+ current-offset (count-instrs test-code)
+                                           2 (count-instrs then-code) 1)
+                                        nil)))
             (then-len (/ (length then-code) 4))
             (else-len (/ (length else-code) 4)))
        ;; Layout after test:
@@ -437,8 +474,11 @@
     ((has-tag? ir 'cons-call)
      (let* ((left-ir (cadr ir))
             (right-ir (caddr ir))
-            (left-code (codegen-expr left-ir runtime-addrs))
-            (right-code (codegen-expr right-ir runtime-addrs)))
+            (left-code (codegen-expr left-ir runtime-addrs fn-offsets current-offset))
+            (right-code (codegen-expr right-ir runtime-addrs fn-offsets
+                                    (if current-offset
+                                        (+ current-offset (count-instrs left-code))
+                                        nil))))
        ;; Call cons(left, right) using runtime table[0]
        (append left-code                    ; Compute left → x0
                (arm64-mov 2 0)              ; Save left in x2
@@ -451,7 +491,7 @@
     ;; Car: (car-call arg) - call runtime car via table
     ((has-tag? ir 'car-call)
      (let* ((arg-ir (cadr ir))
-            (arg-code (codegen-expr arg-ir runtime-addrs)))
+            (arg-code (codegen-expr arg-ir runtime-addrs fn-offsets current-offset)))
        (append arg-code                     ; Compute arg → x0
                (arm64-ldr 9 19 8)           ; Load car from table: LDR x9, [x19, #8]
                (arm64-blr 9))))             ; Call car(x0) → result in x0
@@ -459,7 +499,7 @@
     ;; Cdr: (cdr-call arg) - call runtime cdr via table
     ((has-tag? ir 'cdr-call)
      (let* ((arg-ir (cadr ir))
-            (arg-code (codegen-expr arg-ir runtime-addrs)))
+            (arg-code (codegen-expr arg-ir runtime-addrs fn-offsets current-offset)))
        (append arg-code                     ; Compute arg → x0
                (arm64-ldr 9 19 16)          ; Load cdr from table: LDR x9, [x19, #16]
                (arm64-blr 9))))             ; Call cdr(x0) → result in x0
@@ -472,7 +512,7 @@
             (env-offsets (nth 4 ir))  ; Get environment offsets for this let's bindings
             ;; Generate code for each binding value
             (bind-codes (mapcar (lambda (val-ir)
-                                  (codegen-expr val-ir runtime-addrs))
+                                  (codegen-expr val-ir runtime-addrs fn-offsets current-offset))
                                 bind-values)))
        ;; Store values at their designated offsets without moving x20
        (append
@@ -488,16 +528,19 @@
                         env-offsets))
 
          ;; Execute body with bindings available
-         (codegen-expr body-ir runtime-addrs))))
+         (codegen-expr body-ir runtime-addrs fn-offsets current-offset))))
 
     ;; Function call: (call-fn name arg-irs)
     ((has-tag? ir 'call-fn)
      (let* ((fn-name (cadr ir))
             (arg-irs (caddr ir))
             (arg-codes (mapcar (lambda (arg-ir)
-                                (codegen-expr arg-ir runtime-addrs))
+                                (codegen-expr arg-ir runtime-addrs fn-offsets current-offset))
                               arg-irs))
-            (num-args (length arg-irs)))
+            (num-args (length arg-irs))
+            ;; Look up function offset
+            (fn-entry (assoc fn-name fn-offsets))
+            (fn-offset (if fn-entry (cadr fn-entry) 0)))
        ;; Generate code to evaluate each argument and move to x0-x2
        (append
          ;; Evaluate and move arguments to x0-x2
@@ -526,8 +569,34 @@
            (t nil))  ; TODO: Handle more arguments
 
          ;; Generate BL to function
-         ;; For now use placeholder, need to track offsets properly
-         (arm64-bl 0))))  ; TODO: Calculate actual offset
+         ;; Calculate branch offset (in instructions, not bytes)
+         ;; Branch offset = (target_offset - current_offset_after_args) / 4
+         (let* ((code-so-far (cond
+                                     ((= num-args 0) nil)
+                                     ((= num-args 1) (car arg-codes))
+                                     ((= num-args 2) (append
+                                                           (car arg-codes)
+                                                           (arm64-mov 2 0)
+                                                           (cadr arg-codes)
+                                                           (arm64-mov 1 0)
+                                                           (arm64-mov 0 2)))
+                                     ((= num-args 3) (append
+                                                           (car arg-codes)
+                                                           (arm64-mov 3 0)
+                                                           (cadr arg-codes)
+                                                           (arm64-mov 4 0)
+                                                           (caddr arg-codes)
+                                                           (arm64-mov 2 0)
+                                                           (arm64-mov 1 4)
+                                                           (arm64-mov 0 3)))
+                                     (t nil)))
+               (current-pc (if current-offset
+                             ;; PC points to the instruction after BL when executing
+                             (+ current-offset (count-instrs code-so-far) 1)
+                             1))  ; Account for PC being after BL
+               ;; Branch offset is difference in instructions
+               (branch-offset (- fn-offset current-pc)))
+           (arm64-bl branch-offset)))))
 
     ;; Default: zero
     (t (arm64-movz 0 0))))
@@ -696,7 +765,7 @@
   "Generate main function with runtime table support
    Calling convention: x0 = runtime table pointer
    Prologue saves x19 (runtime table) and x20-x21 (environment registers)"
-  (let ((body (codegen-expr ir runtime-addrs)))
+  (let ((body (codegen-expr ir runtime-addrs nil nil)))
     ;; Allocate 256 bytes: 48 for saved registers + 208 for local variables/let bindings
     (append (arm64-sub-imm 31 31 256)     ; SUB sp, sp, #256 (large stack frame)
             (arm64-stp 29 30 31 0)        ; STP x29, x30, [sp, #0]
@@ -768,14 +837,14 @@
   "Generate code for function with parameters
    Parameters are passed in x0-x7, stored to stack for access as variables"
   (let* ((param-count (length params))
-         (body (codegen-expr body-ir runtime-addrs)))
+         (body (codegen-expr body-ir runtime-addrs nil nil)))
     (append
       ;; Function prologue
       (arm64-sub-imm 31 31 256)      ; Allocate stack frame
       (arm64-stp 29 30 31 0)         ; Save FP/LR
       (arm64-stp 19 20 31 16)        ; Save x19/x20
       (arm64-stp 21 22 31 32)        ; Save x21/x22
-      (arm64-mov 19 0)               ; x0 has runtime table (if passed)
+      ;; x19 already has runtime table from caller - don't overwrite!
       (arm64-add-imm 20 31 248)      ; Set environment base
 
       ;; Store parameters to stack
@@ -833,15 +902,14 @@
       (list nil nil)))
 
 (defun codegen-expr-with-fns (ir runtime-addrs fn-offsets current-offset)
-  "Codegen with function offset tracking (simplified for now)"
-  ;; For now, just use regular codegen - TODO: thread offsets through
-  (declare (ignore fn-offsets current-offset))
-  (codegen-expr ir runtime-addrs))
+  "Codegen with function offset tracking"
+  (codegen-expr ir runtime-addrs fn-offsets current-offset))
 
 (defun codegen-main-with-runtime-and-fns (ir runtime-addrs fn-offsets current-offset)
   "Generate main code with function offsets for calls"
   ;; Pass function offsets through to codegen
-  (let ((body (codegen-expr-with-fns ir runtime-addrs fn-offsets current-offset)))
+  ;; The body comes after the 6-instruction prologue
+  (let ((body (codegen-expr-with-fns ir runtime-addrs fn-offsets (+ current-offset 6))))
     ;; Same prologue/epilogue as before
     (append (arm64-sub-imm 31 31 256)     ; SUB sp, sp, #256 (large stack frame)
             (arm64-stp 29 30 31 0)        ; STP x29, x30, [sp, #0]
@@ -857,17 +925,22 @@
             (arm64-ret))))
 
 (defun compile-program-with-functions-with-runtime (forms runtime-addrs)
-  "Stub: compile entire program with function definitions
-   Returns: complete machine code with all functions + main"
+  "Compile entire program with function definitions
+   Returns: complete machine code with main at offset 0 (entry point)"
   (let* ((compile-result (compile-forms forms))
          (compiled-fns (car compile-result))
          (main-ir (cadr compile-result))
-         (fns-result (codegen-functions-helper compiled-fns 0 runtime-addrs))
+         ;; Generate main code first to get its size
+         (main-code-temp (codegen-main-with-runtime-and-fns main-ir runtime-addrs nil 0))
+         (main-size (count-instrs main-code-temp))
+         ;; Now generate functions after main
+         (fns-result (codegen-functions-helper compiled-fns main-size runtime-addrs))
          (fns-code (car fns-result))
          (fn-offsets (cadr fns-result))
-         (fns-size (count-instrs fns-code))
-         (main-code (codegen-main-with-runtime-and-fns main-ir runtime-addrs fn-offsets fns-size)))
-    (append fns-code main-code)))
+         ;; Regenerate main with correct function offsets
+         (main-code (codegen-main-with-runtime-and-fns main-ir runtime-addrs fn-offsets 0)))
+    ;; Put main first (at offset 0) so it's the entry point
+    (append main-code fns-code)))
 
 (defun compile-program-with-functions (forms)
   "Stub: compile program using default runtime addresses"
