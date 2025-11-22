@@ -13,7 +13,7 @@ Use this git author: Joel Reymont <18791+joelreymont@users.noreply.github.com>
 
 Proactively:
 
-1. Maintain a SESSION_CONTEXT.md markdown file
+1. Maintain a CONTEXT.md markdown file
 2. Update it after each major step
 3. Include enough detail that a new session could pick up where we left off
 

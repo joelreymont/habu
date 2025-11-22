@@ -51,10 +51,12 @@
 
 ;; ARM64 Instruction Encoders (Functional)
 (defun arm64-movz (rd imm)
-  "MOVZ Xd, #imm16 - Move zero-extended 16-bit immediate"
+  "MOVZ Xd, #imm16 - Move zero-extended 16-bit immediate
+   Encoding: bits [20:5] = imm16, bits [4:0] = rd"
   (let* ((imm16 (logand imm #xFFFF))
          (base #xD2800000)
-         (encoded (logior base (ash imm16 5) rd)))
+         (imm-bits (ash imm16 5))
+         (encoded (logior base imm-bits rd)))
     (encode-word-le encoded)))
 
 (defun arm64-add (rd rn rm)
@@ -157,7 +159,8 @@
 (defun arm64-b-cond (cond offset)
   "B.cond offset - Conditional branch (offset in instructions, signed 19-bit)"
   (let* ((base #x54000000)
-         (offset-bits (logand (ash offset 5) #xFFFFE0))  ; offset << 5
+         (offset-19bit (logand offset #x7FFFF))  ; Mask to 19 bits
+         (offset-bits (ash offset-19bit 5))       ; Shift to bits [23:5]
          (encoded (logior base offset-bits cond)))
     (encode-word-le encoded)))
 
@@ -248,9 +251,12 @@
             (else-len (/ (length else-code) 4)))
        (append test-code
                (arm64-cmp 0 31)            ; Compare result with 0 (XZR)
-               (arm64-b-cond 0 (+ else-len 1))  ; Branch if equal (false) to else
+               ;; Branch if equal (result = 0, i.e., false) to else
+               ;; Skip: then-code (then-len instrs) + unconditional branch (1 instr)
+               (arm64-b-cond 0 (+ then-len 1))
                then-code
-               (arm64-b else-len)          ; Skip else
+               ;; Unconditional branch to skip else-code
+               (arm64-b else-len)
                else-code)))
 
     ;; Default: zero
