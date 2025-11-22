@@ -253,9 +253,63 @@ Raw result: 0x2a (42)
 
 ---
 
-**Last Updated**: November 22, 2025, 19:30 PST
-**Status**: Phase 1 COMPLETE ✅ - All features working (arithmetic, conditionals, runtime calls)
-**Next Session**: Expand language features (let bindings, closures, defun)
+**Last Updated**: November 22, 2025, 21:00 PST
+**Status**: Phase 2 IN PROGRESS - Comparison operators complete, let bindings debugging
+**Next Session**: Fix let binding stack management, continue with defun
+
+## Phase 2 Progress (November 22, 20:00-21:00)
+
+### Completed ✅
+
+1. **Comprehensive Phase 2 Plan** (PHASE2_IMPLEMENTATION_PLAN.md)
+   - Detailed implementation roadmap for let/defun/closures
+   - Performance optimization strategies
+   - Risk mitigation approaches
+
+2. **All Comparison Operators Implemented**
+   - Added to compile-expr: `<`, `>`, `<=`, `>=`, `/=` (habu-arm64-codegen-sbcl.lisp:398-436)
+   - Codegen using ARM64 CSET with correct condition codes (lines 282-355)
+   - ARM64 condition codes: EQ=0, NE=1, LT=11, LE=13, GT=12, GE=10
+   - All 19 tests passing (test-comparisons.lisp)
+
+3. **Let Binding Infrastructure**
+   - Environment management: env-lookup, env-extend (lines 31-49)
+   - IR generation for let expressions (lines 530-548)
+   - Stack-based codegen with SP-relative addressing (lines 453-483)
+   - Added STR instruction encoder for stack stores (lines 134-140)
+
+### In Progress 🔧
+
+**Let Binding Stack Management**
+- Issue: Segmentation fault (exit code 139) when executing
+- Root cause: Stack pointer and environment base register conflict
+- Current approach:
+  - x20 = environment base pointer
+  - Variables stored at [x20 + offset]
+  - Stack allocated with SUB SP
+- Need to debug register preservation and stack alignment
+
+### Test Results
+```bash
+# Comparison operators - ALL PASSING ✓
+(< 5 7) → 1 ✓
+(> 7 5) → 1 ✓
+(<= 5 5) → 1 ✓
+(>= 5 7) → 0 ✓
+(/= 5 7) → 1 ✓
+
+# Let bindings - CRASHING ✗
+(let ((x 10)) x) → Segfault
+(let ((x 10) (y 20)) (+ x y)) → Segfault
+```
+
+### Next Steps
+1. Fix stack management in let bindings
+2. Verify register preservation (x19-x21)
+3. Implement defun with proper calling convention
+4. Add closure support
+
+---
 
 ## Latest Progress (November 22, 19:00-19:30) - Runtime Calls Fixed! 🎉
 
