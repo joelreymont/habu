@@ -4,6 +4,7 @@ You have a tiny C runtime and everything else is in Lisp.
 You do not use C for anything but the tiny C runtime, there should be no C backends!
 You want to implement full Lisp spec.
 You target ARM64 first and x86_64 second for code generation.
+Bootstrapping should be done in Lisp, compiled by SBCL.
 You should be using Lisp hex numbers everywhere!
 Write session context to SESSION_CONTEXT.md, save it frequently and keep it up to date.
 Commit frequently.

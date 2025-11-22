@@ -6,6 +6,11 @@
 ci-logs/
 .DS_Store
 
+# Bootstrap binaries (we use Lisp-based bootstrap, not C)
+bootstrap/habu-bootstrap
+bootstrap/test-*
+bootstrap/tests/test-*
+
 # Test executables
 tests/test_*
 !tests/*.c
