@@ -13,6 +13,30 @@
 (defparameter *runtime-addrs* nil)
 (defparameter *collected-lambdas* nil)
 
+(defun collect-var-offsets (ir)
+  "Collect all variable offsets referenced in IR."
+  (cond
+    ((null ir) nil)
+    ((has-tag? ir 'var) (list (cadr ir)))
+    ((has-tag? ir 'capture) nil)
+    ((consp ir) (remove-duplicates
+                 (apply #'append (mapcar #'collect-var-offsets ir))))
+    (t nil)))
+
+(defun rewrite-captures (ir capture-map)
+  "Rewrite IR var nodes whose offset is in capture-map to capture nodes."
+  (cond
+    ((null ir) nil)
+    ((has-tag? ir 'var)
+     (let* ((off (cadr ir))
+            (entry (assoc off capture-map)))
+       (if entry
+           (list 'capture (cdr entry))
+           ir)))
+    ((consp ir) (cons (rewrite-captures (car ir) capture-map)
+                      (rewrite-captures (cdr ir) capture-map)))
+    (t ir)))
+
 (defun encode-word-le (word)
   "Encode 32-bit word into little-endian byte list for smoke output."
   (list (logand word #xFF)
@@ -311,6 +335,15 @@
          (arm64-sub-imm 1 20 (* offset 8))  ; x1 = x20 - (offset * 8)
          (arm64-ldr 0 1 0))))                ; Load from [x1 + 0]
 
+    ;; Captured variable: load from closure env vector in x24
+    ((has-tag? ir 'capture)
+     (let ((idx (cadr ir)))
+       (append
+         (arm64-mov 0 24)                   ; x0 = closure env vector
+         (arm64-movz 1 idx)                 ; x1 = index (raw)
+         (arm64-ldr 9 19 72)                ; x9 = habu_vector_ref (slot 9)
+         (arm64-blr 9))))                   ; x0 = env[idx]
+
     ;; Addition: (add left right)
     ;; Use depth-indexed temp slot to park left operand while evaluating right
     ((has-tag? ir 'add)
@@ -590,16 +623,47 @@
      (let* ((lambda-name (cadr ir))
             (fn-entry (assoc lambda-name fn-offsets))
             (fn-offset (if fn-entry (cadr fn-entry) 0))
-            (offset-bytes (* fn-offset 4)))
+            (captures (if fn-entry (caddr fn-entry) nil))
+            (capture-count (length captures))
+            (offset-bytes (* fn-offset 4))
+            (code-slot (temp-slot-offset temp-depth))
+            (env-slot (+ code-slot 8)))
        ;; Runtime table layout:
        ;;   [0] cons, [8] car, [16] cdr, [24] make-closure, [32] closure-code, [40] closure-env, [48] code base
+       ;;   [56] make-vector, [64] vector-set, [72] vector-ref
        (append
          (arm64-ldr 9 19 48)              ; x9 = code base
          (arm64-load-addr 10 offset-bytes); x10 = offset bytes
          (arm64-add 0 9 10)               ; x0 = code base + offset
-         (arm64-movz 1 0)                 ; x1 = NIL env
-         (arm64-ldr 11 19 24)             ; x11 = habu_make_closure
-         (arm64-blr 11))))                ; x0 = closure
+         (arm64-str 0 31 code-slot)       ; save code pointer
+         ;; Allocate env vector if needed
+         (if (= capture-count 0)
+             (append
+               (arm64-movz 1 0)           ; x1 = NIL
+               (arm64-ldr 11 19 24)       ; make-closure
+               (arm64-blr 11))
+             (append
+               (arm64-movz 0 capture-count) ; x0 = length
+               (arm64-ldr 11 19 56)         ; x11 = make-vector
+               (arm64-blr 11)               ; x0 = vector
+               (arm64-str 0 31 env-slot)    ; save vector
+               ;; Store captures
+               (apply #'append
+                      (mapcar (lambda (off idx)
+                                (append
+                                  (arm64-ldr 0 31 env-slot) ; x0 = vector
+                                  (arm64-movz 1 idx)        ; x1 = index
+                                  (arm64-sub-imm 2 20 (* off 8)) ; x2 = x20 - off*8
+                                  (arm64-ldr 2 2 0)         ; x2 = captured value
+                                  (arm64-ldr 11 19 64)      ; x11 = vector-set
+                                  (arm64-blr 11)))
+                              captures
+                              (loop for i from 0 below capture-count collect i)))
+               ;; Make closure
+               (arm64-ldr 0 31 code-slot)  ; x0 = code pointer
+               (arm64-ldr 1 31 env-slot)   ; x1 = env vector
+               (arm64-ldr 11 19 24)        ; make-closure
+               (arm64-blr 11))))))         ; x0 = closure
 
     ;; Call closure: evaluate fn-expr to closure, load code pointer, call with args
     ((has-tag? ir 'call-closure)
@@ -617,10 +681,16 @@
             (num-args (length arg-irs)))
        (append
          fn-code                           ; closure in x0
+         (arm64-str 0 31 temp-offset)      ; save closure value
          ;; Get code pointer via runtime helper
          (arm64-ldr 9 19 32)               ; x9 = closure_code
          (arm64-blr 9)                     ; x0 = code pointer
-         (arm64-str 0 31 temp-offset)      ; save code pointer
+         (arm64-str 0 31 (+ temp-offset 8))      ; save code pointer
+         ;; Load closure env into x24
+         (arm64-ldr 0 31 temp-offset)      ; x0 = closure value
+         (arm64-ldr 9 19 40)               ; x9 = closure_env
+         (arm64-blr 9)                     ; x0 = env pointer
+         (arm64-mov 24 0)                  ; x24 = env pointer (callee-saved)
          ;; Evaluate args into x0-x2
          (cond
            ((= num-args 0) nil)
@@ -634,18 +704,18 @@
               (arm64-mov 1 0)
               (arm64-mov 0 2)))
            ((= num-args 3)
-            (append
-              (car arg-codes)
-              (arm64-mov 3 0)
-              (cadr arg-codes)
-              (arm64-mov 4 0)
-              (caddr arg-codes)
-              (arm64-mov 2 0)
-              (arm64-mov 1 4)
-              (arm64-mov 0 3)))
+           (append
+             (car arg-codes)
+             (arm64-mov 3 0)
+             (cadr arg-codes)
+             (arm64-mov 4 0)
+             (caddr arg-codes)
+             (arm64-mov 2 0)
+             (arm64-mov 1 4)
+             (arm64-mov 0 3)))
            (t nil))
          ;; Call closure code pointer
-         (arm64-ldr 9 31 temp-offset)      ; x9 = code pointer
+         (arm64-ldr 9 31 (+ temp-offset 8))      ; x9 = code pointer
          (arm64-blr 9))))                  ; call
 
     ;; Function call: (call-fn name arg-irs)
@@ -851,14 +921,23 @@
                    (compile-expr (caddr expr) env fenv))
              (list 'lit 0)))
 
-         ;; Lambda/closure (no capture yet) - treat as literal 0 placeholder
+         ;; Lambda/closure
          ((eq op 'lambda)
           (let* ((params (cadr expr))
                  (body (caddr expr))
                  (lambda-name (gensym "lambda-"))
-                 (param-env (env-extend (mapcar #'list params) env))
-                 (body-ir (compile-expr body param-env fenv))
-                 (compiled (list lambda-name params body-ir)))
+                 (outer-max (if env (apply #'max (mapcar #'cdr env)) -1))
+                 (param-env-detect (env-extend (mapcar #'list params) env))
+                 (body-ir-base (compile-expr body param-env-detect fenv))
+                 (captured-offsets (remove-if-not (lambda (off) (<= off outer-max))
+                                                  (collect-var-offsets body-ir-base)))
+                 (capture-map (let ((idx 0))
+                                (mapcar (lambda (off)
+                                          (prog1 (cons off idx)
+                                            (incf idx)))
+                                        captured-offsets)))
+                 (body-ir (rewrite-captures body-ir-base capture-map))
+                 (compiled (list lambda-name params body-ir captured-offsets (1+ outer-max))))
             (push compiled *collected-lambdas*)
             (list 'lambda-ref lambda-name)))
 
@@ -951,7 +1030,7 @@
          (recursive-fenv (cons (cons name nil) fenv))
          ;; Compile body in the parameter environment with recursive fenv
          (body-ir (compile-expr body param-env recursive-fenv)))
-    (list name params body-ir)))
+    (list name params body-ir nil 0)))
 
 (defun compile-forms-helper (forms env fenv)
   "Compile list of forms, separating defuns from main expression
@@ -985,7 +1064,7 @@
            (main-ir (cadr result)))
       (list (append fns (nreverse *collected-lambdas*)) main-ir))))
 
-(defun codegen-function-with-params (params body-ir runtime-addrs &optional fn-offsets current-offset)
+(defun codegen-function-with-params (params body-ir runtime-addrs &optional fn-offsets current-offset param-base)
   "Generate code for function with parameters
    Parameters are passed in x0-x7, stored to stack for access as variables"
   (let* ((param-count (length params))
@@ -1019,21 +1098,21 @@
         ((= param-count 0) nil)
         ((= param-count 1)
          (append
-           (arm64-sub-imm 1 20 0)     ; x1 = x20 - 0
+           (arm64-sub-imm 1 20 (* (+ param-base 0) 8))     ; x1 = x20 - offset
            (arm64-str 0 1 0)))         ; Store x0 at [x1]
         ((= param-count 2)
          (append
-           (arm64-sub-imm 2 20 0)     ; x2 = x20 - 0
+           (arm64-sub-imm 2 20 (* (+ param-base 0) 8))     ; x2 = x20 - offset0
            (arm64-str 0 2 0)           ; Store x0 at offset 0
-           (arm64-sub-imm 2 20 8)     ; x2 = x20 - 8
+           (arm64-sub-imm 2 20 (* (+ param-base 1) 8))     ; x2 = x20 - offset1
            (arm64-str 1 2 0)))         ; Store x1 at offset 1
         ((= param-count 3)
          (append
-           (arm64-sub-imm 3 20 0)     ; x3 = x20 - 0
+           (arm64-sub-imm 3 20 (* (+ param-base 0) 8))     ; x3 = x20 - offset0
            (arm64-str 0 3 0)           ; Store x0 at offset 0
-           (arm64-sub-imm 3 20 8)     ; x3 = x20 - 8
+           (arm64-sub-imm 3 20 (* (+ param-base 1) 8))     ; x3 = x20 - offset1
            (arm64-str 1 3 0)           ; Store x1 at offset 1
-           (arm64-sub-imm 3 20 16)    ; x3 = x20 - 16
+           (arm64-sub-imm 3 20 (* (+ param-base 2) 8))    ; x3 = x20 - offset2
            (arm64-str 2 3 0)))         ; Store x2 at offset 2
         (t nil))  ; TODO: Handle more parameters
 
@@ -1055,14 +1134,16 @@
              (name (car fn))
              (params (cadr fn))
              (body-ir (caddr fn))
+             (captures (cadddr fn))
+             (param-base (or (nth 4 fn) 0))
              ;; Generate without fn-offsets to get size
-             (fn-code (codegen-function-with-params params body-ir runtime-addrs nil nil))
+             (fn-code (codegen-function-with-params params body-ir runtime-addrs nil nil param-base))
              (fn-size (count-instrs fn-code))
              ;; Recursively calculate rest
              (rest-offsets (calculate-function-offsets (cdr compiled-fns)
                                                        (+ start-offset fn-size)
                                                        runtime-addrs)))
-        (cons (list name start-offset) rest-offsets))
+        (cons (list name start-offset captures param-base) rest-offsets))
       nil))
 
 (defun codegen-functions-with-offsets (compiled-fns fn-offsets current-offset runtime-addrs)
@@ -1071,9 +1152,10 @@
       (let* ((fn (car compiled-fns))
              (params (cadr fn))
              (body-ir (caddr fn))
+             (param-base (or (nth 4 fn) 0))
              ;; Generate with fn-offsets for proper function calls
              (fn-code (codegen-function-with-params params body-ir runtime-addrs
-                                                   fn-offsets current-offset))
+                                                   fn-offsets current-offset param-base))
              (fn-size (count-instrs fn-code))
              ;; Generate rest
              (rest-code (codegen-functions-with-offsets (cdr compiled-fns) fn-offsets
@@ -1083,13 +1165,35 @@
       nil))
 
 (defun codegen-functions-helper (compiled-fns current-offset runtime-addrs)
-  "Generate code for all compiled functions using two-pass approach
+  "Generate code for all compiled functions using iterative offset stabilization.
    Returns: (total-code function-offsets)"
-  ;; First pass: calculate all function offsets
-  (let ((fn-offsets (calculate-function-offsets compiled-fns current-offset runtime-addrs)))
-    ;; Second pass: generate code with correct offsets
-    (let ((code (codegen-functions-with-offsets compiled-fns fn-offsets current-offset runtime-addrs)))
-      (list code fn-offsets))))
+  (let ((fn-offsets (calculate-function-offsets compiled-fns current-offset runtime-addrs))
+        (stable nil)
+        (codes nil))
+    (loop until stable do
+      (let ((current current-offset)
+            (new-offsets '())
+            (new-codes '()))
+        (dolist (fn compiled-fns)
+          (let* ((name (car fn))
+                 (params (cadr fn))
+                 (body-ir (caddr fn))
+                 (captures (cadddr fn))
+                 (param-base (or (nth 4 fn) 0))
+                 (fn-code (codegen-function-with-params params body-ir runtime-addrs
+                                                       fn-offsets current param-base))
+                 (fn-size (count-instrs fn-code)))
+            (push fn-code new-codes)
+            (push (list name current captures param-base) new-offsets)
+            (incf current fn-size)))
+        (setf new-offsets (nreverse new-offsets))
+        (setf new-codes (nreverse new-codes))
+        (if (equal (mapcar #'cadr new-offsets) (mapcar #'cadr fn-offsets))
+            (setf stable t)
+            (setf fn-offsets new-offsets))
+        (when stable
+          (setf codes new-codes))))
+    (list (apply #'append codes) fn-offsets)))
 
 (defun codegen-expr-with-fns (ir runtime-addrs fn-offsets current-offset)
   "Codegen with function offset tracking"
@@ -1122,16 +1226,23 @@
   (let* ((compile-result (compile-forms forms))
          (compiled-fns (car compile-result))
          (main-ir (cadr compile-result))
-         ;; Generate main code first to get its size
+         ;; Initial main to estimate size
          (main-code-temp (codegen-main-with-runtime-and-fns main-ir runtime-addrs nil 0))
-         (main-size (count-instrs main-code-temp))
-         ;; Now generate functions after main
-         (fns-result (codegen-functions-helper compiled-fns main-size runtime-addrs))
-         (fns-code (car fns-result))
+         (main-size-temp (count-instrs main-code-temp))
+         ;; First pass functions
+         (fns-pass1 (codegen-functions-helper compiled-fns main-size-temp runtime-addrs))
+         (fn-offsets-pass1 (cadr fns-pass1))
+         ;; Main with first-pass offsets
+         (main-code-pass1 (codegen-main-with-runtime-and-fns main-ir runtime-addrs fn-offsets-pass1 0))
+         (main-size-final (count-instrs main-code-pass1))
+         ;; Recompute function offsets with final main size if changed
+         (fns-result (if (= main-size-final main-size-temp)
+                         fns-pass1
+                         (codegen-functions-helper compiled-fns main-size-final runtime-addrs)))
          (fn-offsets (cadr fns-result))
-         ;; Regenerate main with correct function offsets
+         (fns-code (car fns-result))
+         ;; Final main with final offsets
          (main-code (codegen-main-with-runtime-and-fns main-ir runtime-addrs fn-offsets 0)))
-    ;; Put main first (at offset 0) so it's the entry point
     (append main-code fns-code)))
 
 (defun compile-program-with-functions (forms)

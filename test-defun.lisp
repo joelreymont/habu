@@ -165,6 +165,24 @@
       (incf passed))
     (incf total)
 
+    ;; Test 12: Inline lambda captures let binding
+    (when (test-defun-expr
+           '((let ((x 10))
+               (funcall (lambda (y) (+ x y)) 5)))
+           15
+           "Test 12: Inline lambda capturing let binding")
+      (incf passed))
+    (incf total)
+
+    ;; Test 13: Returned closure captures parameter
+    (when (test-defun-expr
+           '((defun make-adder (n) (lambda (y) (+ n y)))
+             (funcall (make-adder 7) 8))
+           15
+           "Test 13: Returned closure capturing parameter")
+      (incf passed))
+    (incf total)
+
     (format t "=== Summary ===~%")
     (format t "Passed: ~D/~D tests~%" passed total)
     (if (= passed total)
