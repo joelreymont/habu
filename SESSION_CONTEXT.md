@@ -137,11 +137,18 @@ Stage 2: Full Self-Hosting
 
 ### Files Created This Session
 
+**Planning and Documentation:**
 - `CLEANUP_AND_SELF_HOSTING_PLAN.md` - Comprehensive cleanup and roadmap
+
+**Build and Execution Infrastructure:**
+- `test-sbcl-compiler.lisp` - Test suite for SBCL stub compiler
+- `compile-and-save.lisp` - Compile Lisp → ARM64 bytecode file
+- `run-bytecode.c` / `run-bytecode` - JIT executor for bytecode files
+- `output.bin` - Sample compiled bytecode (literal 42)
 
 ### Files Modified This Session
 
-- `SESSION_CONTEXT.md` - Updated with cleanup progress
+- `SESSION_CONTEXT.md` - Updated with cleanup and bootstrap progress
 - `bootstrap/README.md` - Documented Lisp-based bootstrap path
 - `.gitignore` - Added bootstrap binaries
 
