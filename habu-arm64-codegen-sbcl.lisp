@@ -801,8 +801,11 @@
   "Compile defun into (name params body-ir)"
   ;; Create environment with parameters as the initial bindings
   (let* ((param-env (env-extend (mapcar #'list params) nil))
-         ;; Compile body in the parameter environment
-         (body-ir (compile-expr body param-env fenv)))
+         ;; Add this function to fenv to allow recursive calls
+         ;; Use a placeholder compiled-fn since we're still compiling it
+         (recursive-fenv (cons (cons name nil) fenv))
+         ;; Compile body in the parameter environment with recursive fenv
+         (body-ir (compile-expr body param-env recursive-fenv)))
     (list name params body-ir)))
 
 (defun compile-forms-helper (forms env fenv)

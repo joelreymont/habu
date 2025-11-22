@@ -1,7 +1,7 @@
 # Session Context - Habu Defun Implementation
 
 **Session Date**: November 22-23, 2025
-**Duration**: ~4 hours
+**Duration**: ~5 hours
 **Focus**: Debugging and fixing defun (function definition) implementation
 
 ## Major Breakthroughs
@@ -167,10 +167,28 @@ ADD x20, sp, #248     ; Set environment base
   2. Second pass: Regenerate all functions with correct fn-offsets available
 - **Result**: Test 4 now passes! Functions can successfully call other functions
 
-### Recursive Function Bug (NEW)
-- **Symptom**: Recursive factorial returns 0 instead of 120
-- **Test Case**: `(defun fact (n) (if (<= n 1) 1 (* n (fact (- n 1))))) (fact 5)`
-- **Status**: Needs investigation - likely an issue with recursive calls or stack management
+### 5. Fixed Recursive Call Compilation! (Partial)
+- **Problem**: Recursive functions were compiling their recursive calls to `(LIT 0)`
+- **Root Cause**: When `compile-defun` compiled the function body, the function being defined wasn't in `fenv` yet
+- **Solution**: Add the function to its own function environment before compiling body:
+```lisp
+;; Add this function to fenv to allow recursive calls
+(recursive-fenv (cons (cons name nil) fenv))
+;; Compile body in the parameter environment with recursive fenv
+(body-ir (compile-expr body param-env recursive-fenv))
+```
+- **Result**: Recursive calls now compile correctly to `(CALL-FN fact ...)`
+
+### Remaining Recursive Function Bug
+- **Symptom**: Recursive factorial returns wrong values (65536 instead of 120 for fact(5))
+- **Current Results**:
+  - fact(0) = 1 ✓
+  - fact(1) = 1 ✓
+  - fact(2) = 16 (expected 2) ✗
+  - fact(3) = 256 (expected 6) ✗
+  - fact(5) = 65536 (expected 120) ✗
+- **Pattern**: Results appear to be powers of 2 (2^4, 2^8, 2^16)
+- **Status**: Likely an arithmetic or return value issue during recursion, not a compilation issue
 
 ## Session End State
 
@@ -179,17 +197,18 @@ ADD x20, sp, #248     ; Set environment base
 - ✅ Fixed critical BL offset calculation bug
 - ✅ Functions calling other functions now working!
 - ✅ Two-pass compilation implemented for proper function offsets
-- 🔧 Recursive functions failing (factorial returns 0)
+- ✅ Recursive function calls now compile correctly
+- 🔧 Recursive functions produce wrong results (arithmetic issue)
 - 📋 Test results: 5/6 defun tests passing
 
 ## Next Steps
 
-1. **Debug recursive factorial**: Investigate why factorial returns 0 instead of 120
-2. **Complete defun implementation**: Fix the remaining recursive function issue
+1. **Debug recursive factorial arithmetic**: Investigate why factorial returns wrong values (powers of 2)
+2. **Complete defun implementation**: Fix the remaining recursive function arithmetic issue
 3. **Implement closures**: After defun is fully working
 4. **Begin macro implementation**: Final phase 2 feature
 
 ---
 
-**Latest Commit**: Ready to commit function-calling-function fix
-**Commit Message**: "Fix function-calling-function with two-pass compilation - functions can now call other functions"
+**Latest Commit**: Ready to commit recursive function compilation fix
+**Commit Message**: "Enable recursive function calls by adding function to its own environment during compilation"
