@@ -833,11 +833,24 @@
   "Stub: compile list of top-level forms"
   (compile-forms-helper forms nil nil))
 
-(defun codegen-function-with-params (params body-ir runtime-addrs)
+(defun codegen-function-with-params (params body-ir runtime-addrs &optional fn-offsets current-offset)
   "Generate code for function with parameters
    Parameters are passed in x0-x7, stored to stack for access as variables"
   (let* ((param-count (length params))
-         (body (codegen-expr body-ir runtime-addrs nil nil)))
+         ;; Calculate where body starts (after prologue and parameter storage)
+         ;; Prologue: 5 instructions (SUB, 3xSTP, ADD)
+         ;; Parameter storage: varies by param-count
+         (prologue-size 5)
+         (param-store-size (cond ((= param-count 0) 0)
+                                 ((= param-count 1) 2)  ; 2 instructions
+                                 ((= param-count 2) 4)  ; 4 instructions
+                                 ((= param-count 3) 6)  ; 6 instructions
+                                 (t 0)))
+         (body-offset (if current-offset
+                         (+ current-offset prologue-size param-store-size)
+                         nil))
+         ;; Pass fn-offsets and body-offset to body generation
+         (body (codegen-expr body-ir runtime-addrs fn-offsets body-offset)))
     (append
       ;; Function prologue
       (arm64-sub-imm 31 31 256)      ; Allocate stack frame
@@ -881,25 +894,48 @@
       (arm64-add-imm 31 31 256)      ; Deallocate stack
       (arm64-ret))))
 
-(defun codegen-functions-helper (compiled-fns current-offset runtime-addrs)
-  "Stub: generate code for all compiled functions
-   Returns: (total-code function-offsets)"
+(defun calculate-function-offsets (compiled-fns start-offset runtime-addrs)
+  "First pass: calculate function offsets by generating code without fn-offsets"
   (if (consp compiled-fns)
       (let* ((fn (car compiled-fns))
              (name (car fn))
              (params (cadr fn))
              (body-ir (caddr fn))
-             (fn-code (codegen-function-with-params params body-ir runtime-addrs))
+             ;; Generate without fn-offsets to get size
+             (fn-code (codegen-function-with-params params body-ir runtime-addrs nil nil))
              (fn-size (count-instrs fn-code))
-             (rest-result (codegen-functions-helper (cdr compiled-fns)
-                                                    (+ current-offset fn-size)
-                                                    runtime-addrs))
-             (rest-code (car rest-result))
-             (rest-offsets (cadr rest-result)))
-        (list (append fn-code rest-code)
-              (cons (list name current-offset) rest-offsets)))
-      ;; No more functions
-      (list nil nil)))
+             ;; Recursively calculate rest
+             (rest-offsets (calculate-function-offsets (cdr compiled-fns)
+                                                       (+ start-offset fn-size)
+                                                       runtime-addrs)))
+        (cons (list name start-offset) rest-offsets))
+      nil))
+
+(defun codegen-functions-with-offsets (compiled-fns fn-offsets current-offset runtime-addrs)
+  "Second pass: generate functions with correct fn-offsets"
+  (if (consp compiled-fns)
+      (let* ((fn (car compiled-fns))
+             (params (cadr fn))
+             (body-ir (caddr fn))
+             ;; Generate with fn-offsets for proper function calls
+             (fn-code (codegen-function-with-params params body-ir runtime-addrs
+                                                   fn-offsets current-offset))
+             (fn-size (count-instrs fn-code))
+             ;; Generate rest
+             (rest-code (codegen-functions-with-offsets (cdr compiled-fns) fn-offsets
+                                                        (+ current-offset fn-size)
+                                                        runtime-addrs)))
+        (append fn-code rest-code))
+      nil))
+
+(defun codegen-functions-helper (compiled-fns current-offset runtime-addrs)
+  "Generate code for all compiled functions using two-pass approach
+   Returns: (total-code function-offsets)"
+  ;; First pass: calculate all function offsets
+  (let ((fn-offsets (calculate-function-offsets compiled-fns current-offset runtime-addrs)))
+    ;; Second pass: generate code with correct offsets
+    (let ((code (codegen-functions-with-offsets compiled-fns fn-offsets current-offset runtime-addrs)))
+      (list code fn-offsets))))
 
 (defun codegen-expr-with-fns (ir runtime-addrs fn-offsets current-offset)
   "Codegen with function offset tracking"

@@ -148,7 +148,7 @@ ADD x20, sp, #248     ; Set environment base
 - Comparisons: 19/19 ✓
 - Arithmetic: All ✓
 - Runtime calls: All ✓
-- Defun: 3/6 (tests 1-3 passing, test 4 has issues with function-calling-function)
+- Defun: 5/6 (tests 1-4 and 6 passing, test 5 recursive factorial fails)
 
 ## Key Insights
 
@@ -159,27 +159,37 @@ ADD x20, sp, #248     ; Set environment base
 
 ## Current Issues
 
-### Function-Calling-Function Bug
-- **Symptom**: When one function calls another function, the program hangs or crashes
-- **Test Case**: `(defun double (x) (* x 2))` followed by `(defun quad (x) (double (double x)))`
-- **Status**: Needs investigation - likely related to how function offsets are calculated when functions call each other
+### ~~Function-Calling-Function Bug~~ FIXED!
+- **Problem**: Functions calling other functions were hanging/crashing
+- **Root Cause**: `codegen-function-with-params` wasn't receiving `fn-offsets`, so function bodies couldn't generate correct BL instructions to call other functions
+- **Solution**: Implemented two-pass compilation:
+  1. First pass: Calculate all function offsets by generating code without fn-offsets
+  2. Second pass: Regenerate all functions with correct fn-offsets available
+- **Result**: Test 4 now passes! Functions can successfully call other functions
+
+### Recursive Function Bug (NEW)
+- **Symptom**: Recursive factorial returns 0 instead of 120
+- **Test Case**: `(defun fact (n) (if (<= n 1) 1 (* n (fact (- n 1))))) (fact 5)`
+- **Status**: Needs investigation - likely an issue with recursive calls or stack management
 
 ## Session End State
 
 - ✅ Multi-parameter functions now working correctly!
 - ✅ Basic defun tests (1-3) all passing
 - ✅ Fixed critical BL offset calculation bug
-- 🔧 Function-calling-function needs debugging
-- 📋 Recursive functions not yet tested
+- ✅ Functions calling other functions now working!
+- ✅ Two-pass compilation implemented for proper function offsets
+- 🔧 Recursive functions failing (factorial returns 0)
+- 📋 Test results: 5/6 defun tests passing
 
 ## Next Steps
 
-1. **Debug function-calling-function**: Investigate why functions hang when calling other functions
-2. **Test recursive functions**: Once function calls work, test factorial and other recursive cases
+1. **Debug recursive factorial**: Investigate why factorial returns 0 instead of 120
+2. **Complete defun implementation**: Fix the remaining recursive function issue
 3. **Implement closures**: After defun is fully working
 4. **Begin macro implementation**: Final phase 2 feature
 
 ---
 
-**Latest Commit**: Ready to commit BL offset fix
-**Commit Message**: "Fix BL offset calculation in function calls - multi-parameter functions now work"
+**Latest Commit**: Ready to commit function-calling-function fix
+**Commit Message**: "Fix function-calling-function with two-pass compilation - functions can now call other functions"
