@@ -38,14 +38,18 @@
 
 (defun env-extend (bindings env)
   "Extend environment with new bindings, allocating stack offsets"
-  ;; Each let starts with offset 0 for its bindings
-  (let ((offset 0))
+  ;; Find the maximum offset in current environment
+  (let ((max-offset (if env
+                        (apply #'max (mapcar #'cdr env))
+                        -1)))
     (append
-      (mapcar (lambda (binding)
-                (cons (car binding)   ; Variable name
-                      (prog1 offset   ; Current offset (0, 1, 2...)
-                        (incf offset)))) ; Increment for next
-              bindings)
+      ;; New bindings get offsets starting after the max
+      (let ((offset (+ max-offset 1)))
+        (mapcar (lambda (binding)
+                  (cons (car binding)      ; Variable name
+                        (prog1 offset      ; Current offset
+                          (incf offset)))) ; Next offset
+                bindings))
       env)))
 
 (defun runtime-lookup (name runtime-addrs)
@@ -247,11 +251,14 @@
             (tagged (ash value 4)))  ; Tag fixnum: value << 4
        (arm64-movz 0 (logand tagged #xFFFF))))
 
-    ;; Variable: load from stack (offset from x20 = environment base)
+    ;; Variable: load from stack (negative offset from x20 = environment base)
     ((has-tag? ir 'var)
      (let ((offset (cadr ir)))
-       ;; Variables are stored at negative offsets from x20
-       (arm64-ldr 0 20 (* offset 8))))
+       ;; Variables are stored at negative offsets from x20 (stack grows down)
+       ;; Use x1 as temp to compute address
+       (append
+         (arm64-sub-imm 1 20 (* offset 8))  ; x1 = x20 - (offset * 8)
+         (arm64-ldr 0 1 0))))                ; Load from [x1 + 0]
 
     ;; Addition: (add left right)
     ((has-tag? ir 'add)
@@ -450,39 +457,31 @@
                (arm64-ldr 9 19 16)          ; Load cdr from table: LDR x9, [x19, #16]
                (arm64-blr 9))))             ; Call cdr(x0) → result in x0
 
-    ;; Let expression: (let-expr bind-values body-ir num-bindings)
+    ;; Let expression: (let-expr bind-values body-ir num-bindings env-offsets)
     ((has-tag? ir 'let-expr)
      (let* ((bind-values (cadr ir))
             (body-ir (caddr ir))
             (num-bindings (cadddr ir))
+            (env-offsets (nth 4 ir))  ; Get environment offsets for this let's bindings
             ;; Generate code for each binding value
             (bind-codes (mapcar (lambda (val-ir)
                                   (codegen-expr val-ir runtime-addrs))
                                 bind-values)))
-       ;; Use stack without modifying SP during execution
+       ;; Store values at their designated offsets without moving x20
        (append
-         ;; Save current environment base in x21
-         (arm64-mov 21 20)                        ; Save old env base in x21
-         ;; Allocate stack space and adjust environment pointer
-         (arm64-sub-imm 20 20 (* num-bindings 8)) ; Move env pointer down
-
-         ;; Store each binding value at negative offsets (stack grows down)
-         (let ((offset 0))
-           (apply #'append
-                  (mapcar (lambda (bind-code)
-                            (prog1
-                              (append bind-code
-                                      ;; Store value at [x20 - offset - 8]
-                                      ;; Since we already moved x20 down, store going back up
-                                      (arm64-str 0 20 offset))
-                              (setq offset (+ offset 8))))
-                          bind-codes)))
+         ;; Store each binding value at its environment offset
+         (apply #'append
+                (mapcar (lambda (bind-code offset)
+                          (append bind-code
+                                  ;; Store at negative offset from x20 (stack grows down)
+                                  ;; Use x1 as temp to compute address
+                                  (arm64-sub-imm 1 20 (* offset 8))  ; x1 = x20 - (offset * 8)
+                                  (arm64-str 0 1 0)))                ; Store at [x1 + 0]
+                        bind-codes
+                        env-offsets))
 
          ;; Execute body with bindings available
-         (codegen-expr body-ir runtime-addrs)
-
-         ;; Restore environment base (no need to adjust SP)
-         (arm64-mov 20 21))))                      ; Restore old env base
+         (codegen-expr body-ir runtime-addrs))))
 
     ;; Default: zero
     (t (arm64-movz 0 0))))
@@ -591,9 +590,13 @@
                      (bind-names (mapcar #'car bind-pairs))
                      (bind-values (mapcar #'cadr bind-pairs))
                      (new-env (env-extend (mapcar #'list bind-names) env))
+                     ;; Get the offsets for each binding
+                     (env-offsets (mapcar (lambda (name)
+                                           (env-lookup name new-env))
+                                         bind-names))
                      ;; Compile body in new environment
                      (body-ir (compile-expr body new-env fenv)))
-                (list 'let-expr bind-values body-ir (length bindings)))
+                (list 'let-expr bind-values body-ir (length bindings) env-offsets))
               (list 'lit 0)))
 
          ;; Conditional
