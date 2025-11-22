@@ -31,4 +31,7 @@ habu_value_t habu_car(habu_value_t cons);
 habu_value_t habu_cdr(habu_value_t cons);
 habu_value_t habu_intern(const char *name);
 
+/* Reader */
+habu_value_t habu_read(const char *input);
+
 #endif /* HABU_MINIMAL_H */

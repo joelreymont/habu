@@ -46,6 +46,10 @@ typedef struct symbol {
 static symbol_t symbols[1000] __attribute__((aligned(16)));
 static int symbol_count = 0;
 
+/* Simple string pool for symbol names */
+static char string_pool[100000];
+static int string_pool_pos = 0;
+
 habu_value_t habu_intern(const char *name) {
     /* Look up existing symbol */
     for (int i = 0; i < symbol_count; i++) {
@@ -56,7 +60,15 @@ habu_value_t habu_intern(const char *name) {
 
     /* Create new symbol */
     if (symbol_count >= 1000) return HABU_NIL;
-    symbols[symbol_count].name = name;
+
+    /* Copy string to pool */
+    int len = strlen(name);
+    if (string_pool_pos + len + 1 > 100000) return HABU_NIL;
+    char *name_copy = &string_pool[string_pool_pos];
+    strcpy(name_copy, name);
+    string_pool_pos += len + 1;
+
+    symbols[symbol_count].name = name_copy;
     /* Tag as symbol - just OR with 2, don't clear bits */
     symbols[symbol_count].value = ((habu_value_t)(&symbols[symbol_count])) | 2;
     symbol_count++;

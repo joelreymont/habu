@@ -83,6 +83,26 @@ make clean    # Clean build artifacts
 
 ## Usage
 
+### Parse and Execute Text Source
+
+```c
+#include "habu-minimal.h"
+
+// Parse Lisp text
+habu_value_t expr = habu_read("(+ 5 7)");
+
+// Compile to IR
+habu_value_t ir = bootstrap_compile(expr);
+
+// Generate machine code
+size_t code_size;
+uint8_t *code = bootstrap_codegen(ir, &code_size);
+
+// Execute
+int64_t result = execute_code(code, code_size);
+// result is tagged: use HABU_UNTAG_FIXNUM to get 12
+```
+
 ### As a Library
 
 ```c
@@ -96,12 +116,16 @@ uint8_t *code = bootstrap_codegen(ir, &code_size);
 int64_t result = execute_code(code, code_size);
 ```
 
-### Example Program
+### Example Programs
 
 See `habu-bootstrap.c` for complete examples of:
 - Building expressions manually
 - Compiling and executing
 - Nested and complex expressions
+
+See `tests/test-end-to-end.c` for examples of:
+- Parsing text source code
+- Complete pipeline from text to execution
 
 ## Testing
 
@@ -117,7 +141,13 @@ See `habu-bootstrap.c` for complete examples of:
 - `tests/test-integration-comparisons.c` - Comparison operations (9/9)
 - `tests/test-integration-if.c` - Conditional expressions (3/3)
 
-**Total: 57/57 tests passing** ✓
+### Reader Tests (7/7 passing)
+- `tests/test-reader.c` - S-expression parsing (7/7)
+
+### End-to-End Tests (9/9 passing)
+- `tests/test-end-to-end.c` - Complete pipeline from text to execution (9/9)
+
+**Total: 73/73 tests passing** ✓
 
 ## Technical Details
 
@@ -186,6 +216,15 @@ bootstrap/
 - ✅ Full compilation pipeline
 - ✅ JIT execution
 
+### Completed Features
+- ✅ **Text parsing** - Full S-expression reader
+- ✅ **Literals** - Numbers and symbols
+- ✅ **Arithmetic** - Addition, subtraction, multiplication
+- ✅ **Comparisons** - Equality, less than, greater than
+- ✅ **Conditionals** - If expressions
+- ✅ **Nested expressions** - Full expression composition
+- ✅ **Complete pipeline** - Text → IR → ARM64 → Execution
+
 ### TODOs for Full Compiler
 - ⏸️ Division operation (udiv encoder exists, needs codegen)
 - ⏸️ Let bindings (IR exists, needs stack management)
@@ -206,7 +245,7 @@ Code generation is fast and produces compact machine code:
 
 ## Next Steps
 
-1. **Parser Integration:** Connect to Lisp reader for text input
+1. ~~**Parser Integration:** Connect to Lisp reader for text input~~ ✅ **COMPLETE**
 2. **Let Bindings:** Implement proper stack-based variable binding
 3. **Functions:** Add lambda and function call support
 4. **Self-Hosting:** Compile simple compiler functions with bootstrap compiler
