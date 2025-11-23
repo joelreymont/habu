@@ -152,6 +152,9 @@ void habu_set_cdr(habu_value_t cons, habu_value_t value) {
 }
 
 habu_value_t habu_vector_ref(habu_value_t vector, size_t index) {
+    if (get_tag(vector) != TAG_VECTOR) {
+        return NIL;
+    }
     habu_vector_t *v = value_to_vector(vector);
     if (index >= v->length) {
         return NIL;  /* Out of bounds */
@@ -160,6 +163,9 @@ habu_value_t habu_vector_ref(habu_value_t vector, size_t index) {
 }
 
 void habu_vector_set(habu_value_t vector, size_t index, habu_value_t value) {
+    if (get_tag(vector) != TAG_VECTOR) {
+        return;
+    }
     habu_vector_t *v = value_to_vector(vector);
     if (index >= v->length) {
         return;  /* Out of bounds */

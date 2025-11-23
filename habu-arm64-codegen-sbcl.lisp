@@ -692,17 +692,17 @@
          (arm64-mov 24 0)                  ; x24 = env pointer (callee-saved)
          ;; Evaluate args into x0-x2
          (cond
-             ((= num-args 0) nil)
-             ((= num-args 1)
-              (car arg-codes))
-             ((= num-args 2)
-              (append
-                (car arg-codes)
-                (arm64-mov 2 0)
-                (cadr arg-codes)
-                (arm64-mov 1 0)
-                (arm64-mov 0 2)))
-             ((= num-args 3)
+           ((= num-args 0) nil)
+           ((= num-args 1)
+            (car arg-codes))
+           ((= num-args 2)
+            (append
+              (car arg-codes)
+              (arm64-mov 2 0)
+              (cadr arg-codes)
+              (arm64-mov 1 0)
+              (arm64-mov 0 2)))
+           ((= num-args 3)
             (append
               (car arg-codes)
               (arm64-mov 3 0)
@@ -712,7 +712,7 @@
               (arm64-mov 2 0)
               (arm64-mov 1 4)
               (arm64-mov 0 3)))
-            (t nil))
+           (t nil))
          ;; Call closure code pointer
          (arm64-ldr 9 31 code-slot)        ; x9 = code pointer
          (arm64-blr 9))))                  ; call
