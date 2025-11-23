@@ -28,6 +28,9 @@
 - Extend regression coverage (defun, closure suites) under the new calling convention.
 - Keep stack/arg constants in sync across codegen/tests and document the 8-byte extra stride with `x27` spill base.
 
+### Bootstrap Test Migration (in progress)
+- ARM64 compile+run helper added to `bootstrap/run-all-tests.lisp`; Literals and Arithmetic now use real execution via `run-bytecode` with non-halting mismatches. Division/mod/rem and negative literals still to be fixed in codegen before enabling. Remaining groups still rely on the shim.
+
 ### Next Steps Toward Self-Hosting (Incremental)
 - Replace bootstrap harness shim with real assertions wired to the current ARM64 codegen/runner, or retire the deprecated suite to avoid silent skips.
 - Run the full integration pipeline (e.g., compile current compiler with habu-arm64-codegen-sbcl into a binary and execute via run-bytecode) to validate self-hosted path.
