@@ -2,8 +2,16 @@
 
 **Session Date**: November 22-23, 2025
 **Duration**: ~6 hours
-**Focus**: Stabilizing defun recursion, temporary allocation, and bringing up closures
-**Last Updated**: November 22, 2025 (closure recursion fixed, extended captures)
+**Focus**: Stabilizing defun recursion, temporary allocation, closures, and &rest arguments
+**Last Updated**: November 23, 2025 (closures solid, &rest implemented)
+
+## Latest Updates (November 23, 2025)
+
+- Added `&rest` support for `defun` and `lambda`: parameter parsing now splits fixed/rest, environments include the rest binding, and `param-base` is derived from the allocated offsets (no longer length-based).
+- Calls now pass argument counts in `x23` for both direct function calls and closure calls; the callee builds a proper rest list via runtime `habu_cons`.
+- Rest prologue saves incoming argument registers to temp slots to avoid clobbering them during parameter storage; rest lists are stored in the correct environment slot and loaded like normal variables.
+- Fixed rest-branch skip offsets (add one instruction to branch distance) so zero-argument rest calls do not run the cons path.
+- New regression suite `tests/test_rest_args.lisp` covers rest-only calls, fixed+rest, closures capturing rest, inline lambda rest, and empty rest; `test-defun.lisp` still passes (17/17).
 
 ## Latest Updates (November 22, 2025)
 
