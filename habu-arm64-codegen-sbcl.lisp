@@ -914,7 +914,10 @@
                 (outer-max (if env (apply #'max (mapcar #'cdr env)) -1)))
            (multiple-value-bind (fixed optional rest) (parse-params raw-params)
              (let* ((optional-names (mapcar #'car optional))
-                    (bindings (append fixed optional-names (if rest (list rest) nil)))
+                    (optional-supplied (mapcar (lambda (entry)
+                                                 (or (caddr entry) (gensym "supplied-")))
+                                               optional))
+                    (bindings (append fixed optional-names optional-supplied (if rest (list rest) nil)))
                     (param-env-detect (env-extend (mapcar #'list bindings) env))
                     (opt-inits (mapcar (lambda (entry)
                                          (let ((init (cadr entry)))
@@ -931,7 +934,7 @@
                                                (incf idx)))
                                            captured-offsets)))
                     (body-ir (rewrite-captures body-ir-base capture-map))
-                    (compiled (list lambda-name fixed optional-names opt-inits body-ir captured-offsets (1+ outer-max) rest)))
+                    (compiled (list lambda-name fixed optional-names opt-inits optional-supplied body-ir captured-offsets (1+ outer-max) rest)))
                (push compiled *collected-lambdas*)
                (list 'lambda-ref lambda-name)))))
 
@@ -1017,7 +1020,7 @@
 
 (defun parse-params (params)
   "Split params into fixed list, optional descriptors, and rest symbol.
-Optional descriptors are (name init-form-or-nil). Supplied-p flags not supported yet."
+Optional descriptors are (name init-form supplied-name)."
   (let ((fixed '())
         (optional '())
         (rest nil)
@@ -1029,8 +1032,12 @@ Optional descriptors are (name init-form-or-nil). Supplied-p flags not supported
         ((eq state :fixed) (push (if (symbolp p) p (car p)) fixed))
         ((eq state :optional)
          (cond
-           ((symbolp p) (push (list p nil) optional))
-           ((consp p) (push (list (car p) (cadr p)) optional))))
+           ((symbolp p) (push (list p nil nil) optional))
+           ((consp p)
+            (let ((name (car p))
+                  (init (cadr p))
+                  (supplied (caddr p)))
+              (push (list name init supplied) optional)))))
         ((eq state :rest) (setf rest p))))
     (values (nreverse fixed) (nreverse optional) rest)))
 
@@ -1039,7 +1046,10 @@ Optional descriptors are (name init-form-or-nil). Supplied-p flags not supported
   ;; Create environment with parameters as the initial bindings
   (multiple-value-bind (fixed optional rest) (parse-params params)
     (let* ((optional-names (mapcar #'car optional))
-           (bindings (append fixed optional-names (if rest (list rest) nil)))
+           (optional-supplied (mapcar (lambda (entry)
+                                        (or (caddr entry) (gensym "supplied-")))
+                                      optional))
+           (bindings (append fixed optional-names optional-supplied (if rest (list rest) nil)))
            (param-env (env-extend (mapcar #'list bindings) env))
            (param-base (if bindings
                            (env-lookup (car bindings) param-env)
@@ -1050,12 +1060,12 @@ Optional descriptors are (name init-form-or-nil). Supplied-p flags not supported
                                       (compile-expr init param-env fenv)
                                       '(lit 0))))
                               optional))
-           ;; Add this function to fenv to allow recursive calls
-           ;; Use a placeholder compiled-fn since we're still compiling it
-           (recursive-fenv (cons (cons name nil) fenv))
-           ;; Compile body in the parameter environment with recursive fenv
-           (body-ir (compile-expr body param-env recursive-fenv)))
-      (list name fixed (mapcar #'car optional) opt-inits body-ir nil param-base rest))))
+          ;; Add this function to fenv to allow recursive calls
+          ;; Use a placeholder compiled-fn since we're still compiling it
+          (recursive-fenv (cons (cons name nil) fenv))
+          ;; Compile body in the parameter environment with recursive fenv
+          (body-ir (compile-expr body param-env recursive-fenv)))
+      (list name fixed optional-names opt-inits optional-supplied body-ir nil param-base rest))))
 
 (defun compile-forms-helper (forms env fenv)
   "Compile list of forms, separating defuns from main expression
@@ -1089,14 +1099,15 @@ Optional descriptors are (name init-form-or-nil). Supplied-p flags not supported
            (main-ir (cadr result)))
       (list (append fns (nreverse *collected-lambdas*)) main-ir))))
 
-(defun codegen-function-with-params (params optional-names optional-inits body-ir runtime-addrs &optional fn-offsets current-offset param-base rest-param)
+(defun codegen-function-with-params (params optional-names optional-inits optional-supplied body-ir runtime-addrs &optional fn-offsets current-offset param-base rest-param)
   "Generate code for function with parameters
    Parameters are passed in x0-x7, stored to stack for access as variables"
   (let* ((required-count (length params))
          (optional-count (length optional-names))
+         (supplied-count (length optional-supplied))
          (total-non-rest (+ required-count optional-count))
          (has-rest (not (null rest-param)))
-         (rest-offset (if has-rest (+ param-base total-non-rest) nil))
+         (rest-offset (if has-rest (+ param-base total-non-rest supplied-count) nil))
          (prologue-size 6)
          ;; Cache temp slots for incoming args to preserve register values while building &rest or filling optionals
          (arg0-slot (temp-slot-offset 0))
@@ -1186,10 +1197,21 @@ Optional descriptors are (name init-form-or-nil). Supplied-p flags not supported
                           ((= threshold 1) (arm64-ldr 22 31 arg1-slot))
                           ((= threshold 2) (arm64-ldr 22 31 arg2-slot))
                           (t (arm64-movz 22 0))))
+                      (supplied-offset (* (+ param-base required-count optional-count i) 8))
+                      (store-supplied-flag (append
+                                             (arm64-movz 0 #x10)
+                                             (arm64-sub-imm addr-reg 20 supplied-offset)
+                                             (arm64-str 0 addr-reg 0)))
                       (store-supplied (append
                                        supplied-value
                                        (arm64-sub-imm addr-reg 20 opt-offset)
-                                       (arm64-str 22 addr-reg 0)))
+                                       (arm64-str 22 addr-reg 0)
+                                       store-supplied-flag))
+                      (store-default-flag (append
+                                            (arm64-movz 0 0)
+                                            (arm64-sub-imm addr-reg 20 supplied-offset)
+                                            (arm64-str 0 addr-reg 0)))
+                      (default-block (append default-eval store-default store-default-flag))
                       (skip-default (+ (count-instrs default-block) 1))
                       (skip-to-default (+ (count-instrs store-supplied) 2))
                       (block (append
@@ -1206,11 +1228,11 @@ Optional descriptors are (name init-form-or-nil). Supplied-p flags not supported
          (optional-size (count-instrs optional-code))
          ;; Store remaining extra list to rest param if needed
          (rest-code
-           (when has-rest
-             (let* ((rest-list-reg 13)
-                    (idx-reg 12)
-                    (arg-reg 14)
-                    (candidate-indices (remove-if (lambda (i) (< i total-non-rest))
+          (when has-rest
+            (let* ((rest-list-reg 13)
+                   (idx-reg 12)
+                   (arg-reg 14)
+                    (candidate-indices (remove-if (lambda (i) (< i (+ required-count optional-count)))
                                                   '(2 1 0)))
                     (blocks
                       (mapcar
@@ -1277,10 +1299,10 @@ Optional descriptors are (name init-form-or-nil). Supplied-p flags not supported
 (defun calculate-function-offsets (compiled-fns start-offset runtime-addrs)
   "First pass: calculate function offsets by generating code without fn-offsets"
   (if (consp compiled-fns)
-      (destructuring-bind (name params optional-names optional-inits body-ir captures param-base rest-param)
+(destructuring-bind (name params optional-names optional-inits optional-supplied body-ir captures param-base rest-param)
           (car compiled-fns)
         (let* (;; Generate without fn-offsets to get size
-               (fn-code (codegen-function-with-params params optional-names optional-inits body-ir runtime-addrs nil nil param-base rest-param))
+               (fn-code (codegen-function-with-params params optional-names optional-inits optional-supplied body-ir runtime-addrs nil nil param-base rest-param))
                (fn-size (count-instrs fn-code))
                ;; Recursively calculate rest
                (rest-offsets (calculate-function-offsets (cdr compiled-fns)
@@ -1292,10 +1314,10 @@ Optional descriptors are (name init-form-or-nil). Supplied-p flags not supported
 (defun codegen-functions-with-offsets (compiled-fns fn-offsets current-offset runtime-addrs)
   "Second pass: generate functions with correct fn-offsets"
   (if (consp compiled-fns)
-      (destructuring-bind (name params optional-names optional-inits body-ir captures param-base rest-param)
+(destructuring-bind (name params optional-names optional-inits optional-supplied body-ir captures param-base rest-param)
           (car compiled-fns)
         ;; Generate with fn-offsets for proper function calls
-        (let* ((fn-code (codegen-function-with-params params optional-names optional-inits body-ir runtime-addrs
+        (let* ((fn-code (codegen-function-with-params params optional-names optional-inits optional-supplied body-ir runtime-addrs
                                                       fn-offsets current-offset param-base rest-param))
                (fn-size (count-instrs fn-code))
                ;; Generate rest
@@ -1316,9 +1338,9 @@ Optional descriptors are (name init-form-or-nil). Supplied-p flags not supported
             (new-offsets '())
             (new-codes '()))
         (dolist (fn compiled-fns)
-          (destructuring-bind (name params optional-names optional-inits body-ir captures param-base rest-param)
+          (destructuring-bind (name params optional-names optional-inits optional-supplied body-ir captures param-base rest-param)
               fn
-            (let* ((fn-code (codegen-function-with-params params optional-names optional-inits body-ir runtime-addrs
+            (let* ((fn-code (codegen-function-with-params params optional-names optional-inits optional-supplied body-ir runtime-addrs
                                                           fn-offsets current param-base rest-param))
                    (fn-size (count-instrs fn-code)))
               (push fn-code new-codes)
