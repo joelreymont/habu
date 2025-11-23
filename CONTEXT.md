@@ -100,7 +100,7 @@ The issue appears to be in the function prologue or environment setup. Despite c
   - Updated `codegen-expr` to thread function offsets through
 
 ### Test Infrastructure
-- `test-defun.lisp`: Comprehensive test suite (15/15 passing; added nested multiplication, deep nesting, inline lambda, funcall-of-closure, capture, nested closure, and recursive closure regressions)
+- `test-defun.lisp`: Comprehensive test suite (16/16 passing; added nested multiplication, deep nesting, inline lambda, funcall-of-closure, capture, nested closure, recursive closure, and multi-capture regressions)
 - Various debug scripts in `/tmp/`:
   - `test-simple-defun.lisp`
   - `debug-add.lisp`

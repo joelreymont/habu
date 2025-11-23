@@ -207,6 +207,15 @@
       (incf passed))
     (incf total)
 
+    ;; Test 16: Multiple captures in closure
+    (when (test-defun-expr
+           '((let ((a 2) (b 3) (c 4))
+               (funcall (lambda (x) (+ x (+ a (+ b c)))) 1)))
+           10
+           "Test 16: Multiple captured vars")
+      (incf passed))
+    (incf total)
+
     (format t "=== Summary ===~%")
     (format t "Passed: ~D/~D tests~%" passed total)
     (if (= passed total)
