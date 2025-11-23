@@ -13,6 +13,10 @@
 - High-arity (4–5) calls now supported for functions and closures: callers populate x0–x4, prologues store up to five required params, and rest builders consider extra indices up to 4; new `tests/test_high_arity.lisp` covers 4-arg required, 4th optional with supplied-p, and rest beyond four args.
 - Regression suites: `tests/test_rest_args.lisp` (rest-only, fixed+rest, rest closures, inline rest, empty rest), `tests/test_optional_args.lisp` (optional defaults, supplied, supplied-p, optional+rest), and `tests/test_high_arity.lisp`. `test-defun.lisp` remains green (17/17); rest 5/5; optional 7/7; high-arity 4/4.
 
+## In Progress
+
+- Infinite-arity calling convention not done yet. Currently limited to five register arguments; extra-arg stack path is unimplemented. `tests/test_10_args.lisp` is failing. Next steps: (1) in callers, allocate aligned stack space for args beyond x0–x4, store extras contiguously, set `x25` to that base, and pop after the call; (2) mirror for `call-closure`; (3) in callees, load required/optional/rest beyond register window from `x25` and build rest from both registers and extras.
+
 ## Latest Updates (November 22, 2025)
 
 - Added depth-tracked temporary slots (`temp-slot-offset` with base #x40 and #x8 stride) and threaded `temp-depth` through codegen to prevent nested arithmetic from overwriting saved operands.
