@@ -3,15 +3,15 @@
 **Session Date**: November 22-23, 2025
 **Duration**: ~6 hours
 **Focus**: Stabilizing defun recursion, temporary allocation, and bringing up closures
-**Last Updated**: November 22, 2025 (closure capture bring-up)
+**Last Updated**: November 22, 2025 (closure recursion fixed)
 
 ## Latest Updates (November 22, 2025)
 
 - Added depth-tracked temporary slots (`temp-slot-offset` with base #x40 and #x8 stride) and threaded `temp-depth` through codegen to prevent nested arithmetic from overwriting saved operands.
 - Corrected `if` branch offset bookkeeping; else blocks now start after the test and branch instructions, and then blocks account for else length, fixing recursive BL targets (factorial calls now branch to offset #xF instead of landing in main).
-- Adjusted cons push/pop offset accounting and added nested multiplication regression in `test-defun.lisp`; `./test-defun.lisp` now passes 13/13 tests including factorial, deep nesting, inline lambdas, and funcall of returned closures with captures.
+- Adjusted cons push/pop offset accounting and added nested multiplication regression in `test-defun.lisp`; `./test-defun.lisp` now passes 15/15 tests including factorial, deep nesting, inline lambdas, funcall of returned closures with captures, nested closures, and recursive captured closures.
 - Added a Lisp-based bytecode decoder (`decode-bytecode.lisp`) so inspection no longer depends on the Python helper.
-**Closure Bring-up**: Added capture-supporting closures. Lambdas are lifted into functions; free vars are rewritten to capture slots and stored in a heap vector via runtime `habu_make_vector`/`habu_vector_set`. Closures carry a code pointer (code-base + offset) and the captured vector; `funcall` dispatches via `habu_closure_code` and sets `x24` to the closure env. `run-bytecode` now populates runtime table entries for closure helpers, vector helpers, and code base.
+**Closure Bring-up**: Added capture-supporting closures. Lambdas are lifted into functions; free vars are rewritten to capture slots and stored in a heap vector via runtime `habu_make_vector`/`habu_vector_set`. Closures carry a code pointer (code-base + offset) and the captured vector; `funcall` dispatches via `habu_closure_code` and sets `x24` to the closure env. `run-bytecode` now populates runtime table entries for closure helpers, vector helpers, and code base. Fixed recursive closure env corruption by dedicating separate temp slots for closure/code pointers so argument evaluation no longer clobbers them.
 
 ## Major Breakthroughs
 
@@ -100,7 +100,7 @@ The issue appears to be in the function prologue or environment setup. Despite c
   - Updated `codegen-expr` to thread function offsets through
 
 ### Test Infrastructure
-- `test-defun.lisp`: Comprehensive test suite (13/13 passing; added nested multiplication, deep nesting, inline lambda, funcall-of-closure, and capture regressions)
+- `test-defun.lisp`: Comprehensive test suite (15/15 passing; added nested multiplication, deep nesting, inline lambda, funcall-of-closure, capture, nested closure, and recursive closure regressions)
 - Various debug scripts in `/tmp/`:
   - `test-simple-defun.lisp`
   - `debug-add.lisp`
@@ -201,7 +201,7 @@ ADD x20, sp, #248     ; Set environment base
 - ✅ Defun regression suite (7/7) passing, including factorial and nested multiplication
 - ✅ Fixed critical BL offset calculation bug and corrected `if` offset bookkeeping
 - ✅ Depth-indexed temp slots prevent nested arithmetic overwrites
-- ✅ Closures with capture vectors: lambdas lifted to functions, captured stack values copied into runtime vectors, closures built via `habu_make_closure`, and `funcall` dispatches closure values through runtime `habu_closure_code` while loading env into `x24`
+- ✅ Closures with capture vectors: lambdas lifted to functions, captured stack values copied into runtime vectors, closures built via `habu_make_closure`, and `funcall` dispatches closure values through runtime `habu_closure_code` while loading env into `x24`. Recursive captured closures now execute correctly after isolating closure/code temp slots from argument evaluation.
 - ✅ Functions calling other functions working with two-pass offset calculation
 - ✅ Recursive function calls compile correctly
 - ✅ Stack frame uses callee-saved temporaries (x21-x24) and avoids writing below sp
@@ -209,7 +209,7 @@ ADD x20, sp, #248     ; Set environment base
 
 ## Next Steps for New Session
 
-1. Harden closure env encoding: add bounds checks or type checks for closure_env/vector_ref, and validate recursive closures that capture their own bindings.
+1. Harden closure env encoding: add bounds/type checks for `closure_env`/`vector_ref` and stress GC interaction with captured envs.
 2. Extend closure tests to higher-arity captures, nested closures, and interactions with let/if nesting.
 3. Audit codegen for hex literal consistency and broaden regression coverage beyond defun (integration and stdlib paths).
 

@@ -529,32 +529,30 @@
             (then-ir (caddr ir))
             (else-ir (cadddr ir))
             (test-code (codegen-expr test-ir runtime-addrs fn-offsets current-offset temp-depth))
-            (else-code (codegen-expr else-ir runtime-addrs fn-offsets
-                                     (if current-offset
-                                         (+ current-offset (count-instrs test-code) 2)
-                                         nil)
-                                     temp-depth))
-            (else-len (/ (length else-code) 4))
+            (test-len (count-instrs test-code))
             (then-code (codegen-expr then-ir runtime-addrs fn-offsets
                                      (if current-offset
-                                         (+ current-offset (count-instrs test-code) 2 else-len 1)
+                                         (+ current-offset test-len 2)
                                          nil)
                                      temp-depth))
-            (then-len (/ (length then-code) 4)))
-       ;; Layout: CMP, B.NE → then-code, else-code, B skip-then, then-code
-       ;; True branch jumps over else-code and the skip branch; false executes else-code then branches past then-code
+            (then-len (/ (length then-code) 4))
+            (else-code (codegen-expr else-ir runtime-addrs fn-offsets
+                                     (if current-offset
+                                         (+ current-offset test-len 2 then-len 1)
+                                         nil)
+                                     temp-depth))
+            (else-len (/ (length else-code) 4)))
+       ;; Layout: CMP, B.EQ → else-code, then-code, B skip-else, else-code
+       ;; True branch (non-zero) falls through to then-code; false jumps to else-code
+       ;; Offsets from the B instructions:
+       ;;   B.EQ: offset = then-len + 2 (skip then-code + following B)
+       ;;   B (skip else): offset = else-len + 1
        (append test-code
                (arm64-cmp 0 31)            ; Compare result with 0 (XZR)
-               ;; Branch if NOT equal (non-zero/true) to then-code
-               ;; Skip: else-code (else-len) + B instruction (1) = else-len + 1
-               ;; From current position: +1 for B.NE itself, +else-len for else, +1 for B = +2+else-len
-               (arm64-b-cond 1 (+ 2 else-len))  ; B.NE: jump to then if true
-               else-code
-               ;; Unconditional branch to skip then-code
-               ;; From B instruction to end of then-code: then-len instructions to skip
-               ;; Plus implicit +1 because branch is PC-relative from current instruction
-               (arm64-b (+ 1 then-len))
-               then-code)))
+               (arm64-b-cond 0 (+ 2 then-len)) ; Jump to else if zero
+               then-code
+               (arm64-b (+ 1 else-len))    ; Skip else after then
+               else-code)))
 
     ;; Cons: (cons-call left right) - call runtime cons via table
     ;;   Runtime table pointer is in x19 (saved by prologue)
@@ -669,53 +667,54 @@
     ((has-tag? ir 'call-closure)
      (let* ((fn-ir (cadr ir))
             (arg-irs (caddr ir))
-            (temp-offset (temp-slot-offset temp-depth))
+            (closure-slot (temp-slot-offset temp-depth))
+            (code-slot (temp-slot-offset (+ temp-depth 1)))
             (fn-code (codegen-expr fn-ir runtime-addrs fn-offsets current-offset temp-depth))
             (arg-codes (mapcar (lambda (arg-ir)
                                  (codegen-expr arg-ir runtime-addrs fn-offsets
                                                (if current-offset
                                                    (+ current-offset (count-instrs fn-code) 3)
                                                    nil)
-                                               (+ temp-depth 1)))
+                                               (+ temp-depth 2)))
                                arg-irs))
             (num-args (length arg-irs)))
        (append
          fn-code                           ; closure in x0
-         (arm64-str 0 31 temp-offset)      ; save closure value
+         (arm64-str 0 31 closure-slot)     ; save closure value
          ;; Get code pointer via runtime helper
          (arm64-ldr 9 19 32)               ; x9 = closure_code
          (arm64-blr 9)                     ; x0 = code pointer
-         (arm64-str 0 31 (+ temp-offset 8))      ; save code pointer
+         (arm64-str 0 31 code-slot)        ; save code pointer
          ;; Load closure env into x24
-         (arm64-ldr 0 31 temp-offset)      ; x0 = closure value
+         (arm64-ldr 0 31 closure-slot)     ; x0 = closure value
          (arm64-ldr 9 19 40)               ; x9 = closure_env
          (arm64-blr 9)                     ; x0 = env pointer
          (arm64-mov 24 0)                  ; x24 = env pointer (callee-saved)
          ;; Evaluate args into x0-x2
          (cond
-           ((= num-args 0) nil)
-           ((= num-args 1)
-            (car arg-codes))
-           ((= num-args 2)
+             ((= num-args 0) nil)
+             ((= num-args 1)
+              (car arg-codes))
+             ((= num-args 2)
+              (append
+                (car arg-codes)
+                (arm64-mov 2 0)
+                (cadr arg-codes)
+                (arm64-mov 1 0)
+                (arm64-mov 0 2)))
+             ((= num-args 3)
             (append
               (car arg-codes)
-              (arm64-mov 2 0)
+              (arm64-mov 3 0)
               (cadr arg-codes)
-              (arm64-mov 1 0)
-              (arm64-mov 0 2)))
-           ((= num-args 3)
-           (append
-             (car arg-codes)
-             (arm64-mov 3 0)
-             (cadr arg-codes)
-             (arm64-mov 4 0)
-             (caddr arg-codes)
-             (arm64-mov 2 0)
-             (arm64-mov 1 4)
-             (arm64-mov 0 3)))
-           (t nil))
+              (arm64-mov 4 0)
+              (caddr arg-codes)
+              (arm64-mov 2 0)
+              (arm64-mov 1 4)
+              (arm64-mov 0 3)))
+            (t nil))
          ;; Call closure code pointer
-         (arm64-ldr 9 31 (+ temp-offset 8))      ; x9 = code pointer
+         (arm64-ldr 9 31 code-slot)        ; x9 = code pointer
          (arm64-blr 9))))                  ; call
 
     ;; Function call: (call-fn name arg-irs)

@@ -183,6 +183,30 @@
       (incf passed))
     (incf total)
 
+    ;; Test 14: Nested closure capture chain
+    (when (test-defun-expr
+           '((defun outer (x)
+               (lambda (y)
+                 (lambda (z) (+ x (+ y z)))))
+             (funcall (funcall (outer 1) 2) 3))
+           6
+           "Test 14: Nested closure capture chain")
+      (incf passed))
+    (incf total)
+
+    ;; Test 15: Recursive closure with capture
+    (when (test-defun-expr
+           '((defun make-counter (n)
+               (lambda (k)
+                 (if (= k 0)
+                     n
+                     (funcall (make-counter (+ n 1)) (- k 1)))))
+             (funcall (make-counter 5) 3))
+           8
+           "Test 15: Recursive closure with capture")
+      (incf passed))
+    (incf total)
+
     (format t "=== Summary ===~%")
     (format t "Passed: ~D/~D tests~%" passed total)
     (if (= passed total)
