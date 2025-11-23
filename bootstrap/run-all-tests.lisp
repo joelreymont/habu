@@ -1,6 +1,11 @@
 ;;;; Comprehensive Test Suite for Habu Compiler
 ;;;; Uses test harness to run all compiler tests
 
+(let* ((here (or *load-truename*
+                 (merge-pathnames "run-all-tests.lisp" *default-pathname-defaults*)))
+       (root (make-pathname :name nil :type nil :defaults here)))
+  (setf *default-pathname-defaults* root))
+
 (load "test-harness.lisp")
 (in-package :habu-compiler)
 
