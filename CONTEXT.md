@@ -101,6 +101,7 @@ The issue appears to be in the function prologue or environment setup. Despite c
 
 ### Test Infrastructure
 - `test-defun.lisp`: Comprehensive test suite (17/17 passing; added nested multiplication, deep nesting, inline lambda, funcall-of-closure, capture, nested closure, recursive closure, multi-capture, and higher-arity capture regressions)
+- `tests/test_closure_integration.lisp`: Integration smoke for closures (make-adder, nested closure, recursive counter) using `run-bytecode`.
 - Various debug scripts in `/tmp/`:
   - `test-simple-defun.lisp`
   - `debug-add.lisp`
