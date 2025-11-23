@@ -341,7 +341,9 @@
     ((has-tag? ir 'lit)
      (let* ((value (cadr ir))
             (tagged (ash value 4)))  ; Tag fixnum: value << 4
-       (arm64-movz 0 (logand tagged #xFFFF))))
+       (if (and (>= tagged 0) (< tagged #x10000))
+           (arm64-movz 0 tagged)
+           (arm64-load-addr 0 tagged))))
 
     ;; Variable: load from stack (negative offset from x20 = environment base)
     ((has-tag? ir 'var)

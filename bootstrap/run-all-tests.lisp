@@ -56,6 +56,9 @@
   (test-case fixnum-large
     (assert-equal-arm64 '1000 1000))
 
+  (test-case fixnum-negative
+    (assert-equal-arm64 '-100 -100))
+
   (test-case fixnum-zero
     (assert-equal-arm64 '0 0)))
 
