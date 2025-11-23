@@ -1,5 +1,5 @@
 #!/usr/bin/env sbcl --script
-;;; Test &rest parameter handling for functions, lambdas, and closures
+;;; Test &optional parameter defaults, supplied args, and interaction with &rest
 (load "sbcl-habu-shim.lisp")
 (load "habu-arm64-codegen-sbcl.lisp")
 
@@ -19,7 +19,7 @@
 
 (defun run-case (forms expected)
   (let* ((code (habu-sbcl-codegen:compile-program-with-functions forms))
-         (file "/tmp/test-rest.bin"))
+         (file "/tmp/test-optional.bin"))
     (write-bytecode-to-file code file)
     (let* ((output (with-output-to-string (s)
                      (sb-ext:run-program "./run-bytecode" (list file) :output s :search t)))
@@ -28,32 +28,22 @@
       (format t "Output: ~A~%" output)
       (and result (= result expected)))))
 
-(let* ((cases '(((defun list-length (lst)
-                   (if (= lst 0)
-                       0
-                       (+ 1 (list-length (cdr lst)))))
-                 (defun count-all (&rest args)
-                   (list-length args))
-                 (count-all 5 6 7))
+(let* ((cases '(((defun opt-default (&optional x) x)
+                 (opt-default))
+                ((defun opt-supplied (&optional x) x)
+                 (opt-supplied 7))
+                ((defun opt-with-default (a &optional (b (+ a 1))) (+ a b))
+                 (opt-with-default 5))
+                ((defun opt-with-default (a &optional (b (+ a 1))) (+ a b))
+                 (opt-with-default 5 20))
                 ((defun list-length (lst)
                    (if (= lst 0)
                        0
                        (+ 1 (list-length (cdr lst)))))
-                 (defun drop-first (x &rest rest)
-                   (+ x (list-length rest)))
-                 (drop-first 10 20 30))
-                ((defun make-rest-closure (&rest xs)
-                   (lambda () (car xs)))
-                 (funcall (make-rest-closure 9 10)))
-                (((lambda (&rest xs) (car xs)) 4 5))
-                ((defun list-length (lst)
-                   (if (= lst 0)
-                       0
-                       (+ 1 (list-length (cdr lst)))))
-                 (defun empty-rest (&rest xs)
-                   (list-length xs))
-                 (empty-rest))))
-       (expecteds '(3 12 9 4 0))
+                 (defun opt-rest (a &optional b &rest r)
+                   (+ a (+ (if b b 0) (list-length r))))
+                 (opt-rest 10 20 30))))
+       (expecteds '(0 7 11 25 31))
        (passed 0)
        (total 0))
   (loop for forms in cases
