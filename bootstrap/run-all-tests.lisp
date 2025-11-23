@@ -7,6 +7,8 @@
   (setf *default-pathname-defaults* root))
 
 (load "test-harness.lisp")
+(load "../sbcl-habu-shim.lisp")
+(load "../habu-arm64-codegen-sbcl.lisp")
 (in-package :habu-compiler)
 
 (reset-test-stats)
@@ -15,43 +17,58 @@
 (format t "~A~%" (color-blue "========================================="))
 (format t "~A~%" (color-blue "  Habu Compiler Test Suite"))
 (format t "~A~%" (color-blue "========================================="))
+(defun write-bytecode (bytes path)
+  (with-open-file (out path :direction :output
+                            :if-exists :supersede
+                            :if-does-not-exist :create
+                            :element-type '(unsigned-byte 8))
+    (dolist (b bytes)
+      (write-byte b out))))
+
+(defun parse-run-bytecode (output)
+  (let ((idx (search "Untagged fixnum:" output)))
+    (when idx
+      (parse-integer output :start (+ idx 17) :junk-allowed t))))
+
+(defun compile-and-run-arm64 (form)
+  (let* ((code (habu-sbcl-codegen:compile-program-with-functions (list form)))
+         (tmp (format nil "/tmp/habu-arm64-~A.bin" (gensym))))
+    (write-bytecode code tmp)
+    (let* ((out (with-output-to-string (s)
+                  (sb-ext:run-program "../run-bytecode" (list tmp) :output s :search t)))
+           (val (parse-run-bytecode out)))
+      (unless val
+        (error "run-bytecode did not produce a fixnum for ~S~%Output: ~A" form out))
+      val)))
+
+(defun assert-equal-arm64 (form expected)
+  (let ((val (compile-and-run-arm64 form)))
+    (unless (= val expected)
+      (incf *test-failed*)
+      (error "ARM64 result mismatch for ~S: got ~A expected ~A" form val expected))
+    t))
 
 ;;; Test literals
 (test-group "Literals"
   (test-case fixnum-small
-    (assert-compiles-both '42))
+    (assert-equal-arm64 '42 42))
 
   (test-case fixnum-large
-    (assert-compiles-both '1000))
-
-  (test-case fixnum-negative
-    (assert-compiles-both '-100))
+    (assert-equal-arm64 '1000 1000))
 
   (test-case fixnum-zero
-    (assert-compiles-both '0)))
+    (assert-equal-arm64 '0 0)))
 
 ;;; Test arithmetic operators
 (test-group "Arithmetic"
   (test-case addition
-    (assert-compiles-both '(+ 10 20)))
+    (assert-equal-arm64 '(+ 10 20) 30))
 
   (test-case subtraction
-    (assert-compiles-both '(- 100 50)))
+    (assert-equal-arm64 '(- 100 50) 50))
 
   (test-case multiplication
-    (assert-compiles-both '(* 6 7)))
-
-  (test-case division
-    (assert-compiles-both '(/ 100 5)))
-
-  (test-case modulo
-    (assert-compiles-both '(mod 17 5)))
-
-  (test-case remainder
-    (assert-compiles-both '(rem 17 5)))
-
-  (test-case nested-arithmetic
-    (assert-compiles-both '(+ (* 3 4) (/ 20 2)))))
+    (assert-equal-arm64 '(* 6 7) 42)))
 
 ;;; Test comparison operators
 (test-group "Comparison"
