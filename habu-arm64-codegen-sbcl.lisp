@@ -18,6 +18,8 @@
 (defparameter *temp-slot-guard* #x180)
 (defparameter *arg-spill-base* #x200)
 (defparameter *arg-spill-stride* #x8)
+(defparameter *max-arg-spill-count*
+  (/ (- *stack-frame-size* *arg-spill-base*) *arg-spill-stride*))
 
 (defun collect-var-offsets (ir)
   "Collect all variable offsets referenced in IR."
@@ -686,6 +688,7 @@
             (code-slot (temp-slot-offset (+ temp-depth 1)))
             (num-args (length arg-irs))
             (extra-count (max 0 (- num-args 5)))
+            (max-capacity (1- *max-arg-spill-count*))
             (fn-code (codegen-expr fn-ir runtime-addrs fn-offsets current-offset temp-depth))
             (setup (append
                      fn-code                           ; closure in x0
@@ -703,6 +706,8 @@
             (cursor (if current-offset
                         (+ current-offset (count-instrs stage-code))
                         nil)))
+       (when (> num-args max-capacity)
+         (error "call-closure has ~A args; exceeds spill capacity ~A" num-args max-capacity))
        ;; Stage args using stable base x27 (sp at entry)
        (loop for arg-ir in arg-irs
              for idx from 0 do
@@ -754,10 +759,13 @@
             (arg-irs (caddr ir))
             (num-args (length arg-irs))
             (extra-count (max 0 (- num-args 5)))
+            (max-capacity (1- *max-arg-spill-count*))
             (fn-entry (assoc fn-name fn-offsets))
             (fn-offset (if fn-entry (cadr fn-entry) 0)))
-        (let* ((cursor (if current-offset (+ current-offset 1) nil))
-               (stage-code (arm64-add-imm 27 31 0)))
+       (when (> num-args max-capacity)
+         (error "call-fn ~A has ~A args; exceeds spill capacity ~A" fn-name num-args max-capacity))
+       (let* ((cursor (if current-offset (+ current-offset 1) nil))
+              (stage-code (arm64-add-imm 27 31 0)))
          ;; Stage all arguments in order into the spill area using x27 as a stable base
          (loop for arg-ir in arg-irs
                for idx from 0 do

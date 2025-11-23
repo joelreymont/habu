@@ -3,7 +3,7 @@
 **Session Date**: November 22-23, 2025
 **Duration**: ~6 hours
 **Focus**: Stabilizing defun recursion, temporary allocation, closures, &rest/&optional, and unlimited-arity calls
-**Last Updated**: November 23, 2025 (unlimited args staged in-frame, rest loop fixed, 10+ arg tests passing)
+**Last Updated**: November 23, 2025 (unlimited args staged in-frame with spill guard, rest loop fixed, 10+ arg tests passing)
 
 ## Latest Updates (November 23, 2025)
 
@@ -11,6 +11,7 @@
 - Stack frame size raised to #xFF0; temp guard unchanged (#x180). Required params now store correctly beyond five arguments by loading indices >=5 from `x25`.
 - `&rest` rebuilt as a counted loop (`idx = x23-1` down to `total-non-rest`) with corrected branch offsets; optionals beyond the register window load from `x25` with fixed branch skips.
 - `tests/test_10_args.lisp` updated for CL semantics on the opt12 default case and now passes 9/9. Verified `tests/test_optional_args.lisp` (7/7) and `tests/test_rest_args.lisp` (5/5).
+- Added a compile-time spill guard: `*max-arg-spill-count*` derived from the `#xFF0` frame and `#x200` spill base; `call-fn`/`call-closure` now raise a clear error if arg count would exceed the in-frame spill area.
 
 ## In Progress
 
