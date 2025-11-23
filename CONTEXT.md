@@ -17,6 +17,12 @@
 
 - Infinite-arity calling convention not done yet. Currently limited to five register arguments; extra-arg stack path is unimplemented. `tests/test_10_args.lisp` is failing. Next steps: (1) in callers, allocate aligned stack space for args beyond x0–x4, store extras contiguously, set `x25` to that base, and pop after the call; (2) mirror for `call-closure`; (3) in callees, load required/optional/rest beyond register window from `x25` and build rest from both registers and extras.
 
+### Plan for Unlimited Extras
+- Refactor `call-fn`: evaluate extras, allocate an aligned stack area for them, store extras contiguously, set `x25` to the base, include these instructions in BL PC accounting, and restore `sp` after the call.
+- Refactor `call-closure` with the same extra handling.
+- Update callee prologue: load required/optional parameters beyond registers from `x25`; generate a loop to build `&rest` from all arguments using `x23`/`x25` rather than fixed indices.
+- Extend tests (e.g., `tests/test_10_args.lisp`) for 10+ arguments; rerun regressions and capture results.
+
 ## Latest Updates (November 22, 2025)
 
 - Added depth-tracked temporary slots (`temp-slot-offset` with base #x40 and #x8 stride) and threaded `temp-depth` through codegen to prevent nested arithmetic from overwriting saved operands.
