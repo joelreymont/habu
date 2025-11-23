@@ -1,0 +1,55 @@
+#!/usr/bin/env sbcl --script
+;;; Minimal coverage for arity >3 with required, optional, and rest args
+(load "sbcl-habu-shim.lisp")
+(load "habu-arm64-codegen-sbcl.lisp")
+
+(defun write-bytecode-to-file (code-list filename)
+  (with-open-file (out filename :direction :output :if-exists :supersede :if-does-not-exist :create :element-type '(unsigned-byte 8))
+    (dolist (byte code-list)
+      (write-byte byte out))))
+
+(defun parse-result (output)
+  (let* ((lines (loop for i = 0 then (1+ j)
+                      as j = (position #\Newline output :start i)
+                      collect (subseq output i j)
+                      while j))
+         (line (find "Untagged fixnum:" lines :test (lambda (x y) (search x y)))))
+    (when line
+      (parse-integer line :start (+ 17 (search "Untagged fixnum:" line)) :junk-allowed t))))
+
+(defun run-case (forms expected)
+  (let* ((code (habu-sbcl-codegen:compile-program-with-functions forms))
+         (file "/tmp/test-high-arity.bin"))
+    (write-bytecode-to-file code file)
+    (let* ((output (with-output-to-string (s)
+                     (sb-ext:run-program "./run-bytecode" (list file) :output s :search t)))
+           (result (parse-result output)))
+      (format t "Forms: ~S~%" forms)
+      (format t "Output: ~A~%" output)
+      (and result (= result expected)))))
+
+(let* ((cases '(((defun sum4 (a b c d) (+ (+ a b) (+ c d)))
+                 (sum4 1 2 3 4))
+                ((defun opt4 (a b c &optional (d 5 supplied))
+                   (if supplied d 0))
+                 (opt4 1 2 3))
+                ((defun opt4 (a b c &optional (d 5 supplied))
+                   (if supplied d 0))
+                 (opt4 1 2 3 9))
+                ((defun list-length (lst)
+                   (if (= lst 0)
+                       0
+                       (+ 1 (list-length (cdr lst)))))
+                 (defun rest4 (a b c d &rest r)
+                   (list-length r))
+                 (rest4 1 2 3 4 5))))
+       (expecteds '(10 0 9 1))
+       (passed 0)
+       (total 0))
+  (loop for forms in cases
+        for expected in expecteds do
+          (incf total)
+          (when (run-case forms expected)
+            (incf passed)))
+  (format t "Passed ~A/~A~%" passed total)
+  (sb-ext:quit :unix-status (if (= passed total) 0 1)))
