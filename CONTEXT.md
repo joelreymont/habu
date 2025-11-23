@@ -9,8 +9,9 @@
 
 - Added `&optional` support with supplied-p flags: parameter parsing keeps optional descriptors (including supplied-p names), prologue saves incoming args, and each optional binding compares `x23` (arg count) against its threshold to either load the supplied argument from saved registers (and store supplied-p as tagged #x10) or evaluate/store the default init form with supplied-p = #x0. Defaults compile in-Lisp; supplied path now branches with correct skip offsets so defaults are skipped when an arg is present.
 - `&rest` remains supported: arg count (`x23`) is set at call sites for functions and closures; callee conses args beyond fixed+optional into a rest list and stores it in the environment. Skip offsets were corrected to avoid consing when no extras are present.
-- Stack frame enlarged to 1KB with temp guard raised (#x160) to leave headroom for optionals/rest list construction while keeping temps below the env base.
-- New regression suites: `tests/test_rest_args.lisp` (rest-only, fixed+rest, rest closures, inline rest, empty rest) and `tests/test_optional_args.lisp` (optional defaults, supplied, default expressions, optional+rest). `test-defun.lisp` remains green (17/17), rest suite 5/5, optional suite 5/5.
+- Stack frame enlarged to 1KB with temp guard raised (#x180) to leave headroom for optionals/rest list construction while keeping temps below the env base.
+- High-arity (4–5) calls now supported for functions and closures: callers populate x0–x4, prologues store up to five required params, and rest builders consider extra indices up to 4; new `tests/test_high_arity.lisp` covers 4-arg required, 4th optional with supplied-p, and rest beyond four args.
+- Regression suites: `tests/test_rest_args.lisp` (rest-only, fixed+rest, rest closures, inline rest, empty rest), `tests/test_optional_args.lisp` (optional defaults, supplied, supplied-p, optional+rest), and `tests/test_high_arity.lisp`. `test-defun.lisp` remains green (17/17); rest 5/5; optional 7/7; high-arity 4/4.
 
 ## Latest Updates (November 22, 2025)
 
