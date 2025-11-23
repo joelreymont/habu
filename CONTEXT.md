@@ -3,15 +3,14 @@
 **Session Date**: November 22-23, 2025
 **Duration**: ~6 hours
 **Focus**: Stabilizing defun recursion, temporary allocation, closures, and &rest arguments
-**Last Updated**: November 23, 2025 (closures solid, &rest implemented)
+**Last Updated**: November 23, 2025 (closures solid, &rest implemented, &optional added)
 
 ## Latest Updates (November 23, 2025)
 
-- Added `&rest` support for `defun` and `lambda`: parameter parsing now splits fixed/rest, environments include the rest binding, and `param-base` is derived from the allocated offsets (no longer length-based).
-- Calls now pass argument counts in `x23` for both direct function calls and closure calls; the callee builds a proper rest list via runtime `habu_cons`.
-- Rest prologue saves incoming argument registers to temp slots to avoid clobbering them during parameter storage; rest lists are stored in the correct environment slot and loaded like normal variables.
-- Fixed rest-branch skip offsets (add one instruction to branch distance) so zero-argument rest calls do not run the cons path.
-- New regression suite `tests/test_rest_args.lisp` covers rest-only calls, fixed+rest, closures capturing rest, inline lambda rest, and empty rest; `test-defun.lisp` still passes (17/17).
+- Added `&optional` support: parameter parsing keeps optional descriptors, prologue saves incoming args, and each optional binding compares `x23` (arg count) against its threshold to either load the supplied argument from saved registers or evaluate/store the default init form. Defaults compile in-Lisp; supplied path now branches with correct skip offsets so defaults are skipped when an arg is present.
+- `&rest` remains supported: arg count (`x23`) is set at call sites for functions and closures; callee conses args beyond fixed+optional into a rest list and stores it in the environment. Skip offsets were corrected to avoid consing when no extras are present.
+- Stack frame enlarged to 1KB with temp guard raised (#x160) to leave headroom for optionals/rest list construction while keeping temps below the env base.
+- New regression suites: `tests/test_rest_args.lisp` (rest-only, fixed+rest, rest closures, inline rest, empty rest) and `tests/test_optional_args.lisp` (optional defaults, supplied, default expressions, optional+rest). `test-defun.lisp` remains green (17/17), rest suite 5/5, optional suite 5/5.
 
 ## Latest Updates (November 22, 2025)
 
