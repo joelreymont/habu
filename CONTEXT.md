@@ -27,6 +27,11 @@
 - Extend regression coverage (defun, closure suites) under the new calling convention.
 - Keep stack/arg constants in sync across codegen/tests and document the 8-byte extra stride with `x27` spill base.
 
+### Next Steps Toward Self-Hosting (Incremental)
+- Replace bootstrap harness shim with real assertions wired to the current ARM64 codegen/runner, or retire the deprecated suite to avoid silent skips.
+- Run the full integration pipeline (e.g., compile current compiler with habu-arm64-codegen-sbcl into a binary and execute via run-bytecode) to validate self-hosted path.
+- Add overflow handling for arg spill beyond #xFF0 or implement dynamic spill allocation to reduce fixed frame size.
+
 ### Revised Master Plan (Small Steps)
 1) Fix caller side (already mostly done): ensure `call-fn` and `call-closure` stack adjust is 16-byte aligned, `x25` set only when extras exist, and `sp` restored after call. Re-run load to confirm helpers in scope.
 2) Rewrite callee optional load for thresholds >=5 to use `emit-extra-ldr`.
