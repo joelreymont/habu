@@ -214,6 +214,31 @@ ADD x20, sp, #248     ; Set environment base
 2. Extend closure tests to higher-arity captures, nested closures, and interactions with let/if nesting.
 3. Audit codegen for hex literal consistency and broaden regression coverage beyond defun (integration and stdlib paths).
 
+## Forward Plan: Full Self-Hosting ARM64 Lisp Compiler (Spec-Compliant)
+
+1. Complete Functionality and Control Flow
+   - Add remaining special forms: progn, cond refinements, when/unless, and/or short-circuit, loop/dolist/dotimes (inline first; later with closures).
+   - Implement tail-call optimization for proper recursion semantics where required.
+2. Data Types and Runtime
+   - Implement strings, vectors, symbols, packages, hash tables with tagging and GC integration.
+   - Add numeric tower support: bignums, ratios, floats, plus arithmetic/type predicates.
+   - Finalize tagging for closures/functions and ensure runtime helpers cover all accessors with bounds/type checks.
+3. Closures and Functions
+   - Support varargs (&rest/&optional) in codegen and calling convention.
+   - Broaden closure tests: higher-arity captures, nested recursion, GC stress; add bounds/type checks in codegen paths.
+4. Macro System and Reader/Printer
+   - Implement macro expansion pipeline, reader macros, quasiquote/unquote handling.
+   - Ensure printer covers all runtime types with correct escaping.
+5. Exceptions, Multiple Values, and Conditions
+   - Add multiple-value return/bindings.
+   - Implement condition system subset for compliance; error signaling/handling.
+6. Self-Hosting Path
+   - Bootstrap compiler in SBCL; generate ARM64 machine code for the compiler itself, then run it under the tiny C runtime.
+   - Validate against spec-aligned test suites (portable CL tests) and integration harnesses.
+7. Tooling and Regression
+   - Maintain hex literal consistency in codegen; add integration tests via `run-bytecode` for higher-level features.
+   - Keep CONTEXT.md updated after each milestone; commit per logical feature with tests.
+
 ## Validation Notes
 
 - BL targets verified: recursive `fact` call now branches to offset #xF instead of falling into main.
