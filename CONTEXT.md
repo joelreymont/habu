@@ -3,7 +3,7 @@
 **Session Date**: November 22-23, 2025
 **Duration**: ~6 hours
 **Focus**: Stabilizing defun recursion, temporary allocation, and bringing up closures
-**Last Updated**: November 22, 2025 (closure recursion fixed)
+**Last Updated**: November 22, 2025 (closure recursion fixed, extended captures)
 
 ## Latest Updates (November 22, 2025)
 
@@ -100,7 +100,7 @@ The issue appears to be in the function prologue or environment setup. Despite c
   - Updated `codegen-expr` to thread function offsets through
 
 ### Test Infrastructure
-- `test-defun.lisp`: Comprehensive test suite (16/16 passing; added nested multiplication, deep nesting, inline lambda, funcall-of-closure, capture, nested closure, recursive closure, and multi-capture regressions)
+- `test-defun.lisp`: Comprehensive test suite (17/17 passing; added nested multiplication, deep nesting, inline lambda, funcall-of-closure, capture, nested closure, recursive closure, multi-capture, and higher-arity capture regressions)
 - Various debug scripts in `/tmp/`:
   - `test-simple-defun.lisp`
   - `debug-add.lisp`

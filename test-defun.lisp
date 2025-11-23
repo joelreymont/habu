@@ -216,6 +216,16 @@
       (incf passed))
     (incf total)
 
+    ;; Test 17: Higher-arity captures and args
+    (when (test-defun-expr
+           '((defun make-sum (a b c)
+               (lambda (x y) (+ a (+ b (+ c (+ x y))))))
+             (funcall (make-sum 1 2 3) 4 5))
+           15
+           "Test 17: Higher-arity captures and args")
+      (incf passed))
+    (incf total)
+
     (format t "=== Summary ===~%")
     (format t "Passed: ~D/~D tests~%" passed total)
     (if (= passed total)
