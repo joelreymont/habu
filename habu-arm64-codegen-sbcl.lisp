@@ -12,6 +12,12 @@
 
 (defparameter *runtime-addrs* nil)
 (defparameter *collected-lambdas* nil)
+(defparameter *stack-frame-size* #xFF0)
+(defparameter *env-base-offset* #x180)
+(defparameter *temp-slot-base* #x40)
+(defparameter *temp-slot-guard* #x180)
+(defparameter *arg-spill-base* #x200)
+(defparameter *arg-spill-stride* #x8)
 
 (defun collect-var-offsets (ir)
   "Collect all variable offsets referenced in IR."
@@ -223,7 +229,9 @@
 (defun arm64-b (offset)
   "B offset - Unconditional branch (offset in instructions, signed 26-bit)"
   (let* ((base #x14000000)
-         (offset-bits (logand offset #x3FFFFFF))
+         (offset-bits (if (< offset 0)
+                          (logand (+ offset #x4000000) #x3FFFFFF)
+                          (logand offset #x3FFFFFF)))
          (encoded (logior base offset-bits)))
     (encode-word-le encoded)))
 
@@ -311,10 +319,17 @@
 
 (defun temp-slot-offset (temp-depth)
   "Stack offset (bytes) for temporary storage at a given nesting depth."
-  (let ((offset (+ #x40 (* temp-depth #x8))))
+  (let ((offset (+ *temp-slot-base* (* temp-depth #x8))))
     ;; Keep temps within the stack frame and below env base
-    (when (>= offset #x180)
+    (when (>= offset *temp-slot-guard*)
       (error "temp-depth ~A exceeds frame temp area (offset #x~X)" temp-depth offset))
+    offset))
+
+(defun arg-spill-offset (index)
+  "Stack offset for staged arguments before calls (8-byte stride)."
+  (let ((offset (+ *arg-spill-base* (* index *arg-spill-stride*))))
+    (when (>= offset *stack-frame-size*)
+      (error "argument index ~A exceeds spill area (offset #x~X)" index offset))
     offset))
 
 (defun codegen-expr (ir runtime-addrs &optional fn-offsets current-offset (temp-depth 0))
@@ -669,196 +684,128 @@
             (arg-irs (caddr ir))
             (closure-slot (temp-slot-offset temp-depth))
             (code-slot (temp-slot-offset (+ temp-depth 1)))
-            (fn-code (codegen-expr fn-ir runtime-addrs fn-offsets current-offset temp-depth))
-            (args-offset-base (if current-offset
-                                  (+ current-offset (count-instrs fn-code) 8)
-                                  nil))
-            (arg-codes (mapcar (lambda (arg-ir)
-                                 (codegen-expr arg-ir runtime-addrs fn-offsets
-                                               args-offset-base
-                                               (+ temp-depth 2)))
-                              arg-irs))
             (num-args (length arg-irs))
             (extra-count (max 0 (- num-args 5)))
-            (extra-irs (nthcdr 5 arg-irs))
-            (extra-codes (reverse (mapcar (lambda (arg-ir)
-                                            (codegen-expr arg-ir runtime-addrs fn-offsets current-offset (+ temp-depth 3)))
-                                          extra-irs)))
-            (extra-push (apply #'append
-                               (mapcar (lambda (code)
-                                         (append code (arm64-str-pre 0 31 -16)))
-                                       extra-codes)))
-            (arg-count-code (arm64-movz 23 num-args))
-            (set-extra-ptr (if (> extra-count 0)
-                               (arm64-mov 25 31)
-                               (arm64-movz 25 0))))
-       (append
-         fn-code                           ; closure in x0
-         (arm64-str 0 31 closure-slot)     ; save closure value
-         ;; Get code pointer via runtime helper
-         (arm64-ldr 9 19 32)               ; x9 = closure_code
-         (arm64-blr 9)                     ; x0 = code pointer
-         (arm64-str 0 31 code-slot)        ; save code pointer
-         ;; Load closure env into x24
-         (arm64-ldr 0 31 closure-slot)     ; x0 = closure value
-         (arm64-ldr 9 19 40)               ; x9 = closure_env
-         (arm64-blr 9)                     ; x0 = env pointer
-         (arm64-mov 24 0)                  ; x24 = env pointer (callee-saved)
-         ;; Evaluate args into x0-x4 (rest via extra pushes)
-         extra-push
-         (cond
-           ((= num-args 0) nil)
-           ((= num-args 1)
-            (car arg-codes))
-           ((= num-args 2)
-            (append
-              (car arg-codes)
-              (arm64-mov 2 0)
-              (cadr arg-codes)
-              (arm64-mov 1 0)
-              (arm64-mov 0 2)))
-           ((= num-args 3)
-            (append
-              (car arg-codes)
-              (arm64-mov 3 0)
-              (cadr arg-codes)
-              (arm64-mov 4 0)
-              (caddr arg-codes)
-              (arm64-mov 2 0)
-              (arm64-mov 1 4)
-              (arm64-mov 0 3)))
-          ((= num-args 4)
-           (append
-             (car arg-codes)
-             (arm64-mov 4 0)
-             (cadr arg-codes)
-             (arm64-mov 5 0)
-             (caddr arg-codes)
-             (arm64-mov 2 0)
-             (cadddr arg-codes)
-             (arm64-mov 3 0)
-             (arm64-mov 1 5)
-             (arm64-mov 0 4)))
-          ((= num-args 5)
-           (append
-             (car arg-codes)
-             (arm64-mov 4 0)
-             (cadr arg-codes)
-             (arm64-mov 5 0)
-             (caddr arg-codes)
-             (arm64-mov 2 0)
-             (cadddr arg-codes)
-             (arm64-mov 3 0)
-             (nth 4 arg-codes)
-             (arm64-mov 6 0)
-             (arm64-mov 1 5)
-             (arm64-mov 0 4)
-             (arm64-mov 4 6)))
-           (t nil))
-         set-extra-ptr
-         arg-count-code
-         ;; Call closure code pointer
-         (arm64-ldr 9 31 code-slot)        ; x9 = code pointer
-         (arm64-blr 9)
-         (if (> extra-count 0)
-             (arm64-add-imm 31 31 (* extra-count 16))
-             nil))))                  ; call
+            (fn-code (codegen-expr fn-ir runtime-addrs fn-offsets current-offset temp-depth))
+            (setup (append
+                     fn-code                           ; closure in x0
+                     (arm64-str 0 31 closure-slot)     ; save closure value
+                     ;; Get code pointer via runtime helper
+                     (arm64-ldr 9 19 32)               ; x9 = closure_code
+                     (arm64-blr 9)                     ; x0 = code pointer
+                     (arm64-str 0 31 code-slot)        ; save code pointer
+                     ;; Load closure env into x24
+                     (arm64-ldr 0 31 closure-slot)     ; x0 = closure value
+                     (arm64-ldr 9 19 40)               ; x9 = closure_env
+                     (arm64-blr 9)                     ; x0 = env pointer
+                     (arm64-mov 24 0)))                ; x24 = env pointer (callee-saved)
+            (stage-code (append setup (arm64-add-imm 27 31 0)))
+            (cursor (if current-offset
+                        (+ current-offset (count-instrs stage-code))
+                        nil)))
+       ;; Stage args using stable base x27 (sp at entry)
+       (loop for arg-ir in arg-irs
+             for idx from 0 do
+               (let* ((arg-code (codegen-expr arg-ir runtime-addrs fn-offsets cursor (+ temp-depth 2)))
+                      (store (arm64-str 0 27 (arg-spill-offset idx)))
+                      (block (append arg-code store))
+                      (block-len (count-instrs block)))
+                 (setf stage-code (append stage-code block))
+                 (when cursor (incf cursor block-len))))
+       (let* ((load-code
+                (cond
+                  ((= num-args 0) nil)
+                  ((= num-args 1)
+                   (arm64-ldr 0 27 (arg-spill-offset 0)))
+                  ((= num-args 2)
+                   (append
+                     (arm64-ldr 0 27 (arg-spill-offset 0))
+                     (arm64-ldr 1 27 (arg-spill-offset 1))))
+                  ((= num-args 3)
+                   (append
+                     (arm64-ldr 0 27 (arg-spill-offset 0))
+                     (arm64-ldr 1 27 (arg-spill-offset 1))
+                     (arm64-ldr 2 27 (arg-spill-offset 2))))
+                  ((= num-args 4)
+                   (append
+                     (arm64-ldr 0 27 (arg-spill-offset 0))
+                     (arm64-ldr 1 27 (arg-spill-offset 1))
+                     (arm64-ldr 2 27 (arg-spill-offset 2))
+                     (arm64-ldr 3 27 (arg-spill-offset 3))))
+                  (t
+                   (append
+                     (arm64-ldr 0 27 (arg-spill-offset 0))
+                     (arm64-ldr 1 27 (arg-spill-offset 1))
+                     (arm64-ldr 2 27 (arg-spill-offset 2))
+                     (arm64-ldr 3 27 (arg-spill-offset 3))
+                     (arm64-ldr 4 27 (arg-spill-offset 4))))))
+              (set-extra-ptr (if (> extra-count 0)
+                                 (arm64-add-imm 25 27 (arg-spill-offset 5))
+                                 (arm64-movz 25 0)))
+              (arg-count-code (arm64-movz 23 num-args))
+              (pre-call (append stage-code load-code set-extra-ptr arg-count-code (arm64-ldr 9 31 code-slot))))
+         (append
+           pre-call
+           (arm64-blr 9)))))                  ; call
 
     ;; Function call: (call-fn name arg-irs)
     ((has-tag? ir 'call-fn)
      (let* ((fn-name (cadr ir))
             (arg-irs (caddr ir))
-            (arg-codes (mapcar (lambda (arg-ir)
-                                 (codegen-expr arg-ir runtime-addrs fn-offsets current-offset temp-depth))
-                               arg-irs))
             (num-args (length arg-irs))
             (extra-count (max 0 (- num-args 5)))
-            (extra-irs (nthcdr 5 arg-irs))
-            (extra-codes (reverse (mapcar (lambda (arg-ir)
-                                            (codegen-expr arg-ir runtime-addrs fn-offsets current-offset (+ temp-depth 3)))
-                                          extra-irs)))
-            (extra-push (apply #'append
-                               (mapcar (lambda (code)
-                                         (append code (arm64-str-pre 0 31 -16)))
-                                       extra-codes)))
-            (args-setup (cond
-                          ((= num-args 0)
-                           nil)
-                          ((= num-args 1)
-                           (car arg-codes))
-                          ((= num-args 2)
-                           (append
-                             (car arg-codes)
-                             (arm64-mov 2 0)
-                             (cadr arg-codes)
-                             (arm64-mov 1 0)
-                             (arm64-mov 0 2)))
-                          ((= num-args 3)
-                           (append
-                             (car arg-codes)
-                             (arm64-mov 3 0)
-                             (cadr arg-codes)
-                             (arm64-mov 4 0)
-                             (caddr arg-codes)
-                             (arm64-mov 2 0)
-                             (arm64-mov 1 4)
-                             (arm64-mov 0 3)))
-                          ((= num-args 4)
-                           (append
-                             (car arg-codes)             ; arg1 -> x0
-                             (arm64-mov 4 0)             ; save arg1
-                             (cadr arg-codes)            ; arg2 -> x0
-                             (arm64-mov 5 0)             ; save arg2
-                             (caddr arg-codes)           ; arg3 -> x0
-                             (arm64-mov 2 0)             ; x2 = arg3
-                             (cadddr arg-codes)          ; arg4 -> x0
-                             (arm64-mov 3 0)             ; x3 = arg4
-                             (arm64-mov 1 5)             ; x1 = arg2
-                             (arm64-mov 0 4)))           ; x0 = arg1
-                          ((= num-args 5)
-                           (append
-                             (car arg-codes)             ; arg1 -> x0
-                             (arm64-mov 4 0)             ; save arg1
-                             (cadr arg-codes)            ; arg2 -> x0
-                             (arm64-mov 5 0)             ; save arg2
-                             (caddr arg-codes)           ; arg3 -> x0
-                             (arm64-mov 2 0)             ; x2 = arg3
-                             (cadddr arg-codes)          ; arg4 -> x0
-                             (arm64-mov 3 0)             ; x3 = arg4
-                            (nth 4 arg-codes)           ; arg5 -> x0
-                            (arm64-mov 6 0)             ; save arg5
-                            (arm64-mov 1 5)             ; x1 = arg2
-                            (arm64-mov 0 4)             ; x0 = arg1
-                            (arm64-mov 4 6)))           ; x4 = arg5
-                          (t nil)))
-            (arg-count-code (arm64-movz 23 num-args))
-            (set-extra-ptr (if (> extra-count 0)
-                               (arm64-mov 25 31)
-                               (arm64-movz 25 0)))
-            ;; Look up function offset
             (fn-entry (assoc fn-name fn-offsets))
             (fn-offset (if fn-entry (cadr fn-entry) 0)))
-       ;; Generate code to evaluate each argument and move to x0-x2
-       (append
-        extra-push
-        args-setup
-        set-extra-ptr
-        arg-count-code
-
-        ;; Generate BL to function
-        ;; Calculate branch offset (in instructions, not bytes)
-        ;; Branch offset = (target_offset - current_offset_after_args) / 4
-        (let* ((code-so-far (append extra-push args-setup set-extra-ptr arg-count-code))
-               (current-pc (if current-offset
-                               ;; PC is at the BL instruction itself
-                               (+ current-offset (count-instrs code-so-far))
-                               0))
-               (branch-offset (- fn-offset current-pc)))
-          (append
-           (arm64-bl branch-offset)
-           (if (> extra-count 0)
-               (arm64-add-imm 31 31 (* extra-count 16))
-               nil))))))
+        (let* ((cursor (if current-offset (+ current-offset 1) nil))
+               (stage-code (arm64-add-imm 27 31 0)))
+         ;; Stage all arguments in order into the spill area using x27 as a stable base
+         (loop for arg-ir in arg-irs
+               for idx from 0 do
+                 (let* ((arg-code (codegen-expr arg-ir runtime-addrs fn-offsets cursor temp-depth))
+                        (store (arm64-str 0 27 (arg-spill-offset idx)))
+                        (block (append arg-code store))
+                        (block-len (count-instrs block)))
+                   (setf stage-code (append stage-code block))
+                   (when cursor (incf cursor block-len))))
+         (let* ((load-code
+                  (cond
+                    ((= num-args 0) nil)
+                    ((= num-args 1)
+                     (arm64-ldr 0 27 (arg-spill-offset 0)))
+                    ((= num-args 2)
+                     (append
+                       (arm64-ldr 0 27 (arg-spill-offset 0))
+                       (arm64-ldr 1 27 (arg-spill-offset 1))))
+                    ((= num-args 3)
+                     (append
+                       (arm64-ldr 0 27 (arg-spill-offset 0))
+                       (arm64-ldr 1 27 (arg-spill-offset 1))
+                       (arm64-ldr 2 27 (arg-spill-offset 2))))
+                    ((= num-args 4)
+                     (append
+                       (arm64-ldr 0 27 (arg-spill-offset 0))
+                       (arm64-ldr 1 27 (arg-spill-offset 1))
+                       (arm64-ldr 2 27 (arg-spill-offset 2))
+                       (arm64-ldr 3 27 (arg-spill-offset 3))))
+                    (t
+                     (append
+                       (arm64-ldr 0 27 (arg-spill-offset 0))
+                       (arm64-ldr 1 27 (arg-spill-offset 1))
+                       (arm64-ldr 2 27 (arg-spill-offset 2))
+                       (arm64-ldr 3 27 (arg-spill-offset 3))
+                       (arm64-ldr 4 27 (arg-spill-offset 4))))))
+                (set-extra-ptr (if (> extra-count 0)
+                                   (arm64-add-imm 25 27 (arg-spill-offset 5))
+                                   (arm64-movz 25 0)))
+                (arg-count-code (arm64-movz 23 num-args))
+                (pre-call (append stage-code load-code set-extra-ptr arg-count-code))
+                 (current-pc (if current-offset
+                                 (+ current-offset (count-instrs pre-call))
+                                 0))
+                 (branch-offset (- fn-offset current-pc)))
+            (append
+              pre-call
+              (arm64-bl branch-offset)))))) 
 
     ;; Default: zero
     (t (arm64-movz 0 0))))
@@ -1214,110 +1161,26 @@ Optional descriptors are (name init-form supplied-name)."
                            (arm64-str 4 31 arg4-slot))))
          ;; Store fixed parameters. For &rest, load from saved slots to avoid clobbering incoming registers.
          (param-store-code
-           (if need-arg-save
-               (append
-                arg-save-code
-                (cond
-                  ((= required-count 0) nil)
-                  ((= required-count 1)
-                   (append
-                     (arm64-sub-imm 21 20 (* (+ param-base 0) 8))
-                     (arm64-ldr 22 31 arg0-slot)
-                     (arm64-str 22 21 0)))
-                  ((= required-count 2)
-                   (append
-                     (arm64-sub-imm 21 20 (* (+ param-base 0) 8))
-                     (arm64-ldr 22 31 arg0-slot)
-                     (arm64-str 22 21 0)
-                     (arm64-sub-imm 21 20 (* (+ param-base 1) 8))
-                     (arm64-ldr 22 31 arg1-slot)
-                     (arm64-str 22 21 0)))
-                  ((= required-count 3)
-                   (append
-                     (arm64-sub-imm 21 20 (* (+ param-base 0) 8))
-                     (arm64-ldr 22 31 arg0-slot)
-                     (arm64-str 22 21 0)
-                     (arm64-sub-imm 21 20 (* (+ param-base 1) 8))
-                     (arm64-ldr 22 31 arg1-slot)
-                     (arm64-str 22 21 0)
-                     (arm64-sub-imm 21 20 (* (+ param-base 2) 8))
-                     (arm64-ldr 22 31 arg2-slot)
-                     (arm64-str 22 21 0)))
-                 ((= required-count 4)
-                  (append
-                    (arm64-sub-imm 21 20 (* (+ param-base 0) 8))
-                    (arm64-ldr 22 31 arg0-slot)
-                    (arm64-str 22 21 0)
-                    (arm64-sub-imm 21 20 (* (+ param-base 1) 8))
-                    (arm64-ldr 22 31 arg1-slot)
-                    (arm64-str 22 21 0)
-                    (arm64-sub-imm 21 20 (* (+ param-base 2) 8))
-                    (arm64-ldr 22 31 arg2-slot)
-                    (arm64-str 22 21 0)
-                    (arm64-sub-imm 21 20 (* (+ param-base 3) 8))
-                    (arm64-ldr 22 31 arg3-slot)
-                    (arm64-str 22 21 0)))
-                 ((= required-count 5)
-                  (append
-                    (arm64-sub-imm 21 20 (* (+ param-base 0) 8))
-                    (arm64-ldr 22 31 arg0-slot)
-                    (arm64-str 22 21 0)
-                    (arm64-sub-imm 21 20 (* (+ param-base 1) 8))
-                    (arm64-ldr 22 31 arg1-slot)
-                    (arm64-str 22 21 0)
-                    (arm64-sub-imm 21 20 (* (+ param-base 2) 8))
-                    (arm64-ldr 22 31 arg2-slot)
-                    (arm64-str 22 21 0)
-                    (arm64-sub-imm 21 20 (* (+ param-base 3) 8))
-                    (arm64-ldr 22 31 arg3-slot)
-                    (arm64-str 22 21 0)
-                    (arm64-sub-imm 21 20 (* (+ param-base 4) 8))
-                    (arm64-ldr 22 31 arg4-slot)
-                    (arm64-str 22 21 0)))
-                 (t nil)))
-               (cond
-                 ((= required-count 0) nil)
-                 ((= required-count 1)
-                  (append
-                   (arm64-sub-imm 21 20 (* (+ param-base 0) 8))
-                   (arm64-str 0 21 0)))
-                 ((= required-count 2)
-                  (append
-                   (arm64-sub-imm 21 20 (* (+ param-base 0) 8))
-                   (arm64-str 0 21 0)
-                   (arm64-sub-imm 21 20 (* (+ param-base 1) 8))
-                   (arm64-str 1 21 0)))
-                 ((= required-count 3)
-                  (append
-                   (arm64-sub-imm 21 20 (* (+ param-base 0) 8))
-                   (arm64-str 0 21 0)
-                   (arm64-sub-imm 21 20 (* (+ param-base 1) 8))
-                   (arm64-str 1 21 0)
-                   (arm64-sub-imm 21 20 (* (+ param-base 2) 8))
-                   (arm64-str 2 21 0)))
-                 ((= required-count 4)
-                  (append
-                   (arm64-sub-imm 21 20 (* (+ param-base 0) 8))
-                   (arm64-str 0 21 0)
-                   (arm64-sub-imm 21 20 (* (+ param-base 1) 8))
-                   (arm64-str 1 21 0)
-                   (arm64-sub-imm 21 20 (* (+ param-base 2) 8))
-                   (arm64-str 2 21 0)
-                   (arm64-sub-imm 21 20 (* (+ param-base 3) 8))
-                   (arm64-str 3 21 0)))
-                 ((= required-count 5)
-                  (append
-                   (arm64-sub-imm 21 20 (* (+ param-base 0) 8))
-                   (arm64-str 0 21 0)
-                   (arm64-sub-imm 21 20 (* (+ param-base 1) 8))
-                   (arm64-str 1 21 0)
-                   (arm64-sub-imm 21 20 (* (+ param-base 2) 8))
-                   (arm64-str 2 21 0)
-                   (arm64-sub-imm 21 20 (* (+ param-base 3) 8))
-                   (arm64-str 3 21 0)
-                   (arm64-sub-imm 21 20 (* (+ param-base 4) 8))
-                   (arm64-str 4 21 0)))
-                 (t nil))))
+           (let ((code (if need-arg-save arg-save-code nil)))
+             (dotimes (i required-count)
+               (let* ((param-offset (* (+ param-base i) 8))
+                      (load-arg
+                        (if (< i 5)
+                            (if need-arg-save
+                                (arm64-ldr 22 31 (cond
+                                                   ((= i 0) arg0-slot)
+                                                   ((= i 1) arg1-slot)
+                                                   ((= i 2) arg2-slot)
+                                                   ((= i 3) arg3-slot)
+                                                   (t arg4-slot)))
+                                (arm64-mov 22 i))
+                            (arm64-ldr 22 25 (* (- i 5) #x8))))
+                      (store (append
+                               load-arg
+                               (arm64-sub-imm 21 20 param-offset)
+                               (arm64-str 22 21 0))))
+                 (setf code (append code store))))
+             code))
          (param-store-size (count-instrs param-store-code))
          (optional-code
            (let ((code '())
@@ -1344,7 +1207,7 @@ Optional descriptors are (name init-form supplied-name)."
                           ((= threshold 2) (arm64-ldr 22 31 arg2-slot))
                           ((= threshold 3) (arm64-ldr 22 31 arg3-slot))
                           ((= threshold 4) (arm64-ldr 22 31 arg4-slot))
-                          (t (arm64-movz 22 0))))
+                          (t (arm64-ldr 22 25 (* (- threshold 5) #x8)))))
                       (supplied-offset (* (+ param-base required-count optional-count i) 8))
                       (store-supplied-flag (append
                                              (arm64-movz 0 #x10)
@@ -1380,46 +1243,51 @@ Optional descriptors are (name init-form supplied-name)."
             (let* ((rest-list-reg 13)
                    (idx-reg 12)
                    (arg-reg 14)
-                   (reg-indices (if (<= total-non-rest 4)
-                                    (loop for i downfrom 4 to total-non-rest collect i)
-                                    nil))
-                   (extra-start (max 5 total-non-rest))
-                   (extra-indices (loop for i downfrom 9 to extra-start collect i))
-                   (candidate-indices (append extra-indices reg-indices))
-                   (blocks
-                     (mapcar
-                       (lambda (idx)
-                         (let* ((select-arg
-                                 (if (< idx 5)
-                                     (append
-                                      (arm64-ldr arg-reg 31 (cond
-                                                             ((= idx 0) arg0-slot)
-                                                             ((= idx 1) arg1-slot)
-                                                             ((= idx 2) arg2-slot)
-                                                             ((= idx 3) arg3-slot)
-                                                             (t arg4-slot)))
-                                      (arm64-mov 0 arg-reg)
-                                      (arm64-mov 1 rest-list-reg)
-                                      (arm64-ldr 9 19 0)
-                                      (arm64-blr 9)
-                                      (arm64-mov rest-list-reg 0))
-                                     (append
-                                      (arm64-ldr arg-reg 25 (* (- idx 5) 16))
-                                      (arm64-mov 0 arg-reg)
-                                      (arm64-mov 1 rest-list-reg)
-                                      (arm64-ldr 9 19 0)
-                                      (arm64-blr 9)
-                                      (arm64-mov rest-list-reg 0))))
-                                (skip-offset (+ 1 (count-instrs select-arg))))
-                           (append
-                            (arm64-movz idx-reg idx)
-                            (arm64-cmp 23 idx-reg)
-                            (arm64-b-cond #xD skip-offset)
-                            select-arg)))
-                       candidate-indices)))
+                   (five-reg 15)
+                   (addr-reg 16)
+                   (limit-reg 17)
+                   (offset-reg 10)
+                   (init-code (append
+                                (arm64-movz rest-list-reg #x0)
+                                (arm64-mov idx-reg 23)
+                                (arm64-sub-imm idx-reg idx-reg #x1)
+                                (arm64-movz five-reg #x5)
+                                (arm64-movz limit-reg total-non-rest)))
+                   (extras-load (append
+                                  (arm64-sub-imm offset-reg idx-reg #x5)
+                                  (arm64-lsl offset-reg offset-reg 3)
+                                  (arm64-add offset-reg 25 offset-reg)
+                                  (arm64-ldr arg-reg offset-reg 0)))
+                   (reg-load (append
+                               (arm64-add-imm addr-reg 31 arg0-slot)
+                               (arm64-lsl offset-reg idx-reg 3)
+                               (arm64-add addr-reg addr-reg offset-reg)
+                               (arm64-ldr arg-reg addr-reg 0)))
+                   (cons-body (append
+                                (arm64-mov 0 arg-reg)
+                                (arm64-mov 1 rest-list-reg)
+                                (arm64-ldr 9 19 0)
+                                (arm64-blr 9)
+                                (arm64-mov rest-list-reg 0)
+                                (arm64-sub-imm idx-reg idx-reg #x1)))
+                   (extras-len (count-instrs extras-load))
+                   (reg-len (count-instrs reg-load))
+                   (cons-core-len (count-instrs cons-body))
+                   (offset-to-done (+ extras-len reg-len cons-core-len 5))
+                   (offset-to-reg (+ extras-len 2))
+                   (offset-to-cons (+ reg-len 1))
+                   (loop-back-offset (- (+ extras-len reg-len cons-core-len 5))))
               (append
-               (arm64-movz rest-list-reg #x0)
-               (apply #'append blocks)
+               init-code
+               (arm64-cmp idx-reg limit-reg)
+               (arm64-b-cond #xB offset-to-done)
+               (arm64-cmp idx-reg five-reg)
+               (arm64-b-cond #xB offset-to-reg)
+               extras-load
+               (arm64-b offset-to-cons)
+               reg-load
+               cons-body
+               (arm64-b loop-back-offset)
                (arm64-sub-imm 1 20 (* rest-offset 8))
                (arm64-str rest-list-reg 1 0)))))
          (rest-size (count-instrs rest-code))
@@ -1430,7 +1298,7 @@ Optional descriptors are (name init-form supplied-name)."
          (body (codegen-expr body-ir runtime-addrs fn-offsets body-offset 0)))
     (append
       ;; Function prologue
-      (arm64-sub-imm 31 31 1024)      ; Allocate stack frame
+      (arm64-sub-imm 31 31 *stack-frame-size*)      ; Allocate stack frame
       (arm64-stp 29 30 31 0)         ; Save FP/LR
       (arm64-stp 19 20 31 16)        ; Save x19/x20
       (arm64-stp 21 22 31 32)        ; Save x21/x22
@@ -1438,7 +1306,7 @@ Optional descriptors are (name init-form supplied-name)."
       ;; x25 may carry extra-arg pointer from caller; leave intact
       ;; x25 may carry extra-arg pointer from caller; leave intact
       ;; x19 already has runtime table from caller - don't overwrite!
-      (arm64-add-imm 20 31 384)      ; Set environment base
+      (arm64-add-imm 20 31 *env-base-offset*)      ; Set environment base
 
       ;; Store parameters to stack
       param-store-code
@@ -1457,7 +1325,7 @@ Optional descriptors are (name init-form supplied-name)."
       (arm64-ldp 21 22 31 32)        ; Restore x21/x22
       (arm64-ldp 19 20 31 16)        ; Restore x19/x20
       (arm64-ldp 29 30 31 0)         ; Restore FP/LR
-      (arm64-add-imm 31 31 1024)      ; Deallocate stack
+      (arm64-add-imm 31 31 *stack-frame-size*)      ; Deallocate stack
       (arm64-ret))))
 
 (defun calculate-function-offsets (compiled-fns start-offset runtime-addrs)

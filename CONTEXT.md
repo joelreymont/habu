@@ -2,26 +2,36 @@
 
 **Session Date**: November 22-23, 2025
 **Duration**: ~6 hours
-**Focus**: Stabilizing defun recursion, temporary allocation, closures, and &rest arguments
-**Last Updated**: November 23, 2025 (closures solid, &rest implemented, &optional added)
+**Focus**: Stabilizing defun recursion, temporary allocation, closures, &rest/&optional, and unlimited-arity calls
+**Last Updated**: November 23, 2025 (unlimited args staged in-frame, rest loop fixed, 10+ arg tests passing)
 
 ## Latest Updates (November 23, 2025)
 
-- Added `&optional` support with supplied-p flags: parameter parsing keeps optional descriptors (including supplied-p names), prologue saves incoming args, and each optional binding compares `x23` (arg count) against its threshold to either load the supplied argument from saved registers (and store supplied-p as tagged #x10) or evaluate/store the default init form with supplied-p = #x0. Defaults compile in-Lisp; supplied path now branches with correct skip offsets so defaults are skipped when an arg is present.
-- `&rest` remains supported: arg count (`x23`) is set at call sites for functions and closures; callee conses args beyond fixed+optional into a rest list and stores it in the environment. Skip offsets were corrected to avoid consing when no extras are present.
-- Stack frame enlarged to 1KB with temp guard raised (#x180) to leave headroom for optionals/rest list construction while keeping temps below the env base.
-- High-arity (4–5) calls now supported for functions and closures: callers populate x0–x4, prologues store up to five required params, and rest builders consider extra indices up to 4; new `tests/test_high_arity.lisp` covers 4-arg required, 4th optional with supplied-p, and rest beyond four args.
-- Regression suites: `tests/test_rest_args.lisp` (rest-only, fixed+rest, rest closures, inline rest, empty rest), `tests/test_optional_args.lisp` (optional defaults, supplied, supplied-p, optional+rest), and `tests/test_high_arity.lisp`. `test-defun.lisp` remains green (17/17); rest 5/5; optional 7/7; high-arity 4/4.
+- Unlimited-arity calling convention implemented: callers stage all args at `sp + #x200` (8-byte stride) using `x27 = sp`, load x0–x4 from the spill area, and set `x25` to `arg5` without changing `sp`. Callees consume extras via `x25` (8-byte stride).
+- Stack frame size raised to #xFF0; temp guard unchanged (#x180). Required params now store correctly beyond five arguments by loading indices >=5 from `x25`.
+- `&rest` rebuilt as a counted loop (`idx = x23-1` down to `total-non-rest`) with corrected branch offsets; optionals beyond the register window load from `x25` with fixed branch skips.
+- `tests/test_10_args.lisp` updated for CL semantics on the opt12 default case and now passes 9/9. Verified `tests/test_optional_args.lisp` (7/7) and `tests/test_rest_args.lisp` (5/5).
 
 ## In Progress
 
-- Infinite-arity calling convention not done yet. Currently limited to five register arguments; extra-arg stack path is unimplemented. `tests/test_10_args.lisp` is failing. Next steps: (1) in callers, allocate aligned stack space for args beyond x0–x4, store extras contiguously, set `x25` to that base, and pop after the call; (2) mirror for `call-closure`; (3) in callees, load required/optional/rest beyond register window from `x25` and build rest from both registers and extras.
+- Broader regression sweep pending (defun, closure integration) to ensure the new calling convention did not regress older suites.
+- Consider follow-up overflow handling if a call would exceed the #xFF0 in-frame arg spill (or trim the frame once a dynamic spill path exists).
 
 ### Plan for Unlimited Extras
-- Refactor `call-fn`: evaluate extras, allocate an aligned stack area for them, store extras contiguously, set `x25` to the base, include these instructions in BL PC accounting, and restore `sp` after the call.
-- Refactor `call-closure` with the same extra handling.
-- Update callee prologue: load required/optional parameters beyond registers from `x25`; generate a loop to build `&rest` from all arguments using `x23`/`x25` rather than fixed indices.
-- Extend tests (e.g., `tests/test_10_args.lisp`) for 10+ arguments; rerun regressions and capture results.
+- Caller/callee spill path implemented; next add overflow detection or dynamic spill if arg count would exceed the frame.
+- Extend regression coverage (defun, closure suites) under the new calling convention.
+- Keep stack/arg constants in sync across codegen/tests and document the 8-byte extra stride with `x27` spill base.
+
+### Revised Master Plan (Small Steps)
+1) Fix caller side (already mostly done): ensure `call-fn` and `call-closure` stack adjust is 16-byte aligned, `x25` set only when extras exist, and `sp` restored after call. Re-run load to confirm helpers in scope.
+2) Rewrite callee optional load for thresholds >=5 to use `emit-extra-ldr`.
+3) Rewrite `&rest` construction cleanly:
+   - Loop from `idx = x23-1` down to `total-non-rest`, inclusive.
+   - If `idx >= 5`, load via `emit-extra-ldr` at `(idx-5)*8`; else load from saved arg slots.
+   - Cons onto `rest-list`, continue until `idx < total-non-rest`.
+   - Store rest list at `rest-offset`.
+4) Validate structure: ensure file loads (no unbound vars), rerun `tests/test_10_args.lisp`.
+5) If passing, run broader regressions as time allows and update plan accordingly.
 
 ## Latest Updates (November 22, 2025)
 
