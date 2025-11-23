@@ -31,6 +31,11 @@
 - Replace bootstrap harness shim with real assertions wired to the current ARM64 codegen/runner, or retire the deprecated suite to avoid silent skips.
 - Run the full integration pipeline (e.g., compile current compiler with habu-arm64-codegen-sbcl into a binary and execute via run-bytecode) to validate self-hosted path.
 - Add overflow handling for arg spill beyond #xFF0 or implement dynamic spill allocation to reduce fixed frame size.
+- Migrate legacy bootstrap tests to the current compiler in small steps:
+  1) Rework the literals/arithmetic groups in `bootstrap/run-all-tests.lisp` to call the current ARM64 codegen (`habu-arm64-codegen-sbcl`) and execute via `run-bytecode`, replacing stubs with real result checks.
+  2) Extend to conditionals/let/defun groups, reusing a shared `compile-and-run` helper.
+  3) Port macro group or drop it if redundant; remove stubbed harness once coverage is real.
+  4) Retire x86 expectations in the bootstrap suite; keep ARM64 as the primary target.
 
 ### Revised Master Plan (Small Steps)
 1) Fix caller side (already mostly done): ensure `call-fn` and `call-closure` stack adjust is 16-byte aligned, `x25` set only when extras exist, and `sp` restored after call. Re-run load to confirm helpers in scope.
