@@ -12,6 +12,7 @@
 - `&rest` rebuilt as a counted loop (`idx = x23-1` down to `total-non-rest`) with corrected branch offsets; optionals beyond the register window load from `x25` with fixed branch skips.
 - `tests/test_10_args.lisp` updated for CL semantics on the opt12 default case and now passes 9/9. Verified `tests/test_optional_args.lisp` (7/7) and `tests/test_rest_args.lisp` (5/5).
 - Added a compile-time spill guard: `*max-arg-spill-count*` derived from the `#xFF0` frame and `#x200` spill base; `call-fn`/`call-closure` now raise a clear error if arg count would exceed the in-frame spill area.
+- macOS JIT compliance for C execution test: `tests/test_compiled_execution.c` now uses `MAP_JIT` + `pthread_jit_write_protect_np` with post-copy `mprotect` on ARM64, and ARM64 constants fixed (mov imm for 42/20). After re-signing with entitlements, the test passes on ARM64 (x86-only cases remain skipped).
 
 ## In Progress
 

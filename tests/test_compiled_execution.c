@@ -8,10 +8,14 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/mman.h>
+#include <pthread.h>
 #include <unistd.h>
 
 #define TEST_PASS 0
 #define TEST_FAIL 1
+#ifndef MAP_JIT
+#define MAP_JIT 0x800
+#endif
 
 /* Execute machine code and return result */
 typedef int64_t (*compiled_func_t)(void);
@@ -19,15 +23,25 @@ typedef int64_t (*compiled_func_t)(void);
 int64_t execute_code(const uint8_t *code, size_t code_size) {
     /* Allocate executable memory - need 4 bytes for ARM64 ret instruction */
     size_t alloc_size = code_size + 4;
+#if defined(__APPLE__) && defined(__aarch64__)
+    /* On macOS/ARM64, MAP_JIT + write-protect toggling is required */
+    void *exec_mem = mmap(NULL, alloc_size,
+                          PROT_READ | PROT_WRITE,
+                          MAP_PRIVATE | MAP_ANONYMOUS | MAP_JIT, -1, 0);
+#else
     void *exec_mem = mmap(NULL, alloc_size,
                           PROT_READ | PROT_WRITE | PROT_EXEC,
                           MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+#endif
     if (exec_mem == MAP_FAILED) {
         perror("mmap");
         return -1;
     }
 
     /* Copy code to executable memory */
+#if defined(__APPLE__) && defined(__aarch64__)
+    /* Allow writes (default) on MAP_JIT mapping */
+#endif
     memcpy(exec_mem, code, code_size);
 
     /* Add return instruction */
@@ -39,7 +53,17 @@ int64_t execute_code(const uint8_t *code, size_t code_size) {
     ((uint8_t *)exec_mem)[code_size + 1] = 0x03;
     ((uint8_t *)exec_mem)[code_size + 2] = 0x5F;
     ((uint8_t *)exec_mem)[code_size + 3] = 0xD6;
-    #endif
+#endif
+
+#if defined(__APPLE__) && defined(__aarch64__)
+    /* Switch to execute-only */
+    pthread_jit_write_protect_np(1);
+    if (mprotect(exec_mem, alloc_size, PROT_READ | PROT_EXEC) != 0) {
+        perror("mprotect");
+        munmap(exec_mem, alloc_size);
+        return -1;
+    }
+#endif
 
     /* Execute the code */
     compiled_func_t func = (compiled_func_t)exec_mem;
@@ -68,7 +92,7 @@ void test_fixnum_literal() {
     };
     #elif defined(__aarch64__)
     uint8_t code[] = {
-        0xE0, 0x52, 0x80, 0xD2  /* mov x0, #0x2A0 (42*16) */
+        0x00, 0x54, 0x80, 0xD2  /* mov x0, #0x2A0 (42*16) */
     };
     #endif
 
