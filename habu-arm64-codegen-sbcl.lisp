@@ -162,11 +162,28 @@ Supports fixnums, nil, lists, symbols, strings, and vectors of those."
             entry-addr
             (runtime-lookup name (cdr runtime-addrs))))))
 
-(defun make-runtime-addrs (cons-addr car-addr cdr-addr)
-  "Create runtime address table for cons/car/cdr."
-  (list (cons 'habu_cons cons-addr)
-        (cons 'habu_car car-addr)
-        (cons 'habu_cdr cdr-addr)))
+(defun make-runtime-addrs (cons-addr car-addr cdr-addr
+                              &key make-closure closure-code closure-env
+                                code-base make-vector vector-set vector-ref
+                                make-string-from-vector make-symbol-from-string
+                                string-length-raw symbol-name)
+  "Create runtime address table for codegen (alist of symbol . addr).
+Only cons/car/cdr are required; others are optional but recommended."
+  (remove-if (lambda (entry) (null (cdr entry)))
+             (list (cons 'habu_cons cons-addr)
+                   (cons 'habu_car car-addr)
+                   (cons 'habu_cdr cdr-addr)
+                   (cons 'habu_make_closure make-closure)
+                   (cons 'habu_closure_code closure-code)
+                   (cons 'habu_closure_env closure-env)
+                   (cons 'habu_code_base code-base)
+                   (cons 'habu_make_vector make-vector)
+                   (cons 'habu_vector_set vector-set)
+                   (cons 'habu_vector_ref vector-ref)
+                   (cons 'habu_make_string_from_vector make-string-from-vector)
+                   (cons 'habu_make_symbol_from_string make-symbol-from-string)
+                   (cons 'habu_string_length_raw string-length-raw)
+                   (cons 'habu_symbol_name symbol-name))))
 
 (defun op= (sym name)
   "Package-agnostic symbol name comparison."
