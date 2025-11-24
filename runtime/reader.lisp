@@ -228,8 +228,8 @@
          ((= tag +tag-string+)
           (format nil "\"~A\"" (escape-string (runtime-string->lisp value))))
 
-         ;; Closure (tag 0x7)
-         ((= tag +tag-function+)
+         ;; Closure (tag 0x5)
+         ((= tag +tag-closure+)
           (format nil "#<CLOSURE:~X>" value))
 
          (t

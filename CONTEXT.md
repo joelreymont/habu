@@ -11,6 +11,7 @@
 - Dropped the C-side symbol cache used by the former `habu_runtime_find_symbol`; symbol interning is handled by the Lisp runtime only.
 - Rebuilt `run-bytecode` and `bin/print-runtime-addrs` after the runtime cleanup; package smoke tests still pass (`tests/test_find_symbol.lisp`, `tests/test_find_symbol_pkg.lisp`, `tests/test_package_import_export.lisp`, `tests/test_printer_package.lisp`).
 - Printer now uses runtime symbol names with package-aware prefixes (`PKG::FOO` when not in the current package) via `runtime-symbol->print-name`; added coverage in `runtime/test-reader.lisp` for current/foreign package symbols. Package structs were renamed to `habu-package` to avoid CL package lock conflicts.
+- Cleaned reader/printer test output to stay ASCII-only (no ANSI color or emoji) and aligned closure tag printing with `+tag-closure`; reader tests now run without warnings.
 
 ## Execution Plan Toward Self-Hosting and Full Spec
 

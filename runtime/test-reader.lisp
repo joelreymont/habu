@@ -20,15 +20,15 @@
   (if condition
       (progn
         (incf *pass-count*)
-        (format t "[32m✓[0m ~A~%" name))
+        (format t "PASS ~A~%" name))
       (progn
-        (format t "[31m✗[0m ~A" name)
+        (format t "FAIL ~A" name)
         (when message
           (format t ": ~A" message))
         (format t "~%"))))
 
 ;; Test 1: Print fixnum
-(format t "~%[34m1. Print Fixnum[0m~%")
+(format t "~%1. Print Fixnum~%")
 (format t "==================~%")
 
 (let* ((fixnum-42 (ash 42 4))  ; Tagged fixnum 42
@@ -38,7 +38,7 @@
   (format t "   Result: ~S~%" result-str))
 
 ;; Test 2: Print string
-(format t "~%[34m2. Print String[0m~%")
+(format t "~%2. Print String~%")
 (format t "==================~%")
 
 (let* ((str-ptr (runtime-lisp->string "hello"))
@@ -48,7 +48,7 @@
   (format t "   Result: ~S~%" result-str))
 
 ;; Test 3: Print nil
-(format t "~%[34m3. Print NIL[0m~%")
+(format t "~%3. Print NIL~%")
 (format t "================~%")
 
 (let* ((nil-value 0)
@@ -58,7 +58,7 @@
   (format t "   Result: ~S~%" result-str))
 
 ;; Test 4: Print simple list
-(format t "~%[34m4. Print Simple List[0m~%")
+(format t "~%4. Print Simple List~%")
 (format t "====================~%")
 
 (let* ((list-ptr (runtime-cons (ash 1 4)
@@ -70,7 +70,7 @@
   (format t "   Result: ~S~%" result-str))
 
 ;; Test 5: Read fixnum
-(format t "~%[34m5. Read Fixnum[0m~%")
+(format t "~%5. Read Fixnum~%")
 (format t "=================~%")
 
 (handler-case
@@ -82,7 +82,7 @@
     (test "READ-FIXNUM" nil (format nil "~A" e))))
 
 ;; Test 6: Read string
-(format t "~%[34m6. Read String[0m~%")
+(format t "~%6. Read String~%")
 (format t "=================~%")
 
 (handler-case
@@ -95,7 +95,7 @@
     (test "READ-STRING" nil (format nil "~A" e))))
 
 ;; Test 7: Read simple list
-(format t "~%[34m7. Read Simple List[0m~%")
+(format t "~%7. Read Simple List~%")
 (format t "===================~%")
 
 (handler-case
@@ -112,7 +112,7 @@
     (test "READ-LIST" nil (format nil "~A" e))))
 
 ;; Test 8: Read quoted expression
-(format t "~%[34m8. Read Quoted Expression[0m~%")
+(format t "~%8. Read Quoted Expression~%")
 (format t "==========================~%")
 
 (handler-case
@@ -127,7 +127,7 @@
     (test "READ-QUOTE" nil (format nil "~A" e))))
 
 ;; Test 9: Round-trip (read then print)
-(format t "~%[34m9. Round-trip Test[0m~%")
+(format t "~%9. Round-trip Test~%")
 (format t "===================~%")
 
 (handler-case
@@ -142,7 +142,7 @@
     (test "ROUND-TRIP" nil (format nil "~A" e))))
 
 ;; Test 10: Print symbol in current package (no prefix)
-(format t "~%[34m10. Print Symbol Current Package[0m~%")
+(format t "~%10. Print Symbol Current Package~%")
 (format t "===================================~%")
 
 (handler-case
@@ -158,7 +158,7 @@
     (test "PRINT-SYMBOL-NO-PREFIX" nil (format nil "~A" e))))
 
 ;; Test 11: Print symbol from another package (with prefix)
-(format t "~%[34m11. Print Symbol Other Package[0m~%")
+(format t "~%11. Print Symbol Other Package~%")
 (format t "==================================~%")
 
 (handler-case
@@ -178,12 +178,12 @@
 (format t "  Test Results~%")
 (format t "=====================================~%")
 (format t "Total:  ~D~%" *test-count*)
-(format t "Passed: [32m~D/~D[0m~%~%" *pass-count* *test-count*)
+(format t "Passed: ~D/~D~%~%" *pass-count* *test-count*)
 
 (when (< *pass-count* *test-count*)
-  (format t "[31mSome tests failed![0m~%")
+  (format t "Some tests failed!~%")
   (sb-ext:quit :unix-status 1))
 
-(format t "[32mAll reader/printer tests passed![0m~%")
+(format t "All reader/printer tests passed!~%")
 
 (sb-ext:quit)
