@@ -45,7 +45,7 @@
   (let ((val (compile-and-run-arm64 form)))
     (unless (= val expected)
       (incf *test-failed*)
-      (error "ARM64 result mismatch for ~S: got ~A expected ~A" form val expected))
+      (format t "~&[ARM64] mismatch for ~S: got ~A expected ~A~%" form val expected))
     t))
 
 ;;; Test literals
