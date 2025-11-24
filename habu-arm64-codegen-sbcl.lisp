@@ -700,10 +700,23 @@
                                   (arm64-sub-imm 1 20 (* offset 8))  ; x1 = x20 - (offset * 8)
                                   (arm64-str 0 1 0)))                ; Store at [x1 + 0]
                         bind-codes
-                        env-offsets))
+                                env-offsets))
 
          ;; Execute body with bindings available
          (codegen-expr body-ir runtime-addrs fn-offsets current-offset temp-depth))))
+
+    ;; Progn: evaluate each subexpression in order, return last result
+    ((has-tag? ir 'progn)
+     (let ((exprs (cdr ir))
+           (cursor current-offset)
+           (accum '()))
+       (dolist (sub exprs)
+         (let* ((chunk (codegen-expr sub runtime-addrs fn-offsets cursor temp-depth))
+                (instrs (count-instrs chunk)))
+           (setf accum (append accum chunk))
+           (when cursor
+             (setf cursor (+ cursor instrs)))))
+       accum))
 
     ;; Lambda reference: build closure for compiled lambda
     ((has-tag? ir 'lambda-ref)
@@ -1083,6 +1096,23 @@
                      (body-ir (compile-expr body new-env fenv)))
                 (list 'let-expr bind-values body-ir (length bindings) env-offsets))
               (list 'lit 0)))
+
+         ;; Quote
+         ((eq op 'quote)
+          (if (consp (cdr expr))
+              (let ((quoted (cadr expr)))
+                (cond
+                  ((fixnum? quoted) (list 'lit quoted))
+                  ((null quoted) (list 'lit #x0))
+                  (t (list 'lit #x0))))
+              (list 'lit #x0)))
+
+         ;; Progn
+         ((eq op 'progn)
+          (let ((body (cdr expr)))
+            (if body
+                (cons 'progn (mapcar (lambda (form) (compile-expr form env fenv)) body))
+                (list 'lit #x0))))
 
          ;; Conditional
          ((eq op 'if)

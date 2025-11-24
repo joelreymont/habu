@@ -10,6 +10,7 @@
 - Added runtime-aware driver helpers in `run-habu.lisp`: `compile-forms-with-runtime`, `compile-and-run-forms`, and `run-bytecode-file` now compile to ARM64 bytes with real runtime addresses, write bytecode files, and execute through the tiny C runtime (`run-bytecode`). Load-time smoke can be gated via `HABU_ENABLE_LOAD_SMOKE=1`, keeping library loads quiet by default.
 - Introduced a simple CLI in `run-habu.lisp` (`--run-file <path>`, `--run-expr "(...)"`) that invokes the self-hosted compiler and executes the result through the runtime JIT runner.
 - New regression `tests/test_compile_and_run.lisp` compiles a cons/car/cdr pipeline to ARM64, runs it through `run-bytecode`, and asserts the untagged fixnum result to verify runtime table plumbing end-to-end.
+- Added IR/codegen support for `quote` (fixnums/nil) and `progn` sequencing; new regression `tests/test_progn.lisp` covers sequencing/last-value behavior via `run-bytecode`.
 - Tested the new pipeline with `sbcl --script tests/test_compile_and_run.lisp` (passes on ARM64 host with existing `run-bytecode` binary).
 
 ## Latest Updates (November 23, 2025)
