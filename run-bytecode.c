@@ -121,6 +121,10 @@ int main(int argc, char **argv) {
     g_runtime_table[7] = (void*)habu_make_vector;
     g_runtime_table[8] = (void*)habu_vector_set;
     g_runtime_table[9] = (void*)habu_vector_ref;
+    g_runtime_table[10] = (void*)habu_make_string_from_vector;
+    g_runtime_table[11] = (void*)habu_make_symbol_from_string;
+    g_runtime_table[12] = (void*)habu_string_length_raw;
+    g_runtime_table[13] = (void*)habu_symbol_name;
 
     /* Execute code - pass runtime table as argument */
     printf("Executing bytecode...\n");

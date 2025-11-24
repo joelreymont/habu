@@ -21,16 +21,71 @@
 (defparameter *max-arg-spill-count*
   (/ (- *stack-frame-size* *arg-spill-base*) *arg-spill-stride*))
 
+(defun string->char-codes (s)
+  "Return list of integer char codes from string S."
+  (loop for ch across s collect (char-code ch)))
+
 (defun quote->ir (obj)
   "Lower a quoted object to IR using cons/runtime construction.
-Supports fixnums, nil, and lists thereof."
+Supports fixnums, nil, lists, symbols, strings, and vectors of those."
   (cond
     ((fixnum? obj) (list 'lit obj))
     ((null obj) (list 'lit #x0))
-    ((consp obj) (list 'cons-call
-                       (quote->ir (car obj))
-                       (quote->ir (cdr obj))))
+    ((stringp obj) (cons 'string-lit (string->char-codes obj)))
+    ((symbolp obj) (list 'symbol-lit (symbol-name obj)))
+    ((vectorp obj) (list 'vector-lit (map 'list #'quote->ir obj)))
+    ((consp obj) (list 'cons-call (quote->ir (car obj)) (quote->ir (cdr obj))))
     (t (list 'lit #x0))))
+
+(defun codegen-string-from-chars (chars temp-depth)
+  "Build string literal from CHAR integer list; returns code yielding string in x0."
+  (let* ((len (length chars))
+         (vec-slot (temp-slot-offset temp-depth))
+         (alloc (append (arm64-movz 0 len)
+                        (arm64-ldr 11 19 56)  ; make-vector
+                        (arm64-blr 11)
+                        (arm64-str 0 31 vec-slot)))
+         (body alloc))
+    (loop for ch in chars
+          for idx from 0 do
+            (let* ((tagged (ash ch 4))
+                   (store (append
+                            (arm64-ldr 0 31 vec-slot) ; x0 = vector
+                            (arm64-movz 1 idx)        ; x1 = index
+                            (if (< tagged #x10000)
+                                (arm64-movz 2 tagged)
+                                (arm64-load-addr 2 tagged))
+                            (arm64-ldr 11 19 64)      ; vector-set
+                            (arm64-blr 11))))
+              (setf body (append body store))))
+    (append body
+            (arm64-ldr 0 31 vec-slot)   ; x0 = vector
+            (arm64-ldr 9 19 80)         ; make-string-from-vector
+            (arm64-blr 9))))
+
+(defun codegen-vector-literal (elements runtime-addrs fn-offsets current-offset temp-depth)
+  "Emit code for vector literal ELEMENTS (already IR), return vector in x0."
+  (let* ((len (length elements))
+         (vec-slot (temp-slot-offset temp-depth))
+         (alloc (append (arm64-movz 0 len)
+                        (arm64-ldr 11 19 56)
+                        (arm64-blr 11)
+                        (arm64-str 0 31 vec-slot)))
+         (cursor (if current-offset (+ current-offset (count-instrs alloc)) nil))
+         (body alloc))
+    (loop for el in elements
+          for idx from 0 do
+            (let* ((el-code (codegen-expr el runtime-addrs fn-offsets cursor (+ temp-depth 1)))
+                   (store (append
+                            (arm64-mov 2 0)            ; value -> x2
+                            (arm64-ldr 0 31 vec-slot)  ; x0 = vector
+                            (arm64-movz 1 idx)         ; x1 = index
+                            (arm64-ldr 11 19 64)       ; vector-set
+                            (arm64-blr 11)))
+                   (step (+ (count-instrs el-code) (count-instrs store))))
+              (setf body (append body el-code store))
+              (when cursor (setf cursor (+ cursor step)))))
+    (append body (arm64-ldr 0 31 vec-slot))))
 
 (defun collect-var-offsets (ir)
   "Collect all variable offsets referenced in IR."
@@ -175,6 +230,18 @@ Supports fixnums, nil, and lists thereof."
   "MOV Xd, Xm - Move register (via ORR)"
   (let* ((base #xAA0003E0)
          (encoded (logior base (ash rm 16) rd)))
+    (encode-word-le encoded)))
+
+(defun arm64-and (rd rn rm)
+  "AND Xd, Xn, Xm - Bitwise AND registers"
+  (let* ((base #x8A000000)
+         (encoded (logior base (ash rm 16) (ash rn 5) rd)))
+    (encode-word-le encoded)))
+
+(defun arm64-orr (rd rn rm)
+  "ORR Xd, Xn, Xm - Bitwise OR registers"
+  (let* ((base #xAA000000)
+         (encoded (logior base (ash rm 16) (ash rn 5) rd)))
     (encode-word-le encoded)))
 
 (defun arm64-ldr (rt rn offset)
@@ -370,6 +437,31 @@ Supports fixnums, nil, and lists thereof."
        (append
          (arm64-sub-imm 1 20 (* offset 8))  ; x1 = x20 - (offset * 8)
          (arm64-ldr 0 1 0))))                ; Load from [x1 + 0]
+
+    ;; String literal: build vector of chars then make-string-from-vector
+    ((has-tag? ir 'string-lit)
+     (codegen-string-from-chars (cdr ir) temp-depth))
+
+    ;; Symbol literal: build string then symbol-from-string
+    ((has-tag? ir 'symbol-lit)
+     (let* ((str-code (codegen-string-from-chars (string->char-codes (cadr ir)) temp-depth))
+            (cursor (if current-offset (+ current-offset (count-instrs str-code)) nil)))
+       (append str-code
+               (arm64-ldr 9 19 88) ; make-symbol-from-string
+               (arm64-blr 9))))
+
+    ;; Vector literal
+    ((has-tag? ir 'vector-lit)
+     (codegen-vector-literal (cdr ir) runtime-addrs fn-offsets current-offset temp-depth))
+
+    ;; Tag inspection: (get-tag x) => fixnum tag bits
+    ((has-tag? ir 'get-tag)
+     (let* ((arg-ir (cadr ir))
+            (arg-code (codegen-expr arg-ir runtime-addrs fn-offsets current-offset temp-depth)))
+       (append arg-code
+               (arm64-movz 1 #xF)   ; mask
+               (arm64-and 0 0 1)    ; tag in x0
+               (arm64-lsl 0 0 4)))) ; tag as fixnum
 
     ;; Captured variable: load from closure env vector in x24
     ((has-tag? ir 'capture)
@@ -674,6 +766,22 @@ Supports fixnums, nil, and lists thereof."
                (arm64-ldr 9 19 0)           ; Load cons from table: LDR x9, [x19, #0]
                (arm64-blr 9))))             ; Call cons(x0, x1) → result in x0
 
+    ;; Vector ref: (vector-ref vec idx)
+    ((has-tag? ir 'vector-ref)
+     (let* ((vec-ir (cadr ir))
+            (idx-ir (caddr ir))
+            (vec-slot (temp-slot-offset temp-depth))
+            (vec-code (codegen-expr vec-ir runtime-addrs fn-offsets current-offset temp-depth))
+            (cursor (if current-offset (+ current-offset (count-instrs vec-code)) nil))
+            (idx-code (codegen-expr idx-ir runtime-addrs fn-offsets cursor (+ temp-depth 1))))
+       (append vec-code
+               (arm64-str 0 31 vec-slot)
+               idx-code
+               (arm64-lsr 1 0 4)           ; untag index
+               (arm64-ldr 0 31 vec-slot)
+               (arm64-ldr 9 19 72) ; vector-ref
+               (arm64-blr 9))))
+
     ;; Car: (car-call arg) - call runtime car via table
     ((has-tag? ir 'car-call)
      (let* ((arg-ir (cadr ir))
@@ -689,6 +797,23 @@ Supports fixnums, nil, and lists thereof."
        (append arg-code                     ; Compute arg → x0
                (arm64-ldr 9 19 16)          ; Load cdr from table: LDR x9, [x19, #16]
                (arm64-blr 9))))             ; Call cdr(x0) → result in x0
+
+    ;; Symbol-name
+    ((has-tag? ir 'symbol-name)
+     (let* ((arg-ir (cadr ir))
+            (arg-code (codegen-expr arg-ir runtime-addrs fn-offsets current-offset temp-depth)))
+       (append arg-code
+               (arm64-ldr 9 19 104) ; symbol-name
+               (arm64-blr 9))))
+
+    ;; String length (returns fixnum)
+    ((has-tag? ir 'string-len)
+     (let* ((arg-ir (cadr ir))
+            (arg-code (codegen-expr arg-ir runtime-addrs fn-offsets current-offset temp-depth)))
+       (append arg-code
+               (arm64-ldr 9 19 96) ; string-length-raw
+               (arm64-blr 9)
+               (arm64-lsl 0 0 4)))) ; tag length as fixnum
 
     ;; Let expression: (let-expr bind-values body-ir num-bindings env-offsets)
     ((has-tag? ir 'let-expr)
@@ -742,6 +867,7 @@ Supports fixnums, nil, and lists thereof."
        ;; Runtime table layout:
        ;;   [0] cons, [8] car, [16] cdr, [24] make-closure, [32] closure-code, [40] closure-env, [48] code base
        ;;   [56] make-vector, [64] vector-set, [72] vector-ref
+       ;;   [80] make-string-from-vector, [88] make-symbol-from-string, [96] string-length-raw, [104] symbol-name
        (append
          (arm64-ldr 9 19 48)              ; x9 = code base
          (arm64-load-addr 10 offset-bytes); x10 = offset bytes
@@ -1133,12 +1259,38 @@ Supports fixnums, nil, and lists thereof."
               (list 'lit 0)))
 
         ;; Cons
-        ((eq op 'cons)
+         ((eq op 'cons)
          (if (and (consp (cdr expr)) (consp (cddr expr)))
              (list 'cons-call
                    (compile-expr (cadr expr) env fenv)
                    (compile-expr (caddr expr) env fenv))
              (list 'lit 0)))
+
+         ;; Vector ref
+         ((eq op 'vector-ref)
+          (if (and (consp (cdr expr)) (consp (cddr expr)))
+              (list 'vector-ref
+                    (compile-expr (cadr expr) env fenv)
+                    (compile-expr (caddr expr) env fenv))
+              (list 'lit 0)))
+
+         ;; Symbol-name
+         ((eq op 'symbol-name)
+          (if (consp (cdr expr))
+              (list 'symbol-name (compile-expr (cadr expr) env fenv))
+              (list 'lit 0)))
+
+         ;; String length
+         ((eq op 'string-length)
+          (if (consp (cdr expr))
+              (list 'string-len (compile-expr (cadr expr) env fenv))
+              (list 'lit 0)))
+
+         ;; Get tag
+         ((eq op 'get-tag)
+          (if (consp (cdr expr))
+              (list 'get-tag (compile-expr (cadr expr) env fenv))
+              (list 'lit 0)))
 
          ;; Lambda/closure
          ((eq op 'lambda)
