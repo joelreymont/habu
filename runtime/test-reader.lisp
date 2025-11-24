@@ -1,9 +1,14 @@
 ;;;; Test reader/printer functions
 
-(load "memory.lisp")
-(load "symbols.lisp")
-(load "strings.lisp")
-(load "reader.lisp")
+(defparameter *test-base* (or *load-truename* *compile-file-truename*))
+
+(defun load-relative (name)
+  (load (merge-pathnames name *test-base*)))
+
+(load-relative "memory.lisp")
+(load-relative "symbols.lisp")
+(load-relative "strings.lisp")
+(load-relative "reader.lisp")
 
 (in-package :habu-runtime)
 
