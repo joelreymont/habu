@@ -16,6 +16,7 @@
 - Added quasiquote expansion in codegen with SBCL comma handling; new smoke `tests/test_reader_quasiquote.lisp` evaluates quasiquoted forms through the JIT. `run-bytecode --print-addrs` now reports full runtime table (vector/string/symbol/closure helpers) and runtime table construction enforces required slots.
 - Package-facing stubs: `find-symbol` on string literals lowers to a symbol literal; package ops (`defpackage`, `in-package`, `export`, `import`, `use-package`) return NIL for now. Added `tests/test_find_symbol.lisp` and `tests/test_symbol_name_runtime.lisp` to assert string-tagged results (tag #x4) via `symbol-name` on quoted/found symbols. `run-habu` now parses raw tagged results from `run-bytecode` output so non-fixnum tags can be observed.
 - Runtime output parsing hardened: `run-habu` reads tagged results from `run-bytecode` (untags fixnums only), and `run-bytecode` prints tag hints for string/symbol returns to aid debugging. All quote/progn/vector/symbol/quasiquote tests are green under the JIT runner.
+- Minimal package semantics: `find-symbol` now accepts string or symbol names (optional package arg ignored) and returns symbol literals; added `tests/test_find_symbol_pkg.lisp`. Package forms remain stubs but no longer crash. Next step is real package tables and reader integration.
 - Tested the new pipeline with `sbcl --script tests/test_compile_and_run.lisp` (passes on ARM64 host with existing `run-bytecode` binary).
 
 ## Latest Updates (November 23, 2025)
