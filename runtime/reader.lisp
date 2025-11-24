@@ -294,7 +294,10 @@
 
     ;; Symbol -> intern and return symbol pointer
     ((symbolp expr)
-     (runtime-intern (symbol-name expr)))
+     (let ((pkg (or (symbol-package expr)
+                    (find-package *current-package*))))
+       (runtime-find-symbol (symbol-name expr)
+                            (when pkg (package-name pkg)))))
 
     (t
      (error "Cannot convert to Habu value: ~S" expr))))

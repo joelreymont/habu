@@ -1454,12 +1454,23 @@ Cons/car/cdr are required; others should be provided in production."
           (list 'lit 0))
 
          ((op= op "FIND-SYMBOL")
-          (let ((name-expr (cadr expr))
-                (pkg-expr (caddr expr)))
+          (let* ((name-expr (cadr expr))
+                 (pkg-expr (caddr expr))
+                 (name-literal
+                   (cond
+                     ((and (consp name-expr) (op= (car name-expr) "QUOTE") (symbolp (cadr name-expr)))
+                      (symbol-name (cadr name-expr)))
+                     ((symbolp name-expr) (symbol-name name-expr))
+                     (t name-expr)))
+                 (pkg-literal
+                   (cond
+                     ((and pkg-expr (consp pkg-expr) (op= (car pkg-expr) "QUOTE") (symbolp (cadr pkg-expr)))
+                      (symbol-name (cadr pkg-expr)))
+                     ((symbolp pkg-expr) (symbol-name pkg-expr))
+                     (t pkg-expr))))
             (list 'find-symbol-call
-                  (quote->ir (if (symbolp name-expr) (symbol-name name-expr) name-expr))
-                  (if pkg-expr (quote->ir (if (symbolp pkg-expr) (symbol-name pkg-expr) pkg-expr))
-                      '(lit 0)))))
+                  (quote->ir name-literal)
+                  (if pkg-literal (quote->ir pkg-literal) '(lit 0)))))
 
          ;; Quasiquote
          ((op= op "QUASIQUOTE")
