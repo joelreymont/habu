@@ -1,9 +1,16 @@
 # Session Context - Habu Defun Implementation
 
-**Session Date**: November 22-23, 2025
+**Session Date**: November 22-24, 2025
 **Duration**: ~6 hours
-**Focus**: Stabilizing defun recursion, temporary allocation, closures, &rest/&optional, and unlimited-arity calls
-**Last Updated**: November 23, 2025 (unlimited args staged in-frame with spill guard, rest loop fixed, 10+ arg tests passing)
+**Focus**: Stabilizing defun recursion, temporary allocation, closures, &rest/&optional, unlimited-arity calls, and wiring runtime execution
+**Last Updated**: November 24, 2025 (run-habu driver now compiles/forms to bytecode and executes via run-bytecode)
+
+## Latest Updates (November 24, 2025)
+
+- Added runtime-aware driver helpers in `run-habu.lisp`: `compile-forms-with-runtime`, `compile-and-run-forms`, and `run-bytecode-file` now compile to ARM64 bytes with real runtime addresses, write bytecode files, and execute through the tiny C runtime (`run-bytecode`). Load-time smoke can be gated via `HABU_ENABLE_LOAD_SMOKE=1`, keeping library loads quiet by default.
+- Introduced a simple CLI in `run-habu.lisp` (`--run-file <path>`, `--run-expr "(...)"`) that invokes the self-hosted compiler and executes the result through the runtime JIT runner.
+- New regression `tests/test_compile_and_run.lisp` compiles a cons/car/cdr pipeline to ARM64, runs it through `run-bytecode`, and asserts the untagged fixnum result to verify runtime table plumbing end-to-end.
+- Tested the new pipeline with `sbcl --script tests/test_compile_and_run.lisp` (passes on ARM64 host with existing `run-bytecode` binary).
 
 ## Latest Updates (November 23, 2025)
 
