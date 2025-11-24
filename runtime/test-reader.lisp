@@ -178,6 +178,35 @@
   (error (e)
     (test "PRINT-SYMBOL-PREFIX" nil (format nil "~A" e))))
 
+;; Test 12: Read backquote
+(format t "~%12. Read Backquote~%")
+(format t "====================~%")
+
+(handler-case
+    (let* ((input-ptr (runtime-lisp->string "`(1 2 3)"))
+           (result (runtime-read-from-string input-ptr))
+           (print-result (runtime-print-to-string result))
+           (print-str (runtime-string->lisp print-result)))
+      (test "READ-BACKQUOTE" (string= print-str "(QUASIQUOTE (1 2 3))"))
+      (format t "   Printed: ~S~%" print-str))
+  (error (e)
+    (test "READ-BACKQUOTE" nil (format nil "~A" e))))
+
+;; Test 13: Read unquote and unquote-splicing
+(format t "~%13. Read Unquote Variants~%")
+(format t "===========================~%")
+
+(handler-case
+    (let* ((input-ptr (runtime-lisp->string "`(A ,B ,@C)"))
+           (result (runtime-read-from-string input-ptr))
+           (print-result (runtime-print-to-string result))
+           (print-str (runtime-string->lisp print-result)))
+      (test "READ-UNQUOTE-FORMS"
+            (string= print-str "(QUASIQUOTE (A (UNQUOTE B) (UNQUOTE-SPLICING C)))"))
+      (format t "   Printed: ~S~%" print-str))
+  (error (e)
+    (test "READ-UNQUOTE-FORMS" nil (format nil "~A" e))))
+
 ;; Summary
 (format t "~%=====================================~%")
 (format t "  Test Results~%")

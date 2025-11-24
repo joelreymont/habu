@@ -197,7 +197,9 @@
          (pkg (find-symbol-package-name sym-ptr key)))
     (cond
       ((null pkg) name)
-      ((string= pkg *current-package*) name)
+      ((or (string= pkg *current-package*)
+           (string= pkg "HABU-RUNTIME"))
+       name)
       (t (format nil "~A::~A" pkg name)))))
 
 ;;; Packages (minimal)

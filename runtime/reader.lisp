@@ -9,7 +9,7 @@
 ;;; Tokenizer
 
 (defstruct token
-  type   ; :lparen :rparen :symbol :number :string :quote :dot
+  type   ; :lparen :rparen :symbol :number :string :quote :dot :backquote :unquote :unquote-splicing
   value) ; String or number value
 
 (defun whitespace-p (char)
@@ -53,6 +53,21 @@
           ((char= ch #\')
            (push (make-token :type :quote :value "'") tokens)
            (incf i))
+
+          ;; Backquote
+          ((char= ch #\`)
+           (push (make-token :type :backquote :value "`") tokens)
+           (incf i))
+
+          ;; Unquote / Unquote-splicing
+          ((char= ch #\,)
+           (if (and (< (1+ i) len) (char= (char string (1+ i)) #\@))
+               (progn
+                 (push (make-token :type :unquote-splicing :value ",@") tokens)
+                 (incf i 2))
+               (progn
+                 (push (make-token :type :unquote :value ",") tokens)
+                 (incf i))))
 
           ;; Dot (for dotted pairs)
           ((and (char= ch #\.)
@@ -166,6 +181,24 @@
            (parse-tokens (rest tokens))
          (values (list 'quote expr) rest-tokens)))
 
+      (:backquote
+       ;; Backquote: `x => (quasiquote x)
+       (multiple-value-bind (expr rest-tokens)
+           (parse-tokens (rest tokens))
+         (values (list 'quasiquote expr) rest-tokens)))
+
+      (:unquote
+       ;; Unquote: ,x => (unquote x)
+       (multiple-value-bind (expr rest-tokens)
+           (parse-tokens (rest tokens))
+         (values (list 'unquote expr) rest-tokens)))
+
+      (:unquote-splicing
+       ;; Unquote-splicing: ,@x => (unquote-splicing x)
+       (multiple-value-bind (expr rest-tokens)
+           (parse-tokens (rest tokens))
+         (values (list 'unquote-splicing expr) rest-tokens)))
+
       (:number
        (values (token-value tok) (rest tokens)))
 
@@ -173,7 +206,7 @@
        (values (token-value tok) (rest tokens)))
 
       (:symbol
-       (values (token-value tok) (rest tokens)))
+       (values (intern (string-upcase (token-value tok))) (rest tokens)))
 
       (t
        (error "Unexpected token: ~A" tok)))))
