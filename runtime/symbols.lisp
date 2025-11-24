@@ -37,9 +37,13 @@
 (defvar *habu-gensym-counter* 0
   "Counter for gensym unique symbols")
 
-(defvar *packages* (make-hash-table :test 'equal)
-  "Simple package table: name -> hash table of symbols")
+(defstruct package
+  name
+  (use '("HABU-RUNTIME"))
+  (symbols (make-hash-table :test 'equal))
+  (exports (make-hash-table :test 'equal)))
 
+(defvar *packages* (make-hash-table :test 'equal) "Name -> package struct")
 (defvar *current-package* "HABU-USER")
 
 ;;; Symbol allocation
@@ -131,12 +135,12 @@
     (error "Runtime not initialized - call (initialize-runtime)"))
 
   ;; Check if already interned
-  (let ((existing (gethash name *symbol-table*)))
+  (let ((existing (gethash (string-upcase name) *symbol-table*)))
     (if existing
         existing
-        (let* ((name-str (runtime-make-string name)) ; proper string
+        (let* ((name-str (runtime-make-string (string-upcase name))) ; proper string
                (sym (allocate-symbol name-str)))
-          (setf (gethash name *symbol-table*) sym)
+          (setf (gethash (string-upcase name) *symbol-table*) sym)
           sym))))
 
 (defun runtime-make-symbol (name)
@@ -174,30 +178,37 @@
   (format nil "#:SYMBOL-~X" sym-ptr))
 
 ;;; Packages (minimal)
-(defun package-table (name)
+(defun package-or-create (name)
   (or (gethash name *packages*)
-      (let ((tbl (make-hash-table :test 'equal)))
-        (setf (gethash name *packages*) tbl)
-        tbl)))
+      (let ((pkg (make-package :name name)))
+        (setf (gethash name *packages*) pkg)
+        pkg)))
 
 (defun runtime-make-package (name)
-  (package-table name)
+  (package-or-create name)
   0)
 
 (defun runtime-use-package (name)
-  (declare (ignore name))
+  (let ((pkg (package-or-create *current-package*)))
+    (pushnew name (package-use pkg) :test #'string=))
   0)
 
 (defun runtime-export-symbols (names package-name)
-  (declare (ignore names package-name))
+  (let* ((pkg (package-or-create (or package-name *current-package*)))
+         (exports (package-exports pkg)))
+    (dolist (n names)
+      (let ((sym (runtime-find-symbol n (package-name pkg))))
+        (setf (gethash n exports) sym))))
   0)
 
 (defun runtime-find-symbol (name &optional package-name)
-  (let* ((pkg (package-table (or package-name *current-package*)))
-         (sym (gethash name pkg)))
+  (let* ((pkg (package-or-create (or package-name *current-package*)))
+         (exports (package-exports pkg))
+         (syms (package-symbols pkg))
+         (sym (or (gethash name syms) (gethash name exports))))
     (or sym
         (let ((new (runtime-intern name)))
-          (setf (gethash name pkg) new)
+          (setf (gethash name syms) new)
           new))))
 
 ;;; GC support for symbols
