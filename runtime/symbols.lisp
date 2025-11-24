@@ -30,11 +30,9 @@
 ;;; function: function definition (or unbound marker)
 ;;; plist: property list
 
-(defconstant +unbound+ #xFFFFFFFFFFFFFFFF)  ; Marker for unbound symbol (all bits set)
-
 ;;; Global symbol table (name -> symbol pointer)
 (defvar *symbol-table* (make-hash-table :test 'equal)
-  "Global symbol table for interning")
+  "Global symbol table for interning (keyed by (pkg . name))")
 
 (defvar *habu-gensym-counter* 0
   "Counter for gensym unique symbols")
@@ -131,18 +129,24 @@
   plist)
 
 ;;; Interning
-(defun runtime-intern (name)
-  "Intern a symbol by name (returns existing or creates new)"
+(defun runtime-intern (name &optional package-name)
+  "Intern a symbol by NAME in PACKAGE-NAME (default *current-package*)."
   (unless *heap*
     (error "Runtime not initialized - call (initialize-runtime)"))
 
-  (let* ((key (string-upcase name))
-         (existing (gethash key *symbol-table*)))
+  (let* ((pkg-name (string-upcase (or package-name *current-package*)))
+         (pkg (package-or-create pkg-name))
+         (key (string-upcase name))
+         (syms (pkg-symbols pkg))
+         (exports (pkg-exports pkg))
+         (existing (or (gethash key syms)
+                       (gethash key exports))))
     (if existing
         existing
-        (let* ((name-str (runtime-make-string key)) ; proper string
+        (let* ((name-str (runtime-make-string key))
                (sym (allocate-symbol name-str)))
-          (setf (gethash key *symbol-table*) sym)
+          (setf (gethash key syms) sym)
+          (setf (gethash (cons pkg-name key) *symbol-table*) sym)
           sym))))
 
 (defun runtime-make-symbol (name)
@@ -171,13 +175,7 @@
   "Get the Common Lisp name of a symbol (for debugging)"
   (unless (= (logand sym-ptr #xF) +tag-symbol+)
     (error "Not a symbol: ~X" sym-ptr))
-  ;; Find symbol in table
-  (maphash (lambda (name ptr)
-             (when (= ptr sym-ptr)
-               (return-from runtime-symbol-name name)))
-           *symbol-table*)
-  ;; Not found in table (uninterned)
-  (format nil "#:SYMBOL-~X" sym-ptr))
+  (runtime-string->lisp (symbol-name-ptr sym-ptr)))
 
 (defun find-symbol-package-name (sym-ptr key)
   "Return package name containing SYM-PTR (symbols/exports), else NIL."
@@ -215,6 +213,7 @@
 
 (defun runtime-in-package (name)
   (setf *current-package* (string-upcase name))
+  (package-or-create *current-package*)
   0)
 
 (defun runtime-use-package (name)
@@ -240,9 +239,7 @@
                   (gethash key exports)
                   (find-in-used-packages key (pkg-use pkg)))))
     (or sym
-        (let ((new (runtime-intern name)))
-          (setf (gethash key syms) new)
-          new))))
+        (runtime-intern name (pkg-name pkg)))))
 
 (defun find-in-used-packages (key use-list)
   (dolist (pkg-name use-list)

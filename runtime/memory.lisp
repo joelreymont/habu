@@ -19,6 +19,7 @@
 
 (in-package :habu-runtime)
 
+(defconstant +unbound+ #xFFFFFFFFFFFFFFFF)
 ;;; Heap structure
 (defstruct heap
   (memory nil :type (or null (simple-array (unsigned-byte 8) (*))))
@@ -234,10 +235,12 @@
                (gc-mark-object heap name-ptr))
              ;; Mark value if bound and is a pointer
              (when (and (not (zerop value))
+                        (not (= value +unbound+))
                         (not (= (logand value #xF) +tag-fixnum+)))
                (gc-mark-object heap value))
              ;; Mark function if bound and is a pointer
              (when (and (not (zerop fn))
+                        (not (= fn +unbound+))
                         (not (= (logand fn #xF) +tag-fixnum+)))
                (gc-mark-object heap fn))
              ;; Mark plist if it's a cons
