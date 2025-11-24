@@ -173,7 +173,7 @@
        (values (token-value tok) (rest tokens)))
 
       (:symbol
-       (values (intern (string-upcase (token-value tok))) (rest tokens)))
+       (values (token-value tok) (rest tokens)))
 
       (t
        (error "Unexpected token: ~A" tok)))))
@@ -294,7 +294,7 @@
 
     ;; Symbol -> intern and return symbol pointer
     ((symbolp expr)
-     (runtime-intern (string expr)))
+     (runtime-intern (symbol-name expr)))
 
     (t
      (error "Cannot convert to Habu value: ~S" expr))))
