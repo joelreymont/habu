@@ -244,8 +244,7 @@
 (defun find-in-used-packages (key use-list)
   (dolist (pkg-name use-list)
     (let* ((pkg (gethash pkg-name *packages*))
-           (hit (and pkg (or (gethash key (pkg-symbols pkg))
-                             (gethash key (pkg-exports pkg))))))
+           (hit (and pkg (gethash key (pkg-exports pkg)))))
       (when hit (return hit)))))
 
 ;;; GC support for symbols

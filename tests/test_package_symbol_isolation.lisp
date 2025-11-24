@@ -3,11 +3,12 @@
 
 (load "run-habu.lisp")
 
-(let* ((forms '((defun compare-symbols ()
-                   (let ((a (find-symbol "foo" "PKG-X"))
-                         (b (find-symbol "foo" "PKG-Y")))
-                     (if (= a b) 0 1)))
-                 (compare-symbols))))
+(let* ((forms (list
+               '(defun check ()
+                  (let ((ax (find-symbol "foo" "PKG-X"))
+                        (bx (find-symbol "foo" "PKG-Y")))
+                    (if (= ax bx) 0 1)))
+               '(check))))
   (multiple-value-bind (result output) (habu-sbcl:compile-and-run-forms forms)
     (if (= result 1)
         (sb-ext:quit :unix-status 0)

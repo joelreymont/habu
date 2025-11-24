@@ -1,8 +1,11 @@
 ;;;; Test suite for Habu runtime symbol table
 
-(load "memory.lisp")
-(load "strings.lisp")
-(load "symbols.lisp")
+(defun load-relative (name)
+  (load (merge-pathnames name (or *load-pathname* (truename ".")))))
+
+(load-relative "memory.lisp")
+(load-relative "strings.lisp")
+(load-relative "symbols.lisp")
 (in-package :habu-runtime)
 
 (defvar *test-count* 0)
@@ -242,6 +245,23 @@
            (allocated (- after before)))
       ;; Symbol allocation includes name string; expect at least one aligned block.
       (test-assert (>= allocated 48) "Symbol allocation increases heap")))
+  (format t "~%")
+
+  ;; Test 16: Package export visibility
+  (format t "Test 16: Package Export Visibility~%")
+  (with-heap (:size 4096)
+    (clear-symbol-table)
+    (let* ((ax (runtime-find-symbol "FOO" "PKG-X"))
+           (ay (runtime-find-symbol "BAR" "PKG-X")))
+      (runtime-export-symbols (list "FOO") "PKG-X")
+      (runtime-in-package "PKG-Z")
+      (runtime-use-package "PKG-X")
+      (let* ((foo-from-z (runtime-find-symbol "FOO"))
+             (bar-from-z (runtime-find-symbol "BAR")))
+        (test-assert (= ax foo-from-z) "Exported symbol visible via use-package")
+        (test-assert (not (= ay bar-from-z))
+                     "Unexported symbol not reused via use-package")))
+    (runtime-in-package "HABU-USER"))
   (format t "~%")
 
   ;; Summary
