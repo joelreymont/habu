@@ -139,6 +139,10 @@ int main(int argc, char **argv) {
     /* Optional stubs for package-aware usage */
     g_runtime_table[14] = (void*)habu_runtime_make_string;
     g_runtime_table[15] = (void*)habu_runtime_find_symbol;
+    g_runtime_table[16] = (void*)habu_runtime_make_package;
+    g_runtime_table[17] = (void*)habu_runtime_in_package;
+    g_runtime_table[18] = (void*)habu_runtime_use_package;
+    g_runtime_table[19] = (void*)habu_runtime_export_symbols;
 
     if (getenv("HABU_DEBUG_TABLE")) {
         for (int i = 0; i <= 13; i++) {

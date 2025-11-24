@@ -387,8 +387,39 @@ habu_value_t habu_runtime_make_string(const char *str) {
     return habu_make_string(str, strlen(str));
 }
 
-habu_value_t habu_runtime_find_symbol(const char *name) {
-    return habu_make_symbol(name);
+static const char *current_package = "HABU-USER";
+
+habu_value_t habu_runtime_make_package(habu_value_t name_val) {
+    (void)name_val;
+    return NIL;
+}
+
+habu_value_t habu_runtime_in_package(habu_value_t name_val) {
+    if (get_tag(name_val) == TAG_STRING) {
+        habu_string_t *s = value_to_string(name_val);
+        current_package = s->data;
+    }
+    return NIL;
+}
+
+habu_value_t habu_runtime_use_package(habu_value_t name_val) {
+    (void)name_val;
+    return NIL;
+}
+
+habu_value_t habu_runtime_export_symbols(habu_value_t names_val, habu_value_t pkg_val) {
+    (void)names_val;
+    (void)pkg_val;
+    return NIL;
+}
+
+habu_value_t habu_runtime_find_symbol(habu_value_t name_val, habu_value_t pkg_val) {
+    (void)pkg_val;
+    if (get_tag(name_val) == TAG_STRING) {
+        habu_string_t *s = value_to_string(name_val);
+        return habu_make_symbol(s->data);
+    }
+    return NIL;
 }
 
 habu_value_t habu_symbol_name(habu_value_t sym_val) {
