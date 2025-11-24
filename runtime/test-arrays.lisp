@@ -186,12 +186,12 @@
         (test-assert (= (runtime-aref retrieved 1) (* 20 16)) "Inner element 1"))))
   (format t "~%")
 
-  ;; Test 13: Array tag verification
-  (format t "Test 13: Array Tag Verification~%")
+  ;; Test 13: Vector tag verification
+  (format t "Test 13: Vector Tag Verification~%")
   (with-heap (:size 4096)
     (let ((arr (runtime-make-array 5)))
       (test-assert (= (logand arr #xF) +tag-array+) "Correct array tag")
-      (test-assert (= (logand arr #xF) 4) "Tag value is 4")))
+      (test-assert (= (logand arr #xF) #x3) "Tag value is #x3")))
   (format t "~%")
 
   ;; Test 14: Empty array

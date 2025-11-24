@@ -44,6 +44,13 @@
            (push (make-token :type :lparen :value "(") tokens)
            (incf i))
 
+          ;; Vector literal: #(...)
+          ((and (char= ch #\#)
+                (< (1+ i) len)
+                (char= (char string (1+ i)) #\())
+           (push (make-token :type :vector-start :value "#(") tokens)
+           (incf i 2))
+
           ;; Right paren
           ((char= ch #\))
            (push (make-token :type :rparen :value ")") tokens)
@@ -175,6 +182,16 @@
       (:rparen
        (error "Unexpected closing parenthesis"))
 
+      (:vector-start
+       ;; Parse vector literal: #(a b c) => vector
+       (let* ((subtokens (cons (make-token :type :lparen :value "(")
+                               (rest tokens))))
+         (multiple-value-bind (list-expr remaining)
+             (parse-tokens subtokens)
+           (if (listp list-expr)
+               (values (coerce list-expr 'vector) remaining)
+               (error "Invalid vector literal")))))
+
       (:quote
        ;; Quote: 'x => (quote x)
        (multiple-value-bind (expr rest-tokens)
@@ -257,9 +274,15 @@
          ((= tag +tag-symbol+)
           (runtime-symbol->print-name value))
 
-         ;; String (tag 0x3)
+         ;; String (tag 0x4)
          ((= tag +tag-string+)
           (format nil "\"~A\"" (escape-string (runtime-string->lisp value))))
+
+         ;; Vector (tag 0x3)
+         ((= tag +tag-vector+)
+          (let* ((vec (runtime-vector->list value))
+                 (elts (mapcar #'habu-to-string vec)))
+            (format nil "#(~{~A~^ ~})" elts)))
 
          ;; Closure (tag 0x5)
          ((= tag +tag-closure+)
@@ -322,6 +345,14 @@
     ((consp expr)
      (runtime-cons (lisp-to-habu (car expr))
                    (lisp-to-habu (cdr expr))))
+
+    ;; Vector -> vector of elements
+    ((vectorp expr)
+     (let* ((len (length expr))
+            (vec (runtime-make-vector len)))
+       (dotimes (i len)
+         (runtime-vector-set vec i (lisp-to-habu (aref expr i))))
+       vec))
 
     ;; Symbol -> intern and return symbol pointer
     ((symbolp expr)

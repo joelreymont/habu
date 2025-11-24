@@ -4,90 +4,128 @@
 (in-package :habu-runtime)
 
 ;;; Export symbols
-(export '(runtime-make-array
+(export '(runtime-make-vector
+          runtime-vector-ref
+          runtime-vector-set
+          runtime-vector-length
+          runtime-vector-fill
+          runtime-vector-copy
+          runtime-vector->list
+          ;; Backward-compatible aliases
+          runtime-make-array
           runtime-aref
           runtime-aset
           runtime-array-length
           runtime-array-fill
           runtime-array-copy))
 
+;; Legacy alias retained for older tests; vector tag is #x3.
+(defconstant +tag-array+ +tag-vector+)
+
 ;;; Array structure (on heap)
 ;;; Layout: header(8) + length(8) + elements(N*8 bytes)
 ;;; length: number of elements
 ;;; elements: array of 64-bit values (fixnums or pointers)
 
-;;; Array allocation
-(defun runtime-make-array (size &optional (initial-element 0))
-  "Allocate an array on the heap with SIZE elements"
+;;; Vector allocation
+(defun runtime-make-vector (size &optional (initial-element 0))
+  "Allocate a vector on the heap with SIZE elements"
   (unless *heap*
     (error "Runtime not initialized - call (initialize-runtime)"))
   (when (< size 0)
-    (error "Array size must be non-negative: ~D" size))
-  (let* ((data-size (+ 8 (* size 8)))  ; 8 bytes for length + size*8 for elements
-         (ptr (heap-allocate *heap* data-size +tag-array+))
+    (error "Vector size must be non-negative: ~D" size))
+  (let* ((data-size (+ #x8 (* size #x8)))  ; length + data
+         (ptr (heap-allocate *heap* data-size +tag-vector+))
          (header-addr (logand ptr (lognot #xF)))
-         (data-addr (+ header-addr 8)))
+         (data-addr (+ header-addr #x8)))
     ;; Write length
     (write-u64 *heap* data-addr size)
-    ;; Initialize elements to initial-element
+    ;; Initialize elements
     (loop for i from 0 below size
-          do (write-u64 *heap* (+ data-addr 8 (* i 8)) initial-element))
+          do (write-u64 *heap* (+ data-addr #x8 (* i #x8)) initial-element))
     ptr))
 
-(defun runtime-array-length (arr-ptr)
-  "Get the length of an array"
-  (unless (= (logand arr-ptr #xF) +tag-array+)
-    (error "Not an array: ~X" arr-ptr))
-  (let* ((header-addr (logand arr-ptr (lognot #xF)))
-         (data-addr (+ header-addr 8)))
+(defun runtime-vector-length (vec-ptr)
+  "Get the length of a vector"
+  (unless (= (logand vec-ptr #xF) +tag-vector+)
+    (error "Not a vector: ~X" vec-ptr))
+  (let* ((header-addr (logand vec-ptr (lognot #xF)))
+         (data-addr (+ header-addr #x8)))
     (read-u64 *heap* data-addr)))
 
-(defun runtime-aref (arr-ptr index)
-  "Get element at index (0-based)"
-  (unless (= (logand arr-ptr #xF) +tag-array+)
-    (error "Not an array: ~X" arr-ptr))
-  (let* ((header-addr (logand arr-ptr (lognot #xF)))
-         (data-addr (+ header-addr 8))
+(defun runtime-vector-ref (vec-ptr index)
+  "Get element at INDEX (0-based)"
+  (unless (= (logand vec-ptr #xF) +tag-vector+)
+    (error "Not a vector: ~X" vec-ptr))
+  (let* ((header-addr (logand vec-ptr (lognot #xF)))
+         (data-addr (+ header-addr #x8))
          (length (read-u64 *heap* data-addr)))
     (when (or (< index 0) (>= index length))
-      (error "Array index out of bounds: ~D (length ~D)" index length))
-    (read-u64 *heap* (+ data-addr 8 (* index 8)))))
+      (error "Vector index out of bounds: ~D (length ~D)" index length))
+    (read-u64 *heap* (+ data-addr #x8 (* index #x8)))))
 
-(defun runtime-aset (arr-ptr index value)
-  "Set element at index (0-based)"
-  (unless (= (logand arr-ptr #xF) +tag-array+)
-    (error "Not an array: ~X" arr-ptr))
-  (let* ((header-addr (logand arr-ptr (lognot #xF)))
-         (data-addr (+ header-addr 8))
+(defun runtime-vector-set (vec-ptr index value)
+  "Set element at INDEX (0-based)"
+  (unless (= (logand vec-ptr #xF) +tag-vector+)
+    (error "Not a vector: ~X" vec-ptr))
+  (let* ((header-addr (logand vec-ptr (lognot #xF)))
+         (data-addr (+ header-addr #x8))
          (length (read-u64 *heap* data-addr)))
     (when (or (< index 0) (>= index length))
-      (error "Array index out of bounds: ~D (length ~D)" index length))
-    (write-u64 *heap* (+ data-addr 8 (* index 8)) value))
+      (error "Vector index out of bounds: ~D (length ~D)" index length))
+    (write-u64 *heap* (+ data-addr #x8 (* index #x8)) value))
   value)
 
-(defun runtime-array-fill (arr-ptr value)
-  "Fill all elements of array with value"
-  (unless (= (logand arr-ptr #xF) +tag-array+)
-    (error "Not an array: ~X" arr-ptr))
-  (let* ((header-addr (logand arr-ptr (lognot #xF)))
-         (data-addr (+ header-addr 8))
+(defun runtime-vector-fill (vec-ptr value)
+  "Fill all elements of vector with VALUE"
+  (unless (= (logand vec-ptr #xF) +tag-vector+)
+    (error "Not a vector: ~X" vec-ptr))
+  (let* ((header-addr (logand vec-ptr (lognot #xF)))
+         (data-addr (+ header-addr #x8))
          (length (read-u64 *heap* data-addr)))
     (loop for i from 0 below length
-          do (write-u64 *heap* (+ data-addr 8 (* i 8)) value)))
-  arr-ptr)
+          do (write-u64 *heap* (+ data-addr #x8 (* i #x8)) value)))
+  vec-ptr)
 
-(defun runtime-array-copy (arr-ptr)
-  "Create a shallow copy of an array"
-  (unless (= (logand arr-ptr #xF) +tag-array+)
-    (error "Not an array: ~X" arr-ptr))
-  (let* ((header-addr (logand arr-ptr (lognot #xF)))
-         (data-addr (+ header-addr 8))
+(defun runtime-vector-copy (vec-ptr)
+  "Create a shallow copy of a vector"
+  (unless (= (logand vec-ptr #xF) +tag-vector+)
+    (error "Not a vector: ~X" vec-ptr))
+  (let* ((header-addr (logand vec-ptr (lognot #xF)))
+         (data-addr (+ header-addr #x8))
          (length (read-u64 *heap* data-addr))
-         (new-arr (runtime-make-array length)))
+         (new-vec (runtime-make-vector length)))
     ;; Copy all elements
     (loop for i from 0 below length
-          do (runtime-aset new-arr i (runtime-aref arr-ptr i)))
-    new-arr))
+          do (runtime-vector-set new-vec i (runtime-vector-ref vec-ptr i)))
+    new-vec))
+
+(defun runtime-vector->list (vec-ptr)
+  "Convert runtime vector to a Lisp list of runtime values"
+  (unless (= (logand vec-ptr #xF) +tag-vector+)
+    (error "Not a vector: ~X" vec-ptr))
+  (let ((length (runtime-vector-length vec-ptr)))
+    (loop for i from 0 below length
+          collect (runtime-vector-ref vec-ptr i))))
+
+;;; Backward-compatible array aliases
+(defun runtime-make-array (size &optional (initial-element 0))
+  (runtime-make-vector size initial-element))
+
+(defun runtime-aref (arr-ptr index)
+  (runtime-vector-ref arr-ptr index))
+
+(defun runtime-aset (arr-ptr index value)
+  (runtime-vector-set arr-ptr index value))
+
+(defun runtime-array-length (arr-ptr)
+  (runtime-vector-length arr-ptr))
+
+(defun runtime-array-fill (arr-ptr value)
+  (runtime-vector-fill arr-ptr value))
+
+(defun runtime-array-copy (arr-ptr)
+  (runtime-vector-copy arr-ptr))
 
 ;;; GC support for arrays
 (defun gc-mark-array (heap arr-ptr)
@@ -106,10 +144,10 @@
     (write-u64 heap header-addr (header-set-mark header))
 
     ;; Mark array elements that are pointers
-    (let* ((data-addr (+ header-addr 8))
+    (let* ((data-addr (+ header-addr #x8))
            (length (read-u64 heap data-addr)))
       (loop for i from 0 below length
-            for element = (read-u64 heap (+ data-addr 8 (* i 8)))
+            for element = (read-u64 heap (+ data-addr #x8 (* i #x8)))
             do (when (and (not (zerop element))
                           (not (= (logand element #xF) +tag-fixnum+)))
                  (gc-mark-object heap element))))))

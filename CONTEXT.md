@@ -7,6 +7,9 @@
 
 ## Latest Updates (Current Session)
 
+- Added vector literal handling in the runtime reader/printer: tokenizer emits `:vector-start` for `#(`, parser builds vectors, printer formats `#(...)`, and `lisp-to-habu` now allocates runtime vectors for Lisp vectors. Fixed an extra `)` in the tokenizer predicate and reran `runtime/test-reader.lisp` (17/17 passing).
+- Ran `python3 tools/check_parens.py` on `runtime/reader.lisp`, `runtime/test-reader.lisp`, `runtime/arrays.lisp`, and `runtime/test-arrays.lisp` after the fix; no unmatched parentheses reported.
+- Verified array/vector runtime paths with `sbcl --script test-arrays.lisp` from the `runtime/` directory (47/47 passing).
 - Removed package/import/export hooks from the C runtime entirely; packages live in Lisp (`runtime/symbols.lisp`) and package forms fold to NIL in codegen. `run-bytecode` and `bin/print-runtime-addrs` now expose slots only through `symbol-name` (offset #x68, slot 13).
 - Dropped the C-side symbol cache used by the former `habu_runtime_find_symbol`; symbol interning is handled by the Lisp runtime only.
 - Rebuilt `run-bytecode` and `bin/print-runtime-addrs` after the runtime cleanup; package smoke tests still pass (`tests/test_find_symbol.lisp`, `tests/test_find_symbol_pkg.lisp`, `tests/test_package_import_export.lisp`, `tests/test_printer_package.lisp`).
@@ -43,6 +46,10 @@
 - Package forms are folded at compile time (no runtime package calls); `find-symbol` literals become symbol literals. Package tables in Lisp track use/exports with uppercase keys; `find-symbol` searches current, exports, and used packages. Reader interns via runtime; runtime stays minimal. Package/symbol smoke tests still pass.
 - (Superseded: removed in current session) C runtime caching for `find-symbol` was briefly added to reuse symbol pointers and track `in-package`; package hooks now live only in Lisp.
 - Tested the new pipeline with `sbcl --script tests/test_compile_and_run.lisp` (passes on ARM64 host with existing `run-bytecode` binary).
+- Added `tools/check_parens.py` (string/comment aware parenthesis checker) and verified on synthetic samples:
+  - `/tmp/paren_miss_close.lisp`: reports two unmatched opens at 1:1 and 2:3.
+  - `/tmp/paren_extra_close.lisp`: reports unmatched close at 2:10.
+  - `/tmp/paren_ignored_contexts.lisp` and `/tmp/paren_block_comment.lisp`: no issues (strings, line comments, and block comments ignored).
 
 ## Latest Updates (November 23, 2025)
 

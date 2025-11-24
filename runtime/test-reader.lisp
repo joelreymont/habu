@@ -6,6 +6,7 @@
   (load (merge-pathnames name *test-base*)))
 
 (load-relative "memory.lisp")
+(load-relative "arrays.lisp")
 (load-relative "symbols.lisp")
 (load-relative "strings.lisp")
 (load-relative "reader.lisp")
@@ -206,6 +207,41 @@
       (format t "   Printed: ~S~%" print-str))
   (error (e)
     (test "READ-UNQUOTE-FORMS" nil (format nil "~A" e))))
+
+;; Test 14: Print vector
+(format t "~%14. Print Vector~%")
+(format t "==================~%")
+
+(handler-case
+    (let* ((vec (runtime-make-vector 3)))
+      (runtime-vector-set vec 0 (ash 1 4))
+      (runtime-vector-set vec 1 (ash 2 4))
+      (runtime-vector-set vec 2 (ash 3 4))
+      (let* ((result-ptr (runtime-print-to-string vec))
+             (result-str (runtime-string->lisp result-ptr)))
+        (test "PRINT-VECTOR" (string= result-str "#(1 2 3)"))
+        (format t "   Printed: ~S~%" result-str)))
+  (error (e)
+    (test "PRINT-VECTOR" nil (format nil "~A" e))))
+
+;; Test 15: Read vector literal
+(format t "~%15. Read Vector~%")
+(format t "==================~%")
+
+(handler-case
+    (let* ((input-ptr (runtime-lisp->string "#(4 5 6)"))
+           (result (runtime-read-from-string input-ptr)))
+      (test "READ-VECTOR" (= (logand result #xF) +tag-vector+))
+      (test "READ-VECTOR-LEN" (= (runtime-vector-length result) 3))
+      (test "READ-VECTOR-ELTS"
+            (and (= (runtime-vector-ref result 0) (ash 4 4))
+                 (= (runtime-vector-ref result 1) (ash 5 4))
+                 (= (runtime-vector-ref result 2) (ash 6 4))))
+      (let* ((print-result (runtime-print-to-string result))
+             (print-str (runtime-string->lisp print-result)))
+        (format t "   Printed: ~S~%" print-str)))
+  (error (e)
+    (test "READ-VECTOR" nil (format nil "~A" e))))
 
 ;; Summary
 (format t "~%=====================================~%")
