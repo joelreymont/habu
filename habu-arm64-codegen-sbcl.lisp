@@ -33,7 +33,7 @@ Supports fixnums, nil, lists, symbols, strings, and vectors of those."
     ((null obj) (list 'lit #x0))
     ((stringp obj) (cons 'string-lit (string->char-codes obj)))
     ((symbolp obj) (list 'symbol-lit (symbol-name obj)))
-    ((vectorp obj) (list 'vector-lit (map 'list #'quote->ir obj)))
+    ((vectorp obj) (cons 'vector-lit (map 'list #'quote->ir obj)))
     ((consp obj) (list 'cons-call (quote->ir (car obj)) (quote->ir (cdr obj))))
     (t (list 'lit #x0))))
 
@@ -167,6 +167,10 @@ Supports fixnums, nil, lists, symbols, strings, and vectors of those."
   (list (cons 'habu_cons cons-addr)
         (cons 'habu_car car-addr)
         (cons 'habu_cdr cdr-addr)))
+
+(defun op= (sym name)
+  "Package-agnostic symbol name comparison."
+  (and (symbolp sym) (string= (symbol-name sym) name)))
 
 ;; ARM64 Instruction Encoders (Functional)
 (defun arm64-movz (rd imm)
@@ -1267,7 +1271,7 @@ Supports fixnums, nil, lists, symbols, strings, and vectors of those."
              (list 'lit 0)))
 
          ;; Vector ref
-         ((eq op 'vector-ref)
+         ((op= op "VECTOR-REF")
           (if (and (consp (cdr expr)) (consp (cddr expr)))
               (list 'vector-ref
                     (compile-expr (cadr expr) env fenv)
@@ -1275,21 +1279,26 @@ Supports fixnums, nil, lists, symbols, strings, and vectors of those."
               (list 'lit 0)))
 
          ;; Symbol-name
-         ((eq op 'symbol-name)
+         ((op= op "SYMBOL-NAME")
           (if (consp (cdr expr))
               (list 'symbol-name (compile-expr (cadr expr) env fenv))
               (list 'lit 0)))
 
          ;; String length
-         ((eq op 'string-length)
+         ((op= op "STRING-LENGTH")
           (if (consp (cdr expr))
               (list 'string-len (compile-expr (cadr expr) env fenv))
               (list 'lit 0)))
 
          ;; Get tag
-         ((eq op 'get-tag)
+         ((op= op "GET-TAG")
           (if (consp (cdr expr))
-              (list 'get-tag (compile-expr (cadr expr) env fenv))
+              (let ((arg-ir (compile-expr (cadr expr) env fenv)))
+                (cond
+                  ((has-tag? arg-ir 'string-lit) (list 'lit #x4))
+                  ((has-tag? arg-ir 'symbol-lit) (list 'lit #x2))
+                  ((has-tag? arg-ir 'vector-lit) (list 'lit #x3))
+                  (t (list 'get-tag arg-ir))))
               (list 'lit 0)))
 
          ;; Lambda/closure

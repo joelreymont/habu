@@ -126,6 +126,12 @@ int main(int argc, char **argv) {
     g_runtime_table[12] = (void*)habu_string_length_raw;
     g_runtime_table[13] = (void*)habu_symbol_name;
 
+    if (getenv("HABU_DEBUG_TABLE")) {
+        for (int i = 0; i <= 13; i++) {
+            fprintf(stderr, "RT[%d]=%p\n", i, g_runtime_table[i]);
+        }
+    }
+
     /* Execute code - pass runtime table as argument */
     printf("Executing bytecode...\n");
     compiled_fn_t fn = (compiled_fn_t)exec_mem;
