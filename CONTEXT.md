@@ -13,6 +13,7 @@
 - Printer now uses runtime symbol names with package-aware prefixes (`PKG::FOO` when not in the current package) via `runtime-symbol->print-name`; added coverage in `runtime/test-reader.lisp` for current/foreign package symbols. Package structs were renamed to `habu-package` to avoid CL package lock conflicts.
 - Cleaned reader/printer test output to stay ASCII-only (no ANSI color or emoji) and aligned closure tag printing with `+tag-closure`; reader tests now run without warnings.
 - Reader tests now load dependencies via relative paths so they run from repo root as well as the runtime directory.
+- Note: output remains ASCII-only by design (no ANSI color or emoji) per project guidelines; do not reintroduce colorized or emoji output unless instructions change.
 
 ## Execution Plan Toward Self-Hosting and Full Spec
 
