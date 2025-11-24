@@ -134,13 +134,13 @@
   (unless *heap*
     (error "Runtime not initialized - call (initialize-runtime)"))
 
-  ;; Check if already interned
-  (let ((existing (gethash (string-upcase name) *symbol-table*)))
+  (let* ((key (string-upcase name))
+         (existing (gethash key *symbol-table*)))
     (if existing
         existing
-        (let* ((name-str (runtime-make-string (string-upcase name))) ; proper string
+        (let* ((name-str (runtime-make-string key)) ; proper string
                (sym (allocate-symbol name-str)))
-          (setf (gethash (string-upcase name) *symbol-table*) sym)
+          (setf (gethash key *symbol-table*) sym)
           sym))))
 
 (defun runtime-make-symbol (name)
@@ -198,17 +198,18 @@
          (exports (package-exports pkg)))
     (dolist (n names)
       (let ((sym (runtime-find-symbol n (package-name pkg))))
-        (setf (gethash n exports) sym))))
+        (setf (gethash (string-upcase n) exports) sym))))
   0)
 
 (defun runtime-find-symbol (name &optional package-name)
   (let* ((pkg (package-or-create (or package-name *current-package*)))
          (exports (package-exports pkg))
          (syms (package-symbols pkg))
-         (sym (or (gethash name syms) (gethash name exports))))
+         (key (string-upcase name))
+         (sym (or (gethash key syms) (gethash key exports))))
     (or sym
         (let ((new (runtime-intern name)))
-          (setf (gethash name syms) new)
+          (setf (gethash key syms) new)
           new))))
 
 ;;; GC support for symbols
