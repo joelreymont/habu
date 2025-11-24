@@ -270,6 +270,14 @@
         (#\" (write-string "\\\"" out))
         (t (write-char ch out))))))
 
+(defun symbol->print-name (sym)
+  (let* ((pkg (symbol-package sym))
+         (pkg-name (and pkg (package-name pkg))))
+    (cond
+      ((null pkg-name) (symbol-name sym))
+      ((string= pkg-name *current-package*) (symbol-name sym))
+      (t (format nil "~A::~A" pkg-name (symbol-name sym))))))
+
 ;;; Helper: Convert Lisp expression to Habu runtime value
 
 (defun lisp-to-habu (expr)
