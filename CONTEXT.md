@@ -15,6 +15,7 @@
 - Reader tests now load dependencies via relative paths so they run from repo root as well as the runtime directory.
 - Note: output remains ASCII-only by design (no ANSI color or emoji) per project guidelines; do not reintroduce colorized or emoji output unless instructions change.
 - Reader now tokenizes/parses backquote, unquote, and unquote-splicing into `(quasiquote ...)` forms, interns symbols instead of raw strings, and prints runtime symbols without `HABU-RUNTIME` prefixes; added regression coverage in `runtime/test-reader.lisp`.
+- Work in progress: adding reader support for vector literals `#(...)`; tokenizer change is currently broken and `runtime/test-reader.lisp` fails to load. Need to repair `tokenize` for `#(`, add a `runtime-vector->list` helper or equivalent, and re-enable tests.
 
 ## Execution Plan Toward Self-Hosting and Full Spec
 
