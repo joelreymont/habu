@@ -40,6 +40,17 @@ int main(int argc, char **argv) {
         printf("HABU_CONS_ADDR=0x%llx\n", (unsigned long long)habu_cons);
         printf("HABU_CAR_ADDR=0x%llx\n", (unsigned long long)habu_car);
         printf("HABU_CDR_ADDR=0x%llx\n", (unsigned long long)habu_cdr);
+        printf("HABU_MAKE_VECTOR_ADDR=0x%llx\n", (unsigned long long)habu_make_vector);
+        printf("HABU_VECTOR_SET_ADDR=0x%llx\n", (unsigned long long)habu_vector_set);
+        printf("HABU_VECTOR_REF_ADDR=0x%llx\n", (unsigned long long)habu_vector_ref);
+        printf("HABU_MAKE_STRING_FROM_VECTOR_ADDR=0x%llx\n", (unsigned long long)habu_make_string_from_vector);
+        printf("HABU_MAKE_SYMBOL_FROM_STRING_ADDR=0x%llx\n", (unsigned long long)habu_make_symbol_from_string);
+        printf("HABU_STRING_LENGTH_RAW_ADDR=0x%llx\n", (unsigned long long)habu_string_length_raw);
+        printf("HABU_SYMBOL_NAME_ADDR=0x%llx\n", (unsigned long long)habu_symbol_name);
+        printf("HABU_MAKE_CLOSURE_ADDR=0x%llx\n", (unsigned long long)habu_make_closure);
+        printf("HABU_CLOSURE_CODE_ADDR=0x%llx\n", (unsigned long long)habu_closure_code);
+        printf("HABU_CLOSURE_ENV_ADDR=0x%llx\n", (unsigned long long)habu_closure_env);
+        printf("HABU_CODE_BASE=0x%llx\n", (unsigned long long)0ULL); /* placeholder */
         return 0;
     }
     if (argc != 2) {

@@ -168,26 +168,70 @@ Supports fixnums, nil, lists, symbols, strings, and vectors of those."
                                 make-string-from-vector make-symbol-from-string
                                 string-length-raw symbol-name)
   "Create runtime address table for codegen (alist of symbol . addr).
-Only cons/car/cdr are required; others are optional but recommended."
-  (remove-if (lambda (entry) (null (cdr entry)))
-             (list (cons 'habu_cons cons-addr)
-                   (cons 'habu_car car-addr)
-                   (cons 'habu_cdr cdr-addr)
-                   (cons 'habu_make_closure make-closure)
-                   (cons 'habu_closure_code closure-code)
-                   (cons 'habu_closure_env closure-env)
-                   (cons 'habu_code_base code-base)
-                   (cons 'habu_make_vector make-vector)
-                   (cons 'habu_vector_set vector-set)
-                   (cons 'habu_vector_ref vector-ref)
-                   (cons 'habu_make_string_from_vector make-string-from-vector)
-                   (cons 'habu_make_symbol_from_string make-symbol-from-string)
-                   (cons 'habu_string_length_raw string-length-raw)
-                   (cons 'habu_symbol_name symbol-name))))
+Cons/car/cdr are required; others should be provided in production."
+  (flet ((fail (what) (error "Missing runtime address: ~A" what)))
+    (unless cons-addr (fail 'habu_cons))
+    (unless car-addr (fail 'habu_car))
+    (unless cdr-addr (fail 'habu_cdr))
+    (remove-if (lambda (entry) (null (cdr entry)))
+               (list (cons 'habu_cons cons-addr)
+                     (cons 'habu_car car-addr)
+                     (cons 'habu_cdr cdr-addr)
+                     (cons 'habu_make_closure make-closure)
+                     (cons 'habu_closure_code closure-code)
+                     (cons 'habu_closure_env closure-env)
+                     (cons 'habu_code_base code-base)
+                     (cons 'habu_make_vector make-vector)
+                     (cons 'habu_vector_set vector-set)
+                     (cons 'habu_vector_ref vector-ref)
+                     (cons 'habu_make_string_from_vector make-string-from-vector)
+                     (cons 'habu_make_symbol_from_string make-symbol-from-string)
+                     (cons 'habu_string_length_raw string-length-raw)
+                     (cons 'habu_symbol_name symbol-name)))))
 
 (defun op= (sym name)
   "Package-agnostic symbol name comparison."
   (and (symbolp sym) (string= (symbol-name sym) name)))
+
+(defun sbcl-comma-p (obj)
+  #+sbcl
+  (let ((sym (find-symbol "COMMA" "SB-IMPL")))
+    (and sym (eq (type-of obj) sym)))
+  #-sbcl nil)
+
+(defun sbcl-comma-kind (obj)
+  #+sbcl (funcall (symbol-function (find-symbol "COMMA-KIND" "SB-IMPL")) obj)
+  #-sbcl 0)
+
+(defun sbcl-comma-expr (obj)
+  #+sbcl (funcall (symbol-function (find-symbol "COMMA-EXPR" "SB-IMPL")) obj)
+  #-sbcl nil)
+
+(defun expand-quasiquote-ir (obj env fenv)
+  "Expand quasiquoted OBJ into IR with unquotes evaluated via compile-expr."
+  (cond
+    ((sbcl-comma-p obj)
+     (let ((kind (sbcl-comma-kind obj))
+           (expr (sbcl-comma-expr obj)))
+       (if (= kind 0)
+           (compile-expr expr env fenv)
+           (error "unquote-splicing not supported in quasiquote IR expansion: ~S" obj))))
+    ;; ,expr -> compile expr
+    ((and (consp obj) (op= (car obj) "UNQUOTE"))
+     (compile-expr (cadr obj) env fenv))
+    ;; ,@expr unsupported for now
+    ((and (consp obj) (op= (car obj) "UNQUOTE-SPLICING"))
+     (error "unquote-splicing not supported in quasiquote IR expansion: ~S" obj))
+    ;; Vector literal
+    ((vectorp obj)
+     (list 'vector-lit (map 'list (lambda (el) (expand-quasiquote-ir el env fenv)) obj)))
+    ;; Cons -> cons-call of car/cdr
+    ((consp obj)
+     (list 'cons-call
+           (expand-quasiquote-ir (car obj) env fenv)
+           (expand-quasiquote-ir (cdr obj) env fenv)))
+    ;; Atom -> literal lowering
+    (t (quote->ir obj))))
 
 ;; ARM64 Instruction Encoders (Functional)
 (defun arm64-movz (rd imm)
@@ -1318,8 +1362,14 @@ Only cons/car/cdr are required; others are optional but recommended."
                   (t (list 'get-tag arg-ir))))
               (list 'lit 0)))
 
+         ;; Quasiquote
+         ((op= op "QUASIQUOTE")
+          (if (consp (cdr expr))
+              (expand-quasiquote-ir (cadr expr) env fenv)
+              (list 'lit 0)))
+
          ;; Lambda/closure
-         ((eq op 'lambda)
+         ((op= op "LAMBDA")
          (let* ((raw-params (cadr expr))
                 (body (caddr expr))
                 (lambda-name (gensym "lambda-"))
