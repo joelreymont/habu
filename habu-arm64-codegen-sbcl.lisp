@@ -847,70 +847,6 @@ Cons/car/cdr are required; others should be provided in production."
                (arm64-ldr 9 19 72) ; vector-ref
                (arm64-blr 9))))
 
-    ;; Find-symbol: name in x0, pkg in x1
-    ((has-tag? ir 'find-symbol-call)
-     (let* ((name-ir (cadr ir))
-            (pkg-ir (caddr ir))
-            (name-code (codegen-expr name-ir runtime-addrs fn-offsets current-offset temp-depth))
-            (cursor (if current-offset (+ current-offset (count-instrs name-code)) nil))
-            (pkg-code (codegen-expr pkg-ir runtime-addrs fn-offsets cursor (+ temp-depth 1))))
-       (append name-code
-               (arm64-str 0 31 (temp-slot-offset temp-depth))
-               pkg-code
-               (arm64-mov 1 0)                     ; pkg
-               (arm64-ldr 0 31 (temp-slot-offset temp-depth)) ; name
-               (arm64-ldr 9 19 120)                ; find-symbol slot
-               (arm64-blr 9))))
-
-    ;; Make-package
-    ((has-tag? ir 'make-package-call)
-     (let ((arg-code (codegen-expr (cadr ir) runtime-addrs fn-offsets current-offset temp-depth)))
-       (append arg-code
-               (arm64-ldr 9 19 128)
-               (arm64-blr 9))))
-
-    ;; In-package
-    ((has-tag? ir 'in-package-call)
-     (let ((arg-code (codegen-expr (cadr ir) runtime-addrs fn-offsets current-offset temp-depth)))
-       (append arg-code
-               (arm64-ldr 9 19 136)
-               (arm64-blr 9))))
-
-    ;; Use-package
-    ((has-tag? ir 'use-package-call)
-     (let ((arg-code (codegen-expr (cadr ir) runtime-addrs fn-offsets current-offset temp-depth)))
-       (append arg-code
-               (arm64-ldr 9 19 144)
-               (arm64-blr 9))))
-
-    ;; Export symbols (list of literals)
-    ((has-tag? ir 'export-call)
-     (let* ((names (cdr ir))
-            (len (length names))
-            (vec-slot (temp-slot-offset temp-depth))
-            (alloc (append (arm64-movz 0 len)
-                           (arm64-ldr 11 19 56)
-                           (arm64-blr 11)
-                           (arm64-str 0 31 vec-slot)))
-            (cursor (if current-offset (+ current-offset (count-instrs alloc)) nil))
-            (body alloc))
-       (loop for n in names
-             for idx from 0 do
-               (let* ((code (codegen-expr n runtime-addrs fn-offsets cursor (+ temp-depth 1)))
-                      (store (append (arm64-mov 2 0)
-                                     (arm64-ldr 0 31 vec-slot)
-                                     (arm64-movz 1 idx)
-                                     (arm64-ldr 11 19 64)
-                                     (arm64-blr 11)))
-                      (step (+ (count-instrs code) (count-instrs store))))
-                 (setf body (append body code store))
-                 (when cursor (setf cursor (+ cursor step)))))
-       (append body
-               (arm64-ldr 1 31 vec-slot)
-               (arm64-movz 0 0) ; package NIL
-               (arm64-ldr 9 19 152)
-               (arm64-blr 9))))
-
     ;; Car: (car-call arg) - call runtime car via table
     ((has-tag? ir 'car-call)
      (let* ((arg-ir (cadr ir))
@@ -1427,50 +1363,23 @@ Cons/car/cdr are required; others should be provided in production."
                   (t (list 'get-tag arg-ir))))
               (list 'lit 0)))
 
-         ;; Packages (minimal runtime calls)
-         ((op= op "DEFPACKAGE")
-          (if (and (consp (cdr expr)) (stringp (cadr expr)))
-              (list 'make-package-call (quote->ir (cadr expr)))
-              (if (and (consp (cdr expr)) (symbolp (cadr expr)))
-                  (list 'make-package-call (quote->ir (symbol-name (cadr expr))))
-                  (list 'lit 0))))
-
-         ((op= op "IN-PACKAGE")
-          (if (consp (cdr expr))
-              (list 'in-package-call (quote->ir (cadr expr)))
-              (list 'lit 0)))
-
-         ((op= op "USE-PACKAGE")
-          (if (consp (cdr expr))
-              (list 'use-package-call (quote->ir (cadr expr)))
-              (list 'lit 0)))
-
-         ((op= op "EXPORT")
-          (if (consp (cdr expr))
-              (list 'export-call (mapcar #'quote->ir (cdr expr)))
-              (list 'lit 0)))
-
-         ((op= op "IMPORT")
-          (list 'lit 0))
-
+         ;; Packages: no-op except find-symbol folded to symbol literal
+         ((op= op "DEFPACKAGE") (list 'lit 0))
+         ((op= op "IN-PACKAGE") (list 'lit 0))
+         ((op= op "USE-PACKAGE") (list 'lit 0))
+         ((op= op "EXPORT") (list 'lit 0))
+         ((op= op "IMPORT") (list 'lit 0))
          ((op= op "FIND-SYMBOL")
           (let* ((name-expr (cadr expr))
-                 (pkg-expr (caddr expr))
-                 (name-literal
-                   (cond
-                     ((and (consp name-expr) (op= (car name-expr) "QUOTE") (symbolp (cadr name-expr)))
-                      (symbol-name (cadr name-expr)))
-                     ((symbolp name-expr) (symbol-name name-expr))
-                     (t name-expr)))
-                 (pkg-literal
-                   (cond
-                     ((and pkg-expr (consp pkg-expr) (op= (car pkg-expr) "QUOTE") (symbolp (cadr pkg-expr)))
-                      (symbol-name (cadr pkg-expr)))
-                     ((symbolp pkg-expr) (symbol-name pkg-expr))
-                     (t pkg-expr))))
-            (list 'find-symbol-call
-                  (quote->ir name-literal)
-                  (if pkg-literal (quote->ir pkg-literal) '(lit 0)))))
+                 (name (cond
+                         ((and (consp name-expr) (op= (car name-expr) "QUOTE") (symbolp (cadr name-expr)))
+                          (symbol-name (cadr name-expr)))
+                         ((symbolp name-expr) (symbol-name name-expr))
+                         ((stringp name-expr) name-expr)
+                         (t nil))))
+            (if name
+                (list 'symbol-lit (string-upcase name))
+                (list 'lit 0))))
 
          ;; Quasiquote
          ((op= op "QUASIQUOTE")
