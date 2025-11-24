@@ -194,8 +194,9 @@
   0)
 
 (defun runtime-use-package (name)
-  (let ((pkg (package-or-create *current-package*)))
-    (pushnew (string-upcase name) (package-use pkg) :test #'string=))
+  (let* ((pkg (package-or-create *current-package*))
+         (target (string-upcase name)))
+    (pushnew target (package-use pkg) :test #'string=))
   0)
 
 (defun runtime-export-symbols (names package-name)
