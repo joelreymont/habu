@@ -71,7 +71,16 @@
     (assert-equal-arm64 '(- 100 50) 50))
 
   (test-case multiplication
-    (assert-equal-arm64 '(* 6 7) 42)))
+    (assert-equal-arm64 '(* 6 7) 42))
+
+  (test-case division
+    (assert-equal-arm64 '(/ 100 5) 20))
+
+  (test-case modulo
+    (assert-equal-arm64 '(mod 17 5) 2))
+
+  (test-case remainder
+    (assert-equal-arm64 '(rem 17 5) 2)))
 
 ;;; Test comparison operators
 (test-group "Comparison"
