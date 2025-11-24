@@ -152,8 +152,12 @@ int main(int argc, char **argv) {
     printf("Raw result: 0x%llx (%lld)\n", result, result);
     if (HABU_IS_CONS(result)) {
         printf("Result is a cons cell\n");
-    } else {
+    } else if ((result & 0xF) == 0) {
         printf("Untagged fixnum: %lld\n", HABU_UNTAG_FIXNUM(result));
+    } else if ((result & 0xF) == 0x4) {
+        printf("Result tag STRING (#x4)\n");
+    } else if ((result & 0xF) == 0x2) {
+        printf("Result tag SYMBOL (#x2)\n");
     }
 
     /* Cleanup */

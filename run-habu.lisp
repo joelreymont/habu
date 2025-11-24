@@ -183,17 +183,33 @@
           while form collect form)))
 
 (defun parse-run-bytecode-output (output)
-  "Extract untagged fixnum from run-bytecode OUTPUT."
+  "Extract raw tagged result (preferred) or untagged fixnum from run-bytecode OUTPUT."
   (let* ((lines (loop for i = 0 then (1+ j)
                       as j = (position #\Newline output :start i)
                       collect (subseq output i j)
                       while j))
-         (line (find "Untagged fixnum:" lines
-                     :test (lambda (needle haystack)
-                             (and haystack (search needle haystack))))))
-    (when line
-      (parse-integer line :start (+ 17 (search "Untagged fixnum:" line))
-                          :junk-allowed t))))
+         (raw-line (find "Raw result:" lines
+                         :test (lambda (needle haystack)
+                                 (and haystack (search needle haystack)))))
+         (fixnum-line (find "Untagged fixnum:" lines
+                            :test (lambda (needle haystack)
+                                    (and haystack (search needle haystack))))))
+    (cond
+      (raw-line
+       (let ((idx (search "0x" raw-line)))
+         (when idx
+           (let ((raw (parse-integer raw-line
+                                     :start (+ idx 2)
+                                     :radix 16
+                                     :junk-allowed t)))
+             (if (and raw (= (logand raw #xF) 0))
+                 (ash raw -4)
+                 raw)))))
+      (fixnum-line
+       (parse-integer fixnum-line
+                      :start (+ 17 (search "Untagged fixnum:" fixnum-line))
+                      :junk-allowed t))
+      (t nil))))
 
 (defun compile-forms-with-runtime (forms &key output-path)
   "Compile FORMS (toplevel forms + final expr) to bytecode file.
