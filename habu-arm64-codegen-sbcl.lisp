@@ -21,6 +21,17 @@
 (defparameter *max-arg-spill-count*
   (/ (- *stack-frame-size* *arg-spill-base*) *arg-spill-stride*))
 
+(defun quote->ir (obj)
+  "Lower a quoted object to IR using cons/runtime construction.
+Supports fixnums, nil, and lists thereof."
+  (cond
+    ((fixnum? obj) (list 'lit obj))
+    ((null obj) (list 'lit #x0))
+    ((consp obj) (list 'cons-call
+                       (quote->ir (car obj))
+                       (quote->ir (cdr obj))))
+    (t (list 'lit #x0))))
+
 (defun collect-var-offsets (ir)
   "Collect all variable offsets referenced in IR."
   (cond
@@ -1100,11 +1111,7 @@
          ;; Quote
          ((eq op 'quote)
           (if (consp (cdr expr))
-              (let ((quoted (cadr expr)))
-                (cond
-                  ((fixnum? quoted) (list 'lit quoted))
-                  ((null quoted) (list 'lit #x0))
-                  (t (list 'lit #x0))))
+              (quote->ir (cadr expr))
               (list 'lit #x0)))
 
          ;; Progn

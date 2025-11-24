@@ -11,6 +11,7 @@
 - Introduced a simple CLI in `run-habu.lisp` (`--run-file <path>`, `--run-expr "(...)"`) that invokes the self-hosted compiler and executes the result through the runtime JIT runner.
 - New regression `tests/test_compile_and_run.lisp` compiles a cons/car/cdr pipeline to ARM64, runs it through `run-bytecode`, and asserts the untagged fixnum result to verify runtime table plumbing end-to-end.
 - Added IR/codegen support for `quote` (fixnums/nil) and `progn` sequencing; new regression `tests/test_progn.lisp` covers sequencing/last-value behavior via `run-bytecode`.
+- `quote` now lowers lists of fixnums/nil into nested cons construction so quoted lists can be consumed by runtime list ops; `tests/test_quote_list.lisp` validates a quoted list feeding `car` and executing via `run-bytecode`.
 - Tested the new pipeline with `sbcl --script tests/test_compile_and_run.lisp` (passes on ARM64 host with existing `run-bytecode` binary).
 
 ## Latest Updates (November 23, 2025)
