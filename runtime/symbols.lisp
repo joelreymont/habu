@@ -21,7 +21,9 @@
           runtime-make-package
           runtime-in-package
           runtime-use-package
-          runtime-export-symbols))
+          runtime-export-symbols
+          runtime-import-symbols
+          runtime-shadow))
 
 ;;; Symbol structure (on heap)
 ;;; Layout: header(8) + name-ptr(8) + value(8) + function(8) + plist(8) = 40 bytes
@@ -41,7 +43,8 @@
   name
   (use '("HABU-RUNTIME"))
   (symbols (make-hash-table :test 'equal))
-  (exports (make-hash-table :test 'equal)))
+  (exports (make-hash-table :test 'equal))
+  (shadow nil))
 
 (defvar *packages* (make-hash-table :test 'equal) "Name -> package struct")
 (defvar *current-package* "HABU-USER")
@@ -222,6 +225,13 @@
     (pushnew target (pkg-use pkg) :test #'string=))
   0)
 
+(defun runtime-shadow (names &optional package-name)
+  "Mark NAMES as shadowed in PACKAGE-NAME (default *current-package*)."
+  (let* ((pkg (package-or-create (or package-name *current-package*))))
+    (dolist (n names)
+      (pushnew (string-upcase n) (pkg-shadow pkg) :test #'string=)))
+  0)
+
 (defun runtime-export-symbols (names package-name)
   (let* ((pkg (package-or-create (or package-name *current-package*)))
          (exports (pkg-exports pkg)))
@@ -230,18 +240,34 @@
         (setf (gethash (string-upcase n) exports) sym))))
   0)
 
+(defun runtime-import-symbols (names from-package &optional to-package)
+  "Import exported NAMES from FROM-PACKAGE into TO-PACKAGE (default current)."
+  (let* ((src (package-or-create (string-upcase from-package)))
+         (dst (package-or-create (or to-package *current-package*)))
+         (exports (pkg-exports src))
+         (dst-table (pkg-symbols dst)))
+    (dolist (n names)
+      (let* ((key (string-upcase n))
+             (sym (gethash key exports)))
+        (when sym
+          (setf (gethash key dst-table) sym)))))
+  0)
+
 (defun runtime-find-symbol (name &optional package-name)
   (let* ((pkg (package-or-create (or package-name *current-package*)))
          (exports (pkg-exports pkg))
          (syms (pkg-symbols pkg))
+         (shadow (pkg-shadow pkg))
          (key (string-upcase name))
          (sym (or (gethash key syms)
                   (gethash key exports)
-                  (find-in-used-packages key (pkg-use pkg)))))
+                  (find-in-used-packages key (pkg-use pkg) shadow))))
     (or sym
         (runtime-intern name (pkg-name pkg)))))
 
-(defun find-in-used-packages (key use-list)
+(defun find-in-used-packages (key use-list shadow)
+  (when (member key shadow :test #'string=)
+    (return-from find-in-used-packages nil))
   (dolist (pkg-name use-list)
     (let* ((pkg (gethash pkg-name *packages*))
            (hit (and pkg (gethash key (pkg-exports pkg)))))
