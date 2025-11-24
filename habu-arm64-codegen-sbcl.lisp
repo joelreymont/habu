@@ -1362,6 +1362,18 @@ Cons/car/cdr are required; others should be provided in production."
                   (t (list 'get-tag arg-ir))))
               (list 'lit 0)))
 
+         ;; Packages (stubbed no-ops except find-symbol with string literal)
+         ((or (op= op "DEFPACKAGE") (op= op "IN-PACKAGE")
+              (op= op "EXPORT") (op= op "IMPORT") (op= op "USE-PACKAGE"))
+          (list 'lit 0))
+
+         ((op= op "FIND-SYMBOL")
+          (let ((name-expr (cadr expr)))
+            (cond
+              ((stringp name-expr) (list 'symbol-lit (string-upcase name-expr)))
+              ((symbolp name-expr) (list 'symbol-lit (string-upcase (symbol-name name-expr))))
+              (t (list 'lit 0)))))
+
          ;; Quasiquote
          ((op= op "QUASIQUOTE")
           (if (consp (cdr expr))

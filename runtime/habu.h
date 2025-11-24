@@ -109,6 +109,7 @@ void habu_gc_reset_stats(void);
 habu_value_t habu_cons(habu_value_t car, habu_value_t cdr);
 habu_value_t habu_make_vector(size_t length);
 habu_value_t habu_make_string(const char *str, size_t length);
+habu_value_t habu_runtime_make_string(const char *str);
 habu_value_t habu_make_symbol(const char *name);
 
 /* Region-based allocation */
@@ -135,6 +136,7 @@ habu_value_t habu_fixnum_to_string(habu_value_t num_val);  /* Convert fixnum to 
 
 /* Symbol operations */
 habu_value_t habu_make_symbol_from_string(habu_value_t str_val);
+habu_value_t habu_runtime_find_symbol(const char *name);
 habu_value_t habu_symbol_name(habu_value_t sym_val);
 
 /* Closure support */

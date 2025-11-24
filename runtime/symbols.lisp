@@ -15,7 +15,11 @@
           set-symbol-plist
           runtime-gensym
           *symbol-table*
-          clear-symbol-table))
+          clear-symbol-table
+          runtime-find-symbol
+          runtime-make-package
+          runtime-use-package
+          runtime-export-symbols))
 
 ;;; Symbol structure (on heap)
 ;;; Layout: header(8) + name-ptr(8) + value(8) + function(8) + plist(8) = 40 bytes
@@ -32,6 +36,11 @@
 
 (defvar *habu-gensym-counter* 0
   "Counter for gensym unique symbols")
+
+(defvar *packages* (make-hash-table :test 'equal)
+  "Simple package table: name -> hash table of symbols")
+
+(defvar *current-package* "HABU-USER")
 
 ;;; Symbol allocation
 (defun allocate-symbol (name-ptr)
@@ -125,11 +134,8 @@
   (let ((existing (gethash name *symbol-table*)))
     (if existing
         existing
-        ;; Create new symbol
-        ;; For now, use fixnum encoding of name (hash code)
-        ;; Later we'll use proper strings
-        (let* ((name-fixnum (* (sxhash name) 16))  ; Fixnum tag
-               (sym (allocate-symbol name-fixnum)))
+        (let* ((name-str (runtime-make-string name)) ; proper string
+               (sym (allocate-symbol name-str)))
           (setf (gethash name *symbol-table*) sym)
           sym))))
 
@@ -137,8 +143,8 @@
   "Create an uninterned symbol"
   (unless *heap*
     (error "Runtime not initialized - call (initialize-runtime)"))
-  (let ((name-fixnum (* (sxhash name) 16)))
-    (allocate-symbol name-fixnum)))
+  (let ((name-str (runtime-make-string name)))
+    (allocate-symbol name-str)))
 
 (defun runtime-gensym (&optional (prefix "G"))
   "Generate a unique uninterned symbol"
@@ -150,7 +156,9 @@
 (defun clear-symbol-table ()
   "Clear the symbol table"
   (clrhash *symbol-table*)
-  (setf *habu-gensym-counter* 0))
+  (setf *habu-gensym-counter* 0)
+  (clrhash *packages*)
+  (setf *current-package* "HABU-USER"))
 
 ;;; Symbol name lookup (reverse lookup for debugging)
 (defun runtime-symbol-name (sym-ptr)
@@ -164,6 +172,33 @@
            *symbol-table*)
   ;; Not found in table (uninterned)
   (format nil "#:SYMBOL-~X" sym-ptr))
+
+;;; Packages (minimal)
+(defun package-table (name)
+  (or (gethash name *packages*)
+      (let ((tbl (make-hash-table :test 'equal)))
+        (setf (gethash name *packages*) tbl)
+        tbl)))
+
+(defun runtime-make-package (name)
+  (package-table name)
+  0)
+
+(defun runtime-use-package (name)
+  (declare (ignore name))
+  0)
+
+(defun runtime-export-symbols (names package-name)
+  (declare (ignore names package-name))
+  0)
+
+(defun runtime-find-symbol (name &optional package-name)
+  (let* ((pkg (package-table (or package-name *current-package*)))
+         (sym (gethash name pkg)))
+    (or sym
+        (let ((new (runtime-intern name)))
+          (setf (gethash name pkg) new)
+          new))))
 
 ;;; GC support for symbols
 (defun gc-mark-symbol (heap sym-ptr)

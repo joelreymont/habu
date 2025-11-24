@@ -8,7 +8,9 @@ void habu_print_runtime_addrs(void) {
     printf("HABU_CONS_ADDR=0x%lx\n", (unsigned long)(void*)habu_cons);
     printf("HABU_MAKE_VECTOR_ADDR=0x%lx\n", (unsigned long)(void*)habu_make_vector);
     printf("HABU_MAKE_STRING_ADDR=0x%lx\n", (unsigned long)(void*)habu_make_string);
+    printf("HABU_RUNTIME_MAKE_STRING_ADDR=0x%lx\n", (unsigned long)(void*)habu_runtime_make_string);
     printf("HABU_MAKE_SYMBOL_ADDR=0x%lx\n", (unsigned long)(void*)habu_make_symbol);
+    printf("HABU_RUNTIME_FIND_SYMBOL_ADDR=0x%lx\n", (unsigned long)(void*)habu_runtime_find_symbol);
 
     /* List accessors */
     printf("HABU_CAR_ADDR=0x%lx\n", (unsigned long)(void*)habu_car);
@@ -379,6 +381,14 @@ habu_value_t habu_make_symbol_from_string(habu_value_t str_val) {
 
     habu_gc_remove_root(&str_val);
     return result;
+}
+
+habu_value_t habu_runtime_make_string(const char *str) {
+    return habu_make_string(str, strlen(str));
+}
+
+habu_value_t habu_runtime_find_symbol(const char *name) {
+    return habu_make_symbol(name);
 }
 
 habu_value_t habu_symbol_name(habu_value_t sym_val) {
