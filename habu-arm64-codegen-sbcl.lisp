@@ -130,6 +130,12 @@
          (encoded (logior base (ash rm 16) (ash rn 5) rd)))
     (encode-word-le encoded)))
 
+(defun arm64-sdiv (rd rn rm)
+  "SDIV Xd, Xn, Xm - Signed divide"
+  (let* ((base #x9AC00C00)
+         (encoded (logior base (ash rm 16) (ash rn 5) rd)))
+    (encode-word-le encoded)))
+
 (defun arm64-lsl (rd rn shift)
   "LSL Xd, Xn, #shift - Logical shift left immediate (alias for UBFM)"
   (let* ((base #xD3400000)
@@ -522,6 +528,70 @@
                (arm64-cset 0 10)           ; x0 = 1 if greater or equal, else 0
                (arm64-lsl 0 0 4))))        ; Tag result
 
+    ;; Division: (div left right)
+    ((has-tag? ir 'div)
+     (let* ((left-ir (cadr ir))
+            (right-ir (caddr ir))
+            (temp-offset (temp-slot-offset temp-depth))
+            (left-code (codegen-expr left-ir runtime-addrs fn-offsets current-offset temp-depth))
+            (right-code (codegen-expr right-ir runtime-addrs fn-offsets
+                                      (if current-offset
+                                          (+ current-offset (count-instrs left-code) 1)
+                                          nil)
+                                      (+ temp-depth 1))))
+       (append left-code
+               (arm64-str 0 31 temp-offset)
+               right-code
+               (arm64-lsr 1 0 4)             ; untag right
+               (arm64-ldr 0 31 temp-offset)
+               (arm64-lsr 0 0 4)             ; untag left
+               (arm64-sdiv 0 0 1)            ; x0 = left/right
+               (arm64-lsl 0 0 4))))          ; retag
+
+    ;; Modulo: (mod left right)
+    ((has-tag? ir 'mod)
+     (let* ((left-ir (cadr ir))
+            (right-ir (caddr ir))
+            (temp-offset (temp-slot-offset temp-depth))
+            (left-code (codegen-expr left-ir runtime-addrs fn-offsets current-offset temp-depth))
+            (right-code (codegen-expr right-ir runtime-addrs fn-offsets
+                                      (if current-offset
+                                          (+ current-offset (count-instrs left-code) 1)
+                                          nil)
+                                      (+ temp-depth 1))))
+       (append left-code
+               (arm64-str 0 31 temp-offset)
+               right-code
+               (arm64-lsr 1 0 4)             ; untag right
+               (arm64-ldr 0 31 temp-offset)
+               (arm64-lsr 0 0 4)             ; untag left
+               (arm64-sdiv 2 0 1)            ; x2 = quotient
+               (arm64-mul 2 2 1)             ; x2 = quotient * right
+               (arm64-sub 0 0 2)             ; x0 = left - product
+               (arm64-lsl 0 0 4))))          ; retag
+
+    ;; Remainder: (rem left right)
+    ((has-tag? ir 'rem)
+     (let* ((left-ir (cadr ir))
+            (right-ir (caddr ir))
+            (temp-offset (temp-slot-offset temp-depth))
+            (left-code (codegen-expr left-ir runtime-addrs fn-offsets current-offset temp-depth))
+            (right-code (codegen-expr right-ir runtime-addrs fn-offsets
+                                      (if current-offset
+                                          (+ current-offset (count-instrs left-code) 1)
+                                          nil)
+                                      (+ temp-depth 1))))
+       (append left-code
+               (arm64-str 0 31 temp-offset)
+               right-code
+               (arm64-lsr 1 0 4)             ; untag right
+               (arm64-ldr 0 31 temp-offset)
+               (arm64-lsr 0 0 4)             ; untag left
+               (arm64-sdiv 2 0 1)            ; x2 = quotient
+               (arm64-mul 2 2 1)             ; x2 = quotient * right
+               (arm64-sub 0 0 2)             ; x0 = remainder
+               (arm64-lsl 0 0 4))))          ; retag
+
     ;; Not equal: (cmp-ne left right)
     ((has-tag? ir 'cmp-ne)
      (let* ((left-ir (cadr ir))
@@ -817,6 +887,63 @@
               pre-call
               (arm64-bl branch-offset)))))) 
 
+    ;; Division: (div left right) - fixnum helper
+    ((has-tag? ir 'div)
+     (let* ((left-ir (cadr ir))
+            (right-ir (caddr ir))
+            (temp-offset (temp-slot-offset temp-depth))
+            (left-code (codegen-expr left-ir runtime-addrs fn-offsets current-offset temp-depth))
+            (right-code (codegen-expr right-ir runtime-addrs fn-offsets
+                                      (if current-offset
+                                          (+ current-offset (count-instrs left-code) 1)
+                                          nil)
+                                      (+ temp-depth 1))))
+       (append left-code
+               (arm64-str 0 31 temp-offset)
+               right-code
+               (arm64-mov 1 0)
+               (arm64-ldr 0 31 temp-offset)
+               (arm64-ldr 9 19 8)  ; habu_div at slot 1
+               (arm64-blr 9))))
+
+    ;; Modulo: (mod left right)
+    ((has-tag? ir 'mod)
+     (let* ((left-ir (cadr ir))
+            (right-ir (caddr ir))
+            (temp-offset (temp-slot-offset temp-depth))
+            (left-code (codegen-expr left-ir runtime-addrs fn-offsets current-offset temp-depth))
+            (right-code (codegen-expr right-ir runtime-addrs fn-offsets
+                                      (if current-offset
+                                          (+ current-offset (count-instrs left-code) 1)
+                                          nil)
+                                      (+ temp-depth 1))))
+       (append left-code
+               (arm64-str 0 31 temp-offset)
+               right-code
+               (arm64-mov 1 0)
+               (arm64-ldr 0 31 temp-offset)
+               (arm64-ldr 9 19 16) ; habu_mod at slot 2
+               (arm64-blr 9))))
+
+    ;; Remainder: (rem left right)
+    ((has-tag? ir 'rem)
+     (let* ((left-ir (cadr ir))
+            (right-ir (caddr ir))
+            (temp-offset (temp-slot-offset temp-depth))
+            (left-code (codegen-expr left-ir runtime-addrs fn-offsets current-offset temp-depth))
+            (right-code (codegen-expr right-ir runtime-addrs fn-offsets
+                                      (if current-offset
+                                          (+ current-offset (count-instrs left-code) 1)
+                                          nil)
+                                      (+ temp-depth 1))))
+       (append left-code
+               (arm64-str 0 31 temp-offset)
+               right-code
+               (arm64-mov 1 0)
+               (arm64-ldr 0 31 temp-offset)
+               (arm64-ldr 9 19 24) ; habu_rem at slot 3
+               (arm64-blr 9))))
+
     ;; Default: zero
     (t (arm64-movz 0 0))))
 
@@ -856,6 +983,30 @@
          ((eq op '*)
           (if (and (consp (cdr expr)) (consp (cddr expr)))
               (list 'mul
+                    (compile-expr (cadr expr) env fenv)
+                    (compile-expr (caddr expr) env fenv))
+              (list 'lit 0)))
+
+         ;; Division
+         ((eq op '/)
+          (if (and (consp (cdr expr)) (consp (cddr expr)))
+              (list 'div
+                    (compile-expr (cadr expr) env fenv)
+                    (compile-expr (caddr expr) env fenv))
+              (list 'lit 0)))
+
+         ;; Modulo
+         ((eq op 'mod)
+          (if (and (consp (cdr expr)) (consp (cddr expr)))
+              (list 'mod
+                    (compile-expr (cadr expr) env fenv)
+                    (compile-expr (caddr expr) env fenv))
+              (list 'lit 0)))
+
+         ;; Remainder
+         ((eq op 'rem)
+          (if (and (consp (cdr expr)) (consp (cddr expr)))
+              (list 'rem
                     (compile-expr (cadr expr) env fenv)
                     (compile-expr (caddr expr) env fenv))
               (list 'lit 0)))

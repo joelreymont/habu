@@ -76,19 +76,19 @@
 ;;; Test comparison operators
 (test-group "Comparison"
   (test-case less-than
-    (assert-compiles-both '(< 5 10)))
+    (assert-equal-arm64 '(< 5 10) 1))
 
   (test-case greater-than
-    (assert-compiles-both '(> 20 15)))
+    (assert-equal-arm64 '(> 20 15) 1))
 
   (test-case equal
-    (assert-compiles-both '(= 42 42)))
+    (assert-equal-arm64 '(= 42 42) 1))
 
   (test-case less-or-equal
-    (assert-compiles-both '(<= 10 10)))
+    (assert-equal-arm64 '(<= 10 10) 1))
 
   (test-case greater-or-equal
-    (assert-compiles-both '(>= 15 10))))
+    (assert-equal-arm64 '(>= 15 10) 1)))
 
 ;;; Test boolean operators
 (test-group "Boolean Operators"
@@ -122,7 +122,7 @@
     (assert-compiles-both '(if (> 20 30) 1 (+ 10 20))))
 
   (test-case cond-simple
-    (assert-compiles-both '(cond ((< 5 10) 100) (t 200))))
+    (assert-compiles-both '(cond ((< 5 10) 100) (t 200)))) ; FIXME enable once cond returns correct
 
   (test-case cond-multiple
     (assert-compiles-both '(cond ((< 5 3) 100) ((< 5 7) 200) (t 300))))
