@@ -7,6 +7,7 @@
 (export '(runtime-intern
           runtime-make-symbol
           runtime-symbol-name
+          runtime-symbol->print-name
           runtime-symbol-value
           runtime-symbol-function
           runtime-symbol-plist
@@ -38,7 +39,7 @@
 (defvar *habu-gensym-counter* 0
   "Counter for gensym unique symbols")
 
-(defstruct package
+(defstruct (habu-package (:conc-name pkg-))
   name
   (use '("HABU-RUNTIME"))
   (symbols (make-hash-table :test 'equal))
@@ -178,10 +179,31 @@
   ;; Not found in table (uninterned)
   (format nil "#:SYMBOL-~X" sym-ptr))
 
+(defun find-symbol-package-name (sym-ptr key)
+  "Return package name containing SYM-PTR (symbols/exports), else NIL."
+  (block found
+    (maphash (lambda (_ pkg)
+               (declare (ignore _))
+               (when (or (eq sym-ptr (gethash key (pkg-symbols pkg)))
+                         (eq sym-ptr (gethash key (pkg-exports pkg))))
+                 (return-from found (pkg-name pkg))))
+             *packages*)
+    nil))
+
+(defun runtime-symbol->print-name (sym-ptr)
+  "Produce a display name for SYM-PTR with package prefix when needed."
+  (let* ((name (runtime-symbol-name sym-ptr))
+         (key (string-upcase name))
+         (pkg (find-symbol-package-name sym-ptr key)))
+    (cond
+      ((null pkg) name)
+      ((string= pkg *current-package*) name)
+      (t (format nil "~A::~A" pkg name)))))
+
 ;;; Packages (minimal)
 (defun package-or-create (name)
   (or (gethash name *packages*)
-      (let ((pkg (make-package :name name)))
+      (let ((pkg (make-habu-package :name name)))
         (setf (gethash name *packages*) pkg)
         pkg)))
 
@@ -196,25 +218,25 @@
 (defun runtime-use-package (name)
   (let* ((pkg (package-or-create *current-package*))
          (target (string-upcase name)))
-    (pushnew target (package-use pkg) :test #'string=))
+    (pushnew target (pkg-use pkg) :test #'string=))
   0)
 
 (defun runtime-export-symbols (names package-name)
   (let* ((pkg (package-or-create (or package-name *current-package*)))
-         (exports (package-exports pkg)))
+         (exports (pkg-exports pkg)))
     (dolist (n names)
-      (let ((sym (runtime-find-symbol n (package-name pkg))))
+      (let ((sym (runtime-find-symbol n (pkg-name pkg))))
         (setf (gethash (string-upcase n) exports) sym))))
   0)
 
 (defun runtime-find-symbol (name &optional package-name)
   (let* ((pkg (package-or-create (or package-name *current-package*)))
-         (exports (package-exports pkg))
-         (syms (package-symbols pkg))
+         (exports (pkg-exports pkg))
+         (syms (pkg-symbols pkg))
          (key (string-upcase name))
          (sym (or (gethash key syms)
                   (gethash key exports)
-                  (find-in-used-packages key (package-use pkg)))))
+                  (find-in-used-packages key (pkg-use pkg)))))
     (or sym
         (let ((new (runtime-intern name)))
           (setf (gethash key syms) new)
@@ -223,8 +245,8 @@
 (defun find-in-used-packages (key use-list)
   (dolist (pkg-name use-list)
     (let* ((pkg (gethash pkg-name *packages*))
-           (hit (and pkg (or (gethash key (package-symbols pkg))
-                             (gethash key (package-exports pkg))))))
+           (hit (and pkg (or (gethash key (pkg-symbols pkg))
+                             (gethash key (pkg-exports pkg))))))
       (when hit (return hit)))))
 
 ;;; GC support for symbols

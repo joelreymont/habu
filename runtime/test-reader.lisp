@@ -135,11 +135,43 @@
            (read-result (runtime-read-from-string input-ptr))
            (print-result (runtime-print-to-string read-result))
            (final-str (runtime-string->lisp print-result)))
-      (test "ROUND-TRIP" (string= final-str "(1 2 3)"))
-      (format t "   Input:  \"(1 2 3)\"~%")
-      (format t "   Output: ~S~%" final-str))
+  (test "ROUND-TRIP" (string= final-str "(1 2 3)"))
+  (format t "   Input:  \"(1 2 3)\"~%")
+  (format t "   Output: ~S~%" final-str))
   (error (e)
     (test "ROUND-TRIP" nil (format nil "~A" e))))
+
+;; Test 10: Print symbol in current package (no prefix)
+(format t "~%[34m10. Print Symbol Current Package[0m~%")
+(format t "===================================~%")
+
+(handler-case
+    (progn
+      (runtime-make-package "PKG-A")
+      (runtime-in-package "PKG-A")
+      (let* ((sym (runtime-find-symbol "foo" "PKG-A"))
+             (print-ptr (runtime-print-to-string sym))
+             (print-str (runtime-string->lisp print-ptr)))
+        (test "PRINT-SYMBOL-NO-PREFIX" (string= print-str "FOO"))
+        (format t "   Printed: ~S~%" print-str)))
+  (error (e)
+    (test "PRINT-SYMBOL-NO-PREFIX" nil (format nil "~A" e))))
+
+;; Test 11: Print symbol from another package (with prefix)
+(format t "~%[34m11. Print Symbol Other Package[0m~%")
+(format t "==================================~%")
+
+(handler-case
+    (progn
+      (runtime-make-package "PKG-B")
+      (runtime-in-package "PKG-B")
+      (let* ((sym (runtime-find-symbol "bar" "PKG-A"))
+             (print-ptr (runtime-print-to-string sym))
+             (print-str (runtime-string->lisp print-ptr)))
+        (test "PRINT-SYMBOL-PREFIX" (string= print-str "PKG-A::BAR"))
+        (format t "   Printed: ~S~%" print-str)))
+  (error (e)
+    (test "PRINT-SYMBOL-PREFIX" nil (format nil "~A" e))))
 
 ;; Summary
 (format t "~%=====================================~%")

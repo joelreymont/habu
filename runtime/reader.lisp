@@ -222,9 +222,7 @@
 
          ;; Symbol (tag 0x2)
          ((= tag +tag-symbol+)
-          ;; For now, just show symbol address
-          ;; TODO: Use actual symbol name once available
-          (format nil "#<SYMBOL:~X>" value))
+          (runtime-symbol->print-name value))
 
          ;; String (tag 0x3)
          ((= tag +tag-string+)
@@ -269,14 +267,6 @@
         (#\\ (write-string "\\\\" out))
         (#\" (write-string "\\\"" out))
         (t (write-char ch out))))))
-
-(defun symbol->print-name (sym)
-  (let* ((pkg (symbol-package sym))
-         (pkg-name (and pkg (package-name pkg))))
-    (cond
-      ((null pkg-name) (symbol-name sym))
-      ((string= pkg-name *current-package*) (symbol-name sym))
-      (t (format nil "~A::~A" pkg-name (symbol-name sym))))))
 
 ;;; Helper: Convert Lisp expression to Habu runtime value
 
