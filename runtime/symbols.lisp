@@ -190,7 +190,7 @@
 
 (defun runtime-use-package (name)
   (let ((pkg (package-or-create *current-package*)))
-    (pushnew name (package-use pkg) :test #'string=))
+    (pushnew (string-upcase name) (package-use pkg) :test #'string=))
   0)
 
 (defun runtime-export-symbols (names package-name)
@@ -206,11 +206,20 @@
          (exports (package-exports pkg))
          (syms (package-symbols pkg))
          (key (string-upcase name))
-         (sym (or (gethash key syms) (gethash key exports))))
+         (sym (or (gethash key syms)
+                  (gethash key exports)
+                  (find-in-used-packages key (package-use pkg)))))
     (or sym
         (let ((new (runtime-intern name)))
           (setf (gethash key syms) new)
           new))))
+
+(defun find-in-used-packages (key use-list)
+  (dolist (pkg-name use-list)
+    (let* ((pkg (gethash pkg-name *packages*))
+           (hit (and pkg (or (gethash key (package-symbols pkg))
+                             (gethash key (package-exports pkg))))))
+      (when hit (return hit)))))
 
 ;;; GC support for symbols
 (defun gc-mark-symbol (heap sym-ptr)
