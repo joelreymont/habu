@@ -109,13 +109,7 @@ void habu_gc_reset_stats(void);
 habu_value_t habu_cons(habu_value_t car, habu_value_t cdr);
 habu_value_t habu_make_vector(size_t length);
 habu_value_t habu_make_string(const char *str, size_t length);
-habu_value_t habu_runtime_make_string(const char *str);
 habu_value_t habu_make_symbol(const char *name);
-habu_value_t habu_runtime_make_package(habu_value_t name_val);
-habu_value_t habu_runtime_in_package(habu_value_t name_val);
-habu_value_t habu_runtime_use_package(habu_value_t name_val);
-habu_value_t habu_runtime_export_symbols(habu_value_t names_val, habu_value_t pkg_val);
-habu_value_t habu_runtime_find_symbol(habu_value_t name_val, habu_value_t pkg_val);
 
 /* Region-based allocation */
 habu_value_t habu_region_cons(habu_region_t *region, habu_value_t car, habu_value_t cdr);

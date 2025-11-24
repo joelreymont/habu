@@ -3,7 +3,22 @@
 **Session Date**: November 22-24, 2025
 **Duration**: ~6 hours
 **Focus**: Stabilizing defun recursion, temporary allocation, closures, &rest/&optional, unlimited-arity calls, and wiring runtime execution
-**Last Updated**: November 24, 2025 (run-habu driver now compiles/forms to bytecode and executes via run-bytecode)
+**Last Updated**: Current session (packages consolidated in Lisp; C runtime trimmed to essentials)
+
+## Latest Updates (Current Session)
+
+- Removed package/import/export hooks from the C runtime entirely; packages live in Lisp (`runtime/symbols.lisp`) and package forms fold to NIL in codegen. `run-bytecode` and `bin/print-runtime-addrs` now expose slots only through `symbol-name` (offset #x68, slot 13).
+- Dropped the C-side symbol cache used by the former `habu_runtime_find_symbol`; symbol interning is handled by the Lisp runtime only.
+- Rebuilt `run-bytecode` and `bin/print-runtime-addrs` after the runtime cleanup; package smoke tests still pass (`tests/test_find_symbol.lisp`, `tests/test_find_symbol_pkg.lisp`, `tests/test_package_import_export.lisp`, `tests/test_printer_package.lisp`).
+
+## Execution Plan Toward Self-Hosting and Full Spec
+
+1) **Runtime completeness**: keep the C runtime minimal (cons/vector/string/symbol/closure, GC, I/O) and move package/reader/printer logic into Lisp; add numeric tower (bignum/ratio/float) and hash tables in Lisp with GC hooks and hex tagging.
+2) **Reader/printer and packages**: finish package semantics (use/export/import/lookups) in Lisp; wire printer to `symbol->print-name`; extend reader macros (dispatch/backquote/sharps) and make quasiquote/macroexpansion spec compliant.
+3) **Evaluator/Codegen coverage**: implement remaining special forms (cond/and/or/when/unless/loop/dolist/dotimes/tagbody/go) and type/arith predicates; add multiple values and condition signaling/handling; ensure ARM64 codegen matches CL semantics and mirror to x86_64 once stable.
+4) **Macro system**: build macro expansion pipeline (defmacro, macrolet, symbol-macrolet), integrate compiler macros, and add tracing hooks for debugging; expand stdlib with macro-driven utilities.
+5) **Bootstrapping path**: compile the Lisp compiler with SBCL to ARM64 bytes using the self-hosted codegen, run via `run-bytecode`/tiny runtime, then recompile itself under its own output to close the self-hosting loop; validate against existing regression suites and portable CL tests where feasible.
+6) **Testing and tooling**: maintain hex literals, keep package-aware regression coverage short in `tests/`, and add targeted GC/closure/package stress tests; keep `CONTEXT.md` synced after each milestone.
 
 ## Latest Updates (November 24, 2025)
 
@@ -20,7 +35,7 @@
 - C runtime now exports minimal package hooks (`make-package`, `in-package`, `use-package`, `export-symbols`, `find-symbol`) plus a runtime string helper. Codegen calls these via runtime table slots for package forms instead of stubbing to NIL. Symbol interning uses uppercase names and returns string-tagged names; package smoke tests continue to pass.
 - Reader now leaves symbol tokens intact and interns via `runtime-intern (symbol-name ...)` so package-aware naming can be handled centrally; this keeps reader/package smoke tests passing under the JIT runner.
 - Package forms are folded at compile time (no runtime package calls); `find-symbol` literals become symbol literals. Package tables in Lisp track use/exports with uppercase keys; `find-symbol` searches current, exports, and used packages. Reader interns via runtime; runtime stays minimal. Package/symbol smoke tests still pass.
-- C runtime caches `find-symbol` results so repeated lookups reuse the same symbol pointer; `in-package` updates current package name from strings. Package smoke tests remain green.
+- (Superseded: removed in current session) C runtime caching for `find-symbol` was briefly added to reuse symbol pointers and track `in-package`; package hooks now live only in Lisp.
 - Tested the new pipeline with `sbcl --script tests/test_compile_and_run.lisp` (passes on ARM64 host with existing `run-bytecode` binary).
 
 ## Latest Updates (November 23, 2025)

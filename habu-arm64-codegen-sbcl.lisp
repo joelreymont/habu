@@ -933,7 +933,7 @@ Cons/car/cdr are required; others should be provided in production."
        ;;   [0] cons, [8] car, [16] cdr, [24] make-closure, [32] closure-code, [40] closure-env, [48] code base
        ;;   [56] make-vector, [64] vector-set, [72] vector-ref
        ;;   [80] make-string-from-vector, [88] make-symbol-from-string, [96] string-length-raw, [104] symbol-name
-       ;;   [112] runtime-make-string, [120] runtime-find-symbol, [128] make-package, [136] in-package, [144] use-package, [152] export-symbols
+       ;; Package forms are folded at compile time; the runtime table stops at symbol-name.
        (append
          (arm64-ldr 9 19 48)              ; x9 = code base
          (arm64-load-addr 10 offset-bytes); x10 = offset bytes
