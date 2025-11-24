@@ -19,6 +19,7 @@
 - Minimal package semantics: `find-symbol` now accepts string or symbol names (optional package arg ignored) and returns symbol literals; added `tests/test_find_symbol_pkg.lisp`. Package forms remain stubs but no longer crash. Added package table scaffolding (`*packages*`, `*current-package*`, exports/use slots) and symbol interning uses uppercase names with real string payloads in symbols. Next step is real package tables and reader integration.
 - C runtime now exports minimal package hooks (`make-package`, `in-package`, `use-package`, `export-symbols`, `find-symbol`) plus a runtime string helper. Codegen calls these via runtime table slots for package forms instead of stubbing to NIL. Symbol interning uses uppercase names and returns string-tagged names; package smoke tests continue to pass.
 - Reader now leaves symbol tokens intact and interns via `runtime-intern (symbol-name ...)` so package-aware naming can be handled centrally; this keeps reader/package smoke tests passing under the JIT runner.
+- Package tables now track use/exports and uppercase keys; `find-symbol` searches current, exports, and used packages. Added `runtime-in-package` to switch `*current-package*`. C stubs for package hooks remain no-ops (to be wired later), but Lisp-side tables behave consistently for current smoke coverage.
 - Tested the new pipeline with `sbcl --script tests/test_compile_and_run.lisp` (passes on ARM64 host with existing `run-bytecode` binary).
 
 ## Latest Updates (November 23, 2025)

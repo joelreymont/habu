@@ -395,10 +395,7 @@ habu_value_t habu_runtime_make_package(habu_value_t name_val) {
 }
 
 habu_value_t habu_runtime_in_package(habu_value_t name_val) {
-    if (get_tag(name_val) == TAG_STRING) {
-        habu_string_t *s = value_to_string(name_val);
-        current_package = s->data;
-    }
+    (void)name_val;
     return NIL;
 }
 

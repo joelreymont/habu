@@ -18,6 +18,7 @@
           clear-symbol-table
           runtime-find-symbol
           runtime-make-package
+          runtime-in-package
           runtime-use-package
           runtime-export-symbols))
 
@@ -186,6 +187,10 @@
 
 (defun runtime-make-package (name)
   (package-or-create name)
+  0)
+
+(defun runtime-in-package (name)
+  (setf *current-package* (string-upcase name))
   0)
 
 (defun runtime-use-package (name)
