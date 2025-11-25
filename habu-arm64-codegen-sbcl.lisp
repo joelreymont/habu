@@ -24,6 +24,14 @@
   "Alist of (tag-expr . (id result-var exited-var)) for tracking active catch blocks")
 (defparameter *struct-accessors* nil
   "Alist of (accessor-name . slot-index) for struct slot accessors")
+(defparameter *handler-counter* 0
+  "Counter for generating unique handler IDs")
+(defparameter *handler-env* nil
+  "List of handler-case entries for signal to find")
+(defparameter *restart-counter* 0
+  "Counter for generating unique restart IDs")
+(defparameter *restart-env* nil
+  "List of restart-case entries for invoke-restart to find")
 (defparameter *stack-frame-size* #xFF0)
 (defparameter *env-base-offset* #x180)
 (defparameter *temp-slot-base* #x40)
@@ -4332,6 +4340,219 @@ Cons/car/cdr are required; others should be provided in production."
                  `(let ((,result-var ,protected-form))
                     (progn ,@cleanup-forms ,result-var))
                  env fenv))
+              (list 'lit 0)))
+
+         ;; Handler-case - handle conditions with type dispatch
+         ;; (handler-case protected-form (type (var) body...)*)
+         ;; If signal is called during protected-form with matching type,
+         ;; control transfers to that handler with the condition value bound to var
+         ;; Implementation uses catch/throw for non-local control transfer
+         ((op= op "HANDLER-CASE")
+          (if (consp (cdr expr))
+              (let* ((protected-form (cadr expr))
+                     (clauses (cddr expr))
+                     (handler-id (incf *handler-counter*))
+                     (catch-tag (intern (format nil "$HANDLER-TAG-~A" handler-id)))
+                     (result-var (intern (format nil "$HANDLER-RESULT-~A" handler-id)))
+                     (thrown-var (intern (format nil "$HANDLER-THROWN-~A" handler-id)))
+                     (type-var (intern (format nil "$HANDLER-TYPE-~A" handler-id)))
+                     (value-var (intern (format nil "$HANDLER-VALUE-~A" handler-id)))
+                     (old-handler-env *handler-env*)
+                     ;; Parse clauses into (type var body-forms) entries
+                     (handlers
+                      (mapcar (lambda (clause)
+                                (let* ((cond-type (car clause))
+                                       (lambda-list (cadr clause))
+                                       (handler-body (cddr clause))
+                                       (var (if (consp lambda-list) (car lambda-list) nil)))
+                                  (list cond-type var handler-body)))
+                              clauses))
+                     ;; Handler types for signal to check
+                     (handler-types (mapcar #'car handlers))
+                     ;; Create handler-env entry with catch tag and handler types
+                     (new-handler-env (cons (list handler-id catch-tag handler-types)
+                                            old-handler-env)))
+                ;; Set handler env during compilation
+                (setq *handler-env* new-handler-env)
+                (unwind-protect
+                    (let* (;; Build handler dispatch: check each type in order
+                           (dispatch-form
+                            (labels ((build-dispatch (remaining)
+                                       (if (null remaining)
+                                           value-var  ; No match, return signaled value
+                                           (let* ((handler (car remaining))
+                                                  (cond-type (car handler))
+                                                  (var (cadr handler))
+                                                  (body-forms (caddr handler))
+                                                  (body-expr (if var
+                                                                 `(let ((,var ,value-var))
+                                                                    (progn ,@body-forms))
+                                                                 `(progn ,@body-forms))))
+                                             (if (or (eq cond-type 't) (eq cond-type 'condition))
+                                                 body-expr  ; catch-all handler
+                                                 `(if (eq ,type-var ',cond-type)
+                                                      ,body-expr
+                                                      ,(build-dispatch (cdr remaining))))))))
+                              (build-dispatch handlers)))
+                           ;; Full transformed form using catch/throw
+                           ;; catch returns protected-form normally, or thrown value if signal
+                           ;; thrown value is (cons type value)
+                           (transformed
+                            `(let ((,result-var (catch ',catch-tag ,protected-form)))
+                               ;; Check if result is a condition (cons with type tag)
+                               (if (consp ,result-var)
+                                   (let ((,type-var (car ,result-var))
+                                         (,value-var (cdr ,result-var)))
+                                     ;; Dispatch to matching handler
+                                     ,dispatch-form)
+                                   ,result-var))))
+                      (compile-expr transformed env fenv))
+                  (setq *handler-env* old-handler-env)))
+              (list 'lit 0)))
+
+         ;; Signal - signal a condition
+         ;; (signal type &optional value)
+         ;; If a handler-case is active and handles this type, throw to it
+         ;; Otherwise return normally (value or nil)
+         ((op= op "SIGNAL")
+          (if (consp (cdr expr))
+              (let* ((type-expr (cadr expr))
+                     (value-expr (if (consp (cddr expr)) (caddr expr) nil)))
+                (if *handler-env*
+                    ;; Handler in scope - check if it handles this type and throw
+                    (let* ((handler-entry (car *handler-env*))
+                           (handler-id (car handler-entry))
+                           (catch-tag (cadr handler-entry))
+                           (handler-types (caddr handler-entry))
+                           (sig-val-var (intern (format nil "$SIG-VAL-~A" (incf *handler-counter*))))
+                           ;; Check if any handler matches this type
+                           (has-catch-all (or (member 't handler-types) (member 'condition handler-types)))
+                           ;; Build type check
+                           (type-checks
+                            (if has-catch-all
+                                #x1  ; catch-all always matches (use 1 for true)
+                                (labels ((build-type-check (types)
+                                           (if (null types)
+                                               nil
+                                               (if (cdr types)
+                                                   `(or (eq ,type-expr ',(car types))
+                                                        ,(build-type-check (cdr types)))
+                                                   `(eq ,type-expr ',(car types))))))
+                                  (build-type-check handler-types)))))
+                      (compile-expr
+                       `(let ((,sig-val-var ,(or value-expr nil)))
+                          (if ,type-checks
+                              ;; Throw (cons type value) to handler-case
+                              (throw ',catch-tag (cons ,type-expr ,sig-val-var))
+                              ,sig-val-var))  ; No handler matches, return normally
+                       env fenv))
+                    ;; No handler in scope - just evaluate and return value
+                    (if value-expr
+                        (compile-expr value-expr env fenv)
+                        (list 'lit 0))))
+              (list 'lit 0)))
+
+         ;; Restart-case - establish restarts that can be invoked from handlers
+         ;; (restart-case form (restart-name (args) body...)*)
+         ;; When invoke-restart is called with matching name, execute that restart body
+         ;; Implementation uses catch/throw for non-local control transfer
+         ((op= op "RESTART-CASE")
+          (if (consp (cdr expr))
+              (let* ((protected-form (cadr expr))
+                     (restart-clauses (cddr expr))
+                     (restart-id (incf *restart-counter*))
+                     (catch-tag (intern (format nil "$RESTART-TAG-~A" restart-id)))
+                     (result-var (intern (format nil "$RESTART-RESULT-~A" restart-id)))
+                     (name-var (intern (format nil "$RESTART-NAME-~A" restart-id)))
+                     (args-var (intern (format nil "$RESTART-ARGS-~A" restart-id)))
+                     (old-restart-env *restart-env*)
+                     ;; Parse restart clauses: (name (args) body...)
+                     (restarts
+                      (mapcar (lambda (clause)
+                                (let* ((restart-name (car clause))
+                                       (lambda-list (cadr clause))
+                                       (restart-body (cddr clause)))
+                                  (list restart-name lambda-list restart-body)))
+                              restart-clauses))
+                     ;; Restart names for invoke-restart to check
+                     (restart-names (mapcar #'car restarts))
+                     ;; Create restart-env entry with catch tag and restart names
+                     (new-restart-env (cons (list restart-id catch-tag restart-names)
+                                            old-restart-env)))
+                ;; Set restart env during compilation
+                (setq *restart-env* new-restart-env)
+                (unwind-protect
+                    (let* (;; Build restart dispatch
+                           (dispatch-form
+                            (labels ((build-dispatch (remaining)
+                                       (if (null remaining)
+                                           args-var  ; No match, return args
+                                           (let* ((restart (car remaining))
+                                                  (restart-name (car restart))
+                                                  (lambda-list (cadr restart))
+                                                  (body-forms (caddr restart))
+                                                  ;; Bind args to lambda-list vars if present
+                                                  (body-expr
+                                                   (if (and lambda-list (consp lambda-list))
+                                                       ;; Bind first arg (args-var already has the value)
+                                                       `(let ((,(car lambda-list) ,args-var))
+                                                          (progn ,@body-forms))
+                                                       `(progn ,@body-forms))))
+                                             `(if (eq ,name-var ',restart-name)
+                                                  ,body-expr
+                                                  ,(build-dispatch (cdr remaining)))))))
+                              (build-dispatch restarts)))
+                           ;; Full transformed form using catch/throw
+                           ;; thrown value is (cons name args)
+                           (transformed
+                            `(let ((,result-var (catch ',catch-tag ,protected-form)))
+                               ;; Check if result is a restart call (cons with name)
+                               (if (consp ,result-var)
+                                   (let ((,name-var (car ,result-var))
+                                         (,args-var (cdr ,result-var)))
+                                     ;; Dispatch to matching restart
+                                     ,dispatch-form)
+                                   ,result-var))))
+                      (compile-expr transformed env fenv))
+                  (setq *restart-env* old-restart-env)))
+              (list 'lit 0)))
+
+         ;; Invoke-restart - invoke an established restart
+         ;; (invoke-restart name &rest args)
+         ;; Find restart by name and throw to it
+         ((op= op "INVOKE-RESTART")
+          (if (consp (cdr expr))
+              (let* ((name-expr (cadr expr))
+                     (args-exprs (cddr expr)))
+                (if *restart-env*
+                    ;; Find matching restart and throw to it
+                    (let* ((restart-entry (car *restart-env*))
+                           (restart-id (car restart-entry))
+                           (catch-tag (cadr restart-entry))
+                           (restart-names (caddr restart-entry))
+                           ;; Check if name matches any restart
+                           (type-checks
+                            (labels ((build-check (names)
+                                       (if (null names)
+                                           nil
+                                           (if (cdr names)
+                                               `(or (eq ,name-expr ',(car names))
+                                                    ,(build-check (cdr names)))
+                                               `(eq ,name-expr ',(car names))))))
+                              (build-check restart-names)))
+                           ;; Build args value (single arg or nil)
+                           (args-form
+                            (if args-exprs
+                                (car args-exprs)  ; Just first arg for simplicity
+                                nil)))
+                      (compile-expr
+                       `(if ,type-checks
+                            ;; Throw (cons name args) to restart-case
+                            (throw ',catch-tag (cons ,name-expr ,args-form))
+                            nil)  ; No matching restart
+                       env fenv))
+                    ;; No restart in scope
+                    (list 'lit 0)))
               (list 'lit 0)))
 
          ;; Format - basic format string processing
