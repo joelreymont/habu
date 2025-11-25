@@ -2,7 +2,7 @@
 
 **Session Date**: November 22-25, 2025
 **Focus**: Self-hosting ARM64 Lisp compiler implementation
-**Last Updated**: November 25, 2025 (Reader Session)
+**Last Updated**: November 25, 2025 (Stage 2 Bootstrap Session)
 
 ## Current Status Summary
 
@@ -96,6 +96,8 @@ The Habu compiler can now compile and execute complex Lisp programs including:
 | **File I/O** | open-file, close-file, read-line, write-string, read-file, write-file | Done |
 | **Format** | ~A, ~S, ~D, ~X, ~B, ~O, ~C, ~F (consume arg), ~%, ~&, ~~ (no arg) | Done |
 | **Reader** | read-from-string, read-all-from-string, read-source-file | Done |
+| **Output** | print, println, terpri | Done |
+| **Debugging** | trace, untrace | Done |
 
 ### Extended CL Spec Features (November 25, 2025)
 
@@ -453,7 +455,24 @@ Test 10: Full compile + eval round trip       ✅ Pass
 
 ## Recent Commits
 
-### November 25, 2025 (Latest - Reader)
+### November 25, 2025 (Latest - Trace Facility)
+- **Implemented trace/untrace debugging facility** - CL-style function tracing:
+  - `*traced-functions*` - list of function names currently being traced
+  - `trace-function` / `untrace-function` - add/remove functions from trace list
+  - `(trace fn1 fn2 ...)` form in compile-forms-helper to enable tracing
+  - `(untrace fn1 fn2 ...)` form to disable tracing
+  - `wrap-body-with-trace` - wraps traced function body with entry/exit print calls
+  - Trace output shows: function name, argument values on entry, return value on exit
+  - 8 tests cover: trace/untrace API, traced output, recursive tracing, multiple traced functions
+
+- **Implemented print/println primitives** - Output to stdout:
+  - Runtime table entries 48-49 (offsets 384-392) for habu_print_value, habu_println_value
+  - `(print value)` - print value to stdout (no newline)
+  - `(println value)` - print value with newline
+  - `(terpri)` - print newline
+  - Symbols print by name, fixnums as decimal, strings without quotes
+
+### November 25, 2025 (Reader)
 - **Implemented Habu-native Reader** - Full Lisp source code parser in common/reader.lisp:
   - Character predicates: whitespace?, digit?, hex-digit?, alpha?, symbol-char?
   - String manipulation: char-at, chars-to-string

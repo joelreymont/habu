@@ -24,7 +24,7 @@
 typedef int64_t (*compiled_fn_t)(void** runtime_table);
 
 /* Runtime function table */
-void* g_runtime_table[48];
+void* g_runtime_table[50];
 
 void print_runtime_addresses(void) {
     printf("Runtime function addresses in this process:\n");
@@ -173,8 +173,12 @@ int main(int argc, char **argv) {
     g_runtime_table[46] = (void*)habu_read_file;
     g_runtime_table[47] = (void*)habu_write_file;
 
+    /* Print operations */
+    g_runtime_table[48] = (void*)habu_print_value;
+    g_runtime_table[49] = (void*)habu_println_value;
+
     if (getenv("HABU_DEBUG_TABLE")) {
-        for (int i = 0; i <= 47; i++) {
+        for (int i = 0; i <= 49; i++) {
             fprintf(stderr, "RT[%d]=%p\n", i, g_runtime_table[i]);
         }
     }

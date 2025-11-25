@@ -285,7 +285,7 @@ static void print_value_internal(habu_value_t value, int depth) {
         switch (tag) {
             case TAG_STRING: {
                 habu_string_t *s = value_to_string(value);
-                printf("\"%.*s\"", (int)s->length, s->data);
+                printf("%.*s", (int)s->length, s->data);
                 break;
             }
             case TAG_CONS:
@@ -301,9 +301,12 @@ static void print_value_internal(habu_value_t value, int depth) {
                 printf(")");
                 break;
             }
-            case TAG_SYMBOL:
-                printf("<symbol>");
+            case TAG_SYMBOL: {
+                habu_symbol_t *sym = value_to_symbol(value);
+                habu_string_t *name = value_to_string(sym->name);
+                printf("%.*s", (int)name->length, name->data);
                 break;
+            }
             case TAG_CLOSURE:
                 printf("#<closure>");
                 break;

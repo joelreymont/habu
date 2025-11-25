@@ -38,6 +38,8 @@
   "Alist of (class-name parent-class slot-names slot-initforms) for CLOS classes")
 (defparameter *method-env* nil
   "Alist of ((generic-name . specializer) . lambda-form) for methods")
+(defparameter *traced-functions* nil
+  "List of function names currently being traced")
 (defparameter *stack-frame-size* #xFF0)
 (defparameter *env-base-offset* #x180)
 (defparameter *temp-slot-base* #x40)
@@ -46,6 +48,24 @@
 (defparameter *arg-spill-stride* #x8)
 (defparameter *max-arg-spill-count*
   (/ (- *stack-frame-size* *arg-spill-base*) *arg-spill-stride*))
+
+;;; SBCL reader structure helpers
+;;; When SBCL reads backquoted forms, it creates special structures for commas.
+;;; These helpers allow tree-walking code to traverse such forms.
+
+(defun sbcl-comma-p (x)
+  "Test if X is an SBCL comma structure from reading backquoted forms."
+  #+sbcl (sb-impl::comma-p x)
+  #-sbcl nil)
+
+(defun sbcl-comma-expr (x)
+  "Extract the expression from an SBCL comma structure."
+  #+sbcl (sb-impl::comma-expr x)
+  #-sbcl x)
+
+(defun sbcl-quasiquote-p (x)
+  "Test if X is an SBCL quasiquote form."
+  (and (consp x) (eq (car x) 'sb-int:quasiquote)))
 
 (defun string->char-codes (s)
   "Return list of integer char codes from string S."
@@ -194,24 +214,52 @@ Supports fixnums, nil, lists, symbols, strings, characters, and vectors of those
   "Find all variable names that are mutated (via setq) in EXPR.
    Returns a list of variable names (symbols)."
   (let ((result nil))
-    (labels ((walk (e)
+    (labels ((safe-list-p (x)
+               "Check if x is a proper list (not a comma structure)."
+               (or (null x) (and (consp x) (not (sbcl-comma-p x)))))
+             (proper-list-p (x)
+               "Check if x is a proper list (ends in nil)."
+               (or (null x) (and (consp x) (proper-list-p (cdr x)))))
+             (walk (e)
                (cond
+                 ((null e) nil)
+                 ;; Handle SBCL comma structures from backquoted forms
+                 ((sbcl-comma-p e)
+                  (walk (sbcl-comma-expr e)))
+                 ;; Handle SBCL quasiquote forms
+                 ((sbcl-quasiquote-p e)
+                  (walk (cadr e)))
                  ((atom e) nil)
+                 ;; Skip loop forms - they have special syntax
+                 ((and (consp e) (eq (car e) 'loop)) nil)
+                 ;; Skip dolist/dotimes - binding forms with special syntax
+                 ((and (consp e) (member (car e) '(dolist dotimes))) nil)
                  ;; setq mutates its first argument
-                 ((and (eq (car e) 'setq) (cdr e))
-                  (push (cadr e) result)
-                  (mapc #'walk (cddr e)))
+                 ((and (consp e) (eq (car e) 'setq) (cdr e))
+                  (let ((var (cadr e)))
+                    (when (symbolp var)
+                      (push var result)))
+                  (let ((rest (cddr e)))
+                    (when (safe-list-p rest)
+                      (mapc #'walk rest))))
                  ;; setf on a variable mutates it
-                 ((and (eq (car e) 'setf) (cdr e) (symbolp (cadr e)))
+                 ((and (consp e) (eq (car e) 'setf) (cdr e) (symbolp (cadr e)))
                   (push (cadr e) result)
-                  (mapc #'walk (cddr e)))
+                  (let ((rest (cddr e)))
+                    (when (safe-list-p rest)
+                      (mapc #'walk rest))))
                  ;; incf/decf mutate their argument
-                 ((and (member (car e) '(incf decf)) (cdr e) (symbolp (cadr e)))
+                 ((and (consp e) (member (car e) '(incf decf)) (cdr e) (symbolp (cadr e)))
                   (push (cadr e) result)
-                  (mapc #'walk (cddr e)))
+                  (let ((rest (cddr e)))
+                    (when (safe-list-p rest)
+                      (mapc #'walk rest))))
                  ;; Don't descend into nested let/labels that shadow the var
                  ;; For simplicity, we descend anyway - shadowed vars will be different
-                 (t (mapc #'walk e)))))
+                 ;; But only if it's a proper list
+                 ((and (consp e) (proper-list-p e))
+                  (mapc #'walk e))
+                 (t nil))))
       (walk expr)
       (remove-duplicates result :test #'eq))))
 
@@ -219,64 +267,109 @@ Supports fixnums, nil, lists, symbols, strings, characters, and vectors of those
   "Find all variable names that might be captured by closures in EXPR.
    Returns a list of variable names (symbols)."
   (let ((result nil))
-    (labels ((walk (e)
+    (labels ((safe-list-p (x)
+               "Check if x is a proper list (not a comma structure)."
+               (or (null x) (and (consp x) (not (sbcl-comma-p x)))))
+             (proper-list-p (x)
+               "Check if x is a proper list (ends in nil)."
+               (or (null x) (and (consp x) (proper-list-p (cdr x)))))
+             (walk (e)
                (cond
+                 ((null e) nil)
+                 ;; Handle SBCL comma structures from backquoted forms
+                 ((sbcl-comma-p e)
+                  (walk (sbcl-comma-expr e)))
+                 ;; Handle SBCL quasiquote forms
+                 ((sbcl-quasiquote-p e)
+                  (walk (cadr e)))
                  ((atom e) nil)
+                 ;; Skip loop forms - they have special syntax
+                 ((and (consp e) (eq (car e) 'loop)) nil)
+                 ;; Skip dolist/dotimes - binding forms with special syntax
+                 ((and (consp e) (member (car e) '(dolist dotimes))) nil)
                  ;; Lambda captures free variables
-                 ((eq (car e) 'lambda)
-                  (let* ((params (cadr e))
-                         (body (cddr e)))
+                 ((and (consp e) (eq (car e) 'lambda))
+                  (let ((params (cadr e))
+                        (body (cddr e)))
                     ;; Find free vars in body that aren't in params
-                    (let ((free (find-free-vars-in-body body params)))
-                      (dolist (v free) (push v result)))
-                    (mapc #'walk body)))
+                    (when (safe-list-p params)
+                      (let ((free (find-free-vars-in-body body params)))
+                        (dolist (v free) (push v result))))
+                    (when (safe-list-p body)
+                      (mapc #'walk body))))
                  ;; Labels functions capture free variables
-                 ((eq (car e) 'labels)
-                  (let* ((defs (cadr e))
-                         (body (cddr e)))
+                 ((and (consp e) (eq (car e) 'labels))
+                  (let ((defs (cadr e))
+                        (body (cddr e)))
                     ;; Each labels function can capture vars
-                    (dolist (def defs)
-                      (let* ((fname (car def))
-                             (fparams (cadr def))
-                             (fbody (cddr def))
-                             (all-fn-names (mapcar #'car defs))
-                             (free (find-free-vars-in-body fbody
-                                                           (append fparams all-fn-names))))
-                        (dolist (v free) (push v result))))
-                    (mapc #'walk body)))
+                    (when (safe-list-p defs)
+                      (dolist (def defs)
+                        (when (consp def)
+                          (let* ((fparams (cadr def))
+                                 (fbody (cddr def))
+                                 (all-fn-names (mapcar #'car defs))
+                                 (free (find-free-vars-in-body fbody
+                                                               (if (safe-list-p fparams)
+                                                                   (append fparams all-fn-names)
+                                                                   all-fn-names))))
+                            (dolist (v free) (push v result))))))
+                    (when (safe-list-p body)
+                      (mapc #'walk body))))
                  ;; Flet is similar
-                 ((eq (car e) 'flet)
-                  (let* ((defs (cadr e))
-                         (body (cddr e)))
-                    (dolist (def defs)
-                      (let* ((fparams (cadr def))
-                             (fbody (cddr def))
-                             (free (find-free-vars-in-body fbody fparams)))
-                        (dolist (v free) (push v result))))
-                    (mapc #'walk body)))
+                 ((and (consp e) (eq (car e) 'flet))
+                  (let ((defs (cadr e))
+                        (body (cddr e)))
+                    (when (safe-list-p defs)
+                      (dolist (def defs)
+                        (when (consp def)
+                          (let* ((fparams (cadr def))
+                                 (fbody (cddr def))
+                                 (free (find-free-vars-in-body fbody fparams)))
+                            (dolist (v free) (push v result))))))
+                    (when (safe-list-p body)
+                      (mapc #'walk body))))
                  ;; Tagbody transforms to labels, so forms inside capture vars
                  ;; Skip tags (symbols/integers), collect free vars from forms
-                 ((eq (car e) 'tagbody)
+                 ((and (consp e) (eq (car e) 'tagbody))
                   (let ((body (cdr e)))
-                    ;; Find all free vars in non-tag forms
-                    (dolist (item body)
-                      (unless (or (symbolp item) (integerp item))
-                        ;; This form will end up in a closure body
-                        (let ((free (find-free-vars-in-body (list item) nil)))
-                          (dolist (v free) (push v result)))
-                        ;; Also recurse into the form
-                        (walk item)))))
-                 (t (mapc #'walk e)))))
+                    (when (safe-list-p body)
+                      ;; Find all free vars in non-tag forms
+                      (dolist (item body)
+                        (unless (or (symbolp item) (integerp item))
+                          ;; This form will end up in a closure body
+                          (let ((free (find-free-vars-in-body (list item) nil)))
+                            (dolist (v free) (push v result)))
+                          ;; Also recurse into the form
+                          (walk item))))))
+                 ;; General case - only walk proper lists
+                 ((and (consp e) (proper-list-p e))
+                  (mapc #'walk e))
+                 (t nil))))
       (walk expr)
       (remove-duplicates result :test #'eq))))
 
 (defun find-free-vars-in-body (body bound-vars)
   "Find variables referenced in BODY that are not in BOUND-VARS.
    Returns a list of variable names (symbols)."
+  ;; Ensure bound-vars is a proper list (handle comma structures)
+  (unless (listp bound-vars)
+    (setf bound-vars nil))
   (let ((result nil))
-    (labels ((walk (e)
+    (labels ((safe-list-p (x)
+               "Check if x is a proper list (not a comma structure)."
+               (or (null x) (and (consp x) (not (sbcl-comma-p x)))))
+             (proper-list-p (x)
+               "Check if x is a proper list (ends in nil)."
+               (or (null x) (and (consp x) (proper-list-p (cdr x)))))
+             (walk (e)
                (cond
                  ((null e) nil)
+                 ;; Handle SBCL comma structures from backquoted forms
+                 ((sbcl-comma-p e)
+                  (walk (sbcl-comma-expr e)))
+                 ;; Handle SBCL quasiquote forms
+                 ((sbcl-quasiquote-p e)
+                  (walk (cadr e)))
                  ((symbolp e)
                   (unless (or (member e bound-vars :test #'eq)
                               (keywordp e)
@@ -284,37 +377,49 @@ Supports fixnums, nil, lists, symbols, strings, characters, and vectors of those
                               (eq e nil))
                     (push e result)))
                  ((atom e) nil)
+                 ;; Skip loop forms - they have special syntax
+                 ((and (consp e) (eq (car e) 'loop)) nil)
+                 ;; Skip dolist/dotimes - binding forms with special syntax
+                 ((and (consp e) (member (car e) '(dolist dotimes))) nil)
                  ;; Let/let* introduce new bindings
-                 ((member (car e) '(let let*))
-                  (let* ((bindings (cadr e))
-                         (new-bound (mapcar (lambda (b) (if (consp b) (car b) b)) bindings))
-                         (body-forms (cddr e)))
-                    ;; Walk binding initializers
-                    (dolist (b bindings)
-                      (when (and (consp b) (cdr b))
-                        (walk (cadr b))))
-                    ;; Walk body with extended bound vars
-                    (let ((bound-vars (append new-bound bound-vars)))
+                 ((and (consp e) (member (car e) '(let let*)))
+                  (let ((bindings (cadr e)))
+                    (when (safe-list-p bindings)
+                      (let* ((new-bound (mapcar (lambda (b) (if (consp b) (car b) b)) bindings))
+                             (body-forms (cddr e)))
+                        ;; Walk binding initializers
+                        (dolist (b bindings)
+                          (when (and (consp b) (cdr b))
+                            (walk (cadr b))))
+                        ;; Walk body with extended bound vars
+                        (let ((bound-vars (append new-bound bound-vars)))
+                          (dolist (form body-forms)
+                            (walk form)))))))
+                 ;; Lambda introduces params as bound
+                 ((and (consp e) (eq (car e) 'lambda))
+                  (let ((params (cadr e))
+                        (body-forms (cddr e)))
+                    ;; Only extend bound-vars if params is a proper list
+                    (let ((bound-vars (if (safe-list-p params)
+                                          (append params bound-vars)
+                                          bound-vars)))
                       (dolist (form body-forms)
                         (walk form)))))
-                 ;; Lambda introduces params as bound
-                 ((eq (car e) 'lambda)
-                  (let* ((params (cadr e))
-                         (body-forms (cddr e))
-                         (bound-vars (append params bound-vars)))
-                    (dolist (form body-forms)
-                      (walk form))))
                  ;; Labels introduces function names and params
-                 ((eq (car e) 'labels)
-                  (let* ((defs (cadr e))
-                         (fn-names (mapcar #'car defs))
-                         (body-forms (cddr e))
-                         (bound-vars (append fn-names bound-vars)))
-                    (dolist (form body-forms)
-                      (walk form))))
+                 ((and (consp e) (eq (car e) 'labels))
+                  (let ((defs (cadr e))
+                        (body-forms (cddr e)))
+                    (when (safe-list-p defs)
+                      (let* ((fn-names (mapcar #'car defs))
+                             (bound-vars (append fn-names bound-vars)))
+                        (dolist (form body-forms)
+                          (walk form))))))
                  ;; Quote doesn't reference vars
-                 ((eq (car e) 'quote) nil)
-                 (t (mapc #'walk e)))))
+                 ((and (consp e) (eq (car e) 'quote)) nil)
+                 ;; General case - only walk proper lists
+                 ((and (consp e) (proper-list-p e))
+                  (mapc #'walk e))
+                 (t nil))))
       (walk (if (consp body) (cons 'progn body) body))
       (remove-duplicates result :test #'eq))))
 
@@ -334,10 +439,17 @@ Supports fixnums, nil, lists, symbols, strings, characters, and vectors of those
    - At let binding: wrap init in (cons init nil) if var is boxed
    - At var ref: use (car var) if boxed
    - At setq: use (setcar var val) if boxed"
-  (labels ((transform (e bound-boxed)
+  (labels ((safe-list-p (x)
+             "Check if x is a proper list (not a comma structure)."
+             (or (null x) (and (consp x) (not (sbcl-comma-p x)))))
+           (transform (e bound-boxed)
              ;; bound-boxed is list of boxed vars currently in scope
              (cond
                ((null e) nil)
+               ;; Handle SBCL comma structures - return as-is (template code)
+               ((sbcl-comma-p e) e)
+               ;; Handle SBCL quasiquote forms - return as-is (template code)
+               ((sbcl-quasiquote-p e) e)
                ;; Symbol reference: unbox if this var is boxed and in scope
                ((symbolp e)
                 (if (member e bound-boxed :test #'eq)
@@ -345,104 +457,149 @@ Supports fixnums, nil, lists, symbols, strings, characters, and vectors of those
                     e))
                ((atom e) e)
                ;; Quote: don't transform
-               ((eq (car e) 'quote) e)
+               ((and (consp e) (eq (car e) 'quote)) e)
                ;; setq: use (setf (car var) ...) if variable is boxed
-               ((eq (car e) 'setq)
+               ((and (consp e) (eq (car e) 'setq))
                 (let ((var (cadr e))
                       (val (caddr e)))
-                  (if (member var bound-boxed :test #'eq)
+                  (if (and (symbolp var) (member var bound-boxed :test #'eq))
                       ;; (setf (car var) transformed-val)
                       (list 'setf (list 'car var) (transform val bound-boxed))
                       ;; Regular setq with transformed value
                       (list 'setq var (transform val bound-boxed)))))
                ;; setf on variable: use (setf (car var) ...) if boxed
-               ((and (eq (car e) 'setf) (symbolp (cadr e)))
+               ((and (consp e) (eq (car e) 'setf) (symbolp (cadr e)))
                 (let ((var (cadr e))
                       (val (caddr e)))
                   (if (member var bound-boxed :test #'eq)
                       (list 'setf (list 'car var) (transform val bound-boxed))
                       (list 'setf var (transform val bound-boxed)))))
                ;; incf: transform to (setf (car var) (+ (car var) delta)) if boxed
-               ((and (eq (car e) 'incf) (symbolp (cadr e)))
+               ((and (consp e) (eq (car e) 'incf) (symbolp (cadr e)))
                 (let ((var (cadr e))
                       (delta (or (caddr e) 1)))
                   (if (member var bound-boxed :test #'eq)
                       (list 'setf (list 'car var) (list '+ (list 'car var) delta))
                       (list 'incf var delta))))
                ;; decf: transform to (setf (car var) (- (car var) delta)) if boxed
-               ((and (eq (car e) 'decf) (symbolp (cadr e)))
+               ((and (consp e) (eq (car e) 'decf) (symbolp (cadr e)))
                 (let ((var (cadr e))
                       (delta (or (caddr e) 1)))
                   (if (member var bound-boxed :test #'eq)
                       (list 'setf (list 'car var) (list '- (list 'car var) delta))
                       (list 'decf var delta))))
                ;; let/let*: box initializers for boxed vars, extend bound-boxed
-               ((member (car e) '(let let*))
-                (let* ((bindings (cadr e))
-                       (body (cddr e))
-                       (new-boxed nil))
-                  ;; Transform bindings
-                  (let ((new-bindings
-                          (mapcar (lambda (b)
-                                    (let* ((var (if (consp b) (car b) b))
-                                           (init (if (consp b) (cadr b) nil))
-                                           (is-boxed (member var boxed-vars :test #'eq)))
-                                      (when is-boxed (push var new-boxed))
-                                      (if (consp b)
-                                          (if is-boxed
-                                              ;; Box: (var (cons init nil))
-                                              (list var (list 'cons (transform init bound-boxed) nil))
-                                              ;; Not boxed
-                                              (list var (transform init bound-boxed)))
-                                          b)))
-                                  bindings))
-                        (extended-boxed (append new-boxed bound-boxed)))
-                    (list* (car e) new-bindings
-                           (mapcar (lambda (form) (transform form extended-boxed)) body)))))
+               ((and (consp e) (member (car e) '(let let*)))
+                (let ((bindings (cadr e))
+                      (body (cddr e)))
+                  (if (not (safe-list-p bindings))
+                      ;; Bindings are template code, return as-is with transformed body
+                      (list* (car e) bindings
+                             (if (safe-list-p body)
+                                 (mapcar (lambda (form) (transform form bound-boxed)) body)
+                                 (list body)))
+                      ;; Normal case: bindings is a proper list
+                      (let ((new-boxed nil))
+                        (let ((new-bindings
+                                (mapcar (lambda (b)
+                                          (if (not (consp b))
+                                              (progn (when (member b boxed-vars :test #'eq)
+                                                       (push b new-boxed))
+                                                     b)
+                                              (let* ((var (car b))
+                                                     (init (cadr b))
+                                                     (is-boxed (member var boxed-vars :test #'eq)))
+                                                (when is-boxed (push var new-boxed))
+                                                (if is-boxed
+                                                    (list var (list 'cons (transform init bound-boxed) nil))
+                                                    (list var (transform init bound-boxed))))))
+                                        bindings))
+                              (extended-boxed (append new-boxed bound-boxed)))
+                          (list* (car e) new-bindings
+                                 (if (safe-list-p body)
+                                     (mapcar (lambda (form) (transform form extended-boxed)) body)
+                                     (list (transform body extended-boxed)))))))))
                ;; lambda: params shadow outer boxed vars
-               ((eq (car e) 'lambda)
-                (let* ((params (cadr e))
-                       (body (cddr e))
-                       ;; Remove params from bound-boxed (they shadow)
-                       (new-boxed (remove-if (lambda (v) (member v params :test #'eq)) bound-boxed)))
-                  (list* 'lambda params
-                         (mapcar (lambda (form) (transform form new-boxed)) body))))
+               ((and (consp e) (eq (car e) 'lambda))
+                (let ((params (cadr e))
+                      (body (cddr e)))
+                  (if (not (safe-list-p params))
+                      ;; Params are template code, return as-is
+                      (list* 'lambda params
+                             (if (safe-list-p body)
+                                 (mapcar (lambda (form) (transform form bound-boxed)) body)
+                                 (list body)))
+                      ;; Normal case
+                      (let ((new-boxed (remove-if (lambda (v) (member v params :test #'eq)) bound-boxed)))
+                        (list* 'lambda params
+                               (if (safe-list-p body)
+                                   (mapcar (lambda (form) (transform form new-boxed)) body)
+                                   (list (transform body new-boxed))))))))
                ;; labels: transform each function's body
-               ((eq (car e) 'labels)
-                (let* ((defs (cadr e))
-                       (body (cddr e))
-                       (fn-names (mapcar #'car defs)))
-                  (list* 'labels
-                         (mapcar (lambda (def)
-                                   (let* ((fname (car def))
-                                          (fparams (cadr def))
-                                          (fbody (cddr def))
-                                          ;; Params shadow boxed vars
-                                          (new-boxed (remove-if (lambda (v)
-                                                                  (or (member v fparams :test #'eq)
-                                                                      (member v fn-names :test #'eq)))
-                                                                bound-boxed)))
-                                     (list* fname fparams
-                                            (mapcar (lambda (form) (transform form new-boxed)) fbody))))
-                                 defs)
-                         (mapcar (lambda (form) (transform form bound-boxed)) body))))
+               ((and (consp e) (eq (car e) 'labels))
+                (let ((defs (cadr e))
+                      (body (cddr e)))
+                  (if (not (safe-list-p defs))
+                      ;; Defs are template code
+                      (list* 'labels defs
+                             (if (safe-list-p body)
+                                 (mapcar (lambda (form) (transform form bound-boxed)) body)
+                                 (list body)))
+                      ;; Normal case
+                      (let ((fn-names (mapcar #'car defs)))
+                        (list* 'labels
+                               (mapcar (lambda (def)
+                                         (if (not (consp def))
+                                             def
+                                             (let* ((fname (car def))
+                                                    (fparams (cadr def))
+                                                    (fbody (cddr def))
+                                                    (new-boxed (if (safe-list-p fparams)
+                                                                   (remove-if (lambda (v)
+                                                                                (or (member v fparams :test #'eq)
+                                                                                    (member v fn-names :test #'eq)))
+                                                                              bound-boxed)
+                                                                   bound-boxed)))
+                                               (list* fname fparams
+                                                      (if (safe-list-p fbody)
+                                                          (mapcar (lambda (form) (transform form new-boxed)) fbody)
+                                                          (list fbody))))))
+                                       defs)
+                               (if (safe-list-p body)
+                                   (mapcar (lambda (form) (transform form bound-boxed)) body)
+                                   (list body)))))))
                ;; flet: similar to labels
-               ((eq (car e) 'flet)
-                (let* ((defs (cadr e))
-                       (body (cddr e)))
-                  (list* 'flet
-                         (mapcar (lambda (def)
-                                   (let* ((fname (car def))
-                                          (fparams (cadr def))
-                                          (fbody (cddr def))
-                                          (new-boxed (remove-if (lambda (v) (member v fparams :test #'eq))
-                                                                bound-boxed)))
-                                     (list* fname fparams
-                                            (mapcar (lambda (form) (transform form new-boxed)) fbody))))
-                                 defs)
-                         (mapcar (lambda (form) (transform form bound-boxed)) body))))
+               ((and (consp e) (eq (car e) 'flet))
+                (let ((defs (cadr e))
+                      (body (cddr e)))
+                  (if (not (safe-list-p defs))
+                      (list* 'flet defs
+                             (if (safe-list-p body)
+                                 (mapcar (lambda (form) (transform form bound-boxed)) body)
+                                 (list body)))
+                      (list* 'flet
+                             (mapcar (lambda (def)
+                                       (if (not (consp def))
+                                           def
+                                           (let* ((fname (car def))
+                                                  (fparams (cadr def))
+                                                  (fbody (cddr def))
+                                                  (new-boxed (if (safe-list-p fparams)
+                                                                 (remove-if (lambda (v) (member v fparams :test #'eq))
+                                                                            bound-boxed)
+                                                                 bound-boxed)))
+                                             (list* fname fparams
+                                                    (if (safe-list-p fbody)
+                                                        (mapcar (lambda (form) (transform form new-boxed)) fbody)
+                                                        (list fbody))))))
+                                     defs)
+                             (if (safe-list-p body)
+                                 (mapcar (lambda (form) (transform form bound-boxed)) body)
+                                 (list body))))))
                ;; General case: transform all subforms
-               (t (mapcar (lambda (sub) (transform sub bound-boxed)) e)))))
+               ((consp e)
+                (mapcar (lambda (sub) (transform sub bound-boxed)) e))
+               (t e))))
     (transform expr nil)))
 
 (defun encode-word-le (word)
@@ -560,6 +717,48 @@ Cons/car/cdr are required; others should be provided in production."
         (setf (cdr existing) expander)
         (push (cons name expander) *macro-env*))))
 
+;;; Trace facility
+;;; Functions to enable/disable tracing of function calls
+
+(defun trace-function (name)
+  "Add NAME to the list of traced functions."
+  (unless (member name *traced-functions* :test #'eq)
+    (push name *traced-functions*))
+  name)
+
+(defun untrace-function (name)
+  "Remove NAME from the list of traced functions."
+  (setq *traced-functions* (remove name *traced-functions* :test #'eq))
+  name)
+
+(defun function-traced-p (name)
+  "Check if NAME is currently being traced."
+  (member name *traced-functions* :test #'eq))
+
+(defun wrap-body-with-trace (name params body)
+  "Wrap BODY with trace entry/exit code for function NAME with PARAMS.
+   Prints entry with arguments and exit with return value."
+  (let ((result-var (gensym "TRACE-RESULT-")))
+    ;; Generate trace entry: print function name and each argument
+    ;; We build a progn that prints entry, runs body, prints exit, returns result
+    ;; Use print/println since format is a stub in Habu
+    `(progn
+       ;; Print entry line: TRACE: (fn-name
+       (print "TRACE: (")
+       (print ',name)
+       ;; Print each argument
+       ,@(mapcar (lambda (p) `(progn (print " ") (print ,p))) params)
+       (println ")")
+       ;; Run body and capture result
+       (let ((,result-var ,body))
+         ;; Print exit line: TRACE: fn-name => result
+         (print "TRACE: ")
+         (print ',name)
+         (print " => ")
+         (println ,result-var)
+         ;; Return result
+         ,result-var))))
+
 (defun contains-return-from-p (form block-name)
   "Check if FORM contains a return-from to BLOCK-NAME."
   (cond
@@ -620,19 +819,61 @@ Cons/car/cdr are required; others should be provided in production."
         (return-from truncate-at-go (values (nreverse result) t))))
     (values (nreverse result) nil)))
 
-(defun sbcl-comma-p (obj)
-  #+sbcl
-  (let ((sym (find-symbol "COMMA" "SB-IMPL")))
-    (and sym (eq (type-of obj) sym)))
-  #-sbcl nil)
-
 (defun sbcl-comma-kind (obj)
-  #+sbcl (funcall (symbol-function (find-symbol "COMMA-KIND" "SB-IMPL")) obj)
+  "Get the kind of an SBCL comma structure (0 = comma, 1 = comma-at)."
+  #+sbcl (sb-impl::comma-kind obj)
   #-sbcl 0)
 
-(defun sbcl-comma-expr (obj)
-  #+sbcl (funcall (symbol-function (find-symbol "COMMA-EXPR" "SB-IMPL")) obj)
-  #-sbcl nil)
+(defun expand-quasiquote-list-ir (lst env fenv)
+  "Expand a quasiquoted list, handling unquote-splicing properly.
+   Returns IR that constructs the list, using append for splicing."
+  (let ((segments nil)
+        (current nil))
+    ;; Process list elements, grouping consecutive non-spliced elements
+    (labels ((flush-current ()
+               (when current
+                 (push (list 'list-call (nreverse current)) segments)
+                 (setf current nil)))
+             (is-splice-p (x)
+               (or (and (sbcl-comma-p x) (= (sbcl-comma-kind x) 1))
+                   (and (consp x) (op= (car x) "UNQUOTE-SPLICING")))))
+      (dolist (el lst)
+        (cond
+          ;; Unquote-splicing: flush current, add splice
+          ((is-splice-p el)
+           (flush-current)
+           (let ((expr (if (sbcl-comma-p el)
+                           (sbcl-comma-expr el)
+                           (cadr el))))
+             (push (compile-expr expr env fenv) segments)))
+          ;; Regular element
+          (t
+           (push (expand-quasiquote-ir el env fenv) current))))
+      (flush-current))
+    ;; Build result
+    (let ((segs (nreverse segments)))
+      (cond
+        ((null segs) '(lit 0))  ; nil
+        ((null (cdr segs))
+         ;; Single segment
+         (let ((seg (car segs)))
+           (if (and (consp seg) (eq (car seg) 'list-call))
+               ;; Convert list-call to cons chain
+               (let ((elements (cadr seg)))
+                 (if (null elements)
+                     '(lit 0)
+                     (reduce (lambda (acc el)
+                               (list 'cons-call el acc))
+                             elements
+                             :initial-value '(lit 0)
+                             :from-end t)))
+               seg)))
+        (t
+         ;; Multiple segments - use append
+         (reduce (lambda (acc seg)
+                   (list 'append-call seg acc))
+                 segs
+                 :from-end t))))))
 
 (defun expand-quasiquote-ir (obj env fenv)
   "Expand quasiquoted OBJ into IR with unquotes evaluated via compile-expr."
@@ -642,21 +883,27 @@ Cons/car/cdr are required; others should be provided in production."
            (expr (sbcl-comma-expr obj)))
        (if (= kind 0)
            (compile-expr expr env fenv)
-           (error "unquote-splicing not supported in quasiquote IR expansion: ~S" obj))))
+           ;; Unquote-splicing at top level - just compile as list
+           (compile-expr expr env fenv))))
     ;; ,expr -> compile expr
     ((and (consp obj) (op= (car obj) "UNQUOTE"))
      (compile-expr (cadr obj) env fenv))
-    ;; ,@expr unsupported for now
+    ;; ,@expr at top level - just compile as list
     ((and (consp obj) (op= (car obj) "UNQUOTE-SPLICING"))
-     (error "unquote-splicing not supported in quasiquote IR expansion: ~S" obj))
+     (compile-expr (cadr obj) env fenv))
     ;; Vector literal
     ((vectorp obj)
      (list 'vector-lit (map 'list (lambda (el) (expand-quasiquote-ir el env fenv)) obj)))
-    ;; Cons -> cons-call of car/cdr
+    ;; List - check for splices
     ((consp obj)
-     (list 'cons-call
-           (expand-quasiquote-ir (car obj) env fenv)
-           (expand-quasiquote-ir (cdr obj) env fenv)))
+     (if (or (some #'sbcl-comma-p obj)
+             (some (lambda (x) (and (consp x) (op= (car x) "UNQUOTE-SPLICING"))) obj))
+         ;; Has potential splices - use list expansion
+         (expand-quasiquote-list-ir obj env fenv)
+         ;; No splices - simple cons chain
+         (list 'cons-call
+               (expand-quasiquote-ir (car obj) env fenv)
+               (expand-quasiquote-ir (cdr obj) env fenv))))
     ;; Atom -> literal lowering
     (t (quote->ir obj))))
 
@@ -1898,6 +2145,27 @@ Cons/car/cdr are required; others should be provided in production."
                (arm64-blr 9))))
 
     ;; ============= End File I/O Codegen =============
+
+    ;; ============= Print Codegen =============
+    ;; print: (print-call value) -> nil - prints value to stdout
+    ;; Runtime table: [48] = offset 384 = habu_print_value
+    ((has-tag? ir 'print-call)
+     (let* ((value-ir (cadr ir))
+            (value-code (codegen-expr value-ir runtime-addrs fn-offsets current-offset temp-depth)))
+       (append value-code
+               (arm64-ldr 9 19 384)     ; print_value at offset 384
+               (arm64-blr 9))))
+
+    ;; println: (println-call value) -> nil - prints value with newline to stdout
+    ;; Runtime table: [49] = offset 392 = habu_println_value
+    ((has-tag? ir 'println-call)
+     (let* ((value-ir (cadr ir))
+            (value-code (codegen-expr value-ir runtime-addrs fn-offsets current-offset temp-depth)))
+       (append value-code
+               (arm64-ldr 9 19 392)     ; println_value at offset 392
+               (arm64-blr 9))))
+
+    ;; ============= End Print Codegen =============
 
     ;; String length (returns fixnum)
     ((has-tag? ir 'string-len)
@@ -5651,6 +5919,29 @@ Cons/car/cdr are required; others should be provided in production."
 
          ;; ============= End File I/O Operations =============
 
+         ;; ============= Print Operations =============
+         ;; print: (print value) -> nil - prints value to stdout
+         ;; Runtime table: [48] = offset 384 = habu_print_value
+         ((op= op "PRINT")
+          (if (consp (cdr expr))
+              (list 'print-call
+                    (compile-expr (cadr expr) env fenv))
+              (list 'lit 0)))
+
+         ;; println: (println value) -> nil - prints value with newline to stdout
+         ;; Runtime table: [49] = offset 392 = habu_println_value
+         ((op= op "PRINTLN")
+          (if (consp (cdr expr))
+              (list 'println-call
+                    (compile-expr (cadr expr) env fenv))
+              (list 'lit 0)))
+
+         ;; terpri: () -> nil - prints a newline (we use print with newline character)
+         ((op= op "TERPRI")
+          (list 'println-call (list 'lit 0)))
+
+         ;; ============= End Print Operations =============
+
          ;; String length
          ((op= op "STRING-LENGTH")
           (if (consp (cdr expr))
@@ -6503,6 +6794,7 @@ Optional/key descriptors are (name init-form supplied-name)."
            (optional-supplied (mapcar (lambda (entry)
                                         (or (caddr entry) (gensym "supplied-")))
                                       optional))
+           (all-param-names (append fixed optional-names))
            (bindings (append fixed optional-names optional-supplied (if rest (list rest) nil)))
            (param-env (env-extend (mapcar #'list bindings) env))
            (param-base (if bindings
@@ -6517,8 +6809,12 @@ Optional/key descriptors are (name init-form supplied-name)."
           ;; Add this function to fenv to allow recursive calls
           ;; Use a placeholder compiled-fn since we're still compiling it
           (recursive-fenv (cons (cons name nil) fenv))
+          ;; Wrap body with trace if function is traced
+          (traced-body (if (function-traced-p name)
+                           (wrap-body-with-trace name all-param-names body)
+                           body))
           ;; Transform body to box captured mutable variables
-          (boxed-body (box-mutable-captured-vars body))
+          (boxed-body (box-mutable-captured-vars traced-body))
           ;; Compile body in the parameter environment with recursive fenv
           (body-ir (compile-expr boxed-body param-env recursive-fenv)))
       (list name fixed optional-names opt-inits optional-supplied body-ir nil param-base rest))))
@@ -6539,6 +6835,32 @@ Optional/key descriptors are (name init-form supplied-name)."
                   (expander (eval `(lambda ,params ,body))))
              (register-macro name expander)
              ;; Continue with rest of forms (defmacro doesn't produce runtime code)
+             (compile-forms-helper (cdr forms) env fenv)))
+
+          ;; trace - add function(s) to trace list
+          ;; (trace fn1 fn2 ...) or (trace) to list traced functions
+          ((and (consp form) (eq (car form) 'trace))
+           (let ((names (cdr form)))
+             (if names
+                 ;; Add functions to trace list
+                 (dolist (name names)
+                   (trace-function name))
+                 ;; No args - print currently traced functions
+                 (format t "Traced functions: ~S~%" *traced-functions*))
+             ;; Continue with rest of forms
+             (compile-forms-helper (cdr forms) env fenv)))
+
+          ;; untrace - remove function(s) from trace list
+          ;; (untrace fn1 fn2 ...) or (untrace) to untrace all
+          ((and (consp form) (eq (car form) 'untrace))
+           (let ((names (cdr form)))
+             (if names
+                 ;; Remove specific functions from trace list
+                 (dolist (name names)
+                   (untrace-function name))
+                 ;; No args - untrace all
+                 (setq *traced-functions* nil))
+             ;; Continue with rest of forms
              (compile-forms-helper (cdr forms) env fenv)))
 
           ;; defclass - define a CLOS class
@@ -6714,7 +7036,16 @@ Optional/key descriptors are (name init-form supplied-name)."
           ((and (consp form) (eq (car form) 'defun))
            (let* ((name (cadr form))
                   (params (caddr form))
-                  (body (cadddr form))
+                  (body-forms (cdddr form))
+                  ;; Skip docstring if present (string as first body element with more forms)
+                  (actual-body-forms (if (and (stringp (car body-forms))
+                                              (cdr body-forms))
+                                         (cdr body-forms)
+                                         body-forms))
+                  ;; Wrap in progn if multiple body forms
+                  (body (if (cdr actual-body-forms)
+                            (cons 'progn actual-body-forms)
+                            (car actual-body-forms)))
                   (compiled-fn (compile-defun name params body env fenv))
                   ;; Add to function environment
                   (new-fenv (cons (cons name compiled-fn) fenv))
