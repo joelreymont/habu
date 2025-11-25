@@ -146,9 +146,12 @@ int main(int argc, char **argv) {
     g_runtime_table[21] = (void*)habu_puthash;
     g_runtime_table[22] = (void*)habu_remhash;
     g_runtime_table[23] = (void*)habu_hash_table_count;
+    g_runtime_table[24] = (void*)habu_string_concat;
+    g_runtime_table[25] = (void*)habu_string_substring;
+    g_runtime_table[26] = (void*)habu_fixnum_to_string;
 
     if (getenv("HABU_DEBUG_TABLE")) {
-        for (int i = 0; i <= 23; i++) {
+        for (int i = 0; i <= 26; i++) {
             fprintf(stderr, "RT[%d]=%p\n", i, g_runtime_table[i]);
         }
     }

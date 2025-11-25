@@ -1454,6 +1454,66 @@ Cons/car/cdr are required; others should be provided in production."
                (arm64-ldr 9 19 128)           ; string-ref at offset 128 (index 16)
                (arm64-blr 9))))               ; returns tagged char code
 
+    ;; String-concat: (string-concat-call str1 str2)
+    ;; Runtime table: [24] = offset 192 = habu_string_concat
+    ((has-tag? ir 'string-concat-call)
+     (let* ((str1-ir (cadr ir))
+            (str2-ir (caddr ir))
+            (slot1 (temp-slot-offset temp-depth))
+            (str1-code (codegen-expr str1-ir runtime-addrs fn-offsets current-offset (+ temp-depth 1)))
+            (str2-code (codegen-expr str2-ir runtime-addrs fn-offsets current-offset (+ temp-depth 1))))
+       (append
+        str1-code
+        (arm64-str 0 31 slot1)            ; save str1
+        str2-code
+        (arm64-mov 1 0)                   ; x1 = str2
+        (arm64-ldr 0 31 slot1)            ; x0 = str1
+        (arm64-ldr 9 19 192)              ; habu_string_concat at offset 192 (index 24)
+        (arm64-blr 9))))                  ; returns concatenated string
+
+    ;; String-substring: (string-substring-call str start end)
+    ;; Runtime table: [25] = offset 200 = habu_string_substring
+    ((has-tag? ir 'string-substring-call)
+     (let* ((str-ir (cadr ir))
+            (start-ir (caddr ir))
+            (end-ir (cadddr ir))
+            (slot0 (temp-slot-offset temp-depth))
+            (slot1 (temp-slot-offset (+ temp-depth 1)))
+            (str-code (codegen-expr str-ir runtime-addrs fn-offsets current-offset (+ temp-depth 2)))
+            (start-code (codegen-expr start-ir runtime-addrs fn-offsets current-offset (+ temp-depth 2)))
+            (end-code (codegen-expr end-ir runtime-addrs fn-offsets current-offset (+ temp-depth 2))))
+       (append
+        str-code
+        (arm64-str 0 31 slot0)            ; save str
+        start-code
+        (arm64-str 0 31 slot1)            ; save start
+        end-code
+        (arm64-mov 2 0)                   ; x2 = end
+        (arm64-ldr 1 31 slot1)            ; x1 = start
+        (arm64-ldr 0 31 slot0)            ; x0 = str
+        (arm64-ldr 9 19 200)              ; habu_string_substring at offset 200 (index 25)
+        (arm64-blr 9))))                  ; returns substring
+
+    ;; Fixnum-to-string: (fixnum-to-string-call num)
+    ;; Runtime table: [26] = offset 208 = habu_fixnum_to_string
+    ((has-tag? ir 'fixnum-to-string-call)
+     (let* ((num-ir (cadr ir))
+            (num-code (codegen-expr num-ir runtime-addrs fn-offsets current-offset temp-depth)))
+       (append
+        num-code                          ; x0 = tagged fixnum
+        (arm64-ldr 9 19 208)              ; habu_fixnum_to_string at offset 208 (index 26)
+        (arm64-blr 9))))                  ; returns string
+
+    ;; Make-string-from-vector: (make-string-from-vector-call vec)
+    ;; Runtime table: [10] = offset 80 = habu_make_string_from_vector
+    ((has-tag? ir 'make-string-from-vector-call)
+     (let* ((vec-ir (cadr ir))
+            (vec-code (codegen-expr vec-ir runtime-addrs fn-offsets current-offset temp-depth)))
+       (append
+        vec-code                          ; x0 = tagged vector
+        (arm64-ldr 9 19 80)               ; habu_make_string_from_vector at offset 80 (index 10)
+        (arm64-blr 9))))                  ; returns string
+
     ;; Multiple values: (values-call count v0 v1 v2 v3)
     ;; Runtime table: [17] = offset 136 = habu_values_set
     ;; habu_values_set(count, v0, v1, v2, v3) -> returns v0
@@ -2700,6 +2760,74 @@ Cons/car/cdr are required; others should be provided in production."
                                     (expand-cond (cdr clauses)))))))))
             (expand-cond (cdr expr))))
 
+         ;; Case (multi-way conditional by key comparison)
+         ;; (case keyform (key1 body1) ((key2 key3) body2) (otherwise default))
+         ((eq op 'case)
+          (if (consp (cdr expr))
+              (let ((keyform (cadr expr))
+                    (clauses (cddr expr)))
+                (compile-expr
+                 `(let ((key ,keyform))
+                    (cond ,@(mapcar (lambda (clause)
+                                      (let ((keys (car clause))
+                                            (body (cdr clause)))
+                                        (cond
+                                          ;; otherwise/t clause
+                                          ((or (eq keys 'otherwise) (eq keys t))
+                                           `(t ,@body))
+                                          ;; Multiple keys
+                                          ((consp keys)
+                                           `((or ,@(mapcar (lambda (k) `(eql key ',k)) keys))
+                                             ,@body))
+                                          ;; Single key
+                                          (t `((eql key ',keys) ,@body)))))
+                                    clauses)))
+                 env fenv))
+              (list 'lit 0)))
+
+         ;; Ecase (case with error on no match) - for now same as case
+         ((eq op 'ecase)
+          (if (consp (cdr expr))
+              (let ((keyform (cadr expr))
+                    (clauses (cddr expr)))
+                ;; Transform ecase to case with error default
+                (compile-expr
+                 `(case ,keyform
+                    ,@clauses
+                    (otherwise (error "ECASE: no matching clause")))
+                 env fenv))
+              (list 'lit 0)))
+
+         ;; Typecase (dispatch based on type)
+         ;; (typecase expr (type1 body1) (type2 body2) ...)
+         ((eq op 'typecase)
+          (if (consp (cdr expr))
+              (let ((keyform (cadr expr))
+                    (clauses (cddr expr)))
+                (compile-expr
+                 `(let ((obj ,keyform))
+                    (cond ,@(mapcar (lambda (clause)
+                                      (let ((type-spec (car clause))
+                                            (body (cdr clause)))
+                                        (cond
+                                          ((or (eq type-spec 'otherwise) (eq type-spec t))
+                                           `(t ,@body))
+                                          ((eq type-spec 'cons) `((consp obj) ,@body))
+                                          ((eq type-spec 'list) `((listp obj) ,@body))
+                                          ((eq type-spec 'null) `((null obj) ,@body))
+                                          ((eq type-spec 'symbol) `((symbolp obj) ,@body))
+                                          ((eq type-spec 'fixnum) `((numberp obj) ,@body))
+                                          ((eq type-spec 'integer) `((numberp obj) ,@body))
+                                          ((eq type-spec 'number) `((numberp obj) ,@body))
+                                          ((eq type-spec 'string) `((stringp obj) ,@body))
+                                          ((eq type-spec 'vector) `((vectorp obj) ,@body))
+                                          ((eq type-spec 'function) `((functionp obj) ,@body))
+                                          ((eq type-spec 'atom) `((atom obj) ,@body))
+                                          (t `(nil ,@body)))))  ; Unknown type - never match
+                                    clauses)))
+                 env fenv))
+              (list 'lit 0)))
+
          ;; When (guard form)
          ((eq op 'when)
           (if (consp (cdr expr))
@@ -3355,6 +3483,193 @@ Cons/car/cdr are required; others should be provided in production."
                  env fenv))
               (list 'lit 0)))
 
+         ;; Do - (do ((var init step)...) (end-test result...) body...)
+         ;; General iteration with parallel update
+         ((eq op 'do)
+          (if (and (consp (cdr expr)) (consp (cddr expr)))
+              (let* ((var-specs (cadr expr))
+                     (end-clause (caddr expr))
+                     (body (cdddr expr))
+                     (end-test (car end-clause))
+                     (result-forms (cdr end-clause))
+                     (result-expr (if result-forms
+                                      (if (null (cdr result-forms))
+                                          (car result-forms)
+                                          `(progn ,@result-forms))
+                                      #x0))
+                     (vars (mapcar #'car var-specs))
+                     (inits (mapcar #'cadr var-specs))
+                     (steps (mapcar (lambda (spec)
+                                      (if (cddr spec) (caddr spec) (car spec)))
+                                    var-specs))
+                     (iter-fn (gensym "DO-ITER")))
+                ;; Transform to labels form
+                (compile-expr
+                 `(labels ((,iter-fn ,vars
+                             (if ,end-test
+                                 ,result-expr
+                                 (progn
+                                   ,@(if body body '(nil))
+                                   (,iter-fn ,@steps)))))
+                    (,iter-fn ,@inits))
+                 env fenv))
+              (list 'lit 0)))
+
+         ;; Do* - (do* ((var init step)...) (end-test result...) body...)
+         ;; General iteration with sequential update
+         ((eq op 'do*)
+          (if (and (consp (cdr expr)) (consp (cddr expr)))
+              (let* ((var-specs (cadr expr))
+                     (end-clause (caddr expr))
+                     (body (cdddr expr))
+                     (end-test (car end-clause))
+                     (result-forms (cdr end-clause))
+                     (result-expr (if result-forms
+                                      (if (null (cdr result-forms))
+                                          (car result-forms)
+                                          `(progn ,@result-forms))
+                                      #x0))
+                     (vars (mapcar #'car var-specs))
+                     (inits (mapcar #'cadr var-specs))
+                     (steps (mapcar (lambda (spec)
+                                      (if (cddr spec) (caddr spec) (car spec)))
+                                    var-specs))
+                     (iter-fn (gensym "DO*-ITER")))
+                ;; Transform to labels with let* for sequential binding
+                (compile-expr
+                 `(let* ,(mapcar #'list vars inits)
+                    (labels ((,iter-fn ()
+                               (if ,end-test
+                                   ,result-expr
+                                   (progn
+                                     ,@(if body body '(nil))
+                                     ,@(mapcar (lambda (v s) `(setq ,v ,s)) vars steps)
+                                     (,iter-fn)))))
+                      (,iter-fn)))
+                 env fenv))
+              (list 'lit 0)))
+
+         ;; Pop - (pop place) - remove and return first element
+         ((op= op "POP")
+          (if (consp (cdr expr))
+              (let ((place (cadr expr)))
+                (compile-expr
+                 `(let ((result (car ,place)))
+                    (setq ,place (cdr ,place))
+                    result)
+                 env fenv))
+              (list 'lit 0)))
+
+         ;; Pushnew - (pushnew item place) - push if not already member
+         ((op= op "PUSHNEW")
+          (if (and (consp (cdr expr)) (consp (cddr expr)))
+              (let ((item (cadr expr))
+                    (place (caddr expr)))
+                (compile-expr
+                 `(unless (member ,item ,place)
+                    (push ,item ,place))
+                 env fenv))
+              (list 'lit 0)))
+
+         ;; Multiple-value-list - (multiple-value-list form) - collect values as list
+         ((op= op "MULTIPLE-VALUE-LIST")
+          (if (consp (cdr expr))
+              (let ((form (cadr expr)))
+                ;; Execute form, then collect all values into a list
+                ;; For now, support up to 4 values
+                (compile-expr
+                 `(multiple-value-bind (v0 v1 v2 v3) ,form
+                    (list v0 v1 v2 v3))
+                 env fenv))
+              (list 'lit 0)))
+
+         ;; Nth-value - (nth-value n form) - get nth value
+         ((op= op "NTH-VALUE")
+          (if (and (consp (cdr expr)) (consp (cddr expr)))
+              (let ((n (cadr expr))
+                    (form (caddr expr)))
+                (compile-expr
+                 `(let ((primary ,form))
+                    (values-get ,n primary))
+                 env fenv))
+              (list 'lit 0)))
+
+         ;; Psetq - parallel setq: (psetq var1 val1 var2 val2 ...)
+         ;; All values evaluated before any assignment
+         ((op= op "PSETQ")
+          (if (consp (cdr expr))
+              (let* ((pairs (cdr expr))
+                     (vars '())
+                     (vals '())
+                     (temps '()))
+                ;; Parse var/val pairs
+                (loop while pairs do
+                  (push (car pairs) vars)
+                  (push (cadr pairs) vals)
+                  (push (gensym "PSETQ-TMP") temps)
+                  (setf pairs (cddr pairs)))
+                (setf vars (nreverse vars))
+                (setf vals (nreverse vals))
+                (setf temps (nreverse temps))
+                ;; Generate: (let ((tmp1 val1) (tmp2 val2) ...) (setq var1 tmp1) (setq var2 tmp2) ...)
+                (compile-expr
+                 `(let ,(mapcar #'list temps vals)
+                    ,@(mapcar (lambda (var tmp) `(setq ,var ,tmp)) vars temps)
+                    nil)
+                 env fenv))
+              (list 'lit 0)))
+
+         ;; Rotatef - rotate values: (rotatef a b c) => a<-b, b<-c, c<-a
+         ((op= op "ROTATEF")
+          (if (consp (cdr expr))
+              (let* ((places (cdr expr))
+                     (n (length places))
+                     (temps (loop repeat n collect (gensym "ROT-TMP"))))
+                ;; Save all values, then rotate assignments
+                (compile-expr
+                 `(let ,(mapcar #'list temps places)
+                    ,@(loop for i from 0 below n
+                            for place in places
+                            for next-idx = (mod (1+ i) n)
+                            collect `(setq ,place ,(nth next-idx temps)))
+                    nil)
+                 env fenv))
+              (list 'lit 0)))
+
+         ;; Shiftf - shift values: (shiftf a b c newval) => returns old-a, a<-b, b<-c, c<-newval
+         ((op= op "SHIFTF")
+          (if (>= (length (cdr expr)) 2)
+              (let* ((args (cdr expr))
+                     (places (butlast args))
+                     (newval (car (last args)))
+                     (n (length places))
+                     (temps (loop repeat n collect (gensym "SHIFT-TMP"))))
+                ;; Save all values, shift assignments, return first saved
+                (compile-expr
+                 `(let ,(mapcar #'list temps places)
+                    ,@(loop for i from 0 below (1- n)
+                            for place in places
+                            collect `(setq ,place ,(nth (1+ i) temps)))
+                    (setq ,(car (last places)) ,newval)
+                    ,(car temps))  ; return original first value
+                 env fenv))
+              (list 'lit 0)))
+
+         ;; The - type declaration (stub - just returns value)
+         ((op= op "THE")
+          (if (and (consp (cdr expr)) (consp (cddr expr)))
+              (compile-expr (caddr expr) env fenv)
+              (list 'lit 0)))
+
+         ;; Coerce - type coercion (limited support)
+         ((op= op "COERCE")
+          (if (and (consp (cdr expr)) (consp (cddr expr)))
+              (let ((obj (cadr expr))
+                    (type (caddr expr)))
+                ;; For now, just return the object (no real coercion)
+                (compile-expr obj env fenv))
+              (list 'lit 0)))
+
          ;; Mapcar - (mapcar fn list) - apply fn to each element, return list of results
          ((eq op 'mapcar)
           (if (and (consp (cdr expr)) (consp (cddr expr)))
@@ -3413,6 +3728,133 @@ Cons/car/cdr are required; others should be provided in production."
                               #x0
                               (reduce-iter ,fn-form (cdr the-list) (car the-list)))))
                      env fenv)))
+              (list 'lit 0)))
+
+         ;; Mapcan - (mapcan fn list) - like mapcar but appends results with nconc
+         ((eq op 'mapcan)
+          (if (and (consp (cdr expr)) (consp (cddr expr)))
+              (let ((fn-form (cadr expr))
+                    (list-form (caddr expr)))
+                (compile-expr
+                 `(labels ((mapcan-iter (fn lst acc)
+                             (if (null lst)
+                                 acc
+                                 (mapcan-iter fn (cdr lst)
+                                              (nconc acc (funcall fn (car lst)))))))
+                    (mapcan-iter ,fn-form ,list-form nil))
+                 env fenv))
+              (list 'lit 0)))
+
+         ;; Maplist - (maplist fn list) - apply fn to successive cdrs
+         ((eq op 'maplist)
+          (if (and (consp (cdr expr)) (consp (cddr expr)))
+              (let ((fn-form (cadr expr))
+                    (list-form (caddr expr)))
+                (compile-expr
+                 `(labels ((maplist-iter (fn lst)
+                             (if (null lst)
+                                 nil
+                                 (cons (funcall fn lst)
+                                       (maplist-iter fn (cdr lst))))))
+                    (maplist-iter ,fn-form ,list-form))
+                 env fenv))
+              (list 'lit 0)))
+
+         ;; Mapcon - (mapcon fn list) - like maplist but appends results with nconc
+         ((eq op 'mapcon)
+          (if (and (consp (cdr expr)) (consp (cddr expr)))
+              (let ((fn-form (cadr expr))
+                    (list-form (caddr expr)))
+                (compile-expr
+                 `(labels ((mapcon-iter (fn lst acc)
+                             (if (null lst)
+                                 acc
+                                 (mapcon-iter fn (cdr lst)
+                                              (nconc acc (funcall fn lst))))))
+                    (mapcon-iter ,fn-form ,list-form nil))
+                 env fenv))
+              (list 'lit 0)))
+
+         ;; Mapl - (mapl fn list) - like maplist but returns original list
+         ((eq op 'mapl)
+          (if (and (consp (cdr expr)) (consp (cddr expr)))
+              (let ((fn-form (cadr expr))
+                    (list-form (caddr expr)))
+                (compile-expr
+                 `(labels ((mapl-iter (fn lst orig)
+                             (if (null lst)
+                                 orig
+                                 (progn
+                                   (funcall fn lst)
+                                   (mapl-iter fn (cdr lst) orig)))))
+                    (let ((the-list ,list-form))
+                      (mapl-iter ,fn-form the-list the-list)))
+                 env fenv))
+              (list 'lit 0)))
+
+         ;; Every - (every pred list) - returns T (1) if pred is true for all elements
+         ((eq op 'every)
+          (if (and (consp (cdr expr)) (consp (cddr expr)))
+              (let ((pred-form (cadr expr))
+                    (list-form (caddr expr)))
+                (compile-expr
+                 `(labels ((every-iter (pred lst)
+                             (if (null lst)
+                                 #x1
+                                 (if (funcall pred (car lst))
+                                     (every-iter pred (cdr lst))
+                                     #x0))))
+                    (every-iter ,pred-form ,list-form))
+                 env fenv))
+              (list 'lit 0)))
+
+         ;; Some - (some pred list) - returns first non-nil result, or nil
+         ((eq op 'some)
+          (if (and (consp (cdr expr)) (consp (cddr expr)))
+              (let ((pred-form (cadr expr))
+                    (list-form (caddr expr)))
+                (compile-expr
+                 `(labels ((some-iter (pred lst)
+                             (if (null lst)
+                                 #x0
+                                 (let ((result (funcall pred (car lst))))
+                                   (if result
+                                       result
+                                       (some-iter pred (cdr lst)))))))
+                    (some-iter ,pred-form ,list-form))
+                 env fenv))
+              (list 'lit 0)))
+
+         ;; Notevery - (notevery pred list) - returns T if some element fails pred
+         ((eq op 'notevery)
+          (if (and (consp (cdr expr)) (consp (cddr expr)))
+              (let ((pred-form (cadr expr))
+                    (list-form (caddr expr)))
+                (compile-expr
+                 `(labels ((notevery-iter (pred lst)
+                             (if (null lst)
+                                 #x0
+                                 (if (funcall pred (car lst))
+                                     (notevery-iter pred (cdr lst))
+                                     #x1))))
+                    (notevery-iter ,pred-form ,list-form))
+                 env fenv))
+              (list 'lit 0)))
+
+         ;; Notany - (notany pred list) - returns T if no element satisfies pred
+         ((eq op 'notany)
+          (if (and (consp (cdr expr)) (consp (cddr expr)))
+              (let ((pred-form (cadr expr))
+                    (list-form (caddr expr)))
+                (compile-expr
+                 `(labels ((notany-iter (pred lst)
+                             (if (null lst)
+                                 #x1
+                                 (if (funcall pred (car lst))
+                                     #x0
+                                     (notany-iter pred (cdr lst))))))
+                    (notany-iter ,pred-form ,list-form))
+                 env fenv))
               (list 'lit 0)))
 
          ;; Apply - (apply fn args-list) - call fn with args spread from list
@@ -3562,6 +4004,212 @@ Cons/car/cdr are required; others should be provided in production."
                                          ,do-expr
                                          (iter)))))
                           (iter)))))
+
+              ;; (loop while condition do body)
+              ((and (>= (length clauses) 3)
+                    (op= (car clauses) "WHILE")
+                    (op= (caddr clauses) "DO"))
+               (let ((condition (cadr clauses))
+                     (do-expr (cadddr clauses)))
+                 (setq result-form
+                       `(labels ((iter ()
+                                   (if ,condition
+                                       (progn
+                                         ,do-expr
+                                         (iter))
+                                       nil)))
+                          (iter)))))
+
+              ;; (loop for var in list do body) - without collect
+              ((and (>= (length clauses) 4)
+                    (op= (car clauses) "FOR")
+                    (op= (caddr clauses) "IN")
+                    (op= (car (cddddr clauses)) "DO"))
+               (let* ((var (cadr clauses))
+                      (list-expr (cadddr clauses))
+                      (do-expr (cadr (cddddr clauses)))
+                      (list-var (intern (concatenate 'string (symbol-name var) "$LIST"))))
+                 (setq result-form
+                       `(labels ((iter (,list-var)
+                                   (if (null ,list-var)
+                                       nil
+                                       (let ((,var (car ,list-var)))
+                                         (progn
+                                           ,do-expr
+                                           (iter (cdr ,list-var)))))))
+                          (iter ,list-expr)))))
+
+              ;; (loop for var from start below end do body) - without collect
+              ((and (>= (length clauses) 6)
+                    (op= (car clauses) "FOR")
+                    (op= (caddr clauses) "FROM")
+                    (op= (car (cddddr clauses)) "BELOW")
+                    (op= (caddr (cddddr clauses)) "DO"))
+               (let ((var (cadr clauses))
+                     (start (cadddr clauses))
+                     (end (cadr (cddddr clauses)))
+                     (do-expr (cadddr (cddddr clauses))))
+                 (setq result-form
+                       `(labels ((iter (,var)
+                                   (if (>= ,var ,end)
+                                       nil
+                                       (progn
+                                         ,do-expr
+                                         (iter (+ ,var #x1))))))
+                          (iter ,start)))))
+
+              ;; (loop for var in list when pred collect expr) - conditional collect
+              ((and (>= (length clauses) 7)
+                    (op= (car clauses) "FOR")
+                    (op= (caddr clauses) "IN")
+                    (op= (car (cddddr clauses)) "WHEN")
+                    (op= (caddr (cddddr clauses)) "COLLECT"))
+               (let* ((var (cadr clauses))
+                      (list-expr (cadddr clauses))
+                      (when-pred (cadr (cddddr clauses)))
+                      (collect-expr (cadddr (cddddr clauses)))
+                      (list-var (intern (concatenate 'string (symbol-name var) "$LIST"))))
+                 (setq result-form
+                       `(labels ((iter (,list-var acc)
+                                   (if (null ,list-var)
+                                       (reverse acc)
+                                       (let ((,var (car ,list-var)))
+                                         (if ,when-pred
+                                             (iter (cdr ,list-var) (cons ,collect-expr acc))
+                                             (iter (cdr ,list-var) acc))))))
+                          (iter ,list-expr nil)))))
+
+              ;; (loop for var in list unless pred collect expr) - conditional collect (negative)
+              ((and (>= (length clauses) 7)
+                    (op= (car clauses) "FOR")
+                    (op= (caddr clauses) "IN")
+                    (op= (car (cddddr clauses)) "UNLESS")
+                    (op= (caddr (cddddr clauses)) "COLLECT"))
+               (let* ((var (cadr clauses))
+                      (list-expr (cadddr clauses))
+                      (unless-pred (cadr (cddddr clauses)))
+                      (collect-expr (cadddr (cddddr clauses)))
+                      (list-var (intern (concatenate 'string (symbol-name var) "$LIST"))))
+                 (setq result-form
+                       `(labels ((iter (,list-var acc)
+                                   (if (null ,list-var)
+                                       (reverse acc)
+                                       (let ((,var (car ,list-var)))
+                                         (if ,unless-pred
+                                             (iter (cdr ,list-var) acc)
+                                             (iter (cdr ,list-var) (cons ,collect-expr acc)))))))
+                          (iter ,list-expr nil)))))
+
+              ;; (loop for var in list sum expr) - sum accumulator
+              ((and (>= (length clauses) 5)
+                    (op= (car clauses) "FOR")
+                    (op= (caddr clauses) "IN")
+                    (op= (car (cddddr clauses)) "SUM"))
+               (let* ((var (cadr clauses))
+                      (list-expr (cadddr clauses))
+                      (sum-expr (cadr (cddddr clauses)))
+                      (list-var (intern (concatenate 'string (symbol-name var) "$LIST"))))
+                 (setq result-form
+                       `(labels ((iter (,list-var acc)
+                                   (if (null ,list-var)
+                                       acc
+                                       (let ((,var (car ,list-var)))
+                                         (iter (cdr ,list-var) (+ acc ,sum-expr))))))
+                          (iter ,list-expr #x0)))))
+
+              ;; (loop for var in list count pred) - count matching elements
+              ((and (>= (length clauses) 5)
+                    (op= (car clauses) "FOR")
+                    (op= (caddr clauses) "IN")
+                    (op= (car (cddddr clauses)) "COUNT"))
+               (let* ((var (cadr clauses))
+                      (list-expr (cadddr clauses))
+                      (count-pred (cadr (cddddr clauses)))
+                      (list-var (intern (concatenate 'string (symbol-name var) "$LIST"))))
+                 (setq result-form
+                       `(labels ((iter (,list-var cnt)
+                                   (if (null ,list-var)
+                                       cnt
+                                       (let ((,var (car ,list-var)))
+                                         (if ,count-pred
+                                             (iter (cdr ,list-var) (+ cnt #x1))
+                                             (iter (cdr ,list-var) cnt))))))
+                          (iter ,list-expr #x0)))))
+
+              ;; (loop for var in list maximize expr) - find maximum
+              ((and (>= (length clauses) 5)
+                    (op= (car clauses) "FOR")
+                    (op= (caddr clauses) "IN")
+                    (op= (car (cddddr clauses)) "MAXIMIZE"))
+               (let* ((var (cadr clauses))
+                      (list-expr (cadddr clauses))
+                      (max-expr (cadr (cddddr clauses)))
+                      (list-var (intern (concatenate 'string (symbol-name var) "$LIST"))))
+                 (setq result-form
+                       `(let ((the-list ,list-expr))
+                          (if (null the-list)
+                              #x0
+                              (labels ((iter (,list-var best)
+                                         (if (null ,list-var)
+                                             best
+                                             (let* ((,var (car ,list-var))
+                                                    (val ,max-expr))
+                                               (iter (cdr ,list-var)
+                                                     (if (> val best) val best))))))
+                                (let ((,var (car the-list)))
+                                  (iter (cdr the-list) ,max-expr))))))))
+
+              ;; (loop for var in list minimize expr) - find minimum
+              ((and (>= (length clauses) 5)
+                    (op= (car clauses) "FOR")
+                    (op= (caddr clauses) "IN")
+                    (op= (car (cddddr clauses)) "MINIMIZE"))
+               (let* ((var (cadr clauses))
+                      (list-expr (cadddr clauses))
+                      (min-expr (cadr (cddddr clauses)))
+                      (list-var (intern (concatenate 'string (symbol-name var) "$LIST"))))
+                 (setq result-form
+                       `(let ((the-list ,list-expr))
+                          (if (null the-list)
+                              #x0
+                              (labels ((iter (,list-var best)
+                                         (if (null ,list-var)
+                                             best
+                                             (let* ((,var (car ,list-var))
+                                                    (val ,min-expr))
+                                               (iter (cdr ,list-var)
+                                                     (if (< val best) val best))))))
+                                (let ((,var (car the-list)))
+                                  (iter (cdr the-list) ,min-expr))))))))
+
+              ;; (loop repeat n do body) - repeat n times
+              ((and (>= (length clauses) 3)
+                    (op= (car clauses) "REPEAT")
+                    (op= (caddr clauses) "DO"))
+               (let ((n-expr (cadr clauses))
+                     (do-expr (cadddr clauses)))
+                 (setq result-form
+                       `(labels ((iter (n)
+                                   (if (<= n #x0)
+                                       nil
+                                       (progn
+                                         ,do-expr
+                                         (iter (- n #x1))))))
+                          (iter ,n-expr)))))
+
+              ;; (loop repeat n collect expr) - repeat and collect
+              ((and (>= (length clauses) 3)
+                    (op= (car clauses) "REPEAT")
+                    (op= (caddr clauses) "COLLECT"))
+               (let ((n-expr (cadr clauses))
+                     (collect-expr (cadddr clauses)))
+                 (setq result-form
+                       `(labels ((iter (n acc)
+                                   (if (<= n #x0)
+                                       (reverse acc)
+                                       (iter (- n #x1) (cons ,collect-expr acc)))))
+                          (iter ,n-expr nil)))))
+
               (t
                (setq result-form '(lit 0))))
             (compile-expr result-form env fenv)))
@@ -3766,6 +4414,121 @@ Cons/car/cdr are required; others should be provided in production."
                             (cmp #x0))
                           #x0)))  ; Different lengths
                  env fenv))
+              (list 'lit 0)))
+
+         ;; String-concat: (string-concat s1 s2) -> concatenates two strings
+         ;; Uses runtime habu_string_concat
+         ((op= op "STRING-CONCAT")
+          (if (and (consp (cdr expr)) (consp (cddr expr)))
+              (list 'string-concat-call
+                    (compile-expr (cadr expr) env fenv)
+                    (compile-expr (caddr expr) env fenv))
+              (list 'lit 0)))
+
+         ;; Concatenate: (concatenate 'string s1 s2 ...) -> concatenate strings
+         ;; For simplicity, just handles 2 strings or reduces multiple strings
+         ((op= op "CONCATENATE")
+          (if (and (consp (cdr expr)) (consp (cddr expr)))
+              (let* ((type-spec (cadr expr))
+                     (strings (cddr expr)))
+                ;; Only supports 'string type for now
+                (if (= (length strings) 1)
+                    (compile-expr (car strings) env fenv)
+                    (if (= (length strings) 2)
+                        (list 'string-concat-call
+                              (compile-expr (car strings) env fenv)
+                              (compile-expr (cadr strings) env fenv))
+                        ;; More than 2: reduce via nested concat
+                        (compile-expr
+                         `(string-concat ,(car strings)
+                                         (concatenate 'string ,@(cdr strings)))
+                         env fenv))))
+              (list 'lit 0)))
+
+         ;; Subseq: (subseq string start &optional end) -> substring
+         ((op= op "SUBSEQ")
+          (if (and (consp (cdr expr)) (consp (cddr expr)))
+              (let ((seq (cadr expr))
+                    (start (caddr expr))
+                    (end (if (consp (cdddr expr)) (cadddr expr) nil)))
+                ;; If no end, use string-length
+                (if end
+                    (list 'string-substring-call
+                          (compile-expr seq env fenv)
+                          (compile-expr start env fenv)
+                          (compile-expr end env fenv))
+                    ;; No end specified - use string-length
+                    (compile-expr
+                     `(subseq ,seq ,start (string-length ,seq))
+                     env fenv)))
+              (list 'lit 0)))
+
+         ;; Write-to-string: (write-to-string obj) -> converts obj to string
+         ;; For now, only supports fixnums
+         ((op= op "WRITE-TO-STRING")
+          (if (consp (cdr expr))
+              (list 'fixnum-to-string-call (compile-expr (cadr expr) env fenv))
+              (list 'lit 0)))
+
+         ;; Princ-to-string: alias for write-to-string (simplified)
+         ((op= op "PRINC-TO-STRING")
+          (if (consp (cdr expr))
+              (list 'fixnum-to-string-call (compile-expr (cadr expr) env fenv))
+              (list 'lit 0)))
+
+         ;; Make-string: (make-string n &key initial-element) -> new string of length n
+         ;; Transforms to vector construction + make-string-from-vector
+         ((op= op "MAKE-STRING")
+          (if (consp (cdr expr))
+              (let* ((len-form (cadr expr))
+                     (rest-args (cddr expr))
+                     (init-char (if (and rest-args
+                                         (op= (car rest-args) ":INITIAL-ELEMENT"))
+                                    (cadr rest-args)
+                                    #x20)))  ; default to space
+                ;; Build vector of char codes, then make-string-from-vector
+                (compile-expr
+                 `(let ((n ,len-form)
+                        (ch ,init-char))
+                    (let ((vec (make-vector n)))
+                      (dotimes (i n)
+                        (vector-set vec i ch))
+                      vec))  ; make-string-from-vector expects tagged vector
+                 env fenv))
+              (list 'lit 0)))
+
+         ;; String-upcase: (string-upcase str) -> uppercase string
+         ;; Transforms to building new string with uppercased chars
+         ((op= op "STRING-UPCASE")
+          (if (consp (cdr expr))
+              (compile-expr
+               `(let ((str ,(cadr expr)))
+                  (let ((len (string-length str))
+                        (vec (make-vector (string-length str))))
+                    (dotimes (i len)
+                      (vector-set vec i (char-upcase (string-ref str i))))
+                    (make-string-from-vector vec)))
+               env fenv)
+              (list 'lit 0)))
+
+         ;; String-downcase: (string-downcase str) -> lowercase string
+         ((op= op "STRING-DOWNCASE")
+          (if (consp (cdr expr))
+              (compile-expr
+               `(let ((str ,(cadr expr)))
+                  (let ((len (string-length str))
+                        (vec (make-vector (string-length str))))
+                    (dotimes (i len)
+                      (vector-set vec i (char-downcase (string-ref str i))))
+                    (make-string-from-vector vec)))
+               env fenv)
+              (list 'lit 0)))
+
+         ;; Make-string-from-vector: (make-string-from-vector vec) -> string
+         ;; Direct call to runtime function
+         ((op= op "MAKE-STRING-FROM-VECTOR")
+          (if (consp (cdr expr))
+              (list 'make-string-from-vector-call (compile-expr (cadr expr) env fenv))
               (list 'lit 0)))
 
          ;; Char-upcase: convert lowercase char to uppercase
