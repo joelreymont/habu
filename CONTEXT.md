@@ -94,6 +94,7 @@ The Habu compiler can now compile and execute complex Lisp programs including:
 | **Type Pred** | integerp, characterp, floatp | Done |
 | **Floats** | float, float+, float-, float*, float/, float<, float>, float<=, float>=, float=, float-truncate | Done |
 | **File I/O** | open-file, close-file, read-line, write-string, read-file, write-file | Done |
+| **Format** | ~A, ~S, ~D, ~X, ~B, ~O, ~C, ~F (consume arg), ~%, ~&, ~~ (no arg) | Done |
 
 ### Extended CL Spec Features (November 25, 2025)
 
@@ -140,7 +141,7 @@ The Habu compiler can now compile and execute complex Lisp programs including:
 | **Cleanup** | unwind-protect ✓ | Done |
 | **Multiple Values** | values ✓, multiple-value-bind ✓, multiple-value-call ✓, values-count ✓ | Done |
 | **Conditions** | error ✓, signal ✓, handler-case ✓, restart-case ✓, invoke-restart ✓ | Done |
-| **Format** | format directives ✓ (basic ~A, ~S, ~D) | Medium |
+| **Format** | format directives ✓ (~A, ~S, ~D, ~X, ~B, ~O, ~C, ~F, ~%, ~&, ~~) | Done |
 | **Hash Tables** | make-hash-table ✓, gethash ✓, puthash ✓, remhash ✓, hash-table-count ✓, hash-table-p ✓ | Done |
 | **Structures** | defstruct ✓ | Done |
 | **CLOS** | defclass ✓, make-instance ✓, slot-value ✓ (incl. setf), class-of ✓, typep ✓, defgeneric ✓, defmethod ✓ | Done |

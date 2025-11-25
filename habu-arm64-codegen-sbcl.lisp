@@ -5356,39 +5356,43 @@ Cons/car/cdr are required; others should be provided in production."
 
          ;; Format - basic format string processing
          ;; (format dest control-string &rest args)
-         ;; Supported directives: ~A, ~S, ~D (consume arg), ~% (newline)
+         ;; Supported directives that consume args: ~A, ~S, ~D, ~X, ~B, ~O, ~C, ~F
+         ;; Directives that don't consume args: ~%, ~&, ~~
          ;; For now: evaluates args in order based on directives, returns nil (0)
-         ;; When dest is nil, should return formatted string (not yet implemented)
-         ;; When dest is t, outputs to stdout (requires I/O primitives)
+         ;; Actual output is a stub - format mainly used for debugging at compile time
          ((op= op "FORMAT")
           (if (and (consp (cdr expr)) (consp (cddr expr)))
               (let* ((dest (cadr expr))
                      (control-string (caddr expr))
                      (args (cdddr expr)))
+                (declare (ignore dest))
                 ;; Parse control string and count directives that consume args
                 (if (stringp control-string)
                     (let ((arg-count 0)
                           (forms nil))
-                      ;; Count ~A, ~S, ~D directives (they consume args)
+                      ;; Count directives that consume args
                       (let ((i 0)
                             (len (length control-string)))
                         (loop while (< i len) do
                           (when (and (char= (char control-string i) #\~)
                                      (< (1+ i) len))
                             (let ((directive (char-upcase (char control-string (1+ i)))))
-                              (when (member directive '(#\A #\S #\D))
+                              ;; Directives that consume one argument
+                              (when (member directive '(#\A #\S #\D #\X #\B #\O #\C #\F))
                                 (if (< arg-count (length args))
                                     (let ((arg (nth arg-count args)))
                                       (push arg forms)
-                                      (incf arg-count))))))
+                                      (incf arg-count))))
+                              ;; Skip the directive char
+                              (incf i)))
                           (incf i)))
-                      ;; Evaluate all consumed args and return last value (or 0)
+                      ;; Evaluate all consumed args and return 0 (nil)
                       (if forms
-                          (compile-expr `(progn ,@(nreverse forms)) env fenv)
+                          (compile-expr `(progn ,@(nreverse forms) #x0) env fenv)
                           (list 'lit 0)))
-                    ;; Not a string literal - evaluate args anyway
+                    ;; Not a string literal - evaluate args anyway and return 0
                     (if args
-                        (compile-expr `(progn ,@args) env fenv)
+                        (compile-expr `(progn ,@args #x0) env fenv)
                         (list 'lit 0))))
               (list 'lit 0)))
 
