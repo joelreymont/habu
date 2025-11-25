@@ -431,18 +431,23 @@ The Habu compiler can now compile and execute complex Lisp programs including:
 
 ## Next Session Priority
 
-1. ~~**Implement Symbol Interning**~~ ✅ DONE (November 25, 2025)
+1. ~~**Implement Symbol Interning**~~ DONE (November 25, 2025)
 
-2. **Attempt Self-Hosting** - Symbol interning now works!
-   - Stage 0: SBCL compiles compiler → Stage 1 binary
-   - Stage 1: Stage 1 compiles compiler → Stage 2 binary
+2. ~~**Fix Offset Tracking Bugs**~~ DONE (November 25, 2025)
+   - Fixed let-expr, progn, call-closure cursor tracking
+   - Added Habu predicate aliases (cons?, nil?, fixnum?, symbol?)
+
+3. **Create Pure Habu arm64-codegen.lisp** - IN PROGRESS
+   - Separate file without SBCL-specific features (defpackage, handler-case, etc.)
+   - Remove habu- prefixes where not needed to avoid symbol clashes
+   - Target for Stage 1/2 self-hosting
+
+4. **Stage 1/2 Self-Hosting**
+   - Stage 0: SBCL compiles arm64-codegen.lisp → Stage 1 bytecode (VERIFIED)
+   - Stage 1: Stage 1 compiles arm64-codegen.lisp → Stage 2 bytecode
    - Stage 2: Verify Stage 1 == Stage 2 (fixed point)
 
-3. **Fix Critical Codegen Bugs** (if self-hosting fails)
-   - Add missing arm64-sub-imm function (if needed)
-   - Replace hardcoded arm64-str/ldr/stp/ldp with parametric versions
-
-4. **Fix O(N²) Algorithms** - See [docs/EFFICIENCY_PLAN.md](docs/EFFICIENCY_PLAN.md)
+5. **Fix O(N^2) Algorithms** - See [docs/EFFICIENCY_PLAN.md](docs/EFFICIENCY_PLAN.md)
 
 ---
 
@@ -453,5 +458,5 @@ The Habu compiler can now compile and execute complex Lisp programs including:
 ---
 
 **File**: CONTEXT.md
-**Status**: Symbol interning implemented! Ready to attempt self-hosting.
+**Status**: Creating pure Habu arm64-codegen.lisp for self-hosting.
 **Last Updated**: November 25, 2025
