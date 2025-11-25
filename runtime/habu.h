@@ -211,6 +211,9 @@ habu_value_t habu_write_file(habu_value_t path_str, habu_value_t content_str);
 habu_value_t habu_print_value(habu_value_t value);
 habu_value_t habu_println_value(habu_value_t value);
 
+/* Profiling support */
+habu_value_t habu_get_time_ns(void);  /* High-resolution timer for profiling */
+
 /* Input primitives - read line from stdin */
 char* habu_fgets_line(void);  /* Simple line input */
 char* lineedit_readline(const char *prompt);  /* Line editing with readline features */

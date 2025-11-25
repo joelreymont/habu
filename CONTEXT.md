@@ -112,6 +112,7 @@ The Habu compiler can now compile and execute complex Lisp programs including:
 | **Reader** | read-from-string, read-all-from-string, read-source-file | Done |
 | **Output** | print, println, terpri | Done |
 | **Debugging** | trace, untrace | Done |
+| **Profiling** | profile, unprofile, get-time-ns | Done |
 | **String Streams** | make-string-output-stream, write-string-to-stream, get-output-stream-string, with-output-to-string | Done |
 
 ### Extended CL Spec Features (November 25, 2025)
@@ -425,6 +426,7 @@ Test 10: Full compile + eval round trip       ✅ Pass
 - test_real_compiler_functions.lisp (10 tests) - Real compiler patterns: has-tag?, env-lookup, IR traversal, compile+eval
 - test_floats.lisp (20 tests) - IEEE 754 floats: conversion, arithmetic, comparisons, conditionals
 - test_reader.lisp (22 tests) - Habu reader: integers, hex, negatives, symbols, strings, lists, quote forms, reader macros
+- test_profile.lisp (8 tests) - profiler: timer, profiled output, function names, recursion, multiple functions
 
 ### Needed Tests
 - [ ] String function tests (upcase, concat, compare)
@@ -470,7 +472,19 @@ Test 10: Full compile + eval round trip       ✅ Pass
 
 ## Recent Commits
 
-### November 25, 2025 (Latest - String Streams)
+### November 25, 2025 (Latest - Profiler)
+- **Implemented profiler facility** - Function-level profiling with timing:
+  - `*profiled-functions*` - list of function names currently being profiled
+  - `profile-function` / `unprofile-function` - add/remove functions from profile list
+  - `(profile fn1 fn2 ...)` form to enable profiling for specified functions
+  - `(unprofile fn1 fn2 ...)` form to disable profiling
+  - `wrap-body-with-profile` - wraps profiled function body with timing instrumentation
+  - Profile output shows: PROFILE: <function-name> <elapsed-nanoseconds>
+  - High-resolution timer via `get-time-ns` primitive (nanosecond precision)
+  - Runtime table entry 50 (offset 400) for habu_get_time_ns
+  - 8 tests cover: timer correctness, profiled output, function names, recursion, multiple functions
+
+### November 25, 2025 (String Streams)
 - **Implemented string output streams** - CL-style string streams for collecting output:
   - `make-string-output-stream` - creates stream (cons cell with chunks list)
   - `write-string-to-stream` - appends string chunk to stream

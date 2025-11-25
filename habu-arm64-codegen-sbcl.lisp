@@ -40,6 +40,21 @@
   "Alist of ((generic-name . specializer) . lambda-form) for methods")
 (defparameter *traced-functions* nil
   "List of function names currently being traced")
+
+;;; Profiling state
+(defparameter *profiled-functions* nil
+  "List of function names currently being profiled")
+(defparameter *profile-all-mode* nil
+  "When true, profile all subsequent defuns")
+(defparameter *profile-data* (make-hash-table :test #'eq)
+  "Hash table: fn-name -> (calls total-ns callers callees)
+   - calls: number of invocations
+   - total-ns: total wall-clock time in nanoseconds
+   - callers: hash table of caller-name -> call-count
+   - callees: hash table of callee-name -> call-count")
+(defparameter *profile-stack* nil
+  "Runtime call stack for profiling: list of (fn-name . start-ns)")
+
 (defparameter *stack-frame-size* #xFF0)
 (defparameter *env-base-offset* #x180)
 (defparameter *temp-slot-base* #x40)
@@ -758,6 +773,108 @@ Cons/car/cdr are required; others should be provided in production."
          (println ,result-var)
          ;; Return result
          ,result-var))))
+
+;;; Profiling facility
+;;; Industrial-strength function profiler with call counts, timing, and call graph
+
+(defun profile-function (name)
+  "Add NAME to the list of profiled functions."
+  (unless (member name *profiled-functions* :test #'eq)
+    (push name *profiled-functions*))
+  name)
+
+(defun unprofile-function (name)
+  "Remove NAME from the list of profiled functions."
+  (setq *profiled-functions* (remove name *profiled-functions* :test #'eq))
+  name)
+
+(defun function-profiled-p (name)
+  "Check if NAME is currently being profiled."
+  (or *profile-all-mode*
+      (member name *profiled-functions* :test #'eq)))
+
+(defun profile-reset ()
+  "Clear all accumulated profile data."
+  (setq *profile-data* (make-hash-table :test #'eq))
+  (setq *profile-stack* nil))
+
+(defun ensure-profile-entry (name)
+  "Ensure a profile entry exists for NAME, creating if needed."
+  (unless (gethash name *profile-data*)
+    (setf (gethash name *profile-data*)
+          (list 0 0 (make-hash-table :test #'eq) (make-hash-table :test #'eq)))))
+
+(defun wrap-body-with-profile (name params body)
+  "Wrap BODY with profiling entry/exit code for function NAME.
+   Prints timing info on function exit. Simple and self-contained."
+  (declare (ignore params))
+  (let ((start-var (gensym "PROFILE-START-"))
+        (result-var (gensym "PROFILE-RESULT-"))
+        (elapsed-var (gensym "PROFILE-ELAPSED-")))
+    `(let ((,start-var (get-time-ns)))
+       (let ((,result-var (progn ,@(if (atom body) (list body) (list body)))))
+         (let ((,elapsed-var (- (get-time-ns) ,start-var)))
+           ;; Print profile info: PROFILE: fn-name elapsed-ns
+           (print "PROFILE: ")
+           (print ',name)
+           (print " ")
+           (println ,elapsed-var))
+         ,result-var))))
+
+(defun profile-report (&optional mode)
+  "Print profile report. MODE can be :by-calls, :by-self, :call-graph, or nil (default: by total time)."
+  (let ((entries nil)
+        (total-time 0))
+    ;; Collect all entries
+    (maphash (lambda (name data)
+               (push (cons name data) entries)
+               (setq total-time (+ total-time (cadr data))))
+             *profile-data*)
+    ;; Sort based on mode
+    (setq entries
+          (sort entries
+                (lambda (a b)
+                  (cond
+                    ((eq mode :by-calls) (> (cadr a) (cadr b)))
+                    (t (> (caddr a) (caddr b)))))))  ; Default: by total time
+    ;; Print header
+    (format t "~%=== HABU PROFILE REPORT ===~%")
+    (format t "Total time: ~,2F ms~%~%" (/ total-time 1000000.0))
+    (format t "~40A ~10A ~12A ~8A~%" "Function" "Calls" "Total (ms)" "%Total")
+    (format t "~40,,,'-A~%" "")
+    ;; Print entries
+    (dolist (entry entries)
+      (let* ((name (car entry))
+             (calls (cadr entry))
+             (total-ns (caddr entry))
+             (pct (if (> total-time 0) (* 100.0 (/ total-ns total-time)) 0.0)))
+        (format t "~40A ~10D ~12,2F ~7,1F%~%"
+                name calls (/ total-ns 1000000.0) pct)))
+    ;; Print call graph if requested
+    (when (eq mode :call-graph)
+      (format t "~%=== CALL GRAPH ===~%")
+      (dolist (entry entries)
+        (let* ((name (car entry))
+               (data (cdr entry))
+               (calls (car data))
+               (total-ns (cadr data))
+               (callers (caddr data))
+               (callees (cadddr data)))
+          (format t "~%~A (~D calls, ~,2F ms)~%" name calls (/ total-ns 1000000.0))
+          ;; Print callers
+          (let ((caller-list nil))
+            (maphash (lambda (k v) (push (cons k v) caller-list)) callers)
+            (when caller-list
+              (format t "  called by:~%")
+              (dolist (c caller-list)
+                (format t "    ~A: ~D calls~%" (car c) (cdr c)))))
+          ;; Print callees
+          (let ((callee-list nil))
+            (maphash (lambda (k v) (push (cons k v) callee-list)) callees)
+            (when callee-list
+              (format t "  calls:~%")
+              (dolist (c callee-list)
+                (format t "    ~A: ~D calls~%" (car c) (cdr c))))))))))
 
 (defun contains-return-from-p (form block-name)
   "Check if FORM contains a return-from to BLOCK-NAME."
@@ -2164,6 +2281,12 @@ Cons/car/cdr are required; others should be provided in production."
        (append value-code
                (arm64-ldr 9 19 392)     ; println_value at offset 392
                (arm64-blr 9))))
+
+    ;; get-time-ns: () -> fixnum - returns current time in nanoseconds
+    ;; Runtime table: [50] = offset 400 = habu_get_time_ns
+    ((has-tag? ir 'get-time-ns-call)
+     (append (arm64-ldr 9 19 400)     ; get_time_ns at offset 400
+             (arm64-blr 9)))
 
     ;; ============= End Print Codegen =============
 
@@ -5976,6 +6099,13 @@ Cons/car/cdr are required; others should be provided in production."
          ((op= op "TERPRI")
           (list 'println-call (list 'lit 0)))
 
+         ;; ============= Profiling Operations =============
+
+         ;; get-time-ns: () -> fixnum - returns current time in nanoseconds
+         ;; Runtime table: [50] = offset 400 = habu_get_time_ns
+         ((op= op "GET-TIME-NS")
+          (list 'get-time-ns-call))
+
          ;; ============= End Print Operations =============
 
          ;; String length
@@ -6912,8 +7042,12 @@ Optional/key descriptors are (name init-form supplied-name)."
           (traced-body (if (function-traced-p name)
                            (wrap-body-with-trace name all-param-names body)
                            body))
+          ;; Wrap body with profile if function is profiled
+          (profiled-body (if (function-profiled-p name)
+                             (wrap-body-with-profile name all-param-names traced-body)
+                             traced-body))
           ;; Transform body to box captured mutable variables
-          (boxed-body (box-mutable-captured-vars traced-body))
+          (boxed-body (box-mutable-captured-vars profiled-body))
           ;; Compile body in the parameter environment with recursive fenv
           (body-ir (compile-expr boxed-body param-env recursive-fenv)))
       (list name fixed optional-names opt-inits optional-supplied body-ir nil param-base rest))))
@@ -6961,6 +7095,63 @@ Optional/key descriptors are (name init-form supplied-name)."
                  (setq *traced-functions* nil))
              ;; Continue with rest of forms
              (compile-forms-helper (cdr forms) env fenv)))
+
+          ;; profile - add function(s) to profile list
+          ;; (profile fn1 fn2 ...) or (profile) to list profiled functions
+          ;; (profile :all) to enable profiling for all subsequent defuns
+          ((and (consp form) (eq (car form) 'profile))
+           (let ((names (cdr form)))
+             (cond
+               ((null names)
+                ;; No args - print currently profiled functions
+                (format t "Profiled functions: ~S~%" *profiled-functions*)
+                (format t "Profile-all mode: ~A~%" *profile-all-mode*))
+               ((eq (car names) :all)
+                ;; Enable profile-all mode
+                (setq *profile-all-mode* t)
+                (format t "Profile-all mode enabled~%"))
+               (t
+                ;; Add specific functions to profile list
+                (dolist (name names)
+                  (profile-function name)))))
+           ;; Continue with rest of forms
+           (compile-forms-helper (cdr forms) env fenv))
+
+          ;; unprofile - remove function(s) from profile list
+          ;; (unprofile fn1 fn2 ...) or (unprofile) to unprofile all
+          ;; (unprofile :all) to disable profile-all mode
+          ((and (consp form) (eq (car form) 'unprofile))
+           (let ((names (cdr form)))
+             (cond
+               ((null names)
+                ;; No args - unprofile all
+                (setq *profiled-functions* nil)
+                (setq *profile-all-mode* nil))
+               ((eq (car names) :all)
+                ;; Disable profile-all mode
+                (setq *profile-all-mode* nil)
+                (format t "Profile-all mode disabled~%"))
+               (t
+                ;; Remove specific functions from profile list
+                (dolist (name names)
+                  (unprofile-function name)))))
+           ;; Continue with rest of forms
+           (compile-forms-helper (cdr forms) env fenv))
+
+          ;; profile-reset - clear accumulated profile data
+          ((and (consp form) (eq (car form) 'profile-reset))
+           (profile-reset)
+           (format t "Profile data cleared~%")
+           ;; Continue with rest of forms
+           (compile-forms-helper (cdr forms) env fenv))
+
+          ;; profile-report - print profile report
+          ;; (profile-report) or (profile-report :by-calls) or (profile-report :call-graph)
+          ((and (consp form) (eq (car form) 'profile-report))
+           (let ((mode (cadr form)))
+             (profile-report mode))
+           ;; Continue with rest of forms
+           (compile-forms-helper (cdr forms) env fenv))
 
           ;; defclass - define a CLOS class
           ;; (defclass name (superclasses) ((slot :initform val) ...))

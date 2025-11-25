@@ -335,3 +335,17 @@ habu_value_t habu_println_value(habu_value_t value) {
     printf("\n");
     return NIL;
 }
+
+/* High-resolution time measurement for profiling
+ *
+ * Returns current time in nanoseconds as a tagged fixnum.
+ * Note: For times > ~292 years this would overflow, but that's fine for profiling.
+ * The value is suitable for computing elapsed time via subtraction.
+ */
+habu_value_t habu_get_time_ns(void) {
+    uint64_t ns = habu_time_ns();
+    /* Return as fixnum - note this may truncate for very large values,
+     * but for elapsed time calculations this is fine since we only
+     * care about differences, not absolute values */
+    return fixnum_to_value((int64_t)ns);
+}
