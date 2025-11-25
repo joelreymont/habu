@@ -98,6 +98,7 @@ The Habu compiler can now compile and execute complex Lisp programs including:
 | **Reader** | read-from-string, read-all-from-string, read-source-file | Done |
 | **Output** | print, println, terpri | Done |
 | **Debugging** | trace, untrace | Done |
+| **String Streams** | make-string-output-stream, write-string-to-stream, get-output-stream-string, with-output-to-string | Done |
 
 ### Extended CL Spec Features (November 25, 2025)
 
@@ -455,7 +456,15 @@ Test 10: Full compile + eval round trip       ✅ Pass
 
 ## Recent Commits
 
-### November 25, 2025 (Latest - Reader Integration)
+### November 25, 2025 (Latest - String Streams)
+- **Implemented string output streams** - CL-style string streams for collecting output:
+  - `make-string-output-stream` - creates stream (cons cell with chunks list)
+  - `write-string-to-stream` - appends string chunk to stream
+  - `get-output-stream-string` - retrieves collected string, clears stream
+  - `with-output-to-string` - macro for scoped string collection
+  - 8 tests cover: creation, writing, retrieval, multiple writes, clearing
+
+### November 25, 2025 (Reader Integration)
 - **Fixed reader symbol case sensitivity** - Symbols now upcased for CL compatibility:
   - Updated `read-sym` to use `string-upcase` before interning
   - `(eq (read-from-string "foo") 'FOO)` now returns true

@@ -6047,6 +6047,66 @@ Cons/car/cdr are required; others should be provided in production."
               (list 'fixnum-to-string-call (compile-expr (cadr expr) env fenv))
               (list 'lit 0)))
 
+         ;; ============= String Streams =============
+         ;; String output stream is a cons: (string-output-stream . chunks)
+         ;; where chunks is a list of strings to be concatenated
+
+         ;; make-string-output-stream: () -> stream
+         ;; Creates a new string output stream
+         ((op= op "MAKE-STRING-OUTPUT-STREAM")
+          (compile-expr '(cons 'string-output-stream nil) env fenv))
+
+         ;; write-string-to-stream: (write-string-to-stream str stream) -> str
+         ;; Appends str to the stream's chunk list
+         ((op= op "WRITE-STRING-TO-STREAM")
+          (if (and (consp (cdr expr)) (consp (cddr expr)))
+              (let ((str-form (cadr expr))
+                    (stream-form (caddr expr)))
+                (compile-expr
+                 `(progn
+                    ;; Push string onto chunks (setf (cdr stream) (cons str (cdr stream)))
+                    (setf (cdr ,stream-form) (cons ,str-form (cdr ,stream-form)))
+                    ,str-form)
+                 env fenv))
+              (list 'lit 0)))
+
+         ;; get-output-stream-string: (get-output-stream-string stream) -> string
+         ;; Concatenates all chunks and returns the result, clearing the stream
+         ((op= op "GET-OUTPUT-STREAM-STRING")
+          (if (consp (cdr expr))
+              (let ((stream-form (cadr expr)))
+                (compile-expr
+                 `(let ((chunks (reverse (cdr ,stream-form))))
+                    ;; Clear the stream
+                    (setf (cdr ,stream-form) nil)
+                    ;; Concatenate chunks
+                    (labels ((concat-all (lst acc)
+                               (if (null lst)
+                                   acc
+                                   (concat-all (cdr lst)
+                                               (if (string= acc "")
+                                                   (car lst)
+                                                   (string-concat acc (car lst)))))))
+                      (concat-all chunks "")))
+                 env fenv))
+              (list 'lit 0)))
+
+         ;; with-output-to-string: (with-output-to-string (var) &body body) -> string
+         ;; Executes body with var bound to a string output stream, returns collected string
+         ((op= op "WITH-OUTPUT-TO-STRING")
+          (if (and (consp (cdr expr)) (consp (cddr expr)))
+              (let* ((binding (cadr expr))
+                     (var (if (consp binding) (car binding) binding))
+                     (body (cddr expr)))
+                (compile-expr
+                 `(let ((,var (make-string-output-stream)))
+                    ,@body
+                    (get-output-stream-string ,var))
+                 env fenv))
+              (list 'lit 0)))
+
+         ;; ============= End String Streams =============
+
          ;; Make-string: (make-string n &key initial-element) -> new string of length n
          ;; Transforms to vector construction + make-string-from-vector
          ((op= op "MAKE-STRING")
