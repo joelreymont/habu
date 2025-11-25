@@ -22,6 +22,8 @@
   "Counter for generating unique catch IDs")
 (defparameter *catch-env* nil
   "Alist of (tag-expr . (id result-var exited-var)) for tracking active catch blocks")
+(defparameter *struct-accessors* nil
+  "Alist of (accessor-name . slot-index) for struct slot accessors")
 (defparameter *stack-frame-size* #xFF0)
 (defparameter *env-base-offset* #x180)
 (defparameter *temp-slot-base* #x40)
@@ -2189,6 +2191,25 @@ Cons/car/cdr are required; others should be provided in production."
                            (compile-expr key env fenv)
                            (compile-expr val-expr env fenv)
                            (compile-expr ht env fenv))))
+                  ;; (setf (vector-ref vec idx) val) -> (vector-set vec idx val)
+                  ((and (consp place) (op= (car place) "VECTOR-REF") (consp (cdr place)) (consp (cddr place)))
+                   (list 'vector-set-call
+                         (compile-expr (cadr place) env fenv)
+                         (compile-expr (caddr place) env fenv)
+                         (compile-expr val-expr env fenv)))
+                  ;; (setf (struct-accessor obj) val) -> (vector-set obj slot-idx val)
+                  ((and (consp place) (consp (cdr place))
+                        (let ((accessor-entry (assoc (car place) *struct-accessors*)))
+                          (when accessor-entry
+                            (let ((slot-idx (cdr accessor-entry))
+                                  (obj-expr (cadr place)))
+                              (return-from compile-expr-internal
+                                (list 'vector-set-call
+                                      (compile-expr obj-expr env fenv)
+                                      (list 'lit slot-idx)
+                                      (compile-expr val-expr env fenv)))))))
+                   ;; Handled by the return-from above
+                   (list 'lit 0))
                   ;; Other places not yet supported
                   (t (list 'lit 0))))
               (list 'lit 0)))
@@ -3635,6 +3656,182 @@ Cons/car/cdr are required; others should be provided in production."
                  env fenv))
               (list 'lit 0)))
 
+         ;; Char-upcase: convert lowercase char to uppercase
+         ((op= op "CHAR-UPCASE")
+          (if (consp (cdr expr))
+              (compile-expr
+               `(let ((ch ,(cadr expr)))
+                  (if (and (>= ch #x61) (<= ch #x7A))  ; a-z
+                      (- ch #x20)
+                      ch))
+               env fenv)
+              (list 'lit 0)))
+
+         ;; Char-downcase: convert uppercase char to lowercase
+         ((op= op "CHAR-DOWNCASE")
+          (if (consp (cdr expr))
+              (compile-expr
+               `(let ((ch ,(cadr expr)))
+                  (if (and (>= ch #x41) (<= ch #x5A))  ; A-Z
+                      (+ ch #x20)
+                      ch))
+               env fenv)
+              (list 'lit 0)))
+
+         ;; Upper-case-p: check if character is uppercase
+         ((op= op "UPPER-CASE-P")
+          (if (consp (cdr expr))
+              (compile-expr
+               `(let ((ch ,(cadr expr)))
+                  (and (>= ch #x41) (<= ch #x5A)))  ; A-Z
+               env fenv)
+              (list 'lit 0)))
+
+         ;; Lower-case-p: check if character is lowercase
+         ((op= op "LOWER-CASE-P")
+          (if (consp (cdr expr))
+              (compile-expr
+               `(let ((ch ,(cadr expr)))
+                  (and (>= ch #x61) (<= ch #x7A)))  ; a-z
+               env fenv)
+              (list 'lit 0)))
+
+         ;; Alpha-char-p: check if character is alphabetic
+         ((op= op "ALPHA-CHAR-P")
+          (if (consp (cdr expr))
+              (compile-expr
+               `(let ((ch ,(cadr expr)))
+                  (or (and (>= ch #x41) (<= ch #x5A))   ; A-Z
+                      (and (>= ch #x61) (<= ch #x7A)))) ; a-z
+               env fenv)
+              (list 'lit 0)))
+
+         ;; Digit-char-p: check if character is a digit
+         ((op= op "DIGIT-CHAR-P")
+          (if (consp (cdr expr))
+              (compile-expr
+               `(let ((ch ,(cadr expr)))
+                  (and (>= ch #x30) (<= ch #x39)))  ; 0-9
+               env fenv)
+              (list 'lit 0)))
+
+         ;; Alphanumericp: check if character is alphanumeric
+         ((op= op "ALPHANUMERICP")
+          (if (consp (cdr expr))
+              (compile-expr
+               `(let ((ch ,(cadr expr)))
+                  (or (and (>= ch #x41) (<= ch #x5A))   ; A-Z
+                      (and (>= ch #x61) (<= ch #x7A))   ; a-z
+                      (and (>= ch #x30) (<= ch #x39)))) ; 0-9
+               env fenv)
+              (list 'lit 0)))
+
+         ;; Find: find item in list
+         ((op= op "FIND")
+          (if (and (consp (cdr expr)) (consp (cddr expr)))
+              (let ((item (cadr expr))
+                    (lst (caddr expr)))
+                (compile-expr
+                 `(labels ((find-iter (lst)
+                             (if (null lst)
+                                 nil
+                                 (if (eql (car lst) ,item)
+                                     (car lst)
+                                     (find-iter (cdr lst))))))
+                    (find-iter ,lst))
+                 env fenv))
+              (list 'lit 0)))
+
+         ;; Position: find position of item in list
+         ((op= op "POSITION")
+          (if (and (consp (cdr expr)) (consp (cddr expr)))
+              (let ((item (cadr expr))
+                    (lst (caddr expr)))
+                (compile-expr
+                 `(labels ((pos-iter (lst idx)
+                             (if (null lst)
+                                 nil
+                                 (if (eql (car lst) ,item)
+                                     idx
+                                     (pos-iter (cdr lst) (+ idx #x1))))))
+                    (pos-iter ,lst #x0))
+                 env fenv))
+              (list 'lit 0)))
+
+         ;; Count: count occurrences of item in list
+         ((op= op "COUNT")
+          (if (and (consp (cdr expr)) (consp (cddr expr)))
+              (let ((item (cadr expr))
+                    (lst (caddr expr)))
+                (compile-expr
+                 `(labels ((count-iter (lst acc)
+                             (if (null lst)
+                                 acc
+                                 (if (eql (car lst) ,item)
+                                     (count-iter (cdr lst) (+ acc #x1))
+                                     (count-iter (cdr lst) acc)))))
+                    (count-iter ,lst #x0))
+                 env fenv))
+              (list 'lit 0)))
+
+         ;; Last: return last cons of list
+         ((op= op "LAST")
+          (if (consp (cdr expr))
+              (let ((lst (cadr expr)))
+                (compile-expr
+                 `(labels ((last-iter (lst)
+                             (if (null (cdr lst))
+                                 lst
+                                 (last-iter (cdr lst)))))
+                    (if (null ,lst) nil (last-iter ,lst)))
+                 env fenv))
+              (list 'lit 0)))
+
+         ;; Butlast: return list without last element
+         ((op= op "BUTLAST")
+          (if (consp (cdr expr))
+              (let ((lst (cadr expr)))
+                (compile-expr
+                 `(labels ((butlast-iter (lst)
+                             (if (null (cdr lst))
+                                 nil
+                                 (cons (car lst) (butlast-iter (cdr lst))))))
+                    (if (null ,lst) nil (butlast-iter ,lst)))
+                 env fenv))
+              (list 'lit 0)))
+
+         ;; Nconc: destructively concatenate lists
+         ((op= op "NCONC")
+          (let ((args (cdr expr)))
+            (cond
+              ((null args) (list 'lit 0))
+              ((null (cdr args)) (compile-expr (car args) env fenv))
+              (t (compile-expr
+                  `(let ((first ,(car args))
+                         (second (nconc ,@(cdr args))))
+                     (if (null first)
+                         second
+                         (labels ((find-end (lst)
+                                    (if (null (cdr lst))
+                                        lst
+                                        (find-end (cdr lst)))))
+                           (setf (cdr (find-end first)) second)
+                           first)))
+                  env fenv)))))
+
+         ;; Copy-list: shallow copy of list
+         ((op= op "COPY-LIST")
+          (if (consp (cdr expr))
+              (let ((lst (cadr expr)))
+                (compile-expr
+                 `(labels ((copy-iter (lst)
+                             (if (null lst)
+                                 nil
+                                 (cons (car lst) (copy-iter (cdr lst))))))
+                    (copy-iter ,lst))
+                 env fenv))
+              (list 'lit 0)))
+
          ;; Get tag
          ((op= op "GET-TAG")
           (if (consp (cdr expr))
@@ -4075,6 +4272,18 @@ Optional/key descriptors are (name init-form supplied-name)."
                                       (and (vectorp obj)
                                            (> (vector-length obj) 0)
                                            (eq (vector-ref obj 0) ',type-sym))))
+                  ;; Generate copier
+                  ;; (defun copy-foo (obj)
+                  ;;   (let ((new (make-vector (+ 1 num-slots))))
+                  ;;     (vector-set new 0 (vector-ref obj 0))
+                  ;;     (vector-set new 1 (vector-ref obj 1)) ...
+                  ;;     new))
+                  (copier-body
+                   `(let ((new (make-vector ,(+ 1 num-slots))))
+                      ,@(loop for i from 0 to num-slots
+                              collect `(vector-set new ,i (vector-ref obj ,i)))
+                      new))
+                  (copier-defun `(defun ,copier-name (obj) ,copier-body))
                   ;; Generate accessors
                   ;; (defun foo-slot (obj) (vector-ref obj idx))
                   (accessor-defuns (loop for slot in slot-names
@@ -4082,7 +4291,11 @@ Optional/key descriptors are (name init-form supplied-name)."
                                          for i from 1
                                          collect `(defun ,accessor (obj) (vector-ref obj ,i))))
                   ;; All generated defuns
-                  (all-defuns (cons constructor-defun (cons predicate-defun accessor-defuns))))
+                  (all-defuns (cons constructor-defun (cons predicate-defun (cons copier-defun accessor-defuns)))))
+             ;; Register accessors for setf support
+             (loop for accessor in accessor-names
+                   for i from 1
+                   do (push (cons accessor i) *struct-accessors*))
              ;; Process generated defuns followed by rest of forms
              (compile-forms-helper (append all-defuns (cdr forms)) env fenv)))
 
@@ -4110,7 +4323,8 @@ Optional/key descriptors are (name init-form supplied-name)."
 (defun compile-forms (forms)
   "Compile list of top-level forms including defmacro and defun."
   (let ((*collected-lambdas* nil)
-        (*macro-env* nil))  ; Fresh macro environment for each compilation
+        (*macro-env* nil)           ; Fresh macro environment for each compilation
+        (*struct-accessors* nil))   ; Fresh struct accessor registry
     (let* ((result (compile-forms-helper forms nil nil))
            (fns (car result))
            (main-ir (cadr result)))
