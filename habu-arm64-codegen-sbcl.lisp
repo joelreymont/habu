@@ -1714,6 +1714,71 @@ Cons/car/cdr are required; others should be provided in production."
                                       (build-list* (cdr items))))))
                    (build-list* args))))))
 
+         ;; Acons (add to front of alist: (cons (cons key val) alist))
+         ((eq op 'acons)
+          (if (and (consp (cdr expr)) (consp (cddr expr)) (consp (cdddr expr)))
+              (list 'cons-call
+                    (list 'cons-call
+                          (compile-expr (cadr expr) env fenv)   ; key
+                          (compile-expr (caddr expr) env fenv)) ; value
+                    (compile-expr (cadddr expr) env fenv))      ; alist
+              (list 'lit 0)))
+
+         ;; Nth (get nth element) - compile-time unrolled for small n
+         ((eq op 'nth)
+          (if (and (consp (cdr expr)) (consp (cddr expr)))
+              (let ((n-expr (cadr expr))
+                    (list-ir (compile-expr (caddr expr) env fenv)))
+                (if (and (integerp n-expr) (<= n-expr 10))
+                    ;; Small constant index: unroll to car/cdr chain
+                    (let ((result list-ir))
+                      (dotimes (i n-expr)
+                        (setf result (list 'cdr-call result)))
+                      (list 'car-call result))
+                    ;; Variable index: would need runtime helper
+                    (list 'lit 0)))
+              (list 'lit 0)))
+
+         ;; Nthcdr (get nth tail) - compile-time unrolled for small n
+         ((eq op 'nthcdr)
+          (if (and (consp (cdr expr)) (consp (cddr expr)))
+              (let ((n-expr (cadr expr))
+                    (list-ir (compile-expr (caddr expr) env fenv)))
+                (if (and (integerp n-expr) (<= n-expr 10))
+                    ;; Small constant index: unroll to cdr chain
+                    (let ((result list-ir))
+                      (dotimes (i n-expr)
+                        (setf result (list 'cdr-call result)))
+                      result)
+                    ;; Variable index: would need runtime helper
+                    (list 'lit 0)))
+              (list 'lit 0)))
+
+         ;; Elt (generic element access - same as nth for lists)
+         ((eq op 'elt)
+          (if (and (consp (cdr expr)) (consp (cddr expr)))
+              (let ((seq-ir (compile-expr (cadr expr) env fenv))
+                    (idx-expr (caddr expr)))
+                (if (and (integerp idx-expr) (<= idx-expr 10))
+                    (let ((result seq-ir))
+                      (dotimes (i idx-expr)
+                        (setf result (list 'cdr-call result)))
+                      (list 'car-call result))
+                    (list 'lit 0)))
+              (list 'lit 0)))
+
+         ;; Identity function
+         ((eq op 'identity)
+          (if (consp (cdr expr))
+              (compile-expr (cadr expr) env fenv)
+              (list 'lit 0)))
+
+         ;; Constantly - returns first arg (simplified for constant arg)
+         ((eq op 'constantly)
+          (if (consp (cdr expr))
+              (compile-expr (cadr expr) env fenv)
+              (list 'lit 0)))
+
         ;; Cons
          ((eq op 'cons)
          (if (and (consp (cdr expr)) (consp (cddr expr)))
