@@ -145,6 +145,20 @@ habu_value_t habu_closure_env(habu_value_t closure_val);
 /* Tag access - fundamental primitive for type checking in Lisp */
 habu_value_t habu_get_tag(habu_value_t val);
 
+/* Multiple values support
+ * Up to 4 values supported (primary + 3 secondary)
+ * Secondary values stored in global array
+ */
+extern int64_t habu_values_count;           /* Number of values (0-4) */
+extern habu_value_t habu_values_array[4];   /* Storage for secondary values */
+
+/* Set multiple values - stores v1-v3 in array, returns v0 (primary) */
+habu_value_t habu_values_set(int64_t count, habu_value_t v0, habu_value_t v1,
+                              habu_value_t v2, habu_value_t v3);
+
+/* Get Nth value - index 0 returns primary, index 1-3 from array */
+habu_value_t habu_values_get(int64_t index, habu_value_t primary);
+
 /* Type tag constants (for use in Lisp predicates) */
 /* These match the TAG_* values in object.h:
  *   TAG_FIXNUM  = 0x0

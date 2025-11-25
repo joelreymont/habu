@@ -1115,6 +1115,58 @@ Cons/car/cdr are required; others should be provided in production."
                (arm64-ldr 9 19 128)           ; string-ref at offset 128 (index 16)
                (arm64-blr 9))))               ; returns tagged char code
 
+    ;; Multiple values: (values-call count v0 v1 v2 v3)
+    ;; Runtime table: [17] = offset 136 = habu_values_set
+    ;; habu_values_set(count, v0, v1, v2, v3) -> returns v0
+    ((has-tag? ir 'values-call)
+     (let* ((count (cadr ir))
+            (v0-ir (caddr ir))
+            (v1-ir (cadddr ir))
+            (v2-ir (nth 4 ir))
+            (v3-ir (nth 5 ir))
+            (slot0 (temp-slot-offset temp-depth))
+            (slot1 (temp-slot-offset (+ temp-depth 1)))
+            (slot2 (temp-slot-offset (+ temp-depth 2)))
+            (slot3 (temp-slot-offset (+ temp-depth 3)))
+            ;; Generate code for each value
+            (v0-code (codegen-expr v0-ir runtime-addrs fn-offsets current-offset (+ temp-depth 4)))
+            (v1-code (codegen-expr v1-ir runtime-addrs fn-offsets current-offset (+ temp-depth 4)))
+            (v2-code (codegen-expr v2-ir runtime-addrs fn-offsets current-offset (+ temp-depth 4)))
+            (v3-code (codegen-expr v3-ir runtime-addrs fn-offsets current-offset (+ temp-depth 4))))
+       (append
+        ;; Evaluate v0-v3 and save to temp slots
+        v0-code (arm64-str 0 31 slot0)
+        v1-code (arm64-str 0 31 slot1)
+        v2-code (arm64-str 0 31 slot2)
+        v3-code (arm64-str 0 31 slot3)
+        ;; Load args: x0=count (untagged), x1=v0, x2=v1, x3=v2, x4=v3
+        (arm64-movz 0 count)              ; x0 = count (untagged for C)
+        (arm64-ldr 1 31 slot0)            ; x1 = v0
+        (arm64-ldr 2 31 slot1)            ; x2 = v1
+        (arm64-ldr 3 31 slot2)            ; x3 = v2
+        (arm64-ldr 4 31 slot3)            ; x4 = v3
+        (arm64-ldr 9 19 136)              ; habu_values_set at offset 136 (index 17)
+        (arm64-blr 9))))                  ; returns primary value
+
+    ;; Values-get: (values-get-call index primary)
+    ;; Runtime table: [18] = offset 144 = habu_values_get
+    ;; habu_values_get(index, primary) -> returns Nth value
+    ((has-tag? ir 'values-get-call)
+     (let* ((idx-ir (cadr ir))
+            (primary-ir (caddr ir))
+            (slot1 (temp-slot-offset temp-depth))
+            (idx-code (codegen-expr idx-ir runtime-addrs fn-offsets current-offset (+ temp-depth 1)))
+            (primary-code (codegen-expr primary-ir runtime-addrs fn-offsets current-offset (+ temp-depth 1))))
+       (append
+        idx-code
+        (arm64-str 0 31 slot1)            ; save index (tagged)
+        primary-code
+        (arm64-mov 1 0)                   ; x1 = primary value
+        (arm64-ldr 0 31 slot1)            ; x0 = index (tagged)
+        (arm64-lsr 0 0 4)                 ; untag index
+        (arm64-ldr 9 19 144)              ; habu_values_get at offset 144 (index 18)
+        (arm64-blr 9))))                  ; returns Nth value
+
     ;; Let expression: (let-expr bind-values body-ir num-bindings env-offsets)
     ;; Must track current-offset properly for function calls in bindings/body
     ((has-tag? ir 'let-expr)
@@ -3028,6 +3080,75 @@ Cons/car/cdr are required; others should be provided in production."
                   ((has-tag? arg-ir 'symbol-lit) (list 'lit #x2))
                   ((has-tag? arg-ir 'vector-lit) (list 'lit #x3))
                   (t (list 'get-tag arg-ir))))
+              (list 'lit 0)))
+
+         ;; Multiple values: (values &rest vals) -> returns first value
+         ;; Secondary values stored in global array via runtime call
+         ((op= op "VALUES")
+          (let ((vals (cdr expr)))
+            (cond
+              ((null vals)
+               ;; (values) - no values, returns nil
+               (list 'values-call 0 (list 'lit 0) (list 'lit 0) (list 'lit 0) (list 'lit 0)))
+              ((null (cdr vals))
+               ;; (values x) - single value, just return it
+               (list 'values-call 1
+                     (compile-expr (car vals) env fenv)
+                     (list 'lit 0) (list 'lit 0) (list 'lit 0)))
+              ((null (cddr vals))
+               ;; (values x y) - two values
+               (list 'values-call 2
+                     (compile-expr (car vals) env fenv)
+                     (compile-expr (cadr vals) env fenv)
+                     (list 'lit 0) (list 'lit 0)))
+              ((null (cdddr vals))
+               ;; (values x y z) - three values
+               (list 'values-call 3
+                     (compile-expr (car vals) env fenv)
+                     (compile-expr (cadr vals) env fenv)
+                     (compile-expr (caddr vals) env fenv)
+                     (list 'lit 0)))
+              (t
+               ;; (values x y z w) - four values (max supported)
+               (list 'values-call 4
+                     (compile-expr (car vals) env fenv)
+                     (compile-expr (cadr vals) env fenv)
+                     (compile-expr (caddr vals) env fenv)
+                     (compile-expr (cadddr vals) env fenv))))))
+
+         ;; Multiple value binding: (multiple-value-bind (vars...) expr body...)
+         ;; Evaluates expr, binds vars to values, executes body
+         ((op= op "MULTIPLE-VALUE-BIND")
+          (if (and (consp (cdr expr)) (consp (cddr expr)))
+              (let* ((vars (cadr expr))
+                     (value-expr (caddr expr))
+                     (body (cdddr expr))
+                     (num-vars (length vars))
+                     ;; Generate unique var for primary value
+                     (primary-var (intern (format nil "$MV-PRIMARY-~A" (incf *catch-counter*)))))
+                ;; Transform to:
+                ;; (let ((primary (values-expr)))
+                ;;   (let ((v0 primary)
+                ;;         (v1 (values-get 1 primary))
+                ;;         ...)
+                ;;     body...))
+                (compile-expr
+                 `(let ((,primary-var ,value-expr))
+                    (let* ,(loop for var in vars
+                                 for i from 0
+                                 collect (if (= i 0)
+                                             `(,var ,primary-var)
+                                             `(,var (values-get ,i ,primary-var))))
+                      (progn ,@body)))
+                 env fenv))
+              (list 'lit 0)))
+
+         ;; Values-get: (values-get index primary) -> retrieves Nth value
+         ((op= op "VALUES-GET")
+          (if (and (consp (cdr expr)) (consp (cddr expr)))
+              (list 'values-get-call
+                    (compile-expr (cadr expr) env fenv)
+                    (compile-expr (caddr expr) env fenv))
               (list 'lit 0)))
 
          ;; Packages: no-op except find-symbol folded to symbol literal

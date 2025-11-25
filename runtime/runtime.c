@@ -389,4 +389,24 @@ habu_value_t habu_symbol_name(habu_value_t sym_val) {
     return sym->name;
 }
 
+/* Multiple values support */
+
+int64_t habu_values_count = 1;              /* Default: single value */
+habu_value_t habu_values_array[4] = {0};    /* Storage for secondary values */
+
+habu_value_t habu_values_set(int64_t count, habu_value_t v0, habu_value_t v1,
+                              habu_value_t v2, habu_value_t v3) {
+    habu_values_count = count;
+    if (count > 1) habu_values_array[0] = v1;
+    if (count > 2) habu_values_array[1] = v2;
+    if (count > 3) habu_values_array[2] = v3;
+    return count > 0 ? v0 : NIL;
+}
+
+habu_value_t habu_values_get(int64_t index, habu_value_t primary) {
+    if (index >= habu_values_count) return NIL;
+    if (index == 0) return primary;
+    return habu_values_array[index - 1];
+}
+
 /* GC functions implemented in gc.c */
