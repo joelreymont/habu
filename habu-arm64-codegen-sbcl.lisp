@@ -718,6 +718,40 @@ Cons/car/cdr are required; others should be provided in production."
                           rd)))
     (encode-word-le encoded)))
 
+(defun arm64-lslv (rd rn rm)
+  "LSLV Xd, Xn, Xm - Logical shift left variable (by register)"
+  (let* ((base #x9AC02000)
+         (encoded (logior base (ash rm 16) (ash rn 5) rd)))
+    (encode-word-le encoded)))
+
+(defun arm64-lsrv (rd rn rm)
+  "LSRV Xd, Xn, Xm - Logical shift right variable (by register)"
+  (let* ((base #x9AC02400)
+         (encoded (logior base (ash rm 16) (ash rn 5) rd)))
+    (encode-word-le encoded)))
+
+(defun arm64-asr (rd rn shift)
+  "ASR Xd, Xn, #shift - Arithmetic shift right immediate"
+  (let* ((base #x9340FC00)  ; SBFM Xd, Xn, #shift, #63
+         (shift-bits (logand shift #x3F))
+         (encoded (logior base
+                          (ash shift-bits 16)  ; immr = shift
+                          (ash rn 5)
+                          rd)))
+    (encode-word-le encoded)))
+
+(defun arm64-asrv (rd rn rm)
+  "ASRV Xd, Xn, Xm - Arithmetic shift right variable (by register)"
+  (let* ((base #x9AC02800)
+         (encoded (logior base (ash rm 16) (ash rn 5) rd)))
+    (encode-word-le encoded)))
+
+(defun arm64-neg (rd rm)
+  "NEG Xd, Xm - Negate (SUB from zero)"
+  (let* ((base #xCB0003E0)
+         (encoded (logior base (ash rm 16) rd)))
+    (encode-word-le encoded)))
+
 (defun arm64-mov (rd rm)
   "MOV Xd, Xm - Move register (via ORR)"
   (let* ((base #xAA0003E0)
@@ -735,6 +769,20 @@ Cons/car/cdr are required; others should be provided in production."
   (let* ((base #xAA000000)
          (encoded (logior base (ash rm 16) (ash rn 5) rd)))
     (encode-word-le encoded)))
+
+(defun arm64-logior (rd rn rm)
+  "Alias for arm64-orr for consistency with Lisp naming"
+  (arm64-orr rd rn rm))
+
+(defun arm64-eor (rd rn rm)
+  "EOR Xd, Xn, Xm - Bitwise XOR registers"
+  (let* ((base #xCA000000)
+         (encoded (logior base (ash rm 16) (ash rn 5) rd)))
+    (encode-word-le encoded)))
+
+(defun arm64-logxor (rd rn rm)
+  "Alias for arm64-eor for consistency with Lisp naming"
+  (arm64-eor rd rn rm))
 
 (defun arm64-ldr (rt rn offset)
   "LDR Xt, [Xn, #offset] - Load register from memory
@@ -1252,6 +1300,107 @@ Cons/car/cdr are required; others should be provided in production."
                (arm64-sub 0 0 2)             ; x0 = remainder
                (arm64-lsl 0 0 4))))          ; retag
 
+    ;; Bitwise AND: (logand-call left right)
+    ((has-tag? ir 'logand-call)
+     (let* ((left-ir (cadr ir))
+            (right-ir (caddr ir))
+            (x24-slot (temp-slot-offset temp-depth))
+            (left-slot (temp-slot-offset (+ temp-depth 1)))
+            (nested-depth (+ temp-depth 2))
+            (left-code (codegen-expr left-ir runtime-addrs fn-offsets
+                                     (if current-offset (+ current-offset 1) nil)
+                                     nested-depth))
+            (right-cursor (if current-offset
+                             (+ current-offset 1 (count-instrs left-code) 2)
+                             nil))
+            (right-code (codegen-expr right-ir runtime-addrs fn-offsets right-cursor nested-depth)))
+       (append (arm64-str 24 31 x24-slot)
+               left-code
+               (arm64-str 0 31 left-slot)
+               (arm64-ldr 24 31 x24-slot)
+               right-code
+               (arm64-ldr 1 31 left-slot)
+               (arm64-and 0 0 1))))          ; AND preserves tag bits
+
+    ;; Bitwise OR: (logior-call left right)
+    ((has-tag? ir 'logior-call)
+     (let* ((left-ir (cadr ir))
+            (right-ir (caddr ir))
+            (x24-slot (temp-slot-offset temp-depth))
+            (left-slot (temp-slot-offset (+ temp-depth 1)))
+            (nested-depth (+ temp-depth 2))
+            (left-code (codegen-expr left-ir runtime-addrs fn-offsets
+                                     (if current-offset (+ current-offset 1) nil)
+                                     nested-depth))
+            (right-cursor (if current-offset
+                             (+ current-offset 1 (count-instrs left-code) 2)
+                             nil))
+            (right-code (codegen-expr right-ir runtime-addrs fn-offsets right-cursor nested-depth)))
+       (append (arm64-str 24 31 x24-slot)
+               left-code
+               (arm64-str 0 31 left-slot)
+               (arm64-ldr 24 31 x24-slot)
+               right-code
+               (arm64-ldr 1 31 left-slot)
+               (arm64-logior 0 0 1))))       ; OR preserves tag bits
+
+    ;; Bitwise XOR: (logxor-call left right)
+    ((has-tag? ir 'logxor-call)
+     (let* ((left-ir (cadr ir))
+            (right-ir (caddr ir))
+            (x24-slot (temp-slot-offset temp-depth))
+            (left-slot (temp-slot-offset (+ temp-depth 1)))
+            (nested-depth (+ temp-depth 2))
+            (left-code (codegen-expr left-ir runtime-addrs fn-offsets
+                                     (if current-offset (+ current-offset 1) nil)
+                                     nested-depth))
+            (right-cursor (if current-offset
+                             (+ current-offset 1 (count-instrs left-code) 2)
+                             nil))
+            (right-code (codegen-expr right-ir runtime-addrs fn-offsets right-cursor nested-depth)))
+       (append (arm64-str 24 31 x24-slot)
+               left-code
+               (arm64-str 0 31 left-slot)
+               (arm64-ldr 24 31 x24-slot)
+               right-code
+               (arm64-ldr 1 31 left-slot)
+               ;; XOR values, but fix tag bits (XOR of two 0 tag bits = 0, ok)
+               (arm64-logxor 0 0 1))))
+
+    ;; Arithmetic shift: (ash-call n count)
+    ;; Positive count = left shift, negative count = right shift
+    ((has-tag? ir 'ash-call)
+     (let* ((n-ir (cadr ir))
+            (count-ir (caddr ir))
+            (x24-slot (temp-slot-offset temp-depth))
+            (n-slot (temp-slot-offset (+ temp-depth 1)))
+            (nested-depth (+ temp-depth 2))
+            (n-code (codegen-expr n-ir runtime-addrs fn-offsets
+                                  (if current-offset (+ current-offset 1) nil)
+                                  nested-depth))
+            (count-cursor (if current-offset
+                             (+ current-offset 1 (count-instrs n-code) 2)
+                             nil))
+            (count-code (codegen-expr count-ir runtime-addrs fn-offsets count-cursor nested-depth)))
+       ;; Inline implementation for variable shifts
+       ;; x0 = n (untagged), x1 = count (signed, untagged)
+       (append (arm64-str 24 31 x24-slot)
+               n-code
+               (arm64-str 0 31 n-slot)
+               (arm64-ldr 24 31 x24-slot)
+               count-code
+               (arm64-asr 1 0 4)             ; untag count -> x1 (arithmetic shift preserves sign!)
+               (arm64-ldr 0 31 n-slot)
+               (arm64-lsr 0 0 4)             ; untag n -> x0 (n is always positive for shifts)
+               ;; Check sign of count: if count >= 0, shift left; else shift right
+               (arm64-cmp 1 31)              ; compare x1 with xzr (0)
+               (arm64-b-cond 10 4)           ; B.GE +4 (skip to left shift if count >= 0)
+               (arm64-neg 1 1)               ; negate count for right shift (x1 = -x1)
+               (arm64-lsrv 0 0 1)            ; x0 = x0 >> x1 (logical right shift by register)
+               (arm64-b 2)                   ; skip left shift instruction
+               (arm64-lslv 0 0 1)            ; x0 = x0 << x1 (left shift by register)
+               (arm64-lsl 0 0 4))))
+
     ;; Not equal: (cmp-ne left right)
     ((has-tag? ir 'cmp-ne)
      (let* ((left-ir (cadr ir))
@@ -1484,6 +1633,24 @@ Cons/car/cdr are required; others should be provided in production."
             (arg-code (codegen-expr arg-ir runtime-addrs fn-offsets current-offset temp-depth)))
        (append arg-code
                (arm64-ldr 9 19 104) ; symbol-name
+               (arm64-blr 9))))
+
+    ;; Gensym: (gensym-call prefix-ir) - generate unique symbol
+    ;; Runtime table: [28] = offset 224 = habu_gensym
+    ((has-tag? ir 'gensym-call)
+     (let* ((prefix-ir (cadr ir))
+            (prefix-code (codegen-expr prefix-ir runtime-addrs fn-offsets current-offset temp-depth)))
+       (append prefix-code
+               (arm64-ldr 9 19 224) ; gensym at offset 224 (index 28)
+               (arm64-blr 9))))
+
+    ;; Make-symbol: (make-symbol-call string-ir) - create interned symbol
+    ;; Runtime table: [11] = offset 88 = habu_make_symbol_from_string
+    ((has-tag? ir 'make-symbol-call)
+     (let* ((str-ir (cadr ir))
+            (str-code (codegen-expr str-ir runtime-addrs fn-offsets current-offset temp-depth)))
+       (append str-code
+               (arm64-ldr 9 19 88) ; make-symbol-from-string at offset 88 (index 11)
                (arm64-blr 9))))
 
     ;; String length (returns fixnum)
@@ -2170,6 +2337,62 @@ Cons/car/cdr are required; others should be provided in production."
          ((eq op 'rem)
           (if (and (consp (cdr expr)) (consp (cddr expr)))
               (list 'rem
+                    (compile-expr (cadr expr) env fenv)
+                    (compile-expr (caddr expr) env fenv))
+              (list 'lit 0)))
+
+         ;; Bitwise AND
+         ((eq op 'logand)
+          (let ((args (cdr expr)))
+            (cond
+              ((null args) (list 'lit -1))           ; (logand) => -1
+              ((null (cdr args))                      ; (logand a) => a
+               (compile-expr (car args) env fenv))
+              ((null (cddr args))                     ; (logand a b)
+               (list 'logand-call
+                     (compile-expr (car args) env fenv)
+                     (compile-expr (cadr args) env fenv)))
+              (t                                      ; (logand a b c ...) => fold
+               (compile-expr (cons 'logand (cons (list 'logand (car args) (cadr args))
+                                                 (cddr args)))
+                            env fenv)))))
+
+         ;; Bitwise OR
+         ((eq op 'logior)
+          (let ((args (cdr expr)))
+            (cond
+              ((null args) (list 'lit 0))            ; (logior) => 0
+              ((null (cdr args))                      ; (logior a) => a
+               (compile-expr (car args) env fenv))
+              ((null (cddr args))                     ; (logior a b)
+               (list 'logior-call
+                     (compile-expr (car args) env fenv)
+                     (compile-expr (cadr args) env fenv)))
+              (t                                      ; (logior a b c ...) => fold
+               (compile-expr (cons 'logior (cons (list 'logior (car args) (cadr args))
+                                                 (cddr args)))
+                            env fenv)))))
+
+         ;; Bitwise XOR
+         ((eq op 'logxor)
+          (let ((args (cdr expr)))
+            (cond
+              ((null args) (list 'lit 0))            ; (logxor) => 0
+              ((null (cdr args))                      ; (logxor a) => a
+               (compile-expr (car args) env fenv))
+              ((null (cddr args))                     ; (logxor a b)
+               (list 'logxor-call
+                     (compile-expr (car args) env fenv)
+                     (compile-expr (cadr args) env fenv)))
+              (t                                      ; (logxor a b c ...) => fold
+               (compile-expr (cons 'logxor (cons (list 'logxor (car args) (cadr args))
+                                                 (cddr args)))
+                            env fenv)))))
+
+         ;; Arithmetic shift (ash n count) - positive count shifts left, negative shifts right
+         ((eq op 'ash)
+          (if (and (consp (cdr expr)) (consp (cddr expr)))
+              (list 'ash-call
                     (compile-expr (cadr expr) env fenv)
                     (compile-expr (caddr expr) env fenv))
               (list 'lit 0)))
@@ -3033,12 +3256,22 @@ Cons/car/cdr are required; others should be provided in production."
                     (list 'lit 1))  ; not cons -> t (is atom)
               (list 'lit 1)))
 
-         ;; Numberp predicate (tag #x0 = fixnum) (also fixnum?)
-         ((or (eq op 'numberp) (op= op "FIXNUM?"))
+         ;; Numberp predicate (tag #x0 = fixnum) (also fixnum?, integerp)
+         ((or (eq op 'numberp) (eq op 'integerp) (op= op "FIXNUM?"))
           (if (consp (cdr expr))
               (list 'cmp-eq
                     (list 'get-tag (compile-expr (cadr expr) env fenv))
                     (list 'lit #x0)) ; tag 0
+              (list 'lit #x0)))
+
+         ;; Characterp predicate - characters are fixnums in Habu
+         ;; In full CL, characterp would check a character type, but Habu uses fixnums
+         ((eq op 'characterp)
+          ;; Characters are represented as fixnums, so check for fixnum tag
+          (if (consp (cdr expr))
+              (list 'cmp-eq
+                    (list 'get-tag (compile-expr (cadr expr) env fenv))
+                    (list 'lit #x0)) ; tag 0 (fixnum)
               (list 'lit #x0)))
 
          ;; Symbolp predicate (tag #x2) (also symbol?)
@@ -3584,7 +3817,7 @@ Cons/car/cdr are required; others should be provided in production."
                  env fenv))
               (list 'lit 0)))
 
-         ;; Reverse - reverse a list
+         ;; Reverse - reverse a list (non-destructive)
          ((eq op 'reverse)
           (if (consp (cdr expr))
               (let ((lst (cadr expr)))
@@ -3596,6 +3829,109 @@ Cons/car/cdr are required; others should be provided in production."
                     (rev ,lst #x0))
                  env fenv))
               (list 'lit 0)))
+
+         ;; Nreverse - reverse a list destructively
+         ((eq op 'nreverse)
+          (if (consp (cdr expr))
+              (let ((lst (cadr expr)))
+                (compile-expr
+                 `(labels ((nrev (cur prev)
+                             (if (null cur)
+                                 prev
+                                 (let ((next (cdr cur)))
+                                   (setf (cdr cur) prev)
+                                   (nrev next cur)))))
+                    (nrev ,lst #x0))
+                 env fenv))
+              (list 'lit 0)))
+
+         ;; Nconc - destructive append
+         ((eq op 'nconc)
+          (let ((args (cdr expr)))
+            (cond
+              ((null args) (list 'lit 0))  ; (nconc) => nil
+              ((null (cdr args))           ; (nconc x) => x
+               (compile-expr (car args) env fenv))
+              ((null (cddr args))          ; (nconc x y)
+               (let ((first (car args))
+                     (second (cadr args)))
+                 (compile-expr
+                  `(if (null ,first)
+                       ,second
+                       (labels ((find-last (cur)
+                                  (if (null (cdr cur))
+                                      cur
+                                      (find-last (cdr cur)))))
+                         (let ((last-cell (find-last ,first)))
+                           (setf (cdr last-cell) ,second)
+                           ,first)))
+                  env fenv)))
+              (t ; (nconc x y z ...) => (nconc (nconc x y) z ...)
+               (compile-expr (cons 'nconc
+                                   (cons (list 'nconc (car args) (cadr args))
+                                         (cddr args)))
+                             env fenv)))))
+
+         ;; Butlast - return list without last n elements (default 1)
+         ((eq op 'butlast)
+          (if (consp (cdr expr))
+              (let* ((lst (cadr expr))
+                     (n (if (consp (cddr expr)) (caddr expr) 1)))
+                (compile-expr
+                 `(labels ((drop-last (xs count)
+                             (if (null xs)
+                                 #x0
+                                 (if (<= (length xs) count)
+                                     #x0
+                                     (cons (car xs) (drop-last (cdr xs) count))))))
+                    (drop-last ,lst ,n))
+                 env fenv))
+              (list 'lit 0)))
+
+         ;; Position - find position of item in sequence
+         ((eq op 'position)
+          (if (and (consp (cdr expr)) (consp (cddr expr)))
+              (let ((item (cadr expr))
+                    (seq (caddr expr)))
+                (compile-expr
+                 `(labels ((find-pos (xs idx)
+                             (if (null xs)
+                                 #x0  ; nil if not found
+                                 (if (eql (car xs) ,item)
+                                     idx
+                                     (find-pos (cdr xs) (+ idx #x1))))))
+                    (find-pos ,seq #x0))
+                 env fenv))
+              (list 'lit 0)))
+
+         ;; Equal - structural equality
+         ((eq op 'equal)
+          (if (and (consp (cdr expr)) (consp (cddr expr)))
+              (let ((a (cadr expr))
+                    (b (caddr expr)))
+                (compile-expr
+                 `(labels ((equal-rec (x y)
+                             (cond
+                               ((eq x y) #x1)            ; same object
+                               ((and (consp x) (consp y))
+                                (and (equal-rec (car x) (car y))
+                                     (equal-rec (cdr x) (cdr y))))
+                               ((and (stringp x) (stringp y))
+                                (string= x y))
+                               (t #x0))))                ; different
+                    (equal-rec ,a ,b))
+                 env fenv))
+              (list 'lit 0)))
+
+         ;; Truncate - integer division, returns quotient (floor toward zero)
+         ((eq op 'truncate)
+          (if (and (consp (cdr expr)) (consp (cddr expr)))
+              (list 'div
+                    (compile-expr (cadr expr) env fenv)
+                    (compile-expr (caddr expr) env fenv))
+              (if (consp (cdr expr))
+                  (compile-expr (cadr expr) env fenv)  ; (truncate x) => x
+                  (list 'lit 0))))
 
          ;; Dotimes - (dotimes (i n [result]) body...)
          ;; Iterates i from 0 to n-1, returns result (default nil)
@@ -4893,6 +5229,19 @@ Cons/car/cdr are required; others should be provided in production."
          ((op= op "SYMBOL-NAME")
           (if (consp (cdr expr))
               (list 'symbol-name (compile-expr (cadr expr) env fenv))
+              (list 'lit 0)))
+
+         ;; Gensym - generate unique symbol (runtime function at offset 224 = index 28)
+         ((eq op 'gensym)
+          (if (consp (cdr expr))
+              (list 'gensym-call (compile-expr (cadr expr) env fenv))
+              (list 'gensym-call (list 'lit 0))))  ; default prefix
+
+         ;; Intern - create/find interned symbol from string
+         ;; Uses make-symbol-from-string which already interns
+         ((eq op 'intern)
+          (if (consp (cdr expr))
+              (list 'make-symbol-call (compile-expr (cadr expr) env fenv))
               (list 'lit 0)))
 
          ;; String length

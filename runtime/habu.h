@@ -136,6 +136,7 @@ habu_value_t habu_fixnum_to_string(habu_value_t num_val);  /* Convert fixnum to 
 /* Symbol operations */
 habu_value_t habu_make_symbol_from_string(habu_value_t str_val);
 habu_value_t habu_symbol_name(habu_value_t sym_val);
+habu_value_t habu_gensym(habu_value_t prefix_str);  /* Generate unique uninterned symbol */
 
 /* Closure support */
 habu_value_t habu_make_closure(void *code_ptr, habu_value_t env);

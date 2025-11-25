@@ -389,6 +389,27 @@ habu_value_t habu_symbol_name(habu_value_t sym_val) {
     return sym->name;
 }
 
+/* Gensym - generate unique uninterned symbol */
+static int64_t gensym_counter = 0;
+
+habu_value_t habu_gensym(habu_value_t prefix_val) {
+    char buf[128];
+    const char *prefix = "G";
+
+    /* Get prefix from string argument if provided */
+    if (get_tag(prefix_val) == TAG_STRING) {
+        habu_string_t *str = value_to_string(prefix_val);
+        prefix = str->data;
+    }
+
+    /* Generate unique name */
+    snprintf(buf, sizeof(buf), "%s%lld", prefix, (long long)gensym_counter++);
+
+    /* Create symbol directly without interning (uninterned symbol)
+     * For simplicity, we use the intern table but with a unique name */
+    return habu_make_symbol(buf);
+}
+
 /* Multiple values support */
 
 int64_t habu_values_count = 1;              /* Default: single value */
