@@ -1315,8 +1315,57 @@ Cons/car/cdr are required; others should be provided in production."
                idx-code
                (arm64-lsr 1 0 4)           ; untag index
                (arm64-ldr 0 31 vec-slot)
-               (arm64-ldr 9 19 72) ; vector-ref
+               (arm64-ldr 9 19 72) ; vector-ref at offset 72 (index 9)
                (arm64-blr 9))))
+
+    ;; Make vector: (make-vector-call size-ir)
+    ;; habu_make_vector(size) -> vector
+    ((has-tag? ir 'make-vector-call)
+     (let* ((size-ir (cadr ir))
+            (size-code (codegen-expr size-ir runtime-addrs fn-offsets current-offset temp-depth)))
+       (append size-code
+               (arm64-lsr 0 0 4)           ; untag size
+               (arm64-ldr 9 19 56)         ; make-vector at offset 56 (index 7)
+               (arm64-blr 9))))
+
+    ;; Vector set: (vector-set-call vec-ir idx-ir val-ir)
+    ;; habu_vector_set(vec, idx, val)
+    ((has-tag? ir 'vector-set-call)
+     (let* ((vec-ir (cadr ir))
+            (idx-ir (caddr ir))
+            (val-ir (cadddr ir))
+            (slot1 (temp-slot-offset temp-depth))
+            (slot2 (temp-slot-offset (+ temp-depth 1)))
+            (vec-code (codegen-expr vec-ir runtime-addrs fn-offsets current-offset (+ temp-depth 2)))
+            (idx-code (codegen-expr idx-ir runtime-addrs fn-offsets current-offset (+ temp-depth 2)))
+            (val-code (codegen-expr val-ir runtime-addrs fn-offsets current-offset (+ temp-depth 2))))
+       (append vec-code
+               (arm64-str 0 31 slot1)      ; save vec
+               idx-code
+               (arm64-str 0 31 slot2)      ; save idx (tagged)
+               val-code
+               (arm64-mov 2 0)             ; x2 = value
+               (arm64-ldr 1 31 slot2)      ; x1 = idx (tagged)
+               (arm64-lsr 1 1 4)           ; untag idx
+               (arm64-ldr 0 31 slot1)      ; x0 = vec
+               (arm64-ldr 9 19 64)         ; vector-set at offset 64 (index 8)
+               (arm64-blr 9)
+               (arm64-mov 0 2))))          ; return the value that was set
+
+    ;; Vector length: (vector-length-call vec-ir)
+    ;; Returns length as tagged fixnum
+    ((has-tag? ir 'vector-length-call)
+     (let* ((vec-ir (cadr ir))
+            (vec-code (codegen-expr vec-ir runtime-addrs fn-offsets current-offset temp-depth)))
+       ;; Vector layout: [header:16][length:8][data...]
+       ;; Tagged vector pointer points to length field (tag 0x3)
+       ;; Clear tag by: x1 = x0 & 0xF; x0 = x0 - x1
+       (append vec-code
+               (arm64-movz 1 #xF)          ; x1 = 0xF (tag mask)
+               (arm64-and 1 0 1)           ; x1 = x0 & 0xF (just the tag)
+               (arm64-sub 0 0 1)           ; x0 = x0 - tag (clear tag)
+               (arm64-ldr 0 0 0)           ; Load length from vector struct
+               (arm64-lsl 0 0 4))))        ; Tag as fixnum
 
     ;; Car: (car-call arg) - call runtime car via table
     ((has-tag? ir 'car-call)
@@ -1897,10 +1946,14 @@ Cons/car/cdr are required; others should be provided in production."
     ((stringp expr)
      (cons 'string-lit (string->char-codes expr)))
 
-    ;; Symbol (variable)
+    ;; Symbol (variable or keyword)
     ((symbol? expr)
-     (let ((off (env-lookup expr env)))
-       (if off (list 'var off) (list 'lit 0))))
+     ;; Keywords are self-evaluating - compile as symbol literals
+     (if (keywordp expr)
+         (list 'symbol-lit (symbol-name expr))
+         ;; Regular symbols are variable references
+         (let ((off (env-lookup expr env)))
+           (if off (list 'var off) (list 'lit 0)))))
 
     ;; List (function call or special form)
     ((consp expr)
@@ -3508,6 +3561,29 @@ Cons/car/cdr are required; others should be provided in production."
                     (compile-expr (caddr expr) env fenv))
               (list 'lit 0)))
 
+         ;; Make vector: (make-vector size) -> vector
+         ((op= op "MAKE-VECTOR")
+          (if (consp (cdr expr))
+              (list 'make-vector-call
+                    (compile-expr (cadr expr) env fenv))
+              (list 'lit 0)))
+
+         ;; Vector set: (vector-set vector index value) -> value
+         ((op= op "VECTOR-SET")
+          (if (and (consp (cdr expr)) (consp (cddr expr)) (consp (cdddr expr)))
+              (list 'vector-set-call
+                    (compile-expr (cadr expr) env fenv)
+                    (compile-expr (caddr expr) env fenv)
+                    (compile-expr (cadddr expr) env fenv))
+              (list 'lit 0)))
+
+         ;; Vector length: (vector-length vector) -> fixnum
+         ((op= op "VECTOR-LENGTH")
+          (if (consp (cdr expr))
+              (list 'vector-length-call
+                    (compile-expr (cadr expr) env fenv))
+              (list 'lit 0)))
+
          ;; Symbol-name
          ((op= op "SYMBOL-NAME")
           (if (consp (cdr expr))
@@ -3719,10 +3795,15 @@ Cons/car/cdr are required; others should be provided in production."
          ;; Lambda/closure
          ((op= op "LAMBDA")
          (let* ((raw-params (cadr expr))
-                (body (caddr expr))
+                (raw-body (caddr expr))
+                ;; Transform keyword params if present
+                (transformed (transform-keyword-params raw-params raw-body))
+                (params (if transformed (first transformed) raw-params))
+                (body (if transformed (second transformed) raw-body))
                 (lambda-name (gensym "lambda-"))
                 (outer-max (if env (apply #'max (mapcar #'cdr env)) -1)))
-           (multiple-value-bind (fixed optional rest) (parse-params raw-params)
+           (multiple-value-bind (fixed optional rest key) (parse-params params)
+             (declare (ignore key))  ; Already transformed away
              (let* ((optional-names (mapcar #'car optional))
                     (optional-supplied (mapcar (lambda (entry)
                                                  (or (caddr entry) (gensym "supplied-")))
@@ -3829,16 +3910,18 @@ Cons/car/cdr are required; others should be provided in production."
       (+ 1 (count-instrs (nthcdr 4 code)))))
 
 (defun parse-params (params)
-  "Split params into fixed list, optional descriptors, and rest symbol.
-Optional descriptors are (name init-form supplied-name)."
+  "Split params into fixed list, optional descriptors, rest symbol, and key descriptors.
+Optional/key descriptors are (name init-form supplied-name)."
   (let ((fixed '())
         (optional '())
+        (key '())
         (rest nil)
         (state :fixed))
     (dolist (p params)
       (cond
         ((eq p '&optional) (setf state :optional))
         ((eq p '&rest) (setf state :rest))
+        ((eq p '&key) (setf state :key))
         ((eq state :fixed) (push (if (symbolp p) p (car p)) fixed))
         ((eq state :optional)
          (cond
@@ -3848,13 +3931,67 @@ Optional descriptors are (name init-form supplied-name)."
                   (init (cadr p))
                   (supplied (caddr p)))
               (push (list name init supplied) optional)))))
+        ((eq state :key)
+         (cond
+           ((symbolp p) (push (list p nil nil) key))
+           ((consp p)
+            (let ((name (car p))
+                  (init (cadr p))
+                  (supplied (caddr p)))
+              (push (list name init supplied) key)))))
         ((eq state :rest) (setf rest p))))
-    (values (nreverse fixed) (nreverse optional) rest)))
+    (values (nreverse fixed) (nreverse optional) rest (nreverse key))))
+
+(defun transform-keyword-params (params body)
+  "Transform (&key x y) params to (&rest args) with keyword extraction.
+   Returns (new-params new-body) or nil if no transformation needed."
+  (multiple-value-bind (fixed optional rest key) (parse-params params)
+    (when key
+      ;; Generate a rest param name if not present
+      (let* ((rest-name (or rest (gensym "key-args-")))
+             (search-fn (gensym "search-keys-"))
+             ;; Build let bindings for each keyword
+             (key-bindings
+               (mapcar (lambda (k)
+                         (let ((key-name (car k))
+                               (default (or (cadr k) nil))
+                               ;; Create keyword symbol from parameter name
+                               (keyword (intern (symbol-name (car k)) :keyword)))
+                           `(,key-name (,search-fn ,rest-name ',keyword ,default))))
+                       key))
+             ;; Wrap body in labels + let for keyword extraction
+             (new-body
+               `(labels ((,search-fn (lst key default)
+                           (if (null lst)
+                               default
+                               (if (eq (car lst) key)
+                                   (cadr lst)
+                                   (,search-fn (cddr lst) key default)))))
+                  (let ,key-bindings
+                    ,body)))
+             ;; Reconstruct params without &key section
+             (new-params
+               (append fixed
+                       (when optional
+                         (cons '&optional
+                               (mapcar (lambda (o)
+                                         (if (and (null (cadr o)) (null (caddr o)))
+                                             (car o)
+                                             o))
+                                       optional)))
+                       (list '&rest rest-name))))
+        (list new-params new-body)))))
 
 (defun compile-defun (name params body env fenv)
   "Compile defun into (name fixed optional body-ir captures param-base rest-param)"
+  ;; Transform keyword params if present
+  (let ((transformed (transform-keyword-params params body)))
+    (when transformed
+      (setf params (first transformed))
+      (setf body (second transformed))))
   ;; Create environment with parameters as the initial bindings
-  (multiple-value-bind (fixed optional rest) (parse-params params)
+  (multiple-value-bind (fixed optional rest key) (parse-params params)
+    (declare (ignore key))  ; Already transformed away
     (let* ((optional-names (mapcar #'car optional))
            (optional-supplied (mapcar (lambda (entry)
                                         (or (caddr entry) (gensym "supplied-")))
@@ -3896,6 +4033,58 @@ Optional descriptors are (name init-form supplied-name)."
              (register-macro name expander)
              ;; Continue with rest of forms (defmacro doesn't produce runtime code)
              (compile-forms-helper (cdr forms) env fenv)))
+
+          ;; defstruct - expand to constructor, predicate, and accessors
+          ;; (defstruct name slot1 slot2 ...) expands to multiple defuns
+          ;; Structure is stored as vector: [type-symbol slot1-val slot2-val ...]
+          ((and (consp form) (eq (car form) 'defstruct))
+           (let* ((name (cadr form))
+                  (slots (cddr form))
+                  (slot-names (mapcar (lambda (s) (if (consp s) (car s) s)) slots))
+                  (num-slots (length slot-names))
+                  (type-sym (intern (symbol-name name)))
+                  ;; Generate function names
+                  (constructor-name (intern (concatenate 'string "MAKE-" (symbol-name name))))
+                  (predicate-name (intern (concatenate 'string (symbol-name name) "-P")))
+                  (copier-name (intern (concatenate 'string "COPY-" (symbol-name name))))
+                  ;; Generate accessor names
+                  (accessor-names (mapcar (lambda (slot)
+                                            (intern (concatenate 'string (symbol-name name) "-" (symbol-name slot))))
+                                          slot-names))
+                  ;; Generate constructor with keyword args
+                  ;; (defun make-foo (&key slot1 slot2 ...)
+                  ;;   (let ((v (make-vector (+ 1 num-slots))))
+                  ;;     (vector-set v 0 'type-sym)
+                  ;;     (vector-set v 1 slot1) ...
+                  ;;     v))
+                  (constructor-params (mapcan (lambda (s) (list (intern (concatenate 'string ":" (symbol-name s))) s)) slot-names))
+                  (constructor-body
+                   `(let ((v (make-vector ,(+ 1 num-slots))))
+                      (vector-set v 0 ',type-sym)
+                      ,@(loop for slot in slot-names
+                              for i from 1
+                              collect `(vector-set v ,i ,slot))
+                      v))
+                  (constructor-defun `(defun ,constructor-name (&key ,@slot-names) ,constructor-body))
+                  ;; Generate predicate
+                  ;; (defun foo-p (obj)
+                  ;;   (and (vectorp obj)
+                  ;;        (> (vector-length obj) 0)
+                  ;;        (eq (vector-ref obj 0) 'type-sym)))
+                  (predicate-defun `(defun ,predicate-name (obj)
+                                      (and (vectorp obj)
+                                           (> (vector-length obj) 0)
+                                           (eq (vector-ref obj 0) ',type-sym))))
+                  ;; Generate accessors
+                  ;; (defun foo-slot (obj) (vector-ref obj idx))
+                  (accessor-defuns (loop for slot in slot-names
+                                         for accessor in accessor-names
+                                         for i from 1
+                                         collect `(defun ,accessor (obj) (vector-ref obj ,i))))
+                  ;; All generated defuns
+                  (all-defuns (cons constructor-defun (cons predicate-defun accessor-defuns))))
+             ;; Process generated defuns followed by rest of forms
+             (compile-forms-helper (append all-defuns (cdr forms)) env fenv)))
 
           ;; defun - compile function
           ((and (consp form) (eq (car form) 'defun))
