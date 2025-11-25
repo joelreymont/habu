@@ -2465,6 +2465,60 @@ Cons/car/cdr are required; others should be provided in production."
                (setq result-form '(lit 0))))
             (compile-expr result-form env fenv)))
 
+         ;; Error - stub implementation (print message and exit)
+         ;; For now, just ignore the message and return 0
+         ;; A full implementation would print to stderr and exit with error code
+         ((op= op "ERROR")
+          (list 'lit 0))  ; Stub: just return 0 for now
+
+         ;; Remove-if - filter out elements that match predicate
+         ((op= op "REMOVE-IF")
+          (if (and (consp (cdr expr)) (consp (cddr expr)))
+              (let ((pred (cadr expr))
+                    (lst (caddr expr)))
+                (compile-expr
+                 `(labels ((filter-iter (remaining acc)
+                             (if (null remaining)
+                                 (reverse acc)
+                                 (if (funcall ,pred (car remaining))
+                                     (filter-iter (cdr remaining) acc)
+                                     (filter-iter (cdr remaining) (cons (car remaining) acc))))))
+                    (filter-iter ,lst nil))
+                 env fenv))
+              (list 'lit 0)))
+
+         ;; Remove-if-not - filter out elements that don't match predicate
+         ((op= op "REMOVE-IF-NOT")
+          (if (and (consp (cdr expr)) (consp (cddr expr)))
+              (let ((pred (cadr expr))
+                    (lst (caddr expr)))
+                (compile-expr
+                 `(labels ((filter-iter (remaining acc)
+                             (if (null remaining)
+                                 (reverse acc)
+                                 (if (funcall ,pred (car remaining))
+                                     (filter-iter (cdr remaining) (cons (car remaining) acc))
+                                     (filter-iter (cdr remaining) acc)))))
+                    (filter-iter ,lst nil))
+                 env fenv))
+              (list 'lit 0)))
+
+         ;; Remove-duplicates - remove duplicate elements
+         ((op= op "REMOVE-DUPLICATES")
+          (if (consp (cdr expr))
+              (let ((lst (cadr expr)))
+                (compile-expr
+                 `(labels ((dedup-iter (remaining seen)
+                             (if (null remaining)
+                                 (reverse seen)
+                                 (let ((el (car remaining)))
+                                   (if (member el seen)
+                                       (dedup-iter (cdr remaining) seen)
+                                       (dedup-iter (cdr remaining) (cons el seen)))))))
+                    (dedup-iter ,lst nil))
+                 env fenv))
+              (list 'lit 0)))
+
         ;; Cons
          ((eq op 'cons)
          (if (and (consp (cdr expr)) (consp (cddr expr)))
