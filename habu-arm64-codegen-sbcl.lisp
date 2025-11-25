@@ -503,6 +503,16 @@ Cons/car/cdr are required; others should be provided in production."
          (arm64-sub-imm 1 20 (* offset 8))  ; x1 = x20 - (offset * 8)
          (arm64-ldr 0 1 0))))                ; Load from [x1 + 0]
 
+    ;; Set variable: store value to stack, return the value
+    ((has-tag? ir 'set-var)
+     (let* ((offset (cadr ir))
+            (val-ir (caddr ir))
+            (val-code (codegen-expr val-ir runtime-addrs fn-offsets current-offset temp-depth)))
+       ;; Compute value, store to variable slot, value stays in x0
+       (append val-code
+               (arm64-sub-imm 1 20 (* offset 8))  ; x1 = x20 - (offset * 8)
+               (arm64-str 0 1 0))))               ; Store x0 to [x1 + 0]
+
     ;; String literal: build vector of chars then make-string-from-vector
     ((has-tag? ir 'string-lit)
      (codegen-string-from-chars (cdr ir) temp-depth))
@@ -542,18 +552,23 @@ Cons/car/cdr are required; others should be provided in production."
     ((has-tag? ir 'add)
      (let* ((left-ir (cadr ir))
             (right-ir (caddr ir))
-            (temp-offset (temp-slot-offset temp-depth))
-            (left-code (codegen-expr left-ir runtime-addrs fn-offsets current-offset temp-depth))
-            (right-code (codegen-expr right-ir runtime-addrs fn-offsets
-                                      (if current-offset
-                                          (+ current-offset (count-instrs left-code) 1)
-                                          nil)
-                                      (+ temp-depth 1))))
-       (append left-code                   ; Compute left → x0
-               (arm64-str 0 31 temp-offset)         ; Save left to [sp+temp]
-               right-code                  ; Compute right → x0
-               (arm64-mov 1 0)             ; Move right to x1
-               (arm64-ldr 0 31 temp-offset)         ; Load left from [sp+temp] to x0
+            (x24-slot (temp-slot-offset temp-depth))
+            (left-slot (temp-slot-offset (+ temp-depth 1)))
+            (nested-depth (+ temp-depth 2))
+            (left-code (codegen-expr left-ir runtime-addrs fn-offsets
+                                     (if current-offset (+ current-offset 1) nil)
+                                     nested-depth))
+            (right-cursor (if current-offset
+                             (+ current-offset 1 (count-instrs left-code) 2)
+                             nil))
+            (right-code (codegen-expr right-ir runtime-addrs fn-offsets right-cursor nested-depth)))
+       (append (arm64-str 24 31 x24-slot)   ; Save x24 before left
+               left-code                     ; Compute left → x0
+               (arm64-str 0 31 left-slot)    ; Save left to temp
+               (arm64-ldr 24 31 x24-slot)    ; Restore x24 before right
+               right-code                    ; Compute right → x0
+               (arm64-mov 1 0)               ; Move right to x1
+               (arm64-ldr 0 31 left-slot)    ; Load left from temp to x0
                (arm64-add 0 0 1))))        ; x0 = x0 + x1
 
     ;; Subtraction: (sub left right)
@@ -561,18 +576,23 @@ Cons/car/cdr are required; others should be provided in production."
     ((has-tag? ir 'sub)
      (let* ((left-ir (cadr ir))
             (right-ir (caddr ir))
-            (temp-offset (temp-slot-offset temp-depth))
-            (left-code (codegen-expr left-ir runtime-addrs fn-offsets current-offset temp-depth))
-            (right-code (codegen-expr right-ir runtime-addrs fn-offsets
-                                      (if current-offset
-                                          (+ current-offset (count-instrs left-code) 1)
-                                          nil)
-                                      (+ temp-depth 1))))
-       (append left-code
-               (arm64-str 0 31 temp-offset)         ; Save left to [sp+temp]
+            (x24-slot (temp-slot-offset temp-depth))
+            (left-slot (temp-slot-offset (+ temp-depth 1)))
+            (nested-depth (+ temp-depth 2))
+            (left-code (codegen-expr left-ir runtime-addrs fn-offsets
+                                     (if current-offset (+ current-offset 1) nil)
+                                     nested-depth))
+            (right-cursor (if current-offset
+                             (+ current-offset 1 (count-instrs left-code) 2)
+                             nil))
+            (right-code (codegen-expr right-ir runtime-addrs fn-offsets right-cursor nested-depth)))
+       (append (arm64-str 24 31 x24-slot)   ; Save x24 before left
+               left-code
+               (arm64-str 0 31 left-slot)    ; Save left to temp
+               (arm64-ldr 24 31 x24-slot)    ; Restore x24 before right
                right-code
-               (arm64-mov 1 0)             ; Move right to x1
-               (arm64-ldr 0 31 temp-offset)         ; Load left from [sp+temp] to x0
+               (arm64-mov 1 0)               ; Move right to x1
+               (arm64-ldr 0 31 left-slot)    ; Load left from temp to x0
                (arm64-sub 0 0 1))))        ; x0 = x0 - x1
 
     ;; Multiplication: (mul left right) - must untag/retag
@@ -580,138 +600,173 @@ Cons/car/cdr are required; others should be provided in production."
     ((has-tag? ir 'mul)
      (let* ((left-ir (cadr ir))
             (right-ir (caddr ir))
-            (temp-offset (temp-slot-offset temp-depth))
-            (left-code (codegen-expr left-ir runtime-addrs fn-offsets current-offset temp-depth))
-            (right-code (codegen-expr right-ir runtime-addrs fn-offsets
-                                      (if current-offset
-                                          (+ current-offset (count-instrs left-code) 2)
-                                          nil)
-                                      (+ temp-depth 1))))
-       (append left-code
-               (arm64-lsr 0 0 4)           ; Untag left
-               (arm64-str 0 31 temp-offset)         ; Save untagged left to [sp+temp]
+            (x24-slot (temp-slot-offset temp-depth))
+            (left-slot (temp-slot-offset (+ temp-depth 1)))
+            (nested-depth (+ temp-depth 2))
+            (left-code (codegen-expr left-ir runtime-addrs fn-offsets
+                                     (if current-offset (+ current-offset 1) nil)
+                                     nested-depth))
+            (right-cursor (if current-offset
+                             (+ current-offset 1 (count-instrs left-code) 3)
+                             nil))
+            (right-code (codegen-expr right-ir runtime-addrs fn-offsets right-cursor nested-depth)))
+       (append (arm64-str 24 31 x24-slot)   ; Save x24 before left
+               left-code
+               (arm64-lsr 0 0 4)             ; Untag left
+               (arm64-str 0 31 left-slot)    ; Save untagged left to temp
+               (arm64-ldr 24 31 x24-slot)    ; Restore x24 before right
                right-code
-               (arm64-lsr 1 0 4)           ; Untag right into x1
-               (arm64-ldr 0 31 temp-offset)         ; Load left from [sp+temp] into x0
-               (arm64-mul 0 0 1)           ; Multiply x0 = x0 * x1
+               (arm64-lsr 1 0 4)             ; Untag right into x1
+               (arm64-ldr 0 31 left-slot)    ; Load left from temp into x0
+               (arm64-mul 0 0 1)             ; Multiply x0 = x0 * x1
                (arm64-lsl 0 0 4))))        ; Retag result
 
     ;; Comparison: (cmp-eq left right) - returns tagged 1 or 0
     ((has-tag? ir 'cmp-eq)
      (let* ((left-ir (cadr ir))
             (right-ir (caddr ir))
-            (temp-offset (temp-slot-offset temp-depth))
-            (left-code (codegen-expr left-ir runtime-addrs fn-offsets current-offset temp-depth))
-            (right-code (codegen-expr right-ir runtime-addrs fn-offsets
-                                      (if current-offset
-                                          (+ current-offset (count-instrs left-code) 1)
-                                          nil)
-                                      (+ temp-depth 1))))
-       (append left-code
-               (arm64-str 0 31 temp-offset)         ; Save left to [sp+temp]
+            (x24-slot (temp-slot-offset temp-depth))
+            (left-slot (temp-slot-offset (+ temp-depth 1)))
+            (nested-depth (+ temp-depth 2))
+            (left-code (codegen-expr left-ir runtime-addrs fn-offsets
+                                     (if current-offset (+ current-offset 1) nil)
+                                     nested-depth))
+            (right-cursor (if current-offset
+                             (+ current-offset 1 (count-instrs left-code) 2)
+                             nil))
+            (right-code (codegen-expr right-ir runtime-addrs fn-offsets right-cursor nested-depth)))
+       (append (arm64-str 24 31 x24-slot)
+               left-code
+               (arm64-str 0 31 left-slot)
+               (arm64-ldr 24 31 x24-slot)
                right-code
-               (arm64-mov 1 0)             ; Move right to x1
-               (arm64-ldr 0 31 temp-offset)         ; Load left from [sp+temp] to x0
-               (arm64-cmp 0 1)             ; Compare
-               (arm64-cset 0 0)            ; x0 = 1 if equal, else 0
+               (arm64-mov 1 0)
+               (arm64-ldr 0 31 left-slot)
+               (arm64-cmp 0 1)
+               (arm64-cset 0 0)
                (arm64-lsl 0 0 4))))        ; Tag result
 
     ;; Less than: (cmp-lt left right)
     ((has-tag? ir 'cmp-lt)
      (let* ((left-ir (cadr ir))
             (right-ir (caddr ir))
-            (temp-offset (temp-slot-offset temp-depth))
-            (left-code (codegen-expr left-ir runtime-addrs fn-offsets current-offset temp-depth))
-            (right-code (codegen-expr right-ir runtime-addrs fn-offsets
-                                      (if current-offset
-                                          (+ current-offset (count-instrs left-code) 1)
-                                          nil)
-                                      (+ temp-depth 1))))
-       (append left-code
-               (arm64-str 0 31 temp-offset)         ; Save left to [sp+temp]
+            (x24-slot (temp-slot-offset temp-depth))
+            (left-slot (temp-slot-offset (+ temp-depth 1)))
+            (nested-depth (+ temp-depth 2))
+            (left-code (codegen-expr left-ir runtime-addrs fn-offsets
+                                     (if current-offset (+ current-offset 1) nil)
+                                     nested-depth))
+            (right-cursor (if current-offset
+                             (+ current-offset 1 (count-instrs left-code) 2)
+                             nil))
+            (right-code (codegen-expr right-ir runtime-addrs fn-offsets right-cursor nested-depth)))
+       (append (arm64-str 24 31 x24-slot)
+               left-code
+               (arm64-str 0 31 left-slot)
+               (arm64-ldr 24 31 x24-slot)
                right-code
-               (arm64-mov 1 0)             ; Move right to x1
-               (arm64-ldr 0 31 temp-offset)         ; Load left from [sp+temp] to x0
-               (arm64-cmp 0 1)             ; Compare
-               (arm64-cset 0 11)           ; x0 = 1 if less than, else 0
+               (arm64-mov 1 0)
+               (arm64-ldr 0 31 left-slot)
+               (arm64-cmp 0 1)
+               (arm64-cset 0 11)
                (arm64-lsl 0 0 4))))        ; Tag result
 
     ;; Greater than: (cmp-gt left right)
     ((has-tag? ir 'cmp-gt)
      (let* ((left-ir (cadr ir))
             (right-ir (caddr ir))
-            (temp-offset (temp-slot-offset temp-depth))
-            (left-code (codegen-expr left-ir runtime-addrs fn-offsets current-offset temp-depth))
-            (right-code (codegen-expr right-ir runtime-addrs fn-offsets
-                                      (if current-offset
-                                          (+ current-offset (count-instrs left-code) 1)
-                                          nil)
-                                      (+ temp-depth 1))))
-       (append left-code
-               (arm64-str 0 31 temp-offset)         ; Save left to [sp+temp]
+            (x24-slot (temp-slot-offset temp-depth))
+            (left-slot (temp-slot-offset (+ temp-depth 1)))
+            (nested-depth (+ temp-depth 2))
+            (left-code (codegen-expr left-ir runtime-addrs fn-offsets
+                                     (if current-offset (+ current-offset 1) nil)
+                                     nested-depth))
+            (right-cursor (if current-offset
+                             (+ current-offset 1 (count-instrs left-code) 2)
+                             nil))
+            (right-code (codegen-expr right-ir runtime-addrs fn-offsets right-cursor nested-depth)))
+       (append (arm64-str 24 31 x24-slot)
+               left-code
+               (arm64-str 0 31 left-slot)
+               (arm64-ldr 24 31 x24-slot)
                right-code
-               (arm64-mov 1 0)             ; Move right to x1
-               (arm64-ldr 0 31 temp-offset)         ; Load left from [sp+temp] to x0
-               (arm64-cmp 0 1)             ; Compare
-               (arm64-cset 0 12)           ; x0 = 1 if greater than, else 0
+               (arm64-mov 1 0)
+               (arm64-ldr 0 31 left-slot)
+               (arm64-cmp 0 1)
+               (arm64-cset 0 12)
                (arm64-lsl 0 0 4))))        ; Tag result
 
     ;; Less than or equal: (cmp-le left right)
     ((has-tag? ir 'cmp-le)
      (let* ((left-ir (cadr ir))
             (right-ir (caddr ir))
-            (temp-offset (temp-slot-offset temp-depth))
-            (left-code (codegen-expr left-ir runtime-addrs fn-offsets current-offset temp-depth))
-            (right-code (codegen-expr right-ir runtime-addrs fn-offsets
-                                      (if current-offset
-                                          (+ current-offset (count-instrs left-code) 1)
-                                          nil)
-                                      (+ temp-depth 1))))
-       (append left-code
-               (arm64-str 0 31 temp-offset)         ; Save left to [sp+temp]
+            (x24-slot (temp-slot-offset temp-depth))
+            (left-slot (temp-slot-offset (+ temp-depth 1)))
+            (nested-depth (+ temp-depth 2))
+            (left-code (codegen-expr left-ir runtime-addrs fn-offsets
+                                     (if current-offset (+ current-offset 1) nil)
+                                     nested-depth))
+            (right-cursor (if current-offset
+                             (+ current-offset 1 (count-instrs left-code) 2)
+                             nil))
+            (right-code (codegen-expr right-ir runtime-addrs fn-offsets right-cursor nested-depth)))
+       (append (arm64-str 24 31 x24-slot)
+               left-code
+               (arm64-str 0 31 left-slot)
+               (arm64-ldr 24 31 x24-slot)
                right-code
-               (arm64-mov 1 0)             ; Move right to x1
-               (arm64-ldr 0 31 temp-offset)         ; Load left from [sp+temp] to x0
-               (arm64-cmp 0 1)             ; Compare
-               (arm64-cset 0 13)           ; x0 = 1 if less or equal, else 0
+               (arm64-mov 1 0)
+               (arm64-ldr 0 31 left-slot)
+               (arm64-cmp 0 1)
+               (arm64-cset 0 13)
                (arm64-lsl 0 0 4))))        ; Tag result
 
     ;; Greater than or equal: (cmp-ge left right)
     ((has-tag? ir 'cmp-ge)
      (let* ((left-ir (cadr ir))
             (right-ir (caddr ir))
-            (temp-offset (temp-slot-offset temp-depth))
-            (left-code (codegen-expr left-ir runtime-addrs fn-offsets current-offset temp-depth))
-            (right-code (codegen-expr right-ir runtime-addrs fn-offsets
-                                      (if current-offset
-                                          (+ current-offset (count-instrs left-code) 1)
-                                          nil)
-                                      (+ temp-depth 1))))
-       (append left-code
-               (arm64-str 0 31 temp-offset)         ; Save left to [sp+temp]
+            (x24-slot (temp-slot-offset temp-depth))
+            (left-slot (temp-slot-offset (+ temp-depth 1)))
+            (nested-depth (+ temp-depth 2))
+            (left-code (codegen-expr left-ir runtime-addrs fn-offsets
+                                     (if current-offset (+ current-offset 1) nil)
+                                     nested-depth))
+            (right-cursor (if current-offset
+                             (+ current-offset 1 (count-instrs left-code) 2)
+                             nil))
+            (right-code (codegen-expr right-ir runtime-addrs fn-offsets right-cursor nested-depth)))
+       (append (arm64-str 24 31 x24-slot)
+               left-code
+               (arm64-str 0 31 left-slot)
+               (arm64-ldr 24 31 x24-slot)
                right-code
-               (arm64-mov 1 0)             ; Move right to x1
-               (arm64-ldr 0 31 temp-offset)         ; Load left from [sp+temp] to x0
-               (arm64-cmp 0 1)             ; Compare
-               (arm64-cset 0 10)           ; x0 = 1 if greater or equal, else 0
+               (arm64-mov 1 0)
+               (arm64-ldr 0 31 left-slot)
+               (arm64-cmp 0 1)
+               (arm64-cset 0 10)
                (arm64-lsl 0 0 4))))        ; Tag result
 
     ;; Division: (div left right)
     ((has-tag? ir 'div)
      (let* ((left-ir (cadr ir))
             (right-ir (caddr ir))
-            (temp-offset (temp-slot-offset temp-depth))
-            (left-code (codegen-expr left-ir runtime-addrs fn-offsets current-offset temp-depth))
-            (right-code (codegen-expr right-ir runtime-addrs fn-offsets
-                                      (if current-offset
-                                          (+ current-offset (count-instrs left-code) 1)
-                                          nil)
-                                      (+ temp-depth 1))))
-       (append left-code
-               (arm64-str 0 31 temp-offset)
+            (x24-slot (temp-slot-offset temp-depth))
+            (left-slot (temp-slot-offset (+ temp-depth 1)))
+            (nested-depth (+ temp-depth 2))
+            (left-code (codegen-expr left-ir runtime-addrs fn-offsets
+                                     (if current-offset (+ current-offset 1) nil)
+                                     nested-depth))
+            (right-cursor (if current-offset
+                             (+ current-offset 1 (count-instrs left-code) 2)
+                             nil))
+            (right-code (codegen-expr right-ir runtime-addrs fn-offsets right-cursor nested-depth)))
+       (append (arm64-str 24 31 x24-slot)
+               left-code
+               (arm64-str 0 31 left-slot)
+               (arm64-ldr 24 31 x24-slot)
                right-code
                (arm64-lsr 1 0 4)             ; untag right
-               (arm64-ldr 0 31 temp-offset)
+               (arm64-ldr 0 31 left-slot)
                (arm64-lsr 0 0 4)             ; untag left
                (arm64-sdiv 0 0 1)            ; x0 = left/right
                (arm64-lsl 0 0 4))))          ; retag
@@ -720,18 +775,23 @@ Cons/car/cdr are required; others should be provided in production."
     ((has-tag? ir 'mod)
      (let* ((left-ir (cadr ir))
             (right-ir (caddr ir))
-            (temp-offset (temp-slot-offset temp-depth))
-            (left-code (codegen-expr left-ir runtime-addrs fn-offsets current-offset temp-depth))
-            (right-code (codegen-expr right-ir runtime-addrs fn-offsets
-                                      (if current-offset
-                                          (+ current-offset (count-instrs left-code) 1)
-                                          nil)
-                                      (+ temp-depth 1))))
-       (append left-code
-               (arm64-str 0 31 temp-offset)
+            (x24-slot (temp-slot-offset temp-depth))
+            (left-slot (temp-slot-offset (+ temp-depth 1)))
+            (nested-depth (+ temp-depth 2))
+            (left-code (codegen-expr left-ir runtime-addrs fn-offsets
+                                     (if current-offset (+ current-offset 1) nil)
+                                     nested-depth))
+            (right-cursor (if current-offset
+                             (+ current-offset 1 (count-instrs left-code) 2)
+                             nil))
+            (right-code (codegen-expr right-ir runtime-addrs fn-offsets right-cursor nested-depth)))
+       (append (arm64-str 24 31 x24-slot)
+               left-code
+               (arm64-str 0 31 left-slot)
+               (arm64-ldr 24 31 x24-slot)
                right-code
                (arm64-lsr 1 0 4)             ; untag right
-               (arm64-ldr 0 31 temp-offset)
+               (arm64-ldr 0 31 left-slot)
                (arm64-lsr 0 0 4)             ; untag left
                (arm64-sdiv 2 0 1)            ; x2 = quotient
                (arm64-mul 2 2 1)             ; x2 = quotient * right
@@ -742,18 +802,23 @@ Cons/car/cdr are required; others should be provided in production."
     ((has-tag? ir 'rem)
      (let* ((left-ir (cadr ir))
             (right-ir (caddr ir))
-            (temp-offset (temp-slot-offset temp-depth))
-            (left-code (codegen-expr left-ir runtime-addrs fn-offsets current-offset temp-depth))
-            (right-code (codegen-expr right-ir runtime-addrs fn-offsets
-                                      (if current-offset
-                                          (+ current-offset (count-instrs left-code) 1)
-                                          nil)
-                                      (+ temp-depth 1))))
-       (append left-code
-               (arm64-str 0 31 temp-offset)
+            (x24-slot (temp-slot-offset temp-depth))
+            (left-slot (temp-slot-offset (+ temp-depth 1)))
+            (nested-depth (+ temp-depth 2))
+            (left-code (codegen-expr left-ir runtime-addrs fn-offsets
+                                     (if current-offset (+ current-offset 1) nil)
+                                     nested-depth))
+            (right-cursor (if current-offset
+                             (+ current-offset 1 (count-instrs left-code) 2)
+                             nil))
+            (right-code (codegen-expr right-ir runtime-addrs fn-offsets right-cursor nested-depth)))
+       (append (arm64-str 24 31 x24-slot)
+               left-code
+               (arm64-str 0 31 left-slot)
+               (arm64-ldr 24 31 x24-slot)
                right-code
                (arm64-lsr 1 0 4)             ; untag right
-               (arm64-ldr 0 31 temp-offset)
+               (arm64-ldr 0 31 left-slot)
                (arm64-lsr 0 0 4)             ; untag left
                (arm64-sdiv 2 0 1)            ; x2 = quotient
                (arm64-mul 2 2 1)             ; x2 = quotient * right
@@ -764,20 +829,25 @@ Cons/car/cdr are required; others should be provided in production."
     ((has-tag? ir 'cmp-ne)
      (let* ((left-ir (cadr ir))
             (right-ir (caddr ir))
-            (temp-offset (temp-slot-offset temp-depth))
-            (left-code (codegen-expr left-ir runtime-addrs fn-offsets current-offset temp-depth))
-            (right-code (codegen-expr right-ir runtime-addrs fn-offsets
-                                      (if current-offset
-                                          (+ current-offset (count-instrs left-code) 1)
-                                          nil)
-                                      (+ temp-depth 1))))
-       (append left-code
-               (arm64-str 0 31 temp-offset)         ; Save left to [sp+temp]
+            (x24-slot (temp-slot-offset temp-depth))
+            (left-slot (temp-slot-offset (+ temp-depth 1)))
+            (nested-depth (+ temp-depth 2))
+            (left-code (codegen-expr left-ir runtime-addrs fn-offsets
+                                     (if current-offset (+ current-offset 1) nil)
+                                     nested-depth))
+            (right-cursor (if current-offset
+                             (+ current-offset 1 (count-instrs left-code) 2)
+                             nil))
+            (right-code (codegen-expr right-ir runtime-addrs fn-offsets right-cursor nested-depth)))
+       (append (arm64-str 24 31 x24-slot)
+               left-code
+               (arm64-str 0 31 left-slot)
+               (arm64-ldr 24 31 x24-slot)
                right-code
-               (arm64-mov 1 0)             ; Move right to x1
-               (arm64-ldr 0 31 temp-offset)         ; Load left from [sp+temp] to x0
-               (arm64-cmp 0 1)             ; Compare
-               (arm64-cset 0 1)            ; x0 = 1 if not equal, else 0
+               (arm64-mov 1 0)
+               (arm64-ldr 0 31 left-slot)
+               (arm64-cmp 0 1)
+               (arm64-cset 0 1)
                (arm64-lsl 0 0 4))))        ; Tag result
 
     ;; Conditional: (if-expr test then else)
@@ -813,22 +883,30 @@ Cons/car/cdr are required; others should be provided in production."
 
     ;; Cons: (cons-call left right) - call runtime cons via table
     ;;   Runtime table pointer is in x19 (saved by prologue)
+    ;;   Save/restore x24 around arg evaluation in case args contain funcalls
     ((has-tag? ir 'cons-call)
      (let* ((left-ir (cadr ir))
             (right-ir (caddr ir))
-            (left-code (codegen-expr left-ir runtime-addrs fn-offsets current-offset temp-depth))
-            (right-code (codegen-expr right-ir runtime-addrs fn-offsets
-                                      (if current-offset
-                                          (+ current-offset (count-instrs left-code) 2)
-                                          nil)
-                                      temp-depth)))
+            (x24-slot (temp-slot-offset temp-depth))
+            (left-slot (temp-slot-offset (+ temp-depth 1)))
+            (nested-depth (+ temp-depth 2))
+            ;; cursor: save x24 + left-code + store left + restore x24
+            (left-code (codegen-expr left-ir runtime-addrs fn-offsets
+                                     (if current-offset (+ current-offset 1) nil)
+                                     nested-depth))
+            (left-cursor (if current-offset
+                            (+ current-offset 1 (count-instrs left-code) 2)
+                            nil))
+            (right-code (codegen-expr right-ir runtime-addrs fn-offsets left-cursor nested-depth)))
        ;; Call cons(left, right) using runtime table[0]
-       (append left-code                    ; Compute left → x0
-               (arm64-push 0)               ; Push left onto stack
-               right-code                   ; Compute right → x0
-               (arm64-mov 1 0)              ; Move right to x1
-               (arm64-pop 0)               ; Pop left from stack
-               (arm64-ldr 9 19 0)           ; Load cons from table: LDR x9, [x19, #0]
+       (append (arm64-str 24 31 x24-slot)   ; Save x24 before any arg evaluation
+               left-code                     ; Compute left → x0
+               (arm64-str 0 31 left-slot)    ; Save left to temp slot
+               (arm64-ldr 24 31 x24-slot)    ; Restore x24 before right arg
+               right-code                    ; Compute right → x0
+               (arm64-mov 1 0)               ; Move right to x1
+               (arm64-ldr 0 31 left-slot)    ; Load left from temp slot
+               (arm64-ldr 9 19 0)            ; Load cons from table: LDR x9, [x19, #0]
                (arm64-blr 9))))             ; Call cons(x0, x1) → result in x0
 
     ;; Vector ref: (vector-ref vec idx)
@@ -863,6 +941,42 @@ Cons/car/cdr are required; others should be provided in production."
                (arm64-ldr 9 19 16)          ; Load cdr from table: LDR x9, [x19, #16]
                (arm64-blr 9))))             ; Call cdr(x0) → result in x0
 
+    ;; Set-car: (setcar-call cons-ir val-ir) - call runtime set_car, return value
+    ((has-tag? ir 'setcar-call)
+     (let* ((cons-ir (cadr ir))
+            (val-ir (caddr ir))
+            (cons-slot (temp-slot-offset temp-depth))
+            (val-slot (temp-slot-offset (1+ temp-depth)))
+            (cons-code (codegen-expr cons-ir runtime-addrs fn-offsets current-offset temp-depth))
+            (val-code (codegen-expr val-ir runtime-addrs fn-offsets current-offset (+ temp-depth 1))))
+       (append cons-code
+               (arm64-str 0 31 cons-slot)   ; Save cons to temp slot
+               val-code
+               (arm64-str 0 31 val-slot)    ; Save value to temp slot
+               (arm64-ldr 0 31 cons-slot)   ; x0 = cons (arg 1)
+               (arm64-ldr 1 31 val-slot)    ; x1 = value (arg 2)
+               (arm64-ldr 9 19 112)         ; Load set_car from table (slot 14)
+               (arm64-blr 9)                ; Call set_car(cons, value) -> void
+               (arm64-ldr 0 31 val-slot)))) ; Return the value
+
+    ;; Set-cdr: (setcdr-call cons-ir val-ir) - call runtime set_cdr, return value
+    ((has-tag? ir 'setcdr-call)
+     (let* ((cons-ir (cadr ir))
+            (val-ir (caddr ir))
+            (cons-slot (temp-slot-offset temp-depth))
+            (val-slot (temp-slot-offset (1+ temp-depth)))
+            (cons-code (codegen-expr cons-ir runtime-addrs fn-offsets current-offset temp-depth))
+            (val-code (codegen-expr val-ir runtime-addrs fn-offsets current-offset (+ temp-depth 1))))
+       (append cons-code
+               (arm64-str 0 31 cons-slot)   ; Save cons to temp slot
+               val-code
+               (arm64-str 0 31 val-slot)    ; Save value to temp slot
+               (arm64-ldr 0 31 cons-slot)   ; x0 = cons (arg 1)
+               (arm64-ldr 1 31 val-slot)    ; x1 = value (arg 2)
+               (arm64-ldr 9 19 120)         ; Load set_cdr from table (slot 15)
+               (arm64-blr 9)                ; Call set_cdr(cons, value) -> void
+               (arm64-ldr 0 31 val-slot)))) ; Return the value
+
     ;; Symbol-name
     ((has-tag? ir 'symbol-name)
      (let* ((arg-ir (cadr ir))
@@ -886,37 +1000,53 @@ Cons/car/cdr are required; others should be provided in production."
             (body-ir (caddr ir))
             (num-bindings (cadddr ir))
             (env-offsets (nth 4 ir))  ; Get environment offsets for this let's bindings
-            ;; Generate code for each binding value
+            (x24-slot (temp-slot-offset temp-depth))
+            (nested-depth (+ temp-depth 1))
+            ;; Generate code for each binding value with nested temp-depth
             (bind-codes (mapcar (lambda (val-ir)
-                                  (codegen-expr val-ir runtime-addrs fn-offsets current-offset temp-depth))
+                                  (codegen-expr val-ir runtime-addrs fn-offsets current-offset nested-depth))
                                 bind-values)))
        ;; Store values at their designated offsets without moving x20
+       ;; Must preserve x24 across binding evaluations since funcalls may clobber it
        (append
+         ;; Save x24 at start
+         (arm64-str 24 31 x24-slot)
          ;; Store each binding value at its environment offset
+         ;; Restore x24 before each binding in case previous one clobbered it
          (apply #'append
                 (mapcar (lambda (bind-code offset)
-                          (append bind-code
+                          (append (arm64-ldr 24 31 x24-slot)  ; Restore x24 before each binding
+                                  bind-code
                                   ;; Store at negative offset from x20 (stack grows down)
                                   ;; Use x1 as temp to compute address
                                   (arm64-sub-imm 1 20 (* offset 8))  ; x1 = x20 - (offset * 8)
                                   (arm64-str 0 1 0)))                ; Store at [x1 + 0]
                         bind-codes
-                                env-offsets))
+                        env-offsets))
 
+         ;; Restore x24 before body
+         (arm64-ldr 24 31 x24-slot)
          ;; Execute body with bindings available
-         (codegen-expr body-ir runtime-addrs fn-offsets current-offset temp-depth))))
+         (codegen-expr body-ir runtime-addrs fn-offsets current-offset nested-depth))))
 
     ;; Progn: evaluate each subexpression in order, return last result
+    ;; Must preserve x24 across forms since funcalls may clobber it
     ((has-tag? ir 'progn)
-     (let ((exprs (cdr ir))
-           (cursor current-offset)
-           (accum '()))
-       (dolist (sub exprs)
-         (let* ((chunk (codegen-expr sub runtime-addrs fn-offsets cursor temp-depth))
-                (instrs (count-instrs chunk)))
-           (setf accum (append accum chunk))
-           (when cursor
-             (setf cursor (+ cursor instrs)))))
+     (let* ((exprs (cdr ir))
+            (x24-slot (temp-slot-offset temp-depth))
+            (nested-depth (+ temp-depth 1))
+            (cursor (if current-offset (+ current-offset 1) nil))  ; +1 for save
+            (accum (arm64-str 24 31 x24-slot)))  ; save x24 at start
+       (loop for sub in exprs
+             for idx from 0 do
+               (let* ((restore (if (> idx 0)
+                                   (arm64-ldr 24 31 x24-slot)  ; restore before each subsequent form
+                                   nil))
+                      (chunk (codegen-expr sub runtime-addrs fn-offsets cursor nested-depth))
+                      (instrs (+ (count-instrs restore) (count-instrs chunk))))
+                 (setf accum (append accum restore chunk))
+                 (when cursor
+                   (setf cursor (+ cursor instrs)))))
        accum))
 
     ;; Lambda reference: build closure for compiled lambda
@@ -969,74 +1099,93 @@ Cons/car/cdr are required; others should be provided in production."
                (arm64-blr 11))))))         ; x0 = closure
 
     ;; Call closure: evaluate fn-expr to closure, load code pointer, call with args
+    ;; Args are stored to temp slots (not arg-spill area) to avoid clobbering by nested funcalls.
+    ;; IMPORTANT: Args need CALLER's x24 for var-refs, not callee's env.
     ((has-tag? ir 'call-closure)
      (let* ((fn-ir (cadr ir))
             (arg-irs (caddr ir))
-            (closure-slot (temp-slot-offset temp-depth))
-            (code-slot (temp-slot-offset (+ temp-depth 1)))
             (num-args (length arg-irs))
+            ;; Stack slot layout (all relative to temp-depth):
+            ;;   0: caller-x24  1: closure  2: code  3: callee-env
+            ;;   4..(4+num-args-1): args
+            ;;   (4+num-args)...: available for nested expressions
+            (caller-x24-slot (temp-slot-offset temp-depth))
+            (closure-slot (temp-slot-offset (+ temp-depth 1)))
+            (code-slot (temp-slot-offset (+ temp-depth 2)))
+            (callee-env-slot (temp-slot-offset (+ temp-depth 3)))
+            (arg-base (+ temp-depth 4))  ; args start at slot 4
+            (nested-depth (+ arg-base num-args))  ; nested exprs use slots after args
             (extra-count (max 0 (- num-args 5)))
-            (max-capacity (1- *max-arg-spill-count*))
-            (fn-code (codegen-expr fn-ir runtime-addrs fn-offsets current-offset temp-depth))
+            ;; fn-code uses nested-depth since slots 0-3 are reserved for our use
+            (fn-code (codegen-expr fn-ir runtime-addrs fn-offsets
+                                   (if current-offset (+ current-offset 1) nil)
+                                   nested-depth))
             (setup (append
+                     (arm64-str 24 31 caller-x24-slot)  ; save caller's x24 FIRST
                      fn-code                           ; closure in x0
                      (arm64-str 0 31 closure-slot)     ; save closure value
                      ;; Get code pointer via runtime helper
                      (arm64-ldr 9 19 32)               ; x9 = closure_code
                      (arm64-blr 9)                     ; x0 = code pointer
                      (arm64-str 0 31 code-slot)        ; save code pointer
-                     ;; Load closure env into x24
+                     ;; Get closure env and save to stack (DON'T set x24 yet!)
                      (arm64-ldr 0 31 closure-slot)     ; x0 = closure value
                      (arm64-ldr 9 19 40)               ; x9 = closure_env
                      (arm64-blr 9)                     ; x0 = env pointer
-                     (arm64-mov 24 0)))                ; x24 = env pointer (callee-saved)
-            (stage-code (append setup (arm64-add-imm 27 31 0)))
+                     (arm64-str 0 31 callee-env-slot))) ; save callee's env for later
+            (stage-code setup)
             (cursor (if current-offset
                         (+ current-offset (count-instrs stage-code))
                         nil)))
-       (when (> num-args max-capacity)
-         (error "call-closure has ~A args; exceeds spill capacity ~A" num-args max-capacity))
-       ;; Stage args using stable base x27 (sp at entry)
+       ;; Stage args to temp slots (not arg-spill area!)
+       ;; Each arg is stored to temp-slot-offset(arg-base + idx)
+       ;; Before each arg, restore caller's x24 so var-refs work correctly
        (loop for arg-ir in arg-irs
              for idx from 0 do
-               (let* ((arg-code (codegen-expr arg-ir runtime-addrs fn-offsets cursor (+ temp-depth 2)))
-                      (store (arm64-str 0 27 (arg-spill-offset idx)))
-                      (block (append arg-code store))
+               (let* ((arg-slot (temp-slot-offset (+ arg-base idx)))
+                      (restore-x24 (arm64-ldr 24 31 caller-x24-slot))  ; restore caller's x24
+                      (arg-code (codegen-expr arg-ir runtime-addrs fn-offsets cursor nested-depth))
+                      (store (arm64-str 0 31 arg-slot))  ; store to temp slot, not arg-spill
+                      (block (append restore-x24 arg-code store))
                       (block-len (count-instrs block)))
                  (setf stage-code (append stage-code block))
                  (when cursor (incf cursor block-len))))
-       (let* ((load-code
+       (let* (;; Load args from temp slots into registers x0-x4
+              (load-code
                 (cond
                   ((= num-args 0) nil)
                   ((= num-args 1)
-                   (arm64-ldr 0 27 (arg-spill-offset 0)))
+                   (arm64-ldr 0 31 (temp-slot-offset (+ arg-base 0))))
                   ((= num-args 2)
                    (append
-                     (arm64-ldr 0 27 (arg-spill-offset 0))
-                     (arm64-ldr 1 27 (arg-spill-offset 1))))
+                     (arm64-ldr 0 31 (temp-slot-offset (+ arg-base 0)))
+                     (arm64-ldr 1 31 (temp-slot-offset (+ arg-base 1)))))
                   ((= num-args 3)
                    (append
-                     (arm64-ldr 0 27 (arg-spill-offset 0))
-                     (arm64-ldr 1 27 (arg-spill-offset 1))
-                     (arm64-ldr 2 27 (arg-spill-offset 2))))
+                     (arm64-ldr 0 31 (temp-slot-offset (+ arg-base 0)))
+                     (arm64-ldr 1 31 (temp-slot-offset (+ arg-base 1)))
+                     (arm64-ldr 2 31 (temp-slot-offset (+ arg-base 2)))))
                   ((= num-args 4)
                    (append
-                     (arm64-ldr 0 27 (arg-spill-offset 0))
-                     (arm64-ldr 1 27 (arg-spill-offset 1))
-                     (arm64-ldr 2 27 (arg-spill-offset 2))
-                     (arm64-ldr 3 27 (arg-spill-offset 3))))
+                     (arm64-ldr 0 31 (temp-slot-offset (+ arg-base 0)))
+                     (arm64-ldr 1 31 (temp-slot-offset (+ arg-base 1)))
+                     (arm64-ldr 2 31 (temp-slot-offset (+ arg-base 2)))
+                     (arm64-ldr 3 31 (temp-slot-offset (+ arg-base 3)))))
                   (t
                    (append
-                     (arm64-ldr 0 27 (arg-spill-offset 0))
-                     (arm64-ldr 1 27 (arg-spill-offset 1))
-                     (arm64-ldr 2 27 (arg-spill-offset 2))
-                     (arm64-ldr 3 27 (arg-spill-offset 3))
-                     (arm64-ldr 4 27 (arg-spill-offset 4))))))
+                     (arm64-ldr 0 31 (temp-slot-offset (+ arg-base 0)))
+                     (arm64-ldr 1 31 (temp-slot-offset (+ arg-base 1)))
+                     (arm64-ldr 2 31 (temp-slot-offset (+ arg-base 2)))
+                     (arm64-ldr 3 31 (temp-slot-offset (+ arg-base 3)))
+                     (arm64-ldr 4 31 (temp-slot-offset (+ arg-base 4)))))))
+              ;; For >5 args, point x25 to the extra args in temp slots
               (set-extra-ptr (if (> extra-count 0)
-                                 (arm64-add-imm 25 27 (arg-spill-offset 5))
+                                 (arm64-sub-imm 25 31 (- (temp-slot-offset (+ arg-base 5))))
                                  (arm64-movz 25 0)))
               (arg-count-code (arm64-movz 23 num-args))
-              (pre-call (append stage-code load-code set-extra-ptr arg-count-code (arm64-ldr 9 31 code-slot))))
+              ;; Set x24 to callee's env for the actual call
+              (restore-env (arm64-ldr 24 31 callee-env-slot))
+              (pre-call (append stage-code load-code set-extra-ptr arg-count-code restore-env (arm64-ldr 9 31 code-slot))))
          (append
            pre-call
            (arm64-blr 9)))))                  ; call
@@ -1049,17 +1198,25 @@ Cons/car/cdr are required; others should be provided in production."
             (extra-count (max 0 (- num-args 5)))
             (max-capacity (1- *max-arg-spill-count*))
             (fn-entry (assoc fn-name fn-offsets))
-            (fn-offset (if fn-entry (cadr fn-entry) 0)))
+            (fn-offset (if fn-entry (cadr fn-entry) 0))
+            ;; Save x24 to temp slot so we can restore it before each arg evaluation
+            ;; This handles the case where an arg contains a funcall that clobbers x24
+            (x24-slot (temp-slot-offset temp-depth))
+            (nested-depth (+ temp-depth 1)))
        (when (> num-args max-capacity)
          (error "call-fn ~A has ~A args; exceeds spill capacity ~A" fn-name num-args max-capacity))
-       (let* ((cursor (if current-offset (+ current-offset 1) nil))
-              (stage-code (arm64-add-imm 27 31 0)))
+       (let* ((cursor (if current-offset (+ current-offset 3) nil))  ; +3 for save x24 + x27 setup + first restore
+              (stage-code (append
+                            (arm64-str 24 31 x24-slot)   ; save caller's x24
+                            (arm64-add-imm 27 31 0))))   ; x27 = sp for stable base
          ;; Stage all arguments in order into the spill area using x27 as a stable base
+         ;; Before each arg, restore x24 in case previous arg clobbered it
          (loop for arg-ir in arg-irs
                for idx from 0 do
-                 (let* ((arg-code (codegen-expr arg-ir runtime-addrs fn-offsets cursor temp-depth))
+                 (let* ((restore-x24 (arm64-ldr 24 31 x24-slot))  ; restore x24 before each arg
+                        (arg-code (codegen-expr arg-ir runtime-addrs fn-offsets cursor nested-depth))
                         (store (arm64-str 0 27 (arg-spill-offset idx)))
-                        (block (append arg-code store))
+                        (block (append restore-x24 arg-code store))
                         (block-len (count-instrs block)))
                    (setf stage-code (append stage-code block))
                    (when cursor (incf cursor block-len))))
@@ -1298,6 +1455,180 @@ Cons/car/cdr are required; others should be provided in production."
                      ;; Compile body in new environment
                      (body-ir (compile-expr body new-env fenv)))
                 (list 'let-expr bind-values body-ir (length bindings) env-offsets))
+              (list 'lit 0)))
+
+         ;; Let* binding (sequential)
+         ((eq op 'let*)
+          (if (and (consp (cdr expr)) (consp (cddr expr)))
+              (let ((bindings (cadr expr))
+                    (body (caddr expr)))
+                (if (null bindings)
+                    (compile-expr body env fenv)
+                    ;; Transform to nested lets
+                    (compile-expr
+                     `(let (,(car bindings))
+                        (let* ,(cdr bindings) ,body))
+                     env fenv)))
+              (list 'lit 0)))
+
+         ;; Setq (variable mutation)
+         ((eq op 'setq)
+          (if (and (consp (cdr expr)) (consp (cddr expr)))
+              (let* ((var (cadr expr))
+                     (val-expr (caddr expr))
+                     (offset (env-lookup var env)))
+                (if offset
+                    (list 'set-var offset (compile-expr val-expr env fenv))
+                    (list 'lit 0))) ; unknown var
+              (list 'lit 0)))
+
+         ;; Setf (generalized assignment)
+         ((eq op 'setf)
+          (if (and (consp (cdr expr)) (consp (cddr expr)))
+              (let ((place (cadr expr))
+                    (val-expr (caddr expr)))
+                (cond
+                  ;; Simple variable: same as setq
+                  ((symbolp place)
+                   (let ((offset (env-lookup place env)))
+                     (if offset
+                         (list 'set-var offset (compile-expr val-expr env fenv))
+                         (list 'lit 0))))
+                  ;; (setf (car x) val) -> (set-car x val)
+                  ((and (consp place) (eq (car place) 'car) (consp (cdr place)))
+                   (list 'setcar-call
+                         (compile-expr (cadr place) env fenv)
+                         (compile-expr val-expr env fenv)))
+                  ;; (setf (cdr x) val) -> (set-cdr x val)
+                  ((and (consp place) (eq (car place) 'cdr) (consp (cdr place)))
+                   (list 'setcdr-call
+                         (compile-expr (cadr place) env fenv)
+                         (compile-expr val-expr env fenv)))
+                  ;; Other places not yet supported
+                  (t (list 'lit 0))))
+              (list 'lit 0)))
+
+         ;; Labels (local recursive functions)
+         ;; Transform using cons cells as mutable boxes for proper closure semantics:
+         ;; (labels ((f (x) body)) expr) ->
+         ;;   (let* ((f-box (cons nil nil)))
+         ;;     (progn (setf (car f-box) (lambda (x) body'))
+         ;;            expr'))
+         ;; where body' and expr' transform (f args...) to (funcall (car f-box) args...)
+         ((eq op 'labels)
+          (if (and (consp (cdr expr)) (consp (cddr expr)))
+              (let* ((fn-defs (cadr expr))
+                     (body (caddr expr))
+                     (fn-names (mapcar #'car fn-defs))
+                     ;; Create box names for each function
+                     (box-names (mapcar (lambda (name)
+                                          (intern (concatenate 'string (symbol-name name) "-BOX")))
+                                        fn-names))
+                     (name-to-box (mapcar #'cons fn-names box-names))
+                     ;; Transform calls to local functions to use (car box)
+                     (transform-calls (lambda (e)
+                                        (labels ((xform (x)
+                                                   (cond
+                                                     ((not (consp x)) x)
+                                                     ;; (f args...) -> (funcall (car f-box) args...)
+                                                     ((and (symbolp (car x))
+                                                           (assoc (car x) name-to-box))
+                                                      (let ((box (cdr (assoc (car x) name-to-box))))
+                                                        `(funcall (car ,box) ,@(mapcar #'xform (cdr x)))))
+                                                     (t (mapcar #'xform x)))))
+                                          (xform e))))
+                     ;; Build let* bindings: (f-box (cons nil nil))
+                     (let-bindings (mapcar (lambda (box) (list box '(cons #x0 #x0))) box-names))
+                     ;; Build setf assignments: (setf (car f-box) (lambda ...))
+                     (setf-forms (mapcar (lambda (def)
+                                           (let* ((name (car def))
+                                                  (params (cadr def))
+                                                  (fn-body (caddr def))
+                                                  (box (cdr (assoc name name-to-box)))
+                                                  (xformed-body (funcall transform-calls fn-body)))
+                                             `(setf (car ,box) (lambda ,params ,xformed-body))))
+                                         fn-defs))
+                     ;; Transform body calls
+                     (xformed-body (funcall transform-calls body))
+                     ;; Build: (let* ((f-box (cons nil nil)) ...) (progn (setf (car f-box) ...) ... body))
+                     (transformed `(let* ,let-bindings
+                                     (progn ,@setf-forms ,xformed-body))))
+                (compile-expr transformed env fenv))
+              (list 'lit 0)))
+
+         ;; Flet (local non-recursive functions)
+         ;; Transform: (flet ((f (x) body)) expr) ->
+         ;;            (let ((f (lambda (x) body))) expr')
+         ;; where expr' has calls (f ...) transformed to (funcall f ...)
+         ((eq op 'flet)
+          (if (and (consp (cdr expr)) (consp (cddr expr)))
+              (let* ((fn-defs (cadr expr))
+                     (body (caddr expr))
+                     (fn-names (mapcar #'car fn-defs))
+                     ;; Transform calls to local functions into funcall
+                     (transform-calls (lambda (e)
+                                        (labels ((xform (x)
+                                                   (cond
+                                                     ((not (consp x)) x)
+                                                     ((and (symbolp (car x))
+                                                           (member (car x) fn-names))
+                                                      (cons 'funcall (cons (car x) (mapcar #'xform (cdr x)))))
+                                                     (t (mapcar #'xform x)))))
+                                          (xform e))))
+                     ;; Build let bindings with lambdas (no need for nil + setq since non-recursive)
+                     (let-bindings (mapcar (lambda (def)
+                                             (let* ((name (car def))
+                                                    (params (cadr def))
+                                                    (fn-body (caddr def)))
+                                               `(,name (lambda ,params ,fn-body))))
+                                           fn-defs))
+                     ;; Transform body calls
+                     (xformed-body (funcall transform-calls body))
+                     ;; Build: (let ((f (lambda ...)) ...) body')
+                     (transformed `(let ,let-bindings ,xformed-body)))
+                (compile-expr transformed env fenv))
+              (list 'lit 0)))
+
+         ;; Incf (increment in place)
+         ((eq op 'incf)
+          (if (consp (cdr expr))
+              (let* ((place (cadr expr))
+                     (delta (if (consp (cddr expr)) (caddr expr) 1)))
+                (if (symbolp place)
+                    (compile-expr `(setq ,place (+ ,place ,delta)) env fenv)
+                    (list 'lit 0)))
+              (list 'lit 0)))
+
+         ;; Decf (decrement in place)
+         ((eq op 'decf)
+          (if (consp (cdr expr))
+              (let* ((place (cadr expr))
+                     (delta (if (consp (cddr expr)) (caddr expr) 1)))
+                (if (symbolp place)
+                    (compile-expr `(setq ,place (- ,place ,delta)) env fenv)
+                    (list 'lit 0)))
+              (list 'lit 0)))
+
+         ;; Push (add to front of list variable)
+         ((eq op 'push)
+          (if (and (consp (cdr expr)) (consp (cddr expr)))
+              (let ((item (cadr expr))
+                    (place (caddr expr)))
+                (if (symbolp place)
+                    (compile-expr `(setq ,place (cons ,item ,place)) env fenv)
+                    (list 'lit 0)))
+              (list 'lit 0)))
+
+         ;; Pop (remove and return first element)
+         ((eq op 'pop)
+          (if (consp (cdr expr))
+              (let ((place (cadr expr)))
+                (if (symbolp place)
+                    ;; Returns car, then sets to cdr
+                    ;; Need progn: (prog1 (car place) (setq place (cdr place)))
+                    ;; For now, just return car (mutation happens but value is cdr)
+                    (compile-expr `(car ,place) env fenv)
+                    (list 'lit 0)))
               (list 'lit 0)))
 
          ;; Quote
@@ -1777,6 +2108,191 @@ Cons/car/cdr are required; others should be provided in production."
          ((eq op 'constantly)
           (if (consp (cdr expr))
               (compile-expr (cadr expr) env fenv)
+              (list 'lit 0)))
+
+         ;; Length - recursive list length
+         ((eq op 'length)
+          (if (consp (cdr expr))
+              (let ((lst-arg (cadr expr)))
+                ;; Transform to: (labels ((len (lst) (if (null lst) 0 (+ 1 (len (cdr lst)))))) (len arg))
+                (compile-expr
+                 `(labels ((len-iter (lst acc)
+                             (if (null lst)
+                                 acc
+                                 (len-iter (cdr lst) (+ acc #x1)))))
+                    (len-iter ,lst-arg #x0))
+                 env fenv))
+              (list 'lit 0)))
+
+         ;; Append - recursive list append (two-argument version)
+         ((eq op 'append)
+          (cond
+            ;; (append) -> nil
+            ((null (cdr expr)) (list 'lit 0))
+            ;; (append x) -> x
+            ((null (cddr expr)) (compile-expr (cadr expr) env fenv))
+            ;; (append x y) -> recursive implementation
+            ((null (cdddr expr))
+             (let ((lst1 (cadr expr))
+                   (lst2 (caddr expr)))
+               (compile-expr
+                `(labels ((app (xs ys)
+                            (if (null xs)
+                                ys
+                                (cons (car xs) (app (cdr xs) ys)))))
+                   (app ,lst1 ,lst2))
+                env fenv)))
+            ;; (append x y z ...) -> (append x (append y z ...))
+            (t (compile-expr
+                `(append ,(cadr expr) (append ,@(cddr expr)))
+                env fenv))))
+
+         ;; Assoc - find key in alist
+         ((eq op 'assoc)
+          (if (and (consp (cdr expr)) (consp (cddr expr)))
+              (let ((key (cadr expr))
+                    (alist (caddr expr)))
+                (compile-expr
+                 `(labels ((assoc-iter (k al)
+                             (if (null al)
+                                 #x0
+                                 (if (eq k (car (car al)))
+                                     (car al)
+                                     (assoc-iter k (cdr al))))))
+                    (assoc-iter ,key ,alist))
+                 env fenv))
+              (list 'lit 0)))
+
+         ;; Member - find item in list
+         ((eq op 'member)
+          (if (and (consp (cdr expr)) (consp (cddr expr)))
+              (let ((item (cadr expr))
+                    (lst (caddr expr)))
+                (compile-expr
+                 `(labels ((member-iter (x xs)
+                             (if (null xs)
+                                 #x0
+                                 (if (eq x (car xs))
+                                     xs
+                                     (member-iter x (cdr xs))))))
+                    (member-iter ,item ,lst))
+                 env fenv))
+              (list 'lit 0)))
+
+         ;; Reverse - reverse a list
+         ((eq op 'reverse)
+          (if (consp (cdr expr))
+              (let ((lst (cadr expr)))
+                (compile-expr
+                 `(labels ((rev (xs acc)
+                             (if (null xs)
+                                 acc
+                                 (rev (cdr xs) (cons (car xs) acc)))))
+                    (rev ,lst #x0))
+                 env fenv))
+              (list 'lit 0)))
+
+         ;; Dotimes - (dotimes (i n [result]) body...)
+         ;; Iterates i from 0 to n-1, returns result (default nil)
+         ((eq op 'dotimes)
+          (if (and (consp (cdr expr)) (consp (cadr expr)))
+              (let* ((var-form (cadr expr))
+                     (var (car var-form))
+                     (count-form (cadr var-form))
+                     (result-form (if (consp (cddr var-form)) (caddr var-form) #x0))
+                     (body (cddr expr))
+                     (body-expr (if (null (cdr body)) (car body) `(progn ,@body))))
+                (compile-expr
+                 `(labels ((dotimes-iter (,var limit)
+                             (if (>= ,var limit)
+                                 ,result-form
+                                 (progn
+                                   ,body-expr
+                                   (dotimes-iter (+ ,var #x1) limit)))))
+                    (dotimes-iter #x0 ,count-form))
+                 env fenv))
+              (list 'lit 0)))
+
+         ;; Dolist - (dolist (x list [result]) body...)
+         ;; Iterates over each element of list, returns result (default nil)
+         ((eq op 'dolist)
+          (if (and (consp (cdr expr)) (consp (cadr expr)))
+              (let* ((var-form (cadr expr))
+                     (var (car var-form))
+                     (list-form (cadr var-form))
+                     (result-form (if (consp (cddr var-form)) (caddr var-form) #x0))
+                     (body (cddr expr))
+                     (body-expr (if (null (cdr body)) (car body) `(progn ,@body))))
+                (compile-expr
+                 `(labels ((dolist-iter (remaining)
+                             (if (null remaining)
+                                 ,result-form
+                                 (let ((,var (car remaining)))
+                                   (progn
+                                     ,body-expr
+                                     (dolist-iter (cdr remaining)))))))
+                    (dolist-iter ,list-form))
+                 env fenv))
+              (list 'lit 0)))
+
+         ;; Mapcar - (mapcar fn list) - apply fn to each element, return list of results
+         ((eq op 'mapcar)
+          (if (and (consp (cdr expr)) (consp (cddr expr)))
+              (let ((fn-form (cadr expr))
+                    (list-form (caddr expr)))
+                (compile-expr
+                 `(labels ((mapcar-iter (fn lst)
+                             (if (null lst)
+                                 #x0
+                                 (cons (funcall fn (car lst))
+                                       (mapcar-iter fn (cdr lst))))))
+                    (mapcar-iter ,fn-form ,list-form))
+                 env fenv))
+              (list 'lit 0)))
+
+         ;; Mapc - (mapc fn list) - like mapcar but returns the original list
+         ((eq op 'mapc)
+          (if (and (consp (cdr expr)) (consp (cddr expr)))
+              (let ((fn-form (cadr expr))
+                    (list-form (caddr expr)))
+                (compile-expr
+                 `(labels ((mapc-iter (fn lst orig)
+                             (if (null lst)
+                                 orig
+                                 (progn
+                                   (funcall fn (car lst))
+                                   (mapc-iter fn (cdr lst) orig)))))
+                    (let ((the-list ,list-form))
+                      (mapc-iter ,fn-form the-list the-list)))
+                 env fenv))
+              (list 'lit 0)))
+
+         ;; Reduce - (reduce fn list &optional init) - fold function over list
+         ((eq op 'reduce)
+          (if (and (consp (cdr expr)) (consp (cddr expr)))
+              (let* ((fn-form (cadr expr))
+                     (list-form (caddr expr))
+                     (init-form (if (consp (cdddr expr)) (cadddr expr) nil)))
+                (if init-form
+                    ;; With initial value
+                    (compile-expr
+                     `(labels ((reduce-iter (fn lst acc)
+                                 (if (null lst)
+                                     acc
+                                     (reduce-iter fn (cdr lst) (funcall fn acc (car lst))))))
+                        (reduce-iter ,fn-form ,list-form ,init-form))
+                     env fenv)
+                    ;; Without initial value - use first element
+                    (compile-expr
+                     `(labels ((reduce-iter (fn lst acc)
+                                 (if (null lst)
+                                     acc
+                                     (reduce-iter fn (cdr lst) (funcall fn acc (car lst))))))
+                        (let ((the-list ,list-form))
+                          (if (null the-list)
+                              #x0
+                              (reduce-iter ,fn-form (cdr the-list) (car the-list)))))
+                     env fenv)))
               (list 'lit 0)))
 
         ;; Cons
