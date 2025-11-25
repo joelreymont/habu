@@ -7,6 +7,8 @@
 
 ## Latest Updates (November 25, 2025)
 
+### Session 1: Conditional and Boolean Forms
+
 - **Implemented conditional special forms**:
   - `cond` - multi-way conditional that transforms to nested if-exprs at compile time
   - `when` - guard form: `(when test body...)` -> `(if test (progn body...) nil)`
@@ -33,15 +35,54 @@
 
 - **Fixed two-argument if**: `(if test then)` now correctly compiles to `(if test then nil)`
 
-- **Added test suites**:
-  - `tests/test_cond.lisp` - 5 tests for cond multi-way conditional
-  - `tests/test_when_unless.lisp` - 6 tests for when/unless guard forms
-  - `tests/test_and_or.lisp` - 11 tests for and/or/not short-circuit operators
-  - `tests/test_type_predicates.lisp` - 12 tests for type predicates
-
 - **Bug fix**: Literal values in IR must be untagged (codegen tags them). Fixed all `(lit #x10)` -> `(lit 1)` for true value and type tag comparisons.
 
-- All 34 new tests pass. Regression tests (progn, closure_integration) still pass.
+### Session 2: Utility and List Functions
+
+- **Implemented equality and arithmetic**:
+  - `eq`, `eql` - pointer equality predicates
+  - `1+`, `1-` - increment/decrement by 1
+  - `abs` - absolute value via conditional
+  - `max`, `min` - two-value comparison operations
+
+- **Implemented list accessors**:
+  - `cadr`, `caddr`, `cadddr` - car of cdr chains
+  - `cddr`, `cdddr` - cdr chains
+  - `caar`, `cdar` - car/cdr of car
+  - `first`, `second`, `third`, `fourth`, `rest` - positional accessors
+
+- **Implemented list construction**:
+  - `list` - create list from arguments (recursive cons)
+  - `list*` - create list with explicit tail
+  - `acons` - add key-value pair to front of alist
+
+- **Implemented indexing (compile-time unrolled for small indices)**:
+  - `nth` - get nth element (unrolled for n <= 10)
+  - `nthcdr` - get nth tail (unrolled for n <= 10)
+  - `elt` - generic sequence element access
+
+- **Implemented utilities**:
+  - `identity` - return argument unchanged
+  - `constantly` - simplified constant function
+
+- **Added test suites**:
+  - `tests/test_cond.lisp` - 5 tests
+  - `tests/test_when_unless.lisp` - 6 tests
+  - `tests/test_and_or.lisp` - 11 tests
+  - `tests/test_type_predicates.lisp` - 12 tests
+  - `tests/test_utility_functions.lisp` - 29 tests
+  - `tests/test_list_functions.lisp` - 13 tests
+
+- **Total: 76 new tests**, all passing. Existing tests still pass.
+
+### Still Needed for Self-Hosting
+
+- `labels`/`flet` - local function definitions
+- `loop`/`dolist`/`dotimes` - iteration (needs macro support)
+- `setf`/`setq` - mutation
+- `append`/`reverse`/`length` - need iteration
+- `mapcar`/`mapc` - need iteration or runtime helpers
+- `assoc`/`member` - alist/list search (need iteration)
 
 ## Previous Updates (Current Session)
 
