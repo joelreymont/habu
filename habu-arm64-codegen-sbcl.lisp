@@ -2312,6 +2312,29 @@ Cons/car/cdr are required; others should be provided in production."
                          (compile-expr (cadr place) env fenv)
                          (compile-expr (caddr place) env fenv)
                          (compile-expr val-expr env fenv)))
+                  ;; (setf (slot-value obj 'slot) val) -> (vector-set obj slot-idx val)
+                  ((and (consp place) (op= (car place) "SLOT-VALUE") (consp (cdr place)) (consp (cddr place)))
+                   (let* ((obj-expr (cadr place))
+                          (slot-form (caddr place))
+                          (slot-name (if (and (consp slot-form) (eq (car slot-form) 'quote))
+                                         (cadr slot-form)
+                                         nil)))
+                     (if slot-name
+                         ;; Find slot index by looking up in all classes
+                         (let ((slot-index nil))
+                           (dolist (class-entry *class-env*)
+                             (let* ((slots (caddr class-entry))
+                                    (pos (position slot-name slots)))
+                               (when pos
+                                 (setq slot-index (+ pos 1))  ; +1 for class tag
+                                 (return))))
+                           (if slot-index
+                               (list 'vector-set-call
+                                     (compile-expr obj-expr env fenv)
+                                     (list 'lit slot-index)
+                                     (compile-expr val-expr env fenv))
+                               (list 'lit 0)))  ; Slot not found
+                         (list 'lit 0))))  ; Dynamic slot lookup not supported
                   ;; (setf (struct-accessor obj) val) -> (vector-set obj slot-idx val)
                   ((and (consp place) (consp (cdr place))
                         (let ((accessor-entry (assoc (car place) *struct-accessors*)))
