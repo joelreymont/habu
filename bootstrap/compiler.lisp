@@ -606,10 +606,53 @@
      (apply #'append (mapcar #'collect-variables (rest form))))))
 
 (defun find-free-variables (body params &optional (env nil))
-  "Find free variables in body that are not in params or env"
-  (let* ((all-vars (collect-variables body))
-         (bound-vars (append params env)))
-    (remove-duplicates (set-difference all-vars bound-vars))))
+  "Find free variables in body that are not in params or env.
+   Optimized: O(N) using hash sets instead of O(N²) list operations."
+  (let ((bound-set (make-hash-table :test #'eq))
+        (seen (make-hash-table :test #'eq))
+        (free-vars nil))
+    ;; Mark all bound variables
+    (dolist (var params) (setf (gethash var bound-set) t))
+    (dolist (var env) (setf (gethash var bound-set) t))
+    ;; Single-pass collection of free variables
+    (labels ((collect (form)
+               (cond
+                 ((null form) nil)
+                 ((symbolp form)
+                  (when (and (not (builtin-operator-p form))
+                            (not (gethash form bound-set))
+                            (not (gethash form seen))
+                            (not (keywordp form)))
+                    (setf (gethash form seen) t)
+                    (push form free-vars)))
+                 ((not (consp form)) nil)
+                 ((eq (first form) 'quote) nil)
+                 ((eq (first form) 'lambda)
+                  ;; In lambda, add params to bound set temporarily
+                  (let ((lambda-params (second form))
+                        (lambda-body (third form)))
+                    (dolist (p lambda-params) (setf (gethash p bound-set) t))
+                    (collect lambda-body)
+                    (dolist (p lambda-params) (remhash p bound-set))))
+                 ((eq (first form) 'let)
+                  ;; In let, collect from values first (before vars are bound)
+                  (let* ((bindings (second form))
+                         (let-body (third form))
+                         (vars (mapcar #'first bindings)))
+                    ;; Collect from init forms
+                    (dolist (binding bindings)
+                      (collect (second binding)))
+                    ;; Add let vars to bound set
+                    (dolist (v vars) (setf (gethash v bound-set) t))
+                    (collect let-body)
+                    (dolist (v vars) (remhash v bound-set))))
+                 ((eq (first form) 'defun) nil)
+                 (t
+                  ;; Regular form - collect from all subforms
+                  (dolist (sub (rest form))
+                    (collect sub))))))
+      (collect body)
+      free-vars)))
 
 ;;; Parse Lisp expression to IR
 (defun parse (form)

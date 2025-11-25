@@ -243,7 +243,7 @@
 ;;; Condition codes
 (defun cond-eq () 0)   ; equal
 (defun cond-ne () 1)   ; not equal
-(defun cond-lt () 11)  ; signed less than
-(defun cond-le () 13)  ; signed less than or equal
-(defun cond-gt () 12)  ; signed greater than
-(defun cond-ge () 10)  ; signed greater than or equal
+(defun cond-lt () 11)  ; signed less than (b.lt)
+(defun cond-le () 13)  ; signed less than or equal (b.le)
+(defun cond-gt () 12)  ; signed greater than (b.gt)
+(defun cond-ge () 10)  ; signed greater than or equal (b.ge)

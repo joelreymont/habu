@@ -31,7 +31,7 @@
  *    - During GC, all objects reachable from roots are kept alive
  */
 
-#define _POSIX_C_SOURCE 199309L
+#define _POSIX_C_SOURCE 200809L
 #include "habu.h"
 #include <stdlib.h>
 #include <string.h>
@@ -160,6 +160,94 @@ typedef struct gc_heap {
 
 /* Global GC heap - only one heap per process */
 static gc_heap_t *gc_heap = NULL;
+
+/* ============================================================================
+ * SYMBOL INTERNING TABLE
+ * ============================================================================
+ *
+ * Symbols are interned so that (eq 'foo 'foo) returns true. Each unique
+ * symbol name maps to exactly one symbol object.
+ *
+ * Implementation: Simple hash table with chaining. Entries are malloc'd
+ * (not GC-managed) so they're stable across collections. The symbol values
+ * themselves are GC-managed and must be treated as roots.
+ */
+
+#define SYMBOL_TABLE_SIZE 1024
+
+typedef struct symbol_entry {
+    char *name;                    /* malloc'd copy of symbol name */
+    habu_value_t symbol;           /* The interned symbol value */
+    struct symbol_entry *next;     /* Hash chain */
+} symbol_entry_t;
+
+static symbol_entry_t *symbol_table[SYMBOL_TABLE_SIZE];
+static size_t symbol_count = 0;
+
+/* djb2 hash function */
+static unsigned int hash_string(const char *str) {
+    unsigned int hash = 5381;
+    int c;
+    while ((c = *str++)) {
+        hash = ((hash << 5) + hash) + c;
+    }
+    return hash % SYMBOL_TABLE_SIZE;
+}
+
+/* Look up a symbol by name, returns NIL if not found */
+static habu_value_t symbol_table_lookup(const char *name) {
+    unsigned int idx = hash_string(name);
+    for (symbol_entry_t *e = symbol_table[idx]; e != NULL; e = e->next) {
+        if (strcmp(e->name, name) == 0) {
+            return e->symbol;
+        }
+    }
+    return NIL;
+}
+
+/* Add a symbol to the table (assumes it doesn't already exist) */
+static void symbol_table_insert(const char *name, habu_value_t symbol) {
+    unsigned int idx = hash_string(name);
+    symbol_entry_t *entry = malloc(sizeof(symbol_entry_t));
+    assert(entry != NULL);
+    entry->name = strdup(name);
+    assert(entry->name != NULL);
+    entry->symbol = symbol;
+    entry->next = symbol_table[idx];
+    symbol_table[idx] = entry;
+    symbol_count++;
+}
+
+/* Forward declarations for GC integration */
+static void *copy_object(void *obj);
+static habu_value_t forward_value(habu_value_t value);
+static void push_gray(void *obj);
+
+/* Forward all symbols in the intern table during young GC (copying collector) */
+static void forward_symbol_table(void) {
+    for (int i = 0; i < SYMBOL_TABLE_SIZE; i++) {
+        for (symbol_entry_t *e = symbol_table[i]; e != NULL; e = e->next) {
+            if (e->symbol != NIL && is_pointer(e->symbol)) {
+                e->symbol = forward_value(e->symbol);
+            }
+        }
+    }
+}
+
+/* Mark all symbols in the intern table during old GC (mark-sweep) */
+static void mark_symbol_table(void) {
+    for (int i = 0; i < SYMBOL_TABLE_SIZE; i++) {
+        for (symbol_entry_t *e = symbol_table[i]; e != NULL; e = e->next) {
+            if (e->symbol != NIL && is_pointer(e->symbol)) {
+                void *obj = untag_pointer(e->symbol);
+                if (get_gc_color(obj) == GC_WHITE) {
+                    set_gc_color(obj, GC_GRAY);
+                    push_gray(obj);
+                }
+            }
+        }
+    }
+}
 
 /* Fast-path allocation globals for inline code generation
  *
@@ -529,6 +617,9 @@ void habu_write_barrier(void *obj, habu_value_t value) {
 static void mark_old_generation(void) {
     /* Mark from roots */
     mark_roots();
+
+    /* Mark interned symbols - they must survive */
+    mark_symbol_table();
 
     /* Process gray stack */
     while (gc_heap->gray_stack_size > 0) {
@@ -916,6 +1007,12 @@ void habu_gc_collect(void) {
         }
     }
 
+    /* PHASE 2b: FORWARD SYMBOL TABLE
+     *
+     * Interned symbols must survive GC - forward all symbols in the intern table.
+     */
+    forward_symbol_table();
+
     /* PHASE 3: PROCESS REMEMBERED SET
      *
      * The remembered set contains old generation objects that have pointers
@@ -1194,6 +1291,13 @@ habu_value_t habu_make_string(const char *str, size_t length) {
 }
 
 habu_value_t habu_make_symbol(const char *name) {
+    /* Check if symbol already exists in the intern table */
+    habu_value_t existing = symbol_table_lookup(name);
+    if (existing != NIL) {
+        return existing;  /* Return cached symbol */
+    }
+
+    /* Symbol not found - create new one */
     void *mem = habu_gc_alloc(sizeof(habu_symbol_t), TYPE_SYMBOL);
     if (!mem) {
         return NIL;
@@ -1213,6 +1317,9 @@ habu_value_t habu_make_symbol(const char *name) {
 
     /* Unroot before returning */
     habu_gc_remove_root(&sym_value);
+
+    /* Add to intern table for future lookups */
+    symbol_table_insert(name, sym_value);
 
     return sym_value;
 }

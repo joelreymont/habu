@@ -10,6 +10,8 @@ Write session context to CONTEXT.md, save it frequently and keep it up to date.
 Use the Lisp tracing facility for debugging.
 Commit frequently.
 
+Common Lisp HyperSpec: https://www.lispworks.com/documentation/HyperSpec/Front/Contents.htm
+
 Use this git author: Joel Reymont <18791+joelreymont@users.noreply.github.com>
 
 Proactively:

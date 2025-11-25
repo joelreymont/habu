@@ -12,6 +12,16 @@
 
 (defparameter *runtime-addrs* nil)
 (defparameter *collected-lambdas* nil)
+(defparameter *macro-env* nil
+  "Alist of (macro-name . expander-function) for compile-time macros")
+(defparameter *block-counter* 0
+  "Counter for generating unique block IDs")
+(defparameter *block-env* nil
+  "Alist of (block-name . block-id) for tracking active blocks during compilation")
+(defparameter *catch-counter* 0
+  "Counter for generating unique catch IDs")
+(defparameter *catch-env* nil
+  "Alist of (tag-expr . (id result-var exited-var)) for tracking active catch blocks")
 (defparameter *stack-frame-size* #xFF0)
 (defparameter *env-base-offset* #x180)
 (defparameter *temp-slot-base* #x40)
@@ -27,10 +37,11 @@
 
 (defun quote->ir (obj)
   "Lower a quoted object to IR using cons/runtime construction.
-Supports fixnums, nil, lists, symbols, strings, and vectors of those."
+Supports fixnums, nil, lists, symbols, strings, characters, and vectors of those."
   (cond
     ((fixnum? obj) (list 'lit obj))
     ((null obj) (list 'lit #x0))
+    ((characterp obj) (list 'lit (char-code obj)))  ; Characters -> fixnum codes
     ((stringp obj) (cons 'string-lit (string->char-codes obj)))
     ((symbolp obj) (list 'symbol-lit (symbol-name obj)))
     ((vectorp obj) (cons 'vector-lit (map 'list #'quote->ir obj)))
@@ -88,14 +99,23 @@ Supports fixnums, nil, lists, symbols, strings, and vectors of those."
     (append body (arm64-ldr 0 31 vec-slot))))
 
 (defun collect-var-offsets (ir)
-  "Collect all variable offsets referenced in IR."
-  (cond
-    ((null ir) nil)
-    ((has-tag? ir 'var) (list (cadr ir)))
-    ((has-tag? ir 'capture) nil)
-    ((consp ir) (remove-duplicates
-                 (apply #'append (mapcar #'collect-var-offsets ir))))
-    (t nil)))
+  "Collect all variable offsets referenced in IR. Uses hash set for O(N) dedup."
+  (let ((seen (make-hash-table :test #'eql)))
+    (labels ((collect (ir)
+               (cond
+                 ((null ir) nil)
+                 ((has-tag? ir 'var)
+                  (setf (gethash (cadr ir) seen) t))
+                 ((has-tag? ir 'capture) nil)
+                 ((consp ir)
+                  (collect (car ir))
+                  (collect (cdr ir)))
+                 (t nil))))
+      (collect ir)
+      ;; Convert hash keys to list
+      (let ((result nil))
+        (maphash (lambda (k v) (declare (ignore v)) (push k result)) seen)
+        result))))
 
 (defun rewrite-captures (ir capture-map)
   "Rewrite IR var nodes whose offset is in capture-map to capture nodes."
@@ -166,7 +186,7 @@ Supports fixnums, nil, lists, symbols, strings, and vectors of those."
                               &key make-closure closure-code closure-env
                                 code-base make-vector vector-set vector-ref
                                 make-string-from-vector make-symbol-from-string
-                                string-length-raw symbol-name)
+                                string-length-raw symbol-name string-ref)
   "Create runtime address table for codegen (alist of symbol . addr).
 Cons/car/cdr are required; others should be provided in production."
   (flet ((fail (what) (error "Missing runtime address: ~A" what)))
@@ -187,11 +207,71 @@ Cons/car/cdr are required; others should be provided in production."
                      (cons 'habu_make_string_from_vector make-string-from-vector)
                      (cons 'habu_make_symbol_from_string make-symbol-from-string)
                      (cons 'habu_string_length_raw string-length-raw)
-                     (cons 'habu_symbol_name symbol-name)))))
+                     (cons 'habu_symbol_name symbol-name)
+                     (cons 'habu_string_ref string-ref)))))
 
 (defun op= (sym name)
   "Package-agnostic symbol name comparison."
   (and (symbolp sym) (string= (symbol-name sym) name)))
+
+;;; ============================================
+;;; Macro System
+;;; ============================================
+
+(defun macro-function-lookup (name)
+  "Look up macro expander function for NAME in *macro-env*."
+  (let ((entry (assoc name *macro-env* :test #'eq)))
+    (if entry (cdr entry) nil)))
+
+(defun macroexpand-1-habu (form)
+  "Expand FORM once if it's a macro call. Returns (values expansion expanded-p)."
+  (if (and (consp form) (symbolp (car form)))
+      (let ((expander (macro-function-lookup (car form))))
+        (if expander
+            (values (apply expander (cdr form)) t)
+            (values form nil)))
+      (values form nil)))
+
+(defun macroexpand-habu (form)
+  "Fully expand FORM until it's no longer a macro call."
+  (multiple-value-bind (expansion expanded-p) (macroexpand-1-habu form)
+    (if expanded-p
+        (macroexpand-habu expansion)
+        form)))
+
+(defun register-macro (name expander)
+  "Register a macro with NAME and EXPANDER function."
+  (let ((existing (assoc name *macro-env* :test #'eq)))
+    (if existing
+        (setf (cdr existing) expander)
+        (push (cons name expander) *macro-env*))))
+
+(defun contains-return-from-p (form block-name)
+  "Check if FORM contains a return-from to BLOCK-NAME."
+  (cond
+    ((atom form) nil)
+    ((and (eq (car form) 'return-from)
+          (eq (cadr form) block-name))
+     t)
+    (t (some (lambda (sub) (contains-return-from-p sub block-name)) form))))
+
+(defun transform-return-from (form block-name result-var exited-var)
+  "Transform return-from calls in FORM to set result/exited vars."
+  (cond
+    ((atom form) form)
+    ((and (eq (car form) 'return-from)
+          (eq (cadr form) block-name))
+     ;; Transform to: (progn (setq result value) (setq exited 1) result)
+     ;; Return result so the value propagates correctly
+     `(progn (setq ,result-var ,(or (caddr form) nil))
+             (setq ,exited-var 1)
+             ,result-var))
+    ;; Don't descend into nested blocks with same name
+    ((and (eq (car form) 'block)
+          (eq (cadr form) block-name))
+     form)
+    (t (mapcar (lambda (sub) (transform-return-from sub block-name result-var exited-var))
+               form))))
 
 (defun sbcl-comma-p (obj)
   #+sbcl
@@ -881,6 +961,31 @@ Cons/car/cdr are required; others should be provided in production."
                (arm64-b (+ 1 else-len))    ; Skip else after then
                else-code)))
 
+    ;; Block expression: (block-expr block-id body-ir)
+    ;; The body may contain return-from-expr which branches to the end
+    ;; For now, we track blocks and their exit offsets in a special variable
+    ((has-tag? ir 'block-expr)
+     (let* ((block-id (cadr ir))
+            (body-ir (caddr ir))
+            ;; Compile body, tracking that we're in this block
+            ;; return-from-expr will generate code that sets x0 and branches forward
+            (body-code (codegen-expr body-ir runtime-addrs fn-offsets current-offset temp-depth))
+            (body-len (count-instrs body-code)))
+       ;; Body code followed by nothing - return-from branches jump past body-len
+       ;; We need to patch return-from branches, but for now just generate body
+       ;; The return-from-expr generates a forward branch that needs patching
+       body-code))
+
+    ;; Return-from expression: (return-from-expr block-id value-ir)
+    ;; For now, this just evaluates value - true non-local exit requires more infrastructure
+    ;; TODO: Implement proper non-local exit with branch patching
+    ((has-tag? ir 'return-from-expr)
+     (let* ((block-id (cadr ir))
+            (value-ir (caddr ir))
+            (value-code (codegen-expr value-ir runtime-addrs fn-offsets current-offset temp-depth)))
+       ;; Just evaluate value for now - proper exit would branch to block end
+       value-code))
+
     ;; Cons: (cons-call left right) - call runtime cons via table
     ;;   Runtime table pointer is in x19 (saved by prologue)
     ;;   Save/restore x24 around arg evaluation in case args contain funcalls
@@ -993,6 +1098,22 @@ Cons/car/cdr are required; others should be provided in production."
                (arm64-ldr 9 19 96) ; string-length-raw
                (arm64-blr 9)
                (arm64-lsl 0 0 4)))) ; tag length as fixnum
+
+    ;; String-ref (returns tagged char code)
+    ;; Runtime table: [16] = offset 128 = string-ref
+    ((has-tag? ir 'string-ref-call)
+     (let* ((str-ir (cadr ir))
+            (idx-ir (caddr ir))
+            (slot1 (temp-slot-offset temp-depth))
+            (str-code (codegen-expr str-ir runtime-addrs fn-offsets current-offset (+ temp-depth 1)))
+            (idx-code (codegen-expr idx-ir runtime-addrs fn-offsets current-offset (+ temp-depth 1))))
+       (append str-code
+               (arm64-str 0 31 slot1)         ; save string
+               idx-code
+               (arm64-lsr 1 0 4)              ; x1 = untagged index
+               (arm64-ldr 0 31 slot1)         ; x0 = string
+               (arm64-ldr 9 19 128)           ; string-ref at offset 128 (index 16)
+               (arm64-blr 9))))               ; returns tagged char code
 
     ;; Let expression: (let-expr bind-values body-ir num-bindings env-offsets)
     ;; Must track current-offset properly for function calls in bindings/body
@@ -1190,7 +1311,9 @@ Cons/car/cdr are required; others should be provided in production."
               (pre-call (append stage-code load-code set-extra-ptr arg-count-code restore-env (arm64-ldr 9 31 code-slot))))
          (append
            pre-call
-           (arm64-blr 9)))))                  ; call
+           (arm64-blr 9)                      ; call
+           ;; Restore caller's x24 after call returns - callee had its own env in x24
+           (arm64-ldr 24 31 caller-x24-slot)))))
 
     ;; Function call: (call-fn name arg-irs)
     ((has-tag? ir 'call-fn)
@@ -1260,7 +1383,9 @@ Cons/car/cdr are required; others should be provided in production."
                  (branch-offset (- fn-offset current-pc)))
             (append
               pre-call
-              (arm64-bl branch-offset)))))) 
+              (arm64-bl branch-offset)
+              ;; Restore x24 after call returns - the called function may have clobbered it
+              (arm64-ldr 24 31 x24-slot)))))) 
 
     ;; Division: (div left right) - fixnum helper
     ((has-tag? ir 'div)
@@ -1324,10 +1449,26 @@ Cons/car/cdr are required; others should be provided in production."
 
 (defun compile-expr (expr env fenv)
   "Enhanced IR generation: literals, arithmetic operations"
+  ;; First, expand macros if expr is a macro call
+  (let ((expanded (if (and (consp expr) (symbolp (car expr)))
+                      (macroexpand-habu expr)
+                      expr)))
+    (compile-expr-internal expanded env fenv)))
+
+(defun compile-expr-internal (expr env fenv)
+  "Internal compile-expr after macro expansion."
   (cond
     ;; Fixnum literal
     ((fixnum? expr)
      (list 'lit expr))
+
+    ;; Character literal - convert to its code
+    ((characterp expr)
+     (list 'lit (char-code expr)))
+
+    ;; String literal - self-evaluating
+    ((stringp expr)
+     (cons 'string-lit (string->char-codes expr)))
 
     ;; Symbol (variable)
     ((symbol? expr)
@@ -1338,6 +1479,13 @@ Cons/car/cdr are required; others should be provided in production."
     ((consp expr)
      (let ((op (car expr)))
        (cond
+         ;; User-defined functions take precedence over built-ins
+         ;; This allows shadowing built-in names like length, member, etc.
+         ((and (symbolp op) fenv (assoc op fenv))
+          (let ((args (cdr expr)))
+            (list 'call-fn op
+                  (mapcar (lambda (arg) (compile-expr arg env fenv)) args))))
+
          ;; Addition (variadic: fold (+ a b c) -> (+ (+ a b) c))
          ((eq op '+)
           (let ((args (cdr expr)))
@@ -1408,6 +1556,21 @@ Cons/car/cdr are required; others should be provided in production."
               (list 'rem
                     (compile-expr (cadr expr) env fenv)
                     (compile-expr (caddr expr) env fenv))
+              (list 'lit 0)))
+
+         ;; Exponentiation (integer only, non-negative exponent)
+         ;; Transform: (expt base exp) -> (labels ((pow (b n) (if (= n 0) 1 (* b (pow b (- n 1)))))) (pow base exp))
+         ((eq op 'expt)
+          (if (and (consp (cdr expr)) (consp (cddr expr)))
+              (let ((base-expr (cadr expr))
+                    (exp-expr (caddr expr)))
+                (compile-expr
+                 `(labels ((expt-iter (b n acc)
+                             (if (= n 0)
+                                 acc
+                                 (expt-iter b (- n 1) (* acc b)))))
+                    (expt-iter ,base-expr ,exp-expr 1))
+                 env fenv))
               (list 'lit 0)))
 
          ;; Equality comparison
@@ -1663,6 +1826,24 @@ Cons/car/cdr are required; others should be provided in production."
               (quote->ir (cadr expr))
               (list 'lit #x0)))
 
+         ;; Function - (function name) or (function (lambda ...))
+         ((eq op 'function)
+          (if (consp (cdr expr))
+              (let ((fn-arg (cadr expr)))
+                (cond
+                  ;; (function (lambda ...)) - compile the lambda
+                  ((and (consp fn-arg) (eq (car fn-arg) 'lambda))
+                   (compile-expr fn-arg env fenv))
+                  ;; (function name) - look up in fenv and create lambda-ref
+                  ((symbolp fn-arg)
+                   (if (and fenv (assoc fn-arg fenv))
+                       ;; It's a user-defined function - create lambda-ref
+                       (list 'lambda-ref fn-arg)
+                       ;; Not found - return 0
+                       (list 'lit 0)))
+                  (t (list 'lit 0))))
+              (list 'lit 0)))
+
          ;; Progn
          ((eq op 'progn)
           (let ((body (cdr expr)))
@@ -1695,6 +1876,140 @@ Cons/car/cdr are required; others should be provided in production."
                     (list 'lit 0)   ; if true -> nil
                     (list 'lit 1))  ; if false -> t (1, will be tagged to #x10)
               (list 'lit 1))) ; (not) with no args -> t
+
+         ;; Block - establishes a named exit point
+         ;; (block name body...) - body can use (return-from name value) to exit early
+         ;; Transforms to: (let (($result nil) ($exited nil))
+         ;;                  (progn form1-guarded form2-guarded ...)
+         ;;                  $result)
+         ;; where form-guarded = (if (not $exited) (setq $result form))
+         ;; return-from transforms to: (progn (setq $result value) (setq $exited 1))
+         ((eq op 'block)
+          (if (and (consp (cdr expr)) (symbolp (cadr expr)))
+              (let* ((block-name (cadr expr))
+                     (body (cddr expr))
+                     (block-id (incf *block-counter*))
+                     (result-var (intern (format nil "$BLOCK-~A-RESULT" block-id)))
+                     (exited-var (intern (format nil "$BLOCK-~A-EXITED" block-id)))
+                     (old-block-env *block-env*)
+                     ;; Add block info to environment
+                     (new-block-env (cons (list block-name block-id result-var exited-var) old-block-env)))
+                ;; Set block env for duration of compilation
+                (setq *block-env* new-block-env)
+                (unwind-protect
+                    ;; Wrap each body form with exit check and transform return-from
+                    ;; Check original forms for return-from before transforming
+                    (let* ((guarded-forms
+                            (mapcar (lambda (orig-form)
+                                      (let ((xformed (transform-return-from orig-form block-name result-var exited-var)))
+                                        (if (contains-return-from-p orig-form block-name)
+                                            ;; Has return-from - don't wrap in setq, transform handles result
+                                            `(if (not ,exited-var) ,xformed)
+                                            ;; Normal form - set result
+                                            `(if (not ,exited-var) (setq ,result-var ,xformed)))))
+                                    body))
+                           ;; Build transformed expression
+                           ;; Note: let only takes ONE body form, so wrap in progn
+                           (transformed `(let ((,result-var nil)
+                                               (,exited-var nil))
+                                           (progn ,@guarded-forms ,result-var))))
+                      (compile-expr transformed env fenv))
+                  ;; Restore old block env
+                  (setq *block-env* old-block-env)))
+              (list 'lit 0)))
+
+         ;; Return-from - exit from a named block with a value
+         ;; Transforms to: (progn (setq $result value) (setq $exited 1))
+         ((eq op 'return-from)
+          (if (and (consp (cdr expr)) (symbolp (cadr expr)))
+              (let* ((block-name (cadr expr))
+                     (value-expr (if (consp (cddr expr)) (caddr expr) nil))
+                     (entry (assoc block-name *block-env*)))
+                (if entry
+                    (let* ((result-var (caddr entry))
+                           (exited-var (cadddr entry))
+                           (transformed `(progn
+                                           (setq ,result-var ,(or value-expr nil))
+                                           (setq ,exited-var 1))))
+                      (compile-expr transformed env fenv))
+                    ;; Block not found - just evaluate value
+                    (if value-expr
+                        (compile-expr value-expr env fenv)
+                        (list 'lit 0))))
+              (list 'lit 0)))
+
+         ;; Catch - establishes a catch point with tag
+         ;; (catch tag body...) - if body throws to tag, return the thrown value
+         ;; Implementation: similar to block but with dynamic tag
+         ((eq op 'catch)
+          (if (and (consp (cdr expr)) (consp (cddr expr)))
+              (let* ((tag-expr (cadr expr))
+                     (body (cddr expr))
+                     (catch-id (incf *catch-counter*))
+                     (result-var (intern (format nil "$CATCH-~A-RESULT" catch-id)))
+                     (exited-var (intern (format nil "$CATCH-~A-EXITED" catch-id)))
+                     (tag-var (intern (format nil "$CATCH-~A-TAG" catch-id)))
+                     (old-catch-env *catch-env*)
+                     ;; Store tag-var and vars for throw to find
+                     (new-catch-env (cons (list tag-var catch-id result-var exited-var)
+                                          old-catch-env)))
+                ;; Set catch env for duration of compilation
+                (setq *catch-env* new-catch-env)
+                (unwind-protect
+                    ;; Transform to: (let ((tag <tag-expr>) (result nil) (exited nil))
+                    ;;                 (progn body-forms) result)
+                    ;; throw will set result and exited when tag matches
+                    (let* ((guarded-forms
+                            (mapcar (lambda (form)
+                                      `(if (not ,exited-var) (setq ,result-var ,form)))
+                                    body))
+                           (transformed `(let ((,tag-var ,tag-expr)
+                                               (,result-var nil)
+                                               (,exited-var nil))
+                                           (progn ,@guarded-forms ,result-var))))
+                      (compile-expr transformed env fenv))
+                  (setq *catch-env* old-catch-env)))
+              (list 'lit 0)))
+
+         ;; Throw - throws value to matching catch point
+         ;; (throw tag value) - find enclosing catch with matching tag, return value from it
+         ;; When throwing to an outer catch, also set exited flags for all inner catches
+         ((eq op 'throw)
+          (if (consp (cdr expr))
+              (let* ((tag-expr (cadr expr))
+                     (value-expr (if (consp (cddr expr)) (caddr expr) nil)))
+                ;; Generate code to check each catch tag at runtime
+                ;; When match found, set ALL exited flags from innermost to matching catch
+                (if *catch-env*
+                    (let ((throw-val-var (intern (format nil "$THROW-VAL-~A" (incf *catch-counter*)))))
+                      ;; Build nested if checking each catch
+                      ;; catches-so-far accumulates catches we need to exit when match found
+                      (labels ((build-checks (catches catches-so-far)
+                                 (if (null catches)
+                                     ;; No matching catch - return value (error in full impl)
+                                     throw-val-var
+                                     (let* ((catch-entry (car catches))
+                                            (tag-var (car catch-entry))
+                                            (result-var (caddr catch-entry))
+                                            (exited-var (cadddr catch-entry))
+                                            (all-exits (cons catch-entry catches-so-far))
+                                            ;; Generate setq for all exited flags
+                                            (exit-setqs (mapcar (lambda (c) `(setq ,(cadddr c) 1))
+                                                                all-exits)))
+                                       `(if (eq ,tag-var ,tag-expr)
+                                            (progn (setq ,result-var ,throw-val-var)
+                                                   ,@exit-setqs
+                                                   ,result-var)
+                                            ,(build-checks (cdr catches) all-exits))))))
+                        (compile-expr
+                         `(let ((,throw-val-var ,(or value-expr nil)))
+                            ,(build-checks *catch-env* nil))
+                         env fenv)))
+                    ;; No catch in scope - just evaluate value
+                    (if value-expr
+                        (compile-expr value-expr env fenv)
+                        (list 'lit 0))))
+              (list 'lit 0)))
 
          ;; Cond (multi-way conditional) - transforms to nested if
          ((eq op 'cond)
@@ -2100,47 +2415,81 @@ Cons/car/cdr are required; others should be provided in production."
                     (compile-expr (cadddr expr) env fenv))      ; alist
               (list 'lit 0)))
 
-         ;; Nth (get nth element) - compile-time unrolled for small n
+         ;; Nth (get nth element) - compile-time unrolled for small n, or loop for variables
          ((eq op 'nth)
           (if (and (consp (cdr expr)) (consp (cddr expr)))
               (let ((n-expr (cadr expr))
-                    (list-ir (compile-expr (caddr expr) env fenv)))
+                    (list-expr (caddr expr)))
                 (if (and (integerp n-expr) (<= n-expr 10))
                     ;; Small constant index: unroll to car/cdr chain
-                    (let ((result list-ir))
+                    (let ((list-ir (compile-expr list-expr env fenv))
+                          (result nil))
+                      (setf result list-ir)
                       (dotimes (i n-expr)
                         (setf result (list 'cdr-call result)))
                       (list 'car-call result))
-                    ;; Variable index: would need runtime helper
-                    (list 'lit 0)))
+                    ;; Variable index: transform to labels loop
+                    (let* ((loop-fn (gensym "NTH-LOOP"))
+                           (idx-var (gensym "IDX"))
+                           (lst-var (gensym "LST"))
+                           (transformed
+                            `(labels ((,loop-fn (,idx-var ,lst-var)
+                                        (if (= ,idx-var 0)
+                                            (car ,lst-var)
+                                            (,loop-fn (- ,idx-var 1) (cdr ,lst-var)))))
+                               (,loop-fn ,n-expr ,list-expr))))
+                      (compile-expr transformed env fenv))))
               (list 'lit 0)))
 
-         ;; Nthcdr (get nth tail) - compile-time unrolled for small n
+         ;; Nthcdr (get nth tail) - compile-time unrolled for small n, or loop for variables
          ((eq op 'nthcdr)
           (if (and (consp (cdr expr)) (consp (cddr expr)))
               (let ((n-expr (cadr expr))
-                    (list-ir (compile-expr (caddr expr) env fenv)))
+                    (list-expr (caddr expr)))
                 (if (and (integerp n-expr) (<= n-expr 10))
                     ;; Small constant index: unroll to cdr chain
-                    (let ((result list-ir))
+                    (let ((list-ir (compile-expr list-expr env fenv))
+                          (result nil))
+                      (setf result list-ir)
                       (dotimes (i n-expr)
                         (setf result (list 'cdr-call result)))
                       result)
-                    ;; Variable index: would need runtime helper
-                    (list 'lit 0)))
+                    ;; Variable index: transform to labels loop
+                    (let* ((loop-fn (gensym "NTHCDR-LOOP"))
+                           (idx-var (gensym "IDX"))
+                           (lst-var (gensym "LST"))
+                           (transformed
+                            `(labels ((,loop-fn (,idx-var ,lst-var)
+                                        (if (= ,idx-var 0)
+                                            ,lst-var
+                                            (,loop-fn (- ,idx-var 1) (cdr ,lst-var)))))
+                               (,loop-fn ,n-expr ,list-expr))))
+                      (compile-expr transformed env fenv))))
               (list 'lit 0)))
 
          ;; Elt (generic element access - same as nth for lists)
          ((eq op 'elt)
           (if (and (consp (cdr expr)) (consp (cddr expr)))
-              (let ((seq-ir (compile-expr (cadr expr) env fenv))
+              (let ((seq-expr (cadr expr))
                     (idx-expr (caddr expr)))
                 (if (and (integerp idx-expr) (<= idx-expr 10))
-                    (let ((result seq-ir))
+                    (let ((seq-ir (compile-expr seq-expr env fenv))
+                          (result nil))
+                      (setf result seq-ir)
                       (dotimes (i idx-expr)
                         (setf result (list 'cdr-call result)))
                       (list 'car-call result))
-                    (list 'lit 0)))
+                    ;; Variable index: transform to labels loop (same as nth)
+                    (let* ((loop-fn (gensym "ELT-LOOP"))
+                           (idx-var (gensym "IDX"))
+                           (lst-var (gensym "LST"))
+                           (transformed
+                            `(labels ((,loop-fn (,idx-var ,lst-var)
+                                        (if (= ,idx-var 0)
+                                            (car ,lst-var)
+                                            (,loop-fn (- ,idx-var 1) (cdr ,lst-var)))))
+                               (,loop-fn ,idx-expr ,seq-expr))))
+                      (compile-expr transformed env fenv))))
               (list 'lit 0)))
 
          ;; Identity function
@@ -2491,11 +2840,69 @@ Cons/car/cdr are required; others should be provided in production."
                (setq result-form '(lit 0))))
             (compile-expr result-form env fenv)))
 
-         ;; Error - stub implementation (print message and exit)
-         ;; For now, just ignore the message and return 0
+         ;; Error - signal an error condition
+         ;; (error msg &rest args) - evaluates first arg and returns it as error code
          ;; A full implementation would print to stderr and exit with error code
+         ;; For now, evaluate the first arg (which might be an error code or string)
          ((op= op "ERROR")
-          (list 'lit 0))  ; Stub: just return 0 for now
+          (if (consp (cdr expr))
+              ;; Evaluate first argument (error code or message) and return it
+              (compile-expr (cadr expr) env fenv)
+              (list 'lit 0)))
+
+         ;; Unwind-protect - ensure cleanup code runs
+         ;; (unwind-protect protected-form cleanup-forms...)
+         ;; Evaluates protected-form, then always evaluates cleanup-forms,
+         ;; returning the result of protected-form
+         ((op= op "UNWIND-PROTECT")
+          (if (consp (cdr expr))
+              (let* ((protected-form (cadr expr))
+                     (cleanup-forms (cddr expr))
+                     (result-var (intern (format nil "$UNWIND-RESULT-~A" (incf *catch-counter*)))))
+                ;; Note: let only takes ONE body form, so wrap in progn and return result-var last
+                (compile-expr
+                 `(let ((,result-var ,protected-form))
+                    (progn ,@cleanup-forms ,result-var))
+                 env fenv))
+              (list 'lit 0)))
+
+         ;; Format - basic format string processing
+         ;; (format dest control-string &rest args)
+         ;; Supported directives: ~A, ~S, ~D (consume arg), ~% (newline)
+         ;; For now: evaluates args in order based on directives, returns nil (0)
+         ;; When dest is nil, should return formatted string (not yet implemented)
+         ;; When dest is t, outputs to stdout (requires I/O primitives)
+         ((op= op "FORMAT")
+          (if (and (consp (cdr expr)) (consp (cddr expr)))
+              (let* ((dest (cadr expr))
+                     (control-string (caddr expr))
+                     (args (cdddr expr)))
+                ;; Parse control string and count directives that consume args
+                (if (stringp control-string)
+                    (let ((arg-count 0)
+                          (forms nil))
+                      ;; Count ~A, ~S, ~D directives (they consume args)
+                      (let ((i 0)
+                            (len (length control-string)))
+                        (loop while (< i len) do
+                          (when (and (char= (char control-string i) #\~)
+                                     (< (1+ i) len))
+                            (let ((directive (char-upcase (char control-string (1+ i)))))
+                              (when (member directive '(#\A #\S #\D))
+                                (if (< arg-count (length args))
+                                    (let ((arg (nth arg-count args)))
+                                      (push arg forms)
+                                      (incf arg-count))))))
+                          (incf i)))
+                      ;; Evaluate all consumed args and return last value (or 0)
+                      (if forms
+                          (compile-expr `(progn ,@(nreverse forms)) env fenv)
+                          (list 'lit 0)))
+                    ;; Not a string literal - evaluate args anyway
+                    (if args
+                        (compile-expr `(progn ,@args) env fenv)
+                        (list 'lit 0))))
+              (list 'lit 0)))
 
          ;; Remove-if - filter out elements that match predicate
          ((op= op "REMOVE-IF")
@@ -2571,6 +2978,45 @@ Cons/car/cdr are required; others should be provided in production."
          ((op= op "STRING-LENGTH")
           (if (consp (cdr expr))
               (list 'string-len (compile-expr (cadr expr) env fenv))
+              (list 'lit 0)))
+
+         ;; String-ref: (string-ref string index) -> character code
+         ((op= op "STRING-REF")
+          (if (and (consp (cdr expr)) (consp (cddr expr)))
+              (list 'string-ref-call
+                    (compile-expr (cadr expr) env fenv)
+                    (compile-expr (caddr expr) env fenv))
+              (list 'lit 0)))
+
+         ;; Char-code: (char-code char) -> integer
+         ;; In Habu, characters are already represented as fixnum codes
+         ((op= op "CHAR-CODE")
+          (if (consp (cdr expr))
+              (compile-expr (cadr expr) env fenv)
+              (list 'lit 0)))
+
+         ;; String=: (string= s1 s2) -> compares two strings
+         ;; Transformed to a labels-based loop comparing characters
+         ((op= op "STRING=")
+          (if (and (consp (cdr expr)) (consp (cddr expr)))
+              (let ((s1 (cadr expr))
+                    (s2 (caddr expr)))
+                (compile-expr
+                 `(let ((str1 ,s1)
+                        (str2 ,s2))
+                    (let ((len1 (string-length str1))
+                          (len2 (string-length str2)))
+                      (if (= len1 len2)
+                          (labels ((cmp (i)
+                                     (if (= i len1)
+                                         #x1  ; All chars matched
+                                         (if (= (string-ref str1 i)
+                                                (string-ref str2 i))
+                                             (cmp (+ i #x1))
+                                             #x0))))  ; Mismatch
+                            (cmp #x0))
+                          #x0)))  ; Different lengths
+                 env fenv))
               (list 'lit 0)))
 
          ;; Get tag
@@ -2774,28 +3220,43 @@ Optional descriptors are (name init-form supplied-name)."
    Returns: (list-of-compiled-functions main-expression-ir)"
   (if (consp forms)
       (let ((form (car forms)))
-        (if (and (consp form) (eq (car form) 'defun))
-            ;; It's a defun
-            (let* ((name (cadr form))
-                   (params (caddr form))
-                   (body (cadddr form))
-                   (compiled-fn (compile-defun name params body env fenv))
-                   ;; Add to function environment
-                   (new-fenv (cons (cons name compiled-fn) fenv))
-                   ;; Compile rest of forms
-                   (rest-result (compile-forms-helper (cdr forms) env new-fenv))
-                   (rest-fns (car rest-result))
-                   (main-ir (cadr rest-result)))
-              ;; Return accumulated functions and main expression
-              (list (cons compiled-fn rest-fns) main-ir))
-            ;; Not a defun - this is the main expression
-            (list nil (compile-expr form env fenv))))
+        (cond
+          ;; defmacro - register macro and continue
+          ((and (consp form) (eq (car form) 'defmacro))
+           (let* ((name (cadr form))
+                  (params (caddr form))
+                  (body (cadddr form))
+                  ;; Create expander function using SBCL's eval
+                  ;; The expander takes macro arguments and returns expanded code
+                  (expander (eval `(lambda ,params ,body))))
+             (register-macro name expander)
+             ;; Continue with rest of forms (defmacro doesn't produce runtime code)
+             (compile-forms-helper (cdr forms) env fenv)))
+
+          ;; defun - compile function
+          ((and (consp form) (eq (car form) 'defun))
+           (let* ((name (cadr form))
+                  (params (caddr form))
+                  (body (cadddr form))
+                  (compiled-fn (compile-defun name params body env fenv))
+                  ;; Add to function environment
+                  (new-fenv (cons (cons name compiled-fn) fenv))
+                  ;; Compile rest of forms
+                  (rest-result (compile-forms-helper (cdr forms) env new-fenv))
+                  (rest-fns (car rest-result))
+                  (main-ir (cadr rest-result)))
+             ;; Return accumulated functions and main expression
+             (list (cons compiled-fn rest-fns) main-ir)))
+
+          ;; Not defun/defmacro - this is the main expression
+          (t (list nil (compile-expr form env fenv)))))
       ;; No more forms
       (list nil '(lit 0))))
 
 (defun compile-forms (forms)
-  "Stub: compile list of top-level forms"
-  (let ((*collected-lambdas* nil))
+  "Compile list of top-level forms including defmacro and defun."
+  (let ((*collected-lambdas* nil)
+        (*macro-env* nil))  ; Fresh macro environment for each compilation
     (let* ((result (compile-forms-helper forms nil nil))
            (fns (car result))
            (main-ir (cadr result)))

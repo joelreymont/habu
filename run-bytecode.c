@@ -138,9 +138,10 @@ int main(int argc, char **argv) {
     g_runtime_table[13] = (void*)habu_symbol_name;
     g_runtime_table[14] = (void*)habu_set_car;
     g_runtime_table[15] = (void*)habu_set_cdr;
+    g_runtime_table[16] = (void*)habu_string_ref;
 
     if (getenv("HABU_DEBUG_TABLE")) {
-        for (int i = 0; i <= 15; i++) {
+        for (int i = 0; i <= 16; i++) {
             fprintf(stderr, "RT[%d]=%p\n", i, g_runtime_table[i]);
         }
     }

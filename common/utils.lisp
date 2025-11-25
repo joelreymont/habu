@@ -92,3 +92,36 @@
 (defun runtime-lookup (name runtime-addrs)
   (let ((entry (assoc name runtime-addrs)))
     (if entry (cdr entry) 0)))
+
+;;; Global counter for generating unique names
+(setq *gensym-counter* 0)
+
+;;; Generate unique symbol (counter-based)
+;;; Returns a cons of (base-name . counter) as a pseudo-symbol
+(defun make-unique-name (base)
+  (let ((n *gensym-counter*))
+    (setq *gensym-counter* (+ n 1))
+    (cons base n)))
+
+;;; Check if a name matches a unique-name
+(defun unique-name-matches? (unique-name sym)
+  (and (cons? unique-name)
+       (eq (car unique-name) sym)))
+
+;;; Transform an expression, replacing calls to local functions
+;;; fn-names: list of local function names
+;;; box-map: alist of (fn-name . box-var)
+(defun transform-local-calls (expr fn-names box-map)
+  (cond
+    ((nil? expr) nil)
+    ((symbol? expr) expr)
+    ((not (cons? expr)) expr)
+    ;; (fn args...) where fn is local -> (funcall (car fn-box) args...)
+    ((and (symbol? (car expr)) (member (car expr) fn-names))
+     (let ((box-var (cdr (assoc (car expr) box-map))))
+       (cons 'funcall
+             (cons (list 'car box-var)
+                   (mapcar (lambda (arg) (transform-local-calls arg fn-names box-map))
+                           (cdr expr))))))
+    ;; Recurse into other forms
+    (t (mapcar (lambda (sub) (transform-local-calls sub fn-names box-map)) expr))))
