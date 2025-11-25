@@ -1455,6 +1455,93 @@ Cons/car/cdr are required; others should be provided in production."
         (arm64-ldr 9 19 144)              ; habu_values_get at offset 144 (index 18)
         (arm64-blr 9))))                  ; returns Nth value
 
+    ;; Hash table operations
+    ;; Runtime table indices: 19=make-hash-table, 20=gethash, 21=puthash, 22=remhash, 23=hash-table-count
+    ;; Offsets: 19*8=152, 20*8=160, 21*8=168, 22*8=176, 23*8=184
+
+    ;; make-hash-table: (make-hash-table-call capacity-ir)
+    ;; habu_make_hash_table(capacity) -> hash table
+    ((has-tag? ir 'make-hash-table-call)
+     (let* ((capacity-ir (cadr ir))
+            (capacity-code (codegen-expr capacity-ir runtime-addrs fn-offsets current-offset temp-depth)))
+       (append
+        capacity-code
+        (arm64-ldr 9 19 152)              ; habu_make_hash_table at offset 152 (index 19)
+        (arm64-blr 9))))                  ; returns hash table
+
+    ;; gethash: (gethash-call key-ir ht-ir default-ir)
+    ;; habu_gethash(key, ht, default) -> value
+    ((has-tag? ir 'gethash-call)
+     (let* ((key-ir (cadr ir))
+            (ht-ir (caddr ir))
+            (default-ir (cadddr ir))
+            (slot1 (temp-slot-offset temp-depth))
+            (slot2 (temp-slot-offset (+ temp-depth 1)))
+            (key-code (codegen-expr key-ir runtime-addrs fn-offsets current-offset (+ temp-depth 2)))
+            (ht-code (codegen-expr ht-ir runtime-addrs fn-offsets current-offset (+ temp-depth 2)))
+            (default-code (codegen-expr default-ir runtime-addrs fn-offsets current-offset (+ temp-depth 2))))
+       (append
+        key-code
+        (arm64-str 0 31 slot1)            ; save key
+        ht-code
+        (arm64-str 0 31 slot2)            ; save ht
+        default-code
+        (arm64-mov 2 0)                   ; x2 = default
+        (arm64-ldr 1 31 slot2)            ; x1 = ht
+        (arm64-ldr 0 31 slot1)            ; x0 = key
+        (arm64-ldr 9 19 160)              ; habu_gethash at offset 160 (index 20)
+        (arm64-blr 9))))                  ; returns value or default
+
+    ;; puthash: (puthash-call key-ir value-ir ht-ir)
+    ;; habu_puthash(key, value, ht) -> value
+    ((has-tag? ir 'puthash-call)
+     (let* ((key-ir (cadr ir))
+            (value-ir (caddr ir))
+            (ht-ir (cadddr ir))
+            (slot1 (temp-slot-offset temp-depth))
+            (slot2 (temp-slot-offset (+ temp-depth 1)))
+            (key-code (codegen-expr key-ir runtime-addrs fn-offsets current-offset (+ temp-depth 2)))
+            (value-code (codegen-expr value-ir runtime-addrs fn-offsets current-offset (+ temp-depth 2)))
+            (ht-code (codegen-expr ht-ir runtime-addrs fn-offsets current-offset (+ temp-depth 2))))
+       (append
+        key-code
+        (arm64-str 0 31 slot1)            ; save key
+        value-code
+        (arm64-str 0 31 slot2)            ; save value
+        ht-code
+        (arm64-mov 2 0)                   ; x2 = ht
+        (arm64-ldr 1 31 slot2)            ; x1 = value
+        (arm64-ldr 0 31 slot1)            ; x0 = key
+        (arm64-ldr 9 19 168)              ; habu_puthash at offset 168 (index 21)
+        (arm64-blr 9))))                  ; returns value
+
+    ;; remhash: (remhash-call key-ir ht-ir)
+    ;; habu_remhash(key, ht) -> boolean
+    ((has-tag? ir 'remhash-call)
+     (let* ((key-ir (cadr ir))
+            (ht-ir (caddr ir))
+            (slot1 (temp-slot-offset temp-depth))
+            (key-code (codegen-expr key-ir runtime-addrs fn-offsets current-offset (+ temp-depth 1)))
+            (ht-code (codegen-expr ht-ir runtime-addrs fn-offsets current-offset (+ temp-depth 1))))
+       (append
+        key-code
+        (arm64-str 0 31 slot1)            ; save key
+        ht-code
+        (arm64-mov 1 0)                   ; x1 = ht
+        (arm64-ldr 0 31 slot1)            ; x0 = key
+        (arm64-ldr 9 19 176)              ; habu_remhash at offset 176 (index 22)
+        (arm64-blr 9))))                  ; returns boolean
+
+    ;; hash-table-count: (hash-table-count-call ht-ir)
+    ;; habu_hash_table_count(ht) -> fixnum
+    ((has-tag? ir 'hash-table-count-call)
+     (let* ((ht-ir (cadr ir))
+            (ht-code (codegen-expr ht-ir runtime-addrs fn-offsets current-offset temp-depth)))
+       (append
+        ht-code
+        (arm64-ldr 9 19 184)              ; habu_hash_table_count at offset 184 (index 23)
+        (arm64-blr 9))))                  ; returns count as tagged fixnum
+
     ;; Let expression: (let-expr bind-values body-ir num-bindings env-offsets)
     ;; Must track current-offset properly for function calls in bindings/body
     ((has-tag? ir 'let-expr)
@@ -2041,6 +2128,14 @@ Cons/car/cdr are required; others should be provided in production."
                    (list 'setcdr-call
                          (compile-expr (cadr place) env fenv)
                          (compile-expr val-expr env fenv)))
+                  ;; (setf (gethash key ht) val) -> (puthash key val ht)
+                  ((and (consp place) (op= (car place) "GETHASH") (consp (cdr place)) (consp (cddr place)))
+                   (let ((key (cadr place))
+                         (ht (caddr place)))
+                     (list 'puthash-call
+                           (compile-expr key env fenv)
+                           (compile-expr val-expr env fenv)
+                           (compile-expr ht env fenv))))
                   ;; Other places not yet supported
                   (t (list 'lit 0))))
               (list 'lit 0)))
@@ -2600,6 +2695,14 @@ Cons/car/cdr are required; others should be provided in production."
               (list 'cmp-eq
                     (list 'get-tag (compile-expr (cadr expr) env fenv))
                     (list 'lit 5)) ; tag 5
+              (list 'lit 0)))
+
+         ;; Hash-table-p predicate (tag #x6)
+         ((op= op "HASH-TABLE-P")
+          (if (consp (cdr expr))
+              (list 'cmp-eq
+                    (list 'get-tag (compile-expr (cadr expr) env fenv))
+                    (list 'lit 6)) ; tag 6
               (list 'lit 0)))
 
          ;; Listp predicate (null or cons)
@@ -3534,6 +3637,59 @@ Cons/car/cdr are required; others should be provided in production."
               (list 'values-get-call
                     (compile-expr (cadr expr) env fenv)
                     (compile-expr (caddr expr) env fenv))
+              (list 'lit 0)))
+
+         ;; Hash tables
+         ;; (make-hash-table &key size) -> hash table
+         ((op= op "MAKE-HASH-TABLE")
+          (let ((capacity (cadr (member :size (cdr expr)))))
+            (list 'make-hash-table-call
+                  (if capacity
+                      (compile-expr capacity env fenv)
+                      (list 'lit 0)))))  ; 0 means use default capacity
+
+         ;; (gethash key hash-table &optional default) -> value
+         ((op= op "GETHASH")
+          (if (and (consp (cdr expr)) (consp (cddr expr)))
+              (let ((key (cadr expr))
+                    (ht (caddr expr))
+                    (default (cadddr expr)))
+                (list 'gethash-call
+                      (compile-expr key env fenv)
+                      (compile-expr ht env fenv)
+                      (if default
+                          (compile-expr default env fenv)
+                          (list 'lit 0))))
+              (list 'lit 0)))
+
+         ;; (setf (gethash key ht) value) is handled by setf transformer
+         ;; (puthash key value ht) -> value
+         ((op= op "PUTHASH")
+          (if (and (consp (cdr expr)) (consp (cddr expr)) (consp (cdddr expr)))
+              (let ((key (cadr expr))
+                    (value (caddr expr))
+                    (ht (cadddr expr)))
+                (list 'puthash-call
+                      (compile-expr key env fenv)
+                      (compile-expr value env fenv)
+                      (compile-expr ht env fenv)))
+              (list 'lit 0)))
+
+         ;; (remhash key hash-table) -> boolean
+         ((op= op "REMHASH")
+          (if (and (consp (cdr expr)) (consp (cddr expr)))
+              (let ((key (cadr expr))
+                    (ht (caddr expr)))
+                (list 'remhash-call
+                      (compile-expr key env fenv)
+                      (compile-expr ht env fenv)))
+              (list 'lit 0)))
+
+         ;; (hash-table-count hash-table) -> fixnum
+         ((op= op "HASH-TABLE-COUNT")
+          (if (consp (cdr expr))
+              (list 'hash-table-count-call
+                    (compile-expr (cadr expr) env fenv))
               (list 'lit 0)))
 
          ;; Packages: no-op except find-symbol folded to symbol literal

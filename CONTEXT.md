@@ -26,6 +26,7 @@ The Habu compiler has achieved **Stage 1 bootstrap** - it can now compile its ow
 5. **Implemented `char-code`**: Returns the character code of a character (identity function since Habu represents characters as fixnums)
 6. **Fixed multiple body forms in let/let*/labels/flet**: These handlers were only compiling the first body form; now they wrap multiple body forms in `progn`
 7. **Fixed tagbody/go forward jumps**: Added dead code elimination after `go` calls and removed automatic fallthrough when `go` is present
+8. **Implemented hash tables**: Full hash table support with make-hash-table, gethash, puthash, remhash, hash-table-count, hash-table-p, and (setf (gethash ...)) syntax
 
 ---
 
@@ -107,7 +108,7 @@ The Habu compiler can now compile and execute complex Lisp programs including:
 | **Multiple Values** | values ✓, multiple-value-bind ✓, multiple-value-call | Medium |
 | **Conditions** | error ✓, signal, handler-case, handler-bind, restarts | Medium |
 | **Format** | format directives ✓ (basic ~A, ~S, ~D) | Medium |
-| **Hash Tables** | make-hash-table, gethash, puthash, remhash | Medium |
+| **Hash Tables** | make-hash-table ✓, gethash ✓, puthash ✓, remhash ✓, hash-table-count ✓, hash-table-p ✓ | Medium |
 | **Structures** | defstruct | Medium |
 | **CLOS** | defclass, defmethod, defgeneric, make-instance | Low |
 | **Numeric Tower** | bignum, ratio, float, complex | Low |

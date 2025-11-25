@@ -67,13 +67,14 @@ typedef uint64_t habu_value_t;   /* Universal value type - either immediate or t
 typedef int64_t habu_fixnum_t;   /* Untagged integer type */
 
 /* Type tags (lower 4 bits of habu_value_t) */
-#define TAG_FIXNUM  0x0  /* Immediate integer (no heap allocation) */
-#define TAG_CONS    0x1  /* Pointer to cons cell */
-#define TAG_SYMBOL  0x2  /* Pointer to symbol */
-#define TAG_VECTOR  0x3  /* Pointer to vector */
-#define TAG_STRING  0x4  /* Pointer to string */
-#define TAG_CLOSURE 0x5  /* Pointer to closure */
-#define TAG_MASK    0xF  /* Mask for extracting tag bits */
+#define TAG_FIXNUM    0x0  /* Immediate integer (no heap allocation) */
+#define TAG_CONS      0x1  /* Pointer to cons cell */
+#define TAG_SYMBOL    0x2  /* Pointer to symbol */
+#define TAG_VECTOR    0x3  /* Pointer to vector */
+#define TAG_STRING    0x4  /* Pointer to string */
+#define TAG_CLOSURE   0x5  /* Pointer to closure */
+#define TAG_HASHTABLE 0x6  /* Pointer to hash table */
+#define TAG_MASK      0xF  /* Mask for extracting tag bits */
 
 /* Object header
  *
@@ -99,11 +100,12 @@ typedef struct {
 #define GEN_OLD 6
 
 /* Object types (detailed) */
-#define TYPE_CONS    1
-#define TYPE_SYMBOL  2
-#define TYPE_VECTOR  3
-#define TYPE_STRING  4
-#define TYPE_CLOSURE 5
+#define TYPE_CONS      1
+#define TYPE_SYMBOL    2
+#define TYPE_VECTOR    3
+#define TYPE_STRING    4
+#define TYPE_CLOSURE   5
+#define TYPE_HASHTABLE 6
 
 /* Cons cell */
 typedef struct {
@@ -135,6 +137,16 @@ typedef struct {
     void *code;           /* Function pointer */
     habu_value_t env;     /* Captured environment */
 } habu_closure_t;
+
+/* Hash table
+ * Uses separate chaining with association lists in buckets.
+ * Buckets is a vector of lists, each list contains (key . value) pairs.
+ */
+typedef struct {
+    uint64_t count;       /* Number of entries */
+    uint64_t capacity;    /* Number of buckets */
+    habu_value_t buckets; /* Vector of bucket lists (TAG_VECTOR) */
+} habu_hashtable_t;
 
 /* Value operations */
 static inline bool is_fixnum(habu_value_t v) {
@@ -217,6 +229,10 @@ static inline habu_string_t *value_to_string(habu_value_t v) {
 
 static inline habu_closure_t *value_to_closure(habu_value_t v) {
     return (habu_closure_t *)untag_pointer(v);
+}
+
+static inline habu_hashtable_t *value_to_hashtable(habu_value_t v) {
+    return (habu_hashtable_t *)untag_pointer(v);
 }
 
 /* NIL representation */

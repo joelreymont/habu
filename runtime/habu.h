@@ -145,6 +145,13 @@ habu_value_t habu_closure_env(habu_value_t closure_val);
 /* Tag access - fundamental primitive for type checking in Lisp */
 habu_value_t habu_get_tag(habu_value_t val);
 
+/* Hash table operations */
+habu_value_t habu_make_hash_table(habu_value_t capacity);
+habu_value_t habu_gethash(habu_value_t key, habu_value_t ht, habu_value_t default_val);
+habu_value_t habu_puthash(habu_value_t key, habu_value_t value, habu_value_t ht);
+habu_value_t habu_remhash(habu_value_t key, habu_value_t ht);
+habu_value_t habu_hash_table_count(habu_value_t ht);
+
 /* Multiple values support
  * Up to 4 values supported (primary + 3 secondary)
  * Secondary values stored in global array

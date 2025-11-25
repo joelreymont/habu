@@ -530,6 +530,18 @@ static void mark_children(void *obj) {
             break;
         }
 
+        case TYPE_HASHTABLE: {
+            habu_hashtable_t *ht = (habu_hashtable_t *)obj;
+            if (is_pointer(ht->buckets)) {
+                void *buckets_obj = untag_pointer(ht->buckets);
+                if (get_gc_color(buckets_obj) == GC_WHITE) {
+                    set_gc_color(buckets_obj, GC_GRAY);
+                    push_gray(buckets_obj);
+                }
+            }
+            break;
+        }
+
         case TYPE_STRING:
             /* Strings have no outgoing pointers */
             break;
@@ -904,6 +916,12 @@ static void update_object_pointers(void *obj) {
         case TYPE_CLOSURE: {
             habu_closure_t *closure = (habu_closure_t *)obj;
             closure->env = forward_value(closure->env);
+            break;
+        }
+
+        case TYPE_HASHTABLE: {
+            habu_hashtable_t *ht = (habu_hashtable_t *)obj;
+            ht->buckets = forward_value(ht->buckets);
             break;
         }
 
@@ -1322,6 +1340,231 @@ habu_value_t habu_make_symbol(const char *name) {
     symbol_table_insert(name, sym_value);
 
     return sym_value;
+}
+
+/* Hash tables */
+
+#define DEFAULT_HASH_CAPACITY 16
+
+/* Compute hash code for a Habu value */
+static uint64_t hash_code(habu_value_t key) {
+    uint64_t tag = get_tag(key);
+
+    switch (tag) {
+    case TAG_FIXNUM:
+        /* Use fixnum value directly */
+        return (uint64_t)value_to_fixnum(key);
+
+    case TAG_STRING: {
+        /* DJB2 hash for strings */
+        habu_string_t *str = value_to_string(key);
+        uint64_t hash = 5381;
+        for (uint64_t i = 0; i < str->length; i++) {
+            hash = ((hash << 5) + hash) + (uint8_t)str->data[i];
+        }
+        return hash;
+    }
+
+    case TAG_SYMBOL: {
+        /* Hash the symbol's name */
+        habu_symbol_t *sym = value_to_symbol(key);
+        return hash_code(sym->name);
+    }
+
+    default:
+        /* Use address as hash for other types */
+        return (uint64_t)key >> 4;
+    }
+}
+
+/* Check if two keys are equal (for hash table lookup) */
+static bool hash_equal(habu_value_t a, habu_value_t b) {
+    /* Fast path: identical values */
+    if (a == b) return true;
+
+    uint64_t tag_a = get_tag(a);
+    uint64_t tag_b = get_tag(b);
+
+    /* Different tags -> not equal */
+    if (tag_a != tag_b) return false;
+
+    /* String comparison */
+    if (tag_a == TAG_STRING) {
+        habu_string_t *str_a = value_to_string(a);
+        habu_string_t *str_b = value_to_string(b);
+        if (str_a->length != str_b->length) return false;
+        return memcmp(str_a->data, str_b->data, str_a->length) == 0;
+    }
+
+    /* For other types, identity comparison (already done above) */
+    return false;
+}
+
+habu_value_t habu_make_hash_table(habu_value_t capacity_val) {
+    /* Extract capacity from tagged fixnum, use default if 0 */
+    size_t capacity = capacity_val == NIL ? DEFAULT_HASH_CAPACITY
+                    : (size_t)value_to_fixnum(capacity_val);
+    if (capacity == 0) capacity = DEFAULT_HASH_CAPACITY;
+
+    /* Allocate the hash table structure */
+    void *mem = habu_gc_alloc(sizeof(habu_hashtable_t), TYPE_HASHTABLE);
+    if (!mem) return NIL;
+
+    habu_hashtable_t *ht = (habu_hashtable_t *)mem;
+    habu_value_t ht_val = tag_pointer(ht, TAG_HASHTABLE);
+
+    /* Root the hash table before allocating buckets vector */
+    habu_gc_add_root(&ht_val);
+
+    /* Allocate buckets vector (may trigger GC) */
+    habu_value_t buckets = habu_make_vector(capacity);
+
+    /* Refresh pointer after potential GC */
+    ht = value_to_hashtable(ht_val);
+    ht->count = 0;
+    ht->capacity = capacity;
+    ht->buckets = buckets;
+
+    habu_gc_remove_root(&ht_val);
+
+    return ht_val;
+}
+
+habu_value_t habu_gethash(habu_value_t key, habu_value_t ht_val, habu_value_t default_val) {
+    if (get_tag(ht_val) != TAG_HASHTABLE) return default_val;
+
+    habu_hashtable_t *ht = value_to_hashtable(ht_val);
+    uint64_t hash = hash_code(key);
+    uint64_t bucket_idx = hash % ht->capacity;
+
+    /* Get bucket (association list) */
+    habu_vector_t *buckets = value_to_vector(ht->buckets);
+    habu_value_t bucket = buckets->data[bucket_idx];
+
+    /* Search the association list */
+    while (get_tag(bucket) == TAG_CONS) {
+        habu_cons_t *cell = value_to_cons(bucket);
+        habu_value_t pair = cell->car;
+
+        if (get_tag(pair) == TAG_CONS) {
+            habu_cons_t *kv = value_to_cons(pair);
+            if (hash_equal(key, kv->car)) {
+                return kv->cdr;  /* Found it */
+            }
+        }
+
+        bucket = cell->cdr;
+    }
+
+    return default_val;  /* Not found */
+}
+
+habu_value_t habu_puthash(habu_value_t key, habu_value_t value, habu_value_t ht_val) {
+    if (get_tag(ht_val) != TAG_HASHTABLE) return NIL;
+
+    /* Root all values since we'll be allocating */
+    habu_gc_add_root(&key);
+    habu_gc_add_root(&value);
+    habu_gc_add_root(&ht_val);
+
+    habu_hashtable_t *ht = value_to_hashtable(ht_val);
+    uint64_t hash = hash_code(key);
+    uint64_t bucket_idx = hash % ht->capacity;
+
+    /* Get bucket */
+    habu_vector_t *buckets = value_to_vector(ht->buckets);
+    habu_value_t bucket = buckets->data[bucket_idx];
+
+    /* Search for existing key */
+    habu_value_t current = bucket;
+    while (get_tag(current) == TAG_CONS) {
+        habu_cons_t *cell = value_to_cons(current);
+        habu_value_t pair = cell->car;
+
+        if (get_tag(pair) == TAG_CONS) {
+            habu_cons_t *kv = value_to_cons(pair);
+            if (hash_equal(key, kv->car)) {
+                /* Update existing entry */
+                kv->cdr = value;
+                habu_gc_remove_root(&ht_val);
+                habu_gc_remove_root(&value);
+                habu_gc_remove_root(&key);
+                return value;
+            }
+        }
+
+        current = cell->cdr;
+    }
+
+    /* Key not found - create new entry */
+    /* cons(key, value) */
+    habu_value_t pair = habu_cons(key, value);
+    habu_gc_add_root(&pair);
+
+    /* cons(pair, old_bucket) */
+    /* Refresh pointers after allocation */
+    ht = value_to_hashtable(ht_val);
+    buckets = value_to_vector(ht->buckets);
+    bucket = buckets->data[bucket_idx];
+
+    habu_value_t new_bucket = habu_cons(pair, bucket);
+
+    /* Refresh and update */
+    ht = value_to_hashtable(ht_val);
+    buckets = value_to_vector(ht->buckets);
+    buckets->data[bucket_idx] = new_bucket;
+    ht->count++;
+
+    habu_gc_remove_root(&pair);
+    habu_gc_remove_root(&ht_val);
+    habu_gc_remove_root(&value);
+    habu_gc_remove_root(&key);
+
+    return value;
+}
+
+habu_value_t habu_remhash(habu_value_t key, habu_value_t ht_val) {
+    if (get_tag(ht_val) != TAG_HASHTABLE) return NIL;
+
+    habu_hashtable_t *ht = value_to_hashtable(ht_val);
+    uint64_t hash = hash_code(key);
+    uint64_t bucket_idx = hash % ht->capacity;
+
+    habu_vector_t *buckets = value_to_vector(ht->buckets);
+    habu_value_t bucket = buckets->data[bucket_idx];
+    habu_value_t prev = NIL;
+
+    while (get_tag(bucket) == TAG_CONS) {
+        habu_cons_t *cell = value_to_cons(bucket);
+        habu_value_t pair = cell->car;
+
+        if (get_tag(pair) == TAG_CONS) {
+            habu_cons_t *kv = value_to_cons(pair);
+            if (hash_equal(key, kv->car)) {
+                /* Found it - remove from list */
+                if (prev == NIL) {
+                    /* First element */
+                    buckets->data[bucket_idx] = cell->cdr;
+                } else {
+                    /* Middle/end element */
+                    value_to_cons(prev)->cdr = cell->cdr;
+                }
+                ht->count--;
+                return fixnum_to_value(1);  /* True - was removed */
+            }
+        }
+
+        prev = bucket;
+        bucket = cell->cdr;
+    }
+
+    return NIL;  /* Not found */
+}
+
+habu_value_t habu_hash_table_count(habu_value_t ht_val) {
+    if (get_tag(ht_val) != TAG_HASHTABLE) return NIL;
+    habu_hashtable_t *ht = value_to_hashtable(ht_val);
+    return fixnum_to_value(ht->count);
 }
 
 /* Statistics */
