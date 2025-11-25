@@ -2214,6 +2214,32 @@ Cons/car/cdr are required; others should be provided in production."
                   (t (list 'lit 0))))
               (list 'lit 0)))
 
+         ;; Macrolet (local macros)
+         ;; (macrolet ((name (args) body) ...) expr)
+         ;; Temporarily extends *macro-env* for the body
+         ((eq op 'macrolet)
+          (if (and (consp (cdr expr)) (consp (cddr expr)))
+              (let* ((macro-defs (cadr expr))
+                     (body-forms (cddr expr))
+                     (body (if (cdr body-forms)
+                               (cons 'progn body-forms)
+                               (car body-forms)))
+                     ;; Save current macro env
+                     (saved-macro-env *macro-env*))
+                ;; Register local macros
+                (dolist (def macro-defs)
+                  (let* ((name (car def))
+                         (params (cadr def))
+                         (macro-body (caddr def))
+                         (expander (eval `(lambda ,params ,macro-body))))
+                    (register-macro name expander)))
+                ;; Compile body with extended macro env
+                (let ((result (compile-expr body env fenv)))
+                  ;; Restore macro env
+                  (setf *macro-env* saved-macro-env)
+                  result))
+              (list 'lit 0)))
+
          ;; Labels (local recursive functions)
          ;; Transform using cons cells as mutable boxes for proper closure semantics:
          ;; (labels ((f (x) body)) expr) ->
@@ -2383,6 +2409,33 @@ Cons/car/cdr are required; others should be provided in production."
             (if body
                 (cons 'progn (mapcar (lambda (form) (compile-expr form env fenv)) body))
                 (list 'lit #x0))))
+
+         ;; Prog1: evaluate forms, return first result
+         ((eq op 'prog1)
+          (if (consp (cdr expr))
+              (let ((first-form (cadr expr))
+                    (rest-forms (cddr expr)))
+                (compile-expr
+                 `(let ((result ,first-form))
+                    ,@rest-forms
+                    result)
+                 env fenv))
+              (list 'lit 0)))
+
+         ;; Prog2: evaluate forms, return second result
+         ((eq op 'prog2)
+          (if (and (consp (cdr expr)) (consp (cddr expr)))
+              (let ((first-form (cadr expr))
+                    (second-form (caddr expr))
+                    (rest-forms (cdddr expr)))
+                (compile-expr
+                 `(progn
+                    ,first-form
+                    (let ((result ,second-form))
+                      ,@rest-forms
+                      result))
+                 env fenv))
+              (list 'lit 0)))
 
          ;; Conditional
          ((eq op 'if)
@@ -2883,6 +2936,65 @@ Cons/car/cdr are required; others should be provided in production."
               (if (consp (cdr expr))
                   (compile-expr (cadr expr) env fenv)
                   (list 'lit 0))))
+
+         ;; Evenp (test if even)
+         ((eq op 'evenp)
+          (if (consp (cdr expr))
+              (list 'cmp-eq
+                    (list 'rem (compile-expr (cadr expr) env fenv) (list 'lit 2))
+                    (list 'lit 0))
+              (list 'lit 0)))
+
+         ;; Oddp (test if odd)
+         ((eq op 'oddp)
+          (if (consp (cdr expr))
+              (list 'cmp-ne
+                    (list 'rem (compile-expr (cadr expr) env fenv) (list 'lit 2))
+                    (list 'lit 0))
+              (list 'lit 0)))
+
+         ;; Signum (sign of number: -1, 0, or 1)
+         ((eq op 'signum)
+          (if (consp (cdr expr))
+              (compile-expr
+               `(let ((n ,(cadr expr)))
+                  (cond ((< n #x0) #x-1)
+                        ((> n #x0) #x1)
+                        (t #x0)))
+               env fenv)
+              (list 'lit 0)))
+
+         ;; Gcd (greatest common divisor) - Euclidean algorithm
+         ((eq op 'gcd)
+          (let ((args (cdr expr)))
+            (cond
+              ((null args) (list 'lit 0))
+              ((null (cdr args)) (compile-expr `(abs ,(car args)) env fenv))
+              ((null (cddr args))
+               (compile-expr
+                `(labels ((gcd-iter (a b)
+                            (if (= b #x0)
+                                a
+                                (gcd-iter b (rem a b)))))
+                   (gcd-iter (abs ,(car args)) (abs ,(cadr args))))
+                env fenv))
+              (t (compile-expr `(gcd (gcd ,(car args) ,(cadr args)) ,@(cddr args)) env fenv)))))
+
+         ;; Lcm (least common multiple)
+         ((eq op 'lcm)
+          (let ((args (cdr expr)))
+            (cond
+              ((null args) (list 'lit 1))
+              ((null (cdr args)) (compile-expr `(abs ,(car args)) env fenv))
+              ((null (cddr args))
+               (compile-expr
+                `(let ((a (abs ,(car args)))
+                       (b (abs ,(cadr args))))
+                   (if (= a #x0)
+                       #x0
+                       (* (/ a (gcd a b)) b)))
+                env fenv))
+              (t (compile-expr `(lcm (lcm ,(car args) ,(cadr args)) ,@(cddr args)) env fenv)))))
 
          ;; Cadr (car of cdr)
          ((eq op 'cadr)
