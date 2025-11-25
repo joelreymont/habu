@@ -74,6 +74,7 @@ typedef int64_t habu_fixnum_t;   /* Untagged integer type */
 #define TAG_STRING    0x4  /* Pointer to string */
 #define TAG_CLOSURE   0x5  /* Pointer to closure */
 #define TAG_HASHTABLE 0x6  /* Pointer to hash table */
+#define TAG_FLOAT     0x7  /* Pointer to boxed float */
 #define TAG_MASK      0xF  /* Mask for extracting tag bits */
 
 /* Object header
@@ -106,6 +107,7 @@ typedef struct {
 #define TYPE_STRING    4
 #define TYPE_CLOSURE   5
 #define TYPE_HASHTABLE 6
+#define TYPE_FLOAT     7
 
 /* Cons cell */
 typedef struct {
@@ -147,6 +149,11 @@ typedef struct {
     uint64_t capacity;    /* Number of buckets */
     habu_value_t buckets; /* Vector of bucket lists (TAG_VECTOR) */
 } habu_hashtable_t;
+
+/* Boxed float (IEEE 754 double precision) */
+typedef struct {
+    double value;
+} habu_float_t;
 
 /* Value operations */
 static inline bool is_fixnum(habu_value_t v) {

@@ -543,7 +543,8 @@ static void mark_children(void *obj) {
         }
 
         case TYPE_STRING:
-            /* Strings have no outgoing pointers */
+        case TYPE_FLOAT:
+            /* Strings and floats have no outgoing pointers */
             break;
 
         default:
@@ -926,7 +927,8 @@ static void update_object_pointers(void *obj) {
         }
 
         case TYPE_STRING:
-            /* Strings have no outgoing pointers */
+        case TYPE_FLOAT:
+            /* Strings and floats have no outgoing pointers */
             break;
 
         default:
@@ -1565,6 +1567,89 @@ habu_value_t habu_hash_table_count(habu_value_t ht_val) {
     if (get_tag(ht_val) != TAG_HASHTABLE) return NIL;
     habu_hashtable_t *ht = value_to_hashtable(ht_val);
     return fixnum_to_value(ht->count);
+}
+
+/* Float operations (IEEE 754 double precision) */
+
+static inline habu_float_t *value_to_float(habu_value_t v) {
+    return (habu_float_t *)untag_pointer(v);
+}
+
+habu_value_t habu_make_float(double value) {
+    size_t size = sizeof(habu_float_t);
+    habu_float_t *f = habu_gc_alloc(size, TYPE_FLOAT);
+    if (!f) {
+        return NIL;
+    }
+    f->value = value;
+    return tag_pointer(f, TAG_FLOAT);
+}
+
+double habu_float_value(habu_value_t float_val) {
+    if (get_tag(float_val) != TAG_FLOAT) {
+        return 0.0;
+    }
+    habu_float_t *f = value_to_float(float_val);
+    return f->value;
+}
+
+/* Helper to get numeric value as double (works for both fixnum and float) */
+static inline double to_double(habu_value_t v) {
+    if (is_fixnum(v)) {
+        return (double)value_to_fixnum(v);
+    } else if (get_tag(v) == TAG_FLOAT) {
+        return value_to_float(v)->value;
+    }
+    return 0.0;
+}
+
+habu_value_t habu_float_add(habu_value_t a, habu_value_t b) {
+    return habu_make_float(to_double(a) + to_double(b));
+}
+
+habu_value_t habu_float_sub(habu_value_t a, habu_value_t b) {
+    return habu_make_float(to_double(a) - to_double(b));
+}
+
+habu_value_t habu_float_mul(habu_value_t a, habu_value_t b) {
+    return habu_make_float(to_double(a) * to_double(b));
+}
+
+habu_value_t habu_float_div(habu_value_t a, habu_value_t b) {
+    double bval = to_double(b);
+    if (bval == 0.0) return NIL;  /* Division by zero */
+    return habu_make_float(to_double(a) / bval);
+}
+
+habu_value_t habu_float_lt(habu_value_t a, habu_value_t b) {
+    return to_double(a) < to_double(b) ? fixnum_to_value(1) : NIL;
+}
+
+habu_value_t habu_float_gt(habu_value_t a, habu_value_t b) {
+    return to_double(a) > to_double(b) ? fixnum_to_value(1) : NIL;
+}
+
+habu_value_t habu_float_le(habu_value_t a, habu_value_t b) {
+    return to_double(a) <= to_double(b) ? fixnum_to_value(1) : NIL;
+}
+
+habu_value_t habu_float_ge(habu_value_t a, habu_value_t b) {
+    return to_double(a) >= to_double(b) ? fixnum_to_value(1) : NIL;
+}
+
+habu_value_t habu_float_eq(habu_value_t a, habu_value_t b) {
+    return to_double(a) == to_double(b) ? fixnum_to_value(1) : NIL;
+}
+
+habu_value_t habu_fixnum_to_float(habu_value_t fixnum) {
+    if (!is_fixnum(fixnum)) return NIL;
+    return habu_make_float((double)value_to_fixnum(fixnum));
+}
+
+habu_value_t habu_float_to_fixnum(habu_value_t float_val) {
+    if (get_tag(float_val) != TAG_FLOAT) return NIL;
+    double d = value_to_float(float_val)->value;
+    return fixnum_to_value((int64_t)d);  /* Truncate toward zero */
 }
 
 /* Statistics */

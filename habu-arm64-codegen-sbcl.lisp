@@ -1653,6 +1653,172 @@ Cons/car/cdr are required; others should be provided in production."
                (arm64-ldr 9 19 88) ; make-symbol-from-string at offset 88 (index 11)
                (arm64-blr 9))))
 
+    ;; ============= IEEE 754 Float Codegen =============
+
+    ;; Float: convert fixnum to float
+    ;; Runtime table: [39] = offset 312 = habu_fixnum_to_float
+    ((has-tag? ir 'float-call)
+     (let* ((arg-ir (cadr ir))
+            (arg-code (codegen-expr arg-ir runtime-addrs fn-offsets current-offset temp-depth)))
+       (append arg-code
+               (arm64-ldr 9 19 312) ; fixnum_to_float at offset 312
+               (arm64-blr 9))))
+
+    ;; Float-truncate: convert float to fixnum
+    ;; Runtime table: [40] = offset 320 = habu_float_to_fixnum
+    ((has-tag? ir 'float-truncate-call)
+     (let* ((arg-ir (cadr ir))
+            (arg-code (codegen-expr arg-ir runtime-addrs fn-offsets current-offset temp-depth)))
+       (append arg-code
+               (arm64-ldr 9 19 320) ; float_to_fixnum at offset 320
+               (arm64-blr 9))))
+
+    ;; Float+: add two floats
+    ;; Runtime table: [30] = offset 240 = habu_float_add
+    ((has-tag? ir 'float-add-call)
+     (let* ((a-ir (cadr ir))
+            (b-ir (caddr ir))
+            (slot1 (temp-slot-offset temp-depth))
+            (a-code (codegen-expr a-ir runtime-addrs fn-offsets current-offset (+ temp-depth 1)))
+            (b-code (codegen-expr b-ir runtime-addrs fn-offsets current-offset (+ temp-depth 1))))
+       (append a-code
+               (arm64-str 0 31 slot1)   ; save first arg
+               b-code
+               (arm64-mov 1 0)          ; x1 = second arg
+               (arm64-ldr 0 31 slot1)   ; x0 = first arg
+               (arm64-ldr 9 19 240)     ; float_add at offset 240
+               (arm64-blr 9))))
+
+    ;; Float-: subtract two floats
+    ;; Runtime table: [31] = offset 248 = habu_float_sub
+    ((has-tag? ir 'float-sub-call)
+     (let* ((a-ir (cadr ir))
+            (b-ir (caddr ir))
+            (slot1 (temp-slot-offset temp-depth))
+            (a-code (codegen-expr a-ir runtime-addrs fn-offsets current-offset (+ temp-depth 1)))
+            (b-code (codegen-expr b-ir runtime-addrs fn-offsets current-offset (+ temp-depth 1))))
+       (append a-code
+               (arm64-str 0 31 slot1)
+               b-code
+               (arm64-mov 1 0)
+               (arm64-ldr 0 31 slot1)
+               (arm64-ldr 9 19 248)     ; float_sub at offset 248
+               (arm64-blr 9))))
+
+    ;; Float*: multiply two floats
+    ;; Runtime table: [32] = offset 256 = habu_float_mul
+    ((has-tag? ir 'float-mul-call)
+     (let* ((a-ir (cadr ir))
+            (b-ir (caddr ir))
+            (slot1 (temp-slot-offset temp-depth))
+            (a-code (codegen-expr a-ir runtime-addrs fn-offsets current-offset (+ temp-depth 1)))
+            (b-code (codegen-expr b-ir runtime-addrs fn-offsets current-offset (+ temp-depth 1))))
+       (append a-code
+               (arm64-str 0 31 slot1)
+               b-code
+               (arm64-mov 1 0)
+               (arm64-ldr 0 31 slot1)
+               (arm64-ldr 9 19 256)     ; float_mul at offset 256
+               (arm64-blr 9))))
+
+    ;; Float/: divide two floats
+    ;; Runtime table: [33] = offset 264 = habu_float_div
+    ((has-tag? ir 'float-div-call)
+     (let* ((a-ir (cadr ir))
+            (b-ir (caddr ir))
+            (slot1 (temp-slot-offset temp-depth))
+            (a-code (codegen-expr a-ir runtime-addrs fn-offsets current-offset (+ temp-depth 1)))
+            (b-code (codegen-expr b-ir runtime-addrs fn-offsets current-offset (+ temp-depth 1))))
+       (append a-code
+               (arm64-str 0 31 slot1)
+               b-code
+               (arm64-mov 1 0)
+               (arm64-ldr 0 31 slot1)
+               (arm64-ldr 9 19 264)     ; float_div at offset 264
+               (arm64-blr 9))))
+
+    ;; Float<: less than comparison
+    ;; Runtime table: [34] = offset 272 = habu_float_lt
+    ((has-tag? ir 'float-lt-call)
+     (let* ((a-ir (cadr ir))
+            (b-ir (caddr ir))
+            (slot1 (temp-slot-offset temp-depth))
+            (a-code (codegen-expr a-ir runtime-addrs fn-offsets current-offset (+ temp-depth 1)))
+            (b-code (codegen-expr b-ir runtime-addrs fn-offsets current-offset (+ temp-depth 1))))
+       (append a-code
+               (arm64-str 0 31 slot1)
+               b-code
+               (arm64-mov 1 0)
+               (arm64-ldr 0 31 slot1)
+               (arm64-ldr 9 19 272)     ; float_lt at offset 272
+               (arm64-blr 9))))
+
+    ;; Float>: greater than comparison
+    ;; Runtime table: [35] = offset 280 = habu_float_gt
+    ((has-tag? ir 'float-gt-call)
+     (let* ((a-ir (cadr ir))
+            (b-ir (caddr ir))
+            (slot1 (temp-slot-offset temp-depth))
+            (a-code (codegen-expr a-ir runtime-addrs fn-offsets current-offset (+ temp-depth 1)))
+            (b-code (codegen-expr b-ir runtime-addrs fn-offsets current-offset (+ temp-depth 1))))
+       (append a-code
+               (arm64-str 0 31 slot1)
+               b-code
+               (arm64-mov 1 0)
+               (arm64-ldr 0 31 slot1)
+               (arm64-ldr 9 19 280)     ; float_gt at offset 280
+               (arm64-blr 9))))
+
+    ;; Float<=: less than or equal comparison
+    ;; Runtime table: [36] = offset 288 = habu_float_le
+    ((has-tag? ir 'float-le-call)
+     (let* ((a-ir (cadr ir))
+            (b-ir (caddr ir))
+            (slot1 (temp-slot-offset temp-depth))
+            (a-code (codegen-expr a-ir runtime-addrs fn-offsets current-offset (+ temp-depth 1)))
+            (b-code (codegen-expr b-ir runtime-addrs fn-offsets current-offset (+ temp-depth 1))))
+       (append a-code
+               (arm64-str 0 31 slot1)
+               b-code
+               (arm64-mov 1 0)
+               (arm64-ldr 0 31 slot1)
+               (arm64-ldr 9 19 288)     ; float_le at offset 288
+               (arm64-blr 9))))
+
+    ;; Float>=: greater than or equal comparison
+    ;; Runtime table: [37] = offset 296 = habu_float_ge
+    ((has-tag? ir 'float-ge-call)
+     (let* ((a-ir (cadr ir))
+            (b-ir (caddr ir))
+            (slot1 (temp-slot-offset temp-depth))
+            (a-code (codegen-expr a-ir runtime-addrs fn-offsets current-offset (+ temp-depth 1)))
+            (b-code (codegen-expr b-ir runtime-addrs fn-offsets current-offset (+ temp-depth 1))))
+       (append a-code
+               (arm64-str 0 31 slot1)
+               b-code
+               (arm64-mov 1 0)
+               (arm64-ldr 0 31 slot1)
+               (arm64-ldr 9 19 296)     ; float_ge at offset 296
+               (arm64-blr 9))))
+
+    ;; Float=: equality comparison
+    ;; Runtime table: [38] = offset 304 = habu_float_eq
+    ((has-tag? ir 'float-eq-call)
+     (let* ((a-ir (cadr ir))
+            (b-ir (caddr ir))
+            (slot1 (temp-slot-offset temp-depth))
+            (a-code (codegen-expr a-ir runtime-addrs fn-offsets current-offset (+ temp-depth 1)))
+            (b-code (codegen-expr b-ir runtime-addrs fn-offsets current-offset (+ temp-depth 1))))
+       (append a-code
+               (arm64-str 0 31 slot1)
+               b-code
+               (arm64-mov 1 0)
+               (arm64-ldr 0 31 slot1)
+               (arm64-ldr 9 19 304)     ; float_eq at offset 304
+               (arm64-blr 9))))
+
+    ;; ============= End Float Codegen =============
+
     ;; String length (returns fixnum)
     ((has-tag? ir 'string-len)
      (let* ((arg-ir (cadr ir))
@@ -3312,6 +3478,14 @@ Cons/car/cdr are required; others should be provided in production."
               (list 'cmp-eq
                     (list 'get-tag (compile-expr (cadr expr) env fenv))
                     (list 'lit 6)) ; tag 6
+              (list 'lit 0)))
+
+         ;; Floatp predicate (tag #x7)
+         ((or (eq op 'floatp) (op= op "FLOAT?"))
+          (if (consp (cdr expr))
+              (list 'cmp-eq
+                    (list 'get-tag (compile-expr (cadr expr) env fenv))
+                    (list 'lit 7)) ; tag 7
               (list 'lit 0)))
 
          ;; Listp predicate (null or cons)
@@ -5243,6 +5417,95 @@ Cons/car/cdr are required; others should be provided in production."
           (if (consp (cdr expr))
               (list 'make-symbol-call (compile-expr (cadr expr) env fenv))
               (list 'lit 0)))
+
+         ;; ============= IEEE 754 Float Operations =============
+
+         ;; Float: convert fixnum to float (runtime index 39 = offset 312)
+         ((eq op 'float)
+          (if (consp (cdr expr))
+              (list 'float-call (compile-expr (cadr expr) env fenv))
+              (list 'lit 0)))
+
+         ;; Truncate for floats: convert float to fixnum (runtime index 40 = offset 320)
+         ;; Note: truncate already exists for fixnums, this handles floats
+         ((op= op "FLOAT-TRUNCATE")
+          (if (consp (cdr expr))
+              (list 'float-truncate-call (compile-expr (cadr expr) env fenv))
+              (list 'lit 0)))
+
+         ;; Float+: add two floats (runtime index 30 = offset 240)
+         ((or (eq op 'float+) (op= op "FLOAT+"))
+          (if (and (consp (cdr expr)) (consp (cddr expr)))
+              (list 'float-add-call
+                    (compile-expr (cadr expr) env fenv)
+                    (compile-expr (caddr expr) env fenv))
+              (list 'lit 0)))
+
+         ;; Float-: subtract two floats (runtime index 31 = offset 248)
+         ((or (eq op 'float-) (op= op "FLOAT-"))
+          (if (and (consp (cdr expr)) (consp (cddr expr)))
+              (list 'float-sub-call
+                    (compile-expr (cadr expr) env fenv)
+                    (compile-expr (caddr expr) env fenv))
+              (list 'lit 0)))
+
+         ;; Float*: multiply two floats (runtime index 32 = offset 256)
+         ((or (eq op 'float*) (op= op "FLOAT*"))
+          (if (and (consp (cdr expr)) (consp (cddr expr)))
+              (list 'float-mul-call
+                    (compile-expr (cadr expr) env fenv)
+                    (compile-expr (caddr expr) env fenv))
+              (list 'lit 0)))
+
+         ;; Float/: divide two floats (runtime index 33 = offset 264)
+         ((or (eq op 'float/) (op= op "FLOAT/"))
+          (if (and (consp (cdr expr)) (consp (cddr expr)))
+              (list 'float-div-call
+                    (compile-expr (cadr expr) env fenv)
+                    (compile-expr (caddr expr) env fenv))
+              (list 'lit 0)))
+
+         ;; Float<: less than (runtime index 34 = offset 272)
+         ((or (eq op 'float<) (op= op "FLOAT<"))
+          (if (and (consp (cdr expr)) (consp (cddr expr)))
+              (list 'float-lt-call
+                    (compile-expr (cadr expr) env fenv)
+                    (compile-expr (caddr expr) env fenv))
+              (list 'lit 0)))
+
+         ;; Float>: greater than (runtime index 35 = offset 280)
+         ((or (eq op 'float>) (op= op "FLOAT>"))
+          (if (and (consp (cdr expr)) (consp (cddr expr)))
+              (list 'float-gt-call
+                    (compile-expr (cadr expr) env fenv)
+                    (compile-expr (caddr expr) env fenv))
+              (list 'lit 0)))
+
+         ;; Float<=: less than or equal (runtime index 36 = offset 288)
+         ((or (eq op 'float<=) (op= op "FLOAT<="))
+          (if (and (consp (cdr expr)) (consp (cddr expr)))
+              (list 'float-le-call
+                    (compile-expr (cadr expr) env fenv)
+                    (compile-expr (caddr expr) env fenv))
+              (list 'lit 0)))
+
+         ;; Float>=: greater than or equal (runtime index 37 = offset 296)
+         ((or (eq op 'float>=) (op= op "FLOAT>="))
+          (if (and (consp (cdr expr)) (consp (cddr expr)))
+              (list 'float-ge-call
+                    (compile-expr (cadr expr) env fenv)
+                    (compile-expr (caddr expr) env fenv))
+              (list 'lit 0)))
+
+         ;; Float=: equality (runtime index 38 = offset 304)
+         ((or (eq op 'float=) (op= op "FLOAT="))
+          (if (and (consp (cdr expr)) (consp (cddr expr)))
+              (list 'float-eq-call
+                    (compile-expr (cadr expr) env fenv)
+                    (compile-expr (caddr expr) env fenv))
+              (list 'lit 0)))
+
+         ;; ============= End Float Operations =============
 
          ;; String length
          ((op= op "STRING-LENGTH")

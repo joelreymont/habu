@@ -24,7 +24,7 @@
 typedef int64_t (*compiled_fn_t)(void** runtime_table);
 
 /* Runtime function table */
-void* g_runtime_table[32];
+void* g_runtime_table[48];
 
 void print_runtime_addresses(void) {
     printf("Runtime function addresses in this process:\n");
@@ -151,9 +151,23 @@ int main(int argc, char **argv) {
     g_runtime_table[26] = (void*)habu_fixnum_to_string;
     g_runtime_table[27] = (void*)habu_values_count_get;
     g_runtime_table[28] = (void*)habu_gensym;
+    /* Float operations (IEEE 754) */
+    g_runtime_table[29] = (void*)habu_make_float;
+    g_runtime_table[30] = (void*)habu_float_add;
+    g_runtime_table[31] = (void*)habu_float_sub;
+    g_runtime_table[32] = (void*)habu_float_mul;
+    g_runtime_table[33] = (void*)habu_float_div;
+    g_runtime_table[34] = (void*)habu_float_lt;
+    g_runtime_table[35] = (void*)habu_float_gt;
+    g_runtime_table[36] = (void*)habu_float_le;
+    g_runtime_table[37] = (void*)habu_float_ge;
+    g_runtime_table[38] = (void*)habu_float_eq;
+    g_runtime_table[39] = (void*)habu_fixnum_to_float;
+    g_runtime_table[40] = (void*)habu_float_to_fixnum;
+    g_runtime_table[41] = (void*)habu_float_value;
 
     if (getenv("HABU_DEBUG_TABLE")) {
-        for (int i = 0; i <= 28; i++) {
+        for (int i = 0; i <= 41; i++) {
             fprintf(stderr, "RT[%d]=%p\n", i, g_runtime_table[i]);
         }
     }
@@ -173,6 +187,8 @@ int main(int argc, char **argv) {
         printf("Result tag STRING (#x4)\n");
     } else if ((result & 0xF) == 0x2) {
         printf("Result tag SYMBOL (#x2)\n");
+    } else if ((result & 0xF) == 0x7) {
+        printf("Result tag FLOAT (#x7), value: %g\n", habu_float_value(result));
     }
 
     /* Cleanup */

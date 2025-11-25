@@ -153,6 +153,21 @@ habu_value_t habu_puthash(habu_value_t key, habu_value_t value, habu_value_t ht)
 habu_value_t habu_remhash(habu_value_t key, habu_value_t ht);
 habu_value_t habu_hash_table_count(habu_value_t ht);
 
+/* Float (IEEE 754 double precision) operations */
+habu_value_t habu_make_float(double value);
+double habu_float_value(habu_value_t float_val);
+habu_value_t habu_float_add(habu_value_t a, habu_value_t b);
+habu_value_t habu_float_sub(habu_value_t a, habu_value_t b);
+habu_value_t habu_float_mul(habu_value_t a, habu_value_t b);
+habu_value_t habu_float_div(habu_value_t a, habu_value_t b);
+habu_value_t habu_float_lt(habu_value_t a, habu_value_t b);
+habu_value_t habu_float_gt(habu_value_t a, habu_value_t b);
+habu_value_t habu_float_le(habu_value_t a, habu_value_t b);
+habu_value_t habu_float_ge(habu_value_t a, habu_value_t b);
+habu_value_t habu_float_eq(habu_value_t a, habu_value_t b);
+habu_value_t habu_fixnum_to_float(habu_value_t fixnum);
+habu_value_t habu_float_to_fixnum(habu_value_t float_val);  /* truncate */
+
 /* Multiple values support
  * Up to 4 values supported (primary + 3 secondary)
  * Secondary values stored in global array

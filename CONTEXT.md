@@ -2,7 +2,7 @@
 
 **Session Date**: November 22-25, 2025
 **Focus**: Self-hosting ARM64 Lisp compiler implementation
-**Last Updated**: November 25, 2025 (Bitwise Ops, CL Functions, Gensym/Intern Session)
+**Last Updated**: November 25, 2025 (IEEE 754 Floats Session)
 
 ## Current Status Summary
 
@@ -91,7 +91,8 @@ The Habu compiler can now compile and execute complex Lisp programs including:
 | **Equality** | equal (structural) | Done |
 | **Math** | truncate, expt | Done |
 | **Symbols** | gensym, intern | Done |
-| **Type Pred** | integerp, characterp | Done |
+| **Type Pred** | integerp, characterp, floatp | Done |
+| **Floats** | float, float+, float-, float*, float/, float<, float>, float<=, float>=, float=, float-truncate | Done |
 
 ### Extended CL Spec Features (November 25, 2025)
 
@@ -402,6 +403,7 @@ Test 10: Full compile + eval round trip       ✅ Pass
 - test_stage1_self_hosting.lisp (7 tests) - Stage 0→1: mini-compiler compiles expressions
 - test_stage2_self_hosting.lisp (7 tests) - Stage 1→2: determinism and self-similar patterns
 - test_real_compiler_functions.lisp (10 tests) - Real compiler patterns: has-tag?, env-lookup, IR traversal, compile+eval
+- test_floats.lisp (20 tests) - IEEE 754 floats: conversion, arithmetic, comparisons, conditionals
 
 ### Needed Tests
 - [ ] String function tests (upcase, concat, compare)
@@ -422,6 +424,8 @@ Test 10: Full compile + eval round trip       ✅ Pass
 - Vector: pointer | 3
 - String: pointer | 4
 - Closure: pointer | 5
+- Hash Table: pointer | 6
+- Float: pointer | 7
 
 ### Register Usage (ARM64)
 - x0-x4: Arguments and return value
@@ -445,7 +449,17 @@ Test 10: Full compile + eval round trip       ✅ Pass
 
 ## Recent Commits
 
-### November 25, 2025 (Latest - Bitwise, CL Functions, Gensym/Intern)
+### November 25, 2025 (Latest - IEEE 754 Floats)
+- **Implemented IEEE 754 double precision floats** - Full floating-point support:
+  - Added TAG_FLOAT = 0x7 and TYPE_FLOAT = 7 to object.h
+  - Added habu_float_t structure (8-byte double payload)
+  - Runtime functions in gc.c: habu_make_float, habu_float_value, arithmetic (+,-,*,/), comparisons (<,>,<=,>=,=), conversions (fixnum_to_float, float_to_fixnum)
+  - GC support: TYPE_FLOAT handled in mark_children and update_object_pointers (no outgoing pointers, like strings)
+  - Runtime table entries 29-41 (offsets 232-328) for all float operations
+  - Compiler support: floatp/float? predicates, float conversion, float+/float-/float*/float/, float</float>/float<=/float>=/float=, float-truncate
+  - 20 tests cover: type predicates, conversion, arithmetic, comparisons, conditionals, chained operations, let bindings
+
+### November 25, 2025 (Bitwise, CL Functions, Gensym/Intern)
 - **Implemented bitwise operations** - Full support for logand, logior, logxor, ash:
   - Variadic support with proper folding (e.g., (logand a b c) => (logand (logand a b) c))
   - ARM64 encoders: arm64-lslv/lsrv/asrv for variable shifts, arm64-asr for arithmetic shift
