@@ -2,7 +2,7 @@
 
 **Session Date**: November 22-25, 2025
 **Focus**: Self-hosting ARM64 Lisp compiler implementation
-**Last Updated**: November 25, 2025 (Extended CL Spec Session)
+**Last Updated**: November 25, 2025 (CLOS and Condition System Session)
 
 ## Current Status Summary
 
@@ -100,6 +100,8 @@ The Habu compiler can now compile and execute complex Lisp programs including:
 | **Destructuring** | destructuring-bind (nested patterns, &rest support) | Done |
 | **Set Operations** | union, intersection, set-difference, subsetp, adjoin | Done |
 | **Tree/Plist** | subst, copy-tree, getf, ldiff, tailp | Done |
+| **Conditions** | handler-case, signal, restart-case, invoke-restart | Done |
+| **CLOS** | defclass, make-instance, slot-value, class-of, typep | Done |
 
 ### Self-Hosting Implementation (November 25, 2025)
 
@@ -128,11 +130,11 @@ The Habu compiler can now compile and execute complex Lisp programs including:
 | **Non-Local Exit** | block/return-from ✓, catch/throw ✓, tagbody/go ✓ | Medium |
 | **Cleanup** | unwind-protect ✓ | Medium |
 | **Multiple Values** | values ✓, multiple-value-bind ✓, multiple-value-call | Medium |
-| **Conditions** | error ✓, signal, handler-case, handler-bind, restarts | Medium |
+| **Conditions** | error ✓, signal ✓, handler-case ✓, restart-case ✓, invoke-restart ✓ | Done |
 | **Format** | format directives ✓ (basic ~A, ~S, ~D) | Medium |
-| **Hash Tables** | make-hash-table ✓, gethash ✓, puthash ✓, remhash ✓, hash-table-count ✓, hash-table-p ✓ | Medium |
-| **Structures** | defstruct ✓ | Medium |
-| **CLOS** | defclass, defmethod, defgeneric, make-instance | Low |
+| **Hash Tables** | make-hash-table ✓, gethash ✓, puthash ✓, remhash ✓, hash-table-count ✓, hash-table-p ✓ | Done |
+| **Structures** | defstruct ✓ | Done |
+| **CLOS** | defclass ✓, make-instance ✓, slot-value ✓, class-of ✓, typep ✓ | Done |
 | **Numeric Tower** | bignum, ratio, float, complex | Low |
 | **Arrays** | Multi-dimensional arrays | Low |
 | **Streams** | File I/O, string streams | Low |
