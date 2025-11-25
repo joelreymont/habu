@@ -37,6 +37,49 @@
   "Return list of integer char codes from string S."
   (loop for ch across s collect (char-code ch)))
 
+(defun destructuring-bind-expand (pattern value-form)
+  "Expand destructuring-bind pattern into a list of (var expr) bindings.
+   PATTERN can be a symbol, or a list of patterns.
+   VALUE-FORM is the expression holding the value being matched."
+  (cond
+    ;; Simple variable binding
+    ((symbolp pattern)
+     (if (eq pattern '&rest)
+         nil  ; Skip &rest keyword itself
+         (list (list pattern value-form))))
+    ;; Nested pattern (a . b) or (a b c ...)
+    ((consp pattern)
+     (let ((bindings '())
+           (rest-pattern nil)
+           (pos 0))
+       ;; Handle &rest in pattern
+       (let ((rest-pos (position '&rest pattern)))
+         (when rest-pos
+           (setf rest-pattern (nth (1+ rest-pos) pattern))
+           (setf pattern (subseq pattern 0 rest-pos))))
+       ;; Generate bindings for each element
+       (dolist (subpat pattern)
+         (let ((accessor (case pos
+                           (0 `(car ,value-form))
+                           (1 `(cadr ,value-form))
+                           (2 `(caddr ,value-form))
+                           (3 `(cadddr ,value-form))
+                           (t `(nth ,pos ,value-form)))))
+           (setf bindings (append bindings (destructuring-bind-expand subpat accessor))))
+         (incf pos))
+       ;; Handle &rest binding
+       (when rest-pattern
+         (let ((rest-accessor (case pos
+                                (0 value-form)
+                                (1 `(cdr ,value-form))
+                                (2 `(cddr ,value-form))
+                                (3 `(cdddr ,value-form))
+                                (t `(nthcdr ,pos ,value-form)))))
+           (setf bindings (append bindings (destructuring-bind-expand rest-pattern rest-accessor)))))
+       bindings))
+    ;; NIL or other - no bindings
+    (t nil)))
+
 (defun quote->ir (obj)
   "Lower a quoted object to IR using cons/runtime construction.
 Supports fixnums, nil, lists, symbols, strings, characters, and vectors of those."
@@ -2997,6 +3040,42 @@ Cons/car/cdr are required; others should be provided in production."
                     (list 'lit #x0))
               (list 'lit #x0)))
 
+         ;; Endp - end of list test (same as null for proper lists)
+         ((eq op 'endp)
+          (if (consp (cdr expr))
+              (list 'cmp-eq
+                    (compile-expr (cadr expr) env fenv)
+                    (list 'lit #x0))
+              (list 'lit #x0)))
+
+         ;; Keywordp - check if symbol is a keyword
+         ;; Keywords have names starting with ":"
+         ((op= op "KEYWORDP")
+          (if (consp (cdr expr))
+              (compile-expr
+               `(let ((sym ,(cadr expr)))
+                  (if (symbolp sym)
+                      (let ((name (symbol-name sym)))
+                        (if (> (string-length name) #x0)
+                            (if (= (string-ref name #x0) #x3A)  ; #\: = 58 = #x3A
+                                #x1
+                                #x0)
+                            #x0))
+                      #x0))
+               env fenv)
+              (list 'lit 0)))
+
+         ;; Constantp - check if form is a constant (stub: only literals)
+         ((op= op "CONSTANTP")
+          (if (consp (cdr expr))
+              (let ((form (cadr expr)))
+                ;; At compile time, check if it's a literal
+                (if (or (numberp form) (stringp form) (characterp form)
+                        (and (consp form) (eq (car form) 'quote)))
+                    (list 'lit 1)
+                    (list 'lit 0)))
+              (list 'lit 0)))
+
          ;; Eq (pointer equality)
          ((eq op 'eq)
           (if (and (consp (cdr expr)) (consp (cddr expr)))
@@ -3668,6 +3747,21 @@ Cons/car/cdr are required; others should be provided in production."
                     (type (caddr expr)))
                 ;; For now, just return the object (no real coercion)
                 (compile-expr obj env fenv))
+              (list 'lit 0)))
+
+         ;; Destructuring-bind - (destructuring-bind pattern expr &body body)
+         ;; Pattern-matches a list structure and binds variables
+         ((op= op "DESTRUCTURING-BIND")
+          (if (and (consp (cdr expr)) (consp (cddr expr)) (consp (cdddr expr)))
+              (let* ((pattern (cadr expr))
+                     (value-expr (caddr expr))
+                     (body (cdddr expr))
+                     (bindings (destructuring-bind-expand pattern 'dbind-val)))
+                (compile-expr
+                 `(let ((dbind-val ,value-expr))
+                    (let* ,bindings
+                      ,@body))
+                 env fenv))
               (list 'lit 0)))
 
          ;; Mapcar - (mapcar fn list) - apply fn to each element, return list of results
@@ -4704,6 +4798,157 @@ Cons/car/cdr are required; others should be provided in production."
                                  nil
                                  (cons (car lst) (copy-iter (cdr lst))))))
                     (copy-iter ,lst))
+                 env fenv))
+              (list 'lit 0)))
+
+         ;; Ldiff - returns leading portion of list up to sublist
+         ((op= op "LDIFF")
+          (if (and (consp (cdr expr)) (consp (cddr expr)))
+              (let ((list-form (cadr expr))
+                    (sublist-form (caddr expr)))
+                (compile-expr
+                 `(labels ((ldiff-iter (lst sub acc)
+                             (if (or (null lst) (eq lst sub))
+                                 (reverse acc)
+                                 (ldiff-iter (cdr lst) sub (cons (car lst) acc)))))
+                    (ldiff-iter ,list-form ,sublist-form nil))
+                 env fenv))
+              (list 'lit 0)))
+
+         ;; Tailp - check if sublist is a tail of list
+         ((op= op "TAILP")
+          (if (and (consp (cdr expr)) (consp (cddr expr)))
+              (let ((sublist-form (cadr expr))
+                    (list-form (caddr expr)))
+                (compile-expr
+                 `(labels ((tailp-iter (lst sub)
+                             (if (null lst)
+                                 (null sub)
+                                 (if (eq lst sub)
+                                     #x1
+                                     (tailp-iter (cdr lst) sub)))))
+                    (tailp-iter ,list-form ,sublist-form))
+                 env fenv))
+              (list 'lit 0)))
+
+         ;; Subst - substitute new for old in tree
+         ((op= op "SUBST")
+          (if (and (consp (cdr expr)) (consp (cddr expr)) (consp (cdddr expr)))
+              (let ((new-form (cadr expr))
+                    (old-form (caddr expr))
+                    (tree-form (cadddr expr)))
+                (compile-expr
+                 `(labels ((subst-iter (tree new old)
+                             (if (eql tree old)
+                                 new
+                                 (if (consp tree)
+                                     (cons (subst-iter (car tree) new old)
+                                           (subst-iter (cdr tree) new old))
+                                     tree))))
+                    (subst-iter ,tree-form ,new-form ,old-form))
+                 env fenv))
+              (list 'lit 0)))
+
+         ;; Copy-tree - deep copy of tree structure
+         ((op= op "COPY-TREE")
+          (if (consp (cdr expr))
+              (let ((tree (cadr expr)))
+                (compile-expr
+                 `(labels ((copy-tree-iter (tree)
+                             (if (consp tree)
+                                 (cons (copy-tree-iter (car tree))
+                                       (copy-tree-iter (cdr tree)))
+                                 tree)))
+                    (copy-tree-iter ,tree))
+                 env fenv))
+              (list 'lit 0)))
+
+         ;; Getf - get property from property list
+         ((op= op "GETF")
+          (if (and (consp (cdr expr)) (consp (cddr expr)))
+              (let ((plist (cadr expr))
+                    (indicator (caddr expr))
+                    (default (if (consp (cdddr expr)) (cadddr expr) #x0)))
+                (compile-expr
+                 `(labels ((getf-iter (lst ind)
+                             (if (null lst)
+                                 ,default
+                                 (if (null (cdr lst))
+                                     ,default
+                                     (if (eql (car lst) ind)
+                                         (cadr lst)
+                                         (getf-iter (cddr lst) ind))))))
+                    (getf-iter ,plist ,indicator))
+                 env fenv))
+              (list 'lit 0)))
+
+         ;; Adjoin - add item to list if not already present
+         ((op= op "ADJOIN")
+          (if (and (consp (cdr expr)) (consp (cddr expr)))
+              (let ((item (cadr expr))
+                    (lst (caddr expr)))
+                (compile-expr
+                 `(if (member ,item ,lst)
+                      ,lst
+                      (cons ,item ,lst))
+                 env fenv))
+              (list 'lit 0)))
+
+         ;; Union - set union of two lists
+         ((op= op "UNION")
+          (if (and (consp (cdr expr)) (consp (cddr expr)))
+              (let ((list1 (cadr expr))
+                    (list2 (caddr expr)))
+                (compile-expr
+                 `(labels ((union-iter (l1 l2 acc)
+                             (if (null l1)
+                                 (append (reverse acc) l2)
+                                 (if (member (car l1) l2)
+                                     (union-iter (cdr l1) l2 acc)
+                                     (union-iter (cdr l1) l2 (cons (car l1) acc))))))
+                    (union-iter ,list1 ,list2 nil))
+                 env fenv))
+              (list 'lit 0)))
+
+         ;; Intersection - set intersection of two lists
+         ((op= op "INTERSECTION")
+          (if (and (consp (cdr expr)) (consp (cddr expr)))
+              (let ((list1 (cadr expr))
+                    (list2 (caddr expr)))
+                (compile-expr
+                 `(labels ((int-iter (l1 l2 acc)
+                             (if (null l1)
+                                 (reverse acc)
+                                 (if (member (car l1) l2)
+                                     (int-iter (cdr l1) l2 (cons (car l1) acc))
+                                     (int-iter (cdr l1) l2 acc)))))
+                    (int-iter ,list1 ,list2 nil))
+                 env fenv))
+              (list 'lit 0)))
+
+         ;; Set-difference - elements in list1 not in list2
+         ((op= op "SET-DIFFERENCE")
+          (if (and (consp (cdr expr)) (consp (cddr expr)))
+              (let ((list1 (cadr expr))
+                    (list2 (caddr expr)))
+                (compile-expr
+                 `(labels ((diff-iter (l1 l2 acc)
+                             (if (null l1)
+                                 (reverse acc)
+                                 (if (member (car l1) l2)
+                                     (diff-iter (cdr l1) l2 acc)
+                                     (diff-iter (cdr l1) l2 (cons (car l1) acc))))))
+                    (diff-iter ,list1 ,list2 nil))
+                 env fenv))
+              (list 'lit 0)))
+
+         ;; Subsetp - check if list1 is a subset of list2
+         ((op= op "SUBSETP")
+          (if (and (consp (cdr expr)) (consp (cddr expr)))
+              (let ((list1 (cadr expr))
+                    (list2 (caddr expr)))
+                (compile-expr
+                 `(every (lambda (x) (member x ,list2)) ,list1)
                  env fenv))
               (list 'lit 0)))
 
