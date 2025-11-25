@@ -110,14 +110,16 @@
         (cons chars pos))))
 
 ;;; Read symbol - returns (symbol . new-pos)
+;;; Symbols are upcased for CL compatibility
 (defun read-sym (source pos)
   (let ((result (read-sym-chars source pos nil)))
     (let ((chars (car result))
           (end (cdr result)))
-      (let ((name (chars-to-string (reverse chars))))
-        (cons (cond ((string= name "nil") nil)
-                    ((string= name "t") t)
-                    (t (intern name)))
+      (let* ((name (chars-to-string (reverse chars)))
+             (uname (string-upcase name)))
+        (cons (cond ((string= uname "NIL") nil)
+                    ((string= uname "T") t)
+                    (t (intern uname)))
               end)))))
 
 ;;; Read string chars - helper for read-str (must be defined first)

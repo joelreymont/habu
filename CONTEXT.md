@@ -455,7 +455,14 @@ Test 10: Full compile + eval round trip       ✅ Pass
 
 ## Recent Commits
 
-### November 25, 2025 (Latest - Trace Facility)
+### November 25, 2025 (Latest - Reader Integration)
+- **Fixed reader symbol case sensitivity** - Symbols now upcased for CL compatibility:
+  - Updated `read-sym` to use `string-upcase` before interning
+  - `(eq (read-from-string "foo") 'FOO)` now returns true
+  - 10 new reader-compiler integration tests verify parsing works correctly
+  - Tests cover: operators, defun forms, params, nested expressions, quotes, hex, strings, symbol interning
+
+### November 25, 2025 (Trace Facility)
 - **Implemented trace/untrace debugging facility** - CL-style function tracing:
   - `*traced-functions*` - list of function names currently being traced
   - `trace-function` / `untrace-function` - add/remove functions from trace list
