@@ -995,6 +995,7 @@ Cons/car/cdr are required; others should be provided in production."
                (arm64-lsl 0 0 4)))) ; tag length as fixnum
 
     ;; Let expression: (let-expr bind-values body-ir num-bindings env-offsets)
+    ;; Must track current-offset properly for function calls in bindings/body
     ((has-tag? ir 'let-expr)
      (let* ((bind-values (cadr ir))
             (body-ir (caddr ir))
@@ -1002,32 +1003,29 @@ Cons/car/cdr are required; others should be provided in production."
             (env-offsets (nth 4 ir))  ; Get environment offsets for this let's bindings
             (x24-slot (temp-slot-offset temp-depth))
             (nested-depth (+ temp-depth 1))
-            ;; Generate code for each binding value with nested temp-depth
-            (bind-codes (mapcar (lambda (val-ir)
-                                  (codegen-expr val-ir runtime-addrs fn-offsets current-offset nested-depth))
-                                bind-values)))
-       ;; Store values at their designated offsets without moving x20
-       ;; Must preserve x24 across binding evaluations since funcalls may clobber it
-       (append
-         ;; Save x24 at start
-         (arm64-str 24 31 x24-slot)
-         ;; Store each binding value at its environment offset
-         ;; Restore x24 before each binding in case previous one clobbered it
-         (apply #'append
-                (mapcar (lambda (bind-code offset)
-                          (append (arm64-ldr 24 31 x24-slot)  ; Restore x24 before each binding
-                                  bind-code
-                                  ;; Store at negative offset from x20 (stack grows down)
-                                  ;; Use x1 as temp to compute address
-                                  (arm64-sub-imm 1 20 (* offset 8))  ; x1 = x20 - (offset * 8)
-                                  (arm64-str 0 1 0)))                ; Store at [x1 + 0]
-                        bind-codes
-                        env-offsets))
-
-         ;; Restore x24 before body
-         (arm64-ldr 24 31 x24-slot)
-         ;; Execute body with bindings available
-         (codegen-expr body-ir runtime-addrs fn-offsets current-offset nested-depth))))
+            ;; Track offset as we generate code: start after save x24 (1 instruction)
+            (cursor (if current-offset (+ current-offset 1) nil))
+            (accum (arm64-str 24 31 x24-slot)))  ; save x24 at start
+       ;; Generate binding values with proper offset tracking
+       (dolist (pair (mapcar #'list bind-values env-offsets))
+         (let* ((val-ir (car pair))
+                (offset (cadr pair))
+                ;; Each binding: LDR x24 (1) + binding-code + SUB (1) + STR (1)
+                (restore (arm64-ldr 24 31 x24-slot))
+                (bind-cursor (if cursor (+ cursor 1) nil))  ; +1 for LDR x24
+                (bind-code (codegen-expr val-ir runtime-addrs fn-offsets bind-cursor nested-depth))
+                (store-code (append
+                              (arm64-sub-imm 1 20 (* offset 8))  ; x1 = x20 - (offset * 8)
+                              (arm64-str 0 1 0)))                ; Store at [x1 + 0]
+                (block-instrs (+ 1 (count-instrs bind-code) 2)))  ; LDR + bind + SUB + STR
+           (setf accum (append accum restore bind-code store-code))
+           (when cursor
+             (setf cursor (+ cursor block-instrs)))))
+       ;; Restore x24 before body and generate body
+       (let* ((restore (arm64-ldr 24 31 x24-slot))
+              (body-cursor (if cursor (+ cursor 1) nil))  ; +1 for LDR x24
+              (body-code (codegen-expr body-ir runtime-addrs fn-offsets body-cursor nested-depth)))
+         (append accum restore body-code))))
 
     ;; Progn: evaluate each subexpression in order, return last result
     ;; Must preserve x24 across forms since funcalls may clobber it
@@ -1042,7 +1040,9 @@ Cons/car/cdr are required; others should be provided in production."
                (let* ((restore (if (> idx 0)
                                    (arm64-ldr 24 31 x24-slot)  ; restore before each subsequent form
                                    nil))
-                      (chunk (codegen-expr sub runtime-addrs fn-offsets cursor nested-depth))
+                      ;; Account for restore instruction before chunk when idx > 0
+                      (chunk-cursor (if (and cursor (> idx 0)) (+ cursor 1) cursor))
+                      (chunk (codegen-expr sub runtime-addrs fn-offsets chunk-cursor nested-depth))
                       (instrs (+ (count-instrs restore) (count-instrs chunk))))
                  (setf accum (append accum restore chunk))
                  (when cursor
@@ -1143,8 +1143,10 @@ Cons/car/cdr are required; others should be provided in production."
        (loop for arg-ir in arg-irs
              for idx from 0 do
                (let* ((arg-slot (temp-slot-offset (+ arg-base idx)))
-                      (restore-x24 (arm64-ldr 24 31 caller-x24-slot))  ; restore caller's x24
-                      (arg-code (codegen-expr arg-ir runtime-addrs fn-offsets cursor nested-depth))
+                      (restore-x24 (arm64-ldr 24 31 caller-x24-slot))  ; restore caller's x24 (1 instr)
+                      ;; Account for restore-x24 instruction before arg-code
+                      (arg-cursor (if cursor (+ cursor 1) nil))
+                      (arg-code (codegen-expr arg-ir runtime-addrs fn-offsets arg-cursor nested-depth))
                       (store (arm64-str 0 31 arg-slot))  ; store to temp slot, not arg-spill
                       (block (append restore-x24 arg-code store))
                       (block-len (count-instrs block)))
@@ -1336,29 +1338,53 @@ Cons/car/cdr are required; others should be provided in production."
     ((consp expr)
      (let ((op (car expr)))
        (cond
-         ;; Addition
+         ;; Addition (variadic: fold (+ a b c) -> (+ (+ a b) c))
          ((eq op '+)
-          (if (and (consp (cdr expr)) (consp (cddr expr)))
-              (list 'add
-                    (compile-expr (cadr expr) env fenv)
-                    (compile-expr (caddr expr) env fenv))
-              (list 'lit 0)))
+          (let ((args (cdr expr)))
+            (cond
+              ((null args) (list 'lit 0))           ; (+) => 0
+              ((null (cdr args))                     ; (+ a) => a
+               (compile-expr (car args) env fenv))
+              ((null (cddr args))                    ; (+ a b)
+               (list 'add
+                     (compile-expr (car args) env fenv)
+                     (compile-expr (cadr args) env fenv)))
+              (t                                     ; (+ a b c ...) => (+ (+ a b) c ...)
+               (compile-expr (cons '+ (cons (list '+ (car args) (cadr args))
+                                           (cddr args)))
+                            env fenv)))))
 
-         ;; Subtraction
+         ;; Subtraction (variadic: fold (- a b c) -> (- (- a b) c))
          ((eq op '-)
-          (if (and (consp (cdr expr)) (consp (cddr expr)))
-              (list 'sub
-                    (compile-expr (cadr expr) env fenv)
-                    (compile-expr (caddr expr) env fenv))
-              (list 'lit 0)))
+          (let ((args (cdr expr)))
+            (cond
+              ((null args) (list 'lit 0))           ; (-) => 0
+              ((null (cdr args))                     ; (- a) => negate
+               (list 'sub (list 'lit 0) (compile-expr (car args) env fenv)))
+              ((null (cddr args))                    ; (- a b)
+               (list 'sub
+                     (compile-expr (car args) env fenv)
+                     (compile-expr (cadr args) env fenv)))
+              (t                                     ; (- a b c ...) => (- (- a b) c ...)
+               (compile-expr (cons '- (cons (list '- (car args) (cadr args))
+                                           (cddr args)))
+                            env fenv)))))
 
-         ;; Multiplication
+         ;; Multiplication (variadic: fold (* a b c) -> (* (* a b) c))
          ((eq op '*)
-          (if (and (consp (cdr expr)) (consp (cddr expr)))
-              (list 'mul
-                    (compile-expr (cadr expr) env fenv)
-                    (compile-expr (caddr expr) env fenv))
-              (list 'lit 0)))
+          (let ((args (cdr expr)))
+            (cond
+              ((null args) (list 'lit 1))           ; (*) => 1
+              ((null (cdr args))                     ; (* a) => a
+               (compile-expr (car args) env fenv))
+              ((null (cddr args))                    ; (* a b)
+               (list 'mul
+                     (compile-expr (car args) env fenv)
+                     (compile-expr (cadr args) env fenv)))
+              (t                                     ; (* a b c ...) => (* (* a b) c ...)
+               (compile-expr (cons '* (cons (list '* (car args) (cadr args))
+                                           (cddr args)))
+                            env fenv)))))
 
          ;; Division
          ((eq op '/)
@@ -1757,16 +1783,16 @@ Cons/car/cdr are required; others should be provided in production."
                        first-ir  ; returns first if true (evaluates twice)
                        (compile-expr (cons 'or (cdr args)) env fenv)))))))
 
-         ;; Null predicate
-         ((eq op 'null)
+         ;; Null predicate (also nil?)
+         ((or (eq op 'null) (op= op "NIL?"))
           (if (consp (cdr expr))
               (list 'cmp-eq
                     (compile-expr (cadr expr) env fenv)
                     (list 'lit #x0))
               (list 'lit #x0)))
 
-         ;; Consp predicate (tag #x1)
-         ((eq op 'consp)
+         ;; Consp predicate (tag #x1) (also cons?)
+         ((or (eq op 'consp) (op= op "CONS?"))
           (if (consp (cdr expr))
               (list 'cmp-eq
                     (list 'get-tag (compile-expr (cadr expr) env fenv))
@@ -1784,16 +1810,16 @@ Cons/car/cdr are required; others should be provided in production."
                     (list 'lit 1))  ; not cons -> t (is atom)
               (list 'lit 1)))
 
-         ;; Numberp predicate (tag #x0 = fixnum)
-         ((eq op 'numberp)
+         ;; Numberp predicate (tag #x0 = fixnum) (also fixnum?)
+         ((or (eq op 'numberp) (op= op "FIXNUM?"))
           (if (consp (cdr expr))
               (list 'cmp-eq
                     (list 'get-tag (compile-expr (cadr expr) env fenv))
                     (list 'lit #x0)) ; tag 0
               (list 'lit #x0)))
 
-         ;; Symbolp predicate (tag #x2)
-         ((eq op 'symbolp)
+         ;; Symbolp predicate (tag #x2) (also symbol?)
+         ((or (eq op 'symbolp) (op= op "SYMBOL?"))
           (if (consp (cdr expr))
               (list 'cmp-eq
                     (list 'get-tag (compile-expr (cadr expr) env fenv))
