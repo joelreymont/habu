@@ -102,7 +102,7 @@ The Habu compiler can now compile and execute complex Lisp programs including:
 | **Macros** | defmacro ✓, macroexpand ✓, macrolet, symbol-macrolet | High |
 | **Non-Local Exit** | block/return-from ✓, catch/throw ✓, tagbody/go | Medium |
 | **Cleanup** | unwind-protect ✓ | Medium |
-| **Multiple Values** | values, multiple-value-bind, multiple-value-call | Medium |
+| **Multiple Values** | values ✓, multiple-value-bind ✓, multiple-value-call | Medium |
 | **Conditions** | error ✓, signal, handler-case, handler-bind, restarts | Medium |
 | **Format** | format directives ✓ (basic ~A, ~S, ~D) | Medium |
 | **Hash Tables** | make-hash-table, gethash, puthash, remhash | Medium |
@@ -411,15 +411,24 @@ Test 10: Full compile + eval round trip       ✅ Pass
 
 ## Recent Commits
 
-### November 25, 2025 (Latest - Next Phase Planning)
-- **Next tasks identified**: Multiple values → tagbody/go → hash tables
-- **Multiple values discovery**: Runtime support exists in `runtime/multiple-values.lisp`
-  - Global array stores secondary values (up to 16)
-  - `runtime-values-0` through `runtime-values-4` for fixed arities
-  - `runtime-values-get` retrieves by index
-  - Need to add compiler support for `values` and `multiple-value-bind`
-  - Implementation approach: Transform `(values a b c)` to call `runtime-values-3`
-  - Transform `(multiple-value-bind (x y) expr body)` to bind from runtime-values-get
+### November 25, 2025 (Latest - Multiple Values Complete)
+- **Implemented multiple values** - Full support for `values` and `multiple-value-bind`:
+  - Runtime functions: `habu_values_set(count, v0, v1, v2, v3)`, `habu_values_get(index, primary)`
+  - Global storage: `habu_values_count` and `habu_values_array[4]` for secondary values
+  - Compiler support: `values-call` and `values-get-call` IR nodes
+  - Runtime table entries at indices 17 (offset 136) and 18 (offset 144)
+  - Up to 4 values supported (primary + 3 secondary)
+  - All 8 multiple values tests pass
+  - Tests cover: single value, zero values, multiple values, defun returning values
+
+- **Added tests for all control flow features**:
+  - test_macros.lisp: 4 tests for defmacro
+  - test_block.lisp: 8 tests for block/return-from
+  - test_catch.lisp: 6 tests for catch/throw
+  - test_unwind_protect.lisp: 4 tests for unwind-protect
+  - test_multiple_values.lisp: 8 tests for values/mvb
+
+- **Next tasks**: tagbody/go → hash tables
 
 ### November 25, 2025 (Feature Completion)
 - **Implemented defmacro and macro expansion** - Full compile-time macro system:
