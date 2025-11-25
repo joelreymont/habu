@@ -2,7 +2,7 @@
 
 **Session Date**: November 22-25, 2025
 **Focus**: Self-hosting ARM64 Lisp compiler implementation
-**Last Updated**: November 25, 2025 (Symbol-Macrolet and Multiple-Value-Call Session)
+**Last Updated**: November 25, 2025 (Bitwise Ops, CL Functions, Gensym/Intern Session)
 
 ## Current Status Summary
 
@@ -85,6 +85,13 @@ The Habu compiler can now compile and execute complex Lisp programs including:
 | **Structures** | defstruct (constructor, predicate, accessors) | Done |
 | **Parameters** | &optional, &rest, &key | Done |
 | **Misc** | identity, constantly | Done |
+| **Bitwise** | logand, logior, logxor, ash | Done |
+| **Destructive** | nreverse, nconc | Done |
+| **List Utils** | butlast, position | Done |
+| **Equality** | equal (structural) | Done |
+| **Math** | truncate, expt | Done |
+| **Symbols** | gensym, intern | Done |
+| **Type Pred** | integerp, characterp | Done |
 
 ### Extended CL Spec Features (November 25, 2025)
 
@@ -438,7 +445,31 @@ Test 10: Full compile + eval round trip       ✅ Pass
 
 ## Recent Commits
 
-### November 25, 2025 (Latest - Symbol-Macrolet and Multiple-Value-Call)
+### November 25, 2025 (Latest - Bitwise, CL Functions, Gensym/Intern)
+- **Implemented bitwise operations** - Full support for logand, logior, logxor, ash:
+  - Variadic support with proper folding (e.g., (logand a b c) => (logand (logand a b) c))
+  - ARM64 encoders: arm64-lslv/lsrv/asrv for variable shifts, arm64-asr for arithmetic shift
+  - Fixed ash to use arithmetic shift (ASR) for preserving sign of negative counts
+  - 16 tests cover: basic ops, identity values, variadic, shifts left/right
+
+- **Implemented new CL functions for self-hosting**:
+  - integerp, characterp: type predicates
+  - nreverse: destructive reverse using setcdr mutation
+  - nconc: destructive append by modifying last cdr
+  - butlast: return list without last n elements
+  - position: find index of element in list
+  - equal: structural equality with recursive comparison
+  - truncate: integer division (maps to existing div)
+  - 14 tests cover all new functions
+
+- **Implemented gensym and intern**:
+  - Added habu_gensym runtime function with static counter
+  - gensym generates unique symbols with optional prefix
+  - intern mapped to make-symbol-from-string (already interns)
+  - Runtime table entry 28 (offset 224) for gensym
+  - 5 tests cover: symbol creation, uniqueness, prefix
+
+### November 25, 2025 (Symbol-Macrolet and Multiple-Value-Call)
 - **Implemented symbol-macrolet** - Local symbol macros:
   - Add `*symbol-macro-env*` dynamic variable for tracking symbol macros
   - Modify compile-expr-internal to check for symbol macros when compiling symbols
