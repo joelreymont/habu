@@ -5732,15 +5732,21 @@ Optional/key descriptors are (name init-form supplied-name)."
                ;; Process generated defuns followed by rest of forms
                (compile-forms-helper (append all-defuns (cdr forms)) env fenv))))
 
-          ;; defgeneric - declare a generic function (stub - just compile methods)
+          ;; defgeneric - declare a generic function
           ;; (defgeneric name (args) ...)
+          ;; Track generic function name and arity for dispatcher generation
           ((and (consp form) (eq (car form) 'defgeneric))
-           ;; For now, just skip - methods define behavior
-           (compile-forms-helper (cdr forms) env fenv))
+           (let* ((name (cadr form))
+                  (lambda-list (caddr form))
+                  (arity (length lambda-list)))
+             ;; Register generic if not already present
+             (unless (assoc name *method-env*)
+               (push (list name arity nil) *method-env*))
+             (compile-forms-helper (cdr forms) env fenv)))
 
           ;; defmethod - define a method for a generic function
           ;; (defmethod name ((arg class) ...) body)
-          ;; For now: simple single-dispatch on first arg
+          ;; Single-dispatch on first arg. Generates specialized function.
           ((and (consp form) (eq (car form) 'defmethod))
            (let* ((name (cadr form))
                   (lambda-list (caddr form))
@@ -5751,14 +5757,27 @@ Optional/key descriptors are (name init-form supplied-name)."
                   (specializer (if (consp first-param) (cadr first-param) t))
                   ;; All params for the function
                   (all-params (cons param-name (mapcar (lambda (p) (if (consp p) (car p) p)) (cdr lambda-list))))
-                  ;; Create method key
-                  (method-key (cons name specializer))
-                  ;; Create method entry
-                  (method-fn `(lambda ,all-params ,@body)))
-             ;; Store method
-             (push (cons method-key method-fn) *method-env*)
-             ;; Continue with rest of forms
-             (compile-forms-helper (cdr forms) env fenv)))
+                  ;; Create specialized function name: name/class
+                  (method-fn-name (intern (concatenate 'string
+                                                       (symbol-name name) "/"
+                                                       (if (eq specializer t)
+                                                           "T"
+                                                           (symbol-name specializer)))))
+                  ;; Create defun for specialized method
+                  (method-defun `(defun ,method-fn-name ,all-params ,@body))
+                  ;; Get or create generic entry
+                  (generic-entry (assoc name *method-env*))
+                  (arity (length all-params)))
+             ;; Register generic if not present
+             (if generic-entry
+                 ;; Add method to existing generic
+                 (let ((methods (caddr generic-entry)))
+                   (setf (caddr generic-entry)
+                         (cons (cons specializer method-fn-name) methods)))
+                 ;; Create new generic entry
+                 (push (list name arity (list (cons specializer method-fn-name))) *method-env*))
+             ;; Process generated defun followed by rest of forms
+             (compile-forms-helper (cons method-defun (cdr forms)) env fenv)))
 
           ;; defstruct - expand to constructor, predicate, and accessors
           ;; (defstruct name slot1 slot2 ...) expands to multiple defuns
@@ -5844,10 +5863,48 @@ Optional/key descriptors are (name init-form supplied-name)."
              (list (cons compiled-fn rest-fns) main-ir)))
 
           ;; Not defun/defmacro - this is the main expression
-          ;; Apply boxing transformation for captured mutable variables
-          (t (list nil (compile-expr (box-mutable-captured-vars form) env fenv)))))
+          ;; Generate method dispatchers first, then compile main expression
+          (t
+           (let* ((dispatcher-defuns (generate-method-dispatchers))
+                  ;; Get dispatcher names before clearing *method-env*
+                  (dispatcher-names (mapcar #'car *method-env*)))
+             ;; Clear *method-env* to prevent re-generation in recursive calls
+             (setq *method-env* nil)
+             (if dispatcher-defuns
+                 ;; Compile dispatchers first, then main expression
+                 (let* ((dispatcher-result (compile-forms-helper dispatcher-defuns env fenv))
+                        (dispatcher-fns (car dispatcher-result))
+                        (new-fenv (append (mapcar (lambda (n) (cons n t)) dispatcher-names) fenv))
+                        (main-ir (compile-expr (box-mutable-captured-vars form) env new-fenv)))
+                   (list dispatcher-fns main-ir))
+                 ;; No dispatchers, just compile main expression
+                 (list nil (compile-expr (box-mutable-captured-vars form) env fenv)))))))
       ;; No more forms
       (list nil '(lit 0))))
+
+(defun generate-method-dispatcher-defun (generic-name arity methods)
+  "Generate a defun for a generic function dispatcher."
+  (let* ((params (loop for i from 0 below arity
+                       collect (intern (format nil "ARG~D" i))))
+         (dispatch-obj (car params))
+         (default-method (cdr (assoc t methods)))
+         (specialized (remove-if (lambda (m) (eq (car m) t)) methods))
+         (cond-clauses
+          (loop for (class . fn-name) in specialized
+                collect `((typep ,dispatch-obj ',class)
+                          (,fn-name ,@params))))
+         (all-clauses
+          (if default-method
+              (append cond-clauses `((t (,default-method ,@params))))
+              (append cond-clauses '((t 0))))))
+    `(defun ,generic-name ,params
+       (cond ,@all-clauses))))
+
+(defun generate-method-dispatchers ()
+  "Generate dispatcher defuns for all registered generic functions."
+  (loop for (name arity methods) in *method-env*
+        when methods
+        collect (generate-method-dispatcher-defun name arity methods)))
 
 (defun compile-forms (forms)
   "Compile list of top-level forms including defmacro and defun."
