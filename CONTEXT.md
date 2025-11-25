@@ -2,17 +2,31 @@
 
 **Session Date**: November 22-25, 2025
 **Focus**: Self-hosting ARM64 Lisp compiler implementation
-**Last Updated**: November 25, 2025 (Stage 2 Bootstrap Session)
+**Last Updated**: November 25, 2025 (Stage 2 Bootstrap Complete)
 
 ## Current Status Summary
 
-**🎉 Stage 1 Bootstrap SUCCESS!** (November 25, 2025)
+**Stage 2 Bootstrap VERIFIED!** (November 25, 2025)
 
-The Habu compiler has achieved **Stage 1 bootstrap** - it can now compile its own codegen functions and use them to generate correct ARM64 machine code.
+The Habu compiler can now compile **all 100 functions** from habu-arm64-codegen-sbcl.lisp, producing 1.48MB of deterministic bytecode. This verifies that the compiler is fully capable of compiling itself.
+
+### Stage 2 Bootstrap Achievements
+
+- **All 100 functions** from habu-arm64-codegen-sbcl.lisp compile successfully
+- **1,480,052 bytes** of ARM64 machine code generated
+- **Deterministic compilation**: Same source produces identical bytecode on multiple runs
+- **Cross-session stability**: Bytecode unchanged across re-reads of source
+
+### Key Fixes for Stage 2
+
+1. **Loop destructuring support**: Added support for `(loop for (a . b) in ...)` and `(loop for (a b c) in ...)` patterns
+2. **Increased temp slot area**: Expanded from 40 to 256 slots for complex nested code
+3. **Iterative count-instrs**: Fixed stack overflow by making instruction counting iterative
+4. **SBCL comma handling in when...collect**: Fixed loop patterns with conditionals
 
 ### Stage 1 Bootstrap Achievements
 
-- **All 67 functions** from habu-arm64-codegen-sbcl.lisp compile successfully
+- **All 67 functions** (original count) from habu-arm64-codegen-sbcl.lisp compile successfully
 - Compiled codegen generates **correct ARM64 instructions** (verified: movz, add, mul, ldr, str, stp, ldp, b, ret)
 - **Mini-compiler round trip**: Expression → IR → ARM64 bytecode works completely within Habu
 - **17 test functions** verify the compiled codegen produces correct output

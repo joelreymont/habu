@@ -43,8 +43,8 @@
 (defparameter *stack-frame-size* #xFF0)
 (defparameter *env-base-offset* #x180)
 (defparameter *temp-slot-base* #x40)
-(defparameter *temp-slot-guard* #x180)
-(defparameter *arg-spill-base* #x200)
+(defparameter *temp-slot-guard* #x840)  ; Allow 256 temp slots for complex code
+(defparameter *arg-spill-base* #x840)
 (defparameter *arg-spill-stride* #x8)
 (defparameter *max-arg-spill-count*
   (/ (- *stack-frame-size* *arg-spill-base*) *arg-spill-stride*))
@@ -5086,29 +5086,61 @@ Cons/car/cdr are required; others should be provided in production."
          ;; Loop - compile-time transformation to labels + recursion
          ;; Simple implementation for common patterns used in compiler
          ((eq op 'loop)
-          (let* ((clauses (cdr expr))
-                 (result-form nil))
-            ;;(format t "[LOOP DEBUG] clauses=~S len=~A~%" clauses (length clauses))
-            ;;(format t "[LOOP DEBUG] (car clauses)=~S (eq? ~A)~%" (car clauses) (eq (car clauses) 'for))
-            ;;(format t "[LOOP DEBUG] (caddr clauses)=~S~%" (caddr clauses))
-            ;; Parse clauses
-            (cond
-              ;; (loop for var in list collect expr)
-              ((and (>= (length clauses) 5)
-                    (op= (car clauses) "FOR")
-                    (op= (caddr clauses) "IN")
-                    (op= (car (cddddr clauses)) "COLLECT"))
-               (let* ((var (cadr clauses))
-                      (list-expr (cadddr clauses))
-                      (collect-expr (cadr (cddddr clauses)))
-                      (list-var (intern (concatenate 'string (symbol-name var) "$LIST"))))
-                 (setq result-form
-                       `(labels ((iter (,list-var acc)
-                                   (if (null ,list-var)
-                                       (reverse acc)
-                                       (let ((,var (car ,list-var)))
-                                         (iter (cdr ,list-var) (cons ,collect-expr acc))))))
-                          (iter ,list-expr nil)))))
+          ;; Helper: Generate destructuring bindings for a loop variable pattern
+          ;; Returns (list-var-name bindings-form) where bindings-form is let or let* bindings
+          (flet ((make-loop-destructure (var item-sym)
+                   "Generate destructuring for loop variable VAR from ITEM-SYM.
+                    Returns (list-var var-bindings) where var-bindings is a list of (name init) pairs."
+                   (cond
+                     ;; Simple symbol: (loop for x in ...)
+                     ((symbolp var)
+                      (list (intern (concatenate 'string (symbol-name var) "$LIST"))
+                            (list (list var item-sym))))
+                     ;; Dotted pair: (loop for (a . b) in ...)
+                     ((and (consp var) (atom (cdr var)) (not (null (cdr var))))
+                      (list (gensym "LOOP-LIST")
+                            (list (list (car var) `(car ,item-sym))
+                                  (list (cdr var) `(cdr ,item-sym)))))
+                     ;; Proper list: (loop for (a b c) in ...)
+                     ((and (consp var) (listp (cdr var)))
+                      (let ((bindings nil)
+                            (rest item-sym))
+                        (dolist (v var)
+                          (push (list v `(car ,rest)) bindings)
+                          (setq rest `(cdr ,rest)))
+                        (list (gensym "LOOP-LIST")
+                              (nreverse bindings))))
+                     ;; Fallback: treat as simple symbol
+                     (t
+                      (list (gensym "LOOP-LIST")
+                            (list (list var item-sym)))))))
+            (let* ((clauses (cdr expr))
+                   (result-form nil))
+              ;;(format t "[LOOP DEBUG] clauses=~S len=~A~%" clauses (length clauses))
+              ;;(format t "[LOOP DEBUG] (car clauses)=~S (eq? ~A)~%" (car clauses) (eq (car clauses) 'for))
+              ;;(format t "[LOOP DEBUG] (caddr clauses)=~S~%" (caddr clauses))
+              ;; Parse clauses
+              (cond
+                ;; (loop for var in list collect expr) - supports destructuring
+                ((and (>= (length clauses) 5)
+                      (op= (car clauses) "FOR")
+                      (op= (caddr clauses) "IN")
+                      (op= (car (cddddr clauses)) "COLLECT"))
+                 (let* ((var (cadr clauses))
+                        (list-expr (cadddr clauses))
+                        (collect-expr (cadr (cddddr clauses)))
+                        (item-sym (gensym "ITEM"))
+                        (destruct (make-loop-destructure var item-sym))
+                        (list-var (first destruct))
+                        (var-bindings (second destruct)))
+                   (setq result-form
+                         `(labels ((iter (,list-var acc)
+                                     (if (null ,list-var)
+                                         (reverse acc)
+                                         (let* ((,item-sym (car ,list-var))
+                                                ,@var-bindings)
+                                           (iter (cdr ,list-var) (cons ,collect-expr acc))))))
+                            (iter ,list-expr nil)))))
               ;; (loop for var from start below end collect expr)
               ((and (>= (length clauses) 7)
                     (op= (car clauses) "FOR")
@@ -5241,12 +5273,16 @@ Cons/car/cdr are required; others should be provided in production."
                       (list-expr (cadddr clauses))
                       (when-pred (cadr (cddddr clauses)))
                       (collect-expr (cadddr (cddddr clauses)))
-                      (list-var (intern (concatenate 'string (symbol-name var) "$LIST"))))
+                      (item-sym (gensym "ITEM"))
+                      (destruct (make-loop-destructure var item-sym))
+                      (list-var (first destruct))
+                      (var-bindings (second destruct)))
                  (setq result-form
                        `(labels ((iter (,list-var acc)
                                    (if (null ,list-var)
                                        (reverse acc)
-                                       (let ((,var (car ,list-var)))
+                                       (let* ((,item-sym (car ,list-var))
+                                              ,@var-bindings)
                                          (if ,when-pred
                                              (iter (cdr ,list-var) (cons ,collect-expr acc))
                                              (iter (cdr ,list-var) acc))))))
@@ -5385,7 +5421,7 @@ Cons/car/cdr are required; others should be provided in production."
 
               (t
                (setq result-form '(lit 0))))
-            (compile-expr result-form env fenv)))
+            (compile-expr result-form env fenv))))
 
          ;; Error - signal an error condition
          ;; (error msg &rest args) - evaluates first arg and returns it as error code
@@ -6762,10 +6798,13 @@ Cons/car/cdr are required; others should be provided in production."
 ;;; ============================================
 
 (defun count-instrs (code)
-  "Count number of 4-byte instructions in code list"
-  (if (null code)
-      0
-      (+ 1 (count-instrs (nthcdr 4 code)))))
+  "Count number of 4-byte instructions in code list (iterative to avoid stack overflow)"
+  (let ((count 0)
+        (remaining code))
+    (loop while remaining do
+      (incf count)
+      (setf remaining (nthcdr 4 remaining)))
+    count))
 
 (defun parse-params (params)
   "Split params into fixed list, optional descriptors, rest symbol, and key descriptors.
