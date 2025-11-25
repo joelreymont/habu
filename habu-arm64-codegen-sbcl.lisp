@@ -32,6 +32,10 @@
   "Counter for generating unique restart IDs")
 (defparameter *restart-env* nil
   "List of restart-case entries for invoke-restart to find")
+(defparameter *class-env* nil
+  "Alist of (class-name parent-class slot-names slot-initforms) for CLOS classes")
+(defparameter *method-env* nil
+  "Alist of ((generic-name . specializer) . lambda-form) for methods")
 (defparameter *stack-frame-size* #xFF0)
 (defparameter *env-base-offset* #x180)
 (defparameter *temp-slot-base* #x40)
@@ -3757,6 +3761,108 @@ Cons/car/cdr are required; others should be provided in production."
                 (compile-expr obj env fenv))
               (list 'lit 0)))
 
+         ;; Make-instance - create a CLOS class instance
+         ;; (make-instance 'class :slot1 val1 :slot2 val2 ...)
+         ((op= op "MAKE-INSTANCE")
+          (if (consp (cdr expr))
+              (let* ((class-form (cadr expr))
+                     (initargs (cddr expr))
+                     ;; Get class name (handle quoted symbol)
+                     (class-name (if (and (consp class-form) (eq (car class-form) 'quote))
+                                     (cadr class-form)
+                                     class-form))
+                     ;; Look up class info
+                     (class-info (assoc class-name *class-env*))
+                     (slots (if class-info (caddr class-info) nil))
+                     (initforms (if class-info (cadddr class-info) nil))
+                     (num-slots (length slots)))
+                (if class-info
+                    ;; Generate vector construction with slot initialization
+                    (let* ((v-var (intern (format nil "$MAKE-INSTANCE-V-~A" (incf *handler-counter*))))
+                           ;; Parse initargs: (:slot val ...) -> alist
+                           (initarg-alist
+                            (labels ((parse-initargs (args)
+                                       (if (null args)
+                                           nil
+                                           (if (and (keywordp (car args)) (cdr args))
+                                               (let ((slot-name (intern (symbol-name (car args)))))
+                                                 (cons (cons slot-name (cadr args))
+                                                       (parse-initargs (cddr args))))
+                                               (parse-initargs (cdr args))))))
+                              (parse-initargs initargs)))
+                           ;; Generate slot value expressions
+                           (slot-values
+                            (loop for slot in slots
+                                  for initform in initforms
+                                  collect (let ((initarg (assoc slot initarg-alist)))
+                                            (if initarg
+                                                (cdr initarg)
+                                                (or initform nil)))))
+                           ;; Build let form
+                           (init-form
+                            `(let ((,v-var (make-vector ,(+ 1 num-slots))))
+                               (vector-set ,v-var 0 ',class-name)
+                               ,@(loop for val in slot-values
+                                       for i from 1
+                                       collect `(vector-set ,v-var ,i ,val))
+                               ,v-var)))
+                      (compile-expr init-form env fenv))
+                    ;; Class not found, return nil
+                    (list 'lit 0)))
+              (list 'lit 0)))
+
+         ;; Slot-value - access slot by name at runtime
+         ;; (slot-value obj 'slot-name)
+         ((op= op "SLOT-VALUE")
+          (if (and (consp (cdr expr)) (consp (cddr expr)))
+              (let* ((obj-expr (cadr expr))
+                     (slot-form (caddr expr))
+                     ;; Get slot name (handle quoted symbol)
+                     (slot-name (if (and (consp slot-form) (eq (car slot-form) 'quote))
+                                    (cadr slot-form)
+                                    nil)))
+                (if slot-name
+                    ;; Find slot index by looking up in all classes
+                    (let ((slot-index nil))
+                      (dolist (class-entry *class-env*)
+                        (let* ((slots (caddr class-entry))
+                               (pos (position slot-name slots)))
+                          (when pos
+                            (setq slot-index (+ pos 1))  ; +1 for class tag
+                            (return))))
+                      (if slot-index
+                          (compile-expr `(vector-ref ,obj-expr ,slot-index) env fenv)
+                          (list 'lit 0)))  ; Slot not found
+                    ;; Dynamic slot lookup not supported yet
+                    (list 'lit 0)))
+              (list 'lit 0)))
+
+         ;; Class-of - get class name of an object
+         ;; (class-of obj) returns the class symbol from first vector slot
+         ((op= op "CLASS-OF")
+          (if (consp (cdr expr))
+              (compile-expr `(vector-ref ,(cadr expr) 0) env fenv)
+              (list 'lit 0)))
+
+         ;; Typep - check if object is of a type (basic CLOS support)
+         ;; (typep obj 'class-name)
+         ((op= op "TYPEP")
+          (if (and (consp (cdr expr)) (consp (cddr expr)))
+              (let* ((obj-expr (cadr expr))
+                     (type-form (caddr expr))
+                     (type-name (if (and (consp type-form) (eq (car type-form) 'quote))
+                                    (cadr type-form)
+                                    nil)))
+                (if type-name
+                    ;; Check if vectorp and first element matches type
+                    (compile-expr
+                     `(and (vectorp ,obj-expr)
+                           (> (vector-length ,obj-expr) 0)
+                           (eq (vector-ref ,obj-expr 0) ',type-name))
+                     env fenv)
+                    (list 'lit 0)))
+              (list 'lit 0)))
+
          ;; Destructuring-bind - (destructuring-bind pattern expr &body body)
          ;; Pattern-matches a list structure and binds variables
          ((op= op "DESTRUCTURING-BIND")
@@ -5572,6 +5678,88 @@ Optional/key descriptors are (name init-form supplied-name)."
              ;; Continue with rest of forms (defmacro doesn't produce runtime code)
              (compile-forms-helper (cdr forms) env fenv)))
 
+          ;; defclass - define a CLOS class
+          ;; (defclass name (superclasses) ((slot :initform val) ...))
+          ;; Class is stored as vector: [class-name slot1-val slot2-val ...]
+          ((and (consp form) (eq (car form) 'defclass))
+           (let* ((name (cadr form))
+                  (superclasses (caddr form))  ; For now, single inheritance only
+                  (slot-specs (cadddr form))
+                  ;; Parse slot specs: ((slot :initform val) ...) or (slot ...)
+                  (slot-info (mapcar (lambda (spec)
+                                       (if (consp spec)
+                                           (let* ((slot-name (car spec))
+                                                  (initform-pos (position :initform spec))
+                                                  (initform (if initform-pos
+                                                                (nth (+ initform-pos 1) spec)
+                                                                nil)))
+                                             (cons slot-name initform))
+                                           (cons spec nil)))
+                                     slot-specs))
+                  (slot-names (mapcar #'car slot-info))
+                  (slot-initforms (mapcar #'cdr slot-info))
+                  (parent (if (consp superclasses) (car superclasses) nil))
+                  ;; Get inherited slots from parent class
+                  (parent-info (if parent (assoc parent *class-env*) nil))
+                  (parent-slots (if parent-info (caddr parent-info) nil))
+                  (all-slots (append parent-slots slot-names))
+                  (all-initforms (append (if parent-info (cadddr parent-info) nil) slot-initforms))
+                  (num-slots (length all-slots))
+                  ;; Register class
+                  (class-entry (list name parent all-slots all-initforms)))
+             ;; Store class info
+             (push class-entry *class-env*)
+             ;; Generate accessor functions
+             (let* ((accessor-defuns
+                     (loop for slot in all-slots
+                           for i from 1
+                           collect (let ((accessor-name (intern (concatenate 'string
+                                                                  (symbol-name name) "-"
+                                                                  (symbol-name slot)))))
+                                     `(defun ,accessor-name (obj) (vector-ref obj ,i)))))
+                    ;; Generate predicate
+                    (predicate-name (intern (concatenate 'string (symbol-name name) "-P")))
+                    (predicate-defun `(defun ,predicate-name (obj)
+                                        (and (vectorp obj)
+                                             (> (vector-length obj) 0)
+                                             (eq (vector-ref obj 0) ',name))))
+                    (all-defuns (cons predicate-defun accessor-defuns)))
+               ;; Register accessors for setf support
+               (loop for slot in all-slots
+                     for i from 1
+                     do (push (cons (intern (concatenate 'string (symbol-name name) "-" (symbol-name slot))) i)
+                              *struct-accessors*))
+               ;; Process generated defuns followed by rest of forms
+               (compile-forms-helper (append all-defuns (cdr forms)) env fenv))))
+
+          ;; defgeneric - declare a generic function (stub - just compile methods)
+          ;; (defgeneric name (args) ...)
+          ((and (consp form) (eq (car form) 'defgeneric))
+           ;; For now, just skip - methods define behavior
+           (compile-forms-helper (cdr forms) env fenv))
+
+          ;; defmethod - define a method for a generic function
+          ;; (defmethod name ((arg class) ...) body)
+          ;; For now: simple single-dispatch on first arg
+          ((and (consp form) (eq (car form) 'defmethod))
+           (let* ((name (cadr form))
+                  (lambda-list (caddr form))
+                  (body (cdddr form))
+                  ;; Parse first arg to get specializer
+                  (first-param (car lambda-list))
+                  (param-name (if (consp first-param) (car first-param) first-param))
+                  (specializer (if (consp first-param) (cadr first-param) t))
+                  ;; All params for the function
+                  (all-params (cons param-name (mapcar (lambda (p) (if (consp p) (car p) p)) (cdr lambda-list))))
+                  ;; Create method key
+                  (method-key (cons name specializer))
+                  ;; Create method entry
+                  (method-fn `(lambda ,all-params ,@body)))
+             ;; Store method
+             (push (cons method-key method-fn) *method-env*)
+             ;; Continue with rest of forms
+             (compile-forms-helper (cdr forms) env fenv)))
+
           ;; defstruct - expand to constructor, predicate, and accessors
           ;; (defstruct name slot1 slot2 ...) expands to multiple defuns
           ;; Structure is stored as vector: [type-symbol slot1-val slot2-val ...]
@@ -5665,7 +5853,9 @@ Optional/key descriptors are (name init-form supplied-name)."
   "Compile list of top-level forms including defmacro and defun."
   (let ((*collected-lambdas* nil)
         (*macro-env* nil)           ; Fresh macro environment for each compilation
-        (*struct-accessors* nil))   ; Fresh struct accessor registry
+        (*struct-accessors* nil)    ; Fresh struct accessor registry
+        (*class-env* nil)           ; Fresh CLOS class registry
+        (*method-env* nil))         ; Fresh method registry
     (let* ((result (compile-forms-helper forms nil nil))
            (fns (car result))
            (main-ir (cadr result)))
