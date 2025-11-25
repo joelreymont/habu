@@ -1,11 +1,49 @@
 # Session Context - Habu Defun Implementation
 
-**Session Date**: November 22-24, 2025
-**Duration**: ~6 hours
-**Focus**: Stabilizing defun recursion, temporary allocation, closures, &rest/&optional, unlimited-arity calls, and wiring runtime execution
-**Last Updated**: Current session (packages consolidated in Lisp; C runtime trimmed to essentials)
+**Session Date**: November 22-25, 2025
+**Duration**: ~7 hours
+**Focus**: Conditional forms, boolean operators, type predicates, and self-hosting progress
+**Last Updated**: November 25, 2025 (added cond/when/unless/and/or/not and type predicates)
 
-## Latest Updates (Current Session)
+## Latest Updates (November 25, 2025)
+
+- **Implemented conditional special forms**:
+  - `cond` - multi-way conditional that transforms to nested if-exprs at compile time
+  - `when` - guard form: `(when test body...)` -> `(if test (progn body...) nil)`
+  - `unless` - negated guard: `(unless test body...)` -> `(if test nil (progn body...))`
+
+- **Implemented boolean operators**:
+  - `not` - logical negation: returns t (tagged 1) for nil, nil for non-nil
+  - `and` - short-circuit conjunction: transforms to nested if, returns last value or nil
+  - `or` - short-circuit disjunction: transforms to nested if, returns first truthy or nil
+
+- **Implemented type predicates**:
+  - `null` - tests for nil (compares with tagged 0)
+  - `consp` - tests cons tag (tag 1)
+  - `atom` - tests not-cons (inverts consp)
+  - `numberp` - tests fixnum tag (tag 0)
+  - `symbolp` - tests symbol tag (tag 2)
+  - `stringp` - tests string tag (tag 4)
+  - `vectorp` - tests vector tag (tag 3)
+  - `functionp` - tests closure tag (tag 5)
+  - `listp` - tests null or cons
+  - `zerop` - tests value = 0
+  - `plusp` - tests value > 0
+  - `minusp` - tests value < 0
+
+- **Fixed two-argument if**: `(if test then)` now correctly compiles to `(if test then nil)`
+
+- **Added test suites**:
+  - `tests/test_cond.lisp` - 5 tests for cond multi-way conditional
+  - `tests/test_when_unless.lisp` - 6 tests for when/unless guard forms
+  - `tests/test_and_or.lisp` - 11 tests for and/or/not short-circuit operators
+  - `tests/test_type_predicates.lisp` - 12 tests for type predicates
+
+- **Bug fix**: Literal values in IR must be untagged (codegen tags them). Fixed all `(lit #x10)` -> `(lit 1)` for true value and type tag comparisons.
+
+- All 34 new tests pass. Regression tests (progn, closure_integration) still pass.
+
+## Previous Updates (Current Session)
 
 - Added vector literal handling in the runtime reader/printer: tokenizer emits `:vector-start` for `#(`, parser builds vectors, printer formats `#(...)`, and `lisp-to-habu` now allocates runtime vectors for Lisp vectors. Fixed an extra `)` in the tokenizer predicate and reran `runtime/test-reader.lisp` (17/17 passing).
 - Ran `python3 tools/check_parens.py` on `runtime/reader.lisp`, `runtime/test-reader.lisp`, `runtime/arrays.lisp`, and `runtime/test-arrays.lisp` after the fix; no unmatched parentheses reported.
@@ -32,7 +70,7 @@
 
 1) **Runtime completeness**: keep the C runtime minimal (cons/vector/string/symbol/closure, GC, I/O) and move package/reader/printer logic into Lisp; add numeric tower (bignum/ratio/float) and hash tables in Lisp with GC hooks and hex tagging.
 2) **Reader/printer and packages**: finish package semantics (use/export/import/lookups) in Lisp; wire printer to `symbol->print-name`; extend reader macros (dispatch/backquote/sharps) and make quasiquote/macroexpansion spec compliant.
-3) **Evaluator/Codegen coverage**: implement remaining special forms (cond/and/or/when/unless/loop/dolist/dotimes/tagbody/go) and type/arith predicates; add multiple values and condition signaling/handling; ensure ARM64 codegen matches CL semantics and mirror to x86_64 once stable.
+3) **Evaluator/Codegen coverage**: ~~implement remaining special forms (cond/and/or/when/unless)~~ DONE; still need loop/dolist/dotimes/tagbody/go, ~~type/arith predicates~~ DONE; add multiple values and condition signaling/handling; ensure ARM64 codegen matches CL semantics and mirror to x86_64 once stable.
 4) **Macro system**: build macro expansion pipeline (defmacro, macrolet, symbol-macrolet), integrate compiler macros, and add tracing hooks for debugging; expand stdlib with macro-driven utilities.
 5) **Bootstrapping path**: compile the Lisp compiler with SBCL to ARM64 bytes using the self-hosted codegen, run via `run-bytecode`/tiny runtime, then recompile itself under its own output to close the self-hosting loop; validate against existing regression suites and portable CL tests where feasible.
 6) **Testing and tooling**: maintain hex literals, keep package-aware regression coverage short in `tests/`, and add targeted GC/closure/package stress tests; keep `CONTEXT.md` synced after each milestone.

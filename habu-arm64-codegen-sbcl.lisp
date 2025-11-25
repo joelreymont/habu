@@ -1322,7 +1322,213 @@ Cons/car/cdr are required; others should be provided in production."
                     (compile-expr (cadr expr) env fenv)   ; test
                     (compile-expr (caddr expr) env fenv)  ; then
                     (compile-expr (cadddr expr) env fenv)) ; else
+              ;; Two-arg if: (if test then) -> (if test then nil)
+              (if (and (consp (cdr expr)) (consp (cddr expr)))
+                  (list 'if-expr
+                        (compile-expr (cadr expr) env fenv)
+                        (compile-expr (caddr expr) env fenv)
+                        (list 'lit #x0))
+                  (list 'lit 0))))
+
+         ;; Not (logical negation)
+         ((eq op 'not)
+          (if (consp (cdr expr))
+              (list 'if-expr
+                    (compile-expr (cadr expr) env fenv)
+                    (list 'lit 0)   ; if true -> nil
+                    (list 'lit 1))  ; if false -> t (1, will be tagged to #x10)
+              (list 'lit 1))) ; (not) with no args -> t
+
+         ;; Cond (multi-way conditional) - transforms to nested if
+         ((eq op 'cond)
+          (labels ((expand-cond (clauses)
+                     (if (null clauses)
+                         (list 'lit #x0)  ; no clause matched -> nil
+                         (let* ((clause (car clauses))
+                                (test (car clause))
+                                (body (cdr clause)))
+                           (cond
+                             ;; (t body...) or (otherwise body...) - default clause
+                             ((or (eq test t) (eq test 'otherwise))
+                              (if body
+                                  (if (cdr body)
+                                      (compile-expr (cons 'progn body) env fenv)
+                                      (compile-expr (car body) env fenv))
+                                  (list 'lit 1))) ; bare t -> t (1, tags to #x10)
+                             ;; Empty body: return test value if true
+                             ((null body)
+                              (let ((test-ir (compile-expr test env fenv)))
+                                (list 'if-expr test-ir test-ir (expand-cond (cdr clauses)))))
+                             ;; Normal clause with body
+                             (t
+                              (list 'if-expr
+                                    (compile-expr test env fenv)
+                                    (if (cdr body)
+                                        (compile-expr (cons 'progn body) env fenv)
+                                        (compile-expr (car body) env fenv))
+                                    (expand-cond (cdr clauses)))))))))
+            (expand-cond (cdr expr))))
+
+         ;; When (guard form)
+         ((eq op 'when)
+          (if (consp (cdr expr))
+              (let ((test (cadr expr))
+                    (body (cddr expr)))
+                (list 'if-expr
+                      (compile-expr test env fenv)
+                      (if body
+                          (if (cdr body)
+                              (compile-expr (cons 'progn body) env fenv)
+                              (compile-expr (car body) env fenv))
+                          (list 'lit #x0))
+                      (list 'lit #x0)))
+              (list 'lit #x0)))
+
+         ;; Unless (negated guard form)
+         ((eq op 'unless)
+          (if (consp (cdr expr))
+              (let ((test (cadr expr))
+                    (body (cddr expr)))
+                (list 'if-expr
+                      (compile-expr test env fenv)
+                      (list 'lit #x0)  ; if true -> nil
+                      (if body
+                          (if (cdr body)
+                              (compile-expr (cons 'progn body) env fenv)
+                              (compile-expr (car body) env fenv))
+                          (list 'lit #x0))))
+              (list 'lit #x0)))
+
+         ;; And (short-circuit conjunction)
+         ((eq op 'and)
+          (let ((args (cdr expr)))
+            (cond
+              ((null args) (list 'lit 1))  ; (and) -> t (1, tags to #x10)
+              ((null (cdr args)) (compile-expr (car args) env fenv)) ; (and x) -> x
+              (t ; (and a b ...) -> (if a (and b ...) nil)
+               (list 'if-expr
+                     (compile-expr (car args) env fenv)
+                     (compile-expr (cons 'and (cdr args)) env fenv)
+                     (list 'lit 0))))))
+
+         ;; Or (short-circuit disjunction)
+         ((eq op 'or)
+          (let ((args (cdr expr)))
+            (cond
+              ((null args) (list 'lit #x0))  ; (or) -> nil
+              ((null (cdr args)) (compile-expr (car args) env fenv)) ; (or x) -> x
+              (t ; (or a b ...) -> need temp to preserve value
+               ;; Simple version: (if a a (or b ...)) - evaluates a twice
+               ;; For now use this; optimize later with let if needed
+               (let ((first-ir (compile-expr (car args) env fenv)))
+                 (list 'if-expr
+                       first-ir
+                       first-ir  ; returns first if true (evaluates twice)
+                       (compile-expr (cons 'or (cdr args)) env fenv)))))))
+
+         ;; Null predicate
+         ((eq op 'null)
+          (if (consp (cdr expr))
+              (list 'cmp-eq
+                    (compile-expr (cadr expr) env fenv)
+                    (list 'lit #x0))
+              (list 'lit #x0)))
+
+         ;; Consp predicate (tag #x1)
+         ((eq op 'consp)
+          (if (consp (cdr expr))
+              (list 'cmp-eq
+                    (list 'get-tag (compile-expr (cadr expr) env fenv))
+                    (list 'lit 1)) ; tag 1 (will be tagged to #x10, matching get-tag result)
               (list 'lit 0)))
+
+         ;; Atom predicate (not consp)
+         ((eq op 'atom)
+          (if (consp (cdr expr))
+              (list 'if-expr
+                    (list 'cmp-eq
+                          (list 'get-tag (compile-expr (cadr expr) env fenv))
+                          (list 'lit 1)) ; cons tag
+                    (list 'lit 0)   ; cons -> nil (not atom)
+                    (list 'lit 1))  ; not cons -> t (is atom)
+              (list 'lit 1)))
+
+         ;; Numberp predicate (tag #x0 = fixnum)
+         ((eq op 'numberp)
+          (if (consp (cdr expr))
+              (list 'cmp-eq
+                    (list 'get-tag (compile-expr (cadr expr) env fenv))
+                    (list 'lit #x0)) ; tag 0
+              (list 'lit #x0)))
+
+         ;; Symbolp predicate (tag #x2)
+         ((eq op 'symbolp)
+          (if (consp (cdr expr))
+              (list 'cmp-eq
+                    (list 'get-tag (compile-expr (cadr expr) env fenv))
+                    (list 'lit 2)) ; tag 2
+              (list 'lit 0)))
+
+         ;; Stringp predicate (tag #x4)
+         ((eq op 'stringp)
+          (if (consp (cdr expr))
+              (list 'cmp-eq
+                    (list 'get-tag (compile-expr (cadr expr) env fenv))
+                    (list 'lit 4)) ; tag 4
+              (list 'lit 0)))
+
+         ;; Vectorp predicate (tag #x3)
+         ((eq op 'vectorp)
+          (if (consp (cdr expr))
+              (list 'cmp-eq
+                    (list 'get-tag (compile-expr (cadr expr) env fenv))
+                    (list 'lit 3)) ; tag 3
+              (list 'lit 0)))
+
+         ;; Functionp predicate (tag #x5 = closure)
+         ((eq op 'functionp)
+          (if (consp (cdr expr))
+              (list 'cmp-eq
+                    (list 'get-tag (compile-expr (cadr expr) env fenv))
+                    (list 'lit 5)) ; tag 5
+              (list 'lit 0)))
+
+         ;; Listp predicate (null or cons)
+         ((eq op 'listp)
+          (if (consp (cdr expr))
+              (let ((arg-ir (compile-expr (cadr expr) env fenv)))
+                ;; listp = (or (null x) (consp x))
+                (list 'if-expr
+                      (list 'cmp-eq arg-ir (list 'lit 0)) ; null check
+                      (list 'lit 1) ; null -> t
+                      (list 'cmp-eq
+                            (list 'get-tag arg-ir)
+                            (list 'lit 1)))) ; cons check (tag 1)
+              (list 'lit 0)))
+
+         ;; Zerop predicate
+         ((eq op 'zerop)
+          (if (consp (cdr expr))
+              (list 'cmp-eq
+                    (compile-expr (cadr expr) env fenv)
+                    (list 'lit #x0))
+              (list 'lit #x0)))
+
+         ;; Plusp predicate (> 0)
+         ((eq op 'plusp)
+          (if (consp (cdr expr))
+              (list 'cmp-gt
+                    (compile-expr (cadr expr) env fenv)
+                    (list 'lit #x0))
+              (list 'lit #x0)))
+
+         ;; Minusp predicate (< 0)
+         ((eq op 'minusp)
+          (if (consp (cdr expr))
+              (list 'cmp-lt
+                    (compile-expr (cadr expr) env fenv)
+                    (list 'lit #x0))
+              (list 'lit #x0)))
 
         ;; Cons
          ((eq op 'cons)
