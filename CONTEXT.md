@@ -2,7 +2,7 @@
 
 **Session Date**: November 22-25, 2025
 **Focus**: Self-hosting ARM64 Lisp compiler implementation
-**Last Updated**: November 25, 2025
+**Last Updated**: November 25, 2025 (Extended CL Spec Session)
 
 ## Current Status Summary
 
@@ -85,6 +85,21 @@ The Habu compiler can now compile and execute complex Lisp programs including:
 | **Structures** | defstruct (constructor, predicate, accessors) | Done |
 | **Parameters** | &optional, &rest, &key | Done |
 | **Misc** | identity, constantly | Done |
+
+### Extended CL Spec Features (November 25, 2025)
+
+| Category | Features | Status |
+|----------|----------|--------|
+| **List Mapping** | mapcan, maplist, mapcon, mapl, every, some, notevery, notany | Done |
+| **Extended Loop** | while, when/unless collect, sum, count, maximize, minimize, repeat | Done |
+| **String Ops** | string-concat, concatenate, subseq, write-to-string, make-string-from-vector | Done |
+| **String Case** | string-upcase, string-downcase | Done |
+| **Iteration** | do, do*, pop, pushnew | Done |
+| **Assignment** | psetq, rotatef, shiftf | Done |
+| **Types** | the (stub), coerce (stub), constantp, endp, keywordp | Done |
+| **Destructuring** | destructuring-bind (nested patterns, &rest support) | Done |
+| **Set Operations** | union, intersection, set-difference, subsetp, adjoin | Done |
+| **Tree/Plist** | subst, copy-tree, getf, ldiff, tailp | Done |
 
 ### Self-Hosting Implementation (November 25, 2025)
 
