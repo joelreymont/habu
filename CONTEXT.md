@@ -2,7 +2,7 @@
 
 **Session Date**: November 22-25, 2025
 **Focus**: Self-hosting ARM64 Lisp compiler implementation
-**Last Updated**: November 25, 2025 (CLOS and Condition System Session)
+**Last Updated**: November 25, 2025 (Method Dispatch and Setf Slot-Value Session)
 
 ## Current Status Summary
 
@@ -101,7 +101,7 @@ The Habu compiler can now compile and execute complex Lisp programs including:
 | **Set Operations** | union, intersection, set-difference, subsetp, adjoin | Done |
 | **Tree/Plist** | subst, copy-tree, getf, ldiff, tailp | Done |
 | **Conditions** | handler-case, signal, restart-case, invoke-restart | Done |
-| **CLOS** | defclass, make-instance, slot-value, class-of, typep | Done |
+| **CLOS** | defclass, make-instance, slot-value (incl. setf), class-of, typep, defgeneric, defmethod | Done |
 
 ### Self-Hosting Implementation (November 25, 2025)
 
@@ -134,7 +134,7 @@ The Habu compiler can now compile and execute complex Lisp programs including:
 | **Format** | format directives ✓ (basic ~A, ~S, ~D) | Medium |
 | **Hash Tables** | make-hash-table ✓, gethash ✓, puthash ✓, remhash ✓, hash-table-count ✓, hash-table-p ✓ | Done |
 | **Structures** | defstruct ✓ | Done |
-| **CLOS** | defclass ✓, make-instance ✓, slot-value ✓, class-of ✓, typep ✓ | Done |
+| **CLOS** | defclass ✓, make-instance ✓, slot-value ✓ (incl. setf), class-of ✓, typep ✓, defgeneric ✓, defmethod ✓ | Done |
 | **Numeric Tower** | bignum, ratio, float, complex | Low |
 | **Arrays** | Multi-dimensional arrays | Low |
 | **Streams** | File I/O, string streams | Low |
@@ -438,7 +438,19 @@ Test 10: Full compile + eval round trip       ✅ Pass
 
 ## Recent Commits
 
-### November 25, 2025 (Latest - Multiple Values Complete)
+### November 25, 2025 (Latest - Method Dispatch Complete)
+- **Implemented defgeneric/defmethod** - Full single-dispatch method system:
+  - defgeneric: Registers generic function name and arity in *method-env*
+  - defmethod: Generates specialized function (name/class) and registers method
+  - Dispatcher generation at compile time using typep for class checking
+  - 6 tests cover: single method, multiple classes, multi-param, no-match, implicit generic
+
+- **Added setf support for slot-value** - `(setf (slot-value obj 'slot) val)` now works:
+  - Looks up slot index in *class-env* at compile time
+  - Generates vector-set with appropriate slot index
+  - 4 tests cover: basic setf, multiple slots, after initargs, return value
+
+### November 25, 2025 (Multiple Values Complete)
 - **Implemented multiple values** - Full support for `values` and `multiple-value-bind`:
   - Runtime functions: `habu_values_set(count, v0, v1, v2, v3)`, `habu_values_get(index, primary)`
   - Global storage: `habu_values_count` and `habu_values_array[4]` for secondary values
