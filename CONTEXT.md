@@ -437,10 +437,11 @@ The Habu compiler can now compile and execute complex Lisp programs including:
    - Fixed let-expr, progn, call-closure cursor tracking
    - Added Habu predicate aliases (cons?, nil?, fixnum?, symbol?)
 
-3. **Create Pure Habu arm64-codegen.lisp** - IN PROGRESS
-   - Separate file without SBCL-specific features (defpackage, handler-case, etc.)
-   - Remove habu- prefixes where not needed to avoid symbol clashes
-   - Target for Stage 1/2 self-hosting
+3. ~~**Create Pure Habu Compiler Structure**~~ DONE (November 25, 2025)
+   - arm64/asm.lisp - ARM64 instruction encoders
+   - arm64/codegen.lisp - ARM64 code generator
+   - common/utils.lisp - Shared utilities
+   - common/ir.lisp - IR generation (compile-expr)
 
 4. **Stage 1/2 Self-Hosting**
    - Stage 0: SBCL compiles arm64-codegen.lisp → Stage 1 bytecode (VERIFIED)
@@ -458,5 +459,5 @@ The Habu compiler can now compile and execute complex Lisp programs including:
 ---
 
 **File**: CONTEXT.md
-**Status**: Creating pure Habu arm64-codegen.lisp for self-hosting.
+**Status**: Pure Habu compiler structure created in arm64/ and common/ directories.
 **Last Updated**: November 25, 2025
