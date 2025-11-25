@@ -1530,6 +1530,190 @@ Cons/car/cdr are required; others should be provided in production."
                     (list 'lit #x0))
               (list 'lit #x0)))
 
+         ;; Eq (pointer equality)
+         ((eq op 'eq)
+          (if (and (consp (cdr expr)) (consp (cddr expr)))
+              (list 'cmp-eq
+                    (compile-expr (cadr expr) env fenv)
+                    (compile-expr (caddr expr) env fenv))
+              (list 'lit 0)))
+
+         ;; Eql (same as eq for fixnums, symbols, chars)
+         ((eq op 'eql)
+          (if (and (consp (cdr expr)) (consp (cddr expr)))
+              (list 'cmp-eq
+                    (compile-expr (cadr expr) env fenv)
+                    (compile-expr (caddr expr) env fenv))
+              (list 'lit 0)))
+
+         ;; 1+ (increment by 1)
+         ((eq op '1+)
+          (if (consp (cdr expr))
+              (list 'add
+                    (compile-expr (cadr expr) env fenv)
+                    (list 'lit 1))
+              (list 'lit 0)))
+
+         ;; 1- (decrement by 1)
+         ((eq op '1-)
+          (if (consp (cdr expr))
+              (list 'sub
+                    (compile-expr (cadr expr) env fenv)
+                    (list 'lit 1))
+              (list 'lit 0)))
+
+         ;; Abs (absolute value) - (if (< x 0) (- 0 x) x)
+         ((eq op 'abs)
+          (if (consp (cdr expr))
+              (let ((arg-ir (compile-expr (cadr expr) env fenv)))
+                (list 'if-expr
+                      (list 'cmp-lt arg-ir (list 'lit 0))
+                      (list 'sub (list 'lit 0) arg-ir)
+                      arg-ir))
+              (list 'lit 0)))
+
+         ;; Max (maximum of two values)
+         ((eq op 'max)
+          (if (and (consp (cdr expr)) (consp (cddr expr)))
+              (let ((a-ir (compile-expr (cadr expr) env fenv))
+                    (b-ir (compile-expr (caddr expr) env fenv)))
+                (list 'if-expr
+                      (list 'cmp-gt a-ir b-ir)
+                      a-ir
+                      b-ir))
+              (if (consp (cdr expr))
+                  (compile-expr (cadr expr) env fenv)
+                  (list 'lit 0))))
+
+         ;; Min (minimum of two values)
+         ((eq op 'min)
+          (if (and (consp (cdr expr)) (consp (cddr expr)))
+              (let ((a-ir (compile-expr (cadr expr) env fenv))
+                    (b-ir (compile-expr (caddr expr) env fenv)))
+                (list 'if-expr
+                      (list 'cmp-lt a-ir b-ir)
+                      a-ir
+                      b-ir))
+              (if (consp (cdr expr))
+                  (compile-expr (cadr expr) env fenv)
+                  (list 'lit 0))))
+
+         ;; Cadr (car of cdr)
+         ((eq op 'cadr)
+          (if (consp (cdr expr))
+              (list 'car-call
+                    (list 'cdr-call (compile-expr (cadr expr) env fenv)))
+              (list 'lit 0)))
+
+         ;; Caddr (car of cdr of cdr)
+         ((eq op 'caddr)
+          (if (consp (cdr expr))
+              (list 'car-call
+                    (list 'cdr-call
+                          (list 'cdr-call (compile-expr (cadr expr) env fenv))))
+              (list 'lit 0)))
+
+         ;; Cadddr (car of cdr of cdr of cdr)
+         ((eq op 'cadddr)
+          (if (consp (cdr expr))
+              (list 'car-call
+                    (list 'cdr-call
+                          (list 'cdr-call
+                                (list 'cdr-call (compile-expr (cadr expr) env fenv)))))
+              (list 'lit 0)))
+
+         ;; Cddr (cdr of cdr)
+         ((eq op 'cddr)
+          (if (consp (cdr expr))
+              (list 'cdr-call
+                    (list 'cdr-call (compile-expr (cadr expr) env fenv)))
+              (list 'lit 0)))
+
+         ;; Cdddr (cdr of cdr of cdr)
+         ((eq op 'cdddr)
+          (if (consp (cdr expr))
+              (list 'cdr-call
+                    (list 'cdr-call
+                          (list 'cdr-call (compile-expr (cadr expr) env fenv))))
+              (list 'lit 0)))
+
+         ;; Caar (car of car)
+         ((eq op 'caar)
+          (if (consp (cdr expr))
+              (list 'car-call
+                    (list 'car-call (compile-expr (cadr expr) env fenv)))
+              (list 'lit 0)))
+
+         ;; Cdar (cdr of car)
+         ((eq op 'cdar)
+          (if (consp (cdr expr))
+              (list 'cdr-call
+                    (list 'car-call (compile-expr (cadr expr) env fenv)))
+              (list 'lit 0)))
+
+         ;; First (same as car)
+         ((eq op 'first)
+          (if (consp (cdr expr))
+              (list 'car-call (compile-expr (cadr expr) env fenv))
+              (list 'lit 0)))
+
+         ;; Second (same as cadr)
+         ((eq op 'second)
+          (if (consp (cdr expr))
+              (list 'car-call
+                    (list 'cdr-call (compile-expr (cadr expr) env fenv)))
+              (list 'lit 0)))
+
+         ;; Third (same as caddr)
+         ((eq op 'third)
+          (if (consp (cdr expr))
+              (list 'car-call
+                    (list 'cdr-call
+                          (list 'cdr-call (compile-expr (cadr expr) env fenv))))
+              (list 'lit 0)))
+
+         ;; Fourth
+         ((eq op 'fourth)
+          (if (consp (cdr expr))
+              (list 'car-call
+                    (list 'cdr-call
+                          (list 'cdr-call
+                                (list 'cdr-call (compile-expr (cadr expr) env fenv)))))
+              (list 'lit 0)))
+
+         ;; Rest (same as cdr)
+         ((eq op 'rest)
+          (if (consp (cdr expr))
+              (list 'cdr-call (compile-expr (cadr expr) env fenv))
+              (list 'lit 0)))
+
+         ;; List (create list from args)
+         ((eq op 'list)
+          (let ((args (cdr expr)))
+            (if (null args)
+                (list 'lit 0)  ; (list) -> nil
+                (labels ((build-list (items)
+                           (if (null items)
+                               (list 'lit 0)
+                               (list 'cons-call
+                                     (compile-expr (car items) env fenv)
+                                     (build-list (cdr items))))))
+                  (build-list args)))))
+
+         ;; List* (last arg is tail, rest consed)
+         ((eq op 'list*)
+          (let ((args (cdr expr)))
+            (cond
+              ((null args) (list 'lit 0))
+              ((null (cdr args)) (compile-expr (car args) env fenv))
+              (t (labels ((build-list* (items)
+                            (if (null (cdr items))
+                                (compile-expr (car items) env fenv)
+                                (list 'cons-call
+                                      (compile-expr (car items) env fenv)
+                                      (build-list* (cdr items))))))
+                   (build-list* args))))))
+
         ;; Cons
          ((eq op 'cons)
          (if (and (consp (cdr expr)) (consp (cddr expr)))
