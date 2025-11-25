@@ -335,19 +335,27 @@ The Habu compiler can now compile and execute complex Lisp programs including:
 
 ## Recent Commits
 
-### November 25, 2025 (Latest - Self-Hosting Complete!)
+### November 25, 2025 (Latest - Offset Tracking and Predicate Aliases)
+- **Fixed offset tracking bugs** in let-expr, progn, and call-closure codegen
+  - let-expr: Track cursor through bindings, accounting for save/restore x24
+  - progn: Account for restore-x24 instruction before subsequent forms
+  - call-closure: Add +1 for restore-x24 before each argument evaluation
+- **Added Habu-style predicate aliases** using op= for package-agnostic comparison:
+  - cons? (alias for consp)
+  - nil? (alias for null)
+  - fixnum? (alias for numberp)
+  - symbol? (alias for symbolp)
+- Self-hosting compiler tests now passing (cons?, eq, eval-ir patterns)
+
+### November 25, 2025 (Earlier)
 - **Implemented apply function** - Optimized for #'append and #'max, general case up to 5 args
 - **Implemented loop macro subset** - for/in, for/from/below, for/across, until/do, collect
 - **Added cddddr and fifth list accessors**
 - **Added error stub** (returns 0)
 - **Added filter function stubs** (remove-if, remove-if-not, remove-duplicates)
-- **All self-hosting prerequisites complete** - Compiler ready for self-hosting!
-- All 90+ tests passing including apply, loop, and compiler feature tests
-
-### November 25, 2025 (Earlier)
 - Fixed x24 preservation across funcalls in binary ops, progn, let, call-fn, call-closure, cons-call
 - Higher-order functions (mapcar, mapc, reduce) now working correctly
-- All 86+ tests passing
+- All 90+ tests passing
 
 ### Previous Sessions
 - Implemented labels/flet, setq/setf/incf/decf/push
@@ -359,41 +367,91 @@ The Habu compiler can now compile and execute complex Lisp programs including:
 
 ---
 
-## Critical Blocker for Self-Hosting
+## Critical Blocker RESOLVED (November 25, 2025)
 
-**Symbol Interning Not Implemented**: Discovered that `(eq 'foo 'foo)` returns false because each symbol literal creates a fresh symbol. Symbol interning is critical for self-hosting since the compiler heavily relies on symbol comparison.
+**Symbol Interning Now Implemented**: `(eq 'foo 'foo)` now returns true!
 
-### Current State
-- `defun` ✅ Already works
-- `apply`, `loop`, higher-order functions ✅ All working
-- Predicates (`consp`, `symbolp`, `numberp`) ✅ Working
-- **Symbol equality (`eq`)** ❌ BROKEN - symbols not interned
+### Implementation Details
+- Added hash table interning to runtime/gc.c
+- Symbol table with 1024 buckets using djb2 hash
+- Proper GC integration (forwarding during young GC, marking during old GC)
+- 45 lines of code added
 
 ### Test Results
 ```lisp
-(eq #x5 #x5)      => 1  ✅ Works (numbers)
-(eq 'foo 'foo)    => 0  ❌ FAILS (symbols)
+(eq #x5 #x5)       => 1  ✅ Works (numbers)
+(eq 'foo 'foo)     => 1  ✅ NOW WORKS! (symbols)
+(eq (car '(x)) 'x) => 1  ✅ Works (from list)
 (consp (cons 1 2)) => 1  ✅ Works
 (symbolp 'foo)     => 1  ✅ Works
 ```
 
-### Root Cause
-`habu_make_symbol` (runtime/gc.c:1196) allocates a fresh symbol each time. No symbol table or interning exists. Every `'foo` creates a new distinct symbol.
+### All Self-Hosting Tests Pass
+- apply #'append ✅
+- apply #'max ✅
+- loop for...in...collect ✅
+- loop for...from...below ✅
+- Nested labels ✅
+- Higher-order functions (mapcar, reduce) ✅
+
+---
+
+## Compiler Efficiency Analysis (November 25, 2025)
+
+**Completed comprehensive efficiency analysis** covering compilation pipeline, code generation, and runtime/memory systems.
+
+**Detailed Plan**: See [docs/EFFICIENCY_PLAN.md](docs/EFFICIENCY_PLAN.md) for full implementation details.
+
+### Critical Issues Summary
+
+| Issue | Impact | Location | Fix |
+|-------|--------|----------|-----|
+| **Symbol Interning Missing** | BLOCKS self-hosting | runtime/gc.c:1196 | Add hash table (P0) |
+| **arm64-sub-imm undefined** | Runtime crash | line 932 | Add function (P1) |
+| **Hardcoded instructions** | Silent failures | lines 141-210 | Parametrize (P1) |
+| **O(N²) free var analysis** | Slow compilation | compiler.lisp:608 | Hash-based (P2) |
+
+### Week 1 Implementation Plan
+
+**Priority 0 (Days 1-2)**: Symbol Interning - 8 hours
+- Add hash table to runtime/gc.c habu_make_symbol
+- Test `(eq 'foo 'foo)` returns true
+
+**Priority 1 (Days 3-4)**: Critical Bug Fixes - 6 hours
+- Add arm64-sub-imm function
+- Parametrize arm64-str/ldr/stp/ldp
+
+**Priority 2 (Day 5)**: Quick Wins - 12 hours
+- Fix O(N²) free variable analysis
+- Optimize append usage in codegen
+
+**Week 2+**: Attempt self-hosting (Stage 0 → Stage 1 → Stage 2)
+
+---
 
 ## Next Session Priority
 
-1. **Implement Symbol Interning** - Add symbol table to runtime, intern symbols on creation
-   - Add hash table or association list for symbol interning per package
-   - Modify `habu_make_symbol` to check table before allocating
-   - Ensure `(eq 'foo 'foo)` returns true
+1. ~~**Implement Symbol Interning**~~ ✅ DONE (November 25, 2025)
 
-2. **Add macro system** - defmacro, macroexpand for better code generation
+2. **Attempt Self-Hosting** - Symbol interning now works!
+   - Stage 0: SBCL compiles compiler → Stage 1 binary
+   - Stage 1: Stage 1 compiles compiler → Stage 2 binary
+   - Stage 2: Verify Stage 1 == Stage 2 (fixed point)
 
-3. **Attempt full self-hosting** - Once symbol interning works
+3. **Fix Critical Codegen Bugs** (if self-hosting fails)
+   - Add missing arm64-sub-imm function (if needed)
+   - Replace hardcoded arm64-str/ldr/stp/ldp with parametric versions
 
-4. **Bootstrap verification** - Achieve Stage 0 → Stage 1 → Stage 2 fixed point
+4. **Fix O(N²) Algorithms** - See [docs/EFFICIENCY_PLAN.md](docs/EFFICIENCY_PLAN.md)
+
+---
+
+## Related Documents
+
+- [docs/EFFICIENCY_PLAN.md](docs/EFFICIENCY_PLAN.md) - Detailed efficiency improvement plan with code samples
 
 ---
 
 **File**: CONTEXT.md
-**Status**: Active development toward self-hosting
+**Status**: Symbol interning implemented! Ready to attempt self-hosting.
+**Last Updated**: November 25, 2025
