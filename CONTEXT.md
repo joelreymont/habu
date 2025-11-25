@@ -27,6 +27,10 @@ The Habu compiler has achieved **Stage 1 bootstrap** - it can now compile its ow
 6. **Fixed multiple body forms in let/let*/labels/flet**: These handlers were only compiling the first body form; now they wrap multiple body forms in `progn`
 7. **Fixed tagbody/go forward jumps**: Added dead code elimination after `go` calls and removed automatic fallthrough when `go` is present
 8. **Implemented hash tables**: Full hash table support with make-hash-table, gethash, puthash, remhash, hash-table-count, hash-table-p, and (setf (gethash ...)) syntax
+9. **Implemented defstruct**: Full structure support with constructor, predicate, and slot accessors
+10. **Implemented &key parameters**: Keyword arguments transformed to &rest with search-based extraction
+11. **Fixed keyword symbol compilation**: Keywords are now self-evaluating (compile to symbol literals)
+12. **Added vector operations**: make-vector, vector-set, vector-length for structure storage
 
 ---
 
@@ -77,6 +81,9 @@ The Habu compiler can now compile and execute complex Lisp programs including:
 | **Iteration** | dotimes, dolist | Done |
 | **Higher-Order** | mapcar, mapc, reduce | Done |
 | **Quote** | quote, quasiquote (partial) | Done |
+| **Vectors** | make-vector, vector-ref, vector-set, vector-length, vectorp | Done |
+| **Structures** | defstruct (constructor, predicate, accessors) | Done |
+| **Parameters** | &optional, &rest, &key | Done |
 | **Misc** | identity, constantly | Done |
 
 ### Self-Hosting Implementation (November 25, 2025)
@@ -109,7 +116,7 @@ The Habu compiler can now compile and execute complex Lisp programs including:
 | **Conditions** | error ✓, signal, handler-case, handler-bind, restarts | Medium |
 | **Format** | format directives ✓ (basic ~A, ~S, ~D) | Medium |
 | **Hash Tables** | make-hash-table ✓, gethash ✓, puthash ✓, remhash ✓, hash-table-count ✓, hash-table-p ✓ | Medium |
-| **Structures** | defstruct | Medium |
+| **Structures** | defstruct ✓ | Medium |
 | **CLOS** | defclass, defmethod, defgeneric, make-instance | Low |
 | **Numeric Tower** | bignum, ratio, float, complex | Low |
 | **Arrays** | Multi-dimensional arrays | Low |
