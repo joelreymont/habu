@@ -1819,6 +1819,86 @@ Cons/car/cdr are required; others should be provided in production."
 
     ;; ============= End Float Codegen =============
 
+    ;; ============= File I/O Codegen =============
+    ;; Runtime table indices 42-47 (offsets 336-376)
+
+    ;; open-file: (open-file-call path mode) -> handle
+    ;; Runtime table: [42] = offset 336 = habu_open_file
+    ((has-tag? ir 'open-file-call)
+     (let* ((path-ir (cadr ir))
+            (mode-ir (caddr ir))
+            (slot1 (temp-slot-offset temp-depth))
+            (path-code (codegen-expr path-ir runtime-addrs fn-offsets current-offset (+ temp-depth 1)))
+            (mode-code (codegen-expr mode-ir runtime-addrs fn-offsets current-offset (+ temp-depth 1))))
+       (append path-code
+               (arm64-str 0 31 slot1)   ; save path
+               mode-code
+               (arm64-mov 1 0)          ; x1 = mode
+               (arm64-ldr 0 31 slot1)   ; x0 = path
+               (arm64-ldr 9 19 336)     ; open_file at offset 336
+               (arm64-blr 9))))
+
+    ;; close-file: (close-file-call handle) -> 0 or nil
+    ;; Runtime table: [43] = offset 344 = habu_close_file
+    ((has-tag? ir 'close-file-call)
+     (let* ((handle-ir (cadr ir))
+            (handle-code (codegen-expr handle-ir runtime-addrs fn-offsets current-offset temp-depth)))
+       (append handle-code
+               (arm64-ldr 9 19 344)     ; close_file at offset 344
+               (arm64-blr 9))))
+
+    ;; read-line: (read-line-call handle) -> string or nil
+    ;; Runtime table: [44] = offset 352 = habu_read_line
+    ((has-tag? ir 'read-line-call)
+     (let* ((handle-ir (cadr ir))
+            (handle-code (codegen-expr handle-ir runtime-addrs fn-offsets current-offset temp-depth)))
+       (append handle-code
+               (arm64-ldr 9 19 352)     ; read_line at offset 352
+               (arm64-blr 9))))
+
+    ;; write-string: (write-string-call handle str) -> bytes-written or nil
+    ;; Runtime table: [45] = offset 360 = habu_write_string
+    ((has-tag? ir 'write-string-call)
+     (let* ((handle-ir (cadr ir))
+            (str-ir (caddr ir))
+            (slot1 (temp-slot-offset temp-depth))
+            (handle-code (codegen-expr handle-ir runtime-addrs fn-offsets current-offset (+ temp-depth 1)))
+            (str-code (codegen-expr str-ir runtime-addrs fn-offsets current-offset (+ temp-depth 1))))
+       (append handle-code
+               (arm64-str 0 31 slot1)   ; save handle
+               str-code
+               (arm64-mov 1 0)          ; x1 = str
+               (arm64-ldr 0 31 slot1)   ; x0 = handle
+               (arm64-ldr 9 19 360)     ; write_string at offset 360
+               (arm64-blr 9))))
+
+    ;; read-file: (read-file-call path) -> string or nil
+    ;; Runtime table: [46] = offset 368 = habu_read_file
+    ((has-tag? ir 'read-file-call)
+     (let* ((path-ir (cadr ir))
+            (path-code (codegen-expr path-ir runtime-addrs fn-offsets current-offset temp-depth)))
+       (append path-code
+               (arm64-ldr 9 19 368)     ; read_file at offset 368
+               (arm64-blr 9))))
+
+    ;; write-file: (write-file-call path content) -> 0 or nil
+    ;; Runtime table: [47] = offset 376 = habu_write_file
+    ((has-tag? ir 'write-file-call)
+     (let* ((path-ir (cadr ir))
+            (content-ir (caddr ir))
+            (slot1 (temp-slot-offset temp-depth))
+            (path-code (codegen-expr path-ir runtime-addrs fn-offsets current-offset (+ temp-depth 1)))
+            (content-code (codegen-expr content-ir runtime-addrs fn-offsets current-offset (+ temp-depth 1))))
+       (append path-code
+               (arm64-str 0 31 slot1)   ; save path
+               content-code
+               (arm64-mov 1 0)          ; x1 = content
+               (arm64-ldr 0 31 slot1)   ; x0 = path
+               (arm64-ldr 9 19 376)     ; write_file at offset 376
+               (arm64-blr 9))))
+
+    ;; ============= End File I/O Codegen =============
+
     ;; String length (returns fixnum)
     ((has-tag? ir 'string-len)
      (let* ((arg-ir (cadr ir))
@@ -5506,6 +5586,62 @@ Cons/car/cdr are required; others should be provided in production."
               (list 'lit 0)))
 
          ;; ============= End Float Operations =============
+
+         ;; ============= File I/O Operations =============
+         ;; Runtime table indices 42-47 (offsets 336-376)
+
+         ;; open-file: (open-file path mode) -> handle fixnum or nil
+         ;; Runtime table: [42] = offset 336 = habu_open_file
+         ((op= op "OPEN-FILE")
+          (if (and (consp (cdr expr)) (consp (cddr expr)))
+              (list 'open-file-call
+                    (compile-expr (cadr expr) env fenv)
+                    (compile-expr (caddr expr) env fenv))
+              (list 'lit 0)))
+
+         ;; close-file: (close-file handle) -> 0 or nil
+         ;; Runtime table: [43] = offset 344 = habu_close_file
+         ((op= op "CLOSE-FILE")
+          (if (consp (cdr expr))
+              (list 'close-file-call
+                    (compile-expr (cadr expr) env fenv))
+              (list 'lit 0)))
+
+         ;; read-line: (read-line handle) -> string or nil
+         ;; Runtime table: [44] = offset 352 = habu_read_line
+         ((op= op "READ-LINE")
+          (if (consp (cdr expr))
+              (list 'read-line-call
+                    (compile-expr (cadr expr) env fenv))
+              (list 'lit 0)))
+
+         ;; write-string: (write-string handle str) -> bytes-written or nil
+         ;; Runtime table: [45] = offset 360 = habu_write_string
+         ((op= op "WRITE-STRING")
+          (if (and (consp (cdr expr)) (consp (cddr expr)))
+              (list 'write-string-call
+                    (compile-expr (cadr expr) env fenv)
+                    (compile-expr (caddr expr) env fenv))
+              (list 'lit 0)))
+
+         ;; read-file: (read-file path) -> string or nil
+         ;; Runtime table: [46] = offset 368 = habu_read_file
+         ((op= op "READ-FILE")
+          (if (consp (cdr expr))
+              (list 'read-file-call
+                    (compile-expr (cadr expr) env fenv))
+              (list 'lit 0)))
+
+         ;; write-file: (write-file path content) -> 0 or nil
+         ;; Runtime table: [47] = offset 376 = habu_write_file
+         ((op= op "WRITE-FILE")
+          (if (and (consp (cdr expr)) (consp (cddr expr)))
+              (list 'write-file-call
+                    (compile-expr (cadr expr) env fenv)
+                    (compile-expr (caddr expr) env fenv))
+              (list 'lit 0)))
+
+         ;; ============= End File I/O Operations =============
 
          ;; String length
          ((op= op "STRING-LENGTH")

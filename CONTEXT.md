@@ -2,7 +2,7 @@
 
 **Session Date**: November 22-25, 2025
 **Focus**: Self-hosting ARM64 Lisp compiler implementation
-**Last Updated**: November 25, 2025 (IEEE 754 Floats Session)
+**Last Updated**: November 25, 2025 (File I/O Session)
 
 ## Current Status Summary
 
@@ -93,6 +93,7 @@ The Habu compiler can now compile and execute complex Lisp programs including:
 | **Symbols** | gensym, intern | Done |
 | **Type Pred** | integerp, characterp, floatp | Done |
 | **Floats** | float, float+, float-, float*, float/, float<, float>, float<=, float>=, float=, float-truncate | Done |
+| **File I/O** | open-file, close-file, read-line, write-string, read-file, write-file | Done |
 
 ### Extended CL Spec Features (November 25, 2025)
 
@@ -145,7 +146,7 @@ The Habu compiler can now compile and execute complex Lisp programs including:
 | **CLOS** | defclass ✓, make-instance ✓, slot-value ✓ (incl. setf), class-of ✓, typep ✓, defgeneric ✓, defmethod ✓ | Done |
 | **Numeric Tower** | bignum, ratio, float, complex | Low |
 | **Arrays** | Multi-dimensional arrays | Low |
-| **Streams** | File I/O, string streams | Low |
+| **Streams** | File I/O (done), string streams (pending) | Low |
 | **Reader** | Full reader macros, #', #. | Low |
 
 ---
@@ -449,7 +450,15 @@ Test 10: Full compile + eval round trip       ✅ Pass
 
 ## Recent Commits
 
-### November 25, 2025 (Latest - IEEE 754 Floats)
+### November 25, 2025 (Latest - File I/O)
+- **Implemented File I/O operations** - Full file handling support:
+  - Runtime functions already existed in runtime/io.c: habu_open_file, habu_close_file, habu_read_line, habu_write_string, habu_read_file, habu_write_file
+  - Runtime table entries 42-47 (offsets 336-376) for all file operations
+  - Compiler support: open-file, close-file, read-line, write-string, read-file, write-file
+  - Codegen handlers for all file I/O IR nodes
+  - 10 tests cover: write/read files, open/close handles, read-line, write-string, round-trip I/O, empty files
+
+### November 25, 2025 (IEEE 754 Floats)
 - **Implemented IEEE 754 double precision floats** - Full floating-point support:
   - Added TAG_FLOAT = 0x7 and TYPE_FLOAT = 7 to object.h
   - Added habu_float_t structure (8-byte double payload)

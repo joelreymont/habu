@@ -165,9 +165,16 @@ int main(int argc, char **argv) {
     g_runtime_table[39] = (void*)habu_fixnum_to_float;
     g_runtime_table[40] = (void*)habu_float_to_fixnum;
     g_runtime_table[41] = (void*)habu_float_value;
+    /* File I/O operations */
+    g_runtime_table[42] = (void*)habu_open_file;
+    g_runtime_table[43] = (void*)habu_close_file;
+    g_runtime_table[44] = (void*)habu_read_line;
+    g_runtime_table[45] = (void*)habu_write_string;
+    g_runtime_table[46] = (void*)habu_read_file;
+    g_runtime_table[47] = (void*)habu_write_file;
 
     if (getenv("HABU_DEBUG_TABLE")) {
-        for (int i = 0; i <= 41; i++) {
+        for (int i = 0; i <= 47; i++) {
             fprintf(stderr, "RT[%d]=%p\n", i, g_runtime_table[i]);
         }
     }
