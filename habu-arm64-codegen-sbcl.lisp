@@ -14,6 +14,8 @@
 (defparameter *collected-lambdas* nil)
 (defparameter *macro-env* nil
   "Alist of (macro-name . expander-function) for compile-time macros")
+(defparameter *symbol-macro-env* nil
+  "Alist of (symbol-name . expansion) for compile-time symbol macros")
 (defparameter *block-counter* 0
   "Counter for generating unique block IDs")
 (defparameter *block-env* nil
@@ -2068,9 +2070,17 @@ Cons/car/cdr are required; others should be provided in production."
      ;; Keywords are self-evaluating - compile as symbol literals
      (if (keywordp expr)
          (list 'symbol-lit (symbol-name expr))
-         ;; Regular symbols are variable references
+         ;; Check variable bindings first (let/lambda params shadow symbol macros)
          (let ((off (env-lookup expr env)))
-           (if off (list 'var off) (list 'lit 0)))))
+           (if off
+               (list 'var off)
+               ;; Not a local variable - check for symbol macros
+               (let ((sm-entry (assoc expr *symbol-macro-env*)))
+                 (if sm-entry
+                     ;; Symbol macro found - expand and compile the expansion
+                     (compile-expr (cdr sm-entry) env fenv)
+                     ;; Not a symbol macro either - unknown var
+                     (list 'lit 0)))))))
 
     ;; List (function call or special form)
     ((consp expr)
@@ -2375,6 +2385,30 @@ Cons/car/cdr are required; others should be provided in production."
                 (let ((result (compile-expr body env fenv)))
                   ;; Restore macro env
                   (setf *macro-env* saved-macro-env)
+                  result))
+              (list 'lit 0)))
+
+         ;; Symbol-macrolet (local symbol macros)
+         ;; (symbol-macrolet ((name expansion) ...) body)
+         ;; Temporarily extends *symbol-macro-env* for the body
+         ((eq op 'symbol-macrolet)
+          (if (and (consp (cdr expr)) (consp (cddr expr)))
+              (let* ((sym-defs (cadr expr))
+                     (body-forms (cddr expr))
+                     (body (if (cdr body-forms)
+                               (cons 'progn body-forms)
+                               (car body-forms)))
+                     ;; Save current symbol macro env
+                     (saved-symbol-macro-env *symbol-macro-env*))
+                ;; Register local symbol macros
+                (dolist (def sym-defs)
+                  (let ((name (car def))
+                        (expansion (cadr def)))
+                    (push (cons name expansion) *symbol-macro-env*)))
+                ;; Compile body with extended symbol macro env
+                (let ((result (compile-expr body env fenv)))
+                  ;; Restore symbol macro env
+                  (setf *symbol-macro-env* saved-symbol-macro-env)
                   result))
               (list 'lit 0)))
 
