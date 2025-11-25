@@ -166,6 +166,9 @@ habu_value_t habu_values_set(int64_t count, habu_value_t v0, habu_value_t v1,
 /* Get Nth value - index 0 returns primary, index 1-3 from array */
 habu_value_t habu_values_get(int64_t index, habu_value_t primary);
 
+/* Get number of values from last values call */
+int64_t habu_values_count_get(void);
+
 /* Type tag constants (for use in Lisp predicates) */
 /* These match the TAG_* values in object.h:
  *   TAG_FIXNUM  = 0x0

@@ -409,4 +409,8 @@ habu_value_t habu_values_get(int64_t index, habu_value_t primary) {
     return habu_values_array[index - 1];
 }
 
+int64_t habu_values_count_get(void) {
+    return habu_values_count;
+}
+
 /* GC functions implemented in gc.c */

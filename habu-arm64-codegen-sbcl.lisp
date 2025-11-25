@@ -1623,6 +1623,15 @@ Cons/car/cdr are required; others should be provided in production."
         (arm64-ldr 9 19 144)              ; habu_values_get at offset 144 (index 18)
         (arm64-blr 9))))                  ; returns Nth value
 
+    ;; Values-count: (values-count-call)
+    ;; Runtime table: [27] = offset 216 = habu_values_count_get
+    ;; habu_values_count_get() -> returns number of values from last values call
+    ((has-tag? ir 'values-count-call)
+     (append
+      (arm64-ldr 9 19 216)              ; habu_values_count_get at offset 216 (index 27)
+      (arm64-blr 9)                     ; returns count (untagged)
+      (arm64-lsl 0 0 4)))               ; tag as fixnum
+
     ;; Hash table operations
     ;; Runtime table indices: 19=make-hash-table, 20=gethash, 21=puthash, 22=remhash, 23=hash-table-count
     ;; Offsets: 19*8=152, 20*8=160, 21*8=168, 22*8=176, 23*8=184
@@ -3742,6 +3751,42 @@ Cons/car/cdr are required; others should be provided in production."
                  env fenv))
               (list 'lit 0)))
 
+         ;; Multiple-value-call - (multiple-value-call fn form1 form2 ...)
+         ;; Calls fn with all values from all forms
+         ((op= op "MULTIPLE-VALUE-CALL")
+          (if (and (consp (cdr expr)) (consp (cddr expr)))
+              (let* ((fn-form (cadr expr))
+                     (value-forms (cddr expr))
+                     (unique-id (incf *catch-counter*)))
+                ;; Generate unique var names
+                (labels ((gen-vars (prefix count)
+                           (loop for i from 0 below count
+                                 collect (intern (format nil "~A-~A-~A" prefix unique-id i)))))
+                  (let* ((num-forms (length value-forms))
+                         (list-vars (gen-vars "$MVC-L" num-forms))
+                         (fn-var (intern (format nil "$MVC-FN-~A" unique-id)))
+                         (collect-fn (intern (format nil "$MVC-COLLECT-~A" unique-id)))
+                         ;; Build bindings that collect values IMMEDIATELY after each form
+                         (capture-bindings
+                          (loop for form in value-forms
+                                for lvar in list-vars
+                                collect `(,lvar
+                                          (let* ((primary ,form)
+                                                 (cnt (values-count)))
+                                            (,collect-fn #x0 primary cnt))))))
+                    ;; Transform with labels for collect-fn first, then let* for captures
+                    (compile-expr
+                     `(labels ((,collect-fn (idx prim cnt)
+                                 (if (< idx cnt)
+                                     (cons (values-get idx prim)
+                                           (,collect-fn (+ idx #x1) prim cnt))
+                                     nil)))
+                        (let* ((,fn-var ,fn-form)
+                               ,@capture-bindings)
+                          (apply ,fn-var (append ,@list-vars))))
+                     env fenv))))
+              (list 'lit 0)))
+
          ;; Psetq - parallel setq: (psetq var1 val1 var2 val2 ...)
          ;; All values evaluated before any assignment
          ((op= op "PSETQ")
@@ -4159,19 +4204,20 @@ Cons/car/cdr are required; others should be provided in production."
                              (apply-max (cdr the-list) (car the-list)))))
                     env fenv))
                   ;; General apply - dispatch based on arg count (up to 5 args)
+                  ;; Use let* to ensure args-form is evaluated first in the current env
                   (t
                    (compile-expr
-                    `(let ((fn ,fn-form)
-                           (args ,args-form))
-                       (let ((len (length args)))
-                         (cond
-                           ((= len #x0) (funcall fn))
-                           ((= len #x1) (funcall fn (car args)))
-                           ((= len #x2) (funcall fn (car args) (cadr args)))
-                           ((= len #x3) (funcall fn (car args) (cadr args) (caddr args)))
-                           ((= len #x4) (funcall fn (car args) (cadr args) (caddr args) (cadddr args)))
-                           (t (funcall fn (car args) (cadr args) (caddr args) (cadddr args)
-                                       (car (cddddr args)))))))
+                    `(let* ((args ,args-form)
+                            (fn ,fn-form)
+                            (len (length args)))
+                       (cond
+                         ((= len #x0) (funcall fn))
+                         ((= len #x1) (funcall fn (car args)))
+                         ((= len #x2) (funcall fn (car args) (cadr args)))
+                         ((= len #x3) (funcall fn (car args) (cadr args) (caddr args)))
+                         ((= len #x4) (funcall fn (car args) (cadr args) (caddr args) (cadddr args)))
+                         (t (funcall fn (car args) (cadr args) (caddr args) (cadddr args)
+                                     (car (cddddr args))))))
                     env fenv))))
               (list 'lit 0)))
 
@@ -5415,6 +5461,10 @@ Cons/car/cdr are required; others should be provided in production."
                     (compile-expr (cadr expr) env fenv)
                     (compile-expr (caddr expr) env fenv))
               (list 'lit 0)))
+
+         ;; Values-count: (values-count) -> number of values from last values call
+         ((op= op "VALUES-COUNT")
+          (list 'values-count-call))
 
          ;; Hash tables
          ;; (make-hash-table &key size) -> hash table
