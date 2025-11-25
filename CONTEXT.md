@@ -2,7 +2,7 @@
 
 **Session Date**: November 22-25, 2025
 **Focus**: Self-hosting ARM64 Lisp compiler implementation
-**Last Updated**: November 25, 2025 (Method Dispatch and Setf Slot-Value Session)
+**Last Updated**: November 25, 2025 (Symbol-Macrolet and Multiple-Value-Call Session)
 
 ## Current Status Summary
 
@@ -126,10 +126,10 @@ The Habu compiler can now compile and execute complex Lisp programs including:
 
 | Category | Features | Priority |
 |----------|----------|----------|
-| **Macros** | defmacro ✓, macroexpand ✓, macrolet, symbol-macrolet | High |
-| **Non-Local Exit** | block/return-from ✓, catch/throw ✓, tagbody/go ✓ | Medium |
-| **Cleanup** | unwind-protect ✓ | Medium |
-| **Multiple Values** | values ✓, multiple-value-bind ✓, multiple-value-call | Medium |
+| **Macros** | defmacro ✓, macroexpand ✓, macrolet ✓, symbol-macrolet ✓ | Done |
+| **Non-Local Exit** | block/return-from ✓, catch/throw ✓, tagbody/go ✓ | Done |
+| **Cleanup** | unwind-protect ✓ | Done |
+| **Multiple Values** | values ✓, multiple-value-bind ✓, multiple-value-call ✓, values-count ✓ | Done |
 | **Conditions** | error ✓, signal ✓, handler-case ✓, restart-case ✓, invoke-restart ✓ | Done |
 | **Format** | format directives ✓ (basic ~A, ~S, ~D) | Medium |
 | **Hash Tables** | make-hash-table ✓, gethash ✓, puthash ✓, remhash ✓, hash-table-count ✓, hash-table-p ✓ | Done |
@@ -438,7 +438,21 @@ Test 10: Full compile + eval round trip       ✅ Pass
 
 ## Recent Commits
 
-### November 25, 2025 (Latest - Method Dispatch Complete)
+### November 25, 2025 (Latest - Symbol-Macrolet and Multiple-Value-Call)
+- **Implemented symbol-macrolet** - Local symbol macros:
+  - Add `*symbol-macro-env*` dynamic variable for tracking symbol macros
+  - Modify compile-expr-internal to check for symbol macros when compiling symbols
+  - Local variable bindings (let/lambda params) correctly shadow symbol macros
+  - 7 tests cover: basic, multiple symbols, expressions, shadowing, nesting, function args
+
+- **Implemented multiple-value-call** - Call functions with multiple values:
+  - Add `habu_values_count_get()` runtime function to access values count
+  - Add `values-count` primitive (compiles to values-count-call IR)
+  - Multiple-value-call collects values from forms immediately (avoiding overwrite issue)
+  - Fixed apply handler bug where args-form was evaluated in wrong scope
+  - 6 tests cover: single value, two values, multiple forms, values-count
+
+### November 25, 2025 (Method Dispatch Complete)
 - **Implemented defgeneric/defmethod** - Full single-dispatch method system:
   - defgeneric: Registers generic function name and arity in *method-env*
   - defmethod: Generates specialized function (name/class) and registers method
