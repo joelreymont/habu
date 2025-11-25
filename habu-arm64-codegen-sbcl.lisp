@@ -1968,6 +1968,15 @@ Cons/car/cdr are required; others should be provided in production."
                           (list 'cdr-call (compile-expr (cadr expr) env fenv))))
               (list 'lit 0)))
 
+         ;; Cddddr (cdr of cdr of cdr of cdr)
+         ((eq op 'cddddr)
+          (if (consp (cdr expr))
+              (list 'cdr-call
+                    (list 'cdr-call
+                          (list 'cdr-call
+                                (list 'cdr-call (compile-expr (cadr expr) env fenv)))))
+              (list 'lit 0)))
+
          ;; Caar (car of car)
          ((eq op 'caar)
           (if (consp (cdr expr))
@@ -2010,6 +2019,16 @@ Cons/car/cdr are required; others should be provided in production."
                     (list 'cdr-call
                           (list 'cdr-call
                                 (list 'cdr-call (compile-expr (cadr expr) env fenv)))))
+              (list 'lit 0)))
+
+         ;; Fifth
+         ((eq op 'fifth)
+          (if (consp (cdr expr))
+              (list 'car-call
+                    (list 'cdr-call
+                          (list 'cdr-call
+                                (list 'cdr-call
+                                      (list 'cdr-call (compile-expr (cadr expr) env fenv))))))
               (list 'lit 0)))
 
          ;; Rest (same as cdr)
@@ -2294,6 +2313,157 @@ Cons/car/cdr are required; others should be provided in production."
                               (reduce-iter ,fn-form (cdr the-list) (car the-list)))))
                      env fenv)))
               (list 'lit 0)))
+
+         ;; Apply - (apply fn args-list) - call fn with args spread from list
+         ;; For the patterns used in the compiler, we optimize known functions
+         ((eq op 'apply)
+          (if (and (consp (cdr expr)) (consp (cddr expr)))
+              (let ((fn-form (cadr expr))
+                    (args-form (caddr expr)))
+                ;; Check for (apply #'append ...) or (apply #'max ...)
+                (cond
+                  ;; (apply #'append list-of-lists) -> fold append over list
+                  ((and (consp fn-form)
+                        (or (eq (car fn-form) 'function)
+                            (eq (car fn-form) 'quote))
+                        (eq (cadr fn-form) 'append))
+                   (compile-expr
+                    `(labels ((apply-append (lists acc)
+                                (if (null lists)
+                                    acc
+                                    (apply-append (cdr lists) (append acc (car lists))))))
+                       (apply-append ,args-form nil))
+                    env fenv))
+                  ;; (apply #'max list-of-numbers) -> reduce max over list
+                  ((and (consp fn-form)
+                        (or (eq (car fn-form) 'function)
+                            (eq (car fn-form) 'quote))
+                        (eq (cadr fn-form) 'max))
+                   (compile-expr
+                    `(labels ((apply-max (lst best)
+                                (if (null lst)
+                                    best
+                                    (let ((el (car lst)))
+                                      (apply-max (cdr lst) (if (> el best) el best))))))
+                       (let ((the-list ,args-form))
+                         (if (null the-list)
+                             #x0
+                             (apply-max (cdr the-list) (car the-list)))))
+                    env fenv))
+                  ;; General apply - dispatch based on arg count (up to 5 args)
+                  (t
+                   (compile-expr
+                    `(let ((fn ,fn-form)
+                           (args ,args-form))
+                       (let ((len (length args)))
+                         (cond
+                           ((= len #x0) (funcall fn))
+                           ((= len #x1) (funcall fn (car args)))
+                           ((= len #x2) (funcall fn (car args) (cadr args)))
+                           ((= len #x3) (funcall fn (car args) (cadr args) (caddr args)))
+                           ((= len #x4) (funcall fn (car args) (cadr args) (caddr args) (cadddr args)))
+                           (t (funcall fn (car args) (cadr args) (caddr args) (cadddr args)
+                                       (car (cddddr args)))))))
+                    env fenv))))
+              (list 'lit 0)))
+
+         ;; Loop - compile-time transformation to labels + recursion
+         ;; Simple implementation for common patterns used in compiler
+         ((eq op 'loop)
+          (let* ((clauses (cdr expr))
+                 (result-form nil))
+            ;;(format t "[LOOP DEBUG] clauses=~S len=~A~%" clauses (length clauses))
+            ;;(format t "[LOOP DEBUG] (car clauses)=~S (eq? ~A)~%" (car clauses) (eq (car clauses) 'for))
+            ;;(format t "[LOOP DEBUG] (caddr clauses)=~S~%" (caddr clauses))
+            ;; Parse clauses
+            (cond
+              ;; (loop for var in list collect expr)
+              ((and (>= (length clauses) 5)
+                    (op= (car clauses) "FOR")
+                    (op= (caddr clauses) "IN")
+                    (op= (car (cddddr clauses)) "COLLECT"))
+               (let* ((var (cadr clauses))
+                      (list-expr (cadddr clauses))
+                      (collect-expr (cadr (cddddr clauses)))
+                      (list-var (intern (concatenate 'string (symbol-name var) "$LIST"))))
+                 (setq result-form
+                       `(labels ((iter (,list-var acc)
+                                   (if (null ,list-var)
+                                       (reverse acc)
+                                       (let ((,var (car ,list-var)))
+                                         (iter (cdr ,list-var) (cons ,collect-expr acc))))))
+                          (iter ,list-expr nil)))))
+              ;; (loop for var from start below end collect expr)
+              ((and (>= (length clauses) 7)
+                    (op= (car clauses) "FOR")
+                    (op= (caddr clauses) "FROM")
+                    (op= (car (cddddr clauses)) "BELOW")
+                    (op= (caddr (cddddr clauses)) "COLLECT"))
+               (let ((var (cadr clauses))
+                     (start (cadddr clauses))
+                     (end (cadr (cddddr clauses)))
+                     (collect-expr (cadddr (cddddr clauses))))
+                 (setq result-form
+                       `(labels ((iter (,var acc)
+                                   (if (>= ,var ,end)
+                                       (reverse acc)
+                                       (iter (+ ,var #x1) (cons ,collect-expr acc)))))
+                          (iter ,start nil)))))
+              ;; (loop for var across vec collect expr)
+              ((and (>= (length clauses) 5)
+                    (op= (car clauses) "FOR")
+                    (op= (caddr clauses) "ACROSS")
+                    (op= (car (cddddr clauses)) "COLLECT"))
+               (let ((var (cadr clauses))
+                     (vec-expr (cadddr clauses))
+                     (collect-expr (cadr (cddddr clauses))))
+                 (setq result-form
+                       `(let ((vec ,vec-expr))
+                          (labels ((iter (idx acc)
+                                     (if (>= idx (length vec))
+                                         (reverse acc)
+                                         (let ((,var (elt vec idx)))
+                                           (iter (+ idx #x1) (cons ,collect-expr acc))))))
+                            (iter #x0 nil))))))
+              ;; (loop for var in list for idx from 0 do body)
+              ((and (>= (length clauses) 8)
+                    (op= (car clauses) "FOR")
+                    (op= (caddr clauses) "IN")
+                    (op= (car (cddddr clauses)) "FOR")
+                    (op= (caddr (cddddr clauses)) "FROM")
+                    (op= (car (cddddr (cddddr clauses))) "DO"))
+               (let* ((var1 (cadr clauses))
+                      (list-expr (cadddr clauses))
+                      (var2 (cadr (cddddr clauses)))
+                      (start (cadddr (cddddr clauses)))
+                      (do-expr (cadr (cddddr (cddddr clauses))))
+                      (list-var (intern (concatenate 'string (symbol-name var1) "$LIST"))))
+                 (setq result-form
+                       `(labels ((iter (,list-var ,var2)
+                                   (if (null ,list-var)
+                                       nil
+                                       (let ((,var1 (car ,list-var)))
+                                         (progn
+                                           ,do-expr
+                                           (iter (cdr ,list-var) (+ ,var2 #x1)))))))
+                          (iter ,list-expr ,start)))))
+              ;; (loop until condition do body)
+              ((and (>= (length clauses) 3)
+                    (op= (car clauses) "UNTIL")
+                    (op= (caddr clauses) "DO"))
+               (let ((condition (cadr clauses))
+                     (do-expr (cadddr clauses)))
+                 (setq result-form
+                       `(labels ((iter ()
+                                   (if ,condition
+                                       nil
+                                       (progn
+                                         ,do-expr
+                                         (iter)))))
+                          (iter)))))
+              (t
+               (setq result-form '(lit 0))))
+            (compile-expr result-form env fenv)))
 
         ;; Cons
          ((eq op 'cons)
