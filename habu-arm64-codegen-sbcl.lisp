@@ -2489,20 +2489,24 @@ Cons/car/cdr are required; others should be provided in production."
 
     ;; Symbol (variable or keyword)
     ((symbol? expr)
-     ;; Keywords are self-evaluating - compile as symbol literals
-     (if (keywordp expr)
-         (list 'symbol-lit (symbol-name expr))
-         ;; Check variable bindings first (let/lambda params shadow symbol macros)
-         (let ((off (env-lookup expr env)))
-           (if off
-               (list 'var off)
-               ;; Not a local variable - check for symbol macros
-               (let ((sm-entry (assoc expr *symbol-macro-env*)))
-                 (if sm-entry
-                     ;; Symbol macro found - expand and compile the expansion
-                     (compile-expr (cdr sm-entry) env fenv)
-                     ;; Not a symbol macro either - unknown var
-                     (list 'lit 0)))))))
+     (cond
+       ;; nil is falsey - compile to 0
+       ((null expr) (list 'lit 0))
+       ;; t is truthy - compile to symbol-lit (non-zero when tagged)
+       ((eq expr t) (list 'symbol-lit "T"))
+       ;; Keywords are self-evaluating - compile as symbol literals
+       ((keywordp expr) (list 'symbol-lit (symbol-name expr)))
+       ;; Check variable bindings first (let/lambda params shadow symbol macros)
+       (t (let ((off (env-lookup expr env)))
+            (if off
+                (list 'var off)
+                ;; Not a local variable - check for symbol macros
+                (let ((sm-entry (assoc expr *symbol-macro-env*)))
+                  (if sm-entry
+                      ;; Symbol macro found - expand and compile the expansion
+                      (compile-expr (cdr sm-entry) env fenv)
+                      ;; Not a symbol macro either - unknown var, return nil
+                      (list 'lit 0))))))))
 
     ;; List (function call or special form)
     ((consp expr)

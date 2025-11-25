@@ -2,7 +2,7 @@
 
 **Session Date**: November 22-25, 2025
 **Focus**: Self-hosting ARM64 Lisp compiler implementation
-**Last Updated**: November 25, 2025 (File I/O Session)
+**Last Updated**: November 25, 2025 (Reader Session)
 
 ## Current Status Summary
 
@@ -95,6 +95,7 @@ The Habu compiler can now compile and execute complex Lisp programs including:
 | **Floats** | float, float+, float-, float*, float/, float<, float>, float<=, float>=, float=, float-truncate | Done |
 | **File I/O** | open-file, close-file, read-line, write-string, read-file, write-file | Done |
 | **Format** | ~A, ~S, ~D, ~X, ~B, ~O, ~C, ~F (consume arg), ~%, ~&, ~~ (no arg) | Done |
+| **Reader** | read-from-string, read-all-from-string, read-source-file | Done |
 
 ### Extended CL Spec Features (November 25, 2025)
 
@@ -148,7 +149,7 @@ The Habu compiler can now compile and execute complex Lisp programs including:
 | **Numeric Tower** | bignum, ratio, float, complex | Low |
 | **Arrays** | Multi-dimensional arrays | Low |
 | **Streams** | File I/O (done), string streams (pending) | Low |
-| **Reader** | Full reader macros, #', #. | Low |
+| **Reader** | read-from-string, habu-read, read-all-from-string (done), #. (pending) | Done |
 
 ---
 
@@ -406,6 +407,7 @@ Test 10: Full compile + eval round trip       ✅ Pass
 - test_stage2_self_hosting.lisp (7 tests) - Stage 1→2: determinism and self-similar patterns
 - test_real_compiler_functions.lisp (10 tests) - Real compiler patterns: has-tag?, env-lookup, IR traversal, compile+eval
 - test_floats.lisp (20 tests) - IEEE 754 floats: conversion, arithmetic, comparisons, conditionals
+- test_reader.lisp (22 tests) - Habu reader: integers, hex, negatives, symbols, strings, lists, quote forms, reader macros
 
 ### Needed Tests
 - [ ] String function tests (upcase, concat, compare)
@@ -451,7 +453,29 @@ Test 10: Full compile + eval round trip       ✅ Pass
 
 ## Recent Commits
 
-### November 25, 2025 (Latest - File I/O)
+### November 25, 2025 (Latest - Reader)
+- **Implemented Habu-native Reader** - Full Lisp source code parser in common/reader.lisp:
+  - Character predicates: whitespace?, digit?, hex-digit?, alpha?, symbol-char?
+  - String manipulation: char-at, chars-to-string
+  - Number parsing: read-int, read-digits, read-hex, read-hex-digits
+  - Symbol parsing: read-sym, read-sym-chars
+  - String parsing: read-str, read-str-chars (with escape sequences)
+  - List parsing: read-list, read-list-elems (including improper lists)
+  - Comment/whitespace handling: skip-ws, skip-line
+  - Reader macros: #x/#X (hex), #' (function), #\\ (character literals)
+  - Quote forms: quote ('), backquote (`), comma (,), comma-at (,@)
+  - Public API: read-from-string, read-all-from-string, read-source-file
+  - 22 tests cover: integers, negatives, hex, lists, symbols, strings, quote forms, reader macros
+- **Fixed t/nil compilation bug**: t was evaluating to falsey (0) instead of truthy symbol
+  - Root cause: Unknown symbols defaulted to (lit 0), including t
+  - Fix: Added special cases in compile-expr for t -> (symbol-lit "T") and nil -> (lit 0)
+- **Fixed forward reference issue**: Functions must be defined before callers in Habu
+  - Reordered reader.lisp: helper functions (read-digits, read-hex-digits, etc.) before callers
+  - Uses labels for mutually recursive functions (habu-read, read-list-elems, read-one)
+- **Fixed negative number parsing in test harness**: Sign-extend raw hex values before untagging
+  - parse-run-bytecode-output now converts values >= 2^63 to signed before arithmetic shift
+
+### November 25, 2025 (File I/O)
 - **Implemented File I/O operations** - Full file handling support:
   - Runtime functions already existed in runtime/io.c: habu_open_file, habu_close_file, habu_read_line, habu_write_string, habu_read_file, habu_write_file
   - Runtime table entries 42-47 (offsets 336-376) for all file operations

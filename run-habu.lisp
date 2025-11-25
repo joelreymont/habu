@@ -202,9 +202,13 @@
                                      :start (+ idx 2)
                                      :radix 16
                                      :junk-allowed t)))
-             (if (and raw (= (logand raw #xF) 0))
-                 (ash raw -4)
-                 raw)))))
+             (when raw
+               ;; Sign-extend if bit 63 is set (negative in two's complement)
+               (when (>= raw (ash 1 63))
+                 (setf raw (- raw (ash 1 64))))
+               (if (= (logand raw #xF) 0)
+                   (ash raw -4)
+                   raw))))))
       (fixnum-line
        (parse-integer fixnum-line
                       :start (+ 17 (search "Untagged fixnum:" fixnum-line))
