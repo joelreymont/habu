@@ -842,6 +842,7 @@ Implement a reader so Habu can read its own source code.
 ## Related Documents
 
 - [docs/EFFICIENCY_PLAN.md](docs/EFFICIENCY_PLAN.md) - Detailed efficiency improvement plan with code samples
+- [docs/PROFILER.md](docs/PROFILER.md) - Function-level profiler documentation
 
 ---
 
