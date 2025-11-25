@@ -630,60 +630,70 @@ Test 10: Full compile + eval round trip       ✅ Pass
 
 ---
 
-## Next Session Priority
+## Development Roadmap
 
-1. ~~**Implement Symbol Interning**~~ DONE (November 25, 2025)
+### Phase 1: Full Self-Hosting (Stage 2) - IN PROGRESS
+Compile the full Habu compiler with itself to verify bootstrap is complete.
 
-2. ~~**Fix Offset Tracking Bugs**~~ DONE (November 25, 2025)
-   - Fixed let-expr, progn, call-closure cursor tracking
-   - Added Habu predicate aliases (cons?, nil?, fixnum?, symbol?)
+**Goal**: habu-arm64-codegen-sbcl.lisp compiled by Habu produces identical output to SBCL-compiled version.
 
-3. ~~**Create Pure Habu Compiler Structure**~~ COMPLETE (November 25, 2025)
+**Steps**:
+1. Identify which compiler functions are needed for self-hosting
+2. Ensure all dependencies compile correctly
+3. Compare Stage 1 and Stage 2 bytecode output
+4. Achieve fixed-point (Stage N == Stage N+1)
 
-   **arm64/ - Architecture-specific code (1005 lines)**
-   - arm64/asm.lisp (249 lines) - ARM64 instruction encoders
-   - arm64/codegen.lisp (756 lines) - ARM64 code generator with all IR handlers
+### Phase 2: IEEE 754 Floats
+Add double-precision floating point support.
 
-   **common/ - Architecture-independent code (1424 lines)**
-   - common/utils.lisp (127 lines) - Shared utilities + gensym alternative + transform helpers
-   - common/ir.lisp (1177 lines) - Full IR generation with ALL forms for self-hosting
-   - common/compile.lisp (120 lines) - Multi-function compilation
+**Requirements**:
+- New tag type for floats (boxed, 8-byte payload)
+- Arithmetic: +, -, *, /, sqrt, sin, cos, etc.
+- Comparisons: <, >, <=, >=, =
+- Conversion: float, truncate, round, floor, ceiling
+- Runtime support in gc.c for float allocation
 
-   **Total: 2429 lines of pure Habu compiler code**
+### Phase 3: File I/O
+Add file operations for practical applications.
 
-   **IR Handlers Implemented:**
-   - Literals: lit, var, set-var, string-lit, symbol-lit, vector-lit
-   - Arithmetic: add, sub, mul, div, mod, rem
-   - Comparisons: cmp-eq, cmp-lt, cmp-gt, cmp-le, cmp-ge, cmp-ne
-   - List ops: cons-call, car-call, cdr-call, setcar-call, setcdr-call
-   - Control: if-expr, let-expr, progn
-   - Functions: call-closure, call-fn, capture, get-tag, lambda-ir
+**Functions to implement**:
+- `open`, `close` - file handle management
+- `read-char`, `write-char` - character I/O
+- `read-line`, `write-line` - line I/O
+- `read`, `print` - S-expression I/O
+- `with-open-file` - macro for safe file handling
 
-   **Special Forms in IR (Complete for Self-Hosting):**
-   - Arithmetic: +, -, *, /, mod, rem
-   - Comparison: =, <, >, <=, >=, /=
-   - Control: if, cond, when, unless, and, or, not, progn
-   - Binding: let, let*, setq, setf, incf, decf, push
-   - List: cons, car, cdr, cadr...cddddr, list, list*, acons
-   - Predicates: null, consp, atom, numberp, symbolp, stringp, vectorp, functionp, listp, zerop, plusp, minusp, eq, eql
-   - Functions: funcall, length, append, reverse, assoc, member
-   - Math: 1+, 1-, abs, max, min
-   - **Local Functions: labels, flet** (with mutable box transformation)
-   - **Lambda: lambda** (closure compilation)
-   - **Iteration: dotimes, dolist** (transformation to labels)
-   - **Higher-Order: mapcar, mapc, reduce** (transformation to labels)
-   - **Apply: apply** (optimized for #'append, #'max)
-   - **Loop: loop** (for/in/collect, for/from/below/collect, until/do)
-   - **Filters: remove-if, remove-if-not, remove-duplicates**
-   - **Error: error** (stub)
+### Phase 4: Extended Format Directives
+Expand format string support.
 
-4. **Stage 1/2 Self-Hosting** ✓ DEMONSTRATED
-   - Stage 0: SBCL compiles mini-compiler → ARM64 bytecode ✓
-   - Stage 1: Mini-compiler compiles expressions correctly ✓
-   - Stage 2: Determinism verified (same input → same output) ✓
-   - Tests: test_stage1_self_hosting.lisp, test_stage2_self_hosting.lisp (14 tests total)
+**Directives to add**:
+- `~%` - newline
+- `~&` - fresh-line (newline if not at column 0)
+- `~X` - hexadecimal output
+- `~B` - binary output
+- `~R` - radix output
+- `~F`, `~E`, `~G` - float formatting (after Phase 2)
 
-5. **Fix O(N^2) Algorithms** - See [docs/EFFICIENCY_PLAN.md](docs/EFFICIENCY_PLAN.md)
+### Phase 5: Habu-Native Reader
+Implement a reader so Habu can read its own source code.
+
+**Components**:
+- Tokenizer (lexer)
+- S-expression parser
+- Reader macros (#', #\, #x, etc.)
+- Package system (basic)
+
+---
+
+## Completed Milestones
+
+- ✓ Stage 1 Bootstrap - Mini-compiler compiles expressions
+- ✓ All core CL forms implemented
+- ✓ CLOS (defclass, defmethod, slot-value)
+- ✓ Condition system (handler-case, restart-case)
+- ✓ Macros (defmacro, macrolet, symbol-macrolet)
+- ✓ Multiple values (values, mvb, mvc)
+- ✓ Control flow (block, catch, tagbody, unwind-protect)
 
 ---
 
@@ -694,5 +704,5 @@ Test 10: Full compile + eval round trip       ✅ Pass
 ---
 
 **File**: CONTEXT.md
-**Status**: Self-hosting demonstrated! Stage 1/2 tests passing. Now with macros, block/return-from, catch/throw, unwind-protect, and format. O(N²) algorithms optimized.
+**Status**: All high-priority CL features complete. Starting full self-hosting verification.
 **Last Updated**: November 25, 2025
