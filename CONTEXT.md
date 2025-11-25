@@ -359,11 +359,38 @@ The Habu compiler can now compile and execute complex Lisp programs including:
 
 ---
 
+## Critical Blocker for Self-Hosting
+
+**Symbol Interning Not Implemented**: Discovered that `(eq 'foo 'foo)` returns false because each symbol literal creates a fresh symbol. Symbol interning is critical for self-hosting since the compiler heavily relies on symbol comparison.
+
+### Current State
+- `defun` ✅ Already works
+- `apply`, `loop`, higher-order functions ✅ All working
+- Predicates (`consp`, `symbolp`, `numberp`) ✅ Working
+- **Symbol equality (`eq`)** ❌ BROKEN - symbols not interned
+
+### Test Results
+```lisp
+(eq #x5 #x5)      => 1  ✅ Works (numbers)
+(eq 'foo 'foo)    => 0  ❌ FAILS (symbols)
+(consp (cons 1 2)) => 1  ✅ Works
+(symbolp 'foo)     => 1  ✅ Works
+```
+
+### Root Cause
+`habu_make_symbol` (runtime/gc.c:1196) allocates a fresh symbol each time. No symbol table or interning exists. Every `'foo` creates a new distinct symbol.
+
 ## Next Session Priority
 
-1. **Attempt full self-hosting** - Compile the entire compiler with itself
-2. **Implement defun** - For top-level function definitions
-3. **Add macro system** - defmacro, macroexpand for better code generation
+1. **Implement Symbol Interning** - Add symbol table to runtime, intern symbols on creation
+   - Add hash table or association list for symbol interning per package
+   - Modify `habu_make_symbol` to check table before allocating
+   - Ensure `(eq 'foo 'foo)` returns true
+
+2. **Add macro system** - defmacro, macroexpand for better code generation
+
+3. **Attempt full self-hosting** - Once symbol interning works
+
 4. **Bootstrap verification** - Achieve Stage 0 → Stage 1 → Stage 2 fixed point
 
 ---
