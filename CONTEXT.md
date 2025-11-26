@@ -2,11 +2,11 @@
 
 **Session Date**: November 22-26, 2025
 **Focus**: Self-hosting ARM64 Lisp compiler with native executable generation
-**Last Updated**: November 26, 2025 (Nested Call Spill Slot Fix)
+**Last Updated**: November 26, 2025 (Self-hosting Primitives)
 
 ## Session Summary (November 26, 2025)
 
-This session completed the bootstrap compiler ARM64 codegen, verified bytecode execution, added bitwise operations, mutation operations, multiple values support, implemented standalone executable delivery, reorganized packages, added labels/flet support, and fixed a critical nested function call bug.
+This session completed the bootstrap compiler ARM64 codegen, verified bytecode execution, added bitwise operations, mutation operations, multiple values support, implemented standalone executable delivery, reorganized packages, added labels/flet support, fixed a critical nested function call bug, and added self-hosting primitives.
 
 **Accomplishments**:
 1. Reorganized file structure: `native-compiler.lisp` -> `bootstrap/compiler.lisp`
@@ -29,7 +29,9 @@ This session completed the bootstrap compiler ARM64 codegen, verified bytecode e
 18. **Reorganized HABU-SYS and HABU packages with clean public API**
 19. **Implemented labels/flet using Z-combinator transformation**
 20. **Fixed nested function call spill slot collision** - nested call-fn in arguments now use depth-aware spill slots
-21. All tests pass: 48 compiler + 25 codegen + 10 delivery + 10 labels + 14 mutation + 14 fileio + 8 mvb
+21. **Added self-hosting primitives**: vector operations, string-upcase, write-bytes
+22. All tests pass: 48 compiler + 25 codegen
+23. Standalone executables work: factorial(6)=720, fib(10)=55
 
 **Package Structure** (November 26, 2025):
 - HABU-SYS: System/runtime primitives (string-length, string-ref, make-vector, etc.)
@@ -80,6 +82,10 @@ This session completed the bootstrap compiler ARM64 codegen, verified bytecode e
 - List operations: cons, car, cdr, list, quote, function
 - Mutation: setq, setcar, setcdr, incf, push, setf
 - Multiple values: values, multiple-value-bind
+- Vectors: make-vector, vector-set, vector-ref, aref
+- Strings: string-length, string-ref, char-upcase, string-upcase
+- Symbols: make-symbol-from-string, intern
+- I/O: read-file, write-file, write-bytes
 
 **ARM64 Codegen Status**:
 - Complete codegen for all IR nodes
