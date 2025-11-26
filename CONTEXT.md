@@ -2,11 +2,11 @@
 
 **Session Date**: November 22-26, 2025
 **Focus**: Self-hosting ARM64 Lisp compiler with native executable generation
-**Last Updated**: November 26, 2025 (Inline cons/car/cdr for Native Mach-O)
+**Last Updated**: November 26, 2025 (Inline symbols and closures for Native Mach-O - 15/15 tests pass)
 
 ## Session Summary (November 26, 2025)
 
-This session completed the bootstrap compiler ARM64 codegen, verified bytecode execution, added bitwise operations, mutation operations, multiple values support, implemented standalone executable delivery, reorganized packages, added labels/flet support, fixed a critical nested function call bug, added self-hosting primitives, fixed mutual recursion with the FNTAB approach, and implemented inline cons/car/cdr for native executables with heap support.
+This session completed the bootstrap compiler ARM64 codegen, verified bytecode execution, added bitwise operations, mutation operations, multiple values support, implemented standalone executable delivery, reorganized packages, added labels/flet support, fixed a critical nested function call bug, added self-hosting primitives, fixed mutual recursion with the FNTAB approach, and implemented inline cons/car/cdr for native executables with heap support. Finally, added inline symbols and closures removing all runtime dependencies.
 
 **Accomplishments**:
 1. Reorganized file structure: `native-compiler.lisp` -> `bootstrap/compiler.lisp`
@@ -41,7 +41,11 @@ This session completed the bootstrap compiler ARM64 codegen, verified bytecode e
 30. **Inline cons/car/cdr** - heap allocation without runtime, using x28 as bump pointer
 31. **__DATA segment for heap** - native Mach-O with read/write data segment
 32. **ADRP-based heap init** - PC-relative addressing for PIE/ASLR compatibility
-33. **13/15 native self-hosting tests pass** - arithmetic, cons, predicates, functions
+33. **Inline symbols** - compile-time symbol table assigns unique IDs, tagged as fixnums
+34. **Inline closures** - closures stored as cons cells `(fn-offset . env)` on heap
+35. **Code base register (x26)** - wrapper stub initializes x26 for computing absolute code addresses
+36. **ADR instruction** - added to arm64/asm.lisp for PC-relative addressing
+37. **15/15 native self-hosting tests pass** - all arithmetic, cons, predicates, symbols, labels/closures
 
 **Package Structure** (November 26, 2025):
 - HABU-SYS: System/runtime primitives (string-length, string-ref, make-vector, etc.)
@@ -356,15 +360,44 @@ The native linker generates standalone Mach-O executables without clang dependen
 - Exports: `movz`, `movk`, `mov`, `add`, `sub`, `mul`, `ldr`, `str`, `bl`, `ret`, etc.
 - Constants: `+sp+`, `+lr+`, `+xzr+`, `+eq+`, `+ne+`, `+lt+`, `+gt+`, etc.
 
-**Test Results** (11/11 tests pass):
+**Test Results** (15/15 tests pass):
 - Arithmetic: `(+ 20 22)` -> 42, `(* 6 7)` -> 42
 - Nested: `(+ (* 3 4) (+ 5 7))` -> 24
 - Conditionals: `(if (= 1 1) 10 20)` -> 10
 - Let bindings: `(let ((x 7)) (* x 6))` -> 42
 - Simple functions: `(defun f (x) (+ x 1)) (f 41)` -> 42
-- **Recursive**: `fact(5)` -> 120, `fib(10)` -> 55
+- Recursive: `fact(5)` -> 120, `fib(10)` -> 55
+- Cons cells: `(car (cons 42 0))` -> 42, `(cdr (cons 0 42))` -> 42
+- Predicates: `(consp (cons 1 2))`, `(null nil)`, `if t`
+- Symbols: `(eq 'foo 'foo)` -> 42 (true)
+- Labels/closures: `(labels ((fact ...)) (fact 5 1))` -> 120
 
-**All recursive functions now work** with the LR-preserving wrapper stub.
+**Inline Symbols** (November 26, 2025):
+- Compile-time symbol table assigns unique integer IDs to symbols
+- Symbols tagged as `(id << 4) | 2` (symbol tag)
+- No runtime `make_symbol_from_string` call needed
+- `(eq 'foo 'foo)` works because both compile to same tagged ID
+
+**Inline Closures** (November 26, 2025):
+- Closures stored as cons cells on heap: `(fn-offset . env)`
+- fn-offset is byte offset from code base to function entry
+- x26 register holds code base address (set by wrapper stub via ADR)
+- funcall extracts fn-offset, computes `x26 + offset`, then BLR
+- No runtime `make_closure`, `closure_code`, `closure_env` needed
+
+**Wrapper Stub** (52 bytes, 13 instructions):
+```
+STP x29, x30, [sp, #-16]!    ; save frame pointer, link register
+STP x26, x28, [sp, #-16]!    ; save x26, x28
+ADRP x28, _heap@PAGE         ; get heap page address
+ADD x28, x28, _heap@PAGEOFF  ; add page offset for heap pointer
+ADR x26, .+8                 ; set code base = address after this instruction
+BL main                      ; call main code (7 instructions ahead)
+LDP x26, x28, [sp], #16      ; restore x26, x28
+LSR x0, x0, #4               ; untag result for exit code
+LDP x29, x30, [sp], #16      ; restore frame pointer, link register
+RET                          ; return to system
+```
 
 ---
 
@@ -834,7 +867,9 @@ All major features now have comprehensive tests:
 - x23: Argument count
 - x24: Closure environment pointer
 - x25: Extra arguments pointer (>5 args)
+- x26: Code base register (for native executables - absolute code address computation)
 - x27: Stack pointer snapshot for arg staging
+- x28: Heap bump pointer (for native executables - cons/closure allocation)
 
 ### Stack Frame Layout
 - sp+0: saved fp/lr
