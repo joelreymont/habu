@@ -6,6 +6,10 @@
   (:export codegen-expr compile-expr compile-to-arm64-with-runtime compile-to-arm64
            make-runtime-addrs runtime-lookup *runtime-addrs*
            compile-program-with-functions-with-runtime compile-program-with-functions
+           compile-program-with-tree-shaking
+           ;; Tree-shaking functions
+           collect-called-functions-from-ir build-call-graph
+           compute-reachable-functions filter-functions-by-reachability
            env-lookup env-extend compile-forms))
 
 (in-package :habu-sbcl-codegen)
@@ -7679,6 +7683,95 @@ Optional/key descriptors are (name init-form supplied-name)."
             (arm64-add-imm 31 31 1024)     ; ADD sp, sp, #1024 (restore stack)
             (arm64-ret))))
 
+;;; ============================================
+;;; Tree-Shaking (Dead Code Elimination)
+;;; ============================================
+
+(defun collect-called-functions-from-ir (ir)
+  "Extract all function names called from IR. Returns list of symbols."
+  (let ((called (make-hash-table :test #'eq)))
+    (labels ((walk (node)
+               (when (consp node)
+                 (let ((tag (car node)))
+                   (cond
+                     ;; Direct function call: (call-fn name (args-list))
+                     ((eq tag 'call-fn)
+                      (let ((name (cadr node)))
+                        (when (symbolp name)
+                          (setf (gethash name called) t)))
+                      ;; Walk arguments - args are in (caddr node) as a list
+                      (let ((args (caddr node)))
+                        (when (listp args)
+                          (dolist (arg args)
+                            (walk arg)))))
+                     ;; Lambda reference: (lambda-ref name)
+                     ((eq tag 'lambda-ref)
+                      (let ((name (cadr node)))
+                        (when (symbolp name)
+                          (setf (gethash name called) t))))
+                     ;; Walk all other nodes recursively
+                     (t
+                      (dolist (child (cdr node))
+                        (walk child))))))))
+      (walk ir))
+    ;; Convert hash table keys to list
+    (loop for name being the hash-keys of called collect name)))
+
+(defun build-call-graph (compiled-fns main-ir)
+  "Build call graph from compiled functions and main IR.
+   Returns alist: ((fn-name . called-names) ...)"
+  (let ((graph nil))
+    ;; Add main's calls
+    (push (cons :main (collect-called-functions-from-ir main-ir)) graph)
+    ;; Add each function's calls
+    (dolist (fn compiled-fns)
+      (let* ((name (car fn))
+             (body-ir (nth 5 fn))
+             (calls (collect-called-functions-from-ir body-ir)))
+        (push (cons name calls) graph)))
+    graph))
+
+(defun compute-reachable-functions (call-graph entry-points)
+  "Compute set of reachable functions from entry points using BFS.
+   ENTRY-POINTS is list of symbols (typically '(:main)).
+   Returns hash table of reachable function names."
+  (let ((reachable (make-hash-table :test #'eq))
+        (worklist entry-points))
+    ;; Seed worklist with entry points
+    (dolist (ep entry-points)
+      (setf (gethash ep reachable) t))
+    ;; BFS
+    (loop while worklist do
+      (let* ((current (pop worklist))
+             (calls (cdr (assoc current call-graph))))
+        (dolist (callee calls)
+          (unless (gethash callee reachable)
+            (setf (gethash callee reachable) t)
+            (push callee worklist)))))
+    reachable))
+
+(defun filter-functions-by-reachability (compiled-fns reachable)
+  "Filter compiled functions to only include reachable ones.
+   REACHABLE is hash table of reachable function names."
+  (remove-if-not (lambda (fn)
+                   (gethash (car fn) reachable))
+                 compiled-fns))
+
+(defun tree-shake-program (compiled-fns main-ir)
+  "Apply tree-shaking to remove unreachable functions.
+   Returns filtered list of compiled functions."
+  (let* ((call-graph (build-call-graph compiled-fns main-ir))
+         (reachable (compute-reachable-functions call-graph '(:main)))
+         (filtered (filter-functions-by-reachability compiled-fns reachable))
+         (original-count (length compiled-fns))
+         (filtered-count (length filtered))
+         (removed-count (- original-count filtered-count)))
+    (when (> removed-count 0)
+      (format t "Tree-shaking: removed ~A of ~A functions (~,1F% reduction)~%"
+              removed-count original-count
+              (* 100.0 (/ removed-count original-count))))
+    filtered))
+
 (defun compile-program-with-functions-with-runtime (forms runtime-addrs)
   "Compile entire program with function definitions
    Returns: complete machine code with main at offset 0 (entry point)"
@@ -7707,3 +7800,30 @@ Optional/key descriptors are (name init-form supplied-name)."
 (defun compile-program-with-functions (forms)
   "Stub: compile program using default runtime addresses"
   (compile-program-with-functions-with-runtime forms nil))
+
+(defun compile-program-with-tree-shaking (forms runtime-addrs)
+  "Compile program with tree-shaking to eliminate dead code.
+   Returns: complete machine code with main at offset 0 (entry point)"
+  (let* ((compile-result (compile-forms forms))
+         (all-fns (car compile-result))
+         (main-ir (cadr compile-result))
+         ;; Apply tree-shaking to remove unreachable functions
+         (compiled-fns (tree-shake-program all-fns main-ir))
+         ;; Initial main to estimate size
+         (main-code-temp (codegen-main-with-runtime-and-fns main-ir runtime-addrs nil 0))
+         (main-size-temp (count-instrs main-code-temp))
+         ;; First pass functions
+         (fns-pass1 (codegen-functions-helper compiled-fns main-size-temp runtime-addrs))
+         (fn-offsets-pass1 (cadr fns-pass1))
+         ;; Main with first-pass offsets
+         (main-code-pass1 (codegen-main-with-runtime-and-fns main-ir runtime-addrs fn-offsets-pass1 0))
+         (main-size-final (count-instrs main-code-pass1))
+         ;; Recompute function offsets with final main size if changed
+         (fns-result (if (= main-size-final main-size-temp)
+                         fns-pass1
+                         (codegen-functions-helper compiled-fns main-size-final runtime-addrs)))
+         (fn-offsets (cadr fns-result))
+         (fns-code (car fns-result))
+         ;; Final main with final offsets
+         (main-code (codegen-main-with-runtime-and-fns main-ir runtime-addrs fn-offsets 0)))
+    (append main-code fns-code)))

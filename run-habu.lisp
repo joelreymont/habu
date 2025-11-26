@@ -215,13 +215,17 @@
                       :junk-allowed t))
       (t nil))))
 
-(defun compile-forms-with-runtime (forms &key output-path)
+(defun compile-forms-with-runtime (forms &key output-path tree-shaking)
   "Compile FORMS (toplevel forms + final expr) to bytecode file.
+When TREE-SHAKING is true, eliminate unreachable functions.
 Returns two values: byte list and output path."
   (let* ((runtime-addrs (or (ensure-runtime-addrs)
                             (error "No runtime addresses available")))
-         (bytes (habu-sbcl-codegen:compile-program-with-functions-with-runtime
-                 forms runtime-addrs))
+         (bytes (if tree-shaking
+                    (habu-sbcl-codegen:compile-program-with-tree-shaking
+                     forms runtime-addrs)
+                    (habu-sbcl-codegen:compile-program-with-functions-with-runtime
+                     forms runtime-addrs)))
          (tmp-dir (or (getenv "TMPDIR") "/tmp"))
          (path (or output-path
                    (format nil "~A/habu-bytecode-~8,'0X.bin"

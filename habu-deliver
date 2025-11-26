@@ -14,6 +14,7 @@ cd "$SCRIPT_DIR"
 SOURCE=""
 OUTPUT=""
 VERBOSE=0
+TREE_SHAKING=1  # Enable tree-shaking by default
 
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -25,15 +26,20 @@ while [ $# -gt 0 ]; do
             VERBOSE=1
             shift
             ;;
+        --no-tree-shaking)
+            TREE_SHAKING=0
+            shift
+            ;;
         -h|--help)
             echo "Usage: habu-deliver <source.lisp> -o <output>"
             echo ""
             echo "Creates a standalone macOS executable from Lisp source."
             echo ""
             echo "Options:"
-            echo "  -o <output>       Output executable name (required)"
-            echo "  -v, --verbose     Show compilation details"
-            echo "  -h, --help        Show this help"
+            echo "  -o <output>          Output executable name (required)"
+            echo "  -v, --verbose        Show compilation details"
+            echo "  --no-tree-shaking    Disable dead code elimination"
+            echo "  -h, --help           Show this help"
             exit 0
             ;;
         *)
@@ -75,13 +81,23 @@ trap cleanup EXIT
 
 [ $VERBOSE -eq 1 ] && echo "[1/4] Compiling Lisp to ARM64..."
 
-# Step 1: Compile to machine code
-sbcl --noinform --non-interactive \
-     --load sbcl-habu-shim.lisp \
-     --load habu-arm64-codegen-sbcl.lisp \
-     --load run-habu.lisp \
-     --eval "(habu-sbcl:compile-forms-with-runtime (habu-sbcl:read-forms-from-file \"$SOURCE\") :output-path \"$CODE_BIN\")" \
-     --eval '(sb-ext:quit)' 2>/dev/null
+# Step 1: Compile to machine code (with or without tree-shaking)
+if [ $TREE_SHAKING -eq 1 ]; then
+    [ $VERBOSE -eq 1 ] && echo "    Tree-shaking enabled"
+    sbcl --noinform --non-interactive \
+         --load sbcl-habu-shim.lisp \
+         --load habu-arm64-codegen-sbcl.lisp \
+         --load run-habu.lisp \
+         --eval "(habu-sbcl:compile-forms-with-runtime (habu-sbcl:read-forms-from-file \"$SOURCE\") :output-path \"$CODE_BIN\" :tree-shaking t)" \
+         --eval '(sb-ext:quit)' 2>/dev/null
+else
+    sbcl --noinform --non-interactive \
+         --load sbcl-habu-shim.lisp \
+         --load habu-arm64-codegen-sbcl.lisp \
+         --load run-habu.lisp \
+         --eval "(habu-sbcl:compile-forms-with-runtime (habu-sbcl:read-forms-from-file \"$SOURCE\") :output-path \"$CODE_BIN\")" \
+         --eval '(sb-ext:quit)' 2>/dev/null
+fi
 
 if [ ! -f "$CODE_BIN" ]; then
     echo "Error: Compilation failed"
