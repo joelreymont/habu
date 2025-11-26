@@ -98,6 +98,19 @@ This session completed the bootstrap compiler ARM64 codegen, verified bytecode e
 **Known Limitations**:
 - Reader parses `1+` as `1` then `+` (not as symbol)
 
+**Bug Fix: Vector/Make-Vector API** (November 26, 2025):
+The runtime functions `make_vector`, `vector_ref`, and `vector_set` were taking
+untagged `size_t` values for length and index parameters, but JIT-compiled code
+was passing tagged fixnums. This caused:
+- Vectors created with incorrect sizes (e.g., `make_vector(5)` from JIT created size 80)
+- `vector_set` and `vector_ref` failing for indices > 0 (tagged 1 = 16, out of bounds)
+- The write-bytes bug where files had 16 bytes per element instead of 1
+
+Fix: Changed C function signatures to take `habu_value_t` and untag internally:
+- `make_vector(habu_value_t length_val)`
+- `vector_set(habu_value_t vector, habu_value_t index_val, habu_value_t value)`
+- `vector_ref(habu_value_t vector, habu_value_t index_val)`
+
 **Bug Fix: Nested Call Spill Slot Collision** (November 26, 2025):
 When a function call had an argument that was itself a function call, both
 used the same spill slot indices (starting at 0). The inner call overwrote
