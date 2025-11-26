@@ -29,14 +29,19 @@ This session focused on bootstrapping the compiler and fixing a critical codegen
 - Exit code returns untagged fixnum result
 
 **Native Compiler Progress** (November 26, 2025):
-- Created native-compiler.lisp: bundled pure-Habu compiler (~750 lines)
+- Created native-compiler.lisp: bundled pure-Habu compiler (~700 lines)
+- All functions prefixed with nc- to avoid shadowing
 - Components: ARM64 asm encoders, reader, IR compiler, code generator
-- Fixed common/compile.lisp: proper multi-function code generation
-- Verified inline parsing works natively (parses "42" -> 42)
-- Blocking issue: function name shadowing in large bundled files
+- Fixed top-level setq handling in compile-forms-helper
+- Native compiler can parse "(+ 10 7)" and compile to IR
+- Exit code 3 = length of (add (lit 10) (lit 7))
+
+**Bug Fix**: Top-level setq handling
+- compile-forms-helper was treating setq as main expression, stopping compilation
+- Now properly continues processing defuns and main call after setq
 
 **Next Steps**:
-1. Resolve function shadowing for native compiler bundle
+1. Add codegen to native compiler for full self-hosting
 2. Complete Stage 2 bootstrap (compile compiler with itself)
 3. Add more runtime functions (substring, etc.)
 
