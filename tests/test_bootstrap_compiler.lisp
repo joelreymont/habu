@@ -129,6 +129,21 @@
 ;; Test 36: unless - false (should execute)
 (run-nc-test "unless-false" "(unless (= 1 2) 42)" 42)
 
+;; Test 37: division
+(run-nc-test "div" "(/ 20 4)" 5)
+
+;; Test 38: modulo
+(run-nc-test "mod" "(mod 17 5)" 2)
+
+;; Test 39: 1+ (using explicit function name since reader interprets 1+ as 1 then +)
+(run-nc-test "1+-func" "(defun incr (x) (+ x 1)) (incr 10)" 11)
+
+;; Test 40: 1- (using explicit function)
+(run-nc-test "1--func" "(defun decr (x) (- x 1)) (decr 10)" 9)
+
+;; Test 41: division in expression
+(run-nc-test "div-expr" "(+ (/ 20 4) 3)" 8)
+
 ;; Summary
 (format t "~%=== Results: ~A passed, ~A failed ===~%"
         *tests-passed* *tests-failed*)
