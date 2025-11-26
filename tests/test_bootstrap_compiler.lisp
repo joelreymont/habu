@@ -144,6 +144,18 @@
 ;; Test 41: division in expression
 (run-nc-test "div-expr" "(+ (/ 20 4) 3)" 8)
 
+;; Test 42: simple lambda
+(run-nc-test "lambda-simple" "(funcall (lambda (x) (* x 2)) 5)" 10)
+
+;; Test 43: lambda with closure
+(run-nc-test "lambda-closure" "(let ((y 10)) (funcall (lambda (x) (+ x y)) 5))" 15)
+
+;; Test 44: lambda passed to function
+(run-nc-test "lambda-pass" "(defun apply-fn (f x) (funcall f x)) (apply-fn (lambda (n) (* n 3)) 4)" 12)
+
+;; Test 45: nested closure
+(run-nc-test "lambda-nested" "(let ((a 1)) (let ((b 2)) (funcall (lambda (x) (+ x (+ a b))) 10)))" 13)
+
 ;; Summary
 (format t "~%=== Results: ~A passed, ~A failed ===~%"
         *tests-passed* *tests-failed*)

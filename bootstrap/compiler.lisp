@@ -532,6 +532,60 @@
    (nc-ret)))
 
 ;;; ============================================================
+;;; Part 5b: Free Variable Analysis
+;;; ============================================================
+
+(defun nc-find-free-vars (expr bound env)
+  "Find variables referenced in expr that are in env but not in bound"
+  (labels ((collect (e bnd acc)
+             (cond
+               ((null e) acc)
+               ((symbolp e)
+                ;; Check if it's a variable reference (in env but not bound)
+                (if (and (nc-env-lookup e env)
+                         (not (member e bnd)))
+                    (if (member e acc) acc (cons e acc))
+                    acc))
+               ((not (consp e)) acc)
+               ((eq (car e) 'quote) acc)  ; Don't look inside quotes
+               ((eq (car e) 'lambda)
+                ;; Lambda binds its params - add to bound
+                (let ((params (cadr e))
+                      (body (caddr e)))
+                  (collect body (append params bnd) acc)))
+               ((eq (car e) 'LET)
+                ;; Let binds variables
+                (let* ((bindings (cadr e))
+                       (body (caddr e))
+                       (names (mapcar #'car bindings))
+                       (vals (mapcar #'cadr bindings))
+                       ;; Collect from values first
+                       (acc2 (collect-list vals bnd acc))
+                       ;; Then body with new bindings
+                       (new-bnd (append names bnd)))
+                  (collect body new-bnd acc2)))
+               ((eq (car e) 'LET*)
+                (let* ((bindings (cadr e))
+                       (body (caddr e)))
+                  (labels ((do-bindings (bs bnd acc)
+                             (if (null bs)
+                                 (collect body bnd acc)
+                                 (let* ((b (car bs))
+                                        (nm (car b))
+                                        (vl (cadr b))
+                                        (acc2 (collect vl bnd acc)))
+                                   (do-bindings (cdr bs) (cons nm bnd) acc2)))))
+                    (do-bindings bindings bnd acc))))
+               (t
+                ;; General case: collect from all subexpressions
+                (collect-list e bnd acc))))
+           (collect-list (lst bnd acc)
+             (if (null lst)
+                 acc
+                 (collect-list (cdr lst) bnd (collect (car lst) bnd acc)))))
+    (collect expr bound nil)))
+
+;;; ============================================================
 ;;; Part 6: IR Compiler (nc-compile-*)
 ;;; ============================================================
 
@@ -684,6 +738,15 @@
          ((eq op 'function)
           (let ((fn-name (cadr expr)))
             (list 'sym-lit (symbol-name fn-name))))
+         ;; lambda - anonymous function (closure)
+         ((eq op 'lambda)
+          (let* ((params (cadr expr))
+                 (body (caddr expr))
+                 ;; Find free variables (referenced but not in params)
+                 (free-vars (nc-find-free-vars body params env))
+                 ;; Get the offsets for each free var in current env
+                 (free-offsets (mapcar (lambda (v) (nc-env-lookup v env)) free-vars)))
+            (list 'lambda-ir params body free-vars free-offsets)))
          ((eq op 'cons)
           (list 'cons-ir (nc-compile (cadr expr) env fenv) (nc-compile (caddr expr) env fenv)))
          ((eq op 'car) (list 'car-ir (nc-compile (cadr expr) env fenv)))
@@ -886,22 +949,59 @@
            0)))
     ((nc-has-tag ir 'funcall-ir)
      ;; funcall-ir = (funcall-ir fn-ir args-ir-list)
-     ;; fn-ir evaluates to a function name (symbol)
+     ;; fn-ir evaluates to a function name (symbol) or closure
      (let* ((fn-ir (cadr ir))
             (args-ir (caddr ir))
             (fn-val (nc-eval-ir-with-fns fn-ir env fenv)))
-       ;; fn-val should be a function name (symbol) - look it up in fenv
-       (let ((fn-def (cdr (assoc fn-val fenv))))
-         (if fn-def
-             (let* ((params (cadr fn-def))
-                    (body-ir (caddr fn-def)))
-               (labels ((eval-args (airs acc)
-                          (if (null airs) (reverse acc)
-                              (eval-args (cdr airs)
-                                         (cons (nc-eval-ir-with-fns (car airs) env fenv) acc)))))
-                 (let ((arg-vals (eval-args args-ir nil)))
-                   (nc-eval-ir-with-fns body-ir arg-vals fenv))))
-             0))))
+       ;; Check if fn-val is a closure (list starting with :closure)
+       (if (and (consp fn-val) (eq (car fn-val) :closure))
+           ;; Closure: (:closure params body free-vars captured-vals)
+           (let* ((params (cadr fn-val))
+                  (body (caddr fn-val))
+                  (free-vars (cadddr fn-val))
+                  (captured-vals (nth 4 fn-val)))
+             (labels ((eval-args (airs acc)
+                        (if (null airs) (reverse acc)
+                            (eval-args (cdr airs)
+                                       (cons (nc-eval-ir-with-fns (car airs) env fenv) acc)))))
+               (let* ((arg-vals (eval-args args-ir nil))
+                      ;; Build env with params and free vars
+                      (param-bindings (mapcar #'list params))
+                      (free-bindings (mapcar #'list free-vars))
+                      (param-env (nc-env-extend param-bindings nil))
+                      (full-env (nc-env-extend free-bindings param-env))
+                      ;; Build value list: args then captured
+                      (all-vals (append arg-vals captured-vals))
+                      ;; Compile body with this env
+                      (body-ir (nc-compile body full-env fenv)))
+                 (nc-eval-ir-with-fns body-ir all-vals fenv))))
+           ;; Named function: look up in fenv
+           (let ((fn-def (cdr (assoc fn-val fenv))))
+             (if fn-def
+                 (let* ((params (cadr fn-def))
+                        (body-ir (caddr fn-def)))
+                   (labels ((eval-args (airs acc)
+                              (if (null airs) (reverse acc)
+                                  (eval-args (cdr airs)
+                                             (cons (nc-eval-ir-with-fns (car airs) env fenv) acc)))))
+                     (let ((arg-vals (eval-args args-ir nil)))
+                       (nc-eval-ir-with-fns body-ir arg-vals fenv))))
+                 0)))))
+    ((nc-has-tag ir 'lambda-ir)
+     ;; lambda-ir = (lambda-ir params body free-vars free-var-offsets)
+     ;; Create a closure: capture the values of free variables using offsets
+     (let* ((params (cadr ir))
+            (body (caddr ir))
+            (free-vars (cadddr ir))
+            (free-offsets (nth 4 ir)))  ; The offsets computed at compile time
+       ;; Capture current values using the pre-computed offsets
+       (labels ((capture (offs acc)
+                  (if (null offs)
+                      (reverse acc)
+                      (let ((val (nth (car offs) env)))
+                        (capture (cdr offs) (cons val acc))))))
+         ;; Return: (:closure params body free-vars captured-vals)
+         (list :closure params body free-vars (capture free-offsets nil)))))
     (t 0)))
 
 ;;; ============================================================
