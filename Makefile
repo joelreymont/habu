@@ -35,12 +35,13 @@ PRINT_RUNTIME = bin/print-runtime-addrs
 # Main executables
 HABU = habu
 RUN_BYTECODE = run-bytecode
+RUN_FASL = run-fasl
 
 .PHONY: all clean test benchmark examples habu-tools
 
 all: $(TEST_PROGS) habu-tools
 
-habu-tools: $(HABU) $(RUN_BYTECODE)
+habu-tools: $(HABU) $(RUN_BYTECODE) $(RUN_FASL)
 
 examples: $(EXAMPLE_PROGS)
 jit: $(JIT_LIB_DYLIB) $(JIT_LIB_SO)
@@ -109,17 +110,22 @@ cross: all
 $(HABU): habu-main.c $(RUNTIME_OBJS) runtime/habu.h
 	$(CC) $(CFLAGS) -o $@ habu-main.c $(RUNTIME_OBJS) $(LDLIBS)
 
-# Build run-bytecode (JIT executor)
+# Build run-bytecode (legacy executor)
 $(RUN_BYTECODE): run-bytecode.c $(RUNTIME_OBJS) runtime/habu.h
 	$(CC) $(CFLAGS) -o $@ run-bytecode.c $(RUNTIME_OBJS) $(LDLIBS)
 
+# Build run-fasl (FASL loader and executor)
+$(RUN_FASL): run-fasl.c $(RUNTIME_OBJS) runtime/habu.h
+	$(CC) $(CFLAGS) -o $@ run-fasl.c $(RUNTIME_OBJS) $(LDLIBS)
+
 # Install to /usr/local/bin
-install: $(HABU) $(RUN_BYTECODE)
+install: $(HABU) $(RUN_BYTECODE) $(RUN_FASL)
 	install -m 755 $(HABU) /usr/local/bin/
 	install -m 755 $(RUN_BYTECODE) /usr/local/bin/
+	install -m 755 $(RUN_FASL) /usr/local/bin/
 
 # Clean build artifacts (runtime objs, tests, benches, examples)
 clean:
 	rm -f $(TEST_PROGS) $(BENCH_PROGS) $(EXAMPLE_PROGS) $(RUNTIME_OBJS)
-	rm -f $(HABU) $(RUN_BYTECODE)
+	rm -f $(HABU) $(RUN_BYTECODE) $(RUN_FASL)
 	rm -f $(JIT_LIB_DYLIB) $(JIT_LIB_SO) $(PRINT_RUNTIME)

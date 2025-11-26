@@ -135,11 +135,12 @@ Each call level now gets its own set of 8 spill slots, preventing collisions.
 3. ~~Self-hosting test: compile expressions via native codegen~~ DONE
 4. ~~Bootstrap delivery: create standalone executables~~ DONE
 
-**Bootstrap Delivery System** (November 26, 2025):
-- `nc-deliver source-string output-path` - Compile Lisp source to standalone executable
-- `nc-deliver-file source-path output-path` - Compile Lisp file to standalone executable
-- Generates C source with embedded ARM64 bytecode
-- Links with Habu runtime via clang to produce ~75KB Mach-O executables
+**Compilation System** (November 26, 2025):
+- **FASL files** (.fasl) - Fast Load files containing compiled ARM64 machine code
+- `compile-file source.lisp` - Compile source to .fasl file
+- `load "file.fasl"` - Load and execute compiled code
+- `compile` function - Runtime compilation per CL HyperSpec (for REPL use)
+- Native Mach-O executable generation via direct linking (no C embedding)
 - Only dependency: libSystem.B.dylib
 - 10 delivery tests passing: arithmetic, functions, recursion, let bindings, cond
 
@@ -178,25 +179,32 @@ NO bytecode. Embedded compiler (pending). Tree-shaking at delivery (DONE).
 
 ---
 
-## Native Executable Architecture
+## Compiler Architecture
 
 ### Design Principles
-1. **No bytecode**: Habu generates native ARM64 machine code directly
-2. **Standalone executables**: `habu-deliver source.lisp -o output` produces Mach-O binary
-3. **Tree-shaking**: Dead code elimination enabled by default (40% reduction typical)
-4. **SBCL dependency**: Currently required for compilation (bootstrap pending)
+1. **AOT Compilation**: Habu is an ahead-of-time compiler generating native ARM64 machine code
+2. **FASL Files**: Compiled code stored in .fasl files (Fast Load) - standard Lisp terminology
+3. **Runtime Compilation**: `compile` function for REPL use per CL HyperSpec
+4. **Native Linking**: Direct Mach-O generation, no C embedding or clang dependency
+5. **Tree-shaking**: Dead code elimination enabled by default (40% reduction typical)
 
-### Delivery Pipeline
+### Compilation Pipeline
 
 ```
-habu-deliver source.lisp -o myprogram
+;; File compilation (AOT)
+(compile-file "source.lisp")  ; -> source.fasl
+(load "source.fasl")          ; Load and execute
+
+;; Runtime compilation (for REPL)
+(compile nil '(lambda (x) (* x x)))  ; -> compiled function
+(compile 'foo)                        ; Compile existing function
 ```
 
-1. **Compile**: SBCL compiles Lisp to ARM64 machine code
-2. **Tree-shake**: Remove unreachable functions from call graph
-3. **Generate C**: Embed machine code as byte array in C source
-4. **Link**: clang links with Habu runtime to produce Mach-O binary
-5. **Result**: Standalone executable (~75KB) with only libSystem.B.dylib dependency
+1. **Parse**: Read Lisp source into S-expressions
+2. **Compile**: Transform to IR, then generate ARM64 machine code
+3. **Tree-shake**: Remove unreachable functions from call graph
+4. **Link**: Generate Mach-O executable or FASL file
+5. **Execute**: Load FASL into memory and run, or execute standalone binary
 
 ### Tree-Shaking Implementation
 
@@ -211,12 +219,43 @@ Disable: `--no-tree-shaking`
 ### REPL Commands
 
 ```
-,deliver source.lisp output   Create standalone executable
-,load file.lisp               Compile and run file
-,compile file.lisp            Compile to .bin
+,compile-file source.lisp     Compile source to .fasl file
+,load file.fasl               Load compiled FASL
+,compile                      Compile function at runtime
 ,help                         Show help
 ,quit                         Exit REPL
 ```
+
+### FASL File Format
+
+FASL (Fast Load) files contain compiled ARM64 machine code:
+
+```
+Header (16 bytes):
+  Magic:    4 bytes "HFSL" (0x4C534648 little-endian)
+  Version:  4 bytes (currently 1)
+  Flags:    4 bytes (reserved)
+  Code-len: 4 bytes (length of code section)
+
+Code Section:
+  N bytes of ARM64 machine code
+```
+
+**Tools**:
+- `run-fasl file.fasl` - Load and execute FASL file
+- `run-fasl file.bin` - Also supports raw bytecode (backward compatibility)
+- `compile-to-fasl` - Lisp function to compile source to FASL
+
+**Test Coverage**:
+- 7 FASL tests: round-trip, magic header, version, code length, execution
+
+### CL HyperSpec `compile` Function
+
+Per the Common Lisp specification, `compile` supports:
+- `(compile name)` - Compile function bound to name, replacing interpreted version
+- `(compile nil definition)` - Compile lambda expression, return compiled function
+
+This enables runtime compilation from the REPL, essential for interactive development.
 
 ### Compiler Bootstrap Progress (November 26, 2025)
 

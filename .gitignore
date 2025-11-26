@@ -73,3 +73,8 @@ debug-*.lisp
 test-*.bin
 get-runtime-addrs.lisp
 test-codegen-direct.lisp
+
+# Build outputs (compiled from source)
+run-bytecode
+run-fasl
+habu
