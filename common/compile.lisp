@@ -99,18 +99,62 @@
 
 ;;; Build complete program: functions + main
 (defun codegen-program (fns main-ir runtime-addrs)
-  (let* (;; Main prologue size (6 instructions)
-         (prologue-size 6)
-         ;; Calculate function offsets
-         (fn-offsets (calc-fn-offsets fns prologue-size runtime-addrs))
-         ;; Generate main with prologue
-         (main-code (codegen-main-with-runtime main-ir runtime-addrs))
-         ;; Cursor starts after main
-         (main-size (count-instrs main-code))
-         (fns-start main-size))
-    ;; For now, just return main code
-    ;; Full implementation would interleave function code
-    main-code))
+  (let* (;; Prologue size (instructions in codegen-prologue)
+         (prologue-size 20)
+         ;; First pass: estimate main size to get initial function offsets
+         (main-code-est (codegen-main-with-runtime main-ir runtime-addrs))
+         (main-size-est (count-instrs main-code-est))
+         ;; Calculate function offsets (first pass)
+         (fn-offsets-est (calc-fn-offsets-with-sizes fns main-size-est runtime-addrs)))
+    ;; Second pass: generate main with function offsets
+    (let* ((main-code (codegen-main-with-runtime-and-offsets main-ir runtime-addrs fn-offsets-est))
+           (main-size (count-instrs main-code))
+           ;; Recalculate offsets with final main size if changed
+           (fn-offsets (if (= main-size main-size-est)
+                           fn-offsets-est
+                           (calc-fn-offsets-with-sizes fns main-size runtime-addrs)))
+           ;; Generate function code
+           (fns-code (codegen-functions fns fn-offsets runtime-addrs main-size)))
+      (append main-code fns-code))))
+
+;;; Calculate function offsets based on actual code sizes
+(defun calc-fn-offsets-with-sizes (fns main-size runtime-addrs)
+  (labels ((gen-fn-code (fn offsets)
+             (codegen-function fn runtime-addrs offsets nil))
+           (iter (remaining offset acc)
+             (if (nil? remaining)
+                 (reverse acc)
+                 (let* ((fn (car remaining))
+                        (name (car fn))
+                        (entry (cons name offset))
+                        ;; Generate code to get actual size
+                        (fn-code (gen-fn-code fn acc))
+                        (fn-size (count-instrs fn-code)))
+                   (iter (cdr remaining)
+                         (+ offset fn-size)
+                         (cons entry acc))))))
+    (iter fns main-size nil)))
+
+;;; Generate code for all functions
+(defun codegen-functions (fns fn-offsets runtime-addrs start-offset)
+  (labels ((iter (remaining offset acc)
+             (if (nil? remaining)
+                 acc
+                 (let* ((fn (car remaining))
+                        (fn-code (codegen-function fn runtime-addrs fn-offsets offset))
+                        (fn-size (count-instrs fn-code)))
+                   (iter (cdr remaining)
+                         (+ offset fn-size)
+                         (append acc fn-code))))))
+    (iter fns start-offset nil)))
+
+;;; Generate main code with function offsets for call resolution
+(defun codegen-main-with-runtime-and-offsets (main-ir runtime-addrs fn-offsets)
+  (let* ((prologue (codegen-prologue))
+         (prologue-size (count-instrs prologue))
+         (body-code (codegen-expr main-ir runtime-addrs fn-offsets prologue-size 0))
+         (epilogue (codegen-epilogue)))
+    (append prologue body-code epilogue)))
 
 ;;; Compile and generate code for program
 (defun compile-program (forms runtime-addrs)
