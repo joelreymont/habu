@@ -9,7 +9,19 @@
 **GOAL: Standalone Native Executables** (November 26, 2025)
 
 Habu produces native ARM64 machine code and standalone macOS executables.
-NO bytecode. NO SBCL dependency. Embedded compiler. Tree-shaking at delivery.
+NO bytecode. Embedded compiler (pending). Tree-shaking at delivery (DONE).
+
+---
+
+## Implementation Status (November 26, 2025)
+
+| Feature | Status | Notes |
+|---------|--------|-------|
+| **Native ARM64 codegen** | DONE | Direct compilation to ARM64 machine code |
+| **Standalone executables** | DONE | `habu-deliver source.lisp -o output` |
+| **Tree-shaking** | DONE | 40% code reduction in tests |
+| **REPL commands** | DONE | `,deliver`, `,load`, `,compile` |
+| **Embedded compiler** | PENDING | Currently uses SBCL for compilation |
 
 ---
 
@@ -17,40 +29,53 @@ NO bytecode. NO SBCL dependency. Embedded compiler. Tree-shaking at delivery.
 
 ### Design Principles
 1. **No bytecode**: Habu generates native ARM64 machine code directly
-2. **No SBCL dependency**: Compiler is embedded in habu executable
-3. **Standalone executables**: `(deliver 'main "output")` produces Mach-O binary
-4. **Tree-shaking**: Only reachable code included in delivered executable
+2. **Standalone executables**: `habu-deliver source.lisp -o output` produces Mach-O binary
+3. **Tree-shaking**: Dead code elimination enabled by default (40% reduction typical)
+4. **SBCL dependency**: Currently required for compilation (bootstrap pending)
 
-### Implementation Plan
+### Delivery Pipeline
 
-#### Phase 1: Delivery System
-- Generate C source with embedded machine code array
-- Link with runtime (gc.c, io.c, lineedit.c, region.c, runtime.c)
-- Use clang to produce standalone Mach-O executable
-- Result: `./output` runs without habu or any runtime dependency
-
-#### Phase 2: Compiler Bootstrap (One-Time SBCL Use)
-- Compile habu-arm64-codegen-sbcl.lisp to native ARM64 code
-- Embed compiled compiler in habu executable as static data
-- After bootstrap: habu is fully self-contained
-
-#### Phase 3: Tree-Shaking
-- Build call graph from IR during compilation
-- Start from entry point, mark reachable functions
-- Only emit code for reachable functions
-- Dramatically reduces executable size
-
-#### Phase 4: REPL Delivery
-```lisp
-;; In REPL:
-(defun factorial (n)
-  (if (<= n 1) 1 (* n (factorial (1- n)))))
-
-(defun main ()
-  (println (factorial 10)))
-
-(deliver 'main "factorial")  ; Produces ./factorial executable
 ```
+habu-deliver source.lisp -o myprogram
+```
+
+1. **Compile**: SBCL compiles Lisp to ARM64 machine code
+2. **Tree-shake**: Remove unreachable functions from call graph
+3. **Generate C**: Embed machine code as byte array in C source
+4. **Link**: clang links with Habu runtime to produce Mach-O binary
+5. **Result**: Standalone executable (~75KB) with only libSystem.B.dylib dependency
+
+### Tree-Shaking Implementation
+
+- `collect-called-functions-from-ir`: Traverse IR to extract function calls
+- `build-call-graph`: Map each function to its callees
+- `compute-reachable-functions`: BFS from entry point to mark reachable
+- `filter-functions-by-reachability`: Keep only reachable functions
+
+Enable: `--tree-shaking` (default)
+Disable: `--no-tree-shaking`
+
+### REPL Commands
+
+```
+,deliver source.lisp output   Create standalone executable
+,load file.lisp               Compile and run file
+,compile file.lisp            Compile to .bin
+,help                         Show help
+,quit                         Exit REPL
+```
+
+### Pending: Compiler Bootstrap
+
+The embedded compiler requires:
+1. Complete the pure Habu compiler in common/ir.lisp and common/compile.lisp
+2. Compile the compiler using SBCL (one-time bootstrap)
+3. Embed compiled compiler in habu executable
+4. Replace SBCL dependency with embedded compiler
+
+Current blockers:
+- Pure Habu compiler in common/ is incomplete
+- SBCL-hosted compiler uses SBCL-specific features (eval for macros)
 
 ### Executable Generation Flow
 ```
