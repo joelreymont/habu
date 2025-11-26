@@ -2,11 +2,11 @@
 
 **Session Date**: November 22-26, 2025
 **Focus**: Self-hosting ARM64 Lisp compiler with native executable generation
-**Last Updated**: November 26, 2025 (Bootstrap Delivery Complete)
+**Last Updated**: November 26, 2025 (Labels/Flet Support Complete)
 
 ## Session Summary (November 26, 2025)
 
-This session completed the bootstrap compiler ARM64 codegen, verified bytecode execution, added bitwise operations, mutation operations, multiple values support, and implemented standalone executable delivery.
+This session completed the bootstrap compiler ARM64 codegen, verified bytecode execution, added bitwise operations, mutation operations, multiple values support, implemented standalone executable delivery, reorganized packages, and added labels/flet support.
 
 **Accomplishments**:
 1. Reorganized file structure: `native-compiler.lisp` -> `bootstrap/compiler.lisp`
@@ -26,19 +26,32 @@ This session completed the bootstrap compiler ARM64 codegen, verified bytecode e
 15. **Implemented multiple values (values, multiple-value-bind)**
 16. **Fixed LET/LET*/DEFUN to handle multiple body forms**
 17. **Implemented bootstrap delivery system (nc-deliver)**
-18. All tests pass: 48 IR evaluator + 25 codegen + 10 pipeline + 8 execution + 13 function linking + 18 bitwise + 14 mutation + 8 mvb + 10 delivery
+18. **Reorganized HABU-SYS and HABU packages with clean public API**
+19. **Implemented labels/flet using Z-combinator transformation**
+20. All tests pass: 48 compiler + 25 codegen + 10 delivery + 10 labels
+
+**Package Structure** (November 26, 2025):
+- HABU-SYS: System/runtime primitives (string-length, string-ref, make-vector, etc.)
+- HABU: Public compiler API (deliver, compile-program, read-all, deliver-file)
+- Internal nc-* functions exported for backward compatibility
 
 **File Organization**:
-- `bootstrap/compiler.lisp` - Pure Habu bootstrap compiler (nc-* functions)
-- `bootstrap/deliver.lisp` - Bootstrap delivery system (nc-deliver, nc-deliver-file)
+- `bootstrap/compiler.lisp` - Pure Habu bootstrap compiler with all features
 - `arm64/codegen-sbcl.lisp` - Full ARM64 codegen with SBCL dependencies
 - `deliver.lisp` - Production standalone executable delivery
 - `docs/` subdirectories: architecture, bootstrap, codegen, plans, reference, repl, runtime, self-hosting, sessions, status, testing
 
-**HABU Package**:
-- All bootstrap compiler code in HABU package
-- SBCL compatibility shims for: string-length, string-ref, make-vector, vector-set, make-string-from-vector
-- Exports: nc-read-all, nc-compile, nc-eval-ir, nc-eval-forms, nc-codegen, main
+**Labels Implementation** (Z-Combinator):
+- Transform `(labels ((fn params body)) main)` into:
+  `(let ((fn nil)) (setq fn (lambda (self params) body')) main')`
+- Body rewrites `(fn args)` -> `(funcall self self args)`
+- Main rewrites `(fn args)` -> `(funcall fn fn args)`
+- Avoids closure capture timing issue by passing self as argument
+
+**HABU Package Exports**:
+- Public API: read-all, compile-program, deliver, deliver-file
+- Internal (for tests): nc-read-all, nc-compile, nc-eval-forms, nc-codegen, etc.
+- System primitives: string-length, string-ref, make-vector, vector-set
 
 **Two-Pass Compilation** (for mutual recursion):
 - Pass 1: Collect all defun names into fenv with placeholder entries

@@ -4,28 +4,58 @@
 ;;;
 ;;; Components: ARM64 asm, utils, reader, codegen, IR compiler
 ;;;
-;;; This file defines the HABU package which provides:
-;;; - System functions (string-length, string-ref, etc.)
-;;; - Bootstrap compiler (nc-* functions)
-;;; - ARM64 code generation
+;;; Package structure:
+;;; - HABU-SYS: System/runtime primitives (string-length, etc.)
+;;; - HABU: Public compiler API (deliver, compile-program, etc.)
+;;;
+;;; Internal nc-* functions are not exported (implementation detail)
 
 ;;; ============================================================
-;;; Part 0: Package Definition
+;;; Part 0: Package Definitions
 ;;; ============================================================
 
+;;; HABU-SYS: System/runtime primitives
+;;; These are the functions available in self-hosted Habu runtime
+(defpackage :habu-sys
+  (:use :cl)
+  (:export
+   ;; String primitives
+   #:string-length #:string-ref #:make-string-from-vector
+   ;; Vector primitives
+   #:make-vector #:vector-set))
+
+;;; HABU: Public compiler API
+;;; Use habu:deliver, habu:compile-program, etc.
 (defpackage :habu
   (:use :cl)
-  ;; Shadow CL symbols we redefine
-  (:shadow)
-  ;; Export system functions (available in self-hosted Habu)
+  (:import-from :habu-sys
+                #:string-length #:string-ref #:make-string-from-vector
+                #:make-vector #:vector-set)
   (:export
-   ;; String functions
-   string-length string-ref make-string-from-vector
-   ;; Vector functions
-   make-vector vector-set
-   ;; Compiler entry points
-   nc-read-all nc-compile nc-eval-ir nc-eval-forms nc-codegen
-   main))
+   ;; Public compiler API (clean names)
+   #:read-all           ; Parse source string to forms
+   #:compile-program    ; Compile forms to ARM64 bytecode
+   #:deliver            ; Compile source to standalone executable
+   #:deliver-file       ; Compile file to standalone executable
+   ;; Internal nc-* functions (exported for test compatibility)
+   #:nc-read-all #:nc-compile #:nc-compile-program
+   #:nc-eval-ir #:nc-eval-forms #:nc-codegen #:nc-codegen-main
+   #:nc-eval-ir-with-fns #:nc-compile-forms
+   #:nc-deliver #:nc-deliver-file
+   ;; Re-export system primitives for convenience
+   #:string-length #:string-ref #:make-string-from-vector
+   #:make-vector #:vector-set))
+
+(in-package :habu-sys)
+
+;;; System primitives (SBCL compatibility shims)
+;;; In self-hosted Habu, these are native runtime functions
+(defun string-length (s) (length s))
+(defun string-ref (s i) (char-code (char s i)))
+(defun make-vector (n) (make-array n))
+(defun vector-set (v i x) (setf (aref v i) x))
+(defun make-string-from-vector (v)
+  (map 'string #'code-char v))
 
 (in-package :habu)
 
@@ -38,19 +68,6 @@
 ;; *call-fixups* accumulates (byte-pos . fn-name) pairs for BL patching
 (defparameter *codegen-pos* 0)
 (defparameter *call-fixups* nil)
-
-;;; ============================================================
-;;; Part 0b: System Functions (SBCL compatibility layer)
-;;; ============================================================
-
-;; These functions exist in Habu runtime but not in standard CL
-;; In self-hosted Habu, these would be primitives
-(defun string-length (s) (length s))
-(defun string-ref (s i) (char-code (char s i)))
-(defun make-vector (n) (make-array n))
-(defun vector-set (v i x) (setf (aref v i) x))
-(defun make-string-from-vector (v)
-  (map 'string #'code-char v))
 
 ;;; ============================================================
 ;;; Part 1: ARM64 Instruction Encoders (nc-asm-*)
@@ -796,6 +813,104 @@
 ;;; Part 6: IR Compiler (nc-compile-*)
 ;;; ============================================================
 
+(defun nc-rewrite-labels-calls (expr fn-names)
+  "Rewrite calls to functions in fn-names to use funcall instead"
+  (cond
+    ((null expr) nil)
+    ((numberp expr) expr)
+    ((symbolp expr) expr)
+    ((consp expr)
+     (let ((op (car expr)))
+       (cond
+         ;; If calling a labels function, rewrite as funcall
+         ((and (symbolp op) (member op fn-names))
+          (cons 'funcall (cons op (mapcar (lambda (e) (nc-rewrite-labels-calls e fn-names)) (cdr expr)))))
+         ;; Quote - don't descend
+         ((eq op 'quote) expr)
+         ;; Lambda - rewrite body but don't rewrite param list
+         ((eq op 'lambda)
+          (list 'lambda (cadr expr)
+                (nc-rewrite-labels-calls (caddr expr) fn-names)))
+         ;; let/let* - rewrite values and body, not binding names
+         ((or (eq op 'LET) (eq op 'LET*) (eq op 'let) (eq op 'let*))
+          (let* ((bindings (cadr expr))
+                 (body (cddr expr))
+                 (new-bindings (mapcar (lambda (b)
+                                         (if (consp b)
+                                             (list (car b) (nc-rewrite-labels-calls (cadr b) fn-names))
+                                             b))
+                                       bindings)))
+            (cons op (cons new-bindings (mapcar (lambda (e) (nc-rewrite-labels-calls e fn-names)) body)))))
+         ;; Default: recursively rewrite all parts
+         (t (mapcar (lambda (e) (nc-rewrite-labels-calls e fn-names)) expr)))))
+    (t expr)))
+
+(defun nc-rewrite-labels-self (expr fn-names self-var)
+  "Inside labels body: rewrite (fn args) -> (funcall self self args)"
+  (cond
+    ((null expr) nil)
+    ((numberp expr) expr)
+    ((symbolp expr) expr)
+    ((consp expr)
+     (let ((op (car expr)))
+       (cond
+         ;; If calling a labels function, rewrite as (funcall self self args)
+         ((and (symbolp op) (member op fn-names))
+          (cons 'funcall (cons self-var (cons self-var
+                          (mapcar (lambda (e) (nc-rewrite-labels-self e fn-names self-var)) (cdr expr))))))
+         ;; Quote - don't descend
+         ((eq op 'quote) expr)
+         ;; Lambda - rewrite body but don't rewrite param list
+         ((eq op 'lambda)
+          (list 'lambda (cadr expr)
+                (nc-rewrite-labels-self (caddr expr) fn-names self-var)))
+         ;; let/let* - rewrite values and body
+         ((or (eq op 'LET) (eq op 'LET*) (eq op 'let) (eq op 'let*))
+          (let* ((bindings (cadr expr))
+                 (body (cddr expr))
+                 (new-bindings (mapcar (lambda (b)
+                                         (if (consp b)
+                                             (list (car b) (nc-rewrite-labels-self (cadr b) fn-names self-var))
+                                             b))
+                                       bindings)))
+            (cons op (cons new-bindings (mapcar (lambda (e) (nc-rewrite-labels-self e fn-names self-var)) body)))))
+         ;; Default: recursively rewrite all parts
+         (t (mapcar (lambda (e) (nc-rewrite-labels-self e fn-names self-var)) expr)))))
+    (t expr)))
+
+(defun nc-rewrite-labels-main (expr fn-names)
+  "In main body: rewrite (fn args) -> (funcall fn fn args)"
+  (cond
+    ((null expr) nil)
+    ((numberp expr) expr)
+    ((symbolp expr) expr)
+    ((consp expr)
+     (let ((op (car expr)))
+       (cond
+         ;; If calling a labels function, rewrite as (funcall fn fn args)
+         ((and (symbolp op) (member op fn-names))
+          (cons 'funcall (cons op (cons op
+                          (mapcar (lambda (e) (nc-rewrite-labels-main e fn-names)) (cdr expr))))))
+         ;; Quote - don't descend
+         ((eq op 'quote) expr)
+         ;; Lambda - rewrite body but don't rewrite param list
+         ((eq op 'lambda)
+          (list 'lambda (cadr expr)
+                (nc-rewrite-labels-main (caddr expr) fn-names)))
+         ;; let/let* - rewrite values and body
+         ((or (eq op 'LET) (eq op 'LET*) (eq op 'let) (eq op 'let*))
+          (let* ((bindings (cadr expr))
+                 (body (cddr expr))
+                 (new-bindings (mapcar (lambda (b)
+                                         (if (consp b)
+                                             (list (car b) (nc-rewrite-labels-main (cadr b) fn-names))
+                                             b))
+                                       bindings)))
+            (cons op (cons new-bindings (mapcar (lambda (e) (nc-rewrite-labels-main e fn-names)) body)))))
+         ;; Default: recursively rewrite all parts
+         (t (mapcar (lambda (e) (nc-rewrite-labels-main e fn-names)) expr)))))
+    (t expr)))
+
 (defun nc-quote-ir (obj)
   (cond
     ((numberp obj) (list 'lit obj))
@@ -1136,6 +1251,61 @@
                   (nc-compile (if (null (cdr body)) (car body) (cons 'progn body))
                               (nc-env-extend (mapcar (lambda (v) (cons v nil)) vars) env)
                               fenv))))
+         ;; labels - local recursive functions
+         ;; Uses Z combinator approach: each fn gets SELF as first param
+         ;; Transform: (labels ((fn (params...) body)) main)
+         ;; Into: (let ((fn nil))
+         ;;         (setq fn (lambda (self params...) body'))
+         ;;         main')
+         ;; where body' rewrites (fn args) as (funcall self self args)
+         ;; and main' rewrites (fn args) as (funcall fn fn args)
+         ((eq op 'LABELS)
+          (let* ((bindings (cadr expr))
+                 (body-forms (cddr expr))
+                 (fn-names (mapcar #'car bindings))
+                 ;; Build let bindings: ((fn1 nil) (fn2 nil) ...)
+                 (let-bindings (mapcar (lambda (n) (list n nil)) fn-names))
+                 ;; Transform each function: add SELF param, rewrite recursive calls
+                 (setq-forms (mapcar (lambda (b)
+                                       (let* ((fn-name (car b))
+                                              (params (cadr b))
+                                              (fn-body (cddr b))
+                                              (fn-body-expr (if (null (cdr fn-body))
+                                                                (car fn-body)
+                                                                (cons 'progn fn-body)))
+                                              ;; Rewrite calls in body: (fn args) -> (funcall self self args)
+                                              (rewritten (nc-rewrite-labels-self fn-body-expr fn-names 'SELF)))
+                                         ;; Lambda gets SELF as first param
+                                         (list 'setq fn-name (list 'lambda (cons 'SELF params) rewritten))))
+                                     bindings))
+                 ;; Rewrite main body: (fn args) -> (funcall fn fn args)
+                 (main-body (if (null (cdr body-forms))
+                                (car body-forms)
+                                (cons 'progn body-forms)))
+                 (rewritten-main (nc-rewrite-labels-main main-body fn-names))
+                 ;; Build: (let bindings (setq ...) ... main)
+                 (full-expr (list 'LET let-bindings
+                                  (cons 'progn (append setq-forms (list rewritten-main))))))
+            (nc-compile full-expr env fenv)))
+         ;; flet - local non-recursive functions (same transform but no rewriting)
+         ((eq op 'FLET)
+          (let* ((bindings (cadr expr))
+                 (body-forms (cddr expr))
+                 (fn-names (mapcar #'car bindings))
+                 (let-bindings (mapcar (lambda (b)
+                                         (let* ((fn-name (car b))
+                                                (params (cadr b))
+                                                (fn-body (cddr b))
+                                                (fn-body-expr (if (null (cdr fn-body))
+                                                                  (car fn-body)
+                                                                  (cons 'progn fn-body))))
+                                           (list fn-name (list 'lambda params fn-body-expr))))
+                                       bindings))
+                 (main-body (if (null (cdr body-forms))
+                                (car body-forms)
+                                (cons 'progn body-forms)))
+                 (rewritten-main (nc-rewrite-labels-calls main-body fn-names)))
+            (nc-compile (list 'LET let-bindings rewritten-main) env fenv)))
          ;; User function call or call via variable
          (t
           ;; Check if op is a known function name
@@ -2640,6 +2810,167 @@
           (compile-defuns forms initial-fenv nil)
         (eval-forms other-forms final-fenv)))))
 
+;;; ============================================================
+;;; Part 9: Public API
+;;; ============================================================
+
+;;; Public API wrappers (exported from HABU package)
+;;; These provide clean names for external use: habu:deliver, etc.
+
+(defun read-all (source-string)
+  "Parse SOURCE-STRING and return list of forms.
+   Usage: (habu:read-all \"(+ 1 2)\")"
+  (nc-read-all source-string))
+
+(defun compile-program (forms &optional fenv)
+  "Compile FORMS to ARM64 bytecode.
+   Usage: (habu:compile-program (habu:read-all source))"
+  (nc-compile-program forms fenv))
+
+;;; Delivery functions
+
+(defun bytes-to-c-array (bytes)
+  "Convert byte list to C array initializer string"
+  (with-output-to-string (s)
+    (let ((col 0))
+      (dolist (b bytes)
+        (format s "0x~2,'0X," b)
+        (incf col)
+        (when (= col 16)
+          (format s "~%    ")
+          (setf col 0))))))
+
+(defun generate-embedded-c (bytes output-name)
+  "Generate C source with embedded bytecode"
+  (format nil "/* Auto-generated by Habu - ~A */
+#include <stdio.h>
+#include <stdlib.h>
+#include <stdint.h>
+#include <sys/mman.h>
+#include <string.h>
+#include \"runtime/habu.h\"
+
+static const unsigned char g_bytecode[] = {
+    ~A
+};
+static const size_t g_bytecode_size = ~A;
+
+void* g_runtime_table[64];
+typedef int64_t (*compiled_fn_t)(void** runtime_table);
+
+int main(int argc, char **argv) {
+    (void)argc; (void)argv;
+    void *exec_mem = mmap(NULL, g_bytecode_size,
+                          PROT_READ | PROT_WRITE,
+                          MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+    if (exec_mem == MAP_FAILED) { perror(\"mmap\"); return 1; }
+    memcpy(exec_mem, g_bytecode, g_bytecode_size);
+    if (mprotect(exec_mem, g_bytecode_size, PROT_READ | PROT_EXEC) != 0) {
+        perror(\"mprotect\"); munmap(exec_mem, g_bytecode_size); return 1;
+    }
+    habu_init(1024 * 1024);
+    g_runtime_table[0] = (void*)habu_cons;
+    g_runtime_table[1] = (void*)habu_car;
+    g_runtime_table[2] = (void*)habu_cdr;
+    g_runtime_table[3] = (void*)habu_make_closure;
+    g_runtime_table[4] = (void*)habu_closure_code;
+    g_runtime_table[5] = (void*)habu_closure_env;
+    g_runtime_table[6] = exec_mem;
+    g_runtime_table[7] = (void*)habu_make_vector;
+    g_runtime_table[8] = (void*)habu_vector_set;
+    g_runtime_table[9] = (void*)habu_vector_ref;
+    g_runtime_table[10] = (void*)habu_make_string_from_vector;
+    g_runtime_table[11] = (void*)habu_make_symbol_from_string;
+    g_runtime_table[12] = (void*)habu_string_length_raw;
+    g_runtime_table[13] = (void*)habu_symbol_name;
+    g_runtime_table[14] = (void*)habu_set_car;
+    g_runtime_table[15] = (void*)habu_set_cdr;
+    g_runtime_table[16] = (void*)habu_string_ref;
+    g_runtime_table[17] = (void*)habu_values_set;
+    g_runtime_table[18] = (void*)habu_values_get;
+    g_runtime_table[19] = (void*)habu_make_hash_table;
+    g_runtime_table[20] = (void*)habu_gethash;
+    g_runtime_table[21] = (void*)habu_puthash;
+    g_runtime_table[22] = (void*)habu_remhash;
+    g_runtime_table[23] = (void*)habu_hash_table_count;
+    g_runtime_table[24] = (void*)habu_string_concat;
+    g_runtime_table[25] = (void*)habu_string_substring;
+    g_runtime_table[26] = (void*)habu_fixnum_to_string;
+    g_runtime_table[27] = (void*)habu_values_count_get;
+    g_runtime_table[28] = (void*)habu_gensym;
+    g_runtime_table[29] = (void*)habu_make_float;
+    g_runtime_table[30] = (void*)habu_float_add;
+    g_runtime_table[31] = (void*)habu_float_sub;
+    g_runtime_table[32] = (void*)habu_float_mul;
+    g_runtime_table[33] = (void*)habu_float_div;
+    g_runtime_table[34] = (void*)habu_float_lt;
+    g_runtime_table[35] = (void*)habu_float_gt;
+    g_runtime_table[36] = (void*)habu_float_le;
+    g_runtime_table[37] = (void*)habu_float_ge;
+    g_runtime_table[38] = (void*)habu_float_eq;
+    g_runtime_table[39] = (void*)habu_fixnum_to_float;
+    g_runtime_table[40] = (void*)habu_float_to_fixnum;
+    g_runtime_table[41] = (void*)habu_float_value;
+    g_runtime_table[42] = (void*)habu_open_file;
+    g_runtime_table[43] = (void*)habu_close_file;
+    g_runtime_table[44] = (void*)habu_read_line;
+    g_runtime_table[45] = (void*)habu_write_string;
+    g_runtime_table[46] = (void*)habu_read_file;
+    g_runtime_table[47] = (void*)habu_write_file;
+    g_runtime_table[48] = (void*)habu_print_value;
+    g_runtime_table[49] = (void*)habu_println_value;
+    g_runtime_table[50] = (void*)habu_get_time_ns;
+    compiled_fn_t fn = (compiled_fn_t)exec_mem;
+    int64_t result = fn(g_runtime_table);
+    printf(\"Result: %lld\\n\", result >> 4);
+    munmap(exec_mem, g_bytecode_size);
+    return 0;
+}
+"
+          output-name
+          (bytes-to-c-array bytes)
+          (length bytes)))
+
+(defun deliver (source-string output-path)
+  "Compile SOURCE-STRING to standalone executable at OUTPUT-PATH.
+   Usage: (habu:deliver \"(+ 1 2)\" \"/tmp/test\")"
+  (let* ((c-source-path (format nil "~A.c" output-path))
+         (forms (nc-read-all source-string))
+         (bytes (nc-compile-program forms nil)))
+    (format t "Compiling ~A bytes of ARM64 code...~%" (length bytes))
+    (let ((c-source (generate-embedded-c bytes (pathname-name (pathname output-path)))))
+      (with-open-file (out c-source-path :direction :output :if-exists :supersede)
+        (write-string c-source out)))
+    (let* ((cmd (format nil "clang -O2 -o ~A ~A runtime/gc.c runtime/io.c runtime/runtime.c runtime/region.c -I. 2>&1"
+                        output-path c-source-path))
+           (result (with-output-to-string (s)
+                     (sb-ext:run-program "/bin/sh" (list "-c" cmd) :output s :error :output))))
+      (when (> (length result) 0)
+        (format t "~A~%" result))
+      (if (probe-file output-path)
+          (progn
+            (delete-file c-source-path)
+            (format t "Created: ~A~%" output-path)
+            output-path)
+          (error "Compilation failed")))))
+
+(defun deliver-file (source-path output-path)
+  "Compile Lisp file at SOURCE-PATH to executable at OUTPUT-PATH.
+   Usage: (habu:deliver-file \"program.lisp\" \"program\")"
+  (let ((source (with-open-file (in source-path :direction :input)
+                  (let ((contents (make-string (file-length in))))
+                    (read-sequence contents in)
+                    contents))))
+    (deliver source output-path)))
+
+;;; Backward compatibility aliases (nc-* versions)
+(setf (symbol-function 'nc-deliver) #'deliver)
+(setf (symbol-function 'nc-deliver-file) #'deliver-file)
+
+;;; ============================================================
+;;; Main entry point (for testing)
+;;; ============================================================
+
 (defun main ()
   ;; Full pipeline: parse -> compile to IR -> evaluate IR
   (let* ((src "(+ (* 3 4) 5)")
@@ -2648,4 +2979,5 @@
         (nc-eval-forms forms)
         0)))
 
-(main)
+;; Only run main when loaded directly
+;; (main)
