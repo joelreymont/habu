@@ -360,7 +360,7 @@ The native linker generates standalone Mach-O executables without clang dependen
 - Exports: `movz`, `movk`, `mov`, `add`, `sub`, `mul`, `ldr`, `str`, `bl`, `ret`, etc.
 - Constants: `+sp+`, `+lr+`, `+xzr+`, `+eq+`, `+ne+`, `+lt+`, `+gt+`, etc.
 
-**Test Results** (15/15 tests pass):
+**Test Results** (50/50 tests pass - see tests/test_native_macho.lisp):
 - Arithmetic: `(+ 20 22)` -> 42, `(* 6 7)` -> 42
 - Nested: `(+ (* 3 4) (+ 5 7))` -> 24
 - Conditionals: `(if (= 1 1) 10 20)` -> 10
