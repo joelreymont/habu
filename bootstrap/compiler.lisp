@@ -30,6 +30,16 @@
 (in-package :habu)
 
 ;;; ============================================================
+;;; Part 0a: Function Linking State
+;;; ============================================================
+
+;; Global state for function call fixups during codegen
+;; *codegen-pos* tracks current byte position in output
+;; *call-fixups* accumulates (byte-pos . fn-name) pairs for BL patching
+(defparameter *codegen-pos* 0)
+(defparameter *call-fixups* nil)
+
+;;; ============================================================
 ;;; Part 0b: System Functions (SBCL compatibility layer)
 ;;; ============================================================
 
@@ -229,6 +239,75 @@
 
 (defun nc-ret ()
   (nc-encode-word #xD65F03C0))
+
+;;; Position tracking helpers for function linking
+(defun nc-emit-with-pos (code)
+  "Emit code and update position counter. Returns the code."
+  (let ((len (length code)))
+    (incf *codegen-pos* len)
+    code))
+
+(defun nc-record-call-fixup (fn-name)
+  "Record that a BL instruction at current position needs fixup for fn-name."
+  (push (cons *codegen-pos* fn-name) *call-fixups*))
+
+(defun nc-patch-bl-at (code pos rel-offset)
+  "Patch a BL instruction at byte position pos with rel-offset."
+  (let* ((off-s (ash rel-offset -2))
+         (off-m (logand off-s #x3FFFFFF))
+         (word (logior #x94000000 off-m))
+         (b0 (logand word #xFF))
+         (b1 (logand (ash word -8) #xFF))
+         (b2 (logand (ash word -16) #xFF))
+         (b3 (logand (ash word -24) #xFF)))
+    (setf (nth pos code) b0)
+    (setf (nth (+ pos 1) code) b1)
+    (setf (nth (+ pos 2) code) b2)
+    (setf (nth (+ pos 3) code) b3)
+    code))
+
+(defun nc-apply-fixups (code fnoffs)
+  "Apply all recorded call fixups to code."
+  (dolist (fixup *call-fixups*)
+    (let* ((bl-pos (car fixup))
+           (fn-name (cdr fixup))
+           (fn-entry (assoc fn-name fnoffs)))
+      (when fn-entry
+        (let* ((fn-pos (cdr fn-entry))
+               (rel-offset (- fn-pos bl-pos)))
+          (nc-patch-bl-at code bl-pos rel-offset)))))
+  code)
+
+(defun nc-resolve-calls (code fnoffs)
+  "Resolve (:call-fn name) markers to actual BL instructions.
+   Scans through code (a list of bytes and markers), calculates positions,
+   and replaces markers with BL instructions."
+  (labels ((calc-size (item)
+             ;; Calculate byte size of an item
+             (if (and (consp item) (eq (car item) :call-fn))
+                 4  ; BL instruction is 4 bytes
+                 1))  ; Regular byte
+           (resolve-at (items pos acc)
+             ;; Iterate through items, tracking position, resolving markers
+             (if (null items)
+                 (reverse acc)
+                 (let ((item (car items)))
+                   (if (and (consp item) (eq (car item) :call-fn))
+                       ;; This is a call marker - resolve to BL
+                       (let* ((fn-name (cadr item))
+                              (fn-entry (assoc fn-name fnoffs))
+                              (fn-pos (if fn-entry (cdr fn-entry) 0))
+                              (rel-offset (- fn-pos pos))
+                              (bl-bytes (nc-bl-offset rel-offset)))
+                         ;; Add 4 bytes of BL instruction
+                         (resolve-at (cdr items)
+                                     (+ pos 4)
+                                     (append (reverse bl-bytes) acc)))
+                       ;; Regular byte - just add it
+                       (resolve-at (cdr items)
+                                   (+ pos 1)
+                                   (cons item acc)))))))
+    (resolve-at code 0 nil)))
 
 (defun nc-movk (rd imm shift)
   (let* ((shift-s (ash shift -4))
@@ -553,14 +632,21 @@
 (defun nc-temp-guard () #x180)
 (defun nc-spill-base () #x200)
 
+;; Stack frame layout for user functions (512 bytes):
+;;   [sp, #0-#15]:   Save area (x20, lr)
+;;   [sp, #64-#191]: Temp slots (16 slots)
+;;   [sp, #192-#319]: Arg spill area (16 args max)
+;;   [sp, #320-#511]: Env variables (x20 = sp+320)
+;; Note: Env grows downward from x20, so vars are at [x20-0], [x20-8], etc.
+
 (defun nc-temp-slot (depth)
-  (let ((off (+ #x40 (* depth 8))))  ; #x40 = nc-temp-base
-    (if (>= off #x180)  ; #x180 = nc-temp-guard
-        (+ #x180 (* (- depth (ash (- #x180 #x40) -3)) 8))
+  (let ((off (+ #x40 (* depth 8))))  ; #x40 = temp base (64)
+    (if (>= off #xC0)                 ; #xC0 = temp guard (192)
+        (error "Too many temp slots: ~A" depth)
         off)))
 
 (defun nc-spill-slot (idx)
-  (+ #x200 (* idx 8)))  ; #x200 = nc-spill-base
+  (+ #xC0 (* idx 8)))  ; #xC0 = spill base (192)
 
 ;;; ============================================================
 ;;; Part 5: Prologue/Epilogue
@@ -1373,15 +1459,19 @@
            (let ((tc (nc-codegen test-ir rtaddrs fnoffs td)))
              (let ((thc (nc-codegen then-ir rtaddrs fnoffs td)))
                (let ((elc (nc-codegen else-ir rtaddrs fnoffs td)))
-                 (let ((thl (nc-count-instrs thc)))
-                   (let ((ell (nc-count-instrs elc)))
+                 ;; Use nc-code-size to correctly account for :call-fn markers
+                 ;; Layout: B.EQ | then-code | B | else-code
+                 ;; B.EQ skips to else-code: then-code + B (4) + self (4) = then_bytes + 8
+                 ;; B skips past else-code: else-code + self (4) = else_bytes + 4
+                 (let ((then-bytes (nc-code-size thc)))
+                   (let ((else-bytes (nc-code-size elc)))
                      (nc-append-all
                       (list tc
                             (nc-movz 1 0)
                             (nc-cmp-reg 0 1)
-                            (nc-b-cond (nc-cond-eq) (* (+ thl 1) 4))
+                            (nc-b-cond (nc-cond-eq) (+ then-bytes 8))  ; Skip then + B + self
                             thc
-                            (nc-b-offset (* (+ ell 1) 4))  ; Skip past else code + 1 for landing after
+                            (nc-b-offset (+ else-bytes 4))  ; Skip else + landing
                             elc)))))))))))
     ((nc-has-tag ir 'let-ir)
      ;; let-ir = (let-ir vals bir count offs)
@@ -1433,12 +1523,10 @@
                 (restore-x24 (nc-ldr-offset 24 31 xs))
                 (load-args (gl 0 nil))
                 (set-argc (nc-movz 23 na))
-                (call-fn (nc-bl-offset 0))
-                (r1 (append save-x24 args-code))
-                (r2 (append r1 restore-x24))
-                (r3 (append r2 load-args))
-                (r4 (append r3 set-argc)))
-           (append r4 call-fn)))))
+                ;; Emit special marker instead of BL: (:call-fn name)
+                ;; This will be resolved to actual BL in nc-resolve-calls
+                (call-marker (list (list :call-fn fnm))))
+           (append save-x24 args-code restore-x24 load-args set-argc call-marker)))))
     ((nc-has-tag ir 'progn-ir)
      ;; progn-ir = (progn-ir (ir1 ir2 ... irn))
      ;; Generate code for each form, keep result of last
@@ -1777,22 +1865,55 @@
          (bir (nc-compile body penv rfenv)))
     (list name params bir pb)))
 
-(defun nc-compile-forms-h (forms env fenv)
-  (if (consp forms)
+;; Two-pass compilation for mutual recursion support
+;; Pass 1: Collect all defun names into fenv with placeholder entries
+;; Pass 2: Compile function bodies with complete fenv
+
+(defun nc-collect-defun-names (forms acc)
+  "Pass 1: Collect all defun names from forms"
+  (if (null forms)
+      acc
+      (let ((f (car forms)))
+        (if (and (consp f) (eq (car f) 'defun))
+            (nc-collect-defun-names (cdr forms) (cons (list (cadr f)) acc))
+            (nc-collect-defun-names (cdr forms) acc)))))
+
+(defun nc-compile-defuns (forms env fenv acc)
+  "Pass 2: Compile all defuns using complete fenv"
+  (if (null forms)
+      acc
       (let ((f (car forms)))
         (if (and (consp f) (eq (car f) 'defun))
             (let* ((nm (cadr f))
                    (ps (caddr f))
                    (bd (cadddr f))
-                   (cf (nc-compile-defun nm ps bd env fenv))
-                   (nfenv (cons (cons nm cf) fenv))
-                   (rr (nc-compile-forms-h (cdr forms) env nfenv)))
-              (list (cons cf (car rr)) (cadr rr)))
-            (list nil (nc-compile f env fenv))))
-      (list nil (list 'lit 0))))
+                   (cf (nc-compile-defun nm ps bd env fenv)))
+              (nc-compile-defuns (cdr forms) env fenv (cons cf acc)))
+            (nc-compile-defuns (cdr forms) env fenv acc)))))
+
+(defun nc-find-main-form (forms)
+  "Find the last non-defun form (the main expression)"
+  (labels ((find-last (fs last-non-defun)
+             (if (null fs)
+                 last-non-defun
+                 (let ((f (car fs)))
+                   (if (and (consp f) (eq (car f) 'defun))
+                       (find-last (cdr fs) last-non-defun)
+                       (find-last (cdr fs) f))))))
+    (find-last forms nil)))
 
 (defun nc-compile-forms (forms)
-  (nc-compile-forms-h forms nil nil))
+  "Two-pass compilation: first collect names, then compile with complete fenv"
+  ;; Pass 1: Collect all defun names
+  (let* ((fn-names (nc-collect-defun-names forms nil))
+         ;; Build fenv with all function names as placeholders
+         (fenv fn-names))
+    ;; Pass 2: Compile all defuns with complete fenv
+    (let* ((compiled-fns (reverse (nc-compile-defuns forms nil fenv nil)))
+           ;; Find and compile the main expression
+           (main-form (nc-find-main-form forms))
+           (main-ir (if main-form (nc-compile main-form nil fenv) (list 'lit 0))))
+      (list compiled-fns main-ir))))
 
 (defun nc-gen-param-stores (params base idx acc)
   (if (null params)
@@ -1802,13 +1923,26 @@
                         (nc-str-offset 22 21 0))))
         (nc-gen-param-stores (cdr params) base (+ idx 1) (append acc st)))))
 
+(defun nc-fn-prologue ()
+  "Function prologue: allocate frame, save caller's x20/lr, set up new env base"
+  (append
+   (nc-sub-imm 31 31 #x200)    ; SUB sp, sp, #512 (allocate function frame)
+   (nc-stp-offset 20 30 31 0)  ; STP x20, lr, [sp, #0] (save caller's x20 and return addr)
+   (nc-add-imm 20 31 #x140)))  ; ADD x20, sp, #320 (env base past spill area)
+
+(defun nc-fn-epilogue ()
+  "Function epilogue: restore caller's x20/lr, deallocate frame, return"
+  (append
+   (nc-ldp-offset 20 30 31 0)  ; LDP x20, lr, [sp, #0] (restore caller's x20 and lr)
+   (nc-add-imm 31 31 #x200)))  ; ADD sp, sp, #512 (deallocate function frame)
+
 (defun nc-codegen-fn (fn rtaddrs fnoffs)
   (let* ((ps (cadr fn))
          (bir (caddr fn))
          (pb (cadddr fn))
          (pc (nc-gen-param-stores ps pb 0 nil))
          (bc (nc-codegen bir rtaddrs fnoffs 0)))
-    (append pc bc (nc-ret))))
+    (append (nc-fn-prologue) pc bc (nc-fn-epilogue) (nc-ret))))
 
 (defun nc-codegen-main (mir rtaddrs)
   (append (nc-prologue)
@@ -1912,12 +2046,71 @@
          (bc (nc-codegen body rtaddrs fnoffs 0)))
     (append pc bc (nc-ret))))
 
+(defun nc-code-size (code)
+  "Calculate byte size of code that may contain (:call-fn name) markers.
+   Each marker represents a 4-byte BL instruction."
+  (labels ((calc (items acc)
+             (if (null items)
+                 acc
+                 (let ((item (car items)))
+                   (if (and (consp item) (eq (car item) :call-fn))
+                       (calc (cdr items) (+ acc 4))
+                       (calc (cdr items) (+ acc 1)))))))
+    (calc code 0)))
+
+(defun nc-build-fnoffs (fns offset acc)
+  "Build function offset table from list of compiled functions.
+   Returns alist of (name . byte-offset).
+   Each function's code is generated with temporary nil fnoffs to get size."
+  (if (null fns)
+      (reverse acc)
+      (let* ((fn (car fns))
+             (name (car fn))
+             ;; Generate code to calculate size (will regenerate with correct fnoffs later)
+             (code (nc-codegen-fn fn nil nil))
+             ;; Use nc-code-size to handle markers
+             (size (nc-code-size code))
+             (entry (cons name offset)))
+        (nc-build-fnoffs (cdr fns) (+ offset size) (cons entry acc)))))
+
+(defun nc-codegen-all-fns (fns rtaddrs fnoffs acc)
+  "Generate code for all functions with correct fnoffs."
+  (if (null fns)
+      acc
+      (let* ((fn (car fns))
+             (code (nc-codegen-fn fn rtaddrs fnoffs)))
+        (nc-codegen-all-fns (cdr fns) rtaddrs fnoffs (append acc code)))))
+
 (defun nc-compile-program (forms rtaddrs)
+  "Compile forms to bytecode with function linking.
+   Layout: prologue + main-code + epilogue + functions
+   Functions are placed after main, and call-fn generates forward BL."
   (let* ((r (nc-compile-forms forms))
          (fns (car r))
-         (mir (cadr r))
-         (mc (nc-codegen-main mir rtaddrs)))
-    mc))
+         (mir (cadr r)))
+    (if (null fns)
+        ;; No functions defined - simple case
+        (nc-codegen-main mir rtaddrs)
+        ;; Functions defined - need linking
+        (let* (;; First, generate main code with nil fnoffs to get size
+               ;; This code contains (:call-fn name) markers
+               (main-code-temp (append (nc-prologue)
+                                       (nc-codegen mir rtaddrs nil 0)
+                                       (nc-epilogue)))
+               ;; Use nc-code-size to handle markers
+               (main-size (nc-code-size main-code-temp))
+               ;; Build fnoffs starting after main code
+               (fnoffs (nc-build-fnoffs fns main-size nil))
+               ;; Generate main code again - markers remain, fnoffs now known
+               (main-code (append (nc-prologue)
+                                  (nc-codegen mir rtaddrs fnoffs 0)
+                                  (nc-epilogue)))
+               ;; Generate function code with fnoffs (functions can call each other)
+               (fn-code (nc-codegen-all-fns fns rtaddrs fnoffs nil))
+               ;; Combine all code (still has markers)
+               (all-code (append main-code fn-code)))
+          ;; Resolve all markers to actual BL instructions
+          (nc-resolve-calls all-code fnoffs)))))
 
 ;;; ============================================================
 ;;; Part 9: Entry Point
