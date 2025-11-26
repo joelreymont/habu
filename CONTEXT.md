@@ -2,11 +2,11 @@
 
 **Session Date**: November 22-26, 2025
 **Focus**: Self-hosting ARM64 Lisp compiler with native executable generation
-**Last Updated**: November 26, 2025 (Bytecode Execution Working)
+**Last Updated**: November 26, 2025 (Bitwise Operations Added)
 
 ## Session Summary (November 26, 2025)
 
-This session completed the bootstrap compiler ARM64 codegen and verified bytecode execution.
+This session completed the bootstrap compiler ARM64 codegen, verified bytecode execution, and added bitwise operations.
 
 **Accomplishments**:
 1. Reorganized file structure: `native-compiler.lisp` -> `bootstrap/compiler.lisp`
@@ -20,7 +20,9 @@ This session completed the bootstrap compiler ARM64 codegen and verified bytecod
 9. **Implemented iteration constructs (dotimes, dolist)**
 10. **Fixed prologue/epilogue to match production compiler**
 11. **Fixed if-ir branch offset calculation**
-12. All tests pass: 48 IR evaluator + 25 codegen + 10 pipeline + 8 execution
+12. **Implemented function linking for multi-function programs**
+13. **Implemented bitwise operations (logand, logior, logxor, ash)**
+14. All tests pass: 48 IR evaluator + 25 codegen + 10 pipeline + 8 execution + 13 function linking + 18 bitwise
 
 **File Organization**:
 - `bootstrap/compiler.lisp` - Pure Habu bootstrap compiler (nc-* functions)
@@ -45,7 +47,8 @@ This session completed the bootstrap compiler ARM64 codegen and verified bytecod
 - All 91 tests passing: 48 IR + 25 codegen + 10 pipeline + 8 execution
 
 **Supported Features in Bootstrap Compiler**:
-- Arithmetic: +, -, *, /, mod, rem
+- Arithmetic: +, -, *, /, mod, rem, 1+, 1-
+- Bitwise: logand, logior, logxor, ash
 - Comparisons: =, <, >, <=, >=
 - Control flow: if, cond, when, unless, progn
 - Boolean: and, or, not
