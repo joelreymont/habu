@@ -108,6 +108,27 @@
 ;; Test 29: not false
 (run-nc-test "not-false" "(not 1)" 0)
 
+;; Test 30: cond with first match
+(run-nc-test "cond-first" "(cond ((= 1 1) 100) ((= 2 2) 200) (t 300))" 100)
+
+;; Test 31: cond with second match
+(run-nc-test "cond-second" "(cond ((= 1 2) 100) ((= 2 2) 200) (t 300))" 200)
+
+;; Test 32: cond with t clause
+(run-nc-test "cond-t" "(cond ((= 1 2) 100) ((= 2 3) 200) (t 300))" 300)
+
+;; Test 33: when - true
+(run-nc-test "when-true" "(when (= 1 1) 42)" 42)
+
+;; Test 34: when - false
+(run-nc-test "when-false" "(when (= 1 2) 42)" 0)
+
+;; Test 35: unless - true (should not execute)
+(run-nc-test "unless-true" "(unless (= 1 1) 42)" 0)
+
+;; Test 36: unless - false (should execute)
+(run-nc-test "unless-false" "(unless (= 1 2) 42)" 42)
+
 ;; Summary
 (format t "~%=== Results: ~A passed, ~A failed ===~%"
         *tests-passed* *tests-failed*)
