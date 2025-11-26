@@ -6,60 +6,46 @@
 
 ## Session Summary (November 26, 2025)
 
-This session focused on fixing critical bugs in the native compiler and achieving full IR evaluation.
+This session focused on organizing the bootstrap compiler and implementing mutual recursion support.
 
 **Accomplishments**:
-1. Fixed tree-shaking IR traversal for LET-EXPR, IF-EXPR, PROGN nodes
-2. Verified all 114 compiler functions compile to native ARM64
-3. Tested native reader functionality (parsing numbers from strings)
-4. Demonstrated native compile+eval: `(+ (* 3 4) 5)` evaluates to 17
-5. **Fixed nested recursive calls bug** in call-fn codegen
-6. **Fixed nc-env-extend nested call bug** - avoid nested recursive calls in args
-7. **Fixed numberp check for offset 0** - Habu treats 0 as falsey
-8. **Fixed global variable initialization** - inlined constants for delivery
-9. **Fixed all nc-codegen cases** - refactored to use sequential binary appends
-10. All 10 native compiler tests pass
-11. Cleaned up debug functions from native-compiler.lisp
-12. **Discovered Habu let* bug** - bindings 16-19 cause incorrect returns
+1. Reorganized file structure: `native-compiler.lisp` -> `bootstrap/compiler.lisp`
+2. Reorganized codegen: `habu-arm64-codegen-sbcl.lisp` -> `arm64/codegen-sbcl.lisp`
+3. Moved 87 markdown files to `docs/` subdirectories
+4. Created HABU package for all Habu code to avoid SBCL conflicts
+5. Renamed `habu-deliver` to `deliver`
+6. **Implemented two-pass compilation for mutual recursion**
+7. All 17 bootstrap compiler tests pass including mutual recursion
 
-**Bug Fix 1**: nc-env-extend nested call bug
-- Root cause: `(append (reverse (add-bs ...)) env)` had nested recursive calls
-- Fix: Used let* to sequence operations, avoiding nested calls in argument position
-- Also fixed inner labels functions to use let for intermediate values
+**File Organization**:
+- `bootstrap/compiler.lisp` - Pure Habu bootstrap compiler (nc-* functions)
+- `arm64/codegen-sbcl.lisp` - Full ARM64 codegen with SBCL dependencies
+- `deliver.lisp` - Standalone executable delivery
+- `docs/` subdirectories: architecture, bootstrap, codegen, plans, reference, repl, runtime, self-hosting, sessions, status, testing
 
-**Bug Fix 2**: Variable lookup for offset 0
-- Root cause: `(if off ...)` failed when off=0 because Habu treats 0 as falsey
-- Fix: Changed to `(if (numberp off) ...)` to correctly detect found variables
+**HABU Package**:
+- All bootstrap compiler code in HABU package
+- SBCL compatibility shims for: string-length, string-ref, make-vector, vector-set, make-string-from-vector
+- Exports: nc-read-all, nc-compile, nc-eval-ir, nc-eval-forms, nc-codegen, main
 
-**Bug Fix 3**: Global variable initialization for delivery
-- Root cause: Top-level `setq` not executed in delivered executables
-- Fix: Replaced global variables with inline constants using `defun` wrappers
-- Constants: frame-size=#xFF0, env-base=#x180, temp-base=#x40, etc.
+**Two-Pass Compilation** (for mutual recursion):
+- Pass 1: Collect all defun names into fenv with placeholder entries
+- Pass 2: Compile function bodies with complete fenv, enabling forward references
+- Result: `(defun odd? ...) (defun even? ...) (even? 4)` now works correctly
 
-**Bug Fix 4**: nc-codegen multi-arg appends
-- Root cause: Multi-arg append calls trigger nested call bug
-- Fix: Refactored all codegen cases (sub, mul, cmp-*, cons-ir, car-ir, cdr-ir,
-  if-ir, let-ir, call-fn) to use sequential binary appends in let*
-
-**Bug Fix 5**: nc-codegen with nc-append-all pattern
-- Root cause: 16-19 binding let* with nested nc-codegen calls returns 11
-- Fix: Added `nc-append-all` helper and refactored all binary ops (add, sub, mul,
-  cmp-eq, cmp-lt, cmp-gt, cmp-le, cmp-ge), cons-ir, car-ir, cdr-ir, if-ir to use it
-- Pattern: Use nested single-binding let forms + nc-append-all with list of instruction sequences
-- All 10 native compiler tests pass with this fix
-
-**Native Compiler Status**:
-- native-compiler.lisp: Full read-compile-eval pipeline working
+**Bootstrap Compiler Status**:
+- `bootstrap/compiler.lisp`: Full read-compile-eval via IR evaluator
 - Parses Lisp source strings, compiles to IR, evaluates IR
-- Exit code 17 for `(+ (* 3 4) 5)` - correct!
-- 10 test cases all passing
-- Tree-shaking: 61% reduction (100 of 162 functions removed)
-- Codegen path working after nc-append-all workaround
+- 17 test cases: arithmetic, let, comparisons, defun, recursion, mutual recursion, fibonacci
+- All tests passing
+
+**Known Limitations**:
+- Higher-order functions (funcall) not yet supported in bootstrap
+- `(f x)` where f is a parameter requires funcall support
 
 **Next Steps**:
-1. Complete Stage 2 bootstrap
-2. Add more runtime functions (substring, etc.)
-3. Test full compiler self-hosting
+1. Implement funcall/higher-order function support in bootstrap compiler
+2. Complete Stage 2 bootstrap (ARM64 codegen path)
 
 ## Current Status Summary
 
@@ -559,7 +545,8 @@ All 10 tests pass!
 
 | Limitation | Impact | Workaround |
 |-----------|--------|------------|
-| **Forward references** | Can't call function B from A if B is defined later | Define helper functions before callers |
+| **Higher-order functions** | Can't pass functions as arguments (funcall) | Use direct calls only |
+| **Forward references** | ~~Can't call function B from A if B is defined later~~ | **FIXED** - Two-pass compilation now supports mutual recursion |
 
 ### Test Results Summary
 
