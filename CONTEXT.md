@@ -2,11 +2,11 @@
 
 **Session Date**: November 22-26, 2025
 **Focus**: Self-hosting ARM64 Lisp compiler with native executable generation
-**Last Updated**: November 26, 2025 (Self-hosting Primitives)
+**Last Updated**: November 26, 2025 (Native Mach-O Linker)
 
 ## Session Summary (November 26, 2025)
 
-This session completed the bootstrap compiler ARM64 codegen, verified bytecode execution, added bitwise operations, mutation operations, multiple values support, implemented standalone executable delivery, reorganized packages, added labels/flet support, fixed a critical nested function call bug, and added self-hosting primitives.
+This session completed the bootstrap compiler ARM64 codegen, verified bytecode execution, added bitwise operations, mutation operations, multiple values support, implemented standalone executable delivery, reorganized packages, added labels/flet support, fixed a critical nested function call bug, added self-hosting primitives, and fixed mutual recursion with the FNTAB approach.
 
 **Accomplishments**:
 1. Reorganized file structure: `native-compiler.lisp` -> `bootstrap/compiler.lisp`
@@ -27,11 +27,17 @@ This session completed the bootstrap compiler ARM64 codegen, verified bytecode e
 16. **Fixed LET/LET*/DEFUN to handle multiple body forms**
 17. **Implemented bootstrap delivery system (nc-deliver)**
 18. **Reorganized HABU-SYS and HABU packages with clean public API**
-19. **Implemented labels/flet using Z-combinator transformation**
+19. **Implemented labels/flet using FNTAB approach** - late binding via function table
 20. **Fixed nested function call spill slot collision** - nested call-fn in arguments now use depth-aware spill slots
 21. **Added self-hosting primitives**: vector operations, string-upcase, write-bytes
-22. All tests pass: 48 compiler + 25 codegen
-23. Standalone executables work: factorial(6)=720, fib(10)=55
+22. **Fixed mutual recursion** - FNTAB approach passes function table at call time
+23. **Fixed lambda-ref offset calculation** - fn-offset already in bytes
+24. **Fixed inline lambda calls** - ((lambda (x) body) args) now compiles correctly
+25. **Fixed capture copy clobbering** - save params before capture copy
+26. All 29 bootstrap tests pass including mutual recursion (even?/odd?)
+27. Standalone executables work: factorial(6)=720, fib(10)=55
+28. **Native Mach-O linker** - generates standalone ARM64 executables without clang
+29. **Untag wrapper for exit codes** - `wrap-bytecode-for-exit` adds LSR x0, x0, #4 before RET
 
 **Package Structure** (November 26, 2025):
 - HABU-SYS: System/runtime primitives (string-length, string-ref, make-vector, etc.)
@@ -44,12 +50,30 @@ This session completed the bootstrap compiler ARM64 codegen, verified bytecode e
 - `deliver.lisp` - Production standalone executable delivery
 - `docs/` subdirectories: architecture, bootstrap, codegen, plans, reference, repl, runtime, self-hosting, sessions, status, testing
 
-**Labels Implementation** (Z-Combinator):
-- Transform `(labels ((fn params body)) main)` into:
-  `(let ((fn nil)) (setq fn (lambda (self params) body')) main')`
-- Body rewrites `(fn args)` -> `(funcall self self args)`
-- Main rewrites `(fn args)` -> `(funcall fn fn args)`
-- Avoids closure capture timing issue by passing self as argument
+**Labels Implementation** (FNTAB Approach - November 26, 2025):
+The Z-combinator approach failed for mutual recursion because closures captured nil values
+before the mutually-recursive functions were assigned. The FNTAB (function table) approach
+fixes this by using late binding - functions are looked up at call time, not capture time.
+
+Transform `(labels ((f1 (a) ...) (f2 (b) ...)) body)` into:
+```lisp
+(let ((f1 nil) (f2 nil))
+  (setq f1 (lambda (FNTAB a)
+             (let ((f1 (car FNTAB)) (f2 (car (cdr FNTAB))))
+               ...body with (fn args) -> (funcall fn FNTAB args)...)))
+  (setq f2 (lambda (FNTAB b)
+             (let ((f1 (car FNTAB)) (f2 (car (cdr FNTAB))))
+               ...body with (fn args) -> (funcall fn FNTAB args)...)))
+  (let ((FNTAB (cons f1 (cons f2 nil))))
+    ...main body with (fn args) -> (funcall fn FNTAB args)...))
+```
+
+Key points:
+- FNTAB is a cons list of all labels functions, built AFTER all are assigned
+- Each function receives FNTAB as first argument
+- Functions unpack FNTAB at call time using car/cdr chains
+- All calls pass FNTAB as first argument: `(funcall fn FNTAB args)`
+- This ensures mutual recursion works: even? and odd? can call each other
 
 **HABU Package Exports**:
 - Public API: read-all, compile-program, deliver, deliver-file
@@ -311,12 +335,25 @@ FASL file (.fasl) or C Template
 Standalone Mach-O Executable
 ```
 
-**Planned (native linker)**:
+**Native Mach-O Linker** (November 26, 2025 - IMPLEMENTED):
 ```
 Lisp Source -> [Compiler] -> ARM64 Code -> [Native Mach-O Linker] -> Executable
 ```
 
-The native linker will eliminate the clang dependency for delivery.
+The native linker (`macho-linker.lisp`) generates standalone Mach-O executables without clang:
+- `write-macho-executable`: Creates minimal Mach-O with proper load commands
+- `deliver-native`: Wraps bytecode with untag operation for exit codes
+- `wrap-bytecode-for-exit`: Inserts `lsr x0, x0, #4` before `ret` to untag result
+
+**Test Results** (8/8 basic tests pass):
+- Arithmetic: `(+ 20 22)` -> 42
+- Multiplication: `(* 6 7)` -> 42
+- Nested: `(+ (* 3 4) (+ 5 7))` -> 24
+- Conditionals: `(if (= 1 1) 10 20)` -> 10
+- Let bindings: `(let ((x 7)) (* x 6))` -> 42
+
+**Limitation**: Recursive functions require runtime support (x19 register).
+Simple expressions and non-recursive defuns work in pure native mode.
 
 ---
 
