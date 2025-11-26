@@ -268,6 +268,51 @@
 (defun nc-cond-gt () 12)
 (defun nc-cond-ge () 10)
 
+(defun nc-string-to-char-codes (str)
+  "Convert string to list of character codes"
+  (labels ((iter (i acc)
+             (if (>= i (length str))
+                 (reverse acc)
+                 (iter (+ i 1) (cons (char-code (char str i)) acc)))))
+    (iter 0 nil)))
+
+(defun nc-codegen-string-from-chars (chars td)
+  "Generate code to build a string from character codes.
+   Returns code that leaves the string in x0."
+  (let* ((len (length chars))
+         (vec-slot (nc-temp-slot td))
+         ;; Allocate vector: movz x0, len; ldr x11, [x19, #56]; blr x11
+         ;; Runtime table index 7 = make_vector at offset 56
+         (alloc (nc-append-all
+                 (list (nc-movz 0 len)
+                       (nc-ldr-offset 11 19 56)
+                       (nc-blr 11)
+                       (nc-str-offset 0 31 vec-slot)))))
+    ;; Store each character: ldr x0, [sp, vec-slot]; movz x1, idx; movz x2, tagged-ch; ldr x11, [x19, #64]; blr x11
+    ;; Runtime table index 8 = vector_set at offset 64
+    (labels ((store-chars (chs idx acc)
+               (if (null chs)
+                   acc
+                   (let* ((ch (car chs))
+                          (tagged (ash ch 4))
+                          (store-code (nc-append-all
+                                       (list (nc-ldr-offset 0 31 vec-slot)
+                                             (nc-movz 1 idx)
+                                             (if (< tagged #x10000)
+                                                 (nc-movz 2 tagged)
+                                                 (nc-load-addr 2 tagged))
+                                             (nc-ldr-offset 11 19 64)
+                                             (nc-blr 11)))))
+                     (store-chars (cdr chs) (+ idx 1) (append acc store-code))))))
+      (let* ((stores (store-chars chars 0 nil))
+             ;; Make string from vector: ldr x0, [sp, vec-slot]; ldr x9, [x19, #80]; blr x9
+             ;; Runtime table index 10 = make_string_from_vector at offset 80
+             (make-str (nc-append-all
+                        (list (nc-ldr-offset 0 31 vec-slot)
+                              (nc-ldr-offset 9 19 80)
+                              (nc-blr 9)))))
+        (nc-append-all (list alloc stores make-str))))))
+
 ;;; ============================================================
 ;;; Part 2: Utility Functions (nc-util-*)
 ;;; ============================================================
@@ -1115,6 +1160,16 @@
     ((nc-has-tag ir 'nil-ir)
      ;; nil is represented as tagged 0 (fixnum 0) in native code
      (nc-movz 0 0))
+    ((nc-has-tag ir 'sym-lit)
+     ;; Symbol literal: build string from chars, then call make-symbol-from-string
+     ;; Runtime table index 11 = make_symbol_from_string at offset 88
+     (let* ((name (cadr ir))
+            (chars (nc-string-to-char-codes name))
+            (str-code (nc-codegen-string-from-chars chars td)))
+       (nc-append-all
+        (list str-code
+              (nc-ldr-offset 9 19 88)
+              (nc-blr 9)))))
     ((nc-has-tag ir 'var)
      (let* ((off (cadr ir))
             (off8 (* off 8))
@@ -1437,6 +1492,276 @@
                           (nc-mul-reg 2 2 1)
                           (nc-sub-reg 0 0 2)
                           (nc-lsl-imm 0 0 4)))))))))))
+    ((nc-has-tag ir 'lambda-ir)
+     ;; lambda-ir should be lifted to lambda-ref before codegen
+     ;; If we encounter it directly, it's an error - return 0
+     (nc-movz 0 0))
+    ((nc-has-tag ir 'lambda-ref)
+     ;; lambda-ref = (lambda-ref name free-var-offsets)
+     ;; Create a closure:
+     ;; 1. Get code pointer from code base + lambda offset (from fnoffs)
+     ;; 2. Create env vector with captured values
+     ;; 3. Call make-closure
+     ;; Runtime table: [3] make-closure at offset 24, [6] code-base at offset 48
+     ;;                [7] make-vector at offset 56, [8] vector-set at offset 64
+     (let* ((name (cadr ir))
+            (free-offsets (caddr ir))
+            (capture-count (length free-offsets))
+            (fn-entry (assoc name fnoffs))
+            (fn-offset (if fn-entry (cdr fn-entry) 0))
+            (offset-bytes (* fn-offset 4))
+            (code-slot (nc-temp-slot td))
+            (env-slot (nc-temp-slot (+ td 1))))
+       (if (= capture-count 0)
+           ;; No captures - simple closure with nil env
+           (nc-append-all
+            (list
+             ;; Get code pointer
+             (nc-ldr-offset 9 19 48)            ; x9 = code base
+             (nc-load-addr 10 offset-bytes)    ; x10 = offset
+             (nc-add-reg 0 9 10)               ; x0 = code ptr
+             (nc-movz 1 0)                     ; x1 = nil (no env)
+             (nc-ldr-offset 11 19 24)          ; make-closure
+             (nc-blr 11)))
+           ;; Has captures - build env vector
+           (let ((capture-stores
+                  (labels ((store-caps (offs idx acc)
+                             (if (null offs)
+                                 acc
+                                 (let* ((off (car offs))
+                                        (store
+                                         (nc-append-all
+                                          (list
+                                           (nc-ldr-offset 0 31 env-slot)        ; x0 = vector
+                                           (nc-movz 1 idx)                      ; x1 = index
+                                           (nc-sub-imm 2 20 (* off 8))          ; x2 = x20 - off*8
+                                           (nc-ldr-offset 2 2 0)                ; x2 = captured value
+                                           (nc-ldr-offset 11 19 64)             ; vector-set
+                                           (nc-blr 11)))))
+                                   (store-caps (cdr offs) (+ idx 1) (append acc store))))))
+                    (store-caps free-offsets 0 nil))))
+             (nc-append-all
+              (list
+               ;; Get code pointer and save
+               (nc-ldr-offset 9 19 48)          ; x9 = code base
+               (nc-load-addr 10 offset-bytes)   ; x10 = offset
+               (nc-add-reg 0 9 10)              ; x0 = code ptr
+               (nc-str-offset 0 31 code-slot)   ; save code ptr
+               ;; Allocate env vector
+               (nc-movz 0 capture-count)        ; x0 = length
+               (nc-ldr-offset 11 19 56)         ; make-vector
+               (nc-blr 11)                      ; x0 = vector
+               (nc-str-offset 0 31 env-slot)    ; save vector
+               ;; Store captures
+               capture-stores
+               ;; Make closure
+               (nc-ldr-offset 0 31 code-slot)   ; x0 = code ptr
+               (nc-ldr-offset 1 31 env-slot)    ; x1 = env vector
+               (nc-ldr-offset 11 19 24)         ; make-closure
+               (nc-blr 11)))))))
+    ((nc-has-tag ir 'funcall-ir)
+     ;; funcall-ir = (funcall-ir fn-ir args-ir-list)
+     ;; 1. Evaluate fn-ir to get closure
+     ;; 2. Extract code pointer and env from closure
+     ;; 3. Set up args and call
+     ;; Runtime table: [4] closure-code at offset 32, [5] closure-env at offset 40
+     (let* ((fn-ir (cadr ir))
+            (args-ir (caddr ir))
+            (num-args (length args-ir))
+            ;; Temp slots: 0=x24-save, 1=closure, 2=code, 3=env, 4..4+n-1=args
+            (x24-slot (nc-temp-slot td))
+            (closure-slot (nc-temp-slot (+ td 1)))
+            (code-slot (nc-temp-slot (+ td 2)))
+            (env-slot (nc-temp-slot (+ td 3)))
+            (arg-base (+ td 4))
+            (nested-td (+ arg-base num-args))
+            ;; Evaluate function
+            (fn-code (nc-codegen fn-ir rtaddrs fnoffs nested-td)))
+       (labels ((gen-args (airs idx acc)
+                  (if (null airs)
+                      acc
+                      (let* ((rs (if (> idx 0) (nc-ldr-offset 24 31 x24-slot) nil))
+                             (ac (nc-codegen (car airs) rtaddrs fnoffs nested-td))
+                             (st (nc-str-offset 0 31 (nc-temp-slot (+ arg-base idx)))))
+                        (gen-args (cdr airs) (+ idx 1)
+                                  (nc-append-all (list acc rs ac st))))))
+                (load-args (idx acc)
+                  (if (>= idx num-args)
+                      acc
+                      (let ((ld (nc-ldr-offset idx 31 (nc-temp-slot (+ arg-base idx)))))
+                        (load-args (+ idx 1) (append acc ld))))))
+         (nc-append-all
+          (list
+           ;; Save x24
+           (nc-str-offset 24 31 x24-slot)
+           ;; Evaluate and save closure
+           fn-code
+           (nc-str-offset 0 31 closure-slot)
+           ;; Get code pointer
+           (nc-ldr-offset 9 19 32)              ; closure-code
+           (nc-blr 9)                           ; x0 = code ptr
+           (nc-str-offset 0 31 code-slot)
+           ;; Get closure env and save
+           (nc-ldr-offset 0 31 closure-slot)
+           (nc-ldr-offset 9 19 40)              ; closure-env
+           (nc-blr 9)                           ; x0 = env
+           (nc-str-offset 0 31 env-slot)
+           ;; Restore x24 for arg evaluation
+           (nc-ldr-offset 24 31 x24-slot)
+           ;; Evaluate args
+           (gen-args args-ir 0 nil)
+           ;; Load args into registers
+           (load-args 0 nil)
+           ;; Set x24 to callee's env
+           (nc-ldr-offset 24 31 env-slot)
+           ;; Set argc
+           (nc-movz 23 num-args)
+           ;; Load code pointer and call
+           (nc-ldr-offset 9 31 code-slot)
+           (nc-blr 9)
+           ;; Restore x24
+           (nc-ldr-offset 24 31 x24-slot))))))
+    ((nc-has-tag ir 'dotimes-ir)
+     ;; dotimes-ir = (dotimes-ir var count-ir body result-form compile-env)
+     ;; Generate counted loop:
+     ;; 1. Evaluate count, save to slot
+     ;; 2. Initialize counter to 0
+     ;; 3. Loop: compare counter to count, branch if >=
+     ;; 4. Store counter as var, execute body
+     ;; 5. Increment counter, branch back
+     ;; 6. Evaluate result with final counter value
+     (let* ((var (cadr ir))
+            (count-ir (caddr ir))
+            (body (cadddr ir))
+            (result-form (nth 4 ir))
+            (compile-env (nth 5 ir))
+            ;; Temp slots: 0=count, 1=counter, 2=x24-save
+            (count-slot (nc-temp-slot td))
+            (counter-slot (nc-temp-slot (+ td 1)))
+            (x24-slot (nc-temp-slot (+ td 2)))
+            (body-td (+ td 3))
+            ;; Compile count expression
+            (count-code (nc-codegen count-ir rtaddrs fnoffs body-td))
+            ;; Compile body with var at offset 0 in extended env
+            (new-env (nc-env-extend (list (list var)) compile-env))
+            (body-ir (if (null (cdr body))
+                         (nc-compile (car body) new-env nil)
+                         (nc-compile (cons 'progn body) new-env nil)))
+            (body-code (nc-codegen body-ir rtaddrs fnoffs body-td))
+            (body-instrs (nc-count-instrs body-code))
+            ;; Result compilation
+            (result-ir (if result-form
+                           (nc-compile result-form new-env nil)
+                           (list 'lit 0)))
+            (result-code (nc-codegen result-ir rtaddrs fnoffs body-td)))
+       (nc-append-all
+        (list
+         ;; Save x24
+         (nc-str-offset 24 31 x24-slot)
+         ;; Evaluate and save count
+         count-code
+         (nc-str-offset 0 31 count-slot)
+         ;; Initialize counter to 0
+         (nc-movz 0 0)
+         (nc-str-offset 0 31 counter-slot)
+         ;; Loop start: load counter and count, compare
+         ;; Loop test: 4 instrs (ldr counter, ldr count, cmp, b.ge)
+         (nc-ldr-offset 0 31 counter-slot)
+         (nc-ldr-offset 1 31 count-slot)
+         (nc-cmp-reg 0 1)
+         ;; Branch past body + incr + loop-back if counter >= count
+         ;; Body instrs + store var (4) + incr (4) + branch back (1) = body-instrs + 9
+         (nc-b-cond (nc-cond-ge) (* (+ body-instrs 9) 4))
+         ;; Store counter as var (at offset 0 from x20)
+         (nc-ldr-offset 0 31 counter-slot)
+         (nc-sub-imm 1 20 0)  ; x1 = x20 - 0
+         (nc-str-offset 0 1 0)
+         ;; Restore x24 for body
+         (nc-ldr-offset 24 31 x24-slot)
+         ;; Execute body
+         body-code
+         ;; Increment counter
+         (nc-ldr-offset 0 31 counter-slot)
+         (nc-add-imm 0 0 #x10)  ; add tagged 1
+         (nc-str-offset 0 31 counter-slot)
+         ;; Branch back to loop start
+         ;; Distance: -(loop test (4) + store var (4) + body + incr (3))
+         (nc-b-offset (- (* (+ body-instrs 11) 4)))
+         ;; After loop: evaluate result with final counter
+         (nc-ldr-offset 0 31 counter-slot)
+         (nc-sub-imm 1 20 0)
+         (nc-str-offset 0 1 0)
+         (nc-ldr-offset 24 31 x24-slot)
+         result-code))))
+    ((nc-has-tag ir 'dolist-ir)
+     ;; dolist-ir = (dolist-ir var list-ir body result-form compile-env)
+     ;; Generate list iteration loop:
+     ;; 1. Evaluate list, save to slot
+     ;; 2. Loop: check if null, branch if yes
+     ;; 3. Get car, store as var, execute body
+     ;; 4. Get cdr, save, branch back
+     ;; 5. Evaluate result
+     (let* ((var (cadr ir))
+            (list-ir (caddr ir))
+            (body (cadddr ir))
+            (result-form (nth 4 ir))
+            (compile-env (nth 5 ir))
+            ;; Temp slots: 0=list-ptr, 1=x24-save
+            (list-slot (nc-temp-slot td))
+            (x24-slot (nc-temp-slot (+ td 1)))
+            (body-td (+ td 2))
+            ;; Compile list expression
+            (list-code (nc-codegen list-ir rtaddrs fnoffs body-td))
+            ;; Compile body with var at offset 0 in extended env
+            (new-env (nc-env-extend (list (list var)) compile-env))
+            (body-ir (if (null (cdr body))
+                         (nc-compile (car body) new-env nil)
+                         (nc-compile (cons 'progn body) new-env nil)))
+            (body-code (nc-codegen body-ir rtaddrs fnoffs body-td))
+            (body-instrs (nc-count-instrs body-code))
+            ;; Result compilation
+            (result-ir (if result-form
+                           (nc-compile result-form new-env nil)
+                           (list 'lit 0)))
+            (result-code (nc-codegen result-ir rtaddrs fnoffs body-td)))
+       (nc-append-all
+        (list
+         ;; Save x24
+         (nc-str-offset 24 31 x24-slot)
+         ;; Evaluate and save list
+         list-code
+         (nc-str-offset 0 31 list-slot)
+         ;; Loop start: check if list is nil (tag 0)
+         (nc-ldr-offset 0 31 list-slot)
+         (nc-movz 1 0)  ; nil = 0
+         (nc-cmp-reg 0 1)
+         ;; Branch past body if list is nil
+         ;; Body: store var (4) + body + get cdr (4) + branch (1) = body-instrs + 9
+         (nc-b-cond (nc-cond-eq) (* (+ body-instrs 9) 4))
+         ;; Get car of list -> var
+         (nc-ldr-offset 0 31 list-slot)
+         (nc-ldr-offset 9 19 8)  ; car function at offset 8
+         (nc-blr 9)
+         (nc-sub-imm 1 20 0)
+         (nc-str-offset 0 1 0)
+         ;; Restore x24 for body
+         (nc-ldr-offset 24 31 x24-slot)
+         ;; Execute body
+         body-code
+         ;; Get cdr, save as new list
+         (nc-ldr-offset 0 31 list-slot)
+         (nc-ldr-offset 9 19 16)  ; cdr function at offset 16
+         (nc-blr 9)
+         (nc-str-offset 0 31 list-slot)
+         ;; Branch back to loop start
+         ;; Distance: -(null check (3) + get car (5) + body + get cdr (4))
+         (nc-b-offset (- (* (+ body-instrs 12) 4)))
+         ;; After loop: evaluate result (var is nil at this point)
+         (nc-movz 0 0)  ; nil
+         (nc-sub-imm 1 20 0)
+         (nc-str-offset 0 1 0)
+         (nc-ldr-offset 24 31 x24-slot)
+         result-code))))
     (t (nc-movz 0 0))))
 
 ;;; ============================================================
@@ -1488,6 +1813,103 @@
   (append (nc-prologue)
           (nc-codegen mir rtaddrs nil 0)
           (nc-epilogue)))
+
+(defparameter *lambda-counter* 0)
+
+(defun nc-gensym-lambda ()
+  "Generate unique lambda name"
+  (incf *lambda-counter*)
+  (intern (format nil "LAMBDA-~A" *lambda-counter*)))
+
+(defun nc-lift-lambdas (ir)
+  "Extract all lambda-ir nodes from IR, replacing them with lambda-ref nodes.
+   Returns (values transformed-ir lambdas) where lambdas is alist of (name . lambda-ir)"
+  (labels ((lift (ir lambdas)
+             (cond
+               ((null ir) (values ir lambdas))
+               ((not (consp ir)) (values ir lambdas))
+               ((nc-has-tag ir 'lambda-ir)
+                ;; Found a lambda - give it a name, store it, return reference
+                (let* ((name (nc-gensym-lambda))
+                       (params (cadr ir))
+                       (body (caddr ir))
+                       (free-vars (cadddr ir))
+                       (free-offsets (nth 4 ir)))
+                  ;; Recursively lift lambdas from the body
+                  (multiple-value-bind (new-body more-lambdas)
+                      (lift body lambdas)
+                    (let ((lambda-entry (list name params new-body free-vars free-offsets)))
+                      (values (list 'lambda-ref name free-offsets)
+                              (cons lambda-entry more-lambdas))))))
+               ((nc-has-tag ir 'let-ir)
+                ;; let-ir = (let-ir vals bir count offs)
+                (let ((vals (cadr ir))
+                      (bir (caddr ir))
+                      (count (cadddr ir))
+                      (offs (nth 4 ir)))
+                  (multiple-value-bind (new-vals lambdas1)
+                      (lift-list vals lambdas)
+                    (multiple-value-bind (new-bir lambdas2)
+                        (lift bir lambdas1)
+                      (values (list 'let-ir new-vals new-bir count offs) lambdas2)))))
+               ((nc-has-tag ir 'if-ir)
+                (let ((test (cadr ir))
+                      (then (caddr ir))
+                      (else (cadddr ir)))
+                  (multiple-value-bind (new-test l1) (lift test lambdas)
+                    (multiple-value-bind (new-then l2) (lift then l1)
+                      (multiple-value-bind (new-else l3) (lift else l2)
+                        (values (list 'if-ir new-test new-then new-else) l3))))))
+               ((nc-has-tag ir 'progn-ir)
+                (multiple-value-bind (new-forms new-lambdas)
+                    (lift-list (cadr ir) lambdas)
+                  (values (list 'progn-ir new-forms) new-lambdas)))
+               ((nc-has-tag ir 'funcall-ir)
+                (let ((fn-ir (cadr ir))
+                      (args-ir (caddr ir)))
+                  (multiple-value-bind (new-fn l1) (lift fn-ir lambdas)
+                    (multiple-value-bind (new-args l2) (lift-list args-ir l1)
+                      (values (list 'funcall-ir new-fn new-args) l2)))))
+               ((nc-has-tag ir 'call-fn)
+                (let ((name (cadr ir))
+                      (args-ir (caddr ir)))
+                  (multiple-value-bind (new-args new-lambdas)
+                      (lift-list args-ir lambdas)
+                    (values (list 'call-fn name new-args) new-lambdas))))
+               ((or (nc-has-tag ir 'add) (nc-has-tag ir 'sub)
+                    (nc-has-tag ir 'mul) (nc-has-tag ir 'div)
+                    (nc-has-tag ir 'mod) (nc-has-tag ir 'cmp-eq)
+                    (nc-has-tag ir 'cmp-lt) (nc-has-tag ir 'cmp-gt)
+                    (nc-has-tag ir 'cmp-le) (nc-has-tag ir 'cmp-ge)
+                    (nc-has-tag ir 'cons-ir))
+                (let ((left (cadr ir))
+                      (right (caddr ir)))
+                  (multiple-value-bind (new-left l1) (lift left lambdas)
+                    (multiple-value-bind (new-right l2) (lift right l1)
+                      (values (list (car ir) new-left new-right) l2)))))
+               ((or (nc-has-tag ir 'car-ir) (nc-has-tag ir 'cdr-ir))
+                (multiple-value-bind (new-arg new-lambdas)
+                    (lift (cadr ir) lambdas)
+                  (values (list (car ir) new-arg) new-lambdas)))
+               (t (values ir lambdas))))
+           (lift-list (irs lambdas)
+             (if (null irs)
+                 (values nil lambdas)
+                 (multiple-value-bind (new-first l1) (lift (car irs) lambdas)
+                   (multiple-value-bind (new-rest l2) (lift-list (cdr irs) l1)
+                     (values (cons new-first new-rest) l2))))))
+    (lift ir nil)))
+
+(defun nc-codegen-lambda (lambda-entry rtaddrs fnoffs)
+  "Generate code for a lifted lambda.
+   lambda-entry = (name params body free-vars free-offsets)"
+  (let* ((params (cadr lambda-entry))
+         (body (caddr lambda-entry))
+         ;; Lambda params start at offset 0
+         (pb 0)
+         (pc (nc-gen-param-stores params pb 0 nil))
+         (bc (nc-codegen body rtaddrs fnoffs 0)))
+    (append pc bc (nc-ret))))
 
 (defun nc-compile-program (forms rtaddrs)
   (let* ((r (nc-compile-forms forms))

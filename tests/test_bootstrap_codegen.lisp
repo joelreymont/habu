@@ -76,6 +76,29 @@
 ;; Test 18: nested arithmetic
 (run-codegen-test "nested-add" '(add (mul (lit 3) (lit 4)) (lit 5)) 40)
 
+;; Test 19: sym-lit (symbol literal)
+(run-codegen-test "sym-lit" '(sym-lit "FOO") 50)
+
+;; Test 20: lambda-ir (should be lifted before codegen - returns 0)
+(run-codegen-test "lambda-ir" '(lambda-ir (x) (add (var 0) (lit 1)) () ()) 4)
+
+;; Test 21: lambda-ref (closure creation without captures)
+(run-codegen-test "lambda-ref-no-cap" '(lambda-ref LAMBDA-1 ()) 20)
+
+;; Test 22: lambda-ref (closure creation with captures)
+(run-codegen-test "lambda-ref-cap" '(lambda-ref LAMBDA-2 (0 1)) 60)
+
+;; Test 23: funcall-ir (closure call)
+(run-codegen-test "funcall-ir" '(funcall-ir (sym-lit "INC") ((lit 5))) 168)
+
+;; Test 24: dotimes-ir (counted loop)
+;; dotimes-ir needs: var, count-ir, body, result-form, compile-env
+(run-codegen-test "dotimes-ir" '(dotimes-ir I (lit 3) (I) I nil) 50)
+
+;; Test 25: dolist-ir (list iteration)
+;; dolist-ir needs: var, list-ir, body, result-form, compile-env
+(run-codegen-test "dolist-ir" '(dolist-ir X (cons-ir (lit 1) (nil-ir)) (X) 42 nil) 80)
+
 ;; Summary
 (format t "~%=== Results: ~A passed, ~A failed ===~%"
         *tests-passed* *tests-failed*)
