@@ -2728,6 +2728,8 @@ Cons/car/cdr are required; others should be provided in production."
            (arm64-ldr 24 31 caller-x24-slot)))))
 
     ;; Function call: (call-fn name arg-irs)
+    ;; IMPORTANT: Stage args to TEMP SLOTS (indexed by depth) not shared arg-spill area
+    ;; This prevents nested calls from overwriting each other's staged arguments
     ((has-tag? ir 'call-fn)
      (let* ((fn-name (cadr ir))
             (arg-irs (caddr ir))
@@ -2736,56 +2738,57 @@ Cons/car/cdr are required; others should be provided in production."
             (max-capacity (1- *max-arg-spill-count*))
             (fn-entry (assoc fn-name fn-offsets))
             (fn-offset (if fn-entry (cadr fn-entry) 0))
-            ;; Save x24 to temp slot so we can restore it before each arg evaluation
-            ;; This handles the case where an arg contains a funcall that clobbers x24
+            ;; Layout: [x24-slot][arg0][arg1]...[argN-1] then nested code uses higher slots
             (x24-slot (temp-slot-offset temp-depth))
-            (nested-depth (+ temp-depth 1)))
+            (arg-base (+ temp-depth 1))                    ; args start after x24 slot
+            (nested-depth (+ arg-base num-args)))          ; nested exprs use slots after args
        (when (> num-args max-capacity)
          (error "call-fn ~A has ~A args; exceeds spill capacity ~A" fn-name num-args max-capacity))
-       (let* ((cursor (if current-offset (+ current-offset 3) nil))  ; +3 for save x24 + x27 setup + first restore
-              (stage-code (append
-                            (arm64-str 24 31 x24-slot)   ; save caller's x24
-                            (arm64-add-imm 27 31 0))))   ; x27 = sp for stable base
-         ;; Stage all arguments in order into the spill area using x27 as a stable base
+       (let* ((cursor (if current-offset (+ current-offset 2) nil))  ; +2 for save x24 + first restore
+              (stage-code (arm64-str 24 31 x24-slot)))     ; save caller's x24
+         ;; Stage all arguments to temp slots (not shared arg-spill area)
          ;; Before each arg, restore x24 in case previous arg clobbered it
          (loop for arg-ir in arg-irs
                for idx from 0 do
-                 (let* ((restore-x24 (arm64-ldr 24 31 x24-slot))  ; restore x24 before each arg
+                 (let* ((arg-slot (temp-slot-offset (+ arg-base idx)))  ; each arg gets own temp slot
+                        (restore-x24 (arm64-ldr 24 31 x24-slot))  ; restore x24 before each arg
                         (arg-code (codegen-expr arg-ir runtime-addrs fn-offsets cursor nested-depth))
-                        (store (arm64-str 0 27 (arg-spill-offset idx)))
+                        (store (arm64-str 0 31 arg-slot))  ; store to TEMP slot, not arg-spill
                         (block (append restore-x24 arg-code store))
                         (block-len (count-instrs block)))
                    (setf stage-code (append stage-code block))
                    (when cursor (incf cursor block-len))))
+         ;; Load args from temp slots to registers
          (let* ((load-code
                   (cond
                     ((= num-args 0) nil)
                     ((= num-args 1)
-                     (arm64-ldr 0 27 (arg-spill-offset 0)))
+                     (arm64-ldr 0 31 (temp-slot-offset arg-base)))
                     ((= num-args 2)
                      (append
-                       (arm64-ldr 0 27 (arg-spill-offset 0))
-                       (arm64-ldr 1 27 (arg-spill-offset 1))))
+                       (arm64-ldr 0 31 (temp-slot-offset arg-base))
+                       (arm64-ldr 1 31 (temp-slot-offset (+ arg-base 1)))))
                     ((= num-args 3)
                      (append
-                       (arm64-ldr 0 27 (arg-spill-offset 0))
-                       (arm64-ldr 1 27 (arg-spill-offset 1))
-                       (arm64-ldr 2 27 (arg-spill-offset 2))))
+                       (arm64-ldr 0 31 (temp-slot-offset arg-base))
+                       (arm64-ldr 1 31 (temp-slot-offset (+ arg-base 1)))
+                       (arm64-ldr 2 31 (temp-slot-offset (+ arg-base 2)))))
                     ((= num-args 4)
                      (append
-                       (arm64-ldr 0 27 (arg-spill-offset 0))
-                       (arm64-ldr 1 27 (arg-spill-offset 1))
-                       (arm64-ldr 2 27 (arg-spill-offset 2))
-                       (arm64-ldr 3 27 (arg-spill-offset 3))))
+                       (arm64-ldr 0 31 (temp-slot-offset arg-base))
+                       (arm64-ldr 1 31 (temp-slot-offset (+ arg-base 1)))
+                       (arm64-ldr 2 31 (temp-slot-offset (+ arg-base 2)))
+                       (arm64-ldr 3 31 (temp-slot-offset (+ arg-base 3)))))
                     (t
                      (append
-                       (arm64-ldr 0 27 (arg-spill-offset 0))
-                       (arm64-ldr 1 27 (arg-spill-offset 1))
-                       (arm64-ldr 2 27 (arg-spill-offset 2))
-                       (arm64-ldr 3 27 (arg-spill-offset 3))
-                       (arm64-ldr 4 27 (arg-spill-offset 4))))))
+                       (arm64-ldr 0 31 (temp-slot-offset arg-base))
+                       (arm64-ldr 1 31 (temp-slot-offset (+ arg-base 1)))
+                       (arm64-ldr 2 31 (temp-slot-offset (+ arg-base 2)))
+                       (arm64-ldr 3 31 (temp-slot-offset (+ arg-base 3)))
+                       (arm64-ldr 4 31 (temp-slot-offset (+ arg-base 4)))))))
+                ;; For >5 args, set x25 to point to temp slot for arg 5
                 (set-extra-ptr (if (> extra-count 0)
-                                   (arm64-add-imm 25 27 (arg-spill-offset 5))
+                                   (arm64-add-imm 25 31 (temp-slot-offset (+ arg-base 5)))
                                    (arm64-movz 25 0)))
                 (arg-count-code (arm64-movz 23 num-args))
                 (pre-call (append stage-code load-code set-extra-ptr arg-count-code))

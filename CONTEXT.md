@@ -6,23 +6,26 @@
 
 ## Session Summary (November 26, 2025)
 
-This session focused on bootstrapping the compiler to remove SBCL dependency.
+This session focused on bootstrapping the compiler and fixing a critical codegen bug.
 
 **Accomplishments**:
 1. Fixed tree-shaking IR traversal for LET-EXPR, IF-EXPR, PROGN nodes
 2. Verified all 114 compiler functions compile to native ARM64
 3. Tested native reader functionality (parsing numbers from strings)
 4. Demonstrated native compile+eval: `(+ (* 3 4) 5)` evaluates to 17
-5. Identified and documented nested recursive calls limitation
+5. **Fixed nested recursive calls bug** in call-fn codegen
 
-**Key Finding**: Direct nested recursive calls in argument position produce incorrect results.
-- BAD:  `(f (g x) (h y))` where g,h are recursive
-- GOOD: `(let* ((a (g x)) (b (h y))) (f a b))`
+**Bug Fix**: Nested recursive calls in argument position now work correctly.
+- Root cause: All nested calls used the same shared arg-spill area, so inner calls
+  would overwrite outer call's staged arguments
+- Fix: Changed call-fn to use temp slots indexed by nesting depth instead of
+  shared arg-spill area
+- This pattern now works: `(f (g x) (h y))` where g,h are recursive
 
 **Next Steps**:
-1. Fix the nested calls bug in codegen
-2. Package full compiler as standalone executable
-3. Test native compiler on real programs
+1. Package full compiler as standalone executable
+2. Test native compiler on real programs
+3. Complete self-hosting bootstrap
 
 ## Current Status Summary
 

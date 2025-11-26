@@ -1,6 +1,8 @@
 ;; Test tree-shaking: verifies dead code elimination
 ;; Uses run-bytecode to test compiled output
 
+(load "run-habu.lisp")
+
 ;; Test file with unused functions - tests/tree-shake-input.lisp
 (defparameter *tree-shake-source*
   "(defun used-helper (x) (* x 2))
