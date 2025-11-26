@@ -3318,6 +3318,13 @@ Cons/car/cdr are required; others should be provided in production."
                                         (labels ((xform (x)
                                                    (cond
                                                      ((not (consp x)) x)
+                                                     ;; (function f) or #'f -> (car f-box)
+                                                     ((and (eq (car x) 'function)
+                                                           (consp (cdr x))
+                                                           (symbolp (cadr x))
+                                                           (assoc (cadr x) name-to-box))
+                                                      (let ((box (cdr (assoc (cadr x) name-to-box))))
+                                                        `(car ,box)))
                                                      ;; (f args...) -> (funcall (car f-box) args...)
                                                      ((and (symbolp (car x))
                                                            (assoc (car x) name-to-box))
