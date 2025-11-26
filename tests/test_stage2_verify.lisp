@@ -3,7 +3,7 @@
 ;;;
 ;;; True self-hosting proof: compiled codegen produces same bytecode as SBCL codegen.
 ;;;
-;;; Stage 0: SBCL compiles test expression using habu-arm64-codegen-sbcl.lisp
+;;; Stage 0: SBCL compiles test expression using arm64/codegen-sbcl.lisp
 ;;; Stage 1: Habu-compiled codegen compiles same test expression
 ;;; Verification: Stage 0 bytecode == Stage 1 bytecode
 
@@ -14,7 +14,7 @@
 
 ;; Read all forms from the codegen file
 (defun read-codegen-forms ()
-  (with-open-file (in "habu-arm64-codegen-sbcl.lisp" :direction :input)
+  (with-open-file (in "arm64/codegen-sbcl.lisp" :direction :input)
     (loop for form = (read in nil :eof)
           until (eq form :eof)
           collect form)))

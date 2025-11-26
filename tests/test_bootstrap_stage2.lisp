@@ -10,15 +10,15 @@
 
 (format t "~%=== STAGE 2 BOOTSTRAP VERIFICATION ===~%~%")
 
-;; Read forms from habu-arm64-codegen-sbcl.lisp
+;; Read forms from arm64/codegen-sbcl.lisp
 (defun read-forms-from-file (path)
   (with-open-file (in path :direction :input)
     (loop for form = (read in nil :eof)
           until (eq form :eof)
           collect form)))
 
-(format t "Reading habu-arm64-codegen-sbcl.lisp...~%")
-(defparameter *codegen-forms* (read-forms-from-file "habu-arm64-codegen-sbcl.lisp"))
+(format t "Reading arm64/codegen-sbcl.lisp...~%")
+(defparameter *codegen-forms* (read-forms-from-file "arm64/codegen-sbcl.lisp"))
 
 ;; Extract all defun forms
 (defparameter *defun-forms*
@@ -95,7 +95,7 @@
   ;; Clear any caches by re-reading source
   (let* ((forms-reread (remove-if-not
                         (lambda (f) (and (consp f) (eq (car f) 'defun)))
-                        (read-forms-from-file "habu-arm64-codegen-sbcl.lisp")))
+                        (read-forms-from-file "arm64/codegen-sbcl.lisp")))
          (test-forms-reread (subseq forms-reread 0 5))
          (bytes-after (compile-to-bytecode test-forms-reread)))
     (format t "  Before: ~D bytes~%" (length bytes-before))

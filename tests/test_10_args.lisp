@@ -1,7 +1,7 @@
 #!/usr/bin/env sbcl --script
 ;;; Test 10-arg calls using stack-passed extras with rest and optional
 (load "sbcl-habu-shim.lisp")
-(load "habu-arm64-codegen-sbcl.lisp")
+(load "arm64/codegen-sbcl.lisp")
 
 (defun write-bytecode-to-file (code-list filename)
   (with-open-file (out filename :direction :output :if-exists :supersede :if-does-not-exist :create :element-type '(unsigned-byte 8))

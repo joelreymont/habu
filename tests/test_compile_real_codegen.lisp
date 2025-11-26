@@ -15,10 +15,10 @@
           until (eq form :eof)
           collect form)))
 
-;; Use habu-arm64-codegen-sbcl.lisp which is SBCL-compatible
+;; Use arm64/codegen-sbcl.lisp which is SBCL-compatible
 ;; (habu-arm64-codegen-clean.lisp uses Habu-specific syntax like cons?)
-(format t "Reading habu-arm64-codegen-sbcl.lisp...~%")
-(defparameter *codegen-forms* (read-forms-from-file "habu-arm64-codegen-sbcl.lisp"))
+(format t "Reading arm64/codegen-sbcl.lisp...~%")
+(defparameter *codegen-forms* (read-forms-from-file "arm64/codegen-sbcl.lisp"))
 (format t "Read ~D forms~%" (length *codegen-forms*))
 
 ;; Count defuns

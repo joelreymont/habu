@@ -9,7 +9,7 @@
 (defun run-nc-test (name source expected)
   "Deliver native compiler with given source, run, check exit code"
   ;; Read native-compiler.lisp
-  (let* ((nc-source (with-open-file (in "native-compiler.lisp")
+  (let* ((nc-source (with-open-file (in "bootstrap/compiler.lisp")
                       (let ((str (make-string (file-length in))))
                         (read-sequence str in)
                         str)))
@@ -69,6 +69,21 @@
 
 ;; Test 10: Nested let
 (run-nc-test "let-nested" "(let ((x 2)) (let ((y 3)) (* x y)))" 6)
+
+;; Test 11: User-defined function
+(run-nc-test "defun-simple" "(defun double (x) (* x 2)) (double 7)" 14)
+
+;; Test 12: Recursive function (factorial)
+(run-nc-test "defun-recursive" "(defun fact (n) (if (= n 0) 1 (* n (fact (- n 1))))) (fact 5)" 120)
+
+;; Test 13: Multiple functions
+(run-nc-test "defun-multi" "(defun add1 (x) (+ x 1)) (defun add2 (x) (add1 (add1 x))) (add2 10)" 12)
+
+;; Test 14: Greater than comparison
+(run-nc-test "cmp-gt" "(if (> 10 5) 1 0)" 1)
+
+;; Test 15: Less than or equal
+(run-nc-test "cmp-le" "(if (<= 5 5) 1 0)" 1)
 
 ;; Summary
 (format t "~%=== Results: ~A passed, ~A failed ===~%"

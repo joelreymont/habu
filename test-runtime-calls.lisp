@@ -2,7 +2,7 @@
 ;;; test-runtime-calls.lisp - Test cons/car/cdr with actual runtime
 
 (load "sbcl-habu-shim.lisp")
-(load "habu-arm64-codegen-sbcl.lisp")
+(load "arm64/codegen-sbcl.lisp")
 
 (defun parse-runtime-addr-line (line)
   "Parse a line like 'HABU_CONS_ADDR=0x104eaeb20' into (symbol . addr)"

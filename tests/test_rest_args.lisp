@@ -1,7 +1,7 @@
 #!/usr/bin/env sbcl --script
 ;;; Test &rest parameter handling for functions, lambdas, and closures
 (load "sbcl-habu-shim.lisp")
-(load "habu-arm64-codegen-sbcl.lisp")
+(load "arm64/codegen-sbcl.lisp")
 
 (defun write-bytecode-to-file (code-list filename)
   (with-open-file (out filename :direction :output :if-exists :supersede :if-does-not-exist :create :element-type '(unsigned-byte 8))

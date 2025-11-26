@@ -1,7557 +1,1005 @@
-;;;; Habu Bootstrap Compiler
-;;;; Compiles Habu Lisp to native x86_64 and ARM64 machine code
-
-(defpackage :habu-compiler
-  (:use :cl)
-  (:export #:compile-expression
-           #:compile-to-binary
-           #:*target-arch*))
-
-(in-package :habu-compiler)
-
-;;; Target architecture (x86_64 or arm64)
-(defvar *target-arch* :x86_64)
-
-;;; Allocation mode: :ffi (Phase 1) or :inline (Phase 2)
-(defvar *allocation-mode* :ffi
-  "Heap allocation strategy:
-   :ffi    - Use FFI trampolines to SBCL runtime (Phase 1, current)
-   :inline - Generate inline allocation code (Phase 2, standalone)")
-
-;;; Global function table for defun
-(defvar *function-table* (make-hash-table :test 'eq))
-
-;;; Global macro table for defmacro
-(defvar *macro-table* (make-hash-table :test 'eq))
-
-;;; Runtime integration - Bootstrap Phase 1
+;;; ============================================================
+;;; Habu Native Compiler - Self-Hosting ARM64 Lisp Compiler
+;;; ============================================================
 ;;;
-;;; BOOTSTRAP APPROACH (see docs/BOOTSTRAP_VS_STANDALONE.md):
-;;;   - Phase 1 (NOW): Use SBCL's alien-callable to create FFI trampolines
-;;;     Generated code calls runtime functions for heap allocation
-;;;     SBCL-dependent but allows rapid development and testing
-;;;
-;;;   - Phase 2 (FUTURE): Inline allocation in generated machine code
-;;;     No FFI dependencies, truly standalone operation
-;;;     Requires compiling runtime/memory.lisp to machine code
-;;;
-(defvar *runtime-heap* nil "Reference to the runtime heap structure")
-(defvar *runtime-cons-addr* nil "Address of runtime-cons trampoline")
-(defvar *runtime-car-addr* nil "Address of runtime-car trampoline")
-(defvar *runtime-cdr-addr* nil "Address of runtime-cdr trampoline")
-(defvar *runtime-length-addr* nil "Address of runtime-length trampoline")
-(defvar *runtime-nth-addr* nil "Address of runtime-nth trampoline")
-(defvar *runtime-append-addr* nil "Address of runtime-append trampoline")
-(defvar *runtime-reverse-addr* nil "Address of runtime-reverse trampoline")
-(defvar *runtime-make-closure-0-addr* nil "Address of make-closure-0 trampoline")
-(defvar *runtime-make-closure-1-addr* nil "Address of make-closure-1 trampoline")
-(defvar *runtime-make-closure-2-addr* nil "Address of make-closure-2 trampoline")
-(defvar *runtime-make-closure-3-addr* nil "Address of make-closure-3 trampoline")
-(defvar *runtime-string-length-addr* nil "Address of runtime-string-length trampoline")
-(defvar *runtime-string-concat-addr* nil "Address of runtime-string-concat trampoline")
-(defvar *runtime-string-equal-addr* nil "Address of runtime-string-equal trampoline")
-(defvar *runtime-string-substring-addr* nil "Address of runtime-string-substring trampoline")
-(defvar *runtime-read-from-string-addr* nil "Address of runtime-read-from-string trampoline")
-(defvar *runtime-print-to-string-addr* nil "Address of runtime-print-to-string trampoline")
-(defvar *runtime-file-open-addr* nil "Address of runtime-file-open trampoline")
-(defvar *runtime-file-read-addr* nil "Address of runtime-file-read trampoline")
-(defvar *runtime-file-write-addr* nil "Address of runtime-file-write trampoline")
-(defvar *runtime-file-close-addr* nil "Address of runtime-file-close trampoline")
-(defvar *runtime-read-file-addr* nil "Address of runtime-read-file trampoline")
-(defvar *runtime-write-file-addr* nil "Address of runtime-write-file trampoline")
-(defvar *runtime-catch-addr* nil "Address of runtime-catch trampoline")
-(defvar *runtime-throw-addr* nil "Address of runtime-throw trampoline")
-(defvar *runtime-dotimes-addr* nil "Address of runtime-dotimes trampoline")
-(defvar *runtime-dolist-addr* nil "Address of runtime-dolist trampoline")
-(defvar *runtime-make-hash-table-addr* nil "Address of runtime-make-hash-table trampoline")
-(defvar *runtime-gethash-addr* nil "Address of runtime-gethash trampoline")
-(defvar *runtime-puthash-addr* nil "Address of runtime-puthash trampoline")
-(defvar *runtime-remhash-addr* nil "Address of runtime-remhash trampoline")
-(defvar *runtime-hash-table-count-addr* nil "Address of runtime-hash-table-count trampoline")
-(defvar *runtime-butlast-addr* nil "Address of runtime-butlast trampoline")
-(defvar *runtime-nthcdr-addr* nil "Address of runtime-nthcdr trampoline")
-(defvar *runtime-member-addr* nil "Address of runtime-member trampoline")
-(defvar *runtime-assoc-addr* nil "Address of runtime-assoc trampoline")
-(defvar *runtime-position-addr* nil "Address of runtime-position trampoline")
-(defvar *runtime-count-addr* nil "Address of runtime-count trampoline")
-(defvar *runtime-remove-addr* nil "Address of runtime-remove trampoline")
-(defvar *runtime-values-0-addr* nil "Address of runtime-values-0 trampoline")
-(defvar *runtime-values-1-addr* nil "Address of runtime-values-1 trampoline")
-(defvar *runtime-values-2-addr* nil "Address of runtime-values-2 trampoline")
-(defvar *runtime-values-3-addr* nil "Address of runtime-values-3 trampoline")
-(defvar *runtime-values-4-addr* nil "Address of runtime-values-4 trampoline")
-(defvar *runtime-values-get-addr* nil "Address of runtime-values-get trampoline")
-
-(defun initialize-runtime-integration ()
-  "Initialize runtime integration (Phase 1: Bootstrap mode with FFI trampolines)"
-  ;; Load runtime if not already loaded
-  (unless (find-package :habu-runtime)
-    (let ((runtime-path (merge-pathnames "../runtime/memory.lisp"
-                                         (or *load-truename* *default-pathname-defaults*)))
-          (symbols-path (merge-pathnames "../runtime/symbols.lisp"
-                                         (or *load-truename* *default-pathname-defaults*)))
-          (lists-path (merge-pathnames "../runtime/lists.lisp"
-                                       (or *load-truename* *default-pathname-defaults*)))
-          (closures-path (merge-pathnames "../runtime/closures.lisp"
-                                          (or *load-truename* *default-pathname-defaults*)))
-          (strings-path (merge-pathnames "../runtime/strings.lisp"
-                                         (or *load-truename* *default-pathname-defaults*)))
-          (reader-path (merge-pathnames "../runtime/reader.lisp"
-                                        (or *load-truename* *default-pathname-defaults*)))
-          (files-path (merge-pathnames "../runtime/files.lisp"
-                                       (or *load-truename* *default-pathname-defaults*)))
-          (errors-path (merge-pathnames "../runtime/errors.lisp"
-                                        (or *load-truename* *default-pathname-defaults*)))
-          (loops-path (merge-pathnames "../runtime/loops.lisp"
-                                       (or *load-truename* *default-pathname-defaults*)))
-          (hash-tables-path (merge-pathnames "../runtime/hash-tables.lisp"
-                                             (or *load-truename* *default-pathname-defaults*)))
-          (multiple-values-path (merge-pathnames "../runtime/multiple-values.lisp"
-                                                 (or *load-truename* *default-pathname-defaults*))))
-      (if (probe-file runtime-path)
-          (progn
-            (load runtime-path)
-            ;; Load symbol support
-            (when (probe-file symbols-path)
-              (load symbols-path))
-            ;; Load list operations
-            (when (probe-file lists-path)
-              (load lists-path))
-            ;; Load closure support
-            (when (probe-file closures-path)
-              (load closures-path))
-            ;; Load string support
-            (when (probe-file strings-path)
-              (load strings-path))
-            ;; Load reader/printer support
-            (when (probe-file reader-path)
-              (load reader-path))
-            ;; Load file I/O support
-            (when (probe-file files-path)
-              (load files-path))
-            ;; Load error handling support
-            (when (probe-file errors-path)
-              (load errors-path))
-            ;; Load loop support
-            (when (probe-file loops-path)
-              (load loops-path))
-            ;; Load hash table support
-            (when (probe-file hash-tables-path)
-              (load hash-tables-path))
-            ;; Load multiple values support
-            (when (probe-file multiple-values-path)
-              (load multiple-values-path)))
-          (error "Cannot find runtime/memory.lisp at ~A" runtime-path))))
-
-  ;; Initialize runtime heap
-  (let ((heap-sym (find-symbol "*HEAP*" :habu-runtime)))
-    (unless (and heap-sym (symbol-value heap-sym))
-      (funcall (find-symbol "INITIALIZE-RUNTIME" :habu-runtime)))
-    (setf *runtime-heap* (symbol-value heap-sym)))
-
-  ;; Create C-callable wrappers for runtime functions using SBCL's alien FFI
-  #+sbcl
-  (progn
-    ;; Define alien-callable wrappers that can be called from machine code
-    (sb-alien:define-alien-callable habu-cons-trampoline
-        sb-alien:unsigned-long ((car sb-alien:unsigned-long) (cdr sb-alien:unsigned-long))
-      (funcall (find-symbol "RUNTIME-CONS" :habu-runtime) car cdr))
-
-    (sb-alien:define-alien-callable habu-car-trampoline
-        sb-alien:unsigned-long ((cons-ptr sb-alien:unsigned-long))
-      (funcall (find-symbol "RUNTIME-CAR" :habu-runtime) cons-ptr))
-
-    (sb-alien:define-alien-callable habu-cdr-trampoline
-        sb-alien:unsigned-long ((cons-ptr sb-alien:unsigned-long))
-      (funcall (find-symbol "RUNTIME-CDR" :habu-runtime) cons-ptr))
-
-    (sb-alien:define-alien-callable habu-length-trampoline
-        sb-alien:unsigned-long ((list-ptr sb-alien:unsigned-long))
-      (funcall (find-symbol "RUNTIME-LENGTH" :habu-runtime) list-ptr))
-
-    (sb-alien:define-alien-callable habu-nth-trampoline
-        sb-alien:unsigned-long ((n sb-alien:unsigned-long) (list-ptr sb-alien:unsigned-long))
-      (funcall (find-symbol "RUNTIME-NTH" :habu-runtime) n list-ptr))
-
-    (sb-alien:define-alien-callable habu-append-trampoline
-        sb-alien:unsigned-long ((list1-ptr sb-alien:unsigned-long) (list2-ptr sb-alien:unsigned-long))
-      (funcall (find-symbol "RUNTIME-APPEND" :habu-runtime) list1-ptr list2-ptr))
-
-    (sb-alien:define-alien-callable habu-reverse-trampoline
-        sb-alien:unsigned-long ((list-ptr sb-alien:unsigned-long))
-      (funcall (find-symbol "RUNTIME-REVERSE" :habu-runtime) list-ptr))
-
-    (sb-alien:define-alien-callable habu-make-closure-0-trampoline
-        sb-alien:unsigned-long ((code-ptr sb-alien:unsigned-long) (arity sb-alien:unsigned-long))
-      (funcall (find-symbol "MAKE-CLOSURE-0" :habu-runtime) code-ptr arity))
-
-    (sb-alien:define-alien-callable habu-make-closure-1-trampoline
-        sb-alien:unsigned-long ((code-ptr sb-alien:unsigned-long) (arity sb-alien:unsigned-long)
-                                (var1 sb-alien:unsigned-long))
-      (funcall (find-symbol "MAKE-CLOSURE-1" :habu-runtime) code-ptr arity var1))
-
-    (sb-alien:define-alien-callable habu-make-closure-2-trampoline
-        sb-alien:unsigned-long ((code-ptr sb-alien:unsigned-long) (arity sb-alien:unsigned-long)
-                                (var1 sb-alien:unsigned-long) (var2 sb-alien:unsigned-long))
-      (funcall (find-symbol "MAKE-CLOSURE-2" :habu-runtime) code-ptr arity var1 var2))
-
-    (sb-alien:define-alien-callable habu-make-closure-3-trampoline
-        sb-alien:unsigned-long ((code-ptr sb-alien:unsigned-long) (arity sb-alien:unsigned-long)
-                                (var1 sb-alien:unsigned-long) (var2 sb-alien:unsigned-long)
-                                (var3 sb-alien:unsigned-long))
-      (funcall (find-symbol "MAKE-CLOSURE-3" :habu-runtime) code-ptr arity var1 var2 var3))
-
-    (sb-alien:define-alien-callable habu-string-length-trampoline
-        sb-alien:unsigned-long ((str-ptr sb-alien:unsigned-long))
-      (funcall (find-symbol "RUNTIME-STRING-LENGTH" :habu-runtime) str-ptr))
-
-    (sb-alien:define-alien-callable habu-string-concat-trampoline
-        sb-alien:unsigned-long ((str1-ptr sb-alien:unsigned-long) (str2-ptr sb-alien:unsigned-long))
-      (funcall (find-symbol "RUNTIME-STRING-CONCAT" :habu-runtime) str1-ptr str2-ptr))
-
-    (sb-alien:define-alien-callable habu-string-equal-trampoline
-        sb-alien:unsigned-long ((str1-ptr sb-alien:unsigned-long) (str2-ptr sb-alien:unsigned-long))
-      (if (funcall (find-symbol "RUNTIME-STRING-EQUAL" :habu-runtime) str1-ptr str2-ptr)
-          #x10  ; Tagged true (1 << 4)
-          #x00)); Tagged false (0 << 4)
-
-    (sb-alien:define-alien-callable habu-string-substring-trampoline
-        sb-alien:unsigned-long ((str-ptr sb-alien:unsigned-long) (start sb-alien:unsigned-long)
-                                (end sb-alien:unsigned-long))
-      (funcall (find-symbol "RUNTIME-STRING-SUBSTRING" :habu-runtime) str-ptr start end))
-
-    (sb-alien:define-alien-callable habu-read-from-string-trampoline
-        sb-alien:unsigned-long ((str-ptr sb-alien:unsigned-long))
-      (funcall (find-symbol "RUNTIME-READ-FROM-STRING" :habu-runtime) str-ptr))
-
-    (sb-alien:define-alien-callable habu-print-to-string-trampoline
-        sb-alien:unsigned-long ((value sb-alien:unsigned-long))
-      (funcall (find-symbol "RUNTIME-PRINT-TO-STRING" :habu-runtime) value))
-
-    (sb-alien:define-alien-callable habu-file-open-trampoline
-        sb-alien:unsigned-long ((path-ptr sb-alien:unsigned-long) (mode-ptr sb-alien:unsigned-long))
-      (funcall (find-symbol "RUNTIME-FILE-OPEN" :habu-runtime) path-ptr mode-ptr))
-
-    (sb-alien:define-alien-callable habu-file-read-trampoline
-        sb-alien:unsigned-long ((handle sb-alien:unsigned-long))
-      (funcall (find-symbol "RUNTIME-FILE-READ" :habu-runtime) handle))
-
-    (sb-alien:define-alien-callable habu-file-write-trampoline
-        sb-alien:unsigned-long ((handle sb-alien:unsigned-long) (data-ptr sb-alien:unsigned-long))
-      (funcall (find-symbol "RUNTIME-FILE-WRITE" :habu-runtime) handle data-ptr))
-
-    (sb-alien:define-alien-callable habu-file-close-trampoline
-        sb-alien:unsigned-long ((handle sb-alien:unsigned-long))
-      (funcall (find-symbol "RUNTIME-FILE-CLOSE" :habu-runtime) handle))
-
-    (sb-alien:define-alien-callable habu-read-file-trampoline
-        sb-alien:unsigned-long ((path-ptr sb-alien:unsigned-long))
-      (funcall (find-symbol "RUNTIME-READ-FILE" :habu-runtime) path-ptr))
-
-    (sb-alien:define-alien-callable habu-write-file-trampoline
-        sb-alien:unsigned-long ((path-ptr sb-alien:unsigned-long) (data-ptr sb-alien:unsigned-long))
-      (funcall (find-symbol "RUNTIME-WRITE-FILE" :habu-runtime) path-ptr data-ptr))
-
-    (sb-alien:define-alien-callable habu-catch-trampoline
-        sb-alien:unsigned-long ((tag sb-alien:unsigned-long) (body-fn sb-alien:unsigned-long))
-      (funcall (find-symbol "RUNTIME-CATCH" :habu-runtime) tag body-fn))
-
-    (sb-alien:define-alien-callable habu-throw-trampoline
-        sb-alien:unsigned-long ((tag sb-alien:unsigned-long) (value sb-alien:unsigned-long))
-      (funcall (find-symbol "RUNTIME-THROW" :habu-runtime) tag value))
-
-    (sb-alien:define-alien-callable habu-dotimes-trampoline
-        sb-alien:unsigned-long ((count sb-alien:unsigned-long) (body-fn sb-alien:unsigned-long)
-                                (result sb-alien:unsigned-long))
-      (funcall (find-symbol "RUNTIME-DOTIMES" :habu-runtime) count body-fn result))
-
-    (sb-alien:define-alien-callable habu-dolist-trampoline
-        sb-alien:unsigned-long ((list-val sb-alien:unsigned-long) (body-fn sb-alien:unsigned-long)
-                                (result sb-alien:unsigned-long))
-      (funcall (find-symbol "RUNTIME-DOLIST" :habu-runtime) list-val body-fn result))
-
-    (sb-alien:define-alien-callable habu-make-hash-table-trampoline
-        sb-alien:unsigned-long ((capacity sb-alien:unsigned-long))
-      (funcall (find-symbol "RUNTIME-MAKE-HASH-TABLE" :habu-runtime) capacity))
-
-    (sb-alien:define-alien-callable habu-gethash-trampoline
-        sb-alien:unsigned-long ((key sb-alien:unsigned-long) (ht sb-alien:unsigned-long))
-      (funcall (find-symbol "RUNTIME-GETHASH" :habu-runtime) key ht))
-
-    (sb-alien:define-alien-callable habu-puthash-trampoline
-        sb-alien:unsigned-long ((key sb-alien:unsigned-long) (value sb-alien:unsigned-long)
-                                (ht sb-alien:unsigned-long))
-      (funcall (find-symbol "RUNTIME-PUTHASH" :habu-runtime) key value ht))
-
-    (sb-alien:define-alien-callable habu-remhash-trampoline
-        sb-alien:unsigned-long ((key sb-alien:unsigned-long) (ht sb-alien:unsigned-long))
-      (funcall (find-symbol "RUNTIME-REMHASH" :habu-runtime) key ht))
-
-    (sb-alien:define-alien-callable habu-hash-table-count-trampoline
-        sb-alien:unsigned-long ((ht sb-alien:unsigned-long))
-      (funcall (find-symbol "RUNTIME-HASH-TABLE-COUNT" :habu-runtime) ht))
-
-    (sb-alien:define-alien-callable habu-butlast-trampoline
-        sb-alien:unsigned-long ((list-ptr sb-alien:unsigned-long) (n sb-alien:unsigned-long))
-      (funcall (find-symbol "RUNTIME-BUTLAST" :habu-runtime) list-ptr n))
-
-    (sb-alien:define-alien-callable habu-nthcdr-trampoline
-        sb-alien:unsigned-long ((n sb-alien:unsigned-long) (list-ptr sb-alien:unsigned-long))
-      (funcall (find-symbol "RUNTIME-NTHCDR" :habu-runtime) n list-ptr))
-
-    (sb-alien:define-alien-callable habu-member-trampoline
-        sb-alien:unsigned-long ((item sb-alien:unsigned-long) (list-ptr sb-alien:unsigned-long))
-      (funcall (find-symbol "RUNTIME-MEMBER" :habu-runtime) item list-ptr))
-
-    (sb-alien:define-alien-callable habu-assoc-trampoline
-        sb-alien:unsigned-long ((key sb-alien:unsigned-long) (alist-ptr sb-alien:unsigned-long))
-      (funcall (find-symbol "RUNTIME-ASSOC" :habu-runtime) key alist-ptr))
-
-    (sb-alien:define-alien-callable habu-position-trampoline
-        sb-alien:unsigned-long ((item sb-alien:unsigned-long) (list-ptr sb-alien:unsigned-long))
-      (funcall (find-symbol "RUNTIME-POSITION" :habu-runtime) item list-ptr))
-
-    (sb-alien:define-alien-callable habu-count-trampoline
-        sb-alien:unsigned-long ((item sb-alien:unsigned-long) (list-ptr sb-alien:unsigned-long))
-      (funcall (find-symbol "RUNTIME-COUNT" :habu-runtime) item list-ptr))
-
-    (sb-alien:define-alien-callable habu-remove-trampoline
-        sb-alien:unsigned-long ((item sb-alien:unsigned-long) (list-ptr sb-alien:unsigned-long))
-      (funcall (find-symbol "RUNTIME-REMOVE" :habu-runtime) item list-ptr))
-
-    (sb-alien:define-alien-callable habu-values-0-trampoline
-        sb-alien:unsigned-long ()
-      (funcall (find-symbol "RUNTIME-VALUES-0" :habu-runtime)))
-
-    (sb-alien:define-alien-callable habu-values-1-trampoline
-        sb-alien:unsigned-long ((val1 sb-alien:unsigned-long))
-      (funcall (find-symbol "RUNTIME-VALUES-1" :habu-runtime) val1))
-
-    (sb-alien:define-alien-callable habu-values-2-trampoline
-        sb-alien:unsigned-long ((val1 sb-alien:unsigned-long) (val2 sb-alien:unsigned-long))
-      (funcall (find-symbol "RUNTIME-VALUES-2" :habu-runtime) val1 val2))
-
-    (sb-alien:define-alien-callable habu-values-3-trampoline
-        sb-alien:unsigned-long ((val1 sb-alien:unsigned-long) (val2 sb-alien:unsigned-long)
-                                (val3 sb-alien:unsigned-long))
-      (funcall (find-symbol "RUNTIME-VALUES-3" :habu-runtime) val1 val2 val3))
-
-    (sb-alien:define-alien-callable habu-values-4-trampoline
-        sb-alien:unsigned-long ((val1 sb-alien:unsigned-long) (val2 sb-alien:unsigned-long)
-                                (val3 sb-alien:unsigned-long) (val4 sb-alien:unsigned-long))
-      (funcall (find-symbol "RUNTIME-VALUES-4" :habu-runtime) val1 val2 val3 val4))
-
-    (sb-alien:define-alien-callable habu-values-get-trampoline
-        sb-alien:unsigned-long ((index sb-alien:unsigned-long) (primary-value sb-alien:unsigned-long))
-      (funcall (find-symbol "RUNTIME-VALUES-GET" :habu-runtime) index primary-value))
-
-    ;; Get addresses of the trampolines using the correct SBCL mechanism:
-    ;; 1. alien-callable-function gets the callable object
-    ;; 2. alien-sap converts to System Area Pointer
-    ;; 3. sap-int gets the integer address
-    (setf *runtime-cons-addr*
-          (sb-alien:alien-sap (sb-alien:alien-callable-function 'habu-cons-trampoline)))
-    (setf *runtime-car-addr*
-          (sb-alien:alien-sap (sb-alien:alien-callable-function 'habu-car-trampoline)))
-    (setf *runtime-cdr-addr*
-          (sb-alien:alien-sap (sb-alien:alien-callable-function 'habu-cdr-trampoline)))
-    (setf *runtime-length-addr*
-          (sb-alien:alien-sap (sb-alien:alien-callable-function 'habu-length-trampoline)))
-    (setf *runtime-nth-addr*
-          (sb-alien:alien-sap (sb-alien:alien-callable-function 'habu-nth-trampoline)))
-    (setf *runtime-append-addr*
-          (sb-alien:alien-sap (sb-alien:alien-callable-function 'habu-append-trampoline)))
-    (setf *runtime-reverse-addr*
-          (sb-alien:alien-sap (sb-alien:alien-callable-function 'habu-reverse-trampoline)))
-    (setf *runtime-make-closure-0-addr*
-          (sb-alien:alien-sap (sb-alien:alien-callable-function 'habu-make-closure-0-trampoline)))
-    (setf *runtime-make-closure-1-addr*
-          (sb-alien:alien-sap (sb-alien:alien-callable-function 'habu-make-closure-1-trampoline)))
-    (setf *runtime-make-closure-2-addr*
-          (sb-alien:alien-sap (sb-alien:alien-callable-function 'habu-make-closure-2-trampoline)))
-    (setf *runtime-make-closure-3-addr*
-          (sb-alien:alien-sap (sb-alien:alien-callable-function 'habu-make-closure-3-trampoline)))
-    (setf *runtime-string-length-addr*
-          (sb-alien:alien-sap (sb-alien:alien-callable-function 'habu-string-length-trampoline)))
-    (setf *runtime-string-concat-addr*
-          (sb-alien:alien-sap (sb-alien:alien-callable-function 'habu-string-concat-trampoline)))
-    (setf *runtime-string-equal-addr*
-          (sb-alien:alien-sap (sb-alien:alien-callable-function 'habu-string-equal-trampoline)))
-    (setf *runtime-string-substring-addr*
-          (sb-alien:alien-sap (sb-alien:alien-callable-function 'habu-string-substring-trampoline)))
-    (setf *runtime-read-from-string-addr*
-          (sb-alien:alien-sap (sb-alien:alien-callable-function 'habu-read-from-string-trampoline)))
-    (setf *runtime-print-to-string-addr*
-          (sb-alien:alien-sap (sb-alien:alien-callable-function 'habu-print-to-string-trampoline)))
-    (setf *runtime-file-open-addr*
-          (sb-alien:alien-sap (sb-alien:alien-callable-function 'habu-file-open-trampoline)))
-    (setf *runtime-file-read-addr*
-          (sb-alien:alien-sap (sb-alien:alien-callable-function 'habu-file-read-trampoline)))
-    (setf *runtime-file-write-addr*
-          (sb-alien:alien-sap (sb-alien:alien-callable-function 'habu-file-write-trampoline)))
-    (setf *runtime-file-close-addr*
-          (sb-alien:alien-sap (sb-alien:alien-callable-function 'habu-file-close-trampoline)))
-    (setf *runtime-read-file-addr*
-          (sb-alien:alien-sap (sb-alien:alien-callable-function 'habu-read-file-trampoline)))
-    (setf *runtime-write-file-addr*
-          (sb-alien:alien-sap (sb-alien:alien-callable-function 'habu-write-file-trampoline)))
-    (setf *runtime-catch-addr*
-          (sb-alien:alien-sap (sb-alien:alien-callable-function 'habu-catch-trampoline)))
-    (setf *runtime-throw-addr*
-          (sb-alien:alien-sap (sb-alien:alien-callable-function 'habu-throw-trampoline)))
-    (setf *runtime-dotimes-addr*
-          (sb-alien:alien-sap (sb-alien:alien-callable-function 'habu-dotimes-trampoline)))
-    (setf *runtime-dolist-addr*
-          (sb-alien:alien-sap (sb-alien:alien-callable-function 'habu-dolist-trampoline)))
-    (setf *runtime-make-hash-table-addr*
-          (sb-alien:alien-sap (sb-alien:alien-callable-function 'habu-make-hash-table-trampoline)))
-    (setf *runtime-gethash-addr*
-          (sb-alien:alien-sap (sb-alien:alien-callable-function 'habu-gethash-trampoline)))
-    (setf *runtime-puthash-addr*
-          (sb-alien:alien-sap (sb-alien:alien-callable-function 'habu-puthash-trampoline)))
-    (setf *runtime-remhash-addr*
-          (sb-alien:alien-sap (sb-alien:alien-callable-function 'habu-remhash-trampoline)))
-    (setf *runtime-hash-table-count-addr*
-          (sb-alien:alien-sap (sb-alien:alien-callable-function 'habu-hash-table-count-trampoline)))
-    (setf *runtime-butlast-addr*
-          (sb-alien:alien-sap (sb-alien:alien-callable-function 'habu-butlast-trampoline)))
-    (setf *runtime-nthcdr-addr*
-          (sb-alien:alien-sap (sb-alien:alien-callable-function 'habu-nthcdr-trampoline)))
-    (setf *runtime-member-addr*
-          (sb-alien:alien-sap (sb-alien:alien-callable-function 'habu-member-trampoline)))
-    (setf *runtime-assoc-addr*
-          (sb-alien:alien-sap (sb-alien:alien-callable-function 'habu-assoc-trampoline)))
-    (setf *runtime-position-addr*
-          (sb-alien:alien-sap (sb-alien:alien-callable-function 'habu-position-trampoline)))
-    (setf *runtime-count-addr*
-          (sb-alien:alien-sap (sb-alien:alien-callable-function 'habu-count-trampoline)))
-    (setf *runtime-remove-addr*
-          (sb-alien:alien-sap (sb-alien:alien-callable-function 'habu-remove-trampoline)))
-    (setf *runtime-values-0-addr*
-          (sb-alien:alien-sap (sb-alien:alien-callable-function 'habu-values-0-trampoline)))
-    (setf *runtime-values-1-addr*
-          (sb-alien:alien-sap (sb-alien:alien-callable-function 'habu-values-1-trampoline)))
-    (setf *runtime-values-2-addr*
-          (sb-alien:alien-sap (sb-alien:alien-callable-function 'habu-values-2-trampoline)))
-    (setf *runtime-values-3-addr*
-          (sb-alien:alien-sap (sb-alien:alien-callable-function 'habu-values-3-trampoline)))
-    (setf *runtime-values-4-addr*
-          (sb-alien:alien-sap (sb-alien:alien-callable-function 'habu-values-4-trampoline)))
-    (setf *runtime-values-get-addr*
-          (sb-alien:alien-sap (sb-alien:alien-callable-function 'habu-values-get-trampoline))))
-
-  #-sbcl
-  (error "Runtime integration only supported on SBCL currently")
-
-  (format t "Runtime integration initialized:~%")
-  (format t "  cons trampoline: ~X~%" (sb-sys:sap-int *runtime-cons-addr*))
-  (format t "  car trampoline:  ~X~%" (sb-sys:sap-int *runtime-car-addr*))
-  (format t "  cdr trampoline:  ~X~%" (sb-sys:sap-int *runtime-cdr-addr*)))
-
-;;; Compiler intermediate representation
-(defstruct expr
-  type
-  value
-  args)
-
-;;; Quasiquote expansion
-(defun expand-quasiquote (form)
-  "Expand quasiquote (backquote) forms with unquote and unquote-splicing"
-  (cond
-    ;; Unquote: (unquote x) => x
-    ((and (consp form) (eq (first form) 'unquote))
-     (second form))
-
-    ;; Atom: just quote it
-    ((atom form)
-     `(quote ,form))
-
-    ;; List starting with unquote-splicing in car position - error
-    ((and (consp (first form)) (eq (first (first form)) 'unquote-splicing))
-     (error "Unquote-splicing ,@~S in illegal position" (second (first form))))
-
-    ;; List: process each element
-    (t
-     (expand-quasiquote-list form))))
-
-(defun expand-quasiquote-list (forms)
-  "Expand a list within quasiquote, handling unquote-splicing"
-  (cond
-    ;; Empty list
-    ((null forms)
-     '(quote ()))
-
-    ;; Car is (unquote-splicing x): splice x into the list
-    ((and (consp (first forms))
-          (eq (first (first forms)) 'unquote-splicing))
-     (let ((splicee (second (first forms)))
-           (rest-expansion (expand-quasiquote-list (rest forms))))
-       `(append ,splicee ,rest-expansion)))
-
-    ;; Car is (unquote x): cons x onto the rest
-    ((and (consp (first forms))
-          (eq (first (first forms)) 'unquote))
-     (let ((element (second (first forms)))
-           (rest-expansion (expand-quasiquote-list (rest forms))))
-       `(cons ,element ,rest-expansion)))
-
-    ;; Recursively process car and cdr
-    (t
-     (let ((car-expansion (expand-quasiquote (first forms)))
-           (cdr-expansion (expand-quasiquote-list (rest forms))))
-       `(cons ,car-expansion ,cdr-expansion)))))
-
-;;; Expand c[ad]r combinations
-(defun expand-cadr (op arg)
-  "Expand c[ad]{2,4}r combinations to nested car/cdr calls.
-   Examples: cadr => (car (cdr x)), caddr => (car (cdr (cdr x)))"
-  (let* ((name (symbol-name op))
-         (len (length name)))
-    ;; Check if it matches pattern c[ad]{2,4}r
-    (when (and (>= len 4) (<= len 6)
-               (char= (char name 0) #\C)
-               (char= (char name (1- len)) #\R))
-      ;; Extract the middle part (ad sequence)
-      (let ((middle (subseq name 1 (1- len))))
-        ;; Check all chars are 'A' or 'D'
-        (when (every (lambda (c) (or (char= c #\A) (char= c #\D))) middle)
-          ;; Build nested calls from right to left
-          ;; E.g., "ADR" => (car (cdr arg))
-          (let ((result arg))
-            (loop for i from (1- (length middle)) downto 0
-                  do (setf result
-                          (if (char= (char middle i) #\A)
-                              `(car ,result)
-                              `(cdr ,result))))
-            result))))))
-
-;;; Recursively expand macros in a form
-(defun expand-macros-in-form (form)
-  "Recursively expand all macro calls in a form"
-  (cond
-    ;; Atoms don't need expansion
-    ((not (consp form)) form)
-
-    ;; Check if this is a macro call
-    ((and (symbolp (first form))
-          (gethash (first form) *macro-table*))
-     ;; Expand the macro and recursively expand the result
-     (let* ((macro-def (gethash (first form) *macro-table*))
-            (params (car macro-def))
-            (body (cdr macro-def))
-            (args (rest form)))
-       ;; Evaluate the lambda to do parameter substitution
-       ;; Then recursively expand any macros in the result
-       (let* ((macro-lambda `(lambda ,params ,body))
-              (macro-fn (eval macro-lambda))
-              (expanded (apply macro-fn args)))
-         ;; Recursively expand macros in the result
-         (expand-macros-in-form expanded))))
-
-    ;; Not a macro call - recursively expand sub-forms
-    (t (mapcar #'expand-macros-in-form form))))
-
-;;; Free variable analysis for closures
-(defparameter *builtin-operators*
-  '(+ - * / mod rem div < > = <= >= not and or
-    cons car cdr list null? cons? list? eq? equal?
-    logand logior logxor lognot ash
-    if cond case when unless
-    progn begin quote quasiquote unquote unquote-splicing
-    lambda let let* defun defvar defmacro funcall symbol-value set
-    length nth append reverse butlast nthcdr member assoc position count remove
-    string-length string-concat string-equal string-substring
-    read print
-    file-open file-read file-write file-close read-file write-file
-    catch throw
-    block return-from
-    make-hash-table gethash puthash remhash hash-table-count
-    values multiple-value-bind
-    ;; dotimes dolist - TODO: implement (requires better closure support or inline codegen)
-    ;; Add more operators as needed
-    ))
-
-(defun builtin-operator-p (sym)
-  "Check if symbol is a built-in operator"
-  (member sym *builtin-operators*))
-
-(defun collect-variables (form)
-  "Collect all variable references in a form (excluding built-in operators)"
-  (cond
-    ((null form) nil)
-    ((symbolp form)
-     (if (builtin-operator-p form)
-         nil
-         (list form)))
-    ((not (consp form)) nil)
-    ((eq (first form) 'quote) nil)  ; Quoted forms don't reference variables
-    ((eq (first form) 'lambda)
-     ;; In lambda, collect from body but exclude parameters
-     (let ((params (second form))
-           (body (third form)))
-       (set-difference (collect-variables body) params)))
-    ((eq (first form) 'let)
-     ;; In let, collect from values and body, exclude bound variables
-     (let* ((bindings (second form))
-            (body (third form))
-            (vars (mapcar #'first bindings))
-            (vals (mapcar #'second bindings)))
-       (append (apply #'append (mapcar #'collect-variables vals))
-               (set-difference (collect-variables body) vars))))
-    ((eq (first form) 'defun)
-     ;; Don't analyze defun bodies for free variables at this level
-     nil)
-    (t
-     ;; Regular form - collect from all subforms, skip the operator
-     (apply #'append (mapcar #'collect-variables (rest form))))))
-
-(defun find-free-variables (body params &optional (env nil))
-  "Find free variables in body that are not in params or env.
-   Optimized: O(N) using hash sets instead of O(N²) list operations."
-  (let ((bound-set (make-hash-table :test #'eq))
-        (seen (make-hash-table :test #'eq))
-        (free-vars nil))
-    ;; Mark all bound variables
-    (dolist (var params) (setf (gethash var bound-set) t))
-    (dolist (var env) (setf (gethash var bound-set) t))
-    ;; Single-pass collection of free variables
-    (labels ((collect (form)
+;;; All functions prefixed with nc- to avoid shadowing built-ins.
+;;; Components: ARM64 asm, utils, reader, codegen, IR compiler
+
+;;; ============================================================
+;;; Part 1: ARM64 Instruction Encoders (nc-asm-*)
+;;; ============================================================
+
+;; All encoder functions use let* to avoid nested calls in arg position
+(defun nc-encode-word (word)
+  (let* ((b0 (logand word #xFF))
+         (s1 (ash word -8))
+         (b1 (logand s1 #xFF))
+         (s2 (ash word -16))
+         (b2 (logand s2 #xFF))
+         (s3 (ash word -24))
+         (b3 (logand s3 #xFF)))
+    (list b0 b1 b2 b3)))
+
+(defun nc-movz (rd imm)
+  (let* ((masked (logand imm #xFFFF))
+         (shifted (ash masked 5))
+         (ored (logior #xD2800000 shifted))
+         (word (logior ored rd)))
+    (nc-encode-word word)))
+
+(defun nc-add-reg (rd rn rm)
+  (let* ((rm-shift (ash rm 16))
+         (rn-shift (ash rn 5))
+         (or1 (logior #x8B000000 rm-shift))
+         (or2 (logior or1 rn-shift))
+         (word (logior or2 rd)))
+    (nc-encode-word word)))
+
+(defun nc-sub-reg (rd rn rm)
+  (let* ((rm-shift (ash rm 16))
+         (rn-shift (ash rn 5))
+         (or1 (logior #xCB000000 rm-shift))
+         (or2 (logior or1 rn-shift))
+         (word (logior or2 rd)))
+    (nc-encode-word word)))
+
+(defun nc-mul-reg (rd rn rm)
+  (let* ((rm-shift (ash rm 16))
+         (rn-shift (ash rn 5))
+         (or1 (logior #x9B007C00 rm-shift))
+         (or2 (logior or1 rn-shift))
+         (word (logior or2 rd)))
+    (nc-encode-word word)))
+
+(defun nc-lsl-imm (rd rn shift)
+  (let* ((s1 (- #x40 shift))
+         (immr (logand s1 #x3F))
+         (imms (- #x3F shift))
+         (immr-shift (ash immr 16))
+         (imms-shift (ash imms 10))
+         (rn-shift (ash rn 5))
+         (or1 (logior #xD3400000 immr-shift))
+         (or2 (logior or1 imms-shift))
+         (or3 (logior or2 rn-shift))
+         (word (logior or3 rd)))
+    (nc-encode-word word)))
+
+(defun nc-lsr-imm (rd rn shift)
+  (let* ((shift-s (ash shift 16))
+         (rn-s (ash rn 5))
+         (or1 (logior #xD340FC00 shift-s))
+         (or2 (logior or1 rn-s))
+         (word (logior or2 rd)))
+    (nc-encode-word word)))
+
+(defun nc-mov-reg (rd rm)
+  (let* ((rm-s (ash rm 16))
+         (or1 (logior #xAA0003E0 rm-s))
+         (word (logior or1 rd)))
+    (nc-encode-word word)))
+
+(defun nc-and-reg (rd rn rm)
+  (let* ((rm-s (ash rm 16))
+         (rn-s (ash rn 5))
+         (or1 (logior #x8A000000 rm-s))
+         (or2 (logior or1 rn-s))
+         (word (logior or2 rd)))
+    (nc-encode-word word)))
+
+(defun nc-ldr-offset (rt rn offset)
+  (let* ((off-s (ash offset -3))
+         (off-ss (ash off-s 10))
+         (rn-s (ash rn 5))
+         (or1 (logior #xF9400000 off-ss))
+         (or2 (logior or1 rn-s))
+         (word (logior or2 rt)))
+    (nc-encode-word word)))
+
+(defun nc-str-offset (rt rn offset)
+  (let* ((off-s (ash offset -3))
+         (off-ss (ash off-s 10))
+         (rn-s (ash rn 5))
+         (or1 (logior #xF9000000 off-ss))
+         (or2 (logior or1 rn-s))
+         (word (logior or2 rt)))
+    (nc-encode-word word)))
+
+(defun nc-add-imm (rd rn imm)
+  (let* ((imm-m (logand imm #xFFF))
+         (imm-s (ash imm-m 10))
+         (rn-s (ash rn 5))
+         (or1 (logior #x91000000 imm-s))
+         (or2 (logior or1 rn-s))
+         (word (logior or2 rd)))
+    (nc-encode-word word)))
+
+(defun nc-sub-imm (rd rn imm)
+  (let* ((imm-m (logand imm #xFFF))
+         (imm-s (ash imm-m 10))
+         (rn-s (ash rn 5))
+         (or1 (logior #xD1000000 imm-s))
+         (or2 (logior or1 rn-s))
+         (word (logior or2 rd)))
+    (nc-encode-word word)))
+
+(defun nc-stp-offset (rt1 rt2 rn imm)
+  (let* ((imm-s (ash imm -3))
+         (imm-m (logand imm-s #x7F))
+         (imm-ss (ash imm-m 15))
+         (rt2-s (ash rt2 10))
+         (rn-s (ash rn 5))
+         (or1 (logior #xA9000000 imm-ss))
+         (or2 (logior or1 rt2-s))
+         (or3 (logior or2 rn-s))
+         (word (logior or3 rt1)))
+    (nc-encode-word word)))
+
+(defun nc-ldp-offset (rt1 rt2 rn imm)
+  (let* ((imm-s (ash imm -3))
+         (imm-m (logand imm-s #x7F))
+         (imm-ss (ash imm-m 15))
+         (rt2-s (ash rt2 10))
+         (rn-s (ash rn 5))
+         (or1 (logior #xA9400000 imm-ss))
+         (or2 (logior or1 rt2-s))
+         (or3 (logior or2 rn-s))
+         (word (logior or3 rt1)))
+    (nc-encode-word word)))
+
+(defun nc-cmp-reg (rn rm)
+  (let* ((rm-s (ash rm 16))
+         (rn-s (ash rn 5))
+         (or1 (logior #xEB00001F rm-s))
+         (word (logior or1 rn-s)))
+    (nc-encode-word word)))
+
+(defun nc-cset (rd cond-code)
+  (let* ((cc-x (logxor cond-code 1))
+         (cc-s (ash cc-x 12))
+         (or1 (logior #x9A9F07E0 cc-s))
+         (word (logior or1 rd)))
+    (nc-encode-word word)))
+
+(defun nc-b-offset (offset)
+  (let* ((off-s (ash offset -2))
+         (off-m (logand off-s #x3FFFFFF))
+         (word (logior #x14000000 off-m)))
+    (nc-encode-word word)))
+
+(defun nc-bl-offset (offset)
+  (let* ((off-s (ash offset -2))
+         (off-m (logand off-s #x3FFFFFF))
+         (word (logior #x94000000 off-m)))
+    (nc-encode-word word)))
+
+(defun nc-b-cond (cond-code offset)
+  (let* ((off-s (ash offset -2))
+         (off-m (logand off-s #x7FFFF))
+         (off-ss (ash off-m 5))
+         (or1 (logior #x54000000 off-ss))
+         (word (logior or1 cond-code)))
+    (nc-encode-word word)))
+
+(defun nc-ret ()
+  (nc-encode-word #xD65F03C0))
+
+(defun nc-movk (rd imm shift)
+  (let* ((shift-s (ash shift -4))
+         (shift-ss (ash shift-s 21))
+         (imm-m (logand imm #xFFFF))
+         (imm-s (ash imm-m 5))
+         (or1 (logior #xF2800000 shift-ss))
+         (or2 (logior or1 imm-s))
+         (word (logior or2 rd)))
+    (nc-encode-word word)))
+
+(defun nc-blr (rn)
+  (let* ((rn-s (ash rn 5))
+         (word (logior #xD63F0000 rn-s)))
+    (nc-encode-word word)))
+
+(defun nc-load-addr (rd addr)
+  (let* ((lo16 (logand addr #xFFFF))
+         (sh16 (ash addr -16))
+         (hi16 (logand sh16 #xFFFF))
+         (sh32 (ash addr -32))
+         (hi32 (logand sh32 #xFFFF))
+         (sh48 (ash addr -48))
+         (hi48 (logand sh48 #xFFFF))
+         (base (nc-movz rd lo16))
+         (p1 (if (> hi16 0) (nc-movk rd hi16 16) nil))
+         (r1 (append base p1))
+         (p2 (if (> hi32 0) (nc-movk rd hi32 32) nil))
+         (r2 (append r1 p2))
+         (p3 (if (> hi48 0) (nc-movk rd hi48 48) nil)))
+    (append r2 p3)))
+
+(defun nc-cond-eq () 0)
+(defun nc-cond-ne () 1)
+(defun nc-cond-lt () 11)
+(defun nc-cond-le () 13)
+(defun nc-cond-gt () 12)
+(defun nc-cond-ge () 10)
+
+;;; ============================================================
+;;; Part 2: Utility Functions (nc-util-*)
+;;; ============================================================
+
+(defun nc-has-tag (ir tag)
+  (and (consp ir) (eq (car ir) tag)))
+
+(defun nc-env-lookup (sym env)
+  (if (null env)
+      nil
+      (if (eq (caar env) sym)
+          (cdar env)
+          (nc-env-lookup sym (cdr env)))))
+
+(defun nc-env-extend (bindings env)
+  ;; Use let* to sequence operations - avoid nested recursive calls in args
+  (labels ((max-off (e acc)
+             (if (null e) acc
+                 (let ((o (cdar e)))
+                   (max-off (cdr e) (if (> o acc) o acc)))))
+           (add-bs (bs off acc)
+             (if (null bs) acc
+                 (let ((entry (cons (caar bs) off)))
+                   (add-bs (cdr bs) (+ off 1) (cons entry acc))))))
+    (let* ((mx (if env (max-off env -1) -1))
+           (bs-result (add-bs bindings (+ mx 1) nil))
+           (rev-result (reverse bs-result)))
+      (append rev-result env))))
+
+(defun nc-count-instrs (code)
+  (if (null code) 0 (ash (length code) -2)))
+
+;; Append two lists - bind first, then append
+(defun nc-append2 (a b)
+  (let ((ar a))
+    (append ar b)))
+
+;; Append list of lists using fold - avoiding nested calls
+(defun nc-append-all (lists)
+  (labels ((iter (ls acc)
+             (if (null ls) acc
+                 (let* ((hd (car ls))
+                        (tl (cdr ls))
+                        (na (append acc hd)))
+                   (iter tl na)))))
+    (iter lists nil)))
+
+;;; ============================================================
+;;; Part 3: Reader (nc-read-*)
+;;; ============================================================
+
+(defun nc-whitespace-p (ch) (or (= ch #x20) (= ch #x09) (= ch #x0A) (= ch #x0D)))
+(defun nc-digit-p (ch) (and (>= ch #x30) (<= ch #x39)))
+(defun nc-hex-digit-p (ch) (or (nc-digit-p ch) (and (>= ch #x41) (<= ch #x46)) (and (>= ch #x61) (<= ch #x66))))
+(defun nc-alpha-p (ch) (or (and (>= ch #x41) (<= ch #x5A)) (and (>= ch #x61) (<= ch #x7A))))
+(defun nc-symbol-char-p (ch)
+  (or (nc-alpha-p ch) (nc-digit-p ch) (= ch #x2D) (= ch #x5F) (= ch #x2B) (= ch #x2A)
+      (= ch #x2F) (= ch #x3D) (= ch #x3C) (= ch #x3E) (= ch #x21) (= ch #x3F)
+      (= ch #x26) (= ch #x25) (= ch #x3A)))
+
+(defun nc-char-at (s pos)
+  (if (< pos (string-length s)) (string-ref s pos) 0))
+
+(defun nc-digit-val (ch) (- ch #x30))
+(defun nc-hex-val (ch)
+  (cond ((nc-digit-p ch) (- ch #x30))
+        ((and (>= ch #x41) (<= ch #x46)) (+ (- ch #x41) 10))
+        ((and (>= ch #x61) (<= ch #x66)) (+ (- ch #x61) 10))
+        (t 0)))
+
+(defun nc-skip-line (s pos)
+  (let ((ch (nc-char-at s pos)))
+    (if (or (= ch #x0A) (= ch 0)) (+ pos 1) (nc-skip-line s (+ pos 1)))))
+
+(defun nc-skip-ws (s pos)
+  (let ((ch (nc-char-at s pos)))
+    (cond ((nc-whitespace-p ch) (nc-skip-ws s (+ pos 1)))
+          ((= ch #x3B) (nc-skip-ws s (nc-skip-line s (+ pos 1))))
+          (t pos))))
+
+(defun nc-read-digits (s pos n)
+  (let ((ch (nc-char-at s pos)))
+    (if (nc-digit-p ch)
+        (nc-read-digits s (+ pos 1) (+ (* n 10) (nc-digit-val ch)))
+        (cons n pos))))
+
+(defun nc-read-int (s pos)
+  (let ((neg nil) (start pos))
+    (let ((ch (nc-char-at s pos)))
+      (cond ((= ch #x2D) (setq neg t) (setq start (+ pos 1)))
+            ((= ch #x2B) (setq start (+ pos 1)))))
+    (let* ((r (nc-read-digits s start 0))
+           (val (car r))
+           (end (cdr r)))
+      (cons (if neg (- 0 val) val) end))))
+
+(defun nc-read-hex-digits (s pos n)
+  (let ((ch (nc-char-at s pos)))
+    (if (nc-hex-digit-p ch)
+        (nc-read-hex-digits s (+ pos 1) (+ (* n 16) (nc-hex-val ch)))
+        (cons n pos))))
+
+(defun nc-read-hex (s pos)
+  (nc-read-hex-digits s pos 0))
+
+(defun nc-chars-to-string (chars)
+  (let* ((len (length chars))
+         (vec (make-vector len)))
+    (dotimes (i len)
+      (vector-set vec i (nth i chars)))
+    (make-string-from-vector vec)))
+
+(defun nc-read-sym-chars (s pos chars)
+  (let ((ch (nc-char-at s pos)))
+    (if (nc-symbol-char-p ch)
+        (nc-read-sym-chars s (+ pos 1) (cons ch chars))
+        (cons chars pos))))
+
+(defun nc-read-sym (s pos)
+  (let* ((r (nc-read-sym-chars s pos nil))
+         (chars (car r))
+         (end (cdr r))
+         (name (nc-chars-to-string (reverse chars)))
+         (uname (string-upcase name)))
+    (cons (cond ((string= uname "NIL") nil)
+                ((string= uname "T") t)
+                (t (intern uname)))
+          end)))
+
+(defun nc-read-str-chars (s pos chars)
+  (let ((ch (nc-char-at s pos)))
+    (cond
+      ((= ch #x22) (cons chars (+ pos 1)))
+      ((= ch #x5C)
+       (let* ((esc (nc-char-at s (+ pos 1)))
+              (ec (cond ((= esc #x6E) #x0A) ((= esc #x74) #x09) ((= esc #x72) #x0D) (t esc))))
+         (nc-read-str-chars s (+ pos 2) (cons ec chars))))
+      ((= ch 0) (cons chars pos))
+      (t (nc-read-str-chars s (+ pos 1) (cons ch chars))))))
+
+(defun nc-read-str (s pos)
+  (let* ((r (nc-read-str-chars s (+ pos 1) nil))
+         (chars (car r))
+         (end (cdr r)))
+    (cons (nc-chars-to-string (reverse chars)) end)))
+
+(defun nc-read (source pos)
+  (labels
+      ((read-list-elems (p)
+         (let* ((p2 (nc-skip-ws source p))
+                (ch (nc-char-at source p2)))
+           (cond
+             ((= ch #x29) (cons nil (+ p2 1)))
+             ((= ch #x2E)
+              (let* ((r (read-one (+ p2 1)))
+                     (cdr-val (car r))
+                     (p3 (cdr r))
+                     (p4 (nc-skip-ws source p3)))
+                (cons cdr-val (+ p4 1))))
+             ((= ch 0) (cons nil p2))
+             (t (let* ((er (read-one p2))
+                       (el (car er))
+                       (p3 (cdr er))
+                       (rr (read-list-elems p3)))
+                  (cons (cons el (car rr)) (cdr rr)))))))
+       (read-list (p) (read-list-elems (+ p 1)))
+       (read-sharp (p)
+         (let ((ch (nc-char-at source (+ p 1))))
+           (cond
+             ((or (= ch #x78) (= ch #x58)) (nc-read-hex source (+ p 2)))
+             ((= ch #x27)
+              (let ((r (read-one (+ p 2))))
+                (cons (list 'function (car r)) (cdr r))))
+             ((= ch #x5C)
+              (let ((ch2 (nc-char-at source (+ p 2))))
+                (if (nc-alpha-p (nc-char-at source (+ p 3)))
+                    (let* ((r (nc-read-sym-chars source (+ p 2) nil))
+                           (nm (nc-chars-to-string (reverse (car r)))))
+                      (cons (cond ((string= nm "newline") #x0A) ((string= nm "space") #x20)
+                                  ((string= nm "tab") #x09) (t ch2))
+                            (cdr r)))
+                    (cons ch2 (+ p 3)))))
+             (t (cons nil (+ p 2))))))
+       (read-one (p)
+         (let* ((p2 (nc-skip-ws source p))
+                (ch (nc-char-at source p2)))
+           (if (>= p2 (string-length source))
+               (cons nil p2)
                (cond
-                 ((null form) nil)
-                 ((symbolp form)
-                  (when (and (not (builtin-operator-p form))
-                            (not (gethash form bound-set))
-                            (not (gethash form seen))
-                            (not (keywordp form)))
-                    (setf (gethash form seen) t)
-                    (push form free-vars)))
-                 ((not (consp form)) nil)
-                 ((eq (first form) 'quote) nil)
-                 ((eq (first form) 'lambda)
-                  ;; In lambda, add params to bound set temporarily
-                  (let ((lambda-params (second form))
-                        (lambda-body (third form)))
-                    (dolist (p lambda-params) (setf (gethash p bound-set) t))
-                    (collect lambda-body)
-                    (dolist (p lambda-params) (remhash p bound-set))))
-                 ((eq (first form) 'let)
-                  ;; In let, collect from values first (before vars are bound)
-                  (let* ((bindings (second form))
-                         (let-body (third form))
-                         (vars (mapcar #'first bindings)))
-                    ;; Collect from init forms
-                    (dolist (binding bindings)
-                      (collect (second binding)))
-                    ;; Add let vars to bound set
-                    (dolist (v vars) (setf (gethash v bound-set) t))
-                    (collect let-body)
-                    (dolist (v vars) (remhash v bound-set))))
-                 ((eq (first form) 'defun) nil)
-                 (t
-                  ;; Regular form - collect from all subforms
-                  (dolist (sub (rest form))
-                    (collect sub))))))
-      (collect body)
-      free-vars)))
-
-;;; Parse Lisp expression to IR
-(defun parse (form)
-  "Parse a Lisp form into compiler IR"
-  (cond
-    ((integerp form)
-     (make-expr :type 'fixnum :value form))
-
-    ((stringp form)
-     (make-expr :type 'string :value form))
-
-    ((eq form t)
-     ;; Special symbol t is a constant true value (represented as fixnum 1)
-     (make-expr :type 'fixnum :value 1))
-
-    ((eq form nil)
-     ;; Special symbol nil is a constant false/zero value (represented as fixnum 0)
-     (make-expr :type 'fixnum :value 0))
-
-    ((symbolp form)
-     (make-expr :type 'variable :value form))
-
-    ((and (consp form) (eq (first form) 'if))
-     ;; Special form: (if condition then-expr else-expr)
-     (let ((condition (second form))
-           (then-expr (third form))
-           (else-expr (fourth form)))
-       (make-expr :type 'if
-                  :value nil
-                  :args (list (parse condition)
-                              (parse then-expr)
-                              (parse else-expr)))))
-
-    ((and (consp form) (eq (first form) 'let))
-     ;; Special form: (let ((var1 val1) (var2 val2) ...) body)
-     ;; OR named-let: (let name ((var1 val1) ...) body) for recursion
-     (let ((second-elem (second form)))
-       (if (symbolp second-elem)
-           ;; Named-let for recursion: (let name ((x 1) (y 2)) body)
-           ;; Compile as a loop structure instead of lambda transformation
-           (let* ((name second-elem)
-                  (bindings (third form))
-                  (body (fourth form)))
-             (make-expr :type 'named-let
-                        :value (list name bindings)  ; store name and bindings
-                        :args (list (parse body))))
-           ;; Regular let
-           (make-expr :type 'let
-                      :value second-elem  ; bindings
-                      :args (list (parse (third form)))))))
-
-    ((and (consp form) (eq (first form) 'let*))
-     ;; Special form: (let* ((var1 val1) (var2 val2) ...) body)
-     ;; Sequential bindings - transform to nested lets
-     (let ((bindings (second form))
-           (body (third form)))
-       (if (null bindings)
-           ;; No bindings: (let* () body) -> body
-           (parse body)
-           ;; Transform to nested lets: (let* ((x 1) (y 2)) body) -> (let ((x 1)) (let* ((y 2)) body))
-           (if (= (length bindings) 1)
-               ;; Last binding: (let* ((x 1)) body) -> (let ((x 1)) body)
-               (parse `(let (,(first bindings)) ,body))
-               ;; Multiple bindings: recurse
-               (parse `(let (,(first bindings))
-                         (let* ,(rest bindings) ,body)))))))
-
-    ((and (consp form) (eq (first form) 'lambda))
-     ;; Special form: (lambda (params) body)
-     ;; Analyze for free variables to determine if closure is needed
-     (let* ((params (second form))
-            (body (third form))
-            (free-vars (find-free-variables body params)))
-       (if free-vars
-           ;; Lambda with free variables - needs closure
-           ;; Store: parsed-body, free-vars, original-body (for runtime wrapper creation)
-           (make-expr :type 'closure
-                      :value params      ; Parameter list
-                      :args (list (parse body) free-vars body))
-           ;; Lambda with no free variables - simple lambda
-           (make-expr :type 'lambda
-                      :value params      ; Parameter list
-                      :args (list (parse body))))))
-
-    ((and (consp form) (eq (first form) 'progn))
-     ;; Special form: (progn expr1 expr2 ... exprN)
-     (let ((exprs (rest form)))
-       (make-expr :type 'progn
-                  :value nil
-                  :args (mapcar #'parse exprs))))
-
-    ((and (consp form) (eq (first form) 'begin))
-     ;; Scheme-style alias for progn
-     (parse `(progn ,@(rest form))))
-
-    ((and (consp form) (eq (first form) 'quote))
-     ;; Special form: (quote datum)
-     ;; Note: Don't recursively parse - keep quoted value as-is
-     (let ((datum (second form)))
-       (make-expr :type 'quote
-                  :value datum
-                  :args nil)))
-
-    ((and (consp form) (eq (first form) 'quasiquote))
-     ;; Special form: (quasiquote template)
-     ;; Backquote ` - allows selective evaluation with unquote
-     (parse (expand-quasiquote (second form))))
-
-    ((and (consp form) (eq (first form) 'not))
-     ;; Special form: (not expr) - logical not
-     (let ((expr (second form)))
-       (make-expr :type 'not
-                  :value nil
-                  :args (list (parse expr)))))
-
-    ((and (consp form) (eq (first form) 'and))
-     ;; Special form: (and expr1 expr2 ...) - short-circuit and
-     (let ((exprs (rest form)))
-       (make-expr :type 'and
-                  :value nil
-                  :args (mapcar #'parse exprs))))
-
-    ((and (consp form) (eq (first form) 'or))
-     ;; Special form: (or expr1 expr2 ...) - short-circuit or
-     (let ((exprs (rest form)))
-       (make-expr :type 'or
-                  :value nil
-                  :args (mapcar #'parse exprs))))
-
-    ((and (consp form) (eq (first form) 'cond))
-     ;; Special form: (cond (test1 result1) (test2 result2) ... (t default))
-     (let ((clauses (rest form)))
-       (make-expr :type 'cond
-                  :value clauses  ; Store raw clauses (will parse during code gen)
-                  :args nil)))
-
-    ((and (consp form) (eq (first form) 'when))
-     ;; Special form: (when test body...) => (if test (progn body...) 0)
-     (let ((test (second form))
-           (body (cddr form)))
-       (parse `(if ,test (progn ,@body) 0))))
-
-    ((and (consp form) (eq (first form) 'unless))
-     ;; Special form: (unless test body...) => (if (not test) (progn body...) 0)
-     (let ((test (second form))
-           (body (cddr form)))
-       (parse `(if (not ,test) (progn ,@body) 0))))
-
-    ((and (consp form) (eq (first form) 'case))
-     ;; Special form: (case key-form (value result) ... (t default))
-     ;; Transform to (let ((#:g key-form)) (cond ((= #:g value) result) ... (t default)))
-     (let* ((key-form (second form))
-            (clauses (cddr form))
-            (temp-var (gensym "CASE")))
-       (parse `(let ((,temp-var ,key-form))
-                 (cond ,@(mapcar (lambda (clause)
-                                   (let ((keys (first clause))
-                                         (result (second clause)))
-                                     (if (or (eq keys t) (eq keys 'otherwise))
-                                         `(t ,result)
-                                         (if (consp keys)
-                                             ;; Multiple keys: (or (= temp key1) (= temp key2) ...)
-                                             `((or ,@(mapcar (lambda (k) `(= ,temp-var ,k)) keys))
-                                               ,result)
-                                             ;; Single key
-                                             `((= ,temp-var ,keys) ,result)))))
-                                 clauses))))))
-
-    ((and (consp form) (eq (first form) 'catch))
-     ;; Special form: (catch tag body)
-     ;; Establishes a catch point and executes body
-     ;; Tag is evaluated, body is wrapped in a 0-argument closure
-     (let ((tag (second form))
-           (body (third form)))
-       (make-expr :type 'catch
-                  :value (cons tag body)  ; Store both tag and body (original forms)
-                  :args (list (parse body)))))  ; Parsed body
-
-    ((and (consp form) (eq (first form) 'throw))
-     ;; Special form: (throw tag value)
-     ;; Throws to matching catch (both arguments evaluated)
-     (let ((tag (second form))
-           (value (third form)))
-       (make-expr :type 'throw
-                  :value tag  ; Tag (will be evaluated)
-                  :args (list (parse value)))))  ; Value to return from catch
-
-    ((and (consp form) (eq (first form) 'block))
-     ;; Special form: (block name body...)
-     ;; Transform to catch for Phase 1
-     ;; Use hash of symbol name as fixnum tag
-     (let* ((name (second form))
-            (body (cddr form))
-            (tag (if (symbolp name)
-                     (sxhash (string name))
-                     name)))  ; If already a number, use it
-       (parse `(catch ,tag (progn ,@body)))))
-
-    ((and (consp form) (eq (first form) 'return-from))
-     ;; Special form: (return-from name [value])
-     ;; Transform to throw for Phase 1
-     ;; Use hash of symbol name as fixnum tag
-     (let* ((name (second form))
-            (value (or (third form) 0))  ; Default to 0 (nil) if no value
-            (tag (if (symbolp name)
-                     (sxhash (string name))
-                     name)))  ; If already a number, use it
-       (parse `(throw ,tag ,value))))
-
-    ((and (consp form) (eq (first form) 'multiple-value-bind))
-     ;; Special form: (multiple-value-bind (var1 var2 ...) values-form body...)
-     ;; vars: list of variable names (not parsed)
-     ;; values-form: expression that returns multiple values
-     ;; body: one or more body forms (combined into progn)
-     (let ((vars (second form))
-           (values-form (third form))
-           (body-forms (cdddr form)))
-       (make-expr :type 'multiple-value-bind
-                  :value vars  ; Variable names (raw list, not parsed)
-                  :args (list (parse values-form)
-                              (parse `(progn ,@body-forms))))))
-
-    ((and (consp form) (eq (first form) 'dotimes))
-     ;; Special form: (dotimes (var count [result]) body...)
-     ;; Inline code generation - no runtime functions needed
-     (let* ((spec (second form))
-            (var (first spec))
-            (count-form (second spec))
-            (result-form (or (third spec) 0))  ; default to nil (0)
-            (body-forms (cddr form)))
-       (make-expr :type 'dotimes
-                  :value (list var result-form)  ; (var result-form)
-                  :args (list (parse count-form)
-                              (parse `(progn ,@body-forms))))))
-
-    ((and (consp form) (eq (first form) 'dolist))
-     ;; Special form: (dolist (var list [result]) body...)
-     ;; Inline code generation - no runtime functions needed
-     (let* ((spec (second form))
-            (var (first spec))
-            (list-form (second spec))
-            (result-form (or (third spec) 0))  ; default to nil (0)
-            (body-forms (cddr form)))
-       (make-expr :type 'dolist
-                  :value (list var result-form)  ; (var result-form)
-                  :args (list (parse list-form)
-                              (parse `(progn ,@body-forms))))))
-
-    ((and (consp form) (eq (first form) 'defun))
-     ;; Special form: (defun name (params) body)
-     ;; Store function definition in global table for compile-time inlining
-     (let ((name (second form))
-           (params (third form))
-           (body (fourth form)))
-       ;; Store in function table (for compile-time inlining)
-       (setf (gethash name *function-table*) (cons params body))
-
-       ;; ALSO compile to executable code and store in symbol's function slot
-       ;; This enables runtime funcall
-       (when (find-package :habu-runtime)
-         (let ((intern-fn (find-symbol "RUNTIME-INTERN" :habu-runtime))
-               (set-fn-fn (find-symbol "SET-SYMBOL-FUNCTION" :habu-runtime)))
-           (when (and intern-fn set-fn-fn)
-             (let* ((name-str (string name))
-                    (sym (funcall intern-fn name-str))
-                    ;; Create alien-callable wrapper for this function
-                    ;; This allows calling from generated machine code
-                    (callable-name (intern (format nil "HABU-FUNCTION-~A" (string-upcase (string name)))
-                                          (find-package :habu-compiler))))
-               ;; Create the Lisp function that implements the body
-               (eval `(defun ,callable-name ,params ,body))
-
-               ;; Create alien-callable wrapper (SBCL-specific for Phase 1)
-               #+sbcl
-               (let ((num-params (length params)))
-                 (cond
-                   ((= num-params 0)
-                    (eval `(sb-alien:define-alien-callable ,callable-name
-                               sb-alien:unsigned-long ()
-                             (,callable-name))))
-                   ((= num-params 1)
-                    (eval `(sb-alien:define-alien-callable ,callable-name
-                               sb-alien:unsigned-long ((,(first params) sb-alien:unsigned-long))
-                             (,callable-name ,(first params)))))
-                   ((= num-params 2)
-                    (eval `(sb-alien:define-alien-callable ,callable-name
-                               sb-alien:unsigned-long ((,(first params) sb-alien:unsigned-long)
-                                                       (,(second params) sb-alien:unsigned-long))
-                             (,callable-name ,(first params) ,(second params)))))
-                   ((= num-params 3)
-                    (eval `(sb-alien:define-alien-callable ,callable-name
-                               sb-alien:unsigned-long ((,(first params) sb-alien:unsigned-long)
-                                                       (,(second params) sb-alien:unsigned-long)
-                                                       (,(third params) sb-alien:unsigned-long))
-                             (,callable-name ,(first params) ,(second params) ,(third params)))))
-                   (t (error "defun currently supports up to 3 parameters for runtime funcall")))
-
-                 ;; Get the function pointer address
-                 (let ((func-addr (sb-sys:sap-int
-                                  (sb-alien:alien-sap
-                                   (sb-alien:alien-callable-function callable-name)))))
-                   (funcall set-fn-fn sym func-addr)
-                   (format t "; defun ~A -> symbol ~X, code at ~X~%" name sym func-addr)))))))
-
-       ;; Return 0 as a placeholder (defun doesn't produce runtime value)
-       ;; The symbol is interned and function slot is set as a side effect
-       (make-expr :type 'fixnum :value 0)))
-
-    ((and (consp form) (eq (first form) 'defvar))
-     ;; Special form: (defvar name initial-value)
-     ;; Store global variable definition and set symbol-value slot
-     (let ((name (second form))
-           (initial-value (if (third form) (third form) nil)))
-       ;; Intern the symbol and set its value slot
-       (when (find-package :habu-runtime)
-         (let ((intern-fn (find-symbol "RUNTIME-INTERN" :habu-runtime))
-               (set-val-fn (find-symbol "SET-SYMBOL-VALUE" :habu-runtime)))
-           (when (and intern-fn set-val-fn)
-             (let* ((name-str (string name))
-                    (sym (funcall intern-fn name-str))
-                    ;; Convert the initial value to a tagged fixnum
-                    ;; For now, only support fixnum constants and nil
-                    (tagged-value
-                     (cond
-                       ((null initial-value) 0)  ; nil = 0
-                       ((numberp initial-value) (ash initial-value 4))  ; tag as fixnum
-                       ((eq initial-value t) (ash 1 4))  ; t = 1 << 4
-                       (t (error "defvar only supports constant fixnum/nil/t values for now: ~S"
-                                initial-value)))))
-               (funcall set-val-fn sym tagged-value)
-               (format t "; defvar ~A = ~A -> symbol ~X~%" name initial-value sym)))))
-
-       ;; Return 0 as a placeholder (defvar doesn't produce runtime value)
-       (make-expr :type 'fixnum :value 0)))
-
-    ((and (consp form) (eq (first form) 'defmacro))
-     ;; Special form: (defmacro name (params) body)
-     ;; Store macro definition in global table
-     ;; Macros are expanded at compile-time, not runtime
-     (let ((name (second form))
-           (params (third form))
-           (body (fourth form)))
-       (setf (gethash name *macro-table*) (cons params body))
-       ;; ALSO define a function in SBCL that delegates to our macro expander
-       ;; This allows nested macro calls in macro bodies to work
-       (eval `(defun ,name (&rest args)
-                (expand-macros-in-form (cons ',name args))))
-       ;; Return 0 as a placeholder
-       (make-expr :type 'fixnum :value 0)))
-
-    ((and (consp form) (eq (first form) 'funcall))
-     ;; Special form: (funcall fn-expr arg1 arg2 ...)
-     ;; Two cases:
-     ;;   1. (funcall 'name ...) - runtime function call via symbol
-     ;;   2. (funcall expr ...) - call closure value
-     (let* ((fn-expr (second form))
-            (args (cddr form)))
-       (if (and (consp fn-expr) (eq (first fn-expr) 'quote))
-           ;; Case 1: Quoted function name - runtime-call
-           (let ((fn-name (second fn-expr))
-                 (fn-def (gethash (second fn-expr) *function-table*)))
-             (unless fn-def
-               (error "Undefined function: ~S" fn-name))
-             ;; Create runtime-call IR node
-             (make-expr :type 'runtime-call
-                        :value fn-name
-                        :args (mapcar #'parse args)))
-           ;; Case 2: Expression that evaluates to closure - funcall
-           (make-expr :type 'funcall
-                      :value (parse fn-expr)
-                      :args (mapcar #'parse args)))))
-
-    ((and (consp form) (eq (first form) 'symbol-value))
-     ;; Special form: (symbol-value 'name)
-     ;; Look up the symbol's value slot and embed it as a constant
-     (let* ((sym-name-expr (second form))
-            ;; Extract the symbol name from the quoted symbol
-            (sym-name (if (and (consp sym-name-expr)
-                              (eq (first sym-name-expr) 'quote))
-                         (second sym-name-expr)
-                         (error "symbol-value requires quoted symbol name: ~S" sym-name-expr))))
-       ;; Look up the symbol and get its value
-       (if (find-package :habu-runtime)
-           (let ((intern-fn (find-symbol "RUNTIME-INTERN" :habu-runtime))
-                 (get-val-fn (find-symbol "RUNTIME-SYMBOL-VALUE" :habu-runtime)))
-             (if (and intern-fn get-val-fn)
-                 (let* ((name-str (string sym-name))
-                        (sym (funcall intern-fn name-str))
-                        (tagged-value (funcall get-val-fn sym)))
-                   ;; Embed the value as a fixnum constant
-                   ;; The value is already tagged, so untag it
-                   (make-expr :type 'fixnum :value (ash tagged-value -4)))
-                 (error "Runtime functions not available")))
-           (error "Runtime not loaded"))))
-
-    ((and (consp form) (eq (first form) 'set))
-     ;; Special form: (set 'name value)
-     ;; Set a global variable's value at compile-time
-     (let* ((sym-name-expr (second form))
-            (value-expr (third form))
-            ;; Extract the symbol name from the quoted symbol
-            (sym-name (if (and (consp sym-name-expr)
-                              (eq (first sym-name-expr) 'quote))
-                         (second sym-name-expr)
-                         (error "set requires quoted symbol name: ~S" sym-name-expr))))
-       ;; Compile the value expression first
-       (let ((value-ir (parse value-expr)))
-         ;; For now, only support constant values (like defvar)
-         (unless (eq (expr-type value-ir) 'fixnum)
-           (error "set currently only supports constant fixnum values"))
-
-         ;; Set the symbol's value in the runtime
-         (when (find-package :habu-runtime)
-           (let ((intern-fn (find-symbol "RUNTIME-INTERN" :habu-runtime))
-                 (set-val-fn (find-symbol "SET-SYMBOL-VALUE" :habu-runtime)))
-             (when (and intern-fn set-val-fn)
-               (let* ((name-str (string sym-name))
-                      (sym (funcall intern-fn name-str))
-                      (tagged-value (ash (expr-value value-ir) 4)))
-                 (funcall set-val-fn sym tagged-value)
-                 (format t "; set ~A = ~D -> symbol ~X~%"
-                         sym-name (expr-value value-ir) sym)))))
-
-         ;; Return the value as the result
-         value-ir)))
-
-    ((and (consp form) (eq (first form) 'setq))
-     ;; Special form: (setq var value)
-     ;; Mutate a lexical variable
-     (let ((var (second form))
-           (value (third form)))
-       (make-expr :type 'setq
-                  :value var  ; Variable name
-                  :args (list (parse value)))))  ; Value expression
-
-    ((and (consp form) (eq (first form) 'incf))
-     ;; Macro: (incf var [delta]) -> (setq var (+ var delta))
-     (let ((var (second form))
-           (delta (if (third form) (third form) 1)))
-       (parse `(setq ,var (+ ,var ,delta)))))
-
-    ((and (consp form) (eq (first form) 'decf))
-     ;; Macro: (decf var [delta]) -> (setq var (- var delta))
-     (let ((var (second form))
-           (delta (if (third form) (third form) 1)))
-       (parse `(setq ,var (- ,var ,delta)))))
-
-    ((and (consp form) (eq (first form) 'equal))
-     ;; Alias for = (for compatibility)
-     (parse `(= ,@(rest form))))
-
-    ((and (consp form) (eq (first form) 'null))
-     ;; Predicate: (null x) - check if x is 0/nil
-     ;; Alias for zerop
-     (parse `(zerop ,@(rest form))))
-
-    ((and (consp form) (eq (first form) 'identity))
-     ;; Function: (identity x) - returns its argument
-     (parse (second form)))
-
-    ((and (consp form) (eq (first form) 'logandc1))
-     ;; Function: (logandc1 x y) => (logand (lognot x) y)
-     (parse `(logand (lognot ,(second form)) ,(third form))))
-
-    ((and (consp form) (eq (first form) 'logandc2))
-     ;; Function: (logandc2 x y) => (logand x (lognot y))
-     (parse `(logand ,(second form) (lognot ,(third form)))))
-
-    ((and (consp form) (eq (first form) 'logorc1))
-     ;; Function: (logorc1 x y) => (logior (lognot x) y)
-     (parse `(logior (lognot ,(second form)) ,(third form))))
-
-    ((and (consp form) (eq (first form) 'logorc2))
-     ;; Function: (logorc2 x y) => (logior x (lognot y))
-     (parse `(logior ,(second form) (lognot ,(third form)))))
-
-    ((and (consp form) (eq (first form) 'square))
-     ;; Function: (square x) => (* x x)
-     (let ((x (second form)))
-       (if (and (consp x) (not (eq (first x) 'quote)))
-           ;; Complex expression: bind to temp var to avoid double evaluation
-           (let ((temp (gensym "SQ")))
-             (parse `(let ((,temp ,x)) (* ,temp ,temp))))
-           ;; Simple expression: safe to duplicate
-           (parse `(* ,x ,x)))))
-
-    ((and (consp form) (eq (first form) 'clamp))
-     ;; Function: (clamp x low high) => (max low (min high x))
-     (parse `(max ,(third form) (min ,(fourth form) ,(second form)))))
-
-    ((and (consp form) (eq (first form) 'between))
-     ;; Predicate: (between x low high) => (and (>= x low) (<= x high))
-     (parse `(and (>= ,(second form) ,(third form))
-                  (<= ,(second form) ,(fourth form)))))
-
-    ((and (consp form) (eq (first form) 'neg))
-     ;; Function: (neg x) => (- x) - unary negation
-     (parse `(- ,(second form))))
-
-    ((and (consp form) (eq (first form) 'let1))
-     ;; Macro: (let1 var val body) => (let ((var val)) body)
-     (parse `(let ((,(second form) ,(third form))) ,(fourth form))))
-
-    ;; Scheme-style predicate aliases
-    ((and (consp form) (eq (first form) 'zero?))
-     ;; Alias for zerop
-     (parse `(zerop ,(second form))))
-
-    ((and (consp form) (eq (first form) 'positive?))
-     ;; Alias for plusp
-     (parse `(plusp ,(second form))))
-
-    ((and (consp form) (eq (first form) 'negative?))
-     ;; Alias for minusp
-     (parse `(minusp ,(second form))))
-
-    ((and (consp form) (eq (first form) 'even?))
-     ;; Alias for evenp
-     (parse `(evenp ,(second form))))
-
-    ((and (consp form) (eq (first form) 'odd?))
-     ;; Alias for oddp
-     (parse `(oddp ,(second form))))
-
-    ((and (consp form) (eq (first form) 'number?))
-     ;; Alias for numberp
-     (parse `(numberp ,(second form))))
-
-    ;; Power-of-2 utilities
-    ((and (consp form) (eq (first form) 'power-of-2?))
-     ;; Predicate: Check if x is a power of 2
-     ;; A number is a power of 2 if x > 0 and (x & (x-1)) == 0
-     (let ((x (second form)))
-       (if (and (consp x) (not (eq (first x) 'quote)))
-           ;; Complex expression: bind to temp var to avoid double evaluation
-           (let ((temp (gensym "POW2")))
-             (parse `(let ((,temp ,x))
-                       (and (> ,temp 0) (zerop (logand ,temp (1- ,temp)))))))
-           ;; Simple expression: safe to duplicate
-           (parse `(and (> ,x 0) (zerop (logand ,x (1- ,x))))))))
-
-    ((and (consp form) (eq (first form) 'log2))
-     ;; Function: Integer log base 2 (position of highest set bit)
-     ;; log2(x) = integer-length(x) - 1
-     (parse `(1- (integer-length ,(second form)))))
-
-    ;; Alignment utilities (boundary must be power of 2)
-    ((and (consp form) (eq (first form) 'align-up))
-     ;; Function: Align value up to boundary
-     ;; align-up(x, b) = (x + b - 1) & ~(b - 1)
-     (let ((x (second form))
-           (boundary (third form)))
-       (if (or (and (consp x) (not (eq (first x) 'quote)))
-               (and (consp boundary) (not (eq (first boundary) 'quote))))
-           ;; Complex expression: bind to temp vars
-           (let ((tx (gensym "ALIGN-X"))
-                 (tb (gensym "ALIGN-B")))
-             (parse `(let ((,tx ,x) (,tb ,boundary))
-                       (logand (+ ,tx (1- ,tb)) (lognot (1- ,tb))))))
-           ;; Simple expressions: safe to duplicate
-           (parse `(logand (+ ,x (1- ,boundary)) (lognot (1- ,boundary)))))))
-
-    ((and (consp form) (eq (first form) 'align-down))
-     ;; Function: Align value down to boundary
-     ;; align-down(x, b) = x & ~(b - 1)
-     (let ((x (second form))
-           (boundary (third form)))
-       (if (or (and (consp x) (not (eq (first x) 'quote)))
-               (and (consp boundary) (not (eq (first boundary) 'quote))))
-           ;; Complex expression: bind to temp vars
-           (let ((tx (gensym "ALIGN-X"))
-                 (tb (gensym "ALIGN-B")))
-             (parse `(let ((,tx ,x) (,tb ,boundary))
-                       (logand ,tx (lognot (1- ,tb))))))
-           ;; Simple expressions: safe to duplicate
-           (parse `(logand ,x (lognot (1- ,boundary)))))))
-
-    ((and (consp form) (eq (first form) 'aligned?))
-     ;; Predicate: Check if value is aligned to boundary
-     ;; aligned?(x, b) = (x & (b - 1)) == 0
-     (let ((x (second form))
-           (boundary (third form)))
-       (if (or (and (consp x) (not (eq (first x) 'quote)))
-               (and (consp boundary) (not (eq (first boundary) 'quote))))
-           ;; Complex expression: bind to temp vars
-           (let ((tx (gensym "ALIGN-X"))
-                 (tb (gensym "ALIGN-B")))
-             (parse `(let ((,tx ,x) (,tb ,boundary))
-                       (zerop (logand ,tx (1- ,tb))))))
-           ;; Simple expressions: safe to duplicate
-           (parse `(zerop (logand ,x (1- ,boundary)))))))
-
-    ;; Additional utility functions
-    ((and (consp form) (eq (first form) 'cube))
-     ;; Function: (cube x) => (* x x x)
-     (let ((x (second form)))
-       (if (and (consp x) (not (eq (first x) 'quote)))
-           ;; Complex expression: bind to temp var
-           (let ((temp (gensym "CUBE")))
-             (parse `(let ((,temp ,x)) (* ,temp ,temp ,temp))))
-           ;; Simple expression: safe to duplicate
-           (parse `(* ,x ,x ,x)))))
-
-    ((and (consp form) (eq (first form) 'double))
-     ;; Function: (double x) => (* x 2)
-     (parse `(* ,(second form) 2)))
-
-    ((and (consp form) (eq (first form) 'half))
-     ;; Function: (half x) => (/ x 2)
-     (parse `(/ ,(second form) 2)))
-
-    ((and (consp form) (eq (first form) 'avg))
-     ;; Function: (avg x y) => (/ (+ x y) 2)
-     (parse `(/ (+ ,(second form) ,(third form)) 2)))
-
-    ((and (consp form) (eq (first form) 'range))
-     ;; Function: (range x y) => (- y x) - difference/range
-     (parse `(- ,(third form) ,(second form))))
-
-    ;; Bit manipulation utilities
-    ((and (consp form) (eq (first form) 'set-bit))
-     ;; Function: (set-bit x n) - set bit n in x
-     ;; => (logior x (ash 1 n))
-     (parse `(logior ,(second form) (ash 1 ,(third form)))))
-
-    ((and (consp form) (eq (first form) 'clear-bit))
-     ;; Function: (clear-bit x n) - clear bit n in x
-     ;; => (logand x (lognot (ash 1 n)))
-     (parse `(logand ,(second form) (lognot (ash 1 ,(third form))))))
-
-    ((and (consp form) (eq (first form) 'toggle-bit))
-     ;; Function: (toggle-bit x n) - flip bit n in x
-     ;; => (logxor x (ash 1 n))
-     (parse `(logxor ,(second form) (ash 1 ,(third form)))))
-
-    ((and (consp form) (eq (first form) 'mask))
-     ;; Function: (mask n) - create n-bit mask (2^n - 1)
-     ;; => (1- (ash 1 n))
-     (parse `(1- (ash 1 ,(second form)))))
-
-    ((and (consp form) (eq (first form) 'low-bits))
-     ;; Function: (low-bits x n) - extract low n bits
-     ;; => (logand x (mask n))
-     (parse `(logand ,(second form) (1- (ash 1 ,(third form))))))
-
-    ((and (consp form) (eq (first form) 'high-bit?))
-     ;; Predicate: Check if highest bit is set (negative in 2's complement)
-     ;; => (minusp x)
-     (parse `(minusp ,(second form))))
-
-    ;; Comparison and range utilities
-    ((and (consp form) (eq (first form) 'min3))
-     ;; Function: Minimum of three values
-     (parse `(min ,(second form) (min ,(third form) ,(fourth form)))))
-
-    ((and (consp form) (eq (first form) 'max3))
-     ;; Function: Maximum of three values
-     (parse `(max ,(second form) (max ,(third form) ,(fourth form)))))
-
-    ((and (consp form) (eq (first form) 'within?))
-     ;; Predicate: Check if value is within range (inclusive)
-     ;; Same as between but more descriptive name
-     (parse `(and (>= ,(second form) ,(third form))
-                  (<= ,(second form) ,(fourth form)))))
-
-    ((and (consp form) (eq (first form) 'outside?))
-     ;; Predicate: Check if value is outside range (exclusive)
-     (parse `(or (< ,(second form) ,(third form))
-                 (> ,(second form) ,(fourth form)))))
-
-    ((and (consp form) (eq (first form) 'sign))
-     ;; Function: Return sign of number (-1, 0, or 1)
-     ;; Same as signum
-     (parse `(signum ,(second form))))
-
-    ((and (consp form) (eq (first form) 'same-sign?))
-     ;; Predicate: Check if two numbers have same sign
-     (let ((x (second form))
-           (y (third form)))
-       (if (or (and (consp x) (not (eq (first x) 'quote)))
-               (and (consp y) (not (eq (first y) 'quote))))
-           ;; Complex expression: bind to temp vars
-           (let ((tx (gensym "SIGN-X"))
-                 (ty (gensym "SIGN-Y")))
-             (parse `(let ((,tx ,x) (,ty ,y))
-                       (or (and (zerop ,tx) (zerop ,ty))
-                           (and (plusp ,tx) (plusp ,ty))
-                           (and (minusp ,tx) (minusp ,ty))))))
-           ;; Simple expressions: safe to duplicate
-           (parse `(or (and (zerop ,x) (zerop ,y))
-                       (and (plusp ,x) (plusp ,y))
-                       (and (minusp ,x) (minusp ,y)))))))
-
-    ;; Bit rotation (circular shift)
-    ((and (consp form) (eq (first form) 'rotl))
-     ;; Function: Rotate left
-     ;; rotl(x, n, width) = (logior (ash (logand x (mask width)) n)
-     ;;                              (ash (logand x (mask width)) (- n width)))
-     ;; Simplified for fixnums: just use logior of left and right shifts
-     (let ((x (second form))
-           (n (third form))
-           (width (or (fourth form) 32))) ; default to 32-bit rotation
-       (parse `(let ((#1=#:val (logand ,x (mask ,width)))
-                     (#2=#:shift (mod ,n ,width)))
-                 (logior (logand (ash #1# #2#) (mask ,width))
-                         (ash #1# (- #2# ,width)))))))
-
-    ((and (consp form) (eq (first form) 'rotr))
-     ;; Function: Rotate right
-     ;; Same as rotl with negative shift
-     (let ((x (second form))
-           (n (third form))
-           (width (or (fourth form) 32)))
-       (parse `(rotl ,x (- ,width (mod ,n ,width)) ,width))))
-
-    ;; Conditional expressions
-    ((and (consp form) (eq (first form) 'if-let))
-     ;; Macro: (if-let var test then else)
-     ;; Bind var to test result, execute then if true, else otherwise
-     (let ((var (second form))
-           (test (third form))
-           (then-expr (fourth form))
-           (else-expr (fifth form)))
-       (parse `(let ((,var ,test))
-                 (if ,var ,then-expr ,else-expr)))))
-
-    ((and (consp form) (eq (first form) 'when-let))
-     ;; Macro: (when-let var test body...)
-     ;; Bind var to test result, execute body if true
-     (let ((var (second form))
-           (test (third form))
-           (body (cdddr form)))
-       (parse `(let ((,var ,test))
-                 (when ,var (progn ,@body))))))
-
-    ;; Additional predicates and utilities
-    ((and (consp form) (eq (first form) 'nonzero?))
-     ;; Predicate: Check if value is non-zero
-     ;; Opposite of zerop
-     (parse `(not (zerop ,(second form)))))
-
-    ((and (consp form) (eq (first form) 'divisible?))
-     ;; Predicate: Check if x is divisible by y
-     ;; (divisible? x y) => (zerop (mod x y))
-     (parse `(zerop (mod ,(second form) ,(third form)))))
-
-    ((and (consp form) (eq (first form) 'multiple-of?))
-     ;; Predicate: Same as divisible?
-     (parse `(zerop (mod ,(second form) ,(third form)))))
-
-    ((and (consp form) (eq (first form) 'quot))
-     ;; Function: Quotient (same as /)
-     ;; Common Lisp style alias
-     (parse `(/ ,(second form) ,(third form))))
-
-    ((and (consp form) (eq (first form) 'reciprocal))
-     ;; Function: Reciprocal (1/x)
-     (parse `(/ 1 ,(second form))))
-
-    ((and (consp form) (eq (first form) 'sqr))
-     ;; Function: Square (alias for square)
-     (parse `(square ,(second form))))
-
-    ;; Bit field operations
-    ((and (consp form) (eq (first form) 'bit-field))
-     ;; Function: Extract bit field from position with width
-     ;; (bit-field x pos width) => extract width bits starting at pos
-     ;; Formula: (logand (ash x (- pos)) (mask width))
-     (parse `(logand (ash ,(second form) (- ,(third form))) (mask ,(fourth form)))))
-
-    ((and (consp form) (eq (first form) 'bit-field-set))
-     ;; Function: Set bit field at position with width to value
-     ;; Clear the field, then OR in the new value
-     (let ((x (second form))
-           (pos (third form))
-           (width (fourth form))
-           (val (fifth form)))
-       (parse `(logior (logand ,x (lognot (ash (mask ,width) ,pos)))
-                       (ash (logand ,val (mask ,width)) ,pos)))))
-
-    ;; Additional math utilities
-    ((and (consp form) (eq (first form) 'divides?))
-     ;; Predicate: Check if x divides y (opposite of divisible?)
-     ;; (divides? x y) => (zerop (mod y x))
-     (parse `(zerop (mod ,(third form) ,(second form)))))
-
-    ((and (consp form) (eq (first form) 'coprime?))
-     ;; Predicate: Check if x and y are coprime (gcd = 1)
-     (parse `(= (gcd ,(second form) ,(third form)) 1)))
-
-    ((and (consp form) (eq (first form) 'lerp))
-     ;; Function: Linear interpolation
-     ;; lerp(a, b, t) = a + t * (b - a)
-     ;; For integer arithmetic: a + (t * (b - a)) / 100 (assuming t is 0-100)
-     (parse `(+ ,(second form)
-                (/ (* ,(fourth form) (- ,(third form) ,(second form))) 100))))
-
-    ((and (consp form) (eq (first form) 'median3))
-     ;; Function: Median of three values
-     ;; median3(a,b,c) = max(min(a,b), min(max(a,b), c))
-     (let ((a (second form))
-           (b (third form))
-           (c (fourth form)))
-       (parse `(max (min ,a ,b) (min (max ,a ,b) ,c)))))
-
-    ((and (consp form) (eq (first form) 'constrain))
-     ;; Function: Alias for clamp
-     (parse `(clamp ,(second form) ,(third form) ,(fourth form))))
-
-    ((and (consp form) (eq (first form) 'map-range))
-     ;; Function: Map value from one range to another
-     ;; map-range(x, in-min, in-max, out-min, out-max)
-     ;; = out-min + (x - in-min) * (out-max - out-min) / (in-max - in-min)
-     (let ((x (second form))
-           (in-min (third form))
-           (in-max (fourth form))
-           (out-min (fifth form))
-           (out-max (sixth form)))
-       (parse `(+ ,out-min
-                  (/ (* (- ,x ,in-min) (- ,out-max ,out-min))
-                     (- ,in-max ,in-min))))))
-
-    ;; Additional comparison and numeric utilities
-    ((and (consp form) (eq (first form) 'positive-or-zero?))
-     ;; Predicate: Check if number is >= 0
-     (parse `(>= ,(second form) 0)))
-
-    ((and (consp form) (eq (first form) 'negative-or-zero?))
-     ;; Predicate: Check if number is <= 0
-     (parse `(<= ,(second form) 0)))
-
-    ((and (consp form) (eq (first form) 'strictly-between?))
-     ;; Predicate: Check if value is strictly between bounds (exclusive)
-     (parse `(and (> ,(second form) ,(third form))
-                  (< ,(second form) ,(fourth form)))))
-
-    ((and (consp form) (eq (first form) 'approximately?))
-     ;; Predicate: Check if two values are within tolerance
-     ;; (approximately? a b tolerance) => (< (abs (- a b)) tolerance)
-     (parse `(< (abs (- ,(second form) ,(third form))) ,(fourth form))))
-
-    ((and (consp form) (eq (first form) 'nearest-multiple))
-     ;; Function: Round to nearest multiple of n
-     ;; nearest-multiple(x, n) = (* (/ (+ x (/ n 2)) n) n)
-     (let ((x (second form))
-           (n (third form)))
-       (parse `(* (/ (+ ,x (/ ,n 2)) ,n) ,n))))
-
-    ((and (consp form) (eq (first form) 'round-up-to))
-     ;; Function: Round up to nearest multiple of n
-     ;; Same as align-up but more descriptive name for general use
-     (parse `(align-up ,(second form) ,(third form))))
-
-    ((and (consp form) (eq (first form) 'round-down-to))
-     ;; Function: Round down to nearest multiple of n
-     ;; Same as align-down but more descriptive name
-     (parse `(align-down ,(second form) ,(third form))))
-
-    ;; Bit manipulation - population count variations
-    ((and (consp form) (eq (first form) 'hamming-distance))
-     ;; Function: Count differing bits between two values
-     ;; hamming-distance(a, b) = logcount(logxor(a, b))
-     (parse `(logcount (logxor ,(second form) ,(third form)))))
-
-    ((and (consp form) (eq (first form) 'parity))
-     ;; Function: Calculate parity (1 if odd number of bits, 0 if even)
-     ;; parity(x) = mod(logcount(x), 2)
-     (parse `(mod (logcount ,(second form)) 2)))
-
-    ((and (consp form) (eq (first form) 'reverse-bits))
-     ;; Function: Reverse bits in n-bit value (default 8 bits)
-     ;; This is a simplified version for small bit widths
-     ;; Note: Full implementation would need loops - placeholder just returns value
-     (parse (second form)))
-
-    ;; Mathematical sequences and patterns
-    ((and (consp form) (eq (first form) 'factorial))
-     ;; Function: Factorial (iterative for small values)
-     ;; This needs recursion or loops - placeholder for now
-     (let ((n (second form)))
-       ;; For compile-time constants, we could compute it
-       (if (and (consp n) (eq (car n) 'quote) (integerp (cadr n)))
-           (let ((val (cadr n)))
-             (if (<= val 12) ; Factorial up to 12 fits in fixnum range
-                 (parse (labels ((fact (n) (if (<= n 1) 1 (* n (fact (1- n))))))
-                         (fact val)))
-                 (error "Factorial too large for fixnum")))
-           ;; Runtime value - would need loops/recursion
-           (error "Factorial of runtime values not yet implemented"))))
-
-    ((and (consp form) (eq (first form) 'fibonacci))
-     ;; Function: Fibonacci number (for compile-time constants)
-     (let ((n (second form)))
-       (if (and (consp n) (eq (car n) 'quote) (integerp (cadr n)))
-           (let ((val (cadr n)))
-             (if (<= val 20) ; Reasonable range
-                 (parse (labels ((fib (n)
-                                   (if (<= n 1)
-                                       n
-                                       (+ (fib (- n 1)) (fib (- n 2))))))
-                         (fib val)))
-                 (error "Fibonacci index too large")))
-           (error "Fibonacci of runtime values not yet implemented"))))
-
-    ((and (consp form) (eq (first form) 'triangle-number))
-     ;; Function: Triangular number (sum of first n natural numbers)
-     ;; triangle(n) = n * (n + 1) / 2
-     (parse `(/ (* ,(second form) (1+ ,(second form))) 2)))
-
-    ((and (consp form) (eq (first form) 'square-number?))
-     ;; Predicate: Check if number is a perfect square
-     ;; Check if isqrt(n)^2 == n
-     (let ((n (second form)))
-       (if (and (consp n) (not (eq (first n) 'quote)))
-           (let ((temp (gensym "SQR"))
-                 (root (gensym "ROOT")))
-             (parse `(let ((,temp ,n))
-                       (let ((,root (isqrt ,temp)))
-                         (= (* ,root ,root) ,temp)))))
-           (let ((root (gensym "ROOT")))
-             (parse `(let ((,root (isqrt ,n)))
-                       (= (* ,root ,root) ,n)))))))
-
-    ;; Additional utility predicates and functions
-    ((and (consp form) (eq (first form) 'bool->int))
-     ;; Function: Convert boolean to integer (0 or 1)
-     (parse `(if ,(second form) 1 0)))
-
-    ((and (consp form) (eq (first form) 'int->bool))
-     ;; Function: Convert integer to boolean (nonzero is true)
-     (parse `(not (zerop ,(second form)))))
-
-    ((and (consp form) (eq (first form) 'negate-if))
-     ;; Function: Negate value if condition is true
-     ;; (negate-if condition value) => (if condition (- value) value)
-     (let ((condition (second form))
-           (x (third form)))
-       (if (and (consp x) (not (eq (first x) 'quote)))
-           (let ((temp (gensym "NEG")))
-             (parse `(let ((,temp ,x))
-                       (if ,condition (- ,temp) ,temp))))
-           (parse `(if ,condition (- ,x) ,x)))))
-
-    ((and (consp form) (eq (first form) 'select))
-     ;; Function: Select one of two values based on condition
-     ;; (select cond then-val else-val) => (if cond then-val else-val)
-     (parse `(if ,(second form) ,(third form) ,(fourth form))))
-
-    ((and (consp form) (eq (first form) 'swap-if))
-     ;; Macro: Conditionally swap two variables
-     ;; (swap-if cond a b) => (if cond (progn (setq temp a) (setq a b) (setq b temp)))
-     (let ((cond (second form))
-           (a (third form))
-           (b (fourth form))
-           (temp (gensym "SWAP")))
-       (parse `(when ,cond
-                 (let ((,temp ,a))
-                   (setq ,a ,b)
-                   (setq ,b ,temp))))))
-
-    ;; More bit manipulation utilities
-    ((and (consp form) (eq (first form) 'count-leading-zeros))
-     ;; Function: Count leading zeros in integer
-     ;; clz(x) = 64 - integer-length(x) for 64-bit values
-     ;; For tagged fixnums, we use 60 bits
-     (parse `(- 60 (integer-length ,(second form)))))
-
-    ((and (consp form) (eq (first form) 'count-trailing-zeros))
-     ;; Function: Count trailing zeros
-     ;; Find position of lowest set bit
-     ;; ctz(x) = integer-length(x & -x) - 1
-     (let ((x (second form))
-           (val (gensym "CTZ")))
-       (parse `(if (zerop ,x)
-                   60
-                   (let ((,val ,x))
-                     (1- (integer-length (logand ,val (- 0 ,val)))))))))
-
-    ((and (consp form) (eq (first form) 'next-power-of-2))
-     ;; Function: Find next power of 2 >= n
-     ;; Algorithm: Set all bits after highest bit, then add 1
-     (let ((n (second form))
-           (v (gensym "POW")))
-       (if (and (consp n) (not (eq (first n) 'quote)))
-           (let ((temp (gensym "N")))
-             (parse `(let ((,temp (1- ,n)))
-                       (let ((,v ,temp))
-                         (setq ,v (logior ,v (ash ,v -1)))
-                         (setq ,v (logior ,v (ash ,v -2)))
-                         (setq ,v (logior ,v (ash ,v -4)))
-                         (setq ,v (logior ,v (ash ,v -8)))
-                         (setq ,v (logior ,v (ash ,v -16)))
-                         (setq ,v (logior ,v (ash ,v -32)))
-                         (1+ ,v)))))
-           (parse `(let ((,v (1- ,n)))
-                     (setq ,v (logior ,v (ash ,v -1)))
-                     (setq ,v (logior ,v (ash ,v -2)))
-                     (setq ,v (logior ,v (ash ,v -4)))
-                     (setq ,v (logior ,v (ash ,v -8)))
-                     (setq ,v (logior ,v (ash ,v -16)))
-                     (setq ,v (logior ,v (ash ,v -32)))
-                     (1+ ,v))))))
-
-    ((and (consp form) (eq (first form) 'prev-power-of-2))
-     ;; Function: Find previous power of 2 <= n
-     ;; Just shift right by (integer-length - 1)
-     (parse `(ash 1 (1- (integer-length ,(second form))))))
-
-    ;; Mathematical predicates and utilities
-    ((and (consp form) (eq (first form) 'in-range?))
-     ;; Alias for within?
-     (parse `(within? ,(second form) ,(third form) ,(fourth form))))
-
-    ((and (consp form) (eq (first form) 'out-of-range?))
-     ;; Alias for outside?
-     (parse `(outside? ,(second form) ,(third form) ,(fourth form))))
-
-    ((and (consp form) (eq (first form) 'wrap))
-     ;; Function: Wrap value to range [0, max)
-     ;; wrap(x, max) = mod(x, max) with proper handling of negatives
-     (parse `(mod (+ (mod ,(second form) ,(third form)) ,(third form)) ,(third form))))
-
-    ((and (consp form) (eq (first form) 'wrap-range))
-     ;; Function: Wrap value to range [min, max)
-     ;; wrap-range(x, min, max) = min + wrap(x - min, max - min)
-     (let ((x (second form))
-           (min-val (third form))
-           (max-val (fourth form)))
-       (parse `(+ ,min-val (wrap (- ,x ,min-val) (- ,max-val ,min-val))))))
-
-    ;; Additional bit utilities
-    ((and (consp form) (eq (first form) 'bit-width))
-     ;; Function: Number of bits needed to represent value
-     ;; bit-width(x) = integer-length(x)
-     (parse `(integer-length ,(second form))))
-
-    ((and (consp form) (eq (first form) 'msb-position))
-     ;; Function: Position of most significant bit (0-indexed from right)
-     ;; msb-position(x) = integer-length(x) - 1
-     (parse `(1- (integer-length ,(second form)))))
-
-    ((and (consp form) (eq (first form) 'lsb-position))
-     ;; Function: Position of least significant bit (0-indexed from right)
-     ;; lsb-position(x) = count-trailing-zeros(x)
-     (parse `(count-trailing-zeros ,(second form))))
-
-    ;; Arithmetic aliases
-    ((and (consp form) (eq (first form) 'inc))
-     ;; Function: Increment by 1 (alias for 1+)
-     (parse `(1+ ,(second form))))
-
-    ((and (consp form) (eq (first form) 'dec))
-     ;; Function: Decrement by 1 (alias for 1-)
-     (parse `(1- ,(second form))))
-
-    ;; Comparison utilities
-    ((and (consp form) (eq (first form) 'compare))
-     ;; Function: Three-way comparison (spaceship operator)
-     ;; Returns -1 if a < b, 0 if a = b, 1 if a > b
-     (let ((a (second form))
-           (b (third form)))
-       (if (or (and (consp a) (not (eq (first a) 'quote)))
-               (and (consp b) (not (eq (first b) 'quote))))
-           (let ((temp-a (gensym "CMP-A"))
-                 (temp-b (gensym "CMP-B")))
-             (parse `(let ((,temp-a ,a))
-                       (let ((,temp-b ,b))
-                         (cond ((< ,temp-a ,temp-b) -1)
-                               ((> ,temp-a ,temp-b) 1)
-                               (t 0))))))
-           (parse `(cond ((< ,a ,b) -1)
-                         ((> ,a ,b) 1)
-                         (t 0))))))
-
-    ((and (consp form) (eq (first form) 'clamp-01))
-     ;; Function: Clamp value to [0, 1]
-     (parse `(clamp ,(second form) 0 1)))
-
-    ;; Logical operators (for boolean logic)
-    ((and (consp form) (eq (first form) 'implies))
-     ;; Function: Logical implication (a => b)
-     ;; a => b is equivalent to (not a) or b
-     (parse `(or (not ,(second form)) ,(third form))))
-
-    ((and (consp form) (eq (first form) 'xnor))
-     ;; Function: Logical equivalence (XNOR)
-     ;; Returns true if both arguments have the same truth value
-     (parse `(not (logxor ,(second form) ,(third form)))))
-
-    ((and (consp form) (eq (first form) 'nand))
-     ;; Function: Logical NAND (not and)
-     (parse `(not (and ,(second form) ,(third form)))))
-
-    ((and (consp form) (eq (first form) 'nor))
-     ;; Function: Logical NOR (not or)
-     (parse `(not (or ,(second form) ,(third form)))))
-
-    ;; Number theory predicates
-    ((and (consp form) (eq (first form) 'triangular-number?))
-     ;; Predicate: Check if number is a triangular number
-     ;; n is triangular if (8n + 1) is a perfect square
-     (let ((n (second form))
-           (test (gensym "TRI")))
-       (if (and (consp n) (not (eq (first n) 'quote)))
-           (let ((temp (gensym "N")))
-             (parse `(let ((,temp ,n))
-                       (let ((,test (1+ (* 8 ,temp))))
-                         (square-number? ,test)))))
-           (parse `(let ((,test (1+ (* 8 ,n))))
-                     (square-number? ,test))))))
-
-    ((and (consp form) (eq (first form) 'pentagonal-number?))
-     ;; Predicate: Check if number is a pentagonal number
-     ;; n is pentagonal if (24n + 1) is a perfect square
-     (let ((n (second form))
-           (test (gensym "PENT")))
-       (if (and (consp n) (not (eq (first n) 'quote)))
-           (let ((temp (gensym "N")))
-             (parse `(let ((,temp ,n))
-                       (let ((,test (1+ (* 24 ,temp))))
-                         (square-number? ,test)))))
-           (parse `(let ((,test (1+ (* 24 ,n))))
-                     (square-number? ,test))))))
-
-    ((and (consp form) (eq (first form) 'hexagonal-number?))
-     ;; Predicate: Check if number is a hexagonal number
-     ;; All hexagonal numbers are also triangular
-     ;; n is hexagonal if (8n + 1) is a perfect square AND the root is odd
-     (let ((n (second form))
-           (test (gensym "HEX"))
-           (root (gensym "ROOT")))
-       (if (and (consp n) (not (eq (first n) 'quote)))
-           (let ((temp (gensym "N")))
-             (parse `(let ((,temp ,n))
-                       (let ((,test (1+ (* 8 ,temp))))
-                         (let ((,root (isqrt ,test)))
-                           (and (= (* ,root ,root) ,test)
-                                (oddp ,root)))))))
-           (parse `(let ((,test (1+ (* 8 ,n))))
-                     (let ((,root (isqrt ,test)))
-                       (and (= (* ,root ,root) ,test)
-                            (oddp ,root))))))))
-
-    ;; Additional sequence functions
-    ((and (consp form) (eq (first form) 'pentagonal-number))
-     ;; Function: Calculate nth pentagonal number
-     ;; P(n) = n(3n - 1) / 2
-     (let ((n (second form)))
-       (if (numberp n)
-           ;; Compile-time evaluation
-           (parse (/ (* n (- (* 3 n) 1)) 2))
-           (parse `(/ (* ,n (- (* 3 ,n) 1)) 2)))))
-
-    ((and (consp form) (eq (first form) 'hexagonal-number))
-     ;; Function: Calculate nth hexagonal number
-     ;; H(n) = n(2n - 1)
-     (let ((n (second form)))
-       (if (numberp n)
-           ;; Compile-time evaluation
-           (parse (* n (- (* 2 n) 1)))
-           (parse `(* ,n (- (* 2 ,n) 1))))))
-
-    ;; More utility predicates
-    ((and (consp form) (eq (first form) 'one?))
-     ;; Predicate: Check if value equals 1
-     (parse `(= ,(second form) 1)))
-
-    ((and (consp form) (eq (first form) 'negative-one?))
-     ;; Predicate: Check if value equals -1
-     (parse `(= ,(second form) -1)))
-
-    ((and (consp form) (eq (first form) 'positive-power-of-2?))
-     ;; Predicate: Check if value is a positive power of 2
-     (parse `(and (plusp ,(second form)) (power-of-2? ,(second form)))))
-
-    ;; Additional conditional macros
-    ((and (consp form) (eq (first form) 'if-not))
-     ;; Macro: if-not condition then else
-     ;; Inverted if - runs then branch when condition is false
-     (parse `(if (not ,(second form)) ,(third form) ,(fourth form))))
-
-    ((and (consp form) (eq (first form) 'when-not))
-     ;; Macro: when-not condition body...
-     ;; Runs body when condition is false
-     (parse `(when (not ,(second form)) ,@(cddr form))))
-
-    ((and (consp form) (eq (first form) 'unless-let))
-     ;; Macro: unless-let (var value) body...
-     ;; Bind var to value and execute body if value is falsy
-     (let ((binding (second form))
-           (body (cddr form)))
-       (parse `(let ((,(first binding) ,(second binding)))
-                 (unless ,(first binding) ,@body)))))
-
-    ((and (consp form) (eq (first form) 'cond-let))
-     ;; Macro: cond-let var (test1 val1) (test2 val2) ...
-     ;; Like cond but binds result to var in each branch
-     (let ((var (second form))
-           (clauses (cddr form)))
-       (parse `(cond ,@(mapcar (lambda (clause)
-                                 `(,(first clause)
-                                   (let ((,var ,(second clause)))
-                                     ,var)))
-                               clauses)))))
-
-    ;; List and cons aliases
-    ((and (consp form) (eq (first form) 'pair?))
-     ;; Predicate: Alias for consp
-     (parse `(consp ,(second form))))
-
-    ((and (consp form) (eq (first form) 'empty?))
-     ;; Predicate: Alias for null
-     (parse `(null ,(second form))))
-
-    ((and (consp form) (eq (first form) 'first))
-     ;; Function: Alias for car
-     (parse `(car ,(second form))))
-
-    ((and (consp form) (eq (first form) 'rest))
-     ;; Function: Alias for cdr
-     (parse `(cdr ,(second form))))
-
-    ((and (consp form) (eq (first form) 'second))
-     ;; Function: Alias for cadr
-     (parse `(cadr ,(second form))))
-
-    ((and (consp form) (eq (first form) 'third))
-     ;; Function: Alias for caddr
-     (parse `(caddr ,(second form))))
-
-    ((and (consp form) (eq (first form) 'fourth))
-     ;; Function: Alias for cadddr
-     (parse `(cadddr ,(second form))))
-
-    ;; More numeric utilities
-    ((and (consp form) (eq (first form) 'abs-diff))
-     ;; Function: Absolute difference |a - b|
-     (parse `(abs (- ,(second form) ,(third form)))))
-
-    ((and (consp form) (eq (first form) 'distance))
-     ;; Function: Alias for abs-diff (1D distance)
-     (parse `(abs-diff ,(second form) ,(third form))))
-
-    ((and (consp form) (eq (first form) 'pow2))
-     ;; Function: Raise 2 to the power of n
-     (let ((n (second form)))
-       (if (numberp n)
-           ;; Compile-time evaluation
-           (parse (expt 2 n))
-           (parse `(expt 2 ,n)))))
-
-    ((and (consp form) (eq (first form) 'pow10))
-     ;; Function: Raise 10 to the power of n
-     (let ((n (second form)))
-       (if (numberp n)
-           ;; Compile-time evaluation
-           (parse (expt 10 n))
-           (parse `(expt 10 ,n)))))
-
-    ;; Bit manipulation aliases and utilities
-    ((and (consp form) (eq (first form) 'bit-set?))
-     ;; Predicate: Check if bit is set (alias for logbitp)
-     (parse `(logbitp ,(second form) ,(third form))))
-
-    ((and (consp form) (eq (first form) 'bit-clear?))
-     ;; Predicate: Check if bit is clear (not set)
-     (parse `(not (logbitp ,(second form) ,(third form)))))
-
-    ((and (consp form) (eq (first form) 'test-bit))
-     ;; Function: Alias for logbitp
-     (parse `(logbitp ,(second form) ,(third form))))
-
-    ;; More range predicates
-    ((and (consp form) (eq (first form) 'in-open-range?))
-     ;; Predicate: Check if value in open range (min, max) - exclusive
-     (parse `(strictly-between? ,(second form) ,(third form) ,(fourth form))))
-
-    ((and (consp form) (eq (first form) 'in-closed-range?))
-     ;; Predicate: Check if value in closed range [min, max] - inclusive
-     (parse `(within? ,(second form) ,(third form) ,(fourth form))))
-
-    ;; More sequence numbers
-    ((and (consp form) (eq (first form) 'lucas-number))
-     ;; Function: Calculate nth Lucas number
-     ;; L(0) = 2, L(1) = 1, L(n) = L(n-1) + L(n-2)
-     ;; For small constants, compute at compile time
-     (let ((n (second form)))
-       (if (and (numberp n) (<= n 20))
-           ;; Compile-time evaluation for small n
-           (labels ((lucas (k)
-                      (cond ((= k 0) 2)
-                            ((= k 1) 1)
-                            (t (+ (lucas (- k 1)) (lucas (- k 2)))))))
-             (parse (lucas n)))
-           ;; Runtime computation
-           (parse `(cond ((= ,n 0) 2)
-                         ((= ,n 1) 1)
-                         (t (+ (lucas-number (- ,n 1))
-                               (lucas-number (- ,n 2)))))))))
-
-    ;; More utility functions
-    ((and (consp form) (eq (first form) 'toggle))
-     ;; Function: Toggle between 0 and 1
-     ;; toggle(x) = 1 - x for 0/1 values
-     (parse `(- 1 ,(second form))))
-
-    ((and (consp form) (eq (first form) 'flip))
-     ;; Function: Alias for toggle
-     (parse `(toggle ,(second form))))
-
-    ((and (consp form) (eq (first form) 'normalize))
-     ;; Function: Normalize value to [0, 1] range given min and max
-     ;; normalize(x, min, max) = (x - min) / (max - min)
-     (let ((x (second form))
-           (min-val (third form))
-           (max-val (fourth form)))
-       (parse `(/ (- ,x ,min-val) (- ,max-val ,min-val)))))
-
-    ((and (consp form) (eq (first form) 'denormalize))
-     ;; Function: Denormalize value from [0, 1] to [min, max]
-     ;; denormalize(x, min, max) = min + x * (max - min)
-     (let ((x (second form))
-           (min-val (third form))
-           (max-val (fourth form)))
-       (parse `(+ ,min-val (* ,x (- ,max-val ,min-val))))))
-
-    ;; Prime checking (compile-time only for constants)
-    ((and (consp form) (eq (first form) 'prime?))
-     ;; Predicate: Check if number is prime (compile-time for constants)
-     (let ((n (second form)))
-       (if (numberp n)
-           ;; Compile-time prime check
-           (labels ((is-prime (num)
-                      (cond ((<= num 1) nil)
-                            ((<= num 3) t)
-                            ((or (zerop (mod num 2)) (zerop (mod num 3))) nil)
-                            (t (loop for i from 5 to (isqrt num) by 6
-                                     never (or (zerop (mod num i))
-                                               (zerop (mod num (+ i 2)))))))))
-             (parse (if (is-prime n) 1 0)))
-           ;; Runtime: Not supported - would be too slow
-           (error "prime? only supports compile-time constants"))))
-
-    ((and (consp form) (eq (first form) 'composite?))
-     ;; Predicate: Check if number is composite (not prime, > 1)
-     (let ((n (second form)))
-       (if (numberp n)
-           (labels ((is-prime (num)
-                      (cond ((<= num 1) nil)
-                            ((<= num 3) t)
-                            ((or (zerop (mod num 2)) (zerop (mod num 3))) nil)
-                            (t (loop for i from 5 to (isqrt num) by 6
-                                     never (or (zerop (mod num i))
-                                               (zerop (mod num (+ i 2)))))))))
-             (parse (if (and (> n 1) (not (is-prime n))) 1 0)))
-           (error "composite? only supports compile-time constants"))))
-
-    ;; Additional mathematical operations
-    ((and (consp form) (eq (first form) 'min*))
-     ;; Function: Minimum of multiple values (varargs)
-     (let ((args (rest form)))
-       (cond ((null args) (error "min* requires at least one argument"))
-             ((null (cdr args)) (parse (first args)))
-             ((null (cddr args)) (parse `(min ,(first args) ,(second args))))
-             (t (parse `(min ,(first args) (min* ,@(cdr args))))))))
-
-    ((and (consp form) (eq (first form) 'max*))
-     ;; Function: Maximum of multiple values (varargs)
-     (let ((args (rest form)))
-       (cond ((null args) (error "max* requires at least one argument"))
-             ((null (cdr args)) (parse (first args)))
-             ((null (cddr args)) (parse `(max ,(first args) ,(second args))))
-             (t (parse `(max ,(first args) (max* ,@(cdr args))))))))
-
-    ((and (consp form) (eq (first form) 'sum))
-     ;; Function: Sum of multiple values
-     (let ((args (rest form)))
-       (cond ((null args) (parse 0))
-             ((null (cdr args)) (parse (first args)))
-             (t (parse `(+ ,@args))))))
-
-    ((and (consp form) (eq (first form) 'product))
-     ;; Function: Product of multiple values
-     (let ((args (rest form)))
-       (cond ((null args) (parse 1))
-             ((null (cdr args)) (parse (first args)))
-             (t (parse `(* ,@args))))))
-
-    ((and (consp form) (eq (first form) 'negate))
-     ;; Function: Negate value (unary minus)
-     (parse `(- ,(second form))))
-
-    ((and (consp form) (eq (first form) 'sqr-diff))
-     ;; Function: Square of difference (a - b)^2
-     (let ((a (second form))
-           (b (third form))
-           (diff (gensym "DIFF")))
-       (if (or (and (consp a) (not (eq (first a) 'quote)))
-               (and (consp b) (not (eq (first b) 'quote))))
-           (let ((temp-a (gensym "A"))
-                 (temp-b (gensym "B")))
-             (parse `(let ((,temp-a ,a))
-                       (let ((,temp-b ,b))
-                         (let ((,diff (- ,temp-a ,temp-b)))
-                           (* ,diff ,diff))))))
-           (parse `(let ((,diff (- ,a ,b)))
-                     (* ,diff ,diff))))))
-
-    ;; More predicates
-    ((and (consp form) (eq (first form) 'negative?))
-     ;; Predicate: Is value negative? (Scheme-style alias)
-     (parse `(minusp ,(second form))))
-
-    ((and (consp form) (eq (first form) 'nonnegative?))
-     ;; Predicate: Is value >= 0?
-     (parse `(not (minusp ,(second form)))))
-
-    ((and (consp form) (eq (first form) 'nonpositive?))
-     ;; Predicate: Is value <= 0?
-     (parse `(not (plusp ,(second form)))))
-
-    ((and (consp form) (eq (first form) 'exact-power-of-2?))
-     ;; Predicate: Is value exactly 2^n for some n >= 0?
-     (parse `(and (plusp ,(second form)) (power-of-2? ,(second form)))))
-
-    ((and (consp form) (eq (first form) 'multiple?))
-     ;; Predicate: Is a a multiple of b? (same as divisible?)
-     (parse `(divisible? ,(second form) ,(third form))))
-
-    ((and (consp form) (eq (first form) 'factor?))
-     ;; Predicate: Is a a factor of b? (same as divides?)
-     (parse `(divides? ,(second form) ,(third form))))
-
-    ;; Conditional expressions
-    ((and (consp form) (eq (first form) 'and-let*))
-     ;; Macro: Sequential binding with short-circuit
-     ;; (and-let* ((x expr1) (y expr2)) body) - stops if any binding is falsy
-     (let ((bindings (second form))
-           (body (cddr form)))
-       (if (null bindings)
-           (parse `(progn ,@body))
-           (let ((first-binding (first bindings))
-                 (rest-bindings (rest bindings)))
-             (parse `(let ((,(first first-binding) ,(second first-binding)))
-                       (when ,(first first-binding)
-                         (and-let* ,rest-bindings ,@body))))))))
-
-    ((and (consp form) (eq (first form) 'or-let))
-     ;; Macro: Bind and return first truthy value
-     ;; (or-let (x val1) (y val2)) - returns first truthy binding
-     (let ((bindings (rest form)))
-       (if (null bindings)
-           (parse 0)  ; Return 0 (falsy) if no bindings
-           (let ((binding (first bindings)))
-             (parse `(let ((,(first binding) ,(second binding)))
-                       (if ,(first binding)
-                           ,(first binding)
-                           (or-let ,@(rest bindings)))))))))
-
-    ((and (consp form) (eq (first form) 'dotimes))
-     ;; Macro: Execute body n times with counter
-     ;; (dotimes (i n) body...)
-     (let ((var (first (second form)))
-           (count (second (second form)))
-           (body (cddr form))
-           (counter (gensym "CNT"))
-           (limit (gensym "LIM")))
-       (parse `(let ((,limit ,count))
-                 (let ((,counter 0))
-                   (labels ((loop-fn ()
-                              (when (< ,counter ,limit)
-                                (let ((,var ,counter))
-                                  ,@body
-                                  (setq ,counter (1+ ,counter))
-                                  (loop-fn)))))
-                     (loop-fn)))))))
-
-    ;; More bitwise utilities
-    ((and (consp form) (eq (first form) 'bit-count))
-     ;; Function: Alias for logcount (population count)
-     (parse `(logcount ,(second form))))
-
-    ((and (consp form) (eq (first form) 'popcount))
-     ;; Function: Alias for logcount (population count)
-     (parse `(logcount ,(second form))))
-
-    ((and (consp form) (eq (first form) 'all-bits-set?))
-     ;; Predicate: Check if all bits in mask are set in value
-     ;; (value & mask) == mask
-     (let ((value (second form))
-           (mask (third form)))
-       (if (or (and (consp value) (not (eq (first value) 'quote)))
-               (and (consp mask) (not (eq (first mask) 'quote))))
-           (let ((temp-v (gensym "VAL"))
-                 (temp-m (gensym "MSK")))
-             (parse `(let ((,temp-v ,value))
-                       (let ((,temp-m ,mask))
-                         (= (logand ,temp-v ,temp-m) ,temp-m)))))
-           (parse `(= (logand ,value ,mask) ,mask)))))
-
-    ((and (consp form) (eq (first form) 'any-bits-set?))
-     ;; Predicate: Check if any bits in mask are set in value
-     ;; (value & mask) != 0
-     (parse `(logtest ,(third form) ,(second form))))
-
-    ((and (consp form) (eq (first form) 'no-bits-set?))
-     ;; Predicate: Check if no bits in mask are set in value
-     ;; (value & mask) == 0
-     (parse `(not (logtest ,(third form) ,(second form)))))
-
-    ;; More range utilities
-    ((and (consp form) (eq (first form) 'clamp-positive))
-     ;; Function: Clamp to positive values (max 0)
-     (parse `(max 0 ,(second form))))
-
-    ((and (consp form) (eq (first form) 'clamp-negative))
-     ;; Function: Clamp to negative values (min 0)
-     (parse `(min 0 ,(second form))))
-
-    ((and (consp form) (eq (first form) 'saturate))
-     ;; Function: Saturate to [min, max] - alias for clamp
-     (parse `(clamp ,(second form) ,(third form) ,(fourth form))))
-
-    ;; Misc utilities
-    ((and (consp form) (eq (first form) 'identity?))
-     ;; Predicate: Check if two values are identical
-     (parse `(= ,(second form) ,(third form))))
-
-    ((and (consp form) (eq (first form) 'different?))
-     ;; Predicate: Check if two values are different
-     (parse `(/= ,(second form) ,(third form))))
-
-    ((and (consp form) (eq (first form) 'max-of-3))
-     ;; Function: Alias for max3
-     (parse `(max3 ,(second form) ,(third form) ,(fourth form))))
-
-    ((and (consp form) (eq (first form) 'min-of-3))
-     ;; Function: Alias for min3
-     (parse `(min3 ,(second form) ,(third form) ,(fourth form))))
-
-    ((and (consp form) (consp (first form)))
-     ;; Function call: ((lambda ...) args) or ((fn) args)
-     (let ((fn (first form))
-           (args (rest form)))
-       (make-expr :type 'funcall
-                  :value (parse fn)  ; The function expression
-                  :args (mapcar #'parse args))))  ; The arguments
-
-    ((and (consp form) (symbolp (first form)))
-     (let ((op (first form))
-           (args (rest form)))
-       ;; First check if this is a c[ad]r combination (cadr, caddr, etc.)
-       (let ((expansion (expand-cadr op (first args))))
-         (if expansion
-             (parse expansion)
-             ;; Not a c[ad]r, check if this is a macro (macros expand at compile-time)
-             (let ((macro-def (gethash op *macro-table*)))
-               (if macro-def
-                   ;; Macro: expand and re-parse
-                   ;; Use expand-macros-in-form to handle nested macros properly
-                   (let* ((expanded (expand-macros-in-form form)))
-                     ;; Re-parse the expanded form
-                     (parse expanded))
-                   ;; Not a macro, check if this is a user-defined function
-                   (let ((fn-def (gethash op *function-table*)))
-                     (if fn-def
-                         ;; User-defined function: transform to ((lambda params body) args...)
-                         (let ((params (car fn-def))
-                               (body (cdr fn-def)))
-                           (parse `((lambda ,params ,body) ,@args)))
-                         ;; Primitive operator
-                         (make-expr :type 'call
-                                    :value op
-                                    :args (mapcar #'parse args))))))))))
-
-    (t
-     (error "Cannot parse form: ~S" form))))
-
-;;; Algebraic simplification for mixed constant/variable expressions
-(defun simplify-algebraic (op args)
-  "Apply algebraic simplifications like (* x 0) => 0, (+ x 0) => x"
-  (when (and args (= (length args) 2))
-    (let ((arg1 (first args))
-          (arg2 (second args)))
-      (case op
-        ;; Multiplication simplifications
-        (*
-         (cond
-           ;; (* x 0) => 0 or (* 0 x) => 0
-           ((and (eq (expr-type arg1) 'fixnum) (zerop (expr-value arg1)))
-            (make-expr :type 'fixnum :value 0))
-           ((and (eq (expr-type arg2) 'fixnum) (zerop (expr-value arg2)))
-            (make-expr :type 'fixnum :value 0))
-           ;; (* x 1) => x
-           ((and (eq (expr-type arg2) 'fixnum) (= (expr-value arg2) 1))
-            arg1)
-           ;; (* 1 x) => x
-           ((and (eq (expr-type arg1) 'fixnum) (= (expr-value arg1) 1))
-            arg2)
-           (t nil)))
-
-        ;; Addition simplifications
-        (+
-         (cond
-           ;; (+ x 0) => x
-           ((and (eq (expr-type arg2) 'fixnum) (zerop (expr-value arg2)))
-            arg1)
-           ;; (+ 0 x) => x
-           ((and (eq (expr-type arg1) 'fixnum) (zerop (expr-value arg1)))
-            arg2)
-           (t nil)))
-
-        ;; Subtraction simplifications
-        (-
-         (cond
-           ;; (- x 0) => x
-           ((and (eq (expr-type arg2) 'fixnum) (zerop (expr-value arg2)))
-            arg1)
-           ;; (- 0 x) => (- x) but needs negation, skip for now
-           (t nil)))
-
-        ;; Division simplifications
-        (/
-         (cond
-           ;; (/ x 1) => x
-           ((and (eq (expr-type arg2) 'fixnum) (= (expr-value arg2) 1))
-            arg1)
-           ;; (/ 0 x) => 0 (when x != 0)
-           ((and (eq (expr-type arg1) 'fixnum) (zerop (expr-value arg1)))
-            (make-expr :type 'fixnum :value 0))
-           (t nil)))
-
-        ;; Bitwise AND simplifications
-        (logand
-         (cond
-           ;; (logand x 0) => 0
-           ((and (eq (expr-type arg2) 'fixnum) (zerop (expr-value arg2)))
-            (make-expr :type 'fixnum :value 0))
-           ;; (logand 0 x) => 0
-           ((and (eq (expr-type arg1) 'fixnum) (zerop (expr-value arg1)))
-            (make-expr :type 'fixnum :value 0))
-           ;; (logand x -1) => x
-           ((and (eq (expr-type arg2) 'fixnum) (= (expr-value arg2) -1))
-            arg1)
-           ;; (logand -1 x) => x
-           ((and (eq (expr-type arg1) 'fixnum) (= (expr-value arg1) -1))
-            arg2)
-           (t nil)))
-
-        ;; Bitwise OR simplifications
-        (logior
-         (cond
-           ;; (logior x 0) => x
-           ((and (eq (expr-type arg2) 'fixnum) (zerop (expr-value arg2)))
-            arg1)
-           ;; (logior 0 x) => x
-           ((and (eq (expr-type arg1) 'fixnum) (zerop (expr-value arg1)))
-            arg2)
-           (t nil)))
-
-        ;; Bitwise XOR simplifications
-        (logxor
-         (cond
-           ;; (logxor x 0) => x
-           ((and (eq (expr-type arg2) 'fixnum) (zerop (expr-value arg2)))
-            arg1)
-           ;; (logxor 0 x) => x
-           ((and (eq (expr-type arg1) 'fixnum) (zerop (expr-value arg1)))
-            arg2)
-           (t nil)))
-
-        (t nil)))))
-
-;;; Constant folding optimization
-(defun constant-fold (expr)
-  "Optimize expression by evaluating constant operations at compile time"
-  (case (expr-type expr)
-    (fixnum expr) ; Already a constant
-
-    (variable expr) ; Variables can't be folded
-
-    (quote expr) ; Quoted forms are already constant
-
-    (lambda
-     ; Fold lambda body but keep lambda structure
-     (let ((params (expr-value expr))
-           (body (expr-args expr)))
-       (make-expr :type 'lambda
-                  :value params
-                  :args (mapcar #'constant-fold body))))
-
-    (if
-     ; Optimize if expressions
-     (let ((condition (constant-fold (first (expr-args expr))))
-           (then-expr (constant-fold (second (expr-args expr))))
-           (else-expr (constant-fold (third (expr-args expr)))))
-       (if (and (eq (expr-type condition) 'fixnum))
-           ; Constant condition - evaluate at compile time
-           (if (zerop (expr-value condition))
-               else-expr
-               then-expr)
-           ; Non-constant condition - keep the if
-           (make-expr :type 'if :value nil
-                      :args (list condition then-expr else-expr)))))
-
-    (call
-     ; Optimize arithmetic operations on constants
-     (let* ((op (expr-value expr))
-            (args (mapcar #'constant-fold (expr-args expr))))
-       (if (and args (every (lambda (arg) (eq (expr-type arg) 'fixnum)) args))
-           ; All arguments are constants - evaluate at compile time
-           (let ((values (mapcar #'expr-value args)))
-             (make-expr :type 'fixnum
-                        :value
-                        (case op
-                          (+ (apply #'+ values))
-                          (- (apply #'- values))
-                          (* (apply #'* values))
-                          (/ (if (zerop (second values))
-                                 (return-from constant-fold
-                                   (make-expr :type 'call :value op :args args))
-                                 (truncate (first values) (second values))))
-                          (mod (mod (first values) (second values)))
-                          (rem (rem (first values) (second values)))
-                          (< (if (< (first values) (second values)) 1 0))
-                          (> (if (> (first values) (second values)) 1 0))
-                          (= (if (= (first values) (second values)) 1 0))
-                          (<= (if (<= (first values) (second values)) 1 0))
-                          (>= (if (>= (first values) (second values)) 1 0))
-                          (/= (if (/= (first values) (second values)) 1 0))
-                          (logand (apply #'logand values))
-                          (logior (apply #'logior values))
-                          (logxor (apply #'logxor values))
-                          (lognot (lognot (first values)))
-                          (ash (ash (first values) (second values)))
-                          (min (apply #'min values))
-                          (max (apply #'max values))
-                          (abs (abs (first values)))
-                          (1+ (1+ (first values)))
-                          (1- (1- (first values)))
-                          (gcd (apply #'gcd values))
-                          (lcm (apply #'lcm values))
-                          (t ; Non-foldable operation
-                           (return-from constant-fold
-                             (make-expr :type 'call :value op :args args))))))
-           ; Not all constants - apply algebraic simplifications
-           (let ((simplified (simplify-algebraic op args)))
-             (if simplified
-                 simplified
-                 (make-expr :type 'call :value op :args args))))))
-
-    (progn
-     ; Optimize progn - fold each expression
-     (let ((folded-args (mapcar #'constant-fold (expr-args expr))))
-       (make-expr :type 'progn :value nil :args folded-args)))
-
-    (let
-     ; Optimize let - fold body only (bindings are in raw form, not parsed)
-     (let ((bindings (expr-value expr))
-           (body (expr-args expr)))
-       (make-expr :type 'let
-                  :value bindings
-                  :args (mapcar #'constant-fold body))))
-
-    (named-let
-     ; Optimize named-let - fold body only
-     (let ((name-and-bindings (expr-value expr))
-           (body (expr-args expr)))
-       (make-expr :type 'named-let
-                  :value name-and-bindings
-                  :args (mapcar #'constant-fold body))))
-
-    (t
-     ; Unknown type - don't optimize
-     expr)))
-
-;;; Helper function to detect recursive calls in named-let
-(defun find-recursive-calls (name expr)
-  "Check if expr contains any calls to name"
-  (cond
-    ((null expr) nil)
-    ((atom expr) nil)
-    ((and (eq (expr-type expr) 'call)
-          (eq (expr-value expr) name))
-     t)
-    ((expr-args expr)
-     (some (lambda (arg) (find-recursive-calls name arg))
-           (expr-args expr)))
-    (t nil)))
+                 ((= ch #x22) (nc-read-str source p2))
+                 ((= ch #x28) (read-list p2))
+                 ((= ch #x27)
+                  (let ((r (read-one (+ p2 1))))
+                    (cons (list 'quote (car r)) (cdr r))))
+                 ((= ch #x60)
+                  (let ((r (read-one (+ p2 1))))
+                    (cons (list 'quasiquote (car r)) (cdr r))))
+                 ((= ch #x2C)
+                  (if (= (nc-char-at source (+ p2 1)) #x40)
+                      (let ((r (read-one (+ p2 2))))
+                        (cons (list 'unquote-splicing (car r)) (cdr r)))
+                      (let ((r (read-one (+ p2 1))))
+                        (cons (list 'unquote (car r)) (cdr r)))))
+                 ((= ch #x23) (read-sharp p2))
+                 ((or (nc-digit-p ch)
+                      (and (or (= ch #x2D) (= ch #x2B))
+                           (nc-digit-p (nc-char-at source (+ p2 1)))))
+                  (nc-read-int source p2))
+                 ((nc-symbol-char-p ch) (nc-read-sym source p2))
+                 ((= ch #x29) (cons nil (+ p2 1)))
+                 (t (read-one (+ p2 1))))))))
+    (read-one pos)))
+
+(defun nc-read-from-string (source)
+  (car (nc-read source 0)))
+
+(defun nc-read-all (source)
+  (let ((len (string-length source)))
+    (labels ((ra (pos acc)
+               (let ((p2 (nc-skip-ws source pos)))
+                 (if (>= p2 len)
+                     (reverse acc)
+                     (let ((r (nc-read source p2)))
+                       (ra (cdr r) (cons (car r) acc)))))))
+      (ra 0 nil))))
 
 ;;; ============================================================
-;;; INLINE ALLOCATION HELPERS (Phase 2)
+;;; Part 4: Stack Frame Constants (inlined for delivery)
 ;;; ============================================================
-;;;
-;;; These functions generate inline heap allocation code for
-;;; standalone operation without FFI dependencies.
 
-(defun emit-inline-cons-x86_64 (car-code cdr-code)
-  "Generate inline cons allocation for x86_64 (Phase 2)
+;; Constants inlined directly to avoid global variable initialization issues
+;; Frame size: #xFF0, Env base: #x180, Temp base: #x40
+;; Temp guard: #x180, Spill base: #x200
 
-   For standalone mode, this calls habu_cons directly from the C runtime.
-   Later this will be optimized to inline bump-pointer allocation.
+(defun nc-frame-size () #xFF0)
+(defun nc-env-base () #x180)
+(defun nc-temp-base () #x40)
+(defun nc-temp-guard () #x180)
+(defun nc-spill-base () #x200)
 
-   System V AMD64 ABI: Args in RDI/RSI, Return in RAX"
+(defun nc-temp-slot (depth)
+  (let ((off (+ #x40 (* depth 8))))  ; #x40 = nc-temp-base
+    (if (>= off #x180)  ; #x180 = nc-temp-guard
+        (+ #x180 (* (- depth (ash (- #x180 #x40) -3)) 8))
+        off)))
 
-  ;; Simple version for now: just call habu_cons(car, cdr)
-  ;; This works in standalone mode when linked with runtime.o
+(defun nc-spill-slot (idx)
+  (+ #x200 (* idx 8)))  ; #x200 = nc-spill-base
+
+;;; ============================================================
+;;; Part 5: Prologue/Epilogue
+;;; ============================================================
+
+(defun nc-prologue ()
   (append
-   ;; Evaluate car
-   car-code
-   '(#x50)                          ; push rax (save car)
+   (nc-stp-offset 29 30 31 (- #xFF0))  ; -frame-size
+   (nc-sub-imm 31 31 #xFF0)  ; frame-size
+   (nc-mov-reg 29 31)
+   (nc-stp-offset 19 20 31 16)
+   (nc-stp-offset 21 22 31 32)
+   (nc-stp-offset 23 24 31 48)
+   (nc-mov-reg 20 31)
+   (nc-add-imm 20 20 #x180)))  ; env-base
 
-   ;; Evaluate cdr
-   cdr-code
-   '(#x48 #x89 #xC6)                ; mov rsi, rax (cdr in RSI)
-
-   ;; Get car from stack
-   '(#x48 #x8B #x3C #x24)           ; mov rdi, [rsp] (car in RDI)
-   '(#x48 #x83 #xC4 #x08)           ; add rsp, 8 (pop car)
-
-   ;; Call habu_cons - address will be resolved by linker
-   ;; For now, use a placeholder that will be patched
-   '(#x48 #xB8)                     ; movabs rax, imm64 (address of habu_cons)
-   '(#x00 #x00 #x00 #x00 #x00 #x00 #x00 #x00)  ; Placeholder - will be resolved at link time
-   '(#xFF #xD0)))                   ; call rax
-
-(defun emit-inline-car-x86_64 (cons-code)
-  "Generate inline car access for x86_64 (Phase 2)"
+(defun nc-epilogue ()
   (append
-   cons-code
-   ;; Untag pointer (remove 0x1)
-   '(#x48 #x83 #xE0 #xFE)   ; and rax, ~1
-   ;; Load car (offset 0)
-   '(#x48 #x8B #x00)))      ; mov rax, [rax]
-
-(defun emit-inline-cdr-x86_64 (cons-code)
-  "Generate inline cdr access for x86_64 (Phase 2)"
-  (append
-   cons-code
-   ;; Untag pointer (remove 0x1)
-   '(#x48 #x83 #xE0 #xFE)   ; and rax, ~1
-   ;; Load cdr (offset 8)
-   '(#x48 #x8B #x40 #x08))) ; mov rax, [rax+8]
-
-;;; ARM64 inline allocation helpers
-(defun emit-inline-cons-arm64 (car-code cdr-code)
-  "Generate cons allocation for ARM64 by calling _habu_cons
-
-   Convention: _habu_cons(x0=car, x1=cdr) -> x0=cons_ptr
-
-   ARM64 procedure call standard: Args in x0-x7, Return in x0"
-  (append
-   car-code
-   ;; Save car on stack: str x0, [sp, #-16]!
-   '(#xE0 #x0F #x1F #xF8)
-
-   cdr-code
-   ;; Move cdr to x1: mov x1, x0
-   '(#xE1 #x03 #x00 #xAA)
-   ;; Restore car to x0: ldr x0, [sp], #16
-   '(#xE0 #x07 #x41 #xF8)
-
-   ;; Call habu_cons - will be resolved by linker/assembler
-   ;; bl habu_cons (relative branch with link)
-   ;; Using special marker that will be replaced during assembly
-   '(#xFF #xFF #xFF #x01)))
-
-(defun emit-inline-car-arm64 (cons-code)
-  "Generate car access for ARM64 by calling _habu_car
-
-   Convention: _habu_car(x0=cons_ptr) -> x0=car_value"
-  (format t "[DEBUG] emit-inline-car-arm64 called, cons-code length: ~D~%" (length cons-code))
-  (let ((result (append
-                 cons-code
-                 ;; Special marker for bl _habu_car (replaced by assembler)
-                 '(#xFF #xFF #xFF #x02))))
-    (format t "[DEBUG] emit-inline-car-arm64 returning length: ~D, last 4 bytes: ~{~2,'0X ~}~%"
-            (length result)
-            (last result 4))
-    result))
-
-(defun emit-inline-cdr-arm64 (cons-code)
-  "Generate cdr access for ARM64 by calling _habu_cdr
-
-   Convention: _habu_cdr(x0=cons_ptr) -> x0=cdr_value"
-  (append
-   cons-code
-   ;; Special marker for bl _habu_cdr (replaced by assembler)
-   '(#xFF #xFF #xFF #x03)))
-
-;;; Code generation for x86_64
-(defun emit-x86_64 (expr &optional (env nil))
-  "Generate x86_64 machine code for expression with environment"
-  (ecase (expr-type expr)
-    (fixnum
-     ;; Load fixnum into RAX
-     ;; mov rax, imm64
-     (let ((val (* (expr-value expr) 16))) ; Tag as fixnum (shift left 4)
-       (append (list #x48 #xB8)           ; REX.W + mov rax prefix
-               (int-to-bytes val 8))))
-
-    (string
-     ;; Create string on heap at compile time and load pointer into RAX
-     ;; mov rax, imm64
-     (let* ((lisp-string (expr-value expr))
-            (make-string-fn (find-symbol "RUNTIME-MAKE-STRING" :habu-runtime))
-            (string-ptr (funcall make-string-fn lisp-string)))
-       (append '(#x48 #xB8)               ; REX.W + mov rax prefix
-               (int-to-bytes string-ptr 8))))
-
-    (variable
-     ;; Look up variable in environment and load from stack
-     (let* ((var-name (expr-value expr))
-            (binding (assoc var-name env)))
-       (if binding
-           (let ((offset (cdr binding)))
-             ;; mov rax, [rsp + offset]
-             (if (zerop offset)
-                 (list #x48 #x8B #x04 #x24)  ; mov rax, [rsp]
-                 (append (list #x48 #x8B #x84 #x24)  ; mov rax, [rsp + disp32]
-                         (int-to-bytes offset 4))))
-           (error "Unbound variable: ~S" var-name))))
-
-    (setq
-     ;; Compile (setq var value) - mutate a lexical variable
-     (let* ((var-name (expr-value expr))
-            (value-expr (first (expr-args expr)))
-            (binding (assoc var-name env)))
-       (if binding
-           (let ((offset (cdr binding)))
-             (append
-              ;; First, evaluate the value expression into RAX
-              (emit-x86_64 value-expr env)
-              ;; Then store RAX to the variable's stack location
-              (if (zerop offset)
-                  (list #x48 #x89 #x04 #x24)  ; mov [rsp], rax
-                  (append (list #x48 #x89 #x84 #x24)  ; mov [rsp + disp32], rax
-                          (int-to-bytes offset 4)))))
-           (error "Cannot setq unbound variable: ~S" var-name))))
-
-    (let
-     ;; Compile (let ((var val) ...) body)
-     (let* ((bindings (expr-value expr))
-            (body (first (expr-args expr)))
-            (num-bindings (length bindings))
-            (new-env env)
-            (binding-code nil))
-       ;; Generate code to evaluate and push each binding
-       (loop for (var val-form) in bindings
-             for offset from 0 by 8
-             do (let ((val-code (emit-x86_64 (parse val-form) env)))
-                  (setf binding-code
-                        (append binding-code
-                                val-code
-                                (list #x50)))  ; push rax
-                  ;; Add to environment with current stack offset
-                  (push (cons var (* offset 8)) new-env)))
-       ;; Generate code for body with extended environment
-       (let ((body-code (emit-x86_64 body (reverse new-env))))
-         (append binding-code
-                 body-code
-                 ;; Clean up stack: add rsp, num-bindings*8
-                 (if (<= (* num-bindings 8) 127)
-                     (list #x48 #x83 #xC4 (* num-bindings 8))  ; add rsp, imm8
-                     (append (list #x48 #x81 #xC4)  ; add rsp, imm32
-                             (int-to-bytes (* num-bindings 8) 4)))))))
-
-    (lambda
-     ;; Lambda expressions are not directly compiled to code
-     ;; They only make sense in funcall context
-     (error "Lambda expression cannot be compiled standalone: ~S" expr))
-
-    (closure
-     ;; Create a heap-allocated closure object as a first-class value
-     ;; Phase 1: Use runtime make-closure-N trampolines with eval'd wrapper
-     (let* ((params (expr-value expr))
-            (body (first (expr-args expr)))
-            (free-vars (second (expr-args expr)))
-            (original-body (third (expr-args expr)))  ; Original Lisp form
-            (num-free (length free-vars))
-            (arity (length params))
-            (closure-name (gensym "CLOSURE"))
-            (wrapper-params (append free-vars params)))
-
-       ;; Phase 1 limitation: only support 0-3 captured variables
-       (when (> num-free 3)
-         (error "Phase 1 only supports closures with up to 3 captured variables, got ~D" num-free))
-
-       ;; Create wrapper function via eval: (lambda (free-vars... params...) body)
-       ;; This will be called with captured vars as first args, then regular args
-       (let ((callable-name (intern (format nil "HABU-CLOSURE-~A" (string-upcase (string closure-name)))
-                                    (find-package :habu-compiler))))
-         ;; Create the Lisp function that implements the closure body
-         (eval `(defun ,callable-name ,wrapper-params ,original-body))
-
-         ;; Create alien-callable wrapper (SBCL-specific for Phase 1)
-         #+sbcl
-         (let ((num-wrapper-params (length wrapper-params)))
-           (cond
-             ((<= num-wrapper-params 0)
-              (eval `(sb-alien:define-alien-callable ,callable-name
-                         sb-alien:unsigned-long ()
-                       (,callable-name))))
-             ((<= num-wrapper-params 1)
-              (eval `(sb-alien:define-alien-callable ,callable-name
-                         sb-alien:unsigned-long ((,(first wrapper-params) sb-alien:unsigned-long))
-                       (,callable-name ,(first wrapper-params)))))
-             ((<= num-wrapper-params 2)
-              (eval `(sb-alien:define-alien-callable ,callable-name
-                         sb-alien:unsigned-long ((,(first wrapper-params) sb-alien:unsigned-long)
-                                                 (,(second wrapper-params) sb-alien:unsigned-long))
-                       (,callable-name ,(first wrapper-params) ,(second wrapper-params)))))
-             ((<= num-wrapper-params 3)
-              (eval `(sb-alien:define-alien-callable ,callable-name
-                         sb-alien:unsigned-long ((,(first wrapper-params) sb-alien:unsigned-long)
-                                                 (,(second wrapper-params) sb-alien:unsigned-long)
-                                                 (,(third wrapper-params) sb-alien:unsigned-long))
-                       (,callable-name ,(first wrapper-params) ,(second wrapper-params) ,(third wrapper-params)))))
-             ((<= num-wrapper-params 4)
-              (eval `(sb-alien:define-alien-callable ,callable-name
-                         sb-alien:unsigned-long ((,(first wrapper-params) sb-alien:unsigned-long)
-                                                 (,(second wrapper-params) sb-alien:unsigned-long)
-                                                 (,(third wrapper-params) sb-alien:unsigned-long)
-                                                 (,(fourth wrapper-params) sb-alien:unsigned-long))
-                       (,callable-name ,(first wrapper-params) ,(second wrapper-params) ,(third wrapper-params) ,(fourth wrapper-params)))))
-             (t (error "Wrapper function with ~D parameters not supported" num-wrapper-params))))
-
-         ;; Store wrapper function pointer in runtime symbol table
-         (let ((intern-fn (find-symbol "RUNTIME-INTERN" :habu-runtime))
-               (set-fn-fn (find-symbol "SET-SYMBOL-FUNCTION" :habu-runtime)))
-           (when (and intern-fn set-fn-fn)
-             (let* ((name-str (string closure-name))
-                    (sym (funcall intern-fn name-str))
-                    (fn-ptr (sb-sys:sap-int (sb-alien:alien-sap (sb-alien:alien-callable-function callable-name)))))
-               (funcall set-fn-fn sym fn-ptr))))
-
-         ;; Now generate code to call make-closure-N trampoline
-         (let ((trampoline-addr
-                (case num-free
-                  (0 *runtime-make-closure-0-addr*)
-                  (1 *runtime-make-closure-1-addr*)
-                  (2 *runtime-make-closure-2-addr*)
-                  (3 *runtime-make-closure-3-addr*)
-                  (t (error "Unsupported number of captured vars: ~D" num-free)))))
-           (unless trampoline-addr
-             (error "Runtime not initialized. Call (initialize-runtime-integration) first."))
-           (let ((func-addr (sb-sys:sap-int trampoline-addr))
-                 (intern-fn (find-symbol "RUNTIME-INTERN" :habu-runtime)))
-             (unless intern-fn
-               (error "Runtime not initialized"))
-
-             ;; Get symbol address for wrapper function
-             (let ((sym-addr (funcall intern-fn (string closure-name))))
-               (append
-                ;; Setup arguments for make-closure-N call
-                ;; Arg1 (RDI): code pointer from symbol-function slot
-                (list #x48 #xB8)                    ; movabs rax, imm64 (symbol addr)
-                (int-to-bytes sym-addr 8)
-                (list #x48 #x8B #x78 #x18)          ; mov rdi, [rax + 24] (load function ptr to RDI)
-
-                ;; Arg2 (RSI): arity (number of declared parameters, not including captured vars)
-                (list #x48 #xBE)                    ; movabs rsi, imm64 (arity)
-                (int-to-bytes arity 8)
-
-                ;; Args 3-5 (RDX, RCX, R8): captured variable values
-                (case num-free
-                  (0
-                   ;; No captured vars, just call make-closure-0(code-ptr, arity)
-                   nil)
-                  (1
-                   ;; Arg3 (RDX): captured var 1
-                   (append
-                    (emit-x86_64 (make-expr :type 'variable :value (first free-vars)) env)
-                    (list #x48 #x89 #xC2)))         ; mov rdx, rax
-                  (2
-                   ;; Arg3 (RDX): captured var 1, Arg4 (RCX): captured var 2
-                   (append
-                    (emit-x86_64 (make-expr :type 'variable :value (first free-vars)) env)
-                    (list #x50)                     ; push rax (save var1)
-                    (emit-x86_64 (make-expr :type 'variable :value (second free-vars)) env)
-                    (list #x48 #x89 #xC1)           ; mov rcx, rax (var2 -> RCX)
-                    (list #x5A)))                   ; pop rdx (var1 -> RDX)
-                  (3
-                   ;; Arg3 (RDX): captured var 1, Arg4 (RCX): captured var 2, Arg5 (R8): captured var 3
-                   (append
-                    (emit-x86_64 (make-expr :type 'variable :value (first free-vars)) env)
-                    (list #x50)                     ; push rax (save var1)
-                    (emit-x86_64 (make-expr :type 'variable :value (second free-vars)) env)
-                    (list #x50)                     ; push rax (save var2)
-                    (emit-x86_64 (make-expr :type 'variable :value (third free-vars)) env)
-                    (list #x49 #x89 #xC0)           ; mov r8, rax (var3 -> R8)
-                    (list #x59)                     ; pop rcx (var2 -> RCX)
-                    (list #x5A)))                   ; pop rdx (var1 -> RDX)
-                  (t (error "Unsupported num-free: ~D" num-free)))
-
-                ;; Call make-closure-N trampoline
-                (list #x48 #xB8)                    ; movabs rax, imm64
-                (int-to-bytes func-addr 8)
-                (list #xFF #xD0))))))))
-
-    (named-let
-     ;; Compile (let name ((var val) ...) body)
-     ;; For now, compile as regular let - recursive calls will need TCO support
-     (let* ((name-and-bindings (expr-value expr))
-            (loop-name (first name-and-bindings))
-            (bindings (second name-and-bindings))
-            (body (first (expr-args expr)))
-            (vars (mapcar #'first bindings))
-            (num-bindings (length bindings)))
-       ;; Warn about recursive calls (they won't work without TCO)
-       (when (find-recursive-calls loop-name body)
-         (warn "Named-let '~A' contains recursive calls. Tail-call optimization not yet implemented. Recursive calls will cause errors." loop-name))
-       ;; Compile as regular let for now
-       (let ((binding-code nil)
-             (new-env env))
-         ;; Evaluate and push each binding
-         (dolist (binding bindings)
-           (let ((var (first binding))
-                 (val (second binding)))
-             (setf binding-code
-                   (append binding-code
-                           (emit-x86_64 (parse val) env)
-                           (list #x50)))))  ; push rax
-         ;; Build environment with variable offsets
-         (let ((offset 0))
-           (dolist (var (reverse vars))
-             (setf new-env (cons (cons var offset) new-env))
-             (setf offset (+ offset 8))))
-         ;; Compile body with new environment
-         (let ((body-code (emit-x86_64 body new-env)))
-           (append binding-code
-                   body-code
-                   ;; Clean up stack
-                   (if (<= num-bindings 255)
-                       (list #x48 #x83 #xC4 (* num-bindings 8))  ; add rsp, imm8
-                       (append (list #x48 #x81 #xC4)  ; add rsp, imm32
-                               (int-to-bytes (* num-bindings 8) 4))))))))
-
-    (progn
-     ;; Compile (progn expr1 expr2 ... exprN)
-     ;; Evaluate each expression, keeping only the last result
-     (let ((exprs (expr-args expr)))
-       (if (null exprs)
-           ;; Empty progn returns 0
-           (emit-x86_64 (make-expr :type 'fixnum :value 0) env)
-           ;; Evaluate each expression in sequence
-           (let ((code nil))
-             (dolist (e exprs)
-               (setf code (append code (emit-x86_64 e env))))
-             code))))
-
-    (multiple-value-bind
-     ;; Compile (multiple-value-bind (var1 var2 ...) values-form body...)
-     ;; Evaluate values-form, bind variables to returned values, evaluate body
-     (let ((vars (expr-value expr))
-           (values-form (first (expr-args expr)))
-           (body (second (expr-args expr))))
-       (unless *runtime-values-get-addr*
-         (error "Runtime not initialized. Call (initialize-runtime-integration) first."))
-
-       ;; Build new environment with variable bindings
-       (let* ((num-vars (length vars))
-              (new-env (copy-list env))
-              (get-func-addr (sb-sys:sap-int *runtime-values-get-addr*)))
-
-         ;; Evaluate values-form (primary value ends up in RAX)
-         (append
-          (emit-x86_64 values-form env)
-
-          ;; Save primary value on stack (we'll need it for runtime-values-get calls)
-          '(#x50)                        ; push rax
-
-          ;; For each variable, get the corresponding value and bind it
-          (loop for var in vars
-                for i from 0
-                append
-                (progn
-                  ;; Add variable to environment (pointing to stack)
-                  (push (cons var (- (* (+ i 1) 8))) new-env)
-
-                  (if (= i 0)
-                      ;; First variable gets primary value (already on stack)
-                      nil
-                      ;; Subsequent variables: call runtime-values-get(i, primary)
-                      (append
-                       ;; Load index into RDI
-                       '(#x48 #xC7 #xC7)     ; mov rdi, imm32
-                       (int-to-bytes (ash i 4) 4)  ; Tagged fixnum index
-                       ;; Load primary value into RSI
-                       (list #x48 #x8B #x34 #x24) ; mov rsi, [rsp] (primary still on stack)
-                       ;; Call runtime-values-get
-                       '(#x48 #xB8)          ; movabs rax, imm64
-                       (int-to-bytes get-func-addr 8)
-                       '(#xFF #xD0)          ; call rax
-                       ;; Push result onto stack (binding for this variable)
-                       '(#x50)))))           ; push rax
-
-          ;; Evaluate body with new environment
-          (emit-x86_64 body new-env)
-
-          ;; Clean up stack: pop all bindings + primary value
-          '(#x48 #x83 #xC4)              ; add rsp, imm8
-          (list (* (+ num-vars 1) 8))))))  ; pop all vars + primary
-
-    (dotimes
-     ;; Compile (dotimes (var count [result]) body...)
-     ;; Inline loop with direct jumps
-     (let* ((var (first (expr-value expr)))
-            (result-form (second (expr-value expr)))
-            (count-form (first (expr-args expr)))
-            (body (second (expr-args expr)))
-            (new-env (copy-list env)))
-
-       ;; Add loop variable to environment (will be on stack)
-       (push (cons var -8) new-env)
-
-       ;; Generate code pieces
-       (let* ((count-code (emit-x86_64 count-form env))
-              (body-code (emit-x86_64 body new-env))
-              (result-code (emit-x86_64 (parse result-form) env))
-
-              ;; Calculate jump offsets
-              ;; Body size + increment + jmp back
-              (body-size (+ (length body-code)
-                           1    ; pop rcx
-                           3    ; inc rcx (48 FF C1)
-                           5))  ; jmp loop_start (E9 offset)
-
-              ;; Forward jump offset (from cmp to after jmp)
-              (forward-offset (+ 2   ; push rcx
-                                (length body-code)
-                                1    ; pop rcx
-                                3    ; inc rcx
-                                5))  ; jmp
-
-              ;; Backward jump offset (from jmp to cmp)
-              (backward-offset (- (+ 6   ; cmp + jge
-                                    2   ; push
-                                    (length body-code)
-                                    1   ; pop
-                                    3)))) ; inc
-
-         (append
-          ;; Evaluate count-form -> RAX (tagged fixnum)
-          count-code
-          '(#x48 #x89 #xC3)           ; mov rbx, rax (save count in RBX)
-          '(#x48 #xC7 #xC1 #x00 #x00 #x00 #x00)  ; mov rcx, 0 (i = 0, tagged)
-
-          ;; loop_start:
-          '(#x48 #x39 #xD9)           ; cmp rcx, rbx (compare i with count)
-          '(#x0F #x8D)                ; jge loop_end (signed comparison)
-          (int-to-bytes forward-offset 4)
-
-          '(#x51)                     ; push rcx (bind variable)
-          body-code                   ; execute body
-          '(#x59)                     ; pop rcx (restore counter)
-          '(#x48 #x83 #xC1 #x10)      ; add rcx, 16 (increment by 1, tagged)
-          '(#xE9)                     ; jmp loop_start
-          (int-to-bytes backward-offset 4)
-
-          ;; loop_end:
-          result-code))))              ; evaluate result form
-
-    (dolist
-     ;; Compile (dolist (var list [result]) body...)
-     ;; Inline loop with direct jumps
-     (let* ((var (first (expr-value expr)))
-            (result-form (second (expr-value expr)))
-            (list-form (first (expr-args expr)))
-            (body (second (expr-args expr)))
-            (new-env (copy-list env)))
-
-       ;; Add loop variable to environment (will be on stack)
-       (push (cons var -8) new-env)
-
-       ;; Generate code pieces
-       (let* ((list-code (emit-x86_64 list-form env))
-              (body-code (emit-x86_64 body new-env))
-              (result-code (emit-x86_64 (parse result-form) env))
-
-              ;; Car/cdr trampoline addresses
-              (car-addr (sb-sys:sap-int *runtime-car-addr*))
-              (cdr-addr (sb-sys:sap-int *runtime-cdr-addr*))
-
-              ;; Calculate jump offsets
-              (forward-offset (+ 2    ; push rax (car)
-                                (length body-code)
-                                1     ; pop rax
-                                10    ; mov rax, rbx
-                                12    ; movabs + call cdr
-                                3))   ; mov rbx, rax
-
-              (backward-offset (- (+ 6    ; cmp + je
-                                    10   ; movabs car-addr
-                                    2    ; call
-                                    2    ; push
-                                    (length body-code)
-                                    1    ; pop
-                                    3    ; mov rax, rbx
-                                    10   ; movabs cdr-addr
-                                    2))))  ; call
-
-         (append
-          ;; Evaluate list-form -> RAX
-          list-code
-          '(#x48 #x89 #xC3)           ; mov rbx, rax (current list in RBX)
-
-          ;; loop_start:
-          '(#x48 #x83 #xFB #x00)      ; cmp rbx, 0 (check for nil)
-          '(#x0F #x84)                ; je loop_end
-          (int-to-bytes forward-offset 4)
-
-          ;; Get car(current)
-          '(#x48 #x89 #xD8)           ; mov rax, rbx (list in RAX for car)
-          '(#x48 #xB8)                ; movabs rax, car-addr
-          (int-to-bytes car-addr 8)
-          '(#xFF #xD0)                ; call rax
-          '(#x50)                     ; push rax (bind variable to car)
-
-          body-code                   ; execute body
-
-          '(#x58)                     ; pop rax (unbind variable)
-          '(#x48 #x89 #xD8)           ; mov rax, rbx (current list)
-          '(#x48 #xB8)                ; movabs rax, cdr-addr
-          (int-to-bytes cdr-addr 8)
-          '(#xFF #xD0)                ; call rax
-          '(#x48 #x89 #xC3)           ; mov rbx, rax (advance to next)
-          '(#xE9)                     ; jmp loop_start
-          (int-to-bytes backward-offset 4)
-
-          ;; loop_end:
-          result-code))))              ; evaluate result form
-
-    (quote
-     ;; Compile (quote datum)
-     ;; Return the quoted value without evaluation
-     (let ((datum (expr-value expr)))
-       (cond
-         ((integerp datum)
-          ;; Quoted integer - just return as fixnum
-          (emit-x86_64 (make-expr :type 'fixnum :value datum) env))
-         ((null datum)
-          ;; Quoted nil - return as fixnum 0 (or special nil value)
-          (emit-x86_64 (make-expr :type 'fixnum :value 0) env))
-         (t
-          ;; Symbols and lists need runtime support
-          (error "Quote of ~S not yet supported - need runtime symbols/lists" datum)))))
-
-    (not
-     ;; Compile (not expr)
-     ;; Returns 1 (true) if expr is 0 (false), else 0
-     (let* ((arg-expr (first (expr-args expr)))
-            (arg-code (emit-x86_64 arg-expr env)))
-       (append arg-code
-               (list #x48 #x85 #xC0)        ; test rax, rax
-               (list #x0F #x94 #xC0)        ; setz al
-               (list #x48 #x0F #xB6 #xC0)   ; movzx rax, al
-               (list #x48 #xC1 #xE0 #x04)))) ; shl rax, 4 (tag as fixnum)
-
-    (and
-     ;; Compile (and expr1 expr2 ...)
-     ;; Short-circuit evaluation: return first false value, else last value
-     (let ((exprs (expr-args expr)))
-       (cond
-         ((null exprs)
-          ;; Empty and is true (return 1)
-          (emit-x86_64 (make-expr :type 'fixnum :value 1) env))
-         ((= (length exprs) 1)
-          ;; Single expression: just evaluate it
-          (emit-x86_64 (first exprs) env))
-         (t
-          ;; Multiple expressions: short-circuit evaluation
-          ;; First, generate code for each expression
-          (let ((expr-codes (mapcar (lambda (e) (emit-x86_64 e env)) exprs))
-                (result nil))
-            ;; Build code from right to left
-            (loop for i from (1- (length expr-codes)) downto 0
-                  for code = (nth i expr-codes)
-                  for last = (= i (1- (length expr-codes)))
-                  do (if last
-                         ;; Last expression: just its code
-                         (setf result code)
-                         ;; Not last: code + test + conditional jump to end
-                         (let ((test-and-jump (append
-                                              (list #x48 #x85 #xC0)  ; test rax, rax
-                                              (list #x74)            ; jz (short jump)
-                                              (list (length result))))) ; offset to end
-                           (setf result (append code test-and-jump result)))))
-            result)))))
-
-    (or
-     ;; Compile (or expr1 expr2 ...)
-     ;; Short-circuit evaluation: return first non-zero value, else last value
-     (let ((exprs (expr-args expr)))
-       (cond
-         ((null exprs)
-          ;; Empty or is false (return 0)
-          (emit-x86_64 (make-expr :type 'fixnum :value 0) env))
-         ((= (length exprs) 1)
-          ;; Single expression: just evaluate it
-          (emit-x86_64 (first exprs) env))
-         (t
-          ;; Multiple expressions: short-circuit evaluation
-          ;; First, generate code for each expression
-          (let ((expr-codes (mapcar (lambda (e) (emit-x86_64 e env)) exprs))
-                (result nil))
-            ;; Build code from right to left
-            (loop for i from (1- (length expr-codes)) downto 0
-                  for code = (nth i expr-codes)
-                  for last = (= i (1- (length expr-codes)))
-                  do (if last
-                         ;; Last expression: just its code
-                         (setf result code)
-                         ;; Not last: code + test + conditional jump to end
-                         (let ((test-and-jump (append
-                                              (list #x48 #x85 #xC0)  ; test rax, rax
-                                              (list #x75)            ; jnz (short jump)
-                                              (list (length result))))) ; offset to end
-                           (setf result (append code test-and-jump result)))))
-            result)))))
-
-    (cond
-     ;; Compile (cond (test1 result1) (test2 result2) ... (t default))
-     ;; Transform to nested ifs: (if test1 result1 (if test2 result2 ... default))
-     (let ((clauses (expr-value expr)))
-       (labels ((compile-cond-clauses (clauses)
-                  (if (null clauses)
-                      ;; No clauses: return 0 (or could be error)
-                      (emit-x86_64 (make-expr :type 'fixnum :value 0) env)
-                      (let* ((clause (first clauses))
-                             (test (first clause))
-                             (result (second clause))
-                             (rest-clauses (rest clauses)))
-                        (if (or (eq test t) (null rest-clauses))
-                            ;; Last clause or (t ...) clause: just eval result
-                            (emit-x86_64 (parse result) env)
-                            ;; Not last: compile as (if test result (rest...))
-                            (let* ((test-code (emit-x86_64 (parse test) env))
-                                   (then-code (emit-x86_64 (parse result) env))
-                                   (else-code (compile-cond-clauses rest-clauses))
-                                   (then-size (length then-code))
-                                   (else-size (length else-code))
-                                   (jmp-to-end-size 5)
-                                   (jz-to-else-size 6))
-                              (append test-code
-                                      (list #x48 #x85 #xC0)  ; test rax, rax
-                                      (list #x0F #x84)  ; jz to else
-                                      (int-to-bytes (+ then-size jmp-to-end-size) 4)
-                                      then-code
-                                      (list #xE9)  ; jmp to end
-                                      (int-to-bytes else-size 4)
-                                      else-code)))))))
-         (compile-cond-clauses clauses))))
-
-    (when
-     ;; Compile (when test body...)
-     ;; Transform to (if test (progn body...) 0)
-     (let* ((test-expr (first (expr-args expr)))
-            (body-exprs (rest (expr-args expr)))
-            (test-code (emit-x86_64 test-expr env))
-            (body-code (if (null body-exprs)
-                           (emit-x86_64 (make-expr :type 'fixnum :value 0) env)
-                           (if (= (length body-exprs) 1)
-                               (emit-x86_64 (first body-exprs) env)
-                               (emit-x86_64 (make-expr :type 'progn :args body-exprs) env))))
-            (body-size (length body-code)))
-       (append test-code
-               (list #x48 #x85 #xC0)           ; test rax, rax
-               (list #x0F #x84)                ; jz (skip body if test is false)
-               (int-to-bytes body-size 4)
-               body-code)))
-
-    (unless
-     ;; Compile (unless test body...)
-     ;; Transform to (if (not test) (progn body...) 0)
-     (let* ((test-expr (first (expr-args expr)))
-            (body-exprs (rest (expr-args expr)))
-            (test-code (emit-x86_64 test-expr env))
-            (body-code (if (null body-exprs)
-                           (emit-x86_64 (make-expr :type 'fixnum :value 0) env)
-                           (if (= (length body-exprs) 1)
-                               (emit-x86_64 (first body-exprs) env)
-                               (emit-x86_64 (make-expr :type 'progn :args body-exprs) env))))
-            (body-size (length body-code)))
-       (append test-code
-               (list #x48 #x85 #xC0)           ; test rax, rax
-               (list #x0F #x85)                ; jnz (skip body if test is true)
-               (int-to-bytes body-size 4)
-               body-code)))
-
-    (case
-     ;; Compile (case keyform (key1 result1) (key2 result2) (t default))
-     ;; Transform to (let ((#:key keyform)) (cond ((eql #:key key1) result1) ...))
-     (let* ((keyform (first (expr-args expr)))
-            (clauses (expr-value expr))
-            (key-var (gensym "CASE-KEY")))
-       ;; Evaluate keyform once and bind to temporary variable
-       (let ((key-code (emit-x86_64 keyform env))
-             (new-env (cons (cons key-var 0) env)))
-         (labels ((compile-case-clauses (clauses)
-                    (if (null clauses)
-                        (emit-x86_64 (make-expr :type 'fixnum :value 0) new-env)
-                        (let* ((clause (first clauses))
-                               (keys (first clause))
-                               (result (second clause))
-                               (rest-clauses (rest clauses)))
-                          (if (or (eq keys t) (null rest-clauses))
-                              ;; Default clause or last clause
-                              (emit-x86_64 (parse result) new-env)
-                              ;; Test clause: (eql key-var key)
-                              (let* ((key-value (if (listp keys) (first keys) keys))
-                                     (test-code (append
-                                                 ;; Load key-var from stack
-                                                 (list #x48 #x8B #x04 #x24)  ; mov rax, [rsp]
-                                                 ;; Compare with key
-                                                 (list #x48 #xBD)            ; mov rbp, imm64
-                                                 (int-to-bytes (* key-value 16) 8)
-                                                 (list #x48 #x39 #xE8)       ; cmp rax, rbp
-                                                 (list #x0F #x94 #xC0)       ; sete al
-                                                 (list #x48 #x0F #xB6 #xC0)  ; movzx rax, al
-                                                 (list #x48 #xC1 #xE0 #x04))) ; shl rax, 4
-                                     (then-code (emit-x86_64 (parse result) new-env))
-                                     (else-code (compile-case-clauses rest-clauses))
-                                     (then-size (length then-code))
-                                     (else-size (length else-code)))
-                                (append test-code
-                                        (list #x48 #x85 #xC0)  ; test rax, rax
-                                        (list #x0F #x84)       ; jz to else
-                                        (int-to-bytes (+ then-size 5) 4)
-                                        then-code
-                                        (list #xE9)  ; jmp to end
-                                        (int-to-bytes else-size 4)
-                                        else-code)))))))
-           (append key-code
-                   (list #x50)  ; push rax (save key)
-                   (compile-case-clauses clauses)
-                   (list #x48 #x83 #xC4 #x08)))))) ; pop stack
-
-    (funcall
-     ;; Compile function calls: ((lambda ...) args) or (closure-value args)
-     (let* ((fn-expr (expr-value expr))
-            (arg-exprs (expr-args expr)))
-       (if (or (eq (expr-type fn-expr) 'lambda)
-               (eq (expr-type fn-expr) 'closure))
-           ;; Inline lambda/closure call
-           (let* ((params (expr-value fn-expr))
-                  (body (first (expr-args fn-expr)))
-                  (num-params (length params))
-                  (num-args (length arg-exprs))
-                  (new-env env)
-                  (binding-code nil))
-             (unless (= num-params num-args)
-               (error "Argument count mismatch: expected ~D, got ~D"
-                      num-params num-args))
-             ;; Evaluate each argument and push on stack
-             (loop for arg-expr in arg-exprs
-                   for param in params
-                   for offset from 0 by 8
-                   do (let ((arg-code (emit-x86_64 arg-expr env)))
-                        (setf binding-code
-                              (append binding-code
-                                      arg-code
-                                      '(#x50)))  ; push rax
-                        ;; Add parameter to environment
-                        (push (cons param (* offset 8)) new-env)))
-             ;; Compile body with parameters bound
-             (let ((body-code (emit-x86_64 body (reverse new-env))))
-               (append binding-code
-                       body-code
-                       ;; Clean up stack
-                       (if (<= (* num-params 8) 127)
-                           '(#x48 #x83 #xC4)
-                           (append '(#x48 #x81 #xC4)
-                                   (int-to-bytes (* num-params 8) 4)))
-                       (int-to-bytes (* num-params 8) (if (<= (* num-params 8) 127) 1 4)))))
-           ;; Calling a closure value (not inline)
-           ;; Evaluate fn-expr to get closure pointer, then call it
-           (let ((num-args (length arg-exprs)))
-             (append
-              ;; Evaluate closure expression into RAX
-              (emit-x86_64 fn-expr env)
-              ;; Save closure pointer on stack
-              '(#x50)                                  ; push rax
-
-              ;; Verify it's a closure (tag 0x7)
-              '(#x48 #x89 #xC1)                        ; mov rcx, rax
-              '(#x48 #x83 #xE1 #x0F)                   ; and rcx, 0xF
-              '(#x48 #x83 #xF9 #x07)                   ; cmp rcx, 7
-              ;; TODO: Add error handling for non-closure
-
-              ;; Get closure pointer back from stack (don't pop yet)
-              '(#x48 #x8B #x04 #x24)                   ; mov rax, [rsp]
-
-              ;; Extract arity from [rax + 16] and verify
-              '(#x48 #x8B #x48 #x10)                   ; mov rcx, [rax + 16]
-              '(#x48 #xC1 #xE9 #x04)                   ; shr rcx, 4 (untag)
-              ;; Compare with num-args
-              '(#x48 #x83 #xF9)                        ; cmp rcx, imm8
-              (list num-args)
-              ;; TODO: Add error handling for arity mismatch
-
-              ;; Extract env-size from [rax + 24]
-              '(#x48 #x8B #x50 #x18)                   ; mov rdx, [rax + 24]
-              '(#x48 #xC1 #xEA #x04)                   ; shr rdx, 4 (untag env-size)
-
-              ;; Push captured variables onto stack
-              ;; For i from env-size-1 down to 0: push [rax + 32 + i*8]
-              '(#x48 #x85 #xD2)                        ; test rdx, rdx
-              '(#x74 #x0E)                             ; jz skip-push-env (14 bytes ahead)
-              ;; rdx = env-size, rax = closure ptr (from [rsp])
-              '(#x4C #x8D #x04 #xD5 #x00 #x00 #x00 #x00) ; lea r8, [rdx*8 + 0] (total bytes)
-              '(#x49 #x83 #xE8 #x08)                   ; sub r8, 8 (start from last)
-              ;; Loop: push [rax + 32 + r8]
-              ;; .loop:
-              '(#x4A #xFF #x74 #x00 #x20)              ; push qword [rax + r8 + 32]
-              '(#x49 #x83 #xE8 #x08)                   ; sub r8, 8
-              '(#x4D #x83 #xF8 #xFF)                   ; cmp r8, -1
-              '(#x75 #xF3)                             ; jne .loop (back 13 bytes)
-              ;; skip-push-env:
-
-              ;; Now evaluate and push arguments (in order)
-              (apply #'append
-                     (loop for arg-expr in arg-exprs
-                           collect (append
-                                    (emit-x86_64 arg-expr env)
-                                    '(#x50))))        ; push rax
-
-              ;; Get closure pointer from bottom of our pushed values
-              ;; Stack: [closure-ptr][env-vars...][args...]
-              ;; Calculate offset: (env-size + num-args) * 8
-              '(#x48 #x8B #x04 #x24)                   ; mov rax, [rsp] (just to get it, will recalc)
-              ;; Actually, closure ptr is at rsp + (env-size + num-args) * 8
-              ;; Let's use a different approach: save env-size and use it
-              '(#x52)                                  ; push rdx (save env-size)
-
-              ;; Recalculate stack offset to closure ptr
-              ;; closure is at: rsp + 8 + (env-size + num-args) * 8
-              '(#x48 #x8D #x04 #xD5)                   ; lea rax, [rdx*8 + ...
-              (int-to-bytes (+ 8 (* num-args 8)) 4)    ; ... + 8 + num-args*8]
-              '(#x48 #x03 #x04 #x24)                   ; add rax, [rsp] (add saved rdx*8)
-              '(#x48 #x8B #x04 #x04)                   ; mov rax, [rsp + rax]
-
-              ;; Extract code pointer from [rax + 8]
-              '(#x48 #x8B #x48 #x08)                   ; mov rcx, [rax + 8]
-
-              ;; Pop saved env-size
-              '(#x5A)                                  ; pop rdx
-
-              ;; Calculate total stack cleanup: (env-size + num-args + 1) * 8
-              '(#x48 #x8D #x44 #x15)                   ; lea rax, [rdx + rdx*1 + ...
-              (int-to-bytes (+ num-args 1) 1)          ; ... + num-args + 1]
-              '(#x48 #xC1 #xE0 #x03)                   ; shl rax, 3 (multiply by 8)
-              '(#x50)                                  ; push rax (save cleanup amount)
-
-              ;; Call the code pointer
-              '(#xFF #xD1)                             ; call rcx
-
-              ;; Clean up stack: pop cleanup amount, then adjust rsp
-              '(#x59)                                  ; pop rcx (cleanup amount)
-              '(#x48 #x01 #xCC)                        ; add rsp, rcx
-              )))))
-
-    (if
-     ;; Compile (if condition then-expr else-expr)
-     (let* ((condition (first (expr-args expr)))
-            (then-expr (second (expr-args expr)))
-            (else-expr (third (expr-args expr)))
-            (then-code (emit-x86_64 then-expr env))
-            (else-code (emit-x86_64 else-expr env))
-            (then-size (length then-code))
-            (else-size (length else-code))
-            ;; Jump over else to end: 5 bytes for jmp rel32
-            (jmp-to-end-size 5)
-            ;; Jump to else if zero: 6 bytes for jz rel32
-            (jz-to-else-size 6))
-       (append (emit-x86_64 condition env)           ; Evaluate condition
-               (list #x48 #x85 #xC0)                 ; test rax, rax
-               ;; jz to else-branch (6 bytes total: 0F 84 + 4-byte offset)
-               (list #x0F #x84)
-               (int-to-bytes (+ then-size jmp-to-end-size) 4)
-               then-code                              ; Then branch
-               ;; jmp to end (5 bytes: E9 + 4-byte offset)
-               (list #xE9)
-               (int-to-bytes else-size 4)
-               else-code)))                          ; Else branch
-
-    (call
-     (let ((op (expr-value expr))
-           (args (expr-args expr)))
+   (nc-ldp-offset 23 24 31 48)
+   (nc-ldp-offset 21 22 31 32)
+   (nc-ldp-offset 19 20 31 16)
+   (nc-add-imm 31 31 #xFF0)  ; frame-size
+   (nc-ldp-offset 29 30 31 0)
+   (nc-ret)))
+
+;;; ============================================================
+;;; Part 6: IR Compiler (nc-compile-*)
+;;; ============================================================
+
+(defun nc-quote-ir (obj)
+  (cond
+    ((numberp obj) (list 'lit obj))
+    ((null obj) (list 'lit 0))
+    ((symbolp obj) (list 'sym-lit (symbol-name obj)))
+    ((consp obj) (list 'cons-ir (nc-quote-ir (car obj)) (nc-quote-ir (cdr obj))))
+    (t (list 'lit 0))))
+
+(defun nc-compile (expr env fenv)
+  (cond
+    ((numberp expr) (list 'lit expr))
+    ((symbolp expr)
+     ;; Use numberp since offset 0 is falsey in Habu
+     (let ((off (nc-env-lookup expr env)))
+       (if (numberp off) (list 'var off) (list 'lit 0))))
+    ((consp expr)
+     (let ((op (car expr)))
        (cond
          ((eq op '+)
-          ;; Compile (+ a b)
-          (append (emit-x86_64 (first args) env)   ; Result in RAX
-                  (list #x50)                   ; push rax
-                  (emit-x86_64 (second args) env)   ; Result in RAX
-                  (list #x48 #x8B #x1C #x24)    ; mov rbx, [rsp]
-                  (list #x48 #x01 #xD8)         ; add rax, rbx
-                  (list #x48 #x83 #xC4 #x08))) ; add rsp, 8 (pop)
-
+          (let ((args (cdr expr)))
+            (if (null args) (list 'lit 0)
+                (if (null (cdr args)) (nc-compile (car args) env fenv)
+                    (if (null (cddr args))
+                        (list 'add (nc-compile (car args) env fenv) (nc-compile (cadr args) env fenv))
+                        (nc-compile (cons '+ (cons (list '+ (car args) (cadr args)) (cddr args))) env fenv))))))
          ((eq op '-)
-          ;; Compile (- a b)
-          (append (emit-x86_64 (first args) env)
-                  (list #x50)
-                  (emit-x86_64 (second args) env)
-                  (list #x48 #x8B #x1C #x24)    ; mov rbx, [rsp]
-                  (list #x48 #x89 #xD9)         ; mov rcx, rbx
-                  (list #x48 #x29 #xC1)         ; sub rcx, rax
-                  (list #x48 #x89 #xC8)         ; mov rax, rcx
-                  (list #x48 #x83 #xC4 #x08)))
-
+          (let ((args (cdr expr)))
+            (if (null args) (list 'lit 0)
+                (if (null (cdr args)) (list 'sub (list 'lit 0) (nc-compile (car args) env fenv))
+                    (if (null (cddr args))
+                        (list 'sub (nc-compile (car args) env fenv) (nc-compile (cadr args) env fenv))
+                        (nc-compile (cons '- (cons (list '- (car args) (cadr args)) (cddr args))) env fenv))))))
          ((eq op '*)
-          ;; Compile (* a b)
-          ;; Since fixnums are value*16, after multiply we need to divide by 16
-          (append (emit-x86_64 (first args) env)
-                  (list #x50)                   ; push rax
-                  (emit-x86_64 (second args) env)
-                  (list #x48 #x8B #x1C #x24)    ; mov rbx, [rsp]
-                  (list #x48 #x0F #xAF #xD8)    ; imul rbx, rax
-                  (list #x48 #x89 #xD8)         ; mov rax, rbx
-                  (list #x48 #xC1 #xF8 #x04)    ; sar rax, 4 (adjust for tag)
-                  (list #x48 #x83 #xC4 #x08))) ; add rsp, 8
-
-         ((eq op '/)
-          ;; Compile (/ a b) - integer division
-          ;; Need to untag before division, then retag result
-          (append (emit-x86_64 (first args) env)
-                  (list #x50)                   ; push rax
-                  (emit-x86_64 (second args) env)
-                  (list #x48 #x89 #xC3)         ; mov rbx, rax (divisor)
-                  (list #x48 #x8B #x04 #x24)    ; mov rax, [rsp] (dividend)
-                  (list #x48 #xC1 #xF8 #x04)    ; sar rax, 4 (untag dividend)
-                  (list #x48 #xC1 #xFB #x04)    ; sar rbx, 4 (untag divisor)
-                  (list #x48 #x99)              ; cqo (sign extend rax to rdx:rax)
-                  (list #x48 #xF7 #xFB)         ; idiv rbx (rax = rax / rbx)
-                  (list #x48 #xC1 #xE0 #x04)    ; shl rax, 4 (retag result)
-                  (list #x48 #x83 #xC4 #x08))) ; add rsp, 8
-
-         ((eq op 'mod)
-          ;; Compile (mod a b) - modulo operation
-          ;; Similar to division but return remainder from RDX
-          (append (emit-x86_64 (first args) env)
-                  (list #x50)                   ; push rax
-                  (emit-x86_64 (second args) env)
-                  (list #x48 #x89 #xC3)         ; mov rbx, rax (divisor)
-                  (list #x48 #x8B #x04 #x24)    ; mov rax, [rsp] (dividend)
-                  (list #x48 #xC1 #xF8 #x04)    ; sar rax, 4 (untag dividend)
-                  (list #x48 #xC1 #xFB #x04)    ; sar rbx, 4 (untag divisor)
-                  (list #x48 #x99)              ; cqo (sign extend)
-                  (list #x48 #xF7 #xFB)         ; idiv rbx (rdx = remainder)
-                  (list #x48 #x89 #xD0)         ; mov rax, rdx (move remainder to rax)
-                  (list #x48 #xC1 #xE0 #x04)    ; shl rax, 4 (retag result)
-                  (list #x48 #x83 #xC4 #x08))) ; add rsp, 8
-
-         ((eq op 'rem)
-          ;; Compile (rem a b) - remainder operation (same as mod for positive numbers)
-          ;; For x86_64, idiv gives remainder in rdx (same as mod implementation)
-          (append (emit-x86_64 (first args) env)
-                  (list #x50)                   ; push rax
-                  (emit-x86_64 (second args) env)
-                  (list #x48 #x89 #xC3)         ; mov rbx, rax (divisor)
-                  (list #x48 #x8B #x04 #x24)    ; mov rax, [rsp] (dividend)
-                  (list #x48 #xC1 #xF8 #x04)    ; sar rax, 4 (untag dividend)
-                  (list #x48 #xC1 #xFB #x04)    ; sar rbx, 4 (untag divisor)
-                  (list #x48 #x99)              ; cqo (sign extend)
-                  (list #x48 #xF7 #xFB)         ; idiv rbx (rdx = remainder)
-                  (list #x48 #x89 #xD0)         ; mov rax, rdx (move remainder to rax)
-                  (list #x48 #xC1 #xE0 #x04)    ; shl rax, 4 (retag result)
-                  (list #x48 #x83 #xC4 #x08))) ; add rsp, 8
-
-         ((eq op '<)
-          ;; Compile (< a b) - returns 1 (true) or 0 (false) as fixnum
-          (append (emit-x86_64 (first args) env)
-                  (list #x50)                   ; push rax
-                  (emit-x86_64 (second args) env)
-                  (list #x48 #x8B #x1C #x24)    ; mov rbx, [rsp]
-                  (list #x48 #x39 #xC3)         ; cmp rbx, rax
-                  (list #x0F #x9C #xC0)         ; setl al (set if less)
-                  (list #x48 #x0F #xB6 #xC0)    ; movzx rax, al
-                  (list #x48 #xC1 #xE0 #x04)    ; shl rax, 4 (tag as fixnum)
-                  (list #x48 #x83 #xC4 #x08))) ; add rsp, 8
-
-         ((eq op '>)
-          ;; Compile (> a b)
-          (append (emit-x86_64 (first args) env)
-                  (list #x50)
-                  (emit-x86_64 (second args) env)
-                  (list #x48 #x8B #x1C #x24)    ; mov rbx, [rsp]
-                  (list #x48 #x39 #xC3)         ; cmp rbx, rax
-                  (list #x0F #x9F #xC0)         ; setg al (set if greater)
-                  (list #x48 #x0F #xB6 #xC0)    ; movzx rax, al
-                  (list #x48 #xC1 #xE0 #x04)    ; shl rax, 4
-                  (list #x48 #x83 #xC4 #x08)))
-
+          (let ((args (cdr expr)))
+            (if (null args) (list 'lit 1)
+                (if (null (cdr args)) (nc-compile (car args) env fenv)
+                    (if (null (cddr args))
+                        (list 'mul (nc-compile (car args) env fenv) (nc-compile (cadr args) env fenv))
+                        (nc-compile (cons '* (cons (list '* (car args) (cadr args)) (cddr args))) env fenv))))))
          ((eq op '=)
-          ;; Compile (= a b)
-          (append (emit-x86_64 (first args) env)
-                  (list #x50)
-                  (emit-x86_64 (second args) env)
-                  (list #x48 #x8B #x1C #x24)    ; mov rbx, [rsp]
-                  (list #x48 #x39 #xC3)         ; cmp rbx, rax
-                  (list #x0F #x94 #xC0)         ; sete al (set if equal)
-                  (list #x48 #x0F #xB6 #xC0)    ; movzx rax, al
-                  (list #x48 #xC1 #xE0 #x04)    ; shl rax, 4
-                  (list #x48 #x83 #xC4 #x08)))
-
-         ((eq op '<=)
-          ;; Compile (<= a b)
-          (append (emit-x86_64 (first args) env)
-                  (list #x50)
-                  (emit-x86_64 (second args) env)
-                  (list #x48 #x8B #x1C #x24)    ; mov rbx, [rsp]
-                  (list #x48 #x39 #xC3)         ; cmp rbx, rax
-                  (list #x0F #x9E #xC0)         ; setle al (set if less or equal)
-                  (list #x48 #x0F #xB6 #xC0)    ; movzx rax, al
-                  (list #x48 #xC1 #xE0 #x04)    ; shl rax, 4
-                  (list #x48 #x83 #xC4 #x08)))
-
-         ((eq op '>=)
-          ;; Compile (>= a b)
-          (append (emit-x86_64 (first args) env)
-                  (list #x50)
-                  (emit-x86_64 (second args) env)
-                  (list #x48 #x8B #x1C #x24)    ; mov rbx, [rsp]
-                  (list #x48 #x39 #xC3)         ; cmp rbx, rax
-                  (list #x0F #x9D #xC0)         ; setge al (set if greater or equal)
-                  (list #x48 #x0F #xB6 #xC0)    ; movzx rax, al
-                  (list #x48 #xC1 #xE0 #x04)    ; shl rax, 4
-                  (list #x48 #x83 #xC4 #x08)))
-
-         ((eq op '/=)
-          ;; Compile (/= a b) - not equal
-          (append (emit-x86_64 (first args) env)
-                  (list #x50)
-                  (emit-x86_64 (second args) env)
-                  (list #x48 #x8B #x1C #x24)    ; mov rbx, [rsp]
-                  (list #x48 #x39 #xC3)         ; cmp rbx, rax
-                  (list #x0F #x95 #xC0)         ; setne al (set if not equal)
-                  (list #x48 #x0F #xB6 #xC0)    ; movzx rax, al
-                  (list #x48 #xC1 #xE0 #x04)    ; shl rax, 4
-                  (list #x48 #x83 #xC4 #x08)))
-
-         ((eq op 'eql)
-          ;; Compile (eql a b) - object identity
-          ;; For fixnums, same as =
-          (append (emit-x86_64 (first args) env)
-                  (list #x50)
-                  (emit-x86_64 (second args) env)
-                  (list #x48 #x8B #x1C #x24)    ; mov rbx, [rsp]
-                  (list #x48 #x39 #xC3)         ; cmp rbx, rax
-                  (list #x0F #x94 #xC0)         ; sete al (set if equal)
-                  (list #x48 #x0F #xB6 #xC0)    ; movzx rax, al
-                  (list #x48 #xC1 #xE0 #x04)    ; shl rax, 4
-                  (list #x48 #x83 #xC4 #x08)))
-
-         ((eq op 'eq)
-          ;; Compile (eq a b) - pointer equality
-          ;; For fixnums, same as =
-          (append (emit-x86_64 (first args) env)
-                  (list #x50)
-                  (emit-x86_64 (second args) env)
-                  (list #x48 #x8B #x1C #x24)    ; mov rbx, [rsp]
-                  (list #x48 #x39 #xC3)         ; cmp rbx, rax
-                  (list #x0F #x94 #xC0)         ; sete al (set if equal)
-                  (list #x48 #x0F #xB6 #xC0)    ; movzx rax, al
-                  (list #x48 #xC1 #xE0 #x04)    ; shl rax, 4
-                  (list #x48 #x83 #xC4 #x08)))
-
-         ((eq op 'car)
-          ;; Compile (car cons) - load car field
-          ;; cons cells have car at offset 16 (after header)
-          (append (emit-x86_64 (first args) env)
-                  (list #x48 #x83 #xE0 #xF0)    ; and rax, ~0xF (clear tag)
-                  (list #x48 #x8B #x40 #x10))) ; mov rax, [rax + 16]
-
-         ((eq op 'cdr)
-          ;; Compile (cdr cons) - load cdr field
-          ;; cdr is at offset 24 (header + car)
-          (append (emit-x86_64 (first args) env)
-                  (list #x48 #x83 #xE0 #xF0)    ; and rax, ~0xF (clear tag)
-                  (list #x48 #x8B #x40 #x18))) ; mov rax, [rax + 24]
-
-         ((eq op 'logand)
-          ;; Compile (logand a b) - bitwise AND
-          (append (emit-x86_64 (first args) env)
-                  (list #x50)                   ; push rax
-                  (emit-x86_64 (second args) env)
-                  (list #x48 #x8B #x1C #x24)    ; mov rbx, [rsp]
-                  (list #x48 #x21 #xD8)         ; and rax, rbx
-                  (list #x48 #x83 #xC4 #x08))) ; add rsp, 8
-
-         ((eq op 'logior)
-          ;; Compile (logior a b) - bitwise OR
-          (append (emit-x86_64 (first args) env)
-                  (list #x50)
-                  (emit-x86_64 (second args) env)
-                  (list #x48 #x8B #x1C #x24)    ; mov rbx, [rsp]
-                  (list #x48 #x09 #xD8)         ; or rax, rbx
-                  (list #x48 #x83 #xC4 #x08)))
-
-         ((eq op 'logxor)
-          ;; Compile (logxor a b) - bitwise XOR
-          (append (emit-x86_64 (first args) env)
-                  (list #x50)
-                  (emit-x86_64 (second args) env)
-                  (list #x48 #x8B #x1C #x24)    ; mov rbx, [rsp]
-                  (list #x48 #x31 #xD8)         ; xor rax, rbx
-                  (list #x48 #x83 #xC4 #x08)))
-
-         ((eq op 'lognot)
-          ;; Compile (lognot a) - bitwise NOT
-          (append (emit-x86_64 (first args) env)
-                  (list #x48 #xF7 #xD0)))       ; not rax
-
-         ((eq op 'ash)
-          ;; Compile (ash a b) - arithmetic shift
-          ;; Positive b: left shift, negative b: right shift
-          (append (emit-x86_64 (second args) env)  ; shift count in rax
-                  (list #x50)                     ; push rax
-                  (emit-x86_64 (first args) env)   ; value in rax
-                  (list #x48 #x8B #x0C #x24)      ; mov rcx, [rsp] (shift count)
-                  (list #x48 #xC1 #xF9 #x04)      ; sar rcx, 4 (untag)
-                  (list #x48 #x85 #xC9)           ; test rcx, rcx
-                  (list #x78)                     ; js (jump if negative)
-                  (list 6)                        ; offset to right shift
-                  ;; Left shift
-                  (list #x48 #xD3 #xE0)           ; shl rax, cl
-                  (list #xEB)                     ; jmp
-                  (list 2)                        ; offset to end
-                  ;; Right shift
-                  (list #x48 #xD3 #xF8)           ; sar rax, cl
-                  (list #x48 #x83 #xC4 #x08)))   ; add rsp, 8
-
-         ;; Numeric operators
-         ((eq op 'min)
-          ;; Compile (min a b) - return smaller value
-          (append (emit-x86_64 (first args) env)
-                  (list #x50)                   ; push rax
-                  (emit-x86_64 (second args) env)
-                  (list #x48 #x8B #x1C #x24)    ; mov rbx, [rsp]
-                  (list #x48 #x39 #xC3)         ; cmp rbx, rax
-                  (list #x0F #x4C #xC3)         ; cmovl rax, rbx (move if less)
-                  (list #x48 #x83 #xC4 #x08))) ; add rsp, 8
-
-         ((eq op 'max)
-          ;; Compile (max a b) - return larger value
-          (append (emit-x86_64 (first args) env)
-                  (list #x50)
-                  (emit-x86_64 (second args) env)
-                  (list #x48 #x8B #x1C #x24)    ; mov rbx, [rsp]
-                  (list #x48 #x39 #xC3)         ; cmp rbx, rax
-                  (list #x0F #x4F #xC3)         ; cmovg rax, rbx (move if greater)
-                  (list #x48 #x83 #xC4 #x08)))
-
-         ((eq op 'abs)
-          ;; Compile (abs a) - absolute value
-          (append (emit-x86_64 (first args) env)
-                  (list #x48 #x89 #xC3)         ; mov rbx, rax
-                  (list #x48 #xC1 #xFB #x3F)    ; sar rbx, 63 (sign bit)
-                  (list #x48 #x31 #xD8)         ; xor rax, rbx
-                  (list #x48 #x29 #xD8)))       ; sub rax, rbx
-
-         ((eq op '1+)
-          ;; Compile (1+ a) - increment by 1
-          (append (emit-x86_64 (first args) env)
-                  (list #x48 #x83 #xC0 #x10))) ; add rax, 16 (1 << 4)
-
-         ((eq op '1-)
-          ;; Compile (1- a) - decrement by 1
-          (append (emit-x86_64 (first args) env)
-                  (list #x48 #x83 #xE8 #x10))) ; sub rax, 16 (1 << 4)
-
-         ;; Predicates
-         ((eq op 'zerop)
-          ;; Compile (zerop a) - test if zero
-          (append (emit-x86_64 (first args) env)
-                  (list #x48 #x85 #xC0)         ; test rax, rax
-                  (list #x0F #x94 #xC0)         ; setz al
-                  (list #x48 #x0F #xB6 #xC0)    ; movzx rax, al
-                  (list #x48 #xC1 #xE0 #x04))) ; shl rax, 4
-
-         ((eq op 'plusp)
-          ;; Compile (plusp a) - test if positive
-          (append (emit-x86_64 (first args) env)
-                  (list #x48 #x85 #xC0)         ; test rax, rax
-                  (list #x0F #x9F #xC0)         ; setg al
-                  (list #x48 #x0F #xB6 #xC0)
-                  (list #x48 #xC1 #xE0 #x04)))
-
-         ((eq op 'minusp)
-          ;; Compile (minusp a) - test if negative
-          (append (emit-x86_64 (first args) env)
-                  (list #x48 #x85 #xC0)         ; test rax, rax
-                  (list #x0F #x9C #xC0)         ; setl al
-                  (list #x48 #x0F #xB6 #xC0)
-                  (list #x48 #xC1 #xE0 #x04)))
-
-         ((eq op 'evenp)
-          ;; Compile (evenp a) - test if even
-          (append (emit-x86_64 (first args) env)
-                  (list #x48 #xC1 #xF8 #x04)    ; sar rax, 4 (untag)
-                  (list #x48 #x83 #xE0 #x01)    ; and rax, 1 (get low bit)
-                  (list #x48 #x83 #xF0 #x01)    ; xor rax, 1 (invert)
-                  (list #x48 #xC1 #xE0 #x04))) ; shl rax, 4 (retag)
-
-         ((eq op 'oddp)
-          ;; Compile (oddp a) - test if odd
-          (append (emit-x86_64 (first args) env)
-                  (list #x48 #xC1 #xF8 #x04)    ; sar rax, 4 (untag)
-                  (list #x48 #x83 #xE0 #x01)    ; and rax, 1 (get low bit)
-                  (list #x48 #xC1 #xE0 #x04))) ; shl rax, 4 (retag)
-
-         ;; Type predicates (for fixnum-only system)
-         ((eq op 'numberp)
-          ;; numberp always returns true for fixnums
-          (append (emit-x86_64 (first args) env)  ; Evaluate arg (for side effects)
-                  (list #x48 #xC7 #xC0 #x10 #x00 #x00 #x00))) ; mov rax, 16 (tagged 1)
-
-         ((eq op 'integerp)
-          ;; integerp always returns true for fixnums
-          (append (emit-x86_64 (first args) env)
-                  (list #x48 #xC7 #xC0 #x10 #x00 #x00 #x00))) ; mov rax, 16 (tagged 1)
-
-         ((eq op 'atom)
-          ;; atom always returns true for fixnums (not conses)
-          (append (emit-x86_64 (first args) env)
-                  (list #x48 #xC7 #xC0 #x10 #x00 #x00 #x00))) ; mov rax, 16 (tagged 1)
-
-         ((eq op 'listp)
-          ;; listp always returns false for fixnums
-          (append (emit-x86_64 (first args) env)
-                  (list #x48 #x31 #xC0))) ; xor rax, rax (tagged 0)
-
-         ((eq op 'consp)
-          ;; consp always returns false for fixnums
-          (append (emit-x86_64 (first args) env)
-                  (list #x48 #x31 #xC0))) ; xor rax, rax (tagged 0)
-
-         ((eq op 'symbolp)
-          ;; symbolp always returns false for fixnums
-          (append (emit-x86_64 (first args) env)
-                  (list #x48 #x31 #xC0))) ; xor rax, rax (tagged 0)
-
-         ((eq op 'signum)
-          ;; Compile (signum a) - return -1, 0, or 1 based on sign
-          ;; Algorithm: (if (< a 0) -1 (if (> a 0) 1 0))
-          (append (emit-x86_64 (first args) env)
-                  (list #x48 #xC1 #xF8 #x04)    ; sar rax, 4 (untag)
-                  ;; Check if zero
-                  (list #x48 #x85 #xC0)         ; test rax, rax
-                  (list #x74 #x0E)              ; jz +14 (zero case)
-                  ;; Not zero: check sign
-                  (list #x48 #x31 #xDB)         ; xor rbx, rbx
-                  (list #x48 #x0F #x9E #xC3)    ; setle bl (1 if rax <= 0)
-                  (list #x48 #xD1 #xE3)         ; shl rbx, 1 (multiply by 2)
-                  (list #x48 #xFF #xCB)         ; dec rbx (2 -> 1, 0 -> -1)
-                  (list #x48 #x89 #xD8)         ; mov rax, rbx
-                  (list #x48 #xC1 #xE0 #x04)    ; shl rax, 4 (retag)
-                  (list #xEB #x05)              ; jmp +5 (skip zero case)
-                  ;; Zero case:
-                  (list #x48 #x31 #xC0)         ; xor rax, rax (rax = 0)
-                  (list #x48 #xC1 #xE0 #x04))) ; shl rax, 4 (retag to 0)
-
-         ((eq op 'logcount)
-          ;; Compile (logcount a) - count number of set bits (population count)
-          ;; Uses Brian Kernighan's algorithm: repeatedly clear lowest set bit
-          (append (emit-x86_64 (first args) env)
-                  (list #x48 #xC1 #xF8 #x04)    ; sar rax, 4 (untag)
-                  (list #x48 #x31 #xDB)         ; xor rbx, rbx (counter = 0)
-                  ;; Loop: while (rax != 0)
-                  (list #x48 #x85 #xC0)         ; test rax, rax
-                  (list #x74 #x0D)              ; jz +13 (exit loop)
-                  (list #x48 #xFF #xC3)         ; inc rbx (counter++)
-                  (list #x48 #x89 #xC1)         ; mov rcx, rax
-                  (list #x48 #xFF #xC9)         ; dec rcx
-                  (list #x48 #x21 #xC8)         ; and rax, rcx (clear lowest set bit)
-                  (list #xEB #xF1)              ; jmp -15 (back to test)
-                  ;; Exit: rbx has count
-                  (list #x48 #x89 #xD8)         ; mov rax, rbx
-                  (list #x48 #xC1 #xE0 #x04))) ; shl rax, 4 (retag)
-
-         ((eq op 'logtest)
-          ;; Compile (logtest a b) - test if any bits are set in both args
-          ;; Returns 1 if (logand a b) != 0, else 0
-          (append (emit-x86_64 (first args) env)
-                  (list #x50)                   ; push rax
-                  (emit-x86_64 (second args) env)
-                  (list #x48 #x8B #x1C #x24)    ; mov rbx, [rsp]
-                  (list #x48 #xC1 #xFB #x04)    ; sar rbx, 4 (untag first)
-                  (list #x48 #xC1 #xF8 #x04)    ; sar rax, 4 (untag second)
-                  (list #x48 #x21 #xD8)         ; and rax, rbx
-                  (list #x48 #x0F #x95 #xC0)    ; setnz al (1 if result != 0)
-                  (list #x48 #x0F #xB6 #xC0)    ; movzx rax, al
-                  (list #x48 #xC1 #xE0 #x04)    ; shl rax, 4 (retag)
-                  (list #x48 #x83 #xC4 #x08))) ; add rsp, 8
-
-         ((eq op 'logbitp)
-          ;; Compile (logbitp position integer) - test if bit at position is set
-          ;; Returns 1 if bit is set, 0 otherwise
-          (append (emit-x86_64 (first args) env)   ; position
-                  (list #x50)                        ; push rax
-                  (emit-x86_64 (second args) env)    ; integer
-                  (list #x48 #x8B #x0C #x24)         ; mov rcx, [rsp] (position)
-                  (list #x48 #xC1 #xF9 #x04)         ; sar rcx, 4 (untag position)
-                  (list #x48 #xC1 #xF8 #x04)         ; sar rax, 4 (untag integer)
-                  (list #x48 #xD3 #xF8)              ; sar rax, cl (shift right by position)
-                  (list #x48 #x83 #xE0 #x01)         ; and rax, 1 (get bit)
-                  (list #x48 #xC1 #xE0 #x04)         ; shl rax, 4 (retag)
-                  (list #x48 #x83 #xC4 #x08)))       ; add rsp, 8
-
-         ((eq op 'lognand)
-          ;; Compile (lognand a b) - bitwise NAND: ~(a & b)
-          (append (emit-x86_64 (first args) env)
-                  (list #x50)                   ; push rax
-                  (emit-x86_64 (second args) env)
-                  (list #x48 #x8B #x1C #x24)    ; mov rbx, [rsp]
-                  (list #x48 #x21 #xD8)         ; and rax, rbx
-                  (list #x48 #xF7 #xD0)         ; not rax
-                  (list #x48 #x83 #xE0 #xF0)    ; and rax, ~0xF (keep only data bits, preserve tag)
-                  (list #x48 #x83 #xC4 #x08))) ; add rsp, 8
-
-         ((eq op 'lognor)
-          ;; Compile (lognor a b) - bitwise NOR: ~(a | b)
-          (append (emit-x86_64 (first args) env)
-                  (list #x50)                   ; push rax
-                  (emit-x86_64 (second args) env)
-                  (list #x48 #x8B #x1C #x24)    ; mov rbx, [rsp]
-                  (list #x48 #x09 #xD8)         ; or rax, rbx
-                  (list #x48 #xF7 #xD0)         ; not rax
-                  (list #x48 #x83 #xE0 #xF0)    ; and rax, ~0xF (keep only data bits)
-                  (list #x48 #x83 #xC4 #x08))) ; add rsp, 8
-
-         ((eq op 'logeqv)
-          ;; Compile (logeqv a b) - bitwise equivalence: ~(a ^ b)
-          (append (emit-x86_64 (first args) env)
-                  (list #x50)                   ; push rax
-                  (emit-x86_64 (second args) env)
-                  (list #x48 #x8B #x1C #x24)    ; mov rbx, [rsp]
-                  (list #x48 #x31 #xD8)         ; xor rax, rbx
-                  (list #x48 #xF7 #xD0)         ; not rax
-                  (list #x48 #x83 #xE0 #xF0)    ; and rax, ~0xF (keep only data bits)
-                  (list #x48 #x83 #xC4 #x08))) ; add rsp, 8
-
-         ((eq op 'gcd)
-          ;; Compile (gcd a b) - greatest common divisor using Euclidean algorithm
-          ;; Algorithm: gcd(a,0) = |a|, gcd(a,b) = gcd(b, a mod b)
-          (append (emit-x86_64 (first args) env)
-                  (list #x50)                   ; push rax
-                  (emit-x86_64 (second args) env)
-                  (list #x48 #x89 #xC3)         ; mov rbx, rax (second arg)
-                  (list #x48 #x8B #x04 #x24)    ; mov rax, [rsp] (first arg)
-                  (list #x48 #xC1 #xF8 #x04)    ; sar rax, 4 (untag)
-                  (list #x48 #xC1 #xFB #x04)    ; sar rbx, 4 (untag)
-                  ;; Get absolute value of rax (a = abs(a))
-                  (list #x48 #x89 #xC1)         ; mov rcx, rax
-                  (list #x48 #xC1 #xF9 #x3F)    ; sar rcx, 63 (sign bit)
-                  (list #x48 #x31 #xC8)         ; xor rax, rcx
-                  (list #x48 #x29 #xC8)         ; sub rax, rcx
-                  ;; Get absolute value of rbx (b = abs(b))
-                  (list #x48 #x89 #xD9)         ; mov rcx, rbx
-                  (list #x48 #xC1 #xF9 #x3F)    ; sar rcx, 63
-                  (list #x48 #x31 #xD9)         ; xor rbx, rcx
-                  (list #x48 #x29 #xD9)         ; sub rbx, rcx
-                  ;; GCD loop: while (b != 0) { temp = a % b; a = b; b = temp; }
-                  (list #x48 #x85 #xDB)         ; test rbx, rbx
-                  (list #x74 #x0D)              ; jz +13 (done, skip to retag)
-                  (list #x48 #x99)              ; cqo (sign extend rax to rdx:rax)
-                  (list #x48 #xF7 #xFB)         ; idiv rbx (rdx = remainder)
-                  (list #x48 #x89 #xD8)         ; mov rax, rbx (a = b)
-                  (list #x48 #x89 #xD3)         ; mov rbx, rdx (b = remainder)
-                  (list #xEB #xEF)              ; jmp -17 (back to test)
-                  ;; Done: rax contains GCD
-                  (list #x48 #xC1 #xE0 #x04)    ; shl rax, 4 (retag)
-                  (list #x48 #x83 #xC4 #x08))) ; add rsp, 8
-
-         ((eq op 'lcm)
-          ;; Compile (lcm a b) - least common multiple
-          ;; Formula: lcm(a,b) = |a*b| / gcd(a,b), with lcm(a,0) = 0
-          (append (emit-x86_64 (first args) env)
-                  (list #x50)                   ; push rax (first arg)
-                  (emit-x86_64 (second args) env)
-                  (list #x48 #x89 #xC3)         ; mov rbx, rax (second arg)
-                  (list #x48 #x8B #x04 #x24)    ; mov rax, [rsp] (first arg)
-                  (list #x48 #xC1 #xF8 #x04)    ; sar rax, 4 (untag first)
-                  (list #x48 #xC1 #xFB #x04)    ; sar rbx, 4 (untag second)
-                  ;; Check for zero: if either is 0, return 0
-                  (list #x48 #x85 #xC0)         ; test rax, rax
-                  (list #x74 #x52)              ; jz +82 (return 0)
-                  (list #x48 #x85 #xDB)         ; test rbx, rbx
-                  (list #x74 #x4E)              ; jz +78 (return 0)
-                  ;; Get absolute value of rax
-                  (list #x48 #x89 #xC1)         ; mov rcx, rax
-                  (list #x48 #xC1 #xF9 #x3F)    ; sar rcx, 63
-                  (list #x48 #x31 #xC8)         ; xor rax, rcx
-                  (list #x48 #x29 #xC8)         ; sub rax, rcx
-                  (list #x50)                   ; push rax (save |a|)
-                  ;; Get absolute value of rbx
-                  (list #x48 #x89 #xD9)         ; mov rcx, rbx
-                  (list #x48 #xC1 #xF9 #x3F)    ; sar rcx, 63
-                  (list #x48 #x31 #xD9)         ; xor rbx, rcx
-                  (list #x48 #x29 #xD9)         ; sub rbx, rcx
-                  (list #x53)                   ; push rbx (save |b|)
-                  ;; Compute product |a| * |b|
-                  (list #x48 #x0F #xAF #xC3)    ; imul rax, rbx
-                  (list #x50)                   ; push rax (save product)
-                  ;; Compute GCD of |a| and |b|
-                  (list #x48 #x8B #x44 #x24 #x10) ; mov rax, [rsp+16] (|a|)
-                  (list #x48 #x8B #x5C #x24 #x08) ; mov rbx, [rsp+8] (|b|)
-                  ;; GCD loop
-                  (list #x48 #x85 #xDB)         ; test rbx, rbx
-                  (list #x74 #x0D)              ; jz +13
-                  (list #x48 #x99)              ; cqo
-                  (list #x48 #xF7 #xFB)         ; idiv rbx
-                  (list #x48 #x89 #xD8)         ; mov rax, rbx
-                  (list #x48 #x89 #xD3)         ; mov rbx, rdx
-                  (list #xEB #xEF)              ; jmp -17
-                  ;; rax = gcd, compute product/gcd
-                  (list #x48 #x89 #xC3)         ; mov rbx, rax (gcd)
-                  (list #x48 #x58)              ; pop rax (product)
-                  (list #x48 #x99)              ; cqo
-                  (list #x48 #xF7 #xFB)         ; idiv rbx (product / gcd)
-                  (list #x48 #xC1 #xE0 #x04)    ; shl rax, 4 (retag)
-                  (list #x48 #x83 #xC4 #x18)    ; add rsp, 24 (clean all pushes)
-                  (list #xEB #x05)              ; jmp +5 (skip zero case)
-                  ;; Zero case
-                  (list #x48 #x31 #xC0)         ; xor rax, rax
-                  (list #x48 #xC1 #xE0 #x04)    ; shl rax, 4
-                  (list #x48 #x83 #xC4 #x08))) ; add rsp, 8
-
-         ((eq op 'isqrt)
-          ;; Compile (isqrt n) - integer square root using Newton's method
-          ;; Algorithm: x_new = (x + n/x) / 2, iterate until convergence
-          (append (emit-x86_64 (first args) env)
-                  (list #x48 #xC1 #xF8 #x04)    ; sar rax, 4 (untag)
-                  ;; Handle special cases
-                  (list #x48 #x83 #xF8 #x01)    ; cmp rax, 1
-                  (list #x76 #x1E)              ; jbe +30 (return rax if <= 1)
-                  ;; Initialize: x = n/2
-                  (list #x48 #x89 #xC3)         ; mov rbx, rax (save n in rbx)
-                  (list #x48 #xD1 #xE8)         ; shr rax, 1 (x = n/2)
-                  ;; Newton loop: while (true)
-                  (list #x48 #x89 #xC1)         ; mov rcx, rax (save old x)
-                  (list #x48 #x89 #xD8)         ; mov rax, rbx (n)
-                  (list #x48 #x99)              ; cqo
-                  (list #x48 #xF7 #xF9)         ; idiv rcx (n/x)
-                  (list #x48 #x01 #xC8)         ; add rax, rcx (n/x + x)
-                  (list #x48 #xD1 #xE8)         ; shr rax, 1 ((n/x + x)/2)
-                  (list #x48 #x39 #xC1)         ; cmp rcx, rax
-                  (list #x7F #x02)              ; jg +2 (if old > new, continue)
-                  (list #xEB #x05)              ; jmp +5 (converged, use old value)
-                  (list #xEB #xE9)              ; jmp -23 (back to loop start)
-                  (list #x48 #x89 #xC8)         ; mov rax, rcx (use old x)
-                  ;; Retag and return
-                  (list #x48 #xC1 #xE0 #x04)))  ; shl rax, 4 (retag)
-
-         ((eq op 'integer-length)
-          ;; Compile (integer-length n) - number of bits needed to represent n
-          ;; For n >= 0: position of highest 1 bit + 1
-          ;; For n < 0: integer-length(NOT n)
-          (append (emit-x86_64 (first args) env)
-                  (list #x48 #xC1 #xF8 #x04)    ; sar rax, 4 (untag)
-                  ;; Check if negative
-                  (list #x48 #x85 #xC0)         ; test rax, rax
-                  (list #x79 #x06)              ; jns +6 (skip to positive case)
-                  ;; Negative: compute NOT n = -n - 1
-                  (list #x48 #xF7 #xD8)         ; neg rax
-                  (list #x48 #xFF #xC8)         ; dec rax
-                  (list #xEB #x00)              ; jmp +0 (nop, continue)
-                  ;; Positive or converted: use BSR to find highest bit
-                  (list #x48 #x85 #xC0)         ; test rax, rax
-                  (list #x74 #x0A)              ; jz +10 (zero case, return 0)
-                  (list #x48 #x0F #xBD #xC8)    ; bsr rcx, rax (find highest set bit)
-                  (list #x48 #xFF #xC1)         ; inc rcx (position + 1)
-                  (list #x48 #x89 #xC8)         ; mov rax, rcx
-                  (list #xEB #x02)              ; jmp +2 (skip zero case)
-                  (list #x48 #x31 #xC0)         ; xor rax, rax (return 0)
-                  (list #x48 #xC1 #xE0 #x04)))  ; shl rax, 4 (retag)
-
-         ((eq op 'expt)
-          ;; Compile (expt base exponent) - integer exponentiation
-          ;; Algorithm: repeated multiplication, result = base^exponent
-          (append (emit-x86_64 (first args) env)
-                  (list #x50)                   ; push rax (base)
-                  (emit-x86_64 (second args) env)
-                  (list #x48 #x89 #xC1)         ; mov rcx, rax (exponent)
-                  (list #x48 #x8B #x04 #x24)    ; mov rax, [rsp] (base)
-                  (list #x48 #xC1 #xF8 #x04)    ; sar rax, 4 (untag base)
-                  (list #x48 #xC1 #xF9 #x04)    ; sar rcx, 4 (untag exponent)
-                  ;; Handle special cases
-                  (list #x48 #x85 #xC9)         ; test rcx, rcx
-                  (list #x7C #x25)              ; jl +37 (negative exponent = 0)
-                  (list #x74 #x1C)              ; jz +28 (exponent = 0, return 1)
-                  (list #x48 #x83 #xF9 #x01)    ; cmp rcx, 1
-                  (list #x74 #x1A)              ; jz +26 (exponent = 1, return base)
-                  ;; Initialize result = 1, save base in rbx
-                  (list #x48 #x89 #xC3)         ; mov rbx, rax (save base)
-                  (list #x48 #xC7 #xC0 #x01 #x00 #x00 #x00) ; mov rax, 1
-                  ;; Loop: while (rcx > 0)
-                  (list #x48 #x85 #xC9)         ; test rcx, rcx
-                  (list #x74 #x09)              ; jz +9 (done)
-                  (list #x48 #x0F #xAF #xC3)    ; imul rax, rbx (result *= base)
-                  (list #x48 #xFF #xC9)         ; dec rcx
-                  (list #xEB #xF3)              ; jmp -13 (loop back)
-                  ;; Done: rax has result
-                  (list #x48 #xC1 #xE0 #x04)    ; shl rax, 4 (retag)
-                  (list #x48 #x83 #xC4 #x08)    ; add rsp, 8
-                  (list #xEB #x0C)              ; jmp +12 (skip special cases)
-                  ;; Exponent = 1: return base
-                  (list #x48 #xC1 #xE0 #x04)    ; shl rax, 4
-                  (list #x48 #x83 #xC4 #x08)    ; add rsp, 8
-                  (list #xEB #x05)              ; jmp +5
-                  ;; Exponent = 0: return 1
-                  (list #x48 #xC7 #xC0 #x10 #x00 #x00 #x00) ; mov rax, 16 (tagged 1)
-                  (list #x48 #x83 #xC4 #x08))) ; add rsp, 8
-
-         ;; Rounding functions
-         ;; Since we're working with fixnums (already integers), these are identity operations
-         ((eq op 'floor)
-          ;; floor(n) for integer n returns n
-          (emit-x86_64 (first args) env))
-
-         ((eq op 'ceiling)
-          ;; ceiling(n) for integer n returns n
-          (emit-x86_64 (first args) env))
-
-         ((eq op 'truncate)
-          ;; truncate(n) for integer n returns n
-          (emit-x86_64 (first args) env))
-
-         ((eq op 'round)
-          ;; round(n) for integer n returns n
-          (emit-x86_64 (first args) env))
-
-         ;; Two-argument rounding division operators
-         ((eq op 'ffloor)
-          ;; ffloor(a, b) = floor(a/b) - rounds toward negative infinity
-          ;; For integers: if remainder != 0 and signs differ, subtract 1 from quotient
-          (append (emit-x86_64 (first args) env)
-                  (list #x50)                   ; push rax (dividend)
-                  (emit-x86_64 (second args) env)
-                  (list #x48 #x89 #xC3)         ; mov rbx, rax (divisor)
-                  (list #x48 #x8B #x04 #x24)    ; mov rax, [rsp] (dividend)
-                  (list #x48 #xC1 #xF8 #x04)    ; sar rax, 4 (untag dividend)
-                  (list #x48 #xC1 #xFB #x04)    ; sar rbx, 4 (untag divisor)
-                  (list #x48 #x99)              ; cqo (sign extend)
-                  (list #x48 #xF7 #xFB)         ; idiv rbx (rax = quotient, rdx = remainder)
-                  ;; Check if we need to adjust: remainder != 0 and signs differ
-                  (list #x48 #x85 #xD2)         ; test rdx, rdx (check remainder)
-                  (list #x74 #x0F)              ; jz +15 (skip adjustment if rem = 0)
-                  ;; Check if signs differ: (a ^ b) < 0
-                  (list #x48 #x8B #x0C #x24)    ; mov rcx, [rsp] (original dividend, tagged)
-                  (list #x48 #x31 #xD9)         ; xor rcx, rbx (signs differ if MSB set)
-                  (list #x48 #x85 #xC9)         ; test rcx, rcx
-                  (list #x79 #x03)              ; jns +3 (skip if same sign)
-                  ;; Different signs and remainder: subtract 1
-                  (list #x48 #xFF #xC8)         ; dec rax
-                  ;; Retag and clean up
-                  (list #x48 #xC1 #xE0 #x04)    ; shl rax, 4 (retag)
-                  (list #x48 #x83 #xC4 #x08))) ; add rsp, 8
-
-         ((eq op 'fceiling)
-          ;; fceiling(a, b) = ceiling(a/b) - rounds toward positive infinity
-          ;; For integers: if remainder != 0 and signs are same, add 1 to quotient
-          (append (emit-x86_64 (first args) env)
-                  (list #x50)                   ; push rax (dividend)
-                  (emit-x86_64 (second args) env)
-                  (list #x48 #x89 #xC3)         ; mov rbx, rax (divisor)
-                  (list #x48 #x8B #x04 #x24)    ; mov rax, [rsp] (dividend)
-                  (list #x48 #xC1 #xF8 #x04)    ; sar rax, 4 (untag dividend)
-                  (list #x48 #xC1 #xFB #x04)    ; sar rbx, 4 (untag divisor)
-                  (list #x48 #x99)              ; cqo (sign extend)
-                  (list #x48 #xF7 #xFB)         ; idiv rbx (rax = quotient, rdx = remainder)
-                  ;; Check if we need to adjust: remainder != 0 and signs same
-                  (list #x48 #x85 #xD2)         ; test rdx, rdx (check remainder)
-                  (list #x74 #x0F)              ; jz +15 (skip adjustment if rem = 0)
-                  ;; Check if signs same: (a ^ b) >= 0
-                  (list #x48 #x8B #x0C #x24)    ; mov rcx, [rsp] (original dividend, tagged)
-                  (list #x48 #x31 #xD9)         ; xor rcx, rbx (signs same if MSB not set)
-                  (list #x48 #x85 #xC9)         ; test rcx, rcx
-                  (list #x78 #x03)              ; js +3 (skip if different signs)
-                  ;; Same signs and remainder: add 1
-                  (list #x48 #xFF #xC0)         ; inc rax
-                  ;; Retag and clean up
-                  (list #x48 #xC1 #xE0 #x04)    ; shl rax, 4 (retag)
-                  (list #x48 #x83 #xC4 #x08))) ; add rsp, 8
-
-         ((eq op 'ftruncate)
-          ;; ftruncate(a, b) = truncate(a/b) - rounds toward zero
-          ;; For integers, this is the same as regular division
-          (append (emit-x86_64 (first args) env)
-                  (list #x50)                   ; push rax
-                  (emit-x86_64 (second args) env)
-                  (list #x48 #x89 #xC3)         ; mov rbx, rax (divisor)
-                  (list #x48 #x8B #x04 #x24)    ; mov rax, [rsp] (dividend)
-                  (list #x48 #xC1 #xF8 #x04)    ; sar rax, 4 (untag dividend)
-                  (list #x48 #xC1 #xFB #x04)    ; sar rbx, 4 (untag divisor)
-                  (list #x48 #x99)              ; cqo (sign extend rax to rdx:rax)
-                  (list #x48 #xF7 #xFB)         ; idiv rbx (rax = rax / rbx)
-                  (list #x48 #xC1 #xE0 #x04)    ; shl rax, 4 (retag result)
-                  (list #x48 #x83 #xC4 #x08))) ; add rsp, 8
-
-         ((eq op 'fround)
-          ;; fround(a, b) = round(a/b) - rounds to nearest integer
-          ;; For integers: if remainder > b/2, round up; if < b/2, round down
-          ;; If exactly b/2, round to even (banker's rounding)
-          ;; Simplified: just use truncate for integers
-          (append (emit-x86_64 (first args) env)
-                  (list #x50)                   ; push rax
-                  (emit-x86_64 (second args) env)
-                  (list #x48 #x89 #xC3)         ; mov rbx, rax (divisor)
-                  (list #x48 #x8B #x04 #x24)    ; mov rax, [rsp] (dividend)
-                  (list #x48 #xC1 #xF8 #x04)    ; sar rax, 4 (untag dividend)
-                  (list #x48 #xC1 #xFB #x04)    ; sar rbx, 4 (untag divisor)
-                  (list #x48 #x99)              ; cqo (sign extend rax to rdx:rax)
-                  (list #x48 #xF7 #xFB)         ; idiv rbx (rax = rax / rbx)
-                  (list #x48 #xC1 #xE0 #x04)    ; shl rax, 4 (retag result)
-                  (list #x48 #x83 #xC4 #x08))) ; add rsp, 8
-
-         ;;; ============================================================
-         ;;; INLINE ALLOCATION HELPERS (Phase 2) - x86_64
-         ;;; ============================================================
-         ;;;
-         ;;; These generate inline heap allocation code instead of
-         ;;; calling FFI trampolines. Enables standalone operation.
-
-         ;; List operations - integrated with runtime heap
-         ((eq op 'cons)
-          ;; (cons car cdr) - allocate cons cell on heap
-          (ecase *allocation-mode*
-            (:ffi
-             ;; Phase 1: Call FFI trampoline to SBCL runtime
-             ;; System V AMD64 ABI: Args in RDI/RSI, Return in RAX
-             (unless *runtime-cons-addr*
-               (error "Runtime not initialized. Call (initialize-runtime-integration) first."))
-             (let ((func-addr (sb-sys:sap-int *runtime-cons-addr*)))
-               (append
-                (emit-x86_64 (first args) env)
-                (list #x50)                          ; push rax
-                (emit-x86_64 (second args) env)
-                (list #x48 #x89 #xC6)                ; mov rsi, rax (cdr in RSI)
-                (list #x48 #x8B #x3C #x24)           ; mov rdi, [rsp] (car in RDI)
-                (list #x48 #x83 #xC4 #x08)           ; add rsp, 8 (pop car)
-                (list #x48 #xB8)                     ; movabs rax, imm64
-                (int-to-bytes func-addr 8)
-                (list #xFF #xD0))))                  ; call rax
-
-            (:inline
-             ;; Phase 2: Generate inline allocation code
-             (emit-inline-cons-x86_64
-              (emit-x86_64 (first args) env)
-              (emit-x86_64 (second args) env)))))
-
-         ((eq op 'car)
-          ;; (car cons-ptr) - read car field from cons cell
-          (ecase *allocation-mode*
-            (:ffi
-             ;; Phase 1: Call FFI trampoline
-             (unless *runtime-car-addr*
-               (error "Runtime not initialized. Call (initialize-runtime-integration) first."))
-             (let ((func-addr (sb-sys:sap-int *runtime-car-addr*)))
-               (append
-                (emit-x86_64 (first args) env)
-                (list #x48 #x89 #xC7)                ; mov rdi, rax
-                (list #x48 #xB8)                     ; movabs rax, imm64
-                (int-to-bytes func-addr 8)
-                (list #xFF #xD0))))                  ; call rax
-
-            (:inline
-             ;; Phase 2: Inline pointer access
-             (emit-inline-car-x86_64
-              (emit-x86_64 (first args) env)))))
-
-         ((eq op 'cdr)
-          ;; (cdr cons-ptr) - read cdr field from cons cell
-          (ecase *allocation-mode*
-            (:ffi
-             ;; Phase 1: Call FFI trampoline
-             (unless *runtime-cdr-addr*
-               (error "Runtime not initialized. Call (initialize-runtime-integration) first."))
-             (let ((func-addr (sb-sys:sap-int *runtime-cdr-addr*)))
-               (append
-                (emit-x86_64 (first args) env)
-                (list #x48 #x89 #xC7)                ; mov rdi, rax
-                (list #x48 #xB8)                     ; movabs rax, imm64
-                (int-to-bytes func-addr 8)
-                (list #xFF #xD0))))                  ; call rax
-
-            (:inline
-             ;; Phase 2: Inline pointer access
-             (emit-inline-cdr-x86_64
-              (emit-x86_64 (first args) env)))))
-
-         ((eq op 'list)
-          ;; (list a b c ...) - build list by repeated cons
-          ;; Build from right to left using parsed cons operations
-          (if (null args)
-              ;; Empty list is 0 (nil)
-              (list #x48 #x31 #xC0)              ; xor rax, rax
-              ;; Build nested cons expressions with already-parsed args
-              (let ((cons-expr (reduce (lambda (rest-expr elem-expr)
-                                         (make-expr :type 'call
-                                                    :value 'cons
-                                                    :args (list elem-expr rest-expr)))
-                                       (reverse args)
-                                       :initial-value (make-expr :type 'fixnum
-                                                                 :value 0
-                                                                 :args nil))))
-                (emit-x86_64 cons-expr env))))
-
-
-         ((eq op 'length)
-          ;; (length list-ptr) - count elements in list
-          ;; Call runtime-length trampoline: Arg: RDI (list-ptr), Return: RAX
-          (unless *runtime-length-addr*
-            (error "Runtime not initialized. Call (initialize-runtime-integration) first."))
-          (let ((func-addr (sb-sys:sap-int *runtime-length-addr*)))
-            (append
-             ;; Evaluate list expression into RAX
-             (emit-x86_64 (first args) env)
-             ;; Setup call: RDI=list-ptr
-             (list #x48 #x89 #xC7)                ; mov rdi, rax
-             ;; Load function address and call
-             (list #x48 #xB8)                     ; movabs rax, imm64
-             (int-to-bytes func-addr 8)
-             (list #xFF #xD0))))                  ; call rax
-
-         ((eq op 'nth)
-          ;; (nth n list-ptr) - get nth element
-          ;; Call runtime-nth trampoline: Args: RDI (n), RSI (list-ptr), Return: RAX
-          (unless *runtime-nth-addr*
-            (error "Runtime not initialized. Call (initialize-runtime-integration) first."))
-          (let ((func-addr (sb-sys:sap-int *runtime-nth-addr*)))
-            (append
-             ;; Evaluate n into RAX
-             (emit-x86_64 (first args) env)
-             ;; Save n on stack
-             (list #x50)                          ; push rax
-             ;; Evaluate list into RAX
-             (emit-x86_64 (second args) env)
-             ;; Setup call: RDI=n, RSI=list
-             (list #x48 #x89 #xC6)                ; mov rsi, rax (list in RSI)
-             (list #x48 #x8B #x3C #x24)           ; mov rdi, [rsp] (n in RDI)
-             (list #x48 #x83 #xC4 #x08)           ; add rsp, 8 (pop n)
-             ;; Load function address and call
-             (list #x48 #xB8)                     ; movabs rax, imm64
-             (int-to-bytes func-addr 8)
-             (list #xFF #xD0))))                  ; call rax
-
-         ((eq op 'append)
-          ;; (append list1 list2) - concatenate lists
-          ;; Call runtime-append trampoline: Args: RDI (list1), RSI (list2), Return: RAX
-          (unless *runtime-append-addr*
-            (error "Runtime not initialized. Call (initialize-runtime-integration) first."))
-          (let ((func-addr (sb-sys:sap-int *runtime-append-addr*)))
-            (append
-             ;; Evaluate list1 into RAX
-             (emit-x86_64 (first args) env)
-             ;; Save list1 on stack
-             (list #x50)                          ; push rax
-             ;; Evaluate list2 into RAX
-             (emit-x86_64 (second args) env)
-             ;; Setup call: RDI=list1, RSI=list2
-             (list #x48 #x89 #xC6)                ; mov rsi, rax (list2 in RSI)
-             (list #x48 #x8B #x3C #x24)           ; mov rdi, [rsp] (list1 in RDI)
-             (list #x48 #x83 #xC4 #x08)           ; add rsp, 8 (pop list1)
-             ;; Load function address and call
-             (list #x48 #xB8)                     ; movabs rax, imm64
-             (int-to-bytes func-addr 8)
-             (list #xFF #xD0))))                  ; call rax
-
-         ((eq op 'reverse)
-          ;; (reverse list-ptr) - reverse a list
-          ;; Call runtime-reverse trampoline: Arg: RDI (list-ptr), Return: RAX
-          (unless *runtime-reverse-addr*
-            (error "Runtime not initialized. Call (initialize-runtime-integration) first."))
-          (let ((func-addr (sb-sys:sap-int *runtime-reverse-addr*)))
-            (append
-             ;; Evaluate list expression into RAX
-             (emit-x86_64 (first args) env)
-             ;; Setup call: RDI=list-ptr
-             (list #x48 #x89 #xC7)                ; mov rdi, rax
-             ;; Load function address and call
-             (list #x48 #xB8)                     ; movabs rax, imm64
-             (int-to-bytes func-addr 8)
-             (list #xFF #xD0))))                  ; call rax
-
-         ((eq op 'butlast)
-          ;; (butlast list-ptr [n]) - all but last n elements
-          ;; Call runtime-butlast trampoline: Args: RDI (list-ptr), RSI (n), Return: RAX
-          (unless *runtime-butlast-addr*
-            (error "Runtime not initialized. Call (initialize-runtime-integration) first."))
-          (let ((func-addr (sb-sys:sap-int *runtime-butlast-addr*)))
-            (append
-             ;; Evaluate list expression into RAX
-             (emit-x86_64 (first args) env)
-             ;; Save list on stack
-             (list #x50)                          ; push rax
-             ;; Evaluate optional n argument (defaults to 1)
-             (if (second args)
-                 (emit-x86_64 (second args) env)
-                 (list #x48 #xC7 #xC0 #x10 #x00 #x00 #x00)) ; mov rax, 0x10 (tagged 1)
-             ;; Setup call: RDI=list, RSI=n
-             (list #x48 #x89 #xC6)                ; mov rsi, rax (n in RSI)
-             (list #x48 #x8B #x3C #x24)           ; mov rdi, [rsp] (list in RDI)
-             (list #x48 #x83 #xC4 #x08)           ; add rsp, 8
-             ;; Load function address and call
-             (list #x48 #xB8)                     ; movabs rax, imm64
-             (int-to-bytes func-addr 8)
-             (list #xFF #xD0))))                  ; call rax
-
-         ((eq op 'nthcdr)
-          ;; (nthcdr n list-ptr) - skip n elements
-          ;; Call runtime-nthcdr trampoline: Args: RDI (n), RSI (list-ptr), Return: RAX
-          (unless *runtime-nthcdr-addr*
-            (error "Runtime not initialized. Call (initialize-runtime-integration) first."))
-          (let ((func-addr (sb-sys:sap-int *runtime-nthcdr-addr*)))
-            (append
-             ;; Evaluate n into RAX
-             (emit-x86_64 (first args) env)
-             ;; Save n on stack
-             (list #x50)                          ; push rax
-             ;; Evaluate list into RAX
-             (emit-x86_64 (second args) env)
-             ;; Setup call: RDI=n, RSI=list
-             (list #x48 #x89 #xC6)                ; mov rsi, rax (list in RSI)
-             (list #x48 #x8B #x3C #x24)           ; mov rdi, [rsp] (n in RDI)
-             (list #x48 #x83 #xC4 #x08)           ; add rsp, 8
-             ;; Load function address and call
-             (list #x48 #xB8)                     ; movabs rax, imm64
-             (int-to-bytes func-addr 8)
-             (list #xFF #xD0))))                  ; call rax
-
-         ((eq op 'member)
-          ;; (member item list) - find item in list
-          ;; Call runtime-member trampoline: Args: RDI (item), RSI (list), Return: RAX
-          (unless *runtime-member-addr*
-            (error "Runtime not initialized. Call (initialize-runtime-integration) first."))
-          (let ((func-addr (sb-sys:sap-int *runtime-member-addr*)))
-            (append
-             ;; Evaluate item into RAX
-             (emit-x86_64 (first args) env)
-             ;; Save item on stack
-             (list #x50)                          ; push rax
-             ;; Evaluate list into RAX
-             (emit-x86_64 (second args) env)
-             ;; Setup call: RDI=item, RSI=list
-             (list #x48 #x89 #xC6)                ; mov rsi, rax (list in RSI)
-             (list #x48 #x8B #x3C #x24)           ; mov rdi, [rsp] (item in RDI)
-             (list #x48 #x83 #xC4 #x08)           ; add rsp, 8
-             ;; Load function address and call
-             (list #x48 #xB8)                     ; movabs rax, imm64
-             (int-to-bytes func-addr 8)
-             (list #xFF #xD0))))                  ; call rax
-
-         ((eq op 'assoc)
-          ;; (assoc key alist) - find key in association list
-          ;; Call runtime-assoc trampoline: Args: RDI (key), RSI (alist), Return: RAX
-          (unless *runtime-assoc-addr*
-            (error "Runtime not initialized. Call (initialize-runtime-integration) first."))
-          (let ((func-addr (sb-sys:sap-int *runtime-assoc-addr*)))
-            (append
-             ;; Evaluate key into RAX
-             (emit-x86_64 (first args) env)
-             ;; Save key on stack
-             (list #x50)                          ; push rax
-             ;; Evaluate alist into RAX
-             (emit-x86_64 (second args) env)
-             ;; Setup call: RDI=key, RSI=alist
-             (list #x48 #x89 #xC6)                ; mov rsi, rax (alist in RSI)
-             (list #x48 #x8B #x3C #x24)           ; mov rdi, [rsp] (key in RDI)
-             (list #x48 #x83 #xC4 #x08)           ; add rsp, 8
-             ;; Load function address and call
-             (list #x48 #xB8)                     ; movabs rax, imm64
-             (int-to-bytes func-addr 8)
-             (list #xFF #xD0))))                  ; call rax
-
-         ((eq op 'position)
-          ;; (position item list) - find index of item
-          ;; Call runtime-position trampoline: Args: RDI (item), RSI (list), Return: RAX
-          (unless *runtime-position-addr*
-            (error "Runtime not initialized. Call (initialize-runtime-integration) first."))
-          (let ((func-addr (sb-sys:sap-int *runtime-position-addr*)))
-            (append
-             ;; Evaluate item into RAX
-             (emit-x86_64 (first args) env)
-             ;; Save item on stack
-             (list #x50)                          ; push rax
-             ;; Evaluate list into RAX
-             (emit-x86_64 (second args) env)
-             ;; Setup call: RDI=item, RSI=list
-             (list #x48 #x89 #xC6)                ; mov rsi, rax (list in RSI)
-             (list #x48 #x8B #x3C #x24)           ; mov rdi, [rsp] (item in RDI)
-             (list #x48 #x83 #xC4 #x08)           ; add rsp, 8
-             ;; Load function address and call
-             (list #x48 #xB8)                     ; movabs rax, imm64
-             (int-to-bytes func-addr 8)
-             (list #xFF #xD0))))                  ; call rax
-
-         ((eq op 'count)
-          ;; (count item list) - count occurrences of item
-          ;; Call runtime-count trampoline: Args: RDI (item), RSI (list), Return: RAX
-          (unless *runtime-count-addr*
-            (error "Runtime not initialized. Call (initialize-runtime-integration) first."))
-          (let ((func-addr (sb-sys:sap-int *runtime-count-addr*)))
-            (append
-             ;; Evaluate item into RAX
-             (emit-x86_64 (first args) env)
-             ;; Save item on stack
-             (list #x50)                          ; push rax
-             ;; Evaluate list into RAX
-             (emit-x86_64 (second args) env)
-             ;; Setup call: RDI=item, RSI=list
-             (list #x48 #x89 #xC6)                ; mov rsi, rax (list in RSI)
-             (list #x48 #x8B #x3C #x24)           ; mov rdi, [rsp] (item in RDI)
-             (list #x48 #x83 #xC4 #x08)           ; add rsp, 8
-             ;; Load function address and call
-             (list #x48 #xB8)                     ; movabs rax, imm64
-             (int-to-bytes func-addr 8)
-             (list #xFF #xD0))))                  ; call rax
-
-         ((eq op 'remove)
-          ;; (remove item list) - remove all occurrences of item
-          ;; Call runtime-remove trampoline: Args: RDI (item), RSI (list), Return: RAX
-          (unless *runtime-remove-addr*
-            (error "Runtime not initialized. Call (initialize-runtime-integration) first."))
-          (let ((func-addr (sb-sys:sap-int *runtime-remove-addr*)))
-            (append
-             ;; Evaluate item into RAX
-             (emit-x86_64 (first args) env)
-             ;; Save item on stack
-             (list #x50)                          ; push rax
-             ;; Evaluate list into RAX
-             (emit-x86_64 (second args) env)
-             ;; Setup call: RDI=item, RSI=list
-             (list #x48 #x89 #xC6)                ; mov rsi, rax (list in RSI)
-             (list #x48 #x8B #x3C #x24)           ; mov rdi, [rsp] (item in RDI)
-             (list #x48 #x83 #xC4 #x08)           ; add rsp, 8
-             ;; Load function address and call
-             (list #x48 #xB8)                     ; movabs rax, imm64
-             (int-to-bytes func-addr 8)
-             (list #xFF #xD0))))                  ; call rax
-
-         ;; String operations
-         ((eq op 'string-length)
-          ;; (string-length str-ptr) - get length of string
-          ;; Call runtime-string-length trampoline: Arg: RDI (str-ptr), Return: RAX (raw length)
-          ;; Need to tag result as fixnum
-          (unless *runtime-string-length-addr*
-            (error "Runtime not initialized. Call (initialize-runtime-integration) first."))
-          (let ((func-addr (sb-sys:sap-int *runtime-string-length-addr*)))
-            (append
-             ;; Evaluate string expression into RAX
-             (emit-x86_64 (first args) env)
-             ;; Setup call: RDI=str-ptr
-             '(#x48 #x89 #xC7)                ; mov rdi, rax
-             ;; Load function address and call
-             '(#x48 #xB8)                     ; movabs rax, imm64
-             (int-to-bytes func-addr 8)
-             '(#xFF #xD0)                     ; call rax
-             ;; Tag result as fixnum
-             '(#x48 #xC1 #xE0 #x04))))        ; shl rax, 4
-
-         ((eq op 'string-concat)
-          ;; (string-concat str1 str2) - concatenate two strings
-          ;; Call runtime-string-concat trampoline: Args: RDI (str1), RSI (str2), Return: RAX
-          (unless *runtime-string-concat-addr*
-            (error "Runtime not initialized. Call (initialize-runtime-integration) first."))
-          (let ((func-addr (sb-sys:sap-int *runtime-string-concat-addr*)))
-            (append
-             ;; Evaluate str1 into RAX
-             (emit-x86_64 (first args) env)
-             ;; Save str1 on stack
-             '(#x50)                          ; push rax
-             ;; Evaluate str2 into RAX
-             (emit-x86_64 (second args) env)
-             ;; Setup call: RDI=str1, RSI=str2
-             '(#x48 #x89 #xC6)                ; mov rsi, rax (str2 in RSI)
-             '(#x48 #x8B #x3C #x24)           ; mov rdi, [rsp] (str1 in RDI)
-             '(#x48 #x83 #xC4 #x08)           ; add rsp, 8 (pop str1)
-             ;; Load function address and call
-             '(#x48 #xB8)                     ; movabs rax, imm64
-             (int-to-bytes func-addr 8)
-             '(#xFF #xD0))))                  ; call rax
-
-         ((eq op 'string-equal)
-          ;; (string-equal str1 str2) - compare two strings for equality
-          ;; Call runtime-string-equal trampoline: Args: RDI (str1), RSI (str2), Return: RAX (tagged boolean)
-          (unless *runtime-string-equal-addr*
-            (error "Runtime not initialized. Call (initialize-runtime-integration) first."))
-          (let ((func-addr (sb-sys:sap-int *runtime-string-equal-addr*)))
-            (append
-             ;; Evaluate str1 into RAX
-             (emit-x86_64 (first args) env)
-             ;; Save str1 on stack
-             '(#x50)                          ; push rax
-             ;; Evaluate str2 into RAX
-             (emit-x86_64 (second args) env)
-             ;; Setup call: RDI=str1, RSI=str2
-             '(#x48 #x89 #xC6)                ; mov rsi, rax (str2 in RSI)
-             '(#x48 #x8B #x3C #x24)           ; mov rdi, [rsp] (str1 in RDI)
-             '(#x48 #x83 #xC4 #x08)           ; add rsp, 8 (pop str1)
-             ;; Load function address and call
-             '(#x48 #xB8)                     ; movabs rax, imm64
-             (int-to-bytes func-addr 8)
-             '(#xFF #xD0))))                  ; call rax (returns tagged boolean)
-
-         ((eq op 'string-substring)
-          ;; (string-substring str start end) - extract substring
-          ;; Call runtime-string-substring trampoline: Args: RDI (str), RSI (start), RDX (end), Return: RAX
-          ;; start and end are tagged fixnums, need to untag them
-          (unless *runtime-string-substring-addr*
-            (error "Runtime not initialized. Call (initialize-runtime-integration) first."))
-          (let ((func-addr (sb-sys:sap-int *runtime-string-substring-addr*)))
-            (append
-             ;; Evaluate str into RAX
-             (emit-x86_64 (first args) env)
-             ;; Save str on stack
-             '(#x50)                          ; push rax
-             ;; Evaluate start into RAX (tagged fixnum)
-             (emit-x86_64 (second args) env)
-             '(#x48 #xC1 #xF8 #x04)           ; sar rax, 4 (untag start)
-             ;; Save start on stack
-             '(#x50)                          ; push rax
-             ;; Evaluate end into RAX (tagged fixnum)
-             (emit-x86_64 (third args) env)
-             '(#x48 #xC1 #xF8 #x04)           ; sar rax, 4 (untag end)
-             ;; Setup call: RDI=str, RSI=start, RDX=end
-             '(#x48 #x89 #xC2)                ; mov rdx, rax (end in RDX)
-             '(#x48 #x8B #x34 #x24)           ; mov rsi, [rsp] (start in RSI)
-             '(#x48 #x8B #x7C #x24 #x08)      ; mov rdi, [rsp + 8] (str in RDI)
-             '(#x48 #x83 #xC4 #x10)           ; add rsp, 16 (pop start and str)
-             ;; Load function address and call
-             '(#x48 #xB8)                     ; movabs rax, imm64
-             (int-to-bytes func-addr 8)
-             '(#xFF #xD0))))                  ; call rax
-
-         ;; Reader/Printer operations
-         ((eq op 'read)
-          ;; (read str-ptr) - read S-expression from string
-          ;; Call runtime-read-from-string trampoline: Arg: RDI (str-ptr), Return: RAX
-          (unless *runtime-read-from-string-addr*
-            (error "Runtime not initialized. Call (initialize-runtime-integration) first."))
-          (let ((func-addr (sb-sys:sap-int *runtime-read-from-string-addr*)))
-            (append
-             ;; Evaluate string expression into RAX
-             (emit-x86_64 (first args) env)
-             ;; Setup call: RDI=str-ptr
-             '(#x48 #x89 #xC7)                ; mov rdi, rax
-             ;; Load function address and call
-             '(#x48 #xB8)                     ; movabs rax, imm64
-             (int-to-bytes func-addr 8)
-             '(#xFF #xD0))))                  ; call rax
-
-         ((eq op 'print)
-          ;; (print value) - print value to string
-          ;; Call runtime-print-to-string trampoline: Arg: RDI (value), Return: RAX
-          (unless *runtime-print-to-string-addr*
-            (error "Runtime not initialized. Call (initialize-runtime-integration) first."))
-          (let ((func-addr (sb-sys:sap-int *runtime-print-to-string-addr*)))
-            (append
-             ;; Evaluate value expression into RAX
-             (emit-x86_64 (first args) env)
-             ;; Setup call: RDI=value
-             '(#x48 #x89 #xC7)                ; mov rdi, rax
-             ;; Load function address and call
-             '(#x48 #xB8)                     ; movabs rax, imm64
-             (int-to-bytes func-addr 8)
-             '(#xFF #xD0))))                  ; call rax
-
-         ;; File I/O operations
-         ((eq op 'file-open)
-          ;; (file-open path-str mode-str) - open file
-          ;; Call runtime-file-open trampoline: Args: RDI (path), RSI (mode), Return: RAX (handle)
-          (unless *runtime-file-open-addr*
-            (error "Runtime not initialized. Call (initialize-runtime-integration) first."))
-          (let ((func-addr (sb-sys:sap-int *runtime-file-open-addr*)))
-            (append
-             ;; Evaluate path into RAX
-             (emit-x86_64 (first args) env)
-             ;; Save path on stack
-             '(#x50)                          ; push rax
-             ;; Evaluate mode into RAX
-             (emit-x86_64 (second args) env)
-             ;; Setup call: RDI=path, RSI=mode
-             '(#x48 #x89 #xC6)                ; mov rsi, rax (mode in RSI)
-             '(#x48 #x8B #x3C #x24)           ; mov rdi, [rsp] (path in RDI)
-             '(#x48 #x83 #xC4 #x08)           ; add rsp, 8 (pop path)
-             ;; Load function address and call
-             '(#x48 #xB8)                     ; movabs rax, imm64
-             (int-to-bytes func-addr 8)
-             '(#xFF #xD0))))                  ; call rax
-
-         ((eq op 'file-read)
-          ;; (file-read handle) - read from file
-          ;; Call runtime-file-read trampoline: Arg: RDI (handle), Return: RAX (string)
-          (unless *runtime-file-read-addr*
-            (error "Runtime not initialized. Call (initialize-runtime-integration) first."))
-          (let ((func-addr (sb-sys:sap-int *runtime-file-read-addr*)))
-            (append
-             ;; Evaluate handle into RAX
-             (emit-x86_64 (first args) env)
-             ;; Setup call: RDI=handle
-             '(#x48 #x89 #xC7)                ; mov rdi, rax
-             ;; Load function address and call
-             '(#x48 #xB8)                     ; movabs rax, imm64
-             (int-to-bytes func-addr 8)
-             '(#xFF #xD0))))                  ; call rax
-
-         ((eq op 'file-write)
-          ;; (file-write handle data-str) - write to file
-          ;; Call runtime-file-write trampoline: Args: RDI (handle), RSI (data), Return: RAX (bytes written)
-          (unless *runtime-file-write-addr*
-            (error "Runtime not initialized. Call (initialize-runtime-integration) first."))
-          (let ((func-addr (sb-sys:sap-int *runtime-file-write-addr*)))
-            (append
-             ;; Evaluate handle into RAX
-             (emit-x86_64 (first args) env)
-             ;; Save handle on stack
-             '(#x50)                          ; push rax
-             ;; Evaluate data into RAX
-             (emit-x86_64 (second args) env)
-             ;; Setup call: RDI=handle, RSI=data
-             '(#x48 #x89 #xC6)                ; mov rsi, rax (data in RSI)
-             '(#x48 #x8B #x3C #x24)           ; mov rdi, [rsp] (handle in RDI)
-             '(#x48 #x83 #xC4 #x08)           ; add rsp, 8 (pop handle)
-             ;; Load function address and call
-             '(#x48 #xB8)                     ; movabs rax, imm64
-             (int-to-bytes func-addr 8)
-             '(#xFF #xD0))))                  ; call rax
-
-         ((eq op 'file-close)
-          ;; (file-close handle) - close file
-          ;; Call runtime-file-close trampoline: Arg: RDI (handle), Return: RAX (success)
-          (unless *runtime-file-close-addr*
-            (error "Runtime not initialized. Call (initialize-runtime-integration) first."))
-          (let ((func-addr (sb-sys:sap-int *runtime-file-close-addr*)))
-            (append
-             ;; Evaluate handle into RAX
-             (emit-x86_64 (first args) env)
-             ;; Setup call: RDI=handle
-             '(#x48 #x89 #xC7)                ; mov rdi, rax
-             ;; Load function address and call
-             '(#x48 #xB8)                     ; movabs rax, imm64
-             (int-to-bytes func-addr 8)
-             '(#xFF #xD0))))                  ; call rax
-
-         ((eq op 'read-file)
-          ;; (read-file path-str) - convenience: read entire file
-          ;; Call runtime-read-file trampoline: Arg: RDI (path), Return: RAX (contents)
-          (unless *runtime-read-file-addr*
-            (error "Runtime not initialized. Call (initialize-runtime-integration) first."))
-          (let ((func-addr (sb-sys:sap-int *runtime-read-file-addr*)))
-            (append
-             ;; Evaluate path into RAX
-             (emit-x86_64 (first args) env)
-             ;; Setup call: RDI=path
-             '(#x48 #x89 #xC7)                ; mov rdi, rax
-             ;; Load function address and call
-             '(#x48 #xB8)                     ; movabs rax, imm64
-             (int-to-bytes func-addr 8)
-             '(#xFF #xD0))))                  ; call rax
-
-         ((eq op 'write-file)
-          ;; (write-file path-str data-str) - convenience: write entire file
-          ;; Call runtime-write-file trampoline: Args: RDI (path), RSI (data), Return: RAX (success)
-          (unless *runtime-write-file-addr*
-            (error "Runtime not initialized. Call (initialize-runtime-integration) first."))
-          (let ((func-addr (sb-sys:sap-int *runtime-write-file-addr*)))
-            (append
-             ;; Evaluate path into RAX
-             (emit-x86_64 (first args) env)
-             ;; Save path on stack
-             '(#x50)                          ; push rax
-             ;; Evaluate data into RAX
-             (emit-x86_64 (second args) env)
-             ;; Setup call: RDI=path, RSI=data
-             '(#x48 #x89 #xC6)                ; mov rsi, rax (data in RSI)
-             '(#x48 #x8B #x3C #x24)           ; mov rdi, [rsp] (path in RDI)
-             '(#x48 #x83 #xC4 #x08)           ; add rsp, 8 (pop path)
-             ;; Load function address and call
-             '(#x48 #xB8)                     ; movabs rax, imm64
-             (int-to-bytes func-addr 8)
-             '(#xFF #xD0))))                  ; call rax
-
-         ((eq op 'make-hash-table)
-          ;; (make-hash-table [capacity]) - create new hash table
-          ;; Call runtime-make-hash-table trampoline: Arg: RDI (capacity), Return: RAX (hash table)
-          (unless *runtime-make-hash-table-addr*
-            (error "Runtime not initialized. Call (initialize-runtime-integration) first."))
-          (let ((func-addr (sb-sys:sap-int *runtime-make-hash-table-addr*))
-                (capacity-arg (if args (first args) nil)))
-            (append
-             (if capacity-arg
-                 ;; Evaluate capacity into RAX
-                 (emit-x86_64 capacity-arg env)
-                 ;; Use 0 (default capacity)
-                 '(#x48 #x31 #xC0))           ; xor rax, rax
-             ;; Setup call: RDI=capacity
-             '(#x48 #x89 #xC7)                ; mov rdi, rax
-             ;; Load function address and call
-             '(#x48 #xB8)                     ; movabs rax, imm64
-             (int-to-bytes func-addr 8)
-             '(#xFF #xD0))))                  ; call rax
-
-         ((eq op 'gethash)
-          ;; (gethash key hash-table) - lookup key in hash table
-          ;; Call runtime-gethash trampoline: Args: RDI (key), RSI (ht), Return: RAX (value)
-          (unless *runtime-gethash-addr*
-            (error "Runtime not initialized. Call (initialize-runtime-integration) first."))
-          (let ((func-addr (sb-sys:sap-int *runtime-gethash-addr*)))
-            (append
-             ;; Evaluate key into RAX
-             (emit-x86_64 (first args) env)
-             ;; Save key on stack
-             '(#x50)                          ; push rax
-             ;; Evaluate hash table into RAX
-             (emit-x86_64 (second args) env)
-             ;; Setup call: RDI=key, RSI=ht
-             '(#x48 #x89 #xC6)                ; mov rsi, rax (ht in RSI)
-             '(#x48 #x8B #x3C #x24)           ; mov rdi, [rsp] (key in RDI)
-             '(#x48 #x83 #xC4 #x08)           ; add rsp, 8 (pop key)
-             ;; Load function address and call
-             '(#x48 #xB8)                     ; movabs rax, imm64
-             (int-to-bytes func-addr 8)
-             '(#xFF #xD0))))                  ; call rax
-
-         ((eq op 'puthash)
-          ;; (puthash key value hash-table) - insert/update key-value pair
-          ;; Call runtime-puthash trampoline: Args: RDI (key), RSI (value), RDX (ht), Return: RAX (value)
-          (unless *runtime-puthash-addr*
-            (error "Runtime not initialized. Call (initialize-runtime-integration) first."))
-          (let ((func-addr (sb-sys:sap-int *runtime-puthash-addr*)))
-            (append
-             ;; Evaluate key into RAX
-             (emit-x86_64 (first args) env)
-             '(#x50)                          ; push rax (save key)
-             ;; Evaluate value into RAX
-             (emit-x86_64 (second args) env)
-             '(#x50)                          ; push rax (save value)
-             ;; Evaluate hash table into RAX
-             (emit-x86_64 (third args) env)
-             ;; Setup call: RDI=key, RSI=value, RDX=ht
-             '(#x48 #x89 #xC2)                ; mov rdx, rax (ht in RDX)
-             '(#x48 #x8B #x34 #x24)           ; mov rsi, [rsp] (value in RSI)
-             '(#x48 #x83 #xC4 #x08)           ; add rsp, 8 (pop value)
-             '(#x48 #x8B #x3C #x24)           ; mov rdi, [rsp] (key in RDI)
-             '(#x48 #x83 #xC4 #x08)           ; add rsp, 8 (pop key)
-             ;; Load function address and call
-             '(#x48 #xB8)                     ; movabs rax, imm64
-             (int-to-bytes func-addr 8)
-             '(#xFF #xD0))))                  ; call rax
-
-         ((eq op 'remhash)
-          ;; (remhash key hash-table) - remove key from hash table
-          ;; Call runtime-remhash trampoline: Args: RDI (key), RSI (ht), Return: RAX (found?)
-          (unless *runtime-remhash-addr*
-            (error "Runtime not initialized. Call (initialize-runtime-integration) first."))
-          (let ((func-addr (sb-sys:sap-int *runtime-remhash-addr*)))
-            (append
-             ;; Evaluate key into RAX
-             (emit-x86_64 (first args) env)
-             ;; Save key on stack
-             '(#x50)                          ; push rax
-             ;; Evaluate hash table into RAX
-             (emit-x86_64 (second args) env)
-             ;; Setup call: RDI=key, RSI=ht
-             '(#x48 #x89 #xC6)                ; mov rsi, rax (ht in RSI)
-             '(#x48 #x8B #x3C #x24)           ; mov rdi, [rsp] (key in RDI)
-             '(#x48 #x83 #xC4 #x08)           ; add rsp, 8 (pop key)
-             ;; Load function address and call
-             '(#x48 #xB8)                     ; movabs rax, imm64
-             (int-to-bytes func-addr 8)
-             '(#xFF #xD0))))                  ; call rax
-
-         ((eq op 'hash-table-count)
-          ;; (hash-table-count hash-table) - get number of entries
-          ;; Call runtime-hash-table-count trampoline: Arg: RDI (ht), Return: RAX (count)
-          (unless *runtime-hash-table-count-addr*
-            (error "Runtime not initialized. Call (initialize-runtime-integration) first."))
-          (let ((func-addr (sb-sys:sap-int *runtime-hash-table-count-addr*)))
-            (append
-             ;; Evaluate hash table into RAX
-             (emit-x86_64 (first args) env)
-             ;; Setup call: RDI=ht
-             '(#x48 #x89 #xC7)                ; mov rdi, rax
-             ;; Load function address and call
-             '(#x48 #xB8)                     ; movabs rax, imm64
-             (int-to-bytes func-addr 8)
-             '(#xFF #xD0))))                  ; call rax
-
-         ;; Multiple return values
-         ((eq op 'values)
-          ;; (values [val1 val2 ...]) - return multiple values
-          ;; Dispatch based on number of arguments (0-4 supported in Phase 1)
-          (let ((num-values (length args)))
-            (cond
-              ((= num-values 0)
-               ;; (values) - return 0 values
-               (unless *runtime-values-0-addr*
-                 (error "Runtime not initialized. Call (initialize-runtime-integration) first."))
-               (let ((func-addr (sb-sys:sap-int *runtime-values-0-addr*)))
-                 (append
-                  '(#x48 #xB8)                ; movabs rax, imm64
-                  (int-to-bytes func-addr 8)
-                  '(#xFF #xD0))))             ; call rax
-
-              ((= num-values 1)
-               ;; (values val1) - return 1 value
-               (unless *runtime-values-1-addr*
-                 (error "Runtime not initialized. Call (initialize-runtime-integration) first."))
-               (let ((func-addr (sb-sys:sap-int *runtime-values-1-addr*)))
-                 (append
-                  (emit-x86_64 (first args) env)
-                  '(#x48 #x89 #xC7)           ; mov rdi, rax (val1 in RDI)
-                  '(#x48 #xB8)                ; movabs rax, imm64
-                  (int-to-bytes func-addr 8)
-                  '(#xFF #xD0))))             ; call rax
-
-              ((= num-values 2)
-               ;; (values val1 val2) - return 2 values
-               (unless *runtime-values-2-addr*
-                 (error "Runtime not initialized. Call (initialize-runtime-integration) first."))
-               (let ((func-addr (sb-sys:sap-int *runtime-values-2-addr*)))
-                 (append
-                  ;; Evaluate val1
-                  (emit-x86_64 (first args) env)
-                  '(#x50)                     ; push rax (save val1)
-                  ;; Evaluate val2
-                  (emit-x86_64 (second args) env)
-                  ;; Setup call: RDI=val1, RSI=val2
-                  '(#x48 #x89 #xC6)           ; mov rsi, rax (val2 in RSI)
-                  '(#x48 #x8B #x3C #x24)      ; mov rdi, [rsp] (val1 in RDI)
-                  '(#x48 #x83 #xC4 #x08)      ; add rsp, 8 (pop val1)
-                  '(#x48 #xB8)                ; movabs rax, imm64
-                  (int-to-bytes func-addr 8)
-                  '(#xFF #xD0))))             ; call rax
-
-              ((= num-values 3)
-               ;; (values val1 val2 val3) - return 3 values
-               (unless *runtime-values-3-addr*
-                 (error "Runtime not initialized. Call (initialize-runtime-integration) first."))
-               (let ((func-addr (sb-sys:sap-int *runtime-values-3-addr*)))
-                 (append
-                  ;; Evaluate val1
-                  (emit-x86_64 (first args) env)
-                  '(#x50)                     ; push rax
-                  ;; Evaluate val2
-                  (emit-x86_64 (second args) env)
-                  '(#x50)                     ; push rax
-                  ;; Evaluate val3
-                  (emit-x86_64 (third args) env)
-                  ;; Setup call: RDI=val1, RSI=val2, RDX=val3
-                  '(#x48 #x89 #xC2)           ; mov rdx, rax (val3 in RDX)
-                  '(#x48 #x8B #x34 #x24)      ; mov rsi, [rsp] (val2 in RSI)
-                  '(#x48 #x8B #x7C #x24 #x08) ; mov rdi, [rsp+8] (val1 in RDI)
-                  '(#x48 #x83 #xC4 #x10)      ; add rsp, 16 (pop both)
-                  '(#x48 #xB8)                ; movabs rax, imm64
-                  (int-to-bytes func-addr 8)
-                  '(#xFF #xD0))))             ; call rax
-
-              ((= num-values 4)
-               ;; (values val1 val2 val3 val4) - return 4 values
-               (unless *runtime-values-4-addr*
-                 (error "Runtime not initialized. Call (initialize-runtime-integration) first."))
-               (let ((func-addr (sb-sys:sap-int *runtime-values-4-addr*)))
-                 (append
-                  ;; Evaluate val1
-                  (emit-x86_64 (first args) env)
-                  '(#x50)                     ; push rax
-                  ;; Evaluate val2
-                  (emit-x86_64 (second args) env)
-                  '(#x50)                     ; push rax
-                  ;; Evaluate val3
-                  (emit-x86_64 (third args) env)
-                  '(#x50)                     ; push rax
-                  ;; Evaluate val4
-                  (emit-x86_64 (fourth args) env)
-                  ;; Setup call: RDI=val1, RSI=val2, RDX=val3, RCX=val4
-                  '(#x48 #x89 #xC1)           ; mov rcx, rax (val4 in RCX)
-                  '(#x48 #x8B #x14 #x24)      ; mov rdx, [rsp] (val3 in RDX)
-                  '(#x48 #x8B #x74 #x24 #x08) ; mov rsi, [rsp+8] (val2 in RSI)
-                  '(#x48 #x8B #x7C #x24 #x10) ; mov rdi, [rsp+16] (val1 in RDI)
-                  '(#x48 #x83 #xC4 #x18)      ; add rsp, 24 (pop all 3)
-                  '(#x48 #xB8)                ; movabs rax, imm64
-                  (int-to-bytes func-addr 8)
-                  '(#xFF #xD0))))             ; call rax
-
-              (t
-               (error "Too many values: ~D (max 4 in Phase 1)" num-values)))))
-
-         ((eq op 'runtime-dotimes)
-          ;; (runtime-dotimes count body-fn-form result)
-          ;; Create body function at compile time using eval
-          (unless *runtime-dotimes-addr*
-            (error "Runtime not initialized. Call (initialize-runtime-integration) first."))
-          (let* ((count-arg (first args))
-                 (body-fn-let (second args))  ; This is a LET expression
-                 ;; Extract the lambda from the let binding
-                 (let-bindings (second (expr-value body-fn-let)))
-                 (lambda-expr (second (first let-bindings)))  ; The lambda value
-                 (lambda-param (first (expr-value lambda-expr)))
-                 (lambda-body (first (expr-args lambda-expr)))
-                 (result-arg (third args))
-                 (fn-name (gensym "DOTIMES-BODY"))
-                 (func-addr (sb-sys:sap-int *runtime-dotimes-addr*)))
-            ;;Create 1-arg function for loop body using eval
-            (let ((callable-name (intern (format nil "HABU-DOTIMES-BODY-~A" (string-upcase (string fn-name)))
-                                        (find-package :habu-compiler))))
-              ;; Define the function
-              (eval `(defun ,callable-name (,lambda-param) ,@(list (third (expr-value lambda-body)))))
-              ;; Create alien-callable wrapper
-              #+sbcl
-              (eval `(sb-alien:define-alien-callable ,callable-name sb-alien:unsigned-long
-                                                    ((,(intern (string lambda-param)) sb-alien:unsigned-long))
-                      (,callable-name ,(intern (string lambda-param)))))
-              ;; Get function pointer
-              (let ((body-fn-ptr (sb-sys:sap-int (sb-alien:alien-sap (sb-alien:alien-callable-function callable-name)))))
-                (append
-                 ;; Evaluate count into RAX
-                 (emit-x86_64 count-arg env)
-                 '(#x50)                          ; push rax (save count)
-                 ;; Load body function pointer into RAX
-                 '(#x48 #xB8)                     ; movabs rax, imm64
-                 (int-to-bytes body-fn-ptr 8)
-                 '(#x50)                          ; push rax (save body-fn)
-                 ;; Evaluate result into RAX
-                 (emit-x86_64 result-arg env)
-                 ;; Setup call: RDI=count, RSI=body-fn, RDX=result
-                 '(#x48 #x89 #xC2)                ; mov rdx, rax (result in RDX)
-                 '(#x48 #x8B #x34 #x24)           ; mov rsi, [rsp] (body-fn in RSI)
-                 '(#x48 #x83 #xC4 #x08)           ; add rsp, 8 (pop body-fn)
-                 '(#x48 #x8B #x3C #x24)           ; mov rdi, [rsp] (count in RDI)
-                 '(#x48 #x83 #xC4 #x08)           ; add rsp, 8 (pop count)
-                 ;; Load runtime-dotimes address and call
-                 '(#x48 #xB8)                     ; movabs rax, imm64
-                 (int-to-bytes func-addr 8)
-                 '(#xFF #xD0))))))                ; call rax
-
-         ((eq op 'runtime-dolist)
-          ;; (runtime-dolist list body-fn-form result)
-          ;; Create body function at compile time using eval
-          (unless *runtime-dolist-addr*
-            (error "Runtime not initialized. Call (initialize-runtime-integration) first."))
-          (let* ((list-arg (first args))
-                 (body-fn-let (second args))  ; This is a LET expression
-                 ;; Extract the lambda from the let binding
-                 (let-bindings (second (expr-value body-fn-let)))
-                 (lambda-expr (second (first let-bindings)))  ; The lambda value
-                 (lambda-param (first (expr-value lambda-expr)))
-                 (lambda-body (first (expr-args lambda-expr)))
-                 (result-arg (third args))
-                 (fn-name (gensym "DOLIST-BODY"))
-                 (func-addr (sb-sys:sap-int *runtime-dolist-addr*)))
-            ;; Create 1-arg function for loop body using eval
-            (let ((callable-name (intern (format nil "HABU-DOLIST-BODY-~A" (string-upcase (string fn-name)))
-                                        (find-package :habu-compiler))))
-              ;; Define the function
-              (eval `(defun ,callable-name (,lambda-param) ,@(list (third (expr-value lambda-body)))))
-              ;; Create alien-callable wrapper
-              #+sbcl
-              (eval `(sb-alien:define-alien-callable ,callable-name sb-alien:unsigned-long
-                                                    ((,(intern (string lambda-param)) sb-alien:unsigned-long))
-                      (,callable-name ,(intern (string lambda-param)))))
-              ;; Get function pointer
-              (let ((body-fn-ptr (sb-sys:sap-int (sb-alien:alien-sap (sb-alien:alien-callable-function callable-name)))))
-                (append
-                 ;; Evaluate list into RAX
-                 (emit-x86_64 list-arg env)
-                 '(#x50)                          ; push rax (save list)
-                 ;; Load body function pointer into RAX
-                 '(#x48 #xB8)                     ; movabs rax, imm64
-                 (int-to-bytes body-fn-ptr 8)
-                 '(#x50)                          ; push rax (save body-fn)
-                 ;; Evaluate result into RAX
-                 (emit-x86_64 result-arg env)
-                 ;; Setup call: RDI=list, RSI=body-fn, RDX=result
-                 '(#x48 #x89 #xC2)                ; mov rdx, rax (result in RDX)
-                 '(#x48 #x8B #x34 #x24)           ; mov rsi, [rsp] (body-fn in RSI)
-                 '(#x48 #x83 #xC4 #x08)           ; add rsp, 8 (pop body-fn)
-                 '(#x48 #x8B #x3C #x24)           ; mov rdi, [rsp] (list in RDI)
-                 '(#x48 #x83 #xC4 #x08)           ; add rsp, 8 (pop list)
-                 ;; Load runtime-dolist address and call
-                 '(#x48 #xB8)                     ; movabs rax, imm64
-                 (int-to-bytes func-addr 8)
-                 '(#xFF #xD0))))))                ; call rax
-
-         (t
-          (error "Unknown operator: ~S" op)))))
-
-    (catch
-     ;; (catch tag body) - establish catch point
-     ;; Evaluate tag, create 0-arg closure for body, call runtime-catch
-     (unless *runtime-catch-addr*
-       (error "Runtime not initialized. Call (initialize-runtime-integration) first."))
-     (let* ((tag-and-body (expr-value expr))
-            (tag-form (car tag-and-body))
-            (body-form (cdr tag-and-body))
-            (tag-expr (parse tag-form))
-            (closure-name (gensym "CATCH-BODY"))
-            (func-addr (sb-sys:sap-int *runtime-catch-addr*)))
-
-       ;; Create a 0-argument callable for the body
-       (let ((callable-name (intern (format nil "HABU-CATCH-BODY-~A" (string-upcase (string closure-name)))
-                                    (find-package :habu-compiler))))
-         ;; Define the function using the original body form
-         (eval `(defun ,callable-name () ,body-form))
-
-         ;; Create alien-callable wrapper
-         #+sbcl
-         (eval `(sb-alien:define-alien-callable ,callable-name sb-alien:unsigned-long ()
-                  (,callable-name)))
-
-         ;; Get the function pointer
-         (let ((body-fn-ptr (sb-sys:sap-int (sb-alien:alien-sap (sb-alien:alien-callable-function callable-name)))))
-           (append
-            ;; Evaluate tag into RAX
-            (emit-x86_64 tag-expr env)
-            ;; Save tag on stack
-            '(#x50)                          ; push rax
-            ;; Load body function pointer into RAX
-            '(#x48 #xB8)                     ; movabs rax, imm64
-            (int-to-bytes body-fn-ptr 8)
-            ;; Setup call: RDI=tag, RSI=body-fn
-            '(#x48 #x89 #xC6)                ; mov rsi, rax (body-fn in RSI)
-            '(#x48 #x8B #x3C #x24)           ; mov rdi, [rsp] (tag in RDI)
-            '(#x48 #x83 #xC4 #x08)           ; add rsp, 8 (pop tag)
-            ;; Load runtime-catch address and call
-            '(#x48 #xB8)                     ; movabs rax, imm64
-            (int-to-bytes func-addr 8)
-            '(#xFF #xD0))))))                ; call rax
-
-    (throw
-     ;; (throw tag value) - throw to matching catch (never returns)
-     ;; Evaluate tag and value, call runtime-throw
-     (unless *runtime-throw-addr*
-       (error "Runtime not initialized. Call (initialize-runtime-integration) first."))
-     (let* ((tag-expr (parse (expr-value expr)))
-            (value-expr (first (expr-args expr)))
-            (func-addr (sb-sys:sap-int *runtime-throw-addr*)))
-       (append
-        ;; Evaluate tag into RAX
-        (emit-x86_64 tag-expr env)
-        ;; Save tag on stack
-        '(#x50)                          ; push rax
-        ;; Evaluate value into RAX
-        (emit-x86_64 value-expr env)
-        ;; Setup call: RDI=tag, RSI=value
-        '(#x48 #x89 #xC6)                ; mov rsi, rax (value in RSI)
-        '(#x48 #x8B #x3C #x24)           ; mov rdi, [rsp] (tag in RDI)
-        '(#x48 #x83 #xC4 #x08)           ; add rsp, 8 (pop tag)
-        ;; Load runtime-throw address and call (never returns)
-        '(#x48 #xB8)                     ; movabs rax, imm64
-        (int-to-bytes func-addr 8)
-        '(#xFF #xD0))))
-
-    (runtime-call
-     ;; Generate code to call function via symbol-function slot
-     ;; (funcall 'name arg1 arg2 ...)
-     (let* ((fn-name (expr-value expr))
-            (args (expr-args expr))
-            (num-args (length args)))
-       ;; Phase 1: Only support 0-3 arguments (matching defun limitation)
-       (when (> num-args 3)
-         (error "Runtime funcall currently supports up to 3 arguments"))
-
-       ;; Get symbol address at compile time
-       (let ((intern-fn (find-symbol "RUNTIME-INTERN" :habu-runtime))
-             (sym-addr 0))
-         (unless intern-fn
-           (error "Runtime not initialized"))
-         (unless (symbolp fn-name)
-           (error "fn-name should be a symbol, got ~S (type ~S, value ~S)"
-                  fn-name (type-of fn-name) (expr-value expr)))
-         (setf sym-addr (funcall intern-fn (string fn-name)))
-
-         ;; Generate code:
-         ;; 1. Load symbol address
-         ;; 2. Read symbol-function slot (offset 24)
-         ;; 3. Push function pointer to stack
-         ;; 4. Evaluate arguments and setup registers
-         ;; 5. Call function pointer
-         (append
-          ;; Load symbol address into RAX
-          (list #x48 #xB8)                      ; movabs rax, imm64
-          (int-to-bytes sym-addr 8)
-          ;; Read symbol-function slot [rax + 24] into RAX
-          (list #x48 #x8B #x40 #x18)            ; mov rax, [rax + 24]
-          ;; Save function pointer on stack
-          (list #x50)                           ; push rax
-
-          ;; Evaluate arguments and setup registers
-          ;; System V AMD64 ABI: RDI, RSI, RDX, RCX, R8, R9
-          (cond
-            ((= num-args 0)
-             ;; No arguments, just call
-             nil)
-
-            ((= num-args 1)
-             ;; Evaluate arg into RAX, move to RDI
-             (append
-              (emit-x86_64 (first args) env)
-              (list #x48 #x89 #xC7)))           ; mov rdi, rax
-
-            ((= num-args 2)
-             ;; Eval arg1 -> RDI, arg2 -> RSI
-             (append
-              (emit-x86_64 (first args) env)
-              (list #x50)                       ; push rax (save arg1)
-              (emit-x86_64 (second args) env)
-              (list #x48 #x89 #xC6)             ; mov rsi, rax (arg2 -> RSI)
-              (list #x48 #x8B #x3C #x24)        ; mov rdi, [rsp] (arg1 -> RDI)
-              (list #x48 #x83 #xC4 #x08)))      ; add rsp, 8 (pop arg1)
-
-            ((= num-args 3)
-             ;; Eval arg1 -> RDI, arg2 -> RSI, arg3 -> RDX
-             (append
-              (emit-x86_64 (first args) env)
-              (list #x50)                       ; push rax (save arg1)
-              (emit-x86_64 (second args) env)
-              (list #x50)                       ; push rax (save arg2)
-              (emit-x86_64 (third args) env)
-              (list #x48 #x89 #xC2)             ; mov rdx, rax (arg3 -> RDX)
-              (list #x48 #x8B #x34 #x24)        ; mov rsi, [rsp] (arg2 -> RSI)
-              (list #x48 #x8B #x7C #x24 #x08)   ; mov rdi, [rsp + 8] (arg1 -> RDI)
-              (list #x48 #x83 #xC4 #x10)))      ; add rsp, 16 (pop arg2 and arg1)
-
-            (t (error "Unsupported number of arguments: ~D" num-args)))
-
-          ;; Pop function pointer from stack to R11 and call
-          (list #x49 #x8B #x1C #x24)            ; mov r11, [rsp]
-          (list #x48 #x83 #xC4 #x08)            ; add rsp, 8 (pop fn ptr)
-          (list #x41 #xFF #xD3)))))))           ; call r11
-
-;;; Code generation for ARM64
-(defun emit-arm64 (expr &optional (env nil))
-  "Generate ARM64 machine code for expression with environment"
-  (ecase (expr-type expr)
-    (fixnum
-     ;; Load fixnum into X0
-     ;; mov x0, #imm
-     (let ((val (* (expr-value expr) 16))) ; Tag as fixnum
-       (if (< val 65536)
-           ;; Use MOVZ for small immediate
-           (int-to-bytes (logior #xD2800000 ; MOVZ X0, imm16
-                                 (ash (logand val #xFFFF) 5))
-                         4)
-           ;; Use MOVZ + MOVK for larger values
-           (append (int-to-bytes (logior #xD2800000
-                                         (ash (logand val #xFFFF) 5))
-                                 4)
-                   (int-to-bytes (logior #xF2A00000 ; MOVK X0, imm16, LSL#16
-                                         (ash (logand (ash val -16) #xFFFF) 5))
-                                 4)))))
-
-    (string
-     ;; Create string on heap at compile time and load pointer into X0
-     ;; Load 64-bit pointer using MOVZ + MOVK sequence
-     (let* ((lisp-string (expr-value expr))
-            (make-string-fn (find-symbol "RUNTIME-MAKE-STRING" :habu-runtime))
-            (ptr (funcall make-string-fn lisp-string)))
-       (append
-        ;; MOVZ X0, #(ptr[15:0])
-        (int-to-bytes (logior #xD2800000
-                              (ash (logand ptr #xFFFF) 5))
-                      4)
-        ;; MOVK X0, #(ptr[31:16]), LSL#16
-        (int-to-bytes (logior #xF2A00000
-                              (ash (logand (ash ptr -16) #xFFFF) 5))
-                      4)
-        ;; MOVK X0, #(ptr[47:32]), LSL#32
-        (int-to-bytes (logior #xF2C00000
-                              (ash (logand (ash ptr -32) #xFFFF) 5))
-                      4)
-        ;; MOVK X0, #(ptr[63:48]), LSL#48
-        (int-to-bytes (logior #xF2E00000
-                              (ash (logand (ash ptr -48) #xFFFF) 5))
-                      4))))
-
-    (variable
-     ;; Look up variable in environment and load from stack
-     (let* ((var-name (expr-value expr))
-            (binding (assoc var-name env)))
-       (if binding
-           (let ((offset (cdr binding)))
-             ;; ldr x0, [sp, #offset]
-             (if (< offset 256)
-                 ;; Use immediate offset encoding (scaled by 8)
-                 (int-to-bytes (logior #xF9400000  ; ldr x0, [sp, #imm]
-                                       (ash (/ offset 8) 10))  ; offset in bits [21:10]
-                             4)
-                 (error "Variable offset too large: ~D" offset)))
-           (error "Unbound variable: ~S" var-name))))
-
-    (setq
-     ;; Compile (setq var value) - mutate a lexical variable
-     (let* ((var-name (expr-value expr))
-            (value-expr (first (expr-args expr)))
-            (binding (assoc var-name env)))
-       (if binding
-           (let ((offset (cdr binding)))
-             (if (< offset 256)
-                 (append
-                  ;; First, evaluate the value expression into X0
-                  (emit-arm64 value-expr env)
-                  ;; Then store X0 to the variable's stack location
-                  ;; str x0, [sp, #offset]
-                  (int-to-bytes (logior #xF9000000  ; str x0, [sp, #imm]
-                                        (ash (/ offset 8) 10))  ; offset in bits [21:10]
-                                4))
-                 (error "Variable offset too large: ~D" offset)))
-           (error "Cannot setq unbound variable: ~S" var-name))))
-
-    (let
-     ;; Compile (let ((var val) ...) body) for ARM64
-     (let* ((bindings (expr-value expr))
-            (body (first (expr-args expr)))
-            (num-bindings (length bindings))
-            (new-env env)
-            (binding-code nil))
-       ;; Generate code to evaluate and push each binding
-       (loop for (var val-form) in bindings
-             for offset from 0 by 8
-             do (let ((val-code (emit-arm64 (parse val-form) env)))
-                  (setf binding-code
-                        (append binding-code
-                                val-code
-                                ;; str x0, [sp, #-8]!  (pre-decrement store)
-                                (list #xE0 #x0F #x1F #xF8)))  ; str x0, [sp, #-8]!
-                  ;; Add to environment with current stack offset
-                  (push (cons var (* offset 8)) new-env)))
-       ;; Generate code for body with extended environment
-       (let ((body-code (emit-arm64 body (reverse new-env))))
-         (append binding-code
-                 body-code
-                 ;; Clean up stack: add sp, sp, #num-bindings*8
-                 (if (<= (* num-bindings 8) 4095)
-                     (int-to-bytes (logior #x910003E0  ; add sp, sp, #imm
-                                           (ash (* num-bindings 8) 10))  ; imm12 in bits [21:10]
-                                   4)
-                     (error "Too many bindings for immediate encoding"))))))
-
-    (lambda
-     ;; Lambda expressions are not directly compiled to code
-     (error "Lambda expression cannot be compiled standalone: ~S" expr))
-
-    (closure
-     ;; Create a heap-allocated closure object as a first-class value (ARM64)
-     ;; Phase 1: Use runtime make-closure-N trampolines with eval'd wrapper
-     (let* ((params (expr-value expr))
-            (body (first (expr-args expr)))
-            (free-vars (second (expr-args expr)))
-            (original-body (third (expr-args expr)))  ; Original Lisp form
-            (num-free (length free-vars))
-            (arity (length params))
-            (closure-name (gensym "CLOSURE"))
-            (wrapper-params (append free-vars params)))
-
-       ;; Phase 1 limitation: only support 0-3 captured variables
-       (when (> num-free 3)
-         (error "Phase 1 only supports closures with up to 3 captured variables, got ~D" num-free))
-
-       ;; Create wrapper function via eval (same as x86_64)
-       (let ((callable-name (intern (format nil "HABU-CLOSURE-~A" (string-upcase (string closure-name)))
-                                    (find-package :habu-compiler))))
-         (eval `(defun ,callable-name ,wrapper-params ,original-body))
-
-         #+sbcl
-         (let ((num-wrapper-params (length wrapper-params)))
-           (cond
-             ((<= num-wrapper-params 0)
-              (eval `(sb-alien:define-alien-callable ,callable-name sb-alien:unsigned-long () (,callable-name))))
-             ((<= num-wrapper-params 1)
-              (eval `(sb-alien:define-alien-callable ,callable-name sb-alien:unsigned-long
-                       ((,(first wrapper-params) sb-alien:unsigned-long))
-                       (,callable-name ,(first wrapper-params)))))
-             ((<= num-wrapper-params 2)
-              (eval `(sb-alien:define-alien-callable ,callable-name sb-alien:unsigned-long
-                       ((,(first wrapper-params) sb-alien:unsigned-long)
-                        (,(second wrapper-params) sb-alien:unsigned-long))
-                       (,callable-name ,(first wrapper-params) ,(second wrapper-params)))))
-             ((<= num-wrapper-params 3)
-              (eval `(sb-alien:define-alien-callable ,callable-name sb-alien:unsigned-long
-                       ((,(first wrapper-params) sb-alien:unsigned-long)
-                        (,(second wrapper-params) sb-alien:unsigned-long)
-                        (,(third wrapper-params) sb-alien:unsigned-long))
-                       (,callable-name ,(first wrapper-params) ,(second wrapper-params) ,(third wrapper-params)))))
-             ((<= num-wrapper-params 4)
-              (eval `(sb-alien:define-alien-callable ,callable-name sb-alien:unsigned-long
-                       ((,(first wrapper-params) sb-alien:unsigned-long)
-                        (,(second wrapper-params) sb-alien:unsigned-long)
-                        (,(third wrapper-params) sb-alien:unsigned-long)
-                        (,(fourth wrapper-params) sb-alien:unsigned-long))
-                       (,callable-name ,(first wrapper-params) ,(second wrapper-params) ,(third wrapper-params) ,(fourth wrapper-params)))))
-             (t (error "Wrapper function with ~D parameters not supported" num-wrapper-params))))
-
-         ;; Store wrapper function pointer in runtime symbol table
-         (let ((intern-fn (find-symbol "RUNTIME-INTERN" :habu-runtime))
-               (set-fn-fn (find-symbol "SET-SYMBOL-FUNCTION" :habu-runtime)))
-           (when (and intern-fn set-fn-fn)
-             (let* ((name-str (string closure-name))
-                    (sym (funcall intern-fn name-str))
-                    (fn-ptr (sb-sys:sap-int (sb-alien:alien-sap (sb-alien:alien-callable-function callable-name)))))
-               (funcall set-fn-fn sym fn-ptr))))
-
-         ;; Generate ARM64 code to call make-closure-N trampoline
-         (let ((trampoline-addr
-                (case num-free
-                  (0 *runtime-make-closure-0-addr*)
-                  (1 *runtime-make-closure-1-addr*)
-                  (2 *runtime-make-closure-2-addr*)
-                  (3 *runtime-make-closure-3-addr*)
-                  (t (error "Unsupported number of captured vars: ~D" num-free)))))
-           (unless trampoline-addr
-             (error "Runtime not initialized. Call (initialize-runtime-integration) first."))
-           (let ((func-addr (sb-sys:sap-int trampoline-addr))
-                 (intern-fn (find-symbol "RUNTIME-INTERN" :habu-runtime)))
-             (unless intern-fn
-               (error "Runtime not initialized"))
-
-             ;; Get symbol address for wrapper function
-             (let ((sym-addr (funcall intern-fn (string closure-name))))
-               ;; ARM64 calling convention: X0-X7 for first 8 args
-               ;; X0 = code pointer, X1 = arity, X2-X4 = captured vars
-               (append
-                ;; Load symbol address into X9 (temp register)
-                '(#xE9 #x01 #x00 #x58)             ; ldr x9, [pc + offset to data]
-                '(#x03 #x00 #x00 #x14)             ; b skip_data (3 instructions)
-                (int-to-bytes sym-addr 8)          ; .data: symbol address
-
-                ;; skip_data:
-                ;; Load function pointer from symbol [x9 + 24] into X0
-                '(#x20 #x61 #x40 #xF9)             ; ldr x0, [x9, #24*8]
-
-                ;; Load arity into X1
-                (int-to-arm64-mov-imm 'x1 arity)
-
-                ;; Load captured variables into X2, X3, X4
-                (case num-free
-                  (0 nil)
-                  (1 (append (emit-arm64 (make-expr :type 'variable :value (first free-vars)) env)
-                             '(#xE2 #x03 #x00 #xAA)))  ; mov x2, x0
-                  (2 (append (emit-arm64 (make-expr :type 'variable :value (first free-vars)) env)
-                             '(#xF0 #x03 #x00 #xF8)    ; str x0, [sp, #-16]!
-                             (emit-arm64 (make-expr :type 'variable :value (second free-vars)) env)
-                             '(#xE3 #x03 #x00 #xAA)    ; mov x3, x0
-                             '(#xF0 #x07 #x40 #xF8)))  ; ldr x2, [sp], #16
-                  (3 (append (emit-arm64 (make-expr :type 'variable :value (first free-vars)) env)
-                             '(#xF0 #x03 #x00 #xF8)    ; str x0, [sp, #-16]!
-                             (emit-arm64 (make-expr :type 'variable :value (second free-vars)) env)
-                             '(#xF0 #x03 #x00 #xF8)    ; str x0, [sp, #-16]!
-                             (emit-arm64 (make-expr :type 'variable :value (third free-vars)) env)
-                             '(#xE4 #x03 #x00 #xAA)    ; mov x4, x0
-                             '(#xF0 #x07 #x40 #xF8)    ; ldr x3, [sp], #16
-                             '(#xF0 #x07 #x40 #xF8)))  ; ldr x2, [sp], #16
-                  (t (error "Unsupported num-free: ~D" num-free)))
-
-                ;; Load trampoline address and call
-                '(#xE9 #x01 #x00 #x58)             ; ldr x9, [pc + offset]
-                '(#x03 #x00 #x00 #x14)             ; b skip_data2
-                (int-to-bytes func-addr 8)         ; .data: trampoline address
-                ;; skip_data2:
-                '(#x20 #x01 #x3F #xD6))))))))      ; blr x9
-
-    (named-let
-     ;; Compile (let name ((var val) ...) body) for ARM64
-     ;; For now, compile as regular let - recursive calls will need TCO support
-     (let* ((name-and-bindings (expr-value expr))
-            (loop-name (first name-and-bindings))
-            (bindings (second name-and-bindings))
-            (body (first (expr-args expr)))
-            (vars (mapcar #'first bindings))
-            (num-bindings (length bindings)))
-       ;; Warn about recursive calls (they won't work without TCO)
-       (when (find-recursive-calls loop-name body)
-         (warn "Named-let '~A' contains recursive calls. Tail-call optimization not yet implemented. Recursive calls will cause errors." loop-name))
-       ;; Compile as regular let for now
-       (let ((binding-code nil)
-             (new-env env))
-         ;; Evaluate and push each binding
-         (dolist (binding bindings)
-           (let ((var (first binding))
-                 (val (second binding)))
-             (setf binding-code
-                   (append binding-code
-                           (emit-arm64 (parse val) env)
-                           (list #xFD #x7B #xBF #xA9)))))  ; stp x29, x30, [sp, #-16]!
-         ;; Build environment with variable offsets
-         (let ((offset 0))
-           (dolist (var (reverse vars))
-             (setf new-env (cons (cons var offset) new-env))
-             (setf offset (+ offset 16))))  ; ARM64 uses 16-byte alignment
-         ;; Compile body with new environment
-         (let ((body-code (emit-arm64 body new-env)))
-           (append binding-code
-                   body-code
-                   ;; Clean up stack
-                   (loop repeat num-bindings
-                         append (list #xFD #x7B #xC1 #xA8)))))))  ; ldp x29, x30, [sp], #16
-
-    (progn
-     ;; Compile (progn expr1 expr2 ... exprN) for ARM64
-     (let ((exprs (expr-args expr)))
-       (if (null exprs)
-           (emit-arm64 (make-expr :type 'fixnum :value 0) env)
-           (let ((code nil))
-             (dolist (e exprs)
-               (setf code (append code (emit-arm64 e env))))
-             code))))
-
-    (multiple-value-bind
-     ;; Compile (multiple-value-bind (var1 var2 ...) values-form body...) - ARM64
-     ;; Evaluate values-form, bind variables to returned values, evaluate body
-     (let ((vars (expr-value expr))
-           (values-form (first (expr-args expr)))
-           (body (second (expr-args expr))))
-       (unless *runtime-values-get-addr*
-         (error "Runtime not initialized. Call (initialize-runtime-integration) first."))
-
-       ;; Build new environment with variable bindings
-       (let* ((num-vars (length vars))
-              (new-env (copy-list env))
-              (get-func-addr (sb-sys:sap-int *runtime-values-get-addr*))
-              ;; Calculate stack size (ARM64 requires 16-byte alignment)
-              (stack-size-initial (* 8 (+ num-vars 1)))  ; vars + primary
-              (stack-size (if (zerop (mod stack-size-initial 16))
-                              stack-size-initial
-                              (+ stack-size-initial 8))))
-
-         ;; Evaluate values-form (primary value ends up in X0)
-         (append
-          (emit-arm64 values-form env)
-
-          ;; Save primary value on stack
-          ;; Use pre-decrement store
-          (list #xF8 #x1F (- 256 stack-size) #xF8)  ; str x0, [sp, #-stack-size]!
-
-          ;; For each variable, get the corresponding value and bind it
-          (loop for var in vars
-                for i from 0
-                append
-                (progn
-                  ;; Add variable to environment (pointing to stack)
-                  (push (cons var (- (* i 8))) new-env)
-
-                  (if (= i 0)
-                      ;; First variable gets primary value (already on stack)
-                      nil
-                      ;; Subsequent variables: call runtime-values-get(i, primary)
-                      (append
-                       ;; Load index into X0 (tagged fixnum)
-                       (arm64-load-imm64 0 (ash i 4))
-                       ;; Load primary value into X1 (from stack)
-                       (list #xF9 #x40 #x00 #xF9)  ; ldr x1, [sp]
-                       ;; Call runtime-values-get
-                       (arm64-load-imm64 9 get-func-addr)
-                       '(#x20 #x01 #x3F #xD6)      ; blr x9
-                       ;; Store result on stack (next binding slot)
-                       (list #xF8 #x00 #x0F #xF8)  ; str x0, [sp, #-8]!
-                       ))))
-
-          ;; Evaluate body with new environment
-          (emit-arm64 body new-env)
-
-          ;; Clean up stack: pop all bindings + primary value
-          ;; add sp, sp, #stack-size
-          (list #x91 #x00 (logand (ash stack-size -2) #xFF) #x91)))))
-
-    (dotimes
-     ;; Compile (dotimes (var count [result]) body...) - ARM64
-     ;; Inline loop with direct branches
-     (let* ((var (first (expr-value expr)))
-            (result-form (second (expr-value expr)))
-            (count-form (first (expr-args expr)))
-            (body (second (expr-args expr)))
-            (new-env (copy-list env)))
-
-       ;; Add loop variable to environment (will be on stack)
-       (push (cons var 0) new-env)  ; At sp offset 0
-
-       ;; Generate code pieces
-       (let* ((count-code (emit-arm64 count-form env))
-              (body-code (emit-arm64 body new-env))
-              (result-code (emit-arm64 (parse result-form) env))
-
-              ;; Calculate instruction counts and byte offsets
-              ;; Forward jump (b.ge): skip loop body
-              (forward-bytes (+ 8    ; str x10, [sp, #-8]!
-                               (length body-code)
-                               4    ; ldr x10, [sp], #8
-                               8    ; add x10, x10, #16
-                               4))  ; b loop_start
-
-              ;; Backward jump (b): back to cmp
-              (backward-bytes (- (+ 4    ; cmp
-                                   4    ; b.ge
-                                   8    ; str
-                                   (length body-code)
-                                   4    ; ldr
-                                   8))) ; add
-
-              ;; ARM64 branch offsets are in units of 4 bytes (instructions)
-              (forward-offset (ash forward-bytes -2))
-              (backward-offset (ash backward-bytes -2)))
-
-         (append
-          ;; Evaluate count-form -> X0 (tagged fixnum)
-          count-code
-          '(#xEB #x03 #x00 #xAA)      ; mov x11, x0 (save count in X11)
-          (arm64-load-imm64 10 0)     ; mov x10, 0 (i = 0, tagged)
-
-          ;; loop_start:
-          '(#x6B #x01 #x01 #xEB)      ; cmp x10, x11
-          '(#x0A)                     ; b.ge loop_end (conditional branch)
-          (list (logand forward-offset #xFF) #x00 #x00)
-
-          '(#xEA #x0F #x1F #xF8)      ; str x10, [sp, #-8]! (bind variable)
-          body-code                   ; execute body
-          '(#xEA #x07 #x41 #xF8)      ; ldr x10, [sp], #8 (restore counter)
-          '(#x4A #x01 #x00 #x91)      ; add x10, x10, #0
-          (list #x04 #x00)            ; immediate = 16 (tagged 1)
-          '(#x00)                     ; b loop_start (unconditional branch back)
-          (list (logand backward-offset #xFF) (logand (ash backward-offset -8) #xFF) #xFF)
-
-          ;; loop_end:
-          result-code))))              ; evaluate result form
-
-    (dolist
-     ;; Compile (dolist (var list [result]) body...) - ARM64
-     ;; Inline loop with direct branches
-     (let* ((var (first (expr-value expr)))
-            (result-form (second (expr-value expr)))
-            (list-form (first (expr-args expr)))
-            (body (second (expr-args expr)))
-            (new-env (copy-list env)))
-
-       ;; Add loop variable to environment (will be on stack)
-       (push (cons var 0) new-env)  ; At sp offset 0
-
-       ;; Generate code pieces
-       (let* ((list-code (emit-arm64 list-form env))
-              (body-code (emit-arm64 body new-env))
-              (result-code (emit-arm64 (parse result-form) env))
-
-              ;; Car/cdr trampoline addresses
-              (car-addr (sb-sys:sap-int *runtime-car-addr*))
-              (cdr-addr (sb-sys:sap-int *runtime-cdr-addr*))
-
-              ;; Calculate branch offsets
-              (forward-bytes (+ 4    ; mov x0, x11
-                               (length (arm64-load-imm64 9 car-addr))
-                               4    ; blr x9
-                               8    ; str x0
-                               (length body-code)
-                               4    ; ldr x0
-                               4    ; mov x0, x11
-                               (length (arm64-load-imm64 9 cdr-addr))
-                               4    ; blr x9
-                               4    ; mov x11, x0
-                               4))  ; b loop_start
-
-              (backward-bytes (- (+ 8    ; cmp + b.eq
-                                   4    ; mov
-                                   (length (arm64-load-imm64 9 car-addr))
-                                   4    ; blr
-                                   8    ; str
-                                   (length body-code)
-                                   4    ; ldr
-                                   4    ; mov
-                                   (length (arm64-load-imm64 9 cdr-addr))
-                                   4    ; blr
-                                   4))) ; mov
-
-              (forward-offset (ash forward-bytes -2))
-              (backward-offset (ash backward-bytes -2)))
-
-         (append
-          ;; Evaluate list-form -> X0
-          list-code
-          '(#xEB #x03 #x00 #xAA)      ; mov x11, x0 (current list in X11)
-
-          ;; loop_start:
-          '(#x7F #x01 #x00 #xF1)      ; cmp x11, #0 (check for nil)
-          '(#x0B)                     ; b.eq loop_end
-          (list (logand forward-offset #xFF) #x00 #x00)
-
-          ;; Get car(current)
-          '(#xE0 #x03 #x0B #xAA)      ; mov x0, x11 (list in X0 for car)
-          (arm64-load-imm64 9 car-addr)
-          '(#x20 #x01 #x3F #xD6)      ; blr x9
-          '(#xE0 #x0F #x1F #xF8)      ; str x0, [sp, #-8]! (bind variable)
-
-          body-code                   ; execute body
-
-          '(#xE0 #x07 #x41 #xF8)      ; ldr x0, [sp], #8 (unbind)
-          '(#xE0 #x03 #x0B #xAA)      ; mov x0, x11 (current list for cdr)
-          (arm64-load-imm64 9 cdr-addr)
-          '(#x20 #x01 #x3F #xD6)      ; blr x9
-          '(#xEB #x03 #x00 #xAA)      ; mov x11, x0 (advance to next)
-          '(#x00)                     ; b loop_start
-          (list (logand backward-offset #xFF) (logand (ash backward-offset -8) #xFF) #xFF)
-
-          ;; loop_end:
-          result-code))))              ; evaluate result form
-
-    (quote
-     ;; Compile (quote datum) for ARM64
-     ;; Return the quoted value without evaluation
-     (let ((datum (expr-value expr)))
-       (cond
-         ((integerp datum)
-          ;; Quoted integer - just return as fixnum
-          (emit-arm64 (make-expr :type 'fixnum :value datum) env))
-         ((null datum)
-          ;; Quoted nil - return as fixnum 0 (or special nil value)
-          (emit-arm64 (make-expr :type 'fixnum :value 0) env))
-         (t
-          ;; Symbols and lists need runtime support
-          (error "Quote of ~S not yet supported - need runtime symbols/lists" datum)))))
-
-    (not
-     ;; Compile (not expr) for ARM64
-     ;; Returns 1 (true) if expr is 0 (false), else 0
-     (let* ((arg-expr (first (expr-args expr)))
-            (arg-code (emit-arm64 arg-expr env)))
-       (append arg-code
-               ;; Compare x0 with 0
-               (list #x1F #x00 #x00 #xF1)         ; cmp x0, #0
-               ;; cset x0, eq - set x0 to 1 if equal, 0 otherwise
-               (list #xE0 #x17 #x9F #x9A)         ; cset x0, eq
-               ;; Shift left by 4 to tag as fixnum
-               (list #xE0 #x13 #x00 #xD3))))      ; lsl x0, x0, #4
-
-    (and
-     ;; Compile (and expr1 expr2 ...) for ARM64
-     ;; Short-circuit evaluation: return first false value, else last value
-     (let ((exprs (expr-args expr)))
-       (cond
-         ((null exprs)
-          ;; Empty and is true (return 1)
-          (emit-arm64 (make-expr :type 'fixnum :value 1) env))
-         ((= (length exprs) 1)
-          ;; Single expression: just evaluate it
-          (emit-arm64 (first exprs) env))
-         (t
-          ;; Multiple expressions: short-circuit evaluation
-          (let ((expr-codes (mapcar (lambda (e) (emit-arm64 e env)) exprs))
-                (result nil))
-            ;; Build code from right to left
-            (loop for i from (1- (length expr-codes)) downto 0
-                  for code = (nth i expr-codes)
-                  for last = (= i (1- (length expr-codes)))
-                  do (if last
-                         ;; Last expression: just its code
-                         (setf result code)
-                         ;; Not last: code + cmp + b.eq to end
-                         (let* ((offset-bytes (length result))
-                                (offset-insns (/ offset-bytes 4))
-                                (test-and-jump (append
-                                               (list #x1F #x00 #x00 #xF1)  ; cmp x0, #0
-                                               ;; b.eq offset (branch if equal to zero)
-                                               (list #x00  ; low byte of offset
-                                                     (logand offset-insns #xFF)
-                                                     (logand (ash offset-insns -8) #xFF)
-                                                     #x54)))) ; b.eq condition code
-                           (setf result (append code test-and-jump result)))))
-            result)))))
-
-    (or
-     ;; Compile (or expr1 expr2 ...) for ARM64
-     ;; Short-circuit evaluation: return first non-zero value, else last value
-     (let ((exprs (expr-args expr)))
-       (cond
-         ((null exprs)
-          ;; Empty or is false (return 0)
-          (emit-arm64 (make-expr :type 'fixnum :value 0) env))
-         ((= (length exprs) 1)
-          ;; Single expression: just evaluate it
-          (emit-arm64 (first exprs) env))
-         (t
-          ;; Multiple expressions: short-circuit evaluation
-          (let ((expr-codes (mapcar (lambda (e) (emit-arm64 e env)) exprs))
-                (result nil))
-            ;; Build code from right to left
-            (loop for i from (1- (length expr-codes)) downto 0
-                  for code = (nth i expr-codes)
-                  for last = (= i (1- (length expr-codes)))
-                  do (if last
-                         ;; Last expression: just its code
-                         (setf result code)
-                         ;; Not last: code + cmp + b.ne to end
-                         (let* ((offset-bytes (length result))
-                                (offset-insns (/ offset-bytes 4))
-                                (test-and-jump (append
-                                               (list #x1F #x00 #x00 #xF1)  ; cmp x0, #0
-                                               ;; b.ne offset (branch if not equal to zero)
-                                               (list #x01  ; condition code 1 = ne
-                                                     (logand offset-insns #xFF)
-                                                     (logand (ash offset-insns -8) #xFF)
-                                                     #x54)))) ; conditional branch
-                           (setf result (append code test-and-jump result)))))
-            result)))))
-
-    (cond
-     ;; Compile (cond (test1 result1) (test2 result2) ... (t default)) for ARM64
-     ;; Transform to nested ifs
-     (let ((clauses (expr-value expr)))
-       (labels ((compile-cond-clauses (clauses)
-                  (if (null clauses)
-                      (emit-arm64 (make-expr :type 'fixnum :value 0) env)
-                      (let* ((clause (first clauses))
-                             (test (first clause))
-                             (result (second clause))
-                             (rest-clauses (rest clauses)))
-                        (if (or (eq test t) (null rest-clauses))
-                            (emit-arm64 (parse result) env)
-                            (let* ((test-code (emit-arm64 (parse test) env))
-                                   (then-code (emit-arm64 (parse result) env))
-                                   (else-code (compile-cond-clauses rest-clauses))
-                                   (then-size (length then-code))
-                                   (else-size (length else-code))
-                                   (b-to-end-size 4)
-                                   (beq-to-else-size 4))
-                              (append test-code
-                                      (list #x1F #x00 #x00 #xF1)  ; cmp x0, #0
-                                      ;; b.eq to else-branch
-                                      (let ((offset-bytes (+ then-size b-to-end-size)))
-                                        (list #x40  ; condition code 0 = eq
-                                              (logand (ash offset-bytes -2) #xFF)
-                                              (logand (ash offset-bytes -10) #xFF)
-                                              #x54))
-                                      then-code
-                                      ;; b to end (unconditional branch)
-                                      (let ((offset-bytes else-size))
-                                        (list (logand (ash offset-bytes -2) #xFF)
-                                              (logand (ash offset-bytes -10) #xFF)
-                                              (logand (ash offset-bytes -18) #xFF)
-                                              #x14))
-                                      else-code)))))))
-         (compile-cond-clauses clauses))))
-
-    (when
-     ;; Compile (when test body...) for ARM64
-     (let* ((test-expr (first (expr-args expr)))
-            (body-exprs (rest (expr-args expr)))
-            (test-code (emit-arm64 test-expr env))
-            (body-code (if (null body-exprs)
-                           (emit-arm64 (make-expr :type 'fixnum :value 0) env)
-                           (if (= (length body-exprs) 1)
-                               (emit-arm64 (first body-exprs) env)
-                               (emit-arm64 (make-expr :type 'progn :args body-exprs) env))))
-            (body-size (length body-code)))
-       (append test-code
-               (list #x1F #x00 #x00 #xF1)      ; cmp x0, #0
-               ;; b.eq (skip body if test is false)
-               (let ((offset-bytes body-size))
-                 (list #x40  ; condition code 0 = eq
-                       (logand (ash offset-bytes -2) #xFF)
-                       (logand (ash offset-bytes -10) #xFF)
-                       #x54))
-               body-code)))
-
-    (unless
-     ;; Compile (unless test body...) for ARM64
-     (let* ((test-expr (first (expr-args expr)))
-            (body-exprs (rest (expr-args expr)))
-            (test-code (emit-arm64 test-expr env))
-            (body-code (if (null body-exprs)
-                           (emit-arm64 (make-expr :type 'fixnum :value 0) env)
-                           (if (= (length body-exprs) 1)
-                               (emit-arm64 (first body-exprs) env)
-                               (emit-arm64 (make-expr :type 'progn :args body-exprs) env))))
-            (body-size (length body-code)))
-       (append test-code
-               (list #x1F #x00 #x00 #xF1)      ; cmp x0, #0
-               ;; b.ne (skip body if test is true)
-               (let ((offset-bytes body-size))
-                 (list #x41  ; condition code 1 = ne
-                       (logand (ash offset-bytes -2) #xFF)
-                       (logand (ash offset-bytes -10) #xFF)
-                       #x54))
-               body-code)))
-
-    (case
-     ;; Compile (case keyform (key1 result1) (key2 result2) (t default)) for ARM64
-     (let* ((keyform (first (expr-args expr)))
-            (clauses (expr-value expr))
-            (key-var (gensym "CASE-KEY")))
-       (let ((key-code (emit-arm64 keyform env))
-             (new-env (cons (cons key-var 0) env)))
-         (labels ((compile-case-clauses (clauses)
-                    (if (null clauses)
-                        (emit-arm64 (make-expr :type 'fixnum :value 0) new-env)
-                        (let* ((clause (first clauses))
-                               (keys (first clause))
-                               (result (second clause))
-                               (rest-clauses (rest clauses)))
-                          (if (or (eq keys t) (null rest-clauses))
-                              (emit-arm64 (parse result) new-env)
-                              (let* ((key-value (if (listp keys) (first keys) keys))
-                                     ;; Generate test code: load key from stack, compare with key-value
-                                     (test-code (append
-                                                 (list #xE1 #x03 #x40 #xF9)  ; ldr x1, [sp]
-                                                 ;; Compare with key-value
-                                                 (let ((tagged-key (* key-value 16)))
-                                                   (if (< tagged-key 4096)
-                                                       (list (logand tagged-key #xFF)
-                                                             (logand (ash tagged-key -8) #xFF)
-                                                             #x00 #x91)  ; add x0, xzr, #tagged-key
-                                                       (append (list #xE0 #x03 #x1F #xAA)  ; mov x0, xzr
-                                                               (list (logand tagged-key #xFF)
-                                                                     (logand (ash tagged-key -8) #x1F)
-                                                                     #x80 #xD2))))  ; mov x0, #tagged-key
-                                                 (list #x3F #x00 #x00 #xEB)   ; cmp x1, x0
-                                                 (list #xE0 #x07 #x9F #x9A))) ; cset x0, eq
-                                     (then-code (emit-arm64 (parse result) new-env))
-                                     (else-code (compile-case-clauses rest-clauses))
-                                     (then-size (length then-code))
-                                     (else-size (length else-code)))
-                                (append test-code
-                                        (list #x1F #x00 #x00 #xF1)  ; cmp x0, #0
-                                        (let ((offset-bytes (+ then-size 4)))
-                                          (list #x40  ; b.eq
-                                                (logand (ash offset-bytes -2) #xFF)
-                                                (logand (ash offset-bytes -10) #xFF)
-                                                #x54))
-                                        then-code
-                                        (let ((offset-bytes else-size))
-                                          (list (logand (ash offset-bytes -2) #xFF)
-                                                (logand (ash offset-bytes -10) #xFF)
-                                                (logand (ash offset-bytes -18) #xFF)
-                                                #x14))
-                                        else-code)))))))
-           (append key-code
-                   (list #xE0 #x0F #x1F #xF8)  ; str x0, [sp, #-8]!
-                   (compile-case-clauses clauses)
-                   (list #xFF #x07 #x00 #x91)))))) ; add sp, sp, #8
-
-    (funcall
-     ;; Compile ((lambda (params) body) args) or ((closure ...) args) for ARM64
-     (let* ((fn-expr (expr-value expr))
-            (arg-exprs (expr-args expr)))
-       (if (or (eq (expr-type fn-expr) 'lambda)
-               (eq (expr-type fn-expr) 'closure))
-           (let* ((params (expr-value fn-expr))
-                  (body (first (expr-args fn-expr)))
-                  (num-params (length params))
-                  (num-args (length arg-exprs))
-                  (new-env env)
-                  (binding-code nil))
-             (unless (= num-params num-args)
-               (error "Argument count mismatch: expected ~D, got ~D"
-                      num-params num-args))
-             ;; Evaluate and push each argument
-             (loop for arg-expr in arg-exprs
-                   for param in params
-                   for offset from 0 by 8
-                   do (let ((arg-code (emit-arm64 arg-expr env)))
-                        (setf binding-code
-                              (append binding-code
-                                      arg-code
-                                      (list #xE0 #x0F #x1F #xF8)))  ; str x0, [sp, #-8]!
-                        (push (cons param (* offset 8)) new-env)))
-             ;; Compile body with parameters bound
-             ;; For closures, free variables should already be in env
-             (let ((body-code (emit-arm64 body (reverse new-env))))
-               (append binding-code
-                       body-code
-                       ;; Clean up stack
-                       (if (<= (* num-params 8) 4095)
-                           (int-to-bytes (logior #x910003E0
-                                                 (ash (* num-params 8) 10))
-                                         4)
-                           (error "Too many parameters for immediate encoding")))))
-           (error "Can only call lambda/closure expressions for now"))))
-
-    (if
-     ;; Compile (if condition then-expr else-expr) for ARM64
-     (let* ((condition (first (expr-args expr)))
-            (then-expr (second (expr-args expr)))
-            (else-expr (third (expr-args expr)))
-            (then-code (emit-arm64 then-expr env))
-            (else-code (emit-arm64 else-expr env))
-            (then-size (length then-code))
-            (else-size (length else-code))
-            ;; Branch to end: 4 bytes for b (unconditional branch)
-            (b-to-end-size 4)
-            ;; Conditional branch to else: 4 bytes for b.eq
-            (beq-to-else-size 4))
-       (append (emit-arm64 condition env)               ; Evaluate condition
-               ;; Compare x0 with 0
-               (list #x1F #x00 #x00 #xF1)           ; cmp x0, #0
-               ;; b.eq to else-branch (4 bytes: 54 + 3-byte offset in bits [23:5])
-               ;; Offset is in instructions (4-byte units), and encoded specially
-               (let ((offset-bytes (+ then-size b-to-end-size)))
-                 (list #x40
-                       (logand (ash offset-bytes -2) #xFF)
-                       (logand (ash offset-bytes -10) #xFF)
-                       #x54))  ; b.eq (condition code 0)
-               then-code                            ; Then branch
-               ;; b to end (unconditional branch)
-               (let ((offset-bytes else-size))
-                 (list (logand (ash offset-bytes -2) #xFF)
-                       (logand (ash offset-bytes -10) #xFF)
-                       (logand (ash offset-bytes -18) #xFF)
-                       #x14))  ; b (unconditional)
-               else-code)))                         ; Else branch
-
-    (call
-     (let ((op (expr-value expr))
-           (args (expr-args expr)))
-       (cond
-         ((eq op '+)
-          ;; Compile (+ a b) for ARM64
-          (append (emit-arm64 (first args) env)        ; Result in X0
-                  (list #xFD #x7B #xBF #xA9)       ; stp x29, x30, [sp, #-16]!
-                  (list #xE0 #x03 #x00 #xAA)       ; mov x0, x0 (save)
-                  (emit-arm64 (second args) env)        ; Result in X0
-                  (list #xE1 #x03 #x00 #xAA)       ; mov x1, x0
-                  (list #xE0 #x03 #x01 #xAA)       ; mov x0, x1 (restore from stack would be here)
-                  (list #x00 #x00 #x01 #x8B)       ; add x0, x0, x1
-                  (list #xFD #x7B #xC1 #xA8)))     ; ldp x29, x30, [sp], #16
-
-         ((eq op '-)
-          ;; Compile (- a b) for ARM64
-          (append (emit-arm64 (first args) env)        ; Result in X0 (first arg)
-                  (list #xFD #x7B #xBF #xA9)       ; stp x29, x30, [sp, #-16]!
-                  (list #xE2 #x03 #x00 #xAA)       ; mov x2, x0 (save first)
-                  (emit-arm64 (second args) env)        ; Result in X0 (second arg)
-                  (list #xE1 #x03 #x00 #xAA)       ; mov x1, x0 (second to x1)
-                  (list #xE0 #x03 #x02 #xAA)       ; mov x0, x2 (first back to x0)
-                  (list #x00 #x00 #x01 #xCB)       ; sub x0, x0, x1
-                  (list #xFD #x7B #xC1 #xA8)))     ; ldp x29, x30, [sp], #16
-
-         ((eq op '*)
-          ;; Compile (* a b) for ARM64
-          (append (emit-arm64 (first args) env)
-                  (list #xFD #x7B #xBF #xA9)       ; stp x29, x30, [sp, #-16]!
-                  (list #xE2 #x03 #x00 #xAA)       ; mov x2, x0 (save first)
-                  (emit-arm64 (second args) env)
-                  (list #xE1 #x03 #x00 #xAA)       ; mov x1, x0 (second to x1)
-                  (list #xE0 #x03 #x02 #xAA)       ; mov x0, x2 (first back to x0)
-                  (list #x00 #x7C #x01 #x9B)       ; mul x0, x0, x1
-                  (list #x00 #x10 #x44 #xD3)       ; lsr x0, x0, #4 (adjust for tag)
-                  (list #xFD #x7B #xC1 #xA8)))     ; ldp x29, x30, [sp], #16
-
-         ((eq op '/)
-          ;; Compile (/ a b) for ARM64 - integer division
-          (append (emit-arm64 (first args) env)
-                  (list #xFD #x7B #xBF #xA9)       ; stp x29, x30, [sp, #-16]!
-                  (list #xE2 #x03 #x00 #xAA)       ; mov x2, x0 (save dividend)
-                  (emit-arm64 (second args) env)
-                  (list #xE1 #x03 #x00 #xAA)       ; mov x1, x0 (divisor to x1)
-                  (list #xE0 #x03 #x02 #xAA)       ; mov x0, x2 (dividend back to x0)
-                  (list #x00 #x10 #x44 #xD3)       ; lsr x0, x0, #4 (untag dividend)
-                  (list #x21 #x10 #x44 #xD3)       ; lsr x1, x1, #4 (untag divisor)
-                  (list #x00 #x0C #xC1 #x9A)       ; sdiv x0, x0, x1 (signed divide)
-                  (list #x00 #x10 #x00 #xD3)       ; lsl x0, x0, #4 (retag result)
-                  (list #xFD #x7B #xC1 #xA8)))     ; ldp x29, x30, [sp], #16
-
-         ((eq op 'mod)
-          ;; Compile (mod a b) for ARM64
-          ;; remainder = dividend - (quotient * divisor)
-          ;; Use MSUB: msub Xd, Xn, Xm, Xa = Xa - (Xn * Xm)
-          (append (emit-arm64 (first args) env)
-                  (list #xFD #x7B #xBF #xA9)       ; stp x29, x30, [sp, #-16]!
-                  (list #xE2 #x03 #x00 #xAA)       ; mov x2, x0 (save dividend)
-                  (emit-arm64 (second args) env)
-                  (list #xE1 #x03 #x00 #xAA)       ; mov x1, x0 (divisor to x1)
-                  (list #xE0 #x03 #x02 #xAA)       ; mov x0, x2 (dividend back to x0)
-                  (list #x00 #x10 #x44 #xD3)       ; lsr x0, x0, #4 (untag dividend)
-                  (list #x21 #x10 #x44 #xD3)       ; lsr x1, x1, #4 (untag divisor)
-                  (list #xE3 #x0C #xC1 #x9A)       ; sdiv x3, x0, x1 (quotient in x3)
-                  ;; msub x0, x3, x1, x0  = x0 - (x3 * x1) = dividend - quotient*divisor
-                  (list #x00 #x80 #x01 #x9B)       ; msub x0, x0, x1, x3
-                  (list #x00 #x10 #x00 #xD3)       ; lsl x0, x0, #4 (retag result)
-                  (list #xFD #x7B #xC1 #xA8)))     ; ldp x29, x30, [sp], #16
-
-         ((eq op 'rem)
-          ;; Compile (rem a b) for ARM64 - remainder operation
-          ;; Same as mod (ARM64 sdiv gives truncating division, same as rem)
-          (append (emit-arm64 (first args) env)
-                  (list #xFD #x7B #xBF #xA9)       ; stp x29, x30, [sp, #-16]!
-                  (list #xE2 #x03 #x00 #xAA)       ; mov x2, x0 (save dividend)
-                  (emit-arm64 (second args) env)
-                  (list #xE1 #x03 #x00 #xAA)       ; mov x1, x0 (divisor to x1)
-                  (list #xE0 #x03 #x02 #xAA)       ; mov x0, x2 (dividend back to x0)
-                  (list #x00 #x10 #x44 #xD3)       ; lsr x0, x0, #4 (untag dividend)
-                  (list #x21 #x10 #x44 #xD3)       ; lsr x1, x1, #4 (untag divisor)
-                  (list #xE3 #x0C #xC1 #x9A)       ; sdiv x3, x0, x1 (quotient in x3)
-                  (list #x00 #x80 #x01 #x9B)       ; msub x0, x0, x1, x3
-                  (list #x00 #x10 #x00 #xD3)       ; lsl x0, x0, #4 (retag result)
-                  (list #xFD #x7B #xC1 #xA8)))     ; ldp x29, x30, [sp], #16
-
+          (list 'cmp-eq (nc-compile (cadr expr) env fenv) (nc-compile (caddr expr) env fenv)))
          ((eq op '<)
-          ;; Compile (< a b) for ARM64
-          (append (emit-arm64 (first args) env)
-                  (list #xFD #x7B #xBF #xA9)       ; stp x29, x30, [sp, #-16]!
-                  (list #xE2 #x03 #x00 #xAA)       ; mov x2, x0
-                  (emit-arm64 (second args) env)
-                  (list #xE1 #x03 #x00 #xAA)       ; mov x1, x0
-                  (list #x5F #x00 #x01 #xEB)       ; cmp x2, x1
-                  (list #xE0 #xB7 #x9F #x9A)       ; cset x0, lt (less than)
-                  (list #x00 #x10 #x00 #xD3)       ; lsl x0, x0, #4 (tag as fixnum)
-                  (list #xFD #x7B #xC1 #xA8)))     ; ldp x29, x30, [sp], #16
-
+          (list 'cmp-lt (nc-compile (cadr expr) env fenv) (nc-compile (caddr expr) env fenv)))
          ((eq op '>)
-          ;; Compile (> a b) for ARM64
-          (append (emit-arm64 (first args) env)
-                  (list #xFD #x7B #xBF #xA9)       ; stp x29, x30, [sp, #-16]!
-                  (list #xE2 #x03 #x00 #xAA)       ; mov x2, x0
-                  (emit-arm64 (second args) env)
-                  (list #xE1 #x03 #x00 #xAA)       ; mov x1, x0
-                  (list #x5F #x00 #x01 #xEB)       ; cmp x2, x1
-                  (list #xE0 #xC7 #x9F #x9A)       ; cset x0, gt (greater than)
-                  (list #x00 #x10 #x00 #xD3)       ; lsl x0, x0, #4
-                  (list #xFD #x7B #xC1 #xA8)))
-
-         ((eq op '=)
-          ;; Compile (= a b) for ARM64
-          (append (emit-arm64 (first args) env)
-                  (list #xFD #x7B #xBF #xA9)       ; stp x29, x30, [sp, #-16]!
-                  (list #xE2 #x03 #x00 #xAA)       ; mov x2, x0
-                  (emit-arm64 (second args) env)
-                  (list #xE1 #x03 #x00 #xAA)       ; mov x1, x0
-                  (list #x5F #x00 #x01 #xEB)       ; cmp x2, x1
-                  (list #xE0 #x07 #x9F #x9A)       ; cset x0, eq (equal)
-                  (list #x00 #x10 #x00 #xD3)       ; lsl x0, x0, #4
-                  (list #xFD #x7B #xC1 #xA8)))
-
+          (list 'cmp-gt (nc-compile (cadr expr) env fenv) (nc-compile (caddr expr) env fenv)))
          ((eq op '<=)
-          ;; Compile (<= a b) for ARM64
-          (append (emit-arm64 (first args) env)
-                  (list #xFD #x7B #xBF #xA9)       ; stp x29, x30, [sp, #-16]!
-                  (list #xE2 #x03 #x00 #xAA)       ; mov x2, x0
-                  (emit-arm64 (second args) env)
-                  (list #xE1 #x03 #x00 #xAA)       ; mov x1, x0
-                  (list #x5F #x00 #x01 #xEB)       ; cmp x2, x1
-                  (list #xE0 #xD7 #x9F #x9A)       ; cset x0, le (less or equal)
-                  (list #x00 #x10 #x00 #xD3)       ; lsl x0, x0, #4
-                  (list #xFD #x7B #xC1 #xA8)))
-
+          (list 'cmp-le (nc-compile (cadr expr) env fenv) (nc-compile (caddr expr) env fenv)))
          ((eq op '>=)
-          ;; Compile (>= a b) for ARM64
-          (append (emit-arm64 (first args) env)
-                  (list #xFD #x7B #xBF #xA9)       ; stp x29, x30, [sp, #-16]!
-                  (list #xE2 #x03 #x00 #xAA)       ; mov x2, x0
-                  (emit-arm64 (second args) env)
-                  (list #xE1 #x03 #x00 #xAA)       ; mov x1, x0
-                  (list #x5F #x00 #x01 #xEB)       ; cmp x2, x1
-                  (list #xE0 #xA7 #x9F #x9A)       ; cset x0, ge (greater or equal)
-                  (list #x00 #x10 #x00 #xD3)       ; lsl x0, x0, #4
-                  (list #xFD #x7B #xC1 #xA8)))
-
-         ((eq op '/=)
-          ;; Compile (/= a b) - not equal for ARM64
-          (append (emit-arm64 (first args) env)
-                  (list #xFD #x7B #xBF #xA9)       ; stp x29, x30, [sp, #-16]!
-                  (list #xE2 #x03 #x00 #xAA)       ; mov x2, x0
-                  (emit-arm64 (second args) env)
-                  (list #xE1 #x03 #x00 #xAA)       ; mov x1, x0
-                  (list #x5F #x00 #x01 #xEB)       ; cmp x2, x1
-                  (list #xE0 #x17 #x9F #x9A)       ; cset x0, ne (not equal)
-                  (list #x00 #x10 #x00 #xD3)       ; lsl x0, x0, #4
-                  (list #xFD #x7B #xC1 #xA8)))
-
-         ((eq op 'eql)
-          ;; Compile (eql a b) - object identity for ARM64
-          ;; For fixnums, same as =
-          (append (emit-arm64 (first args) env)
-                  (list #xFD #x7B #xBF #xA9)       ; stp x29, x30, [sp, #-16]!
-                  (list #xE2 #x03 #x00 #xAA)       ; mov x2, x0
-                  (emit-arm64 (second args) env)
-                  (list #xE1 #x03 #x00 #xAA)       ; mov x1, x0
-                  (list #x5F #x00 #x01 #xEB)       ; cmp x2, x1
-                  (list #xE0 #x07 #x9F #x9A)       ; cset x0, eq (equal)
-                  (list #x00 #x10 #x00 #xD3)       ; lsl x0, x0, #4
-                  (list #xFD #x7B #xC1 #xA8)))
-
-         ((eq op 'eq)
-          ;; Compile (eq a b) - pointer equality for ARM64
-          ;; For fixnums, same as =
-          (append (emit-arm64 (first args) env)
-                  (list #xFD #x7B #xBF #xA9)       ; stp x29, x30, [sp, #-16]!
-                  (list #xE2 #x03 #x00 #xAA)       ; mov x2, x0
-                  (emit-arm64 (second args) env)
-                  (list #xE1 #x03 #x00 #xAA)       ; mov x1, x0
-                  (list #x5F #x00 #x01 #xEB)       ; cmp x2, x1
-                  (list #xE0 #x07 #x9F #x9A)       ; cset x0, eq (equal)
-                  (list #x00 #x10 #x00 #xD3)       ; lsl x0, x0, #4
-                  (list #xFD #x7B #xC1 #xA8)))
-
-         ;; OLD car/cdr handlers - commented out, now using allocation-mode-aware versions below
-         ;; ((eq op 'car)
-         ;;  ;; Compile (car cons) for ARM64 - load car field
-         ;;  (append (emit-arm64 (first args) env)
-         ;;          (list #x00 #x3C #x40 #x92)       ; and x0, x0, #~0xF (clear tag)
-         ;;          (list #x00 #x08 #x40 #xF9)))    ; ldr x0, [x0, #16]
-
-         ;; ((eq op 'cdr)
-         ;;  ;; Compile (cdr cons) for ARM64 - load cdr field
-         ;;  (append (emit-arm64 (first args) env)
-         ;;          (list #x00 #x3C #x40 #x92)       ; and x0, x0, #~0xF (clear tag)
-         ;;          (list #x00 #x0C #x40 #xF9)))    ; ldr x0, [x0, #24]
-
-         ((eq op 'logand)
-          ;; Compile (logand a b) for ARM64 - bitwise AND
-          (append (emit-arm64 (first args) env)
-                  (list #xE0 #x0F #x1F #xF8)      ; str x0, [sp, #-8]!
-                  (emit-arm64 (second args) env)
-                  (list #xE1 #x03 #x40 #xF9)      ; ldr x1, [sp]
-                  (list #x00 #x00 #x01 #x8A)      ; and x0, x0, x1
-                  (list #xFF #x07 #x00 #x91)))    ; add sp, sp, #8
-
-         ((eq op 'logior)
-          ;; Compile (logior a b) for ARM64 - bitwise OR
-          (append (emit-arm64 (first args) env)
-                  (list #xE0 #x0F #x1F #xF8)
-                  (emit-arm64 (second args) env)
-                  (list #xE1 #x03 #x40 #xF9)
-                  (list #x00 #x00 #x01 #xAA)      ; orr x0, x0, x1
-                  (list #xFF #x07 #x00 #x91)))
-
-         ((eq op 'logxor)
-          ;; Compile (logxor a b) for ARM64 - bitwise XOR
-          (append (emit-arm64 (first args) env)
-                  (list #xE0 #x0F #x1F #xF8)
-                  (emit-arm64 (second args) env)
-                  (list #xE1 #x03 #x40 #xF9)
-                  (list #x00 #x00 #x01 #xCA)      ; eor x0, x0, x1
-                  (list #xFF #x07 #x00 #x91)))
-
-         ((eq op 'lognot)
-          ;; Compile (lognot a) for ARM64 - bitwise NOT
-          (append (emit-arm64 (first args) env)
-                  (list #x00 #x00 #x20 #xAA)))    ; mvn x0, x0
-
-         ((eq op 'ash)
-          ;; Compile (ash a b) for ARM64 - arithmetic shift
-          (append (emit-arm64 (second args) env)  ; shift count in x0
-                  (list #xE0 #x0F #x1F #xF8)      ; str x0, [sp, #-8]!
-                  (emit-arm64 (first args) env)   ; value in x0
-                  (list #xE1 #x03 #x40 #xF9)      ; ldr x1, [sp] (shift count)
-                  (list #x21 #x10 #x40 #xD3)      ; lsr x1, x1, #4 (untag)
-                  (list #x3F #x00 #x00 #xF1)      ; cmp x1, #0
-                  ;; b.ge to left shift (skip right shift)
-                  (list #x42 #x00 #x00 #x54)      ; b.ge #8
-                  ;; Right shift (negative count)
-                  (list #x21 #x00 #x00 #xCB)      ; neg x1, x1
-                  (list #x00 #xFC #xC1 #x9A)      ; asr x0, x0, x1
-                  (list #x01 #x00 #x00 #x14)      ; b #4 (skip left shift)
-                  ;; Left shift
-                  (list #x00 #x20 #xC1 #x9A)      ; lsl x0, x0, x1
-                  (list #xFF #x07 #x00 #x91)))    ; add sp, sp, #8
-
-         ;; Numeric operators
-         ((eq op 'min)
-          ;; Compile (min a b) for ARM64
-          (append (emit-arm64 (first args) env)
-                  (list #xE0 #x0F #x1F #xF8)      ; str x0, [sp, #-8]!
-                  (emit-arm64 (second args) env)
-                  (list #xE1 #x03 #x40 #xF9)      ; ldr x1, [sp]
-                  (list #x3F #x00 #x00 #xEB)      ; cmp x1, x0
-                  (list #x20 #xD0 #x81 #x9A)      ; csel x0, x1, x1, le (select x1 if x1 <= x0)
-                  (list #xFF #x07 #x00 #x91)))    ; add sp, sp, #8
-
-         ((eq op 'max)
-          ;; Compile (max a b) for ARM64
-          (append (emit-arm64 (first args) env)
-                  (list #xE0 #x0F #x1F #xF8)
-                  (emit-arm64 (second args) env)
-                  (list #xE1 #x03 #x40 #xF9)
-                  (list #x3F #x00 #x00 #xEB)      ; cmp x1, x0
-                  (list #x20 #xC0 #x81 #x9A)      ; csel x0, x1, x1, gt (select x1 if x1 > x0)
-                  (list #xFF #x07 #x00 #x91)))
-
-         ((eq op 'abs)
-          ;; Compile (abs a) for ARM64
-          (append (emit-arm64 (first args) env)
-                  (list #x01 #xFC #x7F #xD3)      ; lsr x1, x0, #63 (sign bit)
-                  (list #x00 #x00 #x01 #xCA)      ; eor x0, x0, x1
-                  (list #x00 #x00 #x01 #xCB)))    ; sub x0, x0, x1
-
-         ((eq op '1+)
-          ;; Compile (1+ a) for ARM64
-          (append (emit-arm64 (first args) env)
-                  (list #x00 #x40 #x00 #x91)))    ; add x0, x0, #16
-
-         ((eq op '1-)
-          ;; Compile (1- a) for ARM64
-          (append (emit-arm64 (first args) env)
-                  (list #x00 #x40 #x00 #xD1)))    ; sub x0, x0, #16
-
-         ;; Predicates
-         ((eq op 'zerop)
-          ;; Compile (zerop a) for ARM64
-          (append (emit-arm64 (first args) env)
-                  (list #x1F #x00 #x00 #xF1)      ; cmp x0, #0
-                  (list #xE0 #x07 #x9F #x9A)      ; cset x0, eq
-                  (list #x00 #x10 #x00 #xD3)))    ; lsl x0, x0, #4
-
-         ((eq op 'plusp)
-          ;; Compile (plusp a) for ARM64
-          (append (emit-arm64 (first args) env)
-                  (list #x1F #x00 #x00 #xF1)      ; cmp x0, #0
-                  (list #xE0 #xC7 #x9F #x9A)      ; cset x0, gt
-                  (list #x00 #x10 #x00 #xD3)))
-
-         ((eq op 'minusp)
-          ;; Compile (minusp a) for ARM64
-          (append (emit-arm64 (first args) env)
-                  (list #x1F #x00 #x00 #xF1)      ; cmp x0, #0
-                  (list #xE0 #xB7 #x9F #x9A)      ; cset x0, lt
-                  (list #x00 #x10 #x00 #xD3)))
-
-         ((eq op 'evenp)
-          ;; Compile (evenp a) for ARM64
-          (append (emit-arm64 (first args) env)
-                  (list #x00 #x10 #x40 #xD3)      ; lsr x0, x0, #4 (untag)
-                  (list #x00 #x04 #x00 #x92)      ; and x0, x0, #1
-                  (list #x00 #x04 #x00 #xD2)      ; eor x0, x0, #1 (invert)
-                  (list #x00 #x10 #x00 #xD3)))    ; lsl x0, x0, #4
-
-         ((eq op 'oddp)
-          ;; Compile (oddp a) for ARM64
-          (append (emit-arm64 (first args) env)
-                  (list #x00 #x10 #x40 #xD3)      ; lsr x0, x0, #4 (untag)
-                  (list #x00 #x04 #x00 #x92)      ; and x0, x0, #1
-                  (list #x00 #x10 #x00 #xD3)))    ; lsl x0, x0, #4
-
-         ;; Type predicates (for fixnum-only system)
-         ((eq op 'numberp)
-          ;; numberp always returns true for fixnums
-          (append (emit-arm64 (first args) env)
-                  (list #x20 #x02 #x80 #xD2)))    ; mov x0, #16 (tagged 1)
-
-         ((eq op 'integerp)
-          ;; integerp always returns true for fixnums
-          (append (emit-arm64 (first args) env)
-                  (list #x20 #x02 #x80 #xD2)))    ; mov x0, #16 (tagged 1)
-
-         ((eq op 'atom)
-          ;; atom always returns true for fixnums (not conses)
-          (append (emit-arm64 (first args) env)
-                  (list #x20 #x02 #x80 #xD2)))    ; mov x0, #16 (tagged 1)
-
-         ((eq op 'listp)
-          ;; listp always returns false for fixnums
-          (append (emit-arm64 (first args) env)
-                  (list #xE0 #x03 #x1F #xAA)))    ; mov x0, xzr (tagged 0)
-
-         ((eq op 'consp)
-          ;; consp always returns false for fixnums
-          (append (emit-arm64 (first args) env)
-                  (list #xE0 #x03 #x1F #xAA)))    ; mov x0, xzr (tagged 0)
-
-         ((eq op 'symbolp)
-          ;; symbolp always returns false for fixnums
-          (append (emit-arm64 (first args) env)
-                  (list #xE0 #x03 #x1F #xAA)))    ; mov x0, xzr (tagged 0)
-
-         ((eq op 'signum)
-          ;; Compile (signum a) - return -1, 0, or 1 based on sign
-          ;; Use conditional select: x < 0 ? -1 : (x > 0 ? 1 : 0)
-          (append (emit-arm64 (first args) env)
-                  (list #x00 #x10 #x44 #xD3)      ; lsr x0, x0, #4 (untag)
-                  (list #x1F #x00 #x00 #xF1)      ; cmp x0, #0
-                  (list #xE1 #xB3 #x9F #x1A)      ; csetm x1, lt (x1 = -1 if neg else 0)
-                  (list #xE2 #xC7 #x9A #x9A)      ; cset x2, gt (x2 = 1 if pos else 0)
-                  (list #x00 #x00 #x82 #x8B)      ; add x0, x0, x2 (combine)
-                  (list #x00 #x00 #x01 #x8B)      ; add x0, x0, x1
-                  (list #x00 #x10 #x00 #xD3)))    ; lsl x0, x0, #4 (retag)
-
-         ((eq op 'logcount)
-          ;; Compile (logcount a) - count number of set bits
-          ;; Uses loop to count bits (ARM64 has no single instruction for this in base ISA)
-          (append (emit-arm64 (first args) env)
-                  (list #x00 #x10 #x44 #xD3)      ; lsr x0, x0, #4 (untag)
-                  (list #x01 #x00 #x80 #xD2)      ; mov x1, #0 (counter)
-                  ;; Loop start
-                  (list #x1F #x00 #x00 #xF1)      ; cmp x0, #0
-                  (list #x60 #x00 #x00 #x54)      ; b.eq +12 (exit if zero)
-                  (list #x21 #x04 #x00 #x91)      ; add x1, x1, #1 (counter++)
-                  (list #x02 #x00 #x00 #xD1)      ; sub x2, x0, #1
-                  (list #x00 #x00 #x02 #x8A)      ; and x0, x0, x2 (clear lowest bit)
-                  (list #xE0 #xFF #xFF #x17)      ; b -8 (loop back)
-                  ;; Exit
-                  (list #x00 #x00 #x01 #xAA)      ; mov x0, x1 (result = counter)
-                  (list #x00 #x10 #x00 #xD3)))    ; lsl x0, x0, #4 (retag)
-
-         ((eq op 'logtest)
-          ;; Compile (logtest a b) - test if any bits are set in both
-          (append (emit-arm64 (first args) env)
-                  (list #xFD #x7B #xBF #xA9)      ; stp x29, x30, [sp, #-16]!
-                  (list #xE2 #x03 #x00 #xAA)      ; mov x2, x0 (save first)
-                  (emit-arm64 (second args) env)
-                  (list #xE1 #x03 #x00 #xAA)      ; mov x1, x0 (second to x1)
-                  (list #x40 #x10 #x44 #xD3)      ; lsr x0, x2, #4 (untag first)
-                  (list #x21 #x10 #x44 #xD3)      ; lsr x1, x1, #4 (untag second)
-                  (list #x00 #x00 #x01 #x8A)      ; and x0, x0, x1
-                  (list #xE0 #x17 #x9F #x9A)      ; cset x0, ne (1 if result != 0)
-                  (list #x00 #x10 #x00 #xD3)      ; lsl x0, x0, #4 (retag)
-                  (list #xFD #x7B #xC1 #xA8)))    ; ldp x29, x30, [sp], #16
-
-         ((eq op 'logbitp)
-          ;; Compile (logbitp position integer) for ARM64
-          (append (emit-arm64 (first args) env)       ; position
-                  (list #xFD #x7B #xBF #xA9)           ; stp x29, x30, [sp, #-16]!
-                  (list #xE2 #x03 #x00 #xAA)           ; mov x2, x0 (save position)
-                  (emit-arm64 (second args) env)       ; integer
-                  (list #x42 #x10 #x44 #xD3)           ; lsr x2, x2, #4 (untag position)
-                  (list #x00 #x10 #x44 #xD3)           ; lsr x0, x0, #4 (untag integer)
-                  (list #x00 #x24 #xC2 #x9A)           ; lsr x0, x0, x2 (shift right by position)
-                  (list #x00 #x04 #x00 #x92)           ; and x0, x0, #1 (get bit)
-                  (list #x00 #x10 #x00 #xD3)           ; lsl x0, x0, #4 (retag)
-                  (list #xFD #x7B #xC1 #xA8)))         ; ldp x29, x30, [sp], #16
-
-         ((eq op 'lognand)
-          ;; Compile (lognand a b) for ARM64 - bitwise NAND
-          (append (emit-arm64 (first args) env)
-                  (list #xFD #x7B #xBF #xA9)      ; stp x29, x30, [sp, #-16]!
-                  (list #xE2 #x03 #x00 #xAA)      ; mov x2, x0
-                  (emit-arm64 (second args) env)
-                  (list #xE1 #x03 #x00 #xAA)      ; mov x1, x0
-                  (list #xE0 #x03 #x02 #xAA)      ; mov x0, x2
-                  (list #x00 #x00 #x01 #x8A)      ; and x0, x0, x1
-                  (list #x00 #x00 #x20 #xAA)      ; mvn x0, x0 (bitwise not)
-                  (list #x00 #x3C #x00 #x92)      ; and x0, x0, #~0xF (keep only data bits)
-                  (list #xFD #x7B #xC1 #xA8)))    ; ldp x29, x30, [sp], #16
-
-         ((eq op 'lognor)
-          ;; Compile (lognor a b) for ARM64 - bitwise NOR
-          (append (emit-arm64 (first args) env)
-                  (list #xFD #x7B #xBF #xA9)      ; stp x29, x30, [sp, #-16]!
-                  (list #xE2 #x03 #x00 #xAA)      ; mov x2, x0
-                  (emit-arm64 (second args) env)
-                  (list #xE1 #x03 #x00 #xAA)      ; mov x1, x0
-                  (list #xE0 #x03 #x02 #xAA)      ; mov x0, x2
-                  (list #x00 #x00 #x01 #xAA)      ; orr x0, x0, x1
-                  (list #x00 #x00 #x20 #xAA)      ; mvn x0, x0 (bitwise not)
-                  (list #x00 #x3C #x00 #x92)      ; and x0, x0, #~0xF (keep only data bits)
-                  (list #xFD #x7B #xC1 #xA8)))    ; ldp x29, x30, [sp], #16
-
-         ((eq op 'logeqv)
-          ;; Compile (logeqv a b) for ARM64 - bitwise equivalence
-          (append (emit-arm64 (first args) env)
-                  (list #xFD #x7B #xBF #xA9)      ; stp x29, x30, [sp, #-16]!
-                  (list #xE2 #x03 #x00 #xAA)      ; mov x2, x0
-                  (emit-arm64 (second args) env)
-                  (list #xE1 #x03 #x00 #xAA)      ; mov x1, x0
-                  (list #xE0 #x03 #x02 #xAA)      ; mov x0, x2
-                  (list #x00 #x00 #x01 #xCA)      ; eor x0, x0, x1
-                  (list #x00 #x00 #x20 #xAA)      ; mvn x0, x0 (bitwise not)
-                  (list #x00 #x3C #x00 #x92)      ; and x0, x0, #~0xF (keep only data bits)
-                  (list #xFD #x7B #xC1 #xA8)))    ; ldp x29, x30, [sp], #16
-
-         ((eq op 'gcd)
-          ;; Compile (gcd a b) for ARM64 - greatest common divisor
-          ;; Using Euclidean algorithm with loop
-          (append (emit-arm64 (first args) env)
-                  (list #xFD #x7B #xBF #xA9)       ; stp x29, x30, [sp, #-16]!
-                  (list #xE2 #x03 #x00 #xAA)       ; mov x2, x0 (save first)
-                  (emit-arm64 (second args) env)
-                  (list #xE1 #x03 #x00 #xAA)       ; mov x1, x0 (second to x1)
-                  (list #xE0 #x03 #x02 #xAA)       ; mov x0, x2 (first back to x0)
-                  (list #x00 #x10 #x44 #xD3)       ; lsr x0, x0, #4 (untag)
-                  (list #x21 #x10 #x44 #xD3)       ; lsr x1, x1, #4 (untag)
-                  ;; abs(x0): x0 = (x0 XOR (x0>>63)) - (x0>>63)
-                  (list #x02 #xFC #x47 #x93)       ; asr x2, x0, #63 (sign extend)
-                  (list #x00 #x00 #x02 #xCA)       ; eor x0, x0, x2
-                  (list #x00 #x00 #x02 #xCB)       ; sub x0, x0, x2
-                  ;; abs(x1): x1 = (x1 XOR (x1>>63)) - (x1>>63)
-                  (list #x22 #xFC #x47 #x93)       ; asr x2, x1, #63
-                  (list #x21 #x00 #x02 #xCA)       ; eor x1, x1, x2
-                  (list #x21 #x00 #x02 #xCB)       ; sub x1, x1, x2
-                  ;; GCD loop: while x1 != 0
-                  ;; Check if x1 == 0, use cmp and conditional select approach
-                  (list #x3F #x00 #x01 #xEB)       ; cmp x1, #0
-                  (list #x03 #x00 #x00 #x54)       ; b.eq +6 (to done, skip 6 instructions)
-                  ;; Compute remainder: x3 = x0 - (x0/x1)*x1
-                  (list #xE2 #x0C #xC1 #x9A)       ; sdiv x2, x0, x1 (quotient)
-                  (list #x03 #x7C #x01 #x9B)       ; msub x3, x0, x1, x2 (remainder)
-                  (list #xE0 #x03 #x01 #xAA)       ; mov x0, x1 (a = b)
-                  (list #xE1 #x03 #x03 #xAA)       ; mov x1, x3 (b = remainder)
-                  (list #xFA #xFF #xFF #x17)       ; b -6 (back to cmp)
-                  ;; Done: x0 has GCD
-                  (list #x00 #x10 #x00 #xD3)       ; lsl x0, x0, #4 (retag)
-                  (list #xFD #x7B #xC1 #xA8)))     ; ldp x29, x30, [sp], #16
-
-         ((eq op 'lcm)
-          ;; Compile (lcm a b) for ARM64 - least common multiple
-          ;; Formula: lcm(a,b) = |a*b| / gcd(a,b)
-          (append (emit-arm64 (first args) env)
-                  (list #xFD #x7B #xBF #xA9)       ; stp x29, x30, [sp, #-16]!
-                  (list #xE2 #x03 #x00 #xAA)       ; mov x2, x0 (save first)
-                  (emit-arm64 (second args) env)
-                  (list #xE1 #x03 #x00 #xAA)       ; mov x1, x0 (second to x1)
-                  (list #xE0 #x03 #x02 #xAA)       ; mov x0, x2 (first back to x0)
-                  (list #x00 #x10 #x44 #xD3)       ; lsr x0, x0, #4 (untag)
-                  (list #x21 #x10 #x44 #xD3)       ; lsr x1, x1, #4 (untag)
-                  ;; Check for zero
-                  (list #x1F #x00 #x00 #xF1)       ; cmp x0, #0
-                  (list #xE0 #x01 #x00 #x54)       ; b.eq +15 (return 0)
-                  (list #x3F #x00 #x00 #xF1)       ; cmp x1, #0
-                  (list #xC0 #x01 #x00 #x54)       ; b.eq +14 (return 0)
-                  ;; abs(x0)
-                  (list #x02 #xFC #x47 #x93)       ; asr x2, x0, #63
-                  (list #x00 #x00 #x02 #xCA)       ; eor x0, x0, x2
-                  (list #x00 #x00 #x02 #xCB)       ; sub x0, x0, x2
-                  (list #xE3 #x03 #x00 #xAA)       ; mov x3, x0 (save |a|)
-                  ;; abs(x1)
-                  (list #x02 #xFC #x47 #x93)       ; asr x2, x1, #63
-                  (list #x21 #x00 #x02 #xCA)       ; eor x1, x1, x2
-                  (list #x21 #x00 #x02 #xCB)       ; sub x1, x1, x2
-                  (list #xE4 #x03 #x01 #xAA)       ; mov x4, x1 (save |b|)
-                  ;; Compute product |a| * |b|
-                  (list #x60 #x7C #x01 #x9B)       ; mul x0, x3, x1 (x0 = |a| * |b|)
-                  (list #xE5 #x03 #x00 #xAA)       ; mov x5, x0 (save product)
-                  ;; Compute GCD(|a|, |b|) - x3=|a|, x4=|b|
-                  (list #xE0 #x03 #x03 #xAA)       ; mov x0, x3 (|a|)
-                  (list #xE1 #x03 #x04 #xAA)       ; mov x1, x4 (|b|)
-                  ;; GCD loop
-                  (list #x3F #x00 #x00 #xF1)       ; cmp x1, #0
-                  (list #x03 #x00 #x00 #x54)       ; b.eq +6
-                  (list #xE2 #x0C #xC1 #x9A)       ; sdiv x2, x0, x1
-                  (list #x03 #x7C #x01 #x9B)       ; msub x3, x0, x1, x2
-                  (list #xE0 #x03 #x01 #xAA)       ; mov x0, x1
-                  (list #xE1 #x03 #x03 #xAA)       ; mov x1, x3
-                  (list #xFA #xFF #xFF #x17)       ; b -6
-                  ;; x0 = gcd, compute product/gcd
-                  (list #xE1 #x03 #x00 #xAA)       ; mov x1, x0 (gcd)
-                  (list #xE0 #x03 #x05 #xAA)       ; mov x0, x5 (product)
-                  (list #xE0 #x0C #xC1 #x9A)       ; sdiv x0, x0, x1
-                  (list #x00 #x10 #x00 #xD3)       ; lsl x0, x0, #4 (retag)
-                  (list #xFD #x7B #xC1 #xA8)       ; ldp x29, x30, [sp], #16
-                  (list #x00 #x08 #x00 #x14)       ; b +8 (skip zero case)
-                  ;; Zero case
-                  (list #x00 #x00 #x80 #xD2)       ; mov x0, #0
-                  (list #x00 #x10 #x00 #xD3)       ; lsl x0, x0, #4
-                  (list #xFD #x7B #xC1 #xA8)))     ; ldp x29, x30, [sp], #16
-
-         ((eq op 'isqrt)
-          ;; Compile (isqrt n) for ARM64 - integer square root using Newton's method
-          (append (emit-arm64 (first args) env)
-                  (list #x00 #x10 #x44 #xD3)       ; lsr x0, x0, #4 (untag)
-                  ;; Handle special cases: if n <= 1, return n
-                  (list #x1F #x08 #x00 #xF1)       ; cmp x0, #2
-                  (list #xC3 #x00 #x00 #x54)       ; b.lo +6 (skip to retag if < 2)
-                  ;; Initialize: x1 = n, x2 = n/2 (initial guess)
-                  (list #xE1 #x03 #x00 #xAA)       ; mov x1, x0 (save n)
-                  (list #x02 #x08 #x40 #xD3)       ; lsr x2, x0, #1 (x2 = n/2)
-                  ;; Newton loop
-                  (list #xE3 #x03 #x02 #xAA)       ; mov x3, x2 (save old guess)
-                  (list #xE0 #x03 #x01 #xAA)       ; mov x0, x1 (n)
-                  (list #xE0 #x0C #xC3 #x9A)       ; sdiv x0, x0, x3 (n/x)
-                  (list #x00 #x00 #x03 #x8B)       ; add x0, x0, x3 (n/x + x)
-                  (list #x02 #x08 #x40 #xD3)       ; lsr x2, x0, #1 ((n/x + x)/2)
-                  ;; Check convergence: if old >= new, done
-                  (list #x7F #x00 #x02 #xEB)       ; cmp x3, x2
-                  (list #x42 #x00 #x00 #x54)       ; b.hs +2 (if old >= new, use old)
-                  (list #xF9 #xFF #xFF #x17)       ; b -7 (back to loop)
-                  ;; Use old value (converged)
-                  (list #xE0 #x03 #x03 #xAA)       ; mov x0, x3 (result)
-                  ;; Retag and return
-                  (list #x00 #x10 #x00 #xD3)))     ; lsl x0, x0, #4 (retag)
-
-         ((eq op 'integer-length)
-          ;; Compile (integer-length n) for ARM64
-          ;; Returns number of bits needed to represent n
-          (append (emit-arm64 (first args) env)
-                  (list #x00 #x10 #x44 #xD3)       ; lsr x0, x0, #4 (untag)
-                  ;; Check if negative
-                  (list #x1F #x00 #x00 #xF1)       ; cmp x0, #0
-                  (list #x4A #x00 #x00 #x54)       ; b.ge +2 (if positive, skip)
-                  ;; Negative: compute -n - 1
-                  (list #x00 #x00 #x00 #xCB)       ; neg x0, x0
-                  (list #x00 #x04 #x00 #xD1)       ; sub x0, x0, #1
-                  ;; Check for zero
-                  (list #x1F #x00 #x00 #xF1)       ; cmp x0, #0
-                  (list #x60 #x00 #x00 #x54)       ; b.eq +3 (return 0 if zero)
-                  ;; Use CLZ then compute 64 - clz
-                  (list #xE1 #x10 #xC0 #xDA)       ; clz x1, x0 (count leading zeros)
-                  (list #x00 #x00 #x80 #xD2)       ; mov x0, #64
-                  (list #x00 #x00 #x01 #xCB)       ; sub x0, x0, x1 (64 - clz = bit position + 1)
-                  ;; Retag and return
-                  (list #x00 #x10 #x00 #xD3)))     ; lsl x0, x0, #4 (retag)
-
-         ((eq op 'expt)
-          ;; Compile (expt base exponent) for ARM64
-          (append (emit-arm64 (first args) env)
-                  (list #xFD #x7B #xBF #xA9)       ; stp x29, x30, [sp, #-16]!
-                  (list #xE2 #x03 #x00 #xAA)       ; mov x2, x0 (save base)
-                  (emit-arm64 (second args) env)
-                  (list #xE1 #x03 #x00 #xAA)       ; mov x1, x0 (exponent to x1)
-                  (list #xE0 #x03 #x02 #xAA)       ; mov x0, x2 (base back to x0)
-                  (list #x00 #x10 #x44 #xD3)       ; lsr x0, x0, #4 (untag base)
-                  (list #x21 #x10 #x44 #xD3)       ; lsr x1, x1, #4 (untag exponent)
-                  ;; Check for special cases
-                  (list #x3F #x00 #x00 #xF1)       ; cmp x1, #0
-                  (list #x0A #x00 #x00 #x54)       ; b.lt +1 (negative exp)
-                  (list #x60 #x01 #x00 #x54)       ; b.eq +11 (exp = 0, return 1)
-                  (list #x3F #x04 #x00 #xF1)       ; cmp x1, #1
-                  (list #x80 #x01 #x00 #x54)       ; b.eq +12 (exp = 1, return base)
-                  ;; Initialize: x2 = result = 1, x3 = base
-                  (list #xE3 #x03 #x00 #xAA)       ; mov x3, x0 (save base)
-                  (list #x22 #x00 #x80 #xD2)       ; mov x2, #1 (result = 1)
-                  ;; Loop: while x1 > 0
-                  (list #x3F #x00 #x00 #xF1)       ; cmp x1, #0
-                  (list #x60 #x00 #x00 #x54)       ; b.eq +3 (done)
-                  (list #x42 #x7C #x03 #x9B)       ; mul x2, x2, x3 (result *= base)
-                  (list #x21 #x04 #x00 #xD1)       ; sub x1, x1, #1
-                  (list #xFD #xFF #xFF #x17)       ; b -3
-                  ;; Done: x2 has result
-                  (list #xE0 #x03 #x02 #xAA)       ; mov x0, x2
-                  (list #x00 #x10 #x00 #xD3)       ; lsl x0, x0, #4 (retag)
-                  (list #xFD #x7B #xC1 #xA8)       ; ldp x29, x30, [sp], #16
-                  (list #x03 #x08 #x00 #x14)       ; b +3 (skip special cases)
-                  ;; Exponent = 1: return base
-                  (list #x00 #x10 #x00 #xD3)       ; lsl x0, x0, #4
-                  (list #xFD #x7B #xC1 #xA8)       ; ldp x29, x30, [sp], #16
-                  (list #xC0 #x03 #x5F #xD6)       ; ret
-                  ;; Exponent = 0: return 1
-                  (list #x20 #x02 #x80 #xD2)       ; mov x0, #16 (tagged 1)
-                  (list #xFD #x7B #xC1 #xA8)))     ; ldp x29, x30, [sp], #16
-
-         ;; Rounding functions
-         ;; Since we're working with fixnums (already integers), these are identity operations
-         ((eq op 'floor)
-          ;; floor(n) for integer n returns n
-          (emit-arm64 (first args) env))
-
-         ((eq op 'ceiling)
-          ;; ceiling(n) for integer n returns n
-          (emit-arm64 (first args) env))
-
-         ((eq op 'truncate)
-          ;; truncate(n) for integer n returns n
-          (emit-arm64 (first args) env))
-
-         ((eq op 'round)
-          ;; round(n) for integer n returns n
-          (emit-arm64 (first args) env))
-
-         ;; Two-argument rounding division operators
-         ((eq op 'ffloor)
-          ;; ffloor(a, b) = floor(a/b) - rounds toward negative infinity
-          (append (emit-arm64 (first args) env)
-                  (list #xFD #x7B #xBF #xA9)       ; stp x29, x30, [sp, #-16]!
-                  (list #xE2 #x03 #x00 #xAA)       ; mov x2, x0 (save dividend)
-                  (emit-arm64 (second args) env)
-                  (list #xE1 #x03 #x00 #xAA)       ; mov x1, x0 (divisor to x1)
-                  (list #xE0 #x03 #x02 #xAA)       ; mov x0, x2 (dividend back to x0)
-                  ;; Save original values for sign check
-                  (list #xE4 #x03 #x00 #xAA)       ; mov x4, x0 (save original dividend)
-                  (list #xE5 #x03 #x01 #xAA)       ; mov x5, x1 (save original divisor)
-                  (list #x00 #x10 #x44 #xD3)       ; lsr x0, x0, #4 (untag dividend)
-                  (list #x21 #x10 #x44 #xD3)       ; lsr x1, x1, #4 (untag divisor)
-                  ;; Compute quotient and remainder
-                  (list #xE3 #x0C #xC1 #x9A)       ; sdiv x3, x0, x1 (quotient in x3)
-                  (list #x06 #x80 #x01 #x9B)       ; msub x6, x0, x1, x3 (remainder in x6)
-                  ;; Check if adjustment needed: remainder != 0 and signs differ
-                  (list #xDF #x00 #x00 #xF1)       ; cmp x6, #0
-                  (list #x60 #x00 #x00 #x54)       ; b.eq +12 (skip if rem = 0)
-                  ;; Check if signs differ by XOR
-                  (list #x84 #x00 #x05 #xCA)       ; eor x4, x4, x5 (signs differ if MSB set)
-                  (list #x9F #x00 #x00 #xF1)       ; cmp x4, #0
-                  (list #x4A #x00 #x00 #x54)       ; b.ge +8 (skip if same sign)
-                  ;; Different signs and remainder: subtract 1
-                  (list #x63 #x04 #x00 #xD1)       ; sub x3, x3, #1
-                  ;; Return quotient
-                  (list #xE0 #x03 #x03 #xAA)       ; mov x0, x3
-                  (list #x00 #x10 #x00 #xD3)       ; lsl x0, x0, #4 (retag)
-                  (list #xFD #x7B #xC1 #xA8)))     ; ldp x29, x30, [sp], #16
-
-         ((eq op 'fceiling)
-          ;; fceiling(a, b) = ceiling(a/b) - rounds toward positive infinity
-          (append (emit-arm64 (first args) env)
-                  (list #xFD #x7B #xBF #xA9)       ; stp x29, x30, [sp, #-16]!
-                  (list #xE2 #x03 #x00 #xAA)       ; mov x2, x0 (save dividend)
-                  (emit-arm64 (second args) env)
-                  (list #xE1 #x03 #x00 #xAA)       ; mov x1, x0 (divisor to x1)
-                  (list #xE0 #x03 #x02 #xAA)       ; mov x0, x2 (dividend back to x0)
-                  ;; Save original values for sign check
-                  (list #xE4 #x03 #x00 #xAA)       ; mov x4, x0 (save original dividend)
-                  (list #xE5 #x03 #x01 #xAA)       ; mov x5, x1 (save original divisor)
-                  (list #x00 #x10 #x44 #xD3)       ; lsr x0, x0, #4 (untag dividend)
-                  (list #x21 #x10 #x44 #xD3)       ; lsr x1, x1, #4 (untag divisor)
-                  ;; Compute quotient and remainder
-                  (list #xE3 #x0C #xC1 #x9A)       ; sdiv x3, x0, x1 (quotient in x3)
-                  (list #x06 #x80 #x01 #x9B)       ; msub x6, x0, x1, x3 (remainder in x6)
-                  ;; Check if adjustment needed: remainder != 0 and signs same
-                  (list #xDF #x00 #x00 #xF1)       ; cmp x6, #0
-                  (list #x60 #x00 #x00 #x54)       ; b.eq +12 (skip if rem = 0)
-                  ;; Check if signs same by XOR
-                  (list #x84 #x00 #x05 #xCA)       ; eor x4, x4, x5 (signs same if MSB not set)
-                  (list #x9F #x00 #x00 #xF1)       ; cmp x4, #0
-                  (list #x0B #x00 #x00 #x54)       ; b.lt +8 (skip if different signs)
-                  ;; Same signs and remainder: add 1
-                  (list #x63 #x04 #x00 #x91)       ; add x3, x3, #1
-                  ;; Return quotient
-                  (list #xE0 #x03 #x03 #xAA)       ; mov x0, x3
-                  (list #x00 #x10 #x00 #xD3)       ; lsl x0, x0, #4 (retag)
-                  (list #xFD #x7B #xC1 #xA8)))     ; ldp x29, x30, [sp], #16
-
-         ((eq op 'ftruncate)
-          ;; ftruncate(a, b) = truncate(a/b) - rounds toward zero
-          ;; For integers, this is the same as regular division
-          (append (emit-arm64 (first args) env)
-                  (list #xFD #x7B #xBF #xA9)       ; stp x29, x30, [sp, #-16]!
-                  (list #xE2 #x03 #x00 #xAA)       ; mov x2, x0 (save dividend)
-                  (emit-arm64 (second args) env)
-                  (list #xE1 #x03 #x00 #xAA)       ; mov x1, x0 (divisor to x1)
-                  (list #xE0 #x03 #x02 #xAA)       ; mov x0, x2 (dividend back to x0)
-                  (list #x00 #x10 #x44 #xD3)       ; lsr x0, x0, #4 (untag dividend)
-                  (list #x21 #x10 #x44 #xD3)       ; lsr x1, x1, #4 (untag divisor)
-                  (list #x00 #x0C #xC1 #x9A)       ; sdiv x0, x0, x1 (signed divide)
-                  (list #x00 #x10 #x00 #xD3)       ; lsl x0, x0, #4 (retag result)
-                  (list #xFD #x7B #xC1 #xA8)))     ; ldp x29, x30, [sp], #16
-
-         ((eq op 'fround)
-          ;; fround(a, b) = round(a/b) - rounds to nearest integer
-          ;; Simplified: just use truncate for integers
-          (append (emit-arm64 (first args) env)
-                  (list #xFD #x7B #xBF #xA9)       ; stp x29, x30, [sp, #-16]!
-                  (list #xE2 #x03 #x00 #xAA)       ; mov x2, x0 (save dividend)
-                  (emit-arm64 (second args) env)
-                  (list #xE1 #x03 #x00 #xAA)       ; mov x1, x0 (divisor to x1)
-                  (list #xE0 #x03 #x02 #xAA)       ; mov x0, x2 (dividend back to x0)
-                  (list #x00 #x10 #x44 #xD3)       ; lsr x0, x0, #4 (untag dividend)
-                  (list #x21 #x10 #x44 #xD3)       ; lsr x1, x1, #4 (untag divisor)
-                  (list #x00 #x0C #xC1 #x9A)       ; sdiv x0, x0, x1 (signed divide)
-                  (list #x00 #x10 #x00 #xD3)       ; lsl x0, x0, #4 (retag result)
-                  (list #xFD #x7B #xC1 #xA8)))     ; ldp x29, x30, [sp], #16
-
-         ;; List operations - integrated with runtime heap via FFI trampolines
+          (list 'cmp-ge (nc-compile (cadr expr) env fenv) (nc-compile (caddr expr) env fenv)))
+         ((eq op 'if)
+          (list 'if-ir
+                (nc-compile (cadr expr) env fenv)
+                (nc-compile (caddr expr) env fenv)
+                (if (cdddr expr) (nc-compile (cadddr expr) env fenv) (list 'lit 0))))
+         ((eq op 'LET)  ; Changed to uppercase
+          (let* ((bindings (cadr expr))
+                 (body (caddr expr)))
+            (labels ((proc (bs eacc vals names)
+                       (if (null bs)
+                           (list eacc (reverse vals) (reverse names))
+                           (let* ((b (car bs))
+                                  (nm (if (consp b) (car b) b))
+                                  (vl (if (consp b) (cadr b) 0))
+                                  (vi (nc-compile vl env fenv))
+                                  (ne (nc-env-extend (list (list nm)) eacc)))
+                             (proc (cdr bs) ne (cons vi vals) (cons nm names)))))
+                     ;; Avoid mapcar - use labels recursion instead
+                     (get-offs (ns e acc)
+                       (if (null ns)
+                           (reverse acc)
+                           (get-offs (cdr ns) e (cons (nc-env-lookup (car ns) e) acc)))))
+              (let* ((r (proc bindings env nil nil))
+                     (nenv (car r))
+                     (vals (cadr r))
+                     (names (caddr r))
+                     (offs (get-offs names nenv nil))
+                     (bir (nc-compile body nenv fenv)))
+                (list 'let-ir vals bir (length bindings) offs)))))
+         ((eq op 'LET*)  ; Changed to uppercase
+          (let ((bs (cadr expr)) (body (caddr expr)))
+            (if (null bs)
+                (nc-compile body env fenv)
+                (nc-compile (list 'LET (list (car bs)) (list 'LET* (cdr bs) body)) env fenv))))
+         ((eq op 'quote) (nc-quote-ir (cadr expr)))
          ((eq op 'cons)
-          ;; (cons car cdr) - allocate cons cell on heap
-          (ecase *allocation-mode*
-            (:ffi
-             ;; Phase 1: Call FFI trampoline to SBCL runtime
-             ;; ARM64 calling convention: X0 (car), X1 (cdr), Return: X0
-             (unless *runtime-cons-addr*
-               (error "Runtime not initialized. Call (initialize-runtime-integration) first."))
-             (let ((func-addr (sb-sys:sap-int *runtime-cons-addr*)))
-               (append
-                ;; Evaluate car into X0
-                (emit-arm64 (first args) env)
-                ;; Save car in X10
-                '(#xEA #x03 #x00 #xAA)            ; mov x10, x0
-                ;; Evaluate cdr into X0
-                (emit-arm64 (second args) env)
-                ;; Setup call: X0=car, X1=cdr
-                '(#xE1 #x03 #x00 #xAA)            ; mov x1, x0 (cdr in X1)
-                '(#xE0 #x03 #x0A #xAA)            ; mov x0, x10 (car in X0)
-                ;; Load function address into X9 and call
-                (arm64-load-imm64 9 func-addr)
-                '(#x20 #x01 #x3F #xD6))))        ; blr x9
-
-            (:inline
-             ;; Phase 2: Call standalone heap cons function
-             (emit-inline-cons-arm64
-              (emit-arm64 (first args) env)
-              (emit-arm64 (second args) env)))))
-
-         ((eq op 'car)
-          ;; (car cons-ptr) - read car field from cons cell
-          (format t "[DEBUG ARM64] car handler: *allocation-mode* = ~S~%" *allocation-mode*)
-          (ecase *allocation-mode*
-            (:ffi
-             ;; Phase 1: Call FFI trampoline
-             ;; ARM64 calling convention: X0 (cons-ptr), Return: X0
-             (unless *runtime-car-addr*
-               (error "Runtime not initialized. Call (initialize-runtime-integration) first."))
-             (let ((func-addr (sb-sys:sap-int *runtime-car-addr*)))
-               (append
-                ;; Evaluate cons expression into X0
-                (emit-arm64 (first args) env)
-                ;; Load function address into X9 and call
-                (arm64-load-imm64 9 func-addr)
-                '(#x20 #x01 #x3F #xD6))))        ; blr x9
-
-            (:inline
-             ;; Phase 2: Call standalone car function
-             (emit-inline-car-arm64
-              (emit-arm64 (first args) env)))))
-
-         ((eq op 'cdr)
-          ;; (cdr cons-ptr) - read cdr field from cons cell
-          (ecase *allocation-mode*
-            (:ffi
-             ;; Phase 1: Call FFI trampoline
-             ;; ARM64 calling convention: X0 (cons-ptr), Return: X0
-             (unless *runtime-cdr-addr*
-               (error "Runtime not initialized. Call (initialize-runtime-integration) first."))
-             (let ((func-addr (sb-sys:sap-int *runtime-cdr-addr*)))
-               (append
-                ;; Evaluate cons expression into X0
-                (emit-arm64 (first args) env)
-                ;; Load function address into X9 and call
-                (arm64-load-imm64 9 func-addr)
-                '(#x20 #x01 #x3F #xD6))))        ; blr x9
-
-            (:inline
-             ;; Phase 2: Call standalone cdr function
-             (emit-inline-cdr-arm64
-              (emit-arm64 (first args) env)))))
-
+          (list 'cons-ir (nc-compile (cadr expr) env fenv) (nc-compile (caddr expr) env fenv)))
+         ((eq op 'car) (list 'car-ir (nc-compile (cadr expr) env fenv)))
+         ((eq op 'cdr) (list 'cdr-ir (nc-compile (cadr expr) env fenv)))
          ((eq op 'list)
-          ;; (list a b c ...) - build list by repeated cons
-          (if (null args)
-              ;; Empty list is 0 (nil)
-              (int-to-bytes (logior #xD2800000  ; MOVZ X0, #0
-                                    (ash 0 5))
-                            4)
-              ;; Build nested cons expressions
-              (let ((cons-expr (reduce (lambda (rest-expr elem-expr)
-                                         (make-expr :type 'call
-                                                    :value 'cons
-                                                    :args (list elem-expr rest-expr)))
-                                       (reverse args)
-                                       :initial-value (make-expr :type 'fixnum
-                                                                 :value 0
-                                                                 :args nil))))
-                (emit-arm64 cons-expr env))))
-
-         ((eq op 'length)
-          ;; (length list-ptr) - count elements in list
-          ;; ARM64 calling convention: X0 (list-ptr), Return: X0
-          (unless *runtime-length-addr*
-            (error "Runtime not initialized. Call (initialize-runtime-integration) first."))
-          (let ((func-addr (sb-sys:sap-int *runtime-length-addr*)))
-            (append
-             ;; Evaluate list expression into X0
-             (emit-arm64 (first args) env)
-             ;; Load function address into X9 and call
-             (arm64-load-imm64 9 func-addr)
-             '(#x20 #x01 #x3F #xD6))))        ; blr x9
-
-         ((eq op 'nth)
-          ;; (nth n list-ptr) - get nth element
-          ;; ARM64 calling convention: X0 (n), X1 (list-ptr), Return: X0
-          (unless *runtime-nth-addr*
-            (error "Runtime not initialized. Call (initialize-runtime-integration) first."))
-          (let ((func-addr (sb-sys:sap-int *runtime-nth-addr*)))
-            (append
-             ;; Evaluate n into X0
-             (emit-arm64 (first args) env)
-             ;; Save n in X10
-             '(#xEA #x03 #x00 #xAA)            ; mov x10, x0
-             ;; Evaluate list into X0
-             (emit-arm64 (second args) env)
-             ;; Setup call: X0=n, X1=list
-             '(#xE1 #x03 #x00 #xAA)            ; mov x1, x0 (list in X1)
-             '(#xE0 #x03 #x0A #xAA)            ; mov x0, x10 (n in X0)
-             ;; Load function address into X9 and call
-             (arm64-load-imm64 9 func-addr)
-             '(#x20 #x01 #x3F #xD6))))        ; blr x9
-
-         ((eq op 'append)
-          ;; (append list1 list2) - concatenate lists
-          ;; ARM64 calling convention: X0 (list1), X1 (list2), Return: X0
-          (unless *runtime-append-addr*
-            (error "Runtime not initialized. Call (initialize-runtime-integration) first."))
-          (let ((func-addr (sb-sys:sap-int *runtime-append-addr*)))
-            (append
-             ;; Evaluate list1 into X0
-             (emit-arm64 (first args) env)
-             ;; Save list1 in X10
-             '(#xEA #x03 #x00 #xAA)            ; mov x10, x0
-             ;; Evaluate list2 into X0
-             (emit-arm64 (second args) env)
-             ;; Setup call: X0=list1, X1=list2
-             '(#xE1 #x03 #x00 #xAA)            ; mov x1, x0 (list2 in X1)
-             '(#xE0 #x03 #x0A #xAA)            ; mov x0, x10 (list1 in X0)
-             ;; Load function address into X9 and call
-             (arm64-load-imm64 9 func-addr)
-             '(#x20 #x01 #x3F #xD6))))        ; blr x9
-
-         ((eq op 'reverse)
-          ;; (reverse list-ptr) - reverse a list
-          ;; ARM64 calling convention: X0 (list-ptr), Return: X0
-          (unless *runtime-reverse-addr*
-            (error "Runtime not initialized. Call (initialize-runtime-integration) first."))
-          (let ((func-addr (sb-sys:sap-int *runtime-reverse-addr*)))
-            (append
-             ;; Evaluate list expression into X0
-             (emit-arm64 (first args) env)
-             ;; Load function address into X9 and call
-             (arm64-load-imm64 9 func-addr)
-             '(#x20 #x01 #x3F #xD6))))        ; blr x9
-
-         ((eq op 'butlast)
-          ;; (butlast list-ptr [n]) - all but last n elements
-          ;; ARM64 calling convention: X0 (list-ptr), X1 (n), Return: X0
-          (unless *runtime-butlast-addr*
-            (error "Runtime not initialized. Call (initialize-runtime-integration) first."))
-          (let ((func-addr (sb-sys:sap-int *runtime-butlast-addr*)))
-            (append
-             ;; Evaluate list expression into X0
-             (emit-arm64 (first args) env)
-             ;; Save list in X10
-             '(#xEA #x03 #x00 #xAA)            ; mov x10, x0
-             ;; Evaluate optional n argument (defaults to 1)
-             (if (second args)
-                 (emit-arm64 (second args) env)
-                 '(#x20 #x02 #x80 #xD2))       ; mov x0, #0x10 (tagged 1)
-             ;; Setup call: X0=list, X1=n
-             '(#xE1 #x03 #x00 #xAA)            ; mov x1, x0 (n in X1)
-             '(#xE0 #x03 #x0A #xAA)            ; mov x0, x10 (list in X0)
-             ;; Load function address into X9 and call
-             (arm64-load-imm64 9 func-addr)
-             '(#x20 #x01 #x3F #xD6))))        ; blr x9
-
-         ((eq op 'nthcdr)
-          ;; (nthcdr n list-ptr) - skip n elements
-          ;; ARM64 calling convention: X0 (n), X1 (list-ptr), Return: X0
-          (unless *runtime-nthcdr-addr*
-            (error "Runtime not initialized. Call (initialize-runtime-integration) first."))
-          (let ((func-addr (sb-sys:sap-int *runtime-nthcdr-addr*)))
-            (append
-             ;; Evaluate n into X0
-             (emit-arm64 (first args) env)
-             ;; Save n in X10
-             '(#xEA #x03 #x00 #xAA)            ; mov x10, x0
-             ;; Evaluate list into X0
-             (emit-arm64 (second args) env)
-             ;; Setup call: X0=n, X1=list
-             '(#xE1 #x03 #x00 #xAA)            ; mov x1, x0 (list in X1)
-             '(#xE0 #x03 #x0A #xAA)            ; mov x0, x10 (n in X0)
-             ;; Load function address into X9 and call
-             (arm64-load-imm64 9 func-addr)
-             '(#x20 #x01 #x3F #xD6))))        ; blr x9
-
-         ((eq op 'member)
-          ;; (member item list) - find item in list
-          ;; ARM64 calling convention: X0 (item), X1 (list), Return: X0
-          (unless *runtime-member-addr*
-            (error "Runtime not initialized. Call (initialize-runtime-integration) first."))
-          (let ((func-addr (sb-sys:sap-int *runtime-member-addr*)))
-            (append
-             ;; Evaluate item into X0
-             (emit-arm64 (first args) env)
-             ;; Save item in X10
-             '(#xEA #x03 #x00 #xAA)            ; mov x10, x0
-             ;; Evaluate list into X0
-             (emit-arm64 (second args) env)
-             ;; Setup call: X0=item, X1=list
-             '(#xE1 #x03 #x00 #xAA)            ; mov x1, x0 (list in X1)
-             '(#xE0 #x03 #x0A #xAA)            ; mov x0, x10 (item in X0)
-             ;; Load function address into X9 and call
-             (arm64-load-imm64 9 func-addr)
-             '(#x20 #x01 #x3F #xD6))))        ; blr x9
-
-         ((eq op 'assoc)
-          ;; (assoc key alist) - find key in association list
-          ;; ARM64 calling convention: X0 (key), X1 (alist), Return: X0
-          (unless *runtime-assoc-addr*
-            (error "Runtime not initialized. Call (initialize-runtime-integration) first."))
-          (let ((func-addr (sb-sys:sap-int *runtime-assoc-addr*)))
-            (append
-             ;; Evaluate key into X0
-             (emit-arm64 (first args) env)
-             ;; Save key in X10
-             '(#xEA #x03 #x00 #xAA)            ; mov x10, x0
-             ;; Evaluate alist into X0
-             (emit-arm64 (second args) env)
-             ;; Setup call: X0=key, X1=alist
-             '(#xE1 #x03 #x00 #xAA)            ; mov x1, x0 (alist in X1)
-             '(#xE0 #x03 #x0A #xAA)            ; mov x0, x10 (key in X0)
-             ;; Load function address into X9 and call
-             (arm64-load-imm64 9 func-addr)
-             '(#x20 #x01 #x3F #xD6))))        ; blr x9
-
-         ((eq op 'position)
-          ;; (position item list) - find index of item
-          ;; ARM64 calling convention: X0 (item), X1 (list), Return: X0
-          (unless *runtime-position-addr*
-            (error "Runtime not initialized. Call (initialize-runtime-integration) first."))
-          (let ((func-addr (sb-sys:sap-int *runtime-position-addr*)))
-            (append
-             ;; Evaluate item into X0
-             (emit-arm64 (first args) env)
-             ;; Save item in X10
-             '(#xEA #x03 #x00 #xAA)            ; mov x10, x0
-             ;; Evaluate list into X0
-             (emit-arm64 (second args) env)
-             ;; Setup call: X0=item, X1=list
-             '(#xE1 #x03 #x00 #xAA)            ; mov x1, x0 (list in X1)
-             '(#xE0 #x03 #x0A #xAA)            ; mov x0, x10 (item in X0)
-             ;; Load function address into X9 and call
-             (arm64-load-imm64 9 func-addr)
-             '(#x20 #x01 #x3F #xD6))))        ; blr x9
-
-         ((eq op 'count)
-          ;; (count item list) - count occurrences of item
-          ;; ARM64 calling convention: X0 (item), X1 (list), Return: X0
-          (unless *runtime-count-addr*
-            (error "Runtime not initialized. Call (initialize-runtime-integration) first."))
-          (let ((func-addr (sb-sys:sap-int *runtime-count-addr*)))
-            (append
-             ;; Evaluate item into X0
-             (emit-arm64 (first args) env)
-             ;; Save item in X10
-             '(#xEA #x03 #x00 #xAA)            ; mov x10, x0
-             ;; Evaluate list into X0
-             (emit-arm64 (second args) env)
-             ;; Setup call: X0=item, X1=list
-             '(#xE1 #x03 #x00 #xAA)            ; mov x1, x0 (list in X1)
-             '(#xE0 #x03 #x0A #xAA)            ; mov x0, x10 (item in X0)
-             ;; Load function address into X9 and call
-             (arm64-load-imm64 9 func-addr)
-             '(#x20 #x01 #x3F #xD6))))        ; blr x9
-
-         ((eq op 'remove)
-          ;; (remove item list) - remove all occurrences of item
-          ;; ARM64 calling convention: X0 (item), X1 (list), Return: X0
-          (unless *runtime-remove-addr*
-            (error "Runtime not initialized. Call (initialize-runtime-integration) first."))
-          (let ((func-addr (sb-sys:sap-int *runtime-remove-addr*)))
-            (append
-             ;; Evaluate item into X0
-             (emit-arm64 (first args) env)
-             ;; Save item in X10
-             '(#xEA #x03 #x00 #xAA)            ; mov x10, x0
-             ;; Evaluate list into X0
-             (emit-arm64 (second args) env)
-             ;; Setup call: X0=item, X1=list
-             '(#xE1 #x03 #x00 #xAA)            ; mov x1, x0 (list in X1)
-             '(#xE0 #x03 #x0A #xAA)            ; mov x0, x10 (item in X0)
-             ;; Load function address into X9 and call
-             (arm64-load-imm64 9 func-addr)
-             '(#x20 #x01 #x3F #xD6))))        ; blr x9
-
-         ;; String operations
-         ((eq op 'string-length)
-          ;; (string-length str-ptr) - get length of string
-          ;; ARM64 calling convention: X0 (str-ptr), Return: X0 (raw length, need to tag)
-          (unless *runtime-string-length-addr*
-            (error "Runtime not initialized. Call (initialize-runtime-integration) first."))
-          (let ((func-addr (sb-sys:sap-int *runtime-string-length-addr*)))
-            (append
-             ;; Evaluate string expression into X0
-             (emit-arm64 (first args) env)
-             ;; Load function address into X9 and call
-             (arm64-load-imm64 9 func-addr)
-             '(#x20 #x01 #x3F #xD6)            ; blr x9
-             ;; Tag result as fixnum: lsl x0, x0, #4
-             '(#x00 #x10 #x00 #xD3))))         ; lsl x0, x0, #4
-
-         ((eq op 'string-concat)
-          ;; (string-concat str1 str2) - concatenate two strings
-          ;; ARM64 calling convention: X0 (str1), X1 (str2), Return: X0
-          (unless *runtime-string-concat-addr*
-            (error "Runtime not initialized. Call (initialize-runtime-integration) first."))
-          (let ((func-addr (sb-sys:sap-int *runtime-string-concat-addr*)))
-            (append
-             ;; Evaluate str1 into X0
-             (emit-arm64 (first args) env)
-             ;; Save str1 in X10
-             '(#xEA #x03 #x00 #xAA)            ; mov x10, x0
-             ;; Evaluate str2 into X0
-             (emit-arm64 (second args) env)
-             ;; Setup call: X0=str1, X1=str2
-             '(#xE1 #x03 #x00 #xAA)            ; mov x1, x0 (str2 in X1)
-             '(#xE0 #x03 #x0A #xAA)            ; mov x0, x10 (str1 in X0)
-             ;; Load function address into X9 and call
-             (arm64-load-imm64 9 func-addr)
-             '(#x20 #x01 #x3F #xD6))))        ; blr x9
-
-         ((eq op 'string-equal)
-          ;; (string-equal str1 str2) - compare two strings for equality
-          ;; ARM64 calling convention: X0 (str1), X1 (str2), Return: X0 (tagged boolean)
-          (unless *runtime-string-equal-addr*
-            (error "Runtime not initialized. Call (initialize-runtime-integration) first."))
-          (let ((func-addr (sb-sys:sap-int *runtime-string-equal-addr*)))
-            (append
-             ;; Evaluate str1 into X0
-             (emit-arm64 (first args) env)
-             ;; Save str1 in X10
-             '(#xEA #x03 #x00 #xAA)            ; mov x10, x0
-             ;; Evaluate str2 into X0
-             (emit-arm64 (second args) env)
-             ;; Setup call: X0=str1, X1=str2
-             '(#xE1 #x03 #x00 #xAA)            ; mov x1, x0 (str2 in X1)
-             '(#xE0 #x03 #x0A #xAA)            ; mov x0, x10 (str1 in X0)
-             ;; Load function address into X9 and call
-             (arm64-load-imm64 9 func-addr)
-             '(#x20 #x01 #x3F #xD6))))        ; blr x9 (returns tagged boolean)
-
-         ((eq op 'string-substring)
-          ;; (string-substring str start end) - extract substring
-          ;; ARM64 calling convention: X0 (str), X1 (start), X2 (end), Return: X0
-          (unless *runtime-string-substring-addr*
-            (error "Runtime not initialized. Call (initialize-runtime-integration) first."))
-          (let ((func-addr (sb-sys:sap-int *runtime-string-substring-addr*)))
-            (append
-             ;; Evaluate str into X0
-             (emit-arm64 (first args) env)
-             ;; Push X0 to stack (str)
-             '(#xE0 #x0F #x1F #xF8)            ; str x0, [sp, #-16]!
-             ;; Evaluate start into X0
-             (emit-arm64 (second args) env)
-             ;; Push X0 to stack (start)
-             '(#xE0 #x0F #x1F #xF8)            ; str x0, [sp, #-16]!
-             ;; Evaluate end into X0
-             (emit-arm64 (third args) env)
-             ;; Setup call: X2=end, X1=start, X0=str
-             '(#xE2 #x03 #x00 #xAA)            ; mov x2, x0 (end in X2)
-             '(#xE1 #x07 #x41 #xF8)            ; ldr x1, [sp], #16 (start in X1)
-             '(#xE0 #x07 #x41 #xF8)            ; ldr x0, [sp], #16 (str in X0)
-             ;; Load function address into X9 and call
-             (arm64-load-imm64 9 func-addr)
-             '(#x20 #x01 #x3F #xD6))))        ; blr x9
-
-         ;; Reader/Printer operations
-         ((eq op 'read)
-          ;; (read string) - parse S-expression from string
-          ;; ARM64 calling convention: X0 (string-ptr), Return: X0
-          (unless *runtime-read-from-string-addr*
-            (error "Runtime not initialized. Call (initialize-runtime-integration) first."))
-          (let ((func-addr (sb-sys:sap-int *runtime-read-from-string-addr*)))
-            (append
-             ;; Evaluate string expression into X0
-             (emit-arm64 (first args) env)
-             ;; Load function address into X9 and call
-             (arm64-load-imm64 9 func-addr)
-             '(#x20 #x01 #x3F #xD6))))        ; blr x9
-
-         ((eq op 'print)
-          ;; (print value) - convert value to string representation
-          ;; ARM64 calling convention: X0 (value), Return: X0 (string-ptr)
-          (unless *runtime-print-to-string-addr*
-            (error "Runtime not initialized. Call (initialize-runtime-integration) first."))
-          (let ((func-addr (sb-sys:sap-int *runtime-print-to-string-addr*)))
-            (append
-             ;; Evaluate value expression into X0
-             (emit-arm64 (first args) env)
-             ;; Load function address into X9 and call
-             (arm64-load-imm64 9 func-addr)
-             '(#x20 #x01 #x3F #xD6))))        ; blr x9
-
-         ;; File I/O operations
-         ((eq op 'file-open)
-          ;; (file-open path-str mode-str) - open file
-          ;; ARM64 calling convention: X0 (path), X1 (mode), Return: X0 (handle)
-          (unless *runtime-file-open-addr*
-            (error "Runtime not initialized. Call (initialize-runtime-integration) first."))
-          (let ((func-addr (sb-sys:sap-int *runtime-file-open-addr*)))
-            (append
-             ;; Evaluate path into X0
-             (emit-arm64 (first args) env)
-             ;; Save path in X10
-             '(#xEA #x03 #x00 #xAA)            ; mov x10, x0
-             ;; Evaluate mode into X0
-             (emit-arm64 (second args) env)
-             ;; Setup call: X0=path, X1=mode
-             '(#xE1 #x03 #x00 #xAA)            ; mov x1, x0 (mode in X1)
-             '(#xE0 #x03 #x0A #xAA)            ; mov x0, x10 (path in X0)
-             ;; Load function address into X9 and call
-             (arm64-load-imm64 9 func-addr)
-             '(#x20 #x01 #x3F #xD6))))        ; blr x9
-
-         ((eq op 'file-read)
-          ;; (file-read handle) - read from file
-          ;; ARM64 calling convention: X0 (handle), Return: X0 (string)
-          (unless *runtime-file-read-addr*
-            (error "Runtime not initialized. Call (initialize-runtime-integration) first."))
-          (let ((func-addr (sb-sys:sap-int *runtime-file-read-addr*)))
-            (append
-             ;; Evaluate handle into X0
-             (emit-arm64 (first args) env)
-             ;; Load function address into X9 and call
-             (arm64-load-imm64 9 func-addr)
-             '(#x20 #x01 #x3F #xD6))))        ; blr x9
-
-         ((eq op 'file-write)
-          ;; (file-write handle data-str) - write to file
-          ;; ARM64 calling convention: X0 (handle), X1 (data), Return: X0 (bytes written)
-          (unless *runtime-file-write-addr*
-            (error "Runtime not initialized. Call (initialize-runtime-integration) first."))
-          (let ((func-addr (sb-sys:sap-int *runtime-file-write-addr*)))
-            (append
-             ;; Evaluate handle into X0
-             (emit-arm64 (first args) env)
-             ;; Save handle in X10
-             '(#xEA #x03 #x00 #xAA)            ; mov x10, x0
-             ;; Evaluate data into X0
-             (emit-arm64 (second args) env)
-             ;; Setup call: X0=handle, X1=data
-             '(#xE1 #x03 #x00 #xAA)            ; mov x1, x0 (data in X1)
-             '(#xE0 #x03 #x0A #xAA)            ; mov x0, x10 (handle in X0)
-             ;; Load function address into X9 and call
-             (arm64-load-imm64 9 func-addr)
-             '(#x20 #x01 #x3F #xD6))))        ; blr x9
-
-         ((eq op 'file-close)
-          ;; (file-close handle) - close file
-          ;; ARM64 calling convention: X0 (handle), Return: X0 (success)
-          (unless *runtime-file-close-addr*
-            (error "Runtime not initialized. Call (initialize-runtime-integration) first."))
-          (let ((func-addr (sb-sys:sap-int *runtime-file-close-addr*)))
-            (append
-             ;; Evaluate handle into X0
-             (emit-arm64 (first args) env)
-             ;; Load function address into X9 and call
-             (arm64-load-imm64 9 func-addr)
-             '(#x20 #x01 #x3F #xD6))))        ; blr x9
-
-         ((eq op 'read-file)
-          ;; (read-file path-str) - convenience: read entire file
-          ;; ARM64 calling convention: X0 (path), Return: X0 (contents)
-          (unless *runtime-read-file-addr*
-            (error "Runtime not initialized. Call (initialize-runtime-integration) first."))
-          (let ((func-addr (sb-sys:sap-int *runtime-read-file-addr*)))
-            (append
-             ;; Evaluate path into X0
-             (emit-arm64 (first args) env)
-             ;; Load function address into X9 and call
-             (arm64-load-imm64 9 func-addr)
-             '(#x20 #x01 #x3F #xD6))))        ; blr x9
-
-         ((eq op 'write-file)
-          ;; (write-file path-str data-str) - convenience: write entire file
-          ;; ARM64 calling convention: X0 (path), X1 (data), Return: X0 (success)
-          (unless *runtime-write-file-addr*
-            (error "Runtime not initialized. Call (initialize-runtime-integration) first."))
-          (let ((func-addr (sb-sys:sap-int *runtime-write-file-addr*)))
-            (append
-             ;; Evaluate path into X0
-             (emit-arm64 (first args) env)
-             ;; Save path in X10
-             '(#xEA #x03 #x00 #xAA)            ; mov x10, x0
-             ;; Evaluate data into X0
-             (emit-arm64 (second args) env)
-             ;; Setup call: X0=path, X1=data
-             '(#xE1 #x03 #x00 #xAA)            ; mov x1, x0 (data in X1)
-             '(#xE0 #x03 #x0A #xAA)            ; mov x0, x10 (path in X0)
-             ;; Load function address into X9 and call
-             (arm64-load-imm64 9 func-addr)
-             '(#x20 #x01 #x3F #xD6))))        ; blr x9
-
-         ((eq op 'make-hash-table)
-          ;; (make-hash-table [capacity]) - create new hash table (ARM64)
-          ;; ARM64 calling convention: X0 (capacity), Return: X0 (hash table)
-          (unless *runtime-make-hash-table-addr*
-            (error "Runtime not initialized. Call (initialize-runtime-integration) first."))
-          (let ((func-addr (sb-sys:sap-int *runtime-make-hash-table-addr*))
-                (capacity-arg (if args (first args) nil)))
-            (append
-             (if capacity-arg
-                 ;; Evaluate capacity into X0
-                 (emit-arm64 capacity-arg env)
-                 ;; Use 0 (default capacity)
-                 '(#xE0 #x03 #x1F #xAA))      ; mov x0, xzr
-             ;; Load function address into X9 and call
-             (arm64-load-imm64 9 func-addr)
-             '(#x20 #x01 #x3F #xD6))))        ; blr x9
-
-         ((eq op 'gethash)
-          ;; (gethash key hash-table) - lookup key in hash table (ARM64)
-          ;; ARM64 calling convention: X0 (key), X1 (ht), Return: X0 (value)
-          (unless *runtime-gethash-addr*
-            (error "Runtime not initialized. Call (initialize-runtime-integration) first."))
-          (let ((func-addr (sb-sys:sap-int *runtime-gethash-addr*)))
-            (append
-             ;; Evaluate key into X0
-             (emit-arm64 (first args) env)
-             ;; Save key in X10
-             '(#xEA #x03 #x00 #xAA)            ; mov x10, x0
-             ;; Evaluate hash table into X0
-             (emit-arm64 (second args) env)
-             ;; Setup call: X0=key, X1=ht
-             '(#xE1 #x03 #x00 #xAA)            ; mov x1, x0 (ht in X1)
-             '(#xE0 #x03 #x0A #xAA)            ; mov x0, x10 (key in X0)
-             ;; Load function address into X9 and call
-             (arm64-load-imm64 9 func-addr)
-             '(#x20 #x01 #x3F #xD6))))        ; blr x9
-
-         ((eq op 'puthash)
-          ;; (puthash key value hash-table) - insert/update key-value pair (ARM64)
-          ;; ARM64 calling convention: X0 (key), X1 (value), X2 (ht), Return: X0 (value)
-          (unless *runtime-puthash-addr*
-            (error "Runtime not initialized. Call (initialize-runtime-integration) first."))
-          (let ((func-addr (sb-sys:sap-int *runtime-puthash-addr*)))
-            (append
-             ;; Evaluate key into X0
-             (emit-arm64 (first args) env)
-             ;; Save key in X10
-             '(#xEA #x03 #x00 #xAA)            ; mov x10, x0
-             ;; Evaluate value into X0
-             (emit-arm64 (second args) env)
-             ;; Save value in X11
-             '(#xEB #x03 #x00 #xAA)            ; mov x11, x0
-             ;; Evaluate hash table into X0
-             (emit-arm64 (third args) env)
-             ;; Setup call: X0=key, X1=value, X2=ht
-             '(#xE2 #x03 #x00 #xAA)            ; mov x2, x0 (ht in X2)
-             '(#xE1 #x03 #x0B #xAA)            ; mov x1, x11 (value in X1)
-             '(#xE0 #x03 #x0A #xAA)            ; mov x0, x10 (key in X0)
-             ;; Load function address into X9 and call
-             (arm64-load-imm64 9 func-addr)
-             '(#x20 #x01 #x3F #xD6))))        ; blr x9
-
-         ((eq op 'remhash)
-          ;; (remhash key hash-table) - remove key from hash table (ARM64)
-          ;; ARM64 calling convention: X0 (key), X1 (ht), Return: X0 (found?)
-          (unless *runtime-remhash-addr*
-            (error "Runtime not initialized. Call (initialize-runtime-integration) first."))
-          (let ((func-addr (sb-sys:sap-int *runtime-remhash-addr*)))
-            (append
-             ;; Evaluate key into X0
-             (emit-arm64 (first args) env)
-             ;; Save key in X10
-             '(#xEA #x03 #x00 #xAA)            ; mov x10, x0
-             ;; Evaluate hash table into X0
-             (emit-arm64 (second args) env)
-             ;; Setup call: X0=key, X1=ht
-             '(#xE1 #x03 #x00 #xAA)            ; mov x1, x0 (ht in X1)
-             '(#xE0 #x03 #x0A #xAA)            ; mov x0, x10 (key in X0)
-             ;; Load function address into X9 and call
-             (arm64-load-imm64 9 func-addr)
-             '(#x20 #x01 #x3F #xD6))))        ; blr x9
-
-         ((eq op 'hash-table-count)
-          ;; (hash-table-count hash-table) - get number of entries (ARM64)
-          ;; ARM64 calling convention: X0 (ht), Return: X0 (count)
-          (unless *runtime-hash-table-count-addr*
-            (error "Runtime not initialized. Call (initialize-runtime-integration) first."))
-          (let ((func-addr (sb-sys:sap-int *runtime-hash-table-count-addr*)))
-            (append
-             ;; Evaluate hash table into X0
-             (emit-arm64 (first args) env)
-             ;; Load function address into X9 and call
-             (arm64-load-imm64 9 func-addr)
-             '(#x20 #x01 #x3F #xD6))))        ; blr x9
-
-         ;; Multiple return values (ARM64)
-         ((eq op 'values)
-          ;; (values [val1 val2 ...]) - return multiple values (ARM64)
-          ;; Dispatch based on number of arguments (0-4 supported in Phase 1)
-          (let ((num-values (length args)))
-            (cond
-              ((= num-values 0)
-               ;; (values) - return 0 values
-               (unless *runtime-values-0-addr*
-                 (error "Runtime not initialized. Call (initialize-runtime-integration) first."))
-               (let ((func-addr (sb-sys:sap-int *runtime-values-0-addr*)))
-                 (append
-                  (arm64-load-imm64 9 func-addr)
-                  '(#x20 #x01 #x3F #xD6))))   ; blr x9
-
-              ((= num-values 1)
-               ;; (values val1) - return 1 value
-               (unless *runtime-values-1-addr*
-                 (error "Runtime not initialized. Call (initialize-runtime-integration) first."))
-               (let ((func-addr (sb-sys:sap-int *runtime-values-1-addr*)))
-                 (append
-                  (emit-arm64 (first args) env)
-                  ;; X0 already contains val1
-                  (arm64-load-imm64 9 func-addr)
-                  '(#x20 #x01 #x3F #xD6))))   ; blr x9
-
-              ((= num-values 2)
-               ;; (values val1 val2) - return 2 values
-               (unless *runtime-values-2-addr*
-                 (error "Runtime not initialized. Call (initialize-runtime-integration) first."))
-               (let ((func-addr (sb-sys:sap-int *runtime-values-2-addr*)))
-                 (append
-                  ;; Evaluate val1
-                  (emit-arm64 (first args) env)
-                  '(#xEA #x03 #x00 #xAA)      ; mov x10, x0 (save val1)
-                  ;; Evaluate val2
-                  (emit-arm64 (second args) env)
-                  ;; Setup call: X0=val1, X1=val2
-                  '(#xE1 #x03 #x00 #xAA)      ; mov x1, x0 (val2 in X1)
-                  '(#xE0 #x03 #x0A #xAA)      ; mov x0, x10 (val1 in X0)
-                  (arm64-load-imm64 9 func-addr)
-                  '(#x20 #x01 #x3F #xD6))))   ; blr x9
-
-              ((= num-values 3)
-               ;; (values val1 val2 val3) - return 3 values
-               (unless *runtime-values-3-addr*
-                 (error "Runtime not initialized. Call (initialize-runtime-integration) first."))
-               (let ((func-addr (sb-sys:sap-int *runtime-values-3-addr*)))
-                 (append
-                  ;; Evaluate val1
-                  (emit-arm64 (first args) env)
-                  '(#xEA #x03 #x00 #xAA)      ; mov x10, x0 (save val1)
-                  ;; Evaluate val2
-                  (emit-arm64 (second args) env)
-                  '(#xEB #x03 #x00 #xAA)      ; mov x11, x0 (save val2)
-                  ;; Evaluate val3
-                  (emit-arm64 (third args) env)
-                  ;; Setup call: X0=val1, X1=val2, X2=val3
-                  '(#xE2 #x03 #x00 #xAA)      ; mov x2, x0 (val3 in X2)
-                  '(#xE1 #x03 #x0B #xAA)      ; mov x1, x11 (val2 in X1)
-                  '(#xE0 #x03 #x0A #xAA)      ; mov x0, x10 (val1 in X0)
-                  (arm64-load-imm64 9 func-addr)
-                  '(#x20 #x01 #x3F #xD6))))   ; blr x9
-
-              ((= num-values 4)
-               ;; (values val1 val2 val3 val4) - return 4 values
-               (unless *runtime-values-4-addr*
-                 (error "Runtime not initialized. Call (initialize-runtime-integration) first."))
-               (let ((func-addr (sb-sys:sap-int *runtime-values-4-addr*)))
-                 (append
-                  ;; Evaluate val1
-                  (emit-arm64 (first args) env)
-                  '(#xEA #x03 #x00 #xAA)      ; mov x10, x0 (save val1)
-                  ;; Evaluate val2
-                  (emit-arm64 (second args) env)
-                  '(#xEB #x03 #x00 #xAA)      ; mov x11, x0 (save val2)
-                  ;; Evaluate val3
-                  (emit-arm64 (third args) env)
-                  '(#xEC #x03 #x00 #xAA)      ; mov x12, x0 (save val3)
-                  ;; Evaluate val4
-                  (emit-arm64 (fourth args) env)
-                  ;; Setup call: X0=val1, X1=val2, X2=val3, X3=val4
-                  '(#xE3 #x03 #x00 #xAA)      ; mov x3, x0 (val4 in X3)
-                  '(#xE2 #x03 #x0C #xAA)      ; mov x2, x12 (val3 in X2)
-                  '(#xE1 #x03 #x0B #xAA)      ; mov x1, x11 (val2 in X1)
-                  '(#xE0 #x03 #x0A #xAA)      ; mov x0, x10 (val1 in X0)
-                  (arm64-load-imm64 9 func-addr)
-                  '(#x20 #x01 #x3F #xD6))))   ; blr x9
-
-              (t
-               (error "Too many values: ~D (max 4 in Phase 1)" num-values)))))
-
-         ((eq op 'runtime-dotimes)
-          ;; (runtime-dotimes count body-fn result) - ARM64
-          ;; Three arguments: count (fixnum), body-fn (closure), result (value)
-          (unless *runtime-dotimes-addr*
-            (error "Runtime not initialized. Call (initialize-runtime-integration) first."))
-          (let ((func-addr (sb-sys:sap-int *runtime-dotimes-addr*)))
-            (append
-             ;; Evaluate count into X0
-             (emit-arm64 (first args) env)
-             ;; Save count in X10
-             '(#xEA #x03 #x00 #xAA)            ; mov x10, x0
-             ;; Evaluate body-fn into X0
-             (emit-arm64 (second args) env)
-             ;; Save body-fn in X11
-             '(#xEB #x03 #x00 #xAA)            ; mov x11, x0
-             ;; Evaluate result into X0
-             (emit-arm64 (third args) env)
-             ;; Setup call: X0=count, X1=body-fn, X2=result
-             '(#xE2 #x03 #x00 #xAA)            ; mov x2, x0 (result in X2)
-             '(#xE1 #x03 #x0B #xAA)            ; mov x1, x11 (body-fn in X1)
-             '(#xE0 #x03 #x0A #xAA)            ; mov x0, x10 (count in X0)
-             ;; Load runtime-dotimes address into X9 and call
-             (arm64-load-imm64 9 func-addr)
-             '(#x20 #x01 #x3F #xD6))))        ; blr x9
-
-         ((eq op 'runtime-dolist)
-          ;; (runtime-dolist list body-fn result) - ARM64
-          ;; Three arguments: list (cons/nil), body-fn (closure), result (value)
-          (unless *runtime-dolist-addr*
-            (error "Runtime not initialized. Call (initialize-runtime-integration) first."))
-          (let ((func-addr (sb-sys:sap-int *runtime-dolist-addr*)))
-            (append
-             ;; Evaluate list into X0
-             (emit-arm64 (first args) env)
-             ;; Save list in X10
-             '(#xEA #x03 #x00 #xAA)            ; mov x10, x0
-             ;; Evaluate body-fn into X0
-             (emit-arm64 (second args) env)
-             ;; Save body-fn in X11
-             '(#xEB #x03 #x00 #xAA)            ; mov x11, x0
-             ;; Evaluate result into X0
-             (emit-arm64 (third args) env)
-             ;; Setup call: X0=list, X1=body-fn, X2=result
-             '(#xE2 #x03 #x00 #xAA)            ; mov x2, x0 (result in X2)
-             '(#xE1 #x03 #x0B #xAA)            ; mov x1, x11 (body-fn in X1)
-             '(#xE0 #x03 #x0A #xAA)            ; mov x0, x10 (list in X0)
-             ;; Load runtime-dolist address into X9 and call
-             (arm64-load-imm64 9 func-addr)
-             '(#x20 #x01 #x3F #xD6))))        ; blr x9
-
+          (labels ((bl (args)
+                     (if (null args) (list 'lit 0)
+                         (list 'cons-ir (nc-compile (car args) env fenv) (bl (cdr args))))))
+            (bl (cdr expr))))
+         ((eq op 'null)
+          (list 'cmp-eq (nc-compile (cadr expr) env fenv) (list 'lit 0)))
+         ((eq op 'numberp)
+          (list 'cmp-eq (list 'get-tag (nc-compile (cadr expr) env fenv)) (list 'lit 0)))
+         ((eq op 'consp)
+          (list 'cmp-eq (list 'get-tag (nc-compile (cadr expr) env fenv)) (list 'lit 1)))
+         ;; User function call
          (t
-          (error "Unknown operator: ~S" op)))))
+          (if (and fenv (assoc op fenv))
+              (list 'call-fn op (mapcar (lambda (a) (nc-compile a env fenv)) (cdr expr)))
+              (list 'lit 0))))))
+    (t (list 'lit 0))))
 
-    (catch
-     ;; (catch tag body) - establish catch point (ARM64)
-     ;; Evaluate tag, create 0-arg closure for body, call runtime-catch
-     (unless *runtime-catch-addr*
-       (error "Runtime not initialized. Call (initialize-runtime-integration) first."))
-     (let* ((tag-and-body (expr-value expr))
-            (tag-form (car tag-and-body))
-            (body-form (cdr tag-and-body))
-            (tag-expr (parse tag-form))
-            (closure-name (gensym "CATCH-BODY"))
-            (func-addr (sb-sys:sap-int *runtime-catch-addr*)))
+;;; ============================================================
+;;; Part 6b: IR Evaluator (nc-eval-*)
+;;; ============================================================
 
-       ;; Create a 0-argument callable for the body
-       (let ((callable-name (intern (format nil "HABU-CATCH-BODY-~A" (string-upcase (string closure-name)))
-                                    (find-package :habu-compiler))))
-         ;; Define the function using the original body form
-         (eval `(defun ,callable-name () ,body-form))
+(defun nc-eval-ir (ir env)
+  "Evaluate IR and return tagged value"
+  (cond
+    ((nc-has-tag ir 'lit) (cadr ir))
+    ((nc-has-tag ir 'var)
+     (let ((off (cadr ir)))
+       (nth off env)))
+    ((nc-has-tag ir 'add)
+     (+ (nc-eval-ir (cadr ir) env) (nc-eval-ir (caddr ir) env)))
+    ((nc-has-tag ir 'sub)
+     (- (nc-eval-ir (cadr ir) env) (nc-eval-ir (caddr ir) env)))
+    ((nc-has-tag ir 'mul)
+     (* (nc-eval-ir (cadr ir) env) (nc-eval-ir (caddr ir) env)))
+    ((nc-has-tag ir 'cmp-eq)
+     (if (= (nc-eval-ir (cadr ir) env) (nc-eval-ir (caddr ir) env)) 1 0))
+    ((nc-has-tag ir 'cmp-lt)
+     (if (< (nc-eval-ir (cadr ir) env) (nc-eval-ir (caddr ir) env)) 1 0))
+    ((nc-has-tag ir 'cmp-gt)
+     (if (> (nc-eval-ir (cadr ir) env) (nc-eval-ir (caddr ir) env)) 1 0))
+    ((nc-has-tag ir 'cmp-le)
+     (if (<= (nc-eval-ir (cadr ir) env) (nc-eval-ir (caddr ir) env)) 1 0))
+    ((nc-has-tag ir 'cmp-ge)
+     (if (>= (nc-eval-ir (cadr ir) env) (nc-eval-ir (caddr ir) env)) 1 0))
+    ((nc-has-tag ir 'if-ir)
+     (if (not (= (nc-eval-ir (cadr ir) env) 0))
+         (nc-eval-ir (caddr ir) env)
+         (nc-eval-ir (cadddr ir) env)))
+    ((nc-has-tag ir 'let-ir)
+     ;; let-ir = (let-ir vals bir count offs)
+     ;; offs is at index 4, which is (nth 3 (cdr ir))
+     (let* ((vals (cadr ir))
+            (bir (caddr ir))
+            (offs (nth 3 (cdr ir))))  ; Fixed: was (nth 4 ...)
+       (labels ((bind (vs os e)
+                  (if (null vs) e
+                      (let ((v (nc-eval-ir (car vs) env)))
+                        (bind (cdr vs) (cdr os)
+                              (append e (list v)))))))
+         (nc-eval-ir bir (bind vals offs env)))))
+    (t 0)))
 
-         ;; Create alien-callable wrapper
-         #+sbcl
-         (eval `(sb-alien:define-alien-callable ,callable-name sb-alien:unsigned-long ()
-                  (,callable-name)))
+;;; ============================================================
+;;; Part 7: Code Generator (nc-codegen-*)
+;;; ============================================================
 
-         ;; Get the function pointer
-         (let ((body-fn-ptr (sb-sys:sap-int (sb-alien:alien-sap (sb-alien:alien-callable-function callable-name)))))
-           (append
-            ;; Evaluate tag into X0
-            (emit-arm64 tag-expr env)
-            ;; Save tag in X10
-            '(#xEA #x03 #x00 #xAA)            ; mov x10, x0
-            ;; Load body function pointer into X0
-            (arm64-load-imm64 0 body-fn-ptr)
-            ;; Setup call: X0=tag, X1=body-fn
-            '(#xE1 #x03 #x00 #xAA)            ; mov x1, x0 (body-fn in X1)
-            '(#xE0 #x03 #x0A #xAA)            ; mov x0, x10 (tag in X0)
-            ;; Load runtime-catch address into X9 and call
-            (arm64-load-imm64 9 func-addr)
-            '(#x20 #x01 #x3F #xD6))))))      ; blr x9
+(defun nc-codegen (ir rtaddrs fnoffs td)
+  (cond
+    ((nc-has-tag ir 'lit)
+     (let* ((v (cadr ir))
+            (tg (ash v 4)))
+       (if (and (>= tg 0) (< tg #x10000))
+           (nc-movz 0 tg)
+           (nc-load-addr 0 tg))))
+    ((nc-has-tag ir 'var)
+     (let* ((off (cadr ir))
+            (off8 (* off 8))
+            (i1 (nc-sub-imm 1 20 off8))
+            (i2 (nc-ldr-offset 0 1 0)))
+       (nc-append-all (list i1 i2))))
+    ((nc-has-tag ir 'get-tag)
+     (let* ((ac (nc-codegen (cadr ir) rtaddrs fnoffs td))
+            (i1 (nc-movz 1 #xF))
+            (i2 (nc-and-reg 0 0 1))
+            (i3 (nc-lsl-imm 0 0 4)))
+       (nc-append-all (list ac i1 i2 i3))))
+    ((nc-has-tag ir 'add)
+     ;; Use nc-append-all to avoid deeply nested let*
+     (let ((left-ir (cadr ir)))
+       (let ((right-ir (caddr ir)))
+         (let ((xs (nc-temp-slot td)))
+           (let ((ls (nc-temp-slot (+ td 1))))
+             (let ((nd (+ td 2)))
+               (let ((lc (nc-codegen left-ir rtaddrs fnoffs nd)))
+                 (let ((rc (nc-codegen right-ir rtaddrs fnoffs nd)))
+                   (nc-append-all
+                    (list (nc-str-offset 24 31 xs)
+                          lc
+                          (nc-str-offset 0 31 ls)
+                          (nc-ldr-offset 24 31 xs)
+                          rc
+                          (nc-mov-reg 1 0)
+                          (nc-ldr-offset 0 31 ls)
+                          (nc-add-reg 0 0 1)))))))))))
+    ((nc-has-tag ir 'sub)
+     ;; Use nc-append-all to avoid deeply nested let*
+     (let ((left-ir (cadr ir)))
+       (let ((right-ir (caddr ir)))
+         (let ((xs (nc-temp-slot td)))
+           (let ((ls (nc-temp-slot (+ td 1))))
+             (let ((nd (+ td 2)))
+               (let ((lc (nc-codegen left-ir rtaddrs fnoffs nd)))
+                 (let ((rc (nc-codegen right-ir rtaddrs fnoffs nd)))
+                   (nc-append-all
+                    (list (nc-str-offset 24 31 xs)
+                          lc
+                          (nc-str-offset 0 31 ls)
+                          (nc-ldr-offset 24 31 xs)
+                          rc
+                          (nc-mov-reg 1 0)
+                          (nc-ldr-offset 0 31 ls)
+                          (nc-sub-reg 0 0 1)))))))))))
+    ((nc-has-tag ir 'mul)
+     (let ((left-ir (cadr ir)))
+       (let ((right-ir (caddr ir)))
+         (let ((xs (nc-temp-slot td)))
+           (let ((ls (nc-temp-slot (+ td 1))))
+             (let ((nd (+ td 2)))
+               (let ((lc (nc-codegen left-ir rtaddrs fnoffs nd)))
+                 (let ((rc (nc-codegen right-ir rtaddrs fnoffs nd)))
+                   (nc-append-all
+                    (list (nc-str-offset 24 31 xs)
+                          lc
+                          (nc-str-offset 0 31 ls)
+                          (nc-ldr-offset 24 31 xs)
+                          rc
+                          (nc-mov-reg 1 0)
+                          (nc-ldr-offset 0 31 ls)
+                          (nc-lsr-imm 0 0 4)
+                          (nc-lsr-imm 1 1 4)
+                          (nc-mul-reg 0 0 1)
+                          (nc-lsl-imm 0 0 4)))))))))))
+    ((nc-has-tag ir 'cmp-eq)
+     (let ((left-ir (cadr ir)))
+       (let ((right-ir (caddr ir)))
+         (let ((xs (nc-temp-slot td)))
+           (let ((ls (nc-temp-slot (+ td 1))))
+             (let ((nd (+ td 2)))
+               (let ((lc (nc-codegen left-ir rtaddrs fnoffs nd)))
+                 (let ((rc (nc-codegen right-ir rtaddrs fnoffs nd)))
+                   (nc-append-all
+                    (list (nc-str-offset 24 31 xs)
+                          lc
+                          (nc-str-offset 0 31 ls)
+                          (nc-ldr-offset 24 31 xs)
+                          rc
+                          (nc-mov-reg 1 0)
+                          (nc-ldr-offset 0 31 ls)
+                          (nc-cmp-reg 0 1)
+                          (nc-cset 0 (nc-cond-eq))
+                          (nc-lsl-imm 0 0 4)))))))))))
+    ((nc-has-tag ir 'cmp-lt)
+     (let ((left-ir (cadr ir)))
+       (let ((right-ir (caddr ir)))
+         (let ((xs (nc-temp-slot td)))
+           (let ((ls (nc-temp-slot (+ td 1))))
+             (let ((nd (+ td 2)))
+               (let ((lc (nc-codegen left-ir rtaddrs fnoffs nd)))
+                 (let ((rc (nc-codegen right-ir rtaddrs fnoffs nd)))
+                   (nc-append-all
+                    (list (nc-str-offset 24 31 xs)
+                          lc
+                          (nc-str-offset 0 31 ls)
+                          (nc-ldr-offset 24 31 xs)
+                          rc
+                          (nc-mov-reg 1 0)
+                          (nc-ldr-offset 0 31 ls)
+                          (nc-cmp-reg 0 1)
+                          (nc-cset 0 (nc-cond-lt))
+                          (nc-lsl-imm 0 0 4)))))))))))
+    ((nc-has-tag ir 'cmp-gt)
+     (let ((left-ir (cadr ir)))
+       (let ((right-ir (caddr ir)))
+         (let ((xs (nc-temp-slot td)))
+           (let ((ls (nc-temp-slot (+ td 1))))
+             (let ((nd (+ td 2)))
+               (let ((lc (nc-codegen left-ir rtaddrs fnoffs nd)))
+                 (let ((rc (nc-codegen right-ir rtaddrs fnoffs nd)))
+                   (nc-append-all
+                    (list (nc-str-offset 24 31 xs)
+                          lc
+                          (nc-str-offset 0 31 ls)
+                          (nc-ldr-offset 24 31 xs)
+                          rc
+                          (nc-mov-reg 1 0)
+                          (nc-ldr-offset 0 31 ls)
+                          (nc-cmp-reg 0 1)
+                          (nc-cset 0 (nc-cond-gt))
+                          (nc-lsl-imm 0 0 4)))))))))))
+    ((nc-has-tag ir 'cmp-le)
+     (let ((left-ir (cadr ir)))
+       (let ((right-ir (caddr ir)))
+         (let ((xs (nc-temp-slot td)))
+           (let ((ls (nc-temp-slot (+ td 1))))
+             (let ((nd (+ td 2)))
+               (let ((lc (nc-codegen left-ir rtaddrs fnoffs nd)))
+                 (let ((rc (nc-codegen right-ir rtaddrs fnoffs nd)))
+                   (nc-append-all
+                    (list (nc-str-offset 24 31 xs)
+                          lc
+                          (nc-str-offset 0 31 ls)
+                          (nc-ldr-offset 24 31 xs)
+                          rc
+                          (nc-mov-reg 1 0)
+                          (nc-ldr-offset 0 31 ls)
+                          (nc-cmp-reg 0 1)
+                          (nc-cset 0 (nc-cond-le))
+                          (nc-lsl-imm 0 0 4)))))))))))
+    ((nc-has-tag ir 'cmp-ge)
+     (let ((left-ir (cadr ir)))
+       (let ((right-ir (caddr ir)))
+         (let ((xs (nc-temp-slot td)))
+           (let ((ls (nc-temp-slot (+ td 1))))
+             (let ((nd (+ td 2)))
+               (let ((lc (nc-codegen left-ir rtaddrs fnoffs nd)))
+                 (let ((rc (nc-codegen right-ir rtaddrs fnoffs nd)))
+                   (nc-append-all
+                    (list (nc-str-offset 24 31 xs)
+                          lc
+                          (nc-str-offset 0 31 ls)
+                          (nc-ldr-offset 24 31 xs)
+                          rc
+                          (nc-mov-reg 1 0)
+                          (nc-ldr-offset 0 31 ls)
+                          (nc-cmp-reg 0 1)
+                          (nc-cset 0 (nc-cond-ge))
+                          (nc-lsl-imm 0 0 4)))))))))))
+    ((nc-has-tag ir 'cons-ir)
+     (let ((car-ir (cadr ir)))
+       (let ((cdr-ir (caddr ir)))
+         (let ((xs (nc-temp-slot td)))
+           (let ((cs (nc-temp-slot (+ td 1))))
+             (let ((nd (+ td 2)))
+               (let ((cc (nc-codegen car-ir rtaddrs fnoffs nd)))
+                 (let ((dc (nc-codegen cdr-ir rtaddrs fnoffs nd)))
+                   (nc-append-all
+                    (list (nc-str-offset 24 31 xs)
+                          cc
+                          (nc-str-offset 0 31 cs)
+                          (nc-ldr-offset 24 31 xs)
+                          dc
+                          (nc-mov-reg 1 0)
+                          (nc-ldr-offset 0 31 cs)
+                          (nc-ldr-offset 9 19 0)
+                          (nc-blr 9)))))))))))
+    ((nc-has-tag ir 'car-ir)
+     (let ((arg-ir (cadr ir)))
+       (let ((ac (nc-codegen arg-ir rtaddrs fnoffs td)))
+         (nc-append-all
+          (list ac
+                (nc-ldr-offset 9 19 8)
+                (nc-blr 9))))))
+    ((nc-has-tag ir 'cdr-ir)
+     (let ((arg-ir (cadr ir)))
+       (let ((ac (nc-codegen arg-ir rtaddrs fnoffs td)))
+         (nc-append-all
+          (list ac
+                (nc-ldr-offset 9 19 16)
+                (nc-blr 9))))))
+    ((nc-has-tag ir 'if-ir)
+     (let ((test-ir (cadr ir)))
+       (let ((then-ir (caddr ir)))
+         (let ((else-ir (cadddr ir)))
+           (let ((tc (nc-codegen test-ir rtaddrs fnoffs td)))
+             (let ((thc (nc-codegen then-ir rtaddrs fnoffs td)))
+               (let ((elc (nc-codegen else-ir rtaddrs fnoffs td)))
+                 (let ((thl (nc-count-instrs thc)))
+                   (let ((ell (nc-count-instrs elc)))
+                     (nc-append-all
+                      (list tc
+                            (nc-movz 1 0)
+                            (nc-cmp-reg 0 1)
+                            (nc-b-cond (nc-cond-eq) (* (+ thl 1) 4))
+                            thc
+                            (nc-b-offset (* ell 4))
+                            elc)))))))))))
+    ((nc-has-tag ir 'let-ir)
+     (let* ((vals (cadr ir))
+            (bir (caddr ir))
+            (offs (nth 4 (cdr ir)))
+            (xs (nc-temp-slot td))
+            (nd (+ td 1))
+            (acc (nc-str-offset 24 31 xs)))
+       (labels ((gb (vs os a)
+                  (if (null vs) a
+                      (let* ((vc (nc-codegen (car vs) rtaddrs fnoffs nd))
+                             (s1 (nc-sub-imm 1 20 (* (car os) 8)))
+                             (s2 (nc-str-offset 0 1 0))
+                             (st (append s1 s2))
+                             (ld (nc-ldr-offset 24 31 xs))
+                             (t1 (append a ld))
+                             (t2 (append t1 vc))
+                             (t3 (append t2 st)))
+                        (gb (cdr vs) (cdr os) t3)))))
+         (let* ((body-code (gb vals offs nil))
+                (final-ld (nc-ldr-offset 24 31 xs))
+                (bc (nc-codegen bir rtaddrs fnoffs nd))
+                (r1 (append acc body-code))
+                (r2 (append r1 final-ld)))
+           (append r2 bc)))))
+    ((nc-has-tag ir 'call-fn)
+     (let* ((fnm (cadr ir))
+            (airs (caddr ir))
+            (na (length airs))
+            (xs (nc-temp-slot td))
+            (nd (+ td 1)))
+       (labels ((ga (as i a)
+                  (if (null as) a
+                      (let* ((rs (if (> i 0) (nc-ldr-offset 24 31 xs) nil))
+                             (ac (nc-codegen (car as) rtaddrs fnoffs nd))
+                             (st (nc-str-offset 0 31 (nc-spill-slot i)))
+                             (t1 (append a rs))
+                             (t2 (append t1 ac))
+                             (t3 (append t2 st)))
+                        (ga (cdr as) (+ i 1) t3))))
+                (gl (i a)
+                  (if (>= i na) a
+                      (let* ((ld (nc-ldr-offset i 31 (nc-spill-slot i)))
+                             (t1 (append a ld)))
+                        (gl (+ i 1) t1)))))
+         (let* ((save-x24 (nc-str-offset 24 31 xs))
+                (args-code (ga airs 0 nil))
+                (restore-x24 (nc-ldr-offset 24 31 xs))
+                (load-args (gl 0 nil))
+                (set-argc (nc-movz 23 na))
+                (call-fn (nc-bl-offset 0))
+                (r1 (append save-x24 args-code))
+                (r2 (append r1 restore-x24))
+                (r3 (append r2 load-args))
+                (r4 (append r3 set-argc)))
+           (append r4 call-fn)))))
+    (t (nc-movz 0 0))))
 
-    (throw
-     ;; (throw tag value) - throw to matching catch (ARM64, never returns)
-     ;; Evaluate tag and value, call runtime-throw
-     (unless *runtime-throw-addr*
-       (error "Runtime not initialized. Call (initialize-runtime-integration) first."))
-     (let* ((tag-expr (parse (expr-value expr)))
-            (value-expr (first (expr-args expr)))
-            (func-addr (sb-sys:sap-int *runtime-throw-addr*)))
-       (append
-        ;; Evaluate tag into X0
-        (emit-arm64 tag-expr env)
-        ;; Save tag in X10
-        '(#xEA #x03 #x00 #xAA)            ; mov x10, x0
-        ;; Evaluate value into X0
-        (emit-arm64 value-expr env)
-        ;; Setup call: X0=tag, X1=value
-        '(#xE1 #x03 #x00 #xAA)            ; mov x1, x0 (value in X1)
-        '(#xE0 #x03 #x0A #xAA)            ; mov x0, x10 (tag in X0)
-        ;; Load runtime-throw address into X9 and call (never returns)
-        (arm64-load-imm64 9 func-addr)
-        '(#x20 #x01 #x3F #xD6))))
+;;; ============================================================
+;;; Part 8: Multi-Function Compiler
+;;; ============================================================
 
-    (runtime-call
-     ;; Generate ARM64 code to call function via symbol-function slot
-     ;; (funcall 'name arg1 arg2 ...)
-     (let* ((fn-name (expr-value expr))
-            (args (expr-args expr))
-            (num-args (length args)))
-       ;; Phase 1: Only support 0-3 arguments (matching defun limitation)
-       (when (> num-args 3)
-         (error "Runtime funcall currently supports up to 3 arguments"))
+(defun nc-compile-defun (name params body env fenv)
+  (let* ((bs (mapcar (lambda (p) (list p)) params))
+         (penv (nc-env-extend bs env))
+         (pb (if params (nc-env-lookup (car params) penv) 0))
+         (rfenv (cons (cons name nil) fenv))
+         (bir (nc-compile body penv rfenv)))
+    (list name params bir pb)))
 
-       ;; Get symbol address at compile time
-       (let ((intern-fn (find-symbol "RUNTIME-INTERN" :habu-runtime))
-             (sym-addr 0))
-         (unless intern-fn
-           (error "Runtime not initialized"))
-         (unless (symbolp fn-name)
-           (error "fn-name should be a symbol, got ~S (type ~S, value ~S)"
-                  fn-name (type-of fn-name) (expr-value expr)))
-         (setf sym-addr (funcall intern-fn (string fn-name)))
+(defun nc-compile-forms-h (forms env fenv)
+  (if (consp forms)
+      (let ((f (car forms)))
+        (if (and (consp f) (eq (car f) 'defun))
+            (let* ((nm (cadr f))
+                   (ps (caddr f))
+                   (bd (cadddr f))
+                   (cf (nc-compile-defun nm ps bd env fenv))
+                   (nfenv (cons (cons nm cf) fenv))
+                   (rr (nc-compile-forms-h (cdr forms) env nfenv)))
+              (list (cons cf (car rr)) (cadr rr)))
+            (list nil (nc-compile f env fenv))))
+      (list nil (list 'lit 0))))
 
-         ;; Generate code:
-         ;; 1. Load symbol address into X9
-         ;; 2. Read symbol-function slot [X9 + 24] into X9
-         ;; 3. Evaluate arguments into X0-X2
-         ;; 4. Call via blr x9
-         (append
-          ;; Load symbol address into X9 (64-bit immediate)
-          ;; movz x9, #(sym-addr & 0xFFFF), lsl #0
-          (list #x09 (logand (ash sym-addr 0) #xFF) (logand (ash sym-addr -8) #xFF) #xD2)
-          ;; movk x9, #((sym-addr >> 16) & 0xFFFF), lsl #16
-          (list #x09 (logand (ash sym-addr -16) #xFF) (logand (ash sym-addr -24) #xFF) #xF2)
-          ;; movk x9, #((sym-addr >> 32) & 0xFFFF), lsl #32
-          (list #x09 (logand (ash sym-addr -32) #xFF) (logand (ash sym-addr -40) #xFF) #xF2)
-          ;; movk x9, #((sym-addr >> 48) & 0xFFFF), lsl #48
-          (list #x09 (logand (ash sym-addr -48) #xFF) (logand (ash sym-addr -56) #xFF) #xF2)
+(defun nc-compile-forms (forms)
+  (nc-compile-forms-h forms nil nil))
 
-          ;; Read symbol-function slot: ldr x9, [x9, #24]
-          (list #x29 #x31 #x40 #xF9)            ; ldr x9, [x9, #24]
+(defun nc-gen-param-stores (params base idx acc)
+  (if (null params)
+      acc
+      (let ((st (append (nc-mov-reg 22 idx)
+                        (nc-sub-imm 21 20 (* (+ base idx) 8))
+                        (nc-str-offset 22 21 0))))
+        (nc-gen-param-stores (cdr params) base (+ idx 1) (append acc st)))))
 
-          ;; Evaluate arguments and setup registers (X0, X1, X2)
-          (cond
-            ((= num-args 0)
-             ;; No arguments, just call
-             nil)
+(defun nc-codegen-fn (fn rtaddrs fnoffs)
+  (let* ((ps (cadr fn))
+         (bir (caddr fn))
+         (pb (cadddr fn))
+         (pc (nc-gen-param-stores ps pb 0 nil))
+         (bc (nc-codegen bir rtaddrs fnoffs 0)))
+    (append pc bc (nc-ret))))
 
-            ((= num-args 1)
-             ;; Evaluate arg into X0 (already there by default)
-             (emit-arm64 (first args) env))
+(defun nc-codegen-main (mir rtaddrs)
+  (append (nc-prologue)
+          (nc-codegen mir rtaddrs nil 0)
+          (nc-epilogue)))
 
-            ((= num-args 2)
-             ;; Eval arg1 -> X0, then save; eval arg2 -> X0, move to X1; restore X0
-             (append
-              (emit-arm64 (first args) env)
-              (list #xEA #x03 #x00 #xAA)        ; mov x10, x0 (save arg1)
-              (emit-arm64 (second args) env)
-              (list #xE1 #x03 #x00 #xAA)        ; mov x1, x0 (arg2 -> X1)
-              (list #xE0 #x03 #x0A #xAA)))      ; mov x0, x10 (arg1 -> X0)
+(defun nc-compile-program (forms rtaddrs)
+  (let* ((r (nc-compile-forms forms))
+         (fns (car r))
+         (mir (cadr r))
+         (mc (nc-codegen-main mir rtaddrs)))
+    mc))
 
-            ((= num-args 3)
-             ;; Eval arg1 -> X0, save; arg2 -> X0, save; arg3 -> X0, move to X2; restore X1, X0
-             (append
-              (emit-arm64 (first args) env)
-              (list #xEA #x03 #x00 #xAA)        ; mov x10, x0 (save arg1)
-              (emit-arm64 (second args) env)
-              (list #xEB #x03 #x00 #xAA)        ; mov x11, x0 (save arg2)
-              (emit-arm64 (third args) env)
-              (list #xE2 #x03 #x00 #xAA)        ; mov x2, x0 (arg3 -> X2)
-              (list #xE1 #x03 #x0B #xAA)        ; mov x1, x11 (arg2 -> X1)
-              (list #xE0 #x03 #x0A #xAA)))      ; mov x0, x10 (arg1 -> X0)
+;;; ============================================================
+;;; Part 9: Entry Point
+;;; ============================================================
 
-            (t (error "Unsupported number of arguments: ~D" num-args)))
+(defun main ()
+  ;; Full pipeline: parse -> compile to IR -> evaluate IR
+  (let* ((src "(+ (* 3 4) 5)")
+         (forms (nc-read-all src)))
+    (if (consp forms)
+        (let* ((expr (car forms))
+               (ir (nc-compile expr nil nil))
+               (result (nc-eval-ir ir nil)))
+          result)
+        0)))
 
-          ;; Call function pointer: blr x9
-          (list #x20 #x01 #x3F #xD6)))))))      ; blr x9
-
-;;; ARM64 Helper: Load 64-bit immediate into register
-(defun arm64-load-imm64 (reg-num value)
-  "Generate ARM64 code to load 64-bit VALUE into register X<reg-num> using MOVZ+MOVK sequence"
-  (append
-   ;; MOVZ X<reg>, #(value[15:0]), LSL #0
-   (int-to-bytes (logior #xD2800000
-                         (ash reg-num 0)
-                         (ash (logand value #xFFFF) 5))
-                 4)
-   ;; MOVK X<reg>, #(value[31:16]), LSL #16
-   (int-to-bytes (logior #xF2A00000
-                         (ash reg-num 0)
-                         (ash (logand (ash value -16) #xFFFF) 5))
-                 4)
-   ;; MOVK X<reg>, #(value[47:32]), LSL #32
-   (int-to-bytes (logior #xF2C00000
-                         (ash reg-num 0)
-                         (ash (logand (ash value -32) #xFFFF) 5))
-                 4)
-   ;; MOVK X<reg>, #(value[63:48]), LSL #48
-   (int-to-bytes (logior #xF2E00000
-                         (ash reg-num 0)
-                         (ash (logand (ash value -48) #xFFFF) 5))
-                 4)))
-
-;;; ARM64 Helper: Load small immediate into register
-(defun int-to-arm64-mov-imm (reg imm)
-  "Generate ARM64 code to move small immediate into register (simplified version)"
-  (let ((reg-num (case reg
-                   (x0 0) (x1 1) (x2 2) (x3 3) (x4 4)
-                   (x9 9) (x10 10) (x11 11)
-                   (t (error "Unsupported register: ~S" reg)))))
-    (if (< imm 65536)
-        ;; Small immediate - use MOVZ
-        (int-to-bytes (logior #xD2800000
-                              (ash reg-num 0)
-                              (ash (logand imm #xFFFF) 5))
-                      4)
-        ;; Larger immediate - use full 64-bit load
-        (arm64-load-imm64 reg-num imm))))
-
-;;; Helper: Convert integer to little-endian byte list
-(defun int-to-bytes (n size)
-  "Convert integer N to SIZE bytes in little-endian order"
-  (loop for i from 0 below size
-        collect (ldb (byte 8 (* i 8)) n)))
-
-;;; Helper: Convert byte list to vector
-(defun bytes-to-vector (bytes)
-  (make-array (length bytes)
-              :element-type '(unsigned-byte 8)
-              :initial-contents bytes))
-
-;;; Main compilation entry point
-(defun compile-expression (form &key (arch :x86_64))
-  "Compile a Lisp form to machine code for the target architecture"
-  (let ((*target-arch* arch))
-    (let* ((ir (parse form))
-           (optimized-ir (constant-fold ir))
-           (code (ecase arch
-                   (:x86_64 (emit-x86_64 optimized-ir))
-                   (:arm64 (emit-arm64 optimized-ir)))))
-      (bytes-to-vector code))))
-
-;;; Write machine code to binary file with minimal ELF wrapper
-(defun compile-to-binary (form output-file &key (arch :x86_64))
-  "Compile form to executable binary"
-  (let* ((code (compile-expression form :arch arch))
-         (code-size (length code)))
-    (with-open-file (out output-file
-                         :direction :output
-                         :if-exists :supersede
-                         :element-type '(unsigned-byte 8))
-      (ecase arch
-        (:x86_64
-         ;; Minimal x86_64 code - just the instructions + ret
-         (write-sequence code out)
-         (write-byte #xC3 out)) ; ret instruction
-
-        (:arm64
-         ;; Minimal ARM64 code - just the instructions + ret
-         (write-sequence code out)
-         ;; ret instruction for ARM64
-         (write-sequence #(#xC0 #x03 #x5F #xD6) out))))
-
-    ;; Return info about compilation
-    (values output-file code-size)))
+(main)

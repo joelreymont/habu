@@ -2,7 +2,7 @@
 ;;; Test SBCL compiler basic functionality
 
 (load "sbcl-habu-shim.lisp")
-(load "habu-arm64-codegen-sbcl.lisp")
+(load "arm64/codegen-sbcl.lisp")
 
 (format t "~%=== Testing Habu ARM64 Compiler in SBCL ===~%~%")
 

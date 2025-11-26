@@ -8,7 +8,7 @@
 
 (load "test-harness.lisp")
 (load "../sbcl-habu-shim.lisp")
-(load "../habu-arm64-codegen-sbcl.lisp")
+(load "../arm64/codegen-sbcl.lisp")
 (in-package :habu-compiler)
 
 (reset-test-stats)

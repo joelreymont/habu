@@ -4,7 +4,7 @@
 (format t "~%[Habu Lisp] Loading SBCL shim for Habu predicates...~%")
 (require :sb-posix)
 (load "sbcl-habu-shim.lisp")
-(load "habu-arm64-codegen-sbcl.lisp")
+(load "arm64/codegen-sbcl.lisp")
 
 (defpackage :habu-sbcl
   (:use :cl :habu-shim :habu-sbcl-codegen)
@@ -275,7 +275,7 @@ Returns two values: untagged result (or NIL if parse failed) and output text."
     (progn
       (let ((*package* (find-package :habu-sbcl)))
         ;; Default: load stub; if HABU_USE_REAL_CODEGEN=1, load real codegen too.
-        (load "habu-arm64-codegen-sbcl.lisp")
+        (load "arm64/codegen-sbcl.lisp")
         (when (string= (or (getenv "HABU_USE_REAL_CODEGEN") "") "1")
           (load "habu-arm64-codegen.lisp")))
       (format t "[READY] Compiler definitions loaded in SBCL environment.~%")

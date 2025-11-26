@@ -2,7 +2,7 @@
 ;;; compile-and-save.lisp - Compile Lisp expression to ARM64 bytecode file
 
 (load "sbcl-habu-shim.lisp")
-(load "habu-arm64-codegen-sbcl.lisp")
+(load "arm64/codegen-sbcl.lisp")
 
 (defun write-bytecode-to-file (code-list filename)
   "Write bytecode (list of bytes) to binary file"
