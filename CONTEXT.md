@@ -2,7 +2,7 @@
 
 **Session Date**: November 22-26, 2025
 **Focus**: Self-hosting ARM64 Lisp compiler with native executable generation
-**Last Updated**: November 26, 2025 (Stack frame fix, self-hosting list functions - 66/66 native tests pass)
+**Last Updated**: November 26, 2025 (List accessors for self-hosting - 77/77 native tests pass)
 
 ## Session Summary (November 26, 2025)
 
@@ -51,7 +51,8 @@ This session completed the bootstrap compiler ARM64 codegen, verified bytecode e
 40. **Fixed function stack frame overflow** - frame was 512 bytes but spill slots at 576+, now 1024 bytes
 41. **Self-hosting list functions** - length, reverse, append, mapcar, member, assoc as inline expansions
 42. **Self-hosting native tests** - 10 compiler-pattern tests (tree traversal, env lookup, mini-eval, etc.)
-43. **66/66 native tests pass** - all arithmetic, cons, predicates, symbols, vectors, strings, labels/closures, list functions
+43. **77/77 native tests pass** - all arithmetic, cons, predicates, symbols, vectors, strings, labels/closures, list functions, list accessors
+44. **List accessor functions** - cadr, caddr, cadddr, cddr, cdddr, first-fourth, rest, nth, count for self-hosting
 
 **Package Structure** (November 26, 2025):
 - HABU-SYS: System/runtime primitives (string-length, string-ref, make-vector, etc.)
