@@ -1218,6 +1218,14 @@
          ;; string-ref - get character at index
          ((eq op 'string-ref)
           (list 'string-ref-ir (nc-compile (cadr expr) env fenv) (nc-compile (caddr expr) env fenv)))
+         ;; system - execute shell command
+         ((eq op 'system)
+          (list 'system-ir (nc-compile (cadr expr) env fenv)))
+         ;; string= - compare two strings (via runtime)
+         ((eq op 'string=)
+          (list 'string-equal-ir
+                (nc-compile (cadr expr) env fenv)
+                (nc-compile (caddr expr) env fenv)))
          ;; incf - increment variable
          ((eq op 'incf)
           (let* ((place (cadr expr))
@@ -1646,6 +1654,16 @@
     ((nc-has-tag ir 'string-ref-ir)
      (char-code (char (nc-eval-ir-with-fns (cadr ir) env fenv)
                       (nc-eval-ir-with-fns (caddr ir) env fenv))))
+    ;; system-ir - execute shell command (evaluator uses SBCL's system)
+    ((nc-has-tag ir 'system-ir)
+     (let ((cmd (nc-eval-ir-with-fns (cadr ir) env fenv)))
+       #+sbcl (sb-ext:run-program "/bin/sh" (list "-c" cmd) :output t :wait t)
+       0))
+    ;; string-equal-ir - compare two strings
+    ((nc-has-tag ir 'string-equal-ir)
+     (let ((s1 (nc-eval-ir-with-fns (cadr ir) env fenv))
+           (s2 (nc-eval-ir-with-fns (caddr ir) env fenv)))
+       (if (string= s1 s2) 1 0)))
     ;; nthcdr-ir - get nth cdr of list
     ((nc-has-tag ir 'nthcdr-ir)
      ;; nthcdr-ir = (nthcdr-ir n-ir list-ir)
@@ -2108,6 +2126,32 @@
             (lf (nc-ldr-offset 9 19 128))
             (bl (nc-blr 9)))
        (nc-append-all (list sc sp ic ut m1 ls lf bl))))
+    ;; system-ir - execute shell command
+    ((nc-has-tag ir 'system-ir)
+     ;; system-ir = (system-ir cmd-ir)
+     ;; Runtime index 51 = habu_system at offset 408
+     (let* ((cmd-ir (cadr ir))
+            (cc (nc-codegen cmd-ir rtaddrs fnoffs td))
+            (lf (nc-ldr-offset 9 19 408))
+            (bl (nc-blr 9)))
+       (nc-append-all (list cc lf bl))))
+    ;; string-equal-ir - compare two strings
+    ((nc-has-tag ir 'string-equal-ir)
+     ;; string-equal-ir = (string-equal-ir str1-ir str2-ir)
+     ;; Runtime index 52 = habu_string_equal at offset 416
+     ;; Takes two string args in x0/x1, returns tagged fixnum (0 or 1)
+     (let* ((str1-ir (cadr ir))
+            (str2-ir (caddr ir))
+            (xs (nc-temp-slot td))
+            (nd (+ td 1))
+            (s1 (nc-codegen str1-ir rtaddrs fnoffs nd))
+            (sp (nc-str-offset 0 31 xs))
+            (s2 (nc-codegen str2-ir rtaddrs fnoffs nd))
+            (m1 (nc-mov-reg 1 0))
+            (ls (nc-ldr-offset 0 31 xs))
+            (lf (nc-ldr-offset 9 19 416))
+            (bl (nc-blr 9)))
+       (nc-append-all (list s1 sp s2 m1 ls lf bl))))
     ;; nthcdr-ir - get nth cdr of list
     ((nc-has-tag ir 'nthcdr-ir)
      ;; nthcdr-ir = (nthcdr-ir n-ir list-ir)
@@ -3035,6 +3079,8 @@ int main(int argc, char **argv) {
     g_runtime_table[48] = (void*)habu_print_value;
     g_runtime_table[49] = (void*)habu_println_value;
     g_runtime_table[50] = (void*)habu_get_time_ns;
+    g_runtime_table[51] = (void*)habu_system;
+    g_runtime_table[52] = (void*)habu_string_equal;
     compiled_fn_t fn = (compiled_fn_t)exec_mem;
     int64_t result = fn(g_runtime_table);
     printf(\"Result: %lld\\n\", result >> 4);

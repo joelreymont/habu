@@ -132,6 +132,7 @@ habu_value_t habu_make_string_from_vector(habu_value_t vec_val);  /* For reader 
 habu_value_t habu_string_concat(habu_value_t str1_val, habu_value_t str2_val);  /* Concatenate two strings */
 habu_value_t habu_string_substring(habu_value_t str_val, habu_value_t start_val, habu_value_t end_val);  /* Extract substring */
 habu_value_t habu_fixnum_to_string(habu_value_t num_val);  /* Convert fixnum to string */
+habu_value_t habu_string_equal(habu_value_t str1_val, habu_value_t str2_val);  /* Compare strings for equality */
 
 /* Symbol operations */
 habu_value_t habu_make_symbol_from_string(habu_value_t str_val);
@@ -213,6 +214,9 @@ habu_value_t habu_println_value(habu_value_t value);
 
 /* Profiling support */
 habu_value_t habu_get_time_ns(void);  /* High-resolution timer for profiling */
+
+/* System operations */
+habu_value_t habu_system(habu_value_t cmd_str);  /* Execute shell command */
 
 /* Bignum operations (arbitrary precision integers) */
 habu_value_t habu_make_bignum_from_fixnum(habu_value_t fixnum);

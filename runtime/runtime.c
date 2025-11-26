@@ -351,6 +351,29 @@ habu_value_t habu_string_substring(habu_value_t str_val, habu_value_t start_val,
     return result;
 }
 
+/* Compare two strings for equality
+ * Returns tagged fixnum: 1 if equal, 0 if not equal
+ */
+habu_value_t habu_string_equal(habu_value_t str1_val, habu_value_t str2_val) {
+    if (get_tag(str1_val) != TAG_STRING || get_tag(str2_val) != TAG_STRING) {
+        return fixnum_to_value(0);
+    }
+
+    habu_string_t *str1 = value_to_string(str1_val);
+    habu_string_t *str2 = value_to_string(str2_val);
+
+    /* Different lengths means not equal */
+    if (str1->length != str2->length) {
+        return fixnum_to_value(0);
+    }
+
+    /* Compare bytes */
+    if (memcmp(str1->data, str2->data, str1->length) == 0) {
+        return fixnum_to_value(1);
+    }
+    return fixnum_to_value(0);
+}
+
 /* Convert fixnum to string */
 habu_value_t habu_fixnum_to_string(habu_value_t num_val) {
     if (!is_fixnum(num_val)) {

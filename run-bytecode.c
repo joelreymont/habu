@@ -180,8 +180,12 @@ int main(int argc, char **argv) {
     /* Profiling operations */
     g_runtime_table[50] = (void*)habu_get_time_ns;
 
+    /* System operations */
+    g_runtime_table[51] = (void*)habu_system;
+    g_runtime_table[52] = (void*)habu_string_equal;
+
     if (getenv("HABU_DEBUG_TABLE")) {
-        for (int i = 0; i <= 50; i++) {
+        for (int i = 0; i <= 51; i++) {
             fprintf(stderr, "RT[%d]=%p\n", i, g_runtime_table[i]);
         }
     }

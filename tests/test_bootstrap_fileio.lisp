@@ -74,6 +74,23 @@
   "(string-ref \"hello\" 4)"
   (char-code #\o))
 
+;; Test string= comparison
+(test-eval "string=-equal"
+  "(string= \"hello\" \"hello\")"
+  1)
+
+(test-eval "string=-different"
+  "(string= \"hello\" \"world\")"
+  0)
+
+(test-eval "string=-diff-length"
+  "(string= \"hi\" \"hello\")"
+  0)
+
+(test-eval "string=-empty"
+  "(string= \"\" \"\")"
+  1)
+
 (format t "~%=== Results: ~A passed, ~A failed ===~%" *tests-passed* *tests-failed*)
 (when (> *tests-failed* 0)
   (sb-ext:exit :code 1))
