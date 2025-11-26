@@ -1234,6 +1234,65 @@
           (list 'string-equal-ir
                 (nc-compile (cadr expr) env fenv)
                 (nc-compile (caddr expr) env fenv)))
+         ;; make-vector - allocate a vector of size n
+         ((eq op 'make-vector)
+          (list 'make-vector-ir (nc-compile (cadr expr) env fenv)))
+         ;; vector-set - set element at index
+         ((eq op 'vector-set)
+          (list 'vector-set-ir
+                (nc-compile (cadr expr) env fenv)
+                (nc-compile (caddr expr) env fenv)
+                (nc-compile (cadddr expr) env fenv)))
+         ;; vector-ref - get element at index
+         ((eq op 'vector-ref)
+          (list 'vector-ref-ir
+                (nc-compile (cadr expr) env fenv)
+                (nc-compile (caddr expr) env fenv)))
+         ;; aref - same as vector-ref for now
+         ((eq op 'aref)
+          (list 'vector-ref-ir
+                (nc-compile (cadr expr) env fenv)
+                (nc-compile (caddr expr) env fenv)))
+         ;; make-string-from-vector - convert vector of char codes to string
+         ((eq op 'make-string-from-vector)
+          (list 'make-string-from-vector-ir (nc-compile (cadr expr) env fenv)))
+         ;; make-symbol-from-string - intern a string as symbol
+         ((eq op 'make-symbol-from-string)
+          (list 'make-symbol-from-string-ir (nc-compile (cadr expr) env fenv)))
+         ;; intern - same as make-symbol-from-string
+         ((eq op 'intern)
+          (list 'make-symbol-from-string-ir (nc-compile (cadr expr) env fenv)))
+         ;; write-bytes - write vector of bytes to file
+         ((eq op 'write-bytes)
+          (list 'write-bytes-ir
+                (nc-compile (cadr expr) env fenv)
+                (nc-compile (caddr expr) env fenv)))
+         ;; char-upcase - convert lowercase char code to uppercase
+         ;; Transform to: (if (and (>= ch #x61) (<= ch #x7A)) (- ch #x20) ch)
+         ((eq op 'char-upcase)
+          (let ((ch-var (gensym "CH")))
+            (nc-compile
+             (list 'LET* (list (list ch-var (cadr expr)))
+                   (list 'if (list 'and (list '>= ch-var #x61) (list '<= ch-var #x7A))
+                         (list '- ch-var #x20)
+                         ch-var))
+             env fenv)))
+         ;; string-upcase - convert string to uppercase
+         ;; Transform to: build new string with uppercased chars using dotimes
+         ((eq op 'string-upcase)
+          (let ((str-var (gensym "STR"))
+                (len-var (gensym "LEN"))
+                (vec-var (gensym "VEC"))
+                (i-var (gensym "I")))
+            (nc-compile
+             (list 'LET* (list (list str-var (cadr expr))
+                               (list len-var (list 'string-length str-var))
+                               (list vec-var (list 'make-vector len-var)))
+                   (list 'dotimes (list i-var len-var vec-var)
+                         (list 'vector-set vec-var i-var
+                               (list 'char-upcase (list 'string-ref str-var i-var))))
+                   (list 'make-string-from-vector vec-var))
+             env fenv)))
          ;; incf - increment variable
          ((eq op 'incf)
           (let* ((place (cadr expr))
@@ -1672,6 +1731,39 @@
      (let ((s1 (nc-eval-ir-with-fns (cadr ir) env fenv))
            (s2 (nc-eval-ir-with-fns (caddr ir) env fenv)))
        (if (string= s1 s2) 1 0)))
+    ;; make-vector-ir - allocate vector
+    ((nc-has-tag ir 'make-vector-ir)
+     (make-array (nc-eval-ir-with-fns (cadr ir) env fenv)))
+    ;; vector-set-ir - set element at index
+    ((nc-has-tag ir 'vector-set-ir)
+     (let ((vec (nc-eval-ir-with-fns (cadr ir) env fenv))
+           (idx (nc-eval-ir-with-fns (caddr ir) env fenv))
+           (val (nc-eval-ir-with-fns (cadddr ir) env fenv)))
+       (setf (aref vec idx) val)
+       val))
+    ;; vector-ref-ir - get element at index
+    ((nc-has-tag ir 'vector-ref-ir)
+     (let ((vec (nc-eval-ir-with-fns (cadr ir) env fenv))
+           (idx (nc-eval-ir-with-fns (caddr ir) env fenv)))
+       (aref vec idx)))
+    ;; make-string-from-vector-ir - convert vector to string
+    ((nc-has-tag ir 'make-string-from-vector-ir)
+     (let ((vec (nc-eval-ir-with-fns (cadr ir) env fenv)))
+       (map 'string #'code-char vec)))
+    ;; make-symbol-from-string-ir - intern string as symbol
+    ((nc-has-tag ir 'make-symbol-from-string-ir)
+     (let ((str (nc-eval-ir-with-fns (cadr ir) env fenv)))
+       (intern str)))
+    ;; write-bytes-ir - write vector of bytes to file (for evaluator, use SBCL)
+    ((nc-has-tag ir 'write-bytes-ir)
+     (let ((path (nc-eval-ir-with-fns (cadr ir) env fenv))
+           (vec (nc-eval-ir-with-fns (caddr ir) env fenv)))
+       (with-open-file (out path :direction :output
+                            :if-exists :supersede
+                            :element-type '(unsigned-byte 8))
+         (dotimes (i (length vec))
+           (write-byte (aref vec i) out)))
+       0))
     ;; nthcdr-ir - get nth cdr of list
     ((nc-has-tag ir 'nthcdr-ir)
      ;; nthcdr-ir = (nthcdr-ir n-ir list-ir)
@@ -2160,6 +2252,92 @@
             (lf (nc-ldr-offset 9 19 416))
             (bl (nc-blr 9)))
        (nc-append-all (list s1 sp s2 m1 ls lf bl))))
+    ;; make-vector-ir - allocate vector
+    ((nc-has-tag ir 'make-vector-ir)
+     ;; make-vector-ir = (make-vector-ir size-ir)
+     ;; Runtime index 7 = habu_make_vector at offset 56
+     ;; Takes size as tagged fixnum in x0, returns tagged vector
+     (let* ((size-ir (cadr ir))
+            (sc (nc-codegen size-ir rtaddrs fnoffs td))
+            (lf (nc-ldr-offset 9 19 56))
+            (bl (nc-blr 9)))
+       (nc-append-all (list sc lf bl))))
+    ;; vector-set-ir - set element at index
+    ((nc-has-tag ir 'vector-set-ir)
+     ;; vector-set-ir = (vector-set-ir vec-ir idx-ir val-ir)
+     ;; Runtime index 8 = habu_vector_set at offset 64
+     ;; Takes vec in x0, idx (tagged) in x1, val in x2
+     (let* ((vec-ir (cadr ir))
+            (idx-ir (caddr ir))
+            (val-ir (cadddr ir))
+            (xs (nc-temp-slot td))
+            (xs2 (nc-temp-slot (+ td 1)))
+            (nd (+ td 2))
+            (vc (nc-codegen vec-ir rtaddrs fnoffs nd))
+            (sv (nc-str-offset 0 31 xs))
+            (ic (nc-codegen idx-ir rtaddrs fnoffs nd))
+            (si (nc-str-offset 0 31 xs2))
+            (vlc (nc-codegen val-ir rtaddrs fnoffs nd))
+            (mv (nc-mov-reg 2 0))
+            (li (nc-ldr-offset 1 31 xs2))
+            (lv (nc-ldr-offset 0 31 xs))
+            (lf (nc-ldr-offset 9 19 64))
+            (bl (nc-blr 9)))
+       (nc-append-all (list vc sv ic si vlc mv li lv lf bl))))
+    ;; vector-ref-ir - get element at index
+    ((nc-has-tag ir 'vector-ref-ir)
+     ;; vector-ref-ir = (vector-ref-ir vec-ir idx-ir)
+     ;; Runtime index 9 = habu_vector_ref at offset 72
+     ;; Takes vec in x0, idx (tagged) in x1, returns tagged element
+     (let* ((vec-ir (cadr ir))
+            (idx-ir (caddr ir))
+            (xs (nc-temp-slot td))
+            (nd (+ td 1))
+            (vc (nc-codegen vec-ir rtaddrs fnoffs nd))
+            (sv (nc-str-offset 0 31 xs))
+            (ic (nc-codegen idx-ir rtaddrs fnoffs nd))
+            (mi (nc-mov-reg 1 0))
+            (lv (nc-ldr-offset 0 31 xs))
+            (lf (nc-ldr-offset 9 19 72))
+            (bl (nc-blr 9)))
+       (nc-append-all (list vc sv ic mi lv lf bl))))
+    ;; make-string-from-vector-ir - convert vector to string
+    ((nc-has-tag ir 'make-string-from-vector-ir)
+     ;; make-string-from-vector-ir = (make-string-from-vector-ir vec-ir)
+     ;; Runtime index 10 = habu_make_string_from_vector at offset 80
+     ;; Takes tagged vector in x0, returns tagged string
+     (let* ((vec-ir (cadr ir))
+            (vc (nc-codegen vec-ir rtaddrs fnoffs td))
+            (lf (nc-ldr-offset 9 19 80))
+            (bl (nc-blr 9)))
+       (nc-append-all (list vc lf bl))))
+    ;; make-symbol-from-string-ir - intern string as symbol
+    ((nc-has-tag ir 'make-symbol-from-string-ir)
+     ;; make-symbol-from-string-ir = (make-symbol-from-string-ir str-ir)
+     ;; Runtime index 11 = habu_make_symbol_from_string at offset 88
+     ;; Takes tagged string in x0, returns tagged symbol
+     (let* ((str-ir (cadr ir))
+            (sc (nc-codegen str-ir rtaddrs fnoffs td))
+            (lf (nc-ldr-offset 9 19 88))
+            (bl (nc-blr 9)))
+       (nc-append-all (list sc lf bl))))
+    ;; write-bytes-ir - write vector of bytes to file
+    ((nc-has-tag ir 'write-bytes-ir)
+     ;; write-bytes-ir = (write-bytes-ir path-ir vec-ir)
+     ;; Runtime index 53 = habu_write_bytes at offset 424
+     ;; Takes path string in x0, byte vector in x1
+     (let* ((path-ir (cadr ir))
+            (vec-ir (caddr ir))
+            (xs (nc-temp-slot td))
+            (nd (+ td 1))
+            (pc (nc-codegen path-ir rtaddrs fnoffs nd))
+            (sp (nc-str-offset 0 31 xs))
+            (vc (nc-codegen vec-ir rtaddrs fnoffs nd))
+            (mv (nc-mov-reg 1 0))
+            (lp (nc-ldr-offset 0 31 xs))
+            (lf (nc-ldr-offset 9 19 424))
+            (bl (nc-blr 9)))
+       (nc-append-all (list pc sp vc mv lp lf bl))))
     ;; nthcdr-ir - get nth cdr of list
     ((nc-has-tag ir 'nthcdr-ir)
      ;; nthcdr-ir = (nthcdr-ir n-ir list-ir)
@@ -3150,3 +3328,50 @@ int main(int argc, char **argv) {
 
 ;; Only run main when loaded directly
 ;; (main)
+
+;;; ============================================================
+;;; Compiler entry point for self-hosting (habu-main)
+;;; ============================================================
+;;;
+;;; This is the entry point for the self-hosted compiler.
+;;; It reads a source file, compiles it to ARM64 bytecode,
+;;; and writes the bytecode to an output file.
+;;;
+;;; Usage (when compiled to native):
+;;;   habu-main reads from /tmp/input.lisp
+;;;   habu-main writes to /tmp/output.bin
+;;;
+;;; This is a simplified version for initial bootstrap testing.
+;;; Full command-line argument support requires additional runtime.
+
+(defun habu-main-source ()
+  "Source code for the self-hosting compiler entry point.
+   This compiles input.lisp to output.bin (hardcoded paths for bootstrap)."
+  "(defun list-to-vector (lst)
+     ;; Convert a list to a vector
+     (let* ((len (length lst))
+            (vec (make-vector len)))
+       (labels ((fill (l i)
+                  (if (null l)
+                      vec
+                      (progn
+                        (vector-set vec i (car l))
+                        (fill (cdr l) (+ i 1))))))
+         (fill lst 0))))
+
+   (defun length (lst)
+     ;; List length helper
+     (labels ((iter (l n)
+                (if (null l)
+                    n
+                    (iter (cdr l) (+ n 1)))))
+       (iter lst 0)))
+
+   ;; Main entry point
+   (let* ((source (read-file \"/tmp/input.lisp\"))
+          (forms (read-all source))
+          (bytecode (compile-program forms nil))
+          (byte-vec (list-to-vector bytecode)))
+     (write-bytes \"/tmp/output.bin\" byte-vec)
+     (println (length bytecode))
+     0)")

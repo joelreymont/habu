@@ -114,6 +114,9 @@ int main(int argc, char **argv) {
     g_runtime_table[48] = (void*)habu_print_value;
     g_runtime_table[49] = (void*)habu_println_value;
     g_runtime_table[50] = (void*)habu_get_time_ns;
+    g_runtime_table[51] = (void*)habu_system;
+    g_runtime_table[52] = (void*)habu_string_equal;
+    g_runtime_table[53] = (void*)habu_write_bytes;
 
     /* Execute */
     compiled_fn_t fn = (compiled_fn_t)exec_mem;

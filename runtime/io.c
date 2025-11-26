@@ -349,3 +349,56 @@ habu_value_t habu_get_time_ns(void) {
      * care about differences, not absolute values */
     return fixnum_to_value((int64_t)ns);
 }
+
+/* Execute shell command
+ *
+ * Args:
+ *   cmd_str - Tagged string with command to execute
+ *
+ * Returns:
+ *   Fixnum exit status from system() call
+ */
+habu_value_t habu_system(habu_value_t cmd_str) {
+    if (get_tag(cmd_str) != TAG_STRING) {
+        return fixnum_to_value(-1);
+    }
+
+    habu_string_t *cmd = value_to_string(cmd_str);
+    int status = system(cmd->data);
+    return fixnum_to_value((int64_t)status);
+}
+
+/* Write a vector of bytes to a file
+ *
+ * Args:
+ *   path_str - Tagged string with file path
+ *   byte_vec - Tagged vector of fixnum bytes (0-255)
+ *
+ * Returns:
+ *   Fixnum 0 on success, NIL on error
+ */
+habu_value_t habu_write_bytes(habu_value_t path_str, habu_value_t byte_vec) {
+    if (get_tag(path_str) != TAG_STRING || get_tag(byte_vec) != TAG_VECTOR) {
+        return NIL;
+    }
+
+    habu_string_t *path = value_to_string(path_str);
+    habu_vector_t *vec = value_to_vector(byte_vec);
+
+    FILE *f = fopen(path->data, "wb");
+    if (!f) {
+        return NIL;
+    }
+
+    /* Write each byte from the vector */
+    for (size_t i = 0; i < vec->length; i++) {
+        habu_value_t val = vec->data[i];
+        if (is_fixnum(val)) {
+            uint8_t byte = (uint8_t)(value_to_fixnum(val) & 0xFF);
+            fwrite(&byte, 1, 1, f);
+        }
+    }
+
+    fclose(f);
+    return fixnum_to_value(0);
+}

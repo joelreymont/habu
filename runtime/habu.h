@@ -217,6 +217,7 @@ habu_value_t habu_get_time_ns(void);  /* High-resolution timer for profiling */
 
 /* System operations */
 habu_value_t habu_system(habu_value_t cmd_str);  /* Execute shell command */
+habu_value_t habu_write_bytes(habu_value_t path_str, habu_value_t byte_vec);  /* Write vector of bytes to file */
 
 /* Bignum operations (arbitrary precision integers) */
 habu_value_t habu_make_bignum_from_fixnum(habu_value_t fixnum);

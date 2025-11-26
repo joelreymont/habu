@@ -183,6 +183,7 @@ int main(int argc, char **argv) {
     /* System operations */
     g_runtime_table[51] = (void*)habu_system;
     g_runtime_table[52] = (void*)habu_string_equal;
+    g_runtime_table[53] = (void*)habu_write_bytes;
 
     if (getenv("HABU_DEBUG_TABLE")) {
         for (int i = 0; i <= 51; i++) {
