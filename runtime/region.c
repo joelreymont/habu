@@ -10,7 +10,7 @@ struct habu_region {
     size_t size;
 };
 
-habu_region_t *habu_region_create(size_t size) {
+habu_region_t *region_create(size_t size) {
     habu_region_t *region = malloc(sizeof(habu_region_t));
     if (!region) {
         return NULL;
@@ -33,14 +33,14 @@ habu_region_t *habu_region_create(size_t size) {
     return region;
 }
 
-void habu_region_destroy(habu_region_t *region) {
+void region_destroy(habu_region_t *region) {
     if (region) {
         free(region->start);
         free(region);
     }
 }
 
-void *habu_region_alloc(habu_region_t *region, size_t bytes) {
+void *region_alloc(habu_region_t *region, size_t bytes) {
     assert(region != NULL);
 
     /* Align to 16 bytes */
@@ -57,21 +57,21 @@ void *habu_region_alloc(habu_region_t *region, size_t bytes) {
     return addr;
 }
 
-void habu_region_reset(habu_region_t *region) {
+void region_reset(habu_region_t *region) {
     assert(region != NULL);
     region->free_ptr = region->start;
 }
 
-size_t habu_region_used(habu_region_t *region) {
+size_t region_used(habu_region_t *region) {
     assert(region != NULL);
     return (char *)region->free_ptr - (char *)region->start;
 }
 
 /* Region-based object allocation */
 
-habu_value_t habu_region_cons(habu_region_t *region, habu_value_t car, habu_value_t cdr) {
+habu_value_t region_cons(habu_region_t *region, habu_value_t car, habu_value_t cdr) {
     size_t total_size = sizeof(habu_header_t) + sizeof(habu_cons_t);
-    void *mem = habu_region_alloc(region, total_size);
+    void *mem = region_alloc(region, total_size);
     if (!mem) {
         return NIL;  /* Out of memory */
     }
@@ -92,11 +92,11 @@ habu_value_t habu_region_cons(habu_region_t *region, habu_value_t car, habu_valu
     return tag_pointer(cons, TAG_CONS);
 }
 
-habu_value_t habu_region_make_vector(habu_region_t *region, size_t length) {
+habu_value_t region_make_vector(habu_region_t *region, size_t length) {
     size_t data_size = sizeof(habu_vector_t) + length * sizeof(habu_value_t);
     size_t total_size = sizeof(habu_header_t) + data_size;
 
-    void *mem = habu_region_alloc(region, total_size);
+    void *mem = region_alloc(region, total_size);
     if (!mem) {
         return NIL;
     }
@@ -119,11 +119,11 @@ habu_value_t habu_region_make_vector(habu_region_t *region, size_t length) {
     return tag_pointer(vector, TAG_VECTOR);
 }
 
-habu_value_t habu_region_make_string(habu_region_t *region, const char *str, size_t length) {
+habu_value_t region_make_string(habu_region_t *region, const char *str, size_t length) {
     size_t data_size = sizeof(habu_string_t) + length + 1;  /* +1 for null terminator */
     size_t total_size = sizeof(habu_header_t) + data_size;
 
-    void *mem = habu_region_alloc(region, total_size);
+    void *mem = region_alloc(region, total_size);
     if (!mem) {
         return NIL;
     }

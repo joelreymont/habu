@@ -27,7 +27,7 @@
  *
  * 4. ROOT REGISTRATION
  *    - Roots are starting points for GC (stack, globals, registers)
- *    - Explicit API: habu_gc_add_root() / habu_gc_remove_root()
+ *    - Explicit API: gc_add_root() / gc_remove_root()
  *    - During GC, all objects reachable from roots are kept alive
  */
 
@@ -118,7 +118,7 @@ typedef struct gc_heap {
      *   - Register values
      *
      * Since we don't have automatic stack scanning yet, roots must be
-     * registered explicitly using habu_gc_add_root().
+     * registered explicitly using gc_add_root().
      *
      * IMPORTANT: roots is an array of POINTERS to habu_value_t locations.
      * This allows us to update the caller's variable when GC relocates objects.
@@ -259,8 +259,8 @@ static void mark_symbol_table(void) {
  * collection (e.g., when swapping semispaces) without needing to notify
  * generated code.
  */
-void **habu_young_free_ptr = NULL;
-void **habu_young_end_ptr = NULL;
+void **young_free_ptr = NULL;
+void **young_end_ptr = NULL;
 
 /* ============================================================================
  * INITIALIZATION AND SHUTDOWN
@@ -274,7 +274,7 @@ void **habu_young_end_ptr = NULL;
  * Parameters:
  *   heap_size - Requested heap size (currently ignored, uses fixed sizes)
  */
-void habu_init(size_t heap_size) {
+void init(size_t heap_size) {
     (void)heap_size;  /* Use fixed sizes for now */
 
     /* Allocate the main GC structure */
@@ -318,8 +318,8 @@ void habu_init(size_t heap_size) {
      * can perform inline bump-pointer allocation. These are pointers-to-pointers
      * so they remain valid even when the GC swaps semispaces.
      */
-    habu_young_free_ptr = &gc_heap->young_free;
-    habu_young_end_ptr = &gc_heap->young_end;
+    young_free_ptr = &gc_heap->young_free;
+    young_end_ptr = &gc_heap->young_end;
 
     /* OLD GENERATION SETUP
      *
@@ -345,7 +345,7 @@ void habu_init(size_t heap_size) {
 
     /* ROOT SET SETUP
      *
-     * Roots must be registered explicitly using habu_gc_add_root().
+     * Roots must be registered explicitly using gc_add_root().
      * Starts with capacity for 256 roots, grows as needed.
      */
     gc_heap->roots_capacity = 256;
@@ -369,17 +369,17 @@ void habu_init(size_t heap_size) {
     gc_heap->old_bytes_allocated = 0;
 
     /* Initialize I/O system */
-    habu_io_init();
+    io_init();
 }
 
 /* Shutdown and free all GC memory
  *
  * Call this before program exit to clean up all GC-related allocations.
- * After this, habu_gc_alloc() will fail until habu_init() is called again.
+ * After this, gc_alloc() will fail until init() is called again.
  */
-void habu_shutdown(void) {
+void shutdown(void) {
     /* Shutdown I/O system */
-    habu_io_shutdown();
+    io_shutdown();
 
     if (gc_heap) {
         /* Free heap regions */
@@ -636,7 +636,7 @@ static void clear_remembered_set(void) {
 }
 
 /* Write barrier - call when storing pointer into old gen object */
-void habu_write_barrier(void *obj, habu_value_t value) {
+void write_barrier(void *obj, habu_value_t value) {
     if (!gc_heap || !obj || !is_pointer(value)) return;
 
     /* Only track old→young pointers */
@@ -707,7 +707,7 @@ static size_t sweep_old_generation(void) {
 static void collect_old_generation(void) {
     if (!gc_heap) return;
 
-    uint64_t start = habu_time_ns();
+    uint64_t start = time_ns();
 
     /* Mark phase */
     gc_heap->state = GC_STATE_MARKING;
@@ -723,7 +723,7 @@ static void collect_old_generation(void) {
 
     gc_heap->state = GC_STATE_IDLE;
 
-    uint64_t end = habu_time_ns();
+    uint64_t end = time_ns();
     uint64_t pause = end - start;
 
     gc_heap->stats.last_pause_ns = pause;
@@ -997,14 +997,14 @@ static void update_object_pointers(void *obj) {
  *   - All dead objects were left behind in old from-space (now to-space)
  *   - To-space is completely empty and ready for next GC
  */
-void habu_gc_collect(void) {
+void gc_collect(void) {
     /* Safety checks */
-    if (!gc_heap || !habu_gc_enabled) {
+    if (!gc_heap || !gc_enabled) {
         return;
     }
 
     /* Start timing */
-    uint64_t start = habu_time_ns();
+    uint64_t start = time_ns();
     size_t young_before = (char *)gc_heap->young_free - (char *)gc_heap->young_start;
 
     /* PHASE 1: FLIP THE SEMISPACES
@@ -1115,7 +1115,7 @@ void habu_gc_collect(void) {
 
     gc_heap->state = GC_STATE_IDLE;
 
-    uint64_t end = habu_time_ns();
+    uint64_t end = time_ns();
     uint64_t pause = end - start;
 
     gc_heap->stats.last_pause_ns = pause;
@@ -1130,13 +1130,13 @@ void habu_gc_collect(void) {
  * This allows GC to update the caller's variable when objects are relocated.
  *
  * Example usage:
- *   habu_value_t my_obj = habu_cons(a, b);
- *   habu_gc_add_root(&my_obj);  // Pass ADDRESS of variable
+ *   habu_value_t my_obj = cons(a, b);
+ *   gc_add_root(&my_obj);  // Pass ADDRESS of variable
  *   // ... allocations that might trigger GC ...
- *   habu_gc_remove_root(&my_obj);
+ *   gc_remove_root(&my_obj);
  */
 
-void habu_gc_add_root(habu_value_t *root_location) {
+void gc_add_root(habu_value_t *root_location) {
     if (!gc_heap || !root_location) {
         return;
     }
@@ -1162,7 +1162,7 @@ void habu_gc_add_root(habu_value_t *root_location) {
     gc_heap->roots[gc_heap->roots_size++] = root_location;
 }
 
-void habu_gc_remove_root(habu_value_t *root_location) {
+void gc_remove_root(habu_value_t *root_location) {
     if (!gc_heap || !root_location) {
         return;
     }
@@ -1182,7 +1182,7 @@ void habu_gc_remove_root(habu_value_t *root_location) {
 
 /* Allocation */
 
-void *habu_gc_alloc(size_t bytes, uint64_t type) {
+void *gc_alloc(size_t bytes, uint64_t type) {
     if (!gc_heap) {
         return NULL;
     }
@@ -1210,9 +1210,9 @@ void *habu_gc_alloc(size_t bytes, uint64_t type) {
         gc_heap->stats.total_allocated += total_size;
 
         /* Check if GC needed */
-        if (habu_gc_enabled &&
+        if (gc_enabled &&
             gc_heap->bytes_allocated_since_gc >= gc_heap->gc_threshold) {
-            habu_gc_collect();
+            gc_collect();
             gc_heap->bytes_allocated_since_gc = 0;
         }
 
@@ -1220,8 +1220,8 @@ void *habu_gc_alloc(size_t bytes, uint64_t type) {
     }
 
     /* Young gen full - try GC first */
-    if (habu_gc_enabled) {
-        habu_gc_collect();
+    if (gc_enabled) {
+        gc_collect();
         gc_heap->bytes_allocated_since_gc = 0;
 
         /* Try young gen again after GC */
@@ -1290,14 +1290,14 @@ void *habu_gc_alloc(size_t bytes, uint64_t type) {
  * Returns:
  *   Pointer to object data (after header), or NULL if allocation fails
  */
-void *habu_gc_alloc_slow(size_t bytes, uint64_t type) {
-    return habu_gc_alloc(bytes, type);
+void *gc_alloc_slow(size_t bytes, uint64_t type) {
+    return gc_alloc(bytes, type);
 }
 
 /* GC-allocated object constructors */
 
-habu_value_t habu_cons(habu_value_t car, habu_value_t cdr) {
-    void *mem = habu_gc_alloc(sizeof(habu_cons_t), TYPE_CONS);
+habu_value_t cons(habu_value_t car, habu_value_t cdr) {
+    void *mem = gc_alloc(sizeof(habu_cons_t), TYPE_CONS);
     if (!mem) {
         return NIL;
     }
@@ -1309,9 +1309,9 @@ habu_value_t habu_cons(habu_value_t car, habu_value_t cdr) {
     return tag_pointer(cons, TAG_CONS);
 }
 
-habu_value_t habu_make_vector(size_t length) {
+habu_value_t make_vector(size_t length) {
     size_t size = sizeof(habu_vector_t) + length * sizeof(habu_value_t);
-    void *mem = habu_gc_alloc(size, TYPE_VECTOR);
+    void *mem = gc_alloc(size, TYPE_VECTOR);
     if (!mem) {
         return NIL;
     }
@@ -1325,9 +1325,9 @@ habu_value_t habu_make_vector(size_t length) {
     return tag_pointer(vec, TAG_VECTOR);
 }
 
-habu_value_t habu_make_string(const char *str, size_t length) {
+habu_value_t make_string(const char *str, size_t length) {
     size_t size = sizeof(habu_string_t) + length + 1;
-    void *mem = habu_gc_alloc(size, TYPE_STRING);
+    void *mem = gc_alloc(size, TYPE_STRING);
     if (!mem) {
         return NIL;
     }
@@ -1340,7 +1340,7 @@ habu_value_t habu_make_string(const char *str, size_t length) {
     return tag_pointer(string, TAG_STRING);
 }
 
-habu_value_t habu_make_symbol(const char *name) {
+habu_value_t make_symbol(const char *name) {
     /* Check if symbol already exists in the intern table */
     habu_value_t existing = symbol_table_lookup(name);
     if (existing != NIL) {
@@ -1348,7 +1348,7 @@ habu_value_t habu_make_symbol(const char *name) {
     }
 
     /* Symbol not found - create new one */
-    void *mem = habu_gc_alloc(sizeof(habu_symbol_t), TYPE_SYMBOL);
+    void *mem = gc_alloc(sizeof(habu_symbol_t), TYPE_SYMBOL);
     if (!mem) {
         return NIL;
     }
@@ -1357,16 +1357,16 @@ habu_value_t habu_make_symbol(const char *name) {
      * habu_make_string can trigger GC, which would invalidate 'mem' */
     habu_symbol_t *sym = (habu_symbol_t *)mem;
     habu_value_t sym_value = tag_pointer(sym, TAG_SYMBOL);
-    habu_gc_add_root(&sym_value);
+    gc_add_root(&sym_value);
 
     /* Now safe to allocate string - if GC runs, sym_value will be updated */
     sym = (habu_symbol_t *)untag_pointer(sym_value);  /* Refresh pointer */
-    sym->name = habu_make_string(name, strlen(name));
+    sym->name = make_string(name, strlen(name));
     sym->value = NIL;
     sym->plist = NIL;
 
     /* Unroot before returning */
-    habu_gc_remove_root(&sym_value);
+    gc_remove_root(&sym_value);
 
     /* Add to intern table for future lookups */
     symbol_table_insert(name, sym_value);
@@ -1432,24 +1432,24 @@ static bool hash_equal(habu_value_t a, habu_value_t b) {
     return false;
 }
 
-habu_value_t habu_make_hash_table(habu_value_t capacity_val) {
+habu_value_t make_hash_table(habu_value_t capacity_val) {
     /* Extract capacity from tagged fixnum, use default if 0 */
     size_t capacity = capacity_val == NIL ? DEFAULT_HASH_CAPACITY
                     : (size_t)value_to_fixnum(capacity_val);
     if (capacity == 0) capacity = DEFAULT_HASH_CAPACITY;
 
     /* Allocate the hash table structure */
-    void *mem = habu_gc_alloc(sizeof(habu_hashtable_t), TYPE_HASHTABLE);
+    void *mem = gc_alloc(sizeof(habu_hashtable_t), TYPE_HASHTABLE);
     if (!mem) return NIL;
 
     habu_hashtable_t *ht = (habu_hashtable_t *)mem;
     habu_value_t ht_val = tag_pointer(ht, TAG_HASHTABLE);
 
     /* Root the hash table before allocating buckets vector */
-    habu_gc_add_root(&ht_val);
+    gc_add_root(&ht_val);
 
     /* Allocate buckets vector (may trigger GC) */
-    habu_value_t buckets = habu_make_vector(capacity);
+    habu_value_t buckets = make_vector(capacity);
 
     /* Refresh pointer after potential GC */
     ht = value_to_hashtable(ht_val);
@@ -1457,12 +1457,12 @@ habu_value_t habu_make_hash_table(habu_value_t capacity_val) {
     ht->capacity = capacity;
     ht->buckets = buckets;
 
-    habu_gc_remove_root(&ht_val);
+    gc_remove_root(&ht_val);
 
     return ht_val;
 }
 
-habu_value_t habu_gethash(habu_value_t key, habu_value_t ht_val, habu_value_t default_val) {
+habu_value_t gethash(habu_value_t key, habu_value_t ht_val, habu_value_t default_val) {
     if (get_tag(ht_val) != TAG_HASHTABLE) return default_val;
 
     habu_hashtable_t *ht = value_to_hashtable(ht_val);
@@ -1491,13 +1491,13 @@ habu_value_t habu_gethash(habu_value_t key, habu_value_t ht_val, habu_value_t de
     return default_val;  /* Not found */
 }
 
-habu_value_t habu_puthash(habu_value_t key, habu_value_t value, habu_value_t ht_val) {
+habu_value_t puthash(habu_value_t key, habu_value_t value, habu_value_t ht_val) {
     if (get_tag(ht_val) != TAG_HASHTABLE) return NIL;
 
     /* Root all values since we'll be allocating */
-    habu_gc_add_root(&key);
-    habu_gc_add_root(&value);
-    habu_gc_add_root(&ht_val);
+    gc_add_root(&key);
+    gc_add_root(&value);
+    gc_add_root(&ht_val);
 
     habu_hashtable_t *ht = value_to_hashtable(ht_val);
     uint64_t hash = hash_code(key);
@@ -1518,9 +1518,9 @@ habu_value_t habu_puthash(habu_value_t key, habu_value_t value, habu_value_t ht_
             if (hash_equal(key, kv->car)) {
                 /* Update existing entry */
                 kv->cdr = value;
-                habu_gc_remove_root(&ht_val);
-                habu_gc_remove_root(&value);
-                habu_gc_remove_root(&key);
+                gc_remove_root(&ht_val);
+                gc_remove_root(&value);
+                gc_remove_root(&key);
                 return value;
             }
         }
@@ -1530,8 +1530,8 @@ habu_value_t habu_puthash(habu_value_t key, habu_value_t value, habu_value_t ht_
 
     /* Key not found - create new entry */
     /* cons(key, value) */
-    habu_value_t pair = habu_cons(key, value);
-    habu_gc_add_root(&pair);
+    habu_value_t pair = cons(key, value);
+    gc_add_root(&pair);
 
     /* cons(pair, old_bucket) */
     /* Refresh pointers after allocation */
@@ -1539,7 +1539,7 @@ habu_value_t habu_puthash(habu_value_t key, habu_value_t value, habu_value_t ht_
     buckets = value_to_vector(ht->buckets);
     bucket = buckets->data[bucket_idx];
 
-    habu_value_t new_bucket = habu_cons(pair, bucket);
+    habu_value_t new_bucket = cons(pair, bucket);
 
     /* Refresh and update */
     ht = value_to_hashtable(ht_val);
@@ -1547,15 +1547,15 @@ habu_value_t habu_puthash(habu_value_t key, habu_value_t value, habu_value_t ht_
     buckets->data[bucket_idx] = new_bucket;
     ht->count++;
 
-    habu_gc_remove_root(&pair);
-    habu_gc_remove_root(&ht_val);
-    habu_gc_remove_root(&value);
-    habu_gc_remove_root(&key);
+    gc_remove_root(&pair);
+    gc_remove_root(&ht_val);
+    gc_remove_root(&value);
+    gc_remove_root(&key);
 
     return value;
 }
 
-habu_value_t habu_remhash(habu_value_t key, habu_value_t ht_val) {
+habu_value_t remhash(habu_value_t key, habu_value_t ht_val) {
     if (get_tag(ht_val) != TAG_HASHTABLE) return NIL;
 
     habu_hashtable_t *ht = value_to_hashtable(ht_val);
@@ -1593,7 +1593,7 @@ habu_value_t habu_remhash(habu_value_t key, habu_value_t ht_val) {
     return NIL;  /* Not found */
 }
 
-habu_value_t habu_hash_table_count(habu_value_t ht_val) {
+habu_value_t hash_table_count(habu_value_t ht_val) {
     if (get_tag(ht_val) != TAG_HASHTABLE) return NIL;
     habu_hashtable_t *ht = value_to_hashtable(ht_val);
     return fixnum_to_value(ht->count);
@@ -1605,9 +1605,9 @@ static inline habu_float_t *value_to_float(habu_value_t v) {
     return (habu_float_t *)untag_pointer(v);
 }
 
-habu_value_t habu_make_float(double value) {
+habu_value_t make_float(double value) {
     size_t size = sizeof(habu_float_t);
-    habu_float_t *f = habu_gc_alloc(size, TYPE_FLOAT);
+    habu_float_t *f = gc_alloc(size, TYPE_FLOAT);
     if (!f) {
         return NIL;
     }
@@ -1615,7 +1615,7 @@ habu_value_t habu_make_float(double value) {
     return tag_pointer(f, TAG_FLOAT);
 }
 
-double habu_float_value(habu_value_t float_val) {
+double float_value(habu_value_t float_val) {
     if (get_tag(float_val) != TAG_FLOAT) {
         return 0.0;
     }
@@ -1633,50 +1633,50 @@ static inline double to_double(habu_value_t v) {
     return 0.0;
 }
 
-habu_value_t habu_float_add(habu_value_t a, habu_value_t b) {
-    return habu_make_float(to_double(a) + to_double(b));
+habu_value_t float_add(habu_value_t a, habu_value_t b) {
+    return make_float(to_double(a) + to_double(b));
 }
 
-habu_value_t habu_float_sub(habu_value_t a, habu_value_t b) {
-    return habu_make_float(to_double(a) - to_double(b));
+habu_value_t float_sub(habu_value_t a, habu_value_t b) {
+    return make_float(to_double(a) - to_double(b));
 }
 
-habu_value_t habu_float_mul(habu_value_t a, habu_value_t b) {
-    return habu_make_float(to_double(a) * to_double(b));
+habu_value_t float_mul(habu_value_t a, habu_value_t b) {
+    return make_float(to_double(a) * to_double(b));
 }
 
-habu_value_t habu_float_div(habu_value_t a, habu_value_t b) {
+habu_value_t float_div(habu_value_t a, habu_value_t b) {
     double bval = to_double(b);
     if (bval == 0.0) return NIL;  /* Division by zero */
-    return habu_make_float(to_double(a) / bval);
+    return make_float(to_double(a) / bval);
 }
 
-habu_value_t habu_float_lt(habu_value_t a, habu_value_t b) {
+habu_value_t float_lt(habu_value_t a, habu_value_t b) {
     return to_double(a) < to_double(b) ? fixnum_to_value(1) : NIL;
 }
 
-habu_value_t habu_float_gt(habu_value_t a, habu_value_t b) {
+habu_value_t float_gt(habu_value_t a, habu_value_t b) {
     return to_double(a) > to_double(b) ? fixnum_to_value(1) : NIL;
 }
 
-habu_value_t habu_float_le(habu_value_t a, habu_value_t b) {
+habu_value_t float_le(habu_value_t a, habu_value_t b) {
     return to_double(a) <= to_double(b) ? fixnum_to_value(1) : NIL;
 }
 
-habu_value_t habu_float_ge(habu_value_t a, habu_value_t b) {
+habu_value_t float_ge(habu_value_t a, habu_value_t b) {
     return to_double(a) >= to_double(b) ? fixnum_to_value(1) : NIL;
 }
 
-habu_value_t habu_float_eq(habu_value_t a, habu_value_t b) {
+habu_value_t float_eq(habu_value_t a, habu_value_t b) {
     return to_double(a) == to_double(b) ? fixnum_to_value(1) : NIL;
 }
 
-habu_value_t habu_fixnum_to_float(habu_value_t fixnum) {
+habu_value_t fixnum_to_float(habu_value_t fixnum) {
     if (!is_fixnum(fixnum)) return NIL;
-    return habu_make_float((double)value_to_fixnum(fixnum));
+    return make_float((double)value_to_fixnum(fixnum));
 }
 
-habu_value_t habu_float_to_fixnum(habu_value_t float_val) {
+habu_value_t float_to_fixnum(habu_value_t float_val) {
     if (get_tag(float_val) != TAG_FLOAT) return NIL;
     double d = value_to_float(float_val)->value;
     return fixnum_to_value((int64_t)d);  /* Truncate toward zero */
@@ -1686,11 +1686,11 @@ habu_value_t habu_float_to_fixnum(habu_value_t float_val) {
  * BIGNUM OPERATIONS
  * ============================================================================ */
 
-bool habu_is_bignum(habu_value_t v) {
+bool is_bignum(habu_value_t v) {
     return get_tag(v) == TAG_BIGNUM;
 }
 
-habu_value_t habu_make_bignum_from_fixnum(habu_value_t fixnum) {
+habu_value_t make_bignum_from_fixnum(habu_value_t fixnum) {
     if (!is_fixnum(fixnum)) return NIL;
 
     int64_t val = value_to_fixnum(fixnum);
@@ -1699,7 +1699,7 @@ habu_value_t habu_make_bignum_from_fixnum(habu_value_t fixnum) {
 
     /* Allocate bignum with 1 limb */
     size_t size = sizeof(habu_bignum_t) + sizeof(uint64_t);
-    habu_bignum_t *bn = habu_gc_alloc(size, TYPE_BIGNUM);
+    habu_bignum_t *bn = gc_alloc(size, TYPE_BIGNUM);
     if (!bn) return NIL;
 
     bn->sign = sign;
@@ -1709,7 +1709,7 @@ habu_value_t habu_make_bignum_from_fixnum(habu_value_t fixnum) {
     return tag_pointer(bn, TAG_BIGNUM);
 }
 
-habu_value_t habu_bignum_to_fixnum(habu_value_t bignum) {
+habu_value_t bignum_to_fixnum(habu_value_t bignum) {
     if (get_tag(bignum) != TAG_BIGNUM) return NIL;
 
     habu_bignum_t *bn = value_to_bignum(bignum);
@@ -1738,10 +1738,10 @@ static int bignum_cmp_abs(habu_bignum_t *a, habu_bignum_t *b) {
     return 0;
 }
 
-habu_value_t habu_bignum_add(habu_value_t a, habu_value_t b) {
+habu_value_t bignum_add(habu_value_t a, habu_value_t b) {
     /* Convert fixnums to bignums if needed */
-    if (is_fixnum(a)) a = habu_make_bignum_from_fixnum(a);
-    if (is_fixnum(b)) b = habu_make_bignum_from_fixnum(b);
+    if (is_fixnum(a)) a = make_bignum_from_fixnum(a);
+    if (is_fixnum(b)) b = make_bignum_from_fixnum(b);
     if (get_tag(a) != TAG_BIGNUM || get_tag(b) != TAG_BIGNUM) return NIL;
 
     habu_bignum_t *ba = value_to_bignum(a);
@@ -1752,7 +1752,7 @@ habu_value_t habu_bignum_add(habu_value_t a, habu_value_t b) {
         uint64_t sum = ba->limbs[0] + bb->limbs[0];
         if (sum >= ba->limbs[0]) {  /* No overflow */
             size_t size = sizeof(habu_bignum_t) + sizeof(uint64_t);
-            habu_bignum_t *result = habu_gc_alloc(size, TYPE_BIGNUM);
+            habu_bignum_t *result = gc_alloc(size, TYPE_BIGNUM);
             if (!result) return NIL;
             result->sign = ba->sign;
             result->length = 1;
@@ -1761,7 +1761,7 @@ habu_value_t habu_bignum_add(habu_value_t a, habu_value_t b) {
         }
         /* Overflow - need 2 limbs */
         size_t size = sizeof(habu_bignum_t) + 2 * sizeof(uint64_t);
-        habu_bignum_t *result = habu_gc_alloc(size, TYPE_BIGNUM);
+        habu_bignum_t *result = gc_alloc(size, TYPE_BIGNUM);
         if (!result) return NIL;
         result->sign = ba->sign;
         result->length = 2;
@@ -1774,15 +1774,15 @@ habu_value_t habu_bignum_add(habu_value_t a, habu_value_t b) {
     return NIL;
 }
 
-habu_value_t habu_bignum_sub(habu_value_t a, habu_value_t b) {
+habu_value_t bignum_sub(habu_value_t a, habu_value_t b) {
     /* Stub: negate b and add */
-    if (is_fixnum(b)) b = habu_make_bignum_from_fixnum(b);
+    if (is_fixnum(b)) b = make_bignum_from_fixnum(b);
     if (get_tag(b) != TAG_BIGNUM) return NIL;
 
     habu_bignum_t *bb = value_to_bignum(b);
     /* Create negated copy */
     size_t size = sizeof(habu_bignum_t) + bb->length * sizeof(uint64_t);
-    habu_bignum_t *neg = habu_gc_alloc(size, TYPE_BIGNUM);
+    habu_bignum_t *neg = gc_alloc(size, TYPE_BIGNUM);
     if (!neg) return NIL;
     neg->sign = -bb->sign;
     neg->length = bb->length;
@@ -1790,12 +1790,12 @@ habu_value_t habu_bignum_sub(habu_value_t a, habu_value_t b) {
         neg->limbs[i] = bb->limbs[i];
     }
 
-    return habu_bignum_add(a, tag_pointer(neg, TAG_BIGNUM));
+    return bignum_add(a, tag_pointer(neg, TAG_BIGNUM));
 }
 
-habu_value_t habu_bignum_mul(habu_value_t a, habu_value_t b) {
-    if (is_fixnum(a)) a = habu_make_bignum_from_fixnum(a);
-    if (is_fixnum(b)) b = habu_make_bignum_from_fixnum(b);
+habu_value_t bignum_mul(habu_value_t a, habu_value_t b) {
+    if (is_fixnum(a)) a = make_bignum_from_fixnum(a);
+    if (is_fixnum(b)) b = make_bignum_from_fixnum(b);
     if (get_tag(a) != TAG_BIGNUM || get_tag(b) != TAG_BIGNUM) return NIL;
 
     habu_bignum_t *ba = value_to_bignum(a);
@@ -1809,7 +1809,7 @@ habu_value_t habu_bignum_mul(habu_value_t a, habu_value_t b) {
 
         if (hi == 0) {
             size_t size = sizeof(habu_bignum_t) + sizeof(uint64_t);
-            habu_bignum_t *result = habu_gc_alloc(size, TYPE_BIGNUM);
+            habu_bignum_t *result = gc_alloc(size, TYPE_BIGNUM);
             if (!result) return NIL;
             result->sign = ba->sign * bb->sign;
             result->length = 1;
@@ -1817,7 +1817,7 @@ habu_value_t habu_bignum_mul(habu_value_t a, habu_value_t b) {
             return tag_pointer(result, TAG_BIGNUM);
         } else {
             size_t size = sizeof(habu_bignum_t) + 2 * sizeof(uint64_t);
-            habu_bignum_t *result = habu_gc_alloc(size, TYPE_BIGNUM);
+            habu_bignum_t *result = gc_alloc(size, TYPE_BIGNUM);
             if (!result) return NIL;
             result->sign = ba->sign * bb->sign;
             result->length = 2;
@@ -1830,9 +1830,9 @@ habu_value_t habu_bignum_mul(habu_value_t a, habu_value_t b) {
     return NIL;  /* Complex case not implemented */
 }
 
-habu_value_t habu_bignum_div(habu_value_t a, habu_value_t b) {
-    if (is_fixnum(a)) a = habu_make_bignum_from_fixnum(a);
-    if (is_fixnum(b)) b = habu_make_bignum_from_fixnum(b);
+habu_value_t bignum_div(habu_value_t a, habu_value_t b) {
+    if (is_fixnum(a)) a = make_bignum_from_fixnum(a);
+    if (is_fixnum(b)) b = make_bignum_from_fixnum(b);
     if (get_tag(a) != TAG_BIGNUM || get_tag(b) != TAG_BIGNUM) return NIL;
 
     habu_bignum_t *ba = value_to_bignum(a);
@@ -1845,7 +1845,7 @@ habu_value_t habu_bignum_div(habu_value_t a, habu_value_t b) {
     if (ba->length == 1 && bb->length == 1) {
         uint64_t quot = ba->limbs[0] / bb->limbs[0];
         size_t size = sizeof(habu_bignum_t) + sizeof(uint64_t);
-        habu_bignum_t *result = habu_gc_alloc(size, TYPE_BIGNUM);
+        habu_bignum_t *result = gc_alloc(size, TYPE_BIGNUM);
         if (!result) return NIL;
         result->sign = ba->sign * bb->sign;
         result->length = 1;
@@ -1860,7 +1860,7 @@ habu_value_t habu_bignum_div(habu_value_t a, habu_value_t b) {
  * MULTI-DIMENSIONAL ARRAY OPERATIONS
  * ============================================================================ */
 
-habu_value_t habu_make_array(habu_value_t dims, habu_value_t initial) {
+habu_value_t make_array(habu_value_t dims, habu_value_t initial) {
     if (get_tag(dims) != TAG_VECTOR && get_tag(dims) != TAG_CONS) return NIL;
 
     /* Calculate total size and copy dimensions */
@@ -1889,7 +1889,7 @@ habu_value_t habu_make_array(habu_value_t dims, habu_value_t initial) {
     if (rank == 0 || total_size == 0) return NIL;
 
     /* Create dimension vector */
-    habu_value_t dim_vector = habu_make_vector(rank);
+    habu_value_t dim_vector = make_vector(rank);
     if (is_nil(dim_vector)) return NIL;
     habu_vector_t *dv = value_to_vector(dim_vector);
 
@@ -1908,7 +1908,7 @@ habu_value_t habu_make_array(habu_value_t dims, habu_value_t initial) {
     }
 
     /* Create data vector */
-    habu_value_t data_vector = habu_make_vector(total_size);
+    habu_value_t data_vector = make_vector(total_size);
     if (is_nil(data_vector)) return NIL;
     habu_vector_t *data = value_to_vector(data_vector);
 
@@ -1919,7 +1919,7 @@ habu_value_t habu_make_array(habu_value_t dims, habu_value_t initial) {
 
     /* Allocate array structure */
     size_t size = sizeof(habu_array_t);
-    habu_array_t *arr = habu_gc_alloc(size, TYPE_ARRAY);
+    habu_array_t *arr = gc_alloc(size, TYPE_ARRAY);
     if (!arr) return NIL;
 
     arr->rank = rank;
@@ -1963,7 +1963,7 @@ static uint64_t compute_linear_index(habu_array_t *arr, habu_value_t indices) {
     return linear;
 }
 
-habu_value_t habu_aref(habu_value_t array, habu_value_t indices) {
+habu_value_t aref(habu_value_t array, habu_value_t indices) {
     if (get_tag(array) != TAG_ARRAY) return NIL;
 
     habu_array_t *arr = value_to_array(array);
@@ -1975,7 +1975,7 @@ habu_value_t habu_aref(habu_value_t array, habu_value_t indices) {
     return data->data[linear];
 }
 
-habu_value_t habu_aset(habu_value_t array, habu_value_t indices, habu_value_t value) {
+habu_value_t aset(habu_value_t array, habu_value_t indices, habu_value_t value) {
     if (get_tag(array) != TAG_ARRAY) return NIL;
 
     habu_array_t *arr = value_to_array(array);
@@ -1988,41 +1988,41 @@ habu_value_t habu_aset(habu_value_t array, habu_value_t indices, habu_value_t va
     return value;
 }
 
-habu_value_t habu_array_dimensions(habu_value_t array) {
+habu_value_t array_dimensions(habu_value_t array) {
     if (get_tag(array) != TAG_ARRAY) return NIL;
     return value_to_array(array)->dims;
 }
 
-habu_value_t habu_array_rank(habu_value_t array) {
+habu_value_t array_rank(habu_value_t array) {
     if (get_tag(array) != TAG_ARRAY) return NIL;
     return fixnum_to_value(value_to_array(array)->rank);
 }
 
-habu_value_t habu_array_total_size(habu_value_t array) {
+habu_value_t array_total_size(habu_value_t array) {
     if (get_tag(array) != TAG_ARRAY) return NIL;
     return fixnum_to_value(value_to_array(array)->total_size);
 }
 
 /* Statistics */
 
-size_t habu_gc_heap_size(void) {
+size_t gc_heap_size(void) {
     if (!gc_heap) return 0;
     return YOUNG_GEN_SIZE + OLD_GEN_SIZE;
 }
 
-size_t habu_gc_heap_used(void) {
+size_t gc_heap_used(void) {
     if (!gc_heap) return 0;
     size_t young_used = (char *)gc_heap->young_free - (char *)gc_heap->young_start;
     size_t old_used = (char *)gc_heap->old_free - (char *)gc_heap->old_start;
     return young_used + old_used;
 }
 
-void habu_gc_get_stats(habu_gc_stats_t *stats) {
+void gc_get_stats(habu_gc_stats_t *stats) {
     if (!gc_heap || !stats) return;
     memcpy(stats, &gc_heap->stats, sizeof(habu_gc_stats_t));
 }
 
-void habu_gc_reset_stats(void) {
+void gc_reset_stats(void) {
     if (!gc_heap) return;
     memset(&gc_heap->stats, 0, sizeof(habu_gc_stats_t));
 }

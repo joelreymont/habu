@@ -127,9 +127,9 @@ TEST(endianness) {
 }
 
 TEST(clock_resolution) {
-    uint64_t t1 = habu_time_ns();
-    uint64_t t2 = habu_time_ns();
-    uint64_t t3 = habu_time_ns();
+    uint64_t t1 = time_ns();
+    uint64_t t2 = time_ns();
+    uint64_t t3 = time_ns();
 
     assert(t2 >= t1);
     assert(t3 >= t2);
@@ -138,27 +138,27 @@ TEST(clock_resolution) {
 }
 
 TEST(memory_allocation) {
-    habu_region_t *region = habu_region_create(4096);
+    habu_region_t *region = region_create(4096);
     assert(region != NULL);
 
-    void *p1 = habu_region_alloc(region, 16);
+    void *p1 = region_alloc(region, 16);
     assert(p1 != NULL);
     assert(((uintptr_t)p1 & 15) == 0);
 
-    void *p2 = habu_region_alloc(region, 1);
+    void *p2 = region_alloc(region, 1);
     assert(p2 != NULL);
     assert(((uintptr_t)p2 & 15) == 0);
 
-    habu_region_destroy(region);
+    region_destroy(region);
 }
 
 TEST(gc_initialization) {
-    habu_init(1024 * 1024);
+    init(1024 * 1024);
 
-    size_t heap_size = habu_gc_heap_size();
+    size_t heap_size = gc_heap_size();
     assert(heap_size > 0);
 
-    habu_shutdown();
+    shutdown();
 }
 
 int main(void) {

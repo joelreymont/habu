@@ -28,28 +28,28 @@ void* g_runtime_table[64];
 
 void print_runtime_addresses(void) {
     printf("Runtime function addresses in this process:\n");
-    printf("  habu_cons: %p\n", (void*)habu_cons);
-    printf("  habu_car:  %p\n", (void*)habu_car);
-    printf("  habu_cdr:  %p\n", (void*)habu_cdr);
+    printf("  cons: %p\n", (void*)cons);
+    printf("  car:  %p\n", (void*)car);
+    printf("  cdr:  %p\n", (void*)cdr);
     printf("\n");
 }
 
 int main(int argc, char **argv) {
     if (argc > 1 && strcmp(argv[1], "--print-addrs") == 0) {
-        habu_init(1024 * 1024);
-        printf("HABU_CONS_ADDR=0x%llx\n", (unsigned long long)habu_cons);
-        printf("HABU_CAR_ADDR=0x%llx\n", (unsigned long long)habu_car);
-        printf("HABU_CDR_ADDR=0x%llx\n", (unsigned long long)habu_cdr);
-        printf("HABU_MAKE_VECTOR_ADDR=0x%llx\n", (unsigned long long)habu_make_vector);
-        printf("HABU_VECTOR_SET_ADDR=0x%llx\n", (unsigned long long)habu_vector_set);
-        printf("HABU_VECTOR_REF_ADDR=0x%llx\n", (unsigned long long)habu_vector_ref);
-        printf("HABU_MAKE_STRING_FROM_VECTOR_ADDR=0x%llx\n", (unsigned long long)habu_make_string_from_vector);
-        printf("HABU_MAKE_SYMBOL_FROM_STRING_ADDR=0x%llx\n", (unsigned long long)habu_make_symbol_from_string);
-        printf("HABU_STRING_LENGTH_RAW_ADDR=0x%llx\n", (unsigned long long)habu_string_length_raw);
-        printf("HABU_SYMBOL_NAME_ADDR=0x%llx\n", (unsigned long long)habu_symbol_name);
-        printf("HABU_MAKE_CLOSURE_ADDR=0x%llx\n", (unsigned long long)habu_make_closure);
-        printf("HABU_CLOSURE_CODE_ADDR=0x%llx\n", (unsigned long long)habu_closure_code);
-        printf("HABU_CLOSURE_ENV_ADDR=0x%llx\n", (unsigned long long)habu_closure_env);
+        init(1024 * 1024);
+        printf("HABU_CONS_ADDR=0x%llx\n", (unsigned long long)cons);
+        printf("HABU_CAR_ADDR=0x%llx\n", (unsigned long long)car);
+        printf("HABU_CDR_ADDR=0x%llx\n", (unsigned long long)cdr);
+        printf("HABU_MAKE_VECTOR_ADDR=0x%llx\n", (unsigned long long)make_vector);
+        printf("HABU_VECTOR_SET_ADDR=0x%llx\n", (unsigned long long)vector_set);
+        printf("HABU_VECTOR_REF_ADDR=0x%llx\n", (unsigned long long)vector_ref);
+        printf("HABU_MAKE_STRING_FROM_VECTOR_ADDR=0x%llx\n", (unsigned long long)make_string_from_vector);
+        printf("HABU_MAKE_SYMBOL_FROM_STRING_ADDR=0x%llx\n", (unsigned long long)make_symbol_from_string);
+        printf("HABU_STRING_LENGTH_RAW_ADDR=0x%llx\n", (unsigned long long)string_length_raw);
+        printf("HABU_SYMBOL_NAME_ADDR=0x%llx\n", (unsigned long long)symbol_name);
+        printf("HABU_MAKE_CLOSURE_ADDR=0x%llx\n", (unsigned long long)make_closure);
+        printf("HABU_CLOSURE_CODE_ADDR=0x%llx\n", (unsigned long long)closure_code);
+        printf("HABU_CLOSURE_ENV_ADDR=0x%llx\n", (unsigned long long)closure_env);
         printf("HABU_CODE_BASE=0x%llx\n", (unsigned long long)0ULL); /* placeholder */
         return 0;
     }
@@ -119,71 +119,71 @@ int main(int argc, char **argv) {
     }
 
     /* Initialize Habu runtime (GC, etc.) */
-    habu_init(1024 * 1024);  /* 1MB heap */
+    init(1024 * 1024);  /* 1MB heap */
 
     /* Setup runtime function table */
-    g_runtime_table[0] = (void*)habu_cons;
-    g_runtime_table[1] = (void*)habu_car;
-    g_runtime_table[2] = (void*)habu_cdr;
-    g_runtime_table[3] = (void*)habu_make_closure;
-    g_runtime_table[4] = (void*)habu_closure_code;
-    g_runtime_table[5] = (void*)habu_closure_env;
+    g_runtime_table[0] = (void*)cons;
+    g_runtime_table[1] = (void*)car;
+    g_runtime_table[2] = (void*)cdr;
+    g_runtime_table[3] = (void*)make_closure;
+    g_runtime_table[4] = (void*)closure_code;
+    g_runtime_table[5] = (void*)closure_env;
     g_runtime_table[6] = exec_mem;              /* Code base pointer for closures */
-    g_runtime_table[7] = (void*)habu_make_vector;
-    g_runtime_table[8] = (void*)habu_vector_set;
-    g_runtime_table[9] = (void*)habu_vector_ref;
-    g_runtime_table[10] = (void*)habu_make_string_from_vector;
-    g_runtime_table[11] = (void*)habu_make_symbol_from_string;
-    g_runtime_table[12] = (void*)habu_string_length_raw;
-    g_runtime_table[13] = (void*)habu_symbol_name;
-    g_runtime_table[14] = (void*)habu_set_car;
-    g_runtime_table[15] = (void*)habu_set_cdr;
-    g_runtime_table[16] = (void*)habu_string_ref;
-    g_runtime_table[17] = (void*)habu_values_set;
-    g_runtime_table[18] = (void*)habu_values_get;
-    g_runtime_table[19] = (void*)habu_make_hash_table;
-    g_runtime_table[20] = (void*)habu_gethash;
-    g_runtime_table[21] = (void*)habu_puthash;
-    g_runtime_table[22] = (void*)habu_remhash;
-    g_runtime_table[23] = (void*)habu_hash_table_count;
-    g_runtime_table[24] = (void*)habu_string_concat;
-    g_runtime_table[25] = (void*)habu_string_substring;
-    g_runtime_table[26] = (void*)habu_fixnum_to_string;
-    g_runtime_table[27] = (void*)habu_values_count_get;
-    g_runtime_table[28] = (void*)habu_gensym;
+    g_runtime_table[7] = (void*)make_vector;
+    g_runtime_table[8] = (void*)vector_set;
+    g_runtime_table[9] = (void*)vector_ref;
+    g_runtime_table[10] = (void*)make_string_from_vector;
+    g_runtime_table[11] = (void*)make_symbol_from_string;
+    g_runtime_table[12] = (void*)string_length_raw;
+    g_runtime_table[13] = (void*)symbol_name;
+    g_runtime_table[14] = (void*)set_car;
+    g_runtime_table[15] = (void*)set_cdr;
+    g_runtime_table[16] = (void*)string_ref;
+    g_runtime_table[17] = (void*)values_set;
+    g_runtime_table[18] = (void*)values_get;
+    g_runtime_table[19] = (void*)make_hash_table;
+    g_runtime_table[20] = (void*)gethash;
+    g_runtime_table[21] = (void*)puthash;
+    g_runtime_table[22] = (void*)remhash;
+    g_runtime_table[23] = (void*)hash_table_count;
+    g_runtime_table[24] = (void*)string_concat;
+    g_runtime_table[25] = (void*)string_substring;
+    g_runtime_table[26] = (void*)fixnum_to_string;
+    g_runtime_table[27] = (void*)values_count_get;
+    g_runtime_table[28] = (void*)gensym;
     /* Float operations (IEEE 754) */
-    g_runtime_table[29] = (void*)habu_make_float;
-    g_runtime_table[30] = (void*)habu_float_add;
-    g_runtime_table[31] = (void*)habu_float_sub;
-    g_runtime_table[32] = (void*)habu_float_mul;
-    g_runtime_table[33] = (void*)habu_float_div;
-    g_runtime_table[34] = (void*)habu_float_lt;
-    g_runtime_table[35] = (void*)habu_float_gt;
-    g_runtime_table[36] = (void*)habu_float_le;
-    g_runtime_table[37] = (void*)habu_float_ge;
-    g_runtime_table[38] = (void*)habu_float_eq;
-    g_runtime_table[39] = (void*)habu_fixnum_to_float;
-    g_runtime_table[40] = (void*)habu_float_to_fixnum;
-    g_runtime_table[41] = (void*)habu_float_value;
+    g_runtime_table[29] = (void*)make_float;
+    g_runtime_table[30] = (void*)float_add;
+    g_runtime_table[31] = (void*)float_sub;
+    g_runtime_table[32] = (void*)float_mul;
+    g_runtime_table[33] = (void*)float_div;
+    g_runtime_table[34] = (void*)float_lt;
+    g_runtime_table[35] = (void*)float_gt;
+    g_runtime_table[36] = (void*)float_le;
+    g_runtime_table[37] = (void*)float_ge;
+    g_runtime_table[38] = (void*)float_eq;
+    g_runtime_table[39] = (void*)fixnum_to_float;
+    g_runtime_table[40] = (void*)float_to_fixnum;
+    g_runtime_table[41] = (void*)float_value;
     /* File I/O operations */
-    g_runtime_table[42] = (void*)habu_open_file;
-    g_runtime_table[43] = (void*)habu_close_file;
-    g_runtime_table[44] = (void*)habu_read_line;
-    g_runtime_table[45] = (void*)habu_write_string;
-    g_runtime_table[46] = (void*)habu_read_file;
-    g_runtime_table[47] = (void*)habu_write_file;
+    g_runtime_table[42] = (void*)open_file;
+    g_runtime_table[43] = (void*)close_file;
+    g_runtime_table[44] = (void*)read_line;
+    g_runtime_table[45] = (void*)write_string;
+    g_runtime_table[46] = (void*)read_file;
+    g_runtime_table[47] = (void*)write_file;
 
     /* Print operations */
-    g_runtime_table[48] = (void*)habu_print_value;
-    g_runtime_table[49] = (void*)habu_println_value;
+    g_runtime_table[48] = (void*)print_value;
+    g_runtime_table[49] = (void*)println_value;
 
     /* Profiling operations */
-    g_runtime_table[50] = (void*)habu_get_time_ns;
+    g_runtime_table[50] = (void*)get_time_ns;
 
     /* System operations */
-    g_runtime_table[51] = (void*)habu_system;
-    g_runtime_table[52] = (void*)habu_string_equal;
-    g_runtime_table[53] = (void*)habu_write_bytes;
+    g_runtime_table[51] = (void*)system_cmd;
+    g_runtime_table[52] = (void*)string_equal;
+    g_runtime_table[53] = (void*)write_bytes;
 
     if (getenv("HABU_DEBUG_TABLE")) {
         for (int i = 0; i <= 51; i++) {
@@ -207,7 +207,7 @@ int main(int argc, char **argv) {
     } else if ((result & 0xF) == 0x2) {
         printf("Result tag SYMBOL (#x2)\n");
     } else if ((result & 0xF) == 0x7) {
-        printf("Result tag FLOAT (#x7), value: %g\n", habu_float_value(result));
+        printf("Result tag FLOAT (#x7), value: %g\n", float_value(result));
     }
 
     /* Cleanup */

@@ -14,9 +14,9 @@ static int tests_passed = 0;
         tests_run++; \
         printf("  %s... ", #name); \
         fflush(stdout); \
-        habu_init(4 * 1024 * 1024); \
+        init(4 * 1024 * 1024); \
         test_##name(); \
-        habu_shutdown(); \
+        shutdown(); \
         tests_passed++; \
         printf("ok\n"); \
     } \
@@ -25,23 +25,23 @@ static int tests_passed = 0;
 #define RUN_TEST(name) run_test_##name()
 
 TEST(gc_init_shutdown) {
-    size_t heap_size = habu_gc_heap_size();
+    size_t heap_size = gc_heap_size();
     assert(heap_size > 0);
 }
 
 TEST(gc_cons_alloc) {
-    habu_value_t car = fixnum_to_value(42);
-    habu_value_t cdr = fixnum_to_value(43);
-    habu_value_t cons = habu_cons(car, cdr);
+    habu_value_t car_val = fixnum_to_value(42);
+    habu_value_t cdr_val = fixnum_to_value(43);
+    habu_value_t cons_val = cons(car_val, cdr_val);
 
-    assert(!is_nil(cons));
-    assert(get_tag(cons) == TAG_CONS);
-    assert(habu_car(cons) == car);
-    assert(habu_cdr(cons) == cdr);
+    assert(!is_nil(cons_val));
+    assert(get_tag(cons_val) == TAG_CONS);
+    assert(car(cons_val) == car_val);
+    assert(cdr(cons_val) == cdr_val);
 }
 
 TEST(gc_vector_alloc) {
-    habu_value_t vec = habu_make_vector(5);
+    habu_value_t vec = make_vector(5);
     assert(!is_nil(vec));
     assert(get_tag(vec) == TAG_VECTOR);
 
@@ -52,7 +52,7 @@ TEST(gc_vector_alloc) {
 
 TEST(gc_string_alloc) {
     const char *text = "hello world";
-    habu_value_t str = habu_make_string(text, 11);
+    habu_value_t str = make_string(text, 11);
     assert(!is_nil(str));
     assert(get_tag(str) == TAG_STRING);
 
@@ -62,7 +62,7 @@ TEST(gc_string_alloc) {
 }
 
 TEST(gc_symbol_alloc) {
-    habu_value_t sym = habu_make_symbol("test");
+    habu_value_t sym = make_symbol("test");
     assert(!is_nil(sym));
     assert(get_tag(sym) == TAG_SYMBOL);
 
@@ -74,237 +74,237 @@ TEST(gc_symbol_alloc) {
 
 TEST(gc_multiple_allocs) {
     for (int i = 0; i < 100; i++) {
-        habu_value_t cons = habu_cons(fixnum_to_value(i), NIL);
-        assert(!is_nil(cons));
+        habu_value_t cons_val = cons(fixnum_to_value(i), NIL);
+        assert(!is_nil(cons_val));
     }
 }
 
 TEST(gc_nested_cons) {
-    habu_value_t c1 = habu_cons(fixnum_to_value(1), fixnum_to_value(2));
-    habu_value_t c2 = habu_cons(c1, fixnum_to_value(3));
-    habu_value_t c3 = habu_cons(c2, c1);
+    habu_value_t c1 = cons(fixnum_to_value(1), fixnum_to_value(2));
+    habu_value_t c2 = cons(c1, fixnum_to_value(3));
+    habu_value_t c3 = cons(c2, c1);
 
     assert(!is_nil(c3));
-    assert(habu_car(c3) == c2);
-    assert(habu_cdr(c3) == c1);
+    assert(car(c3) == c2);
+    assert(cdr(c3) == c1);
 }
 
 TEST(gc_list_creation) {
     habu_value_t list = NIL;
     for (int i = 0; i < 10; i++) {
-        list = habu_cons(fixnum_to_value(i), list);
+        list = cons(fixnum_to_value(i), list);
     }
     assert(!is_nil(list));
 
     int count = 0;
     while (!is_nil(list)) {
         count++;
-        list = habu_cdr(list);
+        list = cdr(list);
     }
     assert(count == 10);
 }
 
 TEST(gc_vector_operations) {
-    habu_value_t vec = habu_make_vector(10);
+    habu_value_t vec = make_vector(10);
 
     for (size_t i = 0; i < 10; i++) {
-        habu_vector_set(vec, i, fixnum_to_value(i * 2));
+        vector_set(vec, i, fixnum_to_value(i * 2));
     }
 
     for (size_t i = 0; i < 10; i++) {
-        habu_value_t val = habu_vector_ref(vec, i);
+        habu_value_t val = vector_ref(vec, i);
         assert(is_fixnum(val));
         assert(value_to_fixnum(val) == (habu_fixnum_t)(i * 2));
     }
 }
 
 TEST(gc_collect_empty) {
-    habu_gc_reset_stats();
+    gc_reset_stats();
 
-    habu_gc_collect();
+    gc_collect();
 
     habu_gc_stats_t stats;
-    habu_gc_get_stats(&stats);
+    gc_get_stats(&stats);
     /* GC should have run at least once */
     assert(stats.young_collections > 0);
 }
 
 TEST(gc_collect_with_objects) {
-    habu_gc_reset_stats();
+    gc_reset_stats();
 
     for (int i = 0; i < 100; i++) {
-        habu_cons(fixnum_to_value(i), NIL);
+        cons(fixnum_to_value(i), NIL);
     }
 
-    habu_gc_collect();
+    gc_collect();
 
     habu_gc_stats_t stats;
-    habu_gc_get_stats(&stats);
+    gc_get_stats(&stats);
     /* GC should have run and collected objects */
     assert(stats.young_collections > 0);
     assert(stats.total_freed > 0);
 }
 
 TEST(gc_disabled_mode) {
-    habu_disable_gc();
+    disable_gc();
 
     for (int i = 0; i < 100; i++) {
-        habu_cons(fixnum_to_value(i), NIL);
+        cons(fixnum_to_value(i), NIL);
     }
 
     habu_gc_stats_t stats;
-    habu_gc_get_stats(&stats);
+    gc_get_stats(&stats);
     assert(stats.young_collections == 0);
 
-    habu_enable_gc();
+    enable_gc();
 }
 
 TEST(gc_mixed_types) {
-    habu_value_t cons = habu_cons(fixnum_to_value(1), fixnum_to_value(2));
-    habu_value_t vec = habu_make_vector(3);
-    habu_value_t str = habu_make_string("test", 4);
-    habu_value_t sym = habu_make_symbol("x");
+    habu_value_t cons_val = cons(fixnum_to_value(1), fixnum_to_value(2));
+    habu_value_t vec = make_vector(3);
+    habu_value_t str = make_string("test", 4);
+    habu_value_t sym = make_symbol("x");
 
-    habu_vector_set(vec, 0, cons);
-    habu_vector_set(vec, 1, str);
-    habu_vector_set(vec, 2, sym);
+    vector_set(vec, 0, cons_val);
+    vector_set(vec, 1, str);
+    vector_set(vec, 2, sym);
 
-    assert(!is_nil(habu_vector_ref(vec, 0)));
-    assert(!is_nil(habu_vector_ref(vec, 1)));
-    assert(!is_nil(habu_vector_ref(vec, 2)));
+    assert(!is_nil(vector_ref(vec, 0)));
+    assert(!is_nil(vector_ref(vec, 1)));
+    assert(!is_nil(vector_ref(vec, 2)));
 }
 
 TEST(gc_heap_usage) {
-    size_t before = habu_gc_heap_used();
+    size_t before = gc_heap_used();
 
     for (int i = 0; i < 100; i++) {
-        habu_cons(fixnum_to_value(i), NIL);
+        cons(fixnum_to_value(i), NIL);
     }
 
-    size_t after = habu_gc_heap_used();
+    size_t after = gc_heap_used();
     assert(after > before);
 }
 
 TEST(gc_stats_tracking) {
-    habu_gc_reset_stats();
+    gc_reset_stats();
 
     habu_gc_stats_t stats;
-    habu_gc_get_stats(&stats);
+    gc_get_stats(&stats);
     assert(stats.young_collections == 0);
     assert(stats.total_allocated == 0);
 
     for (int i = 0; i < 100; i++) {
-        habu_cons(fixnum_to_value(i), NIL);
+        cons(fixnum_to_value(i), NIL);
     }
 
-    habu_gc_get_stats(&stats);
+    gc_get_stats(&stats);
     assert(stats.total_allocated > 0);
 }
 
 TEST(gc_root_registration) {
-    habu_value_t obj = habu_cons(fixnum_to_value(42), fixnum_to_value(43));
+    habu_value_t obj = cons(fixnum_to_value(42), fixnum_to_value(43));
 
     /* NEW API: Pass address of variable, not value */
-    habu_gc_add_root(&obj);
+    gc_add_root(&obj);
 
     /* Allocate enough to trigger GC */
     for (int i = 0; i < 10000; i++) {
-        habu_cons(fixnum_to_value(i), NIL);
+        cons(fixnum_to_value(i), NIL);
     }
 
-    habu_gc_collect();
+    gc_collect();
 
     /* Object was automatically updated by GC if it moved!
      * We can verify it's still a valid cons cell */
     habu_gc_stats_t stats;
-    habu_gc_get_stats(&stats);
+    gc_get_stats(&stats);
     assert(stats.young_collections > 0);
     assert(get_tag(obj) == TAG_CONS);  /* Verify still valid */
 
-    habu_gc_remove_root(&obj);
+    gc_remove_root(&obj);
 }
 
 TEST(gc_promotion) {
-    habu_value_t obj = habu_cons(fixnum_to_value(1), fixnum_to_value(2));
-    habu_gc_add_root(&obj);
+    habu_value_t obj = cons(fixnum_to_value(1), fixnum_to_value(2));
+    gc_add_root(&obj);
 
-    habu_gc_reset_stats();
+    gc_reset_stats();
 
     /* Trigger multiple GCs to age the object */
     for (int i = 0; i < 10; i++) {
         /* Allocate to trigger GC */
         for (int j = 0; j < 5000; j++) {
-            habu_cons(fixnum_to_value(j), NIL);
+            cons(fixnum_to_value(j), NIL);
         }
-        habu_gc_collect();
+        gc_collect();
     }
 
     /* Object should have been promoted after multiple collections */
     habu_gc_stats_t stats;
-    habu_gc_get_stats(&stats);
+    gc_get_stats(&stats);
     assert(stats.young_collections >= 10);
     assert(get_tag(obj) == TAG_CONS);  /* Still valid after promotion */
 
-    habu_gc_remove_root(&obj);
+    gc_remove_root(&obj);
 }
 
 TEST(gc_write_barrier) {
     /* Create an old gen object (via promotion) */
-    habu_value_t old_vec = habu_make_vector(5);
-    habu_gc_add_root(&old_vec);
+    habu_value_t old_vec = make_vector(5);
+    gc_add_root(&old_vec);
 
-    habu_gc_reset_stats();
+    gc_reset_stats();
 
     /* Age it by triggering multiple collections */
     for (int i = 0; i < 10; i++) {
         for (int j = 0; j < 5000; j++) {
-            habu_cons(fixnum_to_value(j), NIL);
+            cons(fixnum_to_value(j), NIL);
         }
-        habu_gc_collect();
+        gc_collect();
     }
 
     /* Verify it got promoted */
     habu_gc_stats_t stats;
-    habu_gc_get_stats(&stats);
+    gc_get_stats(&stats);
     assert(stats.young_collections >= 10);
     assert(get_tag(old_vec) == TAG_VECTOR);  /* Still valid */
 
     /* Now create a young object */
-    habu_value_t young_obj = habu_cons(fixnum_to_value(99), NIL);
-    habu_gc_add_root(&young_obj);
+    habu_value_t young_obj = cons(fixnum_to_value(99), NIL);
+    gc_add_root(&young_obj);
 
     /* Trigger more GCs - both objects should survive */
     for (int i = 0; i < 5; i++) {
         for (int j = 0; j < 3000; j++) {
-            habu_cons(fixnum_to_value(j), NIL);
+            cons(fixnum_to_value(j), NIL);
         }
-        habu_gc_collect();
+        gc_collect();
     }
 
     /* Both objects survived */
-    habu_gc_get_stats(&stats);
+    gc_get_stats(&stats);
     assert(stats.young_collections >= 15);
     assert(get_tag(old_vec) == TAG_VECTOR);  /* Still valid */
     assert(get_tag(young_obj) == TAG_CONS);  /* Still valid */
 
-    habu_gc_remove_root(&old_vec);
-    habu_gc_remove_root(&young_obj);
+    gc_remove_root(&old_vec);
+    gc_remove_root(&young_obj);
 }
 
 TEST(gc_old_generation_collection) {
-    habu_gc_reset_stats();
+    gc_reset_stats();
 
     /* Allocate many objects to potentially fill old gen
      * Old gen collection is complex and may not trigger in simple tests */
     for (int i = 0; i < 20; i++) {
         for (int j = 0; j < 10000; j++) {
-            habu_cons(fixnum_to_value(j), NIL);
+            cons(fixnum_to_value(j), NIL);
         }
-        habu_gc_collect();
+        gc_collect();
     }
 
     habu_gc_stats_t stats;
-    habu_gc_get_stats(&stats);
+    gc_get_stats(&stats);
 
     /* Should have done many young collections */
     assert(stats.young_collections >= 20);

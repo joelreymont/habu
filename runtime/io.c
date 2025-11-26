@@ -23,7 +23,7 @@ static int next_handle = 0;
 #define STDERR_HANDLE 2
 
 /* Initialize I/O system */
-void habu_io_init(void) {
+void io_init(void) {
     file_handles[STDIN_HANDLE] = stdin;
     file_handles[STDOUT_HANDLE] = stdout;
     file_handles[STDERR_HANDLE] = stderr;
@@ -31,7 +31,7 @@ void habu_io_init(void) {
 }
 
 /* Shutdown I/O system */
-void habu_io_shutdown(void) {
+void io_shutdown(void) {
     /* Close all open files (except standard streams) */
     for (int i = 3; i < MAX_OPEN_FILES; i++) {
         if (file_handles[i]) {
@@ -50,7 +50,7 @@ void habu_io_shutdown(void) {
  * Returns:
  *   Fixnum handle (>= 0) on success, NIL on failure
  */
-habu_value_t habu_open_file(habu_value_t path_str, habu_value_t mode_str) {
+habu_value_t open_file(habu_value_t path_str, habu_value_t mode_str) {
     if (get_tag(path_str) != TAG_STRING || get_tag(mode_str) != TAG_STRING) {
         return NIL;
     }
@@ -90,7 +90,7 @@ habu_value_t habu_open_file(habu_value_t path_str, habu_value_t mode_str) {
  * Returns:
  *   Fixnum 0 on success, NIL on failure
  */
-habu_value_t habu_close_file(habu_value_t handle) {
+habu_value_t close_file(habu_value_t handle) {
     if (!is_fixnum(handle)) {
         return NIL;
     }
@@ -113,7 +113,7 @@ habu_value_t habu_close_file(habu_value_t handle) {
  * Returns:
  *   Tagged string with line content (without newline), or NIL on EOF/error
  */
-habu_value_t habu_read_line(habu_value_t handle) {
+habu_value_t read_line(habu_value_t handle) {
     if (!is_fixnum(handle)) {
         return NIL;
     }
@@ -139,7 +139,7 @@ habu_value_t habu_read_line(habu_value_t handle) {
     }
 
     /* Create Habu string */
-    return habu_make_string(buffer, len);
+    return make_string(buffer, len);
 }
 
 /* Write a string to a file
@@ -151,7 +151,7 @@ habu_value_t habu_read_line(habu_value_t handle) {
  * Returns:
  *   Fixnum number of bytes written, or NIL on error
  */
-habu_value_t habu_write_string(habu_value_t handle, habu_value_t str) {
+habu_value_t write_string(habu_value_t handle, habu_value_t str) {
     if (!is_fixnum(handle) || get_tag(str) != TAG_STRING) {
         return NIL;
     }
@@ -176,7 +176,7 @@ habu_value_t habu_write_string(habu_value_t handle, habu_value_t str) {
  * Returns:
  *   Tagged string with file contents, or NIL on error
  */
-habu_value_t habu_read_file(habu_value_t path_str) {
+habu_value_t read_file(habu_value_t path_str) {
     if (get_tag(path_str) != TAG_STRING) {
         return NIL;
     }
@@ -204,7 +204,7 @@ habu_value_t habu_read_file(habu_value_t path_str) {
     fclose(f);
 
     /* Create Habu string */
-    habu_value_t result = habu_make_string(buffer, read_size);
+    habu_value_t result = make_string(buffer, read_size);
     free(buffer);
 
     return result;
@@ -219,7 +219,7 @@ habu_value_t habu_read_file(habu_value_t path_str) {
  * Returns:
  *   Fixnum 0 on success, NIL on error
  */
-habu_value_t habu_write_file(habu_value_t path_str, habu_value_t content_str) {
+habu_value_t write_file(habu_value_t path_str, habu_value_t content_str) {
     if (get_tag(path_str) != TAG_STRING || get_tag(content_str) != TAG_STRING) {
         return NIL;
     }
@@ -324,14 +324,14 @@ static void print_value_internal(habu_value_t value, int depth) {
  * Returns:
  *   NIL
  */
-habu_value_t habu_print_value(habu_value_t value) {
+habu_value_t print_value(habu_value_t value) {
     print_value_internal(value, 0);
     return NIL;
 }
 
 /* Print with newline */
-habu_value_t habu_println_value(habu_value_t value) {
-    habu_print_value(value);
+habu_value_t println_value(habu_value_t value) {
+    print_value(value);
     printf("\n");
     return NIL;
 }
@@ -342,8 +342,8 @@ habu_value_t habu_println_value(habu_value_t value) {
  * Note: For times > ~292 years this would overflow, but that's fine for profiling.
  * The value is suitable for computing elapsed time via subtraction.
  */
-habu_value_t habu_get_time_ns(void) {
-    uint64_t ns = habu_time_ns();
+habu_value_t get_time_ns(void) {
+    uint64_t ns = time_ns();
     /* Return as fixnum - note this may truncate for very large values,
      * but for elapsed time calculations this is fine since we only
      * care about differences, not absolute values */
@@ -358,7 +358,7 @@ habu_value_t habu_get_time_ns(void) {
  * Returns:
  *   Fixnum exit status from system() call
  */
-habu_value_t habu_system(habu_value_t cmd_str) {
+habu_value_t system_cmd(habu_value_t cmd_str) {
     if (get_tag(cmd_str) != TAG_STRING) {
         return fixnum_to_value(-1);
     }
@@ -377,7 +377,7 @@ habu_value_t habu_system(habu_value_t cmd_str) {
  * Returns:
  *   Fixnum 0 on success, NIL on error
  */
-habu_value_t habu_write_bytes(habu_value_t path_str, habu_value_t byte_vec) {
+habu_value_t write_bytes(habu_value_t path_str, habu_value_t byte_vec) {
     if (get_tag(path_str) != TAG_STRING || get_tag(byte_vec) != TAG_VECTOR) {
         return NIL;
     }
