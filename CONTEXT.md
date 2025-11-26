@@ -2,11 +2,11 @@
 
 **Session Date**: November 22-26, 2025
 **Focus**: Self-hosting ARM64 Lisp compiler with native executable generation
-**Last Updated**: November 26, 2025 (Inline vectors and strings for Native Mach-O - 56/56 tests pass)
+**Last Updated**: November 26, 2025 (Stack frame fix, self-hosting list functions - 66/66 native tests pass)
 
 ## Session Summary (November 26, 2025)
 
-This session completed the bootstrap compiler ARM64 codegen, verified bytecode execution, added bitwise operations, mutation operations, multiple values support, implemented standalone executable delivery, reorganized packages, added labels/flet support, fixed a critical nested function call bug, added self-hosting primitives, fixed mutual recursion with the FNTAB approach, and implemented inline cons/car/cdr for native executables with heap support. Added inline symbols and closures removing all runtime dependencies. Finally, implemented inline vectors and strings for fully runtime-free native executables.
+This session completed the bootstrap compiler ARM64 codegen, verified bytecode execution, added bitwise operations, mutation operations, multiple values support, implemented standalone executable delivery, reorganized packages, added labels/flet support, fixed a critical nested function call bug, added self-hosting primitives, fixed mutual recursion with the FNTAB approach, and implemented inline cons/car/cdr for native executables with heap support. Added inline symbols and closures removing all runtime dependencies. Implemented inline vectors and strings for fully runtime-free native executables. Fixed critical stack frame overflow bug. Added self-hosting list functions (length, reverse, append, mapcar, member, assoc).
 
 **Accomplishments**:
 1. Reorganized file structure: `native-compiler.lisp` -> `bootstrap/compiler.lisp`
@@ -48,7 +48,10 @@ This session completed the bootstrap compiler ARM64 codegen, verified bytecode e
 37. **Inline vectors** - make-vector, vector-set, vector-ref inline on heap using x28
 38. **Inline strings** - string literals inline on heap, string-length and string-ref inline
 39. **LDRB/STRB instructions** - byte load/store for string character access
-40. **56/56 native tests pass** - all arithmetic, cons, predicates, symbols, vectors, strings, labels/closures
+40. **Fixed function stack frame overflow** - frame was 512 bytes but spill slots at 576+, now 1024 bytes
+41. **Self-hosting list functions** - length, reverse, append, mapcar, member, assoc as inline expansions
+42. **Self-hosting native tests** - 10 compiler-pattern tests (tree traversal, env lookup, mini-eval, etc.)
+43. **66/66 native tests pass** - all arithmetic, cons, predicates, symbols, vectors, strings, labels/closures, list functions
 
 **Package Structure** (November 26, 2025):
 - HABU-SYS: System/runtime primitives (string-length, string-ref, make-vector, etc.)
@@ -163,6 +166,25 @@ Example that was failing:
 
 Fix: Modified `nc-spill-slot` to take both temp depth (td) and argument index (idx).
 Each call level now gets its own set of 8 spill slots, preventing collisions.
+
+**Bug Fix: Function Stack Frame Overflow** (November 26, 2025):
+Function stack frames were 512 bytes (0x200) but spill slots were placed at
+offset 576+ (0x240), outside the allocated frame. During recursive calls with
+nested function arguments like `(+ 1 (f (car x)) (f (cdr x)))`, the callee's
+spill slots would overwrite the caller's local variables, causing crashes.
+
+Example that was crashing:
+```lisp
+(defun count-nodes (tree)
+  (if (consp tree)
+      (+ 1 (count-nodes (car tree)) (count-nodes (cdr tree)))
+      0))
+(count-nodes (cons (cons 1 nil) nil))  ; SIGSEGV
+```
+
+Fix: Increased function frame size from 512 to 1024 bytes (0x400) in
+`nc-fn-prologue` and `nc-fn-epilogue`. Also adjusted env base from
+0x140 to 0x180 to match the main prologue layout.
 
 **Next Steps**:
 1. ~~Test full pipeline: compile Lisp source to ARM64 bytecode~~ DONE
