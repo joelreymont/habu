@@ -727,8 +727,16 @@
         (error "Too many temp slots: ~A" depth)
         off)))
 
-(defun nc-spill-slot (idx)
-  (+ #x240 (* idx 8)))  ; #x240 = spill base (576)
+(defun nc-spill-slot (td idx)
+  ;; Spill slots are depth-aware to handle nested function calls
+  ;; Each call level gets 8 spill slots (8 args max per call)
+  ;; td=0: slots 0-7 at #x240-#x278
+  ;; td=1: slots 0-7 at #x280-#x2B8
+  ;; etc.
+  (let* ((slots-per-level 8)
+         (base #x240)
+         (off (+ (* td slots-per-level 8) (* idx 8))))
+    (+ base off)))
 
 ;;; ============================================================
 ;;; Part 5: Prologue/Epilogue
@@ -2306,14 +2314,14 @@
                   (if (null as) a
                       (let* ((rs (if (> i 0) (nc-ldr-offset 24 31 xs) nil))
                              (ac (nc-codegen (car as) rtaddrs fnoffs nd))
-                             (st (nc-str-offset 0 31 (nc-spill-slot i)))
+                             (st (nc-str-offset 0 31 (nc-spill-slot td i)))
                              (t1 (append a rs))
                              (t2 (append t1 ac))
                              (t3 (append t2 st)))
                         (ga (cdr as) (+ i 1) t3))))
                 (gl (i a)
                   (if (>= i na) a
-                      (let* ((ld (nc-ldr-offset i 31 (nc-spill-slot i)))
+                      (let* ((ld (nc-ldr-offset i 31 (nc-spill-slot td i)))
                              (t1 (append a ld)))
                         (gl (+ i 1) t1)))))
          (let* ((save-x24 (nc-str-offset 24 31 xs))
