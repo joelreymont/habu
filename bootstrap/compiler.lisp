@@ -1212,6 +1212,12 @@
          ;; println - print value with newline
          ((eq op 'println)
           (list 'println-ir (nc-compile (cadr expr) env fenv)))
+         ;; string-length - get length of string
+         ((eq op 'string-length)
+          (list 'string-length-ir (nc-compile (cadr expr) env fenv)))
+         ;; string-ref - get character at index
+         ((eq op 'string-ref)
+          (list 'string-ref-ir (nc-compile (cadr expr) env fenv) (nc-compile (caddr expr) env fenv)))
          ;; incf - increment variable
          ((eq op 'incf)
           (let* ((place (cadr expr))
@@ -1633,6 +1639,13 @@
      (let ((val (nc-eval-ir-with-fns (cadr ir) env fenv)))
        (format t "~A~%" val)
        val))
+    ;; string-length-ir - get length of string
+    ((nc-has-tag ir 'string-length-ir)
+     (length (nc-eval-ir-with-fns (cadr ir) env fenv)))
+    ;; string-ref-ir - get character at index
+    ((nc-has-tag ir 'string-ref-ir)
+     (char-code (char (nc-eval-ir-with-fns (cadr ir) env fenv)
+                      (nc-eval-ir-with-fns (caddr ir) env fenv))))
     ;; nthcdr-ir - get nth cdr of list
     ((nc-has-tag ir 'nthcdr-ir)
      ;; nthcdr-ir = (nthcdr-ir n-ir list-ir)
@@ -2065,6 +2078,36 @@
             (lf (nc-ldr-offset 9 19 392))
             (bl (nc-blr 9)))
        (nc-append-all (list vc lf bl))))
+    ;; string-length-ir - get length of string
+    ((nc-has-tag ir 'string-length-ir)
+     ;; string-length-ir = (string-length-ir str-ir)
+     ;; Runtime index 12 = habu_string_length_raw at offset 96
+     ;; Returns raw size_t, must tag as fixnum (LSL x0, x0, #4)
+     (let* ((str-ir (cadr ir))
+            (sc (nc-codegen str-ir rtaddrs fnoffs td))
+            (lf (nc-ldr-offset 9 19 96))
+            (bl (nc-blr 9))
+            (tg (nc-lsl-imm 0 0 4)))
+       (nc-append-all (list sc lf bl tg))))
+    ;; string-ref-ir - get character at index
+    ((nc-has-tag ir 'string-ref-ir)
+     ;; string-ref-ir = (string-ref-ir str-ir idx-ir)
+     ;; Runtime index 16 = habu_string_ref at offset 128
+     ;; Index must be untagged (ASR x1, x1, #4) before call
+     ;; Returns tagged habu_value_t
+     (let* ((str-ir (cadr ir))
+            (idx-ir (caddr ir))
+            (xs (nc-temp-slot td))
+            (nd (+ td 1))
+            (sc (nc-codegen str-ir rtaddrs fnoffs nd))
+            (sp (nc-str-offset 0 31 xs))
+            (ic (nc-codegen idx-ir rtaddrs fnoffs nd))
+            (ut (nc-asr-imm 0 0 4))
+            (m1 (nc-mov-reg 1 0))
+            (ls (nc-ldr-offset 0 31 xs))
+            (lf (nc-ldr-offset 9 19 128))
+            (bl (nc-blr 9)))
+       (nc-append-all (list sc sp ic ut m1 ls lf bl))))
     ;; nthcdr-ir - get nth cdr of list
     ((nc-has-tag ir 'nthcdr-ir)
      ;; nthcdr-ir = (nthcdr-ir n-ir list-ir)

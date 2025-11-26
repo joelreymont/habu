@@ -48,6 +48,32 @@
   "(println \"test\")"
   "test")
 
+;; Test string-length
+(test-eval "string-length-empty"
+  "(string-length \"\")"
+  0)
+
+(test-eval "string-length-simple"
+  "(string-length \"hello\")"
+  5)
+
+(test-eval "string-length-unicode"
+  "(string-length \"abc123\")"
+  6)
+
+;; Test string-ref
+(test-eval "string-ref-first"
+  "(string-ref \"hello\" 0)"
+  (char-code #\h))
+
+(test-eval "string-ref-middle"
+  "(string-ref \"hello\" 2)"
+  (char-code #\l))
+
+(test-eval "string-ref-last"
+  "(string-ref \"hello\" 4)"
+  (char-code #\o))
+
 (format t "~%=== Results: ~A passed, ~A failed ===~%" *tests-passed* *tests-failed*)
 (when (> *tests-failed* 0)
   (sb-ext:exit :code 1))
