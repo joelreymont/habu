@@ -592,7 +592,7 @@
 (defun nc-quote-ir (obj)
   (cond
     ((numberp obj) (list 'lit obj))
-    ((null obj) (list 'lit 0))
+    ((null obj) (list 'nil-ir))  ;; Use nil-ir for proper nil, not (lit 0)
     ((symbolp obj) (list 'sym-lit (symbol-name obj)))
     ((consp obj) (list 'cons-ir (nc-quote-ir (car obj)) (nc-quote-ir (cdr obj))))
     (t (list 'lit 0))))
@@ -704,6 +704,37 @@
                   (if (null (cdr body))
                       (nc-compile (car body) env fenv)
                       (nc-compile (cons 'progn body) env fenv)))))
+         ;; dotimes - counted iteration using tail-recursive helper
+         ((eq op 'dotimes)
+          ;; (dotimes (var count [result]) body...)
+          ;; Transform to recursive structure with explicit counter passing
+          (let* ((spec (cadr expr))
+                 (var (car spec))
+                 (count-form (cadr spec))
+                 (result-form (if (cddr spec) (caddr spec) 0))
+                 (body (cddr expr)))
+            ;; Create a dotimes-ir node
+            (list 'dotimes-ir
+                  var
+                  (nc-compile count-form env fenv)
+                  body  ; Keep body as source, compile during eval
+                  result-form
+                  env)))  ; Save env for body compilation
+         ;; dolist - list iteration
+         ((eq op 'dolist)
+          ;; (dolist (var list [result]) body...)
+          (let* ((spec (cadr expr))
+                 (var (car spec))
+                 (list-form (cadr spec))
+                 (result-form (if (cddr spec) (caddr spec) nil))
+                 (body (cddr expr)))
+            ;; Create a dolist-ir node
+            (list 'dolist-ir
+                  var
+                  (nc-compile list-form env fenv)
+                  body  ; Keep body as source, compile during eval
+                  result-form
+                  env)))  ; Save env for body compilation
          ((eq op 'LET)  ; Changed to uppercase
           (let* ((bindings (cadr expr))
                  (body (caddr expr)))
@@ -868,6 +899,7 @@
   "Evaluate IR with function environment"
   (cond
     ((nc-has-tag ir 'lit) (cadr ir))
+    ((nc-has-tag ir 'nil-ir) nil)  ;; Evaluate to proper SBCL nil
     ((nc-has-tag ir 'sym-lit)
      ;; Return the symbol itself (interned)
      (intern (cadr ir)))
@@ -904,6 +936,13 @@
     ((nc-has-tag ir 'cmp-ge)
      (if (>= (nc-eval-ir-with-fns (cadr ir) env fenv)
              (nc-eval-ir-with-fns (caddr ir) env fenv)) 1 0))
+    ((nc-has-tag ir 'cons-ir)
+     (cons (nc-eval-ir-with-fns (cadr ir) env fenv)
+           (nc-eval-ir-with-fns (caddr ir) env fenv)))
+    ((nc-has-tag ir 'car-ir)
+     (car (nc-eval-ir-with-fns (cadr ir) env fenv)))
+    ((nc-has-tag ir 'cdr-ir)
+     (cdr (nc-eval-ir-with-fns (cadr ir) env fenv)))
     ((nc-has-tag ir 'if-ir)
      (if (not (= (nc-eval-ir-with-fns (cadr ir) env fenv) 0))
          (nc-eval-ir-with-fns (caddr ir) env fenv)
@@ -1002,6 +1041,53 @@
                         (capture (cdr offs) (cons val acc))))))
          ;; Return: (:closure params body free-vars captured-vals)
          (list :closure params body free-vars (capture free-offsets nil)))))
+    ((nc-has-tag ir 'dotimes-ir)
+     ;; dotimes-ir = (dotimes-ir var count-ir body result-form compile-env)
+     (let* ((var (cadr ir))
+            (count-ir (caddr ir))
+            (body (cadddr ir))
+            (result-form (nth 4 ir))
+            (compile-env (nth 5 ir))
+            (count (nc-eval-ir-with-fns count-ir env fenv)))
+       ;; Iterative loop
+       (labels ((iter (i)
+                  (if (>= i count)
+                      (if result-form
+                          (let* ((new-env (nc-env-extend (list (list var)) compile-env))
+                                 (result-ir (nc-compile result-form new-env fenv)))
+                            (nc-eval-ir-with-fns result-ir (append env (list i)) fenv))
+                          0)
+                      (let* ((new-env (nc-env-extend (list (list var)) compile-env))
+                             (body-ir (if (null (cdr body))
+                                          (nc-compile (car body) new-env fenv)
+                                          (nc-compile (cons 'progn body) new-env fenv))))
+                        (nc-eval-ir-with-fns body-ir (append env (list i)) fenv)
+                        (iter (+ i 1))))))
+         (iter 0))))
+    ((nc-has-tag ir 'dolist-ir)
+     ;; dolist-ir = (dolist-ir var list-ir body result-form compile-env)
+     (let* ((var (cadr ir))
+            (list-ir (caddr ir))
+            (body (cadddr ir))
+            (result-form (nth 4 ir))
+            (compile-env (nth 5 ir))
+            (lst (nc-eval-ir-with-fns list-ir env fenv)))
+       ;; Iterative loop over list
+       (labels ((iter (remaining)
+                  (if (null remaining)
+                      (if result-form
+                          (let* ((new-env (nc-env-extend (list (list var)) compile-env))
+                                 (result-ir (nc-compile result-form new-env fenv)))
+                            (nc-eval-ir-with-fns result-ir (append env (list nil)) fenv))
+                          0)
+                      (let* ((elem (car remaining))
+                             (new-env (nc-env-extend (list (list var)) compile-env))
+                             (body-ir (if (null (cdr body))
+                                          (nc-compile (car body) new-env fenv)
+                                          (nc-compile (cons 'progn body) new-env fenv))))
+                        (nc-eval-ir-with-fns body-ir (append env (list elem)) fenv)
+                        (iter (cdr remaining))))))
+         (iter lst))))
     (t 0)))
 
 ;;; ============================================================
@@ -1016,6 +1102,9 @@
        (if (and (>= tg 0) (< tg #x10000))
            (nc-movz 0 tg)
            (nc-load-addr 0 tg))))
+    ((nc-has-tag ir 'nil-ir)
+     ;; nil is represented as tagged 0 (fixnum 0) in native code
+     (nc-movz 0 0))
     ((nc-has-tag ir 'var)
      (let* ((off (cadr ir))
             (off8 (* off 8))

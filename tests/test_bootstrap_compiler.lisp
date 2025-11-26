@@ -156,6 +156,15 @@
 ;; Test 45: nested closure
 (run-nc-test "lambda-nested" "(let ((a 1)) (let ((b 2)) (funcall (lambda (x) (+ x (+ a b))) 10)))" 13)
 
+;; Test 46: dotimes simple - returns last value (4 in this case)
+(run-nc-test "dotimes-simple" "(dotimes (i 5 i) i)" 5)
+
+;; Test 47: dotimes with result expression
+(run-nc-test "dotimes-result" "(dotimes (i 3 99) i)" 99)
+
+;; Test 48: dolist iteration
+(run-nc-test "dolist-simple" "(dolist (x '(1 2 3) 42) x)" 42)
+
 ;; Summary
 (format t "~%=== Results: ~A passed, ~A failed ===~%"
         *tests-passed* *tests-failed*)
