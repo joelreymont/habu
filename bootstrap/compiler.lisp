@@ -1296,6 +1296,70 @@
           ;; get-tag returns tagged fixnum (tag << 4), lit also tags its value
           ;; so to compare tag=1, use (lit 1) -> becomes 1<<4=16
           (list 'cmp-eq (list 'get-tag (nc-compile (cadr expr) env fenv)) (list 'lit 1)))
+         ;; length - list length via recursion
+         ((eq op 'length)
+          (nc-compile
+           `(labels ((len-iter (lst acc)
+                       (if (null lst)
+                           acc
+                           (len-iter (cdr lst) (+ acc 1)))))
+              (len-iter ,(cadr expr) 0))
+           env fenv))
+         ;; reverse - reverse list via recursion
+         ((eq op 'reverse)
+          (nc-compile
+           `(labels ((rev-iter (lst acc)
+                       (if (null lst)
+                           acc
+                           (rev-iter (cdr lst) (cons (car lst) acc)))))
+              (rev-iter ,(cadr expr) nil))
+           env fenv))
+         ;; append - append two lists
+         ((eq op 'append)
+          (let ((args (cdr expr)))
+            (if (null args)
+                (nc-compile nil env fenv)
+                (if (null (cdr args))
+                    (nc-compile (car args) env fenv)
+                    ;; Two-arg append: copy first list, point to second
+                    (nc-compile
+                     `(labels ((app-iter (lst tail)
+                                 (if (null lst)
+                                     tail
+                                     (cons (car lst) (app-iter (cdr lst) tail)))))
+                        (app-iter ,(car args) (append ,@(cdr args))))
+                     env fenv)))))
+         ;; mapcar - map function over list
+         ((eq op 'mapcar)
+          (nc-compile
+           `(labels ((map-iter (fn lst acc)
+                       (if (null lst)
+                           (reverse acc)
+                           (map-iter fn (cdr lst) (cons (funcall fn (car lst)) acc)))))
+              (map-iter ,(cadr expr) ,(caddr expr) nil))
+           env fenv))
+         ;; member - find element in list
+         ((eq op 'member)
+          (nc-compile
+           `(labels ((mem-iter (item lst)
+                       (if (null lst)
+                           nil
+                           (if (eq item (car lst))
+                               lst
+                               (mem-iter item (cdr lst))))))
+              (mem-iter ,(cadr expr) ,(caddr expr)))
+           env fenv))
+         ;; assoc - find association in alist
+         ((eq op 'assoc)
+          (nc-compile
+           `(labels ((assoc-iter (key lst)
+                       (if (null lst)
+                           nil
+                           (if (eq key (car (car lst)))
+                               (car lst)
+                               (assoc-iter key (cdr lst))))))
+              (assoc-iter ,(cadr expr) ,(caddr expr)))
+           env fenv))
          ;; progn - evaluate forms in sequence, return last
          ((eq op 'progn)
           (let ((forms (cdr expr)))

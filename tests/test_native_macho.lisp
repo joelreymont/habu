@@ -162,6 +162,24 @@
 (test-native "string-ref-1"
   "(string-ref \"ABC\" 1)" 66)      ; 'B'
 
+;;; List functions (for self-hosting)
+(test-native "length-nil" "(length nil)" 0)
+(test-native "length-3" "(length (cons 1 (cons 2 (cons 3 nil))))" 3)
+(test-native "reverse-nil" "(if (null (reverse nil)) 42 0)" 42)
+(test-native "reverse-list"
+  "(car (reverse (cons 1 (cons 2 (cons 3 nil)))))" 3)
+(test-native "append-nil" "(if (null (append nil nil)) 42 0)" 42)
+(test-native "append-lists"
+  "(car (cdr (append (cons 1 nil) (cons 2 (cons 3 nil)))))" 2)
+(test-native "member-found"
+  "(if (member 2 (cons 1 (cons 2 (cons 3 nil)))) 42 0)" 42)
+(test-native "member-not-found"
+  "(if (member 9 (cons 1 (cons 2 nil))) 0 42)" 42)
+(test-native "assoc-found"
+  "(cdr (assoc 2 (cons (cons 1 10) (cons (cons 2 42) nil))))" 42)
+(test-native "assoc-not-found"
+  "(if (assoc 9 (cons (cons 1 10) nil)) 0 42)" 42)
+
 (format t "~%=== Results: ~A passed, ~A failed ===~%"
         *pass-count* *fail-count*)
 (sb-ext:exit :code *fail-count*)
