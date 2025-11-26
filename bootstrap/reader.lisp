@@ -1,6 +1,6 @@
 ;;;; S-expression reader for Habu
 
-(in-package :habu-compiler)
+(in-package :habu)
 
 ;;; Simple reader - wraps CL reader for now
 ;;; Eventually will implement Habu-specific reader

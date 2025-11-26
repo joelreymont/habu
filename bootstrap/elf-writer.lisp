@@ -1,6 +1,6 @@
 ;;;; ELF binary writer for compiled Habu code
 
-(in-package :habu-compiler)
+(in-package :habu)
 
 ;;; ELF file format structures
 ;;; This creates minimal executable ELF binaries

@@ -860,8 +860,9 @@
          (t (mapcar (lambda (e) (nc-rewrite-labels-calls e fn-names)) expr)))))
     (t expr)))
 
-(defun nc-rewrite-labels-self (expr fn-names self-var)
-  "Inside labels body: rewrite (fn args) -> (funcall self self args)"
+(defun nc-rewrite-labels-body (expr fn-names fntab-var)
+  "Inside labels body: rewrite function calls.
+   All calls to labels fns: (fn args) -> (funcall fn FNTAB args)"
   (cond
     ((null expr) nil)
     ((numberp expr) expr)
@@ -869,28 +870,28 @@
     ((consp expr)
      (let ((op (car expr)))
        (cond
-         ;; If calling a labels function, rewrite as (funcall self self args)
+         ;; If calling a labels function, rewrite to pass FNTAB
          ((and (symbolp op) (member op fn-names))
-          (cons 'funcall (cons self-var (cons self-var
-                          (mapcar (lambda (e) (nc-rewrite-labels-self e fn-names self-var)) (cdr expr))))))
+          (cons 'funcall (cons op (cons fntab-var
+                          (mapcar (lambda (e) (nc-rewrite-labels-body e fn-names fntab-var)) (cdr expr))))))
          ;; Quote - don't descend
          ((eq op 'quote) expr)
          ;; Lambda - rewrite body but don't rewrite param list
          ((eq op 'lambda)
           (list 'lambda (cadr expr)
-                (nc-rewrite-labels-self (caddr expr) fn-names self-var)))
+                (nc-rewrite-labels-body (caddr expr) fn-names fntab-var)))
          ;; let/let* - rewrite values and body
          ((or (eq op 'LET) (eq op 'LET*) (eq op 'let) (eq op 'let*))
           (let* ((bindings (cadr expr))
                  (body (cddr expr))
                  (new-bindings (mapcar (lambda (b)
                                          (if (consp b)
-                                             (list (car b) (nc-rewrite-labels-self (cadr b) fn-names self-var))
+                                             (list (car b) (nc-rewrite-labels-body (cadr b) fn-names fntab-var))
                                              b))
                                        bindings)))
-            (cons op (cons new-bindings (mapcar (lambda (e) (nc-rewrite-labels-self e fn-names self-var)) body)))))
+            (cons op (cons new-bindings (mapcar (lambda (e) (nc-rewrite-labels-body e fn-names fntab-var)) body)))))
          ;; Default: recursively rewrite all parts
-         (t (mapcar (lambda (e) (nc-rewrite-labels-self e fn-names self-var)) expr)))))
+         (t (mapcar (lambda (e) (nc-rewrite-labels-body e fn-names fntab-var)) expr)))))
     (t expr)))
 
 (defun nc-rewrite-labels-main (expr fn-names)
@@ -1367,12 +1368,31 @@
          ;; where body' rewrites (fn args) as (funcall self self args)
          ;; and main' rewrites (fn args) as (funcall fn fn args)
          ((eq op 'LABELS)
+          ;; Transform using function table (FNTAB) approach for proper mutual recursion:
+          ;; (labels ((f1 (a) ...) (f2 (b) ...)) body)
+          ;; =>
+          ;; (let ((f1 nil) (f2 nil))
+          ;;   (setq f1 (lambda (FNTAB a) (let ((f1 (car FNTAB)) (f2 (car (cdr FNTAB)))) ...)))
+          ;;   (setq f2 (lambda (FNTAB b) (let ((f1 (car FNTAB)) (f2 (car (cdr FNTAB)))) ...)))
+          ;;   (let ((FNTAB (cons f1 (cons f2 nil))))
+          ;;     body-rewritten))
           (let* ((bindings (cadr expr))
                  (body-forms (cddr expr))
                  (fn-names (mapcar #'car bindings))
                  ;; Build let bindings: ((fn1 nil) (fn2 nil) ...)
                  (let-bindings (mapcar (lambda (n) (list n nil)) fn-names))
-                 ;; Transform each function: add SELF param, rewrite recursive calls
+                 ;; Build car/cdr chain bindings for unpacking FNTAB inside each lambda
+                 ;; ((f1 (car FNTAB)) (f2 (car (cdr FNTAB))) (f3 (car (cdr (cdr FNTAB)))) ...)
+                 (fntab-unpack (labels ((build (names depth acc)
+                                          (if (null names) (reverse acc)
+                                              (let ((accessor (labels ((wrap-cdr (n base)
+                                                                          (if (= n 0) base
+                                                                              (wrap-cdr (1- n) (list 'cdr base)))))
+                                                               (list 'car (wrap-cdr depth 'FNTAB)))))
+                                                (build (cdr names) (1+ depth)
+                                                       (cons (list (car names) accessor) acc))))))
+                                 (build fn-names 0 nil)))
+                 ;; Transform each function: add FNTAB param, unpack functions, rewrite calls
                  (setq-forms (mapcar (lambda (b)
                                        (let* ((fn-name (car b))
                                               (params (cadr b))
@@ -1380,19 +1400,27 @@
                                               (fn-body-expr (if (null (cdr fn-body))
                                                                 (car fn-body)
                                                                 (cons 'progn fn-body)))
-                                              ;; Rewrite calls in body: (fn args) -> (funcall self self args)
-                                              (rewritten (nc-rewrite-labels-self fn-body-expr fn-names 'SELF)))
-                                         ;; Lambda gets SELF as first param
-                                         (list 'setq fn-name (list 'lambda (cons 'SELF params) rewritten))))
+                                              ;; Rewrite calls: (fn args) -> (funcall fn FNTAB args)
+                                              (rewritten (nc-rewrite-labels-body fn-body-expr fn-names 'FNTAB))
+                                              ;; Wrap body in let that unpacks FNTAB
+                                              (wrapped-body (list 'LET fntab-unpack rewritten)))
+                                         ;; Lambda gets FNTAB as first param
+                                         (list 'setq fn-name (list 'lambda (cons 'FNTAB params) wrapped-body))))
                                      bindings))
-                 ;; Rewrite main body: (fn args) -> (funcall fn fn args)
+                 ;; Build the FNTAB list: (cons f1 (cons f2 ... nil))
+                 (fntab-init (labels ((build-list (names)
+                                        (if (null names) 'nil
+                                            (list 'cons (car names) (build-list (cdr names))))))
+                               (build-list fn-names)))
+                 ;; Rewrite main body: (fn args) -> (funcall fn FNTAB args)
                  (main-body (if (null (cdr body-forms))
                                 (car body-forms)
                                 (cons 'progn body-forms)))
-                 (rewritten-main (nc-rewrite-labels-main main-body fn-names))
-                 ;; Build: (let bindings (setq ...) ... main)
+                 (rewritten-main (nc-rewrite-labels-body main-body fn-names 'FNTAB))
+                 ;; Build: (let bindings (setq ...) (let ((FNTAB (cons ...))) main))
+                 (inner-let (list 'LET (list (list 'FNTAB fntab-init)) rewritten-main))
                  (full-expr (list 'LET let-bindings
-                                  (cons 'progn (append setq-forms (list rewritten-main))))))
+                                  (cons 'progn (append setq-forms (list inner-let))))))
             (nc-compile full-expr env fenv)))
          ;; flet - local non-recursive functions (same transform but no rewriting)
          ((eq op 'FLET)
@@ -1415,14 +1443,21 @@
             (nc-compile (list 'LET let-bindings rewritten-main) env fenv)))
          ;; User function call or call via variable
          (t
-          ;; Check if op is a known function name
-          (if (and fenv (assoc op fenv))
-              (list 'call-fn op (mapcar (lambda (a) (nc-compile a env fenv)) (cdr expr)))
-              ;; Check if op is a variable (parameter) - compile as funcall
-              (let ((off (nc-env-lookup op env)))
-                (if (numberp off)
-                    (list 'funcall-ir (list 'var off) (mapcar (lambda (a) (nc-compile a env fenv)) (cdr expr)))
-                    (list 'lit 0))))))))
+          (cond
+           ;; op is a lambda expression: ((lambda (x) body) args...)
+           ((and (consp op) (eq (car op) 'lambda))
+            (list 'funcall-ir
+                  (nc-compile op env fenv)
+                  (mapcar (lambda (a) (nc-compile a env fenv)) (cdr expr))))
+           ;; op is a known function name
+           ((and fenv (assoc op fenv))
+            (list 'call-fn op (mapcar (lambda (a) (nc-compile a env fenv)) (cdr expr))))
+           ;; op is a variable (parameter) - compile as funcall
+           (t
+            (let ((off (nc-env-lookup op env)))
+              (if (numberp off)
+                  (list 'funcall-ir (list 'var off) (mapcar (lambda (a) (nc-compile a env fenv)) (cdr expr)))
+                  (list 'lit 0)))))))))
     (t (list 'lit 0))))
 
 ;;; ============================================================
@@ -2596,7 +2631,8 @@
             (capture-count (length free-offsets))
             (fn-entry (assoc name fnoffs))
             (fn-offset (if fn-entry (cdr fn-entry) 0))
-            (offset-bytes (* fn-offset 4))
+            ;; fn-offset is already in bytes (nc-build-fnoffs uses byte offsets)
+            (offset-bytes fn-offset)
             (code-slot (nc-temp-slot td))
             (env-slot (nc-temp-slot (+ td 1))))
        (if (= capture-count 0)
@@ -2620,7 +2656,7 @@
                                          (nc-append-all
                                           (list
                                            (nc-ldr-offset 0 31 env-slot)        ; x0 = vector
-                                           (nc-movz 1 idx)                      ; x1 = index
+                                           (nc-movz 1 (ash idx 4))              ; x1 = index (tagged)
                                            (nc-sub-imm 2 20 (* off 8))          ; x2 = x20 - off*8
                                            (nc-ldr-offset 2 2 0)                ; x2 = captured value
                                            (nc-ldr-offset 11 19 64)             ; vector-set
@@ -2635,7 +2671,7 @@
                (nc-add-reg 0 9 10)              ; x0 = code ptr
                (nc-str-offset 0 31 code-slot)   ; save code ptr
                ;; Allocate env vector
-               (nc-movz 0 capture-count)        ; x0 = length
+               (nc-movz 0 (ash capture-count 4)) ; x0 = length (tagged)
                (nc-ldr-offset 11 19 56)         ; make-vector
                (nc-blr 11)                      ; x0 = vector
                (nc-str-offset 0 31 env-slot)    ; save vector
@@ -2940,6 +2976,56 @@
    (nc-ldp-offset 20 30 31 0)  ; LDP x20, lr, [sp, #0] (restore caller's x20 and lr)
    (nc-add-imm 31 31 #x200)))  ; ADD sp, sp, #512 (deallocate function frame)
 
+(defun nc-gen-capture-copies (count idx acc)
+  "Generate code to copy captured values from closure env (x24) to stack.
+   x24 points to the env vector, copy count values starting at index 0."
+  (if (>= idx count)
+      acc
+      (let* ((copy-code
+              (nc-append-all
+               (list
+                ;; x0 = vector (x24)
+                (nc-mov-reg 0 24)
+                ;; x1 = index (tagged)
+                (nc-movz 1 (ash idx 4))
+                ;; call vector-ref (runtime table index 9, offset 72)
+                (nc-ldr-offset 11 19 72)
+                (nc-blr 11)
+                ;; Store result to stack slot idx
+                (nc-sub-imm 21 20 (* idx 8))
+                (nc-str-offset 0 21 0)))))
+        (nc-gen-capture-copies count (+ idx 1) (append acc copy-code)))))
+
+(defun nc-save-params-to-temps (count idx acc)
+  "Save param registers x0..xN to temp slots 200+idx to preserve them during capture copy.
+   Temp slots 200+ are used to avoid conflict with body temps."
+  (if (>= idx count)
+      acc
+      (let* ((temp-slot (+ 200 idx))
+             (off (* temp-slot 8))
+             (save-code (nc-append-all
+                         (list
+                          (nc-sub-imm 21 20 off)
+                          (nc-str-offset idx 21 0)))))
+        (nc-save-params-to-temps count (+ idx 1) (append acc save-code)))))
+
+(defun nc-restore-params-from-temps (params base count idx acc)
+  "Restore params from temp slots and store to final slots at base+idx."
+  (if (null params)
+      acc
+      (let* ((temp-slot (+ 200 idx))
+             (temp-off (* temp-slot 8))
+             (final-off (* (+ base idx) 8))
+             (restore-code (nc-append-all
+                            (list
+                             ;; Load from temp slot
+                             (nc-sub-imm 21 20 temp-off)
+                             (nc-ldr-offset 22 21 0)
+                             ;; Store to final slot
+                             (nc-sub-imm 21 20 final-off)
+                             (nc-str-offset 22 21 0)))))
+        (nc-restore-params-from-temps (cdr params) base count (+ idx 1) (append acc restore-code)))))
+
 (defun nc-codegen-fn (fn rtaddrs fnoffs)
   "Generate code for a function (defun or lifted lambda).
    Defun format:  (name params body param-base)  ; param-base is a number
@@ -2949,10 +3035,30 @@
          (fourth (cadddr fn)))
     ;; Distinguish defun from lambda by checking 4th element
     ;; Defuns have a number (param-base), lambdas have nil or a list (free-vars)
-    (let* ((pb (if (numberp fourth) fourth 0))
-           (pc (nc-gen-param-stores ps pb 0 nil))
-           (bc (nc-codegen bir rtaddrs fnoffs 0)))
-      (append (nc-fn-prologue) pc bc (nc-fn-epilogue) (nc-ret)))))
+    (if (numberp fourth)
+        ;; Defun: params start at param-base
+        (let* ((pb fourth)
+               (pc (nc-gen-param-stores ps pb 0 nil))
+               (bc (nc-codegen bir rtaddrs fnoffs 0)))
+          (append (nc-fn-prologue) pc bc (nc-fn-epilogue) (nc-ret)))
+        ;; Lambda: need to copy captures AND store params
+        ;; Problem: capture copy clobbers x0-x4, but params are in x0-x4
+        ;; Solution: save params to temp slots first, copy captures, then restore params
+        (let* ((free-vars fourth)
+               (capture-count (if free-vars (length free-vars) 0))
+               (param-count (length ps))
+               ;; Save params to temp slots before they get clobbered
+               (ps-save (if (> capture-count 0)
+                            (nc-save-params-to-temps param-count 0 nil)
+                            nil))
+               ;; Copy captured values from x24 (closure env) to stack slots 0..N-1
+               (cc (nc-gen-capture-copies capture-count 0 nil))
+               ;; Restore params from temp slots to final slots N..N+M-1
+               (pc (if (> capture-count 0)
+                       (nc-restore-params-from-temps ps capture-count param-count 0 nil)
+                       (nc-gen-param-stores ps 0 0 nil)))
+               (bc (nc-codegen bir rtaddrs fnoffs 0)))
+          (append (nc-fn-prologue) ps-save cc pc bc (nc-fn-epilogue) (nc-ret))))))
 
 (defun nc-codegen-main (mir rtaddrs)
   (append (nc-prologue)
