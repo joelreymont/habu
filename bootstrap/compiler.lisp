@@ -1147,8 +1147,15 @@
                  ;; Find free variables (referenced but not in params)
                  (free-vars (nc-find-free-vars body params env))
                  ;; Get the offsets for each free var in current env
-                 (free-offsets (mapcar (lambda (v) (nc-env-lookup v env)) free-vars)))
-            (list 'lambda-ir params body free-vars free-offsets)))
+                 (free-offsets (mapcar (lambda (v) (nc-env-lookup v env)) free-vars))
+                 ;; Build environment for body: params + free vars
+                 ;; Free vars come first (as captured in closure env), then params
+                 (param-bindings (mapcar #'list params))
+                 (body-env (nc-env-extend param-bindings
+                              (nc-env-extend (mapcar #'list free-vars) nil)))
+                 ;; Compile body to IR
+                 (body-ir (nc-compile body body-env fenv)))
+            (list 'lambda-ir params body-ir free-vars free-offsets)))
          ((eq op 'cons)
           (list 'cons-ir (nc-compile (cadr expr) env fenv) (nc-compile (caddr expr) env fenv)))
          ((eq op 'car) (list 'car-ir (nc-compile (cadr expr) env fenv)))
@@ -1588,9 +1595,10 @@
             (fn-val (nc-eval-ir-with-fns fn-ir env fenv)))
        ;; Check if fn-val is a closure (list starting with :closure)
        (if (and (consp fn-val) (eq (car fn-val) :closure))
-           ;; Closure: (:closure params body free-vars captured-vals)
+           ;; Closure: (:closure params body-ir free-vars captured-vals)
+           ;; body is now pre-compiled IR
            (let* ((params (cadr fn-val))
-                  (body (caddr fn-val))
+                  (body-ir (caddr fn-val))
                   (free-vars (cadddr fn-val))
                   (captured-vals (nth 4 fn-val)))
              (labels ((eval-args (airs acc)
@@ -1598,15 +1606,8 @@
                             (eval-args (cdr airs)
                                        (cons (nc-eval-ir-with-fns (car airs) env fenv) acc)))))
                (let* ((arg-vals (eval-args args-ir nil))
-                      ;; Build env with params and free vars
-                      (param-bindings (mapcar #'list params))
-                      (free-bindings (mapcar #'list free-vars))
-                      (param-env (nc-env-extend param-bindings nil))
-                      (full-env (nc-env-extend free-bindings param-env))
-                      ;; Build value list: args then captured
-                      (all-vals (append arg-vals captured-vals))
-                      ;; Compile body with this env
-                      (body-ir (nc-compile body full-env fenv)))
+                      ;; Build value list: free vars (captured) come first, then args
+                      (all-vals (append captured-vals arg-vals)))
                  (nc-eval-ir-with-fns body-ir all-vals fenv))))
            ;; Named function: look up in fenv
            (let ((fn-def (cdr (assoc fn-val fenv))))
@@ -2940,12 +2941,18 @@
    (nc-add-imm 31 31 #x200)))  ; ADD sp, sp, #512 (deallocate function frame)
 
 (defun nc-codegen-fn (fn rtaddrs fnoffs)
+  "Generate code for a function (defun or lifted lambda).
+   Defun format:  (name params body param-base)  ; param-base is a number
+   Lambda format: (name params body free-vars free-offsets)  ; free-vars is a list or nil"
   (let* ((ps (cadr fn))
          (bir (caddr fn))
-         (pb (cadddr fn))
-         (pc (nc-gen-param-stores ps pb 0 nil))
-         (bc (nc-codegen bir rtaddrs fnoffs 0)))
-    (append (nc-fn-prologue) pc bc (nc-fn-epilogue) (nc-ret))))
+         (fourth (cadddr fn)))
+    ;; Distinguish defun from lambda by checking 4th element
+    ;; Defuns have a number (param-base), lambdas have nil or a list (free-vars)
+    (let* ((pb (if (numberp fourth) fourth 0))
+           (pc (nc-gen-param-stores ps pb 0 nil))
+           (bc (nc-codegen bir rtaddrs fnoffs 0)))
+      (append (nc-fn-prologue) pc bc (nc-fn-epilogue) (nc-ret)))))
 
 (defun nc-codegen-main (mir rtaddrs)
   (append (nc-prologue)
@@ -3031,6 +3038,13 @@
                 (multiple-value-bind (new-arg new-lambdas)
                     (lift (cadr ir) lambdas)
                   (values (list (car ir) new-arg) new-lambdas)))
+               ((nc-has-tag ir 'setq-ir)
+                ;; setq-ir = (setq-ir offset value-ir)
+                (let ((offset (cadr ir))
+                      (val-ir (caddr ir)))
+                  (multiple-value-bind (new-val new-lambdas)
+                      (lift val-ir lambdas)
+                    (values (list 'setq-ir offset new-val) new-lambdas))))
                (t (values ir lambdas))))
            (lift-list (irs lambdas)
              (if (null irs)
@@ -3088,34 +3102,39 @@
 
 (defun nc-compile-program (forms rtaddrs)
   "Compile forms to bytecode with function linking.
-   Layout: prologue + main-code + epilogue + functions
+   Layout: prologue + main-code + epilogue + functions + lifted-lambdas
    Functions are placed after main, and call-fn generates forward BL."
   (let* ((r (nc-compile-forms forms))
-         (fns (car r))
-         (mir (cadr r)))
-    (if (null fns)
-        ;; No functions defined - simple case
-        (nc-codegen-main mir rtaddrs)
-        ;; Functions defined - need linking
-        (let* (;; First, generate main code with nil fnoffs to get size
-               ;; This code contains (:call-fn name) markers
-               (main-code-temp (append (nc-prologue)
-                                       (nc-codegen mir rtaddrs nil 0)
-                                       (nc-epilogue)))
-               ;; Use nc-code-size to handle markers
-               (main-size (nc-code-size main-code-temp))
-               ;; Build fnoffs starting after main code
-               (fnoffs (nc-build-fnoffs fns main-size nil))
-               ;; Generate main code again - markers remain, fnoffs now known
-               (main-code (append (nc-prologue)
-                                  (nc-codegen mir rtaddrs fnoffs 0)
-                                  (nc-epilogue)))
-               ;; Generate function code with fnoffs (functions can call each other)
-               (fn-code (nc-codegen-all-fns fns rtaddrs fnoffs nil))
-               ;; Combine all code (still has markers)
-               (all-code (append main-code fn-code)))
-          ;; Resolve all markers to actual BL instructions
-          (nc-resolve-calls all-code fnoffs)))))
+         (defun-fns (car r))
+         (mir-raw (cadr r)))
+    ;; Lift lambdas from main IR
+    (multiple-value-bind (mir lifted-lambdas)
+        (nc-lift-lambdas mir-raw)
+      ;; Combine defun functions with lifted lambdas
+      (let ((fns (append defun-fns lifted-lambdas)))
+        (if (null fns)
+            ;; No functions defined - simple case
+            (nc-codegen-main mir rtaddrs)
+            ;; Functions defined - need linking
+            (let* (;; First, generate main code with nil fnoffs to get size
+                   ;; This code contains (:call-fn name) markers
+                   (main-code-temp (append (nc-prologue)
+                                           (nc-codegen mir rtaddrs nil 0)
+                                           (nc-epilogue)))
+                   ;; Use nc-code-size to handle markers
+                   (main-size (nc-code-size main-code-temp))
+                   ;; Build fnoffs starting after main code
+                   (fnoffs (nc-build-fnoffs fns main-size nil))
+                   ;; Generate main code again - markers remain, fnoffs now known
+                   (main-code (append (nc-prologue)
+                                      (nc-codegen mir rtaddrs fnoffs 0)
+                                      (nc-epilogue)))
+                   ;; Generate function code with fnoffs (functions can call each other)
+                   (fn-code (nc-codegen-all-fns fns rtaddrs fnoffs nil))
+                   ;; Combine all code (still has markers)
+                   (all-code (append main-code fn-code)))
+              ;; Resolve all markers to actual BL instructions
+              (nc-resolve-calls all-code fnoffs)))))))
 
 ;;; ============================================================
 ;;; Part 9: Entry Point
