@@ -10,11 +10,11 @@
    ;; Core encoding
    #:encode
    ;; Data movement
-   #:movz #:movk #:mov
+   #:movz #:movk #:mov #:adrp #:add-lo12
    ;; Arithmetic
    #:add #:sub #:mul #:sdiv #:neg
    ;; Bitwise
-   #:and* #:orr #:eor #:lsl #:lsr #:asr
+   #:and* #:orr #:eor #:bic #:and-imm #:lsl #:lsr #:asr
    ;; Memory
    #:ldr #:str #:ldp #:stp
    ;; Compare
@@ -80,6 +80,26 @@
   "MOV Xd, Xm
    Move register (alias for ORR Xd, XZR, Xm)."
   (encode (logior #xAA0003E0 (ash rm 16) rd)))
+
+(defun adrp (rd page-offset)
+  "ADRP Xd, label
+   Load PC-relative page address. PAGE-OFFSET is the signed page offset.
+   Note: This encodes a placeholder - actual address requires relocation."
+  ;; ADRP: immlo in bits 30:29, immhi in bits 23:5
+  (let* ((immlo (logand page-offset #x3))
+         (immhi (logand (ash page-offset -2) #x7FFFF)))
+    (encode (logior #x90000000
+                    (ash immlo 29)
+                    (ash immhi 5)
+                    rd))))
+
+(defun add-lo12 (rd rn lo12)
+  "ADD Xd, Xn, #:lo12:label
+   Add low 12 bits of address. For use with ADRP."
+  (encode (logior #x91000000
+                  (ash (logand lo12 #xFFF) 10)
+                  (ash rn 5)
+                  rd)))
 
 ;;; ============================================================
 ;;; Arithmetic
@@ -157,6 +177,25 @@
    Bitwise XOR."
   (encode (logior #xCA000000
                   (ash rm 16)
+                  (ash rn 5)
+                  rd)))
+
+(defun bic (rd rn rm)
+  "BIC Xd, Xn, Xm
+   Bit clear (AND with NOT Xm)."
+  (encode (logior #x8A200000
+                  (ash rm 16)
+                  (ash rn 5)
+                  rd)))
+
+(defun and-imm (rd rn imm-n imm-r imm-s)
+  "AND Xd, Xn, #imm
+   AND with bitmask immediate. Use encode-bitmask for imm values.
+   For clearing low 4 bits: N=1, immr=0, imms=59 (0x3B)"
+  (encode (logior #x92000000
+                  (ash imm-n 22)
+                  (ash imm-r 16)
+                  (ash imm-s 10)
                   (ash rn 5)
                   rd)))
 

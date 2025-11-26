@@ -940,15 +940,22 @@
     ((numberp expr) (list 'lit expr))
     ((stringp expr) (list 'str-lit expr))
     ((symbolp expr)
-     ;; Use numberp since offset 0 is falsey in Habu
-     (let ((off (nc-env-lookup expr env)))
-       (if (numberp off)
-           (list 'var off)
-           ;; Check if it's a known function name - return as lambda-ref
-           ;; This creates a closure pointing to the function (no captures)
-           (if (and fenv (assoc expr fenv))
-               (list 'lambda-ref expr nil)
-               (list 'lit 0)))))
+     ;; Handle special symbols first
+     (cond
+       ;; t compiles to non-zero literal for native executables without runtime
+       ;; In boolean context, any non-zero value is truthy
+       ((eq expr 't) (list 'lit 1))           ; t = 1 (truthy)
+       ((eq expr 'nil) (list 'lit 0))          ; nil is 0
+       (t
+        ;; Use numberp since offset 0 is falsey in Habu
+        (let ((off (nc-env-lookup expr env)))
+          (if (numberp off)
+              (list 'var off)
+              ;; Check if it's a known function name - return as lambda-ref
+              ;; This creates a closure pointing to the function (no captures)
+              (if (and fenv (assoc expr fenv))
+                  (list 'lambda-ref expr nil)
+                  (list 'lit 0)))))))
     ((consp expr)
      (let ((op (car expr)))
        (cond
@@ -1172,8 +1179,12 @@
          ((eq op 'null)
           (list 'cmp-eq (nc-compile (cadr expr) env fenv) (list 'lit 0)))
          ((eq op 'numberp)
+          ;; get-tag returns tagged fixnum (tag << 4), lit also tags its value
+          ;; so to compare tag=0, use (lit 0) -> becomes 0
           (list 'cmp-eq (list 'get-tag (nc-compile (cadr expr) env fenv)) (list 'lit 0)))
          ((eq op 'consp)
+          ;; get-tag returns tagged fixnum (tag << 4), lit also tags its value
+          ;; so to compare tag=1, use (lit 1) -> becomes 1<<4=16
           (list 'cmp-eq (list 'get-tag (nc-compile (cadr expr) env fenv)) (list 'lit 1)))
          ;; progn - evaluate forms in sequence, return last
          ((eq op 'progn)
@@ -2133,6 +2144,9 @@
                           (nc-cset 0 (nc-cond-ge))
                           (nc-lsl-imm 0 0 4)))))))))))
     ((nc-has-tag ir 'cons-ir)
+     ;; Inline cons: allocate 16 bytes from heap (x28), store car/cdr, return tagged ptr
+     ;; x28 is the heap bump pointer, initialized at startup
+     ;; Cons cell: [car at offset 0, cdr at offset 8], tagged with 1
      (let ((car-ir (cadr ir)))
        (let ((cdr-ir (caddr ir)))
          (let ((xs (nc-temp-slot td)))
@@ -2141,29 +2155,47 @@
                (let ((cc (nc-codegen car-ir rtaddrs fnoffs nd)))
                  (let ((dc (nc-codegen cdr-ir rtaddrs fnoffs nd)))
                    (nc-append-all
-                    (list (nc-str-offset 24 31 xs)
-                          cc
-                          (nc-str-offset 0 31 cs)
-                          (nc-ldr-offset 24 31 xs)
-                          dc
-                          (nc-mov-reg 1 0)
-                          (nc-ldr-offset 0 31 cs)
-                          (nc-ldr-offset 9 19 0)
-                          (nc-blr 9)))))))))))
+                    (list (nc-str-offset 24 31 xs)          ; save x24
+                          cc                                 ; eval car -> x0
+                          (nc-str-offset 0 31 cs)           ; save car value
+                          (nc-ldr-offset 24 31 xs)          ; restore x24
+                          dc                                 ; eval cdr -> x0
+                          (nc-mov-reg 1 0)                  ; x1 = cdr value
+                          (nc-ldr-offset 0 31 cs)           ; x0 = car value
+                          ;; Inline allocation: x28 = heap pointer
+                          (nc-str-offset 0 28 0)            ; [x28+0] = car
+                          (nc-str-offset 1 28 8)            ; [x28+8] = cdr
+                          (nc-mov-reg 0 28)                 ; x0 = untagged ptr
+                          (nc-add-imm 28 28 16)             ; bump heap by 16
+                          ;; Tag with cons tag (1)
+                          (nc-movz 1 1)                     ; x1 = 1
+                          (nc-orr-reg 0 0 1)))))))))))      ; x0 = ptr | 1
     ((nc-has-tag ir 'car-ir)
+     ;; Inline car: clear tag bits, load from offset 0
      (let ((arg-ir (cadr ir)))
        (let ((ac (nc-codegen arg-ir rtaddrs fnoffs td)))
          (nc-append-all
           (list ac
-                (nc-ldr-offset 9 19 8)
-                (nc-blr 9))))))
+                ;; Clear low 4 bits to get pointer
+                (nc-movz 1 #xFFF0)                ; x1 = mask (keep upper bits)
+                (nc-movk 1 #xFFFF 16)             ; complete mask
+                (nc-movk 1 #xFFFF 32)
+                (nc-movk 1 #xFFFF 48)
+                (nc-and-reg 0 0 1)                ; x0 = ptr with tag cleared
+                (nc-ldr-offset 0 0 0))))))        ; x0 = [ptr+0] = car
     ((nc-has-tag ir 'cdr-ir)
+     ;; Inline cdr: clear tag bits, load from offset 8
      (let ((arg-ir (cadr ir)))
        (let ((ac (nc-codegen arg-ir rtaddrs fnoffs td)))
          (nc-append-all
           (list ac
-                (nc-ldr-offset 9 19 16)
-                (nc-blr 9))))))
+                ;; Clear low 4 bits to get pointer
+                (nc-movz 1 #xFFF0)                ; x1 = mask (keep upper bits)
+                (nc-movk 1 #xFFFF 16)             ; complete mask
+                (nc-movk 1 #xFFFF 32)
+                (nc-movk 1 #xFFFF 48)
+                (nc-and-reg 0 0 1)                ; x0 = ptr with tag cleared
+                (nc-ldr-offset 0 0 8))))))
     ;; setq-ir - assign to variable
     ((nc-has-tag ir 'setq-ir)
      ;; setq-ir = (setq-ir offset value-ir)

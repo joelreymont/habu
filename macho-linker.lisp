@@ -21,9 +21,12 @@
 (defpackage :habu-macho
   (:use :cl)
   (:export #:write-macho-executable
+           #:write-macho-executable-with-heap
            #:link-with-runtime
            #:deliver-native
+           #:deliver-native-with-heap
            #:wrap-bytecode-for-exit
+           #:wrap-bytecode-with-heap
            #:test-minimal-macho))
 
 (in-package :habu-macho)
@@ -476,6 +479,265 @@
                (arm64:add arm64:+sp+ arm64:+sp+ #x10 :imm t)  ; add sp, sp, #16
                (arm64:ret))))                                  ; ret
     (append stub code-bytes)))
+
+(defun wrap-bytecode-with-heap (code-bytes heap-page-offset)
+  "Wrap bytecode with heap initialization and untagging.
+
+   HEAP-PAGE-OFFSET is the page offset from the ADRP instruction to __DATA.
+   For standard layout (code at page 0, heap at page 1), this is 1.
+   x28 is used as the heap bump pointer.
+
+   Uses PC-relative addressing (ADRP + ADD) so PIE/ASLR works correctly.
+
+   Stub (40 bytes = 10 instructions):
+     0: sub sp, sp, #16      ; allocate stack space
+     1: str x30, [sp]        ; save LR
+     2: str x28, [sp, #8]    ; save x28
+     3: adrp x28, #page_off  ; load heap page address (PC-relative)
+     4: bl +6                ; call original main (skip 5 instrs to reach instr 10)
+     5: lsr x0, x0, #4       ; untag result
+     6: ldr x28, [sp, #8]    ; restore x28
+     7: ldr x30, [sp]        ; restore LR
+     8: add sp, sp, #16      ; clean up stack
+     9: ret                  ; return to OS
+    10: <original code>      ; starts at offset 40"
+  (let* ((stub (append
+                (arm64:sub arm64:+sp+ arm64:+sp+ #x10 :imm t)  ; sub sp, sp, #16
+                (arm64:str arm64:+lr+ arm64:+sp+)              ; str x30, [sp]
+                (arm64:str 28 arm64:+sp+ :offset 8)            ; str x28, [sp, #8]
+                (arm64:adrp 28 heap-page-offset)               ; adrp x28, heap (PC-relative)
+                (arm64:bl 6)                                    ; bl +6 (skip 5 instrs to main)
+                (arm64:lsr 0 0 4 :imm t)                        ; lsr x0, x0, #4
+                (arm64:ldr 28 arm64:+sp+ :offset 8)            ; ldr x28, [sp, #8]
+                (arm64:ldr arm64:+lr+ arm64:+sp+)              ; ldr x30, [sp]
+                (arm64:add arm64:+sp+ arm64:+sp+ #x10 :imm t)  ; add sp, sp, #16
+                (arm64:ret))))                                  ; ret
+    (append stub code-bytes)))
+
+;;; ============================================================
+;;; Mach-O with Heap (__DATA segment)
+;;; ============================================================
+
+(defun write-macho-executable-with-heap (output-path code-bytes heap-size &key verbose)
+  "Write a Mach-O executable with a __DATA segment for heap allocation.
+   CODE-BYTES should be ARM64 machine code.
+   HEAP-SIZE is the size in bytes for the heap (typically 1MB = #x100000).
+   Returns the virtual address of the heap."
+  (let* ((code-size (length code-bytes))
+
+         ;; Calculate sizes for load commands
+         (header-size 32)
+         (pagezero-cmd-size 72)
+         (text-cmd-size (+ 72 80))              ; segment + 1 section
+         (data-cmd-size (+ 72 80))              ; segment + 1 section for heap
+         (linkedit-cmd-size 72)                 ; segment, no sections
+         (dylinker-path "/usr/lib/dyld")
+         (dylinker-cmd-size (align-up (+ 12 (length dylinker-path) 1) 8))
+         (uuid-cmd-size 24)
+         (build-version-cmd-size 24)
+         (main-cmd-size 24)
+         (libsystem-path "/usr/lib/libSystem.B.dylib")
+         (load-dylib-cmd-size (align-up (+ 24 (length libsystem-path) 1) 8))
+         (symtab-cmd-size 24)
+         (dysymtab-cmd-size 80)
+
+         ;; Number of load commands
+         (ncmds 11)                             ; Added __DATA segment
+         (sizeofcmds (+ pagezero-cmd-size
+                       text-cmd-size
+                       data-cmd-size
+                       linkedit-cmd-size
+                       dylinker-cmd-size
+                       uuid-cmd-size
+                       build-version-cmd-size
+                       main-cmd-size
+                       load-dylib-cmd-size
+                       symtab-cmd-size
+                       dysymtab-cmd-size))
+
+         ;; Code placement - leave room for codesign load command
+         (code-offset (align-up (+ header-size sizeofcmds 64) 64))
+
+         ;; __TEXT segment covers first page
+         (text-segment-size +PAGE-SIZE+)
+
+         ;; __DATA segment starts at second page
+         (data-fileoff +PAGE-SIZE+)
+         (data-vmaddr (+ +VM-BASE+ +PAGE-SIZE+))
+         (data-vmsize (align-up heap-size +PAGE-SIZE+))
+         (data-filesize data-vmsize)            ; Initialize with zeros
+
+         ;; __LINKEDIT segment starts after __DATA
+         (linkedit-fileoff (+ data-fileoff data-filesize))
+         (linkedit-vmaddr (+ data-vmaddr data-vmsize))
+
+         ;; String table for symbols (just null byte and _main)
+         (string-table '(0                      ; first byte is null
+                         95 109 97 105 110 0))  ; "_main\0"
+         (string-table-size (length string-table))
+
+         ;; Symbol table offset (at start of LINKEDIT)
+         (symtab-offset linkedit-fileoff)
+         (nsyms 1)
+         (nlist-size (* nsyms 16))
+
+         ;; String table offset (after symbols)
+         (strtab-offset (+ symtab-offset nlist-size))
+
+         ;; LINKEDIT total size
+         (linkedit-size (align-up (+ nlist-size string-table-size) 8))
+
+         ;; Entry point offset from start of file (LC_MAIN.entryoff)
+         (entry-offset code-offset))
+
+    (when verbose
+      (format t "Code offset: ~D (~X)~%" code-offset code-offset)
+      (format t "Code size: ~D~%" code-size)
+      (format t "DATA offset: ~D (~X)~%" data-fileoff data-fileoff)
+      (format t "DATA vmaddr: ~X~%" data-vmaddr)
+      (format t "DATA size: ~D (~X)~%" data-vmsize data-vmsize)
+      (format t "LINKEDIT offset: ~D~%" linkedit-fileoff)
+      (format t "Entry offset: ~D~%" entry-offset))
+
+    (with-open-file (out output-path
+                         :direction :output
+                         :if-exists :supersede
+                         :element-type '(unsigned-byte 8))
+
+      ;; === Mach-O Header ===
+      ;; PIE enabled - heap address is PC-relative via ADRP so ASLR works
+      (write-mach-header-64 out ncmds sizeofcmds
+                            (logior +MH-NOUNDEFS+ +MH-DYLDLINK+
+                                    +MH-TWOLEVEL+ +MH-PIE+))
+
+      ;; === Load Commands ===
+
+      ;; 1. __PAGEZERO (4GB null zone)
+      (write-segment-command-64 out "__PAGEZERO"
+                                0 +VM-BASE+     ; vmaddr=0, vmsize=4GB
+                                0 0             ; fileoff=0, filesize=0
+                                0 0             ; no protection
+                                0 0)            ; no sections
+
+      ;; 2. __TEXT segment
+      (write-segment-command-64 out "__TEXT"
+                                +VM-BASE+ text-segment-size
+                                0 text-segment-size
+                                (logior +VM-PROT-READ+ +VM-PROT-EXECUTE+)
+                                (logior +VM-PROT-READ+ +VM-PROT-EXECUTE+)
+                                1 0)
+      ;; __text section
+      (write-section-64 out "__text" "__TEXT"
+                        (+ +VM-BASE+ code-offset) code-size
+                        code-offset
+                        2                       ; align 2^2 = 4
+                        0 0                     ; no relocations
+                        (logior +S-ATTR-PURE-INSTRUCTIONS+ +S-ATTR-SOME-INSTRUCTIONS+)
+                        0 0)
+
+      ;; 3. __DATA segment for heap
+      (write-segment-command-64 out "__DATA"
+                                data-vmaddr data-vmsize
+                                data-fileoff data-filesize
+                                (logior +VM-PROT-READ+ +VM-PROT-WRITE+)
+                                (logior +VM-PROT-READ+ +VM-PROT-WRITE+)
+                                1 0)
+      ;; __heap section
+      (write-section-64 out "__heap" "__DATA"
+                        data-vmaddr data-vmsize
+                        data-fileoff
+                        3                       ; align 2^3 = 8
+                        0 0                     ; no relocations
+                        0                       ; regular section
+                        0 0)
+
+      ;; 4. __LINKEDIT segment
+      (write-segment-command-64 out "__LINKEDIT"
+                                linkedit-vmaddr +PAGE-SIZE+
+                                linkedit-fileoff linkedit-size
+                                +VM-PROT-READ+
+                                +VM-PROT-READ+
+                                0 0)            ; no sections
+
+      ;; 5. LC_LOAD_DYLINKER
+      (write-dylinker-command out dylinker-path)
+
+      ;; 6. LC_UUID
+      (write-uuid-command out)
+
+      ;; 7. LC_BUILD_VERSION
+      (write-build-version-command out)
+
+      ;; 8. LC_MAIN
+      (write-main-command out entry-offset)
+
+      ;; 9. LC_LOAD_DYLIB for libSystem
+      (write-load-dylib-command out libsystem-path)
+
+      ;; 10. LC_SYMTAB
+      (write-symtab-command out symtab-offset nsyms strtab-offset string-table-size)
+
+      ;; 11. LC_DYSYMTAB
+      (write-dysymtab-command out
+                              0 0               ; no locals
+                              0 1               ; 1 external symbol at index 0
+                              1 0)              ; no undefined
+
+      ;; === Padding to code offset ===
+      (let ((current (file-position out)))
+        (when verbose
+          (format t "After load commands, position: ~D (~X), need: ~D (~X)~%"
+                  current current code-offset code-offset))
+        (when (< current code-offset)
+          (write-zeros out (- code-offset current))))
+
+      ;; === Code Section ===
+      (dolist (b code-bytes)
+        (write-byte b out))
+
+      ;; === Padding to DATA ===
+      (let ((current (file-position out)))
+        (write-zeros out (- data-fileoff current)))
+
+      ;; === DATA Section (heap initialized to zeros) ===
+      (write-zeros out data-vmsize)
+
+      ;; === LINKEDIT Section ===
+
+      ;; Symbol table (nlist_64)
+      ;; _main symbol: external defined in section 1
+      (write-nlist-64 out
+                      1                         ; strx = offset of "_main" in strtab
+                      #x0F                      ; N_SECT | N_EXT
+                      1                         ; section 1 (__text)
+                      #x0010                    ; REFERENCED_DYNAMICALLY
+                      (+ +VM-BASE+ code-offset)) ; address
+
+      ;; String table
+      (dolist (b string-table)
+        (write-byte b out))
+
+      ;; Pad to alignment
+      (let ((current (file-position out)))
+        (write-zeros out (- (+ linkedit-fileoff linkedit-size) current))))
+
+    ;; Make executable
+    (sb-ext:run-program "/bin/chmod" (list "+x" output-path))
+
+    ;; Return the heap virtual address
+    data-vmaddr))
+
+(defun deliver-native-with-heap (output-path code-bytes &key (heap-size #x100000) verbose)
+  "Create a standalone native executable from compiled bytecode with heap support.
+   Uses x28 as the heap bump pointer, initialized to the __DATA segment.
+   HEAP-SIZE defaults to 1MB."
+  ;; ADRP uses 4KB page units. __DATA is at +PAGE-SIZE+ (16KB = 0x4000).
+  ;; Page offset = 0x4000 / 0x1000 = 4 (in ADRP's 4KB page units)
+  ;; This works because ADRP is PC-relative and both code and heap
+  ;; shift together with ASLR/PIE, maintaining the same page offset.
+  (let* ((heap-page-offset (/ +PAGE-SIZE+ #x1000))  ; 16KB / 4KB = 4
+         (wrapped (wrap-bytecode-with-heap code-bytes heap-page-offset)))
+    (write-macho-executable-with-heap output-path wrapped heap-size :verbose verbose)))
 
 ;;; ============================================================
 ;;; Link with Runtime
