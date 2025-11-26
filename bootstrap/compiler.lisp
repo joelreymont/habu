@@ -549,7 +549,12 @@
     ((symbolp expr)
      ;; Use numberp since offset 0 is falsey in Habu
      (let ((off (nc-env-lookup expr env)))
-       (if (numberp off) (list 'var off) (list 'lit 0))))
+       (if (numberp off)
+           (list 'var off)
+           ;; Check if it's a known function name - return as symbol reference
+           (if (and fenv (assoc expr fenv))
+               (list 'sym-lit (symbol-name expr))
+               (list 'lit 0)))))
     ((consp expr)
      (let ((op (car expr)))
        (cond
@@ -619,6 +624,10 @@
                 (nc-compile body env fenv)
                 (nc-compile (list 'LET (list (car bs)) (list 'LET* (cdr bs) body)) env fenv))))
          ((eq op 'quote) (nc-quote-ir (cadr expr)))
+         ;; function - return the function name (for passing to funcall)
+         ((eq op 'function)
+          (let ((fn-name (cadr expr)))
+            (list 'sym-lit (symbol-name fn-name))))
          ((eq op 'cons)
           (list 'cons-ir (nc-compile (cadr expr) env fenv) (nc-compile (caddr expr) env fenv)))
          ((eq op 'car) (list 'car-ir (nc-compile (cadr expr) env fenv)))
@@ -634,11 +643,21 @@
           (list 'cmp-eq (list 'get-tag (nc-compile (cadr expr) env fenv)) (list 'lit 0)))
          ((eq op 'consp)
           (list 'cmp-eq (list 'get-tag (nc-compile (cadr expr) env fenv)) (list 'lit 1)))
-         ;; User function call
+         ;; funcall - call function by value
+         ((eq op 'funcall)
+          (list 'funcall-ir
+                (nc-compile (cadr expr) env fenv)
+                (mapcar (lambda (a) (nc-compile a env fenv)) (cddr expr))))
+         ;; User function call or call via variable
          (t
+          ;; Check if op is a known function name
           (if (and fenv (assoc op fenv))
               (list 'call-fn op (mapcar (lambda (a) (nc-compile a env fenv)) (cdr expr)))
-              (list 'lit 0))))))
+              ;; Check if op is a variable (parameter) - compile as funcall
+              (let ((off (nc-env-lookup op env)))
+                (if (numberp off)
+                    (list 'funcall-ir (list 'var off) (mapcar (lambda (a) (nc-compile a env fenv)) (cdr expr)))
+                    (list 'lit 0))))))))
     (t (list 'lit 0))))
 
 ;;; ============================================================
@@ -693,6 +712,9 @@
   "Evaluate IR with function environment"
   (cond
     ((nc-has-tag ir 'lit) (cadr ir))
+    ((nc-has-tag ir 'sym-lit)
+     ;; Return the symbol itself (interned)
+     (intern (cadr ir)))
     ((nc-has-tag ir 'var)
      (let ((off (cadr ir)))
        (nth off env)))
@@ -752,6 +774,24 @@
                  ;; Call with new env containing args
                  (nc-eval-ir-with-fns body-ir arg-vals fenv))))
            0)))
+    ((nc-has-tag ir 'funcall-ir)
+     ;; funcall-ir = (funcall-ir fn-ir args-ir-list)
+     ;; fn-ir evaluates to a function name (symbol)
+     (let* ((fn-ir (cadr ir))
+            (args-ir (caddr ir))
+            (fn-val (nc-eval-ir-with-fns fn-ir env fenv)))
+       ;; fn-val should be a function name (symbol) - look it up in fenv
+       (let ((fn-def (cdr (assoc fn-val fenv))))
+         (if fn-def
+             (let* ((params (cadr fn-def))
+                    (body-ir (caddr fn-def)))
+               (labels ((eval-args (airs acc)
+                          (if (null airs) (reverse acc)
+                              (eval-args (cdr airs)
+                                         (cons (nc-eval-ir-with-fns (car airs) env fenv) acc)))))
+                 (let ((arg-vals (eval-args args-ir nil)))
+                   (nc-eval-ir-with-fns body-ir arg-vals fenv))))
+             0))))
     (t 0)))
 
 ;;; ============================================================

@@ -72,6 +72,15 @@
 ;; Test 17: Fibonacci
 (run-nc-test "fibonacci" "(defun fib (n) (if (< n 2) n (+ (fib (- n 1)) (fib (- n 2))))) (fib 10)" 55)
 
+;; Test 18: Higher-order function (funcall)
+(run-nc-test "higher-order" "(defun apply-twice (f x) (f (f x))) (defun inc (n) (+ n 1)) (apply-twice inc 5)" 7)
+
+;; Test 19: Explicit funcall
+(run-nc-test "funcall" "(defun call-with-3 (f) (funcall f 3)) (defun double (x) (* x 2)) (call-with-3 double)" 6)
+
+;; Test 20: #'function syntax
+(run-nc-test "function-syntax" "(defun apply-it (f x) (funcall f x)) (defun triple (n) (* n 3)) (apply-it #'triple 4)" 12)
+
 ;; Summary
 (format t "~%=== Results: ~A passed, ~A failed ===~%"
         *tests-passed* *tests-failed*)
