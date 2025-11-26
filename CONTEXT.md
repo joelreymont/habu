@@ -36,16 +36,28 @@ This session focused on organizing the bootstrap compiler and implementing mutua
 **Bootstrap Compiler Status**:
 - `bootstrap/compiler.lisp`: Full read-compile-eval via IR evaluator
 - Parses Lisp source strings, compiles to IR, evaluates IR
-- 17 test cases: arithmetic, let, comparisons, defun, recursion, mutual recursion, fibonacci
-- All tests passing
+- 41 test cases all passing
+
+**Supported Features in Bootstrap Compiler**:
+- Arithmetic: +, -, *, /, mod, rem
+- Comparisons: =, <, >, <=, >=
+- Control flow: if, cond, when, unless
+- Boolean: and, or, not
+- Binding: let, let*, progn
+- Functions: defun, funcall, higher-order functions
+- Mutual recursion via two-pass compilation
+- Type predicates: null, numberp, consp
+- List operations: cons, car, cdr, list, quote, function
 
 **Known Limitations**:
-- Higher-order functions (funcall) not yet supported in bootstrap
-- `(f x)` where f is a parameter requires funcall support
+- Reader parses `1+` as `1` then `+` (not as symbol)
+- No lambda/closures yet (only named functions)
+- No dotimes/dolist iteration yet
 
 **Next Steps**:
-1. Implement funcall/higher-order function support in bootstrap compiler
-2. Complete Stage 2 bootstrap (ARM64 codegen path)
+1. Add lambda/closure support
+2. Add iteration constructs (dotimes, dolist)
+3. Complete Stage 2 bootstrap (ARM64 codegen path)
 
 ## Current Status Summary
 
