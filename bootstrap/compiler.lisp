@@ -922,6 +922,7 @@
 (defun nc-compile (expr env fenv)
   (cond
     ((numberp expr) (list 'lit expr))
+    ((stringp expr) (list 'str-lit expr))
     ((symbolp expr)
      ;; Use numberp since offset 0 is falsey in Habu
      (let ((off (nc-env-lookup expr env)))
@@ -1202,6 +1203,15 @@
          ;; setcdr - mutate cdr of cons cell
          ((eq op 'setcdr)
           (list 'setcdr-ir (nc-compile (cadr expr) env fenv) (nc-compile (caddr expr) env fenv)))
+         ;; read-file - read entire file contents as string
+         ((eq op 'read-file)
+          (list 'read-file-ir (nc-compile (cadr expr) env fenv)))
+         ;; write-file - write string to file
+         ((eq op 'write-file)
+          (list 'write-file-ir (nc-compile (cadr expr) env fenv) (nc-compile (caddr expr) env fenv)))
+         ;; println - print value with newline
+         ((eq op 'println)
+          (list 'println-ir (nc-compile (cadr expr) env fenv)))
          ;; incf - increment variable
          ((eq op 'incf)
           (let* ((place (cadr expr))
@@ -1382,6 +1392,9 @@
     ((nc-has-tag ir 'sym-lit)
      ;; Return the symbol itself (interned)
      (intern (cadr ir)))
+    ((nc-has-tag ir 'str-lit)
+     ;; Return the string literal directly
+     (cadr ir))
     ((nc-has-tag ir 'var)
      (let ((off (cadr ir)))
        (nth off env)))
@@ -1601,6 +1614,25 @@
             (val (nc-eval-ir-with-fns (caddr ir) env fenv)))
        (setf (cdr cell) val)
        val))
+    ;; read-file-ir - read entire file as string
+    ((nc-has-tag ir 'read-file-ir)
+     (let ((path (nc-eval-ir-with-fns (cadr ir) env fenv)))
+       (with-open-file (in path :direction :input)
+         (let ((contents (make-string (file-length in))))
+           (read-sequence contents in)
+           contents))))
+    ;; write-file-ir - write string to file
+    ((nc-has-tag ir 'write-file-ir)
+     (let ((path (nc-eval-ir-with-fns (cadr ir) env fenv))
+           (contents (nc-eval-ir-with-fns (caddr ir) env fenv)))
+       (with-open-file (out path :direction :output :if-exists :supersede)
+         (write-string contents out))
+       contents))
+    ;; println-ir - print value with newline
+    ((nc-has-tag ir 'println-ir)
+     (let ((val (nc-eval-ir-with-fns (cadr ir) env fenv)))
+       (format t "~A~%" val)
+       val))
     ;; nthcdr-ir - get nth cdr of list
     ((nc-has-tag ir 'nthcdr-ir)
      ;; nthcdr-ir = (nthcdr-ir n-ir list-ir)
@@ -1673,6 +1705,12 @@
         (list str-code
               (nc-ldr-offset 9 19 88)
               (nc-blr 9)))))
+    ((nc-has-tag ir 'str-lit)
+     ;; String literal: build string from chars, leave as string
+     (let* ((s (cadr ir))
+            (chars (nc-string-to-char-codes s))
+            (str-code (nc-codegen-string-from-chars chars td)))
+       str-code))
     ((nc-has-tag ir 'var)
      (let* ((off (cadr ir))
             (off8 (* off 8))
@@ -1993,6 +2031,40 @@
             (bl (nc-blr 9))
             (lr (nc-ldr-offset 0 31 vs)))
        (nc-append-all (list cc sc vc sv mv lc lf bl lr))))
+    ;; read-file-ir - read entire file as string
+    ((nc-has-tag ir 'read-file-ir)
+     ;; read-file-ir = (read-file-ir path-ir)
+     ;; Runtime index 46 = habu_read_file at offset 368
+     (let* ((path-ir (cadr ir))
+            (pc (nc-codegen path-ir rtaddrs fnoffs td))
+            (lf (nc-ldr-offset 9 19 368))
+            (bl (nc-blr 9)))
+       (nc-append-all (list pc lf bl))))
+    ;; write-file-ir - write string to file
+    ((nc-has-tag ir 'write-file-ir)
+     ;; write-file-ir = (write-file-ir path-ir contents-ir)
+     ;; Runtime index 47 = habu_write_file at offset 376
+     (let* ((path-ir (cadr ir))
+            (contents-ir (caddr ir))
+            (xs (nc-temp-slot td))
+            (nd (+ td 1))
+            (pc (nc-codegen path-ir rtaddrs fnoffs nd))
+            (sp (nc-str-offset 0 31 xs))
+            (cc (nc-codegen contents-ir rtaddrs fnoffs nd))
+            (m1 (nc-mov-reg 1 0))
+            (lp (nc-ldr-offset 0 31 xs))
+            (lf (nc-ldr-offset 9 19 376))
+            (bl (nc-blr 9)))
+       (nc-append-all (list pc sp cc m1 lp lf bl))))
+    ;; println-ir - print value with newline
+    ((nc-has-tag ir 'println-ir)
+     ;; println-ir = (println-ir value-ir)
+     ;; Runtime index 49 = habu_println_value at offset 392
+     (let* ((val-ir (cadr ir))
+            (vc (nc-codegen val-ir rtaddrs fnoffs td))
+            (lf (nc-ldr-offset 9 19 392))
+            (bl (nc-blr 9)))
+       (nc-append-all (list vc lf bl))))
     ;; nthcdr-ir - get nth cdr of list
     ((nc-has-tag ir 'nthcdr-ir)
      ;; nthcdr-ir = (nthcdr-ir n-ir list-ir)
