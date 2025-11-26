@@ -567,23 +567,24 @@
 ;;; ============================================================
 
 (defun nc-prologue ()
+  ;; Main entry prologue - x0 has runtime table pointer from C caller
+  ;; Use simpler 1024-byte frame like production compiler
   (append
-   (nc-stp-offset 29 30 31 (- #xFF0))  ; -frame-size
-   (nc-sub-imm 31 31 #xFF0)  ; frame-size
-   (nc-mov-reg 29 31)
-   (nc-stp-offset 19 20 31 16)
-   (nc-stp-offset 21 22 31 32)
-   (nc-stp-offset 23 24 31 48)
-   (nc-mov-reg 20 31)
-   (nc-add-imm 20 20 #x180)))  ; env-base
+   (nc-sub-imm 31 31 #x400)   ; SUB sp, sp, #1024 (allocate stack frame)
+   (nc-stp-offset 29 30 31 0)  ; STP x29, x30, [sp, #0]
+   (nc-stp-offset 19 20 31 16) ; STP x19, x20, [sp, #16]
+   (nc-stp-offset 21 22 31 32) ; STP x21, x22, [sp, #32]
+   (nc-stp-offset 23 24 31 48) ; STP x23, x24, [sp, #48]
+   (nc-mov-reg 19 0)           ; MOV x19, x0 (save runtime table)
+   (nc-add-imm 20 31 #x180)))  ; ADD x20, sp, #384 (env-base)
 
 (defun nc-epilogue ()
   (append
-   (nc-ldp-offset 23 24 31 48)
-   (nc-ldp-offset 21 22 31 32)
-   (nc-ldp-offset 19 20 31 16)
-   (nc-add-imm 31 31 #xFF0)  ; frame-size
-   (nc-ldp-offset 29 30 31 0)
+   (nc-ldp-offset 23 24 31 48) ; LDP x23, x24, [sp, #48]
+   (nc-ldp-offset 21 22 31 32) ; LDP x21, x22, [sp, #32]
+   (nc-ldp-offset 19 20 31 16) ; LDP x19, x20, [sp, #16]
+   (nc-ldp-offset 29 30 31 0)  ; LDP x29, x30, [sp, #0]
+   (nc-add-imm 31 31 #x400)    ; ADD sp, sp, #1024 (deallocate stack)
    (nc-ret)))
 
 ;;; ============================================================
@@ -1380,7 +1381,7 @@
                             (nc-cmp-reg 0 1)
                             (nc-b-cond (nc-cond-eq) (* (+ thl 1) 4))
                             thc
-                            (nc-b-offset (* ell 4))
+                            (nc-b-offset (* (+ ell 1) 4))  ; Skip past else code + 1 for landing after
                             elc)))))))))))
     ((nc-has-tag ir 'let-ir)
      ;; let-ir = (let-ir vals bir count offs)
