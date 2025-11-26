@@ -697,15 +697,17 @@
 ;;; ============================================================
 
 (defun main ()
-  ;; Parse and compile "(+ 10 7)" = 17
+  ;; Full pipeline: parse -> compile to IR -> generate ARM64 bytecode
   (let* ((src "(+ 10 7)")
          (forms (nc-read-all src)))
     (if (consp forms)
         (let* ((expr (car forms))
-               (ir (nc-compile expr nil nil)))
-          ;; Return length of IR to show compilation works
-          ;; Full execution would require native codegen
-          (length ir))
+               (ir (nc-compile expr nil nil))
+               ;; Generate ARM64 bytecode from IR
+               (bytecode (nc-codegen ir nil nil 0))
+               (byte-count (length bytecode)))
+          ;; Return byte count / 4 using arithmetic shift
+          (ash byte-count -2))
         0)))
 
 (main)
