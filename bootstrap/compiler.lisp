@@ -2884,7 +2884,7 @@
                           (nc-lsr-imm 1 1 4)
                           (nc-sdiv-reg 0 0 1)
                           (nc-lsl-imm 0 0 4)))))))))))
-    ((nc-has-tag ir 'mod)
+    ((or (nc-has-tag ir 'mod) (nc-has-tag ir 'mod-ir))
      ;; Modulo: a mod b = a - (a / b) * b
      (let ((left-ir (cadr ir)))
        (let ((right-ir (caddr ir)))
