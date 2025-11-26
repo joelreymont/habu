@@ -428,13 +428,14 @@ Test 10: Full compile + eval round trip       ✅ Pass
 - test_reader.lisp (22 tests) - Habu reader: integers, hex, negatives, symbols, strings, lists, quote forms, reader macros
 - test_profile.lisp (8 tests) - profiler: timer, profiled output, function names, recursion, multiple functions
 
-### Needed Tests
-- [ ] String function tests (upcase, concat, compare)
-- [ ] Filter function tests (remove-if, remove-duplicates)
-- [ ] Macro expansion tests
-- [ ] Multiple values tests
-- [ ] Block/return-from tests
-- [ ] Condition system tests
+### Test Coverage Complete
+All major features now have comprehensive tests:
+- String functions (16 tests)
+- Filter functions (4 tests)
+- Macros (4 tests)
+- Multiple values (8 tests)
+- Block/return-from (8 tests)
+- Condition system (10 tests)
 
 ---
 
@@ -843,6 +844,9 @@ Implement a reader so Habu can read its own source code.
 
 - [docs/EFFICIENCY_PLAN.md](docs/EFFICIENCY_PLAN.md) - Detailed efficiency improvement plan with code samples
 - [docs/PROFILER.md](docs/PROFILER.md) - Function-level profiler documentation
+- [docs/TRACE.md](docs/TRACE.md) - Function tracing for debugging
+- [docs/READER.md](docs/READER.md) - S-expression reader documentation
+- [docs/CLOS.md](docs/CLOS.md) - Object system (defclass, defmethod)
 
 ---
 
