@@ -2,11 +2,11 @@
 
 **Session Date**: November 22-26, 2025
 **Focus**: Self-hosting ARM64 Lisp compiler with native executable generation
-**Last Updated**: November 26, 2025 (Native Mach-O Linker)
+**Last Updated**: November 26, 2025 (Inline cons/car/cdr for Native Mach-O)
 
 ## Session Summary (November 26, 2025)
 
-This session completed the bootstrap compiler ARM64 codegen, verified bytecode execution, added bitwise operations, mutation operations, multiple values support, implemented standalone executable delivery, reorganized packages, added labels/flet support, fixed a critical nested function call bug, added self-hosting primitives, and fixed mutual recursion with the FNTAB approach.
+This session completed the bootstrap compiler ARM64 codegen, verified bytecode execution, added bitwise operations, mutation operations, multiple values support, implemented standalone executable delivery, reorganized packages, added labels/flet support, fixed a critical nested function call bug, added self-hosting primitives, fixed mutual recursion with the FNTAB approach, and implemented inline cons/car/cdr for native executables with heap support.
 
 **Accomplishments**:
 1. Reorganized file structure: `native-compiler.lisp` -> `bootstrap/compiler.lisp`
@@ -38,6 +38,10 @@ This session completed the bootstrap compiler ARM64 codegen, verified bytecode e
 27. Standalone executables work: factorial(6)=720, fib(10)=55
 28. **Native Mach-O linker** - generates standalone ARM64 executables without clang
 29. **Untag wrapper for exit codes** - `wrap-bytecode-for-exit` adds LSR x0, x0, #4 before RET
+30. **Inline cons/car/cdr** - heap allocation without runtime, using x28 as bump pointer
+31. **__DATA segment for heap** - native Mach-O with read/write data segment
+32. **ADRP-based heap init** - PC-relative addressing for PIE/ASLR compatibility
+33. **13/15 native self-hosting tests pass** - arithmetic, cons, predicates, functions
 
 **Package Structure** (November 26, 2025):
 - HABU-SYS: System/runtime primitives (string-length, string-ref, make-vector, etc.)
@@ -335,25 +339,32 @@ FASL file (.fasl) or C Template
 Standalone Mach-O Executable
 ```
 
-**Native Mach-O Linker** (November 26, 2025 - IMPLEMENTED):
+**Native Mach-O Linker** (November 26, 2025 - COMPLETE):
 ```
 Lisp Source -> [Compiler] -> ARM64 Code -> [Native Mach-O Linker] -> Executable
 ```
 
-The native linker (`macho-linker.lisp`) generates standalone Mach-O executables without clang:
+The native linker generates standalone Mach-O executables without clang dependency:
+- `macho-linker.lisp`: Pure-Lisp Mach-O generation
+- `arm64/asm.lisp`: Standalone ARM64 assembler package with clean API
 - `write-macho-executable`: Creates minimal Mach-O with proper load commands
-- `deliver-native`: Wraps bytecode with untag operation for exit codes
-- `wrap-bytecode-for-exit`: Inserts `lsr x0, x0, #4` before `ret` to untag result
+- `deliver-native`: Wraps bytecode with LR-preserving untag stub
+- `wrap-bytecode-for-exit`: Prepends 7-instruction stub that saves LR, calls main, untags result
 
-**Test Results** (8/8 basic tests pass):
-- Arithmetic: `(+ 20 22)` -> 42
-- Multiplication: `(* 6 7)` -> 42
+**ARM64 Assembler Package** (`:arm64`):
+- Clean API with keyword arguments: `(arm64:sub rd rn #x10 :imm t)`
+- Exports: `movz`, `movk`, `mov`, `add`, `sub`, `mul`, `ldr`, `str`, `bl`, `ret`, etc.
+- Constants: `+sp+`, `+lr+`, `+xzr+`, `+eq+`, `+ne+`, `+lt+`, `+gt+`, etc.
+
+**Test Results** (11/11 tests pass):
+- Arithmetic: `(+ 20 22)` -> 42, `(* 6 7)` -> 42
 - Nested: `(+ (* 3 4) (+ 5 7))` -> 24
 - Conditionals: `(if (= 1 1) 10 20)` -> 10
 - Let bindings: `(let ((x 7)) (* x 6))` -> 42
+- Simple functions: `(defun f (x) (+ x 1)) (f 41)` -> 42
+- **Recursive**: `fact(5)` -> 120, `fib(10)` -> 55
 
-**Limitation**: Recursive functions require runtime support (x19 register).
-Simple expressions and non-recursive defuns work in pure native mode.
+**All recursive functions now work** with the LR-preserving wrapper stub.
 
 ---
 
