@@ -15,6 +15,9 @@
 
 (in-package :cl-user)
 
+;; Load ARM64 assembler
+(load (merge-pathnames "arm64/asm.lisp" (or *load-pathname* *default-pathname-defaults*)))
+
 (defpackage :habu-macho
   (:use :cl)
   (:export #:write-macho-executable
@@ -447,25 +450,32 @@
 (defun wrap-bytecode-for-exit (code-bytes)
   "Wrap compiled bytecode to untag the result for use as exit code.
    The bootstrap compiler returns tagged fixnums (value << 4).
-   This inserts 'lsr x0, x0, #4' before the final 'ret' to untag.
 
-   Input: bytecode ending with 'ret' (C0 03 5F D6)
-   Output: bytecode with 'lsr x0, x0, #4' before 'ret'"
-  (let ((len (length code-bytes)))
-    ;; Check that code ends with 'ret' (D65F03C0 little-endian)
-    (if (and (>= len 4)
-             (eql (elt code-bytes (- len 4)) #xC0)
-             (eql (elt code-bytes (- len 3)) #x03)
-             (eql (elt code-bytes (- len 2)) #x5F)
-             (eql (elt code-bytes (- len 1)) #xD6))
-        ;; Insert LSR x0, x0, #4 before RET
-        ;; lsr x0, x0, #4 = ubfm x0, x0, #4, #63 = 0xD344FC00
-        ;; Little-endian: 00 FC 44 D3
-        (append (subseq code-bytes 0 (- len 4))
-                (list #x00 #xFC #x44 #xD3)  ; lsr x0, x0, #4
-                (list #xC0 #x03 #x5F #xD6)) ; ret
-        ;; Code doesn't end with ret - return as-is
-        code-bytes)))
+   Solution: Prepend a wrapper stub that:
+   1. Saves LR (x30) on stack
+   2. Calls the original main via BL
+   3. Untags the result (lsr x0, x0, #4)
+   4. Restores LR
+   5. Returns to OS
+
+   Stub (28 bytes = 7 instructions):
+     sub sp, sp, #16      ; allocate stack space
+     str x30, [sp]        ; save LR
+     bl +5                ; call original main at offset 28
+     lsr x0, x0, #4       ; untag result
+     ldr x30, [sp]        ; restore LR
+     add sp, sp, #16      ; clean up stack
+     ret                  ; return to OS
+     <original code>      ; starts at offset 28"
+  (let ((stub (append
+               (arm64:sub arm64:+sp+ arm64:+sp+ #x10 :imm t)  ; sub sp, sp, #16
+               (arm64:str arm64:+lr+ arm64:+sp+)              ; str x30, [sp]
+               (arm64:bl 5)                                    ; bl +5
+               (arm64:lsr 0 0 4 :imm t)                        ; lsr x0, x0, #4
+               (arm64:ldr arm64:+lr+ arm64:+sp+)              ; ldr x30, [sp]
+               (arm64:add arm64:+sp+ arm64:+sp+ #x10 :imm t)  ; add sp, sp, #16
+               (arm64:ret))))                                  ; ret
+    (append stub code-bytes)))
 
 ;;; ============================================================
 ;;; Link with Runtime
