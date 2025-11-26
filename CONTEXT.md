@@ -2,7 +2,27 @@
 
 **Session Date**: November 22-26, 2025
 **Focus**: Self-hosting ARM64 Lisp compiler with native executable generation
-**Last Updated**: November 26, 2025 (Native Executable Implementation)
+**Last Updated**: November 26, 2025 (Bootstrap Progress)
+
+## Session Summary (November 26, 2025)
+
+This session focused on bootstrapping the compiler to remove SBCL dependency.
+
+**Accomplishments**:
+1. Fixed tree-shaking IR traversal for LET-EXPR, IF-EXPR, PROGN nodes
+2. Verified all 114 compiler functions compile to native ARM64
+3. Tested native reader functionality (parsing numbers from strings)
+4. Demonstrated native compile+eval: `(+ (* 3 4) 5)` evaluates to 17
+5. Identified and documented nested recursive calls limitation
+
+**Key Finding**: Direct nested recursive calls in argument position produce incorrect results.
+- BAD:  `(f (g x) (h y))` where g,h are recursive
+- GOOD: `(let* ((a (g x)) (b (h y))) (f a b))`
+
+**Next Steps**:
+1. Fix the nested calls bug in codegen
+2. Package full compiler as standalone executable
+3. Test native compiler on real programs
 
 ## Current Status Summary
 
