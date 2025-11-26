@@ -22,10 +22,16 @@ This session focused on bootstrapping the compiler and fixing a critical codegen
   shared arg-spill area
 - This pattern now works: `(f (g x) (h y))` where g,h are recursive
 
+**Delivery Functionality** (November 26, 2025):
+- Implemented `habu-deliver` function to create standalone native executables
+- Flow: Source -> ARM64 bytecode -> Embedded C -> clang link -> Mach-O executable
+- Tested with factorial, compile+eval, and string parsing programs
+- Exit code returns untagged fixnum result
+
 **Next Steps**:
-1. Package full compiler as standalone executable
-2. Test native compiler on real programs
-3. Complete self-hosting bootstrap
+1. Add more runtime functions (substring, etc.) for full reader support
+2. Package full compiler as native executable (self-hosting)
+3. Complete Stage 2 bootstrap (compile compiler with itself)
 
 ## Current Status Summary
 
@@ -41,9 +47,9 @@ NO bytecode. Embedded compiler (pending). Tree-shaking at delivery (DONE).
 | Feature | Status | Notes |
 |---------|--------|-------|
 | **Native ARM64 codegen** | DONE | Direct compilation to ARM64 machine code |
-| **Standalone executables** | DONE | `habu-deliver source.lisp -o output` |
+| **Standalone executables** | DONE | `habu-deliver` creates Mach-O binaries |
 | **Tree-shaking** | DONE | 40% code reduction in tests |
-| **REPL commands** | DONE | `,deliver`, `,load`, `,compile` |
+| **Nested recursive calls** | FIXED | Direct nested calls in arg position work |
 | **Embedded compiler** | PENDING | Currently uses SBCL for compilation |
 
 ---

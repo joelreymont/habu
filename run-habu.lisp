@@ -314,6 +314,9 @@ Returns two values: untagged result (or NIL if parse failed) and output text."
     (format t "[WARN] Could not load compiler in SBCL: ~A~%" e)
     (format t "[NOTE] Source expects Habu runtime helpers; add SBCL shims or load runtime first.~%")))
 
+;; Load delivery functionality
+(load "deliver.lisp")
+
 (defun invoked-directly-p ()
   (let* ((argv0 (car sb-ext:*posix-argv*))
          (script (and argv0 (probe-file argv0)))
@@ -322,7 +325,7 @@ Returns two values: untagged result (or NIL if parse failed) and output text."
          (equal (truename script) (truename loaded)))))
 
 (defun handle-cli ()
-  "Simple CLI: --run-file <path> | --run-expr \"(expr ...)\"."
+  "Simple CLI: --run-file <path> | --run-expr \"(expr ...)\" | --deliver <input> <output>."
   (let* ((args (cdr sb-ext:*posix-argv*))
          (cmd (car args)))
     (cond
@@ -337,8 +340,22 @@ Returns two values: untagged result (or NIL if parse failed) and output text."
               (result (compile-and-run-forms (list expr) :output-path (caddr args))))
          (format t "~A~%" result)
          (sb-ext:quit :unix-status (if result 0 1))))
+      ((and cmd (string= cmd "--deliver"))
+       (let* ((input-path (cadr args))
+              (output-path (caddr args)))
+         (if (and input-path output-path)
+             (progn
+               (habu-deliver input-path output-path :verbose t)
+               (sb-ext:quit :unix-status 0))
+             (progn
+               (format t "Usage: --deliver <input.lisp> <output>~%")
+               (sb-ext:quit :unix-status 1)))))
       (t
-       (format t "[INFO] run-habu.lisp loaded. Use --run-file or --run-expr when invoking directly.~%")))))
+       (format t "[INFO] run-habu.lisp loaded.~%")
+       (format t "CLI options:~%")
+       (format t "  --run-file <path>           Run Lisp file~%")
+       (format t "  --run-expr \"(expr)\"         Run expression~%")
+       (format t "  --deliver <input> <output>  Create standalone executable~%")))))
 
 (when (invoked-directly-p)
   (handle-cli))
