@@ -28,10 +28,17 @@ This session focused on bootstrapping the compiler and fixing a critical codegen
 - Tested with factorial, compile+eval, and string parsing programs
 - Exit code returns untagged fixnum result
 
+**Native Compiler Progress** (November 26, 2025):
+- Created native-compiler.lisp: bundled pure-Habu compiler (~750 lines)
+- Components: ARM64 asm encoders, reader, IR compiler, code generator
+- Fixed common/compile.lisp: proper multi-function code generation
+- Verified inline parsing works natively (parses "42" -> 42)
+- Blocking issue: function name shadowing in large bundled files
+
 **Next Steps**:
-1. Add more runtime functions (substring, etc.) for full reader support
-2. Package full compiler as native executable (self-hosting)
-3. Complete Stage 2 bootstrap (compile compiler with itself)
+1. Resolve function shadowing for native compiler bundle
+2. Complete Stage 2 bootstrap (compile compiler with itself)
+3. Add more runtime functions (substring, etc.)
 
 ## Current Status Summary
 
@@ -50,6 +57,7 @@ NO bytecode. Embedded compiler (pending). Tree-shaking at delivery (DONE).
 | **Standalone executables** | DONE | `habu-deliver` creates Mach-O binaries |
 | **Tree-shaking** | DONE | 40% code reduction in tests |
 | **Nested recursive calls** | FIXED | Direct nested calls in arg position work |
+| **Pure-Habu compiler** | IN PROGRESS | native-compiler.lisp bundle created |
 | **Embedded compiler** | PENDING | Currently uses SBCL for compilation |
 
 ---
