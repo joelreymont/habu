@@ -17,8 +17,10 @@ This session focused on fixing critical bugs in the native compiler and achievin
 6. **Fixed nc-env-extend nested call bug** - avoid nested recursive calls in args
 7. **Fixed numberp check for offset 0** - Habu treats 0 as falsey
 8. **Fixed global variable initialization** - inlined constants for delivery
-9. All 10 native compiler tests pass
-10. Cleaned up debug functions from native-compiler.lisp
+9. **Fixed all nc-codegen cases** - refactored to use sequential binary appends
+10. All 10 native compiler tests pass
+11. Cleaned up debug functions from native-compiler.lisp
+12. **Discovered Habu let* bug** - bindings 16-19 cause incorrect returns
 
 **Bug Fix 1**: nc-env-extend nested call bug
 - Root cause: `(append (reverse (add-bs ...)) env)` had nested recursive calls
@@ -34,17 +36,30 @@ This session focused on fixing critical bugs in the native compiler and achievin
 - Fix: Replaced global variables with inline constants using `defun` wrappers
 - Constants: frame-size=#xFF0, env-base=#x180, temp-base=#x40, etc.
 
+**Bug Fix 4**: nc-codegen multi-arg appends
+- Root cause: Multi-arg append calls trigger nested call bug
+- Fix: Refactored all codegen cases (sub, mul, cmp-*, cons-ir, car-ir, cdr-ir,
+  if-ir, let-ir, call-fn) to use sequential binary appends in let*
+
+**Bug Fix 5**: nc-codegen with nc-append-all pattern
+- Root cause: 16-19 binding let* with nested nc-codegen calls returns 11
+- Fix: Added `nc-append-all` helper and refactored all binary ops (add, sub, mul,
+  cmp-eq, cmp-lt, cmp-gt, cmp-le, cmp-ge), cons-ir, car-ir, cdr-ir, if-ir to use it
+- Pattern: Use nested single-binding let forms + nc-append-all with list of instruction sequences
+- All 10 native compiler tests pass with this fix
+
 **Native Compiler Status**:
 - native-compiler.lisp: Full read-compile-eval pipeline working
 - Parses Lisp source strings, compiles to IR, evaluates IR
 - Exit code 17 for `(+ (* 3 4) 5)` - correct!
 - 10 test cases all passing
-- Tree-shaking: 75% reduction (187 of 249 functions removed)
+- Tree-shaking: 61% reduction (100 of 162 functions removed)
+- Codegen path working after nc-append-all workaround
 
 **Next Steps**:
-1. Test and verify nc-codegen path for full ARM64 code generation
-2. Complete Stage 2 bootstrap (compile compiler with itself)
-3. Add more runtime functions (substring, etc.)
+1. Complete Stage 2 bootstrap
+2. Add more runtime functions (substring, etc.)
+3. Test full compiler self-hosting
 
 ## Current Status Summary
 
