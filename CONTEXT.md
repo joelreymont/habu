@@ -287,27 +287,36 @@ This enables runtime compilation from the REPL, essential for interactive develo
 - Nested expressions like `(+ (* 3 4) 5)` = 17
 
 ### Executable Generation Flow
+
+**Current (clang-based)**:
 ```
 Lisp Source
     |
     v
-[Habu Compiler (embedded)]
+[Habu Compiler]
     |
     v
-ARM64 Machine Code + Function Table
+ARM64 Machine Code
     |
     v
 [Tree-Shaker] -- removes unreachable code
     |
     v
-C Template + Code Array
+FASL file (.fasl) or C Template
     |
     v
-[clang] -- links with runtime
+[clang] -- links with runtime (for standalone executables)
     |
     v
 Standalone Mach-O Executable
 ```
+
+**Planned (native linker)**:
+```
+Lisp Source -> [Compiler] -> ARM64 Code -> [Native Mach-O Linker] -> Executable
+```
+
+The native linker will eliminate the clang dependency for delivery.
 
 ---
 
