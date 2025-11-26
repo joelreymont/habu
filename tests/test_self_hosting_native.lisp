@@ -31,13 +31,10 @@
       (incf *fail-count*))))
 
 ;;; Test 1: Tree traversal - count nodes (like counting IR nodes)
-;;; Note: Use let* to sequence recursive calls (known bug with nested calls in + args)
 (test-self-host "count-nodes"
   "(defun count-nodes (tree)
      (if (consp tree)
-         (let* ((a (count-nodes (car tree)))
-                (b (count-nodes (cdr tree))))
-           (+ 1 a b))
+         (+ 1 (count-nodes (car tree)) (count-nodes (cdr tree)))
          (if (null tree) 0 1)))
    (count-nodes (cons (cons 1 2) (cons 3 nil)))"
   6)  ; 3 cons cells + 3 atoms (1, 2, 3) = 6

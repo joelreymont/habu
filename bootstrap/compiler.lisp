@@ -3246,17 +3246,18 @@
         (nc-gen-param-stores (cdr params) base (+ idx 1) (append acc st)))))
 
 (defun nc-fn-prologue ()
-  "Function prologue: allocate frame, save caller's x20/lr, set up new env base"
+  "Function prologue: allocate frame, save caller's x20/lr, set up new env base.
+   Frame size 0x400 (1024) to accommodate spill slots at 0x240+."
   (append
-   (nc-sub-imm 31 31 #x200)    ; SUB sp, sp, #512 (allocate function frame)
+   (nc-sub-imm 31 31 #x400)    ; SUB sp, sp, #1024 (allocate function frame)
    (nc-stp-offset 20 30 31 0)  ; STP x20, lr, [sp, #0] (save caller's x20 and return addr)
-   (nc-add-imm 20 31 #x140)))  ; ADD x20, sp, #320 (env base past spill area)
+   (nc-add-imm 20 31 #x180)))  ; ADD x20, sp, #384 (env base past spill area)
 
 (defun nc-fn-epilogue ()
   "Function epilogue: restore caller's x20/lr, deallocate frame, return"
   (append
    (nc-ldp-offset 20 30 31 0)  ; LDP x20, lr, [sp, #0] (restore caller's x20 and lr)
-   (nc-add-imm 31 31 #x200)))  ; ADD sp, sp, #512 (deallocate function frame)
+   (nc-add-imm 31 31 #x400)))  ; ADD sp, sp, #1024 (deallocate function frame)
 
 (defun nc-gen-capture-copies (count idx acc)
   "Generate code to copy captured values from closure env (x24) to stack.
