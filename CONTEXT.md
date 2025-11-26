@@ -2,11 +2,11 @@
 
 **Session Date**: November 22-26, 2025
 **Focus**: Self-hosting ARM64 Lisp compiler with native executable generation
-**Last Updated**: November 26, 2025 (Labels/Flet Support Complete)
+**Last Updated**: November 26, 2025 (Nested Call Spill Slot Fix)
 
 ## Session Summary (November 26, 2025)
 
-This session completed the bootstrap compiler ARM64 codegen, verified bytecode execution, added bitwise operations, mutation operations, multiple values support, implemented standalone executable delivery, reorganized packages, and added labels/flet support.
+This session completed the bootstrap compiler ARM64 codegen, verified bytecode execution, added bitwise operations, mutation operations, multiple values support, implemented standalone executable delivery, reorganized packages, added labels/flet support, and fixed a critical nested function call bug.
 
 **Accomplishments**:
 1. Reorganized file structure: `native-compiler.lisp` -> `bootstrap/compiler.lisp`
@@ -28,7 +28,8 @@ This session completed the bootstrap compiler ARM64 codegen, verified bytecode e
 17. **Implemented bootstrap delivery system (nc-deliver)**
 18. **Reorganized HABU-SYS and HABU packages with clean public API**
 19. **Implemented labels/flet using Z-combinator transformation**
-20. All tests pass: 48 compiler + 25 codegen + 10 delivery + 10 labels
+20. **Fixed nested function call spill slot collision** - nested call-fn in arguments now use depth-aware spill slots
+21. All tests pass: 48 compiler + 25 codegen + 10 delivery + 10 labels + 14 mutation + 14 fileio + 8 mvb
 
 **Package Structure** (November 26, 2025):
 - HABU-SYS: System/runtime primitives (string-length, string-ref, make-vector, etc.)
@@ -90,6 +91,24 @@ This session completed the bootstrap compiler ARM64 codegen, verified bytecode e
 
 **Known Limitations**:
 - Reader parses `1+` as `1` then `+` (not as symbol)
+
+**Bug Fix: Nested Call Spill Slot Collision** (November 26, 2025):
+When a function call had an argument that was itself a function call, both
+used the same spill slot indices (starting at 0). The inner call overwrote
+the outer call's already-evaluated arguments, causing wrong results.
+
+Example that was failing:
+```lisp
+(defun add1 (x) (+ x 1))
+(defun rec (n acc)
+  (if (= n 0)
+      acc
+      (rec (- n 1) (add1 acc))))  ; add1 nested in rec's arguments
+(rec 3 0)  ; returned 1 instead of 3
+```
+
+Fix: Modified `nc-spill-slot` to take both temp depth (td) and argument index (idx).
+Each call level now gets its own set of 8 spill slots, preventing collisions.
 
 **Next Steps**:
 1. ~~Test full pipeline: compile Lisp source to ARM64 bytecode~~ DONE
