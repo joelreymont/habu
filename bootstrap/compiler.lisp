@@ -1281,6 +1281,48 @@
           (list 'cons-ir (nc-compile (cadr expr) env fenv) (nc-compile (caddr expr) env fenv)))
          ((eq op 'car) (list 'car-ir (nc-compile (cadr expr) env fenv)))
          ((eq op 'cdr) (list 'cdr-ir (nc-compile (cadr expr) env fenv)))
+         ;; cadr, caddr, cadddr, cddr, cdddr - common accessor chains
+         ((eq op 'cadr) (nc-compile `(car (cdr ,(cadr expr))) env fenv))
+         ((eq op 'caddr) (nc-compile `(car (cdr (cdr ,(cadr expr)))) env fenv))
+         ((eq op 'cadddr) (nc-compile `(car (cdr (cdr (cdr ,(cadr expr))))) env fenv))
+         ((eq op 'cddr) (nc-compile `(cdr (cdr ,(cadr expr))) env fenv))
+         ((eq op 'cdddr) (nc-compile `(cdr (cdr (cdr ,(cadr expr)))) env fenv))
+         ;; first, second, third, fourth - list accessors
+         ((eq op 'first) (nc-compile `(car ,(cadr expr)) env fenv))
+         ((eq op 'second) (nc-compile `(cadr ,(cadr expr)) env fenv))
+         ((eq op 'third) (nc-compile `(caddr ,(cadr expr)) env fenv))
+         ((eq op 'fourth) (nc-compile `(cadddr ,(cadr expr)) env fenv))
+         ;; rest - same as cdr
+         ((eq op 'rest) (nc-compile `(cdr ,(cadr expr)) env fenv))
+         ;; nth - get nth element
+         ((eq op 'nth)
+          (let ((n (cadr expr))
+                (lst (caddr expr)))
+            (if (numberp n)
+                ;; Constant index - expand to car/cdr chain
+                (if (= n 0)
+                    (nc-compile `(car ,lst) env fenv)
+                    (nc-compile `(nth ,(- n 1) (cdr ,lst)) env fenv))
+                ;; Variable index - use labels recursion
+                (nc-compile
+                 `(labels ((nth-iter (n lst)
+                             (if (= n 0)
+                                 (car lst)
+                                 (nth-iter (- n 1) (cdr lst)))))
+                    (nth-iter ,n ,lst))
+                 env fenv))))
+         ;; count - count occurrences
+         ((eq op 'count)
+          (nc-compile
+           `(labels ((count-iter (item lst acc)
+                       (if (null lst)
+                           acc
+                           (count-iter item (cdr lst)
+                                       (if (eq item (car lst))
+                                           (+ acc 1)
+                                           acc)))))
+              (count-iter ,(cadr expr) ,(caddr expr) 0))
+           env fenv))
          ((eq op 'list)
           (labels ((bl (args)
                      (if (null args) (list 'lit 0)

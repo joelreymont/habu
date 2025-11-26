@@ -180,6 +180,31 @@
 (test-native "assoc-not-found"
   "(if (assoc 9 (cons (cons 1 10) nil)) 0 42)" 42)
 
+;;; List accessors
+(test-native "cadr"
+  "(cadr (cons 1 (cons 42 nil)))" 42)
+(test-native "caddr"
+  "(caddr (cons 1 (cons 2 (cons 42 nil))))" 42)
+(test-native "cadddr"
+  "(cadddr (cons 1 (cons 2 (cons 3 (cons 42 nil)))))" 42)
+(test-native "cddr"
+  "(car (cddr (cons 1 (cons 2 (cons 42 nil)))))" 42)
+(test-native "cdddr"
+  "(car (cdddr (cons 1 (cons 2 (cons 3 (cons 42 nil))))))" 42)
+(test-native "first-second"
+  "(+ (first (cons 10 nil)) (second (cons 0 (cons 32 nil))))" 42)
+(test-native "third-fourth"
+  "(+ (third (cons 1 (cons 2 (cons 20 nil))))
+      (fourth (cons 1 (cons 2 (cons 3 (cons 22 nil))))))" 42)
+(test-native "rest"
+  "(car (rest (cons 1 (cons 42 nil))))" 42)
+(test-native "nth-0"
+  "(nth 0 (cons 42 (cons 2 nil)))" 42)
+(test-native "nth-2"
+  "(nth 2 (cons 1 (cons 2 (cons 42 nil))))" 42)
+(test-native "count-eq"
+  "(count 2 (cons 1 (cons 2 (cons 2 (cons 3 nil)))))" 2)
+
 (format t "~%=== Results: ~A passed, ~A failed ===~%"
         *pass-count* *fail-count*)
 (sb-ext:exit :code *fail-count*)
