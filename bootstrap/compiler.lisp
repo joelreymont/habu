@@ -75,6 +75,11 @@
 (defparameter *symbol-table* nil)
 (defparameter *symbol-counter* 1)  ; Start at 1, 0 reserved for nil
 
+;;; Forward declarations for functions used before defined
+(declaim (ftype (function (list) list) nc-append-all))
+(declaim (ftype (function (integer) integer) nc-temp-slot))
+(declaim (ftype (function (list) integer) nc-code-size))
+
 (defun nc-intern-symbol (name)
   "Get or create a symbol ID for NAME. Returns tagged symbol value."
   (let ((entry (assoc name *symbol-table* :test #'equal)))
@@ -169,14 +174,13 @@
 
 (defun nc-asr-imm (rd rn shift)
   "ASR Xd, Xn, #shift - arithmetic shift right immediate"
+  ;; SBFM Xd, Xn, #shift, #63 -> sf=1 opc=00 N=1 immr=shift imms=63
+  ;; Base encoding: #x93400000 | (immr << 16) | (imms << 10) | (rn << 5) | rd
+  ;; With imms=63(#x3F): #x9340FC00 already has imms baked in
   (let* ((immr (logand shift #x3F))
-         (imms #x3F)
          (immr-s (ash immr 16))
-         (imms-s (ash imms 10))
          (rn-s (ash rn 5))
-         (or1 (logior #x9340FC00 immr-s))
-         (or2 (logior or1 rn-s))
-         (word (logior or2 rd)))
+         (word (logior #x9340FC00 immr-s rn-s rd)))
     (nc-encode-word word)))
 
 (defun nc-mov-reg (rd rm)
