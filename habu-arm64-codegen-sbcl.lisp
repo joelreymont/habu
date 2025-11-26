@@ -7353,7 +7353,19 @@ Optional/key descriptors are (name init-form supplied-name)."
              ;; Return accumulated functions and main expression
              (list (cons compiled-fn rest-fns) main-ir)))
 
-          ;; Not defun/defmacro - this is the main expression
+          ;; setq at top level - compile it as part of main and continue
+          ((and (consp form) (eq (car form) 'setq))
+           (let* ((rest-result (compile-forms-helper (cdr forms) env fenv))
+                  (rest-fns (car rest-result))
+                  (rest-main-ir (cadr rest-result))
+                  ;; Compile setq and combine with rest using progn
+                  (setq-ir (compile-expr (box-mutable-captured-vars form) env fenv))
+                  (combined-ir (if (and rest-main-ir (not (equal rest-main-ir '(lit 0))))
+                                   `(progn ,setq-ir ,rest-main-ir)
+                                   setq-ir)))
+             (list rest-fns combined-ir)))
+
+          ;; Not defun/defmacro/setq - this is the main expression
           ;; Generate method dispatchers first, then compile main expression
           (t
            (let* ((dispatcher-defuns (generate-method-dispatchers))
