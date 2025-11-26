@@ -7687,6 +7687,11 @@ Optional/key descriptors are (name init-form supplied-name)."
 ;;; Tree-Shaking (Dead Code Elimination)
 ;;; ============================================
 
+(defun ir-tag= (tag name)
+  "Check if IR TAG matches NAME (handles package differences)."
+  (and (symbolp tag)
+       (string= (symbol-name tag) name)))
+
 (defun collect-called-functions-from-ir (ir)
   "Extract all function names called from IR. Returns list of symbols."
   (let ((called (make-hash-table :test #'eq)))
@@ -7695,7 +7700,7 @@ Optional/key descriptors are (name init-form supplied-name)."
                  (let ((tag (car node)))
                    (cond
                      ;; Direct function call: (call-fn name (args-list))
-                     ((eq tag 'call-fn)
+                     ((ir-tag= tag "CALL-FN")
                       (let ((name (cadr node)))
                         (when (symbolp name)
                           (setf (gethash name called) t)))
@@ -7705,10 +7710,26 @@ Optional/key descriptors are (name init-form supplied-name)."
                           (dolist (arg args)
                             (walk arg)))))
                      ;; Lambda reference: (lambda-ref name)
-                     ((eq tag 'lambda-ref)
+                     ((ir-tag= tag "LAMBDA-REF")
                       (let ((name (cadr node)))
                         (when (symbolp name)
                           (setf (gethash name called) t))))
+                     ;; LET-EXPR: (let-expr (bindings) body num-bindings (offsets))
+                     ((ir-tag= tag "LET-EXPR")
+                      ;; Walk bindings (each is an IR expression)
+                      (dolist (binding (cadr node))
+                        (walk binding))
+                      ;; Walk body
+                      (walk (caddr node)))
+                     ;; IF-EXPR: (if-expr test then else)
+                     ((ir-tag= tag "IF-EXPR")
+                      (walk (cadr node))   ; test
+                      (walk (caddr node))  ; then
+                      (walk (cadddr node))) ; else
+                     ;; PROGN: (progn form1 form2 ...)
+                     ((ir-tag= tag "PROGN")
+                      (dolist (form (cdr node))
+                        (walk form)))
                      ;; Walk all other nodes recursively
                      (t
                       (dolist (child (cdr node))
