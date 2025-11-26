@@ -643,6 +643,43 @@
           (list 'cmp-eq (list 'get-tag (nc-compile (cadr expr) env fenv)) (list 'lit 0)))
          ((eq op 'consp)
           (list 'cmp-eq (list 'get-tag (nc-compile (cadr expr) env fenv)) (list 'lit 1)))
+         ;; progn - evaluate forms in sequence, return last
+         ((eq op 'progn)
+          (let ((forms (cdr expr)))
+            (if (null forms)
+                (list 'lit 0)
+                (if (null (cdr forms))
+                    (nc-compile (car forms) env fenv)
+                    (list 'progn-ir
+                          (mapcar (lambda (f) (nc-compile f env fenv)) forms))))))
+         ;; and - short-circuit and
+         ((eq op 'and)
+          (let ((args (cdr expr)))
+            (if (null args)
+                (list 'lit 1)
+                (if (null (cdr args))
+                    (nc-compile (car args) env fenv)
+                    (list 'if-ir
+                          (nc-compile (car args) env fenv)
+                          (nc-compile (cons 'and (cdr args)) env fenv)
+                          (list 'lit 0))))))
+         ;; or - short-circuit or (returns first truthy value)
+         ((eq op 'or)
+          (let ((args (cdr expr)))
+            (if (null args)
+                (list 'lit 0)
+                (if (null (cdr args))
+                    (nc-compile (car args) env fenv)
+                    ;; Need to evaluate first arg, check if truthy, return it or continue
+                    ;; Use a let to bind the value, then check and return
+                    (let ((tmp (gensym "OR")))
+                      (nc-compile
+                       (list 'LET (list (list tmp (car args)))
+                             (list 'if tmp tmp (cons 'or (cdr args))))
+                       env fenv))))))
+         ;; not - logical not
+         ((eq op 'not)
+          (list 'cmp-eq (nc-compile (cadr expr) env fenv) (list 'lit 0)))
          ;; funcall - call function by value
          ((eq op 'funcall)
           (list 'funcall-ir
@@ -756,6 +793,17 @@
                         (bind (cdr vs) (cdr os)
                               (append e (list v)))))))
          (nc-eval-ir-with-fns bir (bind vals offs env) fenv))))
+    ((nc-has-tag ir 'progn-ir)
+     ;; progn-ir = (progn-ir (ir1 ir2 ... irn))
+     (let ((forms-ir (cadr ir)))
+       (labels ((eval-seq (fs)
+                  (if (null fs)
+                      0
+                      (let ((v (nc-eval-ir-with-fns (car fs) env fenv)))
+                        (if (null (cdr fs))
+                            v
+                            (eval-seq (cdr fs)))))))
+         (eval-seq forms-ir))))
     ((nc-has-tag ir 'call-fn)
      ;; call-fn = (call-fn name args-ir-list)
      (let* ((fnm (cadr ir))

@@ -81,6 +81,33 @@
 ;; Test 20: #'function syntax
 (run-nc-test "function-syntax" "(defun apply-it (f x) (funcall f x)) (defun triple (n) (* n 3)) (apply-it #'triple 4)" 12)
 
+;; Test 21: progn
+(run-nc-test "progn" "(progn 1 2 3)" 3)
+
+;; Test 22: progn with side effects
+(run-nc-test "progn-let" "(let ((x 0)) (progn (+ x 1) (+ x 2) (+ x 3)))" 3)
+
+;; Test 23: and - all true
+(run-nc-test "and-true" "(and 1 2 3)" 3)
+
+;; Test 24: and - with false
+(run-nc-test "and-false" "(and 1 0 3)" 0)
+
+;; Test 25: or - first true
+(run-nc-test "or-first" "(or 1 0 0)" 1)
+
+;; Test 26: or - all false
+(run-nc-test "or-false" "(or 0 0 0)" 0)
+
+;; Test 27: or - last true (returns truthy value, not 1)
+(run-nc-test "or-last" "(or 0 0 5)" 5)
+
+;; Test 28: not
+(run-nc-test "not-true" "(not 0)" 1)
+
+;; Test 29: not false
+(run-nc-test "not-false" "(not 1)" 0)
+
 ;; Summary
 (format t "~%=== Results: ~A passed, ~A failed ===~%"
         *tests-passed* *tests-failed*)
