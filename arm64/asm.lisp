@@ -16,7 +16,7 @@
    ;; Bitwise
    #:and* #:orr #:eor #:bic #:and-imm #:lsl #:lsr #:asr
    ;; Memory
-   #:ldr #:str #:ldp #:stp
+   #:ldr #:str #:ldp #:stp #:ldrb-reg #:strb-reg
    ;; Compare
    #:cmp #:cset
    ;; Branch
@@ -294,6 +294,22 @@
                   (ash rt2 10)
                   (ash rn 5)
                   rt1)))
+
+(defun ldrb-reg (rt rn rm)
+  "LDRB Wt, [Xn, Xm]
+   Load byte from address Xn+Xm, zero-extend to 64-bit."
+  (encode (logior #x38606800
+                  (ash rm 16)
+                  (ash rn 5)
+                  rt)))
+
+(defun strb-reg (rt rn rm)
+  "STRB Wt, [Xn, Xm]
+   Store byte to address Xn+Xm."
+  (encode (logior #x38206800
+                  (ash rm 16)
+                  (ash rn 5)
+                  rt)))
 
 ;;; ============================================================
 ;;; Compare

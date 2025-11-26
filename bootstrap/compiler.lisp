@@ -197,6 +197,18 @@
          (word (logior or2 rd)))
     (nc-encode-word word)))
 
+(defun nc-and-imm (rd rn n immr imms)
+  "AND Xd, Xn, #imm - bitmask immediate
+   For clearing low 4 bits: N=1, immr=0, imms=#x3B (59 = 64-4-1)"
+  ;; sf=1 opc=00 100100 N immr imms Rn Rd
+  ;; Base: #x92000000
+  (let* ((n-s (ash n 22))
+         (immr-s (ash immr 16))
+         (imms-s (ash imms 10))
+         (rn-s (ash rn 5))
+         (word (logior #x92000000 n-s immr-s imms-s rn-s rd)))
+    (nc-encode-word word)))
+
 (defun nc-orr-reg (rd rn rm)
   "ORR Xd, Xn, Xm - bitwise OR"
   (let* ((rm-s (ash rm 16))
@@ -267,6 +279,24 @@
          (or1 (logior #xF9000000 off-ss))
          (or2 (logior or1 rn-s))
          (word (logior or2 rt)))
+    (nc-encode-word word)))
+
+(defun nc-ldrb-reg (rt rn rm)
+  "LDRB Wt, [Xn, Xm] - load byte from address Xn+Xm, zero-extend to 64-bit"
+  ;; Encoding: 00 111 0 00 01 1 Rm 011 0 10 Rn Rt
+  ;; #x38606800 = base + shifted register mode
+  (let* ((rm-s (ash rm 16))
+         (rn-s (ash rn 5))
+         (word (logior #x38606800 rm-s rn-s rt)))
+    (nc-encode-word word)))
+
+(defun nc-strb-imm (rt rn offset)
+  "STRB Wt, [Xn, #offset] - store byte to address Xn+offset"
+  ;; Encoding: 00 111 0 01 00 imm12 Rn Rt
+  ;; Base: #x39000000
+  (let* ((imm-s (ash (logand offset #xFFF) 10))
+         (rn-s (ash rn 5))
+         (word (logior #x39000000 imm-s rn-s rt)))
     (nc-encode-word word)))
 
 (defun nc-add-imm (rd rn imm)
@@ -526,6 +556,39 @@
                               (nc-ldr-offset 9 19 80)
                               (nc-blr 9)))))
         (nc-append-all (list alloc stores make-str))))))
+
+(defun nc-codegen-string-inline (chars)
+  "Generate code to build a string inline on the heap using x28 bump pointer.
+   String layout: [length (8 bytes)][char data (n bytes)]
+   Returns code that leaves tagged string pointer in x0."
+  (let* ((len (length chars))
+         ;; Round up allocation to 8-byte alignment: 8 + len rounded up to 8
+         (alloc-size (+ 8 (logand (+ len 7) (lognot 7)))))
+    (labels ((store-chars (chs idx acc)
+               (if (null chs)
+                   acc
+                   (let* ((ch (car chs))
+                          ;; Store char at x28 + 8 + idx
+                          (offset (+ 8 idx))
+                          (code (nc-append-all
+                                 (list (nc-movz 1 ch)
+                                       (nc-strb-imm 1 28 offset)))))
+                     (store-chars (cdr chs) (+ idx 1) (append acc code))))))
+      (let ((store-code (store-chars chars 0 nil)))
+        (nc-append-all
+         (list
+          ;; Store length at [x28+0]
+          (nc-movz 1 len)
+          (nc-str-offset 1 28 0)
+          ;; Store each char
+          store-code
+          ;; Return tagged pointer, bump heap
+          (nc-mov-reg 0 28)                   ; x0 = current heap ptr
+          (nc-movz 1 alloc-size)
+          (nc-add-reg 28 28 1)                ; x28 += alloc size
+          ;; Tag with string tag (0x4)
+          (nc-movz 1 4)
+          (nc-orr-reg 0 0 1)))))))
 
 ;;; ============================================================
 ;;; Part 2: Utility Functions (nc-util-*)
@@ -1947,11 +2010,10 @@
            (nc-movz 0 tagged)
            (nc-load-addr 0 tagged))))
     ((nc-has-tag ir 'str-lit)
-     ;; String literal: build string from chars, leave as string
+     ;; String literal: build string inline on heap using x28 bump pointer
      (let* ((s (cadr ir))
-            (chars (nc-string-to-char-codes s))
-            (str-code (nc-codegen-string-from-chars chars td)))
-       str-code))
+            (chars (nc-string-to-char-codes s)))
+       (nc-codegen-string-inline chars)))
     ((nc-has-tag ir 'var)
      (let* ((off (cadr ir))
             (off8 (* off 8))
@@ -2327,36 +2389,47 @@
             (lf (nc-ldr-offset 9 19 392))
             (bl (nc-blr 9)))
        (nc-append-all (list vc lf bl))))
-    ;; string-length-ir - get length of string
+    ;; string-length-ir - get length of string (inline)
     ((nc-has-tag ir 'string-length-ir)
      ;; string-length-ir = (string-length-ir str-ir)
-     ;; Runtime index 12 = habu_string_length_raw at offset 96
-     ;; Returns raw size_t, must tag as fixnum (LSL x0, x0, #4)
+     ;; String layout: [length (8 bytes)] [char data]
+     ;; Clear tag, load length, tag as fixnum
      (let* ((str-ir (cadr ir))
-            (sc (nc-codegen str-ir rtaddrs fnoffs td))
-            (lf (nc-ldr-offset 9 19 96))
-            (bl (nc-blr 9))
-            (tg (nc-lsl-imm 0 0 4)))
-       (nc-append-all (list sc lf bl tg))))
-    ;; string-ref-ir - get character at index
+            (sc (nc-codegen str-ir rtaddrs fnoffs td)))
+       (nc-append-all
+        (list sc
+              ;; Clear tag: x0 = x0 & ~0xF
+              (nc-and-imm 0 0 1 #x3C #x3B)    ; x0 = str_ptr (untagged, clear low 4 bits)
+              ;; Load length from [x0+0]
+              (nc-ldr-offset 0 0 0)           ; x0 = raw length
+              ;; Tag as fixnum: x0 = x0 << 4
+              (nc-lsl-imm 0 0 4)))))
+    ;; string-ref-ir - get character at index (inline)
     ((nc-has-tag ir 'string-ref-ir)
      ;; string-ref-ir = (string-ref-ir str-ir idx-ir)
-     ;; Runtime index 16 = habu_string_ref at offset 128
-     ;; Index must be untagged (ASR x1, x1, #4) before call
-     ;; Returns tagged habu_value_t
+     ;; String layout: [length (8 bytes)] [char data]
+     ;; Address = (str & ~0xF) + 8 + (idx >> 4)
      (let* ((str-ir (cadr ir))
             (idx-ir (caddr ir))
             (xs (nc-temp-slot td))
             (nd (+ td 1))
             (sc (nc-codegen str-ir rtaddrs fnoffs nd))
-            (sp (nc-str-offset 0 31 xs))
-            (ic (nc-codegen idx-ir rtaddrs fnoffs nd))
-            (ut (nc-asr-imm 0 0 4))
-            (m1 (nc-mov-reg 1 0))
-            (ls (nc-ldr-offset 0 31 xs))
-            (lf (nc-ldr-offset 9 19 128))
-            (bl (nc-blr 9)))
-       (nc-append-all (list sc sp ic ut m1 ls lf bl))))
+            (sv (nc-str-offset 0 31 xs))
+            (ic (nc-codegen idx-ir rtaddrs fnoffs nd)))
+       ;; After codegen: idx in x0, str at [sp+xs]
+       (nc-append-all
+        (list sc sv ic
+              ;; x0 = idx, load str -> x1
+              (nc-ldr-offset 1 31 xs)         ; x1 = str (tagged)
+              ;; Clear tag: x1 = x1 & ~0xF
+              (nc-and-imm 1 1 1 #x3C #x3B)    ; x1 = str_ptr (untagged, clear low 4 bits)
+              ;; Calculate offset: x0 = (idx >> 4) + 8
+              (nc-lsr-imm 0 0 4)              ; x0 = untagged idx
+              (nc-add-imm 0 0 8)              ; x0 = offset = 8 + idx
+              ;; Load byte from str_ptr + offset
+              (nc-ldrb-reg 0 1 0)             ; x0 = byte value (zero-extended)
+              ;; Tag as fixnum: x0 = x0 << 4
+              (nc-lsl-imm 0 0 4)))))
     ;; system-ir - execute shell command
     ((nc-has-tag ir 'system-ir)
      ;; system-ir = (system-ir cmd-ir)
@@ -2383,21 +2456,34 @@
             (lf (nc-ldr-offset 9 19 416))
             (bl (nc-blr 9)))
        (nc-append-all (list s1 sp s2 m1 ls lf bl))))
-    ;; make-vector-ir - allocate vector
+    ;; make-vector-ir - allocate vector (inline)
     ((nc-has-tag ir 'make-vector-ir)
      ;; make-vector-ir = (make-vector-ir size-ir)
-     ;; Runtime index 7 = habu_make_vector at offset 56
-     ;; Takes size as tagged fixnum in x0, returns tagged vector
+     ;; Inline allocation: size in x0 is tagged fixnum
+     ;; Vector layout: [length (8 bytes)] [data (n * 8 bytes)]
+     ;; Total size = 8 + (untagged_size * 8) = 8 + ((x0 >> 4) * 8) = 8 + (x0 >> 1)
      (let* ((size-ir (cadr ir))
-            (sc (nc-codegen size-ir rtaddrs fnoffs td))
-            (lf (nc-ldr-offset 9 19 56))
-            (bl (nc-blr 9)))
-       (nc-append-all (list sc lf bl))))
-    ;; vector-set-ir - set element at index
+            (sc (nc-codegen size-ir rtaddrs fnoffs td)))
+       (nc-append-all
+        (list sc
+              ;; Store untagged length at [x28+0]
+              (nc-lsr-imm 1 0 4)           ; x1 = untagged length
+              (nc-str-offset 1 28 0)       ; [x28+0] = length
+              ;; Calculate allocation size: 8 + (x0 >> 1)
+              (nc-lsr-imm 1 0 1)           ; x1 = x0 >> 1 = untagged_size * 8
+              (nc-add-imm 1 1 8)           ; x1 = 8 + data_size = total size
+              ;; Return tagged pointer, bump heap
+              (nc-mov-reg 0 28)            ; x0 = current heap ptr
+              (nc-add-reg 28 28 1)         ; x28 += total size
+              ;; Tag with vector tag (0x3)
+              (nc-movz 1 3)
+              (nc-orr-reg 0 0 1)))))
+    ;; vector-set-ir - set element at index (inline)
     ((nc-has-tag ir 'vector-set-ir)
      ;; vector-set-ir = (vector-set-ir vec-ir idx-ir val-ir)
-     ;; Runtime index 8 = habu_vector_set at offset 64
-     ;; Takes vec in x0, idx (tagged) in x1, val in x2
+     ;; Inline store: compute address and store directly
+     ;; Vector layout: [length (8 bytes)] [data[0] ... data[n-1]]
+     ;; Address = (vec & ~0xF) + 8 + (idx >> 4) * 8 = (vec & ~0xF) + 8 + (idx >> 1)
      (let* ((vec-ir (cadr ir))
             (idx-ir (caddr ir))
             (val-ir (cadddr ir))
@@ -2408,30 +2494,49 @@
             (sv (nc-str-offset 0 31 xs))
             (ic (nc-codegen idx-ir rtaddrs fnoffs nd))
             (si (nc-str-offset 0 31 xs2))
-            (vlc (nc-codegen val-ir rtaddrs fnoffs nd))
-            (mv (nc-mov-reg 2 0))
-            (li (nc-ldr-offset 1 31 xs2))
-            (lv (nc-ldr-offset 0 31 xs))
-            (lf (nc-ldr-offset 9 19 64))
-            (bl (nc-blr 9)))
-       (nc-append-all (list vc sv ic si vlc mv li lv lf bl))))
-    ;; vector-ref-ir - get element at index
+            (vlc (nc-codegen val-ir rtaddrs fnoffs nd)))
+       ;; After codegen: val in x0, vec at [sp+xs], idx at [sp+xs2]
+       (nc-append-all
+        (list vc sv ic si vlc
+              ;; x0 = val, load vec -> x1, idx -> x2
+              (nc-ldr-offset 1 31 xs)         ; x1 = vec (tagged)
+              (nc-ldr-offset 2 31 xs2)        ; x2 = idx (tagged)
+              ;; Clear tag from vec: x1 = x1 & ~0xF
+              (nc-and-imm 1 1 1 #x3C #x3B)    ; x1 = vec_ptr (untagged, clear low 4 bits)
+              ;; Calculate offset: x2 = (idx >> 1) + 8
+              (nc-lsr-imm 2 2 1)              ; x2 = idx >> 1 = idx_untagged * 8
+              (nc-add-imm 2 2 8)              ; x2 = offset = 8 + idx_untagged * 8
+              ;; Store val at vec_ptr + offset
+              (nc-add-reg 1 1 2)              ; x1 = address
+              (nc-str-offset 0 1 0)           ; [x1] = val
+              ))))
+    ;; vector-ref-ir - get element at index (inline)
     ((nc-has-tag ir 'vector-ref-ir)
      ;; vector-ref-ir = (vector-ref-ir vec-ir idx-ir)
-     ;; Runtime index 9 = habu_vector_ref at offset 72
-     ;; Takes vec in x0, idx (tagged) in x1, returns tagged element
+     ;; Inline load: compute address and load directly
+     ;; Vector layout: [length (8 bytes)] [data[0] ... data[n-1]]
+     ;; Address = (vec & ~0xF) + 8 + (idx >> 4) * 8 = (vec & ~0xF) + 8 + (idx >> 1)
      (let* ((vec-ir (cadr ir))
             (idx-ir (caddr ir))
             (xs (nc-temp-slot td))
             (nd (+ td 1))
             (vc (nc-codegen vec-ir rtaddrs fnoffs nd))
             (sv (nc-str-offset 0 31 xs))
-            (ic (nc-codegen idx-ir rtaddrs fnoffs nd))
-            (mi (nc-mov-reg 1 0))
-            (lv (nc-ldr-offset 0 31 xs))
-            (lf (nc-ldr-offset 9 19 72))
-            (bl (nc-blr 9)))
-       (nc-append-all (list vc sv ic mi lv lf bl))))
+            (ic (nc-codegen idx-ir rtaddrs fnoffs nd)))
+       ;; After codegen: idx in x0, vec at [sp+xs]
+       (nc-append-all
+        (list vc sv ic
+              ;; x0 = idx, load vec -> x1
+              (nc-ldr-offset 1 31 xs)         ; x1 = vec (tagged)
+              ;; Clear tag from vec: x1 = x1 & ~0xF
+              (nc-and-imm 1 1 1 #x3C #x3B)    ; x1 = vec_ptr (untagged, clear low 4 bits)
+              ;; Calculate offset: x0 = (idx >> 1) + 8
+              (nc-lsr-imm 0 0 1)              ; x0 = idx >> 1 = idx_untagged * 8
+              (nc-add-imm 0 0 8)              ; x0 = offset = 8 + idx_untagged * 8
+              ;; Load element from vec_ptr + offset
+              (nc-add-reg 1 1 0)              ; x1 = address
+              (nc-ldr-offset 0 1 0)           ; x0 = [x1] = element (already tagged)
+              ))))
     ;; make-string-from-vector-ir - convert vector to string
     ((nc-has-tag ir 'make-string-from-vector-ir)
      ;; make-string-from-vector-ir = (make-string-from-vector-ir vec-ir)

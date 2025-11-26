@@ -140,6 +140,28 @@
 (test-native "progn-simple" "(progn 1 2 42)" 42)
 (test-native "progn-with-let" "(let ((x 0)) (progn (+ x 1) (+ x 40) 42))" 42)
 
+;;; Vectors (inline heap allocation)
+(test-native "make-vector"
+  "(let ((v (make-vector 3))) (if (> v 0) 42 0))" 42)
+(test-native "vector-set-ref"
+  "(let ((v (make-vector 3)))
+     (vector-set v 0 42)
+     (vector-ref v 0))" 42)
+(test-native "vector-set-multiple"
+  "(let ((v (make-vector 3)))
+     (vector-set v 0 10)
+     (vector-set v 1 20)
+     (vector-set v 2 12)
+     (+ (vector-ref v 0) (+ (vector-ref v 1) (vector-ref v 2))))" 42)
+
+;;; Strings (inline string access)
+(test-native "string-length"
+  "(string-length \"hello\")" 5)
+(test-native "string-ref-0"
+  "(string-ref \"ABC\" 0)" 65)      ; 'A'
+(test-native "string-ref-1"
+  "(string-ref \"ABC\" 1)" 66)      ; 'B'
+
 (format t "~%=== Results: ~A passed, ~A failed ===~%"
         *pass-count* *fail-count*)
 (sb-ext:exit :code *fail-count*)

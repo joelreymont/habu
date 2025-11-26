@@ -2,11 +2,11 @@
 
 **Session Date**: November 22-26, 2025
 **Focus**: Self-hosting ARM64 Lisp compiler with native executable generation
-**Last Updated**: November 26, 2025 (Inline symbols and closures for Native Mach-O - 15/15 tests pass)
+**Last Updated**: November 26, 2025 (Inline vectors and strings for Native Mach-O - 56/56 tests pass)
 
 ## Session Summary (November 26, 2025)
 
-This session completed the bootstrap compiler ARM64 codegen, verified bytecode execution, added bitwise operations, mutation operations, multiple values support, implemented standalone executable delivery, reorganized packages, added labels/flet support, fixed a critical nested function call bug, added self-hosting primitives, fixed mutual recursion with the FNTAB approach, and implemented inline cons/car/cdr for native executables with heap support. Finally, added inline symbols and closures removing all runtime dependencies.
+This session completed the bootstrap compiler ARM64 codegen, verified bytecode execution, added bitwise operations, mutation operations, multiple values support, implemented standalone executable delivery, reorganized packages, added labels/flet support, fixed a critical nested function call bug, added self-hosting primitives, fixed mutual recursion with the FNTAB approach, and implemented inline cons/car/cdr for native executables with heap support. Added inline symbols and closures removing all runtime dependencies. Finally, implemented inline vectors and strings for fully runtime-free native executables.
 
 **Accomplishments**:
 1. Reorganized file structure: `native-compiler.lisp` -> `bootstrap/compiler.lisp`
@@ -45,7 +45,10 @@ This session completed the bootstrap compiler ARM64 codegen, verified bytecode e
 34. **Inline closures** - closures stored as cons cells `(fn-offset . env)` on heap
 35. **Code base register (x26)** - wrapper stub initializes x26 for computing absolute code addresses
 36. **ADR instruction** - added to arm64/asm.lisp for PC-relative addressing
-37. **15/15 native self-hosting tests pass** - all arithmetic, cons, predicates, symbols, labels/closures
+37. **Inline vectors** - make-vector, vector-set, vector-ref inline on heap using x28
+38. **Inline strings** - string literals inline on heap, string-length and string-ref inline
+39. **LDRB/STRB instructions** - byte load/store for string character access
+40. **56/56 native tests pass** - all arithmetic, cons, predicates, symbols, vectors, strings, labels/closures
 
 **Package Structure** (November 26, 2025):
 - HABU-SYS: System/runtime primitives (string-length, string-ref, make-vector, etc.)
