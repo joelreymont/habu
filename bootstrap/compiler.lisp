@@ -88,6 +88,16 @@
          (word (logior or2 rd)))
     (nc-encode-word word)))
 
+(defun nc-sdiv-reg (rd rn rm)
+  ;; SDIV Xd, Xn, Xm - Signed divide
+  ;; Encoding: 1001 1010 110 Rm 00001 0 Rn Rd
+  (let* ((rm-shift (ash rm 16))
+         (rn-shift (ash rn 5))
+         (or1 (logior #x9AC00C00 rm-shift))
+         (or2 (logior or1 rn-shift))
+         (word (logior or2 rd)))
+    (nc-encode-word word)))
+
 (defun nc-lsl-imm (rd rn shift)
   (let* ((s1 (- #x40 shift))
          (immr (logand s1 #x3F))
@@ -1318,9 +1328,10 @@
                             (nc-b-offset (* ell 4))
                             elc)))))))))))
     ((nc-has-tag ir 'let-ir)
+     ;; let-ir = (let-ir vals bir count offs)
      (let* ((vals (cadr ir))
             (bir (caddr ir))
-            (offs (nth 4 (cdr ir)))
+            (offs (nth 3 (cdr ir)))  ;; offs is at index 3
             (xs (nc-temp-slot td))
             (nd (+ td 1))
             (acc (nc-str-offset 24 31 xs)))
@@ -1372,6 +1383,60 @@
                 (r3 (append r2 load-args))
                 (r4 (append r3 set-argc)))
            (append r4 call-fn)))))
+    ((nc-has-tag ir 'progn-ir)
+     ;; progn-ir = (progn-ir (ir1 ir2 ... irn))
+     ;; Generate code for each form, keep result of last
+     (let ((forms-ir (cadr ir)))
+       (labels ((gen-seq (fs acc)
+                  (if (null fs)
+                      acc
+                      (let ((fc (nc-codegen (car fs) rtaddrs fnoffs td)))
+                        (gen-seq (cdr fs) (append acc fc))))))
+         (gen-seq forms-ir nil))))
+    ((nc-has-tag ir 'div)
+     ;; Division: both operands untagged, divide, re-tag
+     (let ((left-ir (cadr ir)))
+       (let ((right-ir (caddr ir)))
+         (let ((xs (nc-temp-slot td)))
+           (let ((ls (nc-temp-slot (+ td 1))))
+             (let ((nd (+ td 2)))
+               (let ((lc (nc-codegen left-ir rtaddrs fnoffs nd)))
+                 (let ((rc (nc-codegen right-ir rtaddrs fnoffs nd)))
+                   (nc-append-all
+                    (list (nc-str-offset 24 31 xs)
+                          lc
+                          (nc-str-offset 0 31 ls)
+                          (nc-ldr-offset 24 31 xs)
+                          rc
+                          (nc-mov-reg 1 0)
+                          (nc-ldr-offset 0 31 ls)
+                          (nc-lsr-imm 0 0 4)
+                          (nc-lsr-imm 1 1 4)
+                          (nc-sdiv-reg 0 0 1)
+                          (nc-lsl-imm 0 0 4)))))))))))
+    ((nc-has-tag ir 'mod)
+     ;; Modulo: a mod b = a - (a / b) * b
+     (let ((left-ir (cadr ir)))
+       (let ((right-ir (caddr ir)))
+         (let ((xs (nc-temp-slot td)))
+           (let ((ls (nc-temp-slot (+ td 1))))
+             (let ((nd (+ td 2)))
+               (let ((lc (nc-codegen left-ir rtaddrs fnoffs nd)))
+                 (let ((rc (nc-codegen right-ir rtaddrs fnoffs nd)))
+                   (nc-append-all
+                    (list (nc-str-offset 24 31 xs)
+                          lc
+                          (nc-str-offset 0 31 ls)
+                          (nc-ldr-offset 24 31 xs)
+                          rc
+                          (nc-mov-reg 1 0)
+                          (nc-ldr-offset 0 31 ls)
+                          (nc-lsr-imm 0 0 4)
+                          (nc-lsr-imm 1 1 4)
+                          (nc-sdiv-reg 2 0 1)
+                          (nc-mul-reg 2 2 1)
+                          (nc-sub-reg 0 0 2)
+                          (nc-lsl-imm 0 0 4)))))))))))
     (t (nc-movz 0 0))))
 
 ;;; ============================================================
