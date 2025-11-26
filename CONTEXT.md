@@ -1,14 +1,28 @@
 # Session Context - Habu Self-Hosting Lisp Compiler
 
-**Session Date**: November 22-25, 2025
+**Session Date**: November 22-26, 2025
 **Focus**: Self-hosting ARM64 Lisp compiler implementation
-**Last Updated**: November 25, 2025 (Stage 2 Bootstrap Complete)
+**Last Updated**: November 26, 2025 (Runtime Extensions Complete)
 
 ## Current Status Summary
 
 **Stage 2 Bootstrap VERIFIED!** (November 25, 2025)
 
-The Habu compiler can now compile **all 100 functions** from habu-arm64-codegen-sbcl.lisp, producing 1.48MB of deterministic bytecode. This verifies that the compiler is fully capable of compiling itself.
+The Habu compiler can now compile **all 107 functions** from habu-arm64-codegen-sbcl.lisp, producing 1.49MB of deterministic bytecode. This verifies that the compiler is fully capable of compiling itself.
+
+### November 26, 2025 Session Progress
+
+**Runtime Extensions Implemented**:
+- **Bignums**: Arbitrary precision integers with sign-magnitude representation (TAG_BIGNUM = 0x8)
+  - Basic single-limb operations: add, sub, mul, div
+  - Conversion: make-bignum-from-fixnum, bignum-to-fixnum
+  - GC integration complete
+- **Multi-dimensional Arrays**: Row-major storage (TAG_ARRAY = 0x9)
+  - Operations: make-array, aref, aset, array-dimensions, array-rank, array-total-size
+  - GC integration complete
+- **Profiler**: Function-level timing with nanosecond precision (docs/PROFILER.md)
+
+**Next Focus**: Binary generation and REPL with readline editing
 
 ### Stage 2 Bootstrap Achievements
 
@@ -164,8 +178,8 @@ The Habu compiler can now compile and execute complex Lisp programs including:
 | **Hash Tables** | make-hash-table ✓, gethash ✓, puthash ✓, remhash ✓, hash-table-count ✓, hash-table-p ✓ | Done |
 | **Structures** | defstruct ✓ | Done |
 | **CLOS** | defclass ✓, make-instance ✓, slot-value ✓ (incl. setf), class-of ✓, typep ✓, defgeneric ✓, defmethod ✓ | Done |
-| **Numeric Tower** | bignum, ratio, float, complex | Low |
-| **Arrays** | Multi-dimensional arrays | Low |
+| **Numeric Tower** | bignum (runtime done), ratio, complex | Low |
+| **Arrays** | Multi-dimensional arrays (runtime done) | Low |
 | **Streams** | File I/O (done), string streams (pending) | Low |
 | **Reader** | read-from-string, habu-read, read-all-from-string (done), #. (pending) | Done |
 
@@ -450,6 +464,8 @@ All major features now have comprehensive tests:
 - Closure: pointer | 5
 - Hash Table: pointer | 6
 - Float: pointer | 7
+- Bignum: pointer | 8
+- Array: pointer | 9
 
 ### Register Usage (ARM64)
 - x0-x4: Arguments and return value
@@ -851,5 +867,5 @@ Implement a reader so Habu can read its own source code.
 ---
 
 **File**: CONTEXT.md
-**Status**: All high-priority CL features complete. Starting full self-hosting verification.
-**Last Updated**: November 25, 2025
+**Status**: Runtime extensions complete. Moving to binary generation and REPL.
+**Last Updated**: November 26, 2025

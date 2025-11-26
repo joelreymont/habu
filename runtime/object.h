@@ -75,6 +75,8 @@ typedef int64_t habu_fixnum_t;   /* Untagged integer type */
 #define TAG_CLOSURE   0x5  /* Pointer to closure */
 #define TAG_HASHTABLE 0x6  /* Pointer to hash table */
 #define TAG_FLOAT     0x7  /* Pointer to boxed float */
+#define TAG_BIGNUM    0x8  /* Pointer to bignum (arbitrary precision integer) */
+#define TAG_ARRAY     0x9  /* Pointer to multi-dimensional array */
 #define TAG_MASK      0xF  /* Mask for extracting tag bits */
 
 /* Object header
@@ -108,6 +110,8 @@ typedef struct {
 #define TYPE_CLOSURE   5
 #define TYPE_HASHTABLE 6
 #define TYPE_FLOAT     7
+#define TYPE_BIGNUM    8
+#define TYPE_ARRAY     9
 
 /* Cons cell */
 typedef struct {
@@ -154,6 +158,26 @@ typedef struct {
 typedef struct {
     double value;
 } habu_float_t;
+
+/* Bignum (arbitrary precision integer)
+ * Uses sign-magnitude representation with 64-bit limbs.
+ * Limbs are stored little-endian (least significant first).
+ */
+typedef struct {
+    int64_t sign;         /* 1 for positive/zero, -1 for negative */
+    uint64_t length;      /* Number of limbs */
+    uint64_t limbs[];     /* Flexible array of 64-bit limbs */
+} habu_bignum_t;
+
+/* Multi-dimensional array
+ * Stores elements in row-major order.
+ */
+typedef struct {
+    uint64_t rank;        /* Number of dimensions */
+    uint64_t total_size;  /* Total number of elements */
+    habu_value_t dims;    /* Vector of dimension sizes */
+    habu_value_t data;    /* Vector of elements */
+} habu_array_t;
 
 /* Value operations */
 static inline bool is_fixnum(habu_value_t v) {
@@ -240,6 +264,14 @@ static inline habu_closure_t *value_to_closure(habu_value_t v) {
 
 static inline habu_hashtable_t *value_to_hashtable(habu_value_t v) {
     return (habu_hashtable_t *)untag_pointer(v);
+}
+
+static inline habu_bignum_t *value_to_bignum(habu_value_t v) {
+    return (habu_bignum_t *)untag_pointer(v);
+}
+
+static inline habu_array_t *value_to_array(habu_value_t v) {
+    return (habu_array_t *)untag_pointer(v);
 }
 
 /* NIL representation */

@@ -214,6 +214,23 @@ habu_value_t habu_println_value(habu_value_t value);
 /* Profiling support */
 habu_value_t habu_get_time_ns(void);  /* High-resolution timer for profiling */
 
+/* Bignum operations (arbitrary precision integers) */
+habu_value_t habu_make_bignum_from_fixnum(habu_value_t fixnum);
+habu_value_t habu_bignum_add(habu_value_t a, habu_value_t b);
+habu_value_t habu_bignum_sub(habu_value_t a, habu_value_t b);
+habu_value_t habu_bignum_mul(habu_value_t a, habu_value_t b);
+habu_value_t habu_bignum_div(habu_value_t a, habu_value_t b);
+habu_value_t habu_bignum_to_fixnum(habu_value_t bignum);  /* Returns NIL if doesn't fit */
+bool habu_is_bignum(habu_value_t v);
+
+/* Multi-dimensional array operations */
+habu_value_t habu_make_array(habu_value_t dims, habu_value_t initial);
+habu_value_t habu_aref(habu_value_t array, habu_value_t indices);
+habu_value_t habu_aset(habu_value_t array, habu_value_t indices, habu_value_t value);
+habu_value_t habu_array_dimensions(habu_value_t array);
+habu_value_t habu_array_rank(habu_value_t array);
+habu_value_t habu_array_total_size(habu_value_t array);
+
 /* Input primitives - read line from stdin */
 char* habu_fgets_line(void);  /* Simple line input */
 char* lineedit_readline(const char *prompt);  /* Line editing with readline features */

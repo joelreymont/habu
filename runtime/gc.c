@@ -544,8 +544,30 @@ static void mark_children(void *obj) {
 
         case TYPE_STRING:
         case TYPE_FLOAT:
-            /* Strings and floats have no outgoing pointers */
+        case TYPE_BIGNUM:
+            /* Strings, floats, and bignums have no outgoing pointers */
             break;
+
+        case TYPE_ARRAY: {
+            habu_array_t *arr = (habu_array_t *)obj;
+            /* Mark dims vector */
+            if (is_pointer(arr->dims)) {
+                void *elem = untag_pointer(arr->dims);
+                if (get_gc_color(elem) == GC_WHITE) {
+                    set_gc_color(elem, GC_GRAY);
+                    push_gray(elem);
+                }
+            }
+            /* Mark data vector */
+            if (is_pointer(arr->data)) {
+                void *elem = untag_pointer(arr->data);
+                if (get_gc_color(elem) == GC_WHITE) {
+                    set_gc_color(elem, GC_GRAY);
+                    push_gray(elem);
+                }
+            }
+            break;
+        }
 
         default:
             break;
@@ -928,8 +950,16 @@ static void update_object_pointers(void *obj) {
 
         case TYPE_STRING:
         case TYPE_FLOAT:
-            /* Strings and floats have no outgoing pointers */
+        case TYPE_BIGNUM:
+            /* Strings, floats, and bignums have no outgoing pointers */
             break;
+
+        case TYPE_ARRAY: {
+            habu_array_t *arr = (habu_array_t *)obj;
+            arr->dims = forward_value(arr->dims);
+            arr->data = forward_value(arr->data);
+            break;
+        }
 
         default:
             break;
@@ -1650,6 +1680,327 @@ habu_value_t habu_float_to_fixnum(habu_value_t float_val) {
     if (get_tag(float_val) != TAG_FLOAT) return NIL;
     double d = value_to_float(float_val)->value;
     return fixnum_to_value((int64_t)d);  /* Truncate toward zero */
+}
+
+/* ============================================================================
+ * BIGNUM OPERATIONS
+ * ============================================================================ */
+
+bool habu_is_bignum(habu_value_t v) {
+    return get_tag(v) == TAG_BIGNUM;
+}
+
+habu_value_t habu_make_bignum_from_fixnum(habu_value_t fixnum) {
+    if (!is_fixnum(fixnum)) return NIL;
+
+    int64_t val = value_to_fixnum(fixnum);
+    int64_t sign = (val >= 0) ? 1 : -1;
+    uint64_t abs_val = (val >= 0) ? (uint64_t)val : (uint64_t)(-val);
+
+    /* Allocate bignum with 1 limb */
+    size_t size = sizeof(habu_bignum_t) + sizeof(uint64_t);
+    habu_bignum_t *bn = habu_gc_alloc(size, TYPE_BIGNUM);
+    if (!bn) return NIL;
+
+    bn->sign = sign;
+    bn->length = 1;
+    bn->limbs[0] = abs_val;
+
+    return tag_pointer(bn, TAG_BIGNUM);
+}
+
+habu_value_t habu_bignum_to_fixnum(habu_value_t bignum) {
+    if (get_tag(bignum) != TAG_BIGNUM) return NIL;
+
+    habu_bignum_t *bn = value_to_bignum(bignum);
+
+    /* Only convert single-limb bignums that fit in fixnum range */
+    if (bn->length != 1) return NIL;
+
+    uint64_t val = bn->limbs[0];
+    /* Check if fits in 60-bit signed range */
+    if (val > ((uint64_t)1 << 59) - 1) return NIL;
+
+    int64_t result = (int64_t)val * bn->sign;
+    return fixnum_to_value(result);
+}
+
+/* Helper: compare absolute values */
+static int bignum_cmp_abs(habu_bignum_t *a, habu_bignum_t *b) {
+    if (a->length != b->length) {
+        return (a->length > b->length) ? 1 : -1;
+    }
+    for (int64_t i = a->length - 1; i >= 0; i--) {
+        if (a->limbs[i] != b->limbs[i]) {
+            return (a->limbs[i] > b->limbs[i]) ? 1 : -1;
+        }
+    }
+    return 0;
+}
+
+habu_value_t habu_bignum_add(habu_value_t a, habu_value_t b) {
+    /* Convert fixnums to bignums if needed */
+    if (is_fixnum(a)) a = habu_make_bignum_from_fixnum(a);
+    if (is_fixnum(b)) b = habu_make_bignum_from_fixnum(b);
+    if (get_tag(a) != TAG_BIGNUM || get_tag(b) != TAG_BIGNUM) return NIL;
+
+    habu_bignum_t *ba = value_to_bignum(a);
+    habu_bignum_t *bb = value_to_bignum(b);
+
+    /* Simple case: single limb addition */
+    if (ba->length == 1 && bb->length == 1 && ba->sign == bb->sign) {
+        uint64_t sum = ba->limbs[0] + bb->limbs[0];
+        if (sum >= ba->limbs[0]) {  /* No overflow */
+            size_t size = sizeof(habu_bignum_t) + sizeof(uint64_t);
+            habu_bignum_t *result = habu_gc_alloc(size, TYPE_BIGNUM);
+            if (!result) return NIL;
+            result->sign = ba->sign;
+            result->length = 1;
+            result->limbs[0] = sum;
+            return tag_pointer(result, TAG_BIGNUM);
+        }
+        /* Overflow - need 2 limbs */
+        size_t size = sizeof(habu_bignum_t) + 2 * sizeof(uint64_t);
+        habu_bignum_t *result = habu_gc_alloc(size, TYPE_BIGNUM);
+        if (!result) return NIL;
+        result->sign = ba->sign;
+        result->length = 2;
+        result->limbs[0] = sum;
+        result->limbs[1] = 1;
+        return tag_pointer(result, TAG_BIGNUM);
+    }
+
+    /* For now, return NIL for complex cases */
+    return NIL;
+}
+
+habu_value_t habu_bignum_sub(habu_value_t a, habu_value_t b) {
+    /* Stub: negate b and add */
+    if (is_fixnum(b)) b = habu_make_bignum_from_fixnum(b);
+    if (get_tag(b) != TAG_BIGNUM) return NIL;
+
+    habu_bignum_t *bb = value_to_bignum(b);
+    /* Create negated copy */
+    size_t size = sizeof(habu_bignum_t) + bb->length * sizeof(uint64_t);
+    habu_bignum_t *neg = habu_gc_alloc(size, TYPE_BIGNUM);
+    if (!neg) return NIL;
+    neg->sign = -bb->sign;
+    neg->length = bb->length;
+    for (uint64_t i = 0; i < bb->length; i++) {
+        neg->limbs[i] = bb->limbs[i];
+    }
+
+    return habu_bignum_add(a, tag_pointer(neg, TAG_BIGNUM));
+}
+
+habu_value_t habu_bignum_mul(habu_value_t a, habu_value_t b) {
+    if (is_fixnum(a)) a = habu_make_bignum_from_fixnum(a);
+    if (is_fixnum(b)) b = habu_make_bignum_from_fixnum(b);
+    if (get_tag(a) != TAG_BIGNUM || get_tag(b) != TAG_BIGNUM) return NIL;
+
+    habu_bignum_t *ba = value_to_bignum(a);
+    habu_bignum_t *bb = value_to_bignum(b);
+
+    /* Simple case: single limb multiplication */
+    if (ba->length == 1 && bb->length == 1) {
+        __uint128_t prod = (__uint128_t)ba->limbs[0] * bb->limbs[0];
+        uint64_t lo = (uint64_t)prod;
+        uint64_t hi = (uint64_t)(prod >> 64);
+
+        if (hi == 0) {
+            size_t size = sizeof(habu_bignum_t) + sizeof(uint64_t);
+            habu_bignum_t *result = habu_gc_alloc(size, TYPE_BIGNUM);
+            if (!result) return NIL;
+            result->sign = ba->sign * bb->sign;
+            result->length = 1;
+            result->limbs[0] = lo;
+            return tag_pointer(result, TAG_BIGNUM);
+        } else {
+            size_t size = sizeof(habu_bignum_t) + 2 * sizeof(uint64_t);
+            habu_bignum_t *result = habu_gc_alloc(size, TYPE_BIGNUM);
+            if (!result) return NIL;
+            result->sign = ba->sign * bb->sign;
+            result->length = 2;
+            result->limbs[0] = lo;
+            result->limbs[1] = hi;
+            return tag_pointer(result, TAG_BIGNUM);
+        }
+    }
+
+    return NIL;  /* Complex case not implemented */
+}
+
+habu_value_t habu_bignum_div(habu_value_t a, habu_value_t b) {
+    if (is_fixnum(a)) a = habu_make_bignum_from_fixnum(a);
+    if (is_fixnum(b)) b = habu_make_bignum_from_fixnum(b);
+    if (get_tag(a) != TAG_BIGNUM || get_tag(b) != TAG_BIGNUM) return NIL;
+
+    habu_bignum_t *ba = value_to_bignum(a);
+    habu_bignum_t *bb = value_to_bignum(b);
+
+    /* Division by zero check */
+    if (bb->length == 1 && bb->limbs[0] == 0) return NIL;
+
+    /* Simple case: single limb division */
+    if (ba->length == 1 && bb->length == 1) {
+        uint64_t quot = ba->limbs[0] / bb->limbs[0];
+        size_t size = sizeof(habu_bignum_t) + sizeof(uint64_t);
+        habu_bignum_t *result = habu_gc_alloc(size, TYPE_BIGNUM);
+        if (!result) return NIL;
+        result->sign = ba->sign * bb->sign;
+        result->length = 1;
+        result->limbs[0] = quot;
+        return tag_pointer(result, TAG_BIGNUM);
+    }
+
+    return NIL;  /* Complex case not implemented */
+}
+
+/* ============================================================================
+ * MULTI-DIMENSIONAL ARRAY OPERATIONS
+ * ============================================================================ */
+
+habu_value_t habu_make_array(habu_value_t dims, habu_value_t initial) {
+    if (get_tag(dims) != TAG_VECTOR && get_tag(dims) != TAG_CONS) return NIL;
+
+    /* Calculate total size and copy dimensions */
+    uint64_t rank = 0;
+    uint64_t total_size = 1;
+
+    if (get_tag(dims) == TAG_VECTOR) {
+        habu_vector_t *dim_vec = value_to_vector(dims);
+        rank = dim_vec->length;
+        for (uint64_t i = 0; i < rank; i++) {
+            if (!is_fixnum(dim_vec->data[i])) return NIL;
+            total_size *= value_to_fixnum(dim_vec->data[i]);
+        }
+    } else {
+        /* Count list length and compute size */
+        habu_value_t curr = dims;
+        while (!is_nil(curr) && get_tag(curr) == TAG_CONS) {
+            habu_cons_t *c = value_to_cons(curr);
+            if (!is_fixnum(c->car)) return NIL;
+            total_size *= value_to_fixnum(c->car);
+            rank++;
+            curr = c->cdr;
+        }
+    }
+
+    if (rank == 0 || total_size == 0) return NIL;
+
+    /* Create dimension vector */
+    habu_value_t dim_vector = habu_make_vector(rank);
+    if (is_nil(dim_vector)) return NIL;
+    habu_vector_t *dv = value_to_vector(dim_vector);
+
+    if (get_tag(dims) == TAG_VECTOR) {
+        habu_vector_t *src = value_to_vector(dims);
+        for (uint64_t i = 0; i < rank; i++) {
+            dv->data[i] = src->data[i];
+        }
+    } else {
+        habu_value_t curr = dims;
+        for (uint64_t i = 0; i < rank; i++) {
+            habu_cons_t *c = value_to_cons(curr);
+            dv->data[i] = c->car;
+            curr = c->cdr;
+        }
+    }
+
+    /* Create data vector */
+    habu_value_t data_vector = habu_make_vector(total_size);
+    if (is_nil(data_vector)) return NIL;
+    habu_vector_t *data = value_to_vector(data_vector);
+
+    /* Initialize with initial value */
+    for (uint64_t i = 0; i < total_size; i++) {
+        data->data[i] = initial;
+    }
+
+    /* Allocate array structure */
+    size_t size = sizeof(habu_array_t);
+    habu_array_t *arr = habu_gc_alloc(size, TYPE_ARRAY);
+    if (!arr) return NIL;
+
+    arr->rank = rank;
+    arr->total_size = total_size;
+    arr->dims = dim_vector;
+    arr->data = data_vector;
+
+    return tag_pointer(arr, TAG_ARRAY);
+}
+
+/* Helper: compute linear index from multi-dimensional indices */
+static uint64_t compute_linear_index(habu_array_t *arr, habu_value_t indices) {
+    habu_vector_t *dims = value_to_vector(arr->dims);
+    uint64_t linear = 0;
+    uint64_t multiplier = 1;
+
+    /* indices can be a vector or list */
+    if (get_tag(indices) == TAG_VECTOR) {
+        habu_vector_t *idx_vec = value_to_vector(indices);
+        for (int64_t i = arr->rank - 1; i >= 0; i--) {
+            uint64_t idx = value_to_fixnum(idx_vec->data[i]);
+            linear += idx * multiplier;
+            multiplier *= value_to_fixnum(dims->data[i]);
+        }
+    } else {
+        /* Convert list to array of indices first */
+        uint64_t idx_arr[16];  /* Max 16 dimensions */
+        uint64_t n = 0;
+        habu_value_t curr = indices;
+        while (!is_nil(curr) && get_tag(curr) == TAG_CONS && n < 16) {
+            habu_cons_t *c = value_to_cons(curr);
+            idx_arr[n++] = value_to_fixnum(c->car);
+            curr = c->cdr;
+        }
+        for (int64_t i = n - 1; i >= 0; i--) {
+            linear += idx_arr[i] * multiplier;
+            multiplier *= value_to_fixnum(dims->data[i]);
+        }
+    }
+
+    return linear;
+}
+
+habu_value_t habu_aref(habu_value_t array, habu_value_t indices) {
+    if (get_tag(array) != TAG_ARRAY) return NIL;
+
+    habu_array_t *arr = value_to_array(array);
+    uint64_t linear = compute_linear_index(arr, indices);
+
+    if (linear >= arr->total_size) return NIL;
+
+    habu_vector_t *data = value_to_vector(arr->data);
+    return data->data[linear];
+}
+
+habu_value_t habu_aset(habu_value_t array, habu_value_t indices, habu_value_t value) {
+    if (get_tag(array) != TAG_ARRAY) return NIL;
+
+    habu_array_t *arr = value_to_array(array);
+    uint64_t linear = compute_linear_index(arr, indices);
+
+    if (linear >= arr->total_size) return NIL;
+
+    habu_vector_t *data = value_to_vector(arr->data);
+    data->data[linear] = value;
+    return value;
+}
+
+habu_value_t habu_array_dimensions(habu_value_t array) {
+    if (get_tag(array) != TAG_ARRAY) return NIL;
+    return value_to_array(array)->dims;
+}
+
+habu_value_t habu_array_rank(habu_value_t array) {
+    if (get_tag(array) != TAG_ARRAY) return NIL;
+    return fixnum_to_value(value_to_array(array)->rank);
+}
+
+habu_value_t habu_array_total_size(habu_value_t array) {
+    if (get_tag(array) != TAG_ARRAY) return NIL;
+    return fixnum_to_value(value_to_array(array)->total_size);
 }
 
 /* Statistics */
