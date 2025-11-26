@@ -128,7 +128,7 @@ int main(int argc, char **argv) {
           (bytes-to-c-array bytes)
           (length bytes)))
 
-(defun habu-deliver (source-path output-path &key (tree-shaking t) verbose)
+(defun deliver (source-path output-path &key (tree-shaking t) verbose)
   "Deliver Lisp source as standalone native executable.
    SOURCE-PATH: path to .lisp file
    OUTPUT-PATH: path for output executable
@@ -179,4 +179,4 @@ int main(int argc, char **argv) {
             (error "Compilation failed: ~A" result))))))
 
 ;; Export the function
-(export 'habu-deliver :habu-sbcl)
+(export 'deliver :habu-sbcl)

@@ -1,42 +1,23 @@
 #!/usr/bin/env sbcl --script
-;;; Test native compiler delivery and execution
+;;; Test bootstrap compiler IR evaluation
+;;; Tests the HABU package bootstrap compiler using the IR evaluator path
 
-(load "run-habu.lisp")
+(load "bootstrap/compiler.lisp")
 
 (defparameter *tests-passed* 0)
 (defparameter *tests-failed* 0)
 
 (defun run-nc-test (name source expected)
-  "Deliver native compiler with given source, run, check exit code"
-  ;; Read native-compiler.lisp
-  (let* ((nc-source (with-open-file (in "bootstrap/compiler.lisp")
-                      (let ((str (make-string (file-length in))))
-                        (read-sequence str in)
-                        str)))
-         ;; Find the line with src assignment and replace the whole expression
-         (pattern "(+ (* 3 4) 5)")
-         (start (search pattern nc-source)))
-    (if start
-        (let ((patched (concatenate 'string
-                                    (subseq nc-source 0 start)
-                                    source
-                                    (subseq nc-source (+ start (length pattern))))))
-          ;; Write patched source to temp file
-          (with-open-file (out "/tmp/nc-test.lisp" :direction :output :if-exists :supersede)
-            (write-string patched out))
-          ;; Deliver
-          (habu-sbcl:habu-deliver "/tmp/nc-test.lisp" "/tmp/nc-test" :verbose nil)
-          ;; Run and check
-          (let ((exit-code (sb-ext:process-exit-code
-                            (sb-ext:run-program "/tmp/nc-test" nil :output nil :error nil :wait t))))
-            (if (= exit-code expected)
-                (progn
-                  (format t "[PASS] ~A: ~A = ~A~%" name source expected)
-                  (incf *tests-passed*))
-                (progn
-                  (format t "[FAIL] ~A: ~A expected ~A got ~A~%" name source expected exit-code)
-                  (incf *tests-failed*)))))
-        (format t "[ERROR] Could not find pattern to replace~%"))))
+  "Test bootstrap compiler by evaluating source via IR evaluator"
+  (let* ((forms (habu:nc-read-all source))
+         (result (habu:nc-eval-forms forms)))
+    (if (= result expected)
+        (progn
+          (format t "[PASS] ~A: ~A = ~A~%" name source expected)
+          (incf *tests-passed*))
+        (progn
+          (format t "[FAIL] ~A: ~A expected ~A got ~A~%" name source expected result)
+          (incf *tests-failed*)))))
 
 (format t "~%=== Native Compiler Tests ===~%~%")
 

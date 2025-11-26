@@ -345,7 +345,7 @@ Returns two values: untagged result (or NIL if parse failed) and output text."
               (output-path (caddr args)))
          (if (and input-path output-path)
              (progn
-               (habu-deliver input-path output-path :verbose t)
+               (deliver input-path output-path :verbose t)
                (sb-ext:quit :unix-status 0))
              (progn
                (format t "Usage: --deliver <input.lisp> <output>~%")
