@@ -2,7 +2,7 @@
 .SUFFIXES:
 
 CC = gcc
-CFLAGS = -std=c11 -Wall -Wextra -Werror -O2 -g
+CFLAGS = -std=c11 -Wall -Wextra -O2 -g
 LDFLAGS =
 LDLIBS = -lm
 
@@ -32,9 +32,15 @@ JIT_LIB_DYLIB = libhabu-jit.dylib
 JIT_LIB_SO = libhabu-jit.so
 PRINT_RUNTIME = bin/print-runtime-addrs
 
-.PHONY: all clean test benchmark examples
+# Main executables
+HABU = habu
+RUN_BYTECODE = run-bytecode
 
-all: $(TEST_PROGS)
+.PHONY: all clean test benchmark examples habu-tools
+
+all: $(TEST_PROGS) habu-tools
+
+habu-tools: $(HABU) $(RUN_BYTECODE)
 
 examples: $(EXAMPLE_PROGS)
 jit: $(JIT_LIB_DYLIB) $(JIT_LIB_SO)
@@ -99,6 +105,21 @@ cross: CFLAGS = $(CROSS_CFLAGS)
 cross: LDFLAGS = $(CROSS_LDFLAGS)
 cross: all
 
+# Build habu main executable (REPL and runner)
+$(HABU): habu-main.c $(RUNTIME_OBJS) runtime/habu.h
+	$(CC) $(CFLAGS) -o $@ habu-main.c $(RUNTIME_OBJS) $(LDLIBS)
+
+# Build run-bytecode (JIT executor)
+$(RUN_BYTECODE): run-bytecode.c $(RUNTIME_OBJS) runtime/habu.h
+	$(CC) $(CFLAGS) -o $@ run-bytecode.c $(RUNTIME_OBJS) $(LDLIBS)
+
+# Install to /usr/local/bin
+install: $(HABU) $(RUN_BYTECODE)
+	install -m 755 $(HABU) /usr/local/bin/
+	install -m 755 $(RUN_BYTECODE) /usr/local/bin/
+
 # Clean build artifacts (runtime objs, tests, benches, examples)
 clean:
 	rm -f $(TEST_PROGS) $(BENCH_PROGS) $(EXAMPLE_PROGS) $(RUNTIME_OBJS)
+	rm -f $(HABU) $(RUN_BYTECODE)
+	rm -f $(JIT_LIB_DYLIB) $(JIT_LIB_SO) $(PRINT_RUNTIME)

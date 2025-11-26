@@ -1,0 +1,47 @@
+#!/bin/bash
+# habu-compile - Compile Lisp source to bytecode
+#
+# Usage: habu-compile <source.lisp> [-o <output.bin>]
+
+set -e
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "$SCRIPT_DIR"
+
+if [ $# -lt 1 ]; then
+    echo "Usage: habu-compile <source.lisp> [-o <output.bin>]"
+    exit 1
+fi
+
+SOURCE="$1"
+OUTPUT=""
+
+# Parse arguments
+shift
+while [ $# -gt 0 ]; do
+    case "$1" in
+        -o)
+            OUTPUT="$2"
+            shift 2
+            ;;
+        *)
+            echo "Unknown option: $1"
+            exit 1
+            ;;
+    esac
+done
+
+# Default output name
+if [ -z "$OUTPUT" ]; then
+    OUTPUT="${SOURCE%.lisp}.bin"
+fi
+
+# Compile
+sbcl --noinform --non-interactive \
+     --load sbcl-habu-shim.lisp \
+     --load habu-arm64-codegen-sbcl.lisp \
+     --load run-habu.lisp \
+     --eval "(habu-sbcl:compile-forms-with-runtime (habu-sbcl:read-forms-from-file \"$SOURCE\") :output-path \"$OUTPUT\")" \
+     --eval '(sb-ext:quit)' 2>/dev/null
+
+echo "Compiled: $SOURCE -> $OUTPUT"
