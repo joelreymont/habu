@@ -69,6 +69,27 @@
 (defparameter *codegen-pos* 0)
 (defparameter *call-fixups* nil)
 
+;; Symbol table for native executables (no runtime symbol interning)
+;; Each unique symbol name gets a unique integer ID
+;; Symbols are represented as (ID << 4) | 2 (tag 2 = symbol)
+(defparameter *symbol-table* nil)
+(defparameter *symbol-counter* 1)  ; Start at 1, 0 reserved for nil
+
+(defun nc-intern-symbol (name)
+  "Get or create a symbol ID for NAME. Returns tagged symbol value."
+  (let ((entry (assoc name *symbol-table* :test #'equal)))
+    (if entry
+        (cdr entry)
+        (let ((id *symbol-counter*))
+          (push (cons name id) *symbol-table*)
+          (incf *symbol-counter*)
+          id))))
+
+(defun nc-reset-symbol-table ()
+  "Reset symbol table for new compilation."
+  (setf *symbol-table* nil)
+  (setf *symbol-counter* 1))
+
 ;;; ============================================================
 ;;; Part 1: ARM64 Instruction Encoders (nc-asm-*)
 ;;; ============================================================
@@ -190,6 +211,15 @@
          (word (logior or2 rd)))
     (nc-encode-word word)))
 
+(defun nc-bic-reg (rd rn rm)
+  "BIC Xd, Xn, Xm - bit clear (Xd = Xn AND NOT Xm)"
+  (let* ((rm-s (ash rm 16))
+         (rn-s (ash rn 5))
+         (or1 (logior #x8A200000 rm-s))
+         (or2 (logior or1 rn-s))
+         (word (logior or2 rd)))
+    (nc-encode-word word)))
+
 (defun nc-lslv-reg (rd rn rm)
   "LSLV Xd, Xn, Xm - logical shift left variable"
   (let* ((rm-s (ash rm 16))
@@ -275,6 +305,19 @@
          (or2 (logior or1 rt2-s))
          (or3 (logior or2 rn-s))
          (word (logior or3 rt1)))
+    (nc-encode-word word)))
+
+(defun nc-adr (rd offset)
+  "ADR Xd, label - PC-relative address (+-1MB range).
+   OFFSET is in bytes, signed 21-bit range."
+  ;; ADR encoding: 0 immlo[1:0] 10000 immhi[18:0] Rd[4:0]
+  ;; offset = (immhi << 2) | immlo
+  (let* ((immlo (logand offset #x3))
+         (immhi (logand (ash offset -2) #x7FFFF))
+         (word (logior #x10000000
+                       (ash immlo 29)
+                       (ash immhi 5)
+                       rd)))
     (nc-encode-word word)))
 
 (defun nc-cmp-reg (rn rm)
@@ -1890,15 +1933,15 @@
      ;; nil is represented as tagged 0 (fixnum 0) in native code
      (nc-movz 0 0))
     ((nc-has-tag ir 'sym-lit)
-     ;; Symbol literal: build string from chars, then call make-symbol-from-string
-     ;; Runtime table index 11 = make_symbol_from_string at offset 88
+     ;; Symbol literal: use compile-time symbol table
+     ;; Each unique symbol gets a unique ID, tagged with symbol tag (2)
+     ;; Tagged value = (ID << 4) | 2
      (let* ((name (cadr ir))
-            (chars (nc-string-to-char-codes name))
-            (str-code (nc-codegen-string-from-chars chars td)))
-       (nc-append-all
-        (list str-code
-              (nc-ldr-offset 9 19 88)
-              (nc-blr 9)))))
+            (id (nc-intern-symbol name))
+            (tagged (logior (ash id 4) 2)))  ; tag 2 = symbol
+       (if (< tagged #x10000)
+           (nc-movz 0 tagged)
+           (nc-load-addr 0 tagged))))
     ((nc-has-tag ir 'str-lit)
      ;; String literal: build string from chars, leave as string
      (let* ((s (cadr ir))
@@ -2655,78 +2698,106 @@
      (nc-movz 0 0))
     ((nc-has-tag ir 'lambda-ref)
      ;; lambda-ref = (lambda-ref name free-var-offsets)
-     ;; Create a closure:
-     ;; 1. Get code pointer from code base + lambda offset (from fnoffs)
-     ;; 2. Create env vector with captured values
-     ;; 3. Call make-closure
-     ;; Runtime table: [3] make-closure at offset 24, [6] code-base at offset 48
-     ;;                [7] make-vector at offset 56, [8] vector-set at offset 64
+     ;; Create closure as inline heap cons cell (no runtime call):
+     ;; car = fn-offset (as tagged fixnum) - relative offset in bytes
+     ;; cdr = env (cons list of captures, or nil)
+     ;; Result = heap ptr | tag 5 (closure tag)
      (let* ((name (cadr ir))
             (free-offsets (caddr ir))
             (capture-count (length free-offsets))
             (fn-entry (assoc name fnoffs))
             (fn-offset (if fn-entry (cdr fn-entry) 0))
-            ;; fn-offset is already in bytes (nc-build-fnoffs uses byte offsets)
             (offset-bytes fn-offset)
             (code-slot (nc-temp-slot td))
             (env-slot (nc-temp-slot (+ td 1))))
        (if (= capture-count 0)
-           ;; No captures - simple closure with nil env
-           (nc-append-all
-            (list
-             ;; Get code pointer
-             (nc-ldr-offset 9 19 48)            ; x9 = code base
-             (nc-load-addr 10 offset-bytes)    ; x10 = offset
-             (nc-add-reg 0 9 10)               ; x0 = code ptr
-             (nc-movz 1 0)                     ; x1 = nil (no env)
-             (nc-ldr-offset 11 19 24)          ; make-closure
-             (nc-blr 11)))
-           ;; Has captures - build env vector
-           (let ((capture-stores
-                  (labels ((store-caps (offs idx acc)
-                             (if (null offs)
-                                 acc
-                                 (let* ((off (car offs))
-                                        (store
-                                         (nc-append-all
-                                          (list
-                                           (nc-ldr-offset 0 31 env-slot)        ; x0 = vector
-                                           (nc-movz 1 (ash idx 4))              ; x1 = index (tagged)
-                                           (nc-sub-imm 2 20 (* off 8))          ; x2 = x20 - off*8
-                                           (nc-ldr-offset 2 2 0)                ; x2 = captured value
-                                           (nc-ldr-offset 11 19 64)             ; vector-set
-                                           (nc-blr 11)))))
-                                   (store-caps (cdr offs) (+ idx 1) (append acc store))))))
-                    (store-caps free-offsets 0 nil))))
+           ;; No captures - inline closure cons: (fn-offset . nil)
+           ;; Store fn-offset (tagged fixnum) in car, nil in cdr
+           ;; Allocate 16 bytes on heap (x28 = bump pointer)
+           (let ((tagged-offset (ash offset-bytes 4)))  ; tag as fixnum
              (nc-append-all
               (list
-               ;; Get code pointer and save
-               (nc-ldr-offset 9 19 48)          ; x9 = code base
-               (nc-load-addr 10 offset-bytes)   ; x10 = offset
-               (nc-add-reg 0 9 10)              ; x0 = code ptr
-               (nc-str-offset 0 31 code-slot)   ; save code ptr
-               ;; Allocate env vector
-               (nc-movz 0 (ash capture-count 4)) ; x0 = length (tagged)
-               (nc-ldr-offset 11 19 56)         ; make-vector
-               (nc-blr 11)                      ; x0 = vector
-               (nc-str-offset 0 31 env-slot)    ; save vector
-               ;; Store captures
-               capture-stores
-               ;; Make closure
-               (nc-ldr-offset 0 31 code-slot)   ; x0 = code ptr
-               (nc-ldr-offset 1 31 env-slot)    ; x1 = env vector
-               (nc-ldr-offset 11 19 24)         ; make-closure
-               (nc-blr 11)))))))
+               ;; Store fn-offset (tagged) in [x28]
+               (nc-load-addr 9 tagged-offset)   ; x9 = tagged offset
+               (nc-str-offset 9 28 0)           ; [x28+0] = car = fn-offset
+               ;; Store nil in [x28+8]
+               (nc-movz 10 0)                   ; x10 = nil
+               (nc-str-offset 10 28 8)          ; [x28+8] = cdr = nil
+               ;; Result = x28 | 5 (closure tag)
+               (nc-mov-reg 0 28)                ; x0 = x28
+               (nc-movz 9 5)                    ; x9 = closure tag
+               (nc-orr-reg 0 0 9)                   ; x0 = x28 | 5
+               ;; Bump heap pointer by 16
+               (nc-add-imm 28 28 16))))
+           ;; Has captures - build env as cons list, then make closure cons
+           ;; First build env cons list (capture-count cells)
+           ;; Then allocate closure cons
+           (let ((capture-code
+                  (labels ((build-captures (offs acc env-acc)
+                             (if (null offs)
+                                 (list acc env-acc)  ; return (code . result-slot)
+                                 (let* ((off (car offs))
+                                        (val-slot (nc-temp-slot (+ td 2 (* 2 (length offs)))))
+                                        (pair-slot (nc-temp-slot (+ td 3 (* 2 (length offs)))))
+                                        ;; Load captured value
+                                        (load-cap
+                                         (nc-append-all
+                                          (list
+                                           (nc-sub-imm 1 20 (* off 8)) ; x1 = &captured
+                                           (nc-ldr-offset 0 1 0)       ; x0 = captured value
+                                           (nc-str-offset 0 31 val-slot)))) ; save value
+                                        ;; Allocate cons: (value . prev-env)
+                                        (alloc-cons
+                                         (nc-append-all
+                                          (list
+                                           (nc-ldr-offset 9 31 val-slot)  ; car = captured value
+                                           (nc-str-offset 9 28 0)         ; [x28+0] = car
+                                           ;; cdr = previous env acc
+                                           (if (null env-acc)
+                                               (nc-movz 9 0)              ; first: cdr = nil
+                                               (nc-ldr-offset 9 31 env-acc)) ; else: load prev env
+                                           (nc-str-offset 9 28 8)         ; [x28+8] = cdr
+                                           ;; Result = x28 | 1 (cons tag)
+                                           (nc-mov-reg 0 28)
+                                           (nc-movz 9 1)
+                                           (nc-orr-reg 0 0 9)                 ; x0 = cons ptr
+                                           ;; Save and bump
+                                           (nc-str-offset 0 31 pair-slot)
+                                           (nc-add-imm 28 28 16)))))
+                                   (build-captures (cdr offs)
+                                                   (nc-append-all (list acc load-cap alloc-cons))
+                                                   pair-slot)))))
+                    (build-captures free-offsets nil nil))))
+             (let* ((env-code (car capture-code))
+                    (env-result-slot (cadr capture-code))
+                    (tagged-offset (ash offset-bytes 4)))
+               (nc-append-all
+                (list
+                 ;; Build env cons list
+                 env-code
+                 ;; Now allocate closure cons: (fn-offset . env)
+                 (nc-load-addr 9 tagged-offset)     ; car = fn-offset (tagged)
+                 (nc-str-offset 9 28 0)             ; [x28+0] = car
+                 (nc-ldr-offset 9 31 env-result-slot) ; cdr = env cons list
+                 (nc-str-offset 9 28 8)             ; [x28+8] = cdr
+                 ;; Result = x28 | 5 (closure tag)
+                 (nc-mov-reg 0 28)
+                 (nc-movz 9 5)
+                 (nc-orr-reg 0 0 9)
+                 ;; Bump heap
+                 (nc-add-imm 28 28 16))))))))
     ((nc-has-tag ir 'funcall-ir)
      ;; funcall-ir = (funcall-ir fn-ir args-ir-list)
-     ;; 1. Evaluate fn-ir to get closure
-     ;; 2. Extract code pointer and env from closure
-     ;; 3. Set up args and call
-     ;; Runtime table: [4] closure-code at offset 32, [5] closure-env at offset 40
+     ;; Inline closure access (no runtime calls):
+     ;; 1. Evaluate fn-ir to get closure (cons cell with tag 5)
+     ;; 2. Extract fn-offset from car, env from cdr
+     ;; 3. Compute code address: x26 (code base) + fn-offset
+     ;; 4. Set up args and call
+     ;; Closure layout: car = fn-offset (tagged fixnum), cdr = env (cons or nil)
      (let* ((fn-ir (cadr ir))
             (args-ir (caddr ir))
             (num-args (length args-ir))
-            ;; Temp slots: 0=x24-save, 1=closure, 2=code, 3=env, 4..4+n-1=args
+            ;; Temp slots: 0=x24-save, 1=closure-addr, 2=code-addr, 3=env, 4..4+n-1=args
             (x24-slot (nc-temp-slot td))
             (closure-slot (nc-temp-slot (+ td 1)))
             (code-slot (nc-temp-slot (+ td 2)))
@@ -2752,18 +2823,21 @@
           (list
            ;; Save x24
            (nc-str-offset 24 31 x24-slot)
-           ;; Evaluate and save closure
+           ;; Evaluate closure into x0
            fn-code
-           (nc-str-offset 0 31 closure-slot)
-           ;; Get code pointer
-           (nc-ldr-offset 9 19 32)              ; closure-code
-           (nc-blr 9)                           ; x0 = code ptr
-           (nc-str-offset 0 31 code-slot)
-           ;; Get closure env and save
-           (nc-ldr-offset 0 31 closure-slot)
-           (nc-ldr-offset 9 19 40)              ; closure-env
-           (nc-blr 9)                           ; x0 = env
-           (nc-str-offset 0 31 env-slot)
+           ;; Clear closure tag (5) to get heap address: x9 = x0 & ~0xF
+           (nc-movz 11 #xF)                     ; x11 = 0xF
+           (nc-bic-reg 9 0 11)                  ; x9 = x0 & ~0xF
+           ;; Load car = fn-offset (tagged): x10 = [x9+0]
+           (nc-ldr-offset 10 9 0)
+           ;; Untag fn-offset: x10 = x10 >> 4
+           (nc-lsr-imm 10 10 4)
+           ;; Compute code address: x10 = x26 + x10 (code_base + offset)
+           (nc-add-reg 10 26 10)
+           (nc-str-offset 10 31 code-slot)      ; save code address
+           ;; Load cdr = env: x11 = [x9+8]
+           (nc-ldr-offset 11 9 8)
+           (nc-str-offset 11 31 env-slot)       ; save env
            ;; Restore x24 for arg evaluation
            (nc-ldr-offset 24 31 x24-slot)
            ;; Evaluate args
@@ -2774,7 +2848,7 @@
            (nc-ldr-offset 24 31 env-slot)
            ;; Set argc
            (nc-movz 23 num-args)
-           ;; Load code pointer and call
+           ;; Load code address and call
            (nc-ldr-offset 9 31 code-slot)
            (nc-blr 9)
            ;; Restore x24
@@ -3264,6 +3338,8 @@
   "Compile forms to bytecode with function linking.
    Layout: prologue + main-code + epilogue + functions + lifted-lambdas
    Functions are placed after main, and call-fn generates forward BL."
+  ;; Reset symbol table for fresh compilation
+  (nc-reset-symbol-table)
   (let* ((r (nc-compile-forms forms))
          (defun-fns (car r))
          (mir-raw (cadr r)))

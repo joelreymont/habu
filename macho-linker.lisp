@@ -481,37 +481,46 @@
     (append stub code-bytes)))
 
 (defun wrap-bytecode-with-heap (code-bytes heap-page-offset)
-  "Wrap bytecode with heap initialization and untagging.
+  "Wrap bytecode with heap initialization, code base, and untagging.
 
    HEAP-PAGE-OFFSET is the page offset from the ADRP instruction to __DATA.
    For standard layout (code at page 0, heap at page 1), this is 1.
    x28 is used as the heap bump pointer.
+   x26 is used as the code base pointer (for closure funcall).
 
    Uses PC-relative addressing (ADRP + ADD) so PIE/ASLR works correctly.
 
-   Stub (40 bytes = 10 instructions):
-     0: sub sp, sp, #16      ; allocate stack space
+   Stub (52 bytes = 13 instructions):
+     0: sub sp, sp, #32      ; allocate stack space
      1: str x30, [sp]        ; save LR
      2: str x28, [sp, #8]    ; save x28
-     3: adrp x28, #page_off  ; load heap page address (PC-relative)
-     4: bl +6                ; call original main (skip 5 instrs to reach instr 10)
-     5: lsr x0, x0, #4       ; untag result
-     6: ldr x28, [sp, #8]    ; restore x28
-     7: ldr x30, [sp]        ; restore LR
-     8: add sp, sp, #16      ; clean up stack
-     9: ret                  ; return to OS
-    10: <original code>      ; starts at offset 40"
+     3: str x26, [sp, #16]   ; save x26
+     4: adrp x28, #page_off  ; load heap page address (PC-relative)
+     5: adr x26, +32         ; x26 = address of main code (8 instrs ahead = 32 bytes)
+     6: bl +7                ; call original main (skip 6 instrs to reach instr 13)
+     7: lsr x0, x0, #4       ; untag result
+     8: ldr x26, [sp, #16]   ; restore x26
+     9: ldr x28, [sp, #8]    ; restore x28
+    10: ldr x30, [sp]        ; restore LR
+    11: add sp, sp, #32      ; clean up stack
+    12: ret                  ; return to OS
+    13: <original code>      ; starts at offset 52"
   (let* ((stub (append
-                (arm64:sub arm64:+sp+ arm64:+sp+ #x10 :imm t)  ; sub sp, sp, #16
+                (arm64:sub arm64:+sp+ arm64:+sp+ #x20 :imm t)  ; sub sp, sp, #32
                 (arm64:str arm64:+lr+ arm64:+sp+)              ; str x30, [sp]
                 (arm64:str 28 arm64:+sp+ :offset 8)            ; str x28, [sp, #8]
+                (arm64:str 26 arm64:+sp+ :offset 16)           ; str x26, [sp, #16]
                 (arm64:adrp 28 heap-page-offset)               ; adrp x28, heap (PC-relative)
-                (arm64:bl 6)                                    ; bl +6 (skip 5 instrs to main)
-                (arm64:lsr 0 0 4 :imm t)                        ; lsr x0, x0, #4
+                ;; ADR x26, +32 puts address of main code (instr 13) into x26
+                ;; ADR offset = (target_offset - current_offset) = 52 - 20 = 32
+                (arm64:adr 26 32)                              ; adr x26, +32 (code base)
+                (arm64:bl 7)                                   ; bl +7 (skip 6 instrs to main)
+                (arm64:lsr 0 0 4 :imm t)                       ; lsr x0, x0, #4
+                (arm64:ldr 26 arm64:+sp+ :offset 16)           ; ldr x26, [sp, #16]
                 (arm64:ldr 28 arm64:+sp+ :offset 8)            ; ldr x28, [sp, #8]
                 (arm64:ldr arm64:+lr+ arm64:+sp+)              ; ldr x30, [sp]
-                (arm64:add arm64:+sp+ arm64:+sp+ #x10 :imm t)  ; add sp, sp, #16
-                (arm64:ret))))                                  ; ret
+                (arm64:add arm64:+sp+ arm64:+sp+ #x20 :imm t)  ; add sp, sp, #32
+                (arm64:ret))))                                 ; ret
     (append stub code-bytes)))
 
 ;;; ============================================================

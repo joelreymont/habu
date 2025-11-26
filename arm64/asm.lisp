@@ -10,7 +10,7 @@
    ;; Core encoding
    #:encode
    ;; Data movement
-   #:movz #:movk #:mov #:adrp #:add-lo12
+   #:movz #:movk #:mov #:adrp #:adr #:add-lo12
    ;; Arithmetic
    #:add #:sub #:mul #:sdiv #:neg
    ;; Bitwise
@@ -89,6 +89,18 @@
   (let* ((immlo (logand page-offset #x3))
          (immhi (logand (ash page-offset -2) #x7FFFF)))
     (encode (logior #x90000000
+                    (ash immlo 29)
+                    (ash immhi 5)
+                    rd))))
+
+(defun adr (rd byte-offset)
+  "ADR Xd, label
+   Load PC-relative address. BYTE-OFFSET is signed, +/-1MB range.
+   Computes Xd = PC + byte-offset."
+  ;; ADR: 0 immlo[1:0] 10000 immhi[18:0] Rd[4:0]
+  (let* ((immlo (logand byte-offset #x3))
+         (immhi (logand (ash byte-offset -2) #x7FFFF)))
+    (encode (logior #x10000000
                     (ash immlo 29)
                     (ash immhi 5)
                     rd))))
