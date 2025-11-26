@@ -1,35 +1,93 @@
 # Session Context - Habu Self-Hosting Lisp Compiler
 
 **Session Date**: November 22-26, 2025
-**Focus**: Self-hosting ARM64 Lisp compiler implementation
-**Last Updated**: November 26, 2025 (Runtime Extensions Complete)
+**Focus**: Self-hosting ARM64 Lisp compiler with native executable generation
+**Last Updated**: November 26, 2025 (Native Executable Implementation)
 
 ## Current Status Summary
 
-**Stage 2 Bootstrap VERIFIED!** (November 25, 2025)
+**GOAL: Standalone Native Executables** (November 26, 2025)
 
-The Habu compiler can now compile **all 107 functions** from habu-arm64-codegen-sbcl.lisp, producing 1.49MB of deterministic bytecode. This verifies that the compiler is fully capable of compiling itself.
+Habu produces native ARM64 machine code and standalone macOS executables.
+NO bytecode. NO SBCL dependency. Embedded compiler. Tree-shaking at delivery.
 
-### November 26, 2025 Session Progress
+---
 
-**Runtime Extensions Implemented**:
-- **Bignums**: Arbitrary precision integers with sign-magnitude representation (TAG_BIGNUM = 0x8)
-  - Basic single-limb operations: add, sub, mul, div
-  - Conversion: make-bignum-from-fixnum, bignum-to-fixnum
-  - GC integration complete
-- **Multi-dimensional Arrays**: Row-major storage (TAG_ARRAY = 0x9)
-  - Operations: make-array, aref, aset, array-dimensions, array-rank, array-total-size
-  - GC integration complete
-- **Profiler**: Function-level timing with nanosecond precision (docs/PROFILER.md)
+## Native Executable Architecture
 
-**Completed**: Binary generation and REPL with readline editing
+### Design Principles
+1. **No bytecode**: Habu generates native ARM64 machine code directly
+2. **No SBCL dependency**: Compiler is embedded in habu executable
+3. **Standalone executables**: `(deliver 'main "output")` produces Mach-O binary
+4. **Tree-shaking**: Only reachable code included in delivered executable
 
-**habu Executable**:
-- `./habu` - Start REPL with snake emoji prompt
-- `./habu file.bin` - Run compiled bytecode
-- `habu-compile source.lisp -o output.bin` - Compile Lisp to bytecode
-- REPL commands: `,help`, `,quit`
-- Full readline editing: arrow keys, Ctrl-A/E, backspace, delete
+### Implementation Plan
+
+#### Phase 1: Delivery System
+- Generate C source with embedded machine code array
+- Link with runtime (gc.c, io.c, lineedit.c, region.c, runtime.c)
+- Use clang to produce standalone Mach-O executable
+- Result: `./output` runs without habu or any runtime dependency
+
+#### Phase 2: Compiler Bootstrap (One-Time SBCL Use)
+- Compile habu-arm64-codegen-sbcl.lisp to native ARM64 code
+- Embed compiled compiler in habu executable as static data
+- After bootstrap: habu is fully self-contained
+
+#### Phase 3: Tree-Shaking
+- Build call graph from IR during compilation
+- Start from entry point, mark reachable functions
+- Only emit code for reachable functions
+- Dramatically reduces executable size
+
+#### Phase 4: REPL Delivery
+```lisp
+;; In REPL:
+(defun factorial (n)
+  (if (<= n 1) 1 (* n (factorial (1- n)))))
+
+(defun main ()
+  (println (factorial 10)))
+
+(deliver 'main "factorial")  ; Produces ./factorial executable
+```
+
+### Executable Generation Flow
+```
+Lisp Source
+    |
+    v
+[Habu Compiler (embedded)]
+    |
+    v
+ARM64 Machine Code + Function Table
+    |
+    v
+[Tree-Shaker] -- removes unreachable code
+    |
+    v
+C Template + Code Array
+    |
+    v
+[clang] -- links with runtime
+    |
+    v
+Standalone Mach-O Executable
+```
+
+---
+
+## Previous Progress
+
+### Runtime Extensions
+- **Bignums**: TAG_BIGNUM = 0x8, sign-magnitude, basic arithmetic
+- **Multi-dimensional Arrays**: TAG_ARRAY = 0x9, row-major storage
+- **Profiler**: Nanosecond timing (docs/PROFILER.md)
+
+### Stage 2 Bootstrap (November 25)
+- All 107 compiler functions compile successfully
+- 1.49MB of ARM64 machine code generated
+- Deterministic compilation verified
 
 ### Stage 2 Bootstrap Achievements
 
