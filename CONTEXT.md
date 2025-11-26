@@ -6,7 +6,7 @@
 
 ## Session Summary (November 26, 2025)
 
-This session focused on bootstrapping the compiler and fixing a critical codegen bug.
+This session focused on fixing critical bugs in the native compiler.
 
 **Accomplishments**:
 1. Fixed tree-shaking IR traversal for LET-EXPR, IF-EXPR, PROGN nodes
@@ -14,31 +14,24 @@ This session focused on bootstrapping the compiler and fixing a critical codegen
 3. Tested native reader functionality (parsing numbers from strings)
 4. Demonstrated native compile+eval: `(+ (* 3 4) 5)` evaluates to 17
 5. **Fixed nested recursive calls bug** in call-fn codegen
+6. **Fixed nc-env-extend nested call bug** - avoid nested recursive calls in args
+7. **Fixed numberp check for offset 0** - Habu treats 0 as falsey
+8. All 10 native compiler tests pass
 
-**Bug Fix**: Nested recursive calls in argument position now work correctly.
-- Root cause: All nested calls used the same shared arg-spill area, so inner calls
-  would overwrite outer call's staged arguments
-- Fix: Changed call-fn to use temp slots indexed by nesting depth instead of
-  shared arg-spill area
-- This pattern now works: `(f (g x) (h y))` where g,h are recursive
+**Bug Fix 1**: nc-env-extend nested call bug
+- Root cause: `(append (reverse (add-bs ...)) env)` had nested recursive calls
+- Fix: Used let* to sequence operations, avoiding nested calls in argument position
+- Also fixed inner labels functions to use let for intermediate values
 
-**Delivery Functionality** (November 26, 2025):
-- Implemented `habu-deliver` function to create standalone native executables
-- Flow: Source -> ARM64 bytecode -> Embedded C -> clang link -> Mach-O executable
-- Tested with factorial, compile+eval, and string parsing programs
-- Exit code returns untagged fixnum result
+**Bug Fix 2**: Variable lookup for offset 0
+- Root cause: `(if off ...)` failed when off=0 because Habu treats 0 as falsey
+- Fix: Changed to `(if (numberp off) ...)` to correctly detect found variables
 
-**Native Compiler Progress** (November 26, 2025):
-- Created native-compiler.lisp: bundled pure-Habu compiler (~700 lines)
-- All functions prefixed with nc- to avoid shadowing
-- Components: ARM64 asm encoders, reader, IR compiler, code generator
-- Fixed top-level setq handling in compile-forms-helper
-- Native compiler can parse "(+ 10 7)" and compile to IR
-- Exit code 3 = length of (add (lit 10) (lit 7))
-
-**Bug Fix**: Top-level setq handling
-- compile-forms-helper was treating setq as main expression, stopping compilation
-- Now properly continues processing defuns and main call after setq
+**Native Compiler Status**:
+- native-compiler.lisp: Full read-compile-eval pipeline working
+- Parses Lisp source strings, compiles to IR, evaluates IR
+- Exit code 17 for `(+ (* 3 4) 5)` - correct!
+- 10 test cases all passing
 
 **Next Steps**:
 1. Add codegen to native compiler for full self-hosting
