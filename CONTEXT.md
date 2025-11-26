@@ -6,7 +6,7 @@
 
 ## Session Summary (November 26, 2025)
 
-This session focused on fixing critical bugs in the native compiler.
+This session focused on fixing critical bugs in the native compiler and achieving full IR evaluation.
 
 **Accomplishments**:
 1. Fixed tree-shaking IR traversal for LET-EXPR, IF-EXPR, PROGN nodes
@@ -16,7 +16,9 @@ This session focused on fixing critical bugs in the native compiler.
 5. **Fixed nested recursive calls bug** in call-fn codegen
 6. **Fixed nc-env-extend nested call bug** - avoid nested recursive calls in args
 7. **Fixed numberp check for offset 0** - Habu treats 0 as falsey
-8. All 10 native compiler tests pass
+8. **Fixed global variable initialization** - inlined constants for delivery
+9. All 10 native compiler tests pass
+10. Cleaned up debug functions from native-compiler.lisp
 
 **Bug Fix 1**: nc-env-extend nested call bug
 - Root cause: `(append (reverse (add-bs ...)) env)` had nested recursive calls
@@ -27,14 +29,20 @@ This session focused on fixing critical bugs in the native compiler.
 - Root cause: `(if off ...)` failed when off=0 because Habu treats 0 as falsey
 - Fix: Changed to `(if (numberp off) ...)` to correctly detect found variables
 
+**Bug Fix 3**: Global variable initialization for delivery
+- Root cause: Top-level `setq` not executed in delivered executables
+- Fix: Replaced global variables with inline constants using `defun` wrappers
+- Constants: frame-size=#xFF0, env-base=#x180, temp-base=#x40, etc.
+
 **Native Compiler Status**:
 - native-compiler.lisp: Full read-compile-eval pipeline working
 - Parses Lisp source strings, compiles to IR, evaluates IR
 - Exit code 17 for `(+ (* 3 4) 5)` - correct!
 - 10 test cases all passing
+- Tree-shaking: 75% reduction (187 of 249 functions removed)
 
 **Next Steps**:
-1. Add codegen to native compiler for full self-hosting
+1. Test and verify nc-codegen path for full ARM64 code generation
 2. Complete Stage 2 bootstrap (compile compiler with itself)
 3. Add more runtime functions (substring, etc.)
 
