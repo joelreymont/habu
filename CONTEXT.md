@@ -2,7 +2,7 @@
 
 **Session Date**: November 22-26, 2025
 **Focus**: Self-hosting ARM64 Lisp compiler with native executable generation
-**Last Updated**: November 26, 2025 (List accessors for self-hosting - 77/77 native tests pass)
+**Last Updated**: November 26, 2025 (Bootstrap compiler tests - 97 tests pass: 77 native + 10 self-host + 10 bootstrap)
 
 ## Session Summary (November 26, 2025)
 
@@ -53,6 +53,9 @@ This session completed the bootstrap compiler ARM64 codegen, verified bytecode e
 42. **Self-hosting native tests** - 10 compiler-pattern tests (tree traversal, env lookup, mini-eval, etc.)
 43. **77/77 native tests pass** - all arithmetic, cons, predicates, symbols, vectors, strings, labels/closures, list functions, list accessors
 44. **List accessor functions** - cadr, caddr, cadddr, cddr, cdddr, first-fourth, rest, nth, count for self-hosting
+45. **Bootstrap compiler tests** - 10 tests validating compiler patterns (expr compiler, IR builder, symbol table, etc.)
+46. **Fixed mod-ir codegen** - compiler generates 'mod-ir but codegen only checked 'mod, now handles both
+47. **97 tests pass** - 77 native + 10 self-hosting + 10 bootstrap compiler tests
 
 **Package Structure** (November 26, 2025):
 - HABU-SYS: System/runtime primitives (string-length, string-ref, make-vector, etc.)
