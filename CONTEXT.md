@@ -2,11 +2,11 @@
 
 **Session Date**: November 22-26, 2025
 **Focus**: Self-hosting ARM64 Lisp compiler with native executable generation
-**Last Updated**: November 26, 2025 (Bitwise Operations Added)
+**Last Updated**: November 26, 2025 (Mutation and Multiple Values Added)
 
 ## Session Summary (November 26, 2025)
 
-This session completed the bootstrap compiler ARM64 codegen, verified bytecode execution, and added bitwise operations.
+This session completed the bootstrap compiler ARM64 codegen, verified bytecode execution, added bitwise operations, mutation operations, and multiple values support.
 
 **Accomplishments**:
 1. Reorganized file structure: `native-compiler.lisp` -> `bootstrap/compiler.lisp`
@@ -22,7 +22,10 @@ This session completed the bootstrap compiler ARM64 codegen, verified bytecode e
 11. **Fixed if-ir branch offset calculation**
 12. **Implemented function linking for multi-function programs**
 13. **Implemented bitwise operations (logand, logior, logxor, ash)**
-14. All tests pass: 48 IR evaluator + 25 codegen + 10 pipeline + 8 execution + 13 function linking + 18 bitwise
+14. **Implemented mutation operations (setq, setcar, setcdr, incf, push, setf)**
+15. **Implemented multiple values (values, multiple-value-bind)**
+16. **Fixed LET/LET*/DEFUN to handle multiple body forms**
+17. All tests pass: 48 IR evaluator + 25 codegen + 10 pipeline + 8 execution + 13 function linking + 18 bitwise + 14 mutation + 8 mvb
 
 **File Organization**:
 - `bootstrap/compiler.lisp` - Pure Habu bootstrap compiler (nc-* functions)
@@ -59,6 +62,8 @@ This session completed the bootstrap compiler ARM64 codegen, verified bytecode e
 - Iteration: dotimes, dolist
 - Type predicates: null, numberp, consp
 - List operations: cons, car, cdr, list, quote, function
+- Mutation: setq, setcar, setcdr, incf, push, setf
+- Multiple values: values, multiple-value-bind
 
 **ARM64 Codegen Status**:
 - Complete codegen for all IR nodes
