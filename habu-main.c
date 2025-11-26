@@ -12,6 +12,7 @@
 #include <stdlib.h>
 #include <stdint.h>
 #include <string.h>
+#include <unistd.h>
 #include <sys/mman.h>
 #include "runtime/habu.h"
 
@@ -271,10 +272,45 @@ static void repl(void) {
             }
             if (strcmp(line, ",help") == 0 || strcmp(line, ",h") == 0) {
                 printf("REPL Commands:\n");
-                printf("  ,quit, ,q      Exit the REPL\n");
-                printf("  ,help, ,h      Show this help\n");
-                printf("\nNote: The REPL currently requires external compilation.\n");
-                printf("Use sbcl + run-bytecode workflow for full evaluation.\n");
+                printf("  ,quit, ,q        Exit the REPL\n");
+                printf("  ,help, ,h        Show this help\n");
+                printf("  ,load <file>     Load and run a Lisp file\n");
+                printf("  ,deliver <in> <out>  Create standalone executable\n");
+                printf("  ,compile <file>  Compile to .bin\n");
+                continue;
+            }
+            if (strncmp(line, ",load ", 6) == 0) {
+                char cmd[1024];
+                snprintf(cmd, sizeof(cmd), "./run-bytecode \"%s\" 2>&1", line + 6);
+                /* First compile */
+                char compile_cmd[1024];
+                snprintf(compile_cmd, sizeof(compile_cmd),
+                    "sbcl --noinform --non-interactive "
+                    "--load sbcl-habu-shim.lisp "
+                    "--load habu-arm64-codegen-sbcl.lisp "
+                    "--load run-habu.lisp "
+                    "--eval '(habu-sbcl:compile-and-run-forms (habu-sbcl:read-forms-from-file \"%s\"))' "
+                    "--eval '(sb-ext:quit)' 2>/dev/null", line + 6);
+                system(compile_cmd);
+                continue;
+            }
+            if (strncmp(line, ",deliver ", 9) == 0) {
+                char *args = line + 9;
+                char source[256], output[256];
+                if (sscanf(args, "%255s %255s", source, output) == 2) {
+                    char cmd[1024];
+                    snprintf(cmd, sizeof(cmd), "./habu-deliver \"%s\" -o \"%s\"", source, output);
+                    system(cmd);
+                } else {
+                    printf("Usage: ,deliver <source.lisp> <output>\n");
+                }
+                continue;
+            }
+            if (strncmp(line, ",compile ", 9) == 0) {
+                char *file = line + 9;
+                char cmd[1024];
+                snprintf(cmd, sizeof(cmd), "./habu-compile \"%s\"", file);
+                system(cmd);
                 continue;
             }
             printf("Unknown command: %s\n", line);
@@ -282,9 +318,23 @@ static void repl(void) {
             continue;
         }
 
-        /* For now, just echo the input - full compilation requires SBCL */
-        printf("Input: %s\n", line);
-        printf("(Full evaluation requires external compiler)\n");
+        /* For now, compile and run the expression */
+        char tmpfile[] = "/tmp/habu-repl-XXXXXX.lisp";
+        int fd = mkstemps(tmpfile, 5);
+        if (fd >= 0) {
+            write(fd, line, strlen(line));
+            close(fd);
+            char cmd[1024];
+            snprintf(cmd, sizeof(cmd),
+                "sbcl --noinform --non-interactive "
+                "--load sbcl-habu-shim.lisp "
+                "--load habu-arm64-codegen-sbcl.lisp "
+                "--load run-habu.lisp "
+                "--eval '(format t \"~A~%%\" (habu-sbcl:compile-and-run-forms (habu-sbcl:read-forms-from-file \"%s\")))' "
+                "--eval '(sb-ext:quit)' 2>/dev/null", tmpfile);
+            system(cmd);
+            unlink(tmpfile);
+        }
     }
 }
 
