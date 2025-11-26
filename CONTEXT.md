@@ -6,7 +6,7 @@
 
 ## Session Summary (November 26, 2025)
 
-This session focused on organizing the bootstrap compiler and implementing mutual recursion support.
+This session focused on completing the bootstrap compiler with full closure and iteration support.
 
 **Accomplishments**:
 1. Reorganized file structure: `native-compiler.lisp` -> `bootstrap/compiler.lisp`
@@ -15,7 +15,10 @@ This session focused on organizing the bootstrap compiler and implementing mutua
 4. Created HABU package for all Habu code to avoid SBCL conflicts
 5. Renamed `habu-deliver` to `deliver`
 6. **Implemented two-pass compilation for mutual recursion**
-7. All 17 bootstrap compiler tests pass including mutual recursion
+7. **Implemented funcall and higher-order function support**
+8. **Implemented lambda/closures with free variable capture**
+9. **Implemented iteration constructs (dotimes, dolist)**
+10. All 48 bootstrap compiler tests pass
 
 **File Organization**:
 - `bootstrap/compiler.lisp` - Pure Habu bootstrap compiler (nc-* functions)
@@ -36,28 +39,26 @@ This session focused on organizing the bootstrap compiler and implementing mutua
 **Bootstrap Compiler Status**:
 - `bootstrap/compiler.lisp`: Full read-compile-eval via IR evaluator
 - Parses Lisp source strings, compiles to IR, evaluates IR
-- 41 test cases all passing
+- 48 test cases all passing
 
 **Supported Features in Bootstrap Compiler**:
 - Arithmetic: +, -, *, /, mod, rem
 - Comparisons: =, <, >, <=, >=
-- Control flow: if, cond, when, unless
+- Control flow: if, cond, when, unless, progn
 - Boolean: and, or, not
-- Binding: let, let*, progn
+- Binding: let, let*
 - Functions: defun, funcall, higher-order functions
+- Lambda/closures with free variable capture
 - Mutual recursion via two-pass compilation
+- Iteration: dotimes, dolist
 - Type predicates: null, numberp, consp
 - List operations: cons, car, cdr, list, quote, function
 
 **Known Limitations**:
 - Reader parses `1+` as `1` then `+` (not as symbol)
-- No lambda/closures yet (only named functions)
-- No dotimes/dolist iteration yet
 
 **Next Steps**:
-1. Add lambda/closure support
-2. Add iteration constructs (dotimes, dolist)
-3. Complete Stage 2 bootstrap (ARM64 codegen path)
+1. Complete Stage 2 bootstrap (ARM64 codegen path)
 
 ## Current Status Summary
 
