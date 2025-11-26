@@ -2,8 +2,45 @@
 ;;; Habu Native Compiler - Self-Hosting ARM64 Lisp Compiler
 ;;; ============================================================
 ;;;
-;;; All functions prefixed with nc- to avoid shadowing built-ins.
 ;;; Components: ARM64 asm, utils, reader, codegen, IR compiler
+;;;
+;;; This file defines the HABU package which provides:
+;;; - System functions (string-length, string-ref, etc.)
+;;; - Bootstrap compiler (nc-* functions)
+;;; - ARM64 code generation
+
+;;; ============================================================
+;;; Part 0: Package Definition
+;;; ============================================================
+
+(defpackage :habu
+  (:use :cl)
+  ;; Shadow CL symbols we redefine
+  (:shadow)
+  ;; Export system functions (available in self-hosted Habu)
+  (:export
+   ;; String functions
+   string-length string-ref make-string-from-vector
+   ;; Vector functions
+   make-vector vector-set
+   ;; Compiler entry points
+   nc-read-all nc-compile nc-eval-ir nc-eval-forms nc-codegen
+   main))
+
+(in-package :habu)
+
+;;; ============================================================
+;;; Part 0b: System Functions (SBCL compatibility layer)
+;;; ============================================================
+
+;; These functions exist in Habu runtime but not in standard CL
+;; In self-hosted Habu, these would be primitives
+(defun string-length (s) (length s))
+(defun string-ref (s i) (char-code (char s i)))
+(defun make-vector (n) (make-array n))
+(defun vector-set (v i x) (setf (aref v i) x))
+(defun make-string-from-vector (v)
+  (map 'string #'code-char v))
 
 ;;; ============================================================
 ;;; Part 1: ARM64 Instruction Encoders (nc-asm-*)
@@ -649,6 +686,74 @@
          (nc-eval-ir bir (bind vals offs env)))))
     (t 0)))
 
+;; Global function environment for IR evaluation
+(defvar *nc-fenv* nil)
+
+(defun nc-eval-ir-with-fns (ir env fenv)
+  "Evaluate IR with function environment"
+  (cond
+    ((nc-has-tag ir 'lit) (cadr ir))
+    ((nc-has-tag ir 'var)
+     (let ((off (cadr ir)))
+       (nth off env)))
+    ((nc-has-tag ir 'add)
+     (+ (nc-eval-ir-with-fns (cadr ir) env fenv)
+        (nc-eval-ir-with-fns (caddr ir) env fenv)))
+    ((nc-has-tag ir 'sub)
+     (- (nc-eval-ir-with-fns (cadr ir) env fenv)
+        (nc-eval-ir-with-fns (caddr ir) env fenv)))
+    ((nc-has-tag ir 'mul)
+     (* (nc-eval-ir-with-fns (cadr ir) env fenv)
+        (nc-eval-ir-with-fns (caddr ir) env fenv)))
+    ((nc-has-tag ir 'cmp-eq)
+     (if (= (nc-eval-ir-with-fns (cadr ir) env fenv)
+            (nc-eval-ir-with-fns (caddr ir) env fenv)) 1 0))
+    ((nc-has-tag ir 'cmp-lt)
+     (if (< (nc-eval-ir-with-fns (cadr ir) env fenv)
+            (nc-eval-ir-with-fns (caddr ir) env fenv)) 1 0))
+    ((nc-has-tag ir 'cmp-gt)
+     (if (> (nc-eval-ir-with-fns (cadr ir) env fenv)
+            (nc-eval-ir-with-fns (caddr ir) env fenv)) 1 0))
+    ((nc-has-tag ir 'cmp-le)
+     (if (<= (nc-eval-ir-with-fns (cadr ir) env fenv)
+             (nc-eval-ir-with-fns (caddr ir) env fenv)) 1 0))
+    ((nc-has-tag ir 'cmp-ge)
+     (if (>= (nc-eval-ir-with-fns (cadr ir) env fenv)
+             (nc-eval-ir-with-fns (caddr ir) env fenv)) 1 0))
+    ((nc-has-tag ir 'if-ir)
+     (if (not (= (nc-eval-ir-with-fns (cadr ir) env fenv) 0))
+         (nc-eval-ir-with-fns (caddr ir) env fenv)
+         (nc-eval-ir-with-fns (cadddr ir) env fenv)))
+    ((nc-has-tag ir 'let-ir)
+     (let* ((vals (cadr ir))
+            (bir (caddr ir))
+            (offs (nth 3 (cdr ir))))
+       (labels ((bind (vs os e)
+                  (if (null vs) e
+                      (let ((v (nc-eval-ir-with-fns (car vs) env fenv)))
+                        (bind (cdr vs) (cdr os)
+                              (append e (list v)))))))
+         (nc-eval-ir-with-fns bir (bind vals offs env) fenv))))
+    ((nc-has-tag ir 'call-fn)
+     ;; call-fn = (call-fn name args-ir-list)
+     (let* ((fnm (cadr ir))
+            (args-ir (caddr ir))
+            (fn-def (cdr (assoc fnm fenv))))
+       (if fn-def
+           ;; fn-def = (name params body-ir param-base)
+           (let* ((params (cadr fn-def))
+                  (body-ir (caddr fn-def)))
+             ;; Evaluate arguments
+             (labels ((eval-args (airs acc)
+                        (if (null airs) (reverse acc)
+                            (eval-args (cdr airs)
+                                       (cons (nc-eval-ir-with-fns (car airs) env fenv) acc)))))
+               (let ((arg-vals (eval-args args-ir nil)))
+                 ;; Call with new env containing args
+                 (nc-eval-ir-with-fns body-ir arg-vals fenv))))
+           0)))
+    (t 0)))
+
 ;;; ============================================================
 ;;; Part 7: Code Generator (nc-codegen-*)
 ;;; ============================================================
@@ -991,15 +1096,34 @@
 ;;; Part 9: Entry Point
 ;;; ============================================================
 
+(defun nc-eval-forms (forms)
+  "Compile and evaluate multiple forms, including defun"
+  ;; Use nc-compile-forms-h to handle defun forms
+  (labels ((proc (fs env fenv)
+             (if (null fs) 0
+                 (let ((f (car fs)))
+                   (if (and (consp f) (eq (car f) 'defun))
+                       ;; Compile defun and add to fenv
+                       (let* ((nm (cadr f))
+                              (ps (caddr f))
+                              (bd (cadddr f))
+                              (cf (nc-compile-defun nm ps bd env fenv))
+                              (nfenv (cons (cons nm cf) fenv)))
+                         (proc (cdr fs) env nfenv))
+                       ;; Evaluate expression with current fenv
+                       (let* ((ir (nc-compile f env fenv))
+                              (result (nc-eval-ir-with-fns ir nil fenv)))
+                         (if (null (cdr fs))
+                             result
+                             (proc (cdr fs) env fenv))))))))
+    (proc forms nil nil)))
+
 (defun main ()
   ;; Full pipeline: parse -> compile to IR -> evaluate IR
   (let* ((src "(+ (* 3 4) 5)")
          (forms (nc-read-all src)))
     (if (consp forms)
-        (let* ((expr (car forms))
-               (ir (nc-compile expr nil nil))
-               (result (nc-eval-ir ir nil)))
-          result)
+        (nc-eval-forms forms)
         0)))
 
 (main)
