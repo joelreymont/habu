@@ -723,12 +723,12 @@
 
 (defun nc-temp-slot (depth)
   (let ((off (+ #x40 (* depth 8))))  ; #x40 = temp base (64)
-    (if (>= off #xC0)                 ; #xC0 = temp guard (192)
+    (if (>= off #x240)                ; #x240 = temp guard (576), allows 64 slots
         (error "Too many temp slots: ~A" depth)
         off)))
 
 (defun nc-spill-slot (idx)
-  (+ #xC0 (* idx 8)))  ; #xC0 = spill base (192)
+  (+ #x240 (* idx 8)))  ; #x240 = spill base (576)
 
 ;;; ============================================================
 ;;; Part 5: Prologue/Epilogue
