@@ -192,12 +192,12 @@ TEST(symbol_nested_allocation) {
 TEST(vector_with_roots) {
     init(1024 * 1024);  /* 1MB heap */
 
-    HABU_ROOT(vec, make_vector(10));
+    HABU_ROOT(vec, make_vector(fixnum_to_value(10)));
 
     /* Fill with rooted objects */
     for (size_t i = 0; i < 10; i++) {
         HABU_ROOT(elem, cons(fixnum_to_value(i), NIL));
-        vector_set(vec, i, elem);
+        vector_set(vec, fixnum_to_value(i), elem);
         HABU_UNROOT(elem);
     }
 
@@ -209,7 +209,7 @@ TEST(vector_with_roots) {
     /* Verify vector and elements still valid */
     assert(get_tag(vec) == TAG_VECTOR);
     for (size_t i = 0; i < 10; i++) {
-        habu_value_t elem = vector_ref(vec, i);
+        habu_value_t elem = vector_ref(vec, fixnum_to_value(i));
         assert(get_tag(elem) == TAG_CONS);
         assert(value_to_fixnum(car(elem)) == (int64_t)i);
     }

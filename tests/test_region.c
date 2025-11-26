@@ -142,9 +142,9 @@ TEST(region_vector_set_ref) {
     habu_value_t vec = region_make_vector(region, 5);
     habu_value_t val = fixnum_to_value(99);
 
-    vector_set(vec, 2, val);
-    assert(vector_ref(vec, 2) == val);
-    assert(is_nil(vector_ref(vec, 0)));
+    vector_set(vec, fixnum_to_value(2), val);
+    assert(vector_ref(vec, fixnum_to_value(2)) == val);
+    assert(is_nil(vector_ref(vec, fixnum_to_value(0))));
 
     region_destroy(region);
 }

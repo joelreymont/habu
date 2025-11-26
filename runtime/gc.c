@@ -1309,7 +1309,11 @@ habu_value_t cons(habu_value_t car, habu_value_t cdr) {
     return tag_pointer(cons, TAG_CONS);
 }
 
-habu_value_t make_vector(size_t length) {
+habu_value_t make_vector(habu_value_t length_val) {
+    if (!is_fixnum(length_val)) {
+        return NIL;
+    }
+    size_t length = (size_t)value_to_fixnum(length_val);
     size_t size = sizeof(habu_vector_t) + length * sizeof(habu_value_t);
     void *mem = gc_alloc(size, TYPE_VECTOR);
     if (!mem) {
@@ -1449,7 +1453,7 @@ habu_value_t make_hash_table(habu_value_t capacity_val) {
     gc_add_root(&ht_val);
 
     /* Allocate buckets vector (may trigger GC) */
-    habu_value_t buckets = make_vector(capacity);
+    habu_value_t buckets = make_vector(fixnum_to_value(capacity));
 
     /* Refresh pointer after potential GC */
     ht = value_to_hashtable(ht_val);
@@ -1889,7 +1893,7 @@ habu_value_t make_array(habu_value_t dims, habu_value_t initial) {
     if (rank == 0 || total_size == 0) return NIL;
 
     /* Create dimension vector */
-    habu_value_t dim_vector = make_vector(rank);
+    habu_value_t dim_vector = make_vector(fixnum_to_value(rank));
     if (is_nil(dim_vector)) return NIL;
     habu_vector_t *dv = value_to_vector(dim_vector);
 
@@ -1908,7 +1912,7 @@ habu_value_t make_array(habu_value_t dims, habu_value_t initial) {
     }
 
     /* Create data vector */
-    habu_value_t data_vector = make_vector(total_size);
+    habu_value_t data_vector = make_vector(fixnum_to_value(total_size));
     if (is_nil(data_vector)) return NIL;
     habu_vector_t *data = value_to_vector(data_vector);
 

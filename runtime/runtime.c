@@ -151,10 +151,14 @@ void set_cdr(habu_value_t cons, habu_value_t value) {
     write_barrier(c, value);
 }
 
-habu_value_t vector_ref(habu_value_t vector, size_t index) {
+habu_value_t vector_ref(habu_value_t vector, habu_value_t index_val) {
     if (get_tag(vector) != TAG_VECTOR) {
         return NIL;
     }
+    if (!is_fixnum(index_val)) {
+        return NIL;
+    }
+    size_t index = (size_t)value_to_fixnum(index_val);
     habu_vector_t *v = value_to_vector(vector);
     if (index >= v->length) {
         return NIL;  /* Out of bounds */
@@ -162,10 +166,14 @@ habu_value_t vector_ref(habu_value_t vector, size_t index) {
     return v->data[index];
 }
 
-void vector_set(habu_value_t vector, size_t index, habu_value_t value) {
+void vector_set(habu_value_t vector, habu_value_t index_val, habu_value_t value) {
     if (get_tag(vector) != TAG_VECTOR) {
         return;
     }
+    if (!is_fixnum(index_val)) {
+        return;
+    }
+    size_t index = (size_t)value_to_fixnum(index_val);
     habu_vector_t *v = value_to_vector(vector);
     if (index >= v->length) {
         return;  /* Out of bounds */

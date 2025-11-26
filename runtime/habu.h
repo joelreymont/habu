@@ -107,7 +107,7 @@ void gc_reset_stats(void);
 
 /* Object allocation functions */
 habu_value_t cons(habu_value_t car, habu_value_t cdr);
-habu_value_t make_vector(size_t length);
+habu_value_t make_vector(habu_value_t length_val);
 habu_value_t make_string(const char *str, size_t length);
 habu_value_t make_symbol(const char *name);
 
@@ -121,8 +121,8 @@ habu_value_t car(habu_value_t cons);
 habu_value_t cdr(habu_value_t cons);
 void set_car(habu_value_t cons, habu_value_t value);
 void set_cdr(habu_value_t cons, habu_value_t value);
-habu_value_t vector_ref(habu_value_t vector, size_t index);
-void vector_set(habu_value_t vector, size_t index, habu_value_t value);
+habu_value_t vector_ref(habu_value_t vector, habu_value_t index);
+void vector_set(habu_value_t vector, habu_value_t index, habu_value_t value);
 
 /* String operations */
 habu_value_t string_ref(habu_value_t str_val, size_t index);

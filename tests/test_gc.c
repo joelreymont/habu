@@ -41,7 +41,7 @@ TEST(gc_cons_alloc) {
 }
 
 TEST(gc_vector_alloc) {
-    habu_value_t vec = make_vector(5);
+    habu_value_t vec = make_vector(fixnum_to_value(5));
     assert(!is_nil(vec));
     assert(get_tag(vec) == TAG_VECTOR);
 
@@ -105,14 +105,14 @@ TEST(gc_list_creation) {
 }
 
 TEST(gc_vector_operations) {
-    habu_value_t vec = make_vector(10);
+    habu_value_t vec = make_vector(fixnum_to_value(10));
 
     for (size_t i = 0; i < 10; i++) {
-        vector_set(vec, i, fixnum_to_value(i * 2));
+        vector_set(vec, fixnum_to_value(i), fixnum_to_value(i * 2));
     }
 
     for (size_t i = 0; i < 10; i++) {
-        habu_value_t val = vector_ref(vec, i);
+        habu_value_t val = vector_ref(vec, fixnum_to_value(i));
         assert(is_fixnum(val));
         assert(value_to_fixnum(val) == (habu_fixnum_t)(i * 2));
     }
@@ -161,17 +161,17 @@ TEST(gc_disabled_mode) {
 
 TEST(gc_mixed_types) {
     habu_value_t cons_val = cons(fixnum_to_value(1), fixnum_to_value(2));
-    habu_value_t vec = make_vector(3);
+    habu_value_t vec = make_vector(fixnum_to_value(3));
     habu_value_t str = make_string("test", 4);
     habu_value_t sym = make_symbol("x");
 
-    vector_set(vec, 0, cons_val);
-    vector_set(vec, 1, str);
-    vector_set(vec, 2, sym);
+    vector_set(vec, fixnum_to_value(0), cons_val);
+    vector_set(vec, fixnum_to_value(1), str);
+    vector_set(vec, fixnum_to_value(2), sym);
 
-    assert(!is_nil(vector_ref(vec, 0)));
-    assert(!is_nil(vector_ref(vec, 1)));
-    assert(!is_nil(vector_ref(vec, 2)));
+    assert(!is_nil(vector_ref(vec, fixnum_to_value(0))));
+    assert(!is_nil(vector_ref(vec, fixnum_to_value(1))));
+    assert(!is_nil(vector_ref(vec, fixnum_to_value(2))));
 }
 
 TEST(gc_heap_usage) {
@@ -250,7 +250,7 @@ TEST(gc_promotion) {
 
 TEST(gc_write_barrier) {
     /* Create an old gen object (via promotion) */
-    habu_value_t old_vec = make_vector(5);
+    habu_value_t old_vec = make_vector(fixnum_to_value(5));
     gc_add_root(&old_vec);
 
     gc_reset_stats();
