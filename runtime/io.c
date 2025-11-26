@@ -333,6 +333,7 @@ habu_value_t print_value(habu_value_t value) {
 habu_value_t println_value(habu_value_t value) {
     print_value(value);
     printf("\n");
+    fflush(stdout);
     return NIL;
 }
 

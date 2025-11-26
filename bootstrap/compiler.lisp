@@ -441,27 +441,33 @@
   "Generate code to build a string from character codes.
    Returns code that leaves the string in x0."
   (let* ((len (length chars))
+         (tagged-len (ash len 4))  ; Tag length as fixnum
          (vec-slot (nc-temp-slot td))
-         ;; Allocate vector: movz x0, len; ldr x11, [x19, #56]; blr x11
+         ;; Allocate vector: movz x0, tagged-len; ldr x11, [x19, #56]; blr x11
          ;; Runtime table index 7 = make_vector at offset 56
          (alloc (nc-append-all
-                 (list (nc-movz 0 len)
+                 (list (if (< tagged-len #x10000)
+                           (nc-movz 0 tagged-len)
+                           (nc-load-addr 0 tagged-len))
                        (nc-ldr-offset 11 19 56)
                        (nc-blr 11)
                        (nc-str-offset 0 31 vec-slot)))))
-    ;; Store each character: ldr x0, [sp, vec-slot]; movz x1, idx; movz x2, tagged-ch; ldr x11, [x19, #64]; blr x11
+    ;; Store each character: ldr x0, [sp, vec-slot]; movz x1, tagged-idx; movz x2, tagged-ch; ldr x11, [x19, #64]; blr x11
     ;; Runtime table index 8 = vector_set at offset 64
     (labels ((store-chars (chs idx acc)
                (if (null chs)
                    acc
                    (let* ((ch (car chs))
-                          (tagged (ash ch 4))
+                          (tagged-idx (ash idx 4))    ; Tag index as fixnum
+                          (tagged-ch (ash ch 4))      ; Tag character as fixnum
                           (store-code (nc-append-all
                                        (list (nc-ldr-offset 0 31 vec-slot)
-                                             (nc-movz 1 idx)
-                                             (if (< tagged #x10000)
-                                                 (nc-movz 2 tagged)
-                                                 (nc-load-addr 2 tagged))
+                                             (if (< tagged-idx #x10000)
+                                                 (nc-movz 1 tagged-idx)
+                                                 (nc-load-addr 1 tagged-idx))
+                                             (if (< tagged-ch #x10000)
+                                                 (nc-movz 2 tagged-ch)
+                                                 (nc-load-addr 2 tagged-ch))
                                              (nc-ldr-offset 11 19 64)
                                              (nc-blr 11)))))
                      (store-chars (cdr chs) (+ idx 1) (append acc store-code))))))
@@ -600,7 +606,8 @@
          (uname (string-upcase name)))
     (cons (cond ((string= uname "NIL") nil)
                 ((string= uname "T") t)
-                (t (intern uname)))
+                ;; Intern into HABU package for correct symbol comparison
+                (t (intern uname (find-package :habu))))
           end)))
 
 (defun nc-read-str-chars (s pos chars)
@@ -936,9 +943,10 @@
      (let ((off (nc-env-lookup expr env)))
        (if (numberp off)
            (list 'var off)
-           ;; Check if it's a known function name - return as symbol reference
+           ;; Check if it's a known function name - return as lambda-ref
+           ;; This creates a closure pointing to the function (no captures)
            (if (and fenv (assoc expr fenv))
-               (list 'sym-lit (symbol-name expr))
+               (list 'lambda-ref expr nil)
                (list 'lit 0)))))
     ((consp expr)
      (let ((op (car expr)))
@@ -1127,10 +1135,11 @@
                 (nc-compile body env fenv)
                 (nc-compile (list 'LET (list (car bs)) (cons 'LET* (cons (cdr bs) body-forms))) env fenv))))
          ((eq op 'quote) (nc-quote-ir (cadr expr)))
-         ;; function - return the function name (for passing to funcall)
+         ;; function - return a reference to the named function (for funcall)
          ((eq op 'function)
           (let ((fn-name (cadr expr)))
-            (list 'sym-lit (symbol-name fn-name))))
+            ;; Create a lambda-ref pointing to the function (no captures)
+            (list 'lambda-ref fn-name nil)))
          ;; lambda - anonymous function (closure)
          ((eq op 'lambda)
           (let* ((params (cadr expr))
@@ -1611,6 +1620,10 @@
                      (let ((arg-vals (eval-args args-ir nil)))
                        (nc-eval-ir-with-fns body-ir arg-vals fenv))))
                  0)))))
+    ((nc-has-tag ir 'lambda-ref)
+     ;; lambda-ref = (lambda-ref fn-name free-var-offsets)
+     ;; Returns the function name as a symbol for lookup in funcall
+     (cadr ir))
     ((nc-has-tag ir 'lambda-ir)
      ;; lambda-ir = (lambda-ir params body free-vars free-var-offsets)
      ;; Create a closure: capture the values of free variables using offsets
@@ -2879,15 +2892,18 @@
             (nc-compile-defuns (cdr forms) env fenv acc)))))
 
 (defun nc-find-main-form (forms)
-  "Find the last non-defun form (the main expression)"
-  (labels ((find-last (fs last-non-defun)
+  "Find all non-defun forms and wrap them in progn if more than one"
+  (labels ((collect-non-defuns (fs acc)
              (if (null fs)
-                 last-non-defun
+                 (reverse acc)
                  (let ((f (car fs)))
                    (if (and (consp f) (eq (car f) 'defun))
-                       (find-last (cdr fs) last-non-defun)
-                       (find-last (cdr fs) f))))))
-    (find-last forms nil)))
+                       (collect-non-defuns (cdr fs) acc)
+                       (collect-non-defuns (cdr fs) (cons f acc)))))))
+    (let ((main-forms (collect-non-defuns forms nil)))
+      (cond ((null main-forms) nil)
+            ((null (cdr main-forms)) (car main-forms))
+            (t (cons 'progn main-forms))))))
 
 (defun nc-compile-forms (forms)
   "Two-pass compilation: first collect names, then compile with complete fenv"
@@ -3213,60 +3229,61 @@ int main(int argc, char **argv) {
     if (mprotect(exec_mem, g_bytecode_size, PROT_READ | PROT_EXEC) != 0) {
         perror(\"mprotect\"); munmap(exec_mem, g_bytecode_size); return 1;
     }
-    habu_init(1024 * 1024);
-    g_runtime_table[0] = (void*)habu_cons;
-    g_runtime_table[1] = (void*)habu_car;
-    g_runtime_table[2] = (void*)habu_cdr;
-    g_runtime_table[3] = (void*)habu_make_closure;
-    g_runtime_table[4] = (void*)habu_closure_code;
-    g_runtime_table[5] = (void*)habu_closure_env;
+    init(1024 * 1024);
+    g_runtime_table[0] = (void*)cons;
+    g_runtime_table[1] = (void*)car;
+    g_runtime_table[2] = (void*)cdr;
+    g_runtime_table[3] = (void*)make_closure;
+    g_runtime_table[4] = (void*)closure_code;
+    g_runtime_table[5] = (void*)closure_env;
     g_runtime_table[6] = exec_mem;
-    g_runtime_table[7] = (void*)habu_make_vector;
-    g_runtime_table[8] = (void*)habu_vector_set;
-    g_runtime_table[9] = (void*)habu_vector_ref;
-    g_runtime_table[10] = (void*)habu_make_string_from_vector;
-    g_runtime_table[11] = (void*)habu_make_symbol_from_string;
-    g_runtime_table[12] = (void*)habu_string_length_raw;
-    g_runtime_table[13] = (void*)habu_symbol_name;
-    g_runtime_table[14] = (void*)habu_set_car;
-    g_runtime_table[15] = (void*)habu_set_cdr;
-    g_runtime_table[16] = (void*)habu_string_ref;
-    g_runtime_table[17] = (void*)habu_values_set;
-    g_runtime_table[18] = (void*)habu_values_get;
-    g_runtime_table[19] = (void*)habu_make_hash_table;
-    g_runtime_table[20] = (void*)habu_gethash;
-    g_runtime_table[21] = (void*)habu_puthash;
-    g_runtime_table[22] = (void*)habu_remhash;
-    g_runtime_table[23] = (void*)habu_hash_table_count;
-    g_runtime_table[24] = (void*)habu_string_concat;
-    g_runtime_table[25] = (void*)habu_string_substring;
-    g_runtime_table[26] = (void*)habu_fixnum_to_string;
-    g_runtime_table[27] = (void*)habu_values_count_get;
-    g_runtime_table[28] = (void*)habu_gensym;
-    g_runtime_table[29] = (void*)habu_make_float;
-    g_runtime_table[30] = (void*)habu_float_add;
-    g_runtime_table[31] = (void*)habu_float_sub;
-    g_runtime_table[32] = (void*)habu_float_mul;
-    g_runtime_table[33] = (void*)habu_float_div;
-    g_runtime_table[34] = (void*)habu_float_lt;
-    g_runtime_table[35] = (void*)habu_float_gt;
-    g_runtime_table[36] = (void*)habu_float_le;
-    g_runtime_table[37] = (void*)habu_float_ge;
-    g_runtime_table[38] = (void*)habu_float_eq;
-    g_runtime_table[39] = (void*)habu_fixnum_to_float;
-    g_runtime_table[40] = (void*)habu_float_to_fixnum;
-    g_runtime_table[41] = (void*)habu_float_value;
-    g_runtime_table[42] = (void*)habu_open_file;
-    g_runtime_table[43] = (void*)habu_close_file;
-    g_runtime_table[44] = (void*)habu_read_line;
-    g_runtime_table[45] = (void*)habu_write_string;
-    g_runtime_table[46] = (void*)habu_read_file;
-    g_runtime_table[47] = (void*)habu_write_file;
-    g_runtime_table[48] = (void*)habu_print_value;
-    g_runtime_table[49] = (void*)habu_println_value;
-    g_runtime_table[50] = (void*)habu_get_time_ns;
-    g_runtime_table[51] = (void*)habu_system;
-    g_runtime_table[52] = (void*)habu_string_equal;
+    g_runtime_table[7] = (void*)make_vector;
+    g_runtime_table[8] = (void*)vector_set;
+    g_runtime_table[9] = (void*)vector_ref;
+    g_runtime_table[10] = (void*)make_string_from_vector;
+    g_runtime_table[11] = (void*)make_symbol_from_string;
+    g_runtime_table[12] = (void*)string_length_raw;
+    g_runtime_table[13] = (void*)symbol_name;
+    g_runtime_table[14] = (void*)set_car;
+    g_runtime_table[15] = (void*)set_cdr;
+    g_runtime_table[16] = (void*)string_ref;
+    g_runtime_table[17] = (void*)values_set;
+    g_runtime_table[18] = (void*)values_get;
+    g_runtime_table[19] = (void*)make_hash_table;
+    g_runtime_table[20] = (void*)gethash;
+    g_runtime_table[21] = (void*)puthash;
+    g_runtime_table[22] = (void*)remhash;
+    g_runtime_table[23] = (void*)hash_table_count;
+    g_runtime_table[24] = (void*)string_concat;
+    g_runtime_table[25] = (void*)string_substring;
+    g_runtime_table[26] = (void*)fixnum_to_string;
+    g_runtime_table[27] = (void*)values_count_get;
+    g_runtime_table[28] = (void*)gensym;
+    g_runtime_table[29] = (void*)make_float;
+    g_runtime_table[30] = (void*)float_add;
+    g_runtime_table[31] = (void*)float_sub;
+    g_runtime_table[32] = (void*)float_mul;
+    g_runtime_table[33] = (void*)float_div;
+    g_runtime_table[34] = (void*)float_lt;
+    g_runtime_table[35] = (void*)float_gt;
+    g_runtime_table[36] = (void*)float_le;
+    g_runtime_table[37] = (void*)float_ge;
+    g_runtime_table[38] = (void*)float_eq;
+    g_runtime_table[39] = (void*)fixnum_to_float;
+    g_runtime_table[40] = (void*)float_to_fixnum;
+    g_runtime_table[41] = (void*)float_value;
+    g_runtime_table[42] = (void*)open_file;
+    g_runtime_table[43] = (void*)close_file;
+    g_runtime_table[44] = (void*)read_line;
+    g_runtime_table[45] = (void*)write_string;
+    g_runtime_table[46] = (void*)read_file;
+    g_runtime_table[47] = (void*)write_file;
+    g_runtime_table[48] = (void*)print_value;
+    g_runtime_table[49] = (void*)println_value;
+    g_runtime_table[50] = (void*)get_time_ns;
+    g_runtime_table[51] = (void*)system_cmd;
+    g_runtime_table[52] = (void*)string_equal;
+    g_runtime_table[53] = (void*)write_bytes;
     compiled_fn_t fn = (compiled_fn_t)exec_mem;
     int64_t result = fn(g_runtime_table);
     printf(\"Result: %lld\\n\", result >> 4);
