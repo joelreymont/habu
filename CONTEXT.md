@@ -80,13 +80,19 @@ Disable: `--no-tree-shaking`
 3. Deliver standalone compiler executable
 4. Test: native compiler compiles programs correctly
 
-**Current blocker**:
-- `defmacro` uses SBCL's `eval` to create macro expanders at compile time
-- Programs that don't use `defmacro` can be compiled without this
+**Current blockers**:
+1. `defmacro` uses SBCL's `eval` - programs without user macros work fine
+2. Nested recursive calls in argument position have issues - use let* to sequence
 
-**Workaround**:
+**Workarounds**:
 - Initial bootstrap targets programs without user-defined macros
-- Built-in macros (loop, defstruct, etc.) are pre-expanded
+- Use let* to sequence recursive function calls (not direct nesting)
+- Example: `(let* ((a (f x)) (b (g y))) (h a b))` instead of `(h (f x) (g y))`
+
+**Verified working in native**:
+- Compile expressions to IR
+- Evaluate IR to values
+- Nested expressions like `(+ (* 3 4) 5)` = 17
 
 ### Executable Generation Flow
 ```
