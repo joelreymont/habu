@@ -22,7 +22,14 @@ The Habu compiler can now compile **all 107 functions** from habu-arm64-codegen-
   - GC integration complete
 - **Profiler**: Function-level timing with nanosecond precision (docs/PROFILER.md)
 
-**Next Focus**: Binary generation and REPL with readline editing
+**Completed**: Binary generation and REPL with readline editing
+
+**habu Executable**:
+- `./habu` - Start REPL with snake emoji prompt
+- `./habu file.bin` - Run compiled bytecode
+- `habu-compile source.lisp -o output.bin` - Compile Lisp to bytecode
+- REPL commands: `,help`, `,quit`
+- Full readline editing: arrow keys, Ctrl-A/E, backspace, delete
 
 ### Stage 2 Bootstrap Achievements
 
