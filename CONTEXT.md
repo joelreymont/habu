@@ -65,17 +65,28 @@ Disable: `--no-tree-shaking`
 ,quit                         Exit REPL
 ```
 
-### Pending: Compiler Bootstrap
+### Compiler Bootstrap Progress (November 26, 2025)
 
-The embedded compiler requires:
-1. Complete the pure Habu compiler in common/ir.lisp and common/compile.lisp
-2. Compile the compiler using SBCL (one-time bootstrap)
-3. Embed compiled compiler in habu executable
-4. Replace SBCL dependency with embedded compiler
+**Status**: All 114 compiler functions compile successfully to native ARM64.
 
-Current blockers:
-- Pure Habu compiler in common/ is incomplete
-- SBCL-hosted compiler uses SBCL-specific features (eval for macros)
+**Verified**:
+- Tree-shaking handles LET-EXPR, IF-EXPR, PROGN correctly
+- Native reader functions work in delivered executables
+- Higher-order functions, closures, recursion all work in native code
+
+**Remaining for full self-hosting**:
+1. Create compiler entry point with file I/O
+2. Package reader + compiler + entry point
+3. Deliver standalone compiler executable
+4. Test: native compiler compiles programs correctly
+
+**Current blocker**:
+- `defmacro` uses SBCL's `eval` to create macro expanders at compile time
+- Programs that don't use `defmacro` can be compiled without this
+
+**Workaround**:
+- Initial bootstrap targets programs without user-defined macros
+- Built-in macros (loop, defstruct, etc.) are pre-expanded
 
 ### Executable Generation Flow
 ```
