@@ -66,6 +66,12 @@
 ;; Test 15: Less than or equal
 (run-nc-test "cmp-le" "(if (<= 5 5) 1 0)" 1)
 
+;; Test 16: Mutual recursion (forward references)
+(run-nc-test "mutual-rec" "(defun odd? (n) (if (= n 0) 0 (even? (- n 1)))) (defun even? (n) (if (= n 0) 1 (odd? (- n 1)))) (even? 10)" 1)
+
+;; Test 17: Fibonacci
+(run-nc-test "fibonacci" "(defun fib (n) (if (< n 2) n (+ (fib (- n 1)) (fib (- n 2))))) (fib 10)" 55)
+
 ;; Summary
 (format t "~%=== Results: ~A passed, ~A failed ===~%"
         *tests-passed* *tests-failed*)

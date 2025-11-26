@@ -1097,26 +1097,54 @@
 ;;; ============================================================
 
 (defun nc-eval-forms (forms)
-  "Compile and evaluate multiple forms, including defun"
-  ;; Use nc-compile-forms-h to handle defun forms
-  (labels ((proc (fs env fenv)
-             (if (null fs) 0
+  "Compile and evaluate multiple forms, including defun.
+   Uses two-pass approach to support mutual recursion:
+   1. First pass: collect all defun names into fenv with placeholders
+   2. Second pass: compile bodies with complete fenv, then evaluate non-defun forms"
+  ;; Pass 1: Collect all defun names
+  (labels ((collect-defuns (fs acc)
+             (if (null fs)
+                 (reverse acc)
                  (let ((f (car fs)))
                    (if (and (consp f) (eq (car f) 'defun))
-                       ;; Compile defun and add to fenv
+                       (collect-defuns (cdr fs) (cons (cadr f) acc))
+                       (collect-defuns (cdr fs) acc)))))
+           ;; Build initial fenv with placeholders
+           (build-fenv (names acc)
+             (if (null names)
+                 acc
+                 (build-fenv (cdr names) (cons (cons (car names) nil) acc))))
+           ;; Compile all defuns with complete fenv
+           (compile-defuns (fs fenv acc)
+             (if (null fs)
+                 (values fenv (reverse acc))
+                 (let ((f (car fs)))
+                   (if (and (consp f) (eq (car f) 'defun))
                        (let* ((nm (cadr f))
                               (ps (caddr f))
                               (bd (cadddr f))
-                              (cf (nc-compile-defun nm ps bd env fenv))
-                              (nfenv (cons (cons nm cf) fenv)))
-                         (proc (cdr fs) env nfenv))
-                       ;; Evaluate expression with current fenv
-                       (let* ((ir (nc-compile f env fenv))
-                              (result (nc-eval-ir-with-fns ir nil fenv)))
-                         (if (null (cdr fs))
-                             result
-                             (proc (cdr fs) env fenv))))))))
-    (proc forms nil nil)))
+                              (cf (nc-compile-defun nm ps bd nil fenv))
+                              (entry (assoc nm fenv)))
+                         ;; Update existing entry with compiled function
+                         (setf (cdr entry) cf)
+                         (compile-defuns (cdr fs) fenv acc))
+                       ;; Non-defun form - save for later evaluation
+                       (compile-defuns (cdr fs) fenv (cons f acc))))))
+           ;; Evaluate non-defun forms
+           (eval-forms (fs fenv)
+             (if (null fs)
+                 0
+                 (let* ((ir (nc-compile (car fs) nil fenv))
+                        (result (nc-eval-ir-with-fns ir nil fenv)))
+                   (if (null (cdr fs))
+                       result
+                       (eval-forms (cdr fs) fenv))))))
+    ;; Execute two-pass compilation
+    (let* ((defun-names (collect-defuns forms nil))
+           (initial-fenv (build-fenv defun-names nil)))
+      (multiple-value-bind (final-fenv other-forms)
+          (compile-defuns forms initial-fenv nil)
+        (eval-forms other-forms final-fenv)))))
 
 (defun main ()
   ;; Full pipeline: parse -> compile to IR -> evaluate IR
