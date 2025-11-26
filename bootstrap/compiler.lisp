@@ -1011,6 +1011,9 @@
           (list 'bsh (nc-compile (cadr expr) env fenv) (nc-compile (caddr expr) env fenv)))
          ((eq op '=)
           (list 'cmp-eq (nc-compile (cadr expr) env fenv) (nc-compile (caddr expr) env fenv)))
+         ((eq op 'eq)
+          ;; eq is pointer equality - same as = for our tagged values
+          (list 'cmp-eq (nc-compile (cadr expr) env fenv) (nc-compile (caddr expr) env fenv)))
          ((eq op '<)
           (list 'cmp-lt (nc-compile (cadr expr) env fenv) (nc-compile (caddr expr) env fenv)))
          ((eq op '>)
@@ -3206,6 +3209,25 @@
              (code (nc-codegen-fn fn rtaddrs fnoffs)))
         (nc-codegen-all-fns (cdr fns) rtaddrs fnoffs (append acc code)))))
 
+(defun nc-lift-lambdas-from-fns (fns acc-fns acc-lambdas)
+  "Lift lambdas from all function bodies.
+   Returns (values lifted-fns all-lambdas) where:
+   - lifted-fns has lambda-ir replaced with lambda-ref in bodies
+   - all-lambdas is list of all lifted lambda definitions"
+  (if (null fns)
+      (values (reverse acc-fns) acc-lambdas)
+      (let* ((fn (car fns))
+             (name (car fn))
+             (params (cadr fn))
+             (body (caddr fn))
+             (fourth (cadddr fn)))
+        (multiple-value-bind (new-body lambdas)
+            (nc-lift-lambdas body)
+          (let ((new-fn (list name params new-body fourth)))
+            (nc-lift-lambdas-from-fns (cdr fns)
+                                      (cons new-fn acc-fns)
+                                      (append acc-lambdas lambdas)))))))
+
 (defun nc-compile-program (forms rtaddrs)
   "Compile forms to bytecode with function linking.
    Layout: prologue + main-code + epilogue + functions + lifted-lambdas
@@ -3214,33 +3236,36 @@
          (defun-fns (car r))
          (mir-raw (cadr r)))
     ;; Lift lambdas from main IR
-    (multiple-value-bind (mir lifted-lambdas)
+    (multiple-value-bind (mir main-lambdas)
         (nc-lift-lambdas mir-raw)
-      ;; Combine defun functions with lifted lambdas
-      (let ((fns (append defun-fns lifted-lambdas)))
-        (if (null fns)
-            ;; No functions defined - simple case
-            (nc-codegen-main mir rtaddrs)
-            ;; Functions defined - need linking
-            (let* (;; First, generate main code with nil fnoffs to get size
-                   ;; This code contains (:call-fn name) markers
-                   (main-code-temp (append (nc-prologue)
-                                           (nc-codegen mir rtaddrs nil 0)
-                                           (nc-epilogue)))
-                   ;; Use nc-code-size to handle markers
-                   (main-size (nc-code-size main-code-temp))
-                   ;; Build fnoffs starting after main code
-                   (fnoffs (nc-build-fnoffs fns main-size nil))
-                   ;; Generate main code again - markers remain, fnoffs now known
-                   (main-code (append (nc-prologue)
-                                      (nc-codegen mir rtaddrs fnoffs 0)
-                                      (nc-epilogue)))
-                   ;; Generate function code with fnoffs (functions can call each other)
-                   (fn-code (nc-codegen-all-fns fns rtaddrs fnoffs nil))
-                   ;; Combine all code (still has markers)
-                   (all-code (append main-code fn-code)))
-              ;; Resolve all markers to actual BL instructions
-              (nc-resolve-calls all-code fnoffs)))))))
+      ;; Lift lambdas from all defun bodies
+      (multiple-value-bind (lifted-defuns defun-lambdas)
+          (nc-lift-lambdas-from-fns defun-fns nil nil)
+        ;; Combine: defuns + main-lambdas + defun-lambdas
+        (let ((fns (append lifted-defuns main-lambdas defun-lambdas)))
+          (if (null fns)
+              ;; No functions defined - simple case
+              (nc-codegen-main mir rtaddrs)
+              ;; Functions defined - need linking
+              (let* (;; First, generate main code with nil fnoffs to get size
+                     ;; This code contains (:call-fn name) markers
+                     (main-code-temp (append (nc-prologue)
+                                             (nc-codegen mir rtaddrs nil 0)
+                                             (nc-epilogue)))
+                     ;; Use nc-code-size to handle markers
+                     (main-size (nc-code-size main-code-temp))
+                     ;; Build fnoffs starting after main code
+                     (fnoffs (nc-build-fnoffs fns main-size nil))
+                     ;; Generate main code again - markers remain, fnoffs now known
+                     (main-code (append (nc-prologue)
+                                        (nc-codegen mir rtaddrs fnoffs 0)
+                                        (nc-epilogue)))
+                     ;; Generate function code with fnoffs (functions can call each other)
+                     (fn-code (nc-codegen-all-fns fns rtaddrs fnoffs nil))
+                     ;; Combine all code (still has markers)
+                     (all-code (append main-code fn-code)))
+                ;; Resolve all markers to actual BL instructions
+                (nc-resolve-calls all-code fnoffs))))))))
 
 ;;; ============================================================
 ;;; Part 9: Entry Point
