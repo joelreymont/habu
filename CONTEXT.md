@@ -2,7 +2,7 @@
 
 **Session Date**: November 22-27, 2025
 **Focus**: Self-hosting ARM64 Lisp compiler with native executable generation
-**Last Updated**: November 27, 2025 (94 tests pass: 77 native + 10 labels + 7 libSystem)
+**Last Updated**: November 27, 2025 (130 tests pass: 77 native + 10 labels + 7 libSystem + 36 reader)
 
 ## Current Plan: Native File I/O and Self-Hosting (November 27, 2025)
 
@@ -20,20 +20,27 @@ With dynamic linking now working, the path to self-hosting is clear:
 - Fixed GOT bind bit: `#x8000000000000000` (bit 63) not `(ash 1 62)` (bit 62)
 - Created `write-macho-executable-with-imports-and-heap` for 5-segment layout
 
-### Phase 2: Native Reader - IN PROGRESS
-1. Port the Habu reader (common/reader.lisp) to work in native executables
-2. Reader needs: string operations, character predicates, file I/O
-3. Test: native executable that reads and parses a Lisp file
+### Phase 2: Native Reader - MOSTLY COMPLETE
+1. Port the Habu reader (common/reader.lisp) to work in native executables - DONE
+2. Reader needs: string operations, character predicates, file I/O - DONE
+3. Test: native executable that reads and parses a Lisp file - 36/40 tests pass
 
 **Completed for Phase 2**:
 - Fixed closure capture crash (nc-gen-capture-copies used vector-ref, now uses car/cdr for cons list)
 - Added nc-ldrb-offset for byte loads with immediate offset
 - Added symbolp, stringp, vectorp type predicates
+- Fixed defun inside progn - nc-collect-defun-names now recurses into progn
+- Fixed dotimes/dolist loop variable offset - uses nc-env-lookup for actual offset
+- Fixed text segment sizing - dynamically sized based on code+stubs size
 - Implemented inline intern (make-symbol-from-string) - creates symbols on heap
   - Symbol table at x27[0]=next-id, x27[8]=table-ptr
   - Currently simplified (no dedup) - always creates new symbol
-  - TODO: Add table search for symbol deduplication
-- All 30 native reader primitive tests pass (char predicates, number parsing, etc.)
+- 36/40 native reader tests pass (integers, hex, lists, quotes)
+
+**Known Limitation**: Runtime `intern` creates new symbols with IDs separate from
+compile-time symbol literals. This means `(eq (intern "FOO") 'FOO)` returns false.
+The 4 failing reader tests involve symbol comparison with compile-time symbols.
+Workaround: For self-hosting, reader can compare symbol names instead of using `eq`.
 
 ### Phase 3: Self-Hosting Compiler
 1. Package: reader + compiler + codegen + linker
@@ -42,14 +49,37 @@ With dynamic linking now working, the path to self-hosting is clear:
 4. Milestone: compiler compiles itself (fixed point)
 
 ### Current Task
-Ready to start Phase 2: Native Reader.
+Phase 2 nearly complete. Reader works in native executables except for symbol `eq`
+with compile-time symbols. Ready for Phase 3: Self-hosting compiler.
 
-**Bug Fix (November 27, 2025): Variable-length lambda-ref offset encoding**
+**Bug Fixes (November 27, 2025)**:
+
+1. **Variable-length lambda-ref offset encoding**
 Fixed critical bug where function offsets > 0xFFFF caused size mismatches during two-pass compilation.
 
 Root cause: `nc-load-addr` generates variable-length code (4 bytes for values <= 0xFFFF, 8 bytes with MOVK for larger values). During the first compilation pass, fnoffs is nil so all lambda-refs use 0 as the offset (4 bytes). In the second pass, actual offsets may exceed 0xFFFF requiring 8 bytes, making the code larger than estimated.
 
 Fix: Added `nc-load-addr-32` function that always generates exactly 8 bytes (MOVZ + MOVK) regardless of value. Used this in lambda-ref codegen for consistent sizes.
+
+2. **Defun inside progn not compiled**
+`nc-collect-defun-names`, `nc-compile-defuns`, and `nc-find-main-form` only checked
+top-level forms for defun. When source was wrapped in progn (e.g., from sys-write
+prefix), nested defuns were ignored.
+
+Fix: All three functions now recursively traverse progn forms to find all defuns.
+
+3. **Dotimes/dolist loop variable clobbering outer bindings**
+Loop variables were always stored at offset 0 from x20, overwriting any existing
+local variables in the enclosing scope.
+
+Fix: Use `nc-env-lookup` to get the actual offset for the loop variable in the
+extended environment, which places it after existing bindings.
+
+4. **Text segment too small for large executables**
+The __TEXT segment vmsize was hardcoded to 16KB (PAGE_SIZE), but code + stubs can
+exceed this for large programs like the full reader (24KB).
+
+Fix: Calculate text-vmsize dynamically as `(align-up stubs-end PAGE_SIZE)`.
 
 ---
 
