@@ -79,7 +79,14 @@ Workaround: For self-hosting, reader can compare symbol names instead of using `
 - `:time <expr>` - Time expression evaluation
 - `:disasm <expr>` - Show IR for expression
 
-**Usage**: `./bin/habu-dev` or `./bin/habu-dev file.lisp`
+**Usage**: `./bin/habu` or `./bin/habu file.lisp`
+
+**Features**:
+- Snake emoji prompt with readline-style line editing
+- Command history with persistent storage (~/.habu_history)
+- Multi-line input with paren balancing
+- Arrow keys for history navigation and line editing
+- Ctrl-R for reverse search, Tab for completion
 
 ### Current Task
 Phase 4 complete. REPL with full compiler integration is working.

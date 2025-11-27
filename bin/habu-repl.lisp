@@ -1,5 +1,6 @@
 ;;; habu-repl.lisp - Habu Lisp REPL with compiler capabilities
 ;;; Provides: eval, compile-file, deliver, profile, trace
+;;; Uses cl-readline for line editing and history
 
 (defpackage :habu-repl
   (:use :cl)
@@ -7,14 +8,22 @@
 
 (in-package :habu-repl)
 
+;;; Load readline
+(ql:quickload :cl-readline :silent t)
+
 ;;; State
 (defvar *profile-enabled* (make-hash-table :test 'equal))
 (defvar *trace-enabled* (make-hash-table :test 'equal))
 (defvar *repl-running* t)
+(defvar *history-file* (merge-pathnames ".habu_history" (user-homedir-pathname)))
+
+;;; Prompt
+(defparameter *prompt* (format nil "~C> " #\U+1F40D))  ; Snake emoji
+(defparameter *continuation-prompt* ".. ")
 
 ;;; Utility functions
 (defun print-banner ()
-  (format t "~%Habu Lisp REPL~%")
+  (format t "~%Habu Lisp~%")
   (format t "Type :help for commands, :quit to exit~%~%"))
 
 (defun print-help ()
@@ -30,6 +39,12 @@
   (format t "  :untrace <fn>      Disable tracing for function~%")
   (format t "  :time <expr>       Time expression evaluation~%")
   (format t "  :disasm <expr>     Show IR for expression~%")
+  (format t "~%Keyboard shortcuts (readline):~%")
+  (format t "  Up/Down            Navigate command history~%")
+  (format t "  Ctrl-A / Ctrl-E    Move to start/end of line~%")
+  (format t "  Ctrl-K             Kill to end of line~%")
+  (format t "  Ctrl-R             Reverse search history~%")
+  (format t "  Tab                Filename completion~%")
   (format t "~%Any other input is evaluated as Lisp code.~%~%"))
 
 ;;; Command handlers
@@ -59,11 +74,12 @@
               (handler-case
                   (progn
                     (habu:deliver-file-with-libsystem src out)
-                    ;; Sign the executable
+                    ;; Sign the executable for macOS
                     (sb-ext:run-program "/usr/bin/codesign"
                                         (list "-s" "-" out)
                                         :output nil :error nil :wait t)
-                    (format t "Compiled successfully: ~A~%" out))
+                    (format t "Compiled successfully: ~A~%" out)
+                    (format t "Run with: ~A~%" out))
                 (error (e)
                   (format t "Compilation error: ~A~%" e))))
             (format t "Source file not found: ~A~%" src)))))
@@ -208,62 +224,98 @@
                       (subseq line (+ 7 (search "disasm" line :test #'char-equal))))))
     (t (format t "Unknown command: :~A~%Type :help for available commands.~%" cmd))))
 
-;;; Main REPL
-(defun read-multiline ()
-  "Read potentially multi-line input until parens balance."
-  (let ((lines nil)
-        (paren-count 0)
-        (started nil))
-    (loop
-      (let ((line (read-line *standard-input* nil nil)))
-        (unless line
-          (setf *repl-running* nil)
-          (return nil))
-        (push line lines)
-        ;; Count parens
-        (loop for c across line do
-          (case c
-            (#\( (incf paren-count) (setf started t))
-            (#\) (decf paren-count))))
-        ;; If we have balanced parens and started with one, we're done
-        (when (and started (<= paren-count 0))
-          (return (format nil "~{~A~%~}" (nreverse lines))))
-        ;; If no parens on first line, return it
-        (unless started
-          (return (first (nreverse lines))))
-        ;; Continue reading
-        (format t "... ")
-        (force-output)))))
+;;; Paren counting for multi-line
+(defun count-parens (str)
+  "Count unbalanced parens. Positive = more opens, negative = more closes."
+  (let ((count 0)
+        (in-string nil)
+        (escape nil))
+    (loop for c across str do
+      (cond
+        (escape (setf escape nil))
+        ((char= c #\\) (setf escape t))
+        ((char= c #\") (setf in-string (not in-string)))
+        ((not in-string)
+         (case c
+           (#\( (incf count))
+           (#\) (decf count))))))
+    count))
 
+;;; History management
+(defun load-history ()
+  "Load command history from file."
+  (when (probe-file *history-file*)
+    (handler-case
+        (cl-readline:read-history (namestring *history-file*))
+      (error () nil))))
+
+(defun save-history ()
+  "Save command history to file."
+  (handler-case
+      (cl-readline:write-history (namestring *history-file*))
+    (error () nil)))
+
+;;; Readline-based input
+(defun read-with-readline (prompt)
+  "Read a line using readline with editing and history."
+  (let ((line (cl-readline:readline :prompt prompt :add-history t)))
+    (when (null line)
+      (setf *repl-running* nil))
+    line))
+
+(defun read-multiline-readline ()
+  "Read potentially multi-line input with readline."
+  (let ((first-line (read-with-readline *prompt*)))
+    (when (null first-line)
+      (return-from read-multiline-readline nil))
+    (let ((paren-count (count-parens first-line))
+          (lines (list first-line)))
+      ;; If parens are balanced or no parens at all, return single line
+      (when (<= paren-count 0)
+        (return-from read-multiline-readline first-line))
+      ;; Read continuation lines until parens balance
+      (loop while (> paren-count 0) do
+        (let ((cont-line (read-with-readline *continuation-prompt*)))
+          (when (null cont-line)
+            (return-from read-multiline-readline nil))
+          (push cont-line lines)
+          (incf paren-count (count-parens cont-line))))
+      ;; Join lines with newlines
+      (format nil "~{~A~%~}" (nreverse lines)))))
+
+;;; Main REPL
 (defun repl ()
-  "Main REPL loop."
+  "Main REPL loop with readline support."
   (print-banner)
+  (load-history)
   (setf *repl-running* t)
-  (loop while *repl-running* do
-    (format t "habu> ")
-    (force-output)
-    (let ((line (read-multiline)))
-      (when line
-        (let ((trimmed (string-trim '(#\Space #\Tab #\Newline) line)))
-          (unless (string= trimmed "")
-            (let ((parsed (parse-command trimmed)))
-              (if parsed
-                  (process-command (car parsed) (cdr parsed) trimmed)
-                  ;; Evaluate as Lisp expression
-                  (handler-case
-                      (let* ((expr (read-from-string trimmed))
-                             (result (eval expr)))
-                        (format t "~S~%" result))
-                    (end-of-file ()
-                      (format t "Incomplete expression~%"))
-                    (error (e)
-                      (format t "Error: ~A~%" e)))))))))))
+  (unwind-protect
+      (loop while *repl-running* do
+        (let ((line (read-multiline-readline)))
+          (when line
+            (let ((trimmed (string-trim '(#\Space #\Tab #\Newline) line)))
+              (unless (string= trimmed "")
+                (let ((parsed (parse-command trimmed)))
+                  (if parsed
+                      (process-command (car parsed) (cdr parsed) trimmed)
+                      ;; Evaluate as Lisp expression
+                      (handler-case
+                          (let* ((expr (read-from-string trimmed))
+                                 (result (eval expr)))
+                            (format t "~S~%" result))
+                        (end-of-file ()
+                          (format t "Incomplete expression~%"))
+                        (error (e)
+                          (format t "Error: ~A~%" e))))))))))
+    ;; Cleanup
+    (save-history)
+    (format t "~%Goodbye!~%")))
 
 (defun main ()
-  "Entry point for habu-repl."
+  "Entry point for habu REPL."
   ;; Process command line arguments
   (let ((args sb-ext:*posix-argv*))
-    ;; Skip program name and sbcl args
+    ;; Skip program name and sbcl args - find files after "--"
     (let ((file-args (member "--" args :test #'string=)))
       (when (and file-args (cdr file-args))
         ;; Load files specified on command line

@@ -1,6 +1,6 @@
 #!/bin/bash
-# habu-repl - Habu Lisp REPL with full compiler capabilities
-# Usage: habu-repl [options] [file.lisp]
+# habu - Habu Lisp REPL with full compiler capabilities
+# Usage: habu [options] [file.lisp]
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 HABU_DIR="$(dirname "$SCRIPT_DIR")"

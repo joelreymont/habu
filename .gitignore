@@ -77,4 +77,5 @@ test-codegen-direct.lisp
 # Build outputs (compiled from source)
 run-bytecode
 run-fasl
-habu
+/habu
+!bin/habu
