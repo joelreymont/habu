@@ -2,7 +2,7 @@
 
 **Session Date**: November 22-26, 2025
 **Focus**: Self-hosting ARM64 Lisp compiler with native executable generation
-**Last Updated**: November 26, 2025 (Bootstrap compiler tests - 97 tests pass: 77 native + 10 self-host + 10 bootstrap)
+**Last Updated**: November 27, 2025 (100 tests pass: 77 native + 10 self-host + 10 bootstrap + 3 ARM64 asm)
 
 ## Session Summary (November 26, 2025)
 
@@ -56,6 +56,10 @@ This session completed the bootstrap compiler ARM64 codegen, verified bytecode e
 45. **Bootstrap compiler tests** - 10 tests validating compiler patterns (expr compiler, IR builder, symbol table, etc.)
 46. **Fixed mod-ir codegen** - compiler generates 'mod-ir but codegen only checked 'mod, now handles both
 47. **97 tests pass** - 77 native + 10 self-hosting + 10 bootstrap compiler tests
+48. **BR instruction** - branch to register without link, for indirect jumps
+49. **SVC instruction** - supervisor call for direct macOS syscalls
+50. **macOS syscall constants** - SYS_EXIT, SYS_READ, SYS_WRITE, SYS_OPEN, SYS_CLOSE
+51. **100 tests pass** - 77 native + 10 self-hosting + 10 bootstrap + 3 ARM64 asm
 
 **Package Structure** (November 26, 2025):
 - HABU-SYS: System/runtime primitives (string-length, string-ref, make-vector, etc.)
@@ -386,8 +390,9 @@ The native linker generates standalone Mach-O executables without clang dependen
 
 **ARM64 Assembler Package** (`:arm64`):
 - Clean API with keyword arguments: `(arm64:sub rd rn #x10 :imm t)`
-- Exports: `movz`, `movk`, `mov`, `add`, `sub`, `mul`, `ldr`, `str`, `bl`, `ret`, etc.
+- Exports: `movz`, `movk`, `mov`, `add`, `sub`, `mul`, `ldr`, `str`, `bl`, `br`, `ret`, `svc`, etc.
 - Constants: `+sp+`, `+lr+`, `+xzr+`, `+eq+`, `+ne+`, `+lt+`, `+gt+`, etc.
+- Syscall constants: `+sys-exit+`, `+sys-read+`, `+sys-write+`, `+sys-open+`, `+sys-close+`
 
 **Test Results** (50/50 tests pass - see tests/test_native_macho.lisp):
 - Arithmetic: `(+ 20 22)` -> 42, `(* 6 7)` -> 42
