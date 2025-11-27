@@ -61,7 +61,8 @@ This session completed the bootstrap compiler ARM64 codegen, verified bytecode e
 50. **macOS syscall constants** - SYS_EXIT, SYS_READ, SYS_WRITE, SYS_OPEN, SYS_CLOSE
 51. **100 tests pass** - 77 native + 10 self-hosting + 10 bootstrap + 3 ARM64 asm
 52. **Direct syscall executables** - test-syscall-macho creates binaries using SVC for write/exit
-53. **Chained fixups implementation** - write-macho-executable-with-imports for dynamic linking (partial)
+53. **Chained fixups WORKING** - Fixed ncmds count (was 12, should be 13), dynamic linking now works
+54. **Dynamic linking to libSystem** - Executables can call _write, _exit etc. via stubs and GOT
 
 **Package Structure** (November 26, 2025):
 - HABU-SYS: System/runtime primitives (string-length, string-ref, make-vector, etc.)
@@ -460,16 +461,17 @@ Key syscall numbers (ARM64 macOS):
 - SYS_open = 0x2000005
 - SYS_close = 0x2000006
 
-**Chained Fixups (Dynamic Linking)** - Partial Implementation:
-The `write-macho-executable-with-imports` function generates Mach-O with:
+**Chained Fixups (Dynamic Linking)** - WORKING (November 27, 2025):
+The `write-macho-executable-with-imports` function generates working Mach-O with:
 - LC_DYLD_CHAINED_FIXUPS with proper data structures
 - GOT section with bind pointers
 - Stubs using ADRP/LDR/BR sequence
 - LC_LOAD_DYLIB for libSystem.B.dylib
 
-Known issue: Kernel rejects binary before dyld loads (SIGKILL).
-Fixups data matches clang output byte-for-byte, but execution fails.
-Use direct syscalls as fallback until dynamic linking is debugged.
+Bug fix: ncmds in header was 12 but we wrote 13 load commands. This caused
+"Inconsistent sizeofcmds" error and kernel SIGKILL before dyld loaded.
+
+Test with `test-import-macho`: prints "Hi" via _write and exits with code 42.
 
 ---
 
