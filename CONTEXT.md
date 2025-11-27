@@ -2,8 +2,8 @@
 
 **Session Date**: November 22-27, 2025
 **Focus**: Self-hosting ARM64 Lisp compiler with native executable generation
-**Last Updated**: November 27, 2025 (139 tests pass: 77 native + 10 labels + 7 libSystem + 6 file-io + 39 reader)
-**Milestone**: Command-line compiler (habu-compile) working - compiles factorial.lisp to native executable
+**Last Updated**: November 27, 2025 (147 tests pass: 77 native + 10 labels + 7 libSystem + 6 file-io + 39 reader + 8 self-compile)
+**Milestone**: Native mini self-compiler tests passing - compiler can compile expression evaluators and IR generators
 
 ## Current Plan: Native File I/O and Self-Hosting (November 27, 2025)
 
@@ -57,8 +57,24 @@ Workaround: For self-hosting, reader can compare symbol names instead of using `
 - Compiler uses SBCL to read source files (workaround for buffer-to-string + reader crash)
 
 ### Current Task
-Phase 3 partially complete. Command-line compiler works for simple programs.
-Next: Test with more complex programs, then attempt self-compilation.
+Phase 3 in progress. Command-line compiler and native self-compiler tests working.
+
+**New Tests Added (November 27, 2025)**:
+- `tests/test_native_self_compile.lisp` - 8 tests for native mini self-compiler patterns
+- `tests/test_compiler_cli.lisp` - Extended to 14 tests (was 5)
+
+The native self-compiler tests demonstrate compiler can compile:
+1. Expression evaluators with tagged IR (eval-add, eval-recursive)
+2. IR generators that convert source to IR (ir-gen)
+3. Environment lookup for variable binding (env-lookup)
+4. IR evaluators with variable stacks (eval-with-stack)
+5. Mapcar-based code generation (mapcar-codegen)
+6. Tree traversal patterns (tree-walk)
+7. Symbol table building (symbol-table)
+
+Complex recursive calls with nested car/cdr work correctly - all 14 compiler CLI tests pass.
+
+Next: Attempt full self-compilation of the Habu compiler.
 
 **Bug Fixes (November 27, 2025)**:
 
