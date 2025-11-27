@@ -22,12 +22,16 @@
   (:use :cl)
   (:export #:write-macho-executable
            #:write-macho-executable-with-heap
+           #:write-macho-executable-with-imports
            #:link-with-runtime
            #:deliver-native
            #:deliver-native-with-heap
+           #:deliver-native-with-imports
            #:wrap-bytecode-for-exit
            #:wrap-bytecode-with-heap
-           #:test-minimal-macho))
+           #:test-minimal-macho
+           #:test-import-macho
+           #:test-syscall-macho))
 
 (in-package :habu-macho)
 
@@ -73,6 +77,13 @@
 ;; Section flags
 (defconstant +S-ATTR-PURE-INSTRUCTIONS+ #x80000000)
 (defconstant +S-ATTR-SOME-INSTRUCTIONS+ #x00000400)
+
+;; Section types (low 8 bits of flags)
+(defconstant +S-NON-LAZY-SYMBOL-POINTERS+ #x06)  ; __got section type
+(defconstant +S-SYMBOL-STUBS+             #x08)  ; __stubs section type
+
+;; Chained fixups constants
+(defconstant +DYLD-CHAINED-PTR-64-OFFSET+ 6)     ; pointer format for arm64
 
 ;; Page size on ARM64 macOS
 (defconstant +PAGE-SIZE+ #x4000)  ; 16KB
@@ -765,6 +776,512 @@
     (write-macho-executable output-path wrapped :verbose verbose)))
 
 ;;; ============================================================
+;;; Mach-O with External Imports (Chained Fixups)
+;;; ============================================================
+
+;;; Modern macOS uses chained fixups for dynamic symbol binding.
+;;; This implementation generates executables that can call libSystem functions.
+
+(defun write-dysymtab-command-full (stream ilocalsym nlocalsym
+                                    iextdefsym nextdefsym
+                                    iundefsym nundefsym
+                                    indirectsymoff nindirectsyms)
+  "Write LC_DYSYMTAB with indirect symbol table info"
+  (write-u32-le stream +LC-DYSYMTAB+)
+  (write-u32-le stream 80)
+  (write-u32-le stream ilocalsym)
+  (write-u32-le stream nlocalsym)
+  (write-u32-le stream iextdefsym)
+  (write-u32-le stream nextdefsym)
+  (write-u32-le stream iundefsym)
+  (write-u32-le stream nundefsym)
+  (write-u32-le stream 0)                       ; tocoff
+  (write-u32-le stream 0)                       ; ntoc
+  (write-u32-le stream 0)                       ; modtaboff
+  (write-u32-le stream 0)                       ; nmodtab
+  (write-u32-le stream 0)                       ; extrefsymoff
+  (write-u32-le stream 0)                       ; nextrefsyms
+  (write-u32-le stream indirectsymoff)
+  (write-u32-le stream nindirectsyms)
+  (write-u32-le stream 0)                       ; extreloff
+  (write-u32-le stream 0)                       ; nextrel
+  (write-u32-le stream 0)                       ; locreloff
+  (write-u32-le stream 0))                      ; nlocrel
+
+(defun write-chained-fixups-command (stream dataoff datasize)
+  "Write LC_DYLD_CHAINED_FIXUPS command"
+  (write-u32-le stream +LC-DYLD-CHAINED-FIXUPS+)
+  (write-u32-le stream 16)
+  (write-u32-le stream dataoff)
+  (write-u32-le stream datasize))
+
+(defun write-exports-trie-command (stream dataoff datasize)
+  "Write LC_DYLD_EXPORTS_TRIE command"
+  (write-u32-le stream +LC-DYLD-EXPORTS-TRIE+)
+  (write-u32-le stream 16)
+  (write-u32-le stream dataoff)
+  (write-u32-le stream datasize))
+
+(defun generate-stub-code (got-page-offset got-slot-offset)
+  "Generate ARM64 stub code that loads from GOT and branches.
+   GOT-PAGE-OFFSET: signed page offset for ADRP (in 4KB pages)
+   GOT-SLOT-OFFSET: byte offset within page for LDR"
+  (append
+   (arm64:adrp 16 got-page-offset)              ; adrp x16, got_page
+   (arm64:ldr 16 16 :offset got-slot-offset)    ; ldr x16, [x16, #offset]
+   (arm64:br 16)))                              ; br x16
+
+(defun build-chained-fixups-data (imports num-segments got-segment-index got-vm-offset)
+  "Build chained fixups data for binding external symbols.
+   IMPORTS: list of symbol names (strings like \"_write\")
+   NUM-SEGMENTS: total number of segments
+   GOT-SEGMENT-INDEX: 0-based index of segment containing GOT
+   GOT-VM-OFFSET: VM offset from binary base to first fixup (e.g. 0x4000 for __DATA_CONST)
+
+   Returns a byte list."
+  (let* ((num-imports (length imports))
+         ;; Build symbols string: NUL-separated, starts with NUL
+         (symbols-list (cons 0  ; leading NUL
+                            (loop for name in imports
+                                  append (append (map 'list #'char-code name)
+                                                '(0)))))
+         ;; Calculate offsets within the data block
+         ;; Header: 32 bytes (dyld_chained_fixups_header)
+         ;; Starts: 4 + 4*num-segments bytes (dyld_chained_starts_in_image)
+         ;; Seg info: 22 + 2 = 24 bytes (dyld_chained_starts_in_segment with 1 page)
+         ;; Imports: 4 * num-imports bytes
+         ;; Symbols: (length symbols-list) bytes
+         (header-size 32)
+         (starts-header-size (+ 4 (* 4 num-segments)))
+         (seg-info-size 24)  ; size=24, page_size, pointer_format, segment_offset, max_valid_pointer, page_count=1, page_start[0]
+         (imports-entry-size 4)
+
+         (starts-offset header-size)
+         ;; seg_info must be 8-byte aligned within starts_in_image
+         (seg-info-rel-offset (align-up starts-header-size 8))
+         ;; imports come after seg_info (which is at starts-offset + seg-info-rel-offset)
+         (imports-offset (+ starts-offset seg-info-rel-offset seg-info-size))
+         (symbols-offset (+ imports-offset (* num-imports imports-entry-size)))
+         (total-size (align-up (+ symbols-offset (length symbols-list)) 8))
+
+         (data (make-array total-size :element-type '(unsigned-byte 8) :initial-element 0)))
+
+    ;; === dyld_chained_fixups_header (32 bytes) ===
+    ;; fixups_version = 0 (at offset 0)
+    ;; starts_offset (at offset 4)
+    (setf (aref data 4) (logand starts-offset #xFF))
+    (setf (aref data 5) (logand (ash starts-offset -8) #xFF))
+    ;; imports_offset (at offset 8)
+    (setf (aref data 8) (logand imports-offset #xFF))
+    (setf (aref data 9) (logand (ash imports-offset -8) #xFF))
+    ;; symbols_offset (at offset 12)
+    (setf (aref data 12) (logand symbols-offset #xFF))
+    (setf (aref data 13) (logand (ash symbols-offset -8) #xFF))
+    ;; imports_count (at offset 16)
+    (setf (aref data 16) (logand num-imports #xFF))
+    (setf (aref data 17) (logand (ash num-imports -8) #xFF))
+    ;; imports_format = 1 (DYLD_CHAINED_IMPORT) (at offset 20)
+    (setf (aref data 20) 1)
+    ;; symbols_format = 0 (uncompressed) (at offset 24)
+    ;; padding (at offset 28-31)
+
+    ;; === dyld_chained_starts_in_image ===
+    (let ((base starts-offset))
+      ;; seg_count
+      (setf (aref data base) (logand num-segments #xFF))
+      ;; seg_info_offset[i] - only GOT segment has non-zero offset
+      (loop for i from 0 below num-segments
+            do (let ((off-pos (+ base 4 (* i 4))))
+                 (when (= i got-segment-index)
+                   (setf (aref data off-pos) (logand seg-info-rel-offset #xFF))
+                   (setf (aref data (+ off-pos 1)) (logand (ash seg-info-rel-offset -8) #xFF))))))
+
+    ;; === dyld_chained_starts_in_segment (at starts-offset + seg-info-rel-offset) ===
+    (let ((base (+ starts-offset seg-info-rel-offset)))
+      ;; size = 24 (at offset 0, 4 bytes)
+      (setf (aref data base) 24)
+      ;; page_size = 0x4000 (at offset 4, 2 bytes)
+      (setf (aref data (+ base 4)) #x00)
+      (setf (aref data (+ base 5)) #x40)
+      ;; pointer_format = 6 (DYLD_CHAINED_PTR_64_OFFSET) (at offset 6, 2 bytes)
+      (setf (aref data (+ base 6)) +DYLD-CHAINED-PTR-64-OFFSET+)
+      ;; segment_offset = got-vm-offset (at offset 8, 8 bytes)
+      (setf (aref data (+ base 8)) (logand got-vm-offset #xFF))
+      (setf (aref data (+ base 9)) (logand (ash got-vm-offset -8) #xFF))
+      (setf (aref data (+ base 10)) (logand (ash got-vm-offset -16) #xFF))
+      (setf (aref data (+ base 11)) (logand (ash got-vm-offset -24) #xFF))
+      ;; max_valid_pointer = 0 (at offset 16, 4 bytes)
+      ;; page_count = 1 (at offset 20, 2 bytes)
+      (setf (aref data (+ base 20)) 1)
+      ;; page_start[0] = 0 (at offset 22, 2 bytes) - first fixup at start of page
+      )
+
+    ;; === Import entries (DYLD_CHAINED_IMPORT format) ===
+    ;; Each entry: lib_ordinal (8 bits) | weak (1 bit) | name_offset (23 bits)
+    (let ((name-offset 0))  ; starts after leading NUL
+      (loop for i from 0 below num-imports
+            for name in imports
+            do (let* ((entry-off (+ imports-offset (* i 4)))
+                      ;; lib_ordinal = 1 (first LC_LOAD_DYLIB = libSystem)
+                      ;; weak = 0
+                      ;; name_offset = position in symbols string
+                      (entry (logior 1  ; lib_ordinal in bits 0-7
+                                    (ash (1+ name-offset) 9))))  ; name_offset in bits 9-31
+                 (setf (aref data entry-off) (logand entry #xFF))
+                 (setf (aref data (+ entry-off 1)) (logand (ash entry -8) #xFF))
+                 (setf (aref data (+ entry-off 2)) (logand (ash entry -16) #xFF))
+                 (setf (aref data (+ entry-off 3)) (logand (ash entry -24) #xFF))
+                 (incf name-offset (1+ (length name))))))
+
+    ;; === Symbol strings ===
+    (loop for i from 0 below (length symbols-list)
+          do (setf (aref data (+ symbols-offset i)) (nth i symbols-list)))
+
+    (coerce data 'list)))
+
+(defun write-macho-executable-with-imports (output-path code-bytes imports
+                                            &key (heap-size #x100000) verbose)
+  "Write a Mach-O executable that can call external functions via stubs.
+   CODE-BYTES: ARM64 machine code (should call stubs via BL)
+   IMPORTS: list of symbol names to import (e.g. '(\"_write\" \"_exit\"))
+   HEAP-SIZE: size of heap segment (default 1MB)
+
+   Returns: (values output-path code-offset stubs-offset stub-size heap-vmaddr)"
+  (let* ((num-imports (length imports))
+         (stub-size 12)                          ; 3 instructions per stub
+         (stubs-total-size (* num-imports stub-size))
+         (got-entry-size 8)
+         (got-total-size (max 8 (* num-imports got-entry-size)))  ; at least 8 bytes
+
+         ;; Segment layout (4 segments):
+         ;; 0: __PAGEZERO (no file content)
+         ;; 1: __TEXT with __text and __stubs sections
+         ;; 2: __DATA_CONST with __got section
+         ;; 3: __LINKEDIT
+         (num-segments 4)
+         (got-segment-index 2)
+
+         ;; Heap size
+         (heap-vmsize (align-up heap-size +PAGE-SIZE+))
+
+         ;; Header and load command sizes
+         (header-size 32)
+         (pagezero-cmd-size 72)
+         (text-cmd-size (+ 72 (* 2 80)))         ; segment + 2 sections
+         (data-const-cmd-size (+ 72 80))         ; segment + 1 section
+         (linkedit-cmd-size 72)                  ; segment only
+         (dylinker-path "/usr/lib/dyld")
+         (dylinker-cmd-size (align-up (+ 12 (length dylinker-path) 1) 8))
+         (uuid-cmd-size 24)
+         (build-version-cmd-size 24)
+         (main-cmd-size 24)
+         (libsystem-path "/usr/lib/libSystem.B.dylib")
+         (load-dylib-cmd-size (align-up (+ 24 (length libsystem-path) 1) 8))
+         (chained-fixups-cmd-size 16)
+         (exports-trie-cmd-size 16)
+         (symtab-cmd-size 24)
+         (dysymtab-cmd-size 80)
+
+         (ncmds 12)
+         (sizeofcmds (+ pagezero-cmd-size
+                       text-cmd-size
+                       data-const-cmd-size
+                       linkedit-cmd-size
+                       dylinker-cmd-size
+                       uuid-cmd-size
+                       build-version-cmd-size
+                       main-cmd-size
+                       load-dylib-cmd-size
+                       chained-fixups-cmd-size
+                       exports-trie-cmd-size
+                       symtab-cmd-size
+                       dysymtab-cmd-size))
+
+         ;; Code placement - leave room for codesign to add LC_CODE_SIGNATURE (16 bytes)
+         (code-offset (align-up (+ header-size sizeofcmds 16) 64))
+         (code-size (length code-bytes))
+
+         ;; Stubs follow code
+         (stubs-offset (align-up (+ code-offset code-size) 4))
+
+         ;; __TEXT segment spans first page
+         (text-vmsize +PAGE-SIZE+)
+         (text-filesize +PAGE-SIZE+)
+
+         ;; __DATA_CONST segment at second page
+         (data-const-fileoff +PAGE-SIZE+)
+         (data-const-vmaddr (+ +VM-BASE+ +PAGE-SIZE+))
+         (data-const-vmsize +PAGE-SIZE+)
+         (data-const-filesize +PAGE-SIZE+)
+
+         ;; __LINKEDIT segment after __DATA_CONST
+         (linkedit-fileoff (+ data-const-fileoff +PAGE-SIZE+))
+         (linkedit-vmaddr (+ data-const-vmaddr +PAGE-SIZE+))
+
+         ;; Build symbols and strings
+         ;; Symbols: _main (external defined), then each import (external undefined)
+         (nsyms (1+ num-imports))
+         ;; String table: NUL + "_main" + NUL + each import name + NUL
+         (string-table-entries (cons "_main" imports))
+         (string-table (cons 0  ; leading NUL
+                            (loop for name in string-table-entries
+                                  append (append (map 'list #'char-code name) '(0)))))
+         (string-table-size (length string-table))
+
+         ;; LINKEDIT contents layout
+         (symtab-offset linkedit-fileoff)
+         (nlist-size (* nsyms 16))               ; 16 bytes per nlist_64
+         (strtab-offset (+ symtab-offset nlist-size))
+         (indirect-offset (align-up (+ strtab-offset string-table-size) 4))
+         (num-indirect-syms (+ num-imports num-imports))  ; stubs + got
+         (indirect-size (* num-indirect-syms 4))
+         (fixups-offset (align-up (+ indirect-offset indirect-size) 8))
+         ;; GOT VM offset from binary base = data-const-vmaddr - +VM-BASE+ = +PAGE-SIZE+
+         (got-vm-offset +PAGE-SIZE+)
+         (fixups-data (build-chained-fixups-data imports num-segments got-segment-index got-vm-offset))
+         (fixups-size (length fixups-data))
+         (exports-offset (align-up (+ fixups-offset fixups-size) 8))
+         ;; Minimal exports trie: empty root node (no exports needed for simple executable)
+         ;; Format: terminal size = 0, no children
+         (exports-data '(#x00 #x00))  ; terminal size = 0, child count = 0
+         (exports-size (length exports-data))
+
+         ;; LINKEDIT filesize is the actual data size, vmsize is page-aligned
+         (linkedit-filesize (- (+ exports-offset exports-size) linkedit-fileoff))
+         (linkedit-vmsize (align-up linkedit-filesize +PAGE-SIZE+))
+
+         ;; GOT page calculations for stubs
+         ;; Stub is in __TEXT at stubs-offset, GOT is at data-const-vmaddr
+         (stub-vmaddr (+ +VM-BASE+ stubs-offset))
+         (stub-page (ash stub-vmaddr -12))
+         (got-page (ash data-const-vmaddr -12))
+         (got-page-diff (- got-page stub-page))
+
+         ;; Entry point
+         (entry-offset code-offset))
+
+    (when verbose
+      (format t "Code at ~X (size ~D), stubs at ~X~%" code-offset code-size stubs-offset)
+      (format t "GOT at VM ~X, page diff from stubs: ~D~%" data-const-vmaddr got-page-diff)
+      (format t "LINKEDIT at ~X, filesize ~X vmsize ~X~%" linkedit-fileoff linkedit-filesize linkedit-vmsize)
+      (format t "Imports: ~{~A~^, ~}~%" imports))
+
+    (with-open-file (out output-path
+                         :direction :output
+                         :if-exists :supersede
+                         :element-type '(unsigned-byte 8))
+
+      ;; === Mach-O Header ===
+      (write-mach-header-64 out ncmds sizeofcmds
+                            (logior +MH-NOUNDEFS+ +MH-DYLDLINK+ +MH-TWOLEVEL+ +MH-PIE+))
+
+      ;; === Load Commands ===
+
+      ;; 1. __PAGEZERO
+      (write-segment-command-64 out "__PAGEZERO"
+                                0 +VM-BASE+ 0 0 0 0 0 0)
+
+      ;; 2. __TEXT with __text and __stubs
+      (write-segment-command-64 out "__TEXT"
+                                +VM-BASE+ text-vmsize
+                                0 text-filesize
+                                (logior +VM-PROT-READ+ +VM-PROT-EXECUTE+)
+                                (logior +VM-PROT-READ+ +VM-PROT-EXECUTE+)
+                                2 0)
+      ;; __text section
+      (write-section-64 out "__text" "__TEXT"
+                        (+ +VM-BASE+ code-offset) code-size
+                        code-offset 2 0 0
+                        (logior +S-ATTR-PURE-INSTRUCTIONS+ +S-ATTR-SOME-INSTRUCTIONS+)
+                        0 0)
+      ;; __stubs section
+      (write-section-64 out "__stubs" "__TEXT"
+                        (+ +VM-BASE+ stubs-offset) stubs-total-size
+                        stubs-offset 2 0 0
+                        (logior +S-SYMBOL-STUBS+ +S-ATTR-PURE-INSTRUCTIONS+)
+                        0                         ; reserved1 = index into indirect sym table
+                        stub-size)                ; reserved2 = stub size
+
+      ;; 3. __DATA_CONST with __got
+      ;; initprot must include WRITE so dyld can apply fixups
+      (write-segment-command-64 out "__DATA_CONST"
+                                data-const-vmaddr data-const-vmsize
+                                data-const-fileoff data-const-filesize
+                                (logior +VM-PROT-READ+ +VM-PROT-WRITE+)
+                                (logior +VM-PROT-READ+ +VM-PROT-WRITE+)
+                                1 #x10)           ; flags = SG_READ_ONLY
+      ;; __got section
+      (write-section-64 out "__got" "__DATA_CONST"
+                        data-const-vmaddr got-total-size
+                        data-const-fileoff 3 0 0
+                        +S-NON-LAZY-SYMBOL-POINTERS+
+                        num-imports               ; reserved1 = index into indirect sym table
+                        0)
+
+      ;; 4. __LINKEDIT
+      (write-segment-command-64 out "__LINKEDIT"
+                                linkedit-vmaddr linkedit-vmsize
+                                linkedit-fileoff linkedit-filesize
+                                +VM-PROT-READ+
+                                +VM-PROT-READ+
+                                0 0)
+
+      ;; Load commands in clang order (critical for dyld compatibility)
+      ;; 5. LC_DYLD_CHAINED_FIXUPS (must come early)
+      (write-chained-fixups-command out fixups-offset fixups-size)
+
+      ;; 6. LC_DYLD_EXPORTS_TRIE
+      (write-exports-trie-command out exports-offset exports-size)
+
+      ;; 7. LC_SYMTAB
+      (write-symtab-command out symtab-offset nsyms strtab-offset string-table-size)
+
+      ;; 8. LC_DYSYMTAB
+      (write-dysymtab-command-full out
+                                   0 0             ; no locals
+                                   0 1             ; 1 extdef (_main)
+                                   1 num-imports   ; undefs start at sym 1
+                                   indirect-offset num-indirect-syms)
+
+      ;; 9. LC_LOAD_DYLINKER
+      (write-dylinker-command out dylinker-path)
+
+      ;; 10. LC_UUID
+      (write-uuid-command out)
+
+      ;; 11. LC_BUILD_VERSION
+      (write-build-version-command out)
+
+      ;; 12. LC_MAIN
+      (write-main-command out entry-offset)
+
+      ;; 13. LC_LOAD_DYLIB for libSystem
+      (write-load-dylib-command out libsystem-path)
+
+      ;; === Padding to code ===
+      (let ((pos (file-position out)))
+        (when (< pos code-offset)
+          (write-zeros out (- code-offset pos))))
+
+      ;; === Code ===
+      (dolist (b code-bytes)
+        (write-byte b out))
+
+      ;; === Padding to stubs ===
+      (let ((pos (file-position out)))
+        (when (< pos stubs-offset)
+          (write-zeros out (- stubs-offset pos))))
+
+      ;; === Stubs ===
+      (loop for i from 0 below num-imports
+            do (let* ((got-slot-offset (* i got-entry-size))
+                      (stub (generate-stub-code got-page-diff got-slot-offset)))
+                 (dolist (b stub)
+                   (write-byte b out))))
+
+      ;; === Padding to __DATA_CONST ===
+      (let ((pos (file-position out)))
+        (when (< pos data-const-fileoff)
+          (write-zeros out (- data-const-fileoff pos))))
+
+      ;; === GOT entries (chained bind pointers) ===
+      ;; For DYLD_CHAINED_PTR_64_OFFSET bind format:
+      ;; bit 63 = 1 (bind), bits 51-62 = next, bits 0-23 = ordinal
+      (loop for i from 0 below num-imports
+            for is-last = (= i (1- num-imports))
+            do (let* ((ordinal i)
+                      (next (if is-last 0 1))    ; stride = 1 (8 bytes)
+                      (entry (logior #x8000000000000000  ; bind bit
+                                    ordinal
+                                    (ash next 51))))
+                 (write-u64-le out entry)))
+      ;; Pad rest of GOT if needed
+      (let ((pos (file-position out)))
+        (when (< (- pos data-const-fileoff) data-const-filesize)
+          (write-zeros out (- (+ data-const-fileoff data-const-filesize) pos))))
+
+      ;; === LINKEDIT ===
+
+      ;; Symbol table entries (nlist_64, 16 bytes each)
+      ;; First: _main (external defined in section 1)
+      (write-nlist-64 out
+                      1                           ; strx = offset of "_main"
+                      #x0F                        ; N_SECT | N_EXT
+                      1                           ; section 1 (__text)
+                      #x0010                      ; REFERENCED_DYNAMICALLY
+                      (+ +VM-BASE+ code-offset))
+      ;; Then: each import (external undefined)
+      (let ((strx (+ 1 (length "_main") 1)))      ; skip NUL + "_main" + NUL
+        (loop for name in imports
+              do (write-nlist-64 out
+                                strx              ; string offset
+                                #x01              ; N_EXT (external undefined)
+                                0                 ; no section
+                                #x0100            ; N_SYMBOL_RESOLVER flag... or just 0
+                                0)                ; value = 0 for undefined
+                 (incf strx (1+ (length name)))))
+
+      ;; String table
+      (dolist (b string-table)
+        (write-byte b out))
+
+      ;; Padding to indirect symbol table
+      (let ((pos (file-position out)))
+        (when (< pos indirect-offset)
+          (write-zeros out (- indirect-offset pos))))
+
+      ;; Indirect symbol table
+      ;; First: indices for __stubs (one per import)
+      (loop for i from 0 below num-imports
+            do (write-u32-le out (1+ i)))         ; symbol index (imports start at 1)
+      ;; Then: indices for __got (one per import)
+      (loop for i from 0 below num-imports
+            do (write-u32-le out (1+ i)))
+
+      ;; Padding to chained fixups
+      (let ((pos (file-position out)))
+        (when (< pos fixups-offset)
+          (write-zeros out (- fixups-offset pos))))
+
+      ;; Chained fixups data
+      (dolist (b fixups-data)
+        (write-byte b out))
+
+      ;; Padding to exports trie
+      (let ((pos (file-position out)))
+        (when (< pos exports-offset)
+          (write-zeros out (- exports-offset pos))))
+
+      ;; Exports trie
+      (dolist (b exports-data)
+        (write-byte b out))
+
+      ;; Padding to end of LINKEDIT (use filesize, not vmsize)
+      (let ((pos (file-position out)))
+        (when (< pos (+ linkedit-fileoff linkedit-filesize))
+          (write-zeros out (- (+ linkedit-fileoff linkedit-filesize) pos)))))
+
+    ;; Make executable
+    (sb-ext:run-program "/bin/chmod" (list "+x" output-path))
+
+    ;; Return values for caller
+    (values output-path
+            code-offset
+            stubs-offset
+            stub-size
+            (+ +VM-BASE+ data-const-vmaddr heap-vmsize))))  ; heap would be after DATA_CONST
+
+(defun deliver-native-with-imports (output-path code-bytes imports
+                                    &key (heap-size #x100000) verbose)
+  "Create a standalone executable that can call external functions.
+   CODE-BYTES should contain BL instructions to stub addresses.
+   IMPORTS is a list of external function names (e.g. (\"_write\" \"_exit\"))
+
+   Returns: (values output-path code-offset stubs-offset stub-size heap-addr)"
+  (write-macho-executable-with-imports output-path code-bytes imports
+                                       :heap-size heap-size :verbose verbose))
+
+;;; ============================================================
 ;;; Test Function
 ;;; ============================================================
 
@@ -778,3 +1295,82 @@
     (write-macho-executable "/tmp/test_macho" code :verbose t)
     (format t "~%Created /tmp/test_macho~%")
     (format t "Test with: codesign -s - /tmp/test_macho && /tmp/test_macho ; echo $?~%")))
+
+(defun test-import-macho ()
+  "Create a Mach-O that calls write() via dynamic linking and returns 42"
+  ;; This tests the full chained fixups implementation:
+  ;; 1. Generate code that calls a stub
+  ;; 2. Generate the executable with imports
+  ;; 3. Patch the BL instruction to point to the correct stub
+  ;; 4. Run and verify output
+  (let* ((imports '("_write"))
+         ;; Code layout:
+         ;; 0: sub sp, sp, #16    (prologue)
+         ;; 1: str x30, [sp]
+         ;; 2: mov x0, #1         (fd = stdout)
+         ;; 3: adr x1, +24        (string addr, 6 instrs ahead)
+         ;; 4: mov x2, #3         (length)
+         ;; 5: bl stub            (placeholder, patched later)
+         ;; 6: mov x0, #42        (return value)
+         ;; 7: ldr x30, [sp]      (epilogue)
+         ;; 8: add sp, sp, #16
+         ;; 9: ret
+         ;; 10: "Hi\n\0"
+         (code (append
+                (arm64:sub arm64:+sp+ arm64:+sp+ #x10 :imm t)
+                (arm64:str arm64:+lr+ arm64:+sp+)
+                (arm64:movz 0 1)
+                (arm64:adr 1 24)                  ; 6 instrs * 4 bytes = 24
+                (arm64:movz 2 3)
+                '(0 0 0 #x94)                     ; bl placeholder
+                (arm64:movz 0 42)
+                (arm64:ldr arm64:+lr+ arm64:+sp+)
+                (arm64:add arm64:+sp+ arm64:+sp+ #x10 :imm t)
+                (arm64:ret)
+                '(#x48 #x69 #x0A #x00))))         ; "Hi\n\0"
+
+    ;; Generate executable
+    (multiple-value-bind (path code-offset stubs-offset stub-size heap-addr)
+        (write-macho-executable-with-imports "/tmp/test_import" code imports
+                                             :heap-size #x10000 :verbose t)
+      (declare (ignore stub-size heap-addr))
+
+      ;; Patch BL instruction
+      ;; BL is at code-offset + 20 (5 instructions * 4 bytes)
+      ;; Target is stubs-offset
+      (let* ((bl-file-offset (+ code-offset 20))
+             (bl-instr-offset (- stubs-offset bl-file-offset))
+             (bl-imm26 (ash bl-instr-offset -2))
+             (bl-instr (logior #x94000000 (logand bl-imm26 #x03FFFFFF))))
+        (format t "Patching BL at ~X to stub at ~X (offset ~D instructions)~%"
+                bl-file-offset stubs-offset (ash bl-instr-offset -2))
+        (with-open-file (f path :direction :io
+                               :element-type '(unsigned-byte 8)
+                               :if-exists :overwrite)
+          (file-position f bl-file-offset)
+          (write-u32-le f bl-instr)))
+
+      (format t "~%Created ~A~%" path)
+      (format t "Test with: codesign -s - ~A && ~A ; echo $?~%" path path))))
+
+(defun test-syscall-macho ()
+  "Create a Mach-O that uses direct syscalls - write and exit.
+   This bypasses dynamic linking entirely using SVC instructions."
+  (let ((code (append
+               ;; write(1, \"OK\\n\", 3): x16=0x2000004, x0=1, x1=addr, x2=3
+               (arm64:movz 0 1)              ; x0 = stdout
+               (arm64:adr 1 36)              ; x1 = string addr (9 instrs * 4 = 36)
+               (arm64:movz 2 3)              ; x2 = length
+               (arm64:movz 16 4)             ; x16 = SYS_write (4)
+               (arm64:movk 16 #x200 :lsl 16) ; x16 |= 0x2000000 (BSD syscall)
+               (arm64:svc 0)                 ; syscall
+               ;; exit(42): x16=0x2000001, x0=42
+               (arm64:movz 0 42)             ; x0 = exit code
+               (arm64:movz 16 1)             ; x16 = SYS_exit (1)
+               (arm64:movk 16 #x200 :lsl 16) ; x16 |= 0x2000000
+               (arm64:svc 0)                 ; syscall
+               ;; Data: "OK\n"
+               '(#x4F #x4B #x0A #x00))))
+    (write-macho-executable "/tmp/test_syscall" code :verbose nil)
+    (format t "Created /tmp/test_syscall~%")
+    (format t "Test: codesign -s - /tmp/test_syscall && /tmp/test_syscall ; echo $?~%")))
