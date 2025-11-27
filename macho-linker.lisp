@@ -982,7 +982,7 @@
          (symtab-cmd-size 24)
          (dysymtab-cmd-size 80)
 
-         (ncmds 12)
+         (ncmds 13)                           ; 4 segments + 9 other commands
          (sizeofcmds (+ pagezero-cmd-size
                        text-cmd-size
                        data-const-cmd-size
@@ -1320,7 +1320,7 @@
                 (arm64:sub arm64:+sp+ arm64:+sp+ #x10 :imm t)
                 (arm64:str arm64:+lr+ arm64:+sp+)
                 (arm64:movz 0 1)
-                (arm64:adr 1 24)                  ; 6 instrs * 4 bytes = 24
+                (arm64:adr 1 28)                  ; 7 instrs * 4 bytes = 28 to string
                 (arm64:movz 2 3)
                 '(0 0 0 #x94)                     ; bl placeholder
                 (arm64:movz 0 42)
