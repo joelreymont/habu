@@ -3253,7 +3253,9 @@
                                    (build-captures (cdr offs)
                                                    (nc-append-all (list acc load-cap alloc-cons))
                                                    pair-slot)))))
-                    (build-captures free-offsets nil nil))))
+                    ;; Reverse free-offsets so first captured var ends up at car of env list
+                   ;; This matches nc-gen-capture-copies which stores car at slot 0, etc.
+                   (build-captures (reverse free-offsets) nil nil))))
              (let* ((env-code (car capture-code))
                     (env-result-slot (cadr capture-code))
                     (tagged-offset (ash offset-bytes 4)))
@@ -3674,16 +3676,20 @@
         (nc-gen-param-stores (cdr params) base (+ idx 1) (append acc st)))))
 
 (defun nc-fn-prologue ()
-  "Function prologue: allocate frame, save caller's x20/lr, set up new env base.
-   Frame size 0x400 (1024) to accommodate spill slots at 0x240+."
+  "Function prologue: allocate frame, save caller's x20/lr/x24, set up new env base.
+   Frame size 0x400 (1024) to accommodate spill slots at 0x240+.
+   x24 must be preserved across calls so defuns with internal labels don't clobber
+   the caller's closure environment."
   (append
    (nc-sub-imm 31 31 #x400)    ; SUB sp, sp, #1024 (allocate function frame)
    (nc-stp-offset 20 30 31 0)  ; STP x20, lr, [sp, #0] (save caller's x20 and return addr)
+   (nc-str-offset 24 31 16)    ; STR x24, [sp, #16] (save caller's closure env)
    (nc-add-imm 20 31 #x180)))  ; ADD x20, sp, #384 (env base past spill area)
 
 (defun nc-fn-epilogue ()
-  "Function epilogue: restore caller's x20/lr, deallocate frame, return"
+  "Function epilogue: restore caller's x20/lr/x24, deallocate frame, return"
   (append
+   (nc-ldr-offset 24 31 16)    ; LDR x24, [sp, #16] (restore caller's closure env)
    (nc-ldp-offset 20 30 31 0)  ; LDP x20, lr, [sp, #0] (restore caller's x20 and lr)
    (nc-add-imm 31 31 #x400)))  ; ADD sp, sp, #1024 (deallocate function frame)
 
@@ -3887,6 +3893,37 @@
                     (multiple-value-bind (new-body l2) (lift body-ir l1)
                       (multiple-value-bind (new-result l3) (lift result-ir l2)
                         (values (list 'dolist-ir var new-list new-body new-result compile-env) l3))))))
+               ;; 3-arg IR nodes: (tag arg1 arg2 arg3)
+               ((nc-has-tag ir 'vector-set-ir)
+                (let ((vec-ir (cadr ir))
+                      (idx-ir (caddr ir))
+                      (val-ir (cadddr ir)))
+                  (multiple-value-bind (new-vec l1) (lift vec-ir lambdas)
+                    (multiple-value-bind (new-idx l2) (lift idx-ir l1)
+                      (multiple-value-bind (new-val l3) (lift val-ir l2)
+                        (values (list 'vector-set-ir new-vec new-idx new-val) l3))))))
+               ;; 2-arg IR nodes: (tag arg1 arg2)
+               ((or (nc-has-tag ir 'vector-ref-ir)
+                    (nc-has-tag ir 'string-ref-ir)
+                    (nc-has-tag ir 'string-equal-ir))
+                (let ((arg1 (cadr ir))
+                      (arg2 (caddr ir)))
+                  (multiple-value-bind (new-arg1 l1) (lift arg1 lambdas)
+                    (multiple-value-bind (new-arg2 l2) (lift arg2 l1)
+                      (values (list (car ir) new-arg1 new-arg2) l2)))))
+               ;; 1-arg IR nodes: (tag arg)
+               ((or (nc-has-tag ir 'make-vector-ir)
+                    (nc-has-tag ir 'make-string-from-vector-ir)
+                    (nc-has-tag ir 'make-symbol-from-string-ir)
+                    (nc-has-tag ir 'string-length-ir)
+                    (nc-has-tag ir 'vector-length-ir)
+                    (nc-has-tag ir 'system-ir)
+                    (nc-has-tag ir 'null-ir) (nc-has-tag ir 'consp-ir)
+                    (nc-has-tag ir 'symbolp-ir) (nc-has-tag ir 'stringp-ir)
+                    (nc-has-tag ir 'vectorp-ir) (nc-has-tag ir 'numberp-ir))
+                (multiple-value-bind (new-arg new-lambdas)
+                    (lift (cadr ir) lambdas)
+                  (values (list (car ir) new-arg) new-lambdas)))
                (t (values ir lambdas))))
            (lift-list (irs lambdas)
              (if (null irs)
