@@ -5,21 +5,21 @@
 ;;; Components: ARM64 asm, utils, reader, codegen, IR compiler
 ;;;
 ;;; Package structure:
-;;; - HABU-SYS: System/runtime primitives (string-length, etc.)
+;;; - SYS: Internal compiler functions (ARM64 encoders, IR, codegen)
 ;;; - HABU: Public compiler API (deliver, compile-program, etc.)
 ;;;
-;;; Internal nc-* functions are not exported (implementation detail)
+;;; Internal functions use clean names within the SYS package
 
 ;;; ============================================================
 ;;; Part 0: Package Definitions
 ;;; ============================================================
 
-;;; HABU-SYS: System/runtime primitives
-;;; These are the functions available in self-hosted Habu runtime
-(defpackage :habu-sys
+;;; SYS: Internal compiler implementation
+;;; ARM64 encoders, IR operations, codegen - all internal
+(defpackage :sys
   (:use :cl)
   (:export
-   ;; String primitives
+   ;; String primitives (for runtime)
    #:string-length #:string-ref #:make-string-from-vector
    ;; Vector primitives
    #:make-vector #:vector-set))
@@ -27,22 +27,21 @@
 ;;; HABU: Public compiler API
 ;;; Use habu:deliver, habu:compile-program, etc.
 (defpackage :habu
-  (:use :cl)
-  (:import-from :habu-sys
-                #:string-length #:string-ref #:make-string-from-vector
-                #:make-vector #:vector-set)
+  (:use :cl :sys)
   (:export
    ;; Public compiler API (clean names)
    #:read-all           ; Parse source string to forms
    #:compile-program    ; Compile forms to ARM64 bytecode
    #:deliver            ; Compile source to standalone executable
    #:deliver-file       ; Compile file to standalone executable
+   ;; libSystem delivery
+   #:deliver-with-libsystem
    ;; Disassembler
-   #:habu-disassemble    ; Disassemble a form to IR and bytecode
-   #:habu-compile        ; Compile a form to IR
    #:disassemble-form    ; Disassemble a form to IR and bytecode
    #:disassemble-bytecode ; Disassemble bytecode to ARM64 mnemonics
-   ;; Internal nc-* functions (exported for test compatibility)
+   ;; Optimizer
+   #:optimize-ir
+   ;; Legacy nc-* aliases (for test compatibility - will be removed)
    #:nc-read-all #:nc-compile #:nc-compile-program
    #:nc-eval-ir #:nc-eval-forms #:nc-codegen #:nc-codegen-main
    #:nc-eval-ir-with-fns #:nc-compile-forms
@@ -51,11 +50,11 @@
    #:string-length #:string-ref #:make-string-from-vector
    #:make-vector #:vector-set))
 
-(in-package :habu-sys)
+(in-package :sys)
 
 ;;; System primitives (SBCL compatibility shims)
 ;;; In self-hosted Habu, these are native runtime functions
-(defun string-length (s) (length s))
+(defun string-length (s) (cl:length s))
 (defun string-ref (s i) (char-code (char s i)))
 (defun make-vector (n) (make-array n))
 (defun vector-set (v i x) (setf (aref v i) x))
