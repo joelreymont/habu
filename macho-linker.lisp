@@ -545,35 +545,49 @@
    For imports layout (code at page 0, GOT at page 1, heap at page 2), this is 2.
    x28 is used as the heap bump pointer.
    x26 is used as the code base pointer (for closure funcall).
+   x27 is used as heap base pointer (for symbol table access).
 
-   Stub (52 bytes = 13 instructions):
-     0: sub sp, sp, #32      ; allocate stack space
+   Heap layout (first 16 bytes reserved for symbol table):
+     heap[0]  = next symbol ID (8 bytes, starts at 0)
+     heap[8]  = symbol table pointer (8 bytes, starts at nil = 0)
+     heap[16] = start of bump allocation area
+
+   Stub (68 bytes = 17 instructions):
+     0: sub sp, sp, #48      ; allocate stack space
      1: str x30, [sp]        ; save LR
      2: str x28, [sp, #8]    ; save x28
      3: str x26, [sp, #16]   ; save x26
-     4: adrp x28, #page_off  ; load heap page address (PC-relative)
-     5: adr x26, +32         ; x26 = address of main code (8 instrs ahead = 32 bytes)
-     6: bl +7                ; call original main (skip 6 instrs to reach instr 13)
-     7: lsr x0, x0, #4       ; untag result
-     8: ldr x26, [sp, #16]   ; restore x26
-     9: ldr x28, [sp, #8]    ; restore x28
-    10: ldr x30, [sp]        ; restore LR
-    11: add sp, sp, #32      ; clean up stack
-    12: ret                  ; return to OS
-    13: <original code>      ; starts at offset 52"
+     4: str x27, [sp, #24]   ; save x27
+     5: adrp x28, #page_off  ; load heap page address (PC-relative)
+     6: mov x27, x28         ; save heap base for symbol table
+     7: add x28, x28, #16    ; skip reserved 16 bytes for symbol table
+     8: adr x26, +36         ; x26 = address of main code (9 instrs ahead = 36 bytes)
+     9: bl +8                ; call original main (jump to instr 17)
+    10: lsr x0, x0, #4       ; untag result
+    11: ldr x27, [sp, #24]   ; restore x27
+    12: ldr x26, [sp, #16]   ; restore x26
+    13: ldr x28, [sp, #8]    ; restore x28
+    14: ldr x30, [sp]        ; restore LR
+    15: add sp, sp, #48      ; clean up stack
+    16: ret                  ; return to OS
+    17: <original code>      ; starts at offset 68"
   (let* ((stub (append
-                (arm64:sub arm64:+sp+ arm64:+sp+ #x20 :imm t)  ; sub sp, sp, #32
+                (arm64:sub arm64:+sp+ arm64:+sp+ #x30 :imm t)  ; sub sp, sp, #48
                 (arm64:str arm64:+lr+ arm64:+sp+)              ; str x30, [sp]
                 (arm64:str 28 arm64:+sp+ :offset 8)            ; str x28, [sp, #8]
                 (arm64:str 26 arm64:+sp+ :offset 16)           ; str x26, [sp, #16]
+                (arm64:str 27 arm64:+sp+ :offset 24)           ; str x27, [sp, #24]
                 (arm64:adrp 28 heap-page-offset)               ; adrp x28, heap (PC-relative)
-                (arm64:adr 26 32)                              ; adr x26, +32 (code base)
-                (arm64:bl 7)                                   ; bl +7 (skip 6 instrs to main)
+                (arm64:mov 27 28)                              ; mov x27, x28 (heap base)
+                (arm64:add 28 28 #x10 :imm t)                  ; add x28, x28, #16 (skip reserved)
+                (arm64:adr 26 36)                              ; adr x26, +36 (code base = 9 instrs)
+                (arm64:bl 8)                                   ; bl +8 (jump to instr 17)
                 (arm64:lsr 0 0 4 :imm t)                       ; lsr x0, x0, #4
+                (arm64:ldr 27 arm64:+sp+ :offset 24)           ; ldr x27, [sp, #24]
                 (arm64:ldr 26 arm64:+sp+ :offset 16)           ; ldr x26, [sp, #16]
                 (arm64:ldr 28 arm64:+sp+ :offset 8)            ; ldr x28, [sp, #8]
                 (arm64:ldr arm64:+lr+ arm64:+sp+)              ; ldr x30, [sp]
-                (arm64:add arm64:+sp+ arm64:+sp+ #x20 :imm t)  ; add sp, sp, #32
+                (arm64:add arm64:+sp+ arm64:+sp+ #x30 :imm t)  ; add sp, sp, #48
                 (arm64:ret))))                                 ; ret
     (append stub code-bytes)))
 

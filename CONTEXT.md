@@ -2,7 +2,7 @@
 
 **Session Date**: November 22-27, 2025
 **Focus**: Self-hosting ARM64 Lisp compiler with native executable generation
-**Last Updated**: November 27, 2025 (107 tests pass: 77 native + 10 self-host + 10 bootstrap + 3 ARM64 asm + 7 libSystem)
+**Last Updated**: November 27, 2025 (129 tests pass: 77 native + 10 self-host + 10 bootstrap + 3 ARM64 asm + 7 libSystem + 10 inline string ops + 5 inline intern + 30 native reader primitives - some overlap)
 
 ## Current Plan: Native File I/O and Self-Hosting (November 27, 2025)
 
@@ -20,10 +20,20 @@ With dynamic linking now working, the path to self-hosting is clear:
 - Fixed GOT bind bit: `#x8000000000000000` (bit 63) not `(ash 1 62)` (bit 62)
 - Created `write-macho-executable-with-imports-and-heap` for 5-segment layout
 
-### Phase 2: Native Reader (NEXT)
+### Phase 2: Native Reader - IN PROGRESS
 1. Port the Habu reader (common/reader.lisp) to work in native executables
 2. Reader needs: string operations, character predicates, file I/O
 3. Test: native executable that reads and parses a Lisp file
+
+**Completed for Phase 2**:
+- Fixed closure capture crash (nc-gen-capture-copies used vector-ref, now uses car/cdr for cons list)
+- Added nc-ldrb-offset for byte loads with immediate offset
+- Added symbolp, stringp, vectorp type predicates
+- Implemented inline intern (make-symbol-from-string) - creates symbols on heap
+  - Symbol table at x27[0]=next-id, x27[8]=table-ptr
+  - Currently simplified (no dedup) - always creates new symbol
+  - TODO: Add table search for symbol deduplication
+- All 30 native reader primitive tests pass (char predicates, number parsing, etc.)
 
 ### Phase 3: Self-Hosting Compiler
 1. Package: reader + compiler + codegen + linker

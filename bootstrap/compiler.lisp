@@ -290,6 +290,15 @@
          (word (logior #x38606800 rm-s rn-s rt)))
     (nc-encode-word word)))
 
+(defun nc-ldrb-offset (rt rn offset)
+  "LDRB Wt, [Xn, #offset] - load byte from address Xn+offset, zero-extend to 64-bit"
+  ;; Encoding: 00 111 0 01 01 imm12 Rn Rt
+  ;; Base: #x39400000
+  (let* ((imm-s (ash (logand offset #xFFF) 10))
+         (rn-s (ash rn 5))
+         (word (logior #x39400000 imm-s rn-s rt)))
+    (nc-encode-word word)))
+
 (defun nc-strb-imm (rt rn offset)
   "STRB Wt, [Xn, #offset] - store byte to address Xn+offset"
   ;; Encoding: 00 111 0 01 00 imm12 Rn Rt
@@ -297,6 +306,15 @@
   (let* ((imm-s (ash (logand offset #xFFF) 10))
          (rn-s (ash rn 5))
          (word (logior #x39000000 imm-s rn-s rt)))
+    (nc-encode-word word)))
+
+(defun nc-strb-reg (rt rn rm)
+  "STRB Wt, [Xn, Xm] - store byte to address Xn+Xm"
+  ;; Encoding: 00 111 0 00 00 1 Rm 011 0 10 Rn Rt
+  ;; #x38206800 = base + shifted register mode
+  (let* ((rm-s (ash rm 16))
+         (rn-s (ash rn 5))
+         (word (logior #x38206800 rm-s rn-s rt)))
     (nc-encode-word word)))
 
 (defun nc-add-imm (rd rn imm)
@@ -1382,6 +1400,15 @@
           ;; get-tag returns tagged fixnum (tag << 4), lit also tags its value
           ;; so to compare tag=1, use (lit 1) -> becomes 1<<4=16
           (list 'cmp-eq (list 'get-tag (nc-compile (cadr expr) env fenv)) (list 'lit 1)))
+         ((eq op 'symbolp)
+          ;; Symbol tag is 2, so compare with (lit 2) -> becomes 2<<4=32
+          (list 'cmp-eq (list 'get-tag (nc-compile (cadr expr) env fenv)) (list 'lit 2)))
+         ((eq op 'stringp)
+          ;; String tag is 4, so compare with (lit 4) -> becomes 4<<4=64
+          (list 'cmp-eq (list 'get-tag (nc-compile (cadr expr) env fenv)) (list 'lit 4)))
+         ((eq op 'vectorp)
+          ;; Vector tag is 3, so compare with (lit 3) -> becomes 3<<4=48
+          (list 'cmp-eq (list 'get-tag (nc-compile (cadr expr) env fenv)) (list 'lit 3)))
          ;; length - list length via recursion
          ((eq op 'length)
           (nc-compile
@@ -2616,23 +2643,65 @@
             (lf (nc-ldr-offset 9 19 408))
             (bl (nc-blr 9)))
        (nc-append-all (list cc lf bl))))
-    ;; string-equal-ir - compare two strings
+    ;; string-equal-ir - compare two strings (inline)
     ((nc-has-tag ir 'string-equal-ir)
      ;; string-equal-ir = (string-equal-ir str1-ir str2-ir)
-     ;; Runtime index 52 = habu_string_equal at offset 416
-     ;; Takes two string args in x0/x1, returns tagged fixnum (0 or 1)
+     ;; Inline implementation: compare lengths, then byte-by-byte
+     ;; String layout: [length (8 bytes)][char data (n bytes)]
+     ;; Returns: tagged fixnum 16 (true=1) or 0 (false)
+     ;; Register usage:
+     ;;   x0: result (0 or 16)
+     ;;   x1: str1 base (untagged)
+     ;;   x2: str2 base (untagged)
+     ;;   x3: len1
+     ;;   x4: len2 / loop counter
+     ;;   x5: char from str1
+     ;;   x6: char from str2
      (let* ((str1-ir (cadr ir))
             (str2-ir (caddr ir))
             (xs (nc-temp-slot td))
             (nd (+ td 1))
             (s1 (nc-codegen str1-ir rtaddrs fnoffs nd))
             (sp (nc-str-offset 0 31 xs))
-            (s2 (nc-codegen str2-ir rtaddrs fnoffs nd))
-            (m1 (nc-mov-reg 1 0))
-            (ls (nc-ldr-offset 0 31 xs))
-            (lf (nc-ldr-offset 9 19 416))
-            (bl (nc-blr 9)))
-       (nc-append-all (list s1 sp s2 m1 ls lf bl))))
+            (s2 (nc-codegen str2-ir rtaddrs fnoffs nd)))
+       (nc-append-all
+        (list s1 sp s2
+              ;; x2 = str2 base (untagged)
+              (nc-and-imm 2 0 1 #x3C #x3B)    ; x2 = str2 & ~0xF
+              ;; x1 = str1 base (untagged)
+              (nc-ldr-offset 0 31 xs)         ; x0 = str1 (tagged)
+              (nc-and-imm 1 0 1 #x3C #x3B)    ; x1 = str1 & ~0xF
+              ;; Load lengths
+              (nc-ldr-offset 3 1 0)           ; x3 = len1
+              (nc-ldr-offset 4 2 0)           ; x4 = len2
+              ;; Compare lengths
+              (nc-cmp-reg 3 4)                ; cmp len1, len2
+              (nc-b-cond (nc-cond-ne) 56)     ; if len1 != len2, jump to return_false (+14 instructions = 56 bytes)
+              ;; Lengths equal, setup for loop
+              ;; x1 = str1 data = x1 + 8
+              (nc-add-imm 1 1 8)              ; x1 = str1 data start
+              ;; x2 = str2 data = x2 + 8
+              (nc-add-imm 2 2 8)              ; x2 = str2 data start
+              ;; x4 = loop counter = 0
+              (nc-movz 4 0)                   ; x4 = 0
+              ;; loop_start: (offset here, instruction 5)
+              (nc-cmp-reg 4 3)                ; cmp counter, len
+              (nc-b-cond (nc-cond-ge) 28)     ; if counter >= len, jump to return_true (+7 instructions = 28 bytes)
+              ;; Load bytes from both strings
+              (nc-ldrb-reg 5 1 4)             ; x5 = str1[counter]
+              (nc-ldrb-reg 6 2 4)             ; x6 = str2[counter]
+              ;; Compare bytes
+              (nc-cmp-reg 5 6)                ; cmp char1, char2
+              (nc-b-cond (nc-cond-ne) 20)     ; if char1 != char2, jump to return_false (+5 instructions = 20 bytes)
+              ;; Increment counter
+              (nc-add-imm 4 4 1)              ; x4++
+              ;; Loop back to cmp at instruction 5
+              (nc-b-offset -24)               ; back 6 instructions = -24 bytes
+              ;; return_true: (instruction 13)
+              (nc-movz 0 16)                  ; x0 = 16 (tagged 1)
+              (nc-b-offset 8)                 ; skip return_false (+2 instructions = 8 bytes)
+              ;; return_false: (instruction 15)
+              (nc-movz 0 0)))))
     ;; make-vector-ir - allocate vector (inline)
     ((nc-has-tag ir 'make-vector-ir)
      ;; make-vector-ir = (make-vector-ir size-ir)
@@ -2714,26 +2783,124 @@
               (nc-add-reg 1 1 0)              ; x1 = address
               (nc-ldr-offset 0 1 0)           ; x0 = [x1] = element (already tagged)
               ))))
-    ;; make-string-from-vector-ir - convert vector to string
+    ;; make-string-from-vector-ir - convert vector to string (inline)
     ((nc-has-tag ir 'make-string-from-vector-ir)
      ;; make-string-from-vector-ir = (make-string-from-vector-ir vec-ir)
-     ;; Runtime index 10 = habu_make_string_from_vector at offset 80
-     ;; Takes tagged vector in x0, returns tagged string
+     ;; Inline implementation: allocate string on heap, copy bytes from vector
+     ;; Vector layout: [length (8 bytes)][data[0] ... data[n-1]] (8-byte tagged elements)
+     ;; String layout: [length (8 bytes)][char data (n bytes)]
+     ;; Register usage:
+     ;;   x0: tagged vec input, then tagged string result
+     ;;   x1: untagged vec base
+     ;;   x2: string data base (untagged string ptr + 8)
+     ;;   x3: loop counter (0 to len-1)
+     ;;   x4: temp for loading/storing bytes
+     ;;   x5: length
      (let* ((vec-ir (cadr ir))
-            (vc (nc-codegen vec-ir rtaddrs fnoffs td))
-            (lf (nc-ldr-offset 9 19 80))
-            (bl (nc-blr 9)))
-       (nc-append-all (list vc lf bl))))
+            (vc (nc-codegen vec-ir rtaddrs fnoffs td)))
+       (nc-append-all
+        (list vc
+              ;; x1 = untagged vec base
+              (nc-and-imm 1 0 1 #x3C #x3B)    ; x1 = vec & ~0xF
+              ;; x5 = vec length (raw)
+              (nc-ldr-offset 5 1 0)           ; x5 = [x1+0] = length
+              ;; Allocate string: store length at [x28], compute alloc size
+              (nc-str-offset 5 28 0)          ; [x28+0] = length
+              ;; x4 = alloc size = 8 + ((len + 7) & ~7) for 8-byte alignment
+              (nc-add-imm 4 5 7)              ; x4 = len + 7
+              (nc-and-imm 4 4 1 #x3D #x3C)    ; x4 = (len + 7) & ~7 (clear low 3 bits)
+              (nc-add-imm 4 4 8)              ; x4 = 8 + aligned_len
+              ;; Save string ptr (will be result), bump heap
+              (nc-mov-reg 0 28)               ; x0 = string base (untagged)
+              (nc-add-reg 28 28 4)            ; x28 += alloc_size
+              ;; x2 = string data base = x0 + 8
+              (nc-add-imm 2 0 8)              ; x2 = string data start
+              ;; x3 = loop counter = 0
+              (nc-movz 3 0)                   ; x3 = 0
+              ;; Loop: while x3 < x5
+              ;; loop_start: (offset 0 from here)
+              (nc-cmp-reg 3 5)                ; cmp x3, x5
+              (nc-b-cond (nc-cond-ge) 36)     ; if x3 >= x5, jump to loop_end (+9 instructions = 36 bytes)
+              ;; Load vec[x3]: address = x1 + 8 + x3*8
+              (nc-lsl-imm 4 3 3)              ; x4 = x3 * 8
+              (nc-add-imm 4 4 8)              ; x4 = 8 + x3*8 (offset in vec)
+              (nc-add-reg 4 1 4)              ; x4 = vec_base + offset
+              (nc-ldr-offset 4 4 0)           ; x4 = [x4] = tagged fixnum
+              ;; Untag: x4 = x4 >> 4
+              (nc-lsr-imm 4 4 4)              ; x4 = char value (untagged)
+              ;; Store byte: str_data[x3] = x4
+              (nc-strb-reg 4 2 3)             ; [x2 + x3] = x4 (byte)
+              ;; x3++
+              (nc-add-imm 3 3 1)              ; x3++
+              ;; Jump back to loop_start (cmp instruction)
+              (nc-b-offset -36)               ; back 9 instructions = -36 bytes
+              ;; loop_end:
+              ;; Tag result with string tag (0x4)
+              (nc-movz 4 4)                   ; x4 = 4
+              (nc-orr-reg 0 0 4)))))
     ;; make-symbol-from-string-ir - intern string as symbol
     ((nc-has-tag ir 'make-symbol-from-string-ir)
      ;; make-symbol-from-string-ir = (make-symbol-from-string-ir str-ir)
-     ;; Runtime index 11 = habu_make_symbol_from_string at offset 88
-     ;; Takes tagged string in x0, returns tagged symbol
+     ;; For native (no runtime): inline intern using x27 as symbol table base
+     ;; Symbol table layout: x27[0] = next-id, x27[8] = table-ptr (list)
+     ;; Table is list of (name . (id . next)) entries
+     ;; String layout: [length (8 bytes)][char data] - ptr points to start
+     ;; Result is symbol tagged as (id << 4) | 2
+     ;;
+     ;; Algorithm (simplified - always creates new symbol for now):
+     ;; TODO: Add table search to deduplicate symbols
+     ;; 1. Evaluate string, save to slot
+     ;; 2. Get next-id from x27[0]
+     ;; 3. Create symbol entry in table
+     ;; 4. Return symbol with ID tagged as symbol
      (let* ((str-ir (cadr ir))
-            (sc (nc-codegen str-ir rtaddrs fnoffs td))
-            (lf (nc-ldr-offset 9 19 88))
-            (bl (nc-blr 9)))
-       (nc-append-all (list sc lf bl))))
+            (str-code (nc-codegen str-ir rtaddrs fnoffs (+ td 5)))
+            (str-slot (nc-temp-slot td)))
+       (nc-append-all
+        (list
+         ;; Evaluate and save input string
+         str-code
+         (nc-str-offset 0 31 str-slot)
+
+         ;; Get next-id from x27[0]
+         (nc-ldr-offset 3 27 0)  ; x3 = next-id (untagged)
+
+         ;; Create (id . table) cons
+         ;; id = x3 << 4 (tag as fixnum)
+         (nc-lsl-imm 4 3 4)      ; x4 = id as fixnum
+         ;; table = [x27+8]
+         (nc-ldr-offset 5 27 8)  ; x5 = current table
+         ;; Allocate cons: [x28+0] = id, [x28+8] = table
+         (nc-str-offset 4 28 0)
+         (nc-str-offset 5 28 8)
+         ;; Tag as cons
+         (nc-mov-reg 6 28)
+         (nc-movz 9 1)
+         (nc-orr-reg 6 6 9)      ; x6 = id-next cons
+         (nc-add-imm 28 28 16)   ; bump heap
+
+         ;; Create outer cons: (name . id-next)
+         ;; name = input string
+         (nc-ldr-offset 0 31 str-slot)
+         (nc-str-offset 0 28 0)  ; [x28+0] = name
+         (nc-str-offset 6 28 8)  ; [x28+8] = id-next cons
+         ;; Tag as cons
+         (nc-mov-reg 7 28)
+         (nc-orr-reg 7 7 9)      ; x7 = new entry cons
+         (nc-add-imm 28 28 16)   ; bump heap
+
+         ;; Update table: x27[8] = new entry
+         (nc-str-offset 7 27 8)
+         ;; Increment next-id: x27[0] = x3 + 1
+         (nc-add-imm 3 3 1)
+         (nc-str-offset 3 27 0)
+
+         ;; Return id as symbol: (id << 4) | 2
+         ;; x4 already has id << 4 (as fixnum)
+         (nc-movz 11 #xF)
+         (nc-bic-reg 0 4 11)     ; clear fixnum tag
+         (nc-movz 9 2)
+         (nc-orr-reg 0 0 9)))))  ; tag as symbol
     ;; write-bytes-ir - write vector of bytes to file
     ((nc-has-tag ir 'write-bytes-ir)
      ;; write-bytes-ir = (write-bytes-ir path-ir vec-ir)
@@ -3478,22 +3645,25 @@
 
 (defun nc-gen-capture-copies (count idx acc)
   "Generate code to copy captured values from closure env (x24) to stack.
-   x24 points to the env vector, copy count values starting at index 0."
+   x24 points to a cons list of captured values: (val1 . (val2 . nil)).
+   We traverse the list extracting car values and storing to stack slots.
+   After all copies, x24 should be nil."
   (if (>= idx count)
       acc
       (let* ((copy-code
               (nc-append-all
                (list
-                ;; x0 = vector (x24)
-                (nc-mov-reg 0 24)
-                ;; x1 = index (tagged)
-                (nc-movz 1 (ash idx 4))
-                ;; call vector-ref (runtime table index 9, offset 72)
-                (nc-ldr-offset 11 19 72)
-                (nc-blr 11)
+                ;; x24 is current cons cell (tagged with 1)
+                ;; Clear cons tag: x9 = x24 & ~0xF
+                (nc-movz 11 #xF)
+                (nc-bic-reg 9 24 11)
+                ;; Get car (the captured value): x0 = [x9+0]
+                (nc-ldr-offset 0 9 0)
                 ;; Store result to stack slot idx
                 (nc-sub-imm 21 20 (* idx 8))
-                (nc-str-offset 0 21 0)))))
+                (nc-str-offset 0 21 0)
+                ;; Move x24 to cdr (next cons cell): x24 = [x9+8]
+                (nc-ldr-offset 24 9 8)))))
         (nc-gen-capture-copies count (+ idx 1) (append acc copy-code)))))
 
 (defun nc-save-params-to-temps (count idx acc)
@@ -3672,13 +3842,15 @@
     (append pc bc (nc-ret))))
 
 (defun nc-code-size (code)
-  "Calculate byte size of code that may contain (:call-fn name) markers.
+  "Calculate byte size of code that may contain (:call-fn name) or (:extern-call name) markers.
    Each marker represents a 4-byte BL instruction."
   (labels ((calc (items acc)
              (if (null items)
                  acc
                  (let ((item (car items)))
-                   (if (and (consp item) (eq (car item) :call-fn))
+                   (if (and (consp item)
+                            (or (eq (car item) :call-fn)
+                                (eq (car item) :extern-call)))
                        (calc (cdr items) (+ acc 4))
                        (calc (cdr items) (+ acc 1)))))))
     (calc code 0)))
@@ -4004,8 +4176,9 @@ int main(int argc, char **argv) {
          ;; Collect extern calls and get unique imports
          (extern-calls (nc-collect-extern-calls bytes-with-markers))
          (imports (nc-get-unique-imports extern-calls))
-         ;; Wrapper stub size in bytes (13 instructions * 4 bytes)
-         (wrapper-size 52))
+         ;; Wrapper stub size in bytes (17 instructions * 4 bytes)
+         ;; Note: wrap-bytecode-with-heap-for-imports has 17 instructions
+         (wrapper-size 68))
 
     (when verbose
       (format t "Compiled ~A bytes (with markers)~%" (length bytes-with-markers))
@@ -4014,13 +4187,15 @@ int main(int argc, char **argv) {
 
     (if (null imports)
         ;; No external calls - use simple native delivery with heap
+        ;; Layout: __TEXT at page 0 (16KB), __DATA at page 1 (16KB) = 0x100004000
+        ;; ADRP uses 4KB pages, so heap-page-offset = (0x100004 - 0x100000) = 4 pages
         (progn
           (when verbose (format t "No imports - using direct delivery~%"))
           (multiple-value-bind (flat-code ignored)
               (nc-flatten-extern-calls bytes-with-markers)
             (declare (ignore ignored))
             (let ((wrapped-code (funcall (intern "WRAP-BYTECODE-WITH-HEAP" :habu-macho)
-                                         flat-code 1)))  ; heap at page 1
+                                         flat-code 4)))  ; heap at page 4 (4KB ADRP pages)
               (funcall (intern "WRITE-MACHO-EXECUTABLE-WITH-HEAP" :habu-macho)
                        output-path wrapped-code #x100000 :verbose verbose))))
         ;; Has external calls - use macho linker with imports AND heap
