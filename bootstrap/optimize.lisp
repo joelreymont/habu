@@ -292,10 +292,129 @@
 (register-optimization 'dead-code-elimination #'eliminate-dead-code)
 
 ;;; ============================================================
+;;; Pass 4: Self-Tail-Call to Loop Conversion
+;;; ============================================================
+
+;;; Convert self-tail-calls to loops for zero-overhead recursion.
+;;; Transform: (defun f (args) ... (f new-args) ...)
+;;; Into:      (defun f (args) (loop-ir body-with-continue))
+;;; Where self-calls become: (continue-ir new-args)
+;;;
+;;; The loop-ir/continue-ir nodes are handled specially in codegen:
+;;; - loop-ir generates a loop label at start, then evaluates body
+;;; - continue-ir evaluates new args, stores to params, jumps to loop start
+
+(defun convert-self-tail-calls (ir fn-name param-count)
+  "Convert self-tail-calls in tail position to continue-ir nodes.
+   fn-name is the name of the function we're in.
+   param-count is the number of parameters (for generating correct setqs)."
+  (cond
+    ((null ir) nil)
+    ((not (consp ir)) ir)
+    ;; Self-call in tail position -> convert to continue
+    ((and (has-tag ir 'call-fn)
+          (eq (cadr ir) fn-name))
+     (list 'continue-ir (mapcar #'convert-non-tail (caddr ir))))
+    ;; if-ir: both branches are in tail position
+    ((has-tag ir 'if-ir)
+     (list 'if-ir
+           (convert-non-tail (cadr ir))
+           (convert-self-tail-calls (caddr ir) fn-name param-count)
+           (convert-self-tail-calls (cadddr ir) fn-name param-count)))
+    ;; progn-ir: last form is in tail position
+    ((has-tag ir 'progn-ir)
+     (let ((forms (cadr ir)))
+       (if (null forms)
+           ir
+           (list 'progn-ir
+                 (append (mapcar #'convert-non-tail (butlast forms))
+                         (list (convert-self-tail-calls (car (last forms)) fn-name param-count)))))))
+    ;; let-ir: body is in tail position
+    ((has-tag ir 'let-ir)
+     (list 'let-ir
+           (mapcar #'convert-non-tail (cadr ir))
+           (convert-self-tail-calls (caddr ir) fn-name param-count)
+           (cadddr ir) (nth 4 ir)))
+    ;; Everything else: not in tail position, don't convert
+    (t (convert-non-tail ir))))
+
+(defun convert-non-tail (ir)
+  "Process IR that is NOT in tail position - don't convert any calls."
+  (cond
+    ((null ir) nil)
+    ((not (consp ir)) ir)
+    ;; call-fn stays as call-fn
+    ((has-tag ir 'call-fn)
+     (list 'call-fn (cadr ir) (mapcar #'convert-non-tail (caddr ir))))
+    ;; Recurse into structures
+    ((has-tag ir 'if-ir)
+     (list 'if-ir
+           (convert-non-tail (cadr ir))
+           (convert-non-tail (caddr ir))
+           (convert-non-tail (cadddr ir))))
+    ((has-tag ir 'progn-ir)
+     (list 'progn-ir (mapcar #'convert-non-tail (cadr ir))))
+    ((has-tag ir 'let-ir)
+     (list 'let-ir
+           (mapcar #'convert-non-tail (cadr ir))
+           (convert-non-tail (caddr ir))
+           (cadddr ir) (nth 4 ir)))
+    ((or (has-tag ir 'add) (has-tag ir 'sub)
+         (has-tag ir 'mul) (has-tag ir 'div)
+         (has-tag ir 'cmp-eq) (has-tag ir 'cmp-lt)
+         (has-tag ir 'cmp-gt) (has-tag ir 'cmp-le)
+         (has-tag ir 'cmp-ge))
+     (list (car ir) (convert-non-tail (cadr ir)) (convert-non-tail (caddr ir))))
+    ((or (has-tag ir 'car-ir) (has-tag ir 'cdr-ir)
+         (has-tag ir 'null-ir) (has-tag ir 'consp-ir))
+     (list (car ir) (convert-non-tail (cadr ir))))
+    ((has-tag ir 'cons-ir)
+     (list 'cons-ir (convert-non-tail (cadr ir)) (convert-non-tail (caddr ir))))
+    (t ir)))
+
+(defun has-self-tail-call-p (ir fn-name)
+  "Check if IR contains a self-tail-call to fn-name in tail position."
+  (cond
+    ((null ir) nil)
+    ((not (consp ir)) nil)
+    ((and (has-tag ir 'call-fn) (eq (cadr ir) fn-name)) t)
+    ((has-tag ir 'if-ir)
+     (or (has-self-tail-call-p (caddr ir) fn-name)
+         (has-self-tail-call-p (cadddr ir) fn-name)))
+    ((has-tag ir 'progn-ir)
+     (let ((forms (cadr ir)))
+       (and forms (has-self-tail-call-p (car (last forms)) fn-name))))
+    ((has-tag ir 'let-ir)
+     (has-self-tail-call-p (caddr ir) fn-name))
+    (t nil)))
+
+(defun wrap-with-loop (ir)
+  "Wrap IR in a loop-ir if it contains continue-ir nodes."
+  (if (contains-continue-p ir)
+      (list 'loop-ir ir)
+      ir))
+
+(defun contains-continue-p (ir)
+  "Check if IR contains any continue-ir nodes."
+  (cond
+    ((null ir) nil)
+    ((not (consp ir)) nil)
+    ((has-tag ir 'continue-ir) t)
+    ((has-tag ir 'if-ir)
+     (or (contains-continue-p (caddr ir))
+         (contains-continue-p (cadddr ir))))
+    ((has-tag ir 'progn-ir)
+     (some #'contains-continue-p (cadr ir)))
+    ((has-tag ir 'let-ir)
+     (or (some #'contains-continue-p (cadr ir))
+         (contains-continue-p (caddr ir))))
+    (t nil)))
+
+;;; ============================================================
 ;;; Optimization Pipeline
 ;;; ============================================================
 
-(defun optimize-ir (ir &key (passes '(constant-folding strength-reduction dead-code-elimination)))
+(defun optimize-ir (ir &key (passes '(constant-folding strength-reduction dead-code-elimination tail-call-marking)))
   "Run specified optimization passes on IR"
   (let ((result ir))
     (dolist (pass passes)

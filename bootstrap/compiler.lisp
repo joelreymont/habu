@@ -476,22 +476,50 @@
   code)
 
 (defun nc-resolve-calls (code fnoffs)
-  "Resolve (:call-fn name) markers to actual BL instructions.
-   Scans through code (a list of bytes and markers), calculates positions,
-   and replaces markers with BL instructions.
+  "Resolve call and loop markers to branch instructions.
+   Handles: (:call-fn name), (:tail-call-fn name), (:loop-start), (:loop-continue)
    Note: (:extern-call name) markers are left as-is for later resolution."
   (labels ((calc-size (item)
              ;; Calculate byte size of an item
              (cond ((and (consp item) (eq (car item) :call-fn)) 4)
+                   ((and (consp item) (eq (car item) :tail-call-fn)) 4)
                    ((and (consp item) (eq (car item) :extern-call)) 4)
+                   ((and (consp item) (eq (car item) :loop-start)) 0) ; marker only, no code
+                   ((and (consp item) (eq (car item) :loop-continue)) 4) ; B instruction
                    (t 1)))
-           (resolve-at (items pos acc)
+           (find-loop-start (items pos)
+             ;; Find position of most recent :loop-start marker
+             (labels ((scan (items pos last-start)
+                        (if (null items)
+                            last-start
+                            (let ((item (car items)))
+                              (cond
+                                ((and (consp item) (eq (car item) :loop-start))
+                                 (scan (cdr items) pos pos))
+                                ((and (consp item) (eq (car item) :loop-continue))
+                                 last-start) ; stop at continue
+                                (t
+                                 (scan (cdr items) (+ pos (calc-size item)) last-start)))))))
+               (scan items pos nil)))
+           (resolve-at (items pos acc loop-start-stack)
              ;; Iterate through items, tracking position, resolving markers
              (if (null items)
                  (reverse acc)
                  (let ((item (car items)))
                    (cond
-                     ;; Internal call - resolve now
+                     ;; Loop start - record position on stack, emit nothing
+                     ((and (consp item) (eq (car item) :loop-start))
+                      (resolve-at (cdr items) pos acc (cons pos loop-start-stack)))
+                     ;; Loop continue - emit backward branch to loop start
+                     ((and (consp item) (eq (car item) :loop-continue))
+                      (let* ((loop-start (car loop-start-stack))
+                             (rel-offset (- loop-start pos))
+                             (b-bytes (nc-b-offset rel-offset)))
+                        (resolve-at (cdr items)
+                                    (+ pos 4)
+                                    (append (reverse b-bytes) acc)
+                                    loop-start-stack)))
+                     ;; Internal call - resolve to BL
                      ((and (consp item) (eq (car item) :call-fn))
                       (let* ((fn-name (cadr item))
                              (fn-entry (assoc fn-name fnoffs))
@@ -500,18 +528,32 @@
                              (bl-bytes (nc-bl-offset rel-offset)))
                         (resolve-at (cdr items)
                                     (+ pos 4)
-                                    (append (reverse bl-bytes) acc))))
+                                    (append (reverse bl-bytes) acc)
+                                    loop-start-stack)))
+                     ;; Tail call - resolve to B (unconditional branch without link)
+                     ((and (consp item) (eq (car item) :tail-call-fn))
+                      (let* ((fn-name (cadr item))
+                             (fn-entry (assoc fn-name fnoffs))
+                             (fn-pos (if fn-entry (cdr fn-entry) 0))
+                             (rel-offset (- fn-pos pos))
+                             (b-bytes (nc-b-offset rel-offset)))
+                        (resolve-at (cdr items)
+                                    (+ pos 4)
+                                    (append (reverse b-bytes) acc)
+                                    loop-start-stack)))
                      ;; External call - leave marker with position info
                      ((and (consp item) (eq (car item) :extern-call))
                       (resolve-at (cdr items)
                                   (+ pos 4)
-                                  (cons (list :extern-call (cadr item) pos) acc)))
+                                  (cons (list :extern-call (cadr item) pos) acc)
+                                  loop-start-stack))
                      ;; Regular byte
                      (t
                       (resolve-at (cdr items)
                                   (+ pos 1)
-                                  (cons item acc))))))))
-    (resolve-at code 0 nil)))
+                                  (cons item acc)
+                                  loop-start-stack)))))))
+    (resolve-at code 0 nil nil)))
 
 (defun nc-collect-extern-calls (code)
   "Collect all extern call markers from code.
@@ -2286,6 +2328,7 @@
     ((nc-has-tag ir 'var) nil)
     ;; Function calls definitely clobber x24
     ((nc-has-tag ir 'call-fn) t)
+    ((nc-has-tag ir 'tail-call-fn) t)
     ((nc-has-tag ir 'funcall-ir) t)
     ((nc-has-tag ir 'call-closure) t)
     ;; Runtime calls also clobber x24
@@ -2366,9 +2409,12 @@
     ((nc-has-tag ir 'setq-ir) (nc-ir-may-call? (caddr ir)))
     ((nc-has-tag ir 'setcar-ir) (or (nc-ir-may-call? (cadr ir)) (nc-ir-may-call? (caddr ir))))
     ((nc-has-tag ir 'setcdr-ir) (or (nc-ir-may-call? (cadr ir)) (nc-ir-may-call? (caddr ir))))
-    ;; Loops might call
+    ;; Loop constructs
     ((nc-has-tag ir 'dotimes-ir) t)
     ((nc-has-tag ir 'dolist-ir) t)
+    ;; Self-TCO loop constructs: check body for calls
+    ((nc-has-tag ir 'loop-ir) (nc-ir-may-call? (cadr ir)))
+    ((nc-has-tag ir 'continue-ir) (some #'nc-ir-may-call? (cadr ir)))
     ;; Default: assume it might call to be safe
     (t t)))
 
@@ -2441,10 +2487,34 @@
             (i3 (nc-lsl-imm 0 0 4)))
        (nc-append-all (list ac i1 i2 i3))))
     ((nc-has-tag ir 'add)
-     ;; Optimized: only save/restore x24 if left operand may call
-     (nc-codegen-binop (cadr ir) (caddr ir) (nc-add-reg 0 0 1) rtaddrs fnoffs td))
+     ;; Fast path: (add (var n) (lit k)) or (add (lit k) (var n)) -> single ADD imm
+     (let ((left (cadr ir))
+           (right (caddr ir)))
+       (cond
+         ;; (add var lit) where lit fits in 12-bit immediate
+         ((and (nc-has-tag left 'var) (nc-has-tag right 'lit)
+               (< (ash (cadr right) 4) #x1000))
+          (let ((var-code (nc-codegen left rtaddrs fnoffs td))
+                (imm (ash (cadr right) 4)))
+            (append var-code (nc-add-imm 0 0 imm))))
+         ;; (add lit var) - swap operands
+         ((and (nc-has-tag left 'lit) (nc-has-tag right 'var)
+               (< (ash (cadr left) 4) #x1000))
+          (let ((var-code (nc-codegen right rtaddrs fnoffs td))
+                (imm (ash (cadr left) 4)))
+            (append var-code (nc-add-imm 0 0 imm))))
+         ;; General case
+         (t (nc-codegen-binop left right (nc-add-reg 0 0 1) rtaddrs fnoffs td)))))
     ((nc-has-tag ir 'sub)
-     (nc-codegen-binop (cadr ir) (caddr ir) (nc-sub-reg 0 0 1) rtaddrs fnoffs td))
+     ;; Fast path: (sub (var n) (lit k)) -> single SUB imm
+     (let ((left (cadr ir))
+           (right (caddr ir)))
+       (if (and (nc-has-tag left 'var) (nc-has-tag right 'lit)
+                (< (ash (cadr right) 4) #x1000))
+           (let ((var-code (nc-codegen left rtaddrs fnoffs td))
+                 (imm (ash (cadr right) 4)))
+             (append var-code (nc-sub-imm 0 0 imm)))
+           (nc-codegen-binop left right (nc-sub-reg 0 0 1) rtaddrs fnoffs td))))
     ((nc-has-tag ir 'mul)
      ;; Multiplication needs untag/retag
      (nc-codegen-binop (cadr ir) (caddr ir)
@@ -2492,29 +2562,70 @@
                                             (nc-lsl-imm 0 0 4)))
                        rtaddrs fnoffs td))
     ((nc-has-tag ir 'cmp-lt)
-     (nc-codegen-binop (cadr ir) (caddr ir)
-                       (nc-append-all (list (nc-cmp-reg 0 1)
-                                            (nc-cset 0 (nc-cond-lt))
-                                            (nc-lsl-imm 0 0 4)))
-                       rtaddrs fnoffs td))
+     ;; Fast path: (cmp-lt (var n) (lit k)) -> CMP x0, #imm; CSET
+     (let ((left (cadr ir))
+           (right (caddr ir)))
+       (if (and (nc-has-tag left 'var) (nc-has-tag right 'lit)
+                (< (ash (cadr right) 4) #x1000))
+           (let ((var-code (nc-codegen left rtaddrs fnoffs td))
+                 (imm (ash (cadr right) 4)))
+             (nc-append-all (list var-code
+                                  (nc-cmp-imm 0 imm)
+                                  (nc-cset 0 (nc-cond-lt))
+                                  (nc-lsl-imm 0 0 4))))
+           (nc-codegen-binop left right
+                             (nc-append-all (list (nc-cmp-reg 0 1)
+                                                  (nc-cset 0 (nc-cond-lt))
+                                                  (nc-lsl-imm 0 0 4)))
+                             rtaddrs fnoffs td))))
     ((nc-has-tag ir 'cmp-gt)
-     (nc-codegen-binop (cadr ir) (caddr ir)
-                       (nc-append-all (list (nc-cmp-reg 0 1)
-                                            (nc-cset 0 (nc-cond-gt))
-                                            (nc-lsl-imm 0 0 4)))
-                       rtaddrs fnoffs td))
+     (let ((left (cadr ir))
+           (right (caddr ir)))
+       (if (and (nc-has-tag left 'var) (nc-has-tag right 'lit)
+                (< (ash (cadr right) 4) #x1000))
+           (let ((var-code (nc-codegen left rtaddrs fnoffs td))
+                 (imm (ash (cadr right) 4)))
+             (nc-append-all (list var-code
+                                  (nc-cmp-imm 0 imm)
+                                  (nc-cset 0 (nc-cond-gt))
+                                  (nc-lsl-imm 0 0 4))))
+           (nc-codegen-binop left right
+                             (nc-append-all (list (nc-cmp-reg 0 1)
+                                                  (nc-cset 0 (nc-cond-gt))
+                                                  (nc-lsl-imm 0 0 4)))
+                             rtaddrs fnoffs td))))
     ((nc-has-tag ir 'cmp-le)
-     (nc-codegen-binop (cadr ir) (caddr ir)
-                       (nc-append-all (list (nc-cmp-reg 0 1)
-                                            (nc-cset 0 (nc-cond-le))
-                                            (nc-lsl-imm 0 0 4)))
-                       rtaddrs fnoffs td))
+     (let ((left (cadr ir))
+           (right (caddr ir)))
+       (if (and (nc-has-tag left 'var) (nc-has-tag right 'lit)
+                (< (ash (cadr right) 4) #x1000))
+           (let ((var-code (nc-codegen left rtaddrs fnoffs td))
+                 (imm (ash (cadr right) 4)))
+             (nc-append-all (list var-code
+                                  (nc-cmp-imm 0 imm)
+                                  (nc-cset 0 (nc-cond-le))
+                                  (nc-lsl-imm 0 0 4))))
+           (nc-codegen-binop left right
+                             (nc-append-all (list (nc-cmp-reg 0 1)
+                                                  (nc-cset 0 (nc-cond-le))
+                                                  (nc-lsl-imm 0 0 4)))
+                             rtaddrs fnoffs td))))
     ((nc-has-tag ir 'cmp-ge)
-     (nc-codegen-binop (cadr ir) (caddr ir)
-                       (nc-append-all (list (nc-cmp-reg 0 1)
-                                            (nc-cset 0 (nc-cond-ge))
-                                            (nc-lsl-imm 0 0 4)))
-                       rtaddrs fnoffs td))
+     (let ((left (cadr ir))
+           (right (caddr ir)))
+       (if (and (nc-has-tag left 'var) (nc-has-tag right 'lit)
+                (< (ash (cadr right) 4) #x1000))
+           (let ((var-code (nc-codegen left rtaddrs fnoffs td))
+                 (imm (ash (cadr right) 4)))
+             (nc-append-all (list var-code
+                                  (nc-cmp-imm 0 imm)
+                                  (nc-cset 0 (nc-cond-ge))
+                                  (nc-lsl-imm 0 0 4))))
+           (nc-codegen-binop left right
+                             (nc-append-all (list (nc-cmp-reg 0 1)
+                                                  (nc-cset 0 (nc-cond-ge))
+                                                  (nc-lsl-imm 0 0 4)))
+                             rtaddrs fnoffs td))))
     ((nc-has-tag ir 'cons-ir)
      ;; Inline cons: allocate 16 bytes from heap (x28), store car/cdr, return tagged ptr
      ;; x28 is the heap bump pointer, initialized at startup
@@ -3246,6 +3357,74 @@
                 ;; This will be resolved to actual BL in nc-resolve-calls
                 (call-marker (list (list :call-fn fnm))))
            (append save-x24 args-code restore-x24 load-args set-argc call-marker)))))
+    ((nc-has-tag ir 'tail-call-fn)
+     ;; Tail call optimization: evaluate args, run epilogue, then jump (B) instead of call (BL)
+     ;; The callee will set up its own frame, so we tear down ours first
+     (let* ((fnm (cadr ir))
+            (airs (caddr ir))
+            (na (length airs))
+            (xs (nc-temp-slot td))
+            (nd (+ td 1)))
+       (labels ((ga (as i a)
+                  (if (null as) a
+                      (let* ((rs (if (> i 0) (nc-ldr-offset 24 31 xs) nil))
+                             (ac (nc-codegen (car as) rtaddrs fnoffs nd))
+                             (st (nc-str-offset 0 31 (nc-spill-slot td i)))
+                             (t1 (append a rs))
+                             (t2 (append t1 ac))
+                             (t3 (append t2 st)))
+                        (ga (cdr as) (+ i 1) t3))))
+                (gl (i a)
+                  (if (>= i na) a
+                      (let* ((ld (nc-ldr-offset i 31 (nc-spill-slot td i)))
+                             (t1 (append a ld)))
+                        (gl (+ i 1) t1)))))
+         (let* ((save-x24 (nc-str-offset 24 31 xs))
+                (args-code (ga airs 0 nil))
+                (restore-x24 (nc-ldr-offset 24 31 xs))
+                (load-args (gl 0 nil))
+                (set-argc (nc-movz 23 na))
+                ;; Run epilogue to restore caller's registers and pop our frame
+                (epilogue (nc-fn-epilogue))
+                ;; Emit tail call marker (resolved to B instead of BL)
+                (call-marker (list (list :tail-call-fn fnm))))
+           (append save-x24 args-code restore-x24 load-args set-argc epilogue call-marker)))))
+    ((nc-has-tag ir 'loop-ir)
+     ;; loop-ir = (loop-ir body-ir)
+     ;; Generate loop marker followed by body code
+     ;; The marker records position for continue-ir to jump back to
+     (let ((body-ir (cadr ir)))
+       (append (list (list :loop-start))
+               (nc-codegen body-ir rtaddrs fnoffs td))))
+    ((nc-has-tag ir 'continue-ir)
+     ;; continue-ir = (continue-ir (new-arg-ir ...))
+     ;; Evaluate new args to temp slots, copy to param slots, jump back to loop start
+     ;; Note: We must evaluate ALL args before storing ANY to handle (f (- n 1) (+ acc n))
+     (let* ((new-args-ir (cadr ir))
+            (nargs (length new-args-ir))
+            (xs (nc-temp-slot td))
+            (nd (+ td 1)))
+       ;; Generate code to evaluate all new args and store to temp slots
+       (labels ((eval-args (args idx acc)
+                  (if (null args)
+                      acc
+                      (let* ((arg-code (nc-codegen (car args) rtaddrs fnoffs nd))
+                             (store (nc-str-offset 0 31 (nc-spill-slot td idx))))
+                        (eval-args (cdr args) (+ idx 1) (append acc arg-code store)))))
+                (copy-to-params (idx acc)
+                  ;; Copy from temp slots to param slots (offsets 0, 8, 16, ...)
+                  (if (>= idx nargs)
+                      acc
+                      (let* ((load (nc-ldr-offset 0 31 (nc-spill-slot td idx)))
+                             (param-addr (nc-sub-imm 1 20 (* idx 8)))
+                             (store (nc-str-offset 0 1 0)))
+                        (copy-to-params (+ idx 1) (append acc load param-addr store))))))
+         (let* ((save-x24 (nc-str-offset 24 31 xs))
+                (eval-code (eval-args new-args-ir 0 nil))
+                (restore-x24 (nc-ldr-offset 24 31 xs))
+                (copy-code (copy-to-params 0 nil))
+                (jump-marker (list (list :loop-continue))))
+           (append save-x24 eval-code restore-x24 copy-code jump-marker)))))
     ((nc-has-tag ir 'progn-ir)
      ;; progn-ir = (progn-ir (ir1 ir2 ... irn))
      ;; Generate code for each form, keep result of last
@@ -3944,6 +4123,12 @@
                   (multiple-value-bind (new-args new-lambdas)
                       (lift-list args-ir lambdas)
                     (values (list 'call-fn name new-args) new-lambdas))))
+               ((nc-has-tag ir 'tail-call-fn)
+                (let ((name (cadr ir))
+                      (args-ir (caddr ir)))
+                  (multiple-value-bind (new-args new-lambdas)
+                      (lift-list args-ir lambdas)
+                    (values (list 'tail-call-fn name new-args) new-lambdas))))
                ((or (nc-has-tag ir 'add) (nc-has-tag ir 'sub)
                     (nc-has-tag ir 'mul) (nc-has-tag ir 'div)
                     (nc-has-tag ir 'mod) (nc-has-tag ir 'cmp-eq)
@@ -4023,6 +4208,15 @@
                 (multiple-value-bind (new-arg new-lambdas)
                     (lift (cadr ir) lambdas)
                   (values (list (car ir) new-arg) new-lambdas)))
+               ;; Self-TCO loop constructs
+               ((nc-has-tag ir 'loop-ir)
+                (multiple-value-bind (new-body new-lambdas)
+                    (lift (cadr ir) lambdas)
+                  (values (list 'loop-ir new-body) new-lambdas)))
+               ((nc-has-tag ir 'continue-ir)
+                (multiple-value-bind (new-args new-lambdas)
+                    (lift-list (cadr ir) lambdas)
+                  (values (list 'continue-ir new-args) new-lambdas)))
                (t (values ir lambdas))))
            (lift-list (irs lambdas)
              (if (null irs)
@@ -4044,17 +4238,24 @@
     (append pc bc (nc-ret))))
 
 (defun nc-code-size (code)
-  "Calculate byte size of code that may contain (:call-fn name) or (:extern-call name) markers.
-   Each marker represents a 4-byte BL instruction."
+  "Calculate byte size of code that may contain call and loop markers."
   (labels ((calc (items acc)
              (if (null items)
                  acc
                  (let ((item (car items)))
-                   (if (and (consp item)
-                            (or (eq (car item) :call-fn)
-                                (eq (car item) :extern-call)))
-                       (calc (cdr items) (+ acc 4))
-                       (calc (cdr items) (+ acc 1)))))))
+                   (cond
+                     ((and (consp item) (eq (car item) :loop-start))
+                      ;; Loop start marker - no bytes
+                      (calc (cdr items) acc))
+                     ((and (consp item)
+                           (or (eq (car item) :call-fn)
+                               (eq (car item) :tail-call-fn)
+                               (eq (car item) :extern-call)
+                               (eq (car item) :loop-continue)))
+                      ;; 4-byte instructions
+                      (calc (cdr items) (+ acc 4)))
+                     (t
+                      (calc (cdr items) (+ acc 1))))))))
     (calc code 0)))
 
 (defun nc-build-fnoffs (fns offset acc)
@@ -4111,16 +4312,17 @@
          (mir-raw (cadr r))
          ;; Apply nanopass optimizations if enabled
          (mir-opt (if (and optimize (fboundp 'optimize-ir))
-                      (optimize-ir mir-raw)
+                      (optimize-ir mir-raw :passes '(constant-folding strength-reduction dead-code-elimination))
                       mir-raw))
-         ;; Optimize function bodies too
+         ;; Function bodies get standard optimizations
+         ;; Note: Self-TCO is disabled - the continue-ir overhead is > call overhead
          (defun-fns-opt (if (and optimize (fboundp 'optimize-ir))
                             (mapcar (lambda (fn)
-                                      (list (first fn)   ; name
-                                            (second fn)  ; params
-                                            (optimize-ir (third fn)) ; body
-                                            (fourth fn)  ; env
-                                            (fifth fn))) ; captures
+                                      (list (first fn)
+                                            (second fn)
+                                            (optimize-ir (third fn) :passes '(constant-folding strength-reduction dead-code-elimination))
+                                            (fourth fn)
+                                            (fifth fn)))
                                     defun-fns)
                             defun-fns)))
     ;; Lift lambdas from main IR (use optimized IR)

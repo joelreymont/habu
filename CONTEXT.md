@@ -102,12 +102,13 @@ The optimizer was checking `(length ir)` instead of `(length (cadr ir))`,
 causing the progn wrapper to be stripped incorrectly.
 
 **Benchmark Results (with optimization)**:
-| Benchmark | With Opt | Without Opt | Improvement |
-|-----------|----------|-------------|-------------|
-| fib(30)   | 76ms     | 109ms       | 30% faster  |
-| tak       | 71ms     | 92ms        | 23% faster  |
-| list ops  | 79ms     | 71ms        | (no change) |
-| arithmetic| 78ms     | 124ms       | 37% faster  |
+| Benchmark | Habu Opt | SBCL Opt | Gap |
+|-----------|----------|----------|-----|
+| fib(35)   | 133ms    | 84ms     | 1.6x |
+| tak(100)  | 85ms     | ~0ms     | N/A |
+| sumsq     | 74ms     | 39ms     | 1.9x |
+
+Note: SBCL with (declare (optimize (speed 3))) and fixnum declarations.
 
 **Package Cleanup**:
 - Renamed HABU-SYS package to SYS for cleaner namespace
@@ -142,14 +143,26 @@ causing the progn wrapper to be stripped incorrectly.
   - Simple `(+ x y)` generates 184 bytes vs 268 bytes for `(+ (f x) y)`
   - Saves 84 bytes (21 instructions) when operands don't involve function calls
   - Applied to: add, sub, mul, div, mod, band, bor, bxor, bsh, comparisons, cons
+- P3: Immediate operand optimization for simple arithmetic/comparisons
+  - `(- n 1)` generates single SUB immediate instruction instead of 7 instructions
+  - `(+ x 10)` generates single ADD immediate instruction
+  - `(< n 100)` generates single CMP immediate instruction
+  - Applies to: add, sub, cmp-lt, cmp-gt, cmp-le, cmp-ge with variable and small literal
+
+**Explored but Disabled**:
+- Self-tail-call optimization (loop-ir/continue-ir): Implemented but disabled
+  - Converting tail calls to loops adds more overhead than regular calls
+  - continue-ir codegen (eval args, store to params, jump) is heavier than BL call
+  - May revisit with simpler approach (just for self-tail-calls with same arity)
 
 **Optimization Roadmap (TODO)**:
-- P3: Leaf function optimization (simpler prologue/epilogue)
-- P4: Register allocation for intermediate values
-- P5: Function inlining for small functions
+- P4: Leaf function optimization (simpler prologue/epilogue)
+- P5: Register allocation for intermediate values
+- P6: Function inlining for small functions
 
 ### Current Task
-Phase 5 in progress. P1 (constant folding) and P2 (x24 optimization) complete. 77/77 native tests pass.
+Phase 5 in progress. P1 (constant folding), P2 (x24 optimization), and P3 (immediate operands) complete.
+77/77 native tests pass. Habu is ~1.6-1.9x slower than fully optimized SBCL.
 
 **Self-Hosting Status**:
 - Compiled programs run without SBCL - YES
