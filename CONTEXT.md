@@ -2,7 +2,39 @@
 
 **Session Date**: November 22-27, 2025
 **Focus**: Self-hosting ARM64 Lisp compiler with native executable generation
-**Last Updated**: November 27, 2025 (100 tests pass: 77 native + 10 self-host + 10 bootstrap + 3 ARM64 asm)
+**Last Updated**: November 27, 2025 (107 tests pass: 77 native + 10 self-host + 10 bootstrap + 3 ARM64 asm + 7 libSystem)
+
+## Current Plan: Native File I/O and Self-Hosting (November 27, 2025)
+
+With dynamic linking now working, the path to self-hosting is clear:
+
+### Phase 1: Native File I/O via libSystem - COMPLETE
+1. `deliver-with-libsystem` creates executables with chained fixups - DONE
+2. Imports: `_write` working, more can be added as needed - DONE
+3. Codegen for `sys-write` calls through stubs - DONE
+4. 7 tests pass for native file I/O with libSystem - DONE
+
+**Key fixes in this phase**:
+- Fixed ADRP page offset calculation for heap (was 2, should be 8 for 4KB pages)
+- Fixed stub ADRP calculation: `(got_page - stub_page)` not `(diff >> 12)`
+- Fixed GOT bind bit: `#x8000000000000000` (bit 63) not `(ash 1 62)` (bit 62)
+- Created `write-macho-executable-with-imports-and-heap` for 5-segment layout
+
+### Phase 2: Native Reader (NEXT)
+1. Port the Habu reader (common/reader.lisp) to work in native executables
+2. Reader needs: string operations, character predicates, file I/O
+3. Test: native executable that reads and parses a Lisp file
+
+### Phase 3: Self-Hosting Compiler
+1. Package: reader + compiler + codegen + linker
+2. Create entry point that reads source, compiles, writes executable
+3. Test: compiler compiles factorial.lisp to working executable
+4. Milestone: compiler compiles itself (fixed point)
+
+### Current Task
+Ready to start Phase 2: Native Reader.
+
+---
 
 ## Session Summary (November 26, 2025)
 
@@ -63,6 +95,12 @@ This session completed the bootstrap compiler ARM64 codegen, verified bytecode e
 52. **Direct syscall executables** - test-syscall-macho creates binaries using SVC for write/exit
 53. **Chained fixups WORKING** - Fixed ncmds count (was 12, should be 13), dynamic linking now works
 54. **Dynamic linking to libSystem** - Executables can call _write, _exit etc. via stubs and GOT
+55. **deliver-with-libsystem WORKING** - Creates executables with heap + imports, 5-segment layout
+56. **write-macho-executable-with-imports-and-heap** - New linker function for heap + imports
+57. **Fixed ADRP page offset** - Heap at page 8 (4KB pages), not page 2 (16KB segment confusion)
+58. **Fixed stub page calculation** - Use `(got_page - stub_page)` not `(diff >> 12)`
+59. **Fixed GOT bind bit** - Bit 63 (`#x8000000000000000`) not bit 62
+60. **7 libSystem delivery tests pass** - sys-write, heap strings, multi-write, no-imports fallback
 
 **Package Structure** (November 26, 2025):
 - HABU-SYS: System/runtime primitives (string-length, string-ref, make-vector, etc.)

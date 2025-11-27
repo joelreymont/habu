@@ -23,12 +23,15 @@
   (:export #:write-macho-executable
            #:write-macho-executable-with-heap
            #:write-macho-executable-with-imports
+           #:write-macho-executable-with-imports-and-heap
            #:link-with-runtime
            #:deliver-native
            #:deliver-native-with-heap
            #:deliver-native-with-imports
+           #:deliver-native-with-imports-and-heap
            #:wrap-bytecode-for-exit
            #:wrap-bytecode-with-heap
+           #:wrap-bytecode-with-heap-for-imports
            #:test-minimal-macho
            #:test-import-macho
            #:test-syscall-macho))
@@ -524,6 +527,46 @@
                 (arm64:adrp 28 heap-page-offset)               ; adrp x28, heap (PC-relative)
                 ;; ADR x26, +32 puts address of main code (instr 13) into x26
                 ;; ADR offset = (target_offset - current_offset) = 52 - 20 = 32
+                (arm64:adr 26 32)                              ; adr x26, +32 (code base)
+                (arm64:bl 7)                                   ; bl +7 (skip 6 instrs to main)
+                (arm64:lsr 0 0 4 :imm t)                       ; lsr x0, x0, #4
+                (arm64:ldr 26 arm64:+sp+ :offset 16)           ; ldr x26, [sp, #16]
+                (arm64:ldr 28 arm64:+sp+ :offset 8)            ; ldr x28, [sp, #8]
+                (arm64:ldr arm64:+lr+ arm64:+sp+)              ; ldr x30, [sp]
+                (arm64:add arm64:+sp+ arm64:+sp+ #x20 :imm t)  ; add sp, sp, #32
+                (arm64:ret))))                                 ; ret
+    (append stub code-bytes)))
+
+(defun wrap-bytecode-with-heap-for-imports (code-bytes heap-page-offset)
+  "Wrap bytecode with heap initialization for executables with imports.
+   Similar to wrap-bytecode-with-heap but the heap is further away (after __DATA_CONST).
+
+   HEAP-PAGE-OFFSET is the page offset from the ADRP instruction to __DATA.
+   For imports layout (code at page 0, GOT at page 1, heap at page 2), this is 2.
+   x28 is used as the heap bump pointer.
+   x26 is used as the code base pointer (for closure funcall).
+
+   Stub (52 bytes = 13 instructions):
+     0: sub sp, sp, #32      ; allocate stack space
+     1: str x30, [sp]        ; save LR
+     2: str x28, [sp, #8]    ; save x28
+     3: str x26, [sp, #16]   ; save x26
+     4: adrp x28, #page_off  ; load heap page address (PC-relative)
+     5: adr x26, +32         ; x26 = address of main code (8 instrs ahead = 32 bytes)
+     6: bl +7                ; call original main (skip 6 instrs to reach instr 13)
+     7: lsr x0, x0, #4       ; untag result
+     8: ldr x26, [sp, #16]   ; restore x26
+     9: ldr x28, [sp, #8]    ; restore x28
+    10: ldr x30, [sp]        ; restore LR
+    11: add sp, sp, #32      ; clean up stack
+    12: ret                  ; return to OS
+    13: <original code>      ; starts at offset 52"
+  (let* ((stub (append
+                (arm64:sub arm64:+sp+ arm64:+sp+ #x20 :imm t)  ; sub sp, sp, #32
+                (arm64:str arm64:+lr+ arm64:+sp+)              ; str x30, [sp]
+                (arm64:str 28 arm64:+sp+ :offset 8)            ; str x28, [sp, #8]
+                (arm64:str 26 arm64:+sp+ :offset 16)           ; str x26, [sp, #16]
+                (arm64:adrp 28 heap-page-offset)               ; adrp x28, heap (PC-relative)
                 (arm64:adr 26 32)                              ; adr x26, +32 (code base)
                 (arm64:bl 7)                                   ; bl +7 (skip 6 instrs to main)
                 (arm64:lsr 0 0 4 :imm t)                       ; lsr x0, x0, #4
@@ -1280,6 +1323,413 @@
    Returns: (values output-path code-offset stubs-offset stub-size heap-addr)"
   (write-macho-executable-with-imports output-path code-bytes imports
                                        :heap-size heap-size :verbose verbose))
+
+;;; ============================================================
+;;; Mach-O with Imports AND Heap
+;;; ============================================================
+
+(defun write-macho-executable-with-imports-and-heap (output-path code-bytes imports
+                                                     &key (heap-size #x100000) verbose)
+  "Write a Mach-O executable that can call external functions AND has a heap segment.
+   CODE-BYTES: ARM64 machine code (should call stubs via BL)
+   IMPORTS: list of symbol names to import (e.g. '(\"_write\" \"_exit\"))
+   HEAP-SIZE: size of heap segment (default 1MB)
+
+   Segment layout:
+   0: __PAGEZERO (4GB null zone)
+   1: __TEXT with __text and __stubs sections
+   2: __DATA_CONST with __got section
+   3: __DATA with __heap section (NEW)
+   4: __LINKEDIT
+
+   Returns: (values output-path code-offset stubs-offset stub-size heap-vmaddr heap-page-offset)"
+  (let* ((num-imports (length imports))
+         (stub-size 12)                          ; 3 instructions per stub
+         (stubs-total-size (* num-imports stub-size))
+         (got-entry-size 8)
+         (got-total-size (max 8 (* num-imports got-entry-size)))
+
+         ;; 5 segments now
+         (num-segments 5)
+         (got-segment-index 2)
+
+         ;; Header and load command sizes
+         (header-size 32)
+         (pagezero-cmd-size 72)
+         (text-cmd-size (+ 72 (* 2 80)))         ; segment + 2 sections
+         (data-const-cmd-size (+ 72 80))         ; segment + 1 section (__got)
+         (data-cmd-size (+ 72 80))               ; segment + 1 section (__heap) - NEW
+         (linkedit-cmd-size 72)                  ; segment only
+         (dylinker-path "/usr/lib/dyld")
+         (dylinker-cmd-size (align-up (+ 12 (length dylinker-path) 1) 8))
+         (uuid-cmd-size 24)
+         (build-version-cmd-size 24)
+         (main-cmd-size 24)
+         (libsystem-path "/usr/lib/libSystem.B.dylib")
+         (load-dylib-cmd-size (align-up (+ 24 (length libsystem-path) 1) 8))
+         (chained-fixups-cmd-size 16)
+         (exports-trie-cmd-size 16)
+         (symtab-cmd-size 24)
+         (dysymtab-cmd-size 80)
+
+         (ncmds 14)                              ; 5 segments + 9 other commands
+         (sizeofcmds (+ pagezero-cmd-size
+                       text-cmd-size
+                       data-const-cmd-size
+                       data-cmd-size             ; NEW
+                       linkedit-cmd-size
+                       dylinker-cmd-size
+                       uuid-cmd-size
+                       build-version-cmd-size
+                       main-cmd-size
+                       load-dylib-cmd-size
+                       chained-fixups-cmd-size
+                       exports-trie-cmd-size
+                       symtab-cmd-size
+                       dysymtab-cmd-size))
+
+         ;; Code placement
+         (code-offset (align-up (+ header-size sizeofcmds 16) 64))
+         (code-size (length code-bytes))
+
+         ;; Stubs follow code
+         (stubs-offset (align-up (+ code-offset code-size) 4))
+
+         ;; __TEXT segment spans first page
+         (text-vmsize +PAGE-SIZE+)
+         (text-filesize +PAGE-SIZE+)
+
+         ;; __DATA_CONST segment at second page (for GOT)
+         (data-const-fileoff +PAGE-SIZE+)
+         (data-const-vmaddr (+ +VM-BASE+ +PAGE-SIZE+))
+         (data-const-vmsize +PAGE-SIZE+)
+         (data-const-filesize +PAGE-SIZE+)
+
+         ;; __DATA segment at third page (for heap) - NEW
+         (data-fileoff (+ data-const-fileoff +PAGE-SIZE+))
+         (data-vmaddr (+ data-const-vmaddr +PAGE-SIZE+))
+         (heap-vmsize (align-up heap-size +PAGE-SIZE+))
+         (data-filesize heap-vmsize)
+
+         ;; __LINKEDIT segment after __DATA
+         (linkedit-fileoff (+ data-fileoff data-filesize))
+         (linkedit-vmaddr (+ data-vmaddr heap-vmsize))
+
+         ;; Build symbols and strings
+         (nsyms (1+ num-imports))
+         (string-table-entries (cons "_main" imports))
+         (string-table (cons 0
+                            (loop for name in string-table-entries
+                                  append (append (map 'list #'char-code name) '(0)))))
+         (string-table-size (length string-table))
+
+         ;; LINKEDIT contents layout
+         (symtab-offset linkedit-fileoff)
+         (nlist-size (* nsyms 16))
+         (strtab-offset (+ symtab-offset nlist-size))
+         (indirect-offset (align-up (+ strtab-offset string-table-size) 4))
+         (num-indirect-syms (+ num-imports num-imports))
+         (indirect-size (* num-indirect-syms 4))
+         (fixups-offset (align-up (+ indirect-offset indirect-size) 8))
+
+         ;; GOT VM offset from binary base = data-const-vmaddr - +VM-BASE+ = +PAGE-SIZE+
+         (got-vm-offset +PAGE-SIZE+)
+
+         ;; Build chained fixups data using existing helper
+         (fixups-data (build-chained-fixups-data imports num-segments got-segment-index got-vm-offset))
+         (fixups-size (length fixups-data))
+         (aligned-fixups-size (align-up fixups-size 8))
+
+         ;; Exports trie (minimal - empty root node with no exports)
+         (exports-offset (align-up (+ fixups-offset fixups-size) 8))
+         (exports-trie-data '(#x00 #x00))  ; terminal size = 0, child count = 0
+         (exports-trie-size (length exports-trie-data))
+         (aligned-exports-size (align-up exports-trie-size 8))
+
+         ;; Linkedit total
+         (linkedit-size (align-up (+ nlist-size string-table-size
+                                    (- indirect-offset strtab-offset string-table-size)
+                                    indirect-size
+                                    (- fixups-offset indirect-offset indirect-size)
+                                    aligned-fixups-size
+                                    aligned-exports-size)
+                                 +PAGE-SIZE+))
+
+         ;; Entry point
+         (entry-offset code-offset))
+
+    (when verbose
+      (format t "Code at ~X (size ~D), stubs at ~X~%" code-offset code-size stubs-offset)
+      (format t "DATA_CONST at VM ~X (GOT)~%" data-const-vmaddr)
+      (format t "DATA at VM ~X (heap, size ~X)~%" data-vmaddr heap-vmsize)
+      (format t "LINKEDIT at ~X, filesize ~X vmsize ~X~%"
+              linkedit-fileoff linkedit-size +PAGE-SIZE+)
+      (format t "Imports: ~{~A~^ ~}~%" imports))
+
+    (with-open-file (out output-path
+                         :direction :output
+                         :if-exists :supersede
+                         :element-type '(unsigned-byte 8))
+
+      ;; === Mach-O Header ===
+      (write-mach-header-64 out ncmds sizeofcmds
+                            (logior +MH-NOUNDEFS+ +MH-DYLDLINK+
+                                    +MH-TWOLEVEL+ +MH-PIE+))
+
+      ;; === Load Commands ===
+
+      ;; 1. __PAGEZERO
+      (write-segment-command-64 out "__PAGEZERO"
+                                0 +VM-BASE+
+                                0 0
+                                0 0
+                                0 0)
+
+      ;; 2. __TEXT segment with code and stubs
+      (write-segment-command-64 out "__TEXT"
+                                +VM-BASE+ text-vmsize
+                                0 text-filesize
+                                (logior +VM-PROT-READ+ +VM-PROT-EXECUTE+)
+                                (logior +VM-PROT-READ+ +VM-PROT-EXECUTE+)
+                                2 0)
+      ;; __text section
+      (write-section-64 out "__text" "__TEXT"
+                        (+ +VM-BASE+ code-offset) code-size
+                        code-offset
+                        2
+                        0 0
+                        (logior +S-ATTR-PURE-INSTRUCTIONS+ +S-ATTR-SOME-INSTRUCTIONS+)
+                        0 0)
+      ;; __stubs section
+      (write-section-64 out "__stubs" "__TEXT"
+                        (+ +VM-BASE+ stubs-offset) stubs-total-size
+                        stubs-offset 2 0 0
+                        (logior +S-SYMBOL-STUBS+ +S-ATTR-PURE-INSTRUCTIONS+)
+                        0                         ; reserved1 = index into indirect sym table
+                        stub-size)                ; reserved2 = stub size
+
+      ;; 3. __DATA_CONST segment with GOT
+      (write-segment-command-64 out "__DATA_CONST"
+                                data-const-vmaddr data-const-vmsize
+                                data-const-fileoff data-const-filesize
+                                (logior +VM-PROT-READ+ +VM-PROT-WRITE+)
+                                (logior +VM-PROT-READ+ +VM-PROT-WRITE+)
+                                1 0)
+      ;; __got section (at offset 0 within __DATA_CONST)
+      (write-section-64 out "__got" "__DATA_CONST"
+                        data-const-vmaddr got-total-size
+                        data-const-fileoff 3 0 0
+                        +S-NON-LAZY-SYMBOL-POINTERS+
+                        num-imports               ; reserved1 = index into indirect sym table
+                        0)
+
+      ;; 4. __DATA segment with heap - NEW
+      (write-segment-command-64 out "__DATA"
+                                data-vmaddr heap-vmsize
+                                data-fileoff data-filesize
+                                (logior +VM-PROT-READ+ +VM-PROT-WRITE+)
+                                (logior +VM-PROT-READ+ +VM-PROT-WRITE+)
+                                1 0)
+      ;; __heap section
+      (write-section-64 out "__heap" "__DATA"
+                        data-vmaddr heap-vmsize
+                        data-fileoff
+                        3
+                        0 0
+                        0
+                        0 0)
+
+      ;; 5. __LINKEDIT segment
+      (write-segment-command-64 out "__LINKEDIT"
+                                linkedit-vmaddr +PAGE-SIZE+
+                                linkedit-fileoff linkedit-size
+                                +VM-PROT-READ+
+                                +VM-PROT-READ+
+                                0 0)
+
+      ;; 6. LC_LOAD_DYLINKER
+      (write-dylinker-command out dylinker-path)
+
+      ;; 7. LC_UUID
+      (write-uuid-command out)
+
+      ;; 8. LC_BUILD_VERSION
+      (write-build-version-command out)
+
+      ;; 9. LC_MAIN
+      (write-main-command out entry-offset)
+
+      ;; 10. LC_LOAD_DYLIB
+      (write-load-dylib-command out libsystem-path)
+
+      ;; 11. LC_DYLD_CHAINED_FIXUPS
+      (write-u32-le out +LC-DYLD-CHAINED-FIXUPS+)
+      (write-u32-le out chained-fixups-cmd-size)
+      (write-u32-le out fixups-offset)
+      (write-u32-le out aligned-fixups-size)
+
+      ;; 12. LC_DYLD_EXPORTS_TRIE
+      (write-u32-le out +LC-DYLD-EXPORTS-TRIE+)
+      (write-u32-le out exports-trie-cmd-size)
+      (write-u32-le out exports-offset)
+      (write-u32-le out aligned-exports-size)
+
+      ;; 13. LC_SYMTAB
+      (write-symtab-command out symtab-offset nsyms strtab-offset string-table-size)
+
+      ;; 14. LC_DYSYMTAB
+      (write-dysymtab-command-full out
+                                   0 0             ; no locals
+                                   0 1             ; 1 extdef (_main)
+                                   1 num-imports   ; undefs start at sym 1
+                                   indirect-offset num-indirect-syms)
+
+      ;; === Padding to code ===
+      (let ((current (file-position out)))
+        (when (< current code-offset)
+          (write-zeros out (- code-offset current))))
+
+      ;; === Code Section ===
+      (dolist (b code-bytes)
+        (write-byte b out))
+
+      ;; === Stubs ===
+      (let ((current (file-position out)))
+        (when (< current stubs-offset)
+          (write-zeros out (- stubs-offset current))))
+
+      ;; Generate stubs: ADRP + LDR + BR for each import
+      ;; GOT is at data-const-vmaddr, stubs call to data_const_vmaddr + (i * 8)
+      ;; ADRP page diff = (target_page - adrp_page), where pages are 4KB aligned
+      (let* ((stub-vmaddr (+ +VM-BASE+ stubs-offset))
+             (stub-page (ash stub-vmaddr -12))
+             (got-page (ash data-const-vmaddr -12))
+             (got-page-diff (- got-page stub-page)))
+        (when verbose
+          (format t "GOT at VM ~X, page diff from stubs: ~D~%" data-const-vmaddr got-page-diff))
+        (dotimes (i num-imports)
+          (let* ((got-entry-vmaddr (+ data-const-vmaddr (* i 8)))
+                 (got-page-off (logand got-entry-vmaddr #xFFF)))
+            (dolist (b (arm64:adrp 16 got-page-diff))
+              (write-byte b out))
+            (dolist (b (arm64:ldr 16 16 :offset got-page-off))
+              (write-byte b out))
+            (dolist (b (arm64:br 16))
+              (write-byte b out)))))
+
+      ;; === Pad to DATA_CONST ===
+      (let ((current (file-position out)))
+        (when (< current data-const-fileoff)
+          (write-zeros out (- data-const-fileoff current))))
+
+      ;; === GOT Section ===
+      ;; Write bind entries for chained fixups (DYLD_CHAINED_PTR_64_OFFSET format)
+      ;; bit 63 = 1 (bind), bits 51-62 = next, bits 0-23 = ordinal
+      (loop for i from 0 below num-imports
+            for is-last = (= i (1- num-imports))
+            do (let* ((ordinal i)
+                      (next (if is-last 0 1))    ; stride = 1 (8 bytes)
+                      (entry (logior #x8000000000000000  ; bind bit
+                                    ordinal
+                                    (ash next 51))))
+                 (write-u64-le out entry)))
+
+      ;; Pad rest of DATA_CONST
+      (let ((current (file-position out)))
+        (when (< current data-fileoff)
+          (write-zeros out (- data-fileoff current))))
+
+      ;; === DATA Section (heap) === - NEW
+      (write-zeros out data-filesize)
+
+      ;; === LINKEDIT Section ===
+
+      ;; Symbol table
+      ;; _main symbol
+      (write-nlist-64 out
+                      1
+                      #x0F
+                      1
+                      #x0010
+                      (+ +VM-BASE+ code-offset))
+      ;; Import symbols
+      (let ((strx (+ 1 6)))
+        (dolist (name imports)
+          (write-nlist-64 out strx #x01 0 #x0100 0)
+          (incf strx (1+ (length name)))))
+
+      ;; String table
+      (dolist (b string-table)
+        (write-byte b out))
+
+      ;; Pad to indirect symbols
+      (let ((current (file-position out)))
+        (when (< current indirect-offset)
+          (write-zeros out (- indirect-offset current))))
+
+      ;; Indirect symbol table
+      ;; First: stubs (symbol indices 1, 2, ...)
+      (dotimes (i num-imports)
+        (write-u32-le out (1+ i)))
+      ;; Second: GOT (same symbol indices)
+      (dotimes (i num-imports)
+        (write-u32-le out (1+ i)))
+
+      ;; Pad to fixups
+      (let ((current (file-position out)))
+        (when (< current fixups-offset)
+          (write-zeros out (- fixups-offset current))))
+
+      ;; === Chained Fixups (pre-built blob) ===
+      (dolist (b fixups-data)
+        (write-byte b out))
+
+      ;; Pad fixups to aligned size
+      (let ((current (file-position out))
+            (target (+ fixups-offset aligned-fixups-size)))
+        (when (< current target)
+          (write-zeros out (- target current))))
+
+      ;; === Exports Trie ===
+      (dolist (b exports-trie-data)
+        (write-byte b out))
+
+      ;; Pad exports
+      (let ((current (file-position out))
+            (target (+ exports-offset aligned-exports-size)))
+        (when (< current target)
+          (write-zeros out (- target current))))
+
+      ;; Pad LINKEDIT to declared size
+      (let ((current (file-position out)))
+        (write-zeros out (- (+ linkedit-fileoff linkedit-size) current))))
+
+    ;; Make executable
+    (sb-ext:run-program "/bin/chmod" (list "+x" output-path))
+
+    ;; Return values for caller
+    ;; heap-page-offset: ADRP uses 4KB pages
+    ;; __TEXT at VM 0x100000000, __DATA at 0x100008000 = 8 pages difference
+    (values output-path
+            code-offset
+            stubs-offset
+            stub-size
+            data-vmaddr                           ; heap VM address
+            8)))                                  ; heap page offset for ADRP (4KB pages)
+
+(defun deliver-native-with-imports-and-heap (output-path code-bytes imports
+                                             &key (heap-size #x100000) verbose)
+  "Create a standalone executable with external imports AND heap support.
+   CODE-BYTES should be raw bytecode (will be wrapped with heap setup).
+   IMPORTS is a list of external function names (e.g. (\"_write\" \"_exit\"))
+
+   Returns: (values output-path code-offset stubs-offset stub-size heap-vmaddr)"
+  ;; Wrap code with heap initialization
+  ;; Layout: __TEXT at VM 0x100000000, __DATA_CONST at 0x100004000, __DATA at 0x100008000
+  ;; ADRP uses 4KB pages, so heap page offset = (0x100008 - 0x100000) = 8 pages
+  (let ((wrapped-code (wrap-bytecode-with-heap-for-imports code-bytes 8)))
+    (write-macho-executable-with-imports-and-heap output-path wrapped-code imports
+                                                  :heap-size heap-size :verbose verbose)))
 
 ;;; ============================================================
 ;;; Test Function

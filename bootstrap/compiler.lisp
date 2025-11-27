@@ -440,33 +440,77 @@
 (defun nc-resolve-calls (code fnoffs)
   "Resolve (:call-fn name) markers to actual BL instructions.
    Scans through code (a list of bytes and markers), calculates positions,
-   and replaces markers with BL instructions."
+   and replaces markers with BL instructions.
+   Note: (:extern-call name) markers are left as-is for later resolution."
   (labels ((calc-size (item)
              ;; Calculate byte size of an item
-             (if (and (consp item) (eq (car item) :call-fn))
-                 4  ; BL instruction is 4 bytes
-                 1))  ; Regular byte
+             (cond ((and (consp item) (eq (car item) :call-fn)) 4)
+                   ((and (consp item) (eq (car item) :extern-call)) 4)
+                   (t 1)))
            (resolve-at (items pos acc)
              ;; Iterate through items, tracking position, resolving markers
              (if (null items)
                  (reverse acc)
                  (let ((item (car items)))
-                   (if (and (consp item) (eq (car item) :call-fn))
-                       ;; This is a call marker - resolve to BL
-                       (let* ((fn-name (cadr item))
-                              (fn-entry (assoc fn-name fnoffs))
-                              (fn-pos (if fn-entry (cdr fn-entry) 0))
-                              (rel-offset (- fn-pos pos))
-                              (bl-bytes (nc-bl-offset rel-offset)))
-                         ;; Add 4 bytes of BL instruction
-                         (resolve-at (cdr items)
-                                     (+ pos 4)
-                                     (append (reverse bl-bytes) acc)))
-                       ;; Regular byte - just add it
-                       (resolve-at (cdr items)
-                                   (+ pos 1)
-                                   (cons item acc)))))))
+                   (cond
+                     ;; Internal call - resolve now
+                     ((and (consp item) (eq (car item) :call-fn))
+                      (let* ((fn-name (cadr item))
+                             (fn-entry (assoc fn-name fnoffs))
+                             (fn-pos (if fn-entry (cdr fn-entry) 0))
+                             (rel-offset (- fn-pos pos))
+                             (bl-bytes (nc-bl-offset rel-offset)))
+                        (resolve-at (cdr items)
+                                    (+ pos 4)
+                                    (append (reverse bl-bytes) acc))))
+                     ;; External call - leave marker with position info
+                     ((and (consp item) (eq (car item) :extern-call))
+                      (resolve-at (cdr items)
+                                  (+ pos 4)
+                                  (cons (list :extern-call (cadr item) pos) acc)))
+                     ;; Regular byte
+                     (t
+                      (resolve-at (cdr items)
+                                  (+ pos 1)
+                                  (cons item acc))))))))
     (resolve-at code 0 nil)))
+
+(defun nc-collect-extern-calls (code)
+  "Collect all extern call markers from code.
+   Returns list of (name . position) pairs."
+  (let ((calls nil))
+    (dolist (item code)
+      (when (and (consp item) (eq (car item) :extern-call))
+        (push (cons (cadr item) (caddr item)) calls)))
+    (nreverse calls)))
+
+(defun nc-get-unique-imports (extern-calls)
+  "Get unique import names from extern calls list."
+  (let ((names nil))
+    (dolist (call extern-calls)
+      (let ((name (car call)))
+        (unless (member name names :test #'equal)
+          (push name names))))
+    (nreverse names)))
+
+(defun nc-flatten-extern-calls (code)
+  "Replace extern call markers with placeholder BL instructions (4 zero bytes).
+   Returns (values flattened-code extern-call-positions)
+   where extern-call-positions is ((name . byte-pos) ...)"
+  (let ((result nil)
+        (positions nil))
+    (dolist (item code)
+      (if (and (consp item) (eq (car item) :extern-call))
+          (let ((name (cadr item))
+                (pos (caddr item)))
+            (push (cons name pos) positions)
+            ;; Emit placeholder BL (will be patched later)
+            (push 0 result)
+            (push 0 result)
+            (push 0 result)
+            (push #x94 result))  ; BL opcode high byte
+          (push item result)))
+    (values (nreverse result) (nreverse positions))))
 
 (defun nc-movk (rd imm shift)
   (let* ((shift-s (ash shift -4))
@@ -1514,6 +1558,33 @@
           (list 'write-bytes-ir
                 (nc-compile (cadr expr) env fenv)
                 (nc-compile (caddr expr) env fenv)))
+         ;; === libSystem calls (for native executables) ===
+         ;; sys-write - write(fd, buf, len) -> returns bytes written
+         ((eq op 'sys-write)
+          (list 'sys-write-ir
+                (nc-compile (cadr expr) env fenv)    ; fd
+                (nc-compile (caddr expr) env fenv)   ; buf (string)
+                (nc-compile (cadddr expr) env fenv))) ; len
+         ;; sys-read - read(fd, buf, len) -> returns bytes read
+         ((eq op 'sys-read)
+          (list 'sys-read-ir
+                (nc-compile (cadr expr) env fenv)    ; fd
+                (nc-compile (caddr expr) env fenv)   ; buf (vector)
+                (nc-compile (cadddr expr) env fenv))) ; len
+         ;; sys-open - open(path, flags, mode) -> returns fd
+         ((eq op 'sys-open)
+          (list 'sys-open-ir
+                (nc-compile (cadr expr) env fenv)    ; path (string)
+                (nc-compile (caddr expr) env fenv)   ; flags
+                (nc-compile (cadddr expr) env fenv))) ; mode
+         ;; sys-close - close(fd) -> returns 0 on success
+         ((eq op 'sys-close)
+          (list 'sys-close-ir
+                (nc-compile (cadr expr) env fenv)))  ; fd
+         ;; sys-exit - exit(code) -> does not return
+         ((eq op 'sys-exit)
+          (list 'sys-exit-ir
+                (nc-compile (cadr expr) env fenv)))  ; exit code
          ;; char-upcase - convert lowercase char code to uppercase
          ;; Transform to: (if (and (>= ch #x61) (<= ch #x7A)) (- ch #x20) ch)
          ((eq op 'char-upcase)
@@ -3209,6 +3280,110 @@
          (nc-str-offset 0 1 0)
          (nc-ldr-offset 24 31 x24-slot)
          result-code))))
+    ;; === libSystem call IR forms (for native executables) ===
+    ;; These emit :extern-call markers that are resolved by deliver-with-libsystem
+    ((nc-has-tag ir 'sys-write-ir)
+     ;; sys-write-ir = (sys-write-ir fd-ir buf-ir len-ir)
+     ;; Calls _write(fd, buf, len) -> returns bytes written (or -1)
+     ;; Args: fd in x0, buf (string ptr) in x1, len in x2
+     (let* ((fd-ir (cadr ir))
+            (buf-ir (caddr ir))
+            (len-ir (cadddr ir))
+            (xs (nc-temp-slot td))
+            (nd (+ td 3))
+            ;; Evaluate fd
+            (fd-code (nc-codegen fd-ir rtaddrs fnoffs nd))
+            (save-fd (nc-str-offset 0 31 (nc-temp-slot td)))
+            ;; Evaluate buf
+            (buf-code (nc-codegen buf-ir rtaddrs fnoffs nd))
+            (save-buf (nc-str-offset 0 31 (nc-temp-slot (+ td 1))))
+            ;; Evaluate len
+            (len-code (nc-codegen len-ir rtaddrs fnoffs nd))
+            (save-len (nc-str-offset 0 31 (nc-temp-slot (+ td 2)))))
+       (nc-append-all
+        (list fd-code save-fd buf-code save-buf len-code save-len
+              ;; Load args: fd->x0, buf->x1, len->x2
+              (nc-ldr-offset 0 31 (nc-temp-slot td))
+              (nc-lsr-imm 0 0 4)                      ; untag fd
+              (nc-ldr-offset 1 31 (nc-temp-slot (+ td 1)))
+              (nc-and-imm 1 1 1 #x3C #x3B)            ; clear string tag, get ptr
+              (nc-add-imm 1 1 8)                      ; skip length field
+              (nc-ldr-offset 2 31 (nc-temp-slot (+ td 2)))
+              (nc-lsr-imm 2 2 4)                      ; untag len
+              ;; Emit extern call marker
+              (list (list :extern-call "_write"))
+              ;; Tag result as fixnum
+              (nc-lsl-imm 0 0 4)))))
+    ((nc-has-tag ir 'sys-read-ir)
+     ;; sys-read-ir = (sys-read-ir fd-ir buf-ir len-ir)
+     ;; Calls _read(fd, buf, len) -> returns bytes read (or -1)
+     ;; buf should be a vector
+     (let* ((fd-ir (cadr ir))
+            (buf-ir (caddr ir))
+            (len-ir (cadddr ir))
+            (xs (nc-temp-slot td))
+            (nd (+ td 3))
+            (fd-code (nc-codegen fd-ir rtaddrs fnoffs nd))
+            (save-fd (nc-str-offset 0 31 (nc-temp-slot td)))
+            (buf-code (nc-codegen buf-ir rtaddrs fnoffs nd))
+            (save-buf (nc-str-offset 0 31 (nc-temp-slot (+ td 1))))
+            (len-code (nc-codegen len-ir rtaddrs fnoffs nd))
+            (save-len (nc-str-offset 0 31 (nc-temp-slot (+ td 2)))))
+       (nc-append-all
+        (list fd-code save-fd buf-code save-buf len-code save-len
+              (nc-ldr-offset 0 31 (nc-temp-slot td))
+              (nc-lsr-imm 0 0 4)                      ; untag fd
+              (nc-ldr-offset 1 31 (nc-temp-slot (+ td 1)))
+              (nc-and-imm 1 1 1 #x3C #x3B)            ; clear vector tag
+              (nc-add-imm 1 1 8)                      ; skip length field
+              (nc-ldr-offset 2 31 (nc-temp-slot (+ td 2)))
+              (nc-lsr-imm 2 2 4)                      ; untag len
+              (list (list :extern-call "_read"))
+              (nc-lsl-imm 0 0 4)))))
+    ((nc-has-tag ir 'sys-open-ir)
+     ;; sys-open-ir = (sys-open-ir path-ir flags-ir mode-ir)
+     ;; Calls _open(path, flags, mode) -> returns fd (or -1)
+     (let* ((path-ir (cadr ir))
+            (flags-ir (caddr ir))
+            (mode-ir (cadddr ir))
+            (xs (nc-temp-slot td))
+            (nd (+ td 3))
+            (path-code (nc-codegen path-ir rtaddrs fnoffs nd))
+            (save-path (nc-str-offset 0 31 (nc-temp-slot td)))
+            (flags-code (nc-codegen flags-ir rtaddrs fnoffs nd))
+            (save-flags (nc-str-offset 0 31 (nc-temp-slot (+ td 1))))
+            (mode-code (nc-codegen mode-ir rtaddrs fnoffs nd))
+            (save-mode (nc-str-offset 0 31 (nc-temp-slot (+ td 2)))))
+       (nc-append-all
+        (list path-code save-path flags-code save-flags mode-code save-mode
+              (nc-ldr-offset 0 31 (nc-temp-slot td))
+              (nc-and-imm 0 0 1 #x3C #x3B)            ; clear string tag
+              (nc-add-imm 0 0 8)                      ; skip length field
+              (nc-ldr-offset 1 31 (nc-temp-slot (+ td 1)))
+              (nc-lsr-imm 1 1 4)                      ; untag flags
+              (nc-ldr-offset 2 31 (nc-temp-slot (+ td 2)))
+              (nc-lsr-imm 2 2 4)                      ; untag mode
+              (list (list :extern-call "_open"))
+              (nc-lsl-imm 0 0 4)))))
+    ((nc-has-tag ir 'sys-close-ir)
+     ;; sys-close-ir = (sys-close-ir fd-ir)
+     ;; Calls _close(fd) -> returns 0 on success
+     (let* ((fd-ir (cadr ir))
+            (fd-code (nc-codegen fd-ir rtaddrs fnoffs td)))
+       (nc-append-all
+        (list fd-code
+              (nc-lsr-imm 0 0 4)                      ; untag fd
+              (list (list :extern-call "_close"))
+              (nc-lsl-imm 0 0 4)))))
+    ((nc-has-tag ir 'sys-exit-ir)
+     ;; sys-exit-ir = (sys-exit-ir code-ir)
+     ;; Calls _exit(code) -> does not return
+     (let* ((code-ir (cadr ir))
+            (code-code (nc-codegen code-ir rtaddrs fnoffs td)))
+       (nc-append-all
+        (list code-code
+              (nc-lsr-imm 0 0 4)                      ; untag exit code
+              (list (list :extern-call "_exit"))))))
     (t (nc-movz 0 0))))
 
 ;;; ============================================================
@@ -3569,7 +3744,8 @@
         (let ((fns (append lifted-defuns main-lambdas defun-lambdas)))
           (if (null fns)
               ;; No functions defined - simple case
-              (nc-codegen-main mir rtaddrs)
+              ;; Still need to resolve extern calls
+              (nc-resolve-calls (nc-codegen-main mir rtaddrs) nil)
               ;; Functions defined - need linking
               (let* (;; First, generate main code with nil fnoffs to get size
                      ;; This code contains (:call-fn name) markers
@@ -3804,6 +3980,118 @@ int main(int argc, char **argv) {
 ;;; Backward compatibility aliases (nc-* versions)
 (setf (symbol-function 'nc-deliver) #'deliver)
 (setf (symbol-function 'nc-deliver-file) #'deliver-file)
+
+;;; ============================================================
+;;; Native Delivery with libSystem (no runtime dependency)
+;;; ============================================================
+
+(defun deliver-with-libsystem (source-string output-path &key verbose)
+  "Compile SOURCE-STRING to native executable using libSystem for I/O.
+   This creates a standalone executable that dynamically links to libSystem.B.dylib
+   for functions like write, read, open, close, exit.
+
+   Usage: (habu:deliver-with-libsystem \"(sys-write 1 \\\"Hi\\\" 2)\" \"/tmp/test\")
+
+   The source can use sys-write, sys-read, sys-open, sys-close, sys-exit."
+  ;; Load the macho linker if not already loaded
+  (unless (find-package :habu-macho)
+    (load (merge-pathnames "macho-linker.lisp"
+                           (or *load-pathname* *default-pathname-defaults*))))
+
+  (let* ((forms (nc-read-all source-string))
+         ;; Compile to bytecode with extern markers
+         (bytes-with-markers (nc-compile-program forms nil))
+         ;; Collect extern calls and get unique imports
+         (extern-calls (nc-collect-extern-calls bytes-with-markers))
+         (imports (nc-get-unique-imports extern-calls))
+         ;; Wrapper stub size in bytes (13 instructions * 4 bytes)
+         (wrapper-size 52))
+
+    (when verbose
+      (format t "Compiled ~A bytes (with markers)~%" (length bytes-with-markers))
+      (format t "External calls: ~A~%" extern-calls)
+      (format t "Imports: ~A~%" imports))
+
+    (if (null imports)
+        ;; No external calls - use simple native delivery with heap
+        (progn
+          (when verbose (format t "No imports - using direct delivery~%"))
+          (multiple-value-bind (flat-code ignored)
+              (nc-flatten-extern-calls bytes-with-markers)
+            (declare (ignore ignored))
+            (let ((wrapped-code (funcall (intern "WRAP-BYTECODE-WITH-HEAP" :habu-macho)
+                                         flat-code 1)))  ; heap at page 1
+              (funcall (intern "WRITE-MACHO-EXECUTABLE-WITH-HEAP" :habu-macho)
+                       output-path wrapped-code #x100000 :verbose verbose))))
+        ;; Has external calls - use macho linker with imports AND heap
+        (multiple-value-bind (flat-code extern-positions)
+            (nc-flatten-extern-calls bytes-with-markers)
+          (when verbose
+            (format t "Flattened code: ~A bytes~%" (length flat-code))
+            (format t "Extern positions: ~A~%" extern-positions))
+
+          ;; Wrap code with heap initialization
+          ;; Heap page offset: __DATA at VM 0x100008000, code at 0x100000000
+          ;; ADRP uses 4K pages, so offset = (0x100008 - 0x100000) = 8 pages
+          (let ((wrapped-code (funcall (intern "WRAP-BYTECODE-WITH-HEAP-FOR-IMPORTS" :habu-macho)
+                                       flat-code 8)))
+
+            ;; Create executable with imports and heap
+            (multiple-value-bind (path code-offset stubs-offset stub-size heap-vmaddr heap-page-offset)
+                (funcall (intern "WRITE-MACHO-EXECUTABLE-WITH-IMPORTS-AND-HEAP" :habu-macho)
+                         output-path wrapped-code imports
+                         :heap-size #x100000 :verbose verbose)
+              (declare (ignore heap-vmaddr heap-page-offset))
+
+              ;; Build stub offset map: import-name -> stub-file-offset
+              (let ((stub-map (make-hash-table :test 'equal)))
+                (loop for import in imports
+                      for i from 0
+                      do (setf (gethash import stub-map) (+ stubs-offset (* i stub-size))))
+
+                ;; Patch all extern calls
+                ;; Note: extern positions are relative to original code, but we wrapped it
+                ;; so we need to add wrapper-size to account for the prologue stub
+                (with-open-file (f path :direction :io
+                                        :element-type '(unsigned-byte 8)
+                                        :if-exists :overwrite)
+                  (dolist (pos-entry extern-positions)
+                    (let* ((name (car pos-entry))
+                           (rel-pos (cdr pos-entry))  ; position relative to original code start
+                           ;; Add wrapper-size because wrapper precedes the original code
+                           (bl-file-pos (+ code-offset wrapper-size rel-pos))
+                           (stub-file-pos (gethash name stub-map)))
+                      (when stub-file-pos
+                        (let* ((rel-offset (- stub-file-pos bl-file-pos))
+                               (off-s (ash rel-offset -2))
+                               (off-m (logand off-s #x3FFFFFF))
+                               (bl-instr (logior #x94000000 off-m)))
+                          (when verbose
+                            (format t "Patching ~A at ~X -> stub at ~X (offset ~D)~%"
+                                    name bl-file-pos stub-file-pos (ash rel-offset -2)))
+                          (file-position f bl-file-pos)
+                          ;; Write BL instruction in little-endian
+                          (write-byte (logand bl-instr #xFF) f)
+                          (write-byte (logand (ash bl-instr -8) #xFF) f)
+                          (write-byte (logand (ash bl-instr -16) #xFF) f)
+                          (write-byte (logand (ash bl-instr -24) #xFF) f)))))))
+
+              (when verbose
+                (format t "~%Created: ~A~%" path)
+                (format t "Sign with: codesign -s - ~A~%" path))
+              path))))))
+
+(defun deliver-file-with-libsystem (source-path output-path &key verbose)
+  "Compile Lisp file to native executable using libSystem.
+   Usage: (habu:deliver-file-with-libsystem \"program.lisp\" \"program\")"
+  (let ((source (with-open-file (in source-path :direction :input)
+                  (let ((contents (make-string (file-length in))))
+                    (read-sequence contents in)
+                    contents))))
+    (deliver-with-libsystem source output-path :verbose verbose)))
+
+;;; Export new functions
+(export '(deliver-with-libsystem deliver-file-with-libsystem) :habu)
 
 ;;; ============================================================
 ;;; Main entry point (for testing)
