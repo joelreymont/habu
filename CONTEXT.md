@@ -2,8 +2,8 @@
 
 **Session Date**: November 22-27, 2025
 **Focus**: Self-hosting ARM64 Lisp compiler with native executable generation
-**Last Updated**: November 27, 2025 (157 tests pass: 77 native + 10 labels + 7 libSystem + 6 file-io + 39 reader + 8 self-compile + 5 mini-compiler + 5 full-self-compile)
-**Milestone**: Full self-compilation tests passing - compiled compilers can compile and execute complex programs
+**Last Updated**: November 27, 2025 (140 tests pass: 77 native + 39 reader + 8 self-compile + 5 mini-compiler + 5 full-self-compile + 6 compiler-subsets)
+**Milestone**: Compiler subsystems compile to native - ARM64 encoders, IR generation, codegen all compile and run
 
 ## Current Plan: Native File I/O and Self-Hosting (November 27, 2025)
 
