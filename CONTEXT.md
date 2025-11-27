@@ -2,8 +2,8 @@
 
 **Session Date**: November 22-27, 2025
 **Focus**: Self-hosting ARM64 Lisp compiler with native executable generation
-**Last Updated**: November 27, 2025 (147 tests pass: 77 native + 10 labels + 7 libSystem + 6 file-io + 39 reader + 8 self-compile)
-**Milestone**: Native mini self-compiler tests passing - compiler can compile expression evaluators and IR generators
+**Last Updated**: November 27, 2025 (152 tests pass: 77 native + 10 labels + 7 libSystem + 6 file-io + 39 reader + 8 self-compile + 5 mini-compiler)
+**Milestone**: Self-compiling mini-compiler tests passing - compiler can compile compilers that compile themselves
 
 ## Current Plan: Native File I/O and Self-Hosting (November 27, 2025)
 
@@ -62,6 +62,7 @@ Phase 3 in progress. Command-line compiler and native self-compiler tests workin
 **New Tests Added (November 27, 2025)**:
 - `tests/test_native_self_compile.lisp` - 8 tests for native mini self-compiler patterns
 - `tests/test_compiler_cli.lisp` - Extended to 14 tests (was 5)
+- `tests/test_self_compiling_mini.lisp` - 5 tests for self-compiling mini-compilers
 
 The native self-compiler tests demonstrate compiler can compile:
 1. Expression evaluators with tagged IR (eval-add, eval-recursive)
@@ -72,7 +73,18 @@ The native self-compiler tests demonstrate compiler can compile:
 6. Tree traversal patterns (tree-walk)
 7. Symbol table building (symbol-table)
 
+The self-compiling mini tests demonstrate compilers that compile themselves:
+1. compile-eval-add (30): Compiles arithmetic to IR and evaluates it
+2. nested-compile (26): Nested compilation of expressions with multiple operators
+3. compile-let (15): Mini-compiler with let binding support and variable stacks
+4. self-similar (42): Self-similar compilation pattern - compiles same expression types it handles
+5. compile-defun (42): Full mini-compiler with function definitions, call IR, and eval
+
 Complex recursive calls with nested car/cdr work correctly - all 14 compiler CLI tests pass.
+
+**Known Limitation**: Inline `assoc` has a scoping bug when used in nested control structures
+(cond/if with inner let) that reference outer let variables. Workaround: use user-defined
+`my-assoc` function with explicit recursion.
 
 Next: Attempt full self-compilation of the Habu compiler.
 
