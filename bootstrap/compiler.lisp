@@ -37,6 +37,11 @@
    #:compile-program    ; Compile forms to ARM64 bytecode
    #:deliver            ; Compile source to standalone executable
    #:deliver-file       ; Compile file to standalone executable
+   ;; Disassembler
+   #:habu-disassemble    ; Disassemble a form to IR and bytecode
+   #:habu-compile        ; Compile a form to IR
+   #:disassemble-form    ; Disassemble a form to IR and bytecode
+   #:disassemble-bytecode ; Disassemble bytecode to ARM64 mnemonics
    ;; Internal nc-* functions (exported for test compatibility)
    #:nc-read-all #:nc-compile #:nc-compile-program
    #:nc-eval-ir #:nc-eval-forms #:nc-codegen #:nc-codegen-main
@@ -4508,6 +4513,230 @@ int main(int argc, char **argv) {
 
 ;;; Export new functions
 (export '(deliver-with-libsystem deliver-file-with-libsystem) :habu)
+
+;;; ============================================================
+;;; Part 10: Disassembler
+;;; ============================================================
+
+(defun disassemble-arm64-instr (word addr)
+  "Disassemble a single ARM64 instruction to string."
+  (let* ((op (ash word -24))
+         (op2 (logand (ash word -21) #x7)))
+    (cond
+      ;; MOVZ (64-bit): 1101 0010 1... = D28...
+      ((= (logand word #xFF800000) #xD2800000)
+       (let* ((rd (logand word #x1F))
+              (imm16 (logand (ash word -5) #xFFFF))
+              (hw (logand (ash word -21) #x3)))
+         (format nil "MOVZ x~D, #0x~X~@[, LSL #~D~]"
+                 rd imm16 (if (> hw 0) (* hw 16) nil))))
+      ;; MOVK (64-bit): 1111 0010 1... = F28...
+      ((= (logand word #xFF800000) #xF2800000)
+       (let* ((rd (logand word #x1F))
+              (imm16 (logand (ash word -5) #xFFFF))
+              (hw (logand (ash word -21) #x3)))
+         (format nil "MOVK x~D, #0x~X~@[, LSL #~D~]"
+                 rd imm16 (if (> hw 0) (* hw 16) nil))))
+      ;; MOV (ORR with XZR)
+      ((and (= (logand word #xFF0003E0) #xAA0003E0))
+       (let ((rd (logand word #x1F))
+             (rm (logand (ash word -16) #x1F)))
+         (format nil "MOV x~D, x~D" rd rm)))
+      ;; ADD immediate 64-bit: 1001 0001 xx... = 91...
+      ((= (logand word #xFF000000) #x91000000)
+       (let* ((rd (logand word #x1F))
+              (rn (logand (ash word -5) #x1F))
+              (imm12 (logand (ash word -10) #xFFF)))
+         (format nil "ADD x~D, x~D, #~D" rd rn imm12)))
+      ;; SUB immediate 64-bit: 1101 0001 xx... = D1...
+      ((= (logand word #xFF000000) #xD1000000)
+       (let* ((rd (logand word #x1F))
+              (rn (logand (ash word -5) #x1F))
+              (imm12 (logand (ash word -10) #xFFF)))
+         (format nil "SUB x~D, x~D, #~D" rd rn imm12)))
+      ;; ADD/SUB register
+      ((or (= (logand word #x7F200000) #x0B000000)
+           (= (logand word #x7F200000) #x4B000000))
+       (let* ((rd (logand word #x1F))
+              (rn (logand (ash word -5) #x1F))
+              (rm (logand (ash word -16) #x1F))
+              (is-sub (= (logand word #x40000000) #x40000000)))
+         (format nil "~A x~D, x~D, x~D"
+                 (if is-sub "SUB" "ADD") rd rn rm)))
+      ;; MUL
+      ((= (logand word #x7FE0FC00) #x1B007C00)
+       (let ((rd (logand word #x1F))
+             (rn (logand (ash word -5) #x1F))
+             (rm (logand (ash word -16) #x1F)))
+         (format nil "MUL x~D, x~D, x~D" rd rn rm)))
+      ;; SDIV
+      ((= (logand word #x7FE0FC00) #x1AC00C00)
+       (let ((rd (logand word #x1F))
+             (rn (logand (ash word -5) #x1F))
+             (rm (logand (ash word -16) #x1F)))
+         (format nil "SDIV x~D, x~D, x~D" rd rn rm)))
+      ;; LDR immediate (unsigned offset)
+      ((= (logand word #xFFC00000) #xF9400000)
+       (let* ((rt (logand word #x1F))
+              (rn (logand (ash word -5) #x1F))
+              (imm12 (logand (ash word -10) #xFFF)))
+         (format nil "LDR x~D, [x~D, #~D]" rt rn (* imm12 8))))
+      ;; STR immediate (unsigned offset)
+      ((= (logand word #xFFC00000) #xF9000000)
+       (let* ((rt (logand word #x1F))
+              (rn (logand (ash word -5) #x1F))
+              (imm12 (logand (ash word -10) #xFFF)))
+         (format nil "STR x~D, [x~D, #~D]" rt rn (* imm12 8))))
+      ;; LDP (load pair)
+      ((= (logand word #xFFC00000) #xA9400000)
+       (let* ((rt1 (logand word #x1F))
+              (rn (logand (ash word -5) #x1F))
+              (rt2 (logand (ash word -10) #x1F))
+              (imm7 (logand (ash word -15) #x7F))
+              (offset (if (> imm7 63) (- imm7 128) imm7)))
+         (format nil "LDP x~D, x~D, [x~D, #~D]" rt1 rt2 rn (* offset 8))))
+      ;; STP (store pair)
+      ((= (logand word #xFFC00000) #xA9000000)
+       (let* ((rt1 (logand word #x1F))
+              (rn (logand (ash word -5) #x1F))
+              (rt2 (logand (ash word -10) #x1F))
+              (imm7 (logand (ash word -15) #x7F))
+              (offset (if (> imm7 63) (- imm7 128) imm7)))
+         (format nil "STP x~D, x~D, [x~D, #~D]" rt1 rt2 rn (* offset 8))))
+      ;; BL (branch with link)
+      ((= (logand word #xFC000000) #x94000000)
+       (let* ((imm26 (logand word #x3FFFFFF))
+              (offset (if (> imm26 (ash 1 25))
+                          (- imm26 (ash 1 26))
+                          imm26)))
+         (format nil "BL #~D  ; -> 0x~X" (* offset 4) (+ addr (* offset 4)))))
+      ;; B (unconditional branch)
+      ((= (logand word #xFC000000) #x14000000)
+       (let* ((imm26 (logand word #x3FFFFFF))
+              (offset (if (> imm26 (ash 1 25))
+                          (- imm26 (ash 1 26))
+                          imm26)))
+         (format nil "B #~D  ; -> 0x~X" (* offset 4) (+ addr (* offset 4)))))
+      ;; B.cond (conditional branch)
+      ((= (logand word #xFF000010) #x54000000)
+       (let* ((imm19 (logand (ash word -5) #x7FFFF))
+              (cond-code (logand word #xF))
+              (offset (if (> imm19 (ash 1 18))
+                          (- imm19 (ash 1 19))
+                          imm19))
+              (cond-name (case cond-code
+                           (0 "EQ") (1 "NE") (10 "GE") (11 "LT")
+                           (12 "GT") (13 "LE") (t (format nil "~D" cond-code)))))
+         (format nil "B.~A #~D  ; -> 0x~X" cond-name (* offset 4) (+ addr (* offset 4)))))
+      ;; RET
+      ((= word #xD65F03C0)
+       "RET")
+      ;; BLR
+      ((= (logand word #xFFFFFC1F) #xD63F0000)
+       (let ((rn (logand (ash word -5) #x1F)))
+         (format nil "BLR x~D" rn)))
+      ;; BR
+      ((= (logand word #xFFFFFC1F) #xD61F0000)
+       (let ((rn (logand (ash word -5) #x1F)))
+         (format nil "BR x~D" rn)))
+      ;; CMP (alias for SUBS with XZR dest)
+      ((and (= (logand word #x7FE0001F) #x6B00001F))
+       (let ((rn (logand (ash word -5) #x1F))
+             (rm (logand (ash word -16) #x1F)))
+         (format nil "CMP x~D, x~D" rn rm)))
+      ;; CSET
+      ((= (logand word #x7FE0FC00) #x1A9F07E0)
+       (let ((rd (logand word #x1F))
+             (cond-code (logand (ash word -12) #xF)))
+         (format nil "CSET x~D, ~A" rd
+                 (case cond-code
+                   (0 "NE") (1 "EQ") (10 "LT") (11 "GE")
+                   (12 "LE") (13 "GT") (t (format nil "~D" cond-code))))))
+      ;; AND/ORR/EOR register
+      ((= (logand word #x1F000000) #x0A000000)
+       (let* ((rd (logand word #x1F))
+              (rn (logand (ash word -5) #x1F))
+              (rm (logand (ash word -16) #x1F))
+              (opc (logand (ash word -29) #x3))
+              (op-name (case opc (0 "AND") (1 "ORR") (2 "EOR") (t "???"))))
+         (format nil "~A x~D, x~D, x~D" op-name rd rn rm)))
+      ;; LSL/LSR/ASR variable
+      ((= (logand word #x7FE0FC00) #x1AC02000)
+       (let* ((rd (logand word #x1F))
+              (rn (logand (ash word -5) #x1F))
+              (rm (logand (ash word -16) #x1F))
+              (op2 (logand (ash word -10) #x3))
+              (op-name (case op2 (0 "LSL") (1 "LSR") (2 "ASR") (t "???"))))
+         (format nil "~A x~D, x~D, x~D" op-name rd rn rm)))
+      ;; ADRP
+      ((= (logand word #x9F000000) #x90000000)
+       (let ((rd (logand word #x1F)))
+         (format nil "ADRP x~D, <page>" rd)))
+      ;; Default
+      (t (format nil ".word 0x~8,'0X" word)))))
+
+(defun disassemble-bytecode (bytecode &key (start-addr 0))
+  "Disassemble a list of bytes to ARM64 mnemonics.
+   BYTECODE is a list of bytes (little-endian ARM64 instructions).
+   Returns a list of (address hex-word mnemonic) tuples."
+  (let ((results nil)
+        (addr start-addr))
+    (loop while (>= (length bytecode) 4) do
+      (let* ((b0 (pop bytecode))
+             (b1 (pop bytecode))
+             (b2 (pop bytecode))
+             (b3 (pop bytecode))
+             (word (logior b0 (ash b1 8) (ash b2 16) (ash b3 24)))
+             (mnemonic (disassemble-arm64-instr word addr)))
+        (push (list addr (format nil "~8,'0X" word) mnemonic) results)
+        (incf addr 4)))
+    (nreverse results)))
+
+(defun disassemble-form (form &key verbose)
+  "Disassemble a Lisp form, showing IR and ARM64 bytecode.
+   FORM can be a simple expression or a defun.
+   Returns a plist with :ir, :bytecode, and :disasm."
+  (let* ((ir (cond
+               ;; defun - compile function body
+               ((and (consp form) (eq (car form) 'defun))
+                (let* ((name (second form))
+                       (params (third form))
+                       (body (cdddr form))
+                       (env (mapcar #'cons params
+                                    (loop for i from 0 below (length params) collect i)))
+                       (body-form (if (cdr body) (cons 'progn body) (car body))))
+                  (values (nc-compile body-form env nil) name params)))
+               ;; Simple expression
+               (t (nc-compile form nil nil))))
+         (bytecode (nc-codegen ir nil nil 0))
+         (disasm (disassemble-bytecode bytecode)))
+    (when verbose
+      (format t "~%IR: ~S~%~%" ir)
+      (format t "Bytecode (~D bytes):~%" (length bytecode))
+      (dolist (entry disasm)
+        (format t "  ~4,'0X: ~A  ~A~%" (first entry) (second entry) (third entry)))
+      (format t "~%"))
+    (list :ir ir :bytecode bytecode :disasm disasm)))
+
+;; Aliases for common operations
+(defun habu-disassemble (form &key verbose)
+  "Disassemble a form to IR and ARM64 bytecode."
+  (disassemble-form form :verbose verbose))
+
+(defun habu-compile (form)
+  "Compile a form to IR without generating bytecode."
+  (cond
+    ((and (consp form) (eq (car form) 'defun))
+     (let* ((params (third form))
+            (body (cdddr form))
+            (env (mapcar #'cons params
+                         (loop for i from 0 below (length params) collect i)))
+            (body-form (if (cdr body) (cons 'progn body) (car body))))
+       (nc-compile body-form env nil)))
+    (t (nc-compile form nil nil))))
+
+(export '(habu-disassemble habu-compile disassemble-form disassemble-bytecode
+          disassemble-arm64-instr) :habu)
 
 ;;; ============================================================
 ;;; Main entry point (for testing)
