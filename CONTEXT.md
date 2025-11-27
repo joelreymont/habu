@@ -2,8 +2,8 @@
 
 **Session Date**: November 22-27, 2025
 **Focus**: Self-hosting ARM64 Lisp compiler with native executable generation
-**Last Updated**: November 27, 2025 (152 tests pass: 77 native + 10 labels + 7 libSystem + 6 file-io + 39 reader + 8 self-compile + 5 mini-compiler)
-**Milestone**: Self-compiling mini-compiler tests passing - compiler can compile compilers that compile themselves
+**Last Updated**: November 27, 2025 (157 tests pass: 77 native + 10 labels + 7 libSystem + 6 file-io + 39 reader + 8 self-compile + 5 mini-compiler + 5 full-self-compile)
+**Milestone**: Full self-compilation tests passing - compiled compilers can compile and execute complex programs
 
 ## Current Plan: Native File I/O and Self-Hosting (November 27, 2025)
 
@@ -80,11 +80,21 @@ The self-compiling mini tests demonstrate compilers that compile themselves:
 4. self-similar (42): Self-similar compilation pattern - compiles same expression types it handles
 5. compile-defun (42): Full mini-compiler with function definitions, call IR, and eval
 
-Complex recursive calls with nested car/cdr work correctly - all 14 compiler CLI tests pass.
+The full self-compilation tests (test_full_self_compile.lisp) demonstrate complex compilers:
+1. arith-compiler (14): Arithmetic expression compiler with +, *, - operations
+2. cond-compiler (42): Compiler with conditionals and equality checks
+3. stack-compiler (30): Compiler with let bindings using variable stack
+4. fn-compiler (120): Compiler with function calls, evaluates factorial(5)
+5. compile-link-exec (42): Full compile-link-execute cycle with bytecode simulation
+
+Complex recursive calls with nested car/cdr work correctly - all tests pass.
 
 **Known Limitation**: Inline `assoc` has a scoping bug when used in nested control structures
 (cond/if with inner let) that reference outer let variables. Workaround: use user-defined
 `my-assoc` function with explicit recursion.
+
+**Pattern Note**: Complex `cond` patterns with nested let* can cause crashes (SIGSEGV) in native
+executables. Use simple if-based dispatch chains instead, which work reliably.
 
 Next: Attempt full self-compilation of the Habu compiler.
 
