@@ -1,35 +1,47 @@
-#!/usr/bin/env sbcl --script
-;;; habu-compile - Command-line Lisp compiler
-;;; Usage: habu-compile <source.lisp> [output]
-;;;
-;;; Compiles a Lisp source file to a native executable.
-;;; If output is not specified, uses the source filename without extension.
+#!/bin/bash
+# habu-compile - Compile Lisp source to bytecode
+#
+# Usage: habu-compile <source.lisp> [-o <output.bin>]
 
-(require :asdf)
-(push (truename "bootstrap/") asdf:*central-registry*)
-(asdf:load-system :habu)
-(load "macho-linker.lisp")
+set -e
 
-(defun compile-file-cmd (args)
-  (when (null args)
-    (format t "Usage: habu-compile <source.lisp> [output]~%")
-    (sb-ext:exit :code 1))
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "$SCRIPT_DIR"
 
-  (let* ((source-path (first args))
-         (output-path (or (second args)
-                          (let ((base (pathname-name source-path)))
-                            (if base base "a.out")))))
-    (format t "Compiling ~A -> ~A~%" source-path output-path)
+if [ $# -lt 1 ]; then
+    echo "Usage: habu-compile <source.lisp> [-o <output.bin>]"
+    exit 1
+fi
 
-    (handler-case
-        (progn
-          (habu:deliver-file-with-libsystem source-path output-path)
-          ;; Sign the executable
-          (sb-ext:run-program "/usr/bin/codesign" (list "-s" "-" output-path)
-                              :output nil :error nil :wait t)
-          (format t "Done. Created executable: ~A~%" output-path))
-      (error (e)
-        (format t "Compilation failed: ~A~%" e)
-        (sb-ext:exit :code 1)))))
+SOURCE="$1"
+OUTPUT=""
 
-(compile-file-cmd (cdr sb-ext:*posix-argv*))
+# Parse arguments
+shift
+while [ $# -gt 0 ]; do
+    case "$1" in
+        -o)
+            OUTPUT="$2"
+            shift 2
+            ;;
+        *)
+            echo "Unknown option: $1"
+            exit 1
+            ;;
+    esac
+done
+
+# Default output name
+if [ -z "$OUTPUT" ]; then
+    OUTPUT="${SOURCE%.lisp}.bin"
+fi
+
+# Compile
+sbcl --noinform --non-interactive \
+     --load sbcl-habu-shim.lisp \
+     --load habu-arm64-codegen-sbcl.lisp \
+     --load run-habu.lisp \
+     --eval "(habu-sbcl:compile-forms-with-runtime (habu-sbcl:read-forms-from-file \"$SOURCE\") :output-path \"$OUTPUT\")" \
+     --eval '(sb-ext:quit)' 2>/dev/null
+
+echo "Compiled: $SOURCE -> $OUTPUT"
