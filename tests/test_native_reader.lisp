@@ -304,6 +304,76 @@
    (string-ref (chars-to-string (cons 65 (cons 66 (cons 67 nil)))) 1)"
   66)
 
+;;; ============================================================
+;;; Full reader tests - compile entire reader into native executable
+;;; ============================================================
+
+(defun get-reader-source ()
+  (with-open-file (s "common/reader.lisp")
+    (let ((content (make-string (file-length s))))
+      (read-sequence content s)
+      content)))
+
+;; Full reader: parse integer
+(test-libsystem-code "full-read-int"
+  (format nil "(progn (sys-write 1 \"\" 0)~%~A~%(read-from-string \"42\"))"
+          (get-reader-source))
+  42)
+
+;; Full reader: parse negative integer
+(test-libsystem-code "full-read-neg"
+  (format nil "(progn (sys-write 1 \"\" 0)~%~A~%(let ((n (read-from-string \"-10\"))) (+ 52 n)))"
+          (get-reader-source))
+  42)
+
+;; Full reader: parse hex number
+(test-libsystem-code "full-read-hex"
+  (format nil "(progn (sys-write 1 \"\" 0)~%~A~%(read-from-string \"#x2A\"))"
+          (get-reader-source))
+  42)
+
+;; Full reader: parse symbol and compare
+(test-libsystem-code "full-read-symbol"
+  (format nil "(progn (sys-write 1 \"\" 0)~%~A~%(if (eq (read-from-string \"foo\") 'FOO) 42 0))"
+          (get-reader-source))
+  42)
+
+;; Full reader: parse list and get car
+(test-libsystem-code "full-read-list-car"
+  (format nil "(progn (sys-write 1 \"\" 0)~%~A~%(car (read-from-string \"(42 1 2)\")))"
+          (get-reader-source))
+  42)
+
+;; Full reader: parse list and get cadr
+(test-libsystem-code "full-read-list-cadr"
+  (format nil "(progn (sys-write 1 \"\" 0)~%~A~%(cadr (read-from-string \"(1 42 3)\")))"
+          (get-reader-source))
+  42)
+
+;; Full reader: parse quoted form
+(test-libsystem-code "full-read-quote"
+  (format nil "(progn (sys-write 1 \"\" 0)~%~A~%(let ((x (read-from-string \"'(1 2 3)\"))) (if (eq (car x) 'QUOTE) 42 0)))"
+          (get-reader-source))
+  42)
+
+;; Full reader: parse string and get length
+(test-libsystem-code "full-read-string-len"
+  (format nil "(progn (sys-write 1 \"\" 0)~%~A~%(+ 40 (string-length (read-from-string \"\\\"ab\\\"\"))))"
+          (get-reader-source))
+  42)
+
+;; Full reader: read multiple forms
+(test-libsystem-code "full-read-multiple"
+  (format nil "(progn (sys-write 1 \"\" 0)~%~A~%(let ((forms (read-all-from-string \"10 20 12\"))) (+ (car forms) (cadr forms) (caddr forms))))"
+          (get-reader-source))
+  42)
+
+;; Full reader: parse expression and compute
+(test-libsystem-code "full-read-compute"
+  (format nil "(progn (sys-write 1 \"\" 0)~%~A~%(let ((expr (read-from-string \"(+ 20 22)\"))) (+ (cadr expr) (caddr expr))))"
+          (get-reader-source))
+  42)
+
 ;;; Report results
 (format t "~%Total: ~A passed, ~A failed~%" *pass-count* *fail-count*)
 (sb-ext:exit :code (if (zerop *fail-count*) 0 1))

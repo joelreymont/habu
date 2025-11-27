@@ -1408,14 +1408,16 @@
 
          ;; Stubs follow code
          (stubs-offset (align-up (+ code-offset code-size) 4))
+         (stubs-end (+ stubs-offset stubs-total-size))
 
-         ;; __TEXT segment spans first page
-         (text-vmsize +PAGE-SIZE+)
-         (text-filesize +PAGE-SIZE+)
+         ;; __TEXT segment must be large enough for code + stubs
+         (text-end-needed (align-up stubs-end +PAGE-SIZE+))
+         (text-vmsize text-end-needed)
+         (text-filesize text-end-needed)
 
-         ;; __DATA_CONST segment at second page (for GOT)
-         (data-const-fileoff +PAGE-SIZE+)
-         (data-const-vmaddr (+ +VM-BASE+ +PAGE-SIZE+))
+         ;; __DATA_CONST segment follows __TEXT
+         (data-const-fileoff text-filesize)
+         (data-const-vmaddr (+ +VM-BASE+ text-vmsize))
          (data-const-vmsize +PAGE-SIZE+)
          (data-const-filesize +PAGE-SIZE+)
 
@@ -1446,8 +1448,8 @@
          (indirect-size (* num-indirect-syms 4))
          (fixups-offset (align-up (+ indirect-offset indirect-size) 8))
 
-         ;; GOT VM offset from binary base = data-const-vmaddr - +VM-BASE+ = +PAGE-SIZE+
-         (got-vm-offset +PAGE-SIZE+)
+         ;; GOT VM offset from binary base = data-const-vmaddr - +VM-BASE+ = text-vmsize
+         (got-vm-offset text-vmsize)
 
          ;; Build chained fixups data using existing helper
          (fixups-data (build-chained-fixups-data imports num-segments got-segment-index got-vm-offset))

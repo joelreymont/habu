@@ -3363,8 +3363,10 @@
             (body-td (+ td 3))
             ;; Compile count expression
             (count-code (nc-codegen count-ir rtaddrs fnoffs body-td))
-            ;; Compile body with var at offset 0 in extended env
+            ;; Compile body with var at next available offset in extended env
             (new-env (nc-env-extend (list (list var)) compile-env))
+            ;; Get the actual offset for var in new-env
+            (var-offset (* (nc-env-lookup var new-env) 8))
             (body-ir (if (null (cdr body))
                          (nc-compile (car body) new-env nil)
                          (nc-compile (cons 'progn body) new-env nil)))
@@ -3393,9 +3395,9 @@
          ;; Branch past body + incr + loop-back if counter >= count
          ;; Body instrs + store var (4) + incr (4) + branch back (1) = body-instrs + 9
          (nc-b-cond (nc-cond-ge) (* (+ body-instrs 9) 4))
-         ;; Store counter as var (at offset 0 from x20)
+         ;; Store counter as var at its actual offset from x20
          (nc-ldr-offset 0 31 counter-slot)
-         (nc-sub-imm 1 20 0)  ; x1 = x20 - 0
+         (nc-sub-imm 1 20 var-offset)
          (nc-str-offset 0 1 0)
          ;; Restore x24 for body
          (nc-ldr-offset 24 31 x24-slot)
@@ -3410,7 +3412,7 @@
          (nc-b-offset (- (* (+ body-instrs 11) 4)))
          ;; After loop: evaluate result with final counter
          (nc-ldr-offset 0 31 counter-slot)
-         (nc-sub-imm 1 20 0)
+         (nc-sub-imm 1 20 var-offset)
          (nc-str-offset 0 1 0)
          (nc-ldr-offset 24 31 x24-slot)
          result-code))))
@@ -3433,8 +3435,10 @@
             (body-td (+ td 2))
             ;; Compile list expression
             (list-code (nc-codegen list-ir rtaddrs fnoffs body-td))
-            ;; Compile body with var at offset 0 in extended env
+            ;; Compile body with var at next available offset in extended env
             (new-env (nc-env-extend (list (list var)) compile-env))
+            ;; Get the actual offset for var in new-env
+            (var-offset (* (nc-env-lookup var new-env) 8))
             (body-ir (if (null (cdr body))
                          (nc-compile (car body) new-env nil)
                          (nc-compile (cons 'progn body) new-env nil)))
@@ -3459,11 +3463,11 @@
          ;; Branch past body if list is nil
          ;; Body: store var (4) + body + get cdr (4) + branch (1) = body-instrs + 9
          (nc-b-cond (nc-cond-eq) (* (+ body-instrs 9) 4))
-         ;; Get car of list -> var
+         ;; Get car of list -> var at its actual offset
          (nc-ldr-offset 0 31 list-slot)
          (nc-ldr-offset 9 19 8)  ; car function at offset 8
          (nc-blr 9)
-         (nc-sub-imm 1 20 0)
+         (nc-sub-imm 1 20 var-offset)
          (nc-str-offset 0 1 0)
          ;; Restore x24 for body
          (nc-ldr-offset 24 31 x24-slot)
@@ -3479,7 +3483,7 @@
          (nc-b-offset (- (* (+ body-instrs 12) 4)))
          ;; After loop: evaluate result (var is nil at this point)
          (nc-movz 0 0)  ; nil
-         (nc-sub-imm 1 20 0)
+         (nc-sub-imm 1 20 var-offset)
          (nc-str-offset 0 1 0)
          (nc-ldr-offset 24 31 x24-slot)
          result-code))))
