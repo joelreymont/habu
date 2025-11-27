@@ -2274,6 +2274,135 @@
 ;;; Part 7: Code Generator (nc-codegen-*)
 ;;; ============================================================
 
+(defun nc-ir-may-call? (ir)
+  "Returns t if evaluating IR might make function calls that could clobber x24.
+   This is used to optimize away unnecessary x24 save/restore in binary ops."
+  (cond
+    ((null ir) nil)
+    ((not (consp ir)) nil)
+    ((nc-has-tag ir 'lit) nil)
+    ((nc-has-tag ir 'nil-ir) nil)
+    ((nc-has-tag ir 'sym-lit) nil)
+    ((nc-has-tag ir 'str-lit) nil)
+    ((nc-has-tag ir 'var) nil)
+    ;; Function calls definitely clobber x24
+    ((nc-has-tag ir 'call-fn) t)
+    ((nc-has-tag ir 'funcall-ir) t)
+    ((nc-has-tag ir 'call-closure) t)
+    ;; Runtime calls also clobber x24
+    ((nc-has-tag ir 'runtime-call) t)
+    ((nc-has-tag ir 'format-call) t)
+    ((nc-has-tag ir 'gensym-call) t)
+    ((nc-has-tag ir 'open-file-call) t)
+    ((nc-has-tag ir 'close-file-call) t)
+    ((nc-has-tag ir 'read-line-call) t)
+    ((nc-has-tag ir 'write-string-call) t)
+    ((nc-has-tag ir 'read-file-call) t)
+    ((nc-has-tag ir 'write-file-call) t)
+    ((nc-has-tag ir 'values-call) t)
+    ((nc-has-tag ir 'values-get-call) t)
+    ((nc-has-tag ir 'values-count-call) t)
+    ((nc-has-tag ir 'print-call) t)
+    ((nc-has-tag ir 'profile-time-call) t)
+    ((nc-has-tag ir 'sys-write-call) t)
+    ((nc-has-tag ir 'sys-read-call) t)
+    ((nc-has-tag ir 'sys-open-call) t)
+    ((nc-has-tag ir 'sys-close-call) t)
+    ;; Binary/unary ops: check children
+    ((nc-has-tag ir 'add) (or (nc-ir-may-call? (cadr ir)) (nc-ir-may-call? (caddr ir))))
+    ((nc-has-tag ir 'sub) (or (nc-ir-may-call? (cadr ir)) (nc-ir-may-call? (caddr ir))))
+    ((nc-has-tag ir 'mul) (or (nc-ir-may-call? (cadr ir)) (nc-ir-may-call? (caddr ir))))
+    ((nc-has-tag ir 'div) (or (nc-ir-may-call? (cadr ir)) (nc-ir-may-call? (caddr ir))))
+    ((nc-has-tag ir 'mod-ir) (or (nc-ir-may-call? (cadr ir)) (nc-ir-may-call? (caddr ir))))
+    ((nc-has-tag ir 'band) (or (nc-ir-may-call? (cadr ir)) (nc-ir-may-call? (caddr ir))))
+    ((nc-has-tag ir 'bor) (or (nc-ir-may-call? (cadr ir)) (nc-ir-may-call? (caddr ir))))
+    ((nc-has-tag ir 'bxor) (or (nc-ir-may-call? (cadr ir)) (nc-ir-may-call? (caddr ir))))
+    ((nc-has-tag ir 'bsh) (or (nc-ir-may-call? (cadr ir)) (nc-ir-may-call? (caddr ir))))
+    ((nc-has-tag ir 'cmp-eq) (or (nc-ir-may-call? (cadr ir)) (nc-ir-may-call? (caddr ir))))
+    ((nc-has-tag ir 'cmp-lt) (or (nc-ir-may-call? (cadr ir)) (nc-ir-may-call? (caddr ir))))
+    ((nc-has-tag ir 'cmp-gt) (or (nc-ir-may-call? (cadr ir)) (nc-ir-may-call? (caddr ir))))
+    ((nc-has-tag ir 'cmp-le) (or (nc-ir-may-call? (cadr ir)) (nc-ir-may-call? (caddr ir))))
+    ((nc-has-tag ir 'cmp-ge) (or (nc-ir-may-call? (cadr ir)) (nc-ir-may-call? (caddr ir))))
+    ;; Unary ops
+    ((nc-has-tag ir 'bnot) (nc-ir-may-call? (cadr ir)))
+    ((nc-has-tag ir 'neg) (nc-ir-may-call? (cadr ir)))
+    ;; Cons/car/cdr: check children
+    ((nc-has-tag ir 'cons-ir) (or (nc-ir-may-call? (cadr ir)) (nc-ir-may-call? (caddr ir))))
+    ((nc-has-tag ir 'car-ir) (nc-ir-may-call? (cadr ir)))
+    ((nc-has-tag ir 'cdr-ir) (nc-ir-may-call? (cadr ir)))
+    ;; Control flow: check all branches
+    ((nc-has-tag ir 'if-ir)
+     (or (nc-ir-may-call? (cadr ir))
+         (nc-ir-may-call? (caddr ir))
+         (nc-ir-may-call? (cadddr ir))))
+    ;; Progn: check all forms
+    ((nc-has-tag ir 'progn-ir)
+     (some #'nc-ir-may-call? (cdr ir)))
+    ;; Let: check bindings and body
+    ((nc-has-tag ir 'let-ir)
+     (let ((bindings (cadr ir))
+           (body (caddr ir)))
+       (or (some #'nc-ir-may-call? bindings)
+           (nc-ir-may-call? body))))
+    ;; Vector/string operations are simple (inline)
+    ((nc-has-tag ir 'make-vector-call) (nc-ir-may-call? (cadr ir)))
+    ((nc-has-tag ir 'vector-set-ir) (or (nc-ir-may-call? (cadr ir))
+                                         (nc-ir-may-call? (caddr ir))
+                                         (nc-ir-may-call? (cadddr ir))))
+    ((nc-has-tag ir 'vector-ref-ir) (or (nc-ir-may-call? (cadr ir)) (nc-ir-may-call? (caddr ir))))
+    ((nc-has-tag ir 'vector-length-ir) (nc-ir-may-call? (cadr ir)))
+    ((nc-has-tag ir 'string-length-ir) (nc-ir-may-call? (cadr ir)))
+    ((nc-has-tag ir 'string-ref-ir) (or (nc-ir-may-call? (cadr ir)) (nc-ir-may-call? (caddr ir))))
+    ;; Type predicates are simple
+    ((nc-has-tag ir 'consp-ir) (nc-ir-may-call? (cadr ir)))
+    ((nc-has-tag ir 'null-ir) (nc-ir-may-call? (cadr ir)))
+    ((nc-has-tag ir 'numberp-ir) (nc-ir-may-call? (cadr ir)))
+    ((nc-has-tag ir 'symbolp-ir) (nc-ir-may-call? (cadr ir)))
+    ((nc-has-tag ir 'stringp-ir) (nc-ir-may-call? (cadr ir)))
+    ((nc-has-tag ir 'vectorp-ir) (nc-ir-may-call? (cadr ir)))
+    ((nc-has-tag ir 'eq-ir) (or (nc-ir-may-call? (cadr ir)) (nc-ir-may-call? (caddr ir))))
+    ;; Lambda-ref is just loading an address
+    ((nc-has-tag ir 'lambda-ref) nil)
+    ;; Setq: check value
+    ((nc-has-tag ir 'setq-ir) (nc-ir-may-call? (caddr ir)))
+    ((nc-has-tag ir 'setcar-ir) (or (nc-ir-may-call? (cadr ir)) (nc-ir-may-call? (caddr ir))))
+    ((nc-has-tag ir 'setcdr-ir) (or (nc-ir-may-call? (cadr ir)) (nc-ir-may-call? (caddr ir))))
+    ;; Loops might call
+    ((nc-has-tag ir 'dotimes-ir) t)
+    ((nc-has-tag ir 'dolist-ir) t)
+    ;; Default: assume it might call to be safe
+    (t t)))
+
+(defun nc-codegen-binop (left-ir right-ir op-instrs rtaddrs fnoffs td)
+  "Generate code for binary operation with optimized x24 save/restore.
+   Only saves/restores x24 if left-ir might make function calls.
+   op-instrs is a function taking (left-reg right-reg) returning instruction list."
+  (let* ((xs (nc-temp-slot td))
+         (ls (nc-temp-slot (+ td 1)))
+         (nd (+ td 2))
+         (lc (nc-codegen left-ir rtaddrs fnoffs nd))
+         (rc (nc-codegen right-ir rtaddrs fnoffs nd))
+         (may-call (nc-ir-may-call? left-ir)))
+    (if may-call
+        ;; Left operand may call - save/restore x24
+        (nc-append-all
+         (list (nc-str-offset 24 31 xs)     ; save x24
+               lc                            ; eval left -> x0
+               (nc-str-offset 0 31 ls)      ; save left value
+               (nc-ldr-offset 24 31 xs)     ; restore x24
+               rc                            ; eval right -> x0
+               (nc-mov-reg 1 0)             ; x1 = right
+               (nc-ldr-offset 0 31 ls)      ; x0 = left
+               op-instrs))
+        ;; Left operand doesn't call - skip x24 save/restore
+        (nc-append-all
+         (list lc                            ; eval left -> x0
+               (nc-str-offset 0 31 ls)      ; save left value
+               rc                            ; eval right -> x0
+               (nc-mov-reg 1 0)             ; x1 = right
+               (nc-ldr-offset 0 31 ls)      ; x0 = left
+               op-instrs)))))
+
 (defun nc-codegen (ir rtaddrs fnoffs td)
   (cond
     ((nc-has-tag ir 'lit)
@@ -2313,258 +2442,105 @@
             (i3 (nc-lsl-imm 0 0 4)))
        (nc-append-all (list ac i1 i2 i3))))
     ((nc-has-tag ir 'add)
-     ;; Use nc-append-all to avoid deeply nested let*
-     (let ((left-ir (cadr ir)))
-       (let ((right-ir (caddr ir)))
-         (let ((xs (nc-temp-slot td)))
-           (let ((ls (nc-temp-slot (+ td 1))))
-             (let ((nd (+ td 2)))
-               (let ((lc (nc-codegen left-ir rtaddrs fnoffs nd)))
-                 (let ((rc (nc-codegen right-ir rtaddrs fnoffs nd)))
-                   (nc-append-all
-                    (list (nc-str-offset 24 31 xs)
-                          lc
-                          (nc-str-offset 0 31 ls)
-                          (nc-ldr-offset 24 31 xs)
-                          rc
-                          (nc-mov-reg 1 0)
-                          (nc-ldr-offset 0 31 ls)
-                          (nc-add-reg 0 0 1)))))))))))
+     ;; Optimized: only save/restore x24 if left operand may call
+     (nc-codegen-binop (cadr ir) (caddr ir) (nc-add-reg 0 0 1) rtaddrs fnoffs td))
     ((nc-has-tag ir 'sub)
-     ;; Use nc-append-all to avoid deeply nested let*
-     (let ((left-ir (cadr ir)))
-       (let ((right-ir (caddr ir)))
-         (let ((xs (nc-temp-slot td)))
-           (let ((ls (nc-temp-slot (+ td 1))))
-             (let ((nd (+ td 2)))
-               (let ((lc (nc-codegen left-ir rtaddrs fnoffs nd)))
-                 (let ((rc (nc-codegen right-ir rtaddrs fnoffs nd)))
-                   (nc-append-all
-                    (list (nc-str-offset 24 31 xs)
-                          lc
-                          (nc-str-offset 0 31 ls)
-                          (nc-ldr-offset 24 31 xs)
-                          rc
-                          (nc-mov-reg 1 0)
-                          (nc-ldr-offset 0 31 ls)
-                          (nc-sub-reg 0 0 1)))))))))))
+     (nc-codegen-binop (cadr ir) (caddr ir) (nc-sub-reg 0 0 1) rtaddrs fnoffs td))
     ((nc-has-tag ir 'mul)
-     (let ((left-ir (cadr ir)))
-       (let ((right-ir (caddr ir)))
-         (let ((xs (nc-temp-slot td)))
-           (let ((ls (nc-temp-slot (+ td 1))))
-             (let ((nd (+ td 2)))
-               (let ((lc (nc-codegen left-ir rtaddrs fnoffs nd)))
-                 (let ((rc (nc-codegen right-ir rtaddrs fnoffs nd)))
-                   (nc-append-all
-                    (list (nc-str-offset 24 31 xs)
-                          lc
-                          (nc-str-offset 0 31 ls)
-                          (nc-ldr-offset 24 31 xs)
-                          rc
-                          (nc-mov-reg 1 0)
-                          (nc-ldr-offset 0 31 ls)
-                          (nc-lsr-imm 0 0 4)
-                          (nc-lsr-imm 1 1 4)
-                          (nc-mul-reg 0 0 1)
-                          (nc-lsl-imm 0 0 4)))))))))))
+     ;; Multiplication needs untag/retag
+     (nc-codegen-binop (cadr ir) (caddr ir)
+                       (nc-append-all (list (nc-lsr-imm 0 0 4)
+                                            (nc-lsr-imm 1 1 4)
+                                            (nc-mul-reg 0 0 1)
+                                            (nc-lsl-imm 0 0 4)))
+                       rtaddrs fnoffs td))
     ((nc-has-tag ir 'band)
-     (let ((left-ir (cadr ir)))
-       (let ((right-ir (caddr ir)))
-         (let ((xs (nc-temp-slot td)))
-           (let ((ls (nc-temp-slot (+ td 1))))
-             (let ((nd (+ td 2)))
-               (let ((lc (nc-codegen left-ir rtaddrs fnoffs nd)))
-                 (let ((rc (nc-codegen right-ir rtaddrs fnoffs nd)))
-                   (nc-append-all
-                    (list (nc-str-offset 24 31 xs)
-                          lc
-                          (nc-str-offset 0 31 ls)
-                          (nc-ldr-offset 24 31 xs)
-                          rc
-                          (nc-mov-reg 1 0)
-                          (nc-ldr-offset 0 31 ls)
-                          (nc-and-reg 0 0 1)))))))))))
+     (nc-codegen-binop (cadr ir) (caddr ir) (nc-and-reg 0 0 1) rtaddrs fnoffs td))
     ((nc-has-tag ir 'bor)
-     (let ((left-ir (cadr ir)))
-       (let ((right-ir (caddr ir)))
-         (let ((xs (nc-temp-slot td)))
-           (let ((ls (nc-temp-slot (+ td 1))))
-             (let ((nd (+ td 2)))
-               (let ((lc (nc-codegen left-ir rtaddrs fnoffs nd)))
-                 (let ((rc (nc-codegen right-ir rtaddrs fnoffs nd)))
-                   (nc-append-all
-                    (list (nc-str-offset 24 31 xs)
-                          lc
-                          (nc-str-offset 0 31 ls)
-                          (nc-ldr-offset 24 31 xs)
-                          rc
-                          (nc-mov-reg 1 0)
-                          (nc-ldr-offset 0 31 ls)
-                          (nc-orr-reg 0 0 1)))))))))))
+     (nc-codegen-binop (cadr ir) (caddr ir) (nc-orr-reg 0 0 1) rtaddrs fnoffs td))
     ((nc-has-tag ir 'bxor)
-     (let ((left-ir (cadr ir)))
-       (let ((right-ir (caddr ir)))
-         (let ((xs (nc-temp-slot td)))
-           (let ((ls (nc-temp-slot (+ td 1))))
-             (let ((nd (+ td 2)))
-               (let ((lc (nc-codegen left-ir rtaddrs fnoffs nd)))
-                 (let ((rc (nc-codegen right-ir rtaddrs fnoffs nd)))
-                   (nc-append-all
-                    (list (nc-str-offset 24 31 xs)
-                          lc
-                          (nc-str-offset 0 31 ls)
-                          (nc-ldr-offset 24 31 xs)
-                          rc
-                          (nc-mov-reg 1 0)
-                          (nc-ldr-offset 0 31 ls)
-                          (nc-eor-reg 0 0 1)))))))))))
+     (nc-codegen-binop (cadr ir) (caddr ir) (nc-eor-reg 0 0 1) rtaddrs fnoffs td))
     ((nc-has-tag ir 'bsh)
-     (let ((val-ir (cadr ir)))
-       (let ((amt-ir (caddr ir)))
-         (let ((xs (nc-temp-slot td)))
-           (let ((vs (nc-temp-slot (+ td 1))))
-             (let ((nd (+ td 2)))
-               (let ((vc (nc-codegen val-ir rtaddrs fnoffs nd)))
-                 (let ((ac (nc-codegen amt-ir rtaddrs fnoffs nd)))
-                   (nc-append-all
-                    (list (nc-str-offset 24 31 xs)
-                          vc
-                          (nc-lsr-imm 0 0 4)
-                          (nc-str-offset 0 31 vs)
-                          (nc-ldr-offset 24 31 xs)
-                          ac
-                          (nc-asr-imm 1 0 4)
-                          (nc-ldr-offset 0 31 vs)
-                          (nc-cmp-imm 1 0)
-                          (nc-b-cond (nc-cond-ge) 16)
-                          (nc-neg-reg 2 1)
-                          (nc-asrv-reg 0 0 2)
-                          (nc-b-offset 8)
-                          (nc-lslv-reg 0 0 1)
-                          (nc-lsl-imm 0 0 4)))))))))))
+     ;; Shift: optimized x24 save/restore
+     (let* ((val-ir (cadr ir))
+            (amt-ir (caddr ir))
+            (xs (nc-temp-slot td))
+            (vs (nc-temp-slot (+ td 1)))
+            (nd (+ td 2))
+            (vc (nc-codegen val-ir rtaddrs fnoffs nd))
+            (ac (nc-codegen amt-ir rtaddrs fnoffs nd))
+            (may-call (nc-ir-may-call? val-ir))
+            (shift-code (nc-append-all
+                         (list (nc-asr-imm 1 0 4)
+                               (nc-ldr-offset 0 31 vs)
+                               (nc-cmp-imm 1 0)
+                               (nc-b-cond (nc-cond-ge) 16)
+                               (nc-neg-reg 2 1)
+                               (nc-asrv-reg 0 0 2)
+                               (nc-b-offset 8)
+                               (nc-lslv-reg 0 0 1)
+                               (nc-lsl-imm 0 0 4)))))
+       (if may-call
+           (nc-append-all (list (nc-str-offset 24 31 xs) vc (nc-lsr-imm 0 0 4)
+                                (nc-str-offset 0 31 vs) (nc-ldr-offset 24 31 xs)
+                                ac shift-code))
+           (nc-append-all (list vc (nc-lsr-imm 0 0 4) (nc-str-offset 0 31 vs)
+                                ac shift-code)))))
     ((nc-has-tag ir 'cmp-eq)
-     (let ((left-ir (cadr ir)))
-       (let ((right-ir (caddr ir)))
-         (let ((xs (nc-temp-slot td)))
-           (let ((ls (nc-temp-slot (+ td 1))))
-             (let ((nd (+ td 2)))
-               (let ((lc (nc-codegen left-ir rtaddrs fnoffs nd)))
-                 (let ((rc (nc-codegen right-ir rtaddrs fnoffs nd)))
-                   (nc-append-all
-                    (list (nc-str-offset 24 31 xs)
-                          lc
-                          (nc-str-offset 0 31 ls)
-                          (nc-ldr-offset 24 31 xs)
-                          rc
-                          (nc-mov-reg 1 0)
-                          (nc-ldr-offset 0 31 ls)
-                          (nc-cmp-reg 0 1)
-                          (nc-cset 0 (nc-cond-eq))
-                          (nc-lsl-imm 0 0 4)))))))))))
+     (nc-codegen-binop (cadr ir) (caddr ir)
+                       (nc-append-all (list (nc-cmp-reg 0 1)
+                                            (nc-cset 0 (nc-cond-eq))
+                                            (nc-lsl-imm 0 0 4)))
+                       rtaddrs fnoffs td))
     ((nc-has-tag ir 'cmp-lt)
-     (let ((left-ir (cadr ir)))
-       (let ((right-ir (caddr ir)))
-         (let ((xs (nc-temp-slot td)))
-           (let ((ls (nc-temp-slot (+ td 1))))
-             (let ((nd (+ td 2)))
-               (let ((lc (nc-codegen left-ir rtaddrs fnoffs nd)))
-                 (let ((rc (nc-codegen right-ir rtaddrs fnoffs nd)))
-                   (nc-append-all
-                    (list (nc-str-offset 24 31 xs)
-                          lc
-                          (nc-str-offset 0 31 ls)
-                          (nc-ldr-offset 24 31 xs)
-                          rc
-                          (nc-mov-reg 1 0)
-                          (nc-ldr-offset 0 31 ls)
-                          (nc-cmp-reg 0 1)
-                          (nc-cset 0 (nc-cond-lt))
-                          (nc-lsl-imm 0 0 4)))))))))))
+     (nc-codegen-binop (cadr ir) (caddr ir)
+                       (nc-append-all (list (nc-cmp-reg 0 1)
+                                            (nc-cset 0 (nc-cond-lt))
+                                            (nc-lsl-imm 0 0 4)))
+                       rtaddrs fnoffs td))
     ((nc-has-tag ir 'cmp-gt)
-     (let ((left-ir (cadr ir)))
-       (let ((right-ir (caddr ir)))
-         (let ((xs (nc-temp-slot td)))
-           (let ((ls (nc-temp-slot (+ td 1))))
-             (let ((nd (+ td 2)))
-               (let ((lc (nc-codegen left-ir rtaddrs fnoffs nd)))
-                 (let ((rc (nc-codegen right-ir rtaddrs fnoffs nd)))
-                   (nc-append-all
-                    (list (nc-str-offset 24 31 xs)
-                          lc
-                          (nc-str-offset 0 31 ls)
-                          (nc-ldr-offset 24 31 xs)
-                          rc
-                          (nc-mov-reg 1 0)
-                          (nc-ldr-offset 0 31 ls)
-                          (nc-cmp-reg 0 1)
-                          (nc-cset 0 (nc-cond-gt))
-                          (nc-lsl-imm 0 0 4)))))))))))
+     (nc-codegen-binop (cadr ir) (caddr ir)
+                       (nc-append-all (list (nc-cmp-reg 0 1)
+                                            (nc-cset 0 (nc-cond-gt))
+                                            (nc-lsl-imm 0 0 4)))
+                       rtaddrs fnoffs td))
     ((nc-has-tag ir 'cmp-le)
-     (let ((left-ir (cadr ir)))
-       (let ((right-ir (caddr ir)))
-         (let ((xs (nc-temp-slot td)))
-           (let ((ls (nc-temp-slot (+ td 1))))
-             (let ((nd (+ td 2)))
-               (let ((lc (nc-codegen left-ir rtaddrs fnoffs nd)))
-                 (let ((rc (nc-codegen right-ir rtaddrs fnoffs nd)))
-                   (nc-append-all
-                    (list (nc-str-offset 24 31 xs)
-                          lc
-                          (nc-str-offset 0 31 ls)
-                          (nc-ldr-offset 24 31 xs)
-                          rc
-                          (nc-mov-reg 1 0)
-                          (nc-ldr-offset 0 31 ls)
-                          (nc-cmp-reg 0 1)
-                          (nc-cset 0 (nc-cond-le))
-                          (nc-lsl-imm 0 0 4)))))))))))
+     (nc-codegen-binop (cadr ir) (caddr ir)
+                       (nc-append-all (list (nc-cmp-reg 0 1)
+                                            (nc-cset 0 (nc-cond-le))
+                                            (nc-lsl-imm 0 0 4)))
+                       rtaddrs fnoffs td))
     ((nc-has-tag ir 'cmp-ge)
-     (let ((left-ir (cadr ir)))
-       (let ((right-ir (caddr ir)))
-         (let ((xs (nc-temp-slot td)))
-           (let ((ls (nc-temp-slot (+ td 1))))
-             (let ((nd (+ td 2)))
-               (let ((lc (nc-codegen left-ir rtaddrs fnoffs nd)))
-                 (let ((rc (nc-codegen right-ir rtaddrs fnoffs nd)))
-                   (nc-append-all
-                    (list (nc-str-offset 24 31 xs)
-                          lc
-                          (nc-str-offset 0 31 ls)
-                          (nc-ldr-offset 24 31 xs)
-                          rc
-                          (nc-mov-reg 1 0)
-                          (nc-ldr-offset 0 31 ls)
-                          (nc-cmp-reg 0 1)
-                          (nc-cset 0 (nc-cond-ge))
-                          (nc-lsl-imm 0 0 4)))))))))))
+     (nc-codegen-binop (cadr ir) (caddr ir)
+                       (nc-append-all (list (nc-cmp-reg 0 1)
+                                            (nc-cset 0 (nc-cond-ge))
+                                            (nc-lsl-imm 0 0 4)))
+                       rtaddrs fnoffs td))
     ((nc-has-tag ir 'cons-ir)
      ;; Inline cons: allocate 16 bytes from heap (x28), store car/cdr, return tagged ptr
      ;; x28 is the heap bump pointer, initialized at startup
      ;; Cons cell: [car at offset 0, cdr at offset 8], tagged with 1
-     (let ((car-ir (cadr ir)))
-       (let ((cdr-ir (caddr ir)))
-         (let ((xs (nc-temp-slot td)))
-           (let ((cs (nc-temp-slot (+ td 1))))
-             (let ((nd (+ td 2)))
-               (let ((cc (nc-codegen car-ir rtaddrs fnoffs nd)))
-                 (let ((dc (nc-codegen cdr-ir rtaddrs fnoffs nd)))
-                   (nc-append-all
-                    (list (nc-str-offset 24 31 xs)          ; save x24
-                          cc                                 ; eval car -> x0
-                          (nc-str-offset 0 31 cs)           ; save car value
-                          (nc-ldr-offset 24 31 xs)          ; restore x24
-                          dc                                 ; eval cdr -> x0
-                          (nc-mov-reg 1 0)                  ; x1 = cdr value
-                          (nc-ldr-offset 0 31 cs)           ; x0 = car value
-                          ;; Inline allocation: x28 = heap pointer
-                          (nc-str-offset 0 28 0)            ; [x28+0] = car
-                          (nc-str-offset 1 28 8)            ; [x28+8] = cdr
-                          (nc-mov-reg 0 28)                 ; x0 = untagged ptr
-                          (nc-add-imm 28 28 16)             ; bump heap by 16
-                          ;; Tag with cons tag (1)
-                          (nc-movz 1 1)                     ; x1 = 1
-                          (nc-orr-reg 0 0 1)))))))))))      ; x0 = ptr | 1
+     (let* ((car-ir (cadr ir))
+            (cdr-ir (caddr ir))
+            (xs (nc-temp-slot td))
+            (cs (nc-temp-slot (+ td 1)))
+            (nd (+ td 2))
+            (cc (nc-codegen car-ir rtaddrs fnoffs nd))
+            (dc (nc-codegen cdr-ir rtaddrs fnoffs nd))
+            (may-call (nc-ir-may-call? car-ir))
+            (alloc-code (nc-append-all
+                         (list (nc-mov-reg 1 0)             ; x1 = cdr value
+                               (nc-ldr-offset 0 31 cs)      ; x0 = car value
+                               (nc-str-offset 0 28 0)       ; [x28+0] = car
+                               (nc-str-offset 1 28 8)       ; [x28+8] = cdr
+                               (nc-mov-reg 0 28)            ; x0 = untagged ptr
+                               (nc-add-imm 28 28 16)        ; bump heap by 16
+                               (nc-movz 1 1)                ; x1 = 1
+                               (nc-orr-reg 0 0 1)))))       ; x0 = ptr | 1
+       (if may-call
+           (nc-append-all (list (nc-str-offset 24 31 xs) cc (nc-str-offset 0 31 cs)
+                                (nc-ldr-offset 24 31 xs) dc alloc-code))
+           (nc-append-all (list cc (nc-str-offset 0 31 cs) dc alloc-code)))))
     ((nc-has-tag ir 'car-ir)
      ;; Inline car: clear tag bits, load from offset 0
      ;; (car nil) returns nil - check for nil first
@@ -3283,48 +3259,22 @@
          (gen-seq forms-ir nil))))
     ((nc-has-tag ir 'div)
      ;; Division: both operands untagged, divide, re-tag
-     (let ((left-ir (cadr ir)))
-       (let ((right-ir (caddr ir)))
-         (let ((xs (nc-temp-slot td)))
-           (let ((ls (nc-temp-slot (+ td 1))))
-             (let ((nd (+ td 2)))
-               (let ((lc (nc-codegen left-ir rtaddrs fnoffs nd)))
-                 (let ((rc (nc-codegen right-ir rtaddrs fnoffs nd)))
-                   (nc-append-all
-                    (list (nc-str-offset 24 31 xs)
-                          lc
-                          (nc-str-offset 0 31 ls)
-                          (nc-ldr-offset 24 31 xs)
-                          rc
-                          (nc-mov-reg 1 0)
-                          (nc-ldr-offset 0 31 ls)
-                          (nc-lsr-imm 0 0 4)
-                          (nc-lsr-imm 1 1 4)
-                          (nc-sdiv-reg 0 0 1)
-                          (nc-lsl-imm 0 0 4)))))))))))
+     (nc-codegen-binop (cadr ir) (caddr ir)
+                       (nc-append-all (list (nc-lsr-imm 0 0 4)
+                                            (nc-lsr-imm 1 1 4)
+                                            (nc-sdiv-reg 0 0 1)
+                                            (nc-lsl-imm 0 0 4)))
+                       rtaddrs fnoffs td))
     ((or (nc-has-tag ir 'mod) (nc-has-tag ir 'mod-ir))
      ;; Modulo: a mod b = a - (a / b) * b
-     (let ((left-ir (cadr ir)))
-       (let ((right-ir (caddr ir)))
-         (let ((xs (nc-temp-slot td)))
-           (let ((ls (nc-temp-slot (+ td 1))))
-             (let ((nd (+ td 2)))
-               (let ((lc (nc-codegen left-ir rtaddrs fnoffs nd)))
-                 (let ((rc (nc-codegen right-ir rtaddrs fnoffs nd)))
-                   (nc-append-all
-                    (list (nc-str-offset 24 31 xs)
-                          lc
-                          (nc-str-offset 0 31 ls)
-                          (nc-ldr-offset 24 31 xs)
-                          rc
-                          (nc-mov-reg 1 0)
-                          (nc-ldr-offset 0 31 ls)
-                          (nc-lsr-imm 0 0 4)
-                          (nc-lsr-imm 1 1 4)
-                          (nc-sdiv-reg 2 0 1)
-                          (nc-mul-reg 2 2 1)
-                          (nc-sub-reg 0 0 2)
-                          (nc-lsl-imm 0 0 4)))))))))))
+     (nc-codegen-binop (cadr ir) (caddr ir)
+                       (nc-append-all (list (nc-lsr-imm 0 0 4)
+                                            (nc-lsr-imm 1 1 4)
+                                            (nc-sdiv-reg 2 0 1)
+                                            (nc-mul-reg 2 2 1)
+                                            (nc-sub-reg 0 0 2)
+                                            (nc-lsl-imm 0 0 4)))
+                       rtaddrs fnoffs td))
     ((nc-has-tag ir 'lambda-ir)
      ;; lambda-ir should be lifted to lambda-ref before codegen
      ;; If we encounter it directly, it's an error - return 0
