@@ -2,8 +2,8 @@
 
 **Session Date**: November 22-27, 2025
 **Focus**: Self-hosting ARM64 Lisp compiler with native executable generation
-**Last Updated**: November 27, 2025 (140 tests pass: 77 native + 39 reader + 8 self-compile + 5 mini-compiler + 5 full-self-compile + 6 compiler-subsets)
-**Milestone**: Compiler subsystems compile to native - ARM64 encoders, IR generation, codegen all compile and run
+**Last Updated**: November 27, 2025 (176 tests: 77 native + 39 reader + 8 self-compile + 5 mini-compiler + 5 full-self-compile + 6 compiler-subsets + 8 arm64-encoders + 8 inline-string + 10 expr-compiler + 10 ir-traversal)
+**Milestone**: All compiler patterns verified to work in native executables - expression compilation, IR traversal, environment lookup, tree walking
 
 ## Current Plan: Native File I/O and Self-Hosting (November 27, 2025)
 
@@ -56,13 +56,40 @@ Workaround: For self-hosting, reader can compare symbol names instead of using `
 - factorial.lisp compiles and runs correctly (exit code 120 = 5!)
 - Compiler uses SBCL to read source files (workaround for buffer-to-string + reader crash)
 
+### Phase 4: REPL with Compiler Integration - COMPLETE
+1. Create SBCL-based habu binary with REPL - DONE
+2. Implement read-eval-print loop with multi-line support - DONE
+3. Add compile-file command (:compile) - DONE
+4. Add deliver command (:deliver) - DONE
+5. Integrate CL trace facility (:trace/:untrace) - DONE
+6. Integrate profile facility (:profile/:unprofile) - DONE
+7. Add timing command (:time) - DONE
+8. Add IR disassembly command (:disasm) - DONE
+
+**REPL Commands**:
+- `:help` - Show available commands
+- `:quit` - Exit the REPL
+- `:load <file>` - Load and evaluate a Lisp file
+- `:compile <file>` - Compile Lisp file to native executable
+- `:deliver <src> <out>` - Compile source to specified output
+- `:trace <fn>` - Enable tracing for function
+- `:untrace [fn]` - Disable tracing (all if no arg)
+- `:profile <fn>` - Enable profiling for function
+- `:unprofile [fn]` - Disable profiling
+- `:time <expr>` - Time expression evaluation
+- `:disasm <expr>` - Show IR for expression
+
+**Usage**: `./bin/habu-dev` or `./bin/habu-dev file.lisp`
+
 ### Current Task
-Phase 3 in progress. Command-line compiler and native self-compiler tests working.
+Phase 4 complete. REPL with full compiler integration is working.
 
 **New Tests Added (November 27, 2025)**:
 - `tests/test_native_self_compile.lisp` - 8 tests for native mini self-compiler patterns
 - `tests/test_compiler_cli.lisp` - Extended to 14 tests (was 5)
 - `tests/test_self_compiling_mini.lisp` - 5 tests for self-compiling mini-compilers
+- `tests/test_native_expr_compiler.lisp` - 10 tests for expression compiler patterns (tag-check, ir-accessors, env-lookup, compile-eval, nested-compile, multi-ops)
+- `tests/test_native_ir_traversal.lisp` - 10 tests for IR traversal patterns (list-traverse, tree-count, ir-visitor, free-vars, lambda-detect, call-extract, list-map, env-chain, list-accum, deep-access)
 
 The native self-compiler tests demonstrate compiler can compile:
 1. Expression evaluators with tagged IR (eval-add, eval-recursive)

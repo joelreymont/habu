@@ -1,0 +1,17 @@
+#!/bin/bash
+# habu-repl - Habu Lisp REPL with full compiler capabilities
+# Usage: habu-repl [options] [file.lisp]
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+HABU_DIR="$(dirname "$SCRIPT_DIR")"
+
+cd "$HABU_DIR"
+
+exec sbcl --noinform --non-interactive \
+     --eval "(require :asdf)" \
+     --eval "(push (truename \"bootstrap/\") asdf:*central-registry*)" \
+     --eval "(asdf:load-system :habu)" \
+     --eval "(load \"macho-linker.lisp\")" \
+     --load "$SCRIPT_DIR/habu-repl.lisp" \
+     --eval "(habu-repl:main)" \
+     "$@"
