@@ -109,25 +109,35 @@ Workaround: For self-hosting, reader can compare symbol names instead of using `
 - Optimization opportunity: Configurable heap size
 
 **Performance Bottlenecks Identified**:
-1. Unnecessary x24 save/restore in all binary operations (closure env pointer)
+1. ~~Unnecessary x24 save/restore in all binary operations~~ FIXED (P2)
 2. All intermediate values spilled to stack (no register allocation)
 3. Full function prologue/epilogue for all functions (no leaf optimization)
-4. No constant folding (`(+ 1 2)` generates code instead of 3)
+4. ~~No constant folding~~ FIXED (P1)
 5. No function inlining (each call has full overhead)
 
 **Implemented Optimizations**:
 - P1: Constant folding for +, -, *, / with nested expression support
   - `(+ (* 3 4) (- 10 2))` compiles to `(LIT 20)` instead of generating runtime code
   - Recursive folding: inner expressions folded first, then outer
+- P2: Eliminate x24 save/restore when no calls in operands
+  - Added `nc-ir-may-call?` predicate to detect if IR might make function calls
+  - Added `nc-codegen-binop` helper for optimized binary operation codegen
+  - Simple `(+ x y)` generates 184 bytes vs 268 bytes for `(+ (f x) y)`
+  - Saves 84 bytes (21 instructions) when operands don't involve function calls
+  - Applied to: add, sub, mul, div, mod, band, bor, bxor, bsh, comparisons, cons
 
 **Optimization Roadmap (TODO)**:
-- P2: Eliminate x24 save/restore when no closures involved
 - P3: Leaf function optimization (simpler prologue/epilogue)
 - P4: Register allocation for intermediate values
 - P5: Function inlining for small functions
 
 ### Current Task
-Phase 5 in progress. Benchmarking complete, optimization roadmap defined.
+Phase 5 in progress. P1 (constant folding) and P2 (x24 optimization) complete. 77/77 native tests pass.
+
+**Self-Hosting Status**:
+- Compiled programs run without SBCL - YES
+- Compiler itself runs without SBCL - NO (still needs SBCL host)
+- Fixed-point compilation (compiler compiles itself) - PENDING
 
 **New Tests Added (November 27, 2025)**:
 - `tests/test_native_self_compile.lisp` - 8 tests for native mini self-compiler patterns
