@@ -20,11 +20,15 @@
    ;; Compare
    #:cmp #:cset
    ;; Branch
-   #:b #:bl #:blr #:b.eq #:b.ne #:b.lt #:b.le #:b.gt #:b.ge #:ret
+   #:b #:bl #:br #:blr #:b.eq #:b.ne #:b.lt #:b.le #:b.gt #:b.ge #:ret
+   ;; System
+   #:svc
    ;; Condition codes
    #:+eq+ #:+ne+ #:+lt+ #:+le+ #:+gt+ #:+ge+
    ;; Registers (by convention)
-   #:+sp+ #:+lr+ #:+xzr+))
+   #:+sp+ #:+lr+ #:+xzr+
+   ;; macOS syscall numbers
+   #:+sys-exit+ #:+sys-read+ #:+sys-write+ #:+sys-open+ #:+sys-close+))
 
 (in-package :arm64)
 
@@ -39,6 +43,13 @@
 (defconstant +le+ #xD)   ; signed less or equal
 (defconstant +gt+ #xC)   ; signed greater than
 (defconstant +ge+ #xA)   ; signed greater or equal
+
+;; macOS ARM64 syscall numbers (BSD layer, use with SVC #x80)
+(defconstant +sys-exit+  1)
+(defconstant +sys-read+  3)
+(defconstant +sys-write+ 4)
+(defconstant +sys-open+  5)
+(defconstant +sys-close+ 6)
 
 ;; Special registers (by convention, all are encoded as 31)
 (defconstant +sp+  31)   ; stack pointer
@@ -354,6 +365,11 @@
    Branch with link to register."
   (encode (logior #xD63F0000 (ash rn 5))))
 
+(defun br (rn)
+  "BR Xn
+   Branch to register (no link)."
+  (encode (logior #xD61F0000 (ash rn 5))))
+
 (defun b.eq (offset)
   "B.EQ label
    Branch if equal. Offset in instructions."
@@ -400,3 +416,10 @@
   "RET
    Return from subroutine (branch to LR)."
   (encode #xD65F03C0))
+
+(defun svc (imm16)
+  "SVC #imm16
+   Supervisor call (syscall). On macOS, use #x80 for syscalls."
+  ;; SVC encoding: 1101 0100 000 imm16[15:0] 00001
+  ;; = 0xD4000001 | (imm16 << 5)
+  (encode (logior #xD4000001 (ash (logand imm16 #xFFFF) 5))))
