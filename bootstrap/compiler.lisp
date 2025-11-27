@@ -3606,40 +3606,60 @@
 ;; Pass 2: Compile function bodies with complete fenv
 
 (defun nc-collect-defun-names (forms acc)
-  "Pass 1: Collect all defun names from forms"
+  "Pass 1: Collect all defun names from forms, recursing into progn"
   (if (null forms)
       acc
       (let ((f (car forms)))
-        (if (and (consp f) (eq (car f) 'defun))
-            (nc-collect-defun-names (cdr forms) (cons (list (cadr f)) acc))
-            (nc-collect-defun-names (cdr forms) acc)))))
+        (cond
+          ((and (consp f) (eq (car f) 'defun))
+           (nc-collect-defun-names (cdr forms) (cons (list (cadr f)) acc)))
+          ((and (consp f) (eq (car f) 'progn))
+           ;; Recurse into progn body, then continue with rest
+           (nc-collect-defun-names (cdr forms)
+                                   (nc-collect-defun-names (cdr f) acc)))
+          (t (nc-collect-defun-names (cdr forms) acc))))))
 
 (defun nc-compile-defuns (forms env fenv acc)
-  "Pass 2: Compile all defuns using complete fenv"
+  "Pass 2: Compile all defuns using complete fenv, recursing into progn"
   (if (null forms)
       acc
       (let ((f (car forms)))
-        (if (and (consp f) (eq (car f) 'defun))
-            (let* ((nm (cadr f))
-                   (ps (caddr f))
-                   (body-forms (cdddr f))
-                   (bd (if (null (cdr body-forms))
-                           (car body-forms)
-                           (cons 'progn body-forms)))
-                   (cf (nc-compile-defun nm ps bd env fenv)))
-              (nc-compile-defuns (cdr forms) env fenv (cons cf acc)))
-            (nc-compile-defuns (cdr forms) env fenv acc)))))
+        (cond
+          ((and (consp f) (eq (car f) 'defun))
+           (let* ((nm (cadr f))
+                  (ps (caddr f))
+                  (body-forms (cdddr f))
+                  (bd (if (null (cdr body-forms))
+                          (car body-forms)
+                          (cons 'progn body-forms)))
+                  (cf (nc-compile-defun nm ps bd env fenv)))
+             (nc-compile-defuns (cdr forms) env fenv (cons cf acc))))
+          ((and (consp f) (eq (car f) 'progn))
+           ;; Recurse into progn body, then continue with rest
+           (nc-compile-defuns (cdr forms) env fenv
+                              (nc-compile-defuns (cdr f) env fenv acc)))
+          (t (nc-compile-defuns (cdr forms) env fenv acc))))))
 
 (defun nc-find-main-form (forms)
-  "Find all non-defun forms and wrap them in progn if more than one"
-  (labels ((collect-non-defuns (fs acc)
+  "Find all non-defun forms and wrap them in progn if more than one.
+   Recurses into progn forms to strip nested defuns."
+  (labels ((strip-defuns (fs acc)
+             ;; Recursively collect non-defun forms, flattening progn
              (if (null fs)
-                 (reverse acc)
+                 acc
                  (let ((f (car fs)))
-                   (if (and (consp f) (eq (car f) 'defun))
-                       (collect-non-defuns (cdr fs) acc)
-                       (collect-non-defuns (cdr fs) (cons f acc)))))))
-    (let ((main-forms (collect-non-defuns forms nil)))
+                   (cond
+                     ((and (consp f) (eq (car f) 'defun))
+                      ;; Skip defuns
+                      (strip-defuns (cdr fs) acc))
+                     ((and (consp f) (eq (car f) 'progn))
+                      ;; Recurse into progn, flatten results
+                      (strip-defuns (cdr fs)
+                                    (strip-defuns (cdr f) acc)))
+                     (t
+                      ;; Keep other forms
+                      (strip-defuns (cdr fs) (cons f acc))))))))
+    (let ((main-forms (reverse (strip-defuns forms nil))))
       (cond ((null main-forms) nil)
             ((null (cdr main-forms)) (car main-forms))
             (t (cons 'progn main-forms))))))
