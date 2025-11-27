@@ -1,6 +1,6 @@
 # Session Context - Habu Self-Hosting Lisp Compiler
 
-**Session Date**: November 22-26, 2025
+**Session Date**: November 22-27, 2025
 **Focus**: Self-hosting ARM64 Lisp compiler with native executable generation
 **Last Updated**: November 27, 2025 (100 tests pass: 77 native + 10 self-host + 10 bootstrap + 3 ARM64 asm)
 
@@ -60,6 +60,8 @@ This session completed the bootstrap compiler ARM64 codegen, verified bytecode e
 49. **SVC instruction** - supervisor call for direct macOS syscalls
 50. **macOS syscall constants** - SYS_EXIT, SYS_READ, SYS_WRITE, SYS_OPEN, SYS_CLOSE
 51. **100 tests pass** - 77 native + 10 self-hosting + 10 bootstrap + 3 ARM64 asm
+52. **Direct syscall executables** - test-syscall-macho creates binaries using SVC for write/exit
+53. **Chained fixups implementation** - write-macho-executable-with-imports for dynamic linking (partial)
 
 **Package Structure** (November 26, 2025):
 - HABU-SYS: System/runtime primitives (string-length, string-ref, make-vector, etc.)
@@ -432,6 +434,42 @@ LSR x0, x0, #4               ; untag result for exit code
 LDP x29, x30, [sp], #16      ; restore frame pointer, link register
 RET                          ; return to system
 ```
+
+**Direct Syscall Support** (November 27, 2025):
+For executables that need no dynamic linking, direct ARM64 syscalls work:
+```
+;; write(1, "OK\n", 3)
+MOV x0, #1                   ; fd = stdout
+ADR x1, string_addr          ; buffer address
+MOV x2, #3                   ; length
+MOV x16, #4                  ; SYS_write
+MOVK x16, #0x200, LSL #16    ; BSD syscall flag
+SVC 0                        ; syscall
+
+;; exit(42)
+MOV x0, #42                  ; exit code
+MOV x16, #1                  ; SYS_exit
+MOVK x16, #0x200, LSL #16    ; BSD syscall flag
+SVC 0                        ; syscall
+```
+
+Key syscall numbers (ARM64 macOS):
+- SYS_exit = 0x2000001
+- SYS_read = 0x2000003
+- SYS_write = 0x2000004
+- SYS_open = 0x2000005
+- SYS_close = 0x2000006
+
+**Chained Fixups (Dynamic Linking)** - Partial Implementation:
+The `write-macho-executable-with-imports` function generates Mach-O with:
+- LC_DYLD_CHAINED_FIXUPS with proper data structures
+- GOT section with bind pointers
+- Stubs using ADRP/LDR/BR sequence
+- LC_LOAD_DYLIB for libSystem.B.dylib
+
+Known issue: Kernel rejects binary before dyld loads (SIGKILL).
+Fixups data matches clang output byte-for-byte, but execution fails.
+Use direct syscalls as fallback until dynamic linking is debugged.
 
 ---
 
