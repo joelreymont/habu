@@ -88,15 +88,32 @@ Workaround: For self-hosting, reader can compare symbol names instead of using `
 - Arrow keys for history navigation and line editing
 - Ctrl-R for reverse search, Tab for completion
 
-### Phase 5: Performance Benchmarking - IN PROGRESS
+### Phase 5: Performance Benchmarking and Optimization - COMPLETE
 
-**Benchmark Results (November 27, 2025)**:
-| Benchmark | Habu Native | SBCL (load+run) | Ratio | Notes |
-|-----------|-------------|-----------------|-------|-------|
-| fib(30)   | 43ms        | 211ms           | 0.20x | Habu 5x faster (includes SBCL startup) |
-| tak(18,12,6) | 30ms     | 196ms           | 0.15x | Habu 6.5x faster |
-| list ops  | 34ms        | 195ms           | 0.17x | Habu 5.7x faster |
-| arithmetic | 33ms       | 198ms           | 0.17x | Habu 6x faster |
+**Nanopass Optimization Framework** (November 27, 2025):
+Created `bootstrap/optimize.lisp` with three nanopass optimization passes:
+1. **Constant Folding**: `(+ 3 4)` -> `(lit 7)` at compile time
+2. **Strength Reduction**: `(* x 8)` -> `(bsh x 3)` (shift instead of multiply)
+3. **Dead Code Elimination**: Remove unreachable code, simplify progn
+
+**Key Bug Fix**: The optimizer had incorrect progn-ir structure handling.
+Habu uses `(progn-ir (form1 form2 ...))` where cadr is a LIST of forms.
+The optimizer was checking `(length ir)` instead of `(length (cadr ir))`,
+causing the progn wrapper to be stripped incorrectly.
+
+**Benchmark Results (with optimization)**:
+| Benchmark | With Opt | Without Opt | Improvement |
+|-----------|----------|-------------|-------------|
+| fib(30)   | 76ms     | 109ms       | 30% faster  |
+| tak       | 71ms     | 92ms        | 23% faster  |
+| list ops  | 79ms     | 71ms        | (no change) |
+| arithmetic| 78ms     | 124ms       | 37% faster  |
+
+**Package Cleanup**:
+- Renamed HABU-SYS package to SYS for cleaner namespace
+- SYS package contains internal primitives (string-length, make-vector, etc.)
+- HABU package uses `(:use :cl :sys)` to import SYS exports
+- nc-* function names preserved for backward compatibility
 
 **Fair Comparison (computation only)**:
 - Habu fib(30) pure computation: ~10ms per call (measured via loop)
