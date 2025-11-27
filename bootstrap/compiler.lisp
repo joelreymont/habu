@@ -3951,23 +3951,38 @@
                         (nc-str-offset 22 21 0))))
         (nc-gen-param-stores (cdr params) base (+ idx 1) (append acc st)))))
 
-(defun nc-fn-prologue ()
+(defun nc-fn-prologue (&key leaf)
   "Function prologue: allocate frame, save caller's x20/lr/x24, set up new env base.
    Frame size 0x400 (1024) to accommodate spill slots at 0x240+.
    x24 must be preserved across calls so defuns with internal labels don't clobber
-   the caller's closure environment."
-  (append
-   (nc-sub-imm 31 31 #x400)    ; SUB sp, sp, #1024 (allocate function frame)
-   (nc-stp-offset 20 30 31 0)  ; STP x20, lr, [sp, #0] (save caller's x20 and return addr)
-   (nc-str-offset 24 31 16)    ; STR x24, [sp, #16] (save caller's closure env)
-   (nc-add-imm 20 31 #x180)))  ; ADD x20, sp, #384 (env base past spill area)
+   the caller's closure environment.
+   If :leaf t, skip x24 save (leaf functions don't call other functions)."
+  (if leaf
+      ;; Leaf function: smaller frame, skip x24 save
+      (append
+       (nc-sub-imm 31 31 #x200)    ; SUB sp, sp, #512 (smaller frame for leaf)
+       (nc-stp-offset 20 30 31 0)  ; STP x20, lr, [sp, #0] (save x20 and return addr)
+       (nc-add-imm 20 31 #xC0))    ; ADD x20, sp, #192 (env base for leaf)
+      ;; Non-leaf function: full frame with x24 save
+      (append
+       (nc-sub-imm 31 31 #x400)    ; SUB sp, sp, #1024 (allocate function frame)
+       (nc-stp-offset 20 30 31 0)  ; STP x20, lr, [sp, #0] (save caller's x20 and return addr)
+       (nc-str-offset 24 31 16)    ; STR x24, [sp, #16] (save caller's closure env)
+       (nc-add-imm 20 31 #x180)))) ; ADD x20, sp, #384 (env base past spill area)
 
-(defun nc-fn-epilogue ()
-  "Function epilogue: restore caller's x20/lr/x24, deallocate frame, return"
-  (append
-   (nc-ldr-offset 24 31 16)    ; LDR x24, [sp, #16] (restore caller's closure env)
-   (nc-ldp-offset 20 30 31 0)  ; LDP x20, lr, [sp, #0] (restore caller's x20 and lr)
-   (nc-add-imm 31 31 #x400)))  ; ADD sp, sp, #1024 (deallocate function frame)
+(defun nc-fn-epilogue (&key leaf)
+  "Function epilogue: restore caller's x20/lr/x24, deallocate frame, return
+   If :leaf t, skip x24 restore."
+  (if leaf
+      ;; Leaf function: skip x24 restore
+      (append
+       (nc-ldp-offset 20 30 31 0)  ; LDP x20, lr, [sp, #0] (restore x20 and lr)
+       (nc-add-imm 31 31 #x200))   ; ADD sp, sp, #512 (deallocate leaf frame)
+      ;; Non-leaf function: full restore
+      (append
+       (nc-ldr-offset 24 31 16)    ; LDR x24, [sp, #16] (restore caller's closure env)
+       (nc-ldp-offset 20 30 31 0)  ; LDP x20, lr, [sp, #0] (restore caller's x20 and lr)
+       (nc-add-imm 31 31 #x400)))) ; ADD sp, sp, #1024 (deallocate function frame)
 
 (defun nc-gen-capture-copies (count idx acc)
   "Generate code to copy captured values from closure env (x24) to stack.
@@ -4025,10 +4040,13 @@
 (defun nc-codegen-fn (fn rtaddrs fnoffs)
   "Generate code for a function (defun or lifted lambda).
    Defun format:  (name params body param-base)  ; param-base is a number
-   Lambda format: (name params body free-vars free-offsets)  ; free-vars is a list or nil"
+   Lambda format: (name params body free-vars free-offsets)  ; free-vars is a list or nil
+   Uses leaf-optimized prologue/epilogue for functions that make no calls."
   (let* ((ps (cadr fn))
          (bir (caddr fn))
-         (fourth (cadddr fn)))
+         (fourth (cadddr fn))
+         ;; Check if function is a leaf (makes no function calls)
+         (is-leaf (not (nc-ir-may-call? bir))))
     ;; Distinguish defun from lambda by checking 4th element
     ;; Defuns have a number (param-base), lambdas have nil or a list (free-vars)
     (if (numberp fourth)
@@ -4036,10 +4054,11 @@
         (let* ((pb fourth)
                (pc (nc-gen-param-stores ps pb 0 nil))
                (bc (nc-codegen bir rtaddrs fnoffs 0)))
-          (append (nc-fn-prologue) pc bc (nc-fn-epilogue) (nc-ret)))
+          (append (nc-fn-prologue :leaf is-leaf) pc bc (nc-fn-epilogue :leaf is-leaf) (nc-ret)))
         ;; Lambda: need to copy captures AND store params
         ;; Problem: capture copy clobbers x0-x4, but params are in x0-x4
         ;; Solution: save params to temp slots first, copy captures, then restore params
+        ;; Note: Lambdas with captures cannot be leaf-optimized (capture copy uses x24)
         (let* ((free-vars fourth)
                (capture-count (if free-vars (length free-vars) 0))
                (param-count (length ps))
@@ -4053,8 +4072,10 @@
                (pc (if (> capture-count 0)
                        (nc-restore-params-from-temps ps capture-count param-count 0 nil)
                        (nc-gen-param-stores ps 0 0 nil)))
-               (bc (nc-codegen bir rtaddrs fnoffs 0)))
-          (append (nc-fn-prologue) ps-save cc pc bc (nc-fn-epilogue) (nc-ret))))))
+               (bc (nc-codegen bir rtaddrs fnoffs 0))
+               ;; Leaf optimize only if no captures (captures need x24)
+               (leaf-ok (and is-leaf (= capture-count 0))))
+          (append (nc-fn-prologue :leaf leaf-ok) ps-save cc pc bc (nc-fn-epilogue :leaf leaf-ok) (nc-ret))))))
 
 (defun nc-codegen-main (mir rtaddrs)
   (append (nc-prologue)

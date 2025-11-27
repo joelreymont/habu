@@ -155,14 +155,20 @@ Note: SBCL with (declare (optimize (speed 3))) and fixnum declarations.
   - continue-ir codegen (eval args, store to params, jump) is heavier than BL call
   - May revisit with simpler approach (just for self-tail-calls with same arity)
 
+- P4: Leaf function optimization for non-calling functions
+  - Leaf functions use smaller frame (512 vs 1024 bytes)
+  - Skip x24 save/restore for leaf functions
+  - Detected via `nc-ir-may-call?` on function body
+  - Minimal impact on recursive benchmarks (they're not leaf)
+
 **Optimization Roadmap (TODO)**:
-- P4: Leaf function optimization (simpler prologue/epilogue)
 - P5: Register allocation for intermediate values
 - P6: Function inlining for small functions
 
 ### Current Task
-Phase 5 in progress. P1 (constant folding), P2 (x24 optimization), and P3 (immediate operands) complete.
+Phase 5 optimization complete. P1-P4 implemented (constant folding, x24 optimization, immediate operands, leaf functions).
 77/77 native tests pass. Habu is ~1.6-1.9x slower than fully optimized SBCL.
+Next: Type declarations for fixnum specialization, then register allocation.
 
 **Self-Hosting Status**:
 - Compiled programs run without SBCL - YES
