@@ -1610,9 +1610,20 @@
           (list 'vector-ref-ir
                 (nc-compile (cadr expr) env fenv)
                 (nc-compile (caddr expr) env fenv)))
+         ;; buffer-byte-ref - get raw byte at index from vector data area
+         ;; Used for reading file data written by sys-read
+         ((eq op 'buffer-byte-ref)
+          (list 'buffer-byte-ref-ir
+                (nc-compile (cadr expr) env fenv)
+                (nc-compile (caddr expr) env fenv)))
          ;; make-string-from-vector - convert vector of char codes to string
          ((eq op 'make-string-from-vector)
           (list 'make-string-from-vector-ir (nc-compile (cadr expr) env fenv)))
+         ;; buffer-to-string - convert raw byte buffer to string (for sys-read data)
+         ((eq op 'buffer-to-string)
+          (list 'buffer-to-string-ir
+                (nc-compile (cadr expr) env fenv)    ; buffer
+                (nc-compile (caddr expr) env fenv))) ; length
          ;; make-symbol-from-string - intern a string as symbol
          ((eq op 'make-symbol-from-string)
           (list 'make-symbol-from-string-ir (nc-compile (cadr expr) env fenv)))
@@ -2147,10 +2158,21 @@
      (let ((vec (nc-eval-ir-with-fns (cadr ir) env fenv))
            (idx (nc-eval-ir-with-fns (caddr ir) env fenv)))
        (aref vec idx)))
+    ;; buffer-byte-ref-ir - get raw byte at index (for evaluator, same as aref)
+    ((nc-has-tag ir 'buffer-byte-ref-ir)
+     (let ((vec (nc-eval-ir-with-fns (cadr ir) env fenv))
+           (idx (nc-eval-ir-with-fns (caddr ir) env fenv)))
+       (aref vec idx)))
     ;; make-string-from-vector-ir - convert vector to string
     ((nc-has-tag ir 'make-string-from-vector-ir)
      (let ((vec (nc-eval-ir-with-fns (cadr ir) env fenv)))
        (map 'string #'code-char vec)))
+    ;; buffer-to-string-ir - convert raw byte buffer to string
+    ((nc-has-tag ir 'buffer-to-string-ir)
+     (let ((buf (nc-eval-ir-with-fns (cadr ir) env fenv))
+           (len (nc-eval-ir-with-fns (caddr ir) env fenv)))
+       ;; For evaluator (SBCL), assume buf is a vector of bytes
+       (map 'string #'code-char (subseq buf 0 len))))
     ;; make-symbol-from-string-ir - intern string as symbol
     ((nc-has-tag ir 'make-symbol-from-string-ir)
      (let ((str (nc-eval-ir-with-fns (cadr ir) env fenv)))
@@ -2816,6 +2838,35 @@
               (nc-add-reg 1 1 0)              ; x1 = address
               (nc-ldr-offset 0 1 0)           ; x0 = [x1] = element (already tagged)
               ))))
+    ;; buffer-byte-ref-ir - get raw byte at index (inline)
+    ((nc-has-tag ir 'buffer-byte-ref-ir)
+     ;; buffer-byte-ref-ir = (buffer-byte-ref-ir vec-ir idx-ir)
+     ;; Reads a single byte from vector data area (used after sys-read fills buffer)
+     ;; Vector layout: [length (8 bytes)][raw bytes...]
+     ;; Address = (vec & ~0xF) + 8 + (idx >> 4)
+     (let* ((vec-ir (cadr ir))
+            (idx-ir (caddr ir))
+            (xs (nc-temp-slot td))
+            (nd (+ td 1))
+            (vc (nc-codegen vec-ir rtaddrs fnoffs nd))
+            (sv (nc-str-offset 0 31 xs))
+            (ic (nc-codegen idx-ir rtaddrs fnoffs nd)))
+       ;; After codegen: idx in x0, vec at [sp+xs]
+       (nc-append-all
+        (list vc sv ic
+              ;; x0 = idx (tagged), load vec -> x1
+              (nc-ldr-offset 1 31 xs)         ; x1 = vec (tagged)
+              ;; Clear tag from vec: x1 = x1 & ~0xF
+              (nc-and-imm 1 1 1 #x3C #x3B)    ; x1 = vec_ptr (untagged, clear low 4 bits)
+              ;; Calculate byte offset: x0 = idx >> 4 (untag) + 8 (skip length)
+              (nc-lsr-imm 0 0 4)              ; x0 = idx_untagged (byte offset)
+              (nc-add-imm 0 0 8)              ; x0 = offset = 8 + byte_index
+              ;; Load byte from vec_ptr + offset
+              (nc-add-reg 1 1 0)              ; x1 = address
+              (nc-ldrb-offset 0 1 0)          ; x0 = byte (zero-extended to 64-bit)
+              ;; Tag as fixnum
+              (nc-lsl-imm 0 0 4)              ; x0 = tagged fixnum
+              ))))
     ;; make-string-from-vector-ir - convert vector to string (inline)
     ((nc-has-tag ir 'make-string-from-vector-ir)
      ;; make-string-from-vector-ir = (make-string-from-vector-ir vec-ir)
@@ -2870,6 +2921,67 @@
               ;; Tag result with string tag (0x4)
               (nc-movz 4 4)                   ; x4 = 4
               (nc-orr-reg 0 0 4)))))
+    ;; buffer-to-string-ir - convert raw byte buffer to string (inline)
+    ((nc-has-tag ir 'buffer-to-string-ir)
+     ;; buffer-to-string-ir = (buffer-to-string-ir buf-ir len-ir)
+     ;; Inline implementation: allocate string on heap, copy raw bytes from buffer
+     ;; Buffer layout: [length (8 bytes)][raw bytes...] (sys-read writes raw bytes)
+     ;; String layout: [length (8 bytes)][char data (n bytes)]
+     ;; Register usage:
+     ;;   x0: result (tagged string)
+     ;;   x1: untagged buf base + 8 (raw data start)
+     ;;   x2: string data base (untagged string ptr + 8)
+     ;;   x3: loop counter (0 to len-1)
+     ;;   x4: temp for loading/storing bytes
+     ;;   x5: length (untagged)
+     (let* ((buf-ir (cadr ir))
+            (len-ir (caddr ir))
+            (buf-slot (nc-temp-slot td))
+            (nd (+ td 1))
+            (buf-code (nc-codegen buf-ir rtaddrs fnoffs nd))
+            (len-code (nc-codegen len-ir rtaddrs fnoffs nd)))
+       (nc-append-all
+        (list
+         ;; Evaluate buf, save to slot
+         buf-code
+         (nc-str-offset 0 31 buf-slot)
+         ;; Evaluate len
+         len-code
+         ;; x5 = length (untagged)
+         (nc-lsr-imm 5 0 4)                 ; x5 = len >> 4 (untag)
+         ;; x1 = buf data start (untagged buf base + 8)
+         (nc-ldr-offset 1 31 buf-slot)      ; x1 = buf (tagged)
+         (nc-and-imm 1 1 1 #x3C #x3B)       ; x1 = buf & ~0xF (clear tag)
+         (nc-add-imm 1 1 8)                 ; x1 = buf + 8 (skip length header)
+         ;; Allocate string: store length at [x28]
+         (nc-str-offset 5 28 0)             ; [x28+0] = length
+         ;; x4 = alloc size = (8 + len + 15) & ~15 for 16-byte alignment
+         (nc-add-imm 4 5 23)                ; x4 = len + 23 (= len + 8 + 15)
+         (nc-and-imm 4 4 1 #x3C #x3B)       ; x4 = (len + 23) & ~15
+         ;; Save string ptr (will be result), bump heap
+         (nc-mov-reg 0 28)                  ; x0 = string base (untagged)
+         (nc-add-reg 28 28 4)               ; x28 += alloc_size
+         ;; x2 = string data base = x0 + 8
+         (nc-add-imm 2 0 8)                 ; x2 = string data start
+         ;; x3 = loop counter = 0
+         (nc-movz 3 0)                      ; x3 = 0
+         ;; Loop: while x3 < x5
+         ;; loop_start: (offset 0 from here)
+         (nc-cmp-reg 3 5)                   ; cmp x3, x5
+         (nc-b-cond (nc-cond-ge) 20)        ; if x3 >= x5, jump to loop_end (+5 instructions = 20 bytes)
+         ;; Load buf[x3] - raw byte
+         (nc-add-reg 4 1 3)                 ; x4 = buf_data + x3
+         (nc-ldrb-offset 4 4 0)             ; x4 = byte at [x4]
+         ;; Store byte: str_data[x3] = x4
+         (nc-strb-reg 4 2 3)                ; [x2 + x3] = x4 (byte)
+         ;; x3++
+         (nc-add-imm 3 3 1)                 ; x3++
+         ;; Jump back to loop_start (cmp instruction)
+         (nc-b-offset -24)                  ; back 6 instructions = -24 bytes
+         ;; loop_end:
+         ;; Tag result with string tag (0x4)
+         (nc-movz 4 4)                      ; x4 = 4
+         (nc-orr-reg 0 0 4)))))
     ;; make-symbol-from-string-ir - intern string as symbol
     ((nc-has-tag ir 'make-symbol-from-string-ir)
      ;; make-symbol-from-string-ir = (make-symbol-from-string-ir str-ir)
@@ -3904,6 +4016,8 @@
                         (values (list 'vector-set-ir new-vec new-idx new-val) l3))))))
                ;; 2-arg IR nodes: (tag arg1 arg2)
                ((or (nc-has-tag ir 'vector-ref-ir)
+                    (nc-has-tag ir 'buffer-byte-ref-ir)
+                    (nc-has-tag ir 'buffer-to-string-ir)
                     (nc-has-tag ir 'string-ref-ir)
                     (nc-has-tag ir 'string-equal-ir))
                 (let ((arg1 (cadr ir))
@@ -4288,20 +4402,13 @@ int main(int argc, char **argv) {
       (format t "External calls: ~A~%" extern-calls)
       (format t "Imports: ~A~%" imports))
 
-    (if (null imports)
-        ;; No external calls - use simple native delivery with heap
-        ;; Layout: __TEXT at page 0 (16KB), __DATA at page 1 (16KB) = 0x100004000
-        ;; ADRP uses 4KB pages, so heap-page-offset = (0x100004 - 0x100000) = 4 pages
-        (progn
-          (when verbose (format t "No imports - using direct delivery~%"))
-          (multiple-value-bind (flat-code ignored)
-              (nc-flatten-extern-calls bytes-with-markers)
-            (declare (ignore ignored))
-            (let ((wrapped-code (funcall (intern "WRAP-BYTECODE-WITH-HEAP" :habu-macho)
-                                         flat-code 4)))  ; heap at page 4 (4KB ADRP pages)
-              (funcall (intern "WRITE-MACHO-EXECUTABLE-WITH-HEAP" :habu-macho)
-                       output-path wrapped-code #x100000 :verbose verbose))))
-        ;; Has external calls - use macho linker with imports AND heap
+    ;; Always use the imports path for consistent Mach-O structure
+    ;; The no-imports path has issues with large programs (SIGKILL)
+    ;; If no imports, add _exit as a dummy import (never called but ensures proper structure)
+    (let ((imports (if (null imports) '("_exit") imports)))
+      (when (and verbose (null (nc-get-unique-imports extern-calls)))
+        (format t "No imports detected - adding _exit for consistent Mach-O structure~%"))
+      ;; Has external calls - use macho linker with imports AND heap
         (multiple-value-bind (flat-code extern-positions)
             (nc-flatten-extern-calls bytes-with-markers)
           (when verbose
