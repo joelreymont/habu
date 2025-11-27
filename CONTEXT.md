@@ -81,6 +81,18 @@ exceed this for large programs like the full reader (24KB).
 
 Fix: Calculate text-vmsize dynamically as `(align-up stubs-end PAGE_SIZE)`.
 
+5. **Labels inside dotimes/dolist not working**
+When `labels` was used inside a `dotimes` or `dolist` body, the program crashed with
+SIGSEGV (exit code 11). Root cause: dotimes-ir stored the body as raw source code
+and compiled it during codegen. This meant lambdas created by labels were not included
+in the function offset table (fnoffs), causing lambda-ref to fail.
+
+Fix: Changed dotimes/dolist compilation to compile the body at compile time, storing
+compiled IR instead of source. Updated nc-lift-lambdas to traverse into dotimes-ir
+and dolist-ir nodes to extract nested lambdas. The new IR structure is:
+- Old: `(dotimes-ir var count-ir body result-form compile-env fenv)`
+- New: `(dotimes-ir var count-ir body-ir result-ir compile-env)`
+
 ---
 
 ## Session Summary (November 26, 2025)

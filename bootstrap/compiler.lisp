@@ -1275,22 +1275,27 @@
                   (if (null (cdr body))
                       (nc-compile (car body) env fenv)
                       (nc-compile (cons 'progn body) env fenv)))))
-         ;; dotimes - counted iteration using tail-recursive helper
+         ;; dotimes - counted iteration
          ((eq op 'dotimes)
           ;; (dotimes (var count [result]) body...)
-          ;; Transform to recursive structure with explicit counter passing
           (let* ((spec (cadr expr))
                  (var (car spec))
                  (count-form (cadr spec))
                  (result-form (if (cddr spec) (caddr spec) 0))
-                 (body (cddr expr)))
-            ;; Create a dotimes-ir node
+                 (body (cddr expr))
+                 ;; Compile body with extended env that includes loop var
+                 (new-env (nc-env-extend (list (list var)) env))
+                 (body-ir (if (null (cdr body))
+                              (nc-compile (car body) new-env fenv)
+                              (nc-compile (cons 'progn body) new-env fenv)))
+                 (result-ir (nc-compile result-form new-env fenv)))
+            ;; Create a dotimes-ir node with compiled body
             (list 'dotimes-ir
                   var
                   (nc-compile count-form env fenv)
-                  body  ; Keep body as source, compile during eval
-                  result-form
-                  env)))  ; Save env for body compilation
+                  body-ir     ; Compiled body IR
+                  result-ir   ; Compiled result IR
+                  env)))      ; Original env for var offset calculation
          ;; dolist - list iteration
          ((eq op 'dolist)
           ;; (dolist (var list [result]) body...)
@@ -1298,14 +1303,22 @@
                  (var (car spec))
                  (list-form (cadr spec))
                  (result-form (if (cddr spec) (caddr spec) nil))
-                 (body (cddr expr)))
-            ;; Create a dolist-ir node
+                 (body (cddr expr))
+                 ;; Compile body with extended env that includes loop var
+                 (new-env (nc-env-extend (list (list var)) env))
+                 (body-ir (if (null (cdr body))
+                              (nc-compile (car body) new-env fenv)
+                              (nc-compile (cons 'progn body) new-env fenv)))
+                 (result-ir (if result-form
+                                (nc-compile result-form new-env fenv)
+                                (list 'lit 0))))
+            ;; Create a dolist-ir node with compiled body
             (list 'dolist-ir
                   var
                   (nc-compile list-form env fenv)
-                  body  ; Keep body as source, compile during eval
-                  result-form
-                  env)))  ; Save env for body compilation
+                  body-ir     ; Compiled body IR
+                  result-ir   ; Compiled result IR
+                  env)))
          ((eq op 'LET)  ; Changed to uppercase
           (let* ((bindings (cadr expr))
                  (body-forms (cddr expr)))
@@ -2030,49 +2043,34 @@
          ;; Return: (:closure params body free-vars captured-vals)
          (list :closure params body free-vars (capture free-offsets nil)))))
     ((nc-has-tag ir 'dotimes-ir)
-     ;; dotimes-ir = (dotimes-ir var count-ir body result-form compile-env)
+     ;; dotimes-ir = (dotimes-ir var count-ir body-ir result-ir compile-env)
      (let* ((var (cadr ir))
             (count-ir (caddr ir))
-            (body (cadddr ir))
-            (result-form (nth 4 ir))
+            (body-ir (cadddr ir))
+            (result-ir (nth 4 ir))
             (compile-env (nth 5 ir))
             (count (nc-eval-ir-with-fns count-ir env fenv)))
        ;; Iterative loop
        (labels ((iter (i)
                   (if (>= i count)
-                      (if result-form
-                          (let* ((new-env (nc-env-extend (list (list var)) compile-env))
-                                 (result-ir (nc-compile result-form new-env fenv)))
-                            (nc-eval-ir-with-fns result-ir (append env (list i)) fenv))
-                          0)
-                      (let* ((new-env (nc-env-extend (list (list var)) compile-env))
-                             (body-ir (if (null (cdr body))
-                                          (nc-compile (car body) new-env fenv)
-                                          (nc-compile (cons 'progn body) new-env fenv))))
+                      (nc-eval-ir-with-fns result-ir (append env (list i)) fenv)
+                      (progn
                         (nc-eval-ir-with-fns body-ir (append env (list i)) fenv)
                         (iter (+ i 1))))))
          (iter 0))))
     ((nc-has-tag ir 'dolist-ir)
-     ;; dolist-ir = (dolist-ir var list-ir body result-form compile-env)
+     ;; dolist-ir = (dolist-ir var list-ir body-ir result-ir compile-env)
      (let* ((var (cadr ir))
             (list-ir (caddr ir))
-            (body (cadddr ir))
-            (result-form (nth 4 ir))
+            (body-ir (cadddr ir))
+            (result-ir (nth 4 ir))
             (compile-env (nth 5 ir))
             (lst (nc-eval-ir-with-fns list-ir env fenv)))
        ;; Iterative loop over list
        (labels ((iter (remaining)
                   (if (null remaining)
-                      (if result-form
-                          (let* ((new-env (nc-env-extend (list (list var)) compile-env))
-                                 (result-ir (nc-compile result-form new-env fenv)))
-                            (nc-eval-ir-with-fns result-ir (append env (list nil)) fenv))
-                          0)
-                      (let* ((elem (car remaining))
-                             (new-env (nc-env-extend (list (list var)) compile-env))
-                             (body-ir (if (null (cdr body))
-                                          (nc-compile (car body) new-env fenv)
-                                          (nc-compile (cons 'progn body) new-env fenv))))
+                      (nc-eval-ir-with-fns result-ir (append env (list nil)) fenv)
+                      (let ((elem (car remaining)))
                         (nc-eval-ir-with-fns body-ir (append env (list elem)) fenv)
                         (iter (cdr remaining))))))
          (iter lst))))
@@ -3353,8 +3351,8 @@
      ;; 6. Evaluate result with final counter value
      (let* ((var (cadr ir))
             (count-ir (caddr ir))
-            (body (cadddr ir))
-            (result-form (nth 4 ir))
+            (body-ir (cadddr ir))     ; Already compiled body IR
+            (result-ir (nth 4 ir))    ; Already compiled result IR
             (compile-env (nth 5 ir))
             ;; Temp slots: 0=count, 1=counter, 2=x24-save
             (count-slot (nc-temp-slot td))
@@ -3363,19 +3361,12 @@
             (body-td (+ td 3))
             ;; Compile count expression
             (count-code (nc-codegen count-ir rtaddrs fnoffs body-td))
-            ;; Compile body with var at next available offset in extended env
+            ;; Calculate var offset from extended env
             (new-env (nc-env-extend (list (list var)) compile-env))
-            ;; Get the actual offset for var in new-env
             (var-offset (* (nc-env-lookup var new-env) 8))
-            (body-ir (if (null (cdr body))
-                         (nc-compile (car body) new-env nil)
-                         (nc-compile (cons 'progn body) new-env nil)))
+            ;; Codegen the already-compiled body and result
             (body-code (nc-codegen body-ir rtaddrs fnoffs body-td))
             (body-instrs (nc-count-instrs body-code))
-            ;; Result compilation
-            (result-ir (if result-form
-                           (nc-compile result-form new-env nil)
-                           (list 'lit 0)))
             (result-code (nc-codegen result-ir rtaddrs fnoffs body-td)))
        (nc-append-all
         (list
@@ -3417,7 +3408,7 @@
          (nc-ldr-offset 24 31 x24-slot)
          result-code))))
     ((nc-has-tag ir 'dolist-ir)
-     ;; dolist-ir = (dolist-ir var list-ir body result-form compile-env)
+     ;; dolist-ir = (dolist-ir var list-ir body-ir result-ir compile-env)
      ;; Generate list iteration loop:
      ;; 1. Evaluate list, save to slot
      ;; 2. Loop: check if null, branch if yes
@@ -3426,8 +3417,8 @@
      ;; 5. Evaluate result
      (let* ((var (cadr ir))
             (list-ir (caddr ir))
-            (body (cadddr ir))
-            (result-form (nth 4 ir))
+            (body-ir (cadddr ir))     ; Already compiled body IR
+            (result-ir (nth 4 ir))    ; Already compiled result IR
             (compile-env (nth 5 ir))
             ;; Temp slots: 0=list-ptr, 1=x24-save
             (list-slot (nc-temp-slot td))
@@ -3435,19 +3426,12 @@
             (body-td (+ td 2))
             ;; Compile list expression
             (list-code (nc-codegen list-ir rtaddrs fnoffs body-td))
-            ;; Compile body with var at next available offset in extended env
+            ;; Calculate var offset from extended env
             (new-env (nc-env-extend (list (list var)) compile-env))
-            ;; Get the actual offset for var in new-env
             (var-offset (* (nc-env-lookup var new-env) 8))
-            (body-ir (if (null (cdr body))
-                         (nc-compile (car body) new-env nil)
-                         (nc-compile (cons 'progn body) new-env nil)))
+            ;; Codegen the already-compiled body and result
             (body-code (nc-codegen body-ir rtaddrs fnoffs body-td))
             (body-instrs (nc-count-instrs body-code))
-            ;; Result compilation
-            (result-ir (if result-form
-                           (nc-compile result-form new-env nil)
-                           (list 'lit 0)))
             (result-code (nc-codegen result-ir rtaddrs fnoffs body-td)))
        (nc-append-all
         (list
@@ -3881,6 +3865,28 @@
                   (multiple-value-bind (new-val new-lambdas)
                       (lift val-ir lambdas)
                     (values (list 'setq-ir offset new-val) new-lambdas))))
+               ((nc-has-tag ir 'dotimes-ir)
+                ;; dotimes-ir = (dotimes-ir var count-ir body-ir result-ir compile-env)
+                (let ((var (cadr ir))
+                      (count-ir (caddr ir))
+                      (body-ir (cadddr ir))
+                      (result-ir (nth 4 ir))
+                      (compile-env (nth 5 ir)))
+                  (multiple-value-bind (new-count l1) (lift count-ir lambdas)
+                    (multiple-value-bind (new-body l2) (lift body-ir l1)
+                      (multiple-value-bind (new-result l3) (lift result-ir l2)
+                        (values (list 'dotimes-ir var new-count new-body new-result compile-env) l3))))))
+               ((nc-has-tag ir 'dolist-ir)
+                ;; dolist-ir = (dolist-ir var list-ir body-ir result-ir compile-env)
+                (let ((var (cadr ir))
+                      (list-ir (caddr ir))
+                      (body-ir (cadddr ir))
+                      (result-ir (nth 4 ir))
+                      (compile-env (nth 5 ir)))
+                  (multiple-value-bind (new-list l1) (lift list-ir lambdas)
+                    (multiple-value-bind (new-body l2) (lift body-ir l1)
+                      (multiple-value-bind (new-result l3) (lift result-ir l2)
+                        (values (list 'dolist-ir var new-list new-body new-result compile-env) l3))))))
                (t (values ir lambdas))))
            (lift-list (irs lambdas)
              (if (null irs)
