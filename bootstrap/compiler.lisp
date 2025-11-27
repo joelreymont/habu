@@ -4100,21 +4100,36 @@
                                       (cons new-fn acc-fns)
                                       (append acc-lambdas lambdas)))))))
 
-(defun nc-compile-program (forms rtaddrs)
+(defun nc-compile-program (forms rtaddrs &key (optimize t))
   "Compile forms to bytecode with function linking.
    Layout: prologue + main-code + epilogue + functions + lifted-lambdas
-   Functions are placed after main, and call-fn generates forward BL."
+   Functions are placed after main, and call-fn generates forward BL.
+   When :optimize is t, runs nanopass optimization pipeline."
   ;; Reset symbol table for fresh compilation
   (nc-reset-symbol-table)
   (let* ((r (nc-compile-forms forms))
          (defun-fns (car r))
-         (mir-raw (cadr r)))
-    ;; Lift lambdas from main IR
+         (mir-raw (cadr r))
+         ;; Apply nanopass optimizations if enabled
+         (mir-opt (if (and optimize (fboundp 'optimize-ir))
+                      (optimize-ir mir-raw)
+                      mir-raw))
+         ;; Optimize function bodies too
+         (defun-fns-opt (if (and optimize (fboundp 'optimize-ir))
+                            (mapcar (lambda (fn)
+                                      (list (first fn)   ; name
+                                            (second fn)  ; params
+                                            (optimize-ir (third fn)) ; body
+                                            (fourth fn)  ; env
+                                            (fifth fn))) ; captures
+                                    defun-fns)
+                            defun-fns)))
+    ;; Lift lambdas from main IR (use optimized IR)
     (multiple-value-bind (mir main-lambdas)
-        (nc-lift-lambdas mir-raw)
-      ;; Lift lambdas from all defun bodies
+        (nc-lift-lambdas mir-opt)
+      ;; Lift lambdas from all defun bodies (use optimized defuns)
       (multiple-value-bind (lifted-defuns defun-lambdas)
-          (nc-lift-lambdas-from-fns defun-fns nil nil)
+          (nc-lift-lambdas-from-fns defun-fns-opt nil nil)
         ;; Combine: defuns + main-lambdas + defun-lambdas
         (let ((fns (append lifted-defuns main-lambdas defun-lambdas)))
           (if (null fns)

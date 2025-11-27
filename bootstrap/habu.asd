@@ -7,5 +7,6 @@
   :license "TBD"
   :depends-on ()
   :components ((:file "compiler")
+               (:file "optimize" :depends-on ("compiler"))
                (:file "reader" :depends-on ("compiler"))
                (:file "elf-writer" :depends-on ("compiler"))))

@@ -127,9 +127,9 @@
      (if (not (zerop (cadr (cadr ir))))
          (fold-constants (caddr ir))
          (fold-constants (cadddr ir))))
-    ;; Progn - fold each form
+    ;; Progn - fold each form (structure: (progn-ir (form1 form2 ...)))
     ((has-tag ir 'progn-ir)
-     (cons 'progn-ir (mapcar #'fold-constants (cdr ir))))
+     (list 'progn-ir (mapcar #'fold-constants (cadr ir))))
     ;; Let - fold bindings and body
     ((has-tag ir 'let-ir)
      (let ((bindings (mapcar #'fold-constants (cadr ir)))
@@ -204,8 +204,9 @@
            (reduce-strength (cadr ir))
            (reduce-strength (caddr ir))
            (reduce-strength (cadddr ir))))
+    ;; Progn (structure: (progn-ir (form1 form2 ...)))
     ((has-tag ir 'progn-ir)
-     (cons 'progn-ir (mapcar #'reduce-strength (cdr ir))))
+     (list 'progn-ir (mapcar #'reduce-strength (cadr ir))))
     ((has-tag ir 'let-ir)
      (list 'let-ir
            (mapcar #'reduce-strength (cadr ir))
@@ -235,27 +236,33 @@
 
 (defun eliminate-dead-code (ir)
   "Remove unreachable code.
-   - (progn x) -> x
+   - (progn-ir (x)) -> x (single form)
+   - (progn-ir ()) -> (lit 0) (empty progn)
    - (if (lit 1) then else) -> then
-   - (if (lit 0) then else) -> else"
+   - (if (lit 0) then else) -> else
+   Note: progn-ir structure is (progn-ir (form1 form2 ...)) where cadr is a list of forms"
   (cond
     ((null ir) nil)
     ((not (consp ir)) ir)
-    ;; Single-form progn
-    ((and (has-tag ir 'progn-ir) (= 2 (length ir)))
-     (eliminate-dead-code (cadr ir)))
-    ;; Empty progn
-    ((and (has-tag ir 'progn-ir) (= 1 (length ir)))
-     '(lit 0))
-    ;; Progn with constants in non-final position
+    ;; Handle progn-ir: structure is (progn-ir forms-list)
     ((has-tag ir 'progn-ir)
-     (let ((forms (remove-if (lambda (f)
-                               (and (has-tag f 'lit)
-                                    (not (eq f (car (last (cdr ir)))))))
-                             (cdr ir))))
-       (if (= 1 (length forms))
-           (eliminate-dead-code (car forms))
-           (cons 'progn-ir (mapcar #'eliminate-dead-code forms)))))
+     (let* ((forms-list (cadr ir))
+            ;; Remove constant literals from non-final positions
+            (filtered (if (null forms-list)
+                          nil
+                          (let ((last-form (car (last forms-list))))
+                            (remove-if (lambda (f)
+                                         (and (has-tag f 'lit)
+                                              (not (eq f last-form))))
+                                       forms-list)))))
+       (cond
+         ;; Empty progn
+         ((null filtered) '(lit 0))
+         ;; Single-form progn
+         ((= 1 (length filtered))
+          (eliminate-dead-code (car filtered)))
+         ;; Multiple forms - keep as progn-ir
+         (t (list 'progn-ir (mapcar #'eliminate-dead-code filtered))))))
     ;; If with constant condition (already handled in fold-constants, but keep for completeness)
     ((and (has-tag ir 'if-ir) (has-tag (cadr ir) 'lit))
      (if (not (zerop (cadr (cadr ir))))
@@ -267,8 +274,7 @@
            (eliminate-dead-code (cadr ir))
            (eliminate-dead-code (caddr ir))
            (eliminate-dead-code (cadddr ir))))
-    ((has-tag ir 'progn-ir)
-     (cons 'progn-ir (mapcar #'eliminate-dead-code (cdr ir))))
+    ;; Note: progn-ir is handled above
     ((has-tag ir 'let-ir)
      (list 'let-ir
            (mapcar #'eliminate-dead-code (cadr ir))
