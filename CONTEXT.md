@@ -2,7 +2,7 @@
 
 **Session Date**: November 22-27, 2025
 **Focus**: Self-hosting ARM64 Lisp compiler with native executable generation
-**Last Updated**: November 27, 2025 (129 tests pass: 77 native + 10 self-host + 10 bootstrap + 3 ARM64 asm + 7 libSystem + 10 inline string ops + 5 inline intern + 30 native reader primitives - some overlap)
+**Last Updated**: November 27, 2025 (94 tests pass: 77 native + 10 labels + 7 libSystem)
 
 ## Current Plan: Native File I/O and Self-Hosting (November 27, 2025)
 
@@ -43,6 +43,13 @@ With dynamic linking now working, the path to self-hosting is clear:
 
 ### Current Task
 Ready to start Phase 2: Native Reader.
+
+**Bug Fix (November 27, 2025): Variable-length lambda-ref offset encoding**
+Fixed critical bug where function offsets > 0xFFFF caused size mismatches during two-pass compilation.
+
+Root cause: `nc-load-addr` generates variable-length code (4 bytes for values <= 0xFFFF, 8 bytes with MOVK for larger values). During the first compilation pass, fnoffs is nil so all lambda-refs use 0 as the offset (4 bytes). In the second pass, actual offsets may exceed 0xFFFF requiring 8 bytes, making the code larger than estimated.
+
+Fix: Added `nc-load-addr-32` function that always generates exactly 8 bytes (MOVZ + MOVK) regardless of value. Used this in lambda-ref codegen for consistent sizes.
 
 ---
 

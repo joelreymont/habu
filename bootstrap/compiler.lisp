@@ -417,6 +417,22 @@
 (defun nc-ret ()
   (nc-encode-word #xD65F03C0))
 
+(defun nc-cbz (rt offset)
+  "CBZ Xt, offset - compare and branch if zero. OFFSET is in bytes."
+  ;; CBZ: 1 0 110100 imm19 Rt (for 64-bit)
+  ;; imm19 = offset / 4, signed
+  (let* ((imm19 (logand (ash offset -2) #x7FFFF))
+         (word (logior #xB4000000 (ash imm19 5) rt)))
+    (nc-encode-word word)))
+
+(defun nc-cbnz (rt offset)
+  "CBNZ Xt, offset - compare and branch if not zero. OFFSET is in bytes."
+  ;; CBNZ: 1 0 110101 imm19 Rt (for 64-bit)
+  ;; imm19 = offset / 4, signed
+  (let* ((imm19 (logand (ash offset -2) #x7FFFF))
+         (word (logior #xB5000000 (ash imm19 5) rt)))
+    (nc-encode-word word)))
+
 ;;; Position tracking helpers for function linking
 (defun nc-emit-with-pos (code)
   "Emit code and update position counter. Returns the code."
@@ -561,6 +577,15 @@
          (p3 (if (> hi48 0) (nc-movk rd hi48 48) nil)))
     (append r2 p3)))
 
+(defun nc-load-addr-32 (rd addr)
+  "Load a 32-bit address into register rd using exactly 8 bytes (MOVZ + MOVK).
+   This is used for function offsets to ensure consistent code size during
+   the two-pass compilation where fnoffs may be nil in the first pass."
+  (let* ((lo16 (logand addr #xFFFF))
+         (hi16 (logand (ash addr -16) #xFFFF)))
+    (append (nc-movz rd lo16)
+            (nc-movk rd hi16 16))))
+
 (defun nc-cond-eq () 0)
 (defun nc-cond-ne () 1)
 (defun nc-cond-lt () 11)
@@ -622,10 +647,11 @@
 (defun nc-codegen-string-inline (chars)
   "Generate code to build a string inline on the heap using x28 bump pointer.
    String layout: [length (8 bytes)][char data (n bytes)]
-   Returns code that leaves tagged string pointer in x0."
+   Returns code that leaves tagged string pointer in x0.
+   All allocations are 16-byte aligned for 4-bit tagging scheme."
   (let* ((len (length chars))
-         ;; Round up allocation to 8-byte alignment: 8 + len rounded up to 8
-         (alloc-size (+ 8 (logand (+ len 7) (lognot 7)))))
+         ;; Round up allocation to 16-byte alignment: (8 + len + 15) & ~15
+         (alloc-size (logand (+ 8 len 15) (lognot 15))))
     (labels ((store-chars (chs idx acc)
                (if (null chs)
                    acc
@@ -2485,10 +2511,13 @@
                           (nc-orr-reg 0 0 1)))))))))))      ; x0 = ptr | 1
     ((nc-has-tag ir 'car-ir)
      ;; Inline car: clear tag bits, load from offset 0
+     ;; (car nil) returns nil - check for nil first
      (let ((arg-ir (cadr ir)))
        (let ((ac (nc-codegen arg-ir rtaddrs fnoffs td)))
          (nc-append-all
           (list ac
+                ;; Check for nil: if x0 == 0, skip load (return 0)
+                (nc-cbz 0 28)                     ; if x0 == 0, skip 7 instrs (28 bytes)
                 ;; Clear low 4 bits to get pointer
                 (nc-movz 1 #xFFF0)                ; x1 = mask (keep upper bits)
                 (nc-movk 1 #xFFFF 16)             ; complete mask
@@ -2498,10 +2527,13 @@
                 (nc-ldr-offset 0 0 0))))))        ; x0 = [ptr+0] = car
     ((nc-has-tag ir 'cdr-ir)
      ;; Inline cdr: clear tag bits, load from offset 8
+     ;; (cdr nil) returns nil - check for nil first
      (let ((arg-ir (cadr ir)))
        (let ((ac (nc-codegen arg-ir rtaddrs fnoffs td)))
          (nc-append-all
           (list ac
+                ;; Check for nil: if x0 == 0, skip load (return 0)
+                (nc-cbz 0 28)                     ; if x0 == 0, skip 7 instrs (28 bytes)
                 ;; Clear low 4 bits to get pointer
                 (nc-movz 1 #xFFF0)                ; x1 = mask (keep upper bits)
                 (nc-movk 1 #xFFFF 16)             ; complete mask
@@ -2707,7 +2739,7 @@
      ;; make-vector-ir = (make-vector-ir size-ir)
      ;; Inline allocation: size in x0 is tagged fixnum
      ;; Vector layout: [length (8 bytes)] [data (n * 8 bytes)]
-     ;; Total size = 8 + (untagged_size * 8) = 8 + ((x0 >> 4) * 8) = 8 + (x0 >> 1)
+     ;; Total size = 8 + (untagged_size * 8), rounded to 16 for tagging
      (let* ((size-ir (cadr ir))
             (sc (nc-codegen size-ir rtaddrs fnoffs td)))
        (nc-append-all
@@ -2718,9 +2750,12 @@
               ;; Calculate allocation size: 8 + (x0 >> 1)
               (nc-lsr-imm 1 0 1)           ; x1 = x0 >> 1 = untagged_size * 8
               (nc-add-imm 1 1 8)           ; x1 = 8 + data_size = total size
+              ;; Round to 16-byte alignment: (x1 + 15) & ~15
+              (nc-add-imm 1 1 15)          ; x1 = total + 15
+              (nc-and-imm 1 1 1 #x3C #x3B) ; x1 = x1 & ~15 (clear low 4 bits)
               ;; Return tagged pointer, bump heap
               (nc-mov-reg 0 28)            ; x0 = current heap ptr
-              (nc-add-reg 28 28 1)         ; x28 += total size
+              (nc-add-reg 28 28 1)         ; x28 += total size (now 16-aligned)
               ;; Tag with vector tag (0x3)
               (nc-movz 1 3)
               (nc-orr-reg 0 0 1)))))
@@ -2806,10 +2841,9 @@
               (nc-ldr-offset 5 1 0)           ; x5 = [x1+0] = length
               ;; Allocate string: store length at [x28], compute alloc size
               (nc-str-offset 5 28 0)          ; [x28+0] = length
-              ;; x4 = alloc size = 8 + ((len + 7) & ~7) for 8-byte alignment
-              (nc-add-imm 4 5 7)              ; x4 = len + 7
-              (nc-and-imm 4 4 1 #x3D #x3C)    ; x4 = (len + 7) & ~7 (clear low 3 bits)
-              (nc-add-imm 4 4 8)              ; x4 = 8 + aligned_len
+              ;; x4 = alloc size = (8 + len + 15) & ~15 for 16-byte alignment
+              (nc-add-imm 4 5 23)             ; x4 = len + 23 (= len + 8 + 15)
+              (nc-and-imm 4 4 1 #x3C #x3B)    ; x4 = (len + 23) & ~15 (clear low 4 bits)
               ;; Save string ptr (will be result), bump heap
               (nc-mov-reg 0 28)               ; x0 = string base (untagged)
               (nc-add-reg 28 28 4)            ; x28 += alloc_size
@@ -3171,7 +3205,8 @@
              (nc-append-all
               (list
                ;; Store fn-offset (tagged) in [x28]
-               (nc-load-addr 9 tagged-offset)   ; x9 = tagged offset
+               ;; Use nc-load-addr-32 to ensure consistent size during two-pass compilation
+               (nc-load-addr-32 9 tagged-offset)   ; x9 = tagged offset
                (nc-str-offset 9 28 0)           ; [x28+0] = car = fn-offset
                ;; Store nil in [x28+8]
                (nc-movz 10 0)                   ; x10 = nil
@@ -3229,7 +3264,8 @@
                  ;; Build env cons list
                  env-code
                  ;; Now allocate closure cons: (fn-offset . env)
-                 (nc-load-addr 9 tagged-offset)     ; car = fn-offset (tagged)
+                 ;; Use nc-load-addr-32 to ensure consistent size during two-pass compilation
+                 (nc-load-addr-32 9 tagged-offset)     ; car = fn-offset (tagged)
                  (nc-str-offset 9 28 0)             ; [x28+0] = car
                  (nc-ldr-offset 9 31 env-result-slot) ; cdr = env cons list
                  (nc-str-offset 9 28 8)             ; [x28+8] = cdr
