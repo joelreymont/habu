@@ -2,7 +2,8 @@
 
 **Session Date**: November 22-27, 2025
 **Focus**: Self-hosting ARM64 Lisp compiler with native executable generation
-**Last Updated**: November 27, 2025 (130 tests pass: 77 native + 10 labels + 7 libSystem + 36 reader)
+**Last Updated**: November 27, 2025 (139 tests pass: 77 native + 10 labels + 7 libSystem + 6 file-io + 39 reader)
+**Milestone**: Command-line compiler (habu-compile) working - compiles factorial.lisp to native executable
 
 ## Current Plan: Native File I/O and Self-Hosting (November 27, 2025)
 
@@ -42,15 +43,22 @@ compile-time symbol literals. This means `(eq (intern "FOO") 'FOO)` returns fals
 The 4 failing reader tests involve symbol comparison with compile-time symbols.
 Workaround: For self-hosting, reader can compare symbol names instead of using `eq`.
 
-### Phase 3: Self-Hosting Compiler
+### Phase 3: Self-Hosting Compiler - IN PROGRESS
 1. Package: reader + compiler + codegen + linker
-2. Create entry point that reads source, compiles, writes executable
-3. Test: compiler compiles factorial.lisp to working executable
-4. Milestone: compiler compiles itself (fixed point)
+2. Create entry point that reads source, compiles, writes executable - DONE
+3. Test: compiler compiles factorial.lisp to working executable - DONE
+4. Milestone: compiler compiles itself (fixed point) - PENDING
+
+**Completed for Phase 3** (November 27, 2025):
+- Created `bin/habu-compile` command-line tool
+- Created `examples/factorial.lisp` test program
+- `deliver-file-with-libsystem` reads source file and compiles to native executable
+- factorial.lisp compiles and runs correctly (exit code 120 = 5!)
+- Compiler uses SBCL to read source files (workaround for buffer-to-string + reader crash)
 
 ### Current Task
-Phase 2 nearly complete. Reader works in native executables except for symbol `eq`
-with compile-time symbols. Ready for Phase 3: Self-hosting compiler.
+Phase 3 partially complete. Command-line compiler works for simple programs.
+Next: Test with more complex programs, then attempt self-compilation.
 
 **Bug Fixes (November 27, 2025)**:
 
@@ -92,6 +100,23 @@ compiled IR instead of source. Updated nc-lift-lambdas to traverse into dotimes-
 and dolist-ir nodes to extract nested lambdas. The new IR structure is:
 - Old: `(dotimes-ir var count-ir body result-form compile-env fenv)`
 - New: `(dotimes-ir var count-ir body-ir result-ir compile-env)`
+
+6. **Multiple variable capture order in labels closures**
+When a labels closure captured multiple variables, the capture order was reversed:
+build-captures processed free-offsets in forward order but consed each to the front.
+For free-offsets = (0 1): v0 captured first but ends at cdr, v1 captured last but at car.
+nc-gen-capture-copies then stores car at slot 0, cadr at slot 1, causing a mismatch.
+
+Fix: Reverse free-offsets before building captures so first var ends up at car of env list.
+
+7. **Chained fixups stride for multiple GOT entries**
+When linking with multiple libSystem imports (e.g., _write, _open, _read, _close),
+only the first import was resolved. The 'next' field in DYLD_CHAINED_PTR_64_OFFSET
+encodes stride in 4-byte units. With GOT entries at 8 bytes each, stride should be 2,
+not 1. With stride=1, dyld interpreted second GOT entry at offset 4 instead of 8.
+
+Fix: Changed `(next (if is-last 0 1))` to `(next (if is-last 0 2))` in both
+write-macho-executable-with-imports and write-macho-executable-with-imports-and-heap.
 
 ---
 

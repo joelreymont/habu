@@ -1,0 +1,35 @@
+#!/usr/bin/env sbcl --script
+;;; habu-compile - Command-line Lisp compiler
+;;; Usage: habu-compile <source.lisp> [output]
+;;;
+;;; Compiles a Lisp source file to a native executable.
+;;; If output is not specified, uses the source filename without extension.
+
+(require :asdf)
+(push (truename "bootstrap/") asdf:*central-registry*)
+(asdf:load-system :habu)
+(load "macho-linker.lisp")
+
+(defun compile-file-cmd (args)
+  (when (null args)
+    (format t "Usage: habu-compile <source.lisp> [output]~%")
+    (sb-ext:exit :code 1))
+
+  (let* ((source-path (first args))
+         (output-path (or (second args)
+                          (let ((base (pathname-name source-path)))
+                            (if base base "a.out")))))
+    (format t "Compiling ~A -> ~A~%" source-path output-path)
+
+    (handler-case
+        (progn
+          (habu:deliver-file-with-libsystem source-path output-path)
+          ;; Sign the executable
+          (sb-ext:run-program "/usr/bin/codesign" (list "-s" "-" output-path)
+                              :output nil :error nil :wait t)
+          (format t "Done. Created executable: ~A~%" output-path))
+      (error (e)
+        (format t "Compilation failed: ~A~%" e)
+        (sb-ext:exit :code 1)))))
+
+(compile-file-cmd (cdr sb-ext:*posix-argv*))
