@@ -18,8 +18,8 @@
 (defvar *history-file* (merge-pathnames ".habu_history" (user-homedir-pathname)))
 
 ;;; Prompt
-(defparameter *prompt* (format nil "~C> " #\U+1F40D))  ; Snake emoji
-(defparameter *continuation-prompt* ".. ")
+(defparameter *prompt* (format nil "~C " #\U+1F40D))  ; Snake emoji
+(defparameter *continuation-prompt* "  ")
 
 ;;; Utility functions
 (defun print-banner ()
@@ -161,9 +161,21 @@
   (if (null expr-string)
       (format t "Usage: :disasm <expression>~%")
       (handler-case
-          (let* ((expr (read-from-string expr-string))
-                 (ir (habu::nc-compile expr nil nil)))
-            (format t "IR: ~S~%" ir))
+          (let* ((expr (read-from-string expr-string)))
+            ;; Handle both simple expressions and full programs
+            (if (and (consp expr) (eq (car expr) 'defun))
+                ;; For defun, show the function IR
+                (let* ((name (second expr))
+                       (params (third expr))
+                       (body (cdddr expr))
+                       (env (mapcar #'cons params (loop for i from 0 below (length params) collect i)))
+                       (body-ir (habu::nc-compile (if (cdr body) (cons 'progn body) (car body)) env nil)))
+                  (format t "Function: ~A~%" name)
+                  (format t "Params: ~A~%" params)
+                  (format t "IR: ~S~%" body-ir))
+                ;; Simple expression
+                (let ((ir (habu::nc-compile expr nil nil)))
+                  (format t "IR: ~S~%" ir))))
         (error (e)
           (format t "Error: ~A~%" e)))))
 

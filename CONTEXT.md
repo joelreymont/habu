@@ -88,8 +88,46 @@ Workaround: For self-hosting, reader can compare symbol names instead of using `
 - Arrow keys for history navigation and line editing
 - Ctrl-R for reverse search, Tab for completion
 
+### Phase 5: Performance Benchmarking - IN PROGRESS
+
+**Benchmark Results (November 27, 2025)**:
+| Benchmark | Habu Native | SBCL (load+run) | Ratio | Notes |
+|-----------|-------------|-----------------|-------|-------|
+| fib(30)   | 43ms        | 211ms           | 0.20x | Habu 5x faster (includes SBCL startup) |
+| tak(18,12,6) | 30ms     | 196ms           | 0.15x | Habu 6.5x faster |
+| list ops  | 34ms        | 195ms           | 0.17x | Habu 5.7x faster |
+| arithmetic | 33ms       | 198ms           | 0.17x | Habu 6x faster |
+
+**Fair Comparison (computation only)**:
+- Habu fib(30) pure computation: ~10ms per call (measured via loop)
+- SBCL fib(30) optimized (speed 3, type decls): 5.8ms
+- Ratio: Habu is ~1.7x slower than fully optimized SBCL
+
+**Binary Size Analysis**:
+- Habu binaries: ~1.1MB (due to fixed 1MB heap in __DATA segment)
+- Code segment: ~16KB
+- Optimization opportunity: Configurable heap size
+
+**Performance Bottlenecks Identified**:
+1. Unnecessary x24 save/restore in all binary operations (closure env pointer)
+2. All intermediate values spilled to stack (no register allocation)
+3. Full function prologue/epilogue for all functions (no leaf optimization)
+4. No constant folding (`(+ 1 2)` generates code instead of 3)
+5. No function inlining (each call has full overhead)
+
+**Implemented Optimizations**:
+- P1: Constant folding for +, -, *, / with nested expression support
+  - `(+ (* 3 4) (- 10 2))` compiles to `(LIT 20)` instead of generating runtime code
+  - Recursive folding: inner expressions folded first, then outer
+
+**Optimization Roadmap (TODO)**:
+- P2: Eliminate x24 save/restore when no closures involved
+- P3: Leaf function optimization (simpler prologue/epilogue)
+- P4: Register allocation for intermediate values
+- P5: Function inlining for small functions
+
 ### Current Task
-Phase 4 complete. REPL with full compiler integration is working.
+Phase 5 in progress. Benchmarking complete, optimization roadmap defined.
 
 **New Tests Added (November 27, 2025)**:
 - `tests/test_native_self_compile.lisp` - 8 tests for native mini self-compiler patterns
