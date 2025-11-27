@@ -104,11 +104,12 @@ causing the progn wrapper to be stripped incorrectly.
 **Benchmark Results (with optimization)**:
 | Benchmark | Habu Opt | SBCL Opt | Gap |
 |-----------|----------|----------|-----|
-| fib(35)   | 133ms    | 84ms     | 1.6x |
-| tak(100)  | 85ms     | ~0ms     | N/A |
-| sumsq     | 74ms     | 39ms     | 1.9x |
+| fib(35)   | 138ms    | 81ms     | 1.7x |
+| tak(100)  | 86ms     | 10ms     | 8.6x |
+| sumsq     | 75ms     | 30ms     | 2.5x |
 
-Note: SBCL with (declare (optimize (speed 3))) and fixnum declarations.
+Note: SBCL with (declare (optimize (speed 3) (safety 0))) and fixnum declarations.
+The `tak` benchmark is slowest due to heavy nested function calls.
 
 **Package Cleanup**:
 - Renamed HABU-SYS package to SYS for cleaner namespace
@@ -160,15 +161,22 @@ Note: SBCL with (declare (optimize (speed 3))) and fixnum declarations.
   - Skip x24 save/restore for leaf functions
   - Detected via `nc-ir-may-call?` on function body
   - Minimal impact on recursive benchmarks (they're not leaf)
+- P5: Optimized multiplication - untag only one operand
+  - `(a<<4) * (b>>4) = (a*b)<<4` - correctly tagged result
+  - Saves 2 instructions (LSR, LSL) per multiplication
+- P6: Simple register caching for binops with simple operands
+  - Use x5 to hold left operand when both are var/lit
+  - Avoids stack spill for simple cases like `(+ x y)`
 
 **Optimization Roadmap (TODO)**:
-- P5: Register allocation for intermediate values
-- P6: Function inlining for small functions
+- Full register allocation for intermediate values
+- Function inlining for small functions
+- Tail call optimization for self-recursive functions
 
 ### Current Task
-Phase 5 optimization complete. P1-P4 implemented (constant folding, x24 optimization, immediate operands, leaf functions).
-77/77 native tests pass. Habu is ~1.6-1.9x slower than fully optimized SBCL.
-Next: Type declarations for fixnum specialization, then register allocation.
+Phase 5 optimization complete. P1-P6 implemented (constant folding, x24 optimization, immediate operands, leaf functions, optimized multiplication, register caching).
+77/77 native tests pass. Habu is ~1.7-2.5x slower than fully optimized SBCL (except tak which is 8.6x slower due to nested calls).
+Next: Full register allocation or function inlining for further gains.
 
 **Self-Hosting Status**:
 - Compiled programs run without SBCL - YES

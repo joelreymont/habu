@@ -2418,35 +2418,60 @@
     ;; Default: assume it might call to be safe
     (t t)))
 
+(defun nc-ir-is-simple? (ir)
+  "Returns t if IR is simple (var or lit) and doesn't use any registers."
+  (or (nc-has-tag ir 'var)
+      (nc-has-tag ir 'lit)
+      (nc-has-tag ir 'nil-ir)))
+
 (defun nc-codegen-binop (left-ir right-ir op-instrs rtaddrs fnoffs td)
-  "Generate code for binary operation with optimized x24 save/restore.
-   Only saves/restores x24 if left-ir might make function calls.
-   op-instrs is a function taking (left-reg right-reg) returning instruction list."
+  "Generate code for binary operation with optimized register usage.
+   Uses x5 as a temporary register to avoid stack spills when both operands are simple."
   (let* ((xs (nc-temp-slot td))
          (ls (nc-temp-slot (+ td 1)))
          (nd (+ td 2))
-         (lc (nc-codegen left-ir rtaddrs fnoffs nd))
-         (rc (nc-codegen right-ir rtaddrs fnoffs nd))
-         (may-call (nc-ir-may-call? left-ir)))
-    (if may-call
-        ;; Left operand may call - save/restore x24
-        (nc-append-all
-         (list (nc-str-offset 24 31 xs)     ; save x24
-               lc                            ; eval left -> x0
-               (nc-str-offset 0 31 ls)      ; save left value
-               (nc-ldr-offset 24 31 xs)     ; restore x24
-               rc                            ; eval right -> x0
-               (nc-mov-reg 1 0)             ; x1 = right
-               (nc-ldr-offset 0 31 ls)      ; x0 = left
-               op-instrs))
-        ;; Left operand doesn't call - skip x24 save/restore
-        (nc-append-all
-         (list lc                            ; eval left -> x0
-               (nc-str-offset 0 31 ls)      ; save left value
-               rc                            ; eval right -> x0
-               (nc-mov-reg 1 0)             ; x1 = right
-               (nc-ldr-offset 0 31 ls)      ; x0 = left
-               op-instrs)))))
+         (left-simple (nc-ir-is-simple? left-ir))
+         (right-simple (nc-ir-is-simple? right-ir))
+         (right-may-call (nc-ir-may-call? right-ir))
+         (left-may-call (nc-ir-may-call? left-ir)))
+    (cond
+      ;; Optimal case: both operands are simple (var/lit)
+      ;; Keep left in x5, eval right to x0, no stack spill needed
+      ;; x5 is safe because right side won't use binop which would clobber it
+      ((and left-simple right-simple)
+       (let ((lc (nc-codegen left-ir rtaddrs fnoffs nd))
+             (rc (nc-codegen right-ir rtaddrs fnoffs nd)))
+         (nc-append-all
+          (list lc                          ; eval left -> x0
+                (nc-mov-reg 5 0)            ; save left in x5 (caller-saved temp)
+                rc                          ; eval right -> x0
+                (nc-mov-reg 1 0)            ; x1 = right
+                (nc-mov-reg 0 5)            ; x0 = left (from x5)
+                op-instrs))))
+      ;; Left may call - need full save/restore
+      (left-may-call
+       (let ((lc (nc-codegen left-ir rtaddrs fnoffs nd))
+             (rc (nc-codegen right-ir rtaddrs fnoffs nd)))
+         (nc-append-all
+          (list (nc-str-offset 24 31 xs)   ; save x24
+                lc                          ; eval left -> x0
+                (nc-str-offset 0 31 ls)    ; save left value
+                (nc-ldr-offset 24 31 xs)   ; restore x24
+                rc                          ; eval right -> x0
+                (nc-mov-reg 1 0)           ; x1 = right
+                (nc-ldr-offset 0 31 ls)    ; x0 = left
+                op-instrs))))
+      ;; Left doesn't call - skip x24 save/restore but still spill left
+      (t
+       (let ((lc (nc-codegen left-ir rtaddrs fnoffs nd))
+             (rc (nc-codegen right-ir rtaddrs fnoffs nd)))
+         (nc-append-all
+          (list lc                          ; eval left -> x0
+                (nc-str-offset 0 31 ls)    ; save left value
+                rc                          ; eval right -> x0
+                (nc-mov-reg 1 0)           ; x1 = right
+                (nc-ldr-offset 0 31 ls)    ; x0 = left
+                op-instrs)))))))
 
 (defun nc-codegen (ir rtaddrs fnoffs td)
   (cond
@@ -2516,12 +2541,12 @@
              (append var-code (nc-sub-imm 0 0 imm)))
            (nc-codegen-binop left right (nc-sub-reg 0 0 1) rtaddrs fnoffs td))))
     ((nc-has-tag ir 'mul)
-     ;; Multiplication needs untag/retag
+     ;; Optimized multiplication: untag only ONE operand
+     ;; (a<<4) * (b>>4) = (a*b)<<4 -- correctly tagged result!
+     ;; Saves 2 instructions vs untagging both and retagging
      (nc-codegen-binop (cadr ir) (caddr ir)
-                       (nc-append-all (list (nc-lsr-imm 0 0 4)
-                                            (nc-lsr-imm 1 1 4)
-                                            (nc-mul-reg 0 0 1)
-                                            (nc-lsl-imm 0 0 4)))
+                       (nc-append-all (list (nc-lsr-imm 1 1 4)    ; untag right only
+                                            (nc-mul-reg 0 0 1)))  ; (left<<4) * right = result<<4
                        rtaddrs fnoffs td))
     ((nc-has-tag ir 'band)
      (nc-codegen-binop (cadr ir) (caddr ir) (nc-and-reg 0 0 1) rtaddrs fnoffs td))
