@@ -126,11 +126,21 @@ Runtime error when calling `build-macho-executable-with-imports-and-heap`:
 The value BUILD-MINIMAL-MACHO-EXECUTABLE is not of type SEQUENCE
 ```
 
-**Investigation**:
-- Symbol `BUILD-MINIMAL-MACHO-EXECUTABLE` is NOT referenced anywhere in `build-macho-executable-with-imports-and-heap` function
-- One of the helper functions (`build-string-table-for-imports`, `build-chained-fixups-data`, or `buf-exports-trie`) may be returning a symbol instead of a list
-- Root cause unclear - may require step-by-step debugging with SBCL trace/break
-- Paren balance is correct (verified with automated counting)
+**Deep Investigation** (November 28, 2025):
+- Isolated to `build-chained-fixups-data` function
+- Function correctly returns CONS list (verified with debug output: `(0 0 0 0 32 0 ...)`)
+- But when result is bound to variable in let*, variable becomes SYMBOL `BUILD-MINIMAL-MACHO-EXECUTABLE`
+- Tested multiple scenarios:
+  - Different variable names (fixups-data, temp-fixups-result, my-chained-fixups-bytes, chained-fixups-buffer) - all fail
+  - Two-step binding (temp var then copy) - fails
+  - Simple list value (list 1 2 3 4 5) - works
+  - Removing the binding entirely - works
+- Paren balance verified: file balanced (1396/1396), function balanced (119/119)
+- No macro/special variable definitions for affected names
+- No hidden characters or encoding issues
+- Symbol `BUILD-MINIMAL-MACHO-EXECUTABLE` not referenced anywhere in function
+
+**Root cause**: Unknown. The function returns correct value but progn/let* binding somehow captures wrong symbol. May be SBCL reader/compiler bug or very subtle paren nesting issue not detected by automated counting.
 
 **Decision**:
 Revert to old SBCL-based linker (macho-linker.lisp) for now. Pure-Habu linker saved in bootstrap/macho.lisp for future investigation. This unblocks progress on other self-hosting tasks.
