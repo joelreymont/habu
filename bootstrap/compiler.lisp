@@ -21,6 +21,7 @@
   (:export
    ;; String primitives (for runtime)
    #:string-length #:string-ref #:make-string-from-vector
+   #:string-concat #:number-to-string
    ;; Vector primitives
    #:make-vector #:vector-set))
 
@@ -48,7 +49,8 @@
    #:nc-deliver #:nc-deliver-file
    ;; Re-export system primitives for convenience
    #:string-length #:string-ref #:make-string-from-vector
-   #:make-vector #:vector-set))
+   #:make-vector #:vector-set
+   #:string-concat #:number-to-string))
 
 (in-package :sys)
 
