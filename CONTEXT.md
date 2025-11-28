@@ -98,11 +98,11 @@ $ /tmp/test_via_driver && echo $?
 
 The compiler driver successfully compiles simple programs!
 
-**Phase 6: Port Mach-O Linker to Pure Habu** - 95% COMPLETE (November 28, 2025)
+**Phase 6: Port Mach-O Linker to Pure Habu** - IN PROGRESS (November 28, 2025)
 
 **Goal**: Remove all SBCL dependencies from macho-linker.lisp by replacing stream-based I/O with vector-building approach.
 
-**Status**: **95% COMPLETE - TEMPORARILY REVERTED TO OLD LINKER**
+**Status**: **DEBUGGING PAREN-BALANCE ISSUES**
 
 **What Was Completed**:
 1. ✓ All ARM64 instruction encoders (SUB, ADD, STR, LDR, MOV, ADR, BL, LSR, RET, ADRP, BR)
@@ -115,32 +115,23 @@ The compiler driver successfully compiles simple programs!
 8. ✓ wrap-bytecode-with-heap-for-imports (68-byte prologue for heap initialization)
 9. ✓ write-macho-executable-with-imports-and-heap (file writer using native-write-file)
 10. ✓ All functions exported from :habu package
+11. ✓ Fixed file-level paren balance (removed 3 extra closing parens from line 1085)
 
-**Key Decisions This Session**:
-- **Rejected simplified approach**: User insisted on production-ready implementation from the start
-- **Buffer-based architecture**: Build complete executable in memory as immutable lists
-- **Binary file writing**: Solved with vector → make-string-from-vector → native-write-file
-- **Reverted to old linker temporarily**: Pure-Habu linker has paren-balance issues inherited from original commits
+**Current Issue**:
+Parenthesis imbalance in `build-minimal-macho-executable` function (lines 400-527):
+- Line 527 has too many closing parens, causing depth to go negative (-1)
+- This causes line 528 to be outside the function definition
+- Function closes one line too early
+- Need to remove extra parens from line 527 or add opens elsewhere in function
 
-**Issue Discovered**:
-The `build-macho-executable-with-imports-and-heap` function (and `buf-dysymtab-command-full`) have parenthesis balance issues:
-- Missing 5 closing parens in build-macho function
-- These issues existed in ALL previous commits (c7e6dcf, 2399bd8, b8fc74e)
-- The pure-Habu linker was never actually tested/working in any commit
-- Root cause: Complex nested cons expressions when porting from stream-based to buffer-based I/O
+**Error Manifestation**:
+Runtime error: `(LENGTH HABU::BUILD-MINIMAL-MACHO-EXECUTABLE)` - `LENGTH` being called on symbol instead of list. This is likely because the paren imbalance causes SBCL to misparse the code, potentially making a variable hold the symbol name instead of calling the function.
 
-**Current Workaround**:
-Reverted bootstrap/compiler.lisp to use old macho-linker.lisp (SBCL-based) for stability.
-- Factorial test successful: 5! = 120 ✓
-- Compiler works correctly with old linker
-- Pure-Habu linker remains in bootstrap/macho.lisp for future work
-
-**Next Steps** (to complete Phase 6):
-1. **Fix paren-balance** - Add 5 closing parens to build-macho-executable-with-imports-and-heap (line ~1089)
-2. **Test bootstrap/macho.lisp** - Load and verify syntax before integration
-3. **Switch back to pure-Habu** - Update deliver-with-libsystem to use bootstrap/macho.lisp
-4. **Test end-to-end** - Verify factorial and other programs compile correctly
-5. **Remove old linker** - Deprecate macho-linker.lisp once pure-Habu version works
+**Next Steps** (immediate):
+1. **Fix build-minimal function** - Remove extra closing parens from line 527
+2. **Verify all functions load** - Test bootstrap/macho.lisp loads without errors
+3. **Test runtime** - Try compilation again after fixing parens
+4. **End-to-end test** - Verify factorial compiles with pure-Habu linker
 
 **Files Created**:
 - `bootstrap/macho.lisp` (1101 lines) - Pure-Habu Mach-O generation (95% complete)

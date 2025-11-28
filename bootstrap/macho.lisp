@@ -524,7 +524,7 @@
                                                                                                            
                                                                                                            ;; Final padding
                                                                                                            (cons (buf-zeros (- linkedit-size (+ nlist-size string-table-size)))
-                                                                                                                 nil))))))))))))))))))))))
+                                                                                                                 nil)))))))))))))))))))))) ;; 21 parens
 
 (defun write-minimal-macho-executable (output-path code-bytes)
   "Generate minimal Mach-O executable and write to file.
@@ -1082,7 +1082,7 @@
                                                           (- fixups-offset indirect-offset indirect-size)
                                                           aligned-fixups-size
                                                           aligned-exports-size)))
-                                          nil)))))))))))))))))))))))))))))))))))
+                                          nil)))))))))))))))))))))))))))))))))))))))) ;; 40 parens (removed 3)
 
 (defun write-macho-executable-with-imports-and-heap (output-path code-bytes imports heap-size)
   "Generate complete Mach-O executable with imports and heap, write to file.
