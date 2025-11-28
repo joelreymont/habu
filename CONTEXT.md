@@ -19,18 +19,29 @@
 - All functions can now have unlimited bindings
 - This unblocked Phase 1 (linker fixes)
 
-**Phase 1: Fix habu0 Linker** - IN PROGRESS (90% complete)
+**Phase 1: Fix habu0 Linker** - BLOCKED (systemic issue found)
+
+**Progress Made**:
 - ✓ wrap-with-heap-stub refactored (20 instructions pre-computed in 4 nested let* blocks)
 - ✓ Fixed all h0-codegen function-calls-in-list patterns (mul, div, mod, cons, car, cdr, null)
 - ✓ Fixed all h0-eval function-calls-in-argument patterns (arithmetic, list ops, predicates, comparisons)
+- ✓ Fixed habu-read quote/function forms and read-list-elems nested cons
 - ⚠ habu0 still crashes with `(+ 20 22)` in both mode #x100 and #x200
-- The crash is NOT in h0-codegen or h0-eval (literal 42 works)
-- The crash must be in the reader (habu-read) or compiler (h0-compile)
 
-**Immediate next steps**:
-1. Debug reader or h0-compile for function-calls-in-list pattern
-2. Test mode #x300 linker end-to-end
-3. Begin Phase 2 (remove SBCL dependencies from bootstrap/compiler.lisp)
+**Root Cause Identified**:
+The `function-calls-in-list` pattern is a SYSTEMIC issue in habu0.lisp. The pattern `(list (fn1 ...) (fn2 ...))` crashes when compiled to native ARM64 code. We've fixed this in 3 modules:
+1. h0-codegen (~10 occurrences)
+2. h0-eval (~15 occurrences)
+3. habu-read (~3 occurrences)
+
+However, **h0-compile has ~50+ occurrences** of this pattern (e.g., line 912: `(list (ir-tag-sub) (list (ir-tag-lit) #x0) arg-ir)`), and many other helper functions likely have similar issues.
+
+**Path Forward**:
+Two options:
+1. **Continue fixing** - Systematically fix all ~100+ occurrences across habu0.lisp (2-3 hours work)
+2. **Alternative approach** - Use the working SBCL bootstrap compiler (bootstrap/compiler.lisp) which doesn't have this issue, focus on Phase 2 (removing SBCL dependencies)
+
+**Recommendation**: Option 2 is more pragmatic. The habu0 interpreter is a proof-of-concept but not critical for self-hosting. The real path to self-hosting is through the bootstrap compiler.
 
 ---
 
