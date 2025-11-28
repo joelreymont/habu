@@ -532,3 +532,88 @@
   (let* ((exe-buf (build-minimal-macho-executable code-bytes))
          (exe-str (buf-to-string exe-buf)))
     (native-write-file output-path exe-str)))
+
+;;; ============================================================
+;;; ARM64 Instruction Encoding (for stub generation)
+;;; ============================================================
+
+(defun encode-u32-le (val)
+  "Encode 32-bit value as little-endian byte list"
+  (cons (logand val #xFF)
+        (cons (logand (ash val -8) #xFF)
+              (cons (logand (ash val -16) #xFF)
+                    (cons (logand (ash val -24) #xFF)
+                          nil)))))
+
+(defun arm64-adrp (rd page-offset)
+  "ADRP Xd, label - Load PC-relative page address
+   RD: destination register (0-31)
+   PAGE-OFFSET: signed page offset"
+  (let* ((immlo (logand page-offset #x3))
+         (immhi (logand (ash page-offset -2) #x7FFFF))
+         (instr (logior #x90000000
+                       (ash immlo 29)
+                       (ash immhi 5)
+                       rd)))
+    (encode-u32-le instr)))
+
+(defun arm64-ldr (rt rn offset)
+  "LDR Xt, [Xn, #offset] - Load 64-bit register
+   RT: destination register
+   RN: base address register
+   OFFSET: byte offset (must be multiple of 8)"
+  (let* ((scaled-offset (ash offset -3))
+         (instr (logior #xF9400000
+                       (ash scaled-offset 10)
+                       (ash rn 5)
+                       rt)))
+    (encode-u32-le instr)))
+
+(defun arm64-br (rn)
+  "BR Xn - Branch to register
+   RN: register containing target address"
+  (let ((instr (logior #xD61F0000 (ash rn 5))))
+    (encode-u32-le instr)))
+
+(defun generate-stub-code (got-page-offset got-slot-offset)
+  "Generate ARM64 stub code that loads from GOT and branches.
+   GOT-PAGE-OFFSET: signed page offset for ADRP (in 4KB pages)
+   GOT-SLOT-OFFSET: byte offset within page for LDR
+   Returns byte list (12 bytes = 3 instructions)"
+  (append (arm64-adrp 16 got-page-offset)
+          (append (arm64-ldr 16 16 got-slot-offset)
+                  (arm64-br 16))))
+
+(defun build-got-entries (num-imports)
+  "Build GOT entries with bind markers.
+   Each entry is 8 bytes with bit 63 set for chained fixups.
+   Returns byte list."
+  (labels ((build-entries (remaining idx)
+             (if (<= remaining 0)
+                 nil
+                 (let* ((next-offset (if (= remaining 1) 0 2))  ; stride = 2 (8-byte entries)
+                        ;; DYLD_CHAINED_PTR_64_OFFSET format:
+                        ;; bit 63: bind (1)
+                        ;; bits 62-51: next (stride in 4-byte units, 0 if last)
+                        ;; bits 50-32: reserved
+                        ;; bits 31-0: ordinal (import index)
+                        (entry (logior #x8000000000000000  ; bit 63 = bind
+                                      (ash next-offset 51)  ; bits 62-51 = next
+                                      idx)))               ; bits 31-0 = ordinal
+                   (append (buf-u64-le entry)
+                          (build-entries (- remaining 1) (+ idx 1)))))))
+    (build-entries num-imports 0)))
+
+(defun build-stubs (imports got-page-offset got-base-offset)
+  "Build stub code for all imports.
+   IMPORTS: list of symbol names
+   GOT-PAGE-OFFSET: page offset from stubs to GOT
+   GOT-BASE-OFFSET: byte offset of first GOT entry within GOT page
+   Returns byte list."
+  (labels ((build-all (remaining idx)
+             (if (null remaining)
+                 nil
+                 (let* ((got-slot-offset (+ got-base-offset (* idx 8)))
+                        (stub (generate-stub-code got-page-offset got-slot-offset)))
+                   (append stub (build-all (cdr remaining) (+ idx 1)))))))
+    (build-all imports 0)))
