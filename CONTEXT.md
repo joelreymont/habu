@@ -3,7 +3,7 @@
 **Session Date**: November 22-28, 2025
 **Focus**: Self-hosting ARM64 Lisp compiler with native executable generation
 **Last Updated**: November 28, 2025 (176 tests: 77 native + 39 reader + 8 self-compile + 5 mini-compiler + 5 full-self-compile + 6 compiler-subsets + 8 arm64-encoders + 8 inline-string + 10 expr-compiler + 10 ir-traversal)
-**Milestone**: Fixed buffer-to-string branch offset bug, added codesigning to linker, native reader working
+**Milestone**: Fixed habu0 LET binding (nil/0 ambiguity), h0-compile working with IR eval
 
 ## Current Plan: Native File I/O and Self-Hosting (November 27, 2025)
 
@@ -319,6 +319,23 @@ which was incorrect for programs of different sizes.
 
 Fix: Calculate heap-page-offset dynamically based on actual code size:
 `(+ (floor text-vmsize +PAGE-SIZE+) 1)` where text-vmsize accounts for code + stubs.
+
+11. **habu0 LET variable binding at offset 0 not found**
+The `c-env-search` function returned 0 for variables at offset 0, but the caller
+used `(if off ...)` which treated 0 as false (not found). Since in Habu's native
+runtime 0 and nil are the same tagged value, offset 0 was indistinguishable from
+not-found.
+
+Root cause: `make-symbol-from-string` doesn't deduplicate symbols, so each reader
+call creates a new symbol object. The compiler stores symbol names (strings) in
+the environment and uses string comparison for lookup. When the first variable
+was found at offset 0, returning 0 made the caller think nothing was found.
+
+Fix: Changed `c-env-search` to return `(cons offset nil)` instead of bare `offset`.
+The caller now checks for non-nil result with `(if result ...)` and extracts the
+actual offset with `(car result)`. This makes offset 0 distinguishable from nil.
+
+Tests: `(let ((x 10)) x)` now correctly returns 10 instead of 0.
 
 ---
 
