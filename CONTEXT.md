@@ -64,7 +64,24 @@ The compiler code that RUNS during bootstrap (in SBCL) can use SBCL features. On
 - Generated executables are pure native ARM64 with no SBCL dependency
 - Only external dependency: libSystem.B.dylib (standard on macOS)
 
-**Next**: Test the bootstrap compiler, create entry point for standalone use.
+**Bootstrap Compiler Test** - SUCCESSFUL ✓
+
+Tested with factorial program:
+```lisp
+(defun fact (n acc)
+  (if (= n 0) acc (fact (- n 1) (* n acc))))
+(sys-exit (fact 5 1))
+```
+
+Result:
+- Compiled: 301 bytes of ARM64 machine code
+- Linked: with libSystem (_exit import)
+- Executable: 157KB native binary
+- Test: `./test_prog` → exit code 120 (5! = 120) ✓
+
+**Conclusion**: The bootstrap compiler successfully generates working native executables with no SBCL runtime dependency!
+
+**Next**: Create standalone compiler executable (self-hosting fixed point).
 
 ---
 
