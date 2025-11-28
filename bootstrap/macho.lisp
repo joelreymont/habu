@@ -248,3 +248,146 @@
                                              (cons (buf-u32-le nundefsym)
                                                    (cons (buf-zeros 48)  ; remaining fields
                                                          nil)))))))))))
+
+;;; ============================================================
+;;; Chained Fixups for Dynamic Linking
+;;; ============================================================
+
+(defun buf-chained-fixups-command (dataoff datasize)
+  "Generate LC_DYLD_CHAINED_FIXUPS command as buffer"
+  (buf-append-all
+   (cons (buf-u32-le +LC-DYLD-CHAINED-FIXUPS+)
+         (cons (buf-u32-le 16)
+               (cons (buf-u32-le dataoff)
+                     (cons (buf-u32-le datasize)
+                           nil))))))
+
+(defun string-to-bytes (str)
+  "Convert string to list of character codes (bytes)"
+  (labels ((collect (idx)
+             (if (>= idx (string-length str))
+                 nil
+                 (cons (string-ref str idx)
+                       (collect (+ idx 1))))))
+    (collect 0)))
+
+(defun build-symbols-list (imports)
+  "Build symbols string: NUL-separated, starts with NUL"
+  (labels ((append-name (name rest)
+             (append (string-to-bytes name) (cons 0 rest)))
+           (build-all (remaining)
+             (if (null remaining)
+                 nil
+                 (append-name (car remaining) (build-all (cdr remaining))))))
+    (cons 0 (build-all imports))))
+
+(defun set-u32-le-at (buf offset val)
+  "Set 32-bit little-endian value at offset in buffer (returns modified buffer)"
+  (let* ((b0 (logand val #xFF))
+         (b1 (logand (ash val -8) #xFF))
+         (b2 (logand (ash val -16) #xFF))
+         (b3 (logand (ash val -24) #xFF)))
+    (labels ((set-bytes (lst idx)
+               (cond
+                 ((null lst) nil)
+                 ((= idx offset) (cons b0 (set-bytes (cdr lst) (+ idx 1))))
+                 ((= idx (+ offset 1)) (cons b1 (set-bytes (cdr lst) (+ idx 1))))
+                 ((= idx (+ offset 2)) (cons b2 (set-bytes (cdr lst) (+ idx 1))))
+                 ((= idx (+ offset 3)) (cons b3 (set-bytes (cdr lst) (+ idx 1))))
+                 (t (cons (car lst) (set-bytes (cdr lst) (+ idx 1)))))))
+      (set-bytes buf 0))))
+
+(defun set-u16-le-at (buf offset val)
+  "Set 16-bit little-endian value at offset in buffer"
+  (let* ((b0 (logand val #xFF))
+         (b1 (logand (ash val -8) #xFF)))
+    (labels ((set-bytes (lst idx)
+               (cond
+                 ((null lst) nil)
+                 ((= idx offset) (cons b0 (set-bytes (cdr lst) (+ idx 1))))
+                 ((= idx (+ offset 1)) (cons b1 (set-bytes (cdr lst) (+ idx 1))))
+                 (t (cons (car lst) (set-bytes (cdr lst) (+ idx 1)))))))
+      (set-bytes buf 0))))
+
+(defun set-u64-le-at (buf offset val)
+  "Set 64-bit little-endian value at offset in buffer"
+  (let* ((lo (logand val #xFFFFFFFF))
+         (hi (logand (ash val -32) #xFFFFFFFF)))
+    (set-u32-le-at (set-u32-le-at buf offset lo) (+ offset 4) hi)))
+
+(defun set-byte-at (buf offset val)
+  "Set single byte at offset in buffer"
+  (labels ((set-bytes (lst idx)
+             (cond
+               ((null lst) nil)
+               ((= idx offset) (cons val (set-bytes (cdr lst) (+ idx 1))))
+               (t (cons (car lst) (set-bytes (cdr lst) (+ idx 1)))))))
+    (set-bytes buf 0)))
+
+(defun build-chained-fixups-data (imports num-segments got-segment-index got-vm-offset)
+  "Build chained fixups data for binding external symbols.
+   IMPORTS: list of symbol names (strings like \"_write\")
+   NUM-SEGMENTS: total number of segments
+   GOT-SEGMENT-INDEX: 0-based index of segment containing GOT
+   GOT-VM-OFFSET: VM offset from binary base to first fixup
+   
+   Returns a byte list."
+  (let* ((num-imports (length imports))
+         (symbols-list (build-symbols-list imports))
+         ;; Calculate offsets
+         (header-size 32)
+         (starts-header-size (+ 4 (* 4 num-segments)))
+         (seg-info-size 24)
+         (imports-entry-size 4)
+         (starts-offset header-size)
+         (seg-info-rel-offset (align-up starts-header-size 8))
+         (imports-offset (+ starts-offset seg-info-rel-offset seg-info-size))
+         (symbols-offset (+ imports-offset (* num-imports imports-entry-size)))
+         (total-size (align-up (+ symbols-offset (length symbols-list)) 8)))
+    
+    ;; Create zero-filled buffer
+    (let* ((data (buf-zeros total-size)))
+      
+      ;; Set dyld_chained_fixups_header fields
+      (let* ((d1 (set-u32-le-at data 4 starts-offset))
+             (d2 (set-u32-le-at d1 8 imports-offset))
+             (d3 (set-u32-le-at d2 12 symbols-offset))
+             (d4 (set-u32-le-at d3 16 num-imports))
+             (d5 (set-byte-at d4 20 1)))  ; imports_format = 1
+        
+        ;; Set dyld_chained_starts_in_image
+        (let* ((d6 (set-u32-le-at d5 starts-offset num-segments)))
+          
+          ;; Set seg_info_offset for GOT segment
+          (let* ((seg-info-off-pos (+ starts-offset 4 (* got-segment-index 4)))
+                 (d7 (set-u32-le-at d6 seg-info-off-pos seg-info-rel-offset)))
+            
+            ;; Set dyld_chained_starts_in_segment
+            (let* ((seg-base (+ starts-offset seg-info-rel-offset))
+                   (d8 (set-u32-le-at d7 seg-base 24))  ; size
+                   (d9 (set-u16-le-at d8 (+ seg-base 4) #x4000))  ; page_size
+                   (d10 (set-u16-le-at d9 (+ seg-base 6) +DYLD-CHAINED-PTR-64-OFFSET+))
+                   (d11 (set-u64-le-at d10 (+ seg-base 8) got-vm-offset))
+                   (d12 (set-u16-le-at d11 (+ seg-base 20) 1)))  ; page_count
+              
+              ;; Set import entries
+              (labels ((set-imports (remaining idx name-offset buf)
+                         (if (null remaining)
+                             buf
+                             (let* ((name (car remaining))
+                                    (entry-off (+ imports-offset (* idx 4)))
+                                    (entry (logior 1 (ash (+ 1 name-offset) 9)))
+                                    (new-buf (set-u32-le-at buf entry-off entry))
+                                    (new-name-offset (+ name-offset 1 (string-length name))))
+                               (set-imports (cdr remaining) (+ idx 1) new-name-offset new-buf)))))
+                
+                (let* ((d13 (set-imports imports 0 0 d12)))
+                  
+                  ;; Copy symbol strings to buffer
+                  (labels ((copy-symbols (src-list dst-idx buf)
+                             (if (null src-list)
+                                 buf
+                                 (copy-symbols (cdr src-list)
+                                              (+ dst-idx 1)
+                                              (set-byte-at buf (+ symbols-offset dst-idx) (car src-list))))))
+                    (copy-symbols symbols-list 0 d13))))))))))
