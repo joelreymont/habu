@@ -5020,9 +5020,9 @@ int main(int argc, char **argv) {
    Usage: (habu:deliver-with-libsystem \"(sys-write 1 \\\"Hi\\\" 2)\" \"/tmp/test\")
 
    The source can use sys-write, sys-read, sys-open, sys-close, sys-exit."
-  ;; Load the macho linker if not already loaded
-  (unless (find-package :habu-macho)
-    (load (merge-pathnames "macho-linker.lisp"
+  ;; Load the pure-Habu macho linker if not already loaded
+  (unless (fboundp 'write-macho-executable-with-imports-and-heap)
+    (load (merge-pathnames "bootstrap/macho.lisp"
                            (or *load-pathname* *default-pathname-defaults*))))
 
   (let* ((forms (nc-read-all source-string))
@@ -5070,15 +5070,17 @@ int main(int argc, char **argv) {
                  ;; DATA_CONST is one 16KB page = 4 ADRP pages
                  (data-const-pages-4kb (/ #x4000 #x1000))
                  (heap-page-offset (+ text-pages-4kb data-const-pages-4kb))
-                 (wrapped-code (funcall (intern "WRAP-BYTECODE-WITH-HEAP-FOR-IMPORTS" :habu-macho)
-                                        flat-code heap-page-offset)))
+                 (wrapped-code (wrap-bytecode-with-heap-for-imports flat-code heap-page-offset)))
 
-            ;; Create executable with imports and heap
-            (multiple-value-bind (path code-offset stubs-offset stub-size heap-vmaddr heap-page-offset)
-                (funcall (intern "WRITE-MACHO-EXECUTABLE-WITH-IMPORTS-AND-HEAP" :habu-macho)
-                         output-path wrapped-code imports
-                         :heap-size #x100000 :verbose verbose)
-              (declare (ignore heap-vmaddr heap-page-offset))
+            ;; Create executable with imports and heap using pure-Habu linker
+            (write-macho-executable-with-imports-and-heap output-path wrapped-code imports #x100000)
+
+            ;; Calculate offsets for patching
+            ;; Pure-Habu linker has same structure as old linker:
+            ;; code starts at 0x400, stubs follow code
+            (let* ((code-offset #x400)
+                   (stubs-offset (+ code-offset (length wrapped-code)))
+                   (stub-size 12))
 
               ;; Build stub offset map: import-name -> stub-file-offset
               (let ((stub-map (make-hash-table :test 'equal)))
@@ -5091,7 +5093,7 @@ int main(int argc, char **argv) {
                 ;; Patch all extern calls
                 ;; Note: extern positions are relative to original code, but we wrapped it
                 ;; so we need to add wrapper-size to account for the prologue stub
-                (with-open-file (f path :direction :io
+                (with-open-file (f output-path :direction :io
                                         :element-type '(unsigned-byte 8)
                                         :if-exists :overwrite)
                   (dolist (pos-entry extern-positions)
@@ -5120,11 +5122,11 @@ int main(int argc, char **argv) {
               ;; Only on macOS and when sb-ext is available
               #+sbcl
               (when (probe-file "/usr/bin/codesign")
-                (sb-ext:run-program "/usr/bin/codesign" (list "-s" "-" "-f" path)))
+                (sb-ext:run-program "/usr/bin/codesign" (list "-s" "-" "-f" output-path)))
 
               (when verbose
-                (terpri) (princ "Created: ") (princ path) (terpri))
-              path))))))
+                (terpri) (princ "Created: ") (princ output-path) (terpri))
+              output-path))))))
 
 (defun deliver-file-with-libsystem (source-path output-path &key verbose)
   "Compile Lisp file to native executable using libSystem.
