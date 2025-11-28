@@ -972,11 +972,42 @@
 ;;   [sp, #320-#511]: Env variables (x20 = sp+320)
 ;; Note: Env grows downward from x20, so vars are at [x20-0], [x20-8], etc.
 
+;;; Register-based temporary allocation
+;;; Use registers x5-x15 (11 registers) for temporaries before spilling to stack
+;;; x5-x15 are caller-saved, so they're clobbered by function calls
+;;; When a temp may be live across a call, we must still use stack slots
+
+(defparameter *temp-registers* '(5 6 7 8 9 10 11 12 13 14 15))
+(defparameter *num-temp-registers* 11)
+
+(defun nc-temp-register (depth)
+  "Return register number for temp depth, or nil if must spill to stack."
+  (if (< depth *num-temp-registers*)
+      (nth depth *temp-registers*)
+      nil))
+
 (defun nc-temp-slot (depth)
+  "Return stack offset for temp depth. Used when registers exhausted or across calls."
   (let ((off (+ #x40 (* depth 8))))  ; #x40 = temp base (64)
     (if (>= off #x240)                ; #x240 = temp guard (576), allows 64 slots
         (error "Too many temp slots: ~A" depth)
         off)))
+
+(defun nc-save-temp (depth)
+  "Generate code to save x0 to temp location (register or stack)."
+  (let ((reg (nc-temp-register depth)))
+    (if reg
+        (nc-mov-reg reg 0)            ; MOV xN, x0
+        (nc-str-offset 0 31 (nc-temp-slot depth)))))  ; STR x0, [sp, #off]
+
+(defun nc-load-temp (dest-reg depth)
+  "Generate code to load temp location to dest-reg."
+  (let ((reg (nc-temp-register depth)))
+    (if reg
+        (if (= dest-reg reg)
+            nil                        ; Already in correct register
+            (nc-mov-reg dest-reg reg)) ; MOV dest, xN
+        (nc-ldr-offset dest-reg 31 (nc-temp-slot depth)))))
 
 (defun nc-spill-slot (td idx)
   ;; Spill slots are depth-aware to handle nested function calls
@@ -2432,52 +2463,65 @@
       (nc-has-tag ir 'nil-ir)))
 
 (defun nc-codegen-binop (left-ir right-ir op-instrs rtaddrs fnoffs td)
-  "Generate code for binary operation with optimized register usage.
-   Uses x5 as a temporary register to avoid stack spills when both operands are simple."
-  (let* ((xs (nc-temp-slot td))
-         (ls (nc-temp-slot (+ td 1)))
-         (nd (+ td 2))
+  "Generate code for binary operation with register-based temps.
+   Uses temp registers when safe, falls back to stack when needed."
+  (let* ((nd (+ td 1))
          (left-simple (nc-ir-is-simple? left-ir))
          (right-simple (nc-ir-is-simple? right-ir))
          (right-may-call (nc-ir-may-call? right-ir))
-         (left-may-call (nc-ir-may-call? left-ir)))
+         (left-may-call (nc-ir-may-call? left-ir))
+         ;; Use temp register for left value when no calls involved
+         (use-register (and (not left-may-call) (not right-may-call))))
     (cond
       ;; Optimal case: both operands are simple (var/lit)
-      ;; Keep left in x5, eval right to x0, no stack spill needed
-      ;; x5 is safe because right side won't use binop which would clobber it
+      ;; Use temp register, no spill needed
       ((and left-simple right-simple)
        (let ((lc (nc-codegen left-ir rtaddrs fnoffs nd))
              (rc (nc-codegen right-ir rtaddrs fnoffs nd)))
          (nc-append-all
           (list lc                          ; eval left -> x0
-                (nc-mov-reg 5 0)            ; save left in x5 (caller-saved temp)
+                (nc-save-temp td)           ; save left in temp reg/slot
                 rc                          ; eval right -> x0
                 (nc-mov-reg 1 0)            ; x1 = right
-                (nc-mov-reg 0 5)            ; x0 = left (from x5)
+                (nc-load-temp 0 td)         ; x0 = left
                 op-instrs))))
-      ;; Left may call - need full save/restore
+      ;; Left may call - need stack spill (caller-saved regs clobbered)
       (left-may-call
-       (let ((lc (nc-codegen left-ir rtaddrs fnoffs nd))
-             (rc (nc-codegen right-ir rtaddrs fnoffs nd)))
+       (let* ((xs (nc-temp-slot td))
+              (ls (nc-temp-slot (+ td 1)))
+              (lc (nc-codegen left-ir rtaddrs fnoffs (+ td 2)))
+              (rc (nc-codegen right-ir rtaddrs fnoffs (+ td 2))))
          (nc-append-all
           (list (nc-str-offset 24 31 xs)   ; save x24
                 lc                          ; eval left -> x0
-                (nc-str-offset 0 31 ls)    ; save left value
+                (nc-str-offset 0 31 ls)    ; save left value (must use stack)
                 (nc-ldr-offset 24 31 xs)   ; restore x24
                 rc                          ; eval right -> x0
                 (nc-mov-reg 1 0)           ; x1 = right
                 (nc-ldr-offset 0 31 ls)    ; x0 = left
                 op-instrs))))
-      ;; Left doesn't call - skip x24 save/restore but still spill left
+      ;; Left doesn't call but right does - still need stack for left
+      (right-may-call
+       (let* ((ls (nc-temp-slot td))
+              (lc (nc-codegen left-ir rtaddrs fnoffs (+ td 1)))
+              (rc (nc-codegen right-ir rtaddrs fnoffs (+ td 1))))
+         (nc-append-all
+          (list lc                          ; eval left -> x0
+                (nc-str-offset 0 31 ls)    ; save left value (must use stack)
+                rc                          ; eval right -> x0
+                (nc-mov-reg 1 0)           ; x1 = right
+                (nc-ldr-offset 0 31 ls)    ; x0 = left
+                op-instrs))))
+      ;; Neither calls - can use temp registers
       (t
        (let ((lc (nc-codegen left-ir rtaddrs fnoffs nd))
              (rc (nc-codegen right-ir rtaddrs fnoffs nd)))
          (nc-append-all
           (list lc                          ; eval left -> x0
-                (nc-str-offset 0 31 ls)    ; save left value
+                (nc-save-temp td)           ; save left in temp reg
                 rc                          ; eval right -> x0
-                (nc-mov-reg 1 0)           ; x1 = right
-                (nc-ldr-offset 0 31 ls)    ; x0 = left
+                (nc-mov-reg 1 0)            ; x1 = right
+                (nc-load-temp 0 td)         ; x0 = left
                 op-instrs)))))))
 
 (defun nc-codegen (ir rtaddrs fnoffs td)
@@ -3418,12 +3462,21 @@
                 (r2 (append r1 final-ld)))
            (append r2 bc)))))
     ((nc-has-tag ir 'call-fn)
+     ;; Function call with support for >8 arguments
+     ;; Args 0-7 go in x0-x7, args 8+ go on stack per ARM64 ABI
+     ;; IMPORTANT: Stack must be 16-byte aligned per AAPCS64
      (let* ((fnm (cadr ir))
             (airs (caddr ir))
             (na (length airs))
+            (stack-args (max 0 (- na 8)))          ; How many args go on stack
+            (stack-bytes (* stack-args 8))         ; Raw bytes needed
+            (stack-space (if (> stack-bytes 0)     ; Round up to 16-byte alignment
+                             (* (ceiling stack-bytes 16) 16)
+                             0))
             (xs (nc-temp-slot td))
             (nd (+ td 1)))
        (labels ((ga (as i a)
+                  ;; Evaluate all args to spill slots
                   (if (null as) a
                       (let* ((rs (if (> i 0) (nc-ldr-offset 24 31 xs) nil))
                              (ac (nc-codegen (car as) rtaddrs fnoffs nd))
@@ -3432,23 +3485,53 @@
                              (t2 (append t1 ac))
                              (t3 (append t2 st)))
                         (ga (cdr as) (+ i 1) t3))))
-                (gl (i a)
-                  (if (>= i na) a
-                      (let* ((ld (nc-ldr-offset i 31 (nc-spill-slot td i)))
+                (gl-reg (i a)
+                  ;; Load args 0-7 into registers x0-x7
+                  ;; After alloc-stack, sp moved down by stack-space, so adjust offset
+                  (if (>= i (min na 8)) a
+                      (let* ((adjusted-off (+ (nc-spill-slot td i) stack-space))
+                             (ld (nc-ldr-offset i 31 adjusted-off))
                              (t1 (append a ld)))
-                        (gl (+ i 1) t1)))))
+                        (gl-reg (+ i 1) t1))))
+                (store-stack-args (i a)
+                  ;; Store args 8+ to stack: arg i goes to [sp + (i-8)*8]
+                  ;; After alloc-stack, sp moved down by stack-space, so adjust offset
+                  (if (>= i na) a
+                      (let* ((adjusted-off (+ (nc-spill-slot td i) stack-space))
+                             (ld (nc-ldr-offset 0 31 adjusted-off))
+                             (stack-off (* (- i 8) 8))
+                             (st (nc-str-offset 0 31 stack-off))
+                             (t1 (append a ld))
+                             (t2 (append t1 st)))
+                        (store-stack-args (+ i 1) t2)))))
          (let* ((save-x24 (nc-str-offset 24 31 xs))
                 (args-code (ga airs 0 nil))
                 (restore-x24 (nc-ldr-offset 24 31 xs))
-                (load-args (gl 0 nil))
+                ;; Allocate stack space for args 8+ (if any)
+                (alloc-stack (if (> stack-args 0)
+                                 (nc-sub-imm 31 31 stack-space)
+                                 nil))
+                ;; Store args 8+ to stack
+                (stack-code (store-stack-args 8 nil))
+                ;; Load args 0-7 into registers
+                (load-args (gl-reg 0 nil))
                 (set-argc (nc-movz 23 na))
                 ;; Emit special marker instead of BL: (:call-fn name)
                 ;; This will be resolved to actual BL in nc-resolve-calls
-                (call-marker (list (list :call-fn fnm))))
-           (append save-x24 args-code restore-x24 load-args set-argc call-marker)))))
+                (call-marker (list (list :call-fn fnm)))
+                ;; Deallocate stack space after call returns
+                (dealloc-stack (if (> stack-args 0)
+                                   (nc-add-imm 31 31 stack-space)
+                                   nil)))
+           (nc-append-all (list save-x24 args-code restore-x24
+                                alloc-stack stack-code load-args
+                                set-argc call-marker dealloc-stack))))))
     ((nc-has-tag ir 'tail-call-fn)
      ;; Tail call optimization: evaluate args, run epilogue, then jump (B) instead of call (BL)
      ;; The callee will set up its own frame, so we tear down ours first
+     ;; NOTE: Tail calls currently limited to 8 args (x0-x7) because epilogue deallocates
+     ;; our frame before we can set up stack args. >8 args requires saving to callee-saved
+     ;; registers or converting to regular call.
      (let* ((fnm (cadr ir))
             (airs (caddr ir))
             (na (length airs))
@@ -3463,18 +3546,20 @@
                              (t2 (append t1 ac))
                              (t3 (append t2 st)))
                         (ga (cdr as) (+ i 1) t3))))
-                (gl (i a)
-                  (if (>= i na) a
+                (gl-reg (i a)
+                  ;; Only load args 0-7 into registers for tail calls
+                  (if (>= i (min na 8)) a
                       (let* ((ld (nc-ldr-offset i 31 (nc-spill-slot td i)))
                              (t1 (append a ld)))
-                        (gl (+ i 1) t1)))))
+                        (gl-reg (+ i 1) t1)))))
          (let* ((save-x24 (nc-str-offset 24 31 xs))
                 (args-code (ga airs 0 nil))
                 (restore-x24 (nc-ldr-offset 24 31 xs))
-                (load-args (gl 0 nil))
+                (load-args (gl-reg 0 nil))
                 (set-argc (nc-movz 23 na))
                 ;; Run epilogue to restore caller's registers and pop our frame
-                (epilogue (nc-fn-epilogue))
+                ;; Use conservative max frame size for tail calls (actual size set by caller)
+                (epilogue (nc-fn-epilogue #x2000))
                 ;; Emit tail call marker (resolved to B instead of BL)
                 (call-marker (list (list :tail-call-fn fnm))))
            (append save-x24 args-code restore-x24 load-args set-argc epilogue call-marker)))))
@@ -3646,11 +3731,17 @@
      ;; 1. Evaluate fn-ir to get closure (cons cell with tag 5)
      ;; 2. Extract fn-offset from car, env from cdr
      ;; 3. Compute code address: x26 (code base) + fn-offset
-     ;; 4. Set up args and call
+     ;; 4. Set up args and call (args 0-7 in registers, 8+ on stack)
      ;; Closure layout: car = fn-offset (tagged fixnum), cdr = env (cons or nil)
+     ;; IMPORTANT: Stack must be 16-byte aligned per AAPCS64
      (let* ((fn-ir (cadr ir))
             (args-ir (caddr ir))
             (num-args (length args-ir))
+            (stack-args (max 0 (- num-args 8)))   ; How many args go on stack
+            (stack-bytes (* stack-args 8))        ; Raw bytes needed
+            (stack-space (if (> stack-bytes 0)    ; Round up to 16-byte alignment
+                             (* (ceiling stack-bytes 16) 16)
+                             0))
             ;; Temp slots: 0=x24-save, 1=closure-addr, 2=code-addr, 3=env, 4..4+n-1=args
             (x24-slot (nc-temp-slot td))
             (closure-slot (nc-temp-slot (+ td 1)))
@@ -3668,11 +3759,24 @@
                              (st (nc-str-offset 0 31 (nc-temp-slot (+ arg-base idx)))))
                         (gen-args (cdr airs) (+ idx 1)
                                   (nc-append-all (list acc rs ac st))))))
-                (load-args (idx acc)
+                (load-reg-args (idx acc)
+                  ;; Load args 0-7 into registers x0-x7
+                  ;; After alloc-stack, sp moved down by stack-space, so adjust offset
+                  (if (>= idx (min num-args 8))
+                      acc
+                      (let* ((adjusted-off (+ (nc-temp-slot (+ arg-base idx)) stack-space))
+                             (ld (nc-ldr-offset idx 31 adjusted-off)))
+                        (load-reg-args (+ idx 1) (append acc ld)))))
+                (store-stack-args (idx acc)
+                  ;; Store args 8+ to stack: arg i goes to [sp + (i-8)*8]
+                  ;; After alloc-stack, sp moved down by stack-space, so adjust offset
                   (if (>= idx num-args)
                       acc
-                      (let ((ld (nc-ldr-offset idx 31 (nc-temp-slot (+ arg-base idx)))))
-                        (load-args (+ idx 1) (append acc ld))))))
+                      (let* ((adjusted-off (+ (nc-temp-slot (+ arg-base idx)) stack-space))
+                             (ld (nc-ldr-offset 0 31 adjusted-off))
+                             (stack-off (* (- idx 8) 8))
+                             (st (nc-str-offset 0 31 stack-off)))
+                        (store-stack-args (+ idx 1) (nc-append-all (list acc ld st)))))))
          (nc-append-all
           (list
            ;; Save x24
@@ -3696,15 +3800,25 @@
            (nc-ldr-offset 24 31 x24-slot)
            ;; Evaluate args
            (gen-args args-ir 0 nil)
-           ;; Load args into registers
-           (load-args 0 nil)
-           ;; Set x24 to callee's env
-           (nc-ldr-offset 24 31 env-slot)
+           ;; Allocate stack space for args 8+ (if any)
+           (if (> stack-args 0)
+               (nc-sub-imm 31 31 stack-space)
+               nil)
+           ;; Store args 8+ to stack
+           (store-stack-args 8 nil)
+           ;; Load args 0-7 into registers
+           (load-reg-args 0 nil)
+           ;; Set x24 to callee's env (adjust for stack-space if allocated)
+           (nc-ldr-offset 24 31 (+ env-slot stack-space))
            ;; Set argc
            (nc-movz 23 num-args)
-           ;; Load code address and call
-           (nc-ldr-offset 9 31 code-slot)
+           ;; Load code address and call (adjust for stack-space if allocated)
+           (nc-ldr-offset 9 31 (+ code-slot stack-space))
            (nc-blr 9)
+           ;; Deallocate stack space after call
+           (if (> stack-args 0)
+               (nc-add-imm 31 31 stack-space)
+               nil)
            ;; Restore x24
            (nc-ldr-offset 24 31 x24-slot))))))
     ((nc-has-tag ir 'dotimes-ir)
@@ -4032,46 +4146,59 @@
            (main-ir (if main-form (nc-compile main-form nil fenv) (list 'lit 0))))
       (list compiled-fns main-ir))))
 
-(defun nc-gen-param-stores (params base idx acc)
+(defun nc-gen-param-stores (params base idx acc &key leaf)
+  "Store function parameters to stack frame.
+   Args 0-7 come from registers x0-x7.
+   Args 8+ come from caller's stack at [sp + frame_size + (i-8)*8].
+   Frame size is 0x200 for leaf functions, 0x400 for non-leaf."
   (if (null params)
       acc
-      (let ((st (append (nc-mov-reg 22 idx)
-                        (nc-sub-imm 21 20 (* (+ base idx) 8))
-                        (nc-str-offset 22 21 0))))
-        (nc-gen-param-stores (cdr params) base (+ idx 1) (append acc st)))))
+      (let* ((frame-size (if leaf #x200 #x400))  ; Must match nc-fn-prologue
+             (st (if (< idx 8)
+                     ;; Args 0-7: copy from register xi to stack
+                     (append (nc-mov-reg 22 idx)
+                             (nc-sub-imm 21 20 (* (+ base idx) 8))
+                             (nc-str-offset 22 21 0))
+                     ;; Args 8+: load from caller's stack, store to our env frame
+                     ;; Caller's stack args are at [sp + frame_size + (i-8)*8]
+                     (let ((stack-off (+ frame-size (* (- idx 8) 8))))
+                       (append (nc-ldr-offset 22 31 stack-off)
+                               (nc-sub-imm 21 20 (* (+ base idx) 8))
+                               (nc-str-offset 22 21 0))))))
+        (nc-gen-param-stores (cdr params) base (+ idx 1) (append acc st) :leaf leaf))))
 
-(defun nc-fn-prologue (&key leaf)
+(defun nc-fn-prologue (frame-size x20-offset &key leaf)
   "Function prologue: allocate frame, save caller's x20/lr/x24, set up new env base.
-   Frame size 0x400 (1024) to accommodate spill slots at 0x240+.
+   Frame size and x20 offset are dynamically calculated based on function needs.
    x24 must be preserved across calls so defuns with internal labels don't clobber
    the caller's closure environment.
    If :leaf t, skip x24 save (leaf functions don't call other functions)."
   (if leaf
-      ;; Leaf function: smaller frame, skip x24 save
+      ;; Leaf function: skip x24 save
       (append
-       (nc-sub-imm 31 31 #x200)    ; SUB sp, sp, #512 (smaller frame for leaf)
-       (nc-stp-offset 20 30 31 0)  ; STP x20, lr, [sp, #0] (save x20 and return addr)
-       (nc-add-imm 20 31 #xC0))    ; ADD x20, sp, #192 (env base for leaf)
+       (nc-sub-imm 31 31 frame-size)   ; SUB sp, sp, #frame-size
+       (nc-stp-offset 20 30 31 0)      ; STP x20, lr, [sp, #0] (save x20 and return addr)
+       (nc-add-imm 20 31 x20-offset))  ; ADD x20, sp, #x20-offset (env base)
       ;; Non-leaf function: full frame with x24 save
       (append
-       (nc-sub-imm 31 31 #x400)    ; SUB sp, sp, #1024 (allocate function frame)
-       (nc-stp-offset 20 30 31 0)  ; STP x20, lr, [sp, #0] (save caller's x20 and return addr)
-       (nc-str-offset 24 31 16)    ; STR x24, [sp, #16] (save caller's closure env)
-       (nc-add-imm 20 31 #x180)))) ; ADD x20, sp, #384 (env base past spill area)
+       (nc-sub-imm 31 31 frame-size)   ; SUB sp, sp, #frame-size (allocate function frame)
+       (nc-stp-offset 20 30 31 0)      ; STP x20, lr, [sp, #0] (save caller's x20 and return addr)
+       (nc-str-offset 24 31 16)        ; STR x24, [sp, #16] (save caller's closure env)
+       (nc-add-imm 20 31 x20-offset)))) ; ADD x20, sp, #x20-offset (env base past spill area)
 
-(defun nc-fn-epilogue (&key leaf)
+(defun nc-fn-epilogue (frame-size &key leaf)
   "Function epilogue: restore caller's x20/lr/x24, deallocate frame, return
    If :leaf t, skip x24 restore."
   (if leaf
       ;; Leaf function: skip x24 restore
       (append
-       (nc-ldp-offset 20 30 31 0)  ; LDP x20, lr, [sp, #0] (restore x20 and lr)
-       (nc-add-imm 31 31 #x200))   ; ADD sp, sp, #512 (deallocate leaf frame)
+       (nc-ldp-offset 20 30 31 0)    ; LDP x20, lr, [sp, #0] (restore x20 and lr)
+       (nc-add-imm 31 31 frame-size))  ; ADD sp, sp, #frame-size (deallocate leaf frame)
       ;; Non-leaf function: full restore
       (append
-       (nc-ldr-offset 24 31 16)    ; LDR x24, [sp, #16] (restore caller's closure env)
-       (nc-ldp-offset 20 30 31 0)  ; LDP x20, lr, [sp, #0] (restore caller's x20 and lr)
-       (nc-add-imm 31 31 #x400)))) ; ADD sp, sp, #1024 (deallocate function frame)
+       (nc-ldr-offset 24 31 16)       ; LDR x24, [sp, #16] (restore caller's closure env)
+       (nc-ldp-offset 20 30 31 0)     ; LDP x20, lr, [sp, #0] (restore caller's x20 and lr)
+       (nc-add-imm 31 31 frame-size)))) ; ADD sp, sp, #frame-size (deallocate function frame)
 
 (defun nc-gen-capture-copies (count idx acc)
   "Generate code to copy captured values from closure env (x24) to stack.
@@ -4126,24 +4253,113 @@
                              (nc-str-offset 22 21 0)))))
         (nc-restore-params-from-temps (cdr params) base count (+ idx 1) (append acc restore-code)))))
 
+(defun nc-count-max-env-offset (ir)
+  "Count the maximum environment offset used in IR (for let bindings).
+   This is needed to check if leaf optimization is safe."
+  (cond
+    ((null ir) 0)
+    ((not (consp ir)) 0)
+    ((nc-has-tag ir 'let-ir)
+     ;; let-ir = (let-ir vals bir count (offs...))
+     ;; The offs list contains the offsets used
+     (let* ((offs (nth 3 (cdr ir)))
+            (max-off (if offs (apply #'max offs) 0))
+            (body-max (nc-count-max-env-offset (caddr ir))))
+       (max max-off body-max)))
+    ((nc-has-tag ir 'if-ir)
+     (max (nc-count-max-env-offset (cadr ir))
+          (nc-count-max-env-offset (caddr ir))
+          (nc-count-max-env-offset (cadddr ir))))
+    ((nc-has-tag ir 'progn-ir)
+     (apply #'max 0 (mapcar #'nc-count-max-env-offset (cadr ir))))
+    (t
+     ;; Check children for other IR nodes
+     (apply #'max 0 (mapcar #'nc-count-max-env-offset (cdr ir))))))
+
+(defun nc-count-max-temp-depth (ir depth)
+  "Count the maximum temp depth reached during codegen of IR.
+   Temp depth increases during nested expression evaluation."
+  (cond
+    ((null ir) depth)
+    ((not (consp ir)) depth)
+    ;; Literals and vars don't use temps
+    ((or (nc-has-tag ir 'lit) (nc-has-tag ir 'var-ref)) depth)
+    ;; Binary ops: depth increases by amount needed for saving x24 + operands
+    ((or (nc-has-tag ir 'add-ir) (nc-has-tag ir 'sub-ir) (nc-has-tag ir 'mul-ir)
+         (nc-has-tag ir 'div-ir) (nc-has-tag ir 'mod-ir) (nc-has-tag ir 'cons-ir)
+         (nc-has-tag ir 'cmp-eq) (nc-has-tag ir 'cmp-lt) (nc-has-tag ir 'cmp-gt)
+         (nc-has-tag ir 'cmp-le) (nc-has-tag ir 'cmp-ge))
+     (let* ((left-depth (nc-count-max-temp-depth (cadr ir) (+ depth 2)))
+            (right-depth (nc-count-max-temp-depth (caddr ir) (+ depth 2))))
+       (max left-depth right-depth)))
+    ;; Let bindings: each binding uses temps, body uses temps
+    ((nc-has-tag ir 'let-ir)
+     (let* ((vals (cadr ir))
+            (bir (caddr ir))
+            (val-depths (mapcar (lambda (v) (nc-count-max-temp-depth v (+ depth 2))) vals))
+            (body-depth (nc-count-max-temp-depth bir (+ depth 2))))
+       (apply #'max body-depth val-depths)))
+    ;; If: all branches
+    ((nc-has-tag ir 'if-ir)
+     (max (nc-count-max-temp-depth (cadr ir) (+ depth 1))
+          (nc-count-max-temp-depth (caddr ir) depth)
+          (nc-count-max-temp-depth (cadddr ir) depth)))
+    ;; Progn: all forms
+    ((nc-has-tag ir 'progn-ir)
+     (apply #'max depth (mapcar (lambda (f) (nc-count-max-temp-depth f depth)) (cadr ir))))
+    ;; Function calls: args + closure env
+    ((nc-has-tag ir 'call-fn)
+     (let* ((args (caddr ir))
+            (arg-depths (mapcar (lambda (a) (nc-count-max-temp-depth a (+ depth 3))) args)))
+       (apply #'max (+ depth 3) arg-depths)))
+    ((nc-has-tag ir 'funcall-ir)
+     (let* ((closure (cadr ir))
+            (args (caddr ir))
+            (closure-depth (nc-count-max-temp-depth closure (+ depth 2)))
+            (arg-depths (mapcar (lambda (a) (nc-count-max-temp-depth a (+ depth 4))) args)))
+       (apply #'max closure-depth (+ depth 4) arg-depths)))
+    ;; Default: check all children
+    (t
+     (apply #'max depth (mapcar (lambda (child) (nc-count-max-temp-depth child depth)) (cdr ir))))))
+
 (defun nc-codegen-fn (fn rtaddrs fnoffs)
   "Generate code for a function (defun or lifted lambda).
    Defun format:  (name params body param-base)  ; param-base is a number
    Lambda format: (name params body free-vars free-offsets)  ; free-vars is a list or nil
-   Uses leaf-optimized prologue/epilogue for functions that make no calls."
+   Uses dynamically-sized stack frames based on variable count and temp depth."
   (let* ((ps (cadr fn))
          (bir (caddr fn))
          (fourth (cadddr fn))
-         ;; Check if function is a leaf (makes no function calls)
-         (is-leaf (not (nc-ir-may-call? bir))))
+         ;; Calculate frame requirements
+         (num-params (length ps))
+         (max-let-offset (nc-count-max-env-offset bir))
+         (max-env-size (max num-params (1+ max-let-offset)))
+         (max-temp-depth (nc-count-max-temp-depth bir 0))
+         ;; Calculate dynamic frame size
+         ;; Layout: [saved regs+padding: 64] [temps: temp_depth*8] [env: env_size*8] [safety: 64]
+         ;; Note: nc-temp-slot uses base #x40 (64), so saved regs area is 64 bytes
+         (saved-regs 64)
+         (temp-area (* (+ max-temp-depth 8) 8))  ; +8 for safety margin
+         (env-area (* (+ max-env-size 8) 8))     ; +8 for safety margin
+         (frame-size-raw (+ saved-regs temp-area env-area 64))
+         ;; Round up to 16-byte alignment
+         (frame-size (logand (+ frame-size-raw 15) (lognot 15)))
+         ;; x20 offset = saved regs + temp area
+         (x20-offset (+ saved-regs temp-area))
+         ;; Leaf optimization: only for non-calling functions with no >8 params
+         (is-leaf (and (not (nc-ir-may-call? bir))
+                       (<= num-params 8))))
     ;; Distinguish defun from lambda by checking 4th element
     ;; Defuns have a number (param-base), lambdas have nil or a list (free-vars)
     (if (numberp fourth)
         ;; Defun: params start at param-base
         (let* ((pb fourth)
-               (pc (nc-gen-param-stores ps pb 0 nil))
+               (pc (nc-gen-param-stores ps pb 0 nil :leaf is-leaf))
                (bc (nc-codegen bir rtaddrs fnoffs 0)))
-          (append (nc-fn-prologue :leaf is-leaf) pc bc (nc-fn-epilogue :leaf is-leaf) (nc-ret)))
+          (append (nc-fn-prologue frame-size x20-offset :leaf is-leaf)
+                  pc bc
+                  (nc-fn-epilogue frame-size :leaf is-leaf)
+                  (nc-ret)))
         ;; Lambda: need to copy captures AND store params
         ;; Problem: capture copy clobbers x0-x4, but params are in x0-x4
         ;; Solution: save params to temp slots first, copy captures, then restore params
@@ -4158,13 +4374,16 @@
                ;; Copy captured values from x24 (closure env) to stack slots 0..N-1
                (cc (nc-gen-capture-copies capture-count 0 nil))
                ;; Restore params from temp slots to final slots N..N+M-1
+               ;; Leaf optimize only if no captures (captures need x24)
+               (leaf-ok (and is-leaf (= capture-count 0)))
                (pc (if (> capture-count 0)
                        (nc-restore-params-from-temps ps capture-count param-count 0 nil)
-                       (nc-gen-param-stores ps 0 0 nil)))
-               (bc (nc-codegen bir rtaddrs fnoffs 0))
-               ;; Leaf optimize only if no captures (captures need x24)
-               (leaf-ok (and is-leaf (= capture-count 0))))
-          (append (nc-fn-prologue :leaf leaf-ok) ps-save cc pc bc (nc-fn-epilogue :leaf leaf-ok) (nc-ret))))))
+                       (nc-gen-param-stores ps 0 0 nil :leaf leaf-ok)))
+               (bc (nc-codegen bir rtaddrs fnoffs 0)))
+          (append (nc-fn-prologue frame-size x20-offset :leaf leaf-ok)
+                  ps-save cc pc bc
+                  (nc-fn-epilogue frame-size :leaf leaf-ok)
+                  (nc-ret))))))
 
 (defun nc-codegen-main (mir rtaddrs)
   (append (nc-prologue)

@@ -2180,30 +2180,9 @@
 (defun write-macho-with-imports-and-heap (output-path code-bytes imports heap-size)
   "Write a Mach-O executable with external imports and heap."
   (let* ((num-imports (length imports))
-         (code-size (length code-bytes))
-         ;; Start with header
-         (buf (buf-mach-header-64 nil #xE (calc-sizeofcmds)
-                                  (logior (mh-noundefs) (mh-dyldlink)
-                                          (mh-twolevel) (mh-pie)))))
-    ;; Write load commands
-    (setq buf (write-load-commands buf code-size num-imports heap-size))
-    ;; Write code and stubs
-    (setq buf (write-code-section buf code-bytes num-imports))
-    ;; Write data sections
-    (setq buf (write-data-sections buf code-size num-imports heap-size))
-    ;; Write LINKEDIT
-    (setq buf (write-linkedit-section buf code-size num-imports heap-size imports))
-    ;; Write to file
-    (let* ((vec (buf-to-vector buf))
-           (fd (sys-open output-path
-                         (logior (o-wronly) (o-creat) (o-trunc))
-                         #x1FF)))
-      (if (< fd #x0)
-          #xFF
-          (progn
-            (sys-write fd vec (length vec))
-            (sys-close fd)
-            #x0)))))                              ; Success
+         (code-size (length code-bytes)))
+    ;; DEBUG: test basic let* then return
+    (+ num-imports code-size)))                              ; Success
 
 ;; Helper: generate stubs for each import
 (defun generate-stubs (buf got-page-diff num-imports i)
@@ -2248,20 +2227,28 @@
 
 ;;; High-level delivery function
 
-(defun deliver-with-imports-and-heap (output-path code-bytes imports heap-size)
-  "Create a standalone executable with imports and heap.
-   Wraps code with heap initialization stub first."
-  (let* ((wrapper-stub-size #x50)                 ; 80 bytes (20 instructions)
+;; Split deliver-with-imports-and-heap to avoid let* binding limit
+(defun calc-heap-page-offset (code-bytes imports)
+  "Calculate heap page offset for code+stubs (5 bindings)"
+  (let* ((wrapper-stub-size #x50)
          (total-code-size (+ (length code-bytes) wrapper-stub-size))
-         ;; Calculate heap page offset
          (approx-code-offset #x400)
          (stubs-offset (align-up (+ approx-code-offset total-code-size) #x4))
-         (stubs-end (+ stubs-offset (* (length imports) #xC)))
-         (text-vmsize (align-up stubs-end (page-size)))
-         (heap-page-offset (+ (/ text-vmsize (page-size)) #x1))
-         ;; Wrap code
+         (stubs-end (+ stubs-offset (* (length imports) #xC))))
+    (calc-heap-page-offset-2 stubs-end)))
+
+(defun calc-heap-page-offset-2 (stubs-end)
+  "Calculate heap page offset part 2 (2 bindings)"
+  (let* ((text-vmsize (align-up stubs-end (page-size)))
+         (heap-page-offset (+ (/ text-vmsize (page-size)) #x1)))
+    heap-page-offset))
+
+(defun deliver-with-imports-and-heap (output-path code-bytes imports heap-size)
+  "Create a standalone executable with imports and heap"
+  (let* ((heap-page-offset (calc-heap-page-offset code-bytes imports))
          (wrapped-code (wrap-with-heap-stub code-bytes heap-page-offset)))
-    (write-macho-with-imports-and-heap output-path wrapped-code imports heap-size)))
+    ;; DEBUG: return wrapped code length
+    (length wrapped-code)))
 
 ;;; Main entry point
 ;;; Mode is determined by first form in input.lisp:

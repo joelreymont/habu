@@ -2,8 +2,8 @@
 
 **Session Date**: November 22-28, 2025
 **Focus**: Self-hosting ARM64 Lisp compiler with native executable generation
-**Last Updated**: November 28, 2025 (176 tests: 77 native + 39 reader + 8 self-compile + 5 mini-compiler + 5 full-self-compile + 6 compiler-subsets + 8 arm64-encoders + 8 inline-string + 10 expr-compiler + 10 ir-traversal)
-**Milestone**: habu0 standalone interpreter working (fixed h0-char-upcase typo), evaluates Lisp programs correctly
+**Last Updated**: November 28, 2025 (wrap-with-heap-stub debugging)
+**Milestone**: habu0 mode #x300 crash isolated to wrap-with-heap-stub (20 fn calls in list)
 
 ## Current Plan: Native File I/O and Self-Hosting (November 27, 2025)
 
@@ -351,6 +351,367 @@ Fix: Renamed `h0-h0-char-upcase` to `h0-char-upcase` in habu0.lisp.
 
 Tests: `(+ 20 22)` now correctly returns 42. All arithmetic, let bindings, and
 function definitions (fact, fib) work correctly.
+
+13. **habu0 h0-codegen wrapper stub missing x20 initialization**
+The wrapper stub in habu0.lisp was not initializing x20 (environment frame base register).
+Any expression using local variables or temporaries would crash with SIGSEGV because
+h0-codegen stores values relative to x20, but x20 was uninitialized.
+
+Root cause: The wrapper stub saved x30, x28, x26, x27 and initialized heap registers,
+but never set x20. The stub also only allocated 48 bytes of stack, insufficient for
+the 512-byte frame needed by codegen.
+
+Fix: Expanded wrapper stub from 68 bytes (17 instructions) to 80 bytes (20 instructions):
+- Changed `sub sp, sp, #48` to `sub sp, sp, #512` (0x200)
+- Added `str x20, [sp, #32]` to save x20
+- Added `add x20, sp, #64` to initialize x20 = sp + 64 (environment base)
+- Adjusted BL offset and ADR offset to account for new instructions
+
+14. **habu0 h0-codegen temp slots overlapping with saved registers**
+Temp slots were calculated starting at sp+0, but sp+0..sp+40 was used for saved
+registers (x30, x28, x26, x27, x20). When codegen saved temporaries, it would
+overwrite the saved registers.
+
+Root cause: `temp-slot-offset` function returned `(* td 8)` starting at 0.
+
+Fix: Changed temp slot base from 0 to #x30 (48 bytes), so temp slots start after
+saved registers. The formula is now `(+ #x30 (* td #x8))`.
+
+15. **habu0 function calls in list expressions causing crashes**
+The pattern `(list (fn arg) ...)` or `(bytes-append-all (list (h0-codegen ...) ...))`
+would crash in native code. This is a known compiler quirk where function calls
+directly inside list expressions don't work reliably in native executables.
+
+Root cause: The native code generator has difficulty with function calls nested
+directly as list element expressions. The exact mechanism involves temporary
+register handling during list construction.
+
+Fix: Pre-compute all function calls in let/let* bindings before placing results
+in lists. Example change:
+```lisp
+;; Before (crashes):
+(bytes-append-all (list (h0-codegen val-ir td) (a64-str ...)))
+
+;; After (works):
+(let* ((val-code (h0-codegen val-ir td))
+       (store-code (a64-str ...)))
+  (bytes-append-all (list val-code store-code)))
+```
+
+Applied this pattern to all 15+ occurrences in h0-codegen including:
+- lit-ir (small and large literals)
+- var-ir
+- let-ir
+- if-ir
+- progn-ir
+- cmp-ir (all comparison operators)
+- binop-ir (add, sub, mul, div, mod)
+- call-ir
+
+16. **habu0 temp-slot-offset function call overhead**
+Even after fixing the temp slot base, the `temp-slot-offset` function itself
+was causing crashes when called from within list expressions.
+
+Root cause: Same compiler quirk as bug 15 - function calls in certain contexts
+don't work reliably in native code.
+
+Fix: Removed the `temp-slot-offset` function entirely and inlined the calculation
+`(+ #x30 (* td #x8))` at all 6 call sites in h0-codegen.
+
+Tests: All 22 habu0 codegen tests pass:
+- Simple literals: 42, 255
+- Large literals: #x12345678
+- Arithmetic: (+ 20 22), (- 100 58), (* 6 7), (/ 84 2)
+- Comparisons: (= 0 0), (< 1 2), (> 2 1), (<= 1 1), (>= 2 2)
+- Control flow: (if (= 1 1) 42 0)
+- Let bindings: (let ((x 40)) (+ x 2))
+- Nested: (let ((x 10)) (let ((y 20)) (+ x (+ y 12))))
+
+**habu0 Execution Modes Status** (November 28, 2025):
+- Mode #x100 (compile+eval IR): WORKING - evaluates Lisp programs correctly
+- Mode #x200 (codegen test): WORKING - generates and runs native ARM64 code
+- Mode #x300 (linker test): DEBUGGING - linker refactored, crash in write-load-commands-phase2
+
+17. **habu0 native code let* binding limit (~6 per function)**
+When habu0 is compiled to native ARM64 code via SBCL's deliver function,
+there is a limit on the number of let* bindings a function can have before
+it crashes with SIGSEGV. Testing showed:
+- 5 let* bindings: WORKS
+- 6 let* bindings: WORKS
+- 7 let* bindings: CRASHES (SIGSEGV)
+
+Root cause: Likely stack/temp slot overflow in the generated native code.
+Each let* binding with a function call value uses a temp slot, and with
+too many bindings, slots overflow into other memory regions.
+
+Impact: All linker functions (buf-mach-header-64, buf-segment-command-64,
+etc.) have more than 6 let* bindings and need refactoring.
+
+Fix pattern: Split functions into smaller helpers with at most 5 let* bindings
+each. Example: wrap-with-heap-stub was split into wrap-stub-prologue,
+wrap-stub-setup, wrap-stub-call, wrap-stub-epilogue, and combine-stub-parts.
+
+Functions needing refactoring:
+- buf-mach-header-64: 8 bindings
+- buf-segment-command-64: 11 bindings
+- buf-section-64: 12 bindings
+- write-load-commands: 18 bindings
+- write-macho-with-imports-and-heap: 6 bindings (borderline)
+
+18. **habu0 linker function refactoring (November 28, 2025 - IN PROGRESS)**
+Systematically refactored all linker functions to avoid the let* binding limit:
+
+**Refactored functions**:
+- buf-mach-header-64: Split into buf-mach-header-64-part1, buf-mach-header-64-part2 (4 bindings each)
+- buf-segment-command-64: Split into buf-segment-cmd-part1, part2, part3 (3-4 bindings each)
+- buf-section-64: Split into buf-section-64-part1, part2, part3 (4 bindings each)
+- write-load-commands: Split into calc-text-params, calc-data-params, write-load-commands-with-params, and phase functions
+- buf-dysymtab-command: Split into buf-dysymtab-part1 through part5 (4 bindings each)
+- buf-load-dylib-command: Split into buf-load-dylib-part1, part2
+- write-linkedit-section: Split into calc-linkedit-params, write-linkedit-with-params
+- build-chained-fixups-data: Split into calc-fixups-offsets, build-fixups-header, build-fixups-imports, build-fixups-segments, build-fixups-with-offsets
+
+**Pattern used**: Use cons cells to pass multiple calculated parameters between helper functions.
+Example: `(cons vmsize (cons offset (cons stubs-offset stubs-size)))` for text params.
+
+**Current debugging state**:
+- Incremental testing isolated crash to write-load-commands-phase2
+- Function entry with 6 parameters works
+- 4-binding let* extraction works
+- Returning extraction result works (exit 0)
+- Calling write-load-commands-phase2 with 9 parameters causes SIGSEGV
+
+**Hypothesis**: Either write-load-commands-phase2 itself has too many bindings, or the
+9-parameter function call pattern triggers a different native code limitation.
+
+---
+
+## Session Summary (November 28, 2025 - >8 Argument Support)
+
+Implemented partial support for functions with more than 8 arguments in the bootstrap compiler.
+
+**Changes Made**:
+1. Updated `call-fn` codegen to allocate stack space for args 8+ with 16-byte alignment
+2. Updated `funcall-ir` codegen with same stack argument handling
+3. Added `:leaf` parameter to `nc-gen-param-stores` for correct frame size selection
+4. Created test file `tests/test_many_args.lisp` with 8 test cases
+
+**Key Fixes**:
+- ARM64 AAPCS64 requires 16-byte stack alignment; fixed `sub sp, sp, N` to round up
+- Leaf functions use #x200 frame, non-leaf use #x400; parameter loading now uses correct offset
+
+**Test Results** (3/8 passing):
+- PASS: Individual argument access (return 8th, 9th, 10th arg)
+- PASS: Simple addition of two args (a + i)
+- FAIL: Complex arithmetic combining many arguments
+
+**Decision**: Stop debugging edge cases. The proper fix is implementing a register allocator,
+which will correctly handle temporary values and eliminate the current ad-hoc spill slot system.
+The >8 argument support is functional for simple cases; complex cases await register allocation.
+
+**Next Step**: Implement proper register allocator to replace temporary slot system.
+
+---
+
+## Session Summary (November 28, 2025 - >8 Argument and Leaf Collision Fix)
+
+Completed >8 argument support and fixed a critical bug with leaf function optimization.
+
+**Accomplishments**:
+1. Implemented stack argument passing for functions with >8 arguments
+2. Fixed ARM64 16-byte stack alignment requirement
+3. Fixed frame size mismatch between caller and callee for stack args
+4. Discovered and fixed temp slot collision with environment variables in leaf functions
+5. All 8 many-args tests now pass
+6. All 77 native Mach-O tests still pass
+
+**Bug Fix 19: Temp slot collision with env variables in leaf functions**
+
+When a function had many parameters (9+) AND many let bindings (5+), accessing variables
+at high offsets (12+) would return 0 or wrong values.
+
+Root cause: Leaf function optimization uses smaller frame (0x200) with x20 = sp + 0xC0.
+Non-leaf uses 0x400 frame with x20 = sp + 0x180. In leaf frame:
+- Variables at [x20 - N*8] = [sp + 192 - N*8]
+- Temp slots at [sp + 64 + T*8]
+- Collision when 192 - N*8 = 64 + T*8, i.e., N + T = 16
+
+With 5 nested lets (max T=4) and var offset 12, we get exactly N+T=16, causing collision.
+
+Fix: Added `nc-count-max-env-offset` function to count maximum env offset in IR.
+Disabled leaf optimization when:
+- num_params > 8 (requires stack arguments)
+- max_env_size >= 12 (leaves room for 4 temp depths)
+
+Files changed: `bootstrap/compiler.lisp`
+- Added `nc-count-max-env-offset` function
+- Updated `nc-codegen-fn` to check env size before enabling leaf optimization
+
+---
+
+## Session Summary (November 28, 2025 - Streaming I/O Investigation)
+
+This session attempted to implement streaming Mach-O file writing to avoid memory exhaustion
+with large heap allocations. Discovered a fundamental issue with `sys-open` calls in native code.
+
+**Approach Attempted**:
+1. Implement streaming file I/O functions (stream-open-write, stream-write, stream-close)
+2. Write Mach-O sections incrementally to disk instead of building in memory
+3. Added wrapper functions near the top of habu0.lisp where other sys-* calls get patched
+
+**Key Findings**:
+1. `sys-open` calls crash even when added to new wrapper functions
+2. Patching appears correct (build output shows _open at new locations being patched)
+3. `native-read-file` works for non-existent files (returns nil quickly)
+4. `native-write-file` crashes when called from mode #x300
+5. Simple functions like `length` work from mode #x300
+6. The crash happens inside `sys-open` call, not in argument preparation
+
+**Debugging Evidence**:
+- Mode #x300 branch is reached (returns 0xDD marker)
+- `length` call works from mode #x300 (returns 2)
+- `native-read-file` with non-existent file works (returns 0x66 for nil)
+- `native-write-file` crashes with exit 255
+- New `open-file-for-write` function entry is reached (returns 0xCC marker)
+- But the `sys-open` call inside crashes
+
+**Current Hypothesis**:
+The sys-open/sys-write/sys-close primitives may have state or register requirements that
+aren't being met when called from certain code paths. The patching looks correct in the
+build output, but something about the calling context is causing crashes.
+
+**Possible Causes**:
+1. Register state corruption before/after sys-* calls
+2. Stack alignment issues
+3. Something specific to libSystem function calling convention not being met
+4. Branch distance limitations for the patched BL instructions
+
+**Current State**:
+- Mode #x100 (eval): WORKING
+- Mode #x200 (codegen): WORKING
+- Mode #x300 (linker): CRASHES when calling sys-open
+
+**Next Steps**:
+1. Try using a different linking approach (e.g., one-shot write via native-write-file)
+2. Investigate if there's a call stack depth limit for sys-* calls
+3. Check if the issue is specific to write-path sys-open (with flags #x601)
+4. Consider building the entire Mach-O in memory but with smaller chunks
+
+---
+
+## Session Summary (November 28, 2025 - wrap-with-heap-stub Fix)
+
+This session continued debugging mode #x300 by systematically isolating the crash location.
+
+**Debugging Approach**:
+1. Reverted habu0.lisp to committed version (working interpreter)
+2. Verified interpreter works: `(+ 20 22)` returns 42
+3. Verified mode #x300 crashes with SIGSEGV (exit 139) - expected due to let* limit
+4. Incrementally added back linker code with debug returns to isolate crash
+
+**Findings**:
+- Split `deliver-with-imports-and-heap` (8 bindings → 2 helpers) - WORKS
+- `calc-heap-page-offset` and `calc-heap-page-offset-2` - WORK (returns heap page offset = 2)
+- `wrap-with-heap-stub` - CRASHES (exit 139)
+
+**Root Cause Identified**:
+`wrap-with-heap-stub` has a single `(list ...)` with 20 function calls directly inside it.
+This triggers the known compiler quirk: function calls directly inside list expressions
+crash in native code.
+
+**Current State of habu0.lisp**:
+- `deliver-with-imports-and-heap` split into helpers - committed changes reverted, working version has 8 bindings
+- `wrap-with-heap-stub` needs refactoring - cannot have 20 fn calls in one list
+- `write-macho-with-imports-and-heap` simplified to debug stub (returns sum of imports + code size)
+
+**Fix Required for wrap-with-heap-stub**:
+Split into multiple helper functions that each build 4-5 instructions:
+```lisp
+;; Pattern: pre-compute in let*, then combine
+(defun wrap-stub-part1 ()
+  (let* ((i1 (a64-sub-imm ...))
+         (i2 (a64-str ...))
+         (i3 (a64-str ...))
+         (i4 (a64-str ...)))
+    (list i1 i2 i3 i4)))
+
+(defun wrap-stub-part2 () ...)
+;; etc, then combine all parts
+```
+
+**Current Mode Status**:
+- Mode #x100 (eval): WORKING
+- Mode #x200 (codegen): WORKING
+- Mode #x300 (linker): CRASHES in wrap-with-heap-stub
+
+**Next Steps**:
+1. Split wrap-with-heap-stub into 5 helper functions (4 instructions each)
+2. Test each helper individually
+3. Combine helpers and test full wrap-with-heap-stub
+4. Continue with write-macho-with-imports-and-heap
+5. Test mode #x300 end-to-end
+
+---
+
+## Session Summary (November 28, 2025 - Continued)
+
+This session continued linker function refactoring to fix mode #x300 (linker test).
+All linker functions with >6 let* bindings were split into smaller helpers.
+
+**Accomplishments (Continuation Session)**:
+1. Refactored buf-mach-header-64 from 8 bindings to 2 helper functions (4 each)
+2. Refactored buf-segment-command-64 from 11 bindings to 3 helper functions
+3. Refactored buf-section-64 from 12 bindings to 3 helper functions
+4. Refactored write-load-commands from 18 bindings to multiple phase functions
+5. Refactored buf-dysymtab-command from 20 bindings to 5 helper functions
+6. Refactored buf-load-dylib-command from 7 bindings to 2 helper functions
+7. Refactored write-linkedit-section from 8 bindings to multiple helpers
+8. Refactored build-chained-fixups-data from 11 bindings to multiple helpers
+9. Re-enabled deliver-with-imports-and-heap function
+10. Isolated crash location to write-load-commands-phase2 via incremental testing
+
+**Key Decisions**:
+- Use cons cells to pass multiple calculated parameters between helper functions
+- Split each function into helpers with max 5 let* bindings
+- Incremental testing approach: add early returns to isolate crash location
+
+**Current State**:
+- Mode #x100 (eval): WORKING
+- Mode #x200 (codegen): WORKING
+- Mode #x300 (linker): CRASHES in write-load-commands-phase2
+- The 4-binding parameter extraction works; the phase2 call crashes
+
+**Next Steps**:
+1. Debug write-load-commands-phase2 to find why 9-parameter call crashes
+2. Potentially refactor phase2 if it has binding limit issues
+3. Test mode #x300 end-to-end after fix
+4. Continue toward full self-hosting compiler
+
+---
+
+## Session Summary (November 28, 2025 - Earlier)
+
+This session fixed critical bugs in habu0's native code generation (h0-codegen), enabling
+the standalone interpreter to compile Lisp to ARM64 machine code and execute it. Also
+identified the root cause of the linker crash as a let* binding limit in native code.
+
+**Accomplishments**:
+1. Fixed wrapper stub to initialize x20 (environment base register)
+2. Fixed wrapper stub to allocate 512-byte stack frame (was 48 bytes)
+3. Moved temp slots from sp+0 to sp+48 to avoid register overlap
+4. Pre-computed function calls in let bindings before list placement (compiler quirk)
+5. Inlined temp-slot-offset calculations (removed function)
+6. All 22 h0-codegen tests passing
+7. Rewrote AGENTS.md for better clarity and organization
+8. Split wrap-with-heap-stub into 5 helper functions (avoids binding limit)
+9. Identified let* binding limit (~6) in native functions
+10. Documented linker functions needing refactoring
+
+**Key Decisions**:
+- Inline all temp slot offset calculations rather than using a function
+- Pre-compute function calls before placing in list expressions
+- Split functions with many let* bindings into smaller helpers (max 5 each)
+- Document compiler quirks in AGENTS.md for future reference
 
 ---
 
@@ -1692,5 +2053,5 @@ Implement a reader so Habu can read its own source code.
 ---
 
 **File**: CONTEXT.md
-**Status**: Runtime extensions complete. Moving to binary generation and REPL.
-**Last Updated**: November 26, 2025
+**Status**: habu0 codegen mode working. Next: fix linker mode (#x300), consider file splitting.
+**Last Updated**: November 28, 2025
