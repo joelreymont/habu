@@ -1717,6 +1717,51 @@
          ;; string-ref - get character at index
          ((eq op 'string-ref)
           (list 'string-ref-ir (nc-compile (cadr expr) env fenv) (nc-compile (caddr expr) env fenv)))
+         ;; string-append - concatenate two strings
+         ;; Expands to: (let* ((s1 str1) (s2 str2)
+         ;;                     (len1 (string-length s1)) (len2 (string-length s2))
+         ;;                     (total (+ len1 len2))
+         ;;                     (vec (make-vector total)))
+         ;;               (labels ((copy1 (i) (if (< i len1)
+         ;;                                       (progn (vector-set vec i (string-ref s1 i))
+         ;;                                              (copy1 (+ i 1)))))
+         ;;                        (copy2 (i) (if (< i len2)
+         ;;                                       (progn (vector-set vec (+ len1 i) (string-ref s2 i))
+         ;;                                              (copy2 (+ i 1))))))
+         ;;                 (copy1 0)
+         ;;                 (copy2 0)
+         ;;                 (make-string-from-vector vec)))
+         ((eq op 'string-append)
+          (let ((s1-var (gensym "S1"))
+                (s2-var (gensym "S2"))
+                (len1-var (gensym "LEN1"))
+                (len2-var (gensym "LEN2"))
+                (total-var (gensym "TOTAL"))
+                (vec-var (gensym "VEC"))
+                (copy1-fn (gensym "COPY1"))
+                (copy2-fn (gensym "COPY2"))
+                (i-var (gensym "I")))
+            (nc-compile
+             (list 'let* (list (list s1-var (cadr expr))
+                               (list s2-var (caddr expr))
+                               (list len1-var (list 'string-length s1-var))
+                               (list len2-var (list 'string-length s2-var))
+                               (list total-var (list '+ len1-var len2-var))
+                               (list vec-var (list 'make-vector total-var)))
+                   (list 'labels (list (list copy1-fn (list i-var)
+                                             (list 'if (list '< i-var len1-var)
+                                                   (list 'progn
+                                                         (list 'vector-set vec-var i-var (list 'string-ref s1-var i-var))
+                                                         (list copy1-fn (list '+ i-var 1)))))
+                                       (list copy2-fn (list i-var)
+                                             (list 'if (list '< i-var len2-var)
+                                                   (list 'progn
+                                                         (list 'vector-set vec-var (list '+ len1-var i-var) (list 'string-ref s2-var i-var))
+                                                         (list copy2-fn (list '+ i-var 1))))))
+                         (list copy1-fn 0)
+                         (list copy2-fn 0)
+                         (list 'make-string-from-vector vec-var)))
+             env fenv)))
          ;; system - execute shell command
          ((eq op 'system)
           (list 'system-ir (nc-compile (cadr expr) env fenv)))
@@ -1865,6 +1910,41 @@
                                (list n-var (list 'sys-write fd-var vec-var len-var)))
                    (list 'sys-close fd-var)
                    n-var)
+             env fenv)))
+         ;; native-read-file-large - read file in chunks and concatenate
+         ;; Expands to: (let* ((fd (sys-open path O_RDONLY 0))
+         ;;                     (buf (make-vector 65536)))
+         ;;               (labels ((read-loop (acc)
+         ;;                          (let ((n (sys-read fd buf 65536)))
+         ;;                            (if (= n 0)
+         ;;                                acc
+         ;;                                (let ((chunk (buffer-to-string buf n)))
+         ;;                                  (read-loop (string-append acc chunk)))))))
+         ;;                 (let ((result (read-loop "")))
+         ;;                   (sys-close fd)
+         ;;                   result)))
+         ((eq op 'native-read-file-large)
+          (let ((path-var (gensym "PATH"))
+                (fd-var (gensym "FD"))
+                (buf-var (gensym "BUF"))
+                (n-var (gensym "N"))
+                (chunk-var (gensym "CHUNK"))
+                (acc-var (gensym "ACC"))
+                (result-var (gensym "RESULT"))
+                (read-loop-fn (gensym "READ-LOOP")))
+            (nc-compile
+             (list 'let* (list (list path-var (cadr expr))
+                               (list fd-var (list 'sys-open path-var #x0 0))
+                               (list buf-var (list 'make-vector 65536)))
+                   (list 'labels (list (list read-loop-fn (list acc-var)
+                                             (list 'let* (list (list n-var (list 'sys-read fd-var buf-var 65536)))
+                                                   (list 'if (list '= n-var 0)
+                                                         acc-var
+                                                         (list 'let* (list (list chunk-var (list 'buffer-to-string buf-var n-var)))
+                                                               (list read-loop-fn (list 'string-append acc-var chunk-var)))))))
+                         (list 'let* (list (list result-var (list read-loop-fn "")))
+                               (list 'sys-close fd-var)
+                               result-var)))
              env fenv)))
          ;; char-upcase - convert lowercase char code to uppercase
          ;; Transform to: (if (and (>= ch #x61) (<= ch #x7A)) (- ch #x20) ch)
@@ -5127,10 +5207,17 @@ int main(int argc, char **argv) {
 (defun deliver-file-with-libsystem (source-path output-path &key verbose)
   "Compile Lisp file to native executable using libSystem.
    Usage: (habu:deliver-file-with-libsystem \"program.lisp\" \"program\")"
-  (let ((source (with-open-file (in source-path :direction :input)
-                  (let ((contents (make-string (file-length in))))
-                    (read-sequence contents in)
-                    contents))))
+  (let ((source
+         #+sbcl
+         (with-open-file (in source-path :direction :input)
+           (let ((contents (make-string (file-length in))))
+             (read-sequence contents in)
+             contents))
+         #-sbcl
+         ;; When running as native code, can't use SBCL's with-open-file
+         ;; This path would only be taken if the compiled compiler is running natively
+         ;; For now, this is a placeholder - native compilation will inline native-read-file-large
+         (error "deliver-file-with-libsystem requires SBCL for file I/O. Use compiled version with native-read-file-large.")))
     (deliver-with-libsystem source output-path :verbose verbose)))
 
 ;;; Export new functions

@@ -1,0 +1,10 @@
+;;; Test string-append in sequence (not recursion)
+
+(let ((s1 ""))
+  (let ((s2 (string-append s1 "A")))
+    (let ((s3 (string-append s2 "B")))
+      (sys-write 1 s3 (string-length s3))
+      (sys-write 1 "\n" 1)
+      (if (= (string-length s3) 2)
+          (sys-exit 42)
+          (sys-exit 1)))))
