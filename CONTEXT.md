@@ -176,13 +176,25 @@ The `tak` benchmark is slowest due to heavy nested function calls.
 - Tail call optimization for self-recursive functions
 
 ### Current Task
-Phase 5 optimization complete. P1-P6 implemented (constant folding, x24 optimization, immediate operands, leaf functions, optimized multiplication, register caching).
-77/77 native tests pass. Habu is ~1.7-2.5x slower than fully optimized SBCL (except tak which is 8.6x slower due to nested calls).
-Next: Full register allocation or function inlining for further gains.
+Phase 6: Standalone habu0 interpreter/evaluator (November 28, 2025).
+
+**habu0 Status** (standalone Lisp interpreter):
+- Reads Lisp source files via native file I/O
+- Parses with native reader (numbers, symbols, strings, lists, quotes)
+- Interprets with h0-eval supporting:
+  - Arithmetic: +, -, *, /, mod
+  - Comparisons: =, <, >, <=, >=
+  - Control: if, cond, progn
+  - Binding: let, let*, defun
+  - Lists: cons, car, cdr, list, null, consp
+  - Boolean: and, or, not (with short-circuit)
+- O(1) amortized operator dispatch via symbol caching
+- Tested: factorial, fibonacci, nested lets, cond expressions
 
 **Self-Hosting Status**:
 - Compiled programs run without SBCL - YES
-- Compiler itself runs without SBCL - NO (still needs SBCL host)
+- habu0 interpreter runs without SBCL - YES
+- Full compiler runs without SBCL - NO (still needs SBCL host)
 - Fixed-point compilation (compiler compiles itself) - PENDING
 
 **New Tests Added (November 27, 2025)**:
