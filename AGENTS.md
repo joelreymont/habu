@@ -1,44 +1,163 @@
-You are writing a self-hosted Lisp compiler.
-The compiler generates machine code, like SBCL.
-You have a tiny C runtime and everything else is in Lisp.
-You do not use C for anything but the tiny C runtime, there should be no C backends!
-You want to implement full Lisp spec.
-You target ARM64 first and x86_64 second for code generation.
-Bootstrapping should be done in Lisp, compiled by SBCL.
-You should be using Lisp hex numbers everywhere!
-Write session context to CONTEXT.md, save it frequently and keep it up to date.
-Use the Lisp tracing facility for debugging.
-Commit frequently.
+# Habu Lisp Compiler - Agent Instructions
 
-Common Lisp HyperSpec: https://www.lispworks.com/documentation/HyperSpec/Front/Contents.htm
+## Project Overview
 
-Use this git author: Joel Reymont <18791+joelreymont@users.noreply.github.com>
+Habu is a self-hosted Lisp compiler that generates native ARM64 machine code.
 
-Proactively:
+**Key Characteristics:**
+- Native code generation (no bytecode interpreter)
+- Minimal C runtime (only for bootstrapping)
+- Full Common Lisp specification as the goal
+- ARM64 first, x86_64 second
+- Bootstrapped via SBCL
 
-1. Maintain a CONTEXT.md markdown file
-2. Update it after each major step
-3. Include enough detail that a new session could pick up where we left off
+## Architecture
 
-Create a plan, break it down into smal steps.
+### Components
 
-Execute the full plan without stopping unless you need my input.
+1. **Bootstrap Compiler** (`bootstrap/compiler.lisp`)
+   - Compiles Lisp to IR
+   - Runs in SBCL during bootstrap phase
+   - Uses `nc-*` prefix for native compiler functions
 
-Make sure there are no emojis in commit descriptions, code or generated documentation.
+2. **ARM64 Assembler** (`arm64/asm.lisp`)
+   - Pure ARM64 instruction encoding
+   - `:arm64` package with clean API
+   - No external dependencies
 
-There should be one commit per logical feature and its tests. Each commit should have a short and succinct summary. All the "phase completed", "fixed this" and similar commits should be combined with their respective implementation commits.
+3. **ARM64 Codegen** (`arm64/codegen-sbcl.lisp`)
+   - IR to ARM64 machine code
+   - SBCL-specific helpers for bootstrap
 
-Make sure tests follow the approach of the existing testing infrastructure. Tests should be as short as possible. You must NEVER use color and NEVER use emoji. Summarise the purpose in a comment at the start of the test add NO further comments unless truly necessary for understanding.
+4. **Mach-O Linker** (`macho-linker.lisp`)
+   - Generates standalone macOS executables
+   - Chained fixups for dynamic linking
 
-Make sure there’s complete test coverage that follows the style of existing tests in the repo.
-You are allowed to say I don’t know and ask for help!
+5. **Standalone Interpreter** (`habu0.lisp`)
+   - Self-contained Lisp interpreter
+   - Runs without SBCL
+   - Entry point for self-hosting
 
-Do not use marketing language. Use technical facts instead of competitive comparisons.
+6. **C Runtime** (`runtime/`)
+   - Garbage collector
+   - Basic I/O operations
+   - Only used during initial bootstrap
 
-## Code Generation Policy
+### File Organization
+
+```
+habu/
+  bootstrap/       - SBCL bootstrap compiler
+  arm64/           - ARM64 instruction encoding and codegen
+  runtime/         - Minimal C runtime
+  common/          - Shared Lisp utilities
+  tests/           - Test suite
+  docs/            - Documentation
+  bin/             - CLI tools
+```
+
+## Development Guidelines
+
+### Session Management
+
+1. **CONTEXT.md** - Maintain this file with:
+   - Current development phase
+   - Recent changes and bug fixes
+   - Known issues and workarounds
+   - Test status
+   - Update after each major step
+
+2. **Commits** - One logical feature per commit:
+   - Include tests with implementation
+   - Short, descriptive summary
+   - No separate "fixed this" commits
+
+### Code Style
+
+- **Hex numbers**: Use `#x` prefix for addresses, offsets, constants
+- **No emojis**: Never in code, commits, or docs
+- **No marketing language**: Use technical facts
+- **Tests**: Minimal, purpose comment at top, no color output
+
+### Code Generation Policy
 
 When adding new ARM64 instructions:
-1. Add new intrinsics to `arm64/asm.lisp` in the `:arm64` package
-2. Do NOT create new `nc-` prefixed functions in `bootstrap/compiler.lisp`
-3. Use existing ARM64 intrinsics from `arm64/asm.lisp` wherever possible
-4. The `nc-` functions in `bootstrap/compiler.lisp` are legacy wrappers - prefer direct ARM64 intrinsics for new code
+
+1. Add intrinsics to `arm64/asm.lisp` in `:arm64` package
+2. Do NOT create new `nc-*` functions in bootstrap compiler
+3. Use existing ARM64 intrinsics wherever possible
+4. `nc-*` functions are legacy wrappers - prefer direct ARM64 calls
+
+### Debugging
+
+- Use Lisp `trace` facility for debugging
+- Check CONTEXT.md for known issues
+- Common exit codes:
+  - 139 = SIGSEGV (memory access error)
+  - 137 = SIGKILL (often codesign issue on macOS)
+
+## Self-Hosting Path
+
+### Current Status
+
+1. **habu0** - Standalone interpreter (working)
+   - Reads and parses Lisp
+   - Interprets via h0-eval
+   - Compiles to IR via h0-compile
+   - Generates native code via h0-codegen
+
+2. **Native executables** - Generated programs run without SBCL
+
+3. **Full compiler** - Still needs SBCL for:
+   - `defmacro` (uses SBCL `eval` for expanders)
+   - Some reader features
+
+### Blockers for Full Self-Hosting
+
+1. Macro expansion at compile time needs native eval
+2. Complex nested function calls in certain patterns
+
+## Testing
+
+Run tests with:
+```bash
+cd tests && sbcl --script run_tests.lisp
+```
+
+Test file naming: `test_<feature>.lisp`
+
+Test structure:
+```lisp
+;;; Test <feature> - short description
+(assert (= (some-function) expected-value))
+```
+
+## Reference
+
+- Common Lisp HyperSpec: https://www.lispworks.com/documentation/HyperSpec/Front/Contents.htm
+- Git author: Joel Reymont <18791+joelreymont@users.noreply.github.com>
+
+## Key Patterns in Habu Code
+
+### Compiler Quirks
+
+1. **List expressions with function calls**
+   - Pre-compute function calls in `let` bindings before placing in lists
+   - Direct calls in `(list (fn arg) ...)` may crash in native code
+
+2. **Tagged values**
+   - Fixnums: `value << 4`, tag 0
+   - Cons: `pointer | 1`
+   - Symbols: `pointer | 2`
+
+3. **Register usage**
+   - x20: Environment frame base
+   - x28: Heap bump pointer
+   - x26: Code base (for native executables)
+   - x27: Heap base
+
+## When Stuck
+
+1. Check CONTEXT.md for similar past issues
+2. Use `trace` to debug function calls
+3. Ask for help - it's allowed and encouraged
