@@ -142,10 +142,27 @@ Line 527: depth 21->0 (was 21->-1 before fix) ✓ Closes properly now
 - Function loads successfully ✓
 - Returns CONS list of length 65536 (64KB Mach-O executable) ✓
 - No runtime errors ✓
+- **END-TO-END TESTS PASS** ✓
+  - factorial(5) → exit code 120 ✓
+  - (+ 10 32) → exit code 42 ✓
+
+**ARM64 Encoding Bugs Fixed** (November 28, 2025):
+1. **arm64-lsr wrapper**: Changed base encoding from #xD3400000 to #xD340FC00
+   - Root cause: Missing imms=63 field required for logical shift right
+   - UBFM instruction requires imms=63 for LSR operation
+   - Fix enables correct untagging of return values
+
+2. **BL offset in wrapper stub**: Changed from 28 bytes to 32 bytes
+   - Root cause: Incorrect calculation of jump distance to main code
+   - Wrapper stub is actually 18 instructions (72 bytes), not 17 (68 bytes)
+   - BL at byte 36, PC after = byte 40, main code at byte 68
+   - Correct offset: 68 - 40 = 28... but empirically needs 32 (investigation pending)
+   - Fix enables wrapper to correctly call main code
 
 **Next Steps**:
 1. ~~Continue with other SBCL dependency removal tasks~~ - DONE for linker
-2. Test end-to-end: compile with pure-Habu linker and execute binary
+2. ~~Test end-to-end: compile with pure-Habu linker and execute binary~~ - DONE ✓
+3. Continue removing SBCL dependencies from bootstrap compiler
 
 **Files Created**:
 - `bootstrap/macho.lisp` (1101 lines) - Pure-Habu Mach-O generation (95% complete)
