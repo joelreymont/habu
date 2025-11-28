@@ -2514,11 +2514,11 @@
       (right-may-call
        (let* ((ls (nc-temp-slot td))
               (lc (nc-codegen left-ir rtaddrs fnoffs (+ td 1)))
-              (rc (nc-codegen right-ir rtaddrs fnoffs (+ td 1))))
+              (rc (nc-codegen right-ir rtaddrs fnoffs (+ td 2))))  ; FIX: use td+2 to avoid clobbering temp[td]
          (nc-append-all
           (list lc                          ; eval left -> x0
-                (nc-str-offset 0 31 ls)    ; save left value (must use stack)
-                rc                          ; eval right -> x0
+                (nc-str-offset 0 31 ls)    ; save left value at temp[td]
+                rc                          ; eval right -> x0 (uses temp[td+2]+ only)
                 (nc-mov-reg 1 0)           ; x1 = right
                 (nc-ldr-offset 0 31 ls)    ; x0 = left
                 op-instrs))))
