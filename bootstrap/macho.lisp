@@ -391,7 +391,7 @@
                                  (copy-symbols (cdr src-list)
                                               (+ dst-idx 1)
                                               (set-byte-at buf (+ symbols-offset dst-idx) (car src-list))))))
-                    (copy-symbols symbols-list 0 d13))))))))))
+                    (copy-symbols symbols-list 0 d13)))))))))))
 
 ;;; ============================================================
 ;;; Top-Level Executable Generation
@@ -524,7 +524,7 @@
                                                                                                            
                                                                                                            ;; Final padding
                                                                                                            (cons (buf-zeros (- linkedit-size (+ nlist-size string-table-size)))
-                                                                                                                 nil)))))))))))))))))))))) ;; 21 parens
+                                                                                                                 nil))))))))))))))))))))) ;; 21 parens (fixed: removed extra paren)
 
 (defun write-minimal-macho-executable (output-path code-bytes)
   "Generate minimal Mach-O executable and write to file.
