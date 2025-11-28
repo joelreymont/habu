@@ -1707,6 +1707,9 @@
          ;; intern - same as make-symbol-from-string
          ((eq op 'intern)
           (list 'make-symbol-from-string-ir (nc-compile (cadr expr) env fenv)))
+         ;; symbol-name - get the name string of a symbol
+         ((eq op 'symbol-name)
+          (list 'symbol-name-ir (nc-compile (cadr expr) env fenv)))
          ;; write-bytes - write vector of bytes to file
          ((eq op 'write-bytes)
           (list 'write-bytes-ir
@@ -2254,6 +2257,10 @@
     ((nc-has-tag ir 'make-symbol-from-string-ir)
      (let ((str (nc-eval-ir-with-fns (cadr ir) env fenv)))
        (intern str)))
+    ;; symbol-name-ir - get symbol's name string
+    ((nc-has-tag ir 'symbol-name-ir)
+     (let ((sym (nc-eval-ir-with-fns (cadr ir) env fenv)))
+       (symbol-name sym)))
     ;; write-bytes-ir - write vector of bytes to file (for evaluator, use SBCL)
     ((nc-has-tag ir 'write-bytes-ir)
      (let ((path (nc-eval-ir-with-fns (cadr ir) env fenv))
@@ -3192,6 +3199,51 @@
          (nc-bic-reg 0 4 11)     ; clear fixnum tag
          (nc-movz 9 2)
          (nc-orr-reg 0 0 9)))))  ; tag as symbol
+    ;; symbol-name-ir - get symbol's name by looking up in symbol table
+    ((nc-has-tag ir 'symbol-name-ir)
+     ;; symbol-name-ir = (symbol-name-ir sym-ir)
+     ;; Symbol table at x27[8] is list of (name . (id . rest)) entries
+     ;; Symbol value is (id << 4) | 2
+     ;; Algorithm:
+     ;; 1. Get symbol ID: sym >> 4 (clear tag)
+     ;; 2. Walk table until find entry where (car (cdr entry)) >> 4 == id
+     ;; 3. Return (car entry) (the name string)
+     (let* ((sym-ir (cadr ir))
+            (sym-code (nc-codegen sym-ir rtaddrs fnoffs (+ td 5))))
+       (nc-append-all
+        (list
+         ;; Evaluate symbol
+         sym-code
+         ;; Get ID: x1 = sym >> 4 (already properly shifted since tag is 2)
+         (nc-lsr-imm 1 0 4)           ; x1 = symbol ID (untagged)
+         ;; Get table: x2 = x27[8]
+         (nc-ldr-offset 2 27 8)       ; x2 = table (list of entries)
+         ;; Load mask for clearing tag bits
+         (nc-movz 11 #xF)             ; x11 = 0xF (tag mask)
+         ;; loop:
+         ;; Check if nil (x2 == 0)
+         (nc-cmp-imm 2 0)
+         (nc-b-cond (nc-cond-eq) 48)  ; if nil, jump to end (+12 instructions = 48 bytes)
+         ;; Get entry: x2 is cons (entry . rest), untag to get pointer
+         (nc-bic-reg 3 2 11)          ; x3 = entry pointer (untagged)
+         ;; Get id-next: (cdr entry) = [x3+8]
+         (nc-ldr-offset 4 3 8)        ; x4 = (id . rest) cons
+         ;; Untag and get id: (car x4) = [x4-1] after untagging
+         (nc-bic-reg 4 4 11)          ; x4 = pointer to (id . rest)
+         (nc-ldr-offset 5 4 0)        ; x5 = id (as fixnum, so id << 4)
+         (nc-lsr-imm 5 5 4)           ; x5 = id (untagged)
+         ;; Compare: x5 == x1?
+         (nc-cmp-reg 5 1)
+         (nc-b-cond (nc-cond-eq) 12)  ; if match, jump to found (+3 instructions = 12 bytes)
+         ;; Not match, advance: x2 = (cdr entry) = [x3+8], then cdr of that = [x4+8]
+         (nc-ldr-offset 2 4 8)        ; x2 = rest of table
+         (nc-b-offset -44)            ; back to loop start (11 instructions = -44 bytes)
+         ;; found: return (car entry) = [x3+0] (the name string)
+         (nc-ldr-offset 0 3 0)        ; x0 = name string
+         ;; skip to end (past the nil case)
+         (nc-b-offset 8)              ; skip past nil case (branch + movz = 8 bytes)
+         ;; end (nil case): return nil
+         (nc-movz 0 0)))))            ; x0 = nil
     ;; write-bytes-ir - write vector of bytes to file
     ((nc-has-tag ir 'write-bytes-ir)
      ;; write-bytes-ir = (write-bytes-ir path-ir vec-ir)
@@ -4245,6 +4297,7 @@
                ((or (nc-has-tag ir 'make-vector-ir)
                     (nc-has-tag ir 'make-string-from-vector-ir)
                     (nc-has-tag ir 'make-symbol-from-string-ir)
+                    (nc-has-tag ir 'symbol-name-ir)
                     (nc-has-tag ir 'string-length-ir)
                     (nc-has-tag ir 'vector-length-ir)
                     (nc-has-tag ir 'system-ir)

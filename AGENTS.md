@@ -34,3 +34,11 @@ Make sure there’s complete test coverage that follows the style of existing te
 You are allowed to say I don’t know and ask for help!
 
 Do not use marketing language. Use technical facts instead of competitive comparisons.
+
+## Code Generation Policy
+
+When adding new ARM64 instructions:
+1. Add new intrinsics to `arm64/asm.lisp` in the `:arm64` package
+2. Do NOT create new `nc-` prefixed functions in `bootstrap/compiler.lisp`
+3. Use existing ARM64 intrinsics from `arm64/asm.lisp` wherever possible
+4. The `nc-` functions in `bootstrap/compiler.lisp` are legacy wrappers - prefer direct ARM64 intrinsics for new code
