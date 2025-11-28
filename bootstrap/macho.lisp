@@ -391,3 +391,144 @@
                                               (+ dst-idx 1)
                                               (set-byte-at buf (+ symbols-offset dst-idx) (car src-list))))))
                     (copy-symbols symbols-list 0 d13))))))))))
+
+;;; ============================================================
+;;; Top-Level Executable Generation
+;;; ============================================================
+
+(defun build-minimal-macho-executable (code-bytes)
+  "Build minimal Mach-O executable that runs CODE-BYTES.
+   CODE-BYTES should be a list of bytes (ARM64 machine code ending in RET).
+   Returns a buffer (byte list) containing complete executable."
+  (let* ((code-size (length code-bytes))
+         
+         ;; Calculate sizes for load commands
+         (header-size 32)
+         (pagezero-cmd-size 72)
+         (text-cmd-size (+ 72 80))  ; segment + 1 section
+         (linkedit-cmd-size 72)
+         (dylinker-path "/usr/lib/dyld")
+         (dylinker-cmd-size (align-up (+ 12 (string-length dylinker-path) 1) 8))
+         (uuid-cmd-size 24)
+         (build-version-cmd-size 24)
+         (main-cmd-size 24)
+         (libsystem-path "/usr/lib/libSystem.B.dylib")
+         (load-dylib-cmd-size (align-up (+ 24 (string-length libsystem-path) 1) 8))
+         (symtab-cmd-size 24)
+         (dysymtab-cmd-size 80)
+         
+         ;; Number of load commands
+         (ncmds 10)
+         (sizeofcmds (+ pagezero-cmd-size
+                       text-cmd-size
+                       linkedit-cmd-size
+                       dylinker-cmd-size
+                       uuid-cmd-size
+                       build-version-cmd-size
+                       main-cmd-size
+                       load-dylib-cmd-size
+                       symtab-cmd-size
+                       dysymtab-cmd-size))
+         
+         ;; Code placement
+         (code-offset (align-up (+ header-size sizeofcmds 64) 64))
+         (text-segment-size +PAGE-SIZE+)
+         
+         ;; LINKEDIT segment
+         (linkedit-fileoff +PAGE-SIZE+)
+         (linkedit-vmaddr (+ +VM-BASE+ +PAGE-SIZE+))
+         
+         ;; String table (just "_main")
+         (string-table (cons 0 (cons 95 (cons 109 (cons 97 (cons 105 (cons 110 (cons 0 nil))))))))  ; 0, "_main", 0
+         (string-table-size (length string-table))
+         
+         ;; Symbol table
+         (symtab-offset linkedit-fileoff)
+         (nsyms 1)
+         (nlist-size (* nsyms 16))
+         (strtab-offset (+ symtab-offset nlist-size))
+         (linkedit-size (align-up (+ nlist-size string-table-size) 8))
+         
+         ;; Entry point
+         (entry-offset code-offset)
+         
+         ;; Flags
+         (flags (logior +MH-NOUNDEFS+ (logior +MH-DYLDLINK+
+                                              (logior +MH-TWOLEVEL+ +MH-PIE+))))
+         
+         ;; UUID (simple: use constants)
+         (uuid-vals (cons #xDEADBEEF (cons #xCAFEBABE (cons #x12345678 (cons #x87654321 nil))))))
+    
+    ;; Build executable by concatenating all parts
+    (buf-append-all
+     (cons (buf-mach-header-64 ncmds sizeofcmds flags)
+           
+           ;; Load commands
+           (cons (buf-segment-command-64 "__PAGEZERO" 0 +PAGE-SIZE+ 0 0 0 0 0 0)
+                 
+                 (cons (buf-segment-command-64 "__TEXT" +VM-BASE+ text-segment-size
+                                                0 text-segment-size
+                                                (logior +VM-PROT-READ+ +VM-PROT-EXECUTE+)
+                                                (logior +VM-PROT-READ+ +VM-PROT-EXECUTE+)
+                                                1  ; 1 section
+                                                0)
+                       
+                       (cons (buf-section-64 "__text" "__TEXT"
+                                             (+ +VM-BASE+ code-offset) code-size
+                                             code-offset 2  ; align = 2^2 = 4
+                                             0 0  ; reloff, nreloc
+                                             (logior +S-ATTR-PURE-INSTRUCTIONS+ +S-ATTR-SOME-INSTRUCTIONS+)
+                                             0 0)  ; reserved1, reserved2
+                             
+                             (cons (buf-segment-command-64 "__LINKEDIT" linkedit-vmaddr linkedit-size
+                                                            linkedit-fileoff linkedit-size
+                                                            +VM-PROT-READ+ +VM-PROT-READ+
+                                                            0 0)  ; nsects, flags
+                                   
+                                   (cons (buf-load-dylinker-command dylinker-path)
+                                         
+                                         (cons (buf-uuid-command uuid-vals)
+                                               
+                                               (cons (buf-build-version-command)
+                                                     
+                                                     (cons (buf-main-command entry-offset)
+                                                           
+                                                           (cons (buf-load-dylib-command libsystem-path)
+                                                                 
+                                                                 (cons (buf-symtab-command symtab-offset nsyms
+                                                                                            strtab-offset string-table-size)
+                                                                       
+                                                                       (cons (buf-dysymtab-command 0 0 0 0 0 1)
+                                                                             
+                                                                             ;; Padding to code offset
+                                                                             (cons (buf-zeros (- code-offset (+ header-size sizeofcmds)))
+                                                                                   
+                                                                                   ;; Code bytes
+                                                                                   (cons code-bytes
+                                                                                         
+                                                                                         ;; Padding to PAGE_SIZE
+                                                                                         (cons (buf-zeros (- linkedit-fileoff (+ code-offset code-size)))
+                                                                                               
+                                                                                               ;; LINKEDIT: symbol table (nlist_64 entry for _main)
+                                                                                               (cons (buf-append-all
+                                                                                                      (cons (buf-u32-le 1)  ; strx = 1 ("_main")
+                                                                                                            (cons (buf-u8 #x0F)  ; n_type = N_SECT | N_EXT
+                                                                                                                  (cons (buf-u8 1)  ; n_sect = 1 (__text)
+                                                                                                                        (cons (buf-u16-le 0)  ; n_desc
+                                                                                                                              (cons (buf-u64-le (+ +VM-BASE+ code-offset))
+                                                                                                                                    nil))))))
+                                                                                                     
+                                                                                                     ;; String table
+                                                                                                     (cons string-table
+                                                                                                           
+                                                                                                           ;; Final padding
+                                                                                                           (cons (buf-zeros (- linkedit-size (+ nlist-size string-table-size)))
+                                                                                                                 nil))))))))))))))))))))))
+
+(defun write-minimal-macho-executable (output-path code-bytes)
+  "Generate minimal Mach-O executable and write to file.
+   CODE-BYTES: list of bytes (ARM64 machine code)
+   OUTPUT-PATH: string path for output file"
+  (let* ((exe-buf (build-minimal-macho-executable code-bytes))
+         (exe-str (buf-to-string exe-buf)))
+    (native-write-file output-path exe-str)))

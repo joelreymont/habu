@@ -127,14 +127,23 @@ The `make-string-from-vector` primitive solves binary file writing:
 - `bootstrap/macho.lisp` - Pure-Habu Mach-O generation (no SBCL dependencies)
 - `common/buffer.lisp` - Reusable buffer building utilities
 
-**Remaining Work**:
-1. Port chained fixups generation (for dynamic linking to libSystem)
-2. Port __LINKEDIT section building (symbols, strings, binding info)
-3. Create top-level executable generation function (assemble all pieces)
-4. Test minimal executable generation
-5. Test with dynamic imports
+**Completed This Session**:
+1. ✓ Port chained fixups generation (for dynamic linking to libSystem)
+2. ✓ Port __LINKEDIT section building (symbols, strings, binding info)
+3. ✓ Create top-level executable generation function (assemble all pieces)
+4. Pending: Test minimal executable generation
+5. Pending: Test with dynamic imports
 
-**Current Status**: Foundation complete - can generate all basic Mach-O structures as byte buffers. Need to assemble into complete executable generator.
+**Current Status**: All major Mach-O generation functions ported to pure Habu! Functions implemented:
+- `build-minimal-macho-executable`: Assembles all structures into complete executable
+- `write-minimal-macho-executable`: Writes executable to file using native-write-file
+- Complete chained fixups support for dynamic linking
+- All load commands, segments, sections, symbol tables
+
+**Next Steps**:
+1. Test minimal executable generation (simple ARM64 code)
+2. Add imports support (stubs + GOT for libSystem calls)
+3. Integrate with bootstrap compiler's deliver function
 
 **Phase 4: Full Self-Hosting (Fixed Point)** - PARTIAL SUCCESS ✓
 
