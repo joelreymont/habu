@@ -122,7 +122,21 @@ Result: Stack/heap exhaustion during compilation. The bootstrap compiler is too 
 
 **Current status**: We have a working compiler driver that successfully compiles small-to-medium programs. The path to full self-hosting requires either architectural changes or a modular bootstrap strategy.
 
-**Next**: Commit progress and document the self-hosting challenge.
+**Known Limitations**:
+1. Non-tail-recursive functions may crash with exit code 0
+   - Tail-recursive factorial(5) = 120 ✓ WORKS
+   - Non-tail-recursive factorial(5) = 0 (crash) ✗ FAILS
+   - Suggests stack frame management issue in deeply nested calls
+
+2. Very large programs (5000+ lines) exhaust stack/heap during compilation
+
+**Success Cases**:
+- Tail-recursive functions with accumulators
+- Multiple function definitions (tested with 15 functions, 3481 bytes)
+- Mutual recursion (tested in previous sessions)
+- Higher-order functions (funcall, closures)
+
+**Next**: Document findings and explore modular bootstrap strategy.
 
 ---
 
