@@ -98,11 +98,11 @@ $ /tmp/test_via_driver && echo $?
 
 The compiler driver successfully compiles simple programs!
 
-**Phase 6: Port Mach-O Linker to Pure Habu** - IN PROGRESS (November 28, 2025)
+**Phase 6: Port Mach-O Linker to Pure Habu** - BLOCKED (November 28, 2025)
 
 **Goal**: Remove all SBCL dependencies from macho-linker.lisp by replacing stream-based I/O with vector-building approach.
 
-**Status**: **DEBUGGING PAREN-BALANCE ISSUES**
+**Status**: **BLOCKED - Runtime error in pure-Habu linker**
 
 **What Was Completed**:
 1. ✓ All ARM64 instruction encoders (SUB, ADD, STR, LDR, MOV, ADR, BL, LSR, RET, ADRP, BR)
@@ -115,23 +115,29 @@ The compiler driver successfully compiles simple programs!
 8. ✓ wrap-bytecode-with-heap-for-imports (68-byte prologue for heap initialization)
 9. ✓ write-macho-executable-with-imports-and-heap (file writer using native-write-file)
 10. ✓ All functions exported from :habu package
-11. ✓ Fixed file-level paren balance (removed 3 extra closing parens from line 1085)
+11. ✓ Fixed file-level paren balance (1396 opens, 1396 closes)
+12. ✓ Fixed build-minimal-macho-executable function paren balance (129 opens, 129 closes)
+13. ✓ File loads successfully in SBCL without syntax errors
 
-**Current Issue**:
-Parenthesis imbalance in `build-minimal-macho-executable` function (lines 400-527):
-- Line 527 has too many closing parens, causing depth to go negative (-1)
-- This causes line 528 to be outside the function definition
-- Function closes one line too early
-- Need to remove extra parens from line 527 or add opens elsewhere in function
+**Blocking Issue**:
+Runtime error when calling `build-macho-executable-with-imports-and-heap`:
+```
+(LENGTH HABU::BUILD-MINIMAL-MACHO-EXECUTABLE)
+The value BUILD-MINIMAL-MACHO-EXECUTABLE is not of type SEQUENCE
+```
 
-**Error Manifestation**:
-Runtime error: `(LENGTH HABU::BUILD-MINIMAL-MACHO-EXECUTABLE)` - `LENGTH` being called on symbol instead of list. This is likely because the paren imbalance causes SBCL to misparse the code, potentially making a variable hold the symbol name instead of calling the function.
+**Investigation**:
+- Symbol `BUILD-MINIMAL-MACHO-EXECUTABLE` is NOT referenced anywhere in `build-macho-executable-with-imports-and-heap` function
+- One of the helper functions (`build-string-table-for-imports`, `build-chained-fixups-data`, or `buf-exports-trie`) may be returning a symbol instead of a list
+- Root cause unclear - may require step-by-step debugging with SBCL trace/break
+- Paren balance is correct (verified with automated counting)
 
-**Next Steps** (immediate):
-1. **Fix build-minimal function** - Remove extra closing parens from line 527
-2. **Verify all functions load** - Test bootstrap/macho.lisp loads without errors
-3. **Test runtime** - Try compilation again after fixing parens
-4. **End-to-end test** - Verify factorial compiles with pure-Habu linker
+**Decision**:
+Revert to old SBCL-based linker (macho-linker.lisp) for now. Pure-Habu linker saved in bootstrap/macho.lisp for future investigation. This unblocks progress on other self-hosting tasks.
+
+**Next Steps**:
+1. Continue with other SBCL dependency removal tasks
+2. Revisit pure-Habu linker after more experience with debugging complex nested cons expressions
 
 **Files Created**:
 - `bootstrap/macho.lisp` (1101 lines) - Pure-Habu Mach-O generation (95% complete)
