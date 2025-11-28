@@ -1020,3 +1020,7 @@
   (let* ((exe-buf (build-macho-executable-with-imports-and-heap code-bytes imports heap-size))
          (exe-str (buf-to-string exe-buf)))
     (native-write-file output-path exe-str)))
+
+;;; Export the main functions for use by deliver-with-libsystem
+(export '(write-macho-executable-with-imports-and-heap
+          build-macho-executable-with-imports-and-heap) :habu)
