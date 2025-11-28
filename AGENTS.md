@@ -60,14 +60,22 @@ habu/
 
 ### Session Management
 
-1. **CONTEXT.md** - Maintain this file with:
-   - Current development phase
-   - Recent changes and bug fixes
+1. **CONTEXT.md** - The primary context file for session progress
+   - This is THE file to update with session progress and current state
+   - Current development phase and active tasks
+   - Recent changes and bug fixes (this session)
    - Known issues and workarounds
-   - Test status
-   - Update after each major step
+   - Test status and results
+   - Update after each major step or milestone
+   - NOT SESSION.md - that's a historical log, don't write there
 
-2. **Commits** - One logical feature per commit:
+2. **SESSION.md** - Historical log only
+   - Large append-only log file (27MB+)
+   - Contains past session transcripts
+   - DO NOT write session summaries here
+   - Only append if explicitly instructed
+
+3. **Commits** - One logical feature per commit:
    - Include tests with implementation
    - Short, descriptive summary
    - No separate "fixed this" commits
