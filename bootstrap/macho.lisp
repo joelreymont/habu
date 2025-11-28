@@ -5,6 +5,18 @@
 
 (in-package :habu)
 
+;;; SBCL compatibility: native-write-file
+#+sbcl
+(defun native-write-file (path content)
+  "Write string CONTENT to file PATH (SBCL version)"
+  (with-open-file (stream path
+                          :direction :output
+                          :if-exists :supersede
+                          :if-does-not-exist :create
+                          :element-type '(unsigned-byte 8))
+    (loop for char across content
+          do (write-byte (char-code char) stream))))
+
 ;;; ============================================================
 ;;; Mach-O Constants
 ;;; ============================================================
@@ -81,9 +93,10 @@
               (collect-zeros (- len slen))))))
 
 (defun buf-zeros (count)
-  (if (<= count 0)
-      nil
-      (cons 0 (buf-zeros (- count 1)))))
+  "Create a list of COUNT zeros (iterative to avoid stack overflow)"
+  (let ((result nil))
+    (dotimes (i count result)
+      (push 0 result))))
 
 (defun buf-append-all (bufs)
   (if (null bufs)

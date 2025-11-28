@@ -5020,10 +5020,9 @@ int main(int argc, char **argv) {
    Usage: (habu:deliver-with-libsystem \"(sys-write 1 \\\"Hi\\\" 2)\" \"/tmp/test\")
 
    The source can use sys-write, sys-read, sys-open, sys-close, sys-exit."
-  ;; Load the macho linker if not already loaded
-  ;; TODO: Switch to pure-Habu linker (bootstrap/macho.lisp) once runtime error is fixed
-  (unless (fboundp 'write-macho-executable-with-imports)
-    (load (merge-pathnames "macho-linker.lisp"
+  ;; Load the pure-Habu macho linker if not already loaded
+  (unless (fboundp 'build-macho-executable-with-imports-and-heap)
+    (load (merge-pathnames "bootstrap/macho.lisp"
                            (or *load-pathname* *default-pathname-defaults*))))
 
   (let* ((forms (nc-read-all source-string))
@@ -5071,12 +5070,10 @@ int main(int argc, char **argv) {
                  ;; DATA_CONST is one 16KB page = 4 ADRP pages
                  (data-const-pages-4kb (/ #x4000 #x1000))
                  (heap-page-offset (+ text-pages-4kb data-const-pages-4kb))
-                 (wrapped-code (funcall (find-symbol "WRAP-BYTECODE-WITH-HEAP-FOR-IMPORTS" "HABU-MACHO")
-                                       flat-code heap-page-offset)))
+                 (wrapped-code (wrap-bytecode-with-heap-for-imports flat-code heap-page-offset)))
 
-            ;; Create executable with imports and heap using old SBCL-based linker
-            (funcall (find-symbol "WRITE-MACHO-EXECUTABLE-WITH-IMPORTS-AND-HEAP" "HABU-MACHO")
-                     output-path wrapped-code imports :heap-size #x100000)
+            ;; Create executable with imports and heap using pure-Habu linker
+            (write-macho-executable-with-imports-and-heap output-path wrapped-code imports #x100000)
 
             ;; Calculate offsets for patching
             ;; Pure-Habu linker has same structure as old linker:
