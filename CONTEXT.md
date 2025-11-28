@@ -43,17 +43,21 @@ Two options:
 
 **Recommendation**: Option 2 is more pragmatic. The habu0 interpreter is a proof-of-concept but not critical for self-hosting. The real path to self-hosting is through the bootstrap compiler.
 
-**Phase 2: Remove SBCL Dependencies** - COMPLETE (for critical path)
+**Phase 2: Remove SBCL Dependencies** - COMPLETE ✓ (November 28, 2025)
 
 **Progress Made**:
 - ✓ Added string-concat and number-to-string primitives to sys package
 - ✓ Replaced 8/48 format calls (in deliver-with-libsystem and nc-gensym-lambda)
 - ✓ Replaced 1/5 loop forms (stub map building in deliver-with-libsystem)
 - ✓ Made codesign call optional (wrapped with #+sbcl and file existence check)
+- ✓ **Eliminated binary file I/O dependencies** (November 28, 2025):
+  - Removed with-open-file, file-position, write-byte from deliver-with-libsystem
+  - Pre-calculate BL instruction offsets using exact flattened size
+  - No post-processing file patching needed
 - ⚠ Remaining dependencies are in deprecated/debugging code:
   - 40 format calls: old deliver function (uses clang), disassembler, C code generator
   - 4 loop forms: disassembler only
-  - 7 with-open-file: all in bootstrap-time code (runs in SBCL, not generated executables)
+  - 5 with-open-file: old deliver function, IR evaluator (both deprecated)
   - 2 sb-ext:run-program: old deliver function and IR evaluator (both deprecated)
 
 **Key Insight**:
@@ -61,8 +65,10 @@ The compiler code that RUNS during bootstrap (in SBCL) can use SBCL features. On
 
 **deliver-with-libsystem is now self-hosting ready**:
 - Uses only CL standard features + #+sbcl feature conditionals
+- No binary file I/O dependencies - BL instructions emitted correctly from the start
 - Generated executables are pure native ARM64 with no SBCL dependency
 - Only external dependency: libSystem.B.dylib (standard on macOS)
+- Only remaining SBCL dependency: optional codesign call (#+sbcl wrapped)
 
 **Bootstrap Compiler Test** - SUCCESSFUL ✓
 
