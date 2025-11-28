@@ -1145,6 +1145,11 @@
       nil
       (bytes-append (car lists) (bytes-append-all (cdr lists)))))
 
+;; Temp slot offset calculation:
+;; Temp slots start at sp+48 (#x30) to avoid overlap with saved registers (sp+0..sp+40)
+;; Formula: 48 + td*8 = #x30 + (* td #x8)
+;; Note: Inlined everywhere because function calls have overhead in native code
+
 ;; Generate code for IR (using numeric tags)
 ;; td = temp slot depth (for nested expressions)
 (defun h0-codegen (ir td)
@@ -1156,17 +1161,17 @@
        (if (< tagged #x10000)
            (a64-movz #x0 tagged)
            ;; Larger values need MOVZ + MOVK
-           (bytes-append-all
-            (list (a64-movz #x0 (logand tagged #xFFFF))
-                  (a64-movk #x0 (logand (ash tagged #x-10) #xFFFF) #x10))))))
+           (let ((movz-code (a64-movz #x0 (logand tagged #xFFFF)))
+                 (movk-code (a64-movk #x0 (logand (ash tagged #x-10) #xFFFF) #x10)))
+             (bytes-append movz-code movk-code)))))
 
     ;; Variable - load from stack frame at x20
     ((h0-has-tag-n ir (ir-tag-var))
      (let* ((off (cadr ir))
-            (byte-off (* off #x8)))
-       (bytes-append-all
-        (list (a64-sub-imm #x1 #x14 byte-off)  ; x1 = x20 - offset
-              (a64-ldr #x0 #x1 #x0)))))        ; x0 = [x1]
+            (byte-off (* off #x8))
+            (sub-code (a64-sub-imm #x1 #x14 byte-off))
+            (ldr-code (a64-ldr #x0 #x1 #x0)))
+       (bytes-append sub-code ldr-code)))
 
     ;; Addition
     ((h0-has-tag-n ir (ir-tag-add))
@@ -1182,39 +1187,43 @@
 
     ;; Multiplication (need to untag one operand)
     ((h0-has-tag-n ir (ir-tag-mul))
-     (bytes-append-all
-      (list (h0-codegen (cadr ir) td)
-            (a64-str #x0 #x1F (* td #x8))          ; save left to temp
-            (h0-codegen (caddr ir) (+ td #x1))
-            (a64-lsr-imm #x1 #x0 #x4)             ; untag right
-            (a64-ldr #x0 #x1F (* td #x8))         ; load left
-            (a64-mul #x0 #x0 #x1))))              ; multiply
+     (let ((slot-off (+ #x30 (* td #x8))))
+       (bytes-append-all
+        (list (h0-codegen (cadr ir) td)
+              (a64-str #x0 #x1F slot-off)             ; save left to temp
+              (h0-codegen (caddr ir) (+ td #x1))
+              (a64-lsr-imm #x1 #x0 #x4)               ; untag right
+              (a64-ldr #x0 #x1F slot-off)             ; load left
+              (a64-mul #x0 #x0 #x1)))))               ; multiply
 
     ;; Division
     ((h0-has-tag-n ir (ir-tag-div))
-     (bytes-append-all
-      (list (h0-codegen (cadr ir) td)
-            (a64-str #x0 #x1F (* td #x8))
-            (h0-codegen (caddr ir) (+ td #x1))
-            (a64-lsr-imm #x1 #x0 #x4)             ; untag right
-            (a64-ldr #x0 #x1F (* td #x8))
-            (a64-lsr-imm #x0 #x0 #x4)             ; untag left
-            (a64-sdiv #x0 #x0 #x1)                ; divide
-            (a64-lsl-imm #x0 #x0 #x4))))          ; retag result
+     (let ((slot-off (+ #x30 (* td #x8))))
+       (bytes-append-all
+        (list (h0-codegen (cadr ir) td)
+              (a64-str #x0 #x1F slot-off)
+              (h0-codegen (caddr ir) (+ td #x1))
+              (a64-lsr-imm #x1 #x0 #x4)               ; untag right
+              (a64-ldr #x0 #x1F slot-off)
+              (a64-lsr-imm #x0 #x0 #x4)               ; untag left
+              (a64-sdiv #x0 #x0 #x1)                  ; divide
+              (a64-lsl-imm #x0 #x0 #x4)))))           ; retag result
 
     ;; Modulo (a mod b = a - (a/b)*b)
     ((h0-has-tag-n ir (ir-tag-mod))
-     (bytes-append-all
-      (list (h0-codegen (cadr ir) td)
-            (a64-str #x0 #x1F (* td #x8))         ; save left
-            (h0-codegen (caddr ir) (+ td #x1))
-            (a64-str #x0 #x1F (* (+ td #x1) #x8)) ; save right
-            (a64-lsr-imm #x1 #x0 #x4)             ; untag right
-            (a64-ldr #x0 #x1F (* td #x8))
-            (a64-lsr-imm #x0 #x0 #x4)             ; untag left
-            (a64-sdiv #x2 #x0 #x1)                ; x2 = left/right
-            (a64-msub #x0 #x2 #x1 #x0)            ; x0 = left - x2*right
-            (a64-lsl-imm #x0 #x0 #x4))))          ; retag
+     (let ((slot-off (+ #x30 (* td #x8)))
+           (slot-off2 (+ #x30 (* (+ td #x1) #x8))))
+       (bytes-append-all
+        (list (h0-codegen (cadr ir) td)
+              (a64-str #x0 #x1F slot-off)                  ; save left
+              (h0-codegen (caddr ir) (+ td #x1))
+              (a64-str #x0 #x1F slot-off2)                 ; save right
+              (a64-lsr-imm #x1 #x0 #x4)                    ; untag right
+              (a64-ldr #x0 #x1F slot-off)
+              (a64-lsr-imm #x0 #x0 #x4)                    ; untag left
+              (a64-sdiv #x2 #x0 #x1)                       ; x2 = left/right
+              (a64-msub #x0 #x2 #x1 #x0)                   ; x0 = left - x2*right
+              (a64-lsl-imm #x0 #x0 #x4)))))                ; retag
 
     ;; Comparisons
     ((h0-has-tag-n ir (ir-tag-cmp-eq))
@@ -1248,39 +1257,43 @@
 
     ;; Cons
     ((h0-has-tag-n ir (ir-tag-cons))
-     (bytes-append-all
-      (list (h0-codegen (cadr ir) td)            ; compile car
-            (a64-str #x0 #x1F (* td #x8))        ; save car
-            (h0-codegen (caddr ir) (+ td #x1))   ; compile cdr
-            (a64-mov-reg #x1 #x0)                ; x1 = cdr
-            (a64-ldr #x0 #x1F (* td #x8))        ; x0 = car
-            (a64-str #x0 #x1C #x0)               ; [x28] = car
-            (a64-str #x1 #x1C #x8)               ; [x28+8] = cdr
-            (a64-mov-reg #x0 #x1C)               ; x0 = cons ptr
-            (a64-add-imm #x0 #x0 #x1)            ; tag as cons (1)
-            (a64-add-imm #x1C #x1C #x10))))      ; bump heap
+     (let ((slot-off (+ #x30 (* td #x8))))
+       (bytes-append-all
+        (list (h0-codegen (cadr ir) td)               ; compile car
+              (a64-str #x0 #x1F slot-off)             ; save car
+              (h0-codegen (caddr ir) (+ td #x1))      ; compile cdr
+              (a64-mov-reg #x1 #x0)                   ; x1 = cdr
+              (a64-ldr #x0 #x1F slot-off)             ; x0 = car
+              (a64-str #x0 #x1C #x0)                  ; [x28] = car
+              (a64-str #x1 #x1C #x8)                  ; [x28+8] = cdr
+              (a64-mov-reg #x0 #x1C)                  ; x0 = cons ptr
+              (a64-add-imm #x0 #x0 #x1)               ; tag as cons (1)
+              (a64-add-imm #x1C #x1C #x10)))))        ; bump heap
 
     ;; Car
     ((h0-has-tag-n ir (ir-tag-car))
-     (bytes-append-all
-      (list (h0-codegen (cadr ir) td)
-            (a64-sub-imm #x0 #x0 #x1)            ; untag cons
-            (a64-ldr #x0 #x0 #x0))))             ; load car
+     (let ((arg-ir (cadr ir)))
+       (bytes-append-all
+        (list (h0-codegen arg-ir td)
+              (a64-sub-imm #x0 #x0 #x1)          ; untag cons
+              (a64-ldr #x0 #x0 #x0)))))          ; load car
 
     ;; Cdr
     ((h0-has-tag-n ir (ir-tag-cdr))
-     (bytes-append-all
-      (list (h0-codegen (cadr ir) td)
-            (a64-sub-imm #x0 #x0 #x1)            ; untag cons
-            (a64-ldr #x0 #x0 #x8))))             ; load cdr
+     (let ((arg-ir (cadr ir)))
+       (bytes-append-all
+        (list (h0-codegen arg-ir td)
+              (a64-sub-imm #x0 #x0 #x1)          ; untag cons
+              (a64-ldr #x0 #x0 #x8)))))          ; load cdr
 
     ;; Null check
     ((h0-has-tag-n ir (ir-tag-null))
-     (bytes-append-all
-      (list (h0-codegen (cadr ir) td)
-            (a64-cmp-imm #x0 #x0)
-            (a64-cset #x0 (cond-eq))
-            (a64-lsl-imm #x0 #x0 #x4))))
+     (let ((arg-ir (cadr ir)))
+       (bytes-append-all
+        (list (h0-codegen arg-ir td)
+              (a64-cmp-imm #x0 #x0)
+              (a64-cset #x0 (cond-eq))
+              (a64-lsl-imm #x0 #x0 #x4)))))
 
     ;; Let binding
     ;; h0-compile assigns offset 0 to the innermost binding
@@ -1289,13 +1302,15 @@
     ;; Store value at x20-0 (the slot for offset 0), decrement x20 for body
     ((h0-has-tag-n ir (ir-tag-let))
      (let* ((val-ir (caddr ir))
-            (body-ir (cadddr ir)))
+            (body-ir (cadddr ir))
+            (val-code (h0-codegen val-ir td))
+            (body-code (h0-codegen body-ir td)))
        (bytes-append-all
-        (list (h0-codegen val-ir td)
+        (list val-code
               ;; Decrement x20 BEFORE storing (so offset 0 refers to new slot)
               (a64-sub-imm #x14 #x14 #x8)        ; x20 -= 8 (grow frame)
               (a64-str #x0 #x14 #x0)             ; [x20] = value (at new x20)
-              (h0-codegen body-ir td)
+              body-code
               (a64-add-imm #x14 #x14 #x8)))))    ; x20 += 8 (restore frame)
 
     ;; Progn
@@ -1306,26 +1321,30 @@
     (t (a64-movz #x0 #x0))))
 
 ;; Codegen helper for binary operations
+;; Inline temp slot calculation: 48 + td*8
 (defun h0-codegen-binop (left-ir right-ir op-instrs td)
-  (bytes-append-all
-   (list (h0-codegen left-ir td)
-         (a64-str #x0 #x1F (* td #x8))           ; save left
-         (h0-codegen right-ir (+ td #x1))
-         (a64-mov-reg #x1 #x0)                   ; x1 = right
-         (a64-ldr #x0 #x1F (* td #x8))           ; x0 = left
-         op-instrs)))
+  (let ((slot-off (+ #x30 (* td #x8))))
+    (bytes-append-all
+     (list (h0-codegen left-ir td)
+           (a64-str #x0 #x1F slot-off)             ; save left
+           (h0-codegen right-ir (+ td #x1))
+           (a64-mov-reg #x1 #x0)                   ; x1 = right
+           (a64-ldr #x0 #x1F slot-off)             ; x0 = left
+           op-instrs))))
 
 ;; Codegen helper for comparisons
+;; Inline temp slot calculation: 48 + td*8
 (defun h0-codegen-cmp (left-ir right-ir cond td)
-  (bytes-append-all
-   (list (h0-codegen left-ir td)
-         (a64-str #x0 #x1F (* td #x8))
-         (h0-codegen right-ir (+ td #x1))
-         (a64-mov-reg #x1 #x0)
-         (a64-ldr #x0 #x1F (* td #x8))
-         (a64-cmp-reg #x0 #x1)
-         (a64-cset #x0 cond)
-         (a64-lsl-imm #x0 #x0 #x4))))
+  (let ((slot-off (+ #x30 (* td #x8))))
+    (bytes-append-all
+     (list (h0-codegen left-ir td)
+           (a64-str #x0 #x1F slot-off)
+           (h0-codegen right-ir (+ td #x1))
+           (a64-mov-reg #x1 #x0)
+           (a64-ldr #x0 #x1F slot-off)
+           (a64-cmp-reg #x0 #x1)
+           (a64-cset #x0 cond)
+           (a64-lsl-imm #x0 #x0 #x4)))))
 
 ;; Codegen helper for progn (list of IR forms)
 (defun h0-codegen-progn (forms td)
@@ -1847,45 +1866,60 @@
 
 ;;; Wrapper stub for heap initialization
 
-;; Wrap bytecode with heap setup stub (68 bytes = 17 instructions)
+;; Wrap bytecode with heap setup stub (80 bytes = 20 instructions)
+;; Stack layout (512 bytes total):
+;;   sp+0:   saved x30
+;;   sp+8:   saved x28
+;;   sp+16:  saved x26
+;;   sp+24:  saved x27
+;;   sp+32:  saved x20
+;;   sp+40:  (padding)
+;;   sp+48:  temp slots for h0-codegen (td=0, td=1, ...)
+;;   sp+64:  environment base (x20 points here)
 (defun wrap-with-heap-stub (code-bytes heap-page-offset)
   "Wrap bytecode with heap initialization for executables with imports.
    heap-page-offset is the page offset from ADRP to __DATA segment."
   (let ((stub (bytes-append-all
                (list
-                ;; sub sp, sp, #48
-                (a64-sub-imm #x1F #x1F #x30)
-                ;; str x30, [sp]
+                ;; 1. sub sp, sp, #512
+                (a64-sub-imm #x1F #x1F #x200)
+                ;; 2. str x30, [sp]
                 (a64-str #x1E #x1F #x0)
-                ;; str x28, [sp, #8]
+                ;; 3. str x28, [sp, #8]
                 (a64-str #x1C #x1F #x8)
-                ;; str x26, [sp, #16]
+                ;; 4. str x26, [sp, #16]
                 (a64-str #x1A #x1F #x10)
-                ;; str x27, [sp, #24]
+                ;; 5. str x27, [sp, #24]
                 (a64-str #x1B #x1F #x18)
-                ;; adrp x28, heap_page
+                ;; 6. str x20, [sp, #32]
+                (a64-str #x14 #x1F #x20)
+                ;; 7. add x20, sp, #64 (environment base)
+                (a64-add-imm #x14 #x1F #x40)
+                ;; 8. adrp x28, heap_page
                 (macho-adrp #x1C heap-page-offset)
-                ;; mov x27, x28 (heap base)
+                ;; 9. mov x27, x28 (heap base)
                 (a64-mov-reg #x1B #x1C)
-                ;; add x28, x28, #16 (skip reserved)
+                ;; 10. add x28, x28, #16 (skip reserved)
                 (a64-add-imm #x1C #x1C #x10)
-                ;; adr x26, +36 (code base = 9 instrs ahead)
-                (macho-adr #x1A #x24)
-                ;; bl +8 (jump to main code)
-                (macho-bl #x8)
-                ;; lsr x0, x0, #4 (untag result)
+                ;; 11. adr x26, +40 (code base: byte 80 - byte 40 = 40)
+                (macho-adr #x1A #x28)
+                ;; 12. bl +9 (skip 8 epilogue instrs to reach code)
+                (macho-bl #x9)
+                ;; 13. lsr x0, x0, #4 (untag result)
                 (a64-lsr-imm #x0 #x0 #x4)
-                ;; ldr x27, [sp, #24]
+                ;; 14. ldr x20, [sp, #32]
+                (a64-ldr #x14 #x1F #x20)
+                ;; 15. ldr x27, [sp, #24]
                 (a64-ldr #x1B #x1F #x18)
-                ;; ldr x26, [sp, #16]
+                ;; 16. ldr x26, [sp, #16]
                 (a64-ldr #x1A #x1F #x10)
-                ;; ldr x28, [sp, #8]
+                ;; 17. ldr x28, [sp, #8]
                 (a64-ldr #x1C #x1F #x8)
-                ;; ldr x30, [sp]
+                ;; 18. ldr x30, [sp]
                 (a64-ldr #x1E #x1F #x0)
-                ;; add sp, sp, #48
-                (a64-add-imm #x1F #x1F #x30)
-                ;; ret
+                ;; 19. add sp, sp, #512
+                (a64-add-imm #x1F #x1F #x200)
+                ;; 20. ret
                 (a64-ret)))))
     (bytes-append stub code-bytes)))
 
@@ -2217,7 +2251,7 @@
 (defun deliver-with-imports-and-heap (output-path code-bytes imports heap-size)
   "Create a standalone executable with imports and heap.
    Wraps code with heap initialization stub first."
-  (let* ((wrapper-stub-size #x44)                 ; 68 bytes
+  (let* ((wrapper-stub-size #x50)                 ; 80 bytes (20 instructions)
          (total-code-size (+ (length code-bytes) wrapper-stub-size))
          ;; Calculate heap page offset
          (approx-code-offset #x400)
