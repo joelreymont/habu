@@ -1728,6 +1728,9 @@
           (list 'vector-ref-ir
                 (nc-compile (cadr expr) env fenv)
                 (nc-compile (caddr expr) env fenv)))
+         ;; vector-length - get vector size
+         ((eq op 'vector-length)
+          (list 'vector-length-ir (nc-compile (cadr expr) env fenv)))
          ;; buffer-byte-ref - get raw byte at index from vector data area
          ;; Used for reading file data written by sys-read
          ((eq op 'buffer-byte-ref)
@@ -1821,6 +1824,29 @@
                                (list fd-var (list 'sys-open path-var #x601 #o644))
                                (list len-var (list 'string-length str-var))
                                (list n-var (list 'sys-write fd-var str-var len-var)))
+                   (list 'sys-close fd-var)
+                   n-var)
+             env fenv)))
+         ;; native-write-bytes - write byte vector to file
+         ;; Expands to: (let* ((fd (sys-open path O_WRONLY|O_CREAT|O_TRUNC 0644))
+         ;;                     (len (vector-length vec))
+         ;;                     (n (sys-write fd vec len)))
+         ;;               (sys-close fd)
+         ;;               n)
+         ;; Note: sys-write can write from vectors too, not just strings
+         ((eq op 'native-write-bytes)
+          (let ((path-var (gensym "PATH"))
+                (vec-var (gensym "VEC"))
+                (fd-var (gensym "FD"))
+                (len-var (gensym "LEN"))
+                (n-var (gensym "N")))
+            (nc-compile
+             (list 'LET* (list (list path-var (cadr expr))
+                               (list vec-var (caddr expr))
+                               ;; O_WRONLY|O_CREAT|O_TRUNC = 0x601
+                               (list fd-var (list 'sys-open path-var #x601 #o644))
+                               (list len-var (list 'vector-length vec-var))
+                               (list n-var (list 'sys-write fd-var vec-var len-var)))
                    (list 'sys-close fd-var)
                    n-var)
              env fenv)))
@@ -3099,6 +3125,22 @@
               (nc-add-reg 1 1 0)              ; x1 = address
               (nc-ldr-offset 0 1 0)           ; x0 = [x1] = element (already tagged)
               ))))
+    ;; vector-length-ir - get vector size (inline)
+    ((nc-has-tag ir 'vector-length-ir)
+     ;; vector-length-ir = (vector-length-ir vec-ir)
+     ;; Vector layout: [length (8 bytes)][data...]
+     ;; Just load the length field and tag it
+     (let* ((vec-ir (cadr ir))
+            (vc (nc-codegen vec-ir rtaddrs fnoffs td)))
+       (nc-append-all
+        (list vc
+              ;; x0 = vec (tagged)
+              ;; Clear tag: x0 = x0 & ~0xF
+              (nc-and-imm 0 0 1 #x3C #x3B)    ; x0 = vec_ptr (untagged)
+              ;; Load length: x0 = [x0+0]
+              (nc-ldr-offset 0 0 0)           ; x0 = raw length (untagged integer)
+              ;; Tag as fixnum: x0 = x0 << 4
+              (nc-lsl-imm 0 0 4)))))          ; x0 = tagged fixnum length
     ;; buffer-byte-ref-ir - get raw byte at index (inline)
     ((nc-has-tag ir 'buffer-byte-ref-ir)
      ;; buffer-byte-ref-ir = (buffer-byte-ref-ir vec-ir idx-ir)

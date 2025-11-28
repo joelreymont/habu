@@ -98,6 +98,42 @@ $ /tmp/test_via_driver && echo $?
 
 The compiler driver successfully compiles simple programs!
 
+**Phase 6: Port Mach-O Linker to Pure Habu** - IN PROGRESS (November 28, 2025)
+
+**Goal**: Remove all SBCL dependencies from macho-linker.lisp by replacing stream-based I/O with vector-building approach.
+
+**Progress Made**:
+- ✓ Added `native-write-file` primitive (tested, working)
+- ✓ Added `native-read-file` primitive (tested, working)
+- ✓ Added `vector-length` compiler support and codegen
+- ⚠ Attempted `native-write-bytes` for binary data - BLOCKED
+
+**Solution Found**: Binary File Writing ✓
+The `make-string-from-vector` primitive solves binary file writing:
+- Store bytes in vector as fixnums (0-255)
+- Convert vector to string with `make-string-from-vector`
+- Write string with `native-write-file` (uses sys-write)
+- Test confirmed: Writing [0x48, 0x65, 0x6C, 0x6C, 0x6F] produces correct file content "Hello"
+
+**Approach for Mach-O Linker**:
+1. Build entire executable as vector of bytes in memory
+2. Convert to string at end
+3. Write once with `native-write-file`
+4. No stream I/O needed - single atomic write
+
+**Current Mach-O Linker Dependencies** (macho-linker.lisp):
+- `with-open-file` - 4 occurrences (lines 356, 691, 1138, 5052)
+- `write-byte` - 50+ occurrences (stream-based byte writing)
+- `file-position` - 20+ occurrences (stream position tracking)
+
+**Strategy**: Replace stream I/O with in-memory vector building, write entire file at once.
+
+**Next Steps**:
+1. Resolve byte-writing primitive issue
+2. Create buffer-building helpers (accumulate bytes in vector/list)
+3. Port write-macho-executable-with-imports-and-heap function
+4. Test with minimal Mach-O binary
+
 **Phase 4: Full Self-Hosting (Fixed Point)** - PARTIAL SUCCESS ✓
 
 Compiled bootstrap/compiler.lisp (5329 lines) with itself successfully!
