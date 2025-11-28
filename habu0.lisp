@@ -6,6 +6,23 @@
 ;;; For now, it uses a simple expression evaluator.
 ;;; Full compilation to native code will be added later.
 
+;; Cached operator symbols - set on first use during eval
+;; Once a symbol is identified as an operator, we cache it for eq comparison
+(defvar *op-quote* nil)
+(defvar *op-if* nil)
+(defvar *op-let* nil)
+(defvar *op-defun* nil)
+(defvar *op-t* nil)
+(defvar *op-plus* nil)
+(defvar *op-minus* nil)
+(defvar *op-mul* nil)
+(defvar *op-div* nil)
+(defvar *op-eq-num* nil)
+(defvar *op-lt* nil)
+(defvar *op-gt* nil)
+(defvar *op-le* nil)
+(defvar *op-ge* nil)
+
 ;; File I/O constants
 (defun o-rdonly () #x0)
 
@@ -119,7 +136,122 @@
           (cmp #x0))
         nil)))
 
-;; Symbol name comparison for operator dispatch
+;; Operator check with caching
+;; First time: compare by name and cache the symbol
+;; Subsequent times: fast eq comparison
+(defun op=quote (sym)
+  (if (eq sym *op-quote*) t
+      (if (null *op-quote*)
+          (if (string= (symbol-name sym) "QUOTE")
+              (progn (setq *op-quote* sym) t)
+              nil)
+          nil)))
+
+(defun op=if (sym)
+  (if (eq sym *op-if*) t
+      (if (null *op-if*)
+          (if (string= (symbol-name sym) "IF")
+              (progn (setq *op-if* sym) t)
+              nil)
+          nil)))
+
+(defun op=let (sym)
+  (if (eq sym *op-let*) t
+      (if (null *op-let*)
+          (if (string= (symbol-name sym) "LET")
+              (progn (setq *op-let* sym) t)
+              nil)
+          nil)))
+
+(defun op=defun (sym)
+  (if (eq sym *op-defun*) t
+      (if (null *op-defun*)
+          (if (string= (symbol-name sym) "DEFUN")
+              (progn (setq *op-defun* sym) t)
+              nil)
+          nil)))
+
+(defun op=t (sym)
+  (if (eq sym *op-t*) t
+      (if (null *op-t*)
+          (if (string= (symbol-name sym) "T")
+              (progn (setq *op-t* sym) t)
+              nil)
+          nil)))
+
+(defun op=plus (sym)
+  (if (eq sym *op-plus*) t
+      (if (null *op-plus*)
+          (if (string= (symbol-name sym) "+")
+              (progn (setq *op-plus* sym) t)
+              nil)
+          nil)))
+
+(defun op=minus (sym)
+  (if (eq sym *op-minus*) t
+      (if (null *op-minus*)
+          (if (string= (symbol-name sym) "-")
+              (progn (setq *op-minus* sym) t)
+              nil)
+          nil)))
+
+(defun op=mul (sym)
+  (if (eq sym *op-mul*) t
+      (if (null *op-mul*)
+          (if (string= (symbol-name sym) "*")
+              (progn (setq *op-mul* sym) t)
+              nil)
+          nil)))
+
+(defun op=div (sym)
+  (if (eq sym *op-div*) t
+      (if (null *op-div*)
+          (if (string= (symbol-name sym) "/")
+              (progn (setq *op-div* sym) t)
+              nil)
+          nil)))
+
+(defun op=eq-num (sym)
+  (if (eq sym *op-eq-num*) t
+      (if (null *op-eq-num*)
+          (if (string= (symbol-name sym) "=")
+              (progn (setq *op-eq-num* sym) t)
+              nil)
+          nil)))
+
+(defun op=lt (sym)
+  (if (eq sym *op-lt*) t
+      (if (null *op-lt*)
+          (if (string= (symbol-name sym) "<")
+              (progn (setq *op-lt* sym) t)
+              nil)
+          nil)))
+
+(defun op=gt (sym)
+  (if (eq sym *op-gt*) t
+      (if (null *op-gt*)
+          (if (string= (symbol-name sym) ">")
+              (progn (setq *op-gt* sym) t)
+              nil)
+          nil)))
+
+(defun op=le (sym)
+  (if (eq sym *op-le*) t
+      (if (null *op-le*)
+          (if (string= (symbol-name sym) "<=")
+              (progn (setq *op-le* sym) t)
+              nil)
+          nil)))
+
+(defun op=ge (sym)
+  (if (eq sym *op-ge*) t
+      (if (null *op-ge*)
+          (if (string= (symbol-name sym) ">=")
+              (progn (setq *op-ge* sym) t)
+              nil)
+          nil)))
+
+;; Generic symbol name comparison for cases not covered by caching
 (defun op= (sym name)
   (if (symbolp sym)
       (string= (symbol-name sym) name)
@@ -272,7 +404,17 @@
             (cdr entry)
             (env-lookup sym (cdr env))))))
 
+;; Helper for let bindings - iterates through bindings without recursive symbol issue
+(defun h0-eval-let (bindings body env fenv)
+  (if (null bindings)
+      (h0-eval body env fenv)
+      (let* ((b (car bindings))
+             (var (symbol-name (car b)))
+             (val (h0-eval (cadr b) env fenv)))
+        (h0-eval-let (cdr bindings) body (cons (cons var val) env) fenv))))
+
 ;; Eval function with fenv for function definitions
+;; Uses cached op= functions for O(1) amortized dispatch
 (defun h0-eval (expr env fenv)
   (cond
     ;; Numbers are self-evaluating
@@ -280,7 +422,7 @@
     ;; nil is false
     ((null expr) nil)
     ;; t is true
-    ((op= expr "T") t)
+    ((if (symbolp expr) (op=t expr) nil) t)
     ;; Symbol lookup in variable environment
     ((symbolp expr)
      (env-lookup expr env))
@@ -288,44 +430,33 @@
     ((consp expr)
      (let ((op (car expr)))
        (cond
-         ;; Quote
-         ((op= op "QUOTE") (cadr expr))
-         ;; If
-         ((op= op "IF")
+         ;; Quote - use cached op=quote
+         ((if (symbolp op) (op=quote op) nil) (cadr expr))
+         ;; If - use cached op=if
+         ((if (symbolp op) (op=if op) nil)
           (if (h0-eval (cadr expr) env fenv)
               (h0-eval (caddr expr) env fenv)
               (if (cadddr expr) (h0-eval (cadddr expr) env fenv) nil)))
-         ;; Let - single binding for now
-         ((op= op "LET")
-          (let ((bindings (cadr expr)))
-            (if (null bindings)
-                (h0-eval (caddr expr) env fenv)
-                (let ((b (car bindings)))
-                  (let ((var-sym (car b)))
-                    (let ((var (symbol-name var-sym)))
-                      (let ((val (h0-eval (cadr b) env fenv)))
-                        (let ((entry (cons var val)))
-                          (let ((new-env (cons entry env)))
-                            (if (null (cdr bindings))
-                                (h0-eval (caddr expr) new-env fenv)
-                                (h0-eval (list 'let (cdr bindings) (caddr expr)) new-env fenv)))))))))))
+         ;; Let - use cached op=let, delegate to helper for iteration
+         ((if (symbolp op) (op=let op) nil)
+          (h0-eval-let (cadr expr) (caddr expr) env fenv))
          ;; Defun - returns nil but defines function
-         ((op= op "DEFUN") nil)
-         ;; Arithmetic
-         ((op= op "+") (+ (h0-eval (cadr expr) env fenv) (h0-eval (caddr expr) env fenv)))
-         ((op= op "-") (- (h0-eval (cadr expr) env fenv) (h0-eval (caddr expr) env fenv)))
-         ((op= op "*") (* (h0-eval (cadr expr) env fenv) (h0-eval (caddr expr) env fenv)))
-         ((op= op "/") (/ (h0-eval (cadr expr) env fenv) (h0-eval (caddr expr) env fenv)))
-         ;; Comparisons
-         ((op= op "=")
+         ((if (symbolp op) (op=defun op) nil) nil)
+         ;; Arithmetic - use cached op= functions
+         ((if (symbolp op) (op=plus op) nil) (+ (h0-eval (cadr expr) env fenv) (h0-eval (caddr expr) env fenv)))
+         ((if (symbolp op) (op=minus op) nil) (- (h0-eval (cadr expr) env fenv) (h0-eval (caddr expr) env fenv)))
+         ((if (symbolp op) (op=mul op) nil) (* (h0-eval (cadr expr) env fenv) (h0-eval (caddr expr) env fenv)))
+         ((if (symbolp op) (op=div op) nil) (/ (h0-eval (cadr expr) env fenv) (h0-eval (caddr expr) env fenv)))
+         ;; Comparisons - use cached op= functions
+         ((if (symbolp op) (op=eq-num op) nil)
           (if (= (h0-eval (cadr expr) env fenv) (h0-eval (caddr expr) env fenv)) t nil))
-         ((op= op "<")
+         ((if (symbolp op) (op=lt op) nil)
           (if (< (h0-eval (cadr expr) env fenv) (h0-eval (caddr expr) env fenv)) t nil))
-         ((op= op ">")
+         ((if (symbolp op) (op=gt op) nil)
           (if (> (h0-eval (cadr expr) env fenv) (h0-eval (caddr expr) env fenv)) t nil))
-         ((op= op "<=")
+         ((if (symbolp op) (op=le op) nil)
           (if (<= (h0-eval (cadr expr) env fenv) (h0-eval (caddr expr) env fenv)) t nil))
-         ((op= op ">=")
+         ((if (symbolp op) (op=ge op) nil)
           (if (>= (h0-eval (cadr expr) env fenv) (h0-eval (caddr expr) env fenv)) t nil))
          ;; Function call - look up in fenv
          (t
@@ -349,7 +480,7 @@
 (defun collect-defuns (forms fenv)
   (if (null forms) fenv
       (let ((form (car forms)))
-        (if (and (consp form) (op= (car form) "DEFUN"))
+        (if (and (consp form) (symbolp (car form)) (op=defun (car form)))
             (let* ((name (symbol-name (cadr form)))
                    (params (caddr form))
                    (body (cadddr form)))
@@ -362,7 +493,7 @@
       nil
       (let ((form (car forms)))
         ;; Skip defun forms during evaluation
-        (if (and (consp form) (op= (car form) "DEFUN"))
+        (if (and (consp form) (symbolp (car form)) (op=defun (car form)))
             (h0-eval-forms (cdr forms) env fenv)
             (if (null (cdr forms))
                 (h0-eval form env fenv)
