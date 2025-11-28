@@ -1783,6 +1783,47 @@
          ((eq op 'sys-exit)
           (list 'sys-exit-ir
                 (nc-compile (cadr expr) env fenv)))  ; exit code
+         ;; === High-level file I/O (using sys-* primitives) ===
+         ;; native-read-file - read entire file to string
+         ;; Expands to: (let* ((fd (sys-open path O_RDONLY 0))
+         ;;                     (buf (make-vector 65536))
+         ;;                     (n (sys-read fd buf 65536)))
+         ;;               (sys-close fd)
+         ;;               (buffer-to-string buf n))
+         ((eq op 'native-read-file)
+          (let ((path-var (gensym "PATH"))
+                (fd-var (gensym "FD"))
+                (buf-var (gensym "BUF"))
+                (n-var (gensym "N")))
+            (nc-compile
+             (list 'LET* (list (list path-var (cadr expr))
+                               (list fd-var (list 'sys-open path-var #x0 0))  ; O_RDONLY = 0
+                               (list buf-var (list 'make-vector 65536))
+                               (list n-var (list 'sys-read fd-var buf-var 65536)))
+                   (list 'sys-close fd-var)
+                   (list 'buffer-to-string buf-var n-var))
+             env fenv)))
+         ;; native-write-file - write string to file
+         ;; Expands to: (let* ((fd (sys-open path O_WRONLY|O_CREAT|O_TRUNC 0644))
+         ;;                     (n (sys-write fd str (string-length str))))
+         ;;               (sys-close fd)
+         ;;               n)
+         ((eq op 'native-write-file)
+          (let ((path-var (gensym "PATH"))
+                (str-var (gensym "STR"))
+                (fd-var (gensym "FD"))
+                (len-var (gensym "LEN"))
+                (n-var (gensym "N")))
+            (nc-compile
+             (list 'LET* (list (list path-var (cadr expr))
+                               (list str-var (caddr expr))
+                               ;; O_WRONLY|O_CREAT|O_TRUNC = 0x1|0x200|0x400 = 0x601
+                               (list fd-var (list 'sys-open path-var #x601 #o644))
+                               (list len-var (list 'string-length str-var))
+                               (list n-var (list 'sys-write fd-var str-var len-var)))
+                   (list 'sys-close fd-var)
+                   n-var)
+             env fenv)))
          ;; char-upcase - convert lowercase char code to uppercase
          ;; Transform to: (if (and (>= ch #x61) (<= ch #x7A)) (- ch #x20) ch)
          ((eq op 'char-upcase)
