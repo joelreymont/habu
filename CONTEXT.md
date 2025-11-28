@@ -19,13 +19,16 @@
 - All functions can now have unlimited bindings
 - This unblocked Phase 1 (linker fixes)
 
-**Phase 1: Fix habu0 Linker** - IN PROGRESS
-- ✓ wrap-with-heap-stub refactored (20 instructions pre-computed)
-- ⚠ habu0 crashes with SIGSEGV (mode #x100) - investigating
-- TODO: Test mode #x300 once crashes resolved
+**Phase 1: Fix habu0 Linker** - IN PROGRESS (90% complete)
+- ✓ wrap-with-heap-stub refactored (20 instructions pre-computed in 4 nested let* blocks)
+- ✓ Fixed all h0-codegen function-calls-in-list patterns (mul, div, mod, cons, car, cdr, null)
+- ✓ Fixed all h0-eval function-calls-in-argument patterns (arithmetic, list ops, predicates, comparisons)
+- ⚠ habu0 still crashes with `(+ 20 22)` in both mode #x100 and #x200
+- The crash is NOT in h0-codegen or h0-eval (literal 42 works)
+- The crash must be in the reader (habu-read) or compiler (h0-compile)
 
 **Immediate next steps**:
-1. Debug habu0 crash (SIGSEGV in mode #x100)
+1. Debug reader or h0-compile for function-calls-in-list pattern
 2. Test mode #x300 linker end-to-end
 3. Begin Phase 2 (remove SBCL dependencies from bootstrap/compiler.lisp)
 
