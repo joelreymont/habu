@@ -560,34 +560,72 @@
          ;; Defun - returns nil but defines function
          ((if (symbolp op) (op=defun op) nil) nil)
          ;; Arithmetic - use cached op= functions
-         ((if (symbolp op) (op=plus op) nil) (+ (h0-eval (cadr expr) env fenv) (h0-eval (caddr expr) env fenv)))
-         ((if (symbolp op) (op=minus op) nil) (- (h0-eval (cadr expr) env fenv) (h0-eval (caddr expr) env fenv)))
-         ((if (symbolp op) (op=mul op) nil) (* (h0-eval (cadr expr) env fenv) (h0-eval (caddr expr) env fenv)))
-         ((if (symbolp op) (op=div op) nil) (/ (h0-eval (cadr expr) env fenv) (h0-eval (caddr expr) env fenv)))
-         ((if (symbolp op) (op=mod op) nil) (mod (h0-eval (cadr expr) env fenv) (h0-eval (caddr expr) env fenv)))
+         ((if (symbolp op) (op=plus op) nil)
+          (let* ((left (h0-eval (cadr expr) env fenv))
+                 (right (h0-eval (caddr expr) env fenv)))
+            (+ left right)))
+         ((if (symbolp op) (op=minus op) nil)
+          (let* ((left (h0-eval (cadr expr) env fenv))
+                 (right (h0-eval (caddr expr) env fenv)))
+            (- left right)))
+         ((if (symbolp op) (op=mul op) nil)
+          (let* ((left (h0-eval (cadr expr) env fenv))
+                 (right (h0-eval (caddr expr) env fenv)))
+            (* left right)))
+         ((if (symbolp op) (op=div op) nil)
+          (let* ((left (h0-eval (cadr expr) env fenv))
+                 (right (h0-eval (caddr expr) env fenv)))
+            (/ left right)))
+         ((if (symbolp op) (op=mod op) nil)
+          (let* ((left (h0-eval (cadr expr) env fenv))
+                 (right (h0-eval (caddr expr) env fenv)))
+            (mod left right)))
          ;; List operations
-         ((if (symbolp op) (op=cons op) nil) (cons (h0-eval (cadr expr) env fenv) (h0-eval (caddr expr) env fenv)))
-         ((if (symbolp op) (op=car op) nil) (car (h0-eval (cadr expr) env fenv)))
-         ((if (symbolp op) (op=cdr op) nil) (cdr (h0-eval (cadr expr) env fenv)))
+         ((if (symbolp op) (op=cons op) nil)
+          (let* ((car-val (h0-eval (cadr expr) env fenv))
+                 (cdr-val (h0-eval (caddr expr) env fenv)))
+            (cons car-val cdr-val)))
+         ((if (symbolp op) (op=car op) nil)
+          (let ((arg (h0-eval (cadr expr) env fenv)))
+            (car arg)))
+         ((if (symbolp op) (op=cdr op) nil)
+          (let ((arg (h0-eval (cadr expr) env fenv)))
+            (cdr arg)))
          ((if (symbolp op) (op=list op) nil) (h0-eval-list (cdr expr) env fenv))
          ;; Type predicates
-         ((if (symbolp op) (op=null op) nil) (if (null (h0-eval (cadr expr) env fenv)) t nil))
-         ((if (symbolp op) (op=consp op) nil) (if (consp (h0-eval (cadr expr) env fenv)) t nil))
+         ((if (symbolp op) (op=null op) nil)
+          (let ((arg (h0-eval (cadr expr) env fenv)))
+            (if (null arg) t nil)))
+         ((if (symbolp op) (op=consp op) nil)
+          (let ((arg (h0-eval (cadr expr) env fenv)))
+            (if (consp arg) t nil)))
          ;; Boolean operations
-         ((if (symbolp op) (op=not op) nil) (if (h0-eval (cadr expr) env fenv) nil t))
+         ((if (symbolp op) (op=not op) nil)
+          (let ((arg (h0-eval (cadr expr) env fenv)))
+            (if arg nil t)))
          ((if (symbolp op) (op=and op) nil) (h0-eval-and (cdr expr) env fenv))
          ((if (symbolp op) (op=or op) nil) (h0-eval-or (cdr expr) env fenv))
          ;; Comparisons - use cached op= functions
          ((if (symbolp op) (op=eq-num op) nil)
-          (if (= (h0-eval (cadr expr) env fenv) (h0-eval (caddr expr) env fenv)) t nil))
+          (let* ((left (h0-eval (cadr expr) env fenv))
+                 (right (h0-eval (caddr expr) env fenv)))
+            (if (= left right) t nil)))
          ((if (symbolp op) (op=lt op) nil)
-          (if (< (h0-eval (cadr expr) env fenv) (h0-eval (caddr expr) env fenv)) t nil))
+          (let* ((left (h0-eval (cadr expr) env fenv))
+                 (right (h0-eval (caddr expr) env fenv)))
+            (if (< left right) t nil)))
          ((if (symbolp op) (op=gt op) nil)
-          (if (> (h0-eval (cadr expr) env fenv) (h0-eval (caddr expr) env fenv)) t nil))
+          (let* ((left (h0-eval (cadr expr) env fenv))
+                 (right (h0-eval (caddr expr) env fenv)))
+            (if (> left right) t nil)))
          ((if (symbolp op) (op=le op) nil)
-          (if (<= (h0-eval (cadr expr) env fenv) (h0-eval (caddr expr) env fenv)) t nil))
+          (let* ((left (h0-eval (cadr expr) env fenv))
+                 (right (h0-eval (caddr expr) env fenv)))
+            (if (<= left right) t nil)))
          ((if (symbolp op) (op=ge op) nil)
-          (if (>= (h0-eval (cadr expr) env fenv) (h0-eval (caddr expr) env fenv)) t nil))
+          (let* ((left (h0-eval (cadr expr) env fenv))
+                 (right (h0-eval (caddr expr) env fenv)))
+            (if (>= left right) t nil)))
          ;; Function call - look up in fenv
          (t
           (let ((fn-entry (fenv-lookup op fenv)))
@@ -1187,43 +1225,48 @@
 
     ;; Multiplication (need to untag one operand)
     ((h0-has-tag-n ir (ir-tag-mul))
-     (let ((slot-off (+ #x30 (* td #x8))))
-       (bytes-append-all
-        (list (h0-codegen (cadr ir) td)
-              (a64-str #x0 #x1F slot-off)             ; save left to temp
-              (h0-codegen (caddr ir) (+ td #x1))
-              (a64-lsr-imm #x1 #x0 #x4)               ; untag right
-              (a64-ldr #x0 #x1F slot-off)             ; load left
-              (a64-mul #x0 #x0 #x1)))))               ; multiply
+     (let* ((slot-off (+ #x30 (* td #x8)))
+            (left-code (h0-codegen (cadr ir) td))
+            (save-code (a64-str #x0 #x1F slot-off))
+            (right-code (h0-codegen (caddr ir) (+ td #x1)))
+            (untag-code (a64-lsr-imm #x1 #x0 #x4))
+            (load-code (a64-ldr #x0 #x1F slot-off)))
+       (let ((mul-code (a64-mul #x0 #x0 #x1)))
+         (bytes-append-all
+          (list left-code save-code right-code untag-code load-code mul-code)))))
 
     ;; Division
     ((h0-has-tag-n ir (ir-tag-div))
-     (let ((slot-off (+ #x30 (* td #x8))))
+     (let* ((slot-off (+ #x30 (* td #x8)))
+            (left-code (h0-codegen (cadr ir) td))
+            (save-left (a64-str #x0 #x1F slot-off))
+            (right-code (h0-codegen (caddr ir) (+ td #x1)))
+            (untag-right (a64-lsr-imm #x1 #x0 #x4))
+            (load-left (a64-ldr #x0 #x1F slot-off))
+            (untag-left (a64-lsr-imm #x0 #x0 #x4))
+            (divide (a64-sdiv #x0 #x0 #x1))
+            (retag (a64-lsl-imm #x0 #x0 #x4)))
        (bytes-append-all
-        (list (h0-codegen (cadr ir) td)
-              (a64-str #x0 #x1F slot-off)
-              (h0-codegen (caddr ir) (+ td #x1))
-              (a64-lsr-imm #x1 #x0 #x4)               ; untag right
-              (a64-ldr #x0 #x1F slot-off)
-              (a64-lsr-imm #x0 #x0 #x4)               ; untag left
-              (a64-sdiv #x0 #x0 #x1)                  ; divide
-              (a64-lsl-imm #x0 #x0 #x4)))))           ; retag result
+        (list left-code save-left right-code untag-right load-left
+              untag-left divide retag))))           ; retag result
 
     ;; Modulo (a mod b = a - (a/b)*b)
     ((h0-has-tag-n ir (ir-tag-mod))
-     (let ((slot-off (+ #x30 (* td #x8)))
-           (slot-off2 (+ #x30 (* (+ td #x1) #x8))))
-       (bytes-append-all
-        (list (h0-codegen (cadr ir) td)
-              (a64-str #x0 #x1F slot-off)                  ; save left
-              (h0-codegen (caddr ir) (+ td #x1))
-              (a64-str #x0 #x1F slot-off2)                 ; save right
-              (a64-lsr-imm #x1 #x0 #x4)                    ; untag right
-              (a64-ldr #x0 #x1F slot-off)
-              (a64-lsr-imm #x0 #x0 #x4)                    ; untag left
-              (a64-sdiv #x2 #x0 #x1)                       ; x2 = left/right
-              (a64-msub #x0 #x2 #x1 #x0)                   ; x0 = left - x2*right
-              (a64-lsl-imm #x0 #x0 #x4)))))                ; retag
+     (let* ((slot-off (+ #x30 (* td #x8)))
+            (slot-off2 (+ #x30 (* (+ td #x1) #x8)))
+            (left-code (h0-codegen (cadr ir) td))
+            (save-left (a64-str #x0 #x1F slot-off))
+            (right-code (h0-codegen (caddr ir) (+ td #x1)))
+            (save-right (a64-str #x0 #x1F slot-off2)))
+       (let* ((untag-right (a64-lsr-imm #x1 #x0 #x4))
+              (load-left (a64-ldr #x0 #x1F slot-off))
+              (untag-left (a64-lsr-imm #x0 #x0 #x4))
+              (divide (a64-sdiv #x2 #x0 #x1))
+              (msub (a64-msub #x0 #x2 #x1 #x0))
+              (retag (a64-lsl-imm #x0 #x0 #x4)))
+         (bytes-append-all
+          (list left-code save-left right-code save-right untag-right
+                load-left untag-left divide msub retag)))))                ; retag
 
     ;; Comparisons
     ((h0-has-tag-n ir (ir-tag-cmp-eq))
@@ -1257,43 +1300,48 @@
 
     ;; Cons
     ((h0-has-tag-n ir (ir-tag-cons))
-     (let ((slot-off (+ #x30 (* td #x8))))
-       (bytes-append-all
-        (list (h0-codegen (cadr ir) td)               ; compile car
-              (a64-str #x0 #x1F slot-off)             ; save car
-              (h0-codegen (caddr ir) (+ td #x1))      ; compile cdr
-              (a64-mov-reg #x1 #x0)                   ; x1 = cdr
-              (a64-ldr #x0 #x1F slot-off)             ; x0 = car
-              (a64-str #x0 #x1C #x0)                  ; [x28] = car
-              (a64-str #x1 #x1C #x8)                  ; [x28+8] = cdr
-              (a64-mov-reg #x0 #x1C)                  ; x0 = cons ptr
-              (a64-add-imm #x0 #x0 #x1)               ; tag as cons (1)
-              (a64-add-imm #x1C #x1C #x10)))))        ; bump heap
+     (let* ((slot-off (+ #x30 (* td #x8)))
+            (car-code (h0-codegen (cadr ir) td))
+            (save-car (a64-str #x0 #x1F slot-off))
+            (cdr-code (h0-codegen (caddr ir) (+ td #x1)))
+            (move-cdr (a64-mov-reg #x1 #x0)))
+       (let* ((load-car (a64-ldr #x0 #x1F slot-off))
+              (store-car (a64-str #x0 #x1C #x0))
+              (store-cdr (a64-str #x1 #x1C #x8))
+              (get-ptr (a64-mov-reg #x0 #x1C))
+              (tag-cons (a64-add-imm #x0 #x0 #x1))
+              (bump-heap (a64-add-imm #x1C #x1C #x10)))
+         (bytes-append-all
+          (list car-code save-car cdr-code move-cdr load-car
+                store-car store-cdr get-ptr tag-cons bump-heap)))))        ; bump heap
 
     ;; Car
     ((h0-has-tag-n ir (ir-tag-car))
-     (let ((arg-ir (cadr ir)))
+     (let* ((arg-ir (cadr ir))
+            (arg-code (h0-codegen arg-ir td))
+            (untag (a64-sub-imm #x0 #x0 #x1))
+            (load-car (a64-ldr #x0 #x0 #x0)))
        (bytes-append-all
-        (list (h0-codegen arg-ir td)
-              (a64-sub-imm #x0 #x0 #x1)          ; untag cons
-              (a64-ldr #x0 #x0 #x0)))))          ; load car
+        (list arg-code untag load-car))))
 
     ;; Cdr
     ((h0-has-tag-n ir (ir-tag-cdr))
-     (let ((arg-ir (cadr ir)))
+     (let* ((arg-ir (cadr ir))
+            (arg-code (h0-codegen arg-ir td))
+            (untag (a64-sub-imm #x0 #x0 #x1))
+            (load-cdr (a64-ldr #x0 #x0 #x8)))
        (bytes-append-all
-        (list (h0-codegen arg-ir td)
-              (a64-sub-imm #x0 #x0 #x1)          ; untag cons
-              (a64-ldr #x0 #x0 #x8)))))          ; load cdr
+        (list arg-code untag load-cdr))))          ; load cdr
 
     ;; Null check
     ((h0-has-tag-n ir (ir-tag-null))
-     (let ((arg-ir (cadr ir)))
+     (let* ((arg-ir (cadr ir))
+            (arg-code (h0-codegen arg-ir td))
+            (cmp-zero (a64-cmp-imm #x0 #x0))
+            (set-cond (a64-cset #x0 (cond-eq)))
+            (tag-result (a64-lsl-imm #x0 #x0 #x4)))
        (bytes-append-all
-        (list (h0-codegen arg-ir td)
-              (a64-cmp-imm #x0 #x0)
-              (a64-cset #x0 (cond-eq))
-              (a64-lsl-imm #x0 #x0 #x4)))))
+        (list arg-code cmp-zero set-cond tag-result))))
 
     ;; Let binding
     ;; h0-compile assigns offset 0 to the innermost binding
@@ -1323,28 +1371,30 @@
 ;; Codegen helper for binary operations
 ;; Inline temp slot calculation: 48 + td*8
 (defun h0-codegen-binop (left-ir right-ir op-instrs td)
-  (let ((slot-off (+ #x30 (* td #x8))))
+  (let* ((slot-off (+ #x30 (* td #x8)))
+         (left-code (h0-codegen left-ir td))
+         (save-left (a64-str #x0 #x1F slot-off))
+         (right-code (h0-codegen right-ir (+ td #x1)))
+         (move-right (a64-mov-reg #x1 #x0))
+         (load-left (a64-ldr #x0 #x1F slot-off)))
     (bytes-append-all
-     (list (h0-codegen left-ir td)
-           (a64-str #x0 #x1F slot-off)             ; save left
-           (h0-codegen right-ir (+ td #x1))
-           (a64-mov-reg #x1 #x0)                   ; x1 = right
-           (a64-ldr #x0 #x1F slot-off)             ; x0 = left
-           op-instrs))))
+     (list left-code save-left right-code move-right load-left op-instrs))))
 
 ;; Codegen helper for comparisons
 ;; Inline temp slot calculation: 48 + td*8
 (defun h0-codegen-cmp (left-ir right-ir cond td)
-  (let ((slot-off (+ #x30 (* td #x8))))
-    (bytes-append-all
-     (list (h0-codegen left-ir td)
-           (a64-str #x0 #x1F slot-off)
-           (h0-codegen right-ir (+ td #x1))
-           (a64-mov-reg #x1 #x0)
-           (a64-ldr #x0 #x1F slot-off)
-           (a64-cmp-reg #x0 #x1)
-           (a64-cset #x0 cond)
-           (a64-lsl-imm #x0 #x0 #x4)))))
+  (let* ((slot-off (+ #x30 (* td #x8)))
+         (left-code (h0-codegen left-ir td))
+         (save-left (a64-str #x0 #x1F slot-off))
+         (right-code (h0-codegen right-ir (+ td #x1)))
+         (move-right (a64-mov-reg #x1 #x0))
+         (load-left (a64-ldr #x0 #x1F slot-off)))
+    (let* ((cmp-code (a64-cmp-reg #x0 #x1))
+           (cset-code (a64-cset #x0 cond))
+           (tag-code (a64-lsl-imm #x0 #x0 #x4)))
+      (bytes-append-all
+       (list left-code save-left right-code move-right load-left
+             cmp-code cset-code tag-code)))))
 
 ;; Codegen helper for progn (list of IR forms)
 (defun h0-codegen-progn (forms td)
