@@ -583,8 +583,10 @@
           (push name names))))
     (nreverse names)))
 
-(defun nc-flatten-extern-calls (code)
-  "Replace extern call markers with placeholder BL instructions (4 zero bytes).
+(defun nc-flatten-extern-calls (code &optional stub-map code-base-addr)
+  "Replace extern call markers with BL instructions.
+   If STUB-MAP and CODE-BASE-ADDR are provided, emits correct BL instructions.
+   Otherwise emits placeholder BL instructions (for post-processing).
    Returns (values flattened-code extern-call-positions)
    where extern-call-positions is ((name . byte-pos) ...)"
   (let ((result nil)
@@ -594,11 +596,25 @@
           (let ((name (cadr item))
                 (pos (caddr item)))
             (push (cons name pos) positions)
-            ;; Emit placeholder BL (will be patched later)
-            (push 0 result)
-            (push 0 result)
-            (push 0 result)
-            (push #x94 result))  ; BL opcode high byte
+            (if (and stub-map code-base-addr)
+                ;; Emit correct BL instruction
+                (let* ((bl-addr (+ code-base-addr pos))
+                       (stub-addr (gethash name stub-map))
+                       (rel-offset (- stub-addr bl-addr))
+                       (off-s (ash rel-offset -2))
+                       (off-m (logand off-s #x3FFFFFF))
+                       (bl-instr (logior #x94000000 off-m)))
+                  ;; Emit BL in little-endian
+                  (push (logand bl-instr #xFF) result)
+                  (push (logand (ash bl-instr -8) #xFF) result)
+                  (push (logand (ash bl-instr -16) #xFF) result)
+                  (push (logand (ash bl-instr -24) #xFF) result))
+                ;; Emit placeholder BL (will be patched later)
+                (progn
+                  (push 0 result)
+                  (push 0 result)
+                  (push 0 result)
+                  (push #x94 result))))  ; BL opcode high byte
           (push item result)))
     (values (nreverse result) (nreverse positions))))
 
@@ -5021,7 +5037,7 @@ int main(int argc, char **argv) {
 
    The source can use sys-write, sys-read, sys-open, sys-close, sys-exit."
   ;; Load the pure-Habu macho linker if not already loaded
-  (unless (fboundp 'build-macho-executable-with-imports-and-heap)
+  (unless (fboundp 'wrap-bytecode-with-heap-for-imports)
     (load (merge-pathnames "bootstrap/macho.lisp"
                            (or *load-pathname* *default-pathname-defaults*))))
 
@@ -5046,79 +5062,59 @@ int main(int argc, char **argv) {
     (let ((imports (if (null imports) '("_exit") imports)))
       (when (and verbose (null (nc-get-unique-imports extern-calls)))
         (princ "No imports detected - adding _exit for consistent Mach-O structure") (terpri))
-      ;; Has external calls - use macho linker with imports AND heap
-        (multiple-value-bind (flat-code extern-positions)
-            (nc-flatten-extern-calls bytes-with-markers)
-          (when verbose
-            (princ "Flattened code: ") (princ (length flat-code)) (princ " bytes") (terpri)
-            (princ "Extern positions: ") (princ extern-positions) (terpri))
 
-          ;; Wrap code with heap initialization
-          ;; Calculate heap page offset dynamically based on code size
-          ;; Layout: code -> stubs -> __DATA_CONST (16KB) -> __DATA (heap)
-          ;; Note: macOS ARM64 uses 16KB pages (#x4000), but ADRP uses 4KB page units (#x1000)
-          ;; heap-page-offset = (text-vmsize / 4KB) + (data-const-vmsize / 4KB)
-          (let* ((num-imports (length imports))
-                 (stubs-total (if (> num-imports 0) (* num-imports 12) 0))
-                 (approx-code-offset #x400)  ; header + commands + padding
-                 (total-size (+ (length flat-code) wrapper-size))
-                 (stubs-end (+ approx-code-offset total-size stubs-total))
-                 ;; Linker aligns to 16KB pages (macOS ARM64 page size)
-                 (text-vmsize (* (ceiling stubs-end #x4000) #x4000))
-                 ;; Convert to 4KB units for ADRP
-                 (text-pages-4kb (/ text-vmsize #x1000))
-                 ;; DATA_CONST is one 16KB page = 4 ADRP pages
-                 (data-const-pages-4kb (/ #x4000 #x1000))
-                 (heap-page-offset (+ text-pages-4kb data-const-pages-4kb))
-                 (wrapped-code (wrap-bytecode-with-heap-for-imports flat-code heap-page-offset)))
+      ;; Calculate stub offsets BEFORE flattening so we can emit correct BL instructions
+      ;; This eliminates the need for post-processing file patching
+      (let* ((num-imports (length imports))
+             (stubs-total (if (> num-imports 0) (* num-imports 12) 0))
+             (code-offset #x400)  ; header + commands + padding
+             ;; Calculate exact flattened code size:
+             ;; Each :extern-call marker becomes exactly 4 bytes (BL instruction)
+             ;; All other items are already bytes
+             (num-markers (count-if (lambda (x) (and (consp x) (eq (car x) :extern-call))) bytes-with-markers))
+             (non-marker-bytes (remove-if (lambda (x) (and (consp x) (eq (car x) :extern-call))) bytes-with-markers))
+             (exact-flat-size (+ (length non-marker-bytes) (* num-markers 4)))
+             (exact-code-size (+ exact-flat-size wrapper-size))
+             (stubs-offset (+ code-offset exact-code-size))
+             (stub-size 12))
 
-            ;; Create executable with imports and heap using pure-Habu linker
-            (write-macho-executable-with-imports-and-heap output-path wrapped-code imports #x100000)
+        ;; Build stub offset map: import-name -> stub-file-offset
+        (let ((stub-map (make-hash-table :test 'equal)))
+          (labels ((build-stub-map (remaining-imports i)
+                     (when remaining-imports
+                       (setf (gethash (car remaining-imports) stub-map) (+ stubs-offset (* i stub-size)))
+                       (build-stub-map (cdr remaining-imports) (+ i 1)))))
+            (build-stub-map imports 0))
 
-            ;; Calculate offsets for patching
-            ;; Pure-Habu linker has same structure as old linker:
-            ;; code starts at 0x400, stubs follow code
-            (let* ((code-offset #x400)
-                   (stubs-offset (+ code-offset (length wrapped-code)))
-                   (stub-size 12))
+          ;; Flatten with correct BL instructions (no post-processing needed!)
+          ;; code-base-addr is where the wrapped code starts (after wrapper stub)
+          (multiple-value-bind (flat-code extern-positions)
+              (nc-flatten-extern-calls bytes-with-markers stub-map (+ code-offset wrapper-size))
+            (when verbose
+              (princ "Flattened code: ") (princ (length flat-code)) (princ " bytes") (terpri)
+              (princ "Extern positions: ") (princ extern-positions) (terpri))
 
-              ;; Build stub offset map: import-name -> stub-file-offset
-              (let ((stub-map (make-hash-table :test 'equal)))
-                (labels ((build-stub-map (remaining-imports i)
-                           (when remaining-imports
-                             (setf (gethash (car remaining-imports) stub-map) (+ stubs-offset (* i stub-size)))
-                             (build-stub-map (cdr remaining-imports) (+ i 1)))))
-                  (build-stub-map imports 0))
+            ;; Wrap code with heap initialization
+            ;; Calculate heap page offset dynamically based on code size
+            ;; Layout: code -> stubs -> __DATA_CONST (16KB) -> __DATA (heap)
+            ;; Note: macOS ARM64 uses 16KB pages (#x4000), but ADRP uses 4KB page units (#x1000)
+            ;; heap-page-offset = (text-vmsize / 4KB) + (data-const-pages-4kb / 4KB)
+            (let* ((total-size (+ (length flat-code) wrapper-size))
+                   (stubs-end (+ code-offset total-size stubs-total))
+                   ;; Linker aligns to 16KB pages (macOS ARM64 page size)
+                   (text-vmsize (* (ceiling stubs-end #x4000) #x4000))
+                   ;; Convert to 4KB units for ADRP
+                   (text-pages-4kb (/ text-vmsize #x1000))
+                   ;; DATA_CONST is one 16KB page = 4 ADRP pages
+                   (data-const-pages-4kb (/ #x4000 #x1000))
+                   (heap-page-offset (+ text-pages-4kb data-const-pages-4kb))
+                   (wrapped-code (wrap-bytecode-with-heap-for-imports flat-code heap-page-offset)))
 
-                ;; Patch all extern calls
-                ;; Note: extern positions are relative to original code, but we wrapped it
-                ;; so we need to add wrapper-size to account for the prologue stub
-                (with-open-file (f output-path :direction :io
-                                        :element-type '(unsigned-byte 8)
-                                        :if-exists :overwrite)
-                  (dolist (pos-entry extern-positions)
-                    (let* ((name (car pos-entry))
-                           (rel-pos (cdr pos-entry))  ; position relative to original code start
-                           ;; Add wrapper-size because wrapper precedes the original code
-                           (bl-file-pos (+ code-offset wrapper-size rel-pos))
-                           (stub-file-pos (gethash name stub-map)))
-                      (when stub-file-pos
-                        (let* ((rel-offset (- stub-file-pos bl-file-pos))
-                               (off-s (ash rel-offset -2))
-                               (off-m (logand off-s #x3FFFFFF))
-                               (bl-instr (logior #x94000000 off-m)))
-                          (when verbose
-                            (princ "Patching ") (princ name) (princ " at ") (princ (write-to-string bl-file-pos :base 16))
-                            (princ " -> stub at ") (princ (write-to-string stub-file-pos :base 16))
-                            (princ " (offset ") (princ (ash rel-offset -2)) (princ ")") (terpri))
-                          (file-position f bl-file-pos)
-                          ;; Write BL instruction in little-endian
-                          (write-byte (logand bl-instr #xFF) f)
-                          (write-byte (logand (ash bl-instr -8) #xFF) f)
-                          (write-byte (logand (ash bl-instr -16) #xFF) f)
-                          (write-byte (logand (ash bl-instr -24) #xFF) f)))))))
+              ;; Create executable with imports and heap using pure-Habu linker
+              ;; BL instructions are already correct - no post-processing needed!
+              (write-macho-executable-with-imports-and-heap output-path wrapped-code imports #x100000)
 
-              ;; Re-codesign after patching (the earlier codesign in write-macho was invalidated)
+              ;; Codesign the executable (macOS requirement)
               ;; Only on macOS and when sb-ext is available
               #+sbcl
               (when (probe-file "/usr/bin/codesign")
@@ -5126,7 +5122,7 @@ int main(int argc, char **argv) {
 
               (when verbose
                 (terpri) (princ "Created: ") (princ output-path) (terpri))
-              output-path))))))
+              output-path)))))))
 
 (defun deliver-file-with-libsystem (source-path output-path &key verbose)
   "Compile Lisp file to native executable using libSystem.
