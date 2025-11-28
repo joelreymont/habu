@@ -28,6 +28,7 @@
 (defconstant +LC-MAIN+ #x80000028)
 (defconstant +LC-LOAD-DYLIB+ #x0C)
 (defconstant +LC-DYLD-CHAINED-FIXUPS+ #x80000034)
+(defconstant +LC-DYLD-EXPORTS-TRIE+ #x80000033)
 
 (defconstant +VM-PROT-READ+ #x01)
 (defconstant +VM-PROT-WRITE+ #x02)
@@ -576,81 +577,47 @@
     (encode-u32-le instr)))
 
 (defun arm64-sub-imm (rd rn imm)
-  "SUB Xd, Xn, #imm - Subtract immediate
-   RD: destination register
-   RN: source register
-   IMM: 12-bit immediate value"
-  (let ((instr (logior #xD1000000
-                      (ash imm 10)
-                      (ash rn 5)
-                      rd)))
+  "SUB Xd, Xn, #imm - Subtract immediate"
+  (let ((instr (logior #xD1000000 (ash imm 10) (ash rn 5) rd)))
     (encode-u32-le instr)))
 
 (defun arm64-add-imm (rd rn imm)
-  "ADD Xd, Xn, #imm - Add immediate
-   RD: destination register
-   RN: source register
-   IMM: 12-bit immediate value"
-  (let ((instr (logior #x91000000
-                      (ash imm 10)
-                      (ash rn 5)
-                      rd)))
+  "ADD Xd, Xn, #imm - Add immediate"
+  (let ((instr (logior #x91000000 (ash imm 10) (ash rn 5) rd)))
     (encode-u32-le instr)))
 
 (defun arm64-str (rt rn offset)
-  "STR Xt, [Xn, #offset] - Store 64-bit register
-   RT: source register
-   RN: base address register
-   OFFSET: byte offset (must be multiple of 8)"
+  "STR Xt, [Xn, #offset] - Store 64-bit register"
   (let* ((scaled-offset (ash offset -3))
-         (instr (logior #xF9000000
-                       (ash scaled-offset 10)
-                       (ash rn 5)
-                       rt)))
+         (instr (logior #xF9000000 (ash scaled-offset 10) (ash rn 5) rt)))
     (encode-u32-le instr)))
 
 (defun arm64-mov (rd rm)
-  "MOV Xd, Xm - Move register (encoded as ORR Xd, XZR, Xm)
-   RD: destination register
-   RM: source register"
-  (let ((instr (logior #xAA0003E0
-                      (ash rm 16)
-                      rd)))
+  "MOV Xd, Xm - Move register (encoded as ORR)"
+  (let ((instr (logior #xAA0003E0 (ash rm 16) rd)))
     (encode-u32-le instr)))
 
 (defun arm64-adr (rd offset)
-  "ADR Xd, label - Load PC-relative address
-   RD: destination register
-   OFFSET: signed byte offset from PC"
+  "ADR Xd, label - Load PC-relative address"
   (let* ((immlo (logand offset #x3))
          (immhi (logand (ash offset -2) #x7FFFF))
-         (instr (logior #x10000000
-                       (ash immlo 29)
-                       (ash immhi 5)
-                       rd)))
+         (instr (logior #x10000000 (ash immlo 29) (ash immhi 5) rd)))
     (encode-u32-le instr)))
 
 (defun arm64-bl (offset)
-  "BL label - Branch with link
-   OFFSET: signed byte offset (will be divided by 4)"
+  "BL label - Branch with link"
   (let* ((off-s (ash offset -2))
          (off-m (logand off-s #x3FFFFFF))
          (instr (logior #x94000000 off-m)))
     (encode-u32-le instr)))
 
 (defun arm64-lsr (rd rn shift)
-  "LSR Xd, Xn, #shift - Logical shift right
-   RD: destination register
-   RN: source register
-   SHIFT: shift amount (0-63)"
-  (let ((instr (logior #xD3400000
-                      (ash shift 16)
-                      (ash rn 5)
-                      rd)))
+  "LSR Xd, Xn, #shift - Logical shift right"
+  (let ((instr (logior #xD3400000 (ash shift 16) (ash rn 5) rd)))
     (encode-u32-le instr)))
 
 (defun arm64-ret ()
-  "RET - Return from subroutine (returns to address in LR)"
+  "RET - Return from subroutine"
   (encode-u32-le #xD65F03C0))
 
 (defun generate-stub-code (got-page-offset got-slot-offset)
@@ -776,7 +743,7 @@
                                                                                                          (cons (buf-u32-le 0)  ; nextrel
                                                                                                                (cons (buf-u32-le 0)  ; locreloff
                                                                                                                      (cons (buf-u32-le 0)  ; nlocrel
-                                                                                                                           nil)))))))))))))))))))))
+                                                                                                                           nil))))))))))))))))))))))
 
 (defun buf-exports-trie-command (dataoff datasize)
   "Generate LC_DYLD_EXPORTS_TRIE command"
@@ -794,30 +761,25 @@
 (defun wrap-bytecode-with-heap-for-imports (code-bytes heap-page-offset)
   "Wrap bytecode with heap initialization for executables with imports.
    HEAP-PAGE-OFFSET is the page offset from the ADRP instruction to __DATA (in 4KB pages).
-   x28 is used as the heap bump pointer.
-   x26 is used as the code base pointer (for closure funcall).
-   x27 is used as heap base pointer (for symbol table access).
-
    Returns 68 bytes (17 instructions) + original code."
   (let ((stub (buf-append-all
-               (cons (arm64-sub-imm 31 31 #x30)           ; sub sp, sp, #48
-                     (cons (arm64-str 30 31 0)            ; str x30, [sp]
-                           (cons (arm64-str 28 31 8)      ; str x28, [sp, #8]
-                                 (cons (arm64-str 26 31 16) ; str x26, [sp, #16]
-                                       (cons (arm64-str 27 31 24) ; str x27, [sp, #24]
-                                             (cons (arm64-adrp 28 heap-page-offset) ; adrp x28, #page_off
-                                                   (cons (arm64-mov 27 28)   ; mov x27, x28
-                                                         (cons (arm64-add-imm 28 28 16) ; add x28, x28, #16
-                                                               (cons (arm64-adr 26 36)  ; adr x26, +36
-                                                                     (cons (arm64-bl 8) ; bl +8
-                                                                           (cons (arm64-lsr 0 0 4) ; lsr x0, x0, #4
-                                                                                 (cons (arm64-ldr 27 31 24) ; ldr x27, [sp, #24]
-                                                                                       (cons (arm64-ldr 26 31 16) ; ldr x26, [sp, #16]
-                                                                                             (cons (arm64-ldr 28 31 8) ; ldr x28, [sp, #8]
-                                                                                                   (cons (arm64-ldr 30 31 0) ; ldr x30, [sp]
-                                                                                                         (cons (arm64-add-imm 31 31 #x30) ; add sp, sp, #48
-                                                                                                               (cons (arm64-ret) ; ret
-                                                                                                                     nil)))))))))))))))))))))
+               (cons (arm64-sub-imm 31 31 #x30)
+                     (cons (arm64-str 30 31 0)
+                           (cons (arm64-str 28 31 8)
+                                 (cons (arm64-str 26 31 16)
+                                       (cons (arm64-str 27 31 24)
+                                             (cons (arm64-adrp 28 heap-page-offset)
+                                                   (cons (arm64-mov 27 28)
+                                                         (cons (arm64-add-imm 28 28 16)
+                                                               (cons (arm64-adr 26 36)
+                                                                     (cons (arm64-bl 8)
+                                                                           (cons (arm64-lsr 0 0 4)
+                                                                                 (cons (arm64-ldr 27 31 24)
+                                                                                       (cons (arm64-ldr 26 31 16)
+                                                                                             (cons (arm64-ldr 28 31 8)
+                                                                                                   (cons (arm64-ldr 30 31 0)
+                                                                                                         (cons (arm64-add-imm 31 31 #x30)
+                                                                                                               (cons (arm64-ret) nil))))))))))))))))))))
     (append stub code-bytes)))
 
 ;;; ============================================================
