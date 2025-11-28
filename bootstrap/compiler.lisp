@@ -4984,9 +4984,11 @@ int main(int argc, char **argv) {
 
               ;; Build stub offset map: import-name -> stub-file-offset
               (let ((stub-map (make-hash-table :test 'equal)))
-                (loop for import in imports
-                      for i from 0
-                      do (setf (gethash import stub-map) (+ stubs-offset (* i stub-size))))
+                (labels ((build-stub-map (remaining-imports i)
+                           (when remaining-imports
+                             (setf (gethash (car remaining-imports) stub-map) (+ stubs-offset (* i stub-size)))
+                             (build-stub-map (cdr remaining-imports) (+ i 1)))))
+                  (build-stub-map imports 0))
 
                 ;; Patch all extern calls
                 ;; Note: extern positions are relative to original code, but we wrapped it

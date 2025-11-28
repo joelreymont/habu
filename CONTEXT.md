@@ -43,6 +43,25 @@ Two options:
 
 **Recommendation**: Option 2 is more pragmatic. The habu0 interpreter is a proof-of-concept but not critical for self-hosting. The real path to self-hosting is through the bootstrap compiler.
 
+**Phase 2: Remove SBCL Dependencies** - IN PROGRESS
+
+**Progress Made**:
+- ✓ Added string-concat and number-to-string primitives to sys package
+- ✓ Replaced 8/48 format calls (in deliver-with-libsystem and nc-gensym-lambda)
+- ✓ Replaced 1/5 loop forms (stub map building)
+- ⚠ Remaining dependencies are in deprecated/debugging code:
+  - 40 format calls: old deliver function (uses clang), disassembler, C code generator
+  - 4 loop forms: disassembler only
+  - 7 with-open-file: including in deliver-file-with-libsystem
+  - 3 sb-ext:run-program: codesign calls
+
+**Critical Path**:
+The deliver-with-libsystem function is self-hosting ready except for:
+1. sb-ext:run-program for codesign (line 5019) - can be made optional or use sys-exec
+2. with-open-file in deliver-file-with-libsystem (line 5028) - needs sys-open/read/close
+
+**Next**: Add sys-exec or make codesign optional, replace with-open-file with sys-* primitives.
+
 ---
 
 ## Previous Plan: Native File I/O and Self-Hosting (November 27, 2025)
