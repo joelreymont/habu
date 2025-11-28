@@ -541,11 +541,26 @@ The `tak` benchmark is slowest due to heavy nested function calls.
 - Generated compiler runs standalone - **NO** (uses SBCL features)
 - Fixed-point compilation (Stage N == Stage N+1) - **PENDING**
 
-**Next Steps for Full Self-Hosting** (3-5 days estimated):
-1. Replace SBCL features in compiler source (format, with-open-file, read)
-2. Implement looped file I/O for files > 64KB (compiler source is 256KB)
-3. Test generated compiler: compile program → verify output
-4. Achieve fixed point: Stage N compiler produces identical Stage N+1 compiler
+**Next Steps for Full Self-Hosting** (5-7 days estimated, revised):
+
+**CRITICAL BLOCKER - Bug #20 (Priority 1)**:
+1. Fix GC root scanning in argument spill slots (runtime/gc.c)
+   - Current issue: Stack frames (spill slots) not scanned as GC roots
+   - Investigation findings (November 28, 2025):
+     - `mark_roots()` only scans explicitly registered roots via `gc_add_root()`
+     - Stack frames with argument spill slots ([sp + offset]) are not registered
+     - When heap allocation occurs during arg evaluation, GC may collect spilled objects
+   - Proposed fix approaches:
+     - Option A: Make codegen register stack frame as GC root before evaluating heap-allocating args
+     - Option B: Implement conservative stack scanning in runtime/gc.c
+     - Option C: Evaluate all args to heap-allocated vector before function call (avoid spill slots)
+   - Unblocks: native-read-file-large, recursive string building, full compiler self-hosting
+
+**After Bug #20 Fixed**:
+2. Replace SBCL features in compiler source (format, with-open-file, read)
+3. Test native-read-file-large with compiler source (256KB)
+4. Test generated compiler: compile program → verify output
+5. Achieve fixed point: Stage N compiler produces identical Stage N+1 compiler
 
 **habu0 Status** (standalone interpreter - proof-of-concept):
 - Superseded by bootstrap compiler for self-hosting path
@@ -1067,6 +1082,62 @@ identified the root cause of the linker crash as a let* binding limit in native 
 - Pre-compute function calls before placing in list expressions
 - Split functions with many let* bindings into smaller helpers (max 5 each)
 - Document compiler quirks in AGENTS.md for future reference
+
+---
+
+## Session Summary (November 28, 2025 - Bug #20 Investigation)
+
+This session implemented string operations and file I/O for self-hosting, then discovered and investigated a critical GC bug blocking large file reading and recursive string building.
+
+**Accomplishments**:
+1. Implemented `string-append` as compiler macro (lines 1720-1764 in bootstrap/compiler.lisp)
+   - Expands to vector allocation + character-by-character copying using labels loops
+   - Works correctly for sequential concatenation ✓
+   - Crashes in recursive labels contexts (SIGBUS) - see Bug #20
+2. Implemented `native-read-file` for files < 64KB (works correctly) ✓
+3. Attempted `native-read-file-large` with two approaches:
+   - V1: Recursive string-append → crashes
+   - V2: List accumulator + concat-string-list → crashes
+   - Both blocked by Bug #20
+4. Implemented `concat-string-list` helper function (lines 1971-1998)
+5. Updated `deliver-file-with-libsystem` with #+sbcl conditional (lines 5207-5221)
+
+**Bug #20 Investigation** (Critical - blocks full self-hosting):
+1. Created 15+ test cases to isolate crash pattern
+2. Identified root cause: GC doesn't scan argument spill slots as roots
+   - Pattern: `(f (heap-allocating-expr) other-args)` in recursive labels context
+   - When string-append (or any heap allocation) occurs in arg position:
+     - Result stored to spill slot [sp + offset]
+     - If subsequent arg evaluation triggers GC
+     - Spill slot not scanned → object may be collected/moved
+     - Access to stale pointer → SIGBUS
+3. Examined runtime/gc.c implementation:
+   - `mark_roots()` (line 598): Only scans explicitly registered roots
+   - `gc_add_root()` (line 1139): API for explicit root registration
+   - Stack frames not automatically registered as GC roots
+4. Test matrix results:
+   - ✓ labels + fixnum recursion
+   - ✓ labels + cons recursion
+   - ✓ labels + make-vector
+   - ✓ labels + constant string args
+   - ✓ labels calling string-append (non-recursive)
+   - ✗ labels + string-append as recursive arg → CRASH
+
+**Proposed Fix Approaches**:
+- Option A: Codegen registers stack frame as GC root before heap-allocating arg eval
+- Option B: Implement conservative stack scanning in runtime/gc.c
+- Option C: Evaluate all args to heap-allocated vector first (avoid spill slots)
+
+**Impact**: Blocks large file I/O (native-read-file-large), recursive string building, and reading compiler source (256KB) for full self-hosting.
+
+**Priority**: High - this is now the critical blocker for full self-hosting.
+
+**Commits**:
+- "Add string-append and native-read-file-large for self-hosting"
+- "WIP: List-based native-read-file-large (still crashes)"
+- "Debug Bug #20: Narrow down to recursive labels + heap-allocated args"
+- "Update CONTEXT.md with string/file I/O progress and Bug #20"
+- "Update CONTEXT.md with Bug #20 root cause analysis"
 
 ---
 
