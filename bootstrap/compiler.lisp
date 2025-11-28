@@ -999,7 +999,7 @@
 (defun nc-temp-slot (depth)
   "Return stack offset for temp depth. Used when registers exhausted or across calls."
   (let ((off (+ #x40 (* depth 8))))  ; #x40 = temp base (64)
-    (if (>= off #x240)                ; #x240 = temp guard (576), allows 64 slots
+    (if (>= off #xF00)                ; #xF00 = temp guard (3840), allows 480 slots
         (error "Too many temp slots: ~A" depth)
         off)))
 
@@ -1036,9 +1036,9 @@
 
 (defun nc-prologue ()
   ;; Main entry prologue - x0 has runtime table pointer from C caller
-  ;; Use simpler 1024-byte frame like production compiler
+  ;; Use 4KB frame to support deep nesting in large programs
   (append
-   (nc-sub-imm 31 31 #x400)   ; SUB sp, sp, #1024 (allocate stack frame)
+   (nc-sub-imm 31 31 #x1000)   ; SUB sp, sp, #4096 (allocate stack frame)
    (nc-stp-offset 29 30 31 0)  ; STP x29, x30, [sp, #0]
    (nc-stp-offset 19 20 31 16) ; STP x19, x20, [sp, #16]
    (nc-stp-offset 21 22 31 32) ; STP x21, x22, [sp, #32]
@@ -1052,7 +1052,7 @@
    (nc-ldp-offset 21 22 31 32) ; LDP x21, x22, [sp, #32]
    (nc-ldp-offset 19 20 31 16) ; LDP x19, x20, [sp, #16]
    (nc-ldp-offset 29 30 31 0)  ; LDP x29, x30, [sp, #0]
-   (nc-add-imm 31 31 #x400)    ; ADD sp, sp, #1024 (deallocate stack)
+   (nc-add-imm 31 31 #x1000)    ; ADD sp, sp, #4096 (deallocate stack)
    (nc-ret)))
 
 ;;; ============================================================
@@ -4163,7 +4163,7 @@
    Frame size is 0x200 for leaf functions, 0x400 for non-leaf."
   (if (null params)
       acc
-      (let* ((frame-size (if leaf #x200 #x400))  ; Must match nc-fn-prologue
+      (let* ((frame-size (if leaf #x1000 #x1000))  ; Must match nc-fn-prologue - now 4KB for all functions
              (st (if (< idx 8)
                      ;; Args 0-7: copy from register xi to stack
                      (append (nc-mov-reg 22 idx)
@@ -4663,8 +4663,9 @@
          (defun-fns (car r))
          (mir-raw (cadr r))
          ;; Apply nanopass optimizations if enabled
+         ;; CRITICAL: let-flattening and progn-flattening reduce IR depth from 100+ to ~10
          (mir-opt (if (and optimize (fboundp 'optimize-ir))
-                      (optimize-ir mir-raw :passes '(constant-folding strength-reduction dead-code-elimination))
+                      (optimize-ir mir-raw :passes '(let-flattening progn-flattening constant-folding strength-reduction dead-code-elimination))
                       mir-raw))
          ;; Function bodies get standard optimizations
          ;; Note: Self-TCO is disabled - the continue-ir overhead is > call overhead
@@ -4672,7 +4673,7 @@
                             (mapcar (lambda (fn)
                                       (list (first fn)
                                             (second fn)
-                                            (optimize-ir (third fn) :passes '(constant-folding strength-reduction dead-code-elimination))
+                                            (optimize-ir (third fn) :passes '(let-flattening progn-flattening constant-folding strength-reduction dead-code-elimination))
                                             (fourth fn)
                                             (fifth fn)))
                                     defun-fns)

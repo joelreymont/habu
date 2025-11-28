@@ -411,11 +411,119 @@
     (t nil)))
 
 ;;; ============================================================
+;;; Pass 5: Let-Flattening
+;;; ============================================================
+
+(defun flatten-let (ir)
+  "Flatten consecutive nested let-ir nodes into a single let-ir.
+   This reduces IR nesting depth from 100+ levels to just a few.
+   Example: (let-ir ((x 1)) (let-ir ((y 2)) body)) -> (let-ir ((x 1) (y 2)) body)"
+  (cond
+    ((null ir) nil)
+    ((not (consp ir)) ir)
+    ;; Flatten nested let-ir
+    ((has-tag ir 'let-ir)
+     (let* ((vals (cadr ir))
+            (body-ir (caddr ir))
+            (count (cadddr ir))
+            (offsets (nth 4 ir)))
+       ;; If body is also a let-ir, merge them
+       (if (and (consp body-ir) (has-tag body-ir 'let-ir))
+           (let* ((inner-vals (cadr body-ir))
+                  (inner-body (caddr body-ir))
+                  (inner-count (cadddr body-ir))
+                  (inner-offsets (nth 4 body-ir))
+                  ;; Merge and recursively flatten
+                  (merged
+                   (list 'let-ir
+                         (append (mapcar #'flatten-let vals)
+                                 (mapcar #'flatten-let inner-vals))
+                         (flatten-let inner-body)
+                         (+ count inner-count)
+                         (append offsets
+                                 (mapcar (lambda (off) (+ off count))
+                                         inner-offsets)))))
+             ;; Recursively flatten the merged result
+             (flatten-let merged))
+           ;; Body is not a let-ir, just flatten the values and body
+           (list 'let-ir
+                 (mapcar #'flatten-let vals)
+                 (flatten-let body-ir)
+                 count
+                 offsets))))
+    ;; Recurse into other structures
+    ((has-tag ir 'if-ir)
+     (list 'if-ir
+           (flatten-let (cadr ir))
+           (flatten-let (caddr ir))
+           (flatten-let (cadddr ir))))
+    ((has-tag ir 'progn-ir)
+     (list 'progn-ir (mapcar #'flatten-let (cadr ir))))
+    ((or (has-tag ir 'add) (has-tag ir 'sub)
+         (has-tag ir 'mul) (has-tag ir 'div))
+     (list (car ir)
+           (flatten-let (cadr ir))
+           (flatten-let (caddr ir))))
+    ((has-tag ir 'call-fn)
+     (list 'call-fn (cadr ir) (mapcar #'flatten-let (caddr ir))))
+    (t ir)))
+
+(register-optimization 'let-flattening #'flatten-let)
+
+;;; ============================================================
+;;; Pass 6: Progn-Flattening
+;;; ============================================================
+
+(defun flatten-progn (ir)
+  "Flatten nested progn-ir nodes into a single progn-ir.
+   (progn (progn a b) c) => (progn a b c)"
+  (cond
+    ((null ir) nil)
+    ((not (consp ir)) ir)
+    ;; Flatten nested progn-ir
+    ((has-tag ir 'progn-ir)
+     (let* ((forms (cadr ir))
+            (flattened-forms
+             (apply #'append
+                    (mapcar (lambda (form)
+                              (let ((flat-form (flatten-progn form)))
+                                (if (and (consp flat-form)
+                                         (has-tag flat-form 'progn-ir))
+                                    (cadr flat-form)
+                                    (list flat-form))))
+                            forms))))
+       (if (= (length flattened-forms) 1)
+           (car flattened-forms)
+           (list 'progn-ir flattened-forms))))
+    ;; Recurse into other structures
+    ((has-tag ir 'if-ir)
+     (list 'if-ir
+           (flatten-progn (cadr ir))
+           (flatten-progn (caddr ir))
+           (flatten-progn (cadddr ir))))
+    ((has-tag ir 'let-ir)
+     (list 'let-ir
+           (mapcar #'flatten-progn (cadr ir))
+           (flatten-progn (caddr ir))
+           (cadddr ir) (nth 4 ir)))
+    ((or (has-tag ir 'add) (has-tag ir 'sub)
+         (has-tag ir 'mul) (has-tag ir 'div))
+     (list (car ir)
+           (flatten-progn (cadr ir))
+           (flatten-progn (caddr ir))))
+    ((has-tag ir 'call-fn)
+     (list 'call-fn (cadr ir) (mapcar #'flatten-progn (caddr ir))))
+    (t ir)))
+
+(register-optimization 'progn-flattening #'flatten-progn)
+
+;;; ============================================================
 ;;; Optimization Pipeline
 ;;; ============================================================
 
-(defun optimize-ir (ir &key (passes '(constant-folding strength-reduction dead-code-elimination tail-call-marking)))
-  "Run specified optimization passes on IR"
+(defun optimize-ir (ir &key (passes '(let-flattening progn-flattening constant-folding strength-reduction dead-code-elimination)))
+  "Run specified optimization passes on IR.
+   Default passes now include let/progn flattening to reduce IR depth."
   (let ((result ir))
     (dolist (pass passes)
       (setq result (run-optimization pass result)))

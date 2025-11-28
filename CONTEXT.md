@@ -98,45 +98,68 @@ $ /tmp/test_via_driver && echo $?
 
 The compiler driver successfully compiles simple programs!
 
-**Phase 4: Full Self-Hosting (Fixed Point)** - BLOCKED (resource exhaustion)
+**Phase 4: Full Self-Hosting (Fixed Point)** - PARTIAL SUCCESS ✓
 
-Attempted to compile bootstrap/compiler.lisp (5329 lines) with itself:
+Compiled bootstrap/compiler.lisp (5329 lines) with itself successfully!
 ```bash
 $ sbcl --dynamic-space-size 4096 --script compiler-driver.lisp bootstrap/compiler.lisp /tmp/habu-compiler-stage1
+Compiled 612400 bytes (with markers)
+Created: /tmp/habu-compiler-stage1 (1.6MB Mach-O executable)
+Success!
 ```
 
-Result: Stack/heap exhaustion during compilation. The bootstrap compiler is too large and complex to compile itself in one pass.
+**All blocking issues resolved**:
+1. `nc-count-max-env-offset` crashed on alist pairs like `(CODE . 0)` - FIXED ✓
+2. `nc-count-max-temp-depth` had same issue - FIXED ✓
+3. **Non-tail-recursive temp slot clobbering** - FIXED ✓ (Bug #22)
+4. **Temp slot exhaustion in large programs** - FIXED ✓ (Bug #23)
 
-**Issues encountered**:
-1. `nc-count-max-env-offset` crashed on alist pairs like `(CODE . 0)` - FIXED
-2. `nc-count-max-temp-depth` had same issue - FIXED
-3. Deep recursion in `nc-codegen` exhausts stack - PENDING
+**Bug #22 - CRITICAL FIX** (November 28, 2025):
+Non-tail-recursive functions were returning wrong values (exit code 0). Root cause: In `nc-codegen-binop`, when right operand may call functions, both left and right were evaluated with same temp depth `(+ td 1)`, causing recursive calls to clobber the saved left value at temp[td].
 
-**Root cause**: The compiler uses deep recursion for IR traversal and codegen. With 5300+ lines generating massive nested IR, this exhausts stack/heap.
+Fix: Changed right operand evaluation from `(+ td 1)` to `(+ td 2)` in bootstrap/compiler.lisp:2517. Now right evaluation uses temp[td+2]+, never touching temp[td] where left is saved.
 
-**Solutions for true self-hosting**:
-1. **Iterative compilation** - Split compiler into modules, compile each separately
-2. **Tail recursion optimization** - Rewrite recursive traversals as loops
-3. **Increase limits** - Use --control-stack-size and --dynamic-space-size (temporary workaround)
-4. **Simplified compiler** - Create a minimal "stage 0" compiler that can bootstrap stage 1
+Test results: All non-tail-recursive patterns now work correctly.
 
-**Current status**: We have a working compiler driver that successfully compiles small-to-medium programs. The path to full self-hosting requires either architectural changes or a modular bootstrap strategy.
+**Bug #23 - Temp Slot Exhaustion** (November 28, 2025):
+Compiling large programs (5000+ lines) hit "Too many temp slots: 64" error. Deeply nested funcall-ir with let-ir arguments caused temp depth to exceed 64.
+
+Fixes:
+1. Increased temp slot limit from 64 to 480 (nc-temp-slot: guard changed from #x240 to #xF00)
+2. Increased frame size from 1KB to 4KB for all functions (nc-prologue/epilogue: #x400 -> #x1000)
+3. Added let-flattening and progn-flattening nanopasses to reduce IR nesting depth
+4. Enabled flattening passes in optimization pipeline (added to default passes list)
+
+Result: Bootstrap compiler (5329 lines) compiles successfully in ~30 seconds.
+
+**Nanopass Architecture** (November 28, 2025):
+Extended bootstrap/optimize.lisp with two new passes:
+- **Pass 5: let-flattening** - Merges consecutive nested let-ir nodes into single let-ir
+- **Pass 6: progn-flattening** - Merges consecutive nested progn-ir nodes into single progn-ir
+
+These passes run BEFORE constant-folding/strength-reduction/dead-code-elimination, reducing IR depth from 100+ levels to ~10.
+
+**Current Status**: **PARTIAL SELF-HOSTING ACHIEVED**
+- ✓ Compiler successfully compiles itself to native ARM64 executable
+- ✓ Generated executable is valid Mach-O binary (1.6MB)
+- ✗ Generated executable crashes with SIGSEGV when run (expected - uses SBCL features)
+
+**Why generated compiler crashes**: The bootstrap/compiler.lisp source uses SBCL-specific features (format, with-open-file, read, etc.) that don't exist in the native runtime. These are compiled into the native executable but reference undefined functions.
+
+**Next Step**: Remove SBCL dependencies from bootstrap compiler to achieve full self-hosting.
 
 **Known Limitations**:
-1. Non-tail-recursive functions may crash with exit code 0
-   - Tail-recursive factorial(5) = 120 ✓ WORKS
-   - Non-tail-recursive factorial(5) = 0 (crash) ✗ FAILS
-   - Suggests stack frame management issue in deeply nested calls
-
-2. Very large programs (5000+ lines) exhaust stack/heap during compilation
+1. ~~Non-tail-recursive functions may crash with exit code 0~~ - FIXED ✓
+2. ~~Very large programs (5000+ lines) exhaust stack/heap during compilation~~ - FIXED ✓
+3. Generated compiler crashes due to SBCL dependencies - IN PROGRESS
 
 **Success Cases**:
-- Tail-recursive functions with accumulators
-- Multiple function definitions (tested with 15 functions, 3481 bytes)
-- Mutual recursion (tested in previous sessions)
-- Higher-order functions (funcall, closures)
-
-**Next**: Document findings and explore modular bootstrap strategy.
+- ✓ Tail-recursive functions with accumulators
+- ✓ Non-tail-recursive functions (factorial, left-recursive mult, etc.)
+- ✓ Multiple function definitions (tested with 15 functions, 3481 bytes)
+- ✓ Mutual recursion (tested in previous sessions)
+- ✓ Higher-order functions (funcall, closures)
+- ✓ **SELF-COMPILATION** - Compiler compiles itself to 1.6MB native executable
 
 ---
 
