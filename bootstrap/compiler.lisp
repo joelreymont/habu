@@ -3115,7 +3115,7 @@
          ;; Loop: while x3 < x5
          ;; loop_start: (offset 0 from here)
          (nc-cmp-reg 3 5)                   ; cmp x3, x5
-         (nc-b-cond (nc-cond-ge) 20)        ; if x3 >= x5, jump to loop_end (+5 instructions = 20 bytes)
+         (nc-b-cond (nc-cond-ge) 24)        ; if x3 >= x5, jump to loop_end (+6 instructions = 24 bytes)
          ;; Load buf[x3] - raw byte
          (nc-add-reg 4 1 3)                 ; x4 = buf_data + x3
          (nc-ldrb-offset 4 4 0)             ; x4 = byte at [x4]
@@ -4664,10 +4664,24 @@ int main(int argc, char **argv) {
             (format t "Extern positions: ~A~%" extern-positions))
 
           ;; Wrap code with heap initialization
-          ;; Heap page offset: __DATA at VM 0x100008000, code at 0x100000000
-          ;; ADRP uses 4K pages, so offset = (0x100008 - 0x100000) = 8 pages
-          (let ((wrapped-code (funcall (intern "WRAP-BYTECODE-WITH-HEAP-FOR-IMPORTS" :habu-macho)
-                                       flat-code 8)))
+          ;; Calculate heap page offset dynamically based on code size
+          ;; Layout: code -> stubs -> __DATA_CONST (16KB) -> __DATA (heap)
+          ;; Note: macOS ARM64 uses 16KB pages (#x4000), but ADRP uses 4KB page units (#x1000)
+          ;; heap-page-offset = (text-vmsize / 4KB) + (data-const-vmsize / 4KB)
+          (let* ((num-imports (length imports))
+                 (stubs-total (if (> num-imports 0) (* num-imports 12) 0))
+                 (approx-code-offset #x400)  ; header + commands + padding
+                 (total-size (+ (length flat-code) wrapper-size))
+                 (stubs-end (+ approx-code-offset total-size stubs-total))
+                 ;; Linker aligns to 16KB pages (macOS ARM64 page size)
+                 (text-vmsize (* (ceiling stubs-end #x4000) #x4000))
+                 ;; Convert to 4KB units for ADRP
+                 (text-pages-4kb (/ text-vmsize #x1000))
+                 ;; DATA_CONST is one 16KB page = 4 ADRP pages
+                 (data-const-pages-4kb (/ #x4000 #x1000))
+                 (heap-page-offset (+ text-pages-4kb data-const-pages-4kb))
+                 (wrapped-code (funcall (intern "WRAP-BYTECODE-WITH-HEAP-FOR-IMPORTS" :habu-macho)
+                                        flat-code heap-page-offset)))
 
             ;; Create executable with imports and heap
             (multiple-value-bind (path code-offset stubs-offset stub-size heap-vmaddr heap-page-offset)

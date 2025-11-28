@@ -15,7 +15,7 @@
   (handler-case
     (let ((output-path (format nil "/tmp/reader_~A" name)))
       (deliver-with-libsystem source output-path)
-      (sb-ext:run-program "/usr/bin/codesign" (list "-s" "-" output-path)
+      (sb-ext:run-program "/usr/bin/codesign" (list "-s" "-" "-f" output-path)
                           :output nil :error nil :wait t)
       (let* ((proc (sb-ext:run-program output-path nil :output nil :error nil :wait t))
              (code (sb-ext:process-exit-code proc)))

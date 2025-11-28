@@ -1333,6 +1333,9 @@
     ;; Make executable
     (sb-ext:run-program "/bin/chmod" (list "+x" output-path))
 
+    ;; Ad-hoc codesign for macOS
+    (sb-ext:run-program "/usr/bin/codesign" (list "-s" "-" "-f" output-path))
+
     ;; Return values for caller
     (values output-path
             code-offset
@@ -1735,6 +1738,9 @@
     ;; Make executable
     (sb-ext:run-program "/bin/chmod" (list "+x" output-path))
 
+    ;; Ad-hoc codesign for macOS
+    (sb-ext:run-program "/usr/bin/codesign" (list "-s" "-" "-f" output-path))
+
     ;; Return values for caller
     ;; heap-page-offset: ADRP uses 4KB pages
     ;; __TEXT at VM 0x100000000, __DATA at 0x100008000 = 8 pages difference
@@ -1752,12 +1758,34 @@
    IMPORTS is a list of external function names (e.g. (\"_write\" \"_exit\"))
 
    Returns: (values output-path code-offset stubs-offset stub-size heap-vmaddr)"
-  ;; Wrap code with heap initialization
-  ;; Layout: __TEXT at VM 0x100000000, __DATA_CONST at 0x100004000, __DATA at 0x100008000
-  ;; ADRP uses 4KB pages, so heap page offset = (0x100008 - 0x100000) = 8 pages
-  (let ((wrapped-code (wrap-bytecode-with-heap-for-imports code-bytes 8)))
-    (write-macho-executable-with-imports-and-heap output-path wrapped-code imports
-                                                  :heap-size heap-size :verbose verbose)))
+  ;; Calculate heap page offset dynamically based on code size
+  ;; The wrapper stub adds 68 bytes, and we need to account for that
+  ;; when calculating where segments will land.
+  (let* ((wrapper-stub-size 68)
+         (num-imports (length imports))
+         (stub-size 12)
+         (stubs-total-size (* num-imports stub-size))
+         ;; Approximate code-offset (after header + commands + padding)
+         ;; This is an approximation; the actual value is calculated in write-macho...
+         ;; We're slightly over-estimating to be safe (header ~32 + cmds ~700 + padding)
+         (approx-code-offset #x400)
+         ;; Total code after wrapping
+         (total-code-size (+ (length code-bytes) wrapper-stub-size))
+         ;; Stubs follow code
+         (stubs-offset (align-up (+ approx-code-offset total-code-size) 4))
+         (stubs-end (+ stubs-offset stubs-total-size))
+         ;; __TEXT segment size (page-aligned)
+         (text-vmsize (align-up stubs-end +PAGE-SIZE+))
+         ;; __DATA_CONST follows __TEXT
+         ;; __DATA (heap) follows __DATA_CONST
+         ;; heap page offset = (text-vmsize + PAGE-SIZE) / PAGE-SIZE
+         ;; = text-vmsize/PAGE-SIZE + 1 pages from the ADRP instruction (which is at page 0)
+         (heap-page-offset (+ (floor text-vmsize +PAGE-SIZE+) 1)))
+    (when verbose
+      (format t "Calculated heap-page-offset: ~D (text-vmsize=~X)~%" heap-page-offset text-vmsize))
+    (let ((wrapped-code (wrap-bytecode-with-heap-for-imports code-bytes heap-page-offset)))
+      (write-macho-executable-with-imports-and-heap output-path wrapped-code imports
+                                                    :heap-size heap-size :verbose verbose))))
 
 ;;; ============================================================
 ;;; Test Function
