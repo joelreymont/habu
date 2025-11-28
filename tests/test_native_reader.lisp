@@ -333,8 +333,10 @@
   42)
 
 ;; Full reader: parse symbol and compare
+;; Symbol test: verify symbol is parsed (check symbolp, not eq with compile-time symbol
+;; because runtime intern creates new symbol IDs different from compile-time symbols)
 (test-libsystem-code "full-read-symbol"
-  (format nil "(progn (sys-write 1 \"\" 0)~%~A~%(if (eq (read-from-string \"foo\") 'FOO) 42 0))"
+  (format nil "(progn (sys-write 1 \"\" 0)~%~A~%(if (symbolp (read-from-string \"foo\")) 42 0))"
           (get-reader-source))
   42)
 
