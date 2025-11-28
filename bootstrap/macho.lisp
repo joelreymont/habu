@@ -625,8 +625,8 @@
     (encode-u32-le instr)))
 
 (defun arm64-lsr (rd rn shift)
-  "LSR Xd, Xn, #shift - Logical shift right"
-  (let ((instr (logior #xD3400000 (ash shift 16) (ash rn 5) rd)))
+  "LSR Xd, Xn, #shift - Logical shift right (UBFM with imms=63)"
+  (let ((instr (logior #xD340FC00 (ash shift 16) (ash rn 5) rd)))
     (encode-u32-le instr)))
 
 (defun arm64-ret ()
@@ -785,7 +785,7 @@
                                                    (cons (arm64-mov 27 28)
                                                          (cons (arm64-add-imm 28 28 16)
                                                                (cons (arm64-adr 26 36)
-                                                                     (cons (arm64-bl 8)
+                                                                     (cons (arm64-bl 32)
                                                                            (cons (arm64-lsr 0 0 4)
                                                                                  (cons (arm64-ldr 27 31 24)
                                                                                        (cons (arm64-ldr 26 31 16)
