@@ -4269,6 +4269,8 @@
   (cond
     ((null ir) 0)
     ((not (consp ir)) 0)
+    ;; Skip alist pairs like (CODE . 0) or (FNOFFS . 1)
+    ((and (consp ir) (atom (cdr ir))) 0)
     ((nc-has-tag ir 'let-ir)
      ;; let-ir = (let-ir vals bir count (offs...))
      ;; The offs list contains the offsets used
@@ -4282,9 +4284,13 @@
           (nc-count-max-env-offset (cadddr ir))))
     ((nc-has-tag ir 'progn-ir)
      (apply #'max 0 (mapcar #'nc-count-max-env-offset (cadr ir))))
+    ((nc-has-tag ir 'dolist-ir)
+     ;; dolist-ir has body at (cadddr ir)
+     (nc-count-max-env-offset (cadddr ir)))
     (t
-     ;; Check children for other IR nodes
-     (apply #'max 0 (mapcar #'nc-count-max-env-offset (cdr ir))))))
+     ;; Check children for other IR nodes, filtering out non-list elements
+     (apply #'max 0 (mapcar #'nc-count-max-env-offset
+                            (remove-if-not #'consp (cdr ir)))))))
 
 (defun nc-count-max-temp-depth (ir depth)
   "Count the maximum temp depth reached during codegen of IR.
@@ -4292,6 +4298,8 @@
   (cond
     ((null ir) depth)
     ((not (consp ir)) depth)
+    ;; Skip alist pairs like (CODE . 0) or (FNOFFS . 1)
+    ((and (consp ir) (atom (cdr ir))) depth)
     ;; Literals and vars don't use temps
     ((or (nc-has-tag ir 'lit) (nc-has-tag ir 'var-ref)) depth)
     ;; Binary ops: depth increases by amount needed for saving x24 + operands
@@ -4317,6 +4325,9 @@
     ;; Progn: all forms
     ((nc-has-tag ir 'progn-ir)
      (apply #'max depth (mapcar (lambda (f) (nc-count-max-temp-depth f depth)) (cadr ir))))
+    ;; Dolist: check body
+    ((nc-has-tag ir 'dolist-ir)
+     (nc-count-max-temp-depth (cadddr ir) depth))
     ;; Function calls: args + closure env
     ((nc-has-tag ir 'call-fn)
      (let* ((args (caddr ir))
@@ -4328,9 +4339,10 @@
             (closure-depth (nc-count-max-temp-depth closure (+ depth 2)))
             (arg-depths (mapcar (lambda (a) (nc-count-max-temp-depth a (+ depth 4))) args)))
        (apply #'max closure-depth (+ depth 4) arg-depths)))
-    ;; Default: check all children
+    ;; Default: check all children, filtering out non-list elements
     (t
-     (apply #'max depth (mapcar (lambda (child) (nc-count-max-temp-depth child depth)) (cdr ir))))))
+     (apply #'max depth (mapcar (lambda (child) (nc-count-max-temp-depth child depth))
+                                (remove-if-not #'consp (cdr ir)))))))
 
 (defun nc-codegen-fn (fn rtaddrs fnoffs)
   "Generate code for a function (defun or lifted lambda).

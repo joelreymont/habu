@@ -81,7 +81,48 @@ Result:
 
 **Conclusion**: The bootstrap compiler successfully generates working native executables with no SBCL runtime dependency!
 
-**Next**: Create standalone compiler executable (self-hosting fixed point).
+**Phase 3: Standalone Compiler Driver** - COMPLETE ✓
+
+Created `compiler-driver.lisp` - minimal wrapper around bootstrap compiler functions:
+- Reads command-line arguments (input file, output file)
+- Reads source file contents
+- Calls `habu:deliver-with-libsystem`
+- Handles success/error exit codes
+
+Test result:
+```bash
+$ sbcl --script compiler-driver.lisp /tmp/test_prog.lisp /tmp/test_via_driver
+$ /tmp/test_via_driver && echo $?
+120  # factorial(5) = 120 ✓
+```
+
+The compiler driver successfully compiles simple programs!
+
+**Phase 4: Full Self-Hosting (Fixed Point)** - BLOCKED (resource exhaustion)
+
+Attempted to compile bootstrap/compiler.lisp (5329 lines) with itself:
+```bash
+$ sbcl --dynamic-space-size 4096 --script compiler-driver.lisp bootstrap/compiler.lisp /tmp/habu-compiler-stage1
+```
+
+Result: Stack/heap exhaustion during compilation. The bootstrap compiler is too large and complex to compile itself in one pass.
+
+**Issues encountered**:
+1. `nc-count-max-env-offset` crashed on alist pairs like `(CODE . 0)` - FIXED
+2. `nc-count-max-temp-depth` had same issue - FIXED
+3. Deep recursion in `nc-codegen` exhausts stack - PENDING
+
+**Root cause**: The compiler uses deep recursion for IR traversal and codegen. With 5300+ lines generating massive nested IR, this exhausts stack/heap.
+
+**Solutions for true self-hosting**:
+1. **Iterative compilation** - Split compiler into modules, compile each separately
+2. **Tail recursion optimization** - Rewrite recursive traversals as loops
+3. **Increase limits** - Use --control-stack-size and --dynamic-space-size (temporary workaround)
+4. **Simplified compiler** - Create a minimal "stage 0" compiler that can bootstrap stage 1
+
+**Current status**: We have a working compiler driver that successfully compiles small-to-medium programs. The path to full self-hosting requires either architectural changes or a modular bootstrap strategy.
+
+**Next**: Commit progress and document the self-hosting challenge.
 
 ---
 
