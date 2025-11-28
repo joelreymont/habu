@@ -5019,7 +5019,10 @@ int main(int argc, char **argv) {
                           (write-byte (logand (ash bl-instr -24) #xFF) f)))))))
 
               ;; Re-codesign after patching (the earlier codesign in write-macho was invalidated)
-              (sb-ext:run-program "/usr/bin/codesign" (list "-s" "-" "-f" path))
+              ;; Only on macOS and when sb-ext is available
+              #+sbcl
+              (when (probe-file "/usr/bin/codesign")
+                (sb-ext:run-program "/usr/bin/codesign" (list "-s" "-" "-f" path)))
 
               (when verbose
                 (terpri) (princ "Created: ") (princ path) (terpri))
