@@ -16,13 +16,16 @@
 - ✓ All major Lisp features validated (recursion, closures, mutual recursion, etc.)
 
 ### What Remains for Full Self-Hosting
-- Generated compiler executable uses SBCL features (format, with-open-file, read)
-- Need to replace these with pure-Habu equivalents in compiler source
-- File I/O buffer limit (64KB) needs looping for large files
+- **Critical blocker found**: labels recursion + heap allocation causes SIGBUS
+  - Affects: string-append in recursive contexts, list-based file reading
+  - Works: fixnum recursion, sequential string operations
+  - Root cause: likely heap exhaustion or stack overflow in generated code
+- Generated compiler uses minimal SBCL features (mostly in deprecated code)
+- File I/O: native-read-file works for files < 64KB (sufficient for most programs)
 - Final test: Stage N compiler == Stage N+1 compiler (fixed point)
 
-**Estimated time to full self-hosting**: 3-5 days
-**Confidence**: High - all hard technical problems solved
+**Estimated time to full self-hosting**: 5-7 days (revised due to labels issue)
+**Confidence**: Medium - need to fix labels+heap bug or find workaround
 
 ### Key Technical Achievements (November 28, 2025)
 
@@ -47,6 +50,29 @@
 - Code generation: ~20KB/second of ARM64 machine code
 - Output: 1.6MB (620KB code + 1MB heap)
 - Memory: 4GB SBCL dynamic space
+
+**4. String Operations and File I/O** (November 28, 2025 continued)
+- **string-append**: Implemented as compiler macro
+  - Sequential concatenation: works ✓
+  - Recursive labels contexts: crashes (SIGBUS)
+  - Expands to vector allocation + character copying
+- **native-read-file**: Works for files < 64KB ✓
+  - Uses sys-open, sys-read, sys-close
+  - Sufficient for most Lisp programs
+- **native-read-file-large**: Attempted two implementations
+  - V1: Recursive string-append → crashes
+  - V2: List accumulator + concat-string-list → crashes
+  - Both fail due to labels + heap allocation issue
+- **File I/O status**: Basic operations work, large files blocked
+
+**Critical Bug #20: labels recursion + heap allocation**
+- **Symptom**: SIGBUS (signal 10) when labels function recursively allocates
+- **Reproducible**:
+  - `(labels ((f (s n) (if (= n 0) s (f (string-append s "X") (- n 1))))) (f "" 5))` → crash
+  - `(labels ((f (n) (if (= n 0) 0 (f (- n 1))))) (f 10))` → works
+- **Impact**: Blocks large file reading, string accumulation in loops
+- **Workaround**: Use fixnum-only recursion, or sequential operations
+- **Priority**: High - blocks full self-hosting for compiler (256KB source)
 
 ## Previous Plan: Self-Hosting - Eliminating SBCL
 
