@@ -106,33 +106,35 @@ The compiler driver successfully compiles simple programs!
 - ✓ Added `native-write-file` primitive (tested, working)
 - ✓ Added `native-read-file` primitive (tested, working)
 - ✓ Added `vector-length` compiler support and codegen
-- ⚠ Attempted `native-write-bytes` for binary data - BLOCKED
+- ✓ Solved binary file writing with `make-string-from-vector`
+- ✓ Created buffer-building helpers (buf-u8, buf-u16-le, buf-u32-le, buf-u64-le, etc.)
+- ✓ Implemented `buf-mach-header-64` (tested, generates correct 32-byte header)
+- ✓ Implemented buffer-based load commands:
+  - buf-segment-command-64 (LC_SEGMENT_64)
+  - buf-section-64 (section headers)
+  - buf-load-dylinker-command, buf-uuid-command, buf-build-version-command
+  - buf-main-command, buf-load-dylib-command
+  - buf-symtab-command, buf-dysymtab-command
 
 **Solution Found**: Binary File Writing ✓
 The `make-string-from-vector` primitive solves binary file writing:
-- Store bytes in vector as fixnums (0-255)
-- Convert vector to string with `make-string-from-vector`
+- Store bytes in list as fixnums (0-255)
+- Convert to vector, then to string with `make-string-from-vector`
 - Write string with `native-write-file` (uses sys-write)
-- Test confirmed: Writing [0x48, 0x65, 0x6C, 0x6C, 0x6F] produces correct file content "Hello"
+- Test confirmed: Mach-O header bytes generated correctly (0xFEEDFACF magic, ARM64 CPU type, etc.)
 
-**Approach for Mach-O Linker**:
-1. Build entire executable as vector of bytes in memory
-2. Convert to string at end
-3. Write once with `native-write-file`
-4. No stream I/O needed - single atomic write
+**Files Created**:
+- `bootstrap/macho.lisp` - Pure-Habu Mach-O generation (no SBCL dependencies)
+- `common/buffer.lisp` - Reusable buffer building utilities
 
-**Current Mach-O Linker Dependencies** (macho-linker.lisp):
-- `with-open-file` - 4 occurrences (lines 356, 691, 1138, 5052)
-- `write-byte` - 50+ occurrences (stream-based byte writing)
-- `file-position` - 20+ occurrences (stream position tracking)
+**Remaining Work**:
+1. Port chained fixups generation (for dynamic linking to libSystem)
+2. Port __LINKEDIT section building (symbols, strings, binding info)
+3. Create top-level executable generation function (assemble all pieces)
+4. Test minimal executable generation
+5. Test with dynamic imports
 
-**Strategy**: Replace stream I/O with in-memory vector building, write entire file at once.
-
-**Next Steps**:
-1. Resolve byte-writing primitive issue
-2. Create buffer-building helpers (accumulate bytes in vector/list)
-3. Port write-macho-executable-with-imports-and-heap function
-4. Test with minimal Mach-O binary
+**Current Status**: Foundation complete - can generate all basic Mach-O structures as byte buffers. Need to assemble into complete executable generator.
 
 **Phase 4: Full Self-Hosting (Fixed Point)** - PARTIAL SUCCESS ✓
 

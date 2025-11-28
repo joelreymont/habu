@@ -162,3 +162,89 @@
                                                                (cons (buf-u32-le reserved2)
                                                                      (cons (buf-u32-le 0)  ; reserved3
                                                                            nil))))))))))))))
+
+(defun buf-load-dylinker-command (path)
+  "Generate LC_LOAD_DYLINKER command as buffer"
+  (let* ((path-len (+ 1 (string-length path)))
+         (cmdsize (align-up (+ 12 path-len) 8)))
+    (buf-append-all
+     (cons (buf-u32-le +LC-LOAD-DYLINKER+)
+           (cons (buf-u32-le cmdsize)
+                 (cons (buf-u32-le 12)
+                       (cons (buf-string-padded path (- cmdsize 12))
+                             nil)))))))
+
+(defun buf-uuid-command (uuid-val)
+  "Generate LC_UUID command as buffer (uuid-val = list of 4 u32 values)"
+  (let* ((uuid0 (car uuid-val))
+         (uuid1 (car (cdr uuid-val)))
+         (uuid2 (car (cdr (cdr uuid-val))))
+         (uuid3 (car (cdr (cdr (cdr uuid-val))))))
+    (buf-append-all
+     (cons (buf-u32-le +LC-UUID+)
+           (cons (buf-u32-le 24)
+                 (cons (buf-u32-le uuid0)
+                       (cons (buf-u32-le uuid1)
+                             (cons (buf-u32-le uuid2)
+                                   (cons (buf-u32-le uuid3)
+                                         nil)))))))))
+
+(defun buf-build-version-command ()
+  "Generate LC_BUILD_VERSION for macOS 14.0 as buffer"
+  (buf-append-all
+   (cons (buf-u32-le +LC-BUILD-VERSION+)
+         (cons (buf-u32-le 24)
+               (cons (buf-u32-le 1)           ; platform = macOS
+                     (cons (buf-u32-le #x000E0000)  ; minos = 14.0
+                           (cons (buf-u32-le #x000E0000)  ; sdk = 14.0
+                                 (cons (buf-u32-le 0)  ; ntools
+                                       nil))))))))
+
+(defun buf-main-command (entryoff)
+  "Generate LC_MAIN command as buffer"
+  (buf-append-all
+   (cons (buf-u32-le +LC-MAIN+)
+         (cons (buf-u32-le 24)
+               (cons (buf-u64-le entryoff)
+                     (cons (buf-u64-le 0)  ; stacksize
+                           nil))))))
+
+(defun buf-load-dylib-command (path)
+  "Generate LC_LOAD_DYLIB command as buffer"
+  (let* ((path-len (+ 1 (string-length path)))
+         (cmdsize (align-up (+ 24 path-len) 8)))
+    (buf-append-all
+     (cons (buf-u32-le +LC-LOAD-DYLIB+)
+           (cons (buf-u32-le cmdsize)
+                 (cons (buf-u32-le 24)        ; name.offset
+                       (cons (buf-u32-le 2)   ; timestamp
+                             (cons (buf-u32-le #x054C0000)  ; current_version
+                                   (cons (buf-u32-le #x00010000)  ; compat_version
+                                         (cons (buf-string-padded path (- cmdsize 24))
+                                               nil))))))))))
+
+(defun buf-symtab-command (symoff nsyms stroff strsize)
+  "Generate LC_SYMTAB command as buffer"
+  (buf-append-all
+   (cons (buf-u32-le +LC-SYMTAB+)
+         (cons (buf-u32-le 24)
+               (cons (buf-u32-le symoff)
+                     (cons (buf-u32-le nsyms)
+                           (cons (buf-u32-le stroff)
+                                 (cons (buf-u32-le strsize)
+                                       nil))))))))
+
+(defun buf-dysymtab-command (ilocalsym nlocalsym iextdefsym nextdefsym
+                              iundefsym nundefsym)
+  "Generate LC_DYSYMTAB command as buffer"
+  (buf-append-all
+   (cons (buf-u32-le +LC-DYSYMTAB+)
+         (cons (buf-u32-le 80)
+               (cons (buf-u32-le ilocalsym)
+                     (cons (buf-u32-le nlocalsym)
+                           (cons (buf-u32-le iextdefsym)
+                                 (cons (buf-u32-le nextdefsym)
+                                       (cons (buf-u32-le iundefsym)
+                                             (cons (buf-u32-le nundefsym)
+                                                   (cons (buf-zeros 48)  ; remaining fields
+                                                         nil)))))))))))
