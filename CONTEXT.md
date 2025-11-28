@@ -65,13 +65,26 @@
   - Both fail due to labels + heap allocation issue
 - **File I/O status**: Basic operations work, large files blocked
 
-**Critical Bug #20: labels recursion + heap allocation**
-- **Symptom**: SIGBUS (signal 10) when labels function recursively allocates
-- **Reproducible**:
-  - `(labels ((f (s n) (if (= n 0) s (f (string-append s "X") (- n 1))))) (f "" 5))` → crash
-  - `(labels ((f (n) (if (= n 0) 0 (f (- n 1))))) (f 10))` → works
+**Critical Bug #20: GC root scanning in argument spill slots**
+- **Symptom**: SIGBUS when passing heap-allocated value as arg to recursive call
+- **Root cause**: Spill slots not scanned as GC roots during argument evaluation
+- **Detailed analysis**:
+  - Pattern: `(f (heap-allocating-expr) other-args)` in recursive context
+  - Works: `(f fixnum-expr)`, `(f constant-string)`, `(f cons-expr)`
+  - Fails: `(f (string-append s "X"))` when called recursively
+  - Why: heap object created in arg position stored to spill slot, but if
+    subsequent arg evaluation triggers GC, spill slot not scanned, object collected
+- **Test matrix** (15 test cases):
+  - ✓ labels + fixnum recursion
+  - ✓ labels + cons recursion
+  - ✓ labels + make-vector
+  - ✓ labels calling string-append (non-recursive)
+  - ✓ labels + constant string arg (recursive)
+  - ✗ labels + string-append result as arg (recursive) → CRASH
 - **Impact**: Blocks large file reading, string accumulation in loops
-- **Workaround**: Use fixnum-only recursion, or sequential operations
+- **Fix**: Ensure argument spill slots ([sp + offset]) are scanned during GC
+  - Requires: runtime/gc.c changes to mark stack frames as GC roots
+  - Alternative: Evaluate args to heap-allocated vector before call
 - **Priority**: High - blocks full self-hosting for compiler (256KB source)
 
 ## Previous Plan: Self-Hosting - Eliminating SBCL
