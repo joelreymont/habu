@@ -146,12 +146,35 @@ These passes run BEFORE constant-folding/strength-reduction/dead-code-eliminatio
 
 **Why generated compiler crashes**: The bootstrap/compiler.lisp source uses SBCL-specific features (format, with-open-file, read, etc.) that don't exist in the native runtime. These are compiled into the native executable but reference undefined functions.
 
-**Next Step**: Remove SBCL dependencies from bootstrap compiler to achieve full self-hosting.
+**Phase 5: Native File I/O for Self-Hosting** - COMPLETE ✓ (November 28, 2025)
+
+Implemented high-level file I/O functions that work in native executables:
+- `native-read-file`: Reads entire file to string (up to 64KB)
+- `native-write-file`: Writes string to file with proper flags
+
+Both functions expand to let* forms using low-level sys-* primitives (sys-open, sys-read/sys-write, sys-close).
+
+Test results:
+```lisp
+;; Write test
+(native-write-file "/tmp/test.txt" "Hello from Habu!")
+;; → Successfully writes file, dynamically links to _open, _write, _close
+
+;; Read test
+(let ((content (native-read-file "/tmp/test.txt")))
+  (sys-write 1 content (string-length content)))
+;; → Successfully reads and prints "Hello from Habu!"
+```
+
+**Impact**: Native executables can now perform file I/O without SBCL dependencies. This unblocks creating a minimal native compiler that can read source files and write outputs.
+
+**Next Step**: Create minimal compiler driver using native-read-file/native-write-file instead of SBCL's with-open-file.
 
 **Known Limitations**:
 1. ~~Non-tail-recursive functions may crash with exit code 0~~ - FIXED ✓
 2. ~~Very large programs (5000+ lines) exhaust stack/heap during compilation~~ - FIXED ✓
-3. Generated compiler crashes due to SBCL dependencies - IN PROGRESS
+3. ~~Native file I/O missing~~ - FIXED ✓
+4. Generated compiler crashes due to SBCL dependencies - IN PROGRESS (file I/O done, format/princ remain)
 
 **Success Cases**:
 - ✓ Tail-recursive functions with accumulators
