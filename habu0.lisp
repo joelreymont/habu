@@ -11,17 +11,30 @@
 (defvar *op-quote* nil)
 (defvar *op-if* nil)
 (defvar *op-let* nil)
+(defvar *op-let-star* nil)
 (defvar *op-defun* nil)
+(defvar *op-progn* nil)
+(defvar *op-cond* nil)
 (defvar *op-t* nil)
 (defvar *op-plus* nil)
 (defvar *op-minus* nil)
 (defvar *op-mul* nil)
 (defvar *op-div* nil)
+(defvar *op-mod* nil)
 (defvar *op-eq-num* nil)
 (defvar *op-lt* nil)
 (defvar *op-gt* nil)
 (defvar *op-le* nil)
 (defvar *op-ge* nil)
+(defvar *op-cons* nil)
+(defvar *op-car* nil)
+(defvar *op-cdr* nil)
+(defvar *op-null* nil)
+(defvar *op-consp* nil)
+(defvar *op-list* nil)
+(defvar *op-not* nil)
+(defvar *op-and* nil)
+(defvar *op-or* nil)
 
 ;; File I/O constants
 (defun o-rdonly () #x0)
@@ -251,6 +264,110 @@
               nil)
           nil)))
 
+(defun op=let-star (sym)
+  (if (eq sym *op-let-star*) t
+      (if (null *op-let-star*)
+          (if (string= (symbol-name sym) "LET*")
+              (progn (setq *op-let-star* sym) t)
+              nil)
+          nil)))
+
+(defun op=progn (sym)
+  (if (eq sym *op-progn*) t
+      (if (null *op-progn*)
+          (if (string= (symbol-name sym) "PROGN")
+              (progn (setq *op-progn* sym) t)
+              nil)
+          nil)))
+
+(defun op=cond (sym)
+  (if (eq sym *op-cond*) t
+      (if (null *op-cond*)
+          (if (string= (symbol-name sym) "COND")
+              (progn (setq *op-cond* sym) t)
+              nil)
+          nil)))
+
+(defun op=mod (sym)
+  (if (eq sym *op-mod*) t
+      (if (null *op-mod*)
+          (if (string= (symbol-name sym) "MOD")
+              (progn (setq *op-mod* sym) t)
+              nil)
+          nil)))
+
+(defun op=cons (sym)
+  (if (eq sym *op-cons*) t
+      (if (null *op-cons*)
+          (if (string= (symbol-name sym) "CONS")
+              (progn (setq *op-cons* sym) t)
+              nil)
+          nil)))
+
+(defun op=car (sym)
+  (if (eq sym *op-car*) t
+      (if (null *op-car*)
+          (if (string= (symbol-name sym) "CAR")
+              (progn (setq *op-car* sym) t)
+              nil)
+          nil)))
+
+(defun op=cdr (sym)
+  (if (eq sym *op-cdr*) t
+      (if (null *op-cdr*)
+          (if (string= (symbol-name sym) "CDR")
+              (progn (setq *op-cdr* sym) t)
+              nil)
+          nil)))
+
+(defun op=null (sym)
+  (if (eq sym *op-null*) t
+      (if (null *op-null*)
+          (if (string= (symbol-name sym) "NULL")
+              (progn (setq *op-null* sym) t)
+              nil)
+          nil)))
+
+(defun op=consp (sym)
+  (if (eq sym *op-consp*) t
+      (if (null *op-consp*)
+          (if (string= (symbol-name sym) "CONSP")
+              (progn (setq *op-consp* sym) t)
+              nil)
+          nil)))
+
+(defun op=list (sym)
+  (if (eq sym *op-list*) t
+      (if (null *op-list*)
+          (if (string= (symbol-name sym) "LIST")
+              (progn (setq *op-list* sym) t)
+              nil)
+          nil)))
+
+(defun op=not (sym)
+  (if (eq sym *op-not*) t
+      (if (null *op-not*)
+          (if (string= (symbol-name sym) "NOT")
+              (progn (setq *op-not* sym) t)
+              nil)
+          nil)))
+
+(defun op=and (sym)
+  (if (eq sym *op-and*) t
+      (if (null *op-and*)
+          (if (string= (symbol-name sym) "AND")
+              (progn (setq *op-and* sym) t)
+              nil)
+          nil)))
+
+(defun op=or (sym)
+  (if (eq sym *op-or*) t
+      (if (null *op-or*)
+          (if (string= (symbol-name sym) "OR")
+              (progn (setq *op-or* sym) t)
+              nil)
+          nil)))
+
 ;; Generic symbol name comparison for cases not covered by caching
 (defun op= (sym name)
   (if (symbolp sym)
@@ -413,6 +530,49 @@
              (val (h0-eval (cadr b) env fenv)))
         (h0-eval-let (cdr bindings) body (cons (cons var val) env) fenv))))
 
+;; Helper for progn - evaluates forms in sequence, returns last value
+(defun h0-eval-progn (forms env fenv)
+  (if (null forms)
+      nil
+      (if (null (cdr forms))
+          (h0-eval (car forms) env fenv)
+          (progn
+            (h0-eval (car forms) env fenv)
+            (h0-eval-progn (cdr forms) env fenv)))))
+
+;; Helper for cond - evaluates clauses until one matches
+(defun h0-eval-cond (clauses env fenv)
+  (if (null clauses)
+      nil
+      (let* ((clause (car clauses))
+             (test (car clause))
+             (body (cdr clause)))
+        (if (h0-eval test env fenv)
+            (if (null body)
+                t
+                (h0-eval-progn body env fenv))
+            (h0-eval-cond (cdr clauses) env fenv)))))
+
+;; Helper for and - short-circuit evaluation
+(defun h0-eval-and (forms env fenv)
+  (if (null forms)
+      t
+      (let ((val (h0-eval (car forms) env fenv)))
+        (if val
+            (if (null (cdr forms))
+                val
+                (h0-eval-and (cdr forms) env fenv))
+            nil))))
+
+;; Helper for or - short-circuit evaluation
+(defun h0-eval-or (forms env fenv)
+  (if (null forms)
+      nil
+      (let ((val (h0-eval (car forms) env fenv)))
+        (if val
+            val
+            (h0-eval-or (cdr forms) env fenv)))))
+
 ;; Eval function with fenv for function definitions
 ;; Uses cached op= functions for O(1) amortized dispatch
 (defun h0-eval (expr env fenv)
@@ -440,6 +600,15 @@
          ;; Let - use cached op=let, delegate to helper for iteration
          ((if (symbolp op) (op=let op) nil)
           (h0-eval-let (cadr expr) (caddr expr) env fenv))
+         ;; Let* - same as let for sequential binding
+         ((if (symbolp op) (op=let-star op) nil)
+          (h0-eval-let (cadr expr) (caddr expr) env fenv))
+         ;; Progn - evaluate forms in sequence
+         ((if (symbolp op) (op=progn op) nil)
+          (h0-eval-progn (cdr expr) env fenv))
+         ;; Cond - multi-way conditional
+         ((if (symbolp op) (op=cond op) nil)
+          (h0-eval-cond (cdr expr) env fenv))
          ;; Defun - returns nil but defines function
          ((if (symbolp op) (op=defun op) nil) nil)
          ;; Arithmetic - use cached op= functions
@@ -447,6 +616,19 @@
          ((if (symbolp op) (op=minus op) nil) (- (h0-eval (cadr expr) env fenv) (h0-eval (caddr expr) env fenv)))
          ((if (symbolp op) (op=mul op) nil) (* (h0-eval (cadr expr) env fenv) (h0-eval (caddr expr) env fenv)))
          ((if (symbolp op) (op=div op) nil) (/ (h0-eval (cadr expr) env fenv) (h0-eval (caddr expr) env fenv)))
+         ((if (symbolp op) (op=mod op) nil) (mod (h0-eval (cadr expr) env fenv) (h0-eval (caddr expr) env fenv)))
+         ;; List operations
+         ((if (symbolp op) (op=cons op) nil) (cons (h0-eval (cadr expr) env fenv) (h0-eval (caddr expr) env fenv)))
+         ((if (symbolp op) (op=car op) nil) (car (h0-eval (cadr expr) env fenv)))
+         ((if (symbolp op) (op=cdr op) nil) (cdr (h0-eval (cadr expr) env fenv)))
+         ((if (symbolp op) (op=list op) nil) (h0-eval-list (cdr expr) env fenv))
+         ;; Type predicates
+         ((if (symbolp op) (op=null op) nil) (if (null (h0-eval (cadr expr) env fenv)) t nil))
+         ((if (symbolp op) (op=consp op) nil) (if (consp (h0-eval (cadr expr) env fenv)) t nil))
+         ;; Boolean operations
+         ((if (symbolp op) (op=not op) nil) (if (h0-eval (cadr expr) env fenv) nil t))
+         ((if (symbolp op) (op=and op) nil) (h0-eval-and (cdr expr) env fenv))
+         ((if (symbolp op) (op=or op) nil) (h0-eval-or (cdr expr) env fenv))
          ;; Comparisons - use cached op= functions
          ((if (symbolp op) (op=eq-num op) nil)
           (if (= (h0-eval (cadr expr) env fenv) (h0-eval (caddr expr) env fenv)) t nil))
