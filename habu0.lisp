@@ -87,6 +87,12 @@
         ((and (>= ch #x61) (<= ch #x66)) (+ (- ch #x61) #xA))
         (t #x0)))
 
+;; Convert lowercase letter to uppercase (a-z -> A-Z)
+(defun h0-char-upcase (ch)
+  (if (and (>= ch #x61) (<= ch #x7A))
+      (- ch #x20)
+      ch))
+
 (defun skip-line (source pos)
   (let ((ch (char-at source pos)))
     (if (or (= ch #x0A) (= ch #x0))
@@ -130,13 +136,8 @@
         (skip-symbol source (+ pos #x1))
         pos)))
 
-(defun char-upcase (ch)
-  (if (and (>= ch #x61) (<= ch #x7A))
-      (- ch #x20)
-      ch))
-
 ;; String equality check
-(defun string= (s1 s2)
+(defun h0-string= (s1 s2)
   (let ((len1 (string-length s1))
         (len2 (string-length s2)))
     (if (= len1 len2)
@@ -150,245 +151,192 @@
         nil)))
 
 ;; Operator check with caching
-;; First time: compare by name and cache the symbol
-;; Subsequent times: fast eq comparison
+;; Symbol comparison using string names
+;; Since symbols from reader may have different IDs than compile-time symbols,
+;; we always fall back to string comparison when eq fails
 (defun op=quote (sym)
   (if (eq sym *op-quote*) t
-      (if (null *op-quote*)
-          (if (string= (symbol-name sym) "QUOTE")
-              (progn (setq *op-quote* sym) t)
-              nil)
+      (if (h0-string= (symbol-name sym) "QUOTE")
+          (progn (setq *op-quote* sym) t)
           nil)))
 
 (defun op=if (sym)
   (if (eq sym *op-if*) t
-      (if (null *op-if*)
-          (if (string= (symbol-name sym) "IF")
-              (progn (setq *op-if* sym) t)
-              nil)
+      (if (h0-string= (symbol-name sym) "IF")
+          (progn (setq *op-if* sym) t)
           nil)))
 
 (defun op=let (sym)
   (if (eq sym *op-let*) t
-      (if (null *op-let*)
-          (if (string= (symbol-name sym) "LET")
-              (progn (setq *op-let* sym) t)
-              nil)
+      (if (h0-string= (symbol-name sym) "LET")
+          (progn (setq *op-let* sym) t)
           nil)))
 
 (defun op=defun (sym)
   (if (eq sym *op-defun*) t
-      (if (null *op-defun*)
-          (if (string= (symbol-name sym) "DEFUN")
-              (progn (setq *op-defun* sym) t)
-              nil)
+      (if (h0-string= (symbol-name sym) "DEFUN")
+          (progn (setq *op-defun* sym) t)
           nil)))
 
 (defun op=t (sym)
   (if (eq sym *op-t*) t
-      (if (null *op-t*)
-          (if (string= (symbol-name sym) "T")
-              (progn (setq *op-t* sym) t)
-              nil)
+      (if (h0-string= (symbol-name sym) "T")
+          (progn (setq *op-t* sym) t)
           nil)))
 
 (defun op=plus (sym)
   (if (eq sym *op-plus*) t
-      (if (null *op-plus*)
-          (if (string= (symbol-name sym) "+")
-              (progn (setq *op-plus* sym) t)
-              nil)
+      (if (h0-string= (symbol-name sym) "+")
+          (progn (setq *op-plus* sym) t)
           nil)))
 
 (defun op=minus (sym)
   (if (eq sym *op-minus*) t
-      (if (null *op-minus*)
-          (if (string= (symbol-name sym) "-")
-              (progn (setq *op-minus* sym) t)
-              nil)
+      (if (h0-string= (symbol-name sym) "-")
+          (progn (setq *op-minus* sym) t)
           nil)))
 
 (defun op=mul (sym)
   (if (eq sym *op-mul*) t
-      (if (null *op-mul*)
-          (if (string= (symbol-name sym) "*")
-              (progn (setq *op-mul* sym) t)
-              nil)
+      (if (h0-string= (symbol-name sym) "*")
+          (progn (setq *op-mul* sym) t)
           nil)))
 
 (defun op=div (sym)
   (if (eq sym *op-div*) t
-      (if (null *op-div*)
-          (if (string= (symbol-name sym) "/")
-              (progn (setq *op-div* sym) t)
-              nil)
+      (if (h0-string= (symbol-name sym) "/")
+          (progn (setq *op-div* sym) t)
           nil)))
 
 (defun op=eq-num (sym)
   (if (eq sym *op-eq-num*) t
-      (if (null *op-eq-num*)
-          (if (string= (symbol-name sym) "=")
-              (progn (setq *op-eq-num* sym) t)
-              nil)
+      (if (h0-string= (symbol-name sym) "=")
+          (progn (setq *op-eq-num* sym) t)
           nil)))
 
 (defun op=lt (sym)
   (if (eq sym *op-lt*) t
-      (if (null *op-lt*)
-          (if (string= (symbol-name sym) "<")
-              (progn (setq *op-lt* sym) t)
-              nil)
+      (if (h0-string= (symbol-name sym) "<")
+          (progn (setq *op-lt* sym) t)
           nil)))
 
 (defun op=gt (sym)
   (if (eq sym *op-gt*) t
-      (if (null *op-gt*)
-          (if (string= (symbol-name sym) ">")
-              (progn (setq *op-gt* sym) t)
-              nil)
+      (if (h0-string= (symbol-name sym) ">")
+          (progn (setq *op-gt* sym) t)
           nil)))
 
 (defun op=le (sym)
   (if (eq sym *op-le*) t
-      (if (null *op-le*)
-          (if (string= (symbol-name sym) "<=")
-              (progn (setq *op-le* sym) t)
-              nil)
+      (if (h0-string= (symbol-name sym) "<=")
+          (progn (setq *op-le* sym) t)
           nil)))
 
 (defun op=ge (sym)
   (if (eq sym *op-ge*) t
-      (if (null *op-ge*)
-          (if (string= (symbol-name sym) ">=")
-              (progn (setq *op-ge* sym) t)
-              nil)
+      (if (h0-string= (symbol-name sym) ">=")
+          (progn (setq *op-ge* sym) t)
           nil)))
 
 (defun op=let-star (sym)
   (if (eq sym *op-let-star*) t
-      (if (null *op-let-star*)
-          (if (string= (symbol-name sym) "LET*")
-              (progn (setq *op-let-star* sym) t)
-              nil)
+      (if (h0-string= (symbol-name sym) "LET*")
+          (progn (setq *op-let-star* sym) t)
           nil)))
 
 (defun op=progn (sym)
   (if (eq sym *op-progn*) t
-      (if (null *op-progn*)
-          (if (string= (symbol-name sym) "PROGN")
-              (progn (setq *op-progn* sym) t)
-              nil)
+      (if (h0-string= (symbol-name sym) "PROGN")
+          (progn (setq *op-progn* sym) t)
           nil)))
 
 (defun op=cond (sym)
   (if (eq sym *op-cond*) t
-      (if (null *op-cond*)
-          (if (string= (symbol-name sym) "COND")
-              (progn (setq *op-cond* sym) t)
-              nil)
+      (if (h0-string= (symbol-name sym) "COND")
+          (progn (setq *op-cond* sym) t)
           nil)))
 
 (defun op=mod (sym)
   (if (eq sym *op-mod*) t
-      (if (null *op-mod*)
-          (if (string= (symbol-name sym) "MOD")
-              (progn (setq *op-mod* sym) t)
-              nil)
+      (if (h0-string= (symbol-name sym) "MOD")
+          (progn (setq *op-mod* sym) t)
           nil)))
 
 (defun op=cons (sym)
   (if (eq sym *op-cons*) t
-      (if (null *op-cons*)
-          (if (string= (symbol-name sym) "CONS")
-              (progn (setq *op-cons* sym) t)
-              nil)
+      (if (h0-string= (symbol-name sym) "CONS")
+          (progn (setq *op-cons* sym) t)
           nil)))
 
 (defun op=car (sym)
   (if (eq sym *op-car*) t
-      (if (null *op-car*)
-          (if (string= (symbol-name sym) "CAR")
-              (progn (setq *op-car* sym) t)
-              nil)
+      (if (h0-string= (symbol-name sym) "CAR")
+          (progn (setq *op-car* sym) t)
           nil)))
 
 (defun op=cdr (sym)
   (if (eq sym *op-cdr*) t
-      (if (null *op-cdr*)
-          (if (string= (symbol-name sym) "CDR")
-              (progn (setq *op-cdr* sym) t)
-              nil)
+      (if (h0-string= (symbol-name sym) "CDR")
+          (progn (setq *op-cdr* sym) t)
           nil)))
 
 (defun op=null (sym)
   (if (eq sym *op-null*) t
-      (if (null *op-null*)
-          (if (string= (symbol-name sym) "NULL")
-              (progn (setq *op-null* sym) t)
-              nil)
+      (if (h0-string= (symbol-name sym) "NULL")
+          (progn (setq *op-null* sym) t)
           nil)))
 
 (defun op=consp (sym)
   (if (eq sym *op-consp*) t
-      (if (null *op-consp*)
-          (if (string= (symbol-name sym) "CONSP")
-              (progn (setq *op-consp* sym) t)
-              nil)
+      (if (h0-string= (symbol-name sym) "CONSP")
+          (progn (setq *op-consp* sym) t)
           nil)))
 
 (defun op=list (sym)
   (if (eq sym *op-list*) t
-      (if (null *op-list*)
-          (if (string= (symbol-name sym) "LIST")
-              (progn (setq *op-list* sym) t)
-              nil)
+      (if (h0-string= (symbol-name sym) "LIST")
+          (progn (setq *op-list* sym) t)
           nil)))
 
 (defun op=not (sym)
   (if (eq sym *op-not*) t
-      (if (null *op-not*)
-          (if (string= (symbol-name sym) "NOT")
-              (progn (setq *op-not* sym) t)
-              nil)
+      (if (h0-string= (symbol-name sym) "NOT")
+          (progn (setq *op-not* sym) t)
           nil)))
 
 (defun op=and (sym)
   (if (eq sym *op-and*) t
-      (if (null *op-and*)
-          (if (string= (symbol-name sym) "AND")
-              (progn (setq *op-and* sym) t)
-              nil)
+      (if (h0-string= (symbol-name sym) "AND")
+          (progn (setq *op-and* sym) t)
           nil)))
 
 (defun op=or (sym)
   (if (eq sym *op-or*) t
-      (if (null *op-or*)
-          (if (string= (symbol-name sym) "OR")
-              (progn (setq *op-or* sym) t)
-              nil)
+      (if (h0-string= (symbol-name sym) "OR")
+          (progn (setq *op-or* sym) t)
           nil)))
 
 ;; Generic symbol name comparison for cases not covered by caching
 (defun op= (sym name)
   (if (symbolp sym)
-      (string= (symbol-name sym) name)
+      (h0-string= (symbol-name sym) name)
       nil))
 
 (defun chars-to-string (chars)
   (let* ((len (length chars))
          (vec (make-vector len)))
-    (labels ((fill (cs i)
+    (labels ((fill-vec (cs i)
                (if (null cs)
                    vec
                    (progn
-                     (vector-set vec i (char-upcase (car cs)))
-                     (fill (cdr cs) (+ i 1))))))
-      (make-string-from-vector (fill chars 0)))))
+                     (vector-set vec i (h0-char-upcase (car cs)))
+                     (fill-vec (cdr cs) (+ i 1))))))
+      (make-string-from-vector (fill-vec chars 0)))))
 
 (defun read-sym-chars (source pos acc)
   (let ((ch (char-at source pos)))
     (if (symbol-char? ch)
-        (read-sym-chars source (+ pos #x1) (cons ch acc))
+        (read-sym-chars source (+ pos #x1) (cons (h0-char-upcase ch) acc))
         (cons (reverse acc) pos))))
 
 (defun read-sym (source pos)
@@ -417,13 +365,13 @@
          (end (cdr r))
          (len (length chars))
          (vec (make-vector len)))
-    (labels ((fill (cs i)
+    (labels ((fill-vec (cs i)
                (if (null cs)
                    vec
                    (progn
                      (vector-set vec i (car cs))
-                     (fill (cdr cs) (+ i 1))))))
-      (cons (make-string-from-vector (fill chars 0)) end))))
+                     (fill-vec (cdr cs) (+ i 1))))))
+      (cons (make-string-from-vector (fill-vec chars 0)) end))))
 
 ;; Main reader with labels for mutual recursion
 (defun habu-read (source pos)
@@ -485,7 +433,7 @@
                        (ra (cdr r) (cons (car r) acc)))))))
       (ra #x0 nil))))
 
-(defun read-from-string (s)
+(defun h0-read-from-string (s)
   (car (habu-read s 0)))
 
 ;;; Simple expression evaluator with function definitions
@@ -494,7 +442,7 @@
 ;; Symbol name lookup for function environment
 (defun sym-name= (sym name)
   (if (symbolp sym)
-      (string= (symbol-name sym) name)
+      (h0-string= (symbol-name sym) name)
       nil))
 
 ;; Look up function by symbol name in fenv
@@ -502,7 +450,7 @@
 (defun fenv-lookup (sym fenv)
   (if (null fenv) nil
       (let ((entry (car fenv)))
-        (if (and (symbolp sym) (string= (symbol-name sym) (car entry)))
+        (if (and (symbolp sym) (h0-string= (symbol-name sym) (car entry)))
             (cdr entry)  ;; Returns (params . body)
             (fenv-lookup sym (cdr fenv))))))
 
@@ -517,7 +465,7 @@
 (defun env-lookup (sym env)
   (if (null env) nil
       (let ((entry (car env)))
-        (if (string= (symbol-name sym) (car entry))
+        (if (h0-string= (symbol-name sym) (car entry))
             (cdr entry)
             (env-lookup sym (cdr env))))))
 
@@ -712,7 +660,7 @@
 (defun sym= (sym name)
   "Check if symbol has given name string"
   (if (symbolp sym)
-      (string= (symbol-name sym) name)
+      (h0-string= (symbol-name sym) name)
       nil))
 
 ;; Initialize compile ops - now a no-op since we use string comparison
@@ -931,7 +879,7 @@
              (var-sym (car b))
              (var-name (symbol-name var-sym))
              (val-ir (h0-compile (cadr b) env fenv))
-             ;; Store symbol name string for string= lookup
+             ;; Store symbol name string for h0-string= lookup
              (new-env (cons (cons var-name nil) env))
              (body-ir (h0-compile-let (cdr bindings) body new-env fenv)))
         (list (ir-tag-let) #x0 val-ir body-ir))))
@@ -1472,10 +1420,820 @@
   (let ((ir (h0-compile expr nil nil)))
     (h0-eval-ir ir nil)))
 
+;;; ==========================================================================
+;;; Mach-O Linker - Native executable generation with chained fixups
+;;; ==========================================================================
+;;; Generates standalone ARM64 Mach-O executables that link against libSystem.
+;;; Uses chained fixups for dynamic symbol binding (modern macOS approach).
+
+;; File I/O constants for sys-open
+(defun o-wronly () #x1)
+(defun o-creat () #x200)
+(defun o-trunc () #x400)
+
+;; Mach-O magic and CPU types
+(defun mh-magic-64 () #xFEEDFACF)
+(defun cpu-type-arm64 () #x0100000C)
+(defun cpu-subtype-arm64-all () #x0)
+(defun mh-execute () #x2)
+
+;; Header flags
+(defun mh-noundefs () #x1)
+(defun mh-dyldlink () #x4)
+(defun mh-twolevel () #x80)
+(defun mh-pie () #x200000)
+
+;; Load command types
+(defun lc-segment-64 () #x19)
+(defun lc-symtab () #x2)
+(defun lc-dysymtab () #xB)
+(defun lc-load-dylinker () #xE)
+(defun lc-uuid () #x1B)
+(defun lc-build-version () #x32)
+(defun lc-main () #x80000028)
+(defun lc-load-dylib () #xC)
+(defun lc-dyld-chained-fixups () #x80000034)
+(defun lc-dyld-exports-trie () #x80000033)
+
+;; VM protection flags
+(defun vm-prot-read () #x1)
+(defun vm-prot-write () #x2)
+(defun vm-prot-execute () #x4)
+
+;; Section flags
+(defun s-attr-pure-instructions () #x80000000)
+(defun s-attr-some-instructions () #x400)
+(defun s-non-lazy-symbol-pointers () #x6)
+(defun s-symbol-stubs () #x8)
+
+;; Chained fixups format
+(defun dyld-chained-ptr-64-offset () #x6)
+
+;; Page size and VM base
+(defun page-size () #x4000)  ; 16KB on ARM64 macOS
+(defun vm-base () #x100000000)
+
+;; Align value up to alignment boundary
+(defun align-up (val alignment)
+  (let ((rem (mod val alignment)))
+    (if (= rem #x0)
+        val
+        (+ val (- alignment rem)))))
+
+;;; Byte buffer operations
+;;; We build the executable in a list of bytes (reversed), then write it out
+
+;; Append a single byte to buffer (returns new buffer)
+(defun buf-u8 (buf val)
+  (cons (logand val #xFF) buf))
+
+;; Append u16 little-endian
+(defun buf-u16-le (buf val)
+  (buf-u8 (buf-u8 buf val) (ash val #x-8)))
+
+;; Append u32 little-endian
+(defun buf-u32-le (buf val)
+  (buf-u16-le (buf-u16-le buf val) (ash val #x-10)))
+
+;; Append u64 little-endian
+(defun buf-u64-le (buf val)
+  (buf-u32-le (buf-u32-le buf (logand val #xFFFFFFFF))
+              (logand (ash val #x-20) #xFFFFFFFF)))
+
+;; Append N zero bytes
+(defun buf-zeros (buf n)
+  (if (<= n #x0)
+      buf
+      (buf-zeros (buf-u8 buf #x0) (- n #x1))))
+
+;; Append byte list (each byte is consed to front, so we reverse first)
+(defun buf-bytes (buf bytes)
+  (if (null bytes)
+      buf
+      (buf-bytes (buf-u8 buf (car bytes)) (cdr bytes))))
+
+;; Append string as bytes (without null terminator)
+(defun buf-string (buf str)
+  (buf-string-helper buf str #x0 (string-length str)))
+
+(defun buf-string-helper (buf str i len)
+  (if (>= i len)
+      buf
+      (buf-string-helper (buf-u8 buf (string-ref str i)) str (+ i #x1) len)))
+
+;; Append string padded to length with zeros
+(defun buf-string-padded (buf str len)
+  (let* ((slen (string-length str))
+         (buf2 (buf-string-helper buf str #x0 (if (< slen len) slen len))))
+    (buf-zeros buf2 (- len slen))))
+
+;; Get current buffer length
+(defun buf-length (buf)
+  (length buf))
+
+;; Convert buffer to vector (reverses the list)
+(defun buf-to-vector (buf)
+  (let* ((len (length buf))
+         (vec (make-vector len)))
+    (buf-to-vector-helper (reverse buf) vec #x0)))
+
+(defun buf-to-vector-helper (lst vec i)
+  (if (null lst)
+      vec
+      (progn
+        (vector-set vec i (car lst))
+        (buf-to-vector-helper (cdr lst) vec (+ i #x1)))))
+
+;;; Mach-O structure writers
+
+;; Mach-O header (32 bytes)
+(defun buf-mach-header-64 (buf ncmds sizeofcmds flags)
+  (let* ((b1 (buf-u32-le buf (mh-magic-64)))
+         (b2 (buf-u32-le b1 (cpu-type-arm64)))
+         (b3 (buf-u32-le b2 (cpu-subtype-arm64-all)))
+         (b4 (buf-u32-le b3 (mh-execute)))
+         (b5 (buf-u32-le b4 ncmds))
+         (b6 (buf-u32-le b5 sizeofcmds))
+         (b7 (buf-u32-le b6 flags))
+         (b8 (buf-u32-le b7 #x0)))  ; reserved
+    b8))
+
+;; Segment command (72 bytes)
+(defun buf-segment-command-64 (buf segname vmaddr vmsize fileoff filesize
+                                maxprot initprot nsects flags)
+  (let* ((b1 (buf-u32-le buf (lc-segment-64)))
+         (cmdsize (+ #x48 (* nsects #x50)))  ; 72 + 80*nsects
+         (b2 (buf-u32-le b1 cmdsize))
+         (b3 (buf-string-padded b2 segname #x10))
+         (b4 (buf-u64-le b3 vmaddr))
+         (b5 (buf-u64-le b4 vmsize))
+         (b6 (buf-u64-le b5 fileoff))
+         (b7 (buf-u64-le b6 filesize))
+         (b8 (buf-u32-le b7 maxprot))
+         (b9 (buf-u32-le b8 initprot))
+         (b10 (buf-u32-le b9 nsects))
+         (b11 (buf-u32-le b10 flags)))
+    b11))
+
+;; Section (80 bytes)
+(defun buf-section-64 (buf sectname segname addr size offset align
+                        reloff nreloc flags reserved1 reserved2)
+  (let* ((b1 (buf-string-padded buf sectname #x10))
+         (b2 (buf-string-padded b1 segname #x10))
+         (b3 (buf-u64-le b2 addr))
+         (b4 (buf-u64-le b3 size))
+         (b5 (buf-u32-le b4 offset))
+         (b6 (buf-u32-le b5 align))
+         (b7 (buf-u32-le b6 reloff))
+         (b8 (buf-u32-le b7 nreloc))
+         (b9 (buf-u32-le b8 flags))
+         (b10 (buf-u32-le b9 reserved1))
+         (b11 (buf-u32-le b10 reserved2))
+         (b12 (buf-u32-le b11 #x0)))  ; reserved3
+    b12))
+
+;; LC_LOAD_DYLINKER command
+(defun buf-dylinker-command (buf path)
+  (let* ((path-len (+ (string-length path) #x1))
+         (cmdsize (align-up (+ #xC path-len) #x8))
+         (b1 (buf-u32-le buf (lc-load-dylinker)))
+         (b2 (buf-u32-le b1 cmdsize))
+         (b3 (buf-u32-le b2 #xC))  ; path.offset
+         (b4 (buf-string-padded b3 path (- cmdsize #xC))))
+    b4))
+
+;; LC_UUID command (24 bytes)
+(defun buf-uuid-command (buf)
+  (let* ((b1 (buf-u32-le buf (lc-uuid)))
+         (b2 (buf-u32-le b1 #x18))
+         ;; Generate simple UUID
+         (b3 (buf-u32-le b2 #xDEADBEEF))
+         (b4 (buf-u32-le b3 #xCAFEBABE))
+         (b5 (buf-u32-le b4 #x12345678))
+         (b6 (buf-u32-le b5 #x87654321)))
+    b6))
+
+;; LC_BUILD_VERSION command (24 bytes)
+(defun buf-build-version-command (buf)
+  (let* ((b1 (buf-u32-le buf (lc-build-version)))
+         (b2 (buf-u32-le b1 #x18))
+         (b3 (buf-u32-le b2 #x1))       ; platform = macOS
+         (b4 (buf-u32-le b3 #xE0000))   ; minos = 14.0
+         (b5 (buf-u32-le b4 #xE0000))   ; sdk = 14.0
+         (b6 (buf-u32-le b5 #x0)))      ; ntools
+    b6))
+
+;; LC_MAIN command (24 bytes)
+(defun buf-main-command (buf entryoff)
+  (let* ((b1 (buf-u32-le buf (lc-main)))
+         (b2 (buf-u32-le b1 #x18))
+         (b3 (buf-u64-le b2 entryoff))
+         (b4 (buf-u64-le b3 #x0)))      ; stacksize = 0 (default)
+    b4))
+
+;; LC_LOAD_DYLIB command
+(defun buf-load-dylib-command (buf path)
+  (let* ((path-len (+ (string-length path) #x1))
+         (cmdsize (align-up (+ #x18 path-len) #x8))
+         (b1 (buf-u32-le buf (lc-load-dylib)))
+         (b2 (buf-u32-le b1 cmdsize))
+         (b3 (buf-u32-le b2 #x18))      ; name.offset
+         (b4 (buf-u32-le b3 #x2))       ; timestamp
+         (b5 (buf-u32-le b4 #x54C0000)) ; current_version
+         (b6 (buf-u32-le b5 #x10000))   ; compatibility_version
+         (b7 (buf-string-padded b6 path (- cmdsize #x18))))
+    b7))
+
+;; LC_SYMTAB command (24 bytes)
+(defun buf-symtab-command (buf symoff nsyms stroff strsize)
+  (let* ((b1 (buf-u32-le buf (lc-symtab)))
+         (b2 (buf-u32-le b1 #x18))
+         (b3 (buf-u32-le b2 symoff))
+         (b4 (buf-u32-le b3 nsyms))
+         (b5 (buf-u32-le b4 stroff))
+         (b6 (buf-u32-le b5 strsize)))
+    b6))
+
+;; LC_DYSYMTAB command (80 bytes)
+(defun buf-dysymtab-command (buf ilocalsym nlocalsym iextdefsym nextdefsym
+                              iundefsym nundefsym indirectsymoff nindirectsyms)
+  (let* ((b1 (buf-u32-le buf (lc-dysymtab)))
+         (b2 (buf-u32-le b1 #x50))       ; cmdsize = 80
+         (b3 (buf-u32-le b2 ilocalsym))
+         (b4 (buf-u32-le b3 nlocalsym))
+         (b5 (buf-u32-le b4 iextdefsym))
+         (b6 (buf-u32-le b5 nextdefsym))
+         (b7 (buf-u32-le b6 iundefsym))
+         (b8 (buf-u32-le b7 nundefsym))
+         (b9 (buf-u32-le b8 #x0))        ; tocoff
+         (b10 (buf-u32-le b9 #x0))       ; ntoc
+         (b11 (buf-u32-le b10 #x0))      ; modtaboff
+         (b12 (buf-u32-le b11 #x0))      ; nmodtab
+         (b13 (buf-u32-le b12 #x0))      ; extrefsymoff
+         (b14 (buf-u32-le b13 #x0))      ; nextrefsyms
+         (b15 (buf-u32-le b14 indirectsymoff))
+         (b16 (buf-u32-le b15 nindirectsyms))
+         (b17 (buf-u32-le b16 #x0))      ; extreloff
+         (b18 (buf-u32-le b17 #x0))      ; nextrel
+         (b19 (buf-u32-le b18 #x0))      ; locreloff
+         (b20 (buf-u32-le b19 #x0)))     ; nlocrel
+    b20))
+
+;; LC_DYLD_CHAINED_FIXUPS command (16 bytes)
+(defun buf-chained-fixups-command (buf dataoff datasize)
+  (let* ((b1 (buf-u32-le buf (lc-dyld-chained-fixups)))
+         (b2 (buf-u32-le b1 #x10))
+         (b3 (buf-u32-le b2 dataoff))
+         (b4 (buf-u32-le b3 datasize)))
+    b4))
+
+;; LC_DYLD_EXPORTS_TRIE command (16 bytes)
+(defun buf-exports-trie-command (buf dataoff datasize)
+  (let* ((b1 (buf-u32-le buf (lc-dyld-exports-trie)))
+         (b2 (buf-u32-le b1 #x10))
+         (b3 (buf-u32-le b2 dataoff))
+         (b4 (buf-u32-le b3 datasize)))
+    b4))
+
+;; nlist_64 symbol entry (16 bytes)
+(defun buf-nlist-64 (buf strx type sect desc value)
+  (let* ((b1 (buf-u32-le buf strx))
+         (b2 (buf-u8 b1 type))
+         (b3 (buf-u8 b2 sect))
+         (b4 (buf-u16-le b3 desc))
+         (b5 (buf-u64-le b4 value)))
+    b5))
+
+;;; Stub code generation (ADRP + LDR + BR)
+
+;; ADRP Xd, #page_offset
+(defun macho-adrp (rd page-off)
+  (let* ((immlo (logand page-off #x3))
+         (immhi (logand (ash page-off #x-2) #x7FFFF))
+         (inst (logior #x90000000
+                       (ash immlo #x1D)
+                       (ash immhi #x5)
+                       rd)))
+    (list (logand inst #xFF)
+          (logand (ash inst #x-8) #xFF)
+          (logand (ash inst #x-10) #xFF)
+          (logand (ash inst #x-18) #xFF))))
+
+;; LDR Xt, [Xn, #imm]
+(defun macho-ldr (rt rn imm)
+  (let* ((offset (ash imm #x-3))
+         (inst (logior #xF9400000
+                       (ash (logand offset #xFFF) #xA)
+                       (ash rn #x5)
+                       rt)))
+    (list (logand inst #xFF)
+          (logand (ash inst #x-8) #xFF)
+          (logand (ash inst #x-10) #xFF)
+          (logand (ash inst #x-18) #xFF))))
+
+;; BR Xn
+(defun macho-br (rn)
+  (let ((inst (logior #xD61F0000 (ash rn #x5))))
+    (list (logand inst #xFF)
+          (logand (ash inst #x-8) #xFF)
+          (logand (ash inst #x-10) #xFF)
+          (logand (ash inst #x-18) #xFF))))
+
+;; Generate stub: ADRP x16, got_page; LDR x16, [x16, #offset]; BR x16
+(defun generate-stub (got-page-diff got-slot-offset)
+  (bytes-append-all
+   (list (macho-adrp #x10 got-page-diff)
+         (macho-ldr #x10 #x10 got-slot-offset)
+         (macho-br #x10))))
+
+;;; Chained fixups data builder
+
+;; Build import symbol string table (NUL-separated)
+(defun build-import-strings (imports)
+  (if (null imports)
+      (list #x0)  ; Just leading NUL
+      (cons #x0 (build-import-strings-helper imports))))
+
+(defun build-import-strings-helper (imports)
+  (if (null imports)
+      nil
+      (let ((name (car imports)))
+        (bytes-append (string-to-bytes name)
+                      (cons #x0 (build-import-strings-helper (cdr imports)))))))
+
+(defun string-to-bytes (str)
+  (string-to-bytes-helper str #x0 (string-length str) nil))
+
+(defun string-to-bytes-helper (str i len acc)
+  (if (>= i len)
+      (reverse acc)
+      (string-to-bytes-helper str (+ i #x1) len (cons (string-ref str i) acc))))
+
+;; Build chained fixups data blob
+(defun build-chained-fixups-data (num-imports num-segments got-segment-index got-vm-offset)
+  "Build chained fixups data for binding external symbols.
+   Returns a byte list."
+  (let* (;; Calculate sizes
+         (header-size #x20)              ; 32 bytes
+         (starts-header-size (+ #x4 (* #x4 num-segments)))
+         (seg-info-rel-offset (align-up starts-header-size #x8))
+         (seg-info-size #x18)            ; 24 bytes
+         (imports-entry-size #x4)
+         (starts-offset header-size)
+         (imports-offset (+ starts-offset seg-info-rel-offset seg-info-size))
+         (symbols-offset (+ imports-offset (* num-imports imports-entry-size)))
+         ;; Build the data
+         (data nil))
+
+    ;; === dyld_chained_fixups_header (32 bytes) ===
+    (setq data (buf-u32-le data #x0))             ; fixups_version = 0
+    (setq data (buf-u32-le data starts-offset))   ; starts_offset
+    (setq data (buf-u32-le data imports-offset))  ; imports_offset
+    (setq data (buf-u32-le data symbols-offset))  ; symbols_offset
+    (setq data (buf-u32-le data num-imports))     ; imports_count
+    (setq data (buf-u32-le data #x1))             ; imports_format = DYLD_CHAINED_IMPORT
+    (setq data (buf-u32-le data #x0))             ; symbols_format = uncompressed
+    (setq data (buf-u32-le data #x0))             ; padding
+
+    ;; === dyld_chained_starts_in_image ===
+    (setq data (buf-u32-le data num-segments))    ; seg_count
+    ;; seg_info_offset for each segment (only GOT segment has non-zero)
+    (setq data (build-seg-offsets data #x0 num-segments got-segment-index seg-info-rel-offset))
+
+    ;; Padding to align seg_info
+    (let ((current-size (buf-length data)))
+      (setq data (buf-zeros data (- (+ starts-offset seg-info-rel-offset) current-size))))
+
+    ;; === dyld_chained_starts_in_segment (24 bytes) ===
+    (setq data (buf-u32-le data #x18))            ; size = 24
+    (setq data (buf-u16-le data #x4000))          ; page_size
+    (setq data (buf-u16-le data (dyld-chained-ptr-64-offset)))  ; pointer_format
+    (setq data (buf-u64-le data got-vm-offset))   ; segment_offset
+    (setq data (buf-u32-le data #x0))             ; max_valid_pointer
+    (setq data (buf-u16-le data #x1))             ; page_count = 1
+    (setq data (buf-u16-le data #x0))             ; page_start[0] = 0
+
+    ;; === Import entries (DYLD_CHAINED_IMPORT format, 4 bytes each) ===
+    ;; lib_ordinal (8 bits) | weak (1 bit) | name_offset (23 bits)
+    (setq data (build-import-entries data num-imports #x0 #x0))
+
+    ;; === Symbol strings ===
+    ;; Note: We don't have the actual import names here, so we'll add placeholder
+    ;; The caller must ensure symbols are added separately
+    (setq data (buf-u8 data #x0))                 ; Leading NUL
+
+    (reverse data)))
+
+(defun build-seg-offsets (buf i count got-idx offset)
+  (if (>= i count)
+      buf
+      (if (= i got-idx)
+          (build-seg-offsets (buf-u32-le buf offset) (+ i #x1) count got-idx offset)
+          (build-seg-offsets (buf-u32-le buf #x0) (+ i #x1) count got-idx offset))))
+
+(defun build-import-entries (buf count name-offset i)
+  (if (>= i count)
+      buf
+      (let* (;; lib_ordinal = 1 (first LC_LOAD_DYLIB = libSystem)
+             ;; weak = 0
+             ;; name_offset at bits 9-31
+             (entry (logior #x1 (ash (+ name-offset #x1) #x9))))
+        ;; Each import name is at offset 1 + accumulated name length
+        ;; For simplicity, assume all names are "_write" (6 chars + NUL = 7 bytes)
+        (build-import-entries (buf-u32-le buf entry)
+                              count
+                              (+ name-offset #x7)  ; Approximate name length
+                              (+ i #x1)))))
+
+;;; Wrapper stub for heap initialization
+
+;; Wrap bytecode with heap setup stub (68 bytes = 17 instructions)
+(defun wrap-with-heap-stub (code-bytes heap-page-offset)
+  "Wrap bytecode with heap initialization for executables with imports.
+   heap-page-offset is the page offset from ADRP to __DATA segment."
+  (let ((stub (bytes-append-all
+               (list
+                ;; sub sp, sp, #48
+                (a64-sub-imm #x1F #x1F #x30)
+                ;; str x30, [sp]
+                (a64-str #x1E #x1F #x0)
+                ;; str x28, [sp, #8]
+                (a64-str #x1C #x1F #x8)
+                ;; str x26, [sp, #16]
+                (a64-str #x1A #x1F #x10)
+                ;; str x27, [sp, #24]
+                (a64-str #x1B #x1F #x18)
+                ;; adrp x28, heap_page
+                (macho-adrp #x1C heap-page-offset)
+                ;; mov x27, x28 (heap base)
+                (a64-mov-reg #x1B #x1C)
+                ;; add x28, x28, #16 (skip reserved)
+                (a64-add-imm #x1C #x1C #x10)
+                ;; adr x26, +36 (code base = 9 instrs ahead)
+                (macho-adr #x1A #x24)
+                ;; bl +8 (jump to main code)
+                (macho-bl #x8)
+                ;; lsr x0, x0, #4 (untag result)
+                (a64-lsr-imm #x0 #x0 #x4)
+                ;; ldr x27, [sp, #24]
+                (a64-ldr #x1B #x1F #x18)
+                ;; ldr x26, [sp, #16]
+                (a64-ldr #x1A #x1F #x10)
+                ;; ldr x28, [sp, #8]
+                (a64-ldr #x1C #x1F #x8)
+                ;; ldr x30, [sp]
+                (a64-ldr #x1E #x1F #x0)
+                ;; add sp, sp, #48
+                (a64-add-imm #x1F #x1F #x30)
+                ;; ret
+                (a64-ret)))))
+    (bytes-append stub code-bytes)))
+
+;; ADR Xd, #offset (PC-relative)
+(defun macho-adr (rd offset)
+  (let* ((immlo (logand offset #x3))
+         (immhi (logand (ash offset #x-2) #x7FFFF))
+         (inst (logior #x10000000
+                       (ash immlo #x1D)
+                       (ash immhi #x5)
+                       rd)))
+    (list (logand inst #xFF)
+          (logand (ash inst #x-8) #xFF)
+          (logand (ash inst #x-10) #xFF)
+          (logand (ash inst #x-18) #xFF))))
+
+;; BL #offset (PC-relative call, offset in instructions)
+(defun macho-bl (instr-offset)
+  (let* ((imm26 (logand instr-offset #x3FFFFFF))
+         (inst (logior #x94000000 imm26)))
+    (list (logand inst #xFF)
+          (logand (ash inst #x-8) #xFF)
+          (logand (ash inst #x-10) #xFF)
+          (logand (ash inst #x-18) #xFF))))
+
+;;; Main linker function (split into smaller helpers to fit in 64 temp slots)
+
+;; Calculate basic layout sizes
+(defun calc-sizeofcmds ()
+  (+ #x48                                         ; PAGEZERO
+     (+ #x48 (* #x2 #x50))                        ; TEXT + 2 sections
+     (+ #x48 #x50)                                ; DATA_CONST + 1 section
+     (+ #x48 #x50)                                ; DATA + 1 section
+     #x48                                         ; LINKEDIT
+     #x20                                         ; LC_LOAD_DYLINKER
+     #x18                                         ; LC_UUID
+     #x18                                         ; LC_BUILD_VERSION
+     #x18                                         ; LC_MAIN
+     #x38                                         ; LC_LOAD_DYLIB
+     #x10                                         ; LC_DYLD_CHAINED_FIXUPS
+     #x10                                         ; LC_DYLD_EXPORTS_TRIE
+     #x18                                         ; LC_SYMTAB
+     #x50))                                       ; LC_DYSYMTAB
+
+;; Calculate code offset
+(defun calc-code-offset ()
+  (align-up (+ #x20 (calc-sizeofcmds) #x10) #x40))
+
+;; Calculate stubs offset based on code size
+(defun calc-stubs-offset (code-size)
+  (align-up (+ (calc-code-offset) code-size) #x4))
+
+;; Calculate TEXT segment size
+(defun calc-text-vmsize (code-size num-imports)
+  (let* ((stubs-offset (calc-stubs-offset code-size))
+         (stubs-end (+ stubs-offset (* num-imports #xC))))
+    (align-up stubs-end (page-size))))
+
+;; Calculate DATA_CONST vmaddr
+(defun calc-data-const-vmaddr (code-size num-imports)
+  (+ (vm-base) (calc-text-vmsize code-size num-imports)))
+
+;; Calculate DATA vmaddr
+(defun calc-data-vmaddr (code-size num-imports)
+  (+ (calc-data-const-vmaddr code-size num-imports) (page-size)))
+
+;; Calculate LINKEDIT fileoff
+(defun calc-linkedit-fileoff (code-size num-imports heap-size)
+  (let* ((text-vmsize (calc-text-vmsize code-size num-imports))
+         (heap-vmsize (align-up heap-size (page-size))))
+    (+ text-vmsize (page-size) heap-vmsize)))
+
+;; Calculate symbol table offset
+(defun calc-symtab-offset (code-size num-imports heap-size)
+  (calc-linkedit-fileoff code-size num-imports heap-size))
+
+;; Calculate string table offset
+(defun calc-strtab-offset (code-size num-imports heap-size)
+  (+ (calc-symtab-offset code-size num-imports heap-size)
+     (* (+ #x1 num-imports) #x10)))
+
+;; Calculate indirect symbol offset
+(defun calc-indirect-offset (code-size num-imports heap-size)
+  (let* ((strtab-offset (calc-strtab-offset code-size num-imports heap-size))
+         (string-table-size (+ #x7 (* num-imports #x8))))
+    (align-up (+ strtab-offset string-table-size) #x4)))
+
+;; Calculate fixups offset
+(defun calc-fixups-offset (code-size num-imports heap-size)
+  (let* ((indirect-offset (calc-indirect-offset code-size num-imports heap-size))
+         (indirect-size (* num-imports #x2 #x4)))
+    (align-up (+ indirect-offset indirect-size) #x8)))
+
+;; Calculate exports offset
+(defun calc-exports-offset (code-size num-imports heap-size)
+  (+ (calc-fixups-offset code-size num-imports heap-size) #x50))
+
+;; Calculate LINKEDIT size
+(defun calc-linkedit-size (num-imports)
+  (let* ((nlist-size (* (+ #x1 num-imports) #x10))
+         (string-table-size (+ #x7 (* num-imports #x8)))
+         (indirect-size (* num-imports #x2 #x4)))
+    (align-up (+ nlist-size string-table-size indirect-size #x58) (page-size))))
+
+;; Write all load commands
+(defun write-load-commands (buf code-size num-imports heap-size)
+  (let* ((text-vmsize (calc-text-vmsize code-size num-imports))
+         (code-offset (calc-code-offset))
+         (stubs-offset (calc-stubs-offset code-size))
+         (stubs-total-size (* num-imports #xC))
+         (data-const-vmaddr (calc-data-const-vmaddr code-size num-imports))
+         (data-vmaddr (calc-data-vmaddr code-size num-imports))
+         (heap-vmsize (align-up heap-size (page-size)))
+         (linkedit-fileoff (calc-linkedit-fileoff code-size num-imports heap-size))
+         (linkedit-vmaddr (+ data-vmaddr heap-vmsize))
+         (linkedit-size (calc-linkedit-size num-imports))
+         (got-total-size (if (> num-imports #x0) (* num-imports #x8) #x8))
+         (symtab-offset (calc-symtab-offset code-size num-imports heap-size))
+         (strtab-offset (calc-strtab-offset code-size num-imports heap-size))
+         (string-table-size (+ #x7 (* num-imports #x8)))
+         (indirect-offset (calc-indirect-offset code-size num-imports heap-size))
+         (fixups-offset (calc-fixups-offset code-size num-imports heap-size))
+         (exports-offset (calc-exports-offset code-size num-imports heap-size))
+         (b buf))
+    ;; 1. __PAGEZERO
+    (setq b (buf-segment-command-64 b "__PAGEZERO" #x0 (vm-base) #x0 #x0 #x0 #x0 #x0 #x0))
+    ;; 2. __TEXT
+    (setq b (buf-segment-command-64 b "__TEXT" (vm-base) text-vmsize #x0 text-vmsize
+                                    (logior (vm-prot-read) (vm-prot-execute))
+                                    (logior (vm-prot-read) (vm-prot-execute)) #x2 #x0))
+    (setq b (buf-section-64 b "__text" "__TEXT" (+ (vm-base) code-offset) code-size
+                            code-offset #x2 #x0 #x0
+                            (logior (s-attr-pure-instructions) (s-attr-some-instructions)) #x0 #x0))
+    (setq b (buf-section-64 b "__stubs" "__TEXT" (+ (vm-base) stubs-offset) stubs-total-size
+                            stubs-offset #x2 #x0 #x0
+                            (logior (s-symbol-stubs) (s-attr-pure-instructions)) #x0 #xC))
+    ;; 3. __DATA_CONST
+    (setq b (buf-segment-command-64 b "__DATA_CONST" data-const-vmaddr (page-size)
+                                    text-vmsize (page-size)
+                                    (logior (vm-prot-read) (vm-prot-write))
+                                    (logior (vm-prot-read) (vm-prot-write)) #x1 #x0))
+    (setq b (buf-section-64 b "__got" "__DATA_CONST" data-const-vmaddr got-total-size
+                            text-vmsize #x3 #x0 #x0 (s-non-lazy-symbol-pointers) num-imports #x0))
+    ;; 4. __DATA
+    (setq b (buf-segment-command-64 b "__DATA" data-vmaddr heap-vmsize
+                                    (+ text-vmsize (page-size)) heap-vmsize
+                                    (logior (vm-prot-read) (vm-prot-write))
+                                    (logior (vm-prot-read) (vm-prot-write)) #x1 #x0))
+    (setq b (buf-section-64 b "__heap" "__DATA" data-vmaddr heap-vmsize
+                            (+ text-vmsize (page-size)) #x3 #x0 #x0 #x0 #x0 #x0))
+    ;; 5. __LINKEDIT
+    (setq b (buf-segment-command-64 b "__LINKEDIT" linkedit-vmaddr (page-size)
+                                    linkedit-fileoff linkedit-size
+                                    (vm-prot-read) (vm-prot-read) #x0 #x0))
+    ;; Other load commands
+    (setq b (buf-dylinker-command b "/usr/lib/dyld"))
+    (setq b (buf-uuid-command b))
+    (setq b (buf-build-version-command b))
+    (setq b (buf-main-command b code-offset))
+    (setq b (buf-load-dylib-command b "/usr/lib/libSystem.B.dylib"))
+    (setq b (buf-chained-fixups-command b fixups-offset #x50))
+    (setq b (buf-exports-trie-command b exports-offset #x8))
+    (setq b (buf-symtab-command b symtab-offset (+ #x1 num-imports) strtab-offset string-table-size))
+    (setq b (buf-dysymtab-command b #x0 #x0 #x0 #x1 #x1 num-imports
+                                  indirect-offset (* num-imports #x2)))
+    b))
+
+;; Write code and stubs section
+(defun write-code-section (buf code-bytes num-imports)
+  (let* ((code-size (length code-bytes))
+         (code-offset (calc-code-offset))
+         (stubs-offset (calc-stubs-offset code-size))
+         (data-const-vmaddr (calc-data-const-vmaddr code-size num-imports))
+         (b buf))
+    ;; Pad to code
+    (setq b (buf-zeros b (- code-offset (buf-length b))))
+    ;; Code
+    (setq b (buf-bytes b code-bytes))
+    ;; Pad to stubs
+    (let ((current (buf-length b)))
+      (if (< current stubs-offset)
+          (setq b (buf-zeros b (- stubs-offset current)))))
+    ;; Stubs
+    (let* ((stub-vmaddr (+ (vm-base) stubs-offset))
+           (stub-page (ash stub-vmaddr #x-C))
+           (got-page (ash data-const-vmaddr #x-C))
+           (got-page-diff (- got-page stub-page)))
+      (setq b (generate-stubs b got-page-diff num-imports #x0)))
+    b))
+
+;; Write GOT and heap sections
+(defun write-data-sections (buf code-size num-imports heap-size)
+  (let* ((text-vmsize (calc-text-vmsize code-size num-imports))
+         (heap-vmsize (align-up heap-size (page-size)))
+         (data-fileoff (+ text-vmsize (page-size)))
+         (b buf))
+    ;; Pad to DATA_CONST
+    (let ((current (buf-length b)))
+      (if (< current text-vmsize)
+          (setq b (buf-zeros b (- text-vmsize current)))))
+    ;; GOT entries
+    (setq b (write-got-entries b num-imports #x0))
+    ;; Pad to DATA
+    (let ((current (buf-length b)))
+      (if (< current data-fileoff)
+          (setq b (buf-zeros b (- data-fileoff current)))))
+    ;; Heap
+    (setq b (buf-zeros b heap-vmsize))
+    b))
+
+;; Write LINKEDIT section
+(defun write-linkedit-section (buf code-size num-imports heap-size imports)
+  (let* ((linkedit-fileoff (calc-linkedit-fileoff code-size num-imports heap-size))
+         (linkedit-size (calc-linkedit-size num-imports))
+         (indirect-offset (calc-indirect-offset code-size num-imports heap-size))
+         (fixups-offset (calc-fixups-offset code-size num-imports heap-size))
+         (exports-offset (calc-exports-offset code-size num-imports heap-size))
+         (text-vmsize (calc-text-vmsize code-size num-imports))
+         (code-offset (calc-code-offset))
+         (b buf))
+    ;; Symbol table (_main)
+    (setq b (buf-nlist-64 b #x1 #xF #x1 #x10 (+ (vm-base) code-offset)))
+    (setq b (write-import-symbols b num-imports #x7 #x0))
+    ;; String table
+    (setq b (buf-u8 b #x0))
+    (setq b (buf-string b "_main"))
+    (setq b (buf-u8 b #x0))
+    (setq b (write-import-strings b imports))
+    ;; Pad to indirect
+    (let ((current (buf-length b)))
+      (if (< current indirect-offset)
+          (setq b (buf-zeros b (- indirect-offset current)))))
+    ;; Indirect symbols
+    (setq b (write-indirect-syms b num-imports #x0))
+    (setq b (write-indirect-syms b num-imports #x0))
+    ;; Pad to fixups
+    (let ((current (buf-length b)))
+      (if (< current fixups-offset)
+          (setq b (buf-zeros b (- fixups-offset current)))))
+    ;; Chained fixups
+    (setq b (buf-bytes b (build-chained-fixups-data num-imports #x5 #x2 text-vmsize)))
+    (setq b (write-import-strings b imports))
+    ;; Pad to exports
+    (let ((current (buf-length b)))
+      (if (< current exports-offset)
+          (setq b (buf-zeros b (- exports-offset current)))))
+    ;; Exports trie
+    (setq b (buf-u8 b #x0))
+    (setq b (buf-u8 b #x0))
+    (setq b (buf-zeros b #x6))
+    ;; Pad to end
+    (let ((current (buf-length b))
+          (target (+ linkedit-fileoff linkedit-size)))
+      (if (< current target)
+          (setq b (buf-zeros b (- target current)))))
+    b))
+
+(defun write-macho-with-imports-and-heap (output-path code-bytes imports heap-size)
+  "Write a Mach-O executable with external imports and heap."
+  (let* ((num-imports (length imports))
+         (code-size (length code-bytes))
+         ;; Start with header
+         (buf (buf-mach-header-64 nil #xE (calc-sizeofcmds)
+                                  (logior (mh-noundefs) (mh-dyldlink)
+                                          (mh-twolevel) (mh-pie)))))
+    ;; Write load commands
+    (setq buf (write-load-commands buf code-size num-imports heap-size))
+    ;; Write code and stubs
+    (setq buf (write-code-section buf code-bytes num-imports))
+    ;; Write data sections
+    (setq buf (write-data-sections buf code-size num-imports heap-size))
+    ;; Write LINKEDIT
+    (setq buf (write-linkedit-section buf code-size num-imports heap-size imports))
+    ;; Write to file
+    (let* ((vec (buf-to-vector buf))
+           (fd (sys-open output-path
+                         (logior (o-wronly) (o-creat) (o-trunc))
+                         #x1FF)))
+      (if (< fd #x0)
+          #xFF
+          (progn
+            (sys-write fd vec (length vec))
+            (sys-close fd)
+            #x0)))))                              ; Success
+
+;; Helper: generate stubs for each import
+(defun generate-stubs (buf got-page-diff num-imports i)
+  (if (>= i num-imports)
+      buf
+      (let* ((got-slot-offset (* i #x8))
+             (stub (generate-stub got-page-diff got-slot-offset)))
+        (generate-stubs (buf-bytes buf stub) got-page-diff num-imports (+ i #x1)))))
+
+;; Helper: write GOT entries (chained bind pointers)
+(defun write-got-entries (buf num-imports i)
+  (if (>= i num-imports)
+      buf
+      (let* ((is-last (= i (- num-imports #x1)))
+             (ordinal i)
+             (next (if is-last #x0 #x2))          ; stride = 2 (8 bytes / 4)
+             (entry (logior #x8000000000000000    ; bind bit
+                           ordinal
+                           (ash next #x33))))     ; next at bits 51-62
+        (write-got-entries (buf-u64-le buf entry) num-imports (+ i #x1)))))
+
+;; Helper: write import symbols
+(defun write-import-symbols (buf num-imports strx i)
+  (if (>= i num-imports)
+      buf
+      (let ((b (buf-nlist-64 buf strx #x1 #x0 #x100 #x0)))
+        (write-import-symbols b num-imports (+ strx #x7) (+ i #x1)))))
+
+;; Helper: write import strings
+(defun write-import-strings (buf imports)
+  (if (null imports)
+      buf
+      (let* ((b1 (buf-string buf (car imports)))
+             (b2 (buf-u8 b1 #x0)))
+        (write-import-strings b2 (cdr imports)))))
+
+;; Helper: write indirect symbol indices
+(defun write-indirect-syms (buf num-imports i)
+  (if (>= i num-imports)
+      buf
+      (write-indirect-syms (buf-u32-le buf (+ i #x1)) num-imports (+ i #x1))))
+
+;;; High-level delivery function
+
+(defun deliver-with-imports-and-heap (output-path code-bytes imports heap-size)
+  "Create a standalone executable with imports and heap.
+   Wraps code with heap initialization stub first."
+  (let* ((wrapper-stub-size #x44)                 ; 68 bytes
+         (total-code-size (+ (length code-bytes) wrapper-stub-size))
+         ;; Calculate heap page offset
+         (approx-code-offset #x400)
+         (stubs-offset (align-up (+ approx-code-offset total-code-size) #x4))
+         (stubs-end (+ stubs-offset (* (length imports) #xC)))
+         (text-vmsize (align-up stubs-end (page-size)))
+         (heap-page-offset (+ (/ text-vmsize (page-size)) #x1))
+         ;; Wrap code
+         (wrapped-code (wrap-with-heap-stub code-bytes heap-page-offset)))
+    (write-macho-with-imports-and-heap output-path wrapped-code imports heap-size)))
+
 ;;; Main entry point
 ;;; Mode is determined by first form in input.lisp:
 ;;;   #x100 - compile expression to IR and evaluate (compile-test)
 ;;;   #x200 - compile expression to IR and generate bytecode length (codegen-test)
+;;;   #x300 - compile, codegen, and link to executable (link-test)
 ;;;   anything else - interpret using h0-eval
 (defun main ()
   ;; Initialize compile-time operators first (uses eq, no symbol-name)
@@ -1500,6 +2258,16 @@
                        (let* ((ir (h0-compile (cadr forms) nil nil))
                               (code (h0-codegen ir #x0)))
                          (length code))))
+                  ;; Link test mode: compile, codegen, link to /tmp/h0out
+                  ((if (numberp first-form) (= first-form #x300) nil)
+                   (if (null (cdr forms))
+                       #xFD
+                       (let* ((ir (h0-compile (cadr forms) nil nil))
+                              (code (h0-codegen ir #x0)))
+                         (deliver-with-imports-and-heap "/tmp/h0out"
+                                                        code
+                                                        (list "_write")
+                                                        #x100000))))
                   ;; Normal interpretation mode
                   (t
                    (let ((fenv (collect-defuns forms nil)))

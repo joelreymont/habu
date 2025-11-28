@@ -2808,8 +2808,12 @@
             (sc (nc-codegen str-ir rtaddrs fnoffs td)))
        (nc-append-all
         (list sc
-              ;; Clear tag: x0 = x0 & ~0xF
-              (nc-and-imm 0 0 1 #x3C #x3B)    ; x0 = str_ptr (untagged, clear low 4 bits)
+              ;; Clear low 4 bits to get pointer (same approach as car-ir)
+              (nc-movz 1 #xFFF0)              ; x1 = mask (keep upper bits)
+              (nc-movk 1 #xFFFF 16)           ; complete mask
+              (nc-movk 1 #xFFFF 32)
+              (nc-movk 1 #xFFFF 48)
+              (nc-and-reg 0 0 1)              ; x0 = str_ptr (untagged)
               ;; Load length from [x0+0]
               (nc-ldr-offset 0 0 0)           ; x0 = raw length
               ;; Tag as fixnum: x0 = x0 << 4
@@ -2822,17 +2826,25 @@
      (let* ((str-ir (cadr ir))
             (idx-ir (caddr ir))
             (xs (nc-temp-slot td))
-            (nd (+ td 1))
+            (is (nc-temp-slot (+ td 1)))
+            (nd (+ td 2))
             (sc (nc-codegen str-ir rtaddrs fnoffs nd))
             (sv (nc-str-offset 0 31 xs))
-            (ic (nc-codegen idx-ir rtaddrs fnoffs nd)))
-       ;; After codegen: idx in x0, str at [sp+xs]
+            (ic (nc-codegen idx-ir rtaddrs fnoffs nd))
+            (si (nc-str-offset 0 31 is)))
+       ;; After codegen: idx saved at [sp+is], str at [sp+xs]
        (nc-append-all
-        (list sc sv ic
-              ;; x0 = idx, load str -> x1
+        (list sc sv ic si
+              ;; Load str -> x1
               (nc-ldr-offset 1 31 xs)         ; x1 = str (tagged)
-              ;; Clear tag: x1 = x1 & ~0xF
-              (nc-and-imm 1 1 1 #x3C #x3B)    ; x1 = str_ptr (untagged, clear low 4 bits)
+              ;; Clear tag: x1 = x1 & ~0xF (same approach as car-ir)
+              (nc-movz 2 #xFFF0)              ; x2 = mask (keep upper bits)
+              (nc-movk 2 #xFFFF 16)           ; complete mask
+              (nc-movk 2 #xFFFF 32)
+              (nc-movk 2 #xFFFF 48)
+              (nc-and-reg 1 1 2)              ; x1 = str_ptr (untagged)
+              ;; Load idx -> x0
+              (nc-ldr-offset 0 31 is)         ; x0 = idx (tagged)
               ;; Calculate offset: x0 = (idx >> 4) + 8
               (nc-lsr-imm 0 0 4)              ; x0 = untagged idx
               (nc-add-imm 0 0 8)              ; x0 = offset = 8 + idx
@@ -4776,9 +4788,11 @@ int main(int argc, char **argv) {
                           (write-byte (logand (ash bl-instr -16) #xFF) f)
                           (write-byte (logand (ash bl-instr -24) #xFF) f)))))))
 
+              ;; Re-codesign after patching (the earlier codesign in write-macho was invalidated)
+              (sb-ext:run-program "/usr/bin/codesign" (list "-s" "-" "-f" path))
+
               (when verbose
-                (format t "~%Created: ~A~%" path)
-                (format t "Sign with: codesign -s - ~A~%" path))
+                (format t "~%Created: ~A~%" path))
               path))))))
 
 (defun deliver-file-with-libsystem (source-path output-path &key verbose)
