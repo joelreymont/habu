@@ -1,13 +1,37 @@
 # Session Context - Habu Self-Hosting Lisp Compiler
 
 **Session Date**: November 22-28, 2025
-**Focus**: Self-hosting ARM64 Lisp compiler with native executable generation
-**Last Updated**: November 28, 2025 (wrap-with-heap-stub debugging)
-**Milestone**: habu0 mode #x300 crash isolated to wrap-with-heap-stub (20 fn calls in list)
+**Focus**: Self-hosting ARM64 Lisp compiler - path to eliminating SBCL
+**Last Updated**: November 28, 2025 (Phase 1: habu0 linker fixes in progress)
+**Milestone**: Dynamic frame sizing implemented + wrap-with-heap-stub fixed
 
-## Current Plan: Native File I/O and Self-Hosting (November 27, 2025)
+## Current Plan: Self-Hosting - Eliminating SBCL (November 28, 2025)
 
-With dynamic linking now working, the path to self-hosting is clear:
+**Goal**: Habu compiler compiles itself without SBCL (ETA: 10-14 days)
+
+**See detailed plan**: `docs/plans/SELF_HOSTING_PLAN.md`
+
+### Progress Update (November 28, 2025)
+
+**Phase 0: Dynamic Frame Sizing** - COMPLETE ✓
+- Removed artificial ~6 let* binding limit
+- Implemented per-function frame size calculation
+- All functions can now have unlimited bindings
+- This unblocked Phase 1 (linker fixes)
+
+**Phase 1: Fix habu0 Linker** - IN PROGRESS
+- ✓ wrap-with-heap-stub refactored (20 instructions pre-computed)
+- ⚠ habu0 crashes with SIGSEGV (mode #x100) - investigating
+- TODO: Test mode #x300 once crashes resolved
+
+**Immediate next steps**:
+1. Debug habu0 crash (SIGSEGV in mode #x100)
+2. Test mode #x300 linker end-to-end
+3. Begin Phase 2 (remove SBCL dependencies from bootstrap/compiler.lisp)
+
+---
+
+## Previous Plan: Native File I/O and Self-Hosting (November 27, 2025)
 
 ### Phase 1: Native File I/O via libSystem - COMPLETE
 1. `deliver-with-libsystem` creates executables with chained fixups - DONE
