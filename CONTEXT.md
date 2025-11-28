@@ -3,7 +3,7 @@
 **Session Date**: November 22-28, 2025
 **Focus**: Self-hosting ARM64 Lisp compiler with native executable generation
 **Last Updated**: November 28, 2025 (176 tests: 77 native + 39 reader + 8 self-compile + 5 mini-compiler + 5 full-self-compile + 6 compiler-subsets + 8 arm64-encoders + 8 inline-string + 10 expr-compiler + 10 ir-traversal)
-**Milestone**: Fixed habu0 LET binding (nil/0 ambiguity), h0-compile working with IR eval
+**Milestone**: habu0 standalone interpreter working (fixed h0-char-upcase typo), evaluates Lisp programs correctly
 
 ## Current Plan: Native File I/O and Self-Hosting (November 27, 2025)
 
@@ -336,6 +336,21 @@ The caller now checks for non-nil result with `(if result ...)` and extracts the
 actual offset with `(car result)`. This makes offset 0 distinguishable from nil.
 
 Tests: `(let ((x 10)) x)` now correctly returns 10 instead of 0.
+
+12. **habu0 h0-char-upcase function name typo**
+The function was defined as `h0-h0-char-upcase` (double h0- prefix) but called as
+`h0-char-upcase` in `chars-to-string` and `read-sym-chars`. When the undefined
+function was called during symbol reading, it returned 0/nil causing all symbols
+to be incorrectly built with 0 characters.
+
+Root cause: A typo during editing created `h0-h0-char-upcase` instead of `h0-char-upcase`.
+Since Habu treats undefined function calls as returning 0, symbols read by the reader
+had garbage names, causing `op=plus` and all other operator checks to fail.
+
+Fix: Renamed `h0-h0-char-upcase` to `h0-char-upcase` in habu0.lisp.
+
+Tests: `(+ 20 22)` now correctly returns 42. All arithmetic, let bindings, and
+function definitions (fact, fib) work correctly.
 
 ---
 
