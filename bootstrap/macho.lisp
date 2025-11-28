@@ -617,3 +617,406 @@
                         (stub (generate-stub-code got-page-offset got-slot-offset)))
                    (append stub (build-all (cdr remaining) (+ idx 1)))))))
     (build-all imports 0)))
+
+;;; ============================================================
+;;; Helper Functions for Symbol and Indirect Tables
+;;; ============================================================
+
+(defun build-string-table-for-imports (imports)
+  "Build string table with _main followed by all import names.
+   Returns list of bytes."
+  (labels ((name-to-bytes (name)
+             (append (string-to-bytes name) (cons 0 nil)))
+           (build-all (names)
+             (if (null names)
+                 nil
+                 (append (name-to-bytes (car names))
+                        (build-all (cdr names))))))
+    (cons 0 (build-all (cons "_main" imports)))))
+
+(defun buf-nlist-64 (strx n-type n-sect n-desc n-value)
+  "Generate nlist_64 symbol table entry (16 bytes)"
+  (buf-append-all
+   (cons (buf-u32-le strx)
+         (cons (buf-u8 n-type)
+               (cons (buf-u8 n-sect)
+                     (cons (buf-u16-le n-desc)
+                           (cons (buf-u64-le n-value)
+                                 nil)))))))
+
+(defun build-symbol-table (imports code-vmaddr)
+  "Build symbol table: _main entry followed by import entries.
+   Returns byte list."
+  (labels ((build-import-syms (names strx)
+             (if (null names)
+                 nil
+                 (let* ((sym (buf-nlist-64 strx #x01 0 #x0100 0))
+                        (next-strx (+ strx 1 (string-length (car names)))))
+                   (append sym (build-import-syms (cdr names) next-strx))))))
+    (let* ((main-sym (buf-nlist-64 1 #x0F 1 #x0010 code-vmaddr))
+           (import-syms (build-import-syms imports 7)))  ; "_main\0" = 7 bytes offset
+      (append main-sym import-syms))))
+
+(defun build-indirect-symbol-table (num-imports)
+  "Build indirect symbol table for stubs and GOT.
+   Returns byte list."
+  (labels ((build-entries (count idx)
+             (if (>= idx count)
+                 nil
+                 (append (buf-u32-le (+ idx 1))
+                        (build-entries count (+ idx 1))))))
+    ;; Stubs section entries (indices 1..num-imports)
+    (append (build-entries num-imports 0)
+            ;; GOT section entries (same indices)
+            (build-entries num-imports 0))))
+
+(defun buf-exports-trie ()
+  "Generate minimal exports trie (empty root node)"
+  (cons #x00 (cons #x00 nil)))  ; terminal_size=0, child_count=0
+
+(defun buf-dysymtab-command-full (ilocalsym nlocalsym iextdefsym nextdefsym
+                                   iundefsym nundefsym indirectsymoff nindirectsyms)
+  "Generate complete LC_DYSYMTAB command with indirect symbol table info"
+  (buf-append-all
+   (cons (buf-u32-le +LC-DYSYMTAB+)
+         (cons (buf-u32-le 80)
+               (cons (buf-u32-le ilocalsym)
+                     (cons (buf-u32-le nlocalsym)
+                           (cons (buf-u32-le iextdefsym)
+                                 (cons (buf-u32-le nextdefsym)
+                                       (cons (buf-u32-le iundefsym)
+                                             (cons (buf-u32-le nundefsym)
+                                                   (cons (buf-u32-le 0)  ; tocoff
+                                                         (cons (buf-u32-le 0)  ; ntoc
+                                                               (cons (buf-u32-le 0)  ; modtaboff
+                                                                     (cons (buf-u32-le 0)  ; nmodtab
+                                                                           (cons (buf-u32-le 0)  ; extrefsymoff
+                                                                                 (cons (buf-u32-le 0)  ; nextrefsyms
+                                                                                       (cons (buf-u32-le indirectsymoff)
+                                                                                             (cons (buf-u32-le nindirectsyms)
+                                                                                                   (cons (buf-u32-le 0)  ; extreloff
+                                                                                                         (cons (buf-u32-le 0)  ; nextrel
+                                                                                                               (cons (buf-u32-le 0)  ; locreloff
+                                                                                                                     (cons (buf-u32-le 0)  ; nlocrel
+                                                                                                                           nil)))))))))))))))))))))
+
+(defun buf-exports-trie-command (dataoff datasize)
+  "Generate LC_DYLD_EXPORTS_TRIE command"
+  (buf-append-all
+   (cons (buf-u32-le +LC-DYLD-EXPORTS-TRIE+)
+         (cons (buf-u32-le 16)
+               (cons (buf-u32-le dataoff)
+                     (cons (buf-u32-le datasize)
+                           nil))))))
+
+;;; ============================================================
+;;; Complete Executable Generator with Imports and Heap
+;;; ============================================================
+
+(defun build-macho-executable-with-imports-and-heap (code-bytes imports heap-size)
+  "Build complete Mach-O executable with dynamic imports and heap.
+   CODE-BYTES: list of bytes (ARM64 machine code with BL to stubs)
+   IMPORTS: list of import names (e.g. (\"_write\" \"_exit\"))
+   HEAP-SIZE: size of heap segment
+   
+   Returns complete executable as byte list."
+  (let* ((num-imports (length imports))
+         (stub-size 12)
+         (stubs-total-size (* num-imports stub-size))
+         (got-entry-size 8)
+         (got-total-size (if (= num-imports 0) 8 (* num-imports got-entry-size)))
+         
+         ;; 5 segments
+         (num-segments 5)
+         (got-segment-index 2)
+         
+         ;; Load command sizes
+         (header-size 32)
+         (pagezero-cmd-size 72)
+         (text-cmd-size (+ 72 (* 2 80)))  ; segment + 2 sections (__text, __stubs)
+         (data-const-cmd-size (+ 72 80))   ; segment + 1 section (__got)
+         (data-cmd-size (+ 72 80))         ; segment + 1 section (__heap)
+         (linkedit-cmd-size 72)
+         (dylinker-path "/usr/lib/dyld")
+         (dylinker-cmd-size (align-up (+ 12 (string-length dylinker-path) 1) 8))
+         (uuid-cmd-size 24)
+         (build-version-cmd-size 24)
+         (main-cmd-size 24)
+         (libsystem-path "/usr/lib/libSystem.B.dylib")
+         (load-dylib-cmd-size (align-up (+ 24 (string-length libsystem-path) 1) 8))
+         (chained-fixups-cmd-size 16)
+         (exports-trie-cmd-size 16)
+         (symtab-cmd-size 24)
+         (dysymtab-cmd-size 80)
+         
+         (ncmds 14)
+         (sizeofcmds (+ pagezero-cmd-size text-cmd-size data-const-cmd-size data-cmd-size
+                       linkedit-cmd-size dylinker-cmd-size uuid-cmd-size build-version-cmd-size
+                       main-cmd-size load-dylib-cmd-size chained-fixups-cmd-size
+                       exports-trie-cmd-size symtab-cmd-size dysymtab-cmd-size))
+         
+         ;; Code placement
+         (code-offset (align-up (+ header-size sizeofcmds 16) 64))
+         (code-size (length code-bytes))
+         
+         ;; Stubs follow code
+         (stubs-offset (align-up (+ code-offset code-size) 4))
+         (stubs-end (+ stubs-offset stubs-total-size))
+         
+         ;; __TEXT segment
+         (text-vmsize (align-up stubs-end +PAGE-SIZE+))
+         (text-filesize text-vmsize)
+         
+         ;; __DATA_CONST segment (GOT)
+         (data-const-fileoff text-filesize)
+         (data-const-vmaddr (+ +VM-BASE+ text-vmsize))
+         (data-const-vmsize +PAGE-SIZE+)
+         (data-const-filesize +PAGE-SIZE+)
+         
+         ;; __DATA segment (heap)
+         (data-fileoff (+ data-const-fileoff +PAGE-SIZE+))
+         (data-vmaddr (+ data-const-vmaddr +PAGE-SIZE+))
+         (heap-vmsize (align-up heap-size +PAGE-SIZE+))
+         (data-filesize heap-vmsize)
+         
+         ;; __LINKEDIT segment
+         (linkedit-fileoff (+ data-fileoff data-filesize))
+         (linkedit-vmaddr (+ data-vmaddr heap-vmsize))
+         
+         ;; Symbol and string tables
+         (nsyms (+ 1 num-imports))
+         (string-table (build-string-table-for-imports imports))
+         (string-table-size (length string-table))
+         
+         ;; LINKEDIT layout
+         (symtab-offset linkedit-fileoff)
+         (nlist-size (* nsyms 16))
+         (strtab-offset (+ symtab-offset nlist-size))
+         (indirect-offset (align-up (+ strtab-offset string-table-size) 4))
+         (num-indirect-syms (* 2 num-imports))
+         (indirect-size (* num-indirect-syms 4))
+         (fixups-offset (align-up (+ indirect-offset indirect-size) 8))
+         
+         ;; Chained fixups
+         (got-vm-offset text-vmsize)
+         (fixups-data (build-chained-fixups-data imports num-segments got-segment-index got-vm-offset))
+         (fixups-size (length fixups-data))
+         (aligned-fixups-size (align-up fixups-size 8))
+         
+         ;; Exports trie
+         (exports-offset (align-up (+ fixups-offset fixups-size) 8))
+         (exports-trie-data (buf-exports-trie))
+         (exports-trie-size (length exports-trie-data))
+         (aligned-exports-size (align-up exports-trie-size 8))
+         
+         ;; LINKEDIT total size
+         (linkedit-size (align-up (+ nlist-size string-table-size
+                                    (- indirect-offset strtab-offset string-table-size)
+                                    indirect-size
+                                    (- fixups-offset indirect-offset indirect-size)
+                                    aligned-fixups-size
+                                    aligned-exports-size)
+                                 +PAGE-SIZE+))
+         
+         (entry-offset code-offset)
+         (flags (logior +MH-NOUNDEFS+ (logior +MH-DYLDLINK+ (logior +MH-TWOLEVEL+ +MH-PIE+))))
+         (uuid-vals (cons #xDEADBEEF (cons #xCAFEBABE (cons #x12345678 (cons #x87654321 nil)))))
+         
+         ;; Calculate stub parameters
+         (stub-vmaddr (+ +VM-BASE+ stubs-offset))
+         (stub-page (ash stub-vmaddr -12))
+         (got-page (ash data-const-vmaddr -12))
+         (got-page-diff (- got-page stub-page))
+         (got-base-offset 0))
+    
+    ;; Assemble complete executable
+    (buf-append-all
+     (cons
+      ;; Mach-O header
+      (buf-mach-header-64 ncmds sizeofcmds flags)
+      
+      (cons
+       ;; LC #1: __PAGEZERO
+       (buf-segment-command-64 "__PAGEZERO" 0 +VM-BASE+ 0 0 0 0 0 0)
+       
+       (cons
+        ;; LC #2: __TEXT with 2 sections
+        (buf-segment-command-64 "__TEXT" +VM-BASE+ text-vmsize 0 text-filesize
+                                (logior +VM-PROT-READ+ +VM-PROT-EXECUTE+)
+                                (logior +VM-PROT-READ+ +VM-PROT-EXECUTE+)
+                                2 0)
+        
+        (cons
+         ;; __text section
+         (buf-section-64 "__text" "__TEXT"
+                        (+ +VM-BASE+ code-offset) code-size code-offset 2 0 0
+                        (logior +S-ATTR-PURE-INSTRUCTIONS+ +S-ATTR-SOME-INSTRUCTIONS+)
+                        0 0)
+         
+         (cons
+          ;; __stubs section
+          (buf-section-64 "__stubs" "__TEXT"
+                         (+ +VM-BASE+ stubs-offset) stubs-total-size stubs-offset 2 0 0
+                         (logior +S-SYMBOL-STUBS+ +S-ATTR-PURE-INSTRUCTIONS+)
+                         0 stub-size)
+          
+          (cons
+           ;; LC #3: __DATA_CONST with __got
+           (buf-segment-command-64 "__DATA_CONST" data-const-vmaddr data-const-vmsize
+                                   data-const-fileoff data-const-filesize
+                                   (logior +VM-PROT-READ+ +VM-PROT-WRITE+)
+                                   (logior +VM-PROT-READ+ +VM-PROT-WRITE+)
+                                   1 0)
+           
+           (cons
+            ;; __got section
+            (buf-section-64 "__got" "__DATA_CONST"
+                           data-const-vmaddr got-total-size data-const-fileoff 3 0 0
+                           +S-NON-LAZY-SYMBOL-POINTERS+
+                           num-imports 0)
+            
+            (cons
+             ;; LC #4: __DATA with __heap
+             (buf-segment-command-64 "__DATA" data-vmaddr heap-vmsize
+                                     data-fileoff data-filesize
+                                     (logior +VM-PROT-READ+ +VM-PROT-WRITE+)
+                                     (logior +VM-PROT-READ+ +VM-PROT-WRITE+)
+                                     1 0)
+             
+             (cons
+              ;; __heap section
+              (buf-section-64 "__heap" "__DATA"
+                             data-vmaddr heap-vmsize data-fileoff 3 0 0 0 0 0)
+              
+              (cons
+               ;; LC #5: __LINKEDIT
+               (buf-segment-command-64 "__LINKEDIT" linkedit-vmaddr +PAGE-SIZE+
+                                       linkedit-fileoff linkedit-size
+                                       +VM-PROT-READ+ +VM-PROT-READ+
+                                       0 0)
+               
+               (cons
+                ;; LC #6: dylinker
+                (buf-load-dylinker-command dylinker-path)
+                
+                (cons
+                 ;; LC #7: UUID
+                 (buf-uuid-command uuid-vals)
+                 
+                 (cons
+                  ;; LC #8: build version
+                  (buf-build-version-command)
+                  
+                  (cons
+                   ;; LC #9: main entry point
+                   (buf-main-command entry-offset)
+                   
+                   (cons
+                    ;; LC #10: load dylib
+                    (buf-load-dylib-command libsystem-path)
+                    
+                    (cons
+                     ;; LC #11: chained fixups
+                     (buf-chained-fixups-command fixups-offset aligned-fixups-size)
+                     
+                     (cons
+                      ;; LC #12: exports trie
+                      (buf-exports-trie-command exports-offset aligned-exports-size)
+                      
+                      (cons
+                       ;; LC #13: symtab
+                       (buf-symtab-command symtab-offset nsyms strtab-offset string-table-size)
+                       
+                       (cons
+                        ;; LC #14: dysymtab
+                        (buf-dysymtab-command-full 0 0 0 1 1 num-imports
+                                                   indirect-offset num-indirect-syms)
+                        
+                        (cons
+                         ;; Padding to code
+                         (buf-zeros (- code-offset (+ header-size sizeofcmds)))
+                         
+                         (cons
+                          ;; Code bytes
+                          code-bytes
+                          
+                          (cons
+                           ;; Padding to stubs
+                           (buf-zeros (- stubs-offset (+ code-offset code-size)))
+                           
+                           (cons
+                            ;; Stubs
+                            (build-stubs imports got-page-diff got-base-offset)
+                            
+                            (cons
+                             ;; Padding to DATA_CONST
+                             (buf-zeros (- data-const-fileoff stubs-end))
+                             
+                             (cons
+                              ;; GOT entries
+                              (build-got-entries num-imports)
+                              
+                              (cons
+                               ;; Padding to DATA
+                               (buf-zeros (- data-fileoff (+ data-const-fileoff got-total-size)))
+                               
+                               (cons
+                                ;; Heap (zeros)
+                                (buf-zeros data-filesize)
+                                
+                                (cons
+                                 ;; Symbol table
+                                 (build-symbol-table imports (+ +VM-BASE+ code-offset))
+                                 
+                                 (cons
+                                  ;; String table
+                                  string-table
+                                  
+                                  (cons
+                                   ;; Padding to indirect symbols
+                                   (buf-zeros (- indirect-offset (+ strtab-offset string-table-size)))
+                                   
+                                   (cons
+                                    ;; Indirect symbol table
+                                    (build-indirect-symbol-table num-imports)
+                                    
+                                    (cons
+                                     ;; Padding to fixups
+                                     (buf-zeros (- fixups-offset (+ indirect-offset indirect-size)))
+                                     
+                                     (cons
+                                      ;; Chained fixups data
+                                      fixups-data
+                                      
+                                      (cons
+                                       ;; Padding to aligned fixups
+                                       (buf-zeros (- aligned-fixups-size fixups-size))
+                                       
+                                       (cons
+                                        ;; Exports trie
+                                        exports-trie-data
+                                        
+                                        (cons
+                                         ;; Padding to aligned exports
+                                         (buf-zeros (- aligned-exports-size exports-trie-size))
+                                         
+                                         (cons
+                                          ;; Final padding to linkedit size
+                                          (buf-zeros (- linkedit-size
+                                                       (+ nlist-size string-table-size
+                                                          (- indirect-offset strtab-offset string-table-size)
+                                                          indirect-size
+                                                          (- fixups-offset indirect-offset indirect-size)
+                                                          aligned-fixups-size
+                                                          aligned-exports-size)))
+                                          nil)))))))))))))))))))))))))))))))))))
+
+(defun write-macho-executable-with-imports-and-heap (output-path code-bytes imports heap-size)
+  "Generate complete Mach-O executable with imports and heap, write to file.
+   CODE-BYTES: list of bytes (ARM64 machine code)
+   IMPORTS: list of import names (strings like \"_write\")
+   HEAP-SIZE: size of heap segment
+   OUTPUT-PATH: string path for output file"
+  (let* ((exe-buf (build-macho-executable-with-imports-and-heap code-bytes imports heap-size))
+         (exe-str (buf-to-string exe-buf)))
+    (native-write-file output-path exe-str)))
