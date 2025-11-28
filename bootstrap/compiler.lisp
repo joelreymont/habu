@@ -61,6 +61,14 @@
 (defun make-string-from-vector (v)
   (map 'string #'code-char v))
 
+;; String concatenation - for replacing format nil patterns
+(defun string-concat (&rest strings)
+  (apply #'concatenate 'string strings))
+
+;; Number to string conversion - for replacing format nil patterns
+(defun number-to-string (n)
+  (write-to-string n))
+
 (in-package :habu)
 
 ;;; ============================================================
@@ -4395,7 +4403,7 @@
 (defun nc-gensym-lambda ()
   "Generate unique lambda name"
   (incf *lambda-counter*)
-  (intern (format nil "LAMBDA-~A" *lambda-counter*)))
+  (intern (sys:string-concat "LAMBDA-" (sys:number-to-string *lambda-counter*))))
 
 (defun nc-lift-lambdas (ir)
   "Extract all lambda-ir nodes from IR, replacing them with lambda-ref nodes.
@@ -4930,22 +4938,22 @@ int main(int argc, char **argv) {
          (wrapper-size 68))
 
     (when verbose
-      (format t "Compiled ~A bytes (with markers)~%" (length bytes-with-markers))
-      (format t "External calls: ~A~%" extern-calls)
-      (format t "Imports: ~A~%" imports))
+      (princ "Compiled ") (princ (length bytes-with-markers)) (princ " bytes (with markers)") (terpri)
+      (princ "External calls: ") (princ extern-calls) (terpri)
+      (princ "Imports: ") (princ imports) (terpri))
 
     ;; Always use the imports path for consistent Mach-O structure
     ;; The no-imports path has issues with large programs (SIGKILL)
     ;; If no imports, add _exit as a dummy import (never called but ensures proper structure)
     (let ((imports (if (null imports) '("_exit") imports)))
       (when (and verbose (null (nc-get-unique-imports extern-calls)))
-        (format t "No imports detected - adding _exit for consistent Mach-O structure~%"))
+        (princ "No imports detected - adding _exit for consistent Mach-O structure") (terpri))
       ;; Has external calls - use macho linker with imports AND heap
         (multiple-value-bind (flat-code extern-positions)
             (nc-flatten-extern-calls bytes-with-markers)
           (when verbose
-            (format t "Flattened code: ~A bytes~%" (length flat-code))
-            (format t "Extern positions: ~A~%" extern-positions))
+            (princ "Flattened code: ") (princ (length flat-code)) (princ " bytes") (terpri)
+            (princ "Extern positions: ") (princ extern-positions) (terpri))
 
           ;; Wrap code with heap initialization
           ;; Calculate heap page offset dynamically based on code size
@@ -4998,8 +5006,9 @@ int main(int argc, char **argv) {
                                (off-m (logand off-s #x3FFFFFF))
                                (bl-instr (logior #x94000000 off-m)))
                           (when verbose
-                            (format t "Patching ~A at ~X -> stub at ~X (offset ~D)~%"
-                                    name bl-file-pos stub-file-pos (ash rel-offset -2)))
+                            (princ "Patching ") (princ name) (princ " at ") (princ (write-to-string bl-file-pos :base 16))
+                            (princ " -> stub at ") (princ (write-to-string stub-file-pos :base 16))
+                            (princ " (offset ") (princ (ash rel-offset -2)) (princ ")") (terpri))
                           (file-position f bl-file-pos)
                           ;; Write BL instruction in little-endian
                           (write-byte (logand bl-instr #xFF) f)
@@ -5011,7 +5020,7 @@ int main(int argc, char **argv) {
               (sb-ext:run-program "/usr/bin/codesign" (list "-s" "-" "-f" path))
 
               (when verbose
-                (format t "~%Created: ~A~%" path))
+                (terpri) (princ "Created: ") (princ path) (terpri))
               path))))))
 
 (defun deliver-file-with-libsystem (source-path output-path &key verbose)
