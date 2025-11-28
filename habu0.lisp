@@ -1879,49 +1879,31 @@
 (defun wrap-with-heap-stub (code-bytes heap-page-offset)
   "Wrap bytecode with heap initialization for executables with imports.
    heap-page-offset is the page offset from ADRP to __DATA segment."
-  (let ((stub (bytes-append-all
-               (list
-                ;; 1. sub sp, sp, #512
-                (a64-sub-imm #x1F #x1F #x200)
-                ;; 2. str x30, [sp]
-                (a64-str #x1E #x1F #x0)
-                ;; 3. str x28, [sp, #8]
-                (a64-str #x1C #x1F #x8)
-                ;; 4. str x26, [sp, #16]
-                (a64-str #x1A #x1F #x10)
-                ;; 5. str x27, [sp, #24]
-                (a64-str #x1B #x1F #x18)
-                ;; 6. str x20, [sp, #32]
-                (a64-str #x14 #x1F #x20)
-                ;; 7. add x20, sp, #64 (environment base)
-                (a64-add-imm #x14 #x1F #x40)
-                ;; 8. adrp x28, heap_page
-                (macho-adrp #x1C heap-page-offset)
-                ;; 9. mov x27, x28 (heap base)
-                (a64-mov-reg #x1B #x1C)
-                ;; 10. add x28, x28, #16 (skip reserved)
-                (a64-add-imm #x1C #x1C #x10)
-                ;; 11. adr x26, +40 (code base: byte 80 - byte 40 = 40)
-                (macho-adr #x1A #x28)
-                ;; 12. bl +9 (skip 8 epilogue instrs to reach code)
-                (macho-bl #x9)
-                ;; 13. lsr x0, x0, #4 (untag result)
-                (a64-lsr-imm #x0 #x0 #x4)
-                ;; 14. ldr x20, [sp, #32]
-                (a64-ldr #x14 #x1F #x20)
-                ;; 15. ldr x27, [sp, #24]
-                (a64-ldr #x1B #x1F #x18)
-                ;; 16. ldr x26, [sp, #16]
-                (a64-ldr #x1A #x1F #x10)
-                ;; 17. ldr x28, [sp, #8]
-                (a64-ldr #x1C #x1F #x8)
-                ;; 18. ldr x30, [sp]
-                (a64-ldr #x1E #x1F #x0)
-                ;; 19. add sp, sp, #512
-                (a64-add-imm #x1F #x1F #x200)
-                ;; 20. ret
-                (a64-ret)))))
-    (bytes-append stub code-bytes)))
+  ;; Pre-compute all instructions to avoid function-calls-in-list crash
+  (let* ((i1 (a64-sub-imm #x1F #x1F #x200))        ; sub sp, sp, #512
+         (i2 (a64-str #x1E #x1F #x0))              ; str x30, [sp]
+         (i3 (a64-str #x1C #x1F #x8))              ; str x28, [sp, #8]
+         (i4 (a64-str #x1A #x1F #x10))             ; str x26, [sp, #16]
+         (i5 (a64-str #x1B #x1F #x18)))            ; str x27, [sp, #24]
+    (let* ((i6 (a64-str #x14 #x1F #x20))           ; str x20, [sp, #32]
+           (i7 (a64-add-imm #x14 #x1F #x40))       ; add x20, sp, #64
+           (i8 (macho-adrp #x1C heap-page-offset)) ; adrp x28, heap_page
+           (i9 (a64-mov-reg #x1B #x1C))            ; mov x27, x28
+           (i10 (a64-add-imm #x1C #x1C #x10)))     ; add x28, x28, #16
+      (let* ((i11 (macho-adr #x1A #x28))           ; adr x26, +40
+             (i12 (macho-bl #x9))                  ; bl +9
+             (i13 (a64-lsr-imm #x0 #x0 #x4))       ; lsr x0, x0, #4
+             (i14 (a64-ldr #x14 #x1F #x20))        ; ldr x20, [sp, #32]
+             (i15 (a64-ldr #x1B #x1F #x18)))       ; ldr x27, [sp, #24]
+        (let* ((i16 (a64-ldr #x1A #x1F #x10))      ; ldr x26, [sp, #16]
+               (i17 (a64-ldr #x1C #x1F #x8))       ; ldr x28, [sp, #8]
+               (i18 (a64-ldr #x1E #x1F #x0))       ; ldr x30, [sp]
+               (i19 (a64-add-imm #x1F #x1F #x200)) ; add sp, sp, #512
+               (i20 (a64-ret)))                    ; ret
+          (let ((stub (bytes-append-all
+                       (list i1 i2 i3 i4 i5 i6 i7 i8 i9 i10
+                             i11 i12 i13 i14 i15 i16 i17 i18 i19 i20))))
+            (bytes-append stub code-bytes)))))))
 
 ;; ADR Xd, #offset (PC-relative)
 (defun macho-adr (rd offset)
