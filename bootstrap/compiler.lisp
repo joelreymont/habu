@@ -2085,21 +2085,21 @@
          ;;                                    (copy-chunk next-chunks next-offset)))))))
          ;;                 (make-string-from-vector (copy-chunk (reverse chunks) 0))))
          ((eq op 'concat-string-list)
-          ;; BUG #20 FIX: Use single-level labels instead of nested labels
-          ;; to avoid environment offset issues when outer labels is in scope
-          (let ((chunks-var (gensym "CHUNKS"))
-                (total-var (gensym "TOTAL"))
-                (vec-var (gensym "VEC"))
-                (concat-fn (gensym "CONCAT-LOOP"))
-                (chunks-param (gensym "CHUNKS"))
-                (offset-param (gensym "OFFSET"))
-                (idx-param (gensym "IDX"))
-                (chunk-var (gensym "CHUNK"))
-                (len-var (gensym "LEN")))
+          ;; BUG #20 FIX: Pass env (for correct variable offsets) but nil fenv
+          ;; This allows variable lookups while avoiding outer function contamination
+          (let* ((chunks-var (gensym "CHUNKS"))
+                 (total-var (gensym "TOTAL"))
+                 (vec-var (gensym "VEC"))
+                 (concat-fn (gensym "CONCAT-LOOP"))
+                 (chunks-param (gensym "CHUNKS"))
+                 (offset-param (gensym "OFFSET"))
+                 (idx-param (gensym "IDX"))
+                 (chunk-var (gensym "CHUNK"))
+                 (len-var (gensym "LEN")))
             (nc-compile
              (list 'let* (list (list chunks-var (cadr expr))
-                               (list total-var (caddr expr))
-                               (list vec-var (list 'make-vector total-var)))
+                              (list total-var (caddr expr))
+                              (list vec-var (list 'make-vector total-var)))
                    (list 'labels (list (list concat-fn
                                              (list chunks-param offset-param idx-param)
                                              (list 'if (list 'null chunks-param)
@@ -2120,7 +2120,8 @@
                                                                      0))))))
                          (list 'make-string-from-vector
                                (list concat-fn (list 'reverse chunks-var) 0 0))))
-             env fenv)))  ; Process normally, rely on skip-nested-labels fix in nc-rewrite-labels-body
+             env
+             nil)))  ; nil fenv
          ;; char-upcase - convert lowercase char code to uppercase
          ;; Transform to: (if (and (>= ch #x61) (<= ch #x7A)) (- ch #x20) ch)
          ((eq op 'char-upcase)
@@ -4751,8 +4752,10 @@
          ;; x20 offset = saved regs + temp area
          (x20-offset (+ saved-regs temp-area))
          ;; Leaf optimization: only for non-calling functions with no >8 params
+         ;; and max-env-size < 12 to avoid temp slot collision (Bug #19/#20)
          (is-leaf (and (not (nc-ir-may-call? bir))
-                       (<= num-params 8))))
+                       (<= num-params 8)
+                       (< max-env-size 12))))
     ;; Distinguish defun from lambda by checking 4th element
     ;; Defuns have a number (param-base), lambdas have nil or a list (free-vars)
     (if (numberp fourth)
