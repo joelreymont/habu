@@ -38,6 +38,13 @@
 - Updated package organization (nc-* prefix removed)
 - Simplified code generation policy
 
+**6. Fixed Inline Lambda Funcall Crash** ✓
+- `(funcall (lambda (x) (+ x 2)) 40)` was crashing with SIGSEGV (exit 11)
+- Root cause: `lift-lambdas` didn't handle `sys-exit-ir` and other sys-* IR nodes
+- Lambdas nested inside sys-exit weren't lifted → lambda-ref got fn-offset=0 → crash
+- Fix: Added sys-exit-ir, sys-close-ir (1-arg), sys-write/read/open-ir (3-arg) to lift-lambdas
+- Commit: c07067f
+
 ### Root Cause Analysis: Closure Mutation Bug
 
 **Problem**: Counter closure returned 41 twice instead of 41 then 42.
