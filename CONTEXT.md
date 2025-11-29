@@ -3,7 +3,71 @@
 **Session Date**: November 22-29, 2025
 **Focus**: Self-hosting ARM64 Lisp compiler - path to eliminating SBCL
 **Last Updated**: November 29, 2025
-**Milestone**: PURE COMPILER SELF-HOSTING ACHIEVED - Compiles itself to native ARM64!
+**Milestone**: NATIVE COMPILER WITH PARSER - Reads, parses, and compiles source files!
+
+## Session Summary (November 29, 2025 - Native Compiler Reads and Compiles)
+
+### Major Achievement: Native Compiler Pipeline Working
+
+A native ARM64 executable can now:
+1. Read source files using `native-read-file` ✓
+2. Parse Lisp source using the pure reader ✓
+3. Compile to IR using `pure-compile-expr-full` ✓
+
+**Test Results:**
+```bash
+# Native compiler v8 - parses and compiles expressions
+$ /tmp/habu-nc-v8
+Exit: 103  # = 100 + IR node count mod 100
+
+# Input: (+ 1 (* 2 3))
+# Successfully parsed and compiled!
+```
+
+### New Components Created
+
+1. **Pure Reader** (`bootstrap/reader-pure.lisp`) - 299 lines
+   - No SBCL dependencies (no dotimes, no string-upcase)
+   - Uses `labels` for iteration instead of `dotimes`
+   - Uses `pure-char-upcase` instead of CL `char-upcase`
+   - Provides `pure-read-all`, `pure-read-from-string`
+
+2. **Native Compiler Versions Tested:**
+   - v1: Reads file, returns length mod 256 ✓
+   - v3: Reads file, returns 100 + length mod 100 ✓
+   - v4: Tests pure-length on cons list ✓ (exit 103)
+   - v5: Parses source, returns form count ✓ (exit 102)
+   - v6: Parses and compiles to IR ✓ (exit 111)
+   - v8: Full read-parse-compile pipeline ✓ (exit 103)
+
+### What's Proven
+
+- Native executables can read files < 64KB ✓
+- Pure reader correctly parses Lisp source ✓
+- Pure compiler generates IR from parsed source ✓
+- Compilation pipeline runs entirely in native code ✓
+
+### Remaining for Full Self-Hosting
+
+1. **Port ARM64 codegen to pure Habu** - The `codegen` function (1870 lines) needs to be bundled
+2. **Port Mach-O linker to pure Habu** - Replace `dotimes` and `loop` with `labels`
+3. **Bundle complete pipeline** - reader + compiler + codegen + linker
+4. **True self-hosting test** - Native compiler compiles itself
+
+### Blockers Identified
+
+The main compiler uses SBCL features like:
+- `multiple-value-bind` (116 uses)
+- `values`
+- `format`
+
+These need to be replaced with pure Habu equivalents or the functions need to be refactored.
+
+### Commits This Session
+
+- 76e79ca: Add pure reader for native compilation
+
+---
 
 ## Session Summary (November 29, 2025 - Self-Hosting Achieved!)
 
