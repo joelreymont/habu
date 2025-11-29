@@ -144,17 +144,17 @@
 
 (defun pure-compile-cons (expr env)
   "Compile (cons a b) to IR"
-  (list 'cons-call
+  (list 'cons-ir
         (pure-compile-expr (nth 1 expr) env)
         (pure-compile-expr (nth 2 expr) env)))
 
 (defun pure-compile-car (expr env)
   "Compile (car x) to IR"
-  (list 'car-call (pure-compile-expr (nth 1 expr) env)))
+  (list 'car-ir (pure-compile-expr (nth 1 expr) env)))
 
 (defun pure-compile-cdr (expr env)
   "Compile (cdr x) to IR"
-  (list 'cdr-call (pure-compile-expr (nth 1 expr) env)))
+  (list 'cdr-ir (pure-compile-expr (nth 1 expr) env)))
 
 (defun pure-compile-list (expr env)
   "Compile (list a b c) to IR"
@@ -162,7 +162,7 @@
   (labels ((expand-list (elems)
              (if (null elems)
                  (list 'lit 0)  ;; nil = 0
-                 (list 'cons-call
+                 (list 'cons-ir
                        (pure-compile-expr (car elems) env)
                        (expand-list (cdr elems))))))
     (expand-list (cdr expr))))  ;; Skip 'list operator
@@ -239,10 +239,8 @@
     (list name params body-ir pb)))
 
 (defun pure-extend-env (params env)
-  "Extend environment with parameter bindings"
-  (if (null params)
-      env
-      (pure-extend-env (cdr params) (cons (car params) env))))
+  "Extend environment with parameter bindings - append to preserve offset consistency"
+  (pure-append env params))
 
 (defun pure-compile-all-defuns (forms env fenv acc)
   "Pass 2: Compile all defuns with complete fenv"
@@ -319,23 +317,35 @@
          (body (if (null (cdr body-forms))
                    (car body-forms)
                    (cons 'progn body-forms)))
-         (new-env (pure-extend-env params env))
+         ;; Lambda starts with fresh env (just params), not extending outer env
+         ;; Free variables are captured via closure mechanism, not env lookup
+         (new-env (pure-extend-env params nil))
          ;; Find free variables (captured from enclosing scope)
          (free-vars (pure-find-free-vars body params env))
          (body-ir (pure-compile-expr-full body new-env fenv)))
     (list 'lambda-ir params body-ir free-vars)))
 
 (defun pure-find-free-vars (expr params env)
-  "Find variables referenced in expr that are in env but not in params"
+  "Find variables referenced in expr that are in env but not in params or local bindings"
   (labels ((in-list (x lst)
              (if (null lst) nil
                  (if (eq x (car lst)) t
                      (in-list x (cdr lst)))))
-           (find-in-expr (e acc)
+           (get-let-vars (bindings acc)
+             ;; Extract variable names from let bindings
+             (if (null bindings)
+                 acc
+                 (get-let-vars (cdr bindings)
+                               (if (consp (car bindings))
+                                   (cons (car (car bindings)) acc)
+                                   acc))))
+           (find-in-expr (e bound acc)
+             ;; bound = list of locally-bound variables to exclude
              (cond
                ((symbolp e)
                 (if (and (pure-env-lookup e env)
                          (not (in-list e params))
+                         (not (in-list e bound))
                          (not (in-list e acc)))
                     (cons e acc)
                     acc))
@@ -344,12 +354,33 @@
                ((eq (car e) 'lambda)
                 ;; Don't descend into nested lambdas
                 acc)
-               (t (find-in-list (cdr e) (find-in-expr (car e) acc)))))
-           (find-in-list (lst acc)
+               ;; Handle let/let* - add bound vars before descending into body
+               ((or (eq (car e) 'let) (eq (car e) 'LET)
+                    (eq (car e) 'let*) (eq (car e) 'LET*))
+                (let* ((bindings (cadr e))
+                       (body (cddr e))
+                       (let-vars (get-let-vars bindings nil))
+                       (new-bound (append let-vars bound))
+                       ;; Find free vars in binding values (use old bound)
+                       (acc2 (find-in-binding-vals bindings bound acc))
+                       ;; Find free vars in body (use new bound)
+                       (acc3 (find-in-list body new-bound acc2)))
+                  acc3))
+               (t (find-in-list (cdr e) bound (find-in-expr (car e) bound acc)))))
+           (find-in-binding-vals (bindings bound acc)
+             ;; Find free vars in let binding values
+             (if (null bindings)
+                 acc
+                 (let ((b (car bindings)))
+                   (if (and (consp b) (cadr b))
+                       (find-in-binding-vals (cdr bindings) bound
+                                             (find-in-expr (cadr b) bound acc))
+                       (find-in-binding-vals (cdr bindings) bound acc)))))
+           (find-in-list (lst bound acc)
              (if (null lst)
                  acc
-                 (find-in-list (cdr lst) (find-in-expr (car lst) acc)))))
-    (pure-reverse (find-in-expr expr nil))))
+                 (find-in-list (cdr lst) bound (find-in-expr (car lst) bound acc)))))
+    (pure-reverse (find-in-expr expr nil nil))))
 
 (defun pure-compile-funcall (expr env fenv)
   "Compile (funcall fn arg1 arg2 ...)"
@@ -360,22 +391,33 @@
           (pure-compile-args args env fenv))))
 
 ;;; ============================================================
-;;; Labels Support (Local Recursive Functions)
+;;; Labels Support (Local Recursive Functions) - FNTAB Transformation
 ;;; ============================================================
 
+;; Labels is transformed to:
+;;   (let ((f nil) ...)
+;;     (setq f (lambda (FNTAB params) (let ((f (car FNTAB))) body)))
+;;     (let ((FNTAB (cons f nil)))
+;;       (funcall f FNTAB args)))
+
+(defvar *pure-gensym-counter* 0)
+
+(defun pure-gensym (prefix)
+  "Generate unique symbol"
+  (setq *pure-gensym-counter* (+ *pure-gensym-counter* 1))
+  (intern (format nil "~A~A" prefix *pure-gensym-counter*)))
+
 (defun pure-compile-labels (expr env fenv)
-  "Compile (labels ((fn1 (args) body) ...) body)"
+  "Compile labels by transforming to let/setq/lambda/funcall with FNTAB"
   (let* ((bindings (cadr expr))
-         (body (caddr expr))
-         ;; Extract function names
+         (body-forms (cddr expr))
+         (body (if (null (cdr body-forms)) (car body-forms) (cons 'progn body-forms)))
          (fn-names (pure-extract-label-names bindings nil))
-         ;; Extend fenv with local function names
-         (local-fenv (pure-extend-fenv fn-names fenv))
-         ;; Compile each local function
-         (compiled-fns (pure-compile-label-fns bindings env local-fenv nil))
-         ;; Compile body with extended fenv
-         (body-ir (pure-compile-expr-full body env local-fenv)))
-    (list 'labels-ir compiled-fns body-ir)))
+         (fntab-var (pure-gensym "FNTAB"))
+         ;; Transform to: (let ((f nil)) (setq f (lambda (FNTAB x) ...)) (let ((FNTAB (cons f nil))) main))
+         (transformed (pure-transform-labels fn-names bindings body fntab-var)))
+    ;; Compile the transformed expression
+    (pure-compile-expr-full transformed env fenv)))
 
 (defun pure-extract-label-names (bindings acc)
   "Extract function names from labels bindings"
@@ -384,25 +426,139 @@
       (pure-extract-label-names (cdr bindings)
                                 (cons (car (car bindings)) acc))))
 
+(defun pure-transform-labels (fn-names bindings body fntab-var)
+  "Transform labels to let/setq/funcall with FNTAB"
+  ;; Build let bindings: ((f nil) ...)
+  (let* ((let-bindings (pure-map-nil-bindings fn-names nil))
+         ;; Build FNTAB unpack bindings for inside lambdas
+         (fntab-unpack (pure-build-fntab-unpack fn-names fntab-var 0 nil))
+         ;; Build setq forms for each function
+         (setq-forms (pure-build-setq-forms bindings fn-names fntab-var fntab-unpack nil))
+         ;; Build FNTAB cons list
+         (fntab-init (pure-build-fntab-init fn-names))
+         ;; Rewrite main body
+         (rewritten-body (pure-rewrite-labels-body body fn-names fntab-var))
+         ;; Inner let for FNTAB
+         (inner-let (list 'let (list (list fntab-var fntab-init)) rewritten-body))
+         ;; Full expression
+         (full-progn (pure-append setq-forms (list inner-let))))
+    (list 'let let-bindings (cons 'progn full-progn))))
+
+(defun pure-map-nil-bindings (names acc)
+  "Build ((name nil) ...) list"
+  (if (null names)
+      (pure-reverse acc)
+      (pure-map-nil-bindings (cdr names) (cons (list (car names) 'nil) acc))))
+
+(defun pure-build-fntab-unpack (names fntab-var depth acc)
+  "Build ((f (car FNTAB)) (g (car (cdr FNTAB))) ...) bindings"
+  (if (null names)
+      (pure-reverse acc)
+      (let ((accessor (pure-wrap-cdr-car fntab-var depth)))
+        (pure-build-fntab-unpack (cdr names) fntab-var (+ depth 1)
+                                 (cons (list (car names) accessor) acc)))))
+
+(defun pure-wrap-cdr-car (var depth)
+  "Build (car (cdr (cdr ... var))) expression"
+  (if (= depth 0)
+      (list 'car var)
+      (list 'car (pure-wrap-cdr var depth))))
+
+(defun pure-wrap-cdr (var n)
+  "Wrap var in n cdrs"
+  (if (= n 0)
+      var
+      (list 'cdr (pure-wrap-cdr var (- n 1)))))
+
+(defun pure-build-setq-forms (bindings fn-names fntab-var fntab-unpack acc)
+  "Build setq forms for each function"
+  (if (null bindings)
+      (pure-reverse acc)
+      (let* ((binding (car bindings))
+             (fn-name (car binding))
+             (params (cadr binding))
+             (fn-body-forms (cddr binding))
+             (fn-body (if (null (cdr fn-body-forms))
+                          (car fn-body-forms)
+                          (cons 'progn fn-body-forms)))
+             ;; Rewrite body to pass FNTAB
+             (rewritten (pure-rewrite-labels-body fn-body fn-names fntab-var))
+             ;; Wrap in let for FNTAB unpack
+             (wrapped-body (list 'let fntab-unpack rewritten))
+             ;; Lambda with FNTAB as first param
+             (lambda-expr (list 'lambda (cons fntab-var params) wrapped-body))
+             (setq-form (list 'setq fn-name lambda-expr)))
+        (pure-build-setq-forms (cdr bindings) fn-names fntab-var fntab-unpack
+                               (cons setq-form acc)))))
+
+(defun pure-build-fntab-init (names)
+  "Build (cons f (cons g nil)) expression"
+  (if (null names)
+      'nil
+      (list 'cons (car names) (pure-build-fntab-init (cdr names)))))
+
+(defun pure-rewrite-labels-body (expr fn-names fntab-var)
+  "Rewrite calls to labels functions to pass FNTAB"
+  (cond
+    ((null expr) nil)
+    ((numberp expr) expr)
+    ((symbolp expr) expr)
+    ((not (consp expr)) expr)
+    (t
+     (let ((op (car expr)))
+       (cond
+         ;; If calling a labels function, rewrite to (funcall fn FNTAB args...)
+         ((and (symbolp op) (pure-member op fn-names))
+          (cons 'funcall
+                (cons op
+                      (cons fntab-var
+                            (pure-rewrite-args (cdr expr) fn-names fntab-var)))))
+         ;; Quote - don't descend
+         ((eq op 'quote) expr)
+         ;; lambda - only rewrite body, not params
+         ((eq op 'lambda)
+          (list 'lambda (cadr expr)
+                (pure-rewrite-labels-body (caddr expr) fn-names fntab-var)))
+         ;; let/let* - rewrite values and body
+         ((or (eq op 'let) (eq op 'LET) (eq op 'let*) (eq op 'LET*))
+          (let* ((bindings (cadr expr))
+                 (body-forms (cddr expr))
+                 (new-bindings (pure-rewrite-let-bindings bindings fn-names fntab-var)))
+            (cons op (cons new-bindings
+                           (pure-rewrite-args body-forms fn-names fntab-var)))))
+         ;; Default: recursively rewrite all parts
+         (t (pure-rewrite-args expr fn-names fntab-var)))))))
+
+(defun pure-rewrite-args (args fn-names fntab-var)
+  "Rewrite list of arguments"
+  (if (null args)
+      nil
+      (cons (pure-rewrite-labels-body (car args) fn-names fntab-var)
+            (pure-rewrite-args (cdr args) fn-names fntab-var))))
+
+(defun pure-rewrite-let-bindings (bindings fn-names fntab-var)
+  "Rewrite let binding values"
+  (if (null bindings)
+      nil
+      (let ((b (car bindings)))
+        (if (consp b)
+            (cons (list (car b) (pure-rewrite-labels-body (cadr b) fn-names fntab-var))
+                  (pure-rewrite-let-bindings (cdr bindings) fn-names fntab-var))
+            (cons b (pure-rewrite-let-bindings (cdr bindings) fn-names fntab-var))))))
+
+(defun pure-member (x lst)
+  "Check if x is in lst"
+  (if (null lst)
+      nil
+      (if (eq x (car lst))
+          t
+          (pure-member x (cdr lst)))))
+
 (defun pure-extend-fenv (names fenv)
   "Extend function environment with names"
   (if (null names)
       fenv
       (pure-extend-fenv (cdr names) (cons (list (car names)) fenv))))
-
-(defun pure-compile-label-fns (bindings env fenv acc)
-  "Compile all label function bindings"
-  (if (null bindings)
-      (pure-reverse acc)
-      (let* ((binding (car bindings))
-             (name (car binding))
-             (params (cadr binding))
-             (body-forms (cddr binding))
-             (body (if (null (cdr body-forms))
-                       (car body-forms)
-                       (cons 'progn body-forms)))
-             (cf (pure-compile-defun name params body env fenv)))
-        (pure-compile-label-fns (cdr bindings) env fenv (cons cf acc)))))
 
 ;;; ============================================================
 ;;; Full Expression Compiler (with defun/lambda/labels)
@@ -463,23 +619,23 @@
          ((eq op '>=) (list 'cmp-ge (pure-compile-expr-full (nth 1 expr) env fenv)
                                     (pure-compile-expr-full (nth 2 expr) env fenv)))
 
-         ;; List operations
-         ((eq op 'cons) (list 'cons-call
+         ;; List operations - use -ir suffix to match codegen
+         ((eq op 'cons) (list 'cons-ir
                               (pure-compile-expr-full (nth 1 expr) env fenv)
                               (pure-compile-expr-full (nth 2 expr) env fenv)))
-         ((eq op 'car) (list 'car-call (pure-compile-expr-full (nth 1 expr) env fenv)))
-         ((eq op 'cdr) (list 'cdr-call (pure-compile-expr-full (nth 1 expr) env fenv)))
-         ((eq op 'cadr) (list 'car-call (list 'cdr-call (pure-compile-expr-full (nth 1 expr) env fenv))))
-         ((eq op 'caddr) (list 'car-call (list 'cdr-call (list 'cdr-call (pure-compile-expr-full (nth 1 expr) env fenv)))))
+         ((eq op 'car) (list 'car-ir (pure-compile-expr-full (nth 1 expr) env fenv)))
+         ((eq op 'cdr) (list 'cdr-ir (pure-compile-expr-full (nth 1 expr) env fenv)))
+         ((eq op 'cadr) (list 'car-ir (list 'cdr-ir (pure-compile-expr-full (nth 1 expr) env fenv))))
+         ((eq op 'caddr) (list 'car-ir (list 'cdr-ir (list 'cdr-ir (pure-compile-expr-full (nth 1 expr) env fenv)))))
          ((eq op 'list) (pure-compile-list-full expr env fenv))
 
-         ;; Predicates
-         ((eq op 'null) (list 'null-call (pure-compile-expr-full (nth 1 expr) env fenv)))
-         ((eq op 'consp) (list 'consp-call (pure-compile-expr-full (nth 1 expr) env fenv)))
-         ((eq op 'numberp) (list 'numberp-call (pure-compile-expr-full (nth 1 expr) env fenv)))
-         ((eq op 'symbolp) (list 'symbolp-call (pure-compile-expr-full (nth 1 expr) env fenv)))
-         ((eq op 'eq) (list 'eq-call (pure-compile-expr-full (nth 1 expr) env fenv)
-                                     (pure-compile-expr-full (nth 2 expr) env fenv)))
+         ;; Predicates - use -ir suffix to match codegen
+         ((eq op 'null) (list 'null-ir (pure-compile-expr-full (nth 1 expr) env fenv)))
+         ((eq op 'consp) (list 'consp-ir (pure-compile-expr-full (nth 1 expr) env fenv)))
+         ((eq op 'numberp) (list 'numberp-ir (pure-compile-expr-full (nth 1 expr) env fenv)))
+         ((eq op 'symbolp) (list 'symbolp-ir (pure-compile-expr-full (nth 1 expr) env fenv)))
+         ((eq op 'eq) (list 'eq-ir (pure-compile-expr-full (nth 1 expr) env fenv)
+                                   (pure-compile-expr-full (nth 2 expr) env fenv)))
 
          ;; Mutation
          ((eq op 'setq) (pure-compile-setq expr env fenv))
@@ -487,10 +643,15 @@
          ;; System calls
          ((eq op 'sys-exit) (list 'sys-exit-ir (pure-compile-expr-full (nth 1 expr) env fenv)))
 
-         ;; Unknown - try as function call
-         (t (if (symbolp op)
-                (pure-compile-call expr env fenv)
-                (pure-compile-lit 0))))))))
+         ;; Unknown - try as function call or inline lambda
+         (t (cond
+              ((symbolp op) (pure-compile-call expr env fenv))
+              ;; Inline lambda call: ((lambda (x) ...) arg)
+              ((and (consp op) (eq (car op) 'lambda))
+               (list 'funcall-ir
+                     (pure-compile-lambda op env fenv)
+                     (pure-compile-args (cdr expr) env fenv)))
+              (t (pure-compile-lit 0)))))))))
 
 ;; Helper functions for full compiler
 
@@ -530,7 +691,7 @@
         (pure-compile-progn-full (cons 'progn (cddr expr)) env fenv)))
 
 (defun pure-compile-let-full (expr env fenv)
-  "Compile (let ((var val) ...) body ...)"
+  "Compile (let ((var val) ...) body ...) to (let-ir vals body count offs)"
   (let ((bindings (nth 1 expr))
         (body-forms (cddr expr)))
     (labels ((extract-vars (binds acc)
@@ -541,18 +702,25 @@
                (if (null binds)
                    (pure-reverse acc)
                    (compile-vals (cdr binds)
-                                 (cons (pure-compile-expr-full (nth 1 (car binds)) env fenv) acc)))))
+                                 (cons (pure-compile-expr-full (nth 1 (car binds)) env fenv) acc))))
+             (make-offs (n base acc)
+               ;; Generate offsets starting at base: (base, base+1, ...)
+               (if (= n 0)
+                   (pure-reverse acc)
+                   (make-offs (- n 1) (+ base 1) (cons base acc)))))
       (let* ((vars (extract-vars bindings nil))
              (val-irs (compile-vals bindings nil))
+             (base-offset (pure-length env))  ;; Storage starts after current env
+             (offs (make-offs (pure-length bindings) base-offset nil))
              (new-env (pure-extend-env vars env))
              (body (if (null (cdr body-forms))
                        (car body-forms)
                        (cons 'progn body-forms)))
              (body-ir (pure-compile-expr-full body new-env fenv)))
-        (list 'let-ir val-irs body-ir)))))
+        (list 'let-ir val-irs body-ir (pure-length bindings) offs)))))
 
 (defun pure-compile-let*-full (expr env fenv)
-  "Compile (let* ((var1 val1) (var2 val2)) body)"
+  "Compile (let* ((var1 val1) (var2 val2)) body) to nested let-irs with count/offs"
   (let ((bindings (nth 1 expr))
         (body-forms (cddr expr)))
     (if (null bindings)
@@ -560,15 +728,17 @@
                                     (car body-forms)
                                     (cons 'progn body-forms))
                                 env fenv)
-        ;; Compile as nested lets
+        ;; Compile as nested lets, each with 1 binding
         (let* ((binding (car bindings))
                (var (car binding))
                (val (nth 1 binding))
                (val-ir (pure-compile-expr-full val env fenv))
-               (new-env (cons var env))
+               (off (pure-length env))  ;; Storage offset = current env length
+               (new-env (pure-append env (list var)))  ;; Append to keep offset consistency
                (rest-expr (list 'let* (cdr bindings) (cons 'progn body-forms)))
                (rest-ir (pure-compile-let*-full rest-expr new-env fenv)))
-          (list 'let-ir (list val-ir) rest-ir)))))
+          ;; (let-ir vals body count offs)
+          (list 'let-ir (list val-ir) rest-ir 1 (list off))))))
 
 (defun pure-compile-progn-full (expr env fenv)
   (labels ((compile-exprs (exprs acc)
@@ -582,7 +752,7 @@
   (labels ((expand-list (elems)
              (if (null elems)
                  (list 'lit 0)
-                 (list 'cons-call
+                 (list 'cons-ir
                        (pure-compile-expr-full (car elems) env fenv)
                        (expand-list (cdr elems))))))
     (expand-list (cdr expr))))
@@ -601,12 +771,12 @@
 ;;; ============================================================
 
 (defun pure-compile-forms (forms)
-  "Compile forms to (defun-list . main-ir)"
+  "Compile forms to (defun-list main-ir) - proper list like main compiler"
   (let* ((fenv (pure-collect-defuns forms nil))
          (defuns (pure-compile-all-defuns forms nil fenv nil))
          (main-form (pure-find-main-form forms nil))
          (main-ir (pure-compile-expr-full main-form nil fenv)))
-    (cons defuns main-ir)))
+    (list defuns main-ir)))
 
 ;;; Export full compiler
 (export '(pure-compile-expr-full pure-compile-forms
@@ -661,5 +831,101 @@
           (sys-write 2 "Error: Cannot read source\n" 27)
           (sys-exit 1)))))
 
+;;; ============================================================
+;;; Full Program Compilation (with functions)
+;;; ============================================================
+
+(defun pure-compile-program (forms)
+  "Compile forms to complete ARM64 bytecode with function linking.
+   This is the full pipeline: parse → IR → lift-lambdas → codegen → link.
+   Returns flat bytecode ready for Mach-O wrapping."
+  (reset-symbol-table)
+  (let* ((r (pure-compile-forms forms))
+         (defun-fns-raw (car r))
+         (mir-raw (cadr r))
+         ;; Add nil for free-vars to match main compiler format
+         ;; Format: (name params body-ir param-base free-vars)
+         (defun-fns (mapcar (lambda (d)
+                              (list (first d) (second d) (third d) (fourth d) nil))
+                            defun-fns-raw)))
+    ;; Lift lambdas from main IR
+    (let* ((mvb-result (lift-lambdas mir-raw))
+           (mir (car mvb-result))
+           (main-lambdas (cdr mvb-result)))
+      ;; Lift lambdas from all defun bodies
+      (let* ((mvb-result2 (lift-lambdas-from-fns defun-fns nil nil))
+             (lifted-defuns (car mvb-result2))
+             (defun-lambdas (cdr mvb-result2))
+             ;; Combine: defuns + main-lambdas + defun-lambdas
+             (fns (append lifted-defuns main-lambdas defun-lambdas)))
+        (if (null fns)
+            ;; No functions - simple case
+            (resolve-calls (codegen-main mir nil) nil)
+            ;; Has functions - need linking
+            (let* ((main-code-temp (append (prologue)
+                                           (codegen mir nil nil 0)
+                                           (epilogue)))
+                   (main-size (code-size main-code-temp))
+                   (fnoffs (build-fnoffs fns main-size nil))
+                   (main-code (append (prologue)
+                                      (codegen mir nil fnoffs 0)
+                                      (epilogue)))
+                   (fn-code (codegen-all-fns fns nil fnoffs nil))
+                   (all-code (append main-code fn-code)))
+              (resolve-calls all-code fnoffs)))))))
+
+(defun pure-deliver (source output-path)
+  "Compile source string to native executable using pure compiler.
+   This uses the full extern-call flattening pipeline."
+  (let* ((forms (read-all source))
+         (bytes-with-markers (pure-compile-program forms))
+         ;; Collect extern calls and get unique imports
+         (extern-calls (collect-extern-calls bytes-with-markers))
+         (imports (get-unique-imports extern-calls))
+         (wrapper-size 68))  ; 17 instructions * 4 bytes
+
+    ;; Always use imports path for consistent Mach-O structure
+    (let ((imports (if (null imports) '("_exit") imports)))
+
+      ;; Calculate stub offsets BEFORE flattening
+      (let* ((num-imports (length imports))
+             (stubs-total (if (> num-imports 0) (* num-imports 12) 0))
+             (code-offset #x400)
+             ;; Calculate exact flattened code size
+             (num-markers (count-if (lambda (x) (and (consp x) (eq (car x) :extern-call))) bytes-with-markers))
+             (non-marker-bytes (remove-if (lambda (x) (and (consp x) (eq (car x) :extern-call))) bytes-with-markers))
+             (exact-flat-size (+ (length non-marker-bytes) (* num-markers 4)))
+             (exact-code-size (+ exact-flat-size wrapper-size))
+             (stubs-offset (+ code-offset exact-code-size))
+             (stub-size 12))
+
+        ;; Build stub offset map
+        (let ((stub-map (make-hash-table :test 'equal)))
+          (labels ((build-stub-map (remaining-imports i)
+                     (when remaining-imports
+                       (setf (gethash (car remaining-imports) stub-map) (+ stubs-offset (* i stub-size)))
+                       (build-stub-map (cdr remaining-imports) (+ i 1)))))
+            (build-stub-map imports 0))
+
+          ;; Flatten with correct BL instructions
+          (let* ((mvb-result (flatten-extern-calls bytes-with-markers stub-map (+ code-offset wrapper-size)))
+                 (flat-code (car mvb-result)))
+
+            ;; Calculate heap page offset
+            (let* ((total-size (+ (length flat-code) wrapper-size))
+                   (stubs-end (+ code-offset total-size stubs-total))
+                   (text-vmsize (* (ceiling stubs-end #x4000) #x4000))
+                   (text-pages-4kb (/ text-vmsize #x1000))
+                   (data-const-pages-4kb (/ #x4000 #x1000))
+                   (heap-page-offset (+ text-pages-4kb data-const-pages-4kb))
+                   (wrapped-code (wrap-bytecode-with-heap-for-imports flat-code heap-page-offset)))
+
+              ;; Write Mach-O executable
+              (write-macho-executable-with-imports-and-heap output-path wrapped-code imports 1048576)
+              ;; Make executable
+              #+sbcl (sb-ext:run-program "/bin/chmod" (list "+x" output-path)
+                                          :output nil :error nil :wait t))))))))
+
 ;;; Export self-hosting entry point
-(export '(pure-compile-to-bytecode pure-compile-program-simple pure-self-compile) :habu)
+(export '(pure-compile-to-bytecode pure-compile-program-simple pure-self-compile
+          pure-compile-program pure-deliver) :habu)
