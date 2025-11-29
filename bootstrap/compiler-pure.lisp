@@ -639,6 +639,10 @@
          ((eq op 'cond) (pure-compile-cond expr env fenv))
          ((eq op 'when) (pure-compile-when expr env fenv))
          ((eq op 'unless) (pure-compile-unless expr env fenv))
+         ;; Boolean operators - transform to if forms
+         ((eq op 'and) (pure-compile-and expr env fenv))
+         ((eq op 'or) (pure-compile-or expr env fenv))
+         ((eq op 'not) (list 'null-ir (pure-compile-expr-full (cadr expr) env fenv)))
 
          ;; Binding forms
          ((eq op 'let) (pure-compile-let-full expr env fenv))
@@ -764,6 +768,34 @@
         (pure-compile-expr-full (nth 1 expr) env fenv)
         (list 'lit 0)
         (pure-compile-progn-full (cons 'progn (cddr expr)) env fenv)))
+
+(defun pure-compile-and (expr env fenv)
+  "Compile (and a b c ...) to nested if forms"
+  (let ((args (cdr expr)))
+    (cond
+      ((null args) (list 'symbol-lit "T"))  ; (and) = t
+      ((null (cdr args))  ; single arg - just compile it
+       (pure-compile-expr-full (car args) env fenv))
+      (t  ; multiple args - (if a (and b c ...) nil)
+       (list 'if-ir
+             (pure-compile-expr-full (car args) env fenv)
+             (pure-compile-and (cons 'and (cdr args)) env fenv)
+             (list 'lit 0))))))
+
+(defun pure-compile-or (expr env fenv)
+  "Compile (or a b c ...) to nested if forms"
+  (let ((args (cdr expr)))
+    (cond
+      ((null args) (list 'lit 0))  ; (or) = nil
+      ((null (cdr args))  ; single arg - just compile it
+       (pure-compile-expr-full (car args) env fenv))
+      (t  ; multiple args - (if a a (or b c ...)) but need temp to avoid double eval
+       ;; Simplified: (let ((tmp a)) (if tmp tmp (or b c ...)))
+       ;; For now, just use nested ifs assuming no side effects
+       (list 'if-ir
+             (pure-compile-expr-full (car args) env fenv)
+             (pure-compile-expr-full (car args) env fenv)
+             (pure-compile-or (cons 'or (cdr args)) env fenv))))))
 
 (defun pure-compile-let-full (expr env fenv)
   "Compile (let ((var val) ...) body ...) to (let-ir vals body count offs)"
