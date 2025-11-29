@@ -4080,13 +4080,14 @@
             (param-space (if (> param-bytes 0)
                              (* (ceiling param-bytes 16) 16)
                              16))  ; Minimum 16 bytes even for 0 params
-            ;; Temp slots: 0=x24-save, 1=x20-save, 2=closure-addr, 3=code-addr, 4=env, 5..5+n-1=args
+            ;; Temp slots: 0=x24-save, 1=x20-save, 2=x30-save, 3=closure-addr, 4=code-addr, 5=env, 6..6+n-1=args
             (x24-slot (nc-temp-slot td))
             (x20-slot (nc-temp-slot (+ td 1)))
-            (closure-slot (nc-temp-slot (+ td 2)))
-            (code-slot (nc-temp-slot (+ td 3)))
-            (env-slot (nc-temp-slot (+ td 4)))
-            (arg-base (+ td 5))
+            (x30-slot (nc-temp-slot (+ td 2)))  ; Save LR - lambdas make BL calls!
+            (closure-slot (nc-temp-slot (+ td 3)))
+            (code-slot (nc-temp-slot (+ td 4)))
+            (env-slot (nc-temp-slot (+ td 5)))
+            (arg-base (+ td 6))
             (nested-td (+ arg-base num-args))
             ;; Evaluate function
             (fn-code (nc-codegen fn-ir rtaddrs fnoffs nested-td)))
@@ -4159,9 +4160,13 @@
              (nc-ldr-offset 24 31 (+ env-slot total-offset))
              ;; Set argc
              (nc-movz 23 num-args)
+             ;; BUG #20 FIX: Save x30 - lambdas have no prologue, make BL calls!
+             (nc-str-offset 30 31 x30-slot)
              ;; Load code address and call
              (nc-ldr-offset 9 31 (+ code-slot total-offset))
              (nc-blr 9)
+             ;; Restore x30 immediately after lambda returns
+             (nc-ldr-offset 30 31 x30-slot)
              ;; Deallocate parameter frame
              (nc-add-imm 31 31 param-space)
              ;; Deallocate stack space for args 8+ (if any)
