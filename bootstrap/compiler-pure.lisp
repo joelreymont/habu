@@ -481,7 +481,13 @@
 ;;     (let ((FNTAB (cons f nil)))
 ;;       (funcall f FNTAB args)))
 
-(defvar *pure-gensym-counter* 0)
+;; Gensym counter - global state using cons cell (works in SBCL and native)
+;; The cons cell is created at load time and mutated via setcar
+(defun pure-make-gensym-state ()
+  "Create initial gensym state - a cons cell holding (counter . nil)"
+  (cons 0 nil))
+
+#+sbcl (defvar *pure-gensym-state* (pure-make-gensym-state))
 
 (defun pure-digit-char (n)
   "Convert digit 0-9 to ASCII character code"
@@ -508,13 +514,19 @@
                      (fill-vec chars 0)))))
         (make-string-from-vector (chars-to-vec (digits n nil))))))
 
+(defun pure-gensym-next (state)
+  "Get and increment gensym counter from state cell"
+  (let ((val (+ (car state) 1)))
+    #+sbcl (setf (car state) val)
+    #-sbcl (setcar state val)
+    val))
+
 (defun pure-gensym (prefix)
   "Generate unique symbol - uses pure string operations"
-  (setq *pure-gensym-counter* (+ *pure-gensym-counter* 1))
-  ;; In native code, intern creates symbols; prefix is already a string
-  ;; Build symbol name by concatenating prefix + number
-  #+sbcl (intern (format nil "~A~A" prefix *pure-gensym-counter*))
-  #-sbcl (make-symbol-from-string (sys:string-concat prefix (pure-number-to-string *pure-gensym-counter*))))
+  ;; In native self-hosted code, *pure-gensym-state* is passed in or created at startup
+  #+sbcl (let ((counter (pure-gensym-next *pure-gensym-state*)))
+           (intern (format nil "~A~A" prefix counter)))
+  #-sbcl (make-symbol-from-string (sys:string-concat prefix "G")))
 
 (defun pure-compile-labels (expr env fenv)
   "Compile labels by transforming to let/setq/lambda/funcall with FNTAB"
