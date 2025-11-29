@@ -38,6 +38,44 @@
       (car lst)
       (pure-nth (- n 1) (cdr lst))))
 
+(defun pure-count-if (pred lst)
+  "Count elements satisfying predicate"
+  (labels ((count-iter (l n)
+             (if (null l)
+                 n
+                 (count-iter (cdr l)
+                             (if (funcall pred (car l))
+                                 (+ n 1)
+                                 n)))))
+    (count-iter lst 0)))
+
+(defun pure-remove-if (pred lst)
+  "Remove elements satisfying predicate"
+  (labels ((remove-iter (l acc)
+             (if (null l)
+                 (pure-reverse acc)
+                 (remove-iter (cdr l)
+                              (if (funcall pred (car l))
+                                  acc
+                                  (cons (car l) acc))))))
+    (remove-iter lst nil)))
+
+(defun pure-assoc (key alist)
+  "Find (key . value) pair in alist using string= comparison"
+  (if (null alist)
+      nil
+      (if (string= key (car (car alist)))
+          (car alist)
+          (pure-assoc key (cdr alist)))))
+
+(defun pure-mapcar (fn lst)
+  "Map function over list"
+  (labels ((map-iter (l acc)
+             (if (null l)
+                 (pure-reverse acc)
+                 (map-iter (cdr l) (cons (funcall fn (car l)) acc)))))
+    (map-iter lst nil)))
+
 ;;; ============================================================
 ;;; Pure Compiler Core
 ;;; ============================================================
@@ -874,57 +912,131 @@
                    (all-code (append main-code fn-code)))
               (resolve-calls all-code fnoffs)))))))
 
+;;; ============================================================
+;;; Pure Delivery Helper Functions (no CL runtime dependencies)
+;;; ============================================================
+
+(defun pure-collect-extern-calls (code)
+  "Collect extern call markers from code. Returns ((name . pos) ...)"
+  (labels ((collect (items acc)
+             (if (null items)
+                 (pure-reverse acc)
+                 (let ((item (car items)))
+                   (if (and (consp item) (eq (car item) :extern-call))
+                       (collect (cdr items) (cons (cons (cadr item) (caddr item)) acc))
+                       (collect (cdr items) acc))))))
+    (collect code nil)))
+
+(defun pure-get-unique-imports (extern-calls)
+  "Get unique import names from extern calls list"
+  (labels ((unique (calls seen acc)
+             (if (null calls)
+                 (pure-reverse acc)
+                 (let ((name (car (car calls))))
+                   (if (pure-member name seen)
+                       (unique (cdr calls) seen acc)
+                       (unique (cdr calls) (cons name seen) (cons name acc)))))))
+    (unique extern-calls nil nil)))
+
+(defun pure-string= (s1 s2)
+  "Compare two strings for equality"
+  (string= s1 s2))
+
+(defun pure-assoc-string (key alist)
+  "Find entry in alist with string key"
+  (if (null alist)
+      nil
+      (if (pure-string= key (car (car alist)))
+          (car alist)
+          (pure-assoc-string key (cdr alist)))))
+
+(defun pure-flatten-extern-calls (code stub-alist code-base-addr)
+  "Replace extern call markers with BL instructions using assoc list.
+   Returns (flat-code . extern-positions)"
+  (labels ((flatten (items result positions)
+             (if (null items)
+                 (cons (pure-reverse result) (pure-reverse positions))
+                 (let ((item (car items)))
+                   (if (and (consp item) (eq (car item) :extern-call))
+                       (let* ((name (cadr item))
+                              (pos (caddr item))
+                              (bl-addr (+ code-base-addr pos))
+                              (entry (pure-assoc-string name stub-alist))
+                              (stub-addr (if entry (cdr entry) 0))
+                              (rel-offset (- stub-addr bl-addr))
+                              (off-s (ash rel-offset -2))
+                              (off-m (logand off-s #x3FFFFFF))
+                              (bl-instr (logior #x94000000 off-m))
+                              ;; Emit BL in little-endian
+                              (b0 (logand bl-instr #xFF))
+                              (b1 (logand (ash bl-instr -8) #xFF))
+                              (b2 (logand (ash bl-instr -16) #xFF))
+                              (b3 (logand (ash bl-instr -24) #xFF)))
+                         (flatten (cdr items)
+                                  (cons b3 (cons b2 (cons b1 (cons b0 result))))
+                                  (cons (cons name pos) positions)))
+                       (flatten (cdr items) (cons item result) positions))))))
+    (flatten code nil nil)))
+
+(defun pure-build-stub-alist (imports stubs-offset stub-size)
+  "Build ((name . offset) ...) alist for stub map"
+  (labels ((build (remaining i acc)
+             (if (null remaining)
+                 (pure-reverse acc)
+                 (build (cdr remaining) (+ i 1)
+                        (cons (cons (car remaining) (+ stubs-offset (* i stub-size))) acc)))))
+    (build imports 0 nil)))
+
+(defun pure-is-extern-marker (x)
+  "Check if x is an extern-call marker"
+  (and (consp x) (eq (car x) :extern-call)))
+
 (defun pure-deliver (source output-path)
   "Compile source string to native executable using pure compiler.
-   This uses the full extern-call flattening pipeline."
+   This uses the full extern-call flattening pipeline.
+   Uses only pure functions - no hash tables or CL runtime."
   (let* ((forms (read-all source))
          (bytes-with-markers (pure-compile-program forms))
          ;; Collect extern calls and get unique imports
-         (extern-calls (collect-extern-calls bytes-with-markers))
-         (imports (get-unique-imports extern-calls))
+         (extern-calls (pure-collect-extern-calls bytes-with-markers))
+         (imports (pure-get-unique-imports extern-calls))
          (wrapper-size 68))  ; 17 instructions * 4 bytes
 
     ;; Always use imports path for consistent Mach-O structure
     (let ((imports (if (null imports) '("_exit") imports)))
 
       ;; Calculate stub offsets BEFORE flattening
-      (let* ((num-imports (length imports))
+      (let* ((num-imports (pure-length imports))
              (stubs-total (if (> num-imports 0) (* num-imports 12) 0))
              (code-offset #x400)
              ;; Calculate exact flattened code size
-             (num-markers (count-if (lambda (x) (and (consp x) (eq (car x) :extern-call))) bytes-with-markers))
-             (non-marker-bytes (remove-if (lambda (x) (and (consp x) (eq (car x) :extern-call))) bytes-with-markers))
-             (exact-flat-size (+ (length non-marker-bytes) (* num-markers 4)))
+             (num-markers (pure-count-if #'pure-is-extern-marker bytes-with-markers))
+             (non-marker-bytes (pure-remove-if #'pure-is-extern-marker bytes-with-markers))
+             (exact-flat-size (+ (pure-length non-marker-bytes) (* num-markers 4)))
              (exact-code-size (+ exact-flat-size wrapper-size))
              (stubs-offset (+ code-offset exact-code-size))
              (stub-size 12))
 
-        ;; Build stub offset map
-        (let ((stub-map (make-hash-table :test 'equal)))
-          (labels ((build-stub-map (remaining-imports i)
-                     (when remaining-imports
-                       (setf (gethash (car remaining-imports) stub-map) (+ stubs-offset (* i stub-size)))
-                       (build-stub-map (cdr remaining-imports) (+ i 1)))))
-            (build-stub-map imports 0))
+        ;; Build stub offset alist (instead of hash table)
+        (let* ((stub-alist (pure-build-stub-alist imports stubs-offset stub-size))
+               ;; Flatten with correct BL instructions
+               (flatten-result (pure-flatten-extern-calls bytes-with-markers stub-alist (+ code-offset wrapper-size)))
+               (flat-code (car flatten-result)))
 
-          ;; Flatten with correct BL instructions
-          (let* ((mvb-result (flatten-extern-calls bytes-with-markers stub-map (+ code-offset wrapper-size)))
-                 (flat-code (car mvb-result)))
+          ;; Calculate heap page offset
+          (let* ((total-size (+ (pure-length flat-code) wrapper-size))
+                 (stubs-end (+ code-offset total-size stubs-total))
+                 (text-vmsize (* (ceiling stubs-end #x4000) #x4000))
+                 (text-pages-4kb (/ text-vmsize #x1000))
+                 (data-const-pages-4kb (/ #x4000 #x1000))
+                 (heap-page-offset (+ text-pages-4kb data-const-pages-4kb))
+                 (wrapped-code (wrap-bytecode-with-heap-for-imports flat-code heap-page-offset)))
 
-            ;; Calculate heap page offset
-            (let* ((total-size (+ (length flat-code) wrapper-size))
-                   (stubs-end (+ code-offset total-size stubs-total))
-                   (text-vmsize (* (ceiling stubs-end #x4000) #x4000))
-                   (text-pages-4kb (/ text-vmsize #x1000))
-                   (data-const-pages-4kb (/ #x4000 #x1000))
-                   (heap-page-offset (+ text-pages-4kb data-const-pages-4kb))
-                   (wrapped-code (wrap-bytecode-with-heap-for-imports flat-code heap-page-offset)))
-
-              ;; Write Mach-O executable
-              (write-macho-executable-with-imports-and-heap output-path wrapped-code imports 1048576)
-              ;; Make executable
-              #+sbcl (sb-ext:run-program "/bin/chmod" (list "+x" output-path)
-                                          :output nil :error nil :wait t))))))))
+            ;; Write Mach-O executable
+            (write-macho-executable-with-imports-and-heap output-path wrapped-code imports 1048576)
+            ;; Make executable
+            #+sbcl (sb-ext:run-program "/bin/chmod" (list "+x" output-path)
+                                        :output nil :error nil :wait t)))))))
 
 ;;; Export self-hosting entry point
 (export '(pure-compile-to-bytecode pure-compile-program-simple pure-self-compile
