@@ -650,7 +650,7 @@
          ;; Boolean operators - transform to if forms
          ((eq op 'and) (pure-compile-and expr env fenv))
          ((eq op 'or) (pure-compile-or expr env fenv))
-         ((eq op 'not) (list 'null-ir (pure-compile-expr-full (cadr expr) env fenv)))
+         ((eq op 'not) (list 'cmp-eq (pure-compile-expr-full (cadr expr) env fenv) (list 'lit 0)))
 
          ;; Binding forms
          ((eq op 'let) (pure-compile-let-full expr env fenv))
@@ -693,14 +693,21 @@
          ((eq op 'caddr) (list 'car-ir (list 'cdr-ir (list 'cdr-ir (pure-compile-expr-full (nth 1 expr) env fenv)))))
          ((eq op 'list) (pure-compile-list-full expr env fenv))
 
-         ;; Predicates - use -ir suffix to match codegen
-         ((eq op 'null) (list 'null-ir (pure-compile-expr-full (nth 1 expr) env fenv)))
-         ((eq op 'consp) (list 'consp-ir (pure-compile-expr-full (nth 1 expr) env fenv)))
-         ((eq op 'numberp) (list 'numberp-ir (pure-compile-expr-full (nth 1 expr) env fenv)))
-         ((eq op 'symbolp) (list 'symbolp-ir (pure-compile-expr-full (nth 1 expr) env fenv)))
-         ((eq op 'stringp) (list 'stringp-ir (pure-compile-expr-full (nth 1 expr) env fenv)))
-         ((eq op 'vectorp) (list 'vectorp-ir (pure-compile-expr-full (nth 1 expr) env fenv)))
-         ((eq op 'eq) (list 'eq-ir (pure-compile-expr-full (nth 1 expr) env fenv)
+         ;; Predicates - use cmp-eq/get-tag to match main compiler codegen
+         ;; null: compare value to nil (0)
+         ((eq op 'null) (list 'cmp-eq (pure-compile-expr-full (nth 1 expr) env fenv) (list 'lit 0)))
+         ;; consp: compare tag to 1 (cons tag)
+         ((eq op 'consp) (list 'cmp-eq (list 'get-tag (pure-compile-expr-full (nth 1 expr) env fenv)) (list 'lit 1)))
+         ;; numberp: compare tag to 0 (fixnum tag)
+         ((eq op 'numberp) (list 'cmp-eq (list 'get-tag (pure-compile-expr-full (nth 1 expr) env fenv)) (list 'lit 0)))
+         ;; symbolp: compare tag to 2 (symbol tag)
+         ((eq op 'symbolp) (list 'cmp-eq (list 'get-tag (pure-compile-expr-full (nth 1 expr) env fenv)) (list 'lit 2)))
+         ;; stringp: compare tag to 4 (string tag)
+         ((eq op 'stringp) (list 'cmp-eq (list 'get-tag (pure-compile-expr-full (nth 1 expr) env fenv)) (list 'lit 4)))
+         ;; vectorp: compare tag to 3 (vector tag)
+         ((eq op 'vectorp) (list 'cmp-eq (list 'get-tag (pure-compile-expr-full (nth 1 expr) env fenv)) (list 'lit 3)))
+         ;; eq: compare two values directly
+         ((eq op 'eq) (list 'cmp-eq (pure-compile-expr-full (nth 1 expr) env fenv)
                                    (pure-compile-expr-full (nth 2 expr) env fenv)))
 
          ;; String operations - use -ir suffix to match codegen
