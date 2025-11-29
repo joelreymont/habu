@@ -800,6 +800,54 @@
 
          ;; System calls
          ((eq (car expr) 'sys-exit) (list 'sys-exit-ir (pure-compile-expr-full (nth 1 expr) env fenv)))
+         ((eq (car expr) 'sys-open) (list 'sys-open-ir
+                                          (pure-compile-expr-full (nth 1 expr) env fenv)
+                                          (pure-compile-expr-full (nth 2 expr) env fenv)
+                                          (pure-compile-expr-full (nth 3 expr) env fenv)))
+         ((eq (car expr) 'sys-read) (list 'sys-read-ir
+                                          (pure-compile-expr-full (nth 1 expr) env fenv)
+                                          (pure-compile-expr-full (nth 2 expr) env fenv)
+                                          (pure-compile-expr-full (nth 3 expr) env fenv)))
+         ((eq (car expr) 'sys-write) (list 'sys-write-ir
+                                           (pure-compile-expr-full (nth 1 expr) env fenv)
+                                           (pure-compile-expr-full (nth 2 expr) env fenv)
+                                           (pure-compile-expr-full (nth 3 expr) env fenv)))
+         ((eq (car expr) 'sys-close) (list 'sys-close-ir (pure-compile-expr-full (nth 1 expr) env fenv)))
+
+         ;; Vectors and file I/O helpers
+         ((eq (car expr) 'make-vector) (list 'make-vector-ir (pure-compile-expr-full (nth 1 expr) env fenv)))
+         ((eq (car expr) 'vector-ref) (list 'vector-ref-ir
+                                            (pure-compile-expr-full (nth 1 expr) env fenv)
+                                            (pure-compile-expr-full (nth 2 expr) env fenv)))
+         ((eq (car expr) 'vector-set) (list 'vector-set-ir
+                                            (pure-compile-expr-full (nth 1 expr) env fenv)
+                                            (pure-compile-expr-full (nth 2 expr) env fenv)
+                                            (pure-compile-expr-full (nth 3 expr) env fenv)))
+         ((eq (car expr) 'vector-length) (list 'vector-length-ir (pure-compile-expr-full (nth 1 expr) env fenv)))
+         ((eq (car expr) 'buffer-to-string) (list 'buffer-to-string-ir
+                                                   (pure-compile-expr-full (nth 1 expr) env fenv)
+                                                   (pure-compile-expr-full (nth 2 expr) env fenv)))
+
+         ;; native-read-file: expand to let* with sys-open/read/close
+         ;; Expands to: (let* ((fd (sys-open path 0 0))
+         ;;                     (buf (make-vector 65536))
+         ;;                     (n (sys-read fd buf 65536)))
+         ;;               (sys-close fd)
+         ;;               (buffer-to-string buf n))
+         ((eq (car expr) 'native-read-file)
+          (let ((path-sym (pure-gensym "PATH"))
+                (fd-sym (pure-gensym "FD"))
+                (buf-sym (pure-gensym "BUF"))
+                (n-sym (pure-gensym "N")))
+            (pure-compile-expr-full
+             (list 'let* (list (list path-sym (nth 1 expr))
+                               (list fd-sym (list 'sys-open path-sym 0 0))
+                               (list buf-sym (list 'make-vector 65536))
+                               (list n-sym (list 'sys-read fd-sym buf-sym 65536)))
+                   (list 'progn
+                         (list 'sys-close fd-sym)
+                         (list 'buffer-to-string buf-sym n-sym)))
+             env fenv)))
 
          ;; Unknown - try as function call or inline lambda
          (t (cond
@@ -1189,9 +1237,9 @@
              (stubs-total (if (> num-imports 0) (* num-imports 12) 0))
              (code-offset #x400)
              ;; Calculate exact flattened code size
-             (num-markers (pure-count-if #'pure-is-extern-marker bytes-with-markers))
-             (non-marker-bytes (pure-remove-if #'pure-is-extern-marker bytes-with-markers))
-             (exact-flat-size (+ (pure-length non-marker-bytes) (* num-markers 4)))
+             ;; bytes-with-markers already has 4 items per call site (marker + 3 zeros)
+             ;; After flattening: marker+zeros → 4 BL bytes, so total size stays same
+             (exact-flat-size (pure-length bytes-with-markers))
              (exact-code-size (+ exact-flat-size wrapper-size))
              (stubs-offset (+ code-offset exact-code-size))
              (stub-size 12))
@@ -1212,7 +1260,7 @@
                  (wrapped-code (wrap-bytecode-with-heap-for-imports flat-code heap-page-offset)))
 
             ;; Write Mach-O executable
-            (write-macho-executable-with-imports-and-heap output-path wrapped-code imports 1048576)
+            (write-macho-executable-with-imports-and-heap output-path wrapped-code imports #x800000)
             ;; Make executable
             #+sbcl (sb-ext:run-program "/bin/chmod" (list "+x" output-path)
                                         :output nil :error nil :wait t)))))))
