@@ -1,0 +1,17 @@
+;;; Test non-recursive read with concat
+
+(let ((fd (sys-open "/tmp/small.txt" #x0 0)))
+  (labels ((do-read ()
+             (let* ((buf (make-vector 100))
+                    (n (sys-read fd buf 100))
+                    (chunk (buffer-to-string buf n))
+                    (chunks (cons chunk nil)))
+               (list chunks n))))
+    (let* ((result-list (do-read))
+           (chunks (car result-list))
+           (total (car (cdr result-list))))
+      (sys-close fd)
+      (let ((result (concat-string-list chunks total)))
+        (sys-write 1 result (string-length result))
+        (sys-write 1 "\n" 1)
+        (sys-exit 42)))))

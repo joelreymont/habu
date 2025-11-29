@@ -2014,14 +2014,14 @@
                 (result-list-var (gensym "RESULT-LIST"))
                 (read-chunks-fn (gensym "READ-CHUNKS")))
             (nc-compile
-             (list 'let* (list (list path-var (cadr expr))
-                               (list fd-var (list 'sys-open path-var #x0 0))
-                               (list buf-var (list 'make-vector 65536)))
+             (list 'let (list (list path-var (cadr expr))
+                              (list fd-var (list 'sys-open path-var #x0 0)))
                    (list 'labels (list (list read-chunks-fn (list chunks-var total-var)
-                                             (list 'let* (list (list n-var (list 'sys-read fd-var buf-var 65536)))
+                                             ;; BUG #20 FIX: Allocate buffer INSIDE labels to avoid capture crash
+                                             (list 'let* (list (list buf-var (list 'make-vector 65536))
+                                                               (list n-var (list 'sys-read fd-var buf-var 65536)))
                                                    (list 'if (list '= n-var 0)
                                                          (list 'list chunks-var total-var)
-                                                         ;; BUG #20 WORKAROUND: Evaluate complex expressions in let before recursive call
                                                          (list 'let* (list (list chunk-var (list 'buffer-to-string buf-var n-var))
                                                                            (list next-chunks-var (list 'cons chunk-var chunks-var))
                                                                            (list next-total-var (list '+ total-var n-var)))
