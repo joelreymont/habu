@@ -5,6 +5,26 @@
 **Last Updated**: November 29, 2025
 **Milestone**: PURE COMPILER FULLY FUNCTIONAL - 20/20 tests pass, mini-compiler and meta-compiler work
 
+## Session Summary (November 29, 2025 - Let-Inside-Cond Fix & Binding Limit)
+
+### Accomplishments This Session
+
+**9. Fixed Let-Inside-Cond Crash Pattern** ✓
+- Problem: `(t (let ((op (car expr))) (cond ...)))` crashed in native code
+- Fix: Replace `op` with `(car expr)` directly, remove let wrapper
+- Applied to `pure-compile-expr-full` and `pure-rewrite-labels-body`
+- Commit: 08da572
+
+**10. Identified 6-Binding Limit in Recursive Functions** ⚠
+- Problem: Functions with 7+ bindings that do mutual recursion crash (SIGBUS)
+- Pattern: `(defun helper () (let* ((a) (b) (c) (d) (e) (f) (g)) (recursive-call ...)))`
+- Workaround: Keep helper functions to ≤6 bindings, inline expressions instead of binding
+- Example: Use `(compile-expr body (cons var env))` instead of binding `new-env`
+- Root cause: Frame layout collision at high binding counts + recursive call depth
+- Status: Workaround documented, underlying bug not yet fixed in codegen
+
+---
+
 ## Session Summary (November 29, 2025 - Pure Compiler Complete)
 
 ### Accomplishments This Session
