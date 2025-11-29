@@ -2741,3 +2741,140 @@ habu link-fasls util.fasl helper.fasl main.fasl -o myprogram
 
 **Current Status**: Debugging bytecode flattening in FASL compilation
 
+
+---
+
+## Session Summary (November 29, 2025 - Final Status)
+
+### Accomplishments
+
+**1. Fixed Bug #20 - Nested Labels Crash** ✓
+- Root cause: x20-offset didn't account for environment space
+- Fix: `x20-offset = saved-regs + temp-area + (max-env-size * 8)`
+- All nested labels patterns now work (string operations, recursive functions)
+
+**2. Implemented Native File I/O** ✓
+- native-read-file works for files < 64KB
+- deliver-file-with-libsystem uses native-read-file (no SBCL file I/O)
+- Native executables can read source files
+
+**3. Designed FASL v2 Separate Compilation** ✓
+- Enhanced FASL format with 32-byte header + symbol tables
+- Functions: nc-compile-program-with-symtab, write/read-fasl-v2, link-fasls
+- Architecture documented for modular compilation
+
+**4. Identified Path to Eliminating SBCL**
+- Native compiler reads files ✓
+- Native compiler parses files ✓  
+- Native compiler crashes during compilation (missing dependencies)
+- Issue: Bundling approach hits limits (fboundp, load, optimize-ir don't exist)
+
+### Current Blockers
+
+**Marker Handling in FASL**:
+- Bytecode contains `:extern-call` markers (not flattened)
+- write-fasl-v2 expects only bytes, fails on markers
+- Solution: Add extern-call table to FASL v3, or serialize as s-expressions
+
+**Native Compiler Dependencies**:
+- Missing: optimize-ir (from optimize.lisp)
+- Missing: fboundp, load (SBCL intrinsics)
+- Bundling source files hits undefined function crashes
+
+### Path Forward (Multiple Options)
+
+**Option A: SBCL-Based Linking** (Fastest):
+```bash
+# Compile each module to FASL in SBCL
+sbcl --load compiler.lisp --eval "(compile-file-to-fasl ...)"
+
+# Link FASLs in SBCL  
+sbcl --load compiler.lisp --load macho.lisp --eval "(link-fasls ...)"
+```
+- Uses SBCL for compilation/linking
+- Generates native executables
+- Eliminates SBCL from RUNTIME (executables are pure native)
+
+**Option B: FASL v3 with Marker Tables**:
+- Add extern-call table to FASL format
+- Write bytecode with markers preserved
+- Link-time marker resolution
+
+**Option C: Fix Native Compiler**:
+- Bundle compiler + macho + optimize together
+- OR compile each to FASL, link with Option A
+- Debug remaining crashes
+
+### Recommendation
+
+**Start with Option A**: Use SBCL for build-time compilation/linking, produce native executables.
+- This achieves the goal: executables don't need SBCL
+- Separate compilation works (no bundling)
+- Can iterate toward full self-hosting later
+
+**Success Criteria**:
+1. ✓ Native executables run without SBCL
+2. ⚠ Compiler compiles programs (via SBCL currently)
+3. ⚠ No bundling required (use FASLs)
+4. ⚠ Self-hosting (native compiler compiles itself)
+
+**Status**: 1/4 complete. SBCL eliminated from runtime, working on build-time elimination.
+
+
+---
+
+## Critical Discovery (November 29, 2025)
+
+### Root Cause of Native Compiler Crash
+
+**Problem**: Native compiler crashes (exit 139) during compilation even with all dependencies bundled.
+
+**Root Cause**: The compiler source (bootstrap/compiler.lisp) uses Common Lisp features that SBCL expands to SBCL-specific code:
+- `multiple-value-bind` (116 occurrences) - expands to SBCL runtime calls  
+- `values` - SBCL-specific implementation
+- Other CL macros that rely on SBCL runtime
+
+**What Happens**:
+1. SBCL reads compiler.lisp
+2. SBCL expands macros (`multiple-value-bind`, etc.) to SBCL-specific code
+3. Habu compiles the EXPANDED code to ARM64
+4. Generated ARM64 references SBCL runtime functions
+5. Native execution crashes - SBCL runtime doesn't exist
+
+**The Catch-22**:
+- Compiler is written in Common Lisp (uses CL features)  
+- SBCL compiles it by expanding CL macros to SBCL code
+- Native execution needs pure Habu code
+- But Habu compiler itself is written in CL!
+
+### Solutions
+
+**A. Bootstrap Compiler Rewrite** (Complete):
+- Rewrite compiler.lisp using ONLY Habu-supported primitives
+- No `multiple-value-bind`, use explicit tuple destructuring
+- No SBCL-specific features
+- Estimated effort: 2-3 weeks
+
+**B. Two-Stage Bootstrap** (Practical):
+1. Stage 0: SBCL compiles Habu programs → native executables ✓ (WORKING)
+2. Stage 1: Rewrite compiler incrementally in Habu subset
+3. Stage 2: Use Stage 1 to compile itself
+
+**C. Accept SBCL for Build Time** (Pragmatic):
+- Use SBCL for compilation (build time)
+- Generated executables are pure native (runtime)
+- This is standard practice (like GCC compiling itself)
+
+### Current Reality
+
+**What Works** ✓:
+- SBCL compiles Habu programs to native ARM64
+- Native executables run without ANY runtime dependencies
+- File I/O, parsing, all primitives work natively
+
+**What Doesn't Work** ⚠:
+- Native compiler executable can't compile programs (SBCL dependencies in generated code)
+- Full self-hosting blocked by CL→SBCL expansion issue
+
+**Recommendation**: Accept Option C for now. SBCL eliminated from runtime (success!). Work toward Stage 1 compiler rewrite incrementally.
+
