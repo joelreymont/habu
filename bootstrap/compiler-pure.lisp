@@ -720,6 +720,16 @@
          ((eq (car expr) '>=) (list 'cmp-ge (pure-compile-expr-full (nth 1 expr) env fenv)
                                     (pure-compile-expr-full (nth 2 expr) env fenv)))
 
+         ;; Bitwise operations
+         ((eq (car expr) 'logand) (list 'band (pure-compile-expr-full (nth 1 expr) env fenv)
+                                        (pure-compile-expr-full (nth 2 expr) env fenv)))
+         ((eq (car expr) 'logior) (list 'bor (pure-compile-expr-full (nth 1 expr) env fenv)
+                                        (pure-compile-expr-full (nth 2 expr) env fenv)))
+         ((eq (car expr) 'logxor) (list 'bxor (pure-compile-expr-full (nth 1 expr) env fenv)
+                                        (pure-compile-expr-full (nth 2 expr) env fenv)))
+         ((eq (car expr) 'ash) (list 'bsh (pure-compile-expr-full (nth 1 expr) env fenv)
+                                     (pure-compile-expr-full (nth 2 expr) env fenv)))
+
          ;; List operations - use -ir suffix to match codegen
          ((eq (car expr) 'cons) (list 'cons-ir
                               (pure-compile-expr-full (nth 1 expr) env fenv)
@@ -728,6 +738,11 @@
          ((eq (car expr) 'cdr) (list 'cdr-ir (pure-compile-expr-full (nth 1 expr) env fenv)))
          ((eq (car expr) 'cadr) (list 'car-ir (list 'cdr-ir (pure-compile-expr-full (nth 1 expr) env fenv))))
          ((eq (car expr) 'caddr) (list 'car-ir (list 'cdr-ir (list 'cdr-ir (pure-compile-expr-full (nth 1 expr) env fenv)))))
+         ((eq (car expr) 'cddr) (list 'cdr-ir (list 'cdr-ir (pure-compile-expr-full (nth 1 expr) env fenv))))
+         ((eq (car expr) 'cdddr) (list 'cdr-ir (list 'cdr-ir (list 'cdr-ir (pure-compile-expr-full (nth 1 expr) env fenv)))))
+         ((eq (car expr) 'cadddr) (list 'car-ir (list 'cdr-ir (list 'cdr-ir (list 'cdr-ir (pure-compile-expr-full (nth 1 expr) env fenv))))))
+         ;; nth - expand (nth n list) based on constant or variable index
+         ((eq (car expr) 'nth) (pure-compile-nth expr env fenv))
          ((eq (car expr) 'list) (pure-compile-list-full expr env fenv))
 
          ;; Predicates - use cmp-eq/get-tag to match main compiler codegen
@@ -820,6 +835,30 @@
         (pure-compile-expr-full (nth 1 expr) env fenv)
         (list 'lit 0)
         (pure-compile-progn-full (cons 'progn (cddr expr)) env fenv)))
+
+(defun pure-compile-nth (expr env fenv)
+  "Compile (nth n list) - optimize for constant indices"
+  (let ((index-expr (nth 1 expr))
+        (list-expr (nth 2 expr)))
+    (if (numberp index-expr)
+        ;; Constant index - expand directly
+        (let ((list-ir (pure-compile-expr-full list-expr env fenv)))
+          (pure-nth-expand index-expr list-ir))
+        ;; Variable index - use labels loop
+        (pure-compile-expr-full
+         (list 'labels
+               (list (list 'nth-loop (list 'n 'lst)
+                           (list 'if (list '= 'n 0)
+                                 (list 'car 'lst)
+                                 (list 'nth-loop (list '- 'n 1) (list 'cdr 'lst)))))
+               (list 'nth-loop index-expr list-expr))
+         env fenv))))
+
+(defun pure-nth-expand (n list-ir)
+  "Expand (nth n list-ir) to nested car/cdr for constant n"
+  (if (= n 0)
+      (list 'car-ir list-ir)
+      (pure-nth-expand (- n 1) (list 'cdr-ir list-ir))))
 
 (defun pure-compile-and (expr env fenv)
   "Compile (and a b c ...) to nested if forms"
