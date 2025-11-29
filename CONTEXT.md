@@ -65,27 +65,30 @@
   - Both fail due to labels + heap allocation issue
 - **File I/O status**: Basic operations work, large files blocked
 
-**Critical Bug #20: GC root scanning in argument spill slots**
-- **Symptom**: SIGBUS when passing heap-allocated value as arg to recursive call
-- **Root cause**: Spill slots not scanned as GC roots during argument evaluation
-- **Detailed analysis**:
-  - Pattern: `(f (heap-allocating-expr) other-args)` in recursive context
-  - Works: `(f fixnum-expr)`, `(f constant-string)`, `(f cons-expr)`
-  - Fails: `(f (string-append s "X"))` when called recursively
-  - Why: heap object created in arg position stored to spill slot, but if
-    subsequent arg evaluation triggers GC, spill slot not scanned, object collected
-- **Test matrix** (15 test cases):
+**Critical Bug #20: string-append macro expansion in recursive call arguments** (REFINED Nov 29, 2025)
+- **Symptom**: SIGBUS (exit 138) when calling function with string-append in argument
+- **REFINED root cause**: NOT a GC issue! Native executables have NO GC (fixed 1MB bump-allocated heap)
+  - Pattern that crashes: `(f (string-append s "X") n)` where f is labels function
+  - Pattern that works: `(let ((next (string-append s "X"))) (f next n))`
+  - The crash is specific to the string-append MACRO expansion in argument position
+- **Detailed test matrix** (20+ isolation tests):
   - ✓ labels + fixnum recursion
-  - ✓ labels + cons recursion
-  - ✓ labels + make-vector
-  - ✓ labels calling string-append (non-recursive)
-  - ✓ labels + constant string arg (recursive)
-  - ✗ labels + string-append result as arg (recursive) → CRASH
-- **Impact**: Blocks large file reading, string accumulation in loops
-- **Fix**: Ensure argument spill slots ([sp + offset]) are scanned during GC
-  - Requires: runtime/gc.c changes to mark stack frames as GC roots
-  - Alternative: Evaluate args to heap-allocated vector before call
-- **Priority**: High - blocks full self-hosting for compiler (256KB source)
+  - ✓ labels + cons recursion (heap allocation)
+  - ✓ labels + make-vector recursion (heap allocation)
+  - ✓ labels + make-string-from-vector recursion
+  - ✓ Simple labels in arg position
+  - ✓ Recursive labels (no heap) in arg position
+  - ✓ Recursive labels WITH heap allocation in arg position
+  - ✓ TWO recursive labels with heap in arg position
+  - ✓ Manual code replicating EXACT string-append structure - WORKS!
+  - ✗ string-append MACRO in recursive call arg → CRASH (SIGBUS)
+  - ✓ string-append in progn body, then recursive call → WORKS
+  - ✗ Returning string from recursive call, passing to sys-write → CRASH
+- **Critical finding**: Manually written code with EXACT same structure as string-append expansion works fine. Only the ACTUAL string-append macro expansion crashes!
+- **Hypothesis**: Bug in how nc-compile processes compiler macro expansions
+- **Next step**: Compare IR generated for string-append macro vs manually written equivalent
+- **Impact**: Blocks large file reading (native-read-file-large), full self-hosting
+- **Priority**: High - need to fix macro expansion handling
 
 ## Previous Plan: Self-Hosting - Eliminating SBCL
 
