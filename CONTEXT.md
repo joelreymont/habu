@@ -3,7 +3,58 @@
 **Session Date**: November 22-29, 2025
 **Focus**: Self-hosting ARM64 Lisp compiler - path to eliminating SBCL
 **Last Updated**: November 29, 2025
-**Milestone**: SELF-COMPILATION SUCCESS - Compiler compiles itself to native ARM64 (partial self-hosting)
+**Milestone**: MUTABLE CLOSURES WORKING - Full closure semantics with proper state mutation
+
+## Session Summary (November 29, 2025 - Closure Boxing & Cleanup)
+
+### Accomplishments This Session
+
+**1. Renamed nc-* Functions to Clean Names** ✓
+- Removed `nc-` prefix from 138 functions
+- Put `read` and `compile` in SYS package (shadow CL versions)
+- Renamed `read-from-string` to `parse-string` to avoid CL clash
+- Commit: 823a35b
+
+**2. Replaced multiple-value-bind with Cons-Cell Returns** ✓
+- Replaced all `(values a b)` with `(cons a b)`
+- Transformed 40/44 `multiple-value-bind` patterns to `let*` with car/cdr
+- Remaining 4 are symbol references in MVB implementation (not actual uses)
+- Commit: 5e5cbe9
+
+**3. Implemented Mutable Closure Capture via Boxing** ✓
+- Variables both captured AND mutated are automatically boxed (cons cell wrapper)
+- Added analysis functions: `find-setq-targets`, `find-captured-vars`
+- Added `box-mutable-captures` source transformation
+- Implemented inline `setcar`/`setcdr` codegen (was using missing runtime)
+- Tests: counter closure now correctly increments 40→41→42
+- Commit: 787fd8d
+
+**4. Added Execute Permission for Generated Executables** ✓
+- Added `chmod +x` call in `deliver-with-libsystem`
+- Commit: 1d07bab
+
+**5. Updated AGENTS.md with Problem-Solving Guidelines** ✓
+- Added: "Take no shortcuts, always identify root cause"
+- Updated package organization (nc-* prefix removed)
+- Simplified code generation policy
+
+### Root Cause Analysis: Closure Mutation Bug
+
+**Problem**: Counter closure returned 41 twice instead of 41 then 42.
+
+**Root Cause**: Closures captured variables BY VALUE into env cons list.
+When closure was called:
+1. Values copied from env cons list to stack
+2. `setq` modified stack copy
+3. Stack discarded on return
+4. Next call re-copied ORIGINAL values from unchanged env cons list
+
+**Solution**: Box mutable captured variables:
+- `(let ((x 0)) (lambda () (setq x (+ x 1))))` becomes:
+- `(let ((x (cons 0 nil))) (lambda () (setcar x (+ (car x) 1))))`
+- Closure captures box pointer → mutations persist across calls
+
+**Secondary Issue**: `setcar-ir` codegen used runtime function (x19 table) which doesn't exist in native executables. Fixed by implementing inline setcar/setcdr that directly manipulates heap memory.
 
 ## Current Status: PARTIAL SELF-HOSTING ACHIEVED (November 28, 2025)
 
