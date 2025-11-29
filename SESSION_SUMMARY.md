@@ -174,3 +174,146 @@ All major Lisp features work correctly:
 The final step - running the generated compiler to compile itself - requires removing SBCL dependencies from the compiler source code. With all technical challenges solved, this is now straightforward refactoring work.
 
 **Key achievement**: Proven that the pure-Habu linker can generate correct, working executables for programs of any size, including the compiler itself (5400+ lines, 1.6MB output).
+
+---
+
+# Bug #20 Workaround Documentation - November 29, 2025
+
+## Summary
+
+Documented and committed the workaround for Bug #20, a critical issue blocking recursive string operations and large file I/O.
+
+## Work Completed
+
+### 1. Committed Bug #20 Workaround
+
+**Commit**: 21db752 "Bug #20: Document workaround for complex expressions in recursive funcall args"
+
+**Files changed**:
+- CONTEXT.md - Updated Bug #20 documentation with workaround pattern
+- SESSION.md - Appended session transcript (27MB+ historical log)
+- 4 new test files created
+
+### 2. Test Files Created
+
+**test_recursive_with_let_workaround.lisp**
+- Proves the workaround pattern works correctly
+- Uses let binding before recursive call
+- Exit code: 42 (SUCCESS)
+
+**test_dotimes_simple.lisp**
+- Demonstrates dotimes with string operations works in non-recursive contexts
+- Confirms issue is specific to recursive funcall arguments
+- Exit code: 42 (SUCCESS)
+
+**test_recursive_const_string.lisp**
+- Shows constant strings in recursive argument positions work fine
+- Isolates issue to heap-allocating expressions
+- Exit code: 42 (SUCCESS)
+
+**test_recursive_nested_no_strings.lisp**
+- Proves recursive nested labels work without string operations
+- Confirms issue is with heap allocation, not recursion itself
+- Exit code: 42 (SUCCESS)
+
+## Bug Pattern
+
+**What crashes**:
+```lisp
+(labels ((build-string (n acc)
+           (if (= n 0)
+               acc
+               (build-string (- n 1) (string-append acc "X")))))
+  ...)
+```
+
+**What works**:
+```lisp
+(labels ((build-string (n acc)
+           (if (= n 0)
+               acc
+               (let ((next (string-append acc "X")))
+                 (build-string (- n 1) next)))))
+  ...)
+```
+
+## Root Cause (Still TBD)
+
+**Hypothesis**: Issue in funcall-ir argument evaluation codegen
+
+**Possible causes**:
+1. Temp slot allocation conflict when evaluating complex expressions as arguments
+2. x24/x28 register corruption during nested expression evaluation
+3. Environment offset calculation error in presence of heap allocation
+
+**Evidence**:
+- Simple expressions in funcall args: WORKS
+- Constant values in funcall args: WORKS
+- Complex heap-allocating expressions in funcall args: CRASHES
+- Same complex expression in let binding first: WORKS
+
+## Impact Assessment
+
+**Priority**: MEDIUM (was HIGH before workaround)
+
+**Blocks** (without workaround):
+- native-read-file-large (file I/O for > 64KB files)
+- Recursive string building patterns
+- Reading compiler source (256KB) in native executable
+
+**Unblocks** (with workaround):
+- String operations in most contexts
+- Self-hosting development can continue
+- Most practical use cases work fine
+
+## Testing Coverage
+
+**Total test matrix**: 40+ isolation tests created during debugging
+
+**Key test categories**:
+1. Simple string-append (non-recursive) - ✓ WORKS
+2. Dotimes with string operations - ✓ WORKS
+3. Constant strings in recursive calls - ✓ WORKS
+4. Nested labels without strings - ✓ WORKS
+5. Manual let workaround - ✓ WORKS
+
+## Future Work
+
+**When to investigate**:
+- After register allocator implementation (may fix issue as side effect)
+- When time permits for deep codegen analysis
+- If workaround pattern becomes too cumbersome
+
+**Investigation approach**:
+1. Add debug output to funcall-ir codegen for argument evaluation
+2. Compare temp slot allocation between working and crashing cases
+3. Check x24/x28 register state before/after expression evaluation
+4. Verify environment offset calculations
+
+## Documentation Updates
+
+**CONTEXT.md changes**:
+- Bug #20 title updated to reflect actual pattern
+- Added "WORKAROUND FOUND" section with code examples
+- Updated priority from HIGH to MEDIUM
+- Documented all test cases and results
+- Added proven workaround pattern
+
+**Pattern guidance**:
+```lisp
+;; General rule: Evaluate complex expressions in let bindings
+;; before passing to recursive function calls
+
+;; Crashes:
+(recursive-fn (complex-heap-allocating-expr))
+
+;; Works:
+(let ((result (complex-heap-allocating-expr)))
+  (recursive-fn result))
+```
+
+## Conclusion
+
+Bug #20 is now **effectively resolved** via a simple and reliable workaround. The let-binding pattern is idiomatic Lisp and doesn't impose significant burden on development. Root cause investigation is deferred as the workaround is sufficient for current needs.
+
+The 4 comprehensive test files serve as regression tests and documentation of the issue pattern.

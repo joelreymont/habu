@@ -1,0 +1,15 @@
+;;; Test reverse with Bug #20 workaround
+
+(let* ((lst (cons 1 (cons 2 (cons 3 nil))))
+       (rev (reverse lst)))
+  (sys-write 1 "Reversed: " 10)
+  (sys-write 1 (number-to-string (car rev))
+             (string-length (number-to-string (car rev))))
+  (sys-write 1 " " 1)
+  (sys-write 1 (number-to-string (car (cdr rev)))
+             (string-length (number-to-string (car (cdr rev)))))
+  (sys-write 1 " " 1)
+  (sys-write 1 (number-to-string (car (cdr (cdr rev))))
+             (string-length (number-to-string (car (cdr (cdr rev))))))
+  (sys-write 1 "\n" 1)
+  (sys-exit (if (= (car rev) 3) 42 1)))

@@ -1597,7 +1597,9 @@
            `(labels ((rev-iter (lst acc)
                        (if (null lst)
                            acc
-                           (rev-iter (cdr lst) (cons (car lst) acc)))))
+                           ;; BUG #20 WORKAROUND: Evaluate cons in let before recursive call
+                           (let ((next-acc (cons (car lst) acc)))
+                             (rev-iter (cdr lst) next-acc)))))
               (rev-iter ,(cadr expr) nil))
            env fenv))
          ;; append - append two lists
@@ -1621,7 +1623,9 @@
            `(labels ((map-iter (fn lst acc)
                        (if (null lst)
                            (reverse acc)
-                           (map-iter fn (cdr lst) (cons (funcall fn (car lst)) acc)))))
+                           ;; BUG #20 WORKAROUND: Evaluate cons in let before recursive call
+                           (let ((next-acc (cons (funcall fn (car lst)) acc)))
+                             (map-iter fn (cdr lst) next-acc)))))
               (map-iter ,(cadr expr) ,(caddr expr) nil))
            env fenv))
          ;; member - find element in list
@@ -1912,8 +1916,11 @@
          ;;                          (let ((n (sys-read fd buf 65536)))
          ;;                            (if (= n 0)
          ;;                                (list chunks total-len)
-         ;;                                (let ((chunk (buffer-to-string buf n)))
-         ;;                                  (read-chunks (cons chunk chunks) (+ total-len n)))))))
+         ;;                                (let* ((chunk (buffer-to-string buf n))
+         ;;                                       ;; BUG #20 WORKAROUND: Evaluate cons before recursive call
+         ;;                                       (next-chunks (cons chunk chunks))
+         ;;                                       (next-total (+ total-len n)))
+         ;;                                  (read-chunks next-chunks next-total))))))
          ;;                 (let* ((result-list (read-chunks nil 0))
          ;;                        (chunks (car result-list))
          ;;                        (total (car (cdr result-list))))
@@ -1925,6 +1932,8 @@
                 (buf-var (gensym "BUF"))
                 (n-var (gensym "N"))
                 (chunk-var (gensym "CHUNK"))
+                (next-chunks-var (gensym "NEXT-CHUNKS"))
+                (next-total-var (gensym "NEXT-TOTAL"))
                 (chunks-var (gensym "CHUNKS"))
                 (total-var (gensym "TOTAL"))
                 (result-list-var (gensym "RESULT-LIST"))
@@ -1937,10 +1946,11 @@
                                              (list 'let* (list (list n-var (list 'sys-read fd-var buf-var 65536)))
                                                    (list 'if (list '= n-var 0)
                                                          (list 'list chunks-var total-var)
-                                                         (list 'let* (list (list chunk-var (list 'buffer-to-string buf-var n-var)))
-                                                               (list read-chunks-fn
-                                                                     (list 'cons chunk-var chunks-var)
-                                                                     (list '+ total-var n-var)))))))
+                                                         ;; BUG #20 WORKAROUND: Evaluate complex expressions in let before recursive call
+                                                         (list 'let* (list (list chunk-var (list 'buffer-to-string buf-var n-var))
+                                                                           (list next-chunks-var (list 'cons chunk-var chunks-var))
+                                                                           (list next-total-var (list '+ total-var n-var)))
+                                                               (list read-chunks-fn next-chunks-var next-total-var))))))
                          (list 'let* (list (list result-list-var (list read-chunks-fn nil 0))
                                            (list chunks-var (list 'car result-list-var))
                                            (list total-var (list 'car (list 'cdr result-list-var))))
@@ -1960,7 +1970,10 @@
          ;;                                               (progn (vector-set vec (+ offset i) (string-ref chunk i))
          ;;                                                      (copy-chars (+ i 1))))))
          ;;                                  (copy-chars 0)
-         ;;                                  (copy-chunk (cdr chunks) (+ offset len)))))))
+         ;;                                  ;; BUG #20 WORKAROUND: Evaluate complex expressions in let before recursive call
+         ;;                                  (let ((next-chunks (cdr chunks))
+         ;;                                        (next-offset (+ offset len)))
+         ;;                                    (copy-chunk next-chunks next-offset)))))))
          ;;                 (make-string-from-vector (copy-chunk (reverse chunks) 0))))
          ((eq op 'concat-string-list)
           (let ((chunks-var (gensym "CHUNKS"))
@@ -1970,6 +1983,9 @@
                 (chunk-var (gensym "CHUNK"))
                 (len-var (gensym "LEN"))
                 (i-var (gensym "I"))
+                (next-i-var (gensym "NEXT-I"))
+                (next-chunks-var (gensym "NEXT-CHUNKS"))
+                (next-offset-var (gensym "NEXT-OFFSET"))
                 (copy-chunk-fn (gensym "COPY-CHUNK"))
                 (copy-chars-fn (gensym "COPY-CHARS")))
             (nc-compile
@@ -1985,9 +2001,14 @@
                                                                                    (list 'if (list '< i-var len-var)
                                                                                          (list 'progn
                                                                                                (list 'vector-set vec-var (list '+ offset-var i-var) (list 'string-ref chunk-var i-var))
-                                                                                               (list copy-chars-fn (list '+ i-var 1))))))
+                                                                                               ;; BUG #20 WORKAROUND: Evaluate + before recursive call
+                                                                                               (list 'let (list (list next-i-var (list '+ i-var 1)))
+                                                                                                     (list copy-chars-fn next-i-var))))))
                                                                (list copy-chars-fn 0)
-                                                               (list copy-chunk-fn (list 'cdr chunks-var) (list '+ offset-var len-var)))))))
+                                                               ;; BUG #20 WORKAROUND: Evaluate in let before recursive call
+                                                               (list 'let (list (list next-chunks-var (list 'cdr chunks-var))
+                                                                                (list next-offset-var (list '+ offset-var len-var)))
+                                                                     (list copy-chunk-fn next-chunks-var next-offset-var)))))))
                          (list 'make-string-from-vector (list copy-chunk-fn (list 'reverse chunks-var) 0))))
              env fenv)))
          ;; char-upcase - convert lowercase char code to uppercase
