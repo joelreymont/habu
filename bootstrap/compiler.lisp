@@ -5377,11 +5377,12 @@ int main(int argc, char **argv) {
               ;; Heap size: 8MB to support native-read-file-large for compiler source (256KB)
               (write-macho-executable-with-imports-and-heap output-path wrapped-code imports #x800000)
 
-              ;; Codesign the executable (macOS requirement)
-              ;; Only on macOS and when sb-ext is available
+              ;; Make executable and codesign (macOS requirements)
               #+sbcl
-              (when (probe-file "/usr/bin/codesign")
-                (sb-ext:run-program "/usr/bin/codesign" (list "-s" "-" "-f" output-path)))
+              (progn
+                (sb-ext:run-program "/bin/chmod" (list "+x" output-path))
+                (when (probe-file "/usr/bin/codesign")
+                  (sb-ext:run-program "/usr/bin/codesign" (list "-s" "-" "-f" output-path))))
 
               (when verbose
                 (terpri) (princ "Created: ") (princ output-path) (terpri))
