@@ -2120,7 +2120,7 @@
                                                                      0))))))
                          (list 'make-string-from-vector
                                (list concat-fn (list 'reverse chunks-var) 0 0))))
-             env nil)))  ; BUG #20 FIX: Pass env but nil fenv to avoid outer labels conflict
+             env fenv)))  ; Process normally, rely on skip-nested-labels fix in nc-rewrite-labels-body
          ;; char-upcase - convert lowercase char code to uppercase
          ;; Transform to: (if (and (>= ch #x61) (<= ch #x7A)) (- ch #x20) ch)
          ((eq op 'char-upcase)
