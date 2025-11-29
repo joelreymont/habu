@@ -4749,8 +4749,10 @@
          (frame-size-raw (+ saved-regs temp-area env-area 64))
          ;; Round up to 16-byte alignment
          (frame-size (logand (+ frame-size-raw 15) (lognot 15)))
-         ;; x20 offset = saved regs + temp area
-         (x20-offset (+ saved-regs temp-area))
+         ;; x20 offset = saved regs + temp area + env space (Bug #20 FIX)
+         ;; Variables accessed as [x20 - offset*8], so x20 must be high enough
+         ;; that var[max-env-size-1] = x20 - (max-env-size-1)*8 is above temp area
+         (x20-offset (+ saved-regs temp-area (* max-env-size 8)))
          ;; Leaf optimization: only for non-calling functions with no >8 params
          ;; and max-env-size < 12 to avoid temp slot collision (Bug #19/#20)
          (is-leaf (and (not (nc-ir-may-call? bir))
