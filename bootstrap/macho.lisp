@@ -1105,7 +1105,14 @@
    OUTPUT-PATH: string path for output file"
   (let* ((exe-buf (build-macho-executable-with-imports-and-heap code-bytes imports heap-size))
          (exe-str (buf-to-string exe-buf)))
-    (native-write-file output-path exe-str)))
+    (native-write-file output-path exe-str)
+    ;; Make executable and codesign for macOS
+    #+sbcl
+    (progn
+      (sb-ext:run-program "/bin/chmod" (list "+x" output-path)
+                          :output nil :error nil :wait t)
+      (sb-ext:run-program "/usr/bin/codesign" (list "-s" "-" "-f" output-path)
+                          :output nil :error nil :wait t))))
 
 ;;; Export the main functions for use by deliver-with-libsystem
 (export '(write-macho-executable-with-imports-and-heap

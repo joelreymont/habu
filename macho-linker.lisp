@@ -1331,10 +1331,11 @@
           (write-zeros out (- (+ linkedit-fileoff linkedit-filesize) pos)))))
 
     ;; Make executable
-    (sb-ext:run-program "/bin/chmod" (list "+x" output-path))
+    (sb-ext:run-program "/bin/chmod" (list "+x" output-path) :wait t)
 
     ;; Ad-hoc codesign for macOS
-    (sb-ext:run-program "/usr/bin/codesign" (list "-s" "-" "-f" output-path))
+    (sb-ext:run-program "/usr/bin/codesign" (list "-s" "-" "-f" output-path)
+                        :output nil :error nil :wait t)
 
     ;; Return values for caller
     (values output-path
@@ -1736,10 +1737,11 @@
         (write-zeros out (- (+ linkedit-fileoff linkedit-size) current))))
 
     ;; Make executable
-    (sb-ext:run-program "/bin/chmod" (list "+x" output-path))
+    (sb-ext:run-program "/bin/chmod" (list "+x" output-path) :wait t)
 
     ;; Ad-hoc codesign for macOS
-    (sb-ext:run-program "/usr/bin/codesign" (list "-s" "-" "-f" output-path))
+    (sb-ext:run-program "/usr/bin/codesign" (list "-s" "-" "-f" output-path)
+                        :output nil :error nil :wait t)
 
     ;; Return values for caller
     ;; heap-page-offset: ADRP uses 4KB pages
