@@ -1129,6 +1129,228 @@
     (collect expr bound nil)))
 
 ;;; ============================================================
+;;; Part 5c: Mutable Closure Boxing
+;;; ============================================================
+
+(defun find-setq-targets (expr bound)
+  "Find all variables that are targets of setq in expr, respecting bindings.
+   Returns list of variable names that are setq'd and in scope via bound."
+  (labels ((collect (e bnd acc)
+             (cond
+               ((null e) acc)
+               ((not (consp e)) acc)
+               ((eq (car e) 'quote) acc)  ; Don't look inside quotes
+               ((eq (car e) 'setq)
+                ;; (setq var val) - collect var if it's in bound
+                (let ((var (cadr e))
+                      (val (caddr e)))
+                  (if (member var bnd)
+                      (collect val bnd (if (member var acc) acc (cons var acc)))
+                      (collect val bnd acc))))
+               ((eq (car e) 'lambda)
+                ;; Lambda binds its params
+                (let ((params (cadr e))
+                      (body (caddr e)))
+                  (collect body (append params bnd) acc)))
+               ((or (eq (car e) 'LET) (eq (car e) 'let))
+                (let* ((bindings (cadr e))
+                       (body (if (cdddr e) (cons 'progn (cddr e)) (caddr e)))
+                       (names (mapcar #'car bindings))
+                       (vals (mapcar #'cadr bindings))
+                       (acc2 (collect-list vals bnd acc))
+                       (new-bnd (append names bnd)))
+                  (collect body new-bnd acc2)))
+               ((or (eq (car e) 'LET*) (eq (car e) 'let*))
+                (let* ((bindings (cadr e))
+                       (body (if (cdddr e) (cons 'progn (cddr e)) (caddr e))))
+                  (labels ((do-bindings (bs bnd acc)
+                             (if (null bs)
+                                 (collect body bnd acc)
+                                 (let* ((b (car bs))
+                                        (nm (car b))
+                                        (vl (cadr b))
+                                        (acc2 (collect vl bnd acc)))
+                                   (do-bindings (cdr bs) (cons nm bnd) acc2)))))
+                    (do-bindings bindings bnd acc))))
+               (t (collect-list e bnd acc))))
+           (collect-list (lst bnd acc)
+             (if (null lst) acc
+                 (collect-list (cdr lst) bnd (collect (car lst) bnd acc)))))
+    (collect expr bound nil)))
+
+(defun find-captured-vars (expr bound)
+  "Find all variables that are captured by lambdas (free in lambda bodies).
+   Returns list of variable names that appear free in any inner lambda."
+  (labels ((collect (e bnd acc)
+             (cond
+               ((null e) acc)
+               ((not (consp e)) acc)
+               ((eq (car e) 'quote) acc)
+               ((eq (car e) 'lambda)
+                ;; Find free vars in this lambda
+                (let* ((params (cadr e))
+                       (body (caddr e))
+                       (new-bnd (append params bnd))
+                       ;; Collect from lambda body for nested lambdas
+                       (acc2 (collect body new-bnd acc)))
+                  ;; Add vars free in this lambda
+                  (labels ((add-free (vars acc)
+                             (if (null vars) acc
+                                 (let ((v (car vars)))
+                                   (add-free (cdr vars)
+                                             (if (and (member v bnd)
+                                                      (not (member v acc)))
+                                                 (cons v acc) acc))))))
+                    (add-free (find-free-vars-simple body params) acc2))))
+               ((or (eq (car e) 'LET) (eq (car e) 'let))
+                (let* ((bindings (cadr e))
+                       (body (if (cdddr e) (cons 'progn (cddr e)) (caddr e)))
+                       (names (mapcar #'car bindings))
+                       (vals (mapcar #'cadr bindings))
+                       (acc2 (collect-list vals bnd acc))
+                       (new-bnd (append names bnd)))
+                  (collect body new-bnd acc2)))
+               ((or (eq (car e) 'LET*) (eq (car e) 'let*))
+                (let* ((bindings (cadr e))
+                       (body (if (cdddr e) (cons 'progn (cddr e)) (caddr e))))
+                  (labels ((do-bindings (bs bnd acc)
+                             (if (null bs)
+                                 (collect body bnd acc)
+                                 (let* ((b (car bs))
+                                        (nm (car b))
+                                        (vl (cadr b))
+                                        (acc2 (collect vl bnd acc)))
+                                   (do-bindings (cdr bs) (cons nm bnd) acc2)))))
+                    (do-bindings bindings bnd acc))))
+               (t (collect-list e bnd acc))))
+           (collect-list (lst bnd acc)
+             (if (null lst) acc
+                 (collect-list (cdr lst) bnd (collect (car lst) bnd acc)))))
+    (collect expr bound nil)))
+
+(defun find-free-vars-simple (expr bound)
+  "Simple free variable finder - just symbols in expr not in bound."
+  (labels ((collect (e bnd acc)
+             (cond
+               ((null e) acc)
+               ((symbolp e)
+                (if (and (not (member e bnd))
+                         (not (member e acc))
+                         (not (eq e t))
+                         (not (eq e nil)))
+                    (cons e acc) acc))
+               ((not (consp e)) acc)
+               ((eq (car e) 'quote) acc)
+               ((eq (car e) 'lambda)
+                (let ((params (cadr e)) (body (caddr e)))
+                  (collect body (append params bnd) acc)))
+               ((or (eq (car e) 'LET) (eq (car e) 'let))
+                (let* ((bindings (cadr e))
+                       (body (if (cdddr e) (cons 'progn (cddr e)) (caddr e)))
+                       (names (mapcar #'car bindings))
+                       (vals (mapcar #'cadr bindings))
+                       (acc2 (collect-list vals bnd acc)))
+                  (collect body (append names bnd) acc2)))
+               ((or (eq (car e) 'LET*) (eq (car e) 'let*))
+                (let* ((bindings (cadr e))
+                       (body (if (cdddr e) (cons 'progn (cddr e)) (caddr e))))
+                  (labels ((do-bs (bs bnd acc)
+                             (if (null bs) (collect body bnd acc)
+                                 (let* ((b (car bs)) (nm (car b)) (vl (cadr b)))
+                                   (do-bs (cdr bs) (cons nm bnd) (collect vl bnd acc))))))
+                    (do-bs bindings bnd acc))))
+               (t (collect-list e bnd acc))))
+           (collect-list (lst bnd acc)
+             (if (null lst) acc
+                 (collect-list (cdr lst) bnd (collect (car lst) bnd acc)))))
+    (collect expr bound nil)))
+
+(defun box-mutable-captures (expr)
+  "Transform expr to box variables that are both captured and mutated.
+   - Wraps mutable captured vars in (cons val nil) at binding site
+   - Transforms reads of boxed vars to (car var)
+   - Transforms (setq var val) to (setcar var val)"
+  (labels ((transform (e boxed)
+             ;; boxed = list of currently boxed variable names
+             (cond
+               ((null e) e)
+               ((symbolp e)
+                ;; If this var is boxed, transform to (car var)
+                (if (member e boxed) (list 'car e) e))
+               ((not (consp e)) e)
+               ((eq (car e) 'quote) e)
+               ((eq (car e) 'setq)
+                (let ((var (cadr e))
+                      (val (caddr e)))
+                  (if (member var boxed)
+                      ;; Transform to (setcar var val)
+                      (list 'setcar var (transform val boxed))
+                      (list 'setq var (transform val boxed)))))
+               ((eq (car e) 'lambda)
+                (let* ((params (cadr e))
+                       (body-forms (cddr e))
+                       (body (if (cdr body-forms) (cons 'progn body-forms) (car body-forms)))
+                       ;; Don't transform params, they shadow boxed vars
+                       (new-boxed (remove-if (lambda (v) (member v params)) boxed))
+                       (transformed (transform body new-boxed)))
+                  ;; Unwrap single-form progn
+                  (if (and (consp transformed) (eq (car transformed) 'progn))
+                      (cons 'lambda (cons params (cdr transformed)))
+                      (list 'lambda params transformed))))
+               ((or (eq (car e) 'LET) (eq (car e) 'let))
+                (transform-let e boxed))
+               ((or (eq (car e) 'LET*) (eq (car e) 'let*))
+                (transform-let* e boxed))
+               (t (mapcar (lambda (x) (transform x boxed)) e))))
+
+           (transform-let (e boxed)
+             (let* ((bindings (cadr e))
+                    (body (if (cdddr e) (cons 'progn (cddr e)) (caddr e)))
+                    (names (mapcar #'car bindings))
+                    ;; Find which new bindings need to be boxed
+                    (setq-targets (find-setq-targets body names))
+                    (captured (find-captured-vars body names))
+                    (to-box (intersection setq-targets captured))
+                    ;; Transform binding values and box if needed
+                    (new-bindings
+                     (mapcar (lambda (b)
+                               (let ((nm (car b))
+                                     (vl (transform (cadr b) boxed)))
+                                 (if (member nm to-box)
+                                     (list nm (list 'cons vl nil))
+                                     (list nm vl))))
+                             bindings))
+                    ;; Add new boxed vars to the set
+                    (new-boxed (append to-box (remove-if (lambda (v) (member v names)) boxed))))
+               (list 'let new-bindings (transform body new-boxed))))
+
+           (transform-let* (e boxed)
+             (let* ((bindings (cadr e))
+                    (body (if (cdddr e) (cons 'progn (cddr e)) (caddr e)))
+                    (names (mapcar #'car bindings))
+                    ;; Find which new bindings need to be boxed
+                    (setq-targets (find-setq-targets body names))
+                    (captured (find-captured-vars body names))
+                    (to-box (intersection setq-targets captured)))
+               (labels ((do-bindings (bs current-boxed acc-bindings)
+                          (if (null bs)
+                              (list 'let* (reverse acc-bindings)
+                                    (transform body current-boxed))
+                              (let* ((b (car bs))
+                                     (nm (car b))
+                                     (vl (transform (cadr b) current-boxed))
+                                     (is-boxed (member nm to-box))
+                                     (new-val (if is-boxed (list 'cons vl nil) vl))
+                                     (new-binding (list nm new-val))
+                                     (new-boxed (if is-boxed
+                                                    (cons nm current-boxed)
+                                                    (remove nm current-boxed))))
+                                (do-bindings (cdr bs) new-boxed
+                                             (cons new-binding acc-bindings))))))
+                 (do-bindings bindings boxed nil)))))
+    (transform expr nil)))
+
+;;; ============================================================
 ;;; Part 6: IR Compiler (compile-*)
 ;;; ============================================================
 
@@ -3126,43 +3348,59 @@
     ;; setcar-ir - mutate car of cons cell
     ((has-tag ir 'setcar-ir)
      ;; setcar-ir = (setcar-ir cons-ir value-ir)
-     ;; Runtime index 14 = habu_set_car at offset 112
-     ;; habu_set_car returns void, so we return the value
+     ;; Inline implementation: clear tag, store value at offset 0
      (let* ((cons-ir (cadr ir))
             (val-ir (caddr ir))
-            (xs (temp-slot td))
-            (vs (temp-slot (+ td 1)))
+            (cons-slot (temp-slot td))
+            (val-slot (temp-slot (+ td 1)))
             (nd (+ td 2))
-            (cc (codegen cons-ir rtaddrs fnoffs nd))
-            (sc (str-offset 0 31 xs))
-            (vc (codegen val-ir rtaddrs fnoffs nd))
-            (sv (str-offset 0 31 vs))
-            (mv (mov-reg 1 0))
-            (lc (ldr-offset 0 31 xs))
-            (lf (ldr-offset 9 19 112))
-            (bl (blr 9))
-            (lr (ldr-offset 0 31 vs)))
-       (append-all (list cc sc vc sv mv lc lf bl lr))))
+            (cons-code (codegen cons-ir rtaddrs fnoffs nd))
+            (save-cons (str-offset 0 31 cons-slot))
+            (val-code (codegen val-ir rtaddrs fnoffs nd))
+            (save-val (str-offset 0 31 val-slot))
+            ;; Get cons pointer back and clear tag
+            (load-cons (ldr-offset 1 31 cons-slot))
+            ;; Clear low 4 bits to get raw pointer
+            (clear-tag (append-all
+                        (list (movz 9 #xFFF0)
+                              (movk 9 #xFFFF 16)
+                              (movk 9 #xFFFF 32)
+                              (movk 9 #xFFFF 48)
+                              (and-reg 1 1 9))))
+            ;; Get value back
+            (load-val (ldr-offset 0 31 val-slot))
+            ;; Store value at car position
+            (store-car (str-offset 0 1 0)))
+       (append-all (list cons-code save-cons val-code save-val
+                         load-cons clear-tag load-val store-car))))
     ;; setcdr-ir - mutate cdr of cons cell
     ((has-tag ir 'setcdr-ir)
      ;; setcdr-ir = (setcdr-ir cons-ir value-ir)
-     ;; Runtime index 15 = habu_set_cdr at offset 120
-     ;; habu_set_cdr returns void, so we return the value
+     ;; Inline implementation: clear tag, store value at offset 8
      (let* ((cons-ir (cadr ir))
             (val-ir (caddr ir))
-            (xs (temp-slot td))
-            (vs (temp-slot (+ td 1)))
+            (cons-slot (temp-slot td))
+            (val-slot (temp-slot (+ td 1)))
             (nd (+ td 2))
-            (cc (codegen cons-ir rtaddrs fnoffs nd))
-            (sc (str-offset 0 31 xs))
-            (vc (codegen val-ir rtaddrs fnoffs nd))
-            (sv (str-offset 0 31 vs))
-            (mv (mov-reg 1 0))
-            (lc (ldr-offset 0 31 xs))
-            (lf (ldr-offset 9 19 120))
-            (bl (blr 9))
-            (lr (ldr-offset 0 31 vs)))
-       (append-all (list cc sc vc sv mv lc lf bl lr))))
+            (cons-code (codegen cons-ir rtaddrs fnoffs nd))
+            (save-cons (str-offset 0 31 cons-slot))
+            (val-code (codegen val-ir rtaddrs fnoffs nd))
+            (save-val (str-offset 0 31 val-slot))
+            ;; Get cons pointer back and clear tag
+            (load-cons (ldr-offset 1 31 cons-slot))
+            ;; Clear low 4 bits to get raw pointer
+            (clear-tag (append-all
+                        (list (movz 9 #xFFF0)
+                              (movk 9 #xFFFF 16)
+                              (movk 9 #xFFFF 32)
+                              (movk 9 #xFFFF 48)
+                              (and-reg 1 1 9))))
+            ;; Get value back
+            (load-val (ldr-offset 0 31 val-slot))
+            ;; Store value at cdr position (offset 8)
+            (store-cdr (str-offset 0 1 8)))
+       (append-all (list cons-code save-cons val-code save-val
+                         load-cons clear-tag load-val store-cdr))))
     ;; read-file-ir - read entire file as string
     ((has-tag ir 'read-file-ir)
      ;; read-file-ir = (read-file-ir path-ir)
@@ -4463,7 +4701,9 @@
          (penv (env-extend bs env))
          (pb (if params (env-lookup (car params) penv) 0))
          (rfenv (cons (cons name nil) fenv))
-         (bir (sys:compile body penv rfenv)))
+         ;; Apply mutable capture boxing transformation before compiling
+         (transformed-body (box-mutable-captures body))
+         (bir (sys:compile transformed-body penv rfenv)))
     (list name params bir pb)))
 
 ;; Two-pass compilation for mutual recursion support
@@ -5591,7 +5831,7 @@ int main(int argc, char **argv) {
                        (env (mapcar #'cons params
                                     (loop for i from 0 below (length params) collect i)))
                        (body-form (if (cdr body) (cons 'progn body) (car body))))
-                  (cons (sys:compile body-form env nil) name params)))
+                  (list (sys:compile body-form env nil) name params)))
                ;; Simple expression
                (t (sys:compile form nil nil))))
          (bytecode (codegen ir nil nil 0))

@@ -18,7 +18,7 @@ Habu is a self-hosted Lisp compiler that generates native ARM64 machine code.
 1. **Bootstrap Compiler** (`bootstrap/compiler.lisp`)
    - Compiles Lisp to IR
    - Runs in SBCL during bootstrap phase
-   - Uses `nc-*` prefix for native compiler functions
+   - Functions in HABU package (public API) and SYS package (internal)
 
 2. **ARM64 Assembler** (`arm64/asm.lisp`)
    - Pure ARM64 instruction encoding
@@ -58,6 +58,13 @@ habu/
 
 ## Development Guidelines
 
+### Problem Solving
+
+- **Take no shortcuts**: Always identify the root cause of bugs
+- Investigate systematically, don't patch symptoms
+- Understand WHY something fails before attempting fixes
+- Add tests that reproduce the bug before fixing it
+
 ### Session Management
 
 1. **CONTEXT.md** - The primary context file for session progress
@@ -93,9 +100,8 @@ habu/
 When adding new ARM64 instructions:
 
 1. Add intrinsics to `arm64/asm.lisp` in `:arm64` package
-2. Do NOT create new `nc-*` functions in bootstrap compiler
-3. Use existing ARM64 intrinsics wherever possible
-4. `nc-*` functions are legacy wrappers - prefer direct ARM64 calls
+2. Use existing ARM64 intrinsics wherever possible
+3. Prefer direct ARM64 calls over wrapping in helper functions
 
 ### Debugging
 
