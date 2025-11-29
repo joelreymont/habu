@@ -1143,6 +1143,8 @@
           (cons 'funcall (cons op (mapcar (lambda (e) (nc-rewrite-labels-calls e fn-names)) (cdr expr)))))
          ;; Quote - don't descend
          ((eq op 'quote) expr)
+         ;; LABELS/FLET - don't descend (BUG #20 FIX: let nc-compile handle nested labels)
+         ((or (eq op 'LABELS) (eq op 'FLET) (eq op 'labels) (eq op 'flet)) expr)
          ;; Lambda - rewrite body but don't rewrite param list
          ((eq op 'lambda)
           (list 'lambda (cadr expr)
@@ -1177,6 +1179,8 @@
                           (mapcar (lambda (e) (nc-rewrite-labels-body e fn-names fntab-var)) (cdr expr))))))
          ;; Quote - don't descend
          ((eq op 'quote) expr)
+         ;; LABELS/FLET - don't descend (BUG #20 FIX: let nc-compile handle nested labels)
+         ((or (eq op 'LABELS) (eq op 'FLET) (eq op 'labels) (eq op 'flet)) expr)
          ;; Lambda - rewrite body but don't rewrite param list
          ((eq op 'lambda)
           (list 'lambda (cadr expr)
@@ -1210,6 +1214,8 @@
                           (mapcar (lambda (e) (nc-rewrite-labels-main e fn-names)) (cdr expr))))))
          ;; Quote - don't descend
          ((eq op 'quote) expr)
+         ;; LABELS/FLET - don't descend (BUG #20 FIX: let nc-compile handle nested labels)
+         ((or (eq op 'LABELS) (eq op 'FLET) (eq op 'labels) (eq op 'flet)) expr)
          ;; Lambda - rewrite body but don't rewrite param list
          ((eq op 'lambda)
           (list 'lambda (cadr expr)
@@ -2114,7 +2120,7 @@
                                                                      0))))))
                          (list 'make-string-from-vector
                                (list concat-fn (list 'reverse chunks-var) 0 0))))
-             env fenv)))
+             env nil)))  ; BUG #20 FIX: Pass env but nil fenv to avoid outer labels conflict
          ;; char-upcase - convert lowercase char code to uppercase
          ;; Transform to: (if (and (>= ch #x61) (<= ch #x7A)) (- ch #x20) ch)
          ((eq op 'char-upcase)
