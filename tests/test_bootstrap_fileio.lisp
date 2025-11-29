@@ -7,7 +7,7 @@
 
 (defun test-eval (name source expected)
   (handler-case
-    (let* ((forms (nc-read-all source))
+    (let* ((forms (read-all source))
            (result (nc-eval-forms forms)))
       (if (equal result expected)
           (progn

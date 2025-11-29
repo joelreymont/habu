@@ -13,8 +13,8 @@
 
 (defun test-native (name source expected)
   (handler-case
-    (let* ((forms (nc-read-all source))
-           (bytes (nc-compile-program forms nil))
+    (let* ((forms (read-all source))
+           (bytes (compile-program forms nil))
            (output-path (format nil "/tmp/native_~A" name)))
       (habu-macho:deliver-native-with-heap output-path bytes)
       (sb-ext:run-program "/usr/bin/codesign" (list "-s" "-" output-path)

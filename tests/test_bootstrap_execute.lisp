@@ -44,10 +44,10 @@
 
 (defun compile-and-run (source)
   "Compile source to bytecode, execute, return result"
-  (let* ((forms (nc-read-all source))
-         (compiled (nc-compile-forms forms))
+  (let* ((forms (read-all source))
+         (compiled (sys:compile-forms forms))
          (mir (cadr compiled))
-         (main-code (nc-codegen-main mir nil))
+         (main-code (codegen-main mir nil))
          (tmpfile "/tmp/bootstrap-test.bin"))
     (write-bytecode main-code tmpfile)
     (run-bytecode-file tmpfile)))

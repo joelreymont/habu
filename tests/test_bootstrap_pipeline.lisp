@@ -11,11 +11,11 @@
 (defun run-pipeline-test (name source)
   "Compile source through full pipeline and verify bytecode is generated"
   (handler-case
-      (let* ((forms (nc-read-all source))
-             (compiled (nc-compile-forms forms))
+      (let* ((forms (read-all source))
+             (compiled (sys:compile-forms forms))
              (fns (car compiled))
              (mir (cadr compiled))
-             (main-code (nc-codegen-main mir nil)))
+             (main-code (codegen-main mir nil)))
         (if (and (listp main-code) (> (length main-code) 0))
             (progn
               (format t "[PASS] ~A: ~A bytes~%" name (length main-code))

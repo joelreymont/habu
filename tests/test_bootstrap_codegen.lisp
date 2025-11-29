@@ -1,6 +1,6 @@
 #!/usr/bin/env sbcl --script
 ;;; Test bootstrap compiler ARM64 code generation
-;;; Verifies that nc-codegen produces correct instruction sequences
+;;; Verifies that codegen produces correct instruction sequences
 
 (load "bootstrap/compiler.lisp")
 (in-package :habu)
@@ -10,7 +10,7 @@
 
 (defun run-codegen-test (name ir expected-len)
   "Test that codegen produces non-empty bytecode of expected length"
-  (let* ((code (nc-codegen ir nil nil 0))
+  (let* ((code (codegen ir nil nil 0))
          (len (length code)))
     (if (and (listp code) (>= len expected-len))
         (progn

@@ -24,7 +24,7 @@
 (defun test-case (name source expected)
   (format t "~A: " name)
   (handler-case
-    (let* ((code (nc-compile-program (nc-read-all source) nil)))
+    (let* ((code (compile-program (read-all source) nil)))
       (with-open-file (out "/tmp/fn-test.bin" :direction :output
                            :if-exists :supersede
                            :element-type '(unsigned-byte 8))

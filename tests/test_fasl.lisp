@@ -55,8 +55,8 @@
 
 (defun compile-to-fasl (source-string output-path)
   "Compile Lisp source string to FASL file"
-  (let* ((forms (nc-read-all source-string))
-         (code (nc-compile-program forms nil)))
+  (let* ((forms (read-all source-string))
+         (code (compile-program forms nil)))
     (write-fasl code output-path)))
 
 (defvar *tests-passed* 0)

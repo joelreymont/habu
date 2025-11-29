@@ -21,7 +21,7 @@
   (let* ((path (format nil "/tmp/test_~A" name)))
     (handler-case
         (progn
-          (nc-deliver source path)
+          (deliver source path)
           (let ((result (run-executable path)))
             (if (eql result expected)
                 (progn
