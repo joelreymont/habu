@@ -195,7 +195,7 @@
   (cond
     ((numberp obj) (list 'lit obj))
     ((null obj) (list 'lit 0))  ; nil = 0
-    ((symbolp obj) (list 'symbol-lit (symbol-name obj)))
+    ((symbolp obj) (list 'sym-lit (symbol-name obj)))
     ((consp obj) (list 'cons-ir (pure-quote-ir (car obj)) (pure-quote-ir (cdr obj))))
     ((stringp obj) (list 'str-lit obj))
     (t (list 'lit 0))))
@@ -643,7 +643,7 @@
      (if (eq expr 'nil)
          (list 'lit 0)
          (if (eq expr 't)
-             (list 'symbol-lit "T")
+             (list 'sym-lit "T")
              (pure-compile-var expr env))))
     ((not (consp expr)) (pure-compile-lit 0))
     (t
@@ -795,7 +795,7 @@
   "Compile (and a b c ...) to nested if forms"
   (let ((args (cdr expr)))
     (cond
-      ((null args) (list 'symbol-lit "T"))  ; (and) = t
+      ((null args) (list 'sym-lit "T"))  ; (and) = t
       ((null (cdr args))  ; single arg - just compile it
        (pure-compile-expr-full (car args) env fenv))
       (t  ; multiple args - (if a (and b c ...) nil)
