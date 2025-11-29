@@ -65,39 +65,35 @@
   - Both fail due to labels + heap allocation issue
 - **File I/O status**: Basic operations work, large files blocked
 
-**Bug #20: Nested Labels + Environment Offset Calculation** (REFINED ROOT CAUSE - Nov 29, 2025)
-- **Symptom**: SIGBUS/SIGSEGV (exit 139) with labels + concat-string-list macro
-- **Initial fixes applied** (commit 50505c8):
-  - Fixed x30 (LR) save/restore offset in funcall-ir (was using wrong offset after sp modification)
-  - Fixed ALL hardcoded variable names in 8 transformation macros:
-    - length, reverse, append, mapcar, member, assoc, nth, count
-  - All transformations now use gensyms to prevent shadowing
-- **Simplification attempt** (commit 72fb7e9):
-  - Rewrote concat-string-list to use single-level labels instead of nested (copy-chunk/copy-chars)
-  - New concat-fn has 3 params: chunks, offset, idx (processes one char at a time)
-  - Partial success: Works in isolation and with simple labels contexts
-  - Still crashes with specific pattern (see below)
-- **REFINED ROOT CAUSE** (Nov 29, 2025):
-  - Pattern is MORE SPECIFIC than previously thought
-  - Crash trigger (all must be present):
-    1. Outer labels function defined
-    2. Outer labels function **CALLED** in let* bindings (not just defined)
-    3. Those bindings create values that extend the environment
-    4. Then concat-string-list (or any inner labels) is used
-  - Working cases:
-    - concat-string-list alone ✓
-    - labels + concat (no calls in bindings) ✓
-    - labels + 1, 2, or 3 bindings + concat (static values) ✓
-  - Failing case:
-    - `(labels ((f ...)) (let* ((v1 (f ...)) ...) (concat-string-list ...)))` → SIGSEGV
-  - Test: /tmp/test_call_labels_in_bindings.lisp reproduces crash
-- **Current hypothesis**:
-  - When outer labels function is called during let* binding evaluation, FNTAB lookup modifies state
-  - Then when inner labels is processed, it inherits wrong FNTAB or environment context
-  - Issue is in interaction between FNTAB binding lookup and nested labels creation
-- **Priority**: HIGH - blocks native file I/O and full self-hosting
-- **Status**: Root cause refined, investigating FNTAB environment interaction
-- **Next step**: Debug FNTAB lookup during binding evaluation vs inner labels processing
+**Bug #20: Nested Labels + Environment Offset Calculation** (ROOT CAUSE IDENTIFIED - Nov 29, 2025)
+- **Symptom**: SIGBUS/SIGSEGV (exit 139) with outer labels + inner labels (concat-string-list macro)
+- **Root Cause**: Nested labels frame offset collision when env-size exceeds threshold
+  - Threshold: labels + 3+ let* bindings → crash, ≤2 bindings → works
+  - Test matrix:
+    - NO labels + 3 let* + concat → WORKS ✓ (exit 42, output "BA")
+    - labels + 1 let* + concat → WORKS ✓
+    - labels + 2 let* + concat → WORKS ✓
+    - labels + 3 let* + concat → CRASHES (exit 139 SIGSEGV)
+  - Critical finding: outer function calls in bindings NOT required for crash
+    - Even static values crash with 3+ bindings
+  - Environment structure at crash:
+    - env = ((v3 . 4) (v2 . 3) (v1 . 2) (FNTAB-outer . 1) (outer-fn . 0))
+    - Total 5 bindings before concat expansion
+    - concat adds: chunks/total/vec (offsets 5-7), concat-fn (offset 8), FNTAB-inner (offset 9)
+    - max-env-size = 10+ triggers collision
+- **Fixes Applied** (commit 3d46d3d):
+  - Added missing env-size < 12 check to is-leaf calculation (Bug #19 incomplete fix)
+  - Prevents leaf optimization when environment too large
+  - BUT this alone doesn't fix the nested labels crash
+- **Previous Attempts**:
+  - Filtered env to remove outer FNTAB → crash (offsets become wrong)
+  - Passed `nil nil` for env/fenv → works but breaks variable lookups
+  - Passed `env nil` → crash
+  - All approaches with non-nil env containing outer labels bindings crash
+- **Issue**: When concat-string-list macro calls `(nc-compile expansion env nil)` with env containing outer labels bindings, the inner labels compilation hits frame layout collision
+- **Priority**: CRITICAL - blocks native file I/O and full self-hosting
+- **Status**: Root cause identified, fix pending
+- **Next step**: Investigate inner labels frame offset calculation when env contains outer FNTAB
 
 ## Previous Plan: Self-Hosting - Eliminating SBCL
 
@@ -2546,3 +2542,40 @@ Implement a reader so Habu can read its own source code.
 **File**: CONTEXT.md
 **Status**: PARTIAL SELF-HOSTING - Compiler compiles itself (5423 lines → 1.6MB native executable). Next: Replace SBCL features with pure-Habu equivalents for full self-hosting.
 **Last Updated**: November 28, 2025
+
+---
+
+## Session Summary (November 29, 2025 - Bug #20 Root Cause Found)
+
+This session identified the root cause of Bug #20 through systematic testing.
+
+**Breakthrough**: Created test matrix isolating the exact crash pattern:
+- labels + 1 binding + concat → WORKS ✓
+- labels + 2 bindings + concat → WORKS ✓  
+- labels + 3 bindings + concat → CRASHES
+- NO labels + 3 bindings + concat → WORKS ✓
+
+**Key Findings**:
+1. Crash is NOT about function calls in bindings (static values also crash with 3+ bindings)
+2. Crash IS about nested FNTAB variables and environment depth threshold
+3. When outer labels + 3 let* bindings exist, env has 5 bindings (FNTAB + fn + v1-v3)
+4. concat-string-list inner labels adds 5 more (chunks + total + vec + concat-fn + FNTAB2)
+5. Total max-env-size = 10+, triggering frame offset collision
+
+**Root Cause**:
+Inner labels compilation with env containing outer labels bindings causes frame layout collision.
+The collision occurs when total environment depth exceeds a threshold (~10 bindings).
+
+**Fixes Applied**:
+- Added missing `(< max-env-size 12)` check to is-leaf (Bug #19 incomplete fix)
+- Prevents leaf optimization for large environments
+- Does NOT fix the nested labels crash (still investigating)
+
+**Next Steps**:
+1. Investigate how inner labels calculates frame offsets with inherited env
+2. Check if there's a hardcoded limit or collision in offset calculation
+3. Possible fix: Reset environment for inner labels or adjust frame layout
+
+**Impact**: Critical - blocks native-read-file-large and full self-hosting
+
+**Commits**: 3d46d3d - Bug #20 investigation with env-size check added
