@@ -3,7 +3,7 @@
 **Session Date**: November 22-29, 2025
 **Focus**: Self-hosting ARM64 Lisp compiler - path to eliminating SBCL
 **Last Updated**: November 29, 2025
-**Milestone**: SELF-COMPILING MINI COMPILER WORKS - Compiles and evaluates expressions at runtime!
+**Milestone**: LABELS WITH GENSYM WORKS IN NATIVE CODE - Full mutual recursion and labels compilation!
 
 ## Session Summary (November 29, 2025 - Self-Compiling Mini Compiler)
 
@@ -33,6 +33,20 @@
 - Evaluates IR with values x=3, y=4, z=8 → result 20
 - **Proves**: Pure compiler can compile compilers that compile and run!
 
+**5. Refactored Gensym for Self-Hosting** ✓
+- Removed global defvar dependency from native path
+- Use cons cell state with setcar mutation
+- SBCL path uses defvar + setf (car ...)
+- Native path uses setcar for mutation
+- Labels with mutual recursion works: `even(10)` → 1
+- Commit: 2044a71
+
+**6. Mini Compiler with Labels** ✓
+- Tested mini compiler that uses labels for helper functions
+- Compiles `(+ 10 (* 3 4))` to IR and counts 5 nodes
+- Labels-based pure-length, pure-append, pure-reverse all work
+- **Proves**: Gensym correctly generates unique symbols in compiled code
+
 ### Test Results
 
 **Arithmetic tests**: All pass
@@ -46,6 +60,8 @@
 - Mini compiler compiles expressions → works ✓
 - Mini compiler evaluates IR → works ✓
 - Self-compiling compiler `(+ (* 3 4) 8)` → 20 ✓
+- Mini compiler with labels helper functions → works ✓
+- Mutual recursion `even(10)` → 1 ✓
 
 ### Path to Full Self-Hosting
 
@@ -54,12 +70,13 @@
 - Main codegen generates ARM64 from IR ✓
 - Pure-deliver creates working native executables ✓
 - Self-compiling mini compiler runs correctly ✓
+- Labels with gensym works in compiled code ✓
+- Mutual recursion (even/odd) works ✓
 
 **What Remains**:
-- Remove defvar from pure compiler (for true self-compilation)
-- Add defun codegen to pure compiler's self-compilation
-- Compile full pure compiler source with itself
+- Compile full pure compiler source with itself (needs reader integration)
 - Verify fixed-point (compiler compiles itself identically)
+- ~~Remove defvar from pure compiler~~ DONE ✓
 
 ---
 
