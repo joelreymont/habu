@@ -177,6 +177,13 @@
        (read-list (pos)
          (read-list-elems (+ pos #x1)))  ; skip opening (
 
+       ;; Check if feature is present
+       ;; :habu is always true, :sbcl is always false in native Habu
+       (feature-present? (sym)
+         (let ((name (if (symbolp sym) (symbol-name sym) "")))
+           (or (string= name "HABU")
+               (string= name "habu"))))
+
        ;; Read # macros
        (read-sharp (pos)
          (let ((ch (char-at source (+ pos #x1))))
@@ -201,6 +208,28 @@
                                     (t ch2))
                               (cdr result))))
                     (cons ch2 (+ pos #x3)))))
+             ;; #+ feature - read form only if feature present
+             ((= ch #x2B)  ; +
+              (let* ((feat-result (read-one (+ pos #x2)))
+                     (feature (car feat-result))
+                     (pos3 (cdr feat-result))
+                     (form-result (read-one pos3))
+                     (form (car form-result))
+                     (pos4 (cdr form-result)))
+                (if (feature-present? feature)
+                    (cons form pos4)
+                    (read-one pos4))))  ; Skip this form, read next
+             ;; #- feature - read form only if feature absent
+             ((= ch #x2D)  ; -
+              (let* ((feat-result (read-one (+ pos #x2)))
+                     (feature (car feat-result))
+                     (pos3 (cdr feat-result))
+                     (form-result (read-one pos3))
+                     (form (car form-result))
+                     (pos4 (cdr form-result)))
+                (if (not (feature-present? feature))
+                    (cons form pos4)
+                    (read-one pos4))))  ; Skip this form, read next
              ;; Unknown
              (t (cons nil (+ pos #x2))))))
 

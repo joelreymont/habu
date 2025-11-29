@@ -75,6 +75,10 @@
 
 (in-package :habu)
 
+;;; Register :habu as a feature for #+habu / #-habu conditionals
+;;; This works in SBCL during bootstrap; native reader has its own feature-present?
+(pushnew :habu *features*)
+
 ;;; ============================================================
 ;;; Part 0a: Function Linking State
 ;;; ============================================================
