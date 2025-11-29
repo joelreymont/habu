@@ -4338,7 +4338,7 @@
               (nc-lsl-imm 0 0 4)))))
     ((nc-has-tag ir 'sys-read-ir)
      ;; sys-read-ir = (sys-read-ir fd-ir buf-ir len-ir)
-     ;; Calls _read(fd, buf, len) -> returns bytes read (or -1)
+     ;; Calls _read(fd, buf, len) -> returns bytes read (or-1)
      ;; buf should be a vector
      (let* ((fd-ir (cadr ir))
             (buf-ir (caddr ir))

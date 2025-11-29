@@ -1,0 +1,36 @@
+;;; Test exact concat pattern WITH chunks from file reading
+
+(let* ((fd (sys-open "/tmp/small.txt" #x0 0))
+       (buf (make-vector 100)))
+  (labels ((read-chunks (chunks count)
+             (if (= count 0)
+                 chunks
+                 (let ((n (sys-read fd buf 100)))
+                   (if (= n 0)
+                       chunks
+                       (let* ((chunk (buffer-to-string buf n))
+                              (next-chunks (cons chunk chunks)))
+                         (read-chunks next-chunks (- count 1))))))))
+    (let* ((chunks (read-chunks nil 1))
+           (total 8))
+      (sys-close fd)
+      ;; Now use exact concat-string-list pattern
+      (let ((vec (make-vector total)))
+        (labels ((copy-chunk (chunks-arg offset)
+                   (if (null chunks-arg)
+                       vec
+                       (let* ((chunk (car chunks-arg))
+                              (len (string-length chunk)))
+                         (labels ((copy-chars (i)
+                                    (if (< i len)
+                                        (progn (vector-set vec (+ offset i) (string-ref chunk i))
+                                               (let ((next-i (+ i 1)))
+                                                 (copy-chars next-i))))))
+                           (copy-chars 0)
+                           (let ((next-chunks (cdr chunks-arg))
+                                 (next-offset (+ offset len)))
+                             (copy-chunk next-chunks next-offset)))))))
+          (let ((result (make-string-from-vector (copy-chunk (reverse chunks) 0))))
+            (sys-write 1 result (string-length result))
+            (sys-write 1 "\n" 1)
+            (sys-exit 42)))))))
