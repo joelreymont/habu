@@ -581,22 +581,17 @@
 
 (defun pure-build-setq-forms (bindings fn-names fntab-var fntab-unpack acc)
   "Build setq forms for each function"
+  ;; NOTE: Keep to 6 bindings (6-binding limit for recursive functions)
   (if (null bindings)
       (pure-reverse acc)
-      (let* ((binding (car bindings))
-             (fn-name (car binding))
-             (params (cadr binding))
-             (fn-body-forms (cddr binding))
-             (fn-body (if (null (cdr fn-body-forms))
-                          (car fn-body-forms)
-                          (cons 'progn fn-body-forms)))
-             ;; Rewrite body to pass FNTAB
+      (let* ((fn-name (car (car bindings)))
+             (params (cadr (car bindings)))
+             (forms (cddr (car bindings)))
+             (fn-body (if (null (cdr forms)) (car forms) (cons 'progn forms)))
              (rewritten (pure-rewrite-labels-body fn-body fn-names fntab-var))
-             ;; Wrap in let for FNTAB unpack
-             (wrapped-body (list 'let fntab-unpack rewritten))
-             ;; Lambda with FNTAB as first param
-             (lambda-expr (list 'lambda (cons fntab-var params) wrapped-body))
-             (setq-form (list 'setq fn-name lambda-expr)))
+             (setq-form (list 'setq fn-name
+                              (list 'lambda (cons fntab-var params)
+                                    (list 'let fntab-unpack rewritten)))))
         (pure-build-setq-forms (cdr bindings) fn-names fntab-var fntab-unpack
                                (cons setq-form acc)))))
 
@@ -705,12 +700,12 @@
          ((eq (car expr) 'funcall) (pure-compile-funcall expr env fenv))
          ((eq (car expr) 'labels) (pure-compile-labels expr env fenv))
 
-         ;; Arithmetic (variadic support) - use -ir suffix to match codegen
-         ((eq (car expr) '+) (pure-fold-binop 'add-ir (cdr expr) env fenv))
-         ((eq (car expr) '-) (pure-fold-binop 'sub-ir (cdr expr) env fenv))
-         ((eq (car expr) '*) (pure-fold-binop 'mul-ir (cdr expr) env fenv))
-         ((eq (car expr) '/) (pure-fold-binop 'div-ir (cdr expr) env fenv))
-         ((eq (car expr) 'mod) (list 'mod-ir (pure-compile-expr-full (nth 1 expr) env fenv)
+         ;; Arithmetic (variadic support) - codegen uses 'add not 'add-ir
+         ((eq (car expr) '+) (pure-fold-binop 'add (cdr expr) env fenv))
+         ((eq (car expr) '-) (pure-fold-binop 'sub (cdr expr) env fenv))
+         ((eq (car expr) '*) (pure-fold-binop 'mul (cdr expr) env fenv))
+         ((eq (car expr) '/) (pure-fold-binop 'div (cdr expr) env fenv))
+         ((eq (car expr) 'mod) (list 'mod (pure-compile-expr-full (nth 1 expr) env fenv)
                                      (pure-compile-expr-full (nth 2 expr) env fenv)))
 
          ;; Comparisons
@@ -893,14 +888,13 @@
                                     (cons 'progn body-forms))
                                 env fenv)
         ;; Compile as nested lets, each with 1 binding
-        (let* ((binding (car bindings))
-               (var (car binding))
-               (val (nth 1 binding))
-               (val-ir (pure-compile-expr-full val env fenv))
+        ;; NOTE: Keep to 3 bindings (6-binding limit for recursive functions)
+        (let* ((val-ir (pure-compile-expr-full (nth 1 (car bindings)) env fenv))
                (off (pure-length env))  ;; Storage offset = current env length
-               (new-env (pure-append env (list var)))  ;; Append to keep offset consistency
-               (rest-expr (list 'let* (cdr bindings) (cons 'progn body-forms)))
-               (rest-ir (pure-compile-let*-full rest-expr new-env fenv)))
+               (rest-ir (pure-compile-let*-full
+                         (list 'let* (cdr bindings) (cons 'progn body-forms))
+                         (pure-append env (list (car (car bindings))))
+                         fenv)))
           ;; (let-ir vals body count offs)
           (list 'let-ir (list val-ir) rest-ir 1 (list off))))))
 
