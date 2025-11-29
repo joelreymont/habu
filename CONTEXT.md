@@ -3,7 +3,86 @@
 **Session Date**: November 22-29, 2025
 **Focus**: Self-hosting ARM64 Lisp compiler - path to eliminating SBCL
 **Last Updated**: November 29, 2025
-**Milestone**: PURE COMPILER COMPLETE - All 11 pure-deliver tests pass, #+habu/#-habu reader macros working
+**Milestone**: BL OFFSET & SPILL SLOT FIXES - Recursive functions work, compiler self-compiles to 8.8MB executable
+
+## Session Summary (November 29, 2025 - BL Offset & Spill Slot Fixes)
+
+### Accomplishments This Session
+
+**1. Fixed BL Offset Calculation with EXTERN-CALL Markers** ✓
+- Problem: BL instruction offsets were wrong when :extern-call markers were present
+- Root cause: Markers were 1 list item but represented 4 bytes in output
+- Fix: resolve-calls now emits 4 items (marker + 3 zeros) per extern-call
+- Fix: flatten-extern-calls skips the 3 placeholder zeros after markers
+- Commit: 7d170fe
+
+**2. Fixed ARM64 ADD/SUB Immediate Encoding for Large Values** ✓
+- Problem: SUB sp, sp, #0x1000 became SUB sp, sp, #0 (wrong!)
+- Root cause: Immediate was masked to 12 bits, losing values > 0xFFF
+- Fix: Added shift=1 encoding (bit 22) for values up to 0xFFF000
+- Works for frame sizes like 0x400, 0x1000, etc.
+- Commit: 7d170fe
+
+**3. Fixed Spill Slot Frame Collision** ✓
+- Problem: spill-slot uses hardcoded base 0x240 (576 bytes)
+- Problem: Dynamic frame sizing created frames smaller than 576 bytes
+- Result: Spill slots were outside allocated frame → SIGSEGV
+- Fix: Functions that make calls now use minimum frame size 0x400
+- Fix: x20-offset now accounts for spill slot area (0x340 end)
+- Commit: 7d170fe
+
+**4. All End-to-End Tests Pass** ✓
+- Recursive functions: f(3)→42, fact(5)→120, fib(10)→55
+- Mutual recursion: even?(10)→1
+- Closures: make-adder pattern works
+- Labels: local recursive functions
+- Vectors and cons cells
+
+**5. Compiler Self-Compiles** ✓
+- Input: bootstrap/compiler.lisp (6221 lines, 298KB)
+- Parsed: 193 top-level forms (170 defun functions)
+- Bytecode: 755KB (with markers)
+- Output: 8.8 MB native ARM64 executable
+- The generated executable runs but crashes when executing code
+  (because compiler source uses SBCL-specific features)
+
+### Key Technical Details
+
+**BL Offset Issue**:
+```
+Before fix:
+- :extern-call at list position 88 → 1 list item
+- Function F at list position 116 → becomes byte 116
+- BL offset calculated from position 88
+
+After fix:
+- :extern-call at position 88 → 4 list items (marker + 3 zeros)
+- Function F at list position 119 → becomes byte 119
+- BL offset correctly calculated
+```
+
+**Frame Layout for Calling Functions**:
+```
+[sp + 0]:      saved regs (64 bytes)
+[sp + 0x40]:   temp slots
+[sp + 0x240]:  spill slots (for call arguments)
+[sp + 0x340]:  environment variables
+x20 = sp + 0x340 + (max_env_size * 8)
+```
+
+### What Remains for Full Self-Hosting
+
+1. **SBCL Dependencies in Compiler Source**:
+   - The compiler uses `multiple-value-bind`, `values`, `format`, etc.
+   - SBCL expands these to SBCL-specific code
+   - Generated executable references non-existent SBCL runtime
+
+2. **Solutions**:
+   - Use pure compiler (compiler-pure.lisp) - but has code generation issues
+   - Replace SBCL features with pure Habu equivalents in main compiler
+   - Already replaced 40/44 multiple-value-bind patterns with cons
+
+---
 
 ## Session Summary (November 29, 2025 - Pure Compiler & Reader Macros)
 
