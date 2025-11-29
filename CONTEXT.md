@@ -65,35 +65,39 @@
   - Both fail due to labels + heap allocation issue
 - **File I/O status**: Basic operations work, large files blocked
 
-**Bug #20: Nested Labels + Environment Offset Calculation** (ROOT CAUSE IDENTIFIED - Nov 29, 2025)
+**Bug #20: Nested Labels + Environment Offset Calculation** (REFINED ROOT CAUSE - Nov 29, 2025)
 - **Symptom**: SIGBUS/SIGSEGV (exit 139) with labels + concat-string-list macro
 - **Initial fixes applied** (commit 50505c8):
   - Fixed x30 (LR) save/restore offset in funcall-ir (was using wrong offset after sp modification)
   - Fixed ALL hardcoded variable names in 8 transformation macros:
     - length, reverse, append, mapcar, member, assoc, nth, count
   - All transformations now use gensyms to prevent shadowing
-- **ROOT CAUSE IDENTIFIED** (Nov 29, 2025):
-  - Pattern: **labels in scope** + **3+ let* bindings** + **concat-string-list** → CRASH
-  - With 2 bindings: WORKS
-  - With 3+ bindings: CRASHES
-  - 25+ test files created to isolate exact pattern
-- **Crash trigger** (all must be present):
-  1. Any labels function in scope (adds implicit FNTAB parameter to all functions)
-  2. 3 or more let* bindings in the outer context
-  3. concat-string-list macro expansion (creates nested labels: copy-chunk, copy-chars)
-- **Working cases**:
-  - concat-string-list alone ✓
-  - labels + 2 bindings + concat ✓
-  - No labels + 3+ bindings + concat ✓
-  - Manual concat structure (not macro) + labels + 3+ bindings ✓
-- **Failing case**:
-  - labels + 3+ bindings + concat-string-list MACRO → SIGSEGV (exit 139)
-- **Root cause hypothesis**:
-  - concat-string-list's nested labels (copy-chunk/copy-chars) get compiled with wrong environment offsets
-  - When outer context has labels function (FNTAB param) + 3+ variables, offset calculation breaks
-  - Issue is in how nested labels transformation interacts with existing FNTAB-augmented environment
+- **Simplification attempt** (commit 72fb7e9):
+  - Rewrote concat-string-list to use single-level labels instead of nested (copy-chunk/copy-chars)
+  - New concat-fn has 3 params: chunks, offset, idx (processes one char at a time)
+  - Partial success: Works in isolation and with simple labels contexts
+  - Still crashes with specific pattern (see below)
+- **REFINED ROOT CAUSE** (Nov 29, 2025):
+  - Pattern is MORE SPECIFIC than previously thought
+  - Crash trigger (all must be present):
+    1. Outer labels function defined
+    2. Outer labels function **CALLED** in let* bindings (not just defined)
+    3. Those bindings create values that extend the environment
+    4. Then concat-string-list (or any inner labels) is used
+  - Working cases:
+    - concat-string-list alone ✓
+    - labels + concat (no calls in bindings) ✓
+    - labels + 1, 2, or 3 bindings + concat (static values) ✓
+  - Failing case:
+    - `(labels ((f ...)) (let* ((v1 (f ...)) ...) (concat-string-list ...)))` → SIGSEGV
+  - Test: /tmp/test_call_labels_in_bindings.lisp reproduces crash
+- **Current hypothesis**:
+  - When outer labels function is called during let* binding evaluation, FNTAB lookup modifies state
+  - Then when inner labels is processed, it inherits wrong FNTAB or environment context
+  - Issue is in interaction between FNTAB binding lookup and nested labels creation
 - **Priority**: HIGH - blocks native file I/O and full self-hosting
-- **Status**: Root cause identified, fix in progress
+- **Status**: Root cause refined, investigating FNTAB environment interaction
+- **Next step**: Debug FNTAB lookup during binding evaluation vs inner labels processing
 
 ## Previous Plan: Self-Hosting - Eliminating SBCL
 
