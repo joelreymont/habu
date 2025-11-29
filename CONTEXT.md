@@ -2677,3 +2677,67 @@ habu link-fasls util.fasl helper.fasl main.fasl -o myprogram
 
 **Status**: Design complete, implementation in progress
 
+
+### Implementation Complete
+
+**Functions Added**:
+- `nc-compile-program-with-symtab`: Compiles to bytecode + function offset table (symbol table)
+- `write-fasl-v2 / read-fasl-v2`: Enhanced FASL I/O with embedded symbol tables  
+- `compile-file-to-fasl`: High-level API to compile source file to FASL
+- `link-fasls`: Links multiple FASL files into single executable
+
+**FASL v2 Format** (32-byte header):
+```
+[Magic: "HFSL"][Version: 2][Flags][Code-len]
+[Symtab-offset][Symtab-count][Reserved: 8 bytes]
+[Code: N bytes][Symbol Table: variable size]
+```
+
+**Symbol Table Entry**:
+```
+[name-len: 4][name: N bytes][offset: 8 bytes]
+```
+
+**Current Status**: Infrastructure complete
+- FASL format designed and implemented
+- Writer/reader functions working  
+- Symbol table extraction from fnoffs
+- Basic linker implemented (code concatenation + symbol table merging)
+
+**Next Steps**:
+1. Fix extern-call marker flattening in compile-file-to-fasl
+2. Test end-to-end: compile util.lisp + main.lisp → link → execute
+3. Implement BL instruction patching for cross-module function calls
+4. Add relocation table for position-independent code
+
+**Impact**: No more single-file bundling required! Can compile large projects as separate modules.
+
+
+---
+
+## Session Update (November 29, 2025 - Eliminating Bundling)
+
+**Goal**: Eliminate need to bundle source files together. Use FASL v2 separate compilation instead.
+
+**Progress**:
+1. ✓ Implemented FASL v2 format with symbol tables
+2. ✓ Implemented compile-file-to-fasl and link-fasls
+3. ⚠ Issue: Bytecode contains `:extern-call` markers (not flat integers)
+4. ⚠ Issue: Native compiler crashes during compile-program
+
+**Root Causes Identified**:
+- FASL writer expects flat integer list, but gets markers
+- Native compiler missing `optimize-ir` (from optimize.lisp, not bundled)
+- `fboundp`, `load` don't exist in native code
+
+**Solution Path (No Bundling)**:
+1. Fix nc-compile-program-with-symtab to return fully flattened bytecode
+2. Compile modules separately:
+   - compiler.lisp → compiler.fasl
+   - macho.lisp → macho.fasl
+   - optimize.lisp → optimize.fasl
+3. Link FASLs → native compiler executable
+4. Test native compiler compiling programs
+
+**Current Status**: Debugging bytecode flattening in FASL compilation
+
