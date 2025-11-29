@@ -1539,25 +1539,32 @@
                     (nc-compile `(car ,lst) env fenv)
                     (nc-compile `(nth ,(- n 1) (cdr ,lst)) env fenv))
                 ;; Variable index - use labels recursion
-                (nc-compile
-                 `(labels ((nth-iter (n lst)
-                             (if (= n 0)
-                                 (car lst)
-                                 (nth-iter (- n 1) (cdr lst)))))
-                    (nth-iter ,n ,lst))
-                 env fenv))))
+                (let ((nth-iter-fn (gensym "NTH-ITER"))
+                      (n-var (gensym "N"))
+                      (lst-var (gensym "LST")))
+                  (nc-compile
+                   `(labels ((,nth-iter-fn (,n-var ,lst-var)
+                               (if (= ,n-var 0)
+                                   (car ,lst-var)
+                                   (,nth-iter-fn (- ,n-var 1) (cdr ,lst-var)))))
+                      (,nth-iter-fn ,n ,lst))
+                   env fenv)))))
          ;; count - count occurrences
          ((eq op 'count)
-          (nc-compile
-           `(labels ((count-iter (item lst acc)
-                       (if (null lst)
-                           acc
-                           (count-iter item (cdr lst)
-                                       (if (eq item (car lst))
-                                           (+ acc 1)
-                                           acc)))))
-              (count-iter ,(cadr expr) ,(caddr expr) 0))
-           env fenv))
+          (let ((count-iter-fn (gensym "COUNT-ITER"))
+                (item-var (gensym "ITEM"))
+                (lst-var (gensym "LST"))
+                (acc-var (gensym "ACC")))
+            (nc-compile
+             `(labels ((,count-iter-fn (,item-var ,lst-var ,acc-var)
+                         (if (null ,lst-var)
+                             ,acc-var
+                             (,count-iter-fn ,item-var (cdr ,lst-var)
+                                             (if (eq ,item-var (car ,lst-var))
+                                                 (+ ,acc-var 1)
+                                                 ,acc-var)))))
+                (,count-iter-fn ,(cadr expr) ,(caddr expr) 0))
+             env fenv)))
          ((eq op 'list)
           (labels ((bl (args)
                      (if (null args) (list 'lit 0)
@@ -1584,24 +1591,31 @@
           (list 'cmp-eq (list 'get-tag (nc-compile (cadr expr) env fenv)) (list 'lit 3)))
          ;; length - list length via recursion
          ((eq op 'length)
-          (nc-compile
-           `(labels ((len-iter (lst acc)
-                       (if (null lst)
-                           acc
-                           (len-iter (cdr lst) (+ acc 1)))))
-              (len-iter ,(cadr expr) 0))
-           env fenv))
+          (let ((len-iter-fn (gensym "LEN-ITER"))
+                (lst-var (gensym "LST"))
+                (acc-var (gensym "ACC")))
+            (nc-compile
+             `(labels ((,len-iter-fn (,lst-var ,acc-var)
+                         (if (null ,lst-var)
+                             ,acc-var
+                             (,len-iter-fn (cdr ,lst-var) (+ ,acc-var 1)))))
+                (,len-iter-fn ,(cadr expr) 0))
+             env fenv)))
          ;; reverse - reverse list via recursion
          ((eq op 'reverse)
-          (nc-compile
-           `(labels ((rev-iter (lst acc)
-                       (if (null lst)
-                           acc
-                           ;; BUG #20 WORKAROUND: Evaluate cons in let before recursive call
-                           (let ((next-acc (cons (car lst) acc)))
-                             (rev-iter (cdr lst) next-acc)))))
-              (rev-iter ,(cadr expr) nil))
-           env fenv))
+          (let ((rev-iter-fn (gensym "REV-ITER"))
+                (lst-var (gensym "LST"))
+                (acc-var (gensym "ACC"))
+                (next-acc-var (gensym "NEXT-ACC")))
+            (nc-compile
+             `(labels ((,rev-iter-fn (,lst-var ,acc-var)
+                         (if (null ,lst-var)
+                             ,acc-var
+                             ;; BUG #20 WORKAROUND: Evaluate cons in let before recursive call
+                             (let ((,next-acc-var (cons (car ,lst-var) ,acc-var)))
+                               (,rev-iter-fn (cdr ,lst-var) ,next-acc-var)))))
+                (,rev-iter-fn ,(cadr expr) nil))
+             env fenv)))
          ;; append - append two lists
          ((eq op 'append)
           (let ((args (cdr expr)))
@@ -1610,46 +1624,60 @@
                 (if (null (cdr args))
                     (nc-compile (car args) env fenv)
                     ;; Two-arg append: copy first list, point to second
-                    (nc-compile
-                     `(labels ((app-iter (lst tail)
-                                 (if (null lst)
-                                     tail
-                                     (cons (car lst) (app-iter (cdr lst) tail)))))
-                        (app-iter ,(car args) (append ,@(cdr args))))
-                     env fenv)))))
+                    (let ((app-iter-fn (gensym "APP-ITER"))
+                          (lst-var (gensym "LST"))
+                          (tail-var (gensym "TAIL")))
+                      (nc-compile
+                       `(labels ((,app-iter-fn (,lst-var ,tail-var)
+                                   (if (null ,lst-var)
+                                       ,tail-var
+                                       (cons (car ,lst-var) (,app-iter-fn (cdr ,lst-var) ,tail-var)))))
+                          (,app-iter-fn ,(car args) (append ,@(cdr args))))
+                       env fenv))))))
          ;; mapcar - map function over list
          ((eq op 'mapcar)
-          (nc-compile
-           `(labels ((map-iter (fn lst acc)
-                       (if (null lst)
-                           (reverse acc)
-                           ;; BUG #20 WORKAROUND: Evaluate cons in let before recursive call
-                           (let ((next-acc (cons (funcall fn (car lst)) acc)))
-                             (map-iter fn (cdr lst) next-acc)))))
-              (map-iter ,(cadr expr) ,(caddr expr) nil))
-           env fenv))
+          (let ((map-iter-fn (gensym "MAP-ITER"))
+                (fn-var (gensym "FN"))
+                (lst-var (gensym "LST"))
+                (acc-var (gensym "ACC"))
+                (next-acc-var (gensym "NEXT-ACC")))
+            (nc-compile
+             `(labels ((,map-iter-fn (,fn-var ,lst-var ,acc-var)
+                         (if (null ,lst-var)
+                             (reverse ,acc-var)
+                             ;; BUG #20 WORKAROUND: Evaluate cons in let before recursive call
+                             (let ((,next-acc-var (cons (funcall ,fn-var (car ,lst-var)) ,acc-var)))
+                               (,map-iter-fn ,fn-var (cdr ,lst-var) ,next-acc-var)))))
+                (,map-iter-fn ,(cadr expr) ,(caddr expr) nil))
+             env fenv)))
          ;; member - find element in list
          ((eq op 'member)
-          (nc-compile
-           `(labels ((mem-iter (item lst)
-                       (if (null lst)
-                           nil
-                           (if (eq item (car lst))
-                               lst
-                               (mem-iter item (cdr lst))))))
-              (mem-iter ,(cadr expr) ,(caddr expr)))
-           env fenv))
+          (let ((mem-iter-fn (gensym "MEM-ITER"))
+                (item-var (gensym "ITEM"))
+                (lst-var (gensym "LST")))
+            (nc-compile
+             `(labels ((,mem-iter-fn (,item-var ,lst-var)
+                         (if (null ,lst-var)
+                             nil
+                             (if (eq ,item-var (car ,lst-var))
+                                 ,lst-var
+                                 (,mem-iter-fn ,item-var (cdr ,lst-var))))))
+                (,mem-iter-fn ,(cadr expr) ,(caddr expr)))
+             env fenv)))
          ;; assoc - find association in alist
          ((eq op 'assoc)
-          (nc-compile
-           `(labels ((assoc-iter (key lst)
-                       (if (null lst)
-                           nil
-                           (if (eq key (car (car lst)))
-                               (car lst)
-                               (assoc-iter key (cdr lst))))))
-              (assoc-iter ,(cadr expr) ,(caddr expr)))
-           env fenv))
+          (let ((assoc-iter-fn (gensym "ASSOC-ITER"))
+                (key-var (gensym "KEY"))
+                (lst-var (gensym "LST")))
+            (nc-compile
+             `(labels ((,assoc-iter-fn (,key-var ,lst-var)
+                         (if (null ,lst-var)
+                             nil
+                             (if (eq ,key-var (car (car ,lst-var)))
+                                 (car ,lst-var)
+                                 (,assoc-iter-fn ,key-var (cdr ,lst-var))))))
+                (,assoc-iter-fn ,(cadr expr) ,(caddr expr)))
+             env fenv)))
          ;; progn - evaluate forms in sequence, return last
          ((eq op 'progn)
           (let ((forms (cdr expr)))
@@ -4161,12 +4189,14 @@
              ;; Set argc
              (nc-movz 23 num-args)
              ;; BUG #20 FIX: Save x30 - lambdas have no prologue, make BL calls!
-             (nc-str-offset 30 31 x30-slot)
+             ;; CRITICAL: x30 saved AFTER sp modified, so must adjust offset!
+             (nc-str-offset 30 31 (+ x30-slot total-offset))
              ;; Load code address and call
              (nc-ldr-offset 9 31 (+ code-slot total-offset))
              (nc-blr 9)
              ;; Restore x30 immediately after lambda returns
-             (nc-ldr-offset 30 31 x30-slot)
+             ;; CRITICAL: sp still modified, so must adjust offset!
+             (nc-ldr-offset 30 31 (+ x30-slot total-offset))
              ;; Deallocate parameter frame
              (nc-add-imm 31 31 param-space)
              ;; Deallocate stack space for args 8+ (if any)
