@@ -338,22 +338,58 @@
     (encode-word word)))
 
 (defun add-imm (rd rn imm)
-  (let* ((imm-m (logand imm #xFFF))
-         (imm-s (ash imm-m 10))
-         (rn-s (ash rn 5))
-         (or1 (logior #x91000000 imm-s))
-         (or2 (logior or1 rn-s))
-         (word (logior or2 rd)))
-    (encode-word word)))
+  ;; ARM64 ADD immediate: can encode up to #xFFF directly, or up to #xFFF000 with shift
+  (cond
+    ((<= imm #xFFF)
+     ;; Small immediate: encode directly
+     (let* ((imm-s (ash imm 10))
+            (rn-s (ash rn 5))
+            (or1 (logior #x91000000 imm-s))
+            (or2 (logior or1 rn-s))
+            (word (logior or2 rd)))
+       (encode-word word)))
+    ((and (<= imm #xFFF000) (zerop (logand imm #xFFF)))
+     ;; Large immediate that's a multiple of #x1000: use shift=1
+     (let* ((imm12 (ash imm -12))  ; Divide by 4096
+            (imm-s (ash imm12 10))
+            (shift-bit #x400000)    ; Bit 22 = 1 for shift
+            (rn-s (ash rn 5))
+            (or1 (logior #x91000000 shift-bit imm-s))
+            (or2 (logior or1 rn-s))
+            (word (logior or2 rd)))
+       (encode-word word)))
+    (t
+     ;; Immediate too large - emit zero (will crash but at least it's deterministic)
+     (let* ((rn-s (ash rn 5))
+            (word (logior #x91000000 rn-s rd)))
+       (encode-word word)))))
 
 (defun sub-imm (rd rn imm)
-  (let* ((imm-m (logand imm #xFFF))
-         (imm-s (ash imm-m 10))
-         (rn-s (ash rn 5))
-         (or1 (logior #xD1000000 imm-s))
-         (or2 (logior or1 rn-s))
-         (word (logior or2 rd)))
-    (encode-word word)))
+  ;; ARM64 SUB immediate: can encode up to #xFFF directly, or up to #xFFF000 with shift
+  (cond
+    ((<= imm #xFFF)
+     ;; Small immediate: encode directly
+     (let* ((imm-s (ash imm 10))
+            (rn-s (ash rn 5))
+            (or1 (logior #xD1000000 imm-s))
+            (or2 (logior or1 rn-s))
+            (word (logior or2 rd)))
+       (encode-word word)))
+    ((and (<= imm #xFFF000) (zerop (logand imm #xFFF)))
+     ;; Large immediate that's a multiple of #x1000: use shift=1
+     (let* ((imm12 (ash imm -12))  ; Divide by 4096
+            (imm-s (ash imm12 10))
+            (shift-bit #x400000)    ; Bit 22 = 1 for shift
+            (rn-s (ash rn 5))
+            (or1 (logior #xD1000000 shift-bit imm-s))
+            (or2 (logior or1 rn-s))
+            (word (logior or2 rd)))
+       (encode-word word)))
+    (t
+     ;; Immediate too large - emit zero (will crash but at least it's deterministic)
+     (let* ((rn-s (ash rn 5))
+            (word (logior #xD1000000 rn-s rd)))
+       (encode-word word)))))
 
 (defun stp-offset (rt1 rt2 rn imm)
   (let* ((imm-s (ash imm -3))
@@ -557,11 +593,13 @@
                                     (+ pos 4)
                                     (append (reverse b-bytes) acc)
                                     loop-start-stack)))
-                     ;; External call - leave marker with position info
+                     ;; External call - emit 4 placeholder bytes + marker
+                     ;; CRITICAL: Must emit 4 bytes to maintain position consistency
+                     ;; Marker goes FIRST (at position), then 3 zero bytes follow
                      ((and (consp item) (eq (car item) :extern-call))
                       (resolve-at (cdr items)
                                   (+ pos 4)
-                                  (cons (list :extern-call (cadr item) pos) acc)
+                                  (list* 0 0 0 (list :extern-call (cadr item) pos) acc)
                                   loop-start-stack))
                      ;; Regular byte
                      (t
@@ -593,35 +631,46 @@
   "Replace extern call markers with BL instructions.
    If STUB-MAP and CODE-BASE-ADDR are provided, emits correct BL instructions.
    Otherwise emits placeholder BL instructions (for post-processing).
+   Note: Markers are now followed by 3 zero bytes (from resolve-calls fix).
    Returns (cons flattened-code extern-call-positions)
    where extern-call-positions is ((name . byte-pos) ...)"
   (let ((result nil)
-        (positions nil))
+        (positions nil)
+        (skip 0))  ; Number of items to skip
     (dolist (item code)
-      (if (and (consp item) (eq (car item) :extern-call))
-          (let ((name (cadr item))
-                (pos (caddr item)))
-            (push (cons name pos) positions)
-            (if (and stub-map code-base-addr)
-                ;; Emit correct BL instruction
-                (let* ((bl-addr (+ code-base-addr pos))
-                       (stub-addr (gethash name stub-map))
-                       (rel-offset (- stub-addr bl-addr))
-                       (off-s (ash rel-offset -2))
-                       (off-m (logand off-s #x3FFFFFF))
-                       (bl-instr (logior #x94000000 off-m)))
-                  ;; Emit BL in little-endian
-                  (push (logand bl-instr #xFF) result)
-                  (push (logand (ash bl-instr -8) #xFF) result)
-                  (push (logand (ash bl-instr -16) #xFF) result)
-                  (push (logand (ash bl-instr -24) #xFF) result))
-                ;; Emit placeholder BL (will be patched later)
-                (progn
-                  (push 0 result)
-                  (push 0 result)
-                  (push 0 result)
-                  (push #x94 result))))  ; BL opcode high byte
-          (push item result)))
+      (cond
+        ;; Skip placeholder zeros after extern-call marker
+        ((> skip 0)
+         (decf skip))
+        ;; Extern call marker - emit BL, skip next 3 zeros
+        ((and (consp item) (eq (car item) :extern-call))
+         (let ((name (cadr item))
+               (pos (caddr item)))
+           (push (cons name pos) positions)
+           (if (and stub-map code-base-addr)
+               ;; Emit correct BL instruction
+               (let* ((bl-addr (+ code-base-addr pos))
+                      (stub-addr (gethash name stub-map))
+                      (rel-offset (- stub-addr bl-addr))
+                      (off-s (ash rel-offset -2))
+                      (off-m (logand off-s #x3FFFFFF))
+                      (bl-instr (logior #x94000000 off-m)))
+                 ;; Emit BL in little-endian
+                 (push (logand bl-instr #xFF) result)
+                 (push (logand (ash bl-instr -8) #xFF) result)
+                 (push (logand (ash bl-instr -16) #xFF) result)
+                 (push (logand (ash bl-instr -24) #xFF) result))
+               ;; Emit placeholder BL (will be patched later)
+               (progn
+                 (push 0 result)
+                 (push 0 result)
+                 (push 0 result)
+                 (push #x94 result)))  ; BL opcode high byte
+           ;; Skip the 3 placeholder zeros that follow the marker
+           (setf skip 3)))
+        ;; Regular byte
+        (t
+         (push item result))))
     (cons (nreverse result) (nreverse positions))))
 
 (defun movk (rd imm shift)
@@ -4990,19 +5039,28 @@
          ;; Calculate dynamic frame size
          ;; Layout: [saved regs+padding: 64] [temps: temp_depth*8] [env: env_size*8] [safety: 64]
          ;; Note: temp-slot uses base #x40 (64), so saved regs area is 64 bytes
+         ;; IMPORTANT: spill-slot uses base #x240, so functions that call other functions
+         ;; need a frame of at least #x400 to have room for spill slots
+         (makes-calls (ir-may-call? bir))
          (saved-regs 64)
          (temp-area (* (+ max-temp-depth 8) 8))  ; +8 for safety margin
          (env-area (* (+ max-env-size 8) 8))     ; +8 for safety margin
          (frame-size-raw (+ saved-regs temp-area env-area 64))
-         ;; Round up to 16-byte alignment
-         (frame-size (logand (+ frame-size-raw 15) (lognot 15)))
+         ;; Round up to 16-byte alignment, with minimum #x400 for calling functions
+         (frame-size-aligned (logand (+ frame-size-raw 15) (lognot 15)))
+         (frame-size (if makes-calls
+                         (max #x400 frame-size-aligned)
+                         frame-size-aligned))
          ;; x20 offset = saved regs + temp area + env space (Bug #20 FIX)
          ;; Variables accessed as [x20 - offset*8], so x20 must be high enough
-         ;; that var[max-env-size-1] = x20 - (max-env-size-1)*8 is above temp area
-         (x20-offset (+ saved-regs temp-area (* max-env-size 8)))
+         ;; that var[max-env-size-1] = x20 - (max-env-size-1)*8 is above temp/spill area
+         ;; For calling functions, spill slots are at #x240, so x20 must be past that
+         (spill-end (if makes-calls #x340 0))  ; #x340 = #x240 + 256 (4 call levels)
+         (x20-offset-raw (+ saved-regs temp-area (* max-env-size 8)))
+         (x20-offset (max x20-offset-raw (+ spill-end (* max-env-size 8))))
          ;; Leaf optimization: only for non-calling functions with no >8 params
          ;; and max-env-size < 12 to avoid temp slot collision (Bug #19/#20)
-         (is-leaf (and (not (ir-may-call? bir))
+         (is-leaf (and (not makes-calls)
                        (<= num-params 8)
                        (< max-env-size 12))))
     ;; Distinguish defun from lambda by checking 4th element
