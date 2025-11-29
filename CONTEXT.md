@@ -65,30 +65,25 @@
   - Both fail due to labels + heap allocation issue
 - **File I/O status**: Basic operations work, large files blocked
 
-**Critical Bug #20: string-append macro expansion in recursive call arguments** (REFINED Nov 29, 2025)
-- **Symptom**: SIGBUS (exit 138) when calling function with string-append in argument
-- **REFINED root cause**: NOT a GC issue! Native executables have NO GC (fixed 1MB bump-allocated heap)
-  - Pattern that crashes: `(f (string-append s "X") n)` where f is labels function
-  - Pattern that works: `(let ((next (string-append s "X"))) (f next n))`
-  - The crash is specific to the string-append MACRO expansion in argument position
-- **Detailed test matrix** (20+ isolation tests):
-  - ✓ labels + fixnum recursion
-  - ✓ labels + cons recursion (heap allocation)
-  - ✓ labels + make-vector recursion (heap allocation)
-  - ✓ labels + make-string-from-vector recursion
-  - ✓ Simple labels in arg position
-  - ✓ Recursive labels (no heap) in arg position
-  - ✓ Recursive labels WITH heap allocation in arg position
-  - ✓ TWO recursive labels with heap in arg position
-  - ✓ Manual code replicating EXACT string-append structure - WORKS!
-  - ✗ string-append MACRO in recursive call arg → CRASH (SIGBUS)
-  - ✓ string-append in progn body, then recursive call → WORKS
-  - ✗ Returning string from recursive call, passing to sys-write → CRASH
-- **Critical finding**: Manually written code with EXACT same structure as string-append expansion works fine. Only the ACTUAL string-append macro expansion crashes!
-- **Hypothesis**: Bug in how nc-compile processes compiler macro expansions
-- **Next step**: Compare IR generated for string-append macro vs manually written equivalent
+**Critical Bug #20: Nested labels in recursive call arguments with string operations** (ISOLATED Nov 29, 2025)
+- **Symptom**: SIGBUS (exit 138) in specific pattern combining recursion + nested labels + string operations
+- **ROOT CAUSE ISOLATED** (after 30+ tests):
+  - NOT a GC issue (native executables have no GC)
+  - NOT gensym vs fixed symbols (tested both)
+  - NOT macro expansion bugs
+  - NOT the string-append macro specifically
+  - IS: RECURSIVE labels + NESTED labels + STRING OPERATIONS (string-ref/make-string-from-vector)
+- **Test results**:
+  - ✓ Simple string-append (non-recursive) - WORKS
+  - ✓ Nested labels with simple ops (non-recursive) - WORKS
+  - ✓ Nested labels with heap allocation (non-recursive) - WORKS
+  - ✗ RECURSIVE + nested labels + string operations - CRASHES (SIGBUS)
+  - ✓ Same pattern but NON-RECURSIVE - WORKS!
+- **Key discovery**: The manual code that was claimed to work ALSO crashes when made recursive
+- **Actual root cause**: Something specific to handling closures created in recursive call arguments when those closures do string heap operations
 - **Impact**: Blocks large file reading (native-read-file-large), full self-hosting
-- **Priority**: High - need to fix macro expansion handling
+- **Priority**: CRITICAL - need to debug recursive closure creation codegen
+- **Next step**: Examine codegen for how closures in function arguments are handled, especially in recursive contexts
 
 ## Previous Plan: Self-Hosting - Eliminating SBCL
 
