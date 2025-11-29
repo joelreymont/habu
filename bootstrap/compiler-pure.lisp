@@ -76,6 +76,23 @@
                  (map-iter (cdr l) (cons (funcall fn (car l)) acc)))))
     (map-iter lst nil)))
 
+(defun pure-fold-binop (ir-tag args env fenv)
+  "Fold variadic operation into nested binary operations.
+   (+ a b c) => (add (add a b) c)"
+  (if (null (cdr args))
+      ;; Single argument: just compile it
+      (pure-compile-expr-full (car args) env fenv)
+      ;; Multiple arguments: fold left
+      (labels ((fold (remaining acc)
+                 (if (null remaining)
+                     acc
+                     (fold (cdr remaining)
+                           (list ir-tag acc (pure-compile-expr-full (car remaining) env fenv))))))
+        (fold (cddr args)
+              (list ir-tag
+                    (pure-compile-expr-full (car args) env fenv)
+                    (pure-compile-expr-full (cadr args) env fenv))))))
+
 ;;; ============================================================
 ;;; Pure Compiler Core
 ;;; ============================================================
@@ -606,6 +623,7 @@
   "Full expression compiler with function support"
   (cond
     ((numberp expr) (pure-compile-lit expr))
+    ((stringp expr) (list 'str-lit expr))  ; String literals
     ((symbolp expr)
      (if (eq expr 'nil)
          (list 'lit 0)
@@ -633,15 +651,11 @@
          ((eq op 'funcall) (pure-compile-funcall expr env fenv))
          ((eq op 'labels) (pure-compile-labels expr env fenv))
 
-         ;; Arithmetic
-         ((eq op '+) (list 'add (pure-compile-expr-full (nth 1 expr) env fenv)
-                               (pure-compile-expr-full (nth 2 expr) env fenv)))
-         ((eq op '-) (list 'sub (pure-compile-expr-full (nth 1 expr) env fenv)
-                               (pure-compile-expr-full (nth 2 expr) env fenv)))
-         ((eq op '*) (list 'mul (pure-compile-expr-full (nth 1 expr) env fenv)
-                               (pure-compile-expr-full (nth 2 expr) env fenv)))
-         ((eq op '/) (list 'div (pure-compile-expr-full (nth 1 expr) env fenv)
-                               (pure-compile-expr-full (nth 2 expr) env fenv)))
+         ;; Arithmetic (variadic support)
+         ((eq op '+) (pure-fold-binop 'add (cdr expr) env fenv))
+         ((eq op '-) (pure-fold-binop 'sub (cdr expr) env fenv))
+         ((eq op '*) (pure-fold-binop 'mul (cdr expr) env fenv))
+         ((eq op '/) (pure-fold-binop 'div (cdr expr) env fenv))
          ((eq op 'mod) (list 'mod-ir (pure-compile-expr-full (nth 1 expr) env fenv)
                                      (pure-compile-expr-full (nth 2 expr) env fenv)))
 
@@ -672,8 +686,31 @@
          ((eq op 'consp) (list 'consp-ir (pure-compile-expr-full (nth 1 expr) env fenv)))
          ((eq op 'numberp) (list 'numberp-ir (pure-compile-expr-full (nth 1 expr) env fenv)))
          ((eq op 'symbolp) (list 'symbolp-ir (pure-compile-expr-full (nth 1 expr) env fenv)))
+         ((eq op 'stringp) (list 'stringp-ir (pure-compile-expr-full (nth 1 expr) env fenv)))
+         ((eq op 'vectorp) (list 'vectorp-ir (pure-compile-expr-full (nth 1 expr) env fenv)))
          ((eq op 'eq) (list 'eq-ir (pure-compile-expr-full (nth 1 expr) env fenv)
                                    (pure-compile-expr-full (nth 2 expr) env fenv)))
+
+         ;; String operations - use -ir suffix to match codegen
+         ((eq op 'string-length) (list 'string-length-ir (pure-compile-expr-full (nth 1 expr) env fenv)))
+         ((eq op 'string-ref) (list 'string-ref-ir
+                                    (pure-compile-expr-full (nth 1 expr) env fenv)
+                                    (pure-compile-expr-full (nth 2 expr) env fenv)))
+
+         ;; Vector operations - use -ir suffix to match codegen
+         ((eq op 'make-vector) (list 'make-vector-ir (pure-compile-expr-full (nth 1 expr) env fenv)))
+         ((eq op 'vector-ref) (list 'vector-ref-ir
+                                    (pure-compile-expr-full (nth 1 expr) env fenv)
+                                    (pure-compile-expr-full (nth 2 expr) env fenv)))
+         ((eq op 'vector-set) (list 'vector-set-ir
+                                    (pure-compile-expr-full (nth 1 expr) env fenv)
+                                    (pure-compile-expr-full (nth 2 expr) env fenv)
+                                    (pure-compile-expr-full (nth 3 expr) env fenv)))
+         ((eq op 'vector-length) (list 'vector-length-ir (pure-compile-expr-full (nth 1 expr) env fenv)))
+
+         ;; Make string from vector (for reader)
+         ((eq op 'make-string-from-vector) (list 'make-string-from-vector-ir
+                                                  (pure-compile-expr-full (nth 1 expr) env fenv)))
 
          ;; Mutation
          ((eq op 'setq) (pure-compile-setq expr env fenv))
@@ -849,24 +886,15 @@
 ;;; Self-hosting entry point
 (defun pure-self-compile (source-path output-path)
   "Pure Habu self-hosting compiler entry point.
-   Reads source, compiles with pure compiler, generates ARM64, writes executable."
+   Reads source, compiles with pure compiler, generates ARM64, writes executable.
+   This function is designed to be compiled to native code and run standalone."
   (let ((source (native-read-file source-path)))
     (if source
         (progn
-          (sys-write 1 "Pure compiler: Reading source...\n" 35)
-          (let ((forms (read-all source)))
-            (sys-write 1 "Pure compiler: Compiling to bytecode...\n" 42)
-            (let ((bytecode (pure-compile-program-simple forms)))
-              (sys-write 1 "Pure compiler: Generated " 26)
-              (sys-write 1 (number-to-string (pure-length bytecode)) 5)
-              (sys-write 1 " bytes\n" 7)
-              (sys-write 1 "Pure compiler: Linking to executable...\n" 42)
-              ;; Use existing Mach-O linker
-              (deliver-with-libsystem source output-path :verbose nil)
-              (sys-write 1 "Success!\n" 9)
-              (sys-exit 0))))
+          ;; Use pure-deliver which uses the pure compiler (no SBCL dependencies)
+          (pure-deliver source output-path)
+          (sys-exit 0))
         (progn
-          (sys-write 2 "Error: Cannot read source\n" 27)
           (sys-exit 1)))))
 
 ;;; ============================================================
