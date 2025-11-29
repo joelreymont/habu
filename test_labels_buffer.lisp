@@ -1,0 +1,20 @@
+;;; Test labels + buffer-to-string + concat-string-list
+
+(let ((buf (make-vector 10)))
+  (vector-set buf 0 72)  ;; 'H'
+  (labels ((collect-chunks (n acc total)
+             (if (= n 0)
+                 (list acc total)
+                 (let* ((chunk (buffer-to-string buf 1))  ;; convert 1 byte from buffer
+                        (next-acc (cons chunk acc))
+                        (next-total (+ total 1)))
+                   (collect-chunks (- n 1) next-acc next-total)))))
+    (let* ((result-list (collect-chunks 5 nil 0))
+           (chunks (car result-list))
+           (total (car (cdr result-list))))
+      (let ((result (concat-string-list chunks total)))
+        (sys-write 1 "Length: " 8)
+        (sys-write 1 (number-to-string (string-length result))
+                   (string-length (number-to-string (string-length result))))
+        (sys-write 1 "\n" 1)
+        (sys-exit (if (= (string-length result) 5) 42 1))))))
