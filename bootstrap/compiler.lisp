@@ -2051,7 +2051,7 @@
              (list 'let* (list (list path-var (cadr expr))
                                (list fd-var (list 'sys-open path-var #x0 0)))
                    (list 'labels (list (list read-chunks-fn (list chunks-var total-var)
-                                             ;; BUG #21 FIX: Use 4KB buffer to avoid heap exhaustion in recursive context
+                                             ;; BUG #21 FIX: Use 4KB buffer to avoid heap exhaustion
                                              (list 'let* (list (list buf-var (list 'make-vector 4096))
                                                                (list n-var (list 'sys-read fd-var buf-var 4096)))
                                                    (list 'if (list '= n-var 0)
@@ -5400,7 +5400,8 @@ int main(int argc, char **argv) {
 
               ;; Create executable with imports and heap using pure-Habu linker
               ;; BL instructions are already correct - no post-processing needed!
-              (write-macho-executable-with-imports-and-heap output-path wrapped-code imports #x100000)
+              ;; Heap size: 8MB to support native-read-file-large for compiler source (256KB)
+              (write-macho-executable-with-imports-and-heap output-path wrapped-code imports #x800000)
 
               ;; Codesign the executable (macOS requirement)
               ;; Only on macOS and when sb-ext is available
