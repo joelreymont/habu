@@ -5422,10 +5422,9 @@ int main(int argc, char **argv) {
              (read-sequence contents in)
              contents))
          #-sbcl
-         ;; When running as native code, can't use SBCL's with-open-file
-         ;; This path would only be taken if the compiled compiler is running natively
-         ;; For now, this is a placeholder - native compilation will inline native-read-file-large
-         (error "deliver-file-with-libsystem requires SBCL for file I/O. Use compiled version with native-read-file-large.")))
+         ;; When running as native code, use native-read-file for files < 64KB
+         ;; This enables self-hosting compilation for most programs
+         (native-read-file source-path)))
     (deliver-with-libsystem source output-path :verbose verbose)))
 
 ;;; Export new functions
