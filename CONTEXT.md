@@ -52,6 +52,16 @@
 - All tests pass with deliver-with-libsystem linker
 - Created tests/test_bootstrap_compiler_v2.lisp (10 tests for compiler patterns)
 
+**8. Extended Pure Habu Compiler** ✓
+- Added full function support to compiler-pure.lisp (401 new lines)
+- Defun: two-pass compilation for forward references
+- Lambda: closure creation with free variable capture
+- Funcall: call closures with arguments
+- Labels: local recursive functions
+- Full expression compiler with all forms (if, cond, let, let*, etc.)
+- All 8 end-to-end tests pass: add, mul, let, defun, factorial, labels, closures
+- Commit: 02984c5
+
 ### Root Cause Analysis: Closure Mutation Bug
 
 **Problem**: Counter closure returned 41 twice instead of 41 then 42.
