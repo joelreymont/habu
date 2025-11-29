@@ -366,19 +366,27 @@
 ;;; ============================================================
 
 (defun pure-compile-lambda (expr env fenv)
-  "Compile (lambda (params) body) to lambda-ir"
+  "Compile (lambda (params) body) to lambda-ir.
+   CRITICAL: Must include free-offsets for closure capture to work!"
   (let* ((params (cadr expr))
          (body-forms (cddr expr))
          (body (if (null (cdr body-forms))
                    (car body-forms)
                    (cons 'progn body-forms)))
-         ;; Lambda starts with fresh env (just params), not extending outer env
-         ;; Free variables are captured via closure mechanism, not env lookup
-         (new-env (pure-extend-env params nil))
          ;; Find free variables (captured from enclosing scope)
          (free-vars (pure-find-free-vars body params env))
-         (body-ir (pure-compile-expr-full body new-env fenv)))
-    (list 'lambda-ir params body-ir free-vars)))
+         ;; CRITICAL: Get offsets for each free var in current env
+         ;; These are needed by codegen to know where to capture from
+         (free-offsets (pure-mapcar (lambda (v) (pure-env-lookup v env)) free-vars))
+         ;; Build environment for body: free vars + params
+         ;; Free vars come first (captured in closure env), then params
+         ;; This matches the regular compiler's approach
+         (num-free (pure-length free-vars))
+         (body-env (pure-extend-env params (pure-extend-env free-vars nil)))
+         ;; Compile body with extended env
+         (body-ir (pure-compile-expr-full body body-env fenv)))
+    ;; Return lambda-ir with 5 elements (matching regular compiler)
+    (list 'lambda-ir params body-ir free-vars free-offsets)))
 
 (defun pure-find-free-vars (expr params env)
   "Find variables referenced in expr that are in env but not in params or local bindings"
