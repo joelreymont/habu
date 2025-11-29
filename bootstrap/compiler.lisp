@@ -972,13 +972,24 @@
                        (rr (read-list-elems p3)))
                   (cons (cons el (car rr)) (cdr rr)))))))
        (read-list (p) (read-list-elems (+ p 1)))
+       ;; Feature check: :habu is always present in native Habu, :sbcl is always absent
+       (feature-present-p (feature-name)
+         (let ((uname (string-upcase feature-name)))
+           (or (string= uname "HABU")
+               ;; In SBCL bootstrap, we also have :sbcl - but this code runs in native
+               ;; where :sbcl should be absent. For bootstrap in SBCL, SBCL's own
+               ;; reader handles #+sbcl before this code ever sees it.
+               nil)))
        (read-sharp (p)
          (let ((ch (char-at source (+ p 1))))
            (cond
+             ;; #x or #X - hexadecimal number
              ((or (= ch #x78) (= ch #x58)) (read-hex source (+ p 2)))
+             ;; #' - function quote
              ((= ch #x27)
               (let ((r (read-one (+ p 2))))
                 (cons (list 'function (car r)) (cdr r))))
+             ;; #\ - character literal
              ((= ch #x5C)
               (let ((ch2 (char-at source (+ p 2))))
                 (if (alpha-p (char-at source (+ p 3)))
@@ -988,6 +999,38 @@
                                   ((string= nm "tab") #x09) (t ch2))
                             (cdr r)))
                     (cons ch2 (+ p 3)))))
+             ;; #+ - read form only if feature is present
+             ((= ch #x2B)  ; '+'
+              (let* ((feat-result (read-sym source (+ p 2)))
+                     (feature-sym (car feat-result))
+                     (after-feat (cdr feat-result))
+                     (feature-name (if (symbolp feature-sym) (symbol-name feature-sym) "")))
+                (if (feature-present-p feature-name)
+                    ;; Feature present: read and return the form
+                    (read-one after-feat)
+                    ;; Feature absent: skip the form, return marker
+                    (let ((skipped (read-one after-feat)))
+                      ;; Return (:reader-skip . t) as marker, read-all will filter
+                      (cons (cons :reader-skip t) (cdr skipped))))))
+             ;; #- - read form only if feature is absent
+             ((= ch #x2D)  ; '-'
+              ;; Check if this is a negative number: #-123 vs #-sbcl
+              (let ((ch2 (char-at source (+ p 2))))
+                (if (digit-p ch2)
+                    ;; It's a negative number like #-123 (unusual but handle it)
+                    (cons nil (+ p 2))
+                    ;; It's a feature conditional
+                    (let* ((feat-result (read-sym source (+ p 2)))
+                           (feature-sym (car feat-result))
+                           (after-feat (cdr feat-result))
+                           (feature-name (if (symbolp feature-sym) (symbol-name feature-sym) "")))
+                      (if (feature-present-p feature-name)
+                          ;; Feature present: skip the form, return marker
+                          (let ((skipped (read-one after-feat)))
+                            ;; Return (:reader-skip . t) as marker, read-all will filter
+                            (cons (cons :reader-skip t) (cdr skipped)))
+                          ;; Feature absent: read and return the form
+                          (read-one after-feat))))))
              (t (cons nil (+ p 2))))))
        (read-one (p)
          (let* ((p2 (skip-ws source p))
@@ -1023,14 +1066,23 @@
   "Parse a single form from SOURCE string. Returns the parsed form."
   (car (sys:read source 0)))
 
+(defun reader-skip-marker-p (form)
+  "Check if form is a reader skip marker from #+/- conditionals"
+  (and (consp form)
+       (eq (car form) :reader-skip)))
+
 (defun read-all (source)
   (let ((len (string-length source)))
     (labels ((ra (pos acc)
                (let ((p2 (skip-ws source pos)))
                  (if (>= p2 len)
                      (reverse acc)
-                     (let ((r (sys:read source p2)))
-                       (ra (cdr r) (cons (car r) acc)))))))
+                     (let* ((r (sys:read source p2))
+                            (form (car r)))
+                       ;; Skip reader conditional markers
+                       (if (reader-skip-marker-p form)
+                           (ra (cdr r) acc)
+                           (ra (cdr r) (cons form acc))))))))
       (ra 0 nil))))
 
 ;;; ============================================================
@@ -5641,11 +5693,11 @@ int main(int argc, char **argv) {
              (stubs-total (if (> num-imports 0) (* num-imports 12) 0))
              (code-offset #x400)  ; header + commands + padding
              ;; Calculate exact flattened code size:
-             ;; Each :extern-call marker becomes exactly 4 bytes (BL instruction)
-             ;; All other items are already bytes
-             (num-markers (count-if (lambda (x) (and (consp x) (eq (car x) :extern-call))) bytes-with-markers))
-             (non-marker-bytes (remove-if (lambda (x) (and (consp x) (eq (car x) :extern-call))) bytes-with-markers))
-             (exact-flat-size (+ (length non-marker-bytes) (* num-markers 4)))
+             ;; Each :extern-call marker (1 item) + 3 zeros (3 items) = 4 items
+             ;; After flattening: becomes 4 BL bytes
+             ;; Each regular byte stays 1 byte
+             ;; So: flattened size = original list length
+             (exact-flat-size (length bytes-with-markers))
              (exact-code-size (+ exact-flat-size wrapper-size))
              (stubs-offset (+ code-offset exact-code-size))
              (stub-size 12))

@@ -2,7 +2,7 @@
 ;;; No multiple-value-bind, no values, no loop, no format
 ;;; This can be compiled to native and run without SBCL
 
-(in-package :habu)
+#+sbcl (in-package :habu)
 
 ;;; ============================================================
 ;;; Core Helpers (Pure Habu)
@@ -14,7 +14,13 @@
              (if (null l)
                  acc
                  (append-iter (cdr l) (cons (car l) acc)))))
-    (append-iter (reverse lst1) lst2)))
+    (append-iter (pure-reverse-helper lst1 nil) lst2)))
+
+(defun pure-reverse-helper (lst acc)
+  "Tail-recursive reverse helper - defined early for use by pure-append"
+  (if (null lst)
+      acc
+      (pure-reverse-helper (cdr lst) (cons (car lst) acc))))
 
 (defun pure-reverse (lst)
   "Reverse a list"
@@ -60,11 +66,26 @@
                                   (cons (car l) acc))))))
     (remove-iter lst nil)))
 
+(defun pure-string-equal (s1 s2)
+  "Compare two strings character by character - pure Habu implementation"
+  (labels ((cmp (i len1 len2)
+             (cond
+               ;; Different lengths = not equal
+               ((/= len1 len2) nil)
+               ;; Reached end of both = equal
+               ((>= i len1) t)
+               ;; Compare current chars
+               ((= (string-ref s1 i) (string-ref s2 i))
+                (cmp (+ i 1) len1 len2))
+               ;; Chars differ
+               (t nil))))
+    (cmp 0 (string-length s1) (string-length s2))))
+
 (defun pure-assoc (key alist)
-  "Find (key . value) pair in alist using string= comparison"
+  "Find (key . value) pair in alist using string comparison"
   (if (null alist)
       nil
-      (if (string= key (car (car alist)))
+      (if (pure-string-equal key (car (car alist)))
           (car alist)
           (pure-assoc key (cdr alist)))))
 
@@ -161,7 +182,7 @@
          (t (pure-compile-lit 0)))))))
 
 ;;; Export pure compiler
-(export '(pure-compile-expr pure-append pure-reverse pure-length) :habu)
+#+sbcl (export '(pure-compile-expr pure-append pure-reverse pure-length) :habu)
 
 ;;; ============================================================
 ;;; Expanded Compiler - More Expression Types
@@ -271,7 +292,7 @@
          (t (pure-compile-lit 0)))))))
 
 ;;; Export enhanced compiler
-(export 'pure-compile-expr-v2 :habu)
+#+sbcl (export 'pure-compile-expr-v2 :habu)
 
 ;;; ============================================================
 ;;; Defun and Function Call Support
@@ -430,7 +451,7 @@
                 (let* ((bindings (cadr e))
                        (body (cddr e))
                        (let-vars (get-let-vars bindings nil))
-                       (new-bound (append let-vars bound))
+                       (new-bound (pure-append let-vars bound))
                        ;; Find free vars in binding values (use old bound)
                        (acc2 (find-in-binding-vals bindings bound acc))
                        ;; Find free vars in body (use new bound)
@@ -472,10 +493,38 @@
 
 (defvar *pure-gensym-counter* 0)
 
+(defun pure-digit-char (n)
+  "Convert digit 0-9 to ASCII character code"
+  (+ n 48))  ; '0' = 48
+
+(defun pure-number-to-string (n)
+  "Convert positive integer to string - pure Habu"
+  (if (= n 0)
+      "0"
+      (labels ((digits (num acc)
+                 (if (= num 0)
+                     acc
+                     (digits (/ num 10)
+                             (cons (pure-digit-char (mod num 10)) acc))))
+               (chars-to-vec (chars)
+                 (let* ((len (pure-length chars))
+                        (vec (make-vector len)))
+                   (labels ((fill-vec (cs i)
+                              (if (null cs)
+                                  vec
+                                  (progn
+                                    (vector-set vec i (car cs))
+                                    (fill-vec (cdr cs) (+ i 1))))))
+                     (fill-vec chars 0)))))
+        (make-string-from-vector (chars-to-vec (digits n nil))))))
+
 (defun pure-gensym (prefix)
-  "Generate unique symbol"
+  "Generate unique symbol - uses pure string operations"
   (setq *pure-gensym-counter* (+ *pure-gensym-counter* 1))
-  (intern (format nil "~A~A" prefix *pure-gensym-counter*)))
+  ;; In native code, intern creates symbols; prefix is already a string
+  ;; Build symbol name by concatenating prefix + number
+  #+sbcl (intern (format nil "~A~A" prefix *pure-gensym-counter*))
+  #-sbcl (make-symbol-from-string (sys:string-concat prefix (pure-number-to-string *pure-gensym-counter*))))
 
 (defun pure-compile-labels (expr env fenv)
   "Compile labels by transforming to let/setq/lambda/funcall with FNTAB"
@@ -908,13 +957,14 @@
     (list defuns main-ir)))
 
 ;;; Export full compiler
-(export '(pure-compile-expr-full pure-compile-forms
+#+sbcl (export '(pure-compile-expr-full pure-compile-forms
           pure-compile-defun pure-compile-lambda pure-compile-labels) :habu)
 
 ;;; ============================================================
-;;; Integration with Existing Codegen
+;;; Integration with Existing Codegen (SBCL-only bridging functions)
 ;;; ============================================================
 
+#+sbcl
 (defun pure-compile-to-bytecode (expr)
   "Compile expression to ARM64 bytecode using existing codegen.
    This bridges pure compiler → existing nc-codegen (which is already pure!)"
@@ -925,6 +975,7 @@
       ;; Resolve markers to actual bytes
       (nc-resolve-calls code-with-markers nil))))
 
+#+sbcl
 (defun pure-compile-program-simple (forms)
   "Compile simple program (single expression) to complete bytecode.
    Uses existing nc-codegen-main which adds prologue/epilogue."
@@ -937,7 +988,8 @@
           ;; Use existing nc-codegen-main (adds prologue/epilogue)
           (nc-codegen-main ir nil)))))
 
-;;; Self-hosting entry point
+;;; Self-hosting entry point (SBCL-only - uses native-read-file which needs SBCL setup)
+#+sbcl
 (defun pure-self-compile (source-path output-path)
   "Pure Habu self-hosting compiler entry point.
    Reads source, compiles with pure compiler, generates ARM64, writes executable.
@@ -952,9 +1004,10 @@
           (sys-exit 1)))))
 
 ;;; ============================================================
-;;; Full Program Compilation (with functions)
+;;; Full Program Compilation (SBCL-only - calls main compiler helpers)
 ;;; ============================================================
 
+#+sbcl
 (defun pure-compile-program (forms)
   "Compile forms to complete ARM64 bytecode with function linking.
    This is the full pipeline: parse → IR → lift-lambdas → codegen → link.
@@ -965,9 +1018,9 @@
          (mir-raw (cadr r))
          ;; Add nil for free-vars to match main compiler format
          ;; Format: (name params body-ir param-base free-vars)
-         (defun-fns (mapcar (lambda (d)
-                              (list (first d) (second d) (third d) (fourth d) nil))
-                            defun-fns-raw)))
+         (defun-fns (pure-mapcar (lambda (d)
+                                   (list (car d) (cadr d) (caddr d) (cadddr d) nil))
+                                 defun-fns-raw)))
     ;; Lift lambdas from main IR
     (let* ((mvb-result (lift-lambdas mir-raw))
            (mir (car mvb-result))
@@ -1021,8 +1074,8 @@
     (unique extern-calls nil nil)))
 
 (defun pure-string= (s1 s2)
-  "Compare two strings for equality"
-  (string= s1 s2))
+  "Compare two strings for equality - use pure implementation"
+  (pure-string-equal s1 s2))
 
 (defun pure-assoc-string (key alist)
   "Find entry in alist with string key"
@@ -1083,6 +1136,9 @@
   "Check if x is an extern-call marker"
   (and (consp x) (eq (car x) :extern-call)))
 
+;; pure-deliver uses read-all, wrap-bytecode-with-heap-for-imports,
+;; write-macho-executable-with-imports-and-heap from main compiler/macho
+#+sbcl
 (defun pure-deliver (source output-path)
   "Compile source string to native executable using pure compiler.
    This uses the full extern-call flattening pipeline.
@@ -1131,5 +1187,5 @@
                                         :output nil :error nil :wait t)))))))
 
 ;;; Export self-hosting entry point
-(export '(pure-compile-to-bytecode pure-compile-program-simple pure-self-compile
+#+sbcl (export '(pure-compile-to-bytecode pure-compile-program-simple pure-self-compile
           pure-compile-program pure-deliver) :habu)
