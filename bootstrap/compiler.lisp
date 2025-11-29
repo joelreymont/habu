@@ -5710,3 +5710,232 @@ int main(int argc, char **argv) {
      (write-bytes \"/tmp/output.bin\" byte-vec)
      (println (length bytecode))
      0)")
+
+;;; ============================================================
+;;; Part 8a: Separate Compilation Units Support
+;;; ============================================================
+
+(defun nc-compile-program-with-symtab (forms rtaddrs &key (optimize t))
+  "Compile forms to bytecode and return (values bytecode symbol-table).
+   Symbol table is an alist of (name . byte-offset) for all exported functions.
+   This is used for separate compilation units and FASL linking."
+  (nc-reset-symbol-table)
+  (let* ((r (nc-compile-forms forms))
+         (defun-fns (car r))
+         (mir-raw (cadr r))
+         (mir-opt (if (and optimize (fboundp 'optimize-ir))
+                      (optimize-ir mir-raw :passes '(let-flattening progn-flattening constant-folding strength-reduction dead-code-elimination))
+                      mir-raw))
+         (defun-fns-opt (if (and optimize (fboundp 'optimize-ir))
+                            (mapcar (lambda (fn)
+                                      (list (first fn) (second fn)
+                                            (optimize-ir (third fn) :passes '(let-flattening progn-flattening constant-folding strength-reduction dead-code-elimination))
+                                            (fourth fn) (fifth fn)))
+                                    defun-fns)
+                            defun-fns)))
+    (multiple-value-bind (mir main-lambdas)
+        (nc-lift-lambdas mir-opt)
+      (multiple-value-bind (lifted-defuns defun-lambdas)
+          (nc-lift-lambdas-from-fns defun-fns-opt nil nil)
+        (let ((fns (append lifted-defuns main-lambdas defun-lambdas)))
+          (if (null fns)
+              (values (nc-resolve-calls (nc-codegen-main mir rtaddrs) nil) nil)
+              (let* ((main-code-temp (append (nc-prologue) (nc-codegen mir rtaddrs nil 0) (nc-epilogue)))
+                     (main-size (nc-code-size main-code-temp))
+                     (fnoffs (nc-build-fnoffs fns main-size nil))
+                     (main-code (append (nc-prologue) (nc-codegen mir rtaddrs fnoffs 0) (nc-epilogue)))
+                     (fn-code (nc-codegen-all-fns fns rtaddrs fnoffs nil))
+                     (all-code (append main-code fn-code))
+                     (bytecode (nc-resolve-calls all-code fnoffs)))
+                (values bytecode fnoffs))))))))
+
+;;; Export for FASL compilation
+(export 'nc-compile-program-with-symtab :habu)
+
+;;; ============================================================
+;;; Part 8b: Enhanced FASL Format (v2) with Symbol Tables
+;;; ============================================================
+
+;;; FASL Format v2:
+;;; Header (32 bytes):
+;;;   Magic:         4 bytes "HFSL"
+;;;   Version:       4 bytes (2 for symbol table support)
+;;;   Flags:         4 bytes
+;;;   Code-len:      4 bytes
+;;;   Symtab-offset: 4 bytes (offset to symbol table from start of file)
+;;;   Symtab-count:  4 bytes (number of exported symbols)
+;;;   Reserved:      8 bytes
+;;; Code Section: N bytes of ARM64 machine code
+;;; Symbol Table: For each symbol: [name-len:4][name:N][offset:8]
+
+(defun write-u32-le (n stream)
+  "Write 32-bit unsigned integer in little-endian format to stream."
+  (write-byte (logand n #xFF) stream)
+  (write-byte (logand (ash n -8) #xFF) stream)
+  (write-byte (logand (ash n -16) #xFF) stream)
+  (write-byte (logand (ash n -24) #xFF) stream))
+
+(defun write-u64-le (n stream)
+  "Write 64-bit unsigned integer in little-endian format to stream."
+  (write-u32-le (logand n #xFFFFFFFF) stream)
+  (write-u32-le (logand (ash n -32) #xFFFFFFFF) stream))
+
+(defun write-fasl-v2 (bytecode-list symbol-table output-path)
+  "Write enhanced FASL v2 with symbol table.
+   bytecode-list: list of bytes (ARM64 machine code)
+   symbol-table: alist of (name . offset) pairs
+   output-path: file to write"
+  (with-open-file (out output-path :direction :output
+                                    :if-exists :supersede
+                                    :if-does-not-exist :create
+                                    :element-type '(unsigned-byte 8))
+    (let* ((code-len (length bytecode-list))
+           (symtab-offset (+ 32 code-len))  ;; Header is 32 bytes
+           (symtab-count (if symbol-table (length symbol-table) 0)))
+      ;; Write header
+      (write-byte #x48 out)  ;; 'H'
+      (write-byte #x46 out)  ;; 'F'
+      (write-byte #x53 out)  ;; 'S'
+      (write-byte #x4C out)  ;; 'L'
+      (write-u32-le 2 out)   ;; Version 2
+      (write-u32-le 0 out)   ;; Flags
+      (write-u32-le code-len out)
+      (write-u32-le symtab-offset out)
+      (write-u32-le symtab-count out)
+      (write-u32-le 0 out)   ;; Reserved
+      (write-u32-le 0 out)   ;; Reserved
+      ;; Write code section
+      (dolist (byte bytecode-list)
+        (write-byte byte out))
+      ;; Write symbol table
+      (when symbol-table
+        (dolist (entry symbol-table)
+          (let* ((name (symbol-name (car entry)))
+                 (offset (cdr entry))
+                 (name-bytes (map 'list #'char-code name))
+                 (name-len (length name-bytes)))
+            (write-u32-le name-len out)
+            (dolist (byte name-bytes)
+              (write-byte byte out))
+            (write-u64-le offset out)))))))
+
+(defun read-u32-le (stream)
+  "Read 32-bit unsigned integer in little-endian format from stream."
+  (let ((b0 (read-byte stream))
+        (b1 (read-byte stream))
+        (b2 (read-byte stream))
+        (b3 (read-byte stream)))
+    (logior b0 (ash b1 8) (ash b2 16) (ash b3 24))))
+
+(defun read-u64-le (stream)
+  "Read 64-bit unsigned integer in little-endian format from stream."
+  (let ((lo (read-u32-le stream))
+        (hi (read-u32-le stream)))
+    (logior lo (ash hi 32))))
+
+(defun read-fasl-v2 (fasl-path)
+  "Read enhanced FASL v2 and return (values bytecode-list symbol-table).
+   symbol-table is an alist of (name . offset) pairs."
+  (with-open-file (in fasl-path :direction :input
+                                :element-type '(unsigned-byte 8))
+    ;; Read and verify magic
+    (let ((magic (list (read-byte in) (read-byte in) (read-byte in) (read-byte in))))
+      (unless (equal magic '(#x48 #x46 #x53 #x4C))  ;; "HFSL"
+        (error "Invalid FASL magic")))
+    ;; Read header
+    (let* ((version (read-u32-le in))
+           (flags (read-u32-le in))
+           (code-len (read-u32-le in))
+           (symtab-offset (read-u32-le in))
+           (symtab-count (read-u32-le in))
+           (reserved1 (read-u32-le in))
+           (reserved2 (read-u32-le in)))
+      ;; Read code section
+      (let ((bytecode (loop repeat code-len collect (read-byte in))))
+        ;; Read symbol table
+        (if (zerop symtab-count)
+            (values bytecode nil)
+            (let ((symtab
+                   (loop repeat symtab-count
+                         collect
+                         (let* ((name-len (read-u32-le in))
+                                (name-bytes (loop repeat name-len collect (read-byte in)))
+                                (name-string (map 'string #'code-char name-bytes))
+                                (offset (read-u64-le in)))
+                           (cons (intern name-string :habu) offset)))))
+              (values bytecode symtab)))))))
+
+(defun compile-file-to-fasl (source-path fasl-path)
+  "Compile Lisp source file to FASL v2 with symbol table.
+   Usage: (compile-file-to-fasl \"util.lisp\" \"util.fasl\")"
+  (let* ((source (with-open-file (in source-path :direction :input)
+                   (let ((contents (make-string (file-length in))))
+                     (read-sequence contents in)
+                     contents)))
+         (forms (read-all source)))
+    (multiple-value-bind (bytecode symtab)
+        (nc-compile-program-with-symtab forms nil :optimize t)
+      (write-fasl-v2 bytecode symtab fasl-path)
+      (format t "Compiled ~A -> ~A (~A bytes, ~A symbols)~%"
+              source-path fasl-path (length bytecode) (if symtab (length symtab) 0))
+      fasl-path)))
+
+;;; Export FASL functions
+(export '(write-fasl-v2 read-fasl-v2 compile-file-to-fasl) :habu)
+
+;;; ============================================================
+;;; Part 8c: FASL Linker - Combine Multiple Compilation Units
+;;; ============================================================
+
+(defun link-fasls (fasl-paths output-path &key verbose)
+  "Link multiple FASL files into a single executable.
+   Usage: (link-fasls '(\"util.fasl\" \"main.fasl\") \"myprogram\")"
+  (let ((all-code nil)
+        (global-symtab nil)
+        (current-offset 0))
+    ;; Read all FASL files and build global symbol table
+    (dolist (fasl-path fasl-paths)
+      (multiple-value-bind (bytecode symtab)
+          (read-fasl-v2 fasl-path)
+        (when verbose
+          (format t "Read ~A: ~A bytes, ~A symbols~%"
+                  fasl-path (length bytecode) (if symtab (length symtab) 0)))
+        ;; Append code
+        (setf all-code (append all-code bytecode))
+        ;; Adjust symbol offsets and add to global table
+        (when symtab
+          (dolist (entry symtab)
+            (let* ((name (car entry))
+                   (offset (cdr entry))
+                   (adjusted-offset (+ current-offset offset)))
+              (push (cons name adjusted-offset) global-symtab))))
+        ;; Update offset for next FASL
+        (setf current-offset (+ current-offset (length bytecode)))))
+    ;; Reverse to maintain order
+    (setf global-symtab (reverse global-symtab))
+    (when verbose
+      (format t "Total code: ~A bytes~%" (length all-code))
+      (format t "Global symbols: ~A~%" (length global-symtab))
+      (when global-symtab
+        (format t "Symbol table:~%")
+        (dolist (entry global-symtab)
+          (format t "  ~A @ ~A~%" (car entry) (cdr entry)))))
+    ;; Collect external calls from bytecode
+    (let ((imports (nc-collect-imports all-code)))
+      (if (null imports)
+          ;; No imports - write simple Mach-O  
+          (progn
+            (when verbose
+              (format t "No imports - generating simple executable~%"))
+            (write-macho-executable output-path all-code))
+          ;; Has imports - use libSystem linker
+          (progn
+            (when verbose
+              (format t "Found imports: ~A~%" imports))
+            (write-macho-executable-with-imports-and-heap output-path all-code imports #x100000))))
+    (when verbose
+      (format t "Created: ~A~%" output-path))
+    output-path))
+
+;;; Export linker function
+(export 'link-fasls :habu)

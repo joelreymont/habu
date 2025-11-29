@@ -2615,3 +2615,65 @@ The collision occurs when total environment depth exceeds a threshold (~10 bindi
 - Must be something specific to concat's recursive structure or operations
 
 **Status**: Partial fix applied, root cause still under investigation
+
+---
+
+## Session Summary (November 29, 2025 - Separate Compilation Units)
+
+Designed and implementing FASL linker for separate compilation units.
+
+**Problem**: Currently must bundle all source files into one giant file for compilation.
+
+**Solution**: Enhanced FASL format with symbol tables + FASL linker
+
+### Enhanced FASL Format (v2)
+
+```
+Header (32 bytes):
+  Magic:         4 bytes "HFSL" 
+  Version:       4 bytes (2 for symbol table support)
+  Flags:         4 bytes  
+  Code-len:      4 bytes  
+  Symtab-offset: 4 bytes (offset to symbol table)
+  Symtab-count:  4 bytes (number of exported functions)
+  Reserved:      8 bytes
+
+Code Section:
+  N bytes of ARM64 machine code
+
+Symbol Table Section:
+  For each exported function:
+    name-len: 4 bytes
+    name:     name-len bytes
+    offset:   8 bytes (byte offset in code section)
+```
+
+### Workflow
+
+**Compilation**:
+```bash
+# Compile each module independently
+habu compile-file util.lisp    -> util.fasl
+habu compile-file helper.lisp  -> helper.fasl  
+habu compile-file main.lisp    -> main.fasl
+
+# Link all FASLs into executable
+habu link-fasls util.fasl helper.fasl main.fasl -o myprogram
+```
+
+**Linking Process**:
+1. Read all FASL files
+2. Extract code sections + symbol tables
+3. Concatenate code with adjusted offsets
+4. Build global symbol table
+5. Patch cross-module BL instructions
+6. Generate final Mach-O executable
+
+**Benefits**:
+- Modular compilation (compile only changed files)
+- No need to bundle sources into one file
+- Standard separate compilation like C/C++
+- Enables large projects with many modules
+
+**Status**: Design complete, implementation in progress
+
