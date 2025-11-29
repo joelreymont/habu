@@ -1769,9 +1769,18 @@
              env fenv)))
          ;; number-to-string - convert fixnum to string
          ;; Simplified implementation: handles 0-99999
+         ;; CRITICAL: Use gensyms for ALL variables to prevent shadowing in nested calls
          ((eq op 'number-to-string)
           (let ((n-var (gensym "N"))
-                (vec-var (gensym "VEC")))
+                (vec-var (gensym "VEC"))
+                (d1-var (gensym "D1"))
+                (d2-var (gensym "D2"))
+                (d3-var (gensym "D3"))
+                (d4-var (gensym "D4"))
+                (d5-var (gensym "D5"))
+                (rem-var (gensym "REM"))
+                (rem2-var (gensym "REM2"))
+                (rem3-var (gensym "REM3")))
             (nc-compile
              `(let ((,n-var ,(cadr expr)))
                 (if (= ,n-var 0)
@@ -1781,49 +1790,49 @@
                           (vector-set ,vec-var 0 (+ 48 ,n-var))
                           (make-string-from-vector ,vec-var))
                         (if (< ,n-var 100)
-                            (let* ((d1 (/ ,n-var 10))
-                                   (d2 (mod ,n-var 10))
+                            (let* ((,d1-var (/ ,n-var 10))
+                                   (,d2-var (mod ,n-var 10))
                                    (,vec-var (make-vector 2)))
-                              (vector-set ,vec-var 0 (+ 48 d1))
-                              (vector-set ,vec-var 1 (+ 48 d2))
+                              (vector-set ,vec-var 0 (+ 48 ,d1-var))
+                              (vector-set ,vec-var 1 (+ 48 ,d2-var))
                               (make-string-from-vector ,vec-var))
                             (if (< ,n-var 1000)
-                                (let* ((d1 (/ ,n-var 100))
-                                       (remainder (mod ,n-var 100))
-                                       (d2 (/ remainder 10))
-                                       (d3 (mod remainder 10))
+                                (let* ((,d1-var (/ ,n-var 100))
+                                       (,rem-var (mod ,n-var 100))
+                                       (,d2-var (/ ,rem-var 10))
+                                       (,d3-var (mod ,rem-var 10))
                                        (,vec-var (make-vector 3)))
-                                  (vector-set ,vec-var 0 (+ 48 d1))
-                                  (vector-set ,vec-var 1 (+ 48 d2))
-                                  (vector-set ,vec-var 2 (+ 48 d3))
+                                  (vector-set ,vec-var 0 (+ 48 ,d1-var))
+                                  (vector-set ,vec-var 1 (+ 48 ,d2-var))
+                                  (vector-set ,vec-var 2 (+ 48 ,d3-var))
                                   (make-string-from-vector ,vec-var))
                                 (if (< ,n-var 10000)
-                                    (let* ((d1 (/ ,n-var 1000))
-                                           (remainder (mod ,n-var 1000))
-                                           (d2 (/ remainder 100))
-                                           (remainder2 (mod remainder 100))
-                                           (d3 (/ remainder2 10))
-                                           (d4 (mod remainder2 10))
+                                    (let* ((,d1-var (/ ,n-var 1000))
+                                           (,rem-var (mod ,n-var 1000))
+                                           (,d2-var (/ ,rem-var 100))
+                                           (,rem2-var (mod ,rem-var 100))
+                                           (,d3-var (/ ,rem2-var 10))
+                                           (,d4-var (mod ,rem2-var 10))
                                            (,vec-var (make-vector 4)))
-                                      (vector-set ,vec-var 0 (+ 48 d1))
-                                      (vector-set ,vec-var 1 (+ 48 d2))
-                                      (vector-set ,vec-var 2 (+ 48 d3))
-                                      (vector-set ,vec-var 3 (+ 48 d4))
+                                      (vector-set ,vec-var 0 (+ 48 ,d1-var))
+                                      (vector-set ,vec-var 1 (+ 48 ,d2-var))
+                                      (vector-set ,vec-var 2 (+ 48 ,d3-var))
+                                      (vector-set ,vec-var 3 (+ 48 ,d4-var))
                                       (make-string-from-vector ,vec-var))
-                                    (let* ((d1 (/ ,n-var 10000))
-                                           (remainder (mod ,n-var 10000))
-                                           (d2 (/ remainder 1000))
-                                           (remainder2 (mod remainder 1000))
-                                           (d3 (/ remainder2 100))
-                                           (remainder3 (mod remainder2 100))
-                                           (d4 (/ remainder3 10))
-                                           (d5 (mod remainder3 10))
+                                    (let* ((,d1-var (/ ,n-var 10000))
+                                           (,rem-var (mod ,n-var 10000))
+                                           (,d2-var (/ ,rem-var 1000))
+                                           (,rem2-var (mod ,rem-var 1000))
+                                           (,d3-var (/ ,rem2-var 100))
+                                           (,rem3-var (mod ,rem2-var 100))
+                                           (,d4-var (/ ,rem3-var 10))
+                                           (,d5-var (mod ,rem3-var 10))
                                            (,vec-var (make-vector 5)))
-                                      (vector-set ,vec-var 0 (+ 48 d1))
-                                      (vector-set ,vec-var 1 (+ 48 d2))
-                                      (vector-set ,vec-var 2 (+ 48 d3))
-                                      (vector-set ,vec-var 3 (+ 48 d4))
-                                      (vector-set ,vec-var 4 (+ 48 d5))
+                                      (vector-set ,vec-var 0 (+ 48 ,d1-var))
+                                      (vector-set ,vec-var 1 (+ 48 ,d2-var))
+                                      (vector-set ,vec-var 2 (+ 48 ,d3-var))
+                                      (vector-set ,vec-var 3 (+ 48 ,d4-var))
+                                      (vector-set ,vec-var 4 (+ 48 ,d5-var))
                                       (make-string-from-vector ,vec-var))))))))
              env fenv)))
          ;; system - execute shell command
@@ -4056,6 +4065,8 @@
      ;; 4. Set up args and call (args 0-7 in registers, 8+ on stack)
      ;; Closure layout: car = fn-offset (tagged fixnum), cdr = env (cons or nil)
      ;; IMPORTANT: Stack must be 16-byte aligned per AAPCS64
+     ;; CRITICAL FIX: Lambdas have no prologue, so funcall-ir must set x20
+     ;; for the lambda's parameter stores to write to the lambda's own area
      (let* ((fn-ir (cadr ir))
             (args-ir (caddr ir))
             (num-args (length args-ir))
@@ -4064,12 +4075,18 @@
             (stack-space (if (> stack-bytes 0)    ; Round up to 16-byte alignment
                              (* (ceiling stack-bytes 16) 16)
                              0))
-            ;; Temp slots: 0=x24-save, 1=closure-addr, 2=code-addr, 3=env, 4..4+n-1=args
+            ;; Lambda parameter space (for lambda's param-stores to write to)
+            (param-bytes (* num-args 8))
+            (param-space (if (> param-bytes 0)
+                             (* (ceiling param-bytes 16) 16)
+                             16))  ; Minimum 16 bytes even for 0 params
+            ;; Temp slots: 0=x24-save, 1=x20-save, 2=closure-addr, 3=code-addr, 4=env, 5..5+n-1=args
             (x24-slot (nc-temp-slot td))
-            (closure-slot (nc-temp-slot (+ td 1)))
-            (code-slot (nc-temp-slot (+ td 2)))
-            (env-slot (nc-temp-slot (+ td 3)))
-            (arg-base (+ td 4))
+            (x20-slot (nc-temp-slot (+ td 1)))
+            (closure-slot (nc-temp-slot (+ td 2)))
+            (code-slot (nc-temp-slot (+ td 3)))
+            (env-slot (nc-temp-slot (+ td 4)))
+            (arg-base (+ td 5))
             (nested-td (+ arg-base num-args))
             ;; Evaluate function
             (fn-code (nc-codegen fn-ir rtaddrs fnoffs nested-td)))
@@ -4081,68 +4098,79 @@
                              (st (nc-str-offset 0 31 (nc-temp-slot (+ arg-base idx)))))
                         (gen-args (cdr airs) (+ idx 1)
                                   (nc-append-all (list acc rs ac st))))))
-                (load-reg-args (idx acc)
+                (load-reg-args (idx total-offset acc)
                   ;; Load args 0-7 into registers x0-x7
-                  ;; After alloc-stack, sp moved down by stack-space, so adjust offset
+                  ;; After alloc-stack + param-frame, sp moved down by total-offset, so adjust
                   (if (>= idx (min num-args 8))
                       acc
-                      (let* ((adjusted-off (+ (nc-temp-slot (+ arg-base idx)) stack-space))
+                      (let* ((adjusted-off (+ (nc-temp-slot (+ arg-base idx)) total-offset))
                              (ld (nc-ldr-offset idx 31 adjusted-off)))
-                        (load-reg-args (+ idx 1) (append acc ld)))))
-                (store-stack-args (idx acc)
+                        (load-reg-args (+ idx 1) total-offset (append acc ld)))))
+                (store-stack-args (idx total-offset acc)
                   ;; Store args 8+ to stack: arg i goes to [sp + (i-8)*8]
-                  ;; After alloc-stack, sp moved down by stack-space, so adjust offset
+                  ;; After alloc-stack + param-frame, sp moved down by total-offset, so adjust
                   (if (>= idx num-args)
                       acc
-                      (let* ((adjusted-off (+ (nc-temp-slot (+ arg-base idx)) stack-space))
+                      (let* ((adjusted-off (+ (nc-temp-slot (+ arg-base idx)) total-offset))
                              (ld (nc-ldr-offset 0 31 adjusted-off))
                              (stack-off (* (- idx 8) 8))
                              (st (nc-str-offset 0 31 stack-off)))
-                        (store-stack-args (+ idx 1) (nc-append-all (list acc ld st)))))))
-         (nc-append-all
-          (list
-           ;; Save x24
-           (nc-str-offset 24 31 x24-slot)
-           ;; Evaluate closure into x0
-           fn-code
-           ;; Clear closure tag (5) to get heap address: x9 = x0 & ~0xF
-           (nc-movz 11 #xF)                     ; x11 = 0xF
-           (nc-bic-reg 9 0 11)                  ; x9 = x0 & ~0xF
-           ;; Load car = fn-offset (tagged): x10 = [x9+0]
-           (nc-ldr-offset 10 9 0)
-           ;; Untag fn-offset: x10 = x10 >> 4
-           (nc-lsr-imm 10 10 4)
-           ;; Compute code address: x10 = x26 + x10 (code_base + offset)
-           (nc-add-reg 10 26 10)
-           (nc-str-offset 10 31 code-slot)      ; save code address
-           ;; Load cdr = env: x11 = [x9+8]
-           (nc-ldr-offset 11 9 8)
-           (nc-str-offset 11 31 env-slot)       ; save env
-           ;; Restore x24 for arg evaluation
-           (nc-ldr-offset 24 31 x24-slot)
-           ;; Evaluate args
-           (gen-args args-ir 0 nil)
-           ;; Allocate stack space for args 8+ (if any)
-           (if (> stack-args 0)
-               (nc-sub-imm 31 31 stack-space)
-               nil)
-           ;; Store args 8+ to stack
-           (store-stack-args 8 nil)
-           ;; Load args 0-7 into registers
-           (load-reg-args 0 nil)
-           ;; Set x24 to callee's env (adjust for stack-space if allocated)
-           (nc-ldr-offset 24 31 (+ env-slot stack-space))
-           ;; Set argc
-           (nc-movz 23 num-args)
-           ;; Load code address and call (adjust for stack-space if allocated)
-           (nc-ldr-offset 9 31 (+ code-slot stack-space))
-           (nc-blr 9)
-           ;; Deallocate stack space after call
-           (if (> stack-args 0)
-               (nc-add-imm 31 31 stack-space)
-               nil)
-           ;; Restore x24
-           (nc-ldr-offset 24 31 x24-slot))))))
+                        (store-stack-args (+ idx 1) total-offset (nc-append-all (list acc ld st)))))))
+         (let ((total-offset (+ stack-space param-space)))
+           (nc-append-all
+            (list
+             ;; Save x24 and x20
+             (nc-str-offset 24 31 x24-slot)
+             (nc-str-offset 20 31 x20-slot)
+             ;; Evaluate closure into x0
+             fn-code
+             ;; Clear closure tag (5) to get heap address: x9 = x0 & ~0xF
+             (nc-movz 11 #xF)                     ; x11 = 0xF
+             (nc-bic-reg 9 0 11)                  ; x9 = x0 & ~0xF
+             ;; Load car = fn-offset (tagged): x10 = [x9+0]
+             (nc-ldr-offset 10 9 0)
+             ;; Untag fn-offset: x10 = x10 >> 4
+             (nc-lsr-imm 10 10 4)
+             ;; Compute code address: x10 = x26 + x10 (code_base + offset)
+             (nc-add-reg 10 26 10)
+             (nc-str-offset 10 31 code-slot)      ; save code address
+             ;; Load cdr = env: x11 = [x9+8]
+             (nc-ldr-offset 11 9 8)
+             (nc-str-offset 11 31 env-slot)       ; save env
+             ;; Restore x24 for arg evaluation
+             (nc-ldr-offset 24 31 x24-slot)
+             ;; Evaluate args
+             (gen-args args-ir 0 nil)
+             ;; Allocate stack space for args 8+ (if any)
+             (if (> stack-args 0)
+                 (nc-sub-imm 31 31 stack-space)
+                 nil)
+             ;; Allocate parameter frame for lambda
+             (nc-sub-imm 31 31 param-space)
+             ;; Set x20 for lambda's param-stores: x20 = sp + param-space - 8
+             (if (> param-space 8)
+                 (nc-add-imm 20 31 (- param-space 8))
+                 (nc-mov-reg 20 31))  ; If param-space <= 8, set x20 = sp
+             ;; Store args 8+ to stack (they're above the param frame)
+             (store-stack-args 8 total-offset nil)
+             ;; Load args 0-7 into registers
+             (load-reg-args 0 total-offset nil)
+             ;; Set x24 to callee's env
+             (nc-ldr-offset 24 31 (+ env-slot total-offset))
+             ;; Set argc
+             (nc-movz 23 num-args)
+             ;; Load code address and call
+             (nc-ldr-offset 9 31 (+ code-slot total-offset))
+             (nc-blr 9)
+             ;; Deallocate parameter frame
+             (nc-add-imm 31 31 param-space)
+             ;; Deallocate stack space for args 8+ (if any)
+             (if (> stack-args 0)
+                 (nc-add-imm 31 31 stack-space)
+                 nil)
+             ;; Restore x24 and x20
+             (nc-ldr-offset 24 31 x24-slot)
+             (nc-ldr-offset 20 31 x20-slot)))))))
     ((nc-has-tag ir 'dotimes-ir)
      ;; dotimes-ir = (dotimes-ir var count-ir body result-form compile-env)
      ;; Generate counted loop:
