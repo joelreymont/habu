@@ -2579,3 +2579,22 @@ The collision occurs when total environment depth exceeds a threshold (~10 bindi
 **Impact**: Critical - blocks native-read-file-large and full self-hosting
 
 **Commits**: 3d46d3d - Bug #20 investigation with env-size check added
+
+**Session Update (November 29, 2025 - Continued Investigation)**:
+
+**X20-offset fix applied** (commit e87f4bd):
+- Corrected frame layout: `x20-offset = saved-regs + temp-area + (max-env-size * 8)`
+- Prevents collision between temp slots (sp+64+) and high-offset variables ([x20 - offset*8])  - Verified working: 10-variable test (exit 38 = 550 mod 256 ✓)
+- Verified working: labels + 2 bindings + concat (exit 42 ✓)
+- **Still crashes**: labels + 3 bindings + concat (exit 139)
+
+**Additional tests to isolate root cause**:
+- labels + 3 let* + simple inner labels accessing outer vars → WORKS (exit 72 ✓)
+- labels + 3 let* + 3 let* + inner labels accessing all vars → WORKS (exit 153 ✓)
+- Conclusion: Nesting and variable access patterns are NOT the issue
+
+**Remaining mystery**: Why does concat-string-list specifically crash with 3+ outer bindings?
+- Not x20-offset (fixed)- Not nesting depth (tested, works)- Not variable capture (tested, works)
+- Must be something specific to concat's recursive structure or operations
+
+**Status**: Partial fix applied, root cause still under investigation
