@@ -2079,40 +2079,41 @@
          ;;                                    (copy-chunk next-chunks next-offset)))))))
          ;;                 (make-string-from-vector (copy-chunk (reverse chunks) 0))))
          ((eq op 'concat-string-list)
+          ;; BUG #20 FIX: Use single-level labels instead of nested labels
+          ;; to avoid environment offset issues when outer labels is in scope
           (let ((chunks-var (gensym "CHUNKS"))
                 (total-var (gensym "TOTAL"))
                 (vec-var (gensym "VEC"))
-                (offset-var (gensym "OFFSET"))
+                (concat-fn (gensym "CONCAT-LOOP"))
+                (chunks-param (gensym "CHUNKS"))
+                (offset-param (gensym "OFFSET"))
+                (idx-param (gensym "IDX"))
                 (chunk-var (gensym "CHUNK"))
-                (len-var (gensym "LEN"))
-                (i-var (gensym "I"))
-                (next-i-var (gensym "NEXT-I"))
-                (next-chunks-var (gensym "NEXT-CHUNKS"))
-                (next-offset-var (gensym "NEXT-OFFSET"))
-                (copy-chunk-fn (gensym "COPY-CHUNK"))
-                (copy-chars-fn (gensym "COPY-CHARS")))
+                (len-var (gensym "LEN")))
             (nc-compile
              (list 'let* (list (list chunks-var (cadr expr))
                                (list total-var (caddr expr))
                                (list vec-var (list 'make-vector total-var)))
-                   (list 'labels (list (list copy-chunk-fn (list chunks-var offset-var)
-                                             (list 'if (list 'null chunks-var)
+                   (list 'labels (list (list concat-fn
+                                             (list chunks-param offset-param idx-param)
+                                             (list 'if (list 'null chunks-param)
                                                    vec-var
-                                                   (list 'let* (list (list chunk-var (list 'car chunks-var))
+                                                   (list 'let* (list (list chunk-var (list 'car chunks-param))
                                                                      (list len-var (list 'string-length chunk-var)))
-                                                         (list 'labels (list (list copy-chars-fn (list i-var)
-                                                                                   (list 'if (list '< i-var len-var)
-                                                                                         (list 'progn
-                                                                                               (list 'vector-set vec-var (list '+ offset-var i-var) (list 'string-ref chunk-var i-var))
-                                                                                               ;; BUG #20 WORKAROUND: Evaluate + before recursive call
-                                                                                               (list 'let (list (list next-i-var (list '+ i-var 1)))
-                                                                                                     (list copy-chars-fn next-i-var))))))
-                                                               (list copy-chars-fn 0)
-                                                               ;; BUG #20 WORKAROUND: Evaluate in let before recursive call
-                                                               (list 'let (list (list next-chunks-var (list 'cdr chunks-var))
-                                                                                (list next-offset-var (list '+ offset-var len-var)))
-                                                                     (list copy-chunk-fn next-chunks-var next-offset-var)))))))
-                         (list 'make-string-from-vector (list copy-chunk-fn (list 'reverse chunks-var) 0))))
+                                                         (list 'if (list '< idx-param len-var)
+                                                               ;; Copy current character and recur with idx+1
+                                                               (list 'progn
+                                                                     (list 'vector-set vec-var
+                                                                           (list '+ offset-param idx-param)
+                                                                           (list 'string-ref chunk-var idx-param))
+                                                                     (list concat-fn chunks-param offset-param (list '+ idx-param 1)))
+                                                               ;; Move to next chunk
+                                                               (list concat-fn
+                                                                     (list 'cdr chunks-param)
+                                                                     (list '+ offset-param len-var)
+                                                                     0))))))
+                         (list 'make-string-from-vector
+                               (list concat-fn (list 'reverse chunks-var) 0 0))))
              env fenv)))
          ;; char-upcase - convert lowercase char code to uppercase
          ;; Transform to: (if (and (>= ch #x61) (<= ch #x7A)) (- ch #x20) ch)

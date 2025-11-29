@@ -65,31 +65,35 @@
   - Both fail due to labels + heap allocation issue
 - **File I/O status**: Basic operations work, large files blocked
 
-**Bug #20: Variable Shadowing in Macro Transformations** (INVESTIGATION ONGOING - Nov 29, 2025)
-- **Symptom**: SIGBUS/SIGSEGV (exit 139) with recursive labels + concat-string-list macro
+**Bug #20: Nested Labels + Environment Offset Calculation** (ROOT CAUSE IDENTIFIED - Nov 29, 2025)
+- **Symptom**: SIGBUS/SIGSEGV (exit 139) with labels + concat-string-list macro
 - **Initial fixes applied** (commit 50505c8):
   - Fixed x30 (LR) save/restore offset in funcall-ir (was using wrong offset after sp modification)
   - Fixed ALL hardcoded variable names in 8 transformation macros:
     - length, reverse, append, mapcar, member, assoc, nth, count
   - All transformations now use gensyms to prevent shadowing
-- **Current Status**: CRASH STILL OCCURS
-  - Pattern: `outer-rec` (recursive labels) + `concat-string-list` macro → SIGSEGV
-  - Isolated: Manual concat structure WORKS, but macro version CRASHES
-  - 19 test files created to isolate pattern
-- **Working cases** (all pass):
-  - concat-string-list alone
-  - outer-rec + simple lambda
-  - outer-rec + manual concat structure (EXACT same structure as macro!)
-  - Two sequential labels, nested labels, labels with capture/mutation
-  - sys-read in labels (after x30 fix)
+- **ROOT CAUSE IDENTIFIED** (Nov 29, 2025):
+  - Pattern: **labels in scope** + **3+ let* bindings** + **concat-string-list** → CRASH
+  - With 2 bindings: WORKS
+  - With 3+ bindings: CRASHES
+  - 25+ test files created to isolate exact pattern
+- **Crash trigger** (all must be present):
+  1. Any labels function in scope (adds implicit FNTAB parameter to all functions)
+  2. 3 or more let* bindings in the outer context
+  3. concat-string-list macro expansion (creates nested labels: copy-chunk, copy-chars)
+- **Working cases**:
+  - concat-string-list alone ✓
+  - labels + 2 bindings + concat ✓
+  - No labels + 3+ bindings + concat ✓
+  - Manual concat structure (not macro) + labels + 3+ bindings ✓
 - **Failing case**:
-  - outer-rec + concat-string-list MACRO → SIGSEGV (exit 139)
-- **Critical finding**: Manual code WORKS but macro expansion CRASHES
-  - Suggests issue is NOT variable shadowing (all use gensyms)
-  - Suggests issue is in macro expansion/compilation pipeline
-- **Next investigation**: Compare compiled output of manual vs macro versions
+  - labels + 3+ bindings + concat-string-list MACRO → SIGSEGV (exit 139)
+- **Root cause hypothesis**:
+  - concat-string-list's nested labels (copy-chunk/copy-chars) get compiled with wrong environment offsets
+  - When outer context has labels function (FNTAB param) + 3+ variables, offset calculation breaks
+  - Issue is in how nested labels transformation interacts with existing FNTAB-augmented environment
 - **Priority**: HIGH - blocks native file I/O and full self-hosting
-- **Status**: Under investigation - root cause not yet identified
+- **Status**: Root cause identified, fix in progress
 
 ## Previous Plan: Self-Hosting - Eliminating SBCL
 
