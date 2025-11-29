@@ -190,12 +190,19 @@
                 (body-ir (pure-compile-expr body new-env)))
             (list 'let-ir val-irs body-ir)))))))
 
+(defun pure-quote-ir (obj)
+  "Build IR for quoted value - recursively builds cons-ir for lists"
+  (cond
+    ((numberp obj) (list 'lit obj))
+    ((null obj) (list 'lit 0))  ; nil = 0
+    ((symbolp obj) (list 'symbol-lit (symbol-name obj)))
+    ((consp obj) (list 'cons-ir (pure-quote-ir (car obj)) (pure-quote-ir (cdr obj))))
+    ((stringp obj) (list 'str-lit obj))
+    (t (list 'lit 0))))
+
 (defun pure-compile-quote (expr)
   "Compile (quote x) to IR"
-  (let ((val (nth 1 expr)))
-    (if (symbolp val)
-        (list 'symbol-lit (symbol-name val))
-        (list 'lit val))))
+  (pure-quote-ir (nth 1 expr)))
 
 (defun pure-compile-cons (expr env)
   "Compile (cons a b) to IR"
