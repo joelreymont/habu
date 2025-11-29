@@ -1,0 +1,17 @@
+;;; Test concat-string-list on chunks returned from labels
+
+(labels ((collect (n acc total)
+           (if (= n 0)
+               (list acc total)
+               (let* ((chunk "X")
+                      (next-acc (cons chunk acc))
+                      (next-total (+ total 1)))
+                 (collect (- n 1) next-acc next-total)))))
+  (let* ((result-list (collect 5 nil 0))
+         (chunks (car result-list))
+         (total (car (cdr result-list))))
+    (let ((result (concat-string-list chunks total)))
+      (sys-write 1 "Result: " 8)
+      (sys-write 1 result (string-length result))
+      (sys-write 1 "\n" 1)
+      (sys-exit (if (= (string-length result) 5) 42 1)))))
