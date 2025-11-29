@@ -155,31 +155,23 @@
     ((symbolp expr) (pure-compile-var expr env))
     ;; Not a list - treat as lit 0
     ((not (consp expr)) (pure-compile-lit 0))
-    ;; Lists: check operator
-    (t
-     (let ((op (car expr)))
-       (cond
-         ;; (if test then else)
-         ((eq op 'if)
-          (pure-compile-if expr env))
-         ;; (+ a b)
-         ((eq op '+)
-          (list 'add (pure-compile-expr (nth 1 expr) env)
-                     (pure-compile-expr (nth 2 expr) env)))
-         ;; (* a b)
-         ((eq op '*)
-          (list 'mul (pure-compile-expr (nth 1 expr) env)
-                     (pure-compile-expr (nth 2 expr) env)))
-         ;; (- a b)
-         ((eq op '-)
-          (list 'sub (pure-compile-expr (nth 1 expr) env)
-                     (pure-compile-expr (nth 2 expr) env)))
-         ;; (= a b)
-         ((eq op '=)
-          (list 'cmp-eq (pure-compile-expr (nth 1 expr) env)
-                        (pure-compile-expr (nth 2 expr) env)))
-         ;; Default: unknown, compile to lit 0
-         (t (pure-compile-lit 0)))))))
+    ;; Lists: check operator (avoid let inside cond - causes crash)
+    ((eq (car expr) 'if)
+     (pure-compile-if expr env))
+    ((eq (car expr) '+)
+     (list 'add-ir (pure-compile-expr (nth 1 expr) env)
+                   (pure-compile-expr (nth 2 expr) env)))
+    ((eq (car expr) '*)
+     (list 'mul-ir (pure-compile-expr (nth 1 expr) env)
+                   (pure-compile-expr (nth 2 expr) env)))
+    ((eq (car expr) '-)
+     (list 'sub-ir (pure-compile-expr (nth 1 expr) env)
+                   (pure-compile-expr (nth 2 expr) env)))
+    ((eq (car expr) '=)
+     (list 'cmp-eq (pure-compile-expr (nth 1 expr) env)
+                   (pure-compile-expr (nth 2 expr) env)))
+    ;; Default: unknown, compile to lit 0
+    (t (pure-compile-lit 0))))
 
 ;;; Export pure compiler
 #+sbcl (export '(pure-compile-expr pure-append pure-reverse pure-length) :habu)
@@ -266,30 +258,28 @@
     ((numberp expr) (pure-compile-lit expr))
     ((symbolp expr) (pure-compile-var expr env))
     ((not (consp expr)) (pure-compile-lit 0))
-    (t
-     (let ((op (car expr)))
-       (cond
-         ((eq op 'if) (pure-compile-if expr env))
-         ((eq op 'quote) (pure-compile-quote expr))
-         ((eq op 'let) (pure-compile-let expr env))
-         ((eq op 'progn) (pure-compile-progn expr env))
-         ((eq op '+) (list 'add (pure-compile-expr (nth 1 expr) env)
-                                (pure-compile-expr (nth 2 expr) env)))
-         ((eq op '-) (list 'sub (pure-compile-expr (nth 1 expr) env)
-                                (pure-compile-expr (nth 2 expr) env)))
-         ((eq op '*) (list 'mul (pure-compile-expr (nth 1 expr) env)
-                                (pure-compile-expr (nth 2 expr) env)))
-         ((eq op '/) (list 'div (pure-compile-expr (nth 1 expr) env)
-                                (pure-compile-expr (nth 2 expr) env)))
-         ((eq op '=) (list 'cmp-eq (pure-compile-expr (nth 1 expr) env)
-                                   (pure-compile-expr (nth 2 expr) env)))
-         ((eq op '<) (list 'cmp-lt (pure-compile-expr (nth 1 expr) env)
-                                   (pure-compile-expr (nth 2 expr) env)))
-         ((eq op 'cons) (pure-compile-cons expr env))
-         ((eq op 'car) (pure-compile-car expr env))
-         ((eq op 'cdr) (pure-compile-cdr expr env))
-         ((eq op 'list) (pure-compile-list expr env))
-         (t (pure-compile-lit 0)))))))
+    ;; Lists: check operator (avoid let inside cond - causes crash)
+    ((eq (car expr) 'if) (pure-compile-if expr env))
+    ((eq (car expr) 'quote) (pure-compile-quote expr))
+    ((eq (car expr) 'let) (pure-compile-let expr env))
+    ((eq (car expr) 'progn) (pure-compile-progn expr env))
+    ((eq (car expr) '+) (list 'add-ir (pure-compile-expr (nth 1 expr) env)
+                                      (pure-compile-expr (nth 2 expr) env)))
+    ((eq (car expr) '-) (list 'sub-ir (pure-compile-expr (nth 1 expr) env)
+                                      (pure-compile-expr (nth 2 expr) env)))
+    ((eq (car expr) '*) (list 'mul-ir (pure-compile-expr (nth 1 expr) env)
+                                      (pure-compile-expr (nth 2 expr) env)))
+    ((eq (car expr) '/) (list 'div-ir (pure-compile-expr (nth 1 expr) env)
+                                      (pure-compile-expr (nth 2 expr) env)))
+    ((eq (car expr) '=) (list 'cmp-eq (pure-compile-expr (nth 1 expr) env)
+                                      (pure-compile-expr (nth 2 expr) env)))
+    ((eq (car expr) '<) (list 'cmp-lt (pure-compile-expr (nth 1 expr) env)
+                                      (pure-compile-expr (nth 2 expr) env)))
+    ((eq (car expr) 'cons) (pure-compile-cons expr env))
+    ((eq (car expr) 'car) (pure-compile-car expr env))
+    ((eq (car expr) 'cdr) (pure-compile-cdr expr env))
+    ((eq (car expr) 'list) (pure-compile-list expr env))
+    (t (pure-compile-lit 0))))
 
 ;;; Export enhanced compiler
 #+sbcl (export 'pure-compile-expr-v2 :habu)
@@ -623,30 +613,27 @@
     ((numberp expr) expr)
     ((symbolp expr) expr)
     ((not (consp expr)) expr)
-    (t
-     (let ((op (car expr)))
-       (cond
-         ;; If calling a labels function, rewrite to (funcall fn FNTAB args...)
-         ((and (symbolp op) (pure-member op fn-names))
-          (cons 'funcall
-                (cons op
-                      (cons fntab-var
-                            (pure-rewrite-args (cdr expr) fn-names fntab-var)))))
-         ;; Quote - don't descend
-         ((eq op 'quote) expr)
-         ;; lambda - only rewrite body, not params
-         ((eq op 'lambda)
-          (list 'lambda (cadr expr)
-                (pure-rewrite-labels-body (caddr expr) fn-names fntab-var)))
-         ;; let/let* - rewrite values and body
-         ((or (eq op 'let) (eq op 'LET) (eq op 'let*) (eq op 'LET*))
-          (let* ((bindings (cadr expr))
-                 (body-forms (cddr expr))
-                 (new-bindings (pure-rewrite-let-bindings bindings fn-names fntab-var)))
-            (cons op (cons new-bindings
-                           (pure-rewrite-args body-forms fn-names fntab-var)))))
-         ;; Default: recursively rewrite all parts
-         (t (pure-rewrite-args expr fn-names fntab-var)))))))
+    ;; If calling a labels function, rewrite to (funcall fn FNTAB args...)
+    ((and (symbolp (car expr)) (pure-member (car expr) fn-names))
+     (cons 'funcall
+           (cons (car expr)
+                 (cons fntab-var
+                       (pure-rewrite-args (cdr expr) fn-names fntab-var)))))
+    ;; Quote - don't descend
+    ((eq (car expr) 'quote) expr)
+    ;; lambda - only rewrite body, not params
+    ((eq (car expr) 'lambda)
+     (list 'lambda (cadr expr)
+           (pure-rewrite-labels-body (caddr expr) fn-names fntab-var)))
+    ;; let/let* - rewrite values and body
+    ((or (eq (car expr) 'let) (eq (car expr) 'LET) (eq (car expr) 'let*) (eq (car expr) 'LET*))
+     (let* ((bindings (cadr expr))
+            (body-forms (cddr expr))
+            (new-bindings (pure-rewrite-let-bindings bindings fn-names fntab-var)))
+       (cons (car expr) (cons new-bindings
+                              (pure-rewrite-args body-forms fn-names fntab-var)))))
+    ;; Default: recursively rewrite all parts
+    (t (pure-rewrite-args expr fn-names fntab-var))))
 
 (defun pure-rewrite-args (args fn-names fntab-var)
   "Rewrite list of arguments"
@@ -696,112 +683,111 @@
              (pure-compile-var expr env))))
     ((not (consp expr)) (pure-compile-lit 0))
     (t
-     (let ((op (car expr)))
-       (cond
-         ;; Control flow
-         ((eq op 'if) (pure-compile-if-full expr env fenv))
-         ((eq op 'cond) (pure-compile-cond expr env fenv))
-         ((eq op 'when) (pure-compile-when expr env fenv))
-         ((eq op 'unless) (pure-compile-unless expr env fenv))
+     (cond
+       ;; Control flow
+         ((eq (car expr) 'if) (pure-compile-if-full expr env fenv))
+         ((eq (car expr) 'cond) (pure-compile-cond expr env fenv))
+         ((eq (car expr) 'when) (pure-compile-when expr env fenv))
+         ((eq (car expr) 'unless) (pure-compile-unless expr env fenv))
          ;; Boolean operators - transform to if forms
-         ((eq op 'and) (pure-compile-and expr env fenv))
-         ((eq op 'or) (pure-compile-or expr env fenv))
-         ((eq op 'not) (list 'cmp-eq (pure-compile-expr-full (cadr expr) env fenv) (list 'lit 0)))
+         ((eq (car expr) 'and) (pure-compile-and expr env fenv))
+         ((eq (car expr) 'or) (pure-compile-or expr env fenv))
+         ((eq (car expr) 'not) (list 'cmp-eq (pure-compile-expr-full (cadr expr) env fenv) (list 'lit 0)))
 
          ;; Binding forms
-         ((eq op 'let) (pure-compile-let-full expr env fenv))
-         ((eq op 'let*) (pure-compile-let*-full expr env fenv))
-         ((eq op 'progn) (pure-compile-progn-full expr env fenv))
-         ((eq op 'quote) (pure-compile-quote expr))
+         ((eq (car expr) 'let) (pure-compile-let-full expr env fenv))
+         ((eq (car expr) 'let*) (pure-compile-let*-full expr env fenv))
+         ((eq (car expr) 'progn) (pure-compile-progn-full expr env fenv))
+         ((eq (car expr) 'quote) (pure-compile-quote expr))
 
          ;; Functions
-         ((eq op 'lambda) (pure-compile-lambda expr env fenv))
-         ((eq op 'funcall) (pure-compile-funcall expr env fenv))
-         ((eq op 'labels) (pure-compile-labels expr env fenv))
+         ((eq (car expr) 'lambda) (pure-compile-lambda expr env fenv))
+         ((eq (car expr) 'funcall) (pure-compile-funcall expr env fenv))
+         ((eq (car expr) 'labels) (pure-compile-labels expr env fenv))
 
-         ;; Arithmetic (variadic support)
-         ((eq op '+) (pure-fold-binop 'add (cdr expr) env fenv))
-         ((eq op '-) (pure-fold-binop 'sub (cdr expr) env fenv))
-         ((eq op '*) (pure-fold-binop 'mul (cdr expr) env fenv))
-         ((eq op '/) (pure-fold-binop 'div (cdr expr) env fenv))
-         ((eq op 'mod) (list 'mod-ir (pure-compile-expr-full (nth 1 expr) env fenv)
+         ;; Arithmetic (variadic support) - use -ir suffix to match codegen
+         ((eq (car expr) '+) (pure-fold-binop 'add-ir (cdr expr) env fenv))
+         ((eq (car expr) '-) (pure-fold-binop 'sub-ir (cdr expr) env fenv))
+         ((eq (car expr) '*) (pure-fold-binop 'mul-ir (cdr expr) env fenv))
+         ((eq (car expr) '/) (pure-fold-binop 'div-ir (cdr expr) env fenv))
+         ((eq (car expr) 'mod) (list 'mod-ir (pure-compile-expr-full (nth 1 expr) env fenv)
                                      (pure-compile-expr-full (nth 2 expr) env fenv)))
 
          ;; Comparisons
-         ((eq op '=) (list 'cmp-eq (pure-compile-expr-full (nth 1 expr) env fenv)
+         ((eq (car expr) '=) (list 'cmp-eq (pure-compile-expr-full (nth 1 expr) env fenv)
                                    (pure-compile-expr-full (nth 2 expr) env fenv)))
-         ((eq op '<) (list 'cmp-lt (pure-compile-expr-full (nth 1 expr) env fenv)
+         ((eq (car expr) '<) (list 'cmp-lt (pure-compile-expr-full (nth 1 expr) env fenv)
                                    (pure-compile-expr-full (nth 2 expr) env fenv)))
-         ((eq op '>) (list 'cmp-gt (pure-compile-expr-full (nth 1 expr) env fenv)
+         ((eq (car expr) '>) (list 'cmp-gt (pure-compile-expr-full (nth 1 expr) env fenv)
                                    (pure-compile-expr-full (nth 2 expr) env fenv)))
-         ((eq op '<=) (list 'cmp-le (pure-compile-expr-full (nth 1 expr) env fenv)
+         ((eq (car expr) '<=) (list 'cmp-le (pure-compile-expr-full (nth 1 expr) env fenv)
                                     (pure-compile-expr-full (nth 2 expr) env fenv)))
-         ((eq op '>=) (list 'cmp-ge (pure-compile-expr-full (nth 1 expr) env fenv)
+         ((eq (car expr) '>=) (list 'cmp-ge (pure-compile-expr-full (nth 1 expr) env fenv)
                                     (pure-compile-expr-full (nth 2 expr) env fenv)))
 
          ;; List operations - use -ir suffix to match codegen
-         ((eq op 'cons) (list 'cons-ir
+         ((eq (car expr) 'cons) (list 'cons-ir
                               (pure-compile-expr-full (nth 1 expr) env fenv)
                               (pure-compile-expr-full (nth 2 expr) env fenv)))
-         ((eq op 'car) (list 'car-ir (pure-compile-expr-full (nth 1 expr) env fenv)))
-         ((eq op 'cdr) (list 'cdr-ir (pure-compile-expr-full (nth 1 expr) env fenv)))
-         ((eq op 'cadr) (list 'car-ir (list 'cdr-ir (pure-compile-expr-full (nth 1 expr) env fenv))))
-         ((eq op 'caddr) (list 'car-ir (list 'cdr-ir (list 'cdr-ir (pure-compile-expr-full (nth 1 expr) env fenv)))))
-         ((eq op 'list) (pure-compile-list-full expr env fenv))
+         ((eq (car expr) 'car) (list 'car-ir (pure-compile-expr-full (nth 1 expr) env fenv)))
+         ((eq (car expr) 'cdr) (list 'cdr-ir (pure-compile-expr-full (nth 1 expr) env fenv)))
+         ((eq (car expr) 'cadr) (list 'car-ir (list 'cdr-ir (pure-compile-expr-full (nth 1 expr) env fenv))))
+         ((eq (car expr) 'caddr) (list 'car-ir (list 'cdr-ir (list 'cdr-ir (pure-compile-expr-full (nth 1 expr) env fenv)))))
+         ((eq (car expr) 'list) (pure-compile-list-full expr env fenv))
 
          ;; Predicates - use cmp-eq/get-tag to match main compiler codegen
          ;; null: compare value to nil (0)
-         ((eq op 'null) (list 'cmp-eq (pure-compile-expr-full (nth 1 expr) env fenv) (list 'lit 0)))
+         ((eq (car expr) 'null) (list 'cmp-eq (pure-compile-expr-full (nth 1 expr) env fenv) (list 'lit 0)))
          ;; consp: compare tag to 1 (cons tag)
-         ((eq op 'consp) (list 'cmp-eq (list 'get-tag (pure-compile-expr-full (nth 1 expr) env fenv)) (list 'lit 1)))
+         ((eq (car expr) 'consp) (list 'cmp-eq (list 'get-tag (pure-compile-expr-full (nth 1 expr) env fenv)) (list 'lit 1)))
          ;; numberp: compare tag to 0 (fixnum tag)
-         ((eq op 'numberp) (list 'cmp-eq (list 'get-tag (pure-compile-expr-full (nth 1 expr) env fenv)) (list 'lit 0)))
+         ((eq (car expr) 'numberp) (list 'cmp-eq (list 'get-tag (pure-compile-expr-full (nth 1 expr) env fenv)) (list 'lit 0)))
          ;; symbolp: compare tag to 2 (symbol tag)
-         ((eq op 'symbolp) (list 'cmp-eq (list 'get-tag (pure-compile-expr-full (nth 1 expr) env fenv)) (list 'lit 2)))
+         ((eq (car expr) 'symbolp) (list 'cmp-eq (list 'get-tag (pure-compile-expr-full (nth 1 expr) env fenv)) (list 'lit 2)))
          ;; stringp: compare tag to 4 (string tag)
-         ((eq op 'stringp) (list 'cmp-eq (list 'get-tag (pure-compile-expr-full (nth 1 expr) env fenv)) (list 'lit 4)))
+         ((eq (car expr) 'stringp) (list 'cmp-eq (list 'get-tag (pure-compile-expr-full (nth 1 expr) env fenv)) (list 'lit 4)))
          ;; vectorp: compare tag to 3 (vector tag)
-         ((eq op 'vectorp) (list 'cmp-eq (list 'get-tag (pure-compile-expr-full (nth 1 expr) env fenv)) (list 'lit 3)))
+         ((eq (car expr) 'vectorp) (list 'cmp-eq (list 'get-tag (pure-compile-expr-full (nth 1 expr) env fenv)) (list 'lit 3)))
          ;; eq: compare two values directly
-         ((eq op 'eq) (list 'cmp-eq (pure-compile-expr-full (nth 1 expr) env fenv)
+         ((eq (car expr) 'eq) (list 'cmp-eq (pure-compile-expr-full (nth 1 expr) env fenv)
                                    (pure-compile-expr-full (nth 2 expr) env fenv)))
 
          ;; String operations - use -ir suffix to match codegen
-         ((eq op 'string-length) (list 'string-length-ir (pure-compile-expr-full (nth 1 expr) env fenv)))
-         ((eq op 'string-ref) (list 'string-ref-ir
+         ((eq (car expr) 'string-length) (list 'string-length-ir (pure-compile-expr-full (nth 1 expr) env fenv)))
+         ((eq (car expr) 'string-ref) (list 'string-ref-ir
                                     (pure-compile-expr-full (nth 1 expr) env fenv)
                                     (pure-compile-expr-full (nth 2 expr) env fenv)))
 
          ;; Vector operations - use -ir suffix to match codegen
-         ((eq op 'make-vector) (list 'make-vector-ir (pure-compile-expr-full (nth 1 expr) env fenv)))
-         ((eq op 'vector-ref) (list 'vector-ref-ir
+         ((eq (car expr) 'make-vector) (list 'make-vector-ir (pure-compile-expr-full (nth 1 expr) env fenv)))
+         ((eq (car expr) 'vector-ref) (list 'vector-ref-ir
                                     (pure-compile-expr-full (nth 1 expr) env fenv)
                                     (pure-compile-expr-full (nth 2 expr) env fenv)))
-         ((eq op 'vector-set) (list 'vector-set-ir
+         ((eq (car expr) 'vector-set) (list 'vector-set-ir
                                     (pure-compile-expr-full (nth 1 expr) env fenv)
                                     (pure-compile-expr-full (nth 2 expr) env fenv)
                                     (pure-compile-expr-full (nth 3 expr) env fenv)))
-         ((eq op 'vector-length) (list 'vector-length-ir (pure-compile-expr-full (nth 1 expr) env fenv)))
+         ((eq (car expr) 'vector-length) (list 'vector-length-ir (pure-compile-expr-full (nth 1 expr) env fenv)))
 
          ;; Make string from vector (for reader)
-         ((eq op 'make-string-from-vector) (list 'make-string-from-vector-ir
+         ((eq (car expr) 'make-string-from-vector) (list 'make-string-from-vector-ir
                                                   (pure-compile-expr-full (nth 1 expr) env fenv)))
 
          ;; Mutation
-         ((eq op 'setq) (pure-compile-setq expr env fenv))
+         ((eq (car expr) 'setq) (pure-compile-setq expr env fenv))
 
          ;; System calls
-         ((eq op 'sys-exit) (list 'sys-exit-ir (pure-compile-expr-full (nth 1 expr) env fenv)))
+         ((eq (car expr) 'sys-exit) (list 'sys-exit-ir (pure-compile-expr-full (nth 1 expr) env fenv)))
 
          ;; Unknown - try as function call or inline lambda
          (t (cond
-              ((symbolp op) (pure-compile-call expr env fenv))
+              ((symbolp (car expr)) (pure-compile-call expr env fenv))
               ;; Inline lambda call: ((lambda (x) ...) arg)
-              ((and (consp op) (eq (car op) 'lambda))
+              ((and (consp (car expr)) (eq (car (car expr)) 'lambda))
                (list 'funcall-ir
-                     (pure-compile-lambda op env fenv)
+                     (pure-compile-lambda (car expr) env fenv)
                      (pure-compile-args (cdr expr) env fenv)))
-              (t (pure-compile-lit 0)))))))))
+              (t (pure-compile-lit 0))))))))
 
 ;; Helper functions for full compiler
 
