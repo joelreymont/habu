@@ -1,34 +1,35 @@
-;;; Native Compiler Main - Pure Habu Entry Point
-;;; This program can be compiled to native ARM64 and run standalone
-;;; Usage after compilation: ./habu-compiler <input.lisp> <output>
+;;; Native Compiler Main Entry Point
+;;; This is designed to be compiled to a native executable
+;;; Uses ONLY Habu primitives - no SBCL dependencies
 
-;; Read command line arguments
-;; For now, hardcode the input/output paths since we don't have command-line arg parsing yet
-;; This is just a proof-of-concept to demonstrate the native compiler can compile files
+(in-package :habu)
 
-(defun compile-and-link (source-path output-path)
-  "Compile Lisp source file to native executable using pure-Habu file I/O"
-  ;; Read source file using native file I/O
-  (let ((source (native-read-file-large source-path)))
-    ;; Compile to bytecode
-    ;; This would call the compiler, but we can't actually do this yet
-    ;; because the compiler itself uses SBCL features
-    ;; This is a placeholder for now
-    (sys-write 1 "Compilation not yet implemented in native code\n" 47)
-    (sys-exit 1)))
+;;; Main entry point for native compiler executable
+;;; Expects command-line args passed as a list of strings
+(defun native-compiler-main (args)
+  "Main entry point for native compiler.
+   Args: (program-name input-file output-file)
+   Returns exit code as integer"
+  (let* ((input-file (if (>= (length args) 2) (nth 1 args) nil))
+         (output-file (if (>= (length args) 3) (nth 2 args) nil)))
+    (if (or (null input-file) (null output-file))
+        ;; Error: Missing arguments
+        (progn
+          (sys-write 2 "Usage: compiler <input.lisp> <output>\n" 39)
+          1)  ;; Exit code 1
+        ;; Read source, compile, write output
+        (let ((source (native-read-file input-file)))
+          (if source
+              (progn
+                ;; Compile source to native executable
+                (deliver-with-libsystem source output-file :verbose nil)
+                0)  ;; Exit code 0 (success)
+              ;; Error: Cannot read input file
+              (progn
+                (sys-write 2 "Error: Cannot read " 19)
+                (sys-write 2 input-file (string-length input-file))
+                (sys-write 2 "\n" 1)
+                1))))))  ;; Exit code 1
 
-;; Main entry point
-;; For proof of concept, try to read a file and print its length
-(defun main ()
-  "Native compiler entry point"
-  ;; Test: read this source file and print its size
-  (let* ((source (native-read-file-large "native-compiler-main.lisp"))
-         (len (string-length source)))
-    ;; Print the length
-    (sys-write 1 "Read file, length: " 19)
-    ;; TODO: convert number to string and print it
-    ;; For now just exit with the length as exit code
-    (sys-exit len)))
-
-;; Call main
-(main)
+;;; Test with sys-exit wrapper
+(sys-exit (native-compiler-main (list "compiler" "/tmp/test_factorial.lisp" "/tmp/test_out")))

@@ -5415,17 +5415,11 @@ int main(int argc, char **argv) {
 
 (defun deliver-file-with-libsystem (source-path output-path &key verbose)
   "Compile Lisp file to native executable using libSystem.
+   This function is only used by compiled Habu code, not during SBCL bootstrap.
+   For bootstrap, compiler-driver.lisp uses deliver-with-libsystem (string version) directly.
    Usage: (habu:deliver-file-with-libsystem \"program.lisp\" \"program\")"
-  (let ((source
-         #+sbcl
-         (with-open-file (in source-path :direction :input)
-           (let ((contents (make-string (file-length in))))
-             (read-sequence contents in)
-             contents))
-         #-sbcl
-         ;; When running as native code, use native-read-file for files < 64KB
-         ;; This enables self-hosting compilation for most programs
-         (native-read-file source-path)))
+  ;; Always use native-read-file - this function is not called during SBCL bootstrap
+  (let ((source (native-read-file source-path)))
     (deliver-with-libsystem source output-path :verbose verbose)))
 
 ;;; Export new functions
