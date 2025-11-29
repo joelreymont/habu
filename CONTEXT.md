@@ -21,8 +21,32 @@
 - File I/O: native-read-file works for files < 64KB (sufficient for most programs)
 - Final test: Stage N compiler == Stage N+1 compiler (fixed point)
 
-**Estimated time to full self-hosting**: 2-3 days
-**Confidence**: High - all major blockers resolved
+**Estimated time to full self-hosting**: 1-2 days
+**Confidence**: Very High - all critical blockers resolved, native file I/O working
+
+### Session Progress (November 29, 2025) - Major Breakthroughs
+
+**Bug #20 - COMPLETELY FIXED** ✓
+- **Root Cause**: x20-offset didn't account for environment space in frame layout
+- **Symptoms Resolved**: All nested labels patterns now work:
+  - ✓ Recursive labels with string-append
+  - ✓ concat-string-list with 3+ outer bindings
+  - ✓ All nested let* + labels combinations
+- **Fix**: Changed x20-offset calculation to include max-env-size
+- **Impact**: Unblocks all string operations and self-hosting
+
+**native-read-file-large - WORKING** ✓ (with limitations)
+- Fixed two critical bugs:
+  1. `let` → `let*` for sequential path/fd binding
+  2. 65KB buffer → 4KB buffer to avoid heap exhaustion
+- **Works**: Files < ~20KB (tested with "Hello World", various programs)
+- **Limitation**: 1MB heap insufficient for 30KB+ files
+- **Workaround**: Use native-read-file (< 64KB) for most programs
+
+**Self-Hosting File I/O - ENABLED** ✓
+- deliver-file-with-libsystem now uses native-read-file in #-sbcl path
+- Native executables can compile Lisp source files < 64KB
+- **Impact**: One step closer to eliminating SBCL from compilation
 
 ### Key Technical Achievements (November 28, 2025)
 
