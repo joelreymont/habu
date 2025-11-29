@@ -61,13 +61,14 @@ habu/
 ### Session Management
 
 1. **CONTEXT.md** - The primary context file for session progress
-   - This is THE file to update with session progress and current state
+   - This is THE ONLY file to update with session progress and current state
    - Current development phase and active tasks
    - Recent changes and bug fixes (this session)
    - Known issues and workarounds
    - Test status and results
    - Update after each major step or milestone
-   - NOT SESSION.md - that's a historical log, don't write there
+   - DO NOT use SESSION.md (historical log only)
+   - DO NOT create SESSION_SUMMARY.md (use CONTEXT.md instead)
 
 2. **SESSION.md** - Historical log only
    - Large append-only log file (27MB+)

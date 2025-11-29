@@ -1,8 +1,8 @@
 # Session Context - Habu Self-Hosting Lisp Compiler
 
-**Session Date**: November 22-28, 2025
+**Session Date**: November 22-29, 2025
 **Focus**: Self-hosting ARM64 Lisp compiler - path to eliminating SBCL
-**Last Updated**: November 28, 2025
+**Last Updated**: November 29, 2025
 **Milestone**: SELF-COMPILATION SUCCESS - Compiler compiles itself to native ARM64 (partial self-hosting)
 
 ## Current Status: PARTIAL SELF-HOSTING ACHIEVED (November 28, 2025)
@@ -65,25 +65,31 @@
   - Both fail due to labels + heap allocation issue
 - **File I/O status**: Basic operations work, large files blocked
 
-**Bug #20: Variable Shadowing in Macro Transformations** (FIXED Nov 29, 2025)
-- **Symptom**: SIGBUS/SIGSEGV (exit 138/139) with nested labels and string operations
-- **Root Cause FOUND**: Hardcoded variable names in transformation macros caused shadowing
-  - `labels` transformation used hardcoded `'FNTAB` → inner labels shadowed outer function table
-  - `string-append` transformation used hardcoded `'s1`, `'s2`, `'len1`, etc. → nested calls shadowed variables
-- **The Fix**: Use gensyms for ALL transformation variables (commit aa195df)
-  - `labels`: Changed `'FNTAB` to `(gensym "FNTAB")` at line 2117
-  - `string-append`: Changed all 7 hardcoded variables to gensyms at lines 1742-1748
-- **Test Results After Fix**:
-  - ✓ concat-string-list (2+ strings) → exit 42, prints correctly
-  - ✓ Nested labels with strings → no crash
-  - ✓ All string operations in nested contexts work
-- **Additional Fix**: Implemented `number-to-string` compiler macro (commit 1dd14de)
-  - Handles 0-999 (sufficient for file lengths)
-  - Uses vector-based digit conversion
-  - Fixed let/let* bug in 3-digit case (sequential bindings required)
-- **Impact**: Unblocks native-read-file with length display, concat-string-list, all file I/O
-- **Priority**: RESOLVED ✓
-- **Status**: Fully fixed - no workarounds needed, root cause eliminated
+**Bug #20: Variable Shadowing in Macro Transformations** (INVESTIGATION ONGOING - Nov 29, 2025)
+- **Symptom**: SIGBUS/SIGSEGV (exit 139) with recursive labels + concat-string-list macro
+- **Initial fixes applied** (commit 50505c8):
+  - Fixed x30 (LR) save/restore offset in funcall-ir (was using wrong offset after sp modification)
+  - Fixed ALL hardcoded variable names in 8 transformation macros:
+    - length, reverse, append, mapcar, member, assoc, nth, count
+  - All transformations now use gensyms to prevent shadowing
+- **Current Status**: CRASH STILL OCCURS
+  - Pattern: `outer-rec` (recursive labels) + `concat-string-list` macro → SIGSEGV
+  - Isolated: Manual concat structure WORKS, but macro version CRASHES
+  - 19 test files created to isolate pattern
+- **Working cases** (all pass):
+  - concat-string-list alone
+  - outer-rec + simple lambda
+  - outer-rec + manual concat structure (EXACT same structure as macro!)
+  - Two sequential labels, nested labels, labels with capture/mutation
+  - sys-read in labels (after x30 fix)
+- **Failing case**:
+  - outer-rec + concat-string-list MACRO → SIGSEGV (exit 139)
+- **Critical finding**: Manual code WORKS but macro expansion CRASHES
+  - Suggests issue is NOT variable shadowing (all use gensyms)
+  - Suggests issue is in macro expansion/compilation pipeline
+- **Next investigation**: Compare compiled output of manual vs macro versions
+- **Priority**: HIGH - blocks native file I/O and full self-hosting
+- **Status**: Under investigation - root cause not yet identified
 
 ## Previous Plan: Self-Hosting - Eliminating SBCL
 
