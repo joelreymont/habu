@@ -968,9 +968,14 @@
              ((= ch 0) (cons nil p2))
              (t (let* ((er (read-one p2))
                        (el (car er))
-                       (p3 (cdr er))
-                       (rr (read-list-elems p3)))
-                  (cons (cons el (car rr)) (cdr rr)))))))
+                       (p3 (cdr er)))
+                  ;; Skip reader-skip markers from #+/- conditionals
+                  (if (and (consp el) (eq (car el) :reader-skip))
+                      ;; Skip this element, continue with rest
+                      (read-list-elems p3)
+                      ;; Normal element, include in list
+                      (let ((rr (read-list-elems p3)))
+                        (cons (cons el (car rr)) (cdr rr)))))))))
        (read-list (p) (read-list-elems (+ p 1)))
        ;; Feature check: :habu is always present in native Habu, :sbcl is always absent
        (feature-present-p (feature-name)
