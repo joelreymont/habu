@@ -589,7 +589,7 @@
   "Replace extern call markers with BL instructions.
    If STUB-MAP and CODE-BASE-ADDR are provided, emits correct BL instructions.
    Otherwise emits placeholder BL instructions (for post-processing).
-   Returns (values flattened-code extern-call-positions)
+   Returns (cons flattened-code extern-call-positions)
    where extern-call-positions is ((name . byte-pos) ...)"
   (let ((result nil)
         (positions nil))
@@ -618,7 +618,7 @@
                   (push 0 result)
                   (push #x94 result))))  ; BL opcode high byte
           (push item result)))
-    (values (nreverse result) (nreverse positions))))
+    (cons (nreverse result) (nreverse positions))))
 
 (defun movk (rd imm shift)
   (let* ((shift-s (ash shift -4))
@@ -4811,11 +4811,11 @@
 
 (defun lift-lambdas (ir)
   "Extract all lambda-ir nodes from IR, replacing them with lambda-ref nodes.
-   Returns (values transformed-ir lambdas) where lambdas is alist of (name . lambda-ir)"
+   Returns (cons transformed-ir lambdas) where lambdas is alist of (name . lambda-ir)"
   (labels ((lift (ir lambdas)
              (cond
-               ((null ir) (values ir lambdas))
-               ((not (consp ir)) (values ir lambdas))
+               ((null ir) (cons ir lambdas))
+               ((not (consp ir)) (cons ir lambdas))
                ((has-tag ir 'lambda-ir)
                 ;; Found a lambda - give it a name, store it, return reference
                 (let* ((name (gensym-lambda))
@@ -4824,10 +4824,9 @@
                        (free-vars (cadddr ir))
                        (free-offsets (nth 4 ir)))
                   ;; Recursively lift lambdas from the body
-                  (multiple-value-bind (new-body more-lambdas)
-                      (lift body lambdas)
+                  (let* ((mvb-result-1 (lift body lambdas)) (new-body (car mvb-result-1)) (more-lambdas (cdr mvb-result-1)))
                     (let ((lambda-entry (list name params new-body free-vars free-offsets)))
-                      (values (list 'lambda-ref name free-offsets)
+                      (cons (list 'lambda-ref name free-offsets)
                               (cons lambda-entry more-lambdas))))))
                ((has-tag ir 'let-ir)
                 ;; let-ir = (let-ir vals bir count offs)
@@ -4835,41 +4834,36 @@
                       (bir (caddr ir))
                       (count (cadddr ir))
                       (offs (nth 4 ir)))
-                  (multiple-value-bind (new-vals lambdas1)
-                      (lift-list vals lambdas)
-                    (multiple-value-bind (new-bir lambdas2)
-                        (lift bir lambdas1)
-                      (values (list 'let-ir new-vals new-bir count offs) lambdas2)))))
+                  (let* ((mvb-result-2 (lift-list vals lambdas)) (new-vals (car mvb-result-2)) (lambdas1 (cdr mvb-result-2)))
+                    (let* ((mvb-result-26 (lift bir lambdas1)) (new-bir (car mvb-result-26)) (lambdas2 (cdr mvb-result-26)))
+                    (cons (list 'let-ir new-vals new-bir count offs) lambdas2)))))
                ((has-tag ir 'if-ir)
                 (let ((test (cadr ir))
                       (then (caddr ir))
                       (else (cadddr ir)))
-                  (multiple-value-bind (new-test l1) (lift test lambdas)
-                    (multiple-value-bind (new-then l2) (lift then l1)
-                      (multiple-value-bind (new-else l3) (lift else l2)
-                        (values (list 'if-ir new-test new-then new-else) l3))))))
+                  (let* ((mvb-result-3 (lift test lambdas)) (new-test (car mvb-result-3)) (l1 (cdr mvb-result-3)))
+                    (let* ((mvb-result-27 (lift then l1)) (new-then (car mvb-result-27)) (l2 (cdr mvb-result-27)))
+                    (let* ((mvb-result-37 (lift else l2)) (new-else (car mvb-result-37)) (l3 (cdr mvb-result-37)))
+                    (cons (list 'if-ir new-test new-then new-else) l3))))))
                ((has-tag ir 'progn-ir)
-                (multiple-value-bind (new-forms new-lambdas)
-                    (lift-list (cadr ir) lambdas)
-                  (values (list 'progn-ir new-forms) new-lambdas)))
+                (let* ((mvb-result-4 (lift-list (cadr ir) lambdas)) (new-forms (car mvb-result-4)) (new-lambdas (cdr mvb-result-4)))
+                    (cons (list 'progn-ir new-forms) new-lambdas)))
                ((has-tag ir 'funcall-ir)
                 (let ((fn-ir (cadr ir))
                       (args-ir (caddr ir)))
-                  (multiple-value-bind (new-fn l1) (lift fn-ir lambdas)
-                    (multiple-value-bind (new-args l2) (lift-list args-ir l1)
-                      (values (list 'funcall-ir new-fn new-args) l2)))))
+                  (let* ((mvb-result-5 (lift fn-ir lambdas)) (new-fn (car mvb-result-5)) (l1 (cdr mvb-result-5)))
+                    (let* ((mvb-result-28 (lift-list args-ir l1)) (new-args (car mvb-result-28)) (l2 (cdr mvb-result-28)))
+                    (cons (list 'funcall-ir new-fn new-args) l2)))))
                ((has-tag ir 'call-fn)
                 (let ((name (cadr ir))
                       (args-ir (caddr ir)))
-                  (multiple-value-bind (new-args new-lambdas)
-                      (lift-list args-ir lambdas)
-                    (values (list 'call-fn name new-args) new-lambdas))))
+                  (let* ((mvb-result-6 (lift-list args-ir lambdas)) (new-args (car mvb-result-6)) (new-lambdas (cdr mvb-result-6)))
+                    (cons (list 'call-fn name new-args) new-lambdas))))
                ((has-tag ir 'tail-call-fn)
                 (let ((name (cadr ir))
                       (args-ir (caddr ir)))
-                  (multiple-value-bind (new-args new-lambdas)
-                      (lift-list args-ir lambdas)
-                    (values (list 'tail-call-fn name new-args) new-lambdas))))
+                  (let* ((mvb-result-7 (lift-list args-ir lambdas)) (new-args (car mvb-result-7)) (new-lambdas (cdr mvb-result-7)))
+                    (cons (list 'tail-call-fn name new-args) new-lambdas))))
                ((or (has-tag ir 'add) (has-tag ir 'sub)
                     (has-tag ir 'mul) (has-tag ir 'div)
                     (has-tag ir 'mod) (has-tag ir 'cmp-eq)
@@ -4880,20 +4874,18 @@
                     (has-tag ir 'bxor) (has-tag ir 'bsh))
                 (let ((left (cadr ir))
                       (right (caddr ir)))
-                  (multiple-value-bind (new-left l1) (lift left lambdas)
-                    (multiple-value-bind (new-right l2) (lift right l1)
-                      (values (list (car ir) new-left new-right) l2)))))
+                  (let* ((mvb-result-8 (lift left lambdas)) (new-left (car mvb-result-8)) (l1 (cdr mvb-result-8)))
+                    (let* ((mvb-result-29 (lift right l1)) (new-right (car mvb-result-29)) (l2 (cdr mvb-result-29)))
+                    (cons (list (car ir) new-left new-right) l2)))))
                ((or (has-tag ir 'car-ir) (has-tag ir 'cdr-ir))
-                (multiple-value-bind (new-arg new-lambdas)
-                    (lift (cadr ir) lambdas)
-                  (values (list (car ir) new-arg) new-lambdas)))
+                (let* ((mvb-result-9 (lift (cadr ir) lambdas)) (new-arg (car mvb-result-9)) (new-lambdas (cdr mvb-result-9)))
+                    (cons (list (car ir) new-arg) new-lambdas)))
                ((has-tag ir 'setq-ir)
                 ;; setq-ir = (setq-ir offset value-ir)
                 (let ((offset (cadr ir))
                       (val-ir (caddr ir)))
-                  (multiple-value-bind (new-val new-lambdas)
-                      (lift val-ir lambdas)
-                    (values (list 'setq-ir offset new-val) new-lambdas))))
+                  (let* ((mvb-result-10 (lift val-ir lambdas)) (new-val (car mvb-result-10)) (new-lambdas (cdr mvb-result-10)))
+                    (cons (list 'setq-ir offset new-val) new-lambdas))))
                ((has-tag ir 'dotimes-ir)
                 ;; dotimes-ir = (dotimes-ir var count-ir body-ir result-ir compile-env)
                 (let ((var (cadr ir))
@@ -4901,10 +4893,10 @@
                       (body-ir (cadddr ir))
                       (result-ir (nth 4 ir))
                       (compile-env (nth 5 ir)))
-                  (multiple-value-bind (new-count l1) (lift count-ir lambdas)
-                    (multiple-value-bind (new-body l2) (lift body-ir l1)
-                      (multiple-value-bind (new-result l3) (lift result-ir l2)
-                        (values (list 'dotimes-ir var new-count new-body new-result compile-env) l3))))))
+                  (let* ((mvb-result-11 (lift count-ir lambdas)) (new-count (car mvb-result-11)) (l1 (cdr mvb-result-11)))
+                    (let* ((mvb-result-30 (lift body-ir l1)) (new-body (car mvb-result-30)) (l2 (cdr mvb-result-30)))
+                    (let* ((mvb-result-38 (lift result-ir l2)) (new-result (car mvb-result-38)) (l3 (cdr mvb-result-38)))
+                    (cons (list 'dotimes-ir var new-count new-body new-result compile-env) l3))))))
                ((has-tag ir 'dolist-ir)
                 ;; dolist-ir = (dolist-ir var list-ir body-ir result-ir compile-env)
                 (let ((var (cadr ir))
@@ -4912,19 +4904,19 @@
                       (body-ir (cadddr ir))
                       (result-ir (nth 4 ir))
                       (compile-env (nth 5 ir)))
-                  (multiple-value-bind (new-list l1) (lift list-ir lambdas)
-                    (multiple-value-bind (new-body l2) (lift body-ir l1)
-                      (multiple-value-bind (new-result l3) (lift result-ir l2)
-                        (values (list 'dolist-ir var new-list new-body new-result compile-env) l3))))))
+                  (let* ((mvb-result-12 (lift list-ir lambdas)) (new-list (car mvb-result-12)) (l1 (cdr mvb-result-12)))
+                    (let* ((mvb-result-31 (lift body-ir l1)) (new-body (car mvb-result-31)) (l2 (cdr mvb-result-31)))
+                    (let* ((mvb-result-39 (lift result-ir l2)) (new-result (car mvb-result-39)) (l3 (cdr mvb-result-39)))
+                    (cons (list 'dolist-ir var new-list new-body new-result compile-env) l3))))))
                ;; 3-arg IR nodes: (tag arg1 arg2 arg3)
                ((has-tag ir 'vector-set-ir)
                 (let ((vec-ir (cadr ir))
                       (idx-ir (caddr ir))
                       (val-ir (cadddr ir)))
-                  (multiple-value-bind (new-vec l1) (lift vec-ir lambdas)
-                    (multiple-value-bind (new-idx l2) (lift idx-ir l1)
-                      (multiple-value-bind (new-val l3) (lift val-ir l2)
-                        (values (list 'vector-set-ir new-vec new-idx new-val) l3))))))
+                  (let* ((mvb-result-13 (lift vec-ir lambdas)) (new-vec (car mvb-result-13)) (l1 (cdr mvb-result-13)))
+                    (let* ((mvb-result-32 (lift idx-ir l1)) (new-idx (car mvb-result-32)) (l2 (cdr mvb-result-32)))
+                    (let* ((mvb-result-40 (lift val-ir l2)) (new-val (car mvb-result-40)) (l3 (cdr mvb-result-40)))
+                    (cons (list 'vector-set-ir new-vec new-idx new-val) l3))))))
                ;; 2-arg IR nodes: (tag arg1 arg2)
                ((or (has-tag ir 'vector-ref-ir)
                     (has-tag ir 'buffer-byte-ref-ir)
@@ -4933,9 +4925,9 @@
                     (has-tag ir 'string-equal-ir))
                 (let ((arg1 (cadr ir))
                       (arg2 (caddr ir)))
-                  (multiple-value-bind (new-arg1 l1) (lift arg1 lambdas)
-                    (multiple-value-bind (new-arg2 l2) (lift arg2 l1)
-                      (values (list (car ir) new-arg1 new-arg2) l2)))))
+                  (let* ((mvb-result-14 (lift arg1 lambdas)) (new-arg1 (car mvb-result-14)) (l1 (cdr mvb-result-14)))
+                    (let* ((mvb-result-33 (lift arg2 l1)) (new-arg2 (car mvb-result-33)) (l2 (cdr mvb-result-33)))
+                    (cons (list (car ir) new-arg1 new-arg2) l2)))))
                ;; 1-arg IR nodes: (tag arg)
                ((or (has-tag ir 'make-vector-ir)
                     (has-tag ir 'make-string-from-vector-ir)
@@ -4947,25 +4939,22 @@
                     (has-tag ir 'null-ir) (has-tag ir 'consp-ir)
                     (has-tag ir 'symbolp-ir) (has-tag ir 'stringp-ir)
                     (has-tag ir 'vectorp-ir) (has-tag ir 'numberp-ir))
-                (multiple-value-bind (new-arg new-lambdas)
-                    (lift (cadr ir) lambdas)
-                  (values (list (car ir) new-arg) new-lambdas)))
+                (let* ((mvb-result-15 (lift (cadr ir) lambdas)) (new-arg (car mvb-result-15)) (new-lambdas (cdr mvb-result-15)))
+                    (cons (list (car ir) new-arg) new-lambdas)))
                ;; Self-TCO loop constructs
                ((has-tag ir 'loop-ir)
-                (multiple-value-bind (new-body new-lambdas)
-                    (lift (cadr ir) lambdas)
-                  (values (list 'loop-ir new-body) new-lambdas)))
+                (let* ((mvb-result-16 (lift (cadr ir) lambdas)) (new-body (car mvb-result-16)) (new-lambdas (cdr mvb-result-16)))
+                    (cons (list 'loop-ir new-body) new-lambdas)))
                ((has-tag ir 'continue-ir)
-                (multiple-value-bind (new-args new-lambdas)
-                    (lift-list (cadr ir) lambdas)
-                  (values (list 'continue-ir new-args) new-lambdas)))
-               (t (values ir lambdas))))
+                (let* ((mvb-result-17 (lift-list (cadr ir) lambdas)) (new-args (car mvb-result-17)) (new-lambdas (cdr mvb-result-17)))
+                    (cons (list 'continue-ir new-args) new-lambdas)))
+               (t (cons ir lambdas))))
            (lift-list (irs lambdas)
              (if (null irs)
-                 (values nil lambdas)
-                 (multiple-value-bind (new-first l1) (lift (car irs) lambdas)
-                   (multiple-value-bind (new-rest l2) (lift-list (cdr irs) l1)
-                     (values (cons new-first new-rest) l2))))))
+                 (cons nil lambdas)
+                 (let* ((mvb-result-18 (lift (car irs) lambdas)) (new-first (car mvb-result-18)) (l1 (cdr mvb-result-18)))
+                    (let* ((mvb-result-34 (lift-list (cdr irs) l1)) (new-rest (car mvb-result-34)) (l2 (cdr mvb-result-34)))
+                    (cons (cons new-first new-rest) l2))))))
     (lift ir nil)))
 
 (defun codegen-lambda (lambda-entry rtaddrs fnoffs)
@@ -5025,19 +5014,18 @@
 
 (defun lift-lambdas-from-fns (fns acc-fns acc-lambdas)
   "Lift lambdas from all function bodies.
-   Returns (values lifted-fns all-lambdas) where:
+   Returns (cons lifted-fns all-lambdas) where:
    - lifted-fns has lambda-ir replaced with lambda-ref in bodies
    - all-lambdas is list of all lifted lambda definitions"
   (if (null fns)
-      (values (reverse acc-fns) acc-lambdas)
+      (cons (reverse acc-fns) acc-lambdas)
       (let* ((fn (car fns))
              (name (car fn))
              (params (cadr fn))
              (body (caddr fn))
              (fourth (cadddr fn)))
-        (multiple-value-bind (new-body lambdas)
-            (lift-lambdas body)
-          (let ((new-fn (list name params new-body fourth)))
+        (let* ((mvb-result-19 (lift-lambdas body)) (new-body (car mvb-result-19)) (lambdas (cdr mvb-result-19)))
+                    (let ((new-fn (list name params new-body fourth)))
             (lift-lambdas-from-fns (cdr fns)
                                       (cons new-fn acc-fns)
                                       (append acc-lambdas lambdas)))))))
@@ -5069,12 +5057,10 @@
                                     defun-fns)
                             defun-fns)))
     ;; Lift lambdas from main IR (use optimized IR)
-    (multiple-value-bind (mir main-lambdas)
-        (lift-lambdas mir-opt)
-      ;; Lift lambdas from all defun bodies (use optimized defuns)
-      (multiple-value-bind (lifted-defuns defun-lambdas)
-          (lift-lambdas-from-fns defun-fns-opt nil nil)
-        ;; Combine: defuns + main-lambdas + defun-lambdas
+    (let* ((mvb-result-20 (lift-lambdas mir-opt)) (mir (car mvb-result-20)) (main-lambdas (cdr mvb-result-20)))
+                    ;; Lift lambdas from all defun bodies (use optimized defuns)
+      (let* ((mvb-result-35 (lift-lambdas-from-fns defun-fns-opt nil nil)) (lifted-defuns (car mvb-result-35)) (defun-lambdas (cdr mvb-result-35)))
+                    ;; Combine: defuns + main-lambdas + defun-lambdas
         (let ((fns (append lifted-defuns main-lambdas defun-lambdas)))
           (if (null fns)
               ;; No functions defined - simple case
@@ -5126,7 +5112,7 @@
            ;; Compile all defuns with complete fenv
            (compile-defuns (fs fenv acc)
              (if (null fs)
-                 (values fenv (reverse acc))
+                 (cons fenv (reverse acc))
                  (let ((f (car fs)))
                    (if (and (consp f) (eq (car f) 'defun))
                        (let* ((nm (cadr f))
@@ -5151,9 +5137,8 @@
     ;; Execute two-pass compilation
     (let* ((defun-names (collect-defuns forms nil))
            (initial-fenv (build-fenv defun-names nil)))
-      (multiple-value-bind (final-fenv other-forms)
-          (compile-defuns forms initial-fenv nil)
-        (eval-forms other-forms final-fenv)))))
+      (let* ((mvb-result-21 (compile-defuns forms initial-fenv nil)) (final-fenv (car mvb-result-21)) (other-forms (cdr mvb-result-21)))
+                    (eval-forms other-forms final-fenv)))))
 
 ;;; ============================================================
 ;;; Part 9: Public API
@@ -5366,9 +5351,8 @@ int main(int argc, char **argv) {
 
           ;; Flatten with correct BL instructions (no post-processing needed!)
           ;; code-base-addr is where the wrapped code starts (after wrapper stub)
-          (multiple-value-bind (flat-code extern-positions)
-              (flatten-extern-calls bytes-with-markers stub-map (+ code-offset wrapper-size))
-            (when verbose
+          (let* ((mvb-result-22 (flatten-extern-calls bytes-with-markers stub-map (+ code-offset wrapper-size))) (flat-code (car mvb-result-22)) (extern-positions (cdr mvb-result-22)))
+                    (when verbose
               (princ "Flattened code: ") (princ (length flat-code)) (princ " bytes") (terpri)
               (princ "Extern positions: ") (princ extern-positions) (terpri))
 
@@ -5606,7 +5590,7 @@ int main(int argc, char **argv) {
                        (env (mapcar #'cons params
                                     (loop for i from 0 below (length params) collect i)))
                        (body-form (if (cdr body) (cons 'progn body) (car body))))
-                  (values (sys:compile body-form env nil) name params)))
+                  (cons (sys:compile body-form env nil) name params)))
                ;; Simple expression
                (t (sys:compile form nil nil))))
          (bytecode (codegen ir nil nil 0))
@@ -5706,7 +5690,7 @@ int main(int argc, char **argv) {
 ;;; ============================================================
 
 (defun compile-program-with-symtab (forms rtaddrs &key (optimize t))
-  "Compile forms to bytecode and return (values bytecode symbol-table).
+  "Compile forms to bytecode and return (cons bytecode symbol-table).
    Symbol table is an alist of (name . byte-offset) for all exported functions.
    This is used for separate compilation units and FASL linking."
   (reset-symbol-table)
@@ -5723,13 +5707,11 @@ int main(int argc, char **argv) {
                                             (fourth fn) (fifth fn)))
                                     defun-fns)
                             defun-fns)))
-    (multiple-value-bind (mir main-lambdas)
-        (lift-lambdas mir-opt)
-      (multiple-value-bind (lifted-defuns defun-lambdas)
-          (lift-lambdas-from-fns defun-fns-opt nil nil)
-        (let ((fns (append lifted-defuns main-lambdas defun-lambdas)))
+    (let* ((mvb-result-23 (lift-lambdas mir-opt)) (mir (car mvb-result-23)) (main-lambdas (cdr mvb-result-23)))
+                    (let* ((mvb-result-36 (lift-lambdas-from-fns defun-fns-opt nil nil)) (lifted-defuns (car mvb-result-36)) (defun-lambdas (cdr mvb-result-36)))
+                    (let ((fns (append lifted-defuns main-lambdas defun-lambdas)))
           (if (null fns)
-              (values (resolve-calls (codegen-main mir rtaddrs) nil) nil)
+              (cons (resolve-calls (codegen-main mir rtaddrs) nil) nil)
               (let* ((main-code-temp (append (prologue) (codegen mir rtaddrs nil 0) (epilogue)))
                      (main-size (code-size main-code-temp))
                      (fnoffs (build-fnoffs fns main-size nil))
@@ -5737,7 +5719,7 @@ int main(int argc, char **argv) {
                      (fn-code (codegen-all-fns fns rtaddrs fnoffs nil))
                      (all-code (append main-code fn-code))
                      (bytecode (resolve-calls all-code fnoffs)))
-                (values bytecode fnoffs))))))))
+                (cons bytecode fnoffs))))))))
 
 ;;; Export for FASL compilation
 (export 'compile-program-with-symtab :habu)
@@ -5824,7 +5806,7 @@ int main(int argc, char **argv) {
     (logior lo (ash hi 32))))
 
 (defun read-fasl-v2 (fasl-path)
-  "Read enhanced FASL v2 and return (values bytecode-list symbol-table).
+  "Read enhanced FASL v2 and return (cons bytecode-list symbol-table).
    symbol-table is an alist of (name . offset) pairs."
   (with-open-file (in fasl-path :direction :input
                                 :element-type '(unsigned-byte 8))
@@ -5844,7 +5826,7 @@ int main(int argc, char **argv) {
       (let ((bytecode (loop repeat code-len collect (read-byte in))))
         ;; Read symbol table
         (if (zerop symtab-count)
-            (values bytecode nil)
+            (cons bytecode nil)
             (let ((symtab
                    (loop repeat symtab-count
                          collect
@@ -5853,7 +5835,7 @@ int main(int argc, char **argv) {
                                 (name-string (map 'string #'code-char name-bytes))
                                 (offset (read-u64-le in)))
                            (cons (intern name-string :habu) offset)))))
-              (values bytecode symtab)))))))
+              (cons bytecode symtab)))))))
 
 (defun compile-file-to-fasl (source-path fasl-path)
   "Compile Lisp source file to FASL v2 with symbol table.
@@ -5863,9 +5845,8 @@ int main(int argc, char **argv) {
                      (read-sequence contents in)
                      contents)))
          (forms (read-all source)))
-    (multiple-value-bind (bytecode symtab)
-        (compile-program-with-symtab forms nil :optimize t)
-      (write-fasl-v2 bytecode symtab fasl-path)
+    (let* ((mvb-result-24 (compile-program-with-symtab forms nil :optimize t)) (bytecode (car mvb-result-24)) (symtab (cdr mvb-result-24)))
+                    (write-fasl-v2 bytecode symtab fasl-path)
       (format t "Compiled ~A -> ~A (~A bytes, ~A symbols)~%"
               source-path fasl-path (length bytecode) (if symtab (length symtab) 0))
       fasl-path)))
@@ -5885,9 +5866,8 @@ int main(int argc, char **argv) {
         (current-offset 0))
     ;; Read all FASL files and build global symbol table
     (dolist (fasl-path fasl-paths)
-      (multiple-value-bind (bytecode symtab)
-          (read-fasl-v2 fasl-path)
-        (when verbose
+      (let* ((mvb-result-25 (read-fasl-v2 fasl-path)) (bytecode (car mvb-result-25)) (symtab (cdr mvb-result-25)))
+                    (when verbose
           (format t "Read ~A: ~A bytes, ~A symbols~%"
                   fasl-path (length bytecode) (if symtab (length symtab) 0)))
         ;; Append code
