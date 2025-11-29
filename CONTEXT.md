@@ -65,25 +65,32 @@
   - Both fail due to labels + heap allocation issue
 - **File I/O status**: Basic operations work, large files blocked
 
-**Critical Bug #20: Nested labels in recursive call arguments with string operations** (ISOLATED Nov 29, 2025)
-- **Symptom**: SIGBUS (exit 138) in specific pattern combining recursion + nested labels + string operations
-- **ROOT CAUSE ISOLATED** (after 30+ tests):
-  - NOT a GC issue (native executables have no GC)
-  - NOT gensym vs fixed symbols (tested both)
-  - NOT macro expansion bugs
-  - NOT the string-append macro specifically
-  - IS: RECURSIVE labels + NESTED labels + STRING OPERATIONS (string-ref/make-string-from-vector)
-- **Test results**:
-  - ✓ Simple string-append (non-recursive) - WORKS
-  - ✓ Nested labels with simple ops (non-recursive) - WORKS
-  - ✓ Nested labels with heap allocation (non-recursive) - WORKS
-  - ✗ RECURSIVE + nested labels + string operations - CRASHES (SIGBUS)
-  - ✓ Same pattern but NON-RECURSIVE - WORKS!
-- **Key discovery**: The manual code that was claimed to work ALSO crashes when made recursive
-- **Actual root cause**: Something specific to handling closures created in recursive call arguments when those closures do string heap operations
-- **Impact**: Blocks large file reading (native-read-file-large), full self-hosting
-- **Priority**: CRITICAL - need to debug recursive closure creation codegen
-- **Next step**: Examine codegen for how closures in function arguments are handled, especially in recursive contexts
+**Critical Bug #20: Complex expressions in recursive funcall arguments** (WORKAROUND FOUND Nov 29, 2025)
+- **Symptom**: SIGBUS/SIGSEGV (exit 138/139) with complex heap-allocating expressions directly in recursive funcall args
+- **Pattern that crashes**: `(f (- n 1) (complex-heap-expression))` where f is recursive
+- **Pattern that works**: `(let ((tmp (complex-heap-expression))) (f (- n 1) tmp))`
+- **Tested combinations** (40+ isolation tests):
+  - ✓ Simple string-append (non-recursive context) - WORKS
+  - ✓ Dotimes with string ops (non-recursive) - WORKS
+  - ✓ Constant strings in recursive args - WORKS
+  - ✗ String-append with labels in recursive arg - CRASHES
+  - ✗ String-append with dotimes in recursive arg - CRASHES
+  - ✓ **MANUAL WORKAROUND: Evaluate in let first - WORKS!**
+- **ROOT CAUSE**: Unknown - issue in funcall-ir argument evaluation codegen
+  - Likely: temp slot allocation conflict, x24/x28 register corruption, or environment offset calculation error
+  - Happens when complex expressions (let*/dotimes/string-ops) evaluated directly as funcall arguments
+  - Works fine when same expression bound to variable first
+- **PROVEN WORKAROUND**: Use let bindings before recursive calls:
+  ```lisp
+  ;; Crashes:
+  (build-string (- n 1) (string-append acc "X"))
+  ;; Works:
+  (let ((next (string-append acc "X")))
+    (build-string (- n 1) next))
+  ```
+- **Impact**: Blocks native-read-file-large, but workaround enables string operations for now
+- **Priority**: MEDIUM - workaround unblocks development, root cause investigation can wait
+- **Status**: Workaround documented, comprehensive test suite created, root cause TBD
 
 ## Previous Plan: Self-Hosting - Eliminating SBCL
 
