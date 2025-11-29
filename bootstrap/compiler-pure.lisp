@@ -1012,31 +1012,41 @@
 
 (defun pure-flatten-extern-calls (code stub-alist code-base-addr)
   "Replace extern call markers with BL instructions using assoc list.
-   Returns (flat-code . extern-positions)"
-  (labels ((flatten (items result positions)
-             (if (null items)
-                 (cons (pure-reverse result) (pure-reverse positions))
-                 (let ((item (car items)))
-                   (if (and (consp item) (eq (car item) :extern-call))
-                       (let* ((name (cadr item))
-                              (pos (caddr item))
-                              (bl-addr (+ code-base-addr pos))
-                              (entry (pure-assoc-string name stub-alist))
-                              (stub-addr (if entry (cdr entry) 0))
-                              (rel-offset (- stub-addr bl-addr))
-                              (off-s (ash rel-offset -2))
-                              (off-m (logand off-s #x3FFFFFF))
-                              (bl-instr (logior #x94000000 off-m))
-                              ;; Emit BL in little-endian
-                              (b0 (logand bl-instr #xFF))
-                              (b1 (logand (ash bl-instr -8) #xFF))
-                              (b2 (logand (ash bl-instr -16) #xFF))
-                              (b3 (logand (ash bl-instr -24) #xFF)))
-                         (flatten (cdr items)
-                                  (cons b3 (cons b2 (cons b1 (cons b0 result))))
-                                  (cons (cons name pos) positions)))
-                       (flatten (cdr items) (cons item result) positions))))))
-    (flatten code nil nil)))
+   Returns (flat-code . extern-positions)
+   Note: resolve-calls emits markers followed by 3 zeros - must skip them."
+  (labels ((flatten (items result positions skip-count)
+             (cond
+               ;; Done
+               ((null items)
+                (cons (pure-reverse result) (pure-reverse positions)))
+               ;; Skip placeholder zeros after extern-call marker
+               ((> skip-count 0)
+                (flatten (cdr items) result positions (- skip-count 1)))
+               ;; Extern call marker - emit BL, skip next 3 zeros
+               ((and (consp (car items)) (eq (car (car items)) :extern-call))
+                (let* ((item (car items))
+                       (name (cadr item))
+                       (pos (caddr item))
+                       (bl-addr (+ code-base-addr pos))
+                       (entry (pure-assoc-string name stub-alist))
+                       (stub-addr (if entry (cdr entry) 0))
+                       (rel-offset (- stub-addr bl-addr))
+                       (off-s (ash rel-offset -2))
+                       (off-m (logand off-s #x3FFFFFF))
+                       (bl-instr (logior #x94000000 off-m))
+                       ;; Emit BL in little-endian
+                       (b0 (logand bl-instr #xFF))
+                       (b1 (logand (ash bl-instr -8) #xFF))
+                       (b2 (logand (ash bl-instr -16) #xFF))
+                       (b3 (logand (ash bl-instr -24) #xFF)))
+                  (flatten (cdr items)
+                           (cons b3 (cons b2 (cons b1 (cons b0 result))))
+                           (cons (cons name pos) positions)
+                           3)))  ; Skip next 3 zeros
+               ;; Regular byte
+               (t
+                (flatten (cdr items) (cons (car items) result) positions 0)))))
+    (flatten code nil nil 0)))
 
 (defun pure-build-stub-alist (imports stubs-offset stub-size)
   "Build ((name . offset) ...) alist for stub map"
