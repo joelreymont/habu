@@ -3,7 +3,72 @@
 **Session Date**: November 22-29, 2025
 **Focus**: Self-hosting ARM64 Lisp compiler - path to eliminating SBCL
 **Last Updated**: November 29, 2025
-**Milestone**: BL OFFSET & SPILL SLOT FIXES - Recursive functions work, compiler self-compiles to 8.8MB executable
+**Milestone**: PURE COMPILER FULLY FUNCTIONAL - 20/20 tests pass, mini-compiler and meta-compiler work
+
+## Session Summary (November 29, 2025 - Pure Compiler Complete)
+
+### Accomplishments This Session
+
+**1. Fixed Pure Compiler Closure Capture** ✓
+- Problem: Pure compiler `lambda-ir` was missing `free-offsets` (5th element)
+- Fix: Calculate free-offsets using pure-env-lookup, include in lambda-ir
+- Commit: 17dc19b
+
+**2. Fixed Predicates (null, consp, symbolp, etc.)** ✓
+- Problem: Pure compiler used undefined `-ir` nodes (null-ir, consp-ir, etc.)
+- Fix: Use `cmp-eq` with `get-tag` to match main compiler codegen
+- Commit: a43ad64
+
+**3. Fixed Quote Handling for Lists** ✓
+- Problem: `'(+ 1 2)` was compiled to `(lit (+ 1 2))` instead of cons-ir
+- Fix: Added `pure-quote-ir` to recursively build cons-ir for quoted lists
+- Commit: 1ec8313
+
+**4. Fixed Symbol IR Tag Name** ✓
+- Problem: Used `symbol-lit` but codegen expects `sym-lit`
+- Fix: Changed all `symbol-lit` to `sym-lit`
+- Commit: e72df46
+
+**5. All 20 Pure Compiler Tests Pass** ✓
+- Basic: arithmetic, factorial, fibonacci, closures
+- Complex: cons/car/cdr, list, multiple defuns, let*, labels
+- Advanced: cond, when/unless, and/or, mutual recursion, deep let*
+- Meta: Mini-compiler compiles expressions to IR
+- Meta: Meta-compiler with IR manipulation and evaluation
+
+### Plan: Eliminate Heap from Executables
+
+Currently, executables have a 1MB heap baked into the __DATA segment. This should be allocated at runtime instead.
+
+**Why**:
+- Reduces executable size from ~1.6MB to ~620KB
+- Standard practice for native executables
+- Enables dynamic heap sizing
+
+**Implementation Plan**:
+1. Add `mmap` import to libSystem calls
+2. Wrapper stub calls mmap to allocate heap at startup
+3. Remove __DATA_HEAP segment from Mach-O generation
+4. Update heap pointer (x28) initialization to use mmap result
+
+**Technical Details**:
+```
+;; Current: Heap address from ADRP/ADD
+ADRP x28, _heap@PAGE
+ADD x28, x28, _heap@PAGEOFF
+
+;; New: Heap address from mmap syscall
+MOV x0, #0              ; addr = NULL (let kernel choose)
+MOV x1, #0x100000       ; size = 1MB
+MOV x2, #3              ; prot = PROT_READ | PROT_WRITE
+MOV x3, #0x1002         ; flags = MAP_PRIVATE | MAP_ANONYMOUS
+MOV x4, #-1             ; fd = -1
+MOV x5, #0              ; offset = 0
+BL _mmap                ; returns heap address in x0
+MOV x28, x0             ; x28 = heap pointer
+```
+
+---
 
 ## Session Summary (November 29, 2025 - BL Offset & Spill Slot Fixes)
 
