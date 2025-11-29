@@ -3,7 +3,51 @@
 **Session Date**: November 22-29, 2025
 **Focus**: Self-hosting ARM64 Lisp compiler - path to eliminating SBCL
 **Last Updated**: November 29, 2025
-**Milestone**: MUTABLE CLOSURES WORKING - Full closure semantics with proper state mutation
+**Milestone**: PURE COMPILER COMPLETE - All 11 pure-deliver tests pass, #+habu/#-habu reader macros working
+
+## Session Summary (November 29, 2025 - Pure Compiler & Reader Macros)
+
+### Accomplishments This Session
+
+**1. Fixed Pure Compiler Labels/Closures** ✓
+- Implemented full FNTAB transformation for labels (matches main compiler)
+- Fixed pure-extend-env to append instead of prepend (correct offsets)
+- Fixed pure-compile-lambda to start with fresh env (free vars via capture)
+- Fixed pure-find-free-vars to track let-bound variables
+- Commit: d56f780
+
+**2. Added #+habu and #-habu Reader Macros** ✓
+- Native reader: Added feature-present? helper in read-sharp
+- :habu always true, :sbcl always false in native Habu
+- Bootstrap compiler: Register :habu in *features* for SBCL compilation
+- Commit: 16ac7c4
+
+**3. All 11 Pure-Deliver Tests Pass** ✓
+- add, sub, mul, let, let-star, defun, fact, cons, cdr, labels, closure
+- Pure compiler generates correct IR for all test cases
+- FNTAB transformation enables mutual recursion in labels
+
+**4. Fixed Mach-O Linker Process Sequencing** ✓
+- Added :wait t to run-program calls for chmod and codesign
+- Ensures proper sequencing before returning from linker
+- Commit: 68e17f1
+
+### Key Technical Fixes
+
+**Labels FNTAB Transformation**:
+- Problem: Pure compiler generated `labels-ir` which codegen doesn't handle
+- Solution: Transform labels to let/setq/lambda/funcall with FNTAB table
+- Functions packaged in cons-list, passed at call time, unpacked via car/cdr
+
+**Lambda Environment**:
+- Problem: Lambda extended outer env causing wrong variable offsets
+- Solution: Lambda starts with fresh env (params only), free vars via closure capture
+
+**Free Variable Tracking**:
+- Problem: Let-bound variables incorrectly marked as free
+- Solution: Track bound variables through let/let* forms, exclude from free vars
+
+---
 
 ## Session Summary (November 29, 2025 - Closure Boxing & Cleanup)
 
