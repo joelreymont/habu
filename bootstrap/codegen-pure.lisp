@@ -372,11 +372,12 @@
          (right-may-call (pure-ir-may-call right-ir)))
     (cond
       ;; Left may call - need to save x24
+      ;; Left is evaluated at nd, saves result to nd, so right must use nd+1
       (left-may-call
        (let* ((xs (pure-temp-slot td))
               (nd (+ td 1))
               (lc (pure-codegen left-ir rtaddrs fnoffs nd))
-              (rc (pure-codegen right-ir rtaddrs fnoffs nd)))
+              (rc (pure-codegen right-ir rtaddrs fnoffs (+ nd 1))))
          (pure-append-all
           (list (pure-str-offset 24 31 xs)
                 lc
@@ -387,11 +388,12 @@
                 (pure-load-temp 0 nd)
                 op-instrs))))
       ;; Right may call - need to save x24
+      ;; Left is evaluated, saved at nd, so right must use nd+1
       (right-may-call
        (let* ((xs (pure-temp-slot td))
               (nd (+ td 1))
               (lc (pure-codegen left-ir rtaddrs fnoffs nd))
-              (rc (pure-codegen right-ir rtaddrs fnoffs nd)))
+              (rc (pure-codegen right-ir rtaddrs fnoffs (+ nd 1))))
          (pure-append-all
           (list lc
                 (pure-save-temp nd)
@@ -402,9 +404,11 @@
                 (pure-ldr-offset 24 31 xs)
                 op-instrs))))
       ;; Neither calls - simple case
+      ;; IMPORTANT: Right must use td+1 to avoid clobbering left's temp slot
       (t
-       (let* ((lc (pure-codegen left-ir rtaddrs fnoffs td))
-              (rc (pure-codegen right-ir rtaddrs fnoffs td)))
+       (let* ((nd (+ td 1))
+              (lc (pure-codegen left-ir rtaddrs fnoffs td))
+              (rc (pure-codegen right-ir rtaddrs fnoffs nd)))
          (pure-append-all
           (list lc
                 (pure-save-temp td)
@@ -550,9 +554,9 @@
             (cond-code (pure-codegen cond-ir rtaddrs fnoffs td))
             (then-code (pure-codegen then-ir rtaddrs fnoffs td))
             (else-code (pure-codegen else-ir rtaddrs fnoffs td))
-            ;; Sizes are already in bytes (pure-codegen returns byte lists)
-            (else-size (pure-length else-code))
-            (then-size (pure-length then-code)))
+            ;; Must use pure-code-size to handle :call markers (4 bytes each)
+            (else-size (pure-code-size else-code))
+            (then-size (pure-code-size then-code)))
        (pure-append-all
         (list cond-code
               (pure-cmp-imm 0 0)
@@ -602,10 +606,12 @@
     ((pure-has-tag ir 'call-fn)
      (let* ((fn-name (cadr ir))
             (args (caddr ir))
-            (arg-code (pure-codegen-call-args args rtaddrs fnoffs td)))
+            (num-args (pure-length args))
+            (arg-code (pure-codegen-call-args args rtaddrs fnoffs td))
+            ;; Load spilled args into registers x1-x7 before call
+            (load-code (pure-gen-arg-loads num-args)))
        ;; Emit call marker that will be resolved by pure-resolve-calls
-       (pure-append arg-code
-                    (list (list :call fn-name)))))
+       (pure-append-all (list arg-code load-code (list (list :call fn-name))))))
 
     ;; Lambda reference (closure creation)
     ((pure-has-tag ir 'lambda-ref)
@@ -683,21 +689,35 @@
   (pure-codegen-args-iter args rtaddrs fnoffs td 0))
 
 (defun pure-codegen-args-iter (args rtaddrs fnoffs td argnum)
-  "Generate code for args, putting results in registers x0-x7"
+  "Generate code for args, storing ALL args to spill slots.
+   This ensures arg 0 isn't clobbered when evaluating later args."
   (if (null args)
       nil
       (let* ((arg-ir (car args))
-             (arg-code (pure-codegen arg-ir rtaddrs fnoffs td)))
-        (if (= argnum 0)
-            ;; First arg stays in x0
-            (pure-append arg-code
-                         (pure-codegen-args-iter (cdr args) rtaddrs fnoffs td 1))
-            ;; Other args need to go to x1, x2, etc
-            (let ((save-code (pure-str-offset 0 31 (+ #x240 (* argnum 8)))))
-              (pure-append-all
-               (list arg-code
-                     save-code
-                     (pure-codegen-args-iter (cdr args) rtaddrs fnoffs td (+ argnum 1)))))))))
+             (arg-code (pure-codegen arg-ir rtaddrs fnoffs td))
+             ;; Store ALL args to spill slots (including arg 0)
+             (save-code (pure-str-offset 0 31 (+ #x240 (* argnum 8)))))
+        (pure-append-all
+         (list arg-code
+               save-code
+               (pure-codegen-args-iter (cdr args) rtaddrs fnoffs td (+ argnum 1)))))))
+
+;;; ============================================================
+;;; Helper: Load Arguments into Registers Before Call
+;;; ============================================================
+
+(defun pure-gen-arg-loads (num-args)
+  "Generate code to load spilled args from [sp + #x240 + i*8] into registers x0-x7.
+   All args are stored to spill slots, so we load all of them."
+  (if (= num-args 0)
+      nil
+      (labels ((gen-load (i acc)
+                 (if (>= i num-args)
+                     acc
+                     (gen-load (+ i 1)
+                               (pure-append acc
+                                            (pure-ldr-offset i 31 (+ #x240 (* i 8))))))))
+        (gen-load 0 nil))))
 
 ;;; ============================================================
 ;;; Helper: Funcall Arguments Codegen
