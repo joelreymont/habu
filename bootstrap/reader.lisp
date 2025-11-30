@@ -172,16 +172,20 @@
 
 ;;; Helper to upcase chars while building string (inline char-upcase)
 ;;; chars is a list of char codes (integers)
+;;; Uses inline upcase logic to work when compiled by SBCL but run natively
 (defun chars-to-string-upcase (chars)
   (let ((len (length chars)))
     (let ((vec (make-vector len)))
-      (labels ((fill-vec (cs i)
+      (labels ((upcase-char (ch)
+                 ;; Convert lowercase a-z (0x61-0x7A) to uppercase A-Z (0x41-0x5A)
+                 (if (and (>= ch #x61) (<= ch #x7A))
+                     (- ch #x20)
+                     ch))
+               (fill-vec (cs i)
                  (if (null cs)
                      vec
                      (progn
-                       ;; Convert to char, upcase, back to code
-                       #+sbcl (vector-set vec i (char-code (cl:char-upcase (code-char (car cs)))))
-                       #-sbcl (vector-set vec i (char-upcase (car cs)))
+                       (vector-set vec i (upcase-char (car cs)))
                        (fill-vec (cdr cs) (+ i 1))))))
         (fill-vec chars 0))
       (make-string-from-vector vec))))

@@ -64,13 +64,16 @@
          (new-count (+ counter 1)))
     #+sbcl (setf (car state) new-count)
     #-sbcl (setcar state new-count)
-    ;; Build name string: "LAMBDA-" + number
+    ;; In SBCL mode, use format to create proper string
+    ;; In native mode, build from char codes and convert to string
+    #+sbcl (format nil "LAMBDA-~D" new-count)
+    #-sbcl
     (labels ((digits (n acc)
                (if (= n 0)
-                   (if (null acc) (cons 48 nil) acc)  ;; 48 = '0'
-                   (digits (truncate n 10)
+                   (if (null acc) (cons 48 nil) acc)
+                   (digits (/ n 10)
                            (cons (+ 48 (mod n 10)) acc))))
-             (chars-to-str (cs)
+             (chars-to-vec (cs)
                (let ((len (length cs)))
                  (labels ((build (i cs vec)
                             (if (null cs)
@@ -80,9 +83,9 @@
                                   (build (+ i 1) (cdr cs) vec)))))
                    (build 0 cs (make-vector len))))))
       (let* ((num-chars (digits new-count nil))
-             (prefix (list 76 65 77 66 68 65 45))  ;; "LAMBDA-"
+             (prefix (list 76 65 77 66 68 65 45))
              (all-chars (append prefix num-chars)))
-        (chars-to-str all-chars)))))
+        (make-string-from-vector (chars-to-vec all-chars))))))
 
 ;;; ============================================================
 ;;; Lambda Lifting (extract lambdas, replace with references)
@@ -176,7 +179,8 @@
          (has-tag ir 'cmp-lt) (has-tag ir 'cmp-gt)
          (has-tag ir 'cons-ir)
          (has-tag ir 'setcar-ir) (has-tag ir 'setcdr-ir)
-         (has-tag ir 'string-ref-ir) (has-tag ir 'string-concat-ir))
+         (has-tag ir 'string-ref-ir) (has-tag ir 'string-concat-ir)
+         (has-tag ir 'vector-ref-ir))
      (let* ((left (cadr ir))
             (right (caddr ir))
             (left-result (lift-lambdas left lambdas))
@@ -187,10 +191,22 @@
             (l2 (cdr right-result)))
        (cons (list (car ir) new-left new-right) l2)))
 
+    ;; Ternary ops (vector-set-ir)
+    ((has-tag ir 'vector-set-ir)
+     (let* ((arg1 (cadr ir))
+            (arg2 (caddr ir))
+            (arg3 (cadddr ir))
+            (r1 (lift-lambdas arg1 lambdas))
+            (r2 (lift-lambdas arg2 (cdr r1)))
+            (r3 (lift-lambdas arg3 (cdr r2))))
+       (cons (list 'vector-set-ir (car r1) (car r2) (car r3)) (cdr r3))))
+
     ;; Unary ops
     ((or (has-tag ir 'car-ir) (has-tag ir 'cdr-ir) (has-tag ir 'get-tag)
          (has-tag ir 'symbol-name-ir) (has-tag ir 'make-symbol-ir)
-         (has-tag ir 'string-length-ir))
+         (has-tag ir 'string-length-ir)
+         (has-tag ir 'make-vector-ir) (has-tag ir 'vector-length-ir)
+         (has-tag ir 'make-string-from-vector-ir))
      (let* ((arg (cadr ir))
             (arg-result (lift-lambdas arg lambdas))
             (new-arg (car arg-result))
@@ -479,22 +495,32 @@
          (word (logior #x8A000000 rm-shift rn-shift rd)))
     (encode-word word)))
 
-(defun and-imm (rd rn imm)
+(defun and-imm (rd rn imm &optional imms immr)
   "AND Xd, Xn, #imm - Bitwise AND with immediate.
-   Note: Only supports specific immediate values that are valid logical immediates.
-   Currently supports: #xF (low 4 bits)"
-  (let* ((rn-shift (ash rn 5))
-         ;; For #xF: N=1, immr=0, imms=3 (4 bits of 1s at position 0)
-         ;; Base encoding: 0x92400000 for 64-bit AND immediate
-         ;; imms=3 at bits [15:10] = 0xC00
-         (word (if (= imm #xF)
-                   (logior #x92400C00 rn-shift rd)
-                   ;; For #xFF (8 bits): imms=7 at bits [15:10] = 0x1C00
-                   (if (= imm #xFF)
-                       (logior #x92401C00 rn-shift rd)
-                       ;; Unsupported immediate - return 0 (NOP-ish)
-                       #xD503201F))))
-    (encode-word word)))
+   Two forms:
+   1. (and-imm rd rn imm) - for simple masks like #xF, #xFF
+   2. (and-imm rd rn N imms immr) - full logical immediate encoding
+   For clearing low 4 bits (~0xF): (and-imm rd rn 1 #x3C #x3B)"
+  (let* ((rn-shift (ash rn 5)))
+    (if imms
+        ;; 5-arg form: imm=N, imms=imms, immr=immr
+        ;; Encoding: 0x92000000 | (N << 22) | (immr << 16) | (imms << 10) | Rn | Rd
+        (let* ((n imm)  ; First optional is actually N
+               (n-shift (ash n 22))
+               (immr-shift (ash immr 16))
+               (imms-shift (ash imms 10))
+               (word (logior #x92000000 n-shift immr-shift imms-shift rn-shift rd)))
+          (encode-word word))
+        ;; 3-arg form: simple masks
+        (let ((word (if (= imm #xF)
+                        ;; For #xF: N=1, immr=0, imms=3 (4 bits of 1s at position 0)
+                        (logior #x92400C00 rn-shift rd)
+                        (if (= imm #xFF)
+                            ;; For #xFF (8 bits): imms=7
+                            (logior #x92401C00 rn-shift rd)
+                            ;; Unsupported immediate
+                            #xD503201F))))
+          (encode-word word)))))
 
 (defun orr-reg (rd rn rm)
   (let* ((rm-shift (ash rm 16))
@@ -575,6 +601,12 @@
                                  (movk rd (logand (ash addr -16) #xFFFF) 1)
                                  (movk rd (logand (ash addr -32) #xFFFF) 2))))))
 
+(defun load-addr-8 (rd addr)
+  "Load address into register, always producing 8 bytes (2 instructions).
+   Used for lambda/function references where consistent code size is needed."
+  (append (movz rd (logand addr #xFFFF))
+          (movk rd (ash addr -16) 1)))
+
 (defun gen-string-lit (str len total-size)
   "Generate code to allocate string literal on heap.
    String layout: [length:8][data:N]
@@ -648,6 +680,15 @@
          (word (logior or2 rt)))
     (encode-word word)))
 
+(defun strb-reg (rt rn rm)
+  "STRB Wt, [Xn, Xm] - store byte to address Xn+Xm"
+  ;; Encoding: 00 111 0 00 00 1 Rm 011 0 10 Rn Rt
+  ;; #x38206800 = base + shifted register mode
+  (let* ((rm-s (ash rm 16))
+         (rn-s (ash rn 5))
+         (word (logior #x38206800 rm-s rn-s rt)))
+    (encode-word word)))
+
 (defun gen-memcpy-inline (count-reg)
   "Generate inline memcpy loop.
    x1 = src, x3 = dst, count-reg = count (modified).
@@ -719,6 +760,13 @@
     ((has-tag ir 'string-length-ir) (ir-may-call (cadr ir)))
     ((has-tag ir 'string-ref-ir) (or (ir-may-call (cadr ir)) (ir-may-call (caddr ir))))
     ((has-tag ir 'string-concat-ir) (or (ir-may-call (cadr ir)) (ir-may-call (caddr ir))))
+    ((has-tag ir 'make-vector-ir) (ir-may-call (cadr ir)))
+    ((has-tag ir 'vector-ref-ir) (or (ir-may-call (cadr ir)) (ir-may-call (caddr ir))))
+    ((has-tag ir 'vector-set-ir) (or (ir-may-call (cadr ir))
+                                      (ir-may-call (caddr ir))
+                                      (ir-may-call (cadddr ir))))
+    ((has-tag ir 'vector-length-ir) (ir-may-call (cadr ir)))
+    ((has-tag ir 'make-string-from-vector-ir) (ir-may-call (cadr ir)))
     ((has-tag ir 'str-lit) nil)
     ((has-tag ir 'if-ir) t)
     ((has-tag ir 'let-ir) t)
@@ -896,12 +944,13 @@
            (load-addr 0 tagged))))
 
     ;; String literal - allocate on heap
-    ;; String layout: [length:8][data:N][padding to 8]
+    ;; String layout: [length:8][data:N][padding to 16]
+    ;; Total size must be 16-byte aligned to keep heap aligned for cons cells
     ((has-tag ir 'str-lit)
      (let* ((str (cadr ir))
             (len (string-length str))
-            (aligned-len (logand (+ len 8 7) (lognot 7)))  ; align to 8
-            (total-size (+ 8 aligned-len)))  ; header + data
+            ;; Align (header + data) to 16 bytes
+            (total-size (logand (+ len 8 15) (lognot 15))))
        ;; Generate code to:
        ;; 1. Store length at x28
        ;; 2. Copy string bytes to x28+8
@@ -992,6 +1041,24 @@
                          (append-all
                           (list (cmp-reg 0 1)
                                 (cset 0 (cond-gt))
+                                (lsl-imm 0 0 4)))
+                         rtaddrs fnoffs td))
+
+    ;; Less than or equal
+    ((has-tag ir 'cmp-le)
+     (codegen-binop (cadr ir) (caddr ir)
+                         (append-all
+                          (list (cmp-reg 0 1)
+                                (cset 0 (cond-le))
+                                (lsl-imm 0 0 4)))
+                         rtaddrs fnoffs td))
+
+    ;; Greater than or equal
+    ((has-tag ir 'cmp-ge)
+     (codegen-binop (cadr ir) (caddr ir)
+                         (append-all
+                          (list (cmp-reg 0 1)
+                                (cset 0 (cond-ge))
                                 (lsl-imm 0 0 4)))
                          rtaddrs fnoffs td))
 
@@ -1127,6 +1194,148 @@
               (gen-memcpy-inline 9)
               ;; Return tagged result
               (add-imm 0 0 4)))))        ; string tag
+
+    ;; Make-vector: allocate vector on heap
+    ;; Vector layout: [length (8 bytes)] [data (n * 8 bytes)]
+    ;; Total size = 8 + (untagged_size * 8), rounded to 16 for tagging
+    ((has-tag ir 'make-vector-ir)
+     (let* ((size-ir (cadr ir))
+            (sc (codegen size-ir rtaddrs fnoffs td)))
+       (append-all
+        (list sc
+              ;; x0 = tagged size, store untagged length at [x28+0]
+              (lsr-imm 1 0 4)           ; x1 = untagged length
+              (str-offset 1 28 0)       ; [x28+0] = length
+              ;; Calculate allocation size: 8 + (x0 >> 1)
+              (lsr-imm 1 0 1)           ; x1 = x0 >> 1 = untagged_size * 8
+              (add-imm 1 1 8)           ; x1 = 8 + data_size = total size
+              ;; Round to 16-byte alignment: (x1 + 15) & ~15
+              (add-imm 1 1 15)          ; x1 = total + 15
+              (and-imm 1 1 1 #x3C #x3B) ; x1 = x1 & ~15 (clear low 4 bits)
+              ;; Return tagged pointer, bump heap
+              (mov-reg 0 28)            ; x0 = current heap ptr
+              (add-reg 28 28 1)         ; x28 += total size (now 16-aligned)
+              ;; Tag with vector tag (0x3)
+              (movz 1 3)
+              (orr-reg 0 0 1)))))
+
+    ;; Vector-set: set element at index
+    ;; (vector-set-ir vec-ir idx-ir val-ir)
+    ((has-tag ir 'vector-set-ir)
+     (let* ((vec-ir (cadr ir))
+            (idx-ir (caddr ir))
+            (val-ir (cadddr ir))
+            (xs (temp-slot td))
+            (xs2 (temp-slot (+ td 1)))
+            (nd (+ td 2))
+            (vc (codegen vec-ir rtaddrs fnoffs nd))
+            (sv (str-offset 0 31 xs))
+            (ic (codegen idx-ir rtaddrs fnoffs nd))
+            (si (str-offset 0 31 xs2))
+            (vlc (codegen val-ir rtaddrs fnoffs nd)))
+       ;; After codegen: val in x0, vec at [sp+xs], idx at [sp+xs2]
+       (append-all
+        (list vc sv ic si vlc
+              ;; x0 = val, load vec -> x1, idx -> x2
+              (ldr-offset 1 31 xs)         ; x1 = vec (tagged with 3)
+              (ldr-offset 2 31 xs2)        ; x2 = idx (tagged)
+              ;; Clear tag from vec by subtracting 3
+              (sub-imm 1 1 3)              ; x1 = vec_ptr (untagged)
+              ;; Calculate offset: x2 = (idx >> 1) + 8
+              (lsr-imm 2 2 1)              ; x2 = idx >> 1 = idx_untagged * 8
+              (add-imm 2 2 8)              ; x2 = offset = 8 + idx_untagged * 8
+              ;; Store val at vec_ptr + offset
+              (add-reg 1 1 2)              ; x1 = address
+              (str-offset 0 1 0)))))       ; [x1] = val
+
+    ;; Vector-ref: get element at index
+    ;; (vector-ref-ir vec-ir idx-ir)
+    ((has-tag ir 'vector-ref-ir)
+     (let* ((vec-ir (cadr ir))
+            (idx-ir (caddr ir))
+            (xs (temp-slot td))
+            (nd (+ td 1))
+            (vc (codegen vec-ir rtaddrs fnoffs nd))
+            (sv (str-offset 0 31 xs))
+            (ic (codegen idx-ir rtaddrs fnoffs nd)))
+       ;; After codegen: idx in x0, vec at [sp+xs]
+       (append-all
+        (list vc sv ic
+              ;; x0 = idx, load vec -> x1
+              (ldr-offset 1 31 xs)         ; x1 = vec (tagged with 3)
+              ;; Clear tag from vec by subtracting 3
+              (sub-imm 1 1 3)              ; x1 = vec_ptr (untagged)
+              ;; Calculate offset: x0 = (idx >> 1) + 8
+              (lsr-imm 0 0 1)              ; x0 = idx >> 1 = idx_untagged * 8
+              (add-imm 0 0 8)              ; x0 = offset = 8 + idx_untagged * 8
+              ;; Load element from vec_ptr + offset
+              (add-reg 1 1 0)              ; x1 = address
+              (ldr-offset 0 1 0)))))       ; x0 = [x1] = element (already tagged)
+
+    ;; Vector-length: get vector size
+    ;; (vector-length-ir vec-ir)
+    ((has-tag ir 'vector-length-ir)
+     (let* ((vec-ir (cadr ir))
+            (vc (codegen vec-ir rtaddrs fnoffs td)))
+       (append-all
+        (list vc
+              ;; x0 = vec (tagged with 3)
+              ;; Clear tag by subtracting 3
+              (sub-imm 0 0 3)              ; x0 = vec_ptr (untagged)
+              ;; Load length: x0 = [x0+0]
+              (ldr-offset 0 0 0)           ; x0 = raw length (untagged integer)
+              ;; Tag as fixnum: x0 = x0 << 4
+              (lsl-imm 0 0 4)))))          ; x0 = tagged fixnum length
+
+    ;; Make-string-from-vector: convert vector of char codes to string
+    ;; (make-string-from-vector-ir vec-ir)
+    ((has-tag ir 'make-string-from-vector-ir)
+     (let* ((vec-ir (cadr ir))
+            (vc (codegen vec-ir rtaddrs fnoffs td)))
+       (append-all
+        (list vc
+              ;; x0 = vec (tagged with 3)
+              ;; x1 = untagged vec base
+              (sub-imm 1 0 3)              ; x1 = vec_ptr (untagged)
+              ;; x5 = vec length (raw)
+              (ldr-offset 5 1 0)           ; x5 = [x1+0] = length
+              ;; Allocate string: store length at [x28], compute alloc size
+              (str-offset 5 28 0)          ; [x28+0] = length
+              ;; x4 = alloc size = (8 + len + 15) & ~15 for 16-byte alignment
+              (add-imm 4 5 23)             ; x4 = len + 23 (= len + 8 + 15)
+              ;; Clear low 4 bits: x4 = x4 & ~15
+              ;; Using AND with #xF mask then subtract (since and-imm encoding is complex)
+              ;; Actually, simpler: x4 = (x4 >> 4) << 4
+              (lsr-imm 4 4 4)              ; x4 = x4 >> 4
+              (lsl-imm 4 4 4)              ; x4 = (x4 >> 4) << 4 = x4 & ~15
+              ;; Save string ptr (will be result), bump heap
+              (mov-reg 0 28)               ; x0 = string base (untagged)
+              (add-reg 28 28 4)            ; x28 += alloc_size
+              ;; x2 = string data base = x0 + 8
+              (add-imm 2 0 8)              ; x2 = string data start
+              ;; x3 = loop counter = 0
+              (movz 3 0)                   ; x3 = 0
+              ;; Loop: while x3 < x5
+              ;; loop_start: (offset 0 from here)
+              (cmp-reg 3 5)                ; cmp x3, x5
+              (b-cond (cond-ge) 36)        ; if x3 >= x5, jump to loop_end (+9 instructions = 36 bytes)
+              ;; Load vec[x3]: address = x1 + 8 + x3*8
+              (lsl-imm 4 3 3)              ; x4 = x3 * 8
+              (add-imm 4 4 8)              ; x4 = 8 + x3*8 (offset in vec)
+              (add-reg 4 1 4)              ; x4 = vec_base + offset
+              (ldr-offset 4 4 0)           ; x4 = [x4] = tagged fixnum
+              ;; Untag: x4 = x4 >> 4
+              (lsr-imm 4 4 4)              ; x4 = char value (untagged)
+              ;; Store byte: str_data[x3] = x4
+              (strb-reg 4 2 3)             ; [x2 + x3] = x4 (byte)
+              ;; x3++
+              (add-imm 3 3 1)              ; x3++
+              ;; Jump back to loop_start (cmp instruction)
+              (b-offset -36)               ; back 9 instructions = -36 bytes
+              ;; loop_end:
+              ;; Tag result with string tag (0x4)
+              (movz 4 4)                   ; x4 = 4
+              (orr-reg 0 0 4)))))
 
     ;; Setcar - mutate car of cons cell
     ;; (setcar-ir cons-ir val-ir)
@@ -1266,6 +1475,7 @@
     ;; Lambda reference (closure creation)
     ;; lambda-ref = (lambda-ref name free-offsets)
     ;; After lambda lifting, name is a string that we look up in fnoffs
+    ;; Uses load-addr-8 for consistent code size (fnoffs depends on code size)
     ((has-tag ir 'lambda-ref)
      (let* ((name (cadr ir))
             (free-offsets (caddr ir))
@@ -1277,7 +1487,7 @@
        (if (null free-offsets)
            ;; No captures - simple closure
            (append-all
-            (list (load-addr 0 (ash fn-offset 4))
+            (list (load-addr-8 0 (ash fn-offset 4))
                   (str-offset 0 28 0)
                   (movz 0 0)  ;; nil for empty env
                   (str-offset 0 28 8)
@@ -1295,7 +1505,7 @@
                     ;; Save captured env
                     (str-offset 0 28 8)
                     ;; Store fn-offset
-                    (load-addr 0 (ash fn-offset 4))
+                    (load-addr-8 0 (ash fn-offset 4))
                     (str-offset 0 28 0)
                     ;; Create closure pointer
                     (mov-reg 0 28)
@@ -1307,6 +1517,7 @@
     ;; Function reference (closure for named function)
     ;; fn-ref-ir = (fn-ref-ir name) where name is a symbol
     ;; Creates a closure with empty env pointing to the named function
+    ;; Uses load-addr-8 for consistent code size
     ((has-tag ir 'fn-ref-ir)
      (let* ((name (cadr ir))
             ;; Look up function offset in fnoffs (symbol key)
@@ -1315,7 +1526,7 @@
        ;; Build closure on heap: (fn-offset . nil)
        ;; No captures, so env is nil
        (append-all
-        (list (load-addr 0 (ash fn-offset 4))
+        (list (load-addr-8 0 (ash fn-offset 4))
               (str-offset 0 28 0)
               (movz 0 0)  ;; nil for empty env
               (str-offset 0 28 8)

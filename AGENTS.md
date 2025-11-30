@@ -60,6 +60,7 @@ habu/
 
 ### Problem Solving
 
+- **Ultrathink for significant efforts**: When facing complex tasks, multi-step implementations, or difficult bugs, use extended thinking to plan thoroughly before acting
 - **Take no shortcuts**: Always identify the root cause of bugs
 - Investigate systematically, don't patch symptoms
 - Understand WHY something fails before attempting fixes

@@ -66,6 +66,14 @@ Full Stage 1 compiler compiles to native and runs:
 3. codegen.lisp compiles successfully
 4. Combined (reader + compiler + codegen) compiles and runs: PASS
 
+### Missing Comparison Handlers Fix
+
+Added missing `cmp-le` and `cmp-ge` handlers in `bootstrap/codegen.lisp`:
+- `<=` comparisons were not being generated (no handler for `cmp-le` IR)
+- `>=` comparisons were also missing (no handler for `cmp-ge` IR)
+- This caused recursive functions using `<=` to always take the then-branch
+- Fixed by adding handlers using `cond-le` (13) and `cond-ge` (10) condition codes
+
 ### ARM64 Intrinsics Standardization
 
 Refactored `bootstrap/macho.lisp` to use `arm64` package intrinsics:

@@ -803,6 +803,34 @@
          ((eq (car expr) 'eq) (list 'cmp-eq (compile-expr-full (nth 1 expr) env fenv)
                                    (compile-expr-full (nth 2 expr) env fenv)))
 
+         ;; length - list length via inline labels
+         ((eq (car expr) 'length)
+          (let ((len-iter-fn (gensym "LEN-ITER"))
+                (lst-var (gensym "LST"))
+                (acc-var (gensym "ACC")))
+            (compile-expr-full
+             `(labels ((,len-iter-fn (,lst-var ,acc-var)
+                         (if (null ,lst-var)
+                             ,acc-var
+                             (,len-iter-fn (cdr ,lst-var) (+ ,acc-var 1)))))
+                (,len-iter-fn ,(nth 1 expr) 0))
+             env fenv)))
+
+         ;; reverse - reverse list via inline labels
+         ((eq (car expr) 'reverse)
+          (let ((rev-iter-fn (gensym "REV-ITER"))
+                (lst-var (gensym "LST"))
+                (acc-var (gensym "ACC"))
+                (next-acc-var (gensym "NEXT-ACC")))
+            (compile-expr-full
+             `(labels ((,rev-iter-fn (,lst-var ,acc-var)
+                         (if (null ,lst-var)
+                             ,acc-var
+                             (let ((,next-acc-var (cons (car ,lst-var) ,acc-var)))
+                               (,rev-iter-fn (cdr ,lst-var) ,next-acc-var)))))
+                (,rev-iter-fn ,(nth 1 expr) nil))
+             env fenv)))
+
          ;; String operations - use -ir suffix to match codegen
          ((eq (car expr) 'string-length) (list 'string-length-ir (compile-expr-full (nth 1 expr) env fenv)))
          ((eq (car expr) 'string-ref) (list 'string-ref-ir
