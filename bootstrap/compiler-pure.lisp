@@ -433,8 +433,12 @@
                ((not (consp e)) acc)
                ((eq (car e) 'quote) acc)
                ((eq (car e) 'lambda)
-                ;; Don't descend into nested lambdas
-                acc)
+                ;; Descend into nested lambdas to find vars they need
+                ;; Add lambda params to bound list
+                (let* ((lambda-params (cadr e))
+                       (lambda-body (cddr e))
+                       (new-bound (pure-append lambda-params bound)))
+                  (find-in-list lambda-body new-bound acc)))
                ;; Handle let/let* - add bound vars before descending into body
                ((or (eq (car e) 'let) (eq (car e) 'LET)
                     (eq (car e) 'let*) (eq (car e) 'LET*))

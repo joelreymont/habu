@@ -680,7 +680,9 @@
                                 (pure-mov-reg 0 28)
                                 (pure-add-imm 0 0 1)  ;; cons tag
                                 (pure-add-imm 28 28 16)))))))
-          (gen-cons-chain (pure-reverse free-offsets))))))
+          ;; Don't reverse - gen-cons-chain builds in correct order
+          ;; for free-vars list (first offset becomes car)
+          (gen-cons-chain free-offsets)))))
 
 ;;; ============================================================
 ;;; Binary Operation Codegen Helper
@@ -1191,16 +1193,45 @@
          (params (cadr fn))
          (body-ir (caddr fn))
          (param-base (cadddr fn))
+         ;; For lifted lambdas (param-base > 0), load captured values from x24
+         ;; x24 points to a cons list of captured values
+         (capture-code (if (> param-base 0)
+                           (pure-gen-capture-loads param-base)
+                           nil))
          ;; Generate param stores: move x0-x7 to [x20 - offset*8]
          (param-code (pure-gen-param-stores params param-base 0 nil))
          ;; Generate body code
          (body-code (pure-codegen body-ir rtaddrs fnoffs 0)))
     (pure-append-all
      (list (pure-prologue)
+           capture-code
            param-code
            body-code
            (pure-epilogue)
            (pure-ret)))))
+
+(defun pure-gen-capture-loads (num-captures)
+  "Generate code to load captured values from x24 cons list into env slots.
+   x24 = (v0 . (v1 . (v2 . nil))) - load into offsets 0, 1, 2, etc."
+  (labels ((gen-loads (idx acc)
+             (if (>= idx num-captures)
+                 acc
+                 (let* ((offset (* idx 8))
+                        ;; x24 points to current cons cell
+                        ;; Load car into x9, store at [x20 - offset*8]
+                        ;; Then advance: x24 = cdr(x24)
+                        (load-car (pure-append
+                                   (pure-sub-imm 9 24 1)      ; untag cons
+                                   (pure-ldr-offset 9 9 0)))  ; x9 = car
+                        (store-env (pure-append
+                                    (pure-sub-imm 10 20 offset)
+                                    (pure-str-offset 9 10 0))) ; [x20-off] = x9
+                        (advance (pure-append
+                                  (pure-sub-imm 9 24 1)       ; untag cons
+                                  (pure-ldr-offset 24 9 8)))) ; x24 = cdr
+                   (gen-loads (+ idx 1)
+                              (pure-append-all (list acc load-car store-env advance)))))))
+    (gen-loads 0 nil)))
 
 (defun pure-gen-param-stores (params base idx acc)
   "Generate stores from registers x0-x7 to environment slots"
