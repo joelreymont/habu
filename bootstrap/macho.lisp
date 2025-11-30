@@ -803,7 +803,7 @@
                                                    (cons (arm64-mov 27 28)
                                                          (cons (arm64-add-imm 28 28 16)
                                                                (cons (arm64-str 31 27 0)
-                                                                     (cons (arm64-adr 26 40)
+                                                                     (cons (arm64-adr 26 36)
                                                                            (cons (arm64-bl 32)
                                                                                  (cons (arm64-lsr 0 0 4)
                                                                                        (cons (arm64-ldr 27 31 24)
