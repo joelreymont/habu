@@ -176,7 +176,7 @@
          (pure-has-tag ir 'cmp-lt) (pure-has-tag ir 'cmp-gt)
          (pure-has-tag ir 'cons-ir)
          (pure-has-tag ir 'setcar-ir) (pure-has-tag ir 'setcdr-ir)
-         (pure-has-tag ir 'string-ref-ir))
+         (pure-has-tag ir 'string-ref-ir) (pure-has-tag ir 'string-concat-ir))
      (let* ((left (cadr ir))
             (right (caddr ir))
             (left-result (pure-lift-lambdas left lambdas))
@@ -635,6 +635,51 @@
 (defun pure-load-temp (rd td)
   (pure-ldr-offset rd 31 (pure-temp-slot td)))
 
+(defun pure-strb (rt rn offset)
+  "Store byte from rt to [rn + offset]"
+  (let* ((off-bits (ash (logand offset #xFFF) 10))
+         (rn-shift (ash rn 5))
+         (or1 (logior #x39000000 off-bits))  ; STRB unsigned offset
+         (or2 (logior or1 rn-shift))
+         (word (logior or2 rt)))
+    (pure-encode-word word)))
+
+(defun pure-gen-memcpy-inline (count-reg)
+  "Generate inline memcpy loop.
+   x1 = src, x3 = dst, count-reg = count (modified).
+   x4 = temp for byte. Increments x1, x3."
+  ;; Generate a simple loop:
+  ;; loop: cbz count, done (+20)
+  ;;       ldrb w4, [x1]
+  ;;       strb w4, [x3]
+  ;;       add x1, x1, #1
+  ;;       add x3, x3, #1
+  ;;       sub count, count, #1
+  ;;       b loop (-24)
+  (let* ((cbz-instr (pure-cbz count-reg 28))  ; branch +28 bytes (7 instructions) if zero
+         (ldrb-instr (pure-ldrb 4 1 0))
+         (strb-instr (pure-strb 4 3 0))
+         (inc-src (pure-add-imm 1 1 1))
+         (inc-dst (pure-add-imm 3 3 1))
+         (dec-count (pure-sub-imm count-reg count-reg 1))
+         (branch-back (pure-b -24)))  ; branch back 24 bytes (6 instructions)
+    (pure-append-all (list cbz-instr ldrb-instr strb-instr
+                           inc-src inc-dst dec-count branch-back))))
+
+(defun pure-cbz (rt offset)
+  "CBZ rt, offset - compare and branch if zero"
+  (let* ((imm19 (logand (ash offset -2) #x7FFFF))
+         (imm-bits (ash imm19 5))
+         (or1 (logior #xB4000000 imm-bits))
+         (word (logior or1 rt)))
+    (pure-encode-word word)))
+
+(defun pure-b (offset)
+  "B offset - unconditional branch"
+  (let* ((imm26 (logand (ash offset -2) #x3FFFFFF))
+         (word (logior #x14000000 imm26)))
+    (pure-encode-word word)))
+
 ;;; ============================================================
 ;;; IR Tag Predicates
 ;;; ============================================================
@@ -669,6 +714,7 @@
     ((pure-has-tag ir 'make-symbol-ir) (pure-ir-may-call (cadr ir)))
     ((pure-has-tag ir 'string-length-ir) (pure-ir-may-call (cadr ir)))
     ((pure-has-tag ir 'string-ref-ir) (or (pure-ir-may-call (cadr ir)) (pure-ir-may-call (caddr ir))))
+    ((pure-has-tag ir 'string-concat-ir) (or (pure-ir-may-call (cadr ir)) (pure-ir-may-call (caddr ir))))
     ((pure-has-tag ir 'str-lit) nil)
     ((pure-has-tag ir 'if-ir) t)
     ((pure-has-tag ir 'let-ir) t)
@@ -1019,6 +1065,64 @@
               (pure-ldrb 0 1 0)
               ;; Tag as fixnum
               (pure-lsl-imm 0 0 4)))))
+
+    ;; String-concat: concatenate two strings
+    ;; Result is a new string on heap
+    ((pure-has-tag ir 'string-concat-ir)
+     (let* ((str1-ir (cadr ir))
+            (str2-ir (caddr ir))
+            (spill1 (pure-spill-base td))
+            (spill2 (+ spill1 8))
+            (spill3 (+ spill1 16))
+            (str1-code (pure-codegen str1-ir rtaddrs fnoffs td))
+            (str2-code (pure-codegen str2-ir rtaddrs fnoffs (+ td 1))))
+       (pure-append-all
+        (list str1-code
+              ;; Spill str1
+              (pure-str-offset 0 31 spill1)
+              str2-code
+              ;; Spill str2
+              (pure-str-offset 0 31 spill2)
+              ;; Load str1, get len1 into x9
+              (pure-ldr-offset 1 31 spill1)
+              (pure-sub-imm 1 1 4)            ; untag
+              (pure-ldr-offset 9 1 0)         ; x9 = len1
+              ;; Load str2, get len2 into x10
+              (pure-ldr-offset 2 31 spill2)
+              (pure-sub-imm 2 2 4)            ; untag
+              (pure-ldr-offset 10 2 0)        ; x10 = len2
+              ;; x11 = len1 + len2 (total length)
+              (pure-add-reg 11 9 10)
+              ;; Save total length
+              (pure-str-offset 11 31 spill3)
+              ;; Store total length at heap[0]
+              (pure-str-offset 11 28 0)
+              ;; Save heap start for result
+              (pure-mov-reg 0 28)
+              ;; Calculate aligned size: (8 + total + 7) & ~7
+              (pure-add-imm 12 11 15)         ; +8 header +7 for alignment
+              (pure-and-imm 12 12 #xFFFFFFF8) ; align to 8
+              ;; Bump heap by aligned size
+              (pure-add-reg 28 28 12)
+              ;; Now copy str1 bytes to result+8
+              ;; x1 = src1 (str1+8), x3 = dst (result+8), x9 = len1
+              (pure-ldr-offset 1 31 spill1)
+              (pure-sub-imm 1 1 4)            ; untag str1
+              (pure-add-imm 1 1 8)            ; skip header
+              (pure-add-imm 3 0 8)            ; dst = result + 8
+              ;; Copy loop for str1 (x9 = count)
+              ;; This is a simple byte-by-byte copy
+              (pure-gen-memcpy-inline 9)
+              ;; Now copy str2 bytes
+              ;; x3 already points past str1 data
+              ;; x1 = src2 (str2+8), x10 = len2
+              (pure-ldr-offset 1 31 spill2)
+              (pure-sub-imm 1 1 4)            ; untag str2
+              (pure-add-imm 1 1 8)            ; skip header
+              (pure-mov-reg 9 10)             ; count = len2
+              (pure-gen-memcpy-inline 9)
+              ;; Return tagged result
+              (pure-add-imm 0 0 4)))))        ; string tag
 
     ;; Setcar - mutate car of cons cell
     ;; (setcar-ir cons-ir val-ir)

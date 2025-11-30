@@ -794,6 +794,12 @@
          ((eq (car expr) 'string-ref) (list 'string-ref-ir
                                     (pure-compile-expr-full (nth 1 expr) env fenv)
                                     (pure-compile-expr-full (nth 2 expr) env fenv)))
+         ;; string-concat / sys:string-concat - concatenate two strings
+         ((or (eq (car expr) 'string-concat)
+              (eq (car expr) 'sys:string-concat))
+          (list 'string-concat-ir
+                (pure-compile-expr-full (nth 1 expr) env fenv)
+                (pure-compile-expr-full (nth 2 expr) env fenv)))
 
          ;; Vector operations - use -ir suffix to match codegen
          ((eq (car expr) 'make-vector) (list 'make-vector-ir (pure-compile-expr-full (nth 1 expr) env fenv)))
