@@ -47,6 +47,212 @@
               id))))))
 
 ;;; ============================================================
+;;; Lambda Counter State (for lambda lifting)
+;;; ============================================================
+
+#+sbcl (defvar *pure-lambda-state* (cons 0 nil))
+
+(defun pure-reset-lambda-counter ()
+  "Reset lambda counter"
+  #+sbcl (setf (car *pure-lambda-state*) 0)
+  #-sbcl (setcar *pure-lambda-state* 0))
+
+(defun pure-gensym-lambda ()
+  "Generate unique lambda name as a string like LAMBDA-1, LAMBDA-2, etc."
+  (let* ((state *pure-lambda-state*)
+         (counter (car state))
+         (new-count (+ counter 1)))
+    #+sbcl (setf (car state) new-count)
+    #-sbcl (setcar state new-count)
+    ;; Build name string: "LAMBDA-" + number
+    (labels ((digits (n acc)
+               (if (= n 0)
+                   (if (null acc) (cons 48 nil) acc)  ;; 48 = '0'
+                   (digits (truncate n 10)
+                           (cons (+ 48 (mod n 10)) acc))))
+             (chars-to-str (cs)
+               (let ((len (pure-length cs)))
+                 (labels ((build (i cs vec)
+                            (if (null cs)
+                                vec
+                                (progn
+                                  (vector-set vec i (car cs))
+                                  (build (+ i 1) (cdr cs) vec)))))
+                   (build 0 cs (make-vector len))))))
+      (let* ((num-chars (digits new-count nil))
+             (prefix (list 76 65 77 66 68 65 45))  ;; "LAMBDA-"
+             (all-chars (pure-append prefix num-chars)))
+        (chars-to-str all-chars)))))
+
+;;; ============================================================
+;;; Lambda Lifting (extract lambdas, replace with references)
+;;; ============================================================
+
+(defun pure-lift-lambdas (ir lambdas)
+  "Extract lambda-ir nodes from IR, replacing with lambda-ref.
+   Returns (cons transformed-ir lambdas) where lambdas is alist of (name params body free-vars free-offsets)"
+  (cond
+    ((null ir) (cons ir lambdas))
+    ((not (consp ir)) (cons ir lambdas))
+
+    ;; Found a lambda - extract it
+    ((pure-has-tag ir 'lambda-ir)
+     (let* ((name (pure-gensym-lambda))
+            (params (cadr ir))
+            (body (caddr ir))
+            (free-vars (cadddr ir))
+            (free-offsets (nth 4 ir)))
+       ;; Recursively lift from body
+       (let* ((body-result (pure-lift-lambdas body lambdas))
+              (new-body (car body-result))
+              (more-lambdas (cdr body-result))
+              (lambda-entry (list name params new-body free-vars free-offsets)))
+         (cons (list 'lambda-ref name free-offsets)
+               (cons lambda-entry more-lambdas)))))
+
+    ;; let-ir: (let-ir vals body count offs)
+    ((pure-has-tag ir 'let-ir)
+     (let* ((vals (cadr ir))
+            (body (caddr ir))
+            (count (cadddr ir))
+            (offs (nth 4 ir))
+            (vals-result (pure-lift-list vals lambdas))
+            (new-vals (car vals-result))
+            (l1 (cdr vals-result))
+            (body-result (pure-lift-lambdas body l1))
+            (new-body (car body-result))
+            (l2 (cdr body-result)))
+       (cons (list 'let-ir new-vals new-body count offs) l2)))
+
+    ;; if-ir
+    ((pure-has-tag ir 'if-ir)
+     (let* ((test (cadr ir))
+            (then (caddr ir))
+            (else (cadddr ir))
+            (test-result (pure-lift-lambdas test lambdas))
+            (new-test (car test-result))
+            (l1 (cdr test-result))
+            (then-result (pure-lift-lambdas then l1))
+            (new-then (car then-result))
+            (l2 (cdr then-result))
+            (else-result (pure-lift-lambdas else l2))
+            (new-else (car else-result))
+            (l3 (cdr else-result)))
+       (cons (list 'if-ir new-test new-then new-else) l3)))
+
+    ;; progn-ir
+    ((pure-has-tag ir 'progn-ir)
+     (let* ((forms (cadr ir))
+            (forms-result (pure-lift-list forms lambdas))
+            (new-forms (car forms-result))
+            (new-lambdas (cdr forms-result)))
+       (cons (list 'progn-ir new-forms) new-lambdas)))
+
+    ;; funcall-ir
+    ((pure-has-tag ir 'funcall-ir)
+     (let* ((fn-ir (cadr ir))
+            (args (caddr ir))
+            (fn-result (pure-lift-lambdas fn-ir lambdas))
+            (new-fn (car fn-result))
+            (l1 (cdr fn-result))
+            (args-result (pure-lift-list args l1))
+            (new-args (car args-result))
+            (l2 (cdr args-result)))
+       (cons (list 'funcall-ir new-fn new-args) l2)))
+
+    ;; call-fn
+    ((pure-has-tag ir 'call-fn)
+     (let* ((name (cadr ir))
+            (args (caddr ir))
+            (args-result (pure-lift-list args lambdas))
+            (new-args (car args-result))
+            (new-lambdas (cdr args-result)))
+       (cons (list 'call-fn name new-args) new-lambdas)))
+
+    ;; Binary ops
+    ((or (pure-has-tag ir 'add) (pure-has-tag ir 'sub)
+         (pure-has-tag ir 'mul) (pure-has-tag ir 'div)
+         (pure-has-tag ir 'cmp-eq) (pure-has-tag ir 'cmp-lt)
+         (pure-has-tag ir 'cmp-gt) (pure-has-tag ir 'cons-ir))
+     (let* ((left (cadr ir))
+            (right (caddr ir))
+            (left-result (pure-lift-lambdas left lambdas))
+            (new-left (car left-result))
+            (l1 (cdr left-result))
+            (right-result (pure-lift-lambdas right l1))
+            (new-right (car right-result))
+            (l2 (cdr right-result)))
+       (cons (list (car ir) new-left new-right) l2)))
+
+    ;; Unary ops
+    ((or (pure-has-tag ir 'car-ir) (pure-has-tag ir 'cdr-ir) (pure-has-tag ir 'get-tag))
+     (let* ((arg (cadr ir))
+            (arg-result (pure-lift-lambdas arg lambdas))
+            (new-arg (car arg-result))
+            (new-lambdas (cdr arg-result)))
+       (cons (list (car ir) new-arg) new-lambdas)))
+
+    ;; sys-exit-ir
+    ((pure-has-tag ir 'sys-exit-ir)
+     (let* ((arg (cadr ir))
+            (arg-result (pure-lift-lambdas arg lambdas))
+            (new-arg (car arg-result))
+            (new-lambdas (cdr arg-result)))
+       (cons (list 'sys-exit-ir new-arg) new-lambdas)))
+
+    ;; Default - return unchanged
+    (t (cons ir lambdas))))
+
+(defun pure-lift-list (lst lambdas)
+  "Lift lambdas from a list of IR nodes"
+  (if (null lst)
+      (cons nil lambdas)
+      (let* ((first-result (pure-lift-lambdas (car lst) lambdas))
+             (new-first (car first-result))
+             (l1 (cdr first-result))
+             (rest-result (pure-lift-list (cdr lst) l1))
+             (new-rest (car rest-result))
+             (l2 (cdr rest-result)))
+        (cons (cons new-first new-rest) l2))))
+
+(defun pure-lift-lambdas-from-defuns (defuns acc-defuns acc-lambdas)
+  "Lift lambdas from all defun bodies.
+   Defun format: (name params body param-base)
+   Must preserve param-base after lifting."
+  (if (null defuns)
+      (cons (pure-reverse acc-defuns) acc-lambdas)
+      (let* ((defun (car defuns))
+             (name (car defun))
+             (params (cadr defun))
+             (body (caddr defun))
+             (param-base (cadddr defun))  ;; Preserve param-base!
+             (body-result (pure-lift-lambdas body acc-lambdas))
+             (new-body (car body-result))
+             (more-lambdas (cdr body-result))
+             (new-defun (list name params new-body param-base)))  ;; Keep 4 elements
+        (pure-lift-lambdas-from-defuns (cdr defuns)
+                                        (cons new-defun acc-defuns)
+                                        more-lambdas))))
+
+(defun pure-lambdas-to-defuns (lambdas acc)
+  "Convert lifted lambda entries to defun format.
+   Lambda entry: (name params body free-vars free-offsets)
+   Defun format: (name params body param-base)
+   The param-base for lambdas is the number of captured variables,
+   since params are stored after captured vars in the environment."
+  (if (null lambdas)
+      (pure-reverse acc)
+      (let* ((lambda-entry (car lambdas))
+             (name (car lambda-entry))
+             (params (cadr lambda-entry))
+             (body (caddr lambda-entry))
+             (free-vars (cadddr lambda-entry))
+             ;; param-base = number of free vars (params come after captures)
+             (param-base (pure-length free-vars))
+             (defun-entry (list name params body param-base)))
+        (pure-lambdas-to-defuns (cdr lambdas) (cons defun-entry acc)))))
+
+;;; ============================================================
 ;;; ARM64 Instruction Encoders (copied from compiler.lisp)
 ;;; All pure functions - no state dependencies
 ;;; ============================================================
@@ -250,6 +456,23 @@
          (word (logior #x8A000000 rm-shift rn-shift rd)))
     (pure-encode-word word)))
 
+(defun pure-and-imm (rd rn imm)
+  "AND Xd, Xn, #imm - Bitwise AND with immediate.
+   Note: Only supports specific immediate values that are valid logical immediates.
+   Currently supports: #xF (low 4 bits)"
+  (let* ((rn-shift (ash rn 5))
+         ;; For #xF: N=1, immr=0, imms=3 (4 bits of 1s at position 0)
+         ;; Base encoding: 0x92400000 for 64-bit AND immediate
+         ;; imms=3 at bits [15:10] = 0xC00
+         (word (if (= imm #xF)
+                   (logior #x92400C00 rn-shift rd)
+                   ;; For #xFF (8 bits): imms=7 at bits [15:10] = 0x1C00
+                   (if (= imm #xFF)
+                       (logior #x92401C00 rn-shift rd)
+                       ;; Unsupported immediate - return 0 (NOP-ish)
+                       #xD503201F))))
+    (pure-encode-word word)))
+
 (defun pure-orr-reg (rd rn rm)
   (let* ((rm-shift (ash rm 16))
          (rn-shift (ash rn 5))
@@ -356,11 +579,96 @@
     ((pure-has-tag ir 'cons-ir) (or (pure-ir-may-call (cadr ir)) (pure-ir-may-call (caddr ir))))
     ((pure-has-tag ir 'car-ir) (pure-ir-may-call (cadr ir)))
     ((pure-has-tag ir 'cdr-ir) (pure-ir-may-call (cadr ir)))
+    ((pure-has-tag ir 'get-tag) (pure-ir-may-call (cadr ir)))
     ((pure-has-tag ir 'if-ir) t)
     ((pure-has-tag ir 'let-ir) t)
     ((pure-has-tag ir 'let*-ir) t)
     ((pure-has-tag ir 'progn-ir) t)
     (t nil)))
+
+;;; ============================================================
+;;; String Lookup in Fnoffs (lambda names are strings)
+;;; ============================================================
+
+(defun pure-lookup-string (name fnoffs)
+  "Look up a string name in fnoffs alist.
+   fnoffs entries can have either symbol or string keys.
+   Returns (name . offset) or nil if not found."
+  (labels ((str-match (s1 s2)
+             ;; Compare two strings (or string to symbol name)
+             (cond
+               ((and (stringp s1) (stringp s2))
+                (pure-string-equal s1 s2))
+               ((and (stringp s1) (symbolp s2))
+                (pure-string-equal s1 (symbol-name s2)))
+               ((and (symbolp s1) (stringp s2))
+                (pure-string-equal (symbol-name s1) s2))
+               (t (eq s1 s2))))
+           (search-list (lst)
+             (if (null lst)
+                 nil
+                 (let ((entry (car lst)))
+                   (if (str-match name (car entry))
+                       entry
+                       (search-list (cdr lst)))))))
+    (search-list fnoffs)))
+
+;;; ============================================================
+;;; Build Captures for Closure Creation
+;;; ============================================================
+
+(defun pure-build-captures (free-offsets)
+  "Generate code to build a cons list of captured values.
+   free-offsets = list of stack offsets where captured values live.
+   Result in x0 is a tagged cons list."
+  (if (null free-offsets)
+      (pure-movz 0 0)  ;; nil
+      (labels ((build-list (offs acc)
+                 ;; Build list in reverse, then we cons onto it
+                 ;; Each captured value is loaded from [x20 - offset*8]
+                 (if (null offs)
+                     acc
+                     (let* ((off (car offs))
+                            (off8 (* off 8))
+                            ;; Load value from stack
+                            (load-code (pure-append (pure-sub-imm 1 20 off8)
+                                                    (pure-ldr-offset 0 1 0)))
+                            ;; Save in temp if not first
+                            (store-code (if (null (cdr offs))
+                                           nil  ;; Last one, keep in x0
+                                           (pure-append-all
+                                            (list load-code
+                                                  ;; Store car
+                                                  (pure-str-offset 0 28 0)
+                                                  ;; Load/cons previous result
+                                                  (pure-ldr-offset 0 28 8)  ; get cdr (prev result)
+                                                  ;; This doesn't work... need different approach
+                                                  nil)))))
+                       (build-list (cdr offs)
+                                   (pure-append acc load-code))))))
+        ;; Simpler approach: build cons list iteratively
+        ;; Start with nil, then cons each value
+        (labels ((gen-cons-chain (offs)
+                   (if (null offs)
+                       (pure-movz 0 0)
+                       (let* ((off (car offs))
+                              (off8 (* off 8))
+                              (rest-code (gen-cons-chain (cdr offs))))
+                         ;; First build rest of list, then cons current onto it
+                         (pure-append-all
+                          (list rest-code
+                                ;; Save cdr in heap
+                                (pure-str-offset 0 28 8)
+                                ;; Load current value
+                                (pure-sub-imm 1 20 off8)
+                                (pure-ldr-offset 0 1 0)
+                                ;; Store as car
+                                (pure-str-offset 0 28 0)
+                                ;; Make cons pointer
+                                (pure-mov-reg 0 28)
+                                (pure-add-imm 0 0 1)  ;; cons tag
+                                (pure-add-imm 28 28 16)))))))
+          (gen-cons-chain (pure-reverse free-offsets))))))
 
 ;;; ============================================================
 ;;; Binary Operation Codegen Helper
@@ -546,6 +854,15 @@
                     (pure-append (pure-sub-imm 0 0 1)
                                  (pure-ldr-offset 0 0 8)))))
 
+    ;; Get-tag (extract low 4 bits as tagged fixnum)
+    ((pure-has-tag ir 'get-tag)
+     (let ((inner-code (pure-codegen (cadr ir) rtaddrs fnoffs td)))
+       (pure-append inner-code
+                    ;; AND x0, x0, #0xF to extract tag bits
+                    ;; Then LSL x0, x0, #4 to tag as fixnum
+                    (pure-append (pure-and-imm 0 0 #xF)
+                                 (pure-lsl-imm 0 0 4)))))
+
     ;; If-IR
     ((pure-has-tag ir 'if-ir)
      (let* ((cond-ir (cadr ir))
@@ -609,44 +926,95 @@
             (num-args (pure-length args))
             (arg-code (pure-codegen-call-args args rtaddrs fnoffs td))
             ;; Load spilled args into registers x1-x7 before call
-            (load-code (pure-gen-arg-loads num-args)))
+            (load-code (pure-gen-arg-loads num-args td)))
        ;; Emit call marker that will be resolved by pure-resolve-calls
        (pure-append-all (list arg-code load-code (list (list :call fn-name))))))
 
     ;; Lambda reference (closure creation)
+    ;; lambda-ref = (lambda-ref name free-offsets)
+    ;; After lambda lifting, name is a string that we look up in fnoffs
     ((pure-has-tag ir 'lambda-ref)
-     ;; Create closure: (fn-offset . env)
-     (let* ((fn-offset (or (cadr ir) 0))
-            (free-offsets (cddr ir)))
-       ;; Build closure on heap
+     (let* ((name (cadr ir))
+            (free-offsets (caddr ir))
+            ;; Look up function offset in fnoffs
+            (fn-entry (pure-lookup-string name fnoffs))
+            (fn-offset (if fn-entry (cdr fn-entry) 0)))
+       ;; Build closure on heap: (fn-offset . captured-env)
+       ;; First, build captured environment on heap (list of captured values)
+       (if (null free-offsets)
+           ;; No captures - simple closure
+           (pure-append-all
+            (list (pure-load-addr 0 (ash fn-offset 4))
+                  (pure-str-offset 0 28 0)
+                  (pure-movz 0 0)  ;; nil for empty env
+                  (pure-str-offset 0 28 8)
+                  (pure-mov-reg 0 28)
+                  (pure-add-imm 0 0 5)  ;; closure tag
+                  (pure-add-imm 28 28 16)))
+           ;; Has captures - build env cons list first
+           (let* ((capture-code (pure-build-captures free-offsets))
+                  (xs (pure-temp-slot td)))
+             (pure-append-all
+              (list ;; Save x24 before building captures
+                    (pure-str-offset 24 31 xs)
+                    ;; Build captured env (result in x0)
+                    capture-code
+                    ;; Save captured env
+                    (pure-str-offset 0 28 8)
+                    ;; Store fn-offset
+                    (pure-load-addr 0 (ash fn-offset 4))
+                    (pure-str-offset 0 28 0)
+                    ;; Create closure pointer
+                    (pure-mov-reg 0 28)
+                    (pure-add-imm 0 0 5)
+                    (pure-add-imm 28 28 16)
+                    ;; Restore x24
+                    (pure-ldr-offset 24 31 xs)))))))
+
+    ;; Function reference (closure for named function)
+    ;; fn-ref-ir = (fn-ref-ir name) where name is a symbol
+    ;; Creates a closure with empty env pointing to the named function
+    ((pure-has-tag ir 'fn-ref-ir)
+     (let* ((name (cadr ir))
+            ;; Look up function offset in fnoffs (symbol key)
+            (fn-entry (pure-lookup-string name fnoffs))
+            (fn-offset (if fn-entry (cdr fn-entry) 0)))
+       ;; Build closure on heap: (fn-offset . nil)
+       ;; No captures, so env is nil
        (pure-append-all
         (list (pure-load-addr 0 (ash fn-offset 4))
               (pure-str-offset 0 28 0)
-              (pure-mov-reg 0 24)
+              (pure-movz 0 0)  ;; nil for empty env
               (pure-str-offset 0 28 8)
               (pure-mov-reg 0 28)
-              (pure-add-imm 0 0 5)
+              (pure-add-imm 0 0 5)  ;; closure tag
               (pure-add-imm 28 28 16)))))
 
     ;; Funcall-IR
     ((pure-has-tag ir 'funcall-ir)
      (let* ((fn-ir (cadr ir))
             (args (caddr ir))
+            (num-args (pure-length args))
             (fn-code (pure-codegen fn-ir rtaddrs fnoffs td))
             (cs (pure-temp-slot td))
             (nd (+ td 1))
-            (arg-code (pure-codegen-funcall-args args rtaddrs fnoffs nd 0)))
+            (arg-code (pure-codegen-funcall-args args rtaddrs fnoffs nd 0))
+            ;; Load args from spill slots to registers x0-x7
+            ;; Note: funcall-args uses nd for spill, so load from nd
+            (load-code (pure-gen-arg-loads num-args nd)))
        (pure-append-all
         (list fn-code
-              (pure-str-offset 0 31 cs)
-              arg-code
-              (pure-ldr-offset 0 31 cs)
-              (pure-sub-imm 0 0 5)
-              (pure-ldr-offset 24 0 8)
-              (pure-ldr-offset 1 0 0)
-              (pure-lsr-imm 1 1 4)
-              (pure-add-reg 1 1 26)
-              (pure-blr 1)))))
+              (pure-str-offset 0 31 cs)  ;; Save closure to temp
+              arg-code                    ;; Eval and spill args
+              load-code                   ;; Load args to x0-x7
+              ;; Use x9 for closure to avoid clobbering x0-x7 (args)
+              (pure-ldr-offset 9 31 cs)  ;; x9 = closure
+              (pure-sub-imm 9 9 5)       ;; Untag closure
+              (pure-ldr-offset 24 9 8)   ;; x24 = [x9 + 8] = env
+              (pure-ldr-offset 9 9 0)    ;; x9 = [x9 + 0] = fn-offset
+              (pure-lsr-imm 9 9 4)       ;; Untag fn-offset
+              (pure-add-reg 9 9 26)      ;; x9 = x26 + fn-offset = absolute addr
+              (pure-blr 9)))))
 
     ;; Default - return empty
     (t nil)))
@@ -684,19 +1052,27 @@
 ;;; Helper: Call Arguments Codegen
 ;;; ============================================================
 
+(defun pure-spill-base (td)
+  "Calculate spill area base for temp depth td.
+   Each nesting level gets 64 bytes (8 slots) of spill area."
+  (+ #x240 (* td 64)))
+
 (defun pure-codegen-call-args (args rtaddrs fnoffs td)
   "Generate code for function call arguments"
   (pure-codegen-args-iter args rtaddrs fnoffs td 0))
 
 (defun pure-codegen-args-iter (args rtaddrs fnoffs td argnum)
   "Generate code for args, storing ALL args to spill slots.
-   This ensures arg 0 isn't clobbered when evaluating later args."
+   This ensures arg 0 isn't clobbered when evaluating later args.
+   Uses td-based offset so nested calls don't clobber each other."
   (if (null args)
       nil
       (let* ((arg-ir (car args))
-             (arg-code (pure-codegen arg-ir rtaddrs fnoffs td))
-             ;; Store ALL args to spill slots (including arg 0)
-             (save-code (pure-str-offset 0 31 (+ #x240 (* argnum 8)))))
+             ;; Eval arg with incremented td so nested calls use different spill area
+             (arg-code (pure-codegen arg-ir rtaddrs fnoffs (+ td 1)))
+             ;; Store to spill slot based on current td
+             (spill-offset (+ (pure-spill-base td) (* argnum 8)))
+             (save-code (pure-str-offset 0 31 spill-offset)))
         (pure-append-all
          (list arg-code
                save-code
@@ -706,32 +1082,36 @@
 ;;; Helper: Load Arguments into Registers Before Call
 ;;; ============================================================
 
-(defun pure-gen-arg-loads (num-args)
-  "Generate code to load spilled args from [sp + #x240 + i*8] into registers x0-x7.
-   All args are stored to spill slots, so we load all of them."
+(defun pure-gen-arg-loads (num-args td)
+  "Generate code to load spilled args from spill area into registers x0-x7.
+   Uses td-based offset to match where args were stored."
   (if (= num-args 0)
       nil
-      (labels ((gen-load (i acc)
-                 (if (>= i num-args)
-                     acc
-                     (gen-load (+ i 1)
-                               (pure-append acc
-                                            (pure-ldr-offset i 31 (+ #x240 (* i 8))))))))
-        (gen-load 0 nil))))
+      (let ((base (pure-spill-base td)))
+        (labels ((gen-load (i acc)
+                   (if (>= i num-args)
+                       acc
+                       (gen-load (+ i 1)
+                                 (pure-append acc
+                                              (pure-ldr-offset i 31 (+ base (* i 8))))))))
+          (gen-load 0 nil)))))
 
 ;;; ============================================================
 ;;; Helper: Funcall Arguments Codegen
 ;;; ============================================================
 
 (defun pure-codegen-funcall-args (args rtaddrs fnoffs td argnum)
-  "Generate code for funcall arguments"
+  "Generate code for funcall arguments.
+   Uses td-based spill area so nested calls don't clobber each other."
   (if (null args)
       nil
       (let* ((arg-ir (car args))
-             (arg-code (pure-codegen arg-ir rtaddrs fnoffs td)))
+             ;; Eval arg with incremented td so nested calls use different spill area
+             (arg-code (pure-codegen arg-ir rtaddrs fnoffs (+ td 1))))
         (if (< argnum 8)
-            ;; Args 0-7 go in registers
-            (let ((save-code (pure-str-offset 0 31 (+ #x240 (* argnum 8)))))
+            ;; Args 0-7: store to td-based spill slot
+            (let* ((spill-offset (+ (pure-spill-base td) (* argnum 8)))
+                   (save-code (pure-str-offset 0 31 spill-offset)))
               (pure-append-all
                (list arg-code
                      save-code
@@ -925,36 +1305,52 @@
 
 (defun pure-deliver-v3 (source output-path)
   "Compile source string with function definitions to native executable.
-   Supports: defun, function calls, all v2 features.
-   Layout: wrapper(68) + main-code + function-code + stubs
+   Supports: defun, lambda, funcall, function calls, all v2 features.
+   Layout: wrapper(68) + main-code + function-code + lambda-code + stubs
    Works in both SBCL and native Habu (no SBCL dependencies)."
   (pure-reset-symbol-table)
+  (pure-reset-lambda-counter)
   (let* ((forms (pure-read-all source))
          (result (pure-compile-forms forms))
-         (defuns (car result))
-         (main-ir (cadr result))
-         (wrapper-size 68))
+         (defuns-orig (car result))
+         (main-ir-orig (cadr result))
+         (wrapper-size 68)
+         ;; Lift lambdas from main-ir
+         (main-lift-result (pure-lift-lambdas main-ir-orig nil))
+         (main-ir (car main-lift-result))
+         (main-lambdas (cdr main-lift-result))
+         ;; Lift lambdas from defun bodies
+         (defun-lift-result (pure-lift-lambdas-from-defuns defuns-orig nil nil))
+         (defuns (car defun-lift-result))
+         (defun-lambdas (cdr defun-lift-result))
+         ;; Combine all lambdas
+         (all-lambdas (pure-append main-lambdas defun-lambdas))
+         ;; Check if we have any functions at all
+         (has-fns (or (not (null defuns)) (not (null all-lambdas)))))
 
-    (if (null defuns)
-        ;; No functions - use v2
+    (if (not has-fns)
+        ;; No functions or lambdas - use v2
         (pure-deliver-v2 source output-path)
 
-        ;; Has functions - full compilation
-        (let* (;; Generate main code first (with nil fnoffs to get size)
+        ;; Has functions/lambdas - full compilation
+        ;; Combine defuns and lambdas (lambdas need to be converted to defun format)
+        (let* ((lambda-as-defuns (pure-lambdas-to-defuns all-lambdas nil))
+               (all-fns (pure-append defuns lambda-as-defuns))
+               ;; Generate main code first (with nil fnoffs to get size)
                (main-code-temp (pure-append-all
                                 (list (pure-prologue)
                                       (pure-codegen main-ir nil nil 0)
                                       (pure-epilogue))))
                (main-size (pure-code-size main-code-temp))
                ;; Build fnoffs starting after main code (relative to code start after wrapper)
-               (fnoffs (pure-build-fnoffs defuns main-size nil))
+               (fnoffs (pure-build-fnoffs all-fns main-size nil))
                ;; Regenerate main with fnoffs
                (main-code (pure-append-all
                            (list (pure-prologue)
                                  (pure-codegen main-ir nil fnoffs 0)
                                  (pure-epilogue))))
-               ;; Generate all function code
-               (fn-code (pure-codegen-all-fns defuns nil fnoffs nil))
+               ;; Generate all function code (defuns + lambdas)
+               (fn-code (pure-codegen-all-fns all-fns nil fnoffs nil))
                ;; Combine all code
                (all-code (pure-append main-code fn-code))
                ;; Flatten with markers tracking positions

@@ -711,6 +711,14 @@
          ((eq (car expr) 'lambda) (pure-compile-lambda expr env fenv))
          ((eq (car expr) 'funcall) (pure-compile-funcall expr env fenv))
          ((eq (car expr) 'labels) (pure-compile-labels expr env fenv))
+         ;; (function name) - create closure for named function
+         ((eq (car expr) 'function)
+          (let ((name (cadr expr)))
+            (if (pure-fenv-lookup name fenv)
+                ;; Create fn-ref-ir that codegen will resolve to lambda-ref
+                (list 'fn-ref-ir name)
+                ;; Variable might be a lambda bound in let - compile as var
+                (pure-compile-var name env))))
 
          ;; Arithmetic (variadic support) - codegen uses 'add not 'add-ir
          ((eq (car expr) '+) (pure-fold-binop 'add (cdr expr) env fenv))
