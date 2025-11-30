@@ -1081,7 +1081,6 @@
               (ldr-offset 0 31 cs)
               (str-offset 0 28 0)
               (mov-reg 0 28)
-              (orr-reg 0 0 28)
               (add-imm 0 0 1)
               (add-imm 28 28 16)
               (ldr-offset 24 31 xs)))))
@@ -1678,11 +1677,20 @@
 ;;; ============================================================
 
 (defun prologue ()
-  "Generate function prologue"
+  "Generate function prologue.
+   Frame layout after prologue (0x400 bytes):
+   sp+0x00:  unused (alignment)
+   sp+0x10:  x19, x20
+   sp+0x20:  x21, x22
+   sp+0x30:  x23, x24
+   sp+0x40:  temp slots (td*8)
+   sp+0x180: environment base (x20)
+   sp+0x240: spill area (td*64)
+   sp+0x3F0: x29 (fp), x30 (lr) - saved at TOP of frame to avoid spill collision"
   (append-all
-   (list (stp-offset 29 30 31 -128)
-         (add-imm 29 31 0)
-         (sub-imm 31 31 #x400)
+   (list (sub-imm 31 31 #x400)           ;; Create frame first
+         (stp-offset 29 30 31 #x3F0)     ;; Save fp/lr at top of frame
+         (add-imm 29 31 0)               ;; fp = sp
          (stp-offset 19 20 31 16)
          (stp-offset 21 22 31 32)
          (stp-offset 23 24 31 48)
@@ -1694,8 +1702,8 @@
    (list (ldp-offset 23 24 31 48)
          (ldp-offset 21 22 31 32)
          (ldp-offset 19 20 31 16)
+         (ldp-offset 29 30 31 #x3F0)     ;; Restore fp/lr from top of frame
          (add-imm 31 31 #x400)
-         (ldp-offset 29 30 31 -128)
          (ret))))
 
 ;;; ============================================================
@@ -1723,8 +1731,7 @@
            capture-code
            param-code
            body-code
-           (epilogue)
-           (ret)))))
+           (epilogue)))))  ;; epilogue includes ret
 
 (defun gen-capture-loads (num-captures)
   "Generate code to load captured values from x24 cons list into env slots.
@@ -1883,7 +1890,7 @@
          ;; Collect extern calls
          (extern-calls (collect-extern-calls bytes-with-markers))
          (imports (get-unique-imports extern-calls))
-         (wrapper-size 68))
+         (wrapper-size 72))  ;; 18 instructions × 4 bytes
 
     ;; Always use imports path for consistent Mach-O
     (let ((imports (if (null imports) '("_exit") imports)))
@@ -1917,7 +1924,7 @@
 (defun deliver-v3 (source output-path)
   "Compile source string with function definitions to native executable.
    Supports: defun, lambda, funcall, function calls, all v2 features.
-   Layout: wrapper(68) + main-code + function-code + lambda-code + stubs
+   Layout: wrapper(72) + main-code + function-code + lambda-code + stubs
    Works in both SBCL and native Habu (no SBCL dependencies)."
   (reset-symbol-table)
   (reset-lambda-counter)
@@ -1925,7 +1932,7 @@
          (result (compile-forms forms))
          (defuns-orig (car result))
          (main-ir-orig (cadr result))
-         (wrapper-size 68)
+         (wrapper-size 72)  ;; 18 instructions × 4 bytes
          ;; Lift lambdas from main-ir
          (main-lift-result (lift-lambdas main-ir-orig nil))
          (main-ir (car main-lift-result))
