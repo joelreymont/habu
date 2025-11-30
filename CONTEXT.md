@@ -1,7 +1,7 @@
 # Habu Self-Hosting Lisp Compiler - Context
 
 **Last Updated**: November 30, 2025
-**Milestone**: Self-hosting primitives complete - setcar, strings, symbols
+**Milestone**: Closures fixed, Stage 1 compilation passes
 
 ## Current Status
 
@@ -36,34 +36,48 @@ Edge cases (18): negative numbers, zero handling, deeply nested arithmetic, long
 
 ## Latest Session (November 30, 2025)
 
-### Self-Hosting Progress
+### Critical Bug Fix: Wrapper ADR Offset
 
-Major milestone achieved: compiler.lisp compiles to native and runs correctly!
+**Root cause of ALL closure failures found and fixed!**
 
-1. **Pipe symbol fix** in reader.lisp - Added handling for `|SYS:FOO|` style symbols
-2. **fnoffs size calculation fix** - Critical bug where `build-fnoffs` calculated function
-   sizes with nil offsets, but `load-addr` produces different-sized code depending on
-   offset magnitude (1 instruction for <0x10000, 2 for larger). Fixed by iterating
-   until offset table stabilizes.
-3. reader.lisp compiles and runs correctly (14KB source)
-4. compiler.lisp compiles and runs correctly (57KB source, 78 defuns)
-5. Combined reader + compiler compiles (71KB total, 110 functions)
+The wrapper code in `bootstrap/macho.lisp` had an incorrect ADR offset:
+- ADR instruction at offset 36 was using `ADR x26, 40` → x26 = 76
+- But code starts at offset 72 (18 instructions × 4 bytes)
+- This caused x26 (code base register) to be 4 bytes too high
+- Every funcall jumped to wrong address (1 instruction past actual function)
 
-**Verified working:**
-- Compiler + sys-exit: PASS
-- Compiler + nth call: PASS
-- Compiler + length call: PASS
-- Reader + Compiler combined: PASS
+**Fix:** Changed `ADR 26 40` to `ADR 26 36` (72 - 36 = 36)
 
-**Resolved (string-equal and assoc fixed):**
-- string-equal and assoc now work correctly
-- Root cause: labels with closures over string parameters
-- Fix: rewrote string-equal/string= without closures (use helper functions instead)
+### Closure Tests Now Pass
 
-**Known limitation:**
-- `habu-read` at runtime has issues due to labels closures over `source` string
-- Symbol interning infrastructure added (get-intern-table, set-intern-table)
-- Full runtime symbol interning blocked by same closure bug
+After the ADR fix, all closure patterns work correctly:
+- Lambda with no captures: PASS
+- Lambda capturing let-bound variable: PASS
+- Lambda capturing function parameter: PASS
+- Labels capturing variables: PASS
+- Nested closures: PASS
+- Higher-order functions: PASS
+
+### Stage 1 Compilation Complete
+
+Full Stage 1 compiler compiles to native and runs:
+1. reader.lisp compiles successfully
+2. compiler.lisp compiles successfully
+3. codegen.lisp compiles successfully
+4. Combined (reader + compiler + codegen) compiles and runs: PASS
+
+### ARM64 Intrinsics Standardization
+
+Refactored `bootstrap/macho.lisp` to use `arm64` package intrinsics:
+- Removed duplicate local `arm64-*` functions
+- Now uses `arm64:add`, `arm64:sub`, `arm64:ldr`, etc. with keyword args
+- Single source of truth for instruction encoding in `arm64/asm.lisp`
+
+### Previous Session Progress
+
+1. **Pipe symbol fix** in reader.lisp - `|SYS:FOO|` style symbols
+2. **fnoffs size calculation fix** - iterate until offset table stabilizes
+3. **string-equal/assoc fix** - rewrote without closures
 
 ### Lambda Lifting and Closure Support
 
