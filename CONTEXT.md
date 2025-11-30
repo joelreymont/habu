@@ -36,6 +36,40 @@ Edge cases (18): negative numbers, zero handling, deeply nested arithmetic, long
 
 ## Latest Session (November 30, 2025)
 
+### Critical Bug Fix: STP Offset Encoding Overflow
+
+**Root cause: STP/LDP 7-bit signed offset couldn't encode 0x3F0 (1008 bytes)!**
+
+The prologue/epilogue used `stp x29, x30, [sp, #0x3F0]` to save fp/lr at the end of the 0x400 byte frame. But STP's immediate is 7-bit signed, scaled by 8:
+- Range: -512 to +504 bytes
+- 0x3F0 (1008) / 8 = 126 = 0x7E
+- 0x7E in 7-bit signed = -2 (MSB set)
+- Actual encoded offset: -2 × 8 = **-16 bytes**
+
+So `stp x29, x30, [sp, #0x3F0]` actually stored at `sp - 16`, outside the frame!
+
+This "worked" accidentally because sp-16 wasn't being overwritten. But when trying to fix to sp+0, the Stage 1 read-all test crashed because something else in the code overwrites sp+0..sp+15.
+
+**Fix:** Use STR/LDR instead of STP/LDP for fp/lr:
+- STR uses 12-bit unsigned offset (range 0 to 32760 bytes)
+- `str x29, [sp, #0x3F0]` correctly encodes offset 1008
+- `str x30, [sp, #0x3F8]` correctly encodes offset 1016
+
+```lisp
+;; Prologue
+(str-offset 29 31 #x3F0)        ;; Save fp at sp+0x3F0
+(str-offset 30 31 #x3F8)        ;; Save lr at sp+0x3F8
+
+;; Epilogue
+(ldr-offset 29 31 #x3F0)        ;; Restore fp from sp+0x3F0
+(ldr-offset 30 31 #x3F8)        ;; Restore lr from sp+0x3F8
+```
+
+**Results:**
+- All 15 basic tests: PASS
+- Stage 1 read-all test: PASS (172KB source → 8.7MB native)
+- Stage 1 now correctly reads files, parses S-expressions, and returns list length
+
 ### File I/O and String Handling Fixes
 
 Added syscall codegen for file I/O operations:
