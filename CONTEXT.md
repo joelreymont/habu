@@ -3,7 +3,56 @@
 **Session Date**: November 22-29, 2025
 **Focus**: Self-hosting ARM64 Lisp compiler - path to eliminating SBCL
 **Last Updated**: November 29, 2025
-**Milestone**: NATIVE COMPILER WITH PARSER - Reads, parses, and compiles source files!
+**Milestone**: PURE CODEGEN WORKING - Pure ARM64 codegen with no SBCL dependencies!
+
+## Session Summary (November 29, 2025 - Pure Codegen Complete)
+
+### Major Achievement: Pure ARM64 Codegen Working!
+
+Created `bootstrap/codegen-pure.lisp` - a complete ARM64 code generator with no SBCL dependencies.
+
+**What Works:**
+- All basic IR nodes: LIT, VAR, ADD, SUB, MUL, CMP-EQ/LT/GT
+- Control flow: IF-IR with correct branch offsets
+- Data structures: CONS-IR, CAR-IR, CDR-IR
+- Bindings: LET-IR with proper offset handling
+- System calls: SYS-EXIT-IR with extern-call markers
+- Mach-O generation via `pure-deliver-v2`
+
+**Test Results (10/10 pass):**
+```
+PASS: add = 30       (+ 10 20)
+PASS: sub = 42       (- 50 8)
+PASS: mul = 42       (* 6 7)
+PASS: let-simple = 42
+PASS: let-star = 5   (let* ((x 3) (y (+ x 2))) y)
+PASS: let-nested = 30
+PASS: if-true = 42
+PASS: if-false = 42
+PASS: cons-car = 42
+PASS: cons-cdr = 42
+```
+
+### Key Fixes This Session
+
+1. **let-ir offset handling** - Use `offs` from IR instead of sequential index
+2. **if-ir branch calculation** - Remove erroneous *4 (code is bytes, not instructions)
+3. **pure-flatten-extern-calls** - Convert `:extern-call` markers to BL instructions
+4. **sys-exit-ir** - Proper extern-call marker format `(:extern-call "_exit")`
+
+### Commits
+
+- b7167c8: Fix pure codegen for let-ir with proper offset handling
+- 7590882: Fix if-ir branch offset calculation in pure codegen
+
+### Next Steps
+
+1. Add defun support to pure-deliver-v2 (function definitions)
+2. Add labels support (local recursive functions)
+3. Test: pure compiler compiles itself
+4. Bundle for true self-hosting
+
+---
 
 ## Session Summary (November 29, 2025 - Native Compiler Reads and Compiles)
 
