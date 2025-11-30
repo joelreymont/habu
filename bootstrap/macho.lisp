@@ -3,6 +3,10 @@
 ;;; Buffer-based Mach-O generation - no stream I/O
 ;;; Pure Habu - uses only features available in bootstrap compiler
 
+;; Load ARM64 assembler for instruction encoding
+#+sbcl
+(load "arm64/asm.lisp")
+
 (in-package :habu)
 
 ;;; SBCL compatibility: native-write-file
@@ -565,99 +569,20 @@
     (native-write-file output-path exe-str)))
 
 ;;; ============================================================
-;;; ARM64 Instruction Encoding (for stub generation)
+;;; ARM64 Instruction Encoding (uses arm64 package)
 ;;; ============================================================
-
-(defun encode-u32-le (val)
-  "Encode 32-bit value as little-endian byte list"
-  (cons (logand val #xFF)
-        (cons (logand (ash val -8) #xFF)
-              (cons (logand (ash val -16) #xFF)
-                    (cons (logand (ash val -24) #xFF)
-                          nil)))))
-
-(defun arm64-adrp (rd page-offset)
-  "ADRP Xd, label - Load PC-relative page address
-   RD: destination register (0-31)
-   PAGE-OFFSET: signed page offset"
-  (let* ((immlo (logand page-offset #x3))
-         (immhi (logand (ash page-offset -2) #x7FFFF))
-         (instr (logior #x90000000
-                       (ash immlo 29)
-                       (ash immhi 5)
-                       rd)))
-    (encode-u32-le instr)))
-
-(defun arm64-ldr (rt rn offset)
-  "LDR Xt, [Xn, #offset] - Load 64-bit register
-   RT: destination register
-   RN: base address register
-   OFFSET: byte offset (must be multiple of 8)"
-  (let* ((scaled-offset (ash offset -3))
-         (instr (logior #xF9400000
-                       (ash scaled-offset 10)
-                       (ash rn 5)
-                       rt)))
-    (encode-u32-le instr)))
-
-(defun arm64-br (rn)
-  "BR Xn - Branch to register
-   RN: register containing target address"
-  (let ((instr (logior #xD61F0000 (ash rn 5))))
-    (encode-u32-le instr)))
-
-(defun arm64-sub-imm (rd rn imm)
-  "SUB Xd, Xn, #imm - Subtract immediate"
-  (let ((instr (logior #xD1000000 (ash imm 10) (ash rn 5) rd)))
-    (encode-u32-le instr)))
-
-(defun arm64-add-imm (rd rn imm)
-  "ADD Xd, Xn, #imm - Add immediate"
-  (let ((instr (logior #x91000000 (ash imm 10) (ash rn 5) rd)))
-    (encode-u32-le instr)))
-
-(defun arm64-str (rt rn offset)
-  "STR Xt, [Xn, #offset] - Store 64-bit register"
-  (let* ((scaled-offset (ash offset -3))
-         (instr (logior #xF9000000 (ash scaled-offset 10) (ash rn 5) rt)))
-    (encode-u32-le instr)))
-
-(defun arm64-mov (rd rm)
-  "MOV Xd, Xm - Move register (encoded as ORR)"
-  (let ((instr (logior #xAA0003E0 (ash rm 16) rd)))
-    (encode-u32-le instr)))
-
-(defun arm64-adr (rd offset)
-  "ADR Xd, label - Load PC-relative address"
-  (let* ((immlo (logand offset #x3))
-         (immhi (logand (ash offset -2) #x7FFFF))
-         (instr (logior #x10000000 (ash immlo 29) (ash immhi 5) rd)))
-    (encode-u32-le instr)))
-
-(defun arm64-bl (offset)
-  "BL label - Branch with link"
-  (let* ((off-s (ash offset -2))
-         (off-m (logand off-s #x3FFFFFF))
-         (instr (logior #x94000000 off-m)))
-    (encode-u32-le instr)))
-
-(defun arm64-lsr (rd rn shift)
-  "LSR Xd, Xn, #shift - Logical shift right (UBFM with imms=63)"
-  (let ((instr (logior #xD340FC00 (ash shift 16) (ash rn 5) rd)))
-    (encode-u32-le instr)))
-
-(defun arm64-ret ()
-  "RET - Return from subroutine"
-  (encode-u32-le #xD65F03C0))
+;;; Note: All instruction encoding functions are in arm64 package (arm64/asm.lisp)
+;;; arm64:adrp, arm64:adr, arm64:ldr, arm64:str, arm64:add, arm64:sub,
+;;; arm64:mov, arm64:bl, arm64:br, arm64:lsr, arm64:ret
 
 (defun generate-stub-code (got-page-offset got-slot-offset)
   "Generate ARM64 stub code that loads from GOT and branches.
    GOT-PAGE-OFFSET: signed page offset for ADRP (in 4KB pages)
    GOT-SLOT-OFFSET: byte offset within page for LDR
    Returns byte list (12 bytes = 3 instructions)"
-  (append (arm64-adrp 16 got-page-offset)
-          (append (arm64-ldr 16 16 got-slot-offset)
-                  (arm64-br 16))))
+  (append (arm64:adrp 16 got-page-offset)
+          (append (arm64:ldr 16 16 :offset got-slot-offset)
+                  (arm64:br 16))))
 
 (defun build-got-entries (num-imports)
   "Build GOT entries with bind markers.
@@ -794,24 +719,24 @@
    Returns 72 bytes (18 instructions) + original code.
    First 16 bytes of heap reserved: [x27+0] = intern table (initialized to nil)."
   (let ((stub (buf-append-all
-               (cons (arm64-sub-imm 31 31 #x30)
-                     (cons (arm64-str 30 31 0)
-                           (cons (arm64-str 28 31 8)
-                                 (cons (arm64-str 26 31 16)
-                                       (cons (arm64-str 27 31 24)
-                                             (cons (arm64-adrp 28 heap-page-offset)
-                                                   (cons (arm64-mov 27 28)
-                                                         (cons (arm64-add-imm 28 28 16)
-                                                               (cons (arm64-str 31 27 0)
-                                                                     (cons (arm64-adr 26 36)
-                                                                           (cons (arm64-bl 32)
-                                                                                 (cons (arm64-lsr 0 0 4)
-                                                                                       (cons (arm64-ldr 27 31 24)
-                                                                                             (cons (arm64-ldr 26 31 16)
-                                                                                                   (cons (arm64-ldr 28 31 8)
-                                                                                                         (cons (arm64-ldr 30 31 0)
-                                                                                                               (cons (arm64-add-imm 31 31 #x30)
-                                                                                                                     (cons (arm64-ret) nil)))))))))))))))))))))
+               (cons (arm64:sub 31 31 #x30 :imm t)
+                     (cons (arm64:str 30 31 :offset 0)
+                           (cons (arm64:str 28 31 :offset 8)
+                                 (cons (arm64:str 26 31 :offset 16)
+                                       (cons (arm64:str 27 31 :offset 24)
+                                             (cons (arm64:adrp 28 heap-page-offset)
+                                                   (cons (arm64:mov 27 28)
+                                                         (cons (arm64:add 28 28 16 :imm t)
+                                                               (cons (arm64:str 31 27 :offset 0)
+                                                                     (cons (arm64:adr 26 36)
+                                                                           (cons (arm64:bl 8)  ; 32 bytes = 8 instructions
+                                                                                 (cons (arm64:lsr 0 0 4 :imm t)
+                                                                                       (cons (arm64:ldr 27 31 :offset 24)
+                                                                                             (cons (arm64:ldr 26 31 :offset 16)
+                                                                                                   (cons (arm64:ldr 28 31 :offset 8)
+                                                                                                         (cons (arm64:ldr 30 31 :offset 0)
+                                                                                                               (cons (arm64:add 31 31 #x30 :imm t)
+                                                                                                                     (cons (arm64:ret) nil)))))))))))))))))))))
     (append stub code-bytes)))
 
 ;;; ============================================================
