@@ -1161,8 +1161,22 @@
           (sys-exit 1)))))
 
 ;;; ============================================================
-;;; Full Program Compilation (SBCL-only - calls main compiler helpers)
+;;; Full Program Compilation
 ;;; ============================================================
+
+#-sbcl
+(defun compile-program (forms)
+  "Compile forms to IR with function definitions.
+   Returns (ir . defuns) where:
+   - ir is the main program IR
+   - defuns is a list of function definitions
+   This is the pure version for native Stage 1.
+   Note: Does not call reset-symbol-table since *symbol-state*
+   is not initialized in native code."
+  (let* ((result (compile-forms forms))
+         (defuns (car result))
+         (mir (cadr result)))
+    (cons mir defuns)))
 
 #+sbcl
 (defun compile-program (forms)
