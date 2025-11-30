@@ -1223,7 +1223,7 @@
               (add-imm 1 1 8)           ; x1 = 8 + data_size = total size
               ;; Round to 16-byte alignment: (x1 + 15) & ~15
               (add-imm 1 1 15)          ; x1 = total + 15
-              (and-imm 1 1 1 59 4) ; x1 = x1 & ~15 (clear low 4 bits, mask 0xFFF...F0)
+              (and-imm 1 1 1 59 60) ; x1 = x1 & ~15 (immr=60 = rotate left by 4, mask 0xFFF...F0)
               ;; Return tagged pointer, bump heap
               (mov-reg 0 28)            ; x0 = current heap ptr
               (add-reg 28 28 1)         ; x28 += total size (now 16-aligned)
@@ -1554,6 +1554,68 @@
               (lsr-imm 0 0 4)           ; untag fd
               (list (list :extern-call "_close"))
               (lsl-imm 0 0 4)))))       ; tag result
+
+    ;; buffer-to-string-ir - convert raw byte buffer to string (inline)
+    ((has-tag ir 'buffer-to-string-ir)
+     ;; buffer-to-string-ir = (buffer-to-string-ir buf-ir len-ir)
+     ;; Inline implementation: allocate string on heap, copy raw bytes from buffer
+     ;; Buffer layout: [length (8 bytes)][raw bytes...] (sys-read writes raw bytes)
+     ;; String layout: [length (8 bytes)][char data (n bytes)]
+     ;; Register usage:
+     ;;   x0: result (tagged string)
+     ;;   x1: untagged buf base + 8 (raw data start)
+     ;;   x2: string data base (untagged string ptr + 8)
+     ;;   x3: loop counter (0 to len-1)
+     ;;   x4: temp for loading/storing bytes
+     ;;   x5: length (untagged)
+     (let* ((buf-ir (cadr ir))
+            (len-ir (caddr ir))
+            (buf-slot (temp-slot td))
+            (nd (+ td 1))
+            (buf-code (codegen buf-ir rtaddrs fnoffs nd))
+            (len-code (codegen len-ir rtaddrs fnoffs nd)))
+       (append-all
+        (list
+         ;; Evaluate buf, save to slot
+         buf-code
+         (str-offset 0 31 buf-slot)
+         ;; Evaluate len
+         len-code
+         ;; x5 = length (untagged)
+         (lsr-imm 5 0 4)                 ; x5 = len >> 4 (untag)
+         ;; x1 = buf data start (untagged buf base + 8)
+         (ldr-offset 1 31 buf-slot)      ; x1 = buf (tagged)
+         (and-imm 1 1 1 60 61)           ; x1 = buf & ~7 (clear tag)
+         (add-imm 1 1 8)                 ; x1 = buf + 8 (skip length header)
+         ;; Allocate string: store length at [x28]
+         (str-offset 5 28 0)             ; [x28+0] = length
+         ;; x4 = alloc size = (8 + len + 15) & ~15 for 16-byte alignment
+         (add-imm 4 5 23)                ; x4 = len + 23 (= len + 8 + 15)
+         (and-imm 4 4 1 59 60)           ; x4 = (len + 23) & ~15 (immr=60 = rotate left by 4)
+         ;; Save string ptr (will be result), bump heap
+         (mov-reg 0 28)                  ; x0 = string base (untagged)
+         (add-reg 28 28 4)               ; x28 += alloc_size
+         ;; x2 = string data base = x0 + 8
+         (add-imm 2 0 8)                 ; x2 = string data start
+         ;; x3 = loop counter = 0
+         (movz 3 0)                      ; x3 = 0
+         ;; Loop: while x3 < x5
+         ;; loop_start: (offset 0 from here)
+         (cmp-reg 3 5)                   ; cmp x3, x5
+         (b-cond (cond-ge) 24)           ; if x3 >= x5, jump to loop_end (+6 instructions = 24 bytes)
+         ;; Load buf[x3] - raw byte
+         (add-reg 4 1 3)                 ; x4 = buf_data + x3
+         (ldrb 4 4 0)                    ; x4 = byte at [x4]
+         ;; Store byte: str_data[x3] = x4
+         (strb-reg 4 2 3)                ; [x2 + x3] = x4 (byte)
+         ;; x3++
+         (add-imm 3 3 1)                 ; x3++
+         ;; Jump back to loop_start (cmp instruction)
+         (b-offset -24)                  ; back 6 instructions = -24 bytes
+         ;; loop_end:
+         ;; Tag result with string tag (0x4)
+         (movz 4 4)                      ; x4 = 4
+         (orr-reg 0 0 4)))))
 
     ;; Function call
     ((has-tag ir 'call-fn)
