@@ -590,16 +590,22 @@
       (+ #x40 (* td 8))))
 
 (defun load-addr (rd addr)
-  "Load large address into register"
+  "Load large address into register (up to 64 bits)"
   (if (< addr #x10000)
       (movz rd addr)
       (if (< addr #x100000000)
           (append (movz rd (logand addr #xFFFF))
                        (movk rd (ash addr -16) 1))
-          ;; 48-bit address
-          (append-all (list (movz rd (logand addr #xFFFF))
-                                 (movk rd (logand (ash addr -16) #xFFFF) 1)
-                                 (movk rd (logand (ash addr -32) #xFFFF) 2))))))
+          (if (< addr #x1000000000000)
+              ;; 48-bit address
+              (append-all (list (movz rd (logand addr #xFFFF))
+                                     (movk rd (logand (ash addr -16) #xFFFF) 1)
+                                     (movk rd (logand (ash addr -32) #xFFFF) 2)))
+              ;; 64-bit address (for packed string data)
+              (append-all (list (movz rd (logand addr #xFFFF))
+                                     (movk rd (logand (ash addr -16) #xFFFF) 1)
+                                     (movk rd (logand (ash addr -32) #xFFFF) 2)
+                                     (movk rd (logand (ash addr -48) #xFFFF) 3)))))))
 
 (defun load-addr-8 (rd addr)
   "Load address into register, always producing 8 bytes (2 instructions).
@@ -632,11 +638,13 @@
              (reverse acc)
              (str-to-bytes s (+ i 1) (cons (string-ref s i) acc)))))
     (let* ((bytes (str-to-bytes str 0 nil))
+           ;; Add null terminator for C string compatibility
+           (bytes-with-nul (append bytes (list 0)))
            ;; Store length first, then data starting at offset 8
            (len-code (append-all
                       (list (load-addr 9 len)
                             (str-offset 9 28 0))))
-           (data-code (gen-store-bytes 8 bytes nil))
+           (data-code (gen-store-bytes 8 bytes-with-nul nil))
            ;; Return tagged pointer and bump heap
            (result-code (append-all
                          (list (mov-reg 0 28)
@@ -772,6 +780,11 @@
     ((has-tag ir 'let-ir) t)
     ((has-tag ir 'let*-ir) t)
     ((has-tag ir 'progn-ir) t)
+    ;; Syscalls act like function calls (clobber registers)
+    ((has-tag ir 'sys-open-ir) t)
+    ((has-tag ir 'sys-write-ir) t)
+    ((has-tag ir 'sys-read-ir) t)
+    ((has-tag ir 'sys-close-ir) t)
     (t nil)))
 
 ;;; ============================================================
@@ -1459,6 +1472,88 @@
        (append arg-code
                     (append (lsr-imm 0 0 4)
                                  (list (list :extern-call "_exit"))))))
+
+    ;; sys-open-IR: open(path, flags, mode) -> fd
+    ((has-tag ir 'sys-open-ir)
+     (let* ((path-ir (cadr ir))
+            (flags-ir (caddr ir))
+            (mode-ir (cadddr ir))
+            (nd (+ td 3))
+            (path-code (codegen path-ir rtaddrs fnoffs nd))
+            (save-path (str-offset 0 31 (temp-slot td)))
+            (flags-code (codegen flags-ir rtaddrs fnoffs nd))
+            (save-flags (str-offset 0 31 (temp-slot (+ td 1))))
+            (mode-code (codegen mode-ir rtaddrs fnoffs nd))
+            (save-mode (str-offset 0 31 (temp-slot (+ td 2)))))
+       (append-all
+        (list path-code save-path flags-code save-flags mode-code save-mode
+              (ldr-offset 0 31 (temp-slot td))
+              (and-imm 0 0 1 60 61)     ; clear string tag (mask ~7 = 0xFFFFFFFFFFFFFFF8)
+              (add-imm 0 0 8)           ; skip length field
+              (ldr-offset 1 31 (temp-slot (+ td 1)))
+              (lsr-imm 1 1 4)           ; untag flags
+              (ldr-offset 2 31 (temp-slot (+ td 2)))
+              (lsr-imm 2 2 4)           ; untag mode
+              (list (list :extern-call "_open"))
+              (lsl-imm 0 0 4)))))       ; tag result
+
+    ;; sys-write-IR: write(fd, buf, len) -> bytes written
+    ((has-tag ir 'sys-write-ir)
+     (let* ((fd-ir (cadr ir))
+            (buf-ir (caddr ir))
+            (len-ir (cadddr ir))
+            (nd (+ td 3))
+            (fd-code (codegen fd-ir rtaddrs fnoffs nd))
+            (save-fd (str-offset 0 31 (temp-slot td)))
+            (buf-code (codegen buf-ir rtaddrs fnoffs nd))
+            (save-buf (str-offset 0 31 (temp-slot (+ td 1))))
+            (len-code (codegen len-ir rtaddrs fnoffs nd))
+            (save-len (str-offset 0 31 (temp-slot (+ td 2)))))
+       (append-all
+        (list fd-code save-fd buf-code save-buf len-code save-len
+              (ldr-offset 0 31 (temp-slot td))
+              (lsr-imm 0 0 4)           ; untag fd
+              (ldr-offset 1 31 (temp-slot (+ td 1)))
+              (and-imm 1 1 1 60 61)     ; clear string/vector tag (mask ~7 = 0xFFFFFFFFFFFFFFF8)
+              (add-imm 1 1 8)           ; skip length field
+              (ldr-offset 2 31 (temp-slot (+ td 2)))
+              (lsr-imm 2 2 4)           ; untag len
+              (list (list :extern-call "_write"))
+              (lsl-imm 0 0 4)))))       ; tag result
+
+    ;; sys-read-IR: read(fd, buf, len) -> bytes read
+    ((has-tag ir 'sys-read-ir)
+     (let* ((fd-ir (cadr ir))
+            (buf-ir (caddr ir))
+            (len-ir (cadddr ir))
+            (nd (+ td 3))
+            (fd-code (codegen fd-ir rtaddrs fnoffs nd))
+            (save-fd (str-offset 0 31 (temp-slot td)))
+            (buf-code (codegen buf-ir rtaddrs fnoffs nd))
+            (save-buf (str-offset 0 31 (temp-slot (+ td 1))))
+            (len-code (codegen len-ir rtaddrs fnoffs nd))
+            (save-len (str-offset 0 31 (temp-slot (+ td 2)))))
+       (append-all
+        (list fd-code save-fd buf-code save-buf len-code save-len
+              (ldr-offset 0 31 (temp-slot td))
+              (lsr-imm 0 0 4)           ; untag fd
+              (ldr-offset 1 31 (temp-slot (+ td 1)))
+              (and-imm 1 1 1 60 61)     ; clear vector tag (mask ~7 = 0xFFFFFFFFFFFFFFF8)
+              (add-imm 1 1 8)           ; skip length field
+              (ldr-offset 2 31 (temp-slot (+ td 2)))
+              (lsr-imm 2 2 4)           ; untag len
+              (list (list :extern-call "_read"))
+              (lsl-imm 0 0 4)))))       ; tag result
+
+    ;; sys-close-IR: close(fd) -> 0 on success
+    ((has-tag ir 'sys-close-ir)
+     (let* ((fd-ir (cadr ir))
+            (fd-code (codegen fd-ir rtaddrs fnoffs td)))
+       (append-all
+        (list fd-code
+              (lsr-imm 0 0 4)           ; untag fd
+              (list (list :extern-call "_close"))
+              (lsl-imm 0 0 4)))))       ; tag result
 
     ;; Function call
     ((has-tag ir 'call-fn)
