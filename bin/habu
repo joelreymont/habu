@@ -11,7 +11,7 @@ exec sbcl --noinform --non-interactive \
      --eval "(require :asdf)" \
      --eval "(push (truename \"bootstrap/\") asdf:*central-registry*)" \
      --eval "(asdf:load-system :habu)" \
-     --eval "(load \"macho-linker.lisp\")" \
+     --eval "(load \"bootstrap/macho.lisp\")" \
      --load "$SCRIPT_DIR/habu-repl.lisp" \
      --eval "(habu-repl:main)" \
      "$@"

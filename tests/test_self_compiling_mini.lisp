@@ -3,7 +3,8 @@
 (push (truename "bootstrap/") asdf:*central-registry*)
 (asdf:load-system :habu)
 (in-package :habu)
-(load "macho-linker.lisp")
+(load "bootstrap/compiler.lisp")
+(load "bootstrap/macho.lisp")
 
 (format t "~%=== Test self-compiling mini-compiler ===~%~%")
 
@@ -15,7 +16,7 @@
   (let ((path (format nil "/tmp/scm_~A" name)))
     (handler-case
         (progn
-          (habu:deliver-with-libsystem source path)
+          (habu:deliver source path)
           (sb-ext:run-program "/usr/bin/codesign" (list "-s" "-" path)
                               :output nil :error nil :wait t)
           (let* ((proc (sb-ext:run-program path nil :output nil :error nil :wait t))

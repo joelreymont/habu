@@ -3,7 +3,8 @@
 (push (truename "bootstrap/") asdf:*central-registry*)
 (asdf:load-system :habu)
 (in-package :habu)
-(load "macho-linker.lisp")
+(load "bootstrap/compiler.lisp")
+(load "bootstrap/macho.lisp")
 
 (format t "~%=== Native File I/O Tests ===~%~%")
 
@@ -14,7 +15,7 @@
   (let ((path (format nil "/tmp/fio_~A" name)))
     (handler-case
         (progn
-          (deliver-with-libsystem source path)
+          (deliver source path)
           (sb-ext:run-program "/usr/bin/codesign" (list "-s" "-" path)
                               :output nil :error nil :wait t)
           (let* ((proc (sb-ext:run-program path nil :output nil :error nil :wait t))

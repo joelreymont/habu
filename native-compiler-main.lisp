@@ -22,7 +22,7 @@
           (if source
               (progn
                 ;; Compile source to native executable
-                (deliver-with-libsystem source output-file :verbose nil)
+                (deliver source output-file :verbose nil)
                 0)  ;; Exit code 0 (success)
               ;; Error: Cannot read input file
               (progn

@@ -1,6 +1,6 @@
 ;;; Test that the bootstrap compiler can compile a mini-compiler
 ;;; This validates self-hosting capability by compiling a compiler
-;;; Updated to use deliver-with-libsystem with sys-exit
+;;; Updated to use deliver with sys-exit
 (load "bootstrap/compiler.lisp")
 (load "bootstrap/macho.lisp")
 (in-package :habu)
@@ -13,7 +13,7 @@
 (defun test-compile (name source expected)
   (handler-case
     (let ((output-path (format nil "/tmp/bootstrap_~A" name)))
-      (deliver-with-libsystem source output-path)
+      (deliver source output-path)
       (let* ((proc (sb-ext:run-program output-path nil :output nil :error nil :wait t))
              (result (sb-ext:process-exit-code proc)))
         (if (= result expected)

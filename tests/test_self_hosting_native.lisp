@@ -1,10 +1,8 @@
 ;;; Self-hosting tests for the native compiler
 ;;; Tests that compile compiler-like code patterns to native executables
-(require :asdf)
-(push (truename "bootstrap/") asdf:*central-registry*)
-(asdf:load-system :habu)
+(load "bootstrap/compiler.lisp")
+(load "bootstrap/macho.lisp")
 (in-package :habu)
-(load "macho-linker.lisp")
 
 (format t "~%=== Self-Hosting Native Compiler Tests ===~%~%")
 
@@ -13,12 +11,24 @@
 
 (defun test-self-host (name source expected)
   (handler-case
-    (let* ((forms (read-all source))
-           (bytes (compile-program forms nil))
-           (output-path (format nil "/tmp/selfhost_~A" name)))
-      (habu-macho:deliver-native-with-heap output-path bytes)
-      (sb-ext:run-program "/usr/bin/codesign" (list "-s" "-" output-path)
-                          :output nil :error nil :wait t)
+    (let* ((output-path (format nil "/tmp/selfhost_~A" name))
+           (full-source (format nil "(sys-exit ~A)" source)))
+      (deliver full-source output-path :verbose nil)
+      (let* ((proc (sb-ext:run-program output-path nil :output nil :error nil :wait t))
+             (result (sb-ext:process-exit-code proc)))
+        (if (= result expected)
+            (progn (format t "[PASS] ~A = ~A~%" name result)
+                   (incf *pass-count*))
+            (progn (format t "[FAIL] ~A: expected ~A, got ~A~%" name expected result)
+                   (incf *fail-count*)))))
+    (error (e)
+      (format t "[FAIL] ~A: error ~A~%" name e)
+      (incf *fail-count*))))
+
+(defun test-self-host-full (name source expected)
+  (handler-case
+    (let ((output-path (format nil "/tmp/selfhost_~A" name)))
+      (deliver source output-path :verbose nil)
       (let* ((proc (sb-ext:run-program output-path nil :output nil :error nil :wait t))
              (result (sb-ext:process-exit-code proc)))
         (if (= result expected)
@@ -31,60 +41,60 @@
       (incf *fail-count*))))
 
 ;;; Test 1: Tree traversal - count nodes (like counting IR nodes)
-(test-self-host "count-nodes"
+(test-self-host-full "count-nodes"
   "(defun count-nodes (tree)
      (if (consp tree)
          (+ 1 (count-nodes (car tree)) (count-nodes (cdr tree)))
          (if (null tree) 0 1)))
-   (count-nodes (cons (cons 1 2) (cons 3 nil)))"
+   (sys-exit (count-nodes (cons (cons 1 2) (cons 3 nil))))"
   6)  ; 3 cons cells + 3 atoms (1, 2, 3) = 6
 
 ;;; Test 2: Pattern matching - like IR tag matching
-(test-self-host "match-tag"
+(test-self-host-full "match-tag"
   "(defun get-tag (ir)
      (if (consp ir) (car ir) nil))
    (defun is-add (ir)
      (if (eq (get-tag ir) (quote add)) 1 0))
-   (is-add (cons (quote add) (cons 1 (cons 2 nil))))"
+   (sys-exit (is-add (cons (quote add) (cons 1 (cons 2 nil)))))"
   1)
 
 ;;; Test 3: Environment lookup - like variable resolution
-(test-self-host "env-lookup"
+(test-self-host-full "env-lookup"
   "(defun env-lookup (name env)
      (if (null env)
          0
          (if (eq name (car (car env)))
              (cdr (car env))
              (env-lookup name (cdr env)))))
-   (let ((env (cons (cons (quote x) 10)
+   (sys-exit (let ((env (cons (cons (quote x) 10)
                     (cons (cons (quote y) 32) nil))))
-     (+ (env-lookup (quote x) env) (env-lookup (quote y) env)))"
+     (+ (env-lookup (quote x) env) (env-lookup (quote y) env))))"
   42)
 
 ;;; Test 4: List transformation - like IR transformation
-(test-self-host "double-list"
+(test-self-host-full "double-list"
   "(defun double-each (lst)
      (if (null lst)
          nil
          (cons (* 2 (car lst)) (double-each (cdr lst)))))
    (defun sum (lst acc)
      (if (null lst) acc (sum (cdr lst) (+ acc (car lst)))))
-   (sum (double-each (cons 1 (cons 2 (cons 3 nil)))) 0)"
+   (sys-exit (sum (double-each (cons 1 (cons 2 (cons 3 nil)))) 0))"
   12)  ; 2 + 4 + 6 = 12
 
 ;;; Test 5: Nested recursion - like nested IR processing
-(test-self-host "nested-map"
+(test-self-host-full "nested-map"
   "(defun map-add1 (lst)
      (if (null lst)
          nil
          (cons (+ 1 (car lst)) (map-add1 (cdr lst)))))
    (defun reduce-sum (lst acc)
      (if (null lst) acc (reduce-sum (cdr lst) (+ acc (car lst)))))
-   (reduce-sum (map-add1 (map-add1 (cons 1 (cons 2 (cons 3 nil))))) 0)"
+   (sys-exit (reduce-sum (map-add1 (map-add1 (cons 1 (cons 2 (cons 3 nil))))) 0))"
   12)  ; (3 + 4 + 5) = 12
 
 ;;; Test 6: Association list operations - like symbol table lookup
-(test-self-host "alist-ops"
+(test-self-host-full "alist-ops"
   "(defun alist-get (key alist)
      (if (null alist)
          0
@@ -93,13 +103,13 @@
              (alist-get key (cdr alist)))))
    (defun alist-set (key val alist)
      (cons (cons key val) alist))
-   (let* ((a1 (alist-set (quote x) 10 nil))
+   (sys-exit (let* ((a1 (alist-set (quote x) 10 nil))
           (a2 (alist-set (quote y) 32 a1)))
-     (+ (alist-get (quote x) a2) (alist-get (quote y) a2)))"
+     (+ (alist-get (quote x) a2) (alist-get (quote y) a2))))"
   42)
 
 ;;; Test 7: Compiler-style expression evaluation (mini interpreter)
-(test-self-host "mini-eval"
+(test-self-host-full "mini-eval"
   "(defun mini-eval (expr)
      (if (consp expr)
          (let ((op (car expr)))
@@ -111,15 +121,15 @@
                       (mini-eval (car (cdr (cdr expr)))))
                    0)))
          expr))
-   (mini-eval (cons (quote add)
+   (sys-exit (mini-eval (cons (quote add)
                     (cons 10
                           (cons (cons (quote mul)
                                       (cons 4 (cons 8 nil)))
-                                nil))))"
+                                nil)))))"
   42)  ; 10 + (4 * 8) = 42
 
 ;;; Test 8: Free variable collection (like closure analysis)
-(test-self-host "collect-vars"
+(test-self-host-full "collect-vars"
   "(defun in-list (x lst)
      (if (null lst)
          nil
@@ -135,29 +145,29 @@
              (if (in-list expr bound)
                  nil
                  (cons expr nil)))))
-   (length (collect-vars (cons (quote x) (cons (quote y) (cons (quote z) nil)))
-                        (cons (quote x) nil)))"
+   (sys-exit (length (collect-vars (cons (quote x) (cons (quote y) (cons (quote z) nil)))
+                        (cons (quote x) nil))))"
   2)  ; y and z are free
 
 ;;; Test 9: Code generation helper - offset calculation
-(test-self-host "calc-offsets"
+(test-self-host-full "calc-offsets"
   "(defun calc-offset (vars name idx)
      (if (null vars)
          0
          (if (eq name (car vars))
              idx
              (calc-offset (cdr vars) name (+ idx 1)))))
-   (calc-offset (cons (quote a) (cons (quote b) (cons (quote c) nil)))
-                (quote c) 0)"
+   (sys-exit (calc-offset (cons (quote a) (cons (quote b) (cons (quote c) nil)))
+                (quote c) 0))"
   2)
 
 ;;; Test 10: Recursive descent - like parsing
-(test-self-host "parse-sum"
+(test-self-host-full "parse-sum"
   "(defun parse-nums (lst)
      (if (null lst)
          0
          (+ (car lst) (parse-nums (cdr lst)))))
-   (parse-nums (cons 10 (cons 20 (cons 12 nil))))"
+   (sys-exit (parse-nums (cons 10 (cons 20 (cons 12 nil)))))"
   42)
 
 (format t "~%=== Results: ~A passed, ~A failed ===~%"

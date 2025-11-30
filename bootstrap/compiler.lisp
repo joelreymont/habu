@@ -37,10 +37,8 @@
    ;; Public compiler API (clean names)
    #:read-all           ; Parse source string to forms
    #:compile-program    ; Compile forms to ARM64 bytecode
-   #:deliver            ; Compile source to standalone executable
-   #:deliver-file       ; Compile file to standalone executable
-   #:deliver-with-libsystem
-   #:deliver-file-with-libsystem
+   #:deliver            ; Compile source to native executable
+   #:deliver-file       ; Compile file to native executable
    ;; Disassembler
    #:disassemble-form
    #:disassemble-bytecode
@@ -4697,7 +4695,7 @@
          (ldr-offset 24 31 x24-slot)
          result-code))))
     ;; === libSystem call IR forms (for native executables) ===
-    ;; These emit :extern-call markers that are resolved by deliver-with-libsystem
+    ;; These emit :extern-call markers that are resolved by deliver
     ((has-tag ir 'sys-write-ir)
      ;; sys-write-ir = (sys-write-ir fd-ir buf-ir len-ir)
      ;; Calls _write(fd, buf, len) -> returns bytes written (or -1)
@@ -5617,52 +5615,11 @@ int main(int argc, char **argv) {
           (bytes-to-c-array bytes)
           (length bytes)))
 
-(defun deliver (source-string output-path)
-  "Compile SOURCE-STRING to standalone executable at OUTPUT-PATH.
-   Usage: (habu:deliver \"(+ 1 2)\" \"/tmp/test\")"
-  (let* ((c-source-path (format nil "~A.c" output-path))
-         (forms (read-all source-string))
-         (bytes (compile-program forms nil)))
-    (format t "Compiling ~A bytes of ARM64 code...~%" (length bytes))
-    (let ((c-source (generate-embedded-c bytes (pathname-name (pathname output-path)))))
-      (with-open-file (out c-source-path :direction :output :if-exists :supersede)
-        (write-string c-source out)))
-    (let* ((cmd (format nil "clang -O2 -o ~A ~A runtime/gc.c runtime/io.c runtime/runtime.c runtime/region.c -I. 2>&1"
-                        output-path c-source-path))
-           (result (with-output-to-string (s)
-                     (sb-ext:run-program "/bin/sh" (list "-c" cmd) :output s :error :output))))
-      (when (> (length result) 0)
-        (format t "~A~%" result))
-      (if (probe-file output-path)
-          (progn
-            (delete-file c-source-path)
-            (format t "Created: ~A~%" output-path)
-            output-path)
-          (error "Compilation failed")))))
+(defun deliver (source-string output-path &key verbose)
+  "Compile SOURCE-STRING to native executable.
+   Creates a standalone Mach-O that dynamically links to libSystem.B.dylib.
 
-(defun deliver-file (source-path output-path)
-  "Compile Lisp file at SOURCE-PATH to executable at OUTPUT-PATH.
-   Usage: (habu:deliver-file \"program.lisp\" \"program\")"
-  (let ((source (with-open-file (in source-path :direction :input)
-                  (let ((contents (make-string (file-length in))))
-                    (read-sequence contents in)
-                    contents))))
-    (deliver source output-path)))
-
-;;; Backward compatibility aliases (* versions)
-(setf (symbol-function 'deliver) #'deliver)
-(setf (symbol-function 'deliver-file) #'deliver-file)
-
-;;; ============================================================
-;;; Native Delivery with libSystem (no runtime dependency)
-;;; ============================================================
-
-(defun deliver-with-libsystem (source-string output-path &key verbose)
-  "Compile SOURCE-STRING to native executable using libSystem for I/O.
-   This creates a standalone executable that dynamically links to libSystem.B.dylib
-   for functions like write, read, open, close, exit.
-
-   Usage: (habu:deliver-with-libsystem \"(sys-write 1 \\\"Hi\\\" 2)\" \"/tmp/test\")
+   Usage: (habu:deliver \"(sys-exit 42)\" \"/tmp/test\")
 
    The source can use sys-write, sys-read, sys-open, sys-close, sys-exit."
   ;; Load the pure-Habu macho linker if not already loaded
@@ -5754,17 +5711,11 @@ int main(int argc, char **argv) {
                 (terpri) (princ "Created: ") (princ output-path) (terpri))
               output-path)))))))
 
-(defun deliver-file-with-libsystem (source-path output-path &key verbose)
-  "Compile Lisp file to native executable using libSystem.
-   This function is only used by compiled Habu code, not during SBCL bootstrap.
-   For bootstrap, compiler-driver.lisp uses deliver-with-libsystem (string version) directly.
-   Usage: (habu:deliver-file-with-libsystem \"program.lisp\" \"program\")"
-  ;; Always use native-read-file - this function is not called during SBCL bootstrap
+(defun deliver-file (source-path output-path &key verbose)
+  "Compile Lisp file at SOURCE-PATH to native executable at OUTPUT-PATH.
+   Usage: (habu:deliver-file \"program.lisp\" \"program\")"
   (let ((source (native-read-file source-path)))
-    (deliver-with-libsystem source output-path :verbose verbose)))
-
-;;; Export new functions
-(export '(deliver-with-libsystem deliver-file-with-libsystem) :habu)
+    (deliver source output-path :verbose verbose)))
 
 ;;; ============================================================
 ;;; Part 10: Disassembler

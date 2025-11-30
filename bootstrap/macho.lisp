@@ -1114,7 +1114,7 @@
       (sb-ext:run-program "/usr/bin/codesign" (list "-s" "-" "-f" output-path)
                           :output nil :error nil :wait t))))
 
-;;; Export the main functions for use by deliver-with-libsystem
+;;; Export the main functions for use by deliver
 (export '(write-macho-executable-with-imports-and-heap
           build-macho-executable-with-imports-and-heap
           wrap-bytecode-with-heap-for-imports) :habu)

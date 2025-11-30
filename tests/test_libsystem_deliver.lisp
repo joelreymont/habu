@@ -1,9 +1,10 @@
-;;; Tests for deliver-with-libsystem - native executables using libSystem
+;;; Tests for deliver - native executables using libSystem
 (require :asdf)
 (push (truename "bootstrap/") asdf:*central-registry*)
 (asdf:load-system :habu)
 (in-package :habu)
-(load "macho-linker.lisp")
+(load "bootstrap/compiler.lisp")
+(load "bootstrap/macho.lisp")
 
 (format t "~%=== libSystem Delivery Tests ===~%~%")
 
@@ -11,10 +12,10 @@
 (defvar *fail-count* 0)
 
 (defun test-libsystem (name source expected-output expected-code)
-  "Test deliver-with-libsystem: builds executable, runs it, checks stdout and exit code."
+  "Test deliver: builds executable, runs it, checks stdout and exit code."
   (handler-case
     (let ((output-path (format nil "/tmp/libsys_~A" name)))
-      (deliver-with-libsystem source output-path)
+      (deliver source output-path)
       (sb-ext:run-program "/usr/bin/codesign" (list "-s" "-" output-path)
                           :output nil :error nil :wait t)
       (let* ((proc (sb-ext:run-program output-path nil
@@ -36,10 +37,10 @@
       (incf *fail-count*))))
 
 (defun test-libsystem-code (name source expected-code)
-  "Test deliver-with-libsystem: builds executable, runs it, checks exit code only."
+  "Test deliver: builds executable, runs it, checks exit code only."
   (handler-case
     (let ((output-path (format nil "/tmp/libsys_~A" name)))
-      (deliver-with-libsystem source output-path)
+      (deliver source output-path)
       (sb-ext:run-program "/usr/bin/codesign" (list "-s" "-" output-path)
                           :output nil :error nil :wait t)
       (let* ((proc (sb-ext:run-program output-path nil :output nil :error nil :wait t))

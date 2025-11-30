@@ -3,7 +3,8 @@
 (push (truename "bootstrap/") asdf:*central-registry*)
 (asdf:load-system :habu)
 (in-package :habu)
-(load "macho-linker.lisp")
+(load "bootstrap/compiler.lisp")
+(load "bootstrap/macho.lisp")
 
 (format t "~%=== Native Reader Primitives Tests ===~%~%")
 
@@ -11,10 +12,10 @@
 (defvar *fail-count* 0)
 
 (defun test-libsystem-code (name source expected-code)
-  "Test deliver-with-libsystem: builds executable, runs it, checks exit code only."
+  "Test deliver: builds executable, runs it, checks exit code only."
   (handler-case
     (let ((output-path (format nil "/tmp/reader_~A" name)))
-      (deliver-with-libsystem source output-path)
+      (deliver source output-path)
       (sb-ext:run-program "/usr/bin/codesign" (list "-s" "-" "-f" output-path)
                           :output nil :error nil :wait t)
       (let* ((proc (sb-ext:run-program output-path nil :output nil :error nil :wait t))

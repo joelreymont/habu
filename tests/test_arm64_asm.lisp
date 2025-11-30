@@ -1,6 +1,8 @@
 ;;; ARM64 assembler tests - SVC, BR, and syscall support
 (load "arm64/asm.lisp")
-(load "macho-linker.lisp")
+(load "bootstrap/compiler.lisp")
+(load "bootstrap/macho.lisp")
+(in-package :habu)
 
 (format t "~%=== ARM64 Assembler Tests ===~%~%")
 
@@ -11,7 +13,7 @@
   "Create executable from ARM64 code, run it, check exit code"
   (handler-case
     (let ((output-path (format nil "/tmp/asm_test_~A" name)))
-      (habu-macho:write-macho-executable output-path code :verbose nil)
+      (write-minimal-macho-executable output-path code)
       (sb-ext:run-program "/usr/bin/codesign" (list "-s" "-" output-path)
                           :output nil :error nil :wait t)
       (let* ((proc (sb-ext:run-program output-path nil :output nil :error nil :wait t))

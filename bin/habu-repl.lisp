@@ -73,7 +73,7 @@
               (format t "Compiling ~A to ~A...~%" src out)
               (handler-case
                   (progn
-                    (habu:deliver-file-with-libsystem src out)
+                    (habu:deliver-file src out)
                     ;; Sign the executable for macOS
                     (sb-ext:run-program "/usr/bin/codesign"
                                         (list "-s" "-" out)

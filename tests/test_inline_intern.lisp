@@ -2,14 +2,15 @@
 (push (truename "bootstrap/") asdf:*central-registry*)
 (asdf:load-system :habu)
 (in-package :habu)
-(load "macho-linker.lisp")
+(load "bootstrap/compiler.lisp")
+(load "bootstrap/macho.lisp")
 
 (format t "~%=== Inline Intern Tests ===~%~%")
 
 (defun test-code (name source expected)
   (handler-case
     (let ((output-path (format nil "/tmp/intern_~A" name)))
-      (deliver-with-libsystem source output-path)
+      (deliver source output-path)
       (sb-ext:run-program "/usr/bin/codesign" (list "-s" "-" output-path)
                           :output nil :error nil :wait t)
       (let* ((proc (sb-ext:run-program output-path nil :output nil :error nil :wait t))

@@ -3,7 +3,8 @@
 (push (truename "bootstrap/") asdf:*central-registry*)
 (asdf:load-system :habu)
 (in-package :habu)
-(load "macho-linker.lisp")
+(load "bootstrap/compiler.lisp")
+(load "bootstrap/macho.lisp")
 
 (format t "~%=== Test habu0 Reader ===~%~%")
 
@@ -14,7 +15,7 @@
   "Build habu0 executable once for all tests"
   (handler-case
       (progn
-        (deliver-file-with-libsystem "habu0.lisp" "/tmp/habu0-test" :verbose nil)
+        (deliver-file "habu0.lisp" "/tmp/habu0-test" :verbose nil)
         (sb-ext:run-program "/usr/bin/codesign" (list "-s" "-" "-f" "/tmp/habu0-test")
                             :output nil :error nil :wait t)
         t)
@@ -56,7 +57,7 @@
 ;; Build habu0 first if needed
 (unless (probe-file "habu0")
   (format t "Building habu0...~%")
-  (deliver-file-with-libsystem "habu0.lisp" "habu0" :verbose nil)
+  (deliver-file "habu0.lisp" "habu0" :verbose nil)
   (sb-ext:run-program "/usr/bin/codesign" (list "-s" "-" "-f" "habu0")
                       :output nil :error nil :wait t))
 

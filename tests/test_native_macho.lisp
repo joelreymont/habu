@@ -1,10 +1,8 @@
 ;;; Native Mach-O executable tests for the bootstrap compiler
 ;;; Tests inline heap allocation, symbols, closures without runtime
-(require :asdf)
-(push (truename "bootstrap/") asdf:*central-registry*)
-(asdf:load-system :habu)
+(load "bootstrap/compiler.lisp")
+(load "bootstrap/macho.lisp")
 (in-package :habu)
-(load "macho-linker.lisp")
 
 (format t "~%=== Native Mach-O Executable Tests ===~%~%")
 
@@ -12,13 +10,27 @@
 (defvar *fail-count* 0)
 
 (defun test-native (name source expected)
+  "Test native delivery. SOURCE is an expression; we wrap it in (sys-exit ...)."
   (handler-case
-    (let* ((forms (read-all source))
-           (bytes (compile-program forms nil))
-           (output-path (format nil "/tmp/native_~A" name)))
-      (habu-macho:deliver-native-with-heap output-path bytes)
-      (sb-ext:run-program "/usr/bin/codesign" (list "-s" "-" output-path)
-                          :output nil :error nil :wait t)
+    (let ((output-path (format nil "/tmp/native_~A" name))
+          (full-source (format nil "(sys-exit ~A)" source)))
+      (deliver full-source output-path :verbose nil)
+      (let* ((proc (sb-ext:run-program output-path nil :output nil :error nil :wait t))
+             (result (sb-ext:process-exit-code proc)))
+        (if (= result expected)
+            (progn (format t "[PASS] ~A = ~A~%" name result)
+                   (incf *pass-count*))
+            (progn (format t "[FAIL] ~A: expected ~A, got ~A~%" name expected result)
+                   (incf *fail-count*)))))
+    (error (e)
+      (format t "[FAIL] ~A: error ~A~%" name e)
+      (incf *fail-count*))))
+
+(defun test-native-full (name source expected)
+  "Test native delivery with full source (already contains sys-exit or defuns)."
+  (handler-case
+    (let ((output-path (format nil "/tmp/native_~A" name)))
+      (deliver source output-path :verbose nil)
       (let* ((proc (sb-ext:run-program output-path nil :output nil :error nil :wait t))
              (result (sb-ext:process-exit-code proc)))
         (if (= result expected)
@@ -72,32 +84,32 @@
 (test-native "eq-num" "(if (eq 5 5) 42 0)" 42)
 
 ;;; Simple functions
-(test-native "defun-id" "(defun id (x) x) (id 42)" 42)
-(test-native "defun-add1" "(defun add1 (x) (+ x 1)) (add1 41)" 42)
-(test-native "defun-double" "(defun double (x) (* x 2)) (double 21)" 42)
-(test-native "defun-with-let" "(defun f (x) (let ((y 10)) (+ x y))) (f 32)" 42)
+(test-native-full "defun-id" "(defun id (x) x) (sys-exit (id 42))" 42)
+(test-native-full "defun-add1" "(defun add1 (x) (+ x 1)) (sys-exit (add1 41))" 42)
+(test-native-full "defun-double" "(defun double (x) (* x 2)) (sys-exit (double 21))" 42)
+(test-native-full "defun-with-let" "(defun f (x) (let ((y 10)) (+ x y))) (sys-exit (f 32))" 42)
 
 ;;; Multiple functions
-(test-native "two-defuns"
-  "(defun f (x) (+ x 1)) (defun g (x) (* x 2)) (g (f 20))" 42)
-(test-native "call-chain"
-  "(defun a (x) (+ x 1)) (defun b (x) (a (a x))) (b 40)" 42)
+(test-native-full "two-defuns"
+  "(defun f (x) (+ x 1)) (defun g (x) (* x 2)) (sys-exit (g (f 20)))" 42)
+(test-native-full "call-chain"
+  "(defun a (x) (+ x 1)) (defun b (x) (a (a x))) (sys-exit (b 40))" 42)
 
 ;;; Recursive functions
-(test-native "fact5"
-  "(defun fact (n) (if (= n 0) 1 (* n (fact (- n 1))))) (fact 5)" 120)
-(test-native "sum-to-10"
-  "(defun sum-to (n) (if (= n 0) 0 (+ n (sum-to (- n 1))))) (sum-to 10)" 55)
-(test-native "fib8"
-  "(defun fib (n) (if (< n 2) n (+ (fib (- n 1)) (fib (- n 2))))) (fib 8)" 21)
+(test-native-full "fact5"
+  "(defun fact (n) (if (= n 0) 1 (* n (fact (- n 1))))) (sys-exit (fact 5))" 120)
+(test-native-full "sum-to-10"
+  "(defun sum-to (n) (if (= n 0) 0 (+ n (sum-to (- n 1))))) (sys-exit (sum-to 10))" 55)
+(test-native-full "fib8"
+  "(defun fib (n) (if (< n 2) n (+ (fib (- n 1)) (fib (- n 2))))) (sys-exit (fib 8))" 21)
 
 ;;; Recursive list processing (combines cons and recursion)
-(test-native "sum-list"
+(test-native-full "sum-list"
   "(defun sum-list (l) (if (null l) 0 (+ (car l) (sum-list (cdr l)))))
-   (sum-list (cons 10 (cons 20 (cons 12 nil))))" 42)
-(test-native "len-list"
+   (sys-exit (sum-list (cons 10 (cons 20 (cons 12 nil)))))" 42)
+(test-native-full "len-list"
   "(defun len (l) (if (null l) 0 (+ 1 (len (cdr l)))))
-   (len (cons 1 (cons 2 (cons 3 (cons 4 nil)))))" 4)
+   (sys-exit (len (cons 1 (cons 2 (cons 3 (cons 4 nil))))))" 4)
 
 ;;; Labels (inline closures)
 (test-native "labels-fact"
@@ -119,14 +131,6 @@
   "(labels ((is-even (n) (if (= n 0) 1 (is-odd (- n 1))))
             (is-odd (n) (if (= n 0) 0 (is-even (- n 1)))))
      (is-even 7))" 0)
-
-;;; Closures with captured variables
-;;; Note: Higher-order closures (returning lambdas from functions) require
-;;; more sophisticated environment handling in native mode.
-;;; These tests are commented out for now - labels-based closures work.
-;; (test-native "closure-capture"
-;;   "(defun make-adder (n) (lambda (x) (+ x n)))
-;;    (funcall (make-adder 32) 10)" 42)
 
 ;;; Multiple values and complex control flow
 (test-native "cond-first"

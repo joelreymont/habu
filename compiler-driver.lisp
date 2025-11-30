@@ -3,7 +3,7 @@
 ;;; Usage: sbcl --script compiler-driver.lisp <input.lisp> <output>
 
 (load "bootstrap/compiler.lisp")
-;; Note: pure-Habu macho linker (bootstrap/macho.lisp) is loaded automatically by deliver-with-libsystem
+;; Note: pure-Habu macho linker (bootstrap/macho.lisp) is loaded automatically by deliver
 
 (defun read-source-file (path)
   "Read entire file contents as a string"
@@ -29,7 +29,7 @@
          (if source
              (progn
                (format t "Compiling ~A -> ~A~%" input-file output-file)
-               (habu:deliver-with-libsystem source output-file :verbose t)
+               (habu:deliver source output-file :verbose t)
                (format t "Success!~%")
                (sb-ext:exit :code 0))
              (progn

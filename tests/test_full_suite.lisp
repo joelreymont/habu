@@ -10,7 +10,7 @@
 (defun test (name src exp)
   (handler-case
     (progn
-      (deliver-with-libsystem src (format nil "/tmp/ts_~A" name))
+      (deliver src (format nil "/tmp/ts_~A" name))
       (let ((res (sb-ext:process-exit-code 
                   (sb-ext:run-program (format nil "/tmp/ts_~A" name) nil 
                                       :output nil :error nil :wait t))))

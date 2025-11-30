@@ -2,7 +2,8 @@
 (require :asdf)
 (push (truename "bootstrap/") asdf:*central-registry*)
 (asdf:load-system :habu)
-(load "macho-linker.lisp")
+(load "bootstrap/compiler.lisp")
+(load "bootstrap/macho.lisp")
 
 (format t "~%=== Test compiler CLI ===~%~%")
 
@@ -19,7 +20,7 @@
           (with-open-file (f source-path :direction :output :if-exists :supersede)
             (write-string source-content f))
           ;; Compile
-          (habu:deliver-file-with-libsystem source-path exec-path)
+          (habu:deliver-file source-path exec-path)
           ;; Sign
           (sb-ext:run-program "/usr/bin/codesign" (list "-s" "-" exec-path)
                               :output nil :error nil :wait t)
