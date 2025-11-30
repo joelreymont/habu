@@ -29,7 +29,7 @@
           (format t "Up to date: ~A~%" fasl-path)
           fasl-path))))
 
-(defun build-pure-compiler ()
+(defun build-compiler ()
   "Build pure compiler from modules (incremental)"
   (let ((modules '("bootstrap/pure/utils.lisp"
                    ;; Add more as we create them:
@@ -45,4 +45,4 @@
       fasls)))
 
 ;;; Export build functions
-(export '(compile-if-needed build-pure-compiler) :habu)
+(export '(compile-if-needed build-compiler) :habu)

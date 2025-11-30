@@ -1,15 +1,15 @@
 ;;; Debug symbol packages in compiler
 (load "bootstrap/compiler.lisp")
 (load "bootstrap/macho.lisp")
-(load "bootstrap/reader-pure.lisp")
-(load "bootstrap/compiler-pure.lisp")
+(load "bootstrap/reader.lisp")
+(load "bootstrap/compiler.lisp")
 
-;; Check what pure-compile-expr-full compares against
-(format t "~%=== In compiler-pure.lisp, symbols are in HABU package ===~%")
+;; Check what compile-expr-full compares against
+(format t "~%=== In compiler.lisp, symbols are in HABU package ===~%")
 (format t "habu::sys-exit package: ~A~%" (symbol-package 'habu::sys-exit))
 
-;; Parse with pure-read-all
-(let* ((forms (habu::pure-read-all "(sys-exit 42)"))
+;; Parse with read-all
+(let* ((forms (habu::read-all "(sys-exit 42)"))
        (f (car forms))
        (op (car f)))
   (format t "~%Parsed (car f): ~S, package: ~A~%" op (symbol-package op))

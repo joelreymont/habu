@@ -5,7 +5,7 @@
 
 ## Current Status
 
-The pure Habu compiler can compile programs with:
+The Habu compiler can compile programs with:
 - Expressions: literals, arithmetic (+,-,*,/,mod), comparisons (=,<,>,<=,>=)
 - Control flow: if, cond, when, unless, progn, and, or, not, setq
 - Bindings: let, let*
@@ -38,13 +38,13 @@ Edge cases (18): negative numbers, zero handling, deeply nested arithmetic, long
 
 ### Lambda Lifting and Closure Support
 
-Added complete lambda lifting to `bootstrap/codegen-pure.lisp`:
+Added complete lambda lifting to `bootstrap/codegen.lisp`:
 
 1. **Lambda Lifting**
-   - `pure-gensym-lambda`: generates unique names (LAMBDA-1, LAMBDA-2, etc.)
-   - `pure-lift-lambdas`: extracts lambda-ir nodes from IR
-   - `pure-lift-lambdas-from-defuns`: processes all defun bodies
-   - `pure-lambdas-to-defuns`: converts lambdas to defun format
+   - `gensym-lambda`: generates unique names (LAMBDA-1, LAMBDA-2, etc.)
+   - `lift-lambdas`: extracts lambda-ir nodes from IR
+   - `lift-lambdas-from-defuns`: processes all defun bodies
+   - `lambdas-to-defuns`: converts lambdas to defun format
 
 2. **Closure Codegen**
    - `lambda-ref`: creates closure (fn-offset . captured-env) on heap
@@ -53,25 +53,25 @@ Added complete lambda lifting to `bootstrap/codegen-pure.lisp`:
 
 3. **Bug Fixes**
    - Spill slot collision: nested calls now use td-based spill areas
-   - Each nesting level gets 64 bytes via `pure-spill-base`
+   - Each nesting level gets 64 bytes via `spill-base`
    - Added `get-tag` IR handler for type predicates
-   - Added `pure-and-imm` instruction encoder
+   - Added `and-imm` instruction encoder
    - Added `setq-ir` codegen for variable assignment (when/unless)
    - Added `mod` operator using a - (a/b)*b formula
-   - **Nested lambda free-var analysis**: `pure-find-free-vars` now descends into nested lambdas
-   - **Lifted lambda capture loading**: `pure-gen-capture-loads` loads captured values from x24
-   - **Capture order fix**: removed erroneous `pure-reverse` in `pure-build-captures`
+   - **Nested lambda free-var analysis**: `find-free-vars` now descends into nested lambdas
+   - **Lifted lambda capture loading**: `gen-capture-loads` loads captured values from x24
+   - **Capture order fix**: removed erroneous `reverse` in `build-captures`
 
 ## File Structure
 
 ```
 bootstrap/
-  compiler.lisp       - Main SBCL-hosted compiler (5400+ lines)
-  compiler-pure.lisp  - Pure Habu compiler (no SBCL dependencies)
-  codegen-pure.lisp   - Pure ARM64 code generator
+  compiler-sbcl.lisp  - SBCL-hosted bootstrap compiler (5400+ lines)
+  compiler.lisp       - Habu compiler (no SBCL dependencies)
+  codegen.lisp        - ARM64 code generator
   macho.lisp          - Mach-O linker (SBCL version)
-  macho-pure.lisp     - Pure Mach-O linker
-  reader-pure.lisp    - Pure Habu reader
+  macho-utils.lisp    - Mach-O utilities
+  reader.lisp         - Habu reader
   optimize.lisp       - Nanopass optimizer
 
 arm64/
@@ -85,13 +85,13 @@ arm64/
 
 ```lisp
 ;; Compile and deliver program
-(habu:pure-deliver-v3 "(defun f (x) (* x 2)) (sys-exit (f 21))" "/tmp/out")
+(habu:deliver-v3 "(defun f (x) (* x 2)) (sys-exit (f 21))" "/tmp/out")
 
 ;; Individual steps
-(pure-read-all source-string)           ; Parse to S-expressions
-(pure-compile-program-v3 forms)         ; Compile to IR + defuns
-(pure-codegen ir rtaddrs fnoffs td)     ; Generate ARM64 code
-(pure-build-macho bytes imports)        ; Create Mach-O executable
+(read-all source-string)           ; Parse to S-expressions
+(compile-program-v3 forms)         ; Compile to IR + defuns
+(codegen ir rtaddrs fnoffs td)     ; Generate ARM64 code
+(build-macho bytes imports)        ; Create Mach-O executable
 ```
 
 ### Tagged Value Representation
@@ -125,7 +125,7 @@ sp+0x180: environment variables
 ## Self-Hosting Status
 
 **Achieved:**
-- Pure-deliver-v3 compiles programs to native ARM64
+- deliver-v3 compiles programs to native ARM64
 - No SBCL dependencies in generated code
 - Closures work: nested (4+ levels), multi-capture (6+), closure-captures-closure
 - Higher-order: map, reduce, compose, apply-twice, church numerals
@@ -133,7 +133,7 @@ sp+0x180: environment variables
 - All 15 self-hosting tests pass including complex compiler patterns
 
 **Next Steps:**
-1. Test pure compiler compiling itself
+1. Test compiler compiling itself
 2. Verify fixed-point (Stage N == Stage N+1)
 3. Complete FASL separate compilation
 
@@ -141,21 +141,21 @@ sp+0x180: environment variables
 
 ```bash
 # Run tests
-sbcl --dynamic-space-size 4096 --script /tmp/test_pure_basic.lisp
+sbcl --dynamic-space-size 4096 --script /tmp/test_basic.lisp
 
 # Compile and run a program
-sbcl --load bootstrap/compiler.lisp --load bootstrap/macho.lisp \
-     --load bootstrap/reader-pure.lisp --load bootstrap/compiler-pure.lisp \
-     --load bootstrap/codegen-pure.lisp --load bootstrap/macho-pure.lisp \
-     --eval '(habu:pure-deliver-v3 "(sys-exit 42)" "/tmp/test")' --quit
+sbcl --load bootstrap/compiler-sbcl.lisp --load bootstrap/macho.lisp \
+     --load bootstrap/reader.lisp --load bootstrap/compiler.lisp \
+     --load bootstrap/codegen.lisp --load bootstrap/macho-utils.lisp \
+     --eval '(habu:deliver-v3 "(sys-exit 42)" "/tmp/test")' --quit
 /tmp/test && echo $?  # Should output 42
 ```
 
 ## Known Limitations
 
-1. **Max 8 arguments** per function in pure-deliver-v3
+1. **Max 8 arguments** per function in deliver-v3
 2. **64KB file limit** for native-read-file (heap constraint)
-3. **No macros** in pure compiler (uses reader macros for quote forms)
+3. **No macros** in compiler (uses reader macros for quote forms)
 
 ## Debugging
 
@@ -170,7 +170,7 @@ Key milestones:
 - Nov 30: Closure bugs fixed - nested free-vars, capture loading, capture order (commit 6142a5f)
 - Nov 30: Lambda lifting + closure support complete (commit ff63ccc)
 - Nov 30: Defun support fixed
-- Nov 29: Pure codegen created
+- Nov 29: Codegen created
 - Nov 28: Partial self-hosting (compiler compiles itself to 1.6MB)
 - Nov 27: Native file I/O via libSystem
 - Nov 26: Native Mach-O linker created

@@ -16,7 +16,7 @@
 
 ;;; Pure version of length for lists (use CL length or provide pure version)
 ;;; This is needed because native code doesn't have CL:length
-(defun pure-list-length (lst)
+(defun list-length (lst)
   "Pure version of length for lists"
   (labels ((len (l n)
              (if (null l)

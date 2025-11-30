@@ -1,10 +1,10 @@
 ;;; Test pure compiler pipeline - no SBCL dependencies in generated code
 (load "bootstrap/compiler.lisp")
 (load "bootstrap/macho.lisp")
-(load "bootstrap/reader-pure.lisp")
-(load "bootstrap/compiler-pure.lisp")
-(load "bootstrap/codegen-pure.lisp")
-(load "bootstrap/macho-pure.lisp")
+(load "bootstrap/reader.lisp")
+(load "bootstrap/compiler.lisp")
+(load "bootstrap/codegen.lisp")
+(load "bootstrap/macho-utils.lisp")
 
 (format t "~%=== Testing Pure Compiler Pipeline ===~%")
 
@@ -14,7 +14,7 @@
 (defun test-pure (name source expected)
   (handler-case
       (let ((output-path (format nil "/tmp/test_pure_~A" name)))
-        (habu:pure-deliver-v3 source output-path)
+        (habu:deliver-v3 source output-path)
         (let* ((proc (sb-ext:run-program output-path nil :output nil :error nil :wait t))
                (result (sb-ext:process-exit-code proc)))
           (if (= result expected)

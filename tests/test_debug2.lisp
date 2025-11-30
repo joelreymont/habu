@@ -1,14 +1,14 @@
 ;;; Debug pure-find-main-form
 (load "bootstrap/compiler.lisp")
 (load "bootstrap/macho.lisp")
-(load "bootstrap/reader-pure.lisp")
-(load "bootstrap/compiler-pure.lisp")
-(load "bootstrap/codegen-pure.lisp")
-(load "bootstrap/macho-pure.lisp")
+(load "bootstrap/reader.lisp")
+(load "bootstrap/compiler.lisp")
+(load "bootstrap/codegen.lisp")
+(load "bootstrap/macho-utils.lisp")
 
 (format t "~%=== Debugging pure-find-main-form ===~%")
 
-(let* ((forms (habu::pure-read-all "(sys-exit (+ 20 22))"))
+(let* ((forms (habu::read-all "(sys-exit (+ 20 22))"))
        (f (car forms)))
   (format t "Forms: ~S~%" forms)
   (format t "First form: ~S~%" f)
