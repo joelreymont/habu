@@ -1,7 +1,7 @@
 # Habu Self-Hosting Lisp Compiler - Context
 
 **Last Updated**: November 30, 2025
-**Milestone**: 43 comprehensive + 7/8 self-hosting tests pass - closure bugs fixed
+**Milestone**: 76 TESTS PASS - comprehensive closure and edge-case coverage
 
 ## Current Status
 
@@ -18,13 +18,19 @@ The pure Habu compiler can compile programs with:
 - File I/O: sys-open, sys-read, sys-write, sys-close, native-read-file
 - System: sys-exit
 
-**Test Results (43/43 pass):**
+**Test Results (76/76 pass):**
 ```
-Basic: add, mul, let, let-star, let-nested, if-true/false, defun, recursive, fact=120, fib=55
-Self-hosting: mini-interp, mutual-rec, higher-order, closure, deep-rec
-Closures: simple-closure, simple-lambda, inline-lambda
-Additional: cond, when, unless, progn, and, or, not, cons/car/cdr/cadr/list
-           null, consp, numberp, sub, div, mod, comparisons, labels
+Comprehensive (43): add, mul, let, let*, if, defun, recursive, fact, fib, cond, when,
+    unless, progn, and, or, not, cons/car/cdr, list, null, consp, numberp, comparisons,
+    mod, labels, closures, higher-order functions
+
+Self-hosting (15): mini-compiler, closure-compiler, symtab, stack-eval, tree-sum,
+    cps-fact=120, map-reduce, nested-closures, four-level-closure, multi-closure,
+    closure-captures-closure, five-captures, accumulator, mutual-closure, church-numerals
+
+Edge cases (18): negative numbers, zero handling, deeply nested arithmetic, long cons
+    chains, many let bindings, tail recursion, boolean chains, comparison chains,
+    6-8 argument functions, 6+ captures, triple-lambda, call-twice, compose-lambdas
 ```
 
 ## Latest Session (November 30, 2025)
@@ -120,10 +126,10 @@ sp+0x180: environment variables
 **Achieved:**
 - Pure-deliver-v3 compiles programs to native ARM64
 - No SBCL dependencies in generated code
-- Closures and higher-order functions work (including nested closures)
-- Mutual recursion and labels work
+- Closures work: nested (4+ levels), multi-capture (6+), closure-captures-closure
+- Higher-order: map, reduce, compose, apply-twice, church numerals
 - CPS patterns work correctly (cps-fact = 120)
-- Self-hosting tests: 7/8 pass (mini-compiler, closure-compiler, symtab, tree-sum, cps-fact, map-reduce, nested-closures)
+- All 15 self-hosting tests pass including complex compiler patterns
 
 **Next Steps:**
 1. Test pure compiler compiling itself
