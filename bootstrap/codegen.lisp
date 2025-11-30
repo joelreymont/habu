@@ -1835,21 +1835,21 @@
 
 (defun prologue ()
   "Generate function prologue.
-   Frame layout after prologue (0x400 bytes):
-   sp+0x3F0: x29 (fp)
-   sp+0x3F8: x30 (lr)
+   Frame layout after prologue (0x800 bytes):
+   sp+0x7F0: x29 (fp)
+   sp+0x7F8: x30 (lr)
    sp+0x10:  x19, x20
    sp+0x20:  x21, x22
    sp+0x30:  x23, x24
    sp+0x40:  temp slots (td*8)
    sp+0x180: environment base (x20)
-   sp+0x240: spill area (td*64)
+   sp+0x240: spill area (td*64) - now has room for td up to ~20
    NOTE: Using STR/LDR instead of STP/LDP for fp/lr because STP's 7-bit
-   signed offset can only reach -512 to +504 bytes, but we need 0x3F0 (1008)."
+   signed offset can only reach -512 to +504 bytes."
   (append-all
-   (list (sub-imm 31 31 #x400)           ;; Create frame first
-         (str-offset 29 31 #x3F0)        ;; Save fp at sp+0x3F0
-         (str-offset 30 31 #x3F8)        ;; Save lr at sp+0x3F8
+   (list (sub-imm 31 31 #x800)           ;; Create 2KB frame
+         (str-offset 29 31 #x7F0)        ;; Save fp at sp+0x7F0
+         (str-offset 30 31 #x7F8)        ;; Save lr at sp+0x7F8
          (add-imm 29 31 0)               ;; fp = sp
          (stp-offset 19 20 31 16)
          (stp-offset 21 22 31 32)
@@ -1862,9 +1862,9 @@
    (list (ldp-offset 23 24 31 48)
          (ldp-offset 21 22 31 32)
          (ldp-offset 19 20 31 16)
-         (ldr-offset 29 31 #x3F0)        ;; Restore fp from sp+0x3F0
-         (ldr-offset 30 31 #x3F8)        ;; Restore lr from sp+0x3F8
-         (add-imm 31 31 #x400)
+         (ldr-offset 29 31 #x7F0)        ;; Restore fp from sp+0x7F0
+         (ldr-offset 30 31 #x7F8)        ;; Restore lr from sp+0x7F8
+         (add-imm 31 31 #x800)
          (ret))))
 
 ;;; ============================================================
