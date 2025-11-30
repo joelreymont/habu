@@ -2287,6 +2287,13 @@
          ((eq op 'sys-exit)
           (list 'sys-exit-ir
                 (sys:compile (cadr expr) env fenv)))  ; exit code
+         ;; get-intern-table - get the global intern table (for symbol interning)
+         ((eq op 'get-intern-table)
+          (list 'get-intern-table-ir))
+         ;; set-intern-table - set the global intern table
+         ((eq op 'set-intern-table)
+          (list 'set-intern-table-ir
+                (sys:compile (cadr expr) env fenv)))
          ;; === High-level file I/O (using sys-* primitives) ===
          ;; native-read-file - read entire file to string
          ;; Expands to: (let* ((fd (sys-open path O_RDONLY 0))

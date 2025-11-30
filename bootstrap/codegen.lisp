@@ -1349,6 +1349,16 @@
               (add-reg 9 9 26)      ;; x9 = x26 + fn-offset = absolute addr
               (blr 9)))))
 
+    ;; Get-intern-table: load intern table from [x27 + 0]
+    ((has-tag ir 'get-intern-table-ir)
+     (ldr-offset 0 27 0))
+
+    ;; Set-intern-table: store value to [x27 + 0], return value
+    ((has-tag ir 'set-intern-table-ir)
+     (let ((val-code (codegen (cadr ir) rtaddrs fnoffs td)))
+       (append val-code
+               (str-offset 0 27 0))))
+
     ;; Default - return empty
     (t nil)))
 

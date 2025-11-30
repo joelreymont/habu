@@ -17,7 +17,7 @@ The Habu compiler can compile programs with:
 - Symbols: symbol-name, make-symbol-from-string
 - Vectors: make-vector, vector-ref, vector-set, vector-length
 - File I/O: sys-open, sys-read, sys-write, sys-close, native-read-file
-- System: sys-exit
+- System: sys-exit, get-intern-table, set-intern-table
 
 **Test Results (76/76 pass):**
 ```
@@ -55,10 +55,15 @@ Major milestone achieved: compiler.lisp compiles to native and runs correctly!
 - Compiler + length call: PASS
 - Reader + Compiler combined: PASS
 
-**Remaining issues:**
-- string-equal returns wrong results when called from full compiler context
-- assoc crashes (uses string-equal)
-- These are likely symbol/string comparison issues, not offset bugs
+**Resolved (string-equal and assoc fixed):**
+- string-equal and assoc now work correctly
+- Root cause: labels with closures over string parameters
+- Fix: rewrote string-equal/string= without closures (use helper functions instead)
+
+**Known limitation:**
+- `habu-read` at runtime has issues due to labels closures over `source` string
+- Symbol interning infrastructure added (get-intern-table, set-intern-table)
+- Full runtime symbol interning blocked by same closure bug
 
 ### Lambda Lifting and Closure Support
 

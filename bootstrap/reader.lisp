@@ -26,17 +26,43 @@
                  (len-iter (cdr l) (+ n 1)))))
     (len-iter lst 0)))
 
+;; String comparison helper - no closures to avoid labels/closure bugs
+#-sbcl
+(defun string=-iter (s1 s2 i len)
+  "Internal: compare strings starting at index i"
+  (if (>= i len)
+      t
+      (if (= (string-ref s1 i) (string-ref s2 i))
+          (string=-iter s1 s2 (+ i 1) len)
+          nil)))
+
 #-sbcl
 (defun string= (s1 s2)
   "Compare two strings character by character"
-  (labels ((cmp (i len1 len2)
-             (cond
-               ((/= len1 len2) nil)
-               ((>= i len1) t)
-               ((= (string-ref s1 i) (string-ref s2 i))
-                (cmp (+ i 1) len1 len2))
-               (t nil))))
-    (cmp 0 (string-length s1) (string-length s2))))
+  (let ((len1 (string-length s1))
+        (len2 (string-length s2)))
+    (if (= len1 len2)
+        (string=-iter s1 s2 0 len1)
+        nil)))
+
+#-sbcl
+(defun find-interned (name table)
+  "Find symbol with NAME in intern TABLE (alist of (name . symbol))"
+  (if (null table)
+      nil
+      (if (string= name (car (car table)))
+          (cdr (car table))
+          (find-interned name (cdr table)))))
+
+#-sbcl
+(defun intern (name)
+  "Intern a string as a symbol. Returns existing symbol if found, else creates new."
+  (let ((existing (find-interned name (get-intern-table))))
+    (if existing
+        existing
+        (let ((sym (make-symbol-from-string name)))
+          (set-intern-table (cons (cons name sym) (get-intern-table)))
+          sym))))
 
 ;;; Character predicates
 (defun whitespace? (ch)
@@ -327,6 +353,18 @@
                     (read-int source pos2))
                    ;; Symbol
                    ((symbol-char? ch) (read-sym source pos2))
+                   ;; Pipe-quoted symbol |...|
+                   ((= ch #x7C)
+                    (labels ((read-pipe-chars (p acc)
+                               (let ((c (char-at source p)))
+                                 (if (= c #x7C)
+                                     (cons acc (+ p 1))  ; return chars and pos after closing |
+                                     (read-pipe-chars (+ p 1) (cons c acc))))))
+                      (let ((result (read-pipe-chars (+ pos2 1) nil)))
+                        (let ((name (chars-to-string-upcase (reverse (car result)))))
+                          (cons #+sbcl (intern name :habu)
+                                #-sbcl (intern name)
+                                (cdr result))))))
                    ;; Close paren
                    ((= ch #x29) (cons nil (+ pos2 #x1)))
                    ;; Skip unknown

@@ -791,7 +791,8 @@
 (defun wrap-bytecode-with-heap-for-imports (code-bytes heap-page-offset)
   "Wrap bytecode with heap initialization for executables with imports.
    HEAP-PAGE-OFFSET is the page offset from the ADRP instruction to __DATA (in 4KB pages).
-   Returns 68 bytes (17 instructions) + original code."
+   Returns 72 bytes (18 instructions) + original code.
+   First 16 bytes of heap reserved: [x27+0] = intern table (initialized to nil)."
   (let ((stub (buf-append-all
                (cons (arm64-sub-imm 31 31 #x30)
                      (cons (arm64-str 30 31 0)
@@ -801,15 +802,16 @@
                                              (cons (arm64-adrp 28 heap-page-offset)
                                                    (cons (arm64-mov 27 28)
                                                          (cons (arm64-add-imm 28 28 16)
-                                                               (cons (arm64-adr 26 36)
-                                                                     (cons (arm64-bl 32)
-                                                                           (cons (arm64-lsr 0 0 4)
-                                                                                 (cons (arm64-ldr 27 31 24)
-                                                                                       (cons (arm64-ldr 26 31 16)
-                                                                                             (cons (arm64-ldr 28 31 8)
-                                                                                                   (cons (arm64-ldr 30 31 0)
-                                                                                                         (cons (arm64-add-imm 31 31 #x30)
-                                                                                                               (cons (arm64-ret) nil))))))))))))))))))))
+                                                               (cons (arm64-str 31 27 0)
+                                                                     (cons (arm64-adr 26 40)
+                                                                           (cons (arm64-bl 32)
+                                                                                 (cons (arm64-lsr 0 0 4)
+                                                                                       (cons (arm64-ldr 27 31 24)
+                                                                                             (cons (arm64-ldr 26 31 16)
+                                                                                                   (cons (arm64-ldr 28 31 8)
+                                                                                                         (cons (arm64-ldr 30 31 0)
+                                                                                                               (cons (arm64-add-imm 31 31 #x30)
+                                                                                                                     (cons (arm64-ret) nil)))))))))))))))))))))
     (append stub code-bytes)))
 
 ;;; ============================================================

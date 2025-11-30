@@ -73,21 +73,24 @@
                                   (cons (car l) acc))))))
     (remove-iter lst nil)))
 
+;; String comparison helper - no closures to avoid labels/closure bugs
+#-sbcl
+(defun string-equal-iter (s1 s2 i len)
+  "Internal: compare strings starting at index i"
+  (if (>= i len)
+      t
+      (if (= (string-ref s1 i) (string-ref s2 i))
+          (string-equal-iter s1 s2 (+ i 1) len)
+          nil)))
+
 #-sbcl
 (defun string-equal (s1 s2)
   "Compare two strings character by character - pure Habu implementation"
-  (labels ((cmp (i len1 len2)
-             (cond
-               ;; Different lengths = not equal
-               ((/= len1 len2) nil)
-               ;; Reached end of both = equal
-               ((>= i len1) t)
-               ;; Compare current chars
-               ((= (string-ref s1 i) (string-ref s2 i))
-                (cmp (+ i 1) len1 len2))
-               ;; Chars differ
-               (t nil))))
-    (cmp 0 (string-length s1) (string-length s2))))
+  (let ((len1 (string-length s1))
+        (len2 (string-length s2)))
+    (if (= len1 len2)
+        (string-equal-iter s1 s2 0 len1)
+        nil)))
 
 #-sbcl
 (defun assoc (key alist)
@@ -845,6 +848,8 @@
 
          ;; System calls
          ((eq (car expr) 'sys-exit) (list 'sys-exit-ir (compile-expr-full (nth 1 expr) env fenv)))
+         ((eq (car expr) 'get-intern-table) (list 'get-intern-table-ir))
+         ((eq (car expr) 'set-intern-table) (list 'set-intern-table-ir (compile-expr-full (nth 1 expr) env fenv)))
          ((eq (car expr) 'sys-open) (list 'sys-open-ir
                                           (compile-expr-full (nth 1 expr) env fenv)
                                           (compile-expr-full (nth 2 expr) env fenv)
