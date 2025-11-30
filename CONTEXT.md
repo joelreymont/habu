@@ -1,7 +1,7 @@
 # Habu Self-Hosting Lisp Compiler - Context
 
 **Last Updated**: November 30, 2025
-**Milestone**: File I/O fixed, Stage 1 compiler compiles and runs natively
+**Milestone**: Stage 1 can read, parse, and compile source files natively
 
 ## Current Status
 
@@ -97,6 +97,29 @@ Used correct AND encoding `(and-imm 4 4 1 59 60)` for ~15 mask.
 - native-read-file test: PASS (reads "hello", returns string-length=5)
 - make-vector, vector-set/ref: PASS
 - Stage 1 compiler (166KB): compiles and runs correctly
+
+### Pure compile-program for Native Stage 1
+
+Added `#-sbcl` version of `compile-program` in compiler.lisp for native use.
+
+**Problem:** The SBCL version calls `reset-symbol-table`, which crashes in native
+code because `*symbol-state*` is only defined with `#+sbcl` and never initialized.
+
+**Fix:** Pure version skips reset-symbol-table and just calls compile-forms:
+```lisp
+#-sbcl
+(defun compile-program (forms)
+  (let* ((result (compile-forms forms))
+         (defuns (car result))
+         (mir (cadr result)))
+    (cons mir defuns)))
+```
+
+**Stage 1 Self-Hosting Tests:**
+- native-read-file: PASS (reads source from file)
+- read-all: PASS (parses source to S-expressions)
+- compile-forms: PASS (compiles to IR)
+- compile-program: PASS (full compilation pipeline)
 
 ### Stage 1 Verification
 
