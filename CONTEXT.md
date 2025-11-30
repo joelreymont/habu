@@ -58,6 +58,14 @@ The ARM64 logical immediate encoding:
 - Old: imms=60, immr=59 gave wrong pattern
 - New: imms=59, immr=4 gives 60 ones in bits 63-4, zeros in bits 3-0
 
+### Stage 1 Verification
+
+Full Stage 1 compiler (reader + compiler + codegen + macho-utils) compiles and runs:
+- Source size: 165KB (14KB reader + 59KB compiler + 89KB codegen + 2KB macho-utils)
+- Native binary: 8.7MB
+- Compilation time: ~1 second
+- Test: `(+ 40 2)` returns 42 correctly
+
 ### Previous Fix: Stack Frame Layout (Spill/LR Collision)
 
 **Root cause of nested let + labels crashes found and fixed!**
