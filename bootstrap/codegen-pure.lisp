@@ -520,13 +520,16 @@
             (cond-code (pure-codegen cond-ir rtaddrs fnoffs td))
             (then-code (pure-codegen then-ir rtaddrs fnoffs td))
             (else-code (pure-codegen else-ir rtaddrs fnoffs td))
-            (else-size (* (pure-length else-code) 4))
-            (then-size (* (pure-length then-code) 4)))
+            ;; Sizes are already in bytes (pure-codegen returns byte lists)
+            (else-size (pure-length else-code))
+            (then-size (pure-length then-code)))
        (pure-append-all
         (list cond-code
               (pure-cmp-imm 0 0)
+              ;; Branch if cond==0 (false) to skip then + unconditional branch
               (pure-b-cond (pure-cond-eq) (+ then-size 8))
               then-code
+              ;; Unconditional branch to skip else
               (pure-b-offset (+ else-size 4))
               else-code))))
 
