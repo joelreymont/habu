@@ -36,6 +36,44 @@ Edge cases (18): negative numbers, zero handling, deeply nested arithmetic, long
 
 ## Latest Session (November 30, 2025)
 
+### Reader and Symbol Registration Fixes
+
+**Root cause: Symbol interning mismatch between reader and compiler**
+
+The native reader's `intern` function created new symbols that weren't `eq` to the compiler's literal symbols. This caused `has-tag` checks in codegen to fail (e.g., `(has-tag ir 'sys-exit-ir)` never matched).
+
+**Problems fixed:**
+
+1. **Comma/unquote handling**: The reader crashed when encountering `,` (unquote) or `,@` (unquote-splicing) in backquoted forms. Added proper handling in `read-one` dispatcher.
+
+2. **Empty symbol protection**: When `read-sym` encountered an unrecognized character, it returned an empty string and then tried `(string-ref "" 0)` which crashed. Added check to skip unrecognized characters.
+
+3. **Deep nesting in symbol table**: The original `ensure-symbols-registered` used one giant `(list ...)` form with 137 entries. This caused deeply nested `cons-ir` during compilation, with only ~30 entries being generated correctly. Refactored into 18 smaller helper functions (`make-special-forms`, `make-arithmetic`, `make-ir-basic`, etc.) that build small lists and append them together.
+
+4. **SBCL guards**: Added `#-sbcl` guards for native `string=` and `string=-iter` implementations that conflict with SBCL's built-in.
+
+**Key changes to reader.lisp:**
+```lisp
+;; Comma handling in read-one dispatcher
+((= ch #x2C)
+ (let ((pos3 (+ pos2 #x1)))
+   (if (= (char-at source pos3) #x40)  ; @
+       (let ((result (read-one (+ pos3 #x1))))
+         (cons (list 'unquote-splicing (car result)) (cdr result)))
+       (let ((result (read-one pos3)))
+         (cons (list 'unquote (car result)) (cdr result))))))
+
+;; Empty symbol protection in read-sym
+(if (= (string-length name) 0)
+    (cons nil (+ pos 1))  ;; Skip unrecognized character
+    ...)
+```
+
+**Results:**
+- `SYS-EXIT-IR` found in intern table: PASS
+- Stage 1 basic tests (2+2, factorial): PASS
+- Full Stage 1 (185KB source → 8.7MB binary): returns 42 correctly
+
 ### Critical Bug Fix: STP Offset Encoding Overflow
 
 **Root cause: STP/LDP 7-bit signed offset couldn't encode 0x3F0 (1008 bytes)!**
