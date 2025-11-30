@@ -172,8 +172,9 @@
     ;; Binary ops
     ((or (pure-has-tag ir 'add) (pure-has-tag ir 'sub)
          (pure-has-tag ir 'mul) (pure-has-tag ir 'div)
-         (pure-has-tag ir 'cmp-eq) (pure-has-tag ir 'cmp-lt)
-         (pure-has-tag ir 'cmp-gt) (pure-has-tag ir 'cons-ir))
+         (pure-has-tag ir 'mod) (pure-has-tag ir 'cmp-eq)
+         (pure-has-tag ir 'cmp-lt) (pure-has-tag ir 'cmp-gt)
+         (pure-has-tag ir 'cons-ir))
      (let* ((left (cadr ir))
             (right (caddr ir))
             (left-result (pure-lift-lambdas left lambdas))
@@ -199,6 +200,15 @@
             (new-arg (car arg-result))
             (new-lambdas (cdr arg-result)))
        (cons (list 'sys-exit-ir new-arg) new-lambdas)))
+
+    ;; setq-ir: (setq-ir offset val-ir)
+    ((pure-has-tag ir 'setq-ir)
+     (let* ((off (cadr ir))
+            (val-ir (caddr ir))
+            (val-result (pure-lift-lambdas val-ir lambdas))
+            (new-val (car val-result))
+            (new-lambdas (cdr val-result)))
+       (cons (list 'setq-ir off new-val) new-lambdas)))
 
     ;; Default - return unchanged
     (t (cons ir lambdas))))
@@ -576,10 +586,12 @@
     ((pure-has-tag ir 'add) (or (pure-ir-may-call (cadr ir)) (pure-ir-may-call (caddr ir))))
     ((pure-has-tag ir 'sub) (or (pure-ir-may-call (cadr ir)) (pure-ir-may-call (caddr ir))))
     ((pure-has-tag ir 'mul) (or (pure-ir-may-call (cadr ir)) (pure-ir-may-call (caddr ir))))
+    ((pure-has-tag ir 'mod) (or (pure-ir-may-call (cadr ir)) (pure-ir-may-call (caddr ir))))
     ((pure-has-tag ir 'cons-ir) (or (pure-ir-may-call (cadr ir)) (pure-ir-may-call (caddr ir))))
     ((pure-has-tag ir 'car-ir) (pure-ir-may-call (cadr ir)))
     ((pure-has-tag ir 'cdr-ir) (pure-ir-may-call (cadr ir)))
     ((pure-has-tag ir 'get-tag) (pure-ir-may-call (cadr ir)))
+    ((pure-has-tag ir 'setq-ir) (pure-ir-may-call (caddr ir)))
     ((pure-has-tag ir 'if-ir) t)
     ((pure-has-tag ir 'let-ir) t)
     ((pure-has-tag ir 'let*-ir) t)
@@ -760,6 +772,18 @@
        (pure-append (pure-sub-imm 1 20 off8)
                     (pure-ldr-offset 0 1 0))))
 
+    ;; Variable assignment (setq)
+    ((pure-has-tag ir 'setq-ir)
+     (let* ((off (cadr ir))
+            (val-ir (caddr ir))
+            (off8 (* off 8))
+            (val-code (pure-codegen val-ir rtaddrs fnoffs td)))
+       ;; Compile value to x0, then store at x20 - offset*8
+       (pure-append-all
+        (list val-code
+              (pure-sub-imm 1 20 off8)
+              (pure-str-offset 0 1 0)))))
+
     ;; Addition
     ((pure-has-tag ir 'add)
      (pure-codegen-binop (cadr ir) (caddr ir)
@@ -787,6 +811,18 @@
                                 (pure-lsr-imm 1 1 4)
                                 (pure-sdiv-reg 0 0 1)
                                 (pure-lsl-imm 0 0 4)))
+                         rtaddrs fnoffs td))
+
+    ;; Modulo: a mod b = a - (a/b)*b
+    ((pure-has-tag ir 'mod)
+     (pure-codegen-binop (cadr ir) (caddr ir)
+                         (pure-append-all
+                          (list (pure-lsr-imm 9 0 4)    ; x9 = a untagged
+                                (pure-lsr-imm 10 1 4)   ; x10 = b untagged
+                                (pure-sdiv-reg 11 9 10) ; x11 = a/b
+                                (pure-mul-reg 11 11 10) ; x11 = (a/b)*b
+                                (pure-sub-reg 0 9 11)   ; x0 = a - (a/b)*b
+                                (pure-lsl-imm 0 0 4)))  ; tag result
                          rtaddrs fnoffs td))
 
     ;; Comparison (equality)
