@@ -1558,16 +1558,44 @@
                       (tally (cdr items) (+ acc 1))))))))
     (tally code 0)))
 
-(defun build-fnoffs (fns offset acc)
-  "Build function offset table: ((name . byte-offset) ...)"
+(defun build-fnoffs-pass (fns offset fnoffs acc)
+  "Build function offset table: ((name . byte-offset) ...)
+   Uses fnoffs for accurate size calculation (may be nil for first pass)."
   (if (null fns)
       (reverse acc)
       (let* ((fn (car fns))
              (name (car fn))
-             (code (codegen-fn fn nil nil))
+             (code (codegen-fn fn nil fnoffs))
              (size (code-size code))
              (entry (cons name offset)))
-        (build-fnoffs (cdr fns) (+ offset size) (cons entry acc)))))
+        (build-fnoffs-pass (cdr fns) (+ offset size) fnoffs (cons entry acc)))))
+
+(defun fnoffs-equal (a b)
+  "Compare two fnoffs tables for equality"
+  (cond
+    ((and (null a) (null b)) t)
+    ((or (null a) (null b)) nil)
+    (t (let ((ea (car a))
+             (eb (car b)))
+         (if (and (equal (car ea) (car eb))
+                  (= (cdr ea) (cdr eb)))
+             (fnoffs-equal (cdr a) (cdr b))
+             nil)))))
+
+(defun build-fnoffs (fns offset acc)
+  "Build function offset table with iteration until stable.
+   Code size depends on function offsets (load-addr size varies),
+   so we iterate until the table stabilizes."
+  (labels ((iterate (prev-fnoffs iterations)
+             (if (> iterations 10)
+                 prev-fnoffs  ; Safety limit
+                 (let ((new-fnoffs (build-fnoffs-pass fns offset prev-fnoffs nil)))
+                   (if (fnoffs-equal prev-fnoffs new-fnoffs)
+                       new-fnoffs
+                       (iterate new-fnoffs (+ iterations 1)))))))
+    ;; First pass with nil fnoffs, then iterate
+    (let ((first-pass (build-fnoffs-pass fns offset nil nil)))
+      (iterate first-pass 1))))
 
 (defun codegen-all-fns (fns rtaddrs fnoffs acc)
   "Generate code for all functions with fnoffs"
