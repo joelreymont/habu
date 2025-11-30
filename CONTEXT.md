@@ -36,6 +36,30 @@ Edge cases (18): negative numbers, zero handling, deeply nested arithmetic, long
 
 ## Latest Session (November 30, 2025)
 
+### Self-Hosting Progress
+
+Major milestone achieved: compiler.lisp compiles to native and runs correctly!
+
+1. **Pipe symbol fix** in reader.lisp - Added handling for `|SYS:FOO|` style symbols
+2. **fnoffs size calculation fix** - Critical bug where `build-fnoffs` calculated function
+   sizes with nil offsets, but `load-addr` produces different-sized code depending on
+   offset magnitude (1 instruction for <0x10000, 2 for larger). Fixed by iterating
+   until offset table stabilizes.
+3. reader.lisp compiles and runs correctly (14KB source)
+4. compiler.lisp compiles and runs correctly (57KB source, 78 defuns)
+5. Combined reader + compiler compiles (71KB total, 110 functions)
+
+**Verified working:**
+- Compiler + sys-exit: PASS
+- Compiler + nth call: PASS
+- Compiler + length call: PASS
+- Reader + Compiler combined: PASS
+
+**Remaining issues:**
+- string-equal returns wrong results when called from full compiler context
+- assoc crashes (uses string-equal)
+- These are likely symbol/string comparison issues, not offset bugs
+
 ### Lambda Lifting and Closure Support
 
 Added complete lambda lifting to `bootstrap/codegen.lisp`:
@@ -167,6 +191,8 @@ sbcl --load bootstrap/compiler-sbcl.lisp --load bootstrap/macho.lisp \
 
 The full session history is preserved in SESSION.md (append-only log).
 Key milestones:
+- Nov 30: fnoffs size fix - compiler.lisp (78 defuns) compiles to native (commit 989bb6d)
+- Nov 30: Pipe symbol handling in reader
 - Nov 30: Closure bugs fixed - nested free-vars, capture loading, capture order (commit 6142a5f)
 - Nov 30: Lambda lifting + closure support complete (commit ff63ccc)
 - Nov 30: Defun support fixed
