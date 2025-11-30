@@ -266,6 +266,36 @@
 ;;; Helper Functions
 ;;; ============================================================
 
+(defun pure-reverse-helper (lst acc)
+  "Tail-recursive reverse helper"
+  (if (null lst)
+      acc
+      (pure-reverse-helper (cdr lst) (cons (car lst) acc))))
+
+(defun pure-reverse (lst)
+  "Reverse a list"
+  (labels ((rev-iter (l acc)
+             (if (null l)
+                 acc
+                 (rev-iter (cdr l) (cons (car l) acc)))))
+    (rev-iter lst nil)))
+
+(defun pure-append (lst1 lst2)
+  "Append two lists"
+  (labels ((append-iter (l acc)
+             (if (null l)
+                 acc
+                 (append-iter (cdr l) (cons (car l) acc)))))
+    (append-iter (pure-reverse-helper lst1 nil) lst2)))
+
+(defun pure-length (lst)
+  "List length"
+  (labels ((len-iter (l n)
+             (if (null l)
+                 n
+                 (len-iter (cdr l) (+ n 1)))))
+    (len-iter lst 0)))
+
 (defun pure-append-all (lists)
   "Append all lists in LISTS"
   (if (null lists)
@@ -573,8 +603,9 @@
      (let* ((fn-name (cadr ir))
             (args (caddr ir))
             (arg-code (pure-codegen-call-args args rtaddrs fnoffs td)))
+       ;; Emit call marker that will be resolved by pure-resolve-calls
        (pure-append arg-code
-                    (list :call fn-name 0 0 0))))
+                    (list (list :call fn-name)))))
 
     ;; Lambda reference (closure creation)
     ((pure-has-tag ir 'lambda-ref)
@@ -714,6 +745,78 @@
          (pure-ret))))
 
 ;;; ============================================================
+;;; Function Codegen
+;;; ============================================================
+
+(defun pure-codegen-fn (fn rtaddrs fnoffs)
+  "Generate code for a function: (name params body-ir param-base)
+   Uses simple fixed frame layout."
+  (let* ((name (car fn))
+         (params (cadr fn))
+         (body-ir (caddr fn))
+         (param-base (cadddr fn))
+         ;; Generate param stores: move x0-x7 to [x20 - offset*8]
+         (param-code (pure-gen-param-stores params param-base 0 nil))
+         ;; Generate body code
+         (body-code (pure-codegen body-ir rtaddrs fnoffs 0)))
+    (pure-append-all
+     (list (pure-prologue)
+           param-code
+           body-code
+           (pure-epilogue)
+           (pure-ret)))))
+
+(defun pure-gen-param-stores (params base idx acc)
+  "Generate stores from registers x0-x7 to environment slots"
+  (if (null params)
+      acc
+      (if (< idx 8)
+          (let* ((offset (* (+ base idx) 8))
+                 (store (pure-append (pure-sub-imm 9 20 offset)
+                                     (pure-str-offset idx 9 0))))
+            (pure-gen-param-stores (cdr params) base (+ idx 1)
+                                   (pure-append acc store)))
+          ;; Args 8+ would need stack loading - skip for now
+          acc)))
+
+(defun pure-code-size (code)
+  "Calculate size of code in bytes, accounting for markers"
+  (labels ((tally (items acc)
+             (if (null items)
+                 acc
+                 (let ((item (car items)))
+                   (cond
+                     ((and (consp item) (eq (car item) :call))
+                      (tally (cdr items) (+ acc 4)))
+                     ((and (consp item) (eq (car item) :extern-call))
+                      (tally (cdr items) (+ acc 4)))
+                     ((consp item)
+                      (tally (cdr items) (+ acc (tally item 0))))
+                     (t
+                      (tally (cdr items) (+ acc 1))))))))
+    (tally code 0)))
+
+(defun pure-build-fnoffs (fns offset acc)
+  "Build function offset table: ((name . byte-offset) ...)"
+  (if (null fns)
+      (pure-reverse acc)
+      (let* ((fn (car fns))
+             (name (car fn))
+             (code (pure-codegen-fn fn nil nil))
+             (size (pure-code-size code))
+             (entry (cons name offset)))
+        (pure-build-fnoffs (cdr fns) (+ offset size) (cons entry acc)))))
+
+(defun pure-codegen-all-fns (fns rtaddrs fnoffs acc)
+  "Generate code for all functions with fnoffs"
+  (if (null fns)
+      acc
+      (let* ((fn (car fns))
+             (code (pure-codegen-fn fn rtaddrs fnoffs)))
+        (pure-codegen-all-fns (cdr fns) rtaddrs fnoffs
+                              (pure-append acc code)))))
+
+;;; ============================================================
 ;;; Main Codegen Entry Point
 ;;; ============================================================
 
@@ -802,6 +905,179 @@
             ;; Make executable
             #+sbcl (sb-ext:run-program "/bin/chmod" (list "+x" output-path)
                                         :output nil :error nil :wait t)))))))
+
+(defun pure-deliver-v3 (source output-path)
+  "Compile source string with function definitions to native executable.
+   Supports: defun, function calls, all v2 features.
+   Layout: wrapper(68) + main-code + function-code + stubs"
+  (pure-reset-symbol-table)
+  (let* ((forms (read-all source))
+         (result (pure-compile-forms forms))
+         (defuns (car result))
+         (main-ir (cadr result))
+         (wrapper-size 68))
+
+    (if (null defuns)
+        ;; No functions - use v2
+        (pure-deliver-v2 source output-path)
+
+        ;; Has functions - full compilation
+        (let* (;; Generate main code first (with nil fnoffs to get size)
+               (main-code-temp (pure-append-all
+                                (list (pure-prologue)
+                                      (pure-codegen main-ir nil nil 0)
+                                      (pure-epilogue))))
+               (main-size (pure-code-size main-code-temp))
+               ;; Build fnoffs starting after main code (relative to code start after wrapper)
+               (fnoffs (pure-build-fnoffs defuns main-size nil))
+               ;; Regenerate main with fnoffs
+               (main-code (pure-append-all
+                           (list (pure-prologue)
+                                 (pure-codegen main-ir nil fnoffs 0)
+                                 (pure-epilogue))))
+               ;; Generate all function code
+               (fn-code (pure-codegen-all-fns defuns nil fnoffs nil))
+               ;; Combine all code
+               (all-code (pure-append main-code fn-code))
+               ;; Flatten with markers tracking positions
+               (bytes-with-markers (pure-flatten-code-keep-markers-and-calls all-code))
+               ;; Collect extern calls
+               (extern-calls (pure-collect-extern-calls bytes-with-markers))
+               (imports (pure-get-unique-imports extern-calls))
+               (imports (if (null imports) '("_exit") imports))
+               ;; Calculate stubs
+               (num-imports (pure-length imports))
+               (stubs-total (* num-imports 12))
+               (code-offset #x400)
+               (exact-flat-size (pure-length bytes-with-markers))
+               (exact-code-size (+ exact-flat-size wrapper-size))
+               (stubs-offset (+ code-offset exact-code-size))
+               (stub-size 12)
+               ;; Build stub alist
+               (stub-alist (pure-build-stub-alist imports stubs-offset stub-size))
+               ;; Convert fnoffs to byte addresses (relative to code-offset + wrapper-size)
+               (fn-addr-base (+ code-offset wrapper-size))
+               (fn-alist (pure-build-fn-addr-alist fnoffs fn-addr-base nil))
+               ;; Flatten both :call and :extern-call markers
+               (flatten-result (pure-flatten-all-calls bytes-with-markers fn-alist stub-alist fn-addr-base))
+               (flat-code (car flatten-result))
+               ;; Calculate heap
+               (total-size (+ (pure-length flat-code) wrapper-size))
+               (stubs-end (+ code-offset total-size stubs-total))
+               (text-vmsize (* (ceiling stubs-end #x4000) #x4000))
+               (text-pages-4kb (/ text-vmsize #x1000))
+               (data-const-pages-4kb (/ #x4000 #x1000))
+               (heap-page-offset (+ text-pages-4kb data-const-pages-4kb))
+               (wrapped-code (wrap-bytecode-with-heap-for-imports flat-code heap-page-offset)))
+
+          ;; Write executable
+          (write-macho-executable-with-imports-and-heap output-path wrapped-code imports #x800000)
+          #+sbcl (sb-ext:run-program "/bin/chmod" (list "+x" output-path)
+                                      :output nil :error nil :wait t)))))
+
+(defun pure-build-fn-addr-alist (fnoffs base acc)
+  "Convert fnoffs to absolute addresses"
+  (if (null fnoffs)
+      (pure-reverse acc)
+      (let* ((entry (car fnoffs))
+             (name (car entry))
+             (offset (cdr entry))
+             (addr (+ base offset)))
+        (pure-build-fn-addr-alist (cdr fnoffs) base
+                                   (cons (cons name addr) acc)))))
+
+(defun pure-flatten-code-keep-markers-and-calls (code)
+  "Flatten code lists but keep both :extern-call and :call markers with positions."
+  (labels ((flatten (items pos acc)
+             (if (null items)
+                 (pure-reverse acc)
+                 (let ((item (car items)))
+                   (cond
+                     ;; Extern call marker
+                     ((and (consp item) (eq (car item) :extern-call))
+                      (let ((marker (list :extern-call (cadr item) pos)))
+                        (flatten (cdr items)
+                                 (+ pos 4)
+                                 (cons 0 (cons 0 (cons 0 (cons marker acc)))))))
+                     ;; Function call marker
+                     ((and (consp item) (eq (car item) :call))
+                      (let ((marker (list :call (cadr item) pos)))
+                        (flatten (cdr items)
+                                 (+ pos 4)
+                                 (cons 0 (cons 0 (cons 0 (cons marker acc)))))))
+                     ;; Nested list
+                     ((consp item)
+                      (let* ((flattened (flatten item 0 nil))
+                             (size (pure-length flattened)))
+                        (flatten (cdr items)
+                                 (+ pos size)
+                                 (pure-append (pure-reverse flattened) acc))))
+                     ;; Byte
+                     (t
+                      (flatten (cdr items)
+                               (+ pos 1)
+                               (cons item acc))))))))
+    (flatten code 0 nil)))
+
+(defun pure-flatten-all-calls (code fn-alist stub-alist code-base-addr)
+  "Replace both :call and :extern-call markers with BL instructions.
+   Returns (cons flattened-code positions)."
+  (labels ((lookup-fn (name)
+             (pure-alist-lookup name fn-alist))
+           (lookup-stub (name)
+             (pure-alist-lookup name stub-alist))
+           (emit-bl (bl-addr target-addr acc)
+             (let* ((rel-offset (- target-addr bl-addr))
+                    (off-s (ash rel-offset -2))
+                    (off-m (logand off-s #x3FFFFFF))
+                    (bl-instr (logior #x94000000 off-m)))
+               (cons (logand (ash bl-instr -24) #xFF)
+                     (cons (logand (ash bl-instr -16) #xFF)
+                           (cons (logand (ash bl-instr -8) #xFF)
+                                 (cons (logand bl-instr #xFF) acc))))))
+           (process (items skip result positions)
+             (if (null items)
+                 (cons (pure-reverse result) positions)
+                 (let ((item (car items)))
+                   (cond
+                     ;; Skip placeholder zeros
+                     ((> skip 0)
+                      (process (cdr items) (- skip 1) result positions))
+                     ;; Extern call marker
+                     ((and (consp item) (eq (car item) :extern-call))
+                      (let* ((name (cadr item))
+                             (pos (caddr item))
+                             (bl-addr (+ code-base-addr pos))
+                             (stub-addr (lookup-stub name))
+                             (new-result (if stub-addr
+                                            (emit-bl bl-addr stub-addr result)
+                                            (cons #x94 (cons 0 (cons 0 (cons 0 result)))))))
+                        (process (cdr items) 3 new-result (cons (cons name pos) positions))))
+                     ;; Function call marker
+                     ((and (consp item) (eq (car item) :call))
+                      (let* ((name (cadr item))
+                             (pos (caddr item))
+                             (bl-addr (+ code-base-addr pos))
+                             (fn-addr (lookup-fn name))
+                             (new-result (if fn-addr
+                                            (emit-bl bl-addr fn-addr result)
+                                            ;; Function not found - emit NOP
+                                            (cons #xD5 (cons #x03 (cons #x20 (cons #x1F result)))))))
+                        (process (cdr items) 3 new-result (cons (cons name pos) positions))))
+                     ;; Regular byte
+                     (t
+                      (process (cdr items) 0 (cons item result) positions)))))))
+    (process code 0 nil nil)))
+
+(defun pure-alist-lookup (key alist)
+  "Look up key in alist, return value or nil"
+  (if (null alist)
+      nil
+      (if (if (symbolp key)
+              (eq key (caar alist))
+              (equal key (caar alist)))
+          (cdar alist)
+          (pure-alist-lookup key (cdr alist)))))
 
 (defun pure-flatten-code-keep-markers (code)
   "Flatten nested code lists but keep :extern-call markers intact.

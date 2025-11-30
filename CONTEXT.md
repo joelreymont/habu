@@ -1,9 +1,59 @@
 # Session Context - Habu Self-Hosting Lisp Compiler
 
-**Session Date**: November 22-29, 2025
+**Session Date**: November 22-30, 2025
 **Focus**: Self-hosting ARM64 Lisp compiler - path to eliminating SBCL
-**Last Updated**: November 29, 2025
-**Milestone**: PURE CODEGEN WORKING - Pure ARM64 codegen with no SBCL dependencies!
+**Last Updated**: November 30, 2025
+**Milestone**: DEFUN SUPPORT WORKING - pure-deliver-v3 compiles programs with function definitions!
+
+## Session Summary (November 30, 2025 - Defun Support Fixed)
+
+### Major Achievement: Defun Support in Pure Codegen Working!
+
+Fixed critical bugs in `bootstrap/codegen-pure.lisp` that prevented function definitions from working.
+
+**Test Result:**
+```bash
+$ /tmp/test_double   # (defun double (x) (* x 2)) (sys-exit (double 21))
+Exit: 42  # CORRECT!
+```
+
+### Bugs Fixed This Session
+
+1. **Missing `pure-append` function** - `codegen-pure.lisp` was calling `pure-append` but it wasn't defined
+   - Added `pure-reverse-helper`, `pure-reverse`, `pure-append`, `pure-length` to codegen-pure.lisp
+   - These functions are now self-contained in the file
+
+2. **`pure-gen-param-stores` byte order reversed** - Function parameter stores were generating reversed bytecode
+   - Root cause: `(pure-append store acc)` with final `(pure-reverse acc)` caused double reversal
+   - Fix: Changed to `(pure-append acc store)` without final reverse
+   - Before: `F9 00 01 20 D1 00 02 89` (wrong)
+   - After: `89 02 00 D1 20 01 00 F9` (correct - SUB then STR)
+
+3. **`count` function name conflict** (fixed in previous session)
+   - Renamed local `count` to `tally` in `pure-code-size` to avoid CL package conflict
+
+### What Works Now
+
+- `pure-deliver-v3` compiles programs with:
+  - Simple expressions: `(+ 10 20)` → 30
+  - Function definitions: `(defun double (x) (* x 2))`
+  - Function calls: `(double 21)` → 42
+  - System exit: `(sys-exit result)`
+
+### Files Modified
+
+- `bootstrap/codegen-pure.lisp`:
+  - Added helper functions: `pure-reverse-helper`, `pure-reverse`, `pure-append`, `pure-length`
+  - Fixed `pure-gen-param-stores` accumulator pattern
+
+### Next Steps
+
+1. Test more complex defun patterns (multiple functions, recursion)
+2. Add labels support (local recursive functions)
+3. Test factorial, fibonacci with pure-deliver-v3
+4. Bundle for true self-hosting
+
+---
 
 ## Session Summary (November 29, 2025 - Pure Codegen Complete)
 
