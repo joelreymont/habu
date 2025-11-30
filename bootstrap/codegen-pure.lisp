@@ -174,7 +174,9 @@
          (pure-has-tag ir 'mul) (pure-has-tag ir 'div)
          (pure-has-tag ir 'mod) (pure-has-tag ir 'cmp-eq)
          (pure-has-tag ir 'cmp-lt) (pure-has-tag ir 'cmp-gt)
-         (pure-has-tag ir 'cons-ir))
+         (pure-has-tag ir 'cons-ir)
+         (pure-has-tag ir 'setcar-ir) (pure-has-tag ir 'setcdr-ir)
+         (pure-has-tag ir 'string-ref-ir))
      (let* ((left (cadr ir))
             (right (caddr ir))
             (left-result (pure-lift-lambdas left lambdas))
@@ -186,7 +188,9 @@
        (cons (list (car ir) new-left new-right) l2)))
 
     ;; Unary ops
-    ((or (pure-has-tag ir 'car-ir) (pure-has-tag ir 'cdr-ir) (pure-has-tag ir 'get-tag))
+    ((or (pure-has-tag ir 'car-ir) (pure-has-tag ir 'cdr-ir) (pure-has-tag ir 'get-tag)
+         (pure-has-tag ir 'symbol-name-ir) (pure-has-tag ir 'make-symbol-ir)
+         (pure-has-tag ir 'string-length-ir))
      (let* ((arg (cadr ir))
             (arg-result (pure-lift-lambdas arg lambdas))
             (new-arg (car arg-result))
@@ -381,6 +385,15 @@
          (word (logior or2 rt)))
     (pure-encode-word word)))
 
+(defun pure-ldrb (rt rn offset)
+  "Load byte from [rn + offset] into rt (zero-extended)"
+  (let* ((off-bits (ash (logand offset #xFFF) 10))
+         (rn-shift (ash rn 5))
+         (or1 (logior #x39400000 off-bits))  ; LDRB unsigned offset
+         (or2 (logior or1 rn-shift))
+         (word (logior or2 rt)))
+    (pure-encode-word word)))
+
 (defun pure-stp-offset (rt1 rt2 rn offset)
   (let* ((off7 (logand (ash offset -3) #x7F))
          (off-bits (ash off7 15))
@@ -558,6 +571,64 @@
                                  (pure-movk rd (logand (ash addr -16) #xFFFF) 1)
                                  (pure-movk rd (logand (ash addr -32) #xFFFF) 2))))))
 
+(defun pure-gen-string-lit (str len total-size)
+  "Generate code to allocate string literal on heap.
+   String layout: [length:8][data:N]
+   Returns tagged string pointer in x0, bumps x28."
+  (labels
+      ;; Store up to 8 bytes at a time using MOVZ/MOVK + STR
+      ((gen-store-bytes (offset bytes acc)
+         (if (null bytes)
+             acc
+             (let* ((chunk (pure-take-bytes bytes 8))
+                    (val (pure-bytes-to-u64 chunk))
+                    (rest (pure-drop-bytes bytes 8)))
+               (gen-store-bytes
+                (+ offset 8)
+                rest
+                (pure-append-all
+                 (list acc
+                       (pure-load-addr 9 val)
+                       (pure-str-offset 9 28 offset)))))))
+       ;; Convert string to list of bytes
+       (str-to-bytes (s i acc)
+         (if (>= i (string-length s))
+             (pure-reverse acc)
+             (str-to-bytes s (+ i 1) (cons (string-ref s i) acc)))))
+    (let* ((bytes (str-to-bytes str 0 nil))
+           ;; Store length first, then data starting at offset 8
+           (len-code (pure-append-all
+                      (list (pure-load-addr 9 len)
+                            (pure-str-offset 9 28 0))))
+           (data-code (gen-store-bytes 8 bytes nil))
+           ;; Return tagged pointer and bump heap
+           (result-code (pure-append-all
+                         (list (pure-mov-reg 0 28)
+                               (pure-add-imm 0 0 4)  ; string tag
+                               (pure-add-imm 28 28 total-size)))))
+      (pure-append-all (list len-code data-code result-code)))))
+
+(defun pure-take-bytes (bytes n)
+  "Take up to N bytes from list"
+  (if (or (null bytes) (<= n 0))
+      nil
+      (cons (car bytes) (pure-take-bytes (cdr bytes) (- n 1)))))
+
+(defun pure-drop-bytes (bytes n)
+  "Drop N bytes from list"
+  (if (or (null bytes) (<= n 0))
+      bytes
+      (pure-drop-bytes (cdr bytes) (- n 1))))
+
+(defun pure-bytes-to-u64 (bytes)
+  "Convert list of up to 8 bytes to u64 (little-endian)"
+  (labels ((to-u64 (bs shift acc)
+             (if (null bs)
+                 acc
+                 (to-u64 (cdr bs) (+ shift 8)
+                         (logior acc (ash (car bs) shift))))))
+    (to-u64 bytes 0 0)))
+
 (defun pure-save-temp (td)
   (pure-str-offset 0 31 (pure-temp-slot td)))
 
@@ -592,6 +663,13 @@
     ((pure-has-tag ir 'cdr-ir) (pure-ir-may-call (cadr ir)))
     ((pure-has-tag ir 'get-tag) (pure-ir-may-call (cadr ir)))
     ((pure-has-tag ir 'setq-ir) (pure-ir-may-call (caddr ir)))
+    ((pure-has-tag ir 'setcar-ir) (or (pure-ir-may-call (cadr ir)) (pure-ir-may-call (caddr ir))))
+    ((pure-has-tag ir 'setcdr-ir) (or (pure-ir-may-call (cadr ir)) (pure-ir-may-call (caddr ir))))
+    ((pure-has-tag ir 'symbol-name-ir) (pure-ir-may-call (cadr ir)))
+    ((pure-has-tag ir 'make-symbol-ir) (pure-ir-may-call (cadr ir)))
+    ((pure-has-tag ir 'string-length-ir) (pure-ir-may-call (cadr ir)))
+    ((pure-has-tag ir 'string-ref-ir) (or (pure-ir-may-call (cadr ir)) (pure-ir-may-call (caddr ir))))
+    ((pure-has-tag ir 'str-lit) nil)
     ((pure-has-tag ir 'if-ir) t)
     ((pure-has-tag ir 'let-ir) t)
     ((pure-has-tag ir 'let*-ir) t)
@@ -767,6 +845,19 @@
            (pure-movz 0 tagged)
            (pure-load-addr 0 tagged))))
 
+    ;; String literal - allocate on heap
+    ;; String layout: [length:8][data:N][padding to 8]
+    ((pure-has-tag ir 'str-lit)
+     (let* ((str (cadr ir))
+            (len (string-length str))
+            (aligned-len (logand (+ len 8 7) (lognot 7)))  ; align to 8
+            (total-size (+ 8 aligned-len)))  ; header + data
+       ;; Generate code to:
+       ;; 1. Store length at x28
+       ;; 2. Copy string bytes to x28+8
+       ;; 3. Return tagged pointer, bump x28
+       (pure-gen-string-lit str len total-size)))
+
     ;; Variable reference
     ((pure-has-tag ir 'var)
      (let* ((off (cadr ir))
@@ -891,6 +982,102 @@
        (pure-append inner-code
                     (pure-append (pure-sub-imm 0 0 1)
                                  (pure-ldr-offset 0 0 8)))))
+
+    ;; String-length: string layout is [length:8][data...]
+    ;; String tag is 4, so untag and load length from offset 0
+    ((pure-has-tag ir 'string-length-ir)
+     (let ((inner-code (pure-codegen (cadr ir) rtaddrs fnoffs td)))
+       (pure-append-all
+        (list inner-code
+              (pure-sub-imm 0 0 4)        ; untag string
+              (pure-ldr-offset 0 0 0)     ; load length
+              (pure-lsl-imm 0 0 4)))))    ; tag as fixnum
+
+    ;; String-ref: get character at index
+    ;; (string-ref-ir str-ir idx-ir)
+    ((pure-has-tag ir 'string-ref-ir)
+     (let* ((str-ir (cadr ir))
+            (idx-ir (caddr ir))
+            (spill-off (pure-spill-base td))
+            (str-code (pure-codegen str-ir rtaddrs fnoffs td))
+            (idx-code (pure-codegen idx-ir rtaddrs fnoffs td)))
+       (pure-append-all
+        (list str-code
+              ;; Spill string pointer
+              (pure-str-offset 0 31 spill-off)
+              idx-code
+              ;; x0 = tagged index, x1 = string pointer
+              (pure-ldr-offset 1 31 spill-off)
+              ;; Untag index (shift right 4)
+              (pure-lsr-imm 0 0 4)
+              ;; Untag string pointer
+              (pure-sub-imm 1 1 4)
+              ;; Add 8 for header, then add index
+              (pure-add-imm 1 1 8)
+              (pure-add-reg 1 1 0)
+              ;; Load byte at [x1]
+              (pure-ldrb 0 1 0)
+              ;; Tag as fixnum
+              (pure-lsl-imm 0 0 4)))))
+
+    ;; Setcar - mutate car of cons cell
+    ;; (setcar-ir cons-ir val-ir)
+    ((pure-has-tag ir 'setcar-ir)
+     (let* ((cons-ir (cadr ir))
+            (val-ir (caddr ir))
+            (spill-off (pure-spill-base td))
+            (cons-code (pure-codegen cons-ir rtaddrs fnoffs td))
+            (val-code (pure-codegen val-ir rtaddrs fnoffs td)))
+       (pure-append-all
+        (list cons-code
+              ;; Spill cons to stack (SP = x31)
+              (pure-str-offset 0 31 spill-off)
+              val-code
+              ;; Restore cons to x1
+              (pure-ldr-offset 1 31 spill-off)
+              ;; Untag cons (subtract 1)
+              (pure-sub-imm 1 1 1)
+              ;; Store val at car position (offset 0)
+              (pure-str-offset 0 1 0)))))
+
+    ;; Setcdr - mutate cdr of cons cell
+    ;; (setcdr-ir cons-ir val-ir)
+    ((pure-has-tag ir 'setcdr-ir)
+     (let* ((cons-ir (cadr ir))
+            (val-ir (caddr ir))
+            (spill-off (pure-spill-base td))
+            (cons-code (pure-codegen cons-ir rtaddrs fnoffs td))
+            (val-code (pure-codegen val-ir rtaddrs fnoffs td)))
+       (pure-append-all
+        (list cons-code
+              ;; Spill cons to stack (SP = x31)
+              (pure-str-offset 0 31 spill-off)
+              val-code
+              ;; Restore cons to x1
+              (pure-ldr-offset 1 31 spill-off)
+              ;; Untag cons (subtract 1)
+              (pure-sub-imm 1 1 1)
+              ;; Store val at cdr position (offset 8)
+              (pure-str-offset 0 1 8)))))
+
+    ;; Symbol-name - get string name from symbol
+    ;; Symbols are stored as (string-pointer | 2), so untag to get string
+    ((pure-has-tag ir 'symbol-name-ir)
+     (let ((inner-code (pure-codegen (cadr ir) rtaddrs fnoffs td)))
+       ;; Untag symbol (subtract 2), then add string tag (4)
+       ;; Result: string-pointer | 4
+       (pure-append inner-code
+                    (pure-append (pure-sub-imm 0 0 2)
+                                 (pure-add-imm 0 0 4)))))
+
+    ;; Make-symbol-from-string - create symbol from string
+    ;; Strings are (pointer | 4), symbols are (pointer | 2)
+    ((pure-has-tag ir 'make-symbol-ir)
+     (let ((inner-code (pure-codegen (cadr ir) rtaddrs fnoffs td)))
+       ;; Untag string (subtract 4), then add symbol tag (2)
+       (pure-append inner-code
+                    (pure-append (pure-sub-imm 0 0 4)
+                                 (pure-add-imm 0 0 2)))))
 
     ;; Get-tag (extract low 4 bits as tagged fixnum)
     ((pure-has-tag ir 'get-tag)

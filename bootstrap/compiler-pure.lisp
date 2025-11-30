@@ -812,6 +812,19 @@
 
          ;; Mutation
          ((eq (car expr) 'setq) (pure-compile-setq expr env fenv))
+         ;; setcar/setcdr - mutate cons cells
+         ((eq (car expr) 'setcar) (list 'setcar-ir
+                                        (pure-compile-expr-full (nth 1 expr) env fenv)
+                                        (pure-compile-expr-full (nth 2 expr) env fenv)))
+         ((eq (car expr) 'setcdr) (list 'setcdr-ir
+                                        (pure-compile-expr-full (nth 1 expr) env fenv)
+                                        (pure-compile-expr-full (nth 2 expr) env fenv)))
+
+         ;; Symbol operations
+         ((eq (car expr) 'symbol-name) (list 'symbol-name-ir
+                                             (pure-compile-expr-full (nth 1 expr) env fenv)))
+         ((eq (car expr) 'make-symbol-from-string) (list 'make-symbol-ir
+                                                         (pure-compile-expr-full (nth 1 expr) env fenv)))
 
          ;; System calls
          ((eq (car expr) 'sys-exit) (list 'sys-exit-ir (pure-compile-expr-full (nth 1 expr) env fenv)))
