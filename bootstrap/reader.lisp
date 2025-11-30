@@ -8,6 +8,7 @@
 ;;; Core utilities (must be defined before reader functions)
 ;;; These are also defined in compiler-pure.lisp but reader needs them first
 
+#-sbcl
 (defun reverse (lst)
   "Reverse a list"
   (labels ((rev-iter (l acc)
@@ -16,6 +17,7 @@
                  (rev-iter (cdr l) (cons (car l) acc)))))
     (rev-iter lst nil)))
 
+#-sbcl
 (defun length (lst)
   "List length"
   (labels ((len-iter (l n)
@@ -24,6 +26,7 @@
                  (len-iter (cdr l) (+ n 1)))))
     (len-iter lst 0)))
 
+#-sbcl
 (defun string= (s1 s2)
   "Compare two strings character by character"
   (labels ((cmp (i len1 len2)
@@ -58,16 +61,24 @@
       (= ch #x21) (= ch #x3F) (= ch #x26) (= ch #x25) (= ch #x3A)))
 
 ;;; Character case conversion (inline, no string-upcase needed)
+#-sbcl
 (defun char-upcase (ch)
   (if (and (>= ch #x61) (<= ch #x7A))
       (- ch #x20)
       ch))
 
 ;;; Low-level access
+#+sbcl
+(defun char-at (source pos)
+  (if (< pos (length source))
+      (char-code (char source pos))
+      0))
+
+#-sbcl
 (defun char-at (source pos)
   (if (< pos (string-length source))
       (string-ref source pos)
-      #x0))
+      0))
 
 (defun digit-val (ch) (- ch #x30))
 
@@ -134,6 +145,7 @@
       (make-string-from-vector vec))))
 
 ;;; Helper to upcase chars while building string (inline char-upcase)
+;;; chars is a list of char codes (integers)
 (defun chars-to-string-upcase (chars)
   (let ((len (length chars)))
     (let ((vec (make-vector len)))
@@ -141,7 +153,9 @@
                  (if (null cs)
                      vec
                      (progn
-                       (vector-set vec i (char-upcase (car cs)))
+                       ;; Convert to char, upcase, back to code
+                       #+sbcl (vector-set vec i (char-code (cl:char-upcase (code-char (car cs)))))
+                       #-sbcl (vector-set vec i (char-upcase (car cs)))
                        (fill-vec (cdr cs) (+ i 1))))))
         (fill-vec chars 0))
       (make-string-from-vector vec))))
@@ -321,6 +335,7 @@
     (read-one pos)))
 
 ;;; Public interface
+#-sbcl
 (defun read-from-string (source)
   (car (habu-read source #x0)))
 

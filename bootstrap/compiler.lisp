@@ -8,6 +8,7 @@
 ;;; Core Helpers (Pure Habu)
 ;;; ============================================================
 
+#-sbcl
 (defun append (lst1 lst2)
   "Append two lists without using CL append"
   (labels ((append-iter (l acc)
@@ -16,12 +17,14 @@
                  (append-iter (cdr l) (cons (car l) acc)))))
     (append-iter (reverse-helper lst1 nil) lst2)))
 
+#-sbcl
 (defun reverse-helper (lst acc)
   "Tail-recursive reverse helper - defined early for use by append"
   (if (null lst)
       acc
       (reverse-helper (cdr lst) (cons (car lst) acc))))
 
+#-sbcl
 (defun reverse (lst)
   "Reverse a list"
   (labels ((rev-iter (l acc)
@@ -30,6 +33,7 @@
                  (rev-iter (cdr l) (cons (car l) acc)))))
     (rev-iter lst nil)))
 
+#-sbcl
 (defun length (lst)
   "List length"
   (labels ((len-iter (l n)
@@ -38,12 +42,14 @@
                  (len-iter (cdr l) (+ n 1)))))
     (len-iter lst 0)))
 
+#-sbcl
 (defun nth (n lst)
   "Get nth element"
   (if (= n 0)
       (car lst)
       (nth (- n 1) (cdr lst))))
 
+#-sbcl
 (defun count-if (pred lst)
   "Count elements satisfying predicate"
   (labels ((count-iter (l n)
@@ -55,6 +61,7 @@
                                  n)))))
     (count-iter lst 0)))
 
+#-sbcl
 (defun remove-if (pred lst)
   "Remove elements satisfying predicate"
   (labels ((remove-iter (l acc)
@@ -66,6 +73,7 @@
                                   (cons (car l) acc))))))
     (remove-iter lst nil)))
 
+#-sbcl
 (defun string-equal (s1 s2)
   "Compare two strings character by character - pure Habu implementation"
   (labels ((cmp (i len1 len2)
@@ -81,6 +89,7 @@
                (t nil))))
     (cmp 0 (string-length s1) (string-length s2))))
 
+#-sbcl
 (defun assoc (key alist)
   "Find (key . value) pair in alist using string comparison"
   (if (null alist)
@@ -89,6 +98,7 @@
           (car alist)
           (assoc key (cdr alist)))))
 
+#-sbcl
 (defun mapcar (fn lst)
   "Map function over list"
   (labels ((map-iter (l acc)
@@ -493,6 +503,7 @@
 
 #+sbcl (defvar *gensym-state* (make-gensym-state))
 
+#-sbcl
 (defun digit-char (n)
   "Convert digit 0-9 to ASCII character code"
   (+ n 48))  ; '0' = 48
@@ -525,12 +536,11 @@
     #-sbcl (setcar state val)
     val))
 
+#-sbcl
 (defun gensym (prefix)
   "Generate unique symbol - uses pure string operations"
-  ;; In native self-hosted code, *gensym-state* is passed in or created at startup
-  #+sbcl (let ((counter (gensym-next *gensym-state*)))
-           (intern (format nil "~A~A" prefix counter)))
-  #-sbcl (make-symbol-from-string (sys:string-concat prefix "G")))
+  ;; In native self-hosted code, uses string operations
+  (make-symbol-from-string (sys:string-concat prefix "G")))
 
 (defun compile-labels (expr env fenv)
   "Compile labels by transforming to let/setq/lambda/funcall with FNTAB"
@@ -663,6 +673,7 @@
                   (rewrite-let-bindings (cdr bindings) fn-names fntab-var))
             (cons b (rewrite-let-bindings (cdr bindings) fn-names fntab-var))))))
 
+#-sbcl
 (defun member (x lst)
   "Check if x is in lst"
   (if (null lst)
@@ -1186,6 +1197,7 @@
                        (unique (cdr calls) (cons name seen) (cons name acc)))))))
     (unique extern-calls nil nil)))
 
+#-sbcl
 (defun string= (s1 s2)
   "Compare two strings for equality - use pure implementation"
   (string-equal s1 s2))

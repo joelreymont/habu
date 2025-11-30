@@ -512,12 +512,14 @@
 ;;; Helper Functions
 ;;; ============================================================
 
+#-sbcl
 (defun reverse-helper (lst acc)
   "Tail-recursive reverse helper"
   (if (null lst)
       acc
       (reverse-helper (cdr lst) (cons (car lst) acc))))
 
+#-sbcl
 (defun reverse (lst)
   "Reverse a list"
   (labels ((rev-iter (l acc)
@@ -526,6 +528,7 @@
                  (rev-iter (cdr l) (cons (car l) acc)))))
     (rev-iter lst nil)))
 
+#-sbcl
 (defun append (lst1 lst2)
   "Append two lists"
   (labels ((append-iter (l acc)
@@ -534,6 +537,7 @@
                  (append-iter (cdr l) (cons (car l) acc)))))
     (append-iter (reverse-helper lst1 nil) lst2)))
 
+#-sbcl
 (defun length (lst)
   "List length"
   (labels ((len-iter (l n)
