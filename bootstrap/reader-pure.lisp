@@ -3,6 +3,38 @@
 ;;; This reader uses only pure Habu primitives (no dotimes, no string-upcase)
 ;;; Reads Lisp source code and produces S-expressions.
 
+#+sbcl (in-package :habu)
+
+;;; Core utilities (must be defined before reader functions)
+;;; These are also defined in compiler-pure.lisp but reader needs them first
+
+(defun pure-reverse (lst)
+  "Reverse a list"
+  (labels ((rev-iter (l acc)
+             (if (null l)
+                 acc
+                 (rev-iter (cdr l) (cons (car l) acc)))))
+    (rev-iter lst nil)))
+
+(defun pure-length (lst)
+  "List length"
+  (labels ((len-iter (l n)
+             (if (null l)
+                 n
+                 (len-iter (cdr l) (+ n 1)))))
+    (len-iter lst 0)))
+
+(defun pure-string= (s1 s2)
+  "Compare two strings character by character"
+  (labels ((cmp (i len1 len2)
+             (cond
+               ((/= len1 len2) nil)
+               ((>= i len1) t)
+               ((= (string-ref s1 i) (string-ref s2 i))
+                (cmp (+ i 1) len1 len2))
+               (t nil))))
+    (cmp 0 (string-length s1) (string-length s2))))
+
 ;;; Character predicates
 (defun whitespace? (ch)
   (or (= ch #x20) (= ch #x09) (= ch #x0A) (= ch #x0D)))
@@ -123,6 +155,7 @@
 
 ;;; Read symbol - returns (symbol . new-pos)
 ;;; Symbols are upcased inline (no string-upcase function needed)
+;;; Interns into HABU package for consistent symbol comparison
 (defun read-sym (source pos)
   (let ((result (read-sym-chars source pos nil)))
     (let ((chars (car result))
@@ -131,7 +164,10 @@
       (let ((uname (chars-to-string-upcase (pure-reverse chars))))
         (cons (cond ((pure-string= uname "NIL") nil)
                     ((pure-string= uname "T") t)
-                    (t (intern uname)))
+                    ;; Intern into HABU package for consistency
+                    #+sbcl (t (intern uname (find-package :habu)))
+                    ;; In native Habu, use regular intern
+                    #-sbcl (t (intern uname)))
               end)))))
 
 ;;; Read string chars - helper for read-str

@@ -31,7 +31,22 @@
   "Write string CONTENT to file PATH (native Habu version)"
   (let* ((path-len (string-length path))
          ;; O_WRONLY | O_CREAT | O_TRUNC = 0x601
-         (fd (sys-open path #x601 #o644)))
+         ;; Mode 0755 = rwxr-xr-x for executables
+         (fd (sys-open path #x601 #o755)))
+    (if (>= fd 0)
+        (let* ((len (string-length content))
+               (written (sys-write fd content len)))
+          (sys-close fd)
+          written)
+        -1)))
+
+;;; Native write file for executables - creates with +x permission
+;;; The SBCL version is defined in macho.lisp (loaded first)
+;;; This is the native Habu version only
+#-sbcl
+(defun native-write-executable (path content)
+  "Write executable file - uses mode 0755 for +x permission (native version)"
+  (let ((fd (sys-open path #x601 #o755)))
     (if (>= fd 0)
         (let* ((len (string-length content))
                (written (sys-write fd content len)))

@@ -860,9 +860,9 @@
   "Compile source string to native executable using all pure components.
    Uses: pure-compile-forms (pure compiler), pure-codegen (pure codegen),
    wrap-bytecode-with-heap-for-imports (macho), write-macho-executable-with-imports-and-heap.
-   No SBCL dependencies except for read-all (can use pure-read-all instead)."
+   Works in both SBCL and native Habu (no SBCL dependencies)."
   (pure-reset-symbol-table)
-  (let* ((forms (read-all source))
+  (let* ((forms (pure-read-all source))
          (result (pure-compile-forms forms))
          (main-ir (cadr result))
          ;; Generate code using pure codegen
@@ -900,18 +900,16 @@
                  (heap-page-offset (+ text-pages-4kb data-const-pages-4kb))
                  (wrapped-code (wrap-bytecode-with-heap-for-imports flat-code heap-page-offset)))
 
-            ;; Write Mach-O executable
-            (write-macho-executable-with-imports-and-heap output-path wrapped-code imports #x800000)
-            ;; Make executable
-            #+sbcl (sb-ext:run-program "/bin/chmod" (list "+x" output-path)
-                                        :output nil :error nil :wait t)))))))
+            ;; Write Mach-O executable (handles chmod+codesign via native-write-executable)
+            (write-macho-executable-with-imports-and-heap output-path wrapped-code imports #x800000)))))))
 
 (defun pure-deliver-v3 (source output-path)
   "Compile source string with function definitions to native executable.
    Supports: defun, function calls, all v2 features.
-   Layout: wrapper(68) + main-code + function-code + stubs"
+   Layout: wrapper(68) + main-code + function-code + stubs
+   Works in both SBCL and native Habu (no SBCL dependencies)."
   (pure-reset-symbol-table)
-  (let* ((forms (read-all source))
+  (let* ((forms (pure-read-all source))
          (result (pure-compile-forms forms))
          (defuns (car result))
          (main-ir (cadr result))
@@ -970,10 +968,8 @@
                (heap-page-offset (+ text-pages-4kb data-const-pages-4kb))
                (wrapped-code (wrap-bytecode-with-heap-for-imports flat-code heap-page-offset)))
 
-          ;; Write executable
-          (write-macho-executable-with-imports-and-heap output-path wrapped-code imports #x800000)
-          #+sbcl (sb-ext:run-program "/bin/chmod" (list "+x" output-path)
-                                      :output nil :error nil :wait t)))))
+          ;; Write executable (handles chmod+codesign via native-write-executable)
+          (write-macho-executable-with-imports-and-heap output-path wrapped-code imports #x800000)))))
 
 (defun pure-build-fn-addr-alist (fnoffs base acc)
   "Convert fnoffs to absolute addresses"
@@ -1160,4 +1156,4 @@
 
 #+sbcl (export '(pure-codegen pure-codegen-main pure-reset-symbol-table
                  pure-resolve-calls-simple pure-prologue pure-epilogue
-                 pure-deliver-v2) :habu)
+                 pure-deliver-v2 pure-deliver-v3) :habu)

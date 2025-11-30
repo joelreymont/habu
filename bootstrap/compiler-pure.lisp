@@ -1215,14 +1215,15 @@
   "Check if x is an extern-call marker"
   (and (consp x) (eq (car x) :extern-call)))
 
-;; pure-deliver uses read-all, wrap-bytecode-with-heap-for-imports,
+;; pure-deliver uses pure-read-all, wrap-bytecode-with-heap-for-imports,
 ;; write-macho-executable-with-imports-and-heap from main compiler/macho
-#+sbcl
+;; This function works in both SBCL and native Habu (no #+sbcl guard)
 (defun pure-deliver (source output-path)
   "Compile source string to native executable using pure compiler.
    This uses the full extern-call flattening pipeline.
-   Uses only pure functions - no hash tables or CL runtime."
-  (let* ((forms (read-all source))
+   Uses only pure functions - no hash tables or CL runtime.
+   Works in both SBCL and native Habu environments."
+  (let* ((forms (pure-read-all source))
          (bytes-with-markers (pure-compile-program forms))
          ;; Collect extern calls and get unique imports
          (extern-calls (pure-collect-extern-calls bytes-with-markers))
@@ -1259,11 +1260,8 @@
                  (heap-page-offset (+ text-pages-4kb data-const-pages-4kb))
                  (wrapped-code (wrap-bytecode-with-heap-for-imports flat-code heap-page-offset)))
 
-            ;; Write Mach-O executable
-            (write-macho-executable-with-imports-and-heap output-path wrapped-code imports #x800000)
-            ;; Make executable
-            #+sbcl (sb-ext:run-program "/bin/chmod" (list "+x" output-path)
-                                        :output nil :error nil :wait t)))))))
+            ;; Write Mach-O executable (handles chmod+codesign via native-write-executable)
+            (write-macho-executable-with-imports-and-heap output-path wrapped-code imports #x800000)))))))
 
 ;;; Export self-hosting entry point
 #+sbcl (export '(pure-compile-to-bytecode pure-compile-program-simple pure-self-compile

@@ -17,6 +17,23 @@
     (loop for char across content
           do (write-byte (char-code char) stream))))
 
+;;; SBCL compatibility: native-write-executable (write + chmod + codesign)
+#+sbcl
+(defun native-write-executable (path content)
+  "Write executable file, chmod +x, codesign (SBCL version)"
+  (with-open-file (stream path
+                          :direction :output
+                          :if-exists :supersede
+                          :if-does-not-exist :create
+                          :element-type '(unsigned-byte 8))
+    (loop for char across content
+          do (write-byte (char-code char) stream)))
+  (sb-ext:run-program "/bin/chmod" (list "+x" path)
+                      :output nil :error nil :wait t)
+  (sb-ext:run-program "/usr/bin/codesign" (list "-s" "-" "-f" path)
+                      :output nil :error nil :wait t)
+  (length content))
+
 ;;; ============================================================
 ;;; Mach-O Constants
 ;;; ============================================================
@@ -1105,14 +1122,8 @@
    OUTPUT-PATH: string path for output file"
   (let* ((exe-buf (build-macho-executable-with-imports-and-heap code-bytes imports heap-size))
          (exe-str (buf-to-string exe-buf)))
-    (native-write-file output-path exe-str)
-    ;; Make executable and codesign for macOS
-    #+sbcl
-    (progn
-      (sb-ext:run-program "/bin/chmod" (list "+x" output-path)
-                          :output nil :error nil :wait t)
-      (sb-ext:run-program "/usr/bin/codesign" (list "-s" "-" "-f" output-path)
-                          :output nil :error nil :wait t))))
+    ;; Use native-write-executable which handles +x and codesign
+    (native-write-executable output-path exe-str)))
 
 ;;; Export the main functions for use by deliver
 (export '(write-macho-executable-with-imports-and-heap
