@@ -3,7 +3,70 @@
 **Session Date**: November 22-30, 2025
 **Focus**: Self-hosting ARM64 Lisp compiler - path to eliminating SBCL
 **Last Updated**: November 30, 2025
-**Milestone**: DEFUN SUPPORT WORKING - pure-deliver-v3 compiles programs with function definitions!
+**Milestone**: LAMBDA/CLOSURE SUPPORT COMPLETE - All 19 pure-deliver-v3 tests pass!
+
+## Session Summary (November 30, 2025 - Lambda Lifting Complete)
+
+### Major Achievement: Full Lambda and Closure Support!
+
+Added complete lambda lifting and closure support to `bootstrap/codegen-pure.lisp`.
+
+**Test Results (19/19 pass):**
+```
+Basic Tests (11/11):
+  add=30, mul=42, let=42, let-star=5, let-nested=42
+  if-true=42, if-false=42, defun=42, recursive=42
+  fact=120, fib=55
+
+Self-Hosting Tests (5/5):
+  mini-interp=23, mutual-rec=1, higher-order=12
+  closure=42, deep-rec=55
+
+Closure Tests (3/3):
+  simple-closure=42, simple-lambda=42, inline-lambda=42
+```
+
+### Features Added
+
+1. **Lambda Lifting** - Extract lambdas, replace with references
+   - `pure-gensym-lambda` generates unique names (LAMBDA-1, LAMBDA-2, etc.)
+   - `pure-lift-lambdas` extracts lambda-ir nodes from IR
+   - `pure-lift-lambdas-from-defuns` processes all defun bodies
+   - `pure-lambdas-to-defuns` converts lambdas to defun format
+
+2. **Closure Codegen**
+   - `lambda-ref` creates closure: looks up fn offset, builds captures on heap
+   - `fn-ref-ir` for `(function name)` form - creates closure for named function
+   - `funcall-ir` loads closure, extracts fn-offset/env, calls with BLR
+
+3. **Spill Slot Fix** - Critical bug fix
+   - Nested calls now use td-based spill areas
+   - Each nesting level gets 64 bytes (8 slots) via `pure-spill-base`
+   - Prevents argument clobbering in recursive higher-order functions
+
+4. **Type Predicate Support**
+   - Added `get-tag` IR handler for consp, numberp, symbolp, etc.
+   - Added `pure-and-imm` instruction encoder for extracting tag bits
+
+### Commits
+
+- ff63ccc: Add lambda lifting and fix spill slot collision in pure codegen
+
+### What Works Now
+
+- All expressions: literals, arithmetic, comparisons, let, let*, if, progn
+- Functions: defun, recursive calls, mutual recursion
+- Closures: lambda, funcall, (function name), captured variables
+- Higher-order: functions passed as arguments, applied with funcall
+- Type predicates: consp, null, numberp, symbolp, stringp, vectorp
+
+### Next Steps
+
+1. Test pure compiler compiling itself (self-hosting)
+2. Add more operators if needed
+3. Complete FASL separate compilation
+
+---
 
 ## Session Summary (November 30, 2025 - Defun Support Fixed)
 
