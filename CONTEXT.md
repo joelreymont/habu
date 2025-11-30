@@ -1,7 +1,7 @@
 # Habu Self-Hosting Lisp Compiler - Context
 
 **Last Updated**: November 30, 2025
-**Milestone**: 76 TESTS PASS - comprehensive closure and edge-case coverage
+**Milestone**: Self-hosting primitives complete - setcar, strings, symbols
 
 ## Current Status
 
@@ -11,9 +11,10 @@ The pure Habu compiler can compile programs with:
 - Bindings: let, let*
 - Functions: defun, labels, lambda, funcall, (function name)
 - Closures: captured variables, higher-order functions
-- Data: cons, car, cdr, cadr, caddr, list, quote
+- Data: cons, car, cdr, cadr, caddr, list, quote, setcar, setcdr
 - Predicates: null, consp, numberp, symbolp, stringp, vectorp
-- Strings: string-length, string-ref
+- Strings: string-length, string-ref, string-concat, string literals
+- Symbols: symbol-name, make-symbol-from-string
 - Vectors: make-vector, vector-ref, vector-set, vector-length
 - File I/O: sys-open, sys-read, sys-write, sys-close, native-read-file
 - System: sys-exit
