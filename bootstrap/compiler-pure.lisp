@@ -739,6 +739,9 @@
                                     (pure-compile-expr-full (nth 2 expr) env fenv)))
          ((eq (car expr) '>=) (list 'cmp-ge (pure-compile-expr-full (nth 1 expr) env fenv)
                                     (pure-compile-expr-full (nth 2 expr) env fenv)))
+         ;; /= (not equal) - transform to (not (= a b))
+         ((eq (car expr) '/=)
+          (pure-compile-expr-full (list 'not (list '= (nth 1 expr) (nth 2 expr))) env fenv))
 
          ;; Bitwise operations
          ((eq (car expr) 'logand) (list 'band (pure-compile-expr-full (nth 1 expr) env fenv)
