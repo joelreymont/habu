@@ -36,7 +36,34 @@ Edge cases (18): negative numbers, zero handling, deeply nested arithmetic, long
 
 ## Latest Session (November 30, 2025)
 
-### Critical Bug Fix: Wrapper ADR Offset
+### Critical Bug Fix: Stack Frame Layout (Spill/LR Collision)
+
+**Root cause of nested let + labels crashes found and fixed!**
+
+The crash pattern was: 1 let + labels works, 2 lets + labels crashes, 3 lets works.
+
+Investigation revealed:
+- `compile-labels` transforms `(go 42)` to `(funcall go FNTAB 42)` with TWO args
+- With 2 nested lets + labels, td reaches 5 for the funcall
+- spill-base(5) = 0x240 + 5*64 = 0x380
+- Arg 1 stored at sp+0x388, which is where lr was saved!
+
+Old prologue saved lr at sp-0x80 BEFORE frame allocation:
+- After `sub sp, sp, #0x400`, lr was at sp + 0x388
+
+**Fix:** Save fp/lr INSIDE the frame at sp+0x3F0 (after frame allocation):
+```
+Frame layout after fix:
+sp+0x10:  x19, x20 (callee-saved)
+sp+0x20:  x21, x22
+sp+0x30:  x23, x24
+sp+0x40:  temp slots (td*8)
+sp+0x180: environment base (x20)
+sp+0x240: spill area (td*64)
+sp+0x3F0: x29 (fp), x30 (lr)  <- moved inside frame
+```
+
+### Previous Fix: Wrapper ADR Offset
 
 **Root cause of ALL closure failures found and fixed!**
 
