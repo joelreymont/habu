@@ -1,13 +1,13 @@
 # Habu Self-Hosting Lisp Compiler - Context
 
 **Last Updated**: November 30, 2025
-**Milestone**: LAMBDA/CLOSURE SUPPORT COMPLETE - All 19 pure-deliver-v3 tests pass!
+**Milestone**: 43 comprehensive + 7/8 self-hosting tests pass - closure bugs fixed
 
 ## Current Status
 
 The pure Habu compiler can compile programs with:
 - Expressions: literals, arithmetic (+,-,*,/,mod), comparisons (=,<,>,<=,>=)
-- Control flow: if, cond, when, unless, progn, and, or, not
+- Control flow: if, cond, when, unless, progn, and, or, not, setq
 - Bindings: let, let*
 - Functions: defun, labels, lambda, funcall, (function name)
 - Closures: captured variables, higher-order functions
@@ -18,12 +18,13 @@ The pure Habu compiler can compile programs with:
 - File I/O: sys-open, sys-read, sys-write, sys-close, native-read-file
 - System: sys-exit
 
-**Test Results (19/19 pass):**
+**Test Results (43/43 pass):**
 ```
-Basic: add=30, mul=42, let=42, let-star=5, let-nested=42, if-true/false=42
-       defun=42, recursive=42, fact=120, fib=55
-Self-hosting: mini-interp=23, mutual-rec=1, higher-order=12, closure=42, deep-rec=55
-Closures: simple-closure=42, simple-lambda=42, inline-lambda=42
+Basic: add, mul, let, let-star, let-nested, if-true/false, defun, recursive, fact=120, fib=55
+Self-hosting: mini-interp, mutual-rec, higher-order, closure, deep-rec
+Closures: simple-closure, simple-lambda, inline-lambda
+Additional: cond, when, unless, progn, and, or, not, cons/car/cdr/cadr/list
+           null, consp, numberp, sub, div, mod, comparisons, labels
 ```
 
 ## Latest Session (November 30, 2025)
@@ -48,6 +49,11 @@ Added complete lambda lifting to `bootstrap/codegen-pure.lisp`:
    - Each nesting level gets 64 bytes via `pure-spill-base`
    - Added `get-tag` IR handler for type predicates
    - Added `pure-and-imm` instruction encoder
+   - Added `setq-ir` codegen for variable assignment (when/unless)
+   - Added `mod` operator using a - (a/b)*b formula
+   - **Nested lambda free-var analysis**: `pure-find-free-vars` now descends into nested lambdas
+   - **Lifted lambda capture loading**: `pure-gen-capture-loads` loads captured values from x24
+   - **Capture order fix**: removed erroneous `pure-reverse` in `pure-build-captures`
 
 ## File Structure
 
@@ -114,8 +120,10 @@ sp+0x180: environment variables
 **Achieved:**
 - Pure-deliver-v3 compiles programs to native ARM64
 - No SBCL dependencies in generated code
-- Closures and higher-order functions work
+- Closures and higher-order functions work (including nested closures)
 - Mutual recursion and labels work
+- CPS patterns work correctly (cps-fact = 120)
+- Self-hosting tests: 7/8 pass (mini-compiler, closure-compiler, symtab, tree-sum, cps-fact, map-reduce, nested-closures)
 
 **Next Steps:**
 1. Test pure compiler compiling itself
@@ -152,6 +160,7 @@ sbcl --load bootstrap/compiler.lisp --load bootstrap/macho.lisp \
 
 The full session history is preserved in SESSION.md (append-only log).
 Key milestones:
+- Nov 30: Closure bugs fixed - nested free-vars, capture loading, capture order (commit 6142a5f)
 - Nov 30: Lambda lifting + closure support complete (commit ff63ccc)
 - Nov 30: Defun support fixed
 - Nov 29: Pure codegen created
