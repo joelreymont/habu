@@ -5,6 +5,69 @@
 #+sbcl (in-package :habu)
 
 ;;; ============================================================
+;;; Symbol Registration for Native Code
+;;; ============================================================
+;;; In native code, the compiler's literal symbols (like 'defun) are constant
+;;; pool entries, different from symbols created by the reader's intern.
+;;; We pre-register the compiler's symbols in the intern table so that
+;;; reader-produced symbols will be eq to compiler literals.
+
+#+sbcl
+(defun register-compiler-symbols ()
+  "In SBCL, symbol interning works correctly - nothing to do."
+  nil)
+
+#-sbcl
+(defun register-compiler-symbols ()
+  "Register all symbols used in compiler dispatch to the intern table.
+   This must be called before reading any source code."
+  (set-intern-table
+   (list
+    ;; Special forms
+    (cons "DEFUN" 'defun) (cons "PROGN" 'progn) (cons "IF" 'if)
+    (cons "LET" 'let) (cons "LET*" 'let*) (cons "QUOTE" 'quote)
+    (cons "LAMBDA" 'lambda) (cons "FUNCALL" 'funcall) (cons "LABELS" 'labels)
+    (cons "FUNCTION" 'function) (cons "COND" 'cond) (cons "WHEN" 'when)
+    (cons "UNLESS" 'unless) (cons "AND" 'and) (cons "OR" 'or) (cons "NOT" 'not)
+    (cons "SETQ" 'setq)
+    ;; Arithmetic
+    (cons "+" '+) (cons "-" '-) (cons "*" '*) (cons "/" '/)
+    (cons "MOD" 'mod)
+    ;; Comparisons
+    (cons "=" '=) (cons "<" '<) (cons ">" '>) (cons "<=" '<=) (cons ">=" '>=)
+    (cons "/=" '/=) (cons "EQ" 'eq)
+    ;; Bitwise
+    (cons "LOGAND" 'logand) (cons "LOGIOR" 'logior) (cons "LOGXOR" 'logxor)
+    (cons "ASH" 'ash)
+    ;; List operations
+    (cons "CONS" 'cons) (cons "CAR" 'car) (cons "CDR" 'cdr)
+    (cons "CADR" 'cadr) (cons "CADDR" 'caddr) (cons "CDDR" 'cddr)
+    (cons "CDDDR" 'cdddr) (cons "CADDDR" 'cadddr)
+    (cons "NTH" 'nth) (cons "LIST" 'list) (cons "LENGTH" 'length)
+    (cons "REVERSE" 'reverse) (cons "SETCAR" 'setcar) (cons "SETCDR" 'setcdr)
+    ;; Predicates
+    (cons "NULL" 'null) (cons "CONSP" 'consp) (cons "NUMBERP" 'numberp)
+    (cons "SYMBOLP" 'symbolp) (cons "STRINGP" 'stringp) (cons "VECTORP" 'vectorp)
+    ;; Strings
+    (cons "STRING-LENGTH" 'string-length) (cons "STRING-REF" 'string-ref)
+    (cons "STRING-CONCAT" 'string-concat) (cons "STRING-EQUAL" 'string-equal)
+    ;; Vectors
+    (cons "MAKE-VECTOR" 'make-vector) (cons "VECTOR-REF" 'vector-ref)
+    (cons "VECTOR-SET" 'vector-set) (cons "VECTOR-LENGTH" 'vector-length)
+    (cons "MAKE-STRING-FROM-VECTOR" 'make-string-from-vector)
+    (cons "BUFFER-TO-STRING" 'buffer-to-string)
+    ;; Symbols
+    (cons "SYMBOL-NAME" 'symbol-name) (cons "MAKE-SYMBOL-FROM-STRING" 'make-symbol-from-string)
+    ;; System
+    (cons "SYS-EXIT" 'sys-exit) (cons "SYS-OPEN" 'sys-open)
+    (cons "SYS-READ" 'sys-read) (cons "SYS-WRITE" 'sys-write)
+    (cons "SYS-CLOSE" 'sys-close) (cons "NATIVE-READ-FILE" 'native-read-file)
+    (cons "GET-INTERN-TABLE" 'get-intern-table) (cons "SET-INTERN-TABLE" 'set-intern-table)
+    (cons "GET-LAMBDA-COUNTER" 'get-lambda-counter) (cons "SET-LAMBDA-COUNTER" 'set-lambda-counter)
+    ;; Special values
+    (cons "NIL" 'nil) (cons "T" 't))))
+
+;;; ============================================================
 ;;; Core Helpers (Pure Habu)
 ;;; ============================================================
 
@@ -878,6 +941,8 @@
          ((eq (car expr) 'sys-exit) (list 'sys-exit-ir (compile-expr-full (nth 1 expr) env fenv)))
          ((eq (car expr) 'get-intern-table) (list 'get-intern-table-ir))
          ((eq (car expr) 'set-intern-table) (list 'set-intern-table-ir (compile-expr-full (nth 1 expr) env fenv)))
+         ((eq (car expr) 'get-lambda-counter) (list 'get-lambda-counter-ir))
+         ((eq (car expr) 'set-lambda-counter) (list 'set-lambda-counter-ir (compile-expr-full (nth 1 expr) env fenv)))
          ((eq (car expr) 'sys-open) (list 'sys-open-ir
                                           (compile-expr-full (nth 1 expr) env fenv)
                                           (compile-expr-full (nth 2 expr) env fenv)

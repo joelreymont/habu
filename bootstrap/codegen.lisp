@@ -53,21 +53,24 @@
 #+sbcl (defvar *lambda-state* (cons 0 nil))
 
 (defun reset-lambda-counter ()
-  "Reset lambda counter"
+  "Reset lambda counter.
+   In SBCL: uses *lambda-state* cons cell.
+   In native: uses get-lambda-counter/set-lambda-counter primitives (stores at [x27+8])."
   #+sbcl (setf (car *lambda-state*) 0)
-  #-sbcl (setcar *lambda-state* 0))
+  #-sbcl (set-lambda-counter 0))
 
 (defun gensym-lambda ()
   "Generate unique lambda name as a string like LAMBDA-1, LAMBDA-2, etc."
+  #+sbcl
   (let* ((state *lambda-state*)
          (counter (car state))
          (new-count (+ counter 1)))
-    #+sbcl (setf (car state) new-count)
-    #-sbcl (setcar state new-count)
-    ;; In SBCL mode, use format to create proper string
-    ;; In native mode, build from char codes and convert to string
-    #+sbcl (format nil "LAMBDA-~D" new-count)
-    #-sbcl
+    (setf (car state) new-count)
+    (format nil "LAMBDA-~D" new-count))
+  #-sbcl
+  (let* ((counter (get-lambda-counter))
+         (new-count (+ counter 1)))
+    (set-lambda-counter new-count)
     (labels ((digits (n acc)
                (if (= n 0)
                    (if (null acc) (cons 48 nil) acc)
@@ -1726,6 +1729,18 @@
        (append val-code
                (str-offset 0 27 0))))
 
+    ;; Get-lambda-counter: load counter from [x27 + 8]
+    ;; Returns untagged fixnum (the counter is stored pre-tagged at heap+8)
+    ((has-tag ir 'get-lambda-counter-ir)
+     (ldr-offset 0 27 8))
+
+    ;; Set-lambda-counter: store value to [x27 + 8], return value
+    ;; Value should already be tagged as fixnum
+    ((has-tag ir 'set-lambda-counter-ir)
+     (let ((val-code (codegen (cadr ir) rtaddrs fnoffs td)))
+       (append val-code
+               (str-offset 0 27 8))))
+
     ;; Default - return empty
     (t nil)))
 
@@ -2087,6 +2102,7 @@
    Supports: defun, lambda, funcall, function calls, all v2 features.
    Layout: wrapper(72) + main-code + function-code + lambda-code + stubs
    Works in both SBCL and native Habu (no SBCL dependencies)."
+  (register-compiler-symbols)  ;; Pre-register symbols for native eq to work
   (reset-symbol-table)
   (reset-lambda-counter)
   (let* ((forms (read-all source))
