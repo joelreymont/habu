@@ -1,7 +1,7 @@
 # Habu Self-Hosting Lisp Compiler - Context
 
 **Last Updated**: November 30, 2025
-**Milestone**: Closures fixed, Stage 1 compilation passes
+**Milestone**: File I/O fixed, Stage 1 compiler compiles and runs natively
 
 ## Current Status
 
@@ -35,6 +35,28 @@ Edge cases (18): negative numbers, zero handling, deeply nested arithmetic, long
 ```
 
 ## Latest Session (November 30, 2025)
+
+### File I/O and String Handling Fixes
+
+Added syscall codegen for file I/O operations:
+- `sys-open-ir`: calls `_open(path, flags, mode)`
+- `sys-write-ir`: calls `_write(fd, buf, len)`
+- `sys-read-ir`: calls `_read(fd, buf, len)`
+- `sys-close-ir`: calls `_close(fd)`
+
+**Bug fixes:**
+
+1. **64-bit load-addr**: `load-addr` only handled up to 48 bits, but packed string data (8 bytes) can require full 64-bit values. Added 4th movk instruction for 64-bit addresses.
+
+2. **Null terminator**: String literals weren't null-terminated, causing C functions like `open()` to read garbage. Added automatic null byte to `gen-string-lit`.
+
+3. **AND immediate encoding for tag clearing**: Fixed `(and-imm rd rn 1 60 3)` → `(and-imm rd rn 1 60 61)` for correct `~7` mask. The encoding `(imms=60, immr=3)` produced `0xE3...` instead of `0xF8...`.
+
+**Results:**
+- sys-open /dev/null: PASS
+- sys-write stdout: PASS
+- sys-write to file: PASS
+- Stage 1 compiler: 170KB source → 8.7MB native, runs correctly (exit 42)
 
 ### Critical Bug Fix: Heap Alignment in make-vector
 
