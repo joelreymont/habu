@@ -1210,7 +1210,7 @@
               (add-imm 1 1 8)           ; x1 = 8 + data_size = total size
               ;; Round to 16-byte alignment: (x1 + 15) & ~15
               (add-imm 1 1 15)          ; x1 = total + 15
-              (and-imm 1 1 1 #x3C #x3B) ; x1 = x1 & ~15 (clear low 4 bits)
+              (and-imm 1 1 1 59 4) ; x1 = x1 & ~15 (clear low 4 bits, mask 0xFFF...F0)
               ;; Return tagged pointer, bump heap
               (mov-reg 0 28)            ; x0 = current heap ptr
               (add-reg 28 28 1)         ; x28 += total size (now 16-aligned)

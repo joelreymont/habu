@@ -36,7 +36,29 @@ Edge cases (18): negative numbers, zero handling, deeply nested arithmetic, long
 
 ## Latest Session (November 30, 2025)
 
-### Critical Bug Fix: Stack Frame Layout (Spill/LR Collision)
+### Critical Bug Fix: Heap Alignment in make-vector
+
+**Root cause: wrong AND (immediate) encoding caused heap corruption!**
+
+The bug pattern: creating a closure corrupted outer let-bound vectors, even without calling the closure.
+
+Investigation revealed:
+- `make-vector` uses `(and-imm 1 1 1 #x3C #x3B)` for 16-byte alignment
+- This produced mask `0xFFFFFFFFFFFFFFE3` (clears bits 2,3,4)
+- Correct mask should be `0xFFFFFFFFFFFFFFF0` (clears bits 0,1,2,3)
+- With wrong mask: `(16+15) & 0xE3 = 3` instead of 16 bytes allocated
+- Subsequent heap allocations (closure cons cells) overwrote the vector!
+
+**Fix:** Changed `(and-imm 1 1 1 #x3C #x3B)` to `(and-imm 1 1 1 59 4)`:
+- N=1 (64-bit), imms=59 (60 ones), immr=4 (rotate right by 4)
+- Produces correct mask `0xFFFFFFFFFFFFFFF0`
+
+The ARM64 logical immediate encoding:
+- Generate (imms+1) consecutive 1s, then rotate right by immr
+- Old: imms=60, immr=59 gave wrong pattern
+- New: imms=59, immr=4 gives 60 ones in bits 63-4, zeros in bits 3-0
+
+### Previous Fix: Stack Frame Layout (Spill/LR Collision)
 
 **Root cause of nested let + labels crashes found and fixed!**
 
