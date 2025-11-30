@@ -71,14 +71,32 @@ Investigation revealed:
 - With wrong mask: `(16+15) & 0xE3 = 3` instead of 16 bytes allocated
 - Subsequent heap allocations (closure cons cells) overwrote the vector!
 
-**Fix:** Changed `(and-imm 1 1 1 #x3C #x3B)` to `(and-imm 1 1 1 59 4)`:
-- N=1 (64-bit), imms=59 (60 ones), immr=4 (rotate right by 4)
+**Fix:** Changed `(and-imm 1 1 1 #x3C #x3B)` to `(and-imm 1 1 1 59 60)`:
+- N=1 (64-bit), imms=59 (60 ones), immr=60 (rotate left by 4)
 - Produces correct mask `0xFFFFFFFFFFFFFFF0`
 
 The ARM64 logical immediate encoding:
 - Generate (imms+1) consecutive 1s, then rotate right by immr
-- Old: imms=60, immr=59 gave wrong pattern
-- New: imms=59, immr=4 gives 60 ones in bits 63-4, zeros in bits 3-0
+- Old: imms=60, immr=59 gave wrong pattern `0xFFFFFFFFFFFFFFE3`
+- Wrong attempt: immr=4 gave `0xF0FFFFFFFFFFFFFF` (rotates right, not left!)
+- Correct: imms=59, immr=60 (rotate right by 60 = rotate left by 4)
+
+### buffer-to-string-ir and native-read-file
+
+Added `buffer-to-string-ir` to pure codegen for `native-read-file` support.
+
+The implementation copies bytes from a sys-read buffer to a new string:
+1. Evaluate buf and len arguments
+2. Allocate string on heap with 16-byte alignment
+3. Copy bytes in a loop using ldrb/strb
+4. Tag result with string tag (0x4)
+
+Used correct AND encoding `(and-imm 4 4 1 59 60)` for ~15 mask.
+
+**Results:**
+- native-read-file test: PASS (reads "hello", returns string-length=5)
+- make-vector, vector-set/ref: PASS
+- Stage 1 compiler (166KB): compiles and runs correctly
 
 ### Stage 1 Verification
 
