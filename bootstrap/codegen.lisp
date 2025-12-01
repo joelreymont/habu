@@ -863,7 +863,8 @@
            (result-code (append-all
                          (list (mov-reg 0 28)
                                (add-imm 0 0 4)  ; string tag
-                               (add-imm 28 28 total-size)))))
+                               (add-imm 28 28 total-size)
+                               (gc-trigger-code)))))
       (append-all (list len-code data-code result-code)))))
 
 (defun take-bytes (bytes n)
@@ -1321,6 +1322,7 @@
               (mov-reg 0 28)
               (add-imm 0 0 1)
               (add-imm 28 28 16)
+              (gc-trigger-code)     ; GC check after allocation
               (ldr-offset 24 31 xs)))))
 
     ;; Car
@@ -1936,7 +1938,8 @@
                   (str-offset 0 28 8)
                   (mov-reg 0 28)
                   (add-imm 0 0 5)  ;; closure tag
-                  (add-imm 28 28 16)))
+                  (add-imm 28 28 16)
+                  (gc-trigger-code)))
            ;; Has captures - build env cons list first
            (let* ((capture-code (build-captures free-offsets))
                   (xs (temp-slot td)))
@@ -1954,6 +1957,7 @@
                     (mov-reg 0 28)
                     (add-imm 0 0 5)
                     (add-imm 28 28 16)
+                    (gc-trigger-code)  ; GC check after closure allocation
                     ;; Restore x24
                     (ldr-offset 24 31 xs)))))))
 
@@ -1975,7 +1979,8 @@
               (str-offset 0 28 8)
               (mov-reg 0 28)
               (add-imm 0 0 5)  ;; closure tag
-              (add-imm 28 28 16)))))
+              (add-imm 28 28 16)
+              (gc-trigger-code)))))
 
     ;; Funcall-IR
     ((has-tag ir 'funcall-ir)
