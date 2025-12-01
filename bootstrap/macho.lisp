@@ -71,6 +71,8 @@
 (defconstant +S-ATTR-SOME-INSTRUCTIONS+ #x00000400)
 (defconstant +S-NON-LAZY-SYMBOL-POINTERS+ #x06)
 (defconstant +S-SYMBOL-STUBS+ #x08)
+(defconstant +S-ZEROFILL+ #x01)
+(defconstant +S-ATTR-DEBUG+ #x02000000)
 
 (defconstant +DYLD-CHAINED-PTR-64-OFFSET+ 6)
 (defconstant +PAGE-SIZE+ #x4000)
@@ -657,6 +659,74 @@
            (import-syms (build-import-syms imports 7)))  ; "_main\0" = 7 bytes offset
       (append main-sym import-syms))))
 
+;;; ============================================================
+;;; Extended Symbol Table Support (with local function symbols)
+;;; ============================================================
+
+(defun local-symbol-name (name)
+  "Convert function name to symbol name (add _ prefix if needed)"
+  (let ((str (if (symbolp name) (symbol-name name) name)))
+    (if (char= (char str 0) #\_)
+        str
+        (concatenate 'string "_" str))))
+
+(defun build-string-table-with-locals (local-fns imports)
+  "Build string table with local function names, _main, and imports.
+   LOCAL-FNS: list of (name . offset) pairs
+   Returns list of bytes."
+  (labels ((name-to-bytes (name)
+             (append (string-to-bytes name) (cons 0 nil)))
+           (build-all (names)
+             (if (null names)
+                 nil
+                 (append (name-to-bytes (car names))
+                        (build-all (cdr names))))))
+    (let ((local-names (mapcar (lambda (fn) (local-symbol-name (car fn))) local-fns)))
+      (cons 0 (append (build-all local-names)
+                      (build-all (cons "_main" imports)))))))
+
+(defun compute-string-table-offsets (local-fns)
+  "Compute string table offsets for local function names.
+   Returns (total-local-size . offset-list)"
+  (labels ((compute (fns offset acc)
+             (if (null fns)
+                 (cons offset (reverse acc))
+                 (let* ((name (local-symbol-name (car (car fns))))
+                        (size (+ 1 (length name))))  ; +1 for NUL
+                   (compute (cdr fns) (+ offset size) (cons offset acc))))))
+    (compute local-fns 1 nil)))  ; Start at 1 (after initial NUL)
+
+(defun build-symbol-table-with-locals (local-fns imports code-vmaddr wrapper-size)
+  "Build symbol table with local symbols, _main, and imports.
+   LOCAL-FNS: list of (name . offset) pairs
+   Symbol order: locals, extdef (_main), undefs (imports)
+   Returns byte list."
+  (let* ((offsets-info (compute-string-table-offsets local-fns))
+         (local-strings-size (car offsets-info))
+         (local-offsets (cdr offsets-info)))
+    (labels ((build-local-syms (fns offsets)
+               (if (null fns)
+                   nil
+                   (let* ((fn (car fns))
+                          (offset (cdr fn))
+                          (strx (car offsets))
+                          ;; N_SECT = #x0E (local, defined in section)
+                          (sym (buf-nlist-64 strx #x0E 1 0
+                                            (+ code-vmaddr wrapper-size offset))))
+                     (append sym (build-local-syms (cdr fns) (cdr offsets))))))
+             (build-import-syms (names strx)
+               (if (null names)
+                   nil
+                   (let* ((sym (buf-nlist-64 strx #x01 0 #x0100 0))
+                          (next-strx (+ strx 1 (string-length (car names)))))
+                     (append sym (build-import-syms (cdr names) next-strx))))))
+      (let* ((local-syms (build-local-syms local-fns local-offsets))
+             (main-strx (+ local-strings-size))  ; After local names
+             (main-sym (buf-nlist-64 main-strx #x0F 1 #x0010 code-vmaddr))
+             (import-strx (+ main-strx 7))  ; After "_main\0"
+             (import-syms (build-import-syms imports import-strx)))
+        (append local-syms main-sym import-syms)))))
+
 (defun build-indirect-symbol-table (num-imports)
   "Build indirect symbol table for stubs and GOT.
    Returns byte list."
@@ -666,6 +736,20 @@
                  (append (buf-u32-le (+ idx 1))
                         (build-entries count (+ idx 1))))))
     ;; Stubs section entries (indices 1..num-imports)
+    (append (build-entries num-imports 0)
+            ;; GOT section entries (same indices)
+            (build-entries num-imports 0))))
+
+(defun build-indirect-symbol-table-with-offset (num-imports base-index)
+  "Build indirect symbol table for stubs and GOT with offset for local symbols.
+   BASE-INDEX: index of first undefined symbol (after locals and _main)
+   Returns byte list."
+  (labels ((build-entries (count idx)
+             (if (>= idx count)
+                 nil
+                 (append (buf-u32-le (+ base-index idx))
+                        (build-entries count (+ idx 1))))))
+    ;; Stubs section entries
     (append (build-entries num-imports 0)
             ;; GOT section entries (same indices)
             (build-entries num-imports 0))))
@@ -716,8 +800,8 @@
 (defun wrap-bytecode-with-heap-for-imports (code-bytes heap-page-offset)
   "Wrap bytecode with heap initialization for executables with imports.
    HEAP-PAGE-OFFSET is the page offset from the ADRP instruction to __DATA (in 4KB pages).
-   Returns 72 bytes (18 instructions) + original code.
-   First 16 bytes of heap reserved: [x27+0] = intern table (initialized to nil)."
+   Returns 76 bytes (19 instructions) + original code.
+   First 16 bytes of heap reserved: [x27+0] = intern table (initialized to nil=0x06)."
   (let ((stub (buf-append-all
                (cons (arm64:sub 31 31 #x30 :imm t)
                      (cons (arm64:str 30 31 :offset 0)
@@ -727,30 +811,33 @@
                                              (cons (arm64:adrp 28 heap-page-offset)
                                                    (cons (arm64:mov 27 28)
                                                          (cons (arm64:add 28 28 16 :imm t)
-                                                               (cons (arm64:str 31 27 :offset 0)
-                                                                     (cons (arm64:adr 26 36)
-                                                                           (cons (arm64:bl 8)  ; 32 bytes = 8 instructions
-                                                                                 (cons (arm64:lsr 0 0 4 :imm t)
-                                                                                       (cons (arm64:ldr 27 31 :offset 24)
-                                                                                             (cons (arm64:ldr 26 31 :offset 16)
-                                                                                                   (cons (arm64:ldr 28 31 :offset 8)
-                                                                                                         (cons (arm64:ldr 30 31 :offset 0)
-                                                                                                               (cons (arm64:add 31 31 #x30 :imm t)
-                                                                                                                     (cons (arm64:ret) nil)))))))))))))))))))))
+                                                               (cons (arm64:movz 9 6)  ; x9 = nil (0x06)
+                                                                     (cons (arm64:str 9 27 :offset 0)  ; [x27+0] = nil
+                                                                           (cons (arm64:adr 26 36)
+                                                                                 (cons (arm64:bl 8)  ; still 8: bl is relative to instruction position
+                                                                                       (cons (arm64:lsr 0 0 4 :imm t)
+                                                                                             (cons (arm64:ldr 27 31 :offset 24)
+                                                                                                   (cons (arm64:ldr 26 31 :offset 16)
+                                                                                                         (cons (arm64:ldr 28 31 :offset 8)
+                                                                                                               (cons (arm64:ldr 30 31 :offset 0)
+                                                                                                                     (cons (arm64:add 31 31 #x30 :imm t)
+                                                                                                                           (cons (arm64:ret) nil))))))))))))))))))))))
     (append stub code-bytes)))
 
 ;;; ============================================================
 ;;; Complete Executable Generator with Imports and Heap
 ;;; ============================================================
 
-(defun build-macho-executable-with-imports-and-heap (code-bytes imports heap-size)
+(defun build-macho-executable-with-imports-and-heap (code-bytes imports heap-size &optional local-fns)
   "Build complete Mach-O executable with dynamic imports and heap.
    CODE-BYTES: list of bytes (ARM64 machine code with BL to stubs)
    IMPORTS: list of import names (e.g. (\"_write\" \"_exit\"))
    HEAP-SIZE: size of heap segment
-   
+   LOCAL-FNS: optional list of (name . offset) pairs for local function symbols
+
    Returns complete executable as byte list."
   (let* ((num-imports (length imports))
+         (num-locals (if local-fns (length local-fns) 0))
          (stub-size 12)
          (stubs-total-size (* num-imports stub-size))
          (got-entry-size 8)
@@ -803,19 +890,21 @@
          (data-const-vmsize +PAGE-SIZE+)
          (data-const-filesize +PAGE-SIZE+)
          
-         ;; __DATA segment (heap)
+         ;; __DATA segment (heap) - uses S_ZEROFILL, no file data
          (data-fileoff (+ data-const-fileoff +PAGE-SIZE+))
          (data-vmaddr (+ data-const-vmaddr +PAGE-SIZE+))
          (heap-vmsize (align-up heap-size +PAGE-SIZE+))
-         (data-filesize heap-vmsize)
-         
-         ;; __LINKEDIT segment
-         (linkedit-fileoff (+ data-fileoff data-filesize))
+         (data-filesize 0)  ; zerofill sections have no file data
+
+         ;; __LINKEDIT segment - comes right after __DATA_CONST (zerofill has no file data)
+         (linkedit-fileoff data-fileoff)
          (linkedit-vmaddr (+ data-vmaddr heap-vmsize))
          
          ;; Symbol and string tables
-         (nsyms (+ 1 num-imports))
-         (string-table (build-string-table-for-imports imports))
+         (nsyms (+ num-locals 1 num-imports))
+         (string-table (if local-fns
+                          (build-string-table-with-locals local-fns imports)
+                          (build-string-table-for-imports imports)))
          (string-table-size (length string-table))
          
          ;; LINKEDIT layout
@@ -914,9 +1003,9 @@
                                      1 0)
              
              (cons
-              ;; __heap section
+              ;; __heap section - S_ZEROFILL: no file data, zeroed on demand
               (buf-section-64 "__heap" "__DATA"
-                             data-vmaddr heap-vmsize data-fileoff 3 0 0 0 0 0)
+                             data-vmaddr heap-vmsize 0 3 0 0 +S-ZEROFILL+ 0 0)
               
               (cons
                ;; LC #5: __LINKEDIT
@@ -959,7 +1048,9 @@
                        
                        (cons
                         ;; LC #14: dysymtab
-                        (buf-dysymtab-command-full 0 0 0 1 1 num-imports
+                        ;; Order: locals, extdef (_main), undefs (imports)
+                        (buf-dysymtab-command-full 0 num-locals num-locals 1
+                                                   (+ num-locals 1) num-imports
                                                    indirect-offset num-indirect-syms)
                         
                         (cons
@@ -996,7 +1087,10 @@
                                 
                                 (cons
                                  ;; Symbol table
-                                 (build-symbol-table imports (+ +VM-BASE+ code-offset))
+                                 (if local-fns
+                                     ;; 76 = wrapper size (19 instructions * 4 bytes)
+                                     (build-symbol-table-with-locals local-fns imports (+ +VM-BASE+ code-offset) 76)
+                                     (build-symbol-table imports (+ +VM-BASE+ code-offset)))
                                  
                                  (cons
                                   ;; String table
@@ -1008,7 +1102,9 @@
                                    
                                    (cons
                                     ;; Indirect symbol table
-                                    (build-indirect-symbol-table num-imports)
+                                    (if local-fns
+                                        (build-indirect-symbol-table-with-offset num-imports (1+ num-locals))
+                                        (build-indirect-symbol-table num-imports))
                                     
                                     (cons
                                      ;; Padding to fixups
@@ -1041,13 +1137,14 @@
                                                           aligned-exports-size)))
                                           nil)))))))))))))))))))))))))))))))))))))))) ;; 40 parens (removed 3)
 
-(defun write-macho-executable-with-imports-and-heap (output-path code-bytes imports heap-size)
+(defun write-macho-executable-with-imports-and-heap (output-path code-bytes imports heap-size &optional local-fns)
   "Generate complete Mach-O executable with imports and heap, write to file.
    CODE-BYTES: list of bytes (ARM64 machine code)
    IMPORTS: list of import names (strings like \"_write\")
    HEAP-SIZE: size of heap segment
-   OUTPUT-PATH: string path for output file"
-  (let* ((exe-buf (build-macho-executable-with-imports-and-heap code-bytes imports heap-size))
+   OUTPUT-PATH: string path for output file
+   LOCAL-FNS: optional list of (name . offset) for function symbols"
+  (let* ((exe-buf (build-macho-executable-with-imports-and-heap code-bytes imports heap-size local-fns))
          (exe-str (buf-to-string exe-buf)))
     ;; Use native-write-executable which handles +x and codesign
     (native-write-executable output-path exe-str)))

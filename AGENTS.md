@@ -108,9 +108,50 @@ When adding new ARM64 instructions:
 
 - Use Lisp `trace` facility for debugging
 - Check CONTEXT.md for known issues
+- Use lldb with function symbols (now embedded in binaries)
 - Common exit codes:
   - 139 = SIGSEGV (memory access error)
   - 137 = SIGKILL (often codesign issue on macOS)
+
+### Slash Commands
+
+Available commands for Habu development (use `/command-name`):
+
+1. **`/habu-build-test`** - Compile and test workflow
+   - Compiles source, runs binary, reports results
+   - Automatically runs error analysis on failures
+
+2. **`/habu-debug <binary>`** - Debug crashes
+   - Loads binary in lldb with SIGSEGV handling
+   - Shows crash location with function context
+   - Cross-references with .map file
+
+3. **`/habu-analyze <error>`** - Structured error analysis
+   - Forms hypotheses before attempting fixes
+   - Tests each hypothesis systematically
+   - Identifies root cause before patching
+
+4. **`/habu-run-tests [pattern]`** - Run test suite
+   - Runs all tests or matches pattern
+   - Reports PASS/FAIL with semantic context
+   - Analyzes failures automatically
+
+5. **`/habu-disasm <binary> [function]`** - Disassemble binaries
+   - Lists all functions with addresses
+   - Shows ARM64 instructions with annotations
+   - Uses embedded symbols (no .map needed)
+
+6. **`/habu-stage <N|verify>`** - Self-compilation stages
+   - Builds Stage 1/2/3 compilation
+   - Verifies fixed-point achievement
+   - Reports binary differences
+
+### Symbol Table Support
+
+Habu binaries now include function symbols in LC_SYMTAB:
+- `nm <binary>` shows all functions
+- `lldb -o "disassemble -n FUNCTION"` works directly
+- Backtraces show function names instead of addresses
 
 ## Self-Hosting Path
 

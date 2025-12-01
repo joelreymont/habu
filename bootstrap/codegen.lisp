@@ -15,13 +15,13 @@
 #+sbcl (defvar *symbol-state* (cons (cons 1 nil) nil))
 
 (defun reset-symbol-table ()
-  "Reset symbol table state"
+  "Reset symbol table state.
+   In native mode, *symbol-state* doesn't exist (defvar is a no-op),
+   so this is a no-op to avoid crashing."
   #+sbcl (progn
            (setf (car (car *symbol-state*)) 1)
            (setf (cdr (car *symbol-state*)) nil))
-  #-sbcl (progn
-           (setcar (car *symbol-state*) 1)
-           (setcdr (car *symbol-state*) nil)))
+  #-sbcl nil)  ; No-op in native - *symbol-state* not available
 
 (defun intern-symbol (name)
   "Get or create a symbol ID for NAME"
@@ -145,6 +145,18 @@
             (new-else (car else-result))
             (l3 (cdr else-result)))
        (cons (list 'if-ir new-test new-then new-else) l3)))
+
+    ;; while-ir
+    ((has-tag ir 'while-ir)
+     (let* ((test (cadr ir))
+            (body (caddr ir))
+            (test-result (lift-lambdas test lambdas))
+            (new-test (car test-result))
+            (l1 (cdr test-result))
+            (body-result (lift-lambdas body l1))
+            (new-body (car body-result))
+            (l2 (cdr body-result)))
+       (cons (list 'while-ir new-test new-body) l2)))
 
     ;; progn-ir
     ((has-tag ir 'progn-ir)
@@ -501,7 +513,7 @@
 (defun and-imm (rd rn imm &optional imms immr)
   "AND Xd, Xn, #imm - Bitwise AND with immediate.
    Two forms:
-   1. (and-imm rd rn imm) - for simple masks like #xF, #xFF
+   1. (and-imm rd rn imm) - for simple masks like #xF, #xFF, or alignment masks
    2. (and-imm rd rn N imms immr) - full logical immediate encoding
    For clearing low 4 bits (~0xF): (and-imm rd rn 1 #x3C #x3B)"
   (let* ((rn-shift (ash rn 5)))
@@ -515,15 +527,30 @@
                (word (logior #x92000000 n-shift immr-shift imms-shift rn-shift rd)))
           (encode-word word))
         ;; 3-arg form: simple masks
-        (let ((word (if (= imm #xF)
-                        ;; For #xF: N=1, immr=0, imms=3 (4 bits of 1s at position 0)
-                        (logior #x92400C00 rn-shift rd)
-                        (if (= imm #xFF)
-                            ;; For #xFF (8 bits): imms=7
-                            (logior #x92401C00 rn-shift rd)
-                            ;; Unsupported immediate
-                            #xD503201F))))
-          (encode-word word)))))
+        ;; Encoding: 0x92400000 | (immr << 16) | (imms << 10) | Rn | Rd (N=1 for 64-bit)
+        (cond
+          ;; Keep low bits masks
+          ((= imm #xF)   ; Keep low 4 bits: N=1, immr=0, imms=3
+           (encode-word (logior #x92400C00 rn-shift rd)))
+          ((= imm #xFF)  ; Keep low 8 bits: N=1, immr=0, imms=7
+           (encode-word (logior #x92401C00 rn-shift rd)))
+          ((= imm #x7)   ; Keep low 3 bits: N=1, immr=0, imms=2
+           (encode-word (logior #x92400800 rn-shift rd)))
+          ;; Alignment masks (clear low bits) - rotation is 64-N for N cleared bits
+          ;; ~3 = 0xFFFFFFFFFFFFFFFC: 62 ones at bits 2-63, immr=62, imms=61
+          ((or (= imm #xFFFFFFFFFFFFFFFC) (= imm -4))
+           (encode-word (logior #x92400000 (ash 62 16) (ash 61 10) rn-shift rd)))
+          ;; ~7 = 0xFFFFFFFFFFFFFFF8: 61 ones at bits 3-63, immr=61, imms=60
+          ((or (= imm #xFFFFFFFFFFFFFFF8) (= imm -8))
+           (encode-word (logior #x92400000 (ash 61 16) (ash 60 10) rn-shift rd)))
+          ;; ~15 = 0xFFFFFFFFFFFFFFF0: 60 ones at bits 4-63, immr=60, imms=59
+          ((or (= imm #xFFFFFFFFFFFFFFF0) (= imm -16))
+           (encode-word (logior #x92400000 (ash 60 16) (ash 59 10) rn-shift rd)))
+          ;; ~31 = 0xFFFFFFFFFFFFFFE0: 59 ones at bits 5-63, immr=59, imms=58
+          ((or (= imm #xFFFFFFFFFFFFFFE0) (= imm -32))
+           (encode-word (logior #x92400000 (ash 59 16) (ash 58 10) rn-shift rd)))
+          (t
+           (error "and-imm: unsupported immediate #x~X - use 5-arg form or add support" imm))))))
 
 (defun orr-reg (rd rn rm)
   (let* ((rm-shift (ash rm 16))
@@ -780,6 +807,7 @@
     ((has-tag ir 'make-string-from-vector-ir) (ir-may-call (cadr ir)))
     ((has-tag ir 'str-lit) nil)
     ((has-tag ir 'if-ir) t)
+    ((has-tag ir 'while-ir) t)
     ((has-tag ir 'let-ir) t)
     ((has-tag ir 'let*-ir) t)
     ((has-tag ir 'progn-ir) t)
@@ -1186,9 +1214,9 @@
               (str-offset 11 28 0)
               ;; Save heap start for result
               (mov-reg 0 28)
-              ;; Calculate aligned size: (8 + total + 7) & ~7
-              (add-imm 12 11 15)         ; +8 header +7 for alignment
-              (and-imm 12 12 #xFFFFFFF8) ; align to 8
+              ;; Calculate aligned size: (8 + total + 15) & ~15 for 16-byte alignment
+              (add-imm 12 11 23)         ; +8 header +15 for 16-byte alignment
+              (and-imm 12 12 -16)        ; align to 16 bytes
               ;; Bump heap by aligned size
               (add-reg 28 28 12)
               ;; Now copy str1 bytes to result+8
@@ -1303,14 +1331,21 @@
               ;; Tag as fixnum: x0 = x0 << 4
               (lsl-imm 0 0 4)))))          ; x0 = tagged fixnum length
 
-    ;; Make-string-from-vector: convert vector of char codes to string
-    ;; (make-string-from-vector-ir vec-ir)
+    ;; Make-string-from-vector: convert vector OR list of char codes to string
+    ;; (make-string-from-vector-ir seq-ir)
+    ;; Handles both vectors (tag 3) and lists (tag 1) per Lisp spec
     ((has-tag ir 'make-string-from-vector-ir)
-     (let* ((vec-ir (cadr ir))
-            (vc (codegen vec-ir rtaddrs fnoffs td)))
+     (let* ((seq-ir (cadr ir))
+            (sc (codegen seq-ir rtaddrs fnoffs td)))
        (append-all
-        (list vc
-              ;; x0 = vec (tagged with 3)
+        (list sc
+              ;; x0 = sequence (could be vector tag 3 or list tag 1)
+              ;; Check tag: x6 = x0 & 0xF
+              (and-imm 6 0 #xF)            ; x6 = tag
+              (cmp-imm 6 1)                ; is it a list (tag 1)?
+              (b-cond (cond-eq) 96)        ; if list, jump to list handler (+24 instrs = 96 bytes)
+
+              ;; === VECTOR PATH (tag 3) ===
               ;; x1 = untagged vec base
               (sub-imm 1 0 3)              ; x1 = vec_ptr (untagged)
               ;; x5 = vec length (raw)
@@ -1319,9 +1354,6 @@
               (str-offset 5 28 0)          ; [x28+0] = length
               ;; x4 = alloc size = (8 + len + 15) & ~15 for 16-byte alignment
               (add-imm 4 5 23)             ; x4 = len + 23 (= len + 8 + 15)
-              ;; Clear low 4 bits: x4 = x4 & ~15
-              ;; Using AND with #xF mask then subtract (since and-imm encoding is complex)
-              ;; Actually, simpler: x4 = (x4 >> 4) << 4
               (lsr-imm 4 4 4)              ; x4 = x4 >> 4
               (lsl-imm 4 4 4)              ; x4 = (x4 >> 4) << 4 = x4 & ~15
               ;; Save string ptr (will be result), bump heap
@@ -1331,26 +1363,61 @@
               (add-imm 2 0 8)              ; x2 = string data start
               ;; x3 = loop counter = 0
               (movz 3 0)                   ; x3 = 0
-              ;; Loop: while x3 < x5
-              ;; loop_start: (offset 0 from here)
+              ;; vec_loop_start:
               (cmp-reg 3 5)                ; cmp x3, x5
-              (b-cond (cond-ge) 36)        ; if x3 >= x5, jump to loop_end (+9 instructions = 36 bytes)
+              (b-cond (cond-ge) 36)        ; if x3 >= x5, jump to vec_loop_end (+9 instrs)
               ;; Load vec[x3]: address = x1 + 8 + x3*8
               (lsl-imm 4 3 3)              ; x4 = x3 * 8
               (add-imm 4 4 8)              ; x4 = 8 + x3*8 (offset in vec)
               (add-reg 4 1 4)              ; x4 = vec_base + offset
               (ldr-offset 4 4 0)           ; x4 = [x4] = tagged fixnum
-              ;; Untag: x4 = x4 >> 4
               (lsr-imm 4 4 4)              ; x4 = char value (untagged)
-              ;; Store byte: str_data[x3] = x4
               (strb-reg 4 2 3)             ; [x2 + x3] = x4 (byte)
-              ;; x3++
               (add-imm 3 3 1)              ; x3++
-              ;; Jump back to loop_start (cmp instruction)
-              (b-offset -36)               ; back 9 instructions = -36 bytes
-              ;; loop_end:
-              ;; Tag result with string tag (0x4)
+              (b-offset -36)               ; back to vec_loop_start
+              ;; vec_loop_end: tag result
               (movz 4 4)                   ; x4 = 4
+              (orr-reg 0 0 4)              ; x0 = string (tagged)
+              (b-offset 116)               ; jump to end (+29 instrs = 116 bytes)
+
+              ;; === LIST PATH (tag 1) ===
+              ;; First count list length
+              ;; x1 = list ptr, x5 = count
+              (mov-reg 1 0)                ; x1 = list (tagged)
+              (movz 5 0)                   ; x5 = 0
+              ;; count_loop:
+              (cmp-imm 1 6)                ; compare with nil (0x06)
+              (b-cond (cond-eq) 20)        ; if nil, jump to count_done (+5 instrs)
+              (add-imm 5 5 1)              ; x5++
+              (sub-imm 4 1 1)              ; x4 = untag cons
+              (ldr-offset 1 4 8)           ; x1 = cdr (tagged)
+              (b-offset -20)               ; back to count_loop
+              ;; count_done: x5 = length
+              ;; Allocate string
+              (str-offset 5 28 0)          ; [x28+0] = length
+              (add-imm 4 5 23)             ; x4 = len + 23
+              (lsr-imm 4 4 4)
+              (lsl-imm 4 4 4)              ; x4 = aligned size
+              (mov-reg 6 28)               ; x6 = string base (save for result)
+              (add-reg 28 28 4)            ; bump heap
+              ;; x2 = string data = x6 + 8
+              (add-imm 2 6 8)
+              ;; x1 = list (from x0), x3 = index = 0
+              (mov-reg 1 0)
+              (movz 3 0)
+              ;; copy_loop:
+              (cmp-imm 1 6)                ; compare with nil
+              (b-cond (cond-eq) 32)        ; if nil, jump to copy_done (+8 instrs)
+              (sub-imm 4 1 1)              ; x4 = untag cons
+              (ldr-offset 7 4 0)           ; x7 = car (tagged fixnum)
+              (lsr-imm 7 7 4)              ; x7 = char value (untagged)
+              (strb-reg 7 2 3)             ; [x2 + x3] = byte
+              (add-imm 3 3 1)              ; x3++
+              (ldr-offset 1 4 8)           ; x1 = cdr (tagged)
+              (b-offset -32)               ; back to copy_loop
+              ;; copy_done: x0 = result = x6 | 4
+              (mov-reg 0 6)
+              (movz 4 4)
               (orr-reg 0 0 4)))))
 
     ;; Setcar - mutate car of cons cell
@@ -1441,6 +1508,26 @@
               ;; Unconditional branch to skip else
               (b-offset (+ else-size 4))
               else-code))))
+
+    ;; While-IR: (while-ir test body) - true iteration, no stack growth
+    ((has-tag ir 'while-ir)
+     (let* ((test-ir (cadr ir))
+            (body-ir (caddr ir))
+            (test-code (codegen test-ir rtaddrs fnoffs td))
+            (body-code (codegen body-ir rtaddrs fnoffs td))
+            (test-size (code-size test-code))
+            (body-size (code-size body-code)))
+       ;; Layout: test-code, cmp, b.eq(exit), body-code, b(back-to-test)
+       ;; From b-cond at X: body starts at X+4, backward-b at X+4+body_size,
+       ;; exit at X+4+body_size+4. So skip offset = 4+body_size+4 = body_size+8
+       (append-all
+        (list test-code
+              (cmp-imm 0 0)
+              ;; If test is false (x0==0), skip body and back-branch
+              (b-cond (cond-eq) (+ body-size 8))
+              body-code
+              ;; Jump back to start of test
+              (b-offset (- 0 (+ test-size 8 body-size)))))))
 
     ;; Let-IR: (let-ir vals body count offs)
     ((has-tag ir 'let-ir)
@@ -2067,7 +2154,7 @@
          ;; Collect extern calls
          (extern-calls (collect-extern-calls bytes-with-markers))
          (imports (get-unique-imports extern-calls))
-         (wrapper-size 72))  ;; 18 instructions × 4 bytes
+         (wrapper-size 76))  ;; 19 instructions × 4 bytes
 
     ;; Always use imports path for consistent Mach-O
     (let ((imports (if (null imports) '("_exit") imports)))
@@ -2096,12 +2183,13 @@
                  (wrapped-code (wrap-bytecode-with-heap-for-imports flat-code heap-page-offset)))
 
             ;; Write Mach-O executable (handles chmod+codesign via native-write-executable)
-            (write-macho-executable-with-imports-and-heap output-path wrapped-code imports #x800000)))))))
+            ;; 64MB heap needed due to O(n^2) string allocation in reader (no GC)
+            (write-macho-executable-with-imports-and-heap output-path wrapped-code imports #x4000000)))))))
 
 (defun deliver-v3 (source output-path)
   "Compile source string with function definitions to native executable.
    Supports: defun, lambda, funcall, function calls, all v2 features.
-   Layout: wrapper(72) + main-code + function-code + lambda-code + stubs
+   Layout: wrapper(76) + main-code + function-code + lambda-code + stubs
    Works in both SBCL and native Habu (no SBCL dependencies)."
   (register-compiler-symbols)  ;; Pre-register symbols for native eq to work
   (reset-symbol-table)
@@ -2110,7 +2198,7 @@
          (result (compile-forms forms))
          (defuns-orig (car result))
          (main-ir-orig (cadr result))
-         (wrapper-size 72)  ;; 18 instructions × 4 bytes
+         (wrapper-size 76)  ;; 19 instructions × 4 bytes
          ;; Lift lambdas from main-ir
          (main-lift-result (lift-lambdas main-ir-orig nil))
          (main-ir (car main-lift-result))
@@ -2181,7 +2269,43 @@
                (wrapped-code (wrap-bytecode-with-heap-for-imports flat-code heap-page-offset)))
 
           ;; Write executable (handles chmod+codesign via native-write-executable)
-          (write-macho-executable-with-imports-and-heap output-path wrapped-code imports #x800000)))))
+          ;; 64MB heap needed due to O(n^2) string allocation in reader (no GC)
+          ;; Pass fnoffs as local-fns for symbol table (lldb debugging)
+          (write-macho-executable-with-imports-and-heap output-path wrapped-code imports #x4000000 fnoffs)
+
+          ;; Write symbol map for debugging
+          #+sbcl (write-symbol-map output-path fnoffs main-size imports stubs-offset)))))
+
+#+sbcl
+(defun write-symbol-map (output-path fnoffs main-size imports stubs-offset)
+  "Write a symbol map file for debugging.
+   Format: HEX_OFFSET NAME (one per line)
+   HEX_OFFSET is relative to __TEXT segment start (0x100000000 on macOS).
+   To find function from PC: offset = PC - 0x10000044C (base + code_offset + wrapper)"
+  (let ((map-path (concatenate 'string output-path ".map"))
+        (wrapper-size 76)
+        (code-offset #x400))
+    (with-open-file (f map-path :direction :output :if-exists :supersede)
+      ;; Header comment
+      (format f ";; Symbol map for ~A~%" output-path)
+      (format f ";; PC to offset: (PC - 0x10000044C) for functions~%")
+      (format f ";; Offset is relative to code start (after wrapper)~%~%")
+      ;; Main entry
+      (format f "0x~8,'0X _main~%" (+ code-offset wrapper-size))
+      (format f "0x~8,'0X _main_end~%" (+ code-offset wrapper-size main-size))
+      ;; Functions from fnoffs
+      (dolist (entry fnoffs)
+        (let* ((name (car entry))
+               (offset (cdr entry))
+               (abs-offset (+ code-offset wrapper-size offset))
+               (name-str (if (symbolp name) (symbol-name name) name)))
+          (format f "0x~8,'0X ~A~%" abs-offset name-str)))
+      ;; Import stubs
+      (let ((stub-off stubs-offset))
+        (dolist (imp imports)
+          (format f "0x~8,'0X stub_~A~%" stub-off imp)
+          (setf stub-off (+ stub-off 12))))
+      (format t "Symbol map written to ~A~%" map-path))))
 
 (defun build-fn-addr-alist (fnoffs base acc)
   "Convert fnoffs to absolute addresses"

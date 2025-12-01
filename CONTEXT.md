@@ -27,35 +27,76 @@ The Habu compiler compiles programs with:
 
 Full Stage 1 compiler (reader + compiler + codegen + macho-utils) works:
 - Source size: ~170KB
-- Native binary: 8.7MB
+- Native binary: ~67KB (was 8.7MB before zerofill fix!)
 - Compiles and runs: PASS (exit 42)
 - read-all, compile-forms, compile-program: all work natively
+
+### Key Improvements This Session
+
+1. **Function symbols in LC_SYMTAB (NEW)**
+   - Mach-O binaries now include function symbols for lldb debugging
+   - `nm <binary>` shows all function names and addresses
+   - `lldb -o "disassemble -n ADD"` works directly on Habu binaries
+   - Implemented in macho.lisp: build-symbol-table-with-locals, etc.
+   - deliver-v3 now passes fnoffs to write function symbols
+
+2. **Slash commands for development (NEW)**
+   - Created 6 commands in .claude/commands/
+   - /habu-build-test, /habu-debug, /habu-analyze, /habu-run-tests
+   - /habu-disasm (new), /habu-stage (new)
+   - Updated AGENTS.md with command documentation
+
+3. **Mach-O zerofill for heap (FIXED)**
+   - Was writing 64MB of zeros to executable file
+   - Now uses S_ZEROFILL section type - no file data, OS zeroes on demand
+   - File size reduced from 8.7MB to 67KB for simple programs
+
+4. **Added `while` loop construct**
+   - Supports `(while test body...)` for true iteration without stack growth
+   - Added compile-while in compiler.lisp
+   - Added while-ir codegen in codegen.lisp
+   - Fixed branch offset bug (+8 not +4 to exit past backward branch)
+
+5. **Stack overflow fix (PARTIAL)**
+   - read-list-elems was the critical function - recursed per list element
+   - FIXED: Rewrote read-list-elems to use iterative `while` loop
+   - Added SBCL `while` macro for compatibility with native version
+   - Remaining: read-sym-chars, upcase-string-iter recurse per char (less critical)
 
 ### In Progress: Stage 1 Generate Stage 2
 
 Testing if Stage 1 can generate a binary (call `deliver` natively).
 
-**Blockers found:**
-1. `native-write-file` is NOT a built-in IR - must be compiled from source
-2. The `#-sbcl` guarded version in macho-utils.lisp uses `#x1ED` (755 octal)
-3. When Stage 1 reads macho-utils.lisp, feature `#-sbcl` correctly includes native version
-4. But the native-write-file call wasn't producing output - investigating
+**Current Blocker:**
+- Stage 1 with reader + compiler crashes at offset 111744 with x0=-1 (invalid cdr)
+- Appears to be a symbol lookup or function return issue in compiler
+- Need to isolate which function in compiler.lisp is failing
 
-### Key Bug Fixes This Session
+### Previous Bug Fixes
 
-1. **Symbol registration for native code**
-   - Refactored `ensure-symbols-registered` into 18 small helpers (was deeply nested)
-   - Added comma/unquote handling in reader
-   - Added empty symbol protection in `read-sym`
-   - Added `#-sbcl` guards for native `string=`
+1. **and-imm silent failure (CRITICAL FIX)**
+   - `and-imm` with unsupported immediates silently generated NOP
+   - Caused heap misalignment in string-concat (crash at n=3+ recursive calls)
+   - Fix: Added proper ARM64 logical immediate encoding for alignment masks
+   - Masks supported: ~3, ~7, ~15, ~31 (now with correct immr=64-N rotation)
+   - Now errors on unsupported immediates instead of silent NOP
 
-2. **STP offset encoding overflow** (from Nov 30)
-   - STP 7-bit signed offset can't encode 0x3F0
-   - Changed to STR/LDR which use 12-bit unsigned offset
+2. **make-string-from-vector list handling (FIXED)**
+   - Function crashed when given a list (tag 1) instead of vector (tag 3)
+   - Branch offset calculation was correct but and-imm for tag check was NOP
+   - Root cause was and-imm issue above
 
-3. **Heap alignment in make-vector** (from Nov 30)
-   - Wrong AND mask `0xE3` → correct `0xF0`
-   - Fixed encoding: `(and-imm 1 1 1 59 60)`
+3. **nil/0 representation conflict (FIXED)**
+   - nil and fixnum 0 had same representation (0), causing `(null 0)` = t
+   - Fix: nil now has tag 6 (0x06), fixnum 0 is 0x00
+   - Updated codegen.lisp, compiler.lisp
+
+4. **Symbol registration for native code** (prev session)
+   - Refactored `ensure-symbols-registered` into 18 small helpers
+   - Added comma/unquote handling, empty symbol protection
+
+5. **Octal literals in macho-utils.lisp**
+   - Changed `#o755` to `#x1ED` (Habu reader doesn't support octal)
 
 ## File Structure
 
@@ -93,6 +134,7 @@ arm64/
 - Vector: `pointer | 3`
 - String: `pointer | 4`
 - Closure: `pointer | 5`
+- Nil: `0x06` (tag 6) - distinct from fixnum 0
 
 ## ARM64 Register Usage
 
@@ -125,6 +167,38 @@ sp+0x3F0: x29 (fp), x30 (lr)
 **Next Steps:**
 1. Get Stage 1 to output Stage 2 binary
 2. Verify fixed-point (Stage N == Stage N+1)
+
+## Roadmap
+
+See `docs/plans/MASTER_ROADMAP.md` for detailed implementation plan.
+
+### Priority 1: Stack Overflow Fix
+1. Rewrite reader functions to use `while` loops (iterative)
+2. Alternatively: Implement TCO (Tail Call Optimization)
+
+### Priority 2: TCO Implementation (Nanopass)
+1. Add `mark-tail-positions` nanopass to identify tail calls
+2. Add TCO codegen - jump instead of call for self-recursive tail calls
+3. Benefits: eliminates stack overflow in recursive functions
+
+### Priority 3: DWARF5 Debug Info
+1. Generate line number tables for lldb debugging
+2. Function symbol info for stack traces
+3. Critical for debugging Stage 1/2 crashes
+
+### Priority 4: Register Allocator
+1. Replace current spill-heavy codegen
+2. Linear scan or graph coloring algorithm
+3. Significant performance improvement
+
+### Priority 5: Heap Allocator with mmap
+1. Use mmap syscall instead of fixed heap
+2. Dynamic heap growth
+3. Eliminate 64MB fixed allocation
+
+### Priority 6: Common Lisp `loop` Macro
+1. Full CL loop spec implementation
+2. Enables more idiomatic Lisp code
 
 ## Common Operations
 
