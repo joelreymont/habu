@@ -463,15 +463,15 @@
                   (inner-count (cadddr body-ir))
                   (inner-offsets (nth 4 body-ir))
                   ;; Merge and recursively flatten
+                  ;; IMPORTANT: offsets are ABSOLUTE frame positions assigned during IR generation
+                  ;; They should NOT be adjusted when flattening - var references use these exact offsets
                   (merged
                    (list 'let-ir
                          (append (mapcar #'flatten-let vals)
                                  (mapcar #'flatten-let inner-vals))
                          (flatten-let inner-body)
                          (+ count inner-count)
-                         (append offsets
-                                 (mapcar (lambda (off) (+ off count))
-                                         inner-offsets)))))
+                         (append offsets inner-offsets))))
              ;; Recursively flatten the merged result
              (flatten-let merged))
            ;; Body is not a let-ir, just flatten the values and body

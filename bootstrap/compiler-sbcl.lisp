@@ -1756,6 +1756,9 @@
          ;; string-ref - get character at index
          ((eq op 'string-ref)
           (list 'string-ref-ir (sys:compile (cadr expr) env fenv) (sys:compile (caddr expr) env fenv)))
+         ;; char-code - in Habu, characters ARE fixnums, so this is identity
+         ((eq op 'char-code)
+          (sys:compile (cadr expr) env fenv))
          ;; string-append - concatenate two strings
          ;; Expands to: (let* ((s1 str1) (s2 str2)
          ;;                     (len1 (string-length s1)) (len2 (string-length s2))
@@ -1972,8 +1975,8 @@
          ;; === High-level file I/O (using sys-* primitives) ===
          ;; native-read-file - read entire file to string
          ;; Expands to: (let* ((fd (sys-open path O_RDONLY 0))
-         ;;                     (buf (make-vector 65536))
-         ;;                     (n (sys-read fd buf 65536)))
+         ;;                     (buf (make-vector 131072))  ; 128KB buffer for large files
+         ;;                     (n (sys-read fd buf 131072)))
          ;;               (sys-close fd)
          ;;               (buffer-to-string buf n))
          ((eq op 'native-read-file)
@@ -1984,8 +1987,8 @@
             (sys:compile
              (list 'LET* (list (list path-var (cadr expr))
                                (list fd-var (list 'sys-open path-var #x0 0))  ; O_RDONLY = 0
-                               (list buf-var (list 'make-vector 65536))
-                               (list n-var (list 'sys-read fd-var buf-var 65536)))
+                               (list buf-var (list 'make-vector 131072))
+                               (list n-var (list 'sys-read fd-var buf-var 131072)))
                    (list 'sys-close fd-var)
                    (list 'buffer-to-string buf-var n-var))
              env fenv)))

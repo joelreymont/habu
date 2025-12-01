@@ -1016,6 +1016,8 @@
           (list 'string-concat-ir
                 (compile-expr-full (nth 1 expr) env fenv)
                 (compile-expr-full (nth 2 expr) env fenv)))
+         ;; char-code - in Habu, characters ARE fixnums, so this is identity
+         ((eq (car expr) 'char-code) (compile-expr-full (nth 1 expr) env fenv))
 
          ;; Vector operations - use -ir suffix to match codegen
          ((eq (car expr) 'make-vector) (list 'make-vector-ir (compile-expr-full (nth 1 expr) env fenv)))
@@ -1084,8 +1086,8 @@
 
          ;; native-read-file: expand to let* with sys-open/read/close
          ;; Expands to: (let* ((fd (sys-open path 0 0))
-         ;;                     (buf (make-vector 65536))
-         ;;                     (n (sys-read fd buf 65536)))
+         ;;                     (buf (make-vector 131072))  ; 128KB buffer for large files
+         ;;                     (n (sys-read fd buf 131072)))
          ;;               (sys-close fd)
          ;;               (buffer-to-string buf n))
          ((eq (car expr) 'native-read-file)
@@ -1096,8 +1098,8 @@
             (compile-expr-full
              (list 'let* (list (list path-sym (nth 1 expr))
                                (list fd-sym (list 'sys-open path-sym 0 0))
-                               (list buf-sym (list 'make-vector 65536))
-                               (list n-sym (list 'sys-read fd-sym buf-sym 65536)))
+                               (list buf-sym (list 'make-vector 131072))
+                               (list n-sym (list 'sys-read fd-sym buf-sym 131072)))
                    (list 'progn
                          (list 'sys-close fd-sym)
                          (list 'buffer-to-string buf-sym n-sym)))
@@ -1748,3 +1750,8 @@
 ;;; Export self-hosting entry point
 #+sbcl (export '(compile-to-bytecode compile-program-simple self-compile
           compile-program deliver) :habu)
+
+;;; Native entry point - self-compile with hardcoded test paths
+;;; This is executed when the compiled binary runs
+#-sbcl
+(self-compile "/Users/joel/Work/habu/bootstrap/compiler.lisp" "/tmp/habu-stage2")
