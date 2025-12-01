@@ -191,47 +191,48 @@ Our codegen produces working but not optimal code. For GC this doesn't matter:
 3. **Memory is the bottleneck** - CPU waits on RAM anyway
 4. **Small code** - fits in L1 icache
 
-## Implementation Approach
+## Implementation
 
-The GC is written as **Habu Lisp functions** that compile to native ARM64:
-
-```lisp
-;; gc-runtime.lisp - Included in every native binary
-
-(defun gc-copy (ptr)
-  "Copy object to to-space, return new address with original tag."
-  (let ((tag (logand ptr #xF)))
-    (if (or (= tag 0) (= tag 6))  ; fixnum or nil
-        ptr
-        (let ((base (logand ptr (lognot #xF))))
-          (if (gc-in-from-space base)
-              (let ((first-word (mem-load base)))
-                (if (= (logand first-word #xF) 7)  ; forwarded?
-                    (logior (logand first-word (lognot #xF)) tag)
-                    (gc-do-copy base tag)))
-              ptr)))))
-
-(defun gc-collect ()
-  "Stop-the-world collection."
-  ;; ... save roots, copy, scan, flip ...
-  )
-```
-
-This is truly self-hosted: the GC is Habu code compiled by Habu.
+The GC is written as **ARM64 assembly via `arm64/asm.lisp` intrinsics**. This generates
+raw machine code bytes, avoiding any allocation during GC.
 
 ### Files
 
-- `bootstrap/gc-runtime.lisp` - GC functions (Habu source)
-- `bootstrap/macho.lisp` - Heap layout initialization
-- `bootstrap/codegen.lisp` - GC trigger insertion after allocations
+- `bootstrap/gc.lisp` - ARM64 GC implementation:
+  - `gc-trigger-check` - Inline check after allocations (13 items)
+  - `gc-copy-asm` - Copy single object to to-space (217 items)
+  - `gc-collect-asm` - Main stop-the-world collector (326 items)
+  - `gc-heap-init-code` - Heap initialization with semispaces
+  - `gc-runtime-code` - Combined gc_copy + gc_collect (543 items)
+
+- `arm64/asm.lisp` - ARM64 instruction encoders including:
+  - Unsigned branch instructions: `b.lo`, `b.hs`, `b.hi`, `b.ls`
+  - Condition codes: `+lo+`, `+hs+`, `+hi+`, `+ls+`
+
+- `bootstrap/compiler-sbcl.lisp` - Allocation sites that need GC triggers
+
+### Code Generation
+
+Each function returns a list of ARM64 instruction bytes with function markers:
+
+```lisp
+;; Generate GC trigger check for insertion after allocations
+(gc-trigger-check)
+;; => ((LDR x9 [x27+16]) (CMP x28 x9) (B.LO +2) (:call-fn GC-COLLECT))
+
+;; Generate complete GC runtime
+(gc-runtime-code)
+;; => ((:fn-label GC-COPY) ... (:fn-label GC-COLLECT) ... (RET))
+```
 
 ## Roadmap
 
-### Phase 1: Stop-the-World (Now)
-- [x] Design heap layout
-- [ ] Implement gc_collect function
-- [ ] Implement copy function
-- [ ] Add triggers after allocations
+### Phase 1: Stop-the-World (Current)
+- [x] Design heap layout with semispaces
+- [x] Implement gc_copy function (bootstrap/gc.lisp)
+- [x] Implement gc_collect function (bootstrap/gc.lisp)
+- [x] Add ARM64 unsigned branch instructions
+- [ ] Integrate GC triggers after allocations
 - [ ] Test with self-compilation
 
 ### Phase 2: Incremental Marking
