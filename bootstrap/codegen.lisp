@@ -946,9 +946,10 @@
            (movz 0 tg)
            (load-addr 0 tg))))
 
-    ;; Nil
+    ;; Nil - use tag 6 to distinguish from fixnum 0
+    ;; nil = 0x06 (tag 6), fixnum 0 = 0x00 (tag 0)
     ((has-tag ir 'nil-ir)
-     (movz 0 0))
+     (movz 0 6))
 
     ;; Symbol literal
     ((has-tag ir 'sym-lit)

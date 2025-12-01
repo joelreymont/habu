@@ -32,8 +32,8 @@
   "Write string CONTENT to file PATH (native Habu version)"
   (let* ((path-len (string-length path))
          ;; O_WRONLY | O_CREAT | O_TRUNC = 0x601
-         ;; Mode 0755 = rwxr-xr-x for executables
-         (fd (sys-open path #x601 #o755)))
+         ;; Mode 0755 = rwxr-xr-x = 493 decimal = #x1ED hex
+         (fd (sys-open path #x601 #x1ED)))
     (if (>= fd 0)
         (let* ((len (string-length content))
                (written (sys-write fd content len)))
@@ -47,7 +47,7 @@
 #-sbcl
 (defun native-write-executable (path content)
   "Write executable file - uses mode 0755 for +x permission (native version)"
-  (let ((fd (sys-open path #x601 #o755)))
+  (let ((fd (sys-open path #x601 #x1ED)))
     (if (>= fd 0)
         (let* ((len (string-length content))
                (written (sys-write fd content len)))

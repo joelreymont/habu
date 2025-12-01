@@ -227,6 +227,8 @@
   (cond
     ;; Literal numbers
     ((numberp expr) (compile-lit expr))
+    ;; Nil symbol - special case before other symbols
+    ((null expr) (list 'nil-ir))
     ;; Symbols
     ((symbolp expr) (compile-var expr env))
     ;; Not a list - treat as lit 0
@@ -283,7 +285,7 @@
   "Build IR for quoted value - recursively builds cons-ir for lists"
   (cond
     ((numberp obj) (list 'lit obj))
-    ((null obj) (list 'lit 0))  ; nil = 0
+    ((null obj) (list 'nil-ir))  ; nil has tag 6, distinct from fixnum 0
     ((symbolp obj) (list 'sym-lit (symbol-name obj)))
     ((consp obj) (list 'cons-ir (quote-ir (car obj)) (quote-ir (cdr obj))))
     ((stringp obj) (list 'str-lit obj))
@@ -765,7 +767,7 @@
     ((stringp expr) (list 'str-lit expr))  ; String literals
     ((symbolp expr)
      (if (eq expr 'nil)
-         (list 'lit 0)
+         (list 'nil-ir)  ; nil has tag 6, distinct from fixnum 0
          (if (eq expr 't)
              (list 'sym-lit "T")
              (compile-var expr env))))
@@ -850,8 +852,8 @@
          ((eq (car expr) 'list) (compile-list-full expr env fenv))
 
          ;; Predicates - use cmp-eq/get-tag to match main compiler codegen
-         ;; null: compare value to nil (0)
-         ((eq (car expr) 'null) (list 'cmp-eq (compile-expr-full (nth 1 expr) env fenv) (list 'lit 0)))
+         ;; null: compare value to nil (tag 6)
+         ((eq (car expr) 'null) (list 'cmp-eq (compile-expr-full (nth 1 expr) env fenv) (list 'nil-ir)))
          ;; consp: compare tag to 1 (cons tag)
          ((eq (car expr) 'consp) (list 'cmp-eq (list 'get-tag (compile-expr-full (nth 1 expr) env fenv)) (list 'lit 1)))
          ;; numberp: compare tag to 0 (fixnum tag)
