@@ -20,11 +20,13 @@
    ;; Compare
    #:cmp #:cset
    ;; Branch
-   #:b #:bl #:br #:blr #:cbz #:cbnz #:b.eq #:b.ne #:b.lt #:b.le #:b.gt #:b.ge #:ret
+   #:b #:bl #:br #:blr #:cbz #:cbnz #:b.eq #:b.ne #:b.lt #:b.le #:b.gt #:b.ge
+   #:b.lo #:b.hs #:b.hi #:b.ls #:ret
    ;; System
-   #:svc
+   #:svc #:nop
    ;; Condition codes
    #:+eq+ #:+ne+ #:+lt+ #:+le+ #:+gt+ #:+ge+
+   #:+lo+ #:+hs+ #:+hi+ #:+ls+
    ;; Registers (by convention)
    #:+sp+ #:+lr+ #:+xzr+
    ;; macOS syscall numbers
@@ -43,6 +45,11 @@
 (defconstant +le+ #xD)   ; signed less or equal
 (defconstant +gt+ #xC)   ; signed greater than
 (defconstant +ge+ #xA)   ; signed greater or equal
+;; Unsigned comparison conditions
+(defconstant +lo+ #x3)   ; unsigned lower (carry clear)
+(defconstant +hs+ #x2)   ; unsigned higher or same (carry set)
+(defconstant +hi+ #x8)   ; unsigned higher
+(defconstant +ls+ #x9)   ; unsigned lower or same
 
 ;; macOS ARM64 syscall numbers (BSD layer, use with SVC #x80)
 (defconstant +sys-exit+  1)
@@ -461,6 +468,34 @@
                   (ash (logand offset #x7FFFF) 5)
                   +ge+)))
 
+(defun b.lo (offset)
+  "B.LO label
+   Branch if unsigned lower (carry clear). Offset in instructions."
+  (encode (logior #x54000000
+                  (ash (logand offset #x7FFFF) 5)
+                  +lo+)))
+
+(defun b.hs (offset)
+  "B.HS label
+   Branch if unsigned higher or same (carry set). Offset in instructions."
+  (encode (logior #x54000000
+                  (ash (logand offset #x7FFFF) 5)
+                  +hs+)))
+
+(defun b.hi (offset)
+  "B.HI label
+   Branch if unsigned higher. Offset in instructions."
+  (encode (logior #x54000000
+                  (ash (logand offset #x7FFFF) 5)
+                  +hi+)))
+
+(defun b.ls (offset)
+  "B.LS label
+   Branch if unsigned lower or same. Offset in instructions."
+  (encode (logior #x54000000
+                  (ash (logand offset #x7FFFF) 5)
+                  +ls+)))
+
 (defun ret ()
   "RET
    Return from subroutine (branch to LR)."
@@ -472,3 +507,7 @@
   ;; SVC encoding: 1101 0100 000 imm16[15:0] 00001
   ;; = 0xD4000001 | (imm16 << 5)
   (encode (logior #xD4000001 (ash (logand imm16 #xFFFF) 5))))
+
+(defun nop ()
+  "NOP - No operation"
+  (encode #xD503201F))
