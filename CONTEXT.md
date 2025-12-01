@@ -33,7 +33,15 @@ Full Stage 1 compiler (reader + compiler + codegen + macho-utils) works:
 
 ### Key Improvements This Session
 
-1. **Function symbols in LC_SYMTAB (NEW)**
+1. **Native Garbage Collector (NEW)**
+   - Cheney's copying collector with two semispaces (32MB each)
+   - GC globals segment for from_start, from_end, to_start, to_end
+   - gc_copy and gc_collect in ARM64 assembly (gc.lisp)
+   - GC triggers inserted after cons, string, closure allocations
+   - gc-trigger-code generates inline check + conditional call to GC-COLLECT
+   - Unified `deliver` function now includes GC runtime code
+
+2. **Function symbols in LC_SYMTAB**
    - Mach-O binaries now include function symbols for lldb debugging
    - `nm <binary>` shows all function names and addresses
    - `lldb -o "disassemble -n ADD"` works directly on Habu binaries
@@ -144,7 +152,8 @@ bootstrap/
   compiler.lisp       - Habu compiler (no SBCL dependencies)
   optimize.lisp       - Optimization passes (TCO)
   codegen.lisp        - ARM64 code generator (accumulator model)
-  reg-alloc.lisp      - Register allocation nanopasses (NEW)
+  gc.lisp             - Garbage collector (Cheney's copying GC)
+  reg-alloc.lisp      - Register allocation nanopasses
   macho.lisp          - Mach-O linker (#+sbcl versions)
   macho-utils.lisp    - Mach-O utilities (#-sbcl native versions)
   reader.lisp         - Habu reader
@@ -182,6 +191,7 @@ arm64/
 - x20: Environment frame base
 - x24: Closure environment pointer
 - x26: Code base register
+- x27: GC globals base (from_start, from_end, to_start, to_end)
 - x28: Heap bump pointer
 
 ## Stack Frame Layout
@@ -236,10 +246,22 @@ Implemented in `bootstrap/reg-alloc.lisp` as 5 nanopasses:
 
 Remaining: Implement tac-codegen to replace current accumulator codegen
 
-### Priority 5: Heap Allocator with mmap
-1. Use mmap syscall instead of fixed heap
-2. Dynamic heap growth
-3. Eliminate 64MB fixed allocation
+### Priority 5: Native Garbage Collector - IMPLEMENTED
+Cheney's copying collector with two semispaces:
+1. **GC globals** in dedicated segment (from_start, from_end, to_start, to_end)
+2. **gc_copy**: Copy single object to to-space, leave forwarding pointer
+3. **gc_collect**: Flip semispaces, copy roots, scan Cheney queue
+4. **GC triggers**: Inserted after all heap allocations (cons, string, closures)
+5. See `docs/runtime/GC_NATIVE.md` for full documentation
+
+**Allocation sites with GC triggers:**
+- String literals (codegen.lisp:866)
+- Cons cells (codegen.lisp:1324)
+- Lambda-ref closures (codegen.lisp:1940, 1959)
+- fn-ref-ir closures (codegen.lisp:1982)
+- make-vector (codegen.lisp:1460)
+
+**Remaining:** Test under GC stress, add triggers to build-captures cons chain
 
 ### Priority 6: Common Lisp `loop` Macro
 1. Full CL loop spec implementation
