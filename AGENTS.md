@@ -117,34 +117,47 @@ When adding new ARM64 instructions:
 
 Available commands for Habu development (use `/command-name`):
 
+**Build & Test:**
 1. **`/habu-build-test`** - Compile and test workflow
    - Compiles source, runs binary, reports results
    - Automatically runs error analysis on failures
 
-2. **`/habu-debug <binary>`** - Debug crashes
-   - Loads binary in lldb with SIGSEGV handling
-   - Shows crash location with function context
-   - Cross-references with .map file
-
-3. **`/habu-analyze <error>`** - Structured error analysis
-   - Forms hypotheses before attempting fixes
-   - Tests each hypothesis systematically
-   - Identifies root cause before patching
-
-4. **`/habu-run-tests [pattern]`** - Run test suite
+2. **`/habu-run-tests [pattern]`** - Run test suite
    - Runs all tests or matches pattern
    - Reports PASS/FAIL with semantic context
-   - Analyzes failures automatically
 
-5. **`/habu-disasm <binary> [function]`** - Disassemble binaries
-   - Lists all functions with addresses
-   - Shows ARM64 instructions with annotations
-   - Uses embedded symbols (no .map needed)
-
-6. **`/habu-stage <N|verify>`** - Self-compilation stages
+3. **`/habu-stage <N|verify>`** - Self-compilation stages
    - Builds Stage 1/2/3 compilation
    - Verifies fixed-point achievement
-   - Reports binary differences
+
+**Debugging:**
+4. **`/habu-debug <binary>`** - Debug crashes
+   - Loads binary in lldb with SIGSEGV handling
+   - Shows crash location with function context
+
+5. **`/habu-analyze <error>`** - Structured error analysis
+   - Forms hypotheses before attempting fixes
+   - Tests each hypothesis systematically
+
+6. **`/habu-disasm <binary> [function]`** - Disassemble binaries
+   - Lists all functions with addresses
+   - Shows ARM64 instructions with annotations
+
+**Inspection:**
+7. **`/habu-ir <source>`** - Inspect compiler IR
+   - Shows intermediate representation
+   - Displays defun definitions and main IR
+   - Useful for debugging compilation issues
+
+8. **`/habu-compare <bin1> <bin2>`** - Compare binaries
+   - Byte-by-byte comparison
+   - Shows differences with context
+   - Used for fixed-point verification
+
+9. **`/habu-hexdump <binary> [range]`** - Hex dump with annotations
+   - Section-aware hex dump
+   - Shows Mach-O structure
+   - Function boundaries marked
 
 ### Symbol Table Support
 
