@@ -128,11 +128,12 @@
 ;;; Arithmetic
 ;;; ============================================================
 
-(defun add (rd rn rm-or-imm &key imm)
-  "ADD Xd, Xn, Xm  or  ADD Xd, Xn, #imm
-   Add register or 12-bit immediate."
+(defun add (rd rn rm-or-imm &key imm shift12)
+  "ADD Xd, Xn, Xm  or  ADD Xd, Xn, #imm [, LSL #12]
+   Add register or 12-bit immediate. SHIFT12 shifts immediate left by 12."
   (if imm
       (encode (logior #x91000000
+                      (if shift12 #x400000 0)  ; bit 22 = sh
                       (ash (logand rm-or-imm #xFFF) 10)
                       (ash rn 5)
                       rd))
@@ -141,11 +142,12 @@
                       (ash rn 5)
                       rd))))
 
-(defun sub (rd rn rm-or-imm &key imm)
-  "SUB Xd, Xn, Xm  or  SUB Xd, Xn, #imm
-   Subtract register or 12-bit immediate."
+(defun sub (rd rn rm-or-imm &key imm shift12)
+  "SUB Xd, Xn, Xm  or  SUB Xd, Xn, #imm [, LSL #12]
+   Subtract register or 12-bit immediate. SHIFT12 shifts immediate left by 12."
   (if imm
       (encode (logior #xD1000000
+                      (if shift12 #x400000 0)  ; bit 22 = sh
                       (ash (logand rm-or-imm #xFFF) 10)
                       (ash rn 5)
                       rd))

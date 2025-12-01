@@ -630,19 +630,12 @@
   (defun cmp-imm (rn imm) (arm64:cmp rn imm :imm t))
   (defun cset (rd cond-code) (arm64:cset rd cond-code))
 
-  ;; Condition codes
-  (defun cond-eq () arm64:+eq+)
-  (defun cond-ne () arm64:+ne+)
-  (defun cond-lt () arm64:+lt+)
-  (defun cond-ge () arm64:+ge+)
-  (defun cond-le () arm64:+le+)
-  (defun cond-gt () arm64:+gt+)
+  ;; Condition codes - defined in compiler-sbcl.lisp (cond-eq, cond-ne, etc.)
 
   ;; Branch - NOTE: arm64:b takes instruction count, old takes byte offset
   (defun b-offset (byte-offset) (arm64:b (ash byte-offset -2)))
   (defun b (byte-offset) (arm64:b (ash byte-offset -2)))
-  (defun cbz (rt byte-offset)
-    (arm64:cbz rt (ash byte-offset -2)))
+  ;; cbz - defined in compiler-sbcl.lisp
   (defun bl (byte-offset) (arm64:bl (ash byte-offset -2)))
   (defun blr (rn) (arm64:blr rn))
   (defun ret () (arm64:ret))
@@ -2437,7 +2430,7 @@
   "Compile source string with function definitions to native executable.
    Supports: defun, lambda, funcall, function calls, all v2 features.
    Layout: wrapper(76) + main-code + function-code + lambda-code + stubs
-   Works in both SBCL and native Habu (no SBCL dependencies)."
+   Native mode only - in SBCL use habu:deliver instead."
   (register-compiler-symbols)  ;; Pre-register symbols for native eq to work
   (reset-symbol-table)
   (reset-lambda-counter)

@@ -95,22 +95,8 @@
   (declare (ignore code-bytes))
   '("_exit"))
 
-;;; Forward stubs for functions defined in macho.lisp (loaded later via ASDF)
-;;; These will be redefined when macho.lisp loads
-(defun wrap-bytecode-with-heap-for-imports (code-bytes heap-page-offset)
-  "Stub - redefined in macho.lisp"
-  (declare (ignore heap-page-offset))
-  code-bytes)
-
-(defun write-macho-executable (output-path code-bytes)
-  "Stub - redefined in macho.lisp"
-  (declare (ignore output-path code-bytes))
-  (error "write-macho-executable not loaded - load macho.lisp first"))
-
-(defun write-macho-executable-with-imports-and-heap (output-path code-bytes imports heap-size &optional local-fns)
-  "Stub - redefined in macho.lisp"
-  (declare (ignore output-path code-bytes imports heap-size local-fns))
-  (error "write-macho-executable-with-imports-and-heap not loaded - load macho.lisp first"))
+;;; Forward declarations for functions defined in macho.lisp (loaded later via ASDF)
+;;; The actual implementations are in macho.lisp; declaims here for forward references
 
 ;;; Register :habu as a feature for #+habu / #-habu conditionals
 ;;; This works in SBCL during bootstrap; native reader has its own feature-present?
@@ -836,7 +822,7 @@
   ;; Main entry prologue - x0 has runtime table pointer from C caller
   ;; Use 4KB frame to support deep nesting in large programs
   (append
-   (arm64:sub 31 31 #x1000 :imm t)   ; SUB sp, sp, #4096 (allocate stack frame)
+   (arm64:sub 31 31 1 :imm t :shift12 t)   ; SUB sp, sp, #1, LSL #12 = #4096
    (arm64:stp 29 30 31 :offset 0)  ; STP x29, x30, [sp, #0]
    (arm64:stp 19 20 31 :offset 16) ; STP x19, x20, [sp, #16]
    (arm64:stp 21 22 31 :offset 32) ; STP x21, x22, [sp, #32]
@@ -850,7 +836,7 @@
    (arm64:ldp 21 22 31 :offset 32) ; LDP x21, x22, [sp, #32]
    (arm64:ldp 19 20 31 :offset 16) ; LDP x19, x20, [sp, #16]
    (arm64:ldp 29 30 31 :offset 0)  ; LDP x29, x30, [sp, #0]
-   (arm64:add 31 31 #x1000 :imm t)    ; ADD sp, sp, #4096 (deallocate stack)
+   (arm64:add 31 31 1 :imm t :shift12 t)    ; ADD sp, sp, #1, LSL #12 = #4096
    (arm64:ret)))
 
 ;;; ============================================================
@@ -1256,7 +1242,7 @@
        ;; t compiles to non-zero literal for native executables without runtime
        ;; In boolean context, any non-zero value is truthy
        ((eq expr 't) (list 'lit 1))           ; t = 1 (truthy)
-       ((eq expr 'nil) (list 'lit 0))          ; nil is 0
+       ((eq expr 'nil) (list 'nil-ir))          ; nil is 0x06 (tag 6)
        (t
         ;; Use numberp since offset 0 is falsey in Habu
         (let ((off (env-lookup expr env)))
@@ -1375,12 +1361,12 @@
           (list 'if-ir
                 (sys:compile (cadr expr) env fenv)
                 (sys:compile (caddr expr) env fenv)
-                (if (cdddr expr) (sys:compile (cadddr expr) env fenv) (list 'lit 0))))
+                (if (cdddr expr) (sys:compile (cadddr expr) env fenv) (list 'nil-ir))))
          ;; cond - multi-branch conditional
          ((eq op 'cond)
           (let ((clauses (cdr expr)))
             (if (null clauses)
-                (list 'lit 0)
+                (list 'nil-ir)
                 (let* ((clause (car clauses))
                        (test (car clause))
                        (body (cdr clause)))
@@ -1408,14 +1394,23 @@
                   (if (null (cdr body))
                       (sys:compile (car body) env fenv)
                       (sys:compile (cons 'progn body) env fenv))
-                  (list 'lit 0))))
+                  (list 'nil-ir))))
          ;; unless - negated when
          ((eq op 'unless)
           (let ((test (cadr expr))
                 (body (cddr expr)))
             (list 'if-ir
                   (sys:compile test env fenv)
-                  (list 'lit 0)
+                  (list 'nil-ir)
+                  (if (null (cdr body))
+                      (sys:compile (car body) env fenv)
+                      (sys:compile (cons 'progn body) env fenv)))))
+         ;; while - iterative loop
+         ((eq op 'while)
+          (let ((test (cadr expr))
+                (body (cddr expr)))
+            (list 'while-ir
+                  (sys:compile test env fenv)
                   (if (null (cdr body))
                       (sys:compile (car body) env fenv)
                       (sys:compile (cons 'progn body) env fenv)))))
@@ -1455,7 +1450,7 @@
                               (sys:compile (cons 'progn body) new-env fenv)))
                  (result-ir (if result-form
                                 (sys:compile result-form new-env fenv)
-                                (list 'lit 0))))
+                                (list 'nil-ir))))
             ;; Create a dolist-ir node with compiled body
             (list 'dolist-ir
                   var
@@ -1577,11 +1572,13 @@
              env fenv)))
          ((eq op 'list)
           (labels ((bl (args)
-                     (if (null args) (list 'lit 0)
+                     (if (null args) (list 'nil-ir)
                          (list 'cons-ir (sys:compile (car args) env fenv) (bl (cdr args))))))
             (bl (cdr expr))))
          ((eq op 'null)
-          (list 'cmp-eq (sys:compile (cadr expr) env fenv) (list 'lit 0)))
+          ;; nil is 0x06 (tag 6), so compare directly against that value
+          ;; Using nil-ir which generates 0x06
+          (list 'cmp-eq (sys:compile (cadr expr) env fenv) '(nil-ir)))
          ((eq op 'numberp)
           ;; get-tag returns tagged fixnum (tag << 4), lit also tags its value
           ;; so to compare tag=0, use (lit 0) -> becomes 0
@@ -1964,6 +1961,13 @@
          ;; set-intern-table - set the global intern table
          ((eq op 'set-intern-table)
           (list 'set-intern-table-ir
+                (sys:compile (cadr expr) env fenv)))
+         ;; get-lambda-counter - get the global lambda counter
+         ((eq op 'get-lambda-counter)
+          (list 'get-lambda-counter-ir))
+         ;; set-lambda-counter - set the global lambda counter
+         ((eq op 'set-lambda-counter)
+          (list 'set-lambda-counter-ir
                 (sys:compile (cadr expr) env fenv)))
          ;; === High-level file I/O (using sys-* primitives) ===
          ;; native-read-file - read entire file to string
@@ -2815,6 +2819,15 @@
       (has-tag ir 'lit)
       (has-tag ir 'nil-ir)))
 
+(defun cmp-result-to-bool (cond-code)
+  "Generate code to convert comparison result to t (0x10) or nil (0x06).
+   Input: condition code (e.g., (cond-eq), (cond-lt))
+   Output: code that sets x0 = 0x10 (true) or 0x06 (nil)"
+  (append-all (list (arm64:cset 0 cond-code)
+                    (arm64:lsl 0 0 4 :imm t)   ; x0 = 0x00 or 0x10
+                    (arm64:cbnz 0 2)            ; if true (0x10), skip movz
+                    (arm64:movz 0 6))))         ; false: x0 = nil (6)
+
 (defun codegen-binop (left-ir right-ir op-instrs rtaddrs fnoffs td)
   "Generate code for binary operation with register-based temps.
    Uses temp registers when safe, falls back to stack when needed."
@@ -2884,8 +2897,8 @@
            (arm64:movz 0 tg)
            (load-addr 0 tg))))
     ((has-tag ir 'nil-ir)
-     ;; nil is represented as tagged 0 (fixnum 0) in native code
-     (arm64:movz 0 0))
+     ;; nil is represented as 0x06 (tag 6) - distinct from fixnum 0
+     (arm64:movz 0 6))
     ((has-tag ir 'sym-lit)
      ;; Symbol literal: use compile-time symbol table
      ;; Each unique symbol gets a unique ID, tagged with symbol tag (2)
@@ -2984,9 +2997,8 @@
                                 ac shift-code)))))
     ((has-tag ir 'cmp-eq)
      (codegen-binop (cadr ir) (caddr ir)
-                       (append-all (list (arm64:cmp 0 1)
-                                            (arm64:cset 0 (cond-eq))
-                                            (arm64:lsl 0 0 4 :imm t)))
+                       (append (arm64:cmp 0 1)
+                               (cmp-result-to-bool (cond-eq)))
                        rtaddrs fnoffs td))
     ((has-tag ir 'cmp-lt)
      ;; Fast path: (cmp-lt (var n) (lit k)) -> CMP x0, #imm; CSET
@@ -2996,14 +3008,12 @@
                 (< (ash (cadr right) 4) #x1000))
            (let ((var-code (codegen left rtaddrs fnoffs td))
                  (imm (ash (cadr right) 4)))
-             (append-all (list var-code
-                                  (arm64:cmp 0 imm :imm t)
-                                  (arm64:cset 0 (cond-lt))
-                                  (arm64:lsl 0 0 4 :imm t))))
+             (append var-code
+                    (arm64:cmp 0 imm :imm t)
+                    (cmp-result-to-bool (cond-lt))))
            (codegen-binop left right
-                             (append-all (list (arm64:cmp 0 1)
-                                                  (arm64:cset 0 (cond-lt))
-                                                  (arm64:lsl 0 0 4 :imm t)))
+                             (append (arm64:cmp 0 1)
+                                     (cmp-result-to-bool (cond-lt)))
                              rtaddrs fnoffs td))))
     ((has-tag ir 'cmp-gt)
      (let ((left (cadr ir))
@@ -3012,14 +3022,12 @@
                 (< (ash (cadr right) 4) #x1000))
            (let ((var-code (codegen left rtaddrs fnoffs td))
                  (imm (ash (cadr right) 4)))
-             (append-all (list var-code
-                                  (arm64:cmp 0 imm :imm t)
-                                  (arm64:cset 0 (cond-gt))
-                                  (arm64:lsl 0 0 4 :imm t))))
+             (append var-code
+                    (arm64:cmp 0 imm :imm t)
+                    (cmp-result-to-bool (cond-gt))))
            (codegen-binop left right
-                             (append-all (list (arm64:cmp 0 1)
-                                                  (arm64:cset 0 (cond-gt))
-                                                  (arm64:lsl 0 0 4 :imm t)))
+                             (append (arm64:cmp 0 1)
+                                     (cmp-result-to-bool (cond-gt)))
                              rtaddrs fnoffs td))))
     ((has-tag ir 'cmp-le)
      (let ((left (cadr ir))
@@ -3028,14 +3036,12 @@
                 (< (ash (cadr right) 4) #x1000))
            (let ((var-code (codegen left rtaddrs fnoffs td))
                  (imm (ash (cadr right) 4)))
-             (append-all (list var-code
-                                  (arm64:cmp 0 imm :imm t)
-                                  (arm64:cset 0 (cond-le))
-                                  (arm64:lsl 0 0 4 :imm t))))
+             (append var-code
+                    (arm64:cmp 0 imm :imm t)
+                    (cmp-result-to-bool (cond-le))))
            (codegen-binop left right
-                             (append-all (list (arm64:cmp 0 1)
-                                                  (arm64:cset 0 (cond-le))
-                                                  (arm64:lsl 0 0 4 :imm t)))
+                             (append (arm64:cmp 0 1)
+                                     (cmp-result-to-bool (cond-le)))
                              rtaddrs fnoffs td))))
     ((has-tag ir 'cmp-ge)
      (let ((left (cadr ir))
@@ -3044,14 +3050,12 @@
                 (< (ash (cadr right) 4) #x1000))
            (let ((var-code (codegen left rtaddrs fnoffs td))
                  (imm (ash (cadr right) 4)))
-             (append-all (list var-code
-                                  (arm64:cmp 0 imm :imm t)
-                                  (arm64:cset 0 (cond-ge))
-                                  (arm64:lsl 0 0 4 :imm t))))
+             (append var-code
+                    (arm64:cmp 0 imm :imm t)
+                    (cmp-result-to-bool (cond-ge))))
            (codegen-binop left right
-                             (append-all (list (arm64:cmp 0 1)
-                                                  (arm64:cset 0 (cond-ge))
-                                                  (arm64:lsl 0 0 4 :imm t)))
+                             (append (arm64:cmp 0 1)
+                                     (cmp-result-to-bool (cond-ge)))
                              rtaddrs fnoffs td))))
     ((has-tag ir 'cons-ir)
      ;; Inline cons: allocate 16 bytes from heap (x28), store car/cdr, return tagged ptr
@@ -3089,9 +3093,9 @@
                 (cbz 0 28)                     ; if x0 == 0, skip 7 instrs (28 bytes)
                 ;; Clear low 4 bits to get pointer
                 (arm64:movz 1 #xFFF0)                ; x1 = mask (keep upper bits)
-                (movk 1 #xFFFF 16)             ; complete mask
-                (movk 1 #xFFFF 32)
-                (movk 1 #xFFFF 48)
+                (movk 1 #xFFFF 1)              ; complete mask (shift16=1 means LSL 16)
+                (movk 1 #xFFFF 2)              ; shift16=2 means LSL 32
+                (movk 1 #xFFFF 3)              ; shift16=3 means LSL 48
                 (arm64:and* 0 0 1)                ; x0 = ptr with tag cleared
                 (arm64:ldr 0 0 :offset 0))))))        ; x0 = [ptr+0] = car
     ((has-tag ir 'cdr-ir)
@@ -3105,9 +3109,9 @@
                 (cbz 0 28)                     ; if x0 == 0, skip 7 instrs (28 bytes)
                 ;; Clear low 4 bits to get pointer
                 (arm64:movz 1 #xFFF0)                ; x1 = mask (keep upper bits)
-                (movk 1 #xFFFF 16)             ; complete mask
-                (movk 1 #xFFFF 32)
-                (movk 1 #xFFFF 48)
+                (movk 1 #xFFFF 1)              ; complete mask (shift16=1 means LSL 16)
+                (movk 1 #xFFFF 2)              ; shift16=2 means LSL 32
+                (movk 1 #xFFFF 3)              ; shift16=3 means LSL 48
                 (arm64:and* 0 0 1)                ; x0 = ptr with tag cleared
                 (arm64:ldr 0 0 :offset 8))))))
     ;; setq-ir - assign to variable
@@ -3138,9 +3142,9 @@
             ;; Clear low 4 bits to get raw pointer
             (clear-tag (append-all
                         (list (arm64:movz 9 #xFFF0)
-                              (movk 9 #xFFFF 16)
-                              (movk 9 #xFFFF 32)
-                              (movk 9 #xFFFF 48)
+                              (movk 9 #xFFFF 1)
+                              (movk 9 #xFFFF 2)
+                              (movk 9 #xFFFF 3)
                               (arm64:and* 1 1 9))))
             ;; Get value back
             (load-val (arm64:ldr 0 31 :offset val-slot))
@@ -3166,9 +3170,9 @@
             ;; Clear low 4 bits to get raw pointer
             (clear-tag (append-all
                         (list (arm64:movz 9 #xFFF0)
-                              (movk 9 #xFFFF 16)
-                              (movk 9 #xFFFF 32)
-                              (movk 9 #xFFFF 48)
+                              (movk 9 #xFFFF 1)
+                              (movk 9 #xFFFF 2)
+                              (movk 9 #xFFFF 3)
                               (arm64:and* 1 1 9))))
             ;; Get value back
             (load-val (arm64:ldr 0 31 :offset val-slot))
@@ -3221,9 +3225,9 @@
         (list sc
               ;; Clear low 4 bits to get pointer (same approach as car-ir)
               (arm64:movz 1 #xFFF0)              ; x1 = mask (keep upper bits)
-              (movk 1 #xFFFF 16)           ; complete mask
-              (movk 1 #xFFFF 32)
-              (movk 1 #xFFFF 48)
+              (movk 1 #xFFFF 1)            ; complete mask (shift16=1 means LSL 16)
+              (movk 1 #xFFFF 2)            ; shift16=2 means LSL 32
+              (movk 1 #xFFFF 3)            ; shift16=3 means LSL 48
               (arm64:and* 0 0 1)              ; x0 = str_ptr (untagged)
               ;; Load length from [x0+0]
               (arm64:ldr 0 0 :offset 0)           ; x0 = raw length
@@ -3250,9 +3254,9 @@
               (arm64:ldr 1 31 :offset _xs)         ; x1 = str (tagged)
               ;; Clear tag: x1 = x1 & ~0xF (same approach as car-ir)
               (arm64:movz 2 #xFFF0)              ; x2 = mask (keep upper bits)
-              (movk 2 #xFFFF 16)           ; complete mask
-              (movk 2 #xFFFF 32)
-              (movk 2 #xFFFF 48)
+              (movk 2 #xFFFF 1)            ; complete mask (shift16=1 means LSL 16)
+              (movk 2 #xFFFF 2)            ; shift16=2 means LSL 32
+              (movk 2 #xFFFF 3)            ; shift16=3 means LSL 48
               (arm64:and* 1 1 2)              ; x1 = str_ptr (untagged)
               ;; Load idx -> x0
               (arm64:ldr 0 31 :offset is)         ; x0 = idx (tagged)
@@ -3813,12 +3817,47 @@
                    (let ((else-bytes (code-size elc)))
                      (append-all
                       (list tc
-                            (arm64:movz 1 0)
-                            (arm64:cmp 0 1)
+                            (arm64:movz 1 6)   ; x1 = 6 (nil)
+                            (arm64:cmp 0 1)    ; if x0 == nil, take else branch
                             (arm64:b.eq (ash (+ then-bytes 8) -2))  ; Skip then + B + self
                             thc
                             (arm64:b (ash (+ else-bytes 4) -2))  ; Skip else + landing
                             elc)))))))))))
+    ((has-tag ir 'while-ir)
+     ;; while-ir = (while-ir test body)
+     ;; Layout: test-code, cmp, b.eq(exit), body-code, b(back-to-test)
+     (let* ((test-ir (cadr ir))
+            (body-ir (caddr ir))
+            (test-code (codegen test-ir rtaddrs fnoffs td))
+            (body-code (codegen body-ir rtaddrs fnoffs td))
+            (test-size (code-size test-code))
+            (body-size (code-size body-code)))
+       ;; From b-cond at X: body starts at X+4, backward-b at X+4+body_size,
+       ;; exit at X+4+body_size+4. So skip offset = 4+body_size+4 = body_size+8
+       (append-all
+        (list test-code
+              (arm64:cmp 0 6 :imm t)   ; cmp x0, #6 (nil)
+              ;; If test is false (x0==nil), skip body and back-branch
+              (arm64:b.eq (ash (+ body-size 8) -2))
+              body-code
+              ;; Jump back to start of test
+              (arm64:b (ash (- 0 (+ test-size 8 body-size)) -2))))))
+    ;; get-intern-table-ir - load intern table from [x27 + 0]
+    ((has-tag ir 'get-intern-table-ir)
+     (arm64:ldr 0 27 :offset 0))
+    ;; set-intern-table-ir - store value to [x27 + 0], return value
+    ((has-tag ir 'set-intern-table-ir)
+     (let ((val-code (codegen (cadr ir) rtaddrs fnoffs td)))
+       (append val-code
+               (arm64:str 0 27 :offset 0))))
+    ;; get-lambda-counter-ir - load counter from [x27 + 8]
+    ((has-tag ir 'get-lambda-counter-ir)
+     (arm64:ldr 0 27 :offset 8))
+    ;; set-lambda-counter-ir - store value to [x27 + 8], return value
+    ((has-tag ir 'set-lambda-counter-ir)
+     (let ((val-code (codegen (cadr ir) rtaddrs fnoffs td)))
+       (append val-code
+               (arm64:str 0 27 :offset 8))))
     ((has-tag ir 'let-ir)
      ;; let-ir = (let-ir vals bir count offs)
      (let* ((vals (cadr ir))

@@ -98,18 +98,17 @@ Full Stage 1 compiler (reader + compiler + codegen + macho-utils) works:
     - ISSUE: codegen.lisp has duplicate definitions in `#+sbcl` block AND with `#-sbcl` guards
     - Remaining: cond-eq/ne/lt/ge/le/gt and cbz are defined twice in codegen.lisp
 
-### In Progress: Fix ASDF Warnings
+### ASDF Warnings - FIXED
 
-The ASDF system has "redefining" warnings that need to be fixed:
-1. `wrap-bytecode-with-heap-for-imports` - FIXED (removed wrong `#-sbcl`)
-2. `write-macho-executable-with-imports-and-heap` - FIXED (removed wrong `#-sbcl`)
-3. `cond-eq`, `cond-ne`, `cond-lt`, `cond-ge`, `cond-le`, `cond-gt`, `cbz` - duplicate definitions in codegen.lisp
+All "redefining" warnings have been fixed:
+1. `wrap-bytecode-with-heap-for-imports` - Removed stub from compiler-sbcl.lisp (real impl in macho.lisp)
+2. `write-macho-executable-with-imports-and-heap` - Removed stub from compiler-sbcl.lisp
+3. `cond-eq`, `cond-ne`, `cond-lt`, `cond-ge`, `cond-le`, `cond-gt`, `cbz` - Removed duplicates from codegen.lisp #+sbcl block (already defined in compiler-sbcl.lisp)
 
-**Next Steps:**
-1. Fix remaining duplicate definitions in codegen.lisp (lines 498-509 vs 634-645)
-2. Remove either `#-sbcl` versions or `#+sbcl` block versions
-3. Ensure `deliver-v3` works in SBCL (currently has `#-sbcl` guard)
-4. Test reader compilation again
+**Delivery Functions:**
+- SBCL: Use `habu:deliver` (in compiler-sbcl.lisp) - 1-arg lift-lambdas
+- Native: Use `deliver-v3` (in codegen.lisp, #-sbcl guard) - 2-arg lift-lambdas
+- Reader compilation: WORKS (exit 42 test passes)
 
 ### Previous Bug Fixes
 
