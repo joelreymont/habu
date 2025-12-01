@@ -95,6 +95,8 @@ habu/
 - **No emojis**: Never in code, commits, or docs
 - **No marketing language**: Use technical facts
 - **Tests**: Minimal, purpose comment at top, no color output
+- **Warnings as errors**: ASDF treats all warnings as errors. Fix warnings immediately.
+- **No inline loads**: Use ASDF for dependencies, never `(load ...)` in source files
 
 ### Code Generation Policy
 
@@ -159,12 +161,77 @@ Available commands for Habu development (use `/command-name`):
    - Shows Mach-O structure
    - Function boundaries marked
 
+10. **`/habu-profile <binary> [duration]`** - Profile running binary
+    - Uses macOS `sample` tool to identify hot functions
+    - Maps sample addresses to function names via nm
+    - Reports top functions by sample count
+    - Binary must have embedded symbols (deliver-v3)
+
+**System:**
+11. **`/habu-load`** - Load compiler via ASDF
+    - Loads all bootstrap files with correct dependencies
+    - Handles compilation order automatically
+    - Use for interactive REPL development
+
 ### Symbol Table Support
 
 Habu binaries now include function symbols in LC_SYMTAB:
 - `nm <binary>` shows all functions
 - `lldb -o "disassemble -n FUNCTION"` works directly
 - Backtraces show function names instead of addresses
+
+## TAC (Three-Address Code) Pipeline
+
+The register allocator uses a nanopass architecture in `bootstrap/reg-alloc.lisp`:
+
+### Passes
+
+1. **ir-to-tac** - Tree IR to linear TAC
+   - Input: `(add (var 0) (mul (lit 2) (var 1)))`
+   - Output: `((tac-var v0 0) (tac-lit v1 2) (tac-var v2 1) (tac-binop v3 mul v1 v2) (tac-binop v4 add v0 v3))`
+
+2. **compute-liveness** - Backward dataflow analysis
+   - Computes live-in/live-out sets for each instruction
+
+3. **compute-intervals** - Live intervals
+   - Output: `((vreg start end) ...)`
+
+4. **linear-scan** - Register allocation
+   - Allocates x9-x15 (7 registers)
+   - Spills to stack when exhausted
+
+5. **tac-codegen** - TAC + allocation to ARM64 (TODO)
+
+### TAC Instruction Formats
+
+```lisp
+(tac-lit vreg value)           ; vreg = literal
+(tac-var vreg offset)          ; vreg = env[offset]
+(tac-setvar offset vreg)       ; env[offset] = vreg
+(tac-binop vreg op vr1 vr2)    ; vreg = vr1 op vr2
+(tac-call vreg fn args)        ; vreg = fn(args...)
+(tac-if vreg then-lbl else-lbl); conditional branch
+(tac-label name)               ; label
+(tac-goto label)               ; unconditional jump
+(tac-return vreg)              ; return value
+(tac-move vreg1 vreg2)         ; vreg1 = vreg2
+```
+
+### ARM64 Package
+
+All ARM64 instructions use the `arm64` package (`arm64/asm.lisp`):
+
+```lisp
+(arm64:add rd rn rm)              ; register
+(arm64:add rd rn imm :imm t)      ; immediate
+(arm64:ldr rt rn :offset off)     ; load with offset
+(arm64:str rt rn :offset off)     ; store with offset
+(arm64:ldrb rt rn off)            ; load byte immediate
+(arm64:ldrb rt rn rm :reg t)      ; load byte register
+(arm64:cmp rn rm)                 ; compare register
+(arm64:cmp rn imm :imm t)         ; compare immediate
+(arm64:b.eq offset)               ; branch if equal (instruction count)
+```
 
 ## Self-Hosting Path
 

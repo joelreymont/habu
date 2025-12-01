@@ -205,6 +205,7 @@
         (list 'var offset)
         (list 'lit 0))))  ;; Unknown var = 0
 
+#-sbcl
 (defun env-lookup (sym env)
   "Look up symbol in environment, return offset or nil"
   (labels ((search-env (e offset)
@@ -273,14 +274,14 @@
         (labels ((compile-bindings (binds acc)
                    (if (null binds)
                        (reverse acc)
-                       (let ((var (car (car binds)))
-                             (val (nth 1 (car binds))))
+                       (let ((val (nth 1 (car binds))))
                          (compile-bindings (cdr binds)
                                            (cons (compile-expr val env) acc))))))
           (let ((val-irs (compile-bindings bindings nil))
                 (body-ir (compile-expr body new-env)))
             (list 'let-ir val-irs body-ir)))))))
 
+#-sbcl
 (defun quote-ir (obj)
   "Build IR for quoted value - recursively builds cons-ir for lists"
   (cond
@@ -314,7 +315,7 @@
   ;; Expand to nested cons: (cons a (cons b (cons c nil)))
   (labels ((expand-list (elems)
              (if (null elems)
-                 (list 'lit 0)  ;; nil = 0
+                 (list 'nil-ir)  ;; nil = tag 6
                  (list 'cons-ir
                        (compile-expr (car elems) env)
                        (expand-list (cdr elems))))))
@@ -366,22 +367,117 @@
 ;;; Defun and Function Call Support
 ;;; ============================================================
 
-;; Function environment: alist of (name . placeholder)
+;; Function environment: alist of (name params body) for inlining
 ;; Used for forward references during two-pass compilation
 
 (defun collect-defuns (forms acc)
-  "Pass 1: Collect all defun names from forms"
+  "Pass 1: Collect all defun info (name params body) from forms"
   (if (null forms)
       acc
       (let ((f (car forms)))
         (cond
           ((and (consp f) (eq (car f) 'defun))
-           (collect-defuns (cdr forms) (cons (list (cadr f)) acc)))
+           (let* ((nm (cadr f))
+                  (ps (caddr f))
+                  (body-forms (cdddr f))
+                  (bd (if (null (cdr body-forms))
+                          (car body-forms)
+                          (cons 'progn body-forms))))
+             (collect-defuns (cdr forms) (cons (list nm ps bd) acc))))
           ((and (consp f) (eq (car f) 'progn))
            (collect-defuns (cdr forms)
                                 (collect-defuns (cdr f) acc)))
           (t (collect-defuns (cdr forms) acc))))))
 
+;;; ============================================================
+;;; Function Inlining Support
+;;; ============================================================
+
+(defun expr-size (expr)
+  "Estimate expression size for inlining decisions"
+  (cond
+    ((null expr) 1)
+    ((not (consp expr)) 1)
+    ((eq (car expr) 'quote) 1)
+    ((eq (car expr) 'progn)
+     (let ((sum 0))
+       (let ((es (cdr expr)))
+         (while (not (null es))
+           (setq sum (+ sum (expr-size (car es))))
+           (setq es (cdr es))))
+       sum))
+    ((eq (car expr) 'if)
+     (+ 1 (expr-size (cadr expr)) (expr-size (caddr expr))
+        (if (cadddr expr) (expr-size (cadddr expr)) 0)))
+    ((eq (car expr) 'let)
+     (+ 2 (expr-size (caddr expr))))
+    ((eq (car expr) 'let*)
+     (+ 2 (expr-size (caddr expr))))
+    ((or (eq (car expr) 'or) (eq (car expr) 'and))
+     (let ((sum 1))
+       (let ((es (cdr expr)))
+         (while (not (null es))
+           (setq sum (+ sum (expr-size (car es))))
+           (setq es (cdr es))))
+       sum))
+    (t (+ 1 (length (cdr expr))))))
+
+(defun calls-self? (expr fn-name)
+  "Check if expression calls fn-name (direct recursion)"
+  (cond
+    ((null expr) nil)
+    ((not (consp expr)) nil)
+    ((eq (car expr) 'quote) nil)
+    ((and (symbolp (car expr)) (eq (car expr) fn-name)) t)
+    (t (let ((found nil)
+             (es (cdr expr)))
+         (while (and (not found) (not (null es)))
+           (setq found (calls-self? (car es) fn-name))
+           (setq es (cdr es)))
+         found))))
+
+(defun inlinable? (fn-info)
+  "Check if function is eligible for inlining.
+   FN-INFO is (name params body).
+   Inline if: small body, no recursion, simple predicates"
+  (let ((name (car fn-info))
+        (params (cadr fn-info))
+        (body (caddr fn-info)))
+    (and (< (expr-size body) 20)           ; Small enough
+         (not (calls-self? body name))     ; Not recursive
+         (<= (length params) 4))))         ; Few parameters
+
+(defun substitute-params (expr params args)
+  "Replace parameters with arguments in expression.
+   PARAMS is list of parameter names, ARGS is list of argument exprs"
+  (cond
+    ((null expr) nil)
+    ((symbolp expr)
+     ;; Check if it's a parameter
+     (let ((pos (find-param-pos expr params 0)))
+       (if pos
+           (nth pos args)
+           expr)))
+    ((not (consp expr)) expr)
+    ((eq (car expr) 'quote) expr)  ; Don't substitute in quotes
+    (t (cons (substitute-params (car expr) params args)
+             (substitute-params (cdr expr) params args)))))
+
+(defun find-param-pos (name params idx)
+  "Find position of name in params list"
+  (cond
+    ((null params) nil)
+    ((eq name (car params)) idx)
+    (t (find-param-pos name (cdr params) (+ idx 1)))))
+
+(defun get-fn-info (name fenv)
+  "Get function info (name params body) from fenv"
+  (cond
+    ((null fenv) nil)
+    ((eq name (car (car fenv))) (car fenv))
+    (t (get-fn-info name (cdr fenv)))))
+
+#-sbcl
 (defun compile-defun (name params body env fenv)
   "Compile a single defun to (name params body-ir param-base)"
   (let* ((new-env (extend-env params env))
@@ -413,6 +509,7 @@
                                     (compile-all-defuns (cdr f) env fenv acc)))
           (t (compile-all-defuns (cdr forms) env fenv acc))))))
 
+#-sbcl
 (defun find-main-form (forms acc)
   "Find all non-defun forms and wrap in progn if multiple"
   (if (null forms)
@@ -431,16 +528,25 @@
           (t (find-main-form (cdr forms) (cons f acc)))))))
 
 (defun compile-call (expr env fenv)
-  "Compile function call (fn arg1 arg2 ...)"
+  "Compile function call (fn arg1 arg2 ...).
+   Inlines small functions to avoid call overhead."
   (let ((fn-name (car expr))
         (args (cdr expr)))
     ;; Look up in fenv to check if it's a defined function
-    (if (fenv-lookup fn-name fenv)
-        ;; User-defined function call
-        (list 'call-fn fn-name
-              (compile-args args env fenv))
-        ;; Unknown function - compile as lit 0 for now
-        (list 'lit 0))))
+    (let ((fn-info (get-fn-info fn-name fenv)))
+      (if fn-info
+          ;; Check if we should inline
+          (if (inlinable? fn-info)
+              ;; Inline: substitute parameters with arguments in body
+              (let* ((params (cadr fn-info))
+                     (body (caddr fn-info))
+                     (inlined-body (substitute-params body params args)))
+                (compile-expr-full inlined-body env fenv))
+              ;; Normal call
+              (list 'call-fn fn-name
+                    (compile-args args env fenv)))
+          ;; Unknown function - compile as lit 0 for now
+          (list 'lit 0)))))
 
 (defun fenv-lookup (name fenv)
   "Look up function in function environment"
@@ -477,13 +583,13 @@
          ;; Build environment for body: free vars + params
          ;; Free vars come first (captured in closure env), then params
          ;; This matches the regular compiler's approach
-         (num-free (length free-vars))
          (body-env (extend-env params (extend-env free-vars nil)))
          ;; Compile body with extended env
          (body-ir (compile-expr-full body body-env fenv)))
     ;; Return lambda-ir with 5 elements (matching regular compiler)
     (list 'lambda-ir params body-ir free-vars free-offsets)))
 
+#-sbcl
 (defun find-free-vars (expr params env)
   "Find variables referenced in expr that are in env but not in params or local bindings"
   (labels ((in-list (x lst)
@@ -576,6 +682,7 @@
   "Convert digit 0-9 to ASCII character code"
   (+ n 48))  ; '0' = 48
 
+#-sbcl
 (defun number-to-string (n)
   "Convert positive integer to string - pure Habu"
   (if (= n 0)
@@ -695,6 +802,7 @@
       'nil
       (list 'cons (car names) (build-fntab-init (cdr names)))))
 
+#-sbcl
 (defun rewrite-labels-body (expr fn-names fntab-var)
   "Rewrite calls to labels functions to pass FNTAB"
   (cond
@@ -779,10 +887,11 @@
          ((eq (car expr) 'cond) (compile-cond expr env fenv))
          ((eq (car expr) 'when) (compile-when expr env fenv))
          ((eq (car expr) 'unless) (compile-unless expr env fenv))
+         ((eq (car expr) 'while) (compile-while expr env fenv))
          ;; Boolean operators - transform to if forms
          ((eq (car expr) 'and) (compile-and expr env fenv))
          ((eq (car expr) 'or) (compile-or expr env fenv))
-         ((eq (car expr) 'not) (list 'cmp-eq (compile-expr-full (cadr expr) env fenv) (list 'lit 0)))
+         ((eq (car expr) 'not) (list 'cmp-eq (compile-expr-full (cadr expr) env fenv) (list 'nil-ir)))
 
          ;; Binding forms
          ((eq (car expr) 'let) (compile-let-full expr env fenv))
@@ -1011,14 +1120,14 @@
         (then (compile-expr-full (nth 2 expr) env fenv))
         (else (if (nth 3 expr)
                   (compile-expr-full (nth 3 expr) env fenv)
-                  (list 'lit 0))))
+                  (list 'nil-ir))))
     (list 'if-ir test then else)))
 
 (defun compile-cond (expr env fenv)
   "Compile (cond (test1 body1) (test2 body2) ...)"
   (let ((clauses (cdr expr)))
     (if (null clauses)
-        (list 'lit 0)
+        (list 'nil-ir)
         (let* ((clause (car clauses))
                (test (car clause))
                (body (cadr clause)))
@@ -1033,13 +1142,19 @@
   (list 'if-ir
         (compile-expr-full (nth 1 expr) env fenv)
         (compile-progn-full (cons 'progn (cddr expr)) env fenv)
-        (list 'lit 0)))
+        (list 'nil-ir)))
 
 (defun compile-unless (expr env fenv)
   (list 'if-ir
         (compile-expr-full (nth 1 expr) env fenv)
-        (list 'lit 0)
+        (list 'nil-ir)
         (compile-progn-full (cons 'progn (cddr expr)) env fenv)))
+
+(defun compile-while (expr env fenv)
+  "Compile (while test body...) - true iteration with no stack growth"
+  (let ((test (compile-expr-full (nth 1 expr) env fenv))
+        (body (compile-progn-full (cons 'progn (cddr expr)) env fenv)))
+    (list 'while-ir test body)))
 
 (defun compile-nth (expr env fenv)
   "Compile (nth n list) - optimize for constant indices"
@@ -1076,13 +1191,13 @@
        (list 'if-ir
              (compile-expr-full (car args) env fenv)
              (compile-and (cons 'and (cdr args)) env fenv)
-             (list 'lit 0))))))
+             (list 'nil-ir))))))
 
 (defun compile-or (expr env fenv)
   "Compile (or a b c ...) to nested if forms"
   (let ((args (cdr expr)))
     (cond
-      ((null args) (list 'lit 0))  ; (or) = nil
+      ((null args) (list 'nil-ir))  ; (or) = nil
       ((null (cdr args))  ; single arg - just compile it
        (compile-expr-full (car args) env fenv))
       (t  ; multiple args - (if a a (or b c ...)) but need temp to avoid double eval
@@ -1153,7 +1268,7 @@
 (defun compile-list-full (expr env fenv)
   (labels ((expand-list (elems)
              (if (null elems)
-                 (list 'lit 0)
+                 (list 'nil-ir)
                  (list 'cons-ir
                        (compile-expr-full (car elems) env fenv)
                        (expand-list (cdr elems))))))
@@ -1166,16 +1281,220 @@
     (let ((offset (env-lookup var env)))
       (if offset
           (list 'setq-ir offset (compile-expr-full val env fenv))
-          (list 'lit 0)))))  ;; Unknown var
+          (list 'nil-ir)))))  ;; Unknown var
+
+;;; ============================================================
+;;; Source-Level Inlining Nanopass
+;;; ============================================================
+;;; This pass inlines small functions at the SOURCE level before compilation.
+;;; It transforms function calls into their expanded bodies, recursively.
+;;; This is critical for performance - avoids function call overhead for
+;;; small predicates like whitespace?, digit?, alpha?, symbol-char?.
+
+(defun src-inline-expr (expr fenv)
+  "Inline small functions in source expression EXPR.
+   FENV is alist of (name params body) for all defuns."
+  (cond
+    ((null expr) nil)
+    ((not (consp expr)) expr)
+    ((eq (car expr) 'quote) expr)
+    ;; Function call - check if inlinable
+    ((and (symbolp (car expr))
+          (not (src-special-form? (car expr))))
+     (let ((fn-info (src-fn-lookup (car expr) fenv)))
+       (if (and fn-info (src-inlinable? fn-info))
+           ;; Inline: substitute params with args
+           (let* ((params (cadr fn-info))
+                  (body (caddr fn-info))
+                  (args (cdr expr)))
+             (if (= (length params) (length args))
+                 ;; Recursively inline in the result
+                 (src-inline-expr
+                  (src-subst body params args)
+                  fenv)
+                 ;; Arg count mismatch - just inline args
+                 (cons (car expr)
+                       (src-inline-args (cdr expr) fenv))))
+           ;; Not inlinable - just inline args
+           (cons (car expr)
+                 (src-inline-args (cdr expr) fenv)))))
+    ;; Special forms
+    ((eq (car expr) 'if)
+     (list 'if
+           (src-inline-expr (cadr expr) fenv)
+           (src-inline-expr (caddr expr) fenv)
+           (if (cadddr expr)
+               (src-inline-expr (cadddr expr) fenv)
+               nil)))
+    ((eq (car expr) 'progn)
+     (cons 'progn (src-inline-args (cdr expr) fenv)))
+    ((or (eq (car expr) 'let) (eq (car expr) 'let*))
+     (list (car expr)
+           (src-inline-bindings (cadr expr) fenv)
+           (src-inline-expr (caddr expr) fenv)))
+    ((eq (car expr) 'lambda)
+     (list 'lambda (cadr expr)
+           (src-inline-expr (caddr expr) fenv)))
+    ((eq (car expr) 'labels)
+     ;; Don't inline into labels - local functions might shadow
+     expr)
+    ((eq (car expr) 'cond)
+     (cons 'cond
+           (mapcar (lambda (clause)
+                     (src-inline-args clause fenv))
+                   (cdr expr))))
+    ((or (eq (car expr) 'when) (eq (car expr) 'unless))
+     (cons (car expr) (src-inline-args (cdr expr) fenv)))
+    ((or (eq (car expr) 'and) (eq (car expr) 'or))
+     (cons (car expr) (src-inline-args (cdr expr) fenv)))
+    ((eq (car expr) 'setq)
+     (list 'setq (cadr expr) (src-inline-expr (caddr expr) fenv)))
+    ((eq (car expr) 'while)
+     (cons 'while (src-inline-args (cdr expr) fenv)))
+    ((eq (car expr) 'function)
+     expr)
+    ((eq (car expr) 'funcall)
+     (cons 'funcall (src-inline-args (cdr expr) fenv)))
+    ;; Default: recurse
+    (t (cons (src-inline-expr (car expr) fenv)
+             (src-inline-expr (cdr expr) fenv)))))
+
+(defun src-inline-args (args fenv)
+  "Inline into a list of arguments"
+  (if (null args)
+      nil
+      (cons (src-inline-expr (car args) fenv)
+            (src-inline-args (cdr args) fenv))))
+
+(defun src-inline-bindings (bindings fenv)
+  "Inline into let/let* bindings"
+  (if (null bindings)
+      nil
+      (let ((b (car bindings)))
+        (cons (list (car b) (src-inline-expr (cadr b) fenv))
+              (src-inline-bindings (cdr bindings) fenv)))))
+
+(defun src-special-form? (sym)
+  "Check if symbol is a special form"
+  (let ((specials '(quote if progn let let* lambda labels cond when unless
+                    and or setq defun while function funcall)))
+    (if (null specials)
+        nil
+        (src-member? sym specials))))
+
+(defun src-member? (x lst)
+  "Check if x is in lst"
+  (cond
+    ((null lst) nil)
+    ((eq x (car lst)) t)
+    (t (src-member? x (cdr lst)))))
+
+(defun src-fn-lookup (name fenv)
+  "Look up function in fenv"
+  (cond
+    ((null fenv) nil)
+    ((eq name (car (car fenv))) (car fenv))
+    (t (src-fn-lookup name (cdr fenv)))))
+
+(defun src-inlinable? (fn-info)
+  "Check if function should be inlined.
+   Inline if: small body, not recursive, few params."
+  (let ((name (car fn-info))
+        (params (cadr fn-info))
+        (body (caddr fn-info)))
+    (and (<= (src-size body) 20)   ; Allow larger functions like alpha?
+         (not (src-calls? body name))
+         (<= (length params) 4))))
+
+(defun src-size (expr)
+  "Estimate size of source expression"
+  (cond
+    ((null expr) 1)
+    ((not (consp expr)) 1)
+    ((eq (car expr) 'quote) 1)
+    ((or (eq (car expr) 'progn)
+         (eq (car expr) 'and)
+         (eq (car expr) 'or))
+     (let ((sum 1) (es (cdr expr)))
+       (while (not (null es))
+         (setq sum (+ sum (src-size (car es))))
+         (setq es (cdr es)))
+       sum))
+    ((eq (car expr) 'if)
+     (+ 1 (src-size (cadr expr))
+        (src-size (caddr expr))
+        (if (cadddr expr) (src-size (cadddr expr)) 0)))
+    ((or (eq (car expr) 'let) (eq (car expr) 'let*))
+     (+ 2 (src-size (caddr expr))))
+    (t (+ 1 (length (cdr expr))))))
+
+(defun src-calls? (expr fn-name)
+  "Check if expression contains a call to fn-name"
+  (cond
+    ((null expr) nil)
+    ((not (consp expr)) nil)
+    ((eq (car expr) 'quote) nil)
+    ((and (symbolp (car expr)) (eq (car expr) fn-name)) t)
+    (t (or (src-calls? (car expr) fn-name)
+           (src-calls? (cdr expr) fn-name)))))
+
+(defun src-subst (expr params args)
+  "Substitute params with args in expression"
+  (cond
+    ((null expr) nil)
+    ((symbolp expr)
+     (let ((pos (src-param-pos expr params 0)))
+       (if pos
+           (nth pos args)
+           expr)))
+    ((not (consp expr)) expr)
+    ((eq (car expr) 'quote) expr)
+    (t (cons (src-subst (car expr) params args)
+             (src-subst (cdr expr) params args)))))
+
+(defun src-param-pos (name params idx)
+  "Find position of name in params"
+  (cond
+    ((null params) nil)
+    ((eq name (car params)) idx)
+    (t (src-param-pos name (cdr params) (+ idx 1)))))
+
+(defun src-inline-defuns (forms fenv)
+  "Apply source inlining to all defun bodies"
+  (if (null forms)
+      nil
+      (let ((f (car forms)))
+        (cons
+         (if (and (consp f) (eq (car f) 'defun))
+             (let* ((name (cadr f))
+                    (params (caddr f))
+                    (body-forms (cdddr f)))
+               (list* 'defun name params
+                      (src-inline-args body-forms fenv)))
+             (src-inline-expr f fenv))
+         (src-inline-defuns (cdr forms) fenv)))))
+
+(defun src-inline-all (forms)
+  "Apply source-level inlining to all forms.
+   First collects all defuns, then inlines into all bodies."
+  (let ((fenv (collect-defuns forms nil)))
+    (src-inline-defuns forms fenv)))
 
 ;;; ============================================================
 ;;; Full Program Compiler
 ;;; ============================================================
 
+#-sbcl
 (defun compile-forms (forms)
-  "Compile forms to (defun-list main-ir) - proper list like main compiler"
+  "Compile forms to (defun-list main-ir) - proper list like main compiler.
+   Applies TCO (tail-call optimization) to all defuns as a nanopass.
+   Note: Source-level inlining disabled - causes stack overflow in compiled reader."
+  ;; Skip source-level inlining for now - it creates too deep expressions
+  ;; (let* ((inlined-forms (src-inline-all forms)) ...)
   (let* ((fenv (collect-defuns forms nil))
-         (defuns (compile-all-defuns forms nil fenv nil))
+         (defuns-raw (compile-all-defuns forms nil fenv nil))
+         ;; Apply TCO nanopass to all compiled functions
+         (defuns (apply-tco-to-all-functions defuns-raw))
          (main-form (find-main-form forms nil))
          (main-ir (compile-expr-full main-form nil fenv)))
     (list defuns main-ir)))
@@ -1191,37 +1510,47 @@
 #+sbcl
 (defun compile-to-bytecode (expr)
   "Compile expression to ARM64 bytecode using existing codegen.
-   This bridges pure compiler → existing nc-codegen (which is already pure!)"
+   This bridges pure compiler to existing codegen (which is already pure!)"
   (let ((ir (compile-expr-v2 expr nil)))
-    ;; Call existing nc-codegen (it's already pure - just builds byte lists!)
-    ;; nc-codegen signature: (ir rtaddrs fnoffs temp-depth)
-    (let ((code-with-markers (nc-codegen ir nil nil 0)))
+    ;; Call existing codegen (it's already pure - just builds byte lists!)
+    ;; codegen signature: (ir rtaddrs fnoffs temp-depth)
+    (let ((code-with-markers (codegen ir nil nil 0)))
       ;; Resolve markers to actual bytes
-      (nc-resolve-calls code-with-markers nil))))
+      (resolve-calls code-with-markers nil))))
 
 #+sbcl
 (defun compile-program-simple (forms)
   "Compile simple program (single expression) to complete bytecode.
-   Uses existing nc-codegen-main which adds prologue/epilogue."
+   Uses existing codegen-main which adds prologue/epilogue."
   (if (null forms)
       nil
       (let ((main-expr (if (null (cdr forms))
                            (car forms)  ;; Single form
-                           (cons 'progn forms))))  ;; Multiple forms → progn
+                           (cons 'progn forms))))  ;; Multiple forms -> progn
         (let ((ir (compile-expr-v2 main-expr nil)))
-          ;; Use existing nc-codegen-main (adds prologue/epilogue)
-          (nc-codegen-main ir nil)))))
+          ;; Use existing codegen-main (adds prologue/epilogue)
+          (codegen-main ir nil)))))
 
-;;; Self-hosting entry point (SBCL-only - uses native-read-file which needs SBCL setup)
+;;; Self-hosting entry point
 #+sbcl
 (defun self-compile (source-path output-path)
-  "Pure Habu self-hosting compiler entry point.
-   Reads source, compiles with pure compiler, generates ARM64, writes executable.
-   This function is designed to be compiled to native code and run standalone."
+  "Pure Habu self-hosting compiler entry point (SBCL version).
+   Reads source, compiles with pure compiler, generates ARM64, writes executable."
   (let ((source (native-read-file source-path)))
     (if source
         (progn
-          ;; Use deliver which uses the pure compiler (no SBCL dependencies)
+          (deliver source output-path)
+          (sb-ext:exit :code 0))
+        (progn
+          (sb-ext:exit :code 1)))))
+
+#-sbcl
+(defun self-compile (source-path output-path)
+  "Pure Habu self-hosting compiler entry point (native version).
+   Reads source, compiles with pure compiler, generates ARM64, writes executable."
+  (let ((source (native-read-file source-path)))
+    (if source
+        (progn
           (deliver source output-path)
           (sys-exit 0))
         (progn
@@ -1233,42 +1562,26 @@
 
 #-sbcl
 (defun compile-program (forms)
-  "Compile forms to IR with function definitions.
-   Returns (ir . defuns) where:
-   - ir is the main program IR
-   - defuns is a list of function definitions
-   This is the pure version for native Stage 1.
-   Note: Does not call reset-symbol-table since *symbol-state*
-   is not initialized in native code."
-  (let* ((result (compile-forms forms))
-         (defuns (car result))
-         (mir (cadr result)))
-    (cons mir defuns)))
-
-#+sbcl
-(defun compile-program (forms)
   "Compile forms to complete ARM64 bytecode with function linking.
-   This is the full pipeline: parse → IR → lift-lambdas → codegen → link.
-   Returns flat bytecode ready for Mach-O wrapping."
-  (reset-symbol-table)
+   This is the full pipeline: parse -> IR -> lift-lambdas -> codegen -> link.
+   Returns flat bytecode ready for Mach-O wrapping.
+   Native version - does not call reset-symbol-table.
+   Uses codegen.lisp API: lift-lambdas takes (ir lambdas), returns (ir . lambdas)"
   (let* ((r (compile-forms forms))
-         (defun-fns-raw (car r))
-         (mir-raw (cadr r))
-         ;; Add nil for free-vars to match main compiler format
-         ;; Format: (name params body-ir param-base free-vars)
-         (defun-fns (mapcar (lambda (d)
-                                   (list (car d) (cadr d) (caddr d) (cadddr d) nil))
-                                 defun-fns-raw)))
-    ;; Lift lambdas from main IR
-    (let* ((mvb-result (lift-lambdas mir-raw))
+         (defun-fns (car r))
+         (mir-raw (cadr r)))
+    ;; Lift lambdas from main IR - codegen.lisp takes (ir lambdas)
+    (let* ((mvb-result (lift-lambdas mir-raw nil))
            (mir (car mvb-result))
            (main-lambdas (cdr mvb-result)))
-      ;; Lift lambdas from all defun bodies
-      (let* ((mvb-result2 (lift-lambdas-from-fns defun-fns nil nil))
+      ;; Lift lambdas from all defun bodies - codegen.lisp uses lift-lambdas-from-defuns
+      (let* ((mvb-result2 (lift-lambdas-from-defuns defun-fns nil main-lambdas))
              (lifted-defuns (car mvb-result2))
              (defun-lambdas (cdr mvb-result2))
-             ;; Combine: defuns + main-lambdas + defun-lambdas
-             (fns (append lifted-defuns main-lambdas defun-lambdas)))
+             ;; Convert lambdas to defun format for codegen
+             (lambda-defuns (lambdas-to-defuns defun-lambdas nil))
+             ;; Combine: defuns + lambda-defuns
+             (fns (append lifted-defuns lambda-defuns)))
         (if (null fns)
             ;; No functions - simple case
             (resolve-calls (codegen-main mir nil) nil)
@@ -1277,7 +1590,7 @@
                                            (codegen mir nil nil 0)
                                            (epilogue)))
                    (main-size (code-size main-code-temp))
-                   (fnoffs (build-fnoffs fns main-size nil))
+                   (fnoffs (build-fnoffs fns main-size))
                    (main-code (append (prologue)
                                       (codegen mir nil fnoffs 0)
                                       (epilogue)))
@@ -1285,10 +1598,15 @@
                    (all-code (append main-code fn-code)))
               (resolve-calls all-code fnoffs)))))))
 
+;; NOTE: compile-program for SBCL is defined in compiler-sbcl.lisp
+;; with signature (forms rtaddrs &key (optimize t))
+;; Do NOT redefine here as it would conflict with deliver's expectations
+
 ;;; ============================================================
 ;;; Pure Delivery Helper Functions (no CL runtime dependencies)
 ;;; ============================================================
 
+#-sbcl
 (defun collect-extern-calls (code)
   "Collect extern call markers from code. Returns ((name . pos) ...)"
   (labels ((collect (items acc)
@@ -1300,6 +1618,7 @@
                        (collect (cdr items) acc))))))
     (collect code nil)))
 
+#-sbcl
 (defun get-unique-imports (extern-calls)
   "Get unique import names from extern calls list"
   (labels ((unique (calls seen acc)
@@ -1324,10 +1643,12 @@
           (car alist)
           (assoc-string key (cdr alist)))))
 
+#-sbcl
 (defun flatten-extern-calls (code stub-alist code-base-addr)
   "Replace extern call markers with BL instructions using assoc list.
    Returns (flat-code . extern-positions)
-   Note: resolve-calls emits markers followed by 3 zeros - must skip them."
+   Note: resolve-calls emits markers followed by 3 zeros - must skip them.
+   Native Habu version - SBCL uses hash-table version in compiler-sbcl.lisp."
   (labels ((flatten (items result positions skip-count)
              (cond
                ;; Done
@@ -1377,7 +1698,8 @@
 
 ;; deliver uses read-all, wrap-bytecode-with-heap-for-imports,
 ;; write-macho-executable-with-imports-and-heap from main compiler/macho
-;; This function works in both SBCL and native Habu (no #+sbcl guard)
+;; This is the native Habu version - SBCL uses compiler-sbcl.lisp's deliver
+#-sbcl
 (defun deliver (source output-path)
   "Compile source string to native executable using pure compiler.
    This uses the full extern-call flattening pipeline.

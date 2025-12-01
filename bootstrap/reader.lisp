@@ -4,6 +4,12 @@
 ;;; For SBCL, we just use the package system
 #+sbcl (in-package :habu)
 
+;;; SBCL version of while - native version is in compiler.lisp
+#+sbcl
+(defmacro while (test &body body)
+  "SBCL version of while loop"
+  `(loop while ,test do (progn ,@body)))
+
 ;;; Global intern table for native mode
 (defvar *intern-table* nil)
 (defvar *lambda-counter* 0)
@@ -280,46 +286,57 @@
 
 #-sbcl
 (defun map-list (fn lst)
-  "Map function over list"
-  (if (null lst)
-      nil
-      (cons (funcall fn (car lst)) (map-list fn (cdr lst)))))
+  "Map function over list - iterative"
+  (let ((current lst)
+        (result nil))
+    (while (not (null current))
+      (setq result (cons (funcall fn (car current)) result))
+      (setq current (cdr current)))
+    (reverse result)))
 
 #-sbcl
 (defun assoc-get (key alist)
-  "Get value for key in alist"
-  (if (null alist)
-      nil
-      (if (eq key (car (car alist)))
-          (cdr (car alist))
-          (assoc-get key (cdr alist)))))
+  "Get value for key in alist - iterative"
+  (let ((current alist)
+        (found nil)
+        (result nil))
+    (while (and (not found) (not (null current)))
+      (if (eq key (car (car current)))
+          (progn
+            (setq found t)
+            (setq result (cdr (car current))))
+          (setq current (cdr current))))
+    result))
 
 ;;; String comparison
 
 #-sbcl
-(defun string=-iter (s1 s2 i len)
-  (if (>= i len)
-      t
-      (if (= (string-ref s1 i) (string-ref s2 i))
-          (string=-iter s1 s2 (+ i 1) len)
-          nil)))
-
-#-sbcl
 (defun string= (s1 s2)
-  "Compare two strings for equality"
+  "Compare two strings for equality - iterative"
   (let ((len1 (string-length s1))
         (len2 (string-length s2)))
     (if (= len1 len2)
-        (string=-iter s1 s2 0 len1)
+        (let ((i 0)
+              (equal t))
+          (while (and equal (< i len1))
+            (if (= (string-ref s1 i) (string-ref s2 i))
+                (setq i (+ i 1))
+                (setq equal nil)))
+          equal)
         nil)))
 
 (defun find-interned (name table)
-  "Find symbol with NAME in intern TABLE (alist of (name . symbol))"
-  (if (null table)
-      nil
-      (if (string= name (car (car table)))
-          (cdr (car table))
-          (find-interned name (cdr table)))))
+  "Find symbol with NAME in intern TABLE (alist of (name . symbol)) - iterative"
+  (let ((current table)
+        (found nil)
+        (result nil))
+    (while (and (not found) (not (null current)))
+      (if (string= name (car (car current)))
+          (progn
+            (setq found t)
+            (setq result (cdr (car current))))
+          (setq current (cdr current))))
+    result))
 
 #-sbcl
 (defun intern (name)
@@ -357,6 +374,7 @@
 (defun digit? (ch)
   (and (>= ch #x30) (<= ch #x39)))
 
+#-sbcl
 (defun digit-val (ch)
   (- ch #x30))
 
@@ -382,34 +400,55 @@
       (= ch #x25))) ; %
 
 ;;; Get character at position (0 if beyond end)
+#-sbcl
 (defun char-at (str pos)
   (if (>= pos (string-length str))
       #x0
       (string-ref str pos)))
 
-;;; Skip whitespace and comments
+;;; Skip whitespace and comments - iterative with inlined predicates
+#-sbcl
 (defun skip-line (source pos)
-  (let ((ch (char-at source pos)))
-    (if (or (= ch #x0A) (= ch #x0))
-        (+ pos #x1)
-        (skip-line source (+ pos #x1)))))
+  "Skip to end of line - iterative"
+  (let ((current-pos pos))
+    (while (let ((ch (char-at source current-pos)))
+             (and (not (= ch #x0A)) (not (= ch #x0))))
+      (setq current-pos (+ current-pos 1)))
+    (+ current-pos 1)))
 
+#-sbcl
 (defun skip-ws (source pos)
-  (let ((ch (char-at source pos)))
-    (cond
-      ((whitespace? ch) (skip-ws source (+ pos #x1)))
-      ((= ch #x3B)  ; semicolon - line comment
-       (skip-ws source (skip-line source (+ pos #x1))))
-      (t pos))))
+  "Skip whitespace and comments - iterative with inlined whitespace check"
+  (let ((current-pos pos)
+        (done nil))
+    (while (not done)
+      (let ((ch (char-at source current-pos)))
+        (cond
+          ;; Inline whitespace?: space(32), tab(9), newline(10), return(13)
+          ((or (= ch #x20) (= ch #x09) (= ch #x0A) (= ch #x0D))
+           (setq current-pos (+ current-pos 1)))
+          ((= ch #x3B)  ; semicolon - line comment
+           (setq current-pos (skip-line source (+ current-pos 1))))
+          (t (setq done t)))))
+    current-pos))
 
-;;; Read digits - helper for read-int
+;;; Read digits - helper for read-int - iterative with inlined digit check
+#-sbcl
 (defun read-digits (source pos n)
-  (let ((ch (char-at source pos)))
-    (if (digit? ch)
-        (read-digits source (+ pos #x1) (+ (* n #xA) (digit-val ch)))
-        (cons n pos))))
+  "Read decimal digits iteratively with inlined predicates"
+  (let ((current-pos pos)
+        (current-n n))
+    (while (let ((ch (char-at source current-pos)))
+             ;; Inline digit?: ch >= '0' (48) and ch <= '9' (57)
+             (and (>= ch #x30) (<= ch #x39)))
+      (let ((ch (char-at source current-pos)))
+        ;; Inline digit-val: ch - '0'
+        (setq current-n (+ (* current-n 10) (- ch #x30))))
+      (setq current-pos (+ current-pos 1)))
+    (cons current-n current-pos)))
 
 ;;; Read integer - returns (value . new-pos)
+#-sbcl
 (defun read-int (source pos)
   (let ((ch (char-at source pos)))
     (cond ((= ch #x2D) ; minus
@@ -431,61 +470,155 @@
       (and (>= ch #x41) (<= ch #x46))
       (and (>= ch #x61) (<= ch #x66))))
 
+#-sbcl
 (defun read-hex-digits (source pos n)
-  (let ((ch (char-at source pos)))
-    (if (hex-digit? ch)
-        (read-hex-digits source (+ pos #x1) (+ (* n #x10) (hex-digit-val ch)))
-        (cons n pos))))
+  "Read hexadecimal digits iteratively with inlined predicates"
+  (let ((current-pos pos)
+        (current-n n))
+    (while (let ((ch (char-at source current-pos)))
+             ;; Inline hex-digit?: 0-9, A-F, a-f
+             (or (and (>= ch #x30) (<= ch #x39))
+                 (and (>= ch #x41) (<= ch #x46))
+                 (and (>= ch #x61) (<= ch #x66))))
+      (let ((ch (char-at source current-pos)))
+        ;; Inline hex-digit-val
+        (setq current-n (+ (* current-n 16)
+                           (cond ((and (>= ch #x30) (<= ch #x39)) (- ch #x30))
+                                 ((and (>= ch #x41) (<= ch #x46)) (+ (- ch #x41) 10))
+                                 (t (+ (- ch #x61) 10))))))
+      (setq current-pos (+ current-pos 1)))
+    (cons current-n current-pos)))
+
+;;; Helper: reverse list and convert to vector
+(defun list-to-vector-rev (lst len)
+  "Convert reversed list to vector of given length"
+  (let ((vec (make-vector len))
+        (i (- len 1)))
+    (while (>= i 0)
+      (vector-set vec i (car lst))
+      (setq lst (cdr lst))
+      (setq i (- i 1)))
+    vec))
 
 ;;; Read string literal - returns (string . new-pos)
+;;; Uses list accumulator to avoid O(n^2) string allocations
+#-sbcl
 (defun read-str-chars (source pos acc)
-  (let ((ch (char-at source pos)))
-    (cond
-      ((= ch #x22) ; closing quote
-       (cons acc (+ pos #x1)))
-      ((= ch #x5C) ; backslash escape
-       (let ((next-ch (char-at source (+ pos #x1))))
-         (cond
-           ((= next-ch #x6E) ; \n
-            (read-str-chars source (+ pos #x2) (string-concat acc (make-string-from-vector (cons #x0A nil)))))
-           ((= next-ch #x74) ; \t
-            (read-str-chars source (+ pos #x2) (string-concat acc (make-string-from-vector (cons #x09 nil)))))
-           ((= next-ch #x22) ; \"
-            (read-str-chars source (+ pos #x2) (string-concat acc (make-string-from-vector (cons #x22 nil)))))
-           ((= next-ch #x5C) ; \\
-            (read-str-chars source (+ pos #x2) (string-concat acc (make-string-from-vector (cons #x5C nil)))))
-           (t
-            (read-str-chars source (+ pos #x2) (string-concat acc (make-string-from-vector (cons next-ch nil))))))))
-      ((= ch #x0) ; EOF
-       (cons acc pos))
-      (t
-       (read-str-chars source (+ pos #x1) (string-concat acc (make-string-from-vector (cons ch nil))))))))
+  "Read string characters using list accumulator (O(n) allocation)"
+  (let ((current-pos pos)
+        (char-list nil)  ; reversed list of chars
+        (char-count 0)
+        (done nil))
+    (while (not done)
+      (let ((ch (char-at source current-pos)))
+        (cond
+          ((= ch #x22) ; closing quote
+           (setq done t)
+           (setq current-pos (+ current-pos 1)))
+          ((= ch #x5C) ; backslash escape
+           (let ((next-ch (char-at source (+ current-pos 1))))
+             (cond
+               ((= next-ch #x6E) ; \n
+                (setq char-list (cons #x0A char-list))
+                (setq char-count (+ char-count 1)))
+               ((= next-ch #x74) ; \t
+                (setq char-list (cons #x09 char-list))
+                (setq char-count (+ char-count 1)))
+               ((= next-ch #x22) ; \"
+                (setq char-list (cons #x22 char-list))
+                (setq char-count (+ char-count 1)))
+               ((= next-ch #x5C) ; \\
+                (setq char-list (cons #x5C char-list))
+                (setq char-count (+ char-count 1)))
+               (t
+                (setq char-list (cons next-ch char-list))
+                (setq char-count (+ char-count 1))))
+             (setq current-pos (+ current-pos 2))))
+          ((= ch #x0) ; EOF
+           (setq done t))
+          (t
+           (setq char-list (cons ch char-list))
+           (setq char-count (+ char-count 1))
+           (setq current-pos (+ current-pos 1))))))
+    ;; Convert list to string
+    (if (= char-count 0)
+        (cons acc current-pos)
+        (let ((vec (list-to-vector-rev char-list char-count)))
+          (let ((new-str (make-string-from-vector vec)))
+            (cons (if (= (string-length acc) 0)
+                      new-str
+                      (string-concat acc new-str))
+                  current-pos))))))
 
+#-sbcl
 (defun read-str (source pos)
   (read-str-chars source (+ pos #x1) ""))
 
 ;;; Read symbol - returns (symbol-or-number . new-pos)
+;;; Uses vector accumulator to avoid O(n^2) string allocations
+#-sbcl
 (defun read-sym-chars (source pos acc)
-  (let ((ch (char-at source pos)))
-    (if (symbol-char? ch)
-        (read-sym-chars source (+ pos #x1)
-                        (string-concat acc (make-string-from-vector (cons ch nil))))
-        (cons acc pos))))
+  "Read symbol characters using vector accumulator (O(n) allocation).
+   Inlines symbol-char? check to avoid function call overhead."
+  (let ((start-pos pos)
+        (current-pos pos)
+        (source-len (string-length source)))
+    ;; First pass: count characters with inlined symbol-char? check
+    (while (let ((ch (if (>= current-pos source-len)
+                         #x0
+                         (string-ref source current-pos))))
+             (or (and (>= ch #x41) (<= ch #x5A))   ; A-Z
+                 (and (>= ch #x61) (<= ch #x7A))   ; a-z
+                 (and (>= ch #x30) (<= ch #x39))   ; 0-9
+                 (= ch #x2D)   ; -
+                 (= ch #x5F)   ; _
+                 (= ch #x2B)   ; +
+                 (= ch #x2A)   ; *
+                 (= ch #x2F)   ; /
+                 (= ch #x3D)   ; =
+                 (= ch #x3C)   ; <
+                 (= ch #x3E)   ; >
+                 (= ch #x21)   ; !
+                 (= ch #x3F)   ; ?
+                 (= ch #x26)   ; &
+                 (= ch #x3A)   ; :
+                 (= ch #x25))) ; %
+      (setq current-pos (+ current-pos 1)))
+    ;; Calculate length
+    (let ((len (- current-pos start-pos)))
+      (if (= len 0)
+          (cons acc current-pos)
+          ;; Allocate vector of exact size, fill it, convert once
+          (let ((vec (make-vector len))
+                (i 0))
+            (while (< i len)
+              (vector-set vec i (char-at source (+ start-pos i)))
+              (setq i (+ i 1)))
+            ;; Convert vector to string and concat with acc
+            (let ((new-str (make-string-from-vector vec)))
+              (cons (if (= (string-length acc) 0)
+                        new-str
+                        (string-concat acc new-str))
+                    current-pos)))))))
 
 (defun upcase-char (ch)
   (if (and (>= ch #x61) (<= ch #x7A))
       (- ch #x20)
       ch))
 
-(defun upcase-string-iter (s i len acc)
-  (if (>= i len)
-      acc
-      (upcase-string-iter s (+ i 1) len
-                          (string-concat acc (make-string-from-vector (cons (upcase-char (string-ref s i)) nil))))))
-
 (defun upcase-string (s)
-  (upcase-string-iter s 0 (string-length s) ""))
+  "Upcase string using vector accumulator (O(n) allocation)"
+  (let ((len (string-length s)))
+    (if (= len 0)
+        s
+        (let ((vec (make-vector len))
+              (i 0))
+          (while (< i len)
+            (vector-set vec i (upcase-char (string-ref s i)))
+            (setq i (+ i 1)))
+          (make-string-from-vector vec)))))
 
+#-sbcl
 (defun read-sym (source pos)
   (let ((result (read-sym-chars source pos "")))
     (let ((name (car result))
@@ -518,26 +651,38 @@
 ;;; habu-read returns (value . new-pos)
 (defun habu-read (source pos)
   (labels
-      ;; Read list elements
-      ((read-list-elems (pos)
-         (let ((pos2 (skip-ws source pos)))
-           (let ((ch (char-at source pos2)))
-             (cond
-               ((= ch #x29) (cons nil (+ pos2 #x1)))  ; )
-               ((= ch #x2E)  ; dot for improper list
-                (let ((result (read-one (+ pos2 #x1))))
-                  (let ((cdr-val (car result))
-                        (pos3 (cdr result)))
-                    (let ((pos4 (skip-ws source pos3)))
-                      (cons cdr-val (+ pos4 #x1))))))  ; skip )
-               ((= ch #x0) (cons nil pos2))  ; EOF
-               (t
-                (let ((elem-result (read-one pos2)))
-                  (let ((elem (car elem-result))
-                        (pos3 (cdr elem-result)))
-                    (let ((rest-result (read-list-elems pos3)))
-                      (cons (cons elem (car rest-result))
-                            (cdr rest-result))))))))))
+      ;; Read list elements iteratively using while loop
+      ((read-list-elems (start-pos)
+         (let ((current-pos start-pos)
+               (acc nil)
+               (done nil)
+               (final-cdr nil))
+           (while (not done)
+             (let ((pos2 (skip-ws source current-pos)))
+               (setq current-pos pos2)
+               (let ((ch (char-at source current-pos)))
+                 (cond
+                   ((= ch #x29)  ; )
+                    (setq done t)
+                    (setq current-pos (+ current-pos 1)))
+                   ((= ch #x2E)  ; dot for improper list
+                    (let ((result (read-one (+ current-pos 1))))
+                      (setq final-cdr (car result))
+                      (setq current-pos (cdr result)))
+                    (setq current-pos (+ (skip-ws source current-pos) 1))  ; skip )
+                    (setq done t))
+                   ((= ch #x0)  ; EOF
+                    (setq done t))
+                   (t
+                    (let ((elem-result (read-one current-pos)))
+                      (setq acc (cons (car elem-result) acc))
+                      (setq current-pos (cdr elem-result))))))))
+           ;; Reverse acc and attach final-cdr as tail
+           (let ((result final-cdr))
+             (while acc
+               (setq result (cons (car acc) result))
+               (setq acc (cdr acc)))
+             (cons result current-pos))))
 
        ;; Read list
        (read-list (pos)
@@ -639,38 +784,56 @@
 
     (read-one pos)))
 
-;; Helper for pipe-quoted symbols
+;; Helper for pipe-quoted symbols - uses two-pass to avoid O(n^2)
 (defun read-pipe-symbol (source pos acc)
-  (let ((ch (char-at source pos)))
-    (if (= ch #x7C)  ; closing |
-        (cons acc (+ pos #x1))
-        (if (= ch #x0)  ; EOF
-            (cons acc pos)
-            (read-pipe-symbol source (+ pos #x1)
-                              (string-concat acc (make-string-from-vector (cons ch nil))))))))
+  "Read pipe-quoted symbol using vector accumulator (O(n) allocation)"
+  (let ((start-pos pos)
+        (current-pos pos))
+    ;; First pass: find closing | or EOF
+    (while (and (not (= (char-at source current-pos) #x7C))
+                (not (= (char-at source current-pos) #x0)))
+      (setq current-pos (+ current-pos 1)))
+    ;; Calculate length
+    (let ((len (- current-pos start-pos)))
+      (if (= len 0)
+          (cons acc (if (= (char-at source current-pos) #x7C)
+                        (+ current-pos 1)
+                        current-pos))
+          ;; Allocate vector and fill
+          (let ((vec (make-vector len))
+                (i 0))
+            (while (< i len)
+              (vector-set vec i (char-at source (+ start-pos i)))
+              (setq i (+ i 1)))
+            (let ((new-str (make-string-from-vector vec)))
+              (cons (if (= (string-length acc) 0)
+                        new-str
+                        (string-concat acc new-str))
+                    (if (= (char-at source current-pos) #x7C)
+                        (+ current-pos 1)
+                        current-pos))))))))
 
-;;; Read all forms from source string
-(defun read-all-iter (source pos acc)
-  (let ((pos2 (skip-ws source pos)))
-    (if (>= pos2 (string-length source))
-        (reverse acc)
-        (let ((result (habu-read source pos2)))
-          (let ((form (car result))
-                (new-pos (cdr result)))
-            (if (>= new-pos (string-length source))
-                (reverse (cons form acc))
-                (read-all-iter source new-pos (cons form acc))))))))
-
+;;; Read all forms from source string - iterative
+#-sbcl
 (defun read-all (source)
-  "Read all forms from source string"
-  (read-all-iter source #x0 nil))
+  "Read all forms from source string - iterative"
+  (let ((pos 0)
+        (acc nil)
+        (source-len (string-length source)))
+    (while (< pos source-len)
+      (setq pos (skip-ws source pos))
+      (if (< pos source-len)
+          (let ((result (habu-read source pos)))
+            (setq acc (cons (car result) acc))
+            (setq pos (cdr result)))))
+    (reverse acc)))
 
 #-sbcl
 (defun reverse (lst)
-  (reverse-iter lst nil))
-
-#-sbcl
-(defun reverse-iter (lst acc)
-  (if (null lst)
-      acc
-      (reverse-iter (cdr lst) (cons (car lst) acc))))
+  "Reverse list - iterative"
+  (let ((current lst)
+        (acc nil))
+    (while (not (null current))
+      (setq acc (cons (car current) acc))
+      (setq current (cdr current)))
+    acc))

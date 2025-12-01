@@ -410,6 +410,35 @@
          (contains-continue-p (caddr ir))))
     (t nil)))
 
+(defun apply-tco-to-function (compiled-fn)
+  "Apply TCO optimization to a compiled function.
+   compiled-fn has structure: (name params body-ir param-base)
+   Returns the same structure with body-ir transformed if it has self-tail-calls."
+  (let* ((name (car compiled-fn))
+         (params (cadr compiled-fn))
+         (body-ir (caddr compiled-fn))
+         (param-base (cadddr compiled-fn))
+         (nparams (length params)))
+    (if (has-self-tail-call-p body-ir name)
+        ;; Convert self-tail-calls to continue-ir and wrap in loop-ir
+        (let* ((converted-ir (convert-self-tail-calls body-ir name nparams))
+               (wrapped-ir (wrap-with-loop converted-ir)))
+          (list name params wrapped-ir param-base))
+        ;; No tail calls - return unchanged
+        compiled-fn)))
+
+(defun apply-tco-to-all-functions (compiled-fns)
+  "Apply TCO optimization to all compiled functions."
+  (if (null compiled-fns)
+      nil
+      (cons (apply-tco-to-function (car compiled-fns))
+            (apply-tco-to-all-functions (cdr compiled-fns)))))
+
+;;; Register TCO as a function-level nanopass
+;;; Note: TCO is applied per-function via apply-tco-to-function,
+;;; not via the standard IR optimization pipeline
+(register-optimization 'tail-call-optimization #'apply-tco-to-function)
+
 ;;; ============================================================
 ;;; Pass 5: Let-Flattening
 ;;; ============================================================
@@ -518,6 +547,203 @@
 (register-optimization 'progn-flattening #'flatten-progn)
 
 ;;; ============================================================
+;;; Pass 7: Source-Level Function Inlining
+;;; ============================================================
+;;; This pass operates on SOURCE expressions, not IR, to inline small
+;;; functions before compilation. It must be run on defun bodies.
+
+(defun inline-source (expr fenv)
+  "Inline small functions in source expression EXPR.
+   FENV is alist of (name params body) for inlinable functions.
+   This transforms source-level function calls."
+  (cond
+    ((null expr) nil)
+    ((not (consp expr)) expr)
+    ((eq (car expr) 'quote) expr)  ; Don't descend into quotes
+    ;; Function call - check if inlinable
+    ((and (symbolp (car expr))
+          (not (special-form-p (car expr))))
+     (let ((fn-info (source-lookup (car expr) fenv)))
+       (if (and fn-info (source-inlinable? fn-info))
+           ;; Inline: wrap body in let binding params to args
+           (let* ((params (cadr fn-info))
+                  (body (caddr fn-info))
+                  (args (cdr expr)))
+             (if (= (length params) (length args))
+                 ;; Recursively inline in the inlined body
+                 (inline-source
+                  (source-substitute body params args)
+                  fenv)
+                 ;; Arg count mismatch - don't inline
+                 (cons (car expr)
+                       (mapcar (lambda (a) (inline-source a fenv))
+                               (cdr expr)))))
+           ;; Not inlinable - just inline args
+           (cons (car expr)
+                 (mapcar (lambda (a) (inline-source a fenv))
+                         (cdr expr))))))
+    ;; Special forms - recurse carefully
+    ((eq (car expr) 'if)
+     (list 'if
+           (inline-source (cadr expr) fenv)
+           (inline-source (caddr expr) fenv)
+           (if (cadddr expr)
+               (inline-source (cadddr expr) fenv)
+               nil)))
+    ((eq (car expr) 'progn)
+     (cons 'progn
+           (mapcar (lambda (e) (inline-source e fenv))
+                   (cdr expr))))
+    ((or (eq (car expr) 'let) (eq (car expr) 'let*))
+     (list (car expr)
+           (mapcar (lambda (b)
+                     (list (car b)
+                           (inline-source (cadr b) fenv)))
+                   (cadr expr))
+           (inline-source (caddr expr) fenv)))
+    ((eq (car expr) 'lambda)
+     (list 'lambda (cadr expr)
+           (inline-source (caddr expr) fenv)))
+    ((eq (car expr) 'labels)
+     ;; Don't inline into labels definitions for now
+     expr)
+    ((eq (car expr) 'cond)
+     (cons 'cond
+           (mapcar (lambda (clause)
+                     (mapcar (lambda (e) (inline-source e fenv))
+                             clause))
+                   (cdr expr))))
+    ((or (eq (car expr) 'when) (eq (car expr) 'unless))
+     (cons (car expr)
+           (mapcar (lambda (e) (inline-source e fenv))
+                   (cdr expr))))
+    ((or (eq (car expr) 'and) (eq (car expr) 'or))
+     (cons (car expr)
+           (mapcar (lambda (e) (inline-source e fenv))
+                   (cdr expr))))
+    ((eq (car expr) 'setq)
+     (list 'setq (cadr expr)
+           (inline-source (caddr expr) fenv)))
+    ((eq (car expr) 'while)
+     (cons 'while
+           (mapcar (lambda (e) (inline-source e fenv))
+                   (cdr expr))))
+    ;; Default: recurse into car and cdr
+    (t (cons (inline-source (car expr) fenv)
+             (inline-source (cdr expr) fenv)))))
+
+(defun special-form-p (sym)
+  "Check if symbol is a special form that shouldn't be inlined"
+  (member sym '(quote if progn let let* lambda labels cond when unless
+                and or setq defun while function funcall)))
+
+(defun source-lookup (name fenv)
+  "Look up function info in fenv"
+  (cond
+    ((null fenv) nil)
+    ((eq name (car (car fenv))) (car fenv))
+    (t (source-lookup name (cdr fenv)))))
+
+(defun source-inlinable? (fn-info)
+  "Check if function is small enough to inline.
+   FN-INFO is (name params body)"
+  (let ((name (car fn-info))
+        (params (cadr fn-info))
+        (body (caddr fn-info)))
+    (and (< (source-expr-size body) 15)  ; Small body
+         (not (source-calls-self? body name))  ; Not recursive
+         (<= (length params) 4))))  ; Few params
+
+(defun source-expr-size (expr)
+  "Estimate size of source expression"
+  (cond
+    ((null expr) 1)
+    ((not (consp expr)) 1)
+    ((eq (car expr) 'quote) 1)
+    ((or (eq (car expr) 'progn)
+         (eq (car expr) 'and)
+         (eq (car expr) 'or))
+     (let ((sum 1))
+       (dolist (e (cdr expr))
+         (setq sum (+ sum (source-expr-size e))))
+       sum))
+    ((eq (car expr) 'if)
+     (+ 1 (source-expr-size (cadr expr))
+        (source-expr-size (caddr expr))
+        (if (cadddr expr) (source-expr-size (cadddr expr)) 0)))
+    ((or (eq (car expr) 'let) (eq (car expr) 'let*))
+     (+ 2 (source-expr-size (caddr expr))))
+    (t (1+ (length (cdr expr))))))
+
+(defun source-calls-self? (expr fn-name)
+  "Check if expression calls fn-name"
+  (cond
+    ((null expr) nil)
+    ((not (consp expr)) nil)
+    ((eq (car expr) 'quote) nil)
+    ((and (symbolp (car expr)) (eq (car expr) fn-name)) t)
+    (t (or (source-calls-self? (car expr) fn-name)
+           (source-calls-self? (cdr expr) fn-name)))))
+
+(defun source-substitute (expr params args)
+  "Replace parameters with arguments in expression"
+  (cond
+    ((null expr) nil)
+    ((symbolp expr)
+     (let ((pos (source-find-param expr params 0)))
+       (if pos
+           (nth pos args)
+           expr)))
+    ((not (consp expr)) expr)
+    ((eq (car expr) 'quote) expr)
+    (t (cons (source-substitute (car expr) params args)
+             (source-substitute (cdr expr) params args)))))
+
+(defun source-find-param (name params idx)
+  "Find position of name in params list"
+  (cond
+    ((null params) nil)
+    ((eq name (car params)) idx)
+    (t (source-find-param name (cdr params) (1+ idx)))))
+
+(defun inline-all-defuns (forms)
+  "Apply source inlining to all defun bodies in forms.
+   First collects inlinable functions, then inlines into all bodies."
+  ;; Pass 1: collect inlinable functions
+  (let ((fenv (collect-inlinable-fns forms nil)))
+    ;; Pass 2: inline into all forms
+    (mapcar (lambda (form)
+              (if (and (consp form) (eq (car form) 'defun))
+                  (let* ((name (cadr form))
+                         (params (caddr form))
+                         (body-forms (cdddr form)))
+                    (list* 'defun name params
+                           (mapcar (lambda (b) (inline-source b fenv))
+                                   body-forms)))
+                  (inline-source form fenv)))
+            forms)))
+
+(defun collect-inlinable-fns (forms acc)
+  "Collect (name params body) for all inlinable functions"
+  (if (null forms)
+      acc
+      (let ((form (car forms)))
+        (if (and (consp form) (eq (car form) 'defun))
+            (let* ((name (cadr form))
+                   (params (caddr form))
+                   (body-forms (cdddr form))
+                   (body (if (null (cdr body-forms))
+                             (car body-forms)
+                             (cons 'progn body-forms)))
+                   (fn-info (list name params body)))
+              (collect-inlinable-fns
+               (cdr forms)
+               (if (source-inlinable? fn-info)
+                   (cons fn-info acc)
+                   acc)))
+            (collect-inlinable-fns (cdr forms) acc)))))
+
+;;; ============================================================
 ;;; Optimization Pipeline
 ;;; ============================================================
 
@@ -543,6 +769,7 @@
 ;;; Helper: has-tag (used by optimizer, avoids nc- prefix)
 ;;; ============================================================
 
+#-sbcl
 (defun has-tag (ir tag)
   "Check if IR has the given tag"
   (and (consp ir) (eq (car ir) tag)))

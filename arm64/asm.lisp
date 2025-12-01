@@ -14,13 +14,13 @@
    ;; Arithmetic
    #:add #:sub #:mul #:sdiv #:neg
    ;; Bitwise
-   #:and* #:orr #:eor #:bic #:and-imm #:lsl #:lsr #:asr
+   #:and* #:orr #:eor #:bic #:lsl #:lsr #:asr
    ;; Memory
-   #:ldr #:str #:ldp #:stp #:ldrb-reg #:strb-reg
+   #:ldr #:str #:ldp #:stp #:ldrb #:strb
    ;; Compare
    #:cmp #:cset
    ;; Branch
-   #:b #:bl #:br #:blr #:b.eq #:b.ne #:b.lt #:b.le #:b.gt #:b.ge #:ret
+   #:b #:bl #:br #:blr #:cbz #:cbnz #:b.eq #:b.ne #:b.lt #:b.le #:b.gt #:b.ge #:ret
    ;; System
    #:svc
    ;; Condition codes
@@ -179,13 +179,41 @@
 ;;; Bitwise Operations
 ;;; ============================================================
 
-(defun and* (rd rn rm)
-  "AND Xd, Xn, Xm
-   Bitwise AND. Named and* to avoid CL conflict."
-  (encode (logior #x8A000000
-                  (ash rm 16)
-                  (ash rn 5)
-                  rd)))
+(defun and* (rd rn rm-or-imm &key imm)
+  "AND Xd, Xn, Xm  or  AND Xd, Xn, #mask
+   Bitwise AND. Named and* to avoid CL conflict.
+   Use :imm t for immediate mode with common masks:
+   #x7 (low 3 bits), #xF (low 4 bits), #xFF (low 8 bits),
+   -4 (~3), -8 (~7), -16 (~15), -32 (~31) for alignment."
+  (if imm
+      ;; Immediate mode - encode common masks
+      ;; ARM64 logical immediate encoding: 0x92400000 | (immr << 16) | (imms << 10) | Rn | Rd
+      (let ((base #x92400000)
+            (rn-shift (ash rn 5)))
+        (cond
+          ;; Keep low bits masks (N=1, immr=0, imms=bits-1)
+          ((= rm-or-imm #x7)   ; low 3 bits: imms=2
+           (encode (logior base (ash 2 10) rn-shift rd)))
+          ((= rm-or-imm #xF)   ; low 4 bits: imms=3
+           (encode (logior base (ash 3 10) rn-shift rd)))
+          ((= rm-or-imm #xFF)  ; low 8 bits: imms=7
+           (encode (logior base (ash 7 10) rn-shift rd)))
+          ;; Alignment masks (clear low bits) - immr=64-N, imms=63-N
+          ((or (= rm-or-imm #xFFFFFFFFFFFFFFFC) (= rm-or-imm -4))   ; ~3
+           (encode (logior base (ash 62 16) (ash 61 10) rn-shift rd)))
+          ((or (= rm-or-imm #xFFFFFFFFFFFFFFF8) (= rm-or-imm -8))   ; ~7
+           (encode (logior base (ash 61 16) (ash 60 10) rn-shift rd)))
+          ((or (= rm-or-imm #xFFFFFFFFFFFFFFF0) (= rm-or-imm -16))  ; ~15
+           (encode (logior base (ash 60 16) (ash 59 10) rn-shift rd)))
+          ((or (= rm-or-imm #xFFFFFFFFFFFFFFE0) (= rm-or-imm -32))  ; ~31
+           (encode (logior base (ash 59 16) (ash 58 10) rn-shift rd)))
+          (t
+           (error "and* :imm - unsupported mask #x~X. Use common masks or encode manually." rm-or-imm))))
+      ;; Register mode
+      (encode (logior #x8A000000
+                      (ash rm-or-imm 16)
+                      (ash rn 5)
+                      rd))))
 
 (defun orr (rd rn rm)
   "ORR Xd, Xn, Xm
@@ -208,17 +236,6 @@
    Bit clear (AND with NOT Xm)."
   (encode (logior #x8A200000
                   (ash rm 16)
-                  (ash rn 5)
-                  rd)))
-
-(defun and-imm (rd rn imm-n imm-r imm-s)
-  "AND Xd, Xn, #imm
-   AND with bitmask immediate. Use encode-bitmask for imm values.
-   For clearing low 4 bits: N=1, immr=0, imms=59 (0x3B)"
-  (encode (logior #x92000000
-                  (ash imm-n 22)
-                  (ash imm-r 16)
-                  (ash imm-s 10)
                   (ash rn 5)
                   rd)))
 
@@ -306,21 +323,37 @@
                   (ash rn 5)
                   rt1)))
 
-(defun ldrb-reg (rt rn rm)
-  "LDRB Wt, [Xn, Xm]
-   Load byte from address Xn+Xm, zero-extend to 64-bit."
-  (encode (logior #x38606800
-                  (ash rm 16)
-                  (ash rn 5)
-                  rt)))
+(defun ldrb (rt rn rm-or-offset &key reg)
+  "LDRB Wt, [Xn, Xm]  or  LDRB Wt, [Xn, #offset]
+   Load byte, zero-extend to 64-bit.
+   Use :reg t for register offset, otherwise immediate offset."
+  (if reg
+      ;; Register offset: LDRB Wt, [Xn, Xm]
+      (encode (logior #x38606800
+                      (ash rm-or-offset 16)
+                      (ash rn 5)
+                      rt))
+      ;; Immediate offset: LDRB Wt, [Xn, #offset]
+      (encode (logior #x39400000
+                      (ash (logand rm-or-offset #xFFF) 10)
+                      (ash rn 5)
+                      rt))))
 
-(defun strb-reg (rt rn rm)
-  "STRB Wt, [Xn, Xm]
-   Store byte to address Xn+Xm."
-  (encode (logior #x38206800
-                  (ash rm 16)
-                  (ash rn 5)
-                  rt)))
+(defun strb (rt rn rm-or-offset &key reg)
+  "STRB Wt, [Xn, Xm]  or  STRB Wt, [Xn, #offset]
+   Store byte.
+   Use :reg t for register offset, otherwise immediate offset."
+  (if reg
+      ;; Register offset: STRB Wt, [Xn, Xm]
+      (encode (logior #x38206800
+                      (ash rm-or-offset 16)
+                      (ash rn 5)
+                      rt))
+      ;; Immediate offset: STRB Wt, [Xn, #offset]
+      (encode (logior #x39000000
+                      (ash (logand rm-or-offset #xFFF) 10)
+                      (ash rn 5)
+                      rt))))
 
 ;;; ============================================================
 ;;; Compare
@@ -369,6 +402,20 @@
   "BR Xn
    Branch to register (no link)."
   (encode (logior #xD61F0000 (ash rn 5))))
+
+(defun cbz (rt offset)
+  "CBZ Xt, label
+   Compare and branch if zero. Offset in instructions (not bytes)."
+  (encode (logior #xB4000000
+                  (ash (logand offset #x7FFFF) 5)
+                  rt)))
+
+(defun cbnz (rt offset)
+  "CBNZ Xt, label
+   Compare and branch if not zero. Offset in instructions (not bytes)."
+  (encode (logior #xB5000000
+                  (ash (logand offset #x7FFFF) 5)
+                  rt)))
 
 (defun b.eq (offset)
   "B.EQ label

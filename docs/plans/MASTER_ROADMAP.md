@@ -18,44 +18,39 @@ This document tracks the implementation roadmap for the Habu self-hosting Lisp c
 
 ## In Progress
 
-### Stack Overflow Fix
-**Priority**: P1 (Blocker for self-hosting)
+### Stage 1 → Stage 2 Generation
+**Priority**: P1 (Blocker for fixed-point verification)
 
-The reader uses recursive functions that blow the stack when processing large files:
-- `read-sym-chars` - recurses per character
-- `upcase-string-iter` - recurses per character
-- `read-list-elems` - recurses per list element
+Stage 1 compiler runs natively but needs to generate Stage 2 binary.
+Current blocker: crash during compilation of larger programs.
 
-**Option A: Rewrite reader to use `while` loops**
-- Estimated: 2-3 functions to rewrite
-- Lower risk, mechanical transformation
-- Works immediately with existing codegen
+## Completed Recently
 
-**Option B: Implement TCO**
-- More general solution
-- Higher complexity
-- Fixes all recursive functions automatically
+### Stack Overflow Fix - DONE
+- Rewrote `read-list-elems` to use iterative `while` loop
+- Added TCO (Tail Call Optimization) for recursive functions
+
+### Tail Call Optimization (TCO) - DONE
+**Implemented as nanopass architecture**:
+
+**Pass 1: apply-tco-to-function** (optimize.lisp)
+- Identifies self-tail-calls in function body
+- Transforms to `loop-ir` / `continue-ir` nodes
+- Applied via `apply-tco-to-all-functions` in compile-forms
+
+**Pass 2: codegen** (codegen.lisp)
+- Handles `loop-ir` and `continue-ir` nodes
+- Emits `:tco-branch` markers during code generation
+- `resolve-tco-branches` converts markers to backward B instructions
+
+Files modified:
+- `optimize.lisp`: TCO transformation pass
+- `compiler.lisp`: Integrated TCO into compilation pipeline
+- `codegen.lisp`: loop-ir/continue-ir handling, resolve-tco-branches
+
+Tested: 100,000 recursive calls without stack overflow
 
 ## Planned Features
-
-### 1. Tail Call Optimization (TCO)
-**Priority**: P2
-
-Implement as two nanopasses:
-
-**Pass 1: mark-tail-positions**
-- Walk IR and mark calls in tail position
-- Tail position = result is immediately returned
-- Handle: if branches, progn last form, let body
-
-**Pass 2: TCO codegen**
-- For self-recursive tail calls: emit `b` (jump) instead of `bl` (call)
-- Reuse current stack frame
-- Update arguments in-place before jump
-
-Files to modify:
-- `compiler.lisp`: Add mark-tail-positions pass
-- `codegen.lisp`: Handle `tail-call-ir` node
 
 ### 2. DWARF5 Debug Information
 **Priority**: P3
@@ -76,24 +71,56 @@ Files to modify:
 
 ### 3. Register Allocator
 **Priority**: P4
+**Status**: Architecture implemented, codegen integration pending
 
-Current codegen spills heavily. Implement proper allocation:
+Current codegen uses an "accumulator model" - all results go to x0, spill to stack.
+New register model uses virtual registers with linear scan allocation.
 
-**Linear Scan Algorithm** (simpler):
-1. Compute live intervals for each variable
-2. Sort by start position
-3. Allocate registers greedily, spill when exhausted
+**Nanopass Architecture** (implemented in `regalloc.lisp`):
 
-**Graph Coloring** (better results):
-1. Build interference graph
-2. Color with k=8 (available registers)
-3. Spill nodes that can't be colored
+**Pass 1: ir-to-tac** (IR → Three-Address Code)
+- Converts tree IR to linear TAC with virtual registers
+- Input: `(add (var 0) (mul (lit 2) (var 1)))`
+- Output: `((tac-var v0 0) (tac-lit v1 2) (tac-var v2 1) (tac-binop v3 mul v1 v2) (tac-binop v4 add v0 v3))`
 
-ARM64 available registers: x9-x15, x19-x23 (~12 registers)
+**Pass 2: compute-liveness** (TAC → TAC + Liveness Info)
+- Backward dataflow analysis
+- Computes live-in/live-out sets per instruction
+- Formula: `live-in[i] = use[i] ∪ (live-out[i] - def[i])`
 
-Files to modify:
-- `codegen.lisp`: Replace temp-slot allocation
-- New file: `regalloc.lisp`
+**Pass 3: compute-intervals** (Liveness → Live Intervals)
+- Converts liveness info to `(vreg start-pos end-pos)` tuples
+- Sorted by start position for linear scan
+
+**Pass 4: linear-scan** (Intervals → Allocation)
+- Allocates physical registers (x9-x15 for temporaries)
+- Spills to stack when registers exhausted
+- Returns map: `vreg → physical-reg | (:spill slot)`
+
+**Pass 5: tac-codegen** (TAC + Allocation → ARM64)
+- Generates ARM64 from TAC with register assignments
+- STATUS: Placeholder - needs implementation
+
+**TAC Instruction Format**:
+```lisp
+(tac-lit vreg value)           ; vreg = literal
+(tac-var vreg offset)          ; vreg = env[offset]
+(tac-setvar offset vreg)       ; env[offset] = vreg
+(tac-binop vreg op vr1 vr2)    ; vreg = vr1 op vr2
+(tac-call vreg fn args)        ; vreg = fn(args...)
+(tac-if vreg then else)        ; conditional branch
+(tac-return vreg)              ; return value
+```
+
+**Register Usage**:
+- x9-x15: 7 allocatable temporaries (caller-saved)
+- x19, x21, x22: Values spanning calls (callee-saved, x20 reserved)
+- x20: Environment frame base (reserved)
+- x24: Closure environment (reserved)
+- x26-x28: Code base, heap base, bump pointer (reserved)
+
+Files:
+- `reg-alloc.lisp`: Full nanopass implementation (580 lines)
 
 ### 4. Heap Allocator with mmap
 **Priority**: P5
@@ -143,33 +170,62 @@ Implementation:
 
 ### Nanopass Design
 
-All optimization passes should follow nanopass principles:
+All optimization passes follow nanopass principles:
 1. Each pass does one thing
 2. Input IR -> Output IR (same or different type)
 3. Passes are composable and can be enabled/disabled
 4. Easy to test each pass in isolation
 
-Current passes:
-1. `read-all`: Source -> S-expressions
-2. `compile-program`: S-expressions -> IR + defuns
-3. `lift-lambdas`: IR -> IR (with lambdas extracted)
-4. `codegen`: IR -> ARM64 bytes
-5. `build-macho`: bytes -> executable
+**Current Compilation Pipeline**:
+```
+Source → read-all → S-expressions
+                        ↓
+                   compile-program → (defun-list, main-ir)
+                        ↓
+                   apply-tco-to-all-functions (optimize.lisp)
+                        ↓
+                   codegen → ARM64 bytes + :tco-branch markers
+                        ↓
+                   resolve-tco-branches → ARM64 bytes (resolved)
+                        ↓
+                   build-macho → Mach-O executable
+```
 
-Planned passes:
-- `mark-tail-positions`: IR -> IR (with tail markers)
-- `optimize-ir`: IR -> IR (constant folding, etc.)
-- `allocate-registers`: IR -> IR (with register assignments)
+**Register Allocation Pipeline** (reg-alloc.lisp):
+```
+IR → ir-to-tac → TAC (Three-Address Code)
+                   ↓
+             compute-liveness → TAC + live-in/live-out sets
+                   ↓
+             compute-intervals → (vreg, start, end) tuples
+                   ↓
+             linear-scan → allocation: vreg → phys-reg | spill
+                   ↓
+             tac-codegen → ARM64 bytes (TODO)
+```
+
+### Intermediate Representations
+
+**Tree IR**: Original compilation output
+- Nested expression trees: `(add (var 0) (mul (lit 2) (var 1)))`
+- Used by current codegen (accumulator model)
+
+**TAC (Three-Address Code)**: Linear SSA-like form
+- Virtual registers: `v0, v1, v2, ...`
+- Explicit operations: `(tac-binop v3 add v1 v2)`
+- Used by register allocator
 
 ### File Organization
 
 ```
 bootstrap/
-  compiler.lisp      - Frontend: parsing to IR
-  codegen.lisp       - Backend: IR to ARM64
+  compiler.lisp      - Frontend: S-expr to Tree IR
+  optimize.lisp      - Optimization passes (TCO)
+  codegen.lisp       - Backend: Tree IR to ARM64
+  reg-alloc.lisp     - Register allocation nanopasses
   macho.lisp         - Linker: ARM64 to Mach-O
+  macho-utils.lisp   - Native Mach-O utilities
   reader.lisp        - Lisp reader
-  regalloc.lisp      - (future) Register allocator
   dwarf.lisp         - (future) Debug info generator
 ```
 

@@ -2,10 +2,8 @@
 ;;;
 ;;; Buffer-based Mach-O generation - no stream I/O
 ;;; Pure Habu - uses only features available in bootstrap compiler
-
-;; Load ARM64 assembler for instruction encoding
-#+sbcl
-(load "arm64/asm.lisp")
+;;;
+;;; Dependencies: arm64/asm.lisp (loaded via ASDF)
 
 (in-package :habu)
 

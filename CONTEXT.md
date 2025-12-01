@@ -63,14 +63,53 @@ Full Stage 1 compiler (reader + compiler + codegen + macho-utils) works:
    - Added SBCL `while` macro for compatibility with native version
    - Remaining: read-sym-chars, upcase-string-iter recurse per char (less critical)
 
-### In Progress: Stage 1 Generate Stage 2
+6. **TCO (Tail Call Optimization) Implemented**
+   - Nanopass architecture: IR transformation + code emission
+   - Pass 1: `apply-tco-to-function` (optimize.lisp) transforms self-tail-calls to `loop-ir`/`continue-ir`
+   - Pass 2: `codegen` handles loop-ir/continue-ir, emits `:tco-branch` markers
+   - Pass 3: `resolve-tco-branches` converts markers to backward B instructions
+   - Fixed `code-size` to count `:tco-branch` markers as 4 bytes
+   - Tested: countdown(100000) works without stack overflow (would need 200MB stack without TCO)
 
-Testing if Stage 1 can generate a binary (call `deliver` natively).
+7. **Register Allocation Architecture (NEW)**
+   - Created `bootstrap/reg-alloc.lisp` with 5-nanopass pipeline
+   - TAC (Three-Address Code) format with virtual registers
+   - Liveness analysis via backward dataflow
+   - Linear scan allocation to x9-x15
+   - Full documentation in source file header (150 lines)
+   - Remaining: implement tac-codegen for ARM64 emission
 
-**Current Blocker:**
-- Stage 1 with reader + compiler crashes at offset 111744 with x0=-1 (invalid cdr)
-- Appears to be a symbol lookup or function return issue in compiler
-- Need to isolate which function in compiler.lisp is failing
+8. **Native resolve-calls function (NEW)**
+   - Added `#-sbcl` version of `resolve-calls` to codegen.lisp
+   - Handles `:call-fn`, `:tail-call-fn`, `:loop-start`, `:loop-continue` markers
+   - Uses arm64 intrinsics (arm64:bl, arm64:b) for branch emission
+   - Essential for native compiler's compile-program function
+
+9. **resolve-tco-branches marker preservation (FIXED)**
+   - Bug: resolve-tco-branches was flattening `:call-fn` markers as nested lists
+   - This turned `(:call-fn FACTORIAL)` into loose `:call-fn` and `FACTORIAL` elements
+   - Fix: Added `marker-p` predicate to preserve call/extern markers as single items
+   - Core tests now pass: basic, function call, recursive factorial, nested calls
+
+10. **Fixed duplicate function definitions (IN PROGRESS)**
+    - Added `#-sbcl` guards to functions in reader.lisp, compiler.lisp, codegen.lisp, optimize.lisp, macho-utils.lisp
+    - These files provide native (non-SBCL) versions of functions already defined in compiler-sbcl.lisp
+    - ISSUE: macho.lisp had real implementations wrongly guarded with `#-sbcl` (fixed 2 of them)
+    - ISSUE: codegen.lisp has duplicate definitions in `#+sbcl` block AND with `#-sbcl` guards
+    - Remaining: cond-eq/ne/lt/ge/le/gt and cbz are defined twice in codegen.lisp
+
+### In Progress: Fix ASDF Warnings
+
+The ASDF system has "redefining" warnings that need to be fixed:
+1. `wrap-bytecode-with-heap-for-imports` - FIXED (removed wrong `#-sbcl`)
+2. `write-macho-executable-with-imports-and-heap` - FIXED (removed wrong `#-sbcl`)
+3. `cond-eq`, `cond-ne`, `cond-lt`, `cond-ge`, `cond-le`, `cond-gt`, `cbz` - duplicate definitions in codegen.lisp
+
+**Next Steps:**
+1. Fix remaining duplicate definitions in codegen.lisp (lines 498-509 vs 634-645)
+2. Remove either `#-sbcl` versions or `#+sbcl` block versions
+3. Ensure `deliver-v3` works in SBCL (currently has `#-sbcl` guard)
+4. Test reader compilation again
 
 ### Previous Bug Fixes
 
@@ -104,7 +143,9 @@ Testing if Stage 1 can generate a binary (call `deliver` natively).
 bootstrap/
   compiler-sbcl.lisp  - SBCL bootstrap compiler (5400+ lines)
   compiler.lisp       - Habu compiler (no SBCL dependencies)
-  codegen.lisp        - ARM64 code generator
+  optimize.lisp       - Optimization passes (TCO)
+  codegen.lisp        - ARM64 code generator (accumulator model)
+  reg-alloc.lisp      - Register allocation nanopasses (NEW)
   macho.lisp          - Mach-O linker (#+sbcl versions)
   macho-utils.lisp    - Mach-O utilities (#-sbcl native versions)
   reader.lisp         - Habu reader
@@ -172,24 +213,29 @@ sp+0x3F0: x29 (fp), x30 (lr)
 
 See `docs/plans/MASTER_ROADMAP.md` for detailed implementation plan.
 
-### Priority 1: Stack Overflow Fix
-1. Rewrite reader functions to use `while` loops (iterative)
-2. Alternatively: Implement TCO (Tail Call Optimization)
+### Priority 1: Stack Overflow Fix - DONE
+1. Rewrote read-list-elems to use `while` loop (iterative)
+2. Implemented TCO (see item 6 in Key Improvements)
 
-### Priority 2: TCO Implementation (Nanopass)
-1. Add `mark-tail-positions` nanopass to identify tail calls
-2. Add TCO codegen - jump instead of call for self-recursive tail calls
-3. Benefits: eliminates stack overflow in recursive functions
+### Priority 2: TCO Implementation (Nanopass) - DONE
+1. `apply-tco-to-function` identifies and transforms self-tail-calls
+2. `codegen` emits `:tco-branch` markers, resolved in `resolve-tco-branches`
+3. Tested with 100,000 recursive calls without stack overflow
 
 ### Priority 3: DWARF5 Debug Info
 1. Generate line number tables for lldb debugging
 2. Function symbol info for stack traces
 3. Critical for debugging Stage 1/2 crashes
 
-### Priority 4: Register Allocator
-1. Replace current spill-heavy codegen
-2. Linear scan or graph coloring algorithm
-3. Significant performance improvement
+### Priority 4: Register Allocator - ARCHITECTURE DONE
+Implemented in `bootstrap/reg-alloc.lisp` as 5 nanopasses:
+1. **ir-to-tac**: Tree IR → Three-Address Code (linear, virtual registers)
+2. **compute-liveness**: Backward dataflow analysis for live ranges
+3. **compute-intervals**: Liveness info → (vreg, start, end) tuples
+4. **linear-scan**: Intervals → allocation map (vreg → x9-x15 or spill)
+5. **tac-codegen**: TAC + allocation → ARM64 (TODO)
+
+Remaining: Implement tac-codegen to replace current accumulator codegen
 
 ### Priority 5: Heap Allocator with mmap
 1. Use mmap syscall instead of fixed heap

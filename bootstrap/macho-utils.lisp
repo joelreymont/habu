@@ -6,6 +6,7 @@
 (in-package :habu)
 
 ;;; Pure version of buf-zeros (replaces dotimes with labels)
+#-sbcl
 (defun buf-zeros (count)
   "Create a list of COUNT zeros using pure recursion"
   (labels ((make-zeros (n acc)
