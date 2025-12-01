@@ -1,6 +1,6 @@
 ;;;; ASDF system definition for Habu bootstrap compiler
 
-(defsystem "habu"
+(asdf:defsystem "habu"
   :description "Habu Common Lisp bootstrap compiler"
   :version "0.1.0"
   :author "Joel Reymont"
@@ -29,6 +29,9 @@
    ;; Register allocation nanopasses
    (:file "reg-alloc" :depends-on ("compiler-sbcl" "optimize"))
 
+   ;; Native ARM64 garbage collector
+   (:file "gc" :depends-on ("arm64"))
+
    ;; Mach-O linker (needs ARM64 asm)
    (:file "macho" :depends-on ("compiler-sbcl" "arm64"))
 
@@ -39,13 +42,13 @@
    (:file "compiler" :depends-on ("compiler-sbcl"))
 
    ;; ARM64 code generator
-   (:file "codegen" :depends-on ("compiler-sbcl" "optimize" "arm64"))
+   (:file "codegen" :depends-on ("compiler-sbcl" "optimize" "arm64" "gc"))
 
    ;; Mach-O utilities for native code
    (:file "macho-utils" :depends-on ("compiler-sbcl" "macho"))))
 
 ;;; Separate system for tests
-(defsystem "habu/tests"
+(asdf:defsystem "habu/tests"
   :description "Habu compiler test suite"
   :depends-on ("habu")
   :components

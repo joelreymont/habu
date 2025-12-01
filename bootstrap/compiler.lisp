@@ -1086,8 +1086,8 @@
 
          ;; native-read-file: expand to let* with sys-open/read/close
          ;; Expands to: (let* ((fd (sys-open path 0 0))
-         ;;                     (buf (make-vector 131072))  ; 128KB buffer for large files
-         ;;                     (n (sys-read fd buf 131072)))
+         ;;                     (buf (make-vector 524288))  ; 512KB buffer for combined sources
+         ;;                     (n (sys-read fd buf 524288)))
          ;;               (sys-close fd)
          ;;               (buffer-to-string buf n))
          ((eq (car expr) 'native-read-file)
@@ -1098,8 +1098,8 @@
             (compile-expr-full
              (list 'let* (list (list path-sym (nth 1 expr))
                                (list fd-sym (list 'sys-open path-sym 0 0))
-                               (list buf-sym (list 'make-vector 131072))
-                               (list n-sym (list 'sys-read fd-sym buf-sym 131072)))
+                               (list buf-sym (list 'make-vector 524288))
+                               (list n-sym (list 'sys-read fd-sym buf-sym 524288)))
                    (list 'progn
                          (list 'sys-close fd-sym)
                          (list 'buffer-to-string buf-sym n-sym)))
@@ -1547,16 +1547,32 @@
           (sb-ext:exit :code 1)))))
 
 #-sbcl
+(defun concat5 (a b c d e)
+  "Concatenate 5 strings using iterative method (avoids broken string-concat)"
+  (let ((total (+ (string-length a)
+                  (+ (string-length b)
+                     (+ (string-length c)
+                        (+ (string-length d) (string-length e)))))))
+    ;; Build list in reverse order for concat-string-list-iter
+    (concat-string-list-iter (list e d c b a) total)))
+
+#-sbcl
 (defun self-compile (source-path output-path)
   "Pure Habu self-hosting compiler entry point (native version).
-   Reads source, compiles with pure compiler, generates ARM64, writes executable."
-  (let ((source (native-read-file source-path)))
-    (if source
-        (progn
+   Reads all source files, concatenates them, compiles to native executable.
+   source-path is ignored - we read the hardcoded bootstrap paths.
+   Uses native-read-file-large to handle files >65KB (each file can be up to 100KB).
+   NOTE: Uses hardcoded paths because string-concat has a codegen bug."
+  (let* ((r (native-read-file-large "/Users/joel/Work/habu/bootstrap/reader.lisp"))
+         (c (native-read-file-large "/Users/joel/Work/habu/bootstrap/compiler.lisp"))
+         (o (native-read-file-large "/Users/joel/Work/habu/bootstrap/optimize.lisp"))
+         (g (native-read-file-large "/Users/joel/Work/habu/bootstrap/codegen.lisp"))
+         (m (native-read-file-large "/Users/joel/Work/habu/bootstrap/macho-utils.lisp")))
+    (if (and r c o g m)
+        (let ((source (concat5 r c o g m)))
           (deliver source output-path)
           (sys-exit 0))
-        (progn
-          (sys-exit 1)))))
+        (sys-exit 1))))
 
 ;;; ============================================================
 ;;; Full Program Compilation
@@ -1751,7 +1767,6 @@
 #+sbcl (export '(compile-to-bytecode compile-program-simple self-compile
           compile-program deliver) :habu)
 
-;;; Native entry point - self-compile with hardcoded test paths
-;;; This is executed when the compiled binary runs
-#-sbcl
-(self-compile "/Users/joel/Work/habu/bootstrap/compiler.lisp" "/tmp/habu-stage2")
+;;; Native entry point: When building Stage 1, use the main entry point
+;;; defined in the combined source file (self-compile is called explicitly
+;;; from the main expression, not as a top-level form in compiler.lisp)

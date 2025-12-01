@@ -629,14 +629,12 @@
                       (let ((rr (read-list-elems p3)))
                         (cons (cons el (car rr)) (cdr rr)))))))))
        (read-list (p) (read-list-elems (+ p 1)))
-       ;; Feature check: :habu is always present in native Habu, :sbcl is always absent
+       ;; Feature check for building native code:
+       ;; :habu is always present, :sbcl is ABSENT (target is native, not SBCL)
+       ;; This ensures #-sbcl forms ARE included (native code) and #+sbcl are skipped
        (feature-present-p (feature-name)
          (let ((uname (string-upcase feature-name)))
-           (or (string= uname "HABU")
-               ;; In SBCL bootstrap, we also have :sbcl - but this code runs in native
-               ;; where :sbcl should be absent. For bootstrap in SBCL, SBCL's own
-               ;; reader handles #+sbcl before this code ever sees it.
-               nil)))
+           (string= uname "HABU")))
        (read-sharp (p)
          (let ((ch (char-at source (+ p 1))))
            (cond
@@ -1975,11 +1973,15 @@
          ;; === High-level file I/O (using sys-* primitives) ===
          ;; native-read-file - read entire file to string
          ;; Expands to: (let* ((fd (sys-open path O_RDONLY 0))
-         ;;                     (buf (make-vector 131072))  ; 128KB buffer for large files
-         ;;                     (n (sys-read fd buf 131072)))
+         ;;                     (buf (make-vector 524288))  ; 512KB buffer for combined sources
+         ;;                     (n (sys-read fd buf 524288)))
          ;;               (sys-close fd)
          ;;               (buffer-to-string buf n))
          ((eq op 'native-read-file)
+          ;; Uses 65536 element vector = 512KB storage, reads up to 65536 bytes
+          ;; NOTE: make-vector allocates 8 bytes per element, so vector size must be
+          ;; chosen carefully. 65536 elements = 512KB vector, allows reading 65KB files.
+          ;; For larger files, use native-read-file-large which reads in chunks.
           (let ((path-var (gensym "PATH"))
                 (fd-var (gensym "FD"))
                 (buf-var (gensym "BUF"))
@@ -1987,8 +1989,8 @@
             (sys:compile
              (list 'LET* (list (list path-var (cadr expr))
                                (list fd-var (list 'sys-open path-var #x0 0))  ; O_RDONLY = 0
-                               (list buf-var (list 'make-vector 131072))
-                               (list n-var (list 'sys-read fd-var buf-var 131072)))
+                               (list buf-var (list 'make-vector 65536))
+                               (list n-var (list 'sys-read fd-var buf-var 65536)))
                    (list 'sys-close fd-var)
                    (list 'buffer-to-string buf-var n-var))
              env fenv)))
@@ -2054,35 +2056,41 @@
          ;;                   (sys-close fd)
          ;;                   (concat-string-list chunks total))))
          ((eq op 'native-read-file-large)
+          ;; BUG #22 FIX: Use iterative while loop instead of recursive labels
+          ;; This avoids stack overflow for large files (74KB+ would be 19+ recursive calls)
+          ;; Strategy: Use single reusable buffer, accumulate chunks in list, then concat
+          ;; Expands to:
+          ;; (let* ((path <path-expr>)
+          ;;        (fd (sys-open path 0 0))
+          ;;        (buf (make-vector 4096))  ; reused buffer
+          ;;        (chunks nil)
+          ;;        (total 0)
+          ;;        (n 0))
+          ;;   (while (progn (setq n (sys-read fd buf 4096)) (> n 0))
+          ;;     (setq chunks (cons (buffer-to-string buf n) chunks))
+          ;;     (setq total (+ total n)))
+          ;;   (sys-close fd)
+          ;;   (concat-string-list-iter chunks total))
           (let ((path-var (gensym "PATH"))
                 (fd-var (gensym "FD"))
                 (buf-var (gensym "BUF"))
-                (n-var (gensym "N"))
-                (chunk-var (gensym "CHUNK"))
-                (next-chunks-var (gensym "NEXT-CHUNKS"))
-                (next-total-var (gensym "NEXT-TOTAL"))
                 (chunks-var (gensym "CHUNKS"))
                 (total-var (gensym "TOTAL"))
-                (result-list-var (gensym "RESULT-LIST"))
-                (read-chunks-fn (gensym "READ-CHUNKS")))
+                (n-var (gensym "N")))
             (sys:compile
              (list 'let* (list (list path-var (cadr expr))
-                               (list fd-var (list 'sys-open path-var #x0 0)))
-                   (list 'labels (list (list read-chunks-fn (list chunks-var total-var)
-                                             ;; BUG #21 FIX: Use 4KB buffer to avoid heap exhaustion
-                                             (list 'let* (list (list buf-var (list 'make-vector 4096))
-                                                               (list n-var (list 'sys-read fd-var buf-var 4096)))
-                                                   (list 'if (list '= n-var 0)
-                                                         (list 'list chunks-var total-var)
-                                                         (list 'let* (list (list chunk-var (list 'buffer-to-string buf-var n-var))
-                                                                           (list next-chunks-var (list 'cons chunk-var chunks-var))
-                                                                           (list next-total-var (list '+ total-var n-var)))
-                                                               (list read-chunks-fn next-chunks-var next-total-var))))))
-                         (list 'let* (list (list result-list-var (list read-chunks-fn nil 0))
-                                           (list chunks-var (list 'car result-list-var))
-                                           (list total-var (list 'car (list 'cdr result-list-var))))
-                               (list 'sys-close fd-var)
-                               (list 'concat-string-list chunks-var total-var))))
+                               (list fd-var (list 'sys-open path-var #x0 0))
+                               (list buf-var (list 'make-vector 4096))
+                               (list chunks-var nil)
+                               (list total-var 0)
+                               (list n-var 0))
+                   (list 'while (list 'progn
+                                     (list 'setq n-var (list 'sys-read fd-var buf-var 4096))
+                                     (list '> n-var 0))
+                         (list 'setq chunks-var (list 'cons (list 'buffer-to-string buf-var n-var) chunks-var))
+                         (list 'setq total-var (list '+ total-var n-var)))
+                   (list 'sys-close fd-var)
+                   (list 'concat-string-list-iter chunks-var total-var))
              env fenv)))
          ;; concat-string-list - concatenate list of strings (in reverse order) into single string
          ;; Expands to: (let* ((vec (make-vector total-len))
@@ -2140,6 +2148,52 @@
                                (list concat-fn (list 'reverse chunks-var) 0 0))))
              env
              nil)))  ; nil fenv
+         ;; concat-string-list-iter - ITERATIVE version to avoid stack overflow
+         ;; Uses two nested while loops instead of recursion
+         ;; Expands to:
+         ;; (let* ((chunks <chunks-expr>)
+         ;;        (total <total-expr>)
+         ;;        (vec (make-vector total))
+         ;;        (rev-chunks (reverse chunks))
+         ;;        (offset 0))
+         ;;   (while rev-chunks
+         ;;     (let* ((chunk (car rev-chunks))
+         ;;            (len (string-length chunk))
+         ;;            (i 0))
+         ;;       (while (< i len)
+         ;;         (vector-set vec (+ offset i) (string-ref chunk i))
+         ;;         (setq i (+ i 1)))
+         ;;       (setq offset (+ offset len))
+         ;;       (setq rev-chunks (cdr rev-chunks))))
+         ;;   (make-string-from-vector vec))
+         ((eq op 'concat-string-list-iter)
+          (let* ((chunks-var (gensym "CHUNKS"))
+                 (total-var (gensym "TOTAL"))
+                 (vec-var (gensym "VEC"))
+                 (rev-chunks-var (gensym "REV-CHUNKS"))
+                 (offset-var (gensym "OFFSET"))
+                 (chunk-var (gensym "CHUNK"))
+                 (len-var (gensym "LEN"))
+                 (i-var (gensym "I")))
+            (sys:compile
+             (list 'let* (list (list chunks-var (cadr expr))
+                               (list total-var (caddr expr))
+                               (list vec-var (list 'make-vector total-var))
+                               (list rev-chunks-var (list 'reverse chunks-var))
+                               (list offset-var 0))
+                   (list 'while rev-chunks-var
+                         (list 'let* (list (list chunk-var (list 'car rev-chunks-var))
+                                           (list len-var (list 'string-length chunk-var))
+                                           (list i-var 0))
+                               (list 'while (list '< i-var len-var)
+                                     (list 'vector-set vec-var
+                                           (list '+ offset-var i-var)
+                                           (list 'string-ref chunk-var i-var))
+                                     (list 'setq i-var (list '+ i-var 1)))
+                               (list 'setq offset-var (list '+ offset-var len-var))
+                               (list 'setq rev-chunks-var (list 'cdr rev-chunks-var))))
+                   (list 'make-string-from-vector vec-var))
+             env fenv)))
          ;; char-upcase - convert lowercase char code to uppercase
          ;; Transform to: (if (and (>= ch #x61) (<= ch #x7A)) (- ch #x20) ch)
          ((eq op 'char-upcase)
@@ -4812,8 +4866,10 @@
          (frame-size-raw (+ saved-regs temp-area env-area 64))
          ;; Round up to 16-byte alignment, with minimum #x400 for calling functions
          (frame-size-aligned (logand (+ frame-size-raw 15) (lognot 15)))
+         ;; Increase minimum frame from #x400 to #x800 for calling functions
+         ;; to handle deeply nested structures like native-read-file-large
          (frame-size (if makes-calls
-                         (max #x400 frame-size-aligned)
+                         (max #x800 frame-size-aligned)
                          frame-size-aligned))
          ;; x20 offset = saved regs + temp area + env space (Bug #20 FIX)
          ;; Variables accessed as [x20 - offset*8], so x20 must be high enough
@@ -5312,107 +5368,8 @@ int main(int argc, char **argv) {
           (bytes-to-c-array bytes)
           (length bytes)))
 
-(defun deliver (source-string output-path &key verbose)
-  "Compile SOURCE-STRING to native executable.
-   Creates a standalone Mach-O that dynamically links to libSystem.B.dylib.
-
-   Usage: (habu:deliver \"(sys-exit 42)\" \"/tmp/test\")
-
-   The source can use sys-write, sys-read, sys-open, sys-close, sys-exit."
-  ;; Load the pure-Habu macho linker if not already loaded
-  (unless (fboundp 'wrap-bytecode-with-heap-for-imports)
-    (load (merge-pathnames "bootstrap/macho.lisp"
-                           (or *load-pathname* *default-pathname-defaults*))))
-
-  (let* ((forms (read-all source-string))
-         ;; Compile to bytecode with extern markers
-         (bytes-with-markers (compile-program forms nil))
-         ;; Collect extern calls and get unique imports
-         (extern-calls (collect-extern-calls bytes-with-markers))
-         (imports (get-unique-imports extern-calls))
-         ;; Wrapper stub size in bytes (17 instructions * 4 bytes)
-         ;; Note: wrap-bytecode-with-heap-for-imports has 17 instructions
-         (wrapper-size 68))
-
-    (when verbose
-      (princ "Compiled ") (princ (length bytes-with-markers)) (princ " bytes (with markers)") (terpri)
-      (princ "External calls: ") (princ extern-calls) (terpri)
-      (princ "Imports: ") (princ imports) (terpri))
-
-    ;; Always use the imports path for consistent Mach-O structure
-    ;; The no-imports path has issues with large programs (SIGKILL)
-    ;; If no imports, add _exit as a dummy import (never called but ensures proper structure)
-    (let ((imports (if (null imports) '("_exit") imports)))
-      (when (and verbose (null (get-unique-imports extern-calls)))
-        (princ "No imports detected - adding _exit for consistent Mach-O structure") (terpri))
-
-      ;; Calculate stub offsets BEFORE flattening so we can emit correct BL instructions
-      ;; This eliminates the need for post-processing file patching
-      (let* ((num-imports (length imports))
-             (stubs-total (if (> num-imports 0) (* num-imports 12) 0))
-             (code-offset #x400)  ; header + commands + padding
-             ;; Calculate exact flattened code size:
-             ;; Each :extern-call marker (1 item) + 3 zeros (3 items) = 4 items
-             ;; After flattening: becomes 4 BL bytes
-             ;; Each regular byte stays 1 byte
-             ;; So: flattened size = original list length
-             (exact-flat-size (length bytes-with-markers))
-             (exact-code-size (+ exact-flat-size wrapper-size))
-             (stubs-offset (+ code-offset exact-code-size))
-             (stub-size 12))
-
-        ;; Build stub offset map: import-name -> stub-file-offset
-        (let ((stub-map (make-hash-table :test 'equal)))
-          (labels ((build-stub-map (remaining-imports i)
-                     (when remaining-imports
-                       (setf (gethash (car remaining-imports) stub-map) (+ stubs-offset (* i stub-size)))
-                       (build-stub-map (cdr remaining-imports) (+ i 1)))))
-            (build-stub-map imports 0))
-
-          ;; Flatten with correct BL instructions (no post-processing needed!)
-          ;; code-base-addr is where the wrapped code starts (after wrapper stub)
-          (let* ((mvb-result-22 (flatten-extern-calls bytes-with-markers stub-map (+ code-offset wrapper-size))) (flat-code (car mvb-result-22)) (extern-positions (cdr mvb-result-22)))
-                    (when verbose
-              (princ "Flattened code: ") (princ (length flat-code)) (princ " bytes") (terpri)
-              (princ "Extern positions: ") (princ extern-positions) (terpri))
-
-            ;; Wrap code with heap initialization
-            ;; Calculate heap page offset dynamically based on code size
-            ;; Layout: code -> stubs -> __DATA_CONST (16KB) -> __DATA (heap)
-            ;; Note: macOS ARM64 uses 16KB pages (#x4000), but ADRP uses 4KB page units (#x1000)
-            ;; heap-page-offset = (text-vmsize / 4KB) + (data-const-pages-4kb / 4KB)
-            (let* ((total-size (+ (length flat-code) wrapper-size))
-                   (stubs-end (+ code-offset total-size stubs-total))
-                   ;; Linker aligns to 16KB pages (macOS ARM64 page size)
-                   (text-vmsize (* (ceiling stubs-end #x4000) #x4000))
-                   ;; Convert to 4KB units for ADRP
-                   (text-pages-4kb (/ text-vmsize #x1000))
-                   ;; DATA_CONST is one 16KB page = 4 ADRP pages
-                   (data-const-pages-4kb (/ #x4000 #x1000))
-                   (heap-page-offset (+ text-pages-4kb data-const-pages-4kb))
-                   (wrapped-code (wrap-bytecode-with-heap-for-imports flat-code heap-page-offset)))
-
-              ;; Create executable with imports and heap using pure-Habu linker
-              ;; BL instructions are already correct - no post-processing needed!
-              ;; Heap size: 8MB to support native-read-file-large for compiler source (256KB)
-              (write-macho-executable-with-imports-and-heap output-path wrapped-code imports #x800000)
-
-              ;; Make executable and codesign (macOS requirements)
-              #+sbcl
-              (progn
-                (sb-ext:run-program "/bin/chmod" (list "+x" output-path))
-                (when (probe-file "/usr/bin/codesign")
-                  (sb-ext:run-program "/usr/bin/codesign" (list "-s" "-" "-f" output-path))))
-
-              (when verbose
-                (terpri) (princ "Created: ") (princ output-path) (terpri))
-              output-path)))))))
-
-(defun deliver-file (source-path output-path &key verbose)
-  "Compile Lisp file at SOURCE-PATH to native executable at OUTPUT-PATH.
-   Usage: (habu:deliver-file \"program.lisp\" \"program\")"
-  (let ((source (native-read-file source-path)))
-    (deliver source output-path :verbose verbose)))
+;; deliver function is now in codegen.lisp (unified version)
+;; deliver-file is also in codegen.lisp
 
 ;;; ============================================================
 ;;; Part 10: Disassembler
@@ -5458,7 +5415,7 @@ int main(int argc, char **argv) {
        (let* ((rd (logand word #x1F))
               (rn (logand (ash word -5) #x1F))
               (rm (logand (ash word -16) #x1F))
-              (is-sub (= (logand word #x40000000) #x40000000)))
+              (is-sub (= (logand word #x80000000) #x40000000)))
          (format nil "~A x~D, x~D, x~D"
                  (if is-sub "SUB" "ADD") rd rn rm)))
       ;; MUL
@@ -5905,17 +5862,12 @@ int main(int argc, char **argv) {
           (format t "  ~A @ ~A~%" (car entry) (cdr entry)))))
     ;; Collect external calls from bytecode
     (let ((imports (collect-imports all-code)))
-      (if (null imports)
-          ;; No imports - write simple Mach-O  
-          (progn
-            (when verbose
-              (format t "No imports - generating simple executable~%"))
-            (write-macho-executable output-path all-code))
-          ;; Has imports - use libSystem linker
-          (progn
-            (when verbose
-              (format t "Found imports: ~A~%" imports))
-            (write-macho-executable-with-imports-and-heap output-path all-code imports #x100000))))
+      ;; Always use imports path for consistent Mach-O structure
+      ;; Add _exit as dummy import if none (never called but ensures proper structure)
+      (let ((imports (if (null imports) '("_exit") imports)))
+        (when verbose
+          (format t "Imports: ~A~%" imports))
+        (write-macho-executable-with-imports-and-heap output-path all-code imports #x100000)))
     (when verbose
       (format t "Created: ~A~%" output-path))
     output-path))

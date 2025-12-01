@@ -97,6 +97,61 @@
 ;;; Lambda Lifting (extract lambdas, replace with references)
 ;;; ============================================================
 
+;; SBCL wrappers: adapt 1-arg lift-lambdas to 2-arg interface used by deliver
+#+sbcl
+(defun lift-lambdas-2 (ir lambdas)
+  "2-arg wrapper for SBCL lift-lambdas (which is 1-arg).
+   Calls SBCL lift-lambdas and prepends existing lambdas to result."
+  (let* ((result (lift-lambdas ir))
+         (new-ir (car result))
+         (new-lambdas (cdr result)))
+    (cons new-ir (append new-lambdas lambdas))))
+
+#+sbcl
+(defun lift-lambdas-from-defuns (defuns acc-defuns acc-lambdas)
+  "Lift lambdas from defun bodies (SBCL version).
+   Defun format from compile-forms: (name params body param-base).
+   Uses SBCL lift-lambdas (1-arg) internally."
+  (if (null defuns)
+      (cons (reverse acc-defuns) acc-lambdas)
+      (let* ((defun (car defuns))
+             (name (car defun))
+             (params (cadr defun))
+             (body (caddr defun))
+             (param-base (cadddr defun))
+             (body-result (lift-lambdas body))
+             (new-body (car body-result))
+             (new-lambdas (cdr body-result))
+             (new-defun (list name params new-body param-base)))
+        (lift-lambdas-from-defuns (cdr defuns)
+                                  (cons new-defun acc-defuns)
+                                  (append acc-lambdas new-lambdas)))))
+
+#+sbcl
+(defun lambdas-to-defuns (lambdas acc)
+  "Convert lifted lambda entries to defun format (SBCL version).
+   Lambda entry: (name params body free-vars free-offsets) or (name . lambda-ir)
+   Defun format: (name params body param-base)"
+  (if (null lambdas)
+      (reverse acc)
+      (let* ((entry (car lambdas))
+             (name (car entry))
+             ;; Handle both formats: (name params body fv fo) and (name . lambda-ir)
+             (rest (cdr entry))
+             (params (if (and (consp rest) (consp (car rest)) (eq (car (car rest)) 'lambda-ir))
+                         ;; (name . lambda-ir) format
+                         (cadr (car rest))
+                         (car rest)))
+             (body (if (and (consp rest) (consp (car rest)) (eq (car (car rest)) 'lambda-ir))
+                       (caddr (car rest))
+                       (cadr rest)))
+             (free-vars (if (and (consp rest) (consp (car rest)) (eq (car (car rest)) 'lambda-ir))
+                            (cadddr (car rest))
+                            (caddr rest)))
+             (param-base (length free-vars))
+             (defun-entry (list name params body param-base)))
+        (lambdas-to-defuns (cdr lambdas) (cons defun-entry acc)))))
+
 #-sbcl
 (defun lift-lambdas (ir lambdas)
   "Extract lambda-ir nodes from IR, replacing with lambda-ref.
@@ -659,6 +714,36 @@
   (defun and* (rd rn mask)
     (arm64:and* rd rn mask :imm t))
 )
+
+;;; ============================================================
+;;; GC Trigger Code
+;;; ============================================================
+
+;;; GC globals offsets (must match gc.lisp)
+(defconstant +gc-from-end-offset+ 16)
+
+(defun gc-trigger-code ()
+  "Generate inline GC trigger check. Insert after allocations.
+   Uses x9 as scratch. Emits :call-fn GC-COLLECT marker if GC needed.
+   Returns list suitable for append-all - double-wrapped marker."
+  (append-all
+   (list (ldr-offset 9 27 +gc-from-end-offset+)  ; x9 = from_end
+         (cmp-reg 28 9)                           ; compare x28, from_end
+         ;; B.LO +2 instructions (skip the BL if x28 < from_end)
+         ;; The :call-fn marker becomes 1 BL instruction = 4 bytes
+         #+sbcl (arm64:b.lo 2)
+         #-sbcl (list (encode-b-cond-lo 2))
+         ;; Call GC-COLLECT if needed (marker resolved later)
+         (list (list :call-fn 'GC-COLLECT)))))
+
+#-sbcl
+(defun encode-b-cond-lo (instr-offset)
+  "Encode B.LO instruction for native codegen.
+   B.LO uses condition code 3 (CC = carry clear)."
+  (let ((word (logior #x54000000
+                      (ash (logand instr-offset #x7FFFF) 5)
+                      3)))
+    (encode-word word)))
 
 ;;; ============================================================
 ;;; Helper Functions
@@ -1369,7 +1454,9 @@
               (add-reg 28 28 1)         ; x28 += total size (now 16-aligned)
               ;; Tag with vector tag (0x3)
               (movz 1 3)
-              (orr-reg 0 0 1)))))
+              (orr-reg 0 0 1)
+              ;; GC trigger check (x0 is tagged, safe for GC)
+              (gc-trigger-code)))))
 
     ;; Vector-set: set element at index
     ;; (vector-set-ir vec-ir idx-ir val-ir)
@@ -2376,12 +2463,10 @@
 ;;; Pure Delivery (using all pure components)
 ;;; ============================================================
 
-#-sbcl
 (defun deliver-v2 (source output-path)
-  "Compile source string to native executable using all pure components.
-   Uses: compile-forms (pure compiler), codegen (pure codegen),
-   wrap-bytecode-with-heap-for-imports (macho), write-macho-executable-with-imports-and-heap.
-   Works in both SBCL and native Habu (no SBCL dependencies)."
+  "Compile source string to native executable without function support.
+   Uses: compile-forms, codegen, wrap-bytecode-with-heap-for-imports.
+   For programs without defun/lambda - simpler code path."
   (reset-symbol-table)
   (let* ((forms (read-all source))
          (result (compile-forms forms))
@@ -2407,9 +2492,18 @@
              (stubs-offset (+ code-offset exact-code-size))
              (stub-size 12))
 
-        ;; Build stub offset alist
-        (let* ((stub-alist (build-stub-alist imports stubs-offset stub-size))
-               (flatten-result (flatten-extern-calls bytes-with-markers stub-alist (+ code-offset wrapper-size)))
+        ;; Build stub offset map - SBCL uses hash-table, native uses alist
+        (let* (#+sbcl
+               (stub-map (let ((ht (make-hash-table :test 'equal)))
+                           (labels ((build (remaining i)
+                                      (when remaining
+                                        (setf (gethash (car remaining) ht) (+ stubs-offset (* i stub-size)))
+                                        (build (cdr remaining) (+ i 1)))))
+                             (build imports 0))
+                           ht))
+               #-sbcl
+               (stub-map (build-stub-alist imports stubs-offset stub-size))
+               (flatten-result (flatten-extern-calls bytes-with-markers stub-map (+ code-offset wrapper-size)))
                (flat-code (car flatten-result)))
 
           ;; Calculate heap page offset
@@ -2425,13 +2519,12 @@
             ;; 64MB heap needed due to O(n^2) string allocation in reader (no GC)
             (write-macho-executable-with-imports-and-heap output-path wrapped-code imports #x4000000)))))))
 
-#-sbcl
-(defun deliver-v3 (source output-path)
+(defun deliver (source output-path)
   "Compile source string with function definitions to native executable.
-   Supports: defun, lambda, funcall, function calls, all v2 features.
-   Layout: wrapper(76) + main-code + function-code + lambda-code + stubs
-   Native mode only - in SBCL use habu:deliver instead."
-  (register-compiler-symbols)  ;; Pre-register symbols for native eq to work
+   Supports: defun, lambda, funcall, function calls, GC runtime.
+   Layout: wrapper(76) + main-code + function-code + lambda-code + GC-code + stubs
+   Includes GC runtime for automatic garbage collection."
+  #-sbcl (register-compiler-symbols)  ;; Pre-register symbols for native eq to work
   (reset-symbol-table)
   (reset-lambda-counter)
   (let* ((forms (read-all source))
@@ -2440,7 +2533,9 @@
          (main-ir-orig (cadr result))
          (wrapper-size 76)  ;; 19 instructions × 4 bytes
          ;; Lift lambdas from main-ir
-         (main-lift-result (lift-lambdas main-ir-orig nil))
+         ;; SBCL uses 1-arg lift-lambdas, native uses 2-arg
+         (main-lift-result #+sbcl (lift-lambdas-2 main-ir-orig nil)
+                           #-sbcl (lift-lambdas main-ir-orig nil))
          (main-ir (car main-lift-result))
          (main-lambdas (cdr main-lift-result))
          ;; Lift lambdas from defun bodies
@@ -2475,8 +2570,10 @@
                                  (epilogue))))
                ;; Generate all function code (defuns + lambdas)
                (fn-code (codegen-all-fns all-fns nil fnoffs nil))
-               ;; Combine all code
-               (all-code (append main-code fn-code))
+               ;; Generate GC runtime code (gc_copy + gc_collect)
+               (gc-code (gc-runtime-code))
+               ;; Combine all code (main + functions + GC runtime)
+               (all-code (append main-code fn-code gc-code))
                ;; Flatten with markers tracking positions
                (bytes-with-markers (flatten-code-keep-markers-and-calls all-code))
                ;; Collect extern calls
@@ -2495,7 +2592,11 @@
                (stub-alist (build-stub-alist imports stubs-offset stub-size))
                ;; Convert fnoffs to byte addresses (relative to code-offset + wrapper-size)
                (fn-addr-base (+ code-offset wrapper-size))
-               (fn-alist (build-fn-addr-alist fnoffs fn-addr-base nil))
+               (fn-alist-base (build-fn-addr-alist fnoffs fn-addr-base nil))
+               ;; Extract GC function labels from flattened code
+               (gc-fn-alist (extract-fn-labels bytes-with-markers fn-addr-base))
+               ;; Merge user functions + GC functions
+               (fn-alist (append fn-alist-base gc-fn-alist))
                ;; Flatten both :call-fn and :extern-call markers
                (flatten-result (flatten-all-calls bytes-with-markers fn-alist stub-alist fn-addr-base))
                (flat-code (car flatten-result))
@@ -2509,12 +2610,21 @@
                (wrapped-code (wrap-bytecode-with-heap-for-imports flat-code heap-page-offset)))
 
           ;; Write executable (handles chmod+codesign via native-write-executable)
-          ;; 64MB heap needed due to O(n^2) string allocation in reader (no GC)
-          ;; Pass fnoffs as local-fns for symbol table (lldb debugging)
-          (write-macho-executable-with-imports-and-heap output-path wrapped-code imports #x4000000 fnoffs)
+          ;; 64MB heap - reduced to 32MB since we now have GC
+          ;; Pass fnoffs + GC function offsets for symbol table
+          (let ((all-fnoffs (append fnoffs
+                                    (mapcar (lambda (entry)
+                                              (cons (car entry)
+                                                    (- (cdr entry) fn-addr-base)))
+                                            gc-fn-alist))))
+            (write-macho-executable-with-imports-and-heap output-path wrapped-code imports #x2000000 all-fnoffs)
+            ;; Write symbol map for debugging
+            #+sbcl (write-symbol-map output-path all-fnoffs main-size imports stubs-offset))))))
 
-          ;; Write symbol map for debugging
-          #+sbcl (write-symbol-map output-path fnoffs main-size imports stubs-offset)))))
+(defun deliver-file (source-path output-path)
+  "Compile Lisp file at SOURCE-PATH to native executable at OUTPUT-PATH.
+   Usage: (habu:deliver-file \"program.lisp\" \"program\")"
+  (deliver (native-read-file source-path) output-path))
 
 #+sbcl
 (defun write-symbol-map (output-path fnoffs main-size imports stubs-offset)
@@ -2559,7 +2669,7 @@
                                    (cons (cons name addr) acc)))))
 
 (defun flatten-code-keep-markers-and-calls (code)
-  "Flatten code lists but keep both :extern-call, :call-fn, and :tco-branch markers with positions."
+  "Flatten code lists but keep both :extern-call, :call-fn, :tco-branch, and :fn-label markers with positions."
   (labels ((flatten (items pos acc)
              (if (null items)
                  (reverse acc)
@@ -2583,6 +2693,17 @@
                         (flatten (cdr items)
                                  (+ pos 4)
                                  (cons 0 (cons 0 (cons 0 (cons marker acc)))))))
+                     ;; Function label marker - used by GC runtime
+                     ;; Just record position, no bytes generated
+                     ((and (consp item) (eq (car item) :fn-label))
+                      (let ((marker (list :fn-label (cadr item) pos)))
+                        (flatten (cdr items)
+                                 pos
+                                 (cons marker acc))))
+                    ;; Internal label marker - GC internal jumps use hardcoded offsets
+                    ;; Skip entirely, no bytes, no position change
+                    ((and (consp item) (eq (car item) :label))
+                     (flatten (cdr items) pos acc))
                      ;; Nested list
                      ((consp item)
                       (let* ((flattened (flatten item 0 nil))
@@ -2642,10 +2763,32 @@
                                             ;; Function not found - emit NOP
                                             (cons #xD5 (cons #x03 (cons #x20 (cons #x1F result)))))))
                         (process (cdr items) 3 new-result (cons (cons name pos) positions))))
+                     ;; Function label marker - skip (no bytes)
+                     ((and (consp item) (eq (car item) :fn-label))
+                      (process (cdr items) 0 result positions))
+                    ;; Internal label marker - skip (no bytes)
+                    ((and (consp item) (eq (car item) :label))
+                     (process (cdr items) 0 result positions))
                      ;; Regular byte
                      (t
                       (process (cdr items) 0 (cons item result) positions)))))))
     (process code 0 nil nil)))
+
+(defun extract-fn-labels (code base-addr)
+  "Extract :fn-label markers from flattened code and build fn-alist.
+   BASE-ADDR is the absolute address where code starts.
+   Returns alist of (name . addr)."
+  (labels ((collect (items acc)
+             (if (null items)
+                 (reverse acc)
+                 (let ((item (car items)))
+                   (if (and (consp item) (eq (car item) :fn-label))
+                       (let* ((name (cadr item))
+                              (pos (caddr item))
+                              (addr (+ base-addr pos)))
+                         (collect (cdr items) (cons (cons name addr) acc)))
+                       (collect (cdr items) acc))))))
+    (collect code nil)))
 
 (defun alist-lookup (key alist)
   "Look up key in alist, return value or nil"

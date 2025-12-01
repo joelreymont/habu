@@ -688,7 +688,9 @@
        (read-list (pos)
          (read-list-elems (+ pos #x1)))  ; skip opening (
 
-       ;; Feature check: :habu is always present, :sbcl is absent
+       ;; Feature check for native execution:
+       ;; :habu is always present, :sbcl is always absent
+       ;; (native Habu reader never sees :sbcl as present)
        (feature-present? (sym)
          (if (symbolp sym)
              (let ((name (symbol-name sym)))

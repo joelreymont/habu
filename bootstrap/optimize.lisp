@@ -10,6 +10,7 @@
 (defvar *optimization-passes* nil
   "List of (name . function) pairs for optimization passes")
 
+#+sbcl
 (defvar *optimization-stats* (make-hash-table :test 'equal)
   "Statistics for each optimization pass")
 
@@ -17,6 +18,8 @@
   "Register an optimization pass"
   (push (cons name function) *optimization-passes*))
 
+;;; SBCL version with timing stats
+#+sbcl
 (defun run-optimization (name ir)
   "Run a single optimization pass and track stats"
   (let* ((start (get-internal-real-time))
@@ -35,6 +38,16 @@
                 (list 1 elapsed))))
     result))
 
+;;; Native version without stats (no hash tables, no floats)
+#-sbcl
+(defun run-optimization (name ir)
+  "Run a single optimization pass (native - no stats)"
+  (let ((pass (assoc name *optimization-passes*)))
+    (if pass
+        (funcall (cdr pass) ir)
+        ir)))
+
+#+sbcl
 (defun run-all-optimizations (ir)
   "Run all registered optimization passes in order"
   (let ((result ir))
@@ -42,6 +55,17 @@
       (setq result (run-optimization (car pass) result)))
     result))
 
+#-sbcl
+(defun run-all-optimizations (ir)
+  "Run all registered optimization passes in order (native)"
+  (let ((result ir)
+        (passes (reverse *optimization-passes*)))
+    (while passes
+      (setq result (run-optimization (car (car passes)) result))
+      (setq passes (cdr passes)))
+    result))
+
+#+sbcl
 (defun print-optimization-stats ()
   "Print statistics for all optimization passes"
   (format t "~%Optimization Statistics:~%")
@@ -50,6 +74,7 @@
                      name (first stats) (second stats)))
            *optimization-stats*))
 
+#+sbcl
 (defun clear-optimization-stats ()
   "Clear all optimization statistics"
   (clrhash *optimization-stats*))
@@ -663,9 +688,12 @@
     ((or (eq (car expr) 'progn)
          (eq (car expr) 'and)
          (eq (car expr) 'or))
-     (let ((sum 1))
-       (dolist (e (cdr expr))
-         (setq sum (+ sum (source-expr-size e))))
+     (let ((sum 1)
+           (elems (cdr expr)))
+       #+sbcl (dolist (e elems) (setq sum (+ sum (source-expr-size e))))
+       #-sbcl (while elems
+                (setq sum (+ sum (source-expr-size (car elems))))
+                (setq elems (cdr elems)))
        sum))
     ((eq (car expr) 'if)
      (+ 1 (source-expr-size (cadr expr))
@@ -747,12 +775,23 @@
 ;;; Optimization Pipeline
 ;;; ============================================================
 
+#+sbcl
 (defun optimize-ir (ir &key (passes '(let-flattening progn-flattening constant-folding strength-reduction dead-code-elimination)))
   "Run specified optimization passes on IR.
    Default passes now include let/progn flattening to reduce IR depth."
   (let ((result ir))
     (dolist (pass passes)
       (setq result (run-optimization pass result)))
+    result))
+
+#-sbcl
+(defun optimize-ir (ir)
+  "Run optimization passes on IR (native version - fixed pass list)"
+  (let ((result ir)
+        (passes '(let-flattening progn-flattening constant-folding strength-reduction dead-code-elimination)))
+    (while passes
+      (setq result (run-optimization (car passes) result))
+      (setq passes (cdr passes)))
     result))
 
 (defun optimize-function-ir (fn-ir)
