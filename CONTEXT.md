@@ -1,341 +1,274 @@
 # Habu Self-Hosting Lisp Compiler - Context
 
 **Last Updated**: December 2, 2025
-**Milestone**: Stage 1 compiles and runs; working on Stage 1 → Stage 2
+**Milestone**: Stage 1 compiles and runs (642KB); testing Stage 1 → Stage 2
 
 ## Current Status
 
-The Habu compiler compiles programs with:
-- Expressions: literals, arithmetic, comparisons
-- Control flow: if, cond, when, unless, progn, and, or, not, setq
-- Bindings: let, let*
-- Functions: defun, labels, lambda, funcall, (function name)
-- Closures: captured variables, higher-order functions
-- Data: cons, car, cdr, list, quote, setcar, setcdr
-- Predicates: null, consp, numberp, symbolp, stringp, vectorp
-- Strings: string-length, string-ref, string-concat
-- Symbols: symbol-name, make-symbol-from-string
-- Vectors: make-vector, vector-ref, vector-set, vector-length
-- File I/O: sys-open, sys-read, sys-write, sys-close, native-read-file
-- System: sys-exit, get-intern-table, set-intern-table
-
-**Test Results**: 76/76 pass (comprehensive, self-hosting, edge cases)
+**Test Results**: 76/76 pass
+**Stage 1**: Compiles and runs (642KB binary with full compiler + GC runtime)
 
 ## Current Session (December 2, 2025)
 
-### Closure Capture Fix (DONE)
+### GC Trigger in SBCL cons-ir Handler (FIXED)
 
-**Bug**: Closures with captured variables crashed (exit 141/144 instead of correct result)
+**Problem**: Stage 1 crashes with SIGBUS at heap boundary (32MB) when running `deliver-file`.
 
-**Root Cause**:
-- `lambdas-to-defuns` converts lifted lambdas from 5-element format `(name params body free-vars free-offsets)` to 4-element defun format `(name params body param-base)`
-- `codegen-fn` distinguished lambdas from defuns by checking if 4th element is a number
-- After conversion, `param-base` is a number, so `codegen-fn` took the defun path
-- Defun path didn't copy captured variables from x24 (closure env) to stack slots
+**Root Cause**: The `cons-ir` handler in `compiler-sbcl.lisp` performs inline heap allocation but does NOT include GC trigger code. When many cons operations happen (e.g., in while loops building lists), the heap fills up without triggering GC.
 
-**Fix**: Modified `codegen-fn` to detect lifted lambdas by checking `param-base > 0`
-- When `param-base > 0`, use the lambda capture copy logic (save params, copy captures, restore params)
-- When `param-base = 0`, use regular defun logic (just store params)
+**Fix**: Added GC trigger check to cons-ir handler in `compiler-sbcl.lisp:3145-3158`:
+```lisp
+(arm64:ldr 9 27 :offset 16)       ; x9 = from_end [x27+16]
+(arm64:cmp 28 9)                  ; compare x28, from_end
+(arm64:b.lo 2)                    ; skip if x28 < from_end
+(list '(:call-fn GC-COLLECT))     ; bl gc_collect
+```
 
-**Tests**: All closure patterns now work:
-- Single captured variable: `(let ((y 32)) (funcall (lambda (x) (+ x y)) 10))` -> 42
-- Multiple captures: `(let ((a 10) (b 20)) (funcall (lambda (x) (+ a b x)) 12))` -> 42
-- Nested closures: `(let ((a 10)) (let ((b 20)) ...))`
-- Higher-order functions: `(defun make-adder (n) (lambda (x) (+ n x)))`
-- Lambdas without captures still work
-- Regular defuns still work
+### GC-COPY Branch Offsets (FIXED)
 
-### Self-Hosting Analysis (NEW)
+**Problem**: GC-COPY function had wrong branch offsets for nil/fixnum checks. The branches to "return unchanged" were landing in the copy loop instead of at `ret`.
 
-**Status**: SBCL-compiled binaries work for simple programs. Full self-hosting requires preprocessing.
+**Root Cause**: The instruction offsets in `gc.lisp` were wrong (40, 38, 34, 32 instead of 14, 12, 9, 7).
 
-**Current Capability**:
-- SBCL's `deliver` compiles Habu source to native ARM64 binaries
-- Simple programs (factorial, fibonacci, closures) compile and run correctly
-- Reader source can be included in compiled binaries
+**Fix**: Corrected branch offsets in `gc.lisp:126-137`:
+- cbz for fixnum: 40 → 14
+- b.eq for nil: 38 → 12
+- b.lo for < from_start: 34 → 9
+- b.hs for >= from_end: 32 → 7
 
-**Blocking Issue for Stage 1 → Stage 2**:
-- Source files use #+sbcl / #-sbcl reader conditionals
-- SBCL reader understands these and strips out #-sbcl code during compilation
-- Native Habu reader does NOT understand these conditionals (sees as raw text)
-- When Stage 1 reads source files, it gets unparseable #+sbcl lines
+### Stage 1 Self-Compilation (IN PROGRESS)
 
-**Solutions**:
-1. Preprocess source files to remove conditionals (keep only #-sbcl code)
-2. Create parallel source files without conditionals
-3. Implement #+/-feature conditionals in native Habu reader
+**Current Blocker**: Crash in `LIFT-ALL-LABELS-TO-DEFUNS` when running `deliver-file`.
+- x0 contains string bytes (ASCII "(defun-") treated as pointer
+- This is a reader/compiler bug, not GC-related
+- Crash happens very early before significant heap allocation
 
-**Next Steps**:
-1. Create preprocessor to strip SBCL conditionals
-2. Test Stage 1 with preprocessed sources
-3. Verify Stage 1 can compile simple programs
-4. Attempt Stage 2 compilation
+### Reader Fix for Symbols with Dots (FIXED)
 
-### Previous Session (December 1, 2025)
+**Problem**: Symbols like `arm64:b.lo` were being parsed as dotted pairs `(arm64:b . lo)` instead of single symbols.
 
-### Stage 1 Status
+**Root Cause**: Both SBCL and native readers treated `.` after a symbol start as dotted-pair syntax.
 
-Full Stage 1 compiler (reader + compiler + codegen + macho-utils) works:
-- Source size: ~170KB
-- Native binary: ~67KB (was 8.7MB before zerofill fix!)
-- Compiles and runs: PASS (exit 42)
-- read-all, compile-forms, compile-program: all work natively
+**Fix**: Modified BOTH readers (compiler-sbcl.lisp AND reader.lisp):
+1. Added `.` (#x2E) to `symbol-char-p` / `symbol-char?` function
+2. Modified `read-list-elems` to only treat `.` as dotted pair when standalone (followed by whitespace, `)`, or EOF)
 
-### Key Improvements This Session
+Files changed:
+- `compiler-sbcl.lisp:515-518` - Added dot to symbol-char-p
+- `compiler-sbcl.lisp:614-632` - Modified read-list-elems for dot handling
+- `reader.lisp` - Same fixes for native reader
 
-1. **Native Garbage Collector (NEW)**
-   - Cheney's copying collector with two semispaces (32MB each)
-   - GC globals segment for from_start, from_end, to_start, to_end
-   - gc_copy and gc_collect in ARM64 assembly (gc.lisp)
-   - GC triggers inserted after cons, string, closure allocations
-   - gc-trigger-code generates inline check + conditional call to GC-COLLECT
-   - Unified `deliver` function now includes GC runtime code
+### Stage 1 Build from ASDF Sources (WORKING)
 
-2. **Function symbols in LC_SYMTAB**
-   - Mach-O binaries now include function symbols for lldb debugging
-   - `nm <binary>` shows all function names and addresses
-   - `lldb -o "disassemble -n ADD"` works directly on Habu binaries
-   - Implemented in macho.lisp: build-symbol-table-with-locals, etc.
-   - deliver-v3 now passes fnoffs to write function symbols
+Stage 1 now builds correctly from ASDF-managed source files:
+- Binary size: 757KB (756992 bytes)
+- Exit code: 42 (expected)
+- Uses reader conditionals via SBCL reader (`:habu` feature only)
 
-2. **Slash commands for development (NEW)**
-   - Created 6 commands in .claude/commands/
-   - /habu-build-test, /habu-debug, /habu-analyze, /habu-run-tests
-   - /habu-disasm (new), /habu-stage (new)
-   - Updated AGENTS.md with command documentation
+Build command:
+```lisp
+(habu:deliver (concatenate 'string gc-src reader-src compiler-src
+               optimize-src codegen-src macho-utils-src "(sys-exit 42)")
+              "/tmp/habu_stage1_asdf")
+```
 
-3. **Mach-O zerofill for heap (FIXED)**
-   - Was writing 64MB of zeros to executable file
-   - Now uses S_ZEROFILL section type - no file data, OS zeroes on demand
-   - File size reduced from 8.7MB to 67KB for simple programs
+### Symbol State / GC Offset Conflict (FIXED)
 
-4. **Added `while` loop construct**
-   - Supports `(while test body...)` for true iteration without stack growth
-   - Added compile-while in compiler.lisp
-   - Added while-ir codegen in codegen.lisp
-   - Fixed branch offset bug (+8 not +4 to exit past backward branch)
+**Problem**: Stage 1 crashed with SIGBUS (exit 138) when symbol state storage conflicted with GC globals.
 
-5. **Stack overflow fix (PARTIAL)**
-   - read-list-elems was the critical function - recursed per list element
-   - FIXED: Rewrote read-list-elems to use iterative `while` loop
-   - Added SBCL `while` macro for compatibility with native version
-   - Remaining: read-sym-chars, upcase-string-iter recurse per char (less critical)
+**Root Cause**: Symbol state was stored at offsets [x27+16] and [x27+24] which conflicted with GC's `from_end` and `half_heap_size` globals at the same offsets.
 
-6. **TCO (Tail Call Optimization) Implemented**
-   - Nanopass architecture: IR transformation + code emission
-   - Pass 1: `apply-tco-to-function` (optimize.lisp) transforms self-tail-calls to `loop-ir`/`continue-ir`
-   - Pass 2: `codegen` handles loop-ir/continue-ir, emits `:tco-branch` markers
-   - Pass 3: `resolve-tco-branches` converts markers to backward B instructions
-   - Fixed `code-size` to count `:tco-branch` markers as 4 bytes
-   - Tested: countdown(100000) works without stack overflow (would need 200MB stack without TCO)
+**Fix**: Moved symbol state to new offsets after GC globals:
+- Symbol counter: [x27+48] (was [x27+16])
+- Symbol table: [x27+56] (was [x27+24])
+- Heap data: [x27+64] (was [x27+48])
 
-7. **Register Allocation Architecture (NEW)**
-   - Created `bootstrap/reg-alloc.lisp` with 5-nanopass pipeline
-   - TAC (Three-Address Code) format with virtual registers
-   - Liveness analysis via backward dataflow
-   - Linear scan allocation to x9-x15
-   - Full documentation in source file header (150 lines)
-   - Remaining: implement tac-codegen for ARM64 emission
+Files changed:
+- `gc.lisp:37-45` - Updated offset constants
+- `gc.lisp:379-429` - Updated gc-heap-init-code comments
+- `codegen.lisp:2063-2084` - Updated primitive implementations
+- `macho.lisp:882-918` - Updated wrapper to use offsets 48/56 and bump x28 by 64
 
-8. **Native resolve-calls function (NEW)**
-   - Added `#-sbcl` version of `resolve-calls` to codegen.lisp
-   - Handles `:call-fn`, `:tail-call-fn`, `:loop-start`, `:loop-continue` markers
-   - Uses arm64 intrinsics (arm64:bl, arm64:b) for branch emission
-   - Essential for native compiler's compile-program function
+**Result**: Stage 1 with `(sys-exit 42)` now runs correctly (872KB binary).
 
-9. **resolve-tco-branches marker preservation (FIXED)**
-   - Bug: resolve-tco-branches was flattening `:call-fn` markers as nested lists
-   - This turned `(:call-fn FACTORIAL)` into loose `:call-fn` and `FACTORIAL` elements
-   - Fix: Added `marker-p` predicate to preserve call/extern markers as single items
-   - Core tests now pass: basic, function call, recursive factorial, nested calls
+### Stage 1 Self-Compilation (IN PROGRESS)
 
-10. **Fixed duplicate function definitions (IN PROGRESS)**
-    - Added `#-sbcl` guards to functions in reader.lisp, compiler.lisp, codegen.lisp, optimize.lisp, macho-utils.lisp
-    - These files provide native (non-SBCL) versions of functions already defined in compiler-sbcl.lisp
-    - ISSUE: macho.lisp had real implementations wrongly guarded with `#-sbcl` (fixed 2 of them)
-    - ISSUE: codegen.lisp has duplicate definitions in `#+sbcl` block AND with `#-sbcl` guards
-    - Remaining: cond-eq/ne/lt/ge/le/gt and cbz are defined twice in codegen.lisp
+**Status**: Stage 1 with arg-checking main crashes with SIGBUS (exit 138)
 
-### ASDF Warnings - FIXED
+**Simple Test Works**: `/tmp/habu_stage1_fixed` with `(sys-exit 42)` exits correctly with code 42.
 
-All "redefining" warnings have been fixed:
-1. `wrap-bytecode-with-heap-for-imports` - Removed stub from compiler-sbcl.lisp (real impl in macho.lisp)
-2. `write-macho-executable-with-imports-and-heap` - Removed stub from compiler-sbcl.lisp
-3. `cond-eq`, `cond-ne`, `cond-lt`, `cond-ge`, `cond-le`, `cond-gt`, `cbz` - Removed duplicates from codegen.lisp #+sbcl block (already defined in compiler-sbcl.lisp)
+**Complex Main Crashes**: When adding arg-checking logic:
+```lisp
+(let ((args (get-cmdline-args)))
+  (if (< (length args) 3)
+      (sys-exit 1)
+      (progn (deliver-file (nth 1 args) (nth 2 args)) (sys-exit 0))))
+```
 
-**Delivery Functions:**
-- SBCL: Use `habu:deliver` (in compiler-sbcl.lisp) - 1-arg lift-lambdas
-- Native: Use `deliver-v3` (in codegen.lisp, #-sbcl guard) - 2-arg lift-lambdas
-- Reader compilation: WORKS (exit 42 test passes)
+**Crash Details**:
+- Crashes in DELIVER-FILE function at address 0x10001962c
+- x28 register shows corrupted high bits: 0x10000001004c8230
+- Crash address 0x1020c8000 is exactly at heap boundary (32MB from base)
 
-### Previous Bug Fixes
+**Investigation Needed**: The crash happens even with no arguments (should exit with 1). Either:
+1. The arg-checking logic is wrong
+2. Something in `get-cmdline-args` or `length` corrupts x28
+3. The if-else branching has an issue
 
-1. **and-imm silent failure (CRITICAL FIX)**
-   - `and-imm` with unsupported immediates silently generated NOP
-   - Caused heap misalignment in string-concat (crash at n=3+ recursive calls)
-   - Fix: Added proper ARM64 logical immediate encoding for alignment masks
-   - Masks supported: ~3, ~7, ~15, ~31 (now with correct immr=64-N rotation)
-   - Now errors on unsupported immediates instead of silent NOP
+### Stack Slot Collision Bug (FIXED)
 
-2. **make-string-from-vector list handling (FIXED)**
-   - Function crashed when given a list (tag 1) instead of vector (tag 3)
-   - Branch offset calculation was correct but and-imm for tag check was NOP
-   - Root cause was and-imm issue above
+**Symptom**: Crashes when 2-param function calls another 2-param function inside nested lets.
 
-3. **nil/0 representation conflict (FIXED)**
-   - nil and fixnum 0 had same representation (0), causing `(null 0)` = t
-   - Fix: nil now has tag 6 (0x06), fixnum 0 is 0x00
-   - Updated codegen.lisp, compiler.lisp
+**Root Cause**: Codegen collision between param slots and spill slots.
+- `x20 = sp + 0x388` (environment frame base)
+- Param 0 stored at `x20-0` = `sp + 0x388`
+- Temp spill also using `sp + 0x388`
+- Spill overwrites param 0, causing nil to be passed to callee
 
-4. **Symbol registration for native code** (prev session)
-   - Refactored `ensure-symbols-registered` into 18 small helpers
-   - Added comma/unquote handling, empty symbol protection
+**Fix**: Changed spill-end from `#x340` to `#x440` in `codegen.lisp:240` to give more space between spill slots and parameter slots.
 
-5. **Octal literals in macho-utils.lisp**
-   - Changed `#o755` to `#x1ED` (Habu reader doesn't support octal)
+### SIGILL Bug - BL Placeholder Misalignment (FIXED)
 
-## File Structure
+**Symptom**: Stage 1 binary crashed with SIGILL (exit 132) at undefined instruction.
 
+**Root Cause**: The flatten functions emitted only 3 placeholder zeros for each 4-byte BL instruction:
+```lisp
+;; BUG: Only 3 zeros for 4-byte BL instruction
+(cons 0 (cons 0 (cons 0 (cons marker acc))))
+```
+
+This caused 1-byte misalignment per call site, accumulating to large offsets.
+
+**Fix**: Changed 5 locations in `codegen.lisp` to emit 4 zeros and 4 skip counts:
+- `flatten-code-keep-markers-and-calls`: 3 emit locations (3→4 zeros)
+- `flatten-code-keep-markers`: 2 emit locations (3→4 zeros)
+- `flatten-all-calls`: 2 skip counts (3→4)
+- `flatten-extern-calls`: 2 skip counts (3→4)
+- Also fixed `compiler-sbcl.lisp:335` and `compiler.lisp:1951`
+
+**Related**: Fixed `deliver-v2` to use `count-actual-bytes` instead of `length` for accurate size calculation.
+
+## Architecture
+
+### File Structure
 ```
 bootstrap/
-  compiler-sbcl.lisp  - SBCL bootstrap compiler (5400+ lines)
+  compiler-sbcl.lisp  - SBCL bootstrap compiler
   compiler.lisp       - Habu compiler (no SBCL dependencies)
   optimize.lisp       - Optimization passes (TCO)
-  codegen.lisp        - ARM64 code generator (accumulator model)
+  codegen.lisp        - ARM64 code generator
   gc.lisp             - Garbage collector (Cheney's copying GC)
-  reg-alloc.lisp      - Register allocation nanopasses
   macho.lisp          - Mach-O linker (#+sbcl versions)
   macho-utils.lisp    - Mach-O utilities (#-sbcl native versions)
   reader.lisp         - Habu reader
-
 arm64/
   asm.lisp            - ARM64 instruction encoders
 ```
 
-## Key Functions
-
-```lisp
-;; Compile and deliver program
-(habu:deliver-v3 "(defun f (x) (* x 2)) (sys-exit (f 21))" "/tmp/out")
-
-;; Individual steps
-(read-all source-string)           ; Parse to S-expressions
-(compile-program forms)            ; Compile to IR + defuns
-(codegen ir rtaddrs fnoffs td)     ; Generate ARM64 code
-(build-macho bytes imports)        ; Create Mach-O executable
-```
-
-## Tagged Value Representation
-
+### Tagged Value Representation
 - Fixnum: `value << 4`, tag 0
 - Cons: `pointer | 1`
 - Symbol: `pointer | 2`
 - Vector: `pointer | 3`
 - String: `pointer | 4`
 - Closure: `pointer | 5`
-- Nil: `0x06` (tag 6) - distinct from fixnum 0
+- Nil: `0x06` (tag 6)
 
-## ARM64 Register Usage
-
+### ARM64 Register Usage
 - x0-x7: Arguments and return value
 - x20: Environment frame base
 - x24: Closure environment pointer
 - x26: Code base register
-- x27: GC globals base (from_start, from_end, to_start, to_end)
+- x27: GC globals base
 - x28: Heap bump pointer
 
-## Stack Frame Layout
+## Key Features Implemented
 
-```
-sp+0x10:  x19, x20 (callee-saved)
-sp+0x20:  x21, x22
-sp+0x30:  x23, x24
-sp+0x40:  temp slots (td*8)
-sp+0x180: environment base
-sp+0x240: spill area (td*64)
-sp+0x3F0: x29 (fp), x30 (lr)
-```
-
-## Self-Hosting Status
-
-**Achieved:**
-- deliver-v3 compiles programs to native ARM64
-- Closures work (4+ levels nested, 6+ captures)
-- All 76 tests pass
-- Stage 1 compiles and runs correctly
-
-**Next Steps:**
-1. Get Stage 1 to output Stage 2 binary
-2. Verify fixed-point (Stage N == Stage N+1)
-
-## Roadmap
-
-See `docs/plans/MASTER_ROADMAP.md` for detailed implementation plan.
-
-### Priority 1: Stack Overflow Fix - DONE
-1. Rewrote read-list-elems to use `while` loop (iterative)
-2. Implemented TCO (see item 6 in Key Improvements)
-
-### Priority 2: TCO Implementation (Nanopass) - DONE
-1. `apply-tco-to-function` identifies and transforms self-tail-calls
-2. `codegen` emits `:tco-branch` markers, resolved in `resolve-tco-branches`
-3. Tested with 100,000 recursive calls without stack overflow
-
-### Priority 3: DWARF5 Debug Info
-1. Generate line number tables for lldb debugging
-2. Function symbol info for stack traces
-3. Critical for debugging Stage 1/2 crashes
-
-### Priority 4: Register Allocator - ARCHITECTURE DONE
-Implemented in `bootstrap/reg-alloc.lisp` as 5 nanopasses:
-1. **ir-to-tac**: Tree IR → Three-Address Code (linear, virtual registers)
-2. **compute-liveness**: Backward dataflow analysis for live ranges
-3. **compute-intervals**: Liveness info → (vreg, start, end) tuples
-4. **linear-scan**: Intervals → allocation map (vreg → x9-x15 or spill)
-5. **tac-codegen**: TAC + allocation → ARM64 (TODO)
-
-Remaining: Implement tac-codegen to replace current accumulator codegen
-
-### Priority 5: Native Garbage Collector - IMPLEMENTED
-Cheney's copying collector with two semispaces:
-1. **GC globals** in dedicated segment (from_start, from_end, to_start, to_end)
-2. **gc_copy**: Copy single object to to-space, leave forwarding pointer
-3. **gc_collect**: Flip semispaces, copy roots, scan Cheney queue
-4. **GC triggers**: Inserted after all heap allocations (cons, string, closures)
-5. See `docs/runtime/GC_NATIVE.md` for full documentation
-
-**Allocation sites with GC triggers:**
-- String literals (codegen.lisp:866)
-- Cons cells (codegen.lisp:1324)
-- Lambda-ref closures (codegen.lisp:1940, 1959)
-- fn-ref-ir closures (codegen.lisp:1982)
-- make-vector (codegen.lisp:1460)
-
-**Remaining:** Test under GC stress, add triggers to build-captures cons chain
-
-### Priority 6: Common Lisp `loop` Macro
-1. Full CL loop spec implementation
-2. Enables more idiomatic Lisp code
-
-## Common Operations
-
-```bash
-# Compile and run a program
-sbcl --load bootstrap/compiler-sbcl.lisp --load bootstrap/macho.lisp \
-     --load bootstrap/reader.lisp --load bootstrap/compiler.lisp \
-     --load bootstrap/codegen.lisp --load bootstrap/macho-utils.lisp \
-     --eval '(habu:deliver-v3 "(sys-exit 42)" "/tmp/test")' --quit
-/tmp/test && echo $?  # Should output 42
-```
+- **TCO**: Nanopass architecture, transforms self-tail-calls to loop-ir/continue-ir
+- **GC**: Cheney's copying collector (32MB semispaces), triggers after allocations
+- **Closures**: Full support including nested and multi-capture
+- **While loops**: True iteration without stack growth
+- **Function symbols**: LC_SYMTAB for lldb debugging
 
 ## Known Limitations
 
 1. Max 8 arguments per function
 2. 64KB file limit for native-read-file
-3. No macros (uses reader macros)
+3. No reader conditionals in native mode
+4. Inlining disabled (variable capture bug)
+
+## Slash Commands
+
+Available commands for Habu development:
+
+**Build & Test:**
+- `/habu-build-test` - Compile and test workflow
+- `/habu-run-tests [pattern]` - Run test suite
+- `/habu-stage <N|verify>` - Self-compilation stages
+
+**Debugging:**
+- `/habu-debug <binary>` - Debug crashes with lldb
+- `/habu-analyze <error>` - Structured error analysis
+- `/habu-disasm <binary> [function]` - Disassemble binaries
+
+**Inspection:**
+- `/habu-ir <source>` - Inspect compiler IR
+- `/habu-compare <bin1> <bin2>` - Compare binaries
+- `/habu-hexdump <binary> [range]` - Hex dump with annotations
+- `/habu-profile <binary> [duration]` - Profile running binary
+
+**System:**
+- `/habu-load` - Load compiler via ASDF
 
 ## Debugging
 
+- Exit 132 = SIGILL (illegal instruction - check code alignment/branch targets)
 - Exit 139 = SIGSEGV (check stack/spill)
 - Exit 137 = SIGKILL (codesign issue on macOS)
 - Use `--dynamic-space-size 4096` for large compilations
+
+## Simplification Roadmap
+
+### Vision
+
+**Ultimate Goal**: A fully self-hosting Common Lisp compiler that:
+- Generates native ARM64 code (x86_64 planned)
+- Matches or exceeds SBCL performance on ARM64
+- Implements full Common Lisp specification
+- Requires no external Lisp system after bootstrap
+
+### Phases
+
+1. **Self-Hosting** (current focus)
+   - Stage 1: SBCL compiles Habu -> native binary
+   - Stage 2: Stage 1 compiles Habu -> native binary
+   - Stage 3: Stage 2 compiles Habu -> native binary (fixed point)
+
+2. **SBCL Independence**
+   - Native eval (minimal subset for macros)
+   - Native reader conditionals
+   - Standalone build system
+
+3. **Performance Parity**
+   - Complete TAC pipeline and register allocator
+   - Re-enable inlining (fix variable capture bug)
+   - Constant folding, dead code elimination
+
+4. **Full CL Spec**
+   - CLOS
+   - Conditions and restarts
+   - Packages
+   - Multiple values
+
+### Current Architecture Issues
+
+- Two codegen files: `arm64/codegen-sbcl.lisp` (SBCL bootstrap) and `bootstrap/codegen.lisp` (both modes)
+- 95+ reader conditionals in codegen.lisp
+- Duplicate functions between `macho.lisp` and `macho-utils.lisp`
+
+### Planned Changes
+
+1. Keep `arm64/codegen-sbcl.lisp` (needed for SBCL bootstrap)
+2. Merge `macho-utils.lisp` into `macho.lisp`
+3. Reduce reader conditional count over time
+4. Remove dead code (backup files, unused packages)

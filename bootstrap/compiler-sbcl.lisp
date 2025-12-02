@@ -296,7 +296,7 @@
   "Replace extern call markers with BL instructions.
    If STUB-MAP and CODE-BASE-ADDR are provided, emits correct BL instructions.
    Otherwise emits placeholder BL instructions (for post-processing).
-   Note: Markers are now followed by 3 zero bytes (from resolve-calls fix).
+   Note: Markers are now followed by 4 zero bytes (BL instruction placeholder).
    Returns (cons flattened-code extern-call-positions)
    where extern-call-positions is ((name . byte-pos) ...)"
   (let ((result nil)
@@ -307,7 +307,7 @@
         ;; Skip placeholder zeros after extern-call marker
         ((> skip 0)
          (decf skip))
-        ;; Extern call marker - emit BL, skip next 3 zeros
+        ;; Extern call marker - emit BL, skip next 4 placeholder zeros
         ((and (consp item) (eq (car item) :extern-call))
          (let ((name (cadr item))
                (pos (caddr item)))
@@ -331,8 +331,8 @@
                  (push 0 result)
                  (push 0 result)
                  (push #x94 result)))  ; BL opcode high byte
-           ;; Skip the 3 placeholder zeros that follow the marker
-           (setf skip 3)))
+           ;; Skip the 4 placeholder zeros that follow the marker
+           (setf skip 4)))
         ;; Regular byte
         (t
          (push item result))))
@@ -515,7 +515,7 @@
 (defun symbol-char-p (ch)
   (or (alpha-p ch) (digit-p ch) (= ch #x2D) (= ch #x5F) (= ch #x2B) (= ch #x2A)
       (= ch #x2F) (= ch #x3D) (= ch #x3C) (= ch #x3E) (= ch #x21) (= ch #x3F)
-      (= ch #x26) (= ch #x25) (= ch #x3A)))
+      (= ch #x26) (= ch #x25) (= ch #x3A) (= ch #x2E)))  ; #x2E = dot for symbols like arm64:b.lo
 
 (defun char-at (s pos)
   (if (< pos (string-length s)) (string-ref s pos) 0))
@@ -611,12 +611,25 @@
                 (ch (char-at source p2)))
            (cond
              ((= ch #x29) (cons nil (+ p2 1)))
+             ;; Dot - check if standalone (dotted pair) or part of symbol (like b.lo)
              ((= ch #x2E)
-              (let* ((r (read-one (+ p2 1)))
-                     (cdr-val (car r))
-                     (p3 (cdr r))
-                     (p4 (skip-ws source p3)))
-                (cons cdr-val (+ p4 1))))
+              (let ((next-ch (char-at source (+ p2 1))))
+                ;; Only treat as dotted pair if followed by whitespace, ), or EOF
+                (if (or (whitespace-p next-ch)
+                        (= next-ch #x29)  ; )
+                        (= next-ch 0))    ; EOF
+                    ;; Standalone dot - dotted pair marker
+                    (let* ((r (read-one (+ p2 1)))
+                           (cdr-val (car r))
+                           (p3 (cdr r))
+                           (p4 (skip-ws source p3)))
+                      (cons cdr-val (+ p4 1)))
+                    ;; Dot followed by non-delimiter - part of symbol (like b.lo)
+                    (let* ((er (read-one p2))
+                           (el (car er))
+                           (p3 (cdr er))
+                           (rr (read-list-elems p3)))
+                      (cons (cons el (car rr)) (cdr rr))))))
              ((= ch 0) (cons nil p2))
              (t (let* ((er (read-one p2))
                        (el (car er))
@@ -1519,6 +1532,9 @@
           (list 'cons-ir (sys:compile (cadr expr) env fenv) (sys:compile (caddr expr) env fenv)))
          ((eq op 'car) (list 'car-ir (sys:compile (cadr expr) env fenv)))
          ((eq op 'cdr) (list 'cdr-ir (sys:compile (cadr expr) env fenv)))
+         ;; caar, cdar - missing accessors that were causing crashes
+         ((eq op 'caar) (sys:compile `(car (car ,(cadr expr))) env fenv))
+         ((eq op 'cdar) (sys:compile `(cdr (car ,(cadr expr))) env fenv))
          ;; cadr, caddr, cadddr, cddr, cdddr - common accessor chains
          ((eq op 'cadr) (sys:compile `(car (cdr ,(cadr expr))) env fenv))
          ((eq op 'caddr) (sys:compile `(car (cdr (cdr ,(cadr expr)))) env fenv))
@@ -3133,6 +3149,11 @@
                                (arm64:str 1 28 :offset 8)       ; [x28+8] = cdr
                                (arm64:mov 0 28)            ; x0 = untagged ptr
                                (arm64:add 28 28 16 :imm t)        ; bump heap by 16
+                               ;; GC trigger check: if x28 >= from_end, call GC
+                               (arm64:ldr 9 27 :offset 16)       ; x9 = from_end [x27+16]
+                               (arm64:cmp 28 9)                  ; compare x28, from_end
+                               (arm64:b.lo 2)                    ; skip if x28 < from_end
+                               (list '(:call-fn GC-COLLECT))     ; bl gc_collect
                                (arm64:movz 1 1)                ; x1 = 1
                                (arm64:orr 0 0 1)))))       ; x0 = ptr | 1
        (if may-call
@@ -4875,7 +4896,7 @@
          ;; Variables accessed as [x20 - offset*8], so x20 must be high enough
          ;; that var[max-env-size-1] = x20 - (max-env-size-1)*8 is above temp/spill area
          ;; For calling functions, spill slots are at #x240, so x20 must be past that
-         (spill-end (if makes-calls #x340 0))  ; #x340 = #x240 + 256 (4 call levels)
+         (spill-end (if makes-calls #x440 0))  ; #x440 = #x240 + 512 (8 call levels)
          (x20-offset-raw (+ saved-regs temp-area (* max-env-size 8)))
          (x20-offset (max x20-offset-raw (+ spill-end (* max-env-size 8))))
          ;; Leaf optimization: only for non-calling functions with no >8 params
@@ -5095,6 +5116,13 @@
                ((has-tag ir 'continue-ir)
                 (let* ((mvb-result-17 (lift-list (cadr ir) lambdas)) (new-args (car mvb-result-17)) (new-lambdas (cdr mvb-result-17)))
                     (cons (list 'continue-ir new-args) new-lambdas)))
+               ;; while-ir = (while-ir test body)
+               ((has-tag ir 'while-ir)
+                (let ((test (cadr ir))
+                      (body (caddr ir)))
+                  (let* ((mvb-result-w1 (lift test lambdas)) (new-test (car mvb-result-w1)) (l1 (cdr mvb-result-w1)))
+                    (let* ((mvb-result-w2 (lift body l1)) (new-body (car mvb-result-w2)) (l2 (cdr mvb-result-w2)))
+                    (cons (list 'while-ir new-test new-body) l2)))))
                (t (cons ir lambdas))))
            (lift-list (irs lambdas)
              (if (null irs)

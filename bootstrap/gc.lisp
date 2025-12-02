@@ -13,10 +13,12 @@
 ;;;   [x27+24]:  half_heap_size    (constant)
 ;;;   [x27+32]:  space_flag        (0 or half_heap_size)
 ;;;   [x27+40]:  gc_state          (0=idle, for future incremental)
-;;;   [x27+48]:  heap data starts
+;;;   [x27+48]:  symbol_counter    (codegen symbol interning)
+;;;   [x27+56]:  symbol_table      (codegen symbol interning)
+;;;   [x27+64]:  heap data starts
 ;;;
-;;; Semispace 0: [x27+48 .. x27+48+half)
-;;; Semispace 1: [x27+48+half .. x27+48+2*half)
+;;; Semispace 0: [x27+64 .. x27+64+half)
+;;; Semispace 1: [x27+64+half .. x27+64+2*half)
 ;;;
 ;;; Tags: 0=fixnum, 1=cons, 2=symbol, 3=vector, 4=string, 5=closure, 6=nil, 7=forward
 ;;;
@@ -40,7 +42,9 @@
 (defconstant +gc-half-heap-offset+ 24)
 (defconstant +gc-space-flag-offset+ 32)
 (defconstant +gc-state-offset+ 40)
-(defconstant +gc-heap-data-offset+ 48)
+(defconstant +gc-symbol-counter-offset+ 48)  ;; For codegen symbol table
+(defconstant +gc-symbol-table-offset+ 56)    ;; For codegen symbol table
+(defconstant +gc-heap-data-offset+ 64)       ;; Heap data starts after globals
 
 (defconstant +gc-tag-mask+ #xF)
 (defconstant +gc-tag-forward+ 7)
@@ -119,18 +123,18 @@
 
    ;; Check if immediate (fixnum tag 0 or nil tag 6)
    (arm64:and* 1 0 +gc-tag-mask+ :imm t)  ; x1 = tag
-   (arm64:cbz 1 40)                    ; if tag=0 (fixnum), return unchanged
+   (arm64:cbz 1 14)                    ; if tag=0 (fixnum), return unchanged (skip to ret)
    (arm64:cmp 1 6 :imm t)
-   (arm64:b.eq 38)                     ; if tag=6 (nil), return unchanged
+   (arm64:b.eq 12)                     ; if tag=6 (nil), return unchanged (skip to ret)
 
    ;; Get base address (clear low 4 bits)
    (arm64:and* 2 0 -16 :imm t)        ; x2 = base (ptr & ~0xF)
 
    ;; Check if in from-space: from_start <= base < from_end
    (arm64:cmp 2 18)                    ; compare base, from_start
-   (arm64:b.lo 34)                     ; if base < from_start, return unchanged
+   (arm64:b.lo 9)                      ; if base < from_start, return unchanged (skip to ret)
    (arm64:cmp 2 19)                    ; compare base, from_end
-   (arm64:b.hs 32)                     ; if base >= from_end, return unchanged
+   (arm64:b.hs 7)                      ; if base >= from_end, return unchanged (skip to ret)
 
    ;; Check if already forwarded
    (arm64:ldr 3 2 :offset 0)          ; x3 = first word at base
@@ -382,11 +386,13 @@
    Initializes:
      [x27+0]:  intern_table = nil (0x06)
      [x27+8]:  lambda_counter = 0
-     [x27+16]: from_end = x27 + 48 + half_heap_size
+     [x27+16]: from_end = x27 + 64 + half_heap_size
      [x27+24]: half_heap_size
      [x27+32]: space_flag = 0
      [x27+40]: gc_state = 0
-     [x27+48]: heap data starts, x28 points here"
+     [x27+48]: symbol_counter (codegen)
+     [x27+56]: symbol_table (codegen)
+     [x27+64]: heap data starts, x28 points here"
   (let* ((half-high (ash half-heap-size -16))
          (half-low (logand half-heap-size #xFFFF)))
     (append
@@ -416,10 +422,10 @@
      ;; Store gc_state = 0
      (arm64:str 9 27 :offset +gc-state-offset+)
 
-     ;; Compute from_end = x27 + 48 + half_heap_size
+     ;; Compute from_end = x27 + 64 + half_heap_size
      (arm64:add 11 27 +gc-heap-data-offset+ :imm t)
      (arm64:add 11 11 10)
      (arm64:str 11 27 :offset +gc-from-end-offset+)
 
-     ;; Set x28 = x27 + 48 (allocation pointer)
+     ;; Set x28 = x27 + 64 (allocation pointer)
      (arm64:add 28 27 +gc-heap-data-offset+ :imm t))))
