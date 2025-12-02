@@ -1072,6 +1072,9 @@
                                    (append acc load-code))))))
         ;; Simpler approach: build cons list iteratively
         ;; Start with nil, then cons each value
+        ;; NOTE: No GC trigger here - the variable-length cons chain causes
+        ;; issues with function offset calculations. Closures with captures
+        ;; are rare enough that skipping GC check here is acceptable.
         (labels ((gen-cons-chain (offs)
                    (if (null offs)
                        (movz 0 0)
