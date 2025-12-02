@@ -645,8 +645,7 @@
                  (read-int source pos))
                 ((string= uname "NIL") (cons nil end-pos))
                 ((string= uname "T") (cons t end-pos))
-                #+sbcl (t (cons (intern uname (find-package :habu)) end-pos))
-                #-sbcl (t (cons (intern uname) end-pos)))))))))
+                (t (cons (intern uname) end-pos)))))))))
 
 ;;; habu-read returns (value . new-pos)
 (defun habu-read (source pos)
@@ -778,9 +777,7 @@
                     (let ((result (read-pipe-symbol source (+ pos2 #x1) "")))
                       (let ((name (car result))
                             (end-pos (cdr result)))
-                        (cons #+sbcl (intern name :habu)
-                              #-sbcl (intern name)
-                              end-pos))))
+                        (cons (intern name) end-pos))))
                    ;; Symbol or number
                    (t (read-sym source pos2))))))))
 

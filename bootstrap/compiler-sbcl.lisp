@@ -1692,7 +1692,7 @@
                     (sys:compile (car forms) env fenv)
                     (list 'progn-ir
                           (mapcar (lambda (f) (sys:compile f env fenv)) forms))))))
-         ;; and - short-circuit and
+         ;; and - short-circuit and (returns nil when false, not 0 - while checks for nil)
          ((eq op 'and)
           (let ((args (cdr expr)))
             (if (null args)
@@ -1702,12 +1702,12 @@
                     (list 'if-ir
                           (sys:compile (car args) env fenv)
                           (sys:compile (cons 'and (cdr args)) env fenv)
-                          (list 'lit 0))))))
-         ;; or - short-circuit or (returns first truthy value)
+                          '(nil-ir))))))
+         ;; or - short-circuit or (returns first truthy value, nil when all false)
          ((eq op 'or)
           (let ((args (cdr expr)))
             (if (null args)
-                (list 'lit 0)
+                '(nil-ir)
                 (if (null (cdr args))
                     (sys:compile (car args) env fenv)
                     ;; Need to evaluate first arg, check if truthy, return it or continue
@@ -1717,9 +1717,9 @@
                        (list 'LET (list (list tmp (car args)))
                              (list 'if tmp tmp (cons 'or (cdr args))))
                        env fenv))))))
-         ;; not - logical not
+         ;; not - logical not (nil is 0x06, not 0 - use nil-ir)
          ((eq op 'not)
-          (list 'cmp-eq (sys:compile (cadr expr) env fenv) (list 'lit 0)))
+          (list 'cmp-eq (sys:compile (cadr expr) env fenv) '(nil-ir)))
          ;; funcall - call function by value
          ((eq op 'funcall)
           (list 'funcall-ir
