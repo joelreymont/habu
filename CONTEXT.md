@@ -1,6 +1,6 @@
 # Habu Self-Hosting Lisp Compiler - Context
 
-**Last Updated**: December 1, 2025
+**Last Updated**: December 2, 2025
 **Milestone**: Stage 1 compiles and runs; working on Stage 1 → Stage 2
 
 ## Current Status
@@ -21,7 +21,31 @@ The Habu compiler compiles programs with:
 
 **Test Results**: 76/76 pass (comprehensive, self-hosting, edge cases)
 
-## Current Session (December 1, 2025)
+## Current Session (December 2, 2025)
+
+### Closure Capture Fix (NEW)
+
+**Bug**: Closures with captured variables crashed (exit 141/144 instead of correct result)
+
+**Root Cause**:
+- `lambdas-to-defuns` converts lifted lambdas from 5-element format `(name params body free-vars free-offsets)` to 4-element defun format `(name params body param-base)`
+- `codegen-fn` distinguished lambdas from defuns by checking if 4th element is a number
+- After conversion, `param-base` is a number, so `codegen-fn` took the defun path
+- Defun path didn't copy captured variables from x24 (closure env) to stack slots
+
+**Fix**: Modified `codegen-fn` to detect lifted lambdas by checking `param-base > 0`
+- When `param-base > 0`, use the lambda capture copy logic (save params, copy captures, restore params)
+- When `param-base = 0`, use regular defun logic (just store params)
+
+**Tests**: All closure patterns now work:
+- Single captured variable: `(let ((y 32)) (funcall (lambda (x) (+ x y)) 10))` -> 42
+- Multiple captures: `(let ((a 10) (b 20)) (funcall (lambda (x) (+ a b x)) 12))` -> 42
+- Nested closures: `(let ((a 10)) (let ((b 20)) ...))`
+- Higher-order functions: `(defun make-adder (n) (lambda (x) (+ n x)))`
+- Lambdas without captures still work
+- Regular defuns still work
+
+### Previous Session (December 1, 2025)
 
 ### Stage 1 Status
 

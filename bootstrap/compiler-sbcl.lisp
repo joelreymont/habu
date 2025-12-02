@@ -4885,15 +4885,33 @@
                        (< max-env-size 12))))
     ;; Distinguish defun from lambda by checking 4th element
     ;; Defuns have a number (param-base), lambdas have nil or a list (free-vars)
+    ;; Note: Lifted lambdas (via lambdas-to-defuns) have param-base > 0 which means
+    ;; they have captured variables that need to be copied from x24 to stack slots.
     (if (numberp fourth)
-        ;; Defun: params start at param-base
+        ;; Defun or lifted lambda: params start at param-base
+        ;; If param-base > 0, this is a lifted lambda with captures
         (let* ((pb fourth)
-               (pc (gen-param-stores ps pb 0 nil :leaf is-leaf))
-               (bc (codegen bir rtaddrs fnoffs 0)))
-          (append (fn-prologue frame-size x20-offset :leaf is-leaf)
-                  pc bc
-                  (fn-epilogue frame-size :leaf is-leaf)
-                  (arm64:ret)))
+               (param-count (length ps))
+               (has-captures (> pb 0)))
+          (if has-captures
+              ;; Lifted lambda: save params, copy captures, restore params
+              ;; This matches the lambda path logic below
+              (let* ((leaf-ok nil)  ;; captures need x24, so no leaf optimization
+                     (ps-save (save-params-to-temps param-count 0 nil))
+                     (cc (gen-capture-copies pb 0 nil))
+                     (pc (restore-params-from-temps ps pb param-count 0 nil))
+                     (bc (codegen bir rtaddrs fnoffs 0)))
+                (append (fn-prologue frame-size x20-offset :leaf leaf-ok)
+                        ps-save cc pc bc
+                        (fn-epilogue frame-size :leaf leaf-ok)
+                        (arm64:ret)))
+              ;; Regular defun: just store params
+              (let* ((pc (gen-param-stores ps pb 0 nil :leaf is-leaf))
+                     (bc (codegen bir rtaddrs fnoffs 0)))
+                (append (fn-prologue frame-size x20-offset :leaf is-leaf)
+                        pc bc
+                        (fn-epilogue frame-size :leaf is-leaf)
+                        (arm64:ret)))))
         ;; Lambda: need to copy captures AND store params
         ;; Problem: capture copy clobbers x0-x4, but params are in x0-x4
         ;; Solution: save params to temp slots first, copy captures, then restore params
