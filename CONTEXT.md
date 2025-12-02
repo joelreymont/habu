@@ -23,7 +23,7 @@ The Habu compiler compiles programs with:
 
 ## Current Session (December 2, 2025)
 
-### Closure Capture Fix (NEW)
+### Closure Capture Fix (DONE)
 
 **Bug**: Closures with captured variables crashed (exit 141/144 instead of correct result)
 
@@ -44,6 +44,32 @@ The Habu compiler compiles programs with:
 - Higher-order functions: `(defun make-adder (n) (lambda (x) (+ n x)))`
 - Lambdas without captures still work
 - Regular defuns still work
+
+### Self-Hosting Analysis (NEW)
+
+**Status**: SBCL-compiled binaries work for simple programs. Full self-hosting requires preprocessing.
+
+**Current Capability**:
+- SBCL's `deliver` compiles Habu source to native ARM64 binaries
+- Simple programs (factorial, fibonacci, closures) compile and run correctly
+- Reader source can be included in compiled binaries
+
+**Blocking Issue for Stage 1 → Stage 2**:
+- Source files use #+sbcl / #-sbcl reader conditionals
+- SBCL reader understands these and strips out #-sbcl code during compilation
+- Native Habu reader does NOT understand these conditionals (sees as raw text)
+- When Stage 1 reads source files, it gets unparseable #+sbcl lines
+
+**Solutions**:
+1. Preprocess source files to remove conditionals (keep only #-sbcl code)
+2. Create parallel source files without conditionals
+3. Implement #+/-feature conditionals in native Habu reader
+
+**Next Steps**:
+1. Create preprocessor to strip SBCL conditionals
+2. Test Stage 1 with preprocessed sources
+3. Verify Stage 1 can compile simple programs
+4. Attempt Stage 2 compilation
 
 ### Previous Session (December 1, 2025)
 
