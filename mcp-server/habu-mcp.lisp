@@ -257,7 +257,70 @@
 
     ("lisp_paren_check"
      "Check parenthesis balance in a Lisp source file. Reports any mismatched parens with line/column context."
-     (("file" "string" "Path to Lisp file to check" t)))))
+     (("file" "string" "Path to Lisp file to check" t)))
+
+    ("lisp_hexdump"
+     "Hex dump bytes from a file. Shows offset, hex bytes, and ASCII representation like xxd."
+     (("file" "string" "Path to file to dump" t)
+      ("offset" "number" "Starting byte offset (default 0)" nil)
+      ("length" "number" "Number of bytes to dump (default 256, max 4096)" nil)
+      ("width" "number" "Bytes per line (default 16)" nil)))
+
+    ("lisp_tagged_value"
+     "Decode a Habu tagged value. Shows the type and value for fixnums, cons, symbols, vectors, strings, closures, and nil."
+     (("value" "number" "Tagged value (as integer)" t)))
+
+    ("lisp_heap_info"
+     "Show Habu heap layout information. Displays the memory layout at x27 including intern table, lambda counter, heap bounds, and allocation pointer."
+     ())
+
+    ("lisp_stack_frames"
+     "Walk ARM64 stack frames from a core dump or live process. Shows return addresses and tries to map them to function symbols."
+     (("binary" "string" "Path to binary for symbol lookup" t)
+      ("fp" "string" "Frame pointer (x29) value in hex" t)
+      ("sp" "string" "Stack pointer value in hex" t)
+      ("depth" "number" "Maximum frames to show (default 20)" nil)))
+
+    ("lisp_codesign"
+     "Code sign a Mach-O binary for macOS execution. Uses ad-hoc signing (-s -)."
+     (("binary" "string" "Path to binary to sign" t)))
+
+    ("lisp_run"
+     "Run a binary and capture output, exit code, and crash info if any."
+     (("binary" "string" "Path to binary to run" t)
+      ("args" "string" "Command line arguments (optional)" nil)
+      ("timeout" "number" "Timeout in seconds (default 30)" nil)))
+
+    ("lisp_debug"
+     "Run binary under lldb and capture crash info including registers and backtrace."
+     (("binary" "string" "Path to binary to debug" t)
+      ("args" "string" "Command line arguments (optional)" nil)))
+
+    ("lisp_gc_analyze"
+     "Analyze GC behavior for a crash. Shows heap state, from/to spaces, and checks for forwarding pointer issues. Run this after a SIGSEGV to understand GC-related crashes."
+     (("x27" "string" "x27 register value (heap base) in hex" t)
+      ("x28" "string" "x28 register value (alloc ptr) in hex" t)
+      ("crash_addr" "string" "Crash address in hex (optional)" nil)))
+
+    ("lisp_check_ptr"
+     "Check if a tagged pointer is valid. Detects forwarding pointers (tag 7), nil, and validates heap range."
+     (("ptr" "string" "Tagged pointer value in hex" t)
+      ("x27" "string" "x27 (heap base) in hex for range check" nil)))
+
+    ("lisp_env_slots"
+     "Show environment slot layout. The environment frame at x20 contains local variables that may hold heap pointers."
+     (("x20" "string" "x20 register value (env base) in hex" t)
+      ("count" "number" "Number of slots to show (default 16)" nil)))
+
+    ("lisp_gc_roots_info"
+     "Show what the GC considers as roots. Explains why some stack values aren't updated during GC."
+     ())
+
+    ("lisp_lldb_script"
+     "Generate an lldb script for debugging GC issues. Includes breakpoints, memory inspection commands, and watchpoints."
+     (("binary" "string" "Path to binary" t)
+      ("break_on_gc" "boolean" "Set breakpoint on GC-COLLECT (default true)" nil)
+      ("watch_env" "boolean" "Watch environment slot changes (default false)" nil)))))
 
 (defun format-tool-schema (name description params)
   `(("name" . ,name)
@@ -479,6 +542,596 @@
       (error (e)
         (format nil "Error checking file: ~A" e)))))
 
+(defun tool-lisp-hexdump (args)
+  "Hex dump bytes from a file."
+  (let ((file (jget args "file"))
+        (offset (or (jget args "offset") 0))
+        (length (min (or (jget args "length") 256) 4096))
+        (width (or (jget args "width") 16)))
+    (handler-case
+        (with-open-file (stream file :direction :input
+                                     :element-type '(unsigned-byte 8))
+          (file-position stream offset)
+          (let ((buffer (make-array length :element-type '(unsigned-byte 8))))
+            (let ((bytes-read (read-sequence buffer stream)))
+              (with-output-to-string (out)
+                (loop for i from 0 below bytes-read by width
+                      for line-offset = (+ offset i)
+                      do
+                         ;; Offset
+                         (format out "~8,'0X: " line-offset)
+                         ;; Hex bytes
+                         (loop for j from 0 below width
+                               for idx = (+ i j)
+                               do (if (< idx bytes-read)
+                                      (format out "~2,'0X " (aref buffer idx))
+                                      (format out "   ")))
+                         ;; ASCII
+                         (format out " ")
+                         (loop for j from 0 below width
+                               for idx = (+ i j)
+                               do (when (< idx bytes-read)
+                                    (let ((byte (aref buffer idx)))
+                                      (if (and (>= byte 32) (<= byte 126))
+                                          (write-char (code-char byte) out)
+                                          (write-char #\. out)))))
+                         (format out "~%"))))))
+      (error (e)
+        (format nil "Error: ~A" e)))))
+
+(defun tool-lisp-tagged-value (args)
+  "Decode a Habu tagged value."
+  (let ((value (jget args "value")))
+    (if (not (integerp value))
+        "Error: value must be an integer"
+        (let ((tag (logand value #xF)))
+          (with-output-to-string (out)
+            (format out "Raw value: ~16,'0X~%" value)
+            (format out "Tag bits:  ~D (~4,'0B)~%" tag tag)
+            (cond
+              ;; Nil: 0x06
+              ((= value #x06)
+               (format out "Type: NIL~%")
+               (format out "Value: NIL~%"))
+              ;; Fixnum: tag 0, value in upper bits
+              ((= tag 0)
+               (let ((fixnum (ash value -4)))
+                 (format out "Type: FIXNUM~%")
+                 (format out "Value: ~D (0x~X)~%" fixnum fixnum)))
+              ;; Cons: tag 1
+              ((= tag 1)
+               (let ((ptr (logand value (lognot #xF))))
+                 (format out "Type: CONS~%")
+                 (format out "Pointer: 0x~X~%" ptr)
+                 (format out "  CAR at: 0x~X~%" ptr)
+                 (format out "  CDR at: 0x~X~%" (+ ptr 8))))
+              ;; Symbol: tag 2
+              ((= tag 2)
+               (let ((ptr (logand value (lognot #xF))))
+                 (format out "Type: SYMBOL~%")
+                 (format out "Pointer: 0x~X~%" ptr)
+                 (format out "  Name string at: 0x~X~%" ptr)))
+              ;; Vector: tag 3
+              ((= tag 3)
+               (let ((ptr (logand value (lognot #xF))))
+                 (format out "Type: VECTOR~%")
+                 (format out "Pointer: 0x~X~%" ptr)
+                 (format out "  Length at: 0x~X~%" ptr)
+                 (format out "  Data at: 0x~X~%" (+ ptr 8))))
+              ;; String: tag 4
+              ((= tag 4)
+               (let ((ptr (logand value (lognot #xF))))
+                 (format out "Type: STRING~%")
+                 (format out "Pointer: 0x~X~%" ptr)
+                 (format out "  Length at: 0x~X~%" ptr)
+                 (format out "  Chars at: 0x~X~%" (+ ptr 8))))
+              ;; Closure: tag 5
+              ((= tag 5)
+               (let ((ptr (logand value (lognot #xF))))
+                 (format out "Type: CLOSURE~%")
+                 (format out "Pointer: 0x~X~%" ptr)
+                 (format out "  Code addr at: 0x~X~%" ptr)
+                 (format out "  Env at: 0x~X~%" (+ ptr 8))))
+              ;; Tag 6 (but not exactly 0x06)
+              ((= tag 6)
+               (format out "Type: UNKNOWN (tag 6, not nil)~%")
+               (format out "This may be an invalid value~%"))
+              ;; Unknown
+              (t
+               (format out "Type: UNKNOWN~%")
+               (format out "Tag ~D is not a valid Habu tag~%" tag))))))))
+
+(defun tool-lisp-heap-info (args)
+  "Show Habu heap layout information."
+  (declare (ignore args))
+  (with-output-to-string (out)
+    (format out "Habu Heap Layout (at x27 base register)~%")
+    (format out "========================================~%~%")
+    (format out "Simple GC Mode:~%")
+    (format out "  [x27+0]:   from_start (from-space start)~%")
+    (format out "  [x27+8]:   to_start (to-space start)~%")
+    (format out "  [x27+16]:  from_end (from-space end)~%")
+    (format out "  [x27+24]:  half_heap_size (usually 32MB = 0x2000000)~%")
+    (format out "  [x27+32]:  space_flag (0 or 1)~%")
+    (format out "  [x27+40]:  gc_state~%")
+    (format out "  [x27+48]:  symbol_counter~%")
+    (format out "  [x27+56]:  symbol_table~%")
+    (format out "  [x27+64]:  heap data starts~%~%")
+    (format out "Generational GC Mode (extends above):~%")
+    (format out "  [x27+80]:  nursery-start~%")
+    (format out "  [x27+88]:  nursery-end (also old-space-start)~%")
+    (format out "  [x27+96]:  card-table-start~%")
+    (format out "  [x27+104]: old-space-half-size~%")
+    (format out "  [x27+112]: old-space-flag~%")
+    (format out "  [x27+120]: old-space-alloc~%")
+    (format out "  [x27+128]: heap data starts~%~%")
+    (format out "Register Usage:~%")
+    (format out "  x27: GC globals base pointer~%")
+    (format out "  x28: Heap bump pointer (allocation)~%")
+    (format out "  x26: Code base register~%")
+    (format out "  x20: Environment frame base~%")
+    (format out "  x24: Closure environment pointer~%~%")
+    (format out "To inspect live heap in lldb:~%")
+    (format out "  (lldb) register read x27 x28~%")
+    (format out "  (lldb) memory read -c 64 $x27~%")))
+
+(defun tool-lisp-stack-frames (args)
+  "Walk ARM64 stack frames and map to symbols."
+  (let ((binary (jget args "binary"))
+        (fp-str (jget args "fp"))
+        (sp-str (jget args "sp"))
+        (depth (or (jget args "depth") 20)))
+    (handler-case
+        (let ((fp (parse-integer fp-str :radix 16))
+              (sp (parse-integer sp-str :radix 16)))
+          ;; Read symbol table from binary
+          (let ((symbols (read-macho-symbols binary)))
+            (with-output-to-string (out)
+              (format out "Stack Frames (fp=0x~X, sp=0x~X)~%~%" fp sp)
+              (format out "Note: This shows the expected frame layout.~%")
+              (format out "Use lldb to read actual memory:~%")
+              (format out "  (lldb) memory read -c 16 0x~X~%~%" fp)
+              (format out "Frame Layout (ARM64 standard):~%")
+              (format out "  [fp+0]:  saved fp (x29)~%")
+              (format out "  [fp+8]:  return address (x30)~%")
+              (format out "  [fp+16]: saved x19~%")
+              (format out "  [fp+24]: saved x20~%")
+              (format out "  ... more saved registers ...~%~%")
+              (when symbols
+                (format out "Symbols in binary (~D total):~%" (length symbols))
+                (loop for sym in (subseq symbols 0 (min 20 (length symbols)))
+                      do (format out "  ~A @ 0x~X~%" (car sym) (cdr sym)))
+                (when (> (length symbols) 20)
+                  (format out "  ... and ~D more~%" (- (length symbols) 20)))))))
+      (error (e)
+        (format nil "Error: ~A" e)))))
+
+(defun read-macho-symbols (path)
+  "Read symbol table from Mach-O binary. Returns alist of (name . address)."
+  (handler-case
+      (with-open-file (stream path :direction :input
+                                   :element-type '(unsigned-byte 8))
+        (let ((header (make-array 32 :element-type '(unsigned-byte 8))))
+          (read-sequence header stream)
+          ;; Check magic
+          (let ((magic (logior (aref header 0)
+                              (ash (aref header 1) 8)
+                              (ash (aref header 2) 16)
+                              (ash (aref header 3) 24))))
+            (unless (= magic #xFEEDFACF)  ; MH_MAGIC_64
+              (return-from read-macho-symbols nil))
+            ;; Parse load commands to find LC_SYMTAB
+            (let ((ncmds (logior (aref header 16)
+                                (ash (aref header 17) 8)
+                                (ash (aref header 18) 16)
+                                (ash (aref header 19) 24))))
+              (file-position stream 32)  ; After header
+              (dotimes (i ncmds)
+                (let ((cmd-header (make-array 8 :element-type '(unsigned-byte 8))))
+                  (read-sequence cmd-header stream)
+                  (let ((cmd (logior (aref cmd-header 0)
+                                    (ash (aref cmd-header 1) 8)))
+                        (cmdsize (logior (aref cmd-header 4)
+                                        (ash (aref cmd-header 5) 8)
+                                        (ash (aref cmd-header 6) 16)
+                                        (ash (aref cmd-header 7) 24))))
+                    (when (= cmd 2)  ; LC_SYMTAB
+                      (let ((symtab-data (make-array 16 :element-type '(unsigned-byte 8))))
+                        (read-sequence symtab-data stream)
+                        (let ((symoff (logior (aref symtab-data 0)
+                                             (ash (aref symtab-data 1) 8)
+                                             (ash (aref symtab-data 2) 16)
+                                             (ash (aref symtab-data 3) 24)))
+                              (nsyms (logior (aref symtab-data 4)
+                                            (ash (aref symtab-data 5) 8)
+                                            (ash (aref symtab-data 6) 16)
+                                            (ash (aref symtab-data 7) 24)))
+                              (stroff (logior (aref symtab-data 8)
+                                             (ash (aref symtab-data 9) 8)
+                                             (ash (aref symtab-data 10) 16)
+                                             (ash (aref symtab-data 11) 24))))
+                          ;; Read string table
+                          (file-position stream stroff)
+                          (let ((strtab (make-array 65536 :element-type '(unsigned-byte 8))))
+                            (read-sequence strtab stream)
+                            ;; Read symbols
+                            (file-position stream symoff)
+                            (let ((symbols nil))
+                              (dotimes (j (min nsyms 500))
+                                (let ((nlist (make-array 16 :element-type '(unsigned-byte 8))))
+                                  (read-sequence nlist stream)
+                                  (let ((strx (logior (aref nlist 0)
+                                                     (ash (aref nlist 1) 8)
+                                                     (ash (aref nlist 2) 16)
+                                                     (ash (aref nlist 3) 24)))
+                                        (value (logior (aref nlist 8)
+                                                      (ash (aref nlist 9) 8)
+                                                      (ash (aref nlist 10) 16)
+                                                      (ash (aref nlist 11) 24)
+                                                      (ash (aref nlist 12) 32)
+                                                      (ash (aref nlist 13) 40)
+                                                      (ash (aref nlist 14) 48)
+                                                      (ash (aref nlist 15) 56))))
+                                    (when (and (< strx 65536) (> value 0))
+                                      (let ((name (with-output-to-string (s)
+                                                   (loop for k from strx
+                                                         while (and (< k 65536)
+                                                                   (not (zerop (aref strtab k))))
+                                                         do (write-char (code-char (aref strtab k)) s)))))
+                                        (when (> (length name) 0)
+                                          (push (cons name value) symbols)))))))
+                              (return-from read-macho-symbols (nreverse symbols)))))))
+                    (file-position stream (+ (- (file-position stream) 8) cmdsize)))))))))
+    (error () nil)))
+
+(defun tool-lisp-codesign (args)
+  "Code sign a binary using ad-hoc signing."
+  (let ((binary (jget args "binary")))
+    (handler-case
+        (let ((output (with-output-to-string (s)
+                        (sb-ext:run-program "/usr/bin/codesign"
+                                           (list "-f" "-s" "-" binary)
+                                           :output s :error s))))
+          (format nil "Signed: ~A~%~A" binary output))
+      (error (e)
+        (format nil "Error signing ~A: ~A" binary e)))))
+
+(defun tool-lisp-run (args)
+  "Run a binary and capture output/exit code."
+  (let ((binary (jget args "binary"))
+        (cmd-args (or (jget args "args") ""))
+        (timeout (or (jget args "timeout") 30)))
+    (handler-case
+        (let* ((args-list (if (string= cmd-args "")
+                              nil
+                              (split-string cmd-args #\Space)))
+               (proc (sb-ext:run-program binary args-list
+                                        :output :stream
+                                        :error :stream
+                                        :wait nil)))
+          ;; Wait with timeout
+          (let ((start-time (get-internal-real-time)))
+            (loop
+              (when (not (sb-ext:process-alive-p proc))
+                (return))
+              (when (> (/ (- (get-internal-real-time) start-time)
+                         internal-time-units-per-second)
+                       timeout)
+                (sb-ext:process-kill proc 9)
+                (return)))
+            (let ((stdout (with-output-to-string (s)
+                           (loop for line = (read-line (sb-ext:process-output proc) nil nil)
+                                 while line do (format s "~A~%" line))))
+                  (stderr (with-output-to-string (s)
+                           (loop for line = (read-line (sb-ext:process-error proc) nil nil)
+                                 while line do (format s "~A~%" line))))
+                  (exit-code (sb-ext:process-exit-code proc)))
+              (with-output-to-string (out)
+                (format out "Exit code: ~A~%" exit-code)
+                (when (and exit-code (> exit-code 128))
+                  (format out "Signal: ~A (~A)~%"
+                          (- exit-code 128)
+                          (case (- exit-code 128)
+                            (4 "SIGILL - illegal instruction")
+                            (6 "SIGABRT - abort")
+                            (9 "SIGKILL - killed")
+                            (10 "SIGBUS - bus error")
+                            (11 "SIGSEGV - segmentation fault")
+                            (t "unknown"))))
+                (when (> (length stdout) 0)
+                  (format out "~%Stdout:~%~A" stdout))
+                (when (> (length stderr) 0)
+                  (format out "~%Stderr:~%~A" stderr))))))
+      (error (e)
+        (format nil "Error running ~A: ~A" binary e)))))
+
+(defun split-string (string char)
+  "Split string by char."
+  (loop for start = 0 then (1+ end)
+        for end = (position char string :start start)
+        collect (subseq string start (or end (length string)))
+        while end))
+
+(defun tool-lisp-debug (args)
+  "Run binary under lldb and capture crash info."
+  (let ((binary (jget args "binary"))
+        (cmd-args (or (jget args "args") "")))
+    (handler-case
+        (let* ((lldb-script (format nil "run ~A" cmd-args))
+               (proc (sb-ext:run-program "/usr/bin/lldb"
+                                        (list binary
+                                              "-o" "run"
+                                              "-o" "register read x0 x1 x9 x19 x20 x24 x26 x27 x28 pc sp"
+                                              "-o" "bt"
+                                              "-o" "disassemble -p -c 10"
+                                              "-o" "quit")
+                                        :output :stream
+                                        :error :stream
+                                        :wait t)))
+          (let ((output (with-output-to-string (s)
+                         (loop for line = (read-line (sb-ext:process-output proc) nil nil)
+                               while line do (format s "~A~%" line)))))
+            output))
+      (error (e)
+        (format nil "Error debugging ~A: ~A" binary e)))))
+
+(defun tool-lisp-gc-analyze (args)
+  "Analyze GC state from register values."
+  (let ((x27-str (jget args "x27"))
+        (x28-str (jget args "x28"))
+        (crash-str (jget args "crash_addr")))
+    (handler-case
+        (let* ((x27 (parse-integer (string-left-trim "0x" x27-str) :radix 16))
+               (x28 (parse-integer (string-left-trim "0x" x28-str) :radix 16))
+               (crash-addr (when crash-str
+                             (parse-integer (string-left-trim "0x" crash-str) :radix 16)))
+               (heap-data-offset 96)
+               (half-heap #x4000000)  ; 64MB
+               (from-start (+ x27 heap-data-offset))
+               (from-end (+ from-start half-heap))
+               (to-start (+ from-end))
+               (to-end (+ to-start half-heap)))
+          (with-output-to-string (out)
+            (format out "=== GC State Analysis ===~%~%")
+            (format out "Heap Base (x27):     0x~X~%" x27)
+            (format out "Alloc Ptr (x28):     0x~X~%" x28)
+            (format out "~%")
+            (format out "Heap Layout (assuming half_heap=64MB):~%")
+            (format out "  Globals:     0x~X - 0x~X (~D bytes)~%"
+                    x27 (+ x27 heap-data-offset) heap-data-offset)
+            (format out "  From-space:  0x~X - 0x~X~%" from-start from-end)
+            (format out "  To-space:    0x~X - 0x~X~%" to-start to-end)
+            (format out "~%")
+            ;; Analyze x28 position
+            (let ((alloc-offset (- x28 x27)))
+              (format out "Allocation Analysis:~%")
+              (format out "  x28 - x27 = 0x~X (~:D bytes)~%" alloc-offset alloc-offset)
+              (cond
+                ((< x28 from-start)
+                 (format out "  STATUS: x28 is BEFORE heap data - INVALID~%"))
+                ((< x28 from-end)
+                 (let ((used (- x28 from-start)))
+                   (format out "  STATUS: x28 is in from-space~%")
+                   (format out "  Used: ~:D bytes (~,1F%)~%"
+                           used (* 100.0 (/ used half-heap)))))
+                ((= x28 from-end)
+                 (format out "  STATUS: x28 AT from-end - heap is FULL~%")
+                 (format out "  GC ran but heap is still full (all objects live)~%"))
+                (t
+                 (format out "  STATUS: x28 BEYOND from-end - heap OVERFLOW~%")
+                 (format out "  Overflow by ~:D bytes~%" (- x28 from-end))
+                 (format out "  GC may not be triggering correctly~%"))))
+            ;; Analyze crash address if provided
+            (when crash-addr
+              (format out "~%Crash Address Analysis:~%")
+              (format out "  Address: 0x~X~%" crash-addr)
+              (cond
+                ((= crash-addr 0)
+                 (format out "  NULL pointer dereference~%")
+                 (format out "  Likely cause: accessing car/cdr of nil or stale pointer~%"))
+                ((< crash-addr #x1000)
+                 (format out "  Low address - probably nil (0x06) with tag cleared~%"))
+                ((and (>= crash-addr from-start) (< crash-addr from-end))
+                 (format out "  Address is in from-space~%")
+                 (format out "  This is VALID before GC but STALE after GC~%")
+                 (format out "  After GC, from-space contains forwarding pointers~%"))
+                ((and (>= crash-addr to-start) (< crash-addr to-end))
+                 (format out "  Address is in to-space~%")
+                 (format out "  This should be valid if pointing to live data~%"))
+                (t
+                 (format out "  Address outside heap - may be code or unmapped~%"))))
+            ;; Recommendations
+            (format out "~%Debugging Steps:~%")
+            (format out "1. In lldb, examine heap globals:~%")
+            (format out "   memory read -s8 -c12 -fx $x27~%")
+            (format out "2. Check from_end value at [x27+16]:~%")
+            (format out "   memory read -s8 -c1 -fx ($x27+16)~%")
+            (format out "3. If crash is nil access, check what was loaded:~%")
+            (format out "   Look at the ldr instruction before crash~%")
+            (format out "4. If crash is stale pointer, the env frame wasn't updated:~%")
+            (format out "   GC only updates registers, not stack variables~%")))
+      (error (e)
+        (format nil "Error: ~A" e)))))
+
+(defun tool-lisp-check-ptr (args)
+  "Check if a pointer is valid, forwarding, or stale."
+  (let ((ptr-str (jget args "ptr"))
+        (x27-str (jget args "x27")))
+    (handler-case
+        (let* ((ptr (parse-integer (string-left-trim "0x" ptr-str) :radix 16))
+               (x27 (when x27-str
+                      (parse-integer (string-left-trim "0x" x27-str) :radix 16)))
+               (tag (logand ptr #xF))
+               (base (logand ptr (lognot #xF))))
+          (with-output-to-string (out)
+            (format out "Pointer Analysis: 0x~X~%~%" ptr)
+            (format out "Tag:  ~D (0x~X)~%" tag tag)
+            (format out "Base: 0x~X~%~%" base)
+            ;; Decode tag
+            (format out "Tag interpretation:~%")
+            (cond
+              ((= ptr #x06)
+               (format out "  This is NIL~%")
+               (format out "  Accessing car/cdr of nil will crash (base = 0)~%"))
+              ((= tag 0)
+               (let ((val (ash ptr -4)))
+                 (format out "  FIXNUM: ~D (0x~X)~%" val val)
+                 (format out "  This is immediate data, not a pointer~%")))
+              ((= tag 1)
+               (format out "  CONS cell at 0x~X~%" base)
+               (format out "  CAR at: 0x~X, CDR at: 0x~X~%" base (+ base 8)))
+              ((= tag 2)
+               (format out "  SYMBOL at 0x~X~%" base))
+              ((= tag 3)
+               (format out "  VECTOR at 0x~X~%" base))
+              ((= tag 4)
+               (format out "  STRING at 0x~X~%" base))
+              ((= tag 5)
+               (format out "  CLOSURE at 0x~X~%" base))
+              ((= tag 6)
+               (format out "  Tag 6 but not nil (0x06)~%")
+               (format out "  This is likely INVALID~%"))
+              ((= tag 7)
+               (format out "  FORWARDING POINTER!~%")
+               (format out "  This indicates a GC-moved object~%")
+               (format out "  New location: 0x~X~%" base)
+               (format out "  If you see this, the pointer wasn't updated after GC~%"))
+              (t
+               (format out "  UNKNOWN tag~%")))
+            ;; Range check if x27 provided
+            (when (and x27 (> base 0))
+              (let* ((heap-start (+ x27 96))
+                     (heap-size #x8000000)  ; 128MB total
+                     (heap-end (+ heap-start heap-size)))
+                (format out "~%Heap range check:~%")
+                (cond
+                  ((< base heap-start)
+                   (format out "  BEFORE heap - not a heap pointer~%"))
+                  ((< base (+ heap-start #x4000000))
+                   (format out "  In from-space (first 64MB)~%")
+                   (format out "  Valid BEFORE GC, stale AFTER GC~%"))
+                  ((< base heap-end)
+                   (format out "  In to-space (second 64MB)~%")
+                   (format out "  Valid AFTER GC~%"))
+                  (t
+                   (format out "  BEYOND heap - invalid~%")))))))
+      (error (e)
+        (format nil "Error: ~A" e)))))
+
+(defun tool-lisp-env-slots (args)
+  "Show environment slot layout."
+  (let ((x20-str (jget args "x20"))
+        (count (or (jget args "count") 16)))
+    (handler-case
+        (let ((x20 (parse-integer (string-left-trim "0x" x20-str) :radix 16)))
+          (with-output-to-string (out)
+            (format out "Environment Frame Layout~%")
+            (format out "========================~%~%")
+            (format out "x20 (env base): 0x~X~%~%" x20)
+            (format out "Slots (relative to x20):~%")
+            (dotimes (i count)
+              (let ((offset (* i 8)))
+                (format out "  [x20-0x~2,'0X]: slot ~D (arg/local ~D)~%"
+                        offset i i)))
+            (format out "~%")
+            (format out "To inspect in lldb:~%")
+            (format out "  memory read -s8 -c~D -fx ($x20 - ~D)~%"
+                    count (* count 8))
+            (format out "~%")
+            (format out "IMPORTANT: These slots may contain heap pointers that~%")
+            (format out "are NOT updated by GC. After GC runs, any pointer here~%")
+            (format out "that was in from-space will be stale (points to forwarding~%")
+            (format out "pointer or garbage).~%")))
+      (error (e)
+        (format nil "Error: ~A" e)))))
+
+(defun tool-lisp-gc-roots-info (args)
+  "Explain what GC considers as roots."
+  (declare (ignore args))
+  (with-output-to-string (out)
+    (format out "=== GC Root Information ===~%~%")
+    (format out "The Habu GC updates the following roots during collection:~%~%")
+    (format out "UPDATED by GC:~%")
+    (format out "  1. Saved registers (on GC's own stack):~%")
+    (format out "     - x0-x7  (arguments/return values)~%")
+    (format out "     - x24    (closure environment)~%")
+    (format out "     - x25    (saved)~%")
+    (format out "  2. Intern table at [x27+0]~%")
+    (format out "~%")
+    (format out "NOT UPDATED by GC:~%")
+    (format out "  1. Environment slots at [x20-N]~%")
+    (format out "     - These are local variables on caller's stack~%")
+    (format out "     - GC doesn't know about them~%")
+    (format out "  2. Values in caller's stack frame~%")
+    (format out "  3. Heap pointers stored in other heap objects~%")
+    (format out "     - These ARE updated via Cheney scanning~%")
+    (format out "~%")
+    (format out "THE PROBLEM:~%")
+    (format out "When GC moves an object:~%")
+    (format out "  1. Object copied from from-space to to-space~%")
+    (format out "  2. Forwarding pointer left at old location~%")
+    (format out "  3. Saved registers are updated to new location~%")
+    (format out "  4. BUT [x20-N] slots still have old pointers~%")
+    (format out "~%")
+    (format out "After GC returns:~%")
+    (format out "  - Code loads from [x20-N], gets old pointer~%")
+    (format out "  - Tries to access object at old address~%")
+    (format out "  - Finds forwarding pointer (tag 7) or garbage~%")
+    (format out "  - CRASH!~%")
+    (format out "~%")
+    (format out "SOLUTIONS:~%")
+    (format out "  1. Stack maps: Compiler emits info about stack layout~%")
+    (format out "  2. Conservative scanning: GC scans entire stack~%")
+    (format out "  3. Reload after GC: Codegen reloads from safe locations~%")
+    (format out "  4. Different allocation: Put all temp values in registers~%")))
+
+(defun tool-lisp-lldb-script (args)
+  "Generate lldb script for GC debugging."
+  (let ((binary (jget args "binary"))
+        (break-gc (if (jget args "break_on_gc") t t))  ; default true
+        (watch-env (jget args "watch_env")))
+    (with-output-to-string (out)
+      (format out "# LLDB script for debugging GC issues~%")
+      (format out "# Usage: lldb -s this_script.lldb ~A~%~%" binary)
+      (format out "target create \"~A\"~%~%" binary)
+      ;; Breakpoints
+      (when break-gc
+        (format out "# Break on GC~%")
+        (format out "breakpoint set -n GC-COLLECT~%")
+        (format out "breakpoint command add 1~%")
+        (format out "printf \"\\n=== GC-COLLECT called ===\\n\"~%")
+        (format out "register read x27 x28~%")
+        (format out "printf \"Heap at [x27]: \"~%")
+        (format out "memory read -s8 -c4 -fx $x27~%")
+        (format out "printf \"\\n\"~%")
+        (format out "continue~%")
+        (format out "DONE~%~%"))
+      ;; GC return breakpoint
+      (format out "# Break when GC returns to see updated state~%")
+      (format out "# Find return address in caller and set breakpoint~%~%")
+      ;; Memory inspection aliases
+      (format out "# Useful commands:~%")
+      (format out "# Show heap globals:~%")
+      (format out "#   memory read -s8 -c12 -fx $x27~%")
+      (format out "#~%")
+      (format out "# Show environment slots:~%")
+      (format out "#   memory read -s8 -c16 -fx ($x20 - 128)~%")
+      (format out "#~%")
+      (format out "# Check a tagged pointer:~%")
+      (format out "#   p/x $x0 & 0xf  # show tag~%")
+      (format out "#   p/x $x0 & ~0xf # show base~%")
+      (format out "#~%")
+      (format out "# Check for forwarding pointer (tag 7):~%")
+      (format out "#   p ($x0 & 0xf) == 7~%")
+      (format out "~%")
+      ;; Watchpoint for env slot
+      (when watch-env
+        (format out "# Watch environment slot (set $x20 first):~%")
+        (format out "# watchpoint set expression -w write -- ($x20 - 0x48)~%~%"))
+      ;; Run command
+      (format out "# Run the program:~%")
+      (format out "run~%"))))
+
 (defun dispatch-tool (name args)
   (cond
     ((string= name "lisp_eval") (tool-lisp-eval args))
@@ -489,6 +1142,18 @@
     ((string= name "lisp_inspect") (tool-lisp-inspect args))
     ((string= name "lisp_apropos") (tool-lisp-apropos args))
     ((string= name "lisp_paren_check") (tool-lisp-paren-check args))
+    ((string= name "lisp_hexdump") (tool-lisp-hexdump args))
+    ((string= name "lisp_tagged_value") (tool-lisp-tagged-value args))
+    ((string= name "lisp_heap_info") (tool-lisp-heap-info args))
+    ((string= name "lisp_stack_frames") (tool-lisp-stack-frames args))
+    ((string= name "lisp_codesign") (tool-lisp-codesign args))
+    ((string= name "lisp_run") (tool-lisp-run args))
+    ((string= name "lisp_debug") (tool-lisp-debug args))
+    ((string= name "lisp_gc_analyze") (tool-lisp-gc-analyze args))
+    ((string= name "lisp_check_ptr") (tool-lisp-check-ptr args))
+    ((string= name "lisp_env_slots") (tool-lisp-env-slots args))
+    ((string= name "lisp_gc_roots_info") (tool-lisp-gc-roots-info args))
+    ((string= name "lisp_lldb_script") (tool-lisp-lldb-script args))
     (t (format nil "Unknown tool: ~A" name))))
 
 ;;; ============================================================
