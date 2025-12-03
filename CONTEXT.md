@@ -82,10 +82,14 @@ in that file handle the differences between SBCL and native mode.
 - String operations (string=, string-length, etc.) - work after fix
 
 **Still Not Working**:
-- `(habu-read content pos)` - crashes (SIGSEGV) during file parsing
-  - Crash in LAMBDA-187 (part of labels construct in habu-read)
-  - Trying to dereference raw string data as a pointer
-  - Address contains source text like " b))\n(ad"
+- `(habu-read content pos)` - crashes (SIGSEGV) during list parsing
+  - Simple numbers work: `(habu-read "42" 0)` -> returns 42
+  - Empty lists work: `(habu-read "()" 0)` -> returns nil
+  - Lists with elements crash: `(habu-read "(x)" 0)` -> SIGSEGV
+  - Root cause: `labels` transformation corrupts local variables
+  - The `acc` variable in read-list-elems contains garbage (fixnum)
+    instead of the accumulated list after recursive calls to read-one
+  - Fix needed in compiler-sbcl.lisp labels transformation
 - `(compile-forms ...)` - crashes (blocks self-hosting)
 
 **Next Steps**:
