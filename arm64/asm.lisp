@@ -9,6 +9,8 @@
   (:export
    ;; Core encoding
    #:encode
+   ;; Register keyword resolver
+   #:reg
    ;; Data movement
    #:movz #:movk #:mov #:adrp #:adr #:add-lo12
    ;; Arithmetic
@@ -163,6 +165,38 @@
         (logand (ash word -24) #xFF)))
 
 ;;; ============================================================
+;;; Register Keywords
+;;; ============================================================
+;;; Registers can be specified as keywords (:x0, :x1, ..., :x30)
+;;; or as numbers (0, 1, ..., 30). Special aliases are provided
+;;; for commonly used registers.
+
+(defun reg (r)
+  "Convert register specifier to number.
+   Accepts: numbers (0-31), keywords (:x0-:x30), or special names.
+
+   General purpose: :x0 through :x30
+   Special: :sp (31), :xzr (31), :lr (30), :fp (29)
+   Habu conventions: :env (20), :closure (24), :code-base (26), :gc (27), :heap (28)"
+  (if (numberp r)
+      r
+      (case r
+        ;; General purpose registers
+        (:x0 0) (:x1 1) (:x2 2) (:x3 3) (:x4 4) (:x5 5) (:x6 6) (:x7 7)
+        (:x8 8) (:x9 9) (:x10 10) (:x11 11) (:x12 12) (:x13 13) (:x14 14) (:x15 15)
+        (:x16 16) (:x17 17) (:x18 18) (:x19 19) (:x20 20) (:x21 21) (:x22 22) (:x23 23)
+        (:x24 24) (:x25 25) (:x26 26) (:x27 27) (:x28 28) (:x29 29) (:x30 30)
+        ;; Special registers
+        (:sp 31) (:xzr 31) (:lr 30) (:fp 29)
+        ;; Habu-specific register aliases
+        (:env 20)        ; environment frame base
+        (:closure 24)    ; closure environment pointer
+        (:code-base 26)  ; code base register
+        (:gc 27)         ; GC globals base
+        (:heap 28)       ; heap bump pointer
+        (t (error "Unknown register: ~S" r)))))
+
+;;; ============================================================
 ;;; Data Movement
 ;;; ============================================================
 
@@ -172,7 +206,7 @@
   (encode (logior #xD2800000
                   (ash (ash lsl -4) 21)
                   (ash (logand imm #xFFFF) 5)
-                  rd)))
+                  (reg rd))))
 
 (defun movk (rd imm &key (lsl 0))
   "MOVK Xd, #imm{, LSL #shift}
@@ -180,12 +214,12 @@
   (encode (logior #xF2800000
                   (ash (ash lsl -4) 21)
                   (ash (logand imm #xFFFF) 5)
-                  rd)))
+                  (reg rd))))
 
 (defun mov (rd rm)
   "MOV Xd, Xm
    Move register (alias for ORR Xd, XZR, Xm)."
-  (encode (logior #xAA0003E0 (ash rm 16) rd)))
+  (encode (logior #xAA0003E0 (ash (reg rm) 16) (reg rd))))
 
 (defun adrp (rd page-offset)
   "ADRP Xd, label
@@ -197,7 +231,7 @@
     (encode (logior #x90000000
                     (ash immlo 29)
                     (ash immhi 5)
-                    rd))))
+                    (reg rd)))))
 
 (defun adr (rd byte-offset)
   "ADR Xd, label
@@ -209,15 +243,15 @@
     (encode (logior #x10000000
                     (ash immlo 29)
                     (ash immhi 5)
-                    rd))))
+                    (reg rd)))))
 
 (defun add-lo12 (rd rn lo12)
   "ADD Xd, Xn, #:lo12:label
    Add low 12 bits of address. For use with ADRP."
   (encode (logior #x91000000
                   (ash (logand lo12 #xFFF) 10)
-                  (ash rn 5)
-                  rd)))
+                  (ash (reg rn) 5)
+                  (reg rd))))
 
 ;;; ============================================================
 ;;; Arithmetic
@@ -230,12 +264,12 @@
       (encode (logior #x91000000
                       (if shift12 #x400000 0)  ; bit 22 = sh
                       (ash (logand rm-or-imm #xFFF) 10)
-                      (ash rn 5)
-                      rd))
+                      (ash (reg rn) 5)
+                      (reg rd)))
       (encode (logior #x8B000000
-                      (ash rm-or-imm 16)
-                      (ash rn 5)
-                      rd))))
+                      (ash (reg rm-or-imm) 16)
+                      (ash (reg rn) 5)
+                      (reg rd)))))
 
 (defun sub (rd rn rm-or-imm &key imm shift12)
   "SUB Xd, Xn, Xm  or  SUB Xd, Xn, #imm [, LSL #12]
@@ -244,33 +278,33 @@
       (encode (logior #xD1000000
                       (if shift12 #x400000 0)  ; bit 22 = sh
                       (ash (logand rm-or-imm #xFFF) 10)
-                      (ash rn 5)
-                      rd))
+                      (ash (reg rn) 5)
+                      (reg rd)))
       (encode (logior #xCB000000
-                      (ash rm-or-imm 16)
-                      (ash rn 5)
-                      rd))))
+                      (ash (reg rm-or-imm) 16)
+                      (ash (reg rn) 5)
+                      (reg rd)))))
 
 (defun mul (rd rn rm)
   "MUL Xd, Xn, Xm
    Multiply (alias for MADD Xd, Xn, Xm, XZR)."
   (encode (logior #x9B007C00
-                  (ash rm 16)
-                  (ash rn 5)
-                  rd)))
+                  (ash (reg rm) 16)
+                  (ash (reg rn) 5)
+                  (reg rd))))
 
 (defun sdiv (rd rn rm)
   "SDIV Xd, Xn, Xm
    Signed divide."
   (encode (logior #x9AC00C00
-                  (ash rm 16)
-                  (ash rn 5)
-                  rd)))
+                  (ash (reg rm) 16)
+                  (ash (reg rn) 5)
+                  (reg rd))))
 
 (defun neg (rd rm)
   "NEG Xd, Xm
    Negate (alias for SUB Xd, XZR, Xm)."
-  (encode (logior #xCB0003E0 (ash rm 16) rd)))
+  (encode (logior #xCB0003E0 (ash (reg rm) 16) (reg rd))))
 
 (defun subs (rd rn rm-or-imm &key imm)
   "SUBS Xd, Xn, Xm  or  SUBS Xd, Xn, #imm
@@ -278,12 +312,12 @@
   (if imm
       (encode (logior #xF1000000
                       (ash (logand rm-or-imm #xFFF) 10)
-                      (ash rn 5)
-                      rd))
+                      (ash (reg rn) 5)
+                      (reg rd)))
       (encode (logior #xEB000000
-                      (ash rm-or-imm 16)
-                      (ash rn 5)
-                      rd))))
+                      (ash (reg rm-or-imm) 16)
+                      (ash (reg rn) 5)
+                      (reg rd)))))
 
 (defun ldr-reg (rt rn rm &key (shift 0))
   "LDR Xt, [Xn, Xm, LSL #shift]
@@ -292,26 +326,26 @@
   ;; S=1 means LSL #3, S=0 means LSL #0
   (let ((s-bit (if (= shift 3) 1 0)))
     (encode (logior #xF8606800
-                    (ash rm 16)
+                    (ash (reg rm) 16)
                     (ash s-bit 12)
-                    (ash rn 5)
-                    rt))))
+                    (ash (reg rn) 5)
+                    (reg rt)))))
 
 (defun ldrb-post (rt rn imm9)
   "LDRB Wt, [Xn], #imm
    Load byte with post-increment. Imm is signed 9-bit."
   (encode (logior #x38400400
                   (ash (logand imm9 #x1FF) 12)
-                  (ash rn 5)
-                  rt)))
+                  (ash (reg rn) 5)
+                  (reg rt))))
 
 (defun strb-post (rt rn imm9)
   "STRB Wt, [Xn], #imm
    Store byte with post-increment. Imm is signed 9-bit."
   (encode (logior #x38000400
                   (ash (logand imm9 #x1FF) 12)
-                  (ash rn 5)
-                  rt)))
+                  (ash (reg rn) 5)
+                  (reg rt))))
 
 (defun orr-imm (rd rn imm)
   "ORR Xd, Xn, #imm
@@ -319,12 +353,14 @@
   ;; ARM64 logical immediate encoding is complex.
   ;; For tagging: we only need small constants like 1, 2, 3, 4, 5, 6, 7
   ;; These are: N=1, immr=0, imms varies
-  (let ((base #xB2400000))
+  (let ((base #xB2400000)
+        (rn-reg (reg rn))
+        (rd-reg (reg rd)))
     (cond
-      ((= imm 1) (encode (logior base (ash 0 10) (ash rn 5) rd)))   ; imms=0
-      ((= imm 3) (encode (logior base (ash 1 10) (ash rn 5) rd)))   ; imms=1
-      ((= imm 7) (encode (logior base (ash 2 10) (ash rn 5) rd)))   ; imms=2
-      ((= imm 15) (encode (logior base (ash 3 10) (ash rn 5) rd)))  ; imms=3
+      ((= imm 1) (encode (logior base (ash 0 10) (ash rn-reg 5) rd-reg)))   ; imms=0
+      ((= imm 3) (encode (logior base (ash 1 10) (ash rn-reg 5) rd-reg)))   ; imms=1
+      ((= imm 7) (encode (logior base (ash 2 10) (ash rn-reg 5) rd-reg)))   ; imms=2
+      ((= imm 15) (encode (logior base (ash 3 10) (ash rn-reg 5) rd-reg)))  ; imms=3
       ;; Unsupported immediate - return nil (compile-time error detection)
       #+sbcl (t (error "orr-imm: unsupported immediate ~D" imm))
       #-sbcl (t nil))))
@@ -339,119 +375,129 @@
    Use :imm t for immediate mode with common masks:
    #x7 (low 3 bits), #xF (low 4 bits), #xFF (low 8 bits),
    -4 (~3), -8 (~7), -16 (~15), -32 (~31) for alignment."
-  (if imm
-      ;; Immediate mode - encode common masks
-      ;; ARM64 logical immediate encoding: 0x92400000 | (immr << 16) | (imms << 10) | Rn | Rd
-      (let ((base #x92400000)
-            (rn-shift (ash rn 5)))
-        (cond
-          ;; Keep low bits masks (N=1, immr=0, imms=bits-1)
-          ((= rm-or-imm #x7)   ; low 3 bits: imms=2
-           (encode (logior base (ash 2 10) rn-shift rd)))
-          ((= rm-or-imm #xF)   ; low 4 bits: imms=3
-           (encode (logior base (ash 3 10) rn-shift rd)))
-          ((= rm-or-imm #xFF)  ; low 8 bits: imms=7
-           (encode (logior base (ash 7 10) rn-shift rd)))
-          ;; Alignment masks (clear low bits) - immr=64-N, imms=63-N
-          ((or (= rm-or-imm #xFFFFFFFFFFFFFFFC) (= rm-or-imm -4))   ; ~3
-           (encode (logior base (ash 62 16) (ash 61 10) rn-shift rd)))
-          ((or (= rm-or-imm #xFFFFFFFFFFFFFFF8) (= rm-or-imm -8))   ; ~7
-           (encode (logior base (ash 61 16) (ash 60 10) rn-shift rd)))
-          ((or (= rm-or-imm #xFFFFFFFFFFFFFFF0) (= rm-or-imm -16))  ; ~15
-           (encode (logior base (ash 60 16) (ash 59 10) rn-shift rd)))
-          ((or (= rm-or-imm #xFFFFFFFFFFFFFFE0) (= rm-or-imm -32))  ; ~31
-           (encode (logior base (ash 59 16) (ash 58 10) rn-shift rd)))
-          ;; Unsupported mask - return nil (compile-time error detection)
-          #+sbcl (t (error "and* :imm - unsupported mask #x~X. Use common masks or encode manually." rm-or-imm))
-          #-sbcl (t nil)))
-      ;; Register mode
-      (encode (logior #x8A000000
-                      (ash rm-or-imm 16)
-                      (ash rn 5)
-                      rd))))
+  (let ((rd-reg (reg rd))
+        (rn-reg (reg rn)))
+    (if imm
+        ;; Immediate mode - encode common masks
+        ;; ARM64 logical immediate encoding: 0x92400000 | (immr << 16) | (imms << 10) | Rn | Rd
+        (let ((base #x92400000)
+              (rn-shift (ash rn-reg 5)))
+          (cond
+            ;; Keep low bits masks (N=1, immr=0, imms=bits-1)
+            ((= rm-or-imm #x7)   ; low 3 bits: imms=2
+             (encode (logior base (ash 2 10) rn-shift rd-reg)))
+            ((= rm-or-imm #xF)   ; low 4 bits: imms=3
+             (encode (logior base (ash 3 10) rn-shift rd-reg)))
+            ((= rm-or-imm #xFF)  ; low 8 bits: imms=7
+             (encode (logior base (ash 7 10) rn-shift rd-reg)))
+            ;; Alignment masks (clear low bits) - immr=64-N, imms=63-N
+            ((or (= rm-or-imm #xFFFFFFFFFFFFFFFC) (= rm-or-imm -4))   ; ~3
+             (encode (logior base (ash 62 16) (ash 61 10) rn-shift rd-reg)))
+            ((or (= rm-or-imm #xFFFFFFFFFFFFFFF8) (= rm-or-imm -8))   ; ~7
+             (encode (logior base (ash 61 16) (ash 60 10) rn-shift rd-reg)))
+            ((or (= rm-or-imm #xFFFFFFFFFFFFFFF0) (= rm-or-imm -16))  ; ~15
+             (encode (logior base (ash 60 16) (ash 59 10) rn-shift rd-reg)))
+            ((or (= rm-or-imm #xFFFFFFFFFFFFFFE0) (= rm-or-imm -32))  ; ~31
+             (encode (logior base (ash 59 16) (ash 58 10) rn-shift rd-reg)))
+            ;; Unsupported mask - return nil (compile-time error detection)
+            #+sbcl (t (error "and* :imm - unsupported mask #x~X. Use common masks or encode manually." rm-or-imm))
+            #-sbcl (t nil)))
+        ;; Register mode
+        (encode (logior #x8A000000
+                        (ash (reg rm-or-imm) 16)
+                        (ash rn-reg 5)
+                        rd-reg)))))
 
 (defun orr (rd rn rm-or-imm &key imm)
   "ORR Xd, Xn, Xm  or  ORR Xd, Xn, #imm
    Bitwise OR.
    Use :imm t for immediate mode with small constants (1, 3, 7, 15)."
-  (if imm
-      ;; Immediate mode - encode small constants for tagging
-      (let ((base #xB2400000))
-        (cond
-          ((= rm-or-imm 1) (encode (logior base (ash 0 10) (ash rn 5) rd)))   ; imms=0
-          ((= rm-or-imm 3) (encode (logior base (ash 1 10) (ash rn 5) rd)))   ; imms=1
-          ((= rm-or-imm 7) (encode (logior base (ash 2 10) (ash rn 5) rd)))   ; imms=2
-          ((= rm-or-imm 15) (encode (logior base (ash 3 10) (ash rn 5) rd)))  ; imms=3
-          ;; Unsupported immediate
-          #+sbcl (t (error "orr :imm - unsupported immediate ~D. Use 1, 3, 7, or 15." rm-or-imm))
-          #-sbcl (t nil)))
-      ;; Register mode
-      (encode (logior #xAA000000
-                      (ash rm-or-imm 16)
-                      (ash rn 5)
-                      rd))))
+  (let ((rd-reg (reg rd))
+        (rn-reg (reg rn)))
+    (if imm
+        ;; Immediate mode - encode small constants for tagging
+        (let ((base #xB2400000))
+          (cond
+            ((= rm-or-imm 1) (encode (logior base (ash 0 10) (ash rn-reg 5) rd-reg)))   ; imms=0
+            ((= rm-or-imm 3) (encode (logior base (ash 1 10) (ash rn-reg 5) rd-reg)))   ; imms=1
+            ((= rm-or-imm 7) (encode (logior base (ash 2 10) (ash rn-reg 5) rd-reg)))   ; imms=2
+            ((= rm-or-imm 15) (encode (logior base (ash 3 10) (ash rn-reg 5) rd-reg)))  ; imms=3
+            ;; Unsupported immediate
+            #+sbcl (t (error "orr :imm - unsupported immediate ~D. Use 1, 3, 7, or 15." rm-or-imm))
+            #-sbcl (t nil)))
+        ;; Register mode
+        (encode (logior #xAA000000
+                        (ash (reg rm-or-imm) 16)
+                        (ash rn-reg 5)
+                        rd-reg)))))
 
 (defun eor (rd rn rm)
   "EOR Xd, Xn, Xm
    Bitwise XOR."
   (encode (logior #xCA000000
-                  (ash rm 16)
-                  (ash rn 5)
-                  rd)))
+                  (ash (reg rm) 16)
+                  (ash (reg rn) 5)
+                  (reg rd))))
 
 (defun bic (rd rn rm)
   "BIC Xd, Xn, Xm
    Bit clear (AND with NOT Xm)."
   (encode (logior #x8A200000
-                  (ash rm 16)
-                  (ash rn 5)
-                  rd)))
+                  (ash (reg rm) 16)
+                  (ash (reg rn) 5)
+                  (reg rd))))
 
 (defun lsl (rd rn shift &key imm)
   "LSL Xd, Xn, Xm  or  LSL Xd, Xn, #shift
    Logical shift left."
-  (if imm
-      ;; LSL immediate: UBFM Xd, Xn, #(-shift MOD 64), #(63-shift)
-      (encode (logior #xD3400000
-                      (ash (logand (- #x40 shift) #x3F) 16)
-                      (ash (- #x3F shift) 10)
-                      (ash rn 5)
-                      rd))
-      ;; LSL register: LSLV
-      (encode (logior #x9AC02000
-                      (ash shift 16)
-                      (ash rn 5)
-                      rd))))
+  (let ((rd-reg (reg rd))
+        (rn-reg (reg rn)))
+    (if imm
+        ;; LSL immediate: UBFM Xd, Xn, #(-shift MOD 64), #(63-shift)
+        (encode (logior #xD3400000
+                        (ash (logand (- #x40 shift) #x3F) 16)
+                        (ash (- #x3F shift) 10)
+                        (ash rn-reg 5)
+                        rd-reg))
+        ;; LSL register: LSLV
+        (encode (logior #x9AC02000
+                        (ash (reg shift) 16)
+                        (ash rn-reg 5)
+                        rd-reg)))))
 
 (defun lsr (rd rn shift &key imm)
   "LSR Xd, Xn, Xm  or  LSR Xd, Xn, #shift
    Logical shift right."
-  (if imm
-      ;; LSR immediate: UBFM Xd, Xn, #shift, #63
-      (encode (logior #xD340FC00
-                      (ash shift 16)
-                      (ash rn 5)
-                      rd))
-      ;; LSR register: LSRV
-      (encode (logior #x9AC02400
-                      (ash shift 16)
-                      (ash rn 5)
-                      rd))))
+  (let ((rd-reg (reg rd))
+        (rn-reg (reg rn)))
+    (if imm
+        ;; LSR immediate: UBFM Xd, Xn, #shift, #63
+        (encode (logior #xD340FC00
+                        (ash shift 16)
+                        (ash rn-reg 5)
+                        rd-reg))
+        ;; LSR register: LSRV
+        (encode (logior #x9AC02400
+                        (ash (reg shift) 16)
+                        (ash rn-reg 5)
+                        rd-reg)))))
 
 (defun asr (rd rn shift &key imm)
   "ASR Xd, Xn, Xm  or  ASR Xd, Xn, #shift
    Arithmetic shift right."
-  (if imm
-      ;; ASR immediate: SBFM Xd, Xn, #shift, #63
-      (encode (logior #x9340FC00
-                      (ash shift 16)
-                      (ash rn 5)
-                      rd))
-      ;; ASR register: ASRV
-      (encode (logior #x9AC02800
-                      (ash shift 16)
-                      (ash rn 5)
-                      rd))))
+  (let ((rd-reg (reg rd))
+        (rn-reg (reg rn)))
+    (if imm
+        ;; ASR immediate: SBFM Xd, Xn, #shift, #63
+        (encode (logior #x9340FC00
+                        (ash shift 16)
+                        (ash rn-reg 5)
+                        rd-reg))
+        ;; ASR register: ASRV
+        (encode (logior #x9AC02800
+                        (ash (reg shift) 16)
+                        (ash rn-reg 5)
+                        rd-reg)))))
 
 ;;; ============================================================
 ;;; Memory Operations
@@ -462,8 +508,8 @@
    Load 64-bit register. Offset scaled by 8, must be multiple of 8."
   (encode (logior #xF9400000
                   (ash (ash offset -3) 10)
-                  (ash rn 5)
-                  rt)))
+                  (ash (reg rn) 5)
+                  (reg rt))))
 
 (defun str (rt rn &key (offset 0))
   "STR Xt, [Xn{, #offset}]
@@ -471,8 +517,8 @@
    For negative offsets, use STUR instead."
   (encode (logior #xF9000000
                   (ash (ash offset -3) 10)
-                  (ash rn 5)
-                  rt)))
+                  (ash (reg rn) 5)
+                  (reg rt))))
 
 (defun stur (rt rn &key (offset 0))
   "STUR Xt, [Xn{, #offset}]
@@ -480,8 +526,8 @@
    Offset is signed 9-bit (-256 to 255), not scaled."
   (encode (logior #xF8000000
                   (ash (logand offset #x1FF) 12)
-                  (ash rn 5)
-                  rt)))
+                  (ash (reg rn) 5)
+                  (reg rt))))
 
 (defun ldur (rt rn &key (offset 0))
   "LDUR Xt, [Xn{, #offset}]
@@ -489,58 +535,62 @@
    Offset is signed 9-bit (-256 to 255), not scaled."
   (encode (logior #xF8400000
                   (ash (logand offset #x1FF) 12)
-                  (ash rn 5)
-                  rt)))
+                  (ash (reg rn) 5)
+                  (reg rt))))
 
 (defun ldp (rt1 rt2 rn &key (offset 0))
   "LDP Xt1, Xt2, [Xn{, #offset}]
    Load pair. Offset scaled by 8, signed 7-bit."
   (encode (logior #xA9400000
                   (ash (logand (ash offset -3) #x7F) 15)
-                  (ash rt2 10)
-                  (ash rn 5)
-                  rt1)))
+                  (ash (reg rt2) 10)
+                  (ash (reg rn) 5)
+                  (reg rt1))))
 
 (defun stp (rt1 rt2 rn &key (offset 0))
   "STP Xt1, Xt2, [Xn{, #offset}]
    Store pair. Offset scaled by 8, signed 7-bit."
   (encode (logior #xA9000000
                   (ash (logand (ash offset -3) #x7F) 15)
-                  (ash rt2 10)
-                  (ash rn 5)
-                  rt1)))
+                  (ash (reg rt2) 10)
+                  (ash (reg rn) 5)
+                  (reg rt1))))
 
 (defun ldrb (rt rn rm-or-offset &key reg)
   "LDRB Wt, [Xn, Xm]  or  LDRB Wt, [Xn, #offset]
    Load byte, zero-extend to 64-bit.
    Use :reg t for register offset, otherwise immediate offset."
-  (if reg
-      ;; Register offset: LDRB Wt, [Xn, Xm]
-      (encode (logior #x38606800
-                      (ash rm-or-offset 16)
-                      (ash rn 5)
-                      rt))
-      ;; Immediate offset: LDRB Wt, [Xn, #offset]
-      (encode (logior #x39400000
-                      (ash (logand rm-or-offset #xFFF) 10)
-                      (ash rn 5)
-                      rt))))
+  (let ((rt-reg (reg rt))
+        (rn-reg (reg rn)))
+    (if reg
+        ;; Register offset: LDRB Wt, [Xn, Xm]
+        (encode (logior #x38606800
+                        (ash (reg rm-or-offset) 16)
+                        (ash rn-reg 5)
+                        rt-reg))
+        ;; Immediate offset: LDRB Wt, [Xn, #offset]
+        (encode (logior #x39400000
+                        (ash (logand rm-or-offset #xFFF) 10)
+                        (ash rn-reg 5)
+                        rt-reg)))))
 
 (defun strb (rt rn rm-or-offset &key reg)
   "STRB Wt, [Xn, Xm]  or  STRB Wt, [Xn, #offset]
    Store byte.
    Use :reg t for register offset, otherwise immediate offset."
-  (if reg
-      ;; Register offset: STRB Wt, [Xn, Xm]
-      (encode (logior #x38206800
-                      (ash rm-or-offset 16)
-                      (ash rn 5)
-                      rt))
-      ;; Immediate offset: STRB Wt, [Xn, #offset]
-      (encode (logior #x39000000
-                      (ash (logand rm-or-offset #xFFF) 10)
-                      (ash rn 5)
-                      rt))))
+  (let ((rt-reg (reg rt))
+        (rn-reg (reg rn)))
+    (if reg
+        ;; Register offset: STRB Wt, [Xn, Xm]
+        (encode (logior #x38206800
+                        (ash (reg rm-or-offset) 16)
+                        (ash rn-reg 5)
+                        rt-reg))
+        ;; Immediate offset: STRB Wt, [Xn, #offset]
+        (encode (logior #x39000000
+                        (ash (logand rm-or-offset #xFFF) 10)
+                        (ash rn-reg 5)
+                        rt-reg)))))
 
 ;;; ============================================================
 ;;; Compare
@@ -549,20 +599,21 @@
 (defun cmp (rn rm-or-imm &key imm)
   "CMP Xn, Xm  or  CMP Xn, #imm
    Compare (alias for SUBS XZR, Xn, ...)."
-  (if imm
-      (encode (logior #xF100001F
-                      (ash (logand rm-or-imm #xFFF) 10)
-                      (ash rn 5)))
-      (encode (logior #xEB00001F
-                      (ash rm-or-imm 16)
-                      (ash rn 5)))))
+  (let ((rn-reg (reg rn)))
+    (if imm
+        (encode (logior #xF100001F
+                        (ash (logand rm-or-imm #xFFF) 10)
+                        (ash rn-reg 5)))
+        (encode (logior #xEB00001F
+                        (ash (reg rm-or-imm) 16)
+                        (ash rn-reg 5))))))
 
 (defun cset (rd cond)
   "CSET Xd, cond
-   Conditional set. cond is one of +eq+, +ne+, etc."
+   Conditional set. cond is one of +cc-eq+, +cc-ne+, etc."
   (encode (logior #x9A9F07E0
                   (ash (logxor cond 1) 12)
-                  rd)))
+                  (reg rd))))
 
 ;;; ============================================================
 ;;; Branch Instructions
@@ -583,26 +634,26 @@
 (defun blr (rn)
   "BLR Xn
    Branch with link to register."
-  (encode (logior #xD63F0000 (ash rn 5))))
+  (encode (logior #xD63F0000 (ash (reg rn) 5))))
 
 (defun br (rn)
   "BR Xn
    Branch to register (no link)."
-  (encode (logior #xD61F0000 (ash rn 5))))
+  (encode (logior #xD61F0000 (ash (reg rn) 5))))
 
 (defun cbz (rt offset)
   "CBZ Xt, label
    Compare and branch if zero. Offset in instructions (not bytes)."
   (encode (logior #xB4000000
                   (ash (logand offset #x7FFFF) 5)
-                  rt)))
+                  (reg rt))))
 
 (defun cbnz (rt offset)
   "CBNZ Xt, label
    Compare and branch if not zero. Offset in instructions (not bytes)."
   (encode (logior #xB5000000
                   (ash (logand offset #x7FFFF) 5)
-                  rt)))
+                  (reg rt))))
 
 (defun b.eq (offset)
   "B.EQ label
