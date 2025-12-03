@@ -1144,7 +1144,7 @@
               (movz 0 16)                  ; x0 = 16 (tagged 1)
               (arm64:b 2)                  ; skip return_false
               ;; return_false:
-              (movz 0 0)))))               ; x0 = 0 (tagged 0/nil-ish)
+              (movz 0 6)))))               ; x0 = 6 (nil tag)
 
     ;; Make-vector: allocate vector on heap
     ;; Vector layout: [length (8 bytes)] [data (n * 8 bytes)]

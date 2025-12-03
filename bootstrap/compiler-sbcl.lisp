@@ -3497,7 +3497,7 @@
               (arm64:movz 0 16)                  ; x0 = 16 (tagged 1)
               (arm64:b (ash 8 -2))                 ; skip return_false (+2 instructions = 8 bytes)
               ;; return_false: (instruction 15)
-              (arm64:movz 0 0)))))
+              (arm64:movz 0 6)))))  ; x0 = 6 (nil tag)
     ;; make-vector-ir - allocate vector (inline)
     ((has-tag ir 'make-vector-ir)
      ;; make-vector-ir = (make-vector-ir size-ir)
