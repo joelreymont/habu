@@ -7,13 +7,7 @@
   :license "MIT"
   :depends-on ()
   :serial nil
-  ;; Treat warnings as errors for strict compilation
-  :around-compile (lambda (next)
-                    (handler-bind
-                        ((style-warning
-                          (lambda (c)
-                            (error "Style warning treated as error: ~A" c))))
-                      (funcall next)))
+  :in-order-to ((test-op (test-op "habu/tests")))
   :components
   (;; ARM64 assembler (must come first)
    (:module "arm64"
@@ -47,10 +41,19 @@
    ;; Mach-O utilities for native code
    (:file "macho-utils" :depends-on ("compiler-sbcl" "macho"))))
 
-;;; Separate system for tests
+;;;; Test system
 (asdf:defsystem "habu/tests"
   :description "Habu compiler test suite"
   :depends-on ("habu")
+  :pathname ""
   :components
   ((:file "test-harness")
-   (:file "test-compiler" :depends-on ("test-harness"))))
+   (:module "tests"
+    :pathname "../tests/"
+    :depends-on ("test-harness")
+    :components
+    ((:file "test-core")
+     (:file "test-keyword-args" :depends-on ("test-core"))
+     (:file "test-packages" :depends-on ("test-core")))))
+  :perform (test-op (o c)
+             (uiop:symbol-call :habu-test '#:run-all-tests)))

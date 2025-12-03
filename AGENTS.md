@@ -1,5 +1,19 @@
 # Habu Lisp Compiler - Agent Instructions
 
+## Project Vision
+
+**Ultimate Goal**: A fully self-hosting Common Lisp compiler that:
+- Generates native ARM64 code (x86_64 planned)
+- Matches or exceeds SBCL performance on ARM64
+- Implements full Common Lisp specification
+- Requires no external Lisp system after bootstrap
+
+**Roadmap**:
+1. Self-hosting (Stage 1 -> Stage 2 -> Stage 3 fixed point)
+2. SBCL independence (native eval, reader conditionals)
+3. Performance parity (register allocator, optimizations)
+4. Full CL spec (CLOS, conditions, packages, multiple values)
+
 ## Project Overview
 
 Habu is a self-hosted Lisp compiler that generates native ARM64 machine code.
@@ -105,6 +119,13 @@ When adding new ARM64 instructions:
 1. Add intrinsics to `arm64/asm.lisp` in `:arm64` package
 2. Use existing ARM64 intrinsics wherever possible
 3. Prefer direct ARM64 calls over wrapping in helper functions
+
+**IMPORTANT - No Wrapper Functions in codegen.lisp**:
+- DO NOT add new `#+sbcl` / `#-sbcl` wrapper functions in `codegen.lisp`
+- Instead, add reader conditionals directly in `arm64/asm.lisp` intrinsics
+- The `arm64/asm.lisp` functions use keyword args (`:imm t`, `:reg t`, `:offset N`)
+- Put the `#-sbcl` native encoding directly in the intrinsic function
+- This keeps all ARM64 encoding in one place and reduces codegen.lisp complexity
 
 ### Debugging
 
@@ -256,18 +277,51 @@ All ARM64 instructions use the `arm64` package (`arm64/asm.lisp`):
 
 ## Testing
 
-Run tests with:
-```bash
-cd tests && sbcl --script run_tests.lisp
-```
+**IMPORTANT**: Always use ASDF for loading and testing. Never use direct `(load ...)` calls.
 
-Test file naming: `test_<feature>.lisp`
+### Running Tests
 
-Test structure:
+Run the full test suite via ASDF:
 ```lisp
-;;; Test <feature> - short description
-(assert (= (some-function) expected-value))
+(asdf:test-system :habu)
 ```
+
+Or load and run interactively:
+```lisp
+(asdf:load-system :habu/tests)
+(habu-test:run-all-tests)
+```
+
+### Test Organization
+
+Tests are defined in `bootstrap/habu.asd` as the `habu/tests` system:
+- `bootstrap/test-harness.lisp` - Test utilities (HABU-TEST package)
+- `tests/test-core.lisp` - Core compiler tests
+- `tests/test-keyword-args.lisp` - Keyword argument tests
+- `tests/test-packages.lisp` - Package system tests
+
+### Writing Tests
+
+Use the test harness macros in HABU-TEST package:
+```lisp
+(in-package :habu-test)
+
+(define-test-suite "Feature Name"
+  (test "test-name" "source-code" expected-exit-code)
+  (test-full "test-name" "(full source with sys-exit)" expected))
+```
+
+### Test Naming
+
+- ASDF test files: `test-feature.lisp` (hyphenated)
+- Legacy standalone tests: `test_feature.lisp` (underscored)
+
+### Key Points
+
+1. Never `(load ...)` source files in tests - use ASDF dependencies
+2. Tests run when their files are loaded during `asdf:test-system`
+3. Use `:depends-on` in ASDF to ensure proper load order
+4. Test harness provides counters: `*pass-count*`, `*fail-count*`, `*skip-count*`
 
 ## Reference
 
