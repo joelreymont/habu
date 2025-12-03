@@ -12,7 +12,19 @@
 
 ### Changes Made This Session
 
-1. **ASDF-based test infrastructure**
+1. **Removed ARM64 wrapper functions**
+   - Removed all wrapper functions from codegen.lisp (add-imm, sub-imm, etc.)
+   - Now using arm64:* intrinsics directly with keyword arguments
+   - Fixed confusing variable names (cbz-instr -> skip-if-zero, etc.)
+   - Updated AGENTS.md with branch offset convention documentation
+
+2. **Fixed string= return value bug**
+   - string-equal-ir was returning 0 (fixnum zero) for false
+   - In Habu's tagged value system, 0 is truthy (fixnum 0), nil is 6
+   - All string comparisons incorrectly appeared equal
+   - Fixed in both codegen.lisp and compiler-sbcl.lisp to return 6 (nil)
+
+3. **ASDF-based test infrastructure**
    - Updated `bootstrap/habu.asd` with `habu/tests` system
    - Created `bootstrap/test-harness.lisp` with HABU-TEST package
    - Created `tests/test-core.lisp` with 37 core compiler tests
@@ -67,16 +79,18 @@ in that file handle the differences between SBCL and native mode.
 **Working**:
 - `(sys-exit N)` - works
 - `(native-read-file ...)` - works
-- `(read-all (native-read-file ...))` - works
-- All string operations - work
+- String operations (string=, string-length, etc.) - work after fix
 
 **Still Not Working**:
-- `(read-all "literal-string")` - crashes (SIGSEGV)
-- `(compile-forms ...)` - crashes
+- `(habu-read content pos)` - crashes (SIGSEGV) during file parsing
+  - Crash in LAMBDA-187 (part of labels construct in habu-read)
+  - Trying to dereference raw string data as a pointer
+  - Address contains source text like " b))\n(ad"
+- `(compile-forms ...)` - crashes (blocks self-hosting)
 
 **Next Steps**:
-- Investigate string literal crash in reader
-- Test Stage 1 → Stage 2 compilation
+- Debug habu-read crash (likely labels compilation issue)
+- Test Stage 1 → Stage 2 compilation once reader works
 
 ## Previous Session (December 2, 2025)
 
