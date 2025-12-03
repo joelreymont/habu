@@ -134,7 +134,33 @@ When adding new ARM64 instructions:
 - Use lldb with function symbols (now embedded in binaries)
 - Common exit codes:
   - 139 = SIGSEGV (memory access error)
+  - 138 = SIGBUS (bus error, often stack slot collision)
   - 137 = SIGKILL (often codesign issue on macOS)
+
+### Slot Debug Tool
+
+The `slot-debug.lisp` tool helps diagnose stack slot conflicts in funcall-ir codegen:
+
+```lisp
+;; Load the tool
+(load "bootstrap/slot-debug.lisp")
+
+;; Analyze funcall-ir slot layout
+(habu::print-funcall-slot-layout td num-args param-space stack-space)
+
+;; Check for slot conflicts
+(habu::check-funcall-slot-overlap td num-args total-offset)
+
+;; Analyze a crash by offset (e.g., from lldb showing ldr x9, [sp, #0x88])
+(habu::analyze-crash-offset #x88 td num-args param-space stack-space)
+
+;; Run full diagnosis for common crash patterns
+(habu::diagnose-funcall-bug)
+```
+
+Key insight: funcall-ir uses temp slots for saves (x24, x20, x30, code-addr, env) and args.
+After sp adjustment, offsets must be adjusted. The tool detects when adjusted offsets
+overlap with unadjusted arg slots.
 
 ### Slash Commands
 

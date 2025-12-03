@@ -1109,8 +1109,8 @@
                                 (cons
                                  ;; Symbol table
                                  (if local-fns
-                                     ;; 76 = wrapper size (19 instructions * 4 bytes)
-                                     (build-symbol-table-with-locals local-fns imports (+ +VM-BASE+ code-offset) 76)
+                                     ;; 116 = wrapper size (29 instructions * 4 bytes for GC-enabled wrapper)
+                                     (build-symbol-table-with-locals local-fns imports (+ +VM-BASE+ code-offset) 116)
                                      (build-symbol-table imports (+ +VM-BASE+ code-offset)))
                                  
                                  (cons

@@ -1327,6 +1327,8 @@
        ;; In boolean context, any non-zero value is truthy
        ((eq expr 't) (list 'lit 1))           ; t = 1 (truthy)
        ((eq expr 'nil) (list 'nil-ir))          ; nil is 0x06 (tag 6)
+       ;; Keywords are self-evaluating symbols - compile as symbol literal
+       ((keywordp expr) (list 'sym-lit (symbol-name expr)))
        (t
         ;; Use numberp since offset 0 is falsey in Habu
         (let ((off (env-lookup expr env)))
@@ -1336,7 +1338,7 @@
               ;; This creates a closure pointing to the function (no captures)
               (if (and fenv (assoc expr fenv))
                   (list 'lambda-ref expr nil)
-                  (list 'lit 0)))))))
+                  (error "Undefined variable: ~S" expr)))))))
     ((consp expr)
      (let ((op (car expr)))
        (cond
@@ -4861,31 +4863,28 @@
         (gen-capture-copies count (+ idx 1) (append acc copy-code)))))
 
 (defun save-params-to-temps (count idx acc)
-  "Save param registers x0..xN to temp slots 200+idx to preserve them during capture copy.
-   Temp slots 200+ are used to avoid conflict with body temps."
+  "Save param registers x0..xN to sp-relative slots to preserve them during capture copy.
+   Uses offsets 24, 32, 40, ... (after saved x20/lr at 0, x24 at 16).
+   These are within the function's stack frame and won't be clobbered by nested calls."
   (if (>= idx count)
       acc
-      (let* ((temp-slot (+ 200 idx))
-             (off (* temp-slot 8))
+      (let* ((off (+ 24 (* idx 8)))  ; Start at sp+24, after saved regs
              (save-code (append-all
                          (list
-                          (arm64:sub 21 20 off :imm t)
-                          (arm64:str idx 21 :offset 0)))))
+                          (arm64:str idx 31 :offset off)))))  ; str xi, [sp, #off]
         (save-params-to-temps count (+ idx 1) (append acc save-code)))))
 
 (defun restore-params-from-temps (params base count idx acc)
-  "Restore params from temp slots and store to final slots at base+idx."
+  "Restore params from sp-relative temp slots and store to final env slots at base+idx."
   (if (null params)
       acc
-      (let* ((temp-slot (+ 200 idx))
-             (temp-off (* temp-slot 8))
+      (let* ((temp-off (+ 24 (* idx 8)))  ; Match save-params-to-temps offsets
              (final-off (* (+ base idx) 8))
              (restore-code (append-all
                             (list
-                             ;; Load from temp slot
-                             (arm64:sub 21 20 temp-off :imm t)
-                             (arm64:ldr 22 21 :offset 0)
-                             ;; Store to final slot
+                             ;; Load from sp-relative temp slot
+                             (arm64:ldr 22 31 :offset temp-off)
+                             ;; Store to final env slot (x20-relative)
                              (arm64:sub 21 20 final-off :imm t)
                              (arm64:str 22 21 :offset 0)))))
         (restore-params-from-temps (cdr params) base count (+ idx 1) (append acc restore-code)))))
@@ -4961,11 +4960,16 @@
             (arg-depths (mapcar (lambda (a) (count-max-temp-depth a (+ depth 3))) args)))
        (apply #'max (+ depth 3) arg-depths)))
     ((has-tag ir 'funcall-ir)
+     ;; funcall-ir uses slots: td+0 to td+4 (x24/x20/x30/code/env saves)
+     ;; plus td+5 to td+5+num_args-1 for arg storage
+     ;; nested evaluation happens at td+5+num_args
      (let* ((closure (cadr ir))
             (args (caddr ir))
-            (closure-depth (count-max-temp-depth closure (+ depth 2)))
-            (arg-depths (mapcar (lambda (a) (count-max-temp-depth a (+ depth 4))) args)))
-       (apply #'max closure-depth (+ depth 4) arg-depths)))
+            (num-args (length args))
+            (nested-base (+ depth 5 num-args))
+            (closure-depth (count-max-temp-depth closure nested-base))
+            (arg-depths (mapcar (lambda (a) (count-max-temp-depth a nested-base)) args)))
+       (apply #'max nested-base closure-depth arg-depths)))
     ;; Default: check all children, filtering out non-list elements
     (t
      (apply #'max depth (mapcar (lambda (child) (count-max-temp-depth child depth))

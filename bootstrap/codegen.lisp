@@ -2198,7 +2198,8 @@
 #-sbcl
 (defun code-size (code)
   "Calculate size of code in bytes, accounting for markers.
-   Markers (:call-fn, :extern-call, :tco-branch) each represent 4 bytes."
+   Markers: :call-fn, :extern-call, :tco-branch, :loop-continue = 4 bytes each.
+   :loop-start = 0 bytes (position marker only)."
   (labels ((tally (items acc)
              (if (null items)
                  acc
@@ -2210,6 +2211,10 @@
                       (tally (cdr items) (+ acc 4)))
                      ((and (consp item) (eq (car item) :tco-branch))
                       (tally (cdr items) (+ acc 4)))
+                     ((and (consp item) (eq (car item) :loop-continue))
+                      (tally (cdr items) (+ acc 4)))
+                     ((and (consp item) (eq (car item) :loop-start))
+                      (tally (cdr items) acc)) ; 0 bytes - position marker only
                      ((consp item)
                       (tally (cdr items) (+ acc (tally item 0))))
                      (t
