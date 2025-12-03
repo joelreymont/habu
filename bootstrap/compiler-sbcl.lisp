@@ -32,8 +32,8 @@
 ;;; Use habu:deliver, habu:compile-program, etc.
 (defpackage :habu
   (:use :cl :sys)
-  (:shadowing-import-from :sys #:read #:compile)  ; Use SYS versions, not CL
-  (:shadow #:trace #:untrace)  ; Shadow CL trace/untrace for our implementation
+  (:shadowing-import-from :sys #:read)  ; Use SYS reader
+  (:shadow #:trace #:untrace #:eval #:compile #:disassemble)  ; Shadow CL versions
   (:export
    ;; Public compiler API (clean names)
    #:read-all           ; Parse source string to forms
@@ -41,12 +41,16 @@
    #:deliver            ; Compile source to native executable
    #:deliver-file       ; Compile file to native executable
    ;; Disassembler
+   #:disassemble
    #:disasm
    #:disassemble-bytes
    #:disassemble-form
    #:disassemble-bytecode
    ;; Optimizer
    #:optimize-ir
+   ;; Evaluator and compiler (CL-spec)
+   #:eval
+   #:compile
    ;; Internal functions (for tests)
    #:eval-ir #:eval-forms #:codegen #:codegen-main
    #:eval-ir-with-fns #:compile-forms
@@ -5457,51 +5461,80 @@
 (defun eval-forms (forms)
   "Compile and evaluate multiple forms, including defun.
    Uses two-pass approach to support mutual recursion:
-   1. First pass: collect all defun names into fenv with placeholders
-   2. Second pass: compile bodies with complete fenv, then evaluate non-defun forms"
-  ;; Pass 1: Collect all defun names
+   1. First pass: collect all defun names with parsed param info into fenv
+   2. Second pass: compile bodies with complete fenv, store in compiled-fns
+   3. Evaluate non-defun forms using fenv for compilation, compiled-fns for execution"
+  ;; Pass 1: Collect all defun names with their parsed lambda lists
+  ;; fenv format: ((name . (positional-params . keyword-specs)) ...)
   (labels ((collect-defuns (fs acc)
              (if (null fs)
                  (reverse acc)
                  (let ((f (car fs)))
                    (if (and (consp f) (eq (car f) 'defun))
-                       (collect-defuns (cdr fs) (cons (cadr f) acc))
+                       (let* ((nm (cadr f))
+                              (ps (caddr f))
+                              (parsed (parse-lambda-list ps)))
+                         (collect-defuns (cdr fs) (cons (cons nm parsed) acc)))
                        (collect-defuns (cdr fs) acc)))))
-           ;; Build initial fenv with placeholders
-           (build-fenv (names acc)
-             (if (null names)
-                 acc
-                 (build-fenv (cdr names) (cons (cons (car names) nil) acc))))
-           ;; Compile all defuns with complete fenv
-           (compile-defuns (fs fenv acc)
+           ;; Compile all defuns with complete fenv, build compiled-fns alist
+           ;; compiled-fns format: ((name . (name params body-ir param-base)) ...)
+           (compile-defuns-to-alist (fs fenv compiled-fns other-forms)
              (if (null fs)
-                 (cons fenv (reverse acc))
+                 (list compiled-fns (reverse other-forms))
                  (let ((f (car fs)))
                    (if (and (consp f) (eq (car f) 'defun))
                        (let* ((nm (cadr f))
                               (ps (caddr f))
                               (bd (cadddr f))
-                              (cf (compile-defun nm ps bd nil fenv))
-                              (entry (assoc nm fenv)))
-                         ;; Update existing entry with compiled function
-                         (setf (cdr entry) cf)
-                         (compile-defuns (cdr fs) fenv acc))
+                              (cf (compile-defun nm ps bd nil fenv)))
+                         (compile-defuns-to-alist (cdr fs) fenv
+                                                  (cons (cons nm cf) compiled-fns)
+                                                  other-forms))
                        ;; Non-defun form - save for later evaluation
-                       (compile-defuns (cdr fs) fenv (cons f acc))))))
+                       (compile-defuns-to-alist (cdr fs) fenv compiled-fns (cons f other-forms))))))
            ;; Evaluate non-defun forms
-           (eval-forms (fs fenv)
+           ;; Use fenv for sys:compile (has param info), compiled-fns for eval-ir-with-fns
+           (do-eval-forms (fs fenv compiled-fns)
              (if (null fs)
                  0
                  (let* ((ir (sys:compile (car fs) nil fenv))
-                        (result (eval-ir-with-fns ir nil fenv)))
+                        (result (eval-ir-with-fns ir nil compiled-fns)))
                    (if (null (cdr fs))
                        result
-                       (eval-forms (cdr fs) fenv))))))
+                       (do-eval-forms (cdr fs) fenv compiled-fns))))))
     ;; Execute two-pass compilation
-    (let* ((defun-names (collect-defuns forms nil))
-           (initial-fenv (build-fenv defun-names nil)))
-      (let* ((mvb-result-21 (compile-defuns forms initial-fenv nil)) (final-fenv (car mvb-result-21)) (other-forms (cdr mvb-result-21)))
-                    (eval-forms other-forms final-fenv)))))
+    (let* ((fenv (collect-defuns forms nil))
+           (result (compile-defuns-to-alist forms fenv nil nil))
+           (compiled-fns (car result))
+           (other-forms (cadr result)))
+      (do-eval-forms other-forms fenv compiled-fns))))
+
+(defun eval (form)
+  "Evaluate FORM in the null lexical environment and return its value.
+   CL-spec compliant: takes a single form, returns result."
+  (eval-forms (list form)))
+
+(defun compile (name &optional definition)
+  "Compile a function. CL-spec compliant.
+   If NAME is nil and DEFINITION is supplied, compiles the lambda and returns it.
+   If NAME is a symbol, compiles its function definition.
+   Returns: function, warnings-p, failure-p"
+  (cond
+    ;; (compile nil '(lambda ...)) - compile anonymous function
+    ((and (null name) definition)
+     (let* ((forms (list definition))
+            (code (compile-program forms nil)))
+       (values code nil nil)))
+    ;; (compile 'name) - compile named function (not yet supported)
+    ((symbolp name)
+     (error "Compiling named functions not yet supported"))
+    (t
+     (error "Invalid arguments to compile"))))
+
+(defun disassemble (fn)
+  "Print disassembly of FN to *standard-output*. CL-spec compliant.
+   FN can be a function, lambda expression, or function name."
+  (disasm fn))
 
 ;;; ============================================================
 ;;; Part 9: Public API
