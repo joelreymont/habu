@@ -133,26 +133,14 @@
           (incf *symbol-counter*)
           id))))
 
-(defun reset-symbol-table ()
-  "Reset symbol table for new compilation."
-  (setf *symbol-table* nil)
-  (setf *symbol-counter* 1))
+;; reset-symbol-table defined in codegen.lisp
 
 ;;; ============================================================
 ;;; Part 1: ARM64 Instruction Encoders
 ;;; ============================================================
 
 ;; Most encoders now use arm64: package
-;; Keep a few local wrappers for special cases not in arm64 package
-
-;; Use arm64 intrinsics for cbz/cbnz - byte offset wrappers
-(defun cbz (rt offset)
-  "CBZ Xt, offset - compare and branch if zero. OFFSET is in bytes."
-  (arm64:cbz rt (ash offset -2)))
-
-(defun cbnz (rt offset)
-  "CBNZ Xt, offset - compare and branch if not zero. OFFSET is in bytes."
-  (arm64:cbnz rt (ash offset -2)))
+;; cbz/cbnz wrappers defined in codegen.lisp
 
 ;;; Position tracking helpers for function linking
 (defun emit-with-pos (code)
@@ -505,6 +493,78 @@
     (iter lists nil)))
 
 ;;; ============================================================
+;;; Keyword Argument Support
+;;; ============================================================
+
+(defun parse-lambda-list (params)
+  "Parse lambda list, splitting at &key.
+   Returns (positional-params . keyword-specs) where keyword-specs is
+   a list of (name default) pairs."
+  (let ((positional nil)
+        (keywords nil)
+        (in-keys nil))
+    (dolist (p params)
+      (cond
+        ((eq p '&key) (setq in-keys t))
+        (in-keys
+         ;; Keyword param: either SYMBOL or (SYMBOL DEFAULT)
+         (if (consp p)
+             (push (list (car p) (cadr p)) keywords)
+             (push (list p nil) keywords)))
+        (t (push p positional))))
+    (cons (nreverse positional) (nreverse keywords))))
+
+;; Note: cl:keywordp already checks if symbol is in keyword package
+
+(defun keyword-to-param-name (kw)
+  "Convert :FOO keyword to FOO param name string.
+   In CL, (symbol-name :foo) already returns \"FOO\" without colon."
+  (symbol-name kw))
+
+(defun find-keyword-position (kw-name keyword-specs)
+  "Find position of keyword with given name in keyword-specs list.
+   kw-name is the param name (e.g., \"IMM\"), keyword-specs is ((name default) ...)"
+  (let ((pos 0))
+    (dolist (spec keyword-specs)
+      (when (string-equal kw-name (symbol-name (car spec)))
+        (return-from find-keyword-position pos))
+      (incf pos))
+    nil))
+
+(defun rewrite-keyword-call (args n-positional keyword-specs)
+  "Rewrite call args with keyword arguments to fully positional args.
+   Returns list of args in positional order, with defaults for unspecified keywords."
+  (let* ((n-keywords (length keyword-specs))
+         (positional-args (subseq args 0 (min n-positional (length args))))
+         (keyword-values (make-array n-keywords :initial-element nil))
+         (rest-args (if (> (length args) n-positional)
+                        (subseq args n-positional)
+                        nil)))
+    ;; Parse keyword/value pairs from rest-args
+    (loop while rest-args do
+      (let ((kw (car rest-args))
+            (val (cadr rest-args)))
+        (if (keywordp kw)
+            (let* ((kw-name (keyword-to-param-name kw))
+                   (pos (find-keyword-position kw-name keyword-specs)))
+              (when pos
+                (setf (aref keyword-values pos) val))
+              (setq rest-args (cddr rest-args)))
+            ;; Not a keyword - shouldn't happen in well-formed call
+            (setq rest-args (cdr rest-args)))))
+    ;; Fill in defaults for unspecified keywords
+    (loop for i from 0 below n-keywords
+          for spec in keyword-specs
+          when (null (aref keyword-values i))
+            do (setf (aref keyword-values i) (cadr spec)))
+    ;; Return combined positional list
+    (append positional-args (coerce keyword-values 'list))))
+
+(defun call-has-keywords-p (args)
+  "Check if call arguments contain keyword arguments (symbols starting with :)"
+  (some #'keywordp args))
+
+;;; ============================================================
 ;;; Part 3: Reader (read-*)
 ;;; ============================================================
 
@@ -583,7 +643,20 @@
          (uname (string-upcase name)))
     (cons (cond ((string= uname "NIL") nil)
                 ((string= uname "T") t)
-                ;; Intern into HABU package for correct symbol comparison
+                ;; Keywords start with ':' - intern into KEYWORD package
+                ((and (> (length uname) 1) (char= (char uname 0) #\:))
+                 (intern (subseq uname 1) "KEYWORD"))
+                ;; Package-qualified symbols like ARM64:ADD
+                ((position #\: uname)
+                 (let* ((colon-pos (position #\: uname))
+                        (pkg-name (subseq uname 0 colon-pos))
+                        (sym-name (subseq uname (1+ colon-pos)))
+                        (pkg (find-package pkg-name)))
+                   ;; If package exists use it, otherwise intern full name in HABU
+                   (if pkg
+                       (intern sym-name pkg)
+                       (intern uname (find-package :habu)))))
+                ;; Regular symbols - intern into HABU package
                 (t (intern uname (find-package :habu))))
           end)))
 
@@ -794,7 +867,7 @@
 (defun temp-slot (depth)
   "Return stack offset for temp depth. Used when registers exhausted or across calls."
   (let ((off (+ #x40 (* depth 8))))  ; #x40 = temp base (64)
-    (if (>= off #xF00)                ; #xF00 = temp guard (3840), allows 480 slots
+    (if (>= off #x2000)               ; #x2000 = temp guard (8192), allows 1016 slots
         (error "Too many temp slots: ~A" depth)
         off)))
 
@@ -2379,7 +2452,19 @@
                   (mapcar (lambda (a) (sys:compile a env fenv)) (cdr expr))))
            ;; op is a known function name
            ((and fenv (assoc op fenv))
-            (list 'call-fn op (mapcar (lambda (a) (sys:compile a env fenv)) (cdr expr))))
+            (let* ((fn-info (cdr (assoc op fenv)))
+                   (args (cdr expr))
+                   ;; fn-info is (positional-params . keyword-specs)
+                   (positional-params (car fn-info))
+                   (keyword-specs (cdr fn-info))
+                   ;; Rewrite call if function has &key (even if call doesn't use them)
+                   ;; This appends defaults for any unspecified keyword params
+                   (final-args (if keyword-specs
+                                   (rewrite-keyword-call args
+                                                          (length positional-params)
+                                                          keyword-specs)
+                                   args)))
+              (list 'call-fn op (mapcar (lambda (a) (sys:compile a env fenv)) final-args))))
            ;; op is a variable (parameter) - compile as funcall
            (t
             (let ((off (env-lookup op env)))
@@ -3435,6 +3520,11 @@
               ;; Return tagged pointer, bump heap
               (arm64:mov 0 28)            ; x0 = current heap ptr
               (arm64:add 28 28 1)         ; x28 += total size (now 16-aligned)
+              ;; GC trigger check: if x28 >= from_end, call GC
+              (arm64:ldr 9 27 :offset 16)       ; x9 = from_end [x27+16]
+              (arm64:cmp 28 9)                  ; compare x28, from_end
+              (arm64:b.lo 2)                    ; skip if x28 < from_end
+              (list '(:call-fn GC-COLLECT))    ; bl gc_collect
               ;; Tag with vector tag (0x3)
               (arm64:movz 1 3)
               (arm64:orr 0 0 1)))))
@@ -3571,6 +3661,11 @@
               ;; Save string ptr (will be result), bump heap
               (arm64:mov 0 28)               ; x0 = string base (untagged)
               (arm64:add 28 28 4)            ; x28 += alloc_size
+              ;; GC trigger check: if x28 >= from_end, call GC
+              (arm64:ldr 9 27 :offset 16)       ; x9 = from_end [x27+16]
+              (arm64:cmp 28 9)                  ; compare x28, from_end
+              (arm64:b.lo 2)                    ; skip if x28 < from_end
+              (list '(:call-fn GC-COLLECT))    ; bl gc_collect
               ;; x2 = string data base = x0 + 8
               (arm64:add 2 0 8 :imm t)              ; x2 = string data start
               ;; x3 = loop counter = 0
@@ -4589,27 +4684,41 @@
 ;;; ============================================================
 
 (defun compile-defun (name params body env fenv)
-  (let* ((bs (mapcar (lambda (p) (list p)) params))
+  "Compile a function definition. Handles &key parameters by treating them
+   as additional positional params (keyword rewriting happens at call site)."
+  (let* ((parsed (parse-lambda-list params))
+         (positional-params (car parsed))
+         (keyword-specs (cdr parsed))
+         (keyword-names (mapcar #'car keyword-specs))
+         ;; All params in order: positional then keyword names
+         (all-params (append positional-params keyword-names))
+         (bs (mapcar (lambda (p) (list p)) all-params))
          (penv (env-extend bs env))
-         (pb (if params (env-lookup (car params) penv) 0))
+         (pb (if all-params (env-lookup (car all-params) penv) 0))
          (rfenv (cons (cons name nil) fenv))
          ;; Apply mutable capture boxing transformation before compiling
          (transformed-body (box-mutable-captures body))
          (bir (sys:compile transformed-body penv rfenv)))
-    (list name params bir pb)))
+    ;; Return all-params (without &key) for codegen to use
+    (list name all-params bir pb)))
 
 ;; Two-pass compilation for mutual recursion support
 ;; Pass 1: Collect all defun names into fenv with placeholder entries
 ;; Pass 2: Compile function bodies with complete fenv
 
 (defun collect-defun-names (forms acc)
-  "Pass 1: Collect all defun names from forms, recursing into progn"
+  "Pass 1: Collect all defun names and param info from forms, recursing into progn.
+   Returns alist of (name . parsed-lambda-list) where parsed-lambda-list is
+   (positional-params . keyword-specs)."
   (if (null forms)
       acc
       (let ((f (car forms)))
         (cond
           ((and (consp f) (eq (car f) 'defun))
-           (collect-defun-names (cdr forms) (cons (list (cadr f)) acc)))
+           (let* ((name (cadr f))
+                  (params (caddr f))
+                  (parsed (parse-lambda-list params)))
+             (collect-defun-names (cdr forms) (cons (cons name parsed) acc))))
           ((and (consp f) (eq (car f) 'progn))
            ;; Recurse into progn body, then continue with rest
            (collect-defun-names (cdr forms)
@@ -4887,10 +4996,11 @@
          (frame-size-raw (+ saved-regs temp-area env-area 64))
          ;; Round up to 16-byte alignment, with minimum #x400 for calling functions
          (frame-size-aligned (logand (+ frame-size-raw 15) (lognot 15)))
-         ;; Increase minimum frame from #x400 to #x800 for calling functions
-         ;; to handle deeply nested structures like native-read-file-large
+         ;; Use #x400 minimum for calling functions
+         ;; Dynamic frame-size-aligned should handle actual needs
+         ;; Reduced from #x800 to allow deeper recursion (8MB stack / 1KB = 8192 calls)
          (frame-size (if makes-calls
-                         (max #x800 frame-size-aligned)
+                         (max #x400 frame-size-aligned)
                          frame-size-aligned))
          ;; x20 offset = saved regs + temp area + env space (Bug #20 FIX)
          ;; Variables accessed as [x20 - offset*8], so x20 must be high enough
