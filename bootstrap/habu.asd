@@ -26,6 +26,9 @@
    ;; Native ARM64 garbage collector
    (:file "gc" :depends-on ("arm64"))
 
+   ;; Generational GC (builds on existing GC)
+   (:file "gen-gc" :depends-on ("arm64" "gc"))
+
    ;; Mach-O linker (needs ARM64 asm)
    (:file "macho" :depends-on ("compiler-sbcl" "arm64"))
 
@@ -39,7 +42,10 @@
    (:file "codegen" :depends-on ("compiler-sbcl" "optimize" "arm64" "gc"))
 
    ;; Mach-O utilities for native code
-   (:file "macho-utils" :depends-on ("compiler-sbcl" "macho"))))
+   (:file "macho-utils" :depends-on ("compiler-sbcl" "macho"))
+
+   ;; Trace facility
+   (:file "trace" :depends-on ("compiler-sbcl"))))
 
 ;;;; Test system
 (asdf:defsystem "habu/tests"

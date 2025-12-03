@@ -33,6 +33,7 @@
 (defpackage :habu
   (:use :cl :sys)
   (:shadowing-import-from :sys #:read #:compile)  ; Use SYS versions, not CL
+  (:shadow #:trace #:untrace)  ; Shadow CL trace/untrace for our implementation
   (:export
    ;; Public compiler API (clean names)
    #:read-all           ; Parse source string to forms
@@ -40,6 +41,8 @@
    #:deliver            ; Compile source to native executable
    #:deliver-file       ; Compile file to native executable
    ;; Disassembler
+   #:disasm
+   #:disassemble-bytes
    #:disassemble-form
    #:disassemble-bytecode
    ;; Optimizer
@@ -50,7 +53,19 @@
    ;; Re-export system primitives for convenience
    #:string-length #:string-ref #:make-string-from-vector
    #:make-vector #:vector-set
-   #:string-concat #:number-to-string))
+   #:string-concat #:number-to-string
+   ;; Compiler configuration toggles
+   #:*use-register-allocation*
+   #:*use-generational-gc*
+   ;; Trace facility
+   #:trace
+   #:untrace
+   #:trace-function
+   #:untrace-function
+   #:traced-p
+   #:list-traced
+   #:*traced-functions*
+   #:*trace-depth*))
 
 (in-package :sys)
 
@@ -80,6 +95,56 @@
   (write-to-string n))
 
 (in-package :habu)
+
+;;; ==========================================================
+;;; Trace State (defined here to avoid circular dependency)
+;;; ==========================================================
+
+(defvar *traced-functions* (make-hash-table :test 'eq)
+  "Hash table of function names being traced.")
+
+(defvar *trace-depth* 0
+  "Current nesting depth for trace output.")
+
+(defun trace-indent ()
+  "Print indentation for current trace depth."
+  (dotimes (i (* 2 *trace-depth*))
+    (write-char #\Space *trace-output*)))
+
+(defun trace-enter (name args)
+  "Print function entry trace message."
+  (trace-indent)
+  (format *trace-output* "~D: (~S~{ ~S~})~%" *trace-depth* name args))
+
+(defun trace-exit (name value)
+  "Print function exit trace message."
+  (trace-indent)
+  (format *trace-output* "~D: ~S returned ~S~%" *trace-depth* name value))
+
+(defun trace-function (name)
+  "Enable tracing for function NAME. Returns NAME."
+  (setf (gethash name *traced-functions*) t)
+  name)
+
+(defun untrace-function (name)
+  "Disable tracing for function NAME. Returns NAME."
+  (remhash name *traced-functions*)
+  name)
+
+(defun traced-p (name)
+  "Return T if function NAME is being traced."
+  (gethash name *traced-functions*))
+
+(defun list-traced ()
+  "Return list of all currently traced function names."
+  (let ((result nil))
+    (maphash (lambda (k v)
+               (declare (ignore v))
+               (push k result))
+             *traced-functions*)
+    result))
+
+;;; ==========================================================
 
 ;;; HABU package shims for file I/O (needed by deliver-file and link-fasls)
 (defun native-read-file (path)
@@ -2623,7 +2688,8 @@
      ;; call-fn = (call-fn name args-ir-list)
      (let* ((fnm (cadr ir))
             (args-ir (caddr ir))
-            (fn-def (cdr (assoc fnm fenv))))
+            (fn-def (cdr (assoc fnm fenv)))
+            (traced (traced-p fnm)))
        (if fn-def
            ;; fn-def = (name params body-ir param-base)
            (let* ((body-ir (caddr fn-def)))
@@ -2633,8 +2699,17 @@
                             (eval-args (cdr airs)
                                        (cons (eval-ir-with-fns (car airs) env fenv) acc)))))
                (let ((arg-vals (eval-args args-ir nil)))
+                 ;; Trace entry
+                 (when traced
+                   (trace-enter fnm arg-vals)
+                   (incf *trace-depth*))
                  ;; Call with new env containing args
-                 (eval-ir-with-fns body-ir arg-vals fenv))))
+                 (let ((result (eval-ir-with-fns body-ir arg-vals fenv)))
+                   ;; Trace exit
+                   (when traced
+                     (decf *trace-depth*)
+                     (trace-exit fnm result))
+                   result))))
            0)))
     ((has-tag ir 'funcall-ir)
      ;; funcall-ir = (funcall-ir fn-ir args-ir-list)
@@ -2645,7 +2720,7 @@
        ;; Check if fn-val is a closure (list starting with :closure)
        (if (and (consp fn-val) (eq (car fn-val) :closure))
            ;; Closure: (:closure params body-ir free-vars captured-vals)
-           ;; body is now pre-compiled IR
+           ;; body is now pre-compiled IR (no tracing for anonymous closures)
            (let* ((body-ir (caddr fn-val))
                   (captured-vals (nth 4 fn-val)))
              (labels ((eval-args (airs acc)
@@ -2657,7 +2732,8 @@
                       (all-vals (append captured-vals arg-vals)))
                  (eval-ir-with-fns body-ir all-vals fenv))))
            ;; Named function: look up in fenv
-           (let ((fn-def (cdr (assoc fn-val fenv))))
+           (let* ((fn-def (cdr (assoc fn-val fenv)))
+                  (traced (and (symbolp fn-val) (traced-p fn-val))))
              (if fn-def
                  (let* ((body-ir (caddr fn-def)))
                    (labels ((eval-args (airs acc)
@@ -2665,7 +2741,17 @@
                                   (eval-args (cdr airs)
                                              (cons (eval-ir-with-fns (car airs) env fenv) acc)))))
                      (let ((arg-vals (eval-args args-ir nil)))
-                       (eval-ir-with-fns body-ir arg-vals fenv))))
+                       ;; Trace entry
+                       (when traced
+                         (trace-enter fn-val arg-vals)
+                         (incf *trace-depth*))
+                       ;; Call function
+                       (let ((result (eval-ir-with-fns body-ir arg-vals fenv)))
+                         ;; Trace exit
+                         (when traced
+                           (decf *trace-depth*)
+                           (trace-exit fn-val result))
+                         result))))
                  0)))))
     ((has-tag ir 'lambda-ref)
      ;; lambda-ref = (lambda-ref fn-name free-var-offsets)
