@@ -17,6 +17,7 @@
    #:and* #:orr #:eor #:bic #:lsl #:lsr #:asr
    ;; Memory
    #:ldr #:ldr-reg #:str #:ldp #:stp #:ldrb #:ldrb-post #:strb #:strb-post
+   #:ldur #:stur
    ;; Bitwise with immediate
    #:orr-imm
    ;; Compare
@@ -26,11 +27,16 @@
    #:b.lo #:b.hs #:b.hi #:b.ls #:ret
    ;; System
    #:svc #:nop
-   ;; Condition codes
+   ;; Condition codes (for cset instruction)
+   #:+cc-eq+ #:+cc-ne+ #:+cc-lt+ #:+cc-le+ #:+cc-gt+ #:+cc-ge+
+   #:+cc-lo+ #:+cc-hs+ #:+cc-hi+ #:+cc-ls+
+   ;; Legacy condition code names (deprecated, use +cc-* instead)
    #:+eq+ #:+ne+ #:+lt+ #:+le+ #:+gt+ #:+ge+
    #:+lo+ #:+hs+ #:+hi+ #:+ls+
-   ;; Registers (by convention)
-   #:+sp+ #:+lr+ #:+xzr+
+   ;; Special registers
+   #:+sp+ #:+lr+ #:+xzr+ #:+fp+
+   ;; Habu register conventions
+   #:+reg-env+ #:+reg-closure+ #:+reg-code-base+ #:+reg-gc+ #:+reg-heap+
    ;; macOS syscall numbers
    #:+sys-exit+ #:+sys-read+ #:+sys-write+ #:+sys-open+ #:+sys-close+))
 
@@ -40,34 +46,86 @@
 ;;; Constants
 ;;; ============================================================
 ;;; In SBCL: use defconstant
-;;; In native Habu: inline the values (no defconstant support)
+;;; In native Habu: define as functions (no defconstant support)
 
-;; Condition codes
-#+sbcl (defconstant +eq+ #x0)   ; equal
-#+sbcl (defconstant +ne+ #x1)   ; not equal
-#+sbcl (defconstant +lt+ #xB)   ; signed less than
-#+sbcl (defconstant +le+ #xD)   ; signed less or equal
-#+sbcl (defconstant +gt+ #xC)   ; signed greater than
-#+sbcl (defconstant +ge+ #xA)   ; signed greater or equal
-;; Unsigned comparison conditions
-#+sbcl (defconstant +lo+ #x3)   ; unsigned lower (carry clear)
-#+sbcl (defconstant +hs+ #x2)   ; unsigned higher or same (carry set)
-#+sbcl (defconstant +hi+ #x8)   ; unsigned higher
-#+sbcl (defconstant +ls+ #x9)   ; unsigned lower or same
+;;; ------------------------------------------------------------
+;;; Condition Codes (for CSET, CSEL, CINC, etc.)
+;;; ------------------------------------------------------------
+;;; These encode the condition to test after a CMP instruction.
+;;; Usage: (cset rd +cc-gt+) sets rd=1 if greater-than, else 0
 
-;; macOS ARM64 syscall numbers (BSD layer, use with SVC #x80)
+#+sbcl (defconstant +cc-eq+ #x0)   ; equal (Z=1)
+#+sbcl (defconstant +cc-ne+ #x1)   ; not equal (Z=0)
+#+sbcl (defconstant +cc-lt+ #xB)   ; signed less than (N!=V)
+#+sbcl (defconstant +cc-le+ #xD)   ; signed less or equal (Z=1 or N!=V)
+#+sbcl (defconstant +cc-gt+ #xC)   ; signed greater than (Z=0 and N=V)
+#+sbcl (defconstant +cc-ge+ #xA)   ; signed greater or equal (N=V)
+#+sbcl (defconstant +cc-lo+ #x3)   ; unsigned lower / carry clear (C=0)
+#+sbcl (defconstant +cc-hs+ #x2)   ; unsigned higher or same / carry set (C=1)
+#+sbcl (defconstant +cc-hi+ #x8)   ; unsigned higher (C=1 and Z=0)
+#+sbcl (defconstant +cc-ls+ #x9)   ; unsigned lower or same (C=0 or Z=1)
+
+;; Legacy names (for backward compatibility)
+#+sbcl (defconstant +eq+ #x0)
+#+sbcl (defconstant +ne+ #x1)
+#+sbcl (defconstant +lt+ #xB)
+#+sbcl (defconstant +le+ #xD)
+#+sbcl (defconstant +gt+ #xC)
+#+sbcl (defconstant +ge+ #xA)
+#+sbcl (defconstant +lo+ #x3)
+#+sbcl (defconstant +hs+ #x2)
+#+sbcl (defconstant +hi+ #x8)
+#+sbcl (defconstant +ls+ #x9)
+
+;;; ------------------------------------------------------------
+;;; Special Registers
+;;; ------------------------------------------------------------
+;;; ARM64 has 31 general-purpose registers (x0-x30).
+;;; Register 31 is context-dependent: SP or XZR.
+
+#+sbcl (defconstant +sp+  31)   ; stack pointer (when used as base in load/store)
+#+sbcl (defconstant +xzr+ 31)   ; zero register (reads as 0, writes discarded)
+#+sbcl (defconstant +lr+  30)   ; link register (return address, x30)
+#+sbcl (defconstant +fp+  29)   ; frame pointer (x29, by convention)
+
+;;; ------------------------------------------------------------
+;;; Habu Register Conventions
+;;; ------------------------------------------------------------
+;;; These registers have special meaning in Habu-generated code.
+;;; See CONTEXT.md for full register usage documentation.
+
+#+sbcl (defconstant +reg-env+       20)  ; x20: environment frame base
+#+sbcl (defconstant +reg-closure+   24)  ; x24: closure environment pointer
+#+sbcl (defconstant +reg-code-base+ 26)  ; x26: code base register
+#+sbcl (defconstant +reg-gc+        27)  ; x27: GC globals base
+#+sbcl (defconstant +reg-heap+      28)  ; x28: heap bump pointer
+
+;;; ------------------------------------------------------------
+;;; macOS ARM64 Syscall Numbers
+;;; ------------------------------------------------------------
+;;; BSD layer syscalls, invoked via SVC #x80
+;;; x16 = syscall number, x0-x7 = arguments, result in x0
+
 #+sbcl (defconstant +sys-exit+  1)
 #+sbcl (defconstant +sys-read+  3)
 #+sbcl (defconstant +sys-write+ 4)
 #+sbcl (defconstant +sys-open+  5)
 #+sbcl (defconstant +sys-close+ 6)
 
-;; Special registers (by convention, all are encoded as 31)
-#+sbcl (defconstant +sp+  31)   ; stack pointer
-#+sbcl (defconstant +lr+  30)   ; link register (x30)
-#+sbcl (defconstant +xzr+ 31)   ; zero register
+;;; ------------------------------------------------------------
+;;; Native Habu Definitions (functions instead of constants)
+;;; ------------------------------------------------------------
 
-;; Native Habu: define as functions that return the constant value
+#-sbcl (defun +cc-eq+ () #x0)
+#-sbcl (defun +cc-ne+ () #x1)
+#-sbcl (defun +cc-lt+ () #xB)
+#-sbcl (defun +cc-le+ () #xD)
+#-sbcl (defun +cc-gt+ () #xC)
+#-sbcl (defun +cc-ge+ () #xA)
+#-sbcl (defun +cc-lo+ () #x3)
+#-sbcl (defun +cc-hs+ () #x2)
+#-sbcl (defun +cc-hi+ () #x8)
+#-sbcl (defun +cc-ls+ () #x9)
 #-sbcl (defun +eq+ () #x0)
 #-sbcl (defun +ne+ () #x1)
 #-sbcl (defun +lt+ () #xB)
@@ -78,14 +136,20 @@
 #-sbcl (defun +hs+ () #x2)
 #-sbcl (defun +hi+ () #x8)
 #-sbcl (defun +ls+ () #x9)
+#-sbcl (defun +sp+ () 31)
+#-sbcl (defun +xzr+ () 31)
+#-sbcl (defun +lr+ () 30)
+#-sbcl (defun +fp+ () 29)
+#-sbcl (defun +reg-env+ () 20)
+#-sbcl (defun +reg-closure+ () 24)
+#-sbcl (defun +reg-code-base+ () 26)
+#-sbcl (defun +reg-gc+ () 27)
+#-sbcl (defun +reg-heap+ () 28)
 #-sbcl (defun +sys-exit+ () 1)
 #-sbcl (defun +sys-read+ () 3)
 #-sbcl (defun +sys-write+ () 4)
 #-sbcl (defun +sys-open+ () 5)
 #-sbcl (defun +sys-close+ () 6)
-#-sbcl (defun +sp+ () 31)
-#-sbcl (defun +lr+ () 30)
-#-sbcl (defun +xzr+ () 31)
 
 ;;; ============================================================
 ;;; Core Encoding
@@ -306,13 +370,26 @@
                       (ash rn 5)
                       rd))))
 
-(defun orr (rd rn rm)
-  "ORR Xd, Xn, Xm
-   Bitwise OR."
-  (encode (logior #xAA000000
-                  (ash rm 16)
-                  (ash rn 5)
-                  rd)))
+(defun orr (rd rn rm-or-imm &key imm)
+  "ORR Xd, Xn, Xm  or  ORR Xd, Xn, #imm
+   Bitwise OR.
+   Use :imm t for immediate mode with small constants (1, 3, 7, 15)."
+  (if imm
+      ;; Immediate mode - encode small constants for tagging
+      (let ((base #xB2400000))
+        (cond
+          ((= rm-or-imm 1) (encode (logior base (ash 0 10) (ash rn 5) rd)))   ; imms=0
+          ((= rm-or-imm 3) (encode (logior base (ash 1 10) (ash rn 5) rd)))   ; imms=1
+          ((= rm-or-imm 7) (encode (logior base (ash 2 10) (ash rn 5) rd)))   ; imms=2
+          ((= rm-or-imm 15) (encode (logior base (ash 3 10) (ash rn 5) rd)))  ; imms=3
+          ;; Unsupported immediate
+          #+sbcl (t (error "orr :imm - unsupported immediate ~D. Use 1, 3, 7, or 15." rm-or-imm))
+          #-sbcl (t nil)))
+      ;; Register mode
+      (encode (logior #xAA000000
+                      (ash rm-or-imm 16)
+                      (ash rn 5)
+                      rd))))
 
 (defun eor (rd rn rm)
   "EOR Xd, Xn, Xm
@@ -390,9 +467,28 @@
 
 (defun str (rt rn &key (offset 0))
   "STR Xt, [Xn{, #offset}]
-   Store 64-bit register. Offset scaled by 8, must be multiple of 8."
+   Store 64-bit register. Offset scaled by 8, must be multiple of 8.
+   For negative offsets, use STUR instead."
   (encode (logior #xF9000000
                   (ash (ash offset -3) 10)
+                  (ash rn 5)
+                  rt)))
+
+(defun stur (rt rn &key (offset 0))
+  "STUR Xt, [Xn{, #offset}]
+   Store 64-bit register with unscaled offset.
+   Offset is signed 9-bit (-256 to 255), not scaled."
+  (encode (logior #xF8000000
+                  (ash (logand offset #x1FF) 12)
+                  (ash rn 5)
+                  rt)))
+
+(defun ldur (rt rn &key (offset 0))
+  "LDUR Xt, [Xn{, #offset}]
+   Load 64-bit register with unscaled offset.
+   Offset is signed 9-bit (-256 to 255), not scaled."
+  (encode (logior #xF8400000
+                  (ash (logand offset #x1FF) 12)
                   (ash rn 5)
                   rt)))
 
