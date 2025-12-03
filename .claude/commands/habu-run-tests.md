@@ -1,61 +1,62 @@
 # Habu Run Tests Command
 
-Run the Habu test suite and report results with semantic context.
+Run the Habu test suite via ASDF and report results.
 
 ## Arguments
-- `$ARGUMENTS` - Optional: specific test name or pattern (e.g., "closures", "test_self*.lisp")
+- `$ARGUMENTS` - Optional: "quick" for just running tests, or nothing for full output
 
 ## Workflow
 
-1. **Identify Tests**
-   - If no argument: run all tests in `tests/` directory
-   - If pattern given: match files against pattern
-   - List tests to be run
-
-2. **Run Tests**
-   For each test file:
-   - Load `bootstrap/compiler-sbcl.lisp`, `macho.lisp`, etc.
-   - Execute the test
-   - Capture exit code and output
-
-3. **Results Summary**
-   ```
-   PASS: test_arithmetic.lisp (exit 0)
-   PASS: test_closures.lisp (exit 0)
-   FAIL: test_recursive.lisp (exit 139 - SIGSEGV)
+1. **Run Tests via ASDF**
+   ```bash
+   sbcl --noinform --non-interactive \
+     --eval '(require :asdf)' \
+     --eval '(push #P"/Users/joel/Work/habu/bootstrap/" asdf:*central-registry*)' \
+     --eval '(asdf:test-system :habu)'
    ```
 
-4. **Failure Analysis**
-   For each failing test:
-   - Report which specific assertion failed (if output available)
-   - For crashes, use /habu-debug workflow
-   - Provide function context from .map file
+2. **Analyze Results**
+   The test system reports:
+   - Core Compiler Tests (arithmetic, comparisons, let bindings, etc.)
+   - Keyword Argument Tests (6 tests for &key support)
+   - Package Tests (1 passes, 4 skipped in bootstrap mode)
 
-## Output Format
+3. **Interpret Output**
+   - `[PASS]` - Test succeeded
+   - `[FAIL]` - Test failed (shows expected vs actual)
+   - `[SKIP]` - Test skipped (usually requires native mode)
+
+## Test Files
+
+Tests are defined in `bootstrap/habu.asd` as the `habu/tests` system:
+- `bootstrap/test-harness.lisp` - Test utilities (HABU-TEST package)
+- `tests/test-core.lisp` - Core compiler tests (37 tests)
+- `tests/test-keyword-args.lisp` - Keyword argument tests (6 tests)
+- `tests/test-packages.lisp` - Package system tests (1 pass, 4 skipped)
+
+## Expected Output
 
 ```
-HABU TEST SUITE
-===============
+=== Core Compiler Tests ===
+[PASS] add = 42
+[PASS] sub = 42
+...
 
-Running <N> tests...
+=== Keyword Argument Tests ===
+[PASS] kw-default = 10
+...
 
-RESULTS:
-  [PASS] test_arithmetic.lisp
-  [PASS] test_closures.lisp
-  [FAIL] test_recursive.lisp - SIGSEGV at read-list-elems+0x48
+=== Package Tests ===
+[PASS] pkg-simple = 42
+[SKIP] pkg-cross-call: cross-package calls require native reader
+...
 
-Summary: <passed>/<total> tests passed
-
-FAILURES:
-  test_recursive.lisp:
-    Signal: SIGSEGV (exit 139)
-    Location: read-list-elems + 0x48
-    Cause: Stack overflow in recursive reader
+TOTAL: 44 passed, 0 failed, 4 skipped
+All tests PASSED!
 ```
 
-## Example Usage
-```
-/habu-run-tests
-/habu-run-tests closures
-/habu-run-tests test_self*.lisp
-```
+## Adding New Tests
+
+1. Create `tests/test-feature.lisp` using HABU-TEST package
+2. Add to `bootstrap/habu.asd` in the habu/tests system
+3. Tests auto-run when loaded via ASDF

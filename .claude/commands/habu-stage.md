@@ -5,76 +5,95 @@ Build and test self-compilation stages for bootstrapping verification.
 ## Arguments
 - `$ARGUMENTS` - Stage number (1, 2, 3) or "verify" to check fixed point
 
-## Workflow
+## Stage 1: SBCL compiles Habu to native
 
-### Stage 1: SBCL compiles Habu sources to native
-1. Load all bootstrap/*.lisp files with SBCL
-2. Compile the full Habu compiler source to `/tmp/habu_stage1`
-3. Verify it runs: `/tmp/habu_stage1 --version` or simple test
+Build Stage 1 using ASDF-loaded compiler:
 
-### Stage 2: Stage 1 compiles Habu sources to native
-1. Run Stage 1 binary to compile Habu sources
-2. Output to `/tmp/habu_stage2`
-3. Compare binary sizes between Stage 1 and Stage 2
-
-### Stage 3: Stage 2 compiles Habu sources to native
-1. Run Stage 2 binary to compile Habu sources
-2. Output to `/tmp/habu_stage3`
-3. Compare with Stage 2 (should be identical for fixed point)
-
-### Verify: Check fixed point
-1. Build Stage 2 and Stage 3
-2. Compare binaries byte-by-byte
-3. Report differences or confirm fixed point
-
-## Output Format
-
+```bash
+sbcl --dynamic-space-size 4096 --noinform --non-interactive \
+  --eval '(require :asdf)' \
+  --eval '(push #P"/Users/joel/Work/habu/bootstrap/" asdf:*central-registry*)' \
+  --eval '(asdf:load-system :habu)' \
+  --eval '
+(let* ((gc-src (habu::native-read-file "bootstrap/gc.lisp"))
+       (reader-src (habu::native-read-file "bootstrap/reader.lisp"))
+       (compiler-src (habu::native-read-file "bootstrap/compiler.lisp"))
+       (optimize-src (habu::native-read-file "bootstrap/optimize.lisp"))
+       (codegen-src (habu::native-read-file "bootstrap/codegen.lisp"))
+       (macho-src (habu::native-read-file "bootstrap/macho-utils.lisp"))
+       (main "(sys-exit 42)")
+       (full-source (concatenate (quote string)
+                                 gc-src reader-src compiler-src
+                                 optimize-src codegen-src macho-src
+                                 main)))
+  (habu:deliver full-source "/tmp/habu_stage1"))'
 ```
-HABU STAGE $N BUILD
-===================
 
-Source Files:
-  bootstrap/reader.lisp      (5.2 KB)
-  bootstrap/compiler.lisp    (42 KB)
-  bootstrap/codegen.lisp     (38 KB)
-  bootstrap/macho-utils.lisp (12 KB)
+Verify Stage 1:
+```bash
+/tmp/habu_stage1
+# Expected exit code: 42
+```
 
-Building Stage $N...
-  Compiler: [Stage N-1 or SBCL]
-  Output:   /tmp/habu_stageN
-  Time:     2.3s
+## Stage 2: Stage 1 compiles Habu
 
-Result:
-  Binary size: 67,584 bytes
-  Functions:   42
-  Exit code:   0 (success)
+Once Stage 1 can self-compile (currently blocked by reader issues):
 
-Verification:
-  /tmp/habu_stageN --eval "(sys-exit 42)" -> exit 42 (OK)
+```bash
+/tmp/habu_stage1 bootstrap/gc.lisp bootstrap/reader.lisp \
+  bootstrap/compiler.lisp bootstrap/optimize.lisp \
+  bootstrap/codegen.lisp bootstrap/macho-utils.lisp \
+  /tmp/habu_stage2
+```
+
+## Stage 3: Stage 2 compiles Habu
+
+```bash
+/tmp/habu_stage2 [same sources] /tmp/habu_stage3
 ```
 
 ## Fixed Point Verification
 
-```
-FIXED POINT CHECK
-=================
-
-Stage 2: 67584 bytes, sha256: abc123...
-Stage 3: 67584 bytes, sha256: abc123...
-
-Result: FIXED POINT ACHIEVED
+Compare Stage 2 and Stage 3:
+```bash
+sha256sum /tmp/habu_stage2 /tmp/habu_stage3
+cmp /tmp/habu_stage2 /tmp/habu_stage3
 ```
 
-## Example Usage
-```
-/habu-stage 1        ; Build Stage 1 with SBCL
-/habu-stage 2        ; Build Stage 2 with Stage 1
-/habu-stage verify   ; Check if Stage 2 == Stage 3
-```
+If binaries are identical, fixed point is achieved.
 
-## Important Notes
+## Current Status
 
-- Stage 1 is the initial bootstrap from SBCL
-- Stage 2 is compiled by native Habu (Stage 1)
-- Stage 3 should equal Stage 2 (fixed point)
-- Differences indicate compiler bugs or non-determinism
+- Stage 1: WORKS - Compiles and runs (~1.1MB)
+- Stage 2: BLOCKED - Stage 1 reader crashes on file input
+- Stage 3: BLOCKED - Needs Stage 2
+
+## Known Blockers
+
+1. `(read-all "literal-string")` crashes in Stage 1
+2. `(compile-forms ...)` crashes in Stage 1
+3. Stack overflow with deeply recursive reader functions
+
+## Output Format
+
+```
+HABU STAGE 1 BUILD
+==================
+
+Loading compiler via ASDF...
+Reading source files...
+  gc.lisp: 8,234 bytes
+  reader.lisp: 12,456 bytes
+  compiler.lisp: 85,234 bytes
+  optimize.lisp: 15,678 bytes
+  codegen.lisp: 78,901 bytes
+  macho-utils.lisp: 5,678 bytes
+  Total: 296,082 bytes
+
+Compiling to native ARM64...
+Output: /tmp/habu_stage1
+
+Result:
+  Binary size: 1,101,728 bytes
+  Exit code: 42 (success)
+```
