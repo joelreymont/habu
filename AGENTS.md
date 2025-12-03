@@ -39,8 +39,11 @@ The project has an MCP server configured in `.mcp.json` that provides:
 - `lisp_trace` - Trace function execution
 - `lisp_inspect` - Inspect compiler internals
 - `lisp_apropos` - Search for symbols
+- `lisp_paren_check` - Check parenthesis balance in Lisp files
 
 Use these tools instead of launching SBCL manually with `--load` or `--eval`.
+
+**Paren Balance Checking**: When you encounter paren errors during compilation, use `lisp_paren_check` to diagnose. It reports exact line/column and surrounding context.
 
 ## Development Guidelines
 

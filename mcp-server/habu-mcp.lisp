@@ -252,7 +252,11 @@
     ("lisp_apropos"
      "Search for symbols matching a substring. Useful for discovering available functions."
      (("pattern" "string" "Substring to search for in symbol names" t)
-      ("package" "string" "Package to search in (default: all)" nil)))))
+      ("package" "string" "Package to search in (default: all)" nil)))
+
+    ("lisp_paren_check"
+     "Check parenthesis balance in a Lisp source file. Reports any mismatched parens with line/column context."
+     (("file" "string" "Path to Lisp file to check" t)))))
 
 (defun format-tool-schema (name description params)
   `(("name" . ,name)
@@ -379,6 +383,99 @@
         (safe-eval (format nil "(apropos ~S (find-package ~S))" pattern pkg))
         (safe-eval (format nil "(apropos ~S)" pattern)))))
 
+(defun tool-lisp-paren-check (args)
+  "Check parenthesis balance in a Lisp file."
+  (let ((file (jget args "file")))
+    (handler-case
+        (with-open-file (stream file :direction :input)
+          (let ((balance 0)
+                (line-num 1)
+                (col-num 0)
+                (in-string nil)
+                (in-line-comment nil)
+                (in-block-comment 0)
+                (prev-char nil)
+                (paren-stack nil)
+                (lines (make-array 100 :adjustable t :fill-pointer 0))
+                (min-balance 0)
+                (min-balance-line 0)
+                (min-balance-col 0))
+            ;; Read all lines for context
+            (file-position stream 0)
+            (loop for line = (read-line stream nil nil)
+                  while line
+                  do (vector-push-extend line lines))
+            ;; Reset and parse
+            (file-position stream 0)
+            (loop for char = (read-char stream nil nil)
+                  while char
+                  do
+                     (if (char= char #\Newline)
+                         (progn
+                           (setf in-line-comment nil)
+                           (incf line-num)
+                           (setf col-num 0))
+                         (incf col-num))
+                     (cond
+                       ((> in-block-comment 0)
+                        (cond
+                          ((and (char= char #\|) (eql prev-char #\#))
+                           (incf in-block-comment))
+                          ((and (char= char #\#) (eql prev-char #\|))
+                           (decf in-block-comment))))
+                       (in-line-comment nil)
+                       (in-string
+                        (when (and (char= char #\") (not (eql prev-char #\\)))
+                          (setf in-string nil)))
+                       ((and (char= char #\|) (eql prev-char #\#))
+                        (setf in-block-comment 1))
+                       ((char= char #\;)
+                        (setf in-line-comment t))
+                       ((char= char #\")
+                        (setf in-string t))
+                       ((and (char= char #\\) (eql prev-char #\#))
+                        (read-char stream nil nil)
+                        (incf col-num))
+                       ((char= char #\()
+                        (incf balance)
+                        (push (list line-num col-num balance) paren-stack))
+                       ((char= char #\))
+                        (decf balance)
+                        (when paren-stack (pop paren-stack))
+                        (when (< balance min-balance)
+                          (setf min-balance balance
+                                min-balance-line line-num
+                                min-balance-col col-num))))
+                     (setf prev-char char))
+            ;; Report results
+            (cond
+              ((= balance 0)
+               (format nil "File ~A is balanced." file))
+              ((> balance 0)
+               (with-output-to-string (out)
+                 (format out "ERROR: ~D unclosed open paren(s) in ~A~%~%" balance file)
+                 (format out "Unclosed parens (most recent first):~%")
+                 (loop for (ln col bal) in paren-stack
+                       for i from 1 to (min 10 (length paren-stack))
+                       do (format out "  ~D. Line ~D, col ~D (balance was ~D)~%" i ln col bal)
+                          (when (and (> ln 0) (<= ln (length lines)))
+                            (format out "      ~A~%" (aref lines (1- ln)))
+                            (format out "      ~A^~%" (make-string (1- col) :initial-element #\Space))))))
+              (t
+               (with-output-to-string (out)
+                 (format out "ERROR: ~D extra close paren(s) in ~A~%~%" (- balance) file)
+                 (format out "First extra close paren at line ~D, col ~D~%" min-balance-line min-balance-col)
+                 (when (and (> min-balance-line 0) (<= min-balance-line (length lines)))
+                   (format out "~%Context:~%")
+                   (loop for i from (max 1 (- min-balance-line 3))
+                               to (min (length lines) (+ min-balance-line 3))
+                         do (format out "~4D: ~A~A~%"
+                                   i
+                                   (aref lines (1- i))
+                                   (if (= i min-balance-line) " <-- HERE" "")))))))))
+      (error (e)
+        (format nil "Error checking file: ~A" e)))))
+
 (defun dispatch-tool (name args)
   (cond
     ((string= name "lisp_eval") (tool-lisp-eval args))
@@ -388,6 +485,7 @@
     ((string= name "lisp_trace") (tool-lisp-trace args))
     ((string= name "lisp_inspect") (tool-lisp-inspect args))
     ((string= name "lisp_apropos") (tool-lisp-apropos args))
+    ((string= name "lisp_paren_check") (tool-lisp-paren-check args))
     (t (format nil "Unknown tool: ~A" name))))
 
 ;;; ============================================================

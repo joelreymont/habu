@@ -6050,20 +6050,52 @@ int main(int argc, char **argv) {
                 (cons bytecode fnoffs))))))))
 
 ;;; ============================================================
-;;; Part 8b: Enhanced FASL Format (v2) with Symbol Tables
+;;; Part 8b: Enhanced FASL Format (v3) with Symbol Tables and Imports
 ;;; ============================================================
 
-;;; FASL Format v2:
-;;; Header (32 bytes):
-;;;   Magic:         4 bytes "HFSL"
-;;;   Version:       4 bytes (2 for symbol table support)
-;;;   Flags:         4 bytes
-;;;   Code-len:      4 bytes
-;;;   Symtab-offset: 4 bytes (offset to symbol table from start of file)
-;;;   Symtab-count:  4 bytes (number of exported symbols)
-;;;   Reserved:      8 bytes
-;;; Code Section: N bytes of ARM64 machine code
+;;; FASL Format v3:
+;;; Header (48 bytes):
+;;;   Magic:          4 bytes "HFSL"
+;;;   Version:        4 bytes (3 for import support)
+;;;   Flags:          4 bytes
+;;;   Code-len:       4 bytes (actual bytes, markers replaced with NOPs)
+;;;   Symtab-offset:  4 bytes (offset to symbol table from start of file)
+;;;   Symtab-count:   4 bytes (number of exported symbols)
+;;;   Import-offset:  4 bytes (offset to import table from start of file)
+;;;   Import-count:   4 bytes (number of import entries)
+;;;   Reserved:       16 bytes
+;;; Code Section: N bytes of ARM64 machine code (extern-calls replaced with NOPs)
 ;;; Symbol Table: For each symbol: [name-len:4][name:N][offset:8]
+;;; Import Table: For each import: [name-len:4][name:N][code-offset:4]
+
+(defun extract-extern-calls-from-bytecode (bytecode)
+  "Extract extern-call markers from bytecode.
+   Returns (values clean-bytecode extern-calls) where:
+   - clean-bytecode: bytecode with markers replaced by NOP instruction bytes
+   - extern-calls: list of (name . offset) pairs"
+  (let ((result nil)
+        (extern-calls nil)
+        (pos 0))
+    (dolist (item bytecode)
+      (cond
+        ;; Extern-call marker: (:extern-call name position)
+        ((and (consp item) (eq (car item) :extern-call))
+         (let ((name (cadr item))
+               (marker-pos (if (cddr item) (caddr item) pos)))
+           (push (cons name marker-pos) extern-calls)
+           ;; Emit NOP (0xD503201F) as placeholder - 4 bytes little-endian
+           (push #x1F result)
+           (push #x20 result)
+           (push #x03 result)
+           (push #xD5 result)
+           (incf pos 4)))
+        ;; Regular byte
+        ((integerp item)
+         (push item result)
+         (incf pos))
+        ;; Skip other markers (shouldn't happen but be safe)
+        (t nil)))
+    (values (nreverse result) (nreverse extern-calls))))
 
 (defun write-u32-le (n stream)
   "Write 32-bit unsigned integer in little-endian format to stream."
@@ -6078,43 +6110,70 @@ int main(int argc, char **argv) {
   (write-u32-le (logand (ash n -32) #xFFFFFFFF) stream))
 
 (defun write-fasl-v2 (bytecode-list symbol-table output-path)
-  "Write enhanced FASL v2 with symbol table.
-   bytecode-list: list of bytes (ARM64 machine code)
+  "Write FASL v3 with symbol table and import handling.
+   bytecode-list: list of bytes or (:extern-call name pos) markers
    symbol-table: alist of (name . offset) pairs
-   output-path: file to write"
-  (with-open-file (out output-path :direction :output
-                                    :if-exists :supersede
-                                    :if-does-not-exist :create
-                                    :element-type '(unsigned-byte 8))
-    (let* ((code-len (length bytecode-list))
-           (symtab-offset (+ 32 code-len))  ;; Header is 32 bytes
-           (symtab-count (if symbol-table (length symbol-table) 0)))
-      ;; Write header
-      (write-byte #x48 out)  ;; 'H'
-      (write-byte #x46 out)  ;; 'F'
-      (write-byte #x53 out)  ;; 'S'
-      (write-byte #x4C out)  ;; 'L'
-      (write-u32-le 2 out)   ;; Version 2
-      (write-u32-le 0 out)   ;; Flags
-      (write-u32-le code-len out)
-      (write-u32-le symtab-offset out)
-      (write-u32-le symtab-count out)
-      (write-u32-le 0 out)   ;; Reserved
-      (write-u32-le 0 out)   ;; Reserved
-      ;; Write code section
-      (dolist (byte bytecode-list)
-        (write-byte byte out))
-      ;; Write symbol table
-      (when symbol-table
-        (dolist (entry symbol-table)
-          (let* ((name (symbol-name (car entry)))
-                 (offset (cdr entry))
-                 (name-bytes (map 'list #'char-code name))
-                 (name-len (length name-bytes)))
-            (write-u32-le name-len out)
-            (dolist (byte name-bytes)
-              (write-byte byte out))
-            (write-u64-le offset out)))))))
+   output-path: file to write
+   Note: Despite the name, this writes v3 format for backward compatibility."
+  ;; Extract extern-calls and clean the bytecode
+  (multiple-value-bind (clean-bytecode extern-calls)
+      (extract-extern-calls-from-bytecode bytecode-list)
+    (with-open-file (out output-path :direction :output
+                                      :if-exists :supersede
+                                      :if-does-not-exist :create
+                                      :element-type '(unsigned-byte 8))
+      (let* ((code-len (length clean-bytecode))
+             (symtab-count (if symbol-table (length symbol-table) 0))
+             (import-count (length extern-calls))
+             ;; Calculate symtab size for offset computation
+             (symtab-size (loop for entry in symbol-table
+                                sum (+ 4 (length (symbol-name (car entry))) 8)))
+             (symtab-offset (+ 48 code-len))  ;; Header is 48 bytes in v3
+             (import-offset (+ symtab-offset symtab-size)))
+        ;; Write header (48 bytes for v3)
+        (write-byte #x48 out)  ;; 'H'
+        (write-byte #x46 out)  ;; 'F'
+        (write-byte #x53 out)  ;; 'S'
+        (write-byte #x4C out)  ;; 'L'
+        (write-u32-le 3 out)   ;; Version 3
+        (write-u32-le 0 out)   ;; Flags
+        (write-u32-le code-len out)
+        (write-u32-le symtab-offset out)
+        (write-u32-le symtab-count out)
+        (write-u32-le import-offset out)
+        (write-u32-le import-count out)
+        ;; Reserved (16 bytes = 4 u32s)
+        (write-u32-le 0 out)
+        (write-u32-le 0 out)
+        (write-u32-le 0 out)
+        (write-u32-le 0 out)
+        ;; Write code section (clean bytes only)
+        (dolist (byte clean-bytecode)
+          (write-byte byte out))
+        ;; Write symbol table
+        (when symbol-table
+          (dolist (entry symbol-table)
+            (let* ((name (symbol-name (car entry)))
+                   (offset (cdr entry))
+                   (name-bytes (map 'list #'char-code name))
+                   (name-len (length name-bytes)))
+              (write-u32-le name-len out)
+              (dolist (byte name-bytes)
+                (write-byte byte out))
+              (write-u64-le offset out))))
+        ;; Write import table
+        (when extern-calls
+          (dolist (entry extern-calls)
+            (let* ((name (if (symbolp (car entry))
+                            (symbol-name (car entry))
+                            (car entry)))
+                   (offset (cdr entry))
+                   (name-bytes (map 'list #'char-code name))
+                   (name-len (length name-bytes)))
+              (write-u32-le name-len out)
+              (dolist (byte name-bytes)
+                (write-byte byte out))
+              (write-u32-le offset out))))))))
 
 (defun read-u32-le (stream)
   "Read 32-bit unsigned integer in little-endian format from stream."
@@ -6131,36 +6190,77 @@ int main(int argc, char **argv) {
     (logior lo (ash hi 32))))
 
 (defun read-fasl-v2 (fasl-path)
-  "Read enhanced FASL v2 and return (cons bytecode-list symbol-table).
-   symbol-table is an alist of (name . offset) pairs."
+  "Read FASL v2 or v3 and return (bytecode symtab imports).
+   For v2: imports is nil.
+   For v3: imports is list of (name . code-offset) pairs.
+   symtab is an alist of (name . offset) pairs."
   (with-open-file (in fasl-path :direction :input
                                 :element-type '(unsigned-byte 8))
     ;; Read and verify magic
     (let ((magic (list (read-byte in) (read-byte in) (read-byte in) (read-byte in))))
       (unless (equal magic '(#x48 #x46 #x53 #x4C))  ;; "HFSL"
         (error "Invalid FASL magic")))
-    ;; Read header
-    (let* ((code-len (read-u32-le in)))
-      (read-u32-le in)  ; Skip version
-      (read-u32-le in)  ; Skip flags
-      (read-u32-le in)  ; Skip symtab-offset
-      (let ((symtab-count (read-u32-le in)))
-        (read-u32-le in)  ; Skip reserved1
-        (read-u32-le in)  ; Skip reserved2
-        ;; Read code section
-        (let ((bytecode (loop repeat code-len collect (read-byte in))))
-          ;; Read symbol table
-          (if (zerop symtab-count)
-              (cons bytecode nil)
-              (let ((symtab
-                     (loop repeat symtab-count
-                           collect
-                           (let* ((name-len (read-u32-le in))
-                                  (name-bytes (loop repeat name-len collect (read-byte in)))
-                                  (name-string (map 'string #'code-char name-bytes))
-                                  (offset (read-u64-le in)))
-                             (cons (intern name-string :habu) offset)))))
-                (cons bytecode symtab))))))))
+    ;; Read header - version determines format
+    (let* ((version (read-u32-le in))
+           (flags (read-u32-le in))
+           (code-len (read-u32-le in))
+           (symtab-offset (read-u32-le in))
+           (symtab-count (read-u32-le in)))
+      (declare (ignore flags symtab-offset))
+      (cond
+        ;; Version 2: 32-byte header, no imports
+        ((= version 2)
+         (read-u32-le in)  ; Skip reserved1
+         (read-u32-le in)  ; Skip reserved2
+         ;; Read code section
+         (let ((bytecode (loop repeat code-len collect (read-byte in))))
+           ;; Read symbol table
+           (let ((symtab
+                  (when (> symtab-count 0)
+                    (loop repeat symtab-count
+                          collect
+                          (let* ((name-len (read-u32-le in))
+                                 (name-bytes (loop repeat name-len collect (read-byte in)))
+                                 (name-string (map 'string #'code-char name-bytes))
+                                 (offset (read-u64-le in)))
+                            (cons (intern name-string :habu) offset))))))
+             (list bytecode symtab nil))))  ; No imports for v2
+
+        ;; Version 3: 48-byte header, with imports
+        ((= version 3)
+         (let ((import-offset (read-u32-le in))
+               (import-count (read-u32-le in)))
+           (declare (ignore import-offset))
+           ;; Skip remaining reserved (16 bytes = 4 u32s)
+           (read-u32-le in)
+           (read-u32-le in)
+           (read-u32-le in)
+           (read-u32-le in)
+           ;; Read code section
+           (let ((bytecode (loop repeat code-len collect (read-byte in))))
+             ;; Read symbol table
+             (let ((symtab
+                    (when (> symtab-count 0)
+                      (loop repeat symtab-count
+                            collect
+                            (let* ((name-len (read-u32-le in))
+                                   (name-bytes (loop repeat name-len collect (read-byte in)))
+                                   (name-string (map 'string #'code-char name-bytes))
+                                   (offset (read-u64-le in)))
+                              (cons (intern name-string :habu) offset))))))
+               ;; Read import table
+               (let ((imports
+                      (when (> import-count 0)
+                        (loop repeat import-count
+                              collect
+                              (let* ((name-len (read-u32-le in))
+                                     (name-bytes (loop repeat name-len collect (read-byte in)))
+                                     (name-string (map 'string #'code-char name-bytes))
+                                     (offset (read-u32-le in)))
+                                (cons name-string offset))))))
+                 (list bytecode symtab imports))))))
+
+        (t (error "Unsupported FASL version: ~A" version))))))
 
 (defun compile-file-to-fasl (source-path fasl-path)
   "Compile Lisp source file to FASL v2 with symbol table.
@@ -6185,13 +6285,19 @@ int main(int argc, char **argv) {
    Usage: (link-fasls '(\"util.fasl\" \"main.fasl\") \"myprogram\")"
   (let ((all-code nil)
         (global-symtab nil)
+        (all-imports nil)
         (current-offset 0))
     ;; Read all FASL files and build global symbol table
     (dolist (fasl-path fasl-paths)
-      (let* ((mvb-result-25 (read-fasl-v2 fasl-path)) (bytecode (car mvb-result-25)) (symtab (cdr mvb-result-25)))
-                    (when verbose
-          (format t "Read ~A: ~A bytes, ~A symbols~%"
-                  fasl-path (length bytecode) (if symtab (length symtab) 0)))
+      (let* ((fasl-data (read-fasl-v2 fasl-path))
+             (bytecode (first fasl-data))
+             (symtab (second fasl-data))
+             (imports (third fasl-data)))
+        (when verbose
+          (format t "Read ~A: ~A bytes, ~A symbols, ~A imports~%"
+                  fasl-path (length bytecode)
+                  (if symtab (length symtab) 0)
+                  (if imports (length imports) 0)))
         ;; Append code
         (setf all-code (append all-code bytecode))
         ;; Adjust symbol offsets and add to global table
@@ -6201,25 +6307,34 @@ int main(int argc, char **argv) {
                    (offset (cdr entry))
                    (adjusted-offset (+ current-offset offset)))
               (push (cons name adjusted-offset) global-symtab))))
+        ;; Adjust import offsets and collect
+        (when imports
+          (dolist (entry imports)
+            (let* ((name (car entry))
+                   (offset (cdr entry))
+                   (adjusted-offset (+ current-offset offset)))
+              (push (cons name adjusted-offset) all-imports))))
         ;; Update offset for next FASL
         (setf current-offset (+ current-offset (length bytecode)))))
     ;; Reverse to maintain order
     (setf global-symtab (reverse global-symtab))
+    (setf all-imports (reverse all-imports))
     (when verbose
       (format t "Total code: ~A bytes~%" (length all-code))
       (format t "Global symbols: ~A~%" (length global-symtab))
       (when global-symtab
         (format t "Symbol table:~%")
         (dolist (entry global-symtab)
-          (format t "  ~A @ ~A~%" (car entry) (cdr entry)))))
-    ;; Collect external calls from bytecode
-    (let ((imports (collect-imports all-code)))
-      ;; Always use imports path for consistent Mach-O structure
-      ;; Add _exit as dummy import if none (never called but ensures proper structure)
-      (let ((imports (if (null imports) '("_exit") imports)))
-        (when verbose
-          (format t "Imports: ~A~%" imports))
-        (write-macho-executable-with-imports-and-heap output-path all-code imports #x100000)))
+          (format t "  ~A @ ~A~%" (car entry) (cdr entry))))
+      (format t "Total imports: ~A~%" (length all-imports)))
+    ;; Get unique import names
+    (let* ((import-names (remove-duplicates (mapcar #'car all-imports) :test #'string=))
+           (import-names (if (null import-names) '("_exit") import-names)))
+      (when verbose
+        (format t "Unique imports: ~A~%" import-names))
+      ;; TODO: Patch NOP placeholders with actual stub calls based on all-imports
+      ;; For now, just create executable with import stubs
+      (write-macho-executable-with-imports-and-heap output-path all-code import-names #x100000))
     (when verbose
       (format t "Created: ~A~%" output-path))
     output-path))
