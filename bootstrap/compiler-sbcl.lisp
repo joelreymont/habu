@@ -71,6 +71,7 @@
    #:wrap-bytecode-with-heap-for-imports
    #:resolve-calls-simple
    #:link-fasls
+   #:generate-gc-fasl
    ;; FASL support
    #:write-fasl-v2 #:read-fasl-v2 #:compile-file-to-fasl
    ;; Re-export CL functions used in compiled code
@@ -98,7 +99,7 @@
 ;;; These are loaded via ASDF after this file
 (declaim (ftype (function (t t t t &optional t) t) write-macho-executable-with-imports-and-heap))
 (declaim (ftype (function (t &key (:passes t)) t) habu:optimize-ir))
-(declaim (ftype (function (t t t) t) wrap-bytecode-with-heap-for-imports))
+(declaim (ftype (function (t t &optional t) t) wrap-bytecode-with-heap-for-imports))
 (declaim (ftype (function () t) fn-epilogue))
 (declaim (ftype (function (t) t) find-free-vars-simple))
 
@@ -314,35 +315,48 @@
                                     (+ pos 4)
                                     (append (reverse b-bytes) acc)
                                     loop-start-stack)))
-                     ;; Internal call - resolve to BL
+                     ;; Internal call - resolve to BL if found, else preserve marker
                      ((and (consp item) (eq (car item) :call-fn))
                       (let* ((fn-name (cadr item))
-                             (fn-entry (assoc fn-name fnoffs))
-                             (fn-pos (if fn-entry (cdr fn-entry) 0))
-                             (rel-offset (- fn-pos pos))
-                             (bl-bytes (arm64:bl (ash rel-offset -2))))
-                        (resolve-at (cdr items)
-                                    (+ pos 4)
-                                    (append (reverse bl-bytes) acc)
-                                    loop-start-stack)))
-                     ;; Tail call - resolve to B (unconditional branch without link)
+                             (fn-entry (assoc fn-name fnoffs)))
+                        (if fn-entry
+                            ;; Known function - resolve to BL
+                            (let* ((fn-pos (cdr fn-entry))
+                                   (rel-offset (- fn-pos pos))
+                                   (bl-bytes (arm64:bl (ash rel-offset -2))))
+                              (resolve-at (cdr items)
+                                          (+ pos 4)
+                                          (append (reverse bl-bytes) acc)
+                                          loop-start-stack))
+                            ;; Unknown function - preserve marker for link-time resolution
+                            (resolve-at (cdr items)
+                                        (+ pos 4)
+                                        (cons (list :call-fn fn-name pos) acc)
+                                        loop-start-stack))))
+                     ;; Tail call - resolve to B if found, else preserve marker
                      ((and (consp item) (eq (car item) :tail-call-fn))
                       (let* ((fn-name (cadr item))
-                             (fn-entry (assoc fn-name fnoffs))
-                             (fn-pos (if fn-entry (cdr fn-entry) 0))
-                             (rel-offset (- fn-pos pos))
-                             (b-bytes (arm64:b (ash rel-offset -2))))
-                        (resolve-at (cdr items)
-                                    (+ pos 4)
-                                    (append (reverse b-bytes) acc)
-                                    loop-start-stack)))
-                     ;; External call - emit 4 placeholder bytes + marker
-                     ;; CRITICAL: Must emit 4 bytes to maintain position consistency
-                     ;; Marker goes FIRST (at position), then 3 zero bytes follow
+                             (fn-entry (assoc fn-name fnoffs)))
+                        (if fn-entry
+                            ;; Known function - resolve to B
+                            (let* ((fn-pos (cdr fn-entry))
+                                   (rel-offset (- fn-pos pos))
+                                   (b-bytes (arm64:b (ash rel-offset -2))))
+                              (resolve-at (cdr items)
+                                          (+ pos 4)
+                                          (append (reverse b-bytes) acc)
+                                          loop-start-stack))
+                            ;; Unknown function - preserve marker for link-time resolution
+                            (resolve-at (cdr items)
+                                        (+ pos 4)
+                                        (cons (list :tail-call-fn fn-name pos) acc)
+                                        loop-start-stack))))
+                     ;; External call - pass through marker as-is (counts as 4 bytes)
+                     ;; extract-extern-calls-from-bytecode will replace with NOPs later
                      ((and (consp item) (eq (car item) :extern-call))
                       (resolve-at (cdr items)
                                   (+ pos 4)
-                                  (list* 0 0 0 (list :extern-call (cadr item) pos) acc)
+                                  (cons (list :extern-call (cadr item) pos) acc)
                                   loop-start-stack))
                      ;; Regular byte
                      (t
@@ -6068,13 +6082,16 @@ int main(int argc, char **argv) {
 ;;; Symbol Table: For each symbol: [name-len:4][name:N][offset:8]
 ;;; Import Table: For each import: [name-len:4][name:N][code-offset:4]
 
-(defun extract-extern-calls-from-bytecode (bytecode)
-  "Extract extern-call markers from bytecode.
-   Returns (values clean-bytecode extern-calls) where:
+(defun extract-markers-from-bytecode (bytecode)
+  "Extract call markers from bytecode.
+   Returns (values clean-bytecode extern-calls internal-calls) where:
    - clean-bytecode: bytecode with markers replaced by NOP instruction bytes
-   - extern-calls: list of (name . offset) pairs"
+   - extern-calls: list of (name . offset) pairs for C library calls
+   - internal-calls: list of (type name offset) triples for Lisp function calls
+     where type is :call or :tail-call"
   (let ((result nil)
         (extern-calls nil)
+        (internal-calls nil)
         (pos 0))
     (dolist (item bytecode)
       (cond
@@ -6089,13 +6106,42 @@ int main(int argc, char **argv) {
            (push #x03 result)
            (push #xD5 result)
            (incf pos 4)))
+        ;; Internal call marker: (:call-fn name position)
+        ((and (consp item) (eq (car item) :call-fn))
+         (let ((name (cadr item)))
+           (push (list :call name pos) internal-calls)
+           ;; Emit NOP placeholder
+           (push #x1F result)
+           (push #x20 result)
+           (push #x03 result)
+           (push #xD5 result)
+           (incf pos 4)))
+        ;; Internal tail-call marker: (:tail-call-fn name position)
+        ((and (consp item) (eq (car item) :tail-call-fn))
+         (let ((name (cadr item)))
+           (push (list :tail-call name pos) internal-calls)
+           ;; Emit NOP placeholder
+           (push #x1F result)
+           (push #x20 result)
+           (push #x03 result)
+           (push #xD5 result)
+           (incf pos 4)))
         ;; Regular byte
         ((integerp item)
          (push item result)
          (incf pos))
         ;; Skip other markers (shouldn't happen but be safe)
         (t nil)))
-    (values (nreverse result) (nreverse extern-calls))))
+    (values (nreverse result) (nreverse extern-calls) (nreverse internal-calls))))
+
+;; Backward compatibility alias
+(defun extract-extern-calls-from-bytecode (bytecode)
+  "Extract extern-call markers from bytecode.
+   Wrapper for backward compatibility."
+  (multiple-value-bind (clean extern internal)
+      (extract-markers-from-bytecode bytecode)
+    (declare (ignore internal))
+    (values clean extern)))
 
 (defun write-u32-le (n stream)
   "Write 32-bit unsigned integer in little-endian format to stream."
@@ -6110,14 +6156,26 @@ int main(int argc, char **argv) {
   (write-u32-le (logand (ash n -32) #xFFFFFFFF) stream))
 
 (defun write-fasl-v2 (bytecode-list symbol-table output-path)
-  "Write FASL v3 with symbol table and import handling.
-   bytecode-list: list of bytes or (:extern-call name pos) markers
+  "Write FASL v4 with symbol table, imports, and internal calls.
+   bytecode-list: list of bytes or call markers
    symbol-table: alist of (name . offset) pairs
    output-path: file to write
-   Note: Despite the name, this writes v3 format for backward compatibility."
-  ;; Extract extern-calls and clean the bytecode
-  (multiple-value-bind (clean-bytecode extern-calls)
-      (extract-extern-calls-from-bytecode bytecode-list)
+
+   FASL v4 Format (64-byte header):
+   - Magic: 4 bytes 'HFSL'
+   - Version: 4 bytes (4)
+   - Flags: 4 bytes
+   - Code-len: 4 bytes
+   - Symtab-offset: 4 bytes
+   - Symtab-count: 4 bytes
+   - Import-offset: 4 bytes
+   - Import-count: 4 bytes
+   - Internal-offset: 4 bytes  (NEW)
+   - Internal-count: 4 bytes   (NEW)
+   - Reserved: 24 bytes"
+  ;; Extract all markers and clean the bytecode
+  (multiple-value-bind (clean-bytecode extern-calls internal-calls)
+      (extract-markers-from-bytecode bytecode-list)
     (with-open-file (out output-path :direction :output
                                       :if-exists :supersede
                                       :if-does-not-exist :create
@@ -6125,24 +6183,35 @@ int main(int argc, char **argv) {
       (let* ((code-len (length clean-bytecode))
              (symtab-count (if symbol-table (length symbol-table) 0))
              (import-count (length extern-calls))
-             ;; Calculate symtab size for offset computation
+             (internal-count (length internal-calls))
+             ;; Calculate sizes for offset computation
              (symtab-size (loop for entry in symbol-table
                                 sum (+ 4 (length (symbol-name (car entry))) 8)))
-             (symtab-offset (+ 48 code-len))  ;; Header is 48 bytes in v3
-             (import-offset (+ symtab-offset symtab-size)))
-        ;; Write header (48 bytes for v3)
+             (import-size (loop for entry in extern-calls
+                               sum (+ 4 (length (if (symbolp (car entry))
+                                                    (symbol-name (car entry))
+                                                    (car entry))) 4)))
+             (header-size 64)  ;; v4 uses 64-byte header
+             (symtab-offset (+ header-size code-len))
+             (import-offset (+ symtab-offset symtab-size))
+             (internal-offset (+ import-offset import-size)))
+        ;; Write header (64 bytes for v4)
         (write-byte #x48 out)  ;; 'H'
         (write-byte #x46 out)  ;; 'F'
         (write-byte #x53 out)  ;; 'S'
         (write-byte #x4C out)  ;; 'L'
-        (write-u32-le 3 out)   ;; Version 3
+        (write-u32-le 4 out)   ;; Version 4
         (write-u32-le 0 out)   ;; Flags
         (write-u32-le code-len out)
         (write-u32-le symtab-offset out)
         (write-u32-le symtab-count out)
         (write-u32-le import-offset out)
         (write-u32-le import-count out)
-        ;; Reserved (16 bytes = 4 u32s)
+        (write-u32-le internal-offset out)  ;; NEW
+        (write-u32-le internal-count out)   ;; NEW
+        ;; Reserved (24 bytes = 6 u32s)
+        (write-u32-le 0 out)
+        (write-u32-le 0 out)
         (write-u32-le 0 out)
         (write-u32-le 0 out)
         (write-u32-le 0 out)
@@ -6161,7 +6230,7 @@ int main(int argc, char **argv) {
               (dolist (byte name-bytes)
                 (write-byte byte out))
               (write-u64-le offset out))))
-        ;; Write import table
+        ;; Write import table (extern calls)
         (when extern-calls
           (dolist (entry extern-calls)
             (let* ((name (if (symbolp (car entry))
@@ -6170,6 +6239,22 @@ int main(int argc, char **argv) {
                    (offset (cdr entry))
                    (name-bytes (map 'list #'char-code name))
                    (name-len (length name-bytes)))
+              (write-u32-le name-len out)
+              (dolist (byte name-bytes)
+                (write-byte byte out))
+              (write-u32-le offset out))))
+        ;; Write internal call table (Lisp function calls)
+        ;; Format: [type:1][name-len:4][name:N][offset:4]
+        ;; type: 0 = call, 1 = tail-call
+        (when internal-calls
+          (dolist (entry internal-calls)
+            (let* ((call-type (car entry))
+                   (name (symbol-name (cadr entry)))
+                   (offset (caddr entry))
+                   (name-bytes (map 'list #'char-code name))
+                   (name-len (length name-bytes)))
+              ;; Write type byte
+              (write-byte (if (eq call-type :call) 0 1) out)
               (write-u32-le name-len out)
               (dolist (byte name-bytes)
                 (write-byte byte out))
@@ -6190,10 +6275,13 @@ int main(int argc, char **argv) {
     (logior lo (ash hi 32))))
 
 (defun read-fasl-v2 (fasl-path)
-  "Read FASL v2 or v3 and return (bytecode symtab imports).
-   For v2: imports is nil.
-   For v3: imports is list of (name . code-offset) pairs.
-   symtab is an alist of (name . offset) pairs."
+  "Read FASL v2, v3, or v4 and return (bytecode symtab imports internal-calls).
+   For v2: imports and internal-calls are nil.
+   For v3: internal-calls is nil.
+   For v4: full support for all tables.
+   symtab is an alist of (name . offset) pairs.
+   imports is list of (name . code-offset) pairs for C calls.
+   internal-calls is list of (type name offset) for Lisp function calls."
   (with-open-file (in fasl-path :direction :input
                                 :element-type '(unsigned-byte 8))
     ;; Read and verify magic
@@ -6224,7 +6312,7 @@ int main(int argc, char **argv) {
                                  (name-string (map 'string #'code-char name-bytes))
                                  (offset (read-u64-le in)))
                             (cons (intern name-string :habu) offset))))))
-             (list bytecode symtab nil))))  ; No imports for v2
+             (list bytecode symtab nil nil))))  ; No imports/internal for v2
 
         ;; Version 3: 48-byte header, with imports
         ((= version 3)
@@ -6258,7 +6346,57 @@ int main(int argc, char **argv) {
                                      (name-string (map 'string #'code-char name-bytes))
                                      (offset (read-u32-le in)))
                                 (cons name-string offset))))))
-                 (list bytecode symtab imports))))))
+                 (list bytecode symtab imports nil))))))  ; No internal-calls for v3
+
+        ;; Version 4: 64-byte header, with imports and internal calls
+        ((= version 4)
+         (let ((import-offset (read-u32-le in))
+               (import-count (read-u32-le in))
+               (internal-offset (read-u32-le in))
+               (internal-count (read-u32-le in)))
+           (declare (ignore import-offset internal-offset))
+           ;; Skip remaining reserved (24 bytes = 6 u32s)
+           (read-u32-le in)
+           (read-u32-le in)
+           (read-u32-le in)
+           (read-u32-le in)
+           (read-u32-le in)
+           (read-u32-le in)
+           ;; Read code section
+           (let ((bytecode (loop repeat code-len collect (read-byte in))))
+             ;; Read symbol table
+             (let ((symtab
+                    (when (> symtab-count 0)
+                      (loop repeat symtab-count
+                            collect
+                            (let* ((name-len (read-u32-le in))
+                                   (name-bytes (loop repeat name-len collect (read-byte in)))
+                                   (name-string (map 'string #'code-char name-bytes))
+                                   (offset (read-u64-le in)))
+                              (cons (intern name-string :habu) offset))))))
+               ;; Read import table
+               (let ((imports
+                      (when (> import-count 0)
+                        (loop repeat import-count
+                              collect
+                              (let* ((name-len (read-u32-le in))
+                                     (name-bytes (loop repeat name-len collect (read-byte in)))
+                                     (name-string (map 'string #'code-char name-bytes))
+                                     (offset (read-u32-le in)))
+                                (cons name-string offset))))))
+                 ;; Read internal call table
+                 (let ((internal-calls
+                        (when (> internal-count 0)
+                          (loop repeat internal-count
+                                collect
+                                (let* ((type-byte (read-byte in))
+                                       (call-type (if (= type-byte 0) :call :tail-call))
+                                       (name-len (read-u32-le in))
+                                       (name-bytes (loop repeat name-len collect (read-byte in)))
+                                       (name-string (map 'string #'code-char name-bytes))
+                                       (offset (read-u32-le in)))
+                                  (list call-type (intern name-string :habu) offset))))))
+                   (list bytecode symtab imports internal-calls)))))))
 
         (t (error "Unsupported FASL version: ~A" version))))))
 
@@ -6277,27 +6415,203 @@ int main(int argc, char **argv) {
       fasl-path)))
 
 ;;; ============================================================
-;;; Part 8c: FASL Linker - Combine Multiple Compilation Units
+;;; Part 8c: Link-time Call Resolution
 ;;; ============================================================
 
-(defun link-fasls (fasl-paths output-path &key verbose)
+(defun resolve-internal-calls (code symtab)
+  "Resolve remaining :call-fn and :tail-call-fn markers at link time.
+   CODE is a list of bytes and markers.
+   SYMTAB is the global symbol table (alist of (name . offset)).
+   Returns resolved bytecode with BL/B instructions."
+  (let ((result nil)
+        (pos 0))
+    (dolist (item code)
+      (cond
+        ;; Internal call marker - resolve to BL
+        ((and (consp item) (eq (car item) :call-fn))
+         (let* ((fn-name (cadr item))
+                (marker-pos (caddr item))
+                (fn-entry (assoc fn-name symtab))
+                (fn-pos (if fn-entry (cdr fn-entry)
+                           (error "Link error: undefined function ~A at position ~A" fn-name marker-pos)))
+                (rel-offset (- fn-pos pos))
+                (bl-bytes (arm64:bl (ash rel-offset -2))))
+           (dolist (b bl-bytes)
+             (push b result))
+           (incf pos 4)))
+        ;; Tail call marker - resolve to B
+        ((and (consp item) (eq (car item) :tail-call-fn))
+         (let* ((fn-name (cadr item))
+                (marker-pos (caddr item))
+                (fn-entry (assoc fn-name symtab))
+                (fn-pos (if fn-entry (cdr fn-entry)
+                           (error "Link error: undefined function ~A at position ~A" fn-name marker-pos)))
+                (rel-offset (- fn-pos pos))
+                (b-bytes (arm64:b (ash rel-offset -2))))
+           (dolist (b b-bytes)
+             (push b result))
+           (incf pos 4)))
+        ;; Other markers pass through (extern-call, etc)
+        ((consp item)
+         (push item result)
+         (incf pos 4))
+        ;; Regular byte
+        (t
+         (push item result)
+         (incf pos 1))))
+    (reverse result)))
+
+(defun count-actual-bytes-link (items)
+  "Count actual bytes in a list, excluding markers.
+   Markers are conses like (:extern-call ...), (:call-fn ...), etc."
+  (let ((count 0))
+    (dolist (item items count)
+      (unless (consp item)
+        (incf count)))))
+
+(defun resolve-extern-calls-link (code stub-map code-base)
+  "Resolve :extern-call markers to BL instructions for linking.
+   CODE: list of bytes and :extern-call markers
+   STUB-MAP: hash-table mapping import name to stub address
+   CODE-BASE: base address of code (code-offset + wrapper-size)
+   Returns bytecode with BL instructions replacing markers."
+  (let ((result nil)
+        (pos 0))
+    (dolist (item code)
+      (cond
+        ;; Extern call marker - resolve to BL
+        ((and (consp item) (eq (car item) :extern-call))
+         (let* ((name (cadr item))
+                (bl-addr (+ code-base pos))
+                (stub-addr (gethash name stub-map))
+                (rel-offset (- stub-addr bl-addr))
+                (off-instr (ash rel-offset -2))
+                (off-masked (logand off-instr #x3FFFFFF))
+                (bl-instr (logior #x94000000 off-masked)))
+           ;; Emit BL in little-endian
+           (push (logand bl-instr #xFF) result)
+           (push (logand (ash bl-instr -8) #xFF) result)
+           (push (logand (ash bl-instr -16) #xFF) result)
+           (push (logand (ash bl-instr -24) #xFF) result)
+           (incf pos 4)))
+        ;; Regular byte
+        (t
+         (push item result)
+         (incf pos 1))))
+    (reverse result)))
+
+;;; ============================================================
+;;; Part 8d: GC Runtime FASL Generation
+;;; ============================================================
+
+(defun flatten-gc-code (code pos)
+  "Flatten GC code, tracking :fn-label positions and internal calls.
+   Returns (flat-bytes fn-labels internal-calls) where:
+   - fn-labels is alist of (name . pos)
+   - internal-calls is list of (type name offset)"
+  (let ((flat nil)
+        (labels nil)
+        (internal-calls nil)
+        (current-pos pos))
+    (dolist (item code)
+      (cond
+        ;; Function label marker - record position
+        ((and (consp item) (eq (car item) :fn-label))
+         (push (cons (cadr item) current-pos) labels))
+        ;; Internal call marker: (:call-fn name)
+        ((and (consp item) (eq (car item) :call-fn))
+         (push (list :call (cadr item) current-pos) internal-calls)
+         ;; Emit NOP placeholder (0xD503201F in little-endian)
+         (push #x1F flat)
+         (push #x20 flat)
+         (push #x03 flat)
+         (push #xD5 flat)
+         (incf current-pos 4))
+        ;; Internal tail-call marker: (:tail-call-fn name)
+        ((and (consp item) (eq (car item) :tail-call-fn))
+         (push (list :tail-call (cadr item) current-pos) internal-calls)
+         ;; Emit NOP placeholder
+         (push #x1F flat)
+         (push #x20 flat)
+         (push #x03 flat)
+         (push #xD5 flat)
+         (incf current-pos 4))
+        ;; Label marker - skip (handled separately)
+        ((and (consp item) (eq (car item) :label))
+         nil)
+        ;; Byte - add to output
+        ((integerp item)
+         (push item flat)
+         (incf current-pos))
+        ;; List of bytes
+        ((and (consp item) (integerp (car item)))
+         (dolist (b item)
+           (push b flat)
+           (incf current-pos)))
+        ;; Skip unknown markers
+        (t nil)))
+    (list (reverse flat) (reverse labels) (reverse internal-calls))))
+
+(defun generate-gc-fasl (output-path)
+  "Generate FASL containing GC runtime machine code.
+   The GC runtime includes GC-COPY and GC-COLLECT functions."
+  (let* ((gc-code (gc-runtime-code))
+         (result (flatten-gc-code gc-code 0))
+         (flat-bytes (first result))
+         (fn-labels (second result))
+         (gc-internal-calls (third result)))
+    ;; Note: GC internal calls will be resolved when linking
+    ;; For standalone GC FASL, write with internal calls embedded
+    (declare (ignore gc-internal-calls))
+    (write-fasl-v2 flat-bytes fn-labels output-path)
+    (format t "Generated GC runtime FASL: ~A (~A bytes, ~A functions)~%"
+            output-path (length flat-bytes) (length fn-labels))
+    output-path))
+
+;;; ============================================================
+;;; Part 8d: FASL Linker - Combine Multiple Compilation Units
+;;; ============================================================
+;;;
+;;; Architecture:
+;;;   1. Read all FASLs (user code + GC runtime)
+;;;   2. Concatenate bytecode, adjusting symbol offsets
+;;;   3. Resolve all :call-fn markers to BL instructions
+;;;   4. Generate Mach-O executable with heap
+;;;
+;;; Future: DWARF debug info will be generated here (see habu-49n)
+;;;
+
+(defun link-fasls (fasl-paths output-path &key verbose (include-gc t))
   "Link multiple FASL files into a single executable.
-   Usage: (link-fasls '(\"util.fasl\" \"main.fasl\") \"myprogram\")"
+   Usage: (link-fasls '(\"util.fasl\" \"main.fasl\") \"myprogram\")
+
+   Linking process:
+   1. Read all FASL files and concatenate bytecode
+   2. If include-gc, append GC runtime code with function labels
+   3. Resolve internal calls (Lisp function calls across files)
+   4. Prepend branch to MAIN entry point
+   5. Resolve extern calls (C library calls)
+   6. Wrap with heap initialization and write Mach-O
+
+   Future: DWARF debug info generation will be added here (see habu-49n)"
   (let ((all-code nil)
         (global-symtab nil)
         (all-imports nil)
+        (all-internal-calls nil)
         (current-offset 0))
-    ;; Read all FASL files and build global symbol table
+    ;; Phase 1: Read all FASL files and build global symbol table
     (dolist (fasl-path fasl-paths)
       (let* ((fasl-data (read-fasl-v2 fasl-path))
              (bytecode (first fasl-data))
              (symtab (second fasl-data))
-             (imports (third fasl-data)))
+             (imports (third fasl-data))
+             (internal-calls (fourth fasl-data)))
         (when verbose
-          (format t "Read ~A: ~A bytes, ~A symbols, ~A imports~%"
+          (format t "Read ~A: ~A bytes, ~A symbols, ~A imports, ~A internal-calls~%"
                   fasl-path (length bytecode)
                   (if symtab (length symtab) 0)
-                  (if imports (length imports) 0)))
+                  (if imports (length imports) 0)
+                  (if internal-calls (length internal-calls) 0)))
         ;; Append code
         (setf all-code (append all-code bytecode))
         ;; Adjust symbol offsets and add to global table
@@ -6314,27 +6628,161 @@ int main(int argc, char **argv) {
                    (offset (cdr entry))
                    (adjusted-offset (+ current-offset offset)))
               (push (cons name adjusted-offset) all-imports))))
+        ;; Adjust internal call offsets and collect
+        (when internal-calls
+          (dolist (entry internal-calls)
+            (let* ((call-type (first entry))
+                   (name (second entry))
+                   (offset (third entry))
+                   (adjusted-offset (+ current-offset offset)))
+              (push (list call-type name adjusted-offset) all-internal-calls))))
         ;; Update offset for next FASL
         (setf current-offset (+ current-offset (length bytecode)))))
+
+    ;; Phase 2: Append GC runtime if requested
+    (when include-gc
+      (let* ((gc-code (gc-runtime-code))
+             (result (flatten-gc-code gc-code current-offset))
+             (gc-flat (first result))
+             (gc-labels (second result))
+             (gc-internal-calls (third result)))
+        (when verbose
+          (format t "GC runtime: ~A bytes, functions: ~A, internal-calls: ~A~%"
+                  (length gc-flat) (mapcar #'car gc-labels) (length gc-internal-calls)))
+        ;; Append GC bytecode
+        (setf all-code (append all-code gc-flat))
+        ;; Add GC function labels to symbol table
+        (dolist (label gc-labels)
+          (push label global-symtab))
+        ;; Add GC internal calls to be resolved (already have correct offsets)
+        (dolist (call gc-internal-calls)
+          (push call all-internal-calls))
+        (setf current-offset (+ current-offset (length gc-flat)))))
+
     ;; Reverse to maintain order
     (setf global-symtab (reverse global-symtab))
     (setf all-imports (reverse all-imports))
+    (setf all-internal-calls (reverse all-internal-calls))
     (when verbose
       (format t "Total code: ~A bytes~%" (length all-code))
       (format t "Global symbols: ~A~%" (length global-symtab))
-      (when global-symtab
-        (format t "Symbol table:~%")
-        (dolist (entry global-symtab)
-          (format t "  ~A @ ~A~%" (car entry) (cdr entry))))
-      (format t "Total imports: ~A~%" (length all-imports)))
-    ;; Get unique import names
+      (format t "Total imports: ~A~%" (length all-imports))
+      (format t "Internal calls to resolve: ~A~%" (length all-internal-calls)))
+
+    ;; Phase 3: Resolve internal function calls
+    ;; Patch bytecode at specified offsets with BL/B instructions
+    (when all-internal-calls
+      (let ((code-vec (coerce all-code 'vector)))
+        (dolist (call all-internal-calls)
+          (let* ((call-type (first call))
+                 (fn-name (second call))
+                 (call-offset (third call))
+                 (fn-entry (assoc fn-name global-symtab)))
+            (unless fn-entry
+              (error "Link error: undefined function ~A at offset ~A" fn-name call-offset))
+            (let* ((fn-pos (cdr fn-entry))
+                   (rel-offset (- fn-pos call-offset))
+                   ;; Generate BL or B instruction
+                   (instr-bytes (if (eq call-type :call)
+                                    (arm64:bl (ash rel-offset -2))
+                                    (arm64:b (ash rel-offset -2)))))
+              ;; Patch 4 bytes at call-offset
+              (setf (aref code-vec call-offset) (nth 0 instr-bytes))
+              (setf (aref code-vec (+ call-offset 1)) (nth 1 instr-bytes))
+              (setf (aref code-vec (+ call-offset 2)) (nth 2 instr-bytes))
+              (setf (aref code-vec (+ call-offset 3)) (nth 3 instr-bytes)))))
+        (setf all-code (coerce code-vec 'list))))
+    (when verbose
+      (format t "Resolved ~A internal calls~%" (length all-internal-calls)))
+
+    ;; Phase 4: Find MAIN and prepend branch to it
+    ;; (After call resolution since we need correct offsets)
+    (let ((main-entry (assoc 'habu::main global-symtab)))
+      (when (and verbose main-entry)
+        (format t "Entry point MAIN at offset ~A~%" (cdr main-entry)))
+      (when main-entry
+        (let* ((main-offset (cdr main-entry))
+               (branch-offset (ash (+ main-offset 4) -2))
+               (b-bytes (arm64:b branch-offset)))
+          (setf all-code (append b-bytes all-code))
+          ;; Adjust all symbol offsets by 4
+          (setf global-symtab (mapcar (lambda (entry)
+                                        (cons (car entry) (+ 4 (cdr entry))))
+                                      global-symtab))
+          ;; Adjust all import offsets by 4
+          (setf all-imports (mapcar (lambda (entry)
+                                      (cons (car entry) (+ 4 (cdr entry))))
+                                    all-imports))
+          (when verbose
+            (format t "Prepended branch to MAIN, code now ~A bytes~%" (length all-code))))))
+
+    ;; Phase 5: Resolve extern calls and calculate layout
     (let* ((import-names (remove-duplicates (mapcar #'car all-imports) :test #'string=))
-           (import-names (if (null import-names) '("_exit") import-names)))
+           (import-names (if (null import-names) '("_exit") import-names))
+           (wrapper-size 116)
+           (num-imports (length import-names))
+           (stub-size 12)
+           (stubs-total (* num-imports stub-size))
+           (code-offset #x400)
+           (code-size (length all-code))
+           (stubs-offset (+ code-offset wrapper-size code-size)))
       (when verbose
-        (format t "Unique imports: ~A~%" import-names))
-      ;; TODO: Patch NOP placeholders with actual stub calls based on all-imports
-      ;; For now, just create executable with import stubs
-      (write-macho-executable-with-imports-and-heap output-path all-code import-names #x100000))
+        (format t "Unique imports: ~A~%" import-names)
+        (format t "Code size: ~A bytes~%" code-size))
+
+      ;; Build stub offset map
+      (let ((stub-map (let ((ht (make-hash-table :test 'equal)))
+                        (loop for name in import-names
+                              for i from 0
+                              do (setf (gethash name ht) (+ stubs-offset (* i stub-size))))
+                        ht)))
+        ;; Patch extern calls in bytecode
+        (when all-imports
+          (let ((code-vec (coerce all-code 'vector))
+                (code-base (+ code-offset wrapper-size)))
+            (dolist (import-entry all-imports)
+              (let* ((name (car import-entry))
+                     (call-offset (cdr import-entry))
+                     (bl-addr (+ code-base call-offset))
+                     (stub-addr (gethash name stub-map)))
+                (unless stub-addr
+                  (error "Link error: unknown import ~A" name))
+                (let* ((rel-offset (- stub-addr bl-addr))
+                       (off-instr (ash rel-offset -2))
+                       (off-masked (logand off-instr #x3FFFFFF))
+                       (bl-instr (logior #x94000000 off-masked)))
+                  ;; Patch 4 bytes at call-offset (little-endian)
+                  (setf (aref code-vec call-offset) (logand bl-instr #xFF))
+                  (setf (aref code-vec (+ call-offset 1)) (logand (ash bl-instr -8) #xFF))
+                  (setf (aref code-vec (+ call-offset 2)) (logand (ash bl-instr -16) #xFF))
+                  (setf (aref code-vec (+ call-offset 3)) (logand (ash bl-instr -24) #xFF)))))
+            (setf all-code (coerce code-vec 'list))))
+        (when verbose
+          (format t "Resolved ~A extern calls~%" (length all-imports)))
+
+        ;; Calculate heap page offset
+        (let* ((total-code-size (+ code-size wrapper-size))
+               (stubs-end (+ code-offset total-code-size stubs-total))
+               (text-vmsize (* (ceiling stubs-end #x4000) #x4000))
+               (text-pages-4kb (/ text-vmsize #x1000))
+               (data-const-pages-4kb (/ #x4000 #x1000))
+               (heap-page-offset (+ text-pages-4kb data-const-pages-4kb))
+               (half-heap-size (ash #x8000000 -1))
+               (wrapped-code (wrap-bytecode-with-heap-for-imports all-code heap-page-offset half-heap-size)))
+          (when verbose
+            (format t "Wrapped code: ~A bytes (wrapper: ~A + code: ~A)~%"
+                    (length wrapped-code) wrapper-size code-size))
+
+          ;; Phase 6: Write Mach-O executable
+          ;; TODO (habu-49n): Generate DWARF debug info here before writing executable
+          ;; DWARF sections would include:
+          ;;   - .debug_info: Compilation unit and type info
+          ;;   - .debug_line: Source line to address mapping
+          ;;   - .debug_abbrev: Abbreviation tables
+          ;;   - .debug_str: String table
+          ;; Source locations need to be tracked through compilation (habu-ksj)
+          (write-macho-executable-with-imports-and-heap
+           output-path wrapped-code import-names #x8000000 global-symtab))))
     (when verbose
       (format t "Created: ~A~%" output-path))
     output-path))
