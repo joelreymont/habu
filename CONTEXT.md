@@ -1,22 +1,114 @@
 # Habu Self-Hosting Lisp Compiler - Context
 
-**Last Updated**: December 2, 2025
-**Milestone**: Stage 1 compiles and runs (642KB); testing Stage 1 → Stage 2
+**Last Updated**: December 3, 2025
+**Milestone**: Stage 1 compiles and runs (~1.1MB); `&key` support added
 
 ## Current Status
 
 **Test Results**: 76/76 pass
-**Stage 1**: Compiles and runs (642KB binary with full compiler + GC runtime)
+**Stage 1**: Compiles and runs (1,101,728 bytes with &key support)
 
-## Current Session (December 2, 2025)
+## Current Session (December 3, 2025)
 
-### GC Trigger in SBCL cons-ir Handler (FIXED)
+### Changes Made This Session
+
+1. **Keyword argument (`&key`) support in bootstrap compiler**
+   - Added `parse-lambda-list` to split params at `&key`
+   - Added `keyword-to-param-name` to convert `:FOO` keyword to `"FOO"` string
+   - Added `find-keyword-position` for locating keyword in specs list
+   - Added `rewrite-keyword-call` to convert keyword calls to positional
+   - Modified `compile-defun` to handle `&key` params as additional positional
+   - Modified `sys:compile` to always rewrite calls when function has `&key`
+     (even if call doesn't use keywords, to fill in default values)
+
+2. **Fixed reader to properly handle keywords**
+   - Modified `read-sym` to intern keywords into KEYWORD package
+     (was interning `:offset` as `|:OFFSET|` in HABU package)
+   - Added package-qualified symbol handling with fallback to HABU package
+     for unknown packages (needed for user-defined packages in source)
+
+3. **Added automated tests for keyword arguments**
+   - Created `tests/test_keyword_args.lisp` with 6 tests:
+     - Default values, specified values, multiple keywords
+     - Keywords without defaults, mixed positional/keyword
+     - Keyword rewriting at call sites
+   - All 6 tests pass
+
+4. **Added automated tests for packages**
+   - Created `tests/test_native_packages.lisp`
+   - Simple package test passes (defpackage + in-package + local call)
+   - Cross-package tests skipped in bootstrap mode (require native reader)
+
+### Architecture Notes
+
+**ARM64 Wrapper Functions**: The previous wrapper functions in codegen.lisp
+have been simplified to just delegate to `arm64:*` functions. The `arm64/asm.lisp`
+file contains all ARM64 encoding logic, and reader conditionals (`#+sbcl`/`#-sbcl`)
+in that file handle the differences between SBCL and native mode.
+
+**Package Handling**: Two different paths:
+- SBCL bootstrap: `read-sym` handles keywords and package-qualified symbols
+  with fallback to HABU package for unknown packages
+- Native mode: `reader.lisp` tracks packages via `*current-package*` and
+  qualifies symbols during interning
+
+### Stage 1 Status
+
+**Current State**: Stage 1 (~1.1MB) builds and runs correctly.
+
+**Working**:
+- `(sys-exit N)` - works
+- `(native-read-file ...)` - works
+- `(read-all (native-read-file ...))` - works
+- All string operations - work
+
+**Still Not Working**:
+- `(read-all "literal-string")` - crashes (SIGSEGV)
+- `(compile-forms ...)` - crashes
+
+**Next Steps**:
+- Investigate string literal crash in reader
+- Test Stage 1 → Stage 2 compilation
+
+## Previous Session (December 2, 2025)
+
+### Previous Session Issues (For Reference)
+
+### Docstring Handling in Defuns (FIXED)
+
+**Problem**: Docstrings in defun bodies were being compiled as code, wasting ~164KB in Stage 1 binary.
+
+**Root Cause**: `compile-all-defuns` (compiler.lisp) and `compile-defuns` (compiler-sbcl.lisp) extracted body with `(cdddr f)` but didn't skip docstrings. A form like `(defun foo (x) "doc" body)` would compile `(progn "doc" body)` instead of just `body`.
+
+**Fix**: Added `skip-docstring` helper function in both files:
+```lisp
+(defun skip-docstring (body-forms)
+  "Skip docstring if present (string as first body element with more forms)"
+  (if (and (stringp (car body-forms)) (cdr body-forms))
+      (cdr body-forms)
+      body-forms))
+```
+
+Files changed:
+- `compiler.lisp:492-496` - Added skip-docstring
+- `compiler.lisp:507` - Use skip-docstring in compile-all-defuns
+- `compiler-sbcl.lisp:4621-4625` - Added skip-docstring
+- `compiler-sbcl.lisp:4636` - Use skip-docstring in compile-defuns
+
+**Result**: Stage 1 binary reduced from 1,052,480 to 888,320 bytes (~164KB savings).
+
+### GC Triggers in SBCL Heap Allocation Handlers (FIXED)
 
 **Problem**: Stage 1 crashes with SIGBUS at heap boundary (32MB) when running `deliver-file`.
 
-**Root Cause**: The `cons-ir` handler in `compiler-sbcl.lisp` performs inline heap allocation but does NOT include GC trigger code. When many cons operations happen (e.g., in while loops building lists), the heap fills up without triggering GC.
+**Root Cause**: The heap allocation handlers in `compiler-sbcl.lisp` (`cons-ir`, `make-vector-ir`, `make-string-from-vector-ir`) perform inline heap allocation but do NOT include GC trigger code. When many allocations happen, the heap fills up without triggering GC.
 
-**Fix**: Added GC trigger check to cons-ir handler in `compiler-sbcl.lisp:3145-3158`:
+**Fix**: Added GC trigger check to all three handlers in `compiler-sbcl.lisp`:
+- `cons-ir` handler (lines 3145-3158)
+- `make-vector-ir` handler (lines 3437-3445)
+- `make-string-from-vector-ir` handler (lines 3578-3587)
+
+Each trigger follows the pattern:
 ```lisp
 (arm64:ldr 9 27 :offset 16)       ; x9 = from_end [x27+16]
 (arm64:cmp 28 9)                  ; compare x28, from_end
@@ -36,12 +128,59 @@
 - b.lo for < from_start: 34 → 9
 - b.hs for >= from_end: 32 → 7
 
+### Temp Slot Limit Increase (FIXED)
+
+**Problem**: Stage 1 build failed with "Too many temp slots: 472" when compiling gc.lisp.
+
+**Root Cause**: The `list` special form in the compiler expands to nested `cons-ir`:
+```lisp
+(list a b c) -> (cons-ir a (cons-ir b (cons-ir c (nil-ir))))
+```
+Each nested cons uses 2 temp slots during codegen. With gc.lisp's long instruction lists (80+ elements in some append calls), this exceeded the 480-slot limit.
+
+**Quick Fix**: Increased temp slot limit from #xF00 (480 slots) to #x2000 (1016 slots) in `compiler-sbcl.lisp:797`.
+
+**TODO**: Optimize `list` compilation to avoid deep nesting (use flat list-ir or evaluate elements first).
+
+### Wrapper-Size Mismatch (FIXED)
+
+**Problem**: Simple programs compiled with `deliver-v2` crashed with SIGSEGV (exit 139) at address 0.
+
+**Root Cause**: `codegen.lisp` expected a 21-instruction (84 bytes) wrapper, but `macho.lisp`'s `wrap-bytecode-with-heap-for-imports` generates a 19-instruction (76 bytes) wrapper. This mismatch caused BL instructions to jump to wrong locations.
+
+**Fix**: Updated `wrapper-size` from 84 to 76 in `codegen.lisp`:
+- Line 2616: `deliver-v2` function
+- Line 2670: `deliver` function
+- Line 2776: `write-symbol-map` function
+
+Also updated the symbol map comment PC offset from `0x100000454` to `0x10000044C`.
+
+**Result**: Simple programs like `(+ 1 2)` now work correctly. Tests pass: 9/10 (closure test fails due to pre-existing limitation).
+
 ### Stage 1 Self-Compilation (IN PROGRESS)
 
-**Current Blocker**: Crash in `LIFT-ALL-LABELS-TO-DEFUNS` when running `deliver-file`.
-- x0 contains string bytes (ASCII "(defun-") treated as pointer
-- This is a reader/compiler bug, not GC-related
-- Crash happens very early before significant heap allocation
+**Current Blocker**: Stack overflow during file compilation.
+
+When Stage 1 tries to compile a file via `deliver-file`, it crashes with SIGSEGV (exit 139) due to stack overflow in `SKIP-WS`:
+- Error: `EXC_BAD_ACCESS (code=2, address=0x16f603990)` - write access violation on stack
+- Each function frame uses 2KB (`sub sp, sp, #0x800`) - see `codegen.lisp:2337`
+- With 8MB default stack, only ~4000 nested calls possible
+- Reader/compiler call chain exhausts stack when processing files
+
+**Stack Frame Issue**:
+- Native codegen: `#x800` (2048 bytes) per frame - `codegen.lisp:2337`
+- SBCL codegen: `#xFF0` (4080 bytes) per frame - `codegen-sbcl.lisp:62`
+- Both are excessively large for simple functions
+
+**Potential Fixes**:
+1. Reduce stack frame size (requires careful analysis of actual needs)
+2. Implement proper tail call optimization for reader functions
+3. Convert recursive functions to iterative in reader.lisp
+4. Increase default stack size (workaround, not solution)
+
+**Also Missing**: `get-cmdline-args` function is not implemented in the native compiler.
+- Stage 1 main code cannot parse command-line arguments
+- Current workaround: Hardcode source/output paths in the main function
 
 ### Reader Fix for Symbols with Dots (FIXED)
 
@@ -162,8 +301,47 @@ bootstrap/
   macho-utils.lisp    - Mach-O utilities (#-sbcl native versions)
   reader.lisp         - Habu reader
 arm64/
-  asm.lisp            - ARM64 instruction encoders
+  asm.lisp            - ARM64 instruction encoders (canonical API)
 ```
+
+### ARM64 Instruction API
+
+The canonical ARM64 API is in `arm64/asm.lisp`. It uses keyword arguments for instruction variants:
+
+```lisp
+;; Arithmetic
+(arm64:add rd rn rm)              ; ADD register
+(arm64:add rd rn imm :imm t)      ; ADD immediate
+(arm64:sub rd rn rm)              ; SUB register
+(arm64:sub rd rn imm :imm t)      ; SUB immediate
+(arm64:subs rd rn imm :imm t)     ; SUBS (subtract and set flags)
+
+;; Memory
+(arm64:ldr rt rn :offset off)     ; LDR with offset
+(arm64:str rt rn :offset off)     ; STR with offset
+(arm64:ldr-reg rt rn rm :shift 3) ; LDR with register offset and shift
+(arm64:ldrb rt rn offset)         ; LDRB byte load
+(arm64:ldrb-post rt rn imm)       ; LDRB with post-increment
+(arm64:strb-post rt rn imm)       ; STRB with post-increment
+
+;; Shifts
+(arm64:lsl rd rn shift :imm t)    ; LSL immediate
+(arm64:lsr rd rn shift :imm t)    ; LSR immediate
+
+;; Branches
+(arm64:b offset)                  ; B (offset in instructions, not bytes)
+(arm64:cbz rt offset)             ; CBZ
+(arm64:b.lt offset)               ; B.LT conditional
+(arm64:b.ge offset)               ; B.GE conditional
+
+;; Bitwise
+(arm64:and* rd rn mask :imm t)    ; AND with immediate mask
+(arm64:orr-imm rd rn imm)         ; ORR with small immediate (1,3,7,15)
+```
+
+**IMPORTANT**: Always use the `arm64:` intrinsics directly. The wrapper functions in `codegen.lisp` (`add-imm`, `ldr-offset`, etc.) are deprecated and cause confusion. New code should use the keyword-argument API.
+
+**DO NOT** add new wrapper functions with `#+sbcl` / `#-sbcl` in codegen.lisp. Instead, add the reader conditionals directly in `arm64/asm.lisp` intrinsics. The goal is to eventually replace all existing wrappers with direct intrinsic calls.
 
 ### Tagged Value Representation
 - Fixnum: `value << 4`, tag 0
