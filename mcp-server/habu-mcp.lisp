@@ -226,7 +226,8 @@
 (defparameter *tools*
   '(("lisp_eval"
      "Evaluate a Lisp expression in SBCL with full Common Lisp capabilities. Returns the result and any printed output. Use this for any Lisp evaluation, REPL interaction, or to call Habu compiler functions."
-     (("code" "string" "Lisp code to evaluate (can be multiple expressions)" t)))
+     (("code" "string" "Lisp code to evaluate (can be multiple expressions)" t)
+      ("timeout" "number" "Timeout in seconds (default: 60)" nil)))
 
     ("lisp_compile"
      "Compile Habu Lisp source to ARM64 machine code. Returns bytecode size and hex dump."
@@ -278,15 +279,16 @@
 ;;; Tool Implementations
 ;;; ============================================================
 
-(defparameter *eval-timeout* 10 "Timeout in seconds for eval operations")
+(defparameter *eval-timeout* 60 "Timeout in seconds for eval operations (default 60s)")
 
-(defun safe-eval (code-string)
-  "Safely evaluate Lisp code, capturing output and errors. Times out after *eval-timeout* seconds."
+(defun safe-eval (code-string &optional timeout-override)
+  "Safely evaluate Lisp code, capturing output and errors. Times out after timeout-override or *eval-timeout* seconds."
   (let ((output (make-string-output-stream))
         (result nil)
-        (error-msg nil))
+        (error-msg nil)
+        (timeout (or timeout-override *eval-timeout*)))
     (handler-case
-        (sb-ext:with-timeout *eval-timeout*
+        (sb-ext:with-timeout timeout
           (let ((*standard-output* output)
                 (*error-output* output)
                 (*trace-output* output))
@@ -298,7 +300,7 @@
                           (when (eq form :eof) (return last-val))
                           (setf last-val (eval form)))))))))
       (sb-ext:timeout ()
-        (setf error-msg (format nil "Evaluation timed out after ~D seconds" *eval-timeout*)))
+        (setf error-msg (format nil "Evaluation timed out after ~D seconds" timeout)))
       (error (e)
         (setf error-msg (format nil "~A" e))))
     (let ((out-str (get-output-stream-string output)))
@@ -311,8 +313,9 @@
                   result)))))
 
 (defun tool-lisp-eval (args)
-  (let ((code (jget args "code")))
-    (safe-eval code)))
+  (let ((code (jget args "code"))
+        (timeout (jget args "timeout")))
+    (safe-eval code (when (numberp timeout) (floor timeout)))))
 
 (defun tool-lisp-compile (args)
   (let ((source (jget args "source")))
