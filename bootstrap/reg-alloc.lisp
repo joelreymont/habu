@@ -810,3 +810,154 @@
 
 ;;; Register as optimization pass
 (register-optimization 'register-allocation #'allocate-registers-for-function)
+
+;;; ============================================================
+;;; Debug Tools for Register Allocator
+;;; ============================================================
+;;;
+;;; These tools help visualize and debug the register allocation pipeline.
+;;; All are SBCL-only (used during development, not in native binaries).
+
+#+sbcl
+(defun print-tac (tac-instrs &optional (stream t))
+  "Pretty-print TAC instructions with line numbers."
+  (format stream "~%TAC Instructions:~%")
+  (let ((i 0))
+    (dolist (instr tac-instrs)
+      (format stream "  ~3D: ~S~%" i instr)
+      (incf i))))
+
+#+sbcl
+(defun print-liveness (annotated &optional (stream t))
+  "Print liveness analysis results."
+  (format stream "~%Liveness Analysis:~%")
+  (format stream "  ~4A  ~30A ~20A ~20A~%" "IDX" "INSTRUCTION" "LIVE-IN" "LIVE-OUT")
+  (format stream "  ~4,,,'-A  ~30,,,'-A ~20,,,'-A ~20,,,'-A~%" "" "" "" "")
+  (let ((i 0))
+    (dolist (entry annotated)
+      (format stream "  ~4D  ~30S ~20S ~20S~%"
+              i (car entry) (cadr entry) (caddr entry))
+      (incf i))))
+
+#+sbcl
+(defun print-intervals (intervals &optional (stream t))
+  "Print live intervals with ASCII visualization."
+  (format stream "~%Live Intervals:~%")
+  (let ((max-end (reduce #'max intervals :key #'caddr :initial-value 0)))
+    (dolist (interval (sort (copy-list intervals) #'< :key #'cadr))
+      (let* ((vreg (car interval))
+             (start (cadr interval))
+             (end (caddr interval))
+             (bar (make-string (+ max-end 2) :initial-element #\Space)))
+        (loop for i from start to end do
+          (setf (char bar i) (if (= i start) #\[ (if (= i end) #\] #\-))))
+        (format stream "  v~2D: ~A [~D-~D]~%" vreg bar start end)))))
+
+#+sbcl
+(defun print-allocation (allocation &optional (stream t))
+  "Print register allocation results."
+  (format stream "~%Register Allocation:~%")
+  (dolist (entry (sort (copy-list allocation) #'<
+                       :key (lambda (e) (if (numberp (car e)) (car e) 0))))
+    (let ((vreg (car entry))
+          (loc (cdr entry)))
+      (if (and (consp loc) (eq (car loc) :spill))
+          (format stream "  v~D -> spill[~D]~%" vreg (cadr loc))
+          (format stream "  v~D -> x~D~%" vreg loc)))))
+
+#+sbcl
+(defun reg-alloc-debug (ir &optional (stream t))
+  "Run register allocation pipeline with full debug output.
+
+   Usage: (reg-alloc-debug '(add (lit 1) (mul (lit 2) (lit 3))))
+
+   Shows all pipeline stages: IR -> TAC -> Liveness -> Intervals -> Allocation"
+  (format stream "~%========================================~%")
+  (format stream "Register Allocation Debug~%")
+  (format stream "========================================~%")
+
+  (format stream "~%Input IR: ~S~%" ir)
+
+  ;; Pass 1: IR to TAC
+  (let* ((counter (make-vreg-counter))
+         (tac-result (ir-to-tac ir counter))
+         (tac-instrs (car tac-result))
+         (result-vr (cadr tac-result)))
+
+    (if (null tac-instrs)
+        (progn
+          (format stream "~%WARNING: ir-to-tac returned nil!~%")
+          (format stream "This IR type may not be supported yet.~%")
+          nil)
+        (progn
+          ;; Add return instruction
+          (let ((full-tac (append tac-instrs
+                                  (list (list 'tac-return result-vr)))))
+
+            (format stream "~%--- Pass 1: IR to TAC ---")
+            (print-tac full-tac stream)
+            (format stream "Result vreg: v~D~%" result-vr)
+
+            ;; Pass 2: Liveness analysis
+            (let ((annotated (compute-liveness full-tac)))
+              (format stream "~%--- Pass 2: Liveness Analysis ---")
+              (print-liveness annotated stream)
+
+              ;; Pass 3: Compute intervals
+              (let ((intervals (compute-intervals annotated)))
+                (format stream "~%--- Pass 3: Live Intervals ---")
+                (print-intervals intervals stream)
+
+                ;; Pass 4: Linear scan
+                (let ((allocation (linear-scan intervals)))
+                  (format stream "~%--- Pass 4: Register Allocation ---")
+                  (print-allocation allocation stream)
+
+                  (format stream "~%========================================~%")
+
+                  ;; Return the results for further inspection
+                  (list :tac full-tac
+                        :liveness annotated
+                        :intervals intervals
+                        :allocation allocation)))))))))
+
+#+sbcl
+(defun check-ir-coverage (ir)
+  "Check which IR types are used but not handled by ir-to-tac.
+   Returns list of unhandled IR tags found in the input."
+  (let ((unhandled nil)
+        (handled '("LIT" "VAR" "ADD" "SUB" "MUL" "DIV" "MOD"
+                   "CMP-EQ" "CMP-NE" "CMP-LT" "CMP-LE" "CMP-GT" "CMP-GE"
+                   "IF-IR" "LET-IR" "PROGN-IR" "CALL-FN")))
+    (labels ((check-node (node)
+               (when (consp node)
+                 (let ((tag (ir-tag-name (car node))))
+                   (unless (or (string= tag "")
+                               (member tag handled :test #'string-equal)
+                               (member tag unhandled :test #'string-equal))
+                     (push tag unhandled)))
+                 ;; Recurse into children
+                 (dolist (child (cdr node))
+                   (check-node child)))))
+      (check-node ir)
+      (reverse unhandled))))
+
+#+sbcl
+(defun test-regalloc ()
+  "Run some test cases through the register allocator."
+  (format t "~%=== Test 1: Simple add ===~%")
+  (reg-alloc-debug '(add (lit 16) (lit 32)))
+
+  (format t "~%=== Test 2: Nested operations ===~%")
+  (reg-alloc-debug '(add (lit 16) (mul (lit 32) (lit 48))))
+
+  (format t "~%=== Test 3: Variable reference ===~%")
+  (reg-alloc-debug '(add (var 0) (var 1)))
+
+  (format t "~%=== Test 4: If expression ===~%")
+  (reg-alloc-debug '(if-ir (cmp-eq (var 0) (lit 0))
+                           (lit 16)
+                           (lit 32)))
+
+  (format t "~%Done with register allocator tests.~%")
+  t)

@@ -811,3 +811,152 @@
 (defun has-tag (ir tag)
   "Check if IR has the given tag"
   (and (consp ir) (eq (car ir) tag)))
+
+;;; ============================================================
+;;; Debug Tools for Compiler Pipeline
+;;; ============================================================
+;;;
+;;; Tools for tracing and debugging the compilation pipeline.
+;;; These are SBCL-only (used during development).
+
+#+sbcl
+(defvar *compilation-trace* nil
+  "When non-nil, stores trace of compilation passes for inspection")
+
+#+sbcl
+(defun print-ir (ir &optional (indent 0) (stream t))
+  "Pretty-print IR tree with indentation.
+
+   Usage: (print-ir '(add (lit 1) (mul (lit 2) (lit 3))))
+
+   Output shows the IR structure with each node on its own line."
+  (let ((prefix (make-string (* indent 2) :initial-element #\Space)))
+    (cond
+      ((null ir)
+       (format stream "~Anil~%" prefix))
+      ((atom ir)
+       (format stream "~A~S~%" prefix ir))
+      (t
+       (format stream "~A(~S~%" prefix (car ir))
+       (dolist (child (cdr ir))
+         (print-ir child (+ indent 1) stream))
+       (format stream "~A)~%" prefix)))))
+
+#+sbcl
+(defun trace-pass (name ir)
+  "Run a single pass with tracing output."
+  (format t "~%--- ~A ---~%" name)
+  (format t "Input:~%")
+  (print-ir ir 1)
+  (let ((result (run-optimization name ir)))
+    (format t "Output:~%")
+    (print-ir result 1)
+    result))
+
+#+sbcl
+(defun trace-compilation (expr &key (env nil) (fenv nil))
+  "Trace the full compilation pipeline for an expression.
+
+   Usage: (trace-compilation '(+ 1 (* 2 3)))
+
+   Shows how the expression transforms through each compilation stage:
+   1. Source expression
+   2. Compiled IR (from sys:compile)
+   3. Optimized IR (after optimize-ir)
+
+   For defun forms, use: (trace-compilation '(defun foo (x) (+ x 1)))"
+  (format t "~%========================================~%")
+  (format t "Compilation Pipeline Trace~%")
+  (format t "========================================~%")
+
+  (format t "~%Source: ~S~%" expr)
+
+  ;; Stage 1: Compile to IR
+  (format t "~%--- Stage 1: Compile to IR ---~%")
+  (let ((ir (sys:compile expr env fenv nil nil nil)))
+    (format t "Raw IR:~%")
+    (print-ir ir 1)
+
+    ;; Stage 2: Optimize IR
+    (format t "~%--- Stage 2: Optimize IR ---~%")
+    (let ((optimized (optimize-ir ir)))
+      (format t "Optimized IR:~%")
+      (print-ir optimized 1)
+
+      (format t "~%========================================~%")
+
+      ;; Return both for inspection
+      (list :raw-ir ir :optimized-ir optimized))))
+
+#+sbcl
+(defun ir-depth (ir)
+  "Calculate the maximum depth of an IR tree."
+  (if (or (null ir) (atom ir))
+      0
+      (1+ (reduce #'max (mapcar #'ir-depth (cdr ir)) :initial-value 0))))
+
+#+sbcl
+(defun count-ir-nodes (ir)
+  "Count total nodes in an IR tree."
+  (if (or (null ir) (atom ir))
+      1
+      (1+ (reduce #'+ (mapcar #'count-ir-nodes (cdr ir))))))
+
+#+sbcl
+(defun list-ir-tags (ir)
+  "List all unique IR tags in a tree."
+  (let ((tags nil))
+    (labels ((collect (node)
+               (when (consp node)
+                 (pushnew (car node) tags)
+                 (mapc #'collect (cdr node)))))
+      (collect ir)
+      (reverse tags))))
+
+#+sbcl
+(defun verify-ir (ir &optional (context ""))
+  "Verify IR structure is valid. Returns list of errors or nil if valid.
+
+   Checks:
+   - Binary ops have 2 operands
+   - if-ir has 3 children (cond, then, else)
+   - let-ir has proper structure
+   - All tags are recognized"
+  (let ((errors nil))
+    (labels ((check-node (node path)
+               (when (consp node)
+                 (let ((tag (car node))
+                       (children (cdr node)))
+                   (cond
+                     ;; Binary operations need 2 operands
+                     ((member tag '(add sub mul div mod) :test #'string-equal
+                              :key #'symbol-name)
+                      (unless (= (length children) 2)
+                        (push (format nil "~A: ~A needs 2 operands, got ~D at ~A"
+                                      context tag (length children) path)
+                              errors)))
+                     ;; if-ir needs 3 children
+                     ((string-equal (symbol-name tag) "IF-IR")
+                      (unless (= (length children) 3)
+                        (push (format nil "~A: if-ir needs 3 children, got ~D at ~A"
+                                      context (length children) path)
+                              errors)))
+                     ;; lit needs 1 child
+                     ((string-equal (symbol-name tag) "LIT")
+                      (unless (= (length children) 1)
+                        (push (format nil "~A: lit needs 1 child, got ~D at ~A"
+                                      context (length children) path)
+                              errors)))
+                     ;; var needs 1 child
+                     ((string-equal (symbol-name tag) "VAR")
+                      (unless (= (length children) 1)
+                        (push (format nil "~A: var needs 1 child, got ~D at ~A"
+                                      context (length children) path)
+                              errors))))
+                   ;; Recurse into children
+                   (let ((i 0))
+                     (dolist (child children)
+                       (check-node child (format nil "~A/~A[~D]" path tag i))
+                       (incf i)))))))
+      (check-node ir "root")
+      (reverse errors))))

@@ -83,3 +83,6 @@ run-bytecode
 run-fasl
 /habu
 !bin/habu
+
+# Session logs (large files, not version controlled)
+SESSION.md
