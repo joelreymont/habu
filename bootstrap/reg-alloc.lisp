@@ -199,12 +199,12 @@
    Input: Tree IR like (add (var 0) (lit 1))
    Output: Linear TAC like ((tac-var v0 0) (tac-lit v1 1) (tac-binop v2 add v0 v1))"
   (cond
-    ;; Literal number (already tagged)
+    ;; Literal number - raw value, tagging applied in tac-codegen
     ((numberp ir)
      (let ((vr (next-vreg counter)))
        (list (list (list 'tac-lit vr ir)) vr)))
 
-    ;; (lit value) - literal
+    ;; (lit value) - literal, raw value, tagging applied in tac-codegen
     ((and (consp ir) (ir-tag-matches (car ir) "LIT"))
      (let ((vr (next-vreg counter)))
        (list (list (list 'tac-lit vr (cadr ir))) vr)))
@@ -307,9 +307,11 @@
          (convert-forms forms nil 0))))
 
     ;; call-fn: function call
+    ;; IR format: (CALL-FN fn-name (arg1 arg2 ...))
+    ;; Use caddr (not cddr) to get the args list directly
     ((and (consp ir) (ir-tag-matches (car ir) "CALL-FN"))
      (let* ((fn-name (cadr ir))
-            (args (cddr ir)))
+            (args (caddr ir)))
        (labels ((convert-args (as instrs vrs)
                   (if (null as)
                       (list instrs (reverse vrs))
@@ -327,6 +329,263 @@
                          (list (list 'tac-call result-vr fn-name arg-vrs)))
                  result-vr)))))
 
+    ;; nil-ir: nil literal (0x06 in tagged representation)
+    ((and (consp ir) (ir-tag-matches (car ir) "NIL-IR"))
+     (let ((vr (next-vreg counter)))
+       (list (list (list 'tac-nil vr)) vr)))
+
+    ;; sym-lit: symbol literal
+    ((and (consp ir) (ir-tag-matches (car ir) "SYM-LIT"))
+     (let ((vr (next-vreg counter)))
+       (list (list (list 'tac-sym vr (cadr ir))) vr)))
+
+    ;; cons-ir: cons operation (car cdr)
+    ((and (consp ir) (ir-tag-matches (car ir) "CONS-IR"))
+     (let* ((car-result (ir-to-tac (cadr ir) counter))
+            (car-instrs (car car-result))
+            (car-vr (cadr car-result))
+            (cdr-result (ir-to-tac (caddr ir) counter))
+            (cdr-instrs (car cdr-result))
+            (cdr-vr (cadr cdr-result))
+            (result-vr (next-vreg counter)))
+       (list (append car-instrs
+                     cdr-instrs
+                     (list (list 'tac-cons result-vr car-vr cdr-vr)))
+             result-vr)))
+
+    ;; car-ir: car operation (unary)
+    ((and (consp ir) (ir-tag-matches (car ir) "CAR-IR"))
+     (let* ((arg-result (ir-to-tac (cadr ir) counter))
+            (arg-instrs (car arg-result))
+            (arg-vr (cadr arg-result))
+            (result-vr (next-vreg counter)))
+       (list (append arg-instrs
+                     (list (list 'tac-car result-vr arg-vr)))
+             result-vr)))
+
+    ;; cdr-ir: cdr operation (unary)
+    ((and (consp ir) (ir-tag-matches (car ir) "CDR-IR"))
+     (let* ((arg-result (ir-to-tac (cadr ir) counter))
+            (arg-instrs (car arg-result))
+            (arg-vr (cadr arg-result))
+            (result-vr (next-vreg counter)))
+       (list (append arg-instrs
+                     (list (list 'tac-cdr result-vr arg-vr)))
+             result-vr)))
+
+    ;; setq-ir: variable assignment (setq-ir offset value)
+    ((and (consp ir) (ir-tag-matches (car ir) "SETQ-IR"))
+     (let* ((offset (cadr ir))
+            (val-result (ir-to-tac (caddr ir) counter))
+            (val-instrs (car val-result))
+            (val-vr (cadr val-result)))
+       ;; setq returns the assigned value
+       (list (append val-instrs
+                     (list (list 'tac-setvar offset val-vr)))
+             val-vr)))
+
+    ;; while-ir: while loop (while-ir cond body)
+    ((and (consp ir) (ir-tag-matches (car ir) "WHILE-IR"))
+     (let* ((loop-label (next-vreg counter))
+            (end-label (next-vreg counter))
+            (cond-result (ir-to-tac (cadr ir) counter))
+            (cond-instrs (car cond-result))
+            (cond-vr (cadr cond-result))
+            (body-result (ir-to-tac (caddr ir) counter))
+            (body-instrs (car body-result))
+            (result-vr (next-vreg counter)))
+       ;; while returns nil
+       (list (append (list (list 'tac-label loop-label))
+                     cond-instrs
+                     (list (list 'tac-if-not cond-vr end-label))
+                     body-instrs
+                     (list (list 'tac-goto loop-label))
+                     (list (list 'tac-label end-label))
+                     (list (list 'tac-nil result-vr)))
+             result-vr)))
+
+    ;; str-lit: string literal
+    ((and (consp ir) (ir-tag-matches (car ir) "STR-LIT"))
+     (let ((vr (next-vreg counter)))
+       (list (list (list 'tac-str vr (cadr ir))) vr)))
+
+    ;; setcar-ir: mutate car of cons cell
+    ((and (consp ir) (ir-tag-matches (car ir) "SETCAR-IR"))
+     (let* ((cons-result (ir-to-tac (cadr ir) counter))
+            (cons-instrs (car cons-result))
+            (cons-vr (cadr cons-result))
+            (val-result (ir-to-tac (caddr ir) counter))
+            (val-instrs (car val-result))
+            (val-vr (cadr val-result)))
+       ;; setcar returns the value
+       (list (append cons-instrs
+                     val-instrs
+                     (list (list 'tac-setcar cons-vr val-vr)))
+             val-vr)))
+
+    ;; setcdr-ir: mutate cdr of cons cell
+    ((and (consp ir) (ir-tag-matches (car ir) "SETCDR-IR"))
+     (let* ((cons-result (ir-to-tac (cadr ir) counter))
+            (cons-instrs (car cons-result))
+            (cons-vr (cadr cons-result))
+            (val-result (ir-to-tac (caddr ir) counter))
+            (val-instrs (car val-result))
+            (val-vr (cadr val-result)))
+       (list (append cons-instrs
+                     val-instrs
+                     (list (list 'tac-setcdr cons-vr val-vr)))
+             val-vr)))
+
+    ;; make-vector-ir: allocate vector
+    ((and (consp ir) (ir-tag-matches (car ir) "MAKE-VECTOR-IR"))
+     (let* ((size-result (ir-to-tac (cadr ir) counter))
+            (size-instrs (car size-result))
+            (size-vr (cadr size-result))
+            (result-vr (next-vreg counter)))
+       (list (append size-instrs
+                     (list (list 'tac-make-vector result-vr size-vr)))
+             result-vr)))
+
+    ;; vector-ref-ir: read vector element
+    ((and (consp ir) (ir-tag-matches (car ir) "VECTOR-REF-IR"))
+     (let* ((vec-result (ir-to-tac (cadr ir) counter))
+            (vec-instrs (car vec-result))
+            (vec-vr (cadr vec-result))
+            (idx-result (ir-to-tac (caddr ir) counter))
+            (idx-instrs (car idx-result))
+            (idx-vr (cadr idx-result))
+            (result-vr (next-vreg counter)))
+       (list (append vec-instrs
+                     idx-instrs
+                     (list (list 'tac-vector-ref result-vr vec-vr idx-vr)))
+             result-vr)))
+
+    ;; vector-set-ir: write vector element
+    ((and (consp ir) (ir-tag-matches (car ir) "VECTOR-SET-IR"))
+     (let* ((vec-result (ir-to-tac (cadr ir) counter))
+            (vec-instrs (car vec-result))
+            (vec-vr (cadr vec-result))
+            (idx-result (ir-to-tac (caddr ir) counter))
+            (idx-instrs (car idx-result))
+            (idx-vr (cadr idx-result))
+            (val-result (ir-to-tac (cadddr ir) counter))
+            (val-instrs (car val-result))
+            (val-vr (cadr val-result)))
+       ;; vector-set returns the value
+       (list (append vec-instrs
+                     idx-instrs
+                     val-instrs
+                     (list (list 'tac-vector-set vec-vr idx-vr val-vr)))
+             val-vr)))
+
+    ;; vector-length-ir: get vector length
+    ((and (consp ir) (ir-tag-matches (car ir) "VECTOR-LENGTH-IR"))
+     (let* ((vec-result (ir-to-tac (cadr ir) counter))
+            (vec-instrs (car vec-result))
+            (vec-vr (cadr vec-result))
+            (result-vr (next-vreg counter)))
+       (list (append vec-instrs
+                     (list (list 'tac-vector-length result-vr vec-vr)))
+             result-vr)))
+
+    ;; string-length-ir: get string length
+    ((and (consp ir) (ir-tag-matches (car ir) "STRING-LENGTH-IR"))
+     (let* ((str-result (ir-to-tac (cadr ir) counter))
+            (str-instrs (car str-result))
+            (str-vr (cadr str-result))
+            (result-vr (next-vreg counter)))
+       (list (append str-instrs
+                     (list (list 'tac-string-length result-vr str-vr)))
+             result-vr)))
+
+    ;; string-ref-ir: read string character
+    ((and (consp ir) (ir-tag-matches (car ir) "STRING-REF-IR"))
+     (let* ((str-result (ir-to-tac (cadr ir) counter))
+            (str-instrs (car str-result))
+            (str-vr (cadr str-result))
+            (idx-result (ir-to-tac (caddr ir) counter))
+            (idx-instrs (car idx-result))
+            (idx-vr (cadr idx-result))
+            (result-vr (next-vreg counter)))
+       (list (append str-instrs
+                     idx-instrs
+                     (list (list 'tac-string-ref result-vr str-vr idx-vr)))
+             result-vr)))
+
+    ;; make-string-from-vector-ir: create string from char vector
+    ((and (consp ir) (ir-tag-matches (car ir) "MAKE-STRING-FROM-VECTOR-IR"))
+     (let* ((vec-result (ir-to-tac (cadr ir) counter))
+            (vec-instrs (car vec-result))
+            (vec-vr (cadr vec-result))
+            (result-vr (next-vreg counter)))
+       (list (append vec-instrs
+                     (list (list 'tac-make-string result-vr vec-vr)))
+             result-vr)))
+
+    ;; loop-ir: TCO loop (loop-ir body marker)
+    ((and (consp ir) (ir-tag-matches (car ir) "LOOP-IR"))
+     (let* ((loop-label (next-vreg counter))
+            (body-result (ir-to-tac (cadr ir) counter))
+            (body-instrs (car body-result))
+            (body-vr (cadr body-result)))
+       ;; Store loop label for continue-ir to reference
+       ;; The marker (caddr ir) identifies this loop
+       (list (append (list (list 'tac-loop-start loop-label (caddr ir)))
+                     (list (list 'tac-label loop-label))
+                     body-instrs)
+             body-vr)))
+
+    ;; continue-ir: jump back to loop start
+    ((and (consp ir) (ir-tag-matches (car ir) "CONTINUE-IR"))
+     ;; The marker identifies which loop to continue
+     (let ((result-vr (next-vreg counter)))
+       (list (list (list 'tac-continue (cadr ir))
+                   (list 'tac-nil result-vr))  ; unreachable but needed
+             result-vr)))
+
+    ;; get-tag: extract tag bits from value
+    ((and (consp ir) (ir-tag-matches (car ir) "GET-TAG"))
+     (let* ((val-result (ir-to-tac (cadr ir) counter))
+            (val-instrs (car val-result))
+            (val-vr (cadr val-result))
+            (result-vr (next-vreg counter)))
+       (list (append val-instrs
+                     (list (list 'tac-get-tag result-vr val-vr)))
+             result-vr)))
+
+    ;; funcall-ir: call through function value
+    ;; IR format: (FUNCALL-IR fn-expr (arg1 arg2 ...))
+    ;; Use caddr (not cddr) to get the args list directly
+    ((and (consp ir) (ir-tag-matches (car ir) "FUNCALL-IR"))
+     (let* ((fn-result (ir-to-tac (cadr ir) counter))
+            (fn-instrs (car fn-result))
+            (fn-vr (cadr fn-result))
+            (args (caddr ir)))
+       (labels ((convert-args (as instrs vrs)
+                  (if (null as)
+                      (list instrs (reverse vrs))
+                      (let* ((arg-result (ir-to-tac (car as) counter))
+                             (arg-instrs (car arg-result))
+                             (arg-vr (cadr arg-result)))
+                        (convert-args (cdr as)
+                                      (append instrs arg-instrs)
+                                      (cons arg-vr vrs))))))
+         (let* ((args-result (convert-args args nil nil))
+                (args-instrs (car args-result))
+                (arg-vrs (cadr args-result))
+                (result-vr (next-vreg counter)))
+           (list (append fn-instrs
+                         args-instrs
+                         (list (list 'tac-funcall result-vr fn-vr arg-vrs)))
+                 result-vr)))))
+
+    ;; lambda-ir: create closure
+    ((and (consp ir) (ir-tag-matches (car ir) "LAMBDA-IR"))
+     ;; (lambda-ir params body-ir free-vars free-offsets)
+     ;; For now, emit as opaque closure creation
+     (let ((result-vr (next-vreg counter)))
+       (list (list (list 'tac-make-closure result-vr ir)) result-vr)))
+
     ;; Default: return nil vreg for unhandled cases
     (t
      (list nil 0))))
@@ -343,27 +602,56 @@
 (defun tac-def (instr)
   "Return the vreg defined by this instruction (or nil)"
   (case (car instr)
-    ((tac-lit tac-param tac-var tac-binop tac-cmp tac-call tac-move)
+    ;; Instructions that define a result vreg (vreg is second element)
+    ((tac-lit tac-param tac-var tac-binop tac-cmp tac-call tac-move
+      tac-nil tac-cons tac-car tac-cdr tac-sym tac-str
+      tac-make-vector tac-vector-ref tac-vector-length
+      tac-string-length tac-string-ref tac-make-string
+      tac-get-tag tac-funcall tac-make-closure)
      (cadr instr))
     (t nil)))
 
 (defun tac-use (instr)
   "Return list of vregs used by this instruction"
   (case (car instr)
-    ((tac-lit tac-param tac-var tac-label tac-goto)
+    ;; Instructions with no vreg uses
+    ((tac-lit tac-param tac-var tac-label tac-goto tac-nil tac-sym tac-str
+      tac-loop-start tac-continue tac-make-closure)
      nil)
+    ;; Binary operations: (tac-binop dest op vr1 vr2)
     ((tac-binop tac-cmp)
-     (list (cadddr instr) (nth 4 instr)))  ; op vreg op vr1 vr2
+     (list (cadddr instr) (nth 4 instr)))
+    ;; setvar: (tac-setvar offset vreg)
     ((tac-setvar)
-     (list (caddr instr)))  ; offset vreg
-    ((tac-if)
-     (list (cadr instr)))   ; cond-vreg
+     (list (caddr instr)))
+    ;; Conditionals: (tac-if cond-vreg then else)
+    ((tac-if tac-if-not)
+     (list (cadr instr)))
+    ;; Return: (tac-return vreg)
     ((tac-return)
-     (list (cadr instr)))   ; return-vreg
-    ((tac-move)
-     (list (caddr instr)))  ; dest src
+     (list (cadr instr)))
+    ;; Unary ops: (tac-X dest src)
+    ((tac-move tac-car tac-cdr tac-vector-length tac-string-length
+      tac-make-vector tac-make-string tac-get-tag)
+     (list (caddr instr)))
+    ;; Cons: (tac-cons dest car cdr)
+    ((tac-cons)
+     (list (caddr instr) (cadddr instr)))
+    ;; Mutation: (tac-setcar cons-vr val-vr), (tac-setcdr cons-vr val-vr)
+    ((tac-setcar tac-setcdr)
+     (list (cadr instr) (caddr instr)))
+    ;; Vector ops: (tac-vector-ref dest vec idx), (tac-string-ref dest str idx)
+    ((tac-vector-ref tac-string-ref)
+     (list (caddr instr) (cadddr instr)))
+    ;; Vector set: (tac-vector-set vec idx val) - no dest, returns val
+    ((tac-vector-set)
+     (list (cadr instr) (caddr instr) (cadddr instr)))
+    ;; Call: (tac-call dest fn args)
     ((tac-call)
-     (cadddr instr))        ; list of arg vregs
+     (cadddr instr))
+    ;; Funcall: (tac-funcall dest fn-vr args)
+    ((tac-funcall)
+     (cons (caddr instr) (cadddr instr)))
     (t nil)))
 
 (defun compute-liveness (tac-instrs)
@@ -603,40 +891,47 @@
   (let ((op (car instr)))
     (case op
       ;; tac-lit: load literal into vreg
+      ;; Value must be tagged as fixnum (value << 4, tag 0)
       ((tac-lit)
        (let* ((vreg (cadr instr))
               (value (caddr instr))
+              (tagged (ash value 4))  ; Fixnum tagging: value << 4
               (dest (vreg-to-reg vreg allocation)))
          (if (and (consp dest) (eq (car dest) :spill))
              ;; Spilled: load to x0, then store
-             (append (arm64:movz 0 (logand value #xFFFF))
+             (append (arm64:movz 0 (logand tagged #xFFFF))
                      (arm64:str 0 31 :offset (* (cadr dest) 8)))
              ;; In register
-             (arm64:movz dest (logand value #xFFFF)))))
+             (arm64:movz dest (logand tagged #xFFFF)))))
 
       ;; tac-var: load from environment
+      ;; Environment is at x20, params at negative offsets from x20
+      ;; Use LDUR for negative offsets (unscaled signed 9-bit)
       ((tac-var)
        (let* ((vreg (cadr instr))
               (offset (caddr instr))
-              (dest (vreg-to-reg vreg allocation)))
+              (dest (vreg-to-reg vreg allocation))
+              (byte-off (* offset -8)))
          (if (and (consp dest) (eq (car dest) :spill))
              ;; Spilled: load to x0, then store
-             (append (arm64:ldr 0 20 :offset (* offset -8))
+             (append (arm64:ldur 0 20 :offset byte-off)
                      (arm64:str 0 31 :offset (* (cadr dest) 8)))
              ;; In register
-             (arm64:ldr dest 20 :offset (* offset -8)))))
+             (arm64:ldur dest 20 :offset byte-off))))
 
       ;; tac-setvar: store to environment
+      ;; Use STUR for negative offsets
       ((tac-setvar)
        (let* ((offset (cadr instr))
               (vreg (caddr instr))
-              (src (vreg-to-reg vreg allocation)))
+              (src (vreg-to-reg vreg allocation))
+              (byte-off (* offset -8)))
          (if (and (consp src) (eq (car src) :spill))
              ;; Spilled: load to x0, then store to env
              (append (arm64:ldr 0 31 :offset (* (cadr src) 8))
-                     (arm64:str 0 20 :offset (* offset -8)))
+                     (arm64:stur 0 20 :offset byte-off))
              ;; In register
-             (arm64:str src 20 :offset (* offset -8)))))
+             (arm64:stur src 20 :offset byte-off))))
 
       ;; tac-binop: binary operation
       ((tac-binop)
@@ -658,12 +953,31 @@
           (when (and (consp right) (eq (car right) :spill))
             (arm64:ldr 1 31 :offset (* (cadr right) 8)))
           ;; Perform operation
+          ;; Note: For tagged fixnums, ADD/SUB work directly since tags cancel out.
+          ;; MUL needs to untag one operand: (a<<4)*(b>>4) = (a*b)<<4
+          ;; DIV needs to untag both, divide, retag: ((a>>4)/(b>>4))<<4
           (case binop
             ((:ADD) (arm64:add dest-reg left-reg right-reg))
             ((:SUB) (arm64:sub dest-reg left-reg right-reg))
-            ((:MUL) (arm64:mul dest-reg left-reg right-reg))
-            ((:DIV) (arm64:sdiv dest-reg left-reg right-reg))
-            ((:MOD) (arm64:sdiv dest-reg left-reg right-reg))  ; TODO: proper mod
+            ((:MUL)
+             ;; Untag right operand, then multiply
+             (append (arm64:lsr right-reg right-reg 4 :imm t)
+                     (arm64:mul dest-reg left-reg right-reg)))
+            ((:DIV)
+             ;; Untag both, divide, retag result
+             (append (arm64:lsr left-reg left-reg 4 :imm t)
+                     (arm64:lsr right-reg right-reg 4 :imm t)
+                     (arm64:sdiv dest-reg left-reg right-reg)
+                     (arm64:lsl dest-reg dest-reg 4 :imm t)))
+            ((:MOD)
+             ;; a mod b = a - (a/b)*b, all untagged, retag at end
+             ;; Use x8 as scratch (not allocatable)
+             (append (arm64:lsr left-reg left-reg 4 :imm t)    ; untag a
+                     (arm64:lsr right-reg right-reg 4 :imm t)  ; untag b
+                     (arm64:sdiv 8 left-reg right-reg)         ; x8 = a/b
+                     (arm64:mul 8 8 right-reg)                 ; x8 = (a/b)*b
+                     (arm64:sub dest-reg left-reg 8)           ; dest = a - (a/b)*b
+                     (arm64:lsl dest-reg dest-reg 4 :imm t)))  ; retag
             (t (arm64:mov dest-reg 0)))  ; Unknown op
           ;; Store if spilled
           (when (and (consp dest) (eq (car dest) :spill))
@@ -738,7 +1052,7 @@
 
       ;; tac-goto: unconditional branch (resolved later)
       ((tac-goto)
-       (list :branch-marker (cadr instr)))
+       (list (list :branch-marker (cadr instr))))
 
       ;; tac-if: conditional branch
       ((tac-if)
@@ -754,35 +1068,454 @@
           ;; Compare with nil (0x06)
           (arm64:cmp cond-reg #x06 :imm t)
           ;; Branch markers (resolved in second pass)
-          (list :branch-ne-marker then-label)
-          (list :branch-marker else-label))))
+          ;; Use (list (list ...)) so append doesn't flatten the marker
+          (list (list :branch-ne-marker then-label))
+          (list (list :branch-marker else-label)))))
 
-      ;; tac-call: function call (placeholder - needs more work)
+      ;; tac-call: function call with ABI handling
+      ;; Format: (tac-call dest-vreg fn-name (arg-vregs...))
       ((tac-call)
-       ;; For now, just return nil - full call support needs ABI handling
-       nil)
+       (let* ((dest-vreg (cadr instr))
+              (fn-name (caddr instr))
+              (arg-vregs (cadddr instr))
+              (dest (vreg-to-reg dest-vreg allocation))
+              ;; Save caller-saved registers x9-x15 that are in use
+              ;; (simplified: save all allocatable regs for now)
+              (save-regs '(9 10 11 12 13 14 15))
+              ;; Generate saves to stack at offsets 16+ (0,8 for x30,x20)
+              (save-code nil)
+              (save-offset 16))
+         ;; Save caller-saved registers
+         (dolist (reg save-regs)
+           (setq save-code (append save-code
+                                   (arm64:str reg 31 :offset save-offset)))
+           (setq save-offset (+ save-offset 8)))
+         ;; Move args to x0-x7
+         (let ((arg-code nil)
+               (arg-idx 0))
+           (dolist (arg-vr arg-vregs)
+             (when (< arg-idx 8)
+               (let ((arg-loc (vreg-to-reg arg-vr allocation)))
+                 (if (and (consp arg-loc) (eq (car arg-loc) :spill))
+                     ;; Load from spill slot to arg register
+                     (setq arg-code (append arg-code
+                                            (arm64:ldr arg-idx 31 :offset (* (cadr arg-loc) 8))))
+                     ;; Move from allocated reg to arg register
+                     (unless (= arg-loc arg-idx)
+                       (setq arg-code (append arg-code (arm64:mov arg-idx arg-loc))))))
+               (setq arg-idx (+ arg-idx 1))))
+           ;; Generate call marker (resolved by resolve-calls)
+           (let ((call-marker (list (list :call-fn fn-name)))
+                 ;; Restore caller-saved registers
+                 (restore-code nil)
+                 (restore-offset 16))
+             (dolist (reg save-regs)
+               (setq restore-code (append restore-code
+                                          (arm64:ldr reg 31 :offset restore-offset)))
+               (setq restore-offset (+ restore-offset 8)))
+             ;; Move result from x0 to dest
+             (let ((result-code
+                     (if (and (consp dest) (eq (car dest) :spill))
+                         (arm64:str 0 31 :offset (* (cadr dest) 8))
+                         (if (= dest 0)
+                             nil
+                             (arm64:mov dest 0)))))
+               (append save-code arg-code call-marker restore-code result-code))))))
+
+      ;; tac-nil: load nil (0x06) into vreg
+      ((tac-nil)
+       (let* ((vreg (cadr instr))
+              (dest (vreg-to-reg vreg allocation)))
+         (if (and (consp dest) (eq (car dest) :spill))
+             (append (arm64:movz 0 6)
+                     (arm64:str 0 31 :offset (* (cadr dest) 8)))
+             (arm64:movz dest 6))))
+
+      ;; tac-cons: allocate cons cell (needs heap allocation)
+      ((tac-cons)
+       (let* ((dest-vreg (cadr instr))
+              (car-vreg (caddr instr))
+              (cdr-vreg (cadddr instr))
+              (car-loc (vreg-to-reg car-vreg allocation))
+              (cdr-loc (vreg-to-reg cdr-vreg allocation))
+              (dest (vreg-to-reg dest-vreg allocation))
+              (car-reg (if (and (consp car-loc) (eq (car car-loc) :spill)) 0 car-loc))
+              (cdr-reg (if (and (consp cdr-loc) (eq (car cdr-loc) :spill)) 1 cdr-loc))
+              (dest-reg (if (and (consp dest) (eq (car dest) :spill)) 2 dest)))
+         (append
+          ;; Load spilled car/cdr
+          (when (and (consp car-loc) (eq (car car-loc) :spill))
+            (arm64:ldr 0 31 :offset (* (cadr car-loc) 8)))
+          (when (and (consp cdr-loc) (eq (car cdr-loc) :spill))
+            (arm64:ldr 1 31 :offset (* (cadr cdr-loc) 8)))
+          ;; Store car at [x28]
+          (arm64:str car-reg 28 :offset 0)
+          ;; Store cdr at [x28+8]
+          (arm64:str cdr-reg 28 :offset 8)
+          ;; Result = x28 | 1 (cons tag)
+          (arm64:orr dest-reg 28 1 :imm t)
+          ;; Bump heap pointer
+          (arm64:add 28 28 16 :imm t)
+          ;; Store if spilled
+          (when (and (consp dest) (eq (car dest) :spill))
+            (arm64:str 2 31 :offset (* (cadr dest) 8))))))
+
+      ;; tac-car: extract car from cons cell
+      ((tac-car)
+       (let* ((dest-vreg (cadr instr))
+              (src-vreg (caddr instr))
+              (src-loc (vreg-to-reg src-vreg allocation))
+              (dest (vreg-to-reg dest-vreg allocation))
+              (src-reg (if (and (consp src-loc) (eq (car src-loc) :spill)) 0 src-loc))
+              (dest-reg (if (and (consp dest) (eq (car dest) :spill)) 0 dest)))
+         (append
+          ;; Load if spilled
+          (when (and (consp src-loc) (eq (car src-loc) :spill))
+            (arm64:ldr 0 31 :offset (* (cadr src-loc) 8)))
+          ;; Clear tag bits to get base address
+          (arm64:and* dest-reg src-reg -16 :imm t)
+          ;; Load car from [base]
+          (arm64:ldr dest-reg dest-reg :offset 0)
+          ;; Store if spilled
+          (when (and (consp dest) (eq (car dest) :spill))
+            (arm64:str 0 31 :offset (* (cadr dest) 8))))))
+
+      ;; tac-cdr: extract cdr from cons cell
+      ((tac-cdr)
+       (let* ((dest-vreg (cadr instr))
+              (src-vreg (caddr instr))
+              (src-loc (vreg-to-reg src-vreg allocation))
+              (dest (vreg-to-reg dest-vreg allocation))
+              (src-reg (if (and (consp src-loc) (eq (car src-loc) :spill)) 0 src-loc))
+              (dest-reg (if (and (consp dest) (eq (car dest) :spill)) 0 dest)))
+         (append
+          ;; Load if spilled
+          (when (and (consp src-loc) (eq (car src-loc) :spill))
+            (arm64:ldr 0 31 :offset (* (cadr src-loc) 8)))
+          ;; Clear tag bits to get base address
+          (arm64:and* dest-reg src-reg -16 :imm t)
+          ;; Load cdr from [base+8]
+          (arm64:ldr dest-reg dest-reg :offset 8)
+          ;; Store if spilled
+          (when (and (consp dest) (eq (car dest) :spill))
+            (arm64:str 0 31 :offset (* (cadr dest) 8))))))
+
+      ;; tac-if-not: conditional branch on nil
+      ((tac-if-not)
+       (let* ((cond-vreg (cadr instr))
+              (target-label (caddr instr))
+              (cond-loc (vreg-to-reg cond-vreg allocation))
+              (cond-reg (if (and (consp cond-loc) (eq (car cond-loc) :spill)) 0 cond-loc)))
+         (append
+          ;; Load condition if spilled
+          (when (and (consp cond-loc) (eq (car cond-loc) :spill))
+            (arm64:ldr 0 31 :offset (* (cadr cond-loc) 8)))
+          ;; Compare with nil (0x06)
+          (arm64:cmp cond-reg #x06 :imm t)
+          ;; Branch if equal to nil
+          ;; Use nested list so append doesn't flatten the marker
+          (list (list :branch-eq-marker target-label)))))
+
+      ;; tac-setcar: mutate car of cons
+      ((tac-setcar)
+       (let* ((cons-vreg (cadr instr))
+              (val-vreg (caddr instr))
+              (cons-loc (vreg-to-reg cons-vreg allocation))
+              (val-loc (vreg-to-reg val-vreg allocation))
+              (cons-reg (if (and (consp cons-loc) (eq (car cons-loc) :spill)) 0 cons-loc))
+              (val-reg (if (and (consp val-loc) (eq (car val-loc) :spill)) 1 val-loc)))
+         (append
+          ;; Load spilled values
+          (when (and (consp cons-loc) (eq (car cons-loc) :spill))
+            (arm64:ldr 0 31 :offset (* (cadr cons-loc) 8)))
+          (when (and (consp val-loc) (eq (car val-loc) :spill))
+            (arm64:ldr 1 31 :offset (* (cadr val-loc) 8)))
+          ;; Clear tag to get base address into x2
+          (arm64:and* 2 cons-reg -16 :imm t)
+          ;; Store value at [base]
+          (arm64:str val-reg 2 :offset 0))))
+
+      ;; tac-setcdr: mutate cdr of cons
+      ((tac-setcdr)
+       (let* ((cons-vreg (cadr instr))
+              (val-vreg (caddr instr))
+              (cons-loc (vreg-to-reg cons-vreg allocation))
+              (val-loc (vreg-to-reg val-vreg allocation))
+              (cons-reg (if (and (consp cons-loc) (eq (car cons-loc) :spill)) 0 cons-loc))
+              (val-reg (if (and (consp val-loc) (eq (car val-loc) :spill)) 1 val-loc)))
+         (append
+          (when (and (consp cons-loc) (eq (car cons-loc) :spill))
+            (arm64:ldr 0 31 :offset (* (cadr cons-loc) 8)))
+          (when (and (consp val-loc) (eq (car val-loc) :spill))
+            (arm64:ldr 1 31 :offset (* (cadr val-loc) 8)))
+          ;; Clear tag to get base address into x2
+          (arm64:and* 2 cons-reg -16 :imm t)
+          ;; Store value at [base+8]
+          (arm64:str val-reg 2 :offset 8))))
+
+      ;; tac-get-tag: extract tag bits (value & 0xF)
+      ((tac-get-tag)
+       (let* ((dest-vreg (cadr instr))
+              (src-vreg (caddr instr))
+              (src-loc (vreg-to-reg src-vreg allocation))
+              (dest (vreg-to-reg dest-vreg allocation))
+              (src-reg (if (and (consp src-loc) (eq (car src-loc) :spill)) 0 src-loc))
+              (dest-reg (if (and (consp dest) (eq (car dest) :spill)) 0 dest)))
+         (append
+          (when (and (consp src-loc) (eq (car src-loc) :spill))
+            (arm64:ldr 0 31 :offset (* (cadr src-loc) 8)))
+          ;; AND with 0xF to get tag
+          (arm64:and* dest-reg src-reg #xF :imm t)
+          ;; Shift left 4 to make it a tagged fixnum
+          (arm64:lsl dest-reg dest-reg 4 :imm t)
+          (when (and (consp dest) (eq (car dest) :spill))
+            (arm64:str 0 31 :offset (* (cadr dest) 8))))))
+
+      ;; tac-vector-length: get vector length from header
+      ((tac-vector-length)
+       (let* ((dest-vreg (cadr instr))
+              (vec-vreg (caddr instr))
+              (vec-loc (vreg-to-reg vec-vreg allocation))
+              (dest (vreg-to-reg dest-vreg allocation))
+              (vec-reg (if (and (consp vec-loc) (eq (car vec-loc) :spill)) 0 vec-loc))
+              (dest-reg (if (and (consp dest) (eq (car dest) :spill)) 0 dest)))
+         (append
+          (when (and (consp vec-loc) (eq (car vec-loc) :spill))
+            (arm64:ldr 0 31 :offset (* (cadr vec-loc) 8)))
+          ;; Clear tag to get base address
+          (arm64:and* dest-reg vec-reg -16 :imm t)
+          ;; Load length from header (first word)
+          (arm64:ldr dest-reg dest-reg :offset 0)
+          (when (and (consp dest) (eq (car dest) :spill))
+            (arm64:str 0 31 :offset (* (cadr dest) 8))))))
+
+      ;; tac-string-length: same as vector-length (strings have length header)
+      ((tac-string-length)
+       (let* ((dest-vreg (cadr instr))
+              (str-vreg (caddr instr))
+              (str-loc (vreg-to-reg str-vreg allocation))
+              (dest (vreg-to-reg dest-vreg allocation))
+              (str-reg (if (and (consp str-loc) (eq (car str-loc) :spill)) 0 str-loc))
+              (dest-reg (if (and (consp dest) (eq (car dest) :spill)) 0 dest)))
+         (append
+          (when (and (consp str-loc) (eq (car str-loc) :spill))
+            (arm64:ldr 0 31 :offset (* (cadr str-loc) 8)))
+          ;; Clear tag to get base address
+          (arm64:and* dest-reg str-reg -16 :imm t)
+          ;; Load length from header
+          (arm64:ldr dest-reg dest-reg :offset 0)
+          (when (and (consp dest) (eq (car dest) :spill))
+            (arm64:str 0 31 :offset (* (cadr dest) 8))))))
+
+      ;; tac-vector-ref: load vector element
+      ((tac-vector-ref)
+       (let* ((dest-vreg (cadr instr))
+              (vec-vreg (caddr instr))
+              (idx-vreg (cadddr instr))
+              (vec-loc (vreg-to-reg vec-vreg allocation))
+              (idx-loc (vreg-to-reg idx-vreg allocation))
+              (dest (vreg-to-reg dest-vreg allocation))
+              (vec-reg (if (and (consp vec-loc) (eq (car vec-loc) :spill)) 0 vec-loc))
+              (idx-reg (if (and (consp idx-loc) (eq (car idx-loc) :spill)) 1 idx-loc))
+              (dest-reg (if (and (consp dest) (eq (car dest) :spill)) 0 dest)))
+         (append
+          (when (and (consp vec-loc) (eq (car vec-loc) :spill))
+            (arm64:ldr 0 31 :offset (* (cadr vec-loc) 8)))
+          (when (and (consp idx-loc) (eq (car idx-loc) :spill))
+            (arm64:ldr 1 31 :offset (* (cadr idx-loc) 8)))
+          ;; Clear vector tag to get base
+          (arm64:and* 2 vec-reg -16 :imm t)
+          ;; Index is tagged fixnum, use as byte offset (already * 16, need * 8)
+          ;; Actually: idx >> 4 gives index, * 8 for word offset, + 8 for header
+          ;; Simpler: idx >> 1 gives byte offset, + 8 for header
+          (arm64:lsr 3 idx-reg 1 :imm t)
+          (arm64:add 2 2 3)
+          ;; Load from [base + 8] (skip header)
+          (arm64:ldr dest-reg 2 :offset 8)
+          (when (and (consp dest) (eq (car dest) :spill))
+            (arm64:str 0 31 :offset (* (cadr dest) 8))))))
+
+      ;; tac-vector-set: store vector element
+      ((tac-vector-set)
+       (let* ((vec-vreg (cadr instr))
+              (idx-vreg (caddr instr))
+              (val-vreg (cadddr instr))
+              (vec-loc (vreg-to-reg vec-vreg allocation))
+              (idx-loc (vreg-to-reg idx-vreg allocation))
+              (val-loc (vreg-to-reg val-vreg allocation))
+              (vec-reg (if (and (consp vec-loc) (eq (car vec-loc) :spill)) 0 vec-loc))
+              (idx-reg (if (and (consp idx-loc) (eq (car idx-loc) :spill)) 1 idx-loc))
+              (val-reg (if (and (consp val-loc) (eq (car val-loc) :spill)) 2 val-loc)))
+         (append
+          (when (and (consp vec-loc) (eq (car vec-loc) :spill))
+            (arm64:ldr 0 31 :offset (* (cadr vec-loc) 8)))
+          (when (and (consp idx-loc) (eq (car idx-loc) :spill))
+            (arm64:ldr 1 31 :offset (* (cadr idx-loc) 8)))
+          (when (and (consp val-loc) (eq (car val-loc) :spill))
+            (arm64:ldr 2 31 :offset (* (cadr val-loc) 8)))
+          ;; Clear vector tag
+          (arm64:and* 3 vec-reg -16 :imm t)
+          ;; Compute element address
+          (arm64:lsr 4 idx-reg 1 :imm t)
+          (arm64:add 3 3 4)
+          ;; Store at [base + 8]
+          (arm64:str val-reg 3 :offset 8))))
+
+      ;; tac-string-ref: load string character (byte)
+      ((tac-string-ref)
+       (let* ((dest-vreg (cadr instr))
+              (str-vreg (caddr instr))
+              (idx-vreg (cadddr instr))
+              (str-loc (vreg-to-reg str-vreg allocation))
+              (idx-loc (vreg-to-reg idx-vreg allocation))
+              (dest (vreg-to-reg dest-vreg allocation))
+              (str-reg (if (and (consp str-loc) (eq (car str-loc) :spill)) 0 str-loc))
+              (idx-reg (if (and (consp idx-loc) (eq (car idx-loc) :spill)) 1 idx-loc))
+              (dest-reg (if (and (consp dest) (eq (car dest) :spill)) 0 dest)))
+         (append
+          (when (and (consp str-loc) (eq (car str-loc) :spill))
+            (arm64:ldr 0 31 :offset (* (cadr str-loc) 8)))
+          (when (and (consp idx-loc) (eq (car idx-loc) :spill))
+            (arm64:ldr 1 31 :offset (* (cadr idx-loc) 8)))
+          ;; Clear string tag
+          (arm64:and* 2 str-reg -16 :imm t)
+          ;; Index >> 4 gives actual index, + 8 for header
+          (arm64:lsr 3 idx-reg 4 :imm t)
+          (arm64:add 2 2 3)
+          ;; Load byte
+          (arm64:ldrb dest-reg 2 8)
+          ;; Tag as fixnum
+          (arm64:lsl dest-reg dest-reg 4 :imm t)
+          (when (and (consp dest) (eq (car dest) :spill))
+            (arm64:str 0 31 :offset (* (cadr dest) 8))))))
+
+      ;; tac-loop-start: marker for loop, no code generated
+      ((tac-loop-start) nil)
+
+      ;; tac-continue: jump back to loop - need loop label tracking
+      ;; For now, emit as unresolved marker
+      ((tac-continue)
+       (list :continue-marker (cadr instr)))
+
+      ;; tac-funcall: call through closure - complex, delegate to runtime helper
+      ;; Format: (tac-funcall dest fn-vr arg-vrs)
+      ((tac-funcall)
+       ;; For now, emit as marker for later resolution
+       ;; Full implementation needs closure unpacking
+       (list :funcall-marker instr))
+
+      ;; tac-make-closure: create closure object - complex
+      ((tac-make-closure)
+       ;; Emit as marker for later resolution
+       (list :make-closure-marker instr))
+
+      ;; tac-make-vector, tac-make-string: heap allocation - emit markers
+      ((tac-make-vector tac-make-string)
+       (list :heap-alloc-marker instr))
 
       ;; Default
       (t nil))))
+
+(defun count-bytes-in-code (code)
+  "Count bytes in code, skipping markers and labels"
+  (let ((count 0))
+    (dolist (item code)
+      (cond
+        ;; Markers are not instructions
+        ((and (consp item)
+              (member (car item) '(:branch-marker :branch-ne-marker :branch-eq-marker :label-marker)))
+         nil)
+        ;; Regular byte
+        ((numberp item)
+         (setq count (+ count 1)))))
+    count))
 
 (defun tac-codegen (tac-instrs allocation)
   "Generate ARM64 code from TAC with register allocation.
    Returns list of ARM64 instruction bytes.
 
-   This is Pass 5 of the register allocation pipeline."
-  (let ((code nil))
-    ;; Generate code for each instruction
+   This is Pass 5 of the register allocation pipeline.
+   Uses two-pass approach:
+   Pass 1: Generate code with markers, track label positions
+   Pass 2: Resolve branch markers to actual branch instructions"
+  ;; Pass 1: Generate code with markers
+  (let ((code-with-markers nil)
+        (label-positions nil)  ; alist of (label . byte-position)
+        (current-pos 0))
+    ;; Generate code for each instruction, tracking positions
     (dolist (instr tac-instrs)
-      (unless (eq (car instr) 'tac-label)
-        ;; Generate code (skip labels - they're just markers)
-        (let ((bytes (tac-codegen-instr instr allocation)))
-          (when bytes
-            (setq code (append code bytes))))))
-    ;; Filter out branch markers (not yet resolved)
-    (remove-if (lambda (x) (and (consp x)
-                                 (or (eq (car x) :branch-marker)
-                                     (eq (car x) :branch-ne-marker))))
-               code)))
+      (if (eq (car instr) 'tac-label)
+          ;; Record label position
+          (let ((label (cadr instr)))
+            (setq label-positions (cons (cons label current-pos) label-positions))
+            (setq code-with-markers (append code-with-markers
+                                            (list (list :label-marker label)))))
+          ;; Generate code for instruction
+          (let ((bytes (tac-codegen-instr instr allocation)))
+            (when bytes
+              (setq code-with-markers (append code-with-markers bytes))
+              ;; Update position: count actual bytes AND branch markers (4 bytes each)
+              (dolist (b bytes)
+                (cond
+                  ((numberp b)
+                   (setq current-pos (+ current-pos 1)))
+                  ;; Branch markers will become 4-byte instructions
+                  ((and (consp b) (member (car b) '(:branch-marker :branch-ne-marker :branch-eq-marker)))
+                   (setq current-pos (+ current-pos 4)))))))))
+
+    ;; Pass 2: Resolve branch markers to actual instructions
+    (let ((resolved nil)
+          (pos 0))
+      (dolist (item code-with-markers)
+        (cond
+          ;; Skip label markers in output
+          ((and (consp item) (eq (car item) :label-marker))
+           nil)
+
+          ;; Resolve unconditional branch
+          ((and (consp item) (eq (car item) :branch-marker))
+           (let* ((target-label (cadr item))
+                  (target-pos (cdr (assoc target-label label-positions)))
+                  ;; Offset in instructions (4 bytes each), from NEXT instruction
+                  (offset (if target-pos
+                              (ash (- target-pos (+ pos 4)) -2)
+                              0)))
+             (setq resolved (append resolved (arm64:b offset)))
+             (setq pos (+ pos 4))))
+
+          ;; Resolve conditional branch (branch if not equal)
+          ((and (consp item) (eq (car item) :branch-ne-marker))
+           (let* ((target-label (cadr item))
+                  (target-pos (cdr (assoc target-label label-positions)))
+                  (offset (if target-pos
+                              (ash (- target-pos (+ pos 4)) -2)
+                              0)))
+             (setq resolved (append resolved (arm64:b.ne offset)))
+             (setq pos (+ pos 4))))
+
+          ;; Resolve conditional branch (branch if equal)
+          ((and (consp item) (eq (car item) :branch-eq-marker))
+           (let* ((target-label (cadr item))
+                  (target-pos (cdr (assoc target-label label-positions)))
+                  (offset (if target-pos
+                              (ash (- target-pos (+ pos 4)) -2)
+                              0)))
+             (setq resolved (append resolved (arm64:b.eq offset)))
+             (setq pos (+ pos 4))))
+
+          ;; Function call marker - pass through for resolve-calls
+          ((and (consp item) (eq (car item) :call-fn))
+           (setq resolved (append resolved (list item)))
+           (setq pos (+ pos 4)))  ; BL is 4 bytes
+
+          ;; Regular byte - keep it
+          ((numberp item)
+           (setq resolved (append resolved (list item)))
+           (setq pos (+ pos 1)))
+
+          ;; Unknown - skip
+          (t nil)))
+      resolved)))
 
 ;;; ============================================================
 ;;; Top-Level Interface
@@ -810,6 +1543,134 @@
 
 ;;; Register as optimization pass
 (register-optimization 'register-allocation #'allocate-registers-for-function)
+
+;;; ============================================================
+;;; Register-Allocated Code Generation
+;;; ============================================================
+;;;
+;;; These functions provide an alternate code generation path using
+;;; the register allocator instead of the accumulator-based codegen.
+
+#+sbcl
+(defun reg-alloc-prologue ()
+  "Generate function prologue for register-allocated functions.
+   Saves x30 (link register) and sets up minimal frame.
+   Uses smaller frame than accumulator codegen (256 bytes vs 2KB)."
+  (append
+   ;; sub sp, sp, #256 - allocate frame (enough for 32 spill slots)
+   (arm64:sub 31 31 #x100 :imm t)
+   ;; str x30, [sp, #0] - save link register
+   (arm64:str 30 31 :offset 0)
+   ;; str x20, [sp, #8] - save x20 (env base)
+   (arm64:str 20 31 :offset 8)
+   ;; add x20, sp, #128 - set env base in middle of frame
+   (arm64:add 20 31 #x80 :imm t)))
+
+#+sbcl
+(defun reg-alloc-epilogue ()
+  "Generate function epilogue for register-allocated functions."
+  (append
+   ;; ldr x30, [sp, #0] - restore link register
+   (arm64:ldr 30 31 :offset 0)
+   ;; ldr x20, [sp, #8] - restore x20
+   (arm64:ldr 20 31 :offset 8)
+   ;; add sp, sp, #256 - deallocate frame
+   (arm64:add 31 31 #x100 :imm t)
+   ;; ret
+   (arm64:ret)))
+
+#+sbcl
+(defun reg-alloc-gen-param-stores (params base-offset)
+  "Generate code to store parameters from x0-x7 to stack.
+   For register-allocated code, params are stored at [x20 - offset*8].
+   Uses STUR for negative offsets (unscaled signed 9-bit)."
+  (labels ((gen-stores (ps idx acc)
+             (if (null ps)
+                 acc
+                 (let* ((off (* (+ base-offset idx) -8))
+                        ;; Use STUR for negative offsets, STR for positive
+                        (store (if (< off 0)
+                                   (arm64:stur idx 20 :offset off)
+                                   (arm64:str idx 20 :offset off))))
+                   (gen-stores (cdr ps) (+ idx 1) (append acc store))))))
+    (gen-stores params 0 nil)))
+
+#+sbcl
+(defun has-unresolved-markers (code)
+  "Check if code contains any unresolved markers.
+   These indicate IR that can't be fully compiled by reg-alloc yet.
+   Note: :call-fn markers would need resolution by the main flatten machinery,
+   so we fall back to regular codegen for any function with calls."
+  (labels ((check (items)
+             (cond
+               ((null items) nil)
+               ((and (consp (car items))
+                     (member (caar items)
+                             '(:call-fn           ; function calls need resolution
+                               :funcall-marker    ; closure calls
+                               :make-closure-marker
+                               :heap-alloc-marker
+                               :continue-marker)))
+                t)
+               (t (check (cdr items))))))
+    (check code)))
+
+#+sbcl
+(defun codegen-fn-reg-alloc (fn)
+  "Generate code for a function using register allocation.
+   fn has structure: (name params body-ir param-base)
+   Returns list of ARM64 instruction bytes, or nil if IR not fully supported."
+  (let* ((params (cadr fn))
+         (body-ir (caddr fn))
+         (param-base (cadddr fn))
+         ;; Apply register allocation pipeline
+         (counter (make-vreg-counter))
+         (tac-result (ir-to-tac body-ir counter))
+         (tac-instrs (car tac-result))
+         (result-vr (cadr tac-result)))
+    ;; Check if IR converted successfully
+    (if (null tac-instrs)
+        ;; Fall back to regular codegen for unsupported IR
+        nil
+        (let* (;; Add return instruction
+               (full-tac (append tac-instrs (list (list 'tac-return result-vr))))
+               ;; Liveness analysis
+               (annotated (compute-liveness full-tac))
+               ;; Compute intervals
+               (intervals (compute-intervals annotated))
+               ;; Linear scan allocation
+               (allocation (linear-scan intervals))
+               ;; Generate prologue
+               (prologue-code (reg-alloc-prologue))
+               ;; Generate param stores
+               (param-code (reg-alloc-gen-param-stores params param-base))
+               ;; Generate body code with allocation
+               (body-code (tac-codegen full-tac allocation))
+               ;; Generate epilogue
+               (epilogue-code (reg-alloc-epilogue))
+               ;; Combine all code
+               (all-code (append prologue-code param-code body-code epilogue-code)))
+          ;; Check for unresolved markers - if present, fall back to regular codegen
+          (if (has-unresolved-markers all-code)
+              nil
+              all-code)))))
+
+#+sbcl
+(defun compile-expr-reg-alloc (ir)
+  "Compile a single expression using register allocation.
+   Returns list of ARM64 instruction bytes, or nil if IR not supported.
+   Useful for testing the register allocator on simple expressions."
+  (let* ((counter (make-vreg-counter))
+         (tac-result (ir-to-tac ir counter))
+         (tac-instrs (car tac-result))
+         (result-vr (cadr tac-result)))
+    (if (null tac-instrs)
+        nil
+        (let* ((full-tac (append tac-instrs (list (list 'tac-return result-vr))))
+               (annotated (compute-liveness full-tac))
+               (intervals (compute-intervals annotated))
+               (allocation (linear-scan intervals)))
+          (tac-codegen full-tac allocation)))))
 
 ;;; ============================================================
 ;;; Debug Tools for Register Allocator
@@ -928,7 +1789,13 @@
   (let ((unhandled nil)
         (handled '("LIT" "VAR" "ADD" "SUB" "MUL" "DIV" "MOD"
                    "CMP-EQ" "CMP-NE" "CMP-LT" "CMP-LE" "CMP-GT" "CMP-GE"
-                   "IF-IR" "LET-IR" "PROGN-IR" "CALL-FN")))
+                   "IF-IR" "LET-IR" "PROGN-IR" "CALL-FN"
+                   ;; Extended IR types now handled:
+                   "NIL-IR" "CONS-IR" "CAR-IR" "CDR-IR" "SYM-LIT" "STR-LIT"
+                   "SETQ-IR" "WHILE-IR" "SETCAR-IR" "SETCDR-IR"
+                   "MAKE-VECTOR-IR" "VECTOR-REF-IR" "VECTOR-SET-IR" "VECTOR-LENGTH-IR"
+                   "STRING-LENGTH-IR" "STRING-REF-IR" "MAKE-STRING-FROM-VECTOR-IR"
+                   "LOOP-IR" "CONTINUE-IR" "GET-TAG" "FUNCALL-IR" "LAMBDA-IR")))
     (labels ((check-node (node)
                (when (consp node)
                  (let ((tag (ir-tag-name (car node))))
@@ -943,7 +1810,7 @@
       (reverse unhandled))))
 
 #+sbcl
-(defun test-regalloc ()
+(defun test-reg-alloc ()
   "Run some test cases through the register allocator."
   (format t "~%=== Test 1: Simple add ===~%")
   (reg-alloc-debug '(add (lit 16) (lit 32)))
@@ -961,3 +1828,463 @@
 
   (format t "~%Done with register allocator tests.~%")
   t)
+
+;;; ============================================================
+;;; Diagnostic Tools for Register Allocator
+;;; ============================================================
+
+#+sbcl
+(defun disassemble-bytes (bytes &optional (stream t))
+  "Disassemble ARM64 bytes to readable instructions.
+   BYTES is a list of bytes in big-endian order (as emitted by codegen)."
+  (format stream "~%ARM64 Disassembly (~D bytes):~%" (length bytes))
+  (format stream "~4A  ~8A    ~A~%" "OFF" "HEX" "INSTRUCTION")
+  (format stream "~4,,,'-A  ~8,,,'-A    ~,,,'-A~%" "" "" "")
+  (let ((i 0))
+    (loop while (< i (- (length bytes) 3)) do
+      (let* ((b0 (nth i bytes))
+             (b1 (nth (+ i 1) bytes))
+             (b2 (nth (+ i 2) bytes))
+             (b3 (nth (+ i 3) bytes))
+             ;; ARM64 is little-endian; our bytes are big-endian
+             (instr (logior (ash b3 24) (ash b2 16) (ash b1 8) b0)))
+        (format stream "~4X  ~8,'0X    ~A~%"
+                i instr (decode-arm64-instr instr i))
+        (incf i 4)))))
+
+#+sbcl
+(defun disasm (fn)
+  "Disassemble FN to *standard-output*.
+   FN: extended function designator - function, symbol naming a function,
+       or lambda expression.
+   Returns NIL.
+
+   Extensions: also accepts pathname/string for binary files."
+  (cond
+    ;; Function object - not yet supported in Habu
+    ((functionp fn)
+     (format t "~%; Function objects not yet supported~%"))
+    ;; Symbol - look up function definition
+    ((symbolp fn)
+     (let ((def (get fn 'function-definition)))
+       (if def
+           (let ((code (compile-program (list def) nil)))
+             (disassemble-bytes code t))
+           (format t "~%; No definition found for ~S~%" fn))))
+    ;; Lambda expression - compile and disassemble
+    ((and (listp fn) (eq (car fn) 'lambda))
+     (let ((code (compile-program (list fn) nil)))
+       (disassemble-bytes code t)))
+    ;; Extension: pathname or string - read binary file
+    ((or (pathnamep fn) (stringp fn))
+     (let ((path (if (stringp fn) (pathname fn) fn)))
+       (with-open-file (f path :element-type '(unsigned-byte 8))
+         (let* ((size (file-length f))
+                (bytes (make-array size :element-type '(unsigned-byte 8))))
+           (read-sequence bytes f)
+           ;; Skip Mach-O header to __text section
+           (let ((code-start #x328)
+                 (result nil))
+             (loop for i from code-start below size
+                   do (push (aref bytes i) result))
+             (disassemble-bytes (nreverse result) t))))))
+    (t
+     (error "Cannot disassemble ~S" fn)))
+  nil)
+
+#+sbcl
+(defun reg-name (n)
+  "Format register name like lldb does."
+  (case n
+    (31 "sp")
+    (30 "lr")
+    (29 "fp")
+    (t (format nil "x~D" n))))
+
+#+sbcl
+(defun decode-arm64-instr (instr &optional offset)
+  "Decode ARM64 instruction to readable string matching lldb format.
+   Handles all instructions used by Habu codegen."
+  (declare (ignorable offset))
+  (let* ((rd (logand instr #x1F))
+         (rn (logand (ash instr -5) #x1F))
+         (rm (logand (ash instr -16) #x1F)))
+    (cond
+      ;; === Data Movement ===
+
+      ;; MOVZ: 110100101 hw imm16 Rd
+      ((= (logand instr #xFF800000) #xD2800000)
+       (let* ((hw (logand (ash instr -21) #x3))
+              (imm16 (logand (ash instr -5) #xFFFF))
+              (shift (* hw 16)))
+         (if (zerop shift)
+             (format nil "mov    ~A, #0x~X" (reg-name rd) imm16)
+             (format nil "movz   ~A, #0x~X, lsl #~D" (reg-name rd) imm16 shift))))
+
+      ;; MOVK: 111100101 hw imm16 Rd
+      ((= (logand instr #xFF800000) #xF2800000)
+       (let* ((hw (logand (ash instr -21) #x3))
+              (imm16 (logand (ash instr -5) #xFFFF))
+              (shift (* hw 16)))
+         (format nil "movk   ~A, #0x~X, lsl #~D" (reg-name rd) imm16 shift)))
+
+      ;; MOV (register, ORR with XZR): 10101010000 Rm 000000 11111 Rd
+      ((= (logand instr #xFFE0FFE0) #xAA0003E0)
+       (format nil "mov    ~A, ~A" (reg-name rd) (reg-name rm)))
+
+      ;; === Arithmetic ===
+
+      ;; ADD immediate: 1001000100 sh imm12 Rn Rd
+      ((= (logand instr #xFF000000) #x91000000)
+       (let ((imm12 (logand (ash instr -10) #xFFF))
+             (sh (logbitp 22 instr)))
+         (if sh
+             (format nil "add    ~A, ~A, #0x~X, lsl #12" (reg-name rd) (reg-name rn) imm12)
+             (format nil "add    ~A, ~A, #0x~X" (reg-name rd) (reg-name rn) imm12))))
+
+      ;; SUB immediate: 1101000100 sh imm12 Rn Rd
+      ((= (logand instr #xFF000000) #xD1000000)
+       (let ((imm12 (logand (ash instr -10) #xFFF))
+             (sh (logbitp 22 instr)))
+         (if sh
+             (format nil "sub    ~A, ~A, #0x~X, lsl #12" (reg-name rd) (reg-name rn) imm12)
+             (format nil "sub    ~A, ~A, #0x~X" (reg-name rd) (reg-name rn) imm12))))
+
+      ;; ADD register: 10001011000 Rm 000000 Rn Rd
+      ((= (logand instr #xFF200000) #x8B000000)
+       (format nil "add    ~A, ~A, ~A" (reg-name rd) (reg-name rn) (reg-name rm)))
+
+      ;; SUB register: 11001011000 Rm 000000 Rn Rd
+      ((= (logand instr #xFF200000) #xCB000000)
+       (format nil "sub    ~A, ~A, ~A" (reg-name rd) (reg-name rn) (reg-name rm)))
+
+      ;; MUL: 10011011000 Rm 011111 Rn Rd (MADD with Ra=XZR)
+      ((= (logand instr #xFFE0FC00) #x9B007C00)
+       (format nil "mul    ~A, ~A, ~A" (reg-name rd) (reg-name rn) (reg-name rm)))
+
+      ;; SDIV: 10011010110 Rm 000011 Rn Rd
+      ((= (logand instr #xFFE0FC00) #x9AC00C00)
+       (format nil "sdiv   ~A, ~A, ~A" (reg-name rd) (reg-name rn) (reg-name rm)))
+
+      ;; SUBS register: 11101011000 Rm 000000 Rn Rd
+      ((= (logand instr #xFF200000) #xEB000000)
+       (if (= rd 31)
+           (format nil "cmp    ~A, ~A" (reg-name rn) (reg-name rm))
+           (format nil "subs   ~A, ~A, ~A" (reg-name rd) (reg-name rn) (reg-name rm))))
+
+      ;; SUBS immediate: 11110001 imm12 Rn Rd
+      ((= (logand instr #xFF000000) #xF1000000)
+       (let ((imm12 (logand (ash instr -10) #xFFF)))
+         (if (= rd 31)
+             (format nil "cmp    ~A, #0x~X" (reg-name rn) imm12)
+             (format nil "subs   ~A, ~A, #0x~X" (reg-name rd) (reg-name rn) imm12))))
+
+      ;; === Bitwise ===
+
+      ;; AND register: 10001010000 Rm 000000 Rn Rd
+      ((= (logand instr #xFF200000) #x8A000000)
+       (format nil "and    ~A, ~A, ~A" (reg-name rd) (reg-name rn) (reg-name rm)))
+
+      ;; AND immediate: 1001001000 N immr imms Rn Rd
+      ((= (logand instr #xFF800000) #x92400000)
+       (format nil "and    ~A, ~A, #<imm>" (reg-name rd) (reg-name rn)))
+
+      ;; ORR register: 10101010000 Rm 000000 Rn Rd
+      ((= (logand instr #xFF200000) #xAA000000)
+       (format nil "orr    ~A, ~A, ~A" (reg-name rd) (reg-name rn) (reg-name rm)))
+
+      ;; ORR immediate: 1011001000 N immr imms Rn Rd
+      ((= (logand instr #xFF800000) #xB2400000)
+       (format nil "orr    ~A, ~A, #<imm>" (reg-name rd) (reg-name rn)))
+
+      ;; EOR register: 11001010000 Rm 000000 Rn Rd
+      ((= (logand instr #xFF200000) #xCA000000)
+       (format nil "eor    ~A, ~A, ~A" (reg-name rd) (reg-name rn) (reg-name rm)))
+
+      ;; LSL immediate (UBFM): 1101001101 immr imms Rn Rd
+      ((= (logand instr #xFFC00000) #xD3400000)
+       (let ((imms (logand (ash instr -10) #x3F)))
+         (format nil "lsl    ~A, ~A, #~D" (reg-name rd) (reg-name rn) (- 63 imms))))
+
+      ;; LSR immediate (UBFM with imms=63): 1101001101 immr 111111 Rn Rd
+      ((= (logand instr #xFFC0FC00) #xD340FC00)
+       (let ((immr (logand (ash instr -16) #x3F)))
+         (format nil "lsr    ~A, ~A, #~D" (reg-name rd) (reg-name rn) immr)))
+
+      ;; ASR immediate (SBFM with imms=63): 1001001101 immr 111111 Rn Rd
+      ((= (logand instr #xFFC0FC00) #x9340FC00)
+       (let ((immr (logand (ash instr -16) #x3F)))
+         (format nil "asr    ~A, ~A, #~D" (reg-name rd) (reg-name rn) immr)))
+
+      ;; === Memory ===
+
+      ;; LDR unsigned offset: 11111001010 imm12 Rn Rt
+      ((= (logand instr #xFFC00000) #xF9400000)
+       (let ((imm12 (logand (ash instr -10) #xFFF)))
+         (format nil "ldr    ~A, [~A, #0x~X]" (reg-name rd) (reg-name rn) (* imm12 8))))
+
+      ;; STR unsigned offset: 11111001000 imm12 Rn Rt
+      ((= (logand instr #xFFC00000) #xF9000000)
+       (let ((imm12 (logand (ash instr -10) #xFFF)))
+         (format nil "str    ~A, [~A, #0x~X]" (reg-name rd) (reg-name rn) (* imm12 8))))
+
+      ;; LDUR: 11111000010 imm9 00 Rn Rt
+      ((= (logand instr #xFFE00C00) #xF8400000)
+       (let ((imm9 (logand (ash instr -12) #x1FF)))
+         (let ((signed-imm (if (logbitp 8 imm9) (- imm9 512) imm9)))
+           (format nil "ldur   ~A, [~A, #~D]" (reg-name rd) (reg-name rn) signed-imm))))
+
+      ;; STUR: 11111000000 imm9 00 Rn Rt
+      ((= (logand instr #xFFE00C00) #xF8000000)
+       (let ((imm9 (logand (ash instr -12) #x1FF)))
+         (let ((signed-imm (if (logbitp 8 imm9) (- imm9 512) imm9)))
+           (format nil "stur   ~A, [~A, #~D]" (reg-name rd) (reg-name rn) signed-imm))))
+
+      ;; LDP: 1010100101 imm7 Rt2 Rn Rt
+      ((= (logand instr #xFFC00000) #xA9400000)
+       (let* ((imm7 (logand (ash instr -15) #x7F))
+              (rt2 (logand (ash instr -10) #x1F))
+              (signed-imm (if (logbitp 6 imm7) (- imm7 128) imm7)))
+         (format nil "ldp    ~A, ~A, [~A, #~D]" (reg-name rd) (reg-name rt2) (reg-name rn) (* signed-imm 8))))
+
+      ;; STP: 1010100100 imm7 Rt2 Rn Rt
+      ((= (logand instr #xFFC00000) #xA9000000)
+       (let* ((imm7 (logand (ash instr -15) #x7F))
+              (rt2 (logand (ash instr -10) #x1F))
+              (signed-imm (if (logbitp 6 imm7) (- imm7 128) imm7)))
+         (format nil "stp    ~A, ~A, [~A, #~D]" (reg-name rd) (reg-name rt2) (reg-name rn) (* signed-imm 8))))
+
+      ;; LDRB unsigned offset: 0011100101 imm12 Rn Rt
+      ((= (logand instr #xFFC00000) #x39400000)
+       (let ((imm12 (logand (ash instr -10) #xFFF)))
+         (format nil "ldrb   w~D, [~A, #0x~X]" rd (reg-name rn) imm12)))
+
+      ;; STRB unsigned offset: 0011100100 imm12 Rn Rt
+      ((= (logand instr #xFFC00000) #x39000000)
+       (let ((imm12 (logand (ash instr -10) #xFFF)))
+         (format nil "strb   w~D, [~A, #0x~X]" rd (reg-name rn) imm12)))
+
+      ;; LDRB register: 00111000011 Rm opt S 10 Rn Rt
+      ((= (logand instr #xFFE00C00) #x38600800)
+       (format nil "ldrb   w~D, [~A, ~A]" rd (reg-name rn) (reg-name rm)))
+
+      ;; STRB register: 00111000001 Rm opt S 10 Rn Rt
+      ((= (logand instr #xFFE00C00) #x38200800)
+       (format nil "strb   w~D, [~A, ~A]" rd (reg-name rn) (reg-name rm)))
+
+      ;; LDR register: 11111000011 Rm opt S 10 Rn Rt
+      ((= (logand instr #xFFE00C00) #xF8600800)
+       (format nil "ldr    ~A, [~A, ~A]" (reg-name rd) (reg-name rn) (reg-name rm)))
+
+      ;; === Conditional ===
+
+      ;; CSET: 1001101010011111 cond 0111100000 Rd
+      ((= (logand instr #xFFFF0FE0) #x9A9F07E0)
+       (let* ((cond-inv (logand (ash instr -12) #xF))
+              (cond-name (case (logxor cond-inv 1)
+                           (0 "eq") (1 "ne") (2 "hs") (3 "lo")
+                           (10 "ge") (11 "lt") (12 "gt") (13 "le")
+                           (t "??"))))
+         (format nil "cset   ~A, ~A" (reg-name rd) cond-name)))
+
+      ;; === Branch ===
+
+      ;; B: 000101 imm26
+      ((= (logand instr #xFC000000) #x14000000)
+       (let* ((imm26 (logand instr #x03FFFFFF))
+              (signed (if (logbitp 25 imm26) (- imm26 #x4000000) imm26)))
+         (if offset
+             (format nil "b      0x~X" (+ offset (* signed 4)))
+             (format nil "b      #~D" (* signed 4)))))
+
+      ;; BL: 100101 imm26
+      ((= (logand instr #xFC000000) #x94000000)
+       (let* ((imm26 (logand instr #x03FFFFFF))
+              (signed (if (logbitp 25 imm26) (- imm26 #x4000000) imm26)))
+         (if offset
+             (format nil "bl     0x~X" (+ offset (* signed 4)))
+             (format nil "bl     #~D" (* signed 4)))))
+
+      ;; BLR: 1101011000111111000000 Rn 00000
+      ((= (logand instr #xFFFFFC1F) #xD63F0000)
+       (format nil "blr    ~A" (reg-name rn)))
+
+      ;; BR: 1101011000011111000000 Rn 00000
+      ((= (logand instr #xFFFFFC1F) #xD61F0000)
+       (format nil "br     ~A" (reg-name rn)))
+
+      ;; RET: 1101011001011111000000 Rn 00000 (typically Rn=30)
+      ((= (logand instr #xFFFFFC1F) #xD65F0000)
+       (if (= rn 30)
+           "ret"
+           (format nil "ret    ~A" (reg-name rn))))
+
+      ;; CBZ: 10110100 imm19 Rt
+      ((= (logand instr #xFF000000) #xB4000000)
+       (let* ((imm19 (logand (ash instr -5) #x7FFFF))
+              (signed (if (logbitp 18 imm19) (- imm19 #x80000) imm19)))
+         (if offset
+             (format nil "cbz    ~A, 0x~X" (reg-name rd) (+ offset (* signed 4)))
+             (format nil "cbz    ~A, #~D" (reg-name rd) (* signed 4)))))
+
+      ;; CBNZ: 10110101 imm19 Rt
+      ((= (logand instr #xFF000000) #xB5000000)
+       (let* ((imm19 (logand (ash instr -5) #x7FFFF))
+              (signed (if (logbitp 18 imm19) (- imm19 #x80000) imm19)))
+         (if offset
+             (format nil "cbnz   ~A, 0x~X" (reg-name rd) (+ offset (* signed 4)))
+             (format nil "cbnz   ~A, #~D" (reg-name rd) (* signed 4)))))
+
+      ;; B.cond: 01010100 imm19 0 cond
+      ((= (logand instr #xFF000010) #x54000000)
+       (let* ((imm19 (logand (ash instr -5) #x7FFFF))
+              (cond-code (logand instr #xF))
+              (signed (if (logbitp 18 imm19) (- imm19 #x80000) imm19))
+              (cond-name (case cond-code
+                           (0 "eq") (1 "ne") (2 "hs") (3 "lo")
+                           (8 "hi") (9 "ls") (10 "ge") (11 "lt")
+                           (12 "gt") (13 "le") (t "??"))))
+         (if offset
+             (format nil "b.~A   0x~X" cond-name (+ offset (* signed 4)))
+             (format nil "b.~A   #~D" cond-name (* signed 4)))))
+
+      ;; === System ===
+
+      ;; SVC: 11010100000 imm16 00001
+      ((= (logand instr #xFFE0001F) #xD4000001)
+       (let ((imm16 (logand (ash instr -5) #xFFFF)))
+         (format nil "svc    #0x~X" imm16)))
+
+      ;; NOP: 11010101000000110010000000011111
+      ((= instr #xD503201F)
+       "nop")
+
+      ;; Default: unknown instruction
+      (t (format nil ".word  0x~8,'0X" instr)))))
+
+#+sbcl
+(defun reg-alloc-trace-fn (fn &optional (stream t))
+  "Full trace of register allocation for a function.
+   Shows each pass and the generated code."
+  (format stream "~%========================================~%")
+  (format stream "Register Allocator Trace~%")
+  (format stream "========================================~%")
+  (format stream "~%Function: ~S~%" (car fn))
+  (format stream "Params: ~S~%" (cadr fn))
+  (format stream "Body IR: ~S~%" (caddr fn))
+  (format stream "Param-base: ~S~%" (cadddr fn))
+
+  (let* ((params (cadr fn))
+         (body-ir (caddr fn))
+         (param-base (cadddr fn))
+         (counter (make-vreg-counter)))
+
+    ;; Pass 1: IR to TAC
+    (format stream "~%--- Pass 1: IR to TAC ---~%")
+    (let* ((tac-result (ir-to-tac body-ir counter))
+           (tac-instrs (car tac-result))
+           (result-vr (cadr tac-result)))
+      (if (null tac-instrs)
+          (progn
+            (format stream "IR conversion failed - unsupported IR~%")
+            (return-from reg-alloc-trace-fn nil))
+          (progn
+            (format stream "TAC Instructions:~%")
+            (let ((i 0))
+              (dolist (instr tac-instrs)
+                (format stream "  ~3D: ~S~%" i instr)
+                (incf i)))
+            (format stream "Result vreg: v~D~%" result-vr)))
+
+      ;; Add return
+      (let ((full-tac (append tac-instrs (list (list 'tac-return result-vr)))))
+
+        ;; Pass 2: Liveness
+        (format stream "~%--- Pass 2: Liveness Analysis ---~%")
+        (let ((annotated (compute-liveness full-tac)))
+          (print-liveness annotated stream)
+
+          ;; Pass 3: Intervals
+          (format stream "~%--- Pass 3: Live Intervals ---~%")
+          (let ((intervals (compute-intervals annotated)))
+            (print-intervals intervals stream)
+
+            ;; Pass 4: Allocation
+            (format stream "~%--- Pass 4: Register Allocation ---~%")
+            (let ((allocation (linear-scan intervals)))
+              (print-allocation allocation stream)
+
+              ;; Generate code
+              (format stream "~%--- Pass 5: Code Generation ---~%")
+              (let* ((prologue-code (reg-alloc-prologue))
+                     (param-code (reg-alloc-gen-param-stores params param-base))
+                     (body-code (tac-codegen full-tac allocation))
+                     (epilogue-code (reg-alloc-epilogue))
+                     (all-code (append prologue-code param-code body-code epilogue-code)))
+
+                ;; Check for unresolved markers
+                (format stream "~%Checking for unresolved markers...~%")
+                (if (has-unresolved-markers all-code)
+                    (progn
+                      (format stream "Found unresolved markers - would fall back to accumulator codegen~%")
+                      (format stream "Markers found: ~S~%"
+                              (remove-if-not (lambda (x)
+                                               (and (consp x)
+                                                    (member (car x) '(:call-fn :funcall-marker
+                                                                      :make-closure-marker
+                                                                      :heap-alloc-marker
+                                                                      :continue-marker))))
+                                             all-code)))
+                    (format stream "No unresolved markers - code is complete~%"))
+
+                ;; Disassemble
+                (format stream "~%--- Generated Code ---~%")
+                (disassemble-bytes all-code stream)
+
+                ;; Return the code
+                all-code))))))))
+
+#+sbcl
+(defun compare-codegen (fn &optional (stream t))
+  "Compare register-allocated vs accumulator codegen for a function.
+   Useful for finding discrepancies."
+  (format stream "~%========================================~%")
+  (format stream "Codegen Comparison~%")
+  (format stream "========================================~%")
+  (format stream "~%Function: ~S~%" fn)
+
+  ;; Generate with reg-alloc
+  (format stream "~%--- Register Allocator ---~%")
+  (let ((reg-code (codegen-fn-reg-alloc fn)))
+    (if reg-code
+        (progn
+          (format stream "Generated ~D bytes~%" (length reg-code))
+          (disassemble-bytes reg-code stream))
+        (format stream "Fell back to accumulator (returned nil)~%")))
+
+  ;; Generate with accumulator (force by binding *use-register-allocation* nil)
+  (format stream "~%--- Accumulator Codegen ---~%")
+  (let* ((*use-register-allocation* nil)
+         (acc-code (codegen-fn fn nil nil)))
+    (format stream "Generated ~D bytes~%" (length acc-code))
+    (disassemble-bytes acc-code stream)))
+
+#+sbcl
+(defun test-fn-execution (source &optional (stream t))
+  "Compile a source string and test execution.
+   Returns exit code or error info."
+  (format stream "~%Testing: ~S~%" source)
+  (let ((tmp-path "/tmp/habu_reg_alloc_test"))
+    ;; Compile with reg-alloc
+    (format stream "~%Compiling with *use-register-allocation* = t~%")
+    (let ((*use-register-allocation* t))
+      (deliver source tmp-path))
+    ;; Run and capture exit code
+    (let ((exit-code (nth-value 2 (uiop:run-program tmp-path :ignore-error-status t))))
+      (format stream "Exit code: ~D~%" exit-code)
+      (cond
+        ((= exit-code 132) (format stream "  SIGILL - Illegal instruction~%"))
+        ((= exit-code 139) (format stream "  SIGSEGV - Segmentation fault~%"))
+        ((= exit-code 138) (format stream "  SIGBUS - Bus error~%"))
+        ((= exit-code 137) (format stream "  SIGKILL - Killed (codesign?)~%")))
+      exit-code)))

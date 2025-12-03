@@ -14,381 +14,156 @@
 3. Performance parity (register allocator, optimizations)
 4. Full CL spec (CLOS, conditions, packages, multiple values)
 
-## Project Overview
+## Issue Tracking
 
-Habu is a self-hosted Lisp compiler that generates native ARM64 machine code.
+**Use beads (bd) for ALL work tracking.** Do not use markdown TODOs or TodoWrite for task lists.
 
-**Key Characteristics:**
-- Native code generation (no bytecode interpreter)
-- Minimal C runtime (only for bootstrapping)
-- Full Common Lisp specification as the goal
-- ARM64 first, x86_64 second
-- Bootstrapped via SBCL
-
-## Architecture
-
-### Components
-
-1. **Bootstrap Compiler** (`bootstrap/compiler.lisp`)
-   - Compiles Lisp to IR
-   - Runs in SBCL during bootstrap phase
-   - Functions in HABU package (public API) and SYS package (internal)
-
-2. **ARM64 Assembler** (`arm64/asm.lisp`)
-   - Pure ARM64 instruction encoding
-   - `:arm64` package with clean API
-   - No external dependencies
-
-3. **ARM64 Codegen** (`arm64/codegen-sbcl.lisp`)
-   - IR to ARM64 machine code
-   - SBCL-specific helpers for bootstrap
-
-4. **Mach-O Linker** (`macho-linker.lisp`)
-   - Generates standalone macOS executables
-   - Chained fixups for dynamic linking
-
-5. **Standalone Interpreter** (`habu0.lisp`)
-   - Self-contained Lisp interpreter
-   - Runs without SBCL
-   - Entry point for self-hosting
-
-6. **C Runtime** (`runtime/`)
-   - Garbage collector
-   - Basic I/O operations
-   - Only used during initial bootstrap
-
-### File Organization
-
+```bash
+bd ready                    # Show unblocked work
+bd create "title" -t task -p 2   # Create issue
+bd update <id> --status in_progress  # Claim work
+bd close <id>               # Complete work
 ```
-habu/
-  bootstrap/       - SBCL bootstrap compiler
-  arm64/           - ARM64 instruction encoding and codegen
-  runtime/         - Minimal C runtime
-  common/          - Shared Lisp utilities
-  tests/           - Test suite
-  docs/            - Documentation
-  bin/             - CLI tools
-```
+
+See `bd --help` for full command reference.
+
+## MCP Server
+
+**Always use the Habu MCP server for Lisp evaluation and testing.**
+
+The project has an MCP server configured in `.mcp.json` that provides:
+- `lisp_eval` - Evaluate Habu Lisp expressions
+- `lisp_compile` - Compile to native ARM64 code
+- `lisp_disasm` - Disassemble compiled code
+- `lisp_jit` - JIT compile and execute
+- `lisp_trace` - Trace function execution
+- `lisp_inspect` - Inspect compiler internals
+- `lisp_apropos` - Search for symbols
+
+Use these tools instead of launching SBCL manually with `--load` or `--eval`.
 
 ## Development Guidelines
 
 ### Problem Solving
 
-- **Ultrathink for significant efforts**: When facing complex tasks, multi-step implementations, or difficult bugs, use extended thinking to plan thoroughly before acting
-- **Take no shortcuts**: Always identify the root cause of bugs
+- **Ultrathink for significant efforts**: Use extended thinking for complex tasks
+- **Take no shortcuts**: Always identify root cause of bugs
 - Investigate systematically, don't patch symptoms
-- Understand WHY something fails before attempting fixes
-- Add tests that reproduce the bug before fixing it
+- Add tests that reproduce bugs before fixing
 
 ### Session Management
 
-1. **CONTEXT.md** - The primary context file for session progress
-   - This is THE ONLY file to update with session progress and current state
-   - Current development phase and active tasks
-   - Recent changes and bug fixes (this session)
-   - Known issues and workarounds
-   - Test status and results
-   - Update after each major step or milestone
-   - DO NOT use SESSION.md (historical log only)
-   - DO NOT create SESSION_SUMMARY.md (use CONTEXT.md instead)
+1. **CONTEXT.md** - Codebase knowledge (architecture, conventions, technical reference)
+   - Update only when architecture or conventions change
+   - Do NOT track tasks here - use beads instead
 
-2. **SESSION.md** - Historical log only
-   - Large append-only log file (27MB+)
-   - Contains past session transcripts
-   - DO NOT write session summaries here
-   - Only append if explicitly instructed
+2. **beads (bd)** - Work items (bugs, features, tasks)
+   - All tasks tracked via `bd create/update/close`
+   - Check `bd ready` for available work
 
-3. **Commits** - One logical feature per commit:
+3. **SESSION.md** - Historical log (auto-populated by hooks)
+   - Do NOT write here manually
+
+4. **Commits** - One logical feature per commit
    - Include tests with implementation
    - Short, descriptive summary
-   - No separate "fixed this" commits
 
 ### Code Style
 
 - **Hex numbers**: Use `#x` prefix for addresses, offsets, constants
 - **No emojis**: Never in code, commits, or docs
 - **No marketing language**: Use technical facts
-- **Tests**: Minimal, purpose comment at top, no color output
-- **Warnings as errors**: ASDF treats all warnings as errors. Fix warnings immediately.
-- **No inline loads**: Use ASDF for dependencies, never `(load ...)` in source files
+- **Warnings as errors**: ASDF treats warnings as errors. Fix immediately.
+- **No inline loads**: Use ASDF, never `(load ...)` in source files
+- **Naming**: Always use `reg-alloc` (hyphenated), never `regalloc`
 
 ### Code Generation Policy
 
-When adding new ARM64 instructions:
-
-1. Add intrinsics to `arm64/asm.lisp` in `:arm64` package
-2. Use existing ARM64 intrinsics wherever possible
-3. Prefer direct ARM64 calls over wrapping in helper functions
-
 **IMPORTANT - No Wrapper Functions in codegen.lisp**:
-- DO NOT add new `#+sbcl` / `#-sbcl` wrapper functions in `codegen.lisp`
-- Instead, add reader conditionals directly in `arm64/asm.lisp` intrinsics
-- The `arm64/asm.lisp` functions use keyword args (`:imm t`, `:reg t`, `:offset N`)
-- Put the `#-sbcl` native encoding directly in the intrinsic function
-- This keeps all ARM64 encoding in one place and reduces codegen.lisp complexity
+- Use `arm64:*` intrinsics directly with keyword args (`:imm t`, `:offset N`)
+- Add new instruction variants to `arm64/asm.lisp`, not wrapper functions
+- Example: `(arm64:orr rd rn 1 :imm t)` not `(orr-imm rd rn 1)`
+
+**Branch Offset Convention**:
+- All branches take instruction counts, not bytes
+- Convert from bytes: `(ash byte-offset -2)`
 
 ### Debugging
 
-- Use Lisp `trace` facility for debugging
-- Check CONTEXT.md for known issues
-- Use lldb with function symbols (now embedded in binaries)
-- Common exit codes:
-  - 139 = SIGSEGV (memory access error)
-  - 138 = SIGBUS (bus error, often stack slot collision)
-  - 137 = SIGKILL (often codesign issue on macOS)
+- Use Lisp `trace` facility
+- Use `lldb` with embedded function symbols
+- Use `slot-debug.lisp` for stack slot collision diagnosis
+- Exit codes: See CONTEXT.md
 
-### Slot Debug Tool
+## Testing
 
-The `slot-debug.lisp` tool helps diagnose stack slot conflicts in funcall-ir codegen:
+**Always use ASDF for loading and testing.**
 
 ```lisp
-;; Load the tool
-(load "bootstrap/slot-debug.lisp")
-
-;; Analyze funcall-ir slot layout
-(habu::print-funcall-slot-layout td num-args param-space stack-space)
-
-;; Check for slot conflicts
-(habu::check-funcall-slot-overlap td num-args total-offset)
-
-;; Analyze a crash by offset (e.g., from lldb showing ldr x9, [sp, #0x88])
-(habu::analyze-crash-offset #x88 td num-args param-space stack-space)
-
-;; Run full diagnosis for common crash patterns
-(habu::diagnose-funcall-bug)
+(asdf:test-system :habu)           ; Run all tests
+(asdf:load-system :habu/tests)     ; Load test system
 ```
 
-Key insight: funcall-ir uses temp slots for saves (x24, x20, x30, code-addr, env) and args.
-After sp adjustment, offsets must be adjusted. The tool detects when adjusted offsets
-overlap with unadjusted arg slots.
+Test organization in `bootstrap/habu.asd`:
+- `bootstrap/test-harness.lisp` - Test utilities
+- `tests/test-*.lisp` - Test files
 
-### Slash Commands
-
-Available commands for Habu development (use `/command-name`):
+## Slash Commands
 
 **Build & Test:**
-1. **`/habu-build-test`** - Compile and test workflow
-   - Compiles source, runs binary, reports results
-   - Automatically runs error analysis on failures
-
-2. **`/habu-run-tests [pattern]`** - Run test suite
-   - Runs all tests or matches pattern
-   - Reports PASS/FAIL with semantic context
-
-3. **`/habu-stage <N|verify>`** - Self-compilation stages
-   - Builds Stage 1/2/3 compilation
-   - Verifies fixed-point achievement
+- `/habu-build-test` - Compile and test workflow
+- `/habu-run-tests [pattern]` - Run test suite
+- `/habu-stage <N|verify>` - Self-compilation stages
 
 **Debugging:**
-4. **`/habu-debug <binary>`** - Debug crashes
-   - Loads binary in lldb with SIGSEGV handling
-   - Shows crash location with function context
-
-5. **`/habu-analyze <error>`** - Structured error analysis
-   - Forms hypotheses before attempting fixes
-   - Tests each hypothesis systematically
-
-6. **`/habu-disasm <binary> [function]`** - Disassemble binaries
-   - Lists all functions with addresses
-   - Shows ARM64 instructions with annotations
+- `/habu-debug <binary>` - Debug with lldb
+- `/habu-analyze <error>` - Structured error analysis
+- `/habu-disasm <binary> [function]` - Disassemble
 
 **Inspection:**
-7. **`/habu-ir <source>`** - Inspect compiler IR
-   - Shows intermediate representation
-   - Displays defun definitions and main IR
-   - Useful for debugging compilation issues
-
-8. **`/habu-compare <bin1> <bin2>`** - Compare binaries
-   - Byte-by-byte comparison
-   - Shows differences with context
-   - Used for fixed-point verification
-
-9. **`/habu-hexdump <binary> [range]`** - Hex dump with annotations
-   - Section-aware hex dump
-   - Shows Mach-O structure
-   - Function boundaries marked
-
-10. **`/habu-profile <binary> [duration]`** - Profile running binary
-    - Uses macOS `sample` tool to identify hot functions
-    - Maps sample addresses to function names via nm
-    - Reports top functions by sample count
-    - Binary must have embedded symbols (deliver-v3)
+- `/habu-ir <source>` - Inspect compiler IR
+- `/habu-compare <bin1> <bin2>` - Compare binaries
+- `/habu-hexdump <binary> [range]` - Hex dump
+- `/habu-profile <binary> [duration]` - Profile
 
 **System:**
-11. **`/habu-load`** - Load compiler via ASDF
-    - Loads all bootstrap files with correct dependencies
-    - Handles compilation order automatically
-    - Use for interactive REPL development
-
-### Symbol Table Support
-
-Habu binaries now include function symbols in LC_SYMTAB:
-- `nm <binary>` shows all functions
-- `lldb -o "disassemble -n FUNCTION"` works directly
-- Backtraces show function names instead of addresses
+- `/habu-load` - Load compiler via ASDF
 
 ## TAC (Three-Address Code) Pipeline
 
-The register allocator uses a nanopass architecture in `bootstrap/reg-alloc.lisp`:
-
-### Passes
+Register allocator in `bootstrap/reg-alloc.lisp`:
 
 1. **ir-to-tac** - Tree IR to linear TAC
-   - Input: `(add (var 0) (mul (lit 2) (var 1)))`
-   - Output: `((tac-var v0 0) (tac-lit v1 2) (tac-var v2 1) (tac-binop v3 mul v1 v2) (tac-binop v4 add v0 v3))`
-
 2. **compute-liveness** - Backward dataflow analysis
-   - Computes live-in/live-out sets for each instruction
-
 3. **compute-intervals** - Live intervals
-   - Output: `((vreg start end) ...)`
+4. **linear-scan** - Register allocation (x9-x15)
+5. **tac-codegen** - TAC to ARM64
 
-4. **linear-scan** - Register allocation
-   - Allocates x9-x15 (7 registers)
-   - Spills to stack when exhausted
-
-5. **tac-codegen** - TAC + allocation to ARM64 (TODO)
-
-### TAC Instruction Formats
-
+TAC instruction formats:
 ```lisp
 (tac-lit vreg value)           ; vreg = literal
 (tac-var vreg offset)          ; vreg = env[offset]
-(tac-setvar offset vreg)       ; env[offset] = vreg
 (tac-binop vreg op vr1 vr2)    ; vreg = vr1 op vr2
 (tac-call vreg fn args)        ; vreg = fn(args...)
 (tac-if vreg then-lbl else-lbl); conditional branch
 (tac-label name)               ; label
-(tac-goto label)               ; unconditional jump
 (tac-return vreg)              ; return value
-(tac-move vreg1 vreg2)         ; vreg1 = vreg2
 ```
-
-### ARM64 Package
-
-All ARM64 instructions use the `arm64` package (`arm64/asm.lisp`):
-
-```lisp
-(arm64:add rd rn rm)              ; register
-(arm64:add rd rn imm :imm t)      ; immediate
-(arm64:ldr rt rn :offset off)     ; load with offset
-(arm64:str rt rn :offset off)     ; store with offset
-(arm64:ldrb rt rn off)            ; load byte immediate
-(arm64:ldrb rt rn rm :reg t)      ; load byte register
-(arm64:cmp rn rm)                 ; compare register
-(arm64:cmp rn imm :imm t)         ; compare immediate
-(arm64:b.eq offset)               ; branch if equal (instruction count)
-```
-
-**IMPORTANT - Branch Offset Convention:**
-- All branch instructions (`arm64:b`, `arm64:b.eq`, `arm64:b.lt`, etc.) take **instruction count** offsets, not byte offsets
-- The ARM64 PC-relative encoding uses instruction counts (each instruction is 4 bytes)
-- When computing dynamic offsets from `code-size` (which returns bytes), divide by 4: `(ash byte-offset -2)`
-- Example: To skip 3 instructions forward, use offset `3`, not `12`
-
-```lisp
-;; Correct: instruction count offset
-(arm64:b.eq 5)                    ; skip 5 instructions (20 bytes)
-
-;; For dynamic offsets computed from code-size (bytes):
-(arm64:b (ash (+ else-size 4) -2))  ; convert bytes to instruction count
-```
-
-## Self-Hosting Path
-
-### Current Status
-
-1. **habu0** - Standalone interpreter (working)
-   - Reads and parses Lisp
-   - Interprets via h0-eval
-   - Compiles to IR via h0-compile
-   - Generates native code via h0-codegen
-
-2. **Native executables** - Generated programs run without SBCL
-
-3. **Full compiler** - Still needs SBCL for:
-   - `defmacro` (uses SBCL `eval` for expanders)
-   - Some reader features
-
-### Blockers for Full Self-Hosting
-
-1. Macro expansion at compile time needs native eval
-2. Complex nested function calls in certain patterns
-
-## Testing
-
-**IMPORTANT**: Always use ASDF for loading and testing. Never use direct `(load ...)` calls.
-
-### Running Tests
-
-Run the full test suite via ASDF:
-```lisp
-(asdf:test-system :habu)
-```
-
-Or load and run interactively:
-```lisp
-(asdf:load-system :habu/tests)
-(habu-test:run-all-tests)
-```
-
-### Test Organization
-
-Tests are defined in `bootstrap/habu.asd` as the `habu/tests` system:
-- `bootstrap/test-harness.lisp` - Test utilities (HABU-TEST package)
-- `tests/test-core.lisp` - Core compiler tests
-- `tests/test-keyword-args.lisp` - Keyword argument tests
-- `tests/test-packages.lisp` - Package system tests
-
-### Writing Tests
-
-Use the test harness macros in HABU-TEST package:
-```lisp
-(in-package :habu-test)
-
-(define-test-suite "Feature Name"
-  (test "test-name" "source-code" expected-exit-code)
-  (test-full "test-name" "(full source with sys-exit)" expected))
-```
-
-### Test Naming
-
-- ASDF test files: `test-feature.lisp` (hyphenated)
-- Legacy standalone tests: `test_feature.lisp` (underscored)
-
-### Key Points
-
-1. Never `(load ...)` source files in tests - use ASDF dependencies
-2. Tests run when their files are loaded during `asdf:test-system`
-3. Use `:depends-on` in ASDF to ensure proper load order
-4. Test harness provides counters: `*pass-count*`, `*fail-count*`, `*skip-count*`
 
 ## Reference
 
 - Common Lisp HyperSpec: https://www.lispworks.com/documentation/HyperSpec/Front/Contents.htm
 - Git author: Joel Reymont <18791+joelreymont@users.noreply.github.com>
 
-## Key Patterns in Habu Code
+## Compiler Quirks
 
-### Compiler Quirks
-
-1. **List expressions with function calls**
-   - Pre-compute function calls in `let` bindings before placing in lists
-   - Direct calls in `(list (fn arg) ...)` may crash in native code
-
-2. **Tagged values**
-   - Fixnums: `value << 4`, tag 0
-   - Cons: `pointer | 1`
-   - Symbols: `pointer | 2`
-
-3. **Register usage**
-   - x20: Environment frame base
-   - x28: Heap bump pointer
-   - x26: Code base (for native executables)
-   - x27: Heap base
+1. **List expressions with function calls**: Pre-compute in `let` bindings
+2. **Tagged values**: See CONTEXT.md for full layout
+3. **Register usage**: See CONTEXT.md for full mapping
 
 ## When Stuck
 
-1. Check CONTEXT.md for similar past issues
-2. Use `trace` to debug function calls
-3. Ask for help - it's allowed and encouraged
+1. Check CONTEXT.md for technical reference
+2. Check `bd list` for related issues
+3. Use `trace` to debug function calls
+4. Ask for help

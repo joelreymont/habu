@@ -873,7 +873,7 @@
 
   ;; Stage 1: Compile to IR
   (format t "~%--- Stage 1: Compile to IR ---~%")
-  (let ((ir (sys:compile expr env fenv nil nil nil)))
+  (let ((ir (sys:compile expr env fenv)))
     (format t "Raw IR:~%")
     (print-ir ir 1)
 

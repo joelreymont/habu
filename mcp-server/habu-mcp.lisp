@@ -274,22 +274,27 @@
 ;;; Tool Implementations
 ;;; ============================================================
 
+(defparameter *eval-timeout* 10 "Timeout in seconds for eval operations")
+
 (defun safe-eval (code-string)
-  "Safely evaluate Lisp code, capturing output and errors"
+  "Safely evaluate Lisp code, capturing output and errors. Times out after *eval-timeout* seconds."
   (let ((output (make-string-output-stream))
         (result nil)
         (error-msg nil))
     (handler-case
-        (let ((*standard-output* output)
-              (*error-output* output)
-              (*trace-output* output))
-          (setf result
-                (with-input-from-string (in code-string)
-                  (let ((last-val nil))
-                    (loop
-                      (let ((form (read in nil :eof)))
-                        (when (eq form :eof) (return last-val))
-                        (setf last-val (eval form))))))))
+        (sb-ext:with-timeout *eval-timeout*
+          (let ((*standard-output* output)
+                (*error-output* output)
+                (*trace-output* output))
+            (setf result
+                  (with-input-from-string (in code-string)
+                    (let ((last-val nil))
+                      (loop
+                        (let ((form (read in nil :eof)))
+                          (when (eq form :eof) (return last-val))
+                          (setf last-val (eval form)))))))))
+      (sb-ext:timeout ()
+        (setf error-msg (format nil "Evaluation timed out after ~D seconds" *eval-timeout*)))
       (error (e)
         (setf error-msg (format nil "~A" e))))
     (let ((out-str (get-output-stream-string output)))

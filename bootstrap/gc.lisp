@@ -50,6 +50,8 @@
 (defconstant +gc-symbol-table-offset+ 56)    ;; For codegen symbol table
 (defconstant +gc-argc-offset+ 64)            ;; Command-line argument count
 (defconstant +gc-argv-offset+ 72)            ;; Command-line argument vector
+(defconstant +gc-packages-offset+ 80)        ;; Package list for native reader
+(defconstant +gc-current-package-offset+ 88) ;; Current package name
 (defconstant +gc-heap-data-offset+ 96)       ;; Heap data starts after globals
 
 (defconstant +gc-tag-mask+ #xF)

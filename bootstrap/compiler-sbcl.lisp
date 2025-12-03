@@ -1398,6 +1398,18 @@
          (t (mapcar (lambda (e) (rewrite-labels-main e fn-names)) expr)))))
     (t expr)))
 
+;;; Known global variables that map to IR forms
+;;; Defined here because sys:compile references them
+(defparameter *known-globals*
+  '((*intern-table* . (get-intern-table-ir . set-intern-table-ir))
+    (*lambda-counter* . (get-lambda-counter-ir . set-lambda-counter-ir))
+    (*packages* . (get-packages-ir . set-packages-ir))
+    (*current-package* . (get-current-package-ir . set-current-package-ir))))
+
+;;; Compile-time constants collected from defconstant forms
+(defparameter *constants* nil
+  "Alist of (name . value) for defconstant values during compilation")
+
 (defun quote-ir (obj)
   (cond
     ((numberp obj) (list 'lit obj))
@@ -1424,11 +1436,20 @@
         (let ((off (env-lookup expr env)))
           (if (numberp off)
               (list 'var off)
-              ;; Check if it's a known function name - return as lambda-ref
-              ;; This creates a closure pointing to the function (no captures)
-              (if (and fenv (assoc expr fenv))
-                  (list 'lambda-ref expr nil)
-                  (error "Undefined variable: ~S" expr)))))))
+              ;; Check if it's a compile-time constant
+              (let ((const-entry (and (boundp '*constants*) *constants* (assoc expr *constants*))))
+                (if const-entry
+                    (list 'lit (cdr const-entry))
+                    ;; Check if it's a known global variable
+                    (let ((global-entry (assoc expr *known-globals*)))
+                      (if global-entry
+                          ;; Emit getter IR form for the global
+                          (list (car (cdr global-entry)))
+                          ;; Check if it's a known function name - return as lambda-ref
+                          ;; This creates a closure pointing to the function (no captures)
+                          (if (and fenv (assoc expr fenv))
+                              (list 'lambda-ref expr nil)
+                              (error "Undefined variable: ~S" expr)))))))))))
     ((consp expr)
      (let ((op (car expr)))
        (cond
@@ -1913,7 +1934,13 @@
                  (off (env-lookup var env)))
             (if (numberp off)
                 (list 'setq-ir off (sys:compile val env fenv))
-                (list 'lit 0))))
+                ;; Check if it's a known global variable
+                (let ((global-entry (assoc var *known-globals*)))
+                  (if global-entry
+                      ;; Emit setter IR form for the global
+                      (list (cdr (cdr global-entry)) (sys:compile val env fenv))
+                      ;; Unknown variable - return nil
+                      (list 'lit 0))))))
          ;; setcar - mutate car of cons cell
          ((eq op 'setcar)
           (list 'setcar-ir (sys:compile (cadr expr) env fenv) (sys:compile (caddr expr) env fenv)))
@@ -4815,9 +4842,38 @@
     ;; Return all-params (without &key) for codegen to use
     (list name all-params bir pb)))
 
-;; Two-pass compilation for mutual recursion support
+;; Multi-pass compilation for mutual recursion and constant support
+;; Pass 0: Collect constants from defconstant forms
 ;; Pass 1: Collect all defun names into fenv with placeholder entries
 ;; Pass 2: Compile function bodies with complete fenv
+
+(defun declaration-form-p (form)
+  "Check if form is a declaration that should be skipped in code generation."
+  (and (consp form)
+       (member (car form) '(defconstant defvar defparameter in-package defpackage))))
+
+(defun collect-constants (forms acc)
+  "Collect all defconstant definitions into an alist of (name . value).
+   Recurses into progn forms."
+  (if (null forms)
+      acc
+      (let ((f (car forms)))
+        (cond
+          ((and (consp f) (eq (car f) 'defconstant))
+           ;; (defconstant name value) - evaluate value at compile time
+           (let* ((name (cadr f))
+                  (value (caddr f))
+                  ;; Evaluate constant value (should be a literal or simple expression)
+                  (evaluated (if (numberp value) value
+                                (if (and (consp value) (eq (car value) 'quote))
+                                    (cadr value)
+                                    (eval value)))))
+             (collect-constants (cdr forms) (cons (cons name evaluated) acc))))
+          ((and (consp f) (eq (car f) 'progn))
+           ;; Recurse into progn
+           (collect-constants (cdr forms)
+                             (collect-constants (cdr f) acc)))
+          (t (collect-constants (cdr forms) acc))))))
 
 (defun collect-defun-names (forms acc)
   "Pass 1: Collect all defun names and param info from forms, recursing into progn.
@@ -4860,16 +4916,19 @@
           (t (compile-defuns (cdr forms) env fenv acc))))))
 
 (defun find-main-form (forms)
-  "Find all non-defun forms and wrap them in progn if more than one.
-   Recurses into progn forms to strip nested defuns."
+  "Find all non-defun, non-declaration forms and wrap them in progn if more than one.
+   Recurses into progn forms to strip nested defuns and declarations."
   (labels ((strip-defuns (fs acc)
-             ;; Recursively collect non-defun forms, flattening progn
+             ;; Recursively collect non-defun, non-declaration forms, flattening progn
              (if (null fs)
                  acc
                  (let ((f (car fs)))
                    (cond
                      ((and (consp f) (eq (car f) 'defun))
                       ;; Skip defuns
+                      (strip-defuns (cdr fs) acc))
+                     ((declaration-form-p f)
+                      ;; Skip declaration forms (defconstant, defvar, defparameter, in-package, defpackage)
                       (strip-defuns (cdr fs) acc))
                      ((and (consp f) (eq (car f) 'progn))
                       ;; Recurse into progn, flatten results
@@ -4884,9 +4943,11 @@
             (t (cons 'progn main-forms))))))
 
 (defun compile-forms (forms)
-  "Two-pass compilation: first collect names, then compile with complete fenv"
-  ;; Pass 1: Collect all defun names
-  (let* ((fn-names (collect-defun-names forms nil))
+  "Multi-pass compilation: collect constants, then names, then compile"
+  ;; Pass 0: Collect constants from defconstant forms
+  (let* ((*constants* (collect-constants forms nil))
+         ;; Pass 1: Collect all defun names
+         (fn-names (collect-defun-names forms nil))
          ;; Build fenv with all function names as placeholders
          (fenv fn-names))
     ;; Pass 2: Compile all defuns with complete fenv

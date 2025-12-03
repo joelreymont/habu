@@ -1942,6 +1942,26 @@
        (append val-code
                (arm64:str 0 27 :offset 56))))
 
+    ;; Get-packages: load packages list from [x27 + 80]
+    ((has-tag ir 'get-packages-ir)
+     (arm64:ldr 0 27 :offset 80))
+
+    ;; Set-packages: store packages list to [x27 + 80], return value
+    ((has-tag ir 'set-packages-ir)
+     (let ((val-code (codegen (cadr ir) rtaddrs fnoffs td)))
+       (append val-code
+               (arm64:str 0 27 :offset 80))))
+
+    ;; Get-current-package: load current package from [x27 + 88]
+    ((has-tag ir 'get-current-package-ir)
+     (arm64:ldr 0 27 :offset 88))
+
+    ;; Set-current-package: store current package to [x27 + 88], return value
+    ((has-tag ir 'set-current-package-ir)
+     (let ((val-code (codegen (cadr ir) rtaddrs fnoffs td)))
+       (append val-code
+               (arm64:str 0 27 :offset 88))))
+
     ;; TCO: loop-ir wraps body that may contain continue-ir nodes
     ;; Just generate body code - the loop-start is resolved at function level
     ((has-tag ir 'loop-ir)
@@ -2159,9 +2179,9 @@
   ;; Try register-allocated codegen if enabled
   #+sbcl
   (when *use-register-allocation*
-    (let ((regalloc-code (codegen-fn-regalloc fn)))
-      (when regalloc-code
-        (return-from codegen-fn regalloc-code))))
+    (let ((reg-alloc-code (codegen-fn-reg-alloc fn)))
+      (when reg-alloc-code
+        (return-from codegen-fn reg-alloc-code))))
   ;; Fall back to accumulator-based codegen
   (let* ((params (cadr fn))
          (body-ir (caddr fn))
