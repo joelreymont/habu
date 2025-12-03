@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "habu": {
+      "command": "sbcl",
+      "args": ["--noinform", "--load", "mcp-server/habu-mcp.lisp"],
+      "cwd": "/Users/joel/Work/habu"
+    }
+  }
+}
