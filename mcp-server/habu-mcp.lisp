@@ -23,15 +23,15 @@
 
 ;;; Load Habu compiler
 (handler-case
-    (let ((*default-pathname-defaults*
-           (merge-pathnames "../bootstrap/"
-                            (make-pathname :defaults *load-truename*))))
-      (push (merge-pathnames "../bootstrap/"
-                             (make-pathname :defaults *load-truename*))
-            asdf:*central-registry*)
+    (let* ((mcp-dir (make-pathname :directory (pathname-directory *load-truename*)))
+           (bootstrap-dir (merge-pathnames (make-pathname :directory '(:relative :up "bootstrap"))
+                                           mcp-dir)))
+      (push bootstrap-dir asdf:*central-registry*)
       (asdf:load-system :habu))
   (error (e)
-    (declare (ignore e))))
+    ;; Log error to stderr for debugging
+    (format *error-output* "Failed to load Habu: ~A~%" e)
+    (force-output *error-output*)))
 
 ;;; Restore output streams for MCP communication
 (setf *standard-output* (sb-sys:make-fd-stream 1 :output t :buffering :line))
@@ -158,6 +158,7 @@
     (labels ((emit (x)
                (cond
                  ((eq x :null) (write-string "null" s))
+                 ((eq x :empty-object) (write-string "{}" s))
                  ((eq x nil) (write-string "null" s))
                  ((eq x t) (write-string "true" s))
                  ((stringp x)
@@ -392,7 +393,7 @@
   (declare (ignore params))
   (make-response id
     `(("protocolVersion" . "2024-11-05")
-      ("capabilities" . (("tools" . ())))
+      ("capabilities" . (("tools" . :empty-object)))
       ("serverInfo" . (("name" . "habu-mcp")
                        ("version" . "1.0.0"))))))
 
@@ -455,7 +456,13 @@
           (when (> (length line) 0)
             (let* ((request (handler-case (parse-json line)
                               (error () nil)))
-                   (response (when request (handle-request request))))
+                   (response (when (and request (listp request))
+                               (handler-case (handle-request request)
+                                 (error (e)
+                                   (make-error-response
+                                    (ignore-errors (jget request "id"))
+                                    -32603
+                                    (format nil "Internal error: ~A" e)))))))
               (when response
                 (write-line (serialize-json response))
                 (force-output)))))))))

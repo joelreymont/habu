@@ -40,20 +40,41 @@
    #:compile-program    ; Compile forms to ARM64 bytecode
    #:deliver            ; Compile source to native executable
    #:deliver-file       ; Compile file to native executable
+   #:deliver-v2         ; V2 delivery (FASL-based)
+   #:deliver-v3         ; V3 delivery
    ;; Disassembler
    #:disassemble
    #:disasm
    #:disassemble-bytes
    #:disassemble-form
    #:disassemble-bytecode
+   #:disassemble-arm64-instr
+   #:habu-disassemble
    ;; Optimizer
    #:optimize-ir
    ;; Evaluator and compiler (CL-spec)
    #:eval
    #:compile
-   ;; Internal functions (for tests)
+   #:habu-compile
+   ;; Internal compiler functions (for tests and self-hosting)
    #:eval-ir #:eval-forms #:codegen #:codegen-main
    #:eval-ir-with-fns #:compile-forms
+   #:compile-expr #:compile-expr-v2 #:compile-expr-full
+   #:compile-program-simple #:compile-program-with-symtab
+   #:compile-to-bytecode #:compile-defun #:compile-lambda #:compile-labels
+   #:self-compile
+   ;; Codegen internals
+   #:reset-symbol-table #:prologue #:epilogue
+   ;; Mach-O and linking
+   #:write-macho-executable-with-imports-and-heap
+   #:build-macho-executable-with-imports-and-heap
+   #:wrap-bytecode-with-heap-for-imports
+   #:resolve-calls-simple
+   #:link-fasls
+   ;; FASL support
+   #:write-fasl-v2 #:read-fasl-v2 #:compile-file-to-fasl
+   ;; Re-export CL functions used in compiled code
+   #:append #:reverse #:length
    ;; Re-export system primitives for convenience
    #:string-length #:string-ref #:make-string-from-vector
    #:make-vector #:vector-set
@@ -5869,9 +5890,6 @@ int main(int argc, char **argv) {
        (sys:compile body-form env nil)))
     (t (sys:compile form nil nil))))
 
-(export '(habu-disassemble habu-compile disassemble-form disassemble-bytecode
-          disassemble-arm64-instr) :habu)
-
 ;;; ============================================================
 ;;; Main entry point (for testing)
 ;;; ============================================================
@@ -5969,9 +5987,6 @@ int main(int argc, char **argv) {
                      (all-code (append main-code fn-code))
                      (bytecode (resolve-calls all-code fnoffs)))
                 (cons bytecode fnoffs))))))))
-
-;;; Export for FASL compilation
-(export 'compile-program-with-symtab :habu)
 
 ;;; ============================================================
 ;;; Part 8b: Enhanced FASL Format (v2) with Symbol Tables
@@ -6100,9 +6115,6 @@ int main(int argc, char **argv) {
               source-path fasl-path (length bytecode) (if symtab (length symtab) 0))
       fasl-path)))
 
-;;; Export FASL functions
-(export '(write-fasl-v2 read-fasl-v2 compile-file-to-fasl) :habu)
-
 ;;; ============================================================
 ;;; Part 8c: FASL Linker - Combine Multiple Compilation Units
 ;;; ============================================================
@@ -6151,5 +6163,3 @@ int main(int argc, char **argv) {
       (format t "Created: ~A~%" output-path))
     output-path))
 
-;;; Export linker function
-(export 'link-fasls :habu)

@@ -266,9 +266,6 @@
     ;; Default: unknown, compile to lit 0
     (t (compile-lit 0))))
 
-;;; Export pure compiler
-#+sbcl (export '(compile-expr append reverse length) :habu)
-
 ;;; ============================================================
 ;;; Expanded Compiler - More Expression Types
 ;;; ============================================================
@@ -373,9 +370,6 @@
     ((eq (car expr) 'cdr) (compile-cdr expr env))
     ((eq (car expr) 'list) (compile-list expr env))
     (t (compile-lit 0))))
-
-;;; Export enhanced compiler
-#+sbcl (export 'compile-expr-v2 :habu)
 
 ;;; ============================================================
 ;;; Keyword Argument Support (Pure Habu)
@@ -1702,10 +1696,6 @@
          (main-ir (compile-expr-full main-form nil fenv)))
     (list defuns main-ir)))
 
-;;; Export full compiler
-#+sbcl (export '(compile-expr-full compile-forms
-          compile-defun compile-lambda compile-labels) :habu)
-
 ;;; ============================================================
 ;;; Integration with Existing Codegen (SBCL-only bridging functions)
 ;;; ============================================================
@@ -1963,10 +1953,6 @@
 
             ;; Write Mach-O executable (handles chmod+codesign via native-write-executable)
             (write-macho-executable-with-imports-and-heap output-path wrapped-code imports #x800000)))))))
-
-;;; Export self-hosting entry point
-#+sbcl (export '(compile-to-bytecode compile-program-simple self-compile
-          compile-program deliver) :habu)
 
 ;;; Native entry point: When building Stage 1, use the main entry point
 ;;; defined in the combined source file (self-compile is called explicitly

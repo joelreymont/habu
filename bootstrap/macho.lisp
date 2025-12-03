@@ -1169,8 +1169,3 @@
          (exe-str (buf-to-string exe-buf)))
     ;; Use native-write-executable which handles +x and codesign
     (native-write-executable output-path exe-str)))
-
-;;; Export the main functions for use by deliver
-(export '(write-macho-executable-with-imports-and-heap
-          build-macho-executable-with-imports-and-heap
-          wrap-bytecode-with-heap-for-imports) :habu)

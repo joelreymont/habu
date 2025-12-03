@@ -396,17 +396,83 @@
 ;;; GC globals offsets (must match gc.lisp)
 (defconstant +gc-from-end-offset+ 16)
 
+;;; Generational GC offsets (must match gen-gc.lisp)
+(defconstant +gen-nursery-end-offset+ 88)
+(defconstant +gen-card-table-offset+ 96)
+(defconstant +gen-card-shift+ 9)  ; log2(512) for card size
+
+;;; Toggle for generational GC mode
+;;; When t, uses nursery allocation with write barriers
+#+sbcl (defvar *use-generational-gc* nil)
+
+;;; Toggle for register-allocated codegen
+;;; When t, uses register allocator for function code generation
+;;; Falls back to accumulator-based codegen for unsupported IR
+#+sbcl (defvar *use-register-allocation* nil)
+
 (defun gc-trigger-code ()
   "Generate inline GC trigger check. Insert after allocations.
-   Uses x9 as scratch. Emits :call-fn GC-COLLECT marker if GC needed.
-   Returns list suitable for append-all - double-wrapped marker."
+   Uses x9 as scratch. Emits :call-fn marker if GC needed.
+   In generational mode: checks nursery-end, calls GEN-MINOR-GC.
+   In simple mode: checks from-end, calls GC-COLLECT."
+  #+sbcl
+  (if *use-generational-gc*
+      ;; Generational GC: compare against nursery-end
+      (append-all
+       (list (arm64:ldr 9 27 :offset +gen-nursery-end-offset+)  ; x9 = nursery_end
+             (arm64:cmp 28 9)                                   ; compare x28, nursery_end
+             (arm64:b.lo 2)                                     ; skip if x28 < nursery_end
+             (list (list :call-fn 'GEN-MINOR-GC))))
+      ;; Simple GC: compare against from-end
+      (append-all
+       (list (arm64:ldr 9 27 :offset +gc-from-end-offset+)  ; x9 = from_end
+             (arm64:cmp 28 9)                               ; compare x28, from_end
+             (arm64:b.lo 2)
+             (list (list :call-fn 'GC-COLLECT)))))
+  #-sbcl
+  ;; Native mode: always use simple GC for now
   (append-all
-   (list (arm64:ldr 9 27 :offset +gc-from-end-offset+)  ; x9 = from_end
-         (arm64:cmp 28 9)                           ; compare x28, from_end
-         ;; B.LO +2 instructions (skip the BL if x28 < from_end)
+   (list (arm64:ldr 9 27 :offset +gc-from-end-offset+)
+         (arm64:cmp 28 9)
          (arm64:b.lo 2)
-         ;; Call GC-COLLECT if needed (marker resolved later)
          (list (list :call-fn 'GC-COLLECT)))))
+
+(defun gen-write-barrier-code (target-reg)
+  "Generate write barrier for stores to heap objects.
+   TARGET-REG is the register containing the target object address.
+   Call after every heap store that may create an old->young pointer.
+
+   The barrier:
+   1. Checks if target is in old space (address >= nursery_end)
+   2. If so, computes card index and marks card dirty
+
+   Uses x9, x10 as scratch. Only generated in generational GC mode."
+  #+sbcl
+  (if *use-generational-gc*
+      (append-all
+       (list
+        ;; Clear tag bits to get base address
+        (arm64:and* 9 target-reg -16 :imm t)     ; x9 = base address
+        ;; Load nursery_end (old space starts here)
+        (arm64:ldr 10 27 :offset +gen-nursery-end-offset+)  ; x10 = nursery_end
+        ;; Check if target < nursery_end (in nursery, no barrier needed)
+        (arm64:cmp 9 10)
+        (arm64:b.lo 7)                           ; skip barrier if in nursery (7 instrs)
+        ;; Target is in old space - mark card dirty
+        ;; card_index = (addr - old_space_start) >> 9
+        (arm64:sub 9 9 10)                       ; x9 = addr - old_space_start
+        (arm64:lsr 9 9 +gen-card-shift+ :imm t)  ; x9 = card index
+        ;; card_addr = card_table + card_index
+        (arm64:ldr 10 27 :offset +gen-card-table-offset+)   ; x10 = card_table
+        (arm64:add 9 9 10)                       ; x9 = card address
+        ;; Mark card dirty (store 1)
+        (arm64:movz 10 1)
+        (arm64:strb 10 9 0)))                    ; card[index] = 1
+      ;; No barrier in simple GC mode
+      nil)
+  #-sbcl
+  ;; Native mode: no barrier for now
+  nil)
 
 ;;; ============================================================
 ;;; Helper Functions
@@ -1194,12 +1260,16 @@
               (arm64:ldr 2 31 :offset xs2)        ; x2 = idx (tagged)
               ;; Clear tag from vec by subtracting 3
               (arm64:sub 1 1 3 :imm t)              ; x1 = vec_ptr (untagged)
+              ;; Save vec base for write barrier
+              (arm64:mov 3 1)                       ; x3 = vec_ptr (for barrier)
               ;; Calculate offset: x2 = (idx >> 1) + 8
               (arm64:lsr 2 2 1 :imm t)              ; x2 = idx >> 1 = idx_untagged * 8
               (arm64:add 2 2 8 :imm t)              ; x2 = offset = 8 + idx_untagged * 8
               ;; Store val at vec_ptr + offset
               (arm64:add 1 1 2)              ; x1 = address
-              (arm64:str 0 1 :offset 0)))))       ; [x1] = val
+              (arm64:str 0 1 :offset 0)            ; [x1] = val
+              ;; Write barrier for generational GC (x3 = vec base address)
+              (gen-write-barrier-code 3)))))
 
     ;; Vector-ref: get element at index
     ;; (vector-ref-ir vec-ir idx-ir)
@@ -1347,7 +1417,9 @@
               ;; Untag cons (subtract 1)
               (arm64:sub 1 1 1 :imm t)
               ;; Store val at car position (offset 0)
-              (arm64:str 0 1 :offset 0)))))
+              (arm64:str 0 1 :offset 0)
+              ;; Write barrier for generational GC (x1 = cons base address)
+              (gen-write-barrier-code 1)))))
 
     ;; Setcdr - mutate cdr of cons cell
     ;; (setcdr-ir cons-ir val-ir)
@@ -1367,7 +1439,9 @@
               ;; Untag cons (subtract 1)
               (arm64:sub 1 1 1 :imm t)
               ;; Store val at cdr position (offset 8)
-              (arm64:str 0 1 :offset 8)))))
+              (arm64:str 0 1 :offset 8)
+              ;; Write barrier for generational GC (x1 = cons base address)
+              (gen-write-barrier-code 1)))))
 
     ;; Symbol-name - get string name from symbol
     ;; Symbols are stored as (string-pointer | 2), so untag to get string
@@ -2067,7 +2141,6 @@
 ;;; Function Codegen
 ;;; ============================================================
 
-#-sbcl
 (defun codegen-fn (fn rtaddrs fnoffs)
   "Generate code for a function.
    Accepts two formats:
@@ -2076,10 +2149,20 @@
    For SBCL format, param-base = (length free-vars).
    Uses simple fixed frame layout. Supports TCO for self-recursive functions.
 
+   When *use-register-allocation* is true, tries register-allocated codegen first,
+   falling back to accumulator-based codegen if IR not fully supported.
+
    TCO Architecture:
    - Nanopass: apply-tco-to-function (optimize.lisp) transforms tail calls to loop-ir/continue-ir
    - Codegen: handles loop-ir and continue-ir as regular IR nodes, emits :tco-branch markers
    - Emission: resolve-tco-branches converts markers to actual B instructions"
+  ;; Try register-allocated codegen if enabled
+  #+sbcl
+  (when *use-register-allocation*
+    (let ((regalloc-code (codegen-fn-regalloc fn)))
+      (when regalloc-code
+        (return-from codegen-fn regalloc-code))))
+  ;; Fall back to accumulator-based codegen
   (let* ((params (cadr fn))
          (body-ir (caddr fn))
          (fourth (cadddr fn))
@@ -2865,7 +2948,3 @@
 ;;; ============================================================
 ;;; Export Functions
 ;;; ============================================================
-
-#+sbcl (export '(codegen codegen-main reset-symbol-table
-                 resolve-calls-simple prologue epilogue
-                 deliver-v2 deliver-v3) :habu)
