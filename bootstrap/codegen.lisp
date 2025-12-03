@@ -4,32 +4,40 @@
 
 #+sbcl (in-package :habu)
 
+;;; SBCL-compatible setcar (native Habu has setcar as a primitive)
+#+sbcl
+(defun setcar (cell value)
+  "Set the CAR of CELL to VALUE, return VALUE"
+  (setf (car cell) value))
+
 ;;; ============================================================
 ;;; State Management using Cons Cells (not defparameter)
 ;;; ============================================================
 
-;; Symbol table state: ((name . id) ...)
-;; Counter stored in first cons cell: ((counter . table) . nil)
-;; Access: (car (car state)) = counter, (cdr (car state)) = table
+;; Symbol table state for codegen symbol interning.
+;; SBCL mode: uses *symbol-state* defvar as ((counter . table) . nil)
+;; Native mode: uses get-symbol-counter/set-symbol-counter at [x27+48]
+;;              and get-symbol-table-sym/set-symbol-table-sym at [x27+56]
 
 #+sbcl (defvar *symbol-state* (cons (cons 1 nil) nil))
 
-#-sbcl
 (defun reset-symbol-table ()
   "Reset symbol table state.
-   In native mode, *symbol-state* doesn't exist (defvar is a no-op),
-   so this is a no-op to avoid crashing."
+   In SBCL: resets *symbol-state* cons cell.
+   In native: resets [x27+48] = 16 (tagged 1), [x27+56] = nil."
   #+sbcl (progn
            (setf (car (car *symbol-state*)) 1)
            (setf (cdr (car *symbol-state*)) nil))
-  #-sbcl nil)  ; No-op in native - *symbol-state* not available
+  #-sbcl (progn
+           (set-symbol-counter 1)  ; Start at 1
+           (set-symbol-table-sym nil)))
 
 #-sbcl
 (defun intern-symbol (name)
-  "Get or create a symbol ID for NAME"
-  (let* ((state *symbol-state*)
-         (counter (car (car state)))
-         (table (cdr (car state))))
+  "Get or create a symbol ID for NAME.
+   Native mode: uses [x27+48] for counter, [x27+56] for table."
+  (let* ((counter (get-symbol-counter))
+         (table (get-symbol-table-sym)))
     (labels ((find-in-table (lst)
                (if (null lst)
                    nil
@@ -40,12 +48,8 @@
         (if existing
             existing
             (let ((id counter))
-              #+sbcl (progn
-                       (setf (car (car state)) (+ counter 1))
-                       (setf (cdr (car state)) (cons (cons name id) table)))
-              #-sbcl (progn
-                       (setcar (car state) (+ counter 1))
-                       (setcdr (car state) (cons (cons name id) table)))
+              (set-symbol-counter (+ counter 1))
+              (set-symbol-table-sym (cons (cons name id) table))
               id))))))
 
 ;;; ============================================================
@@ -254,7 +258,7 @@
          (has-tag ir 'cons-ir)
          (has-tag ir 'setcar-ir) (has-tag ir 'setcdr-ir)
          (has-tag ir 'string-ref-ir) (has-tag ir 'string-concat-ir)
-         (has-tag ir 'vector-ref-ir))
+         (has-tag ir 'string-equal-ir) (has-tag ir 'vector-ref-ir))
      (let* ((left (cadr ir))
             (right (caddr ir))
             (left-result (lift-lambdas left lambdas))
@@ -360,360 +364,162 @@
         (lambdas-to-defuns (cdr lambdas) (cons defun-entry acc)))))
 
 ;;; ============================================================
-;;; ARM64 Instruction Encoders (copied from compiler.lisp)
-;;; All pure functions - no state dependencies
-;;; These are only needed for native Habu (no package system).
-;;; In SBCL mode, we use the arm64:* package functions instead.
+;;; ARM64 Instruction Wrappers
+;;; These thin wrappers call arm64:* functions in both SBCL and native modes.
+;;; They provide convenience (e.g., converting shift16 to :lsl, byte to
+;;; instruction offsets) while encoding is done in arm64/asm.lisp.
 ;;; ============================================================
 
-#-sbcl
-(defun encode-word (word)
-  (let* ((b0 (logand word #xFF))
-         (s1 (ash word -8))
-         (b1 (logand s1 #xFF))
-         (s2 (ash word -16))
-         (b2 (logand s2 #xFF))
-         (s3 (ash word -24))
-         (b3 (logand s3 #xFF)))
-    (list b0 b1 b2 b3)))
-
-#-sbcl
 (defun movz (rd imm)
-  (let* ((masked (logand imm #xFFFF))
-         (shifted (ash masked 5))
-         (ored (logior #xD2800000 shifted))
-         (word (logior ored rd)))
-    (encode-word word)))
+  (arm64:movz rd imm))
 
-#-sbcl
 (defun movk (rd imm shift16)
   "MOVK Rd, #imm, LSL #shift16 - shift16 is 0, 1, 2, or 3 (for 0, 16, 32, 48)"
-  (let* ((hw-bits (ash shift16 21))
-         (imm-bits (ash (logand imm #xFFFF) 5))
-         (base (logior #xF2800000 hw-bits))
-         (word (logior base imm-bits rd)))
-    (encode-word word)))
+  (arm64:movk rd imm :lsl (* shift16 16)))
 
-#-sbcl
 (defun add-reg (rd rn rm)
-  (let* ((rm-shift (ash rm 16))
-         (rn-shift (ash rn 5))
-         (or1 (logior #x8B000000 rm-shift))
-         (or2 (logior or1 rn-shift))
-         (word (logior or2 rd)))
-    (encode-word word)))
+  (arm64:add rd rn rm))
 
-#-sbcl
 (defun sub-reg (rd rn rm)
-  (let* ((rm-shift (ash rm 16))
-         (rn-shift (ash rn 5))
-         (or1 (logior #xCB000000 rm-shift))
-         (or2 (logior or1 rn-shift))
-         (word (logior or2 rd)))
-    (encode-word word)))
+  (arm64:sub rd rn rm))
 
-#-sbcl
 (defun mul-reg (rd rn rm)
-  (let* ((rm-shift (ash rm 16))
-         (rn-shift (ash rn 5))
-         (or1 (logior #x9B007C00 rm-shift))
-         (or2 (logior or1 rn-shift))
-         (word (logior or2 rd)))
-    (encode-word word)))
+  (arm64:mul rd rn rm))
 
-#-sbcl
 (defun sdiv-reg (rd rn rm)
-  (let* ((rm-shift (ash rm 16))
-         (rn-shift (ash rn 5))
-         (or1 (logior #x9AC00C00 rm-shift))
-         (or2 (logior or1 rn-shift))
-         (word (logior or2 rd)))
-    (encode-word word)))
+  (arm64:sdiv rd rn rm))
 
-#-sbcl
 (defun lsl-imm (rd rn shift)
-  (let* ((s1 (- #x40 shift))
-         (immr (logand s1 #x3F))
-         (imms (- #x3F shift))
-         (immr-shift (ash immr 16))
-         (imms-shift (ash imms 10))
-         (rn-shift (ash rn 5))
-         (or1 (logior #xD3400000 immr-shift))
-         (or2 (logior or1 imms-shift))
-         (or3 (logior or2 rn-shift))
-         (word (logior or3 rd)))
-    (encode-word word)))
+  (arm64:lsl rd rn shift :imm t))
 
-#-sbcl
 (defun lsr-imm (rd rn shift)
-  (let* ((shift-s (ash shift 16))
-         (rn-s (ash rn 5))
-         (or1 (logior #xD340FC00 shift-s))
-         (or2 (logior or1 rn-s))
-         (word (logior or2 rd)))
-    (encode-word word)))
+  (arm64:lsr rd rn shift :imm t))
 
-#-sbcl
 (defun add-imm (rd rn imm)
-  (let* ((imm12 (logand imm #xFFF))
-         (shifted (ash imm12 10))
-         (rn-shift (ash rn 5))
-         (or1 (logior #x91000000 shifted))
-         (or2 (logior or1 rn-shift))
-         (word (logior or2 rd)))
-    (encode-word word)))
+  (arm64:add rd rn imm :imm t))
 
-#-sbcl
 (defun sub-imm (rd rn imm)
-  (let* ((imm12 (logand imm #xFFF))
-         (shifted (ash imm12 10))
-         (rn-shift (ash rn 5))
-         (or1 (logior #xD1000000 shifted))
-         (or2 (logior or1 rn-shift))
-         (word (logior or2 rd)))
-    (encode-word word)))
+  (arm64:sub rd rn imm :imm t))
 
-#-sbcl
 (defun str-offset (rt rn offset)
-  (let* ((off-scaled (ash offset -3))
-         (off-bits (ash (logand off-scaled #xFFF) 10))
-         (rn-shift (ash rn 5))
-         (or1 (logior #xF9000000 off-bits))
-         (or2 (logior or1 rn-shift))
-         (word (logior or2 rt)))
-    (encode-word word)))
+  (arm64:str rt rn :offset offset))
 
-#-sbcl
 (defun ldr-offset (rt rn offset)
-  (let* ((off-scaled (ash offset -3))
-         (off-bits (ash (logand off-scaled #xFFF) 10))
-         (rn-shift (ash rn 5))
-         (or1 (logior #xF9400000 off-bits))
-         (or2 (logior or1 rn-shift))
-         (word (logior or2 rt)))
-    (encode-word word)))
+  (arm64:ldr rt rn :offset offset))
 
-#-sbcl
 (defun ldrb (rt rn offset)
   "Load byte from [rn + offset] into rt (zero-extended)"
-  (let* ((off-bits (ash (logand offset #xFFF) 10))
-         (rn-shift (ash rn 5))
-         (or1 (logior #x39400000 off-bits))  ; LDRB unsigned offset
-         (or2 (logior or1 rn-shift))
-         (word (logior or2 rt)))
-    (encode-word word)))
+  (arm64:ldrb rt rn offset))
 
-#-sbcl
+(defun ldrb-reg (rt rn rm)
+  "LDRB Wt, [Xn, Xm] - load byte with register offset"
+  (arm64:ldrb rt rn rm :reg t))
+
+(defun subs-imm (rd rn imm)
+  "SUBS Xd, Xn, #imm - subtract immediate and set flags"
+  (arm64:subs rd rn imm :imm t))
+
+(defun ldr-reg (rt rn rm shift)
+  "LDR Xt, [Xn, Xm, LSL #shift] - load with register offset"
+  (arm64:ldr-reg rt rn rm :shift shift))
+
+(defun ldrb-post (rt rn imm)
+  "LDRB Wt, [Xn], #imm - load byte with post-increment"
+  (arm64:ldrb-post rt rn imm))
+
+(defun strb-post (rt rn imm)
+  "STRB Wt, [Xn], #imm - store byte with post-increment"
+  (arm64:strb-post rt rn imm))
+
+(defun orr-imm (rd rn imm)
+  "ORR Xd, Xn, #imm - OR with small immediate (1, 2, 3, 4, 7, 15)"
+  (arm64:orr-imm rd rn imm))
+
+(defun b-lt (instr-offset)
+  "B.LT - branch if less than (signed). Takes instruction count offset."
+  (arm64:b.lt instr-offset))
+
+(defun b-ge (instr-offset)
+  "B.GE - branch if greater or equal (signed). Takes instruction count offset."
+  (arm64:b.ge instr-offset))
+
+(defun b-ne (instr-offset)
+  "B.NE - branch if not equal. Takes instruction count offset."
+  (arm64:b.ne instr-offset))
+
+(defun cbz-instr (rt instr-offset)
+  "CBZ rt, offset - compare and branch if zero. Takes INSTRUCTION count offset."
+  (arm64:cbz rt instr-offset))
+
+(defun b-instr (instr-offset)
+  "B offset - unconditional branch. Takes INSTRUCTION count offset."
+  (arm64:b instr-offset))
+
 (defun stp-offset (rt1 rt2 rn offset)
-  (let* ((off7 (logand (ash offset -3) #x7F))
-         (off-bits (ash off7 15))
-         (rt2-bits (ash rt2 10))
-         (rn-bits (ash rn 5))
-         (or1 (logior #xA9000000 off-bits))
-         (or2 (logior or1 rt2-bits))
-         (or3 (logior or2 rn-bits))
-         (word (logior or3 rt1)))
-    (encode-word word)))
+  (arm64:stp rt1 rt2 rn :offset offset))
 
-#-sbcl
 (defun ldp-offset (rt1 rt2 rn offset)
-  (let* ((off7 (logand (ash offset -3) #x7F))
-         (off-bits (ash off7 15))
-         (rt2-bits (ash rt2 10))
-         (rn-bits (ash rn 5))
-         (or1 (logior #xA9400000 off-bits))
-         (or2 (logior or1 rt2-bits))
-         (or3 (logior or2 rn-bits))
-         (word (logior or3 rt1)))
-    (encode-word word)))
+  (arm64:ldp rt1 rt2 rn :offset offset))
 
-#-sbcl
 (defun cmp-reg (rn rm)
-  (let* ((rm-shift (ash rm 16))
-         (rn-shift (ash rn 5))
-         (word (logior #xEB00001F rm-shift rn-shift)))
-    (encode-word word)))
+  (arm64:cmp rn rm))
 
-#-sbcl
 (defun cmp-imm (rn imm)
-  (let* ((imm12 (logand imm #xFFF))
-         (shifted (ash imm12 10))
-         (rn-shift (ash rn 5))
-         (word (logior #xF100001F shifted rn-shift)))
-    (encode-word word)))
+  (arm64:cmp rn imm :imm t))
 
-#-sbcl
 (defun cset (rd cond-code)
-  (let* ((inv-cond (logxor cond-code 1))
-         (cond-bits (logior (ash inv-cond 12) (ash inv-cond 16)))
-         (word (logior #x9A9F07E0 cond-bits rd)))
-    (encode-word word)))
+  (arm64:cset rd cond-code))
 
-;; Condition codes
-#-sbcl
-(defun cond-eq () 0)
-#-sbcl
-(defun cond-ne () 1)
-#-sbcl
-(defun cond-lt () 11)
-#-sbcl
-(defun cond-ge () 10)
-#-sbcl
-(defun cond-le () 13)
-#-sbcl
-(defun cond-gt () 12)
+;; Condition codes - SBCL versions in compiler-sbcl.lisp
+#-sbcl (defun cond-eq () arm64:+eq+)
+#-sbcl (defun cond-ne () arm64:+ne+)
+#-sbcl (defun cond-lt () arm64:+lt+)
+#-sbcl (defun cond-ge () arm64:+ge+)
+#-sbcl (defun cond-le () arm64:+le+)
+#-sbcl (defun cond-gt () arm64:+gt+)
 
-#-sbcl
 (defun b-offset (offset)
-  (let* ((imm26 (logand (ash offset -2) #x3FFFFFF))
-         (word (logior #x14000000 imm26)))
-    (encode-word word)))
+  "Branch by byte offset"
+  (arm64:b (ash offset -2)))
 
-#-sbcl
 (defun b-cond (cond-code offset)
-  (let* ((imm19 (logand (ash offset -2) #x7FFFF))
-         (imm-bits (ash imm19 5))
-         (word (logior #x54000000 imm-bits cond-code)))
-    (encode-word word)))
-
-#-sbcl
-(defun bl (offset)
-  (let* ((imm26 (logand (ash offset -2) #x3FFFFFF))
-         (word (logior #x94000000 imm26)))
-    (encode-word word)))
-
-#-sbcl
-(defun blr (rn)
-  (let* ((rn-bits (ash rn 5))
-         (word (logior #xD63F0000 rn-bits)))
-    (encode-word word)))
-
-#-sbcl
-(defun ret ()
-  (encode-word #xD65F03C0))
-
-#-sbcl
-(defun mov-reg (rd rn)
-  "MOV Rd, Rn (alias for ORR Rd, XZR, Rn)"
-  (let* ((rn-shift (ash rn 16))
-         (word (logior #xAA0003E0 rn-shift rd)))
-    (encode-word word)))
-
-#-sbcl
-(defun and-reg (rd rn rm)
-  (let* ((rm-shift (ash rm 16))
-         (rn-shift (ash rn 5))
-         (word (logior #x8A000000 rm-shift rn-shift rd)))
-    (encode-word word)))
-
-#-sbcl
-(defun and* (rd rn mask)
-  "AND Xd, Xn, #mask - Bitwise AND with immediate mask.
-   Supports common masks: #x7, #xF, #xFF, -4, -8, -16, -32."
-  ;; ARM64 logical immediate encoding: 0x92400000 | (immr << 16) | (imms << 10) | Rn | Rd
-  (let* ((rn-shift (ash rn 5)))
+  "Conditional branch by byte offset"
+  (let ((instr-offset (ash offset -2)))
     (cond
-      ;; Keep low bits masks
-      ((= mask #x7)   ; Keep low 3 bits: N=1, immr=0, imms=2
-       (encode-word (logior #x92400800 rn-shift rd)))
-      ((= mask #xF)   ; Keep low 4 bits: N=1, immr=0, imms=3
-       (encode-word (logior #x92400C00 rn-shift rd)))
-      ((= mask #xFF)  ; Keep low 8 bits: N=1, immr=0, imms=7
-       (encode-word (logior #x92401C00 rn-shift rd)))
-      ;; Alignment masks (clear low bits)
-      ((or (= mask #xFFFFFFFFFFFFFFFC) (= mask -4))
-       (encode-word (logior #x92400000 (ash 62 16) (ash 61 10) rn-shift rd)))
-      ((or (= mask #xFFFFFFFFFFFFFFF8) (= mask -8))
-       (encode-word (logior #x92400000 (ash 61 16) (ash 60 10) rn-shift rd)))
-      ((or (= mask #xFFFFFFFFFFFFFFF0) (= mask -16))
-       (encode-word (logior #x92400000 (ash 60 16) (ash 59 10) rn-shift rd)))
-      ((or (= mask #xFFFFFFFFFFFFFFE0) (= mask -32))
-       (encode-word (logior #x92400000 (ash 59 16) (ash 58 10) rn-shift rd)))
-      (t
-       (error "and*: unsupported mask #x~X" mask)))))
+      ((= cond-code arm64:+eq+) (arm64:b.eq instr-offset))
+      ((= cond-code arm64:+ne+) (arm64:b.ne instr-offset))
+      ((= cond-code arm64:+lt+) (arm64:b.lt instr-offset))
+      ((= cond-code arm64:+le+) (arm64:b.le instr-offset))
+      ((= cond-code arm64:+gt+) (arm64:b.gt instr-offset))
+      ((= cond-code arm64:+ge+) (arm64:b.ge instr-offset))
+      (t nil))))  ; Return nil for unknown condition (no error in native mode)
 
-#-sbcl
+(defun bl (offset)
+  (arm64:bl (ash offset -2)))
+
+(defun blr (rn)
+  (arm64:blr rn))
+
+(defun ret ()
+  (arm64:ret))
+
+(defun mov-reg (rd rn)
+  "MOV Rd, Rn"
+  (arm64:mov rd rn))
+
+(defun and-reg (rd rn rm)
+  (arm64:and* rd rn rm))
+
+(defun and* (rd rn mask)
+  "AND Xd, Xn, #mask - Bitwise AND with immediate mask."
+  (arm64:and* rd rn mask :imm t))
+
 (defun orr-reg (rd rn rm)
-  (let* ((rm-shift (ash rm 16))
-         (rn-shift (ash rn 5))
-         (word (logior #xAA000000 rm-shift rn-shift rd)))
-    (encode-word word)))
+  (arm64:orr rd rn rm))
 
-#-sbcl
 (defun eor-reg (rd rn rm)
-  (let* ((rm-shift (ash rm 16))
-         (rn-shift (ash rn 5))
-         (word (logior #xCA000000 rm-shift rn-shift rd)))
-    (encode-word word)))
+  (arm64:eor rd rn rm))
 
-;;; ============================================================
-;;; SBCL Mode: Wrappers to arm64 package
-;;; ============================================================
-
-#+sbcl
-(progn
-  ;; Basic encoders
-  (defun movz (rd imm) (arm64:movz rd imm))
-  (defun movk (rd imm shift16) (arm64:movk rd imm :lsl (* shift16 16)))
-
-  ;; Arithmetic
-  (defun add-reg (rd rn rm) (arm64:add rd rn rm))
-  (defun sub-reg (rd rn rm) (arm64:sub rd rn rm))
-  (defun mul-reg (rd rn rm) (arm64:mul rd rn rm))
-  (defun sdiv-reg (rd rn rm) (arm64:sdiv rd rn rm))
-  (defun add-imm (rd rn imm) (arm64:add rd rn imm :imm t))
-  (defun sub-imm (rd rn imm) (arm64:sub rd rn imm :imm t))
-
-  ;; Bitwise
-  (defun lsl-imm (rd rn shift) (arm64:lsl rd rn shift :imm t))
-  (defun lsr-imm (rd rn shift) (arm64:lsr rd rn shift :imm t))
-  (defun and-reg (rd rn rm) (arm64:and* rd rn rm))
-  (defun orr-reg (rd rn rm) (arm64:orr rd rn rm))
-  (defun eor-reg (rd rn rm) (arm64:eor rd rn rm))
-
-  ;; Memory
-  (defun str-offset (rt rn offset) (arm64:str rt rn :offset offset))
-  (defun ldr-offset (rt rn offset) (arm64:ldr rt rn :offset offset))
-  (defun ldrb (rt rn offset) (arm64:ldrb rt rn offset))
-  (defun strb (rt rn offset) (arm64:strb rt rn offset))
-  (defun strb-reg (rt rn rm) (arm64:strb rt rn rm :reg t))
-  (defun stp-offset (rt1 rt2 rn offset) (arm64:stp rt1 rt2 rn :offset offset))
-  (defun ldp-offset (rt1 rt2 rn offset) (arm64:ldp rt1 rt2 rn :offset offset))
-
-  ;; Compare
-  (defun cmp-reg (rn rm) (arm64:cmp rn rm))
-  (defun cmp-imm (rn imm) (arm64:cmp rn imm :imm t))
-  (defun cset (rd cond-code) (arm64:cset rd cond-code))
-
-  ;; Condition codes - defined in compiler-sbcl.lisp (cond-eq, cond-ne, etc.)
-
-  ;; Branch - NOTE: arm64:b takes instruction count, old takes byte offset
-  (defun b-offset (byte-offset) (arm64:b (ash byte-offset -2)))
-  (defun b (byte-offset) (arm64:b (ash byte-offset -2)))
-  ;; cbz - defined in compiler-sbcl.lisp
-  (defun bl (byte-offset) (arm64:bl (ash byte-offset -2)))
-  (defun blr (rn) (arm64:blr rn))
-  (defun ret () (arm64:ret))
-
-  ;; Branch conditional - dispatch to specific arm64:b.XX functions
-  (defun b-cond (cond-code byte-offset)
-    (let ((instr-offset (ash byte-offset -2)))
-      (cond
-        ((= cond-code arm64:+eq+) (arm64:b.eq instr-offset))
-        ((= cond-code arm64:+ne+) (arm64:b.ne instr-offset))
-        ((= cond-code arm64:+lt+) (arm64:b.lt instr-offset))
-        ((= cond-code arm64:+le+) (arm64:b.le instr-offset))
-        ((= cond-code arm64:+gt+) (arm64:b.gt instr-offset))
-        ((= cond-code arm64:+ge+) (arm64:b.ge instr-offset))
-        (t (error "Unknown condition code: ~A" cond-code)))))
-
-  ;; MOV
-  (defun mov-reg (rd rm) (arm64:mov rd rm))
-
-  ;; AND* - immediate mode via arm64:and* with :imm t
-  (defun and* (rd rn mask)
-    (arm64:and* rd rn mask :imm t))
-)
 
 ;;; ============================================================
 ;;; GC Trigger Code
@@ -721,6 +527,11 @@
 
 ;;; GC globals offsets (must match gc.lisp)
 (defconstant +gc-from-end-offset+ 16)
+
+;; B.LO - branch if lower (unsigned) - instruction offset, not bytes
+(defun b-lo (instr-offset)
+  "B.LO - branch if lower (carry clear). Takes instruction count offset."
+  (arm64:b.lo instr-offset))
 
 (defun gc-trigger-code ()
   "Generate inline GC trigger check. Insert after allocations.
@@ -730,20 +541,9 @@
    (list (ldr-offset 9 27 +gc-from-end-offset+)  ; x9 = from_end
          (cmp-reg 28 9)                           ; compare x28, from_end
          ;; B.LO +2 instructions (skip the BL if x28 < from_end)
-         ;; The :call-fn marker becomes 1 BL instruction = 4 bytes
-         #+sbcl (arm64:b.lo 2)
-         #-sbcl (list (encode-b-cond-lo 2))
+         (b-lo 2)
          ;; Call GC-COLLECT if needed (marker resolved later)
          (list (list :call-fn 'GC-COLLECT)))))
-
-#-sbcl
-(defun encode-b-cond-lo (instr-offset)
-  "Encode B.LO instruction for native codegen.
-   B.LO uses condition code 3 (CC = carry clear)."
-  (let ((word (logior #x54000000
-                      (ash (logand instr-offset #x7FFFF) 5)
-                      3)))
-    (encode-word word)))
 
 ;;; ============================================================
 ;;; Helper Functions
@@ -751,57 +551,82 @@
 
 #-sbcl
 (defun reverse-helper (lst acc)
-  "Tail-recursive reverse helper"
-  (if (null lst)
-      acc
-      (reverse-helper (cdr lst) (cons (car lst) acc))))
+  "Iterative reverse helper using while loop"
+  (let ((remaining lst)
+        (result acc))
+    (while (not (null remaining))
+      (setq result (cons (car remaining) result))
+      (setq remaining (cdr remaining)))
+    result))
 
 #-sbcl
 (defun reverse (lst)
-  "Reverse a list"
-  (labels ((rev-iter (l acc)
-             (if (null l)
-                 acc
-                 (rev-iter (cdr l) (cons (car l) acc)))))
-    (rev-iter lst nil)))
+  "Reverse a list using iterative while loop"
+  (let ((remaining lst)
+        (result nil))
+    (while (not (null remaining))
+      (setq result (cons (car remaining) result))
+      (setq remaining (cdr remaining)))
+    result))
 
 #-sbcl
 (defun append (lst1 lst2)
-  "Append two lists"
-  (labels ((append-iter (l acc)
-             (if (null l)
-                 acc
-                 (append-iter (cdr l) (cons (car l) acc)))))
-    (append-iter (reverse-helper lst1 nil) lst2)))
+  "Append two lists using iterative while loop to avoid stack overflow"
+  (let ((reversed nil)
+        (remaining lst1)
+        (result lst2))
+    ;; First reverse lst1
+    (while (not (null remaining))
+      (setq reversed (cons (car remaining) reversed))
+      (setq remaining (cdr remaining)))
+    ;; Then prepend reversed elements to lst2
+    (setq remaining reversed)
+    (while (not (null remaining))
+      (setq result (cons (car remaining) result))
+      (setq remaining (cdr remaining)))
+    result))
 
 #-sbcl
 (defun length (lst)
-  "List length"
-  (labels ((len-iter (l n)
-             (if (null l)
-                 n
-                 (len-iter (cdr l) (+ n 1)))))
-    (len-iter lst 0)))
+  "List length using iterative while loop"
+  (let ((remaining lst)
+        (n 0))
+    (while (not (null remaining))
+      (setq n (+ n 1))
+      (setq remaining (cdr remaining)))
+    n))
 
 #-sbcl
 (defun append-all (lists)
-  "Append all lists in LISTS"
+  "Append all lists using iterative while loop"
   (if (null lists)
       nil
-      (if (null (cdr lists))
-          (car lists)
-          (append (car lists) (append-all (cdr lists))))))
+      (let ((remaining lists)
+            (result nil))
+        ;; First reverse the list of lists
+        (let ((reversed nil))
+          (while (not (null remaining))
+            (setq reversed (cons (car remaining) reversed))
+            (setq remaining (cdr remaining)))
+          ;; Then append each list from right to left
+          (setq remaining reversed)
+          (while (not (null remaining))
+            (setq result (append (car remaining) result))
+            (setq remaining (cdr remaining))))
+        result)))
 
 #-sbcl
 (defun temp-slot (td)
-  "Calculate temp slot offset for depth TD"
-  (if (>= td 60)
+  "Calculate temp slot offset for depth TD.
+   Temp slots occupy 0x40-0xC0 (16 slots, 128 bytes)."
+  (if (>= td 16)
       (progn
         ;; Error: too many temp slots - but we can't use format in pure code
-        ;; Just return a safe value
-        #x240)
+        ;; Just return a safe value within spill area
+        #x100)
       (+ #x40 (* td 8))))
 
+;; load-addr - SBCL version in compiler-sbcl.lisp uses arm64:* directly
 #-sbcl
 (defun load-addr (rd addr)
   "Load large address into register (up to 64 bits)"
@@ -809,17 +634,17 @@
       (movz rd addr)
       (if (< addr #x100000000)
           (append (movz rd (logand addr #xFFFF))
-                       (movk rd (ash addr -16) 1))
+                  (movk rd (ash addr -16) 1))
           (if (< addr #x1000000000000)
               ;; 48-bit address
               (append-all (list (movz rd (logand addr #xFFFF))
-                                     (movk rd (logand (ash addr -16) #xFFFF) 1)
-                                     (movk rd (logand (ash addr -32) #xFFFF) 2)))
+                                (movk rd (logand (ash addr -16) #xFFFF) 1)
+                                (movk rd (logand (ash addr -32) #xFFFF) 2)))
               ;; 64-bit address (for packed string data)
               (append-all (list (movz rd (logand addr #xFFFF))
-                                     (movk rd (logand (ash addr -16) #xFFFF) 1)
-                                     (movk rd (logand (ash addr -32) #xFFFF) 2)
-                                     (movk rd (logand (ash addr -48) #xFFFF) 3)))))))
+                                (movk rd (logand (ash addr -16) #xFFFF) 1)
+                                (movk rd (logand (ash addr -32) #xFFFF) 2)
+                                (movk rd (logand (ash addr -48) #xFFFF) 3)))))))
 
 (defun load-addr-8 (rd addr)
   "Load address into register, always producing 8 bytes (2 instructions).
@@ -888,6 +713,7 @@
                          (logior acc (ash (car bs) shift))))))
     (to-u64 bytes 0 0)))
 
+;; save-temp/load-temp - SBCL versions in compiler-sbcl.lisp use temp registers
 #-sbcl
 (defun save-temp (td)
   (str-offset 0 31 (temp-slot td)))
@@ -896,25 +722,13 @@
 (defun load-temp (rd td)
   (ldr-offset rd 31 (temp-slot td)))
 
-#-sbcl
 (defun strb (rt rn offset)
   "Store byte from rt to [rn + offset]"
-  (let* ((off-bits (ash (logand offset #xFFF) 10))
-         (rn-shift (ash rn 5))
-         (or1 (logior #x39000000 off-bits))  ; STRB unsigned offset
-         (or2 (logior or1 rn-shift))
-         (word (logior or2 rt)))
-    (encode-word word)))
+  (arm64:strb rt rn offset))
 
-#-sbcl
 (defun strb-reg (rt rn rm)
   "STRB Wt, [Xn, Xm] - store byte to address Xn+Xm"
-  ;; Encoding: 00 111 0 00 00 1 Rm 011 0 10 Rn Rt
-  ;; #x38206800 = base + shifted register mode
-  (let* ((rm-s (ash rm 16))
-         (rn-s (ash rn 5))
-         (word (logior #x38206800 rm-s rn-s rt)))
-    (encode-word word)))
+  (arm64:strb rt rn rm :reg t))
 
 (defun gen-memcpy-inline (count-reg)
   "Generate inline memcpy loop.
@@ -938,21 +752,13 @@
     (append-all (list cbz-instr ldrb-instr strb-instr
                            inc-src inc-dst dec-count branch-back))))
 
-#-sbcl
 (defun cbz (rt offset)
-  "CBZ rt, offset - compare and branch if zero"
-  (let* ((imm19 (logand (ash offset -2) #x7FFFF))
-         (imm-bits (ash imm19 5))
-         (or1 (logior #xB4000000 imm-bits))
-         (word (logior or1 rt)))
-    (encode-word word)))
+  "CBZ rt, offset - compare and branch if zero. Takes BYTE offset."
+  (arm64:cbz rt (ash offset -2)))
 
-#-sbcl
 (defun b (offset)
-  "B offset - unconditional branch"
-  (let* ((imm26 (logand (ash offset -2) #x3FFFFFF))
-         (word (logior #x14000000 imm26)))
-    (encode-word word)))
+  "B offset - unconditional branch. Takes BYTE offset."
+  (arm64:b (ash offset -2)))
 
 ;;; ============================================================
 ;;; IR Tag Predicates
@@ -974,6 +780,7 @@
     ((has-tag ir 'call-fn) t)
     ((has-tag ir 'funcall-ir) t)
     ((has-tag ir 'sys-exit-ir) (ir-may-call (cadr ir)))
+    ((has-tag ir 'get-cmdline-args-ir) nil)  ; no subexpressions
     ((has-tag ir 'add) (or (ir-may-call (cadr ir)) (ir-may-call (caddr ir))))
     ((has-tag ir 'sub) (or (ir-may-call (cadr ir)) (ir-may-call (caddr ir))))
     ((has-tag ir 'mul) (or (ir-may-call (cadr ir)) (ir-may-call (caddr ir))))
@@ -990,6 +797,7 @@
     ((has-tag ir 'string-length-ir) (ir-may-call (cadr ir)))
     ((has-tag ir 'string-ref-ir) (or (ir-may-call (cadr ir)) (ir-may-call (caddr ir))))
     ((has-tag ir 'string-concat-ir) (or (ir-may-call (cadr ir)) (ir-may-call (caddr ir))))
+    ((has-tag ir 'string-equal-ir) (or (ir-may-call (cadr ir)) (ir-may-call (caddr ir))))
     ((has-tag ir 'make-vector-ir) (ir-may-call (cadr ir)))
     ((has-tag ir 'vector-ref-ir) (or (ir-may-call (cadr ir)) (ir-may-call (caddr ir))))
     ((has-tag ir 'vector-set-ir) (or (ir-may-call (cadr ir))
@@ -1437,6 +1245,52 @@
               ;; Return tagged result
               (add-imm 0 0 4)))))        ; string tag
 
+    ;; String-equal: compare two strings for equality
+    ;; Returns tagged fixnum: 16 (true) or 0 (false)
+    ((has-tag ir 'string-equal-ir)
+     (let* ((str1-ir (cadr ir))
+            (str2-ir (caddr ir))
+            (spill-off (spill-base td))
+            (str1-code (codegen str1-ir rtaddrs fnoffs td))
+            (str2-code (codegen str2-ir rtaddrs fnoffs td)))
+       (append-all
+        (list str1-code
+              ;; Spill str1
+              (str-offset 0 31 spill-off)
+              str2-code
+              ;; x2 = str2 base (untagged)
+              (and* 2 0 -16)               ; x2 = str2 & ~0xF
+              ;; x1 = str1 base (untagged)
+              (ldr-offset 0 31 spill-off)  ; x0 = str1 (tagged)
+              (and* 1 0 -16)               ; x1 = str1 & ~0xF
+              ;; Load lengths
+              (ldr-offset 3 1 0)           ; x3 = len1
+              (ldr-offset 4 2 0)           ; x4 = len2
+              ;; Compare lengths
+              (cmp-reg 3 4)                ; cmp len1, len2
+              (b-ne 14)                    ; if len1 != len2, jump to return_false
+              ;; Lengths equal, setup for loop
+              (add-imm 1 1 8)              ; x1 = str1 data start
+              (add-imm 2 2 8)              ; x2 = str2 data start
+              (movz 4 0)                   ; x4 = 0 (loop counter)
+              ;; loop_start:
+              (cmp-reg 4 3)                ; cmp counter, len
+              (b-ge 7)                     ; if counter >= len, return_true
+              ;; Load bytes from both strings
+              (ldrb-reg 5 1 4)             ; x5 = str1[counter]
+              (ldrb-reg 6 2 4)             ; x6 = str2[counter]
+              ;; Compare bytes
+              (cmp-reg 5 6)                ; cmp char1, char2
+              (b-ne 5)                     ; if not equal, return_false
+              ;; Increment counter
+              (add-imm 4 4 1)              ; x4++
+              (b-instr -6)                 ; back to loop_start
+              ;; return_true:
+              (movz 0 16)                  ; x0 = 16 (tagged 1)
+              (b-instr 2)                  ; skip return_false
+              ;; return_false:
+              (movz 0 0)))))               ; x0 = 0 (tagged 0/nil-ish)
+
     ;; Make-vector: allocate vector on heap
     ;; Vector layout: [length (8 bytes)] [data (n * 8 bytes)]
     ;; Total size = 8 + (untagged_size * 8), rounded to 16 for tagging
@@ -1764,6 +1618,109 @@
                     (append (lsr-imm 0 0 4)
                                  (list (list :extern-call "_exit"))))))
 
+    ;; get-cmdline-args-IR: returns list of command-line argument strings
+    ;; ARM64 implementation that builds the list in correct order
+    ;; Iterates from i=argc-1 down to 0, consing each string onto result
+    ((has-tag ir 'get-cmdline-args-ir)
+     (let ((slot0 (temp-slot td))
+           (slot1 (temp-slot (+ td 1)))
+           (slot2 (temp-slot (+ td 2)))
+           (slot3 (temp-slot (+ td 3)))
+           (slot4 (temp-slot (+ td 4))))
+       ;; Register usage:
+       ;; x9 = argc (untagged), x10 = argv, x11 = loop index i
+       ;; x12 = current argv[i] pointer, x13 = string scan pointer
+       ;; x14 = string length, x15-x19 = scratch
+       ;; x20 = saved string start for tagging
+       ;; x0 = result list accumulator
+       (append-all
+        (list
+         ;; Save callee-saved registers we'll use (x20)
+         (str-offset 20 31 slot0)
+         ;; Load argc and argv from GC globals
+         (ldr-offset 9 27 64)   ; x9 = argc (at [x27+64])
+         (ldr-offset 10 27 72)  ; x10 = argv (at [x27+72])
+         ;; result = nil (tagged 0x06)
+         (movz 0 6)
+         ;; i = argc - 1, set flags
+         (subs-imm 11 9 1)
+         ;; if argc <= 0, skip to done (branch forward 44 instructions)
+         (b-lt 44)
+
+         ;; === MAIN LOOP (instruction 5) ===
+         ;; Load argv[i]: x12 = [x10 + x11*8]
+         (ldr-reg 12 10 11 3)
+
+         ;; === STRLEN LOOP ===
+         ;; x13 = scan pointer (start at x12), x14 = length counter
+         (mov-reg 13 12)
+         (movz 14 0)
+         ;; strlen_loop (instruction 8):
+         (ldrb 15 13 0)
+         (cbz-instr 15 4)   ; if zero, skip 4 instructions to strlen_done
+         (add-imm 13 13 1)
+         (add-imm 14 14 1)
+         (b-instr -4)       ; back to strlen_loop
+
+         ;; === STRLEN_DONE (instruction 13) ===
+         ;; Save loop state to stack
+         (str-offset 0 31 slot1)
+         (str-offset 11 31 slot2)
+         (str-offset 10 31 slot3)
+         (str-offset 14 31 slot4)
+
+         ;; === ALLOCATE STRING ===
+         ;; x20 = string address (before bump)
+         (mov-reg 20 28)
+         ;; Store tagged length at string header
+         (lsl-imm 15 14 4)
+         (str-offset 15 28 0)
+
+         ;; === COPY BYTES LOOP ===
+         ;; x16 = dest (x28+8), x17 = src (x12), x18 = remaining count
+         (add-imm 16 28 8)
+         (mov-reg 17 12)
+         (mov-reg 18 14)
+         ;; copy_loop (instruction 23):
+         (cbz-instr 18 5)   ; if count == 0, skip 5 to copy_done
+         (ldrb-post 19 17 1)
+         (strb-post 19 16 1)
+         (sub-imm 18 18 1)
+         (b-instr -4)       ; back to copy_loop
+
+         ;; === COPY_DONE (instruction 28) ===
+         ;; Bump heap pointer: size = 8 + ((length + 7) & ~7)
+         (ldr-offset 14 31 slot4)
+         (add-imm 15 14 15)
+         (and* 15 15 -8)
+         (add-reg 28 28 15)
+
+         ;; Tag string pointer
+         (orr-imm 21 20 4)
+
+         ;; === CONS STRING ONTO RESULT ===
+         ;; Restore result list
+         (ldr-offset 0 31 slot1)
+         ;; Allocate cons cell at x28
+         (str-offset 21 28 0)
+         (str-offset 0 28 8)
+         ;; Tag cons and update result
+         (orr-imm 0 28 1)
+         (add-imm 28 28 16)
+
+         ;; === DECREMENT AND LOOP ===
+         ;; Restore loop counter and argv
+         (ldr-offset 11 31 slot2)
+         (ldr-offset 10 31 slot3)
+         ;; i--, set flags
+         (subs-imm 11 11 1)
+         ;; if i >= 0, loop back (branch backward 39 instructions)
+         (b-ge -39)
+
+         ;; === DONE (instruction 44) ===
+         ;; Restore callee-saved registers
+         (ldr-offset 20 31 slot0)))))
+
     ;; sys-open-IR: open(path, flags, mode) -> fd
     ((has-tag ir 'sys-open-ir)
      (let* ((path-ir (cadr ir))
@@ -2033,6 +1990,29 @@
        (append val-code
                (str-offset 0 27 8))))
 
+    ;; Get-symbol-counter: load counter from [x27 + 48]
+    ;; Returns tagged fixnum (counter stored pre-tagged at offset 48)
+    ((has-tag ir 'get-symbol-counter-ir)
+     (ldr-offset 0 27 48))
+
+    ;; Set-symbol-counter: store value to [x27 + 48], return value
+    ;; Value should already be tagged as fixnum
+    ((has-tag ir 'set-symbol-counter-ir)
+     (let ((val-code (codegen (cadr ir) rtaddrs fnoffs td)))
+       (append val-code
+               (str-offset 0 27 48))))
+
+    ;; Get-symbol-table-sym: load table pointer from [x27 + 56]
+    ;; Returns alist pointer (or nil)
+    ((has-tag ir 'get-symbol-table-sym-ir)
+     (ldr-offset 0 27 56))
+
+    ;; Set-symbol-table-sym: store table to [x27 + 56], return value
+    ((has-tag ir 'set-symbol-table-sym-ir)
+     (let ((val-code (codegen (cadr ir) rtaddrs fnoffs td)))
+       (append val-code
+               (str-offset 0 27 56))))
+
     ;; TCO: loop-ir wraps body that may contain continue-ir nodes
     ;; Just generate body code - the loop-start is resolved at function level
     ((has-tag ir 'loop-ir)
@@ -2123,8 +2103,9 @@
 #-sbcl
 (defun spill-base (td)
   "Calculate spill area base for temp depth td.
+   Spill area is 0x100-0x1F0 (240 bytes = 30 slots).
    Each nesting level gets 64 bytes (8 slots) of spill area."
-  (+ #x240 (* td 64)))
+  (+ #x100 (* td 64)))
 
 (defun codegen-call-args (args rtaddrs fnoffs td)
   "Generate code for function call arguments"
@@ -2195,26 +2176,25 @@
 #-sbcl
 (defun prologue ()
   "Generate function prologue.
-   Frame layout after prologue (0x800 bytes):
-   sp+0x7F0: x29 (fp)
-   sp+0x7F8: x30 (lr)
+   Frame layout after prologue (0x200 bytes = 512 bytes):
+   sp+0x1F0: x29 (fp)
+   sp+0x1F8: x30 (lr)
    sp+0x10:  x19, x20
    sp+0x20:  x21, x22
    sp+0x30:  x23, x24
-   sp+0x40:  temp slots (td*8)
-   sp+0x180: environment base (x20)
-   sp+0x240: spill area (td*64) - now has room for td up to ~20
-   NOTE: Using STR/LDR instead of STP/LDP for fp/lr because STP's 7-bit
-   signed offset can only reach -512 to +504 bytes."
+   sp+0x40:  temp slots (16 max = 128 bytes, to 0xC0)
+   sp+0x0C0: environment base (x20, 8 params = 64 bytes)
+   sp+0x100: spill area (240 bytes = 30 slots, to 0x1F0)
+   Reduced from 2KB to 512 bytes to allow ~16K nested calls."
   (append-all
-   (list (sub-imm 31 31 #x800)           ;; Create 2KB frame
-         (str-offset 29 31 #x7F0)        ;; Save fp at sp+0x7F0
-         (str-offset 30 31 #x7F8)        ;; Save lr at sp+0x7F8
+   (list (sub-imm 31 31 #x200)           ;; Create 512-byte frame
+         (str-offset 29 31 #x1F0)        ;; Save fp at sp+0x1F0
+         (str-offset 30 31 #x1F8)        ;; Save lr at sp+0x1F8
          (add-imm 29 31 0)               ;; fp = sp
          (stp-offset 19 20 31 16)
          (stp-offset 21 22 31 32)
          (stp-offset 23 24 31 48)
-         (add-imm 20 31 #x180))))
+         (add-imm 20 31 #xC0))))
 
 #-sbcl
 (defun epilogue ()
@@ -2223,9 +2203,9 @@
    (list (ldp-offset 23 24 31 48)
          (ldp-offset 21 22 31 32)
          (ldp-offset 19 20 31 16)
-         (ldr-offset 29 31 #x7F0)        ;; Restore fp from sp+0x7F0
-         (ldr-offset 30 31 #x7F8)        ;; Restore lr from sp+0x7F8
-         (add-imm 31 31 #x800)
+         (ldr-offset 29 31 #x1F0)        ;; Restore fp from sp+0x1F0
+         (ldr-offset 30 31 #x1F8)        ;; Restore lr from sp+0x1F8
+         (add-imm 31 31 #x200)           ;; Restore 512-byte frame
          (ret))))
 
 ;;; ============================================================
@@ -2486,7 +2466,7 @@
          ;; Collect extern calls
          (extern-calls (collect-extern-calls bytes-with-markers))
          (imports (get-unique-imports extern-calls))
-         (wrapper-size 76))  ;; 19 instructions × 4 bytes
+         (wrapper-size 116))  ;; 29 instructions × 4 bytes (GC-enabled wrapper)
 
     ;; Always use imports path for consistent Mach-O
     (let ((imports (if (null imports) '("_exit") imports)))
@@ -2495,7 +2475,8 @@
       (let* ((num-imports (length imports))
              (stubs-total (if (> num-imports 0) (* num-imports 12) 0))
              (code-offset #x400)
-             (exact-flat-size (length bytes-with-markers))
+             ;; Use count-actual-bytes to exclude markers from byte count
+             (exact-flat-size (count-actual-bytes bytes-with-markers))
              (exact-code-size (+ exact-flat-size wrapper-size))
              (stubs-offset (+ code-offset exact-code-size))
              (stub-size 12))
@@ -2539,7 +2520,7 @@
          (result (compile-forms forms))
          (defuns-orig (car result))
          (main-ir-orig (cadr result))
-         (wrapper-size 76)  ;; 19 instructions × 4 bytes
+         (wrapper-size 116)  ;; 29 instructions × 4 bytes (GC-enabled wrapper)
          ;; Lift lambdas from main-ir
          ;; SBCL uses 1-arg lift-lambdas, native uses 2-arg
          (main-lift-result #+sbcl (lift-lambdas-2 main-ir-orig nil)
@@ -2554,15 +2535,14 @@
          (all-lambdas (append main-lambdas defun-lambdas))
          ;; Check if we have any functions at all
          (has-fns (or (not (null defuns)) (not (null all-lambdas)))))
+    ;; NOTE: Always use full path with GC - GC triggers are emitted by allocation primitives
+    ;; even when there are no user functions. deliver-v2 doesn't handle :call-fn markers.
+    (declare (ignore has-fns))
 
-    (if (not has-fns)
-        ;; No functions or lambdas - use v2
-        (deliver-v2 source output-path)
-
-        ;; Has functions/lambdas - full compilation
-        ;; Combine defuns and lambdas (lambdas need to be converted to defun format)
-        (let* ((lambda-as-defuns (lambdas-to-defuns all-lambdas nil))
-               (all-fns (append defuns lambda-as-defuns))
+    ;; Full compilation path - always includes GC runtime
+    ;; Combine defuns and lambdas (lambdas need to be converted to defun format)
+    (let* ((lambda-as-defuns (lambdas-to-defuns all-lambdas nil))
+           (all-fns (append defuns lambda-as-defuns))
                ;; Generate main code first (with nil fnoffs to get size)
                (main-code-temp (append-all
                                 (list (prologue)
@@ -2592,9 +2572,13 @@
                (num-imports (length imports))
                (stubs-total (* num-imports 12))
                (code-offset #x400)
-               (exact-flat-size (length bytes-with-markers))
+               ;; Use count-actual-bytes instead of length to exclude markers
+               (exact-flat-size (count-actual-bytes bytes-with-markers))
                (exact-code-size (+ exact-flat-size wrapper-size))
-               (stubs-offset (+ code-offset exact-code-size))
+               ;; Align stubs to 4 bytes (ARM64 instruction alignment)
+               ;; This matches what macho.lisp does: (align-up (+ code-offset code-size) 4)
+               (stubs-offset-unaligned (+ code-offset exact-code-size))
+               (stubs-offset (* (ceiling stubs-offset-unaligned 4) 4))
                (stub-size 12)
                ;; Build stub alist
                (stub-alist (build-stub-alist imports stubs-offset stub-size))
@@ -2627,7 +2611,7 @@
                                             gc-fn-alist))))
             (write-macho-executable-with-imports-and-heap output-path wrapped-code imports #x2000000 all-fnoffs)
             ;; Write symbol map for debugging
-            #+sbcl (write-symbol-map output-path all-fnoffs main-size imports stubs-offset))))))
+            #+sbcl (write-symbol-map output-path all-fnoffs main-size imports stubs-offset)))))
 
 (defun deliver-file (source-path output-path)
   "Compile Lisp file at SOURCE-PATH to native executable at OUTPUT-PATH.
@@ -2639,9 +2623,9 @@
   "Write a symbol map file for debugging.
    Format: HEX_OFFSET NAME (one per line)
    HEX_OFFSET is relative to __TEXT segment start (0x100000000 on macOS).
-   To find function from PC: offset = PC - 0x10000044C (base + code_offset + wrapper)"
+   To find function from PC: offset = PC - 0x100000454 (base + code_offset + wrapper)"
   (let ((map-path (concatenate 'string output-path ".map"))
-        (wrapper-size 76)
+        (wrapper-size 116)
         (code-offset #x400))
     (with-open-file (f map-path :direction :output :if-exists :supersede)
       ;; Header comment
@@ -2665,6 +2649,20 @@
           (setf stub-off (+ stub-off 12))))
       (format t "Symbol map written to ~A~%" map-path))))
 
+(defun count-actual-bytes (items)
+  "Count actual bytes in a flattened list, excluding markers.
+   Markers are conses like (:extern-call ...), (:fn-label ...), etc."
+  (labels ((count-bytes (lst acc)
+             (if (null lst)
+                 acc
+                 (let ((item (car lst)))
+                   (if (consp item)
+                       ;; Marker - don't count
+                       (count-bytes (cdr lst) acc)
+                       ;; Byte - count it
+                       (count-bytes (cdr lst) (+ acc 1)))))))
+    (count-bytes items 0)))
+
 (defun build-fn-addr-alist (fnoffs base acc)
   "Convert fnoffs to absolute addresses"
   (if (null fnoffs)
@@ -2677,30 +2675,41 @@
                                    (cons (cons name addr) acc)))))
 
 (defun flatten-code-keep-markers-and-calls (code)
-  "Flatten code lists but keep both :extern-call, :call-fn, :tco-branch, and :fn-label markers with positions."
+  "Flatten code lists but keep both :extern-call, :call-fn, :tco-branch, :loop-start, :loop-continue and :fn-label markers with positions."
   (labels ((flatten (items pos acc)
              (if (null items)
                  (reverse acc)
                  (let ((item (car items)))
                    (cond
-                     ;; Extern call marker
+                     ;; Extern call marker - reserve 4 bytes for BL instruction
                      ((and (consp item) (eq (car item) :extern-call))
                       (let ((marker (list :extern-call (cadr item) pos)))
                         (flatten (cdr items)
                                  (+ pos 4)
-                                 (cons 0 (cons 0 (cons 0 (cons marker acc)))))))
-                     ;; Function call marker
+                                 (cons 0 (cons 0 (cons 0 (cons 0 (cons marker acc))))))))
+                     ;; Function call marker - reserve 4 bytes for BL instruction
                      ((and (consp item) (eq (car item) :call-fn))
                       (let ((marker (list :call-fn (cadr item) pos)))
                         (flatten (cdr items)
                                  (+ pos 4)
-                                 (cons 0 (cons 0 (cons 0 (cons marker acc)))))))
-                     ;; TCO branch marker - stores target offset from function start
+                                 (cons 0 (cons 0 (cons 0 (cons 0 (cons marker acc))))))))
+                     ;; TCO branch marker - reserve 4 bytes for B instruction
                      ((and (consp item) (eq (car item) :tco-branch))
                       (let ((marker (list :tco-branch (cadr item) pos)))
                         (flatten (cdr items)
                                  (+ pos 4)
-                                 (cons 0 (cons 0 (cons 0 (cons marker acc)))))))
+                                 (cons 0 (cons 0 (cons 0 (cons 0 (cons marker acc))))))))
+                     ;; Loop start marker - records position for loop continue to jump to
+                     ;; No bytes emitted, just position recorded
+                     ((and (consp item) (eq (car item) :loop-start))
+                      (let ((marker (list :loop-start pos)))
+                        (flatten (cdr items) pos (cons marker acc))))
+                     ;; Loop continue marker - reserve 4 bytes for B instruction
+                     ((and (consp item) (eq (car item) :loop-continue))
+                      (let ((marker (list :loop-continue pos)))
+                        (flatten (cdr items)
+                                 (+ pos 4)
+                                 (cons 0 (cons 0 (cons 0 (cons 0 (cons marker acc))))))))
                      ;; Function label marker - used by GC runtime
                      ;; Just record position, no bytes generated
                      ((and (consp item) (eq (car item) :fn-label))
@@ -2727,7 +2736,7 @@
     (flatten code 0 nil)))
 
 (defun flatten-all-calls (code fn-alist stub-alist code-base-addr)
-  "Replace both :call-fn and :extern-call markers with BL instructions.
+  "Replace :call-fn, :extern-call, :loop-start/:loop-continue markers with actual instructions.
    Returns (cons flattened-code positions)."
   (labels ((lookup-fn (name)
              (alist-lookup name fn-alist))
@@ -2742,15 +2751,37 @@
                      (cons (logand (ash bl-instr -16) #xFF)
                            (cons (logand (ash bl-instr -8) #xFF)
                                  (cons (logand bl-instr #xFF) acc))))))
-           (process (items skip result positions)
+           (emit-b (b-addr target-addr acc)
+             ;; Emit unconditional branch (B instruction) for loop continue
+             (let* ((rel-offset (- target-addr b-addr))
+                    (off-s (ash rel-offset -2))
+                    (off-m (logand off-s #x3FFFFFF))
+                    (b-instr (logior #x14000000 off-m)))
+               (cons (logand (ash b-instr -24) #xFF)
+                     (cons (logand (ash b-instr -16) #xFF)
+                           (cons (logand (ash b-instr -8) #xFF)
+                                 (cons (logand b-instr #xFF) acc))))))
+           (process (items skip result positions loop-stack)
              (if (null items)
                  (cons (reverse result) positions)
                  (let ((item (car items)))
                    (cond
                      ;; Skip placeholder zeros
                      ((> skip 0)
-                      (process (cdr items) (- skip 1) result positions))
-                     ;; Extern call marker
+                      (process (cdr items) (- skip 1) result positions loop-stack))
+                     ;; Loop start marker - record position on stack, no bytes emitted
+                     ((and (consp item) (eq (car item) :loop-start))
+                      (let ((pos (cadr item)))
+                        (process (cdr items) 0 result positions (cons pos loop-stack))))
+                     ;; Loop continue marker - emit B instruction to jump back to loop start
+                     ((and (consp item) (eq (car item) :loop-continue))
+                      (let* ((pos (cadr item))
+                             (b-addr (+ code-base-addr pos))
+                             (target-pos (car loop-stack))
+                             (target-addr (+ code-base-addr target-pos))
+                             (new-result (emit-b b-addr target-addr result)))
+                        (process (cdr items) 4 new-result positions loop-stack)))
+                     ;; Extern call marker - skip 4 placeholder zeros
                      ((and (consp item) (eq (car item) :extern-call))
                       (let* ((name (cadr item))
                              (pos (caddr item))
@@ -2759,8 +2790,8 @@
                              (new-result (if stub-addr
                                             (emit-bl bl-addr stub-addr result)
                                             (cons #x94 (cons 0 (cons 0 (cons 0 result)))))))
-                        (process (cdr items) 3 new-result (cons (cons name pos) positions))))
-                     ;; Function call marker
+                        (process (cdr items) 4 new-result (cons (cons name pos) positions) loop-stack)))
+                     ;; Function call marker - skip 4 placeholder zeros
                      ((and (consp item) (eq (car item) :call-fn))
                       (let* ((name (cadr item))
                              (pos (caddr item))
@@ -2770,17 +2801,17 @@
                                             (emit-bl bl-addr fn-addr result)
                                             ;; Function not found - emit NOP
                                             (cons #xD5 (cons #x03 (cons #x20 (cons #x1F result)))))))
-                        (process (cdr items) 3 new-result (cons (cons name pos) positions))))
+                        (process (cdr items) 4 new-result (cons (cons name pos) positions) loop-stack)))
                      ;; Function label marker - skip (no bytes)
                      ((and (consp item) (eq (car item) :fn-label))
-                      (process (cdr items) 0 result positions))
+                      (process (cdr items) 0 result positions loop-stack))
                     ;; Internal label marker - skip (no bytes)
                     ((and (consp item) (eq (car item) :label))
-                     (process (cdr items) 0 result positions))
+                     (process (cdr items) 0 result positions loop-stack))
                      ;; Regular byte
                      (t
-                      (process (cdr items) 0 (cons item result) positions)))))))
-    (process code 0 nil nil)))
+                      (process (cdr items) 0 (cons item result) positions loop-stack)))))))
+    (process code 0 nil nil nil)))
 
 (defun extract-fn-labels (code base-addr)
   "Extract :fn-label markers from flattened code and build fn-alist.
@@ -2811,26 +2842,23 @@
 (defun flatten-code-keep-markers (code)
   "Flatten nested code lists but keep :extern-call markers intact.
    Tracks position and transforms (:extern-call name) to (:extern-call name pos).
-   Each marker followed by 3 zeros = 4 bytes total."
+   Each marker followed by 4 zeros = 4 bytes total for BL instruction."
   (labels ((flatten (items pos acc)
              (if (null items)
                  (reverse acc)
                  (let ((item (car items)))
                    (cond
-                     ;; Extern call marker - add position, then 3 zeros
                      ((and (consp item) (eq (car item) :extern-call))
                       (let ((marker (list :extern-call (cadr item) pos)))
                         (flatten (cdr items)
                                  (+ pos 4)
-                                 (cons 0 (cons 0 (cons 0 (cons marker acc)))))))
-                     ;; Nested list - recursively flatten
+                                 (cons 0 (cons 0 (cons 0 (cons 0 (cons marker acc))))))))
                      ((consp item)
                       (let* ((flattened (flatten item 0 nil))
                              (size (length flattened)))
                         (flatten (cdr items)
                                  (+ pos size)
                                  (append (reverse flattened) acc))))
-                     ;; Byte - add directly
                      (t
                       (flatten (cdr items)
                                (+ pos 1)
@@ -2868,7 +2896,7 @@
                      ;; Skip placeholder zeros after extern-call marker
                      ((> skip 0)
                       (process (cdr items) (- skip 1) result positions))
-                     ;; Extern call marker - emit BL, skip next 3 zeros
+                     ;; Extern call marker - emit BL, skip next 4 placeholder zeros
                      ((and (consp item) (eq (car item) :extern-call))
                       (let* ((name (cadr item))
                              (pos (caddr item))
@@ -2878,7 +2906,7 @@
                                             (emit-bl bl-addr stub-addr result)
                                             ;; Placeholder if no stub found
                                             (cons #x94 (cons 0 (cons 0 (cons 0 result)))))))
-                        (process (cdr items) 3 new-result (cons (cons name pos) positions))))
+                        (process (cdr items) 4 new-result (cons (cons name pos) positions))))
                      ;; Regular byte
                      (t
                       (process (cdr items) 0 (cons item result) positions)))))))

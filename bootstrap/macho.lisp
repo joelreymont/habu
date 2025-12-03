@@ -798,28 +798,51 @@
 (defun wrap-bytecode-with-heap-for-imports (code-bytes heap-page-offset)
   "Wrap bytecode with heap initialization for executables with imports.
    HEAP-PAGE-OFFSET is the page offset from the ADRP instruction to __DATA (in 4KB pages).
-   Returns 76 bytes (19 instructions) + original code.
-   First 16 bytes of heap reserved: [x27+0] = intern table (initialized to nil=0x06)."
+   Returns 116 bytes (29 instructions) + original code.
+   Initializes all GC globals at [x27+0..96], heap data starts at x27+96."
+  ;; GC layout at x27:
+  ;;   [x27+0]:  intern_table = nil (0x06)
+  ;;   [x27+8]:  lambda_counter = 0
+  ;;   [x27+16]: from_end = x27 + 96 + 32MB
+  ;;   [x27+24]: half_heap_size = 32MB (0x2000000)
+  ;;   [x27+32]: space_flag = 0
+  ;;   [x27+40]: gc_state = 0
+  ;;   [x27+48]: symbol_counter (codegen)
+  ;;   [x27+56]: symbol_table (codegen)
+  ;;   [x27+64]: argc
+  ;;   [x27+72]: argv
+  ;;   [x27+96]: heap data starts, x28 points here
   (let ((stub (buf-append-all
-               (cons (arm64:sub 31 31 #x30 :imm t)
-                     (cons (arm64:str 30 31 :offset 0)
-                           (cons (arm64:str 28 31 :offset 8)
-                                 (cons (arm64:str 26 31 :offset 16)
-                                       (cons (arm64:str 27 31 :offset 24)
-                                             (cons (arm64:adrp 28 heap-page-offset)
-                                                   (cons (arm64:mov 27 28)
-                                                         (cons (arm64:add 28 28 16 :imm t)
-                                                               (cons (arm64:movz 9 6)  ; x9 = nil (0x06)
-                                                                     (cons (arm64:str 9 27 :offset 0)  ; [x27+0] = nil
-                                                                           (cons (arm64:adr 26 36)
-                                                                                 (cons (arm64:bl 8)  ; still 8: bl is relative to instruction position
-                                                                                       (cons (arm64:lsr 0 0 4 :imm t)
-                                                                                             (cons (arm64:ldr 27 31 :offset 24)
-                                                                                                   (cons (arm64:ldr 26 31 :offset 16)
-                                                                                                         (cons (arm64:ldr 28 31 :offset 8)
-                                                                                                               (cons (arm64:ldr 30 31 :offset 0)
-                                                                                                                     (cons (arm64:add 31 31 #x30 :imm t)
-                                                                                                                           (cons (arm64:ret) nil))))))))))))))))))))))
+               ;; Use nested cons like the original to build list of 4-byte instructions
+               (cons (arm64:sub 31 31 #x30 :imm t)           ; 1: sub sp, sp, #0x30
+               (cons (arm64:str 30 31 :offset 0)              ; 2: str x30, [sp]
+               (cons (arm64:str 28 31 :offset 8)              ; 3: str x28, [sp, 8]
+               (cons (arm64:str 26 31 :offset 16)             ; 4: str x26, [sp, 16]
+               (cons (arm64:str 27 31 :offset 24)             ; 5: str x27, [sp, 24]
+               (cons (arm64:adrp 28 heap-page-offset)         ; 6: adrp x28, heap
+               (cons (arm64:mov 27 28)                        ; 7: mov x27, x28
+               (cons (arm64:movz 9 6)                         ; 8: movz x9, 6 (nil)
+               (cons (arm64:str 9 27 :offset 0)               ; 9: str x9, [x27+0] (intern_table)
+               (cons (arm64:movz 9 0)                         ; 10: movz x9, 0
+               (cons (arm64:str 9 27 :offset 8)               ; 11: str x9, [x27+8] (lambda_counter)
+               (cons (arm64:str 9 27 :offset 32)              ; 12: str x9, [x27+32] (space_flag)
+               (cons (arm64:str 9 27 :offset 40)              ; 13: str x9, [x27+40] (gc_state)
+               (cons (arm64:movz 10 0)                        ; 14: movz x10, 0
+               (cons (arm64:movk 10 #x200 :lsl 16)            ; 15: movk x10, #0x200, lsl 16 (=32MB)
+               (cons (arm64:str 10 27 :offset 24)             ; 16: str x10, [x27+24] (half_heap)
+               (cons (arm64:add 11 27 96 :imm t)              ; 17: add x11, x27, #96
+               (cons (arm64:add 11 11 10)                     ; 18: add x11, x11, x10 (from_end)
+               (cons (arm64:str 11 27 :offset 16)             ; 19: str x11, [x27+16]
+               (cons (arm64:add 28 27 96 :imm t)              ; 20: add x28, x27, #96
+               (cons (arm64:adr 26 36)                        ; 21: adr x26, +36 (code base)
+               (cons (arm64:bl 8)                             ; 22: bl +8 (call user code)
+               (cons (arm64:lsr 0 0 4 :imm t)                 ; 23: lsr x0, x0, #4 (untag)
+               (cons (arm64:ldr 27 31 :offset 24)             ; 24: ldr x27, [sp+24]
+               (cons (arm64:ldr 26 31 :offset 16)             ; 25: ldr x26, [sp+16]
+               (cons (arm64:ldr 28 31 :offset 8)              ; 26: ldr x28, [sp+8]
+               (cons (arm64:ldr 30 31 :offset 0)              ; 27: ldr x30, [sp]
+               (cons (arm64:add 31 31 #x30 :imm t)            ; 28: add sp, sp, #0x30
+               (cons (arm64:ret) nil)))))))))))))))))))))))))))))))) ; 29: ret
     (append stub code-bytes)))
 
 ;;; ============================================================

@@ -2,6 +2,18 @@
 ;;; No multiple-value-bind, no values, no loop, no format
 ;;; This can be compiled to native and run without SBCL
 
+;; Ensure packages exist before using them
+;; (normally defined in compiler-sbcl.lisp)
+#+sbcl
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  (unless (find-package :sys)
+    (defpackage :sys
+      (:use :cl)
+      (:shadow #:read #:compile)
+      (:export #:read #:compile)))
+  (unless (find-package :habu)
+    (defpackage :habu (:use :cl))))
+
 #+sbcl (in-package :habu)
 
 ;;; ============================================================
@@ -97,13 +109,15 @@
     (rev-iter lst nil)))
 
 #-sbcl
-(defun length (lst)
-  "List length"
-  (labels ((len-iter (l n)
-             (if (null l)
-                 n
-                 (len-iter (cdr l) (+ n 1)))))
-    (len-iter lst 0)))
+(defun length (seq)
+  "Length of list or string"
+  (if (stringp seq)
+      (string-length seq)
+      (labels ((len-iter (l n)
+                 (if (null l)
+                     n
+                     (len-iter (cdr l) (+ n 1)))))
+        (len-iter seq 0))))
 
 #-sbcl
 (defun nth (n lst)
@@ -364,10 +378,165 @@
 #+sbcl (export 'compile-expr-v2 :habu)
 
 ;;; ============================================================
+;;; Keyword Argument Support (Pure Habu)
+;;; ============================================================
+
+;; In SBCL, keywords are in KEYWORD package and symbol-name returns "FOO"
+;; In native Habu, keywords are regular symbols with name ":FOO"
+
+(defun keyword-name-p (sym)
+  "Check if symbol is a keyword (name starts with :)"
+  (if (symbolp sym)
+      (let ((name (symbol-name sym)))
+        (if (> (string-length name) 0)
+            (= (string-ref name 0) 58)  ; 58 = ':'
+            nil))
+      nil))
+
+;; Native Habu version - SBCL uses compiler-sbcl.lisp version
+#-sbcl
+(defun keyword-to-param-name (kw)
+  "Extract parameter name from keyword.
+   In native Habu: :FOO has name ':FOO', need to skip first char"
+  (let ((name (symbol-name kw)))
+    (if (and (> (string-length name) 0)
+             (= (string-ref name 0) 58))
+        ;; Skip leading colon - build new string
+        (labels ((copy-chars (i acc)
+                   (if (>= i (string-length name))
+                       (make-string-from-vector acc)
+                       (progn
+                         (vector-set acc (- i 1) (string-ref name i))
+                         (copy-chars (+ i 1) acc)))))
+          (let ((result-vec (make-vector (- (string-length name) 1))))
+            (copy-chars 1 result-vec)))
+        name)))
+
+;; Native Habu version - SBCL uses compiler-sbcl.lisp version
+#-sbcl
+(defun parse-lambda-list (params)
+  "Parse lambda list, splitting at &key.
+   Returns (positional-params . keyword-specs) where keyword-specs is
+   a list of (name default) pairs."
+  (labels ((collect (ps pos-acc kw-acc in-keys)
+             (if (null ps)
+                 (cons (reverse pos-acc) (reverse kw-acc))
+                 (let ((p (car ps)))
+                   (cond
+                     ((eq p '&key)
+                      (collect (cdr ps) pos-acc kw-acc t))
+                     (in-keys
+                      ;; Keyword param: SYMBOL or (SYMBOL DEFAULT)
+                      (if (consp p)
+                          (collect (cdr ps) pos-acc
+                                   (cons (list (car p) (cadr p)) kw-acc) t)
+                          (collect (cdr ps) pos-acc
+                                   (cons (list p nil) kw-acc) t)))
+                     (t
+                      (collect (cdr ps) (cons p pos-acc) kw-acc nil)))))))
+    (collect params nil nil nil)))
+
+;; Vector access with SBCL/native compatibility
+#+sbcl (defun vec-ref (v i) (svref v i))
+#+sbcl (defun vec-set (v i val) (setf (svref v i) val))
+#-sbcl (defun vec-ref (v i) (vector-ref v i))
+#-sbcl (defun vec-set (v i val) (vector-set v i val))
+
+(defun kw-to-param-sym (kw)
+  "Convert keyword :FOO to parameter symbol FOO.
+   Used for symbol-based comparison in keyword argument matching."
+  #+sbcl (intern (symbol-name kw))  ; :FOO -> FOO in current package
+  #-sbcl
+  ;; In native Habu, keyword has name ':FOO', strip colon and intern
+  (let ((name (symbol-name kw)))
+    (if (and (> (string-length name) 0)
+             (= (string-ref name 0) 58))  ; starts with ':'
+        (make-symbol-from-string (keyword-to-param-name kw))
+        kw)))
+
+(defun find-kw-position (param-sym keyword-specs)
+  "Find position of param-sym in keyword-specs using symbol equality.
+   param-sym is a symbol (e.g., IMM), keyword-specs is ((NAME DEFAULT) ...)."
+  (labels ((search-specs (specs pos)
+             (if (null specs)
+                 nil
+                 (if (eq param-sym (car (car specs)))
+                     pos
+                     (search-specs (cdr specs) (+ pos 1))))))
+    (search-specs keyword-specs 0)))
+
+(defun rewrite-kw-call (args n-positional keyword-specs)
+  "Rewrite call args with keywords to fully positional args.
+   Returns list of args in positional order, with defaults for unspecified keywords."
+  (let* ((n-keywords (length keyword-specs))
+         (kw-values #+sbcl (make-array n-keywords :initial-element nil)
+                    #-sbcl (make-vector n-keywords)))
+    ;; Initialize with defaults from keyword-specs
+    (labels ((init-defaults (specs idx)
+               (if (null specs)
+                   nil
+                   (progn
+                     (vec-set kw-values idx (cadr (car specs)))
+                     (init-defaults (cdr specs) (+ idx 1))))))
+      (init-defaults keyword-specs 0))
+    ;; Extract positional args and rest
+    (labels ((take-n (lst n acc)
+               (if (or (null lst) (= n 0))
+                   (cons (reverse acc) lst)
+                   (take-n (cdr lst) (- n 1) (cons (car lst) acc)))))
+      (let* ((split (take-n args n-positional nil))
+             (pos-args (car split))
+             (rest-args (cdr split)))
+        ;; Parse keyword/value pairs from rest-args
+        (labels ((parse-kws (rest)
+                   (if (null rest)
+                       nil
+                       (if (null (cdr rest))
+                           nil  ; Odd number - skip last
+                           (let ((kw (car rest))
+                                 (val (cadr rest)))
+                             (if (keyword-name-p kw)
+                                 (let* ((param-sym (kw-to-param-sym kw))
+                                        (pos (find-kw-position param-sym keyword-specs)))
+                                   (if pos
+                                       (vec-set kw-values pos val))
+                                   (parse-kws (cddr rest)))
+                                 (parse-kws (cdr rest))))))))
+          (parse-kws rest-args))
+        ;; Build result: positional + keyword values
+        (labels ((collect-kw-values (idx acc)
+                   (if (>= idx n-keywords)
+                       (reverse acc)
+                       (collect-kw-values (+ idx 1)
+                                          (cons (vec-ref kw-values idx) acc)))))
+          (append pos-args (collect-kw-values 0 nil)))))))
+
+(defun call-has-kw-p (args)
+  "Check if call arguments contain keywords"
+  (if (null args)
+      nil
+      (if (keyword-name-p (car args))
+          t
+          (call-has-kw-p (cdr args)))))
+
+(defun flatten-parsed-params (parsed)
+  "Convert parsed params (positional . kw-specs) to flat param list.
+   Keyword specs ((NAME DEFAULT) ...) become just (NAME ...) in result."
+  (let ((pos-params (car parsed))
+        (kw-specs (cdr parsed)))
+    (labels ((extract-names (specs acc)
+               (if (null specs)
+                   (reverse acc)
+                   (extract-names (cdr specs)
+                                  (cons (car (car specs)) acc)))))
+      (append pos-params (extract-names kw-specs nil)))))
+
+;;; ============================================================
 ;;; Defun and Function Call Support
 ;;; ============================================================
 
-;; Function environment: alist of (name params body) for inlining
+;; Function environment: alist of (name parsed-params body) for inlining
+;; parsed-params is (positional-params . keyword-specs) from parse-lambda-list
 ;; Used for forward references during two-pass compilation
 
 (defun collect-defuns (forms acc)
@@ -479,15 +648,26 @@
 
 #-sbcl
 (defun compile-defun (name params body env fenv)
-  "Compile a single defun to (name params body-ir param-base)"
-  (let* ((new-env (extend-env params env))
-         (pb (if params (env-lookup (car params) new-env) 0))
+  "Compile a single defun to (name params body-ir param-base).
+   Handles &key by parsing lambda list and flattening keyword params."
+  (let* ((parsed (parse-lambda-list params))
+         ;; Flatten params for environment (positional + keyword names)
+         (flat-params (flatten-parsed-params parsed))
+         (new-env (extend-env flat-params env))
+         (pb (if flat-params (env-lookup (car flat-params) new-env) 0))
          (body-ir (compile-expr-full body new-env fenv)))
-    (list name params body-ir pb)))
+    ;; Return flat params so codegen knows actual arity
+    (list name flat-params body-ir pb)))
 
 (defun extend-env (params env)
   "Extend environment with parameter bindings - append to preserve offset consistency"
   (append env params))
+
+(defun skip-docstring (body-forms)
+  "Skip docstring if present (string as first body element with more forms)"
+  (if (and (stringp (car body-forms)) (cdr body-forms))
+      (cdr body-forms)
+      body-forms))
 
 (defun compile-all-defuns (forms env fenv acc)
   "Pass 2: Compile all defuns with complete fenv"
@@ -498,7 +678,7 @@
           ((and (consp f) (eq (car f) 'defun))
            (let* ((nm (cadr f))
                   (ps (caddr f))
-                  (body-forms (cdddr f))
+                  (body-forms (skip-docstring (cdddr f)))
                   (bd (if (null (cdr body-forms))
                           (car body-forms)
                           (cons 'progn body-forms)))
@@ -510,8 +690,16 @@
           (t (compile-all-defuns (cdr forms) env fenv acc))))))
 
 #-sbcl
+(defun package-form-p (f)
+  "Check if form is defpackage or in-package (handled at read time)"
+  (and (consp f)
+       (or (eq (car f) 'defpackage)
+           (eq (car f) 'in-package))))
+
+#-sbcl
 (defun find-main-form (forms acc)
-  "Find all non-defun forms and wrap in progn if multiple"
+  "Find all non-defun forms and wrap in progn if multiple.
+   Skips defpackage and in-package forms (handled at read time)."
   (if (null forms)
       (if (null acc)
           (list 'lit 0)
@@ -522,6 +710,9 @@
         (cond
           ((and (consp f) (eq (car f) 'defun))
            (find-main-form (cdr forms) acc))
+          ((package-form-p f)
+           ;; Skip defpackage and in-package forms
+           (find-main-form (cdr forms) acc))
           ((and (consp f) (eq (car f) 'progn))
            (find-main-form (cdr forms)
                                 (find-main-form (cdr f) acc)))
@@ -529,22 +720,31 @@
 
 (defun compile-call (expr env fenv)
   "Compile function call (fn arg1 arg2 ...).
+   Handles keyword arguments by rewriting to positional form.
    Inlines small functions to avoid call overhead."
   (let ((fn-name (car expr))
         (args (cdr expr)))
     ;; Look up in fenv to check if it's a defined function
     (let ((fn-info (get-fn-info fn-name fenv)))
       (if fn-info
-          ;; Check if we should inline
-          (if (inlinable? fn-info)
-              ;; Inline: substitute parameters with arguments in body
-              (let* ((params (cadr fn-info))
-                     (body (caddr fn-info))
-                     (inlined-body (substitute-params body params args)))
-                (compile-expr-full inlined-body env fenv))
-              ;; Normal call
-              (list 'call-fn fn-name
-                    (compile-args args env fenv)))
+          (let* ((params (cadr fn-info))
+                 (body (caddr fn-info))
+                 ;; Parse lambda list to check for &key params
+                 (parsed (parse-lambda-list params))
+                 (pos-params (car parsed))
+                 (kw-specs (cdr parsed))
+                 ;; Rewrite args if call has keywords and fn accepts them
+                 (final-args (if (and kw-specs (call-has-kw-p args))
+                                 (rewrite-kw-call args (length pos-params) kw-specs)
+                                 args)))
+            ;; Check if we should inline
+            (if (inlinable? fn-info)
+                ;; Inline: substitute parameters with arguments in body
+                (let ((inlined-body (substitute-params body params final-args)))
+                  (compile-expr-full inlined-body env fenv))
+                ;; Normal call
+                (list 'call-fn fn-name
+                      (compile-args final-args env fenv))))
           ;; Unknown function - compile as lit 0 for now
           (list 'lit 0)))))
 
@@ -1052,6 +1252,7 @@
 
          ;; System calls
          ((eq (car expr) 'sys-exit) (list 'sys-exit-ir (compile-expr-full (nth 1 expr) env fenv)))
+         ((eq (car expr) 'get-cmdline-args) (list 'get-cmdline-args-ir))
          ((eq (car expr) 'get-intern-table) (list 'get-intern-table-ir))
          ((eq (car expr) 'set-intern-table) (list 'set-intern-table-ir (compile-expr-full (nth 1 expr) env fenv)))
          ((eq (car expr) 'get-lambda-counter) (list 'get-lambda-counter-ir))

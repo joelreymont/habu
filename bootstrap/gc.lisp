@@ -15,10 +15,14 @@
 ;;;   [x27+40]:  gc_state          (0=idle, for future incremental)
 ;;;   [x27+48]:  symbol_counter    (codegen symbol interning)
 ;;;   [x27+56]:  symbol_table      (codegen symbol interning)
-;;;   [x27+64]:  heap data starts
+;;;   [x27+64]:  argc              (command-line argument count)
+;;;   [x27+72]:  argv              (command-line argument vector)
+;;;   [x27+80]:  reserved
+;;;   [x27+88]:  reserved
+;;;   [x27+96]:  heap data starts
 ;;;
-;;; Semispace 0: [x27+64 .. x27+64+half)
-;;; Semispace 1: [x27+64+half .. x27+64+2*half)
+;;; Semispace 0: [x27+96 .. x27+96+half)
+;;; Semispace 1: [x27+96+half .. x27+96+2*half)
 ;;;
 ;;; Tags: 0=fixnum, 1=cons, 2=symbol, 3=vector, 4=string, 5=closure, 6=nil, 7=forward
 ;;;
@@ -44,7 +48,9 @@
 (defconstant +gc-state-offset+ 40)
 (defconstant +gc-symbol-counter-offset+ 48)  ;; For codegen symbol table
 (defconstant +gc-symbol-table-offset+ 56)    ;; For codegen symbol table
-(defconstant +gc-heap-data-offset+ 64)       ;; Heap data starts after globals
+(defconstant +gc-argc-offset+ 64)            ;; Command-line argument count
+(defconstant +gc-argv-offset+ 72)            ;; Command-line argument vector
+(defconstant +gc-heap-data-offset+ 96)       ;; Heap data starts after globals
 
 (defconstant +gc-tag-mask+ #xF)
 (defconstant +gc-tag-forward+ 7)

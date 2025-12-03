@@ -14,6 +14,10 @@
 (defvar *intern-table* nil)
 (defvar *lambda-counter* 0)
 
+;;; Package system globals
+(defvar *packages* nil)          ; list of known package names
+(defvar *current-package* nil)   ; current package name (nil = no prefix)
+
 ;;; SBCL version - symbol interning works automatically
 #+sbcl
 (defun ensure-symbols-registered ()
@@ -134,9 +138,11 @@
   (cons (cons "SET-INTERN-TABLE" 'set-intern-table)
   (cons (cons "GET-LAMBDA-COUNTER" 'get-lambda-counter)
   (cons (cons "SET-LAMBDA-COUNTER" 'set-lambda-counter)
+  (cons (cons "IN-PACKAGE" 'in-package)
+  (cons (cons "DEFPACKAGE" 'defpackage)
   (cons (cons "NIL" 'nil)
   (cons (cons "T" 't)
-        nil)))))))))))))
+        nil)))))))))))))))
 
 #-sbcl
 (defun make-ir-basic ()
@@ -340,13 +346,15 @@
 
 #-sbcl
 (defun intern (name)
-  "Intern a string as a symbol. Returns existing symbol if found, else creates new."
-  (let ((existing (find-interned name (get-intern-table))))
-    (if existing
-        existing
-        (let ((sym (make-symbol-from-string name)))
-          (set-intern-table (cons (cons name sym) (get-intern-table)))
-          sym))))
+  "Intern a string as a symbol. Returns existing symbol if found, else creates new.
+   Applies package qualification based on current package."
+  (let ((qname (qualify-symbol-name name)))
+    (let ((existing (find-interned qname (get-intern-table))))
+      (if existing
+          existing
+          (let ((sym (make-symbol-from-string qname)))
+            (set-intern-table (cons (cons qname sym) (get-intern-table)))
+            sym)))))
 
 ;;; Global state accessors (implemented in codegen for native)
 #-sbcl
@@ -362,6 +370,62 @@
 #-sbcl
 (defun set-lambda-counter (n)
   (setq *lambda-counter* n))
+
+;;; Package system accessors
+#-sbcl
+(defun get-current-package () *current-package*)
+
+#-sbcl
+(defun set-current-package (pkg)
+  (setq *current-package* pkg))
+
+#-sbcl
+(defun get-packages () *packages*)
+
+#-sbcl
+(defun add-package (name)
+  "Register a new package name"
+  (if (not (member-string name *packages*))
+      (setq *packages* (cons name *packages*))))
+
+#-sbcl
+(defun member-string (s lst)
+  "Check if string s is in list lst"
+  (let ((current lst)
+        (found nil))
+    (while (and (not found) (not (null current)))
+      (if (string= s (car current))
+          (setq found t)
+          (setq current (cdr current))))
+    found))
+
+#-sbcl
+(defun contains-colon (name)
+  "Check if string contains a colon (for package-qualified symbols)"
+  (let ((len (string-length name))
+        (i 0)
+        (found nil))
+    (while (and (< i len) (not found))
+      (if (= (string-ref name i) #x3A)  ; :
+          (setq found t)
+          (setq i (+ i 1))))
+    found))
+
+#-sbcl
+(defun qualify-symbol-name (name)
+  "Add current package prefix if name doesn't have one and package is set.
+   Names starting with : are keywords, leave unchanged.
+   Names already containing : are package-qualified, leave unchanged."
+  (if (null *current-package*)
+      name
+      (if (= (string-length name) 0)
+          name
+          (if (= (string-ref name 0) #x3A)  ; keyword starting with :
+              name
+              (if (contains-colon name)
+                  name  ; already qualified
+                  ;; Add package prefix: PKG:NAME
+                  (string-concat (string-concat *current-package* ":") name))))))
 
 ;;; Character predicates
 
@@ -812,10 +876,60 @@
                         (+ current-pos 1)
                         current-pos))))))))
 
+;;; Package form processing helpers
+#-sbcl
+(defun keyword-to-string (kw)
+  "Convert a keyword symbol to its package name string.
+   :FOO -> FOO, :foo -> FOO"
+  (let ((name (symbol-name kw)))
+    (if (and (> (string-length name) 0)
+             (= (string-ref name 0) #x3A))  ; starts with :
+        ;; Strip leading colon and upcase
+        (upcase-string (substring name 1 (string-length name)))
+        (upcase-string name))))
+
+#-sbcl
+(defun substring (s start end)
+  "Extract substring from start to end"
+  (let ((len (- end start)))
+    (if (<= len 0)
+        ""
+        (let ((vec (make-vector len))
+              (i 0))
+          (while (< i len)
+            (vector-set vec i (string-ref s (+ start i)))
+            (setq i (+ i 1)))
+          (make-string-from-vector vec)))))
+
+#-sbcl
+(defun process-package-form (form)
+  "Process defpackage or in-package form, updating reader state.
+   Returns t if form was processed, nil otherwise."
+  (if (and (consp form) (symbolp (car form)))
+      (let ((head-name (symbol-name (car form))))
+        (cond
+          ;; (in-package :pkg) or (in-package :pkg)
+          ((string= head-name "IN-PACKAGE")
+           (if (and (cdr form) (symbolp (cadr form)))
+               (let ((pkg-name (keyword-to-string (cadr form))))
+                 (set-current-package pkg-name)
+                 t)
+               nil))
+          ;; (defpackage :pkg ...) - just register the package name
+          ((string= head-name "DEFPACKAGE")
+           (if (and (cdr form) (symbolp (cadr form)))
+               (let ((pkg-name (keyword-to-string (cadr form))))
+                 (add-package pkg-name)
+                 t)
+               nil))
+          (t nil)))
+      nil))
+
 ;;; Read all forms from source string - iterative
 #-sbcl
 (defun read-all (source)
-  "Read all forms from source string - iterative"
+  "Read all forms from source string - iterative.
+   Processes defpackage and in-package forms to update reader state."
   (let ((pos 0)
         (acc nil)
         (source-len (string-length source)))
@@ -823,7 +937,11 @@
       (setq pos (skip-ws source pos))
       (if (< pos source-len)
           (let ((result (habu-read source pos)))
-            (setq acc (cons (car result) acc))
+            (let ((form (car result)))
+              ;; Process package forms to update reader state
+              (process-package-form form)
+              ;; Always accumulate the form (defpackage/in-package are kept)
+              (setq acc (cons form acc)))
             (setq pos (cdr result)))))
     (reverse acc)))
 

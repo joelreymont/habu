@@ -64,6 +64,10 @@ archive/
 .idea/
 *.sublime-*
 
+# Backup files
+*.backup
+*.bak
+
 # Temporary files
 /tmp/*.txt
 /tmp/*.lisp

@@ -2,7 +2,7 @@
 ;;;;
 ;;;; Standalone ARM64 assembler with clean API.
 ;;;; Uses keyword arguments and hex constants throughout.
-;;;; No dependencies on other Habu packages.
+;;;; Works in both SBCL and native Habu modes.
 
 (defpackage :arm64
   (:use :cl)
@@ -12,11 +12,13 @@
    ;; Data movement
    #:movz #:movk #:mov #:adrp #:adr #:add-lo12
    ;; Arithmetic
-   #:add #:sub #:mul #:sdiv #:neg
+   #:add #:sub #:subs #:mul #:sdiv #:neg
    ;; Bitwise
    #:and* #:orr #:eor #:bic #:lsl #:lsr #:asr
    ;; Memory
-   #:ldr #:str #:ldp #:stp #:ldrb #:strb
+   #:ldr #:ldr-reg #:str #:ldp #:stp #:ldrb #:ldrb-post #:strb #:strb-post
+   ;; Bitwise with immediate
+   #:orr-imm
    ;; Compare
    #:cmp #:cset
    ;; Branch
@@ -37,31 +39,53 @@
 ;;; ============================================================
 ;;; Constants
 ;;; ============================================================
+;;; In SBCL: use defconstant
+;;; In native Habu: inline the values (no defconstant support)
 
 ;; Condition codes
-(defconstant +eq+ #x0)   ; equal
-(defconstant +ne+ #x1)   ; not equal
-(defconstant +lt+ #xB)   ; signed less than
-(defconstant +le+ #xD)   ; signed less or equal
-(defconstant +gt+ #xC)   ; signed greater than
-(defconstant +ge+ #xA)   ; signed greater or equal
+#+sbcl (defconstant +eq+ #x0)   ; equal
+#+sbcl (defconstant +ne+ #x1)   ; not equal
+#+sbcl (defconstant +lt+ #xB)   ; signed less than
+#+sbcl (defconstant +le+ #xD)   ; signed less or equal
+#+sbcl (defconstant +gt+ #xC)   ; signed greater than
+#+sbcl (defconstant +ge+ #xA)   ; signed greater or equal
 ;; Unsigned comparison conditions
-(defconstant +lo+ #x3)   ; unsigned lower (carry clear)
-(defconstant +hs+ #x2)   ; unsigned higher or same (carry set)
-(defconstant +hi+ #x8)   ; unsigned higher
-(defconstant +ls+ #x9)   ; unsigned lower or same
+#+sbcl (defconstant +lo+ #x3)   ; unsigned lower (carry clear)
+#+sbcl (defconstant +hs+ #x2)   ; unsigned higher or same (carry set)
+#+sbcl (defconstant +hi+ #x8)   ; unsigned higher
+#+sbcl (defconstant +ls+ #x9)   ; unsigned lower or same
 
 ;; macOS ARM64 syscall numbers (BSD layer, use with SVC #x80)
-(defconstant +sys-exit+  1)
-(defconstant +sys-read+  3)
-(defconstant +sys-write+ 4)
-(defconstant +sys-open+  5)
-(defconstant +sys-close+ 6)
+#+sbcl (defconstant +sys-exit+  1)
+#+sbcl (defconstant +sys-read+  3)
+#+sbcl (defconstant +sys-write+ 4)
+#+sbcl (defconstant +sys-open+  5)
+#+sbcl (defconstant +sys-close+ 6)
 
 ;; Special registers (by convention, all are encoded as 31)
-(defconstant +sp+  31)   ; stack pointer
-(defconstant +lr+  30)   ; link register (x30)
-(defconstant +xzr+ 31)   ; zero register
+#+sbcl (defconstant +sp+  31)   ; stack pointer
+#+sbcl (defconstant +lr+  30)   ; link register (x30)
+#+sbcl (defconstant +xzr+ 31)   ; zero register
+
+;; Native Habu: define as functions that return the constant value
+#-sbcl (defun +eq+ () #x0)
+#-sbcl (defun +ne+ () #x1)
+#-sbcl (defun +lt+ () #xB)
+#-sbcl (defun +le+ () #xD)
+#-sbcl (defun +gt+ () #xC)
+#-sbcl (defun +ge+ () #xA)
+#-sbcl (defun +lo+ () #x3)
+#-sbcl (defun +hs+ () #x2)
+#-sbcl (defun +hi+ () #x8)
+#-sbcl (defun +ls+ () #x9)
+#-sbcl (defun +sys-exit+ () 1)
+#-sbcl (defun +sys-read+ () 3)
+#-sbcl (defun +sys-write+ () 4)
+#-sbcl (defun +sys-open+ () 5)
+#-sbcl (defun +sys-close+ () 6)
+#-sbcl (defun +sp+ () 31)
+#-sbcl (defun +lr+ () 30)
+#-sbcl (defun +xzr+ () 31)
 
 ;;; ============================================================
 ;;; Core Encoding
@@ -184,6 +208,63 @@
    Negate (alias for SUB Xd, XZR, Xm)."
   (encode (logior #xCB0003E0 (ash rm 16) rd)))
 
+(defun subs (rd rn rm-or-imm &key imm)
+  "SUBS Xd, Xn, Xm  or  SUBS Xd, Xn, #imm
+   Subtract and set flags."
+  (if imm
+      (encode (logior #xF1000000
+                      (ash (logand rm-or-imm #xFFF) 10)
+                      (ash rn 5)
+                      rd))
+      (encode (logior #xEB000000
+                      (ash rm-or-imm 16)
+                      (ash rn 5)
+                      rd))))
+
+(defun ldr-reg (rt rn rm &key (shift 0))
+  "LDR Xt, [Xn, Xm, LSL #shift]
+   Load 64-bit with register offset. Shift must be 0 or 3."
+  ;; LDR (register): 11111000011 Rm opt S 10 Rn Rt
+  ;; S=1 means LSL #3, S=0 means LSL #0
+  (let ((s-bit (if (= shift 3) 1 0)))
+    (encode (logior #xF8606800
+                    (ash rm 16)
+                    (ash s-bit 12)
+                    (ash rn 5)
+                    rt))))
+
+(defun ldrb-post (rt rn imm9)
+  "LDRB Wt, [Xn], #imm
+   Load byte with post-increment. Imm is signed 9-bit."
+  (encode (logior #x38400400
+                  (ash (logand imm9 #x1FF) 12)
+                  (ash rn 5)
+                  rt)))
+
+(defun strb-post (rt rn imm9)
+  "STRB Wt, [Xn], #imm
+   Store byte with post-increment. Imm is signed 9-bit."
+  (encode (logior #x38000400
+                  (ash (logand imm9 #x1FF) 12)
+                  (ash rn 5)
+                  rt)))
+
+(defun orr-imm (rd rn imm)
+  "ORR Xd, Xn, #imm
+   Bitwise OR with immediate. Supports common small constants."
+  ;; ARM64 logical immediate encoding is complex.
+  ;; For tagging: we only need small constants like 1, 2, 3, 4, 5, 6, 7
+  ;; These are: N=1, immr=0, imms varies
+  (let ((base #xB2400000))
+    (cond
+      ((= imm 1) (encode (logior base (ash 0 10) (ash rn 5) rd)))   ; imms=0
+      ((= imm 3) (encode (logior base (ash 1 10) (ash rn 5) rd)))   ; imms=1
+      ((= imm 7) (encode (logior base (ash 2 10) (ash rn 5) rd)))   ; imms=2
+      ((= imm 15) (encode (logior base (ash 3 10) (ash rn 5) rd)))  ; imms=3
+      ;; Unsupported immediate - return nil (compile-time error detection)
+      #+sbcl (t (error "orr-imm: unsupported immediate ~D" imm))
+      #-sbcl (t nil))))
+
 ;;; ============================================================
 ;;; Bitwise Operations
 ;;; ============================================================
@@ -216,8 +297,9 @@
            (encode (logior base (ash 60 16) (ash 59 10) rn-shift rd)))
           ((or (= rm-or-imm #xFFFFFFFFFFFFFFE0) (= rm-or-imm -32))  ; ~31
            (encode (logior base (ash 59 16) (ash 58 10) rn-shift rd)))
-          (t
-           (error "and* :imm - unsupported mask #x~X. Use common masks or encode manually." rm-or-imm))))
+          ;; Unsupported mask - return nil (compile-time error detection)
+          #+sbcl (t (error "and* :imm - unsupported mask #x~X. Use common masks or encode manually." rm-or-imm))
+          #-sbcl (t nil)))
       ;; Register mode
       (encode (logior #x8A000000
                       (ash rm-or-imm 16)
@@ -431,70 +513,70 @@
    Branch if equal. Offset in instructions."
   (encode (logior #x54000000
                   (ash (logand offset #x7FFFF) 5)
-                  +eq+)))
+                  #x0)))  ; +eq+ = 0
 
 (defun b.ne (offset)
   "B.NE label
    Branch if not equal. Offset in instructions."
   (encode (logior #x54000000
                   (ash (logand offset #x7FFFF) 5)
-                  +ne+)))
+                  #x1)))  ; +ne+ = 1
 
 (defun b.lt (offset)
   "B.LT label
    Branch if less than. Offset in instructions."
   (encode (logior #x54000000
                   (ash (logand offset #x7FFFF) 5)
-                  +lt+)))
+                  #xB)))  ; +lt+ = 11
 
 (defun b.le (offset)
   "B.LE label
    Branch if less or equal. Offset in instructions."
   (encode (logior #x54000000
                   (ash (logand offset #x7FFFF) 5)
-                  +le+)))
+                  #xD)))  ; +le+ = 13
 
 (defun b.gt (offset)
   "B.GT label
    Branch if greater than. Offset in instructions."
   (encode (logior #x54000000
                   (ash (logand offset #x7FFFF) 5)
-                  +gt+)))
+                  #xC)))  ; +gt+ = 12
 
 (defun b.ge (offset)
   "B.GE label
    Branch if greater or equal. Offset in instructions."
   (encode (logior #x54000000
                   (ash (logand offset #x7FFFF) 5)
-                  +ge+)))
+                  #xA)))  ; +ge+ = 10
 
 (defun b.lo (offset)
   "B.LO label
    Branch if unsigned lower (carry clear). Offset in instructions."
   (encode (logior #x54000000
                   (ash (logand offset #x7FFFF) 5)
-                  +lo+)))
+                  #x3)))  ; +lo+ = 3
 
 (defun b.hs (offset)
   "B.HS label
    Branch if unsigned higher or same (carry set). Offset in instructions."
   (encode (logior #x54000000
                   (ash (logand offset #x7FFFF) 5)
-                  +hs+)))
+                  #x2)))  ; +hs+ = 2
 
 (defun b.hi (offset)
   "B.HI label
    Branch if unsigned higher. Offset in instructions."
   (encode (logior #x54000000
                   (ash (logand offset #x7FFFF) 5)
-                  +hi+)))
+                  #x8)))  ; +hi+ = 8
 
 (defun b.ls (offset)
   "B.LS label
    Branch if unsigned lower or same. Offset in instructions."
   (encode (logior #x54000000
                   (ash (logand offset #x7FFFF) 5)
-                  +ls+)))
+                  #x9)))  ; +ls+ = 9
 
 (defun ret ()
   "RET

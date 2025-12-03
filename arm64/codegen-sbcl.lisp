@@ -59,12 +59,14 @@
 (defparameter *profile-stack* nil
   "Runtime call stack for profiling: list of (fn-name . start-ns)")
 
-(defparameter *stack-frame-size* #xFF0)
-(defparameter *env-base-offset* #x180)
-(defparameter *temp-slot-base* #x40)
-(defparameter *temp-slot-guard* #x840)  ; Allow 256 temp slots for complex code
-(defparameter *arg-spill-base* #x840)
-(defparameter *arg-spill-stride* #x8)
+;; Reduced frame size from 4080 to 1280 bytes to allow ~6K nested calls
+;; vs ~2K previously (8MB stack / frame_size)
+(defparameter *stack-frame-size* #x500)  ; 1280 bytes
+(defparameter *env-base-offset* #xC0)    ; Environment base at 192 bytes
+(defparameter *temp-slot-base* #x40)     ; Temp slots start at 64 bytes
+(defparameter *temp-slot-guard* #x100)   ; Guard at 256 bytes (max 24 temp slots)
+(defparameter *arg-spill-base* #x100)    ; Arg spill starts at 256 bytes
+(defparameter *arg-spill-stride* #x8)    ; 8 bytes per spill slot
 (defparameter *max-arg-spill-count*
   (/ (- *stack-frame-size* *arg-spill-base*) *arg-spill-stride*))
 

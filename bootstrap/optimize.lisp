@@ -671,13 +671,12 @@
 
 (defun source-inlinable? (fn-info)
   "Check if function is small enough to inline.
-   FN-INFO is (name params body)"
-  (let ((name (car fn-info))
-        (params (cadr fn-info))
-        (body (caddr fn-info)))
-    (and (< (source-expr-size body) 15)  ; Small body
-         (not (source-calls-self? body name))  ; Not recursive
-         (<= (length params) 4))))  ; Few params
+   FN-INFO is (name params body)
+   NOTE: Inlining is currently DISABLED due to variable capture bug.
+   When inlined functions have local variables with the same name as
+   variables in the calling context, the wrong offset is used."
+  (declare (ignore fn-info))
+  nil)  ; Disabled - variable capture bug causes wrong offsets
 
 (defun source-expr-size (expr)
   "Estimate size of source expression"
