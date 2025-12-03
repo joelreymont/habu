@@ -5,14 +5,28 @@
 
 ## Current Status
 
-**Test Results**: 76/76 pass
+**Test Results**: 44 passed, 0 failed, 4 skipped (via ASDF)
 **Stage 1**: Compiles and runs (1,101,728 bytes with &key support)
 
 ## Current Session (December 3, 2025)
 
 ### Changes Made This Session
 
-1. **Keyword argument (`&key`) support in bootstrap compiler**
+1. **ASDF-based test infrastructure**
+   - Updated `bootstrap/habu.asd` with `habu/tests` system
+   - Created `bootstrap/test-harness.lisp` with HABU-TEST package
+   - Created `tests/test-core.lisp` with 37 core compiler tests
+   - Created `tests/test-keyword-args.lisp` with 6 keyword tests
+   - Created `tests/test-packages.lisp` with package tests
+   - Run via: `(asdf:test-system :habu)`
+   - Test harness tracks totals across all suites
+
+2. **Updated AGENTS.md with testing documentation**
+   - Added ASDF test commands and best practices
+   - Documented test organization and file naming
+   - Added key points about avoiding `(load ...)` in tests
+
+3. **Keyword argument (`&key`) support in bootstrap compiler**
    - Added `parse-lambda-list` to split params at `&key`
    - Added `keyword-to-param-name` to convert `:FOO` keyword to `"FOO"` string
    - Added `find-keyword-position` for locating keyword in specs list
@@ -21,23 +35,17 @@
    - Modified `sys:compile` to always rewrite calls when function has `&key`
      (even if call doesn't use keywords, to fill in default values)
 
-2. **Fixed reader to properly handle keywords**
+4. **Fixed reader to properly handle keywords**
    - Modified `read-sym` to intern keywords into KEYWORD package
      (was interning `:offset` as `|:OFFSET|` in HABU package)
    - Added package-qualified symbol handling with fallback to HABU package
      for unknown packages (needed for user-defined packages in source)
 
-3. **Added automated tests for keyword arguments**
-   - Created `tests/test_keyword_args.lisp` with 6 tests:
-     - Default values, specified values, multiple keywords
-     - Keywords without defaults, mixed positional/keyword
-     - Keyword rewriting at call sites
-   - All 6 tests pass
-
-4. **Added automated tests for packages**
-   - Created `tests/test_native_packages.lisp`
-   - Simple package test passes (defpackage + in-package + local call)
-   - Cross-package tests skipped in bootstrap mode (require native reader)
+5. **Removed legacy test files**
+   - Removed `tests/test_keyword_args.lisp` (superseded by ASDF version)
+   - Removed `tests/test_native_packages.lisp` (superseded by ASDF version)
+   - Removed `tests/test-setup.lisp` (superseded by ASDF system)
+   - Removed legacy compatibility section from test-harness.lisp
 
 ### Architecture Notes
 
