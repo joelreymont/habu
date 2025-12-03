@@ -885,7 +885,7 @@
         (if (= dest-reg reg)
             nil                        ; Already in correct register
             (arm64:mov dest-reg reg)) ; MOV dest, xN
-        (ldr-offset dest-reg 31 (temp-slot depth)))))
+        (arm64:ldr dest-reg 31 :offset (temp-slot depth)))))
 
 (defun spill-slot (td idx)
   ;; Spill slots are depth-aware to handle nested function calls
@@ -3253,12 +3253,12 @@
          (append-all
           (list ac
                 ;; Check for nil: if x0 == 0, skip load (return 0)
-                (cbz 0 28)                     ; if x0 == 0, skip 7 instrs (28 bytes)
+                (arm64:cbz 0 7)                ; if x0 == 0, skip 7 instructions
                 ;; Clear low 4 bits to get pointer
                 (arm64:movz 1 #xFFF0)                ; x1 = mask (keep upper bits)
-                (movk 1 #xFFFF 1)              ; complete mask (shift16=1 means LSL 16)
-                (movk 1 #xFFFF 2)              ; shift16=2 means LSL 32
-                (movk 1 #xFFFF 3)              ; shift16=3 means LSL 48
+                (arm64:movk 1 #xFFFF :lsl 16)  ; complete mask
+                (arm64:movk 1 #xFFFF :lsl 32)
+                (arm64:movk 1 #xFFFF :lsl 48)
                 (arm64:and* 0 0 1)                ; x0 = ptr with tag cleared
                 (arm64:ldr 0 0 :offset 0))))))        ; x0 = [ptr+0] = car
     ((has-tag ir 'cdr-ir)
@@ -3269,12 +3269,12 @@
          (append-all
           (list ac
                 ;; Check for nil: if x0 == 0, skip load (return 0)
-                (cbz 0 28)                     ; if x0 == 0, skip 7 instrs (28 bytes)
+                (arm64:cbz 0 7)                ; if x0 == 0, skip 7 instructions
                 ;; Clear low 4 bits to get pointer
                 (arm64:movz 1 #xFFF0)                ; x1 = mask (keep upper bits)
-                (movk 1 #xFFFF 1)              ; complete mask (shift16=1 means LSL 16)
-                (movk 1 #xFFFF 2)              ; shift16=2 means LSL 32
-                (movk 1 #xFFFF 3)              ; shift16=3 means LSL 48
+                (arm64:movk 1 #xFFFF :lsl 16)  ; complete mask
+                (arm64:movk 1 #xFFFF :lsl 32)
+                (arm64:movk 1 #xFFFF :lsl 48)
                 (arm64:and* 0 0 1)                ; x0 = ptr with tag cleared
                 (arm64:ldr 0 0 :offset 8))))))
     ;; setq-ir - assign to variable
@@ -3305,9 +3305,9 @@
             ;; Clear low 4 bits to get raw pointer
             (clear-tag (append-all
                         (list (arm64:movz 9 #xFFF0)
-                              (movk 9 #xFFFF 1)
-                              (movk 9 #xFFFF 2)
-                              (movk 9 #xFFFF 3)
+                              (arm64:movk 9 #xFFFF :lsl 16)
+                              (arm64:movk 9 #xFFFF :lsl 32)
+                              (arm64:movk 9 #xFFFF :lsl 48)
                               (arm64:and* 1 1 9))))
             ;; Get value back
             (load-val (arm64:ldr 0 31 :offset val-slot))
@@ -3333,9 +3333,9 @@
             ;; Clear low 4 bits to get raw pointer
             (clear-tag (append-all
                         (list (arm64:movz 9 #xFFF0)
-                              (movk 9 #xFFFF 1)
-                              (movk 9 #xFFFF 2)
-                              (movk 9 #xFFFF 3)
+                              (arm64:movk 9 #xFFFF :lsl 16)
+                              (arm64:movk 9 #xFFFF :lsl 32)
+                              (arm64:movk 9 #xFFFF :lsl 48)
                               (arm64:and* 1 1 9))))
             ;; Get value back
             (load-val (arm64:ldr 0 31 :offset val-slot))
@@ -3388,9 +3388,9 @@
         (list sc
               ;; Clear low 4 bits to get pointer (same approach as car-ir)
               (arm64:movz 1 #xFFF0)              ; x1 = mask (keep upper bits)
-              (movk 1 #xFFFF 1)            ; complete mask (shift16=1 means LSL 16)
-              (movk 1 #xFFFF 2)            ; shift16=2 means LSL 32
-              (movk 1 #xFFFF 3)            ; shift16=3 means LSL 48
+              (arm64:movk 1 #xFFFF :lsl 16)  ; complete mask
+              (arm64:movk 1 #xFFFF :lsl 32)
+              (arm64:movk 1 #xFFFF :lsl 48)
               (arm64:and* 0 0 1)              ; x0 = str_ptr (untagged)
               ;; Load length from [x0+0]
               (arm64:ldr 0 0 :offset 0)           ; x0 = raw length
@@ -3417,9 +3417,9 @@
               (arm64:ldr 1 31 :offset _xs)         ; x1 = str (tagged)
               ;; Clear tag: x1 = x1 & ~0xF (same approach as car-ir)
               (arm64:movz 2 #xFFF0)              ; x2 = mask (keep upper bits)
-              (movk 2 #xFFFF 1)            ; complete mask (shift16=1 means LSL 16)
-              (movk 2 #xFFFF 2)            ; shift16=2 means LSL 32
-              (movk 2 #xFFFF 3)            ; shift16=3 means LSL 48
+              (arm64:movk 2 #xFFFF :lsl 16)  ; complete mask
+              (arm64:movk 2 #xFFFF :lsl 32)
+              (arm64:movk 2 #xFFFF :lsl 48)
               (arm64:and* 1 1 2)              ; x1 = str_ptr (untagged)
               ;; Load idx -> x0
               (arm64:ldr 0 31 :offset is)         ; x0 = idx (tagged)

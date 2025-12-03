@@ -254,6 +254,20 @@ All ARM64 instructions use the `arm64` package (`arm64/asm.lisp`):
 (arm64:b.eq offset)               ; branch if equal (instruction count)
 ```
 
+**IMPORTANT - Branch Offset Convention:**
+- All branch instructions (`arm64:b`, `arm64:b.eq`, `arm64:b.lt`, etc.) take **instruction count** offsets, not byte offsets
+- The ARM64 PC-relative encoding uses instruction counts (each instruction is 4 bytes)
+- When computing dynamic offsets from `code-size` (which returns bytes), divide by 4: `(ash byte-offset -2)`
+- Example: To skip 3 instructions forward, use offset `3`, not `12`
+
+```lisp
+;; Correct: instruction count offset
+(arm64:b.eq 5)                    ; skip 5 instructions (20 bytes)
+
+;; For dynamic offsets computed from code-size (bytes):
+(arm64:b (ash (+ else-size 4) -2))  ; convert bytes to instruction count
+```
+
 ## Self-Hosting Path
 
 ### Current Status
