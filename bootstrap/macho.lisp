@@ -580,9 +580,9 @@
    GOT-PAGE-OFFSET: signed page offset for ADRP (in 4KB pages)
    GOT-SLOT-OFFSET: byte offset within page for LDR
    Returns byte list (12 bytes = 3 instructions)"
-  (append (arm64:adrp 16 got-page-offset)
-          (append (arm64:ldr 16 16 :offset got-slot-offset)
-                  (arm64:br 16))))
+  (append (arm64:adrp :x16 got-page-offset)
+          (append (arm64:ldr :x16 :x16 :offset got-slot-offset)
+                  (arm64:br :x16))))
 
 (defun build-got-entries (num-imports)
   "Build GOT entries with bind markers.
@@ -808,11 +808,11 @@
     (append
      ;; Prologue: save registers
      (buf-append-all
-      (list (arm64:sub 31 31 #x30 :imm t)    ; sub sp, sp, #0x30
-            (arm64:str 30 31 :offset 0)       ; str x30, [sp]
-            (arm64:str 28 31 :offset 8)       ; str x28, [sp, 8]
-            (arm64:str 26 31 :offset 16)      ; str x26, [sp, 16]
-            (arm64:str 27 31 :offset 24)))    ; str x27, [sp, 24]
+      (list (arm64:sub :sp :sp #x30 :imm t)    ; sub sp, sp, #0x30
+            (arm64:str :lr :sp :offset 0)       ; str x30, [sp]
+            (arm64:str :heap :sp :offset 8)       ; str x28, [sp, 8]
+            (arm64:str :code-base :sp :offset 16)      ; str x26, [sp, 16]
+            (arm64:str :gc :sp :offset 24)))    ; str x27, [sp, 24]
 
      ;; mmap heap initialization (sets up x27, x28)
      init-bytes
@@ -821,17 +821,17 @@
      ;; ADR offset: skip BL (1) + epilogue (7) = 9 to reach user code
      ;; BL offset: skip epilogue (7) + 1 = 8 to reach user code
      (buf-append-all
-      (list (arm64:adr 26 9)                ; adr x26, +9 (code base = user code start)
+      (list (arm64:adr :code-base 9)                ; adr x26, +9 (code base = user code start)
             (arm64:bl user-code-offset)))   ; bl user_code
 
      ;; Epilogue: untag result and restore
      (buf-append-all
-      (list (arm64:lsr 0 0 4 :imm t)          ; lsr x0, x0, #4 (untag fixnum)
-            (arm64:ldr 27 31 :offset 24)      ; ldr x27, [sp+24]
-            (arm64:ldr 26 31 :offset 16)      ; ldr x26, [sp+16]
-            (arm64:ldr 28 31 :offset 8)       ; ldr x28, [sp+8]
-            (arm64:ldr 30 31 :offset 0)       ; ldr x30, [sp]
-            (arm64:add 31 31 #x30 :imm t)     ; add sp, sp, #0x30
+      (list (arm64:lsr :x0 :x0 4 :imm t)          ; lsr x0, x0, #4 (untag fixnum)
+            (arm64:ldr :gc :sp :offset 24)      ; ldr x27, [sp+24]
+            (arm64:ldr :code-base :sp :offset 16)      ; ldr x26, [sp+16]
+            (arm64:ldr :heap :sp :offset 8)       ; ldr x28, [sp+8]
+            (arm64:ldr :lr :sp :offset 0)       ; ldr x30, [sp]
+            (arm64:add :sp :sp #x30 :imm t)     ; add sp, sp, #0x30
             (arm64:ret)))                      ; ret
 
      ;; User code
@@ -857,35 +857,35 @@
   ;;   [x27+112]: heap data starts, x28 points here (16-byte aligned)
   (let ((stub (buf-append-all
                ;; Use nested cons like the original to build list of 4-byte instructions
-               (cons (arm64:sub 31 31 #x30 :imm t)           ; 1: sub sp, sp, #0x30
-               (cons (arm64:str 30 31 :offset 0)              ; 2: str x30, [sp]
-               (cons (arm64:str 28 31 :offset 8)              ; 3: str x28, [sp, 8]
-               (cons (arm64:str 26 31 :offset 16)             ; 4: str x26, [sp, 16]
-               (cons (arm64:str 27 31 :offset 24)             ; 5: str x27, [sp, 24]
-               (cons (arm64:adrp 28 heap-page-offset)         ; 6: adrp x28, heap
-               (cons (arm64:mov 27 28)                        ; 7: mov x27, x28
-               (cons (arm64:movz 9 6)                         ; 8: movz x9, 6 (nil)
-               (cons (arm64:str 9 27 :offset 0)               ; 9: str x9, [x27+0] (intern_table)
-               (cons (arm64:movz 9 0)                         ; 10: movz x9, 0
-               (cons (arm64:str 9 27 :offset 8)               ; 11: str x9, [x27+8] (lambda_counter)
-               (cons (arm64:str 9 27 :offset 32)              ; 12: str x9, [x27+32] (space_flag)
-               (cons (arm64:str 9 27 :offset 40)              ; 13: str x9, [x27+40] (gc_state)
-               (cons (arm64:movz 10 0)                        ; 14: movz x10, 0
-               (cons (arm64:movk 10 #x200 :lsl 16)            ; 15: movk x10, #0x200, lsl 16 (=32MB)
-               (cons (arm64:str 10 27 :offset 24)             ; 16: str x10, [x27+24] (half_heap)
-               (cons (arm64:add 11 27 112 :imm t)             ; 17: add x11, x27, #112
-               (cons (arm64:add 11 11 10)                     ; 18: add x11, x11, x10 (from_end)
-               (cons (arm64:str 11 27 :offset 16)             ; 19: str x11, [x27+16]
-               (cons (arm64:add 28 27 112 :imm t)             ; 20: add x28, x27, #112
-               (cons (arm64:str 31 27 :offset 96)             ; 21: str sp, [x27+96] (stack_base)
-               (cons (arm64:adr 26 36)                        ; 22: adr x26, +36 (code base)
+               (cons (arm64:sub :sp :sp #x30 :imm t)           ; 1: sub sp, sp, #0x30
+               (cons (arm64:str :lr :sp :offset 0)              ; 2: str x30, [sp]
+               (cons (arm64:str :heap :sp :offset 8)              ; 3: str x28, [sp, 8]
+               (cons (arm64:str :code-base :sp :offset 16)             ; 4: str x26, [sp, 16]
+               (cons (arm64:str :gc :sp :offset 24)             ; 5: str x27, [sp, 24]
+               (cons (arm64:adrp :heap heap-page-offset)         ; 6: adrp x28, heap
+               (cons (arm64:mov :gc :heap)                        ; 7: mov x27, x28
+               (cons (arm64:movz :x9 6)                         ; 8: movz x9, 6 (nil)
+               (cons (arm64:str :x9 :gc :offset 0)               ; 9: str x9, [x27+0] (intern_table)
+               (cons (arm64:movz :x9 0)                         ; 10: movz x9, 0
+               (cons (arm64:str :x9 :gc :offset 8)               ; 11: str x9, [x27+8] (lambda_counter)
+               (cons (arm64:str :x9 :gc :offset 32)              ; 12: str x9, [x27+32] (space_flag)
+               (cons (arm64:str :x9 :gc :offset 40)              ; 13: str x9, [x27+40] (gc_state)
+               (cons (arm64:movz :x10 0)                        ; 14: movz x10, 0
+               (cons (arm64:movk :x10 #x200 :lsl 16)            ; 15: movk x10, #0x200, lsl 16 (=32MB)
+               (cons (arm64:str :x10 :gc :offset 24)             ; 16: str x10, [x27+24] (half_heap)
+               (cons (arm64:add :x11 :gc 112 :imm t)             ; 17: add x11, x27, #112
+               (cons (arm64:add :x11 :x11 :x10)                     ; 18: add x11, x11, x10 (from_end)
+               (cons (arm64:str :x11 :gc :offset 16)             ; 19: str x11, [x27+16]
+               (cons (arm64:add :heap :gc 112 :imm t)             ; 20: add x28, x27, #112
+               (cons (arm64:str :sp :gc :offset 96)             ; 21: str sp, [x27+96] (stack_base)
+               (cons (arm64:adr :code-base 36)                        ; 22: adr x26, +36 (code base)
                (cons (arm64:bl 8)                             ; 23: bl +8 (call user code)
-               (cons (arm64:lsr 0 0 4 :imm t)                 ; 24: lsr x0, x0, #4 (untag)
-               (cons (arm64:ldr 27 31 :offset 24)             ; 25: ldr x27, [sp+24]
-               (cons (arm64:ldr 26 31 :offset 16)             ; 26: ldr x26, [sp+16]
-               (cons (arm64:ldr 28 31 :offset 8)              ; 27: ldr x28, [sp+8]
-               (cons (arm64:ldr 30 31 :offset 0)              ; 28: ldr x30, [sp]
-               (cons (arm64:add 31 31 #x30 :imm t)            ; 29: add sp, sp, #0x30
+               (cons (arm64:lsr :x0 :x0 4 :imm t)                 ; 24: lsr x0, x0, #4 (untag)
+               (cons (arm64:ldr :gc :sp :offset 24)             ; 25: ldr x27, [sp+24]
+               (cons (arm64:ldr :code-base :sp :offset 16)             ; 26: ldr x26, [sp+16]
+               (cons (arm64:ldr :heap :sp :offset 8)              ; 27: ldr x28, [sp+8]
+               (cons (arm64:ldr :lr :sp :offset 0)              ; 28: ldr x30, [sp]
+               (cons (arm64:add :sp :sp #x30 :imm t)            ; 29: add sp, sp, #0x30
                (cons (arm64:ret) nil))))))))))))))))))))))))))))))))) ; 30: ret
     (append stub code-bytes)))
 

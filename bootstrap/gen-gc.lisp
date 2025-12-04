@@ -87,27 +87,27 @@
    Uses x9, x10 as scratch registers."
   (append
    ;; Get base address (clear tag bits)
-   (arm64:and* 9 target-reg -16 :imm t)  ; x9 = base address
+   (arm64:and* :x9 target-reg -16 :imm t)  ; x9 = base address
 
    ;; Load nursery_end (old space starts here)
-   (arm64:ldr 10 27 :offset +gen-nursery-end-offset+)  ; x10 = nursery_end
+   (arm64:ldr :x10 :gc :offset +gen-nursery-end-offset+)  ; x10 = nursery_end
 
    ;; Check if target < nursery_end (in nursery, no barrier needed)
-   (arm64:cmp 9 10)
+   (arm64:cmp :x9 :x10)
    (arm64:b.lo 7)  ; skip barrier if in nursery
 
    ;; Target is in old space - mark card dirty
    ;; card_index = (addr - old_space_start) >> 9
-   (arm64:sub 9 9 10)                   ; x9 = addr - old_space_start
-   (arm64:lsr 9 9 +gen-card-shift+ :imm t)  ; x9 = card index
+   (arm64:sub :x9 :x9 :x10)                   ; x9 = addr - old_space_start
+   (arm64:lsr :x9 :x9 +gen-card-shift+ :imm t)  ; x9 = card index
 
    ;; card_addr = card_table + card_index
-   (arm64:ldr 10 27 :offset +gen-card-table-offset+)  ; x10 = card_table
-   (arm64:add 9 9 10)                   ; x9 = card address
+   (arm64:ldr :x10 :gc :offset +gen-card-table-offset+)  ; x10 = card_table
+   (arm64:add :x9 :x9 :x10)                   ; x9 = card address
 
    ;; Mark card dirty (store 1)
-   (arm64:movz 10 1)
-   (arm64:strb 10 9 0)))                ; card[index] = 1
+   (arm64:movz :x10 1)
+   (arm64:strb :x10 :x9 0)))                ; card[index] = 1
 
 ;;; ============================================================
 ;;; Allocation Fast Path
@@ -118,8 +118,8 @@
    If x28 >= nursery_end, triggers minor GC.
    Uses x9 as scratch."
   (append
-   (arm64:ldr 9 27 :offset +gen-nursery-end-offset+)  ; x9 = nursery_end
-   (arm64:cmp 28 9)                                   ; compare x28, nursery_end
+   (arm64:ldr :x9 :gc :offset +gen-nursery-end-offset+)  ; x9 = nursery_end
+   (arm64:cmp :heap :x9)                                   ; compare x28, nursery_end
    (arm64:b.lo 2)                                     ; skip if x28 < nursery_end
    (list '(:call-fn GEN-MINOR-GC))))                  ; bl minor_gc
 
@@ -144,18 +144,18 @@
    (list '(:fn-label GEN-MINOR-GC))
 
    ;; Prologue: save registers
-   (arm64:sub 31 31 176 :imm t)
-   (arm64:stp 30 29 31 :offset 0)
-   (arm64:stp 0 1 31 :offset 16)
-   (arm64:stp 2 3 31 :offset 32)
-   (arm64:stp 4 5 31 :offset 48)
-   (arm64:stp 6 7 31 :offset 64)
-   (arm64:stp 8 9 31 :offset 80)
-   (arm64:stp 10 11 31 :offset 96)
-   (arm64:stp 12 13 31 :offset 112)
-   (arm64:stp 14 15 31 :offset 128)
-   (arm64:stp 24 25 31 :offset 144)
-   (arm64:str 26 31 :offset 160)
+   (arm64:sub :sp :sp 176 :imm t)
+   (arm64:stp :lr :fp :sp :offset 0)
+   (arm64:stp :x0 :x1 :sp :offset 16)
+   (arm64:stp :x2 :x3 :sp :offset 32)
+   (arm64:stp :x4 :x5 :sp :offset 48)
+   (arm64:stp :x6 :x7 :sp :offset 64)
+   (arm64:stp :x8 :x9 :sp :offset 80)
+   (arm64:stp :x10 :x11 :sp :offset 96)
+   (arm64:stp :x12 :x13 :sp :offset 112)
+   (arm64:stp :x14 :x15 :sp :offset 128)
+   (arm64:stp :closure :x25 :sp :offset 144)
+   (arm64:str :code-base :sp :offset 160)
 
    ;; Setup:
    ;; x18 = nursery-start
@@ -163,161 +163,161 @@
    ;; x16 = old-to-scan (where to scan promoted objects)
    ;; x17 = old-to-free (where to allocate in old space)
 
-   (arm64:ldr 18 27 :offset +gen-nursery-start-offset+)
-   (arm64:ldr 19 27 :offset +gen-nursery-end-offset+)
+   (arm64:ldr :x18 :gc :offset +gen-nursery-start-offset+)
+   (arm64:ldr :x19 :gc :offset +gen-nursery-end-offset+)
 
    ;; Load old space allocation pointer from global
-   (arm64:ldr 17 27 :offset +gen-old-alloc-offset+)
-   (arm64:mov 16 17)                               ; to-scan = to-free
+   (arm64:ldr :x17 :gc :offset +gen-old-alloc-offset+)
+   (arm64:mov :x16 :x17)                               ; to-scan = to-free
 
    ;; Process register roots (x0-x7, x24)
    ;; For each: if it points to nursery, copy to old space
 
    ;; x0
-   (arm64:ldr 0 31 :offset 16)
+   (arm64:ldr :x0 :sp :offset 16)
    (list '(:call-fn GEN-COPY-IF-NURSERY))
-   (arm64:str 0 31 :offset 16)
+   (arm64:str :x0 :sp :offset 16)
 
    ;; x1
-   (arm64:ldr 0 31 :offset 24)
+   (arm64:ldr :x0 :sp :offset 24)
    (list '(:call-fn GEN-COPY-IF-NURSERY))
-   (arm64:str 0 31 :offset 24)
+   (arm64:str :x0 :sp :offset 24)
 
    ;; x2
-   (arm64:ldr 0 31 :offset 32)
+   (arm64:ldr :x0 :sp :offset 32)
    (list '(:call-fn GEN-COPY-IF-NURSERY))
-   (arm64:str 0 31 :offset 32)
+   (arm64:str :x0 :sp :offset 32)
 
    ;; x3
-   (arm64:ldr 0 31 :offset 40)
+   (arm64:ldr :x0 :sp :offset 40)
    (list '(:call-fn GEN-COPY-IF-NURSERY))
-   (arm64:str 0 31 :offset 40)
+   (arm64:str :x0 :sp :offset 40)
 
    ;; x4
-   (arm64:ldr 0 31 :offset 48)
+   (arm64:ldr :x0 :sp :offset 48)
    (list '(:call-fn GEN-COPY-IF-NURSERY))
-   (arm64:str 0 31 :offset 48)
+   (arm64:str :x0 :sp :offset 48)
 
    ;; x5
-   (arm64:ldr 0 31 :offset 56)
+   (arm64:ldr :x0 :sp :offset 56)
    (list '(:call-fn GEN-COPY-IF-NURSERY))
-   (arm64:str 0 31 :offset 56)
+   (arm64:str :x0 :sp :offset 56)
 
    ;; x6
-   (arm64:ldr 0 31 :offset 64)
+   (arm64:ldr :x0 :sp :offset 64)
    (list '(:call-fn GEN-COPY-IF-NURSERY))
-   (arm64:str 0 31 :offset 64)
+   (arm64:str :x0 :sp :offset 64)
 
    ;; x7
-   (arm64:ldr 0 31 :offset 72)
+   (arm64:ldr :x0 :sp :offset 72)
    (list '(:call-fn GEN-COPY-IF-NURSERY))
-   (arm64:str 0 31 :offset 72)
+   (arm64:str :x0 :sp :offset 72)
 
    ;; x24
-   (arm64:ldr 0 31 :offset 144)
+   (arm64:ldr :x0 :sp :offset 144)
    (list '(:call-fn GEN-COPY-IF-NURSERY))
-   (arm64:str 0 31 :offset 144)
+   (arm64:str :x0 :sp :offset 144)
 
    ;; ===== Scan dirty cards =====
    ;; x20 = card table pointer (iterate through)
    ;; x21 = card table end
    ;; x22 = old-space-start (for computing card addresses)
    ;; x23 = scratch for card scanning
-   (arm64:ldr 20 27 :offset +gen-card-table-offset+)   ; x20 = card-table-start
-   (arm64:ldr 22 27 :offset +gen-nursery-end-offset+)  ; x22 = old-space-start
+   (arm64:ldr :env :gc :offset +gen-card-table-offset+)   ; x20 = card-table-start
+   (arm64:ldr :x22 :gc :offset +gen-nursery-end-offset+)  ; x22 = old-space-start
    ;; card-table-end = card-table-start + card-table-size
    ;; card-table-size is constant: +gen-card-table-size+
-   (arm64:movz 21 (logand +gen-card-table-size+ #xFFFF))
-   (arm64:add 21 20 21)                                 ; x21 = card-table-end
+   (arm64:movz :x21 (logand +gen-card-table-size+ #xFFFF))
+   (arm64:add :x21 :env :x21)                                 ; x21 = card-table-end
 
    ;; Card scan loop
    (list '(:label GEN-CARD-SCAN))
-   (arm64:cmp 20 21)
+   (arm64:cmp :env :x21)
    (arm64:b.hs 22)                          ; done with cards
 
    ;; Load card byte
-   (arm64:ldrb 23 20 0)                     ; x23 = card[i]
-   (arm64:cbz 23 18)                        ; if clean (0), skip to next card
+   (arm64:ldrb :x23 :env 0)                     ; x23 = card[i]
+   (arm64:cbz :x23 18)                        ; if clean (0), skip to next card
 
    ;; Card is dirty - scan all words in this card's range
    ;; card-addr = old-space-start + (card-index * 512)
    ;; card-index = current-card-ptr - card-table-start
-   (arm64:sub 8 20 27)                      ; temp calculation
-   (arm64:ldr 8 27 :offset +gen-card-table-offset+)
-   (arm64:sub 8 20 8)                       ; x8 = card-index
-   (arm64:lsl 8 8 +gen-card-shift+ :imm t)  ; x8 = card-index * 512
-   (arm64:add 8 22 8)                       ; x8 = start of card region
-   (arm64:add 9 8 +gen-card-size+ :imm t)   ; x9 = end of card region
+   (arm64:sub :x8 :env :gc)                      ; temp calculation
+   (arm64:ldr :x8 :gc :offset +gen-card-table-offset+)
+   (arm64:sub :x8 :env :x8)                       ; x8 = card-index
+   (arm64:lsl :x8 :x8 +gen-card-shift+ :imm t)  ; x8 = card-index * 512
+   (arm64:add :x8 :x22 :x8)                       ; x8 = start of card region
+   (arm64:add :x9 :x8 +gen-card-size+ :imm t)   ; x9 = end of card region
 
    ;; Scan words in card
    (list '(:label GEN-CARD-WORD-SCAN))
-   (arm64:cmp 8 9)
+   (arm64:cmp :x8 :x9)
    (arm64:b.hs 6)                           ; done with this card
 
-   (arm64:ldr 0 8 :offset 0)                ; x0 = word at current position
+   (arm64:ldr :x0 :x8 :offset 0)                ; x0 = word at current position
    (list '(:call-fn GEN-COPY-IF-NURSERY))
-   (arm64:str 0 8 :offset 0)                ; store updated pointer
-   (arm64:add 8 8 8 :imm t)                 ; next word
+   (arm64:str :x0 :x8 :offset 0)                ; store updated pointer
+   (arm64:add :x8 :x8 8 :imm t)                 ; next word
    (arm64:b -6)                             ; back to word scan
 
    ;; Next card
-   (arm64:add 20 20 1 :imm t)               ; next card
+   (arm64:add :env :env 1 :imm t)               ; next card
    (arm64:b -23)                            ; back to card scan
 
    ;; ===== Cheney scan loop for promoted objects =====
    (list '(:label GEN-MINOR-SCAN))
-   (arm64:cmp 16 17)
+   (arm64:cmp :x16 :x17)
    (arm64:b.hs 8)                           ; if to-scan >= to-free, done
 
-   (arm64:ldr 0 16 :offset 0)
+   (arm64:ldr :x0 :x16 :offset 0)
    (list '(:call-fn GEN-COPY-IF-NURSERY))
-   (arm64:str 0 16 :offset 0)
-   (arm64:add 16 16 8 :imm t)
+   (arm64:str :x0 :x16 :offset 0)
+   (arm64:add :x16 :x16 8 :imm t)
    (arm64:b -7)                             ; back to scan loop
 
    ;; ===== Save old-space-alloc =====
-   (arm64:str 17 27 :offset +gen-old-alloc-offset+)
+   (arm64:str :x17 :gc :offset +gen-old-alloc-offset+)
 
    ;; ===== Reset nursery =====
-   (arm64:ldr 28 27 :offset +gen-nursery-start-offset+)
+   (arm64:ldr :heap :gc :offset +gen-nursery-start-offset+)
 
    ;; ===== Clear card table =====
    ;; Zero all bytes from card-table-start to card-table-end
-   (arm64:ldr 20 27 :offset +gen-card-table-offset+)
-   (arm64:movz 21 (logand +gen-card-table-size+ #xFFFF))
-   (arm64:add 21 20 21)                     ; x21 = end
-   (arm64:movz 22 0)                        ; x22 = 0 (clear value)
+   (arm64:ldr :env :gc :offset +gen-card-table-offset+)
+   (arm64:movz :x21 (logand +gen-card-table-size+ #xFFFF))
+   (arm64:add :x21 :env :x21)                     ; x21 = end
+   (arm64:movz :x22 0)                        ; x22 = 0 (clear value)
    (list '(:label GEN-CLEAR-CARDS))
-   (arm64:cmp 20 21)
+   (arm64:cmp :env :x21)
    (arm64:b.hs 4)
-   (arm64:strb 22 20 0)                     ; card[i] = 0
-   (arm64:add 20 20 1 :imm t)
+   (arm64:strb :x22 :env 0)                     ; card[i] = 0
+   (arm64:add :env :env 1 :imm t)
    (arm64:b -4)
 
    ;; ===== Check if old space needs major GC =====
    ;; If old-space-alloc > old-space-threshold, trigger major GC
    ;; threshold = old-space-start + old-half-size (80% would be better but keep simple)
-   (arm64:ldr 8 27 :offset +gen-nursery-end-offset+)   ; old-space-start
-   (arm64:ldr 9 27 :offset +gen-old-half-size-offset+) ; half-size
-   (arm64:add 8 8 9)                         ; threshold = start + half
-   (arm64:ldr 10 27 :offset +gen-old-alloc-offset+)
-   (arm64:cmp 10 8)
+   (arm64:ldr :x8 :gc :offset +gen-nursery-end-offset+)   ; old-space-start
+   (arm64:ldr :x9 :gc :offset +gen-old-half-size-offset+) ; half-size
+   (arm64:add :x8 :x8 :x9)                         ; threshold = start + half
+   (arm64:ldr :x10 :gc :offset +gen-old-alloc-offset+)
+   (arm64:cmp :x10 :x8)
    (arm64:b.lo 2)                            ; skip if alloc < threshold
    (list '(:call-fn GEN-MAJOR-GC))
 
    ;; Epilogue: restore registers
-   (arm64:ldp 30 29 31 :offset 0)
-   (arm64:ldp 0 1 31 :offset 16)
-   (arm64:ldp 2 3 31 :offset 32)
-   (arm64:ldp 4 5 31 :offset 48)
-   (arm64:ldp 6 7 31 :offset 64)
-   (arm64:ldp 8 9 31 :offset 80)
-   (arm64:ldp 10 11 31 :offset 96)
-   (arm64:ldp 12 13 31 :offset 112)
-   (arm64:ldp 14 15 31 :offset 128)
-   (arm64:ldp 24 25 31 :offset 144)
-   (arm64:ldr 26 31 :offset 160)
-   (arm64:add 31 31 176 :imm t)
+   (arm64:ldp :lr :fp :sp :offset 0)
+   (arm64:ldp :x0 :x1 :sp :offset 16)
+   (arm64:ldp :x2 :x3 :sp :offset 32)
+   (arm64:ldp :x4 :x5 :sp :offset 48)
+   (arm64:ldp :x6 :x7 :sp :offset 64)
+   (arm64:ldp :x8 :x9 :sp :offset 80)
+   (arm64:ldp :x10 :x11 :sp :offset 96)
+   (arm64:ldp :x12 :x13 :sp :offset 112)
+   (arm64:ldp :x14 :x15 :sp :offset 128)
+   (arm64:ldp :closure :x25 :sp :offset 144)
+   (arm64:ldr :code-base :sp :offset 160)
+   (arm64:add :sp :sp 176 :imm t)
 
    (arm64:ret)))
 
@@ -336,84 +336,84 @@
 
    ;; Check if immediate (fixnum tag 0 or nil tag 6)
    (arm64:and* 1 0 +gc-tag-mask+ :imm t)
-   (arm64:cbz 1 14)                     ; if tag=0, return unchanged
-   (arm64:cmp 1 6 :imm t)
+   (arm64:cbz :x1 14)                     ; if tag=0, return unchanged
+   (arm64:cmp :x1 6 :imm t)
    (arm64:b.eq 12)                      ; if tag=6 (nil), return unchanged
 
    ;; Get base address
    (arm64:and* 2 0 -16 :imm t)         ; x2 = base
 
    ;; Check if in nursery: nursery_start <= base < nursery_end
-   (arm64:cmp 2 18)
+   (arm64:cmp :x2 :x18)
    (arm64:b.lo 9)                       ; if base < nursery_start, return unchanged
-   (arm64:cmp 2 19)
+   (arm64:cmp :x2 :x19)
    (arm64:b.hs 7)                       ; if base >= nursery_end, return unchanged
 
    ;; Check if already forwarded
-   (arm64:ldr 3 2 :offset 0)           ; x3 = first word
+   (arm64:ldr :x3 :x2 :offset 0)           ; x3 = first word
    (arm64:and* 4 3 +gc-tag-mask+ :imm t)
-   (arm64:cmp 4 +gc-tag-forward+ :imm t)
+   (arm64:cmp :x4 +gc-tag-forward+ :imm t)
    (arm64:b.ne 4)                       ; if not forwarded, copy
 
    ;; Already forwarded
    (arm64:and* 0 3 -16 :imm t)
-   (arm64:orr 0 0 1)
+   (arm64:orr :x0 :x0 :x1)
    (arm64:ret)
 
    ;; Copy object (same logic as gc_copy but to old space)
    ;; Save tag and base
-   (arm64:mov 5 1)                      ; x5 = original tag
-   (arm64:mov 4 2)                      ; x4 = original base
+   (arm64:mov :x5 :x1)                      ; x5 = original tag
+   (arm64:mov :x4 :x2)                      ; x4 = original base
 
    ;; Calculate size based on tag in x5
-   (arm64:cmp 5 1 :imm t)              ; cons?
+   (arm64:cmp :x5 1 :imm t)              ; cons?
    (arm64:b.ne 3)
-   (arm64:movz 1 16)
+   (arm64:movz :x1 16)
    (arm64:b 20)
 
-   (arm64:cmp 5 2 :imm t)              ; symbol?
+   (arm64:cmp :x5 2 :imm t)              ; symbol?
    (arm64:b.ne 3)
-   (arm64:movz 1 8)
+   (arm64:movz :x1 8)
    (arm64:b 16)
 
-   (arm64:cmp 5 5 :imm t)              ; closure?
+   (arm64:cmp :x5 5 :imm t)              ; closure?
    (arm64:b.ne 3)
-   (arm64:movz 1 16)
+   (arm64:movz :x1 16)
    (arm64:b 12)
 
-   (arm64:cmp 5 3 :imm t)              ; vector?
+   (arm64:cmp :x5 3 :imm t)              ; vector?
    (arm64:b.ne 6)
-   (arm64:ldr 1 4 :offset 0)
-   (arm64:lsl 1 1 3 :imm t)
-   (arm64:add 1 1 8 :imm t)
+   (arm64:ldr :x1 :x4 :offset 0)
+   (arm64:lsl :x1 :x1 3 :imm t)
+   (arm64:add :x1 :x1 8 :imm t)
    (arm64:b 5)
 
    ;; string
-   (arm64:ldr 1 4 :offset 0)
-   (arm64:add 1 1 23 :imm t)
+   (arm64:ldr :x1 :x4 :offset 0)
+   (arm64:add :x1 :x1 23 :imm t)
    (arm64:and* 1 1 -16 :imm t)
 
    ;; Copy bytes from nursery to old space
-   (arm64:mov 2 17)                     ; x2 = to_free (new location in old space)
-   (arm64:mov 3 1)                      ; x3 = remaining bytes
+   (arm64:mov :x2 :x17)                     ; x2 = to_free (new location in old space)
+   (arm64:mov :x3 :x1)                      ; x3 = remaining bytes
 
    ;; Copy loop
-   (arm64:cbz 3 5)
-   (arm64:ldr 0 4 :offset 0)
-   (arm64:str 0 17 :offset 0)
-   (arm64:add 4 4 8 :imm t)
-   (arm64:add 17 17 8 :imm t)
-   (arm64:sub 3 3 8 :imm t)
+   (arm64:cbz :x3 5)
+   (arm64:ldr :x0 :x4 :offset 0)
+   (arm64:str :x0 :x17 :offset 0)
+   (arm64:add :x4 :x4 8 :imm t)
+   (arm64:add :x17 :x17 8 :imm t)
+   (arm64:sub :x3 :x3 8 :imm t)
    (arm64:b -6)
 
    ;; Install forwarding pointer
-   (arm64:sub 4 4 1)
-   (arm64:movz 6 +gc-tag-forward+)
-   (arm64:orr 0 2 6)
-   (arm64:str 0 4 :offset 0)
+   (arm64:sub :x4 :x4 :x1)
+   (arm64:movz :x6 +gc-tag-forward+)
+   (arm64:orr :x0 :x2 :x6)
+   (arm64:str :x0 :x4 :offset 0)
 
    ;; Return new address with original tag
-   (arm64:orr 0 2 5)
+   (arm64:orr :x0 :x2 :x5)
    (arm64:ret)))
 
 ;;; ============================================================
@@ -438,8 +438,8 @@
    ;; Prologue: save registers (if not already saved by minor GC caller)
    ;; Note: Major GC is called from minor GC which already saved registers
    ;; But we need to save x30 for our own call returns
-   (arm64:sub 31 31 16 :imm t)
-   (arm64:str 30 31 :offset 0)
+   (arm64:sub :sp :sp 16 :imm t)
+   (arm64:str :lr :sp :offset 0)
 
    ;; ===== Flip old space semispaces =====
    ;; x18 = old from-space start (current old-space-start + flag)
@@ -448,73 +448,73 @@
    ;; x17 = to-free pointer (in new to-space)
 
    ;; Load old-space-flag and old-half-size
-   (arm64:ldr 8 27 :offset +gen-old-space-flag-offset+)   ; old flag
-   (arm64:ldr 9 27 :offset +gen-old-half-size-offset+)    ; half size
+   (arm64:ldr :x8 :gc :offset +gen-old-space-flag-offset+)   ; old flag
+   (arm64:ldr :x9 :gc :offset +gen-old-half-size-offset+)    ; half size
 
    ;; Compute new flag = half - old_flag (flip between 0 and half)
-   (arm64:sub 10 9 8)                       ; new flag
-   (arm64:str 10 27 :offset +gen-old-space-flag-offset+)
+   (arm64:sub :x10 :x9 :x8)                       ; new flag
+   (arm64:str :x10 :gc :offset +gen-old-space-flag-offset+)
 
    ;; Compute addresses:
    ;; old-space-base = nursery-end + card-table-size
-   (arm64:ldr 11 27 :offset +gen-nursery-end-offset+)
-   (arm64:movz 12 (logand +gen-card-table-size+ #xFFFF))
-   (arm64:add 11 11 12)                     ; x11 = old-space-base
+   (arm64:ldr :x11 :gc :offset +gen-nursery-end-offset+)
+   (arm64:movz :x12 (logand +gen-card-table-size+ #xFFFF))
+   (arm64:add :x11 :x11 :x12)                     ; x11 = old-space-base
 
    ;; from-space-start = old-space-base + old-flag
-   (arm64:add 18 11 8)                      ; x18 = from-start
+   (arm64:add :x18 :x11 :x8)                      ; x18 = from-start
    ;; from-space-end = from-start + half
-   (arm64:add 19 18 9)                      ; x19 = from-end
+   (arm64:add :x19 :x18 :x9)                      ; x19 = from-end
 
    ;; to-space-start = old-space-base + new-flag
-   (arm64:add 17 11 10)                     ; x17 = to-free
-   (arm64:mov 16 17)                        ; x16 = to-scan
+   (arm64:add :x17 :x11 :x10)                     ; x17 = to-free
+   (arm64:mov :x16 :x17)                        ; x16 = to-scan
 
    ;; Also need nursery bounds for copying nursery objects
-   (arm64:ldr 20 27 :offset +gen-nursery-start-offset+)  ; nursery-start
-   (arm64:ldr 21 27 :offset +gen-nursery-end-offset+)    ; nursery-end
+   (arm64:ldr :env :gc :offset +gen-nursery-start-offset+)  ; nursery-start
+   (arm64:ldr :x21 :gc :offset +gen-nursery-end-offset+)    ; nursery-end
 
    ;; ===== Copy roots =====
    ;; The register roots were already processed by minor GC
    ;; But we need to re-process them with the full copying function
 
    ;; Copy intern_table
-   (arm64:ldr 0 27 :offset +gc-intern-table-offset+)
+   (arm64:ldr :x0 :gc :offset +gc-intern-table-offset+)
    (list '(:call-fn GEN-COPY-FULL))
-   (arm64:str 0 27 :offset +gc-intern-table-offset+)
+   (arm64:str :x0 :gc :offset +gc-intern-table-offset+)
 
    ;; ===== Cheney scan loop =====
    (list '(:label GEN-MAJOR-SCAN))
-   (arm64:cmp 16 17)
+   (arm64:cmp :x16 :x17)
    (arm64:b.hs 8)                           ; if to-scan >= to-free, done
 
-   (arm64:ldr 0 16 :offset 0)
+   (arm64:ldr :x0 :x16 :offset 0)
    (list '(:call-fn GEN-COPY-FULL))
-   (arm64:str 0 16 :offset 0)
-   (arm64:add 16 16 8 :imm t)
+   (arm64:str :x0 :x16 :offset 0)
+   (arm64:add :x16 :x16 8 :imm t)
    (arm64:b -7)
 
    ;; ===== Update old-space-alloc =====
-   (arm64:str 17 27 :offset +gen-old-alloc-offset+)
+   (arm64:str :x17 :gc :offset +gen-old-alloc-offset+)
 
    ;; ===== Reset nursery =====
-   (arm64:ldr 28 27 :offset +gen-nursery-start-offset+)
+   (arm64:ldr :heap :gc :offset +gen-nursery-start-offset+)
 
    ;; ===== Clear card table =====
-   (arm64:ldr 22 27 :offset +gen-card-table-offset+)
-   (arm64:movz 23 (logand +gen-card-table-size+ #xFFFF))
-   (arm64:add 23 22 23)
-   (arm64:movz 24 0)
+   (arm64:ldr :x22 :gc :offset +gen-card-table-offset+)
+   (arm64:movz :x23 (logand +gen-card-table-size+ #xFFFF))
+   (arm64:add :x23 :x22 :x23)
+   (arm64:movz :x24 0)
    (list '(:label GEN-MAJOR-CLEAR-CARDS))
-   (arm64:cmp 22 23)
+   (arm64:cmp :x22 :x23)
    (arm64:b.hs 4)
-   (arm64:strb 24 22 0)
-   (arm64:add 22 22 1 :imm t)
+   (arm64:strb :x24 :x22 0)
+   (arm64:add :x22 :x22 1 :imm t)
    (arm64:b -4)
 
    ;; Epilogue
-   (arm64:ldr 30 31 :offset 0)
-   (arm64:add 31 31 16 :imm t)
+   (arm64:ldr :lr :sp :offset 0)
+   (arm64:add :sp :sp 16 :imm t)
    (arm64:ret)))
 
 ;;; ============================================================
@@ -534,89 +534,89 @@
 
    ;; Check if immediate
    (arm64:and* 1 0 +gc-tag-mask+ :imm t)
-   (arm64:cbz 1 24)                         ; fixnum -> return
-   (arm64:cmp 1 6 :imm t)
+   (arm64:cbz :x1 24)                         ; fixnum -> return
+   (arm64:cmp :x1 6 :imm t)
    (arm64:b.eq 22)                          ; nil -> return
 
    ;; Get base address
    (arm64:and* 2 0 -16 :imm t)             ; x2 = base
 
    ;; Check if in nursery
-   (arm64:cmp 2 20)
+   (arm64:cmp :x2 :env)
    (arm64:b.lo 6)                           ; below nursery -> check old space
-   (arm64:cmp 2 21)
+   (arm64:cmp :x2 :x21)
    (arm64:b.hs 4)                           ; above nursery -> check old space
    (arm64:b 8)                              ; in nursery -> copy
 
    ;; Check if in old from-space
-   (arm64:cmp 2 18)
+   (arm64:cmp :x2 :x18)
    (arm64:b.lo 14)                          ; below from-space -> return unchanged
-   (arm64:cmp 2 19)
+   (arm64:cmp :x2 :x19)
    (arm64:b.hs 12)                          ; above from-space -> return unchanged
 
    ;; Object is in nursery or old from-space -> copy it
    ;; Check if already forwarded
-   (arm64:ldr 3 2 :offset 0)
+   (arm64:ldr :x3 :x2 :offset 0)
    (arm64:and* 4 3 +gc-tag-mask+ :imm t)
-   (arm64:cmp 4 +gc-tag-forward+ :imm t)
+   (arm64:cmp :x4 +gc-tag-forward+ :imm t)
    (arm64:b.ne 4)
 
    ;; Already forwarded
    (arm64:and* 0 3 -16 :imm t)
-   (arm64:orr 0 0 1)
+   (arm64:orr :x0 :x0 :x1)
    (arm64:ret)
 
    ;; Copy object - same logic as gen-copy-if-nursery but to old to-space
-   (arm64:mov 5 1)                          ; save tag
-   (arm64:mov 4 2)                          ; save base
+   (arm64:mov :x5 :x1)                          ; save tag
+   (arm64:mov :x4 :x2)                          ; save base
 
    ;; Calculate size
-   (arm64:cmp 5 1 :imm t)
+   (arm64:cmp :x5 1 :imm t)
    (arm64:b.ne 3)
-   (arm64:movz 1 16)
+   (arm64:movz :x1 16)
    (arm64:b 20)
 
-   (arm64:cmp 5 2 :imm t)
+   (arm64:cmp :x5 2 :imm t)
    (arm64:b.ne 3)
-   (arm64:movz 1 8)
+   (arm64:movz :x1 8)
    (arm64:b 16)
 
-   (arm64:cmp 5 5 :imm t)
+   (arm64:cmp :x5 5 :imm t)
    (arm64:b.ne 3)
-   (arm64:movz 1 16)
+   (arm64:movz :x1 16)
    (arm64:b 12)
 
-   (arm64:cmp 5 3 :imm t)
+   (arm64:cmp :x5 3 :imm t)
    (arm64:b.ne 6)
-   (arm64:ldr 1 4 :offset 0)
-   (arm64:lsl 1 1 3 :imm t)
-   (arm64:add 1 1 8 :imm t)
+   (arm64:ldr :x1 :x4 :offset 0)
+   (arm64:lsl :x1 :x1 3 :imm t)
+   (arm64:add :x1 :x1 8 :imm t)
    (arm64:b 5)
 
-   (arm64:ldr 1 4 :offset 0)
-   (arm64:add 1 1 23 :imm t)
+   (arm64:ldr :x1 :x4 :offset 0)
+   (arm64:add :x1 :x1 23 :imm t)
    (arm64:and* 1 1 -16 :imm t)
 
    ;; Copy bytes
-   (arm64:mov 2 17)
-   (arm64:mov 3 1)
+   (arm64:mov :x2 :x17)
+   (arm64:mov :x3 :x1)
 
-   (arm64:cbz 3 5)
-   (arm64:ldr 6 4 :offset 0)
-   (arm64:str 6 17 :offset 0)
-   (arm64:add 4 4 8 :imm t)
-   (arm64:add 17 17 8 :imm t)
-   (arm64:sub 3 3 8 :imm t)
+   (arm64:cbz :x3 5)
+   (arm64:ldr :x6 :x4 :offset 0)
+   (arm64:str :x6 :x17 :offset 0)
+   (arm64:add :x4 :x4 8 :imm t)
+   (arm64:add :x17 :x17 8 :imm t)
+   (arm64:sub :x3 :x3 8 :imm t)
    (arm64:b -6)
 
    ;; Install forwarding pointer
-   (arm64:sub 4 4 1)
-   (arm64:movz 6 +gc-tag-forward+)
-   (arm64:orr 7 2 6)
-   (arm64:str 7 4 :offset 0)
+   (arm64:sub :x4 :x4 :x1)
+   (arm64:movz :x6 +gc-tag-forward+)
+   (arm64:orr :x7 :x2 :x6)
+   (arm64:str :x7 :x4 :offset 0)
 
    ;; Return new address with original tag
-   (arm64:orr 0 2 5)
+   (arm64:orr :x0 :x2 :x5)
    (arm64:ret)))
 
 ;;; ============================================================
@@ -632,49 +632,49 @@
          (old-half-low (logand +gen-old-space-half+ #xFFFF)))
     (append
      ;; Setup heap base via ADRP
-     (arm64:adrp 27 heap-page-offset)
+     (arm64:adrp :gc heap-page-offset)
 
      ;; Initialize existing GC globals (intern_table, lambda_counter, etc.)
-     (arm64:movz 9 6)                   ; nil
-     (arm64:str 9 27 :offset +gc-intern-table-offset+)
-     (arm64:movz 9 0)
-     (arm64:str 9 27 :offset +gc-lambda-counter-offset+)
+     (arm64:movz :x9 6)                   ; nil
+     (arm64:str :x9 :gc :offset +gc-intern-table-offset+)
+     (arm64:movz :x9 0)
+     (arm64:str :x9 :gc :offset +gc-lambda-counter-offset+)
 
      ;; Compute nursery_start = x27 + 128
-     (arm64:add 10 27 +gen-heap-data-offset+ :imm t)
-     (arm64:str 10 27 :offset +gen-nursery-start-offset+)
+     (arm64:add :x10 :gc +gen-heap-data-offset+ :imm t)
+     (arm64:str :x10 :gc :offset +gen-nursery-start-offset+)
 
      ;; Compute nursery_end = nursery_start + nursery_size
-     (arm64:movz 11 nursery-low)
+     (arm64:movz :x11 nursery-low)
      (if (> nursery-high 0)
-         (arm64:movk 11 nursery-high :lsl 16)
+         (arm64:movk :x11 nursery-high :lsl 16)
          (list (arm64:nop)))
-     (arm64:add 12 10 11)               ; x12 = nursery_end
-     (arm64:str 12 27 :offset +gen-nursery-end-offset+)
+     (arm64:add :x12 :x10 :x11)               ; x12 = nursery_end
+     (arm64:str :x12 :gc :offset +gen-nursery-end-offset+)
 
      ;; Card table starts after nursery_end
      ;; Card table size = old_space_size / 512 = 2 * old_half / 512
-     (arm64:str 12 27 :offset +gen-card-table-offset+)
+     (arm64:str :x12 :gc :offset +gen-card-table-offset+)
 
      ;; Store old space half size
-     (arm64:movz 13 old-half-low)
+     (arm64:movz :x13 old-half-low)
      (if (> old-half-high 0)
-         (arm64:movk 13 old-half-high :lsl 16)
+         (arm64:movk :x13 old-half-high :lsl 16)
          (list (arm64:nop)))
-     (arm64:str 13 27 :offset +gen-old-half-size-offset+)
+     (arm64:str :x13 :gc :offset +gen-old-half-size-offset+)
 
      ;; old-space-flag = 0
-     (arm64:str 9 27 :offset +gen-old-space-flag-offset+)  ; x9 still 0
+     (arm64:str :x9 :gc :offset +gen-old-space-flag-offset+)  ; x9 still 0
 
      ;; Compute old-space-start and initialize old-space-alloc
      ;; old-space-start = nursery-end + card-table-size
      ;; Card table is placed between nursery and old space
-     (arm64:movz 14 (logand +gen-card-table-size+ #xFFFF))
-     (arm64:add 14 12 14)                   ; x14 = old-space-start
-     (arm64:str 14 27 :offset +gen-old-alloc-offset+)
+     (arm64:movz :x14 (logand +gen-card-table-size+ #xFFFF))
+     (arm64:add :x14 :x12 :x14)                   ; x14 = old-space-start
+     (arm64:str :x14 :gc :offset +gen-old-alloc-offset+)
 
      ;; Set x28 = nursery-start (allocation pointer)
-     (arm64:mov 28 10))))
+     (arm64:mov :heap :x10))))
 
 ;;; ============================================================
 ;;; Runtime Code Assembly

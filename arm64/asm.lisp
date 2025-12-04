@@ -167,34 +167,34 @@
 ;;; ============================================================
 ;;; Register Keywords
 ;;; ============================================================
-;;; Registers can be specified as keywords (:x0, :x1, ..., :x30)
-;;; or as numbers (0, 1, ..., 30). Special aliases are provided
-;;; for commonly used registers.
+;;; Registers MUST be specified as keywords (:x0, :x1, ..., :x30).
+;;; Raw numbers are rejected with an error.
+;;; Special aliases: :sp, :xzr, :lr, :fp, :env, :closure, :gc, :heap
 
 (defun reg (r)
   "Convert register specifier to number.
-   Accepts: numbers (0-31), keywords (:x0-:x30), or special names.
+   ONLY accepts keyword symbols - raw numbers are an error.
 
    General purpose: :x0 through :x30
    Special: :sp (31), :xzr (31), :lr (30), :fp (29)
    Habu conventions: :env (20), :closure (24), :code-base (26), :gc (27), :heap (28)"
-  (if (numberp r)
-      r
-      (case r
-        ;; General purpose registers
-        (:x0 0) (:x1 1) (:x2 2) (:x3 3) (:x4 4) (:x5 5) (:x6 6) (:x7 7)
-        (:x8 8) (:x9 9) (:x10 10) (:x11 11) (:x12 12) (:x13 13) (:x14 14) (:x15 15)
-        (:x16 16) (:x17 17) (:x18 18) (:x19 19) (:x20 20) (:x21 21) (:x22 22) (:x23 23)
-        (:x24 24) (:x25 25) (:x26 26) (:x27 27) (:x28 28) (:x29 29) (:x30 30)
-        ;; Special registers
-        (:sp 31) (:xzr 31) (:lr 30) (:fp 29)
-        ;; Habu-specific register aliases
-        (:env 20)        ; environment frame base
-        (:closure 24)    ; closure environment pointer
-        (:code-base 26)  ; code base register
-        (:gc 27)         ; GC globals base
-        (:heap 28)       ; heap bump pointer
-        (t (error "Unknown register: ~S" r)))))
+  (when (numberp r)
+    (error "Raw register numbers not allowed. Use keywords like :x0, :x1, :sp, :env instead of ~D" r))
+  (case r
+    ;; General purpose registers
+    (:x0 0) (:x1 1) (:x2 2) (:x3 3) (:x4 4) (:x5 5) (:x6 6) (:x7 7)
+    (:x8 8) (:x9 9) (:x10 10) (:x11 11) (:x12 12) (:x13 13) (:x14 14) (:x15 15)
+    (:x16 16) (:x17 17) (:x18 18) (:x19 19) (:x20 20) (:x21 21) (:x22 22) (:x23 23)
+    (:x24 24) (:x25 25) (:x26 26) (:x27 27) (:x28 28) (:x29 29) (:x30 30)
+    ;; Special registers
+    (:sp 31) (:xzr 31) (:lr 30) (:fp 29)
+    ;; Habu-specific register aliases
+    (:env 20)        ; environment frame base
+    (:closure 24)    ; closure environment pointer
+    (:code-base 26)  ; code base register
+    (:gc 27)         ; GC globals base
+    (:heap 28)       ; heap bump pointer
+    (t (error "Unknown register: ~S" r))))
 
 ;;; ============================================================
 ;;; Data Movement
