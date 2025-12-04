@@ -351,9 +351,21 @@
 
 (defparameter *eval-timeout* 60 "Timeout in seconds for eval operations (default 60s)")
 
+(defvar *eval-worker-pid* nil "PID of current eval worker for subprocess cleanup")
+
+(defun kill-child-processes ()
+  "Kill any child processes spawned by the eval worker.
+   Uses pkill to kill processes whose parent is this SBCL process."
+  (let ((our-pid (sb-posix:getpid)))
+    (ignore-errors
+      (sb-ext:run-program "/usr/bin/pkill"
+                          (list "-P" (format nil "~D" our-pid))
+                          :wait t :output nil :error nil))))
+
 (defun safe-eval (code-string &optional timeout-override)
   "Safely evaluate Lisp code with robust timeout using separate thread.
-   The worker thread is interrupted if it exceeds the timeout."
+   The worker thread is interrupted if it exceeds the timeout.
+   Also kills any child processes on timeout."
   (let* ((output (make-string-output-stream))
          (timeout (or timeout-override *eval-timeout*))
          (result-lock (sb-thread:make-mutex :name "eval-result"))
@@ -390,13 +402,15 @@
         (sb-thread:with-mutex (result-lock)
           (when result-ready (return)))
         (when (>= (get-internal-real-time) deadline)
-          ;; Timeout - interrupt the worker thread
+          ;; Timeout - first kill any child processes
+          (kill-child-processes)
+          ;; Then interrupt the worker thread
           (ignore-errors
             (sb-thread:interrupt-thread worker
               (lambda () (error "Evaluation timed out"))))
-          ;; Give it 1 second to handle the interrupt
-          (sleep 1)
-          ;; If still alive, terminate forcibly (unsafe but necessary)
+          ;; Give it 500ms to handle the interrupt
+          (sleep 0.5)
+          ;; If still alive, terminate forcibly
           (when (sb-thread:thread-alive-p worker)
             (ignore-errors (sb-thread:terminate-thread worker)))
           (setf result-error (format nil "Evaluation timed out after ~D seconds" timeout))
