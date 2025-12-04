@@ -68,6 +68,9 @@
    #:wrap-bytecode-with-mmap-heap
    #:build-macho-executable-mmap-heap
    #:write-macho-executable-mmap-heap
+   ;; JIT infrastructure
+   #:jit-alloc-code
+   #:jit-cache-flush-code
    #:resolve-calls-simple
    #:link-fasls
    #:generate-gc-fasl

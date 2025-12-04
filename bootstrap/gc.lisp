@@ -613,3 +613,74 @@
 
      ;; Set x28 = x27 + 112 (allocation pointer)
      (arm64:add 28 27 +gc-heap-data-offset+ :imm t))))
+
+;;; ============================================================
+;;; JIT Infrastructure
+;;; ============================================================
+
+(defun jit-alloc-code (size-reg result-reg)
+  "Generate code to allocate JIT memory via mmap with MAP_JIT.
+   SIZE-REG: register containing size in bytes
+   RESULT-REG: register to receive the allocated address
+   Returns list of ARM64 instruction bytes.
+   On error, exits with code 1."
+  (append
+   ;; x0 = addr (NULL = 0)
+   (arm64:movz 0 0)
+   ;; x1 = length (from size-reg)
+   (arm64:mov 1 size-reg)
+   ;; x2 = prot (PROT_READ | PROT_WRITE | PROT_EXEC = 7)
+   (arm64:movz 2 7)
+   ;; x3 = flags (MAP_PRIVATE | MAP_ANON | MAP_JIT = 0x1802)
+   (arm64:movz 3 #x1802)
+   ;; x4 = fd (-1)
+   (arm64:movz 4 #xFFFF)
+   (arm64:movk 4 #xFFFF :lsl 16)
+   (arm64:movk 4 #xFFFF :lsl 32)
+   (arm64:movk 4 #xFFFF :lsl 48)
+   ;; x5 = offset (0)
+   (arm64:movz 5 0)
+   ;; x16 = 197 (SYS_mmap)
+   (arm64:movz 16 197)
+   ;; syscall
+   (arm64:svc #x80)
+   ;; Check for error (x0 < 0 means error)
+   (arm64:cmp 0 0 :imm t)
+   (arm64:b.lt 2)  ; if error, jump to exit
+   (arm64:b 4)     ; else skip error handler
+   ;; Error handler: exit with code 1
+   (arm64:movz 0 1)
+   (arm64:movz 16 1)  ; SYS_exit
+   (arm64:svc #x80)
+   ;; Move result to destination register
+   (if (= result-reg 0)
+       (arm64:nop)
+       (arm64:mov result-reg 0))))
+
+(defun jit-cache-flush-code (addr-reg size-reg)
+  "Generate code to flush data cache and invalidate instruction cache.
+   ADDR-REG: register containing start address
+   SIZE-REG: register containing size in bytes
+   Uses x9-x11 as scratch registers."
+  (append
+   ;; x9 = current address, x10 = end address
+   (arm64:mov 9 addr-reg)
+   (arm64:add 10 addr-reg size-reg)
+   ;; Loop: flush each cache line (64 bytes on Apple Silicon)
+   ;; DC CVAU: Clean data cache to Point of Unification
+   ;; Encoding: 0xD50B7B29 for DC CVAU, x9
+   (list #x29 #x7B #x0B #xD5)
+   ;; IC IVAU: Invalidate instruction cache
+   ;; Encoding: 0xD50B7529 for IC IVAU, x9
+   (list #x29 #x75 #x0B #xD5)
+   ;; Advance by 64 bytes (cache line size)
+   (arm64:add 9 9 64 :imm t)
+   ;; Compare and loop
+   (arm64:cmp 9 10)
+   (arm64:b.lt -4)  ; branch back 4 instructions
+   ;; DSB ISH: Data synchronization barrier
+   ;; Encoding: 0xD5033B9F
+   (list #x9F #x3B #x03 #xD5)
+   ;; ISB: Instruction synchronization barrier
+   ;; Encoding: 0xD5033FDF
+   (list #xDF #x3F #x03 #xD5)))
