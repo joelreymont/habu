@@ -38,8 +38,17 @@
    ;; Habu self-hosted compiler (no SBCL deps)
    (:file "compiler" :depends-on ("compiler-sbcl"))
 
-   ;; ARM64 code generator
-   (:file "codegen" :depends-on ("compiler-sbcl" "optimize" "arm64" "gc"))
+   ;; JIT module - shared code generation for REPL and deliver
+   (:module "jit"
+    :pathname "../jit/"
+    :depends-on ("compiler-sbcl" "arm64" "gc")
+    :components
+    ((:file "context")
+     (:file "core" :depends-on ("context"))
+     (:file "execute" :depends-on ("core"))))
+
+   ;; ARM64 code generator (uses JIT core)
+   (:file "codegen" :depends-on ("compiler-sbcl" "optimize" "arm64" "gc" "jit"))
 
    ;; Mach-O utilities for native code
    (:file "macho-utils" :depends-on ("compiler-sbcl" "macho"))
