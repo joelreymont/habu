@@ -2001,16 +2001,15 @@
               (arm64:ldr :x0 :sp :offset (temp-slot td))  ; x0 = start (raw)
               (list (list :extern-call "_sys_icache_invalidate"))))))
 
-    ;; funcall-ptr-ir: call function pointer, return tagged fixnum
+    ;; funcall-ptr-ir: call function pointer
     ;; The function pointer is a RAW address (from mmap), NOT tagged
-    ;; Returns: tags the raw x0 as a fixnum (x0 << 4)
+    ;; The called code returns a TAGGED value in x0 - do NOT retag
     ((has-tag ir 'funcall-ptr-ir)
      (let* ((ptr-ir (cadr ir))
             (ptr-code (codegen ptr-ir rtaddrs fnoffs td)))
        (append-all
         (list ptr-code
-              (arm64:blr :x0)                       ; branch-link to x0
-              (arm64:lsl :x0 :x0 4 :imm t)))))        ; tag result as fixnum
+              (arm64:blr :x0)))))
 
     ;; mem-set-byte-ir: store byte at ptr+offset
     ;; (mem-set-byte ptr offset byte-value)
