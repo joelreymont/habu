@@ -754,6 +754,12 @@
     ((has-tag ir 'sys-dcache-flush-ir) t)
     ((has-tag ir 'sys-icache-invalidate-ir) t)
     ((has-tag ir 'funcall-ptr-ir) t)
+    ;; Memory access (may have subexpressions that call)
+    ((has-tag ir 'mem-set-byte-ir) (or (ir-may-call (cadr ir))
+                                        (ir-may-call (caddr ir))
+                                        (ir-may-call (cadddr ir))))
+    ((has-tag ir 'mem-load-64-ir) (or (ir-may-call (cadr ir))
+                                       (ir-may-call (caddr ir))))
     (t nil)))
 
 ;;; ============================================================

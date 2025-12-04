@@ -2273,6 +2273,35 @@
           (list 'mem-load-64-ir
                 (sys:compile (cadr expr) env fenv)    ; ptr
                 (sys:compile (caddr expr) env fenv))) ; offset
+         ;; === JIT Wrapper Primitives (simplified API) ===
+         ;; jit-mmap - allocate JIT-capable memory
+         ;; (jit-mmap size) - allocates size bytes with MAP_JIT flag
+         ((eq op 'jit-mmap)
+          (list 'mmap-jit-ir
+                (sys:compile (cadr expr) env fenv)))  ; size
+         ;; jit-write-protect - toggle JIT write protection
+         ;; (jit-write-protect enabled) - 0=writable, 1=executable
+         ((eq op 'jit-write-protect)
+          (list 'pthread-jit-write-protect-np-ir
+                (sys:compile (cadr expr) env fenv)))  ; enabled
+         ;; jit-dcache-flush - flush data cache
+         ;; (jit-dcache-flush start size)
+         ((eq op 'jit-dcache-flush)
+          (list 'sys-dcache-flush-ir
+                (sys:compile (cadr expr) env fenv)    ; start
+                (sys:compile (caddr expr) env fenv))) ; size
+         ;; jit-icache-invalidate - invalidate instruction cache
+         ;; (jit-icache-invalidate start size)
+         ((eq op 'jit-icache-invalidate)
+          (list 'sys-icache-invalidate-ir
+                (sys:compile (cadr expr) env fenv)    ; start
+                (sys:compile (caddr expr) env fenv))) ; size
+         ;; jit-call - call JIT-compiled code pointer with optional args
+         ;; (jit-call ptr &rest args)
+         ((eq op 'jit-call)
+          (list 'funcall-ptr-ir
+                (sys:compile (cadr expr) env fenv)    ; code pointer
+                (mapcar (lambda (a) (sys:compile a env fenv)) (cddr expr)))) ; args
          ;; get-intern-table - get the global intern table (for symbol interning)
          ((eq op 'get-intern-table)
           (list 'get-intern-table-ir))

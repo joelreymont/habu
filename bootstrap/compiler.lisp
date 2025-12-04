@@ -82,6 +82,8 @@
     (cons "JIT-MMAP" 'jit-mmap) (cons "JIT-WRITE-PROTECT" 'jit-write-protect)
     (cons "JIT-DCACHE-FLUSH" 'jit-dcache-flush) (cons "JIT-ICACHE-INVALIDATE" 'jit-icache-invalidate)
     (cons "JIT-CALL" 'jit-call)
+    ;; Memory access for JIT
+    (cons "MEM-SET-BYTE" 'mem-set-byte) (cons "MEM-LOAD-64" 'mem-load-64)
     ;; Special values
     (cons "NIL" 'nil) (cons "T" 't))))
 
@@ -1320,6 +1322,14 @@
          ((eq (car expr) 'jit-call) (list 'funcall-ptr-ir
                                           (compile-expr-full (nth 1 expr) env fenv)
                                           (compile-args (cddr expr) env fenv)))
+         ;; Memory access for JIT code writing
+         ((eq (car expr) 'mem-set-byte) (list 'mem-set-byte-ir
+                                              (compile-expr-full (nth 1 expr) env fenv)
+                                              (compile-expr-full (nth 2 expr) env fenv)
+                                              (compile-expr-full (nth 3 expr) env fenv)))
+         ((eq (car expr) 'mem-load-64) (list 'mem-load-64-ir
+                                             (compile-expr-full (nth 1 expr) env fenv)
+                                             (compile-expr-full (nth 2 expr) env fenv)))
 
          ;; native-read-file: expand to let* with sys-open/read/close
          ;; Expands to: (let* ((fd (sys-open path 0 0))
