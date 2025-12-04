@@ -78,6 +78,10 @@
     (cons "SYS-WRITE-CHAR" 'sys-write-char) (cons "SYS-READ-BYTE" 'sys-read-byte) (cons "SYS-CLOSE" 'sys-close) (cons "NATIVE-READ-FILE" 'native-read-file)
     (cons "GET-INTERN-TABLE" 'get-intern-table) (cons "SET-INTERN-TABLE" 'set-intern-table)
     (cons "GET-LAMBDA-COUNTER" 'get-lambda-counter) (cons "SET-LAMBDA-COUNTER" 'set-lambda-counter)
+    ;; JIT primitives
+    (cons "JIT-MMAP" 'jit-mmap) (cons "JIT-WRITE-PROTECT" 'jit-write-protect)
+    (cons "JIT-DCACHE-FLUSH" 'jit-dcache-flush) (cons "JIT-ICACHE-INVALIDATE" 'jit-icache-invalidate)
+    (cons "JIT-CALL" 'jit-call)
     ;; Special values
     (cons "NIL" 'nil) (cons "T" 't))))
 
@@ -1301,6 +1305,21 @@
                                                   (compile-expr-full (nth 1 expr) env fenv)
                                                   (compile-expr-full (nth 2 expr) env fenv)
                                                   (compile-expr-full (nth 3 expr) env fenv)))
+
+         ;; JIT primitives for native code generation
+         ((eq (car expr) 'jit-mmap) (list 'mmap-jit-ir
+                                          (compile-expr-full (nth 1 expr) env fenv)))
+         ((eq (car expr) 'jit-write-protect) (list 'pthread-jit-write-protect-np-ir
+                                                   (compile-expr-full (nth 1 expr) env fenv)))
+         ((eq (car expr) 'jit-dcache-flush) (list 'sys-dcache-flush-ir
+                                                  (compile-expr-full (nth 1 expr) env fenv)
+                                                  (compile-expr-full (nth 2 expr) env fenv)))
+         ((eq (car expr) 'jit-icache-invalidate) (list 'sys-icache-invalidate-ir
+                                                       (compile-expr-full (nth 1 expr) env fenv)
+                                                       (compile-expr-full (nth 2 expr) env fenv)))
+         ((eq (car expr) 'jit-call) (list 'funcall-ptr-ir
+                                          (compile-expr-full (nth 1 expr) env fenv)
+                                          (compile-args (cddr expr) env fenv)))
 
          ;; native-read-file: expand to let* with sys-open/read/close
          ;; Expands to: (let* ((fd (sys-open path 0 0))

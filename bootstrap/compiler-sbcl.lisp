@@ -5040,6 +5040,26 @@
               (arm64:ldr 0 31 :offset (temp-slot td))  ; x0 = addr (raw)
               (list (list :extern-call "_munmap"))))))
 
+    ;; mmap-jit-ir: mmap for JIT code with MAP_JIT flag (macOS ARM64)
+    ;; (mmap-jit-ir size) -> raw pointer to executable memory
+    ;; Uses: addr=0, prot=RWX(7), flags=MAP_PRIVATE|MAP_ANON|MAP_JIT(0x1802), fd=-1, offset=0
+    ((has-tag ir 'mmap-jit-ir)
+     (let* ((size-ir (cadr ir))
+            (size-code (codegen size-ir rtaddrs fnoffs td)))
+       (append-all
+        (list size-code
+              (arm64:lsr 1 0 4 :imm t)           ; x1 = size (untagged)
+              (arm64:movz 0 0)                   ; x0 = addr (0 = let system choose)
+              (arm64:movz 2 7)                   ; x2 = prot (PROT_READ|PROT_WRITE|PROT_EXEC)
+              (arm64:movz 3 #x1802)              ; x3 = flags (MAP_PRIVATE|MAP_ANON|MAP_JIT)
+              ;; x4 = -1 (fd): load 0xFFFFFFFFFFFFFFFF via movz+movk
+              (arm64:movz 4 #xFFFF)
+              (arm64:movk 4 #xFFFF :lsl 16)
+              (arm64:movk 4 #xFFFF :lsl 32)
+              (arm64:movk 4 #xFFFF :lsl 48)
+              (arm64:movz 5 0)                   ; x5 = offset (0)
+              (list (list :extern-call "_mmap"))))))  ; returns raw pointer in x0
+
     ;; pthread-jit-write-protect-np-ir: pthread_jit_write_protect_np(enabled)
     ;; enabled = 0: allow write, 1: allow execute
     ((has-tag ir 'pthread-jit-write-protect-np-ir)
