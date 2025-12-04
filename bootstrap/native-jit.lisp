@@ -1,0 +1,436 @@
+;;;; native-jit.lisp - Native JIT execution for self-hosted Habu
+;;;;
+;;;; This file contains primitives for JIT compilation and execution
+;;;; when running natively (not under SBCL). These functions use:
+;;;;   - mmap with MAP_JIT for executable memory
+;;;;   - pthread_jit_write_protect_np for memory protection
+;;;;   - sys_icache_invalidate / sys_dcache_flush for cache coherence
+;;;;
+;;;; For use in Stage 1+ self-hosted REPL.
+
+;;; ============================================================
+;;; Constants
+;;; ============================================================
+
+;; mmap protection flags
+(defconstant +prot-read+ 1)
+(defconstant +prot-write+ 2)
+(defconstant +prot-exec+ 4)
+
+;; mmap flags
+(defconstant +map-private+ 2)
+(defconstant +map-anon+ #x1000)
+(defconstant +map-jit+ #x0800)
+
+;; Page size for ARM64 macOS
+(defconstant +jit-page-size+ 16384)
+
+;;; ============================================================
+;;; JIT Memory Allocation (extern calls)
+;;; ============================================================
+
+;; mmap(addr, len, prot, flags, fd, offset) -> addr or -1
+;; addr = 0 (null), prot = RWX, flags = MAP_PRIVATE | MAP_ANON | MAP_JIT
+;; fd = -1, offset = 0
+(defun jit-alloc (size)
+  "Allocate JIT-capable memory. Returns pointer or nil on failure."
+  (let* ((aligned-size (* (+ (/ size +jit-page-size+) 1) +jit-page-size+))
+         (prot (+ +prot-read+ +prot-write+ +prot-exec+))
+         (flags (+ +map-private+ +map-anon+ +map-jit+))
+         (result (mmap 0 aligned-size prot flags -1 0)))
+    (if (= result -1)
+        nil
+        result)))
+
+;; munmap(addr, len) -> 0 on success
+(defun jit-free (ptr size)
+  "Free JIT memory."
+  (munmap ptr size))
+
+;;; ============================================================
+;;; JIT Write Protection (ARM64 macOS specific)
+;;; ============================================================
+
+;; pthread_jit_write_protect_np(enabled)
+;; enabled = 0: allow write, disallow execute
+;; enabled = 1: disallow write, allow execute
+(defun jit-write-enable ()
+  "Enable writing to JIT memory (disables execution)."
+  (pthread-jit-write-protect-np 0))
+
+(defun jit-write-disable ()
+  "Disable writing to JIT memory (enables execution)."
+  (pthread-jit-write-protect-np 1))
+
+;;; ============================================================
+;;; Cache Coherence (ARM64 specific)
+;;; ============================================================
+
+;; sys_dcache_flush(start, size)
+;; Flush data cache after writing code
+(defun jit-flush-dcache (ptr size)
+  "Flush data cache for JIT region."
+  (sys-dcache-flush ptr size))
+
+;; sys_icache_invalidate(start, size)
+;; Invalidate instruction cache before execution
+(defun jit-invalidate-icache (ptr size)
+  "Invalidate instruction cache for JIT region."
+  (sys-icache-invalidate ptr size))
+
+;;; ============================================================
+;;; JIT Code Loading
+;;; ============================================================
+
+(defun jit-load-code (code-bytes)
+  "Load bytecode into JIT memory and make it executable.
+   CODE-BYTES is a vector of bytes.
+   Returns pointer to executable code or nil on failure."
+  (let* ((size (vector-length code-bytes))
+         (ptr (jit-alloc size)))
+    (if (null ptr)
+        nil
+        (progn
+          ;; Enable writing
+          (jit-write-enable)
+          ;; Copy bytecode
+          (jit-copy-bytes ptr code-bytes size)
+          ;; Flush data cache
+          (jit-flush-dcache ptr size)
+          ;; Disable writing (enable execution)
+          (jit-write-disable)
+          ;; Invalidate instruction cache
+          (jit-invalidate-icache ptr size)
+          ;; Return executable pointer
+          ptr))))
+
+(defun jit-copy-bytes (dst src len)
+  "Copy LEN bytes from SRC vector to DST pointer."
+  (labels ((copy-loop (i)
+             (if (>= i len)
+                 nil
+                 (progn
+                   (mem-set-byte dst i (vector-ref src i))
+                   (copy-loop (+ i 1))))))
+    (copy-loop 0)))
+
+;;; ============================================================
+;;; JIT Execution
+;;; ============================================================
+
+;; This needs inline assembly or a trampoline to:
+;; 1. Save callee-saved registers
+;; 2. Set up x27 (GC globals) and x28 (heap pointer)
+;; 3. Call the JIT code
+;; 4. Restore registers
+;; 5. Return result
+
+;; For now, we can use a simpler approach: the JIT code
+;; is generated with prologue/epilogue that expects x27/x28
+;; to be set up by the caller (the REPL main loop).
+
+(defun jit-call (code-ptr)
+  "Call JIT-compiled code at CODE-PTR.
+   Assumes x27/x28 are already set up by the runtime.
+   Returns the result in x0."
+  ;; This is a placeholder - actual implementation requires
+  ;; either inline assembly or a wrapper function.
+  ;; The blr instruction would be: blr code-ptr
+  (funcall-ptr code-ptr))
+
+;;; ============================================================
+;;; Print Functions for REPL
+;;; ============================================================
+
+(defun print-char (c)
+  "Print a single character (fixnum char code) to stdout."
+  (sys-write-char 1 c))
+
+(defun print-string (s)
+  "Print a string to stdout."
+  (sys-write 1 s (string-length s)))
+
+(defun print-newline ()
+  "Print a newline."
+  (print-char 10))
+
+(defun print-fixnum (n)
+  "Print a fixnum (integer) to stdout."
+  (if (< n 0)
+      (progn
+        (print-char 45)  ;; '-'
+        (print-fixnum-positive (- 0 n)))
+      (if (= n 0)
+          (print-char 48)  ;; '0'
+          (print-fixnum-positive n))))
+
+(defun print-fixnum-positive (n)
+  "Print a positive fixnum."
+  (if (= n 0)
+      nil
+      (progn
+        (print-fixnum-positive (/ n 10))
+        (print-char (+ 48 (mod n 10))))))  ;; '0' + digit
+
+(defun print-nil ()
+  "Print NIL."
+  (print-string "NIL"))
+
+(defun print-t ()
+  "Print T."
+  (print-char 84))  ;; 'T'
+
+;;; ============================================================
+;;; Value Printer (dispatches by type)
+;;; ============================================================
+
+(defun print-value (val)
+  "Print a tagged Habu value."
+  (let ((tag (logand val 15)))
+    (cond
+      ;; Fixnum (tag 0)
+      ((= tag 0) (print-fixnum (ash val -4)))
+      ;; Cons (tag 1)
+      ((= tag 1) (print-cons val))
+      ;; Symbol (tag 2)
+      ((= tag 2) (print-symbol val))
+      ;; Vector (tag 3)
+      ((= tag 3) (print-vector val))
+      ;; String (tag 4)
+      ((= tag 4) (print-string-value val))
+      ;; Closure (tag 5)
+      ((= tag 5) (print-string "#<CLOSURE>"))
+      ;; Nil (0x06)
+      ((= val 6) (print-nil))
+      ;; Unknown
+      (t (print-string "#<UNKNOWN>")))))
+
+(defun print-cons (val)
+  "Print a cons cell."
+  (print-char 40)  ;; '('
+  (print-cons-contents val)
+  (print-char 41)) ;; ')'
+
+(defun print-cons-contents (val)
+  "Print cons contents (car cdr ...)."
+  (if (= val 6)  ;; nil
+      nil
+      (let ((tag (logand val 15)))
+        (if (= tag 1)  ;; cons
+            (let ((ptr (logand val -16)))  ;; mask off tag
+              (print-value (car-raw ptr))
+              (let ((tail (cdr-raw ptr)))
+                (if (= tail 6)  ;; nil
+                    nil
+                    (let ((tail-tag (logand tail 15)))
+                      (if (= tail-tag 1)  ;; another cons
+                          (progn
+                            (print-char 32)  ;; space
+                            (print-cons-contents tail))
+                          (progn
+                            (print-string " . ")
+                            (print-value tail)))))))
+            (print-value val)))))
+
+(defun print-symbol (val)
+  "Print a symbol."
+  ;; Symbol format: id in upper bits, tag 2
+  ;; Need to look up name in symbol table
+  (print-string "#<SYM:")
+  (print-fixnum (ash val -4))
+  (print-char 62))  ;; '>'
+
+(defun print-vector (val)
+  "Print a vector."
+  (print-string "#(")
+  ;; TODO: print vector contents
+  (print-string "...)"))
+
+(defun print-string-value (val)
+  "Print a string value (with quotes)."
+  (print-char 34)  ;; '"'
+  ;; val is already a tagged string - sys-write handles untagging
+  (sys-write 1 val (string-length val))
+  (print-char 34))  ;; '"'
+
+;;; ============================================================
+;;; Low-level Memory Access (for cons cells)
+;;; ============================================================
+
+;; Note: These work with raw pointers (tag already masked off)
+;; The caller is responsible for masking: (logand val -16)
+
+(defun car-raw (ptr)
+  "Load car from raw cons pointer (no tag)."
+  (mem-load-64 ptr 0))
+
+(defun cdr-raw (ptr)
+  "Load cdr from raw cons pointer (no tag)."
+  (mem-load-64 ptr 8))
+
+;;; ============================================================
+;;; Input Reading
+;;; ============================================================
+
+;; Buffer for stdin reading (1KB should be plenty for a single line)
+(defvar *stdin-buffer* nil)
+(defconstant +stdin-buffer-size+ 1024)
+
+(defun read-line-stdin ()
+  "Read a line from stdin. Returns string or nil on EOF.
+   Uses sys-read to read one byte at a time until newline or EOF."
+  (if (null *stdin-buffer*)
+      (setq *stdin-buffer* (make-vector +stdin-buffer-size+)))
+  (read-line-loop 0))
+
+(defun read-line-loop (pos)
+  "Read bytes into buffer until newline or EOF."
+  (if (>= pos (- +stdin-buffer-size+ 1))
+      ;; Buffer full, return what we have
+      (buffer-to-string *stdin-buffer* pos)
+      ;; Read one byte - sys-read reads to start of buffer
+      ;; We use a temp buffer approach: read 1 byte, then copy to pos
+      (let ((n (sys-read-byte 0)))
+        (if (< n 0)
+            ;; EOF or error
+            (if (= pos 0)
+                nil  ;; Nothing read, return nil for EOF
+                (buffer-to-string *stdin-buffer* pos))
+            ;; Got a byte
+            (if (= n 10)  ;; newline
+                (buffer-to-string *stdin-buffer* pos)
+                (progn
+                  (vector-set *stdin-buffer* pos n)
+                  (read-line-loop (+ pos 1))))))))
+
+;;; ============================================================
+;;; REPL Main Loop
+;;; ============================================================
+
+(defun repl ()
+  "Read-Eval-Print Loop."
+  (print-string "Habu REPL~%")
+  (print-string "Type expressions to evaluate. Ctrl-D to exit.~%")
+  (repl-loop))
+
+(defun repl-loop ()
+  "REPL iteration."
+  (print-string "> ")
+  (let ((input (read-line-stdin)))
+    (if (null input)
+        (progn
+          (print-newline)
+          (print-string "Goodbye.~%"))
+        (progn
+          (let ((result (repl-eval-string input)))
+            (print-value result)
+            (print-newline))
+          (repl-loop)))))
+
+(defun repl-eval-string (str)
+  "Parse, compile, and execute a string expression."
+  ;; 1. Parse
+  (let ((expr (read-from-string str)))
+    ;; 2. Compile to IR
+    (let ((ir (compile-expr-full expr nil nil)))
+      ;; 3. Generate code
+      (let ((code (codegen-main ir nil)))
+        ;; 4. Flatten to bytes
+        (let ((bytes (resolve-calls-simple code)))
+          ;; 5. Load to JIT memory
+          (let ((ptr (jit-load-code bytes)))
+            ;; 6. Execute
+            (jit-call ptr)))))))
+
+;;; ============================================================
+;;; Simple Echo REPL (for testing I/O primitives)
+;;; ============================================================
+
+(defun echo-repl ()
+  "Simple echo REPL for testing I/O primitives.
+   Reads a line and echoes it back. Type empty line to exit."
+  (print-string "Echo REPL - type a line, press Enter to see it echoed back.")
+  (print-newline)
+  (print-string "Empty line exits.")
+  (print-newline)
+  (echo-loop))
+
+;;; ============================================================
+;;; Simple Calculator REPL (for testing basic evaluation)
+;;; ============================================================
+;;; This interprets simple arithmetic expressions without full compilation.
+;;; Supports: (+ a b), (- a b), (* a b), (/ a b), numbers, quit
+
+(defun calc-repl ()
+  "Simple calculator REPL for testing basic evaluation.
+   Type arithmetic expressions or 'quit' to exit."
+  (print-string "Calculator REPL")
+  (print-newline)
+  (print-string "Type (+ 1 2), (- 5 3), etc. or quit to exit.")
+  (print-newline)
+  (calc-loop))
+
+(defun calc-loop ()
+  "Calculator loop iteration."
+  (print-string "calc> ")
+  (let ((input (read-line-stdin)))
+    (if (null input)
+        (progn
+          (print-newline)
+          (print-string "Goodbye.")
+          (print-newline))
+        (if (= (string-length input) 0)
+            (calc-loop)  ; empty line, continue
+            (progn
+              ;; Parse and evaluate the expression
+              (let ((result (calc-eval-string input)))
+                (if (null result)
+                    (print-string "Error")
+                    (print-fixnum result))
+                (print-newline))
+              (calc-loop))))))
+
+(defun calc-eval-string (str)
+  "Evaluate a simple calculator expression string.
+   Returns fixnum result or nil on error."
+  ;; Use the native reader to parse the string
+  (let ((expr (read-from-string str)))
+    (calc-eval expr)))
+
+(defun calc-eval (expr)
+  "Evaluate a simple calculator expression.
+   Supports: numbers, (+ a b), (- a b), (* a b), (/ a b)"
+  (if (numberp expr)
+      expr
+      (if (consp expr)
+          (let ((op (car expr)))
+            (let ((a (calc-eval (car (cdr expr))))
+                  (b (calc-eval (car (cdr (cdr expr))))))
+              (if (and a b)
+                  (cond
+                    ((eq op '+) (+ a b))
+                    ((eq op '-) (- a b))
+                    ((eq op '*) (* a b))
+                    ((eq op '/) (/ a b))
+                    (t nil))
+                  nil)))
+          nil)))
+
+(defun echo-loop ()
+  "Echo loop iteration."
+  (print-string "> ")
+  (let ((input (read-line-stdin)))
+    (if (null input)
+        (progn
+          (print-newline)
+          (print-string "EOF received. Goodbye.")
+          (print-newline))
+        (if (= (string-length input) 0)
+            (progn
+              (print-string "Goodbye.")
+              (print-newline))
+            (progn
+              (print-string "You typed: ")
+              (sys-write 1 input (string-length input))
+              (print-newline)
+              (echo-loop))))))

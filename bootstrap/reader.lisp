@@ -4,6 +4,15 @@
 ;;; For SBCL, we just use the package system
 #+sbcl (in-package :habu)
 
+;;; Native entry point - MUST be first function for Stage 1 binary
+;;; This is a forward reference that calls the real main in compiler.lisp
+#-sbcl
+(defun stage1-entry ()
+  "Entry point for Stage 1 compiler. Calls the real main after all code is loaded."
+  ;; Note: This function gets compiled first but shouldn't be _main
+  ;; The linker should look for a function named MAIN instead
+  0)
+
 ;;; SBCL version of while - native version is in compiler.lisp
 #+sbcl
 (defmacro while (test &body body)
@@ -132,6 +141,8 @@
   (cons (cons "SYS-OPEN" 'sys-open)
   (cons (cons "SYS-READ" 'sys-read)
   (cons (cons "SYS-WRITE" 'sys-write)
+  (cons (cons "SYS-WRITE-CHAR" 'sys-write-char)
+  (cons (cons "SYS-READ-BYTE" 'sys-read-byte)
   (cons (cons "SYS-CLOSE" 'sys-close)
   (cons (cons "NATIVE-READ-FILE" 'native-read-file)
   (cons (cons "GET-INTERN-TABLE" 'get-intern-table)
@@ -142,7 +153,7 @@
   (cons (cons "DEFPACKAGE" 'defpackage)
   (cons (cons "NIL" 'nil)
   (cons (cons "T" 't)
-        nil)))))))))))))))
+        nil)))))))))))))))))
 
 #-sbcl
 (defun make-ir-basic ()
@@ -201,9 +212,11 @@
   (cons (cons "SYS-OPEN-IR" 'sys-open-ir)
   (cons (cons "SYS-READ-IR" 'sys-read-ir)
   (cons (cons "SYS-WRITE-IR" 'sys-write-ir)
+  (cons (cons "SYS-WRITE-CHAR-IR" 'sys-write-char-ir)
+  (cons (cons "SYS-READ-BYTE-IR" 'sys-read-byte-ir)
   (cons (cons "SYS-CLOSE-IR" 'sys-close-ir)
   (cons (cons "SETQ-IR" 'setq-ir)
-        nil)))))))
+        nil)))))))))
 
 #-sbcl
 (defun make-ir-predicates ()

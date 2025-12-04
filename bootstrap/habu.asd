@@ -45,7 +45,10 @@
    (:file "macho-utils" :depends-on ("compiler-sbcl" "macho"))
 
    ;; Trace facility
-   (:file "trace" :depends-on ("compiler-sbcl"))))
+   (:file "trace" :depends-on ("compiler-sbcl"))
+
+   ;; JIT executor (subprocess-based)
+   (:file "executor" :depends-on ("compiler-sbcl" "codegen" "macho"))))
 
 ;;;; Test system
 (asdf:defsystem "habu/tests"
@@ -61,5 +64,5 @@
     ((:file "test-core")
      (:file "test-keyword-args" :depends-on ("test-core"))
      (:file "test-packages" :depends-on ("test-core")))))
-  :perform (test-op (o c)
+  :perform (asdf:test-op (o c)
              (uiop:symbol-call :habu-test '#:run-all-tests)))

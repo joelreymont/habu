@@ -2158,12 +2158,21 @@
                 (sys:compile (cadr expr) env fenv)    ; fd
                 (sys:compile (caddr expr) env fenv)   ; buf (string)
                 (sys:compile (cadddr expr) env fenv))) ; len
+         ;; sys-write-char - write a single character to fd (char as fixnum)
+         ((eq op 'sys-write-char)
+          (list 'sys-write-char-ir
+                (sys:compile (cadr expr) env fenv)    ; fd
+                (sys:compile (caddr expr) env fenv))) ; char (fixnum)
          ;; sys-read - read(fd, buf, len) -> returns bytes read
          ((eq op 'sys-read)
           (list 'sys-read-ir
                 (sys:compile (cadr expr) env fenv)    ; fd
                 (sys:compile (caddr expr) env fenv)   ; buf (vector)
                 (sys:compile (cadddr expr) env fenv))) ; len
+         ;; sys-read-byte - read a single byte from fd -> byte (0-255) or -1 on EOF/error
+         ((eq op 'sys-read-byte)
+          (list 'sys-read-byte-ir
+                (sys:compile (cadr expr) env fenv)))  ; fd
          ;; sys-open - open(path, flags, mode) -> returns fd
          ((eq op 'sys-open)
           (list 'sys-open-ir
@@ -2178,6 +2187,52 @@
          ((eq op 'sys-exit)
           (list 'sys-exit-ir
                 (sys:compile (cadr expr) env fenv)))  ; exit code
+         ;; === JIT Memory Primitives (ARM64 macOS) ===
+         ;; mmap - mmap(addr, len, prot, flags, fd, offset) -> addr or -1
+         ((eq op 'mmap)
+          (list 'mmap-ir
+                (sys:compile (cadr expr) env fenv)      ; addr
+                (sys:compile (caddr expr) env fenv)     ; len
+                (sys:compile (cadddr expr) env fenv)    ; prot
+                (sys:compile (car (cddddr expr)) env fenv)   ; flags
+                (sys:compile (cadr (cddddr expr)) env fenv)  ; fd
+                (sys:compile (caddr (cddddr expr)) env fenv))) ; offset
+         ;; munmap - munmap(addr, len) -> 0 on success
+         ((eq op 'munmap)
+          (list 'munmap-ir
+                (sys:compile (cadr expr) env fenv)    ; addr
+                (sys:compile (caddr expr) env fenv))) ; len
+         ;; pthread-jit-write-protect-np - pthread_jit_write_protect_np(enabled)
+         ;; enabled = 0: allow write, disallow execute
+         ;; enabled = 1: disallow write, allow execute
+         ((eq op 'pthread-jit-write-protect-np)
+          (list 'pthread-jit-write-protect-np-ir
+                (sys:compile (cadr expr) env fenv)))  ; enabled
+         ;; sys-dcache-flush - sys_dcache_flush(start, size)
+         ((eq op 'sys-dcache-flush)
+          (list 'sys-dcache-flush-ir
+                (sys:compile (cadr expr) env fenv)    ; start
+                (sys:compile (caddr expr) env fenv))) ; size
+         ;; sys-icache-invalidate - sys_icache_invalidate(start, size)
+         ((eq op 'sys-icache-invalidate)
+          (list 'sys-icache-invalidate-ir
+                (sys:compile (cadr expr) env fenv)    ; start
+                (sys:compile (caddr expr) env fenv))) ; size
+         ;; funcall-ptr - call function pointer with no args, returns x0
+         ((eq op 'funcall-ptr)
+          (list 'funcall-ptr-ir
+                (sys:compile (cadr expr) env fenv)))  ; code pointer
+         ;; mem-set-byte - store a byte to memory at ptr+offset
+         ((eq op 'mem-set-byte)
+          (list 'mem-set-byte-ir
+                (sys:compile (cadr expr) env fenv)    ; ptr
+                (sys:compile (caddr expr) env fenv)   ; offset
+                (sys:compile (cadddr expr) env fenv))) ; byte value
+         ;; mem-load-64 - load 64-bit word from memory at ptr+offset
+         ((eq op 'mem-load-64)
+          (list 'mem-load-64-ir
+                (sys:compile (cadr expr) env fenv)    ; ptr
+                (sys:compile (caddr expr) env fenv))) ; offset
          ;; get-intern-table - get the global intern table (for symbol interning)
          ((eq op 'get-intern-table)
           (list 'get-intern-table-ir))
@@ -4759,6 +4814,61 @@
               (list (list :extern-call "_write"))
               ;; Tag result as fixnum
               (arm64:lsl 0 0 4 :imm t)))))
+    ((has-tag ir 'sys-write-char-ir)
+     ;; sys-write-char-ir = (sys-write-char-ir fd-ir char-ir)
+     ;; Writes a single character (char code as fixnum) to fd
+     ;; Uses a stack slot to hold the byte
+     (let* ((fd-ir (cadr ir))
+            (char-ir (caddr ir))
+            (nd (+ td 2))
+            (fd-code (codegen fd-ir rtaddrs fnoffs nd))
+            (save-fd (arm64:str 0 31 :offset (temp-slot td)))
+            (char-code (codegen char-ir rtaddrs fnoffs nd))
+            (save-char (arm64:str 0 31 :offset (temp-slot (+ td 1)))))
+       (append-all
+        (list fd-code save-fd char-code save-char
+              ;; Load fd -> x0, untag
+              (arm64:ldr 0 31 :offset (temp-slot td))
+              (arm64:lsr 0 0 4 :imm t)
+              ;; Load char -> x3, untag, store byte to stack
+              (arm64:ldr 3 31 :offset (temp-slot (+ td 1)))
+              (arm64:lsr 3 3 4 :imm t)
+              (arm64:strb 3 31 (temp-slot (+ td 1)))  ; store byte
+              ;; x1 = pointer to the byte on stack
+              (arm64:add 1 31 (temp-slot (+ td 1)) :imm t)
+              ;; x2 = 1 (length)
+              (arm64:movz 2 1)
+              ;; Call write(fd, &byte, 1)
+              (list (list :extern-call "_write"))
+              ;; Tag result as fixnum
+              (arm64:lsl 0 0 4 :imm t)))))
+    ((has-tag ir 'sys-read-byte-ir)
+     ;; sys-read-byte-ir = (sys-read-byte-ir fd-ir)
+     ;; Reads a single byte from fd, returns byte (0-255) as fixnum, or -1 on EOF/error
+     ;; Uses a stack slot to hold the byte
+     (let* ((fd-ir (cadr ir))
+            (nd (+ td 1))
+            (fd-code (codegen fd-ir rtaddrs fnoffs nd)))
+       (append-all
+        (list fd-code
+              ;; fd -> x0, untag
+              (arm64:lsr 0 0 4 :imm t)
+              ;; x1 = pointer to stack slot for the byte
+              (arm64:add 1 31 (temp-slot td) :imm t)
+              ;; x2 = 1 (length)
+              (arm64:movz 2 1)
+              ;; Call read(fd, &byte, 1)
+              (list (list :extern-call "_read"))
+              ;; Check return value: if <= 0, return -1 (as fixnum)
+              ;; x0 = bytes read (1) or error (<= 0)
+              (arm64:cmp 0 1 :imm t)  ; cmp x0, #1
+              (arm64:b.lt 4)           ; if x0 < 1, skip to error case
+              ;; Success: load the byte from stack, tag as fixnum
+              (arm64:ldrb 0 31 (temp-slot td))
+              (arm64:lsl 0 0 4 :imm t)  ; tag as fixnum
+              (arm64:b 2)              ; skip error case
+              ;; Error: return -1 as fixnum (-1 << 4 = -16)
+              (arm64:sub 0 31 16 :imm t)))))  ; x0 = xzr - 16 = -16
     ((has-tag ir 'sys-read-ir)
      ;; sys-read-ir = (sys-read-ir fd-ir buf-ir len-ir)
      ;; Calls _read(fd, buf, len) -> returns bytes read (or-1)
@@ -4831,6 +4941,150 @@
         (list code-code
               (arm64:lsr 0 0 4 :imm t)                      ; untag exit code
               (list (list :extern-call "_exit"))))))
+    ;; === JIT Memory Primitives (ARM64 macOS) ===
+
+    ;; mmap-ir: mmap(addr, len, prot, flags, fd, offset) -> addr or -1
+    ;; All args are untagged raw values (no tagging/untagging)
+    ((has-tag ir 'mmap-ir)
+     (let* ((addr-ir (cadr ir))
+            (len-ir (caddr ir))
+            (prot-ir (cadddr ir))
+            (flags-ir (nth 4 ir))
+            (fd-ir (nth 5 ir))
+            (offset-ir (nth 6 ir))
+            (nd (+ td 6))
+            (addr-code (codegen addr-ir rtaddrs fnoffs nd))
+            (len-code (codegen len-ir rtaddrs fnoffs nd))
+            (prot-code (codegen prot-ir rtaddrs fnoffs nd))
+            (flags-code (codegen flags-ir rtaddrs fnoffs nd))
+            (fd-code (codegen fd-ir rtaddrs fnoffs nd))
+            (offset-code (codegen offset-ir rtaddrs fnoffs nd)))
+       (append-all
+        (list
+         ;; Compute and save all args to stack slots
+         addr-code (arm64:lsr 0 0 4 :imm t) (arm64:str 0 31 :offset (temp-slot td))
+         len-code (arm64:lsr 0 0 4 :imm t) (arm64:str 0 31 :offset (temp-slot (+ td 1)))
+         prot-code (arm64:lsr 0 0 4 :imm t) (arm64:str 0 31 :offset (temp-slot (+ td 2)))
+         flags-code (arm64:lsr 0 0 4 :imm t) (arm64:str 0 31 :offset (temp-slot (+ td 3)))
+         fd-code (arm64:lsr 0 0 4 :imm t) (arm64:str 0 31 :offset (temp-slot (+ td 4)))
+         offset-code (arm64:lsr 0 0 4 :imm t) (arm64:str 0 31 :offset (temp-slot (+ td 5)))
+         ;; Load into arg registers x0-x5
+         (arm64:ldr 0 31 :offset (temp-slot td))
+         (arm64:ldr 1 31 :offset (temp-slot (+ td 1)))
+         (arm64:ldr 2 31 :offset (temp-slot (+ td 2)))
+         (arm64:ldr 3 31 :offset (temp-slot (+ td 3)))
+         (arm64:ldr 4 31 :offset (temp-slot (+ td 4)))
+         (arm64:ldr 5 31 :offset (temp-slot (+ td 5)))
+         (list (list :extern-call "_mmap"))))))  ; returns raw pointer in x0
+
+    ;; munmap-ir: munmap(addr, len) -> 0 on success
+    ;; NOTE: addr is a RAW pointer (from mmap), len is tagged
+    ((has-tag ir 'munmap-ir)
+     (let* ((addr-ir (cadr ir))
+            (len-ir (caddr ir))
+            (nd (+ td 2))
+            (addr-code (codegen addr-ir rtaddrs fnoffs nd))
+            (len-code (codegen len-ir rtaddrs fnoffs nd)))
+       (append-all
+        (list addr-code (arm64:str 0 31 :offset (temp-slot td))  ; addr is RAW, no untagging
+              len-code (arm64:lsr 0 0 4 :imm t)
+              (arm64:mov 1 0)                     ; x1 = len
+              (arm64:ldr 0 31 :offset (temp-slot td))  ; x0 = addr (raw)
+              (list (list :extern-call "_munmap"))))))
+
+    ;; pthread-jit-write-protect-np-ir: pthread_jit_write_protect_np(enabled)
+    ;; enabled = 0: allow write, 1: allow execute
+    ((has-tag ir 'pthread-jit-write-protect-np-ir)
+     (let* ((enabled-ir (cadr ir))
+            (enabled-code (codegen enabled-ir rtaddrs fnoffs td)))
+       (append-all
+        (list enabled-code
+              (arm64:lsr 0 0 4 :imm t)           ; untag enabled
+              (list (list :extern-call "_pthread_jit_write_protect_np"))))))
+
+    ;; sys-dcache-flush-ir: sys_dcache_flush(start, size)
+    ;; NOTE: start is a RAW pointer, size is tagged
+    ((has-tag ir 'sys-dcache-flush-ir)
+     (let* ((start-ir (cadr ir))
+            (size-ir (caddr ir))
+            (nd (+ td 2))
+            (start-code (codegen start-ir rtaddrs fnoffs nd))
+            (size-code (codegen size-ir rtaddrs fnoffs nd)))
+       (append-all
+        (list start-code (arm64:str 0 31 :offset (temp-slot td))  ; start is RAW, no untagging
+              size-code (arm64:lsr 0 0 4 :imm t)
+              (arm64:mov 1 0)                     ; x1 = size
+              (arm64:ldr 0 31 :offset (temp-slot td))  ; x0 = start (raw)
+              (list (list :extern-call "_sys_dcache_flush"))))))
+
+    ;; sys-icache-invalidate-ir: sys_icache_invalidate(start, size)
+    ;; NOTE: start is a RAW pointer, size is tagged
+    ((has-tag ir 'sys-icache-invalidate-ir)
+     (let* ((start-ir (cadr ir))
+            (size-ir (caddr ir))
+            (nd (+ td 2))
+            (start-code (codegen start-ir rtaddrs fnoffs nd))
+            (size-code (codegen size-ir rtaddrs fnoffs nd)))
+       (append-all
+        (list start-code (arm64:str 0 31 :offset (temp-slot td))  ; start is RAW, no untagging
+              size-code (arm64:lsr 0 0 4 :imm t)
+              (arm64:mov 1 0)                     ; x1 = size
+              (arm64:ldr 0 31 :offset (temp-slot td))  ; x0 = start (raw)
+              (list (list :extern-call "_sys_icache_invalidate"))))))
+
+    ;; funcall-ptr-ir: call function pointer, return tagged fixnum
+    ;; The function pointer is a RAW address (from mmap), NOT tagged
+    ;; Returns: tags the raw x0 as a fixnum (x0 << 4)
+    ((has-tag ir 'funcall-ptr-ir)
+     (let* ((ptr-ir (cadr ir))
+            (ptr-code (codegen ptr-ir rtaddrs fnoffs td)))
+       (append-all
+        (list ptr-code
+              (arm64:blr 0)                       ; branch-link to x0
+              (arm64:lsl 0 0 4 :imm t)))))        ; tag result as fixnum
+
+    ;; mem-set-byte-ir: store byte at ptr+offset
+    ;; (mem-set-byte ptr offset byte-value)
+    ;; NOTE: ptr is a RAW pointer (from mmap), NOT tagged
+    ;; offset and byte-value are tagged fixnums
+    ((has-tag ir 'mem-set-byte-ir)
+     (let* ((ptr-ir (cadr ir))
+            (offset-ir (caddr ir))
+            (byte-ir (cadddr ir))
+            (nd (+ td 3))
+            (ptr-code (codegen ptr-ir rtaddrs fnoffs nd))
+            (offset-code (codegen offset-ir rtaddrs fnoffs nd))
+            (byte-code (codegen byte-ir rtaddrs fnoffs nd)))
+       (append-all
+        (list ptr-code (arm64:str 0 31 :offset (temp-slot td))  ; ptr is RAW, no untagging
+              offset-code (arm64:lsr 0 0 4 :imm t) (arm64:str 0 31 :offset (temp-slot (+ td 1)))
+              byte-code (arm64:lsr 0 0 4 :imm t)
+              ;; x0 = byte value, x1 = offset, x2 = ptr
+              (arm64:mov 3 0)                     ; x3 = byte
+              (arm64:ldr 1 31 :offset (temp-slot (+ td 1)))  ; x1 = offset
+              (arm64:ldr 0 31 :offset (temp-slot td))  ; x0 = ptr (raw)
+              (arm64:add 0 0 1)                   ; x0 = ptr + offset
+              (arm64:strb 3 0 0)))))              ; store byte at [x0]
+
+    ;; mem-load-64-ir: load 64-bit word from ptr+offset
+    ;; (mem-load-64 ptr offset)
+    ;; NOTE: ptr is a RAW pointer (from mmap), NOT tagged
+    ;; offset is a tagged fixnum
+    ((has-tag ir 'mem-load-64-ir)
+     (let* ((ptr-ir (cadr ir))
+            (offset-ir (caddr ir))
+            (nd (+ td 2))
+            (ptr-code (codegen ptr-ir rtaddrs fnoffs nd))
+            (offset-code (codegen offset-ir rtaddrs fnoffs nd)))
+       (append-all
+        (list ptr-code (arm64:str 0 31 :offset (temp-slot td))  ; ptr is RAW, no untagging
+              offset-code (arm64:lsr 0 0 4 :imm t)
+              ;; x0 = offset, load ptr, compute address, load word
+              (arm64:mov 1 0)                     ; x1 = offset
+              (arm64:ldr 0 31 :offset (temp-slot td))  ; x0 = ptr (raw)
+              (arm64:add 0 0 1)                   ; x0 = ptr + offset
+              (arm64:ldr 0 0 :offset 0)))))       ; x0 = [x0] (raw 64-bit value)
+
     (t (arm64:movz 0 0))))
 
 ;;; ============================================================
@@ -5369,12 +5623,28 @@
                     (let* ((mvb-result-31 (lift body-ir l1)) (new-body (car mvb-result-31)) (l2 (cdr mvb-result-31)))
                     (let* ((mvb-result-39 (lift result-ir l2)) (new-result (car mvb-result-39)) (l3 (cdr mvb-result-39)))
                     (cons (list 'dolist-ir var new-list new-body new-result compile-env) l3))))))
+               ;; 6-arg IR nodes: mmap
+               ((has-tag ir 'mmap-ir)
+                (let ((arg1 (cadr ir))
+                      (arg2 (caddr ir))
+                      (arg3 (cadddr ir))
+                      (arg4 (nth 4 ir))
+                      (arg5 (nth 5 ir))
+                      (arg6 (nth 6 ir)))
+                  (let* ((mvb-result-m1 (lift arg1 lambdas)) (new-arg1 (car mvb-result-m1)) (l1 (cdr mvb-result-m1)))
+                    (let* ((mvb-result-m2 (lift arg2 l1)) (new-arg2 (car mvb-result-m2)) (l2 (cdr mvb-result-m2)))
+                    (let* ((mvb-result-m3 (lift arg3 l2)) (new-arg3 (car mvb-result-m3)) (l3 (cdr mvb-result-m3)))
+                    (let* ((mvb-result-m4 (lift arg4 l3)) (new-arg4 (car mvb-result-m4)) (l4 (cdr mvb-result-m4)))
+                    (let* ((mvb-result-m5 (lift arg5 l4)) (new-arg5 (car mvb-result-m5)) (l5 (cdr mvb-result-m5)))
+                    (let* ((mvb-result-m6 (lift arg6 l5)) (new-arg6 (car mvb-result-m6)) (l6 (cdr mvb-result-m6)))
+                    (cons (list 'mmap-ir new-arg1 new-arg2 new-arg3 new-arg4 new-arg5 new-arg6) l6)))))))))
                ;; 3-arg IR nodes: (tag arg1 arg2 arg3)
                ((or (has-tag ir 'vector-set-ir)
                     ;; sys-* IR nodes with 3 arguments
                     (has-tag ir 'sys-write-ir)
                     (has-tag ir 'sys-read-ir)
-                    (has-tag ir 'sys-open-ir))
+                    (has-tag ir 'sys-open-ir)
+                    (has-tag ir 'mem-set-byte-ir))
                 (let ((arg1 (cadr ir))
                       (arg2 (caddr ir))
                       (arg3 (cadddr ir)))
@@ -5387,7 +5657,14 @@
                     (has-tag ir 'buffer-byte-ref-ir)
                     (has-tag ir 'buffer-to-string-ir)
                     (has-tag ir 'string-ref-ir)
-                    (has-tag ir 'string-equal-ir))
+                    (has-tag ir 'string-equal-ir)
+                    ;; JIT memory primitives with 2 args
+                    (has-tag ir 'munmap-ir)
+                    (has-tag ir 'sys-dcache-flush-ir)
+                    (has-tag ir 'sys-icache-invalidate-ir)
+                    (has-tag ir 'mem-load-64-ir)
+                    ;; sys-write-char takes 2 args
+                    (has-tag ir 'sys-write-char-ir))
                 (let ((arg1 (cadr ir))
                       (arg2 (caddr ir)))
                   (let* ((mvb-result-14 (lift arg1 lambdas)) (new-arg1 (car mvb-result-14)) (l1 (cdr mvb-result-14)))
@@ -5406,7 +5683,11 @@
                     (has-tag ir 'vectorp-ir) (has-tag ir 'numberp-ir)
                     ;; sys-* IR nodes with 1 argument
                     (has-tag ir 'sys-exit-ir)
-                    (has-tag ir 'sys-close-ir))
+                    (has-tag ir 'sys-close-ir)
+                    (has-tag ir 'sys-read-byte-ir)
+                    ;; JIT memory primitives with 1 arg
+                    (has-tag ir 'pthread-jit-write-protect-np-ir)
+                    (has-tag ir 'funcall-ptr-ir))
                 (let* ((mvb-result-15 (lift (cadr ir) lambdas)) (new-arg (car mvb-result-15)) (new-lambdas (cdr mvb-result-15)))
                     (cons (list (car ir) new-arg) new-lambdas)))
                ;; Self-TCO loop constructs

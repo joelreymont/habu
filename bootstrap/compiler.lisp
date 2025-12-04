@@ -73,7 +73,7 @@
     ;; System
     (cons "SYS-EXIT" 'sys-exit) (cons "SYS-OPEN" 'sys-open)
     (cons "SYS-READ" 'sys-read) (cons "SYS-WRITE" 'sys-write)
-    (cons "SYS-CLOSE" 'sys-close) (cons "NATIVE-READ-FILE" 'native-read-file)
+    (cons "SYS-WRITE-CHAR" 'sys-write-char) (cons "SYS-READ-BYTE" 'sys-read-byte) (cons "SYS-CLOSE" 'sys-close) (cons "NATIVE-READ-FILE" 'native-read-file)
     (cons "GET-INTERN-TABLE" 'get-intern-table) (cons "SET-INTERN-TABLE" 'set-intern-table)
     (cons "GET-LAMBDA-COUNTER" 'get-lambda-counter) (cons "SET-LAMBDA-COUNTER" 'set-lambda-counter)
     ;; Special values
@@ -1263,6 +1263,11 @@
                                            (compile-expr-full (nth 1 expr) env fenv)
                                            (compile-expr-full (nth 2 expr) env fenv)
                                            (compile-expr-full (nth 3 expr) env fenv)))
+         ((eq (car expr) 'sys-write-char) (list 'sys-write-char-ir
+                                                (compile-expr-full (nth 1 expr) env fenv)
+                                                (compile-expr-full (nth 2 expr) env fenv)))
+         ((eq (car expr) 'sys-read-byte) (list 'sys-read-byte-ir
+                                               (compile-expr-full (nth 1 expr) env fenv)))
          ((eq (car expr) 'sys-close) (list 'sys-close-ir (compile-expr-full (nth 1 expr) env fenv)))
 
          ;; Vectors and file I/O helpers
@@ -1954,6 +1959,14 @@
             ;; Write Mach-O executable (handles chmod+codesign via native-write-executable)
             (write-macho-executable-with-imports-and-heap output-path wrapped-code imports #x800000)))))))
 
-;;; Native entry point: When building Stage 1, use the main entry point
-;;; defined in the combined source file (self-compile is called explicitly
-;;; from the main expression, not as a top-level form in compiler.lisp)
+;;; Native entry point for Stage 1 compiler
+#-sbcl
+(defun main ()
+  "Entry point for Stage 1 compiler.
+   Initializes runtime and calls self-compile with hardcoded paths."
+  ;; Initialize symbol table
+  (ensure-symbols-registered)
+  ;; Compile Stage 2
+  (self-compile nil "/tmp/stage2")
+  ;; Exit with success
+  0)
