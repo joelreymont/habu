@@ -333,7 +333,38 @@
      "Evaluate Lisp code with function tracing enabled. Traces specified functions during evaluation and returns both the result and trace output."
      (("code" "string" "Lisp code to evaluate" t)
       ("functions" "string" "Space-separated list of functions to trace (e.g., \"habu:codegen habu:lift-lambdas\")" t)
-      ("timeout" "number" "Timeout in seconds (default: 60)" nil)))))
+      ("timeout" "number" "Timeout in seconds (default: 60)" nil)))
+
+    ;; Beads (bd) issue tracking tools
+    ("bd_ready"
+     "Show work items with no blockers. Use this to find available tasks."
+     ())
+
+    ("bd_list"
+     "List issues with optional status filter."
+     (("status" "string" "Filter by status: pending, in_progress, blocked, done (optional)" nil)))
+
+    ("bd_show"
+     "Show details of a specific issue."
+     (("id" "string" "Issue ID (e.g., habu-abc)" t)))
+
+    ("bd_create"
+     "Create a new issue/task."
+     (("title" "string" "Issue title" t)
+      ("type" "string" "Type: bug, task, feature (default: task)" nil)
+      ("priority" "number" "Priority 1-3, 1=highest (default: 2)" nil)
+      ("description" "string" "Detailed description (optional)" nil)))
+
+    ("bd_update"
+     "Update an issue's status or add notes."
+     (("id" "string" "Issue ID" t)
+      ("status" "string" "New status: pending, in_progress, blocked, done" nil)
+      ("note" "string" "Add a note to the issue" nil)))
+
+    ("bd_close"
+     "Close a completed issue. IMPORTANT: Commit changes BEFORE closing."
+     (("id" "string" "Issue ID to close" t)
+      ("note" "string" "Closing note (optional)" nil)))))
 
 (defun format-tool-schema (name description params)
   (let ((props (mapcar (lambda (p)
@@ -1183,6 +1214,75 @@
                fn-list code fn-list)
        (when (numberp timeout) (floor timeout))))))
 
+;;; ============================================================
+;;; Beads (bd) Tool Implementations
+;;; ============================================================
+
+(defun run-bd-command (args-list)
+  "Run bd command and return output."
+  (handler-case
+      (let ((proc (sb-ext:run-program "bd" args-list
+                                      :search t
+                                      :input nil
+                                      :output :stream
+                                      :error :stream
+                                      :wait t)))
+        (let ((stdout (with-output-to-string (s)
+                        (loop for line = (read-line (sb-ext:process-output proc) nil nil)
+                              while line do (format s "~A~%" line))))
+              (stderr (with-output-to-string (s)
+                        (loop for line = (read-line (sb-ext:process-error proc) nil nil)
+                              while line do (format s "~A~%" line))))
+              (exit-code (sb-ext:process-exit-code proc)))
+          (if (zerop exit-code)
+              stdout
+              (format nil "~A~@[Error: ~A~]" stdout (if (string= stderr "") nil stderr)))))
+    (error (e)
+      (format nil "Error running bd: ~A" e))))
+
+(defun tool-bd-ready (args)
+  (declare (ignore args))
+  (run-bd-command (list "ready")))
+
+(defun tool-bd-list (args)
+  (let ((status (jget args "status")))
+    (if (and status (not (string= status "")))
+        (run-bd-command (list "list" "--status" status))
+        (run-bd-command (list "list")))))
+
+(defun tool-bd-show (args)
+  (let ((id (jget args "id")))
+    (run-bd-command (list "show" id))))
+
+(defun tool-bd-create (args)
+  (let ((title (jget args "title"))
+        (type (or (jget args "type") "task"))
+        (priority (or (jget args "priority") 2))
+        (description (jget args "description")))
+    (let ((cmd-args (list "create" title "-t" type "-p" (format nil "~D" priority))))
+      (when (and description (not (string= description "")))
+        (setf cmd-args (append cmd-args (list "-d" description))))
+      (run-bd-command cmd-args))))
+
+(defun tool-bd-update (args)
+  (let ((id (jget args "id"))
+        (status (jget args "status"))
+        (note (jget args "note")))
+    (let ((cmd-args (list "update" id)))
+      (when (and status (not (string= status "")))
+        (setf cmd-args (append cmd-args (list "--status" status))))
+      (when (and note (not (string= note "")))
+        (setf cmd-args (append cmd-args (list "-n" note))))
+      (run-bd-command cmd-args))))
+
+(defun tool-bd-close (args)
+  (let ((id (jget args "id"))
+        (note (jget args "note")))
+    (let ((cmd-args (list "close" id)))
+      (when (and note (not (string= note "")))
+        (setf cmd-args (append cmd-args (list "-n" note))))
+      (run-bd-command cmd-args))))
+
 (defun tool-lisp-lldb-script (args)
   "Generate lldb script for GC debugging."
   (let ((binary (jget args "binary"))
@@ -1253,6 +1353,13 @@
     ((string= name "lisp_gc_roots_info") (tool-lisp-gc-roots-info args))
     ((string= name "lisp_lldb_script") (tool-lisp-lldb-script args))
     ((string= name "lisp_traced_eval") (tool-lisp-traced-eval args))
+    ;; Beads (bd) tools
+    ((string= name "bd_ready") (tool-bd-ready args))
+    ((string= name "bd_list") (tool-bd-list args))
+    ((string= name "bd_show") (tool-bd-show args))
+    ((string= name "bd_create") (tool-bd-create args))
+    ((string= name "bd_update") (tool-bd-update args))
+    ((string= name "bd_close") (tool-bd-close args))
     (t (format nil "Unknown tool: ~A" name))))
 
 ;;; ============================================================
