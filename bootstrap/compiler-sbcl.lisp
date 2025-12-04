@@ -759,24 +759,41 @@
          (end (cdr r))
          (name (chars-to-string (reverse chars)))
          (uname (string-upcase name)))
-    (cons (cond ((string= uname "NIL") nil)
-                ((string= uname "T") t)
-                ;; Keywords start with ':' - intern into KEYWORD package
-                ((and (> (length uname) 1) (char= (char uname 0) #\:))
-                 (intern (subseq uname 1) "KEYWORD"))
-                ;; Package-qualified symbols like ARM64:ADD
-                ((position #\: uname)
-                 (let* ((colon-pos (position #\: uname))
-                        (pkg-name (subseq uname 0 colon-pos))
-                        (sym-name (subseq uname (1+ colon-pos)))
-                        (pkg (find-package pkg-name)))
-                   ;; If package exists use it, otherwise intern full name in HABU
-                   (if pkg
-                       (intern sym-name pkg)
-                       (intern uname (find-package :habu)))))
-                ;; Regular symbols - intern into HABU package
-                (t (intern uname (find-package :habu))))
-          end)))
+    ;; Check for numeric literals before treating as symbol
+    (let ((first-ch (if (> (length name) 0) (char-code (char name 0)) 0)))
+      (cond
+        ;; Starts with digit - parse as number
+        ((digit-p first-ch)
+         (read-int s pos))
+        ;; Negative number: starts with -, second char is digit
+        ((and (= first-ch #x2D)
+              (> (length name) 1)
+              (digit-p (char-code (char name 1))))
+         (read-int s pos))
+        ;; Positive number: starts with +, second char is digit
+        ((and (= first-ch #x2B)
+              (> (length name) 1)
+              (digit-p (char-code (char name 1))))
+         (read-int s pos))
+        ;; NIL and T
+        ((string= uname "NIL") (cons nil end))
+        ((string= uname "T") (cons t end))
+        ;; Keywords start with ':' - intern into KEYWORD package
+        ((and (> (length uname) 1) (char= (char uname 0) #\:))
+         (cons (intern (subseq uname 1) "KEYWORD") end))
+        ;; Package-qualified symbols like ARM64:ADD
+        ((position #\: uname)
+         (let* ((colon-pos (position #\: uname))
+                (pkg-name (subseq uname 0 colon-pos))
+                (sym-name (subseq uname (1+ colon-pos)))
+                (pkg (find-package pkg-name)))
+           ;; If package exists use it, otherwise intern full name in HABU
+           (cons (if pkg
+                     (intern sym-name pkg)
+                     (intern uname (find-package :habu)))
+                 end)))
+        ;; Regular symbols - intern into HABU package
+        (t (cons (intern uname (find-package :habu)) end))))))
 
 (defun read-str-chars (s pos chars)
   (let ((ch (char-at s pos)))
