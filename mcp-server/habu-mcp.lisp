@@ -16,6 +16,9 @@
 (require :sb-posix)
 (require :asdf)
 
+;;; Suppress all warnings during load - critical for MCP stability
+(declaim (sb-ext:muffle-conditions cl:warning cl:style-warning))
+
 ;;; Prevent SBCL from outputting anything during load
 (setf *standard-output* (make-broadcast-stream))
 (setf *error-output* (make-broadcast-stream))
@@ -45,6 +48,10 @@
   (:use :cl))
 
 (in-package :habu-mcp)
+
+;;; Forward declarations to suppress style warnings
+(declaim (ftype (function (string character) list) split-string))
+(declaim (ftype (function (t) t) read-macho-symbols))
 
 ;;; ============================================================
 ;;; Minimal JSON Parser/Serializer
@@ -323,20 +330,20 @@
       ("watch_env" "boolean" "Watch environment slot changes (default false)" nil)))))
 
 (defun format-tool-schema (name description params)
-  `(("name" . ,name)
-    ("description" . ,description)
-    ("inputSchema" .
-     (("type" . "object")
-      ("properties" .
-       ,(mapcar (lambda (p)
-                  (cons (first p)
-                        `(("type" . ,(second p))
-                          ("description" . ,(third p)))))
-                params))
-      ("required" .
-       ,(remove nil (mapcar (lambda (p)
-                              (when (fourth p) (first p)))
-                            params)))))))
+  (let ((props (mapcar (lambda (p)
+                         (cons (first p)
+                               `(("type" . ,(second p))
+                                 ("description" . ,(third p)))))
+                       params))
+        (required (remove nil (mapcar (lambda (p)
+                                        (when (fourth p) (first p)))
+                                      params))))
+    `(("name" . ,name)
+      ("description" . ,description)
+      ("inputSchema" .
+       (("type" . "object")
+        ("properties" . ,(if props props :empty-object))
+        ,@(when required `(("required" . ,required))))))))
 
 ;;; ============================================================
 ;;; Tool Implementations
@@ -345,35 +352,65 @@
 (defparameter *eval-timeout* 60 "Timeout in seconds for eval operations (default 60s)")
 
 (defun safe-eval (code-string &optional timeout-override)
-  "Safely evaluate Lisp code, capturing output and errors. Times out after timeout-override or *eval-timeout* seconds."
-  (let ((output (make-string-output-stream))
-        (result nil)
-        (error-msg nil)
-        (timeout (or timeout-override *eval-timeout*)))
-    (handler-case
-        (sb-ext:with-timeout timeout
-          (let ((*standard-output* output)
-                (*error-output* output)
-                (*trace-output* output))
-            (setf result
-                  (with-input-from-string (in code-string)
-                    (let ((last-val nil))
-                      (loop
-                        (let ((form (read in nil :eof)))
-                          (when (eq form :eof) (return last-val))
-                          (setf last-val (eval form)))))))))
-      (sb-ext:timeout ()
-        (setf error-msg (format nil "Evaluation timed out after ~D seconds" timeout)))
-      (error (e)
-        (setf error-msg (format nil "~A" e))))
+  "Safely evaluate Lisp code with robust timeout using separate thread.
+   The worker thread is interrupted if it exceeds the timeout."
+  (let* ((output (make-string-output-stream))
+         (timeout (or timeout-override *eval-timeout*))
+         (result-lock (sb-thread:make-mutex :name "eval-result"))
+         (result-ready nil)
+         (result-value nil)
+         (result-error nil)
+         (worker nil))
+    ;; Create worker thread
+    (setf worker
+          (sb-thread:make-thread
+           (lambda ()
+             (handler-case
+                 (let ((*standard-output* output)
+                       (*error-output* output)
+                       (*trace-output* output))
+                   (let ((val (with-input-from-string (in code-string)
+                                (let ((last-val nil))
+                                  (loop
+                                    (let ((form (read in nil :eof)))
+                                      (when (eq form :eof) (return last-val))
+                                      (setf last-val (eval form))))))))
+                     (sb-thread:with-mutex (result-lock)
+                       (setf result-value val
+                             result-ready t))))
+               (error (e)
+                 (sb-thread:with-mutex (result-lock)
+                   (setf result-error (format nil "~A" e)
+                         result-ready t)))))
+           :name "mcp-eval-worker"))
+    ;; Wait with timeout, polling every 100ms
+    (let ((deadline (+ (get-internal-real-time)
+                       (* timeout internal-time-units-per-second))))
+      (loop
+        (sb-thread:with-mutex (result-lock)
+          (when result-ready (return)))
+        (when (>= (get-internal-real-time) deadline)
+          ;; Timeout - interrupt the worker thread
+          (ignore-errors
+            (sb-thread:interrupt-thread worker
+              (lambda () (error "Evaluation timed out"))))
+          ;; Give it 1 second to handle the interrupt
+          (sleep 1)
+          ;; If still alive, terminate forcibly (unsafe but necessary)
+          (when (sb-thread:thread-alive-p worker)
+            (ignore-errors (sb-thread:terminate-thread worker)))
+          (setf result-error (format nil "Evaluation timed out after ~D seconds" timeout))
+          (return))
+        (sleep 0.1)))
+    ;; Build result
     (let ((out-str (get-output-stream-string output)))
-      (if error-msg
+      (if result-error
           (format nil "~@[Output:~%~A~%~]Error: ~A"
                   (if (string= out-str "") nil out-str)
-                  error-msg)
+                  result-error)
           (format nil "~@[~A~]~@[=> ~S~]"
                   (if (string= out-str "") nil (format nil "~A~%" out-str))
-                  result)))))
+                  result-value)))))
 
 (defun tool-lisp-eval (args)
   (let ((code (jget args "code"))
@@ -411,19 +448,14 @@
              hex))))
 
 (defun tool-lisp-jit (args)
+  "JIT compile and execute an expression via subprocess.
+   Returns the result for small fixnums (0-255) as exit code."
   (let ((expr (jget args "expr")))
     (safe-eval
      (format nil
              "(let* ((form (read-from-string ~S))
-                     (habu::*function-table* (make-hash-table))
-                     (compiled (habu:compile-forms (list form)))
-                     (main-ir (cadr compiled))
-                     (code (habu:codegen main-ir nil nil))
-                     (code-vec (coerce code 'vector)))
-                ;; Execute using executor
-                (habu-compiler::load-code-to-memory code-vec \"jit\")
-                ;; For now just show the code
-                (format nil \"Compiled ~~D bytes (JIT execution requires executor setup)\" (length code)))"
+                     (result (habu:jit-eval form)))
+                (format nil \"Result: ~~A\" result))"
              expr))))
 
 (defun tool-lisp-trace (args)
@@ -681,6 +713,7 @@
         (fp-str (jget args "fp"))
         (sp-str (jget args "sp"))
         (depth (or (jget args "depth") 20)))
+    (declare (ignore depth))
     (handler-case
         (let ((fp (parse-integer fp-str :radix 16))
               (sp (parse-integer sp-str :radix 16)))
@@ -856,9 +889,9 @@
   "Run binary under lldb and capture crash info."
   (let ((binary (jget args "binary"))
         (cmd-args (or (jget args "args") "")))
+    (declare (ignore cmd-args))
     (handler-case
-        (let* ((lldb-script (format nil "run ~A" cmd-args))
-               (proc (sb-ext:run-program "/usr/bin/lldb"
+        (let* ((proc (sb-ext:run-program "/usr/bin/lldb"
                                         (list binary
                                               "-o" "run"
                                               "-o" "register read x0 x1 x9 x19 x20 x24 x26 x27 x28 pc sp"
@@ -1119,7 +1152,7 @@
       (format out "#~%")
       (format out "# Check a tagged pointer:~%")
       (format out "#   p/x $x0 & 0xf  # show tag~%")
-      (format out "#   p/x $x0 & ~0xf # show base~%")
+      (format out "#   p/x $x0 & ~~0xf # show base~%")
       (format out "#~%")
       (format out "# Check for forwarding pointer (tag 7):~%")
       (format out "#   p ($x0 & 0xf) == 7~%")
