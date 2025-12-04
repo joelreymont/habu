@@ -296,6 +296,7 @@
      "Run a binary and capture output, exit code, and crash info if any."
      (("binary" "string" "Path to binary to run" t)
       ("args" "string" "Command line arguments (optional)" nil)
+      ("stdin" "string" "Input to send to stdin (optional)" nil)
       ("timeout" "number" "Timeout in seconds (default 30)" nil)))
 
     ("lisp_debug"
@@ -883,17 +884,24 @@
   "Run a binary and capture output/exit code."
   (let ((binary (jget args "binary"))
         (cmd-args (or (jget args "args") ""))
+        (stdin-input (jget args "stdin"))
         (timeout (or (jget args "timeout") 30)))
     (handler-case
         (let* ((args-list (if (string= cmd-args "")
                               nil
                               (split-string cmd-args #\Space)))
-               ;; Use /dev/null for stdin to prevent hanging on input
+               ;; Use stdin stream if input provided, else /dev/null
                (proc (sb-ext:run-program binary args-list
-                                        :input nil
+                                        :input (if stdin-input :stream nil)
                                         :output :stream
                                         :error :stream
                                         :wait nil)))
+          ;; Write stdin input if provided
+          (when stdin-input
+            (let ((input-stream (sb-ext:process-input proc)))
+              (write-string stdin-input input-stream)
+              (terpri input-stream)
+              (close input-stream)))
           ;; Wait with timeout (sleep to avoid busy loop)
           (let ((start-time (get-internal-real-time))
                 (killed nil))

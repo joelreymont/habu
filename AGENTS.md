@@ -14,7 +14,7 @@ MCP tools are faster, produce cleaner output, and save tokens. You MUST use them
 |------|----------|-----------|
 | Find Lisp symbols | `lisp_apropos` | Grep |
 | Evaluate Lisp | `lisp_eval` | Bash + sbcl |
-| Run binaries | `lisp_run` / `lisp_debug` | Bash (unless stdin needed) |
+| Run binaries | `lisp_run` / `lisp_debug` | Bash |
 | Hex dump files | `lisp_hexdump` | xxd via Bash |
 | Disassemble | `lisp_disasm` | lldb via Bash |
 | Check syntax | `lisp_paren_check` | Manual parsing |
@@ -55,7 +55,7 @@ MCP tools are faster, produce cleaner output, and save tokens. You MUST use them
 #### Binary Analysis
 | Tool | Use When | Parameters |
 |------|----------|------------|
-| `lisp_run` | Run binary, get exit code | `binary`, `args`, `timeout` |
+| `lisp_run` | Run binary, get exit code | `binary`, `args`, `stdin`, `timeout` |
 | `lisp_debug` | Debug crash with lldb | `binary`, `args` |
 | `lisp_codesign` | Sign macOS binary | `binary` |
 | `lisp_disasm` | Disassemble hex to ARM64 | `hex` |
