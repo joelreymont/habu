@@ -2695,65 +2695,8 @@
     (flatten code nil)))
 
 ;;; ============================================================
-;;; Pure Delivery (using all pure components)
+;;; Delivery Functions
 ;;; ============================================================
-
-(defun deliver-v2 (source output-path)
-  "Compile source string to native executable without function support.
-   Uses: compile-forms, codegen, wrap-bytecode-with-heap-for-imports.
-   For programs without defun/lambda - simpler code path."
-  (reset-symbol-table)
-  (let* ((forms (read-all source))
-         (result (compile-forms forms))
-         (main-ir (cadr result))
-         ;; Generate code using pure codegen
-         (code (codegen-main main-ir nil))
-         ;; First pass: flatten code lists but keep :extern-call markers
-         (bytes-with-markers (flatten-code-keep-markers code))
-         ;; Collect extern calls
-         (extern-calls (collect-extern-calls bytes-with-markers))
-         (imports (get-unique-imports extern-calls))
-         (wrapper-size 116))  ;; 29 instructions × 4 bytes (GC-enabled wrapper)
-
-    ;; Always use imports path for consistent Mach-O
-    (let ((imports (if (null imports) '("_exit") imports)))
-
-      ;; Calculate stub offsets
-      (let* ((num-imports (length imports))
-             (stubs-total (if (> num-imports 0) (* num-imports 12) 0))
-             (code-offset #x400)
-             ;; Use count-actual-bytes to exclude markers from byte count
-             (exact-flat-size (count-actual-bytes bytes-with-markers))
-             (exact-code-size (+ exact-flat-size wrapper-size))
-             (stubs-offset (+ code-offset exact-code-size))
-             (stub-size 12))
-
-        ;; Build stub offset map - SBCL uses hash-table, native uses alist
-        (let* (#+sbcl
-               (stub-map (let ((ht (make-hash-table :test 'equal)))
-                           (labels ((build (remaining i)
-                                      (when remaining
-                                        (setf (gethash (car remaining) ht) (+ stubs-offset (* i stub-size)))
-                                        (build (cdr remaining) (+ i 1)))))
-                             (build imports 0))
-                           ht))
-               #-sbcl
-               (stub-map (build-stub-alist imports stubs-offset stub-size))
-               (flatten-result (flatten-extern-calls bytes-with-markers stub-map (+ code-offset wrapper-size)))
-               (flat-code (car flatten-result)))
-
-          ;; Calculate heap page offset
-          (let* ((total-size (+ (length flat-code) wrapper-size))
-                 (stubs-end (+ code-offset total-size stubs-total))
-                 (text-vmsize (* (ceiling stubs-end #x4000) #x4000))
-                 (text-pages-4kb (/ text-vmsize #x1000))
-                 (data-const-pages-4kb (/ #x4000 #x1000))
-                 (heap-page-offset (+ text-pages-4kb data-const-pages-4kb))
-                 (wrapped-code (wrap-bytecode-with-heap-for-imports flat-code heap-page-offset)))
-
-            ;; Write Mach-O executable (handles chmod+codesign via native-write-executable)
-            ;; 64MB heap needed due to O(n^2) string allocation in reader (no GC)
-            (write-macho-executable-with-imports-and-heap output-path wrapped-code imports #x4000000)))))))
 
 (defun deliver (source output-path)
   "Compile source string with function definitions to native executable.
@@ -2920,8 +2863,6 @@
            (imports (get-unique-imports extern-calls))
            (imports (if (null imports) '("_exit") imports))
            ;; Calculate stubs
-           (num-imports (length imports))
-           (stubs-total (* num-imports 12))
            (code-offset #x400)
            (exact-flat-size (count-actual-bytes bytes-with-markers))
            (exact-code-size (+ exact-flat-size wrapper-size))

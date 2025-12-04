@@ -42,8 +42,6 @@
    #:deliver-file       ; Compile file to native executable
    #:deliver-mmap       ; Compile to executable without embedded heap
    #:deliver-file-mmap  ; Compile file without embedded heap
-   #:deliver-v2         ; V2 delivery (FASL-based)
-   #:deliver-v3         ; V3 delivery
    ;; Disassembler
    #:disassemble
    #:disasm
