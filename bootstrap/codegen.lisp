@@ -2865,6 +2865,98 @@
    Usage: (habu:deliver-file \"program.lisp\" \"program\")"
   (deliver (native-read-file source-path) output-path))
 
+(defun deliver-mmap (source output-path &optional (heap-size #x4000000))
+  "Compile source string to native executable WITHOUT embedded heap.
+   Heap is allocated via mmap at runtime, resulting in smaller binaries.
+   HEAP-SIZE: runtime heap size in bytes (default 64MB).
+   Layout: wrapper(210) + main-code + function-code + lambda-code + GC-code + stubs"
+  #-sbcl (register-compiler-symbols)
+  (reset-symbol-table)
+  (reset-lambda-counter)
+  (let* ((forms (read-all source))
+         (result (compile-forms forms))
+         (defuns-orig (car result))
+         (main-ir-orig (cadr result))
+         ;; mmap wrapper is larger: 210 bytes vs 116 for embedded heap
+         (wrapper-size 210)
+         ;; Lift lambdas from main-ir
+         (main-lift-result #+sbcl (lift-lambdas-2 main-ir-orig nil)
+                           #-sbcl (lift-lambdas main-ir-orig nil))
+         (main-ir (car main-lift-result))
+         (main-lambdas (cdr main-lift-result))
+         ;; Lift lambdas from defun bodies
+         (defun-lift-result (lift-lambdas-from-defuns defuns-orig nil nil))
+         (defuns (car defun-lift-result))
+         (defun-lambdas (cdr defun-lift-result))
+         ;; Combine all lambdas
+         (all-lambdas (append main-lambdas defun-lambdas)))
+
+    ;; Full compilation path with GC runtime
+    (let* ((lambda-as-defuns (lambdas-to-defuns all-lambdas nil))
+           (all-fns (append defuns lambda-as-defuns))
+           ;; Generate main code first (with nil fnoffs to get size)
+           (main-code-temp (append-all
+                            (list (prologue)
+                                  (codegen main-ir nil nil 0)
+                                  (epilogue))))
+           (main-size (code-size main-code-temp))
+           ;; Build fnoffs starting after main code
+           (fnoffs (build-fnoffs all-fns main-size))
+           ;; Regenerate main with fnoffs
+           (main-code (append-all
+                       (list (prologue)
+                             (codegen main-ir nil fnoffs 0)
+                             (epilogue))))
+           ;; Generate all function code
+           (fn-code (codegen-all-fns all-fns nil fnoffs nil))
+           ;; Generate GC runtime code
+           (gc-code (gc-runtime-code))
+           ;; Combine all code
+           (all-code (append main-code fn-code gc-code))
+           ;; Flatten with markers
+           (bytes-with-markers (flatten-code-keep-markers-and-calls all-code))
+           ;; Collect extern calls
+           (extern-calls (collect-extern-calls bytes-with-markers))
+           (imports (get-unique-imports extern-calls))
+           (imports (if (null imports) '("_exit") imports))
+           ;; Calculate stubs
+           (num-imports (length imports))
+           (stubs-total (* num-imports 12))
+           (code-offset #x400)
+           (exact-flat-size (count-actual-bytes bytes-with-markers))
+           (exact-code-size (+ exact-flat-size wrapper-size))
+           (stubs-offset-unaligned (+ code-offset exact-code-size))
+           (stubs-offset (* (ceiling stubs-offset-unaligned 4) 4))
+           (stub-size 12)
+           ;; Build stub alist
+           (stub-alist (build-stub-alist imports stubs-offset stub-size))
+           ;; Convert fnoffs to byte addresses
+           (fn-addr-base (+ code-offset wrapper-size))
+           (fn-alist-base (build-fn-addr-alist fnoffs fn-addr-base nil))
+           ;; Extract GC function labels
+           (gc-fn-alist (extract-fn-labels bytes-with-markers fn-addr-base))
+           ;; Merge user functions + GC functions
+           (fn-alist (append fn-alist-base gc-fn-alist))
+           ;; Flatten all call markers
+           (flatten-result (flatten-all-calls bytes-with-markers fn-alist stub-alist fn-addr-base))
+           (flat-code (car flatten-result))
+           ;; Wrap with mmap-heap initialization (no embedded __DATA segment)
+           (wrapped-code (wrap-bytecode-with-mmap-heap flat-code heap-size)))
+
+      ;; Write executable without __DATA heap segment
+      (let ((all-fnoffs (append fnoffs
+                                (mapcar (lambda (entry)
+                                          (cons (car entry)
+                                                (- (cdr entry) fn-addr-base)))
+                                        gc-fn-alist))))
+        (write-macho-executable-mmap-heap output-path wrapped-code imports all-fnoffs)
+        #+sbcl (write-symbol-map output-path all-fnoffs main-size imports stubs-offset)))))
+
+(defun deliver-file-mmap (source-path output-path &optional (heap-size #x4000000))
+  "Compile Lisp file to native executable without embedded heap.
+   Usage: (habu:deliver-file-mmap \"program.lisp\" \"program\")"
+  (deliver-mmap (native-read-file source-path) output-path heap-size))
+
 #+sbcl
 (defun write-symbol-map (output-path fnoffs main-size imports stubs-offset)
   "Write a symbol map file for debugging.

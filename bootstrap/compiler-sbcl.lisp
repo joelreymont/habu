@@ -40,6 +40,8 @@
    #:compile-program    ; Compile forms to ARM64 bytecode
    #:deliver            ; Compile source to native executable
    #:deliver-file       ; Compile file to native executable
+   #:deliver-mmap       ; Compile to executable without embedded heap
+   #:deliver-file-mmap  ; Compile file without embedded heap
    #:deliver-v2         ; V2 delivery (FASL-based)
    #:deliver-v3         ; V3 delivery
    ;; Disassembler
@@ -69,6 +71,11 @@
    #:write-macho-executable-with-imports-and-heap
    #:build-macho-executable-with-imports-and-heap
    #:wrap-bytecode-with-heap-for-imports
+   ;; Mmap heap (no __DATA segment in binary)
+   #:mmap-heap-init-code
+   #:wrap-bytecode-with-mmap-heap
+   #:build-macho-executable-mmap-heap
+   #:write-macho-executable-mmap-heap
    #:resolve-calls-simple
    #:link-fasls
    #:generate-gc-fasl
@@ -604,20 +611,29 @@
 ;;; ============================================================
 
 (defun parse-lambda-list (params)
-  "Parse lambda list, splitting at &key.
+  "Parse lambda list, splitting at &optional and &key.
    Returns (positional-params . keyword-specs) where keyword-specs is
-   a list of (name default) pairs."
+   a list of (name default) pairs.
+   &optional params are added to positional-params (names only, defaults ignored)."
   (let ((positional nil)
         (keywords nil)
+        (in-opt nil)
         (in-keys nil))
     (dolist (p params)
       (cond
-        ((eq p '&key) (setq in-keys t))
+        ((eq p '&optional) (setq in-opt t in-keys nil))
+        ((eq p '&key) (setq in-keys t in-opt nil))
         (in-keys
          ;; Keyword param: either SYMBOL or (SYMBOL DEFAULT)
          (if (consp p)
              (push (list (car p) (cadr p)) keywords)
              (push (list p nil) keywords)))
+        (in-opt
+         ;; Optional param: SYMBOL or (SYMBOL DEFAULT)
+         ;; Add name to positional params (default ignored for now)
+         (if (consp p)
+             (push (car p) positional)
+             (push p positional)))
         (t (push p positional))))
     (cons (nreverse positional) (nreverse keywords))))
 

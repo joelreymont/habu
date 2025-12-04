@@ -484,3 +484,132 @@
 
      ;; Set x28 = x27 + 64 (allocation pointer)
      (arm64:add 28 27 +gc-heap-data-offset+ :imm t))))
+
+(defun mmap-heap-init-code (heap-size)
+  "Generate heap initialization code using mmap syscall.
+   HEAP-SIZE: total heap size in bytes (must include globals + both semispaces)
+
+   Uses mmap to allocate heap memory at runtime instead of requiring
+   a pre-allocated __DATA segment in the binary.
+
+   Initializes:
+     x27 = mmap'd heap base
+     [x27+0]:   intern_table = nil (0x06)
+     [x27+8]:   lambda_counter = 0
+     [x27+16]:  from_end = x27 + 112 + half_heap_size
+     [x27+24]:  half_heap_size
+     [x27+32]:  space_flag = 0
+     [x27+40]:  gc_state = 0
+     [x27+48]:  symbol_counter = 0
+     [x27+56]:  symbol_table = nil
+     [x27+64]:  argc = 0
+     [x27+72]:  argv = nil
+     [x27+80]:  packages = nil
+     [x27+88]:  current-package = nil
+     [x27+96]:  stack_base = sp
+     [x27+112]: heap data starts
+     x28 = x27 + 112 (allocation pointer)"
+  (let* ((half-heap-size (ash (- heap-size +gc-heap-data-offset+) -1))
+         (half-high (ash half-heap-size -16))
+         (half-low (logand half-heap-size #xFFFF))
+         (size-high (ash heap-size -16))
+         (size-low (logand heap-size #xFFFF)))
+    (append
+     ;; === Call mmap syscall ===
+     ;; x0 = addr (NULL = 0)
+     (arm64:movz 0 0)
+
+     ;; x1 = length (heap-size)
+     (arm64:movz 1 size-low)
+     (if (> size-high 0)
+         (arm64:movk 1 size-high :lsl 16)
+         (arm64:nop))
+
+     ;; x2 = prot (PROT_READ | PROT_WRITE = 3)
+     (arm64:movz 2 3)
+
+     ;; x3 = flags (MAP_PRIVATE | MAP_ANON = 0x1002 on macOS)
+     (arm64:movz 3 #x1002)
+
+     ;; x4 = fd (-1)
+     (arm64:movz 4 #xFFFF)
+     (arm64:movk 4 #xFFFF :lsl 16)
+     (arm64:movk 4 #xFFFF :lsl 32)
+     (arm64:movk 4 #xFFFF :lsl 48)
+
+     ;; x5 = offset (0)
+     (arm64:movz 5 0)
+
+     ;; x16 = 197 (SYS_mmap)
+     (arm64:movz 16 197)
+
+     ;; syscall
+     (arm64:svc #x80)
+
+     ;; Check for error: if x0 >= 0xFFFFFFFFFFFF0000, it's an error
+     ;; Simpler check: compare with 0 using signed comparison
+     (arm64:cmp 0 0 :imm t)
+     (arm64:b.lt 2)  ; if x0 < 0 (signed), jump to error handler (2 instructions ahead)
+     (arm64:b 4)     ; else skip error handler (4 instructions ahead to mov x27,x0)
+
+     ;; Error handler: exit with code 1
+     (arm64:movz 0 1)           ; exit code 1
+     (arm64:movz 16 1)          ; SYS_exit
+     (arm64:svc #x80)
+
+     ;; === Initialize heap globals ===
+     ;; x27 = mmap result (heap base)
+     (arm64:mov 27 0)
+
+     ;; Store nil (0x06) at intern_table [x27+0]
+     (arm64:movz 9 6)
+     (arm64:str 9 27 :offset +gc-intern-table-offset+)
+
+     ;; Store 0 at lambda_counter [x27+8]
+     (arm64:movz 10 0)
+     (arm64:str 10 27 :offset +gc-lambda-counter-offset+)
+
+     ;; Load half_heap_size into x11
+     (arm64:movz 11 half-low)
+     (if (> half-high 0)
+         (arm64:movk 11 half-high :lsl 16)
+         (arm64:nop))
+
+     ;; Store half_heap_size [x27+24]
+     (arm64:str 11 27 :offset +gc-half-heap-offset+)
+
+     ;; Store space_flag = 0 [x27+32]
+     (arm64:str 10 27 :offset +gc-space-flag-offset+)  ; x10 still 0
+
+     ;; Store gc_state = 0 [x27+40]
+     (arm64:str 10 27 :offset +gc-state-offset+)
+
+     ;; Store symbol_counter = 0 [x27+48]
+     (arm64:str 10 27 :offset +gc-symbol-counter-offset+)
+
+     ;; Store symbol_table = nil [x27+56]
+     (arm64:str 9 27 :offset +gc-symbol-table-offset+)  ; x9 still 6 (nil)
+
+     ;; Store argc = 0 [x27+64]
+     (arm64:str 10 27 :offset +gc-argc-offset+)
+
+     ;; Store argv = nil [x27+72]
+     (arm64:str 9 27 :offset +gc-argv-offset+)
+
+     ;; Store packages = nil [x27+80]
+     (arm64:str 9 27 :offset +gc-packages-offset+)
+
+     ;; Store current-package = nil [x27+88]
+     (arm64:str 9 27 :offset +gc-current-package-offset+)
+
+     ;; Store stack_base = sp [x27+96]
+     (arm64:mov 12 31)  ; x12 = sp
+     (arm64:str 12 27 :offset +gc-stack-base-offset+)
+
+     ;; Compute from_end = x27 + 112 + half_heap_size
+     (arm64:add 12 27 +gc-heap-data-offset+ :imm t)
+     (arm64:add 12 12 11)
+     (arm64:str 12 27 :offset +gc-from-end-offset+)
+
+     ;; Set x28 = x27 + 112 (allocation pointer)
+     (arm64:add 28 27 +gc-heap-data-offset+ :imm t))))

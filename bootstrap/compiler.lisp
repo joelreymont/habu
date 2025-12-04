@@ -411,26 +411,35 @@
 ;; Native Habu version - SBCL uses compiler-sbcl.lisp version
 #-sbcl
 (defun parse-lambda-list (params)
-  "Parse lambda list, splitting at &key.
+  "Parse lambda list, splitting at &optional and &key.
    Returns (positional-params . keyword-specs) where keyword-specs is
-   a list of (name default) pairs."
-  (labels ((collect (ps pos-acc kw-acc in-keys)
+   a list of (name default) pairs.
+   &optional params are added to positional-params (names only, defaults ignored)."
+  (labels ((collect (ps pos-acc kw-acc in-opt in-keys)
              (if (null ps)
                  (cons (reverse pos-acc) (reverse kw-acc))
                  (let ((p (car ps)))
                    (cond
+                     ((eq p '&optional)
+                      (collect (cdr ps) pos-acc kw-acc t nil))
                      ((eq p '&key)
-                      (collect (cdr ps) pos-acc kw-acc t))
+                      (collect (cdr ps) pos-acc kw-acc nil t))
                      (in-keys
                       ;; Keyword param: SYMBOL or (SYMBOL DEFAULT)
                       (if (consp p)
                           (collect (cdr ps) pos-acc
-                                   (cons (list (car p) (cadr p)) kw-acc) t)
+                                   (cons (list (car p) (cadr p)) kw-acc) nil t)
                           (collect (cdr ps) pos-acc
-                                   (cons (list p nil) kw-acc) t)))
+                                   (cons (list p nil) kw-acc) nil t)))
+                     (in-opt
+                      ;; Optional param: SYMBOL or (SYMBOL DEFAULT)
+                      ;; Add name to positional params (default ignored for now)
+                      (if (consp p)
+                          (collect (cdr ps) (cons (car p) pos-acc) kw-acc t nil)
+                          (collect (cdr ps) (cons p pos-acc) kw-acc t nil)))
                      (t
-                      (collect (cdr ps) (cons p pos-acc) kw-acc nil)))))))
-    (collect params nil nil nil)))
+                      (collect (cdr ps) (cons p pos-acc) kw-acc nil nil)))))))
+    (collect params nil nil nil nil)))
 
 ;; Vector access with SBCL/native compatibility
 #+sbcl (defun vec-ref (v i) (svref v i))
