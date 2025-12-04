@@ -34,18 +34,15 @@
 ;; fd = -1, offset = 0
 (defun jit-alloc (size)
   "Allocate JIT-capable memory. Returns pointer or nil on failure."
-  (let* ((aligned-size (* (+ (/ size +jit-page-size+) 1) +jit-page-size+))
-         (prot (+ +prot-read+ +prot-write+ +prot-exec+))
-         (flags (+ +map-private+ +map-anon+ +map-jit+))
-         (result (mmap 0 aligned-size prot flags -1 0)))
-    (if (= result -1)
-        nil
-        result)))
+  ;; jit-mmap handles alignment, protection, and flags internally
+  (jit-mmap size))
 
 ;; munmap(addr, len) -> 0 on success
+;; Note: munmap not yet implemented in native compiler, stub for now
 (defun jit-free (ptr size)
-  "Free JIT memory."
-  (munmap ptr size))
+  "Free JIT memory. (Currently a no-op - memory not freed)"
+  ;; TODO: Add jit-munmap primitive
+  0)
 
 ;;; ============================================================
 ;;; JIT Write Protection (ARM64 macOS specific)
@@ -56,11 +53,11 @@
 ;; enabled = 1: disallow write, allow execute
 (defun jit-write-enable ()
   "Enable writing to JIT memory (disables execution)."
-  (pthread-jit-write-protect-np 0))
+  (jit-write-protect 0))
 
 (defun jit-write-disable ()
   "Disable writing to JIT memory (enables execution)."
-  (pthread-jit-write-protect-np 1))
+  (jit-write-protect 1))
 
 ;;; ============================================================
 ;;; Cache Coherence (ARM64 specific)
@@ -70,13 +67,13 @@
 ;; Flush data cache after writing code
 (defun jit-flush-dcache (ptr size)
   "Flush data cache for JIT region."
-  (sys-dcache-flush ptr size))
+  (jit-dcache-flush ptr size))
 
 ;; sys_icache_invalidate(start, size)
 ;; Invalidate instruction cache before execution
 (defun jit-invalidate-icache (ptr size)
   "Invalidate instruction cache for JIT region."
-  (sys-icache-invalidate ptr size))
+  (jit-icache-invalidate ptr size))
 
 ;;; ============================================================
 ;;; JIT Code Loading
