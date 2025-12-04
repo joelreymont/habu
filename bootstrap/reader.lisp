@@ -6,7 +6,6 @@
 
 ;;; Native entry point - MUST be first function for Stage 1 binary
 ;;; This is a forward reference that calls the real main in compiler.lisp
-#-sbcl
 (defun stage1-entry ()
   "Entry point for Stage 1 compiler. Calls the real main after all code is loaded."
   ;; Note: This function gets compiled first but shouldn't be _main
@@ -34,7 +33,6 @@
   nil)
 
 ;;; Native version - build symbol table incrementally to avoid deep nesting
-#-sbcl
 (defun make-special-forms ()
   "Build list of special form entries"
   (cons (cons "DEFUN" 'defun)
@@ -56,7 +54,6 @@
   (cons (cons "SETQ" 'setq)
         nil))))))))))))))))))
 
-#-sbcl
 (defun make-arithmetic ()
   "Build list of arithmetic entries"
   (cons (cons "+" '+)
@@ -77,7 +74,6 @@
   (cons (cons "ASH" 'ash)
         nil)))))))))))))))))
 
-#-sbcl
 (defun make-list-ops ()
   "Build list of list operation entries"
   (cons (cons "CONS" 'cons)
@@ -96,7 +92,6 @@
   (cons (cons "SETCDR" 'setcdr)
         nil)))))))))))))))
 
-#-sbcl
 (defun make-predicates ()
   "Build list of predicate entries"
   (cons (cons "NULL" 'null)
@@ -107,7 +102,6 @@
   (cons (cons "VECTORP" 'vectorp)
         nil)))))))
 
-#-sbcl
 (defun make-string-ops ()
   "Build list of string operation entries"
   (cons (cons "STRING-LENGTH" 'string-length)
@@ -116,7 +110,6 @@
   (cons (cons "STRING-EQUAL" 'string-equal)
         nil)))))
 
-#-sbcl
 (defun make-vector-ops ()
   "Build list of vector operation entries"
   (cons (cons "MAKE-VECTOR" 'make-vector)
@@ -127,14 +120,12 @@
   (cons (cons "BUFFER-TO-STRING" 'buffer-to-string)
         nil)))))))
 
-#-sbcl
 (defun make-symbol-ops ()
   "Build list of symbol operation entries"
   (cons (cons "SYMBOL-NAME" 'symbol-name)
   (cons (cons "MAKE-SYMBOL-FROM-STRING" 'make-symbol-from-string)
         nil)))
 
-#-sbcl
 (defun make-system-ops ()
   "Build list of system operation entries"
   (cons (cons "SYS-EXIT" 'sys-exit)
@@ -155,7 +146,6 @@
   (cons (cons "T" 't)
         nil)))))))))))))))))
 
-#-sbcl
 (defun make-ir-basic ()
   "Build list of basic IR tag entries"
   (cons (cons "LIT" 'lit)
@@ -174,7 +164,6 @@
   (cons (cons "CMP-GE" 'cmp-ge)
         nil)))))))))))))))
 
-#-sbcl
 (defun make-ir-cons ()
   "Build list of cons IR tag entries"
   (cons (cons "CONS-IR" 'cons-ir)
@@ -184,7 +173,6 @@
   (cons (cons "SETCDR-IR" 'setcdr-ir)
         nil))))))
 
-#-sbcl
 (defun make-ir-control ()
   "Build list of control flow IR tag entries"
   (cons (cons "IF-IR" 'if-ir)
@@ -195,7 +183,6 @@
   (cons (cons "AND-IR" 'and-ir)
         nil)))))))
 
-#-sbcl
 (defun make-ir-functions ()
   "Build list of function IR tag entries"
   (cons (cons "CALL-FN" 'call-fn)
@@ -205,7 +192,6 @@
   (cons (cons "LABELS-IR" 'labels-ir)
         nil))))))
 
-#-sbcl
 (defun make-ir-syscalls ()
   "Build list of syscall IR tag entries"
   (cons (cons "SYS-EXIT-IR" 'sys-exit-ir)
@@ -218,7 +204,6 @@
   (cons (cons "SETQ-IR" 'setq-ir)
         nil)))))))))
 
-#-sbcl
 (defun make-ir-predicates ()
   "Build list of predicate IR tag entries"
   (cons (cons "GET-TAG" 'get-tag)
@@ -227,7 +212,6 @@
   (cons (cons "LIST-IR" 'list-ir)
         nil)))))
 
-#-sbcl
 (defun make-ir-strings ()
   "Build list of string IR tag entries"
   (cons (cons "STRING-LENGTH-IR" 'string-length-ir)
@@ -237,7 +221,6 @@
   (cons (cons "MAKE-SYMBOL-IR" 'make-symbol-ir)
         nil))))))
 
-#-sbcl
 (defun make-ir-vectors ()
   "Build list of vector IR tag entries"
   (cons (cons "MAKE-VECTOR-IR" 'make-vector-ir)
@@ -248,7 +231,6 @@
   (cons (cons "BUFFER-TO-STRING-IR" 'buffer-to-string-ir)
         nil)))))))
 
-#-sbcl
 (defun make-ir-intern ()
   "Build list of intern table IR tag entries"
   (cons (cons "GET-INTERN-TABLE-IR" 'get-intern-table-ir)
@@ -258,7 +240,6 @@
   (cons (cons "NATIVE-READ-FILE-IR" 'native-read-file-ir)
         nil))))))
 
-#-sbcl
 (defun make-ir-lambda ()
   "Build list of lambda IR tag entries"
   (cons (cons "LIFTED-LAMBDA-IR" 'lifted-lambda-ir)
@@ -267,7 +248,6 @@
   (cons (cons ":EXTERN-CALL" ':extern-call)
         nil)))))
 
-#-sbcl
 (defun append-lists (a b)
   "Append list b to end of list a"
   (if (null a)
@@ -303,7 +283,6 @@
 ;;; Core utilities (must be defined before reader functions)
 ;;; These are also defined in compiler-pure.lisp but reader needs them first
 
-#-sbcl
 (defun map-list (fn lst)
   "Map function over list - iterative"
   (let ((current lst)
@@ -313,7 +292,6 @@
       (setq current (cdr current)))
     (reverse result)))
 
-#-sbcl
 (defun assoc-get (key alist)
   "Get value for key in alist - iterative"
   (let ((current alist)
@@ -328,7 +306,6 @@
     result))
 
 ;;; String comparison
-
 #-sbcl
 (defun string= (s1 s2)
   "Compare two strings for equality - iterative"
@@ -372,38 +349,29 @@
             sym)))))
 
 ;;; Global state accessors (implemented in codegen for native)
-#-sbcl
 (defun get-intern-table () *intern-table*)
 
-#-sbcl
 (defun set-intern-table (table)
   (setq *intern-table* table))
 
-#-sbcl
 (defun get-lambda-counter () *lambda-counter*)
 
-#-sbcl
 (defun set-lambda-counter (n)
   (setq *lambda-counter* n))
 
 ;;; Package system accessors
-#-sbcl
 (defun get-current-package () *current-package*)
 
-#-sbcl
 (defun set-current-package (pkg)
   (setq *current-package* pkg))
 
-#-sbcl
 (defun get-packages () *packages*)
 
-#-sbcl
 (defun add-package (name)
   "Register a new package name"
   (if (not (member-string name *packages*))
       (setq *packages* (cons name *packages*))))
 
-#-sbcl
 (defun member-string (s lst)
   "Check if string s is in list lst"
   (let ((current lst)
@@ -414,7 +382,6 @@
           (setq current (cdr current))))
     found))
 
-#-sbcl
 (defun contains-colon (name)
   "Check if string contains a colon (for package-qualified symbols)"
   (let ((len (string-length name))
@@ -426,7 +393,6 @@
           (setq i (+ i 1))))
     found))
 
-#-sbcl
 (defun qualify-symbol-name (name)
   "Add current package prefix if name doesn't have one and package is set.
    Names starting with : are keywords, leave unchanged.
@@ -892,7 +858,6 @@
                         current-pos))))))))
 
 ;;; Package form processing helpers
-#-sbcl
 (defun keyword-to-string (kw)
   "Convert a keyword symbol to its package name string.
    :FOO -> FOO, :foo -> FOO"
@@ -903,7 +868,6 @@
         (upcase-string (substring name 1 (string-length name)))
         (upcase-string name))))
 
-#-sbcl
 (defun substring (s start end)
   "Extract substring from start to end"
   (let ((len (- end start)))
@@ -916,7 +880,6 @@
             (setq i (+ i 1)))
           (make-string-from-vector vec)))))
 
-#-sbcl
 (defun process-package-form (form)
   "Process defpackage or in-package form, updating reader state.
    Returns t if form was processed, nil otherwise."
