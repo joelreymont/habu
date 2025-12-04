@@ -1278,9 +1278,9 @@
         (note (jget args "note")))
     (let ((cmd-args (list "update" id)))
       (when (and status (not (string= status "")))
-        (setf cmd-args (append cmd-args (list "--status" status))))
+        (setf cmd-args (append cmd-args (list "-s" status))))
       (when (and note (not (string= note "")))
-        (setf cmd-args (append cmd-args (list "-n" note))))
+        (setf cmd-args (append cmd-args (list "--notes" note))))
       (run-bd-command cmd-args))))
 
 (defun tool-bd-close (args)
@@ -1288,7 +1288,7 @@
         (note (jget args "note")))
     (let ((cmd-args (list "close" id)))
       (when (and note (not (string= note "")))
-        (setf cmd-args (append cmd-args (list "-n" note))))
+        (setf cmd-args (append cmd-args (list "--notes" note))))
       (run-bd-command cmd-args))))
 
 (defun tool-lisp-lldb-script (args)
