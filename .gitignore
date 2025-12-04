@@ -86,3 +86,4 @@ run-fasl
 
 # Session logs (large files, not version controlled)
 SESSION.md
+SESSION.md.archive
