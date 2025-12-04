@@ -4883,7 +4883,7 @@
                   (if (>= idx (min num-args 8))
                       acc
                       (let* ((adjusted-off (+ (temp-slot (+ arg-base idx)) total-offset))
-                             (ld (arm64:ldr idx 31 :offset adjusted-off)))
+                             (ld (arm64:ldr (arm64:num-to-reg idx) :sp :offset adjusted-off)))
                         (load-reg-args (+ idx 1) total-offset (append acc ld)))))
                 (store-stack-args (idx total-offset acc)
                   ;; Store args 8+ to stack: arg i goes to [sp + (i-8)*8]
@@ -4900,22 +4900,22 @@
             (list
              ;; Save x24 and x20
              (arm64:str :closure :sp :offset x24-slot)
-             (arm64:str :env 31 :offset x20-slot)
+             (arm64:str :env :sp :offset x20-slot)
              ;; Evaluate closure into x0
              fn-code
              ;; Clear closure tag (5) to get heap address: x9 = x0 & ~0xF
              (arm64:movz :x11 #xF)                     ; x11 = 0xF
-             (arm64:bic :x9 0 11)                  ; x9 = x0 & ~0xF
+             (arm64:bic :x9 :x0 :x11)                  ; x9 = x0 & ~0xF
              ;; Load car = fn-offset (tagged): x10 = [x9+0]
-             (arm64:ldr :x10 9 :offset 0)
+             (arm64:ldr :x10 :x9 :offset 0)
              ;; Untag fn-offset: x10 = x10 >> 4
-             (arm64:lsr :x10 10 4 :imm t)
+             (arm64:lsr :x10 :x10 4 :imm t)
              ;; Compute code address: x10 = x26 + x10 (code_base + offset)
-             (arm64:add :x10 26 10)
-             (arm64:str :x10 31 :offset code-slot)      ; save code address
+             (arm64:add :x10 :x26 :x10)
+             (arm64:str :x10 :sp :offset code-slot)      ; save code address
              ;; Load cdr = env: x11 = [x9+8]
-             (arm64:ldr :x11 9 :offset 8)
-             (arm64:str :x11 31 :offset env-slot)       ; save env
+             (arm64:ldr :x11 :x9 :offset 8)
+             (arm64:str :x11 :sp :offset env-slot)       ; save env
              ;; Restore x24 for arg evaluation
              (arm64:ldr :closure :sp :offset x24-slot)
              ;; Evaluate args
@@ -4940,13 +4940,13 @@
              (arm64:movz :x23 num-args)
              ;; BUG #20 FIX: Save x30 - lambdas have no prologue, make BL calls!
              ;; CRITICAL: x30 saved AFTER sp modified, so must adjust offset!
-             (arm64:str :lr 31 :offset (+ x30-slot total-offset))
+             (arm64:str :lr :sp :offset (+ x30-slot total-offset))
              ;; Load code address and call
              (arm64:ldr :x9 :sp :offset (+ code-slot total-offset))
              (arm64:blr :x9)
              ;; Restore x30 immediately after lambda returns
              ;; CRITICAL: sp still modified, so must adjust offset!
-             (arm64:ldr :x30 31 :offset (+ x30-slot total-offset))
+             (arm64:ldr :lr :sp :offset (+ x30-slot total-offset))
              ;; Deallocate parameter frame
              (arm64:add :sp :sp param-space :imm t)
              ;; Deallocate stack space for args 8+ (if any)
@@ -4955,7 +4955,7 @@
                  nil)
              ;; Restore x24 and x20
              (arm64:ldr :closure :sp :offset x24-slot)
-             (arm64:ldr :x20 31 :offset x20-slot)))))))
+             (arm64:ldr :env :sp :offset x20-slot)))))))
     ((has-tag ir 'dotimes-ir)
      ;; dotimes-ir = (dotimes-ir var count-ir body result-form compile-env)
      ;; Generate counted loop:
@@ -5639,12 +5639,12 @@
       ;; Leaf function: skip x24 save
       (append
        (arm64:sub :sp :sp frame-size :imm t)   ; SUB sp, sp, #frame-size
-       (arm64:stp :env 30 31 :offset 0)      ; STP x20, lr, [sp, #0] (save x20 and return addr)
+       (arm64:stp :env :lr :sp :offset 0)      ; STP x20, lr, [sp, #0] (save x20 and return addr)
        (arm64:add :env :sp x20-offset :imm t))  ; ADD x20, sp, #x20-offset (env base)
       ;; Non-leaf function: full frame with x24 save
       (append
        (arm64:sub :sp :sp frame-size :imm t)   ; SUB sp, sp, #frame-size (allocate function frame)
-       (arm64:stp :env 30 31 :offset 0)      ; STP x20, lr, [sp, #0] (save caller's x20 and return addr)
+       (arm64:stp :env :lr :sp :offset 0)      ; STP x20, lr, [sp, #0] (save caller's x20 and return addr)
        (arm64:str :closure :sp :offset 16)        ; STR x24, [sp, #16] (save caller's closure env)
        (arm64:add :env :sp x20-offset :imm t)))) ; ADD x20, sp, #x20-offset (env base past spill area)
 
@@ -5654,12 +5654,12 @@
   (if leaf
       ;; Leaf function: skip x24 restore
       (append
-       (arm64:ldp :env 30 31 :offset 0)    ; LDP x20, lr, [sp, #0] (restore x20 and lr)
+       (arm64:ldp :env :lr :sp :offset 0)    ; LDP x20, lr, [sp, #0] (restore x20 and lr)
        (arm64:add :sp :sp frame-size :imm t))  ; ADD sp, sp, #frame-size (deallocate leaf frame)
       ;; Non-leaf function: full restore
       (append
        (arm64:ldr :closure :sp :offset 16)       ; LDR x24, [sp, #16] (restore caller's closure env)
-       (arm64:ldp :env 30 31 :offset 0)     ; LDP x20, lr, [sp, #0] (restore caller's x20 and lr)
+       (arm64:ldp :env :lr :sp :offset 0)     ; LDP x20, lr, [sp, #0] (restore caller's x20 and lr)
        (arm64:add :sp :sp frame-size :imm t)))) ; ADD sp, sp, #frame-size (deallocate function frame)
 
 (defun gen-capture-copies (count idx acc)
@@ -5675,14 +5675,14 @@
                 ;; x24 is current cons cell (tagged with 1)
                 ;; Clear cons tag: x9 = x24 & ~0xF
                 (arm64:movz :x11 #xF)
-                (arm64:bic :x9 24 11)
+                (arm64:bic :x9 :closure :x11)
                 ;; Get car (the captured value): x0 = [x9+0]
-                (arm64:ldr :x0 9 :offset 0)
+                (arm64:ldr :x0 :x9 :offset 0)
                 ;; Store result to stack slot idx
                 (arm64:sub :x21 :env (* idx 8) :imm t)
-                (arm64:str :x0 21 :offset 0)
+                (arm64:str :x0 :x21 :offset 0)
                 ;; Move x24 to cdr (next cons cell): x24 = [x9+8]
-                (arm64:ldr :x24 9 :offset 8)))))
+                (arm64:ldr :closure :x9 :offset 8)))))
         (gen-capture-copies count (+ idx 1) (append acc copy-code)))))
 
 (defun save-params-to-temps (count idx acc)
@@ -5694,7 +5694,7 @@
       (let* ((off (+ 24 (* idx 8)))  ; Start at sp+24, after saved regs
              (save-code (append-all
                          (list
-                          (arm64:str idx 31 :offset off)))))  ; str xi, [sp, #off]
+                          (arm64:str (arm64:num-to-reg idx) :sp :offset off)))))  ; str xi, [sp, #off]
         (save-params-to-temps count (+ idx 1) (append acc save-code)))))
 
 (defun restore-params-from-temps (params base count idx acc)
@@ -5706,7 +5706,7 @@
              (restore-code (append-all
                             (list
                              ;; Load from sp-relative temp slot
-                             (arm64:ldr :x22 31 :offset temp-off)
+                             (arm64:ldr :x22 :sp :offset temp-off)
                              ;; Store to final env slot (x20-relative)
                              (arm64:sub :x21 :env final-off :imm t)
                              (arm64:str :x22 :x21 :offset 0)))))
