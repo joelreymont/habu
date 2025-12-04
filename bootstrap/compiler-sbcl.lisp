@@ -3239,6 +3239,11 @@
     ((has-tag ir 'vector-length-ir) (ir-may-call? (cadr ir)))
     ((has-tag ir 'string-length-ir) (ir-may-call? (cadr ir)))
     ((has-tag ir 'string-ref-ir) (or (ir-may-call? (cadr ir)) (ir-may-call? (caddr ir))))
+    ;; Buffer byte operations
+    ((has-tag ir 'buffer-byte-set-ir) (or (ir-may-call? (cadr ir))
+                                          (ir-may-call? (caddr ir))
+                                          (ir-may-call? (cadddr ir))))
+    ((has-tag ir 'buffer-byte-ref-ir) (or (ir-may-call? (cadr ir)) (ir-may-call? (caddr ir))))
     ;; Type predicates are simple
     ((has-tag ir 'consp-ir) (ir-may-call? (cadr ir)))
     ((has-tag ir 'null-ir) (ir-may-call? (cadr ir)))
