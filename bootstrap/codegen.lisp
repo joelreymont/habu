@@ -258,7 +258,8 @@
          (has-tag ir 'cons-ir)
          (has-tag ir 'setcar-ir) (has-tag ir 'setcdr-ir)
          (has-tag ir 'string-ref-ir) (has-tag ir 'string-concat-ir)
-         (has-tag ir 'string-equal-ir) (has-tag ir 'vector-ref-ir))
+         (has-tag ir 'string-equal-ir) (has-tag ir 'vector-ref-ir)
+         (has-tag ir 'buffer-byte-ref-ir))
      (let* ((left (cadr ir))
             (right (caddr ir))
             (left-result (lift-lambdas left lambdas))
@@ -269,22 +270,24 @@
             (l2 (cdr right-result)))
        (cons (list (car ir) new-left new-right) l2)))
 
-    ;; Ternary ops (vector-set-ir)
-    ((has-tag ir 'vector-set-ir)
+    ;; Ternary ops (vector-set-ir, buffer-byte-set-ir)
+    ((or (has-tag ir 'vector-set-ir)
+         (has-tag ir 'buffer-byte-set-ir))
      (let* ((arg1 (cadr ir))
             (arg2 (caddr ir))
             (arg3 (cadddr ir))
             (r1 (lift-lambdas arg1 lambdas))
             (r2 (lift-lambdas arg2 (cdr r1)))
             (r3 (lift-lambdas arg3 (cdr r2))))
-       (cons (list 'vector-set-ir (car r1) (car r2) (car r3)) (cdr r3))))
+       (cons (list (car ir) (car r1) (car r2) (car r3)) (cdr r3))))
 
     ;; Unary ops
     ((or (has-tag ir 'car-ir) (has-tag ir 'cdr-ir) (has-tag ir 'get-tag)
          (has-tag ir 'symbol-name-ir) (has-tag ir 'make-symbol-ir)
          (has-tag ir 'string-length-ir)
          (has-tag ir 'make-vector-ir) (has-tag ir 'vector-length-ir)
-         (has-tag ir 'make-string-from-vector-ir))
+         (has-tag ir 'make-string-from-vector-ir)
+         (has-tag ir 'set-global-vars-ir))
      (let* ((arg (cadr ir))
             (arg-result (lift-lambdas arg lambdas))
             (new-arg (car arg-result))
@@ -725,7 +728,13 @@
                                       (ir-may-call (caddr ir))
                                       (ir-may-call (cadddr ir))))
     ((has-tag ir 'vector-length-ir) (ir-may-call (cadr ir)))
+    ((has-tag ir 'buffer-byte-ref-ir) (or (ir-may-call (cadr ir)) (ir-may-call (caddr ir))))
+    ((has-tag ir 'buffer-byte-set-ir) (or (ir-may-call (cadr ir))
+                                           (ir-may-call (caddr ir))
+                                           (ir-may-call (cadddr ir))))
     ((has-tag ir 'make-string-from-vector-ir) (ir-may-call (cadr ir)))
+    ((has-tag ir 'get-global-vars-ir) nil)
+    ((has-tag ir 'set-global-vars-ir) (ir-may-call (cadr ir)))
     ((has-tag ir 'str-lit) nil)
     ((has-tag ir 'if-ir) t)
     ((has-tag ir 'while-ir) t)
@@ -1311,6 +1320,71 @@
               (arm64:ldr 0 0 :offset 0)           ; x0 = raw length (untagged integer)
               ;; Tag as fixnum: x0 = x0 << 4
               (arm64:lsl 0 0 4 :imm t)))))          ; x0 = tagged fixnum length
+
+    ;; Buffer-byte-ref: get raw byte at index from vector data area
+    ;; (buffer-byte-ref-ir vec-ir idx-ir)
+    ;; Used for reading bytes stored by sys-read
+    ;; Vector layout: [length (8 bytes)][raw bytes...]
+    ((has-tag ir 'buffer-byte-ref-ir)
+     (let* ((vec-ir (cadr ir))
+            (idx-ir (caddr ir))
+            (xs (temp-slot td))
+            (nd (+ td 1))
+            (vc (codegen vec-ir rtaddrs fnoffs nd))
+            (sv (arm64:str 0 31 :offset xs))
+            (ic (codegen idx-ir rtaddrs fnoffs nd)))
+       ;; After codegen: idx in x0, vec at [sp+xs]
+       (append-all
+        (list vc sv ic
+              ;; x0 = idx (tagged), load vec -> x1
+              (arm64:ldr 1 31 :offset xs)         ; x1 = vec (tagged)
+              ;; Clear tag from vec: x1 = x1 & ~0xF
+              (arm64:and* 1 1 -16 :imm t)         ; x1 = vec_ptr (untagged)
+              ;; Untag idx: x0 = x0 >> 4
+              (arm64:lsr 0 0 4 :imm t)            ; x0 = raw index
+              ;; Add 8 to skip length header, add index
+              (arm64:add 0 0 8 :imm t)            ; x0 = 8 + idx
+              (arm64:add 1 1 0)                   ; x1 = vec_base + 8 + idx
+              ;; Load byte
+              (arm64:ldrb 0 1 0)                  ; x0 = byte
+              ;; Tag as fixnum
+              (arm64:lsl 0 0 4 :imm t)))))        ; x0 = tagged fixnum
+
+    ;; Buffer-byte-set: store byte at index in vector data area
+    ;; (buffer-byte-set-ir vec-ir idx-ir val-ir)
+    ;; Used for storing bytes (e.g., from sys-read-byte)
+    ;; Vector layout: [length (8 bytes)][raw bytes...]
+    ((has-tag ir 'buffer-byte-set-ir)
+     (let* ((vec-ir (cadr ir))
+            (idx-ir (caddr ir))
+            (val-ir (cadddr ir))
+            (xs (temp-slot td))
+            (xs2 (temp-slot (+ td 1)))
+            (nd (+ td 2))
+            (vc (codegen vec-ir rtaddrs fnoffs nd))
+            (sv (arm64:str 0 31 :offset xs))
+            (ic (codegen idx-ir rtaddrs fnoffs nd))
+            (si (arm64:str 0 31 :offset xs2))
+            (vlc (codegen val-ir rtaddrs fnoffs nd)))
+       ;; After codegen: val in x0, vec at [sp+xs], idx at [sp+xs2]
+       (append-all
+        (list vc sv ic si vlc
+              ;; x0 = val (tagged), load vec -> x1, idx -> x2
+              (arm64:ldr 1 31 :offset xs)         ; x1 = vec (tagged)
+              (arm64:ldr 2 31 :offset xs2)        ; x2 = idx (tagged)
+              ;; Clear tag from vec: x1 = x1 & ~0xF
+              (arm64:and* 1 1 -16 :imm t)         ; x1 = vec_ptr (untagged)
+              ;; Untag idx: x2 = x2 >> 4
+              (arm64:lsr 2 2 4 :imm t)            ; x2 = raw index
+              ;; Untag val: x0 = x0 >> 4
+              (arm64:lsr 0 0 4 :imm t)            ; x0 = raw byte value
+              ;; Add 8 to skip length header, add index
+              (arm64:add 2 2 8 :imm t)            ; x2 = 8 + idx
+              (arm64:add 1 1 2)                   ; x1 = vec_base + 8 + idx
+              ;; Store byte
+              (arm64:strb 0 1 0)                  ; [x1] = byte
+              ;; Return nil (stored value already consumed)
+              (movz 0 6)))))                      ; x0 = nil (0x06)
 
     ;; Make-string-from-vector: convert vector OR list of char codes to string
     ;; (make-string-from-vector-ir seq-ir)
@@ -2160,6 +2234,17 @@
      (let ((val-code (codegen (cadr ir) rtaddrs fnoffs td)))
        (append val-code
                (arm64:str 0 27 :offset 88))))
+
+    ;; Get-global-vars: load global variables table from [x27 + 104]
+    ;; Returns alist of (symbol-name-string . value) pairs
+    ((has-tag ir 'get-global-vars-ir)
+     (arm64:ldr 0 27 :offset 104))
+
+    ;; Set-global-vars: store global variables table to [x27 + 104], return value
+    ((has-tag ir 'set-global-vars-ir)
+     (let ((val-code (codegen (cadr ir) rtaddrs fnoffs td)))
+       (append val-code
+               (arm64:str 0 27 :offset 104))))
 
     ;; TCO: loop-ir wraps body that may contain continue-ir nodes
     ;; Just generate body code - the loop-start is resolved at function level

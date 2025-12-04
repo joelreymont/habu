@@ -320,7 +320,7 @@
             (if (= n 10)  ;; newline
                 (buffer-to-string *stdin-buffer* pos)
                 (progn
-                  (vector-set *stdin-buffer* pos n)
+                  (buffer-byte-set *stdin-buffer* pos n)
                   (read-line-loop (+ pos 1))))))))
 
 ;;; ============================================================

@@ -30,8 +30,19 @@
   (let* ((temp-name (format nil "/tmp/habu_jit_~D_~D"
                             (sb-posix:getpid)
                             (incf *jit-temp-counter*)))
-         ;; Wrap expression in sys-exit to return result as exit code
-         (wrapped-source (format nil "(sys-exit ~S)" expr)))
+         ;; Handle progn specially to keep defuns at top level
+         (wrapped-source
+          (if (and (consp expr) (eq (car expr) 'progn))
+              ;; Extract forms, wrap only last one in sys-exit
+              (let ((forms (cdr expr)))
+                (if (null forms)
+                    "(sys-exit 0)"
+                    (with-output-to-string (s)
+                      (dolist (f (butlast forms))
+                        (format s "~S~%" f))
+                      (format s "(sys-exit ~S)" (car (last forms))))))
+              ;; Simple case: wrap whole expression
+              (format nil "(sys-exit ~S)" expr))))
     (unwind-protect
         (progn
           ;; Compile to executable using deliver

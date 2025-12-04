@@ -74,6 +74,9 @@
    #:generate-gc-fasl
    ;; FASL support
    #:write-fasl-v2 #:read-fasl-v2 #:compile-file-to-fasl
+   ;; JIT executor (from executor.lisp)
+   #:jit-eval #:jit-compile-expression #:jit-disasm
+   #:jit-test #:jit-run-tests #:tag-fixnum #:untag-fixnum
    ;; Re-export CL functions used in compiled code
    #:append #:reverse #:length
    ;; Re-export system primitives for convenience
@@ -99,7 +102,7 @@
 ;;; These are loaded via ASDF after this file
 (declaim (ftype (function (t t t t &optional t) t) write-macho-executable-with-imports-and-heap))
 (declaim (ftype (function (t &key (:passes t)) t) habu:optimize-ir))
-(declaim (ftype (function (t t &optional t) t) wrap-bytecode-with-heap-for-imports))
+(declaim (ftype (function (t t) t) wrap-bytecode-with-heap-for-imports))
 (declaim (ftype (function () t) fn-epilogue))
 (declaim (ftype (function (t) t) find-free-vars-simple))
 
@@ -1424,6 +1427,11 @@
 (defparameter *constants* nil
   "Alist of (name . value) for defconstant values during compilation")
 
+;;; User-defined global variables from defvar/defparameter
+;;; These are stored in the global-vars table at [x27+104]
+(defparameter *defined-globals* nil
+  "Alist of (name . initial-value-ir) for defvar/defparameter during compilation")
+
 (defun quote-ir (obj)
   (cond
     ((numberp obj) (list 'lit obj))
@@ -1459,11 +1467,21 @@
                       (if global-entry
                           ;; Emit getter IR form for the global
                           (list (car (cdr global-entry)))
-                          ;; Check if it's a known function name - return as lambda-ref
-                          ;; This creates a closure pointing to the function (no captures)
-                          (if (and fenv (assoc expr fenv))
-                              (list 'lambda-ref expr nil)
-                              (error "Undefined variable: ~S" expr)))))))))))
+                          ;; Check if it's a user-defined global (defvar/defparameter)
+                          (let ((defined-entry (and (boundp '*defined-globals*)
+                                                    *defined-globals*
+                                                    (assoc expr *defined-globals*))))
+                            (if defined-entry
+                                ;; Emit vector-ref on globals vector
+                                ;; Entry is (name index init-form)
+                                (list 'vector-ref-ir
+                                      '(get-global-vars-ir)
+                                      (list 'lit (cadr defined-entry)))
+                                ;; Check if it's a known function name - return as lambda-ref
+                                ;; This creates a closure pointing to the function (no captures)
+                                (if (and fenv (assoc expr fenv))
+                                    (list 'lambda-ref expr nil)
+                                    (error "Undefined variable: ~S" expr)))))))))))))
     ((consp expr)
      (let ((op (car expr)))
        (cond
@@ -1953,8 +1971,19 @@
                   (if global-entry
                       ;; Emit setter IR form for the global
                       (list (cdr (cdr global-entry)) (sys:compile val env fenv))
-                      ;; Unknown variable - return nil
-                      (list 'lit 0))))))
+                      ;; Check if it's a user-defined global (defvar/defparameter)
+                      (let ((defined-entry (and (boundp '*defined-globals*)
+                                                *defined-globals*
+                                                (assoc var *defined-globals*))))
+                        (if defined-entry
+                            ;; Emit vector-set on globals vector
+                            ;; Entry is (name index init-form)
+                            (list 'vector-set-ir
+                                  '(get-global-vars-ir)
+                                  (list 'lit (cadr defined-entry))
+                                  (sys:compile val env fenv))
+                            ;; Unknown variable - return nil
+                            (list 'lit 0))))))))
          ;; setcar - mutate car of cons cell
          ((eq op 'setcar)
           (list 'setcar-ir (sys:compile (cadr expr) env fenv) (sys:compile (caddr expr) env fenv)))
@@ -4240,6 +4269,14 @@
      (let ((val-code (codegen (cadr ir) rtaddrs fnoffs td)))
        (append val-code
                (arm64:str 0 27 :offset 8))))
+    ;; get-global-vars-ir - load global variables table from [x27 + 104]
+    ((has-tag ir 'get-global-vars-ir)
+     (arm64:ldr 0 27 :offset 104))
+    ;; set-global-vars-ir - store global variables table to [x27 + 104], return value
+    ((has-tag ir 'set-global-vars-ir)
+     (let ((val-code (codegen (cadr ir) rtaddrs fnoffs td)))
+       (append val-code
+               (arm64:str 0 27 :offset 104))))
     ((has-tag ir 'let-ir)
      ;; let-ir = (let-ir vals bir count offs)
      (let* ((vals (cadr ir))
@@ -5143,6 +5180,26 @@
                              (collect-constants (cdr f) acc)))
           (t (collect-constants (cdr forms) acc))))))
 
+(defun collect-globals (forms acc)
+  "Collect all defvar/defparameter definitions into an alist of (name index . init-form).
+   Recurses into progn forms. Init-form is nil if not provided.
+   Index is the position in the globals vector (0-based)."
+  (if (null forms)
+      acc
+      (let ((f (car forms)))
+        (cond
+          ((and (consp f) (or (eq (car f) 'defvar) (eq (car f) 'defparameter)))
+           ;; (defvar name) or (defvar name init-value)
+           (let* ((name (cadr f))
+                  (init-form (caddr f))  ; nil if not provided
+                  (idx (length acc)))    ; index = current count
+             (collect-globals (cdr forms) (cons (list name idx init-form) acc))))
+          ((and (consp f) (eq (car f) 'progn))
+           ;; Recurse into progn
+           (collect-globals (cdr forms)
+                            (collect-globals (cdr f) acc)))
+          (t (collect-globals (cdr forms) acc))))))
+
 (defun collect-defun-names (forms acc)
   "Pass 1: Collect all defun names and param info from forms, recursing into progn.
    Returns alist of (name . parsed-lambda-list) where parsed-lambda-list is
@@ -5210,10 +5267,38 @@
             ((null (cdr main-forms)) (car main-forms))
             (t (cons 'progn main-forms))))))
 
+(defun generate-globals-init-ir (globals fenv)
+  "Generate IR to initialize the globals vector.
+   Creates a vector of size N and initializes each slot.
+   GLOBALS is an alist of (name index init-form).
+   Returns IR that creates and initializes the vector, or nil if no globals."
+  (if (null globals)
+      nil
+      (let* ((n (length globals))
+             ;; Create vector: (set-global-vars (make-vector N))
+             (create-ir (list 'set-global-vars-ir
+                              (list 'make-vector-ir (list 'lit n))))
+             ;; Initialize each slot
+             (init-irs (mapcar (lambda (entry)
+                                 (let* ((idx (cadr entry))
+                                        (init-form (caddr entry))
+                                        (init-ir (if init-form
+                                                     (sys:compile init-form nil fenv)
+                                                     '(nil-ir))))
+                                   (list 'vector-set-ir
+                                         '(get-global-vars-ir)
+                                         (list 'lit idx)
+                                         init-ir)))
+                               globals)))
+        ;; Combine into progn - progn-ir expects (progn-ir (form1 form2 ...))
+        (list 'progn-ir (cons create-ir init-irs)))))
+
 (defun compile-forms (forms)
-  "Multi-pass compilation: collect constants, then names, then compile"
-  ;; Pass 0: Collect constants from defconstant forms
+  "Multi-pass compilation: collect constants and globals, then names, then compile"
+  ;; Pass 0a: Collect constants from defconstant forms
+  ;; Pass 0b: Collect globals from defvar/defparameter forms
   (let* ((*constants* (collect-constants forms nil))
+         (*defined-globals* (collect-globals forms nil))
          ;; Pass 1: Collect all defun names
          (fn-names (collect-defun-names forms nil))
          ;; Build fenv with all function names as placeholders
@@ -5222,8 +5307,14 @@
     (let* ((compiled-fns (reverse (compile-defuns forms nil fenv nil)))
            ;; Find and compile the main expression
            (main-form (find-main-form forms))
-           (main-ir (if main-form (sys:compile main-form nil fenv) (list 'lit 0))))
-      (list compiled-fns main-ir))))
+           (main-ir (if main-form (sys:compile main-form nil fenv) (list 'lit 0)))
+           ;; Generate globals initialization if needed
+           (globals-init-ir (generate-globals-init-ir *defined-globals* fenv))
+           ;; Wrap main-ir with globals init if there are globals
+           (final-main-ir (if globals-init-ir
+                              (list 'progn-ir (list globals-init-ir main-ir))
+                              main-ir)))
+      (list compiled-fns final-main-ir))))
 
 (defun gen-param-stores (params base idx acc &key leaf)
   "Store function parameters to stack frame.
@@ -5592,7 +5683,8 @@
                   (let* ((mvb-result-8 (lift left lambdas)) (new-left (car mvb-result-8)) (l1 (cdr mvb-result-8)))
                     (let* ((mvb-result-29 (lift right l1)) (new-right (car mvb-result-29)) (l2 (cdr mvb-result-29)))
                     (cons (list (car ir) new-left new-right) l2)))))
-               ((or (has-tag ir 'car-ir) (has-tag ir 'cdr-ir))
+               ((or (has-tag ir 'car-ir) (has-tag ir 'cdr-ir)
+                    (has-tag ir 'set-global-vars-ir))
                 (let* ((mvb-result-9 (lift (cadr ir) lambdas)) (new-arg (car mvb-result-9)) (new-lambdas (cdr mvb-result-9)))
                     (cons (list (car ir) new-arg) new-lambdas)))
                ((has-tag ir 'setq-ir)
@@ -7048,8 +7140,7 @@ int main(int argc, char **argv) {
                (text-pages-4kb (/ text-vmsize #x1000))
                (data-const-pages-4kb (/ #x4000 #x1000))
                (heap-page-offset (+ text-pages-4kb data-const-pages-4kb))
-               (half-heap-size (ash #x8000000 -1))
-               (wrapped-code (wrap-bytecode-with-heap-for-imports all-code heap-page-offset half-heap-size)))
+               (wrapped-code (wrap-bytecode-with-heap-for-imports all-code heap-page-offset)))
           (when verbose
             (format t "Wrapped code: ~A bytes (wrapper: ~A + code: ~A)~%"
                     (length wrapped-code) wrapper-size code-size))

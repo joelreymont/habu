@@ -836,8 +836,8 @@
                (cons (arm64:str 11 27 :offset 16)             ; 19: str x11, [x27+16]
                (cons (arm64:add 28 27 112 :imm t)             ; 20: add x28, x27, #112
                (cons (arm64:str 31 27 :offset 96)             ; 21: str sp, [x27+96] (stack_base)
-               (cons (arm64:adr 26 40)                        ; 22: adr x26, +40 (code base, +1 instr)
-               (cons (arm64:bl 9)                             ; 23: bl +9 (call user code, +1 instr)
+               (cons (arm64:adr 26 36)                        ; 22: adr x26, +36 (code base)
+               (cons (arm64:bl 8)                             ; 23: bl +8 (call user code)
                (cons (arm64:lsr 0 0 4 :imm t)                 ; 24: lsr x0, x0, #4 (untag)
                (cons (arm64:ldr 27 31 :offset 24)             ; 25: ldr x27, [sp+24]
                (cons (arm64:ldr 26 31 :offset 16)             ; 26: ldr x26, [sp+16]

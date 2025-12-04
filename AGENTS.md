@@ -31,21 +31,127 @@ See `bd --help` for full command reference.
 
 **Always use the Habu MCP server for Lisp evaluation and testing.**
 
-The project has an MCP server configured in `.mcp.json` that provides:
-- `lisp_eval` - Evaluate Habu Lisp expressions
-- `lisp_compile` - Compile to native ARM64 code
-- `lisp_disasm` - Disassemble compiled code
-- `lisp_jit` - JIT compile and execute
-- `lisp_trace` - Trace function execution
-- `lisp_inspect` - Inspect compiler internals
-- `lisp_apropos` - Search for symbols
-- `lisp_paren_check` - Check parenthesis balance in Lisp files
+The project has an MCP server configured in `.mcp.json`. Use these tools instead of launching SBCL manually or using Grep/Bash for Lisp operations.
 
-Use these tools instead of launching SBCL manually with `--load` or `--eval`.
+### Complete Tool Reference (21 Tools)
 
-**Paren Balance Checking**: When you encounter paren errors during compilation, use `lisp_paren_check` to diagnose. It reports exact line/column and surrounding context.
+#### Evaluation & Compilation
 
-**Searching for Lisp Identifiers**: Use `lisp_apropos` to find symbols in the running Lisp image. This is more efficient than grepping source files when you need to know if a symbol exists, what package it's in, or whether it's bound/fbound. Use Grep for finding source code patterns and implementations.
+| Tool | Purpose | Key Parameters |
+|------|---------|----------------|
+| `lisp_eval` | General Lisp evaluation | `code` (required), `timeout` (optional, default 60s) |
+| `lisp_traced_eval` | Evaluate with function tracing | `code`, `functions` (space-separated list) |
+| `lisp_compile` | Compile Habu source to ARM64 | `source` (defun or expression) |
+| `lisp_jit` | Compile and execute via mmap | `expr` (expression to run) |
+
+#### Disassembly & Inspection
+
+| Tool | Purpose | Key Parameters |
+|------|---------|----------------|
+| `lisp_disasm` | Disassemble ARM64 hex to assembly | `hex` (hex string, spaces OK) |
+| `lisp_inspect` | Describe object/symbol with docs | `object` (evaluated first) |
+| `lisp_apropos` | Search for symbols by substring | `pattern`, `package` (optional) |
+| `lisp_hexdump` | Hex dump file bytes | `file`, `offset`, `length`, `width` |
+
+#### Binary Execution
+
+| Tool | Purpose | Key Parameters |
+|------|---------|----------------|
+| `lisp_run` | Run binary, capture output/exit | `binary`, `args`, `timeout` (default 30s) |
+| `lisp_debug` | Run under lldb, get crash info | `binary`, `args` |
+| `lisp_codesign` | Ad-hoc sign Mach-O binary | `binary` |
+
+#### Debugging & Tracing
+
+| Tool | Purpose | Key Parameters |
+|------|---------|----------------|
+| `lisp_trace` | Enable/disable function tracing | `function`, `enable` (boolean) |
+| `lisp_paren_check` | Check paren balance in file | `file` (path to .lisp file) |
+| `lisp_lldb_script` | Generate lldb debug script | `binary`, `break_on_gc`, `watch_env` |
+
+#### Tagged Values & GC Analysis
+
+| Tool | Purpose | Key Parameters |
+|------|---------|----------------|
+| `lisp_tagged_value` | Decode Habu tagged value | `value` (integer) |
+| `lisp_check_ptr` | Validate tagged pointer | `ptr` (hex), `x27` (optional) |
+| `lisp_heap_info` | Show heap layout reference | (no parameters) |
+| `lisp_gc_roots_info` | Explain GC root handling | (no parameters) |
+| `lisp_gc_analyze` | Analyze GC crash state | `x27`, `x28` (hex), `crash_addr` (optional) |
+| `lisp_env_slots` | Show environment slot layout | `x20` (hex), `count` |
+| `lisp_stack_frames` | Walk stack frames | `binary`, `fp`, `sp` (hex), `depth` |
+
+### When to Use Which Tool
+
+**CRITICAL: For finding Lisp identifiers** (functions, variables, macros, IR tags):
+- **ALWAYS use `lisp_apropos`** - searches the live Lisp image across ALL packages
+- This includes: HABU package, ARM64 package, SYS package, CL package
+- Works for: `buffer-byte-set`, `arm64:ldrb`, `codegen`, `compile-expr`, etc.
+- **NEVER use Grep** for Lisp symbol lookup - apropos is faster and more accurate
+- Examples:
+  - Finding ARM64 instructions: `lisp_apropos pattern="ldrb"` -> finds `ARM64:LDRB`
+  - Finding compiler functions: `lisp_apropos pattern="codegen"` -> finds all codegen variants
+  - Finding IR tags: `lisp_apropos pattern="buffer"` -> finds buffer-related symbols
+
+**For debugging compiler issues**:
+- Use `lisp_traced_eval` with functions like `habu:codegen`, `habu:lift-lambdas`
+- Example: `functions: "habu:codegen habu:compile-expr"` to trace multiple functions
+- Trace output shows call depth, arguments, and return values
+
+**For paren errors**:
+- Use `lisp_paren_check` - reports exact line/column with context
+- Shows unclosed parens and extra close parens with surrounding code
+
+**For running/testing binaries**:
+- Use `lisp_run` or `lisp_debug` instead of Bash
+- NOTE: These tools redirect stdin from /dev/null - programs requiring interactive input will see EOF immediately
+- For programs needing stdin, use Bash with `echo "input" | ./binary` or heredocs
+- `lisp_run` shows exit codes and signal info (SIGILL=132, SIGSEGV=139, etc.)
+
+**For GC crash debugging**:
+1. Run `lisp_debug` to get register values from crash
+2. Use `lisp_gc_analyze` with x27/x28 values to understand heap state
+3. Use `lisp_check_ptr` to validate suspicious pointers
+4. Use `lisp_tagged_value` to decode specific values
+5. Use `lisp_gc_roots_info` to understand why pointers weren't updated
+
+### Tool Usage Examples
+
+```
+# Evaluate Lisp code
+lisp_eval code="(+ 1 2 3)"
+
+# Trace function calls during evaluation
+lisp_traced_eval code="(habu:compile-forms '((+ 1 2)))" functions="habu:codegen"
+
+# Compile and see ARM64 hex
+lisp_compile source="(defun add1 (x) (+ x 1))"
+
+# Disassemble hex to assembly
+lisp_disasm hex="D2800020 91000400"
+
+# JIT compile and execute (returns result)
+lisp_jit expr="(* 6 7)"
+
+# Find symbols
+lisp_apropos pattern="codegen" package="HABU"
+
+# Describe a function
+lisp_inspect object="#'habu:codegen"
+
+# Check paren balance
+lisp_paren_check file="/path/to/file.lisp"
+
+# Build and run a binary
+lisp_run binary="/tmp/test-bin"
+lisp_debug binary="/tmp/test-bin"
+
+# Decode tagged value (42 as fixnum = 42 << 4 = 672)
+lisp_tagged_value value=672
+
+# Analyze GC crash
+lisp_gc_analyze x27="0x100000000" x28="0x100001000"
+```
 
 ## Development Guidelines
 

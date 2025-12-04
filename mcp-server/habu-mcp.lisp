@@ -327,7 +327,13 @@
      "Generate an lldb script for debugging GC issues. Includes breakpoints, memory inspection commands, and watchpoints."
      (("binary" "string" "Path to binary" t)
       ("break_on_gc" "boolean" "Set breakpoint on GC-COLLECT (default true)" nil)
-      ("watch_env" "boolean" "Watch environment slot changes (default false)" nil)))))
+      ("watch_env" "boolean" "Watch environment slot changes (default false)" nil)))
+
+    ("lisp_traced_eval"
+     "Evaluate Lisp code with function tracing enabled. Traces specified functions during evaluation and returns both the result and trace output."
+     (("code" "string" "Lisp code to evaluate" t)
+      ("functions" "string" "Space-separated list of functions to trace (e.g., \"habu:codegen habu:lift-lambdas\")" t)
+      ("timeout" "number" "Timeout in seconds (default: 60)" nil)))))
 
 (defun format-tool-schema (name description params)
   (let ((props (mapcar (lambda (p)
@@ -455,10 +461,9 @@
      (format nil
              "(let* ((clean (remove-if (lambda (c) (member c '(#\\Space #\\Newline #\\Tab))) ~S))
                      (bytes (loop for i from 0 below (length clean) by 2
-                                  collect (parse-integer clean :start i :end (+ i 2) :radix 16)))
-                     (vec (coerce bytes 'vector)))
+                                  collect (parse-integer clean :start i :end (+ i 2) :radix 16))))
                 (with-output-to-string (*standard-output*)
-                  (habu::disasm-reg-alloc-bytes vec)))"
+                  (habu::disassemble-bytes bytes)))"
              hex))))
 
 (defun tool-lisp-jit (args)
@@ -729,8 +734,8 @@
         (depth (or (jget args "depth") 20)))
     (declare (ignore depth))
     (handler-case
-        (let ((fp (parse-integer fp-str :radix 16))
-              (sp (parse-integer sp-str :radix 16)))
+        (let ((fp (parse-integer (string-left-trim "0x" fp-str) :radix 16))
+              (sp (parse-integer (string-left-trim "0x" sp-str) :radix 16)))
           ;; Read symbol table from binary
           (let ((symbols (read-macho-symbols binary)))
             (with-output-to-string (out)
@@ -852,12 +857,15 @@
         (let* ((args-list (if (string= cmd-args "")
                               nil
                               (split-string cmd-args #\Space)))
+               ;; Use /dev/null for stdin to prevent hanging on input
                (proc (sb-ext:run-program binary args-list
+                                        :input nil
                                         :output :stream
                                         :error :stream
                                         :wait nil)))
-          ;; Wait with timeout
-          (let ((start-time (get-internal-real-time)))
+          ;; Wait with timeout (sleep to avoid busy loop)
+          (let ((start-time (get-internal-real-time))
+                (killed nil))
             (loop
               (when (not (sb-ext:process-alive-p proc))
                 (return))
@@ -865,7 +873,11 @@
                          internal-time-units-per-second)
                        timeout)
                 (sb-ext:process-kill proc 9)
-                (return)))
+                (setf killed t)
+                (sleep 0.1)  ; Give process time to die
+                (return))
+              (sleep 0.1))  ; Sleep to avoid busy-wait
+            (sb-ext:process-wait proc)  ; Ensure process is reaped
             (let ((stdout (with-output-to-string (s)
                            (loop for line = (read-line (sb-ext:process-output proc) nil nil)
                                  while line do (format s "~A~%" line))))
@@ -875,6 +887,8 @@
                   (exit-code (sb-ext:process-exit-code proc)))
               (with-output-to-string (out)
                 (format out "Exit code: ~A~%" exit-code)
+                (when killed
+                  (format out "(Killed by timeout after ~A seconds)~%" timeout))
                 (when (and exit-code (> exit-code 128))
                   (format out "Signal: ~A (~A)~%"
                           (- exit-code 128)
@@ -902,7 +916,8 @@
 (defun tool-lisp-debug (args)
   "Run binary under lldb and capture crash info."
   (let ((binary (jget args "binary"))
-        (cmd-args (or (jget args "args") "")))
+        (cmd-args (or (jget args "args") ""))
+        (timeout 30))  ; 30 second timeout for debug sessions
     (declare (ignore cmd-args))
     (handler-case
         (let* ((proc (sb-ext:run-program "/usr/bin/lldb"
@@ -912,13 +927,31 @@
                                               "-o" "bt"
                                               "-o" "disassemble -p -c 10"
                                               "-o" "quit")
+                                        :input nil  ; Prevent hanging on stdin
                                         :output :stream
                                         :error :stream
-                                        :wait t)))
-          (let ((output (with-output-to-string (s)
-                         (loop for line = (read-line (sb-ext:process-output proc) nil nil)
-                               while line do (format s "~A~%" line)))))
-            output))
+                                        :wait nil)))  ; Don't block
+          ;; Wait with timeout
+          (let ((start-time (get-internal-real-time))
+                (killed nil))
+            (loop
+              (when (not (sb-ext:process-alive-p proc))
+                (return))
+              (when (> (/ (- (get-internal-real-time) start-time)
+                         internal-time-units-per-second)
+                       timeout)
+                (sb-ext:process-kill proc 9)
+                (setf killed t)
+                (sleep 0.1)
+                (return))
+              (sleep 0.1))
+            (sb-ext:process-wait proc)
+            (let ((output (with-output-to-string (s)
+                           (when killed
+                             (format s "(Debug session killed after ~A second timeout)~%~%" timeout))
+                           (loop for line = (read-line (sb-ext:process-output proc) nil nil)
+                                 while line do (format s "~A~%" line)))))
+              output)))
       (error (e)
         (format nil "Error debugging ~A: ~A" binary e)))))
 
@@ -1132,6 +1165,24 @@
     (format out "  3. Reload after GC: Codegen reloads from safe locations~%")
     (format out "  4. Different allocation: Put all temp values in registers~%")))
 
+(defun tool-lisp-traced-eval (args)
+  "Evaluate code with tracing enabled for specified functions."
+  (let ((code (jget args "code"))
+        (functions (jget args "functions"))
+        (timeout (jget args "timeout")))
+    (let ((fn-list (split-string functions #\Space)))
+      ;; Build code that traces, evals, untraces
+      (safe-eval
+       (format nil
+               "(let ((*trace-output* *standard-output*))
+                  (unwind-protect
+                      (progn
+                        ~{(trace ~A)~%~}
+                        (eval (read-from-string ~S)))
+                    ~{(ignore-errors (untrace ~A))~%~}))"
+               fn-list code fn-list)
+       (when (numberp timeout) (floor timeout))))))
+
 (defun tool-lisp-lldb-script (args)
   "Generate lldb script for GC debugging."
   (let ((binary (jget args "binary"))
@@ -1201,6 +1252,7 @@
     ((string= name "lisp_env_slots") (tool-lisp-env-slots args))
     ((string= name "lisp_gc_roots_info") (tool-lisp-gc-roots-info args))
     ((string= name "lisp_lldb_script") (tool-lisp-lldb-script args))
+    ((string= name "lisp_traced_eval") (tool-lisp-traced-eval args))
     (t (format nil "Unknown tool: ~A" name))))
 
 ;;; ============================================================
