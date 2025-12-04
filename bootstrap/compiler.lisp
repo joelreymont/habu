@@ -68,6 +68,7 @@
     (cons "VECTOR-SET" 'vector-set) (cons "VECTOR-LENGTH" 'vector-length)
     (cons "MAKE-STRING-FROM-VECTOR" 'make-string-from-vector)
     (cons "BUFFER-TO-STRING" 'buffer-to-string)
+    (cons "BUFFER-BYTE-REF" 'buffer-byte-ref)
     ;; Symbols
     (cons "SYMBOL-NAME" 'symbol-name) (cons "MAKE-SYMBOL-FROM-STRING" 'make-symbol-from-string)
     ;; System
@@ -1283,6 +1284,9 @@
          ((eq (car expr) 'buffer-to-string) (list 'buffer-to-string-ir
                                                    (compile-expr-full (nth 1 expr) env fenv)
                                                    (compile-expr-full (nth 2 expr) env fenv)))
+         ((eq (car expr) 'buffer-byte-ref) (list 'buffer-byte-ref-ir
+                                                  (compile-expr-full (nth 1 expr) env fenv)
+                                                  (compile-expr-full (nth 2 expr) env fenv)))
 
          ;; native-read-file: expand to let* with sys-open/read/close
          ;; Expands to: (let* ((fd (sys-open path 0 0))
