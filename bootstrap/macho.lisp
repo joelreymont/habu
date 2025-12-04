@@ -798,12 +798,12 @@
 (defun wrap-bytecode-with-heap-for-imports (code-bytes heap-page-offset)
   "Wrap bytecode with heap initialization for executables with imports.
    HEAP-PAGE-OFFSET is the page offset from the ADRP instruction to __DATA (in 4KB pages).
-   Returns 116 bytes (29 instructions) + original code.
-   Initializes all GC globals at [x27+0..96], heap data starts at x27+96."
+   Returns 120 bytes (30 instructions) + original code.
+   Initializes all GC globals at [x27+0..112], heap data starts at x27+112."
   ;; GC layout at x27:
   ;;   [x27+0]:  intern_table = nil (0x06)
   ;;   [x27+8]:  lambda_counter = 0
-  ;;   [x27+16]: from_end = x27 + 96 + 32MB
+  ;;   [x27+16]: from_end = x27 + 112 + 32MB
   ;;   [x27+24]: half_heap_size = 32MB (0x2000000)
   ;;   [x27+32]: space_flag = 0
   ;;   [x27+40]: gc_state = 0
@@ -811,7 +811,8 @@
   ;;   [x27+56]: symbol_table (codegen)
   ;;   [x27+64]: argc
   ;;   [x27+72]: argv
-  ;;   [x27+96]: heap data starts, x28 points here
+  ;;   [x27+96]: stack_base (initial SP for stack scanning)
+  ;;   [x27+112]: heap data starts, x28 points here (16-byte aligned)
   (let ((stub (buf-append-all
                ;; Use nested cons like the original to build list of 4-byte instructions
                (cons (arm64:sub 31 31 #x30 :imm t)           ; 1: sub sp, sp, #0x30
@@ -830,19 +831,20 @@
                (cons (arm64:movz 10 0)                        ; 14: movz x10, 0
                (cons (arm64:movk 10 #x200 :lsl 16)            ; 15: movk x10, #0x200, lsl 16 (=32MB)
                (cons (arm64:str 10 27 :offset 24)             ; 16: str x10, [x27+24] (half_heap)
-               (cons (arm64:add 11 27 96 :imm t)              ; 17: add x11, x27, #96
+               (cons (arm64:add 11 27 112 :imm t)             ; 17: add x11, x27, #112
                (cons (arm64:add 11 11 10)                     ; 18: add x11, x11, x10 (from_end)
                (cons (arm64:str 11 27 :offset 16)             ; 19: str x11, [x27+16]
-               (cons (arm64:add 28 27 96 :imm t)              ; 20: add x28, x27, #96
-               (cons (arm64:adr 26 36)                        ; 21: adr x26, +36 (code base)
-               (cons (arm64:bl 8)                             ; 22: bl +8 (call user code)
-               (cons (arm64:lsr 0 0 4 :imm t)                 ; 23: lsr x0, x0, #4 (untag)
-               (cons (arm64:ldr 27 31 :offset 24)             ; 24: ldr x27, [sp+24]
-               (cons (arm64:ldr 26 31 :offset 16)             ; 25: ldr x26, [sp+16]
-               (cons (arm64:ldr 28 31 :offset 8)              ; 26: ldr x28, [sp+8]
-               (cons (arm64:ldr 30 31 :offset 0)              ; 27: ldr x30, [sp]
-               (cons (arm64:add 31 31 #x30 :imm t)            ; 28: add sp, sp, #0x30
-               (cons (arm64:ret) nil)))))))))))))))))))))))))))))))) ; 29: ret
+               (cons (arm64:add 28 27 112 :imm t)             ; 20: add x28, x27, #112
+               (cons (arm64:str 31 27 :offset 96)             ; 21: str sp, [x27+96] (stack_base)
+               (cons (arm64:adr 26 40)                        ; 22: adr x26, +40 (code base, +1 instr)
+               (cons (arm64:bl 9)                             ; 23: bl +9 (call user code, +1 instr)
+               (cons (arm64:lsr 0 0 4 :imm t)                 ; 24: lsr x0, x0, #4 (untag)
+               (cons (arm64:ldr 27 31 :offset 24)             ; 25: ldr x27, [sp+24]
+               (cons (arm64:ldr 26 31 :offset 16)             ; 26: ldr x26, [sp+16]
+               (cons (arm64:ldr 28 31 :offset 8)              ; 27: ldr x28, [sp+8]
+               (cons (arm64:ldr 30 31 :offset 0)              ; 28: ldr x30, [sp]
+               (cons (arm64:add 31 31 #x30 :imm t)            ; 29: add sp, sp, #0x30
+               (cons (arm64:ret) nil))))))))))))))))))))))))))))))))) ; 30: ret
     (append stub code-bytes)))
 
 ;;; ============================================================
@@ -1109,8 +1111,8 @@
                                 (cons
                                  ;; Symbol table
                                  (if local-fns
-                                     ;; 116 = wrapper size (29 instructions * 4 bytes for GC-enabled wrapper)
-                                     (build-symbol-table-with-locals local-fns imports (+ +VM-BASE+ code-offset) 116)
+                                     ;; 120 = wrapper size (30 instructions * 4 bytes for GC-enabled wrapper)
+                                     (build-symbol-table-with-locals local-fns imports (+ +VM-BASE+ code-offset) 120)
                                      (build-symbol-table imports (+ +VM-BASE+ code-offset)))
                                  
                                  (cons

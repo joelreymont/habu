@@ -17,12 +17,14 @@
 ;;;   [x27+56]:  symbol_table      (codegen symbol interning)
 ;;;   [x27+64]:  argc              (command-line argument count)
 ;;;   [x27+72]:  argv              (command-line argument vector)
-;;;   [x27+80]:  reserved
-;;;   [x27+88]:  reserved
-;;;   [x27+96]:  heap data starts
+;;;   [x27+80]:  packages          (package list for native reader)
+;;;   [x27+88]:  current-package   (current package name)
+;;;   [x27+96]:  stack_base        (initial SP for stack scanning)
+;;;   [x27+104]: reserved (for 16-byte alignment)
+;;;   [x27+112]: heap data starts (MUST be 16-byte aligned for tag masking)
 ;;;
-;;; Semispace 0: [x27+96 .. x27+96+half)
-;;; Semispace 1: [x27+96+half .. x27+96+2*half)
+;;; Semispace 0: [x27+112 .. x27+112+half)
+;;; Semispace 1: [x27+112+half .. x27+112+2*half)
 ;;;
 ;;; Tags: 0=fixnum, 1=cons, 2=symbol, 3=vector, 4=string, 5=closure, 6=nil, 7=forward
 ;;;
@@ -52,7 +54,8 @@
 (defconstant +gc-argv-offset+ 72)            ;; Command-line argument vector
 (defconstant +gc-packages-offset+ 80)        ;; Package list for native reader
 (defconstant +gc-current-package-offset+ 88) ;; Current package name
-(defconstant +gc-heap-data-offset+ 96)       ;; Heap data starts after globals
+(defconstant +gc-stack-base-offset+ 96)      ;; Initial SP for stack scanning
+(defconstant +gc-heap-data-offset+ 112)      ;; Heap data starts after globals (must be 16-byte aligned!)
 
 (defconstant +gc-tag-mask+ #xF)
 (defconstant +gc-tag-forward+ 7)
@@ -198,7 +201,7 @@
 
    ;; Copy loop (8 bytes at a time)
    ;; copy_loop:
-   (arm64:cbz 3 5)                     ; if remaining=0, done
+   (arm64:cbz 3 7)                     ; if remaining=0, skip to after b -6
    (arm64:ldr 0 4 :offset 0)          ; x0 = load from source
    (arm64:str 0 17 :offset 0)         ; store to dest
    (arm64:add 4 4 8 :imm t)           ; source += 8
@@ -231,8 +234,8 @@
    (list '(:fn-label GC-COLLECT))
 
    ;; ===== Prologue: save all potential roots =====
-   ;; Stack frame: 176 bytes for x0-x15, x24, x30, padding
-   (arm64:sub 31 31 176 :imm t)
+   ;; Stack frame: 192 bytes for x0-x15, x20-x21, x24-x26, x29-x30
+   (arm64:sub 31 31 192 :imm t)
    (arm64:stp 30 29 31 :offset 0)      ; lr, fp
    (arm64:stp 0 1 31 :offset 16)
    (arm64:stp 2 3 31 :offset 32)
@@ -242,8 +245,9 @@
    (arm64:stp 10 11 31 :offset 96)
    (arm64:stp 12 13 31 :offset 112)
    (arm64:stp 14 15 31 :offset 128)
-   (arm64:stp 24 25 31 :offset 144)
-   (arm64:str 26 31 :offset 160)
+   (arm64:stp 20 21 31 :offset 144)    ; x20=env frame, x21=scratch
+   (arm64:stp 24 25 31 :offset 160)
+   (arm64:str 26 31 :offset 176)
 
    ;; ===== Setup GC pointers =====
    ;; x18 = from_start = x27 + 48 + space_flag
@@ -311,9 +315,51 @@
    (arm64:str 0 31 :offset 72)
 
    ;; Copy x24 (closure environment)
-   (arm64:ldr 0 31 :offset 144)
+   (arm64:ldr 0 31 :offset 160)
    (list '(:call-fn GC-COPY))
-   (arm64:str 0 31 :offset 144)
+   (arm64:str 0 31 :offset 160)
+
+   ;; ===== Conservative stack scanning =====
+   ;; Scan stack from current SP (after GC prologue) to stack_base
+   ;; for values that look like heap pointers and update them.
+   ;;
+   ;; x20 = current stack position (start at sp + 192, above GC frame)
+   ;; x21 = stack_base (upper limit)
+   (arm64:add 20 31 192 :imm t)             ; x20 = sp + 192 (caller's frame)
+   (arm64:ldr 21 27 :offset +gc-stack-base-offset+) ; x21 = stack_base
+
+   ;; stack_scan_loop:
+   (list '(:label GC-STACK-SCAN-LOOP))
+   (arm64:cmp 20 21)
+   (arm64:b.hs 25)                          ; if x20 >= stack_base, done scanning
+
+   ;; Load slot value
+   (arm64:ldr 0 20 :offset 0)
+
+   ;; Check if it's a potential heap pointer:
+   ;; - Must be in from-space range [x18..x19)
+   ;; - Must have a valid object tag (1-5)
+   (arm64:cmp 0 18)
+   (arm64:b.lo 19)                          ; skip if below from_start
+   (arm64:cmp 0 19)
+   (arm64:b.hs 17)                          ; skip if >= from_end
+
+   ;; Check tag: must be 1-5 (cons, symbol, vector, string, closure)
+   (arm64:and* 1 0 +gc-tag-mask+ :imm t)    ; x1 = tag
+   (arm64:cbz 1 14)                         ; skip if fixnum (tag 0)
+   (arm64:cmp 1 6 :imm t)
+   (arm64:b.hs 12)                          ; skip if nil (6) or forward (7)
+
+   ;; Looks like a heap pointer - copy it
+   (list '(:call-fn GC-COPY))
+   (arm64:str 0 20 :offset 0)               ; store updated pointer back to stack
+
+   ;; Advance to next stack slot
+   (arm64:add 20 20 8 :imm t)
+   (arm64:b -20)                            ; back to stack_scan_loop
+
+   ;; stack_scan_done:
+   (list '(:label GC-STACK-SCAN-DONE))
 
    ;; ===== Cheney scan loop =====
    ;; while (to_scan < to_free) { scan object at to_scan }
@@ -367,9 +413,10 @@
    (arm64:ldp 10 11 31 :offset 96)
    (arm64:ldp 12 13 31 :offset 112)
    (arm64:ldp 14 15 31 :offset 128)
-   (arm64:ldp 24 25 31 :offset 144)
-   (arm64:ldr 26 31 :offset 160)
-   (arm64:add 31 31 176 :imm t)
+   (arm64:ldp 20 21 31 :offset 144)
+   (arm64:ldp 24 25 31 :offset 160)
+   (arm64:ldr 26 31 :offset 176)
+   (arm64:add 31 31 192 :imm t)
 
    (arm64:ret)))
 
