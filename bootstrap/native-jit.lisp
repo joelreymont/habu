@@ -401,3 +401,6 @@
               (sys-write 1 input (string-length input))
               (print-newline)
               (echo-loop))))))
+
+;;; Entry point - call echo-repl
+(echo-repl)
