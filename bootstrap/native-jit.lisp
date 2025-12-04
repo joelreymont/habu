@@ -141,10 +141,21 @@
 ;;; ============================================================
 ;;; Print Functions for REPL
 ;;; ============================================================
+;;; Note: sys-write-char has codegen issues, so we use sys-write
+;;; with pre-defined single-character strings instead.
 
-(defun print-char (c)
-  "Print a single character (fixnum char code) to stdout."
-  (sys-write-char 1 c))
+;; Single-character constant strings for output
+(defvar *char-newline* "
+")
+(defvar *char-minus* "-")
+(defvar *char-zero* "0")
+(defvar *char-space* " ")
+(defvar *char-lparen* "(")
+(defvar *char-rparen* ")")
+(defvar *char-dot* ".")
+(defvar *char-quote* "\"")
+(defvar *char-gt* ">")
+(defvar *digit-chars* "0123456789")
 
 (defun print-string (s)
   "Print a string to stdout."
@@ -152,25 +163,34 @@
 
 (defun print-newline ()
   "Print a newline."
-  (print-char 10))
+  (print-string *char-newline*))
 
 (defun print-fixnum (n)
   "Print a fixnum (integer) to stdout."
   (if (< n 0)
       (progn
-        (print-char 45)  ;; '-'
+        (print-string *char-minus*)
         (print-fixnum-positive (- 0 n)))
       (if (= n 0)
-          (print-char 48)  ;; '0'
+          (print-string *char-zero*)
           (print-fixnum-positive n))))
 
 (defun print-fixnum-positive (n)
-  "Print a positive fixnum."
+  "Print a positive fixnum (recursive, prints digits in order)."
   (if (= n 0)
       nil
       (progn
         (print-fixnum-positive (/ n 10))
-        (print-char (+ 48 (mod n 10))))))  ;; '0' + digit
+        ;; Print the last digit using string indexing
+        (let ((digit (mod n 10)))
+          (print-fixnum-digit digit)))))
+
+(defun print-fixnum-digit (d)
+  "Print a single digit 0-9 using the digit string."
+  ;; Create a 1-char string for the digit
+  (let ((s (make-string 1)))
+    (string-set! s 0 (code-char (+ 48 d)))
+    (print-string s)))
 
 (defun print-nil ()
   "Print NIL."
@@ -178,7 +198,7 @@
 
 (defun print-t ()
   "Print T."
-  (print-char 84))  ;; 'T'
+  (print-string "T"))
 
 ;;; ============================================================
 ;;; Value Printer (dispatches by type)
@@ -207,9 +227,9 @@
 
 (defun print-cons (val)
   "Print a cons cell."
-  (print-char 40)  ;; '('
+  (print-string *char-lparen*)
   (print-cons-contents val)
-  (print-char 41)) ;; ')'
+  (print-string *char-rparen*))
 
 (defun print-cons-contents (val)
   "Print cons contents (car cdr ...)."
@@ -225,7 +245,7 @@
                     (let ((tail-tag (logand tail 15)))
                       (if (= tail-tag 1)  ;; another cons
                           (progn
-                            (print-char 32)  ;; space
+                            (print-string *char-space*)
                             (print-cons-contents tail))
                           (progn
                             (print-string " . ")
@@ -238,7 +258,7 @@
   ;; Need to look up name in symbol table
   (print-string "#<SYM:")
   (print-fixnum (ash val -4))
-  (print-char 62))  ;; '>'
+  (print-string *char-gt*))
 
 (defun print-vector (val)
   "Print a vector."
@@ -248,10 +268,10 @@
 
 (defun print-string-value (val)
   "Print a string value (with quotes)."
-  (print-char 34)  ;; '"'
+  (print-string *char-quote*)
   ;; val is already a tagged string - sys-write handles untagging
   (sys-write 1 val (string-length val))
-  (print-char 34))  ;; '"'
+  (print-string *char-quote*))
 
 ;;; ============================================================
 ;;; Low-level Memory Access (for cons cells)
@@ -307,25 +327,34 @@
 ;;; REPL Main Loop
 ;;; ============================================================
 
+(defvar *repl-prompt* "habu> ")
+
 (defun repl ()
-  "Read-Eval-Print Loop."
-  (print-string "Habu REPL~%")
-  (print-string "Type expressions to evaluate. Ctrl-D to exit.~%")
+  "Read-Eval-Print Loop for Habu."
+  (print-string "Habu REPL")
+  (print-newline)
+  (print-string "Type expressions to evaluate. Ctrl-D or empty line to exit.")
+  (print-newline)
   (repl-loop))
 
 (defun repl-loop ()
   "REPL iteration."
-  (print-string "> ")
+  (print-string *repl-prompt*)
   (let ((input (read-line-stdin)))
     (if (null input)
         (progn
           (print-newline)
-          (print-string "Goodbye.~%"))
-        (progn
-          (let ((result (repl-eval-string input)))
-            (print-value result)
-            (print-newline))
-          (repl-loop)))))
+          (print-string "Goodbye.")
+          (print-newline))
+        (if (= (string-length input) 0)
+            (progn
+              (print-string "Goodbye.")
+              (print-newline))
+            (progn
+              (let ((result (repl-eval-string input)))
+                (print-value result)
+                (print-newline))
+              (repl-loop))))))
 
 (defun repl-eval-string (str)
   "Parse, compile, and execute a string expression."
@@ -343,78 +372,19 @@
             (jit-call ptr)))))))
 
 ;;; ============================================================
-;;; Simple Echo REPL (for testing I/O primitives)
+;;; Echo REPL (for testing I/O primitives)
 ;;; ============================================================
+;;; Simple test REPL that echoes input back. Used to verify
+;;; that stdin reading and stdout writing work correctly.
 
 (defun echo-repl ()
-  "Simple echo REPL for testing I/O primitives.
-   Reads a line and echoes it back. Type empty line to exit."
-  (print-string "Echo REPL - type a line, press Enter to see it echoed back.")
+  "Echo REPL for testing I/O primitives.
+   Reads a line and echoes it back. Empty line or Ctrl-D exits."
+  (print-string "Echo REPL")
   (print-newline)
-  (print-string "Empty line exits.")
+  (print-string "Type text and press Enter. Empty line exits.")
   (print-newline)
   (echo-loop))
-
-;;; ============================================================
-;;; Simple Calculator REPL (for testing basic evaluation)
-;;; ============================================================
-;;; This interprets simple arithmetic expressions without full compilation.
-;;; Supports: (+ a b), (- a b), (* a b), (/ a b), numbers, quit
-
-(defun calc-repl ()
-  "Simple calculator REPL for testing basic evaluation.
-   Type arithmetic expressions or 'quit' to exit."
-  (print-string "Calculator REPL")
-  (print-newline)
-  (print-string "Type (+ 1 2), (- 5 3), etc. or quit to exit.")
-  (print-newline)
-  (calc-loop))
-
-(defun calc-loop ()
-  "Calculator loop iteration."
-  (print-string "calc> ")
-  (let ((input (read-line-stdin)))
-    (if (null input)
-        (progn
-          (print-newline)
-          (print-string "Goodbye.")
-          (print-newline))
-        (if (= (string-length input) 0)
-            (calc-loop)  ; empty line, continue
-            (progn
-              ;; Parse and evaluate the expression
-              (let ((result (calc-eval-string input)))
-                (if (null result)
-                    (print-string "Error")
-                    (print-fixnum result))
-                (print-newline))
-              (calc-loop))))))
-
-(defun calc-eval-string (str)
-  "Evaluate a simple calculator expression string.
-   Returns fixnum result or nil on error."
-  ;; Use the native reader to parse the string
-  (let ((expr (read-from-string str)))
-    (calc-eval expr)))
-
-(defun calc-eval (expr)
-  "Evaluate a simple calculator expression.
-   Supports: numbers, (+ a b), (- a b), (* a b), (/ a b)"
-  (if (numberp expr)
-      expr
-      (if (consp expr)
-          (let ((op (car expr)))
-            (let ((a (calc-eval (car (cdr expr))))
-                  (b (calc-eval (car (cdr (cdr expr))))))
-              (if (and a b)
-                  (cond
-                    ((eq op '+) (+ a b))
-                    ((eq op '-) (- a b))
-                    ((eq op '*) (* a b))
-                    ((eq op '/) (/ a b))
-                    (t nil))
-                  nil)))
-          nil)))
 
 (defun echo-loop ()
   "Echo loop iteration."
@@ -423,7 +393,7 @@
     (if (null input)
         (progn
           (print-newline)
-          (print-string "EOF received. Goodbye.")
+          (print-string "Goodbye.")
           (print-newline))
         (if (= (string-length input) 0)
             (progn

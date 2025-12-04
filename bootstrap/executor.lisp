@@ -1,195 +1,120 @@
 ;;;; executor.lisp - Execute compiled Habu machine code
+;;;;
+;;;; Provides execution of compiled ARM64 code on macOS.
+;;;;
+;;;; NOTE: In-process JIT on ARM64 macOS is not possible when running under
+;;;; SBCL because pthread_jit_write_protect_np is global per-thread and
+;;;; affects SBCL's own code pages. Instead, we use subprocess execution.
+;;;;
+;;;; The subprocess approach:
+;;;; 1. Compile expression wrapped in sys-exit
+;;;; 2. Create a Mach-O executable via deliver
+;;;; 3. Run it and capture exit code (for fixnum results 0-255)
+;;;;
+;;;; For complex return values, use the test harness directly.
 
-(require :sb-posix)
-(in-package :habu-compiler)
+(in-package :habu)
 
-;;; Code Execution System
-;;; Phase 1: Execute within SBCL environment using sb-alien
+;;; ============================================================
+;;; Subprocess Execution
+;;; ============================================================
 
-(defvar *code-memory-blocks* (make-hash-table)
-  "Registry of allocated executable memory blocks")
-
-(defstruct code-block
-  "Represents an allocated block of executable memory"
-  address     ; System address pointer (SAP)
-  size        ; Size in bytes
-  code        ; Original bytecode (for debugging)
-  name)       ; Optional name
-
-;;; Memory Allocation
-
-#+sbcl
-(defun allocate-executable-memory (size &optional name)
-  "Allocate executable memory using mmap.
-   Returns a code-block structure."
-  ;; Round up to page size (typically 4096 bytes)
-  (let* ((page-size 4096)
-         (aligned-size (* (ceiling size page-size) page-size)))
-
-    ;; Allocate executable memory using mmap
-    ;; Use sb-posix constants for portability
-    (let* ((prot (logior sb-posix:prot-read
-                         sb-posix:prot-write
-                         sb-posix:prot-exec))
-           (flags (logior sb-posix:map-private
-                          sb-posix:map-anon))
-           (sap (sb-posix:mmap nil aligned-size prot flags -1 0)))
-
-      ;; Check for failure (MAP_FAILED is typically -1)
-      (when (= (sb-sys:sap-int sap) (lognot 0))  ; All 1's = -1 as unsigned
-        (error "Failed to allocate executable memory"))
-
-      ;; Create code block
-      (let ((block (make-code-block
-                    :address sap  ; Store SAP directly
-                    :size aligned-size
-                    :name name)))
-
-        ;; Register for cleanup
-        (setf (gethash (sb-sys:sap-int sap) *code-memory-blocks*)
-              block)
-
-        block))))
+(defvar *jit-temp-counter* 0
+  "Counter for unique temp file names")
 
 #+sbcl
-(defun free-executable-memory (block)
-  "Free an allocated code block"
-  (when block
-    (sb-posix:munmap (code-block-address block) (code-block-size block))
-    (remhash (sb-sys:sap-int (code-block-address block))
-             *code-memory-blocks*)))
-
-;;; Code Loading
-
-#+sbcl
-(defun load-code-to-memory (code-bytes &optional name)
-  "Load bytecode into executable memory.
-   Returns code-block structure."
-  (let* ((size (length code-bytes))
-         (block (allocate-executable-memory size name))
-         (mem (code-block-address block)))  ; This is already a SAP
-
-    ;; Copy bytecode to memory
-    (loop for byte across code-bytes
-          for i from 0
-          do (setf (sb-sys:sap-ref-8 mem i) byte))
-
-    ;; Store original code for debugging
-    (setf (code-block-code block) code-bytes)
-
-    block))
-
-;;; Function Pointer Creation
+(defun jit-eval (expr)
+  "Compile and execute an expression via subprocess.
+   Returns the untagged result for small fixnums (0-255).
+   Larger results or non-fixnum values require different approach."
+  (let* ((temp-name (format nil "/tmp/habu_jit_~D_~D"
+                            (sb-posix:getpid)
+                            (incf *jit-temp-counter*)))
+         ;; Wrap expression in sys-exit to return result as exit code
+         (wrapped-source (format nil "(sys-exit ~S)" expr)))
+    (unwind-protect
+        (progn
+          ;; Compile to executable using deliver
+          (deliver wrapped-source temp-name)
+          ;; Run and get exit code
+          (let* ((proc (sb-ext:run-program temp-name nil
+                                           :output nil
+                                           :error nil
+                                           :wait t))
+                 (exit-code (sb-ext:process-exit-code proc)))
+            exit-code))
+      ;; Cleanup temp files
+      (ignore-errors (delete-file temp-name))
+      (ignore-errors (delete-file (format nil "~A.map" temp-name))))))
 
 #+sbcl
-(defun make-function-pointer (code-block arity)
-  "Create a callable function pointer from a code block.
-   Arity specifies number of arguments (0-4 supported).
+(defun jit-compile-expression (expr)
+  "Compile an expression to ARM64 bytecode.
+   Returns a byte vector (for inspection/debugging).
+   Use jit-eval to actually execute."
+  (let* ((compiled (compile-forms (list expr)))
+         (main-ir (cadr compiled))
+         (code (codegen-main main-ir nil))
+         (bytes (resolve-calls-simple code)))
+    (coerce bytes '(vector (unsigned-byte 8)))))
 
-   Note: This uses sb-alien to create a callable wrapper around
-   the raw machine code. The code must follow the System V AMD64 ABI."
-  (let* ((mem (code-block-address code-block))  ; Already a SAP
-         (addr (sb-sys:sap-int mem)))
+#+sbcl
+(defun jit-disasm (expr)
+  "Compile and disassemble an expression.
+   Returns a string with the disassembly."
+  (let* ((bytes (jit-compile-expression expr))
+         (temp-bin "/tmp/habu_jit_disasm.bin"))
+    (with-open-file (out temp-bin :direction :output
+                                  :element-type '(unsigned-byte 8)
+                                  :if-exists :supersede)
+      (write-sequence bytes out))
+    (with-output-to-string (s)
+      (format s "=== ~S ===~%" expr)
+      (format s "~D bytes~%~%" (length bytes))
+      ;; Use llvm-objdump for disassembly
+      (let ((proc (sb-ext:run-program
+                   "/usr/bin/llvm-objdump"
+                   (list "-d" "-triple=aarch64" temp-bin)
+                   :output s :error :output :wait t)))
+        (declare (ignore proc)))
+      (delete-file temp-bin))))
 
-    ;; Create wrapper function that calls the machine code
-    ;; We use sb-alien:alien-funcall with a manually created alien pointer
-    (ecase arity
-      (0
-       ;; Function with no arguments
-       (lambda ()
-         (let ((fn-ptr (sb-alien:sap-alien
-                        (sb-sys:int-sap addr)
-                        (* (function sb-alien:unsigned-long)))))
-           (sb-alien:alien-funcall fn-ptr))))
+;;; ============================================================
+;;; Batch Execution (for test runner)
+;;; ============================================================
 
-      (1
-       ;; Function with 1 argument
-       (lambda (arg1)
-         (let ((fn-ptr (sb-alien:sap-alien
-                        (sb-sys:int-sap addr)
-                        (* (function sb-alien:unsigned-long
-                                     sb-alien:unsigned-long)))))
-           (sb-alien:alien-funcall fn-ptr arg1))))
+#+sbcl
+(defun jit-test (name expr expected)
+  "Test that expr evaluates to expected (via exit code).
+   Returns T on success, NIL on failure."
+  (let ((result (jit-eval expr)))
+    (if (= result expected)
+        (progn
+          (format t "[PASS] ~A = ~A~%" name result)
+          t)
+        (progn
+          (format t "[FAIL] ~A: expected ~A, got ~A~%" name expected result)
+          nil))))
 
-      (2
-       ;; Function with 2 arguments
-       (lambda (arg1 arg2)
-         (let ((fn-ptr (sb-alien:sap-alien
-                        (sb-sys:int-sap addr)
-                        (* (function sb-alien:unsigned-long
-                                     sb-alien:unsigned-long
-                                     sb-alien:unsigned-long)))))
-           (sb-alien:alien-funcall fn-ptr arg1 arg2))))
+#+sbcl
+(defun jit-run-tests (tests)
+  "Run a list of tests. Each test is (name expr expected).
+   Returns number of failures."
+  (let ((passed 0)
+        (failed 0))
+    (dolist (test tests)
+      (let ((name (first test))
+            (expr (second test))
+            (expected (third test)))
+        (if (jit-test name expr expected)
+            (incf passed)
+            (incf failed))))
+    (format t "~%Results: ~A passed, ~A failed~%" passed failed)
+    failed))
 
-      (3
-       ;; Function with 3 arguments
-       (lambda (arg1 arg2 arg3)
-         (let ((fn-ptr (sb-alien:sap-alien
-                        (sb-sys:int-sap addr)
-                        (* (function sb-alien:unsigned-long
-                                     sb-alien:unsigned-long
-                                     sb-alien:unsigned-long
-                                     sb-alien:unsigned-long)))))
-           (sb-alien:alien-funcall fn-ptr arg1 arg2 arg3))))
-
-      (4
-       ;; Function with 4 arguments
-       (lambda (arg1 arg2 arg3 arg4)
-         (let ((fn-ptr (sb-alien:sap-alien
-                        (sb-sys:int-sap addr)
-                        (* (function sb-alien:unsigned-long
-                                     sb-alien:unsigned-long
-                                     sb-alien:unsigned-long
-                                     sb-alien:unsigned-long
-                                     sb-alien:unsigned-long)))))
-           (sb-alien:alien-funcall fn-ptr arg1 arg2 arg3 arg4)))))))
-
-;;; High-Level Execution Interface
-
-(defun execute-expression (expr &key (arch :x86_64))
-  "Compile and execute an expression, returning the result.
-   This is the main entry point for code execution."
-  (initialize-runtime-integration)
-
-  ;; Compile expression
-  (let ((code (compile-expression expr :arch arch)))
-
-    (when (zerop (length code))
-      (error "Expression compiled to 0 bytes: ~S" expr))
-
-    ;; Load into executable memory
-    (let ((block (load-code-to-memory code (format nil "~S" expr))))
-
-      (unwind-protect
-          (progn
-            ;; Create function pointer (0 arguments for expression)
-            (let ((fn (make-function-pointer block 0)))
-              ;; Call and get result (tagged fixnum)
-              (funcall fn)))
-
-        ;; Cleanup
-        (free-executable-memory block)))))
-
-(defun compile-and-call (function-name &rest args)
-  "Compile a function call and execute it.
-   The function must be defined in *function-table*."
-  (let ((fn-def (gethash function-name *function-table*)))
-    (unless fn-def
-      (error "Undefined function: ~S" function-name))
-
-    (let* ((params (car fn-def))
-           (body (cdr fn-def))
-           (arity (length params)))
-
-      (unless (= arity (length args))
-        (error "Wrong number of arguments for ~S: expected ~D, got ~D"
-               function-name arity (length args)))
-
-      ;; Build lambda expression with arguments
-      (let ((expr `((lambda ,params ,body) ,@args)))
-        (execute-expression expr)))))
-
+;;; ============================================================
 ;;; Utility Functions
+;;; ============================================================
 
 (defun untag-fixnum (tagged-value)
   "Convert tagged fixnum to regular integer"
@@ -199,27 +124,14 @@
   "Convert regular integer to tagged fixnum"
   (ash value 4))
 
-(defun execute-and-untag (expr &key (arch :x86_64))
-  "Execute expression and return untagged result"
-  (untag-fixnum (execute-expression expr :arch arch)))
+;;; ============================================================
+;;; Exports
+;;; ============================================================
 
-;;; Debugging
-
-(defun disassemble-code-block (block)
-  "Display information about a code block (for debugging)"
-  (format t "Code Block: ~A~%" (code-block-name block))
-  (format t "  Address: ~A~%" (code-block-address block))
-  (format t "  Size: ~D bytes~%" (code-block-size block))
-  (when (code-block-code block)
-    (format t "  Bytecode: ~{~2,'0X ~}~%" (coerce (code-block-code block) 'list))))
-
-(export '(allocate-executable-memory
-          free-executable-memory
-          load-code-to-memory
-          make-function-pointer
-          execute-expression
-          compile-and-call
-          execute-and-untag
+(export '(jit-eval
+          jit-compile-expression
+          jit-disasm
+          jit-test
+          jit-run-tests
           untag-fixnum
-          tag-fixnum
-          disassemble-code-block))
+          tag-fixnum))
