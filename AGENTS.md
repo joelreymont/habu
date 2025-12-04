@@ -25,6 +25,8 @@ bd update <id> --status in_progress  # Claim work
 bd close <id>               # Complete work
 ```
 
+**CRITICAL: Always commit changes BEFORE closing a bead with `bd close`.** This ensures all work is tracked in git history.
+
 See `bd --help` for full command reference.
 
 ## MCP Server
