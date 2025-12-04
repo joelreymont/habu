@@ -12,80 +12,80 @@ MCP tools are faster, produce cleaner output, and save tokens. You MUST use them
 
 | Task | USE THIS | NEVER USE |
 |------|----------|-----------|
-| Find Lisp symbols | `lisp_apropos` | Grep |
-| Evaluate Lisp | `lisp_eval` | Bash + sbcl |
-| Run binaries | `lisp_run` / `lisp_debug` | Bash |
-| Hex dump files | `lisp_hexdump` | xxd via Bash |
-| Disassemble | `lisp_disasm` | lldb via Bash |
-| Check syntax | `lisp_paren_check` | Manual parsing |
-| Trace functions | `lisp_traced_eval` | Print statements |
-| Find available work | `bd_ready` | Bash + bd |
-| List issues | `bd_list` | Bash + bd |
-| Show issue details | `bd_show` | Bash + bd |
-| Create issues | `bd_create` | Bash + bd |
-| Update issues | `bd_update` | Bash + bd |
-| Close issues | `bd_close` | Bash + bd |
+| Find Lisp symbols | `apropos` | Grep |
+| Evaluate Lisp | `eval` | Bash + sbcl |
+| Run binaries | `run` / `debug` | Bash |
+| Hex dump files | `hexdump` | xxd via Bash |
+| Disassemble | `disasm` | lldb via Bash |
+| Check syntax | `paren-check` | Manual parsing |
+| Trace functions | `traced-eval` | Print statements |
+| Find available work | `bd-ready` | Bash + bd |
+| List issues | `bd-list` | Bash + bd |
+| Show issue details | `bd-show` | Bash + bd |
+| Create issues | `bd-create` | Bash + bd |
+| Update issues | `bd-update` | Bash + bd |
+| Close issues | `bd-close` | Bash + bd |
 
 ### Complete Tool Reference (27 Tools)
 
-#### Issue Tracking (bd_*)
+#### Issue Tracking (bd-*)
 | Tool | Use When | Parameters |
 |------|----------|------------|
-| `bd_ready` | Find available tasks | (none) |
-| `bd_list` | List issues by status | `status` (optional) |
-| `bd_show` | View issue details | `id` |
-| `bd_create` | Create new issue | `title`, `type`, `priority`, `description` |
-| `bd_update` | Update status/add notes | `id`, `status`, `note` |
-| `bd_close` | Close completed issue | `id`, `note` |
+| `bd-ready` | Find available tasks | (none) |
+| `bd-list` | List issues by status | `status` (optional) |
+| `bd-show` | View issue details | `id` |
+| `bd-create` | Create new issue | `title`, `type`, `priority`, `description` |
+| `bd-update` | Update status/add notes | `id`, `status`, `note` |
+| `bd-close` | Close completed issue | `id`, `note` |
 
 #### Lisp Evaluation
 | Tool | Use When | Parameters |
 |------|----------|------------|
-| `lisp_eval` | Evaluate any Lisp code | `code`, `timeout` |
-| `lisp_traced_eval` | Debug with function tracing | `code`, `functions` |
-| `lisp_compile` | See ARM64 output for expression | `source` |
-| `lisp_jit` | Execute compiled code in-process | `expr` |
+| `eval` | Evaluate any Lisp code | `code`, `timeout` |
+| `traced-eval` | Debug with function tracing | `code`, `functions` |
+| `compile` | See ARM64 output for expression | `source` |
+| `jit` | Execute compiled code in-process | `expr` |
 
 #### Symbol Lookup
 | Tool | Use When | Parameters |
 |------|----------|------------|
-| `lisp_apropos` | Find ANY Lisp symbol | `pattern`, `package` |
-| `lisp_inspect` | Get function/var documentation | `object` |
+| `apropos` | Find ANY Lisp symbol | `pattern`, `package` |
+| `inspect` | Get function/var documentation | `object` |
 
 #### Binary Analysis
 | Tool | Use When | Parameters |
 |------|----------|------------|
-| `lisp_run` | Run binary, get exit code | `binary`, `args`, `stdin`, `timeout` |
-| `lisp_debug` | Debug crash with lldb | `binary`, `args` |
-| `lisp_codesign` | Sign macOS binary | `binary` |
-| `lisp_disasm` | Disassemble hex to ARM64 | `hex` |
-| `lisp_hexdump` | Dump file bytes | `file`, `offset`, `length` |
+| `run` | Run binary, get exit code | `binary`, `args`, `stdin`, `timeout` |
+| `debug` | Debug crash with lldb | `binary`, `args` |
+| `codesign` | Sign macOS binary | `binary` |
+| `disasm` | Disassemble hex to ARM64 | `hex` |
+| `hexdump` | Dump file bytes | `file`, `offset`, `length` |
 
 #### Debugging
 | Tool | Use When | Parameters |
 |------|----------|------------|
-| `lisp_trace` | Toggle function tracing | `function`, `enable` |
-| `lisp_paren_check` | Find mismatched parens | `file` |
-| `lisp_lldb_script` | Generate debug script | `binary`, `break_on_gc` |
+| `trace` | Toggle function tracing | `function`, `enable` |
+| `paren-check` | Find mismatched parens | `file` |
+| `lldb-script` | Generate debug script | `binary`, `break-on-gc` |
 
 #### Tagged Values & GC
 | Tool | Use When | Parameters |
 |------|----------|------------|
-| `lisp_tagged_value` | Decode tagged pointer | `value` |
-| `lisp_check_ptr` | Validate pointer | `ptr`, `x27` |
-| `lisp_heap_info` | Show memory layout | (none) |
-| `lisp_gc_analyze` | Analyze GC crash | `x27`, `x28`, `crash_addr` |
-| `lisp_gc_roots_info` | Explain root scanning | (none) |
-| `lisp_env_slots` | Show env frame layout | `x20`, `count` |
-| `lisp_stack_frames` | Walk stack frames | `binary`, `fp`, `sp` |
+| `tagged-value` | Decode tagged pointer | `value` |
+| `check-ptr` | Validate pointer | `ptr`, `x27` |
+| `heap-info` | Show memory layout | (none) |
+| `gc-analyze` | Analyze GC crash | `x27`, `x28`, `crash-addr` |
+| `gc-roots-info` | Explain root scanning | (none) |
+| `env-slots` | Show env frame layout | `x20`, `count` |
+| `stack-frames` | Walk stack frames | `binary`, `fp`, `sp` |
 
 ### GC Crash Debugging Workflow
 
-1. `lisp_debug` - get register values from crash
-2. `lisp_gc_analyze` - analyze x27/x28 heap state
-3. `lisp_check_ptr` - validate suspicious pointers
-4. `lisp_tagged_value` - decode specific values
-5. `lisp_gc_roots_info` - understand root scanning
+1. `debug` - get register values from crash
+2. `gc-analyze` - analyze x27/x28 heap state
+3. `check-ptr` - validate suspicious pointers
+4. `tagged-value` - decode specific values
+5. `gc-roots-info` - understand root scanning
 
 ### Creating New MCP Tools
 
@@ -94,7 +94,7 @@ MCP tools are faster, produce cleaner output, and save tokens. You MUST use them
 - Parsing complex output from existing tools
 - Needing specialized analysis that produces verbose output
 
-Add a new tool to `mcp-server/habu-mcp.lisp`. The tool should:
+Add a new tool to `mcp-server/mcp.lisp`. The tool should:
 - Accept focused parameters
 - Return concise, structured output
 - Avoid dumping large data structures

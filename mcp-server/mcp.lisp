@@ -1,17 +1,15 @@
-;;;; habu-mcp.lisp - MCP Server for Habu Lisp Compiler
+;;;; mcp.lisp - MCP Server for Habu Lisp Compiler
 ;;;;
 ;;;; A persistent SBCL process with Habu loaded, communicating via JSON-RPC/MCP.
 ;;;; Provides full SBCL REPL capabilities to Claude Code.
 ;;;;
-;;;; Tools:
-;;;; - lisp_eval: Evaluate any Lisp expression with full SBCL
-;;;; - lisp_compile: Compile Habu source to ARM64
-;;;; - lisp_disasm: Disassemble ARM64 bytes
-;;;; - lisp_jit: Compile and execute via mmap
-;;;; - lisp_trace: Trace/untrace functions
-;;;; - lisp_inspect: Describe objects
+;;;; Tools are defined in *tools* with format: (name description params handler)
+;;;; - eval, compile, disasm, jit, trace, inspect, apropos, paren-check
+;;;; - hexdump, tagged-value, heap-info, stack-frames, codesign, run, debug
+;;;; - gc-analyze, check-ptr, env-slots, gc-roots-info, lldb-script, traced-eval
+;;;; - bd-ready, bd-list, bd-show, bd-create, bd-update, bd-close
 ;;;;
-;;;; Usage: sbcl --load habu-mcp.lisp
+;;;; Usage: sbcl --load mcp.lisp
 
 (require :sb-posix)
 (require :asdf)
@@ -48,6 +46,9 @@
   (:use :cl))
 
 (in-package :habu-mcp)
+
+;;; Version to verify new code is running (update on each change)
+(defparameter *server-version* "v3-2025-12-04")
 
 ;;; Forward declarations to suppress style warnings
 (declaim (ftype (function (string character) list) split-string))
@@ -230,142 +231,171 @@
 ;;; Tool Definitions
 ;;; ============================================================
 
+;;; Tool definitions: (name description params handler-symbol)
+;;; Handler is looked up at dispatch time, eliminating redundant cond clauses.
 (defparameter *tools*
-  '(("lisp_eval"
+  '(("eval"
      "Evaluate a Lisp expression in SBCL with full Common Lisp capabilities. Returns the result and any printed output. Use this for any Lisp evaluation, REPL interaction, or to call Habu compiler functions."
      (("code" "string" "Lisp code to evaluate (can be multiple expressions)" t)
-      ("timeout" "number" "Timeout in seconds (default: 60)" nil)))
+      ("timeout" "number" "Timeout in seconds (default: 60)" nil))
+     tool-eval)
 
-    ("lisp_compile"
+    ("compile"
      "Compile Habu Lisp source to ARM64 machine code. Returns bytecode size and hex dump."
-     (("source" "string" "Lisp source (defun or expression)" t)))
+     (("source" "string" "Lisp source (defun or expression)" t))
+     tool-compile)
 
-    ("lisp_disasm"
+    ("disasm"
      "Disassemble ARM64 machine code bytes to human-readable assembly."
-     (("hex" "string" "Hex string of machine code (spaces allowed)" t)))
+     (("hex" "string" "Hex string of machine code (spaces allowed)" t))
+     tool-disasm)
 
-    ("lisp_jit"
+    ("jit"
      "Compile Lisp expression and execute it in-process via JIT (mmap RWX). Returns the tagged result."
-     (("expr" "string" "Lisp expression to compile and execute" t)))
+     (("expr" "string" "Lisp expression to compile and execute" t))
+     tool-jit)
 
-    ("lisp_trace"
+    ("trace"
      "Enable or disable function tracing. When enabled, shows all calls with arguments and return values."
      (("function" "string" "Function name (e.g., \"habu:codegen\")" t)
-      ("enable" "boolean" "true to start tracing, false to stop" t)))
+      ("enable" "boolean" "true to start tracing, false to stop" t))
+     tool-trace)
 
-    ("lisp_inspect"
+    ("inspect"
      "Describe a Lisp object or symbol. Shows type, value, and documentation if available."
-     (("object" "string" "Object or symbol to inspect (evaluated first)" t)))
+     (("object" "string" "Object or symbol to inspect (evaluated first)" t))
+     tool-inspect)
 
-    ("lisp_apropos"
+    ("apropos"
      "Search for symbols matching a substring. Useful for discovering available functions."
      (("pattern" "string" "Substring to search for in symbol names" t)
-      ("package" "string" "Package to search in (default: all)" nil)))
+      ("package" "string" "Package to search in (default: all)" nil))
+     tool-apropos)
 
-    ("lisp_paren_check"
+    ("paren-check"
      "Check parenthesis balance in a Lisp source file. Reports any mismatched parens with line/column context."
-     (("file" "string" "Path to Lisp file to check" t)))
+     (("file" "string" "Path to Lisp file to check" t))
+     tool-paren-check)
 
-    ("lisp_hexdump"
+    ("hexdump"
      "Hex dump bytes from a file. Shows offset, hex bytes, and ASCII representation like xxd."
      (("file" "string" "Path to file to dump" t)
       ("offset" "number" "Starting byte offset (default 0)" nil)
       ("length" "number" "Number of bytes to dump (default 256, max 4096)" nil)
-      ("width" "number" "Bytes per line (default 16)" nil)))
+      ("width" "number" "Bytes per line (default 16)" nil))
+     tool-hexdump)
 
-    ("lisp_tagged_value"
+    ("tagged-value"
      "Decode a Habu tagged value. Shows the type and value for fixnums, cons, symbols, vectors, strings, closures, and nil."
-     (("value" "number" "Tagged value (as integer)" t)))
+     (("value" "number" "Tagged value (as integer)" t))
+     tool-tagged-value)
 
-    ("lisp_heap_info"
+    ("heap-info"
      "Show Habu heap layout information. Displays the memory layout at x27 including intern table, lambda counter, heap bounds, and allocation pointer."
-     ())
+     ()
+     tool-heap-info)
 
-    ("lisp_stack_frames"
+    ("stack-frames"
      "Walk ARM64 stack frames from a core dump or live process. Shows return addresses and tries to map them to function symbols."
      (("binary" "string" "Path to binary for symbol lookup" t)
       ("fp" "string" "Frame pointer (x29) value in hex" t)
       ("sp" "string" "Stack pointer value in hex" t)
-      ("depth" "number" "Maximum frames to show (default 20)" nil)))
+      ("depth" "number" "Maximum frames to show (default 20)" nil))
+     tool-stack-frames)
 
-    ("lisp_codesign"
+    ("codesign"
      "Code sign a Mach-O binary for macOS execution. Uses ad-hoc signing (-s -)."
-     (("binary" "string" "Path to binary to sign" t)))
+     (("binary" "string" "Path to binary to sign" t))
+     tool-codesign)
 
-    ("lisp_run"
+    ("run"
      "Run a binary and capture output, exit code, and crash info if any."
      (("binary" "string" "Path to binary to run" t)
       ("args" "string" "Command line arguments (optional)" nil)
       ("stdin" "string" "Input to send to stdin (optional)" nil)
-      ("timeout" "number" "Timeout in seconds (default 30)" nil)))
+      ("timeout" "number" "Timeout in seconds (default 30)" nil))
+     tool-run)
 
-    ("lisp_debug"
+    ("debug"
      "Run binary under lldb and capture crash info including registers and backtrace."
      (("binary" "string" "Path to binary to debug" t)
-      ("args" "string" "Command line arguments (optional)" nil)))
+      ("args" "string" "Command line arguments (optional)" nil))
+     tool-debug)
 
-    ("lisp_gc_analyze"
+    ("gc-analyze"
      "Analyze GC behavior for a crash. Shows heap state, from/to spaces, and checks for forwarding pointer issues. Run this after a SIGSEGV to understand GC-related crashes."
      (("x27" "string" "x27 register value (heap base) in hex" t)
       ("x28" "string" "x28 register value (alloc ptr) in hex" t)
-      ("crash_addr" "string" "Crash address in hex (optional)" nil)))
+      ("crash-addr" "string" "Crash address in hex (optional)" nil))
+     tool-gc-analyze)
 
-    ("lisp_check_ptr"
+    ("check-ptr"
      "Check if a tagged pointer is valid. Detects forwarding pointers (tag 7), nil, and validates heap range."
      (("ptr" "string" "Tagged pointer value in hex" t)
-      ("x27" "string" "x27 (heap base) in hex for range check" nil)))
+      ("x27" "string" "x27 (heap base) in hex for range check" nil))
+     tool-check-ptr)
 
-    ("lisp_env_slots"
+    ("env-slots"
      "Show environment slot layout. The environment frame at x20 contains local variables that may hold heap pointers."
      (("x20" "string" "x20 register value (env base) in hex" t)
-      ("count" "number" "Number of slots to show (default 16)" nil)))
+      ("count" "number" "Number of slots to show (default 16)" nil))
+     tool-env-slots)
 
-    ("lisp_gc_roots_info"
+    ("gc-roots-info"
      "Show what the GC considers as roots. Explains why some stack values aren't updated during GC."
-     ())
+     ()
+     tool-gc-roots-info)
 
-    ("lisp_lldb_script"
+    ("lldb-script"
      "Generate an lldb script for debugging GC issues. Includes breakpoints, memory inspection commands, and watchpoints."
      (("binary" "string" "Path to binary" t)
-      ("break_on_gc" "boolean" "Set breakpoint on GC-COLLECT (default true)" nil)
-      ("watch_env" "boolean" "Watch environment slot changes (default false)" nil)))
+      ("break-on-gc" "boolean" "Set breakpoint on GC-COLLECT (default true)" nil)
+      ("watch-env" "boolean" "Watch environment slot changes (default false)" nil))
+     tool-lldb-script)
 
-    ("lisp_traced_eval"
+    ("traced-eval"
      "Evaluate Lisp code with function tracing enabled. Traces specified functions during evaluation and returns both the result and trace output."
      (("code" "string" "Lisp code to evaluate" t)
       ("functions" "string" "Space-separated list of functions to trace (e.g., \"habu:codegen habu:lift-lambdas\")" t)
-      ("timeout" "number" "Timeout in seconds (default: 60)" nil)))
+      ("timeout" "number" "Timeout in seconds (default: 60)" nil))
+     tool-traced-eval)
 
     ;; Beads (bd) issue tracking tools
-    ("bd_ready"
+    ("bd-ready"
      "Show work items with no blockers. Use this to find available tasks."
-     ())
+     ()
+     tool-bd-ready)
 
-    ("bd_list"
+    ("bd-list"
      "List issues with optional status filter."
-     (("status" "string" "Filter by status: pending, in_progress, blocked, done (optional)" nil)))
+     (("status" "string" "Filter by status: pending, in_progress, blocked, done (optional)" nil))
+     tool-bd-list)
 
-    ("bd_show"
+    ("bd-show"
      "Show details of a specific issue."
-     (("id" "string" "Issue ID (e.g., habu-abc)" t)))
+     (("id" "string" "Issue ID (e.g., habu-abc)" t))
+     tool-bd-show)
 
-    ("bd_create"
+    ("bd-create"
      "Create a new issue/task."
      (("title" "string" "Issue title" t)
       ("type" "string" "Type: bug, task, feature (default: task)" nil)
       ("priority" "number" "Priority 1-3, 1=highest (default: 2)" nil)
-      ("description" "string" "Detailed description (optional)" nil)))
+      ("description" "string" "Detailed description (optional)" nil))
+     tool-bd-create)
 
-    ("bd_update"
+    ("bd-update"
      "Update an issue's status or add notes."
      (("id" "string" "Issue ID" t)
       ("status" "string" "New status: pending, in_progress, blocked, done" nil)
-      ("note" "string" "Add a note to the issue" nil)))
+      ("note" "string" "Add a note to the issue" nil))
+     tool-bd-update)
 
-    ("bd_close"
+    ("bd-close"
      "Close a completed issue. IMPORTANT: Commit changes BEFORE closing."
      (("id" "string" "Issue ID to close" t)
-      ("note" "string" "Closing note (optional)" nil)))))
+      ("note" "string" "Closing note (optional)" nil))
+     tool-bd-close)))
 
 (defun format-tool-schema (name description params)
   (let ((props (mapcar (lambda (p)
@@ -464,12 +494,12 @@
                   (if (string= out-str "") nil (format nil "~A~%" out-str))
                   result-value)))))
 
-(defun tool-lisp-eval (args)
+(defun tool-eval (args)
   (let ((code (jget args "code"))
         (timeout (jget args "timeout")))
     (safe-eval code (when (numberp timeout) (floor timeout)))))
 
-(defun tool-lisp-compile (args)
+(defun tool-compile (args)
   (let ((source (jget args "source")))
     (safe-eval
      (format nil
@@ -482,12 +512,12 @@
                     (let* ((fn-code (habu:codegen-main fns main-ir))
                            (len (length fn-code)))
                       (format nil \"Size: ~~D bytes~~%%Hex: ~~{~~2,'0X~~}\" len fn-code))
-                    (let* ((code (habu:codegen main-ir nil nil))
+                    (let* ((code (habu:codegen main-ir nil nil nil))
                            (len (length code)))
                       (format nil \"Size: ~~D bytes~~%%Hex: ~~{~~2,'0X~~}\" len code))))"
              source))))
 
-(defun tool-lisp-disasm (args)
+(defun tool-disasm (args)
   (let ((hex (jget args "hex")))
     (safe-eval
      (format nil
@@ -498,7 +528,7 @@
                   (habu::disassemble-bytes bytes)))"
              hex))))
 
-(defun tool-lisp-jit (args)
+(defun tool-jit (args)
   "JIT compile and execute an expression via subprocess.
    Returns the result for small fixnums (0-255) as exit code."
   (let ((expr (jget args "expr")))
@@ -509,14 +539,14 @@
                 (format nil \"Result: ~~A\" result))"
              expr))))
 
-(defun tool-lisp-trace (args)
+(defun tool-trace (args)
   (let ((fn-name (jget args "function"))
         (enable (jget args "enable")))
     (if enable
         (safe-eval (format nil "(trace ~A)" fn-name))
         (safe-eval (format nil "(untrace ~A)" fn-name)))))
 
-(defun tool-lisp-inspect (args)
+(defun tool-inspect (args)
   (let ((obj (jget args "object")))
     (safe-eval
      (format nil
@@ -525,14 +555,14 @@
                   (describe val)))"
              obj))))
 
-(defun tool-lisp-apropos (args)
+(defun tool-apropos (args)
   (let ((pattern (jget args "pattern"))
         (pkg (jget args "package")))
     (if (and pkg (not (string= pkg "")))
         (safe-eval (format nil "(apropos ~S (find-package ~S))" pattern pkg))
         (safe-eval (format nil "(apropos ~S)" pattern)))))
 
-(defun tool-lisp-paren-check (args)
+(defun tool-paren-check (args)
   "Check parenthesis balance in a Lisp file."
   (let ((file (jget args "file")))
     (handler-case
@@ -625,7 +655,7 @@
       (error (e)
         (format nil "Error checking file: ~A" e)))))
 
-(defun tool-lisp-hexdump (args)
+(defun tool-hexdump (args)
   "Hex dump bytes from a file."
   (let ((file (jget args "file"))
         (offset (or (jget args "offset") 0))
@@ -662,7 +692,7 @@
       (error (e)
         (format nil "Error: ~A" e)))))
 
-(defun tool-lisp-tagged-value (args)
+(defun tool-tagged-value (args)
   "Decode a Habu tagged value."
   (let ((value (jget args "value")))
     (if (not (integerp value))
@@ -724,10 +754,11 @@
                (format out "Type: UNKNOWN~%")
                (format out "Tag ~D is not a valid Habu tag~%" tag))))))))
 
-(defun tool-lisp-heap-info (args)
+(defun tool-heap-info (args)
   "Show Habu heap layout information."
   (declare (ignore args))
   (with-output-to-string (out)
+    (format out "Habu MCP Server: ~A~%~%" *server-version*)
     (format out "Habu Heap Layout (at x27 base register)~%")
     (format out "========================================~%~%")
     (format out "Simple GC Mode:~%")
@@ -758,7 +789,7 @@
     (format out "  (lldb) register read x27 x28~%")
     (format out "  (lldb) memory read -c 64 $x27~%")))
 
-(defun tool-lisp-stack-frames (args)
+(defun tool-stack-frames (args)
   "Walk ARM64 stack frames and map to symbols."
   (let ((binary (jget args "binary"))
         (fp-str (jget args "fp"))
@@ -868,7 +899,7 @@
                     (file-position stream (+ (- (file-position stream) 8) cmdsize)))))))))
     (error () nil)))
 
-(defun tool-lisp-codesign (args)
+(defun tool-codesign (args)
   "Code sign a binary using ad-hoc signing."
   (let ((binary (jget args "binary")))
     (handler-case
@@ -880,7 +911,7 @@
       (error (e)
         (format nil "Error signing ~A: ~A" binary e)))))
 
-(defun tool-lisp-run (args)
+(defun tool-run (args)
   "Run a binary and capture output/exit code."
   (let ((binary (jget args "binary"))
         (cmd-args (or (jget args "args") ""))
@@ -952,7 +983,7 @@
         collect (subseq string start (or end (length string)))
         while end))
 
-(defun tool-lisp-debug (args)
+(defun tool-debug (args)
   "Run binary under lldb and capture crash info."
   (let ((binary (jget args "binary"))
         (cmd-args (or (jget args "args") ""))
@@ -994,11 +1025,11 @@
       (error (e)
         (format nil "Error debugging ~A: ~A" binary e)))))
 
-(defun tool-lisp-gc-analyze (args)
+(defun tool-gc-analyze (args)
   "Analyze GC state from register values."
   (let ((x27-str (jget args "x27"))
         (x28-str (jget args "x28"))
-        (crash-str (jget args "crash_addr")))
+        (crash-str (jget args "crash-addr")))
     (handler-case
         (let* ((x27 (parse-integer (string-left-trim "0x" x27-str) :radix 16))
                (x28 (parse-integer (string-left-trim "0x" x28-str) :radix 16))
@@ -1072,7 +1103,7 @@
       (error (e)
         (format nil "Error: ~A" e)))))
 
-(defun tool-lisp-check-ptr (args)
+(defun tool-check-ptr (args)
   "Check if a pointer is valid, forwarding, or stale."
   (let ((ptr-str (jget args "ptr"))
         (x27-str (jget args "x27")))
@@ -1137,7 +1168,7 @@
       (error (e)
         (format nil "Error: ~A" e)))))
 
-(defun tool-lisp-env-slots (args)
+(defun tool-env-slots (args)
   "Show environment slot layout."
   (let ((x20-str (jget args "x20"))
         (count (or (jget args "count") 16)))
@@ -1164,7 +1195,7 @@
       (error (e)
         (format nil "Error: ~A" e)))))
 
-(defun tool-lisp-gc-roots-info (args)
+(defun tool-gc-roots-info (args)
   "Explain what GC considers as roots."
   (declare (ignore args))
   (with-output-to-string (out)
@@ -1204,7 +1235,7 @@
     (format out "  3. Reload after GC: Codegen reloads from safe locations~%")
     (format out "  4. Different allocation: Put all temp values in registers~%")))
 
-(defun tool-lisp-traced-eval (args)
+(defun tool-traced-eval (args)
   "Evaluate code with tracing enabled for specified functions."
   (let ((code (jget args "code"))
         (functions (jget args "functions"))
@@ -1291,11 +1322,11 @@
         (setf cmd-args (append cmd-args (list "--reason" note))))
       (run-bd-command cmd-args))))
 
-(defun tool-lisp-lldb-script (args)
+(defun tool-lldb-script (args)
   "Generate lldb script for GC debugging."
   (let ((binary (jget args "binary"))
-        (break-gc (if (jget args "break_on_gc") t t))  ; default true
-        (watch-env (jget args "watch_env")))
+        (break-gc (if (jget args "break-on-gc") t t))  ; default true
+        (watch-env (jget args "watch-env")))
     (with-output-to-string (out)
       (format out "# LLDB script for debugging GC issues~%")
       (format out "# Usage: lldb -s this_script.lldb ~A~%~%" binary)
@@ -1339,36 +1370,12 @@
       (format out "run~%"))))
 
 (defun dispatch-tool (name args)
-  (cond
-    ((string= name "lisp_eval") (tool-lisp-eval args))
-    ((string= name "lisp_compile") (tool-lisp-compile args))
-    ((string= name "lisp_disasm") (tool-lisp-disasm args))
-    ((string= name "lisp_jit") (tool-lisp-jit args))
-    ((string= name "lisp_trace") (tool-lisp-trace args))
-    ((string= name "lisp_inspect") (tool-lisp-inspect args))
-    ((string= name "lisp_apropos") (tool-lisp-apropos args))
-    ((string= name "lisp_paren_check") (tool-lisp-paren-check args))
-    ((string= name "lisp_hexdump") (tool-lisp-hexdump args))
-    ((string= name "lisp_tagged_value") (tool-lisp-tagged-value args))
-    ((string= name "lisp_heap_info") (tool-lisp-heap-info args))
-    ((string= name "lisp_stack_frames") (tool-lisp-stack-frames args))
-    ((string= name "lisp_codesign") (tool-lisp-codesign args))
-    ((string= name "lisp_run") (tool-lisp-run args))
-    ((string= name "lisp_debug") (tool-lisp-debug args))
-    ((string= name "lisp_gc_analyze") (tool-lisp-gc-analyze args))
-    ((string= name "lisp_check_ptr") (tool-lisp-check-ptr args))
-    ((string= name "lisp_env_slots") (tool-lisp-env-slots args))
-    ((string= name "lisp_gc_roots_info") (tool-lisp-gc-roots-info args))
-    ((string= name "lisp_lldb_script") (tool-lisp-lldb-script args))
-    ((string= name "lisp_traced_eval") (tool-lisp-traced-eval args))
-    ;; Beads (bd) tools
-    ((string= name "bd_ready") (tool-bd-ready args))
-    ((string= name "bd_list") (tool-bd-list args))
-    ((string= name "bd_show") (tool-bd-show args))
-    ((string= name "bd_create") (tool-bd-create args))
-    ((string= name "bd_update") (tool-bd-update args))
-    ((string= name "bd_close") (tool-bd-close args))
-    (t (format nil "Unknown tool: ~A" name))))
+  "Dispatch tool by name using handler from *tools*."
+  (let* ((tool (find name *tools* :key #'car :test #'string=))
+         (handler (when tool (fourth tool))))
+    (if handler
+        (funcall handler args)
+        (format nil "Unknown tool: ~A" name))))
 
 ;;; ============================================================
 ;;; MCP Protocol Handlers
@@ -1380,12 +1387,12 @@
     `(("protocolVersion" . "2024-11-05")
       ("capabilities" . (("tools" . :empty-object)))
       ("serverInfo" . (("name" . "habu-mcp")
-                       ("version" . "1.0.0"))))))
+                       ("version" . ,*server-version*))))))
 
 (defun handle-tools-list (id)
   (make-response id
     `(("tools" . ,(mapcar (lambda (tool)
-                            (apply #'format-tool-schema tool))
+                            (apply #'format-tool-schema (subseq tool 0 3)))
                           *tools*)))))
 
 (defun handle-tools-call (id params)

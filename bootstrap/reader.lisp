@@ -339,14 +339,15 @@
 #-sbcl
 (defun intern (name)
   "Intern a string as a symbol. Returns existing symbol if found, else creates new.
-   Applies package qualification based on current package."
-  (let ((qname (qualify-symbol-name name)))
-    (let ((existing (find-interned qname (get-intern-table))))
-      (if existing
-          existing
-          (let ((sym (make-symbol-from-string qname)))
-            (set-intern-table (cons (cons qname sym) (get-intern-table)))
-            sym)))))
+   First strips any package prefix (PKG:NAME -> NAME), then applies current package."
+  (let ((stripped (strip-package-prefix name)))
+    (let ((qname (qualify-symbol-name stripped)))
+      (let ((existing (find-interned qname (get-intern-table))))
+        (if existing
+            existing
+            (let ((sym (make-symbol-from-string qname)))
+              (set-intern-table (cons (cons qname sym) (get-intern-table)))
+              sym))))))
 
 ;;; Global state accessors (implemented in codegen for native)
 (defun get-intern-table () *intern-table*)
@@ -392,6 +393,28 @@
           (setq found t)
           (setq i (+ i 1))))
     found))
+
+(defun strip-package-prefix (name)
+  "Strip package prefix from symbol name. ARM64:ENCODE -> ENCODE.
+   Keywords (:FOO) are returned unchanged.
+   Names without colon are returned unchanged."
+  (let ((len (string-length name)))
+    (if (= len 0)
+        name
+        (if (= (string-ref name 0) #x3A)  ; keyword starting with :
+            name
+            ;; Find last colon position
+            (let ((i (- len 1))
+                  (colon-pos -1))
+              (while (>= i 0)
+                (if (= (string-ref name i) #x3A)
+                    (progn
+                      (setq colon-pos i)
+                      (setq i -1))  ; stop searching
+                    (setq i (- i 1))))
+              (if (< colon-pos 0)
+                  name  ; no colon found
+                  (substring name (+ colon-pos 1) len)))))))
 
 (defun qualify-symbol-name (name)
   "Add current package prefix if name doesn't have one and package is set.
