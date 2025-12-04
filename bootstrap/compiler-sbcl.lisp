@@ -4321,9 +4321,9 @@
          ;; Return id as symbol: (id << 4) | 2
          ;; x4 already has id << 4 (as fixnum)
          (arm64:movz :x11 #xF)
-         (arm64:bic :x0 4 11)     ; clear fixnum tag
+         (arm64:bic :x0 :x4 :x11)     ; clear fixnum tag
          (arm64:movz :x9 2)
-         (arm64:orr :x0 :x0 9)))))  ; tag as symbol
+         (arm64:orr :x0 :x0 :x9)))))  ; tag as symbol
     ;; symbol-name-ir - get symbol's name by looking up in symbol table
     ((has-tag ir 'symbol-name-ir)
      ;; symbol-name-ir = (symbol-name-ir sym-ir)
@@ -4764,15 +4764,15 @@
               (list
                ;; Store fn-offset (tagged) in [x28]
                ;; Use load-addr-32 to ensure consistent size during two-pass compilation
-               (load-addr-32 9 tagged-offset)   ; x9 = tagged offset
+               (load-addr-32 :x9 tagged-offset)   ; x9 = tagged offset
                (arm64:str :x9 :heap :offset 0)           ; [x28+0] = car = fn-offset
                ;; Store nil in [x28+8]
                (arm64:movz :x10 0)                   ; x10 = nil
-               (arm64:str :x10 28 :offset 8)          ; [x28+8] = cdr = nil
+               (arm64:str :x10 :heap :offset 8)          ; [x28+8] = cdr = nil
                ;; Result = x28 | 5 (closure tag)
                (arm64:mov :x0 :heap)                ; x0 = x28
                (arm64:movz :x9 5)                    ; x9 = closure tag
-               (arm64:orr :x0 :x0 9)                   ; x0 = x28 | 5
+               (arm64:orr :x0 :x0 :x9)                   ; x0 = x28 | 5
                ;; Bump heap pointer by 16
                (arm64:add :heap :heap 16 :imm t))))
            ;; Has captures - build env as cons list, then make closure cons
@@ -4806,7 +4806,7 @@
                                            ;; Result = x28 | 1 (cons tag)
                                            (arm64:mov :x0 :heap)
                                            (arm64:movz :x9 1)
-                                           (arm64:orr :x0 :x0 9)                 ; x0 = cons ptr
+                                           (arm64:orr :x0 :x0 :x9)                 ; x0 = cons ptr
                                            ;; Save and bump
                                            (arm64:str :x0 :sp :offset pair-slot)
                                            (arm64:add :heap :heap 16 :imm t)))))
@@ -4825,14 +4825,14 @@
                  env-code
                  ;; Now allocate closure cons: (fn-offset . env)
                  ;; Use load-addr-32 to ensure consistent size during two-pass compilation
-                 (load-addr-32 9 tagged-offset)     ; car = fn-offset (tagged)
+                 (load-addr-32 :x9 tagged-offset)     ; car = fn-offset (tagged)
                  (arm64:str :x9 :heap :offset 0)             ; [x28+0] = car
                  (arm64:ldr :x9 :sp :offset env-result-slot) ; cdr = env cons list
                  (arm64:str :x9 :heap :offset 8)             ; [x28+8] = cdr
                  ;; Result = x28 | 5 (closure tag)
                  (arm64:mov :x0 :heap)
                  (arm64:movz :x9 5)
-                 (arm64:orr :x0 :x0 9)
+                 (arm64:orr :x0 :x0 :x9)
                  ;; Bump heap
                  (arm64:add :heap :heap 16 :imm t))))))))
     ((has-tag ir 'funcall-ir)
