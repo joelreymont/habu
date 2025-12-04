@@ -1329,8 +1329,8 @@
          (uuid-vals (list #x48 #x41 #x42 #x55 #x4C #x49 #x53 #x50
                          #x4D #x4D #x41 #x50 #x48 #x45 #x41 #x50))
 
-         ;; Wrapper size for symbol table (mmap wrapper is ~160 bytes)
-         (wrapper-size 160))
+         ;; Wrapper size for symbol table (mmap wrapper: (5+40+2+7)*4 = 216)
+         (wrapper-size 216))
 
     ;; Build complete executable
     (append

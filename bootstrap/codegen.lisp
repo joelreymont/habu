@@ -2742,7 +2742,7 @@
          (result (compile-forms forms))
          (defuns-orig (car result))
          (main-ir-orig (cadr result))
-         (wrapper-size 210)  ;; mmap heap initialization wrapper
+         (wrapper-size 216)  ;; mmap heap initialization wrapper (5+40+2+7)*4
          ;; Lift lambdas from main-ir
          (main-lift-result #+sbcl (lift-lambdas-2 main-ir-orig nil)
                            #-sbcl (lift-lambdas main-ir-orig nil))
@@ -2826,7 +2826,7 @@
    HEX_OFFSET is relative to __TEXT segment start (0x100000000 on macOS).
    To find function from PC: offset = PC - 0x100000454 (base + code_offset + wrapper)"
   (let ((map-path (concatenate 'string output-path ".map"))
-        (wrapper-size 116)
+        (wrapper-size 216)  ;; mmap heap wrapper (5+40+2+7)*4
         (code-offset #x400))
     (with-open-file (f map-path :direction :output :if-exists :supersede)
       ;; Header comment

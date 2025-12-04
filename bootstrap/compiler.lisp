@@ -1971,7 +1971,7 @@
          ;; Collect extern calls and get unique imports
          (extern-calls (collect-extern-calls bytes-with-markers))
          (imports (get-unique-imports extern-calls))
-         (wrapper-size 68))  ; 17 instructions * 4 bytes
+         (wrapper-size 120))  ; 30 instructions * 4 bytes (embedded heap)
 
     ;; Always use imports path for consistent Mach-O structure
     (let ((imports (if (null imports) '("_exit") imports)))
