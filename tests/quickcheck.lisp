@@ -44,14 +44,20 @@
        (if (= n target)
            nil  ; Already minimal
            (let* ((half (truncate (+ n target) 2))
+                  (step (if (> n target) -1 1))  ; Direction toward target
+                  (adjacent (+ n step))          ; n-1 or n+1 toward target
                   (candidates nil))
-             ;; Try the target first
+             ;; Try the target first (biggest shrink)
              (when (/= n target)
                (push target candidates))
-             ;; Try halfway point
+             ;; Try halfway point (binary search)
              (when (and (/= half n) (/= half target)
                         (>= half min) (<= half max))
                (push half candidates))
+             ;; Try adjacent value (for finding exact boundaries)
+             (when (and (/= adjacent n) (/= adjacent target)
+                        (>= adjacent min) (<= adjacent max))
+               (push adjacent candidates))
              (nreverse candidates)))))))
 
 (defun gen-bool ()
@@ -457,6 +463,229 @@
     (= (length flat) (* 2 n 4))))
 
 ;;; ============================================================
+;;; Unit Tests for QuickCheck Framework
+;;; ============================================================
+;;; These tests verify that the QuickCheck infrastructure works correctly.
+
+(defun test-gen-int-range ()
+  "Test that gen-int produces values within range."
+  (let ((g (gen-int 10 20))
+        (all-in-range t))
+    (dotimes (i 100)
+      (let ((v (gen-value g)))
+        (unless (and (>= v 10) (<= v 20))
+          (setf all-in-range nil))))
+    (if all-in-range
+        (progn (format t "  [PASS] gen-int produces values in range~%") t)
+        (progn (format t "  [FAIL] gen-int produced out-of-range value~%") nil))))
+
+(defun test-gen-int-negative-range ()
+  "Test that gen-int works with negative ranges."
+  (let ((g (gen-int -50 -10))
+        (all-in-range t))
+    (dotimes (i 100)
+      (let ((v (gen-value g)))
+        (unless (and (>= v -50) (<= v -10))
+          (setf all-in-range nil))))
+    (if all-in-range
+        (progn (format t "  [PASS] gen-int works with negative range~%") t)
+        (progn (format t "  [FAIL] gen-int failed with negative range~%") nil))))
+
+(defun test-gen-bool ()
+  "Test that gen-bool produces only t or nil."
+  (let ((g (gen-bool))
+        (saw-t nil)
+        (saw-nil nil)
+        (all-valid t))
+    (dotimes (i 100)
+      (let ((v (gen-value g)))
+        (cond ((eq v t) (setf saw-t t))
+              ((eq v nil) (setf saw-nil t))
+              (t (setf all-valid nil)))))
+    (if (and all-valid saw-t saw-nil)
+        (progn (format t "  [PASS] gen-bool produces t and nil~%") t)
+        (progn (format t "  [FAIL] gen-bool didn't produce both t and nil~%") nil))))
+
+(defun test-gen-one-of ()
+  "Test that gen-one-of picks from choices."
+  (let ((g (gen-one-of '(:a :b :c)))
+        (seen (make-hash-table))
+        (all-valid t))
+    (dotimes (i 100)
+      (let ((v (gen-value g)))
+        (unless (member v '(:a :b :c))
+          (setf all-valid nil))
+        (setf (gethash v seen) t)))
+    (if (and all-valid
+             (gethash :a seen)
+             (gethash :b seen)
+             (gethash :c seen))
+        (progn (format t "  [PASS] gen-one-of picks from choices~%") t)
+        (progn (format t "  [FAIL] gen-one-of didn't cover all choices~%") nil))))
+
+(defun test-gen-register ()
+  "Test that gen-register produces valid register keywords."
+  (let ((g (gen-register))
+        (all-valid t))
+    (dotimes (i 100)
+      (let ((v (gen-value g)))
+        (unless (member v *register-keywords*)
+          (setf all-valid nil))))
+    (if all-valid
+        (progn (format t "  [PASS] gen-register produces valid registers~%") t)
+        (progn (format t "  [FAIL] gen-register produced invalid register~%") nil))))
+
+(defun test-gen-list-of ()
+  "Test that gen-list-of produces lists of correct length."
+  (let ((g (gen-list-of (gen-int 0 10) 3 5))
+        (all-valid t))
+    (dotimes (i 50)
+      (let* ((v (gen-value g))
+             (len (length v)))
+        (unless (and (>= len 3) (<= len 5))
+          (setf all-valid nil))
+        (dolist (elem v)
+          (unless (and (integerp elem) (>= elem 0) (<= elem 10))
+            (setf all-valid nil)))))
+    (if all-valid
+        (progn (format t "  [PASS] gen-list-of produces valid lists~%") t)
+        (progn (format t "  [FAIL] gen-list-of produced invalid list~%") nil))))
+
+(defun test-gen-tuple ()
+  "Test that gen-tuple produces correct tuples."
+  (let ((g (gen-tuple (gen-int 0 10) (gen-bool) (gen-one-of '(:x :y))))
+        (all-valid t))
+    (dotimes (i 50)
+      (let ((v (gen-value g)))
+        (unless (and (= (length v) 3)
+                     (integerp (first v))
+                     (>= (first v) 0)
+                     (<= (first v) 10)
+                     (or (eq (second v) t) (eq (second v) nil))
+                     (member (third v) '(:x :y)))
+          (setf all-valid nil))))
+    (if all-valid
+        (progn (format t "  [PASS] gen-tuple produces valid tuples~%") t)
+        (progn (format t "  [FAIL] gen-tuple produced invalid tuple~%") nil))))
+
+(defun test-shrink-int-toward-zero ()
+  "Test that shrink-int shrinks toward 0."
+  (let ((g (gen-int -100 100)))
+    ;; Shrink 50 should include 0 and 25
+    (let ((shrinks (shrink-value g 50)))
+      (if (and (member 0 shrinks)
+               (member 25 shrinks))
+          (progn (format t "  [PASS] shrink-int shrinks toward 0~%") t)
+          (progn (format t "  [FAIL] shrink-int didn't shrink toward 0: ~S~%" shrinks) nil)))))
+
+(defun test-shrink-int-at-target ()
+  "Test that shrink-int returns nil at target."
+  (let ((g (gen-int -100 100)))
+    (let ((shrinks (shrink-value g 0)))
+      (if (null shrinks)
+          (progn (format t "  [PASS] shrink-int returns nil at target~%") t)
+          (progn (format t "  [FAIL] shrink-int returned ~S at target~%" shrinks) nil)))))
+
+(defun test-shrink-bool ()
+  "Test that shrink-bool shrinks t to nil."
+  (let ((g (gen-bool)))
+    (let ((shrinks-t (shrink-value g t))
+          (shrinks-nil (shrink-value g nil)))
+      (if (and (equal shrinks-t '(nil))
+               (null shrinks-nil))
+          (progn (format t "  [PASS] shrink-bool works correctly~%") t)
+          (progn (format t "  [FAIL] shrink-bool: t->~S nil->~S~%" shrinks-t shrinks-nil) nil)))))
+
+(defun test-shrink-one-of ()
+  "Test that shrink-one-of shrinks toward first element."
+  (let ((g (gen-one-of '(:first :second :third))))
+    (let ((shrinks (shrink-value g :third)))
+      (if (equal shrinks '(:first))
+          (progn (format t "  [PASS] shrink-one-of shrinks to first~%") t)
+          (progn (format t "  [FAIL] shrink-one-of: ~S~%" shrinks) nil)))))
+
+(defun test-shrink-failure-finds-minimal ()
+  "Test that shrink-failure finds minimal failing case."
+  (let ((g (gen-int 0 100))
+        ;; Property: n < 10 (so 10+ fails)
+        (prop (lambda (n) (< n 10))))
+    ;; Start with a larger failing value
+    (let ((minimal (shrink-failure g prop 50 100)))
+      (if (= minimal 10)
+          (progn (format t "  [PASS] shrink-failure finds minimal case~%") t)
+          (progn (format t "  [FAIL] shrink-failure got ~S, expected 10~%" minimal) nil)))))
+
+(defun test-check-property-passes ()
+  "Test that check-property reports success for always-true property."
+  (let ((g (gen-int 0 100))
+        (always-true (lambda (n) (declare (ignore n)) t)))
+    (let ((result (check-property g always-true 50)))
+      (if (eq (car result) :passed)
+          (progn (format t "  [PASS] check-property reports success~%") t)
+          (progn (format t "  [FAIL] check-property: ~S~%" result) nil)))))
+
+(defun test-check-property-fails ()
+  "Test that check-property reports failure with shrunk value."
+  (let ((g (gen-int 0 100))
+        ;; Property fails for anything >= 5
+        (prop (lambda (n) (< n 5))))
+    (let ((result (check-property g prop 100)))
+      (if (and (eq (car result) :failed)
+               ;; Shrunk value should be 5 (minimal failing)
+               (= (third result) 5))
+          (progn (format t "  [PASS] check-property reports failure with shrunk value~%") t)
+          (progn (format t "  [FAIL] check-property: ~S~%" result) nil)))))
+
+(defun test-bytes-to-word ()
+  "Test bytes-to-word conversion."
+  (if (and (= (bytes-to-word '(#x01 #x02 #x03 #x04)) #x04030201)
+           (= (bytes-to-word '(#xFF #x00 #x00 #x00)) #x000000FF)
+           (= (bytes-to-word '(#x00 #xFF #x00 #x00)) #x0000FF00))
+      (progn (format t "  [PASS] bytes-to-word works~%") t)
+      (progn (format t "  [FAIL] bytes-to-word incorrect~%") nil)))
+
+(defun test-decode-reg ()
+  "Test register decoding."
+  (if (and (eq (decode-reg 0) :x0)
+           (eq (decode-reg 15) :x15)
+           (eq (decode-reg 30) :x30)
+           (eq (decode-reg 31) :sp))
+      (progn (format t "  [PASS] decode-reg works~%") t)
+      (progn (format t "  [FAIL] decode-reg incorrect~%") nil)))
+
+(defun run-quickcheck-unit-tests ()
+  "Run all QuickCheck framework unit tests."
+  (format t "~%=== QuickCheck Framework Unit Tests ===~%~%")
+  (let ((pass 0)
+        (fail 0))
+    (format t "Generator tests:~%")
+    (if (test-gen-int-range) (incf pass) (incf fail))
+    (if (test-gen-int-negative-range) (incf pass) (incf fail))
+    (if (test-gen-bool) (incf pass) (incf fail))
+    (if (test-gen-one-of) (incf pass) (incf fail))
+    (if (test-gen-register) (incf pass) (incf fail))
+    (if (test-gen-list-of) (incf pass) (incf fail))
+    (if (test-gen-tuple) (incf pass) (incf fail))
+
+    (format t "~%Shrinking tests:~%")
+    (if (test-shrink-int-toward-zero) (incf pass) (incf fail))
+    (if (test-shrink-int-at-target) (incf pass) (incf fail))
+    (if (test-shrink-bool) (incf pass) (incf fail))
+    (if (test-shrink-one-of) (incf pass) (incf fail))
+    (if (test-shrink-failure-finds-minimal) (incf pass) (incf fail))
+
+    (format t "~%Property runner tests:~%")
+    (if (test-check-property-passes) (incf pass) (incf fail))
+    (if (test-check-property-fails) (incf pass) (incf fail))
+
+    (format t "~%Decoder tests:~%")
+    (if (test-bytes-to-word) (incf pass) (incf fail))
+    (if (test-decode-reg) (incf pass) (incf fail))
+
+    (format t "~%QuickCheck Unit Tests: ~D passed, ~D failed~%" pass fail)
+    (values (= fail 0) pass fail)))
+
+;;; ============================================================
 ;;; Test Runner
 ;;; ============================================================
 
@@ -473,48 +702,57 @@
 
 (defun run-property-tests (&optional (trials *quickcheck-trials*))
   "Run all property tests."
-  (format t "~%=== Property-Based Tests (~D trials each) ===~%~%" trials)
-  (reset-property-stats)
+  ;; First run unit tests for the framework itself
+  (multiple-value-bind (unit-ok unit-pass unit-fail)
+      (run-quickcheck-unit-tests)
+    (declare (ignore unit-ok))
 
-  ;; ARM64 size properties
-  (format t "ARM64 instruction size invariants:~%")
-  (run-property 'prop-add-imm-size trials)
-  (run-property 'prop-sub-imm-size trials)
-  (run-property 'prop-movz-size trials)
-  (run-property 'prop-movk-size trials)
-  (run-property 'prop-orr-reg-size trials)
-  (run-property 'prop-and-reg-size trials)
-  (run-property 'prop-eor-reg-size trials)
-  (run-property 'prop-ldr-size trials)
-  (run-property 'prop-str-size trials)
-  (run-property 'prop-bl-size trials)
-  (run-property 'prop-b-size trials)
-  (run-property 'prop-ret-size trials)
+    (format t "~%=== Property-Based Tests (~D trials each) ===~%~%" trials)
+    (reset-property-stats)
 
-  ;; ARM64 roundtrip properties
-  (format t "~%ARM64 encoding roundtrips:~%")
-  (run-property 'prop-add-imm-roundtrip trials)
-  (run-property 'prop-sub-imm-roundtrip trials)
-  (run-property 'prop-movz-roundtrip trials)
-  (run-property 'prop-orr-reg-roundtrip trials)
+    ;; ARM64 size properties
+    (format t "ARM64 instruction size invariants:~%")
+    (run-property 'prop-add-imm-size trials)
+    (run-property 'prop-sub-imm-size trials)
+    (run-property 'prop-movz-size trials)
+    (run-property 'prop-movk-size trials)
+    (run-property 'prop-orr-reg-size trials)
+    (run-property 'prop-and-reg-size trials)
+    (run-property 'prop-eor-reg-size trials)
+    (run-property 'prop-ldr-size trials)
+    (run-property 'prop-str-size trials)
+    (run-property 'prop-bl-size trials)
+    (run-property 'prop-b-size trials)
+    (run-property 'prop-ret-size trials)
 
-  ;; Tagged value properties
-  (format t "~%Tagged value invariants:~%")
-  (run-property 'prop-fixnum-tag-roundtrip trials)
-  (run-property 'prop-fixnum-tag-is-zero trials)
-  (run-property 'prop-large-fixnum-roundtrip trials)
+    ;; ARM64 roundtrip properties
+    (format t "~%ARM64 encoding roundtrips:~%")
+    (run-property 'prop-add-imm-roundtrip trials)
+    (run-property 'prop-sub-imm-roundtrip trials)
+    (run-property 'prop-movz-roundtrip trials)
+    (run-property 'prop-orr-reg-roundtrip trials)
 
-  ;; Code generation properties
-  (format t "~%Code generation:~%")
-  (run-property 'prop-instruction-size-nop trials)
-  (run-property 'prop-instruction-size-add trials)
-  (run-property 'prop-flatten-preserves-bytes trials)
-  (run-property 'prop-flatten-nested trials)
+    ;; Tagged value properties
+    (format t "~%Tagged value invariants:~%")
+    (run-property 'prop-fixnum-tag-roundtrip trials)
+    (run-property 'prop-fixnum-tag-is-zero trials)
+    (run-property 'prop-large-fixnum-roundtrip trials)
 
-  ;; Summary
-  (format t "~%Property Tests: ~D passed, ~D failed~%"
-          *property-pass-count* *property-fail-count*)
+    ;; Code generation properties
+    (format t "~%Code generation:~%")
+    (run-property 'prop-instruction-size-nop trials)
+    (run-property 'prop-instruction-size-add trials)
+    (run-property 'prop-flatten-preserves-bytes trials)
+    (run-property 'prop-flatten-nested trials)
 
-  (values (= *property-fail-count* 0)
-          *property-pass-count*
-          *property-fail-count*))
+    ;; Summary
+    (format t "~%Property Tests: ~D passed, ~D failed~%"
+            *property-pass-count* *property-fail-count*)
+    (format t "Total: ~D unit + ~D property = ~D passed, ~D failed~%"
+            unit-pass *property-pass-count*
+            (+ unit-pass *property-pass-count*)
+            (+ unit-fail *property-fail-count*))
+
+    (values (and (= unit-fail 0) (= *property-fail-count* 0))
+            (+ unit-pass *property-pass-count*)
+            (+ unit-fail *property-fail-count*))))
