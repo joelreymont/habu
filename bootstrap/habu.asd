@@ -73,6 +73,7 @@
     ((:file "test-core")
      (:file "test-keyword-args" :depends-on ("test-core"))
      (:file "test-packages" :depends-on ("test-core"))
+     (:file "test-reader" :depends-on ("test-core"))
      (:file "quickcheck" :depends-on ("test-core")))))
   :perform (asdf:test-op (o c)
              (uiop:symbol-call :habu-test '#:run-all-tests)))

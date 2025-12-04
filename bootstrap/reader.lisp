@@ -332,17 +332,19 @@
 #-sbcl
 (defun string= (s1 s2)
   "Compare two strings for equality - iterative"
-  (let ((len1 (string-length s1))
-        (len2 (string-length s2)))
-    (if (= len1 len2)
-        (let ((i 0)
-              (equal t))
-          (while (and equal (< i len1))
-            (if (= (string-ref s1 i) (string-ref s2 i))
-                (setq i (+ i 1))
-                (setq equal nil)))
-          equal)
-        nil)))
+  (if (or (null s1) (null s2))
+      (and (null s1) (null s2))  ; nil = nil, nil != string
+      (let ((len1 (string-length s1))
+            (len2 (string-length s2)))
+        (if (= len1 len2)
+            (let ((i 0)
+                  (equal t))
+              (while (and equal (< i len1))
+                (if (= (string-ref s1 i) (string-ref s2 i))
+                    (setq i (+ i 1))
+                    (setq equal nil)))
+              equal)
+            nil))))
 
 (defun find-interned (name table)
   "Find symbol with NAME in intern TABLE (alist of (name . symbol)) - iterative"

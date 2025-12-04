@@ -132,6 +132,25 @@ Add a new tool to `mcp-server/habu-mcp.lisp`. The tool should:
 - Investigate systematically, don't patch symptoms
 - Add tests that reproduce bugs before fixing
 
+### FIX LIMITATIONS IMMEDIATELY
+
+**CRITICAL: When you discover a limitation, bug, or missing feature - FIX IT NOW.**
+
+Do NOT:
+- Document it as a "known limitation" and move on
+- Create an issue and defer to later
+- Work around it with hacks
+- Say "this is expected" or "this is a known issue"
+
+Do:
+- Stop what you're doing
+- Investigate the root cause
+- Implement the fix immediately
+- Add a test to prevent regression
+- Then continue with the original task
+
+**Every limitation is a blocker for self-hosting.** The goal is a fully working compiler, not a compiler with a list of known issues. If the native reader crashes on `defpackage`, fix the native reader. If arm64 functions are missing at runtime, add them. No exceptions.
+
 ### Session Management
 
 1. **Project Reference** (end of this file) - Architecture, conventions, technical reference
@@ -327,13 +346,17 @@ When computing from `code-size` (bytes): `(ash byte-offset -2)`
 **GC Triggers**: Toggle via `*use-generational-gc*` in codegen.lisp:406.
 Write barriers in: setcar-ir (:1412), setcdr-ir (:1434), vector-set-ir (:1266).
 
-### Known Limitations
+### Current Blockers (FIX THESE - DO NOT ADD MORE)
 
-1. Max 8 arguments per function
-2. 64KB file limit for native-read-file
-3. No reader conditionals in native mode
-4. Inlining disabled (variable capture bug)
-5. Stack frame: 2KB per call (codegen.lisp:2337) - limits recursion depth
+These are bugs that MUST be fixed, not "known limitations" to work around:
+
+1. Max 8 arguments per function - IMPLEMENT varargs
+2. 64KB file limit for native-read-file - INCREASE buffer or stream
+3. Inlining disabled (variable capture bug) - FIX the bug
+4. Stack frame: 2KB per call - REDUCE or make dynamic
+5. arm64 package missing at Stage 1 runtime - INCLUDE in build
+
+**When you encounter one of these, fix it. Do not add to this list.**
 
 ### Debugging Reference
 
