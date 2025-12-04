@@ -2893,65 +2893,91 @@
                                    (cons (cons name addr) acc)))))
 
 (defun flatten-code-keep-markers-and-calls (code)
-  "Flatten code lists but keep both :extern-call, :call-fn, :tco-branch, :loop-start, :loop-continue and :fn-label markers with positions."
-  (labels ((flatten (items pos acc)
-             (if (null items)
-                 (reverse acc)
-                 (let ((item (car items)))
-                   (cond
-                     ;; Extern call marker - reserve 4 bytes for BL instruction
-                     ((and (consp item) (eq (car item) :extern-call))
-                      (let ((marker (list :extern-call (cadr item) pos)))
-                        (flatten (cdr items)
-                                 (+ pos 4)
-                                 (cons 0 (cons 0 (cons 0 (cons 0 (cons marker acc))))))))
-                     ;; Function call marker - reserve 4 bytes for BL instruction
-                     ((and (consp item) (eq (car item) :call-fn))
-                      (let ((marker (list :call-fn (cadr item) pos)))
-                        (flatten (cdr items)
-                                 (+ pos 4)
-                                 (cons 0 (cons 0 (cons 0 (cons 0 (cons marker acc))))))))
-                     ;; TCO branch marker - reserve 4 bytes for B instruction
-                     ((and (consp item) (eq (car item) :tco-branch))
-                      (let ((marker (list :tco-branch (cadr item) pos)))
-                        (flatten (cdr items)
-                                 (+ pos 4)
-                                 (cons 0 (cons 0 (cons 0 (cons 0 (cons marker acc))))))))
-                     ;; Loop start marker - records position for loop continue to jump to
-                     ;; No bytes emitted, just position recorded
-                     ((and (consp item) (eq (car item) :loop-start))
-                      (let ((marker (list :loop-start pos)))
-                        (flatten (cdr items) pos (cons marker acc))))
-                     ;; Loop continue marker - reserve 4 bytes for B instruction
-                     ((and (consp item) (eq (car item) :loop-continue))
-                      (let ((marker (list :loop-continue pos)))
-                        (flatten (cdr items)
-                                 (+ pos 4)
-                                 (cons 0 (cons 0 (cons 0 (cons 0 (cons marker acc))))))))
-                     ;; Function label marker - used by GC runtime
-                     ;; Just record position, no bytes generated
-                     ((and (consp item) (eq (car item) :fn-label))
-                      (let ((marker (list :fn-label (cadr item) pos)))
-                        (flatten (cdr items)
-                                 pos
-                                 (cons marker acc))))
-                    ;; Internal label marker - GC internal jumps use hardcoded offsets
-                    ;; Skip entirely, no bytes, no position change
-                    ((and (consp item) (eq (car item) :label))
-                     (flatten (cdr items) pos acc))
-                     ;; Nested list
-                     ((consp item)
-                      (let* ((flattened (flatten item 0 nil))
-                             (size (length flattened)))
-                        (flatten (cdr items)
-                                 (+ pos size)
-                                 (append (reverse flattened) acc))))
-                     ;; Byte
-                     (t
-                      (flatten (cdr items)
-                               (+ pos 1)
-                               (cons item acc))))))))
-    (flatten code 0 nil)))
+  "Flatten code lists but keep both :extern-call, :call-fn, :tco-branch, :loop-start, :loop-continue and :fn-label markers with positions.
+   ITERATIVE version using explicit work stack to avoid deep recursion."
+  ;; Work stack entries: (items pos acc parent-state)
+  ;; parent-state: nil or (remaining-items parent-pos parent-acc parent-parent)
+  (let ((work-stack (list (list code 0 nil nil))))
+    (loop
+      (when (null work-stack)
+        (return nil))  ; Should not reach here
+      (let* ((state (car work-stack))
+             (items (first state))
+             (pos (second state))
+             (acc (third state))
+             (parent (fourth state)))
+        (setf work-stack (cdr work-stack))
+        (cond
+          ;; Done with current list
+          ((null items)
+           (if parent
+               ;; Return to parent with flattened result
+               (let* ((flattened (reverse acc))
+                      (size (length flattened))
+                      (parent-items (first parent))
+                      (parent-pos (second parent))
+                      (parent-acc (third parent))
+                      (parent-parent (fourth parent)))
+                 (push (list parent-items
+                             (+ parent-pos size)
+                             (append (reverse flattened) parent-acc)
+                             parent-parent)
+                       work-stack))
+               ;; Top level done - return result
+               (return (reverse acc))))
+          ;; Process next item
+          (t
+           (let ((item (car items)))
+             (cond
+               ;; Extern call marker - reserve 4 bytes for BL instruction
+               ((and (consp item) (eq (car item) :extern-call))
+                (let ((marker (list :extern-call (cadr item) pos)))
+                  (push (list (cdr items)
+                              (+ pos 4)
+                              (cons 0 (cons 0 (cons 0 (cons 0 (cons marker acc)))))
+                              parent)
+                        work-stack)))
+               ;; Function call marker - reserve 4 bytes for BL instruction
+               ((and (consp item) (eq (car item) :call-fn))
+                (let ((marker (list :call-fn (cadr item) pos)))
+                  (push (list (cdr items)
+                              (+ pos 4)
+                              (cons 0 (cons 0 (cons 0 (cons 0 (cons marker acc)))))
+                              parent)
+                        work-stack)))
+               ;; TCO branch marker - reserve 4 bytes for B instruction
+               ((and (consp item) (eq (car item) :tco-branch))
+                (let ((marker (list :tco-branch (cadr item) pos)))
+                  (push (list (cdr items)
+                              (+ pos 4)
+                              (cons 0 (cons 0 (cons 0 (cons 0 (cons marker acc)))))
+                              parent)
+                        work-stack)))
+               ;; Loop start marker - records position for loop continue to jump to
+               ((and (consp item) (eq (car item) :loop-start))
+                (let ((marker (list :loop-start pos)))
+                  (push (list (cdr items) pos (cons marker acc) parent) work-stack)))
+               ;; Loop continue marker - reserve 4 bytes for B instruction
+               ((and (consp item) (eq (car item) :loop-continue))
+                (let ((marker (list :loop-continue pos)))
+                  (push (list (cdr items)
+                              (+ pos 4)
+                              (cons 0 (cons 0 (cons 0 (cons 0 (cons marker acc)))))
+                              parent)
+                        work-stack)))
+               ;; Function label marker - used by GC runtime
+               ((and (consp item) (eq (car item) :fn-label))
+                (let ((marker (list :fn-label (cadr item) pos)))
+                  (push (list (cdr items) pos (cons marker acc) parent) work-stack)))
+               ;; Internal label marker - skip entirely
+               ((and (consp item) (eq (car item) :label))
+                (push (list (cdr items) pos acc parent) work-stack))
+               ;; Nested list - push current state as parent, process nested list
+               ((consp item)
+                (push (list item 0 nil (list (cdr items) pos acc parent)) work-stack))
+               ;; Byte
+               (t
+                (push (list (cdr items) (+ pos 1) (cons item acc) parent) work-stack))))))))))
 
 (defun flatten-all-calls (code fn-alist stub-alist code-base-addr)
   "Replace :call-fn, :extern-call, :loop-start/:loop-continue markers with actual instructions.
@@ -3060,28 +3086,47 @@
 (defun flatten-code-keep-markers (code)
   "Flatten nested code lists but keep :extern-call markers intact.
    Tracks position and transforms (:extern-call name) to (:extern-call name pos).
-   Each marker followed by 4 zeros = 4 bytes total for BL instruction."
-  (labels ((flatten (items pos acc)
-             (if (null items)
-                 (reverse acc)
-                 (let ((item (car items)))
-                   (cond
-                     ((and (consp item) (eq (car item) :extern-call))
-                      (let ((marker (list :extern-call (cadr item) pos)))
-                        (flatten (cdr items)
-                                 (+ pos 4)
-                                 (cons 0 (cons 0 (cons 0 (cons 0 (cons marker acc))))))))
-                     ((consp item)
-                      (let* ((flattened (flatten item 0 nil))
-                             (size (length flattened)))
-                        (flatten (cdr items)
-                                 (+ pos size)
-                                 (append (reverse flattened) acc))))
-                     (t
-                      (flatten (cdr items)
-                               (+ pos 1)
-                               (cons item acc))))))))
-    (flatten code 0 nil)))
+   Each marker followed by 4 zeros = 4 bytes total for BL instruction.
+   ITERATIVE version using explicit work stack to avoid deep recursion."
+  (let ((work-stack (list (list code 0 nil nil))))
+    (loop
+      (when (null work-stack)
+        (return nil))
+      (let* ((state (car work-stack))
+             (items (first state))
+             (pos (second state))
+             (acc (third state))
+             (parent (fourth state)))
+        (setf work-stack (cdr work-stack))
+        (cond
+          ((null items)
+           (if parent
+               (let* ((flattened (reverse acc))
+                      (size (length flattened))
+                      (parent-items (first parent))
+                      (parent-pos (second parent))
+                      (parent-acc (third parent))
+                      (parent-parent (fourth parent)))
+                 (push (list parent-items
+                             (+ parent-pos size)
+                             (append (reverse flattened) parent-acc)
+                             parent-parent)
+                       work-stack))
+               (return (reverse acc))))
+          (t
+           (let ((item (car items)))
+             (cond
+               ((and (consp item) (eq (car item) :extern-call))
+                (let ((marker (list :extern-call (cadr item) pos)))
+                  (push (list (cdr items)
+                              (+ pos 4)
+                              (cons 0 (cons 0 (cons 0 (cons 0 (cons marker acc)))))
+                              parent)
+                        work-stack)))
+               ((consp item)
+                (push (list item 0 nil (list (cdr items) pos acc parent)) work-stack))
+               (t
+                (push (list (cdr items) (+ pos 1) (cons item acc) parent) work-stack))))))))))
 
 #-sbcl
 (defun flatten-extern-calls (code stub-alist code-base-addr)

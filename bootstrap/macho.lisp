@@ -264,7 +264,7 @@
    (cons (buf-u32-le +LC-MAIN+)
          (cons (buf-u32-le 24)
                (cons (buf-u64-le entryoff)
-                     (cons (buf-u64-le 0)  ; stacksize
+                     (cons (buf-u64-le #x4000000)  ; stacksize = 64MB for deep recursion
                            nil))))))
 
 (defun buf-load-dylib-command (path)
