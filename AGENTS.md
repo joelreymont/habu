@@ -81,6 +81,17 @@ The project has an MCP server configured in `.mcp.json`. Use these tools instead
 | `lisp_env_slots` | Show environment slot layout | `x20` (hex), `count` |
 | `lisp_stack_frames` | Walk stack frames | `binary`, `fp`, `sp` (hex), `depth` |
 
+### Token Efficiency
+
+**CRITICAL: Minimize token usage in all tool calls.**
+
+- **NEVER trace low-level functions** that get called thousands of times (e.g., `temp-slot`, `emit-byte`)
+- **Trace high-level entry points only** (e.g., `habu:deliver`, `habu:codegen-fn`)
+- **Use targeted queries** - don't dump entire data structures
+- **Limit output** - use `head_limit` in Grep, small `count` values
+- **Read specific line ranges** - use `offset`/`limit` in Read tool
+- **Avoid redundant reads** - don't re-read files you've already seen
+
 ### When to Use Which Tool
 
 **CRITICAL: For finding Lisp identifiers** (functions, variables, macros, IR tags):

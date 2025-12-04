@@ -974,7 +974,7 @@
 (defun temp-slot (depth)
   "Return stack offset for temp depth. Used when registers exhausted or across calls."
   (let ((off (+ #x40 (* depth 8))))  ; #x40 = temp base (64)
-    (if (>= off #x2000)               ; #x2000 = temp guard (8192), allows 1016 slots
+    (if (>= off #x8000)               ; #x8000 = temp guard (32768), allows ~4000 slots
         (error "Too many temp slots: ~A" depth)
         off)))
 
