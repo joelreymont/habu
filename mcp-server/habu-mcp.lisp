@@ -1288,7 +1288,7 @@
         (note (jget args "note")))
     (let ((cmd-args (list "close" id)))
       (when (and note (not (string= note "")))
-        (setf cmd-args (append cmd-args (list "--notes" note))))
+        (setf cmd-args (append cmd-args (list "--reason" note))))
       (run-bd-command cmd-args))))
 
 (defun tool-lisp-lldb-script (args)
