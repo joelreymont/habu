@@ -38,10 +38,8 @@
    ;; Public compiler API (clean names)
    #:read-all           ; Parse source string to forms
    #:compile-program    ; Compile forms to ARM64 bytecode
-   #:deliver            ; Compile source to native executable
+   #:deliver            ; Compile source to native executable (mmap heap)
    #:deliver-file       ; Compile file to native executable
-   #:deliver-mmap       ; Compile to executable without embedded heap
-   #:deliver-file-mmap  ; Compile file without embedded heap
    ;; Disassembler
    #:disassemble
    #:disasm
@@ -65,11 +63,7 @@
    #:self-compile
    ;; Codegen internals
    #:reset-symbol-table #:prologue #:epilogue
-   ;; Mach-O and linking
-   #:write-macho-executable-with-imports-and-heap
-   #:build-macho-executable-with-imports-and-heap
-   #:wrap-bytecode-with-heap-for-imports
-   ;; Mmap heap (no __DATA segment in binary)
+   ;; Mach-O and linking (mmap heap)
    #:mmap-heap-init-code
    #:wrap-bytecode-with-mmap-heap
    #:build-macho-executable-mmap-heap
