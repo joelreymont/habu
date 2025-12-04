@@ -1190,7 +1190,8 @@
               (arm64:add :x0 :x0 4 :imm t)))))        ; string tag
 
     ;; String-equal: compare two strings for equality
-    ;; Returns tagged fixnum: 16 (true) or 0 (false)
+    ;; Returns tagged fixnum: 16 (true) or 6 (nil/false)
+    ;; Handles nil: (string-equal nil nil) = t, (string-equal nil str) = nil
     ((has-tag ir 'string-equal-ir)
      (let* ((str1-ir (cadr ir))
             (str2-ir (caddr ir))
@@ -1202,38 +1203,54 @@
               ;; Spill str1
               (arm64:str :x0 :sp :offset spill-off)
               str2-code
+              ;; x9 = str2 (tagged), x0 still has str2
+              (arm64:mov :x9 :x0)
+              ;; x0 = str1 (tagged)
+              (arm64:ldr :x0 :sp :offset spill-off)
+              ;; Check for nil (tag 6): if str1 == 6 or str2 == 6
+              (arm64:cmp :x0 6 :imm t)           ; is str1 nil?
+              (arm64:b.eq 4)                     ; yes, jump to nil_check (+4)
+              (arm64:cmp :x9 6 :imm t)           ; is str2 nil?
+              (arm64:b.eq 25)                    ; yes, str1!=nil so return false (+25)
+              (arm64:b 5)                        ; both non-nil, skip to compare (+5)
+              ;; nil_check: str1 is nil
+              (arm64:cmp :x9 6 :imm t)           ; is str2 also nil?
+              (arm64:b.ne 22)                    ; no, return false (+22)
+              ;; Both are nil, return true
+              (movz 0 16)                        ; x0 = 16 (tagged 1)
+              (arm64:b 21)                       ; jump to end (+21)
+              ;; compare: both are valid strings
               ;; x2 = str2 base (untagged)
-              (arm64:and* :x2 :x0 -16 :imm t)               ; x2 = str2 & ~0xF
+              (arm64:and* :x2 :x9 -16 :imm t)              ; x2 = str2 & ~0xF
               ;; x1 = str1 base (untagged)
-              (arm64:ldr :x0 :sp :offset spill-off)  ; x0 = str1 (tagged)
-              (arm64:and* :x1 :x0 -16 :imm t)               ; x1 = str1 & ~0xF
+              (arm64:and* :x1 :x0 -16 :imm t)              ; x1 = str1 & ~0xF
               ;; Load lengths
-              (arm64:ldr :x3 :x1 :offset 0)           ; x3 = len1
-              (arm64:ldr :x4 :x2 :offset 0)           ; x4 = len2
+              (arm64:ldr :x3 :x1 :offset 0)          ; x3 = len1
+              (arm64:ldr :x4 :x2 :offset 0)          ; x4 = len2
               ;; Compare lengths
-              (arm64:cmp :x3 :x4)                ; cmp len1, len2
-              (arm64:b.ne 14)                    ; if len1 != len2, jump to return_false
+              (arm64:cmp :x3 :x4)               ; cmp len1, len2
+              (arm64:b.ne 14)                   ; if len1 != len2, jump to return_false
               ;; Lengths equal, setup for loop
-              (arm64:add :x1 :x1 8 :imm t)              ; x1 = str1 data start
-              (arm64:add :x2 :x2 8 :imm t)              ; x2 = str2 data start
-              (movz 4 0)                   ; x4 = 0 (loop counter)
+              (arm64:add :x1 :x1 8 :imm t)             ; x1 = str1 data start
+              (arm64:add :x2 :x2 8 :imm t)             ; x2 = str2 data start
+              (movz 4 0)                  ; x4 = 0 (loop counter)
               ;; loop_start:
-              (arm64:cmp :x4 :x3)                ; cmp counter, len
-              (arm64:b.ge 7)                     ; if counter >= len, return_true
+              (arm64:cmp :x4 :x3)               ; cmp counter, len
+              (arm64:b.ge 7)                    ; if counter >= len, return_true
               ;; Load bytes from both strings
-              (arm64:ldrb :x5 :x1 :x4 :reg t)             ; x5 = str1[counter]
-              (arm64:ldrb :x6 :x2 :x4 :reg t)             ; x6 = str2[counter]
+              (arm64:ldrb :x5 :x1 :x4 :reg t)            ; x5 = str1[counter]
+              (arm64:ldrb :x6 :x2 :x4 :reg t)            ; x6 = str2[counter]
               ;; Compare bytes
-              (arm64:cmp :x5 :x6)                ; cmp char1, char2
-              (arm64:b.ne 5)                     ; if not equal, return_false
+              (arm64:cmp :x5 :x6)               ; cmp char1, char2
+              (arm64:b.ne 5)                    ; if not equal, return_false
               ;; Increment counter
-              (arm64:add :x4 :x4 1 :imm t)              ; x4++
-              (arm64:b -6)                 ; back to loop_start
+              (arm64:add :x4 :x4 1 :imm t)             ; x4++
+              (arm64:b -7)                ; back to loop_start (-7)
               ;; return_true:
-              (movz 0 16)                  ; x0 = 16 (tagged 1)
-              (arm64:b 2)                  ; skip return_false
+              (movz 0 16)                 ; x0 = 16 (tagged 1)
+              (arm64:b 2)                 ; skip return_false
               ;; return_false:
-              (movz 0 6)))))               ; x0 = 6 (nil tag)
+              (movz 0 6)))))
 
     ;; Make-vector: allocate vector on heap
     ;; Vector layout: [length (8 bytes)] [data (n * 8 bytes)]
@@ -2783,8 +2800,8 @@
            (extern-calls (collect-extern-calls bytes-with-markers))
            (imports (get-unique-imports extern-calls))
            (imports (if (null imports) '("_exit") imports))
-           ;; Calculate stubs
-           (code-offset #x400)
+           ;; Calculate stubs - use same code-offset as macho.lisp
+           (code-offset (mmap-heap-code-offset))
            (exact-flat-size (count-actual-bytes bytes-with-markers))
            (exact-code-size (+ exact-flat-size wrapper-size))
            (stubs-offset-unaligned (+ code-offset exact-code-size))
@@ -2827,7 +2844,7 @@
    To find function from PC: offset = PC - 0x100000454 (base + code_offset + wrapper)"
   (let ((map-path (concatenate 'string output-path ".map"))
         (wrapper-size 216)  ;; mmap heap wrapper (5+40+2+7)*4
-        (code-offset #x400))
+        (code-offset (mmap-heap-code-offset)))
     (with-open-file (f map-path :direction :output :if-exists :supersede)
       ;; Header comment
       (format f ";; Symbol map for ~A~%" output-path)
@@ -2852,13 +2869,14 @@
 
 (defun count-actual-bytes (items)
   "Count actual bytes in a flattened list, excluding markers.
-   Markers are conses like (:extern-call ...), (:fn-label ...), etc."
+   Markers are conses like (:extern-call ...), (:fn-label ...), etc.
+   Note: placeholder zeros for call markers are already in the list."
   (labels ((count-bytes (lst acc)
              (if (null lst)
                  acc
                  (let ((item (car lst)))
                    (if (consp item)
-                       ;; Marker - don't count
+                       ;; Marker - don't count (placeholder zeros already counted)
                        (count-bytes (cdr lst) acc)
                        ;; Byte - count it
                        (count-bytes (cdr lst) (+ acc 1)))))))

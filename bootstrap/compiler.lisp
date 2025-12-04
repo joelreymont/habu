@@ -171,11 +171,13 @@
 #-sbcl
 (defun string-equal (s1 s2)
   "Compare two strings character by character - pure Habu implementation"
-  (let ((len1 (string-length s1))
-        (len2 (string-length s2)))
-    (if (= len1 len2)
-        (string-equal-iter s1 s2 0 len1)
-        nil)))
+  (if (or (null s1) (null s2))
+      (and (null s1) (null s2))  ; nil = nil, nil != string
+      (let ((len1 (string-length s1))
+            (len2 (string-length s2)))
+        (if (= len1 len2)
+            (string-equal-iter s1 s2 0 len1)
+            nil))))
 
 #-sbcl
 (defun assoc (key alist)

@@ -142,6 +142,29 @@
         val
         (+ val (- alignment rem)))))
 
+(defun mmap-heap-code-offset ()
+  "Calculate code offset for mmap-heap executables.
+   This must match the calculation in build-macho-executable-mmap-heap."
+  (let* ((header-size 32)
+         (pagezero-cmd-size 72)
+         (text-cmd-size (+ 72 (* 2 80)))
+         (data-const-cmd-size (+ 72 80))
+         (linkedit-cmd-size 72)
+         (dylinker-cmd-size (align-up (+ 12 15 1) 8))  ; "/usr/lib/dyld"
+         (uuid-cmd-size 24)
+         (build-version-cmd-size 24)
+         (main-cmd-size 24)
+         (load-dylib-cmd-size (align-up (+ 24 27 1) 8))  ; "/usr/lib/libSystem.B.dylib"
+         (chained-fixups-cmd-size 16)
+         (exports-trie-cmd-size 16)
+         (symtab-cmd-size 24)
+         (dysymtab-cmd-size 80)
+         (sizeofcmds (+ pagezero-cmd-size text-cmd-size data-const-cmd-size
+                       linkedit-cmd-size dylinker-cmd-size uuid-cmd-size build-version-cmd-size
+                       main-cmd-size load-dylib-cmd-size chained-fixups-cmd-size
+                       exports-trie-cmd-size symtab-cmd-size dysymtab-cmd-size)))
+    (align-up (+ header-size sizeofcmds 16) 64)))
+
 ;;; ============================================================
 ;;; Mach-O Header (32 bytes)
 ;;; ============================================================
