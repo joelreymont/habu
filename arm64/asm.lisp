@@ -12,7 +12,7 @@
    ;; Register keyword resolver
    #:reg
    ;; Data movement
-   #:movz #:movk #:mov #:adrp #:adr #:add-lo12
+   #:movz #:movk #:movn #:mov #:adrp #:adr #:add-lo12
    ;; Arithmetic
    #:add #:sub #:subs #:mul #:sdiv #:neg
    ;; Bitwise
@@ -212,6 +212,15 @@
   "MOVK Xd, #imm{, LSL #shift}
    Move wide with keep. LSL must be 0, 16, 32, or 48."
   (encode (logior #xF2800000
+                  (ash (ash lsl -4) 21)
+                  (ash (logand imm #xFFFF) 5)
+                  (reg rd))))
+
+(defun movn (rd imm &key (lsl 0))
+  "MOVN Xd, #imm{, LSL #shift}
+   Move wide with NOT. Result is ~(imm << shift).
+   Example: (movn :x0 15) produces -16 in x0."
+  (encode (logior #x92800000
                   (ash (ash lsl -4) 21)
                   (ash (logand imm #xFFFF) 5)
                   (reg rd))))

@@ -5015,7 +5015,8 @@
               (arm64:lsl :x0 :x0 4 :imm t)  ; tag as fixnum
               (arm64:b 2)              ; skip error case
               ;; Error: return -1 as fixnum (-1 << 4 = -16)
-              (arm64:sub :x0 :xzr 16 :imm t)))))  ; x0 = xzr - 16 = -16
+              ;; Use MOVN: ~15 = -16
+              (arm64:movn :x0 15)))))  ; x0 = ~15 = -16
     ((has-tag ir 'sys-read-ir)
      ;; sys-read-ir = (sys-read-ir fd-ir buf-ir len-ir)
      ;; Calls _read(fd, buf, len) -> returns bytes read (or-1)
