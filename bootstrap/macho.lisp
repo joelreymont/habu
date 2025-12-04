@@ -818,10 +818,11 @@
      init-bytes
 
      ;; Set up code base and call user code
-     ;; ADR offset: skip BL (1) + epilogue (7) = 9 to reach user code
-     ;; BL offset: skip epilogue (7) + 1 = 8 to reach user code
+     ;; ADR uses byte offset: BL (4 bytes) + epilogue (7*4=28 bytes) = 32 bytes
+     ;; Plus 4 bytes for ADR instruction itself = 36 bytes to user code
+     ;; BL offset: skip epilogue (7) + 1 = 8 instructions to reach user code
      (buf-append-all
-      (list (arm64:adr :code-base 9)                ; adr x26, +9 (code base = user code start)
+      (list (arm64:adr :code-base 36)               ; adr x26, +36 (code base = user code start)
             (arm64:bl user-code-offset)))   ; bl user_code
 
      ;; Epilogue: untag result and restore
