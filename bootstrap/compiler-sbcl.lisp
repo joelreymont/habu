@@ -6113,7 +6113,8 @@
     (append pc bc (arm64:ret))))
 
 (defun code-size (code)
-  "Calculate byte size of code that may contain call and loop markers."
+  "Calculate byte size of code that may contain call and loop markers.
+   Handles nested lists (from ARM64 instruction encoders)."
   (labels ((calc (items acc)
              (if (null items)
                  acc
@@ -6129,7 +6130,11 @@
                                (eq (car item) :loop-continue)))
                       ;; 4-byte instructions
                       (calc (cdr items) (+ acc 4)))
+                     ((consp item)
+                      ;; Nested list - recurse into it
+                      (calc (cdr items) (+ acc (calc item 0))))
                      (t
+                      ;; Single byte
                       (calc (cdr items) (+ acc 1))))))))
     (calc code 0)))
 
