@@ -4962,7 +4962,7 @@
               (arm64:lsr :x0 :x0 4 :imm t)
               ;; Load char -> x3, untag, store byte to stack
               (arm64:ldr :x3 :sp :offset (temp-slot (+ td 1)))
-              (arm64:lsr :x3 3 4 :imm t)
+              (arm64:lsr :x3 :x3 4 :imm t)
               (arm64:strb :x3 :sp (temp-slot (+ td 1)))  ; store byte
               ;; x1 = pointer to the byte on stack
               (arm64:add :x1 :sp (temp-slot (+ td 1)) :imm t)
