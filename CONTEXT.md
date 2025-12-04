@@ -1,17 +1,22 @@
 # Habu Self-Hosting Lisp Compiler - Context
 
-**Last Updated**: December 3, 2025
+**Last Updated**: December 4, 2025
 **Test Results**: 44 passed, 0 failed, 4 skipped (with regalloc enabled)
 **Stage 1**: Compiles and runs (1,101,728 bytes with &key support)
 
 ## Current Work
 
-All core tests passing. MCP server integrated and working.
+All core tests passing. MCP server fixed and stable.
+
+**Recent Changes**:
+- Fixed MCP server warnings causing disconnections (warning suppression, format bug)
+- Cleaned up native-jit.lisp to avoid sys-write-char (crashes in compiled binaries)
+- Added string-based output functions for native REPL
 
 **Next Steps**:
-1. Close stale beads related to register allocator (tests now pass)
-2. Work on native reader features (4 skipped tests need it)
-3. Continue toward full self-hosting
+1. Build echo REPL binary (defvar handling needed for globals)
+2. Build Stage 1 and verify it works
+3. Fix sys-write-char codegen bug (deferred)
 
 ## Work Items
 
@@ -55,22 +60,30 @@ arm64/
 
 ### Memory Layout at x27
 Simple GC mode:
-- `[x27+0]`: from_start
-- `[x27+8]`: to_start
-- `[x27+16]`: from_end
-- `[x27+24]`: half_heap_size
+- `[x27+0]`: intern_table (tagged pointer)
+- `[x27+8]`: lambda_counter (untagged integer)
+- `[x27+16]`: from_end (GC trigger address)
+- `[x27+24]`: half_heap_size (constant)
+- `[x27+32]`: space_flag (0 or half_heap_size)
+- `[x27+40]`: gc_state (0=idle)
 - `[x27+48]`: symbol_counter
 - `[x27+56]`: symbol_table
-- `[x27+64]`: heap data starts
+- `[x27+64]`: argc (command-line argument count)
+- `[x27+72]`: argv (command-line argument vector)
+- `[x27+80]`: packages (package list for native reader)
+- `[x27+88]`: current-package (current package name)
+- `[x27+96]`: stack_base (initial SP for stack scanning)
+- `[x27+104]`: reserved (for 16-byte alignment)
+- `[x27+112]`: heap data starts (MUST be 16-byte aligned for tag masking)
 
 Generational GC mode (extends above):
-- `[x27+80]`: nursery-start
-- `[x27+88]`: nursery-end (also old-space-start)
-- `[x27+96]`: card-table-start
-- `[x27+104]`: old-space-half-size
-- `[x27+112]`: old-space-flag
-- `[x27+120]`: old-space-alloc
-- `[x27+128]`: heap data starts
+- `[x27+128]`: nursery-start
+- `[x27+136]`: nursery-end (also old-space-start)
+- `[x27+144]`: card-table-start
+- `[x27+152]`: old-space-half-size
+- `[x27+160]`: old-space-flag
+- `[x27+168]`: old-space-alloc
+- `[x27+176]`: heap data starts
 
 ### Key Conventions
 

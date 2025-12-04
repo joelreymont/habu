@@ -45,6 +45,8 @@ Use these tools instead of launching SBCL manually with `--load` or `--eval`.
 
 **Paren Balance Checking**: When you encounter paren errors during compilation, use `lisp_paren_check` to diagnose. It reports exact line/column and surrounding context.
 
+**Searching for Lisp Identifiers**: Use `lisp_apropos` to find symbols in the running Lisp image. This is more efficient than grepping source files when you need to know if a symbol exists, what package it's in, or whether it's bound/fbound. Use Grep for finding source code patterns and implementations.
+
 ## Development Guidelines
 
 ### Problem Solving
