@@ -2202,6 +2202,31 @@
          ;; make-string-from-vector - convert vector of char codes to string
          ((eq op 'make-string-from-vector)
           (list 'make-string-from-vector-ir (sys:compile (cadr expr) env fenv)))
+         ;; make-string - CL-compatible: (make-string size &key initial-element)
+         ;; Simplified: (make-string n) or (make-string n init-char-code)
+         ((eq op 'make-string)
+          (if (cddr expr)
+              ;; (make-string n init-char)
+              (list 'make-string-ir
+                    (sys:compile (cadr expr) env fenv)
+                    (sys:compile (caddr expr) env fenv))
+              ;; (make-string n) - initialize to 0
+              (list 'make-string-ir
+                    (sys:compile (cadr expr) env fenv)
+                    (list 'lit 0))))
+         ;; string-set! - set character at index (consistent with string-ref)
+         ;; (string-set! string index char-code) -> returns char-code
+         ((eq op 'string-set!)
+          (list 'string-set!-ir
+                (sys:compile (cadr expr) env fenv)
+                (sys:compile (caddr expr) env fenv)
+                (sys:compile (cadddr expr) env fenv)))
+         ;; substring - CL subseq for strings: (substring s start end)
+         ((eq op 'substring)
+          (list 'substring-ir
+                (sys:compile (cadr expr) env fenv)
+                (sys:compile (caddr expr) env fenv)
+                (sys:compile (cadddr expr) env fenv)))
          ;; buffer-to-string - convert raw byte buffer to string (for sys-read data)
          ((eq op 'buffer-to-string)
           (list 'buffer-to-string-ir
@@ -3256,6 +3281,12 @@
     ((has-tag ir 'vector-length-ir) (ir-may-call? (cadr ir)))
     ((has-tag ir 'string-length-ir) (ir-may-call? (cadr ir)))
     ((has-tag ir 'string-ref-ir) (or (ir-may-call? (cadr ir)) (ir-may-call? (caddr ir))))
+    ;; String mutation/creation
+    ((has-tag ir 'string-set!-ir) (or (ir-may-call? (cadr ir))
+                                      (ir-may-call? (caddr ir))
+                                      (ir-may-call? (cadddr ir))))
+    ((has-tag ir 'make-string-ir) t)    ; allocates on heap
+    ((has-tag ir 'substring-ir) t)      ; allocates on heap
     ;; Buffer byte operations
     ((has-tag ir 'buffer-byte-set-ir) (or (ir-may-call? (cadr ir))
                                           (ir-may-call? (caddr ir))
@@ -3743,6 +3774,136 @@
               (arm64:ldrb :x0 :x1 :x0 :reg t)             ; x0 = byte value (zero-extended)
               ;; Tag as fixnum: x0 = x0 << 4
               (arm64:lsl :x0 :x0 4 :imm t)))))
+    ;; string-set!-ir - set character at index (inline)
+    ((has-tag ir 'string-set!-ir)
+     ;; string-set!-ir = (string-set!-ir str-ir idx-ir char-ir)
+     ;; String layout: [length (8 bytes)] [char data]
+     ;; Address = (str & ~0xF) + 8 + (idx >> 4)
+     ;; Stores byte at that address, returns char-code
+     (let* ((str-ir (cadr ir))
+            (idx-ir (caddr ir))
+            (char-ir (cadddr ir))
+            (str-slot (temp-slot td))
+            (idx-slot (temp-slot (+ td 1)))
+            (char-slot (temp-slot (+ td 2)))
+            (nd (+ td 3))
+            (str-code (codegen str-ir rtaddrs fnoffs nd))
+            (save-str (arm64:str :x0 :sp :offset str-slot))
+            (idx-code (codegen idx-ir rtaddrs fnoffs nd))
+            (save-idx (arm64:str :x0 :sp :offset idx-slot))
+            (char-code (codegen char-ir rtaddrs fnoffs nd))
+            (save-char (arm64:str :x0 :sp :offset char-slot)))
+       (append-all
+        (list str-code save-str idx-code save-idx char-code save-char
+              ;; Load str -> x1, clear tag
+              (arm64:ldr :x1 :sp :offset str-slot)
+              (arm64:and* :x1 :x1 -16 :imm t)         ; clear tag
+              ;; Load idx -> x2, untag
+              (arm64:ldr :x2 :sp :offset idx-slot)
+              (arm64:lsr :x2 :x2 4 :imm t)            ; untag idx
+              (arm64:add :x2 :x2 8 :imm t)            ; offset = 8 + idx
+              ;; Load char -> x0, untag, store byte
+              (arm64:ldr :x0 :sp :offset char-slot)
+              (arm64:lsr :x0 :x0 4 :imm t)            ; untag char
+              (arm64:strb :x0 :x1 :x2 :reg t)         ; store byte at str+offset
+              ;; Return char as tagged fixnum
+              (arm64:lsl :x0 :x0 4 :imm t)))))
+    ;; make-string-ir - allocate string of given length (inline)
+    ((has-tag ir 'make-string-ir)
+     ;; make-string-ir = (make-string-ir len-ir init-char-ir)
+     ;; Allocates string on heap: [length (8 bytes)][char data (len bytes)]
+     ;; Initializes all chars to init-char
+     (let* ((len-ir (cadr ir))
+            (init-ir (caddr ir))
+            (len-slot (temp-slot td))
+            (nd (+ td 1))
+            (len-code (codegen len-ir rtaddrs fnoffs nd))
+            (save-len (arm64:str :x0 :sp :offset len-slot))
+            (init-code (codegen init-ir rtaddrs fnoffs nd)))
+       (append-all
+        (list len-code save-len init-code
+              ;; x0 = init char (tagged), save it
+              (arm64:mov :x3 :x0)                     ; x3 = init (tagged)
+              (arm64:lsr :x3 :x3 4 :imm t)            ; x3 = init (untagged)
+              ;; Load len -> x1 (untagged)
+              (arm64:ldr :x1 :sp :offset len-slot)
+              (arm64:lsr :x1 :x1 4 :imm t)            ; x1 = len (untagged)
+              ;; Calculate allocation size: 8 (length field) + len, align to 16
+              (arm64:add :x2 :x1 8 :imm t)            ; x2 = 8 + len
+              (arm64:add :x2 :x2 15 :imm t)           ; x2 = size + 15
+              (arm64:and* :x2 :x2 -16 :imm t)         ; x2 = aligned size
+              ;; Allocate: x0 = x28, x28 += size
+              (arm64:mov :x0 :x28)                    ; x0 = alloc ptr
+              (arm64:add :x28 :x28 :x2)               ; bump allocator
+              ;; Store length at [x0]
+              (arm64:str :x1 :x0 :offset 0)           ; [x0] = len
+              ;; Initialize chars: loop from 0 to len-1
+              ;; x4 = current offset (starts at 8)
+              (arm64:movz :x4 8)                      ; x4 = 8 (first char offset)
+              ;; Loop: while x4 < 8 + len
+              (arm64:add :x5 :x1 8 :imm t)            ; x5 = 8 + len (end offset)
+              ;; loop_start: (offset 0 from here)
+              (arm64:cmp :x4 :x5)                     ; cmp offset, end
+              (arm64:b.ge 4)                          ; if offset >= end, skip loop body (4 instrs)
+              (arm64:strb :x3 :x0 :x4 :reg t)         ; store init byte at x0+x4
+              (arm64:add :x4 :x4 1 :imm t)            ; x4++
+              (arm64:b -4)                            ; back to loop_start
+              ;; Tag result as string (tag 4)
+              ;; Note: use ADD instead of ORR since 4 is not a valid bitmask immediate
+              ;; This works because heap pointers are 16-byte aligned (low 4 bits = 0)
+              (arm64:add :x0 :x0 4 :imm t)))))
+    ;; substring-ir - extract substring (inline)
+    ((has-tag ir 'substring-ir)
+     ;; substring-ir = (substring-ir str-ir start-ir end-ir)
+     ;; Allocates new string of (end-start) length, copies chars
+     (let* ((str-ir (cadr ir))
+            (start-ir (caddr ir))
+            (end-ir (cadddr ir))
+            (str-slot (temp-slot td))
+            (start-slot (temp-slot (+ td 1)))
+            (end-slot (temp-slot (+ td 2)))
+            (nd (+ td 3))
+            (str-code (codegen str-ir rtaddrs fnoffs nd))
+            (save-str (arm64:str :x0 :sp :offset str-slot))
+            (start-code (codegen start-ir rtaddrs fnoffs nd))
+            (save-start (arm64:str :x0 :sp :offset start-slot))
+            (end-code (codegen end-ir rtaddrs fnoffs nd))
+            (save-end (arm64:str :x0 :sp :offset end-slot)))
+       (append-all
+        (list str-code save-str start-code save-start end-code save-end
+              ;; Load and untag params
+              (arm64:ldr :x1 :sp :offset str-slot)    ; x1 = str (tagged)
+              (arm64:and* :x1 :x1 -16 :imm t)         ; x1 = str ptr
+              (arm64:ldr :x2 :sp :offset start-slot)
+              (arm64:lsr :x2 :x2 4 :imm t)            ; x2 = start
+              (arm64:ldr :x3 :sp :offset end-slot)
+              (arm64:lsr :x3 :x3 4 :imm t)            ; x3 = end
+              ;; x4 = new length = end - start
+              (arm64:sub :x4 :x3 :x2)                 ; x4 = len
+              ;; Allocate new string: size = 8 + len, aligned
+              (arm64:add :x5 :x4 8 :imm t)            ; x5 = 8 + len
+              (arm64:add :x5 :x5 15 :imm t)
+              (arm64:and* :x5 :x5 -16 :imm t)         ; x5 = aligned size
+              (arm64:mov :x0 :x28)                    ; x0 = new str ptr
+              (arm64:add :x28 :x28 :x5)               ; bump allocator
+              ;; Store length at [x0]
+              (arm64:str :x4 :x0 :offset 0)
+              ;; Copy chars: src = x1 + 8 + start, dst = x0 + 8
+              (arm64:add :x6 :x1 8 :imm t)            ; x6 = src base
+              (arm64:add :x6 :x6 :x2)                 ; x6 = src base + start
+              (arm64:add :x7 :x0 8 :imm t)            ; x7 = dst base
+              ;; x8 = bytes copied (0 to len-1)
+              (arm64:movz :x8 0)
+              ;; copy_loop:
+              (arm64:cmp :x8 :x4)                     ; cmp copied, len
+              (arm64:b.ge 5)                          ; if copied >= len, skip 4 instrs to tag
+              (arm64:ldrb :x9 :x6 :x8 :reg t)         ; load byte from src+copied
+              (arm64:strb :x9 :x7 :x8 :reg t)         ; store to dst+copied
+              (arm64:add :x8 :x8 1 :imm t)            ; copied++
+              (arm64:b -5)                            ; back to copy_loop
+              ;; Tag result as string (tag 4)
+              ;; Note: use ADD instead of ORR since 4 is not a valid bitmask immediate
+              (arm64:add :x0 :x0 4 :imm t)))))
     ;; system-ir - execute shell command
     ((has-tag ir 'system-ir)
      ;; system-ir = (system-ir cmd-ir)
@@ -5868,7 +6029,10 @@
                     (has-tag ir 'sys-write-ir)
                     (has-tag ir 'sys-read-ir)
                     (has-tag ir 'sys-open-ir)
-                    (has-tag ir 'mem-set-byte-ir))
+                    (has-tag ir 'mem-set-byte-ir)
+                    ;; String operations with 3 args
+                    (has-tag ir 'string-set!-ir)
+                    (has-tag ir 'substring-ir))
                 (let ((arg1 (cadr ir))
                       (arg2 (caddr ir))
                       (arg3 (cadddr ir)))
@@ -5882,6 +6046,7 @@
                     (has-tag ir 'buffer-to-string-ir)
                     (has-tag ir 'string-ref-ir)
                     (has-tag ir 'string-equal-ir)
+                    (has-tag ir 'make-string-ir)
                     ;; JIT memory primitives with 2 args
                     (has-tag ir 'munmap-ir)
                     (has-tag ir 'sys-dcache-flush-ir)
