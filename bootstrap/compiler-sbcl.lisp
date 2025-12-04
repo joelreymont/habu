@@ -2042,6 +2042,9 @@
          ;; char-code - in Habu, characters ARE fixnums, so this is identity
          ((eq op 'char-code)
           (sys:compile (cadr expr) env fenv))
+         ;; code-char - in Habu, characters ARE fixnums, so this is identity
+         ((eq op 'code-char)
+          (sys:compile (cadr expr) env fenv))
          ;; string-append - concatenate two strings
          ;; Expands to: (let* ((s1 str1) (s2 str2)
          ;;                     (len1 (string-length s1)) (len2 (string-length s2))
