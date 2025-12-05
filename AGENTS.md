@@ -1,5 +1,20 @@
 # Habu Lisp Compiler - Agent Instructions
 
+## MANDATORY: CREATE ISSUES FOR ALL WORK
+
+**STOP. Before starting ANY task, create a beads issue with `bd-create`.**
+
+This is NOT optional. EVERY piece of work MUST have an issue:
+- Bug fixes: `bd-create --type bug`
+- Features: `bd-create --type feature`
+- Tasks: `bd-create --type task`
+
+**NO EXCEPTIONS. NO EXCUSES. NO "I'll create it later."**
+
+If you find yourself working without an issue, you are doing it wrong. Stop immediately and create one.
+
+The TodoWrite tool is for SESSION tracking only. Beads issues are the PERMANENT record of work.
+
 ## MCP Tools - USE THESE FIRST
 
 **STOP. Before using Bash, Grep, or any other tool, CHECK if an MCP tool exists.**
