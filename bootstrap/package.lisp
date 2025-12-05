@@ -67,8 +67,13 @@
    #:compile-file        ; Compile source file to FASL
    #:load                ; Load FASL or source file
    #:compile-to-fasl     ; Internal: compile forms to FASL
+   #:link-modules        ; Link multiple FASL modules
    #:*compile-verbose* #:*compile-print*
    #:*load-verbose* #:*load-print*
+   ;; FASL format constants
+   #:+fasl-header-size+ #:+fasl-function-size+
+   #:+fasl-relocation-size+ #:+fasl-import-size+
+   #:+fn-flag-exported+ #:+fn-flag-entry+
    ;; JIT executor (from executor.lisp)
    #:jit-eval #:jit-compile-expression #:jit-disasm
    #:jit-test #:jit-run-tests #:tag-fixnum #:untag-fixnum

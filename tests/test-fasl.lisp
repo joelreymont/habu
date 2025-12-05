@@ -138,6 +138,40 @@
     (format t "  [PASS] export-flags~%")
     t))
 
+(defun test-compile-with-exports ()
+  "Test compiling a module with exports."
+  (let ((source-path "/tmp/test-mod.lisp")
+        (fasl-path "/tmp/test-mod.fasl"))
+    ;; Write test source
+    (with-open-file (out source-path :direction :output :if-exists :supersede)
+      (write-string "(defun helper (x) (+ x 1))
+(defun public-fn (x) (helper x))
+42" out))
+    ;; Compile with exports
+    (compile-file source-path :output-file fasl-path
+                              :exports '(public-fn) :verbose nil)
+    ;; Read back and verify
+    (multiple-value-bind (header functions code relocs consts str-table)
+        (read-fasl fasl-path)
+      (declare (ignore code relocs consts))
+      ;; Find public-fn and helper
+      (let ((public-fn nil)
+            (helper-fn nil))
+        (dolist (fn functions)
+          (let ((name (read-string-from-table str-table (fasl-function-name-offset fn))))
+            (cond ((string= name "PUBLIC-FN") (setf public-fn fn))
+                  ((string= name "HELPER") (setf helper-fn fn)))))
+        ;; public-fn should be exported
+        (unless (and public-fn (function-exported-p public-fn))
+          (format t "  [FAIL] compile-with-exports (public-fn not exported)~%")
+          (return-from test-compile-with-exports nil))
+        ;; helper should NOT be exported
+        (when (and helper-fn (function-exported-p helper-fn))
+          (format t "  [FAIL] compile-with-exports (helper should not be exported)~%")
+          (return-from test-compile-with-exports nil))
+        (format t "  [PASS] compile-with-exports~%")
+        t))))
+
 ;;; ============================================================
 ;;; Property Tests
 ;;; ============================================================
@@ -342,6 +376,7 @@
     (if (test-string-table) (incf unit-pass) (incf unit-fail))
     (if (test-fasl-magic-validation) (incf unit-pass) (incf unit-fail))
     (if (test-export-flags) (incf unit-pass) (incf unit-fail))
+    (if (test-compile-with-exports) (incf unit-pass) (incf unit-fail))
 
     ;; Property tests
     (format t "~%FASL property tests:~%")

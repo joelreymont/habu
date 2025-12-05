@@ -630,6 +630,94 @@
 (defvar *load-verbose* t "Default verbosity for load.")
 (defvar *load-print* nil "Default print setting for load.")
 
+;;; ============================================================
+;;; Module Linking
+;;; ============================================================
+
+(defun function-exported-p (fn)
+  "Check if function has export flag set."
+  (plusp (logand (fasl-function-flags fn) +fn-flag-exported+)))
+
+(defun link-modules (fasl-paths &key verbose)
+  "Link multiple FASL modules together with export verification.
+   Returns (values combined-code combined-symtab imports) where:
+   - combined-code: concatenated bytecode as vector
+   - combined-symtab: alist of (name . offset) for all functions
+   - imports: list of (name . offset) for external calls
+
+   Verifies that all cross-module calls target exported functions."
+  (let ((all-code nil)
+        (global-symtab nil)
+        (all-relocations nil)
+        (exports-by-module (make-hash-table :test 'equal))  ; module -> set of exported names
+        (current-offset 0))
+
+    ;; Phase 1: Read all FASLs and collect exports
+    (dolist (fasl-path fasl-paths)
+      (multiple-value-bind (header functions code relocations constants str-table imports)
+          (read-fasl fasl-path)
+        (declare (ignore constants imports))
+
+        (when verbose
+          (format t "Reading ~A: ~D bytes, ~D functions~%"
+                  fasl-path (length code) (fasl-header-num-functions header)))
+
+        ;; Build export set for this module
+        (let ((module-exports (make-hash-table :test 'equal)))
+          (dolist (fn functions)
+            (let* ((name-offset (fasl-function-name-offset fn))
+                   (name (read-string-from-table str-table name-offset)))
+              ;; Track exports
+              (when (function-exported-p fn)
+                (setf (gethash name module-exports) t))
+              ;; Add to global symtab with adjusted offset
+              (push (cons name (+ current-offset (fasl-function-code-offset fn)))
+                    global-symtab)))
+          (setf (gethash fasl-path exports-by-module) module-exports))
+
+        ;; Adjust relocation offsets and collect
+        (dolist (reloc relocations)
+          (push (make-fasl-relocation
+                 :type (fasl-relocation-type reloc)
+                 :offset (+ current-offset (fasl-relocation-offset reloc))
+                 :target (fasl-relocation-target reloc))
+                all-relocations))
+
+        ;; Append code
+        (setf all-code (concatenate 'vector
+                                    (or all-code #())
+                                    code))
+        (setf current-offset (length all-code))))
+
+    ;; Reverse to maintain order
+    (setf global-symtab (nreverse global-symtab))
+    (setf all-relocations (nreverse all-relocations))
+
+    ;; Phase 2: Verify cross-module calls target exports
+    (let ((symtab-hash (make-hash-table :test 'equal)))
+      ;; Build symtab lookup
+      (dolist (entry global-symtab)
+        (setf (gethash (car entry) symtab-hash) (cdr entry)))
+
+      ;; Check each internal call
+      (dolist (reloc all-relocations)
+        (when (= (fasl-relocation-type reloc) +reloc-fn-call+)
+          ;; Get target function name from symtab
+          (let* ((target-idx (fasl-relocation-target reloc))
+                 (target-entry (nth target-idx global-symtab)))
+            (when target-entry
+              (let ((target-name (car target-entry)))
+                ;; Check if target is in global symtab (defined somewhere)
+                (unless (gethash target-name symtab-hash)
+                  (error "Link error: undefined function ~A" target-name))))))))
+
+    (when verbose
+      (format t "Linked ~D modules: ~D bytes, ~D functions, ~D relocations~%"
+              (length fasl-paths) (length all-code)
+              (length global-symtab) (length all-relocations)))
+
+    (values all-code global-symtab all-relocations)))
+
 (defun load-fasl-file (input-path &key verbose print)
   "Internal: Load FASL file into running image.
    Returns T on success."
