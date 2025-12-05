@@ -2821,8 +2821,12 @@
   #-sbcl (register-compiler-symbols)
   (reset-symbol-table)
   (reset-lambda-counter)
+  #+sbcl (reset-compile-warnings)
   (let* ((forms (read-all source))
          (result (compile-forms forms))
+         ;; Check for undefined functions (compile-time)
+         (_ #+sbcl (when (report-compile-warnings)
+                     (error "Compilation aborted due to undefined functions")))
          (defuns-orig (car result))
          (main-ir-orig (cadr result))
          (wrapper-size 216)  ;; mmap heap initialization wrapper (5+40+2+7)*4
@@ -2843,6 +2847,9 @@
            (all-fns-raw (append defuns lambda-as-defuns))
            ;; Apply TCO to all functions (converts self-tail-calls to loops)
            (all-fns (apply-tco-to-all-functions all-fns-raw))
+           ;; Link-time verification: check all call-fn targets resolve
+           (_ #+sbcl (when (verify-link-references (mapcar #'car all-fns))
+                       (error "Link failed: undefined function references")))
            ;; Generate main code first (with nil fnoffs to get size)
            (main-code-temp (append-all
                             (list (fn-fixed-prologue)
