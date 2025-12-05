@@ -272,14 +272,28 @@
   (list 'lit val))
 
 (defun compile-var (sym env)
-  "Compile variable reference"
-  (let ((offset (env-lookup sym env)))
+  "Compile variable reference using flat env list"
+  (let ((offset (flat-env-lookup sym env)))
     (if offset
         (list 'var offset)
         (list 'lit 0))))  ;; Unknown var = 0
 
+;;; Environment lookup for flat list format (sym1 sym2 ...)
+;;; Used by compile-expr-full and friends in this file.
+;;; Note: compiler-sbcl.lisp has its own env-lookup for alist format.
+
+#+sbcl
+(defun flat-env-lookup (sym env)
+  "Look up symbol in flat environment list, return offset or nil.
+   Env is (sym1 sym2 ...) where position is the offset."
+  (labels ((lookup (e offset)
+             (cond ((null e) nil)
+                   ((eq (car e) sym) offset)
+                   (t (lookup (cdr e) (1+ offset))))))
+    (lookup env 0)))
+
 #-sbcl
-(defun env-lookup (sym env)
+(defun flat-env-lookup (sym env)
   "Look up symbol in environment, return offset or nil - ITERATIVE VERSION"
   (let ((e env)
         (offset 0)
@@ -722,7 +736,7 @@
          ;; Flatten params for environment (positional + keyword names)
          (flat-params (flatten-parsed-params parsed))
          (new-env (extend-env flat-params env))
-         (pb (if flat-params (env-lookup (car flat-params) new-env) 0))
+         (pb (if flat-params (flat-env-lookup (car flat-params) new-env) 0))
          (body-ir (compile-expr-full body new-env fenv)))
     ;; Return flat params so codegen knows actual arity
     (list name flat-params body-ir pb)))
@@ -852,7 +866,7 @@
          (free-vars (find-free-vars body params env))
          ;; CRITICAL: Get offsets for each free var in current env
          ;; These are needed by codegen to know where to capture from
-         (free-offsets (mapcar (lambda (v) (env-lookup v env)) free-vars))
+         (free-offsets (mapcar (lambda (v) (flat-env-lookup v env)) free-vars))
          ;; Build environment for body: free vars + params
          ;; Free vars come first (captured in closure env), then params
          ;; This matches the regular compiler's approach
@@ -881,7 +895,7 @@
              ;; bound = list of locally-bound variables to exclude
              (cond
                ((symbolp e)
-                (if (and (env-lookup e env)
+                (if (and (flat-env-lookup e env)
                          (not (in-list e params))
                          (not (in-list e bound))
                          (not (in-list e acc)))
@@ -1497,6 +1511,10 @@
                          (list 'make-string-from-vector vec-var)))
              env fenv)))
 
+         ;; Pattern matching - (match expr (pattern body)...)
+         ((eq (car expr) 'match)
+          (compile-match expr env fenv))
+
          ;; Unknown - try as function call or inline lambda
          (t (cond
               ((symbolp (car expr)) (compile-call expr env fenv))
@@ -1506,6 +1524,12 @@
                      (compile-lambda (car expr) env fenv)
                      (compile-args (cdr expr) env fenv)))
               (t (compile-lit 0))))))))
+
+;;; Pattern matching uses shared expand-match from expand.lisp
+(defun compile-match (expr env fenv)
+  "Compile (match scrutinee (pattern body...)...) to IR.
+   Uses expand-match from expand.lisp for source-to-source transformation."
+  (compile-expr-full (expand-match (cadr expr) (cddr expr)) env fenv))
 
 ;; Helper functions for full compiler
 
@@ -1517,32 +1541,18 @@
                   (list 'nil-ir))))
     (list 'if-ir test then else)))
 
+;; Control flow - use shared expansions from expand.lisp
 (defun compile-cond (expr env fenv)
-  "Compile (cond (test1 body1) (test2 body2) ...)"
-  (let ((clauses (cdr expr)))
-    (if (null clauses)
-        (list 'nil-ir)
-        (let* ((clause (car clauses))
-               (test (car clause))
-               (body (cadr clause)))
-          (if (eq test 't)
-              (compile-expr-full body env fenv)
-              (list 'if-ir
-                    (compile-expr-full test env fenv)
-                    (compile-expr-full body env fenv)
-                    (compile-cond (cons 'cond (cdr clauses)) env fenv)))))))
+  "Compile (cond ...) using expand-cond."
+  (compile-expr-full (expand-cond (cdr expr)) env fenv))
 
 (defun compile-when (expr env fenv)
-  (list 'if-ir
-        (compile-expr-full (nth 1 expr) env fenv)
-        (compile-progn-full (cons 'progn (cddr expr)) env fenv)
-        (list 'nil-ir)))
+  "Compile (when ...) using expand-when."
+  (compile-expr-full (apply #'expand-when (cdr expr)) env fenv))
 
 (defun compile-unless (expr env fenv)
-  (list 'if-ir
-        (compile-expr-full (nth 1 expr) env fenv)
-        (list 'nil-ir)
-        (compile-progn-full (cons 'progn (cddr expr)) env fenv)))
+  "Compile (unless ...) using expand-unless."
+  (compile-expr-full (apply #'expand-unless (cdr expr)) env fenv))
 
 (defun compile-while (expr env fenv)
   "Compile (while test body...) - true iteration with no stack growth"
@@ -1574,33 +1584,14 @@
       (list 'car-ir list-ir)
       (nth-expand (- n 1) (list 'cdr-ir list-ir))))
 
+;; Boolean operators - use shared expansions (fixes double-eval bug in or)
 (defun compile-and (expr env fenv)
-  "Compile (and a b c ...) to nested if forms"
-  (let ((args (cdr expr)))
-    (cond
-      ((null args) (list 'sym-lit "T"))  ; (and) = t
-      ((null (cdr args))  ; single arg - just compile it
-       (compile-expr-full (car args) env fenv))
-      (t  ; multiple args - (if a (and b c ...) nil)
-       (list 'if-ir
-             (compile-expr-full (car args) env fenv)
-             (compile-and (cons 'and (cdr args)) env fenv)
-             (list 'nil-ir))))))
+  "Compile (and ...) using expand-and."
+  (compile-expr-full (expand-and (cdr expr)) env fenv))
 
 (defun compile-or (expr env fenv)
-  "Compile (or a b c ...) to nested if forms"
-  (let ((args (cdr expr)))
-    (cond
-      ((null args) (list 'nil-ir))  ; (or) = nil
-      ((null (cdr args))  ; single arg - just compile it
-       (compile-expr-full (car args) env fenv))
-      (t  ; multiple args - (if a a (or b c ...)) but need temp to avoid double eval
-       ;; Simplified: (let ((tmp a)) (if tmp tmp (or b c ...)))
-       ;; For now, just use nested ifs assuming no side effects
-       (list 'if-ir
-             (compile-expr-full (car args) env fenv)
-             (compile-expr-full (car args) env fenv)
-             (compile-or (cons 'or (cdr args)) env fenv))))))
+  "Compile (or ...) using expand-or. Properly avoids double evaluation."
+  (compile-expr-full (expand-or (cdr expr)) env fenv))
 
 (defun compile-let-full (expr env fenv)
   "Compile (let ((var val) ...) body ...) to (let-ir vals body count offs)"
@@ -1632,24 +1623,8 @@
         (list 'let-ir val-irs body-ir (length bindings) offs)))))
 
 (defun compile-let*-full (expr env fenv)
-  "Compile (let* ((var1 val1) (var2 val2)) body) to nested let-irs with count/offs"
-  (let ((bindings (nth 1 expr))
-        (body-forms (cddr expr)))
-    (if (null bindings)
-        (compile-expr-full (if (null (cdr body-forms))
-                                    (car body-forms)
-                                    (cons 'progn body-forms))
-                                env fenv)
-        ;; Compile as nested lets, each with 1 binding
-        ;; NOTE: Keep to 3 bindings (6-binding limit for recursive functions)
-        (let* ((val-ir (compile-expr-full (nth 1 (car bindings)) env fenv))
-               (off (length env))  ;; Storage offset = current env length
-               (rest-ir (compile-let*-full
-                         (list 'let* (cdr bindings) (cons 'progn body-forms))
-                         (append env (list (car (car bindings))))
-                         fenv)))
-          ;; (let-ir vals body count offs)
-          (list 'let-ir (list val-ir) rest-ir 1 (list off))))))
+  "Compile (let* ...) using expand-let* to nested let forms."
+  (compile-expr-full (expand-let* (nth 1 expr) (cddr expr)) env fenv))
 
 (defun compile-progn-full (expr env fenv)
   (labels ((compile-exprs (exprs acc)
@@ -1672,7 +1647,7 @@
   "Compile (setq var val)"
   (let ((var (nth 1 expr))
         (val (nth 2 expr)))
-    (let ((offset (env-lookup var env)))
+    (let ((offset (flat-env-lookup var env)))
       (if offset
           (list 'setq-ir offset (compile-expr-full val env fenv))
           (list 'nil-ir)))))  ;; Unknown var

@@ -14,8 +14,11 @@
     :pathname "../arm64/"
     :components ((:file "asm")))
 
+   ;; Source-to-source expansions (shared by both compilers)
+   (:file "expand" :depends-on ("arm64"))
+
    ;; Core compiler (SBCL bootstrap)
-   (:file "compiler-sbcl" :depends-on ("arm64"))
+   (:file "compiler-sbcl" :depends-on ("arm64" "expand"))
 
    ;; Optimization passes (depends on compiler for IR types)
    (:file "optimize" :depends-on ("compiler-sbcl"))
@@ -75,6 +78,7 @@
      (:file "test-packages" :depends-on ("test-core"))
      (:file "test-reader" :depends-on ("test-core"))
      (:file "test-undefined" :depends-on ("test-core"))
+     (:file "test-match" :depends-on ("test-core"))
      (:file "quickcheck" :depends-on ("test-core")))))
   :perform (asdf:test-op (o c)
              (declare (ignore o c))

@@ -1683,6 +1683,9 @@
                   (if (null (cdr body))
                       (sys:compile (car body) env fenv)
                       (sys:compile (cons 'progn body) env fenv)))))
+         ;; match - pattern matching (uses expand-match from expand.lisp)
+         ((eq op 'match)
+          (sys:compile (expand-match (cadr expr) (cddr expr)) env fenv))
          ;; while - iterative loop
          ((eq op 'while)
           (let ((test (cadr expr))
