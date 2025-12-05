@@ -185,9 +185,47 @@ Do:
 - **Hex numbers**: Use `#x` prefix for addresses, offsets, constants
 - **No emojis**: Never in code, commits, or docs
 - **No marketing language**: Use technical facts
-- **Warnings as errors**: ASDF treats warnings as errors. Fix immediately.
 - **No inline loads**: Use ASDF, never `(load ...)` in source files
 - **Naming**: Always use `reg-alloc` (hyphenated), never `regalloc`
+
+### Warnings Policy
+
+**CRITICAL: Treat ALL warnings as errors. NEVER ignore warnings.**
+
+When you see a warning:
+1. **STOP** - Do not continue with the task
+2. **RCA** - Root cause analyze the warning
+3. **FIX** - Fix the actual problem, not the symptom
+
+**NEVER use `(declare (ignore ...))` to silence unused variable warnings.**
+
+Unused variable warnings indicate one of:
+- **Missing implementation**: The variable should be used but isn't
+- **Dead code**: The variable or parameter isn't needed
+- **Design flaw**: The API requires parameters that aren't needed
+
+The correct fix depends on root cause:
+- If parameter should be used: implement the missing logic
+- If parameter is truly unneeded: remove it from the API
+- If API requires it but this impl doesn't need it: document WHY in a comment, then restructure to avoid the warning
+
+Example - WRONG:
+```lisp
+(lambda (value)
+  (declare (ignore value))  ; WRONG: just hiding the problem
+  (list minimal-value))
+```
+
+Example - RIGHT:
+```lisp
+(lambda (value)
+  ;; Shrink value by halving each field toward 0
+  (let ((field (struct-field value)))
+    (when (> field 0)
+      (push (make-struct :field (truncate field 2)) candidates))))
+```
+
+**Style warnings are bugs.** They indicate code that will confuse readers or behave unexpectedly. Fix the code, not the warning.
 
 ### Code Generation Policy
 

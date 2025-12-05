@@ -124,11 +124,29 @@
       :const-pool-size (random 4096)
       :num-relocations (random 200)))
    (lambda (h)
-     (list (make-fasl-header
-            :num-functions 0
-            :code-size 0
-            :const-pool-size 0
-            :num-relocations 0)))))
+     ;; Shrink each field toward 0, trying one at a time
+     (let ((nf (fasl-header-num-functions h))
+           (cs (fasl-header-code-size h))
+           (cp (fasl-header-const-pool-size h))
+           (nr (fasl-header-num-relocations h))
+           (candidates nil))
+       (when (> nf 0)
+         (push (make-fasl-header :num-functions (truncate nf 2)
+                                 :code-size cs :const-pool-size cp :num-relocations nr)
+               candidates))
+       (when (> cs 0)
+         (push (make-fasl-header :num-functions nf
+                                 :code-size (truncate cs 2) :const-pool-size cp :num-relocations nr)
+               candidates))
+       (when (> cp 0)
+         (push (make-fasl-header :num-functions nf
+                                 :code-size cs :const-pool-size (truncate cp 2) :num-relocations nr)
+               candidates))
+       (when (> nr 0)
+         (push (make-fasl-header :num-functions nf
+                                 :code-size cs :const-pool-size cp :num-relocations (truncate nr 2))
+               candidates))
+       (nreverse candidates)))))
 
 (defun gen-fasl-function-entry ()
   "Generator for FASL function entries."
@@ -142,13 +160,35 @@
       :arity (random 8)
       :flags (random 16)))
    (lambda (f)
-     (list (make-fasl-function
-            :name 'f
-            :name-offset 0
-            :code-offset 0
-            :code-size 0
-            :arity 0
-            :flags 0)))))
+     ;; Shrink numeric fields toward 0
+     (let ((no (fasl-function-name-offset f))
+           (co (fasl-function-code-offset f))
+           (cs (fasl-function-code-size f))
+           (ar (fasl-function-arity f))
+           (fl (fasl-function-flags f))
+           (nm (fasl-function-name f))
+           (candidates nil))
+       (when (> no 0)
+         (push (make-fasl-function :name nm :name-offset (truncate no 2)
+                                   :code-offset co :code-size cs :arity ar :flags fl)
+               candidates))
+       (when (> co 0)
+         (push (make-fasl-function :name nm :name-offset no
+                                   :code-offset (truncate co 2) :code-size cs :arity ar :flags fl)
+               candidates))
+       (when (> cs 0)
+         (push (make-fasl-function :name nm :name-offset no
+                                   :code-offset co :code-size (truncate cs 2) :arity ar :flags fl)
+               candidates))
+       (when (> ar 0)
+         (push (make-fasl-function :name nm :name-offset no
+                                   :code-offset co :code-size cs :arity (truncate ar 2) :flags fl)
+               candidates))
+       (when (> fl 0)
+         (push (make-fasl-function :name nm :name-offset no
+                                   :code-offset co :code-size cs :arity ar :flags (truncate fl 2))
+               candidates))
+       (nreverse candidates)))))
 
 (defun gen-fasl-relocation-entry ()
   "Generator for FASL relocation entries."
@@ -159,7 +199,18 @@
       :offset (random 65536)
       :target (random 100)))
    (lambda (r)
-     (list (make-fasl-relocation :type 1 :offset 0 :target 0)))))
+     ;; Shrink offset and target toward 0, type toward 1
+     (let ((ty (fasl-relocation-type r))
+           (off (fasl-relocation-offset r))
+           (tgt (fasl-relocation-target r))
+           (candidates nil))
+       (when (> ty 1)
+         (push (make-fasl-relocation :type (1- ty) :offset off :target tgt) candidates))
+       (when (> off 0)
+         (push (make-fasl-relocation :type ty :offset (truncate off 2) :target tgt) candidates))
+       (when (> tgt 0)
+         (push (make-fasl-relocation :type ty :offset off :target (truncate tgt 2)) candidates))
+       (nreverse candidates)))))
 
 (defproperty prop-fasl-header-roundtrip ((h (gen-fasl-header)))
   (let ((path "/tmp/prop-fasl-header.bin"))
