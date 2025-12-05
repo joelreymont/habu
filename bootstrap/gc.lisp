@@ -31,9 +31,9 @@
 ;;; Register usage during GC:
 ;;;   x16 = to_scan (Cheney scan pointer)
 ;;;   x17 = to_free (allocation pointer in to-space)
-;;;   x18 = from_start
+;;;   x22 = from_start (NOTE: x18 is reserved on Apple ARM64, don't use!)
 ;;;   x19 = from_end
-;;;   x20-x23 = scratch during copy
+;;;   x20-x21, x23 = scratch during copy
 ;;;   x0-x15, x24 = saved as roots
 
 (in-package :habu)
@@ -142,7 +142,7 @@
    (arm64:and* :x2 :x0 -16 :imm t)        ; x2 = base (ptr & ~0xF)
 
    ;; Check if in from-space: from_start <= base < from_end
-   (arm64:cmp :x2 :x18)                    ; compare base, from_start
+   (arm64:cmp :x2 :x22)                    ; compare base, from_start
    (arm64:b.lo 9)                      ; if base < from_start, return unchanged (skip to ret)
    (arm64:cmp :x2 :x19)                    ; compare base, from_end
    (arm64:b.hs 7)                      ; if base >= from_end, return unchanged (skip to ret)
@@ -234,8 +234,9 @@
    (list '(:fn-label GC-COLLECT))
 
    ;; ===== Prologue: save all potential roots =====
-   ;; Stack frame: 192 bytes for x0-x15, x20-x21, x24-x26, x29-x30
-   (arm64:sub :sp :sp 192 :imm t)
+   ;; Stack frame: 208 bytes for x0-x15, x20-x26, x29-x30
+   ;; Added x22, x23 since we now use x22 for from_start
+   (arm64:sub :sp :sp 208 :imm t)
    (arm64:stp :lr :fp :sp :offset 0)      ; lr, fp
    (arm64:stp :x0 :x1 :sp :offset 16)
    (arm64:stp :x2 :x3 :sp :offset 32)
@@ -246,18 +247,20 @@
    (arm64:stp :x12 :x13 :sp :offset 112)
    (arm64:stp :x14 :x15 :sp :offset 128)
    (arm64:stp :env :x21 :sp :offset 144)    ; x20=env frame, x21=scratch
-   (arm64:stp :closure :x25 :sp :offset 160)
-   (arm64:str :code-base :sp :offset 176)
+   (arm64:stp :x22 :x23 :sp :offset 160)    ; x22=from_start, x23=scratch
+   (arm64:stp :closure :x25 :sp :offset 176)
+   (arm64:str :code-base :sp :offset 192)
 
    ;; ===== Setup GC pointers =====
-   ;; x18 = from_start = x27 + 48 + space_flag
-   (arm64:ldr :x18 :gc :offset +gc-space-flag-offset+)
-   (arm64:add :x18 :x18 :gc)
-   (arm64:add :x18 :x18 +gc-heap-data-offset+ :imm t)
+   ;; x22 = from_start = x27 + 112 + space_flag
+   ;; NOTE: Cannot use x18 on Apple ARM64 - it's platform reserved!
+   (arm64:ldr :x22 :gc :offset +gc-space-flag-offset+)
+   (arm64:add :x22 :x22 :gc)
+   (arm64:add :x22 :x22 +gc-heap-data-offset+ :imm t)
 
    ;; x19 = from_end = from_start + half_heap
    (arm64:ldr :x9 :gc :offset +gc-half-heap-offset+)
-   (arm64:add :x19 :x18 :x9)
+   (arm64:add :x19 :x22 :x9)
 
    ;; to_start: if space_flag=0, to=x27+48+half; else to=x27+48
    ;; x17 = to_free = to_start
@@ -323,9 +326,9 @@
    ;; Scan stack from current SP (after GC prologue) to stack_base
    ;; for values that look like heap pointers and update them.
    ;;
-   ;; x20 = current stack position (start at sp + 192, above GC frame)
+   ;; x20 = current stack position (start at sp + 208, above GC frame)
    ;; x21 = stack_base (upper limit)
-   (arm64:add :env :sp 192 :imm t)             ; x20 = sp + 192 (caller's frame)
+   (arm64:add :env :sp 208 :imm t)             ; x20 = sp + 208 (caller's frame)
    (arm64:ldr :x21 :gc :offset +gc-stack-base-offset+) ; x21 = stack_base
 
    ;; stack_scan_loop:
@@ -337,9 +340,9 @@
    (arm64:ldr :x0 :env :offset 0)
 
    ;; Check if it's a potential heap pointer:
-   ;; - Must be in from-space range [x18..x19)
+   ;; - Must be in from-space range [x22..x19)
    ;; - Must have a valid object tag (1-5)
-   (arm64:cmp :x0 :x18)
+   (arm64:cmp :x0 :x22)
    (arm64:b.lo 19)                          ; skip if below from_start
    (arm64:cmp :x0 :x19)
    (arm64:b.hs 17)                          ; skip if >= from_end
@@ -414,9 +417,10 @@
    (arm64:ldp :x12 :x13 :sp :offset 112)
    (arm64:ldp :x14 :x15 :sp :offset 128)
    (arm64:ldp :env :x21 :sp :offset 144)
-   (arm64:ldp :closure :x25 :sp :offset 160)
-   (arm64:ldr :code-base :sp :offset 176)
-   (arm64:add :sp :sp 192 :imm t)
+   (arm64:ldp :x22 :x23 :sp :offset 160)
+   (arm64:ldp :closure :x25 :sp :offset 176)
+   (arm64:ldr :code-base :sp :offset 192)
+   (arm64:add :sp :sp 208 :imm t)
 
    (arm64:ret)))
 
