@@ -112,6 +112,32 @@
         (format t "  [PASS] fasl-magic-validation~%")
         t))))
 
+(defun test-export-flags ()
+  "Test that export flags are correctly set on functions."
+  (let* ((fnoffs '((foo . 100) (bar . 200) (baz . 300)))
+         (exports '(foo baz))  ; Only foo and baz exported
+         (functions (build-fasl-functions fnoffs :exports exports)))
+    ;; Check foo is exported
+    (let ((foo-fn (find-if (lambda (f) (equal (fasl-function-name f) 'foo)) functions)))
+      (unless (and foo-fn
+                   (plusp (logand (fasl-function-flags foo-fn) +fn-flag-exported+)))
+        (format t "  [FAIL] export-flags (foo not exported)~%")
+        (return-from test-export-flags nil)))
+    ;; Check bar is NOT exported
+    (let ((bar-fn (find-if (lambda (f) (equal (fasl-function-name f) 'bar)) functions)))
+      (unless (and bar-fn
+                   (zerop (logand (fasl-function-flags bar-fn) +fn-flag-exported+)))
+        (format t "  [FAIL] export-flags (bar should not be exported)~%")
+        (return-from test-export-flags nil)))
+    ;; Check baz is exported
+    (let ((baz-fn (find-if (lambda (f) (equal (fasl-function-name f) 'baz)) functions)))
+      (unless (and baz-fn
+                   (plusp (logand (fasl-function-flags baz-fn) +fn-flag-exported+)))
+        (format t "  [FAIL] export-flags (baz not exported)~%")
+        (return-from test-export-flags nil)))
+    (format t "  [PASS] export-flags~%")
+    t))
+
 ;;; ============================================================
 ;;; Property Tests
 ;;; ============================================================
@@ -315,6 +341,7 @@
     (if (test-fasl-relocation-roundtrip) (incf unit-pass) (incf unit-fail))
     (if (test-string-table) (incf unit-pass) (incf unit-fail))
     (if (test-fasl-magic-validation) (incf unit-pass) (incf unit-fail))
+    (if (test-export-flags) (incf unit-pass) (incf unit-fail))
 
     ;; Property tests
     (format t "~%FASL property tests:~%")

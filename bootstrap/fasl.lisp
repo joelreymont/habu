@@ -395,16 +395,26 @@
              (push b result))))))
     (nreverse result)))
 
-(defun build-fasl-functions (fnoffs)
-  "Convert fnoffs alist to fasl-function structs."
-  (mapcar (lambda (entry)
-            (make-fasl-function
-             :name (car entry)
-             :code-offset (cdr entry)
-             :code-size 0  ; Could compute from next function offset
-             :arity 0      ; Could extract from IR
-             :flags 0))
-          fnoffs))
+(defun build-fasl-functions (fnoffs &key exports)
+  "Convert fnoffs alist to fasl-function structs.
+   EXPORTS: list of function names to mark as exported."
+  (let ((export-set (make-hash-table :test 'equal)))
+    ;; Build export lookup
+    (dolist (name exports)
+      (setf (gethash (if (symbolp name) (symbol-name name) name) export-set) t))
+    (mapcar (lambda (entry)
+              (let* ((name (car entry))
+                     (name-str (if (symbolp name) (symbol-name name) name))
+                     (flags (if (gethash name-str export-set)
+                                +fn-flag-exported+
+                                0)))
+                (make-fasl-function
+                 :name name
+                 :code-offset (cdr entry)
+                 :code-size 0  ; Could compute from next function offset
+                 :arity 0      ; Could extract from IR
+                 :flags flags)))
+            fnoffs)))
 
 (defun build-fasl-relocations (markers fn-names)
   "Convert call markers to fasl-relocation structs.
@@ -439,8 +449,9 @@
                        :target (gethash target-str extern-index))))))
             markers)))
 
-(defun compile-to-fasl (forms output-path)
+(defun compile-to-fasl (forms output-path &key exports)
   "Compile forms to FASL file.
+   EXPORTS: list of function names to export (visible to other modules).
    This is the entry point for compile-file."
   ;; Reset compiler state
   #-sbcl (register-compiler-symbols)
@@ -497,19 +508,26 @@
            (code-bytes (strip-markers-to-bytes bytes-with-markers))
            ;; Build FASL structures
            (fn-names (cons '_main (mapcar #'car all-fns)))
-           (functions (cons (make-fasl-function :name '_main
-                                                :code-offset 0
-                                                :code-size main-size
-                                                :arity 0
-                                                :flags 0)
-                            (build-fasl-functions fnoffs)))
-           (relocations (build-fasl-relocations markers fn-names)))
+           ;; Mark _main as entry point, mark exported functions
+           (main-fn (make-fasl-function :name '_main
+                                        :code-offset 0
+                                        :code-size main-size
+                                        :arity 0
+                                        :flags +fn-flag-entry+))
+           (functions (cons main-fn (build-fasl-functions fnoffs :exports exports)))
+           (relocations (build-fasl-relocations markers fn-names))
+           ;; Count exported functions
+           (num-exported (count-if (lambda (f)
+                                     (plusp (logand (fasl-function-flags f)
+                                                    +fn-flag-exported+)))
+                                   functions)))
       (declare (ignore _))
 
       ;; Write FASL
       (write-fasl output-path functions code-bytes relocations nil)
-      (format t "Compiled ~D functions to ~A (~D bytes, ~D relocations)~%"
-              (length functions) output-path (length code-bytes) (length relocations))
+      (format t "Compiled ~D functions (~D exported) to ~A (~D bytes, ~D relocations)~%"
+              (length functions) num-exported output-path
+              (length code-bytes) (length relocations))
       output-path)))
 
 ;;; ============================================================
@@ -517,12 +535,13 @@
 ;;; ============================================================
 
 (defun compile-file (input-file &key (output-file nil) (verbose *compile-verbose*)
-                                     (print *compile-print*))
+                                     (print *compile-print*) exports)
   "Compile a Lisp source file to FASL.
    INPUT-FILE: pathname designator for source file
    OUTPUT-FILE: pathname for output (default: input with .fasl extension)
    VERBOSE: print progress messages
    PRINT: print each form as compiled
+   EXPORTS: list of function names to export (visible to other modules)
    Returns: output-truename, warnings-p, failure-p"
   (declare (ignore print))  ; TODO: implement print
   (let* ((input (pathname input-file))
@@ -534,7 +553,7 @@
       (format t "; Compiling file ~A~%" (namestring input)))
     (handler-case
         (progn
-          (compile-to-fasl forms (namestring output))
+          (compile-to-fasl forms (namestring output) :exports exports)
           (values (truename output) nil nil))
       (error (e)
         (format *error-output* "; Compilation failed: ~A~%" e)
