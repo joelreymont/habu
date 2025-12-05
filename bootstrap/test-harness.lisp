@@ -6,7 +6,7 @@
   (:use :cl)
   (:export #:*pass-count* #:*fail-count* #:*skip-count*
            #:reset-test-counts
-           #:test-compile #:test-compile-full #:skip-test
+           #:test-compile #:test-compile-full #:test-compile-fails #:skip-test
            #:report-results #:define-test-suite
            #:test #:test-full
            #:run-tests-in-file))
@@ -105,6 +105,33 @@
   "Mark a test as skipped with REASON."
   (format t "[SKIP] ~A: ~A~%" name reason)
   (incf *skip-count*))
+
+(defun test-compile-fails (name source expected-error-substring)
+  "Verify that compiling SOURCE fails with an error containing EXPECTED-ERROR-SUBSTRING.
+   This is for testing that undefined functions are properly rejected."
+  (handler-case
+      (let ((output-path (format nil "/tmp/habu_test_~A" name)))
+        (habu:deliver source output-path)
+        ;; If we get here, compilation succeeded when it should have failed
+        (format t "[FAIL] ~A: expected compilation to fail, but it succeeded~%" name)
+        (ignore-errors (delete-file output-path))
+        (ignore-errors (delete-file (format nil "~A.map" output-path)))
+        (incf *fail-count*)
+        nil)
+    (error (e)
+      ;; Compilation failed as expected - check if error message matches
+      (let ((error-msg (format nil "~A" e)))
+        (if (search expected-error-substring error-msg)
+            (progn
+              (when *test-verbose*
+                (format t "[PASS] ~A: compilation correctly failed with: ~A~%" name expected-error-substring))
+              (incf *pass-count*)
+              t)
+            (progn
+              (format t "[FAIL] ~A: expected error containing '~A', got: ~A~%"
+                      name expected-error-substring error-msg)
+              (incf *fail-count*)
+              nil))))))
 
 ;;; ============================================================
 ;;; Reporting
