@@ -18,8 +18,23 @@
 ;;; ============================================================
 
 (defconstant +fasl-magic+ #x4641534C)  ; "FASL" in ASCII
-(defconstant +fasl-version+ 1)
+(defconstant +fasl-version+ 2)  ; v2 adds num-imports and export flags
 (defconstant +fasl-arch-arm64+ 1)
+
+;;; Structure sizes (all fields are 4 bytes/u32)
+;;; Header: magic, version, arch, flags, num-functions, code-size,
+;;;         const-pool-size, num-relocations, num-imports
+(defconstant +fasl-header-fields+ 9)
+(defconstant +fasl-header-size+ (* +fasl-header-fields+ 4))
+;;; Function entry: name-offset, code-offset, code-size, arity, flags
+(defconstant +fasl-function-fields+ 5)
+(defconstant +fasl-function-size+ (* +fasl-function-fields+ 4))
+;;; Relocation: type, offset, target
+(defconstant +fasl-relocation-fields+ 3)
+(defconstant +fasl-relocation-size+ (* +fasl-relocation-fields+ 4))
+;;; Import: name-offset
+(defconstant +fasl-import-fields+ 1)
+(defconstant +fasl-import-size+ (* +fasl-import-fields+ 4))
 
 ;;; Section types
 (defconstant +section-functions+ 1)
@@ -27,11 +42,16 @@
 (defconstant +section-constants+ 3)
 (defconstant +section-relocations+ 4)
 (defconstant +section-strings+ 5)
+(defconstant +section-imports+ 6)    ; Required functions from other modules
 
 ;;; Relocation types
 (defconstant +reloc-fn-call+ 1)      ; Call to defined function
 (defconstant +reloc-extern-call+ 2)  ; Call to C function
 (defconstant +reloc-constant+ 3)     ; Reference to constant pool
+
+;;; Function flags
+(defconstant +fn-flag-exported+ #x1) ; Function is exported (visible to other modules)
+(defconstant +fn-flag-entry+ #x2)    ; Function is module entry point
 
 ;;; Constant types
 (defconstant +const-fixnum+ 1)
@@ -52,7 +72,8 @@
   (num-functions 0 :type fixnum)
   (code-size 0 :type fixnum)
   (const-pool-size 0 :type fixnum)
-  (num-relocations 0 :type fixnum))
+  (num-relocations 0 :type fixnum)
+  (num-imports 0 :type fixnum))      ; Functions required from other modules
 
 (defstruct fasl-function
   (name nil :type (or null symbol string))  ; Function name (symbol during build)
@@ -66,6 +87,10 @@
   (type 0 :type fixnum)           ; reloc-fn-call, reloc-extern-call, etc.
   (offset 0 :type fixnum)         ; Offset in code section
   (target 0 :type fixnum))        ; Index into function/extern/const table
+
+(defstruct fasl-import
+  (name nil :type (or null symbol string))  ; Required function name
+  (name-offset 0 :type fixnum))   ; Offset into string table
 
 ;;; ============================================================
 ;;; Binary I/O Helpers
@@ -117,7 +142,7 @@
 ;;; ============================================================
 
 (defun write-fasl-header (header stream)
-  "Write FASL header to stream."
+  "Write FASL header to stream (36 bytes for v2)."
   (write-u32-le (fasl-header-magic header) stream)
   (write-u32-le (fasl-header-version header) stream)
   (write-u32-le (fasl-header-arch header) stream)
@@ -125,7 +150,8 @@
   (write-u32-le (fasl-header-num-functions header) stream)
   (write-u32-le (fasl-header-code-size header) stream)
   (write-u32-le (fasl-header-const-pool-size header) stream)
-  (write-u32-le (fasl-header-num-relocations header) stream))
+  (write-u32-le (fasl-header-num-relocations header) stream)
+  (write-u32-le (fasl-header-num-imports header) stream))
 
 (defun write-fasl-function (fn stream)
   "Write function entry to stream."
@@ -141,24 +167,37 @@
   (write-u32-le (fasl-relocation-offset reloc) stream)
   (write-u32-le (fasl-relocation-target reloc) stream))
 
-(defun write-fasl (output-path functions code relocations constants)
+(defun write-fasl-import (import stream)
+  "Write import entry to stream (4 bytes: name-offset)."
+  (write-u32-le (fasl-import-name-offset import) stream))
+
+(defun write-fasl (output-path functions code relocations constants
+                   &key (imports nil))
   "Write complete FASL file.
    FUNCTIONS: list of fasl-function structs
    CODE: byte vector of machine code
    RELOCATIONS: list of fasl-relocation structs
-   CONSTANTS: constant pool bytes"
+   CONSTANTS: constant pool bytes
+   IMPORTS: list of fasl-import structs (functions required from other modules)"
   (with-open-file (stream output-path
                           :direction :output
                           :if-exists :supersede
                           :element-type '(unsigned-byte 8))
-    ;; Collect function names for string table
+    ;; Collect all names for string table (functions + imports)
     (let* ((fn-names (mapcar (lambda (f)
                                (let ((name (fasl-function-name f)))
                                  (if (symbolp name)
                                      (symbol-name name)
                                      name)))
-                             functions)))
-      (multiple-value-bind (str-bytes str-offsets) (build-string-table fn-names)
+                             functions))
+           (import-names (mapcar (lambda (i)
+                                   (let ((name (fasl-import-name i)))
+                                     (if (symbolp name)
+                                         (symbol-name name)
+                                         name)))
+                                 imports))
+           (all-names (append fn-names import-names)))
+      (multiple-value-bind (str-bytes str-offsets) (build-string-table all-names)
         ;; Update function name offsets
         (dolist (fn functions)
           (let* ((name (fasl-function-name fn))
@@ -166,12 +205,20 @@
             (setf (fasl-function-name-offset fn)
                   (cdr (assoc name-str str-offsets :test #'string=)))))
 
+        ;; Update import name offsets
+        (dolist (imp imports)
+          (let* ((name (fasl-import-name imp))
+                 (name-str (if (symbolp name) (symbol-name name) name)))
+            (setf (fasl-import-name-offset imp)
+                  (cdr (assoc name-str str-offsets :test #'string=)))))
+
         ;; Write header
         (let ((header (make-fasl-header
                        :num-functions (length functions)
                        :code-size (length code)
-                       :const-pool-size (length constants)
-                       :num-relocations (length relocations))))
+                       :const-pool-size (if constants (length constants) 0)
+                       :num-relocations (length relocations)
+                       :num-imports (length imports))))
           (write-fasl-header header stream))
 
         ;; Write function table
@@ -183,12 +230,17 @@
           (fasl-write-u8 byte stream))
 
         ;; Write constant pool
-        (dolist (byte constants)
-          (fasl-write-u8 byte stream))
+        (when constants
+          (dolist (byte constants)
+            (fasl-write-u8 byte stream)))
 
         ;; Write relocations
         (dolist (reloc relocations)
           (write-fasl-relocation reloc stream))
+
+        ;; Write imports
+        (dolist (imp imports)
+          (write-fasl-import imp stream))
 
         ;; Write string table
         (dolist (byte str-bytes)
@@ -199,21 +251,24 @@
 ;;; ============================================================
 
 (defun read-fasl-header (stream)
-  "Read FASL header from stream."
-  (let ((header (make-fasl-header
-                 :magic (read-u32-le stream)
-                 :version (read-u32-le stream)
-                 :arch (read-u32-le stream)
-                 :flags (read-u32-le stream)
-                 :num-functions (read-u32-le stream)
-                 :code-size (read-u32-le stream)
-                 :const-pool-size (read-u32-le stream)
-                 :num-relocations (read-u32-le stream))))
-    (unless (= (fasl-header-magic header) +fasl-magic+)
-      (error "Invalid FASL magic number"))
-    (unless (= (fasl-header-version header) +fasl-version+)
-      (error "Unsupported FASL version"))
-    header))
+  "Read FASL header from stream (36 bytes for v2)."
+  (let* ((magic (read-u32-le stream))
+         (version (read-u32-le stream)))
+    (unless (= magic +fasl-magic+)
+      (error "Invalid FASL magic number: ~X" magic))
+    (unless (<= version +fasl-version+)
+      (error "Unsupported FASL version: ~D (max: ~D)" version +fasl-version+))
+    (let ((header (make-fasl-header
+                   :magic magic
+                   :version version
+                   :arch (read-u32-le stream)
+                   :flags (read-u32-le stream)
+                   :num-functions (read-u32-le stream)
+                   :code-size (read-u32-le stream)
+                   :const-pool-size (read-u32-le stream)
+                   :num-relocations (read-u32-le stream)
+                   :num-imports (if (>= version 2) (read-u32-le stream) 0))))
+      header)))
 
 (defun read-fasl-function (stream)
   "Read function entry from stream."
@@ -231,9 +286,14 @@
    :offset (read-u32-le stream)
    :target (read-u32-le stream)))
 
+(defun read-fasl-import (stream)
+  "Read import entry from stream (4 bytes: name-offset)."
+  (make-fasl-import
+   :name-offset (read-u32-le stream)))
+
 (defun read-fasl (input-path)
   "Read complete FASL file.
-   Returns (header functions code relocations constants string-table)."
+   Returns (values header functions code relocations constants string-table imports)."
   (with-open-file (stream input-path
                           :direction :input
                           :element-type '(unsigned-byte 8))
@@ -241,7 +301,8 @@
            (num-fns (fasl-header-num-functions header))
            (code-size (fasl-header-code-size header))
            (const-size (fasl-header-const-pool-size header))
-           (num-relocs (fasl-header-num-relocations header)))
+           (num-relocs (fasl-header-num-relocations header))
+           (num-imports (fasl-header-num-imports header)))
 
       ;; Read function table
       (let ((functions (loop repeat num-fns
@@ -261,13 +322,17 @@
             (let ((relocations (loop repeat num-relocs
                                      collect (read-fasl-relocation stream))))
 
-              ;; Read remaining bytes as string table
-              (let* ((remaining (- (file-length stream) (file-position stream)))
-                     (str-table (make-array remaining :element-type '(unsigned-byte 8))))
-                (dotimes (i remaining)
-                  (setf (aref str-table i) (fasl-read-u8 stream)))
+              ;; Read imports
+              (let ((imports (loop repeat num-imports
+                                   collect (read-fasl-import stream))))
 
-                (values header functions code relocations constants str-table)))))))))
+                ;; Read remaining bytes as string table
+                (let* ((remaining (- (file-length stream) (file-position stream)))
+                       (str-table (make-array remaining :element-type '(unsigned-byte 8))))
+                  (dotimes (i remaining)
+                    (setf (aref str-table i) (fasl-read-u8 stream)))
+
+                  (values header functions code relocations constants str-table imports))))))))))
 
 ;;; ============================================================
 ;;; Compile to FASL

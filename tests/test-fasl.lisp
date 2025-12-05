@@ -14,7 +14,8 @@
                   :num-functions 5
                   :code-size 1024
                   :const-pool-size 256
-                  :num-relocations 10))
+                  :num-relocations 10
+                  :num-imports 3))
          (path "/tmp/test-fasl-header.bin"))
     (with-open-file (out path :direction :output
                               :if-exists :supersede
@@ -28,7 +29,8 @@
                  (= (fasl-header-num-functions read-header) 5)
                  (= (fasl-header-code-size read-header) 1024)
                  (= (fasl-header-const-pool-size read-header) 256)
-                 (= (fasl-header-num-relocations read-header) 10))
+                 (= (fasl-header-num-relocations read-header) 10)
+                 (= (fasl-header-num-imports read-header) 3))
             (progn (format t "  [PASS] fasl-header roundtrip~%") t)
             (progn (format t "  [FAIL] fasl-header roundtrip~%") nil))))))
 
@@ -122,29 +124,40 @@
       :num-functions (random 100)
       :code-size (random 65536)
       :const-pool-size (random 4096)
-      :num-relocations (random 200)))
+      :num-relocations (random 200)
+      :num-imports (random 50)))
    (lambda (h)
      ;; Shrink each field toward 0, trying one at a time
      (let ((nf (fasl-header-num-functions h))
            (cs (fasl-header-code-size h))
            (cp (fasl-header-const-pool-size h))
            (nr (fasl-header-num-relocations h))
+           (ni (fasl-header-num-imports h))
            (candidates nil))
        (when (> nf 0)
          (push (make-fasl-header :num-functions (truncate nf 2)
-                                 :code-size cs :const-pool-size cp :num-relocations nr)
+                                 :code-size cs :const-pool-size cp
+                                 :num-relocations nr :num-imports ni)
                candidates))
        (when (> cs 0)
          (push (make-fasl-header :num-functions nf
-                                 :code-size (truncate cs 2) :const-pool-size cp :num-relocations nr)
+                                 :code-size (truncate cs 2) :const-pool-size cp
+                                 :num-relocations nr :num-imports ni)
                candidates))
        (when (> cp 0)
          (push (make-fasl-header :num-functions nf
-                                 :code-size cs :const-pool-size (truncate cp 2) :num-relocations nr)
+                                 :code-size cs :const-pool-size (truncate cp 2)
+                                 :num-relocations nr :num-imports ni)
                candidates))
        (when (> nr 0)
          (push (make-fasl-header :num-functions nf
-                                 :code-size cs :const-pool-size cp :num-relocations (truncate nr 2))
+                                 :code-size cs :const-pool-size cp
+                                 :num-relocations (truncate nr 2) :num-imports ni)
+               candidates))
+       (when (> ni 0)
+         (push (make-fasl-header :num-functions nf
+                                 :code-size cs :const-pool-size cp
+                                 :num-relocations nr :num-imports (truncate ni 2))
                candidates))
        (nreverse candidates)))))
 
@@ -226,7 +239,8 @@
              (= (fasl-header-num-functions h2) (fasl-header-num-functions h))
              (= (fasl-header-code-size h2) (fasl-header-code-size h))
              (= (fasl-header-const-pool-size h2) (fasl-header-const-pool-size h))
-             (= (fasl-header-num-relocations h2) (fasl-header-num-relocations h)))))))
+             (= (fasl-header-num-relocations h2) (fasl-header-num-relocations h))
+             (= (fasl-header-num-imports h2) (fasl-header-num-imports h)))))))
 
 (defproperty prop-fasl-function-roundtrip ((f (gen-fasl-function-entry)))
   (let ((path "/tmp/prop-fasl-fn.bin"))
@@ -263,7 +277,7 @@
       (string= s (read-string-from-table bytes-vec offset)))))
 
 (defproperty prop-fasl-header-size ((h (gen-fasl-header)))
-  "FASL header is always 32 bytes (8 x 4-byte fields)."
+  "FASL header size matches +fasl-header-size+ constant."
   (let ((path "/tmp/prop-fasl-size.bin"))
     (with-open-file (out path :direction :output
                               :if-exists :supersede
@@ -271,10 +285,10 @@
       (write-fasl-header h out))
     (with-open-file (in path :direction :input
                              :element-type '(unsigned-byte 8))
-      (= (file-length in) 32))))
+      (= (file-length in) +fasl-header-size+))))
 
 (defproperty prop-fasl-function-size ((f (gen-fasl-function-entry)))
-  "FASL function entry is always 20 bytes (5 x 4-byte fields)."
+  "FASL function entry size matches +fasl-function-size+ constant."
   (let ((path "/tmp/prop-fasl-fn-size.bin"))
     (with-open-file (out path :direction :output
                               :if-exists :supersede
@@ -282,7 +296,7 @@
       (write-fasl-function f out))
     (with-open-file (in path :direction :input
                              :element-type '(unsigned-byte 8))
-      (= (file-length in) 20))))
+      (= (file-length in) +fasl-function-size+))))
 
 ;;; ============================================================
 ;;; Test Runner
