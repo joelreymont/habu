@@ -123,14 +123,6 @@
             body
             `(if ,test ,body ,(expand-cond (cdr clauses)))))))
 
-(defun expand-when (test &rest body)
-  "Expand (when test body...) to (if test (progn body...))."
-  `(if ,test (progn ,@body) nil))
-
-(defun expand-unless (test &rest body)
-  "Expand (unless test body...) to (if test nil (progn body...))."
-  `(if ,test nil (progn ,@body)))
-
 (defun expand-and (args)
   "Expand (and a b c ...) to nested if. Short-circuits correctly."
   (cond

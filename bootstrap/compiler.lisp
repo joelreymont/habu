@@ -1547,12 +1547,16 @@
   (compile-expr-full (expand-cond (cdr expr)) env fenv))
 
 (defun compile-when (expr env fenv)
-  "Compile (when ...) using expand-when."
-  (compile-expr-full (apply #'expand-when (cdr expr)) env fenv))
+  "Compile (when test body...) to (if test (progn body...) nil)."
+  (let ((test (cadr expr))
+        (body (cddr expr)))
+    (compile-expr-full (list 'if test (cons 'progn body) nil) env fenv)))
 
 (defun compile-unless (expr env fenv)
-  "Compile (unless ...) using expand-unless."
-  (compile-expr-full (apply #'expand-unless (cdr expr)) env fenv))
+  "Compile (unless test body...) to (if test nil (progn body...))."
+  (let ((test (cadr expr))
+        (body (cddr expr)))
+    (compile-expr-full (list 'if test nil (cons 'progn body)) env fenv)))
 
 (defun compile-while (expr env fenv)
   "Compile (while test body...) - true iteration with no stack growth"
