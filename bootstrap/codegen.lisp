@@ -1668,6 +1668,27 @@
            ;; Emit args, copies, then :loop-continue marker
            (append-all (list args-code copy-code (list (list :loop-continue))))))))
 
+    ;; Block-IR: (block-ir id body) - establish named exit point
+    ;; Emits body code, then :block-end marker for return-from to target
+    ((has-tag ir 'block-ir)
+     (let* ((block-id (cadr ir))
+            (body-ir (caddr ir))
+            (body-code (codegen body-ir rtaddrs fnoffs td)))
+       ;; Emit :block-start marker (for block stack), body, then :block-end marker
+       (append-all (list (list (list :block-start block-id))
+                         body-code
+                         (list (list :block-end block-id))))))
+
+    ;; Return-from-IR: (return-from-ir id value) - jump to block exit with value
+    ;; Evaluates value into x0, then emits :return-from marker that becomes a branch
+    ((has-tag ir 'return-from-ir)
+     (let* ((block-id (cadr ir))
+            (value-ir (caddr ir))
+            (value-code (codegen value-ir rtaddrs fnoffs td)))
+       ;; Emit value code, then :return-from marker with block ID
+       ;; The marker will become a B instruction to the matching :block-end
+       (append-all (list value-code (list (list :return-from block-id))))))
+
     ;; Let-IR: (let-ir vals body count offs)
     ((has-tag ir 'let-ir)
      (let* ((vals (cadr ir))
@@ -2632,7 +2653,10 @@
                       (eq (car item) :tail-call-fn)
                       (eq (car item) :extern-call)
                       (eq (car item) :loop-start)
-                      (eq (car item) :loop-continue))))
+                      (eq (car item) :loop-continue)
+                      (eq (car item) :block-start)
+                      (eq (car item) :block-end)
+                      (eq (car item) :return-from))))
            (process (items pos acc)
              (if (null items)
                  (reverse acc)
@@ -2700,8 +2724,8 @@
 #-sbcl
 (defun code-size (code)
   "Calculate size of code in bytes, accounting for markers.
-   Markers: :call-fn, :extern-call, :tco-branch, :loop-continue = 4 bytes each.
-   :loop-start = 0 bytes (position marker only)."
+   Markers: :call-fn, :extern-call, :tco-branch, :loop-continue, :return-from = 4 bytes each.
+   :loop-start, :block-start, :block-end = 0 bytes (position markers only)."
   (labels ((tally (items acc)
              (if (null items)
                  acc
@@ -2715,7 +2739,13 @@
                       (tally (cdr items) (+ acc 4)))
                      ((and (consp item) (eq (car item) :loop-continue))
                       (tally (cdr items) (+ acc 4)))
+                     ((and (consp item) (eq (car item) :return-from))
+                      (tally (cdr items) (+ acc 4)))
                      ((and (consp item) (eq (car item) :loop-start))
+                      (tally (cdr items) acc)) ; 0 bytes - position marker only
+                     ((and (consp item) (eq (car item) :block-start))
+                      (tally (cdr items) acc)) ; 0 bytes - position marker only
+                     ((and (consp item) (eq (car item) :block-end))
                       (tally (cdr items) acc)) ; 0 bytes - position marker only
                      ((consp item)
                       (tally (cdr items) (+ acc (tally item 0))))
@@ -3041,6 +3071,22 @@
                               (cons 0 (cons 0 (cons 0 (cons 0 (cons marker acc)))))
                               parent)
                         work-stack)))
+               ;; Block start marker - records position for block-end target
+               ((and (consp item) (eq (car item) :block-start))
+                (let ((marker (list :block-start (cadr item) pos)))
+                  (push (list (cdr items) pos (cons marker acc) parent) work-stack)))
+               ;; Block end marker - position where return-from jumps to
+               ((and (consp item) (eq (car item) :block-end))
+                (let ((marker (list :block-end (cadr item) pos)))
+                  (push (list (cdr items) pos (cons marker acc) parent) work-stack)))
+               ;; Return-from marker - reserve 4 bytes for B instruction
+               ((and (consp item) (eq (car item) :return-from))
+                (let ((marker (list :return-from (cadr item) pos)))
+                  (push (list (cdr items)
+                              (+ pos 4)
+                              (cons 0 (cons 0 (cons 0 (cons 0 (cons marker acc)))))
+                              parent)
+                        work-stack)))
                ;; Function label marker - used by GC runtime
                ((and (consp item) (eq (car item) :fn-label))
                 (let ((marker (list :fn-label (cadr item) pos)))
@@ -3056,7 +3102,7 @@
                 (push (list (cdr items) (+ pos 1) (cons item acc) parent) work-stack))))))))))
 
 (defun flatten-all-calls (code fn-alist stub-alist code-base-addr)
-  "Replace :call-fn, :extern-call, :loop-start/:loop-continue markers with actual instructions.
+  "Replace :call-fn, :extern-call, :loop-start/:loop-continue, :block-start/:block-end/:return-from markers with actual instructions.
    Returns (cons flattened-code positions)."
   (labels ((lookup-fn (name)
              (alist-lookup name fn-alist))
@@ -3081,18 +3127,31 @@
                      (cons (logand (ash b-instr -16) #xFF)
                            (cons (logand (ash b-instr -8) #xFF)
                                  (cons (logand b-instr #xFF) acc))))))
-           (process (items skip result positions loop-stack)
+           ;; First pass: collect block-end positions
+           (collect-block-ends (items acc)
+             (if (null items)
+                 acc
+                 (let ((item (car items)))
+                   (if (and (consp item) (eq (car item) :block-end))
+                       (collect-block-ends (cdr items)
+                                           (cons (cons (cadr item) (caddr item)) acc))
+                       (collect-block-ends (cdr items) acc)))))
+           ;; Lookup block-end position by block-id
+           (lookup-block-end (block-id block-ends)
+             (let ((entry (assoc block-id block-ends :test #'equal)))
+               (if entry (cdr entry) nil)))
+           (process (items skip result positions loop-stack block-ends)
              (if (null items)
                  (cons (reverse result) positions)
                  (let ((item (car items)))
                    (cond
                      ;; Skip placeholder zeros
                      ((> skip 0)
-                      (process (cdr items) (- skip 1) result positions loop-stack))
+                      (process (cdr items) (- skip 1) result positions loop-stack block-ends))
                      ;; Loop start marker - record position on stack, no bytes emitted
                      ((and (consp item) (eq (car item) :loop-start))
                       (let ((pos (cadr item)))
-                        (process (cdr items) 0 result positions (cons pos loop-stack))))
+                        (process (cdr items) 0 result positions (cons pos loop-stack) block-ends)))
                      ;; Loop continue marker - emit B instruction to jump back to loop start
                      ((and (consp item) (eq (car item) :loop-continue))
                       (let* ((pos (cadr item))
@@ -3100,7 +3159,22 @@
                              (target-pos (car loop-stack))
                              (target-addr (+ code-base-addr target-pos))
                              (new-result (emit-b b-addr target-addr result)))
-                        (process (cdr items) 4 new-result positions loop-stack)))
+                        (process (cdr items) 4 new-result positions loop-stack block-ends)))
+                     ;; Block start marker - skip (no bytes)
+                     ((and (consp item) (eq (car item) :block-start))
+                      (process (cdr items) 0 result positions loop-stack block-ends))
+                     ;; Block end marker - skip (no bytes)
+                     ((and (consp item) (eq (car item) :block-end))
+                      (process (cdr items) 0 result positions loop-stack block-ends))
+                     ;; Return-from marker - emit B instruction to jump forward to block-end
+                     ((and (consp item) (eq (car item) :return-from))
+                      (let* ((block-id (cadr item))
+                             (pos (caddr item))
+                             (b-addr (+ code-base-addr pos))
+                             (target-pos (lookup-block-end block-id block-ends))
+                             (target-addr (+ code-base-addr target-pos))
+                             (new-result (emit-b b-addr target-addr result)))
+                        (process (cdr items) 4 new-result positions loop-stack block-ends)))
                      ;; Extern call marker - skip 4 placeholder zeros
                      ((and (consp item) (eq (car item) :extern-call))
                       (let* ((name (cadr item))
@@ -3110,7 +3184,7 @@
                              (new-result (if stub-addr
                                             (emit-bl bl-addr stub-addr result)
                                             (cons #x94 (cons 0 (cons 0 (cons 0 result)))))))
-                        (process (cdr items) 4 new-result (cons (cons name pos) positions) loop-stack)))
+                        (process (cdr items) 4 new-result (cons (cons name pos) positions) loop-stack block-ends)))
                      ;; Function call marker - skip 4 placeholder zeros
                      ((and (consp item) (eq (car item) :call-fn))
                       (let* ((name (cadr item))
@@ -3121,17 +3195,19 @@
                                             (emit-bl bl-addr fn-addr result)
                                             ;; Function not found - emit NOP
                                             (cons #xD5 (cons #x03 (cons #x20 (cons #x1F result)))))))
-                        (process (cdr items) 4 new-result (cons (cons name pos) positions) loop-stack)))
+                        (process (cdr items) 4 new-result (cons (cons name pos) positions) loop-stack block-ends)))
                      ;; Function label marker - skip (no bytes)
                      ((and (consp item) (eq (car item) :fn-label))
-                      (process (cdr items) 0 result positions loop-stack))
+                      (process (cdr items) 0 result positions loop-stack block-ends))
                     ;; Internal label marker - skip (no bytes)
                     ((and (consp item) (eq (car item) :label))
-                     (process (cdr items) 0 result positions loop-stack))
+                     (process (cdr items) 0 result positions loop-stack block-ends))
                      ;; Regular byte
                      (t
-                      (process (cdr items) 0 (cons item result) positions loop-stack)))))))
-    (process code 0 nil nil nil)))
+                      (process (cdr items) 0 (cons item result) positions loop-stack block-ends)))))))
+    ;; First collect block-end positions, then process
+    (let ((block-ends (collect-block-ends code nil)))
+      (process code 0 nil nil nil block-ends))))
 
 (defun extract-fn-labels (code base-addr)
   "Extract :fn-label markers from flattened code and build fn-alist.
@@ -3257,8 +3333,9 @@
 
 #-sbcl
 (defun resolve-calls (code fnoffs)
-  "Resolve call and loop markers to branch instructions.
-   Handles: (:call-fn name), (:tail-call-fn name), (:loop-start), (:loop-continue)
+  "Resolve call, loop, and block markers to branch instructions.
+   Handles: (:call-fn name), (:tail-call-fn name), (:loop-start), (:loop-continue),
+            (:block-start id), (:block-end id), (:return-from id)
    Note: (:extern-call name) markers are kept as-is for later resolution.
    Native version using arm64 intrinsics."
   (labels ((calc-size (item)
@@ -3268,6 +3345,9 @@
                    ((and (consp item) (eq (car item) :extern-call)) 4)
                    ((and (consp item) (eq (car item) :loop-start)) 0) ; marker only, no code
                    ((and (consp item) (eq (car item) :loop-continue)) 4) ; B instruction
+                   ((and (consp item) (eq (car item) :block-start)) 0) ; marker only
+                   ((and (consp item) (eq (car item) :block-end)) 0) ; marker only
+                   ((and (consp item) (eq (car item) :return-from)) 4) ; B instruction
                    ((and (consp item) (eq (car item) :tco-branch)) 4)
                    (t 1)))
            (lookup-fn (name fnoffs)
@@ -3277,7 +3357,24 @@
                  (if (eq name (caar fnoffs))
                      (cdar fnoffs)
                      (lookup-fn name (cdr fnoffs)))))
-           (resolve-at (items pos acc loop-stack)
+           ;; First pass: collect block-end positions
+           (collect-block-ends (items pos acc)
+             (if (null items)
+                 acc
+                 (let ((item (car items)))
+                   (cond
+                     ((and (consp item) (eq (car item) :block-end))
+                      (collect-block-ends (cdr items) pos
+                                          (cons (cons (cadr item) pos) acc)))
+                     (t
+                      (collect-block-ends (cdr items) (+ pos (calc-size item)) acc))))))
+           (lookup-block-end (block-id block-ends)
+             (if (null block-ends)
+                 nil
+                 (if (equal block-id (caar block-ends))
+                     (cdar block-ends)
+                     (lookup-block-end block-id (cdr block-ends)))))
+           (resolve-at (items pos acc loop-stack block-ends)
              ;; Iterate through items, tracking position, resolving markers
              (if (null items)
                  (reverse acc)
@@ -3285,7 +3382,7 @@
                    (cond
                      ;; Loop start - record position on stack, emit nothing
                      ((and (consp item) (eq (car item) :loop-start))
-                      (resolve-at (cdr items) pos acc (cons pos loop-stack)))
+                      (resolve-at (cdr items) pos acc (cons pos loop-stack) block-ends))
                      ;; Loop continue - emit backward branch to loop start
                      ((and (consp item) (eq (car item) :loop-continue))
                       (let* ((loop-start (car loop-stack))
@@ -3294,7 +3391,23 @@
                         (resolve-at (cdr items)
                                     (+ pos 4)
                                     (append (reverse b-bytes) acc)
-                                    loop-stack)))
+                                    loop-stack block-ends)))
+                     ;; Block start - skip (no bytes)
+                     ((and (consp item) (eq (car item) :block-start))
+                      (resolve-at (cdr items) pos acc loop-stack block-ends))
+                     ;; Block end - skip (no bytes)
+                     ((and (consp item) (eq (car item) :block-end))
+                      (resolve-at (cdr items) pos acc loop-stack block-ends))
+                     ;; Return-from - emit forward branch to block end
+                     ((and (consp item) (eq (car item) :return-from))
+                      (let* ((block-id (cadr item))
+                             (block-end-pos (lookup-block-end block-id block-ends))
+                             (rel-offset (- block-end-pos pos))
+                             (b-bytes (arm64:b (ash rel-offset -2))))
+                        (resolve-at (cdr items)
+                                    (+ pos 4)
+                                    (append (reverse b-bytes) acc)
+                                    loop-stack block-ends)))
                      ;; TCO branch - similar to loop-continue but uses stored target
                      ((and (consp item) (eq (car item) :tco-branch))
                       (let* ((target (cadr item))
@@ -3303,7 +3416,7 @@
                         (resolve-at (cdr items)
                                     (+ pos 4)
                                     (append (reverse b-bytes) acc)
-                                    loop-stack)))
+                                    loop-stack block-ends)))
                      ;; Internal call - resolve to BL
                      ((and (consp item) (eq (car item) :call-fn))
                       (let* ((fn-name (cadr item))
@@ -3314,7 +3427,7 @@
                         (resolve-at (cdr items)
                                     (+ pos 4)
                                     (append (reverse bl-bytes) acc)
-                                    loop-stack)))
+                                    loop-stack block-ends)))
                      ;; Tail call - resolve to B (branch without link)
                      ((and (consp item) (eq (car item) :tail-call-fn))
                       (let* ((fn-name (cadr item))
@@ -3325,21 +3438,23 @@
                         (resolve-at (cdr items)
                                     (+ pos 4)
                                     (append (reverse b-bytes) acc)
-                                    loop-stack)))
+                                    loop-stack block-ends)))
                      ;; External call - emit marker with position + 3 zero bytes
                      ;; CRITICAL: Must emit 4 bytes to maintain position consistency
                      ((and (consp item) (eq (car item) :extern-call))
                       (resolve-at (cdr items)
                                   (+ pos 4)
                                   (list* 0 0 0 (list :extern-call (cadr item) pos) acc)
-                                  loop-stack))
+                                  loop-stack block-ends))
                      ;; Regular byte
                      (t
                       (resolve-at (cdr items)
                                   (+ pos 1)
                                   (cons item acc)
-                                  loop-stack)))))))
-    (resolve-at code 0 nil nil)))
+                                  loop-stack block-ends)))))))
+    ;; First collect block-end positions, then resolve
+    (let ((block-ends (collect-block-ends code 0 nil)))
+      (resolve-at code 0 nil nil block-ends))))
 
 ;;; ============================================================
 ;;; Export Functions

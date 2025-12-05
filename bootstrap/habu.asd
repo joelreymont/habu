@@ -87,6 +87,7 @@
      (:file "test-undefined" :depends-on ("test-core"))
      (:file "test-match" :depends-on ("test-core"))
      (:file "test-macros" :depends-on ("test-core"))
+     (:file "test-block" :depends-on ("test-core"))
      (:file "quickcheck" :depends-on ("test-core"))
      (:file "test-arm64-props" :depends-on ("quickcheck"))
      (:file "test-match-props" :depends-on ("quickcheck"))

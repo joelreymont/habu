@@ -209,6 +209,31 @@
         (values form nil))))
 
 ;;; ============================================================
+;;; Block Environment - for block/return-from
+;;; ============================================================
+
+(defparameter *block-env* nil
+  "Stack of active block names during compilation.
+   Each entry is (name . gensym) where gensym is the unique ID for this block.")
+
+(defvar *block-counter* 0
+  "Counter for generating unique block IDs.")
+
+(defun reset-block-env ()
+  "Clear block environment."
+  (setf *block-env* nil
+        *block-counter* 0))
+
+(defun make-block-id (name)
+  "Generate a unique block ID."
+  (incf *block-counter*)
+  (cons name *block-counter*))
+
+(defun find-block (name)
+  "Find block entry by name in *block-env*. Returns (name . id) or nil."
+  (assoc name *block-env* :test #'eq))
+
+;;; ============================================================
 ;;; Part 1: ARM64 Instruction Encoders
 ;;; ============================================================
 
@@ -1958,6 +1983,33 @@
                     (sys:compile (car forms) env fenv)
                     (list 'progn-ir
                           (mapcar (lambda (f) (sys:compile f env fenv)) forms))))))
+         ;; block - establish named exit point
+         ;; (block name body...) -> (block-ir id body-ir)
+         ((eq op 'block)
+          (let* ((name (cadr expr))
+                 (body (cddr expr))
+                 (block-id (make-block-id name))
+                 ;; Push block onto environment
+                 (*block-env* (cons (cons name block-id) *block-env*)))
+            (list 'block-ir block-id
+                  (if (null body)
+                      (list 'nil-ir)
+                      (if (null (cdr body))
+                          (sys:compile (car body) env fenv)
+                          (sys:compile (cons 'progn body) env fenv))))))
+         ;; return-from - exit to named block with value
+         ;; (return-from name value) -> (return-from-ir id value-ir)
+         ((eq op 'return-from)
+          (let* ((name (cadr expr))
+                 (value (if (cddr expr) (caddr expr) nil))
+                 (block-entry (find-block name)))
+            (if block-entry
+                (list 'return-from-ir (cdr block-entry)
+                      (sys:compile value env fenv))
+                (error "RETURN-FROM: no block named ~S" name))))
+         ;; return - shorthand for (return-from nil value)
+         ((eq op 'return)
+          (sys:compile (list 'return-from nil (cadr expr)) env fenv))
          ;; and - short-circuit and (returns nil when false, not 0 - while checks for nil)
          ((eq op 'and)
           (let ((args (cdr expr)))
@@ -4895,6 +4947,25 @@
                 (copy-code (copy-to-params 0 nil))
                 (jump-marker (list (list :loop-continue))))
            (append save-x24 eval-code restore-x24 copy-code jump-marker)))))
+    ;; Block-IR: (block-ir id body) - establish named exit point
+    ;; Emits body code, then :block-end marker for return-from to target
+    ((has-tag ir 'block-ir)
+     (let* ((block-id (cadr ir))
+            (body-ir (caddr ir))
+            (body-code (codegen body-ir rtaddrs fnoffs td)))
+       ;; Emit :block-start marker (for block stack), body, then :block-end marker
+       (append (list (list :block-start block-id))
+               body-code
+               (list (list :block-end block-id)))))
+    ;; Return-from-IR: (return-from-ir id value) - jump to block exit with value
+    ;; Evaluates value into x0, then emits :return-from marker that becomes a branch
+    ((has-tag ir 'return-from-ir)
+     (let* ((block-id (cadr ir))
+            (value-ir (caddr ir))
+            (value-code (codegen value-ir rtaddrs fnoffs td)))
+       ;; Emit value code, then :return-from marker with block ID
+       ;; The marker will become a B instruction to the matching :block-end
+       (append value-code (list (list :return-from block-id)))))
     ((has-tag ir 'progn-ir)
      ;; progn-ir = (progn-ir (ir1 ir2 ... irn))
      ;; Generate code for each form, keep result of last
@@ -6354,21 +6425,25 @@
     (append pc bc (arm64:ret))))
 
 (defun code-size (code)
-  "Calculate byte size of code that may contain call and loop markers.
+  "Calculate byte size of code that may contain call, loop, and block markers.
    Handles nested lists (from ARM64 instruction encoders)."
   (labels ((calc (items acc)
              (if (null items)
                  acc
                  (let ((item (car items)))
                    (cond
-                     ((and (consp item) (eq (car item) :loop-start))
-                      ;; Loop start marker - no bytes
+                     ((and (consp item)
+                           (or (eq (car item) :loop-start)
+                               (eq (car item) :block-start)
+                               (eq (car item) :block-end)))
+                      ;; Position markers only - no bytes
                       (calc (cdr items) acc))
                      ((and (consp item)
                            (or (eq (car item) :call-fn)
                                (eq (car item) :tail-call-fn)
                                (eq (car item) :extern-call)
-                               (eq (car item) :loop-continue)))
+                               (eq (car item) :loop-continue)
+                               (eq (car item) :return-from)))
                       ;; 4-byte instructions
                       (calc (cdr items) (+ acc 4)))
                      ((consp item)
