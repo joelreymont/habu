@@ -6013,7 +6013,14 @@
   "Generate code for a function (defun or lifted lambda).
    Defun format:  (name params body param-base)  ; param-base is a number
    Lambda format: (name params body free-vars free-offsets)  ; free-vars is a list or nil
-   Uses dynamically-sized stack frames based on variable count and temp depth."
+   Uses dynamically-sized stack frames based on variable count and temp depth.
+   When *use-register-allocation* is true, tries register-allocated codegen first."
+  ;; Try register-allocated codegen if enabled
+  (when *use-register-allocation*
+    (let ((reg-alloc-code (codegen-fn-reg-alloc fn)))
+      (when reg-alloc-code
+        (return-from codegen-fn reg-alloc-code))))
+  ;; Fall back to accumulator-based codegen
   (let* ((ps (cadr fn))
          (bir (caddr fn))
          (fourth (cadddr fn))

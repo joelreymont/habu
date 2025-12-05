@@ -784,12 +784,12 @@
 (defun allocatable-regs ()
   "Registers available for allocation.
    x9-x15: 7 caller-saved temporaries"
-  '(9 10 11 12 13 14 15))
+  '(:x9 :x10 :x11 :x12 :x13 :x14 :x15))
 
 (defun callee-saved-regs ()
   "Callee-saved registers for values spanning calls.
    x19, x21, x22 (x20 reserved for env base)"
-  '(19 21 22))
+  '(:x19 :x21 :x22))
 
 (defun linear-scan (intervals)
   "Perform linear scan register allocation.
@@ -857,9 +857,9 @@
 ;;; Uses arm64 package intrinsics for instruction encoding.
 
 (defun vreg-to-reg (vreg allocation)
-  "Look up physical register for vreg. Returns reg number or (:spill slot)."
+  "Look up physical register for vreg. Returns reg keyword (:x9, etc.) or (:spill slot)."
   (let ((entry (assoc vreg allocation)))
-    (if entry (cdr entry) 0)))
+    (if entry (cdr entry) :x0)))
 
 (defun emit-load-vreg (vreg allocation dest-reg)
   "Emit code to load vreg into dest-reg.
@@ -1029,12 +1029,12 @@
                     (arm64:str :x0 :sp :offset (* (cadr dest) 8))))
            ;; Src spilled
            ((consp src)
-            (arm64:ldr dest 31 :offset (* (cadr src) 8)))
+            (arm64:ldr dest :sp :offset (* (cadr src) 8)))
            ;; Dest spilled
            ((consp dest)
-            (arm64:str src 31 :offset (* (cadr dest) 8)))
+            (arm64:str src :sp :offset (* (cadr dest) 8)))
            ;; Both in registers
-           ((= dest src) nil)
+           ((eq dest src) nil)
            (t (arm64:mov dest src)))))
 
       ;; tac-return: move result to x0
@@ -1590,10 +1590,11 @@
              (if (null ps)
                  acc
                  (let* ((off (* (+ base-offset idx) -8))
+                        (reg-kw (arm64:num-to-reg idx))
                         ;; Use STUR for negative offsets, STR for positive
                         (store (if (< off 0)
-                                   (arm64:stur idx 20 :offset off)
-                                   (arm64:str idx 20 :offset off))))
+                                   (arm64:stur reg-kw :env :offset off)
+                                   (arm64:str reg-kw :env :offset off))))
                    (gen-stores (cdr ps) (+ idx 1) (append acc store))))))
     (gen-stores params 0 nil)))
 
@@ -1620,11 +1621,17 @@
 #+sbcl
 (defun codegen-fn-reg-alloc (fn)
   "Generate code for a function using register allocation.
-   fn has structure: (name params body-ir param-base)
+   Accepts two formats:
+   - Defun: (name params body-ir param-base) - param-base is a number
+   - Lambda: (name params body-ir free-vars) - free-vars is a list or nil
    Returns list of ARM64 instruction bytes, or nil if IR not fully supported."
   (let* ((params (cadr fn))
          (body-ir (caddr fn))
-         (param-base (cadddr fn))
+         (fourth (cadddr fn))
+         ;; Detect format: number = param-base (defun), list = free-vars (lambda)
+         (param-base (if (numberp fourth)
+                         fourth
+                         (if fourth (length fourth) 0)))
          ;; Apply register allocation pipeline
          (counter (make-vreg-counter))
          (tac-result (ir-to-tac body-ir counter))
