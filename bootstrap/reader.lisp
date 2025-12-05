@@ -339,15 +339,21 @@
 #-sbcl
 (defun intern (name)
   "Intern a string as a symbol. Returns existing symbol if found, else creates new.
-   First strips any package prefix (PKG:NAME -> NAME), then applies current package."
-  (let ((stripped (strip-package-prefix name)))
-    (let ((qname (qualify-symbol-name stripped)))
-      (let ((existing (find-interned qname (get-intern-table))))
-        (if existing
-            existing
-            (let ((sym (make-symbol-from-string qname)))
-              (set-intern-table (cons (cons qname sym) (get-intern-table)))
-              sym))))))
+   Preserves package prefix if present (ARM64:MOVZ stays ARM64:MOVZ).
+   Adds current package prefix for unqualified names."
+  (let ((qname (if (and (contains-colon name)
+                        (> (string-length name) 0)
+                        (not (= (string-ref name 0) #x3A)))  ; not a keyword
+                   ;; Already package-qualified - preserve it (upcase for CL convention)
+                   (string-upcase name)
+                   ;; No package prefix - qualify with current package
+                   (qualify-symbol-name name))))
+    (let ((existing (find-interned qname (get-intern-table))))
+      (if existing
+          existing
+          (let ((sym (make-symbol-from-string qname)))
+            (set-intern-table (cons (cons qname sym) (get-intern-table)))
+            sym)))))
 
 ;;; Global state accessors (implemented in codegen for native)
 (defun get-intern-table () *intern-table*)
