@@ -2054,12 +2054,26 @@
          ;; string-ref - get character at index
          ((eq op 'string-ref)
           (list 'string-ref-ir (sys:compile (cadr expr) env fenv) (sys:compile (caddr expr) env fenv)))
+         ;; char-at - safe string-ref that returns 0 beyond end
+         ;; Expands to: (if (>= pos (string-length str)) 0 (string-ref str pos))
+         ((eq op 'char-at)
+          (let ((str-sym (gensym "STR"))
+                (pos-sym (gensym "POS")))
+            (sys:compile `(let ((,str-sym ,(cadr expr))
+                                (,pos-sym ,(caddr expr)))
+                            (if (>= ,pos-sym (string-length ,str-sym))
+                                0
+                                (string-ref ,str-sym ,pos-sym)))
+                         env fenv)))
          ;; char-code - in Habu, characters ARE fixnums, so this is identity
          ((eq op 'char-code)
           (sys:compile (cadr expr) env fenv))
          ;; code-char - in Habu, characters ARE fixnums, so this is identity
          ((eq op 'code-char)
           (sys:compile (cadr expr) env fenv))
+         ;; string-concat - alias for string-append
+         ((eq op 'string-concat)
+          (sys:compile (list 'string-append (cadr expr) (caddr expr)) env fenv))
          ;; string-append - concatenate two strings
          ;; Expands to: (let* ((s1 str1) (s2 str2)
          ;;                     (len1 (string-length s1)) (len2 (string-length s2))
@@ -2794,13 +2808,20 @@
                                                           (length positional-params)
                                                           keyword-specs)
                                    args)))
-              (list 'call-fn op (mapcar (lambda (a) (sys:compile a env fenv)) final-args))))
+              ;; Record for link-time verification
+              (progn
+                (habu::record-call-target op)
+                (list 'call-fn op (mapcar (lambda (a) (sys:compile a env fenv)) final-args)))))
            ;; op is a variable (parameter) - compile as funcall
            (t
             (let ((off (env-lookup op env)))
               (if (numberp off)
                   (list 'funcall-ir (list 'var off) (mapcar (lambda (a) (sys:compile a env fenv)) (cdr expr)))
-                  (list 'lit 0)))))))))
+                  ;; Unknown function - record and generate crash
+                  (progn
+                    (habu::record-undefined-function op)
+                    (list 'sys-exit-ir (list 'lit 200)))))))))))
+    ;; Unknown expression type
     (t (list 'lit 0))))
 
 ;;; ============================================================
