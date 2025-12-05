@@ -448,23 +448,35 @@
       output-path)))
 
 ;;; ============================================================
-;;; compile-file - Standard CL interface
+;;; compile-file - CL-compatible interface
 ;;; ============================================================
 
-(defun habu-compile-file (input-path &key (output-file nil) (verbose t))
+(defun compile-file (input-file &key (output-file nil) (verbose *compile-verbose*)
+                                     (print *compile-print*))
   "Compile a Lisp source file to FASL.
-   INPUT-PATH: path to .lisp file
-   OUTPUT-FILE: path for .fasl output (default: same name with .fasl extension)
-   Returns the output pathname."
-  (let* ((input (pathname input-path))
+   INPUT-FILE: pathname designator for source file
+   OUTPUT-FILE: pathname for output (default: input with .fasl extension)
+   VERBOSE: print progress messages
+   PRINT: print each form as compiled
+   Returns: output-truename, warnings-p, failure-p"
+  (declare (ignore print))  ; TODO: implement print
+  (let* ((input (pathname input-file))
          (output (or output-file
                      (make-pathname :type "fasl" :defaults input)))
          (source (native-read-file (namestring input)))
          (forms (read-all source)))
     (when verbose
-      (format t "; Compiling ~A~%" input))
-    (compile-to-fasl forms (namestring output))
-    output))
+      (format t "; Compiling file ~A~%" (namestring input)))
+    (handler-case
+        (progn
+          (compile-to-fasl forms (namestring output))
+          (values (truename output) nil nil))
+      (error (e)
+        (format *error-output* "; Compilation failed: ~A~%" e)
+        (values nil t t)))))
+
+(defvar *compile-verbose* t "Default verbosity for compile-file.")
+(defvar *compile-print* nil "Default print setting for compile-file.")
 
 ;;; ============================================================
 ;;; Load FASL
@@ -508,12 +520,42 @@
          ;; TODO: Build stub table for extern calls
          nil)))))
 
-(defun load-fasl (input-path)
-  "Load FASL file into running image.
-   Returns list of loaded function names."
+(defun load (filespec &key (verbose *load-verbose*) (print *load-print*)
+                           (if-does-not-exist t) (external-format :default))
+  "Load a compiled FASL or source file.
+   FILESPEC: pathname designator
+   Returns T on success, signals error or returns NIL on failure."
+  (declare (ignore external-format))
+  (let* ((path (pathname filespec))
+         (type (pathname-type path)))
+    (cond
+      ;; FASL file
+      ((string-equal type "fasl")
+       (load-fasl-file path :verbose verbose :print print))
+      ;; Source file - compile and load
+      ((or (string-equal type "lisp") (string-equal type "lsp") (null type))
+       (let ((fasl-path (make-pathname :type "fasl" :defaults path)))
+         (compile-file path :output-file fasl-path :verbose verbose)
+         (load-fasl-file fasl-path :verbose verbose :print print)))
+      ;; Unknown
+      (t
+       (if if-does-not-exist
+           (error "Unknown file type: ~A" path)
+           nil)))))
+
+(defvar *load-verbose* t "Default verbosity for load.")
+(defvar *load-print* nil "Default print setting for load.")
+
+(defun load-fasl-file (input-path &key verbose print)
+  "Internal: Load FASL file into running image.
+   Returns T on success."
+  (declare (ignore print))
   (multiple-value-bind (header functions code relocations constants str-table)
       (read-fasl input-path)
     (declare (ignore constants))
+
+    (when verbose
+      (format t "; Loading ~A~%" input-path))
 
     ;; Apply relocations to code (in place)
     (let ((fn-vec (coerce functions 'vector)))
@@ -528,8 +570,8 @@
                   (cons (fasl-function-code-offset fn) fn))
             (push name loaded-names)))
 
-        (format t "Loaded ~D functions from ~A: ~{~A~^, ~}~%"
-                (fasl-header-num-functions header)
-                input-path
-                (nreverse loaded-names))
-        (nreverse loaded-names)))))
+        (when verbose
+          (format t "; Loaded ~D functions: ~{~A~^, ~}~%"
+                  (fasl-header-num-functions header)
+                  (nreverse loaded-names)))
+        t))))

@@ -21,7 +21,8 @@
 (defpackage :habu
   (:use :cl :sys)
   (:shadowing-import-from :sys #:read)  ; Use SYS reader
-  (:shadow #:trace #:untrace #:eval #:compile #:disassemble)  ; Shadow CL versions
+  (:shadow #:trace #:untrace #:eval #:compile #:compile-file #:load #:disassemble
+           #:*compile-verbose* #:*compile-print* #:*load-verbose* #:*load-print*)  ; Shadow CL versions
   (:export
    ;; Public compiler API (clean names)
    #:read-all           ; Parse source string to forms
@@ -62,9 +63,12 @@
    #:resolve-calls-simple
    #:link-fasls
    #:generate-gc-fasl
-   ;; FASL support
-   #:write-fasl-v2 #:read-fasl-v2 #:compile-file-to-fasl
-   #:compile-to-fasl #:load-fasl #:habu-compile-file
+   ;; FASL support (CL-compatible)
+   #:compile-file        ; Compile source file to FASL
+   #:load                ; Load FASL or source file
+   #:compile-to-fasl     ; Internal: compile forms to FASL
+   #:*compile-verbose* #:*compile-print*
+   #:*load-verbose* #:*load-print*
    ;; JIT executor (from executor.lisp)
    #:jit-eval #:jit-compile-expression #:jit-disasm
    #:jit-test #:jit-run-tests #:tag-fixnum #:untag-fixnum
