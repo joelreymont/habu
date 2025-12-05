@@ -1354,6 +1354,71 @@
                          (list 'buffer-to-string buf-sym n-sym)))
              env fenv)))
 
+         ;; native-read-file-large: read file in chunks using while loop
+         ;; Expands to: (let* ((fd (sys-open path 0 0))
+         ;;                     (buf (make-vector 4096))
+         ;;                     (chunks nil) (total 0) (n 0))
+         ;;               (while (progn (setq n (sys-read fd buf 4096)) (> n 0))
+         ;;                 (setq chunks (cons (buffer-to-string buf n) chunks))
+         ;;                 (setq total (+ total n)))
+         ;;               (sys-close fd)
+         ;;               (concat-string-list-iter chunks total))
+         ((eq (car expr) 'native-read-file-large)
+          (let ((path-sym (gensym "PATH"))
+                (fd-sym (gensym "FD"))
+                (buf-sym (gensym "BUF"))
+                (chunks-sym (gensym "CHUNKS"))
+                (total-sym (gensym "TOTAL"))
+                (n-sym (gensym "N")))
+            (compile-expr-full
+             (list 'let* (list (list path-sym (nth 1 expr))
+                               (list fd-sym (list 'sys-open path-sym 0 0))
+                               (list buf-sym (list 'make-vector 4096))
+                               (list chunks-sym nil)
+                               (list total-sym 0)
+                               (list n-sym 0))
+                   (list 'progn
+                         (list 'while (list 'progn
+                                           (list 'setq n-sym (list 'sys-read fd-sym buf-sym 4096))
+                                           (list '> n-sym 0))
+                               (list 'setq chunks-sym (list 'cons (list 'buffer-to-string buf-sym n-sym) chunks-sym))
+                               (list 'setq total-sym (list '+ total-sym n-sym)))
+                         (list 'sys-close fd-sym)
+                         (list 'concat-string-list-iter chunks-sym total-sym)))
+             env fenv)))
+
+         ;; concat-string-list-iter: iterative string concatenation
+         ;; Uses nested while loops instead of recursion
+         ((eq (car expr) 'concat-string-list-iter)
+          (let* ((chunks-var (gensym "CHUNKS"))
+                 (total-var (gensym "TOTAL"))
+                 (vec-var (gensym "VEC"))
+                 (rev-chunks-var (gensym "REV-CHUNKS"))
+                 (offset-var (gensym "OFFSET"))
+                 (chunk-var (gensym "CHUNK"))
+                 (len-var (gensym "LEN"))
+                 (i-var (gensym "I")))
+            (compile-expr-full
+             (list 'let* (list (list chunks-var (nth 1 expr))
+                               (list total-var (nth 2 expr))
+                               (list vec-var (list 'make-vector total-var))
+                               (list rev-chunks-var (list 'reverse chunks-var))
+                               (list offset-var 0))
+                   (list 'progn
+                         (list 'while rev-chunks-var
+                               (list 'let* (list (list chunk-var (list 'car rev-chunks-var))
+                                                 (list len-var (list 'string-length chunk-var))
+                                                 (list i-var 0))
+                                     (list 'while (list '< i-var len-var)
+                                           (list 'vector-set vec-var
+                                                 (list '+ offset-var i-var)
+                                                 (list 'string-ref chunk-var i-var))
+                                           (list 'setq i-var (list '+ i-var 1)))
+                                     (list 'setq offset-var (list '+ offset-var len-var))
+                                     (list 'setq rev-chunks-var (list 'cdr rev-chunks-var))))
+                         (list 'make-string-from-vector vec-var)))
+             env fenv)))
+
          ;; Unknown - try as function call or inline lambda
          (t (cond
               ((symbolp (car expr)) (compile-call expr env fenv))
