@@ -477,6 +477,16 @@
                  (iter (+ i 1) (cons (char-code (char str i)) acc)))))
     (iter 0 nil)))
 
+(defun sbcl-gc-trigger-code ()
+  "Generate inline GC trigger check for SBCL-hosted compilation.
+   Uses x9 as scratch. Emits :call-fn marker if GC needed.
+   Simple GC: checks from-end at [x27+16], calls GC-COLLECT."
+  (append-all
+   (list (arm64:ldr :x9 :gc :offset +gc-from-end-offset+)  ; x9 = from_end
+         (arm64:cmp :heap :x9)                             ; compare x28, from_end
+         (arm64:b.lo 2)                                    ; skip if x28 < from_end
+         (list (list :call-fn 'GC-COLLECT)))))
+
 (defun codegen-string-from-chars (chars td)
   "Generate code to build a string from character codes.
    Returns code that leaves the string in x0."
@@ -524,7 +534,8 @@
   "Generate code to build a string inline on the heap using x28 bump pointer.
    String layout: [length (8 bytes)][char data (n bytes)]
    Returns code that leaves tagged string pointer in x0.
-   All allocations are 16-byte aligned for 4-bit tagging scheme."
+   All allocations are 16-byte aligned for 4-bit tagging scheme.
+   IMPORTANT: GC pre-check before allocation to prevent writing to unmapped memory."
   (let* ((len (length chars))
          ;; Round up allocation to 16-byte alignment: (8 + len + 15) & ~15
          (alloc-size (logand (+ 8 len 15) (lognot 15))))
@@ -541,6 +552,8 @@
       (let ((store-code (store-chars chars 0 nil)))
         (append-all
          (list
+          ;; GC pre-check BEFORE writing to heap
+          (sbcl-gc-trigger-code)
           ;; Store length at [x28+0]
           (arm64:movz :x1 len)
           (arm64:str :x1 :heap :offset 0)
@@ -552,7 +565,9 @@
           (arm64:add :heap :heap :x1)                ; x28 += alloc size
           ;; Tag with string tag (0x4)
           (arm64:movz :x1 4)
-          (arm64:orr :x0 :x0 :x1)))))))
+          (arm64:orr :x0 :x0 :x1)
+          ;; GC check after allocation
+          (sbcl-gc-trigger-code)))))))
 
 ;;; ============================================================
 ;;; Part 2: Utility Functions (util-*)
@@ -3468,7 +3483,7 @@
          (arm64:lsl :x0 :x0 4 :imm t)
          (arm64:movz :x9 2)
          (arm64:orr :x0 :x0 :x9)          ; tag as symbol
-         (arm64:b 25)                     ; jump to done (past instr 59)
+         (arm64:b 29)                     ; jump to done (past instr 63, +4 for GC check)
 
          ;; next_entry: (instr 36)
          (arm64:movz :x9 #xF)
@@ -3479,6 +3494,11 @@
          ;; create_new: (instr 40)
          (arm64:ldr :x11 :gc :offset 48)  ; x11 = symbol_counter
          (arm64:ldr :x0 :sp :offset str-slot)
+         ;; GC pre-check: ensure heap has space before writing
+         (arm64:ldr :x9 :gc :offset +gc-from-end-offset+)
+         (arm64:cmp :heap :x9)
+         (arm64:b.lo 2)
+         (list :call-fn 'GC-COLLECT)
          (arm64:str :x0 :heap :offset 0)  ; name
          (arm64:str :x11 :heap :offset 8) ; id
          (arm64:mov :x12 :heap)
@@ -3663,6 +3683,8 @@
             (alloc-code (append-all
                          (list (arm64:mov :x1 :x0)             ; x1 = cdr value
                                (arm64:ldr :x0 :sp :offset cs)      ; x0 = car value
+                               ;; GC pre-check BEFORE writing to heap
+                               (sbcl-gc-trigger-code)
                                (arm64:str :x0 :heap :offset 0)       ; [x28+0] = car
                                (arm64:str :x1 :heap :offset 8)       ; [x28+8] = cdr
                                (arm64:mov :x0 :heap)            ; x0 = untagged ptr
@@ -4071,6 +4093,8 @@
             (sc (codegen size-ir rtaddrs fnoffs td)))
        (append-all
         (list sc
+              ;; GC pre-check BEFORE writing to heap
+              (sbcl-gc-trigger-code)
               ;; Store untagged length at [x28+0]
               (arm64:lsr :x1 :x0 4 :imm t)           ; x1 = untagged length
               (arm64:str :x1 :heap :offset 0)       ; [x28+0] = length
@@ -4251,6 +4275,8 @@
               (arm64:and* :x1 :x0 -16 :imm t)        ; x1 = vec & ~0xF
               ;; x5 = vec length (raw)
               (arm64:ldr :x5 :x1 :offset 0)           ; x5 = [x1+0] = length
+              ;; GC pre-check BEFORE writing to heap
+              (sbcl-gc-trigger-code)
               ;; Allocate string: store length at [x28], compute alloc size
               (arm64:str :x5 :heap :offset 0)          ; [x28+0] = length
               ;; x4 = alloc size = (8 + len + 15) & ~15 for 16-byte alignment
@@ -4321,6 +4347,8 @@
          (arm64:ldr :x1 :sp :offset buf-slot)      ; x1 = buf (tagged)
          (arm64:and* :x1 :x1 -16 :imm t)           ; x1 = buf & ~0xF (clear tag)
          (arm64:add :x1 :x1 8 :imm t)                 ; x1 = buf + 8 (skip length header)
+         ;; GC pre-check BEFORE writing to heap
+         (sbcl-gc-trigger-code)
          ;; Allocate string: store length at [x28]
          (arm64:str :x5 :heap :offset 0)             ; [x28+0] = length
          ;; x4 = alloc size = (8 + len + 15) & ~15 for 16-byte alignment
@@ -4433,7 +4461,7 @@
          (arm64:lsl :x0 :x0 4 :imm t)     ; 32: x0 = id << 4
          (arm64:movz :x9 2)               ; 33
          (arm64:orr :x0 :x0 :x9)          ; 34: tag as symbol
-         (arm64:b 25)                     ; 35: jump to done (after create_new)
+         (arm64:b 29)                     ; 35: jump to done (+4 for GC check)
 
          ;; next_entry: move to cdr of table (instr 36-39)
          (arm64:movz :x9 #xF)             ; 36
@@ -4447,6 +4475,11 @@
 
          ;; Create new entry cons: (name . id)
          (arm64:ldr :x0 :sp :offset str-slot)  ; reload input string
+         ;; GC pre-check: ensure heap has space before writing
+         (arm64:ldr :x9 :gc :offset +gc-from-end-offset+)
+         (arm64:cmp :heap :x9)
+         (arm64:b.lo 2)
+         (list :call-fn 'GC-COLLECT)
          (arm64:str :x0 :heap :offset 0)  ; [x28+0] = name
          (arm64:str :x3 :heap :offset 8)  ; [x28+8] = id (untagged)
          ;; Tag as cons
@@ -4909,6 +4942,8 @@
            (let ((tagged-offset (ash offset-bytes 4)))  ; tag as fixnum
              (append-all
               (list
+               ;; GC pre-check BEFORE writing to heap
+               (sbcl-gc-trigger-code)
                ;; Store fn-offset (tagged) in [x28]
                ;; Use load-addr-32 to ensure consistent size during two-pass compilation
                (load-addr-32 :x9 tagged-offset)   ; x9 = tagged offset
@@ -4943,6 +4978,8 @@
                                         (alloc-cons
                                          (append-all
                                           (list
+                                           ;; GC pre-check BEFORE writing to heap
+                                           (sbcl-gc-trigger-code)
                                            (arm64:ldr :x9 :sp :offset val-slot)  ; car = captured value
                                            (arm64:str :x9 :heap :offset 0)         ; [x28+0] = car
                                            ;; cdr = previous env acc
@@ -4970,6 +5007,8 @@
                 (list
                  ;; Build env cons list
                  env-code
+                 ;; GC pre-check BEFORE writing to heap
+                 (sbcl-gc-trigger-code)
                  ;; Now allocate closure cons: (fn-offset . env)
                  ;; Use load-addr-32 to ensure consistent size during two-pass compilation
                  (load-addr-32 :x9 tagged-offset)     ; car = fn-offset (tagged)
@@ -5889,6 +5928,12 @@
     ((has-tag ir 'dolist-ir)
      ;; dolist-ir has body at (cadddr ir)
      (count-max-env-offset (cadddr ir)))
+    ;; TCO: loop-ir wraps body
+    ((has-tag ir 'loop-ir)
+     (count-max-env-offset (cadr ir)))
+    ;; TCO: continue-ir has arg expressions
+    ((has-tag ir 'continue-ir)
+     (apply #'max 0 (mapcar #'count-max-env-offset (cadr ir))))
     (t
      ;; Check children for other IR nodes, filtering out non-list elements
      (apply #'max 0 (mapcar #'count-max-env-offset
@@ -5946,6 +5991,19 @@
             (closure-depth (count-max-temp-depth closure nested-base))
             (arg-depths (mapcar (lambda (a) (count-max-temp-depth a nested-base)) args)))
        (apply #'max nested-base closure-depth arg-depths)))
+    ;; TCO: loop-ir wraps body
+    ((has-tag ir 'loop-ir)
+     (count-max-temp-depth (cadr ir) depth))
+    ;; TCO: continue-ir has arg expressions evaluated to temps, then copied to params
+    ;; Each arg needs a temp slot, plus 1 for x24 save
+    ((has-tag ir 'continue-ir)
+     (let* ((args (cadr ir))
+            (nargs (length args))
+            ;; continue-ir uses: xs (x24 save), spill slots for args
+            ;; The spill slot access is at (spill-slot td idx), not temp-slot
+            ;; But we need temp depth to not overlap with arg evaluation
+            (arg-depths (mapcar (lambda (a) (count-max-temp-depth a (+ depth 1))) args)))
+       (apply #'max (+ depth nargs 1) arg-depths)))
     ;; Default: check all children, filtering out non-list elements
     (t
      (apply #'max depth (mapcar (lambda (child) (count-max-temp-depth child depth))
@@ -6335,8 +6393,7 @@
          (mir-opt (if (and optimize (fboundp 'optimize-ir))
                       (optimize-ir mir-raw :passes '(let-flattening progn-flattening constant-folding strength-reduction dead-code-elimination))
                       mir-raw))
-         ;; Function bodies get standard optimizations
-         ;; Note: Self-TCO is disabled - the continue-ir overhead is > call overhead
+         ;; Function bodies get standard optimizations (TCO applied later after lift-lambdas)
          (defun-fns-opt (if (and optimize (fboundp 'optimize-ir))
                             (mapcar (lambda (fn)
                                       (list (first fn)
@@ -6351,7 +6408,12 @@
                     ;; Lift lambdas from all defun bodies (use optimized defuns)
       (let* ((mvb-result-35 (lift-lambdas-from-fns defun-fns-opt nil nil)) (lifted-defuns (car mvb-result-35)) (defun-lambdas (cdr mvb-result-35)))
                     ;; Combine: defuns + main-lambdas + defun-lambdas
-        (let ((fns (append lifted-defuns main-lambdas defun-lambdas)))
+        (let* ((fns-raw (append lifted-defuns main-lambdas defun-lambdas))
+               ;; Apply TCO: convert self-tail-calls to loops
+               ;; This eliminates stack growth for recursive functions like COLLECT-DEFUNS
+               (fns (if (and optimize (fboundp 'apply-tco-to-all-functions))
+                        (apply-tco-to-all-functions fns-raw)
+                        fns-raw)))
           (if (null fns)
               ;; No functions defined - simple case
               ;; Still need to resolve extern calls

@@ -550,8 +550,8 @@
 #-sbcl
 (defun temp-slot (td)
   "Calculate temp slot offset for depth TD.
-   Temp slots occupy 0x40-0xC0 (16 slots, 128 bytes)."
-  (if (>= td 16)
+   Temp slots occupy 0x40-0x100 (24 slots, 192 bytes)."
+  (if (>= td 24)
       (progn
         ;; Error: too many temp slots - but we can't use format in pure code
         ;; Just return a safe value within spill area
@@ -587,7 +587,8 @@
 (defun gen-string-lit (str len total-size)
   "Generate code to allocate string literal on heap.
    String layout: [length:8][data:N]
-   Returns tagged string pointer in x0, bumps x28."
+   Returns tagged string pointer in x0, bumps x28.
+   IMPORTANT: GC trigger checked BEFORE allocation to prevent writing to unmapped memory."
   (labels
       ;; Store up to 8 bytes at a time using MOVZ/MOVK + STR
       ((gen-store-bytes (offset bytes acc)
@@ -611,6 +612,8 @@
     (let* ((bytes (str-to-bytes str 0 nil))
            ;; Add null terminator for C string compatibility
            (bytes-with-nul (append bytes (list 0)))
+           ;; Check GC BEFORE allocation to ensure heap is valid
+           (pre-check (gc-trigger-code))
            ;; Store length first, then data starting at offset 8
            (len-code (append-all
                       (list (load-addr 9 len)
@@ -622,7 +625,7 @@
                                (arm64:add :x0 :x0 4 :imm t)  ; string tag
                                (arm64:add :heap :heap total-size :imm t)
                                (gc-trigger-code)))))
-      (append-all (list len-code data-code result-code)))))
+      (append-all (list pre-check len-code data-code result-code)))))
 
 (defun take-bytes (bytes n)
   "Take up to N bytes from list"
@@ -1057,6 +1060,7 @@
                          rtaddrs fnoffs td))
 
     ;; Cons cell (inline heap allocation)
+    ;; GC pre-check ensures heap is valid before writing
     ((has-tag ir 'cons-ir)
      (let* ((car-ir (cadr ir))
             (cdr-ir (caddr ir))
@@ -1071,6 +1075,7 @@
               (arm64:str :x0 :sp :offset cs)
               (arm64:ldr :closure :sp :offset xs)
               cdr-code
+              (gc-trigger-code)     ; GC pre-check BEFORE writing to heap
               (arm64:str :x0 :heap :offset 8)
               (arm64:ldr :x0 :sp :offset cs)
               (arm64:str :x0 :heap :offset 0)
@@ -1160,6 +1165,8 @@
               (arm64:add :x11 :x9 :x10)
               ;; Save total length
               (arm64:str :x11 :sp :offset spill3)
+              ;; GC pre-check BEFORE writing to heap
+              (gc-trigger-code)
               ;; Store total length at heap[0]
               (arm64:str :x11 :heap :offset 0)
               ;; Save heap start for result
@@ -1260,6 +1267,8 @@
             (sc (codegen size-ir rtaddrs fnoffs td)))
        (append-all
         (list sc
+              ;; GC pre-check BEFORE writing to heap
+              (gc-trigger-code)
               ;; x0 = tagged size, store untagged length at [x28+0]
               (arm64:lsr :x1 :x0 4 :imm t)           ; x1 = untagged length
               (arm64:str :x1 :heap :offset 0)       ; [x28+0] = length
@@ -1427,13 +1436,15 @@
               ;; Check tag: x6 = x0 & 0xF
               (arm64:and* :x6 :x0 #xF :imm t)               ; x6 = tag
               (arm64:cmp :x6 1 :imm t)                ; is it a list (tag 1)?
-              (arm64:b.eq 24)        ; if list, jump to list handler (+24 instrs = 96 bytes)
+              (arm64:b.eq 28)        ; if list, jump to list handler (+28 instrs, gc-trigger added)
 
               ;; === VECTOR PATH (tag 3) ===
               ;; x1 = untagged vec base
               (arm64:sub :x1 :x0 3 :imm t)              ; x1 = vec_ptr (untagged)
               ;; x5 = vec length (raw)
               (arm64:ldr :x5 :x1 :offset 0)           ; x5 = [x1+0] = length
+              ;; GC pre-check BEFORE writing to heap
+              (gc-trigger-code)
               ;; Allocate string: store length at [x28], compute alloc size
               (arm64:str :x5 :heap :offset 0)          ; [x28+0] = length
               ;; x4 = alloc size = (8 + len + 15) & ~15 for 16-byte alignment
@@ -1462,7 +1473,7 @@
               ;; vec_loop_end: tag result
               (movz 4 4)                   ; x4 = 4
               (arm64:orr :x0 :x0 :x4)              ; x0 = string (tagged)
-              (arm64:b 29)               ; jump to end (+29 instrs = 116 bytes)
+              (arm64:b 33)               ; jump to end (+33 instrs, gc-trigger added to list path)
 
               ;; === LIST PATH (tag 1) ===
               ;; First count list length
@@ -1477,6 +1488,8 @@
               (arm64:ldr :x1 :x4 :offset 8)           ; x1 = cdr (tagged)
               (arm64:b -5)               ; back to count_loop
               ;; count_done: x5 = length
+              ;; GC pre-check BEFORE writing to heap (list path)
+              (gc-trigger-code)
               ;; Allocate string
               (arm64:str :x5 :heap :offset 0)          ; [x28+0] = length
               (arm64:add :x4 :x5 23 :imm t)             ; x4 = len + 23
@@ -1616,6 +1629,44 @@
               body-code
               ;; Jump back to start of test
               (arm64:b (ash (- 0 (+ test-size 8 body-size)) -2))))))
+
+    ;; Loop-IR: (loop-ir body) - TCO loop wrapper
+    ;; Marks the loop start and evaluates body. continue-ir jumps back here.
+    ((has-tag ir 'loop-ir)
+     (let* ((body-ir (cadr ir))
+            (body-code (codegen body-ir rtaddrs fnoffs td)))
+       ;; Emit :loop-start marker, then body
+       ;; The marker is used by continue-ir to calculate branch target
+       (cons (list :loop-start) body-code)))
+
+    ;; Continue-IR: (continue-ir args) - TCO continue (jump back to loop start)
+    ;; Evaluates new args, stores to params (at x20-0, x20-8, ...), jumps to loop start
+    ((has-tag ir 'continue-ir)
+     (let* ((arg-irs (cadr ir))
+            (nargs (length arg-irs)))
+       ;; Generate code to evaluate args and store to temp slots
+       (labels ((gen-args (irs idx acc)
+                  (if (null irs)
+                      acc
+                      (let* ((arg-code (codegen (car irs) rtaddrs fnoffs td))
+                             (slot-off (+ #x40 (* idx 8)))  ; temp slots at sp+0x40+
+                             (store (arm64:str :x0 :sp :offset slot-off)))
+                        (gen-args (cdr irs) (+ idx 1)
+                                  (append-all (list acc arg-code store))))))
+                (gen-copies (idx)
+                  ;; Copy from temp slots to param slots
+                  (if (>= idx nargs)
+                      nil
+                      (let* ((temp-off (+ #x40 (* idx 8)))
+                             (load (arm64:ldr :x9 :sp :offset temp-off))
+                             (param-off (* idx 8))
+                             (store-param (append (arm64:sub :x10 :env param-off :imm t)
+                                                  (arm64:str :x9 :x10 :offset 0))))
+                        (append-all (list load store-param (gen-copies (+ idx 1))))))))
+         (let ((args-code (gen-args arg-irs 0 nil))
+               (copy-code (gen-copies 0)))
+           ;; Emit args, copies, then :loop-continue marker
+           (append-all (list args-code copy-code (list (list :loop-continue))))))))
 
     ;; Let-IR: (let-ir vals body count offs)
     ((has-tag ir 'let-ir)
@@ -2085,6 +2136,8 @@
          (arm64:ldr :x1 :sp :offset buf-slot)      ; x1 = buf (tagged)
          (arm64:and* :x1 :x1 -8 :imm t)                   ; x1 = buf & ~7 (clear tag)
          (arm64:add :x1 :x1 8 :imm t)                 ; x1 = buf + 8 (skip length header)
+         ;; GC pre-check BEFORE writing to heap
+         (gc-trigger-code)
          ;; Allocate string: store length at [x28]
          (arm64:str :x5 :heap :offset 0)             ; [x28+0] = length
          ;; x4 = alloc size = (8 + len + 15) & ~15 for 16-byte alignment
@@ -2142,7 +2195,8 @@
        (if (null free-offsets)
            ;; No captures - simple closure
            (append-all
-            (list (load-addr-8 0 (ash fn-offset 4))
+            (list (gc-trigger-code)  ; GC pre-check BEFORE writing to heap
+                  (load-addr-8 0 (ash fn-offset 4))
                   (arm64:str :x0 :heap :offset 0)
                   (movz 0 0)  ;; nil for empty env
                   (arm64:str :x0 :heap :offset 8)
@@ -2158,6 +2212,8 @@
                     (arm64:str :closure :sp :offset xs)
                     ;; Build captured env (result in x0)
                     capture-code
+                    ;; GC pre-check BEFORE writing to heap
+                    (gc-trigger-code)
                     ;; Save captured env
                     (arm64:str :x0 :heap :offset 8)
                     ;; Store fn-offset
@@ -2183,7 +2239,8 @@
        ;; Build closure on heap: (fn-offset . nil)
        ;; No captures, so env is nil
        (append-all
-        (list (load-addr-8 0 (ash fn-offset 4))
+        (list (gc-trigger-code)  ; GC pre-check BEFORE writing to heap
+              (load-addr-8 0 (ash fn-offset 4))
               (arm64:str :x0 :heap :offset 0)
               (movz 0 0)  ;; nil for empty env
               (arm64:str :x0 :heap :offset 8)
@@ -2454,40 +2511,50 @@
 ;;; Prologue and Epilogue
 ;;; ============================================================
 
+;;; Fixed-size function prologue/epilogue used by codegen-fn for native delivery.
+;;; These are used in BOTH SBCL-hosted mode (for Stage 1 compilation) and native mode.
+;;; The frame layout supports up to 48 env slots.
+
+(defun fn-fixed-prologue ()
+  "Generate function prologue with fixed 1KB frame.
+   Frame layout after prologue (0x400 bytes = 1024 bytes):
+   sp+0x10:  x19, x20 (saved)
+   sp+0x20:  x21, x22 (saved)
+   sp+0x30:  x23, x24 (saved)
+   sp+0x40:  temp slots (24 slots = 192 bytes, to 0x100)
+   sp+0x100: spill area (32 slots = 256 bytes, to 0x200)
+   sp+0x200: [free space for env slots to expand down]
+   sp+0x380: environment base (x20) - allows 48+ env slots before collision
+   sp+0x3F0: x29 (fp)
+   sp+0x3F8: x30 (lr)
+   Note: 1KB frame allows ~8K nested calls with 8MB stack."
+  (append
+   (arm64:sub :sp :sp #x400 :imm t)         ;; Create 1024-byte frame
+   (arm64:str :fp :sp :offset #x3F0)        ;; Save fp at sp+0x3F0
+   (arm64:str :lr :sp :offset #x3F8)        ;; Save lr at sp+0x3F8
+   (arm64:add :fp :sp 0 :imm t)             ;; fp = sp
+   (arm64:stp :x19 :env :sp :offset 16)
+   (arm64:stp :x21 :x22 :sp :offset 32)
+   (arm64:stp :x23 :closure :sp :offset 48)
+   (arm64:add :env :sp #x380 :imm t)))      ;; x20 = sp + 0x380
+
+(defun fn-fixed-epilogue ()
+  "Generate function epilogue for fixed 1KB frame"
+  (append
+   (arm64:ldp :x23 :closure :sp :offset 48)
+   (arm64:ldp :x21 :x22 :sp :offset 32)
+   (arm64:ldp :x19 :env :sp :offset 16)
+   (arm64:ldr :fp :sp :offset #x3F0)        ;; Restore fp from sp+0x3F0
+   (arm64:ldr :lr :sp :offset #x3F8)        ;; Restore lr from sp+0x3F8
+   (arm64:add :sp :sp #x400 :imm t)         ;; Restore 1024-byte frame
+   (arm64:ret)))
+
+;;; Native-only main prologue/epilogue (used when running as native binary)
 #-sbcl
-(defun prologue ()
-  "Generate function prologue.
-   Frame layout after prologue (0x200 bytes = 512 bytes):
-   sp+0x1F0: x29 (fp)
-   sp+0x1F8: x30 (lr)
-   sp+0x10:  x19, x20
-   sp+0x20:  x21, x22
-   sp+0x30:  x23, x24
-   sp+0x40:  temp slots (16 max = 128 bytes, to 0xC0)
-   sp+0x0C0: environment base (x20, 8 params = 64 bytes)
-   sp+0x100: spill area (240 bytes = 30 slots, to 0x1F0)
-   Reduced from 2KB to 512 bytes to allow ~16K nested calls."
-  (append-all
-   (list (arm64:sub :sp :sp #x200 :imm t)           ;; Create 512-byte frame
-         (arm64:str :fp :sp :offset #x1F0)        ;; Save fp at sp+0x1F0
-         (arm64:str :lr :sp :offset #x1F8)        ;; Save lr at sp+0x1F8
-         (arm64:add :fp :sp 0 :imm t)               ;; fp = sp
-         (arm64:stp :x19 :env :sp :offset 16)
-         (arm64:stp :x21 :x22 :sp :offset 32)
-         (arm64:stp :x23 :closure :sp :offset 48)
-         (arm64:add :env :sp #xC0 :imm t))))
+(defun prologue () (fn-fixed-prologue))
 
 #-sbcl
-(defun epilogue ()
-  "Generate function epilogue"
-  (append-all
-   (list (arm64:ldp :x23 :closure :sp :offset 48)
-         (arm64:ldp :x21 :x22 :sp :offset 32)
-         (arm64:ldp :x19 :env :sp :offset 16)
-         (arm64:ldr :fp :sp :offset #x1F0)        ;; Restore fp from sp+0x1F0
-         (arm64:ldr :lr :sp :offset #x1F8)        ;; Restore lr from sp+0x1F8
-         (arm64:add :sp :sp #x200 :imm t)           ;; Restore 512-byte frame
-         (arm64:ret))))
+(defun epilogue () (fn-fixed-epilogue))
 
 ;;; ============================================================
 ;;; Function Codegen
@@ -2531,14 +2598,14 @@
          (param-code (gen-param-stores params param-base 0 nil))
          ;; Calculate loop label offset for TCO: prologue + capture + params
          ;; This is where continue-ir branches back to
-         (prologue-size (code-size (prologue)))
+         (prologue-size (code-size (fn-fixed-prologue)))
          (capture-size (if capture-code (code-size capture-code) 0))
          (param-size (if param-code (code-size param-code) 0))
          (loop-label-offset (+ prologue-size capture-size param-size))
          ;; Generate body code - codegen handles loop-ir/continue-ir directly
          (body-code (codegen body-ir rtaddrs fnoffs 0))
          ;; Combine all code
-         (all-code (append-all (list (prologue) capture-code param-code body-code (epilogue))))
+         (all-code (append-all (list (fn-fixed-prologue) capture-code param-code body-code (fn-fixed-epilogue))))
          ;; Resolve TCO branch markers into actual B instructions
          (resolved-code (resolve-tco-branches all-code loop-label-offset)))
     resolved-code))
@@ -2773,20 +2840,22 @@
 
     ;; Full compilation path with GC runtime
     (let* ((lambda-as-defuns (lambdas-to-defuns all-lambdas nil))
-           (all-fns (append defuns lambda-as-defuns))
+           (all-fns-raw (append defuns lambda-as-defuns))
+           ;; Apply TCO to all functions (converts self-tail-calls to loops)
+           (all-fns (apply-tco-to-all-functions all-fns-raw))
            ;; Generate main code first (with nil fnoffs to get size)
            (main-code-temp (append-all
-                            (list (prologue)
+                            (list (fn-fixed-prologue)
                                   (codegen main-ir nil nil 0)
-                                  (epilogue))))
+                                  (fn-fixed-epilogue))))
            (main-size (code-size main-code-temp))
            ;; Build fnoffs starting after main code
            (fnoffs (build-fnoffs all-fns main-size))
            ;; Regenerate main with fnoffs
            (main-code (append-all
-                       (list (prologue)
+                       (list (fn-fixed-prologue)
                              (codegen main-ir nil fnoffs 0)
-                             (epilogue))))
+                             (fn-fixed-epilogue))))
            ;; Generate all function code
            (fn-code (codegen-all-fns all-fns nil fnoffs nil))
            ;; Generate GC runtime code
