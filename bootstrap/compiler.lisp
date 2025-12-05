@@ -88,6 +88,55 @@
     (cons "NIL" 'nil) (cons "T" 't))))
 
 ;;; ============================================================
+;;; Undefined Function Tracking
+;;; ============================================================
+;;; Tracks undefined function calls for compile-time warnings and
+;;; link-time verification. Exit code 200 = undefined function at runtime.
+
+#+sbcl (defvar *undefined-functions* nil "Functions called but not defined")
+#+sbcl (defvar *all-call-targets* nil "All call-fn targets for link-time check")
+
+#+sbcl
+(defun reset-compile-warnings ()
+  "Reset undefined function tracking before compilation"
+  (setq *undefined-functions* nil)
+  (setq *all-call-targets* nil))
+
+#+sbcl
+(defun record-undefined-function (name)
+  "Record that an undefined function was called"
+  (unless (member name *undefined-functions*)
+    (push name *undefined-functions*)))
+
+#+sbcl
+(defun record-call-target (name)
+  "Record a call-fn target for link-time verification"
+  (unless (member name *all-call-targets*)
+    (push name *all-call-targets*)))
+
+#+sbcl
+(defun report-compile-warnings ()
+  "Report undefined functions found during compilation. Returns T if errors found."
+  (when *undefined-functions*
+    (format t "~%ERROR: Undefined functions referenced:~%")
+    (dolist (fn (reverse *undefined-functions*))
+      (format t "  - ~A~%" fn))
+    t))
+
+#+sbcl
+(defun verify-link-references (defined-fns)
+  "Verify all call-fn targets are in defined-fns list. Returns T if errors found."
+  (let ((undefined nil))
+    (dolist (target *all-call-targets*)
+      (unless (member target defined-fns)
+        (push target undefined)))
+    (when undefined
+      (format t "~%LINK ERROR: Functions called but not compiled:~%")
+      (dolist (fn (reverse undefined))
+        (format t "  - ~A~%" fn))
+      t)))
+
+;;; ============================================================
 ;;; Core Helpers (Pure Habu)
 ;;; ============================================================
 
@@ -231,14 +280,20 @@
 
 #-sbcl
 (defun env-lookup (sym env)
-  "Look up symbol in environment, return offset or nil"
-  (labels ((search-env (e offset)
-             (if (null e)
-                 nil
-                 (if (eq (car e) sym)
-                     offset
-                     (search-env (cdr e) (+ offset 1))))))
-    (search-env env 0)))
+  "Look up symbol in environment, return offset or nil - ITERATIVE VERSION"
+  (let ((e env)
+        (offset 0)
+        (result nil)
+        (done nil))
+    (while (and (not done) (not (null e)))
+      (if (eq (car e) sym)
+          (progn
+            (setq result offset)
+            (setq done t))
+          (progn
+            (setq e (cdr e))
+            (setq offset (+ offset 1)))))
+    result))
 
 (defun compile-if (expr env)
   "Compile (if test then else) to IR"
@@ -755,11 +810,16 @@
                 ;; Inline: substitute parameters with arguments in body
                 (let ((inlined-body (substitute-params body params final-args)))
                   (compile-expr-full inlined-body env fenv))
-                ;; Normal call
-                (list 'call-fn fn-name
-                      (compile-args final-args env fenv))))
-          ;; Unknown function - compile as lit 0 for now
-          (list 'lit 0)))))
+                ;; Normal call - record for link-time verification
+                (progn
+                  #+sbcl (record-call-target fn-name)
+                  (list 'call-fn fn-name
+                        (compile-args final-args env fenv)))))
+          ;; Unknown function - record warning and crash at runtime
+          (progn
+            #+sbcl (record-undefined-function fn-name)
+            ;; Generate sys-exit with code 200 (undefined function error)
+            (list 'sys-exit-ir (list 'lit 200)))))))
 
 (defun fenv-lookup (name fenv)
   "Look up function in function environment"
@@ -1191,31 +1251,37 @@
                                    (compile-expr-full (nth 2 expr) env fenv)))
 
          ;; length - list length via inline labels
+         ;; NOTE: Uses list instead of backquote for portability (no SB-IMPL::COMMA)
          ((eq (car expr) 'length)
           (let ((len-iter-fn (gensym "LEN-ITER"))
                 (lst-var (gensym "LST"))
                 (acc-var (gensym "ACC")))
             (compile-expr-full
-             `(labels ((,len-iter-fn (,lst-var ,acc-var)
-                         (if (null ,lst-var)
-                             ,acc-var
-                             (,len-iter-fn (cdr ,lst-var) (+ ,acc-var 1)))))
-                (,len-iter-fn ,(nth 1 expr) 0))
+             (list 'labels
+                   (list (list len-iter-fn (list lst-var acc-var)
+                               (list 'if (list 'null lst-var)
+                                     acc-var
+                                     (list len-iter-fn (list 'cdr lst-var)
+                                           (list '+ acc-var 1)))))
+                   (list len-iter-fn (nth 1 expr) 0))
              env fenv)))
 
          ;; reverse - reverse list via inline labels
+         ;; NOTE: Uses list instead of backquote for portability (no SB-IMPL::COMMA)
          ((eq (car expr) 'reverse)
           (let ((rev-iter-fn (gensym "REV-ITER"))
                 (lst-var (gensym "LST"))
                 (acc-var (gensym "ACC"))
                 (next-acc-var (gensym "NEXT-ACC")))
             (compile-expr-full
-             `(labels ((,rev-iter-fn (,lst-var ,acc-var)
-                         (if (null ,lst-var)
-                             ,acc-var
-                             (let ((,next-acc-var (cons (car ,lst-var) ,acc-var)))
-                               (,rev-iter-fn (cdr ,lst-var) ,next-acc-var)))))
-                (,rev-iter-fn ,(nth 1 expr) nil))
+             (list 'labels
+                   (list (list rev-iter-fn (list lst-var acc-var)
+                               (list 'if (list 'null lst-var)
+                                     acc-var
+                                     (list 'let (list (list next-acc-var
+                                                            (list 'cons (list 'car lst-var) acc-var)))
+                                           (list rev-iter-fn (list 'cdr lst-var) next-acc-var)))))
+                   (list rev-iter-fn (nth 1 expr) nil))
              env fenv)))
 
          ;; String operations - use -ir suffix to match codegen
@@ -1223,6 +1289,18 @@
          ((eq (car expr) 'string-ref) (list 'string-ref-ir
                                     (compile-expr-full (nth 1 expr) env fenv)
                                     (compile-expr-full (nth 2 expr) env fenv)))
+         ;; char-at - safe string-ref that returns 0 beyond end
+         ;; Expands to: (if (>= pos (string-length str)) 0 (string-ref str pos))
+         ((eq (car expr) 'char-at)
+          (let ((str-sym (gensym "STR"))
+                (pos-sym (gensym "POS")))
+            (compile-expr-full
+             (list 'let (list (list str-sym (nth 1 expr))
+                              (list pos-sym (nth 2 expr)))
+                   (list 'if (list '>= pos-sym (list 'string-length str-sym))
+                         0
+                         (list 'string-ref str-sym pos-sym)))
+             env fenv)))
          ;; string-concat / sys:string-concat - concatenate two strings
          ((or (eq (car expr) 'string-concat)
               (eq (car expr) 'sys:string-concat))
@@ -1867,19 +1945,34 @@
     (concat-string-list-iter (list e d c b a) total)))
 
 #-sbcl
+(defun concat8 (a b c d e f g h)
+  "Concatenate 8 strings using iterative method"
+  (let ((total (+ (string-length a)
+                  (+ (string-length b)
+                     (+ (string-length c)
+                        (+ (string-length d)
+                           (+ (string-length e)
+                              (+ (string-length f)
+                                 (+ (string-length g) (string-length h))))))))))
+    ;; Build list in reverse order for concat-string-list-iter
+    (concat-string-list-iter (list h g f e d c b a) total)))
+
+#-sbcl
 (defun self-compile (source-path output-path)
   "Pure Habu self-hosting compiler entry point (native version).
    Reads all source files, concatenates them, compiles to native executable.
    source-path is ignored - we read the hardcoded bootstrap paths.
    Uses native-read-file-large to handle files >65KB (each file can be up to 100KB).
-   NOTE: Uses hardcoded paths because string-concat has a codegen bug."
-  (let* ((r (native-read-file-large "/Users/joel/Work/habu/bootstrap/reader.lisp"))
+   Now includes arm64/asm.lisp and gc.lisp for full self-hosting."
+  (let* ((a (native-read-file-large "/Users/joel/Work/habu/arm64/asm.lisp"))
+         (gc (native-read-file-large "/Users/joel/Work/habu/bootstrap/gc.lisp"))
+         (r (native-read-file-large "/Users/joel/Work/habu/bootstrap/reader.lisp"))
          (c (native-read-file-large "/Users/joel/Work/habu/bootstrap/compiler.lisp"))
          (o (native-read-file-large "/Users/joel/Work/habu/bootstrap/optimize.lisp"))
          (g (native-read-file-large "/Users/joel/Work/habu/bootstrap/codegen.lisp"))
          (m (native-read-file-large "/Users/joel/Work/habu/bootstrap/macho-utils.lisp")))
-    (if (and r c o g m)
-        (let ((source (concat5 r c o g m)))
+    (if (and a gc r c o g m)
+        (let ((source (concat8 a gc r c o g m "(sys-exit 42)")))
           (deliver source output-path)
           (sys-exit 0))
         (sys-exit 1))))
