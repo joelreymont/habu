@@ -146,6 +146,69 @@
 ;; reset-symbol-table defined in codegen.lisp
 
 ;;; ============================================================
+;;; Macro Table - User-defined macros
+;;; ============================================================
+
+(defparameter *macro-table* (make-hash-table :test 'equal)
+  "Compile-time macro storage: name -> (params . body)")
+
+(defun reset-macro-table ()
+  "Clear all macro definitions."
+  (clrhash *macro-table*))
+
+(defun macro-function (name)
+  "Look up macro definition by name. Returns (params . body) or nil."
+  (gethash (if (symbolp name) (symbol-name name) name) *macro-table*))
+
+(defun (setf macro-function) (value name)
+  "Set macro definition for name."
+  (setf (gethash (if (symbolp name) (symbol-name name) name) *macro-table*) value))
+
+(defun substitute-params (body params args)
+  "Substitute parameter names with QUOTED argument forms in macro body.
+   Arguments are quoted so they are not evaluated when the body is eval'd."
+  (cond
+    ((null body) nil)
+    ((symbolp body)
+     (let ((pos (position body params)))
+       (if pos
+           ;; Quote the argument form so it's not evaluated
+           (let ((arg (nth pos args)))
+             (if (or (symbolp arg) (consp arg))
+                 (list 'quote arg)
+                 arg))  ; Literals don't need quoting
+           body)))
+    ((atom body) body)
+    (t (cons (substitute-params (car body) params args)
+             (substitute-params (cdr body) params args)))))
+
+(defun macroexpand-1 (form)
+  "Expand macro form once. Returns (values expanded-form expanded-p).
+   The macro body is evaluated with parameters bound to argument forms."
+  (if (and (consp form) (symbolp (car form)))
+      (let ((macro-def (macro-function (car form))))
+        (if macro-def
+            (let* ((params (car macro-def))
+                   (body (cdr macro-def))
+                   (args (cdr form))
+                   ;; Substitute parameters with arguments, then evaluate
+                   (substituted (substitute-params body params args)))
+              ;; Evaluate the macro body at compile time (under SBCL)
+              (values (cl:eval substituted) t))
+            (values form nil)))
+      (values form nil)))
+
+(defun macroexpand (form)
+  "Repeatedly expand macro form until no more expansions.
+   Returns (values expanded-form expanded-p)."
+  (multiple-value-bind (new-form expanded-p) (macroexpand-1 form)
+    (if expanded-p
+        (multiple-value-bind (final-form any-p) (macroexpand new-form)
+          (declare (ignore any-p))
+          (values final-form t))
+        (values form nil))))
+
+;;; ============================================================
 ;;; Part 1: ARM64 Instruction Encoders
 ;;; ============================================================
 
@@ -1446,9 +1509,12 @@
                                     (list 'lambda-ref expr nil)
                                     (error "Undefined variable: ~S" expr)))))))))))))
     ((consp expr)
-     (let ((op (car expr)))
-       (cond
-         ((eq op '+)
+     ;; Check for user-defined macro FIRST
+     (if (and (symbolp (car expr)) (macro-function (car expr)))
+         (sys:compile (macroexpand-1 expr) env fenv)
+         (let ((op (car expr)))
+           (cond
+             ((eq op '+)
           (let ((args (cdr expr)))
             (if (null args) (list 'lit 0)
                 (if (null (cdr args)) (sys:compile (car args) env fenv)
@@ -2737,7 +2803,7 @@
                   ;; Unknown function - record and generate crash
                   (progn
                     (habu::record-undefined-function op)
-                    (list 'sys-exit-ir (list 'lit 200)))))))))))
+                    (list 'sys-exit-ir (list 'lit 200))))))))))))
     ;; Unknown expression type
     (t (list 'lit 0))))
 
@@ -5570,7 +5636,24 @@
 (defun declaration-form-p (form)
   "Check if form is a declaration that should be skipped in code generation."
   (and (consp form)
-       (member (car form) '(defconstant defvar defparameter in-package defpackage declaim))))
+       (member (car form) '(defconstant defvar defparameter in-package defpackage declaim defmacro))))
+
+(defun collect-defmacros (forms)
+  "Collect all defmacro definitions and register them in *macro-table*.
+   Recurses into progn forms. Must be called before any macro expansion."
+  (dolist (f forms)
+    (cond
+      ((and (consp f) (eq (car f) 'defmacro))
+       (let* ((name (cadr f))
+              (params (caddr f))
+              (body-forms (cdddr f))
+              (body (if (null (cdr body-forms))
+                        (car body-forms)
+                        (cons 'progn body-forms)))
+              (name-str (if (symbolp name) (symbol-name name) name)))
+         (setf (gethash name-str *macro-table*) (cons params body))))
+      ((and (consp f) (eq (car f) 'progn))
+       (collect-defmacros (cdr f))))))
 
 (defun collect-constants (forms acc)
   "Collect all defconstant definitions into an alist of (name . value).
@@ -5709,12 +5792,14 @@
         (list 'progn-ir (cons create-ir init-irs)))))
 
 (defun compile-forms (forms)
-  "Multi-pass compilation: collect constants and globals, then names, then compile"
-  ;; Pass 0a: Collect constants from defconstant forms
-  ;; Pass 0b: Collect globals from defvar/defparameter forms
+  "Multi-pass compilation: collect macros, constants, globals, then names, then compile"
+  ;; Pass 0: Collect macros first (they can be used in any subsequent form)
+  (collect-defmacros forms)
+  ;; Pass 1a: Collect constants from defconstant forms
+  ;; Pass 1b: Collect globals from defvar/defparameter forms
   (let* ((*constants* (collect-constants forms nil))
          (*defined-globals* (collect-globals forms nil))
-         ;; Pass 1: Collect all defun names
+         ;; Pass 2: Collect all defun names
          (fn-names (collect-defun-names forms nil))
          ;; Build fenv with all function names as placeholders
          (fenv fn-names))

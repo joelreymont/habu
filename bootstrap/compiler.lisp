@@ -699,15 +699,20 @@
          (<= (length params) 4))))         ; Few parameters
 
 (defun substitute-params (expr params args)
-  "Replace parameters with arguments in expression.
-   PARAMS is list of parameter names, ARGS is list of argument exprs"
+  "Replace parameters with QUOTED arguments in expression.
+   PARAMS is list of parameter names, ARGS is list of argument exprs.
+   Arguments are quoted so they aren't evaluated when macro body is eval'd."
   (cond
     ((null expr) nil)
     ((symbolp expr)
      ;; Check if it's a parameter
      (let ((pos (find-param-pos expr params 0)))
        (if pos
-           (nth pos args)
+           ;; Quote the argument form so it's not evaluated
+           (let ((arg (nth pos args)))
+             (if (or (symbolp arg) (consp arg))
+                 (list 'quote arg)
+                 arg))  ; Literals don't need quoting
            expr)))
     ((not (consp expr)) expr)
     ((eq (car expr) 'quote) expr)  ; Don't substitute in quotes

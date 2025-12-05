@@ -22,7 +22,8 @@
   (:use :cl :sys)
   (:shadowing-import-from :sys #:read)  ; Use SYS reader
   (:shadow #:trace #:untrace #:eval #:compile #:compile-file #:load #:disassemble
-           #:*compile-verbose* #:*compile-print* #:*load-verbose* #:*load-print*)  ; Shadow CL versions
+           #:*compile-verbose* #:*compile-print* #:*load-verbose* #:*load-print*
+           #:macro-function #:macroexpand #:macroexpand-1)  ; Shadow CL versions
   (:export
    ;; Public compiler API (clean names)
    #:read-all           ; Parse source string to forms
@@ -103,6 +104,11 @@
    #:expand-let*
    #:expand-dotimes
    #:expand-dolist
+   ;; Macro system
+   #:macro-function
+   #:macroexpand
+   #:macroexpand-1
+   #:*macro-table*
    ;; Reader
    #:habu-read
    #:habu-read-from-string
