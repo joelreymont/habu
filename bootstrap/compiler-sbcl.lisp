@@ -3498,7 +3498,7 @@
          (arm64:ldr :x9 :gc :offset +gc-from-end-offset+)
          (arm64:cmp :heap :x9)
          (arm64:b.lo 2)
-         (list :call-fn 'GC-COLLECT)
+         (list (list :call-fn 'GC-COLLECT))
          (arm64:str :x0 :heap :offset 0)  ; name
          (arm64:str :x11 :heap :offset 8) ; id
          (arm64:mov :x12 :heap)
@@ -4479,7 +4479,7 @@
          (arm64:ldr :x9 :gc :offset +gc-from-end-offset+)
          (arm64:cmp :heap :x9)
          (arm64:b.lo 2)
-         (list :call-fn 'GC-COLLECT)
+         (list (list :call-fn 'GC-COLLECT))
          (arm64:str :x0 :heap :offset 0)  ; [x28+0] = name
          (arm64:str :x3 :heap :offset 8)  ; [x28+8] = id (untagged)
          ;; Tag as cons
