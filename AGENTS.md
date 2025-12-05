@@ -209,6 +209,56 @@ Do:
 
 ## Testing
 
+**MANDATORY: EVERY feature and bug fix MUST have tests.**
+
+This is NOT optional. Code without tests is incomplete code.
+
+### Test Requirements
+
+**For EVERY bug fix:**
+1. Write a test that reproduces the bug FIRST
+2. Verify the test fails
+3. Fix the bug
+4. Verify the test passes
+5. Commit test with fix
+
+**For EVERY new feature:**
+1. Write unit tests for the feature
+2. **Evaluate if property tests would benefit the feature** (see below)
+3. Tests MUST be in the same commit as the feature
+
+**For data structures and serialization:**
+- MUST have roundtrip property tests
+- MUST test edge cases (empty, max size, invalid input)
+- Use the QuickCheck framework in `tests/quickcheck.lisp`
+
+### Property Tests
+
+**For every major feature, ASK: "Would property tests catch bugs that unit tests miss?"**
+
+Property tests are HIGH VALUE for:
+- **Serialization/deserialization** - roundtrip invariants
+- **Encoders/decoders** - ARM64 instructions, tagged values
+- **Transformations** - compiler passes, macro expansion
+- **Data structures** - size invariants, ordering guarantees
+- **Parsers** - well-formedness after parse/unparse
+
+Property tests are LOW VALUE for:
+- Simple getters/setters
+- UI/display code
+- One-shot configuration
+
+**When in doubt, write the property test.** They catch edge cases humans miss.
+
+Example:
+```lisp
+(defproperty prop-fasl-header-roundtrip ((h (gen-fasl-header)))
+  (let ((h2 (read-back (write-fasl-header h))))
+    (equal-headers h h2)))
+```
+
+### Running Tests
+
 **Always use ASDF for loading and testing.**
 
 ```lisp
@@ -218,7 +268,18 @@ Do:
 
 Test organization in `bootstrap/habu.asd`:
 - `bootstrap/test-harness.lisp` - Test utilities
+- `tests/quickcheck.lisp` - Property testing framework
 - `tests/test-*.lisp` - Test files
+
+### NO EXCEPTIONS
+
+Do NOT:
+- Commit code without tests "to add later"
+- Skip tests because "it's simple"
+- Write tests only for complex features
+- Ignore failing tests
+
+If you find yourself writing code without tests, STOP and write the tests first.
 
 ## Slash Commands
 

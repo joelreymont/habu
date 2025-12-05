@@ -9,16 +9,20 @@
   :serial nil
   :in-order-to ((test-op (test-op "habu/tests")))
   :components
-  (;; ARM64 assembler (must come first)
+  (;; Package definitions (must come first)
+   (:file "package")
+
+   ;; ARM64 assembler
    (:module "arm64"
     :pathname "../arm64/"
+    :depends-on ("package")
     :components ((:file "asm")))
 
    ;; Source-to-source expansions (shared by both compilers)
-   (:file "expand" :depends-on ("arm64"))
+   (:file "expand" :depends-on ("package" "arm64"))
 
    ;; Core compiler (SBCL bootstrap)
-   (:file "compiler-sbcl" :depends-on ("arm64" "expand"))
+   (:file "compiler-sbcl" :depends-on ("package" "arm64" "expand"))
 
    ;; Optimization passes (depends on compiler for IR types)
    (:file "optimize" :depends-on ("compiler-sbcl"))
@@ -60,7 +64,10 @@
    (:file "trace" :depends-on ("compiler-sbcl"))
 
    ;; JIT executor (subprocess-based)
-   (:file "executor" :depends-on ("compiler-sbcl" "codegen" "macho"))))
+   (:file "executor" :depends-on ("compiler-sbcl" "codegen" "macho"))
+
+   ;; FASL format for separate compilation
+   (:file "fasl" :depends-on ("compiler-sbcl" "codegen" "macho"))))
 
 ;;;; Test system
 (asdf:defsystem "habu/tests"
@@ -81,7 +88,8 @@
      (:file "test-match" :depends-on ("test-core"))
      (:file "quickcheck" :depends-on ("test-core"))
      (:file "test-arm64-props" :depends-on ("quickcheck"))
-     (:file "test-match-props" :depends-on ("quickcheck")))))
+     (:file "test-match-props" :depends-on ("quickcheck"))
+     (:file "test-fasl" :depends-on ("quickcheck")))))
   :perform (asdf:test-op (o c)
              (declare (ignore o c))
              (uiop:symbol-call :habu-test '#:run-all-tests)))

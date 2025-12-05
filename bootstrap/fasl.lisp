@@ -1,0 +1,535 @@
+;;;; fasl.lisp - Habu FASL (Fast Load) Format
+;;;;
+;;;; Binary format for compiled Lisp code. Enables separate compilation
+;;;; and fast loading without re-parsing or re-compiling.
+;;;;
+;;;; FASL Structure:
+;;;;   Header (32 bytes)
+;;;;   Function Table
+;;;;   Code Section
+;;;;   Constant Pool
+;;;;   Relocation Table
+;;;;   String Table
+
+(in-package :habu)
+
+;;; ============================================================
+;;; FASL Constants
+;;; ============================================================
+
+(defconstant +fasl-magic+ #x4641534C)  ; "FASL" in ASCII
+(defconstant +fasl-version+ 1)
+(defconstant +fasl-arch-arm64+ 1)
+
+;;; Section types
+(defconstant +section-functions+ 1)
+(defconstant +section-code+ 2)
+(defconstant +section-constants+ 3)
+(defconstant +section-relocations+ 4)
+(defconstant +section-strings+ 5)
+
+;;; Relocation types
+(defconstant +reloc-fn-call+ 1)      ; Call to defined function
+(defconstant +reloc-extern-call+ 2)  ; Call to C function
+(defconstant +reloc-constant+ 3)     ; Reference to constant pool
+
+;;; Constant types
+(defconstant +const-fixnum+ 1)
+(defconstant +const-string+ 2)
+(defconstant +const-symbol+ 3)
+(defconstant +const-cons+ 4)
+(defconstant +const-vector+ 5)
+
+;;; ============================================================
+;;; FASL Data Structures
+;;; ============================================================
+
+(defstruct fasl-header
+  (magic +fasl-magic+ :type fixnum)
+  (version +fasl-version+ :type fixnum)
+  (arch +fasl-arch-arm64+ :type fixnum)
+  (flags 0 :type fixnum)
+  (num-functions 0 :type fixnum)
+  (code-size 0 :type fixnum)
+  (const-pool-size 0 :type fixnum)
+  (num-relocations 0 :type fixnum))
+
+(defstruct fasl-function
+  (name nil :type (or null symbol string))  ; Function name (symbol during build)
+  (name-offset 0 :type fixnum)    ; Offset into string table (set at write time)
+  (code-offset 0 :type fixnum)    ; Offset into code section
+  (code-size 0 :type fixnum)      ; Size in bytes
+  (arity 0 :type fixnum)          ; Number of arguments
+  (flags 0 :type fixnum))         ; Exported, inline, etc.
+
+(defstruct fasl-relocation
+  (type 0 :type fixnum)           ; reloc-fn-call, reloc-extern-call, etc.
+  (offset 0 :type fixnum)         ; Offset in code section
+  (target 0 :type fixnum))        ; Index into function/extern/const table
+
+;;; ============================================================
+;;; Binary I/O Helpers
+;;; ============================================================
+;;;
+;;; Note: write-u32-le, write-u64-le, read-u32-le, read-u64-le are
+;;; defined in compiler-sbcl.lisp and reused here.
+
+(defun fasl-write-u8 (byte stream)
+  "Write a single byte."
+  (write-byte byte stream))
+
+(defun fasl-read-u8 (stream)
+  "Read a single byte."
+  (read-byte stream))
+
+;;; ============================================================
+;;; String Table
+;;; ============================================================
+
+(defun build-string-table (strings)
+  "Build string table from list of strings.
+   Returns (bytes . offset-alist) where offset-alist maps string to offset."
+  (let ((bytes nil)
+        (offsets nil)
+        (current-offset 0))
+    (dolist (str strings)
+      (push (cons str current-offset) offsets)
+      ;; Write length-prefixed string
+      (let ((len (length str)))
+        (push (logand len #xFF) bytes)
+        (push (logand (ash len -8) #xFF) bytes)
+        (dotimes (i len)
+          (push (char-code (char str i)) bytes))
+        (setf current-offset (+ current-offset 2 len))))
+    (values (nreverse bytes) (nreverse offsets))))
+
+(defun read-string-from-table (bytes offset)
+  "Read length-prefixed string from byte vector at offset."
+  (let* ((len (logior (aref bytes offset)
+                      (ash (aref bytes (1+ offset)) 8)))
+         (str (make-string len)))
+    (dotimes (i len)
+      (setf (char str i) (code-char (aref bytes (+ offset 2 i)))))
+    str))
+
+;;; ============================================================
+;;; FASL Writer
+;;; ============================================================
+
+(defun write-fasl-header (header stream)
+  "Write FASL header to stream."
+  (write-u32-le (fasl-header-magic header) stream)
+  (write-u32-le (fasl-header-version header) stream)
+  (write-u32-le (fasl-header-arch header) stream)
+  (write-u32-le (fasl-header-flags header) stream)
+  (write-u32-le (fasl-header-num-functions header) stream)
+  (write-u32-le (fasl-header-code-size header) stream)
+  (write-u32-le (fasl-header-const-pool-size header) stream)
+  (write-u32-le (fasl-header-num-relocations header) stream))
+
+(defun write-fasl-function (fn stream)
+  "Write function entry to stream."
+  (write-u32-le (fasl-function-name-offset fn) stream)
+  (write-u32-le (fasl-function-code-offset fn) stream)
+  (write-u32-le (fasl-function-code-size fn) stream)
+  (write-u32-le (fasl-function-arity fn) stream)
+  (write-u32-le (fasl-function-flags fn) stream))
+
+(defun write-fasl-relocation (reloc stream)
+  "Write relocation entry to stream."
+  (write-u32-le (fasl-relocation-type reloc) stream)
+  (write-u32-le (fasl-relocation-offset reloc) stream)
+  (write-u32-le (fasl-relocation-target reloc) stream))
+
+(defun write-fasl (output-path functions code relocations constants)
+  "Write complete FASL file.
+   FUNCTIONS: list of fasl-function structs
+   CODE: byte vector of machine code
+   RELOCATIONS: list of fasl-relocation structs
+   CONSTANTS: constant pool bytes"
+  (with-open-file (stream output-path
+                          :direction :output
+                          :if-exists :supersede
+                          :element-type '(unsigned-byte 8))
+    ;; Collect function names for string table
+    (let* ((fn-names (mapcar (lambda (f)
+                               (let ((name (fasl-function-name f)))
+                                 (if (symbolp name)
+                                     (symbol-name name)
+                                     name)))
+                             functions)))
+      (multiple-value-bind (str-bytes str-offsets) (build-string-table fn-names)
+        ;; Update function name offsets
+        (dolist (fn functions)
+          (let* ((name (fasl-function-name fn))
+                 (name-str (if (symbolp name) (symbol-name name) name)))
+            (setf (fasl-function-name-offset fn)
+                  (cdr (assoc name-str str-offsets :test #'string=)))))
+
+        ;; Write header
+        (let ((header (make-fasl-header
+                       :num-functions (length functions)
+                       :code-size (length code)
+                       :const-pool-size (length constants)
+                       :num-relocations (length relocations))))
+          (write-fasl-header header stream))
+
+        ;; Write function table
+        (dolist (fn functions)
+          (write-fasl-function fn stream))
+
+        ;; Write code section
+        (dolist (byte code)
+          (fasl-write-u8 byte stream))
+
+        ;; Write constant pool
+        (dolist (byte constants)
+          (fasl-write-u8 byte stream))
+
+        ;; Write relocations
+        (dolist (reloc relocations)
+          (write-fasl-relocation reloc stream))
+
+        ;; Write string table
+        (dolist (byte str-bytes)
+          (fasl-write-u8 byte stream))))))
+
+;;; ============================================================
+;;; FASL Reader
+;;; ============================================================
+
+(defun read-fasl-header (stream)
+  "Read FASL header from stream."
+  (let ((header (make-fasl-header
+                 :magic (read-u32-le stream)
+                 :version (read-u32-le stream)
+                 :arch (read-u32-le stream)
+                 :flags (read-u32-le stream)
+                 :num-functions (read-u32-le stream)
+                 :code-size (read-u32-le stream)
+                 :const-pool-size (read-u32-le stream)
+                 :num-relocations (read-u32-le stream))))
+    (unless (= (fasl-header-magic header) +fasl-magic+)
+      (error "Invalid FASL magic number"))
+    (unless (= (fasl-header-version header) +fasl-version+)
+      (error "Unsupported FASL version"))
+    header))
+
+(defun read-fasl-function (stream)
+  "Read function entry from stream."
+  (make-fasl-function
+   :name-offset (read-u32-le stream)
+   :code-offset (read-u32-le stream)
+   :code-size (read-u32-le stream)
+   :arity (read-u32-le stream)
+   :flags (read-u32-le stream)))
+
+(defun read-fasl-relocation (stream)
+  "Read relocation entry from stream."
+  (make-fasl-relocation
+   :type (read-u32-le stream)
+   :offset (read-u32-le stream)
+   :target (read-u32-le stream)))
+
+(defun read-fasl (input-path)
+  "Read complete FASL file.
+   Returns (header functions code relocations constants string-table)."
+  (with-open-file (stream input-path
+                          :direction :input
+                          :element-type '(unsigned-byte 8))
+    (let* ((header (read-fasl-header stream))
+           (num-fns (fasl-header-num-functions header))
+           (code-size (fasl-header-code-size header))
+           (const-size (fasl-header-const-pool-size header))
+           (num-relocs (fasl-header-num-relocations header)))
+
+      ;; Read function table
+      (let ((functions (loop repeat num-fns
+                             collect (read-fasl-function stream))))
+
+        ;; Read code section
+        (let ((code (make-array code-size :element-type '(unsigned-byte 8))))
+          (dotimes (i code-size)
+            (setf (aref code i) (fasl-read-u8 stream)))
+
+          ;; Read constant pool
+          (let ((constants (make-array const-size :element-type '(unsigned-byte 8))))
+            (dotimes (i const-size)
+              (setf (aref constants i) (fasl-read-u8 stream)))
+
+            ;; Read relocations
+            (let ((relocations (loop repeat num-relocs
+                                     collect (read-fasl-relocation stream))))
+
+              ;; Read remaining bytes as string table
+              (let* ((remaining (- (file-length stream) (file-position stream)))
+                     (str-table (make-array remaining :element-type '(unsigned-byte 8))))
+                (dotimes (i remaining)
+                  (setf (aref str-table i) (fasl-read-u8 stream)))
+
+                (values header functions code relocations constants str-table)))))))))
+
+;;; ============================================================
+;;; Compile to FASL
+;;; ============================================================
+
+(defun collect-call-markers (bytes-with-markers)
+  "Extract call markers from flattened code.
+   Returns list of (type offset target) where:
+   - type is :fn-call or :extern-call
+   - offset is byte position in code
+   - target is function name (symbol or string)"
+  (let ((markers nil)
+        (offset 0))
+    (dolist (item bytes-with-markers)
+      (cond
+        ;; Internal function call marker: (:call-fn fn-name) or (:call-fn fn-name pos)
+        ((and (consp item) (eq (car item) :call-fn))
+         (push (list :fn-call offset (cadr item)) markers)
+         (incf offset 4))  ; BL instruction is 4 bytes
+        ;; External call marker: (:extern-call "name") or (:extern-call "name" pos)
+        ((and (consp item) (eq (car item) :extern-call))
+         (push (list :extern-call offset (cadr item)) markers)
+         (incf offset 4))  ; BL instruction is 4 bytes
+        ;; Function label marker - skip (no bytes)
+        ((and (consp item) (eq (car item) :fn-label))
+         nil)
+        ;; Other markers that take space (TCO, loops)
+        ((and (consp item) (member (car item) '(:tco-branch :tail-call-fn :loop-start :loop-continue)))
+         (incf offset 4))
+        ;; Regular byte
+        ((integerp item)
+         (incf offset))
+        ;; Nested list of bytes
+        ((consp item)
+         (incf offset (length item)))))
+    (nreverse markers)))
+
+(defun strip-markers-to-bytes (bytes-with-markers)
+  "Remove markers and flatten to pure byte list.
+   Call markers become placeholder BL instructions (will be patched at load)."
+  (let ((result nil))
+    (dolist (item bytes-with-markers)
+      (cond
+        ;; Call markers - emit placeholder BL 0
+        ((and (consp item) (member (car item) '(:call-fn :extern-call :tail-call-fn)))
+         (setf result (append (reverse (arm64:bl 0)) result)))
+        ;; TCO and loop markers - emit placeholder B 0
+        ((and (consp item) (member (car item) '(:tco-branch :loop-start :loop-continue)))
+         (setf result (append (reverse (arm64:b 0)) result)))
+        ;; Label markers - no bytes
+        ((and (consp item) (eq (car item) :fn-label))
+         nil)
+        ;; Regular byte
+        ((integerp item)
+         (push item result))
+        ;; Nested list
+        ((consp item)
+         (dolist (b item)
+           (when (integerp b)
+             (push b result))))))
+    (nreverse result)))
+
+(defun build-fasl-functions (fnoffs)
+  "Convert fnoffs alist to fasl-function structs."
+  (mapcar (lambda (entry)
+            (make-fasl-function
+             :name (car entry)
+             :code-offset (cdr entry)
+             :code-size 0  ; Could compute from next function offset
+             :arity 0      ; Could extract from IR
+             :flags 0))
+          fnoffs))
+
+(defun build-fasl-relocations (markers fn-names)
+  "Convert call markers to fasl-relocation structs.
+   FN-NAMES is list of defined function names for indexing."
+  (let ((fn-index (make-hash-table :test 'equal))
+        (extern-index (make-hash-table :test 'equal))
+        (extern-list nil))
+    ;; Build function name -> index map
+    (loop for name in fn-names
+          for i from 0
+          do (setf (gethash (if (symbolp name) (symbol-name name) name) fn-index) i))
+    ;; Process markers
+    (mapcar (lambda (marker)
+              (let ((type (first marker))
+                    (offset (second marker))
+                    (target (third marker)))
+                (if (eq type :fn-call)
+                    ;; Internal function call
+                    (let ((target-name (if (symbolp target) (symbol-name target) target)))
+                      (make-fasl-relocation
+                       :type +reloc-fn-call+
+                       :offset offset
+                       :target (or (gethash target-name fn-index) 0)))
+                    ;; External call
+                    (let ((target-str (if (symbolp target) (symbol-name target) target)))
+                      (unless (gethash target-str extern-index)
+                        (setf (gethash target-str extern-index) (length extern-list))
+                        (push target-str extern-list))
+                      (make-fasl-relocation
+                       :type +reloc-extern-call+
+                       :offset offset
+                       :target (gethash target-str extern-index))))))
+            markers)))
+
+(defun compile-to-fasl (forms output-path)
+  "Compile forms to FASL file.
+   This is the entry point for compile-file."
+  ;; Reset compiler state
+  #-sbcl (register-compiler-symbols)
+  (reset-symbol-table)
+  (reset-lambda-counter)
+  #+sbcl (reset-compile-warnings)
+
+  (let* ((result (compile-forms forms))
+         ;; Check for undefined functions
+         (_ #+sbcl (when (report-compile-warnings)
+                     (error "Compilation aborted due to undefined functions")))
+         (defuns-orig (car result))
+         (main-ir-orig (cadr result))
+         ;; Lift lambdas
+         (main-lift-result #+sbcl (lift-lambdas-2 main-ir-orig nil)
+                           #-sbcl (lift-lambdas main-ir-orig nil))
+         (main-ir (car main-lift-result))
+         (main-lambdas (cdr main-lift-result))
+         (defun-lift-result (lift-lambdas-from-defuns defuns-orig nil nil))
+         (defuns (car defun-lift-result))
+         (defun-lambdas (cdr defun-lift-result))
+         (all-lambdas (append main-lambdas defun-lambdas)))
+    (declare (ignore _))
+
+    ;; Compile to code with markers
+    (let* ((lambda-as-defuns (lambdas-to-defuns all-lambdas nil))
+           (all-fns-raw (append defuns lambda-as-defuns))
+           (all-fns (apply-tco-to-all-functions all-fns-raw))
+           ;; Link verification
+           (_ #+sbcl (when (verify-link-references (mapcar #'car all-fns))
+                       (error "Link failed: undefined function references")))
+           ;; Generate main code
+           (main-code (append-all
+                       (list (fn-fixed-prologue)
+                             (codegen main-ir nil nil 0)
+                             (fn-fixed-epilogue))))
+           (main-size (code-size main-code))
+           ;; Build fnoffs
+           (fnoffs (build-fnoffs all-fns main-size))
+           ;; Regenerate with fnoffs
+           (main-code-final (append-all
+                             (list (fn-fixed-prologue)
+                                   (codegen main-ir nil fnoffs 0)
+                                   (fn-fixed-epilogue))))
+           ;; Generate function code
+           (fn-code (codegen-all-fns all-fns nil fnoffs nil))
+           ;; Combine (no GC runtime in FASL - added at link time)
+           (all-code (append main-code-final fn-code))
+           ;; Flatten with markers preserved
+           (bytes-with-markers (flatten-code-keep-markers-and-calls all-code))
+           ;; Collect relocations before stripping markers
+           (markers (collect-call-markers bytes-with-markers))
+           ;; Strip markers to get raw bytes
+           (code-bytes (strip-markers-to-bytes bytes-with-markers))
+           ;; Build FASL structures
+           (fn-names (cons '_main (mapcar #'car all-fns)))
+           (functions (cons (make-fasl-function :name '_main
+                                                :code-offset 0
+                                                :code-size main-size
+                                                :arity 0
+                                                :flags 0)
+                            (build-fasl-functions fnoffs)))
+           (relocations (build-fasl-relocations markers fn-names)))
+      (declare (ignore _))
+
+      ;; Write FASL
+      (write-fasl output-path functions code-bytes relocations nil)
+      (format t "Compiled ~D functions to ~A (~D bytes, ~D relocations)~%"
+              (length functions) output-path (length code-bytes) (length relocations))
+      output-path)))
+
+;;; ============================================================
+;;; compile-file - Standard CL interface
+;;; ============================================================
+
+(defun habu-compile-file (input-path &key (output-file nil) (verbose t))
+  "Compile a Lisp source file to FASL.
+   INPUT-PATH: path to .lisp file
+   OUTPUT-FILE: path for .fasl output (default: same name with .fasl extension)
+   Returns the output pathname."
+  (let* ((input (pathname input-path))
+         (output (or output-file
+                     (make-pathname :type "fasl" :defaults input)))
+         (source (native-read-file (namestring input)))
+         (forms (read-all source)))
+    (when verbose
+      (format t "; Compiling ~A~%" input))
+    (compile-to-fasl forms (namestring output))
+    output))
+
+;;; ============================================================
+;;; Load FASL
+;;; ============================================================
+
+;;; Global function registry for loaded FASLs
+(defvar *fasl-functions* (make-hash-table :test 'equal)
+  "Map from function name (string) to (code-address . fasl-function).")
+
+(defun patch-bl-instruction (code-vec offset target-offset)
+  "Patch a BL instruction at OFFSET to branch to TARGET-OFFSET.
+   Both offsets are relative to start of code section.
+   BL encodes a signed 26-bit offset in instructions (not bytes)."
+  (let* ((delta (- target-offset offset))
+         (instr-delta (ash delta -2))  ; Convert bytes to instructions
+         (bl-opcode #x94000000)
+         (encoded (logior bl-opcode (logand instr-delta #x3FFFFFF))))
+    ;; Write little-endian
+    (setf (aref code-vec offset) (logand encoded #xFF))
+    (setf (aref code-vec (+ offset 1)) (logand (ash encoded -8) #xFF))
+    (setf (aref code-vec (+ offset 2)) (logand (ash encoded -16) #xFF))
+    (setf (aref code-vec (+ offset 3)) (logand (ash encoded -24) #xFF))))
+
+(defun apply-fasl-relocations (code-vec functions relocations)
+  "Apply relocations to code vector.
+   FUNCTIONS is vector of fasl-function structs.
+   RELOCATIONS is list of fasl-relocation structs."
+  (dolist (reloc relocations)
+    (let ((type (fasl-relocation-type reloc))
+          (offset (fasl-relocation-offset reloc))
+          (target-idx (fasl-relocation-target reloc)))
+      (cond
+        ;; Internal function call
+        ((= type +reloc-fn-call+)
+         (when (< target-idx (length functions))
+           (let ((target-fn (elt functions target-idx)))
+             (patch-bl-instruction code-vec offset
+                                   (fasl-function-code-offset target-fn)))))
+        ;; External call - skip for now (would need stub table)
+        ((= type +reloc-extern-call+)
+         ;; TODO: Build stub table for extern calls
+         nil)))))
+
+(defun load-fasl (input-path)
+  "Load FASL file into running image.
+   Returns list of loaded function names."
+  (multiple-value-bind (header functions code relocations constants str-table)
+      (read-fasl input-path)
+    (declare (ignore constants))
+
+    ;; Apply relocations to code (in place)
+    (let ((fn-vec (coerce functions 'vector)))
+      (apply-fasl-relocations code fn-vec relocations)
+
+      ;; Register functions in global table
+      (let ((loaded-names nil))
+        (dolist (fn functions)
+          (let* ((name-offset (fasl-function-name-offset fn))
+                 (name (read-string-from-table str-table name-offset)))
+            (setf (gethash name *fasl-functions*)
+                  (cons (fasl-function-code-offset fn) fn))
+            (push name loaded-names)))
+
+        (format t "Loaded ~D functions from ~A: ~{~A~^, ~}~%"
+                (fasl-header-num-functions header)
+                input-path
+                (nreverse loaded-names))
+        (nreverse loaded-names)))))
