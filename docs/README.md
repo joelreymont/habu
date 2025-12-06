@@ -20,6 +20,21 @@ This directory contains technical design documents and implementation guides for
 
 ### Design Documents
 
+- **[codegen/JIT_ARCHITECTURE.md](codegen/JIT_ARCHITECTURE.md)** - JIT multi-versioning design
+  - ARM64 codegen architecture overview
+  - Function versioning with rep-hints
+  - Lisp-level dispatcher strategy
+  - Specializing recompile path
+  - Integration with existing IR
+
+- **[runtime/GC_IMPROVEMENTS.md](runtime/GC_IMPROVEMENTS.md)** - GC improvement roadmap
+  - Current GC architecture analysis
+  - Configurable heap sizes
+  - Tunable thresholds
+  - Write barrier optimization
+  - Incremental collection design
+  - JIT/GC integration (safepoints)
+
 - **[RUNTIME_INTEGRATION.md](RUNTIME_INTEGRATION.md)** - Runtime heap integration design
   - Inline allocation strategy
   - FFI approaches

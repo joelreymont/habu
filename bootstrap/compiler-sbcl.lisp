@@ -567,9 +567,7 @@
           (arm64:add :heap :heap :x1)                ; x28 += alloc size
           ;; Tag with string tag (0x4)
           (arm64:movz :x1 4)
-          (arm64:orr :x0 :x0 :x1)
-          ;; GC check after allocation
-          (sbcl-gc-trigger-code)))))))
+          (arm64:orr :x0 :x0 :x1)))))))
 
 ;;; ============================================================
 ;;; Part 2: Utility Functions (util-*)
@@ -1489,7 +1487,9 @@
     ((null obj) (list 'nil-ir))  ;; Use nil-ir for proper nil, not (lit 0)
     ((symbolp obj) (list 'sym-lit (symbol-name obj)))
     ((consp obj) (list 'cons-ir (quote-ir (car obj)) (quote-ir (cdr obj))))
-    (t (list 'lit 0))))
+    ((stringp obj) (list 'str-lit obj))
+    ;; Default: error on unknown quoted value type
+    (t (error "quote-ir: unhandled type for ~S" obj))))
 
 (defun sys:compile (expr env fenv)
   (cond
@@ -1885,6 +1885,9 @@
          ((eq op 'vectorp)
           ;; Vector tag is 3, so compare with (lit 3) -> becomes 3<<4=48
           (list 'cmp-eq (list 'get-tag (sys:compile (cadr expr) env fenv)) (list 'lit 3)))
+         ;; get-tag - extract type tag as tagged fixnum (tag << 4)
+         ((eq op 'get-tag)
+          (list 'get-tag (sys:compile (cadr expr) env fenv)))
          ;; length - list length via recursion
          ((eq op 'length)
           (let ((len-iter-fn (gensym "LEN-ITER"))
@@ -2856,8 +2859,8 @@
                   (progn
                     (habu::record-undefined-function op)
                     (list 'sys-exit-ir (list 'lit 200))))))))))))
-    ;; Unknown expression type
-    (t (list 'lit 0))))
+    ;; Unknown expression type - error at compile time
+    (t (error "sys:compile: unhandled expression type ~S" expr))))
 
 ;;; ============================================================
 ;;; Part 6b: IR Evaluator (eval-*)
@@ -3476,106 +3479,15 @@
      ;; nil is represented as 0x06 (tag 6) - distinct from fixnum 0
      (arm64:movz :x0 6))
     ((has-tag ir 'sym-lit)
-     ;; Symbol literal: intern at runtime (SBCL approach)
-     ;; This ensures compile-time and reader-created symbols match.
-     ;; IMPORTANT: Only use x9-x15 for internal computation to avoid clobbering
-     ;; x0-x8 which may be used by surrounding code to save values.
+     ;; Symbol literal: allocate name string and tag as symbol
+     ;; Symbol = (string-pointer | 2), so symbol-name just changes tag to 4
      (let* ((name (cadr ir))
-            (chars (string-to-char-codes name))
-            (str-slot (temp-slot td)))
-       (append-all
-        (list
-         ;; Create string literal for symbol name
-         (codegen-string-inline chars)
-         ;; Save string to slot (instr 0)
-         (arm64:str :x0 :sp :offset str-slot)
-
-         ;; Search symbol table for existing symbol (inline intern logic)
-         ;; x10 = table pointer (instr 1)
-         (arm64:ldr :x10 :gc :offset 56)  ; x10 = symbol_table
-
-         ;; Search loop - loop_start: (instr 2)
-         (arm64:cmp :x10 6 :imm t)        ; compare with nil
-         (arm64:b.eq 37)                  ; if nil, jump to create_new (instr 40)
-
-         ;; Get entry name (instr 4)
-         (arm64:movz :x9 #xF)
-         (arm64:bic :x11 :x10 :x9)        ; x11 = outer cons ptr
-         (arm64:ldr :x11 :x11 :offset 0)  ; x11 = car = (name . id) entry cons
-         (arm64:bic :x12 :x11 :x9)        ; x12 = entry cons ptr
-         (arm64:ldr :x11 :x12 :offset 0)  ; x11 = car of entry = name string
-
-         ;; Compare strings (instr 9)
-         (arm64:ldr :x0 :sp :offset str-slot)  ; reload input
-         (arm64:bic :x13 :x0 :x9)         ; x13 = input ptr
-         (arm64:ldr :x13 :x13 :offset 0)  ; x13 = input length (untagged)
-         (arm64:bic :x14 :x11 :x9)        ; x14 = table name ptr
-         (arm64:ldr :x14 :x14 :offset 0)  ; x14 = table name length (untagged)
-
-         (arm64:cmp :x13 :x14)            ; (instr 14)
-         (arm64:b.ne 21)                  ; lengths differ, next entry (to instr 36)
-
-         ;; Compare chars (instr 16)
-         (arm64:bic :x13 :x0 :x9)
-         (arm64:add :x13 :x13 8 :imm t)   ; x13 = input chars
-         (arm64:bic :x14 :x11 :x9)
-         (arm64:add :x14 :x14 8 :imm t)   ; x14 = table chars
-         (arm64:bic :x15 :x0 :x9)
-         (arm64:ldr :x15 :x15 :offset 0)  ; x15 = count (already untagged)
-
-         ;; char_loop: (instr 22)
-         (arm64:cbz :x15 9)               ; if 0, found (to instr 31)
-         (arm64:ldrb :x9 :x13 0)          ; load byte at x13
-         (arm64:ldrb :x1 :x14 0)          ; load byte at x14 (x1 is safe to use as temp)
-         (arm64:cmp :x9 :x1)
-         (arm64:b.ne 10)                  ; chars differ, next (to instr 36)
-         (arm64:add :x13 :x13 1 :imm t)
-         (arm64:add :x14 :x14 1 :imm t)
-         (arm64:sub :x15 :x15 1 :imm t)
-         (arm64:b -8)                     ; back to char_loop (instr 22)
-
-         ;; found: return existing symbol (instr 31)
-         (arm64:ldr :x0 :x12 :offset 8)   ; x0 = id from entry
-         (arm64:lsl :x0 :x0 4 :imm t)
-         (arm64:movz :x9 2)
-         (arm64:orr :x0 :x0 :x9)          ; tag as symbol
-         (arm64:b 29)                     ; jump to done (past instr 63, +4 for GC check)
-
-         ;; next_entry: (instr 36)
-         (arm64:movz :x9 #xF)
-         (arm64:bic :x11 :x10 :x9)
-         (arm64:ldr :x10 :x11 :offset 8)  ; x10 = cdr = next
-         (arm64:b -37)                    ; back to loop_start (instr 2)
-
-         ;; create_new: (instr 40)
-         (arm64:ldr :x11 :gc :offset 48)  ; x11 = symbol_counter
-         (arm64:ldr :x0 :sp :offset str-slot)
-         ;; GC pre-check: ensure heap has space before writing
-         (arm64:ldr :x9 :gc :offset +gc-from-end-offset+)
-         (arm64:cmp :heap :x9)
-         (arm64:b.lo 2)
-         (list (list :call-fn 'GC-COLLECT))
-         (arm64:str :x0 :heap :offset 0)  ; name
-         (arm64:str :x11 :heap :offset 8) ; id
-         (arm64:mov :x12 :heap)
-         (arm64:movz :x9 1)
-         (arm64:orr :x12 :x12 :x9)        ; entry cons
-         (arm64:add :heap :heap 16 :imm t)
-
-         (arm64:ldr :x13 :gc :offset 56)  ; old table
-         (arm64:str :x12 :heap :offset 0)
-         (arm64:str :x13 :heap :offset 8)
-         (arm64:mov :x14 :heap)
-         (arm64:orr :x14 :x14 :x9)        ; new table cons
-         (arm64:add :heap :heap 16 :imm t)
-
-         (arm64:str :x14 :gc :offset 56)  ; update table
-         (arm64:add :x15 :x11 1 :imm t)
-         (arm64:str :x15 :gc :offset 48)  ; update counter
-
-         (arm64:lsl :x0 :x11 4 :imm t)
-         (arm64:movz :x9 2)
-         (arm64:orr :x0 :x0 :x9)))))
+            (chars (string-to-char-codes name)))
+       (append
+        ;; Create string literal for symbol name (returns string-ptr | 4 in x0)
+        (codegen-string-inline chars)
+        ;; Convert string tag (4) to symbol tag (2): subtract 2
+        (arm64:sub :x0 :x0 2 :imm t))))
     ((has-tag ir 'str-lit)
      ;; String literal: build string inline on heap using x28 bump pointer
      (let* ((s (cadr ir))
@@ -4434,177 +4346,23 @@
          ;; Tag result with string tag (0x4)
          (arm64:movz :x4 4)                      ; x4 = 4
          (arm64:orr :x0 :x0 :x4)))))
-    ;; make-symbol-from-string-ir - intern string as symbol
+    ;; make-symbol-from-string-ir - convert string to symbol by changing tag
+    ;; String is (pointer | 4), symbol is (pointer | 2)
+    ;; So just subtract 2 from the tag
     ((has-tag ir 'make-symbol-from-string-ir)
-     ;; make-symbol-from-string-ir = (make-symbol-from-string-ir str-ir)
-     ;; For native: inline intern using x27 as symbol table base
-     ;; Symbol table layout: x27[48] = symbol_counter, x27[56] = symbol_table
-     ;; Table is alist: ((name . id) ...) where id is untagged
-     ;; Result is symbol tagged as (id << 4) | 2
-     ;;
-     ;; Algorithm:
-     ;; 1. Evaluate string, save to slot
-     ;; 2. Search table for existing entry with same name (string=)
-     ;; 3. If found, return existing symbol ID
-     ;; 4. If not found, create new entry and return new symbol
      (let* ((str-ir (cadr ir))
-            (str-code (codegen str-ir rtaddrs fnoffs (+ td 5)))
-            (str-slot (temp-slot td)))
-       (append-all
-        (list
-         ;; Evaluate and save input string
-         str-code
-         (arm64:str :x0 :sp :offset str-slot)
-
-         ;; x1 = table pointer (start search)
-         (arm64:ldr :x1 :gc :offset 56)  ; x1 = symbol_table
-
-         ;; Search loop: find entry where (car entry) string= input
-         ;; Instruction counting (0-indexed from loop_start):
-         ;; 0: cmp, 1: b.eq, 2-4: get entry, 5: reload input
-         ;; 6-9: get lengths, 10: cmp, 11: b.ne
-         ;; 12-18: char setup, 19: cbz (char_loop), 20-23: char compare
-         ;; 24-27: increment/loop, 28-35: found (8 instrs)
-         ;; 36-39: next_entry (4 instrs), 40+: create_new
-
-         ;; loop_start: (instr 0)
-         (arm64:cmp :x1 6 :imm t)         ; 0: compare with nil
-         (arm64:b.eq 39)                  ; 1: if nil, jump to create_new (instr 40)
-
-         ;; x2 = (car entry) = name string (instr 2-4)
-         (arm64:movz :x9 #xF)             ; 2
-         (arm64:bic :x2 :x1 :x9)          ; 3: clear cons tag
-         (arm64:ldr :x2 :x2 :offset 0)    ; 4: x2 = car = name
-
-         ;; Load input string from slot (instr 5)
-         (arm64:ldr :x0 :sp :offset str-slot)  ; 5
-
-         ;; Get lengths (instr 6-9)
-         (arm64:bic :x3 :x0 :x9)          ; 6: x3 = input ptr
-         (arm64:ldr :x3 :x3 :offset 0)    ; 7: x3 = input length
-         (arm64:bic :x4 :x2 :x9)          ; 8: x4 = table name ptr
-         (arm64:ldr :x4 :x4 :offset 0)    ; 9: x4 = table name length
-
-         ;; Compare lengths (instr 10-11)
-         (arm64:cmp :x3 :x4)              ; 10
-         (arm64:b.ne 25)                  ; 11: if differ, next entry (instr 36)
-
-         ;; Lengths match - compare characters (instr 12-18)
-         (arm64:bic :x3 :x0 :x9)          ; 12
-         (arm64:add :x3 :x3 8 :imm t)     ; 13: x3 = input chars
-         (arm64:bic :x4 :x2 :x9)          ; 14
-         (arm64:add :x4 :x4 8 :imm t)     ; 15: x4 = table chars
-         (arm64:bic :x6 :x0 :x9)          ; 16
-         (arm64:ldr :x5 :x6 :offset 0)    ; 17
-         (arm64:asr :x5 :x5 4 :imm t)     ; 18: x5 = count (untagged)
-
-         ;; char_loop: (instr 19)
-         (arm64:cbz :x5 9)                ; 19: if count=0, found (instr 28)
-         (arm64:ldrb :x6 :x3 0)           ; 20
-         (arm64:ldrb :x7 :x4 0)           ; 21
-         (arm64:cmp :x6 :x7)              ; 22
-         (arm64:b.ne 13)                  ; 23: if differ, next entry (instr 36)
-         (arm64:add :x3 :x3 1 :imm t)     ; 24
-         (arm64:add :x4 :x4 1 :imm t)     ; 25
-         (arm64:sub :x5 :x5 1 :imm t)     ; 26
-         (arm64:b -8)                     ; 27: back to char_loop (instr 19)
-
-         ;; found: return existing symbol (instr 28-35)
-         (arm64:bic :x2 :x1 :x9)          ; 28: x2 = table cons ptr
-         (arm64:ldr :x2 :x2 :offset 0)    ; 29: x2 = car = entry cons
-         (arm64:bic :x3 :x2 :x9)          ; 30: x3 = entry cons ptr
-         (arm64:ldr :x0 :x3 :offset 8)    ; 31: x0 = cdr = id (untagged)
-         (arm64:lsl :x0 :x0 4 :imm t)     ; 32: x0 = id << 4
-         (arm64:movz :x9 2)               ; 33
-         (arm64:orr :x0 :x0 :x9)          ; 34: tag as symbol
-         (arm64:b 29)                     ; 35: jump to done (+4 for GC check)
-
-         ;; next_entry: move to cdr of table (instr 36-39)
-         (arm64:movz :x9 #xF)             ; 36
-         (arm64:bic :x2 :x1 :x9)          ; 37
-         (arm64:ldr :x1 :x2 :offset 8)    ; 38: x1 = cdr = next
-         (arm64:b -39)                    ; 39: back to loop_start (instr 0)
-
-         ;; create_new: allocate new symbol
-         ;; Get next-id from x27[48]
-         (arm64:ldr :x3 :gc :offset 48)   ; x3 = symbol_counter (untagged)
-
-         ;; Create new entry cons: (name . id)
-         (arm64:ldr :x0 :sp :offset str-slot)  ; reload input string
-         ;; GC pre-check: ensure heap has space before writing
-         (arm64:ldr :x9 :gc :offset +gc-from-end-offset+)
-         (arm64:cmp :heap :x9)
-         (arm64:b.lo 2)
-         (list (list :call-fn 'GC-COLLECT))
-         (arm64:str :x0 :heap :offset 0)  ; [x28+0] = name
-         (arm64:str :x3 :heap :offset 8)  ; [x28+8] = id (untagged)
-         ;; Tag as cons
-         (arm64:mov :x4 :heap)
-         (arm64:movz :x9 1)
-         (arm64:orr :x4 :x4 :x9)          ; x4 = new entry cons
-         (arm64:add :heap :heap 16 :imm t) ; bump heap
-
-         ;; Prepend to table: new cons (entry . old_table)
-         (arm64:ldr :x5 :gc :offset 56)   ; x5 = old table
-         (arm64:str :x4 :heap :offset 0)  ; [x28+0] = new entry
-         (arm64:str :x5 :heap :offset 8)  ; [x28+8] = old table
-         (arm64:mov :x6 :heap)
-         (arm64:orr :x6 :x6 :x9)          ; x6 = new table cons
-         (arm64:add :heap :heap 16 :imm t) ; bump heap
-
-         ;; Update table pointer
-         (arm64:str :x6 :gc :offset 56)
-         ;; Increment counter
-         (arm64:add :x7 :x3 1 :imm t)
-         (arm64:str :x7 :gc :offset 48)
-
-         ;; Return new symbol: (id << 4) | 2
-         (arm64:lsl :x0 :x3 4 :imm t)
-         (arm64:movz :x9 2)
-         (arm64:orr :x0 :x0 :x9)))))  ; tag as symbol
-    ;; symbol-name-ir - get symbol's name by looking up in symbol table
+            (str-code (codegen str-ir rtaddrs fnoffs td)))
+       (append str-code
+               ;; Convert string tag (4) to symbol tag (2): subtract 2
+               (arm64:sub :x0 :x0 2 :imm t))))  ; tag as symbol
+    ;; symbol-name-ir - get symbol's name string
+    ;; Symbols are now (string-pointer | 2), so just change tag to string (4)
     ((has-tag ir 'symbol-name-ir)
-     ;; symbol-name-ir = (symbol-name-ir sym-ir)
-     ;; Symbol table at x27[56] is list of cons cells: ((name . id) . rest)
-     ;; Each entry is (name . id) where id is untagged
-     ;; Symbol value is (id << 4) | 2
      (let* ((sym-ir (cadr ir))
-            (sym-code (codegen sym-ir rtaddrs fnoffs (+ td 5))))
-       (append-all
-        (list
-         ;; Evaluate symbol
-         sym-code
-         ;; Get ID: x1 = sym >> 4
-         (arm64:lsr :x1 :x0 4 :imm t)         ; x1 = symbol ID (untagged)
-         ;; Get table: x2 = x27[56]
-         (arm64:ldr :x2 :gc :offset 56)       ; x2 = symbol_table
-         (arm64:movz :x11 #xF)                ; tag mask
-
-         ;; loop_start: (instr 0)
-         (arm64:cmp :x2 6 :imm t)             ; 0: compare with nil
-         (arm64:b.eq 11)                      ; 1: if nil, jump to not_found (instr 12)
-
-         ;; x2 = outer cons ((name.id) . rest), get car = entry
-         (arm64:bic :x3 :x2 :x11)             ; 2: x3 = outer cons ptr
-         (arm64:ldr :x4 :x3 :offset 0)        ; 3: x4 = car = (name . id) cons
-         ;; Get id from entry
-         (arm64:bic :x5 :x4 :x11)             ; 4: x5 = entry cons ptr
-         (arm64:ldr :x6 :x5 :offset 8)        ; 5: x6 = cdr = id (untagged)
-
-         ;; Compare ID
-         (arm64:cmp :x6 :x1)                  ; 6:
-         (arm64:b.eq 3)                       ; 7: if match, jump to found (instr 10)
-
-         ;; Move to next: cdr of outer cons
-         (arm64:ldr :x2 :x3 :offset 8)        ; 8: x2 = cdr = rest of table
-         (arm64:b -9)                         ; 9: back to loop_start (instr 0)
-
-         ;; found: return name from x5 (entry ptr)
-         (arm64:ldr :x0 :x5 :offset 0)        ; 10: x0 = car of entry = name
-         (arm64:b 2)                          ; 11: skip not_found (to instr 13)
-
-         ;; not_found: return nil
-         (arm64:movz :x0 6)))))            ; x0 = nil
+            (sym-code (codegen sym-ir rtaddrs fnoffs td)))
+       (append sym-code
+               ;; Convert symbol tag (2) to string tag (4): subtract 2, add 4 = add 2
+               (arm64:add :x0 :x0 2 :imm t))))            ; x0 = nil
     ;; write-bytes-ir - write vector of bytes to file
     ((has-tag ir 'write-bytes-ir)
      ;; write-bytes-ir = (write-bytes-ir path-ir vec-ir)

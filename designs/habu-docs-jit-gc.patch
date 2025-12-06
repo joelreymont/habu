@@ -1,0 +1,565 @@
+diff --git a/docs/codegen/HABU_ARM64_JIT_ARCH.md b/docs/codegen/HABU_ARM64_JIT_ARCH.md
+new file mode 100644
+index 0000000..1111111
+--- /dev/null
++++ b/docs/codegen/HABU_ARM64_JIT_ARCH.md
+@@ -0,0 +1,259 @@
++# Habu ARM64 Codegen and JIT Integration
++
++This document describes how the **native Habu (stage2) compiler** currently generates ARM64 code, and how to layer a multi-version JIT on top of the existing architecture *without* fighting it.
++
++It is based on the actual sources in this repository, in particular:
++
++- `arm64/asm.lisp` – standalone ARM64 assembler / encoder
++- `arm64/codegen.lisp` – pure-Habu ARM64 code generator
++- `native-compiler-main.lisp` / `compiler-driver.lisp` – compiler entry points
++- `runtime/runtime.c`, `runtime/habu.h` – runtime ABI that codegen targets
++- `docs/codegen/ARM64_COMPILER_README.md`, `docs/codegen/ARM64_COMPILER_COMPLETE.md` – status docs
++
++No speculative backends (LLVM/Cranelift) are used here; everything is expressed in terms of **Habu’s own ARM64+GC runtime.**
++
++---
++
++## 1. What the stage2 ARM64 codegen actually does
++
++### 1.1 `arm64/asm.lisp`: standalone assembler
++
++`arm64/asm.lisp` defines the `:arm64` package and a small API:
++
++- `encode` – core instruction encoder
++- `reg` / `num-to-reg` – keyword/number → register mapping
++- A large set of helpers for individual instructions, e.g.
++  - `movz`, `movk`, `mov-reg`
++  - `ldr-offset`, `str-offset`
++  - `blr`, `br`
++  - conditional branches, arithmetic/logical ops, etc.
++
++Key traits:
++
++- It is completely **self-contained** and works both in SBCL and native Habu.
++- Instructions are represented as **lists of 32-bit words** (or bytes), and helpers like `count-instrs` are used heavily in `codegen.lisp` to compute PC-relative offsets.
++- There is no IR-level type information here; it is a pure encoding layer.
++
++### 1.2 `arm64/codegen.lisp`: Habu IR → ARM64
++
++`arm64/codegen.lisp` is the heart of the stage2 backend. It:
++
++- Defines stack frame layout constants:
++
++  ```lisp
++  (setq *stack-frame-size* #xFF0)
++  (setq *env-base-offset*  #x180)
++  (setq *temp-slot-base*   #x40)
++  (setq *temp-slot-guard*  #x180)
++  (setq *arg-spill-base*   #x200)
++  (setq *arg-spill-stride* #x8)
++  ```
++
++- Maintains global state:
++
++  ```lisp
++  (setq *runtime-addrs* nil)
++  (setq *collected-lambdas* nil)
++  ```
++
++- Exposes a main entry point (by convention) that walks a simple tagged IR and calls `codegen-expr` to produce lists of ARM64 instructions.
++
++The **IR is a tagged S-expression**, not a class hierarchy. `codegen-expr` pattern matches on tags such as:
++
++- Literals / variables:
++
++  - `(lit <int>)` – tagged fixnum literal  
++  - `(var <slot>)` – load from stack slot  
++
++- Structured literals:
++
++  - `(string-lit chars...)`
++  - `(symbol-lit name)`
++  - `(vector-lit ...)`
++
++- Calls:
++
++  - `(call-closure fn-ir arg-irs...)` – closes over environment, then calls via closure layout
++  - `(call-fn name arg-irs...)` – direct call to known function
++
++- Control / others:
++
++  - Branch-like forms (`if`, loops) are lowered using `labels` in `codegen-expr` to assemble blocks.
++
++The generated sequence is then fed through:
++
++- A **frame builder** / prologue-epilogue generator
++- The ARM64 assembler (`arm64/asm.lisp`) to serialize instructions to bytes
++- The runtime’s JIT code loader (CFI / Mach-O and macOS JIT entitlements for code pages on Apple, see `docs/runtime/MACOS_JIT_FIX.md`)
++
++### 1.3 Calling convention and runtime ABI
++
++From `arm64/codegen.lisp` and the runtime headers:
++
++- Habu uses a straightforward ARM64 C-like calling convention:
++  - Arguments are passed in `x0`–`x7` (with overflow in a spill area at `*arg-spill-base*`).
++  - The closure environment pointer is stored in `x24` (see `(mov-reg 24 10)` in the `call-closure` case).
++  - The code pointer for a closure is loaded from offset `8` in the closure object, then called via `blr x11`.
++- The code generator relies on `*runtime-addrs*` to know where runtime entry points live, e.g.:
++  - Allocation functions for cons cells, vectors, strings, etc.
++  - Primitives such as `habu_car`, `habu_cdr`, `habu_setcar`, etc.
++- The **stack frame layout** is fixed-size for now (`*stack-frame-size*` is a constant), with:
++  - Temp slots at `*temp-slot-base*`
++  - Environment cells at `*env-base-offset*`
++  - Argument spill area at `*arg-spill-base*`
++
++This is a classic **baseline native compiler**: one IR, one codegen pass, no dynamic specialization yet.
++
++---
++
++## 2. How to layer a JIT on top of this design
++
++The good news: the current stage2 compiler already behaves like a JIT-able backend — it takes a simple IR and produces ARM64 lists that are then turned into executable pages. We can **reuse almost all of this** and just add *runtime multi-versioning* and *IR hints*.
++
++### 2.1 Keep the existing IR, add “rep” hints
++
++Rather than invent a new IR, we can extend the existing tagged IR with optional representation hints. For example:
++
++- Current form:
++
++  ```lisp
++  (call-fn 'add (list arg1-ir arg2-ir))
++  ```
++
++- With rep hints:
++
++  ```lisp
++  (call-fn :rep '(:fixnum :fixnum)
++           'add
++           (list arg1-ir arg2-ir))
++  ```
++
++Or equivalently, add an annotation pass that records, outside the IR, a mapping:
++
++```lisp
++;; (fn-name . ((arg-index . rep) ...))
++'((add . ((0 . :fixnum) (1 . :fixnum)))
++  (mul . ((0 . :fixnum) (1 . :fixnum))))
++```
++
++Recommendations:
++
++- **Don’t** change `codegen-expr`’s core pattern matching yet.
++- Instead, add a small helper `arg-rep-hint` that, given `(call-fn ...)` and an index, returns a rep if known (`:fixnum`, `:double`, `:tagged`, etc.).
++- In `codegen-expr`’s `call-fn` and `call-closure` cases, use those hints to choose better code paths (e.g., assume fixnums and skip tag checks where safe).
++
++This keeps the IR stable while allowing a specializing compile path to feed extra information to codegen.
++
++### 2.2 Introduce `function-object` + `function-version` structs
++
++At the runtime level (in Lisp), we can introduce lightweight JIT metadata without disturbing existing closure layout:
++
++```lisp
++(defstruct function-version
++  (rep-key  nil)   ; e.g. '(:fixnum :fixnum)
++  (code     nil)   ; code pointer / FFI object
++  (hotness  0))    ; how often this version has been called
++
++(defstruct function-object
++  name
++  env                   ; closure env pointer or Habu object
++  generic-code          ; baseline code pointer
++  (versions '()))       ; list of FUNCTION-VERSION
++```
++
++Integration points:
++
++- Wherever the native compiler currently produces a “function” (e.g. `native-compiler-main.lisp` or `compiler-driver.lisp`), instead of returning just a raw code pointer, wrap it in a `function-object`.
++- Keep the **closure representation on the C side unchanged**; this struct lives in Habu’s Lisp heap (or CL heap during bootstrap) and is only used by the JIT dispatcher.
++
++### 2.3 Dispatcher: connect calls to the right version
++
++Calls currently lower to `(call-closure ...)` and `(call-fn ...)` patterns inside `codegen-expr`. There are two strategies:
++
++1. **Lisp-level dispatcher first, ARM64 stub later**
++
++   - Implement a Lisp function `call-function` that:
++     1. Computes a `rep-key` from argument objects (e.g. `(:fixnum :fixnum)`).
++     2. Looks up a matching `function-version` in a given `function-object`.
++     3. If found, calls its `code`.
++     4. If not, calls `generic-code` and maybe triggers JIT specialization for that `rep-key`.
++
++   - In the interim, `codegen.lisp` can be left alone: the native code just calls into `call-function` (via FFI) with a pointer to the `function-object` and arguments.
++
++2. **Eventually: ARM64 entry stub**
++
++   - For hot functions, generate a small **entry stub** in ARM64 that:
++     - Loads type tags for arguments (e.g. from object headers or low bits).
++     - Compares against the most common `rep-key` pattern(s).
++     - Jumps directly to the specialized code if match; otherwise jumps to generic.
++   - This stub can be emitted by a new backend function, e.g. `(emit-arm64-dispatch-stub function-object ...)`, and inserted before or around the existing prologue.
++
++Initial recommendation: **start with the Lisp-level dispatcher**, because:
++
++- It requires **no changes** to `arm64/asm.lisp` or low-level ARM64 code.
++- It keeps all JIT policy logic in Lisp, which is easier to evolve.
++- Once proven, critical paths can be ported into a proper ARM64 stub.
++
++### 2.4 Specializing recompile path
++
++To compile a specialized version, Habu needs to be able to:
++
++1. Retrieve the “original function IR” for a given function name or closure.
++2. Annotate it with **argument representation assumptions** based on the `rep-key`.
++3. Run the existing native compiler with those hints.
++4. Install the resulting code in a new `function-version` entry.
++
++In practice this means:
++
++- Ensure the native compiler keeps around an IR or AST for each top-level function (e.g. in a global table mapping function names to parsed forms or lowered IR).
++- Add a simple API like:
++
++  ```lisp
++  (defun compile-specialized (fn-name rep-key)
++    ;; 1. look up IR or source for fn-name
++    ;; 2. attach type/rep hints for arguments from rep-key
++    ;; 3. call through the normal arm64 pipeline to produce code
++    ;; 4. wrap result in a FUNCTION-VERSION and return it
++    )
++  ```
++
++- In the dispatcher, when a `rep-key` becomes hot for a given function, call `compile-specialized` and push the resulting version into the function object.
++
++This uses the **same backend you already trust** (`arm64/codegen.lisp` + assembler), just with more information on the IR side.
++
++---
++
++## 3. Changes from earlier generic JIT suggestions
++
++Given the actual code:
++
++- We **do not** need or want a separate “generic backend” or LLVM/Cranelift. The ARM64 backend is already solid and used everywhere.
++- We should **not** talk about x86-64 in the stage2 compiler context; the stage2 branch is clearly ARM64-centric (`arm64/asm.lisp`, `arm64/codegen.lisp`, `native/arm64-asm.lisp`, and `docs/codegen/ARM64_*`).
++- All JIT work should **reuse**:
++  - the existing IR tagging scheme (e.g. `'lit`, `'var`, `'call-closure`, `'call-fn`, etc.)
++  - the existing stack frame layout
++  - the existing runtime ABI in `runtime/runtime.c` and headers.
++
++The main updates relative to previous, more speculative design:
++
++1. **No new IR is required.** Just add metadata and/or attributes to the existing tagged IR forms.
++2. **No generic multi-backend abstraction is necessary yet.** Focus on ARM64; if x86-64 or other targets reappear later, the JIT design can be re-evaluated.
++3. **Function versioning and dispatch can live entirely in Lisp at first**, reflecting the “self-hosting” goal: Habu specializes itself using its own compiler.
++4. The “JIT” in this phase is less about “compile during execution” (you already effectively do that) and more about “compile more than one version of a function and choose intelligently at runtime.”
++
++---
++
++## 4. Concrete patch sketch (at a high level)
++
++The accompanying patch file proposes **only documentation additions**, to avoid touching core compiler files prematurely:
++
++- `docs/codegen/HABU_ARM64_JIT_ARCH.md` – contains a repo-local version of this document, under the `docs/codegen/` tree that already exists.
++- Stubs for JIT-related structs and dispatcher functions can be added later under `native/` or a new `jit/` directory once you decide where you want JIT metadata to live (runtime vs. compiler side).
++
++Once you are happy with the design, the next patch iteration can:
++
++- Introduce `function-object` and `function-version` structs in a concrete Habu module.
++- Patch `native-compiler-main.lisp` or `compiler-driver.lisp` to construct these objects instead of returning raw code pointers.
++- Add a minimal Lisp-level dispatcher that calls into the existing ARM64 code.
++
++This keeps the first change-set **low risk** and focused on clarifying the architecture in the repo itself.
+diff --git a/docs/runtime/HABU_GC_IMPROVEMENTS.md b/docs/runtime/HABU_GC_IMPROVEMENTS.md
+new file mode 100644
+index 0000000..2222222
+--- /dev/null
++++ b/docs/runtime/HABU_GC_IMPROVEMENTS.md
+@@ -0,0 +1,294 @@
++# Habu GC Analysis and Improvement Suggestions
++
++This document summarizes the current garbage collector implementation in Habu and suggests concrete improvements that fit the existing design.
++
++It is based on the actual sources:
++
++- `runtime/gc.c`
++- `runtime/memory.lisp`
++- `runtime/habu.h`, `runtime/object.h`
++- `docs/runtime/GC_RUNTIME.md`
++- `docs/runtime/GC_NATIVE.md`
++
++---
++
++## 1. What Habu’s GC actually is
++
++### 1.1 High-level design
++
++`runtime/gc.c` describes an **incremental generational garbage collector** with two generations:
++
++1. **Young generation (512 KB)**  
++   - Cheney-style copying collector.  
++   - Two semispaces (`from-space` and `to-space`), only one active at a time.  
++   - Collecting the young generation copies live objects from `from` to `to`, then swaps them.
++
++2. **Old generation (4 MB)**  
++   - Single contiguous region (size constant `OLD_GEN_SIZE`).  
++   - Mark-sweep with optional compaction.  
++   - Allocation is also bump-pointer into the old region.
++
++The header comments state:
++
++```c
++/* Incremental Generational Garbage Collector
++ *
++ * This is a two-generation copying/mark-sweep GC based on the generational hypothesis:
++ * "Most objects die young."
++ */
++```
++
++There is also support for:
++
++- A **gray stack** (for incremental or tri-color marking).
++- A **remembered set** and write barrier to track old→young pointers.
++- Basic GC statistics and thresholds.
++
++### 1.2 Fixed-size heap and init()
++
++The `init(size_t heap_size)` function in `gc.c` currently **ignores** its `heap_size` argument:
++
++```c
++/*
++ * Parameters:
++ *   heap_size - Requested heap size (currently ignored, uses fixed sizes)
++ */
++void init(size_t heap_size) {
++    (void)heap_size;  /* Use fixed sizes for now */
++
++    /* Allocate the main GC structure */
++    gc_heap = malloc(sizeof(gc_heap_t));
++    assert(gc_heap != NULL);
++
++    /* Zero-initialize all fields */
++    memset(gc_heap, 0, sizeof(gc_heap_t));
++    ...
++    gc_heap->gc_threshold = YOUNG_GEN_SIZE / 2;  /* Trigger GC after 256 KB allocated */
++}
++```
++
++Constants:
++
++- `YOUNG_GEN_SIZE` = 512 KB (per semispace, 1 MB total allocated for young gen).
++- `OLD_GEN_SIZE`   = 4 MB.
++
++This means:
++
++- Total heap is effectively **fixed at ~5 MB** (plus overhead) regardless of the requested heap size.
++- GC triggers when half the young gen is full (256 KB allocated) by default.
++
++### 1.3 Fast-path allocation for generated code
++
++A very important feature for the native compiler (and JIT) is the fast-path allocation exported from `gc.c`:
++
++```c
++/* FAST-PATH ALLOCATION POINTERS
++ *
++ * Export pointers to young_free and young_end so generated machine code
++ * can perform inline bump-pointer allocation. These are pointers-to-pointers
++ * so they remain valid even when the GC swaps semispaces.
++ */
++young_free_ptr = &gc_heap->young_free;
++young_end_ptr  = &gc_heap->young_end;
++```
++
++The ARM64 code generator can then:
++
++- Load `young_free` / `young_end` through these pointers.
++- Perform a bump-pointer allocation inline.
++- Fall back to calling into the runtime if `young_free` exceeds `young_end`.
++
++This is **exactly what Habu’s JIT needs**: tight integration between GC and codegen via a stable ABI.
++
++### 1.4 `runtime/memory.lisp`
++
++`memory.lisp` provides a higher-level interface for the Habu runtime in Lisp:
++
++- Defines a `heap` object (in Lisp terms) and accessors.
++- Implements routines like `write-u64`, `read-u64`, etc., for manipulating raw memory.
++- Initializes the runtime heap via:
++
++  ```lisp
++  (defun initialize-runtime (&key (heap-size (* 1024 1024)))
++    "Initialize the runtime system with a heap"
++    (setf *heap* (create-heap :size heap-size))
++    (format t "Habu runtime initialized with ~D byte heap~%" heap-size))
++  ```
++
++This Lisp-level heap code is somewhat independent of, but conceptually mirrors, the C GC heap. As Habu becomes more self-hosting, the boundary between these two will tighten.
++
++---
++
++## 2. GC improvement suggestions, grounded in current implementation
++
++### 2.1 Honor the `heap_size` parameter
++
++Problem:
++
++- `init(size_t heap_size)` ignores its `heap_size` argument and always allocates:
++  - Young gen: `YOUNG_GEN_SIZE * 2` (1 MB total)
++  - Old gen: `OLD_GEN_SIZE` (4 MB)
++
++This is fine for early testing but can be a real limitation for:
++
++- Larger programs or datasets.
++- Stress testing, where you may want, say, a 256 MB heap.
++- Embedded runs where you might want a much smaller footprint.
++
++**Suggestion:**
++
++- Interpret `heap_size` as the **total heap budget** for both generations and data structures.
++- Derive `YOUNG_GEN_SIZE` and `OLD_GEN_SIZE` from it at init time, e.g.:
++
++  ```c
++  size_t young_bytes = heap_size / 5;      /* 20% of heap */
++  size_t old_bytes   = heap_size - young_bytes;
++  /* Ensure alignment and minimums */
++  young_bytes = MAX(young_bytes, 256 * 1024);
++  old_bytes   = MAX(old_bytes,  2 * 1024 * 1024);
++  ```
++
++- Replace `YOUNG_GEN_SIZE` and `OLD_GEN_SIZE` with configuration fields in `gc_heap_t`, computed at runtime.
++
++This is a minimal change that:
++
++- Makes Habu’s GC **configurable** without changing algorithms.
++- Lets the native compiler choose an appropriate heap size depending on target system.
++
++### 2.2 Tune GC thresholds and export them
++
++Currently, `gc_heap->gc_threshold` is hard-coded as half of `YOUNG_GEN_SIZE`:
++
++```c
++gc_heap->gc_threshold = YOUNG_GEN_SIZE / 2;  /* Trigger GC after 256 KB allocated */
++```
++
++For a fixed heap, this is reasonable. For a dynamic heap:
++
++- It may be useful to allow the threshold to be tuned:
++  - Either via a runtime API,
++  - Or via environment variables (e.g. `HABU_GC_YOUNG_THRESHOLD`).
++
++**Suggestion:**
++
++- Add a small API in C:
++
++  ```c
++  void gc_set_young_threshold(size_t bytes);
++  ```
++
++  that just sets `gc_heap->gc_threshold`.
++
++- Add a Lisp-visible wrapper (e.g., in `runtime/memory.lisp`) to allow experimentation from the REPL.
++
++This is very simple but will be invaluable for tuning behavior when the JIT starts creating lots of objects of varying lifetimes.
++
++### 2.3 Make the write barrier as cheap as possible
++
++`gc.c` implements a generational write barrier to track old→young references into the remembered set. The JIT’d code will exercise this barrier frequently for any mutation operations (e.g., `setf` of structure fields).
++
++Checks:
++
++- Ensure the write barrier is:
++
++  - **Inlined** as much as possible (no function call per write).
++  - **Branch-prediction-friendly** (e.g. fast-path “no young pointer” case falls through).
++
++If any mutator paths currently call a C function like `gc_write_barrier(old_obj, new_obj)`, consider:
++
++- Converting that to an `inline` function in `gc.c` or a `static inline` in a header file included by both runtime and any C helpers.
++- For the ARM64 codegen, emit the barrier sequence directly in assembly if it’s simple enough (e.g. single comparison, branch, and a store into the remembered set).
++
++Because you already **export fast-path allocation pointers** for inline bump allocation, doing the same for the barrier logic will keep JIT’d code tight.
++
++### 2.4 Prepare for true incremental collection
++
++The `gc.c` file names this “Incremental Generational GC” and contains:
++
++- Fields like `gc_heap->state`.
++- A gray stack and remembered set.
++- Comments that suggest step-wise marking.
++
++If those incremental features are not fully wired into the runtime yet (i.e., if collection still happens as full stop-the-world passes), consider the following **incremental plan**:
++
++1. Keep the **current stop-the-world semantics** as the canonical implementation for now.
++2. Introduce an internal API:
++
++   ```c
++   void gc_collect_young_step(size_t budget_bytes);
++   void gc_collect_full_step(size_t budget_bytes);
++   ```
++
++   that performs only a *bounded* amount of GC work per call.
++
++3. Have the runtime or VM (potentially even the ARM64 codegen via safepoints) call these functions periodically, e.g.:
++
++   - At function returns,
++   - On loop back-edges,
++   - Or after N allocations.
++
++This integrates naturally with the **JIT & safepoint story**:
++
++- The compiler could be taught to insert “safepoint polls” in hot loops by emitting a quick call to a tiny runtime stub that may or may not do some GC work.
++- For now, just calling the existing stop-the-world GC from safepoints is sufficient; later, those calls can be switched to `gc_collect_*_step` for true incremental behavior.
++
++### 2.5 Better integration with native codegen
++
++Since `gc.c` explicitly exposes `young_free_ptr` and `young_end_ptr` to generated code, the next natural integration step is:
++
++- Have `arm64/codegen.lisp`:
++  - Use these pointers for all `cons`/vector/closure allocations in the young generation.
++  - Emit a **fast path** inlined bump-allocation and a **slow path** call into a runtime function (e.g., `gc_alloc_slowpath`) if the bump pointer reaches `young_end`.
++
++If this is already in place, verify that:
++
++- The slow path correctly:
++  - Triggers a young-gen collection when necessary.
++  - Promotes or copies survivors to old-gen as intended.
++- Any **allocation of *large* objects** (e.g. big arrays) bypasses the young gen if the design calls for that (some GCs allocate large objects directly in the old generation to avoid copying them frequently).
++
++This is less a change recommendation and more a reminder to **lean fully into the existing optimizations**: the GC has already been shaped with JIT (fast-path allocation) in mind; the compiler should make aggressive use of that.
++
++---
++
++## 3. GC + JIT: how they fit together in Habu
++
++Given this GC design, the JIT architecture from the codegen document aligns naturally:
++
++- **Inline allocation**: JIT’d code bumps `young_free` and only occasionally calls into GC.
++- **Versioned functions**: specialized versions may have different allocation patterns (e.g., more stack vs. heap allocations) but all respect the same allocation ABI.
++- **Safepoints**: can be modeled as simple calls or branches to a small C stub, which in turn may call `gc_collect_young()` or `gc_collect_full()` depending on thresholds and state.
++
++Suggested immediate steps:
++
++1. **Expose GC tuning knobs** (heap size, threshold) to the native compiler and runtime.
++2. **Document** the allocation and safepoint ABI explicitly in `docs/runtime/GC_NATIVE.md` and a new file (see patch) like `docs/runtime/HABU_GC_IMPROVEMENTS.md`.
++3. **Keep all incremental GC work behind a simple C API**, so that Habu’s ARM64 backend only needs to know:
++
++   - How to bump-allocate from `young_free`.
++   - How to call into `gc_alloc_slowpath()` when needed.
++   - How to call `gc_poll()` at safepoints.
++
++---
++
++## 4. Patch summary
++
++The accompanying patch is intentionally conservative:
++
++- It **adds documentation** only, under:
++
++  - `docs/runtime/HABU_GC_IMPROVEMENTS.md`
++
++- It does **not** change any C or Lisp runtime code yet, but it lays out:
++
++  - How to make `heap_size` meaningful.
++  - How to expose thresholds.
++  - How to structure future GC and JIT integration.
++
++Once you are satisfied with the direction, follow-up patches can:
++
++- Update `gc.c` to use dynamic sizes.
++- Add the `gc_set_young_threshold` API.
++- Start inserting explicit safepoint calls from the native compiler.
++
++This approach minimizes risk to the existing, working GC while giving a clear roadmap for future improvements.

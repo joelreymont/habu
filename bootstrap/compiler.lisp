@@ -342,8 +342,8 @@
     ((eq (car expr) '=)
      (list 'cmp-eq (compile-expr (nth 1 expr) env)
                    (compile-expr (nth 2 expr) env)))
-    ;; Default: unknown, compile to lit 0
-    (t (compile-lit 0))))
+    ;; Default: error on unknown form
+    (t (error "compile-expr: unhandled form ~S" expr))))
 
 ;;; ============================================================
 ;;; Expanded Compiler - More Expression Types
@@ -380,7 +380,8 @@
     ((symbolp obj) (list 'sym-lit (symbol-name obj)))
     ((consp obj) (list 'cons-ir (quote-ir (car obj)) (quote-ir (cdr obj))))
     ((stringp obj) (list 'str-lit obj))
-    (t (list 'lit 0))))
+    ;; Default: error on unknown quoted value type
+    (t (error "quote-ir: unhandled type for ~S" obj))))
 
 (defun compile-quote (expr)
   "Compile (quote x) to IR"
@@ -448,7 +449,8 @@
     ((eq (car expr) 'car) (compile-car expr env))
     ((eq (car expr) 'cdr) (compile-cdr expr env))
     ((eq (car expr) 'list) (compile-list expr env))
-    (t (compile-lit 0))))
+    ;; Default: error on unknown form
+    (t (error "compile-expr-v2: unhandled form ~S" expr))))
 
 ;;; ============================================================
 ;;; Keyword Argument Support (Pure Habu)

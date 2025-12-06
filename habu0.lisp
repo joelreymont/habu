@@ -413,23 +413,27 @@
                 (ch (char-at source p2)))
            (if (>= p2 (string-length source))
                (cons nil p2)
-               (cond
-                 ((= ch #x28) (read-list p2))
-                 ((= ch #x27)
-                  (let* ((r (read-one (+ p2 #x1)))
-                         (val (car r))
-                         (pos (cdr r))
-                         (result (list 'quote val)))
-                    (cons result pos)))
-                 ((= ch #x22) (read-str source p2))
-                 ((= ch #x23) (read-sharp p2))
-                 ((or (digit? ch)
-                      (and (or (= ch #x2D) (= ch #x2B))
-                           (digit? (char-at source (+ p2 #x1)))))
-                  (read-int source p2))
-                 ((symbol-char? ch) (read-sym source p2))
-                 ((= ch #x29) (cons nil (+ p2 #x1)))
-                 (t (read-one (+ p2 #x1))))))))
+               (match ch
+                 (#x28 (read-list p2))                           ; (
+                 (#x27 (let* ((r (read-one (+ p2 #x1)))          ; '
+                              (val (car r))
+                              (pos (cdr r)))
+                         (cons (list 'quote val) pos)))
+                 (#x22 (read-str source p2))                     ; "
+                 (#x23 (read-sharp p2))                          ; #
+                 (#x29 (cons nil (+ p2 #x1)))                    ; )
+                 (#x2D (if (digit? (char-at source (+ p2 #x1)))  ; - followed by digit
+                           (read-int source p2)
+                           (read-sym source p2)))
+                 (#x2B (if (digit? (char-at source (+ p2 #x1)))  ; + followed by digit
+                           (read-int source p2)
+                           (read-sym source p2)))
+                 (_                                              ; default
+                  (if (digit? ch)
+                      (read-int source p2)
+                      (if (symbol-char? ch)
+                          (read-sym source p2)
+                          (read-one (+ p2 #x1))))))))))
     (read-one pos)))
 
 (defun read-all (source)
@@ -536,13 +540,20 @@
   (cond
     ;; Numbers are self-evaluating
     ((numberp expr) expr)
-    ;; nil is false
+    ;; Strings are self-evaluating
+    ((stringp expr) expr)
+    ;; nil is false (both Lisp nil and symbol NIL)
     ((null expr) nil)
+    ;; Symbol NIL - return nil (catches reader-created NIL symbol)
+    ((if (symbolp expr) (h0-string= (symbol-name expr) "NIL") nil) nil)
     ;; t is true
     ((if (symbolp expr) (op=t expr) nil) t)
     ;; Symbol lookup in variable environment
     ((symbolp expr)
-     (env-lookup expr env))
+     (let ((val (env-lookup expr env)))
+       (if val val
+           ;; Not found - undefined symbol error (208 + tag<<4)
+           (sys-exit (+ #xD0 (get-tag expr))))))
     ;; List - function call or special form
     ((consp expr)
      (let ((op (car expr)))
@@ -635,6 +646,92 @@
           (let* ((left (h0-eval (cadr expr) env fenv))
                  (right (h0-eval (caddr expr) env fenv)))
             (if (>= left right) t nil)))
+         ;; Type predicates - primitives
+         ((if (symbolp op) (op= op "SYMBOLP") nil)
+          (let ((arg (h0-eval (cadr expr) env fenv)))
+            (if (symbolp arg) t nil)))
+         ((if (symbolp op) (op= op "NUMBERP") nil)
+          (let ((arg (h0-eval (cadr expr) env fenv)))
+            (if (numberp arg) t nil)))
+         ((if (symbolp op) (op= op "STRINGP") nil)
+          (let ((arg (h0-eval (cadr expr) env fenv)))
+            (if (stringp arg) t nil)))
+         ;; String primitives
+         ((if (symbolp op) (op= op "STRING-LENGTH") nil)
+          (let ((arg (h0-eval (cadr expr) env fenv)))
+            (string-length arg)))
+         ((if (symbolp op) (op= op "STRING-REF") nil)
+          (let* ((str (h0-eval (cadr expr) env fenv))
+                 (idx (h0-eval (caddr expr) env fenv)))
+            (string-ref str idx)))
+         ((if (symbolp op) (op= op "STRING=") nil)
+          (let* ((s1 (h0-eval (cadr expr) env fenv))
+                 (s2 (h0-eval (caddr expr) env fenv)))
+            (if (string= s1 s2) t nil)))
+         ;; Symbol primitives
+         ((if (symbolp op) (op= op "SYMBOL-NAME") nil)
+          (let ((arg (h0-eval (cadr expr) env fenv)))
+            (symbol-name arg)))
+         ;; Bitwise operations
+         ((if (symbolp op) (op= op "LOGAND") nil)
+          (let* ((left (h0-eval (cadr expr) env fenv))
+                 (right (h0-eval (caddr expr) env fenv)))
+            (logand left right)))
+         ((if (symbolp op) (op= op "LOGIOR") nil)
+          (let* ((left (h0-eval (cadr expr) env fenv))
+                 (right (h0-eval (caddr expr) env fenv)))
+            (logior left right)))
+         ((if (symbolp op) (op= op "ASH") nil)
+          (let* ((val (h0-eval (cadr expr) env fenv))
+                 (shift (h0-eval (caddr expr) env fenv)))
+            (ash val shift)))
+         ;; EQ comparison
+         ((if (symbolp op) (op= op "EQ") nil)
+          (let* ((left (h0-eval (cadr expr) env fenv))
+                 (right (h0-eval (caddr expr) env fenv)))
+            (if (eq left right) t nil)))
+         ;; Get-tag - use native get-tag primitive
+         ((if (symbolp op) (op= op "GET-TAG") nil)
+          (let ((arg (h0-eval (cadr expr) env fenv)))
+            (get-tag arg)))
+         ;; Length - count list elements
+         ((if (symbolp op) (op= op "LENGTH") nil)
+          (let ((arg (h0-eval (cadr expr) env fenv)))
+            (labels ((count-len (lst n)
+                       (if (null lst) n
+                           (count-len (cdr lst) (+ n 1)))))
+              (count-len arg 0))))
+         ;; Vector primitives
+         ((if (symbolp op) (op= op "MAKE-VECTOR") nil)
+          (let ((size (h0-eval (cadr expr) env fenv)))
+            (make-vector size)))
+         ((if (symbolp op) (op= op "VECTOR-LENGTH") nil)
+          (let ((vec (h0-eval (cadr expr) env fenv)))
+            (vector-length vec)))
+         ((if (symbolp op) (op= op "VECTOR-SET") nil)
+          (let* ((vec (h0-eval (cadr expr) env fenv))
+                 (idx (h0-eval (caddr expr) env fenv))
+                 (val (h0-eval (cadddr expr) env fenv)))
+            (vector-set vec idx val)
+            val))
+         ((if (symbolp op) (op= op "VECTOR-REF") nil)
+          (let* ((vec (h0-eval (cadr expr) env fenv))
+                 (idx (h0-eval (caddr expr) env fenv)))
+            (vector-ref vec idx)))
+         ;; Reverse list
+         ((if (symbolp op) (op= op "REVERSE") nil)
+          (let ((arg (h0-eval (cadr expr) env fenv)))
+            (labels ((rev-acc (lst acc)
+                       (if (null lst) acc
+                           (rev-acc (cdr lst) (cons (car lst) acc)))))
+              (rev-acc arg nil))))
+         ;; String/Symbol creation
+         ((if (symbolp op) (op= op "MAKE-STRING-FROM-VECTOR") nil)
+          (let ((vec (h0-eval (cadr expr) env fenv)))
+            (make-string-from-vector vec)))
+         ((if (symbolp op) (op= op "MAKE-SYMBOL-FROM-STRING") nil)
+          (let ((str (h0-eval (cadr expr) env fenv)))
+            (make-symbol-from-string str)))
          ;; Function call - look up in fenv
          (t
           (let ((fn-entry (fenv-lookup op fenv)))
@@ -644,8 +741,10 @@
                        (args (h0-eval-list (cdr expr) env fenv))
                        (new-env (bind-args params args nil)))
                   (h0-eval body new-env fenv))
-                #x0))))))
-    (t #x0)))
+                ;; Unknown function - exit with error code 200 + (tag<<4)
+                (sys-exit (+ #xC8 (get-tag op)))))))))
+    ;; Unknown expression type - exit with error code 199
+    (t (sys-exit #xC7))))
 
 ;; Eval a list of expressions
 (defun h0-eval-list (exprs env fenv)

@@ -627,6 +627,48 @@
                                (gc-trigger-code)))))
       (append-all (list pre-check len-code data-code result-code)))))
 
+(defun gen-symbol-lit (str len total-size)
+  "Generate code to allocate symbol literal on heap.
+   Symbol layout: same as string [length:8][name:N]
+   Returns tagged symbol pointer (tag 2) in x0, bumps x28."
+  (labels
+      ;; Store up to 8 bytes at a time using MOVZ/MOVK + STR
+      ((gen-store-bytes (offset bytes acc)
+         (if (null bytes)
+             acc
+             (let* ((chunk (take-bytes bytes 8))
+                    (val (bytes-to-u64 chunk))
+                    (rest (drop-bytes bytes 8)))
+               (gen-store-bytes
+                (+ offset 8)
+                rest
+                (append-all
+                 (list acc
+                       (load-addr 9 val)
+                       (arm64:str :x9 :heap :offset offset)))))))
+       ;; Convert string to list of bytes
+       (str-to-bytes (s i acc)
+         (if (>= i (string-length s))
+             (reverse acc)
+             (str-to-bytes s (+ i 1) (cons (string-ref s i) acc)))))
+    (let* ((bytes (str-to-bytes str 0 nil))
+           ;; Add null terminator for C string compatibility
+           (bytes-with-nul (append bytes (list 0)))
+           ;; Check GC BEFORE allocation to ensure heap is valid
+           (pre-check (gc-trigger-code))
+           ;; Store length first, then data starting at offset 8
+           (len-code (append-all
+                      (list (load-addr 9 len)
+                            (arm64:str :x9 :heap :offset 0))))
+           (data-code (gen-store-bytes 8 bytes-with-nul nil))
+           ;; Return tagged pointer with symbol tag (2) and bump heap
+           (result-code (append-all
+                         (list (arm64:mov :x0 :heap)
+                               (arm64:add :x0 :x0 2 :imm t)  ; symbol tag (2 not 4)
+                               (arm64:add :heap :heap total-size :imm t)
+                               (gc-trigger-code)))))
+      (append-all (list pre-check len-code data-code result-code)))))
+
 (defun take-bytes (bytes n)
   "Take up to N bytes from list"
   (if (or (null bytes) (<= n 0))
@@ -931,14 +973,16 @@
     ((has-tag ir 'nil-ir)
      (movz 0 6))
 
-    ;; Symbol literal
+    ;; Symbol literal - allocate name on heap like str-lit, but with tag 2
+    ;; Symbol layout: same as string [length:8][name:N][padding to 16]
+    ;; This allows symbol-name to just change the tag (2->4)
     ((has-tag ir 'sym-lit)
      (let* ((name (cadr ir))
-            (id (intern-symbol name))
-            (tagged (logior (ash id 4) 2)))
-       (if (< tagged #x10000)
-           (movz 0 tagged)
-           (load-addr 0 tagged))))
+            (len (string-length name))
+            ;; Align (header + data) to 16 bytes
+            (total-size (logand (+ len 8 15) (lognot 15))))
+       ;; Generate code to allocate string on heap, return with symbol tag (2)
+       (gen-symbol-lit name len total-size)))
 
     ;; String literal - allocate on heap
     ;; String layout: [length:8][data:N][padding to 16]
