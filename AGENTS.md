@@ -75,6 +75,7 @@ MCP tools are faster, produce cleaner output, and save tokens. You MUST use them
 | `codesign` | Sign macOS binary | `binary` |
 | `disasm` | Disassemble hex to ARM64 | `hex` |
 | `hexdump` | Dump file bytes | `file`, `offset`, `length` |
+| `habu0-eval` | Run Lisp in habu0 native | `code` |
 
 #### Debugging
 | Tool | Use When | Parameters |

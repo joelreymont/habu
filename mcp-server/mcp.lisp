@@ -7,7 +7,7 @@
 ;;;; - eval, compile, disasm, jit, trace, inspect, apropos, paren-check
 ;;;; - hexdump, tagged-value, heap-info, stack-frames, codesign, run, debug
 ;;;; - gc-analyze, check-ptr, env-slots, gc-roots-info, lldb-script, traced-eval
-;;;; - bd-ready, bd-list, bd-show, bd-create, bd-update, bd-close
+;;;; - bd-ready, bd-list, bd-show, bd-create, bd-update, bd-close, habu0-eval
 ;;;;
 ;;;; Usage: sbcl --load mcp.lisp
 
@@ -395,7 +395,12 @@
      "Close a completed issue. IMPORTANT: Commit changes BEFORE closing."
      (("id" "string" "Issue ID to close" t)
       ("note" "string" "Closing note (optional)" nil))
-     tool-bd-close)))
+     tool-bd-close)
+
+    ("habu0-eval"
+     "Evaluate Lisp code using the habu0 native interpreter. Writes code to input.lisp and runs habu0. Returns exit code (untagged result value)."
+     (("code" "string" "Lisp code to evaluate" t))
+     tool-habu0-eval)))
 
 (defun format-tool-schema (name description params)
   (let ((props (mapcar (lambda (p)
@@ -1321,6 +1326,36 @@
       (when (and note (not (string= note "")))
         (setf cmd-args (append cmd-args (list "--reason" note))))
       (run-bd-command cmd-args))))
+
+(defun tool-habu0-eval (args)
+  "Evaluate Lisp code using habu0 native interpreter."
+  (let* ((code (jget args "code"))
+         (habu-dir (merge-pathnames
+                    (make-pathname :directory '(:relative :up))
+                    (make-pathname :directory (pathname-directory *load-truename*))))
+         (input-file (merge-pathnames "input.lisp" habu-dir))
+         (binary (merge-pathnames "habu0" habu-dir)))
+    ;; Write code to input.lisp
+    (with-open-file (f input-file :direction :output :if-exists :supersede)
+      (write-string code f))
+    ;; Run habu0 and capture result
+    (handler-case
+        (let ((proc (sb-ext:run-program (namestring binary) nil
+                                        :output :stream
+                                        :error :stream
+                                        :wait t
+                                        :directory habu-dir)))
+          (let ((exit-code (sb-ext:process-exit-code proc))
+                (stdout (let ((s (sb-ext:process-output proc)))
+                          (when s (prog1 (read-line s nil "") (close s)))))
+                (stderr (let ((s (sb-ext:process-error proc)))
+                          (when s (prog1 (read-line s nil "") (close s))))))
+            (format nil "Exit: ~D~@[ | stdout: ~A~]~@[ | stderr: ~A~]"
+                    exit-code
+                    (when (and stdout (> (length stdout) 0)) stdout)
+                    (when (and stderr (> (length stderr) 0)) stderr))))
+      (error (e)
+        (format nil "Error: ~A" e)))))
 
 (defun tool-lldb-script (args)
   "Generate lldb script for GC debugging."
