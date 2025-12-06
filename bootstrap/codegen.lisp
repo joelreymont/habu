@@ -3567,12 +3567,17 @@
 ;;; ============================================================
 
 (defun codegen-fn (fn rtaddrs fnoffs)
-  "Generate code for a function using linearization (iterative, no recursion).
+  "Generate code for a function. Tries register allocator first, falls back to linear.
    Accepts two formats:
    - Native: (name params body-ir param-base) - 4 elements
    - SBCL:   (name params body-ir free-vars free-offsets) - 5 elements
-   For SBCL format, param-base = (length free-vars).
-   Uses simple fixed frame layout."
+   For SBCL format, param-base = (length free-vars)."
+  ;; Try register allocator first (produces much better code)
+  #+sbcl
+  (let ((reg-alloc-code (codegen-fn-reg-alloc fn)))
+    (when reg-alloc-code
+      (return-from codegen-fn reg-alloc-code)))
+  ;; Fall back to linear codegen
   (let* ((params (cadr fn))
          (body-ir (caddr fn))
          (fourth (cadddr fn))
