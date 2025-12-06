@@ -17,7 +17,7 @@
    ;; Arithmetic
    #:add #:sub #:subs #:mul #:sdiv #:neg
    ;; Bitwise
-   #:and* #:orr #:eor #:bic #:lsl #:lsr #:asr
+   #:and* #:orr #:eor #:bic #:mvn #:lsl #:lsr #:asr
    ;; Memory
    #:ldr #:ldr-reg #:str #:ldp #:stp #:ldrb #:ldrb-post #:strb #:strb-post
    #:ldur #:stur
@@ -466,6 +466,14 @@
   (encode (logior #x8A200000
                   (ash (reg rm) 16)
                   (ash (reg rn) 5)
+                  (reg rd))))
+
+(defun mvn (rd rm)
+  "MVN Xd, Xm
+   Move NOT - bitwise complement.
+   Alias for ORN Xd, XZR, Xm."
+  (encode (logior #xAA2003E0        ; ORN with Rn=XZR (0x1F << 5)
+                  (ash (reg rm) 16)
                   (reg rd))))
 
 (defun lsl (rd rn shift &key imm)

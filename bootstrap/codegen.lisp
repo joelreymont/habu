@@ -413,6 +413,7 @@
 ;;; Falls back to accumulator-based codegen for unsupported IR
 #+sbcl (defvar *use-register-allocation* nil)
 
+
 (defun gc-trigger-code ()
   "Generate inline GC trigger check. Insert after allocations.
    Uses x9 as scratch. Emits :call-fn marker if GC needed.
@@ -1127,6 +1128,17 @@
     ((has-tag ir 'cmp-le) (linearize-binary 'cmp-le ir))
     ((has-tag ir 'cmp-ge) (linearize-binary 'cmp-ge ir))
 
+    ;; Bitwise operations
+    ((has-tag ir 'band) (linearize-binary 'band ir))
+    ((has-tag ir 'bor) (linearize-binary 'bor ir))
+    ((has-tag ir 'bxor) (linearize-binary 'bxor ir))
+    ((has-tag ir 'bsh) (linearize-binary 'bsh ir))
+    ((has-tag ir 'bnot)
+     (let* ((arg-temp (linearize-expr (cadr ir)))
+            (dst (fresh-temp)))
+       (emit-linear (list 'bnot dst arg-temp))
+       dst))
+
     ;; List operations
     ((has-tag ir 'cons-ir) (linearize-cons ir))
     ((has-tag ir 'car-ir) (linearize-unary 'car ir))
@@ -1239,6 +1251,53 @@
             (off-temp (linearize-expr (caddr ir)))
             (dst (fresh-temp)))
        (emit-linear (list 'mem-load-64 dst ptr-temp off-temp))
+       dst))
+
+    ;; Block/return-from: non-local exit with markers
+    ((has-tag ir 'block-ir)
+     (let* ((block-id (cadr ir))
+            (body-ir (caddr ir))
+            (end-label (gensym "BLOCK-END-"))
+            (dst (fresh-temp)))
+       ;; Emit block start marker, body, then end marker
+       (emit-linear (list 'block-start block-id end-label dst))
+       (let ((body-temp (linearize-expr body-ir)))
+         ;; Move body result to dst
+         (emit-linear (list 'move dst body-temp)))
+       (emit-linear (list 'label end-label))
+       dst))
+
+    ((has-tag ir 'return-from-ir)
+     (let* ((block-id (cadr ir))
+            (value-ir (caddr ir)))
+       ;; Evaluate value, emit return-from marker
+       (let ((val-temp (linearize-expr value-ir)))
+         (emit-linear (list 'return-from block-id val-temp))
+         ;; Return nil since we're jumping away
+         (let ((dst (fresh-temp)))
+           (emit-linear (list 'load-nil dst))
+           dst))))
+
+    ;; Loop-ir: TCO loop wrapper
+    ((has-tag ir 'loop-ir)
+     (let* ((body-ir (cadr ir))
+            (loop-label (gensym "LOOP-"))
+            (dst (fresh-temp)))
+       ;; Emit loop start marker
+       (emit-linear (list 'loop-start loop-label))
+       (emit-linear (list 'label loop-label))
+       ;; Linearize body
+       (let ((body-temp (linearize-expr body-ir)))
+         (emit-linear (list 'move dst body-temp)))
+       dst))
+
+    ;; Continue-ir: jump back to loop start
+    ((has-tag ir 'continue-ir)
+     (let* ((args (cadr ir))
+            (dst (fresh-temp)))
+       ;; For now just emit a marker - TCO needs special handling
+       (emit-linear (list 'continue args))
+       (emit-linear (list 'load-nil dst))
        dst))
 
     ;; Default: unknown IR
@@ -1458,6 +1517,66 @@
                  (arm64:lsl :x0 :x0 4 :imm t)
                  (linear-save-temp dst))))
 
+      ;; Bitwise operations (operands are tagged, but AND/OR/XOR preserve tags)
+      (band
+       (let ((dst (cadr instr))
+             (src1 (caddr instr))
+             (src2 (cadddr instr)))
+         (append (linear-load-temp :x0 src1)
+                 (linear-load-temp :x1 src2)
+                 (arm64:and* :x0 :x0 :x1)
+                 (linear-save-temp dst))))
+
+      (bor
+       (let ((dst (cadr instr))
+             (src1 (caddr instr))
+             (src2 (cadddr instr)))
+         (append (linear-load-temp :x0 src1)
+                 (linear-load-temp :x1 src2)
+                 (arm64:orr :x0 :x0 :x1)
+                 (linear-save-temp dst))))
+
+      (bxor
+       (let ((dst (cadr instr))
+             (src1 (caddr instr))
+             (src2 (cadddr instr)))
+         (append (linear-load-temp :x0 src1)
+                 (linear-load-temp :x1 src2)
+                 (arm64:eor :x0 :x0 :x1)
+                 (linear-save-temp dst))))
+
+      (bsh
+       ;; Bitwise shift: (bsh val amount) - positive = left, negative = right
+       ;; Both args are tagged. Untag both, shift, retag.
+       (let ((dst (cadr instr))
+             (src1 (caddr instr))  ; value
+             (src2 (cadddr instr))) ; shift amount
+         (append (linear-load-temp :x0 src1)
+                 (linear-load-temp :x1 src2)
+                 (arm64:asr :x0 :x0 4 :imm t)   ; untag value
+                 (arm64:asr :x1 :x1 4 :imm t)   ; untag amount
+                 ;; Use variable shift (positive = left, negative = right)
+                 ;; arm64:lsl without :imm uses register shift (LSLV)
+                 (arm64:lsl :x0 :x0 :x1)        ; variable left shift
+                 (arm64:lsl :x0 :x0 4 :imm t)   ; retag result
+                 (linear-save-temp dst))))
+
+      (bnot
+       (let ((dst (cadr instr))
+             (src (caddr instr)))
+         (append (linear-load-temp :x0 src)
+                 (arm64:mvn :x0 :x0)           ; bitwise NOT
+                 (arm64:and* :x0 :x0 #xFFFFFFFFFFFFFFF0 :imm t) ; preserve tag bits
+                 (linear-save-temp dst))))
+
+      ;; System calls
+      (sys-exit
+       (let ((src (cadr instr)))
+         (append (linear-load-temp :x0 src)
+                 (arm64:asr :x0 :x0 4 :imm t)  ; untag exit code
+                 (arm64:movz :x16 1)           ; syscall number for exit
+                 (arm64:svc 0))))              ; supervisor call
+
       ;; List operations
       (cons
        (let ((dst (cadr instr))
@@ -1492,6 +1611,38 @@
                  (arm64:ldr :x0 :x0 :offset 8)
                  (linear-save-temp dst))))
 
+      ;; Get tag (returns tag bits 0-3 as tagged fixnum)
+      (get-tag
+       (let ((dst (cadr instr))
+             (src (caddr instr)))
+         (append (linear-load-temp :x0 src)
+                 (arm64:and* :x0 :x0 #xF :imm t)  ; extract tag bits
+                 (arm64:lsl :x0 :x0 4 :imm t)      ; tag as fixnum
+                 (linear-save-temp dst))))
+
+      ;; setcar/setcdr mutations
+      (setcar
+       (let ((dst (cadr instr))
+             (cons-src (caddr instr))
+             (val-src (cadddr instr)))
+         (append (linear-load-temp :x0 cons-src)
+                 (linear-load-temp :x1 val-src)
+                 (arm64:sub :x0 :x0 1 :imm t)  ; remove cons tag
+                 (arm64:str :x1 :x0 :offset 0) ; store car
+                 (arm64:add :x0 :x0 1 :imm t)  ; restore tag
+                 (linear-save-temp dst))))
+
+      (setcdr
+       (let ((dst (cadr instr))
+             (cons-src (caddr instr))
+             (val-src (cadddr instr)))
+         (append (linear-load-temp :x0 cons-src)
+                 (linear-load-temp :x1 val-src)
+                 (arm64:sub :x0 :x0 1 :imm t)  ; remove cons tag
+                 (arm64:str :x1 :x0 :offset 8) ; store cdr
+                 (arm64:add :x0 :x0 1 :imm t)  ; restore tag
+                 (linear-save-temp dst))))
+
       ;; Control flow
       (label
        ;; Labels are handled during assembly - just record position
@@ -1517,6 +1668,28 @@
          (append (linear-load-temp :x0 src)
                  (linear-save-temp dst))))
 
+      ;; Block/return-from control flow
+      (block-start
+       ;; Just a marker - position recorded, jump targets to end label
+       nil)
+
+      (return-from
+       ;; (return-from block-id val-temp) - move val to block's dst then jump to end
+       (let ((block-id (cadr instr))
+             (val-temp (caddr instr)))
+         ;; Load value to x0, emit marker for jump
+         (append (linear-load-temp :x0 val-temp)
+                 (list (list :return-from block-id)))))
+
+      ;; Loop control flow (TCO)
+      (loop-start
+       ;; Just a marker - position recorded for continue jumps
+       nil)
+
+      (continue
+       ;; TCO continue - for now just emit marker
+       (list (list :continue)))
+
       ;; Bindings
       (bind
        ;; Extend environment frame
@@ -1541,22 +1714,36 @@
                  (arm64:sub :x1 :env (* offset 8) :imm t)
                  (arm64:str :x0 :x1 :offset 0))))
 
-      ;; Function calls - requires rtaddrs/fnoffs for call target resolution
+      ;; Function calls - emit marker for later resolution
       (call
        (let* ((dst (cadr instr))
               (name (caddr instr))
-              (arg-temps (cdddr instr))
-              (nargs (length arg-temps)))
+              (arg-temps (cdddr instr)))
          ;; Load args into x0-x7
          (append
           (loop for temp in arg-temps
                 for reg in '(:x0 :x1 :x2 :x3 :x4 :x5 :x6 :x7)
                 append (linear-load-temp reg temp))
-          ;; Call function (BL with offset from fnoffs)
-          (let ((fn-offset (cdr (assoc name fnoffs))))
-            (if fn-offset
-                (arm64:bl fn-offset)
-                (error "codegen-linear: unknown function ~S" name)))
+          ;; Emit call marker (resolved later by resolve-calls)
+          (list (list :call-fn name))
+          (linear-save-temp dst))))
+
+      ;; Indirect function call (funcall)
+      (funcall
+       (let* ((dst (cadr instr))
+              (fn-temp (caddr instr))
+              (arg-temps (cdddr instr)))
+         ;; Load args into x0-x7
+         (append
+          (loop for temp in arg-temps
+                for reg in '(:x0 :x1 :x2 :x3 :x4 :x5 :x6 :x7)
+                append (linear-load-temp reg temp))
+          ;; Load function (closure) into x9, then call
+          (linear-load-temp :x9 fn-temp)
+          ;; Extract code pointer from closure (closure tag = 5)
+          (arm64:sub :x9 :x9 5 :imm t)    ; remove tag
+          (arm64:ldr :x9 :x9 :offset 0)   ; load code pointer
+          (arm64:blr :x9)                 ; call through register
           (linear-save-temp dst))))
 
       ;; Result marker - just load result temp to x0
@@ -1568,7 +1755,7 @@
        (error "codegen-linear-instr: unknown instruction ~S" op)))))
 
 #+sbcl
-(defun codegen-linear (linear-ir rtaddrs fnoffs)
+(defun codegen (linear-ir rtaddrs fnoffs)
   "Generate ARM64 code from linear IR.
    Simple iteration over instructions - no recursion.
    Returns flat list of instruction bytes."
@@ -3186,9 +3373,10 @@
     (t nil)))
 
 ;;; ============================================================
-;;; Helper: TCO Args Codegen
+;;; Helper: TCO Args Codegen (old recursive codegen - native only)
 ;;; ============================================================
 
+#-sbcl
 (defun codegen-tco-args (arg-irs rtaddrs fnoffs td idx)
   "Evaluate args and store to temp slots for TCO continue.
    Uses temp slots at sp+0x40+idx*8 to avoid overwriting params."
@@ -3219,9 +3407,10 @@
         (append-all (list load-code store-code rest-code)))))
 
 ;;; ============================================================
-;;; Helper: Let Bindings Codegen
+;;; Helper: Let Bindings Codegen (old recursive codegen - native only)
 ;;; ============================================================
 
+#-sbcl
 (defun codegen-let-bindings (bindings rtaddrs fnoffs td idx)
   "Generate code to evaluate and store let bindings"
   (if (null bindings)
@@ -3234,9 +3423,10 @@
         (append-all (list val-code store-code rest-code)))))
 
 ;;; ============================================================
-;;; Helper: Progn Forms Codegen
+;;; Helper: Progn Forms Codegen (old recursive codegen - native only)
 ;;; ============================================================
 
+#-sbcl
 (defun codegen-progn-forms (forms rtaddrs fnoffs td)
   "Generate code for sequence of forms, return value of last"
   (if (null forms)
@@ -3248,7 +3438,7 @@
             (append first-code rest-code)))))
 
 ;;; ============================================================
-;;; Helper: Call Arguments Codegen
+;;; Helper: Call Arguments Codegen (old recursive codegen - native only)
 ;;; ============================================================
 
 #-sbcl
@@ -3258,10 +3448,12 @@
    Each nesting level gets 64 bytes (8 slots) of spill area."
   (+ #x100 (* td 64)))
 
+#-sbcl
 (defun codegen-call-args (args rtaddrs fnoffs td)
   "Generate code for function call arguments"
   (codegen-args-iter args rtaddrs fnoffs td 0))
 
+#-sbcl
 (defun codegen-args-iter (args rtaddrs fnoffs td argnum)
   "Generate code for args, storing ALL args to spill slots.
    This ensures arg 0 isn't clobbered when evaluating later args.
@@ -3298,9 +3490,10 @@
           (gen-load 0 nil)))))
 
 ;;; ============================================================
-;;; Helper: Funcall Arguments Codegen
+;;; Helper: Funcall Arguments Codegen (old recursive codegen - native only)
 ;;; ============================================================
 
+#-sbcl
 (defun codegen-funcall-args (args rtaddrs fnoffs td argnum)
   "Generate code for funcall arguments.
    Uses td-based spill area so nested calls don't clobber each other."
@@ -3374,54 +3567,30 @@
 ;;; ============================================================
 
 (defun codegen-fn (fn rtaddrs fnoffs)
-  "Generate code for a function.
+  "Generate code for a function using linearization (iterative, no recursion).
    Accepts two formats:
    - Native: (name params body-ir param-base) - 4 elements
    - SBCL:   (name params body-ir free-vars free-offsets) - 5 elements
    For SBCL format, param-base = (length free-vars).
-   Uses simple fixed frame layout. Supports TCO for self-recursive functions.
-
-   When *use-register-allocation* is true, tries register-allocated codegen first,
-   falling back to accumulator-based codegen if IR not fully supported.
-
-   TCO Architecture:
-   - Nanopass: apply-tco-to-function (optimize.lisp) transforms tail calls to loop-ir/continue-ir
-   - Codegen: handles loop-ir and continue-ir as regular IR nodes, emits :tco-branch markers
-   - Emission: resolve-tco-branches converts markers to actual B instructions"
-  ;; Try register-allocated codegen if enabled
-  #+sbcl
-  (when *use-register-allocation*
-    (let ((reg-alloc-code (codegen-fn-reg-alloc fn)))
-      (when reg-alloc-code
-        (return-from codegen-fn reg-alloc-code))))
-  ;; Fall back to accumulator-based codegen
+   Uses simple fixed frame layout."
   (let* ((params (cadr fn))
          (body-ir (caddr fn))
          (fourth (cadddr fn))
-         ;; Detect format: if fourth element is a number, it's param-base (native format)
-         ;; If it's a list (or nil), it's free-vars (SBCL format) - use length as param-base
          (param-base (if (numberp fourth)
                          fourth
                          (if fourth (length fourth) 0)))
-         ;; For lifted lambdas (param-base > 0), load captured values from x24
+         ;; For lifted lambdas, load captured values from x24
          (capture-code (if (> param-base 0)
                            (gen-capture-loads param-base)
                            nil))
-         ;; Generate param stores: move x0-x7 to [x20 - offset*8]
+         ;; Generate param stores
          (param-code (gen-param-stores params param-base 0 nil))
-         ;; Calculate loop label offset for TCO: prologue + capture + params
-         ;; This is where continue-ir branches back to
-         (prologue-size (code-size (fn-fixed-prologue)))
-         (capture-size (if capture-code (code-size capture-code) 0))
-         (param-size (if param-code (code-size param-code) 0))
-         (loop-label-offset (+ prologue-size capture-size param-size))
-         ;; Generate body code - codegen handles loop-ir/continue-ir directly
-         (body-code (codegen body-ir rtaddrs fnoffs 0))
+         ;; Linearize body IR then generate code
+         (linear-ir (linearize body-ir))
+         (body-code (codegen linear-ir rtaddrs fnoffs))
          ;; Combine all code
-         (all-code (append-all (list (fn-fixed-prologue) capture-code param-code body-code (fn-fixed-epilogue))))
-         ;; Resolve TCO branch markers into actual B instructions
-         (resolved-code (resolve-tco-branches all-code loop-label-offset)))
-    resolved-code))
+         (all-code (append-all (list (fn-fixed-prologue) capture-code param-code body-code (fn-fixed-epilogue)))))
+    all-code))
 
 (defun resolve-tco-branches (code loop-label-offset)
   "Resolve :tco-branch markers into actual B (unconditional branch) instructions.
@@ -3673,9 +3842,10 @@
            (_ #+sbcl (when (verify-link-references (mapcar #'car all-fns))
                        (error "Link failed: undefined function references")))
            ;; Generate main code first (with nil fnoffs to get size)
+           (main-linear (linearize main-ir))
            (main-code-temp (append-all
                             (list (fn-fixed-prologue)
-                                  (codegen main-ir nil nil 0)
+                                  (codegen main-linear nil nil)
                                   (fn-fixed-epilogue))))
            (main-size (code-size main-code-temp))
            ;; Build fnoffs starting after main code
@@ -3683,7 +3853,7 @@
            ;; Regenerate main with fnoffs
            (main-code (append-all
                        (list (fn-fixed-prologue)
-                             (codegen main-ir nil fnoffs 0)
+                             (codegen main-linear nil fnoffs)
                              (fn-fixed-epilogue))))
            ;; Generate all function code
            (fn-code (codegen-all-fns all-fns nil fnoffs nil))
