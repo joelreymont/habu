@@ -5,51 +5,77 @@ Build and test self-compilation stages for bootstrapping verification.
 ## Arguments
 - `$ARGUMENTS` - Stage number (1, 2, 3) or "verify" to check fixed point
 
+## FASL Build System
+
+**NEVER concatenate source files.** Use the FASL system:
+
+```lisp
+;; Compile source to FASL
+(habu:compile-file "source.lisp" :output-file "output.fasl")
+
+;; Link FASLs into executable
+(habu:link-fasls '("a.fasl" "b.fasl") "/path/to/binary" :include-gc t)
+```
+
 ## Stage 1: SBCL compiles Habu to native
 
-Build Stage 1 using ASDF-loaded compiler:
+Build Stage 1 using ASDF-loaded compiler with FASL system:
 
-```bash
-sbcl --dynamic-space-size 4096 --noinform --non-interactive \
-  --eval '(require :asdf)' \
-  --eval '(push #P"/Users/joel/Work/habu/bootstrap/" asdf:*central-registry*)' \
-  --eval '(asdf:load-system :habu)' \
-  --eval '
-(let* ((gc-src (habu::native-read-file "bootstrap/gc.lisp"))
-       (reader-src (habu::native-read-file "bootstrap/reader.lisp"))
-       (compiler-src (habu::native-read-file "bootstrap/compiler.lisp"))
-       (optimize-src (habu::native-read-file "bootstrap/optimize.lisp"))
-       (codegen-src (habu::native-read-file "bootstrap/codegen.lisp"))
-       (macho-src (habu::native-read-file "bootstrap/macho-utils.lisp"))
-       (main "(sys-exit 42)")
-       (full-source (concatenate (quote string)
-                                 gc-src reader-src compiler-src
-                                 optimize-src codegen-src macho-src
-                                 main)))
-  (habu:deliver full-source "/tmp/habu_stage1"))'
+```lisp
+;; In SBCL with habu system loaded:
+(asdf:load-system :habu)
+
+;; Compile each bootstrap module to FASL
+(habu:compile-file "bootstrap/prelude.lisp")
+(habu:compile-file "bootstrap/expand.lisp")
+(habu:compile-file "bootstrap/reader.lisp")
+(habu:compile-file "bootstrap/compiler.lisp")
+(habu:compile-file "bootstrap/optimize.lisp")
+(habu:compile-file "bootstrap/codegen.lisp")
+(habu:compile-file "bootstrap/macho.lisp")
+(habu:compile-file "bootstrap/main.lisp")  ; contains (defun main ...)
+
+;; Link into Stage 1 binary
+(habu:link-fasls '("bootstrap/prelude.fasl"
+                   "bootstrap/expand.fasl"
+                   "bootstrap/reader.fasl"
+                   "bootstrap/compiler.fasl"
+                   "bootstrap/optimize.fasl"
+                   "bootstrap/codegen.fasl"
+                   "bootstrap/macho.fasl"
+                   "bootstrap/main.fasl")
+                 "/tmp/habu_stage1"
+                 :include-gc t)
 ```
+
+**Required modules** (in dependency order):
+1. `prelude.lisp` - CL functions (zerop, truncate, apply, etc.)
+2. `expand.lisp` - Macro expansion (expand-match, expand-cond, etc.)
+3. `reader.lisp` - S-expression reader
+4. `compiler.lisp` - Core compiler
+5. `optimize.lisp` - Optimization passes (TCO)
+6. `codegen.lisp` - ARM64 code generator
+7. `macho.lisp` - Mach-O executable writer
+8. `main.lisp` - Entry point with `(defun main () ...)`
 
 Verify Stage 1:
 ```bash
 /tmp/habu_stage1
-# Expected exit code: 42
+# Expected exit code: 42 (or per main.lisp)
 ```
 
 ## Stage 2: Stage 1 compiles Habu
 
-Once Stage 1 can self-compile (currently blocked by reader issues):
+Once Stage 1 can self-compile:
 
 ```bash
-/tmp/habu_stage1 bootstrap/gc.lisp bootstrap/reader.lisp \
-  bootstrap/compiler.lisp bootstrap/optimize.lisp \
-  bootstrap/codegen.lisp bootstrap/macho-utils.lisp \
-  /tmp/habu_stage2
+/tmp/habu_stage1 --compile bootstrap/*.lisp --output /tmp/habu_stage2
 ```
 
 ## Stage 3: Stage 2 compiles Habu
 
 ```bash
-/tmp/habu_stage2 [same sources] /tmp/habu_stage3
+/tmp/habu_stage2 --compile bootstrap/*.lisp --output /tmp/habu_stage3
 ```
 
 ## Fixed Point Verification
@@ -64,36 +90,15 @@ If binaries are identical, fixed point is achieved.
 
 ## Current Status
 
-- Stage 1: WORKS - Compiles and runs (~1.1MB)
-- Stage 2: BLOCKED - Stage 1 reader crashes on file input
+- Stage 1: IN PROGRESS - FASL system working, testing full build
+- Stage 2: BLOCKED - Needs Stage 1 completion
 - Stage 3: BLOCKED - Needs Stage 2
 
-## Known Blockers
+## Key FASL Functions
 
-1. `(read-all "literal-string")` crashes in Stage 1
-2. `(compile-forms ...)` crashes in Stage 1
-3. Stack overflow with deeply recursive reader functions
-
-## Output Format
-
-```
-HABU STAGE 1 BUILD
-==================
-
-Loading compiler via ASDF...
-Reading source files...
-  gc.lisp: 8,234 bytes
-  reader.lisp: 12,456 bytes
-  compiler.lisp: 85,234 bytes
-  optimize.lisp: 15,678 bytes
-  codegen.lisp: 78,901 bytes
-  macho-utils.lisp: 5,678 bytes
-  Total: 296,082 bytes
-
-Compiling to native ARM64...
-Output: /tmp/habu_stage1
-
-Result:
-  Binary size: 1,101,728 bytes
-  Exit code: 42 (success)
-```
+| Function | Purpose |
+|----------|---------|
+| `compile-file` | Compile source file to .fasl |
+| `compile-to-fasl` | Compile forms to .fasl |
+| `link-fasls` | Link .fasl files into Mach-O |
+| `load-fasl-file` | Load .fasl for introspection |

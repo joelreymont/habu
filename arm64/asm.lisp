@@ -29,7 +29,7 @@
    #:b #:bl #:br #:blr #:cbz #:cbnz #:b.eq #:b.ne #:b.lt #:b.le #:b.gt #:b.ge
    #:b.lo #:b.hs #:b.hi #:b.ls #:ret
    ;; System
-   #:svc #:nop
+   #:svc #:brk #:nop
    ;; Condition codes (for cset instruction)
    #:+cc-eq+ #:+cc-ne+ #:+cc-lt+ #:+cc-le+ #:+cc-gt+ #:+cc-ge+
    #:+cc-lo+ #:+cc-hs+ #:+cc-hi+ #:+cc-ls+
@@ -757,6 +757,14 @@
   ;; SVC encoding: 1101 0100 000 imm16[15:0] 00001
   ;; = 0xD4000001 | (imm16 << 5)
   (encode (logior #xD4000001 (ash (logand imm16 #xFFFF) 5))))
+
+(defun brk (imm16)
+  "BRK #imm16
+   Breakpoint instruction. Causes SIGTRAP signal.
+   Use for undefined function traps, assertions, etc."
+  ;; BRK encoding: 1101 0100 001 imm16[15:0] 00000
+  ;; = 0xD4200000 | (imm16 << 5)
+  (encode (logior #xD4200000 (ash (logand imm16 #xFFFF) 5))))
 
 (defun nop ()
   "NOP - No operation"

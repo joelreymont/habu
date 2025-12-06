@@ -1,484 +1,256 @@
 # Habu Lisp Compiler - Agent Instructions
 
-## MANDATORY: CREATE ISSUES FOR ALL WORK
+## Rules
 
-**STOP. Before starting ANY task, create a beads issue with `bd-create`.**
+### Issue Tracking with Beads
 
-This is NOT optional. EVERY piece of work MUST have an issue:
-- Bug fixes: `bd-create --type bug`
-- Features: `bd-create --type feature`
-- Tasks: `bd-create --type task`
+**Create a bead BEFORE starting ANY work.** No exceptions.
+- `bd-create --type bug|feature|task`
+- Close beads when done, commit immediately after
+- TodoWrite = session tracking; beads = permanent record
 
-**NO EXCEPTIONS. NO EXCUSES. NO "I'll create it later."**
+### MCP Tools - MANDATORY
 
-If you find yourself working without an issue, you are doing it wrong. Stop immediately and create one.
+**ALWAYS use MCP tools. NEVER use Bash/Grep when an MCP tool exists.**
 
-The TodoWrite tool is for SESSION tracking only. Beads issues are the PERMANENT record of work.
+If MCP is broken or restarted, FIX IT or wait for it to recover. Do NOT fall back to Bash.
 
-## MCP Tools - USE THESE FIRST
-
-**STOP. Before using Bash, Grep, or any other tool, CHECK if an MCP tool exists.**
-
-MCP tools are faster, produce cleaner output, and save tokens. You MUST use them.
-
-**WHEN YOU ADD A NEW MCP TOOL, UPDATE THIS SECTION IMMEDIATELY.**
-
-### Absolute Rules - NO EXCEPTIONS
-
-| Task | USE THIS | NEVER USE |
-|------|----------|-----------|
+| Task | USE THIS (required) | NEVER use |
+|------|---------------------|-----------|
 | Find Lisp symbols | `apropos` | Grep |
 | Evaluate Lisp | `eval` | Bash + sbcl |
-| Run binaries | `run` / `debug` | Bash |
-| Hex dump files | `hexdump` | xxd via Bash |
-| Disassemble | `disasm` | lldb via Bash |
-| Check syntax | `paren-check` | Manual parsing |
+| Run/debug binaries | `run` / `debug` | Bash |
+| Hex dump | `hexdump` | xxd |
+| Disassemble | `disasm` | lldb |
+| Check parens | `paren-check` | Manual |
 | Trace functions | `traced-eval` | Print statements |
-| Find available work | `bd-ready` | Bash + bd |
-| List issues | `bd-list` | Bash + bd |
-| Show issue details | `bd-show` | Bash + bd |
-| Create issues | `bd-create` | Bash + bd |
-| Update issues | `bd-update` | Bash + bd |
-| Close issues | `bd-close` | Bash + bd |
+| Issue tracking | `bd-*` tools | Bash + bd |
+| Complex problems | `ask-oracle` | Manual research |
+| Test native code | `habu0-eval` | Manual testing |
 
-### Complete Tool Reference (27 Tools)
+**If an MCP tool fails**: Report the error, investigate, fix the MCP server code if needed.
+**Update this file when adding new MCP tools.**
 
-#### Issue Tracking (bd-*)
-| Tool | Use When | Parameters |
-|------|----------|------------|
-| `bd-ready` | Find available tasks | (none) |
-| `bd-list` | List issues by status | `status` (optional) |
-| `bd-show` | View issue details | `id` |
-| `bd-create` | Create new issue | `title`, `type`, `priority`, `description` |
-| `bd-update` | Update status/add notes | `id`, `status`, `note` |
-| `bd-close` | Close completed issue | `id`, `note` |
+### Warnings = Errors (CRITICAL)
 
-#### Lisp Evaluation
-| Tool | Use When | Parameters |
-|------|----------|------------|
-| `eval` | Evaluate any Lisp code | `code`, `timeout` |
-| `traced-eval` | Debug with function tracing | `code`, `functions` |
-| `compile` | See ARM64 output for expression | `source` |
-| `jit` | Execute compiled code in-process | `expr` |
+**NEVER use `(declare (ignore ...))` to silence warnings. This is a hard rule.**
 
-#### Symbol Lookup
-| Tool | Use When | Parameters |
-|------|----------|------------|
-| `apropos` | Find ANY Lisp symbol | `pattern`, `package` |
-| `inspect` | Get function/var documentation | `object` |
+When you see an unused variable warning:
+- **WRONG**: `(declare (ignore header constants))` - This hides the problem
+- **RIGHT**: Use the values, or fix the API to not return unused values
 
-#### Binary Analysis
-| Tool | Use When | Parameters |
-|------|----------|------------|
-| `run` | Run binary, get exit code | `binary`, `args`, `stdin`, `timeout` |
-| `debug` | Debug crash with lldb | `binary`, `args` |
-| `codesign` | Sign macOS binary | `binary` |
-| `disasm` | Disassemble hex to ARM64 | `hex` |
-| `hexdump` | Dump file bytes | `file`, `offset`, `length` |
-| `habu0-eval` | Run Lisp in habu0 native | `code` |
+When a function returns values you don't need:
+- **WRONG**: Destructure all values and ignore some
+- **RIGHT**: Only destructure what you need, or fix the function
 
-#### Debugging
-| Tool | Use When | Parameters |
-|------|----------|------------|
-| `trace` | Toggle function tracing | `function`, `enable` |
-| `paren-check` | Find mismatched parens | `file` |
-| `lldb-script` | Generate debug script | `binary`, `break-on-gc` |
+Examples of violations that MUST be fixed immediately:
+```lisp
+;; BAD - ignoring return values
+(multiple-value-bind (a b c) (foo) (declare (ignore c)) ...)
 
-#### Tagged Values & GC
-| Tool | Use When | Parameters |
-|------|----------|------------|
-| `tagged-value` | Decode tagged pointer | `value` |
-| `check-ptr` | Validate pointer | `ptr`, `x27` |
-| `heap-info` | Show memory layout | (none) |
-| `gc-analyze` | Analyze GC crash | `x27`, `x28`, `crash-addr` |
-| `gc-roots-info` | Explain root scanning | (none) |
-| `env-slots` | Show env frame layout | `x20`, `count` |
-| `stack-frames` | Walk stack frames | `binary`, `fp`, `sp` |
+;; BAD - underscore convention to ignore
+(let ((_ (some-side-effect))) ...)
 
-### GC Crash Debugging Workflow
+;; GOOD - use what you need
+(let ((a (foo))) ...)  ; if foo returns multiple values, fix foo or use them
+```
 
-1. `debug` - get register values from crash
-2. `gc-analyze` - analyze x27/x28 heap state
-3. `check-ptr` - validate suspicious pointers
-4. `tagged-value` - decode specific values
-5. `gc-roots-info` - understand root scanning
+Every warning indicates a design problem. Fix the design, not the symptom.
 
-### Creating New MCP Tools
+### Fix Limitations Immediately
 
-**Create new MCP tools when it saves tokens.** If you find yourself:
-- Running the same Lisp code pattern repeatedly
-- Parsing complex output from existing tools
-- Needing specialized analysis that produces verbose output
+When you discover a bug or limitation: STOP, investigate root cause, fix it, add test, continue.
+Do not document as "known limitation" or defer to later.
 
-Add a new tool to `mcp-server/mcp.lisp`. The tool should:
-- Accept focused parameters
-- Return concise, structured output
-- Avoid dumping large data structures
+### Testing
 
-**IMMEDIATELY update this section after adding any new tool.**
+Every feature and bug fix MUST have tests. No exceptions.
+- Bug fix: write failing test first, then fix
+- Feature: unit tests + property tests where valuable (serialization, encoders, parsers)
+- Use `(asdf:test-system :habu)`
+
+### Code Style
+
+- Hex: `#x` prefix always
+- No emojis, no marketing language
+- Use ASDF, never `(load ...)`
+- Naming: `reg-alloc` (hyphenated)
+
+### ARM64 Codegen
+
+- Use `arm64:*` intrinsics directly with kwargs (`:imm t`, `:offset N`)
+- Add variants to `arm64/asm.lisp`, not wrapper functions
+- Branch offsets = instruction count, not bytes: `(ash bytes -2)`
+
+---
+
+## MCP Tool Reference
+
+### Issue Tracking
+| Tool | Parameters |
+|------|------------|
+| `bd-ready` | (none) |
+| `bd-list` | `status` (opt) |
+| `bd-show` | `id` |
+| `bd-create` | `title`, `type`, `priority`, `description` |
+| `bd-update` | `id`, `status`, `note` |
+| `bd-close` | `id`, `note` |
+
+### Lisp Evaluation
+| Tool | Parameters |
+|------|------------|
+| `eval` | `code`, `timeout` |
+| `traced-eval` | `code`, `functions` |
+| `compile` | `source` |
+| `jit` | `expr` |
+| `habu0-eval` | `code` |
+
+### Symbol/Binary
+| Tool | Parameters |
+|------|------------|
+| `apropos` | `pattern`, `package` |
+| `inspect` | `object` |
+| `run` | `binary`, `args`, `stdin`, `timeout` |
+| `debug` | `binary`, `args` |
+| `codesign` | `binary` |
+| `disasm` | `hex` |
+| `hexdump` | `file`, `offset`, `length` |
+
+### Debugging/GC
+| Tool | Parameters |
+|------|------------|
+| `trace` | `function`, `enable` |
+| `paren-check` | `file` |
+| `lldb-script` | `binary`, `break-on-gc` |
+| `tagged-value` | `value` |
+| `check-ptr` | `ptr`, `x27` |
+| `heap-info` | (none) |
+| `gc-analyze` | `x27`, `x28`, `crash-addr` |
+| `gc-roots-info` | (none) |
+| `env-slots` | `x20`, `count` |
+| `stack-frames` | `binary`, `fp`, `sp` |
+
+### AI
+| Tool | Parameters |
+|------|------------|
+| `ask-oracle` | `question`, `context` (opt) |
+
+**GC Crash Workflow**: `debug` -> `gc-analyze` -> `check-ptr` -> `tagged-value` -> `gc-roots-info`
+
+---
+
+## Technical Reference
+
+### File Structure
+```
+habu0.lisp            - Stage 1 interpreter (native Habu, self-hosting test)
+bootstrap/
+  compiler-sbcl.lisp  - SBCL bootstrap compiler
+  compiler.lisp       - Habu compiler (no SBCL deps)
+  optimize.lisp       - Optimization passes (TCO)
+  codegen.lisp        - ARM64 code generator
+  gc.lisp             - Cheney's copying GC
+  gen-gc.lisp         - Generational GC runtime
+  macho.lisp          - Mach-O linker
+  reader.lisp         - Habu reader
+  reg-alloc.lisp      - Register allocator (TAC)
+arm64/
+  asm.lisp            - ARM64 instruction encoders
+```
+
+**habu0** is the Stage 1 native interpreter compiled from `habu0.lisp`. Use `habu0-eval` MCP tool to test it.
+
+### FASL Build System
+
+**NEVER concatenate source files.** Use the proper FASL system:
+
+```lisp
+;; Step 1: Compile each module to FASL
+(habu:compile-to-fasl forms "module.fasl" :exports '(fn1 fn2))
+
+;; Step 2: Link FASLs into executable
+(habu:link-fasls '("prelude.fasl" "compiler.fasl" "main.fasl")
+                 "/tmp/habu_stage1")
+```
+
+**Stage 1 Build** (SBCL compiles Habu):
+```lisp
+;; Compile each bootstrap file to FASL
+(habu:compile-file "bootstrap/prelude.lisp" "prelude.fasl")
+(habu:compile-file "bootstrap/expand.lisp" "expand.fasl")
+(habu:compile-file "bootstrap/compiler.lisp" "compiler.fasl")
+;; ... other modules ...
+
+;; Link into Stage 1 binary
+(habu:link-fasls '("prelude.fasl" "expand.fasl" "compiler.fasl" ...)
+                 "/tmp/habu_stage1" :include-gc t)
+```
+
+**Key functions**:
+- `compile-to-fasl` - Compile forms to .fasl file
+- `compile-file` - Read and compile source file to .fasl
+- `link-fasls` - Link .fasl files into Mach-O executable
+- `load-fasl-file` - Load .fasl for introspection
+
+### Tagged Values
+| Type | Encoding |
+|------|----------|
+| Fixnum | `value << 4`, tag 0 |
+| Cons | `ptr \| 1` |
+| Symbol | `ptr \| 2` |
+| Vector | `ptr \| 3` |
+| String | `ptr \| 4` |
+| Closure | `ptr \| 5` |
+| Nil | `0x06` |
+
+### Registers
+- x0-x7: Args/return
+- x20: Env frame base
+- x24: Closure env
+- x26: Code base
+- x27: GC globals base
+- x28: Heap bump ptr
+
+### Memory at x27
+| Offset | Field |
+|--------|-------|
+| 0 | intern_table |
+| 8 | lambda_counter |
+| 16 | from_end (GC trigger) |
+| 24 | half_heap_size |
+| 32 | space_flag |
+| 40 | gc_state |
+| 48 | symbol_counter |
+| 56 | symbol_table |
+| 64 | argc |
+| 72 | argv |
+| 80 | packages |
+| 88 | current-package |
+| 96 | stack_base |
+| 104 | reserved |
+| 112 | heap start (16-byte aligned) |
+
+### Exit Codes
+- 132 = SIGILL (alignment, branch target)
+- 137 = SIGKILL (codesign)
+- 138 = SIGBUS (slot collision)
+- 139 = SIGSEGV (stack overflow, bad ptr)
+
+### Current Blockers
+1. Max 8 args - implement varargs
+2. 64KB file limit - increase buffer
+3. Inlining disabled - fix capture bug
+4. 2KB stack frame - reduce/dynamic
+5. arm64 missing at Stage 1 - include in build
 
 ---
 
 ## Project Vision
 
-**Ultimate Goal**: A fully self-hosting Common Lisp compiler that:
-- Generates native ARM64 code (x86_64 planned)
-- Matches or exceeds SBCL performance on ARM64
-- Implements full Common Lisp specification
-- Requires no external Lisp system after bootstrap
+Self-hosting CL compiler: ARM64 native, SBCL-level performance, full CL spec.
 
-**Roadmap**:
-1. Self-hosting (Stage 1 -> Stage 2 -> Stage 3 fixed point)
-2. SBCL independence (native eval, reader conditionals)
-3. Performance parity (register allocator, optimizations)
-4. Full CL spec (CLOS, conditions, packages, multiple values)
+**Roadmap**: Stage 1->2->3 fixed point -> SBCL independence -> performance -> full CL
 
-## Issue Tracking
-
-**Use `bd_*` MCP tools for ALL work tracking.** Do not use Bash + bd commands.
-
-**CRITICAL: Always commit changes BEFORE closing an issue with `bd_close`.**
-
-## Development Guidelines
-
-### Problem Solving
-
-- **Ultrathink for significant efforts**: Use extended thinking for complex tasks
-- **Take no shortcuts**: Always identify root cause of bugs
-- Investigate systematically, don't patch symptoms
-- Add tests that reproduce bugs before fixing
-
-### FIX LIMITATIONS IMMEDIATELY
-
-**CRITICAL: When you discover a limitation, bug, or missing feature - FIX IT NOW.**
-
-Do NOT:
-- Document it as a "known limitation" and move on
-- Create an issue and defer to later
-- Work around it with hacks
-- Say "this is expected" or "this is a known issue"
-
-Do:
-- Stop what you're doing
-- Investigate the root cause
-- Implement the fix immediately
-- Add a test to prevent regression
-- Then continue with the original task
-
-**Every limitation is a blocker for self-hosting.** The goal is a fully working compiler, not a compiler with a list of known issues. If the native reader crashes on `defpackage`, fix the native reader. If arm64 functions are missing at runtime, add them. No exceptions.
-
-### Session Management
-
-1. **Project Reference** (end of this file) - Architecture, conventions, technical reference
-   - Update only when architecture or conventions change
-   - Do NOT track tasks here - use beads instead
-
-2. **beads (bd)** - Work items (bugs, features, tasks)
-   - All tasks tracked via `bd create/update/close`
-   - Check `bd ready` for available work
-
-3. **Commits** - One logical feature per commit
-   - Include tests with implementation
-   - Short, descriptive summary
-
-### Code Style
-
-- **Hex numbers**: Use `#x` prefix for addresses, offsets, constants
-- **No emojis**: Never in code, commits, or docs
-- **No marketing language**: Use technical facts
-- **No inline loads**: Use ASDF, never `(load ...)` in source files
-- **Naming**: Always use `reg-alloc` (hyphenated), never `regalloc`
-
-### Warnings Policy
-
-**CRITICAL: Treat ALL warnings as errors. NEVER ignore warnings.**
-
-When you see a warning:
-1. **STOP** - Do not continue with the task
-2. **RCA** - Root cause analyze the warning
-3. **FIX** - Fix the actual problem, not the symptom
-
-**NEVER use `(declare (ignore ...))` to silence unused variable warnings.**
-
-Unused variable warnings indicate one of:
-- **Missing implementation**: The variable should be used but isn't
-- **Dead code**: The variable or parameter isn't needed
-- **Design flaw**: The API requires parameters that aren't needed
-
-The correct fix depends on root cause:
-- If parameter should be used: implement the missing logic
-- If parameter is truly unneeded: remove it from the API
-- If API requires it but this impl doesn't need it: document WHY in a comment, then restructure to avoid the warning
-
-Example - WRONG:
-```lisp
-(lambda (value)
-  (declare (ignore value))  ; WRONG: just hiding the problem
-  (list minimal-value))
-```
-
-Example - RIGHT:
-```lisp
-(lambda (value)
-  ;; Shrink value by halving each field toward 0
-  (let ((field (struct-field value)))
-    (when (> field 0)
-      (push (make-struct :field (truncate field 2)) candidates))))
-```
-
-**Style warnings are bugs.** They indicate code that will confuse readers or behave unexpectedly. Fix the code, not the warning.
-
-### Code Generation Policy
-
-**IMPORTANT - No Wrapper Functions in codegen.lisp**:
-- Use `arm64:*` intrinsics directly with keyword args (`:imm t`, `:offset N`)
-- Add new instruction variants to `arm64/asm.lisp`, not wrapper functions
-- Example: `(arm64:orr rd rn 1 :imm t)` not `(orr-imm rd rn 1)`
-
-**Branch Offset Convention**:
-- All branches take instruction counts, not bytes
-- Convert from bytes: `(ash byte-offset -2)`
-
-### Debugging
-
-- Use Lisp `trace` facility
-- Use `lldb` with embedded function symbols
-- Use `slot-debug.lisp` for stack slot collision diagnosis
-- Exit codes: See Project Reference section
-
-## Testing
-
-**MANDATORY: EVERY feature and bug fix MUST have tests.**
-
-This is NOT optional. Code without tests is incomplete code.
-
-### Test Requirements
-
-**For EVERY bug fix:**
-1. Write a test that reproduces the bug FIRST
-2. Verify the test fails
-3. Fix the bug
-4. Verify the test passes
-5. Commit test with fix
-
-**For EVERY new feature:**
-1. Write unit tests for the feature
-2. **Evaluate if property tests would benefit the feature** (see below)
-3. Tests MUST be in the same commit as the feature
-
-**For data structures and serialization:**
-- MUST have roundtrip property tests
-- MUST test edge cases (empty, max size, invalid input)
-- Use the QuickCheck framework in `tests/quickcheck.lisp`
-
-### Property Tests
-
-**For every major feature, ASK: "Would property tests catch bugs that unit tests miss?"**
-
-Property tests are HIGH VALUE for:
-- **Serialization/deserialization** - roundtrip invariants
-- **Encoders/decoders** - ARM64 instructions, tagged values
-- **Transformations** - compiler passes, macro expansion
-- **Data structures** - size invariants, ordering guarantees
-- **Parsers** - well-formedness after parse/unparse
-
-Property tests are LOW VALUE for:
-- Simple getters/setters
-- UI/display code
-- One-shot configuration
-
-**When in doubt, write the property test.** They catch edge cases humans miss.
-
-Example:
-```lisp
-(defproperty prop-fasl-header-roundtrip ((h (gen-fasl-header)))
-  (let ((h2 (read-back (write-fasl-header h))))
-    (equal-headers h h2)))
-```
-
-### Running Tests
-
-**Always use ASDF for loading and testing.**
-
-```lisp
-(asdf:test-system :habu)           ; Run all tests
-(asdf:load-system :habu/tests)     ; Load test system
-```
-
-Test organization in `bootstrap/habu.asd`:
-- `bootstrap/test-harness.lisp` - Test utilities
-- `tests/quickcheck.lisp` - Property testing framework
-- `tests/test-*.lisp` - Test files
-
-### NO EXCEPTIONS
-
-Do NOT:
-- Commit code without tests "to add later"
-- Skip tests because "it's simple"
-- Write tests only for complex features
-- Ignore failing tests
-
-If you find yourself writing code without tests, STOP and write the tests first.
-
-## Slash Commands
-
-**Build & Test:**
-- `/habu-build-test` - Compile and test workflow
-- `/habu-run-tests [pattern]` - Run test suite
-- `/habu-stage <N|verify>` - Self-compilation stages
-
-**Debugging:**
-- `/habu-debug <binary>` - Debug with lldb
-- `/habu-analyze <error>` - Structured error analysis
-- `/habu-disasm <binary> [function]` - Disassemble
-
-**Inspection:**
-- `/habu-ir <source>` - Inspect compiler IR
-- `/habu-compare <bin1> <bin2>` - Compare binaries
-- `/habu-hexdump <binary> [range]` - Hex dump
-- `/habu-profile <binary> [duration]` - Profile
-
-**System:**
-- `/habu-load` - Load compiler via ASDF
-
-## TAC (Three-Address Code) Pipeline
-
-Register allocator in `bootstrap/reg-alloc.lisp`:
-
-1. **ir-to-tac** - Tree IR to linear TAC
-2. **compute-liveness** - Backward dataflow analysis
-3. **compute-intervals** - Live intervals
-4. **linear-scan** - Register allocation (x9-x15)
-5. **tac-codegen** - TAC to ARM64
-
-TAC instruction formats:
-```lisp
-(tac-lit vreg value)           ; vreg = literal
-(tac-var vreg offset)          ; vreg = env[offset]
-(tac-binop vreg op vr1 vr2)    ; vreg = vr1 op vr2
-(tac-call vreg fn args)        ; vreg = fn(args...)
-(tac-if vreg then-lbl else-lbl); conditional branch
-(tac-label name)               ; label
-(tac-return vreg)              ; return value
-```
-
-## Reference
-
-- Common Lisp HyperSpec: https://www.lispworks.com/documentation/HyperSpec/Front/Contents.htm
-- Git author: Joel Reymont <18791+joelreymont@users.noreply.github.com>
-
-## Compiler Quirks
-
-1. **List expressions with function calls**: Pre-compute in `let` bindings
-2. **Tagged values**: See Project Reference section for full layout
-3. **Register usage**: See Project Reference section for full mapping
-
-## When Stuck
-
-1. Check Project Reference section for technical reference
-2. Check `bd list` for related issues
-3. Use `trace` to debug function calls
-4. Ask for help
-
----
-
-## Project Reference
-
-### File Structure
-```
-bootstrap/
-  compiler-sbcl.lisp  - SBCL bootstrap compiler
-  compiler.lisp       - Habu compiler (no SBCL dependencies)
-  optimize.lisp       - Optimization passes (TCO)
-  codegen.lisp        - ARM64 code generator
-  gc.lisp             - Garbage collector (Cheney's copying GC)
-  gen-gc.lisp         - Generational GC runtime
-  macho.lisp          - Mach-O linker (#+sbcl versions)
-  macho-utils.lisp    - Mach-O utilities (#-sbcl native versions)
-  reader.lisp         - Habu reader
-  reg-alloc.lisp      - Register allocator (TAC pipeline)
-arm64/
-  asm.lisp            - ARM64 instruction encoders (canonical API)
-```
-
-### Tagged Value Representation
-- Fixnum: `value << 4`, tag 0
-- Cons: `pointer | 1`
-- Symbol: `pointer | 2`
-- Vector: `pointer | 3`
-- String: `pointer | 4`
-- Closure: `pointer | 5`
-- Nil: `0x06` (tag 6)
-
-### ARM64 Register Usage
-- x0-x7: Arguments and return value
-- x20: Environment frame base
-- x24: Closure environment pointer
-- x26: Code base register
-- x27: GC globals base (memory layout below)
-- x28: Heap bump pointer
-
-### Memory Layout at x27
-Simple GC mode:
-- `[x27+0]`: intern_table (tagged pointer)
-- `[x27+8]`: lambda_counter (untagged integer)
-- `[x27+16]`: from_end (GC trigger address)
-- `[x27+24]`: half_heap_size (constant)
-- `[x27+32]`: space_flag (0 or half_heap_size)
-- `[x27+40]`: gc_state (0=idle)
-- `[x27+48]`: symbol_counter
-- `[x27+56]`: symbol_table
-- `[x27+64]`: argc (command-line argument count)
-- `[x27+72]`: argv (command-line argument vector)
-- `[x27+80]`: packages (package list for native reader)
-- `[x27+88]`: current-package (current package name)
-- `[x27+96]`: stack_base (initial SP for stack scanning)
-- `[x27+104]`: reserved (for 16-byte alignment)
-- `[x27+112]`: heap data starts (MUST be 16-byte aligned for tag masking)
-
-Generational GC mode (extends above):
-- `[x27+128]`: nursery-start
-- `[x27+136]`: nursery-end (also old-space-start)
-- `[x27+144]`: card-table-start
-- `[x27+152]`: old-space-half-size
-- `[x27+160]`: old-space-flag
-- `[x27+168]`: old-space-alloc
-- `[x27+176]`: heap data starts
-
-### Key Conventions
-
-**ARM64 Instructions**: Always use `arm64:` intrinsics directly with keyword arguments.
-```lisp
-(arm64:add rd rn imm :imm t)      ; ADD immediate
-(arm64:ldr rt rn :offset off)     ; LDR with offset
-(arm64:b.eq 5)                    ; Branch (instruction count, not bytes)
-```
-DO NOT create wrapper functions. See `arm64/asm.lisp` for full API.
-
-**Branch Offsets**: All branch instructions take instruction counts, not bytes.
-When computing from `code-size` (bytes): `(ash byte-offset -2)`
-
-**GC Triggers**: Toggle via `*use-generational-gc*` in codegen.lisp:406.
-Write barriers in: setcar-ir (:1412), setcdr-ir (:1434), vector-set-ir (:1266).
-
-### Current Blockers (FIX THESE - DO NOT ADD MORE)
-
-These are bugs that MUST be fixed, not "known limitations" to work around:
-
-1. Max 8 arguments per function - IMPLEMENT varargs
-2. 64KB file limit for native-read-file - INCREASE buffer or stream
-3. Inlining disabled (variable capture bug) - FIX the bug
-4. Stack frame: 2KB per call - REDUCE or make dynamic
-5. arm64 package missing at Stage 1 runtime - INCLUDE in build
-
-**When you encounter one of these, fix it. Do not add to this list.**
-
-### Debugging Reference
-
-- Exit 132 = SIGILL (check code alignment, branch targets)
-- Exit 137 = SIGKILL (codesign issue on macOS)
-- Exit 138 = SIGBUS (often stack slot collision - check spill-end in codegen.lisp:240)
-- Exit 139 = SIGSEGV (stack overflow or bad pointer)
-
-Use `lldb` with function symbols (LC_SYMTAB embedded in binaries).
-Use `slot-debug.lisp` for stack slot collision diagnosis.
+## Reference Links
+- [CL HyperSpec](https://www.lispworks.com/documentation/HyperSpec/Front/Contents.htm)
+- Git: Joel Reymont <18791+joelreymont@users.noreply.github.com>

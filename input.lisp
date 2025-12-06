@@ -1,1 +1,1 @@
-(defun test (x) (if (null x) 100 200)) (test nil)
+(nonexistent-function 1 2 3)

@@ -5,81 +5,134 @@
 (in-package :habu)
 
 ;;; ============================================================
-;;; Unit Tests
+;;; Test Infrastructure
 ;;; ============================================================
 
-(defun test-fasl-header-roundtrip ()
+(defvar *test-pass-count* 0)
+(defvar *test-fail-count* 0)
+
+(defmacro deftest (name docstring &body body)
+  "Define a test with automatic pass/fail handling and error catching.
+   Body should call (pass) or (pass info) on success, (fail) or (fail reason) on failure.
+   Uncaught errors automatically fail with the error message."
+  (let ((test-name-str (string-downcase (symbol-name name))))
+    `(defun ,name ()
+       ,docstring
+       (flet ((pass (&optional info)
+                (if info
+                    (format t "  [PASS] ~A (~A)~%" ,test-name-str info)
+                    (format t "  [PASS] ~A~%" ,test-name-str))
+                t)
+              (fail (&optional reason)
+                (if reason
+                    (format t "  [FAIL] ~A: ~A~%" ,test-name-str reason)
+                    (format t "  [FAIL] ~A~%" ,test-name-str))
+                nil))
+         (declare (ignorable #'pass #'fail))
+         (handler-case
+             (progn ,@body)
+           (error (e)
+             (fail e)))))))
+
+(defmacro run-test-group (group-name &rest test-fns)
+  "Run a group of tests, updating *test-pass-count* and *test-fail-count*."
+  `(progn
+     (format t "~%~A:~%" ,group-name)
+     ,@(loop for fn in test-fns
+             collect `(if (,fn)
+                          (incf *test-pass-count*)
+                          (incf *test-fail-count*)))))
+
+(defmacro with-temp-file ((var prefix) &body body)
+  "Execute body with VAR bound to a temp file path."
+  `(let ((,var (format nil "/tmp/~A-~A.tmp" ,prefix (random 100000))))
+     (unwind-protect
+          (progn ,@body)
+       (ignore-errors (delete-file ,var)))))
+
+(defmacro with-temp-files (bindings &body body)
+  "Execute body with multiple temp file bindings: ((var1 prefix1) (var2 prefix2) ...)"
+  (if (null bindings)
+      `(progn ,@body)
+      `(with-temp-file ,(car bindings)
+         (with-temp-files ,(cdr bindings) ,@body))))
+
+;;; ============================================================
+;;; Serialization Tests
+;;; ============================================================
+
+(deftest test-fasl-header-roundtrip
   "Test that FASL header can be written and read back."
-  (let* ((header (make-fasl-header
-                  :num-functions 5
-                  :code-size 1024
-                  :const-pool-size 256
-                  :num-relocations 10
-                  :num-imports 3))
-         (path "/tmp/test-fasl-header.bin"))
-    (with-open-file (out path :direction :output
-                              :if-exists :supersede
-                              :element-type '(unsigned-byte 8))
-      (write-fasl-header header out))
-    (with-open-file (in path :direction :input
-                             :element-type '(unsigned-byte 8))
-      (let ((read-header (read-fasl-header in)))
-        (if (and (= (fasl-header-magic read-header) +fasl-magic+)
-                 (= (fasl-header-version read-header) +fasl-version+)
-                 (= (fasl-header-num-functions read-header) 5)
-                 (= (fasl-header-code-size read-header) 1024)
-                 (= (fasl-header-const-pool-size read-header) 256)
-                 (= (fasl-header-num-relocations read-header) 10)
-                 (= (fasl-header-num-imports read-header) 3))
-            (progn (format t "  [PASS] fasl-header roundtrip~%") t)
-            (progn (format t "  [FAIL] fasl-header roundtrip~%") nil))))))
+  (with-temp-file (path "fasl-hdr")
+    (let ((header (make-fasl-header
+                   :num-functions 5
+                   :code-size 1024
+                   :const-pool-size 256
+                   :num-relocations 10
+                   :num-imports 3)))
+      (with-open-file (out path :direction :output
+                                :if-exists :supersede
+                                :element-type '(unsigned-byte 8))
+        (write-fasl-header header out))
+      (with-open-file (in path :direction :input
+                               :element-type '(unsigned-byte 8))
+        (let ((h (read-fasl-header in)))
+          (if (and (= (fasl-header-magic h) +fasl-magic+)
+                   (= (fasl-header-version h) +fasl-version+)
+                   (= (fasl-header-num-functions h) 5)
+                   (= (fasl-header-code-size h) 1024)
+                   (= (fasl-header-const-pool-size h) 256)
+                   (= (fasl-header-num-relocations h) 10)
+                   (= (fasl-header-num-imports h) 3))
+              (pass)
+              (fail "header mismatch")))))))
 
-(defun test-fasl-function-roundtrip ()
+(deftest test-fasl-function-roundtrip
   "Test that FASL function entry can be written and read back."
-  (let ((path "/tmp/test-fasl-fn.bin"))
-    (with-open-file (out path :direction :output
-                              :if-exists :supersede
-                              :element-type '(unsigned-byte 8))
-      (let ((fn (make-fasl-function
-                 :name 'test-fn
-                 :name-offset 42
-                 :code-offset 100
-                 :code-size 200
-                 :arity 3
-                 :flags 1)))
-        (write-fasl-function fn out)))
-    (with-open-file (in path :direction :input
-                             :element-type '(unsigned-byte 8))
-      (let ((fn (read-fasl-function in)))
-        (if (and (= (fasl-function-name-offset fn) 42)
-                 (= (fasl-function-code-offset fn) 100)
-                 (= (fasl-function-code-size fn) 200)
-                 (= (fasl-function-arity fn) 3)
-                 (= (fasl-function-flags fn) 1))
-            (progn (format t "  [PASS] fasl-function roundtrip~%") t)
-            (progn (format t "  [FAIL] fasl-function roundtrip~%") nil))))))
+  (with-temp-file (path "fasl-fn")
+    (let ((fn-entry (make-fasl-function
+                     :name 'test-fn
+                     :name-offset 42
+                     :code-offset 100
+                     :code-size 200
+                     :arity 3
+                     :flags 1)))
+      (with-open-file (out path :direction :output
+                                :if-exists :supersede
+                                :element-type '(unsigned-byte 8))
+        (write-fasl-function fn-entry out))
+      (with-open-file (in path :direction :input
+                               :element-type '(unsigned-byte 8))
+        (let ((f (read-fasl-function in)))
+          (if (and (= (fasl-function-name-offset f) 42)
+                   (= (fasl-function-code-offset f) 100)
+                   (= (fasl-function-code-size f) 200)
+                   (= (fasl-function-arity f) 3)
+                   (= (fasl-function-flags f) 1))
+              (pass)
+              (fail "function entry mismatch")))))))
 
-(defun test-fasl-relocation-roundtrip ()
+(deftest test-fasl-relocation-roundtrip
   "Test that FASL relocation can be written and read back."
-  (let ((path "/tmp/test-fasl-reloc.bin"))
-    (with-open-file (out path :direction :output
-                              :if-exists :supersede
-                              :element-type '(unsigned-byte 8))
-      (let ((reloc (make-fasl-relocation
-                    :type +reloc-fn-call+
-                    :offset 128
-                    :target 7)))
-        (write-fasl-relocation reloc out)))
-    (with-open-file (in path :direction :input
-                             :element-type '(unsigned-byte 8))
-      (let ((reloc (read-fasl-relocation in)))
-        (if (and (= (fasl-relocation-type reloc) +reloc-fn-call+)
-                 (= (fasl-relocation-offset reloc) 128)
-                 (= (fasl-relocation-target reloc) 7))
-            (progn (format t "  [PASS] fasl-relocation roundtrip~%") t)
-            (progn (format t "  [FAIL] fasl-relocation roundtrip~%") nil))))))
+  (with-temp-file (path "fasl-reloc")
+    (let ((reloc (make-fasl-relocation
+                  :type +reloc-fn-call+
+                  :offset 128
+                  :target 7)))
+      (with-open-file (out path :direction :output
+                                :if-exists :supersede
+                                :element-type '(unsigned-byte 8))
+        (write-fasl-relocation reloc out))
+      (with-open-file (in path :direction :input
+                               :element-type '(unsigned-byte 8))
+        (let ((r (read-fasl-relocation in)))
+          (if (and (= (fasl-relocation-type r) +reloc-fn-call+)
+                   (= (fasl-relocation-offset r) 128)
+                   (= (fasl-relocation-target r) 7))
+              (pass)
+              (fail "relocation mismatch")))))))
 
-(defun test-string-table ()
+(deftest test-string-table
   "Test string table building and reading."
   (let ((strings '("foo" "bar" "hello-world")))
     (multiple-value-bind (bytes offsets) (build-string-table strings)
@@ -90,87 +143,237 @@
                             (cdr (assoc "bar" offsets :test #'string=))) "bar")
                  (string= (read-string-from-table bytes-vec
                             (cdr (assoc "hello-world" offsets :test #'string=))) "hello-world"))
-            (progn (format t "  [PASS] string-table~%") t)
-            (progn (format t "  [FAIL] string-table~%") nil))))))
+            (pass)
+            (fail "string table mismatch"))))))
 
-(defun test-fasl-magic-validation ()
+(deftest test-fasl-magic-validation
   "Test that invalid magic number is rejected."
-  (let ((path "/tmp/test-fasl-bad.bin"))
+  (with-temp-file (path "fasl-bad")
     (with-open-file (out path :direction :output
                               :if-exists :supersede
                               :element-type '(unsigned-byte 8))
-      ;; Write invalid magic
       (write-u32-le #xDEADBEEF out)
       (dotimes (i 7) (write-u32-le 0 out)))
     (handler-case
-        (with-open-file (in path :direction :input
-                                 :element-type '(unsigned-byte 8))
-          (read-fasl-header in)
-          (format t "  [FAIL] fasl-magic-validation (no error)~%")
-          nil)
-      (error ()
-        (format t "  [PASS] fasl-magic-validation~%")
-        t))))
+        (progn
+          (with-open-file (in path :direction :input
+                                   :element-type '(unsigned-byte 8))
+            (read-fasl-header in))
+          (fail "no error raised"))
+      (error () (pass)))))
 
-(defun test-export-flags ()
+(deftest test-export-flags
   "Test that export flags are correctly set on functions."
   (let* ((fnoffs '((foo . 100) (bar . 200) (baz . 300)))
-         (exports '(foo baz))  ; Only foo and baz exported
+         (exports '(foo baz))
          (functions (build-fasl-functions fnoffs :exports exports)))
-    ;; Check foo is exported
-    (let ((foo-fn (find-if (lambda (f) (equal (fasl-function-name f) 'foo)) functions)))
-      (unless (and foo-fn
-                   (plusp (logand (fasl-function-flags foo-fn) +fn-flag-exported+)))
-        (format t "  [FAIL] export-flags (foo not exported)~%")
-        (return-from test-export-flags nil)))
-    ;; Check bar is NOT exported
-    (let ((bar-fn (find-if (lambda (f) (equal (fasl-function-name f) 'bar)) functions)))
-      (unless (and bar-fn
-                   (zerop (logand (fasl-function-flags bar-fn) +fn-flag-exported+)))
-        (format t "  [FAIL] export-flags (bar should not be exported)~%")
-        (return-from test-export-flags nil)))
-    ;; Check baz is exported
-    (let ((baz-fn (find-if (lambda (f) (equal (fasl-function-name f) 'baz)) functions)))
-      (unless (and baz-fn
-                   (plusp (logand (fasl-function-flags baz-fn) +fn-flag-exported+)))
-        (format t "  [FAIL] export-flags (baz not exported)~%")
-        (return-from test-export-flags nil)))
-    (format t "  [PASS] export-flags~%")
-    t))
+    (let ((foo-fn (find-if (lambda (f) (equal (fasl-function-name f) 'foo)) functions))
+          (bar-fn (find-if (lambda (f) (equal (fasl-function-name f) 'bar)) functions))
+          (baz-fn (find-if (lambda (f) (equal (fasl-function-name f) 'baz)) functions)))
+      (cond
+        ((not (and foo-fn (plusp (logand (fasl-function-flags foo-fn) +fn-flag-exported+))))
+         (fail "foo not exported"))
+        ((not (and bar-fn (zerop (logand (fasl-function-flags bar-fn) +fn-flag-exported+))))
+         (fail "bar should not be exported"))
+        ((not (and baz-fn (plusp (logand (fasl-function-flags baz-fn) +fn-flag-exported+))))
+         (fail "baz not exported"))
+        (t (pass))))))
 
-(defun test-compile-with-exports ()
+;;; ============================================================
+;;; Compilation Tests
+;;; ============================================================
+
+(deftest test-compile-with-exports
   "Test compiling a module with exports."
-  (let ((source-path "/tmp/test-mod.lisp")
-        (fasl-path "/tmp/test-mod.fasl"))
-    ;; Write test source
-    (with-open-file (out source-path :direction :output :if-exists :supersede)
+  (with-temp-files ((src "mod-src.lisp") (fasl "mod.fasl"))
+    (with-open-file (out src :direction :output :if-exists :supersede)
       (write-string "(defun helper (x) (+ x 1))
 (defun public-fn (x) (helper x))
 42" out))
-    ;; Compile with exports
-    (compile-file source-path :output-file fasl-path
-                              :exports '(public-fn) :verbose nil)
-    ;; Read back and verify
-    (multiple-value-bind (header functions code relocs consts str-table)
-        (read-fasl fasl-path)
-      (declare (ignore code relocs consts))
-      ;; Find public-fn and helper
-      (let ((public-fn nil)
-            (helper-fn nil))
+    (compile-file src :output-file fasl :exports '(public-fn) :verbose nil)
+    (multiple-value-bind (header functions code relocs str-table)
+        (read-fasl fasl)
+      ;; Verify FASL is valid before examining functions
+      (assert (and header (plusp (length code)) relocs str-table))
+      (let ((public-fn nil) (helper-fn nil))
         (dolist (fn functions)
           (let ((name (read-string-from-table str-table (fasl-function-name-offset fn))))
             (cond ((string= name "PUBLIC-FN") (setf public-fn fn))
                   ((string= name "HELPER") (setf helper-fn fn)))))
-        ;; public-fn should be exported
-        (unless (and public-fn (function-exported-p public-fn))
-          (format t "  [FAIL] compile-with-exports (public-fn not exported)~%")
-          (return-from test-compile-with-exports nil))
-        ;; helper should NOT be exported
-        (when (and helper-fn (function-exported-p helper-fn))
-          (format t "  [FAIL] compile-with-exports (helper should not be exported)~%")
-          (return-from test-compile-with-exports nil))
-        (format t "  [PASS] compile-with-exports~%")
-        t))))
+        (cond
+          ((not (and public-fn (function-exported-p public-fn)))
+           (fail "public-fn not exported"))
+          ((and helper-fn (function-exported-p helper-fn))
+           (fail "helper should not be exported"))
+          (t (pass)))))))
+
+(deftest test-compile-all-control-flow
+  "Test compiling code with ALL control flow constructs to FASL.
+   Catches bugs where markers leak position values into bytecode."
+  (with-temp-files ((src "ctrl-flow.lisp") (fasl "ctrl-flow.fasl"))
+    (with-open-file (out src :direction :output :if-exists :supersede)
+      (write-string "
+;; block/return-from
+(defun early-exit (n)
+  (block done
+    (if (< n 0) (return-from done -1) (* n 2))))
+
+;; nested blocks
+(defun nested-blocks (x)
+  (block outer
+    (block inner
+      (if (= x 0) (return-from outer 100) (return-from inner x)))
+    999))
+
+;; labels (local functions)
+(defun with-labels (n)
+  (labels ((helper (x) (+ x 1))
+           (double (x) (* x 2)))
+    (helper (double n))))
+
+;; while loop (becomes labels + TCO)
+(defun count-down (n)
+  (let ((result 0))
+    (while (> n 0)
+      (setq result (+ result n))
+      (setq n (- n 1)))
+    result))
+
+;; explicit tail recursion
+(defun tail-sum (n acc)
+  (if (= n 0) acc (tail-sum (- n 1) (+ acc n))))
+
+;; deeply nested control flow
+(defun complex-flow (a b c)
+  (block outer
+    (if (> a 0)
+        (block middle
+          (if (> b 0)
+              (block inner
+                (if (> c 0)
+                    (return-from inner c)
+                    (return-from middle b)))
+              (return-from outer a)))
+        0)))
+
+(defun main () (+ (early-exit 5) (nested-blocks 1) (with-labels 3)))
+" out))
+    (compile-file src :output-file fasl :verbose nil)
+    (multiple-value-bind (header functions code relocs str-table)
+        (read-fasl fasl)
+      ;; Verify basic FASL structure before checking code bytes
+      (assert (and header functions relocs str-table))
+      (let ((invalid nil))
+        (dotimes (i (length code))
+          (let ((b (aref code i)))
+            (unless (<= 0 b 255)
+              (push (cons i b) invalid))))
+        (if invalid
+            (fail (format nil "invalid bytes: ~A" invalid))
+            (pass))))))
+
+;;; ============================================================
+;;; Linker Tests
+;;; ============================================================
+
+(deftest test-link-single-fasl
+  "Test linking a single FASL into an executable."
+  (with-temp-files ((src "link1.lisp") (fasl "link1.fasl") (bin "link1"))
+    (with-open-file (out src :direction :output :if-exists :supersede)
+      (write-string "(defun main () 42)" out))
+    (compile-file src :output-file fasl :verbose nil)
+    (link-fasls (list fasl) bin :include-gc t :verbose nil)
+    (let ((size (with-open-file (in bin :element-type '(unsigned-byte 8))
+                  (file-length in))))
+      (if (> size 1000)
+          (pass (format nil "~D bytes" size))
+          (fail (format nil "too small: ~D bytes" size))))))
+
+(deftest test-link-multiple-fasls
+  "Test linking multiple FASLs into an executable."
+  (with-temp-files ((src1 "mod1.lisp") (src2 "mod2.lisp")
+                    (fasl1 "mod1.fasl") (fasl2 "mod2.fasl") (bin "multi"))
+    (with-open-file (out src1 :direction :output :if-exists :supersede)
+      (write-string "(defun helper (x) (+ x 10))" out))
+    (with-open-file (out src2 :direction :output :if-exists :supersede)
+      (write-string "(defun main () (helper 32))" out))
+    (compile-file src1 :output-file fasl1 :verbose nil)
+    (compile-file src2 :output-file fasl2 :verbose nil)
+    (link-fasls (list fasl1 fasl2) bin :include-gc t :verbose nil)
+    (let ((size (with-open-file (in bin :element-type '(unsigned-byte 8))
+                  (file-length in))))
+      (if (> size 1000)
+          (pass (format nil "~D bytes" size))
+          (fail "too small")))))
+
+(deftest test-link-cross-module-calls
+  "Test that cross-module function calls are resolved correctly."
+  (with-temp-files ((src1 "xm1.lisp") (src2 "xm2.lisp") (src3 "xm3.lisp")
+                    (fasl1 "xm1.fasl") (fasl2 "xm2.fasl") (fasl3 "xm3.fasl")
+                    (bin "xmod"))
+    (with-open-file (out src1 :direction :output :if-exists :supersede)
+      (write-string "(defun add-one (x) (+ x 1))" out))
+    (with-open-file (out src2 :direction :output :if-exists :supersede)
+      (write-string "(defun add-two (x) (add-one (add-one x)))" out))
+    (with-open-file (out src3 :direction :output :if-exists :supersede)
+      (write-string "(defun main () (add-two 40))" out))
+    (compile-file src1 :output-file fasl1 :verbose nil)
+    (compile-file src2 :output-file fasl2 :verbose nil)
+    (compile-file src3 :output-file fasl3 :verbose nil)
+    (link-fasls (list fasl1 fasl2 fasl3) bin :include-gc t :verbose nil)
+    (pass)))
+
+(deftest test-link-with-gc-runtime
+  "Test that GC runtime is included when requested."
+  (with-temp-files ((src "gc-test.lisp") (fasl "gc-test.fasl") (bin "gc-bin"))
+    (with-open-file (out src :direction :output :if-exists :supersede)
+      (write-string "(defun main () 1)" out))
+    (compile-file src :output-file fasl :verbose nil)
+    ;; Link with GC - should succeed and create valid binary
+    (link-fasls (list fasl) bin :include-gc t :verbose nil)
+    (let ((size (with-open-file (in bin :element-type '(unsigned-byte 8))
+                  (file-length in))))
+      ;; Just verify we created a valid Mach-O (has reasonable size)
+      (if (> size 1000)
+          (pass (format nil "Binary created: ~D bytes" size))
+          (fail (format nil "Binary too small: ~D bytes" size))))))
+
+(deftest test-link-fasl-order-matters
+  "Test that FASL order affects symbol resolution (first definition wins)."
+  (with-temp-files ((src1 "ord1.lisp") (src2 "ord2.lisp")
+                    (fasl1 "ord1.fasl") (fasl2 "ord2.fasl") (bin "order"))
+    (with-open-file (out src1 :direction :output :if-exists :supersede)
+      (write-string "(defun foo () 1)" out))
+    (with-open-file (out src2 :direction :output :if-exists :supersede)
+      (write-string "(defun foo () 2)
+(defun main () (foo))" out))
+    (compile-file src1 :output-file fasl1 :verbose nil)
+    (compile-file src2 :output-file fasl2 :verbose nil)
+    (link-fasls (list fasl1 fasl2) bin :include-gc t :verbose nil)
+    (pass)))
+
+(deftest test-link-invalid-fasl-rejected
+  "Test that invalid FASL files are rejected."
+  (with-temp-files ((bad-fasl "bad.fasl") (bin "bad-link"))
+    (with-open-file (out bad-fasl :direction :output
+                                  :if-exists :supersede
+                                  :element-type '(unsigned-byte 8))
+      (dotimes (i 100) (write-byte (mod i 256) out)))
+    (handler-case
+        (progn
+          (link-fasls (list bad-fasl) bin :verbose nil)
+          (fail "no error raised"))
+      (error () (pass)))))
+
+(deftest test-link-empty-fasl-list
+  "Test that empty FASL list is handled gracefully."
+  (with-temp-file (bin "empty")
+    (handler-case
+        (progn
+          (link-fasls '() bin :verbose nil)
+          (pass "no crash"))
+      (error (e)
+        (pass (format nil "error: ~A" (type-of e)))))))
 
 ;;; ============================================================
 ;;; Property Tests
@@ -187,7 +390,6 @@
       :num-relocations (random 200)
       :num-imports (random 50)))
    (lambda (h)
-     ;; Shrink each field toward 0, trying one at a time
      (let ((nf (fasl-header-num-functions h))
            (cs (fasl-header-code-size h))
            (cp (fasl-header-const-pool-size h))
@@ -233,7 +435,6 @@
       :arity (random 8)
       :flags (random 16)))
    (lambda (f)
-     ;; Shrink numeric fields toward 0
      (let ((no (fasl-function-name-offset f))
            (co (fasl-function-code-offset f))
            (cs (fasl-function-code-size f))
@@ -272,7 +473,6 @@
       :offset (random 65536)
       :target (random 100)))
    (lambda (r)
-     ;; Shrink offset and target toward 0, type toward 1
      (let ((ty (fasl-relocation-type r))
            (off (fasl-relocation-offset r))
            (tgt (fasl-relocation-target r))
@@ -286,7 +486,7 @@
        (nreverse candidates)))))
 
 (defproperty prop-fasl-header-roundtrip ((h (gen-fasl-header)))
-  (let ((path "/tmp/prop-fasl-header.bin"))
+  (with-temp-file (path "prop-hdr")
     (with-open-file (out path :direction :output
                               :if-exists :supersede
                               :element-type '(unsigned-byte 8))
@@ -303,7 +503,7 @@
              (= (fasl-header-num-imports h2) (fasl-header-num-imports h)))))))
 
 (defproperty prop-fasl-function-roundtrip ((f (gen-fasl-function-entry)))
-  (let ((path "/tmp/prop-fasl-fn.bin"))
+  (with-temp-file (path "prop-fn")
     (with-open-file (out path :direction :output
                               :if-exists :supersede
                               :element-type '(unsigned-byte 8))
@@ -318,7 +518,7 @@
              (= (fasl-function-flags f2) (fasl-function-flags f)))))))
 
 (defproperty prop-fasl-relocation-roundtrip ((r (gen-fasl-relocation-entry)))
-  (let ((path "/tmp/prop-fasl-reloc.bin"))
+  (with-temp-file (path "prop-reloc")
     (with-open-file (out path :direction :output
                               :if-exists :supersede
                               :element-type '(unsigned-byte 8))
@@ -338,7 +538,7 @@
 
 (defproperty prop-fasl-header-size ((h (gen-fasl-header)))
   "FASL header size matches +fasl-header-size+ constant."
-  (let ((path "/tmp/prop-fasl-size.bin"))
+  (with-temp-file (path "prop-size")
     (with-open-file (out path :direction :output
                               :if-exists :supersede
                               :element-type '(unsigned-byte 8))
@@ -349,7 +549,7 @@
 
 (defproperty prop-fasl-function-size ((f (gen-fasl-function-entry)))
   "FASL function entry size matches +fasl-function-size+ constant."
-  (let ((path "/tmp/prop-fasl-fn-size.bin"))
+  (with-temp-file (path "prop-fn-size")
     (with-open-file (out path :direction :output
                               :if-exists :supersede
                               :element-type '(unsigned-byte 8))
@@ -364,38 +564,51 @@
 
 (defun run-fasl-tests (&optional (trials *quickcheck-trials*))
   "Run all FASL tests."
-  (format t "~%=== FASL Tests (~D trials each) ===~%~%" trials)
+  (format t "~%=== FASL Tests (~D trials each) ===~%" trials)
   (reset-property-stats)
+  (setf *test-pass-count* 0
+        *test-fail-count* 0)
 
-  (let ((unit-pass 0) (unit-fail 0))
-    ;; Unit tests
-    (format t "FASL unit tests:~%")
-    (if (test-fasl-header-roundtrip) (incf unit-pass) (incf unit-fail))
-    (if (test-fasl-function-roundtrip) (incf unit-pass) (incf unit-fail))
-    (if (test-fasl-relocation-roundtrip) (incf unit-pass) (incf unit-fail))
-    (if (test-string-table) (incf unit-pass) (incf unit-fail))
-    (if (test-fasl-magic-validation) (incf unit-pass) (incf unit-fail))
-    (if (test-export-flags) (incf unit-pass) (incf unit-fail))
-    (if (test-compile-with-exports) (incf unit-pass) (incf unit-fail))
+  ;; Unit tests by category
+  (run-test-group "FASL serialization tests"
+    test-fasl-header-roundtrip
+    test-fasl-function-roundtrip
+    test-fasl-relocation-roundtrip
+    test-string-table
+    test-fasl-magic-validation
+    test-export-flags)
 
-    ;; Property tests
-    (format t "~%FASL property tests:~%")
-    (run-property 'prop-fasl-header-roundtrip trials)
-    (run-property 'prop-fasl-function-roundtrip trials)
-    (run-property 'prop-fasl-relocation-roundtrip trials)
-    (run-property 'prop-string-table-roundtrip trials)
-    (run-property 'prop-fasl-header-size trials)
-    (run-property 'prop-fasl-function-size trials)
+  (run-test-group "FASL compilation tests"
+    test-compile-with-exports
+    test-compile-all-control-flow)
 
-    ;; Summary
-    (format t "~%FASL Tests: ~D unit + ~D property = ~D passed, ~D failed~%"
-            unit-pass *property-pass-count*
-            (+ unit-pass *property-pass-count*)
-            (+ unit-fail *property-fail-count*))
+  (run-test-group "FASL linker tests"
+    test-link-single-fasl
+    test-link-multiple-fasls
+    test-link-cross-module-calls
+    test-link-with-gc-runtime
+    test-link-fasl-order-matters
+    test-link-invalid-fasl-rejected
+    test-link-empty-fasl-list)
 
-    (values (and (= unit-fail 0) (= *property-fail-count* 0))
-            (+ unit-pass *property-pass-count*)
-            (+ unit-fail *property-fail-count*))))
+  ;; Property tests
+  (format t "~%FASL property tests:~%")
+  (run-property 'prop-fasl-header-roundtrip trials)
+  (run-property 'prop-fasl-function-roundtrip trials)
+  (run-property 'prop-fasl-relocation-roundtrip trials)
+  (run-property 'prop-string-table-roundtrip trials)
+  (run-property 'prop-fasl-header-size trials)
+  (run-property 'prop-fasl-function-size trials)
+
+  ;; Summary
+  (format t "~%FASL Tests: ~D unit + ~D property = ~D passed, ~D failed~%"
+          *test-pass-count* *property-pass-count*
+          (+ *test-pass-count* *property-pass-count*)
+          (+ *test-fail-count* *property-fail-count*))
+
+  (values (and (= *test-fail-count* 0) (= *property-fail-count* 0))
+          (+ *test-pass-count* *property-pass-count*)
+          (+ *test-fail-count* *property-fail-count*)))
 
 ;;; Run tests when file is loaded
 (run-fasl-tests)

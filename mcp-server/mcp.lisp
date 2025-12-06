@@ -8,6 +8,7 @@
 ;;;; - hexdump, tagged-value, heap-info, stack-frames, codesign, run, debug
 ;;;; - gc-analyze, check-ptr, env-slots, gc-roots-info, lldb-script, traced-eval
 ;;;; - bd-ready, bd-list, bd-show, bd-create, bd-update, bd-close, habu0-eval
+;;;; - ask-oracle (uses Codex o3 for complex problems)
 ;;;;
 ;;;; Usage: sbcl --load mcp.lisp
 
@@ -227,6 +228,21 @@
   `((("type" . "text")
      ("text" . ,text))))
 
+;;; Structured output for AI consumption - always minimal tokens
+(defun compact-result (status &key val err out (detail nil))
+  "Create compact result string. Status is :ok or :err.
+   Always returns minimal output for AI consumption."
+  (with-output-to-string (s)
+    (case status
+      (:ok (cond
+             ((and val (not out)) (format s "=> ~S" val))
+             ((and out (not val)) (format s "~A" (string-trim '(#\Newline) out)))
+             ((and val out) (format s "~A~%=> ~S" (string-trim '(#\Newline) out) val))
+             (t (format s "ok"))))
+      (:err (format s "ERR: ~A" err)))
+    (when detail
+      (format s "~%~A" detail))))
+
 ;;; ============================================================
 ;;; Tool Definitions
 ;;; ============================================================
@@ -400,7 +416,13 @@
     ("habu0-eval"
      "Evaluate Lisp code using the habu0 native interpreter. Writes code to input.lisp and runs habu0. Returns exit code (untagged result value)."
      (("code" "string" "Lisp code to evaluate" t))
-     tool-habu0-eval)))
+     tool-habu0-eval)
+
+    ("ask-oracle"
+     "Ask the Codex o3 model for help with a complex problem. Use this when stuck on difficult issues that require deep reasoning. The oracle has access to the codebase and can provide detailed analysis."
+     (("question" "string" "The question or problem to ask the oracle" t)
+      ("context" "string" "Additional context about the problem (optional)" nil))
+     tool-ask-oracle)))
 
 (defun format-tool-schema (name description params)
   (let ((props (mapcar (lambda (p)
@@ -489,15 +511,13 @@
           (setf result-error (format nil "Evaluation timed out after ~D seconds" timeout))
           (return))
         (sleep 0.1)))
-    ;; Build result
+    ;; Build compact result
     (let ((out-str (get-output-stream-string output)))
       (if result-error
-          (format nil "~@[Output:~%~A~%~]Error: ~A"
-                  (if (string= out-str "") nil out-str)
-                  result-error)
-          (format nil "~@[~A~]~@[=> ~S~]"
-                  (if (string= out-str "") nil (format nil "~A~%" out-str))
-                  result-value)))))
+          (compact-result :err :err result-error
+                          :out (unless (string= out-str "") out-str))
+          (compact-result :ok :val result-value
+                          :out (unless (string= out-str "") out-str))))))
 
 (defun tool-eval (args)
   (let ((code (jget args "code"))
@@ -514,10 +534,22 @@
                      (fns (car compiled))
                      (main-ir (cadr compiled)))
                 (if fns
-                    (let* ((fn-code (habu:codegen-main fns main-ir))
-                           (len (length fn-code)))
-                      (format nil \"Size: ~~D bytes~~%%Hex: ~~{~~2,'0X~~}\" len fn-code))
-                    (let* ((code (habu:codegen main-ir nil nil nil))
+                    ;; With functions: generate main + all fns, combine properly
+                    (let* ((main-code-temp (append (habu::prologue)
+                                                   (habu:codegen main-ir nil nil 0)
+                                                   (habu::epilogue)))
+                           (main-size (habu::code-size main-code-temp))
+                           (fnoffs (habu::build-fnoffs fns main-size))
+                           (main-code (append (habu::prologue)
+                                              (habu:codegen main-ir nil fnoffs 0)
+                                              (habu::epilogue)))
+                           (fn-code (habu:codegen-all-fns fns nil fnoffs nil))
+                           (all-code (append main-code fn-code))
+                           (resolved (habu::resolve-calls all-code fnoffs))
+                           (len (length resolved)))
+                      (format nil \"Size: ~~D bytes~~%%Hex: ~~{~~2,'0X~~}\" len resolved))
+                    ;; No functions: just compile main-ir
+                    (let* ((code (habu:codegen main-ir nil nil 0))
                            (len (length code)))
                       (format nil \"Size: ~~D bytes~~%%Hex: ~~{~~2,'0X~~}\" len code))))"
              source))))
@@ -960,26 +992,17 @@
                            (loop for line = (read-line (sb-ext:process-error proc) nil nil)
                                  while line do (format s "~A~%" line))))
                   (exit-code (sb-ext:process-exit-code proc)))
-              (with-output-to-string (out)
-                (format out "Exit code: ~A~%" exit-code)
-                (when killed
-                  (format out "(Killed by timeout after ~A seconds)~%" timeout))
-                (when (and exit-code (> exit-code 128))
-                  (format out "Signal: ~A (~A)~%"
-                          (- exit-code 128)
-                          (case (- exit-code 128)
-                            (4 "SIGILL - illegal instruction")
-                            (6 "SIGABRT - abort")
-                            (9 "SIGKILL - killed")
-                            (10 "SIGBUS - bus error")
-                            (11 "SIGSEGV - segmentation fault")
-                            (t "unknown"))))
-                (when (> (length stdout) 0)
-                  (format out "~%Stdout:~%~A" stdout))
-                (when (> (length stderr) 0)
-                  (format out "~%Stderr:~%~A" stderr))))))
+              ;; Compact output: exit=N [signal] | stdout | stderr
+              (let ((sig (when (and exit-code (> exit-code 128))
+                           (case (- exit-code 128)
+                             (4 "SIGILL") (6 "SIGABRT") (9 "SIGKILL")
+                             (10 "SIGBUS") (11 "SIGSEGV") (t "SIG?")))))
+                (format nil "exit=~A~@[ ~A~]~@[ killed~]~@[|out:~A~]~@[|err:~A~]"
+                        exit-code sig killed
+                        (when (> (length stdout) 0) (string-trim '(#\Newline) stdout))
+                        (when (> (length stderr) 0) (string-trim '(#\Newline) stderr)))))))
       (error (e)
-        (format nil "Error running ~A: ~A" binary e)))))
+        (compact-result :err :err (format nil "~A: ~A" binary e))))))
 
 (defun split-string (string char)
   "Split string by char."
@@ -989,10 +1012,10 @@
         while end))
 
 (defun tool-debug (args)
-  "Run binary under lldb and capture crash info."
+  "Run binary under lldb and capture crash info - compact output."
   (let ((binary (jget args "binary"))
         (cmd-args (or (jget args "args") ""))
-        (timeout 30))  ; 30 second timeout for debug sessions
+        (timeout 30))
     (declare (ignore cmd-args))
     (handler-case
         (let* ((proc (sb-ext:run-program "/usr/bin/lldb"
@@ -1000,35 +1023,43 @@
                                               "-o" "run"
                                               "-o" "register read x0 x1 x9 x19 x20 x24 x26 x27 x28 pc sp"
                                               "-o" "bt"
-                                              "-o" "disassemble -p -c 10"
                                               "-o" "quit")
-                                        :input nil  ; Prevent hanging on stdin
+                                        :input nil
                                         :output :stream
                                         :error :stream
-                                        :wait nil)))  ; Don't block
-          ;; Wait with timeout
+                                        :wait nil)))
           (let ((start-time (get-internal-real-time))
                 (killed nil))
             (loop
-              (when (not (sb-ext:process-alive-p proc))
-                (return))
+              (when (not (sb-ext:process-alive-p proc)) (return))
               (when (> (/ (- (get-internal-real-time) start-time)
-                         internal-time-units-per-second)
-                       timeout)
-                (sb-ext:process-kill proc 9)
-                (setf killed t)
-                (sleep 0.1)
-                (return))
+                         internal-time-units-per-second) timeout)
+                (sb-ext:process-kill proc 9) (setf killed t) (sleep 0.1) (return))
               (sleep 0.1))
             (sb-ext:process-wait proc)
-            (let ((output (with-output-to-string (s)
-                           (when killed
-                             (format s "(Debug session killed after ~A second timeout)~%~%" timeout))
-                           (loop for line = (read-line (sb-ext:process-output proc) nil nil)
-                                 while line do (format s "~A~%" line)))))
-              output)))
+            ;; Extract only key info: registers and crash location
+            (let ((lines nil) (in-regs nil) (in-bt nil) (regs nil) (bt nil) (stop-reason nil))
+              (loop for line = (read-line (sb-ext:process-output proc) nil nil)
+                    while line do
+                    (cond
+                      ((search "stop reason" line) (setf stop-reason line))
+                      ((search "General Purpose Registers" line) (setf in-regs t in-bt nil))
+                      ((search "frame #" line) (setf in-bt t in-regs nil) (push line bt))
+                      (in-regs (when (and (> (length line) 0)
+                                          (or (search "x0" line) (search "x1 " line)
+                                              (search "x9" line) (search "x19" line)
+                                              (search "x20" line) (search "x24" line)
+                                              (search "x26" line) (search "x27" line)
+                                              (search "x28" line) (search "pc" line)
+                                              (search "sp" line)))
+                                 (push (string-trim '(#\Space #\Tab) line) regs)))))
+              (with-output-to-string (s)
+                (when killed (format s "[timeout]~%"))
+                (when stop-reason (format s "~A~%" stop-reason))
+                (when regs (format s "REGS:~%~{  ~A~%~}" (nreverse regs)))
+                (when bt (format s "BT:~%~{~A~%~}" (nreverse (subseq (nreverse bt) 0 (min 5 (length bt))))))))))
       (error (e)
-        (format nil "Error debugging ~A: ~A" binary e)))))
+        (compact-result :err :err (format nil "~A" e))))))
 
 (defun tool-gc-analyze (args)
   "Analyze GC state from register values."
@@ -1356,6 +1387,58 @@
                     (when (and stderr (> (length stderr) 0)) stderr))))
       (error (e)
         (format nil "Error: ~A" e)))))
+
+(defun tool-ask-oracle (args)
+  "Ask the Codex o3 model for help with a complex problem."
+  (let* ((question (jget args "question"))
+         (context (jget args "context"))
+         (habu-dir (merge-pathnames
+                    (make-pathname :directory '(:relative :up))
+                    (make-pathname :directory (pathname-directory *load-truename*))))
+         ;; Build the full prompt
+         (full-prompt (if context
+                          (format nil "~A~%~%Context: ~A" question context)
+                          question))
+         (timeout 300))  ; 5 minute timeout for o3 reasoning
+    (handler-case
+        (let* ((proc (sb-ext:run-program "/usr/local/bin/codex"
+                                         (list "-m" "o3" "exec" full-prompt)
+                                         :output :stream
+                                         :error :stream
+                                         :wait nil
+                                         :directory habu-dir)))
+          ;; Wait with timeout
+          (let ((start-time (get-internal-real-time))
+                (killed nil))
+            (loop
+              (when (not (sb-ext:process-alive-p proc))
+                (return))
+              (when (> (/ (- (get-internal-real-time) start-time)
+                         internal-time-units-per-second)
+                       timeout)
+                (sb-ext:process-kill proc 9)
+                (setf killed t)
+                (sleep 0.1)
+                (return))
+              (sleep 0.5))  ; Check every 500ms
+            (sb-ext:process-wait proc)
+            (let ((stdout (with-output-to-string (s)
+                           (loop for line = (read-line (sb-ext:process-output proc) nil nil)
+                                 while line do (format s "~A~%" line))))
+                  (stderr (with-output-to-string (s)
+                           (loop for line = (read-line (sb-ext:process-error proc) nil nil)
+                                 while line do (format s "~A~%" line))))
+                  (exit-code (sb-ext:process-exit-code proc)))
+              (with-output-to-string (out)
+                (when killed
+                  (format out "[Timeout after ~A seconds]~%~%" timeout))
+                (when (and exit-code (/= exit-code 0))
+                  (format out "[Exit code: ~A]~%~%" exit-code))
+                (when (> (length stderr) 0)
+                  (format out "~A~%" stderr))
+                (format out "~A" stdout)))))
+      (error (e)
+        (format nil "Error invoking oracle: ~A" e)))))
 
 (defun tool-lldb-script (args)
   "Generate lldb script for GC debugging."

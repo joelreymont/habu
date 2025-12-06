@@ -70,6 +70,16 @@
    '(#x21 #x0A #x00 #x00))
   42)
 
+;;; BRK instruction - breakpoint trap (used for undefined function calls)
+;;; Note: BRK causes SIGTRAP which has exit code 133 (128 + 5)
+(format t "~%Testing BRK instruction encoding...~%")
+(let ((brk-bytes (arm64:brk #xF01)))
+  (if (equal brk-bytes '(#x20 #xE0 #x21 #xD4))
+      (progn (format t "[PASS] BRK #xF01 encodes correctly~%")
+             (incf *pass-count*))
+      (progn (format t "[FAIL] BRK #xF01: expected (20 E0 21 D4), got ~A~%" brk-bytes)
+             (incf *fail-count*))))
+
 ;;; Summary
 (format t "~%~A/~A tests passed~%" *pass-count* (+ *pass-count* *fail-count*))
 (when (> *fail-count* 0)
