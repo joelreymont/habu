@@ -475,11 +475,13 @@
             (bind-args (cdr params) (cdr args) env))))
 
 ;; Look up by symbol name in environment
+;; Returns the entry (cons var val) or nil if not found
+;; This allows distinguishing "not found" from "found with nil value"
 (defun env-lookup (sym env)
   (if (null env) nil
       (let ((entry (car env)))
         (if (h0-string= (symbol-name sym) (car entry))
-            (cdr entry)
+            entry  ; Return whole entry so caller can check nil values
             (env-lookup sym (cdr env))))))
 
 ;; Helper for let bindings - iterates through bindings without recursive symbol issue
@@ -550,8 +552,9 @@
     ((if (symbolp expr) (op=t expr) nil) t)
     ;; Symbol lookup in variable environment
     ((symbolp expr)
-     (let ((val (env-lookup expr env)))
-       (if val val
+     (let ((entry (env-lookup expr env)))
+       (if entry
+           (cdr entry)  ; Extract value from entry
            ;; Not found - undefined symbol error (208 + tag<<4)
            (sys-exit (+ #xD0 (get-tag expr))))))
     ;; List - function call or special form
