@@ -897,6 +897,754 @@
           (gen-cons-chain free-offsets)))))
 
 ;;; ============================================================
+;;; Linearization Pass (Tree IR → Linear IR)
+;;; ============================================================
+;;; Converts tree-structured IR to flat Three-Address Code style.
+;;; This enables iterative codegen and opens optimization opportunities.
+;;;
+;;; Linear IR instruction format: (op dst src1 src2 ...)
+;;;   dst = temp slot number (t0, t1, t2, ...)
+;;;   src = either temp slot or inline value
+;;;
+;;; Uses iterative post-order traversal to avoid deep recursion.
+
+;; Linear IR temp counter state (shared SBCL/native)
+#+sbcl (defvar *linear-temp-counter* 0)
+#+sbcl (defvar *linear-output* nil)
+#+sbcl (defvar *linear-temp-map* nil)  ; maps IR node identity to temp slot
+#+sbcl (defvar *linear-label-counter* 0)
+
+(defun reset-linear-state ()
+  "Reset linearization state"
+  #+sbcl (progn
+           (setf *linear-temp-counter* 0)
+           (setf *linear-output* nil)
+           (setf *linear-temp-map* nil)
+           (setf *linear-label-counter* 0))
+  #-sbcl nil)  ; Native uses stack-allocated state
+
+(defun fresh-temp ()
+  "Allocate a fresh temp slot"
+  #+sbcl (let ((n *linear-temp-counter*))
+           (setf *linear-temp-counter* (+ n 1))
+           n)
+  #-sbcl (error "fresh-temp: native mode not yet implemented"))
+
+(defun fresh-label ()
+  "Allocate a fresh label name"
+  #+sbcl (let ((n *linear-label-counter*))
+           (setf *linear-label-counter* (+ n 1))
+           (intern (format nil "L~D" n) :habu))
+  #-sbcl (error "fresh-label: native mode not yet implemented"))
+
+(defun emit-linear (instr)
+  "Emit a linear IR instruction"
+  #+sbcl (push instr *linear-output*)
+  #-sbcl (error "emit-linear: native mode not yet implemented"))
+
+(defun linear-leaf-p (ir)
+  "Check if IR is a leaf node (no sub-expressions to linearize)"
+  (or (not (consp ir))
+      (has-tag ir 'lit)
+      (has-tag ir 'nil-ir)
+      (has-tag ir 'var)
+      (has-tag ir 'sym-lit)
+      (has-tag ir 'str-lit)
+      (has-tag ir 'lambda-ref)
+      (has-tag ir 'get-global-vars-ir)
+      (has-tag ir 'get-cmdline-args-ir)))
+
+(defun linearize-leaf (ir)
+  "Linearize a leaf IR node, returns temp holding result"
+  (let ((dst (fresh-temp)))
+    (cond
+      ((has-tag ir 'lit)
+       (emit-linear (list 'load-lit dst (cadr ir))))
+      ((has-tag ir 'nil-ir)
+       (emit-linear (list 'load-nil dst)))
+      ((has-tag ir 'var)
+       (emit-linear (list 'load-var dst (cadr ir))))
+      ((has-tag ir 'sym-lit)
+       (emit-linear (list 'load-sym dst (cadr ir))))
+      ((has-tag ir 'str-lit)
+       (emit-linear (list 'load-str dst (cadr ir))))
+      ((has-tag ir 'lambda-ref)
+       (emit-linear (list 'load-lambda dst (cadr ir) (caddr ir))))
+      ((has-tag ir 'get-global-vars-ir)
+       (emit-linear (list 'get-global-vars dst)))
+      ((has-tag ir 'get-cmdline-args-ir)
+       (emit-linear (list 'get-cmdline-args dst)))
+      ((numberp ir)  ; bare number
+       (emit-linear (list 'load-lit dst ir)))
+      (t (error "linearize-leaf: unknown leaf type ~S" ir)))
+    dst))
+
+(defun linearize-binary (tag ir)
+  "Linearize a binary operation, returns temp holding result"
+  (let* ((left-temp (linearize-expr (cadr ir)))
+         (right-temp (linearize-expr (caddr ir)))
+         (dst (fresh-temp)))
+    (emit-linear (list tag dst left-temp right-temp))
+    dst))
+
+(defun linearize-unary (tag ir)
+  "Linearize a unary operation, returns temp holding result"
+  (let* ((arg-temp (linearize-expr (cadr ir)))
+         (dst (fresh-temp)))
+    (emit-linear (list tag dst arg-temp))
+    dst))
+
+(defun linearize-if (ir)
+  "Linearize if expression with explicit jumps"
+  (let* ((else-label (fresh-label))
+         (end-label (fresh-label))
+         (test-temp (linearize-expr (cadr ir)))
+         (dst (fresh-temp)))
+    ;; Jump to else if test is nil
+    (emit-linear (list 'jump-if-nil test-temp else-label))
+    ;; Then branch
+    (let ((then-temp (linearize-expr (caddr ir))))
+      (emit-linear (list 'move dst then-temp)))
+    (emit-linear (list 'jump end-label))
+    ;; Else branch
+    (emit-linear (list 'label else-label))
+    (let ((else-temp (if (cadddr ir)
+                         (linearize-expr (cadddr ir))
+                         (let ((nil-dst (fresh-temp)))
+                           (emit-linear (list 'load-nil nil-dst))
+                           nil-dst))))
+      (emit-linear (list 'move dst else-temp)))
+    (emit-linear (list 'label end-label))
+    dst))
+
+(defun linearize-progn (ir)
+  "Linearize progn, returns temp of last expression"
+  (let ((forms (cadr ir))
+        (last-temp nil))
+    (labels ((do-forms (fs)
+               (if (null fs)
+                   (if last-temp last-temp
+                       (let ((nil-dst (fresh-temp)))
+                         (emit-linear (list 'load-nil nil-dst))
+                         nil-dst))
+                   (progn
+                     (setf last-temp (linearize-expr (car fs)))
+                     (do-forms (cdr fs))))))
+      (do-forms forms))))
+
+(defun linearize-let (ir)
+  "Linearize let binding"
+  (let* ((vals (cadr ir))
+         (body (caddr ir))
+         (count (cadddr ir))
+         (offs (nth 4 ir)))
+    ;; Emit bind instruction
+    (emit-linear (list 'bind count offs))
+    ;; Linearize each binding value and store
+    (labels ((do-bindings (vs idx)
+               (when vs
+                 (let ((val-temp (linearize-expr (car vs))))
+                   (emit-linear (list 'store-binding idx val-temp)))
+                 (do-bindings (cdr vs) (+ idx 1)))))
+      (do-bindings vals 0))
+    ;; Linearize body
+    (let ((body-temp (linearize-expr body)))
+      ;; Emit unbind
+      (emit-linear (list 'unbind count))
+      body-temp)))
+
+(defun linearize-call (ir)
+  "Linearize function call"
+  (let* ((name (cadr ir))
+         (args (caddr ir))
+         (arg-temps (mapcar #'linearize-expr args))
+         (dst (fresh-temp)))
+    (emit-linear (cons 'call (cons dst (cons name arg-temps))))
+    dst))
+
+(defun linearize-funcall (ir)
+  "Linearize funcall (indirect call)"
+  (let* ((fn-ir (cadr ir))
+         (args (caddr ir))
+         (fn-temp (linearize-expr fn-ir))
+         (arg-temps (mapcar #'linearize-expr args))
+         (dst (fresh-temp)))
+    (emit-linear (cons 'funcall (cons dst (cons fn-temp arg-temps))))
+    dst))
+
+(defun linearize-setq (ir)
+  "Linearize variable assignment"
+  (let* ((off (cadr ir))
+         (val-ir (caddr ir))
+         (val-temp (linearize-expr val-ir)))
+    (emit-linear (list 'setq off val-temp))
+    val-temp))  ; setq returns the value
+
+(defun linearize-cons (ir)
+  "Linearize cons cell creation"
+  (let* ((car-temp (linearize-expr (cadr ir)))
+         (cdr-temp (linearize-expr (caddr ir)))
+         (dst (fresh-temp)))
+    (emit-linear (list 'cons dst car-temp cdr-temp))
+    dst))
+
+(defun linearize-while (ir)
+  "Linearize while loop"
+  (let* ((loop-label (fresh-label))
+         (end-label (fresh-label))
+         (dst (fresh-temp)))
+    ;; Result starts as nil
+    (emit-linear (list 'load-nil dst))
+    (emit-linear (list 'label loop-label))
+    ;; Test
+    (let ((test-temp (linearize-expr (cadr ir))))
+      (emit-linear (list 'jump-if-nil test-temp end-label)))
+    ;; Body
+    (let ((body-temp (linearize-expr (caddr ir))))
+      (emit-linear (list 'move dst body-temp)))
+    (emit-linear (list 'jump loop-label))
+    (emit-linear (list 'label end-label))
+    dst))
+
+(defun linearize-expr (ir)
+  "Linearize any IR expression, returns temp holding result"
+  (cond
+    ;; Leaf nodes
+    ((linear-leaf-p ir)
+     (linearize-leaf ir))
+
+    ;; Binary arithmetic (both 'add and 'add-ir variants)
+    ((or (has-tag ir 'add) (has-tag ir 'add-ir)) (linearize-binary 'add ir))
+    ((or (has-tag ir 'sub) (has-tag ir 'sub-ir)) (linearize-binary 'sub ir))
+    ((or (has-tag ir 'mul) (has-tag ir 'mul-ir)) (linearize-binary 'mul ir))
+    ((or (has-tag ir 'div) (has-tag ir 'div-ir)) (linearize-binary 'div ir))
+    ((or (has-tag ir 'mod) (has-tag ir 'mod-ir)) (linearize-binary 'mod ir))
+
+    ;; Comparisons
+    ((has-tag ir 'cmp-eq) (linearize-binary 'cmp-eq ir))
+    ((has-tag ir 'cmp-lt) (linearize-binary 'cmp-lt ir))
+    ((has-tag ir 'cmp-gt) (linearize-binary 'cmp-gt ir))
+    ((has-tag ir 'cmp-le) (linearize-binary 'cmp-le ir))
+    ((has-tag ir 'cmp-ge) (linearize-binary 'cmp-ge ir))
+
+    ;; List operations
+    ((has-tag ir 'cons-ir) (linearize-cons ir))
+    ((has-tag ir 'car-ir) (linearize-unary 'car ir))
+    ((has-tag ir 'cdr-ir) (linearize-unary 'cdr ir))
+    ((has-tag ir 'setcar-ir) (linearize-binary 'setcar ir))
+    ((has-tag ir 'setcdr-ir) (linearize-binary 'setcdr ir))
+
+    ;; String operations
+    ((has-tag ir 'string-length-ir) (linearize-unary 'string-length ir))
+    ((has-tag ir 'string-ref-ir) (linearize-binary 'string-ref ir))
+    ((has-tag ir 'string-concat-ir) (linearize-binary 'string-concat ir))
+    ((has-tag ir 'string-equal-ir) (linearize-binary 'string-equal ir))
+    ((has-tag ir 'make-string-from-vector-ir) (linearize-unary 'make-string-from-vector ir))
+
+    ;; Symbol operations
+    ((has-tag ir 'symbol-name-ir) (linearize-unary 'symbol-name ir))
+    ((has-tag ir 'make-symbol-ir) (linearize-unary 'make-symbol ir))
+
+    ;; Vector operations
+    ((has-tag ir 'make-vector-ir) (linearize-unary 'make-vector ir))
+    ((has-tag ir 'vector-length-ir) (linearize-unary 'vector-length ir))
+    ((has-tag ir 'vector-ref-ir) (linearize-binary 'vector-ref ir))
+    ((has-tag ir 'vector-set-ir)
+     (let* ((vec-temp (linearize-expr (cadr ir)))
+            (idx-temp (linearize-expr (caddr ir)))
+            (val-temp (linearize-expr (cadddr ir)))
+            (dst (fresh-temp)))
+       (emit-linear (list 'vector-set dst vec-temp idx-temp val-temp))
+       dst))
+
+    ;; Buffer operations
+    ((has-tag ir 'buffer-byte-ref-ir) (linearize-binary 'buffer-byte-ref ir))
+    ((has-tag ir 'buffer-byte-set-ir)
+     (let* ((buf-temp (linearize-expr (cadr ir)))
+            (idx-temp (linearize-expr (caddr ir)))
+            (val-temp (linearize-expr (cadddr ir)))
+            (dst (fresh-temp)))
+       (emit-linear (list 'buffer-byte-set dst buf-temp idx-temp val-temp))
+       dst))
+
+    ;; Tag operations
+    ((has-tag ir 'get-tag) (linearize-unary 'get-tag ir))
+
+    ;; Control flow
+    ((has-tag ir 'if-ir) (linearize-if ir))
+    ((has-tag ir 'while-ir) (linearize-while ir))
+    ((has-tag ir 'progn-ir) (linearize-progn ir))
+
+    ;; Bindings
+    ((has-tag ir 'let-ir) (linearize-let ir))
+    ((has-tag ir 'let*-ir) (linearize-let ir))  ; same as let for our purposes
+    ((has-tag ir 'setq-ir) (linearize-setq ir))
+
+    ;; Function calls
+    ((has-tag ir 'call-fn) (linearize-call ir))
+    ((has-tag ir 'funcall-ir) (linearize-funcall ir))
+
+    ;; System calls - linearize args then emit
+    ((has-tag ir 'sys-exit-ir)
+     (let ((arg-temp (linearize-expr (cadr ir))))
+       (emit-linear (list 'sys-exit arg-temp))
+       arg-temp))
+
+    ((has-tag ir 'sys-open-ir)
+     (let* ((path-temp (linearize-expr (cadr ir)))
+            (flags-temp (linearize-expr (caddr ir)))
+            (dst (fresh-temp)))
+       (emit-linear (list 'sys-open dst path-temp flags-temp))
+       dst))
+
+    ((has-tag ir 'sys-read-ir)
+     (let* ((fd-temp (linearize-expr (cadr ir)))
+            (buf-temp (linearize-expr (caddr ir)))
+            (len-temp (linearize-expr (cadddr ir)))
+            (dst (fresh-temp)))
+       (emit-linear (list 'sys-read dst fd-temp buf-temp len-temp))
+       dst))
+
+    ((has-tag ir 'sys-write-ir)
+     (let* ((fd-temp (linearize-expr (cadr ir)))
+            (buf-temp (linearize-expr (caddr ir)))
+            (len-temp (linearize-expr (cadddr ir)))
+            (dst (fresh-temp)))
+       (emit-linear (list 'sys-write dst fd-temp buf-temp len-temp))
+       dst))
+
+    ((has-tag ir 'sys-close-ir)
+     (let* ((fd-temp (linearize-expr (cadr ir)))
+            (dst (fresh-temp)))
+       (emit-linear (list 'sys-close dst fd-temp))
+       dst))
+
+    ;; Global vars
+    ((has-tag ir 'set-global-vars-ir)
+     (let ((val-temp (linearize-expr (cadr ir))))
+       (emit-linear (list 'set-global-vars val-temp))
+       val-temp))
+
+    ;; Memory operations
+    ((has-tag ir 'mem-set-byte-ir)
+     (let* ((ptr-temp (linearize-expr (cadr ir)))
+            (off-temp (linearize-expr (caddr ir)))
+            (val-temp (linearize-expr (cadddr ir)))
+            (dst (fresh-temp)))
+       (emit-linear (list 'mem-set-byte dst ptr-temp off-temp val-temp))
+       dst))
+
+    ((has-tag ir 'mem-load-64-ir)
+     (let* ((ptr-temp (linearize-expr (cadr ir)))
+            (off-temp (linearize-expr (caddr ir)))
+            (dst (fresh-temp)))
+       (emit-linear (list 'mem-load-64 dst ptr-temp off-temp))
+       dst))
+
+    ;; Default: unknown IR
+    (t (error "linearize-expr: unknown IR type ~S" (if (consp ir) (car ir) ir)))))
+
+(defun linearize (ir)
+  "Convert tree IR to linear IR.
+   Returns a list of linear instructions in execution order."
+  (reset-linear-state)
+  (let ((result-temp (linearize-expr ir)))
+    ;; Add final instruction to mark result
+    (emit-linear (list 'result result-temp))
+    ;; Return in execution order
+    (reverse *linear-output*)))
+
+;;; ============================================================
+;;; Linear IR Pretty Printer (for debugging)
+;;; ============================================================
+
+#+sbcl
+(defun print-linear-ir (linear-ir &optional (stream t))
+  "Pretty print linear IR for debugging"
+  (dolist (instr linear-ir)
+    (format stream "~&  ~S~%" instr)))
+
+;;; ============================================================
+;;; Linear IR Codegen (iterative, no recursion)
+;;; ============================================================
+;;; Generates ARM64 code from linear IR by simple iteration.
+;;; Each temp slot maps to a stack location.
+;;; This replaces the recursive tree-walking codegen for self-hosting.
+
+#+sbcl
+(defvar *linear-labels* nil "Maps label symbols to byte offsets")
+#+sbcl
+(defvar *linear-fixups* nil "List of (offset . label) for forward jumps")
+
+#+sbcl
+(defun linear-temp-slot (temp)
+  "Calculate stack offset for linear temp slot.
+   Uses same temp area as tree codegen: 0x40-0x100 (24 slots)."
+  (if (>= temp 24)
+      (error "codegen-linear: temp ~D exceeds 24 slot limit" temp)
+      (+ #x40 (* temp 8))))
+
+#+sbcl
+(defun linear-load-temp (rd temp)
+  "Load temp slot into register"
+  (arm64:ldr rd :sp :offset (linear-temp-slot temp)))
+
+#+sbcl
+(defun linear-save-temp (temp)
+  "Save x0 to temp slot"
+  (arm64:str :x0 :sp :offset (linear-temp-slot temp)))
+
+#+sbcl
+(defun linear-load-lit (val)
+  "Generate code to load tagged fixnum literal into x0"
+  (let ((tagged (ash val 4)))
+    (if (and (>= tagged 0) (< tagged #x10000))
+        (arm64:movz :x0 tagged)
+        ;; Large value - use movz + movk
+        (append (arm64:movz :x0 (logand tagged #xFFFF))
+                (arm64:movk :x0 (logand (ash tagged -16) #xFFFF) :lsl 16)))))
+
+#+sbcl
+(defun codegen-linear-instr (instr rtaddrs fnoffs)
+  "Generate ARM64 code for a single linear IR instruction.
+   Returns list of ARM64 instruction bytes."
+  (let ((op (car instr)))
+    (case op
+      ;; Load instructions
+      (load-lit
+       (let ((dst (cadr instr))
+             (val (caddr instr)))
+         (append (linear-load-lit val)
+                 (linear-save-temp dst))))
+
+      (load-nil
+       (let ((dst (cadr instr)))
+         (append (arm64:movz :x0 6)  ; nil tag = 6
+                 (linear-save-temp dst))))
+
+      (load-var
+       (let ((dst (cadr instr))
+             (offset (caddr instr)))
+         (append (arm64:sub :x1 :env (* offset 8) :imm t)
+                 (arm64:ldr :x0 :x1 :offset 0)
+                 (linear-save-temp dst))))
+
+      (load-sym
+       ;; For now, generate symbol on heap (similar to sym-lit in tree codegen)
+       (let* ((dst (cadr instr))
+              (name (caddr instr))
+              (name-str (symbol-name name))
+              (len (length name-str))
+              (total-size (logand (+ len 8 15) (lognot 15))))
+         (append (gen-symbol-lit name-str len total-size)
+                 (linear-save-temp dst))))
+
+      (load-str
+       (let* ((dst (cadr instr))
+              (str (caddr instr))
+              (len (length str))
+              (total-size (logand (+ len 8 15) (lognot 15))))
+         (append (gen-string-lit str len total-size)
+                 (linear-save-temp dst))))
+
+      ;; Binary arithmetic
+      (add
+       (let ((dst (cadr instr))
+             (src1 (caddr instr))
+             (src2 (cadddr instr)))
+         (append (linear-load-temp :x0 src1)
+                 (linear-load-temp :x1 src2)
+                 (arm64:add :x0 :x0 :x1)
+                 (linear-save-temp dst))))
+
+      (sub
+       (let ((dst (cadr instr))
+             (src1 (caddr instr))
+             (src2 (cadddr instr)))
+         (append (linear-load-temp :x0 src1)
+                 (linear-load-temp :x1 src2)
+                 (arm64:sub :x0 :x0 :x1)
+                 (linear-save-temp dst))))
+
+      (mul
+       (let ((dst (cadr instr))
+             (src1 (caddr instr))
+             (src2 (cadddr instr)))
+         (append (linear-load-temp :x0 src1)
+                 (linear-load-temp :x1 src2)
+                 (arm64:lsr :x1 :x1 4 :imm t)  ; untag one operand
+                 (arm64:mul :x0 :x0 :x1)
+                 (linear-save-temp dst))))
+
+      (div
+       (let ((dst (cadr instr))
+             (src1 (caddr instr))
+             (src2 (cadddr instr)))
+         (append (linear-load-temp :x0 src1)
+                 (linear-load-temp :x1 src2)
+                 (arm64:sdiv :x0 :x0 :x1)
+                 (arm64:lsl :x0 :x0 4 :imm t)  ; retag result
+                 (linear-save-temp dst))))
+
+      (mod
+       (let ((dst (cadr instr))
+             (src1 (caddr instr))
+             (src2 (cadddr instr)))
+         ;; Mod: a mod b = a - (a/b)*b
+         ;; Need to untag, compute, retag
+         (append (linear-load-temp :x0 src1)
+                 (linear-load-temp :x1 src2)
+                 (arm64:lsr :x0 :x0 4 :imm t)   ; untag a
+                 (arm64:lsr :x1 :x1 4 :imm t)   ; untag b
+                 (arm64:sdiv :x2 :x0 :x1)       ; x2 = a/b
+                 (arm64:mul :x2 :x2 :x1)        ; x2 = (a/b)*b
+                 (arm64:sub :x0 :x0 :x2)        ; x0 = a - (a/b)*b
+                 (arm64:lsl :x0 :x0 4 :imm t)   ; retag result
+                 (linear-save-temp dst))))
+
+      ;; Comparisons - return tagged t (16) or nil (6)
+      (cmp-eq
+       (let ((dst (cadr instr))
+             (src1 (caddr instr))
+             (src2 (cadddr instr)))
+         (append (linear-load-temp :x0 src1)
+                 (linear-load-temp :x1 src2)
+                 (arm64:cmp :x0 :x1)
+                 (arm64:cset :x0 arm64:+eq+)
+                 (arm64:lsl :x0 :x0 4 :imm t)
+                 (linear-save-temp dst))))
+
+      (cmp-lt
+       (let ((dst (cadr instr))
+             (src1 (caddr instr))
+             (src2 (cadddr instr)))
+         (append (linear-load-temp :x0 src1)
+                 (linear-load-temp :x1 src2)
+                 (arm64:cmp :x0 :x1)
+                 (arm64:cset :x0 arm64:+lt+)
+                 (arm64:lsl :x0 :x0 4 :imm t)
+                 (linear-save-temp dst))))
+
+      (cmp-gt
+       (let ((dst (cadr instr))
+             (src1 (caddr instr))
+             (src2 (cadddr instr)))
+         (append (linear-load-temp :x0 src1)
+                 (linear-load-temp :x1 src2)
+                 (arm64:cmp :x0 :x1)
+                 (arm64:cset :x0 arm64:+gt+)
+                 (arm64:lsl :x0 :x0 4 :imm t)
+                 (linear-save-temp dst))))
+
+      (cmp-le
+       (let ((dst (cadr instr))
+             (src1 (caddr instr))
+             (src2 (cadddr instr)))
+         (append (linear-load-temp :x0 src1)
+                 (linear-load-temp :x1 src2)
+                 (arm64:cmp :x0 :x1)
+                 (arm64:cset :x0 arm64:+le+)
+                 (arm64:lsl :x0 :x0 4 :imm t)
+                 (linear-save-temp dst))))
+
+      (cmp-ge
+       (let ((dst (cadr instr))
+             (src1 (caddr instr))
+             (src2 (cadddr instr)))
+         (append (linear-load-temp :x0 src1)
+                 (linear-load-temp :x1 src2)
+                 (arm64:cmp :x0 :x1)
+                 (arm64:cset :x0 arm64:+ge+)
+                 (arm64:lsl :x0 :x0 4 :imm t)
+                 (linear-save-temp dst))))
+
+      ;; List operations
+      (cons
+       (let ((dst (cadr instr))
+             (car-src (caddr instr))
+             (cdr-src (cadddr instr)))
+         ;; Allocate cons cell on heap
+         (append (linear-load-temp :x0 car-src)
+                 (linear-load-temp :x1 cdr-src)
+                 ;; Store car at heap, cdr at heap+8
+                 (arm64:str :x0 :heap :offset 0)
+                 (arm64:str :x1 :heap :offset 8)
+                 ;; Make tagged cons pointer
+                 (arm64:mov :x0 :heap)
+                 (arm64:add :x0 :x0 1 :imm t)  ; cons tag = 1
+                 ;; Bump heap
+                 (arm64:add :heap :heap 16 :imm t)
+                 (linear-save-temp dst))))
+
+      (car
+       (let ((dst (cadr instr))
+             (src (caddr instr)))
+         (append (linear-load-temp :x0 src)
+                 (arm64:sub :x0 :x0 1 :imm t)  ; remove tag
+                 (arm64:ldr :x0 :x0 :offset 0)
+                 (linear-save-temp dst))))
+
+      (cdr
+       (let ((dst (cadr instr))
+             (src (caddr instr)))
+         (append (linear-load-temp :x0 src)
+                 (arm64:sub :x0 :x0 1 :imm t)  ; remove tag
+                 (arm64:ldr :x0 :x0 :offset 8)
+                 (linear-save-temp dst))))
+
+      ;; Control flow
+      (label
+       ;; Labels are handled during assembly - just record position
+       nil)
+
+      (jump
+       ;; Unconditional branch - will be fixed up later
+       (let ((label (cadr instr)))
+         ;; Placeholder B instruction (offset filled in later)
+         (arm64:b 0)))
+
+      (jump-if-nil
+       (let ((src (cadr instr))
+             (label (caddr instr)))
+         ;; Compare with nil (6), branch if equal
+         (append (linear-load-temp :x0 src)
+                 (arm64:cmp :x0 6 :imm t)
+                 (arm64:b.eq 0))))  ; offset filled in later
+
+      (move
+       (let ((dst (cadr instr))
+             (src (caddr instr)))
+         (append (linear-load-temp :x0 src)
+                 (linear-save-temp dst))))
+
+      ;; Bindings
+      (bind
+       ;; Extend environment frame
+       (let ((count (cadr instr)))
+         (arm64:sub :env :env (* count 8) :imm t)))
+
+      (store-binding
+       (let ((idx (cadr instr))
+             (src (caddr instr)))
+         (append (linear-load-temp :x0 src)
+                 ;; Store at env - idx*8 (env points past last slot)
+                 (arm64:str :x0 :env :offset (* idx 8)))))
+
+      (unbind
+       (let ((count (cadr instr)))
+         (arm64:add :env :env (* count 8) :imm t)))
+
+      (setq
+       (let ((offset (cadr instr))
+             (src (caddr instr)))
+         (append (linear-load-temp :x0 src)
+                 (arm64:sub :x1 :env (* offset 8) :imm t)
+                 (arm64:str :x0 :x1 :offset 0))))
+
+      ;; Function calls - requires rtaddrs/fnoffs for call target resolution
+      (call
+       (let* ((dst (cadr instr))
+              (name (caddr instr))
+              (arg-temps (cdddr instr))
+              (nargs (length arg-temps)))
+         ;; Load args into x0-x7
+         (append
+          (loop for temp in arg-temps
+                for reg in '(:x0 :x1 :x2 :x3 :x4 :x5 :x6 :x7)
+                append (linear-load-temp reg temp))
+          ;; Call function (BL with offset from fnoffs)
+          (let ((fn-offset (cdr (assoc name fnoffs))))
+            (if fn-offset
+                (arm64:bl fn-offset)
+                (error "codegen-linear: unknown function ~S" name)))
+          (linear-save-temp dst))))
+
+      ;; Result marker - just load result temp to x0
+      (result
+       (let ((src (cadr instr)))
+         (linear-load-temp :x0 src)))
+
+      (otherwise
+       (error "codegen-linear-instr: unknown instruction ~S" op)))))
+
+#+sbcl
+(defun codegen-linear (linear-ir rtaddrs fnoffs)
+  "Generate ARM64 code from linear IR.
+   Simple iteration over instructions - no recursion.
+   Returns flat list of instruction bytes."
+  (setf *linear-labels* nil)
+  (setf *linear-fixups* nil)
+  (let ((code nil)
+        (offset 0))
+    ;; First pass: generate code, record label positions and fixups
+    (dolist (instr linear-ir)
+      (let ((op (car instr)))
+        (cond
+          ;; Record label position
+          ((eq op 'label)
+           (let ((label-name (cadr instr)))
+             (push (cons label-name offset) *linear-labels*)))
+
+          ;; Generate code and track fixups for jumps
+          ((eq op 'jump)
+           (let ((label (cadr instr)))
+             (push (cons offset label) *linear-fixups*)
+             (let ((instr-code (arm64:b 0)))
+               (setf code (append code instr-code))
+               (incf offset (length instr-code)))))
+
+          ((eq op 'jump-if-nil)
+           (let ((src (cadr instr))
+                 (label (caddr instr)))
+             ;; Generate compare + conditional branch
+             (let ((cmp-code (append (linear-load-temp :x0 src)
+                                     (arm64:cmp :x0 6 :imm t))))
+               (setf code (append code cmp-code))
+               (incf offset (length cmp-code)))
+             ;; Record fixup for the branch
+             (push (cons offset label) *linear-fixups*)
+             (let ((branch-code (arm64:b.eq 0)))
+               (setf code (append code branch-code))
+               (incf offset (length branch-code)))))
+
+          ;; Normal instruction
+          (t
+           (let ((instr-code (codegen-linear-instr instr rtaddrs fnoffs)))
+             (when instr-code
+               (setf code (append code instr-code))
+               (incf offset (length instr-code))))))))
+
+    ;; Second pass: fix up branch offsets
+    (dolist (fixup *linear-fixups*)
+      (let* ((branch-offset (car fixup))
+             (label (cdr fixup))
+             (target-offset (cdr (assoc label *linear-labels*))))
+        (when target-offset
+          ;; Calculate relative offset in instructions (bytes / 4)
+          (let ((rel-offset (ash (- target-offset branch-offset) -2)))
+            ;; Patch the branch instruction
+            (let ((old-instr (logior (ash (elt code branch-offset) 0)
+                                    (ash (elt code (+ branch-offset 1)) 8)
+                                    (ash (elt code (+ branch-offset 2)) 16)
+                                    (ash (elt code (+ branch-offset 3)) 24))))
+              ;; Check if conditional branch (B.cond) vs unconditional (B/BL)
+              ;; B.cond has opcode 0x54 in bits [31:24]
+              (let ((new-instr
+                      (if (= (logand (ash old-instr -24) #xFF) #x54)
+                          ;; B.cond: imm19 in bits [23:5], cond in bits [3:0]
+                          (logior (logand old-instr #xFF00001F)  ; keep opcode and cond
+                                  (ash (logand rel-offset #x7FFFF) 5))  ; imm19 << 5
+                          ;; B/BL: imm26 in bits [25:0]
+                          (logior (logand old-instr #xFC000000)
+                                  (logand rel-offset #x3FFFFFF)))))
+                (setf (elt code branch-offset) (logand new-instr #xFF))
+                (setf (elt code (+ branch-offset 1)) (logand (ash new-instr -8) #xFF))
+                (setf (elt code (+ branch-offset 2)) (logand (ash new-instr -16) #xFF))
+                (setf (elt code (+ branch-offset 3)) (logand (ash new-instr -24) #xFF))))))))
+
+    code))
+
+;;; ============================================================
 ;;; Binary Operation Codegen Helper
 ;;; ============================================================
 
