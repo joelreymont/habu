@@ -6200,6 +6200,7 @@
                            (or (eq (car item) :call-fn)
                                (eq (car item) :tail-call-fn)
                                (eq (car item) :extern-call)
+                               (eq (car item) :continue)
                                (eq (car item) :loop-continue)
                                (eq (car item) :return-from)))
                       ;; 4-byte instructions

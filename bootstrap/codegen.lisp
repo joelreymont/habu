@@ -1295,10 +1295,24 @@
     ((has-tag ir 'continue-ir)
      (let* ((args (cadr ir))
             (dst (fresh-temp)))
-       ;; For now just emit a marker - TCO needs special handling
-       (emit-linear (list 'continue args))
-       (emit-linear (list 'load-nil dst))
-       dst))
+       ;; Linearize args and emit stores to param slots (at sp+0x40+)
+       (let ((arg-temps nil))
+         ;; First, linearize all args to get their temp slots
+         (dolist (arg-ir args)
+           (let ((arg-temp (linearize-expr arg-ir)))
+             (setq arg-temps (append arg-temps (list arg-temp)))))
+         ;; Now emit copies from arg temps to param slots
+         ;; Param slots start at sp+0x380 (environment base)
+         (let ((idx 0))
+           (dolist (arg-temp arg-temps)
+             (emit-linear (list 'store-param arg-temp idx))
+             (setq idx (+ idx 1))))
+         ;; Finally emit the continue marker
+         ;; Note: continue never returns, so we don't emit load-nil or return a value
+         ;; However, the linearize framework expects us to return a temp, so we return dst
+         ;; but the code after continue should be unreachable
+         (emit-linear (list 'continue))
+         dst)))
 
     ;; Default: unknown IR
     (t (error "linearize-expr: unknown IR type ~S" (if (consp ir) (car ir) ir)))))
@@ -1686,8 +1700,16 @@
        ;; Just a marker - position recorded for continue jumps
        nil)
 
+      (store-param
+       ;; (store-param src-temp param-idx) - store temp to param slot at [env - param-idx*8]
+       (let ((src-temp (cadr instr))
+             (param-idx (caddr instr)))
+         (append (linear-load-temp :x9 src-temp)
+                 (arm64:sub :x10 :env (* param-idx 8) :imm t)
+                 (arm64:str :x9 :x10 :offset 0))))
+
       (continue
-       ;; TCO continue - for now just emit marker
+       ;; TCO continue - emit branch marker (args already stored by store-param)
        (list (list :continue)))
 
       ;; Bindings
@@ -3590,12 +3612,19 @@
                            nil))
          ;; Generate param stores
          (param-code (gen-param-stores params param-base 0 nil))
+         ;; Calculate loop label offset for TCO
+         (prologue-size (code-size (fn-fixed-prologue)))
+         (capture-size (if capture-code (code-size capture-code) 0))
+         (param-size (if param-code (code-size param-code) 0))
+         (loop-label-offset (+ prologue-size capture-size param-size))
          ;; Linearize body IR then generate code
          (linear-ir (linearize body-ir))
          (body-code (codegen linear-ir rtaddrs fnoffs))
          ;; Combine all code
-         (all-code (append-all (list (fn-fixed-prologue) capture-code param-code body-code (fn-fixed-epilogue)))))
-    all-code))
+         (all-code (append-all (list (fn-fixed-prologue) capture-code param-code body-code (fn-fixed-epilogue))))
+         ;; Resolve TCO branch markers to actual B instructions
+         (resolved-code (resolve-tco-branches all-code loop-label-offset)))
+    resolved-code))
 
 (defun resolve-tco-branches (code loop-label-offset)
   "Resolve :tco-branch markers into actual B (unconditional branch) instructions.
@@ -3633,6 +3662,11 @@
                       ;; Calculate backward offset: target - current
                       ;; target = loop-label-offset, current = pos + 4 (after this instruction)
                       ;; But we're at pos, so offset = loop-label-offset - pos
+                      (let* ((offset (- loop-label-offset pos))
+                             (b-bytes (emit-b-back offset)))
+                        (process (cdr items) (+ pos 4) (append (reverse b-bytes) acc))))
+                     ;; :continue marker (from linear codegen) - same as :tco-branch
+                     ((and (consp item) (eq (car item) :continue))
                       (let* ((offset (- loop-label-offset pos))
                              (b-bytes (emit-b-back offset)))
                         (process (cdr items) (+ pos 4) (append (reverse b-bytes) acc))))
@@ -3690,7 +3724,7 @@
 #-sbcl
 (defun code-size (code)
   "Calculate size of code in bytes, accounting for markers.
-   Markers: :call-fn, :extern-call, :tco-branch, :loop-continue, :return-from = 4 bytes each.
+   Markers: :call-fn, :extern-call, :tco-branch, :continue, :loop-continue, :return-from = 4 bytes each.
    :loop-start, :block-start, :block-end = 0 bytes (position markers only)."
   (labels ((tally (items acc)
              (if (null items)
@@ -3702,6 +3736,8 @@
                      ((and (consp item) (eq (car item) :extern-call))
                       (tally (cdr items) (+ acc 4)))
                      ((and (consp item) (eq (car item) :tco-branch))
+                      (tally (cdr items) (+ acc 4)))
+                     ((and (consp item) (eq (car item) :continue))
                       (tally (cdr items) (+ acc 4)))
                      ((and (consp item) (eq (car item) :loop-continue))
                       (tally (cdr items) (+ acc 4)))
