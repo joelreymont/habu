@@ -768,6 +768,19 @@
         (read-sym-chars s (+ pos 1) (cons ch chars))
         (cons chars pos))))
 
+(defun all-digits-p (name start)
+  "Check if all characters from START to end of NAME are digits"
+  (let ((len (length name)))
+    (if (>= start len)
+        nil  ; Empty after start = not a number
+        (labels ((check (i)
+                   (if (>= i len)
+                       t  ; Reached end, all were digits
+                       (if (digit-p (char-code (char name i)))
+                           (check (1+ i))
+                           nil))))  ; Found non-digit
+          (check start)))))
+
 (defun read-sym (s pos)
   (let* ((r (read-sym-chars s pos nil))
          (chars (car r))
@@ -775,20 +788,22 @@
          (name (chars-to-string (reverse chars)))
          (uname (string-upcase name)))
     ;; Check for numeric literals before treating as symbol
+    ;; A token is numeric only if ALL chars (after optional sign) are digits
     (let ((first-ch (if (> (length name) 0) (char-code (char name 0)) 0)))
       (cond
-        ;; Starts with digit - parse as number
-        ((digit-p first-ch)
+        ;; Starts with digit - only numeric if ALL chars are digits
+        ((and (digit-p first-ch)
+              (all-digits-p name 0))
          (read-int s pos))
-        ;; Negative number: starts with -, second char is digit
+        ;; Negative number: starts with -, rest must be ALL digits
         ((and (= first-ch #x2D)
               (> (length name) 1)
-              (digit-p (char-code (char name 1))))
+              (all-digits-p name 1))
          (read-int s pos))
-        ;; Positive number: starts with +, second char is digit
+        ;; Positive number: starts with +, rest must be ALL digits
         ((and (= first-ch #x2B)
               (> (length name) 1)
-              (digit-p (char-code (char name 1))))
+              (all-digits-p name 1))
          (read-int s pos))
         ;; NIL and T
         ((string= uname "NIL") (cons nil end))
@@ -6925,15 +6940,47 @@
    For v2: imports and internal-calls are nil.
    For v3: internal-calls is nil.
    For v4: full support for all tables.
+   Also supports old FASL format (magic 'FASL') from fasl.lisp.
    symtab is an alist of (name . offset) pairs.
    imports is list of (name . code-offset) pairs for C calls.
    internal-calls is list of (type name offset) for Lisp function calls."
   (with-open-file (in fasl-path :direction :input
                                 :element-type '(unsigned-byte 8))
-    ;; Read and verify magic
+    ;; Read and verify magic - accept both HFSL and FASL formats
     (let ((magic (list (read-byte in) (read-byte in) (read-byte in) (read-byte in))))
-      (unless (equal magic '(#x48 #x46 #x53 #x4C))  ;; "HFSL"
-        (error "Invalid FASL magic")))
+      (cond
+        ;; HFSL format - continue with v2/v3/v4 parsing below
+        ((equal magic '(#x48 #x46 #x53 #x4C)) nil)
+        ;; FASL format from fasl.lisp - delegate to read-fasl and convert
+        ((equal magic '(#x4C #x53 #x41 #x46))  ;; "FASL" little-endian
+         (file-position in 0)  ;; Reset to start
+         (multiple-value-bind (header functions code relocations constants str-table imports)
+             (read-fasl fasl-path)
+           (declare (ignore constants imports))
+           ;; Convert to read-fasl-v2 format: (bytecode symtab imports internal-calls)
+           (let ((symtab nil)
+                 (internal-calls nil))
+             ;; Build symtab from function table
+             (dolist (fn functions)
+               (let* ((name-offset (fasl-function-name-offset fn))
+                      (name (read-string-from-table str-table name-offset)))
+                 (push (cons (intern name :habu) (fasl-function-code-offset fn)) symtab)))
+             ;; Convert relocations to internal-calls
+             ;; Use interned symbols to match symtab format
+             (dolist (reloc relocations)
+               (when (= (fasl-relocation-type reloc) +reloc-fn-call+)
+                 (let* ((target-idx (fasl-relocation-target reloc))
+                        (target-fn (when (< target-idx (length functions))
+                                     (nth target-idx functions)))
+                        (target-name (when target-fn
+                                       (read-string-from-table str-table
+                                         (fasl-function-name-offset target-fn)))))
+                   (when target-name
+                     (push (list :call-fn (intern target-name :habu) (fasl-relocation-offset reloc))
+                           internal-calls)))))
+             (return-from read-fasl-v2
+               (list (coerce code 'list) (nreverse symtab) nil (nreverse internal-calls))))))
+        (t (error "Invalid FASL magic"))))
     ;; Read header - version determines format
     (let* ((version (read-u32-le in))
            (flags (read-u32-le in))

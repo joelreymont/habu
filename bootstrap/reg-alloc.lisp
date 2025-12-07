@@ -191,6 +191,12 @@
                        (check (cdr lst))))))
       (check names))))
 
+;;; TCO loop tracking for continue-ir resolution
+(defvar *tco-loop-label* nil
+  "Current loop label for TCO. Set by loop-ir, used by continue-ir.")
+(defvar *tco-loop-marker* nil
+  "Current loop marker for TCO. Set by loop-ir, used by continue-ir.")
+
 (defun ir-to-tac (ir counter)
   "Convert IR tree to TAC instructions.
    Returns (instructions result-vreg) where result-vreg holds the value.
@@ -525,23 +531,50 @@
     ;; loop-ir: TCO loop (loop-ir body marker)
     ((and (consp ir) (ir-tag-matches (car ir) "LOOP-IR"))
      (let* ((loop-label (next-vreg counter))
-            (body-result (ir-to-tac (cadr ir) counter))
-            (body-instrs (car body-result))
-            (body-vr (cadr body-result)))
-       ;; Store loop label for continue-ir to reference
-       ;; The marker (caddr ir) identifies this loop
-       (list (append (list (list 'tac-loop-start loop-label (caddr ir)))
-                     (list (list 'tac-label loop-label))
-                     body-instrs)
-             body-vr)))
+            (marker (caddr ir)))
+       ;; Set current loop info for continue-ir to reference
+       (setf *tco-loop-label* loop-label)
+       (setf *tco-loop-marker* marker)
+       (let* ((body-result (ir-to-tac (cadr ir) counter))
+              (body-instrs (car body-result))
+              (body-vr (cadr body-result)))
+         ;; Emit loop-start with marker and label
+         (list (append (list (list 'tac-loop-start loop-label marker))
+                       (list (list 'tac-label loop-label))
+                       body-instrs)
+               body-vr))))
 
-    ;; continue-ir: jump back to loop start
+    ;; continue-ir: jump back to loop start after updating params
+    ;; Format: (continue-ir (new-arg1 new-arg2 ...))
     ((and (consp ir) (ir-tag-matches (car ir) "CONTINUE-IR"))
-     ;; The marker identifies which loop to continue
-     (let ((result-vr (next-vreg counter)))
-       (list (list (list 'tac-continue (cadr ir))
-                   (list 'tac-nil result-vr))  ; unreachable but needed
-             result-vr)))
+     (let* ((new-args (cadr ir))
+            (result-vr (next-vreg counter)))
+       ;; Evaluate all new arg values to temp vregs first (avoid overwriting params mid-eval)
+       (labels ((eval-args (args acc-instrs acc-vrs)
+                  (if (null args)
+                      (list (reverse acc-instrs) (reverse acc-vrs))
+                      (let* ((arg-result (ir-to-tac (car args) counter))
+                             (arg-instrs (car arg-result))
+                             (arg-vr (cadr arg-result)))
+                        (eval-args (cdr args)
+                                   (append arg-instrs acc-instrs)
+                                   (cons arg-vr acc-vrs)))))
+                (gen-setvars (vrs idx)
+                  ;; Store each vreg to param slot (offset = idx)
+                  (if (null vrs)
+                      nil
+                      (cons (list 'tac-setvar idx (car vrs))
+                            (gen-setvars (cdr vrs) (+ idx 1))))))
+         (let* ((eval-result (eval-args new-args nil nil))
+                (all-instrs (car eval-result))
+                (arg-vrs (cadr eval-result))
+                (setvar-instrs (gen-setvars arg-vrs 0)))
+           ;; Emit: arg evals, setvars, continue (with marker from *tco-loop-marker*)
+           (list (append all-instrs
+                         setvar-instrs
+                         (list (list 'tac-continue *tco-loop-marker*))
+                         (list (list 'tac-nil result-vr)))  ; unreachable but needed
+                 result-vr)))))
 
     ;; get-tag: extract tag bits from value
     ((and (consp ir) (ir-tag-matches (car ir) "GET-TAG"))
@@ -1476,27 +1509,46 @@
   ;; Pass 1: Generate code with markers
   (let ((code-with-markers nil)
         (label-positions nil)  ; alist of (label . byte-position)
+        (loop-markers nil)     ; alist of (marker . label) for TCO continue
         (current-pos 0))
     ;; Generate code for each instruction, tracking positions
     (dolist (instr tac-instrs)
-      (if (eq (car instr) 'tac-label)
-          ;; Record label position
-          (let ((label (cadr instr)))
-            (setq label-positions (cons (cons label current-pos) label-positions))
+      (cond
+       ;; tac-loop-start: record marker → label mapping for TCO
+       ((eq (car instr) 'tac-loop-start)
+        (let ((label (cadr instr))
+              (marker (caddr instr)))
+          (setq loop-markers (cons (cons marker label) loop-markers))))
+
+       ;; tac-label: record label position
+       ((eq (car instr) 'tac-label)
+        (let ((label (cadr instr)))
+          (setq label-positions (cons (cons label current-pos) label-positions))
+          (setq code-with-markers (append code-with-markers
+                                          (list (list :label-marker label))))))
+
+       ;; tac-continue: emit branch marker to loop start (resolve later)
+       ((eq (car instr) 'tac-continue)
+        (let* ((marker (cadr instr))
+               (label (cdr (assoc marker loop-markers))))
+          (when label
             (setq code-with-markers (append code-with-markers
-                                            (list (list :label-marker label)))))
-          ;; Generate code for instruction
-          (let ((bytes (tac-codegen-instr instr allocation)))
-            (when bytes
-              (setq code-with-markers (append code-with-markers bytes))
-              ;; Update position: count actual bytes AND branch markers (4 bytes each)
-              (dolist (b bytes)
-                (cond
-                  ((numberp b)
-                   (setq current-pos (+ current-pos 1)))
-                  ;; Branch markers will become 4-byte instructions
-                  ((and (consp b) (member (car b) '(:branch-marker :branch-ne-marker :branch-eq-marker)))
-                   (setq current-pos (+ current-pos 4)))))))))
+                                            (list (list :branch-marker label))))
+            (setq current-pos (+ current-pos 4)))))
+
+       ;; All other instructions: generate code
+       (t
+        (let ((bytes (tac-codegen-instr instr allocation)))
+          (when bytes
+            (setq code-with-markers (append code-with-markers bytes))
+            ;; Update position: count actual bytes AND branch markers (4 bytes each)
+            (dolist (b bytes)
+              (cond
+                ((numberp b)
+                 (setq current-pos (+ current-pos 1)))
+                ;; Branch markers will become 4-byte instructions
+                ((and (consp b) (member (car b) '(:branch-marker :branch-ne-marker :branch-eq-marker :continue-marker)))
+                 (setq current-pos (+ current-pos 4))))))))))
 
     ;; Pass 2: Resolve branch markers to actual instructions
     (let ((resolved nil)
@@ -1562,6 +1614,9 @@
   "Apply full register allocation pipeline to a compiled function.
    fn has structure: (name params body-ir param-base)
    Returns: (name params body-ir param-base allocation tac)"
+  ;; Initialize TCO tracking for this function
+  (setf *tco-loop-label* nil)
+  (setf *tco-loop-marker* nil)
   (let* ((body-ir (caddr fn))
          (counter (make-vreg-counter))
          ;; Pass 1: IR to TAC
