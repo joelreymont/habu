@@ -29,6 +29,10 @@
 (defvar *op-cons* nil)
 (defvar *op-car* nil)
 (defvar *op-cdr* nil)
+(defvar *op-cadr* nil)
+(defvar *op-cddr* nil)
+(defvar *op-caddr* nil)
+(defvar *op-cadddr* nil)
 (defvar *op-null* nil)
 (defvar *op-consp* nil)
 (defvar *op-list* nil)
@@ -38,6 +42,23 @@
 
 ;; File I/O constants
 (defun o-rdonly () #x0)
+
+;; Convert a buffer (vector) to a string of given length
+;; sys-read writes raw bytes to the buffer, so we must use buffer-byte-ref
+;; to read individual bytes, not vector-ref (which reads 8-byte slots)
+(defun buffer-to-string (buf len)
+  (let ((vec (make-vector len)))
+    (buffer-to-string-copy buf vec 0 len)
+    (make-string-from-vector vec)))
+
+(defun buffer-to-string-copy (src dst i len)
+  (if (>= i len)
+      nil
+      (progn
+        ;; Use buffer-byte-ref to read raw bytes from sys-read buffer
+        ;; and vector-set to store them in the destination vector
+        (vector-set dst i (buffer-byte-ref src i))
+        (buffer-to-string-copy src dst (+ i 1) len))))
 
 ;; Read entire file into string
 (defun native-read-file (path)
@@ -278,6 +299,30 @@
   (if (eq sym *op-cdr*) t
       (if (h0-string= (symbol-name sym) "CDR")
           (progn (setq *op-cdr* sym) t)
+          nil)))
+
+(defun op=cadr (sym)
+  (if (eq sym *op-cadr*) t
+      (if (h0-string= (symbol-name sym) "CADR")
+          (progn (setq *op-cadr* sym) t)
+          nil)))
+
+(defun op=cddr (sym)
+  (if (eq sym *op-cddr*) t
+      (if (h0-string= (symbol-name sym) "CDDR")
+          (progn (setq *op-cddr* sym) t)
+          nil)))
+
+(defun op=caddr (sym)
+  (if (eq sym *op-caddr*) t
+      (if (h0-string= (symbol-name sym) "CADDR")
+          (progn (setq *op-caddr* sym) t)
+          nil)))
+
+(defun op=cadddr (sym)
+  (if (eq sym *op-cadddr*) t
+      (if (h0-string= (symbol-name sym) "CADDDR")
+          (progn (setq *op-cadddr* sym) t)
           nil)))
 
 (defun op=null (sym)
@@ -614,6 +659,18 @@
          ((if (symbolp op) (op=cdr op) nil)
           (let ((arg (h0-eval (cadr expr) env fenv)))
             (cdr arg)))
+         ((if (symbolp op) (op=cadr op) nil)
+          (let ((arg (h0-eval (cadr expr) env fenv)))
+            (car (cdr arg))))
+         ((if (symbolp op) (op=cddr op) nil)
+          (let ((arg (h0-eval (cadr expr) env fenv)))
+            (cdr (cdr arg))))
+         ((if (symbolp op) (op=caddr op) nil)
+          (let ((arg (h0-eval (cadr expr) env fenv)))
+            (car (cdr (cdr arg)))))
+         ((if (symbolp op) (op=cadddr op) nil)
+          (let ((arg (h0-eval (cadr expr) env fenv)))
+            (car (cdr (cdr (cdr arg))))))
          ((if (symbolp op) (op=list op) nil) (h0-eval-list (cdr expr) env fenv))
          ;; Type predicates
          ((if (symbolp op) (op=null op) nil)

@@ -583,6 +583,10 @@
           (cdar env)
           (env-lookup sym (cdr env)))))
 
+(defun flat-env-lookup (sym env)
+  "Lookup in flat environment list (sym1 sym2 ...) - returns sym if found, nil otherwise"
+  (member sym env))
+
 (defun env-extend (bindings env)
   ;; Use let* to sequence operations - avoid nested recursive calls in args
   (labels ((max-off (e acc)
@@ -1105,6 +1109,7 @@
                ((null e) acc)
                ((symbolp e)
                 ;; Check if it's a variable reference (in env but not bound)
+                ;; env is alist ((sym . offset) ...), env-lookup returns offset or nil
                 (if (and (env-lookup e env)
                          (not (member e bnd)))
                     (if (member e acc) acc (cons e acc))
@@ -1903,17 +1908,22 @@
          ;; get-tag - extract type tag as tagged fixnum (tag << 4)
          ((eq op 'get-tag)
           (list 'get-tag (sys:compile (cadr expr) env fenv)))
-         ;; length - list length via recursion
+         ;; length - polymorphic: works on strings, vectors, and lists
          ((eq op 'length)
-          (let ((len-iter-fn (gensym "LEN-ITER"))
+          (let ((val-sym (gensym "VAL"))
+                (len-iter-fn (gensym "LEN-ITER"))
                 (lst-var (gensym "LST"))
                 (acc-var (gensym "ACC")))
             (sys:compile
-             `(labels ((,len-iter-fn (,lst-var ,acc-var)
-                         (if (null ,lst-var)
-                             ,acc-var
-                             (,len-iter-fn (cdr ,lst-var) (+ ,acc-var 1)))))
-                (,len-iter-fn ,(cadr expr) 0))
+             `(let ((,val-sym ,(cadr expr)))
+                (cond
+                  ((stringp ,val-sym) (string-length ,val-sym))
+                  ((vectorp ,val-sym) (vector-length ,val-sym))
+                  (t (labels ((,len-iter-fn (,lst-var ,acc-var)
+                                (if (null ,lst-var)
+                                    ,acc-var
+                                    (,len-iter-fn (cdr ,lst-var) (+ ,acc-var 1)))))
+                       (,len-iter-fn ,val-sym 0)))))
              env fenv)))
          ;; reverse - reverse list via recursion
          ((eq op 'reverse)

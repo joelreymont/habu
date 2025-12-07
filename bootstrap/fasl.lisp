@@ -502,10 +502,11 @@
            ;; Link verification
            (_ #+sbcl (when (verify-link-references (mapcar #'car all-fns))
                        (error "Link failed: undefined function references")))
-           ;; Generate main code
+           ;; Generate main code (linearize first, then codegen)
+           (main-linear (linearize main-ir))
            (main-code (append-all
                        (list (fn-fixed-prologue)
-                             (codegen main-ir nil nil 0)
+                             (codegen main-linear nil nil)
                              (fn-fixed-epilogue))))
            (main-size (code-size main-code))
            ;; Build fnoffs
@@ -513,7 +514,7 @@
            ;; Regenerate with fnoffs
            (main-code-final (append-all
                              (list (fn-fixed-prologue)
-                                   (codegen main-ir nil fnoffs 0)
+                                   (codegen main-linear nil fnoffs)
                                    (fn-fixed-epilogue))))
            ;; Generate function code
            (fn-code (codegen-all-fns all-fns nil fnoffs nil))

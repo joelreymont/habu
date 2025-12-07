@@ -603,7 +603,7 @@
                 rest
                 (append-all
                  (list acc
-                       (load-addr 9 val)
+                       (load-addr :x9 val)
                        (arm64:str :x9 :heap :offset offset)))))))
        ;; Convert string to list of bytes
        (str-to-bytes (s i acc)
@@ -617,7 +617,7 @@
            (pre-check (gc-trigger-code))
            ;; Store length first, then data starting at offset 8
            (len-code (append-all
-                      (list (load-addr 9 len)
+                      (list (load-addr :x9 len)
                             (arm64:str :x9 :heap :offset 0))))
            (data-code (gen-store-bytes 8 bytes-with-nul nil))
            ;; Return tagged pointer and bump heap
@@ -645,7 +645,7 @@
                 rest
                 (append-all
                  (list acc
-                       (load-addr 9 val)
+                       (load-addr :x9 val)
                        (arm64:str :x9 :heap :offset offset)))))))
        ;; Convert string to list of bytes
        (str-to-bytes (s i acc)
@@ -659,7 +659,7 @@
            (pre-check (gc-trigger-code))
            ;; Store length first, then data starting at offset 8
            (len-code (append-all
-                      (list (load-addr 9 len)
+                      (list (load-addr :x9 len)
                             (arm64:str :x9 :heap :offset 0))))
            (data-code (gen-store-bytes 8 bytes-with-nul nil))
            ;; Return tagged pointer with symbol tag (2) and bump heap
@@ -1038,16 +1038,20 @@
   (let* ((vals (cadr ir))
          (body (caddr ir))
          (count (cadddr ir))
-         (offs (nth 4 ir)))
+         (offs-raw (nth 4 ir))
+         ;; Handle both formats: (0 1 2) or just 0 (for backward compat with tests)
+         (offs (if (listp offs-raw) offs-raw (list offs-raw))))
     ;; Emit bind instruction
     (emit-linear (list 'bind count offs))
-    ;; Linearize each binding value and store
-    (labels ((do-bindings (vs idx)
+    ;; Linearize each binding value and store using actual offsets
+    (labels ((do-bindings (vs offsets idx)
                (when vs
-                 (let ((val-temp (linearize-expr (car vs))))
-                   (emit-linear (list 'store-binding idx val-temp)))
-                 (do-bindings (cdr vs) (+ idx 1)))))
-      (do-bindings vals 0))
+                 (let* ((val-temp (linearize-expr (car vs)))
+                        ;; Use offset from list if available, else fall back to idx
+                        (offset (if offsets (car offsets) idx)))
+                   (emit-linear (list 'store-binding offset val-temp)))
+                 (do-bindings (cdr vs) (if offsets (cdr offsets) nil) (1+ idx)))))
+      (do-bindings vals offs 0))
     ;; Linearize body
     (let ((body-temp (linearize-expr body)))
       ;; Emit unbind
@@ -1156,6 +1160,7 @@
     ;; Symbol operations
     ((has-tag ir 'symbol-name-ir) (linearize-unary 'symbol-name ir))
     ((has-tag ir 'make-symbol-ir) (linearize-unary 'make-symbol ir))
+    ((has-tag ir 'make-symbol-from-string-ir) (linearize-unary 'make-symbol ir))
 
     ;; Vector operations
     ((has-tag ir 'make-vector-ir) (linearize-unary 'make-vector ir))
@@ -1314,6 +1319,16 @@
          (emit-linear (list 'continue))
          dst)))
 
+    ;; buffer-to-string-ir: convert raw byte buffer to string
+    ((has-tag ir 'buffer-to-string-ir)
+     (let* ((buf-ir (cadr ir))
+            (len-ir (caddr ir))
+            (buf-temp (linearize-expr buf-ir))
+            (len-temp (linearize-expr len-ir))
+            (dst (fresh-temp)))
+       (emit-linear (list 'buffer-to-string dst buf-temp len-temp))
+       dst))
+
     ;; Default: unknown IR
     (t (error "linearize-expr: unknown IR type ~S" (if (consp ir) (car ir) ir)))))
 
@@ -1348,13 +1363,17 @@
 (defvar *linear-labels* nil "Maps label symbols to byte offsets")
 #+sbcl
 (defvar *linear-fixups* nil "List of (offset . label) for forward jumps")
+#+sbcl
+(defvar *linear-block-info* nil "Maps block-id to (end-label . dst-temp)")
+#+sbcl
+(defvar *linear-loop-stack* nil "Stack of loop labels for TCO continue")
 
 #+sbcl
 (defun linear-temp-slot (temp)
   "Calculate stack offset for linear temp slot.
-   Uses same temp area as tree codegen: 0x40-0x100 (24 slots)."
-  (if (>= temp 24)
-      (error "codegen-linear: temp ~D exceeds 24 slot limit" temp)
+   Uses temp area 0x40-0x3840 = 1792 slots (frame is 16KB)."
+  (if (>= temp 1792)
+      (error "codegen-linear: temp ~D exceeds 1792 slot limit" temp)
       (+ #x40 (* temp 8))))
 
 #+sbcl
@@ -1371,11 +1390,41 @@
 (defun linear-load-lit (val)
   "Generate code to load tagged fixnum literal into x0"
   (let ((tagged (ash val 4)))
-    (if (and (>= tagged 0) (< tagged #x10000))
-        (arm64:movz :x0 tagged)
-        ;; Large value - use movz + movk
-        (append (arm64:movz :x0 (logand tagged #xFFFF))
-                (arm64:movk :x0 (logand (ash tagged -16) #xFFFF) :lsl 16)))))
+    (cond
+      ;; Small positive: single movz
+      ((and (>= tagged 0) (< tagged #x10000))
+       (arm64:movz :x0 tagged))
+      ;; Small negative: use movn (move wide with NOT)
+      ;; movn x0, #imm loads ~imm into x0
+      ((and (< tagged 0) (>= tagged (- #x10000)))
+       ;; For small negatives: movn x0, #(~tagged & 0xFFFF)
+       (arm64:movn :x0 (logand (lognot tagged) #xFFFF)))
+      ;; Large positive: movz + movk
+      ((>= tagged 0)
+       (append (arm64:movz :x0 (logand tagged #xFFFF))
+               (arm64:movk :x0 (logand (ash tagged -16) #xFFFF) :lsl 16)))
+      ;; Large negative: movn + movk for upper bits
+      (t
+       ;; Use movn for the low 16 bits, then movk for upper halfwords
+       (let ((inv (lognot tagged)))
+         (append (arm64:movn :x0 (logand inv #xFFFF))
+                 (arm64:movk :x0 (logand (ash tagged -16) #xFFFF) :lsl 16)
+                 (arm64:movk :x0 (logand (ash tagged -32) #xFFFF) :lsl 32)
+                 (arm64:movk :x0 (logand (ash tagged -48) #xFFFF) :lsl 48)))))))
+
+#+sbcl
+(defun gen-bool-to-tagged ()
+  "Convert boolean 0/1 in x0 to tagged nil(6)/t(16).
+   Uses: x0 = 1 (true) or 0 (false)
+   Result: x0 = 16 (t) or 6 (nil)"
+  ;; x0 = 1 or 0
+  ;; neg x0, x0      => x0 = -1 or 0 (negate: 0-x0)
+  ;; and x0, x0, #10 => x0 = 10 or 0 (need register for mask)
+  ;; add x0, x0, #6  => x0 = 16 or 6
+  (append (arm64:neg :x0 :x0)
+          (arm64:movz :x1 10)
+          (arm64:and* :x0 :x0 :x1)
+          (arm64:add :x0 :x0 6 :imm t)))
 
 #+sbcl
 (defun codegen-linear-instr (instr rtaddrs fnoffs)
@@ -1484,7 +1533,7 @@
                  (linear-load-temp :x1 src2)
                  (arm64:cmp :x0 :x1)
                  (arm64:cset :x0 arm64:+eq+)
-                 (arm64:lsl :x0 :x0 4 :imm t)
+                 (gen-bool-to-tagged)
                  (linear-save-temp dst))))
 
       (cmp-lt
@@ -1495,7 +1544,7 @@
                  (linear-load-temp :x1 src2)
                  (arm64:cmp :x0 :x1)
                  (arm64:cset :x0 arm64:+lt+)
-                 (arm64:lsl :x0 :x0 4 :imm t)
+                 (gen-bool-to-tagged)
                  (linear-save-temp dst))))
 
       (cmp-gt
@@ -1506,7 +1555,7 @@
                  (linear-load-temp :x1 src2)
                  (arm64:cmp :x0 :x1)
                  (arm64:cset :x0 arm64:+gt+)
-                 (arm64:lsl :x0 :x0 4 :imm t)
+                 (gen-bool-to-tagged)
                  (linear-save-temp dst))))
 
       (cmp-le
@@ -1517,7 +1566,7 @@
                  (linear-load-temp :x1 src2)
                  (arm64:cmp :x0 :x1)
                  (arm64:cset :x0 arm64:+le+)
-                 (arm64:lsl :x0 :x0 4 :imm t)
+                 (gen-bool-to-tagged)
                  (linear-save-temp dst))))
 
       (cmp-ge
@@ -1528,7 +1577,7 @@
                  (linear-load-temp :x1 src2)
                  (arm64:cmp :x0 :x1)
                  (arm64:cset :x0 arm64:+ge+)
-                 (arm64:lsl :x0 :x0 4 :imm t)
+                 (gen-bool-to-tagged)
                  (linear-save-temp dst))))
 
       ;; Bitwise operations (operands are tagged, but AND/OR/XOR preserve tags)
@@ -1562,6 +1611,7 @@
       (bsh
        ;; Bitwise shift: (bsh val amount) - positive = left, negative = right
        ;; Both args are tagged. Untag both, shift, retag.
+       ;; ARM64 LSLV/ASRV only use low 6 bits, so we must branch on sign.
        (let ((dst (cadr instr))
              (src1 (caddr instr))  ; value
              (src2 (cadddr instr))) ; shift amount
@@ -1569,9 +1619,16 @@
                  (linear-load-temp :x1 src2)
                  (arm64:asr :x0 :x0 4 :imm t)   ; untag value
                  (arm64:asr :x1 :x1 4 :imm t)   ; untag amount
-                 ;; Use variable shift (positive = left, negative = right)
-                 ;; arm64:lsl without :imm uses register shift (LSLV)
-                 (arm64:lsl :x0 :x0 :x1)        ; variable left shift
+                 ;; Check if shift amount is negative
+                 (arm64:cmp :x1 0 :imm t)       ; compare amount to 0
+                 (arm64:b.lt 3)                 ; if negative, jump to right shift
+                 ;; Positive (left shift)
+                 (arm64:lsl :x0 :x0 :x1)        ; LSLV - variable left shift
+                 (arm64:b 3)                    ; skip right shift
+                 ;; Negative (right shift): negate amount first
+                 (arm64:neg :x1 :x1)            ; x1 = -x1 (make positive)
+                 (arm64:asr :x0 :x0 :x1)        ; ASRV - variable arithmetic right shift
+                 ;; Retag result
                  (arm64:lsl :x0 :x0 4 :imm t)   ; retag result
                  (linear-save-temp dst))))
 
@@ -1634,6 +1691,35 @@
                  (arm64:lsl :x0 :x0 4 :imm t)      ; tag as fixnum
                  (linear-save-temp dst))))
 
+      ;; String operations
+      (string-length
+       (let ((dst (cadr instr))
+             (src (caddr instr)))
+         (append (linear-load-temp :x0 src)
+                 (arm64:sub :x0 :x0 4 :imm t)      ; remove string tag
+                 (arm64:ldr :x0 :x0 :offset 0)    ; load length
+                 (arm64:lsl :x0 :x0 4 :imm t)      ; tag as fixnum
+                 (linear-save-temp dst))))
+
+      (string-ref
+       (let ((dst (cadr instr))
+             (str-src (caddr instr))
+             (idx-src (cadddr instr)))
+         (append (linear-load-temp :x0 str-src)
+                 (linear-load-temp :x1 idx-src)
+                 ;; Untag index (shift right 4)
+                 (arm64:lsr :x1 :x1 4 :imm t)
+                 ;; Untag string pointer
+                 (arm64:sub :x0 :x0 4 :imm t)
+                 ;; Add 8 for header, then add index
+                 (arm64:add :x0 :x0 8 :imm t)
+                 (arm64:add :x0 :x0 :x1)
+                 ;; Load byte at [x0]
+                 (arm64:ldrb :x0 :x0 0)
+                 ;; Tag as fixnum
+                 (arm64:lsl :x0 :x0 4 :imm t)
+                 (linear-save-temp dst))))
+
       ;; setcar/setcdr mutations
       (setcar
        (let ((dst (cadr instr))
@@ -1684,16 +1770,12 @@
 
       ;; Block/return-from control flow
       (block-start
-       ;; Just a marker - position recorded, jump targets to end label
+       ;; Handled in main codegen loop
        nil)
 
       (return-from
-       ;; (return-from block-id val-temp) - move val to block's dst then jump to end
-       (let ((block-id (cadr instr))
-             (val-temp (caddr instr)))
-         ;; Load value to x0, emit marker for jump
-         (append (linear-load-temp :x0 val-temp)
-                 (list (list :return-from block-id)))))
+       ;; Handled in main codegen loop
+       nil)
 
       ;; Loop control flow (TCO)
       (loop-start
@@ -1712,22 +1794,22 @@
        ;; TCO continue - emit branch marker (args already stored by store-param)
        (list (list :continue)))
 
-      ;; Bindings
+      ;; Bindings - env is stable (not moved), offsets are absolute
       (bind
-       ;; Extend environment frame
-       (let ((count (cadr instr)))
-         (arm64:sub :env :env (* count 8) :imm t)))
+       ;; No-op: env stays fixed, bindings use absolute offsets
+       nil)
 
       (store-binding
-       (let ((idx (cadr instr))
+       (let ((offset (cadr instr))
              (src (caddr instr)))
          (append (linear-load-temp :x0 src)
-                 ;; Store at env - idx*8 (env points past last slot)
-                 (arm64:str :x0 :env :offset (* idx 8)))))
+                 ;; Store at env - offset*8 (like recursive codegen)
+                 (arm64:sub :x1 :env (* offset 8) :imm t)
+                 (arm64:str :x0 :x1 :offset 0))))
 
       (unbind
-       (let ((count (cadr instr)))
-         (arm64:add :env :env (* count 8) :imm t)))
+       ;; No-op: env stays fixed
+       nil)
 
       (setq
        (let ((offset (cadr instr))
@@ -1763,8 +1845,10 @@
           ;; Load function (closure) into x9, then call
           (linear-load-temp :x9 fn-temp)
           ;; Extract code pointer from closure (closure tag = 5)
-          (arm64:sub :x9 :x9 5 :imm t)    ; remove tag
-          (arm64:ldr :x9 :x9 :offset 0)   ; load code pointer
+          (arm64:sub :x9 :x9 5 :imm t)    ; remove closure tag
+          (arm64:ldr :x9 :x9 :offset 0)   ; load tagged fn offset
+          (arm64:lsr :x9 :x9 4 :imm t)    ; untag to get raw offset
+          (arm64:add :x9 :x26 :x9)        ; add code base to get address
           (arm64:blr :x9)                 ; call through register
           (linear-save-temp dst))))
 
@@ -1772,6 +1856,455 @@
       (result
        (let ((src (cadr instr)))
          (linear-load-temp :x0 src)))
+
+      ;; Make-vector: allocate vector on heap
+      ;; Vector layout: [length (8 bytes)] [data (n * 8 bytes)]
+      (make-vector
+       (let ((dst (cadr instr))
+             (size-temp (caddr instr)))
+         (append
+          (linear-load-temp :x0 size-temp)
+          ;; GC pre-check
+          (gc-trigger-code)
+          ;; x0 = tagged size, store untagged length at [x28+0]
+          (arm64:lsr :x1 :x0 4 :imm t)           ; x1 = untagged length
+          (arm64:str :x1 :heap :offset 0)        ; [x28+0] = length
+          ;; Calculate allocation size: 8 + (x0 >> 1)
+          (arm64:lsr :x1 :x0 1 :imm t)           ; x1 = untagged_size * 8
+          (arm64:add :x1 :x1 8 :imm t)           ; x1 = 8 + data_size
+          ;; Round to 16-byte alignment
+          (arm64:add :x1 :x1 15 :imm t)
+          (arm64:and* :x1 :x1 -16 :imm t)
+          ;; Return tagged pointer, bump heap
+          (arm64:mov :x0 :heap)
+          (arm64:add :heap :heap :x1)
+          ;; Tag with vector tag (0x3)
+          (arm64:movz :x1 3)
+          (arm64:orr :x0 :x0 :x1)
+          ;; GC trigger check
+          (gc-trigger-code)
+          (linear-save-temp dst))))
+
+      ;; Get-global-vars: load from [x27 + 104]
+      (get-global-vars
+       (let ((dst (cadr instr)))
+         (append (arm64:ldr :x0 :gc :offset 104)
+                 (linear-save-temp dst))))
+
+      ;; Set-global-vars: store to [x27 + 104]
+      (set-global-vars
+       (let ((val-temp (cadr instr)))
+         (append (linear-load-temp :x0 val-temp)
+                 (arm64:str :x0 :gc :offset 104))))
+
+      ;; Get-cmdline-args: load argc/argv from [x27 + 64/72]
+      (get-cmdline-args
+       (let ((dst (cadr instr)))
+         ;; Return nil for now - full implementation would build list from argv
+         (append (arm64:movz :x0 6)  ; nil
+                 (linear-save-temp dst))))
+
+      ;; Sys-exit: exit with value
+      (sys-exit
+       (let ((val-temp (cadr instr)))
+         (append (linear-load-temp :x0 val-temp)
+                 (arm64:lsr :x0 :x0 4 :imm t)  ; untag
+                 (arm64:movz :x16 1)           ; exit syscall
+                 (arm64:svc 0))))
+
+      ;; Sys-open: open file (path flags mode) -> fd
+      (sys-open
+       (let ((dst (cadr instr))
+             (path-temp (caddr instr))
+             (flags-temp (cadddr instr)))
+         (append (linear-load-temp :x0 path-temp)
+                 (arm64:sub :x0 :x0 4 :imm t)  ; untag string
+                 (arm64:add :x0 :x0 8 :imm t)  ; skip length
+                 (linear-load-temp :x1 flags-temp)
+                 (arm64:lsr :x1 :x1 4 :imm t)  ; untag flags
+                 (arm64:movz :x2 0)            ; mode = 0
+                 (arm64:movz :x16 5)           ; open syscall
+                 (arm64:svc 0)
+                 (arm64:lsl :x0 :x0 4 :imm t)  ; tag result
+                 (linear-save-temp dst))))
+
+      ;; Sys-read: read(fd, buf, len) -> bytes read
+      (sys-read
+       (let ((dst (cadr instr))
+             (fd-temp (caddr instr))
+             (buf-temp (cadddr instr))
+             (len-temp (car (cddddr instr))))
+         (append (linear-load-temp :x0 fd-temp)
+                 (arm64:lsr :x0 :x0 4 :imm t)
+                 (linear-load-temp :x1 buf-temp)
+                 (arm64:sub :x1 :x1 3 :imm t)  ; untag vector
+                 (arm64:add :x1 :x1 8 :imm t)  ; skip length
+                 (linear-load-temp :x2 len-temp)
+                 (arm64:lsr :x2 :x2 4 :imm t)
+                 (arm64:movz :x16 3)           ; read syscall
+                 (arm64:svc 0)
+                 (arm64:lsl :x0 :x0 4 :imm t)
+                 (linear-save-temp dst))))
+
+      ;; Sys-write: write(fd, buf, len) -> bytes written
+      (sys-write
+       (let ((dst (cadr instr))
+             (fd-temp (caddr instr))
+             (buf-temp (cadddr instr))
+             (len-temp (car (cddddr instr))))
+         (append (linear-load-temp :x0 fd-temp)
+                 (arm64:lsr :x0 :x0 4 :imm t)
+                 (linear-load-temp :x1 buf-temp)
+                 (arm64:sub :x1 :x1 3 :imm t)  ; untag vector
+                 (arm64:add :x1 :x1 8 :imm t)  ; skip length
+                 (linear-load-temp :x2 len-temp)
+                 (arm64:lsr :x2 :x2 4 :imm t)
+                 (arm64:movz :x16 4)           ; write syscall
+                 (arm64:svc 0)
+                 (arm64:lsl :x0 :x0 4 :imm t)
+                 (linear-save-temp dst))))
+
+      ;; Sys-close: close(fd)
+      (sys-close
+       (let ((dst (cadr instr))
+             (fd-temp (caddr instr)))
+         (append (linear-load-temp :x0 fd-temp)
+                 (arm64:lsr :x0 :x0 4 :imm t)
+                 (arm64:movz :x16 6)           ; close syscall
+                 (arm64:svc 0)
+                 (arm64:lsl :x0 :x0 4 :imm t)
+                 (linear-save-temp dst))))
+
+      ;; Vector-ref: (vector-ref dst vec idx)
+      ;; Vector-length: get length of vector (returns tagged fixnum)
+      (vector-length
+       (let ((dst (cadr instr))
+             (vec-temp (caddr instr)))
+         (append (linear-load-temp :x0 vec-temp)
+                 (arm64:sub :x0 :x0 3 :imm t)     ; untag vector (tag 3)
+                 (arm64:ldr :x0 :x0 :offset 0)    ; x0 = raw length
+                 (arm64:lsl :x0 :x0 4 :imm t)     ; tag as fixnum
+                 (linear-save-temp dst))))
+
+      (vector-ref
+       (let ((dst (cadr instr))
+             (vec-temp (caddr instr))
+             (idx-temp (cadddr instr)))
+         (append (linear-load-temp :x1 vec-temp)
+                 (arm64:sub :x1 :x1 3 :imm t)  ; untag vector
+                 (linear-load-temp :x0 idx-temp)
+                 ;; offset = (idx >> 1) + 8 = idx_untagged * 8 + 8
+                 (arm64:lsr :x0 :x0 1 :imm t)  ; x0 = idx_untagged * 8
+                 (arm64:add :x0 :x0 8 :imm t)  ; x0 = 8 + idx_untagged * 8
+                 (arm64:add :x1 :x1 :x0)       ; x1 = address
+                 (arm64:ldr :x0 :x1 :offset 0) ; x0 = [x1] = element
+                 (linear-save-temp dst))))
+
+      ;; Vector-set: (vector-set dst vec idx val)
+      (vector-set
+       (let ((dst (cadr instr))
+             (vec-temp (caddr instr))
+             (idx-temp (cadddr instr))
+             (val-temp (car (cddddr instr))))
+         (append (linear-load-temp :x0 vec-temp)
+                 (arm64:sub :x0 :x0 3 :imm t)  ; untag vector
+                 (linear-load-temp :x1 idx-temp)
+                 (arm64:lsr :x1 :x1 4 :imm t)  ; untag index
+                 (arm64:add :x1 :x1 1 :imm t)  ; skip length slot
+                 (arm64:lsl :x1 :x1 3 :imm t)  ; *8 for offset
+                 (arm64:add :x0 :x0 :x1)       ; x0 = address
+                 (linear-load-temp :x2 val-temp)
+                 (arm64:str :x2 :x0 :offset 0)
+                 (arm64:mov :x0 :x2)           ; return value
+                 (linear-save-temp dst))))
+
+      ;; Buffer-byte-ref: get raw byte at index from vector data area
+      ;; Vector layout: [length (8 bytes)][raw bytes...]
+      (buffer-byte-ref
+       (let ((dst (cadr instr))
+             (buf-temp (caddr instr))
+             (idx-temp (cadddr instr)))
+         (append (linear-load-temp :x0 buf-temp)
+                 (arm64:sub :x0 :x0 3 :imm t)  ; untag vector (tag 3)
+                 (arm64:add :x0 :x0 8 :imm t)  ; skip length
+                 (linear-load-temp :x1 idx-temp)
+                 (arm64:lsr :x1 :x1 4 :imm t)  ; untag index
+                 (arm64:add :x0 :x0 :x1)       ; x0 = address
+                 (arm64:ldrb :x0 :x0 0)        ; load byte
+                 (arm64:lsl :x0 :x0 4 :imm t)  ; tag as fixnum
+                 (linear-save-temp dst))))
+
+      ;; Buffer-byte-set: set byte in buffer
+      (buffer-byte-set
+       (let ((dst (cadr instr))
+             (buf-temp (caddr instr))
+             (idx-temp (cadddr instr))
+             (val-temp (car (cddddr instr))))
+         (append (linear-load-temp :x0 buf-temp)
+                 (arm64:sub :x0 :x0 3 :imm t)  ; untag vector
+                 (arm64:add :x0 :x0 8 :imm t)  ; skip length
+                 (linear-load-temp :x1 idx-temp)
+                 (arm64:lsr :x1 :x1 4 :imm t)
+                 (arm64:add :x0 :x0 :x1)       ; x0 = address
+                 (linear-load-temp :x2 val-temp)
+                 (arm64:lsr :x2 :x2 4 :imm t)
+                 (arm64:strb :x2 :x0 :offset 0)
+                 (linear-save-temp dst))))
+
+      ;; Mem-set-byte: set byte at pointer + offset
+      (mem-set-byte
+       (let ((dst (cadr instr))
+             (ptr-temp (caddr instr))
+             (off-temp (cadddr instr))
+             (val-temp (car (cddddr instr))))
+         (append (linear-load-temp :x0 ptr-temp)
+                 (arm64:lsr :x0 :x0 4 :imm t)
+                 (linear-load-temp :x1 off-temp)
+                 (arm64:lsr :x1 :x1 4 :imm t)
+                 (arm64:add :x0 :x0 :x1)
+                 (linear-load-temp :x2 val-temp)
+                 (arm64:lsr :x2 :x2 4 :imm t)
+                 (arm64:strb :x2 :x0 :offset 0)
+                 (arm64:movz :x0 6)  ; return nil
+                 (linear-save-temp dst))))
+
+      ;; Mem-load-64: load 64-bit value from pointer + offset
+      (mem-load-64
+       (let ((dst (cadr instr))
+             (ptr-temp (caddr instr))
+             (off-temp (cadddr instr)))
+         (append (linear-load-temp :x0 ptr-temp)
+                 (arm64:lsr :x0 :x0 4 :imm t)
+                 (linear-load-temp :x1 off-temp)
+                 (arm64:lsr :x1 :x1 4 :imm t)
+                 (arm64:add :x0 :x0 :x1)
+                 (arm64:ldr :x0 :x0 :offset 0)
+                 (arm64:lsl :x0 :x0 4 :imm t)  ; tag as fixnum
+                 (linear-save-temp dst))))
+
+      ;; Boolean not
+      (bnot
+       (let ((dst (cadr instr))
+             (arg-temp (caddr instr)))
+         (append (linear-load-temp :x0 arg-temp)
+                 (arm64:cmp :x0 6 :imm t)  ; compare to nil
+                 (arm64:cset :x0 :eq)      ; x0 = 1 if nil, 0 otherwise
+                 (arm64:lsl :x0 :x0 4 :imm t)  ; tag result
+                 (linear-save-temp dst))))
+
+      ;; symbol-name: get string name from symbol
+      ;; Symbol = (string-ptr | 2), String = (ptr | 4)
+      (symbol-name
+       (let ((dst (cadr instr))
+             (sym-temp (caddr instr)))
+         (append (linear-load-temp :x0 sym-temp)
+                 (arm64:sub :x0 :x0 2 :imm t)  ; untag symbol (tag 2)
+                 (arm64:add :x0 :x0 4 :imm t)  ; add string tag (4)
+                 (linear-save-temp dst))))
+
+      ;; string-equal: compare two strings for equality
+      ;; Returns tagged 16 (true) or 6 (nil/false)
+      (string-equal
+       (let ((dst (cadr instr))
+             (str1-temp (caddr instr))
+             (str2-temp (cadddr instr)))
+         (append
+          ;; Load both strings
+          (linear-load-temp :x0 str1-temp)
+          (linear-load-temp :x9 str2-temp)
+          ;; Check for nil (tag 6)
+          (arm64:cmp :x0 6 :imm t)           ; is str1 nil?
+          (arm64:b.eq 4)                     ; yes, jump to nil_check (+4)
+          (arm64:cmp :x9 6 :imm t)           ; is str2 nil?
+          (arm64:b.eq 25)                    ; yes, str1!=nil so return false (+25)
+          (arm64:b 5)                        ; both non-nil, skip to compare (+5)
+          ;; nil_check: str1 is nil
+          (arm64:cmp :x9 6 :imm t)           ; is str2 also nil?
+          (arm64:b.ne 22)                    ; no, return false (+22)
+          ;; Both are nil, return true
+          (arm64:movz :x0 16)                ; x0 = 16 (tagged 1)
+          (arm64:b 21)                       ; jump to end (+21)
+          ;; compare: both are valid strings
+          (arm64:and* :x2 :x9 -16 :imm t)    ; x2 = str2 & ~0xF (untagged)
+          (arm64:and* :x1 :x0 -16 :imm t)    ; x1 = str1 & ~0xF (untagged)
+          ;; Load lengths
+          (arm64:ldr :x3 :x1 :offset 0)      ; x3 = len1
+          (arm64:ldr :x4 :x2 :offset 0)      ; x4 = len2
+          ;; Compare lengths
+          (arm64:cmp :x3 :x4)                ; cmp len1, len2
+          (arm64:b.ne 14)                    ; if len1 != len2, jump to return_false
+          ;; Lengths equal, setup for loop
+          (arm64:add :x1 :x1 8 :imm t)       ; x1 = str1 data start
+          (arm64:add :x2 :x2 8 :imm t)       ; x2 = str2 data start
+          (arm64:movz :x4 0)                 ; x4 = 0 (loop counter)
+          ;; loop_start:
+          (arm64:cmp :x4 :x3)                ; cmp counter, len
+          (arm64:b.ge 7)                     ; if counter >= len, return_true
+          ;; Load bytes from both strings
+          (arm64:ldrb :x5 :x1 :x4 :reg t)    ; x5 = str1[counter]
+          (arm64:ldrb :x6 :x2 :x4 :reg t)    ; x6 = str2[counter]
+          ;; Compare bytes
+          (arm64:cmp :x5 :x6)                ; cmp char1, char2
+          (arm64:b.ne 5)                     ; if not equal, return_false
+          ;; Increment counter
+          (arm64:add :x4 :x4 1 :imm t)       ; x4++
+          (arm64:b -7)                       ; back to loop_start (-7)
+          ;; return_true:
+          (arm64:movz :x0 16)                ; x0 = 16 (tagged 1)
+          (arm64:b 2)                        ; skip return_false
+          ;; return_false:
+          (arm64:movz :x0 6)                 ; x0 = 6 (nil)
+          (linear-save-temp dst))))
+
+      ;; make-string-from-vector: convert vector of char codes to string
+      ;; Simplified: only handles vectors, not lists
+      (make-string-from-vector
+       (let ((dst (cadr instr))
+             (vec-temp (caddr instr)))
+         (append
+          ;; Load vector
+          (linear-load-temp :x1 vec-temp)
+          (arm64:sub :x1 :x1 3 :imm t)           ; untag vector
+          ;; x5 = vec length
+          (arm64:ldr :x5 :x1 :offset 0)
+          ;; GC pre-check
+          (gc-trigger-code)
+          ;; Allocate string: store length at [x28]
+          (arm64:str :x5 :heap :offset 0)
+          ;; x4 = alloc size = (8 + len + 15) & ~15
+          (arm64:add :x4 :x5 23 :imm t)
+          (arm64:and* :x4 :x4 -16 :imm t)
+          ;; x0 = string base, bump heap
+          (arm64:mov :x0 :heap)
+          (arm64:add :heap :heap :x4)
+          ;; x2 = string data = x0 + 8
+          (arm64:add :x2 :x0 8 :imm t)
+          ;; x3 = loop counter = 0
+          (arm64:movz :x3 0)
+          ;; Loop: copy chars from vector to string
+          (arm64:cmp :x3 :x5)                    ; 0
+          (arm64:b.ge 10)                        ; +10 = skip 10 instructions to end
+          ;; Load vec[x3]: address = x1 + 8 + x3*8
+          (arm64:lsl :x4 :x3 3 :imm t)           ; x4 = x3 * 8
+          (arm64:add :x4 :x4 8 :imm t)           ; x4 = 8 + x3*8
+          (arm64:add :x4 :x1 :x4)                ; x4 = vec_base + offset
+          (arm64:ldr :x4 :x4 :offset 0)          ; x4 = tagged fixnum
+          (arm64:lsr :x4 :x4 4 :imm t)           ; x4 = char value
+          (arm64:strb :x4 :x2 :x3 :reg t)        ; [x2 + x3] = x4 (byte)
+          (arm64:add :x3 :x3 1 :imm t)           ; x3++
+          (arm64:b -10)                          ; back to cmp
+          ;; Tag result with string tag (4)
+          (arm64:movz :x4 4)
+          (arm64:orr :x0 :x0 :x4)
+          (linear-save-temp dst))))
+
+      ;; make-symbol: convert string to symbol (just change tag)
+      (make-symbol
+       (let ((dst (cadr instr))
+             (str-temp (caddr instr)))
+         (append (linear-load-temp :x0 str-temp)
+                 (arm64:sub :x0 :x0 4 :imm t)  ; untag string (tag 4)
+                 (arm64:add :x0 :x0 2 :imm t)  ; add symbol tag (2)
+                 (linear-save-temp dst))))
+
+      ;; load-lambda: create closure on heap
+      ;; Format: (load-lambda dst name free-offsets)
+      (load-lambda
+       (let* ((dst (cadr instr))
+              (name (caddr instr))
+              (free-offsets (cadddr instr))
+              ;; Look up function offset
+              (fn-entry (lookup-string name fnoffs))
+              (fn-offset (if fn-entry (cdr fn-entry) 0)))
+         (if (null free-offsets)
+             ;; No captures - simple closure
+             (append
+              (gc-trigger-code)
+              (load-addr-8 :x0 (ash fn-offset 4))
+              (arm64:str :x0 :heap :offset 0)
+              (arm64:movz :x0 0)              ; nil for empty env
+              (arm64:str :x0 :heap :offset 8)
+              (arm64:mov :x0 :heap)
+              (arm64:add :x0 :x0 5 :imm t)    ; closure tag
+              (arm64:add :heap :heap 16 :imm t)
+              (gc-trigger-code)
+              (linear-save-temp dst))
+             ;; Has captures - build cons chain of captured values
+             (labels ((gen-cons-chain (offs)
+                        (if (null offs)
+                            (arm64:movz :x0 0)  ; nil
+                            (let* ((off (car offs))
+                                   (off8 (* off 8))
+                                   (rest-code (gen-cons-chain (cdr offs))))
+                              (append
+                               rest-code
+                               ;; Save cdr (rest of list) in heap
+                               (arm64:str :x0 :heap :offset 8)
+                               ;; Load current value from [env - offset*8]
+                               (arm64:sub :x1 :env off8 :imm t)
+                               (arm64:ldr :x0 :x1 :offset 0)
+                               ;; Store as car
+                               (arm64:str :x0 :heap :offset 0)
+                               ;; Make cons pointer (tag 1)
+                               (arm64:mov :x0 :heap)
+                               (arm64:add :x0 :x0 1 :imm t)
+                               (arm64:add :heap :heap 16 :imm t))))))
+               (append
+                (gc-trigger-code)
+                ;; Build captured env cons chain
+                (gen-cons-chain free-offsets)
+                ;; x0 now has captured env, save to heap+8
+                (arm64:str :x0 :heap :offset 8)
+                ;; Store fn-offset at heap+0
+                (load-addr-8 :x9 (ash fn-offset 4))
+                (arm64:str :x9 :heap :offset 0)
+                ;; Create closure pointer (tag 5)
+                (arm64:mov :x0 :heap)
+                (arm64:add :x0 :x0 5 :imm t)
+                (arm64:add :heap :heap 16 :imm t)
+                (gc-trigger-code)
+                (linear-save-temp dst))))))
+
+      ;; buffer-to-string: convert raw byte buffer to string (inline)
+      ;; Allocates string on heap, copies bytes from buffer
+      (buffer-to-string
+       (let ((dst (cadr instr))
+             (buf-temp (caddr instr))
+             (len-temp (cadddr instr)))
+         (append
+          ;; Load buf to x1, len to x5 (untagged)
+          (linear-load-temp :x1 buf-temp)
+          (arm64:sub :x1 :x1 3 :imm t)      ; untag vector (tag 3)
+          (arm64:add :x1 :x1 8 :imm t)      ; skip length header, x1 = data ptr
+          (linear-load-temp :x5 len-temp)
+          (arm64:lsr :x5 :x5 4 :imm t)      ; untag length
+          ;; GC pre-check
+          (gc-trigger-code)
+          ;; Allocate string: store length at [x28]
+          (arm64:str :x5 :heap :offset 0)
+          ;; x4 = alloc size = (8 + len + 15) & ~15
+          (arm64:add :x4 :x5 23 :imm t)     ; x4 = len + 23
+          (arm64:and* :x4 :x4 -16 :imm t)   ; x4 = (len + 23) & ~15
+          ;; x0 = string base, bump heap
+          (arm64:mov :x0 :heap)
+          (arm64:add :heap :heap :x4)
+          ;; x2 = string data base = x0 + 8
+          (arm64:add :x2 :x0 8 :imm t)
+          ;; x3 = loop counter = 0
+          (arm64:movz :x3 0)
+          ;; Loop: copy bytes from buf to string
+          ;; loop_start: cmp x3, x5; b.ge +6; ldrb; strb; add; b loop_start
+          (arm64:cmp :x3 :x5)               ; 0
+          (arm64:b.ge 6)                    ; +6 = 24 bytes = 6 instrs
+          (arm64:add :x4 :x1 :x3)           ; x4 = buf_data + x3
+          (arm64:ldrb :x4 :x4 0)            ; x4 = byte at [x4]
+          (arm64:strb :x4 :x2 :x3 :reg t)   ; [x2 + x3] = x4 (register offset)
+          (arm64:add :x3 :x3 1 :imm t)      ; x3++
+          (arm64:b -6)                      ; back to cmp (-6 = -24 bytes)
+          ;; loop_end: tag result with string tag (4)
+          (arm64:movz :x4 4)                ; x4 = string tag
+          (arm64:orr :x0 :x0 :x4)           ; x0 |= tag
+          (linear-save-temp dst))))
 
       (otherwise
        (error "codegen-linear-instr: unknown instruction ~S" op)))))
@@ -1783,6 +2316,8 @@
    Returns flat list of instruction bytes."
   (setf *linear-labels* nil)
   (setf *linear-fixups* nil)
+  (setf *linear-block-info* nil)
+  (setf *linear-loop-stack* nil)
   (let ((code nil)
         (offset 0))
     ;; First pass: generate code, record label positions and fixups
@@ -1815,6 +2350,60 @@
              (let ((branch-code (arm64:b.eq 0)))
                (setf code (append code branch-code))
                (incf offset (length branch-code)))))
+
+          ;; Block start - record block info for return-from
+          ((eq op 'block-start)
+           (let ((block-id (cadr instr))
+                 (end-label (caddr instr))
+                 (dst-temp (cadddr instr)))
+             (push (cons block-id (cons end-label dst-temp)) *linear-block-info*)))
+
+          ;; Return-from - save value to block's dst and jump to end
+          ((eq op 'return-from)
+           (let* ((block-id (cadr instr))
+                  (val-temp (caddr instr))
+                  (block-info (cdr (assoc block-id *linear-block-info* :test #'equal)))
+                  (end-label (car block-info))
+                  (dst-temp (cdr block-info)))
+             ;; Generate: load value, save to dst, then branch
+             (let ((save-code (append (linear-load-temp :x0 val-temp)
+                                      (linear-save-temp dst-temp))))
+               (setf code (append code save-code))
+               (incf offset (length save-code)))
+             ;; Record fixup for the jump
+             (push (cons offset end-label) *linear-fixups*)
+             (let ((branch-code (arm64:b 0)))
+               (setf code (append code branch-code))
+               (incf offset (length branch-code)))))
+
+          ;; Loop start - push label onto loop stack for continue
+          ((eq op 'loop-start)
+           (let ((loop-label (cadr instr)))
+             (push loop-label *linear-loop-stack*)))
+
+          ;; Continue - store-params already done, jump to loop start
+          ((eq op 'continue)
+           (let ((loop-label (car *linear-loop-stack*)))
+             (unless loop-label
+               (error "continue outside of loop"))
+             ;; Emit jump to loop start (fixup later)
+             (push (cons offset loop-label) *linear-fixups*)
+             (let ((branch-code (arm64:b 0)))
+               (setf code (append code branch-code))
+               (incf offset (length branch-code)))))
+
+          ;; Store-param - store temp value back to parameter slot for TCO
+          ((eq op 'store-param)
+           (let* ((src-temp (cadr instr))
+                  (param-idx (caddr instr))
+                  ;; Parameters are at env - idx*8 (same as load-var)
+                  (param-offset (* param-idx 8)))
+             ;; Load from temp, calculate param address, store
+             (let ((store-code (append (linear-load-temp :x0 src-temp)
+                                       (arm64:sub :x1 :env param-offset :imm t)
+                                       (arm64:str :x0 :x1 :offset 0))))
+               (setf code (append code store-code))
+               (incf offset (length store-code)))))
 
           ;; Normal instruction
           (t
@@ -3544,37 +4133,38 @@
 ;;; The frame layout supports up to 48 env slots.
 
 (defun fn-fixed-prologue ()
-  "Generate function prologue with fixed 1KB frame.
-   Frame layout after prologue (0x400 bytes = 1024 bytes):
+  "Generate function prologue with fixed 16KB frame.
+   Frame layout after prologue (0x4000 bytes = 16384 bytes):
    sp+0x10:  x19, x20 (saved)
    sp+0x20:  x21, x22 (saved)
    sp+0x30:  x23, x24 (saved)
-   sp+0x40:  temp slots (24 slots = 192 bytes, to 0x100)
-   sp+0x100: spill area (32 slots = 256 bytes, to 0x200)
-   sp+0x200: [free space for env slots to expand down]
-   sp+0x380: environment base (x20) - allows 48+ env slots before collision
-   sp+0x3F0: x29 (fp)
-   sp+0x3F8: x30 (lr)
-   Note: 1KB frame allows ~8K nested calls with 8MB stack."
+   sp+0x40:  temp slots (1792 slots = 14336 bytes, to 0x3840)
+   sp+0x3840: [free space for env slots to expand down]
+   sp+0x3F80: environment base (x20) - allows 48+ env slots before collision
+   sp+0x3FF0: x29 (fp)
+   sp+0x3FF8: x30 (lr)
+   Note: 16KB frame allows ~500 nested calls with 8MB stack."
   (append
-   (arm64:sub :sp :sp #x400 :imm t)         ;; Create 1024-byte frame
-   (arm64:str :fp :sp :offset #x3F0)        ;; Save fp at sp+0x3F0
-   (arm64:str :lr :sp :offset #x3F8)        ;; Save lr at sp+0x3F8
+   (arm64:sub :sp :sp #x4 :imm t :shift12 t) ;; sub sp, sp, #4, lsl #12 = sub sp, sp, #0x4000
+   (arm64:str :fp :sp :offset #x3FF0)       ;; Save fp at sp+0x3FF0
+   (arm64:str :lr :sp :offset #x3FF8)       ;; Save lr at sp+0x3FF8
    (arm64:add :fp :sp 0 :imm t)             ;; fp = sp
    (arm64:stp :x19 :env :sp :offset 16)
    (arm64:stp :x21 :x22 :sp :offset 32)
    (arm64:stp :x23 :closure :sp :offset 48)
-   (arm64:add :env :sp #x380 :imm t)))      ;; x20 = sp + 0x380
+   ;; x20 = sp + 0x3F80 - split into two adds since 0x3F80 > 4095
+   (arm64:add :env :sp #x3 :imm t :shift12 t)  ;; x20 = sp + 0x3000
+   (arm64:add :env :env #xF80 :imm t)))        ;; x20 = x20 + 0xF80 = sp + 0x3F80
 
 (defun fn-fixed-epilogue ()
-  "Generate function epilogue for fixed 1KB frame"
+  "Generate function epilogue for fixed 16KB frame"
   (append
    (arm64:ldp :x23 :closure :sp :offset 48)
    (arm64:ldp :x21 :x22 :sp :offset 32)
    (arm64:ldp :x19 :env :sp :offset 16)
-   (arm64:ldr :fp :sp :offset #x3F0)        ;; Restore fp from sp+0x3F0
-   (arm64:ldr :lr :sp :offset #x3F8)        ;; Restore lr from sp+0x3F8
-   (arm64:add :sp :sp #x400 :imm t)         ;; Restore 1024-byte frame
+   (arm64:ldr :fp :sp :offset #x3FF0)       ;; Restore fp from sp+0x3FF0
+   (arm64:ldr :lr :sp :offset #x3FF8)       ;; Restore lr from sp+0x3FF8
+   (arm64:add :sp :sp #x4 :imm t :shift12 t) ;; add sp, sp, #4, lsl #12 = add sp, sp, #0x4000
    (arm64:ret)))
 
 ;;; Native-only main prologue/epilogue (used when running as native binary)
@@ -3599,7 +4189,7 @@
   (let ((reg-alloc-code (codegen-fn-reg-alloc fn)))
     (when reg-alloc-code
       (return-from codegen-fn reg-alloc-code)))
-  ;; Fall back to linear codegen
+  ;; Fall back to linear codegen (reg-alloc returned nil)
   (let* ((params (cadr fn))
          (body-ir (caddr fn))
          (fourth (cadddr fn))
@@ -3883,7 +4473,7 @@
            ;; Link-time verification: check all call-fn targets resolve
            (_ #+sbcl (when (verify-link-references (mapcar #'car all-fns))
                        (error "Link failed: undefined function references")))
-           ;; Generate main code first (with nil fnoffs to get size)
+           ;; Generate main code using linear codegen (simpler, well-tested)
            (main-linear (linearize main-ir))
            (main-code-temp (append-all
                             (list (fn-fixed-prologue)

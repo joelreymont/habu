@@ -1328,6 +1328,11 @@
           (list 'string-concat-ir
                 (compile-expr-full (nth 1 expr) env fenv)
                 (compile-expr-full (nth 2 expr) env fenv)))
+         ;; string-equal - compare two strings
+         ((eq (car expr) 'string-equal)
+          (list 'string-equal-ir
+                (compile-expr-full (nth 1 expr) env fenv)
+                (compile-expr-full (nth 2 expr) env fenv)))
          ;; char-code - in Habu, characters ARE fixnums, so this is identity
          ((eq (car expr) 'char-code) (compile-expr-full (nth 1 expr) env fenv))
 
