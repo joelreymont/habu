@@ -28,7 +28,7 @@
    Returns the untagged result for small fixnums (0-255).
    Larger results or non-fixnum values require different approach."
   (let* ((temp-name (format nil "/tmp/habu_jit_~D_~D"
-                            (sb-posix:getpid)
+                            (get-universal-time)
                             (incf *jit-temp-counter*)))
          ;; Handle progn specially to keep defuns at top level
          (wrapped-source
