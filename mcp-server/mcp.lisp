@@ -1401,11 +1401,12 @@
                           question))
          (timeout 300))  ; 5 minute timeout for o3 reasoning
     (handler-case
-        (let* ((proc (sb-ext:run-program "/usr/local/bin/codex"
-                                         (list "-m" "o3" "exec" full-prompt)
+        (let* ((proc (sb-ext:run-program "codex"
+                                         (list "exec" full-prompt)
                                          :output :stream
                                          :error :stream
                                          :wait nil
+                                         :search t
                                          :directory habu-dir)))
           ;; Wait with timeout
           (let ((start-time (get-internal-real-time))

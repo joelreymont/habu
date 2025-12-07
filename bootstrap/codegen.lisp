@@ -408,10 +408,9 @@
 ;;; When t, uses nursery allocation with write barriers
 #+sbcl (defvar *use-generational-gc* nil)
 
-;;; Toggle for register-allocated codegen
-;;; When t, uses register allocator for function code generation
-;;; Falls back to accumulator-based codegen for unsupported IR
-#+sbcl (defvar *use-register-allocation* nil)
+;;; Register allocation is ALWAYS used - no fallback to accumulator codegen
+;;; The accumulator-based codegen has register clobbering bugs
+#+sbcl (defvar *use-register-allocation* t)
 
 
 (defun gc-trigger-code ()

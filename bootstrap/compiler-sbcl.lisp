@@ -5887,108 +5887,17 @@
                                 (remove-if-not #'consp (cdr ir)))))))
 
 (defun codegen-fn (fn rtaddrs fnoffs)
-  "Generate code for a function (defun or lifted lambda).
+  "Generate code for a function using register-allocated linear codegen.
    Defun format:  (name params body param-base)  ; param-base is a number
    Lambda format: (name params body free-vars free-offsets)  ; free-vars is a list or nil
-   Uses dynamically-sized stack frames based on variable count and temp depth.
-   When *use-register-allocation* is true, tries register-allocated codegen first."
-  ;; Try register-allocated codegen if enabled
-  (when *use-register-allocation*
-    (let ((reg-alloc-code (codegen-fn-reg-alloc fn)))
-      (when reg-alloc-code
-        (return-from codegen-fn reg-alloc-code))))
-  ;; Fall back to accumulator-based codegen
-  (let* ((ps (cadr fn))
-         (bir (caddr fn))
-         (fourth (cadddr fn))
-         ;; Calculate frame requirements
-         (num-params (length ps))
-         (max-let-offset (count-max-env-offset bir))
-         (max-env-size (max num-params (1+ max-let-offset)))
-         (max-temp-depth (count-max-temp-depth bir 0))
-         ;; Calculate dynamic frame size
-         ;; Layout: [saved regs+padding: 64] [temps: temp_depth*8] [env: env_size*8] [safety: 64]
-         ;; Note: temp-slot uses base #x40 (64), so saved regs area is 64 bytes
-         ;; IMPORTANT: spill-slot uses base #x240, so functions that call other functions
-         ;; need a frame of at least #x400 to have room for spill slots
-         (makes-calls (ir-may-call? bir))
-         (saved-regs 64)
-         (temp-area (* (+ max-temp-depth 8) 8))  ; +8 for safety margin
-         (env-area (* (+ max-env-size 8) 8))     ; +8 for safety margin
-         (frame-size-raw (+ saved-regs temp-area env-area 64))
-         ;; Round up to 16-byte alignment, with minimum #x400 for calling functions
-         (frame-size-aligned (logand (+ frame-size-raw 15) (lognot 15)))
-         ;; Use #x400 minimum for calling functions
-         ;; Dynamic frame-size-aligned should handle actual needs
-         ;; Reduced from #x800 to allow deeper recursion (8MB stack / 1KB = 8192 calls)
-         (frame-size (if makes-calls
-                         (max #x400 frame-size-aligned)
-                         frame-size-aligned))
-         ;; x20 offset = saved regs + temp area + env space (Bug #20 FIX)
-         ;; Variables accessed as [x20 - offset*8], so x20 must be high enough
-         ;; that var[max-env-size-1] = x20 - (max-env-size-1)*8 is above temp/spill area
-         ;; For calling functions, spill slots are at #x240, so x20 must be past that
-         (spill-end (if makes-calls #x440 0))  ; #x440 = #x240 + 512 (8 call levels)
-         (x20-offset-raw (+ saved-regs temp-area (* max-env-size 8)))
-         (x20-offset (max x20-offset-raw (+ spill-end (* max-env-size 8))))
-         ;; Leaf optimization: only for non-calling functions with no >8 params
-         ;; and max-env-size < 12 to avoid temp slot collision (Bug #19/#20)
-         (is-leaf (and (not makes-calls)
-                       (<= num-params 8)
-                       (< max-env-size 12))))
-    ;; Distinguish defun from lambda by checking 4th element
-    ;; Defuns have a number (param-base), lambdas have nil or a list (free-vars)
-    ;; Note: Lifted lambdas (via lambdas-to-defuns) have param-base > 0 which means
-    ;; they have captured variables that need to be copied from x24 to stack slots.
-    (if (numberp fourth)
-        ;; Defun or lifted lambda: params start at param-base
-        ;; If param-base > 0, this is a lifted lambda with captures
-        (let* ((pb fourth)
-               (param-count (length ps))
-               (has-captures (> pb 0)))
-          (if has-captures
-              ;; Lifted lambda: save params, copy captures, restore params
-              ;; This matches the lambda path logic below
-              (let* ((leaf-ok nil)  ;; captures need x24, so no leaf optimization
-                     (ps-save (save-params-to-temps param-count 0 nil))
-                     (cc (gen-capture-copies pb 0 nil))
-                     (pc (restore-params-from-temps ps pb param-count 0 nil))
-                     (bc (codegen bir rtaddrs fnoffs 0)))
-                (append (fn-prologue frame-size x20-offset :leaf leaf-ok)
-                        ps-save cc pc bc
-                        (fn-epilogue frame-size :leaf leaf-ok)
-                        (arm64:ret)))
-              ;; Regular defun: just store params
-              (let* ((pc (gen-param-stores ps pb 0 nil :leaf is-leaf))
-                     (bc (codegen bir rtaddrs fnoffs 0)))
-                (append (fn-prologue frame-size x20-offset :leaf is-leaf)
-                        pc bc
-                        (fn-epilogue frame-size :leaf is-leaf)
-                        (arm64:ret)))))
-        ;; Lambda: need to copy captures AND store params
-        ;; Problem: capture copy clobbers x0-x4, but params are in x0-x4
-        ;; Solution: save params to temp slots first, copy captures, then restore params
-        ;; Note: Lambdas with captures cannot be leaf-optimized (capture copy uses x24)
-        (let* ((free-vars fourth)
-               (capture-count (if free-vars (length free-vars) 0))
-               (param-count (length ps))
-               ;; Save params to temp slots before they get clobbered
-               (ps-save (if (> capture-count 0)
-                            (save-params-to-temps param-count 0 nil)
-                            nil))
-               ;; Copy captured values from x24 (closure env) to stack slots 0..N-1
-               (cc (gen-capture-copies capture-count 0 nil))
-               ;; Restore params from temp slots to final slots N..N+M-1
-               ;; Leaf optimize only if no captures (captures need x24)
-               (leaf-ok (and is-leaf (= capture-count 0)))
-               (pc (if (> capture-count 0)
-                       (restore-params-from-temps ps capture-count param-count 0 nil)
-                       (gen-param-stores ps 0 0 nil :leaf leaf-ok)))
-               (bc (codegen bir rtaddrs fnoffs 0)))
-          (append (fn-prologue frame-size x20-offset :leaf leaf-ok)
-                  ps-save cc pc bc
-                  (fn-epilogue frame-size :leaf leaf-ok)
-                  (arm64:ret))))))
+
+   NOTE: This ONLY uses register-allocated codegen from reg-alloc.lisp.
+   The old accumulator-based codegen had register clobbering bugs and was removed."
+  (declare (ignore rtaddrs fnoffs))
+  (let ((code (codegen-fn-reg-alloc fn)))
+    (unless code
+      (error "codegen-fn-reg-alloc failed for ~A - IR not supported" (car fn)))
+    code))
 
 (defun codegen-main (mir rtaddrs)
   (append (prologue)
