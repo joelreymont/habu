@@ -129,7 +129,11 @@
     (values (nreverse bytes) (nreverse offsets))))
 
 (defun read-string-from-table (bytes offset)
-  "Read length-prefixed string from byte vector at offset."
+  "Read length-prefixed string from byte vector at offset.
+   Returns empty string if bytes is empty or offset is out of bounds."
+  (when (or (zerop (length bytes))
+            (>= offset (length bytes)))
+    (return-from read-string-from-table ""))
   (let* ((len (logior (aref bytes offset)
                       (ash (aref bytes (1+ offset)) 8)))
          (str (make-string len)))
@@ -251,11 +255,26 @@
 ;;; ============================================================
 
 (defun read-fasl-header (stream)
-  "Read FASL header from stream (36 bytes for v2)."
-  (let* ((magic (read-u32-le stream))
-         (version (read-u32-le stream)))
-    (unless (= magic +fasl-magic+)
-      (error "Invalid FASL magic number: ~X" magic))
+  "Read FASL header from stream (36 bytes for v2).
+   Only handles old FASL format. For HFSL format, use read-fasl-v2 instead."
+  (let* ((magic (handler-case (read-u32-le stream)
+                  (end-of-file ()
+                    (error "Invalid FASL file: empty or truncated (no magic number)"))))
+         (version (handler-case (read-u32-le stream)
+                    (end-of-file ()
+                      (error "Invalid FASL file: truncated (no version)")))))
+    ;; Check for FASL magic, provide helpful error for HFSL
+    (cond
+      ((= magic +fasl-magic+)
+       ;; Valid FASL format, continue
+       nil)
+      ((= magic #x4C534648)
+       ;; HFSL format detected (different byte order/format)
+       (error "HFSL format detected. Use read-fasl-v2 or link-fasls instead of read-fasl."))
+      (t
+       (error "Invalid FASL magic number: ~X (expected ~X for FASL). ~
+               File may be corrupted or not a FASL file."
+              magic +fasl-magic+)))
     (unless (<= version +fasl-version+)
       (error "Unsupported FASL version: ~D (max: ~D)" version +fasl-version+))
     (let ((header (make-fasl-header
