@@ -324,11 +324,9 @@
 
 (defun neg (rd rm)
   "NEG Xd, Xm
-   Negate (alias for SUB Xd, XZR, Xm using extended register form).
-   Uses SUB (extended register) because only in that variant does Rn=31 mean XZR.
-   In SUB/SUBS (shifted register), Rn=31 means SP, not XZR.
-   Encoding: SUB Xd, XZR, Xm, UXTX (option=011, imm3=000)"
-  (encode (logior #xCB2063E0 (ash (reg rm) 16) (reg rd))))
+   Negate (alias for SUB Xd, XZR, Xm, LSL #0).
+   Encoding: SUB (shifted register) with Rn=31 (XZR), shift=LSL, imm6=0"
+  (encode (logior #xCB0003E0 (ash (reg rm) 16) (reg rd))))
 
 (defun subs (rd rn rm-or-imm &key imm)
   "SUBS Xd, Xn, Xm  or  SUBS Xd, Xn, #imm
