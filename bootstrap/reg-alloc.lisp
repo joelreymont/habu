@@ -214,8 +214,8 @@
      (let ((vr (next-vreg counter)))
        (list (list (list 'tac-var vr (cadr ir))) vr)))
 
-    ;; Binary operations: add, sub, mul, div, mod
-    ((and (consp ir) (ir-tag-member (car ir) '("ADD" "SUB" "MUL" "DIV" "MOD")))
+    ;; Binary operations: add, sub, mul, div, mod, bsh, band, bor, bxor
+    ((and (consp ir) (ir-tag-member (car ir) '("ADD" "SUB" "MUL" "DIV" "MOD" "BSH" "BAND" "BOR" "BXOR")))
      (let* ((left-result (ir-to-tac (cadr ir) counter))
             (left-instrs (car left-result))
             (left-vr (cadr left-result))
@@ -978,12 +978,37 @@
                      (arm64:mul :x8 :x8 right-reg)                 ; x8 = (a/b)*b
                      (arm64:sub dest-reg left-reg :x8)           ; dest = a - (a/b)*b
                      (arm64:lsl dest-reg dest-reg 4 :imm t)))  ; retag
+            ((:BSH)
+             ;; Bit shift: positive = left, negative = right
+             ;; Untag both operands, branch on sign, retag result
+             (append (arm64:asr left-reg left-reg 4 :imm t)    ; untag value
+                     (arm64:asr right-reg right-reg 4 :imm t)  ; untag amount
+                     (arm64:cmp right-reg 0 :imm t)            ; compare amount to 0
+                     (arm64:b.lt 3)                            ; if negative, jump to right shift
+                     ;; Positive (left shift)
+                     (arm64:lsl dest-reg left-reg right-reg)   ; LSLV
+                     (arm64:b 3)                               ; skip right shift
+                     ;; Negative (right shift)
+                     (arm64:neg right-reg right-reg)           ; negate to get positive amount
+                     (arm64:asr dest-reg left-reg right-reg)   ; ASRV
+                     ;; Retag result
+                     (arm64:lsl dest-reg dest-reg 4 :imm t)))
+            ((:BAND)
+             ;; Bitwise AND - works directly on tagged values
+             (arm64:and* dest-reg left-reg right-reg))
+            ((:BOR)
+             ;; Bitwise OR - works directly on tagged values
+             (arm64:orr dest-reg left-reg right-reg))
+            ((:BXOR)
+             ;; Bitwise XOR - need to preserve tag bits
+             ;; XOR the values, then restore tag (low 4 bits should be 0 for fixnums)
+             (arm64:eor dest-reg left-reg right-reg))
             (t (arm64:mov dest-reg :x0)))  ; Unknown op
           ;; Store if spilled
           (when (and (consp dest) (eq (car dest) :spill))
             (arm64:str :x0 :sp :offset (* (cadr dest) 8))))))
 
-      ;; tac-cmp: comparison (result is 0 or non-zero)
+      ;; tac-cmp: comparison (result is tagged nil=6 or t=16)
       ((tac-cmp)
        (let* ((dest-vreg (cadr instr))
               (cmp-op (caddr instr))
@@ -1003,7 +1028,7 @@
             (arm64:ldr :x1 :sp :offset (* (cadr right) 8)))
           ;; Compare
           (arm64:cmp left-reg right-reg)
-          ;; Set result based on condition
+          ;; Set result based on condition (0 or 1)
           (case cmp-op
             ((cmp-eq) (arm64:cset dest-reg arm64:+eq+))
             ((cmp-ne) (arm64:cset dest-reg arm64:+ne+))
@@ -1012,6 +1037,14 @@
             ((cmp-gt) (arm64:cset dest-reg arm64:+gt+))
             ((cmp-ge) (arm64:cset dest-reg arm64:+ge+))
             (t (arm64:movz dest-reg 0)))
+          ;; Convert 0/1 to tagged nil(6)/t(16):
+          ;; neg dest, dest  => -1 (all 1s) or 0
+          ;; and dest, dest, #10 => 10 or 0 (use x2 as scratch for mask)
+          ;; add dest, dest, #6 => 16 or 6
+          (arm64:neg dest-reg dest-reg)
+          (arm64:movz :x2 10)
+          (arm64:and* dest-reg dest-reg :x2)
+          (arm64:add dest-reg dest-reg 6 :imm t)
           ;; Store if spilled
           (when (and (consp dest) (eq (car dest) :spill))
             (arm64:str :x0 :sp :offset (* (cadr dest) 8))))))
@@ -1478,9 +1511,9 @@
           ((and (consp item) (eq (car item) :branch-marker))
            (let* ((target-label (cadr item))
                   (target-pos (cdr (assoc target-label label-positions)))
-                  ;; Offset in instructions (4 bytes each), from NEXT instruction
+                  ;; ARM64: target = PC + (offset * 4), where PC is branch address
                   (offset (if target-pos
-                              (ash (- target-pos (+ pos 4)) -2)
+                              (ash (- target-pos pos) -2)
                               0)))
              (setq resolved (append resolved (arm64:b offset)))
              (setq pos (+ pos 4))))
@@ -1489,8 +1522,9 @@
           ((and (consp item) (eq (car item) :branch-ne-marker))
            (let* ((target-label (cadr item))
                   (target-pos (cdr (assoc target-label label-positions)))
+                  ;; ARM64: target = PC + (offset * 4), where PC is branch address
                   (offset (if target-pos
-                              (ash (- target-pos (+ pos 4)) -2)
+                              (ash (- target-pos pos) -2)
                               0)))
              (setq resolved (append resolved (arm64:b.ne offset)))
              (setq pos (+ pos 4))))
@@ -1499,8 +1533,9 @@
           ((and (consp item) (eq (car item) :branch-eq-marker))
            (let* ((target-label (cadr item))
                   (target-pos (cdr (assoc target-label label-positions)))
+                  ;; ARM64: target = PC + (offset * 4), where PC is branch address
                   (offset (if target-pos
-                              (ash (- target-pos (+ pos 4)) -2)
+                              (ash (- target-pos pos) -2)
                               0)))
              (setq resolved (append resolved (arm64:b.eq offset)))
              (setq pos (+ pos 4))))
