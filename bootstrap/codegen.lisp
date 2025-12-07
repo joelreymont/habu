@@ -3680,8 +3680,9 @@
       acc
       (if (< idx 8)
           (let* ((offset (* (+ base idx) 8))
+                 (arg-reg (arm64:num-to-reg idx))
                  (store (append (arm64:sub :x9 :env offset :imm t)
-                                     (arm64:str idx 9 :offset 0))))
+                                     (arm64:str arg-reg :x9 :offset 0))))
             (gen-param-stores (cdr params) base (+ idx 1)
                                    (append acc store)))
           ;; Args 8+ would need stack loading - skip for now
