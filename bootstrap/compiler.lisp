@@ -95,17 +95,25 @@
 
 #+sbcl (defvar *undefined-functions* nil "Functions called but not defined")
 #+sbcl (defvar *all-call-targets* nil "All call-fn targets for link-time check")
+#+sbcl (defvar *declared-imports* nil "Functions declared as imports (resolved at link time)")
 
 #+sbcl
 (defun reset-compile-warnings ()
   "Reset undefined function tracking before compilation"
   (setq *undefined-functions* nil)
-  (setq *all-call-targets* nil))
+  (setq *all-call-targets* nil)
+  (setq *declared-imports* nil))
+
+#+sbcl
+(defun declare-imports (imports)
+  "Declare functions that will be resolved at link time"
+  (setq *declared-imports* imports))
 
 #+sbcl
 (defun record-undefined-function (name)
-  "Record that an undefined function was called"
-  (unless (member name *undefined-functions*)
+  "Record that an undefined function was called (unless it's a declared import)"
+  (unless (or (member name *undefined-functions*)
+              (member name *declared-imports*))
     (push name *undefined-functions*)))
 
 #+sbcl
@@ -125,10 +133,11 @@
 
 #+sbcl
 (defun verify-link-references (defined-fns)
-  "Verify all call-fn targets are in defined-fns list. Returns T if errors found."
+  "Verify all call-fn targets are in defined-fns list (or declared imports). Returns T if errors found."
   (let ((undefined nil))
     (dolist (target *all-call-targets*)
-      (unless (member target defined-fns)
+      (unless (or (member target defined-fns)
+                  (member target *declared-imports*))
         (push target undefined)))
     (when undefined
       (format t "~%LINK ERROR: Functions called but not compiled:~%")

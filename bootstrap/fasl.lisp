@@ -468,15 +468,17 @@
                        :target (gethash target-str extern-index))))))
             markers)))
 
-(defun compile-to-fasl (forms output-path &key exports)
+(defun compile-to-fasl (forms output-path &key exports imports)
   "Compile forms to FASL file.
    EXPORTS: list of function names to export (visible to other modules).
+   IMPORTS: list of function names that will be resolved at link time.
    This is the entry point for compile-file."
   ;; Reset compiler state
   #-sbcl (register-compiler-symbols)
   (reset-symbol-table)
   (reset-lambda-counter)
   #+sbcl (reset-compile-warnings)
+  #+sbcl (when imports (declare-imports imports))
 
   (let* ((result (compile-forms forms))
          ;; Check for undefined functions
@@ -543,25 +545,31 @@
                                    functions)))
       (declare (ignore _))
 
-      ;; Write FASL
-      (write-fasl output-path functions code-bytes relocations nil)
-      (format t "Compiled ~D functions (~D exported) to ~A (~D bytes, ~D relocations)~%"
-              (length functions) num-exported output-path
-              (length code-bytes) (length relocations))
-      output-path)))
+      ;; Build import structs
+      (let ((import-structs (mapcar (lambda (name)
+                                      (make-fasl-import :name name))
+                                    (or imports nil))))
+        ;; Write FASL
+        (write-fasl output-path functions code-bytes relocations nil :imports import-structs)
+        (format t "Compiled ~D functions (~D exported) to ~A (~D bytes, ~D relocations~@[, ~D imports~])~%"
+                (length functions) num-exported output-path
+                (length code-bytes) (length relocations)
+                (if import-structs (length import-structs) nil))
+        output-path))))
 
 ;;; ============================================================
 ;;; compile-file - CL-compatible interface
 ;;; ============================================================
 
 (defun compile-file (input-file &key (output-file nil) (verbose *compile-verbose*)
-                                     (print *compile-print*) exports)
+                                     (print *compile-print*) exports imports)
   "Compile a Lisp source file to FASL.
    INPUT-FILE: pathname designator for source file
    OUTPUT-FILE: pathname for output (default: input with .fasl extension)
    VERBOSE: print progress messages
    PRINT: print each form as compiled
    EXPORTS: list of function names to export (visible to other modules)
+   IMPORTS: list of function names that will be resolved at link time
    Returns: output-truename, warnings-p, failure-p"
   (declare (ignore print))  ; TODO: implement print
   (let* ((input (pathname input-file))
@@ -573,7 +581,7 @@
       (format t "; Compiling file ~A~%" (namestring input)))
     (handler-case
         (progn
-          (compile-to-fasl forms (namestring output) :exports exports)
+          (compile-to-fasl forms (namestring output) :exports exports :imports imports)
           (values (truename output) nil nil))
       (error (e)
         (format *error-output* "; Compilation failed: ~A~%" e)
