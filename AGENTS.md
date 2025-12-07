@@ -31,6 +31,21 @@ If MCP is broken or restarted, FIX IT or wait for it to recover. Do NOT fall bac
 **If an MCP tool fails**: Report the error, investigate, fix the MCP server code if needed.
 **Update this file when adding new MCP tools.**
 
+### ASDF for Dependencies - MANDATORY
+
+**ALWAYS use ASDF to load Habu. NEVER use `(load ...)` for bootstrap files.**
+
+```lisp
+;; CORRECT - use ASDF
+(asdf:load-system :habu)
+
+;; WRONG - never do this
+(load "bootstrap/compiler.lisp")  ; Files have complex dependencies!
+```
+
+The habu.asd file is in `bootstrap/`. ASDF handles the correct load order.
+MCP server loads via: `(asdf:load-system :habu)`
+
 ### Warnings = Errors (CRITICAL)
 
 **NEVER use `(declare (ignore ...))` to silence warnings. This is a hard rule.**
@@ -73,7 +88,7 @@ Every feature and bug fix MUST have tests. No exceptions.
 
 - Hex: `#x` prefix always
 - No emojis, no marketing language
-- Use ASDF, never `(load ...)`
+- **Use ASDF, never `(load ...)`** - see ASDF section above
 - Naming: `reg-alloc` (hyphenated)
 
 ### ARM64 Codegen
@@ -143,7 +158,7 @@ Every feature and bug fix MUST have tests. No exceptions.
 
 ### File Structure
 ```
-habu0.lisp            - Stage 1 interpreter (native Habu, self-hosting test)
+habu0.lisp            - **STAGE 1 SOURCE** - THE native Habu interpreter
 bootstrap/
   compiler-sbcl.lisp  - SBCL bootstrap compiler
   compiler.lisp       - Habu compiler (no SBCL deps)
@@ -158,7 +173,15 @@ arm64/
   asm.lisp            - ARM64 instruction encoders
 ```
 
-**habu0** is the Stage 1 native interpreter compiled from `habu0.lisp`. Use `habu0-eval` MCP tool to test it.
+### Stage 1 = habu0.lisp (CRITICAL)
+
+**habu0.lisp IS Stage 1. Period. No other file.**
+
+- Stage 1 binary is compiled from `habu0.lisp` by SBCL
+- Test with `habu0-eval` MCP tool
+- The binary is at project root as `habu0`
+- DO NOT look for or create any other "stage1" source files
+- There is NO habu-stage1-src.lisp - if you see one, DELETE IT
 
 ### FASL Build System
 
