@@ -1731,6 +1731,9 @@
                     (if (null (cddr args))
                         (list 'bxor (sys:compile (car args) env fenv) (sys:compile (cadr args) env fenv))
                         (sys:compile (list 'logxor (list 'logxor (car args) (cadr args)) (caddr args)) env fenv))))))
+         ((eq op 'lognot)
+          ;; Bitwise NOT - bnot-ir
+          (list 'bnot-ir (sys:compile (cadr expr) env fenv)))
          ((eq op 'ash)
           (list 'bsh (sys:compile (cadr expr) env fenv) (sys:compile (caddr expr) env fenv)))
          ((eq op '=)
@@ -1991,6 +1994,12 @@
          ((eq op 'vectorp)
           ;; Vector tag is 3, so compare with (lit 3) -> becomes 3<<4=48
           (list 'cmp-eq (list 'get-tag (sys:compile (cadr expr) env fenv)) (list 'lit 3)))
+         ((eq op 'keywordp)
+          ;; Keyword tag is 7, so compare with (lit 7) -> becomes 7<<4=112
+          (list 'cmp-eq (list 'get-tag (sys:compile (cadr expr) env fenv)) (list 'lit 7)))
+         ((eq op 'closurep)
+          ;; Closure tag is 5, so compare with (lit 5) -> becomes 5<<4=80
+          (list 'cmp-eq (list 'get-tag (sys:compile (cadr expr) env fenv)) (list 'lit 5)))
          ;; get-tag - extract type tag as tagged fixnum (tag << 4)
          ((eq op 'get-tag)
           (list 'get-tag (sys:compile (cadr expr) env fenv)))
@@ -2391,12 +2400,12 @@
                 (sys:compile (cadr expr) env fenv)
                 (sys:compile (caddr expr) env fenv)
                 (sys:compile (cadddr expr) env fenv)))
-         ;; substring - CL subseq for strings: (substring s start end)
+         ;; substring - compile as function call to existing substring function
          ((eq op 'substring)
-          (list 'substring-ir
-                (sys:compile (cadr expr) env fenv)
-                (sys:compile (caddr expr) env fenv)
-                (sys:compile (cadddr expr) env fenv)))
+          (list 'call-fn 'substring
+                (list (sys:compile (cadr expr) env fenv)
+                      (sys:compile (caddr expr) env fenv)
+                      (sys:compile (cadddr expr) env fenv))))
          ;; buffer-to-string - convert raw byte buffer to string (for sys-read data)
          ((eq op 'buffer-to-string)
           (list 'buffer-to-string-ir
@@ -2971,8 +2980,8 @@
             (let ((off (env-lookup op env)))
               (if (numberp off)
                   (list 'funcall-ir (list 'var off) (mapcar (lambda (a) (sys:compile a env fenv)) (cdr expr)))
-                  ;; Unknown function - will fail at link time
-                  (list 'sys-exit-ir (list 'lit 200)))))))))))
+                  ;; Unknown function - CRASH with error at compile time
+                  (error "sys:compile: Unknown function ~S (not in fenv, not primitive, not local)" op))))))))))
     ;; Unknown expression type - error at compile time
     (t (error "sys:compile: unhandled expression type ~S" expr))))
 
@@ -5329,7 +5338,7 @@
     ;; Phase 5: Resolve extern calls and calculate layout
     (let* ((import-names (remove-duplicates (mapcar #'car all-imports) :test #'string=))
            (import-names (if (null import-names) '("_exit") import-names))
-           (wrapper-size 168)
+           (wrapper-size +heap-wrapper-size+)  ; from macho.lisp - single source of truth
            (num-imports (length import-names))
            (stub-size 12)
            (stubs-total (* num-imports stub-size))

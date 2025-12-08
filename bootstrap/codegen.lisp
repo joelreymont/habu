@@ -2311,10 +2311,11 @@
           (linear-save-temp dst))))
 
       (get-symtab-offset
-       ;; Load tagged symtab offset from [x27+112]
+       ;; Load symtab offset from [x27+112]
+       ;; Note: value is ALREADY tagged (pre-shifted << 4) in wrapper storage
        (let ((dst (cadr instr)))
          (append
-          (arm64:ldr :x0 :gc :offset 112)    ; load tagged value from x27+112
+          (arm64:ldr :x0 :gc :offset 112)    ; load pre-tagged value from x27+112
           (linear-save-temp dst))))
 
       (otherwise
@@ -4169,7 +4170,10 @@
    (arm64:sub :sp :sp #x4 :imm t :shift12 t) ;; sub sp, sp, #4, lsl #12 = sub sp, sp, #0x4000
    (arm64:str :fp :sp :offset #x3FF0)       ;; Save fp at sp+0x3FF0
    (arm64:str :lr :sp :offset #x3FF8)       ;; Save lr at sp+0x3FF8
-   (arm64:add :fp :sp 0 :imm t)             ;; fp = sp
+   ;; fp points to saved fp/lr for standard stack walking: [fp+0]=old fp, [fp+8]=lr
+   ;; 0x3FF0 > 4095, so split into shifted add + regular add
+   (arm64:add :fp :sp #x3 :imm t :shift12 t)  ;; fp = sp + 0x3000
+   (arm64:add :fp :fp #xFF0 :imm t)           ;; fp = fp + 0xFF0 = sp + 0x3FF0
    (arm64:stp :x19 :env :sp :offset 16)
    (arm64:stp :x21 :x22 :sp :offset 32)
    (arm64:stp :x23 :closure :sp :offset 48)
@@ -4479,7 +4483,7 @@
          (result (compile-forms forms))
          (defuns-orig (car result))
          (main-ir-orig (cadr result))
-         (wrapper-size 168)  ;; heap initialization wrapper (42 instructions * 4 bytes)
+         (wrapper-size +heap-wrapper-size+)  ;; from macho.lisp - single source of truth
          ;; Lift lambdas from main-ir
          (main-lift-result #+sbcl (lift-lambdas-2 main-ir-orig nil)
                            #-sbcl (lift-lambdas main-ir-orig nil))
@@ -4565,10 +4569,9 @@
            (text-pages-4kb (/ text-vmsize #x1000))
            (heap-page-offset (+ text-pages-4kb 4))  ;; +4 for __DATA_CONST pages (16KB = 4 pages)
            ;; Calculate symtab offset relative to user code start (x26)
-           ;; x26 points to user code start, symtab is after code + stubs
-           (symtab-offset (+ exact-flat-size
-                             (- stubs-offset (+ code-offset wrapper-size))  ; alignment padding
-                             stubs-total))
+           ;; x26 points to user code start (code-offset + wrapper-size)
+           ;; symtab is at stubs-end
+           (symtab-offset (- stubs-end (+ code-offset wrapper-size)))
            (symtab-count (1+ (length all-fnoffs)))  ; +1 for _main entry
            ;; Append symtab to code (after stubs will be added by linker)
            (code-with-symtab flat-code)  ; symtab goes after stubs in linker
@@ -4581,7 +4584,11 @@
       ;; Write executable with imports, heap, and symbol table
       (write-macho-executable-with-imports-and-heap output-path wrapped-code imports heap-size
                                                     all-fnoffs symtab-bytes)
-      #+sbcl (write-symbol-map output-path all-fnoffs main-size imports stubs-offset))))
+      #+sbcl (write-symbol-map output-path all-fnoffs main-size imports stubs-offset)
+      ;; Extract and write debug info (nanopass)
+      #+sbcl (let* ((debug-vars (extract-debug-vars all-fns))
+                    (debug-table (emit-debug-table debug-vars all-fnoffs)))
+               (write-debug-info output-path debug-vars debug-table)))))
 
 (defun deliver-file (source-path output-path &optional (heap-size #x4000000))
   "Compile Lisp file to native executable.
@@ -4595,7 +4602,7 @@
    HEX_OFFSET is relative to __TEXT segment start (0x100000000 on macOS).
    To find function from PC: offset = PC - 0x100000468 (VM_BASE + code_offset + wrapper)"
   (let ((map-path (concatenate 'string output-path ".map"))
-        (wrapper-size 168)  ;; heap wrapper (42 instructions * 4 bytes)
+        (wrapper-size +heap-wrapper-size+)  ;; from macho.lisp - single source of truth
         (code-offset #x400))
     (with-open-file (f map-path :direction :output :if-exists :supersede)
       ;; Header comment

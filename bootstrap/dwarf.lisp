@@ -246,7 +246,8 @@
 
     ;; Build complete .debug_info with header
     (let* ((dies-flat (apply #'append (mapcar (lambda (x) (if (listp x) x (list x))) dies)))
-           (unit-length (+ 7 (length dies-flat))))  ; 7 = header after length
+           ;; DWARF5 header after unit_length: version(2) + unit_type(1) + address_size(1) + abbrev_offset(4) = 8
+           (unit-length (+ 8 (length dies-flat))))
       (append
        ;; Unit header (DWARF32 format)
        (emit-u32-le unit-length)  ; unit_length (excluding this field)
@@ -386,3 +387,276 @@
       (list (cons "__debug_abbrev" abbrev)
             (cons "__debug_info" info)
             (cons "__debug_line" line)))))
+
+;;; ============================================================
+;;; Integration with Source Locations
+;;; ============================================================
+
+(defun build-dwarf-function-list (fnoffs fn-locations)
+  "Build function list for DWARF from fnoffs and source locations.
+   FNOFFS: alist of (symbol . byte-offset) from codegen
+   FN-LOCATIONS: alist of (symbol . srcloc) from source-locations
+   Returns: list of (name offset size line-num) for DWARF generation"
+  (let ((result nil)
+        (sorted-fnoffs (sort (copy-list fnoffs) #'< :key #'cdr)))
+    ;; Calculate sizes from consecutive offsets
+    (loop for (fn-entry . rest) on sorted-fnoffs do
+      (let* ((name (car fn-entry))
+             (offset (cdr fn-entry))
+             (next-offset (if rest (cdar rest) (+ offset 100))) ; default size
+             (size (- next-offset offset))
+             (name-str (if (symbolp name) (symbol-name name) (format nil "~A" name)))
+             ;; Look up source location
+             (loc-entry (assoc name fn-locations))
+             (line (if (and loc-entry (cdr loc-entry))
+                       (srcloc-line (cdr loc-entry))
+                       1)))
+        (push (list name-str offset size line) result)))
+    (nreverse result)))
+
+(defun generate-dwarf-from-locations (fnoffs code-size &optional source-file)
+  "Generate DWARF sections using source location info.
+   Uses *function-locations* if available for line numbers."
+  (let* ((fn-locations (if (boundp '*function-locations*)
+                           (symbol-value '*function-locations*)
+                           nil))
+         (source-name (or source-file
+                          (if (boundp '*current-source-file*)
+                              (symbol-value '*current-source-file*)
+                              nil)
+                          "program.lisp"))
+         (functions (build-dwarf-function-list fnoffs fn-locations))
+         (code-base #x100000468)) ; VM_BASE + code_offset + wrapper
+    (dwarf-sections-for-macho functions source-name code-base code-size)))
+
+;;; ============================================================
+;;; dSYM Bundle Generation
+;;; ============================================================
+
+;;; Mach-O dSYM file type
+(defconstant +mh-dsym+ 10)
+(defconstant +mh-magic-64+ #xFEEDFACF)
+(defconstant +cpu-type-arm64+ #x0100000C)
+(defconstant +cpu-subtype-arm64-all+ #x00000000)
+(defconstant +lc-segment-64+ #x19)
+(defconstant +lc-uuid+ #x1B)
+(defconstant +lc-symtab+ #x02)
+(defconstant +s-attr-debug+ #x02000000)
+
+(defun dsym-emit-u32-le (value)
+  "Return 32-bit value as little-endian byte list"
+  (list (logand value #xff)
+        (logand (ash value -8) #xff)
+        (logand (ash value -16) #xff)
+        (logand (ash value -24) #xff)))
+
+(defun dsym-emit-u64-le (value)
+  "Return 64-bit value as little-endian byte list"
+  (list (logand value #xff)
+        (logand (ash value -8) #xff)
+        (logand (ash value -16) #xff)
+        (logand (ash value -24) #xff)
+        (logand (ash value -32) #xff)
+        (logand (ash value -40) #xff)
+        (logand (ash value -48) #xff)
+        (logand (ash value -56) #xff)))
+
+(defun dsym-emit-string-padded (str len)
+  "Emit string padded to LEN bytes with nulls"
+  (let ((result nil))
+    (dotimes (i (min (length str) len))
+      (push (char-code (char str i)) result))
+    (dotimes (i (- len (min (length str) len)))
+      (push 0 result))
+    (nreverse result)))
+
+(defun dsym-emit-zeros (n)
+  "Emit N zero bytes"
+  (make-list n :initial-element 0))
+
+(defun dsym-align-up (val alignment)
+  "Align VAL up to ALIGNMENT"
+  (let ((rem (mod val alignment)))
+    (if (= rem 0)
+        val
+        (+ val (- alignment rem)))))
+
+(defun build-dsym-macho (dwarf-sections uuid-bytes)
+  "Build a Mach-O dSYM file containing DWARF sections.
+   DWARF-SECTIONS: alist of (name . byte-vector)
+   UUID-BYTES: 16-byte UUID to match the main binary
+   Returns byte vector of the complete dSYM Mach-O file."
+  (let* ((header-size 32)
+         ;; Calculate section sizes
+         (section-count (length dwarf-sections))
+         (segment-cmd-size (+ 72 (* section-count 80)))
+         (uuid-cmd-size 24)
+         (symtab-cmd-size 24)
+         (ncmds 3)  ; __DWARF segment, UUID, SYMTAB
+         (sizeofcmds (+ segment-cmd-size uuid-cmd-size symtab-cmd-size))
+         ;; Data starts after header + load commands, aligned to 8
+         (data-start (dsym-align-up (+ header-size sizeofcmds) 8))
+         ;; Calculate section file offsets
+         (section-infos nil)
+         (current-offset data-start))
+
+    ;; Build section info list: (name offset size vmaddr)
+    (dolist (sec dwarf-sections)
+      (let* ((name (car sec))
+             (bytes (cdr sec))
+             (size (length bytes)))
+        (push (list name current-offset size 0) section-infos)
+        (setq current-offset (dsym-align-up (+ current-offset size) 4))))
+    (setq section-infos (nreverse section-infos))
+
+    (let* ((total-section-size (- current-offset data-start))
+           (file-size current-offset)
+           ;; Mach-O header
+           (header (append
+                    (dsym-emit-u32-le +mh-magic-64+)
+                    (dsym-emit-u32-le +cpu-type-arm64+)
+                    (dsym-emit-u32-le +cpu-subtype-arm64-all+)
+                    (dsym-emit-u32-le +mh-dsym+)
+                    (dsym-emit-u32-le ncmds)
+                    (dsym-emit-u32-le sizeofcmds)
+                    (dsym-emit-u32-le 0)  ; flags
+                    (dsym-emit-u32-le 0))) ; reserved
+           ;; __DWARF segment command
+           (segment-cmd (append
+                         (dsym-emit-u32-le +lc-segment-64+)
+                         (dsym-emit-u32-le segment-cmd-size)
+                         (dsym-emit-string-padded "__DWARF" 16)
+                         (dsym-emit-u64-le 0)  ; vmaddr
+                         (dsym-emit-u64-le total-section-size)  ; vmsize
+                         (dsym-emit-u64-le data-start)  ; fileoff
+                         (dsym-emit-u64-le total-section-size)  ; filesize
+                         (dsym-emit-u32-le 0)  ; maxprot (not executable)
+                         (dsym-emit-u32-le 0)  ; initprot
+                         (dsym-emit-u32-le section-count)
+                         (dsym-emit-u32-le 0))) ; flags
+           ;; Section headers
+           (section-hdrs nil))
+
+      ;; Build section headers
+      (dolist (info section-infos)
+        (let ((name (first info))
+              (offset (second info))
+              (size (third info)))
+          (setq section-hdrs
+                (append section-hdrs
+                        (dsym-emit-string-padded name 16)
+                        (dsym-emit-string-padded "__DWARF" 16)
+                        (dsym-emit-u64-le 0)  ; addr
+                        (dsym-emit-u64-le size)  ; size
+                        (dsym-emit-u32-le offset)  ; offset
+                        (dsym-emit-u32-le 0)  ; align (2^0 = 1)
+                        (dsym-emit-u32-le 0)  ; reloff
+                        (dsym-emit-u32-le 0)  ; nreloc
+                        (dsym-emit-u32-le +s-attr-debug+)  ; flags
+                        (dsym-emit-u32-le 0)  ; reserved1
+                        (dsym-emit-u32-le 0)  ; reserved2
+                        (dsym-emit-u32-le 0))))) ; reserved3
+
+      ;; UUID command
+      (let ((uuid-cmd (append
+                       (dsym-emit-u32-le +lc-uuid+)
+                       (dsym-emit-u32-le uuid-cmd-size)
+                       uuid-bytes)))
+
+        ;; SYMTAB command (empty but required)
+        (let ((symtab-cmd (append
+                           (dsym-emit-u32-le +lc-symtab+)
+                           (dsym-emit-u32-le symtab-cmd-size)
+                           (dsym-emit-u32-le 0)  ; symoff
+                           (dsym-emit-u32-le 0)  ; nsyms
+                           (dsym-emit-u32-le 0)  ; stroff
+                           (dsym-emit-u32-le 0)))) ; strsize
+
+          ;; Assemble all load commands
+          (let* ((load-commands (append segment-cmd section-hdrs uuid-cmd symtab-cmd))
+                 ;; Padding between commands and data
+                 (padding-size (- data-start (+ header-size (length load-commands))))
+                 (padding (dsym-emit-zeros padding-size))
+                 ;; Section data
+                 (section-data nil))
+
+            ;; Collect section data with padding
+            (let ((data-offset data-start))
+              (dolist (sec dwarf-sections)
+                (let* ((bytes (cdr sec))
+                       (size (length bytes))
+                       (next-offset (dsym-align-up (+ data-offset size) 4))
+                       (pad-size (- next-offset (+ data-offset size))))
+                  (setq section-data (append section-data (coerce bytes 'list)))
+                  (when (> pad-size 0)
+                    (setq section-data (append section-data (dsym-emit-zeros pad-size))))
+                  (setq data-offset next-offset))))
+
+            ;; Return complete file as byte vector
+            (coerce (append header load-commands padding section-data)
+                    'vector)))))))
+
+(defun write-dsym-info-plist (path binary-name)
+  "Write Info.plist for dSYM bundle"
+  (with-open-file (out path :direction :output
+                            :if-exists :supersede)
+    (format out "<?xml version=\"1.0\" encoding=\"UTF-8\"?>~%")
+    (format out "<!DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\" \"http://www.apple.com/DTDs/PropertyList-1.0.dtd\">~%")
+    (format out "<plist version=\"1.0\">~%")
+    (format out "<dict>~%")
+    (format out "  <key>CFBundleDevelopmentRegion</key>~%")
+    (format out "  <string>English</string>~%")
+    (format out "  <key>CFBundleIdentifier</key>~%")
+    (format out "  <string>com.habu.~A.dSYM</string>~%" binary-name)
+    (format out "  <key>CFBundleInfoDictionaryVersion</key>~%")
+    (format out "  <string>6.0</string>~%")
+    (format out "  <key>CFBundlePackageType</key>~%")
+    (format out "  <string>dSYM</string>~%")
+    (format out "  <key>CFBundleSignature</key>~%")
+    (format out "  <string>????</string>~%")
+    (format out "  <key>CFBundleVersion</key>~%")
+    (format out "  <string>1</string>~%")
+    (format out "</dict>~%")
+    (format out "</plist>~%")))
+
+(defun generate-uuid-bytes ()
+  "Generate a random 16-byte UUID for dSYM"
+  (let ((uuid nil))
+    (dotimes (i 16)
+      (push (random 256) uuid))
+    ;; Set version (4) and variant (2) bits
+    (setf (nth 6 uuid) (logior #x40 (logand (nth 6 uuid) #x0f)))
+    (setf (nth 8 uuid) (logior #x80 (logand (nth 8 uuid) #x3f)))
+    (nreverse uuid)))
+
+(defun write-dsym-bundle (output-path fnoffs code-size &optional source-file)
+  "Write a dSYM bundle for the compiled binary.
+   The bundle is placed at OUTPUT-PATH.dSYM/
+   lldb automatically finds dSYM bundles next to executables."
+  (let* ((dsym-path (format nil "~A.dSYM" output-path))
+         (contents-path (format nil "~A/Contents" dsym-path))
+         (dwarf-path (format nil "~A/Resources/DWARF" contents-path))
+         (binary-name (file-namestring output-path))
+         (dwarf-file (format nil "~A/~A" dwarf-path binary-name)))
+
+    ;; Create directory structure
+    (ensure-directories-exist (format nil "~A/" dwarf-path))
+
+    ;; Generate DWARF sections
+    (let ((sections (generate-dwarf-from-locations fnoffs code-size source-file))
+          (uuid-bytes (generate-uuid-bytes)))
+
+      ;; Write Info.plist
+      (write-dsym-info-plist (format nil "~A/Info.plist" contents-path) binary-name)
+
+      ;; Build and write dSYM Mach-O file
+      (let ((dsym-macho (build-dsym-macho sections uuid-bytes)))
+        (with-open-file (out dwarf-file
+                             :direction :output
+                             :if-exists :supersede
+                             :element-type '(unsigned-byte 8))
+          (write-sequence dsym-macho out)))
+
+      (format t "dSYM bundle written to ~A~%" dsym-path)
+      (format t "  Sections: ~{~A~^, ~}~%" (mapcar #'car sections))
+      dsym-path)))

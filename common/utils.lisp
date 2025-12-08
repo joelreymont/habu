@@ -5,9 +5,10 @@
 (defun has-tag? (ir tag)
   (and (cons? ir) (eq (car ir) tag)))
 
-;;; Package-agnostic symbol name comparison
+;;; Symbol comparison using eq with interned symbol
+;;; Requires all symbols to be properly interned - fails fast if not
 (defun op= (sym name)
-  (and (symbol? sym) (string= (symbol-name sym) name)))
+  (eq sym (intern name)))
 
 ;;; Environment lookup - find symbol's stack offset
 (defun env-lookup (sym env)

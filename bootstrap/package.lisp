@@ -75,6 +75,8 @@
    #:+fasl-header-size+ #:+fasl-function-size+
    #:+fasl-relocation-size+ #:+fasl-import-size+
    #:+fn-flag-exported+ #:+fn-flag-entry+
+   ;; Wrapper size constants (single source of truth for Mach-O generation)
+   #:+heap-wrapper-size+ #:+mmap-wrapper-size+
    ;; JIT executor (from executor.lisp)
    #:jit-eval #:jit-compile-expression #:jit-disasm
    #:jit-test #:jit-run-tests #:tag-fixnum #:untag-fixnum
@@ -117,4 +119,40 @@
    #:fn-fixed-prologue
    #:fn-fixed-epilogue
    #:flatten-code-keep-markers-and-calls
-   #:code-size))
+   #:code-size
+   ;; Debug info infrastructure
+   #:make-debug-collector
+   #:debug-add-function
+   #:debug-build-table
+   #:extract-debug-vars
+   #:emit-debug-table
+   #:write-debug-info
+   #:run-debug-info-tests
+   #:*debug-info*
+   ;; DWARF debug info
+   #:dwarf-make-abbrev-table-with-vars
+   #:dwarf-emit-function-with-vars
+   #:dwarf-location-env-slot
+   ;; Source location tracking
+   #:make-srcloc
+   #:srcloc-file
+   #:srcloc-line
+   #:srcloc-col
+   #:srcloc-pos
+   #:srcloc-to-string
+   #:pos-to-line-col
+   #:pos-to-srcloc
+   #:make-located-form
+   #:located-form-form
+   #:located-form-loc
+   #:unwrap-form
+   #:unwrap-forms
+   #:form-location
+   #:read-all-with-locations
+   #:compile-forms-with-locations
+   #:deliver-with-locations
+   #:deliver-file-with-locations
+   #:collect-function-locations
+   #:*current-source-file*
+   #:*function-locations*
+   #:test-source-locations))

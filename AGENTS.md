@@ -84,7 +84,28 @@ x0-x7: args | x20: env | x24: closure | x26: code | x27: GC globals | x28: heap 
 - Use ASDF: `(asdf:load-system :habu)`
 - No ignored warnings - fix the design
 - Tests required for every change
-- ARM64: `arm64:*` with kwargs, branch offset = `(ash bytes -2)`
+
+### ARM64 Instructions - CRITICAL
+
+**ALWAYS use `arm64/asm.lisp` encoders. NEVER hand-encode instructions.**
+
+- Use `arm64:*` functions with keyword arguments
+- Branch offsets in instructions (not bytes): `(ash bytes -2)`
+- Registers MUST be keywords: `:x0`, `:x1`, `:env`, `:heap`, etc.
+- Check `arm64/asm.lisp` exports before adding new instructions
+
+```lisp
+;; CORRECT - use arm64:* with keyword args
+(arm64:strb :x0 :x1 0)           ; store byte
+(arm64:ldr :x0 :sp :offset 8)    ; load from stack
+(arm64:add :x0 :x0 4 :imm t)     ; add immediate
+
+;; WRONG - never hand-encode or use raw numbers
+(a64-strb #x0 #x1 0)             ; NO - wrong API
+(logior #x39000000 ...)          ; NO - use arm64:strb
+```
+
+If an instruction doesn't exist in `arm64/asm.lisp`, add it there first.
 
 ---
 
