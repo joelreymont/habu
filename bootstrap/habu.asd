@@ -9,8 +9,12 @@
   :serial nil
   :in-order-to ((test-op (test-op "habu/tests")))
   :components
-  (;; Package definitions (must come first)
-   (:file "package")
+  (;; Host compatibility layer (loaded FIRST, before package shadows CL functions)
+   (:file "host-compat")
+   (:file "host-sbcl" :depends-on ("host-compat"))
+
+   ;; Package definitions
+   (:file "package" :depends-on ("host-sbcl"))
 
    ;; ARM64 assembler
    (:module "arm64"
@@ -67,7 +71,16 @@
    (:file "executor" :depends-on ("compiler-sbcl" "codegen" "macho"))
 
    ;; FASL format for separate compilation
-   (:file "fasl" :depends-on ("compiler-sbcl" "codegen" "macho"))))
+   (:file "fasl" :depends-on ("compiler-sbcl" "codegen" "macho"))
+
+   ;; DWARF debug info generation
+   (:file "dwarf" :depends-on ("package"))
+
+   ;; Debug info infrastructure
+   (:file "debug-info" :depends-on ("dwarf"))
+
+   ;; Source location tracking
+   (:file "source-locations" :depends-on ("compiler-sbcl" "debug-info"))))
 
 ;;;; Test system
 (asdf:defsystem "habu/tests"
@@ -92,7 +105,9 @@
      (:file "quickcheck" :depends-on ("test-core"))
      (:file "test-arm64-props" :depends-on ("quickcheck"))
      (:file "test-match-props" :depends-on ("quickcheck"))
-     (:file "test-fasl" :depends-on ("quickcheck")))))
+     (:file "test-fasl" :depends-on ("quickcheck"))))
+   ;; Debug infrastructure tests (outside tests module)
+   (:file "test-debug" :depends-on ("test-harness")))
   :perform (asdf:test-op (o c)
              (declare (ignore o c))
              (uiop:symbol-call :habu-test '#:run-all-tests)))
