@@ -2459,8 +2459,9 @@
                  ;; Bump heap past closure (16 bytes)
                  (arm64:add :heap :heap 16 :imm t)
                  ;; Build capture chain (result in x9)
-                 ;; Reverse so first offset becomes car of result
-                 (gen-capture-chain (reverse free-offsets))
+                 ;; gen-capture-chain builds right-to-left, so first offset ends up as car
+                 ;; DO NOT reverse - we want (val0 . (val1 . (val2 . nil)))
+                 (gen-capture-chain free-offsets)
                  ;; Store captured env at closure+8
                  (arm64:str :x9 :x11 :offset 8))))
           ;; Create closure pointer: dest = heap_base + 5 (closure tag)
