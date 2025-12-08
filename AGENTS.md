@@ -18,6 +18,39 @@ RIGHT: Launch agents for A, B, C simultaneously → combine results
 - Bug hunting: oracle review + codebase search + binary analysis (3 agents)
 - Code changes: implement + test + review (3 agents)
 - Debugging: crash-analyze + disassemble + trace (3 agents)
+- **Feature development: Use git worktrees for parallel implementation**
+
+## Git Worktrees for Parallel Development - CRITICAL
+
+**For independent features, ALWAYS use separate git worktrees:**
+
+```bash
+# Create worktrees for parallel work
+git worktree add -b feature/lambda ../habu-lambda HEAD
+git worktree add -b feature/labels ../habu-labels HEAD
+git worktree add -b feature/cond ../habu-cond HEAD
+```
+
+**Then launch parallel agents with specific worktree paths:**
+```
+Agent 1: Work in /Users/joel/Work/habu-lambda on LAMBDA
+Agent 2: Work in /Users/joel/Work/habu-labels on LABELS
+Agent 3: Work in /Users/joel/Work/habu-cond on COND
+```
+
+**After agents complete, merge branches:**
+```bash
+git merge feature/lambda
+git merge feature/labels
+git merge feature/cond
+git worktree remove ../habu-lambda
+```
+
+**Benefits:**
+- No file conflicts between agents
+- Each agent commits independently
+- Easy to discard failed attempts
+- Parallel speedup for multi-feature work
 
 ---
 

@@ -1865,6 +1865,21 @@
                  (body-ir (h0-compile-progn (cddr expr) env fenv))
                  (else-ir (list (ir-tag-lit) #x0)))
             (list (ir-tag-if) not-test-ir body-ir else-ir)))
+         ;; LAMBDA - create closure
+         ((sym= op "LAMBDA")
+          (let* ((params (cadr expr))
+                 (body (caddr expr))
+                 (free-vars (h0-find-free-vars body params env))
+                 (free-offsets (h0-get-free-offsets free-vars env))
+                 (param-env (h0-make-param-env params free-vars))
+                 (body-ir (h0-compile body param-env fenv)))
+            (list (ir-tag-lambda) params body-ir free-vars free-offsets)))
+         ;; FUNCALL - call function value
+         ((sym= op "FUNCALL")
+          (let* ((fn-ir (h0-compile (cadr expr) env fenv))
+                 (args (cddr expr))
+                 (args-ir (h0-compile-args args env fenv)))
+            (list (ir-tag-funcall) fn-ir args-ir)))
          ;; Default - unknown operator - CRASH
          (t (fatal-error-ir "h0-compile: Unknown operator")))))
     ;; Default - unknown expression type - CRASH
@@ -3610,19 +3625,3 @@
                        (let* ((ir (h0-compile (cadr forms) nil nil))
                               (code (h0-codegen ir #x0)))
                          (length code))))
-                  ;; Link test mode: compile, codegen, link to /tmp/h0out
-                  ((if (numberp first-form) (= first-form #x300) nil)
-                   (if (null (cdr forms))
-                       #xFD
-                       (let* ((ir (h0-compile (cadr forms) nil nil))
-                              (code (h0-codegen ir #x0)))
-                         (deliver-with-imports-and-heap "/tmp/h0out"
-                                                        code
-                                                        (list "_write")
-                                                        #x100000))))
-                  ;; Normal interpretation mode
-                  (t
-                   (let ((fenv (collect-defuns forms nil)))
-                     (h0-eval-forms forms nil fenv))))))))))
-
-(main)
