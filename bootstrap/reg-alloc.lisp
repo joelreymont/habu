@@ -2740,8 +2740,8 @@
           (arm64:b.ne (ash 20 -2))       ; if char1 != char2, jump to return_false (+5 instrs = 20 bytes)
           ;; Increment counter
           (arm64:add :x4 :x4 1 :imm t)   ; x4++
-          ;; Loop back to cmp at instruction 10
-          (arm64:b (ash -24 -2))         ; back 6 instructions = -24 bytes
+          ;; Loop back to cmp at loop_start (7 instructions back)
+          (arm64:b (ash -28 -2))         ; back 7 instructions = -28 bytes
           ;; return_true: (instruction 18)
           (arm64:movz dest-reg 16)       ; result = 16 (tagged t)
           (arm64:b (ash 8 -2))           ; skip return_false (+2 instrs = 8 bytes)
@@ -3471,9 +3471,11 @@
 ;;; ============================================================
 
 #+sbcl
-(defun disassemble-bytes (bytes &optional (stream t))
+(defun disassemble-bytes (bytes &optional (stream t) (little-endian t))
   "Disassemble ARM64 bytes to readable instructions.
-   BYTES is a list of bytes in big-endian order (as emitted by codegen)."
+   BYTES is a list of bytes.
+   LITTLE-ENDIAN: if T (default), bytes are in little-endian order (as from file dumps).
+                  if NIL, bytes are in big-endian order (as emitted by codegen)."
   (format stream "~%ARM64 Disassembly (~D bytes):~%" (length bytes))
   (format stream "~4A  ~8A    ~A~%" "OFF" "HEX" "INSTRUCTION")
   (format stream "~4,,,'-A  ~8,,,'-A    ~,,,'-A~%" "" "" "")
@@ -3483,8 +3485,12 @@
              (b1 (nth (+ i 1) bytes))
              (b2 (nth (+ i 2) bytes))
              (b3 (nth (+ i 3) bytes))
-             ;; ARM64 is little-endian; our bytes are big-endian
-             (instr (logior (ash b3 24) (ash b2 16) (ash b1 8) b0)))
+             ;; ARM64 is little-endian
+             (instr (if little-endian
+                        ;; Little-endian: b0 is LSB
+                        (logior b0 (ash b1 8) (ash b2 16) (ash b3 24))
+                        ;; Big-endian: b0 is MSB (codegen output)
+                        (logior (ash b0 24) (ash b1 16) (ash b2 8) b3))))
         (format stream "~4X  ~8,'0X    ~A~%"
                 i instr (decode-arm64-instr instr i))
         (incf i 4)))))
@@ -3530,10 +3536,12 @@
   nil)
 
 #+sbcl
-(defun reg-name (n)
-  "Format register name like lldb does."
+(defun reg-name (n &optional (use-sp t))
+  "Format register name like lldb does.
+   USE-SP: if nil, use xzr instead of sp for register 31.
+   This is needed for arithmetic/logical instructions where Rn=31 means XZR."
   (case n
-    (31 "sp")
+    (31 (if use-sp "sp" "xzr"))
     (30 "lr")
     (29 "fp")
     (t (format nil "x~D" n))))
@@ -3592,8 +3600,11 @@
        (format nil "add    ~A, ~A, ~A" (reg-name rd) (reg-name rn) (reg-name rm)))
 
       ;; SUB register: 11001011000 Rm 000000 Rn Rd
+      ;; When Rn=31, it's XZR not SP (NEG is alias for SUB with XZR)
       ((= (logand instr #xFF200000) #xCB000000)
-       (format nil "sub    ~A, ~A, ~A" (reg-name rd) (reg-name rn) (reg-name rm)))
+       (if (= rn 31)
+           (format nil "neg    ~A, ~A" (reg-name rd) (reg-name rm))
+           (format nil "sub    ~A, ~A, ~A" (reg-name rd) (reg-name rn nil) (reg-name rm))))
 
       ;; MUL: 10011011000 Rm 011111 Rn Rd (MADD with Ra=XZR)
       ((= (logand instr #xFFE0FC00) #x9B007C00)
@@ -3604,10 +3615,15 @@
        (format nil "sdiv   ~A, ~A, ~A" (reg-name rd) (reg-name rn) (reg-name rm)))
 
       ;; SUBS register: 11101011000 Rm 000000 Rn Rd
+      ;; When Rn=31, it's XZR not SP (NEGS is alias for SUBS with XZR)
       ((= (logand instr #xFF200000) #xEB000000)
-       (if (= rd 31)
-           (format nil "cmp    ~A, ~A" (reg-name rn) (reg-name rm))
-           (format nil "subs   ~A, ~A, ~A" (reg-name rd) (reg-name rn) (reg-name rm))))
+       (cond
+         ((= rd 31)
+          (format nil "cmp    ~A, ~A" (reg-name rn nil) (reg-name rm)))
+         ((= rn 31)
+          (format nil "negs   ~A, ~A" (reg-name rd) (reg-name rm)))
+         (t
+          (format nil "subs   ~A, ~A, ~A" (reg-name rd) (reg-name rn nil) (reg-name rm)))))
 
       ;; SUBS immediate: 11110001 imm12 Rn Rd
       ((= (logand instr #xFF000000) #xF1000000)
