@@ -1905,6 +1905,50 @@
          ;; LIST - expand to nested CONS
          ((sym= op "LIST")
           (h0-compile-list (cdr expr) env fenv))
+         ;; CADR - (car (cdr x))
+         ((sym= op "CADR")
+          (let ((v (h0-compile (cadr expr) env fenv)))
+            (list (ir-tag-car) (list (ir-tag-cdr) v))))
+         ;; CDDR - (cdr (cdr x))
+         ((sym= op "CDDR")
+          (let ((v (h0-compile (cadr expr) env fenv)))
+            (list (ir-tag-cdr) (list (ir-tag-cdr) v))))
+         ;; CADDR - (car (cdr (cdr x)))
+         ((sym= op "CADDR")
+          (let ((v (h0-compile (cadr expr) env fenv)))
+            (list (ir-tag-car) (list (ir-tag-cdr) (list (ir-tag-cdr) v)))))
+         ;; CADDDR - (car (cdr (cdr (cdr x))))
+         ((sym= op "CADDDR")
+          (let ((v (h0-compile (cadr expr) env fenv)))
+            (list (ir-tag-car) (list (ir-tag-cdr) (list (ir-tag-cdr) (list (ir-tag-cdr) v))))))
+         ;; CAAR - (car (car x))
+         ((sym= op "CAAR")
+          (let ((v (h0-compile (cadr expr) env fenv)))
+            (list (ir-tag-car) (list (ir-tag-car) v))))
+         ;; CDAR - (cdr (car x))
+         ((sym= op "CDAR")
+          (let ((v (h0-compile (cadr expr) env fenv)))
+            (list (ir-tag-cdr) (list (ir-tag-car) v))))
+         ;; NTH - expand to nested CDRs and CAR
+         ((sym= op "NTH")
+          (h0-compile-nth (cadr expr) (caddr expr) env fenv))
+         ;; LOGNOT - (logxor x -1) but we don't have logxor, use (- -1 x) for 2's complement
+         ((sym= op "LOGNOT")
+          (let ((v (h0-compile (cadr expr) env fenv)))
+            ;; lognot x = -1 - x in 2's complement (actually xor with -1)
+            ;; For now use subtraction: (- (- 0 1) x) = -1 - x
+            (list (ir-tag-sub) (list (ir-tag-lit) #x-1) v)))
+         ;; >= comparison already exists, add /= (not equal)
+         ((sym= op "/=")
+          (let* ((l (h0-compile (cadr expr) env fenv))
+                 (r (h0-compile (caddr expr) env fenv)))
+            (list (ir-tag-not) (list (ir-tag-cmp-eq) l r))))
+         ;; If op is a cons (e.g., lambda expression), compile as funcall
+         ((consp op)
+          (let* ((fn-ir (h0-compile op env fenv))
+                 (args (cdr expr))
+                 (args-ir (h0-compile-args args env fenv)))
+            (list (ir-tag-funcall) fn-ir args-ir)))
          ;; Default - unknown operator - CRASH
          (t (fatal-error-ir "h0-compile: Unknown operator")))))
     ;; Default - unknown expression type - CRASH
@@ -2202,6 +2246,41 @@
       (let* ((first-ir (h0-compile (car args) env fenv))
              (rest-ir (h0-compile-list (cdr args) env fenv)))
         (list (ir-tag-cons) first-ir rest-ir))))
+
+;; Compile NTH - expand based on index
+;; (nth n list) - if n is a constant, expand to nested car/cdr
+;; Otherwise expand to a labels loop
+(defun h0-compile-nth (n-expr list-expr env fenv)
+  (if (numberp n-expr)
+      ;; Constant index - expand to nested car/cdr
+      (h0-compile-nth-const n-expr list-expr env fenv)
+      ;; Variable index - expand to loop
+      (h0-compile-nth-var n-expr list-expr env fenv)))
+
+(defun h0-compile-nth-const (n list-expr env fenv)
+  (let ((list-ir (h0-compile list-expr env fenv)))
+    (h0-nth-chain n list-ir)))
+
+(defun h0-nth-chain (n list-ir)
+  (if (= n #x0)
+      (list (ir-tag-car) list-ir)
+      (h0-nth-chain (- n #x1) (list (ir-tag-cdr) list-ir))))
+
+(defun h0-compile-nth-var (n-expr list-expr env fenv)
+  ;; Expand to: (labels ((loop (i l) (if (= i 0) (car l) (loop (- i 1) (cdr l))))) (loop n list))
+  (let* ((i-sym (intern "I"))
+         (l-sym (intern "L"))
+         (loop-sym (intern "NTH-LOOP"))
+         (expanded
+          (list (intern "LABELS")
+                (list (list loop-sym (list i-sym l-sym)
+                            (list (intern "IF") (list (intern "=") i-sym #x0)
+                                  (list (intern "CAR") l-sym)
+                                  (list loop-sym
+                                        (list (intern "-") i-sym #x1)
+                                        (list (intern "CDR") l-sym)))))
+                (list loop-sym n-expr list-expr))))
+    (h0-compile expanded env fenv)))
 
 ;;; ==========================================================================
 ;;; ARM64 Code Generation - IR to machine code
@@ -3055,6 +3134,29 @@
     ;; Progn
     ((h0-has-tag-n ir (ir-tag-progn))
      (h0-eval-ir-progn (cadr ir) env))
+    ;; Lambda - create closure
+    ((h0-has-tag-n ir (ir-tag-lambda))
+     (let* ((params (cadr ir))
+            (body-ir (caddr ir))
+            (free-vars (cadddr ir))
+            (free-offsets (nth #x4 ir)))
+       ;; Create closure: (closure params body-ir env)
+       ;; The env captures free variables at closure creation time
+       (list (intern "CLOSURE") params body-ir env)))
+    ;; Funcall - call closure
+    ((h0-has-tag-n ir (ir-tag-funcall))
+     (let* ((fn-val (h0-eval-ir (cadr ir) env))
+            (args-ir (caddr ir))
+            (args-vals (h0-eval-ir-args args-ir env)))
+       ;; fn-val should be (closure params body-ir closure-env)
+       (if (and (consp fn-val) (sym= (car fn-val) "CLOSURE"))
+           (let* ((params (cadr fn-val))
+                  (body-ir (caddr fn-val))
+                  (closure-env (cadddr fn-val))
+                  ;; Bind args to params in new env extending closure-env
+                  (new-env (h0-extend-env-with-params params args-vals closure-env)))
+             (h0-eval-ir body-ir new-env))
+           (fatal-error "h0-eval-ir: FUNCALL on non-closure"))))
     ;; Default - CRASH: unknown IR tag
     (t (fatal-error "h0-eval-ir: Unknown IR tag"))))
 
@@ -3071,6 +3173,24 @@
   (if (= off #x0)
       (car env)
       (ir-env-get (cdr env) (- off #x1))))
+
+;; Evaluate a list of argument IRs
+(defun h0-eval-ir-args (args-ir env)
+  (if (null args-ir)
+      nil
+      (cons (h0-eval-ir (car args-ir) env)
+            (h0-eval-ir-args (cdr args-ir) env))))
+
+;; Extend environment by binding params to args
+;; params is a list of parameter symbols, args-vals is a list of values
+;; Returns new env with args prepended in order
+(defun h0-extend-env-with-params (params args-vals base-env)
+  (if (null params)
+      base-env
+      (h0-extend-env-with-params
+        (cdr params)
+        (cdr args-vals)
+        (cons (car args-vals) base-env))))
 
 ;;; ==========================================================================
 ;;; Test Mode - compile expression and evaluate IR
