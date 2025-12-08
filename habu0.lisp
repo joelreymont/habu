@@ -2466,6 +2466,59 @@
 ;; Formula: 48 + td*8 = #x30 + (* td #x8)
 ;; Note: Inlined everywhere because function calls have overhead in native code
 
+;; Generate STRB instructions for string characters
+;; MUST be defined before h0-codegen-str-lit which calls it
+(defun h0-gen-str-bytes (str idx)
+  (if (>= idx (string-length str))
+      nil
+      (let* ((char (string-ref str idx))
+             ;; MOVZ x0, #char
+             (mov-char (a64-movz #x0 char))
+             ;; STRB w0, [x1, #idx]
+             (strb (a64-strb #x0 #x1 idx)))
+        (bytes-append mov-char
+                      (bytes-append strb
+                                    (h0-gen-str-bytes str (+ idx #x1)))))))
+
+;; Codegen helper for string literals
+;; Allocates string on heap: [length:8][chars:N][padding]
+;; Returns tagged pointer with tag 4
+;; MUST be defined before h0-codegen which calls it
+(defun h0-codegen-str-lit (str len total-size)
+  (let* (;; Store length at x28
+         (mov-len-lo (a64-movz #x0 (logand len #xFFFF)))
+         (str-len (a64-str #x0 #x1C #x0))
+         ;; Get string base address (x28 + 8)
+         (add-base (a64-add-imm #x1 #x1C #x8))
+         ;; Generate STRB instructions for each character
+         (char-stores (h0-gen-str-bytes str #x0))
+         ;; Save tagged pointer to x0: x28 | 4
+         (mov-ptr (a64-mov-reg #x0 #x1C))
+         (tag-ptr (a64-add-imm #x0 #x0 #x4))
+         ;; Bump heap pointer
+         (bump-heap (a64-add-imm #x1C #x1C total-size)))
+    (bytes-append-all (list mov-len-lo str-len add-base
+                            char-stores mov-ptr tag-ptr bump-heap))))
+
+;; Codegen helper for keyword literals
+;; Same layout as strings but with tag 7 instead of 4
+;; MUST be defined before h0-codegen which calls it
+(defun h0-codegen-kw-lit (str len total-size)
+  (let* (;; Store length at x28
+         (mov-len-lo (a64-movz #x0 (logand len #xFFFF)))
+         (str-len (a64-str #x0 #x1C #x0))
+         ;; Get string base address (x28 + 8)
+         (add-base (a64-add-imm #x1 #x1C #x8))
+         ;; Generate STRB instructions for each character
+         (char-stores (h0-gen-str-bytes str #x0))
+         ;; Save tagged pointer to x0: x28 | 7 (keyword tag)
+         (mov-ptr (a64-mov-reg #x0 #x1C))
+         (tag-ptr (a64-add-imm #x0 #x0 #x7))
+         ;; Bump heap pointer
+         (bump-heap (a64-add-imm #x1C #x1C total-size)))
+    (bytes-append-all (list mov-len-lo str-len add-base
+                            char-stores mov-ptr tag-ptr bump-heap))))
+
 ;; Generate code for IR (using numeric tags)
 ;; td = temp slot depth (for nested expressions)
 (defun h0-codegen (ir td)
@@ -2823,56 +2876,6 @@
 
     ;; Default - CRASH: unknown IR tag
     (t (fatal-error \"h0-codegen: Unknown IR tag\")))
-
-;; Codegen helper for string literals
-;; Allocates string on heap: [length:8][chars:N][padding]
-;; Returns tagged pointer with tag 4
-(defun h0-codegen-str-lit (str len total-size)
-  (let* (;; Store length at x28
-         (mov-len-lo (a64-movz #x0 (logand len #xFFFF)))
-         (str-len (a64-str #x0 #x1C #x0))
-         ;; Get string base address (x28 + 8)
-         (add-base (a64-add-imm #x1 #x1C #x8))
-         ;; Generate STRB instructions for each character
-         (char-stores (h0-gen-str-bytes str #x0))
-         ;; Save tagged pointer to x0: x28 | 4
-         (mov-ptr (a64-mov-reg #x0 #x1C))
-         (tag-ptr (a64-add-imm #x0 #x0 #x4))
-         ;; Bump heap pointer
-         (bump-heap (a64-add-imm #x1C #x1C total-size)))
-    (bytes-append-all (list mov-len-lo str-len add-base
-                            char-stores mov-ptr tag-ptr bump-heap))))
-
-;; Codegen helper for keyword literals
-;; Same layout as strings but with tag 7 instead of 4
-(defun h0-codegen-kw-lit (str len total-size)
-  (let* (;; Store length at x28
-         (mov-len-lo (a64-movz #x0 (logand len #xFFFF)))
-         (str-len (a64-str #x0 #x1C #x0))
-         ;; Get string base address (x28 + 8)
-         (add-base (a64-add-imm #x1 #x1C #x8))
-         ;; Generate STRB instructions for each character
-         (char-stores (h0-gen-str-bytes str #x0))
-         ;; Save tagged pointer to x0: x28 | 7 (keyword tag)
-         (mov-ptr (a64-mov-reg #x0 #x1C))
-         (tag-ptr (a64-add-imm #x0 #x0 #x7))
-         ;; Bump heap pointer
-         (bump-heap (a64-add-imm #x1C #x1C total-size)))
-    (bytes-append-all (list mov-len-lo str-len add-base
-                            char-stores mov-ptr tag-ptr bump-heap))))
-
-;; Generate STRB instructions for string characters
-(defun h0-gen-str-bytes (str idx)
-  (if (>= idx (string-length str))
-      nil
-      (let* ((char (string-ref str idx))
-             ;; MOVZ x0, #char
-             (mov-char (a64-movz #x0 char))
-             ;; STRB w0, [x1, #idx]
-             (strb (a64-strb #x0 #x1 idx)))
-        (bytes-append mov-char
-                      (bytes-append strb
-                                    (h0-gen-str-bytes str (+ idx #x1)))))))
 
 ;; Codegen helper for binary operations
 ;; Inline temp slot calculation: 48 + td*8

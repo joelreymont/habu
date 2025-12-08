@@ -38,13 +38,20 @@ Agent 2: Work in /Users/joel/Work/habu-labels on LABELS
 Agent 3: Work in /Users/joel/Work/habu-cond on COND
 ```
 
-**After agents complete, merge branches:**
+**After agents complete, cherry-pick or merge changes:**
 ```bash
+# Option 1: Cherry-pick specific commits (preferred for avoiding conflicts)
+git cherry-pick <commit-hash-from-feature-branch>
+
+# Option 2: Merge branches (may have conflicts)
 git merge feature/lambda
-git merge feature/labels
-git merge feature/cond
+
+# Clean up worktrees when done
 git worktree remove ../habu-lambda
+git branch -d feature/lambda
 ```
+
+**IMPORTANT: Cherry-pick is preferred** when agents make overlapping changes to the same file. This avoids merge conflicts.
 
 **Benefits:**
 - No file conflicts between agents
