@@ -49,7 +49,7 @@
     (cons "=" '=) (cons "<" '<) (cons ">" '>) (cons "<=" '<=) (cons ">=" '>=)
     (cons "/=" '/=) (cons "EQ" 'eq)
     ;; Bitwise
-    (cons "LOGAND" 'logand) (cons "LOGIOR" 'logior) (cons "LOGXOR" 'logxor)
+    (cons "LOGAND" 'logand) (cons "LOGIOR" 'logior) (cons "LOGXOR" 'logxor) (cons "LOGNOT" 'lognot)
     (cons "ASH" 'ash)
     ;; List operations
     (cons "CONS" 'cons) (cons "CAR" 'car) (cons "CDR" 'cdr)
@@ -59,7 +59,7 @@
     (cons "REVERSE" 'reverse) (cons "SETCAR" 'setcar) (cons "SETCDR" 'setcdr)
     ;; Predicates
     (cons "NULL" 'null) (cons "CONSP" 'consp) (cons "NUMBERP" 'numberp)
-    (cons "SYMBOLP" 'symbolp) (cons "STRINGP" 'stringp) (cons "VECTORP" 'vectorp)
+    (cons "SYMBOLP" 'symbolp) (cons "STRINGP" 'stringp) (cons "VECTORP" 'vectorp) (cons "KEYWORDP" 'keywordp)
     ;; Strings
     (cons "STRING-LENGTH" 'string-length) (cons "STRING-REF" 'string-ref)
     (cons "STRING-CONCAT" 'string-concat) (cons "STRING-EQUAL" 'string-equal)
@@ -84,66 +84,16 @@
     (cons "JIT-CALL" 'jit-call)
     ;; Memory access for JIT
     (cons "MEM-SET-BYTE" 'mem-set-byte) (cons "MEM-LOAD-64" 'mem-load-64)
+    ;; Debug/stack introspection
+    (cons "GET-FRAME-POINTER" 'get-frame-pointer)
     ;; Special values
     (cons "NIL" 'nil) (cons "T" 't))))
 
 ;;; ============================================================
 ;;; Undefined Function Tracking
 ;;; ============================================================
-;;; Tracks undefined function calls for compile-time warnings and
-;;; link-time verification. Exit code 200 = undefined function at runtime.
-
-#+sbcl (defvar *undefined-functions* nil "Functions called but not defined")
-#+sbcl (defvar *all-call-targets* nil "All call-fn targets for link-time check")
-#+sbcl (defvar *declared-imports* nil "Functions declared as imports (resolved at link time)")
-
-#+sbcl
-(defun reset-compile-warnings ()
-  "Reset undefined function tracking before compilation"
-  (setq *undefined-functions* nil)
-  (setq *all-call-targets* nil)
-  (setq *declared-imports* nil))
-
-#+sbcl
-(defun declare-imports (imports)
-  "Declare functions that will be resolved at link time"
-  (setq *declared-imports* imports))
-
-#+sbcl
-(defun record-undefined-function (name)
-  "Record that an undefined function was called (unless it's a declared import)"
-  (unless (or (member name *undefined-functions*)
-              (member name *declared-imports*))
-    (push name *undefined-functions*)))
-
-#+sbcl
-(defun record-call-target (name)
-  "Record a call-fn target for link-time verification"
-  (unless (member name *all-call-targets*)
-    (push name *all-call-targets*)))
-
-#+sbcl
-(defun report-compile-warnings ()
-  "Report undefined functions found during compilation. Returns T if errors found."
-  (when *undefined-functions*
-    (format t "~%ERROR: Undefined functions referenced:~%")
-    (dolist (fn (reverse *undefined-functions*))
-      (format t "  - ~A~%" fn))
-    t))
-
-#+sbcl
-(defun verify-link-references (defined-fns)
-  "Verify all call-fn targets are in defined-fns list (or declared imports). Returns T if errors found."
-  (let ((undefined nil))
-    (dolist (target *all-call-targets*)
-      (unless (or (member target defined-fns)
-                  (member target *declared-imports*))
-        (push target undefined)))
-    (when undefined
-      (format t "~%LINK ERROR: Functions called but not compiled:~%")
-      (dolist (fn (reverse undefined))
-        (format t "  - ~A~%" fn))
-      t)))
+;;; NOTE: These functions are defined in compiler-sbcl.lisp which loads before
+;;; this file. They're used to track forward references during compilation.
 
 ;;; ============================================================
 ;;; Core Helpers (Pure Habu)
@@ -285,7 +235,7 @@
   (let ((offset (flat-env-lookup sym env)))
     (if offset
         (list 'var offset)
-        (list 'lit 0))))  ;; Unknown var = 0
+        (error "Undefined variable: ~A" sym))))
 
 ;;; Environment lookup for flat list format (sym1 sym2 ...)
 ;;; Used by compile-expr-full and friends in this file.
@@ -845,11 +795,10 @@
                   #+sbcl (record-call-target fn-name)
                   (list 'call-fn fn-name
                         (compile-args final-args env fenv)))))
-          ;; Unknown function - record warning and crash at runtime
+          ;; Unknown function - raise proper error
           (progn
             #+sbcl (record-undefined-function fn-name)
-            ;; Generate sys-exit with code 200 (undefined function error)
-            (list 'sys-exit-ir (list 'lit 200)))))))
+            (error "Undefined function: ~A" fn-name))))))
 
 (defun fenv-lookup (name fenv)
   "Look up function in function environment"
@@ -1245,6 +1194,7 @@
                                         (compile-expr-full (nth 2 expr) env fenv)))
          ((eq (car expr) 'logxor) (list 'bxor (compile-expr-full (nth 1 expr) env fenv)
                                         (compile-expr-full (nth 2 expr) env fenv)))
+         ((eq (car expr) 'lognot) (list 'bnot (compile-expr-full (nth 1 expr) env fenv)))
          ((eq (car expr) 'ash) (list 'bsh (compile-expr-full (nth 1 expr) env fenv)
                                      (compile-expr-full (nth 2 expr) env fenv)))
 
@@ -1276,6 +1226,8 @@
          ((eq (car expr) 'stringp) (list 'cmp-eq (list 'get-tag (compile-expr-full (nth 1 expr) env fenv)) (list 'lit 4)))
          ;; vectorp: compare tag to 3 (vector tag)
          ((eq (car expr) 'vectorp) (list 'cmp-eq (list 'get-tag (compile-expr-full (nth 1 expr) env fenv)) (list 'lit 3)))
+         ;; keywordp: compare tag to 7 (keyword tag)
+         ((eq (car expr) 'keywordp) (list 'cmp-eq (list 'get-tag (compile-expr-full (nth 1 expr) env fenv)) (list 'lit 7)))
          ;; eq: compare two values directly
          ((eq (car expr) 'eq) (list 'cmp-eq (compile-expr-full (nth 1 expr) env fenv)
                                    (compile-expr-full (nth 2 expr) env fenv)))
@@ -1296,23 +1248,9 @@
                    (list len-iter-fn (nth 1 expr) 0))
              env fenv)))
 
-         ;; reverse - reverse list via inline labels
-         ;; NOTE: Uses list instead of backquote for portability (no SB-IMPL::COMMA)
-         ((eq (car expr) 'reverse)
-          (let ((rev-iter-fn (gensym "REV-ITER"))
-                (lst-var (gensym "LST"))
-                (acc-var (gensym "ACC"))
-                (next-acc-var (gensym "NEXT-ACC")))
-            (compile-expr-full
-             (list 'labels
-                   (list (list rev-iter-fn (list lst-var acc-var)
-                               (list 'if (list 'null lst-var)
-                                     acc-var
-                                     (list 'let (list (list next-acc-var
-                                                            (list 'cons (list 'car lst-var) acc-var)))
-                                           (list rev-iter-fn (list 'cdr lst-var) next-acc-var)))))
-                   (list rev-iter-fn (nth 1 expr) nil))
-             env fenv)))
+         ;; reverse - DISABLED: was inlining labels but had codegen bug
+         ;; Now calls user-defined reverse function instead
+         ;; ((eq (car expr) 'reverse) ...)
 
          ;; String operations - use -ir suffix to match codegen
          ((eq (car expr) 'string-length) (list 'string-length-ir (compile-expr-full (nth 1 expr) env fenv)))
@@ -1339,6 +1277,11 @@
                 (compile-expr-full (nth 2 expr) env fenv)))
          ;; string-equal - compare two strings
          ((eq (car expr) 'string-equal)
+          (list 'string-equal-ir
+                (compile-expr-full (nth 1 expr) env fenv)
+                (compile-expr-full (nth 2 expr) env fenv)))
+         ;; string= - alias for string-equal (CL compatibility)
+         ((eq (car expr) 'string=)
           (list 'string-equal-ir
                 (compile-expr-full (nth 1 expr) env fenv)
                 (compile-expr-full (nth 2 expr) env fenv)))
@@ -1383,6 +1326,7 @@
          ((eq (car expr) 'set-intern-table) (list 'set-intern-table-ir (compile-expr-full (nth 1 expr) env fenv)))
          ((eq (car expr) 'get-lambda-counter) (list 'get-lambda-counter-ir))
          ((eq (car expr) 'set-lambda-counter) (list 'set-lambda-counter-ir (compile-expr-full (nth 1 expr) env fenv)))
+         ((eq (car expr) 'get-frame-pointer) (list 'get-frame-pointer-ir))
          ((eq (car expr) 'sys-open) (list 'sys-open-ir
                                           (compile-expr-full (nth 1 expr) env fenv)
                                           (compile-expr-full (nth 2 expr) env fenv)
@@ -1675,7 +1619,7 @@
     (let ((offset (flat-env-lookup var env)))
       (if offset
           (list 'setq-ir offset (compile-expr-full val env fenv))
-          (list 'nil-ir)))))  ;; Unknown var
+          (error "Undefined variable: ~A" var)))))
 
 ;;; ============================================================
 ;;; Source-Level Inlining Nanopass
@@ -2131,7 +2075,7 @@
          ;; Collect extern calls and get unique imports
          (extern-calls (collect-extern-calls bytes-with-markers))
          (imports (get-unique-imports extern-calls))
-         (wrapper-size 120))  ; 30 instructions * 4 bytes (embedded heap)
+         (wrapper-size 168))  ; 42 instructions * 4 bytes (embedded heap + symtab)
 
     ;; Always use imports path for consistent Mach-O structure
     (let ((imports (if (null imports) '("_exit") imports)))
