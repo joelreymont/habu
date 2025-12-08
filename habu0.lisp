@@ -1565,6 +1565,7 @@
 (defun ir-tag-keywordp () #x21)   ; keywordp predicate
 (defun ir-tag-lambda () #x22)     ; lambda (closure creation)
 (defun ir-tag-funcall () #x23)    ; funcall (closure invocation)
+(defun ir-tag-setq () #x24)       ; setq (variable assignment)
 
 ;; Check if IR node has a specific tag (numeric comparison)
 (defun h0-has-tag-n (ir tag)
@@ -1743,6 +1744,14 @@
          ;; Let*
          ((sym= op "LET*")
           (h0-compile-let (cadr expr) (caddr expr) env fenv))
+         ;; Setq
+         ((sym= op "SETQ")
+          (let* ((var-sym (cadr expr))
+                 (val-ir (h0-compile (caddr expr) env fenv))
+                 (result (c-env-lookup var-sym env)))
+            (if result
+                (list (ir-tag-setq) (car result) val-ir)
+                (fatal-error-ir "h0-compile: SETQ unknown variable"))))
          ;; Progn
          ((sym= op "PROGN")
           (h0-compile-progn (cdr expr) env fenv))
@@ -2592,6 +2601,20 @@
               body-code
               (a64-add-imm #x14 #x14 #x8)))))    ; x20 += 8 (restore frame)
 
+    ;; Setq - variable assignment
+    ;; IR: (setq-ir offset value-ir)
+    ;; Evaluate value, then store to variable's stack slot
+    ((h0-has-tag-n ir (ir-tag-setq))
+     (let* ((offset (cadr ir))
+            (val-ir (caddr ir))
+            (byte-off (* offset #x8))
+            (val-code (h0-codegen val-ir td))
+            ;; Calculate address: x1 = x20 - byte_offset
+            (sub-code (a64-sub-imm #x1 #x14 byte-off))
+            ;; Store x0 to [x1]
+            (str-code (a64-str #x0 #x1 #x0)))
+       (bytes-append-all (list val-code sub-code str-code))))
+
     ;; Progn
     ((h0-has-tag-n ir (ir-tag-progn))
      (h0-codegen-progn (cadr ir) td))
@@ -2884,6 +2907,12 @@
      (let* ((val (h0-eval-ir (caddr ir) env))
             (new-env (cons val env)))
        (h0-eval-ir (cadddr ir) new-env)))
+    ;; Setq - variable assignment
+    ((h0-has-tag-n ir (ir-tag-setq))
+     (let* ((offset (cadr ir))
+            (val (h0-eval-ir (caddr ir) env)))
+       (ir-env-set env offset val)
+       val))
     ;; Progn
     ((h0-has-tag-n ir (ir-tag-progn))
      (h0-eval-ir-progn (cadr ir) env))
@@ -2903,6 +2932,11 @@
   (if (= off #x0)
       (car env)
       (ir-env-get (cdr env) (- off #x1))))
+
+(defun ir-env-set (env off val)
+  (if (= off #x0)
+      (rplaca env val)
+      (ir-env-set (cdr env) (- off #x1) val)))
 
 ;;; ==========================================================================
 ;;; Test Mode - compile expression and evaluate IR
