@@ -1,0 +1,1071 @@
+habu-cnncb [P1] [task] in_progress - Commit unified compiler foundation
+habu-7pj9f [P1] [task] closed - Add host files to ASDF system
+habu-q4s27 [P1] [task] closed - Create host-compat.lisp API definition
+habu-1d92z [P1] [task] in_progress - Fix string= intrinsic inconsistency between compilers
+habu-qgolf [P1] [task] in_progress - Add string= to compiler intrinsics (maps to string-equal-ir)
+habu-6jlpz [P1] [task] in_progress - Rebuild habu0 and test string=
+habu-ow9gv [P1] [task] closed - Fix h0-eval op= string comparisons - add cached symbols
+habu-39pkm [P1] [bug] in_progress - Fix h0-eval op= string comparisons - use cached symbols like other operators
+habu-qz8ud [P1] [task] closed - Fix branch offset calculation for epilogue-first layout
+habu-xawah [P1] [task] closed - Investigate epilogue-first function layout
+habu-auhj4 [P1] [task] closed - Fix disassembler endianness bug
+habu-6spey [P1] [task] closed - Test simple recursive countdown function
+habu-x5gpw [P1] [task] in_progress - Debug string= returning nil for equal strings
+habu-a8ncw [P1] [task] in_progress - Add EQL builtin to h0-eval
+habu-g5vii [P1] [task] in_progress - Build habu0 with new features
+habu-p1d8c [P1] [task] closed - Add case and when to habu0 evaluator
+habu-vc0yv [P1] [task] in_progress - Create arm64 compatibility layer in habu0
+habu-mz683 [P1] [task] in_progress - Add arm64 intrinsics to habu0
+habu-n9bxi [P1] [task] closed - Debug ENV-LOOKUP crash with env=fixnum(2)
+habu-n6lip [P1] [task] closed - Fix reader symbol interning mismatch for quote
+habu-uma6s [P1] [task] in_progress - Test habu0 build with new features
+habu-acbrl [P1] [task] closed - Add reader conditionals (#+sbcl, #-sbcl) to habu0
+habu-0vmok [P1] [task] in_progress - Analyze blockers for package system in habu0
+habu-tej3h [P1] [task] closed - Revert a64-* additions to habu0.lisp
+habu-bs58e [P1] [task] closed - Fix MCP server resilience issues
+habu-silju [P1] [task] closed - Find all silent fallbacks in habu0.lisp
+habu-shtog [P1] [feature] open - Add reader conditionals to habu0 (#+feature, #-feature)
+habu-dh9ux [P1] [feature] open - Add case statement to habu0
+habu-jfvk8 [P1] [feature] closed - Add package system to habu0 (defpackage, in-package, pkg:sym)
+habu-9gpvv [P1] [feature] in_progress - Add keyword support to habu0 (tag 7, reader, eval, compile)
+habu-8q68e [P1] [task] in_progress - Phase 1: Add keywords to habu0
+habu-c8nxn [P1] [task] in_progress - Refactor habu0 to use arm64/asm.lisp
+habu-ooxnv [P1] [task] open - Refactor habu0 to use arm64/asm.lisp instead of duplicate a64-* functions
+habu-m7hkv [P1] [task] in_progress - Debug string-length returning 0 in compile mode
+habu-kro39 [P1] [task] in_progress - Add missing primitives to h0-compile
+habu-c2ho [P1] [task] in_progress - Test habu0 can read source code
+habu-f0a6 [P1] [task] closed - Generate dSYM bundles for lldb debugging
+habu-rejy [P1] [task] closed - Preserve positions in read-all-loop
+habu-jpbc [P1] [task] closed - Add source location tracking through compilation
+habu-gl14 [P1] [task] closed - Verify bug still exists
+habu-nned [P1] [task] closed - Understand the bug pattern
+habu-57v0 [P1] [task] closed - Fix emit-debug-table test (symbol package mismatch)
+habu-es5i [P1] [task] closed - Add tests for debug nanopasses
+habu-5dr5 [P1] [task] closed - Implement extract-debug-vars nanopass
+habu-n59f [P1] [task] closed - Implement debug info as nanopass (extract-debug-vars + emit-debug-table)
+habu-f7xc [P1] [task] closed - Integrate debug table emission into codegen-fn
+habu-h84g [P1] [task] closed - Add debug table emission during codegen
+habu-dnvg [P1] [task] closed - Add lldb integration tests for DWARF debug info
+habu-wwsh [P1] [task] closed - Create bootstrap/debug-info.lisp for debug table generation
+habu-vvy8 [P1] [feature] closed - Implement debug info for stack trace variable printing
+habu-7kno [P1] [bug] closed - Fix lookup-symbol crash in stack trace symbolication
+habu-eyg2 [P1] [task] closed - Fix stack trace symbolication
+habu-r3ty [P1] [task] closed - Verify stack trace symbolication
+habu-kr33 [P1] [task] closed - Analyze standard frame format migration
+habu-v7gn [P1] [task] closed - Fix fp to point to saved fp/lr for standard stack walking
+habu-yxii [P1] [task] closed - Enable stack trace printing in fatal-error
+habu-zesq [P1] [task] closed - Commit intern intrinsic fix
+habu-wez4 [P1] [task] closed - Analyze the labels compilation transformation in compiler-sbcl.lisp
+habu-wm4g [P1] [task] closed - Debug habu0 unknown function error - symbol interning
+habu-osjc [P1] [task] closed - Fix sys-exit fallbacks in habu0.lisp to use fatal-error
+habu-xeff [P1] [task] closed - Plan removal of old accumulator codegen
+habu-14n0 [P1] [task] closed - Remove old accumulator codegen from compiler-sbcl.lisp
+habu-hfpm [P1] [task] closed - Check compiler-sbcl.lisp for x9 uses
+habu-hlst [P1] [task] closed - Fix gen-str-bytes-code to use x8 as scratch
+habu-1qvx [P1] [task] closed - Add x9 to allocatable-regs
+habu-hlap [P1] [task] open - Remove hardcoded x9 scratch - use virtual registers throughout
+habu-3ya1 [P1] [task] closed - Fix register allocation - reserve x9 for scratch
+habu-963r [P1] [task] closed - Add missing GC globals initialization to wrapper
+habu-kspb [P1] [task] closed - Update symtab readers in codegen.lisp, compiler-sbcl.lisp, reg-alloc.lisp
+habu-37kq [P1] [task] closed - Add +gc-symtab-offset+ and +gc-symtab-count-offset+ constants
+habu-b71m [P1] [task] closed - Test original wrapper works (stashed changes)
+habu-yw9w [P1] [task] closed - Fix wrapper symtab storage conflict with GC globals
+habu-1n35 [P1] [bug] open - Fix wrapper BL offset jumps to NOP instead of MAIN
+habu-68ps [P1] [task] closed - Build habu0 and test error output
+habu-82re [P1] [task] closed - Add symbol table structure in codegen.lisp (emit after code)
+habu-jk3k [P1] [task] closed - Debug MAIN codegen - not reaching native-read-file
+habu-et8b [P1] [task] closed - Fix wrapper to use BL to _exit stub
+habu-fihu [P1] [task] closed - Fix linear codegen syscalls to use :extern-call markers
+habu-fv9c [P1] [task] closed - Unify wrapper code paths to single __DATA approach
+habu-kdp7 [P1] [task] open - Unify wrapper code paths - remove mmap wrapper, use only __DATA segment approach
+habu-3gt1 [P1] [task] closed - Debug habu0 exit code always 0
+habu-fz0k [P1] [task] closed - Implement print-hex and walk-stack functions
+habu-b73q [P1] [feature] closed - Implement proper error infrastructure with stack traces
+habu-qpqp [P1] [task] closed - Add get-frame-pointer primitive
+habu-dkwl [P1] [task] closed - Implement proper error infrastructure with stack traces
+habu-5w82 [P1] [task] closed - Fix all fallbacks in habu0.lisp - crash instead of return 0
+habu-738t [P1] [task] closed - Find and remove all fallback patterns across codebase
+habu-06nh [P1] [task] closed - Implement DOTIMES-IR in ir-to-tac (reg-alloc.lisp)
+habu-nkwf [P1] [task] closed - Add intern infrastructure to habu0.lisp (get-intern-table, set-intern-table, find-interned, intern)
+habu-3vp5 [P1] [task] closed - Remove string comparison fallbacks from habu0.lisp op= functions
+habu-z60e [P1] [task] closed - Implement tac-string-equal codegen
+habu-mhjd [P1] [task] closed - Find where *num-temp-registers* (11) is used in code paths
+habu-ive7 [P1] [task] closed - Debug env-lookup always returns 11 for variable refs
+habu-hjb8 [P1] [task] closed - Test habu0 with more complex expressions
+habu-h452 [P1] [task] closed - Debug habu0 returns 11 for compound expressions
+habu-x59z [P1] [task] closed - Find why MAIN t branch jumps to return instead of executing body
+habu-ppcd [P1] [task] closed - Debug habu0 exit code always 5 - cond t branch skips body
+habu-tl67 [P1] [task] closed - Debug habu0 exit code always 5
+habu-xhsk [P1] [bug] open - Fix environment representation inconsistency (alist vs flat list)
+habu-v8m4 [P1] [feature] open - Add labels/lambda/funcall to habu0 evaluator
+habu-k75o [P1] [bug] open - Fix symbol interning mismatch between bootstrap and native
+habu-dm33 [P1] [task] closed - Debug habu0: habu-read returns LAMBDA-7 instead of cons - lambda addresses stored incorrectly
+habu-kfyy [P1] [task] closed - Debug habu0: habu-read returns LAMBDA-7 (code pointer) instead of cons
+habu-9htn [P1] [task] closed - Find where garbage enters x1 between first and second SKIP-WS call
+habu-o2uc [P1] [task] closed - Debug habu0 crash in SKIP-WS - x1 has garbage from code section
+habu-y14b [P1] [task] closed - Debug habu0 crash in SKIP-WS - env[-1] has garbage
+habu-4l0y [P1] [task] closed - Debug habu0 exit code 0 - return value lost somewhere
+habu-b3oe [P1] [task] closed - Fix :lambda-ref-marker not being resolved by linker
+habu-rrpd [P1] [task] closed - Debug habu0 crash - missing tac-var load before CDR
+habu-1nl0 [P1] [task] closed - Fix tac-lit to handle constants > 16 bits
+habu-f5nd [P1] [task] closed - Debug habu0 exit 254 after reverse fix
+habu-qytp [P1] [task] closed - Remove built-in reverse inline from compiler.lisp
+habu-v31m [P1] [task] closed - Debug habu0 crash - forms=0 after read-all
+habu-cih1 [P1] [task] closed - Update AGENTS.md with crash-analyze emphasis and optimization
+habu-zbwa [P1] [task] closed - Test crash-analyze on habu0 crash
+habu-xlcd [P1] [task] closed - Create modular MCP tool structure with ASDF
+habu-ky0c [P1] [task] closed - Add missing IR handlers to ir-to-tac
+habu-z7ll [P1] [task] closed - Fix undefined function error (line 852): Replace sys-exit-ir with proper error
+habu-o6tf [P1] [task] closed - Fix silent compiler errors (sys-exit-ir 200 instead of real errors)
+habu-l3nz [P1] [task] closed - Fix spill slot base offset (should be 0x40, not 0)
+habu-qzd6 [P1] [task] closed - Fix read-all-loop spill offset bug in habu0 reg-alloc
+habu-ihsd [P1] [task] closed - Fix comparison operator package mismatch in reg-alloc.lisp
+habu-91xk [P1] [task] closed - Document the package symbol mismatch bug in tac-cmp codegen
+habu-7efq [P1] [task] open - Comprehensive IR pattern propagation review
+habu-fvmd [P1] [task] closed - Investigate MAIN+620 crash (CAR on nil) in ARM64 codegen
+habu-fdsr [P1] [task] closed - Fix x20 env restore causing MAIN crash
+habu-kxx0 [P1] [task] closed - Investigate MAIN+620 nil crash in habu0 CAR nil branch
+habu-5g91 [P1] [task] closed - Debug READ-ALL-LOOP crash at offset +132
+habu-1vkq [P1] [task] closed - Fix pass 1/2 position mismatch in tac-codegen
+habu-gbqp [P1] [task] closed - Find source of b #0 - label 100 at pos 1424
+habu-wcbb [P1] [task] closed - Find source of b #0 in habu0 binary
+habu-elg0 [P1] [task] closed - Get oracle help on b #0 source
+habu-0k7h [P1] [task] closed - Find source of remaining b #0 in binary
+habu-l2k6 [P1] [task] closed - Test habu0 after fix
+habu-ww6x [P1] [task] closed - Fix unresolved branch generating b #0 in codegen
+habu-kkqe [P1] [task] closed - Debug habu0 hang - oracle found infinite loop in MAIN at offset 0x1C0
+habu-q2q5 [P1] [task] closed - Get oracle review of habu0.lisp main loop
+habu-9y1r [P1] [task] closed - Debug habu0 hang - all inputs return T then timeout
+habu-gs3y [P1] [task] closed - Update server version string
+habu-yjmz [P1] [task] closed - Wait for oracle review of MCP tools
+habu-3o81 [P1] [task] closed - Debug remaining habu0 hang after branch fix
+habu-ym7y [P1] [task] closed - Add missing IR types to register allocator (make-vector-ir, make-string-from-vector-ir)
+habu-9cn1 [P1] [task] closed - Fix find-free-vars env format conflict causing labels bug
+habu-5yxw [P1] [task] closed - Consolidate to single register-allocated codegen
+habu-hp8n [P1] [task] closed - Fix labels codegen bug - body not executing
+habu-oe16 [P1] [task] closed - Fix if-ir codegen to compare against nil (#x06) instead of 0
+habu-trnk [P1] [task] closed - Debug habu0 exit code 26 - main returns string instead of fixnum
+habu-l5u6 [P1] [task] closed - Debug habu0 exit code 26 using lldb with symbol map
+habu-gt8q [P1] [feature] closed - Add subprocess-isolated build-habu0 tool to MCP server
+habu-emvl [P1] [task] closed - Analyze codegen paths and plan removal
+habu-e373 [P1] [task] closed - Remove accumulator codegen - keep only register-allocated linear codegen
+habu-4ncg [P1] [task] closed - Remove *use-register-allocation* conditional
+habu-9d5c [P1] [bug] closed - Remove duplicate codegen paths - use only linear codegen with register allocator
+habu-sb53 [P1] [task] closed - Fix register clobbering in habu0 codegen
+habu-suka [P1] [task] closed - Commit build fixes
+habu-tnym [P1] [task] closed - Debug why habu0 returns exit 26 for all inputs - needs further investigation
+habu-f963 [P1] [task] closed - Fix NEG instruction encoding in arm64/asm.lisp
+habu-7t5c [P1] [task] closed - Debug why habu0 returns exit 26 for all inputs
+habu-3spw [P1] [task] closed - Run the ash-right test to confirm the failure
+habu-7j33 [P1] [task] closed - Run the failing FASL tests to see the exact error messages
+habu-ird0 [P1] [task] closed - Investigate ASH compilation in bootstrap/compiler.lisp
+habu-rbmb [P1] [task] closed - Launch parallel agents for 3 blockers
+habu-6y4l [P1] [task] closed - Fix ash-right test failure (bsh codegen)
+habu-r77e [P1] [task] closed - Fix TCO bug in self-recursive functions
+habu-o812 [P1] [task] closed - Debug x27 clobbering issue in habu0
+habu-pri7 [P1] [task] closed - Add buffer-byte-ref to linear codegen
+habu-83ka [P1] [task] closed - Fix buffer-to-string to use buffer-byte-ref
+habu-1t5n [P1] [task] closed - Debug habu0 exit code 26 issue
+habu-hdw1 [P1] [task] closed - Rebuild habu0 with fixed compiler
+habu-0wkb [P1] [task] closed - Rebuild and test habu0 interpreter
+habu-2p9i [P1] [task] closed - Fix recursive labels issue
+habu-b22z [P1] [task] closed - Fix find-free-vars env-lookup bug
+habu-bklw [P1] [task] closed - Fix tac-str and tac-sym missing codegen handlers
+habu-qhwx [P1] [task] closed - Route main IR through register allocator
+habu-1z0u [P1] [task] closed - Add missing IR handlers to register allocator
+habu-99lv [P1] [task] closed - Add cadr/caddr/cadddr primitives to habu0
+habu-pb06 [P1] [task] closed - Test self-hosting: Stage 1 (habu0) can compile code
+habu-7ook [P1] [task] closed - Build Stage 1 from habu0.lisp
+habu-tqov [P1] [task] closed - Commit today's fixes
+habu-796e [P1] [task] closed - Fix FASL linker (Invalid FASL magic errors)
+habu-x6om [P1] [task] closed - Fix TCO codegen: CONTINUE, LOOP-START, STORE-PARAM handlers
+habu-rq8t [P1] [task] closed - Fix FASL magic mismatch - read-fasl-v2 expects 'HFSL' but fasl.lisp writes 'FASL'
+habu-x152 [P1] [task] closed - Fix TCO branch resolution (macro-in-recursive)
+habu-sdu8 [P1] [feature] in_progress - Self-hosting: Build and test Stage 1 → Stage 2
+habu-1fyr [P1] [bug] open - Fix FASL linker (Invalid FASL magic)
+habu-o51g [P1] [bug] open - Fix char-at codegen (raw register number error)
+habu-s8m6 [P1] [bug] closed - Fix macro-in-recursive test (recursion + macros)
+habu-mhna [P1] [task] closed - Fix kw-rewrite test failure
+habu-ibt4 [P1] [task] closed - Fix let-star/let-nested/let-multi binding offsets
+habu-wkax [P1] [task] closed - Fix FASL 4-arg codegen calls
+habu-7fe4 [P1] [bug] closed - Fix all remaining test failures after reg-alloc integration
+habu-uokq [P1] [task] closed - Integrate register allocator into codegen pipeline
+habu-57m3 [P1] [task] closed - Wire register allocator into codegen pipeline
+habu-ficd [P1] [task] closed - Commit progress
+habu-vuud [P1] [task] closed - Fix function call codegen (fnoffs lookup)
+habu-qgjp [P1] [task] closed - Add missing IR types to linearize
+habu-u0j8 [P1] [task] closed - Consolidate to single linear codegen
+habu-bco1 [P1] [task] closed - Remove *use-linear-codegen* toggle and old codegen fallback
+habu-s2qk [P1] [task] closed - Wire codegen-linear into codegen-fn
+habu-ijj5 [P1] [task] closed - Create automated tests for linearization pass
+habu-v80o [P1] [task] closed - Document linearization pass design
+habu-7djg [P1] [feature] open - Add linearization pass (Tree IR → Linear IR)
+habu-gfsj [P1] [task] closed - Check ready issues for immediate progress
+habu-0uz4 [P1] [task] closed - Analyze current codegen recursion patterns
+habu-8j0c [P1] [task] closed - Convert codegen to iterative with work stack
+habu-imuq [P1] [task] closed - Close habu-ostk since symbol dispatch works
+habu-8h3s [P1] [task] closed - Fix habu0 user-defined function calls returning 202
+habu-gpig [P1] [task] closed - Analyze all 66 in_progress issues to identify stale/completed ones
+habu-2c3b [P1] [task] closed - Fix reader 1+/1- parsing bug
+habu-ex6b [P1] [bug] closed - Reader parses 1+ and 1- incorrectly
+habu-5uwd [P1] [task] closed - Add 10 missing compiler forms with existing IR
+habu-vdvc [P1] [task] in_progress - Add missing compiler forms that have IR support
+habu-gu0k [P1] [task] closed - Analyze missing primitives for Stage 1
+habu-qizq [P1] [task] closed - Build Stage 1 via FASL linker
+habu-i9jh [P1] [task] open - Build Stage 1 via FASL system
+habu-jccs [P1] [task] closed - Fix runtime crash on undefined function (habu-ewtk)
+habu-70ce [P1] [task] closed - Restart MCP to reload clean SBCL
+habu-c7xy [P1] [task] closed - Fix habu0 nil variable lookup bug
+habu-sdkh [P1] [task] closed - Test habu0 interpreter capabilities
+habu-5ty5 [P1] [task] closed - Test Stage 1 with simple main
+habu-vbbb [P1] [task] closed - Build Stage 1 binary from source
+habu-zaip [P1] [task] closed - Add structured output helper function
+habu-o70c [P1] [task] closed - Fix MCP tools verbose output
+habu-npld [P1] [bug] closed - MCP tools return too verbose output for AI consumption
+habu-jzv8 [P1] [bug] open - Fix FASL symbol table offset corruption
+habu-6lyl [P1] [task] closed - Main code size may change after fnoffs recalc
+habu-mv4p [P1] [task] closed - Fix symbol table offset bug in FASL generation
+habu-qcmg [P1] [task] closed - Check if COMPILE-EXPR-FULL offset 0x9c68 is correct
+habu-m3bc [P1] [task] closed - Trace linked binary function table
+habu-9xzy [P1] [task] closed - Debug compile-expr-full call crash
+habu-bhfd [P1] [task] closed - Check if issue is with large cond or unresolved calls
+habu-qp8w [P1] [task] closed - Debug Stage 1 compile-expr-full crash
+habu-uq2k [P1] [task] closed - Test simpler function calls to isolate issue
+habu-wdwn [P1] [task] closed - Debug stack overflow in Stage 1 compiler
+habu-ivdi [P1] [task] closed - Build Stage 1 with compiler modules
+habu-5eah [P1] [task] closed - Fix sym-lit in compiler-sbcl.lisp to call intern-symbol
+habu-3hre [P1] [bug] closed - Fix let-inside-cond codegen bug
+habu-e0xi [P1] [task] closed - Fix compiler.lisp to use sym-eq for native compilation
+habu-0808 [P1] [task] closed - Debug Stage 1 exit code discrepancy
+habu-vvuj [P1] [task] closed - Rebuild Stage 1 with all fixes
+habu-s8c9 [P1] [task] closed - Rebuild Stage 1 with TCO fix
+habu-g8iu [P1] [task] closed - Fix TCO for tail calls to other functions
+habu-1eae [P1] [task] closed - Test Stage 1 reader
+habu-k5cc [P1] [task] closed - Test Stage 1 compile arithmetic
+habu-8k7j [P1] [task] closed - Test Stage 1 compile-expr-full
+habu-9kn5 [P1] [task] closed - Link and test Stage 1 compiler
+habu-g2yf [P1] [task] closed - Test Stage 1 codegen pipeline
+habu-rz7p [P1] [task] blocked - Test Stage 1 compile-forms pipeline
+habu-27v5 [P1] [task] closed - Test Stage 1 can compile code
+habu-c52t [P1] [task] closed - Create Stage 1 main entry point
+habu-obid [P1] [task] closed - Compile expand.lisp to FASL
+habu-15g9 [P1] [task] closed - Build Stage 1 with fixed closure support
+habu-grf4 [P1] [task] closed - Debug lambda misalignment in deliver
+habu-2ld9 [P1] [task] closed - Debug FASL-linked closure crash
+habu-dl1o [P1] [task] closed - Reload system and recompile modules
+habu-i9sk [P1] [task] closed - Fix closure offsets in FASL linker
+habu-b26x [P1] [task] closed - Recompile all modules with v4 format
+habu-1je9 [P1] [task] closed - Recompile all modules with fixes
+habu-ed5m [P1] [task] closed - Compile missing optimize.lisp module
+habu-m5mk [P1] [task] closed - Run test suite to verify fix
+habu-2lwv [P1] [task] closed - Fix FASL linker labels/gensym resolution bug
+habu-0xam [P1] [task] closed - Create Stage 1 main that tests self-compilation
+habu-1xlo [P1] [task] closed - Run test suite to verify fixes
+habu-pcbd [P1] [task] closed - Link full Stage 1 with all modules
+habu-sgz8 [P1] [task] closed - Fix pkg-simple test failure
+habu-ad20 [P1] [task] closed - Fix FASL magic mismatch between writer and linker
+habu-ym5x [P1] [task] closed - Add comprehensive link-fasls tests
+habu-oyfb [P1] [task] closed - Update AGENTS.md with FASL build process
+habu-b18k [P1] [task] closed - Implement APPLY function for Stage 1
+habu-2357 [P1] [task] closed - Diagnose Stage 1 closure/labels crash
+habu-2q7u [P1] [bug] closed - Fix symbol interning for Stage 1 self-compilation
+habu-3nef [P1] [task] closed - Fix Stage 1 codegen issue
+habu-n6t4 [P1] [task] closed - Test Stage 1 reader and compiler
+habu-glli [P1] [task] closed - Document correct Stage 1 build process
+habu-e3ta [P1] [task] closed - Fix habu-stage1-src.lisp generation
+habu-9ttq [P1] [task] closed - Check Stage 1 build status
+habu-hjpz [P1] [bug] open - Fix nil compiling to 0 instead of 6
+habu-fn3c [P1] [task] closed - Include all necessary files in Stage 1
+habu-aqiy [P1] [task] closed - Fix "1" undefined function issue
+habu-3obh [P1] [task] closed - Find all #-sbcl sections in codegen.lisp
+habu-1c77 [P1] [task] closed - Separate bootstrap compiler from Habu compiler source
+habu-0eq0 [P1] [task] closed - Understand Stage 1 build requirements
+habu-qtva [P1] [task] closed - Analyze codegen recursion depth
+habu-o7fu [P1] [task] closed - Convert codegen to iterative with explicit work stack
+habu-rbjp [P1] [bug] open - Bug: h0-eval defun with if returns wrong value
+habu-j8cy [P1] [task] closed - Test Stage 1 self-compilation with fixed reader
+habu-b9wg [P1] [task] closed - Check ready issues and continue work
+habu-pf2x [P1] [task] closed - Root cause analysis of + and - symbol bug
+habu-dk6r [P1] [task] closed - Add all missing primitives to h0-eval
+habu-58jf [P1] [task] closed - Fix symbol-name for + operator in habu0
+habu-ym9v [P1] [task] closed - Copy design docs to repo
+habu-z0e4 [P1] [task] open - Document JIT and GC architecture in repo
+habu-ggd7 [P1] [feature] open - Add IR representation hints for JIT specialization
+habu-4j82 [P1] [feature] open - Make GC heap size configurable
+habu-07lo [P1] [feature] open - Add JIT function versioning infrastructure
+habu-5fe4 [P1] [task] closed - Examine current Habu codebase to validate design proposals
+habu-xi06 [P1] [task] closed - Bug: nested calls with captured var + local expr
+habu-8sk0 [P1] [task] closed - Bug: captured var + local expr in funcall corrupts state
+habu-p1t1 [P1] [task] closed - Investigate labels codegen for 4+ functions
+habu-xx1u [P1] [task] closed - Narrow down which feature in habu-read triggers bug
+habu-dqvo [P1] [task] closed - Check char-at for position after + in list
+habu-9vfz [P1] [task] closed - Rebuild habu0 and test again
+habu-fk8i [P1] [task] closed - Test and/or behavior with nil
+habu-ha9w [P1] [task] closed - Test if compiled length function works
+habu-3zk1 [P1] [task] closed - Find why h0-eval function dispatch returns 0 for + and -
+habu-cdkx [P1] [task] closed - Find what value + is being parsed as (not symbol, not number)
+habu-t5z7 [P1] [task] closed - Root cause: Need to trace h0-eval function dispatch for +
+habu-4otp [P1] [task] closed - Find root cause of + and - symbol bug
+habu-6qj8 [P1] [task] closed - Find why + and - produce broken symbols in reader
+habu-zwep [P1] [task] closed - Fix nil returning 0 instead of 6
+habu-1r2f [P1] [task] closed - Fix h0-eval to treat strings as self-evaluating
+habu-iwct [P1] [task] closed - Fix symbol-name returning wrong string for operators
+habu-7gmr [P1] [task] closed - Test Stage 1 interpreter with simple expressions
+habu-tn5l [P1] [task] closed - Fix Stage 1 symbol dispatch bug
+habu-ostk [P1] [bug] closed - Fix Stage 1 interpreter symbol dispatch
+habu-q8z8 [P1] [task] open - Add unboxing pass for numeric operations
+habu-8hdb [P1] [task] open - Implement type inference for arithmetic specialization
+habu-glg2 [P1] [task] closed - Understand Habu compiler architecture and current implementation
+habu-l2aj [P1] [task] closed - Implement block/return-from
+habu-bre7 [P1] [task] closed - Implement defmacro
+habu-yhek [P1] [task] closed - Implement module loading/linking
+habu-hdu2 [P1] [task] closed - Design module system
+habu-8ted [P1] [task] closed - Design Habu FASL format
+habu-0tna [P1] [feature] open - Implement module/package-based compilation
+habu-c6zi [P1] [feature] open - Implement native load for FASL and source
+habu-ddft [P1] [feature] open - Implement compile-file for separate compilation
+habu-w332 [P1] [feature] closed - Implement Habu native FASL format
+habu-zu2u [P1] [task] closed - Test Stage 1 self-compilation status
+habu-x2j9 [P1] [task] closed - Split quickcheck.lisp into core framework and separate test files
+habu-g3dg [P1] [task] closed - Implement apply function for self-hosting
+habu-mw81 [P1] [task] closed - Implement match macro (habu-3oqq)
+habu-67dx [P1] [task] closed - Commit changes
+habu-46f9 [P1] [task] closed - Test Stage 1 compiling simple expression
+habu-5a4z [P1] [task] closed - Test Stage 1 with native reader parsing
+habu-xqa7 [P1] [task] closed - Fix package support - preserve package prefixes
+habu-8g5o [P1] [task] closed - Build Stage 1 with basic functionality
+habu-dh3m [P1] [task] closed - Test Stage 1 reader on string input
+habu-qvkv [P1] [task] closed - Build minimal Stage 1 with reader only
+habu-td24 [P1] [task] closed - Build Stage 1 with fixed char-at
+habu-dctx [P1] [task] closed - Add tests for undefined function detection
+habu-mlts [P1] [feature] closed - Add char-at as compiler primitive
+habu-pp6a [P1] [task] closed - Test all three undefined function features
+habu-2g6l [P1] [task] closed - Implement runtime crash on undefined function call
+habu-o6ke [P1] [feature] open - Link-time undefined function verification
+habu-4p3l [P1] [feature] open - Compile-time undefined function detection
+habu-ewtk [P1] [feature] closed - Runtime crash on undefined function call
+habu-0bna [P1] [task] closed - Add char-at as a compiler primitive
+habu-a9zo [P1] [task] closed - Fix char-at implementation
+habu-1lbv [P1] [task] closed - Test habu-read directly on list input
+habu-fas6 [P1] [task] closed - Debug Stage 1 reader: read-all returns 0 for lists
+habu-fz08 [P1] [task] closed - Test full Stage 1 self-compilation
+habu-aleb [P1] [task] closed - Test Stage 1 self-compilation with fixed GC
+habu-y06f [P1] [task] closed - Build full Stage 1 and test self-compilation
+habu-xrv1 [P1] [task] closed - Build and test Stage 1 with GC fixes
+habu-3dlm [P1] [task] closed - Add GC pre-checks to all SBCL codegen allocations
+habu-gzs2 [P1] [task] closed - Debug GC not triggering in Stage 1
+habu-pmfe [P1] [task] closed - Test TCO with Stage 1 compilation
+habu-2qmj [P1] [task] closed - Enable TCO in compiler-sbcl.lisp delivery pipeline
+habu-gzba [P1] [task] closed - Revert frame size changes that caused stack overflow
+habu-3z16 [P1] [task] closed - Integrate register allocator into SBCL compilation pipeline
+habu-042y [P1] [task] closed - Integrate TCO into SBCL compilation pipeline
+habu-tssw [P1] [task] closed - Debug Stage 1 self-compilation crash
+habu-cro3 [P1] [task] closed - Build Stage 1 compiler binary
+habu-hl4u [P1] [task] closed - Convert codegen to iterative
+habu-21wc [P1] [task] closed - Increase stack size for self-hosting
+habu-3d1z [P1] [task] closed - Verify TCO works in native Habu
+habu-56g8 [P1] [task] closed - Convert recursive codegen to iterative for self-hosting
+habu-2b8a [P1] [task] open - Make register allocator work in native Habu
+habu-dssf [P1] [feature] open - Add compiler support for multiple values
+habu-8ypm [P1] [feature] closed - Implement block/return-from for non-local exit
+habu-sd63 [P1] [feature] closed - Implement defmacro and macroexpand
+habu-sll2 [P1] [feature] closed - Implement apply function
+habu-0lfg [P1] [bug] closed - Fix sym-lit to use runtime interning (SBCL approach)
+habu-b0sh [P1] [task] closed - Fix sym-lit to use runtime interning (like SBCL)
+habu-o6w0 [P1] [task] closed - Fix symbol eq for mixed SBCL/native mode
+habu-drlf [P1] [task] closed - Test Stage 1 can parse with native reader
+habu-xf20 [P1] [task] closed - Test Stage 1 native reader
+habu-8hx2 [P1] [task] closed - Rename tool functions to match new symbols
+habu-xhn1 [P1] [task] closed - Add handler symbols to *tools* definitions
+habu-jlq9 [P1] [task] closed - Update tool names in *tools* list
+habu-0lcg [P1] [task] closed - Debug MCP server crash
+habu-befe [P1] [task] closed - Test Stage 1 self-compilation
+habu-yank [P1] [task] closed - Build native JIT REPL with reader and compiler
+habu-qcgj [P1] [task] closed - Build minimal echo REPL binary
+habu-j24d [P1] [task] closed - Test defvar global variable support
+habu-85qg [P1] [task] closed - Fix sys-write-char crash in compiled binaries
+habu-c1wp [P1] [task] closed - Add JIT primitives as extern calls (jit-mmap, jit-write-protect, etc.)
+habu-zjwn [P1] [task] closed - Build Stage 1 and test defpackage parsing
+habu-il7s [P1] [task] closed - Run test suite to verify fix
+habu-9pt6 [P1] [task] closed - Fix extern-call BL instruction offset bug
+habu-2vvw [P1] [task] closed - Implement reader conditionals (#+/#-) in native reader
+habu-pyvz [P1] [task] closed - Fix defpackage crash in native reader
+habu-yoh2 [P1] [task] closed - Test Stage 1 can read files (native-read-file)
+habu-0eow [P1] [task] closed - Test Stage 1 build with deliver
+habu-qeww [P1] [task] closed - Analyze self-hosting dependencies
+habu-mngi [P1] [task] closed - Test Stage 1 with complex expressions (habu-gsq)
+habu-dmh0 [P1] [task] closed - Verify division test works (habu-idx4)
+habu-8vwp [P1] [task] closed - Close JIT research issue (habu-ey6e) - proven working
+habu-wkjr [P1] [task] closed - Create compiling REPL with codegen
+habu-ey6e [P1] [task] closed - Research JIT execution approach
+habu-idx4 [P1] [task] closed - Add division test
+habu-rud6 [P1] [task] closed - Create arithmetic evaluator REPL
+habu-txxt [P1] [task] closed - Copy codegen function from compiler-sbcl.lisp to jit/core.lisp
+habu-ofld [P1] [task] closed - Test JIT module loads correctly
+habu-u2qv [P1] [task] closed - Create jit/ directory structure
+habu-1d3j [P1] [task] closed - Refactor JIT as separate nanopass component
+habu-ijbd [P1] [task] closed - Fix echo REPL EOF handling - debug wrapper-size mismatch
+habu-hh9p [P1] [task] closed - Continue native JIT REPL work (habu-mbv)
+habu-59w [P1] [task] closed - Add QuickCheck property tests for ARM64 encoding (habu-g8h)
+habu-be7 [P1] [task] closed - Implement native JIT for self-hosted Habu REPL (habu-mbv)
+habu-h3w [P1] [task] closed - Convert all codegen to use register keywords
+habu-yi8 [P1] [task] closed - Require keyword register names in ARM64 assembler
+habu-69o [P1] [task] closed - Implement native JIT REPL
+habu-ibs [P1] [task] closed - Check for pending work
+habu-kj7 [P1] [task] closed - Run full test suite
+habu-zap [P1] [task] closed - Commit changes
+habu-8qj [P1] [task] closed - Add pthread_jit_write_protect_np call generator
+habu-jw6 [P1] [task] closed - Implement jit-alloc-code for JIT memory allocation
+habu-d8y [P1] [task] closed - Replace deliver with mmap implementation
+habu-7ox [P1] [task] closed - Remove deliver-v2 (unused dead code)
+habu-a1p [P1] [task] closed - Add sys-mmap primitive for JIT memory allocation
+habu-99z [P1] [task] closed - Run full test suite to verify &optional changes
+habu-agv [P1] [task] closed - Add &optional support to parse-lambda-list in compiler.lisp
+habu-cq4 [P1] [task] closed - Build Stage 1 binary using SBCL + Habu compiler
+habu-7po [P1] [task] closed - Create deliver-mmap function using mmap-heap approach
+habu-00u [P1] [task] closed - Save native binaries without embedded heap
+habu-4yx [P1] [task] closed - Run full test suite
+habu-goy [P1] [task] closed - Add setq handling for globals
+habu-pap [P1] [task] closed - Add global-vars-table slot at x27+104
+habu-bk3 [P1] [task] closed - Fix MCP server warnings and format bugs
+habu-cc6 [P1] [task] closed - Test echo REPL binary
+habu-7ix [P1] [task] closed - Fix sys-write-char crash in compiled binaries
+habu-twm [P1] [task] closed - Test echo-repl in compiled binary
+habu-x71 [P1] [task] closed - Add read-line-stdin using sys-read
+habu-yg5 [P1] [task] closed - Run test suite to verify no regressions
+habu-98k [P1] [task] closed - Test full JIT workflow (allocate, write, protect, execute)
+habu-yef [P1] [task] closed - Add JIT primitives to compiler-sbcl.lisp (mmap, pthread_jit_write_protect_np, cache ops)
+habu-mbv [P1] [task] closed - Implement native JIT for self-hosted Habu REPL
+habu-udt [P1] [task] closed - Update MCP server lisp_jit tool to use new executor
+habu-uoq [P1] [task] closed - Update executor.lisp for ARM64 JIT with MAP_JIT and pthread_jit_write_protect_np
+habu-oli [P1] [task] closed - Implement JIT execution via executor.lisp
+habu-2tr [P1] [bug] closed - Debug why heap data offset 104 breaks car/cdr tests
+habu-p4h [P1] [task] closed - Fix cbz offset bug in GC copy loop
+habu-o2h [P1] [task] closed - Add stack_base slot to GC globals
+habu-8nk [P1] [task] closed - Create generate-gc-fasl function to emit GC runtime as FASL
+habu-hb0 [P1] [task] closed - Add MCP debugging tools (lisp_tagged_value, lisp_heap_info, lisp_stack_frames)
+habu-81k [P1] [task] closed - Fix FASL extern-call marker handling
+habu-jqt [P1] [task] closed - Integrate generational GC into deliver function
+habu-jio [P1] [task] closed - Fix parenthesis balancing in compiler-sbcl.lisp
+habu-af9 [P1] [task] closed - Fix Stage 1 build - undefined variable *INTERN-TABLE*
+habu-4lp [P1] [task] closed - Investigate habu-read crash (labels transformation bug)
+habu-23a [P1] [task] closed - Rename all regalloc to reg-alloc in code
+habu-pa5 [P1] [task] closed - Investigate keyword argument test failures with reg-alloc
+habu-5eg [P1] [task] closed - Fix tac-lit fixnum tagging in reg-alloc.lisp
+habu-12i [P1] [task] closed - Fix register allocator keyword argument failures
+habu-cjn [P1] [task] closed - Finish MCP server integration
+habu-m5l [P1] [task] closed - Create trace.lisp with core infrastructure
+habu-rw1 [P1] [task] closed - Complete ARM64 disassembler (fix endianness)
+habu-ssq [P1] [task] closed - Add keyword register support to ARM64 assembler
+habu-gvf [P1] [task] closed - Complete ARM64 disassembler to match lldb output
+habu-zg4 [P1] [task] closed - Complete ARM64 disassembler to match lldb output
+habu-yi6 [P1] [task] closed - Create Habu MCP server with full SBCL REPL capabilities
+habu-0o1 [P1] [task] closed - Set up Slynk server in SBCL for Claude Code interaction
+habu-46q [P1] [task] closed - Create Habu MCP server with Lisp development tools
+habu-5oj [P1] [task] closed - Finish register allocator implementation
+habu-xcq [P1] [bug] closed - Fix habu-read crash (labels transformation bug)
+habu-c7o1r [P2] [task] open - Migrate compiler to use HOST:h-* API (~50 reader conditionals)
+habu-4lh82 [P2] [task] closed - Test unified compiler on habu0
+habu-cqlo4 [P2] [task] closed - Test unified compiler on SBCL
+habu-xv7pw [P2] [task] in_progress - Migrate compiler to use HOST:h-* API
+habu-h1c0g [P2] [task] open - Test unified compiler on both hosts
+habu-7inol [P2] [task] open - Migrate compiler to use host API
+habu-kkbu6 [P2] [task] closed - Create host-habu0.lisp implementation
+habu-89z5f [P2] [task] closed - Create host-sbcl.lisp implementation
+habu-5yhc8 [P2] [feature] open - Unify bootstrap and native compilers into single source
+habu-oq98k [P2] [task] open - Create unified compiler architecture plan
+habu-0jkzy [P2] [task] open - Refactor h0-eval dispatch to check symbolp once, use efficient case/dispatch
+habu-y3b4i [P2] [task] closed - Change op= calls to use cached symbols
+habu-zthk7 [P2] [task] closed - Add initializations in init-compile-ops
+habu-kxd27 [P2] [task] closed - Add op=xxx functions for each operator
+habu-dob0d [P2] [task] closed - Add defvar declarations for missing op symbols
+habu-48t6r [P2] [task] open - Store C-compatible names in debug info for lldb symbolication
+habu-jyx17 [P2] [task] closed - Add disassembler integration tests vs lldb
+habu-7g1ey [P2] [task] closed - Report findings on recursive function calls
+habu-21lii [P2] [task] closed - Test string= function vs inline definition
+habu-eyv2x [P2] [task] closed - Examine string=-loop in map file and test it
+habu-g3gkt [P2] [bug] closed - Fix MCP disassembler to show XZR not SP for SUB shifted register
+habu-90gp9 [P2] [task] open - Test case/when/unless in habu0
+habu-9ucmr [P2] [task] open - Test arm64/asm.lisp can be loaded by habu0
+habu-yr562 [P2] [task] open - Add declaim as no-op to habu0
+habu-nft1f [P2] [task] open - Test arm64 functions work in habu0
+habu-5zawk [P2] [task] closed - Test habu0 with let expressions
+habu-q8xvw [P2] [task] open - Fix other reader special forms if needed
+habu-wrf65 [P2] [task] open - Test habu0 with quoted expressions
+habu-zhy1c [P2] [task] closed - Add &key lambda support to habu0
+habu-it4y8 [P2] [task] open - Add package system to habu0 (habu-jfvk8) - BLOCKER
+habu-0bxrr [P2] [task] open - Add reader conditionals to habu0 (habu-shtog) - BLOCKER
+habu-vbngz [P2] [task] closed - Test habu0 build and (+ 1 1)
+habu-qkshy [P2] [task] closed - Migrate h0-codegen to use arm64:* functions
+habu-il4up [P2] [task] closed - Debug the (+ 1 1) returning 200 bug
+habu-6f5kw [P2] [task] closed - Test that crashes show stack traces
+habu-01zlo [P2] [task] closed - Replace fallbacks with fatal-error crashes
+habu-x84x5 [P2] [task] open - Share bootstrap/gc.lisp with habu0
+habu-fe93o [P2] [task] open - Share bootstrap/dwarf.lisp with habu0
+habu-dl91v [P2] [task] open - Share bootstrap/macho.lisp with habu0
+habu-og47q [P2] [task] open - Share bootstrap/reg-alloc.lisp with habu0
+habu-6y8mg [P2] [task] open - Share bootstrap/codegen.lisp with habu0
+habu-107a2 [P2] [task] open - Delete duplicate ARM64 code after migration
+habu-c318d [P2] [feature] open - Add defconstant to habu0
+habu-mo46m [P2] [task] open - Rebuild habu0 using shared arm64/asm.lisp
+habu-2v7ud [P2] [task] open - Delete duplicate code (a64-*, native/arm64-asm.lisp)
+habu-5cyec [P2] [task] open - Test: load arm64/asm.lisp in habu0
+habu-7xbaj [P2] [task] open - Phase 5: Add defconstant to habu0
+habu-8uymr [P2] [task] open - Phase 4: Add reader conditionals to habu0
+habu-vhdkk [P2] [task] open - Phase 3: Add case statement to habu0
+habu-ukoqh [P2] [task] open - Phase 2: Add packages to habu0
+habu-mxree [P2] [task] open - Build Stage 2 with Stage 1
+habu-ouag7 [P2] [task] open - Test habu0 can generate Mach-O
+habu-4pnx [P2] [task] open - Test habu0 can compile forms
+habu-sh8s [P2] [task] open - Attach metadata to IR nodes
+habu-0x5r [P2] [task] closed - Thread filename through deliver pipeline
+habu-gszz [P2] [task] closed - Add pos-to-line-col helper function
+habu-2eu6 [P2] [task] closed - Add lldb integration tests
+habu-bopy [P2] [task] open - Implement fix if needed
+habu-2b5s [P2] [task] open - Test fix
+habu-1dd2 [P2] [task] closed - Implement fix
+habu-7o3t [P2] [task] closed - Find the problematic codegen code
+habu-k3r8 [P2] [task] open - Test end-to-end debug output
+habu-0802 [P2] [task] open - Enhance print-stack-frames to print variables
+habu-y57l [P2] [task] open - Store debug table in binary
+habu-zblb [P2] [task] closed - Integrate passes into deliver pipeline
+habu-2enn [P2] [task] closed - Implement emit-debug-table nanopass
+habu-8w24 [P2] [task] open - Add print-tagged-value to habu0.lisp
+habu-n9lq [P2] [task] closed - Add tests for DWARF functionality
+habu-7yse [P2] [task] closed - Add tests for variable printing
+habu-tf9h [P2] [task] closed - Add tests for stack trace printing
+habu-w4pm [P2] [task] open - Test debug output with real crash
+habu-ac9r [P2] [task] open - Add print-tagged-value for pretty-printing tagged values
+habu-y35t [P2] [task] open - Enhance print-stack-frames to read saved x20 and print variables
+habu-ht0i [P2] [task] open - Store debug table in binary (like symbol table)
+habu-j6tv [P2] [task] closed - Add debug table format and emission during codegen
+habu-cf1u [P2] [task] open - Add symbol name lookup to stack traces
+habu-z7iw [P2] [task] open - Debug what get-symtab-offset returns at runtime
+habu-rck1 [P2] [bug] open - Fix stack trace symbolication - symbols not resolving to names
+habu-mxep [P2] [task] closed - Check for bugs in TAC generation for labels-related IR
+habu-wi3b [P2] [task] closed - Write detailed analysis report
+habu-8f1n [P2] [task] open - Test if function call rewriting is correct
+habu-5op0 [P2] [task] closed - Verify the FNTAB unpacking mechanism for function table
+habu-7cy6 [P2] [task] closed - Check how labels functions capture variables from enclosing scope
+habu-8ocb [P2] [task] closed - Test build and functionality
+habu-tnd5 [P2] [task] closed - Remove dead helper functions
+habu-8seu [P2] [task] closed - Replace old codegen with error stub
+habu-lpse [P2] [task] closed - Update compile-program to use reg-alloc for main IR
+habu-02lq [P2] [task] closed - Update codegen-main to use reg-alloc
+habu-wzxj [P2] [task] closed - Create codegen-main-reg-alloc in reg-alloc.lisp
+habu-gq58 [P2] [task] closed - Fix gen-gc.lisp to use x8
+habu-6dga [P2] [task] closed - Fix gc.lisp gc-trigger-check to use x8
+habu-c5jx [P2] [task] closed - Fix tac-str/tac-sym to use x8
+habu-iwd6 [P2] [task] closed - Fix gc-trigger-code to use x8
+habu-99nd [P2] [task] closed - Test the changes compile and work
+habu-jbsf [P2] [task] open - Update tac-str codegen to use virtual register
+habu-nprj [P2] [task] closed - Fix tac-call to only save actually-allocated registers
+habu-bkq1 [P2] [task] open - Fix gen-str-bytes-code to use virtual register parameter
+habu-qjwy [P2] [task] closed - Update wrapper-size from 140 to 168 bytes
+habu-8acv [P2] [task] open - Update all hardcoded 112 references to use constant
+habu-iq7w [P2] [task] closed - Update macho.lisp wrapper to use new symtab offsets
+habu-66hd [P2] [task] closed - Move +gc-heap-data-offset+ from 112 to 128
+habu-5q9k [P2] [task] open - Add integration test for wrapper BL target correctness
+habu-3d9f [P2] [task] closed - Add lookup-symbol and print-symbolicated-addr in habu0.lisp
+habu-qkft [P2] [task] open - Store symtab pointer at x27+104/108 in wrapper
+habu-c2hv [P2] [task] open - Test error output with real crashes
+habu-21kd [P2] [task] closed - Update fatal-error to print symbolicated traces
+habu-q3fs [P2] [task] open - Implement binary search for address lookup
+habu-cyhd [P2] [task] open - Add symbol table structure to binary
+habu-z174 [P2] [task] open - Fix wrapper to use :extern-call for _exit
+habu-jskd [P2] [task] open - Consolidate wrapper-size to single definition
+habu-rceu [P2] [task] closed - Remove mmap wrapper code
+habu-sdl0 [P2] [task] closed - Update deliver to use imports-style Mach-O generator
+habu-cwcm [P2] [task] open - Fix all fallbacks in habu0.lisp
+habu-xk12 [P2] [task] open - Replace all sys-exit fallbacks with proper error calls
+habu-ikfn [P2] [task] open - Fix all fallbacks in codegen.lisp
+habu-q03b [P2] [task] open - Fix all fallbacks in reg-alloc.lisp
+habu-3nab [P2] [task] open - Fix all fallbacks in compiler-sbcl.lisp
+habu-v5y3 [P2] [task] open - Fix fallbacks in codegen.lisp
+habu-9hb6 [P2] [task] open - Fix fallbacks in reg-alloc.lisp
+habu-rmdc [P2] [task] open - Fix fallbacks in compiler-sbcl.lisp
+habu-ibmc [P2] [task] open - Fix fallbacks in habu0.lisp
+habu-la3m [P2] [task] closed - Build and test habu0
+habu-tp1z [P2] [task] closed - Fix fallbacks in other files (codegen-sbcl.lisp, utils.lisp)
+habu-ghnq [P2] [task] open - Fix fenv-lookup and env-lookup to use eq
+habu-g9lt [P2] [task] closed - Remove fallback helpers (op=, sym=, sym-name=)
+habu-mjqt [P2] [task] closed - Simplify all 31 op= functions to pure eq checks
+habu-2el4 [P2] [task] closed - Initialize *op-* variables in init-compile-ops using intern
+habu-n3w7 [P2] [task] closed - Fix read-sym to use intern instead of make-symbol-from-string
+habu-gxod [P2] [task] open - Test habu0 after removing fallbacks
+habu-s6mw [P2] [task] open - Find and remove other fallback patterns in codebase
+habu-yotw [P2] [task] open - Pre-initialize *op-* variables at startup
+habu-vfjz [P2] [task] open - Verify capture loads are generated correctly
+habu-5d38 [P2] [task] open - Investigate labels transform parameter passing in compiler-sbcl.lisp
+habu-qsli [P2] [task] open - Investigate label function parameter handling in bootstrap/compiler-sbcl.lisp
+habu-4wu3 [P2] [task] open - Investigate truncated FNTAB in habu-read labels causing habu0 crash
+habu-emua [P2] [task] open - Review Habu bootstrap compiler files for risks/bugs
+habu-dmge [P2] [task] open - Investigate LAMBDA-9 labels lifting bug
+habu-2qpw [P2] [task] open - Review Habu bootstrap compiler files for architecture and self-hosting risks
+habu-xuim [P2] [task] open - Review Habu compiler architecture and risks
+habu-hup6 [P2] [task] closed - Investigate lambda lifting for labels crash in habu bootstrap
+habu-prro [P2] [task] open - Review habu0.lisp for missing features
+habu-v1br [P2] [task] open - Investigate labels compilation arg mismatch in LAMBDA-9
+habu-rd4b [P2] [task] open - Investigate habu0 exit code 11 and EXC_BAD_ACCESS
+habu-k5g5 [P2] [task] open - Investigate labels/closure lifting bug in habu bootstrap (compiler-sbcl.lisp, codegen.lisp)
+habu-zdwx [P2] [task] open - Investigate labels/closure lifting bug in habu bootstrap (compiler-sbcl.lisp, codegen.lisp)
+habu-dlhu [P2] [task] open - Review bootstrap labels/closure lifting bug for habu-read LAMBDA-9
+habu-0nze [P2] [task] open - Investigate labels lifting/argument passing bug in compiler bootstrap
+habu-wbuc [P2] [task] open - Review habu bootstrap and habu0 Lisp code for architecture risks
+habu-3pcg [P2] [task] open - Investigate labels/closure lifting bug in bootstrap compiler for habu-read LAMBDA-9
+habu-sm7i [P2] [task] open - Investigate labels lifting argument mismatch in habu0 LAMBDA-9
+habu-r5ls [P2] [task] open - Investigate habu0 exit code 11 and crash at 0x0
+habu-9i9k [P2] [task] open - Investigate habu0 exit code always 11
+habu-x2k8 [P2] [task] open - Architectural review of Habu Lisp compiler
+habu-2mbq [P2] [task] open - Investigate FNTAB closures missing entries in LAMBDA-9 crash
+habu-rvnh [P2] [task] open - Check if habu-read is returning wrong value or heap/GC corruption
+habu-bdz0 [P2] [task] open - Fix suspicious boolean conversion: sub x11, sp, x11 at READ-ALL-LOOP +A0
+habu-htb9 [P2] [task] open - Trace where env[-1] gets corrupted between whitespace? return and TCO continue
+habu-4g0y [P2] [task] open - Investigate misaligned symbol offsets causing habu0 exit code 0
+habu-a07g [P2] [task] open - Investigate habu0 read-all-loop CDR crash
+habu-9db1 [P2] [task] open - Verify reverse function is being called correctly
+habu-jh4l [P2] [task] open - Investigate habu bootstrap compile call omission
+habu-tehk [P2] [task] open - Investigate codegen if-branch BL omission in bootstrap Lisp files
+habu-acoz [P2] [task] open - Investigate MAIN crash in habu0.lisp null pointer at MAIN+724
+habu-aba0 [P2] [task] open - Investigate possible null deref in habu0.lisp MAIN evaluation
+habu-bjbv [P2] [task] open - Investigate possible null pointer dereference in habu MAIN around crash MAIN+724
+habu-v41h [P2] [task] open - Investigate MAIN crash null pointer in habu0.lisp
+habu-o2w9 [P2] [task] closed - Debug habu0 crash (null pointer at MAIN+724)
+habu-8o57 [P2] [task] closed - Implement crash-analyze MCP tool
+habu-5nlr [P2] [task] closed - Fix flatten-code-keep-markers loop return nil (line 4850)
+habu-q5zw [P2] [task] closed - Fix flatten-code-keep-markers-and-calls loop return nil (line 4613)
+habu-exnq [P2] [task] closed - Fix function not found silent failure in flatten-code (line 4800)
+habu-jbl2 [P2] [task] closed - Replace ir-may-call default nil return with error
+habu-l7ho [P2] [task] closed - Replace codegen (non-SBCL) default nil return with error
+habu-g2oa [P2] [task] closed - Replace codegen-linear-instr unknown instruction return with error (already has error)
+habu-96nr [P2] [task] closed - Replace linearize-expr unknown IR return with error (already has error)
+habu-tfq6 [P2] [task] closed - Replace linearize-leaf unknown type return with error (already has error)
+habu-57o1 [P2] [task] closed - Replace lookup-string nil return with error
+habu-4onb [P2] [task] closed - Fix tac-codegen-instr default case (line 2405) - add error for unhandled TAC instruction
+habu-fw7e [P2] [task] closed - Fix tac-cmp case in tac-codegen-instr (line 1398) - add error for unknown comparison op
+habu-b153 [P2] [task] closed - Fix tac-binop case in tac-codegen-instr (line 1365) - add error for unknown binop
+habu-48p3 [P2] [task] closed - Fix tac-use function (line 978) - add error for unknown TAC instruction
+habu-j5c1 [P2] [task] closed - Fix tac-def function (line 915) - add error for unknown TAC instruction
+habu-1ext [P2] [task] closed - Fix undefined function in (function name) form (line 1216): Add error for undefined function
+habu-9rd4 [P2] [task] closed - Fix undefined variable in compile-setq (line 1678): Replace (list 'nil-ir) with error
+habu-umf2 [P2] [task] closed - Fix undefined variable in compile-var (line 288): Replace (list 'lit 0) with error
+habu-39sg [P2] [task] closed - Verify if other case statements have the same issue
+habu-sdug [P2] [task] closed - Check all IR node types for similar package mismatches
+habu-fzex [P2] [task] open - Investigate habu0 nil check crash at MAIN+620
+habu-7ghg [P2] [task] open - Investigate habu0 crash at MAIN+620 (CAR on nil)
+habu-evug [P2] [task] open - Verify exit handling in wrapper code
+habu-91if [P2] [task] open - Check h0-eval recursion for infinite loop bugs
+habu-dxad [P2] [task] open - Test MCP server changes
+habu-sczr [P2] [task] open - Review and fix any issues from oracle
+habu-up6p [P2] [task] closed - Fix tool-ask-oracle to use threaded output draining
+habu-j096 [P2] [task] closed - Add missing \u unicode escape in JSON parser
+habu-dv2o [P2] [task] closed - Fix JSON parser security issue (read-from-string)
+habu-2w19 [P2] [task] closed - Oracle review of MCP tools for correctness and performance
+habu-akgy [P2] [task] open - Investigate BUFFER-TO-STRING register allocator failure
+habu-xm9j [P2] [task] open - Investigate MCP hang when build-habu0 self-compile stalls
+habu-1rwt [P2] [task] open - Fix find-free-vars env format conflict
+habu-4od5 [P2] [task] open - Port register allocator to native Habu for self-hosting
+habu-zxgo [P2] [task] open - Remove fallback linear codegen, use only register allocator
+habu-wap4 [P2] [task] closed - Rebuild habu0 and test
+habu-1gy6 [P2] [task] open - Investigate outer let returning bound value in codegen
+habu-7t4g [P2] [task] closed - Consider adding DWARF debug info
+habu-d9si [P2] [task] open - Remove old td-based temp slot codegen from habu0.lisp
+habu-q4sh [P2] [task] open - Port register allocator from bootstrap to habu0.lisp
+habu-ftz0 [P2] [task] open - Consider adding DWARF debug info for better debugging
+habu-v8xc [P2] [task] open - Fix the bug in habu0 codegen or runtime
+habu-34s0 [P2] [task] open - Identify root cause of constant exit 26
+habu-mpr2 [P2] [task] closed - Test MCP server with new build tool
+habu-doi8 [P2] [task] open - Test and rebuild habu0
+habu-0e7z [P2] [task] open - Update AGENTS.md
+habu-v48z [P2] [task] open - Remove *use-register-allocation* toggle
+habu-ezrm [P2] [task] open - Update codegen-fn to always use reg-alloc
+habu-ys02 [P2] [task] open - Remove accumulator codegen from compiler-sbcl.lisp
+habu-gs5l [P2] [task] open - Rebuild and test habu0
+habu-e3lb [P2] [task] open - Make linear codegen the only path
+habu-bpxk [P2] [task] open - Add test for buffer-to-string-copy
+habu-xj43 [P2] [task] open - Spill live args before primitive calls
+habu-hmv2 [P2] [task] closed - Run full test suite
+habu-bgb3 [P2] [task] closed - Test the fix with the ash-right test case
+habu-jwnb [P2] [task] open - Commit fixes to fix-habu0-exit26 branch
+habu-075i [P2] [task] open - Test fixed habu0 binary
+habu-mnw0 [P2] [task] closed - Commit the fix on fix-fasl-cross-module branch
+habu-o98b [P2] [task] closed - Run (asdf:test-system :habu) to verify fix doesn't break other tests
+habu-nir5 [P2] [task] closed - Implement the fix for cross-module function references
+habu-o4yt [P2] [task] closed - Design solution to allow declaring external functions for cross-module compilation
+habu-jaw9 [P2] [task] closed - Commit fix on fix-ash-right branch
+habu-zttj [P2] [task] open - Test the fix with (asdf:test-system :habu)
+habu-tmo3 [P2] [task] open - Fix the bug causing ash-right to return 0 instead of 4
+habu-txta [P2] [task] closed - Examine ARM64 BSH instruction encoding in arm64/asm.lisp
+habu-t4h5 [P2] [task] closed - Check ASH codegen in bootstrap/codegen.lisp
+habu-insd [P2] [task] closed - Merge all branches back to master
+habu-zbla [P2] [task] closed - Agent 3: Fix FASL cross-module linking
+habu-ne98 [P2] [task] closed - Agent 2: Fix ash-right test failure
+habu-gdzo [P2] [task] closed - Agent 1: Fix habu0 exit code 26 bug
+habu-iv0i [P2] [task] open - Test habu0 interpreter
+habu-b8kz [P2] [task] closed - Rebuild and test habu0
+habu-48ji [P2] [task] open - Test habu0 can generate executables
+habu-na8h [P2] [task] open - Complete habu0 linker (add file write)
+habu-ku1z [P2] [task] open - Update habu-stage1-src.lisp with missing functions
+habu-5tlw [P2] [task] open - Fix all other missing IR handlers found by analysis
+habu-2t07 [P2] [task] closed - Commit changes with message 'Fix FASL linker magic check and empty exports handling'
+habu-cvd1 [P2] [task] closed - Test the fixes by running habu::run-fasl-tests
+habu-hmoe [P2] [task] closed - Find and fix empty exports vector access issue
+habu-jhce [P2] [task] closed - Merge worktree branches
+habu-g1ct [P2] [task] open - Test self-hosting: Stage 1 → Stage 2
+habu-9qfu [P2] [task] closed - Build Stage 1 binary
+habu-4vud [P2] [task] closed - Run all tests - verify 0 failures
+habu-cisp [P2] [task] closed - Fix FASL magic and export index errors
+habu-os6d [P2] [task] closed - Fix char-at raw register error
+habu-6ztp [P2] [task] open - Fix char-at test failures
+habu-mt3t [P2] [task] closed - Fix macro-in-recursive test failure
+habu-i9as [P2] [task] closed - Fix match macro tests
+habu-xc0f [P2] [task] closed - Fix defun-recursive (recursion broken)
+habu-hgys [P2] [task] open - Fix remaining misc failures
+habu-j1ua [P2] [task] open - Fix match test failures
+habu-gjzz [P2] [task] closed - Fix block/return-from jump resolution
+habu-i1q3 [P2] [task] open - Fix let-star/let-nested offset bug
+habu-ytnp [P2] [task] open - Fix remaining test failures
+habu-l8ux [P2] [task] open - Fix any remaining IR coverage gaps
+habu-erw9 [P2] [task] open - Test with *use-register-allocation* enabled
+habu-zmhv [P2] [task] open - Fix temp slot limit (24 slots)
+habu-ay76 [P2] [task] open - Fix return-from jump resolution
+habu-tmu6 [P2] [task] closed - Fix eq-f comparison result
+habu-x3tg [P2] [task] closed - Fix ash-right (negative shift)
+habu-juaf [P2] [task] closed - Fix let binding codegen (let-star, let-nested)
+habu-0ojl [P2] [task] closed - Add block-ir/return-from-ir to linearize
+habu-tljp [P2] [task] open - Fix function call handling in codegen
+habu-x5u8 [P2] [task] open - Commit changes
+habu-fqi6 [P2] [task] open - Test and commit
+habu-noba [P2] [task] closed - Rename codegen-linear to codegen
+habu-1sb5 [P2] [task] open - Remove old recursive codegen function
+habu-cv3o [P2] [task] open - Remove old recursive codegen
+habu-y6e0 [P2] [task] closed - Test compilation with linear codegen
+habu-55jt [P2] [task] closed - Test with complex expressions
+habu-k4ii [P2] [task] closed - Update codegen to use linear IR
+habu-oy7z [P2] [task] closed - Implement linearize function
+habu-x6k6 [P2] [task] open - Test with Stage 1 self-compilation
+habu-war3 [P2] [task] closed - Implement iterative codegen
+habu-srm0 [P2] [task] closed - Design work stack data structure
+habu-y7gz [P2] [task] open - Test h0-string= comparison in fenv context
+habu-hvnp [P2] [task] open - Verify fenv-lookup and collect-defuns work correctly
+habu-36ut [P2] [task] closed - Generate cleanup summary report
+habu-67df [P2] [task] closed - Add dependency notes to related issues
+habu-g6nx [P2] [task] closed - Close obsolete/completed issues
+habu-v9nd [P2] [task] closed - Identify duplicates and dependencies across issues
+habu-nttc [P2] [task] closed - Assess self-hosting readiness
+habu-g7xs [P2] [task] open - Test habu0 after fixes
+habu-i2c9 [P2] [task] closed - Test habu0 after fix
+habu-f3gc [P2] [task] open - Test habu0 can run compiler functions
+habu-6sgi [P2] [task] open - Test habu0 can read and parse source
+habu-imp0 [P2] [task] open - Debug LAMBDA-515 crash
+habu-r6m4 [P2] [task] open - Debug any crashes and fix
+habu-cm8c [P2] [task] open - Test Stage 1 can compile expressions
+habu-7qfl [P2] [task] open - Test Stage 1 can read source code
+habu-duej [P2] [task] open - Test MCP server restart
+habu-sw93 [P2] [task] open - Update other verbose tools
+habu-a21i [P2] [task] open - Update tool-debug for minimal output
+habu-zq0q [P2] [task] open - Update tool-run for minimal output
+habu-3qkw [P2] [task] open - Update tool-eval for minimal output
+habu-tw2e [P2] [task] open - Test fix with compile-expr-full
+habu-qbz2 [P2] [task] open - Fix the linker or call mechanism
+habu-jevy [P2] [task] open - Fix the root cause
+habu-26zj [P2] [task] open - Fix frame size or call convention if needed
+habu-0ynz [P2] [task] open - Test Stage 1 compile-forms after fix
+habu-nizj [P2] [task] open - Reduce frame size or make codegen iterative
+habu-8sj6 [P2] [task] open - Close completed Stage 1 issues
+habu-3m04 [P2] [task] closed - Test Stage 1 compile-forms works
+habu-6ylc [P2] [task] closed - Test Stage 1 compile-forms with working symbol interning
+habu-r3nf [P2] [task] closed - Test that eq works for symbols after fix
+habu-1n0t [P2] [task] open - Rebuild and test Stage 1 compile-forms
+habu-9072 [P2] [task] open - Fix stack overflow in compiler
+habu-dhrj [P2] [task] closed - Test Stage 1 compile-forms
+habu-ev6w [P2] [task] closed - Fix stack overflow in compile-forms
+habu-swvz [P2] [task] closed - Link FASLs into Stage 1 binary
+habu-x9ij [P2] [task] closed - Compile macho.lisp to FASL
+habu-f5xc [P2] [task] closed - Compile codegen.lisp to FASL
+habu-ngye [P2] [task] closed - Compile compiler.lisp to FASL
+habu-1u9c [P2] [task] closed - Test Stage 1 with fixed closures
+habu-r025 [P2] [task] closed - Patch closure offsets in link-fasls
+habu-4ei2 [P2] [task] closed - Handle closure-fn in FASL extraction
+habu-lyxk [P2] [task] closed - Add :closure-fn marker to codegen
+habu-31t5 [P2] [task] closed - Link Stage 1 with all modules
+habu-4rsf [P2] [task] closed - Test Stage 1 runs correctly
+habu-87al [P2] [task] open - Rebuild Stage 1 with all modules
+habu-2p9h [P2] [task] closed - Rebuild Stage 1 with fixed linker
+habu-opma [P2] [task] open - Test Stage 1 can compile forms
+habu-u4c8 [P2] [task] open - Test Stage 1 can read source with native reader
+habu-s15e [P2] [task] closed - Compile codegen.lisp and macho.lisp to FASL
+habu-0c7z [P2] [task] closed - Fix ARM64 constants for native reader to complete Stage 1
+habu-ifz8 [P2] [task] open - Fix ARM64 constants for native reader
+habu-57k3 [P2] [feature] open - Implement habu-xref cross-reference system
+habu-3tfd [P2] [task] closed - Build Stage 1 using FASL system
+habu-8qvs [P2] [task] closed - Update habu-stage.md command with correct FASL workflow
+habu-102i [P2] [task] open - Add missing expand-* macro functions
+habu-ql29 [P2] [task] open - Build and test Stage 1
+habu-yy2h [P2] [task] open - Add mmap linker functions
+habu-6dxo [P2] [task] open - Add expand-* macro functions
+habu-9c2n [P2] [task] open - Implement SYM-EQ for symbol comparison
+habu-itw0 [P2] [task] open - Implement INTEGERP and LOGNOT
+habu-jh8n [P2] [task] open - Implement list functions (LAST, BUTLAST, SOME)
+habu-x1cq [P2] [task] open - Implement math functions (CEILING, TRUNCATE, ZEROP)
+habu-p5p0 [P2] [task] open - Implement EQL and EQUAL comparison functions
+habu-u6r4 [P2] [task] open - Fix closure variable capture bug
+habu-wsjj [P2] [task] closed - Test Stage 1 build after fix
+habu-9hpb [P2] [task] closed - Remove common-lisp-user:: prefixes from function names
+habu-bc46 [P2] [task] open - Test Stage 1 self-compilation if ready
+habu-sexa [P2] [feature] closed - Add ask-oracle MCP tool to invoke codex for help
+habu-34qo [P2] [task] closed - Test Stage 1 build compiles successfully
+habu-vr9m [P2] [task] closed - Include prelude.lisp in Stage 1 build
+habu-el8l [P2] [task] open - Fix keyword-prefixed function names (:WHILE, etc.)
+habu-f429 [P2] [task] closed - Fix ARM64 package symbol resolution
+habu-v9t6 [P2] [task] open - Test Stage 1 build with pure source
+habu-s8s1 [P2] [task] open - Test bootstrap compiler still works
+habu-j9ap [P2] [task] open - Remove #-sbcl from bootstrap codegen.lisp
+habu-dzd7 [P2] [task] closed - Extract #-sbcl code to pure Habu file
+habu-3jvs [P2] [task] open - Fix stack overflow if needed
+habu-fe84 [P2] [task] closed - Build Stage 1 binary
+habu-gtdj [P2] [task] open - Implement fix (iterative or other)
+habu-ue3v [P2] [task] open - Identify simplest fix for stack overflow
+habu-jzzr [P2] [task] open - Test Stage 1 self-compilation with iterative codegen
+habu-eyfd [P2] [task] open - Convert compile-expr-full to iterative
+habu-ueae [P2] [task] open - Convert lift-lambdas to iterative
+habu-7ejl [P2] [bug] open - Bug: nested (or ... (and (or ...) ...)) compiles incorrectly
+habu-jsxq [P2] [task] closed - Investigate nested or/and compilation bug
+habu-xv3f [P2] [task] open - Fix the comparison operator return values
+habu-5jbc [P2] [task] open - Add error reporting for unhandled cases
+habu-cvyb [P2] [task] open - Fix compile-expr to handle quote and other missing forms
+habu-3hxg [P2] [task] closed - Test arithmetic operators work
+habu-eb8g [P2] [task] closed - Update docs index
+habu-lgn9 [P2] [task] closed - Create GC improvements doc
+habu-qcnm [P2] [task] closed - Create JIT architecture doc
+habu-4gxy [P2] [task] open - Optimize write barrier for JIT code
+habu-wigq [P2] [feature] open - Add GC threshold tuning API
+habu-cj12 [P2] [task] closed - Write comprehensive summary of findings and recommendations
+habu-bkob [P2] [task] closed - Review and update any existing beads issues that designs address
+habu-1hnf [P2] [task] closed - Create beads issues for actionable items from designs
+habu-gr3t [P2] [task] closed - Evaluate architectural soundness of proposed solutions
+habu-e9e3 [P2] [task] open - Fix the labels codegen bug
+habu-w21h [P2] [task] open - Fix the dispatch condition bug
+habu-k91o [P2] [task] open - Find difference between habu0 and fresh compile
+habu-6utv [P2] [task] open - Fix nil compilation and rebuild Stage 1
+habu-gvi7 [P2] [task] open - Fix the bug and rebuild Stage 1
+habu-ziv5 [P2] [task] open - Find root cause of the circular bug
+habu-paha [P2] [task] open - Fix the h0-eval function dispatch
+habu-wygh [P2] [task] open - Fix the habu0.lisp reader to correctly parse +/-
+habu-mu5p [P2] [task] open - Fix comparison operators or if-ir to work consistently
+habu-orlu [P2] [task] open - Rebuild and test Stage 1
+habu-l3iy [P2] [task] open - Fix the constant folding to return nil-ir instead of (lit 0)
+habu-si23 [P2] [task] open - Fix the symbol creation issue
+habu-5cts [P2] [task] open - Test symbol dispatch for + and -
+habu-uuxt [P2] [task] open - Fix contains-colon returning true for +
+habu-oo7e [P2] [task] open - Test Stage 1 stringp works correctly
+habu-y96w [P2] [task] open - Test Stage 1 self-compilation capability
+habu-1r0j [P2] [task] closed - Verify symbol dispatch works correctly
+habu-wc6e [P2] [task] open - Convert to ANF (A-Normal Form) IR
+habu-qrr6 [P2] [task] open - Complete linear-scan register allocation implementation
+habu-3t7r [P2] [task] closed - Prepare final report with recommendations
+habu-67t8 [P2] [task] closed - Create beads issues for significant improvements
+habu-xgo2 [P2] [task] closed - Copy relevant files to docs/ with adaptations
+habu-iflt [P2] [task] closed - Create docs/ directory if needed
+habu-f9ri [P2] [task] closed - Identify optimization opportunities from the spec
+habu-vri7 [P2] [task] closed - Add block/return-from tests
+habu-evdv [P2] [task] closed - Add defmacro tests
+habu-32g8 [P2] [task] closed - Implement macroexpand
+habu-rvel [P2] [task] closed - Add module tests
+habu-vnwp [P2] [task] open - Implement module loading
+habu-9vtw [P2] [task] closed - Implement module compilation
+habu-767l [P2] [task] open - Implement module system
+habu-84hb [P2] [task] open - Implement native load
+habu-o7v1 [P2] [task] open - Implement compile-file
+habu-17sp [P2] [task] closed - Fix stack overflow in codegen for self-hosting
+habu-drfr [P2] [task] closed - Add property tests for match expansion
+habu-tove [P2] [feature] open - Implement type system with CL types first
+habu-nr9y [P2] [task] closed - Implement DRY improvements
+habu-vif7 [P2] [task] closed - Find DRY opportunities in compiler
+habu-3oqq [P2] [feature] closed - Implement match/match-case pattern matching
+habu-dgn8 [P2] [task] closed - Add native reader to Stage 1
+habu-dxhs [P2] [feature] blocked - Implement gradual typing with contracts (Typed Racket style)
+habu-jpfy [P2] [task] open - Fix undefined function detection for external functions
+habu-jtlh [P2] [feature] open - Implement static type checking via CL type annotations
+habu-clwq [P2] [task] open - Fix undefined function detection for arm64:*
+habu-6ftd [P2] [task] open - Add arm64 package to native Habu
+habu-uwr5 [P2] [task] open - Test Stage 1 can parse source code
+habu-lsi8 [P2] [task] closed - Add char-at as compiler primitive
+habu-xgif [P2] [task] closed - Implement link-time undefined function verification
+habu-z5ca [P2] [task] closed - Implement compile-time undefined function detection
+habu-tyig [P2] [task] open - Fix root cause once identified
+habu-v59b [P2] [task] open - Test TCO with SBCL pipeline
+habu-51xd [P2] [task] open - Test Stage 1 self-compilation (Stage 2)
+habu-bkro [P2] [task] closed - Test Stage 1 can compile simple programs
+habu-ugzj [P2] [task] open - Make codegen iterative if still needed
+habu-d4ch [P2] [task] open - Port register allocator to native if needed
+habu-h4bv [P2] [task] open - Convert recursive codegen to iterative
+habu-4box [P2] [feature] open - Add &rest and &optional to lambda
+habu-4q42 [P2] [feature] open - Add print/prin1/princ/write functions
+habu-rmul [P2] [feature] open - Implement format function
+habu-5c00 [P2] [feature] open - Integrate hash tables with compiler
+habu-quyz [P2] [feature] open - Add generic sequence functions
+habu-19hr [P2] [feature] open - Implement unwind-protect
+habu-fmhn [P2] [feature] open - Implement tagbody/go for explicit control flow
+habu-nh7m [P2] [task] closed - Test Stage 1 can write Mach-O binary
+habu-ltlt [P2] [task] closed - Test Stage 1 can generate ARM64 code
+habu-isy7 [P2] [task] closed - Test Stage 1 can compile expressions
+habu-15ay [P2] [task] closed - Rename file to mcp.lisp
+habu-iqfv [P2] [task] closed - Update header comments and version
+habu-5s3r [P2] [task] closed - Update handle-tools-list for new structure
+habu-q20m [P2] [task] closed - Replace dispatch-tool cond with lookup
+habu-6x9h [P2] [task] closed - Update version and test
+habu-u6eb [P2] [task] closed - Update AGENTS.md tool reference
+habu-b2e0 [P2] [task] closed - Update dispatch-tool function
+habu-4b42 [P2] [task] closed - Fix defpackage crash in native reader (habu-pyvz)
+habu-6c3c [P2] [task] closed - Test sys-write works in compiled binary
+habu-ylnx [P2] [task] open - Test Stage 1 can write Mach-O
+habu-fd65 [P2] [task] open - Test Stage 1 can generate code (codegen)
+habu-evqq [P2] [task] open - Test Stage 1 can compile (compile-forms)
+habu-dc7b [P2] [task] open - Test Stage 1 can parse (native reader)
+habu-vjn9 [P2] [task] open - Create blocking issues for self-hosting
+habu-vxvm [P2] [task] open - Identify and fix blockers
+habu-ajac [P2] [task] open - Test current Stage 1 self-compilation
+habu-kagj [P2] [task] closed - Add division test (habu-idx4)
+habu-wopt [P2] [task] closed - Review native JIT REPL status (habu-mbv)
+habu-6igt [P2] [task] open - Add full compiler to REPL binary
+habu-bq85 [P2] [task] closed - Test eval REPL with simple expressions
+habu-wdp8 [P2] [task] closed - Update codegen.lisp to use jit/core.lisp codegen
+habu-6gfp [P2] [task] closed - Test that codegen works from jit/core.lisp
+habu-x77e [P2] [task] closed - Update ASDF dependencies
+habu-1gw5 [P2] [task] closed - Delete old jit-gen-* functions from jit/core.lisp
+habu-fjeb [P2] [task] closed - Copy all helper functions (codegen-binop, temp-slot, etc.)
+habu-honx [P2] [task] closed - Refactor codegen.lisp to use jit/core
+habu-b6ul [P2] [task] closed - Update ASDF files for jit module
+habu-wgks [P2] [task] closed - Implement jit/execute.lisp - JIT execution
+habu-c80h [P2] [task] closed - Implement jit/context.lisp - JIT context
+habu-c97z [P2] [task] closed - Implement jit/core.lisp - shared codegen
+habu-yrlh [P2] [task] closed - Add JIT codegen to codegen.lisp (mmap-jit-ir, etc.)
+habu-9qn0 [P2] [task] open - Add JIT codegen to codegen.lisp
+habu-jgco [P2] [task] open - Add JIT primitives to compiler.lisp (mmap, munmap, etc.)
+habu-2mn8 [P2] [task] closed - Fix echo REPL EOF handling
+habu-rrvn [P2] [task] closed - Test echo REPL with actual input
+habu-g8h [P2] [task] closed - Add QuickCheck property tests for ARM64 encoding
+habu-m36 [P2] [task] open - Wire up native reader in REPL (habu-foj)
+habu-8bt [P2] [task] closed - Fix echo REPL input handling (habu-kpt)
+habu-gyi [P2] [task] closed - Add buffer-byte-set-ir to ir-may-call? (habu-yr4)
+habu-1ya [P2] [task] closed - Convert all codegen to use register keywords (habu-h3w)
+habu-6ws [P2] [task] closed - Require keyword register names in ARM64 assembler (habu-yi8)
+habu-kpt [P2] [bug] closed - Fix echo REPL input handling
+habu-yr4 [P2] [task] closed - Add buffer-byte-set-ir to ir-may-call? function
+habu-1m2 [P2] [task] closed - Fix any issues found
+habu-dcx [P2] [task] closed - Build and test Stage 1
+habu-1q5 [P2] [task] closed - Test JIT infrastructure
+habu-77w [P2] [task] closed - Add cache flush code generation
+habu-0ot [P2] [task] closed - Add pthread_jit_write_protect_np extern call support
+habu-etm [P2] [task] closed - Run tests and verify
+habu-6yz [P2] [task] closed - Update exports
+habu-wjs [P2] [task] closed - Remove old embedded heap functions
+habu-jj2 [P2] [task] closed - Remove deliver-mmap and deliver-file-mmap (now redundant)
+habu-gma [P2] [task] closed - Verify tests still pass after cleanup
+habu-by4 [P2] [task] closed - Remove deliver-v3 export (not implemented)
+habu-37x [P2] [task] closed - Test JIT execution in native code
+habu-dbf [P2] [task] closed - Create jit-alloc and jit-exec functions
+habu-4ev [P2] [task] closed - Add pthread_jit_write_protect_np wrapper
+habu-9hg [P2] [task] closed - Add &optional support to parse-lambda-list in compiler-sbcl.lisp
+habu-gsq [P2] [task] closed - Test Stage 1 with more complex expressions
+habu-9bd [P2] [task] closed - Verify Stage 1 runs correctly with exit code 42
+habu-lyh [P2] [task] closed - Verify binary size reduction
+habu-3aw [P2] [task] closed - Test deliver-mmap with a simple program
+habu-xk0 [P2] [task] closed - Add globals initialization code
+habu-nx9 [P2] [task] closed - Test defvar with simple program
+habu-5qr [P2] [task] closed - Add global symbol lookup in compiler
+habu-d9f [P2] [task] closed - Add defvar handling in compiler
+habu-9s8 [P2] [task] closed - Implement codegen for global variable IR
+habu-d5a [P2] [task] closed - Add IR forms for global variable access
+habu-0py [P2] [task] closed - Fix sys-write-char codegen bug (deferred)
+habu-dby [P2] [task] closed - Build Stage 1 and verify it works
+habu-08m [P2] [task] closed - Build Stage 1 and verify it still works
+habu-fqm [P2] [task] closed - Build minimal echo REPL binary
+habu-jkc [P2] [task] closed - Test input reading with sys-read-byte
+habu-cra [P2] [task] closed - Test REPL with simple expression
+habu-foj [P2] [task] closed - Wire up native reader in REPL
+habu-k5h [P2] [task] closed - Test native JIT with simple expression
+habu-4nu [P2] [task] closed - Add codegen support for JIT primitives
+habu-jy1 [P2] [task] closed - Create REPL main loop
+habu-cb2 [P2] [task] closed - Add native print for REPL output
+habu-md2 [P2] [task] closed - Test JIT execution with simple expressions
+habu-7os [P2] [task] closed - Debug why changing heap data offset from 96 to 104 breaks tests
+habu-wb9 [P2] [task] closed - Add stack_base slot to GC globals
+habu-f2y [P2] [task] closed - Implement conservative stack scanning in GC-COLLECT
+habu-1e7 [P2] [task] closed - Save initial SP at program startup
+habu-htj [P2] [task] closed - Test Stage 1 build with stack scanning
+habu-fpb [P2] [task] closed - Implement conservative stack scanning in GC-COLLECT
+habu-a7g [P2] [task] closed - Save initial SP at program startup
+habu-3ip [P2] [task] closed - Fix GC to scan stack frames for heap pointers
+habu-eoi [P2] [task] closed - Test Stage 1 build with new linker
+habu-498 [P2] [task] closed - Add DWARF info placeholder in linker for future debug support
+habu-dcw [P2] [task] closed - Update link-fasls to resolve :call-fn markers between modules
+habu-yi2 [P2] [feature] open - Add signal handling for native code
+habu-fap [P2] [feature] open - Implement native eval for Habu
+habu-g57 [P2] [task] closed - Create beads for debugger prerequisites and debugger itself
+habu-gcf [P2] [bug] closed - Fix FASL extern-call marker handling for multi-file linking
+habu-fax [P2] [task] closed - Skip in-package/defpackage forms in compile-forms
+habu-ck3 [P2] [task] closed - Add package accessor IR forms (get-packages, set-current-package, etc)
+habu-c14 [P2] [task] closed - Add defvar/defparameter support for known globals
+habu-795 [P2] [task] closed - Add defconstant support to compiler-sbcl.lisp
+habu-d2q [P2] [task] closed - Fix keyword argument test failures with reg-alloc
+habu-dto [P2] [task] closed - Update AGENTS.md with reg-alloc naming convention
+habu-mpy [P2] [task] closed - Test reg-alloc with simple function call
+habu-xxc [P2] [task] closed - Fix pkg-simple test failure
+habu-a23 [P2] [task] open - Add dynamic-extent support
+habu-5fv [P2] [task] closed - Complete register allocator
+habu-0o3 [P2] [task] closed - Add .mcp.json configuration
+habu-h6y [P2] [task] closed - Test trace with simple function
+habu-ncq [P2] [task] closed - Add trace hooks to eval-ir-with-fns funcall-ir
+habu-xzs [P2] [task] closed - Add trace hooks to eval-ir-with-fns call-fn
+habu-fi0 [P2] [task] closed - Export trace symbols from package
+habu-ej1 [P2] [task] closed - Add trace.lisp to habu.asd
+habu-62y [P2] [task] open - Add trace Phase 4: native breakpoint trampoline
+habu-3v8 [P2] [task] open - Add trace Phase 3: function wrapper approach
+habu-b2u [P2] [task] open - Add trace Phase 2: compiled code instrumentation
+habu-577 [P2] [task] closed - Add trace Phase 1: eval-ir interpreter hook
+habu-dm7 [P2] [task] closed - Complete ARM64 disassembler to match lldb output
+habu-ahb [P2] [task] closed - Add signal handling for crash debugging
+habu-624 [P2] [task] closed - Implement in-process JIT test runner
+habu-63d [P2] [task] closed - Add .mcp.json configuration for Claude Code
+habu-az4 [P2] [task] closed - Test Slynk integration with Habu
+habu-922 [P2] [task] closed - Create MCP bridge to Slynk for Claude Code
+habu-6gj [P2] [task] closed - Test MCP server integration
+habu-w06 [P2] [task] closed - Add MCP server to .mcp.json configuration
+habu-6h9 [P2] [task] closed - Implement JIT execution via existing executor.lisp
+habu-osg [P2] [task] closed - Wire codegen-fn-regalloc into main compilation path
+habu-25v [P2] [task] closed - Complete gen-gc macho.lisp integration
+habu-owpf [P3] [feature] open - Design incremental GC with safepoints
+habu-cdju [P3] [task] open - Implement precise GC stack maps
+habu-msvj [P3] [task] open - Build Control Flow Graph (CFG) infrastructure
+habu-xnjq [P3] [feature] open - Add compiler mode to eliminate runtime dynamism
+habu-ea9c [P3] [feature] open - Add case/ecase/typecase macros
+habu-4h89 [P3] [feature] open - Add symbol property lists
+habu-frit [P3] [feature] open - Add math functions
+habu-v53j [P3] [feature] open - Add declaration system
+habu-fuk2 [P3] [feature] open - Add do/do* iteration macros
+habu-1o9g [P3] [feature] open - Complete package system
+habu-dcr4 [P3] [task] closed - MCP tool stress test verification
+habu-km1e [P3] [feature] open - Add full package system
+habu-vc40 [P3] [feature] open - Add streams and I/O
+habu-v8fm [P3] [feature] open - Add type system (typep, typecase, check-type)
+habu-ioq2 [P3] [feature] open - Add structures (defstruct)
+habu-8ozd [P3] [feature] open - Add hash tables
+habu-1vca [P3] [feature] open - Add sequences (map, reduce, find, remove, etc)
+habu-20g [P3] [feature] open - Add loop macro
+habu-akw [P3] [feature] open - Add format function
+habu-jpv [P3] [feature] open - Extend macro system
+habu-3ab [P3] [feature] open - Add condition/restart system
+habu-m95 [P3] [feature] open - Add multiple values support
+habu-5lr [P3] [feature] open - Add CLOS support (defclass, defmethod, make-instance)
+habu-6ss [P3] [task] open - Optimize num-to-reg to table lookup
+habu-06j [P3] [feature] open - Implement cross-reference for Lisp symbols
+habu-t7v [P3] [task] open - Implement native apropos function in Habu
+habu-ksj [P3] [feature] closed - Track source locations through compilation
+habu-49n [P3] [feature] closed - Generate DWARF debug info in Mach-O
+habu-6vh [P3] [feature] open - Implement CL restart system
+habu-k9u [P3] [feature] open - Implement CL condition system
+habu-hqj [P3] [feature] open - Add dynamic-extent for stack-allocated lists
+habu-189b [P4] [task] open - Optimize tag format to 3-bit tags
+habu-qs0 [P4] [feature] open - Implement native Lisp debugger

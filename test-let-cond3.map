@@ -1,0 +1,10 @@
+;; Symbol map for /Users/joel/Work/habu/test-let-cond3
+;; PC to offset: (PC - 0x1000003E8) for functions
+;; Offset is relative to code start (after wrapper)
+
+0x000004A8 _main
+0x00000514 _main_end
+0x00000514 FOO
+0x00000678 GC-COPY
+0x00000750 GC-COLLECT
+0x00000908 stub__exit
