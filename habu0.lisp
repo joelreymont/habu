@@ -2516,6 +2516,55 @@
 (defun a64-ret ()
   (list #xC0 #x03 #x5F #xD6))
 
+;; BLR Xn - branch with link to register (indirect call)
+;; Encoding: 0xD63F0000 | (Rn << 5)
+(defun a64-blr (rn)
+  (let ((inst (logior #xD63F0000
+                      (ash rn #x5))))
+    (list (logand inst #xFF)
+          (logand (ash inst #x-8) #xFF)
+          (logand (ash inst #x-10) #xFF)
+          (logand (ash inst #x-18) #xFF))))
+
+;; BR Xn - branch to register (indirect jump, no link)
+;; Encoding: 0xD61F0000 | (Rn << 5)
+(defun a64-br (rn)
+  (let ((inst (logior #xD61F0000
+                      (ash rn #x5))))
+    (list (logand inst #xFF)
+          (logand (ash inst #x-8) #xFF)
+          (logand (ash inst #x-10) #xFF)
+          (logand (ash inst #x-18) #xFF))))
+
+;; STP X1, X2, [Xn, #imm] - store pair (for saving registers)
+;; Encoding: 0xA9000000 | (imm7 << 15) | (Rt2 << 10) | (Rn << 5) | Rt
+;; imm7 is offset/8 (must be multiple of 8)
+(defun a64-stp (rt rt2 rn imm)
+  (let* ((imm7 (logand (ash imm #x-3) #x7F))
+         (inst (logior #xA9000000
+                       (ash imm7 #xF)
+                       (ash rt2 #xA)
+                       (ash rn #x5)
+                       rt)))
+    (list (logand inst #xFF)
+          (logand (ash inst #x-8) #xFF)
+          (logand (ash inst #x-10) #xFF)
+          (logand (ash inst #x-18) #xFF))))
+
+;; LDP X1, X2, [Xn, #imm] - load pair (for restoring registers)
+;; Encoding: 0xA9400000 | (imm7 << 15) | (Rt2 << 10) | (Rn << 5) | Rt
+(defun a64-ldp (rt rt2 rn imm)
+  (let* ((imm7 (logand (ash imm #x-3) #x7F))
+         (inst (logior #xA9400000
+                       (ash imm7 #xF)
+                       (ash rt2 #xA)
+                       (ash rn #x5)
+                       rt)))
+    (list (logand inst #xFF)
+          (logand (ash inst #x-8) #xFF)
+          (logand (ash inst #x-10) #xFF)
+          (logand (ash inst #x-18) #xFF))))
+
 ;; LDRB Wt, [Xn, #offset] - load byte, zero-extend
 ;; Encoding: 0x39400000 | (offset << 10) | (Rn << 5) | Rt
 (defun a64-ldrb (rt rn offset)
