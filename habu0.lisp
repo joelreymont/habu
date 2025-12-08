@@ -1566,6 +1566,7 @@
 (defun ir-tag-lambda () #x22)     ; lambda (closure creation)
 (defun ir-tag-funcall () #x23)    ; funcall (closure invocation)
 (defun ir-tag-setq () #x24)       ; setq (variable assignment)
+(defun ir-tag-length () #x25)     ; length (list length)
 
 ;; Check if IR node has a specific tag (numeric comparison)
 (defun h0-has-tag-n (ir tag)
@@ -1855,6 +1856,16 @@
          ((sym= op "NOT")
           (let ((v (h0-compile (cadr expr) env fenv)))
             (list (ir-tag-not) v)))
+         ;; OR - expand to if chain: (or a b c) => (if a a (if b b c))
+         ((sym= op "OR")
+          (h0-compile-or (cdr expr) env fenv))
+         ;; AND - expand to if chain: (and a b c) => (if a (if b c nil) nil)
+         ((sym= op "AND")
+          (h0-compile-and (cdr expr) env fenv))
+         ;; LENGTH - list length
+         ((sym= op "LENGTH")
+          (let ((v (h0-compile (cadr expr) env fenv)))
+            (list (ir-tag-length) v)))
          ;; COND - expand to nested IFs
          ((sym= op "COND")
           (h0-compile-cond (cdr expr) env fenv))
@@ -2014,6 +2025,41 @@
       (let* ((first-ir (h0-compile (car forms) env fenv))
              (rest-ir (h0-compile-progn-rest (cdr forms) env fenv)))
         (cons first-ir rest-ir))))
+
+;; Compile OR - expand to if chain: (or a b c) => (if a a (if b b c))
+;; Returns the first true value or nil
+(defun h0-compile-or (args env fenv)
+  (if (null args)
+      ;; No arguments - return nil
+      (list (ir-tag-lit) #x0)
+      (if (null (cdr args))
+          ;; Single argument - just compile it
+          (h0-compile (car args) env fenv)
+          ;; Multiple arguments - (if a a (or b c...))
+          ;; To avoid evaluating a twice, we expand to: (let ((tmp a)) (if tmp tmp (or b c...)))
+          (let* ((first-ir (h0-compile (car args) env fenv))
+                 (rest-ir (h0-compile-or (cdr args) env fenv))
+                 ;; Create a temp variable for the first argument
+                 (temp-name "OR-TMP")
+                 (temp-env (cons (cons temp-name nil) env))
+                 (temp-ref (list (ir-tag-var) #x0))
+                 (if-ir (list (ir-tag-if) temp-ref temp-ref rest-ir)))
+            (list (ir-tag-let) #x0 first-ir if-ir)))))
+
+;; Compile AND - expand to if chain: (and a b c) => (if a (if b c nil) nil)
+;; Returns the last value if all are true, nil otherwise
+(defun h0-compile-and (args env fenv)
+  (if (null args)
+      ;; No arguments - return t
+      (list (ir-tag-lit) #x1)
+      (if (null (cdr args))
+          ;; Single argument - just compile it
+          (h0-compile (car args) env fenv)
+          ;; Multiple arguments - (if a (and b c...) nil)
+          (let* ((first-ir (h0-compile (car args) env fenv))
+                 (rest-ir (h0-compile-and (cdr args) env fenv))
+                 (else-ir (list (ir-tag-lit) #x0)))
+            (list (ir-tag-if) first-ir rest-ir else-ir)))))
 
 ;; Compile cond - expand to nested IFs
 ;; (cond (c1 e1...) (c2 e2...) (t e3...))
@@ -2763,6 +2809,66 @@
           (bytes-append (h0-codegen (car forms) td)
                         (h0-codegen-progn (cdr forms) td)))))
 
+;; Helper: Generate code for FUNCALL (0-2 args)
+;; Closure structure (assumed): [env_ptr:8][code_ptr:8] with tag 5
+;; ARM64 calling convention: x0-x7 for args, x24 (0x18) for closure env
+(defun h0-codegen-funcall (fn-ir args-ir num-args td)
+  (let* (;; Evaluate function expression to x0 (closure pointer)
+         (fn-code (h0-codegen fn-ir td))
+         ;; Save closure to temp slot 0
+         (fn-slot (+ #x30 (* td #x8)))
+         (save-fn (a64-str #x0 #x1F fn-slot))
+         ;; Generate code to evaluate and save arguments
+         (arg-code-list (h0-codegen-funcall-args args-ir (+ td #x1) #x0 nil))
+         ;; arg-code-list is now a list of code sequences
+         (arg-code (if arg-code-list
+                       (bytes-append-all arg-code-list)
+                       nil)))
+    ;; Now load arguments back to x0, x1, etc. and call
+    (let* (;; Load closure from temp slot 0
+           (load-fn (a64-ldr #x9 #x1F fn-slot))
+           ;; Untag closure (subtract 5)
+           (untag-fn (a64-sub-imm #x9 #x9 #x5))
+           ;; Load env pointer to x24 from [x9+0]
+           (load-env (a64-ldr #x18 #x9 #x0))
+           ;; Load code pointer from [x9+8] directly to x9
+           (load-code (a64-ldr #x9 #x9 #x8))
+           ;; Load args back to registers
+           (load-args (h0-codegen-funcall-load-args num-args (+ td #x1)))
+           ;; Call via BLR x9
+           (call (a64-blr #x9)))
+      (if arg-code
+          (bytes-append-all (list fn-code save-fn arg-code load-fn untag-fn
+                                  load-env load-code load-args call))
+          (bytes-append-all (list fn-code save-fn load-fn untag-fn
+                                  load-env load-code load-args call))))))
+
+;; Helper: Generate code to evaluate and save arguments
+;; Returns list of code sequences
+(defun h0-codegen-funcall-args (args-ir td idx acc)
+  (if (null args-ir)
+      (reverse acc)
+      (let* ((arg-code (h0-codegen (car args-ir) td))
+             (slot-off (+ #x30 (* td #x8)))
+             (save-code (a64-str #x0 #x1F slot-off))
+             (combined (bytes-append arg-code save-code)))
+        (h0-codegen-funcall-args (cdr args-ir) (+ td #x1) (+ idx #x1)
+                                 (cons combined acc)))))
+
+;; Helper: Generate code to load arguments back to x0, x1, etc.
+(defun h0-codegen-funcall-load-args (num-args td)
+  (if (= num-args #x0)
+      nil
+      (if (= num-args #x1)
+          (let ((slot-off (+ #x30 (* td #x8))))
+            (a64-ldr #x0 #x1F slot-off))
+          (if (= num-args #x2)
+              (let ((slot-off1 (+ #x30 (* td #x8)))
+                    (slot-off2 (+ #x30 (* (+ td #x1) #x8))))
+                (bytes-append (a64-ldr #x0 #x1F slot-off1)
+                              (a64-ldr #x1 #x1F slot-off2)))
+              (fatal-error "h0-codegen-funcall-load-args: too many args")))))
+
 ;; Generate code for IR (using numeric tags)
 ;; td = temp slot depth (for nested expressions)
 (defun h0-codegen (ir td)
@@ -3101,21 +3207,65 @@
             ;; Tag result
             (tag-result (a64-lsl-imm #x0 #x0 #x4)))
        (bytes-append-all (list arg-code cmp-nil cset tag-result))))
-    ;; LAMBDA: Create closure (stub - needs lambda lifting)
+
+    ;; LENGTH: count cons cells in list
+    ;; Loop: x0 = list ptr, x1 = counter
+    ;; While x0 != nil: x1++, x0 = cdr(x0)
+    ((h0-has-tag-n ir (ir-tag-length))
+     (let* ((arg-code (h0-codegen (cadr ir) td))
+            ;; Initialize counter to 0
+            (init-counter (a64-movz #x1 #x0))
+            ;; Loop start label offset (will be patched)
+            ;; Check if x0 == nil (6)
+            (loop-start-offset #x0)
+            (cmp-nil (a64-cmp-imm #x0 #x6))
+            ;; Branch to end if equal (skip to move-result)
+            (branch-end (a64-b-cond (cond-eq) #x14))  ; skip 20 bytes (5 instructions * 4)
+            ;; Increment counter (tagged add: add 16 for +1)
+            (inc-counter (a64-add-imm #x1 #x1 #x10))
+            ;; Get CDR: untag, load offset 8, keep tagged
+            (untag-cons (a64-sub-imm #x0 #x0 #x1))
+            (load-cdr (a64-ldr #x0 #x0 #x8))
+            ;; Branch back to loop start (back to cmp-nil)
+            (branch-loop (a64-b #x-14))  ; back 20 bytes (5 instructions)
+            ;; Move counter to result
+            (move-result (a64-mov-reg #x0 #x1)))
+       (bytes-append-all (list arg-code init-counter cmp-nil branch-end
+                               inc-counter untag-cons load-cdr branch-loop
+                               move-result))))
+    ;; LAMBDA: Create closure (simplified - no lambda lifting yet)
+    ;; Layout: [fn-offset:8][env-ptr:8] = 16 bytes
+    ;; Returns tagged pointer with tag 5
     ((h0-has-tag-n ir (ir-tag-lambda))
      (let* ((params (cadr ir))
             (body-ir (caddr ir))
             (free-vars (cadddr ir))
             (free-offsets (nth #x4 ir)))
-       ;; Stub: Full implementation requires lambda lifting
-       (fatal-error "h0-codegen: LAMBDA not yet implemented")))
+       ;; Simplified closure: placeholder fn-offset (0) and nil env (0x6)
+       (let* (;; Store placeholder function offset (0) at heap+0
+              (mov-fn-offset (a64-movz #x0 #x0))         ; x0 = 0
+              (str-fn-offset (a64-str #x0 #x1C #x0))     ; [x28+0] = x0
+              ;; Store nil environment (0x6) at heap+8
+              (mov-env (a64-movz #x0 #x6))               ; x0 = 6 (nil)
+              (str-env (a64-str #x0 #x1C #x8))           ; [x28+8] = x0
+              ;; Create tagged closure pointer: x28 | 5
+              (mov-ptr (a64-mov-reg #x0 #x1C))           ; x0 = x28
+              (tag-closure (a64-add-imm #x0 #x0 #x5))    ; x0 = x0 | 5
+              ;; Bump heap pointer by 16 bytes
+              (bump-heap (a64-add-imm #x1C #x1C #x10)))  ; x28 += 16
+         (bytes-append-all (list mov-fn-offset str-fn-offset
+                                 mov-env str-env
+                                 mov-ptr tag-closure bump-heap)))))
 
-    ;; FUNCALL: Call closure (stub - needs calling convention)
+    ;; FUNCALL: Call closure (simplified version for 0-2 args)
     ((h0-has-tag-n ir (ir-tag-funcall))
      (let* ((fn-ir (cadr ir))
-            (args-ir (caddr ir)))
-       ;; Stub: Full implementation requires calling convention
-       (fatal-error "h0-codegen: FUNCALL not yet implemented")))
+            (args-ir (caddr ir))
+            (num-args (h0-list-length args-ir)))
+       ;; Support 0-2 arguments for now
+       (if (> num-args #x2)
+           (fatal-error "h0-codegen: FUNCALL supports max 2 args")
+           (h0-codegen-funcall fn-ir args-ir num-args td))))
 
 
     ;; Default - CRASH: unknown IR tag
