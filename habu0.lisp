@@ -1946,6 +1946,116 @@
              (rest-ir (h0-compile-progn-rest (cdr forms) env fenv)))
         (cons first-ir rest-ir))))
 
+;; Compile cond - expand to nested IFs
+;; (cond (c1 e1...) (c2 e2...) (t e3...))
+;; => (if c1 (progn e1...) (if c2 (progn e2...) (progn e3...)))
+(defun h0-compile-cond (clauses env fenv)
+  (if (null clauses)
+      ;; No clauses - return nil
+      (list (ir-tag-lit) #x0)
+      (let* ((clause (car clauses))
+             (test (car clause))
+             (body (cdr clause)))
+        (if (null (cdr clauses))
+            ;; Last clause - just compile it
+            (if (sym= test "T")
+                ;; (t body...) - always true, just execute body
+                (if (null body)
+                    (list (ir-tag-lit) #x0)
+                    (if (null (cdr body))
+                        (h0-compile (car body) env fenv)
+                        (h0-compile-progn body env fenv)))
+                ;; Last clause with non-t test - normal if
+                (let* ((test-ir (h0-compile test env fenv))
+                       (body-ir (if (null body)
+                                    (list (ir-tag-lit) #x0)
+                                    (if (null (cdr body))
+                                        (h0-compile (car body) env fenv)
+                                        (h0-compile-progn body env fenv))))
+                       (else-ir (list (ir-tag-lit) #x0)))
+                  (list (ir-tag-if) test-ir body-ir else-ir)))
+            ;; Multiple clauses - nested if
+            (if (sym= test "T")
+                ;; (t body...) in middle - execute body (subsequent clauses ignored)
+                (if (null body)
+                    (list (ir-tag-lit) #x0)
+                    (if (null (cdr body))
+                        (h0-compile (car body) env fenv)
+                        (h0-compile-progn body env fenv)))
+                ;; Normal clause - if with nested cond for else
+                (let* ((test-ir (h0-compile test env fenv))
+                       (then-ir (if (null body)
+                                    (list (ir-tag-lit) #x0)
+                                    (if (null (cdr body))
+                                        (h0-compile (car body) env fenv)
+                                        (h0-compile-progn body env fenv))))
+                       (else-ir (h0-compile-cond (cdr clauses) env fenv)))
+                  (list (ir-tag-if) test-ir then-ir else-ir)))))))
+
+;; Compile case - expand to nested IFs with EQ comparisons
+;; (case keyform (key1 e1...) (key2 e2...) (otherwise e3...))
+;; => (let ((#:key keyform))
+;;      (if (eq #:key 'key1) (progn e1...)
+;;        (if (eq #:key 'key2) (progn e2...)
+;;          (progn e3...))))
+(defun h0-compile-case (keyform clauses env fenv)
+  (let* ((key-ir (h0-compile keyform env fenv))
+         ;; Create a temporary binding for the key
+         (temp-name "#:CASE-KEY")
+         (new-env (cons (cons temp-name nil) env)))
+    ;; Compile the case clauses with the key in environment
+    (list (ir-tag-let) #x0 key-ir
+          (h0-compile-case-clauses clauses new-env fenv))))
+
+(defun h0-compile-case-clauses (clauses env fenv)
+  (if (null clauses)
+      ;; No clauses - return nil
+      (list (ir-tag-lit) #x0)
+      (let* ((clause (car clauses))
+             (keys (car clause))
+             (body (cdr clause)))
+        (if (or (sym= keys "OTHERWISE") (sym= keys "T"))
+            ;; Default clause - just execute body
+            (if (null body)
+                (list (ir-tag-lit) #x0)
+                (if (null (cdr body))
+                    (h0-compile (car body) env fenv)
+                    (h0-compile-progn body env fenv)))
+            ;; Normal clause - compare key(s)
+            (let* ((test-ir (h0-compile-case-test keys env fenv))
+                   (then-ir (if (null body)
+                                (list (ir-tag-lit) #x0)
+                                (if (null (cdr body))
+                                    (h0-compile (car body) env fenv)
+                                    (h0-compile-progn body env fenv))))
+                   (else-ir (h0-compile-case-clauses (cdr clauses) env fenv)))
+              (list (ir-tag-if) test-ir then-ir else-ir))))))
+
+(defun h0-compile-case-test (keys env fenv)
+  ;; Get the temporary key variable from environment
+  (let ((key-var-ir (list (ir-tag-var) #x0)))
+    (if (consp keys)
+        ;; Multiple keys - (or (eq key k1) (eq key k2) ...)
+        (h0-compile-case-test-list keys key-var-ir env fenv)
+        ;; Single key - (eq key k)
+        (let ((key-lit-ir (h0-compile (list 'quote keys) env fenv)))
+          (list (ir-tag-eq) key-var-ir key-lit-ir)))))
+
+(defun h0-compile-case-test-list (keys key-var-ir env fenv)
+  (if (null keys)
+      ;; Should not happen, but return false
+      (list (ir-tag-lit) #x0)
+      (if (null (cdr keys))
+          ;; Single key left
+          (let ((key-lit-ir (h0-compile (list 'quote (car keys)) env fenv)))
+            (list (ir-tag-eq) key-var-ir key-lit-ir))
+          ;; Multiple keys - (or (eq key k1) (rest...))
+          (let* ((key-lit-ir (h0-compile (list 'quote (car keys)) env fenv))
+                 (test-ir (list (ir-tag-eq) key-var-ir key-lit-ir))
+                 (rest-ir (h0-compile-case-test-list (cdr keys) key-var-ir env fenv)))
+            ;; (if test t rest) - implements OR
+            (list (ir-tag-if) test-ir (list (ir-tag-lit) #x1) rest-ir)))))
+
 ;;; ==========================================================================
 ;;; ARM64 Code Generation - IR to machine code
 ;;; ==========================================================================
