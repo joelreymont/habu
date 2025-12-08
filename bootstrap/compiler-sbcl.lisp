@@ -2402,12 +2402,11 @@
           (list 'buffer-to-string-ir
                 (sys:compile (cadr expr) env fenv)    ; buffer
                 (sys:compile (caddr expr) env fenv))) ; length
-         ;; make-symbol-from-string - intern a string as symbol
+         ;; make-symbol-from-string - create NEW symbol (not interned!)
          ((eq op 'make-symbol-from-string)
           (list 'make-symbol-from-string-ir (sys:compile (cadr expr) env fenv)))
-         ;; intern - same as make-symbol-from-string
-         ((eq op 'intern)
-          (list 'make-symbol-from-string-ir (sys:compile (cadr expr) env fenv)))
+         ;; NOTE: intern is NOT an intrinsic - it's a regular function that
+         ;; uses get-intern-table/set-intern-table to manage the intern table
          ;; symbol-name - get the name string of a symbol
          ((eq op 'symbol-name)
           (list 'symbol-name-ir (sys:compile (cadr expr) env fenv)))
