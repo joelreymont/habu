@@ -2065,6 +2065,65 @@
             ;; (if test t rest) - implements OR
             (list (ir-tag-if) test-ir (list (ir-tag-lit) #x1) rest-ir)))))
 
+;; Compile FLET - local function definitions (non-recursive)
+;; Transform: (flet ((f (x) body)) form) => (let ((f (lambda (x) body))) form)
+(defun h0-compile-flet (bindings body env fenv)
+  (h0-compile-flet-to-let bindings body env fenv))
+
+(defun h0-compile-flet-to-let (bindings body env fenv)
+  (if (null bindings)
+      (h0-compile-progn body env fenv)
+      (let* ((let-bindings (h0-flet-bindings-to-let bindings)))
+        (h0-compile-let let-bindings (car body) env fenv))))
+
+(defun h0-flet-bindings-to-let (bindings)
+  (if (null bindings)
+      nil
+      (let* ((binding (car bindings))
+             (fname (car binding))
+             (params (cadr binding))
+             (fbody (caddr binding))
+             (lambda-expr (list (intern "LAMBDA") params fbody))
+             (let-binding (list fname lambda-expr)))
+        (cons let-binding (h0-flet-bindings-to-let (cdr bindings))))))
+
+;; Compile LABELS - local function definitions (recursive)
+;; Transform: (labels ((f (x) body)) form) => (let ((f nil)) (setq f (lambda (x) body)) form)
+(defun h0-compile-labels (bindings body env fenv)
+  (h0-compile-labels-to-let-setq bindings body env fenv))
+
+(defun h0-compile-labels-to-let-setq (bindings body env fenv)
+  (if (null bindings)
+      (h0-compile-progn body env fenv)
+      (let* ((let-bindings (h0-labels-nil-bindings bindings))
+             (setq-forms (h0-labels-setq-forms bindings))
+             (combined-body (h0-append setq-forms body)))
+        (h0-compile-let let-bindings (cons (intern "PROGN") combined-body) env fenv))))
+
+(defun h0-labels-nil-bindings (bindings)
+  (if (null bindings)
+      nil
+      (let* ((binding (car bindings))
+             (fname (car binding))
+             (nil-binding (list fname nil)))
+        (cons nil-binding (h0-labels-nil-bindings (cdr bindings))))))
+
+(defun h0-labels-setq-forms (bindings)
+  (if (null bindings)
+      nil
+      (let* ((binding (car bindings))
+             (fname (car binding))
+             (params (cadr binding))
+             (fbody (caddr binding))
+             (lambda-expr (list (intern "LAMBDA") params fbody))
+             (setq-form (list (intern "SETQ") fname lambda-expr)))
+        (cons setq-form (h0-labels-setq-forms (cdr bindings))))))
+
+(defun h0-append (list1 list2)
+  (if (null list1)
+      list2
+      (cons (car list1) (h0-append (cdr list1) list2))))
+
 ;;; ==========================================================================
 ;;; ARM64 Code Generation - IR to machine code
 ;;; ==========================================================================
