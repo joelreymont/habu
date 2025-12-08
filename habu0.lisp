@@ -2912,7 +2912,7 @@
 
 
     ;; Default - CRASH: unknown IR tag
-    (t (fatal-error \"h0-codegen: Unknown IR tag\")))
+    (t (fatal-error "h0-codegen: Unknown IR tag"))))
 
 ;;; ==========================================================================
 ;;; IR Evaluator - for testing the compiler without native execution
@@ -2969,11 +2969,9 @@
      (let* ((val (h0-eval-ir (caddr ir) env))
             (new-env (cons val env)))
        (h0-eval-ir (cadddr ir) new-env)))
-    ;; Setq - variable assignment
+    ;; Setq - variable assignment (stub: mutation requires rplaca primitive)
     ((h0-has-tag-n ir (ir-tag-setq))
-     (let* ((offset (cadr ir))
-            (val (h0-eval-ir (caddr ir) env)))
-       (ir-env-set env offset val)
+     (let* ((val (h0-eval-ir (caddr ir) env)))
        val))
     ;; Progn
     ((h0-has-tag-n ir (ir-tag-progn))
@@ -2994,11 +2992,6 @@
   (if (= off #x0)
       (car env)
       (ir-env-get (cdr env) (- off #x1))))
-
-(defun ir-env-set (env off val)
-  (if (= off #x0)
-      (rplaca env val)
-      (ir-env-set (cdr env) (- off #x1) val)))
 
 ;;; ==========================================================================
 ;;; Test Mode - compile expression and evaluate IR
@@ -3831,3 +3824,19 @@
                        (let* ((ir (h0-compile (cadr forms) nil nil))
                               (code (h0-codegen ir #x0)))
                          (length code))))
+                  ;; Link test mode: compile, codegen, link to /tmp/h0out
+                  ((if (numberp first-form) (= first-form #x300) nil)
+                   (if (null (cdr forms))
+                       #xFD
+                       (let* ((ir (h0-compile (cadr forms) nil nil))
+                              (code (h0-codegen ir #x0)))
+                         (deliver-with-imports-and-heap "/tmp/h0out"
+                                                        code
+                                                        (list "_write")
+                                                        #x100000))))
+                  ;; Normal interpretation mode
+                  (t
+                   (let ((fenv (collect-defuns forms nil)))
+                     (h0-eval-forms forms nil fenv))))))))))
+
+(main)
