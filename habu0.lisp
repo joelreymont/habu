@@ -1889,6 +1889,22 @@
                  (args (cddr expr))
                  (args-ir (h0-compile-args args env fenv)))
             (list (ir-tag-funcall) fn-ir args-ir)))
+         ;; FLET - local function definitions (non-recursive)
+         ((sym= op "FLET")
+          (h0-compile-flet (cadr expr) (cddr expr) env fenv))
+         ;; LABELS - local function definitions (recursive)
+         ((sym= op "LABELS")
+          (h0-compile-labels (cadr expr) (cddr expr) env fenv))
+         ;; MAPCAR - expand to labels loop
+         ;; (mapcar fn list) => (labels ((loop (l acc) ...)) (loop list nil))
+         ((sym= op "MAPCAR")
+          (h0-compile-mapcar (cadr expr) (caddr expr) env fenv))
+         ;; REVERSE - expand to labels loop
+         ((sym= op "REVERSE")
+          (h0-compile-reverse (cadr expr) env fenv))
+         ;; LIST - expand to nested CONS
+         ((sym= op "LIST")
+          (h0-compile-list (cdr expr) env fenv))
          ;; Default - unknown operator - CRASH
          (t (fatal-error-ir "h0-compile: Unknown operator")))))
     ;; Default - unknown expression type - CRASH
@@ -2123,6 +2139,69 @@
   (if (null list1)
       list2
       (cons (car list1) (h0-append (cdr list1) list2))))
+
+;; Compile MAPCAR - expand to labels loop with reverse at end
+;; (mapcar fn list) =>
+;; (let ((fn-temp fn))
+;;   (labels ((loop (l acc)
+;;              (if (null l)
+;;                  (reverse acc)
+;;                  (loop (cdr l) (cons (funcall fn-temp (car l)) acc)))))
+;;     (loop list nil)))
+(defun h0-compile-mapcar (fn-expr list-expr env fenv)
+  (let* ((fn-sym (intern "FN-TEMP"))
+         (l-sym (intern "L"))
+         (acc-sym (intern "ACC"))
+         (loop-sym (intern "MAPCAR-LOOP"))
+         ;; Build the expanded form
+         (expanded
+          (list (intern "LET")
+                (list (list fn-sym fn-expr))
+                (list (intern "LABELS")
+                      (list (list loop-sym (list l-sym acc-sym)
+                                  (list (intern "IF") (list (intern "NULL") l-sym)
+                                        (list (intern "REVERSE") acc-sym)
+                                        (list loop-sym
+                                              (list (intern "CDR") l-sym)
+                                              (list (intern "CONS")
+                                                    (list (intern "FUNCALL") fn-sym (list (intern "CAR") l-sym))
+                                                    acc-sym)))))
+                      (list loop-sym list-expr nil)))))
+    (h0-compile expanded env fenv)))
+
+;; Compile REVERSE - expand to labels loop
+;; (reverse list) =>
+;; (labels ((loop (l acc)
+;;            (if (null l)
+;;                acc
+;;                (loop (cdr l) (cons (car l) acc)))))
+;;   (loop list nil))
+(defun h0-compile-reverse (list-expr env fenv)
+  (let* ((l-sym (intern "L"))
+         (acc-sym (intern "ACC"))
+         (loop-sym (intern "REV-LOOP"))
+         ;; Build the expanded form
+         (expanded
+          (list (intern "LABELS")
+                (list (list loop-sym (list l-sym acc-sym)
+                            (list (intern "IF") (list (intern "NULL") l-sym)
+                                  acc-sym
+                                  (list loop-sym
+                                        (list (intern "CDR") l-sym)
+                                        (list (intern "CONS")
+                                              (list (intern "CAR") l-sym)
+                                              acc-sym)))))
+                (list loop-sym list-expr nil))))
+    (h0-compile expanded env fenv)))
+
+;; Compile LIST - expand to nested CONS
+;; (list a b c) => (cons a (cons b (cons c nil)))
+(defun h0-compile-list (args env fenv)
+  (if (null args)
+      (list (ir-tag-lit) #x0)  ;; Empty list = nil
+      (let* ((first-ir (h0-compile (car args) env fenv))
+             (rest-ir (h0-compile-list (cdr args) env fenv)))
+        (list (ir-tag-cons) first-ir rest-ir))))
 
 ;;; ==========================================================================
 ;;; ARM64 Code Generation - IR to machine code
