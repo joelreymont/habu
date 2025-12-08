@@ -2519,6 +2519,43 @@
     (bytes-append-all (list mov-len-lo str-len add-base
                             char-stores mov-ptr tag-ptr bump-heap))))
 
+;; Codegen helper for binary operations
+;; Inline temp slot calculation: 48 + td*8
+(defun h0-codegen-binop (left-ir right-ir op-instrs td)
+  (let* ((slot-off (+ #x30 (* td #x8)))
+         (left-code (h0-codegen left-ir td))
+         (save-left (a64-str #x0 #x1F slot-off))
+         (right-code (h0-codegen right-ir (+ td #x1)))
+         (move-right (a64-mov-reg #x1 #x0))
+         (load-left (a64-ldr #x0 #x1F slot-off)))
+    (bytes-append-all
+     (list left-code save-left right-code move-right load-left op-instrs))))
+
+;; Codegen helper for comparisons
+;; Inline temp slot calculation: 48 + td*8
+(defun h0-codegen-cmp (left-ir right-ir cond td)
+  (let* ((slot-off (+ #x30 (* td #x8)))
+         (left-code (h0-codegen left-ir td))
+         (save-left (a64-str #x0 #x1F slot-off))
+         (right-code (h0-codegen right-ir (+ td #x1)))
+         (move-right (a64-mov-reg #x1 #x0))
+         (load-left (a64-ldr #x0 #x1F slot-off)))
+    (let* ((cmp-code (a64-cmp-reg #x0 #x1))
+           (cset-code (a64-cset #x0 cond))
+           (tag-code (a64-lsl-imm #x0 #x0 #x4)))
+      (bytes-append-all
+       (list left-code save-left right-code move-right load-left
+             cmp-code cset-code tag-code)))))
+
+;; Codegen helper for progn (list of IR forms)
+(defun h0-codegen-progn (forms td)
+  (if (null forms)
+      (a64-movz #x0 #x0)
+      (if (null (cdr forms))
+          (h0-codegen (car forms) td)
+          (bytes-append (h0-codegen (car forms) td)
+                        (h0-codegen-progn (cdr forms) td)))))
+
 ;; Generate code for IR (using numeric tags)
 ;; td = temp slot depth (for nested expressions)
 (defun h0-codegen (ir td)
@@ -2876,43 +2913,6 @@
 
     ;; Default - CRASH: unknown IR tag
     (t (fatal-error \"h0-codegen: Unknown IR tag\")))
-
-;; Codegen helper for binary operations
-;; Inline temp slot calculation: 48 + td*8
-(defun h0-codegen-binop (left-ir right-ir op-instrs td)
-  (let* ((slot-off (+ #x30 (* td #x8)))
-         (left-code (h0-codegen left-ir td))
-         (save-left (a64-str #x0 #x1F slot-off))
-         (right-code (h0-codegen right-ir (+ td #x1)))
-         (move-right (a64-mov-reg #x1 #x0))
-         (load-left (a64-ldr #x0 #x1F slot-off)))
-    (bytes-append-all
-     (list left-code save-left right-code move-right load-left op-instrs))))
-
-;; Codegen helper for comparisons
-;; Inline temp slot calculation: 48 + td*8
-(defun h0-codegen-cmp (left-ir right-ir cond td)
-  (let* ((slot-off (+ #x30 (* td #x8)))
-         (left-code (h0-codegen left-ir td))
-         (save-left (a64-str #x0 #x1F slot-off))
-         (right-code (h0-codegen right-ir (+ td #x1)))
-         (move-right (a64-mov-reg #x1 #x0))
-         (load-left (a64-ldr #x0 #x1F slot-off)))
-    (let* ((cmp-code (a64-cmp-reg #x0 #x1))
-           (cset-code (a64-cset #x0 cond))
-           (tag-code (a64-lsl-imm #x0 #x0 #x4)))
-      (bytes-append-all
-       (list left-code save-left right-code move-right load-left
-             cmp-code cset-code tag-code)))))
-
-;; Codegen helper for progn (list of IR forms)
-(defun h0-codegen-progn (forms td)
-  (if (null forms)
-      (a64-movz #x0 #x0)
-      (if (null (cdr forms))
-          (h0-codegen (car forms) td)
-          (bytes-append (h0-codegen (car forms) td)
-                        (h0-codegen-progn (cdr forms) td)))))
 
 ;;; ==========================================================================
 ;;; IR Evaluator - for testing the compiler without native execution
