@@ -116,11 +116,11 @@
 (defun gen-alloc-check ()
   "Generate nursery overflow check. Call after bumping x28.
    If x28 >= nursery_end, triggers minor GC.
-   Uses x9 as scratch."
+   Uses x8 as scratch (reserved for runtime, not allocatable)."
   (append
-   (arm64:ldr :x9 :gc :offset +gen-nursery-end-offset+)  ; x9 = nursery_end
-   (arm64:cmp :heap :x9)                                   ; compare x28, nursery_end
-   (arm64:b.lo 2)                                     ; skip if x28 < nursery_end
+   (arm64:ldr :x8 :gc :offset +gen-nursery-end-offset+)  ; x8 = nursery_end
+   (arm64:cmp :heap :x8)                                   ; compare x28, nursery_end
+   (arm64:b.lo 2)                                     ; skip if x8 < nursery_end
    (list '(:call-fn GEN-MINOR-GC))))                  ; bl minor_gc
 
 ;;; ============================================================

@@ -40,6 +40,211 @@
 (defvar *op-and* nil)
 (defvar *op-or* nil)
 
+;;; ==========================================================
+;;; Error Infrastructure - crash with message, no silent fallbacks
+;;; ==========================================================
+
+;;; Stack trace support for error diagnostics
+;;; ARM64: x29 = frame pointer, [fp] = prev fp, [fp+8] = return addr
+
+;; Convert a nibble (0-15) to hex character
+(defun nibble-to-hex (n)
+  (if (< n 10)
+      (+ n 48)    ; '0' = 48
+      (+ n 87)))  ; 'a' = 97, so a=10 -> 97-10=87
+
+;; Print a 64-bit address in hex to stderr (16 hex digits)
+;; addr is a raw pointer value
+(defun print-hex (addr)
+  (let ((buf (make-vector 18)))  ; "0x" + 16 hex digits
+    (vector-set buf 0 48)   ; '0'
+    (vector-set buf 1 120)  ; 'x'
+    ;; Fill in hex digits from MSB to LSB
+    (print-hex-loop addr buf 15)
+    (sys-write 2 (make-string-from-vector buf) 18)))
+
+(defun print-hex-loop (addr buf idx)
+  (if (< idx 0)
+      nil
+      (let ((nibble (logand addr 15)))
+        (vector-set buf (+ idx 2) (nibble-to-hex nibble))
+        (print-hex-loop (ash addr -4) buf (- idx 1)))))
+
+;;; Symbol table access for runtime symbolication
+;;; The embedded symbol table is at (get-code-base) + (get-symtab-offset)
+;;; Format: u64 count, then entries: (u64 offset, u64 name_len, name bytes padded to 8)
+
+;; Get the address of the embedded symbol table
+(defun get-symtab-addr ()
+  (+ (get-code-base) (get-symtab-offset)))
+
+;; Read a u64 from memory at addr
+(defun read-u64 (addr)
+  (mem-load-64 addr 0))
+
+;; Read symbol table entry: returns (offset . name_len) at entry index
+;; Entry format: offset(8) + name_len(8) + name(padded to 8)
+;; Returns nil if index >= count
+(defun symtab-entry-offset-at (symtab-addr idx)
+  (let* ((count (read-u64 symtab-addr)))
+    (if (>= idx count)
+        nil
+        (symtab-scan-to-entry symtab-addr (+ symtab-addr 8) idx))))
+
+;; Scan to entry idx, accumulating offset as we go
+;; ptr points to current entry, returns (entry-offset . name_len)
+(defun symtab-scan-to-entry (base ptr idx)
+  (let* ((entry-offset (read-u64 ptr))
+         (name-len (read-u64 (+ ptr 8)))
+         (padded-len (* (quotient (+ name-len 8) 8) 8)))  ; round up to 8
+    (if (= idx 0)
+        (cons entry-offset name-len)
+        (symtab-scan-to-entry base (+ ptr 16 padded-len) (- idx 1)))))
+
+;; Get entry data at index: returns (offset name-len name-addr) or nil
+(defun symtab-get-entry (symtab-addr idx)
+  (let* ((count (read-u64 symtab-addr)))
+    (if (>= idx count)
+        nil
+        (symtab-get-entry-scan (+ symtab-addr 8) idx))))
+
+(defun symtab-get-entry-scan (ptr idx)
+  (let* ((entry-offset (read-u64 ptr))
+         (name-len (read-u64 (+ ptr 8)))
+         (name-addr (+ ptr 16))
+         (padded-len (* (quotient (+ name-len 8) 8) 8)))
+    (if (= idx 0)
+        (list entry-offset name-len name-addr)
+        (symtab-get-entry-scan (+ ptr 16 padded-len) (- idx 1)))))
+
+;; Find the symbol containing addr using linear search
+;; Returns (name-addr . name-len) or nil if not found
+;; addr should be relative to code base
+(defun lookup-symbol (addr)
+  (let* ((symtab-addr (get-symtab-addr))
+         (count (read-u64 symtab-addr))
+         (code-base (get-code-base)))
+    ;; Convert absolute addr to offset from code base
+    (let ((rel-addr (- addr code-base)))
+      (lookup-symbol-scan symtab-addr count rel-addr 0 nil))))
+
+;; Scan through entries, keeping track of best match so far
+;; best is (offset name-len name-addr) or nil
+(defun lookup-symbol-scan (symtab-addr count target-offset idx best)
+  (if (>= idx count)
+      best  ; return best match found
+      (let* ((entry (symtab-get-entry symtab-addr idx))
+             (entry-offset (car entry))
+             (name-len (cadr entry))
+             (name-addr (caddr entry)))
+        (if (and (<= entry-offset target-offset)
+                 (or (null best)
+                     (> entry-offset (car best))))
+            ;; This entry is better (closer to target)
+            (lookup-symbol-scan symtab-addr count target-offset (+ idx 1)
+                                (list entry-offset name-len name-addr))
+            ;; Keep current best
+            (lookup-symbol-scan symtab-addr count target-offset (+ idx 1) best)))))
+
+;; Print a symbol name from addr for len bytes
+(defun print-symbol-name (addr len)
+  (print-symbol-name-loop addr len 0))
+
+(defun print-symbol-name-loop (addr len idx)
+  (if (>= idx len)
+      nil
+      (let ((buf (make-vector 1)))
+        (vector-set buf 0 (mem-load-byte addr idx))
+        (sys-write 2 (make-string-from-vector buf) 1)
+        (print-symbol-name-loop addr len (+ idx 1)))))
+
+;; Print symbolicated address: "FUNC+0x123" or just hex if not found
+(defun print-symbolicated-addr (addr)
+  (let ((sym (lookup-symbol addr)))
+    (if (null sym)
+        ;; No symbol found, just print hex
+        (print-hex addr)
+        ;; Found symbol: print NAME+offset
+        (let* ((sym-offset (car sym))
+               (name-len (cadr sym))
+               (name-addr (caddr sym))
+               (code-base (get-code-base))
+               (rel-addr (- addr code-base))
+               (offset-in-func (- rel-addr sym-offset)))
+          (print-symbol-name name-addr name-len)
+          (sys-write 2 "+" 1)
+          (print-hex offset-in-func)))))
+
+;; Walk the stack and print symbolicated addresses
+;; fp is the current frame pointer (from get-frame-pointer)
+;; max-depth limits how many frames to print
+(defun print-stack-trace (fp max-depth)
+  (sys-write 2 "Stack trace:\n" 13)
+  (print-stack-frames fp max-depth 0))
+
+(defun print-stack-frames (fp depth count)
+  (if (or (= fp 0) (>= count depth))
+      nil
+      (let ((ret-addr (mem-load-64 fp 8))
+            (prev-fp (mem-load-64 fp 0)))
+        (sys-write 2 "  " 2)
+        (print-symbolicated-addr ret-addr)
+        (sys-write 2 "\n" 1)
+        (print-stack-frames prev-fp depth (+ count 1)))))
+
+;; Print error message with stack trace and exit
+;; msg: error message string
+(defun fatal-error (msg)
+  (sys-write 2 "\n=== FATAL ERROR ===\n" 21)
+  (sys-write 2 msg (string-length msg))
+  (sys-write 2 "\n\n" 2)
+  (print-stack-trace (get-frame-pointer) 20)
+  (sys-exit 1))
+
+;; Generate IR that will crash with error message and stack trace at runtime
+;; Use this in h0-compile when encountering unhandled cases
+(defun fatal-error-ir (msg)
+  (list 'call-ir 'fatal-error (list (list 'str-lit msg))))
+
+;;; Symbol interning - ensures eq works for all symbols with same name
+;;; The intern table is stored at [x27+0] and accessed via primitives
+
+;; Search intern table (alist of (name . symbol)) for name
+;; Returns the symbol if found, nil otherwise
+(defun find-interned (name table)
+  (if (null table)
+      nil
+      (let ((entry (car table)))
+        (if (string= (car entry) name)
+            (cdr entry)
+            (find-interned name (cdr table))))))
+
+;; Intern a string as a symbol
+;; Returns existing symbol if found in intern table, else creates new and adds it
+;; This ensures all symbols with the same name are eq
+(defun intern (name)
+  (let* ((uname (string-upcase name))
+         (existing (find-interned uname (get-intern-table))))
+    (if existing
+        existing
+        (let ((sym (make-symbol-from-string uname)))
+          (set-intern-table (cons (cons uname sym) (get-intern-table)))
+          sym))))
+
+;; String upcase helper - converts lowercase to uppercase
+(defun string-upcase (s)
+  (let* ((len (string-length s))
+         (vec (make-vector len)))
+    (string-upcase-loop s vec len #x0)
+    (make-string-from-vector vec)))
+
+(defun string-upcase-loop (src dst len i)
+  (if (>= i len)
+      dst
+      (progn
+        (vector-set dst i (h0-char-upcase (string-ref src i)))
+        (string-upcase-loop src dst len (+ i #x1)))))
+
 ;; File I/O constants
 (defun o-rdonly () #x0)
 
@@ -158,7 +363,7 @@
         pos)))
 
 ;; String equality check
-(defun h0-string= (s1 s2)
+(defun string= (s1 s2)
   (let ((len1 (string-length s1))
         (len2 (string-length s2)))
     (if (= len1 len2)
@@ -171,201 +376,45 @@
           (cmp #x0))
         nil)))
 
-;; Operator check with caching
-;; Symbol comparison using string names
-;; Since symbols from reader may have different IDs than compile-time symbols,
-;; we always fall back to string comparison when eq fails
-(defun op=quote (sym)
-  (if (eq sym *op-quote*) t
-      (if (h0-string= (symbol-name sym) "QUOTE")
-          (progn (setq *op-quote* sym) t)
-          nil)))
+;; Operator checks - pure eq comparison
+;; All symbols are properly interned, so eq is sufficient
+;; If eq fails, that indicates a symbol interning bug - fail fast
+(defun op=quote (sym) (eq sym *op-quote*))
+(defun op=if (sym) (eq sym *op-if*))
+(defun op=let (sym) (eq sym *op-let*))
+(defun op=defun (sym) (eq sym *op-defun*))
+(defun op=t (sym) (eq sym *op-t*))
+(defun op=plus (sym) (eq sym *op-plus*))
+(defun op=minus (sym) (eq sym *op-minus*))
+(defun op=mul (sym) (eq sym *op-mul*))
+(defun op=div (sym) (eq sym *op-div*))
+(defun op=eq-num (sym) (eq sym *op-eq-num*))
+(defun op=lt (sym) (eq sym *op-lt*))
+(defun op=gt (sym) (eq sym *op-gt*))
+(defun op=le (sym) (eq sym *op-le*))
+(defun op=ge (sym) (eq sym *op-ge*))
+(defun op=let-star (sym) (eq sym *op-let-star*))
+(defun op=progn (sym) (eq sym *op-progn*))
+(defun op=cond (sym) (eq sym *op-cond*))
+(defun op=mod (sym) (eq sym *op-mod*))
+(defun op=cons (sym) (eq sym *op-cons*))
+(defun op=car (sym) (eq sym *op-car*))
+(defun op=cdr (sym) (eq sym *op-cdr*))
+(defun op=cadr (sym) (eq sym *op-cadr*))
+(defun op=cddr (sym) (eq sym *op-cddr*))
+(defun op=caddr (sym) (eq sym *op-caddr*))
+(defun op=cadddr (sym) (eq sym *op-cadddr*))
+(defun op=null (sym) (eq sym *op-null*))
+(defun op=consp (sym) (eq sym *op-consp*))
+(defun op=list (sym) (eq sym *op-list*))
+(defun op=not (sym) (eq sym *op-not*))
+(defun op=and (sym) (eq sym *op-and*))
+(defun op=or (sym) (eq sym *op-or*))
 
-(defun op=if (sym)
-  (if (eq sym *op-if*) t
-      (if (h0-string= (symbol-name sym) "IF")
-          (progn (setq *op-if* sym) t)
-          nil)))
-
-(defun op=let (sym)
-  (if (eq sym *op-let*) t
-      (if (h0-string= (symbol-name sym) "LET")
-          (progn (setq *op-let* sym) t)
-          nil)))
-
-(defun op=defun (sym)
-  (if (eq sym *op-defun*) t
-      (if (h0-string= (symbol-name sym) "DEFUN")
-          (progn (setq *op-defun* sym) t)
-          nil)))
-
-(defun op=t (sym)
-  (if (eq sym *op-t*) t
-      (if (h0-string= (symbol-name sym) "T")
-          (progn (setq *op-t* sym) t)
-          nil)))
-
-(defun op=plus (sym)
-  (if (eq sym *op-plus*) t
-      (if (h0-string= (symbol-name sym) "+")
-          (progn (setq *op-plus* sym) t)
-          nil)))
-
-(defun op=minus (sym)
-  (if (eq sym *op-minus*) t
-      (if (h0-string= (symbol-name sym) "-")
-          (progn (setq *op-minus* sym) t)
-          nil)))
-
-(defun op=mul (sym)
-  (if (eq sym *op-mul*) t
-      (if (h0-string= (symbol-name sym) "*")
-          (progn (setq *op-mul* sym) t)
-          nil)))
-
-(defun op=div (sym)
-  (if (eq sym *op-div*) t
-      (if (h0-string= (symbol-name sym) "/")
-          (progn (setq *op-div* sym) t)
-          nil)))
-
-(defun op=eq-num (sym)
-  (if (eq sym *op-eq-num*) t
-      (if (h0-string= (symbol-name sym) "=")
-          (progn (setq *op-eq-num* sym) t)
-          nil)))
-
-(defun op=lt (sym)
-  (if (eq sym *op-lt*) t
-      (if (h0-string= (symbol-name sym) "<")
-          (progn (setq *op-lt* sym) t)
-          nil)))
-
-(defun op=gt (sym)
-  (if (eq sym *op-gt*) t
-      (if (h0-string= (symbol-name sym) ">")
-          (progn (setq *op-gt* sym) t)
-          nil)))
-
-(defun op=le (sym)
-  (if (eq sym *op-le*) t
-      (if (h0-string= (symbol-name sym) "<=")
-          (progn (setq *op-le* sym) t)
-          nil)))
-
-(defun op=ge (sym)
-  (if (eq sym *op-ge*) t
-      (if (h0-string= (symbol-name sym) ">=")
-          (progn (setq *op-ge* sym) t)
-          nil)))
-
-(defun op=let-star (sym)
-  (if (eq sym *op-let-star*) t
-      (if (h0-string= (symbol-name sym) "LET*")
-          (progn (setq *op-let-star* sym) t)
-          nil)))
-
-(defun op=progn (sym)
-  (if (eq sym *op-progn*) t
-      (if (h0-string= (symbol-name sym) "PROGN")
-          (progn (setq *op-progn* sym) t)
-          nil)))
-
-(defun op=cond (sym)
-  (if (eq sym *op-cond*) t
-      (if (h0-string= (symbol-name sym) "COND")
-          (progn (setq *op-cond* sym) t)
-          nil)))
-
-(defun op=mod (sym)
-  (if (eq sym *op-mod*) t
-      (if (h0-string= (symbol-name sym) "MOD")
-          (progn (setq *op-mod* sym) t)
-          nil)))
-
-(defun op=cons (sym)
-  (if (eq sym *op-cons*) t
-      (if (h0-string= (symbol-name sym) "CONS")
-          (progn (setq *op-cons* sym) t)
-          nil)))
-
-(defun op=car (sym)
-  (if (eq sym *op-car*) t
-      (if (h0-string= (symbol-name sym) "CAR")
-          (progn (setq *op-car* sym) t)
-          nil)))
-
-(defun op=cdr (sym)
-  (if (eq sym *op-cdr*) t
-      (if (h0-string= (symbol-name sym) "CDR")
-          (progn (setq *op-cdr* sym) t)
-          nil)))
-
-(defun op=cadr (sym)
-  (if (eq sym *op-cadr*) t
-      (if (h0-string= (symbol-name sym) "CADR")
-          (progn (setq *op-cadr* sym) t)
-          nil)))
-
-(defun op=cddr (sym)
-  (if (eq sym *op-cddr*) t
-      (if (h0-string= (symbol-name sym) "CDDR")
-          (progn (setq *op-cddr* sym) t)
-          nil)))
-
-(defun op=caddr (sym)
-  (if (eq sym *op-caddr*) t
-      (if (h0-string= (symbol-name sym) "CADDR")
-          (progn (setq *op-caddr* sym) t)
-          nil)))
-
-(defun op=cadddr (sym)
-  (if (eq sym *op-cadddr*) t
-      (if (h0-string= (symbol-name sym) "CADDDR")
-          (progn (setq *op-cadddr* sym) t)
-          nil)))
-
-(defun op=null (sym)
-  (if (eq sym *op-null*) t
-      (if (h0-string= (symbol-name sym) "NULL")
-          (progn (setq *op-null* sym) t)
-          nil)))
-
-(defun op=consp (sym)
-  (if (eq sym *op-consp*) t
-      (if (h0-string= (symbol-name sym) "CONSP")
-          (progn (setq *op-consp* sym) t)
-          nil)))
-
-(defun op=list (sym)
-  (if (eq sym *op-list*) t
-      (if (h0-string= (symbol-name sym) "LIST")
-          (progn (setq *op-list* sym) t)
-          nil)))
-
-(defun op=not (sym)
-  (if (eq sym *op-not*) t
-      (if (h0-string= (symbol-name sym) "NOT")
-          (progn (setq *op-not* sym) t)
-          nil)))
-
-(defun op=and (sym)
-  (if (eq sym *op-and*) t
-      (if (h0-string= (symbol-name sym) "AND")
-          (progn (setq *op-and* sym) t)
-          nil)))
-
-(defun op=or (sym)
-  (if (eq sym *op-or*) t
-      (if (h0-string= (symbol-name sym) "OR")
-          (progn (setq *op-or* sym) t)
-          nil)))
-
-;; Generic symbol name comparison for cases not covered by caching
+;; Generic symbol comparison - uses eq with interned symbol
+;; For operators not in the cached *op-* variables
 (defun op= (sym name)
-  (if (symbolp sym)
-      (h0-string= (symbol-name sym) name)
-      nil))
+  (eq sym (intern name)))
 
 (defun chars-to-string (chars)
   (let* ((len (length chars))
@@ -388,7 +437,8 @@
   (let* ((r (read-sym-chars source pos nil))
          (chars (car r))
          (end (cdr r)))
-    (cons (make-symbol-from-string (chars-to-string chars)) end)))
+    ;; Use intern to ensure all symbols with same name are eq
+    (cons (intern (chars-to-string chars)) end)))
 
 ;; Read string literal
 (defun read-str-chars (source pos acc)
@@ -481,15 +531,26 @@
                           (read-one (+ p2 #x1))))))))))
     (read-one pos)))
 
+;; Reverse a list
+(defun reverse-acc (lst acc)
+  (if (null lst)
+      acc
+      (reverse-acc (cdr lst) (cons (car lst) acc))))
+
+(defun reverse (lst)
+  (reverse-acc lst nil))
+
+;; Helper for read-all - avoids labels which has codegen issues
+(defun read-all-loop (source len pos acc)
+  (let ((p2 (skip-ws source pos)))
+    (if (>= p2 len)
+        (reverse acc)
+        (let ((r (habu-read source p2)))
+          (read-all-loop source len (cdr r) (cons (car r) acc))))))
+
 (defun read-all (source)
   (let ((len (string-length source)))
-    (labels ((ra (pos acc)
-               (let ((p2 (skip-ws source pos)))
-                 (if (>= p2 len)
-                     (reverse acc)
-                     (let ((r (habu-read source p2)))
-                       (ra (cdr r) (cons (car r) acc)))))))
-      (ra #x0 nil))))
+    (read-all-loop source len #x0 nil)))
 
 (defun h0-read-from-string (s)
   (car (habu-read s 0)))
@@ -497,44 +558,39 @@
 ;;; Simple expression evaluator with function definitions
 ;;; This interpreter supports defun, let, and recursion.
 
-;; Symbol name lookup for function environment
-(defun sym-name= (sym name)
-  (if (symbolp sym)
-      (h0-string= (symbol-name sym) name)
-      nil))
-
-;; Look up function by symbol name in fenv
-;; Entry is (name-string . (params . body))
+;; Look up function by symbol in fenv
+;; Entry is (symbol . (params . body))
+;; Uses eq since all symbols are properly interned
 (defun fenv-lookup (sym fenv)
   (if (null fenv) nil
       (let ((entry (car fenv)))
-        (if (and (symbolp sym) (h0-string= (symbol-name sym) (car entry)))
+        (if (eq sym (car entry))
             (cdr entry)  ;; Returns (params . body)
             (fenv-lookup sym (cdr fenv))))))
 
 ;; Create binding list from params and args
-;; Store symbol names (strings) as keys, not symbols
+;; Stores (symbol . value) pairs for eq-based lookup
 (defun bind-args (params args env)
   (if (null params) env
-      (cons (cons (symbol-name (car params)) (car args))
+      (cons (cons (car params) (car args))
             (bind-args (cdr params) (cdr args) env))))
 
-;; Look up by symbol name in environment
-;; Returns the entry (cons var val) or nil if not found
+;; Look up by symbol in environment using eq
+;; Returns the entry (cons sym val) or nil if not found
 ;; This allows distinguishing "not found" from "found with nil value"
 (defun env-lookup (sym env)
   (if (null env) nil
       (let ((entry (car env)))
-        (if (h0-string= (symbol-name sym) (car entry))
+        (if (eq sym (car entry))
             entry  ; Return whole entry so caller can check nil values
             (env-lookup sym (cdr env))))))
 
-;; Helper for let bindings - iterates through bindings without recursive symbol issue
+;; Helper for let bindings - stores (symbol . value) pairs for eq lookup
 (defun h0-eval-let (bindings body env fenv)
   (if (null bindings)
       (h0-eval body env fenv)
       (let* ((b (car bindings))
-             (var (symbol-name (car b)))
+             (var (car b))  ;; Keep as symbol for eq lookup
              (val (h0-eval (cadr b) env fenv)))
         (h0-eval-let (cdr bindings) body (cons (cons var val) env) fenv))))
 
@@ -592,7 +648,7 @@
     ;; nil is false (both Lisp nil and symbol NIL)
     ((null expr) nil)
     ;; Symbol NIL - return nil (catches reader-created NIL symbol)
-    ((if (symbolp expr) (h0-string= (symbol-name expr) "NIL") nil) nil)
+    ((if (symbolp expr) (string= (symbol-name expr) "NIL") nil) nil)
     ;; t is true
     ((if (symbolp expr) (op=t expr) nil) t)
     ;; Symbol lookup in variable environment
@@ -600,8 +656,8 @@
      (let ((entry (env-lookup expr env)))
        (if entry
            (cdr entry)  ; Extract value from entry
-           ;; Not found - undefined symbol error (208 + tag<<4)
-           (sys-exit (+ #xD0 (get-tag expr))))))
+           ;; Not found - undefined symbol
+           (fatal-error "h0-eval: undefined symbol"))))
     ;; List - function call or special form
     ((consp expr)
      (let ((op (car expr)))
@@ -801,10 +857,10 @@
                        (args (h0-eval-list (cdr expr) env fenv))
                        (new-env (bind-args params args nil)))
                   (h0-eval body new-env fenv))
-                ;; Unknown function - exit with error code 200 + (tag<<4)
-                (sys-exit (+ #xC8 (get-tag op)))))))))
-    ;; Unknown expression type - exit with error code 199
-    (t (sys-exit #xC7))))
+                ;; Unknown function
+                (fatal-error "h0-eval: unknown function")))))))
+    ;; Unknown expression type
+    (t (fatal-error "h0-eval: unknown expression type"))))
 
 ;; Eval a list of expressions
 (defun h0-eval-list (exprs env fenv)
@@ -813,11 +869,12 @@
             (h0-eval-list (cdr exprs) env fenv))))
 
 ;; Collect function definitions from forms
+;; Stores (symbol . (params . body)) for eq-based lookup
 (defun collect-defuns (forms fenv)
   (if (null forms) fenv
       (let ((form (car forms)))
         (if (and (consp form) (symbolp (car form)) (op=defun (car form)))
-            (let* ((name (symbol-name (cadr form)))
+            (let* ((name (cadr form))  ;; Keep as symbol, not string
                    (params (caddr form))
                    (body (cadddr form)))
               (collect-defuns (cdr forms) (cons (cons name (cons params body)) fenv)))
@@ -862,20 +919,50 @@
 
 ;; Symbol comparison helper for compilation
 ;; Uses symbol-name for string comparison since make-symbol-from-string
-;; doesn't deduplicate (each call creates new symbol)
+;; Symbol comparison using intern - ensures eq correctness
 (defun sym= (sym name)
-  "Check if symbol has given name string"
-  (if (symbolp sym)
-      (h0-string= (symbol-name sym) name)
-      nil))
+  "Check if symbol equals the interned symbol for name"
+  (eq sym (intern name)))
 
 ;; Initialize compile ops - now a no-op since we use string comparison
 (defun init-compile-ops ()
+  ;; Initialize all operator symbols via intern
+  ;; This ensures eq comparison works in op= functions
+  (setq *op-quote* (intern "QUOTE"))
+  (setq *op-if* (intern "IF"))
+  (setq *op-let* (intern "LET"))
+  (setq *op-let-star* (intern "LET*"))
+  (setq *op-defun* (intern "DEFUN"))
+  (setq *op-progn* (intern "PROGN"))
+  (setq *op-cond* (intern "COND"))
+  (setq *op-t* (intern "T"))
+  (setq *op-plus* (intern "+"))
+  (setq *op-minus* (intern "-"))
+  (setq *op-mul* (intern "*"))
+  (setq *op-div* (intern "/"))
+  (setq *op-mod* (intern "MOD"))
+  (setq *op-eq-num* (intern "="))
+  (setq *op-lt* (intern "<"))
+  (setq *op-gt* (intern ">"))
+  (setq *op-le* (intern "<="))
+  (setq *op-ge* (intern ">="))
+  (setq *op-cons* (intern "CONS"))
+  (setq *op-car* (intern "CAR"))
+  (setq *op-cdr* (intern "CDR"))
+  (setq *op-cadr* (intern "CADR"))
+  (setq *op-cddr* (intern "CDDR"))
+  (setq *op-caddr* (intern "CADDR"))
+  (setq *op-cadddr* (intern "CADDDR"))
+  (setq *op-null* (intern "NULL"))
+  (setq *op-consp* (intern "CONSP"))
+  (setq *op-list* (intern "LIST"))
+  (setq *op-not* (intern "NOT"))
+  (setq *op-and* (intern "AND"))
+  (setq *op-or* (intern "OR"))
   nil)
 
 ;; Environment lookup for compilation - returns offset or nil
-;; Uses inline string comparison because make-symbol-from-string
-;; doesn't deduplicate (each read creates new symbol object)
+;; Now uses eq since all symbols are properly interned
 ;; Note: Uses separate helper functions to avoid nested closure issues
 (defun c-env-lookup (sym env)
   (c-env-search (symbol-name sym) env #x0))
@@ -958,7 +1045,7 @@
      (let ((result (c-env-lookup expr env)))
        (if result
            (list (ir-tag-var) (car result))  ;; Extract offset from (cons offset nil)
-           (list (ir-tag-lit) #x0))))  ; Unknown symbol -> 0
+           (fatal-error-ir "h0-compile: Unknown symbol"))))
     ;; Lists - special forms or function calls
     ((consp expr)
      (let ((op (car expr)))
@@ -968,7 +1055,7 @@
           (let ((val (cadr expr)))
             (if (numberp val)
                 (list (ir-tag-lit) val)
-                (list (ir-tag-lit) #x0))))  ; Only quote numbers for now
+                (fatal-error-ir "h0-compile: Non-number quote"))))
          ;; If
          ((sym= op "IF")
           (let* ((test-ir (h0-compile (cadr expr) env fenv))
@@ -1041,15 +1128,15 @@
          ((sym= op "NULL")
           (let ((v (h0-compile (cadr expr) env fenv)))
             (list (ir-tag-null) v)))
-         ;; Default - unknown operator
-         (t (list (ir-tag-lit) #x0)))))
-    ;; Default
-    (t (list (ir-tag-lit) #x0))))
+         ;; Default - unknown operator - CRASH
+         (t (fatal-error-ir "h0-compile: Unknown operator")))))
+    ;; Default - unknown expression type - CRASH
+    (t (fatal-error-ir "h0-compile: Unknown expression type"))))
 
 ;; Compile addition with constant folding
 (defun h0-compile-add (args env fenv)
   (if (null args)
-      (list (ir-tag-lit) #x0)
+      (fatal-error-ir "h0-compile-add: Empty addition")
       (if (null (cdr args))
           (h0-compile (car args) env fenv)
           (let* ((left-ir (h0-compile (car args) env fenv))
@@ -1062,7 +1149,7 @@
 ;; Compile subtraction with constant folding
 (defun h0-compile-sub (args env fenv)
   (if (null args)
-      (list (ir-tag-lit) #x0)
+      (fatal-error-ir "h0-compile-sub: Empty subtraction")
       (if (null (cdr args))
           ;; Unary minus
           (let ((arg-ir (h0-compile (car args) env fenv)))
@@ -1085,7 +1172,7 @@
              (var-sym (car b))
              (var-name (symbol-name var-sym))
              (val-ir (h0-compile (cadr b) env fenv))
-             ;; Store symbol name string for h0-string= lookup
+             ;; Store symbol name string for string= lookup
              (new-env (cons (cons var-name nil) env))
              (body-ir (h0-compile-let (cdr bindings) body new-env fenv)))
         (list (ir-tag-let) #x0 val-ir body-ir))))
@@ -1501,15 +1588,15 @@
        (bytes-append-all
         (list arg-code untag load-cdr))))          ; load cdr
 
-    ;; Null check
+    ;; Null check - compare to nil (0x6), not zero
     ((h0-has-tag-n ir (ir-tag-null))
      (let* ((arg-ir (cadr ir))
             (arg-code (h0-codegen arg-ir td))
-            (cmp-zero (a64-cmp-imm #x0 #x0))
+            (cmp-nil (a64-cmp-imm #x0 #x6))
             (set-cond (a64-cset #x0 (cond-eq)))
             (tag-result (a64-lsl-imm #x0 #x0 #x4)))
        (bytes-append-all
-        (list arg-code cmp-zero set-cond tag-result))))
+        (list arg-code cmp-nil set-cond tag-result))))
 
     ;; Let binding
     ;; h0-compile assigns offset 0 to the innermost binding

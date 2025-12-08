@@ -90,6 +90,62 @@
     result))
 
 ;;; ==========================================================
+;;; Undefined Function Tracking
+;;; ==========================================================
+;;; Tracks undefined function calls for compile-time warnings and
+;;; link-time verification. Exit code 200 = undefined function at runtime.
+
+(defvar *undefined-functions* nil "Functions called but not defined")
+(defvar *all-call-targets* nil "All call-fn targets for link-time check")
+(defvar *declared-imports* nil "Functions declared as imports (resolved at link time)")
+
+(defun reset-compile-warnings ()
+  "Reset undefined function tracking before compilation"
+  (setq *undefined-functions* nil)
+  (setq *all-call-targets* nil)
+  (setq *declared-imports* nil))
+
+(defun declare-imports (imports)
+  "Declare functions that will be resolved at link time"
+  (setq *declared-imports* imports))
+
+(defun record-undefined-function (name)
+  "Record that an undefined function was called (unless it's a declared import)"
+  (unless (or (member name *undefined-functions*)
+              (member name *declared-imports*))
+    (push name *undefined-functions*)))
+
+(defun mark-function-defined (name)
+  "Remove NAME from undefined functions list when its defun is found"
+  (setq *undefined-functions* (remove name *undefined-functions*)))
+
+(defun record-call-target (name)
+  "Record a call-fn target for link-time verification"
+  (unless (member name *all-call-targets*)
+    (push name *all-call-targets*)))
+
+(defun report-compile-warnings ()
+  "Report undefined functions found during compilation. Returns T if errors found."
+  (when *undefined-functions*
+    (format t "~%ERROR: Undefined functions referenced:~%")
+    (dolist (fn (reverse *undefined-functions*))
+      (format t "  - ~A~%" fn))
+    t))
+
+(defun verify-link-references (defined-fns)
+  "Verify all call-fn targets are in defined-fns list (or declared imports). Returns T if errors found."
+  (let ((undefined nil))
+    (dolist (target *all-call-targets*)
+      (unless (or (member target defined-fns)
+                  (member target *declared-imports*))
+        (push target undefined)))
+    (when undefined
+      (format t "~%LINK ERROR: Functions called but not compiled:~%")
+      (dolist (fn (reverse undefined))
+        (format t "  - ~A~%" fn))
+      t)))
+
+;;; ==========================================================
 
 ;;; HABU package shims for file I/O (needed by deliver-file and link-fasls)
 (defun native-read-file (path)
@@ -289,6 +345,7 @@
                    ((and (consp item) (eq (car item) :extern-call)) 4)
                    ((and (consp item) (eq (car item) :loop-start)) 0) ; marker only, no code
                    ((and (consp item) (eq (car item) :loop-continue)) 4) ; B instruction
+                   ((and (consp item) (eq (car item) :lambda-ref-marker)) 4) ; ADR instruction
                    (t 1)))
            (find-loop-start (items pos)
              ;; Find position of most recent :loop-start marker
@@ -365,6 +422,25 @@
                                   (+ pos 4)
                                   (cons (list :extern-call (cadr item) pos) acc)
                                   loop-start-stack))
+                     ;; Lambda-ref marker - resolve to ADR if found in fnoffs
+                     ((and (consp item) (eq (car item) :lambda-ref-marker))
+                      (let* ((dest-reg (cadr item))
+                             (lambda-name (caddr item))
+                             (fn-entry (assoc lambda-name fnoffs)))
+                        (if fn-entry
+                            ;; Known lambda - resolve to ADR
+                            (let* ((fn-pos (cdr fn-entry))
+                                   (rel-offset (- fn-pos pos))
+                                   (adr-bytes (arm64:adr dest-reg rel-offset)))
+                              (resolve-at (cdr items)
+                                          (+ pos 4)
+                                          (append (reverse adr-bytes) acc)
+                                          loop-start-stack))
+                            ;; Unknown lambda - preserve marker for link-time resolution
+                            (resolve-at (cdr items)
+                                        (+ pos 4)
+                                        (cons (list :lambda-ref-marker dest-reg lambda-name pos) acc)
+                                        loop-start-stack))))
                      ;; Regular byte
                      (t
                       (resolve-at (cdr items)
@@ -481,11 +557,12 @@
 
 (defun sbcl-gc-trigger-code ()
   "Generate inline GC trigger check for SBCL-hosted compilation.
-   Uses x9 as scratch. Emits :call-fn marker if GC needed.
+   Uses x8 as scratch (reserved for runtime, not allocatable).
+   Emits :call-fn marker if GC needed.
    Simple GC: checks from-end at [x27+16], calls GC-COLLECT."
   (append-all
-   (list (arm64:ldr :x9 :gc :offset +gc-from-end-offset+)  ; x9 = from_end
-         (arm64:cmp :heap :x9)                             ; compare x28, from_end
+   (list (arm64:ldr :x8 :gc :offset +gc-from-end-offset+)  ; x8 = from_end
+         (arm64:cmp :heap :x8)                             ; compare x28, from_end
          (arm64:b.lo 2)                                    ; skip if x28 < from_end
          (list (list :call-fn 'GC-COLLECT)))))
 
@@ -1103,55 +1180,64 @@
 ;;; ============================================================
 
 (defun find-free-vars (expr bound env)
-  "Find variables referenced in expr that are in env but not in bound"
-  (labels ((collect (e bnd acc)
-             (cond
-               ((null e) acc)
-               ((symbolp e)
-                ;; Check if it's a variable reference (in env but not bound)
-                ;; env is alist ((sym . offset) ...), env-lookup returns offset or nil
-                (if (and (env-lookup e env)
-                         (not (member e bnd)))
-                    (if (member e acc) acc (cons e acc))
-                    acc))
-               ((not (consp e)) acc)
-               ((eq (car e) 'quote) acc)  ; Don't look inside quotes
-               ((eq (car e) 'lambda)
-                ;; Lambda binds its params - add to bound
-                (let ((params (cadr e))
-                      (body (caddr e)))
-                  (collect body (append params bnd) acc)))
-               ((eq (car e) 'LET)
-                ;; Let binds variables
-                (let* ((bindings (cadr e))
-                       (body (caddr e))
-                       (names (mapcar #'car bindings))
-                       (vals (mapcar #'cadr bindings))
-                       ;; Collect from values first
-                       (acc2 (collect-list vals bnd acc))
-                       ;; Then body with new bindings
-                       (new-bnd (append names bnd)))
-                  (collect body new-bnd acc2)))
-               ((eq (car e) 'LET*)
-                (let* ((bindings (cadr e))
-                       (body (caddr e)))
-                  (labels ((do-bindings (bs bnd acc)
-                             (if (null bs)
-                                 (collect body bnd acc)
-                                 (let* ((b (car bs))
-                                        (nm (car b))
-                                        (vl (cadr b))
-                                        (acc2 (collect vl bnd acc)))
-                                   (do-bindings (cdr bs) (cons nm bnd) acc2)))))
-                    (do-bindings bindings bnd acc))))
-               (t
-                ;; General case: collect from all subexpressions
-                (collect-list e bnd acc))))
-           (collect-list (lst bnd acc)
-             (if (null lst)
-                 acc
-                 (collect-list (cdr lst) bnd (collect (car lst) bnd acc)))))
-    (collect expr bound nil)))
+  "Find variables referenced in expr that are in env but not in bound.
+   Handles both env formats:
+   - Alist: ((sym . offset) ...) - used by compiler-sbcl.lisp
+   - Flat list: (sym1 sym2 ...) - used by compiler.lisp"
+  ;; Detect env format: alist has cons cells, flat list has symbols
+  (let ((env-is-flat (and env (symbolp (car env)))))
+    (labels ((in-env (sym)
+               ;; Check if sym is in environment (handles both formats)
+               (if env-is-flat
+                   (member sym env)
+                   (env-lookup sym env)))
+             (collect (e bnd acc)
+               (cond
+                 ((null e) acc)
+                 ((symbolp e)
+                  ;; Check if it's a variable reference (in env but not bound)
+                  (if (and (in-env e)
+                           (not (member e bnd)))
+                      (if (member e acc) acc (cons e acc))
+                      acc))
+                 ((not (consp e)) acc)
+                 ((eq (car e) 'quote) acc)  ; Don't look inside quotes
+                 ((eq (car e) 'lambda)
+                  ;; Lambda binds its params - add to bound
+                  (let ((params (cadr e))
+                        (body (caddr e)))
+                    (collect body (append params bnd) acc)))
+                 ((or (eq (car e) 'LET) (eq (car e) 'let))
+                  ;; Let binds variables
+                  (let* ((bindings (cadr e))
+                         (body (caddr e))
+                         (names (mapcar #'car bindings))
+                         (vals (mapcar #'cadr bindings))
+                         ;; Collect from values first
+                         (acc2 (collect-list vals bnd acc))
+                         ;; Then body with new bindings
+                         (new-bnd (append names bnd)))
+                    (collect body new-bnd acc2)))
+                 ((or (eq (car e) 'LET*) (eq (car e) 'let*))
+                  (let* ((bindings (cadr e))
+                         (body (caddr e)))
+                    (labels ((do-bindings (bs bnd acc)
+                               (if (null bs)
+                                   (collect body bnd acc)
+                                   (let* ((b (car bs))
+                                          (nm (car b))
+                                          (vl (cadr b))
+                                          (acc2 (collect vl bnd acc)))
+                                     (do-bindings (cdr bs) (cons nm bnd) acc2)))))
+                      (do-bindings bindings bnd acc))))
+                 (t
+                  ;; General case: collect from all subexpressions
+                  (collect-list e bnd acc))))
+             (collect-list (lst bnd acc)
+               (if (null lst)
+                   acc
+                   (collect-list (cdr lst) bnd (collect (car lst) bnd acc)))))
+      (collect expr bound nil))))
 
 ;;; ============================================================
 ;;; Part 5c: Mutable Closure Boxing
@@ -1925,21 +2011,10 @@
                                     (,len-iter-fn (cdr ,lst-var) (+ ,acc-var 1)))))
                        (,len-iter-fn ,val-sym 0)))))
              env fenv)))
-         ;; reverse - reverse list via recursion
-         ((eq op 'reverse)
-          (let ((rev-iter-fn (gensym "REV-ITER"))
-                (lst-var (gensym "LST"))
-                (acc-var (gensym "ACC"))
-                (next-acc-var (gensym "NEXT-ACC")))
-            (sys:compile
-             `(labels ((,rev-iter-fn (,lst-var ,acc-var)
-                         (if (null ,lst-var)
-                             ,acc-var
-                             ;; BUG #20 WORKAROUND: Evaluate cons in let before recursive call
-                             (let ((,next-acc-var (cons (car ,lst-var) ,acc-var)))
-                               (,rev-iter-fn (cdr ,lst-var) ,next-acc-var)))))
-                (,rev-iter-fn ,(cadr expr) nil))
-             env fenv)))
+         ;; reverse - DISABLED: was inlining labels but had codegen bug
+         ;; Now calls user-defined reverse function instead
+         ;; ((eq op 'reverse) ...)
+
          ;; append - append two lists
          ((eq op 'append)
           (let ((args (cdr expr)))
@@ -2423,6 +2498,11 @@
           (list 'mem-load-64-ir
                 (sys:compile (cadr expr) env fenv)    ; ptr
                 (sys:compile (caddr expr) env fenv))) ; offset
+         ;; mem-load-byte - load single byte from memory at ptr+offset
+         ((eq op 'mem-load-byte)
+          (list 'mem-load-byte-ir
+                (sys:compile (cadr expr) env fenv)    ; ptr
+                (sys:compile (caddr expr) env fenv))) ; offset
          ;; === JIT Wrapper Primitives (simplified API) ===
          ;; jit-mmap - allocate JIT-capable memory
          ;; (jit-mmap size) - allocates size bytes with MAP_JIT flag
@@ -2466,6 +2546,18 @@
          ((eq op 'set-lambda-counter)
           (list 'set-lambda-counter-ir
                 (sys:compile (cadr expr) env fenv)))
+         ;; get-frame-pointer - get the current frame pointer (x29) for stack walking
+         ((eq op 'get-frame-pointer)
+          (list 'get-frame-pointer-ir))
+         ;; get-code-base - get the code base pointer (x26) for symbol table access
+         ((eq op 'get-code-base)
+          (list 'get-code-base-ir))
+         ;; get-symtab-offset - get embedded symbol table offset from [x27+112]
+         ((eq op 'get-symtab-offset)
+          (list 'get-symtab-offset-ir))
+         ;; get-symtab-count - get embedded symbol table entry count from [x27+120]
+         ((eq op 'get-symtab-count)
+          (list 'get-symtab-count-ir))
          ;; === High-level file I/O (using sys-* primitives) ===
          ;; native-read-file - read entire file to string
          ;; Expands to: (let* ((fd (sys-open path O_RDONLY 0))
@@ -2880,10 +2972,8 @@
             (let ((off (env-lookup op env)))
               (if (numberp off)
                   (list 'funcall-ir (list 'var off) (mapcar (lambda (a) (sys:compile a env fenv)) (cdr expr)))
-                  ;; Unknown function - record and generate crash
-                  (progn
-                    (habu::record-undefined-function op)
-                    (list 'sys-exit-ir (list 'lit 200))))))))))))
+                  ;; Unknown function - will fail at link time
+                  (list 'sys-exit-ir (list 'lit 200)))))))))))
     ;; Unknown expression type - error at compile time
     (t (error "sys:compile: unhandled expression type ~S" expr))))
 
@@ -3299,2165 +3389,46 @@
              (eval-ir-with-fns body-ir (append env padded-vals) fenv))))))
     (t 0)))
 
+
 ;;; ============================================================
-;;; Part 7: Code Generator (codegen-*)
+;;; Part 7: Code Generator (REMOVED)
 ;;; ============================================================
-
-(defun ir-may-call? (ir)
-  "Returns t if evaluating IR might make function calls that could clobber x24.
-   This is used to optimize away unnecessary x24 save/restore in binary ops."
-  (cond
-    ((null ir) nil)
-    ((not (consp ir)) nil)
-    ((has-tag ir 'lit) nil)
-    ((has-tag ir 'nil-ir) nil)
-    ((has-tag ir 'sym-lit) nil)
-    ((has-tag ir 'str-lit) nil)
-    ((has-tag ir 'var) nil)
-    ;; Function calls definitely clobber x24
-    ((has-tag ir 'call-fn) t)
-    ((has-tag ir 'tail-call-fn) t)
-    ((has-tag ir 'funcall-ir) t)
-    ((has-tag ir 'call-closure) t)
-    ;; Runtime calls also clobber x24
-    ((has-tag ir 'runtime-call) t)
-    ((has-tag ir 'format-call) t)
-    ((has-tag ir 'gensym-call) t)
-    ((has-tag ir 'open-file-call) t)
-    ((has-tag ir 'close-file-call) t)
-    ((has-tag ir 'read-line-call) t)
-    ((has-tag ir 'write-string-call) t)
-    ((has-tag ir 'read-file-call) t)
-    ((has-tag ir 'write-file-call) t)
-    ((has-tag ir 'values-call) t)
-    ((has-tag ir 'values-get-call) t)
-    ((has-tag ir 'values-count-call) t)
-    ((has-tag ir 'print-call) t)
-    ((has-tag ir 'profile-time-call) t)
-    ((has-tag ir 'sys-write-call) t)
-    ((has-tag ir 'sys-read-call) t)
-    ((has-tag ir 'sys-open-call) t)
-    ((has-tag ir 'sys-close-call) t)
-    ;; Binary/unary ops: check children
-    ((has-tag ir 'add) (or (ir-may-call? (cadr ir)) (ir-may-call? (caddr ir))))
-    ((has-tag ir 'sub) (or (ir-may-call? (cadr ir)) (ir-may-call? (caddr ir))))
-    ((has-tag ir 'mul) (or (ir-may-call? (cadr ir)) (ir-may-call? (caddr ir))))
-    ((has-tag ir 'div) (or (ir-may-call? (cadr ir)) (ir-may-call? (caddr ir))))
-    ((has-tag ir 'mod-ir) (or (ir-may-call? (cadr ir)) (ir-may-call? (caddr ir))))
-    ((has-tag ir 'band) (or (ir-may-call? (cadr ir)) (ir-may-call? (caddr ir))))
-    ((has-tag ir 'bor) (or (ir-may-call? (cadr ir)) (ir-may-call? (caddr ir))))
-    ((has-tag ir 'bxor) (or (ir-may-call? (cadr ir)) (ir-may-call? (caddr ir))))
-    ((has-tag ir 'bsh) (or (ir-may-call? (cadr ir)) (ir-may-call? (caddr ir))))
-    ((has-tag ir 'cmp-eq) (or (ir-may-call? (cadr ir)) (ir-may-call? (caddr ir))))
-    ((has-tag ir 'cmp-lt) (or (ir-may-call? (cadr ir)) (ir-may-call? (caddr ir))))
-    ((has-tag ir 'cmp-gt) (or (ir-may-call? (cadr ir)) (ir-may-call? (caddr ir))))
-    ((has-tag ir 'cmp-le) (or (ir-may-call? (cadr ir)) (ir-may-call? (caddr ir))))
-    ((has-tag ir 'cmp-ge) (or (ir-may-call? (cadr ir)) (ir-may-call? (caddr ir))))
-    ;; Unary ops
-    ((has-tag ir 'bnot) (ir-may-call? (cadr ir)))
-    ((has-tag ir 'neg) (ir-may-call? (cadr ir)))
-    ;; Cons/car/cdr: check children
-    ((has-tag ir 'cons-ir) (or (ir-may-call? (cadr ir)) (ir-may-call? (caddr ir))))
-    ((has-tag ir 'car-ir) (ir-may-call? (cadr ir)))
-    ((has-tag ir 'cdr-ir) (ir-may-call? (cadr ir)))
-    ;; Control flow: check all branches
-    ((has-tag ir 'if-ir)
-     (or (ir-may-call? (cadr ir))
-         (ir-may-call? (caddr ir))
-         (ir-may-call? (cadddr ir))))
-    ;; Progn: check all forms
-    ((has-tag ir 'progn-ir)
-     (some #'ir-may-call? (cdr ir)))
-    ;; Let: check bindings and body
-    ((has-tag ir 'let-ir)
-     (let ((bindings (cadr ir))
-           (body (caddr ir)))
-       (or (some #'ir-may-call? bindings)
-           (ir-may-call? body))))
-    ;; Vector/string operations are simple (inline)
-    ((has-tag ir 'make-vector-call) (ir-may-call? (cadr ir)))
-    ((has-tag ir 'vector-set-ir) (or (ir-may-call? (cadr ir))
-                                         (ir-may-call? (caddr ir))
-                                         (ir-may-call? (cadddr ir))))
-    ((has-tag ir 'vector-ref-ir) (or (ir-may-call? (cadr ir)) (ir-may-call? (caddr ir))))
-    ((has-tag ir 'vector-length-ir) (ir-may-call? (cadr ir)))
-    ((has-tag ir 'string-length-ir) (ir-may-call? (cadr ir)))
-    ((has-tag ir 'string-ref-ir) (or (ir-may-call? (cadr ir)) (ir-may-call? (caddr ir))))
-    ;; String mutation/creation
-    ((has-tag ir 'string-set!-ir) (or (ir-may-call? (cadr ir))
-                                      (ir-may-call? (caddr ir))
-                                      (ir-may-call? (cadddr ir))))
-    ((has-tag ir 'make-string-ir) t)    ; allocates on heap
-    ((has-tag ir 'substring-ir) t)      ; allocates on heap
-    ;; Buffer byte operations
-    ((has-tag ir 'buffer-byte-set-ir) (or (ir-may-call? (cadr ir))
-                                          (ir-may-call? (caddr ir))
-                                          (ir-may-call? (cadddr ir))))
-    ((has-tag ir 'buffer-byte-ref-ir) (or (ir-may-call? (cadr ir)) (ir-may-call? (caddr ir))))
-    ;; Type predicates are simple
-    ((has-tag ir 'consp-ir) (ir-may-call? (cadr ir)))
-    ((has-tag ir 'null-ir) (ir-may-call? (cadr ir)))
-    ((has-tag ir 'numberp-ir) (ir-may-call? (cadr ir)))
-    ((has-tag ir 'symbolp-ir) (ir-may-call? (cadr ir)))
-    ((has-tag ir 'stringp-ir) (ir-may-call? (cadr ir)))
-    ((has-tag ir 'vectorp-ir) (ir-may-call? (cadr ir)))
-    ((has-tag ir 'eq-ir) (or (ir-may-call? (cadr ir)) (ir-may-call? (caddr ir))))
-    ;; Lambda-ref is just loading an address
-    ((has-tag ir 'lambda-ref) nil)
-    ;; Setq: check value
-    ((has-tag ir 'setq-ir) (ir-may-call? (caddr ir)))
-    ((has-tag ir 'setcar-ir) (or (ir-may-call? (cadr ir)) (ir-may-call? (caddr ir))))
-    ((has-tag ir 'setcdr-ir) (or (ir-may-call? (cadr ir)) (ir-may-call? (caddr ir))))
-    ;; Loop constructs
-    ((has-tag ir 'dotimes-ir) t)
-    ((has-tag ir 'dolist-ir) t)
-    ;; Self-TCO loop constructs: check body for calls
-    ((has-tag ir 'loop-ir) (ir-may-call? (cadr ir)))
-    ((has-tag ir 'continue-ir) (some #'ir-may-call? (cadr ir)))
-    ;; Default: assume it might call to be safe
-    (t t)))
-
-(defun ir-is-simple? (ir)
-  "Returns t if IR is simple (var or lit) and doesn't use any registers."
-  (or (has-tag ir 'var)
-      (has-tag ir 'lit)
-      (has-tag ir 'nil-ir)))
-
-(defun cmp-result-to-bool (cond-code)
-  "Generate code to convert comparison result to t (0x10) or nil (0x06).
-   Input: condition code (e.g., (cond-eq), (cond-lt))
-   Output: code that sets x0 = 0x10 (true) or 0x06 (nil)"
-  (append-all (list (arm64:cset :x0 cond-code)
-                    (arm64:lsl :x0 :x0 4 :imm t)   ; x0 = 0x00 or 0x10
-                    (arm64:cbnz :x0 2)            ; if true (0x10), skip movz
-                    (arm64:movz :x0 6))))         ; false: x0 = nil (6)
-
-(defun codegen-binop (left-ir right-ir op-instrs rtaddrs fnoffs td)
-  "Generate code for binary operation with register-based temps.
-   Uses temp registers when safe, falls back to stack when needed."
-  (let* ((nd (+ td 1))
-         (left-simple (ir-is-simple? left-ir))
-         (right-simple (ir-is-simple? right-ir))
-         (right-may-call (ir-may-call? right-ir))
-         (left-may-call (ir-may-call? left-ir)))
-    (cond
-      ;; Optimal case: both operands are simple (var/lit)
-      ;; Use temp register, no spill needed
-      ((and left-simple right-simple)
-       (let ((lc (codegen left-ir rtaddrs fnoffs nd))
-             (rc (codegen right-ir rtaddrs fnoffs nd)))
-         (append-all
-          (list lc                          ; eval left -> x0
-                (save-temp td)           ; save left in temp reg/slot
-                rc                          ; eval right -> x0
-                (arm64:mov :x1 :x0)            ; x1 = right
-                (load-temp :x0 td)       ; x0 = left
-                op-instrs))))
-      ;; Left may call - need stack spill (caller-saved regs clobbered)
-      (left-may-call
-       (let* ((_xs (temp-slot td))
-              (ls (temp-slot (+ td 1)))
-              (lc (codegen left-ir rtaddrs fnoffs (+ td 2)))
-              (rc (codegen right-ir rtaddrs fnoffs (+ td 2))))
-         (append-all
-          (list (arm64:str :closure :sp :offset _xs)   ; save x24
-                lc                          ; eval left -> x0
-                (arm64:str :x0 :sp :offset ls)    ; save left value (must use stack)
-                (arm64:ldr :closure :sp :offset _xs)   ; restore x24
-                rc                          ; eval right -> x0
-                (arm64:mov :x1 :x0)           ; x1 = right
-                (arm64:ldr :x0 :sp :offset ls)    ; x0 = left
-                op-instrs))))
-      ;; Left doesn't call but right does - still need stack for left
-      (right-may-call
-       (let* ((ls (temp-slot td))
-              (lc (codegen left-ir rtaddrs fnoffs (+ td 1)))
-              (rc (codegen right-ir rtaddrs fnoffs (+ td 2))))  ; FIX: use td+2 to avoid clobbering temp[td]
-         (append-all
-          (list lc                          ; eval left -> x0
-                (arm64:str :x0 :sp :offset ls)    ; save left value at temp[td]
-                rc                          ; eval right -> x0 (uses temp[td+2]+ only)
-                (arm64:mov :x1 :x0)           ; x1 = right
-                (arm64:ldr :x0 :sp :offset ls)    ; x0 = left
-                op-instrs))))
-      ;; Neither calls - can use temp registers
-      (t
-       (let ((lc (codegen left-ir rtaddrs fnoffs nd))
-             (rc (codegen right-ir rtaddrs fnoffs nd)))
-         (append-all
-          (list lc                          ; eval left -> x0
-                (save-temp td)           ; save left in temp reg
-                rc                          ; eval right -> x0
-                (arm64:mov :x1 :x0)            ; x1 = right
-                (load-temp :x0 td)       ; x0 = left
-                op-instrs)))))))
+;;;
+;;; The old accumulator-based codegen has been REMOVED.
+;;; All code generation now goes through the register-allocated path:
+;;;   - Functions: codegen-fn -> codegen-fn-reg-alloc (reg-alloc.lisp)
+;;;   - Main: codegen-main -> codegen-main-reg-alloc (reg-alloc.lisp)
+;;;
+;;; The following functions are stubs that ERROR if called:
 
 (defun codegen (ir rtaddrs fnoffs td)
-  (cond
-    ((has-tag ir 'lit)
-     (let* ((v (cadr ir))
-            (tg (ash v 4)))
-       (if (and (>= tg 0) (< tg #x10000))
-           (arm64:movz :x0 tg)
-           (load-addr :x0 tg))))
-    ((has-tag ir 'nil-ir)
-     ;; nil is represented as 0x06 (tag 6) - distinct from fixnum 0
-     (arm64:movz :x0 6))
-    ((has-tag ir 'sym-lit)
-     ;; Symbol literal: allocate name string and tag as symbol
-     ;; Symbol = (string-pointer | 2), so symbol-name just changes tag to 4
-     (let* ((name (cadr ir))
-            (chars (string-to-char-codes name)))
-       (append
-        ;; Create string literal for symbol name (returns string-ptr | 4 in x0)
-        (codegen-string-inline chars)
-        ;; Convert string tag (4) to symbol tag (2): subtract 2
-        (arm64:sub :x0 :x0 2 :imm t))))
-    ((has-tag ir 'str-lit)
-     ;; String literal: build string inline on heap using x28 bump pointer
-     (let* ((s (cadr ir))
-            (chars (string-to-char-codes s)))
-       (codegen-string-inline chars)))
-    ((has-tag ir 'var)
-     (let* ((off (cadr ir))
-            (off8 (* off 8))
-            (i1 (arm64:sub :x1 :env off8 :imm t))
-            (i2 (arm64:ldr :x0 :x1 :offset 0)))
-       (append-all (list i1 i2))))
-    ((has-tag ir 'get-tag)
-     (let* ((ac (codegen (cadr ir) rtaddrs fnoffs td))
-            (i1 (arm64:movz :x1 #xF))
-            (i2 (arm64:and* :x0 :x0 :x1))
-            (i3 (arm64:lsl :x0 :x0 4 :imm t)))
-       (append-all (list ac i1 i2 i3))))
-    ((has-tag ir 'add)
-     ;; Fast path: (add (var n) (lit k)) or (add (lit k) (var n)) -> single ADD imm
-     (let ((left (cadr ir))
-           (right (caddr ir)))
-       (cond
-         ;; (add var lit) where lit fits in 12-bit immediate
-         ((and (has-tag left 'var) (has-tag right 'lit)
-               (< (ash (cadr right) 4) #x1000))
-          (let ((var-code (codegen left rtaddrs fnoffs td))
-                (imm (ash (cadr right) 4)))
-            (append var-code (arm64:add :x0 :x0 imm :imm t))))
-         ;; (add lit var) - swap operands
-         ((and (has-tag left 'lit) (has-tag right 'var)
-               (< (ash (cadr left) 4) #x1000))
-          (let ((var-code (codegen right rtaddrs fnoffs td))
-                (imm (ash (cadr left) 4)))
-            (append var-code (arm64:add :x0 :x0 imm :imm t))))
-         ;; General case
-         (t (codegen-binop left right (arm64:add :x0 :x0 :x1) rtaddrs fnoffs td)))))
-    ((has-tag ir 'sub)
-     ;; Fast path: (sub (var n) (lit k)) -> single SUB imm
-     (let ((left (cadr ir))
-           (right (caddr ir)))
-       (if (and (has-tag left 'var) (has-tag right 'lit)
-                (< (ash (cadr right) 4) #x1000))
-           (let ((var-code (codegen left rtaddrs fnoffs td))
-                 (imm (ash (cadr right) 4)))
-             (append var-code (arm64:sub :x0 :x0 imm :imm t)))
-           (codegen-binop left right (arm64:sub :x0 :x0 :x1) rtaddrs fnoffs td))))
-    ((has-tag ir 'mul)
-     ;; Optimized multiplication: untag only ONE operand
-     ;; (a<<4) * (b>>4) = (a*b)<<4 -- correctly tagged result!
-     ;; Saves 2 instructions vs untagging both and retagging
-     (codegen-binop (cadr ir) (caddr ir)
-                       (append-all (list (arm64:lsr :x1 :x1 4 :imm t)    ; untag right only
-                                            (arm64:mul :x0 :x0 :x1)))  ; (left<<4) * right = result<<4
-                       rtaddrs fnoffs td))
-    ((has-tag ir 'band)
-     (codegen-binop (cadr ir) (caddr ir) (arm64:and* :x0 :x0 :x1) rtaddrs fnoffs td))
-    ((has-tag ir 'bor)
-     (codegen-binop (cadr ir) (caddr ir) (arm64:orr :x0 :x0 :x1) rtaddrs fnoffs td))
-    ((has-tag ir 'bxor)
-     (codegen-binop (cadr ir) (caddr ir) (arm64:eor :x0 :x0 :x1) rtaddrs fnoffs td))
-    ((has-tag ir 'bsh)
-     ;; Shift: optimized x24 save/restore
-     (let* ((val-ir (cadr ir))
-            (amt-ir (caddr ir))
-            (_xs (temp-slot td))
-            (vs (temp-slot (+ td 1)))
-            (nd (+ td 2))
-            (vc (codegen val-ir rtaddrs fnoffs nd))
-            (ac (codegen amt-ir rtaddrs fnoffs nd))
-            (may-call (ir-may-call? val-ir))
-            (shift-code (append-all
-                         (list (arm64:asr :x1 :x0 4 :imm t)
-                               (arm64:ldr :x0 :sp :offset vs)
-                               (arm64:cmp :x1 0 :imm t)
-                               (arm64:b.ge (ash 16 -2))
-                               (arm64:neg :x2 :x1)
-                               (arm64:asr :x0 :x0 :x2)
-                               (arm64:b (ash 8 -2))
-                               (arm64:lsl :x0 :x0 :x1)
-                               (arm64:lsl :x0 :x0 4 :imm t)))))
-       (if may-call
-           (append-all (list (arm64:str :closure :sp :offset _xs) vc (arm64:lsr :x0 :x0 4 :imm t)
-                                (arm64:str :x0 :sp :offset vs) (arm64:ldr :closure :sp :offset _xs)
-                                ac shift-code))
-           (append-all (list vc (arm64:lsr :x0 :x0 4 :imm t) (arm64:str :x0 :sp :offset vs)
-                                ac shift-code)))))
-    ((has-tag ir 'cmp-eq)
-     (codegen-binop (cadr ir) (caddr ir)
-                       (append (arm64:cmp :x0 :x1)
-                               (cmp-result-to-bool (cond-eq)))
-                       rtaddrs fnoffs td))
-    ((has-tag ir 'cmp-lt)
-     ;; Fast path: (cmp-lt (var n) (lit k)) -> CMP x0, #imm; CSET
-     (let ((left (cadr ir))
-           (right (caddr ir)))
-       (if (and (has-tag left 'var) (has-tag right 'lit)
-                (< (ash (cadr right) 4) #x1000))
-           (let ((var-code (codegen left rtaddrs fnoffs td))
-                 (imm (ash (cadr right) 4)))
-             (append var-code
-                    (arm64:cmp :x0 imm :imm t)
-                    (cmp-result-to-bool (cond-lt))))
-           (codegen-binop left right
-                             (append (arm64:cmp :x0 :x1)
-                                     (cmp-result-to-bool (cond-lt)))
-                             rtaddrs fnoffs td))))
-    ((has-tag ir 'cmp-gt)
-     (let ((left (cadr ir))
-           (right (caddr ir)))
-       (if (and (has-tag left 'var) (has-tag right 'lit)
-                (< (ash (cadr right) 4) #x1000))
-           (let ((var-code (codegen left rtaddrs fnoffs td))
-                 (imm (ash (cadr right) 4)))
-             (append var-code
-                    (arm64:cmp :x0 imm :imm t)
-                    (cmp-result-to-bool (cond-gt))))
-           (codegen-binop left right
-                             (append (arm64:cmp :x0 :x1)
-                                     (cmp-result-to-bool (cond-gt)))
-                             rtaddrs fnoffs td))))
-    ((has-tag ir 'cmp-le)
-     (let ((left (cadr ir))
-           (right (caddr ir)))
-       (if (and (has-tag left 'var) (has-tag right 'lit)
-                (< (ash (cadr right) 4) #x1000))
-           (let ((var-code (codegen left rtaddrs fnoffs td))
-                 (imm (ash (cadr right) 4)))
-             (append var-code
-                    (arm64:cmp :x0 imm :imm t)
-                    (cmp-result-to-bool (cond-le))))
-           (codegen-binop left right
-                             (append (arm64:cmp :x0 :x1)
-                                     (cmp-result-to-bool (cond-le)))
-                             rtaddrs fnoffs td))))
-    ((has-tag ir 'cmp-ge)
-     (let ((left (cadr ir))
-           (right (caddr ir)))
-       (if (and (has-tag left 'var) (has-tag right 'lit)
-                (< (ash (cadr right) 4) #x1000))
-           (let ((var-code (codegen left rtaddrs fnoffs td))
-                 (imm (ash (cadr right) 4)))
-             (append var-code
-                    (arm64:cmp :x0 imm :imm t)
-                    (cmp-result-to-bool (cond-ge))))
-           (codegen-binop left right
-                             (append (arm64:cmp :x0 :x1)
-                                     (cmp-result-to-bool (cond-ge)))
-                             rtaddrs fnoffs td))))
-    ((has-tag ir 'cons-ir)
-     ;; Inline cons: allocate 16 bytes from heap (x28), store car/cdr, return tagged ptr
-     ;; x28 is the heap bump pointer, initialized at startup
-     ;; Cons cell: [car at offset 0, cdr at offset 8], tagged with 1
-     (let* ((car-ir (cadr ir))
-            (cdr-ir (caddr ir))
-            (_xs (temp-slot td))
-            (cs (temp-slot (+ td 1)))
-            (nd (+ td 2))
-            (cc (codegen car-ir rtaddrs fnoffs nd))
-            (dc (codegen cdr-ir rtaddrs fnoffs nd))
-            (may-call (ir-may-call? car-ir))
-            (alloc-code (append-all
-                         (list (arm64:mov :x1 :x0)             ; x1 = cdr value
-                               (arm64:ldr :x0 :sp :offset cs)      ; x0 = car value
-                               ;; GC pre-check BEFORE writing to heap
-                               (sbcl-gc-trigger-code)
-                               (arm64:str :x0 :heap :offset 0)       ; [x28+0] = car
-                               (arm64:str :x1 :heap :offset 8)       ; [x28+8] = cdr
-                               (arm64:mov :x0 :heap)            ; x0 = untagged ptr
-                               (arm64:add :heap :heap 16 :imm t)        ; bump heap by 16
-                               ;; GC trigger check: if x28 >= from_end, call GC
-                               (arm64:ldr :x9 :gc :offset 16)       ; x9 = from_end [x27+16]
-                               (arm64:cmp :heap :x9)                  ; compare x28, from_end
-                               (arm64:b.lo 2)                    ; skip if x28 < from_end
-                               (list '(:call-fn GC-COLLECT))     ; bl gc_collect
-                               (arm64:movz :x1 1)                ; x1 = 1
-                               (arm64:orr :x0 :x0 :x1)))))       ; x0 = ptr | 1
-       (if may-call
-           (append-all (list (arm64:str :closure :sp :offset _xs) cc (arm64:str :x0 :sp :offset cs)
-                                (arm64:ldr :closure :sp :offset _xs) dc alloc-code))
-           (append-all (list cc (arm64:str :x0 :sp :offset cs) dc alloc-code)))))
-    ((has-tag ir 'car-ir)
-     ;; Inline car: clear tag bits, load from offset 0
-     ;; (car nil) returns nil - check for nil first
-     (let ((arg-ir (cadr ir)))
-       (let ((ac (codegen arg-ir rtaddrs fnoffs td)))
-         (append-all
-          (list ac
-                ;; Check for nil: if x0 == 0, skip load (return 0)
-                (arm64:cbz :x0 7)                ; if x0 == 0, skip 7 instructions
-                ;; Clear low 4 bits to get pointer
-                (arm64:movz :x1 #xFFF0)                ; x1 = mask (keep upper bits)
-                (arm64:movk :x1 #xFFFF :lsl 16)  ; complete mask
-                (arm64:movk :x1 #xFFFF :lsl 32)
-                (arm64:movk :x1 #xFFFF :lsl 48)
-                (arm64:and* :x0 :x0 :x1)                ; x0 = ptr with tag cleared
-                (arm64:ldr :x0 :x0 :offset 0))))))        ; x0 = [ptr+0] = car
-    ((has-tag ir 'cdr-ir)
-     ;; Inline cdr: clear tag bits, load from offset 8
-     ;; (cdr nil) returns nil - check for nil first
-     (let ((arg-ir (cadr ir)))
-       (let ((ac (codegen arg-ir rtaddrs fnoffs td)))
-         (append-all
-          (list ac
-                ;; Check for nil: if x0 == 0, skip load (return 0)
-                (arm64:cbz :x0 7)                ; if x0 == 0, skip 7 instructions
-                ;; Clear low 4 bits to get pointer
-                (arm64:movz :x1 #xFFF0)                ; x1 = mask (keep upper bits)
-                (arm64:movk :x1 #xFFFF :lsl 16)  ; complete mask
-                (arm64:movk :x1 #xFFFF :lsl 32)
-                (arm64:movk :x1 #xFFFF :lsl 48)
-                (arm64:and* :x0 :x0 :x1)                ; x0 = ptr with tag cleared
-                (arm64:ldr :x0 :x0 :offset 8))))))
-    ;; setq-ir - assign to variable
-    ((has-tag ir 'setq-ir)
-     ;; setq-ir = (setq-ir offset value-ir)
-     (let* ((off (cadr ir))
-            (val-ir (caddr ir))
-            (vc (codegen val-ir rtaddrs fnoffs td))
-            (off8 (* off 8))
-            (s1 (arm64:sub :x1 :env off8 :imm t))
-            (s2 (arm64:str :x0 :x1 :offset 0)))
-       (append-all (list vc s1 s2))))
-    ;; setcar-ir - mutate car of cons cell
-    ((has-tag ir 'setcar-ir)
-     ;; setcar-ir = (setcar-ir cons-ir value-ir)
-     ;; Inline implementation: clear tag, store value at offset 0
-     (let* ((cons-ir (cadr ir))
-            (val-ir (caddr ir))
-            (cons-slot (temp-slot td))
-            (val-slot (temp-slot (+ td 1)))
-            (nd (+ td 2))
-            (cons-code (codegen cons-ir rtaddrs fnoffs nd))
-            (save-cons (arm64:str :x0 :sp :offset cons-slot))
-            (val-code (codegen val-ir rtaddrs fnoffs nd))
-            (save-val (arm64:str :x0 :sp :offset val-slot))
-            ;; Get cons pointer back and clear tag
-            (load-cons (arm64:ldr :x1 :sp :offset cons-slot))
-            ;; Clear low 4 bits to get raw pointer
-            (clear-tag (append-all
-                        (list (arm64:movz :x9 #xFFF0)
-                              (arm64:movk :x9 #xFFFF :lsl 16)
-                              (arm64:movk :x9 #xFFFF :lsl 32)
-                              (arm64:movk :x9 #xFFFF :lsl 48)
-                              (arm64:and* :x1 :x1 :x9))))
-            ;; Get value back
-            (load-val (arm64:ldr :x0 :sp :offset val-slot))
-            ;; Store value at car position
-            (store-car (arm64:str :x0 :x1 :offset 0)))
-       (append-all (list cons-code save-cons val-code save-val
-                         load-cons clear-tag load-val store-car))))
-    ;; setcdr-ir - mutate cdr of cons cell
-    ((has-tag ir 'setcdr-ir)
-     ;; setcdr-ir = (setcdr-ir cons-ir value-ir)
-     ;; Inline implementation: clear tag, store value at offset 8
-     (let* ((cons-ir (cadr ir))
-            (val-ir (caddr ir))
-            (cons-slot (temp-slot td))
-            (val-slot (temp-slot (+ td 1)))
-            (nd (+ td 2))
-            (cons-code (codegen cons-ir rtaddrs fnoffs nd))
-            (save-cons (arm64:str :x0 :sp :offset cons-slot))
-            (val-code (codegen val-ir rtaddrs fnoffs nd))
-            (save-val (arm64:str :x0 :sp :offset val-slot))
-            ;; Get cons pointer back and clear tag
-            (load-cons (arm64:ldr :x1 :sp :offset cons-slot))
-            ;; Clear low 4 bits to get raw pointer
-            (clear-tag (append-all
-                        (list (arm64:movz :x9 #xFFF0)
-                              (arm64:movk :x9 #xFFFF :lsl 16)
-                              (arm64:movk :x9 #xFFFF :lsl 32)
-                              (arm64:movk :x9 #xFFFF :lsl 48)
-                              (arm64:and* :x1 :x1 :x9))))
-            ;; Get value back
-            (load-val (arm64:ldr :x0 :sp :offset val-slot))
-            ;; Store value at cdr position (offset 8)
-            (store-cdr (arm64:str :x0 :x1 :offset 8)))
-       (append-all (list cons-code save-cons val-code save-val
-                         load-cons clear-tag load-val store-cdr))))
-    ;; read-file-ir - read entire file as string
-    ((has-tag ir 'read-file-ir)
-     ;; read-file-ir = (read-file-ir path-ir)
-     ;; Runtime index 46 = habu_read_file at offset 368
-     (let* ((path-ir (cadr ir))
-            (pc (codegen path-ir rtaddrs fnoffs td))
-            (lf (arm64:ldr :x9 :x19 :offset 368))
-            (bl (arm64:blr :x9)))
-       (append-all (list pc lf bl))))
-    ;; write-file-ir - write string to file
-    ((has-tag ir 'write-file-ir)
-     ;; write-file-ir = (write-file-ir path-ir contents-ir)
-     ;; Runtime index 47 = habu_write_file at offset 376
-     (let* ((path-ir (cadr ir))
-            (contents-ir (caddr ir))
-            (_xs (temp-slot td))
-            (nd (+ td 1))
-            (pc (codegen path-ir rtaddrs fnoffs nd))
-            (sp (arm64:str :x0 :sp :offset _xs))
-            (cc (codegen contents-ir rtaddrs fnoffs nd))
-            (m1 (arm64:mov :x1 :x0))
-            (lp (arm64:ldr :x0 :sp :offset _xs))
-            (lf (arm64:ldr :x9 :x19 :offset 376))
-            (bl (arm64:blr :x9)))
-       (append-all (list pc sp cc m1 lp lf bl))))
-    ;; println-ir - print value with newline
-    ((has-tag ir 'println-ir)
-     ;; println-ir = (println-ir value-ir)
-     ;; Runtime index 49 = habu_println_value at offset 392
-     (let* ((val-ir (cadr ir))
-            (vc (codegen val-ir rtaddrs fnoffs td))
-            (lf (arm64:ldr :x9 :x19 :offset 392))
-            (bl (arm64:blr :x9)))
-       (append-all (list vc lf bl))))
-    ;; string-length-ir - get length of string (inline)
-    ((has-tag ir 'string-length-ir)
-     ;; string-length-ir = (string-length-ir str-ir)
-     ;; String layout: [length (8 bytes)] [char data]
-     ;; Clear tag, load length, tag as fixnum
-     (let* ((str-ir (cadr ir))
-            (sc (codegen str-ir rtaddrs fnoffs td)))
-       (append-all
-        (list sc
-              ;; Clear low 4 bits to get pointer (same approach as car-ir)
-              (arm64:movz :x1 #xFFF0)              ; x1 = mask (keep upper bits)
-              (arm64:movk :x1 #xFFFF :lsl 16)  ; complete mask
-              (arm64:movk :x1 #xFFFF :lsl 32)
-              (arm64:movk :x1 #xFFFF :lsl 48)
-              (arm64:and* :x0 :x0 :x1)              ; x0 = str_ptr (untagged)
-              ;; Load length from [x0+0]
-              (arm64:ldr :x0 :x0 :offset 0)           ; x0 = raw length
-              ;; Tag as fixnum: x0 = x0 << 4
-              (arm64:lsl :x0 :x0 4 :imm t)))))
-    ;; string-ref-ir - get character at index (inline)
-    ((has-tag ir 'string-ref-ir)
-     ;; string-ref-ir = (string-ref-ir str-ir idx-ir)
-     ;; String layout: [length (8 bytes)] [char data]
-     ;; Address = (str & ~0xF) + 8 + (idx >> 4)
-     (let* ((str-ir (cadr ir))
-            (idx-ir (caddr ir))
-            (_xs (temp-slot td))
-            (is (temp-slot (+ td 1)))
-            (nd (+ td 2))
-            (sc (codegen str-ir rtaddrs fnoffs nd))
-            (sv (arm64:str :x0 :sp :offset _xs))
-            (ic (codegen idx-ir rtaddrs fnoffs nd))
-            (si (arm64:str :x0 :sp :offset is)))
-       ;; After codegen: idx saved at [sp+is], str at [sp+_xs]
-       (append-all
-        (list sc sv ic si
-              ;; Load str -> x1
-              (arm64:ldr :x1 :sp :offset _xs)         ; x1 = str (tagged)
-              ;; Clear tag: x1 = x1 & ~0xF (same approach as car-ir)
-              (arm64:movz :x2 #xFFF0)              ; x2 = mask (keep upper bits)
-              (arm64:movk :x2 #xFFFF :lsl 16)  ; complete mask
-              (arm64:movk :x2 #xFFFF :lsl 32)
-              (arm64:movk :x2 #xFFFF :lsl 48)
-              (arm64:and* :x1 :x1 :x2)              ; x1 = str_ptr (untagged)
-              ;; Load idx -> x0
-              (arm64:ldr :x0 :sp :offset is)         ; x0 = idx (tagged)
-              ;; Calculate offset: x0 = (idx >> 4) + 8
-              (arm64:lsr :x0 :x0 4 :imm t)              ; x0 = untagged idx
-              (arm64:add :x0 :x0 8 :imm t)              ; x0 = offset = 8 + idx
-              ;; Load byte from str_ptr + offset
-              (arm64:ldrb :x0 :x1 :x0 :reg t)             ; x0 = byte value (zero-extended)
-              ;; Tag as fixnum: x0 = x0 << 4
-              (arm64:lsl :x0 :x0 4 :imm t)))))
-    ;; string-set!-ir - set character at index (inline)
-    ((has-tag ir 'string-set!-ir)
-     ;; string-set!-ir = (string-set!-ir str-ir idx-ir char-ir)
-     ;; String layout: [length (8 bytes)] [char data]
-     ;; Address = (str & ~0xF) + 8 + (idx >> 4)
-     ;; Stores byte at that address, returns char-code
-     (let* ((str-ir (cadr ir))
-            (idx-ir (caddr ir))
-            (char-ir (cadddr ir))
-            (str-slot (temp-slot td))
-            (idx-slot (temp-slot (+ td 1)))
-            (char-slot (temp-slot (+ td 2)))
-            (nd (+ td 3))
-            (str-code (codegen str-ir rtaddrs fnoffs nd))
-            (save-str (arm64:str :x0 :sp :offset str-slot))
-            (idx-code (codegen idx-ir rtaddrs fnoffs nd))
-            (save-idx (arm64:str :x0 :sp :offset idx-slot))
-            (char-code (codegen char-ir rtaddrs fnoffs nd))
-            (save-char (arm64:str :x0 :sp :offset char-slot)))
-       (append-all
-        (list str-code save-str idx-code save-idx char-code save-char
-              ;; Load str -> x1, clear tag
-              (arm64:ldr :x1 :sp :offset str-slot)
-              (arm64:and* :x1 :x1 -16 :imm t)         ; clear tag
-              ;; Load idx -> x2, untag
-              (arm64:ldr :x2 :sp :offset idx-slot)
-              (arm64:lsr :x2 :x2 4 :imm t)            ; untag idx
-              (arm64:add :x2 :x2 8 :imm t)            ; offset = 8 + idx
-              ;; Load char -> x0, untag, store byte
-              (arm64:ldr :x0 :sp :offset char-slot)
-              (arm64:lsr :x0 :x0 4 :imm t)            ; untag char
-              (arm64:strb :x0 :x1 :x2 :reg t)         ; store byte at str+offset
-              ;; Return char as tagged fixnum
-              (arm64:lsl :x0 :x0 4 :imm t)))))
-    ;; make-string-ir - allocate string of given length (inline)
-    ((has-tag ir 'make-string-ir)
-     ;; make-string-ir = (make-string-ir len-ir init-char-ir)
-     ;; Allocates string on heap: [length (8 bytes)][char data (len bytes)]
-     ;; Initializes all chars to init-char
-     (let* ((len-ir (cadr ir))
-            (init-ir (caddr ir))
-            (len-slot (temp-slot td))
-            (nd (+ td 1))
-            (len-code (codegen len-ir rtaddrs fnoffs nd))
-            (save-len (arm64:str :x0 :sp :offset len-slot))
-            (init-code (codegen init-ir rtaddrs fnoffs nd)))
-       (append-all
-        (list len-code save-len init-code
-              ;; x0 = init char (tagged), save it
-              (arm64:mov :x3 :x0)                     ; x3 = init (tagged)
-              (arm64:lsr :x3 :x3 4 :imm t)            ; x3 = init (untagged)
-              ;; Load len -> x1 (untagged)
-              (arm64:ldr :x1 :sp :offset len-slot)
-              (arm64:lsr :x1 :x1 4 :imm t)            ; x1 = len (untagged)
-              ;; Calculate allocation size: 8 (length field) + len, align to 16
-              (arm64:add :x2 :x1 8 :imm t)            ; x2 = 8 + len
-              (arm64:add :x2 :x2 15 :imm t)           ; x2 = size + 15
-              (arm64:and* :x2 :x2 -16 :imm t)         ; x2 = aligned size
-              ;; Allocate: x0 = x28, x28 += size
-              (arm64:mov :x0 :x28)                    ; x0 = alloc ptr
-              (arm64:add :x28 :x28 :x2)               ; bump allocator
-              ;; Store length at [x0]
-              (arm64:str :x1 :x0 :offset 0)           ; [x0] = len
-              ;; Initialize chars: loop from 0 to len-1
-              ;; x4 = current offset (starts at 8)
-              (arm64:movz :x4 8)                      ; x4 = 8 (first char offset)
-              ;; Loop: while x4 < 8 + len
-              (arm64:add :x5 :x1 8 :imm t)            ; x5 = 8 + len (end offset)
-              ;; loop_start: (offset 0 from here)
-              (arm64:cmp :x4 :x5)                     ; cmp offset, end
-              (arm64:b.ge 4)                          ; if offset >= end, skip loop body (4 instrs)
-              (arm64:strb :x3 :x0 :x4 :reg t)         ; store init byte at x0+x4
-              (arm64:add :x4 :x4 1 :imm t)            ; x4++
-              (arm64:b -4)                            ; back to loop_start
-              ;; Tag result as string (tag 4)
-              ;; Note: use ADD instead of ORR since 4 is not a valid bitmask immediate
-              ;; This works because heap pointers are 16-byte aligned (low 4 bits = 0)
-              (arm64:add :x0 :x0 4 :imm t)))))
-    ;; substring-ir - extract substring (inline)
-    ((has-tag ir 'substring-ir)
-     ;; substring-ir = (substring-ir str-ir start-ir end-ir)
-     ;; Allocates new string of (end-start) length, copies chars
-     (let* ((str-ir (cadr ir))
-            (start-ir (caddr ir))
-            (end-ir (cadddr ir))
-            (str-slot (temp-slot td))
-            (start-slot (temp-slot (+ td 1)))
-            (end-slot (temp-slot (+ td 2)))
-            (nd (+ td 3))
-            (str-code (codegen str-ir rtaddrs fnoffs nd))
-            (save-str (arm64:str :x0 :sp :offset str-slot))
-            (start-code (codegen start-ir rtaddrs fnoffs nd))
-            (save-start (arm64:str :x0 :sp :offset start-slot))
-            (end-code (codegen end-ir rtaddrs fnoffs nd))
-            (save-end (arm64:str :x0 :sp :offset end-slot)))
-       (append-all
-        (list str-code save-str start-code save-start end-code save-end
-              ;; Load and untag params
-              (arm64:ldr :x1 :sp :offset str-slot)    ; x1 = str (tagged)
-              (arm64:and* :x1 :x1 -16 :imm t)         ; x1 = str ptr
-              (arm64:ldr :x2 :sp :offset start-slot)
-              (arm64:lsr :x2 :x2 4 :imm t)            ; x2 = start
-              (arm64:ldr :x3 :sp :offset end-slot)
-              (arm64:lsr :x3 :x3 4 :imm t)            ; x3 = end
-              ;; x4 = new length = end - start
-              (arm64:sub :x4 :x3 :x2)                 ; x4 = len
-              ;; Allocate new string: size = 8 + len, aligned
-              (arm64:add :x5 :x4 8 :imm t)            ; x5 = 8 + len
-              (arm64:add :x5 :x5 15 :imm t)
-              (arm64:and* :x5 :x5 -16 :imm t)         ; x5 = aligned size
-              (arm64:mov :x0 :x28)                    ; x0 = new str ptr
-              (arm64:add :x28 :x28 :x5)               ; bump allocator
-              ;; Store length at [x0]
-              (arm64:str :x4 :x0 :offset 0)
-              ;; Copy chars: src = x1 + 8 + start, dst = x0 + 8
-              (arm64:add :x6 :x1 8 :imm t)            ; x6 = src base
-              (arm64:add :x6 :x6 :x2)                 ; x6 = src base + start
-              (arm64:add :x7 :x0 8 :imm t)            ; x7 = dst base
-              ;; x8 = bytes copied (0 to len-1)
-              (arm64:movz :x8 0)
-              ;; copy_loop:
-              (arm64:cmp :x8 :x4)                     ; cmp copied, len
-              (arm64:b.ge 5)                          ; if copied >= len, skip 4 instrs to tag
-              (arm64:ldrb :x9 :x6 :x8 :reg t)         ; load byte from src+copied
-              (arm64:strb :x9 :x7 :x8 :reg t)         ; store to dst+copied
-              (arm64:add :x8 :x8 1 :imm t)            ; copied++
-              (arm64:b -5)                            ; back to copy_loop
-              ;; Tag result as string (tag 4)
-              ;; Note: use ADD instead of ORR since 4 is not a valid bitmask immediate
-              (arm64:add :x0 :x0 4 :imm t)))))
-    ;; system-ir - execute shell command
-    ((has-tag ir 'system-ir)
-     ;; system-ir = (system-ir cmd-ir)
-     ;; Runtime index 51 = habu_system at offset 408
-     (let* ((cmd-ir (cadr ir))
-            (cc (codegen cmd-ir rtaddrs fnoffs td))
-            (lf (arm64:ldr :x9 :x19 :offset 408))
-            (bl (arm64:blr :x9)))
-       (append-all (list cc lf bl))))
-    ;; string-equal-ir - compare two strings (inline)
-    ((has-tag ir 'string-equal-ir)
-     ;; string-equal-ir = (string-equal-ir str1-ir str2-ir)
-     ;; Inline implementation: compare lengths, then byte-by-byte
-     ;; String layout: [length (8 bytes)][char data (n bytes)]
-     ;; Returns: tagged fixnum 16 (true=1) or 0 (false)
-     ;; Register usage:
-     ;;   x0: result (0 or 16)
-     ;;   x1: str1 base (untagged)
-     ;;   x2: str2 base (untagged)
-     ;;   x3: len1
-     ;;   x4: len2 / loop counter
-     ;;   x5: char from str1
-     ;;   x6: char from str2
-     (let* ((str1-ir (cadr ir))
-            (str2-ir (caddr ir))
-            (_xs (temp-slot td))
-            (nd (+ td 1))
-            (s1 (codegen str1-ir rtaddrs fnoffs nd))
-            (sp (arm64:str :x0 :sp :offset _xs))
-            (s2 (codegen str2-ir rtaddrs fnoffs nd)))
-       (append-all
-        (list s1 sp s2
-              ;; x2 = str2 base (untagged)
-              (arm64:and* :x2 :x0 -16 :imm t)        ; x2 = str2 & ~0xF
-              ;; x1 = str1 base (untagged)
-              (arm64:ldr :x0 :sp :offset _xs)         ; x0 = str1 (tagged)
-              (arm64:and* :x1 :x0 -16 :imm t)        ; x1 = str1 & ~0xF
-              ;; Load lengths
-              (arm64:ldr :x3 :x1 :offset 0)           ; x3 = len1
-              (arm64:ldr :x4 :x2 :offset 0)           ; x4 = len2
-              ;; Compare lengths
-              (arm64:cmp :x3 :x4)                ; cmp len1, len2
-              (arm64:b.ne (ash 56 -2))     ; if len1 != len2, jump to return_false (+14 instructions = 56 bytes)
-              ;; Lengths equal, setup for loop
-              ;; x1 = str1 data = x1 + 8
-              (arm64:add :x1 :x1 8 :imm t)              ; x1 = str1 data start
-              ;; x2 = str2 data = x2 + 8
-              (arm64:add :x2 :x2 8 :imm t)              ; x2 = str2 data start
-              ;; x4 = loop counter = 0
-              (arm64:movz :x4 0)                   ; x4 = 0
-              ;; loop_start: (offset here, instruction 5)
-              (arm64:cmp :x4 :x3)                ; cmp counter, len
-              (arm64:b.ge (ash 28 -2))     ; if counter >= len, jump to return_true (+7 instructions = 28 bytes)
-              ;; Load bytes from both strings
-              (arm64:ldrb :x5 :x1 :x4 :reg t)             ; x5 = str1[counter]
-              (arm64:ldrb :x6 :x2 :x4 :reg t)             ; x6 = str2[counter]
-              ;; Compare bytes
-              (arm64:cmp :x5 :x6)                ; cmp char1, char2
-              (arm64:b.ne (ash 20 -2))     ; if char1 != char2, jump to return_false (+5 instructions = 20 bytes)
-              ;; Increment counter
-              (arm64:add :x4 :x4 1 :imm t)              ; x4++
-              ;; Loop back to cmp at instruction 5
-              (arm64:b (ash -24 -2))               ; back 6 instructions = -24 bytes
-              ;; return_true: (instruction 13)
-              (arm64:movz :x0 16)                  ; x0 = 16 (tagged 1)
-              (arm64:b (ash 8 -2))                 ; skip return_false (+2 instructions = 8 bytes)
-              ;; return_false: (instruction 15)
-              (arm64:movz :x0 6)))))  ; x0 = 6 (nil tag)
-    ;; make-vector-ir - allocate vector (inline)
-    ((has-tag ir 'make-vector-ir)
-     ;; make-vector-ir = (make-vector-ir size-ir)
-     ;; Inline allocation: size in x0 is tagged fixnum
-     ;; Vector layout: [length (8 bytes)] [data (n * 8 bytes)]
-     ;; Total size = 8 + (untagged_size * 8), rounded to 16 for tagging
-     (let* ((size-ir (cadr ir))
-            (sc (codegen size-ir rtaddrs fnoffs td)))
-       (append-all
-        (list sc
-              ;; GC pre-check BEFORE writing to heap
-              (sbcl-gc-trigger-code)
-              ;; Store untagged length at [x28+0]
-              (arm64:lsr :x1 :x0 4 :imm t)           ; x1 = untagged length
-              (arm64:str :x1 :heap :offset 0)       ; [x28+0] = length
-              ;; Calculate allocation size: 8 + (x0 >> 1)
-              (arm64:lsr :x1 :x0 1 :imm t)           ; x1 = x0 >> 1 = untagged_size * 8
-              (arm64:add :x1 :x1 8 :imm t)           ; x1 = 8 + data_size = total size
-              ;; Round to 16-byte alignment: (x1 + 15) & ~15
-              (arm64:add :x1 :x1 15 :imm t)          ; x1 = total + 15
-              (arm64:and* :x1 :x1 -16 :imm t)     ; x1 = x1 & ~15 (clear low 4 bits)
-              ;; Return tagged pointer, bump heap
-              (arm64:mov :x0 :heap)            ; x0 = current heap ptr
-              (arm64:add :heap :heap :x1)         ; x28 += total size (now 16-aligned)
-              ;; GC trigger check: if x28 >= from_end, call GC
-              (arm64:ldr :x9 :gc :offset 16)       ; x9 = from_end [x27+16]
-              (arm64:cmp :heap :x9)                  ; compare x28, from_end
-              (arm64:b.lo 2)                    ; skip if x28 < from_end
-              (list '(:call-fn GC-COLLECT))    ; bl gc_collect
-              ;; Tag with vector tag (0x3)
-              (arm64:movz :x1 3)
-              (arm64:orr :x0 :x0 :x1)))))
-    ;; vector-set-ir - set element at index (inline)
-    ((has-tag ir 'vector-set-ir)
-     ;; vector-set-ir = (vector-set-ir vec-ir idx-ir val-ir)
-     ;; Inline store: compute address and store directly
-     ;; Vector layout: [length (8 bytes)] [data[0] ... data[n-1]]
-     ;; Address = (vec & ~0xF) + 8 + (idx >> 4) * 8 = (vec & ~0xF) + 8 + (idx >> 1)
-     (let* ((vec-ir (cadr ir))
-            (idx-ir (caddr ir))
-            (val-ir (cadddr ir))
-            (_xs (temp-slot td))
-            (xs2 (temp-slot (+ td 1)))
-            (nd (+ td 2))
-            (vc (codegen vec-ir rtaddrs fnoffs nd))
-            (sv (arm64:str :x0 :sp :offset _xs))
-            (ic (codegen idx-ir rtaddrs fnoffs nd))
-            (si (arm64:str :x0 :sp :offset xs2))
-            (vlc (codegen val-ir rtaddrs fnoffs nd)))
-       ;; After codegen: val in x0, vec at [sp+_xs], idx at [sp+xs2]
-       (append-all
-        (list vc sv ic si vlc
-              ;; x0 = val, load vec -> x1, idx -> x2
-              (arm64:ldr :x1 :sp :offset _xs)         ; x1 = vec (tagged)
-              (arm64:ldr :x2 :sp :offset xs2)        ; x2 = idx (tagged)
-              ;; Clear tag from vec: x1 = x1 & ~0xF
-              (arm64:and* :x1 :x1 -16 :imm t)        ; x1 = vec_ptr (untagged, clear low 4 bits)
-              ;; Calculate offset: x2 = (idx >> 1) + 8
-              (arm64:lsr :x2 :x2 1 :imm t)              ; x2 = idx >> 1 = idx_untagged * 8
-              (arm64:add :x2 :x2 8 :imm t)              ; x2 = offset = 8 + idx_untagged * 8
-              ;; Store val at vec_ptr + offset
-              (arm64:add :x1 :x1 :x2)              ; x1 = address
-              (arm64:str :x0 :x1 :offset 0)           ; [x1] = val
-              ))))
-    ;; vector-ref-ir - get element at index (inline)
-    ((has-tag ir 'vector-ref-ir)
-     ;; vector-ref-ir = (vector-ref-ir vec-ir idx-ir)
-     ;; Inline load: compute address and load directly
-     ;; Vector layout: [length (8 bytes)] [data[0] ... data[n-1]]
-     ;; Address = (vec & ~0xF) + 8 + (idx >> 4) * 8 = (vec & ~0xF) + 8 + (idx >> 1)
-     (let* ((vec-ir (cadr ir))
-            (idx-ir (caddr ir))
-            (_xs (temp-slot td))
-            (nd (+ td 1))
-            (vc (codegen vec-ir rtaddrs fnoffs nd))
-            (sv (arm64:str :x0 :sp :offset _xs))
-            (ic (codegen idx-ir rtaddrs fnoffs nd)))
-       ;; After codegen: idx in x0, vec at [sp+_xs]
-       (append-all
-        (list vc sv ic
-              ;; x0 = idx, load vec -> x1
-              (arm64:ldr :x1 :sp :offset _xs)         ; x1 = vec (tagged)
-              ;; Clear tag from vec: x1 = x1 & ~0xF
-              (arm64:and* :x1 :x1 -16 :imm t)        ; x1 = vec_ptr (untagged, clear low 4 bits)
-              ;; Calculate offset: x0 = (idx >> 1) + 8
-              (arm64:lsr :x0 :x0 1 :imm t)              ; x0 = idx >> 1 = idx_untagged * 8
-              (arm64:add :x0 :x0 8 :imm t)              ; x0 = offset = 8 + idx_untagged * 8
-              ;; Load element from vec_ptr + offset
-              (arm64:add :x1 :x1 :x0)              ; x1 = address
-              (arm64:ldr :x0 :x1 :offset 0)           ; x0 = [x1] = element (already tagged)
-              ))))
-    ;; vector-length-ir - get vector size (inline)
-    ((has-tag ir 'vector-length-ir)
-     ;; vector-length-ir = (vector-length-ir vec-ir)
-     ;; Vector layout: [length (8 bytes)][data...]
-     ;; Just load the length field and tag it
-     (let* ((vec-ir (cadr ir))
-            (vc (codegen vec-ir rtaddrs fnoffs td)))
-       (append-all
-        (list vc
-              ;; x0 = vec (tagged)
-              ;; Clear tag: x0 = x0 & ~0xF
-              (arm64:and* :x0 :x0 -16 :imm t)        ; x0 = vec_ptr (untagged)
-              ;; Load length: x0 = [x0+0]
-              (arm64:ldr :x0 :x0 :offset 0)           ; x0 = raw length (untagged integer)
-              ;; Tag as fixnum: x0 = x0 << 4
-              (arm64:lsl :x0 :x0 4 :imm t)))))          ; x0 = tagged fixnum length
-    ;; buffer-byte-ref-ir - get raw byte at index (inline)
-    ((has-tag ir 'buffer-byte-ref-ir)
-     ;; buffer-byte-ref-ir = (buffer-byte-ref-ir vec-ir idx-ir)
-     ;; Reads a single byte from vector data area (used after sys-read fills buffer)
-     ;; Vector layout: [length (8 bytes)][raw bytes...]
-     ;; Address = (vec & ~0xF) + 8 + (idx >> 4)
-     (let* ((vec-ir (cadr ir))
-            (idx-ir (caddr ir))
-            (_xs (temp-slot td))
-            (nd (+ td 1))
-            (vc (codegen vec-ir rtaddrs fnoffs nd))
-            (sv (arm64:str :x0 :sp :offset _xs))
-            (ic (codegen idx-ir rtaddrs fnoffs nd)))
-       ;; After codegen: idx in x0, vec at [sp+_xs]
-       (append-all
-        (list vc sv ic
-              ;; x0 = idx (tagged), load vec -> x1
-              (arm64:ldr :x1 :sp :offset _xs)         ; x1 = vec (tagged)
-              ;; Clear tag from vec: x1 = x1 & ~0xF
-              (arm64:and* :x1 :x1 -16 :imm t)        ; x1 = vec_ptr (untagged, clear low 4 bits)
-              ;; Calculate byte offset: x0 = idx >> 4 (untag) + 8 (skip length)
-              (arm64:lsr :x0 :x0 4 :imm t)              ; x0 = idx_untagged (byte offset)
-              (arm64:add :x0 :x0 8 :imm t)              ; x0 = offset = 8 + byte_index
-              ;; Load byte from vec_ptr + offset
-              (arm64:add :x1 :x1 :x0)     ; x1 = vec_ptr + offset
-              (arm64:ldrb :x0 :x1 0)             ; x0 = byte (zero-extended to 64-bit)
-              ;; Tag as fixnum
-              (arm64:lsl :x0 :x0 4 :imm t)              ; x0 = tagged fixnum
-              ))))
-    ;; buffer-byte-set-ir - set raw byte at index (inline)
-    ((has-tag ir 'buffer-byte-set-ir)
-     ;; buffer-byte-set-ir = (buffer-byte-set-ir vec-ir idx-ir val-ir)
-     ;; Stores a single byte to vector data area
-     ;; Vector layout: [length (8 bytes)][raw bytes...]
-     ;; Address = (vec & ~0xF) + 8 + (idx >> 4)
-     (let* ((vec-ir (cadr ir))
-            (idx-ir (caddr ir))
-            (val-ir (cadddr ir))
-            (vec-slot (temp-slot td))
-            (idx-slot (temp-slot (+ td 1)))
-            (nd (+ td 2))
-            (vc (codegen vec-ir rtaddrs fnoffs nd))
-            (ic (codegen idx-ir rtaddrs fnoffs nd))
-            (valc (codegen val-ir rtaddrs fnoffs nd)))
-       (append-all
-        (list vc (arm64:str :x0 :sp :offset vec-slot)   ; save vec
-              ic (arm64:str :x0 :sp :offset idx-slot)   ; save idx
-              valc                                    ; x0 = val
-              ;; Load vec and idx back
-              (arm64:ldr :x1 :sp :offset vec-slot)       ; x1 = vec (tagged)
-              (arm64:ldr :x2 :sp :offset idx-slot)       ; x2 = idx (tagged)
-              ;; Clear tag from vec: x1 = x1 & ~0xF
-              (arm64:and* :x1 :x1 -16 :imm t)             ; x1 = vec_ptr (untagged)
-              ;; Calculate byte offset: x2 = idx >> 4 (untag) + 8 (skip length)
-              (arm64:lsr :x2 :x2 4 :imm t)                ; x2 = idx_untagged
-              (arm64:add :x2 :x2 8 :imm t)                ; x2 = offset = 8 + byte_index
-              ;; Untag val: x0 = val >> 4
-              (arm64:lsr :x0 :x0 4 :imm t)                ; x0 = byte value (untagged)
-              ;; Store byte at vec_ptr + offset
-              (arm64:add :x1 :x1 :x2)              ; x1 = vec_ptr + offset
-              (arm64:strb :x0 :x1 0)                    ; store byte
-              ;; Return nil (byte stored, no useful return)
-              (arm64:movz :x0 6)                        ; x0 = nil
-              ))))
-    ;; make-string-from-vector-ir - convert vector to string (inline)
-    ((has-tag ir 'make-string-from-vector-ir)
-     ;; make-string-from-vector-ir = (make-string-from-vector-ir vec-ir)
-     ;; Inline implementation: allocate string on heap, copy bytes from vector
-     ;; Vector layout: [length (8 bytes)][data[0] ... data[n-1]] (8-byte tagged elements)
-     ;; String layout: [length (8 bytes)][char data (n bytes)]
-     ;; Register usage:
-     ;;   x0: tagged vec input, then tagged string result
-     ;;   x1: untagged vec base
-     ;;   x2: string data base (untagged string ptr + 8)
-     ;;   x3: loop counter (0 to len-1)
-     ;;   x4: temp for loading/storing bytes
-     ;;   x5: length
-     (let* ((vec-ir (cadr ir))
-            (vc (codegen vec-ir rtaddrs fnoffs td)))
-       (append-all
-        (list vc
-              ;; x1 = untagged vec base
-              (arm64:and* :x1 :x0 -16 :imm t)        ; x1 = vec & ~0xF
-              ;; x5 = vec length (raw)
-              (arm64:ldr :x5 :x1 :offset 0)           ; x5 = [x1+0] = length
-              ;; GC pre-check BEFORE writing to heap
-              (sbcl-gc-trigger-code)
-              ;; Allocate string: store length at [x28], compute alloc size
-              (arm64:str :x5 :heap :offset 0)          ; [x28+0] = length
-              ;; x4 = alloc size = (8 + len + 15) & ~15 for 16-byte alignment
-              (arm64:add :x4 :x5 23 :imm t)             ; x4 = len + 23 (= len + 8 + 15)
-              (arm64:and* :x4 :x4 -16 :imm t)        ; x4 = (len + 23) & ~15 (clear low 4 bits)
-              ;; Save string ptr (will be result), bump heap
-              (arm64:mov :x0 :heap)               ; x0 = string base (untagged)
-              (arm64:add :heap :heap :x4)            ; x28 += alloc_size
-              ;; GC trigger check: if x28 >= from_end, call GC
-              (arm64:ldr :x9 :gc :offset 16)       ; x9 = from_end [x27+16]
-              (arm64:cmp :heap :x9)                  ; compare x28, from_end
-              (arm64:b.lo 2)                    ; skip if x28 < from_end
-              (list '(:call-fn GC-COLLECT))    ; bl gc_collect
-              ;; x2 = string data base = x0 + 8
-              (arm64:add :x2 :x0 8 :imm t)              ; x2 = string data start
-              ;; x3 = loop counter = 0
-              (arm64:movz :x3 0)                   ; x3 = 0
-              ;; Loop: while x3 < x5
-              ;; loop_start: (offset 0 from here)
-              (arm64:cmp :x3 :x5)                ; cmp x3, x5
-              (arm64:b.ge (ash 36 -2))     ; if x3 >= x5, jump to loop_end (+9 instructions = 36 bytes)
-              ;; Load vec[x3]: address = x1 + 8 + x3*8
-              (arm64:lsl :x4 :x3 3 :imm t)              ; x4 = x3 * 8
-              (arm64:add :x4 :x4 8 :imm t)              ; x4 = 8 + x3*8 (offset in vec)
-              (arm64:add :x4 :x1 :x4)              ; x4 = vec_base + offset
-              (arm64:ldr :x4 :x4 :offset 0)           ; x4 = [x4] = tagged fixnum
-              ;; Untag: x4 = x4 >> 4
-              (arm64:lsr :x4 :x4 4 :imm t)              ; x4 = char value (untagged)
-              ;; Store byte: str_data[x3] = x4
-              (arm64:strb :x4 :x2 :x3 :reg t)             ; [x2 + x3] = x4 (byte)
-              ;; x3++
-              (arm64:add :x3 :x3 1 :imm t)              ; x3++
-              ;; Jump back to loop_start (cmp instruction)
-              (arm64:b (ash -36 -2))               ; back 9 instructions = -36 bytes
-              ;; loop_end:
-              ;; Tag result with string tag (0x4)
-              (arm64:movz :x4 4)                   ; x4 = 4
-              (arm64:orr :x0 :x0 :x4)))))
-    ;; buffer-to-string-ir - convert raw byte buffer to string (inline)
-    ((has-tag ir 'buffer-to-string-ir)
-     ;; buffer-to-string-ir = (buffer-to-string-ir buf-ir len-ir)
-     ;; Inline implementation: allocate string on heap, copy raw bytes from buffer
-     ;; Buffer layout: [length (8 bytes)][raw bytes...] (sys-read writes raw bytes)
-     ;; String layout: [length (8 bytes)][char data (n bytes)]
-     ;; Register usage:
-     ;;   x0: result (tagged string)
-     ;;   x1: untagged buf base + 8 (raw data start)
-     ;;   x2: string data base (untagged string ptr + 8)
-     ;;   x3: loop counter (0 to len-1)
-     ;;   x4: temp for loading/storing bytes
-     ;;   x5: length (untagged)
-     (let* ((buf-ir (cadr ir))
-            (len-ir (caddr ir))
-            (buf-slot (temp-slot td))
-            (nd (+ td 1))
-            (buf-code (codegen buf-ir rtaddrs fnoffs nd))
-            (len-code (codegen len-ir rtaddrs fnoffs nd)))
-       (append-all
-        (list
-         ;; Evaluate buf, save to slot
-         buf-code
-         (arm64:str :x0 :sp :offset buf-slot)
-         ;; Evaluate len
-         len-code
-         ;; x5 = length (untagged)
-         (arm64:lsr :x5 :x0 4 :imm t)                 ; x5 = len >> 4 (untag)
-         ;; x1 = buf data start (untagged buf base + 8)
-         (arm64:ldr :x1 :sp :offset buf-slot)      ; x1 = buf (tagged)
-         (arm64:and* :x1 :x1 -16 :imm t)           ; x1 = buf & ~0xF (clear tag)
-         (arm64:add :x1 :x1 8 :imm t)                 ; x1 = buf + 8 (skip length header)
-         ;; GC pre-check BEFORE writing to heap
-         (sbcl-gc-trigger-code)
-         ;; Allocate string: store length at [x28]
-         (arm64:str :x5 :heap :offset 0)             ; [x28+0] = length
-         ;; x4 = alloc size = (8 + len + 15) & ~15 for 16-byte alignment
-         (arm64:add :x4 :x5 23 :imm t)                ; x4 = len + 23 (= len + 8 + 15)
-         (arm64:and* :x4 :x4 -16 :imm t)           ; x4 = (len + 23) & ~15
-         ;; Save string ptr (will be result), bump heap
-         (arm64:mov :x0 :heap)                  ; x0 = string base (untagged)
-         (arm64:add :heap :heap :x4)               ; x28 += alloc_size
-         ;; x2 = string data base = x0 + 8
-         (arm64:add :x2 :x0 8 :imm t)                 ; x2 = string data start
-         ;; x3 = loop counter = 0
-         (arm64:movz :x3 0)                      ; x3 = 0
-         ;; Loop: while x3 < x5
-         ;; loop_start: (offset 0 from here)
-         (arm64:cmp :x3 :x5)                   ; cmp x3, x5
-         (arm64:b.ge (ash 24 -2))        ; if x3 >= x5, jump to loop_end (+6 instructions = 24 bytes)
-         ;; Load buf[x3] - raw byte
-         (arm64:add :x4 :x1 :x3)                 ; x4 = buf_data + x3
-         (arm64:ldrb :x4 :x4 0)             ; x4 = byte at [x4]
-         ;; Store byte: str_data[x3] = x4
-         (arm64:strb :x4 :x2 :x3 :reg t)                ; [x2 + x3] = x4 (byte)
-         ;; x3++
-         (arm64:add :x3 :x3 1 :imm t)                 ; x3++
-         ;; Jump back to loop_start (cmp instruction)
-         (arm64:b (ash -24 -2))                  ; back 6 instructions = -24 bytes
-         ;; loop_end:
-         ;; Tag result with string tag (0x4)
-         (arm64:movz :x4 4)                      ; x4 = 4
-         (arm64:orr :x0 :x0 :x4)))))
-    ;; make-symbol-from-string-ir - convert string to symbol by changing tag
-    ;; String is (pointer | 4), symbol is (pointer | 2)
-    ;; So just subtract 2 from the tag
-    ((has-tag ir 'make-symbol-from-string-ir)
-     (let* ((str-ir (cadr ir))
-            (str-code (codegen str-ir rtaddrs fnoffs td)))
-       (append str-code
-               ;; Convert string tag (4) to symbol tag (2): subtract 2
-               (arm64:sub :x0 :x0 2 :imm t))))  ; tag as symbol
-    ;; symbol-name-ir - get symbol's name string
-    ;; Symbols are now (string-pointer | 2), so just change tag to string (4)
-    ((has-tag ir 'symbol-name-ir)
-     (let* ((sym-ir (cadr ir))
-            (sym-code (codegen sym-ir rtaddrs fnoffs td)))
-       (append sym-code
-               ;; Convert symbol tag (2) to string tag (4): subtract 2, add 4 = add 2
-               (arm64:add :x0 :x0 2 :imm t))))            ; x0 = nil
-    ;; write-bytes-ir - write vector of bytes to file
-    ((has-tag ir 'write-bytes-ir)
-     ;; write-bytes-ir = (write-bytes-ir path-ir vec-ir)
-     ;; Runtime index 53 = habu_write_bytes at offset 424
-     ;; Takes path string in x0, byte vector in x1
-     (let* ((path-ir (cadr ir))
-            (vec-ir (caddr ir))
-            (_xs (temp-slot td))
-            (nd (+ td 1))
-            (pc (codegen path-ir rtaddrs fnoffs nd))
-            (sp (arm64:str :x0 :sp :offset _xs))
-            (vc (codegen vec-ir rtaddrs fnoffs nd))
-            (mv (arm64:mov :x1 :x0))
-            (lp (arm64:ldr :x0 :sp :offset _xs))
-            (lf (arm64:ldr :x9 :x19 :offset 424))
-            (bl (arm64:blr :x9)))
-       (append-all (list pc sp vc mv lp lf bl))))
-    ;; nthcdr-ir - get nth cdr of list
-    ((has-tag ir 'nthcdr-ir)
-     ;; nthcdr-ir = (nthcdr-ir n-ir list-ir)
-     ;; Loop: while n > 0 do x0 = cdr(x0), n = n - 1
-     (let* ((n-ir (cadr ir))
-            (list-ir (caddr ir))
-            (_xs (temp-slot td))
-            (nd (+ td 1))
-            (nc (codegen n-ir rtaddrs fnoffs nd))
-            (sn (arm64:str :x0 :sp :offset _xs))
-            (lc (codegen list-ir rtaddrs fnoffs nd))
-            (ml (arm64:mov :x1 :x0))
-            (ln (arm64:ldr :x2 :sp :offset _xs))
-            (asr (arm64:asr :x2 :x2 4 :imm t))
-            (cm (arm64:cmp :x2 0 :imm t))
-            (be (arm64:b.le (ash 28 -2)))
-            (m0 (arm64:mov :x0 :x1))
-            (lf (arm64:ldr :x9 :x19 :offset 16))
-            (bl (arm64:blr :x9))
-            (m1 (arm64:mov :x1 :x0))
-            (si (arm64:sub :x2 :x2 1 :imm t))
-            (bk (arm64:b (ash -20 -2)))
-            (mr (arm64:mov :x0 :x1)))
-       (append-all (list nc sn lc ml ln asr cm be m0 lf bl m1 si bk mr))))
-    ;; values-ir - return multiple values
-    ((has-tag ir 'values-ir)
-     ;; values-ir = (values-ir (ir1 ir2 ...))
-     ;; Runtime index 17 = habu_values_set at offset 136
-     ;; habu_values_set(count, v0, v1, v2, v3)
-     (let* ((irs (cadr ir)))
-       (if (null irs)
-           ;; No values - call values_set(0, 0, 0, 0, 0)
-           (append-all
-            (list (arm64:movz :x0 0)
-                  (arm64:movz :x1 0)
-                  (arm64:movz :x2 0)
-                  (arm64:movz :x3 0)
-                  (arm64:movz :x4 0)
-                  (arm64:ldr :x9 :x19 :offset 136)
-                  (arm64:blr :x9)))
-           (if (null (cdr irs))
-               ;; Single value - just return it
-               (codegen (car irs) rtaddrs fnoffs td)
-               ;; Multiple values - evaluate all and call values_set
-               (let* ((cnt (length irs))
-                      (_xs (temp-slot td))
-                      (nd (+ td 4)))
-                 (declare (ignore _xs))
-                 (labels ((eval-vals (vs idx acc)
-                            (if (null vs)
-                                acc
-                                (let* ((vc (codegen (car vs) rtaddrs fnoffs nd))
-                                       (slot (temp-slot (+ td idx)))
-                                       (sv (arm64:str :x0 :sp :offset slot)))
-                                  (eval-vals (cdr vs) (+ idx 1)
-                                             (append-all (list acc vc sv)))))))
-                   (let* ((evc (eval-vals irs 0 nil))
-                          (l0 (if (> cnt 0) (arm64:ldr :x1 :sp :offset (temp-slot td)) (arm64:movz :x1 0)))
-                          (l1 (if (> cnt 1) (arm64:ldr :x2 :sp :offset (temp-slot (+ td 1))) (arm64:movz :x2 0)))
-                          (l2 (if (> cnt 2) (arm64:ldr :x3 :sp :offset (temp-slot (+ td 2))) (arm64:movz :x3 0)))
-                          (l3 (if (> cnt 3) (arm64:ldr :x4 :sp :offset (temp-slot (+ td 3))) (arm64:movz :x4 0)))
-                          (ct (ash cnt 4))
-                          (mc (arm64:movz :x0 ct))
-                          (lf (arm64:ldr :x9 :x19 :offset 136))
-                          (bl (arm64:blr :x9))
-                          (lv (arm64:ldr :x0 :sp :offset (temp-slot td))))
-                     (append-all (list evc l0 l1 l2 l3 mc lf bl lv)))))))))
-    ;; mvb-ir - multiple-value-bind
-    ((has-tag ir 'mvb-ir)
-     ;; mvb-ir = (mvb-ir vars form-ir nvars body-ir)
-     ;; Runtime index 18 = habu_values_get at offset 144
-     ;; habu_values_get(index, primary) returns value at index
-     ;; Values must be stored in env frame (x20-based) so body VAR refs work
-     (let* ((form-ir (caddr ir))
-            (nvars (cadddr ir))
-            (body-ir (nth 4 ir))
-            (xs (temp-slot td))
-            (nd (+ td 1))
-            (fc (codegen form-ir rtaddrs fnoffs nd))
-            (sp (arm64:str :x0 :sp :offset xs)))
-       ;; Evaluate form, save primary, then get each value and store in env frame
-       (labels ((bind-vars (idx acc)
-                  (if (>= idx nvars)
-                      acc
-                      ;; habu_values_get expects untagged index (0, 1, 2, ...)
-                      (let* ((mi (arm64:movz :x0 idx))
-                             (lp (arm64:ldr :x1 :sp :offset xs))
-                             (lf (arm64:ldr :x9 :x19 :offset 144))
-                             (bl (arm64:blr :x9))
-                             ;; Store in env frame: sub x1, x20, offset; str x0, [x1]
-                             (env-off (* idx 8))
-                             (s1 (arm64:sub :x1 :env env-off :imm t))
-                             (sv (arm64:str :x0 :x1 :offset 0)))
-                        (bind-vars (+ idx 1)
-                                   (append-all (list acc mi lp lf bl s1 sv)))))))
-         (let* ((bc (bind-vars 0 nil))
-                (body-code (codegen body-ir rtaddrs fnoffs nd)))
-           (append-all (list fc sp bc body-code))))))
-    ((has-tag ir 'if-ir)
-     (let ((test-ir (cadr ir)))
-       (let ((then-ir (caddr ir)))
-         (let ((else-ir (cadddr ir)))
-           (let ((tc (codegen test-ir rtaddrs fnoffs td)))
-             (let ((thc (codegen then-ir rtaddrs fnoffs td)))
-               (let ((elc (codegen else-ir rtaddrs fnoffs td)))
-                 ;; Use code-size to correctly account for :call-fn markers
-                 ;; Layout: B.EQ | then-code | B | else-code
-                 ;; B.EQ skips to else-code: then-code + B (4) + self (4) = then_bytes + 8
-                 ;; B skips past else-code: else-code + self (4) = else_bytes + 4
-                 (let ((then-bytes (code-size thc)))
-                   (let ((else-bytes (code-size elc)))
-                     (append-all
-                      (list tc
-                            (arm64:movz :x1 6)   ; x1 = 6 (nil)
-                            (arm64:cmp :x0 :x1)    ; if x0 == nil, take else branch
-                            (arm64:b.eq (ash (+ then-bytes 8) -2))  ; Skip then + B + self
-                            thc
-                            (arm64:b (ash (+ else-bytes 4) -2))  ; Skip else + landing
-                            elc)))))))))))
-    ((has-tag ir 'while-ir)
-     ;; while-ir = (while-ir test body)
-     ;; Layout: test-code, cmp, b.eq(exit), body-code, b(back-to-test)
-     (let* ((test-ir (cadr ir))
-            (body-ir (caddr ir))
-            (test-code (codegen test-ir rtaddrs fnoffs td))
-            (body-code (codegen body-ir rtaddrs fnoffs td))
-            (test-size (code-size test-code))
-            (body-size (code-size body-code)))
-       ;; From b-cond at X: body starts at X+4, backward-b at X+4+body_size,
-       ;; exit at X+4+body_size+4. So skip offset = 4+body_size+4 = body_size+8
-       (append-all
-        (list test-code
-              (arm64:cmp :x0 6 :imm t)   ; cmp x0, #6 (nil)
-              ;; If test is false (x0==nil), skip body and back-branch
-              (arm64:b.eq (ash (+ body-size 8) -2))
-              body-code
-              ;; Jump back to start of test
-              (arm64:b (ash (- 0 (+ test-size 8 body-size)) -2))))))
-    ;; get-intern-table-ir - load intern table from [x27 + 0]
-    ((has-tag ir 'get-intern-table-ir)
-     (arm64:ldr :x0 :gc :offset 0))
-    ;; set-intern-table-ir - store value to [x27 + 0], return value
-    ((has-tag ir 'set-intern-table-ir)
-     (let ((val-code (codegen (cadr ir) rtaddrs fnoffs td)))
-       (append val-code
-               (arm64:str :x0 :gc :offset 0))))
-    ;; get-lambda-counter-ir - load counter from [x27 + 8]
-    ((has-tag ir 'get-lambda-counter-ir)
-     (arm64:ldr :x0 :gc :offset 8))
-    ;; set-lambda-counter-ir - store value to [x27 + 8], return value
-    ((has-tag ir 'set-lambda-counter-ir)
-     (let ((val-code (codegen (cadr ir) rtaddrs fnoffs td)))
-       (append val-code
-               (arm64:str :x0 :gc :offset 8))))
-    ;; get-global-vars-ir - load global variables table from [x27 + 104]
-    ((has-tag ir 'get-global-vars-ir)
-     (arm64:ldr :x0 :gc :offset 104))
-    ;; set-global-vars-ir - store global variables table to [x27 + 104], return value
-    ((has-tag ir 'set-global-vars-ir)
-     (let ((val-code (codegen (cadr ir) rtaddrs fnoffs td)))
-       (append val-code
-               (arm64:str :x0 :gc :offset 104))))
-    ((has-tag ir 'let-ir)
-     ;; let-ir = (let-ir vals bir count offs)
-     (let* ((vals (cadr ir))
-            (bir (caddr ir))
-            (offs (nth 3 (cdr ir)))  ;; offs is at index 3
-            (xs (temp-slot td))
-            (nd (+ td 1))
-            (acc (arm64:str :closure :sp :offset xs)))
-       (labels ((gb (vs os a)
-                  (if (null vs) a
-                      (let* ((vc (codegen (car vs) rtaddrs fnoffs nd))
-                             (s1 (arm64:sub :x1 :env (* (car os) 8) :imm t))
-                             (s2 (arm64:str :x0 :x1 :offset 0))
-                             (st (append s1 s2))
-                             (ld (arm64:ldr :closure :sp :offset xs))
-                             (t1 (append a ld))
-                             (t2 (append t1 vc))
-                             (t3 (append t2 st)))
-                        (gb (cdr vs) (cdr os) t3)))))
-         (let* ((body-code (gb vals offs nil))
-                (final-ld (arm64:ldr :closure :sp :offset xs))
-                (bc (codegen bir rtaddrs fnoffs nd))
-                (r1 (append acc body-code))
-                (r2 (append r1 final-ld)))
-           (append r2 bc)))))
-    ((has-tag ir 'call-fn)
-     ;; Function call with support for >8 arguments
-     ;; Args 0-7 go in x0-x7, args 8+ go on stack per ARM64 ABI
-     ;; IMPORTANT: Stack must be 16-byte aligned per AAPCS64
-     (let* ((fnm (cadr ir))
-            (airs (caddr ir))
-            (na (length airs))
-            (stack-args (max 0 (- na 8)))          ; How many args go on stack
-            (stack-bytes (* stack-args 8))         ; Raw bytes needed
-            (stack-space (if (> stack-bytes 0)     ; Round up to 16-byte alignment
-                             (* (ceiling stack-bytes 16) 16)
-                             0))
-            (xs (temp-slot td))
-            (nd (+ td 1)))
-       (labels ((ga (as i a)
-                  ;; Evaluate all args to spill slots
-                  (if (null as) a
-                      (let* ((rs (if (> i 0) (arm64:ldr :closure :sp :offset xs) nil))
-                             (ac (codegen (car as) rtaddrs fnoffs nd))
-                             (st (arm64:str :x0 :sp :offset (spill-slot td i)))
-                             (t1 (append a rs))
-                             (t2 (append t1 ac))
-                             (t3 (append t2 st)))
-                        (ga (cdr as) (+ i 1) t3))))
-                (gl-reg (i a)
-                  ;; Load args 0-7 into registers x0-x7
-                  ;; After alloc-stack, sp moved down by stack-space, so adjust offset
-                  (if (>= i (min na 8)) a
-                      (let* ((adjusted-off (+ (spill-slot td i) stack-space))
-                             (ld (arm64:ldr (arg-register i) :sp :offset adjusted-off))
-                             (t1 (append a ld)))
-                        (gl-reg (+ i 1) t1))))
-                (store-stack-args (i a)
-                  ;; Store args 8+ to stack: arg i goes to [sp + (i-8)*8]
-                  ;; After alloc-stack, sp moved down by stack-space, so adjust offset
-                  (if (>= i na) a
-                      (let* ((adjusted-off (+ (spill-slot td i) stack-space))
-                             (ld (arm64:ldr :x0 :sp :offset adjusted-off))
-                             (stack-off (* (- i 8) 8))
-                             (st (arm64:str :x0 :sp :offset stack-off))
-                             (t1 (append a ld))
-                             (t2 (append t1 st)))
-                        (store-stack-args (+ i 1) t2)))))
-         (let* ((save-x24 (arm64:str :closure :sp :offset xs))
-                (args-code (ga airs 0 nil))
-                (restore-x24 (arm64:ldr :closure :sp :offset xs))
-                ;; Allocate stack space for args 8+ (if any)
-                (alloc-stack (if (> stack-args 0)
-                                 (arm64:sub :sp :sp stack-space :imm t)
-                                 nil))
-                ;; Store args 8+ to stack
-                (stack-code (store-stack-args 8 nil))
-                ;; Load args 0-7 into registers
-                (load-args (gl-reg 0 nil))
-                (set-argc (arm64:movz :x23 na))
-                ;; Emit special marker instead of BL: (:call-fn name)
-                ;; This will be resolved to actual BL in resolve-calls
-                (call-marker (list (list :call-fn fnm)))
-                ;; Deallocate stack space after call returns
-                (dealloc-stack (if (> stack-args 0)
-                                   (arm64:add :sp :sp stack-space :imm t)
-                                   nil)))
-           (append-all (list save-x24 args-code restore-x24
-                                alloc-stack stack-code load-args
-                                set-argc call-marker dealloc-stack))))))
-    ((has-tag ir 'tail-call-fn)
-     ;; Tail call optimization: evaluate args, run epilogue, then jump (B) instead of call (BL)
-     ;; The callee will set up its own frame, so we tear down ours first
-     ;; NOTE: Tail calls currently limited to 8 args (x0-x7) because epilogue deallocates
-     ;; our frame before we can set up stack args. >8 args requires saving to callee-saved
-     ;; registers or converting to regular call.
-     (let* ((fnm (cadr ir))
-            (airs (caddr ir))
-            (na (length airs))
-            (xs (temp-slot td))
-            (nd (+ td 1)))
-       (labels ((ga (as i a)
-                  (if (null as) a
-                      (let* ((rs (if (> i 0) (arm64:ldr :closure :sp :offset xs) nil))
-                             (ac (codegen (car as) rtaddrs fnoffs nd))
-                             (st (arm64:str :x0 :sp :offset (spill-slot td i)))
-                             (t1 (append a rs))
-                             (t2 (append t1 ac))
-                             (t3 (append t2 st)))
-                        (ga (cdr as) (+ i 1) t3))))
-                (gl-reg (i a)
-                  ;; Only load args 0-7 into registers for tail calls
-                  (if (>= i (min na 8)) a
-                      (let* ((ld (arm64:ldr (arg-register i) :sp :offset (spill-slot td i)))
-                             (t1 (append a ld)))
-                        (gl-reg (+ i 1) t1)))))
-         (let* ((save-x24 (arm64:str :closure :sp :offset xs))
-                (args-code (ga airs 0 nil))
-                (restore-x24 (arm64:ldr :closure :sp :offset xs))
-                (load-args (gl-reg 0 nil))
-                (set-argc (arm64:movz :x23 na))
-                ;; Run epilogue to restore caller's registers and pop our frame
-                ;; Use conservative max frame size for tail calls (actual size set by caller)
-                (epilogue (fn-epilogue #x2000))
-                ;; Emit tail call marker (resolved to B instead of BL)
-                (call-marker (list (list :tail-call-fn fnm))))
-           (append save-x24 args-code restore-x24 load-args set-argc epilogue call-marker)))))
-    ((has-tag ir 'loop-ir)
-     ;; loop-ir = (loop-ir body-ir)
-     ;; Generate loop marker followed by body code
-     ;; The marker records position for continue-ir to jump back to
-     (let ((body-ir (cadr ir)))
-       (append (list (list :loop-start))
-               (codegen body-ir rtaddrs fnoffs td))))
-    ((has-tag ir 'continue-ir)
-     ;; continue-ir = (continue-ir (new-arg-ir ...))
-     ;; Evaluate new args to temp slots, copy to param slots, jump back to loop start
-     ;; Note: We must evaluate ALL args before storing ANY to handle (f (- n 1) (+ acc n))
-     (let* ((new-args-ir (cadr ir))
-            (nargs (length new-args-ir))
-            (xs (temp-slot td))
-            (nd (+ td 1)))
-       ;; Generate code to evaluate all new args and store to temp slots
-       (labels ((eval-args (args idx acc)
-                  (if (null args)
-                      acc
-                      (let* ((arg-code (codegen (car args) rtaddrs fnoffs nd))
-                             (store (arm64:str :x0 :sp :offset (spill-slot td idx))))
-                        (eval-args (cdr args) (+ idx 1) (append acc arg-code store)))))
-                (copy-to-params (idx acc)
-                  ;; Copy from temp slots to param slots (offsets 0, 8, 16, ...)
-                  (if (>= idx nargs)
-                      acc
-                      (let* ((load (arm64:ldr :x0 :sp :offset (spill-slot td idx)))
-                             (param-addr (arm64:sub :x1 :env (* idx 8) :imm t))
-                             (store (arm64:str :x0 :x1 :offset 0)))
-                        (copy-to-params (+ idx 1) (append acc load param-addr store))))))
-         (let* ((save-x24 (arm64:str :closure :sp :offset xs))
-                (eval-code (eval-args new-args-ir 0 nil))
-                (restore-x24 (arm64:ldr :closure :sp :offset xs))
-                (copy-code (copy-to-params 0 nil))
-                (jump-marker (list (list :loop-continue))))
-           (append save-x24 eval-code restore-x24 copy-code jump-marker)))))
-    ;; Block-IR: (block-ir id body) - establish named exit point
-    ;; Emits body code, then :block-end marker for return-from to target
-    ((has-tag ir 'block-ir)
-     (let* ((block-id (cadr ir))
-            (body-ir (caddr ir))
-            (body-code (codegen body-ir rtaddrs fnoffs td)))
-       ;; Emit :block-start marker (for block stack), body, then :block-end marker
-       (append (list (list :block-start block-id))
-               body-code
-               (list (list :block-end block-id)))))
-    ;; Return-from-IR: (return-from-ir id value) - jump to block exit with value
-    ;; Evaluates value into x0, then emits :return-from marker that becomes a branch
-    ((has-tag ir 'return-from-ir)
-     (let* ((block-id (cadr ir))
-            (value-ir (caddr ir))
-            (value-code (codegen value-ir rtaddrs fnoffs td)))
-       ;; Emit value code, then :return-from marker with block ID
-       ;; The marker will become a B instruction to the matching :block-end
-       (append value-code (list (list :return-from block-id)))))
-    ((has-tag ir 'progn-ir)
-     ;; progn-ir = (progn-ir (ir1 ir2 ... irn))
-     ;; Generate code for each form, keep result of last
-     (let ((forms-ir (cadr ir)))
-       (labels ((gen-seq (fs acc)
-                  (if (null fs)
-                      acc
-                      (let ((fc (codegen (car fs) rtaddrs fnoffs td)))
-                        (gen-seq (cdr fs) (append acc fc))))))
-         (gen-seq forms-ir nil))))
-    ((has-tag ir 'div)
-     ;; Division: both operands untagged, divide, re-tag
-     (codegen-binop (cadr ir) (caddr ir)
-                       (append-all (list (arm64:lsr :x0 :x0 4 :imm t)
-                                            (arm64:lsr :x1 :x1 4 :imm t)
-                                            (arm64:sdiv :x0 :x0 :x1)
-                                            (arm64:lsl :x0 :x0 4 :imm t)))
-                       rtaddrs fnoffs td))
-    ((or (has-tag ir 'mod) (has-tag ir 'mod-ir))
-     ;; Modulo: a mod b = a - (a / b) * b
-     (codegen-binop (cadr ir) (caddr ir)
-                       (append-all (list (arm64:lsr :x0 :x0 4 :imm t)
-                                            (arm64:lsr :x1 :x1 4 :imm t)
-                                            (arm64:sdiv :x2 :x0 :x1)
-                                            (arm64:mul :x2 :x2 :x1)
-                                            (arm64:sub :x0 :x0 :x2)
-                                            (arm64:lsl :x0 :x0 4 :imm t)))
-                       rtaddrs fnoffs td))
-    ((has-tag ir 'lambda-ir)
-     ;; lambda-ir should be lifted to lambda-ref before codegen
-     ;; If we encounter it directly, it's an error - return 0
-     (arm64:movz :x0 0))
-    ((has-tag ir 'lambda-ref)
-     ;; lambda-ref = (lambda-ref name free-var-offsets)
-     ;; Create closure as inline heap cons cell (no runtime call):
-     ;; car = fn-offset (as tagged fixnum) - relative offset in bytes
-     ;; cdr = env (cons list of captures, or nil)
-     ;; Result = heap ptr | tag 5 (closure tag)
-     (let* ((name (cadr ir))
-            (free-offsets (caddr ir))
-            (capture-count (length free-offsets))
-            (fn-entry (assoc name fnoffs))
-            (fn-offset (if fn-entry (cdr fn-entry) 0))
-            (offset-bytes fn-offset))
-       (if (= capture-count 0)
-           ;; No captures - inline closure cons: (fn-offset . nil)
-           ;; Store fn-offset (tagged fixnum) in car, nil in cdr
-           ;; Allocate 16 bytes on heap (x28 = bump pointer)
-           (let ((tagged-offset (ash offset-bytes 4)))  ; tag as fixnum
-             (append-all
-              (list
-               ;; GC pre-check BEFORE writing to heap
-               (sbcl-gc-trigger-code)
-               ;; Store fn-offset (tagged) in [x28]
-               ;; Use load-addr-32 to ensure consistent size during two-pass compilation
-               (load-addr-32 :x9 tagged-offset)   ; x9 = tagged offset
-               (arm64:str :x9 :heap :offset 0)           ; [x28+0] = car = fn-offset
-               ;; Store nil in [x28+8]
-               (arm64:movz :x10 0)                   ; x10 = nil
-               (arm64:str :x10 :heap :offset 8)          ; [x28+8] = cdr = nil
-               ;; Result = x28 | 5 (closure tag)
-               (arm64:mov :x0 :heap)                ; x0 = x28
-               (arm64:movz :x9 5)                    ; x9 = closure tag
-               (arm64:orr :x0 :x0 :x9)                   ; x0 = x28 | 5
-               ;; Bump heap pointer by 16
-               (arm64:add :heap :heap 16 :imm t))))
-           ;; Has captures - build env as cons list, then make closure cons
-           ;; First build env cons list (capture-count cells)
-           ;; Then allocate closure cons
-           (let ((capture-code
-                  (labels ((build-captures (offs acc env-acc)
-                             (if (null offs)
-                                 (list acc env-acc)  ; return (code . result-slot)
-                                 (let* ((off (car offs))
-                                        (val-slot (temp-slot (+ td 2 (* 2 (length offs)))))
-                                        (pair-slot (temp-slot (+ td 3 (* 2 (length offs)))))
-                                        ;; Load captured value
-                                        (load-cap
-                                         (append-all
-                                          (list
-                                           (arm64:sub :x1 :env (* off 8) :imm t) ; x1 = &captured
-                                           (arm64:ldr :x0 :x1 :offset 0)       ; x0 = captured value
-                                           (arm64:str :x0 :sp :offset val-slot)))) ; save value
-                                        ;; Allocate cons: (value . prev-env)
-                                        (alloc-cons
-                                         (append-all
-                                          (list
-                                           ;; GC pre-check BEFORE writing to heap
-                                           (sbcl-gc-trigger-code)
-                                           (arm64:ldr :x9 :sp :offset val-slot)  ; car = captured value
-                                           (arm64:str :x9 :heap :offset 0)         ; [x28+0] = car
-                                           ;; cdr = previous env acc
-                                           (if (null env-acc)
-                                               (arm64:movz :x9 0)              ; first: cdr = nil
-                                               (arm64:ldr :x9 :sp :offset env-acc)) ; else: load prev env
-                                           (arm64:str :x9 :heap :offset 8)         ; [x28+8] = cdr
-                                           ;; Result = x28 | 1 (cons tag)
-                                           (arm64:mov :x0 :heap)
-                                           (arm64:movz :x9 1)
-                                           (arm64:orr :x0 :x0 :x9)                 ; x0 = cons ptr
-                                           ;; Save and bump
-                                           (arm64:str :x0 :sp :offset pair-slot)
-                                           (arm64:add :heap :heap 16 :imm t)))))
-                                   (build-captures (cdr offs)
-                                                   (append-all (list acc load-cap alloc-cons))
-                                                   pair-slot)))))
-                    ;; Reverse free-offsets so first captured var ends up at car of env list
-                   ;; This matches gen-capture-copies which stores car at slot 0, etc.
-                   (build-captures (reverse free-offsets) nil nil))))
-             (let* ((env-code (car capture-code))
-                    (env-result-slot (cadr capture-code))
-                    (tagged-offset (ash offset-bytes 4)))
-               (append-all
-                (list
-                 ;; Build env cons list
-                 env-code
-                 ;; GC pre-check BEFORE writing to heap
-                 (sbcl-gc-trigger-code)
-                 ;; Now allocate closure cons: (fn-offset . env)
-                 ;; Use load-addr-32 to ensure consistent size during two-pass compilation
-                 (load-addr-32 :x9 tagged-offset)     ; car = fn-offset (tagged)
-                 (arm64:str :x9 :heap :offset 0)             ; [x28+0] = car
-                 (arm64:ldr :x9 :sp :offset env-result-slot) ; cdr = env cons list
-                 (arm64:str :x9 :heap :offset 8)             ; [x28+8] = cdr
-                 ;; Result = x28 | 5 (closure tag)
-                 (arm64:mov :x0 :heap)
-                 (arm64:movz :x9 5)
-                 (arm64:orr :x0 :x0 :x9)
-                 ;; Bump heap
-                 (arm64:add :heap :heap 16 :imm t))))))))
-    ((has-tag ir 'funcall-ir)
-     ;; funcall-ir = (funcall-ir fn-ir args-ir-list)
-     ;; Inline closure access (no runtime calls):
-     ;; 1. Evaluate fn-ir to get closure (cons cell with tag 5)
-     ;; 2. Extract fn-offset from car, env from cdr
-     ;; 3. Compute code address: x26 (code base) + fn-offset
-     ;; 4. Set up args and call (args 0-7 in registers, 8+ on stack)
-     ;; Closure layout: car = fn-offset (tagged fixnum), cdr = env (cons or nil)
-     ;; IMPORTANT: Stack must be 16-byte aligned per AAPCS64
-     ;; CRITICAL FIX: Lambdas have no prologue, so funcall-ir must set x20
-     ;; for the lambda's parameter stores to write to the lambda's own area
-     (let* ((fn-ir (cadr ir))
-            (args-ir (caddr ir))
-            (num-args (length args-ir))
-            (stack-args (max 0 (- num-args 8)))   ; How many args go on stack
-            (stack-bytes (* stack-args 8))        ; Raw bytes needed
-            (stack-space (if (> stack-bytes 0)    ; Round up to 16-byte alignment
-                             (* (ceiling stack-bytes 16) 16)
-                             0))
-            ;; Lambda parameter space (for lambda's param-stores to write to)
-            (param-bytes (* num-args 8))
-            (param-space (if (> param-bytes 0)
-                             (* (ceiling param-bytes 16) 16)
-                             16))  ; Minimum 16 bytes even for 0 params
-            ;; Temp slots: 0=x24-save, 1=x20-save, 2=x30-save, 3=code-addr, 4=env, 5..5+n-1=args
-            (x24-slot (temp-slot td))
-            (x20-slot (temp-slot (+ td 1)))
-            (x30-slot (temp-slot (+ td 2)))  ; Save LR - lambdas make BL calls!
-            (code-slot (temp-slot (+ td 3)))
-            (env-slot (temp-slot (+ td 4)))
-            (arg-base (+ td 5))
-            (nested-td (+ arg-base num-args))
-            ;; Evaluate function
-            (fn-code (codegen fn-ir rtaddrs fnoffs nested-td)))
-       (labels ((gen-args (airs idx acc)
-                  (if (null airs)
-                      acc
-                      (let* ((rs (if (> idx 0) (arm64:ldr :closure :sp :offset x24-slot) nil))
-                             (ac (codegen (car airs) rtaddrs fnoffs nested-td))
-                             (st (arm64:str :x0 :sp :offset (temp-slot (+ arg-base idx)))))
-                        (gen-args (cdr airs) (+ idx 1)
-                                  (append-all (list acc rs ac st))))))
-                (load-reg-args (idx total-offset acc)
-                  ;; Load args 0-7 into registers x0-x7
-                  ;; After alloc-stack + param-frame, sp moved down by total-offset, so adjust
-                  (if (>= idx (min num-args 8))
-                      acc
-                      (let* ((adjusted-off (+ (temp-slot (+ arg-base idx)) total-offset))
-                             (ld (arm64:ldr (arm64:num-to-reg idx) :sp :offset adjusted-off)))
-                        (load-reg-args (+ idx 1) total-offset (append acc ld)))))
-                (store-stack-args (idx total-offset acc)
-                  ;; Store args 8+ to stack: arg i goes to [sp + (i-8)*8]
-                  ;; After alloc-stack + param-frame, sp moved down by total-offset, so adjust
-                  (if (>= idx num-args)
-                      acc
-                      (let* ((adjusted-off (+ (temp-slot (+ arg-base idx)) total-offset))
-                             (ld (arm64:ldr :x0 :sp :offset adjusted-off))
-                             (stack-off (* (- idx 8) 8))
-                             (st (arm64:str :x0 :sp :offset stack-off)))
-                        (store-stack-args (+ idx 1) total-offset (append-all (list acc ld st)))))))
-         (let ((total-offset (+ stack-space param-space)))
-           (append-all
-            (list
-             ;; Save x24 and x20
-             (arm64:str :closure :sp :offset x24-slot)
-             (arm64:str :env :sp :offset x20-slot)
-             ;; Evaluate closure into x0
-             fn-code
-             ;; Clear closure tag (5) to get heap address: x9 = x0 & ~0xF
-             (arm64:movz :x11 #xF)                     ; x11 = 0xF
-             (arm64:bic :x9 :x0 :x11)                  ; x9 = x0 & ~0xF
-             ;; Load car = fn-offset (tagged): x10 = [x9+0]
-             (arm64:ldr :x10 :x9 :offset 0)
-             ;; Untag fn-offset: x10 = x10 >> 4
-             (arm64:lsr :x10 :x10 4 :imm t)
-             ;; Compute code address: x10 = x26 + x10 (code_base + offset)
-             (arm64:add :x10 :x26 :x10)
-             (arm64:str :x10 :sp :offset code-slot)      ; save code address
-             ;; Load cdr = env: x11 = [x9+8]
-             (arm64:ldr :x11 :x9 :offset 8)
-             (arm64:str :x11 :sp :offset env-slot)       ; save env
-             ;; Restore x24 for arg evaluation
-             (arm64:ldr :closure :sp :offset x24-slot)
-             ;; Evaluate args
-             (gen-args args-ir 0 nil)
-             ;; Allocate stack space for args 8+ (if any)
-             (if (> stack-args 0)
-                 (arm64:sub :sp :sp stack-space :imm t)
-                 nil)
-             ;; Allocate parameter frame for lambda
-             (arm64:sub :sp :sp param-space :imm t)
-             ;; Set x20 for lambda's param-stores: x20 = sp + param-space - 8
-             (if (> param-space 8)
-                 (arm64:add :env :sp (- param-space 8) :imm t)
-                 (arm64:mov :env :sp))  ; If param-space <= 8, set x20 = sp
-             ;; Store args 8+ to stack (they're above the param frame)
-             (store-stack-args 8 total-offset nil)
-             ;; Load args 0-7 into registers
-             (load-reg-args 0 total-offset nil)
-             ;; Set x24 to callee's env
-             (arm64:ldr :closure :sp :offset (+ env-slot total-offset))
-             ;; Set argc
-             (arm64:movz :x23 num-args)
-             ;; BUG #20 FIX: Save x30 - lambdas have no prologue, make BL calls!
-             ;; CRITICAL: x30 saved AFTER sp modified, so must adjust offset!
-             (arm64:str :lr :sp :offset (+ x30-slot total-offset))
-             ;; Load code address and call
-             (arm64:ldr :x9 :sp :offset (+ code-slot total-offset))
-             (arm64:blr :x9)
-             ;; Restore x30 immediately after lambda returns
-             ;; CRITICAL: sp still modified, so must adjust offset!
-             (arm64:ldr :lr :sp :offset (+ x30-slot total-offset))
-             ;; Deallocate parameter frame
-             (arm64:add :sp :sp param-space :imm t)
-             ;; Deallocate stack space for args 8+ (if any)
-             (if (> stack-args 0)
-                 (arm64:add :sp :sp stack-space :imm t)
-                 nil)
-             ;; Restore x24 and x20
-             (arm64:ldr :closure :sp :offset x24-slot)
-             (arm64:ldr :env :sp :offset x20-slot)))))))
-    ((has-tag ir 'dotimes-ir)
-     ;; dotimes-ir = (dotimes-ir var count-ir body result-form compile-env)
-     ;; Generate counted loop:
-     ;; 1. Evaluate count, save to slot
-     ;; 2. Initialize counter to 0
-     ;; 3. Loop: compare counter to count, branch if >=
-     ;; 4. Store counter as var, execute body
-     ;; 5. Increment counter, branch back
-     ;; 6. Evaluate result with final counter value
-     (let* ((var (cadr ir))
-            (count-ir (caddr ir))
-            (body-ir (cadddr ir))     ; Already compiled body IR
-            (result-ir (nth 4 ir))    ; Already compiled result IR
-            (compile-env (nth 5 ir))
-            ;; Temp slots: 0=count, 1=counter, 2=x24-save
-            (count-slot (temp-slot td))
-            (counter-slot (temp-slot (+ td 1)))
-            (x24-slot (temp-slot (+ td 2)))
-            (body-td (+ td 3))
-            ;; Compile count expression
-            (count-code (codegen count-ir rtaddrs fnoffs body-td))
-            ;; Calculate var offset from extended env
-            (new-env (env-extend (list (list var)) compile-env))
-            (var-offset (* (env-lookup var new-env) 8))
-            ;; Codegen the already-compiled body and result
-            (body-code (codegen body-ir rtaddrs fnoffs body-td))
-            (body-instrs (count-instrs body-code))
-            (result-code (codegen result-ir rtaddrs fnoffs body-td)))
-       (append-all
-        (list
-         ;; Save x24
-         (arm64:str :closure :sp :offset x24-slot)
-         ;; Evaluate and save count
-         count-code
-         (arm64:str :x0 :sp :offset count-slot)
-         ;; Initialize counter to 0
-         (arm64:movz :x0 0)
-         (arm64:str :x0 :sp :offset counter-slot)
-         ;; Loop start: load counter and count, compare
-         ;; Loop test: 4 instrs (ldr counter, ldr count, cmp, b.ge)
-         (arm64:ldr :x0 :sp :offset counter-slot)
-         (arm64:ldr :x1 :sp :offset count-slot)
-         (arm64:cmp :x0 :x1)
-         ;; Branch past body + incr + loop-back if counter >= count
-         ;; Body instrs + store var (4) + incr (4) + branch back (1) = body-instrs + 9
-         (arm64:b.ge (ash (* (+ body-instrs 9 -2)) 4))
-         ;; Store counter as var at its actual offset from x20
-         (arm64:ldr :x0 :sp :offset counter-slot)
-         (arm64:sub :x1 :env var-offset :imm t)
-         (arm64:str :x0 :x1 :offset 0)
-         ;; Restore x24 for body
-         (arm64:ldr :closure :sp :offset x24-slot)
-         ;; Execute body
-         body-code
-         ;; Increment counter
-         (arm64:ldr :x0 :sp :offset counter-slot)
-         (arm64:add :x0 :x0 #x10 :imm t)  ; add tagged 1
-         (arm64:str :x0 :sp :offset counter-slot)
-         ;; Branch back to loop start
-         ;; Distance: -(loop test (4) + store var (4) + body + incr (3))
-         (arm64:b (ash (- (* (+ body-instrs 11) 4)) -2))
-         ;; After loop: evaluate result with final counter
-         (arm64:ldr :x0 :sp :offset counter-slot)
-         (arm64:sub :x1 :env var-offset :imm t)
-         (arm64:str :x0 :x1 :offset 0)
-         (arm64:ldr :closure :sp :offset x24-slot)
-         result-code))))
-    ((has-tag ir 'dolist-ir)
-     ;; dolist-ir = (dolist-ir var list-ir body-ir result-ir compile-env)
-     ;; Generate list iteration loop:
-     ;; 1. Evaluate list, save to slot
-     ;; 2. Loop: check if null, branch if yes
-     ;; 3. Get car, store as var, execute body
-     ;; 4. Get cdr, save, branch back
-     ;; 5. Evaluate result
-     (let* ((var (cadr ir))
-            (list-ir (caddr ir))
-            (body-ir (cadddr ir))     ; Already compiled body IR
-            (result-ir (nth 4 ir))    ; Already compiled result IR
-            (compile-env (nth 5 ir))
-            ;; Temp slots: 0=list-ptr, 1=x24-save
-            (list-slot (temp-slot td))
-            (x24-slot (temp-slot (+ td 1)))
-            (body-td (+ td 2))
-            ;; Compile list expression
-            (list-code (codegen list-ir rtaddrs fnoffs body-td))
-            ;; Calculate var offset from extended env
-            (new-env (env-extend (list (list var)) compile-env))
-            (var-offset (* (env-lookup var new-env) 8))
-            ;; Codegen the already-compiled body and result
-            (body-code (codegen body-ir rtaddrs fnoffs body-td))
-            (body-instrs (count-instrs body-code))
-            (result-code (codegen result-ir rtaddrs fnoffs body-td)))
-       (append-all
-        (list
-         ;; Save x24
-         (arm64:str :closure :sp :offset x24-slot)
-         ;; Evaluate and save list
-         list-code
-         (arm64:str :x0 :sp :offset list-slot)
-         ;; Loop start: check if list is nil (tag 0)
-         (arm64:ldr :x0 :sp :offset list-slot)
-         (arm64:movz :x1 0)  ; nil = 0
-         (arm64:cmp :x0 :x1)
-         ;; Branch past body if list is nil
-         ;; Body: store var (4) + body + get cdr (4) + branch (1) = body-instrs + 9
-         (arm64:b.eq (ash (* (+ body-instrs 9 -2)) 4))
-         ;; Get car of list -> var at its actual offset
-         (arm64:ldr :x0 :sp :offset list-slot)
-         (arm64:ldr :x9 :x19 :offset 8)  ; car function at offset 8
-         (arm64:blr :x9)
-         (arm64:sub :x1 :env var-offset :imm t)
-         (arm64:str :x0 :x1 :offset 0)
-         ;; Restore x24 for body
-         (arm64:ldr :closure :sp :offset x24-slot)
-         ;; Execute body
-         body-code
-         ;; Get cdr, save as new list
-         (arm64:ldr :x0 :sp :offset list-slot)
-         (arm64:ldr :x9 :x19 :offset 16)  ; cdr function at offset 16
-         (arm64:blr :x9)
-         (arm64:str :x0 :sp :offset list-slot)
-         ;; Branch back to loop start
-         ;; Distance: -(null check (3) + get car (5) + body + get cdr (4))
-         (arm64:b (ash (- (* (+ body-instrs 12) 4)) -2))
-         ;; After loop: evaluate result (var is nil at this point)
-         (arm64:movz :x0 0)  ; nil
-         (arm64:sub :x1 :env var-offset :imm t)
-         (arm64:str :x0 :x1 :offset 0)
-         (arm64:ldr :closure :sp :offset x24-slot)
-         result-code))))
-    ;; === libSystem call IR forms (for native executables) ===
-    ;; These emit :extern-call markers that are resolved by deliver
-    ((has-tag ir 'sys-write-ir)
-     ;; sys-write-ir = (sys-write-ir fd-ir buf-ir len-ir)
-     ;; Calls _write(fd, buf, len) -> returns bytes written (or -1)
-     ;; Args: fd in x0, buf (string ptr) in x1, len in x2
-     (let* ((fd-ir (cadr ir))
-            (buf-ir (caddr ir))
-            (len-ir (cadddr ir))
-            (_xs (temp-slot td))
-            (nd (+ td 3))
-            ;; Evaluate fd
-            (fd-code (codegen fd-ir rtaddrs fnoffs nd))
-            (save-fd (arm64:str :x0 :sp :offset (temp-slot td)))
-            ;; Evaluate buf
-            (buf-code (codegen buf-ir rtaddrs fnoffs nd))
-            (save-buf (arm64:str :x0 :sp :offset (temp-slot (+ td 1))))
-            ;; Evaluate len
-            (len-code (codegen len-ir rtaddrs fnoffs nd))
-            (save-len (arm64:str :x0 :sp :offset (temp-slot (+ td 2)))))
-       (declare (ignore _xs))
-       (append-all
-        (list fd-code save-fd buf-code save-buf len-code save-len
-              ;; Load args: fd->x0, buf->x1, len->x2
-              (arm64:ldr :x0 :sp :offset (temp-slot td))
-              (arm64:lsr :x0 :x0 4 :imm t)                      ; untag fd
-              (arm64:ldr :x1 :sp :offset (temp-slot (+ td 1)))
-              (arm64:and* :x1 :x1 -16 :imm t)                ; clear string tag, get ptr
-              (arm64:add :x1 :x1 8 :imm t)                      ; skip length field
-              (arm64:ldr :x2 :sp :offset (temp-slot (+ td 2)))
-              (arm64:lsr :x2 :x2 4 :imm t)                      ; untag len
-              ;; Emit extern call marker
-              (list (list :extern-call "_write"))
-              ;; Tag result as fixnum
-              (arm64:lsl :x0 :x0 4 :imm t)))))
-    ((has-tag ir 'sys-write-char-ir)
-     ;; sys-write-char-ir = (sys-write-char-ir fd-ir char-ir)
-     ;; Writes a single character (char code as fixnum) to fd
-     ;; Uses a stack slot to hold the byte
-     (let* ((fd-ir (cadr ir))
-            (char-ir (caddr ir))
-            (nd (+ td 2))
-            (fd-code (codegen fd-ir rtaddrs fnoffs nd))
-            (save-fd (arm64:str :x0 :sp :offset (temp-slot td)))
-            (char-code (codegen char-ir rtaddrs fnoffs nd))
-            (save-char (arm64:str :x0 :sp :offset (temp-slot (+ td 1)))))
-       (append-all
-        (list fd-code save-fd char-code save-char
-              ;; Load fd -> x0, untag
-              (arm64:ldr :x0 :sp :offset (temp-slot td))
-              (arm64:lsr :x0 :x0 4 :imm t)
-              ;; Load char -> x3, untag, store byte to stack
-              (arm64:ldr :x3 :sp :offset (temp-slot (+ td 1)))
-              (arm64:lsr :x3 :x3 4 :imm t)
-              (arm64:strb :x3 :sp (temp-slot (+ td 1)))  ; store byte
-              ;; x1 = pointer to the byte on stack
-              (arm64:add :x1 :sp (temp-slot (+ td 1)) :imm t)
-              ;; x2 = 1 (length)
-              (arm64:movz :x2 1)
-              ;; Call write(fd, &byte, 1)
-              (list (list :extern-call "_write"))
-              ;; Tag result as fixnum
-              (arm64:lsl :x0 :x0 4 :imm t)))))
-    ((has-tag ir 'sys-read-byte-ir)
-     ;; sys-read-byte-ir = (sys-read-byte-ir fd-ir)
-     ;; Reads a single byte from fd, returns byte (0-255) as fixnum, or -1 on EOF/error
-     ;; Uses a stack slot to hold the byte
-     (let* ((fd-ir (cadr ir))
-            (nd (+ td 1))
-            (fd-code (codegen fd-ir rtaddrs fnoffs nd)))
-       (append-all
-        (list fd-code
-              ;; fd -> x0, untag
-              (arm64:lsr :x0 :x0 4 :imm t)
-              ;; x1 = pointer to stack slot for the byte
-              (arm64:add :x1 :sp (temp-slot td) :imm t)
-              ;; x2 = 1 (length)
-              (arm64:movz :x2 1)
-              ;; Call read(fd, &byte, 1)
-              (list (list :extern-call "_read"))
-              ;; Check return value: if <= 0, return -1 (as fixnum)
-              ;; x0 = bytes read (1) or error (<= 0)
-              (arm64:cmp :x0 1 :imm t)  ; cmp x0, #1
-              (arm64:b.lt 4)           ; if x0 < 1, skip to error case
-              ;; Success: load the byte from stack, tag as fixnum
-              (arm64:ldrb :x0 :sp (temp-slot td))
-              (arm64:lsl :x0 :x0 4 :imm t)  ; tag as fixnum
-              (arm64:b 2)              ; skip error case
-              ;; Error: return -1 as fixnum (-1 << 4 = -16)
-              ;; Use MOVN: ~15 = -16
-              (arm64:movn :x0 15)))))  ; x0 = ~15 = -16
-    ((has-tag ir 'sys-read-ir)
-     ;; sys-read-ir = (sys-read-ir fd-ir buf-ir len-ir)
-     ;; Calls _read(fd, buf, len) -> returns bytes read (or-1)
-     ;; buf should be a vector
-     (let* ((fd-ir (cadr ir))
-            (buf-ir (caddr ir))
-            (len-ir (cadddr ir))
-            (_xs (temp-slot td))
-            (nd (+ td 3))
-            (fd-code (codegen fd-ir rtaddrs fnoffs nd))
-            (save-fd (arm64:str :x0 :sp :offset (temp-slot td)))
-            (buf-code (codegen buf-ir rtaddrs fnoffs nd))
-            (save-buf (arm64:str :x0 :sp :offset (temp-slot (+ td 1))))
-            (len-code (codegen len-ir rtaddrs fnoffs nd))
-            (save-len (arm64:str :x0 :sp :offset (temp-slot (+ td 2)))))
-       (declare (ignore _xs))
-       (append-all
-        (list fd-code save-fd buf-code save-buf len-code save-len
-              (arm64:ldr :x0 :sp :offset (temp-slot td))
-              (arm64:lsr :x0 :x0 4 :imm t)                      ; untag fd
-              (arm64:ldr :x1 :sp :offset (temp-slot (+ td 1)))
-              (arm64:and* :x1 :x1 -16 :imm t)                ; clear vector tag
-              (arm64:add :x1 :x1 8 :imm t)                      ; skip length field
-              (arm64:ldr :x2 :sp :offset (temp-slot (+ td 2)))
-              (arm64:lsr :x2 :x2 4 :imm t)                      ; untag len
-              (list (list :extern-call "_read"))
-              (arm64:lsl :x0 :x0 4 :imm t)))))
-    ((has-tag ir 'sys-open-ir)
-     ;; sys-open-ir = (sys-open-ir path-ir flags-ir mode-ir)
-     ;; Calls _open(path, flags, mode) -> returns fd (or -1)
-     (let* ((path-ir (cadr ir))
-            (flags-ir (caddr ir))
-            (mode-ir (cadddr ir))
-            (_xs (temp-slot td))
-            (nd (+ td 3))
-            (path-code (codegen path-ir rtaddrs fnoffs nd))
-            (save-path (arm64:str :x0 :sp :offset (temp-slot td)))
-            (flags-code (codegen flags-ir rtaddrs fnoffs nd))
-            (save-flags (arm64:str :x0 :sp :offset (temp-slot (+ td 1))))
-            (mode-code (codegen mode-ir rtaddrs fnoffs nd))
-            (save-mode (arm64:str :x0 :sp :offset (temp-slot (+ td 2)))))
-       (declare (ignore _xs))
-       (append-all
-        (list path-code save-path flags-code save-flags mode-code save-mode
-              (arm64:ldr :x0 :sp :offset (temp-slot td))
-              (arm64:and* :x0 :x0 -16 :imm t)                ; clear string tag
-              (arm64:add :x0 :x0 8 :imm t)                      ; skip length field
-              (arm64:ldr :x1 :sp :offset (temp-slot (+ td 1)))
-              (arm64:lsr :x1 :x1 4 :imm t)                      ; untag flags
-              (arm64:ldr :x2 :sp :offset (temp-slot (+ td 2)))
-              (arm64:lsr :x2 :x2 4 :imm t)                      ; untag mode
-              (list (list :extern-call "_open"))
-              (arm64:lsl :x0 :x0 4 :imm t)))))
-    ((has-tag ir 'sys-close-ir)
-     ;; sys-close-ir = (sys-close-ir fd-ir)
-     ;; Calls _close(fd) -> returns 0 on success
-     (let* ((fd-ir (cadr ir))
-            (fd-code (codegen fd-ir rtaddrs fnoffs td)))
-       (append-all
-        (list fd-code
-              (arm64:lsr :x0 :x0 4 :imm t)                      ; untag fd
-              (list (list :extern-call "_close"))
-              (arm64:lsl :x0 :x0 4 :imm t)))))
-    ((has-tag ir 'sys-exit-ir)
-     ;; sys-exit-ir = (sys-exit-ir code-ir)
-     ;; Calls _exit(code) -> does not return
-     (let* ((code-ir (cadr ir))
-            (code-code (codegen code-ir rtaddrs fnoffs td)))
-       (append-all
-        (list code-code
-              (arm64:lsr :x0 :x0 4 :imm t)                      ; untag exit code
-              (list (list :extern-call "_exit"))))))
-    ;; === JIT Memory Primitives (ARM64 macOS) ===
+  "OLD ACCUMULATOR CODEGEN - REMOVED.
+   This function should NEVER be called. If you see this error, there is
+   a code path that hasn't been updated to use register allocation."
+  (declare (ignore rtaddrs fnoffs td))
+  (error "OLD ACCUMULATOR CODEGEN REMOVED: codegen called with IR: ~S~%~
+          Use codegen-fn-reg-alloc for functions or codegen-main-reg-alloc for main."
+         (if (consp ir) (car ir) ir)))
 
-    ;; mmap-ir: mmap(addr, len, prot, flags, fd, offset) -> addr or -1
-    ;; All args are untagged raw values (no tagging/untagging)
-    ((has-tag ir 'mmap-ir)
-     (let* ((addr-ir (cadr ir))
-            (len-ir (caddr ir))
-            (prot-ir (cadddr ir))
-            (flags-ir (nth 4 ir))
-            (fd-ir (nth 5 ir))
-            (offset-ir (nth 6 ir))
-            (nd (+ td 6))
-            (addr-code (codegen addr-ir rtaddrs fnoffs nd))
-            (len-code (codegen len-ir rtaddrs fnoffs nd))
-            (prot-code (codegen prot-ir rtaddrs fnoffs nd))
-            (flags-code (codegen flags-ir rtaddrs fnoffs nd))
-            (fd-code (codegen fd-ir rtaddrs fnoffs nd))
-            (offset-code (codegen offset-ir rtaddrs fnoffs nd)))
-       (append-all
-        (list
-         ;; Compute and save all args to stack slots
-         addr-code (arm64:lsr :x0 :x0 4 :imm t) (arm64:str :x0 :sp :offset (temp-slot td))
-         len-code (arm64:lsr :x0 :x0 4 :imm t) (arm64:str :x0 :sp :offset (temp-slot (+ td 1)))
-         prot-code (arm64:lsr :x0 :x0 4 :imm t) (arm64:str :x0 :sp :offset (temp-slot (+ td 2)))
-         flags-code (arm64:lsr :x0 :x0 4 :imm t) (arm64:str :x0 :sp :offset (temp-slot (+ td 3)))
-         fd-code (arm64:lsr :x0 :x0 4 :imm t) (arm64:str :x0 :sp :offset (temp-slot (+ td 4)))
-         offset-code (arm64:lsr :x0 :x0 4 :imm t) (arm64:str :x0 :sp :offset (temp-slot (+ td 5)))
-         ;; Load into arg registers x0-x5
-         (arm64:ldr :x0 :sp :offset (temp-slot td))
-         (arm64:ldr :x1 :sp :offset (temp-slot (+ td 1)))
-         (arm64:ldr :x2 :sp :offset (temp-slot (+ td 2)))
-         (arm64:ldr :x3 :sp :offset (temp-slot (+ td 3)))
-         (arm64:ldr :x4 :sp :offset (temp-slot (+ td 4)))
-         (arm64:ldr :x5 :sp :offset (temp-slot (+ td 5)))
-         (list (list :extern-call "_mmap"))))))  ; returns raw pointer in x0
+(defun codegen-binop (left-ir right-ir op-instrs rtaddrs fnoffs td)
+  "OLD ACCUMULATOR CODEGEN HELPER - REMOVED."
+  (declare (ignore left-ir right-ir op-instrs rtaddrs fnoffs td))
+  (error "OLD ACCUMULATOR CODEGEN REMOVED: codegen-binop should not be called"))
 
-    ;; munmap-ir: munmap(addr, len) -> 0 on success
-    ;; NOTE: addr is a RAW pointer (from mmap), len is tagged
-    ((has-tag ir 'munmap-ir)
-     (let* ((addr-ir (cadr ir))
-            (len-ir (caddr ir))
-            (nd (+ td 2))
-            (addr-code (codegen addr-ir rtaddrs fnoffs nd))
-            (len-code (codegen len-ir rtaddrs fnoffs nd)))
-       (append-all
-        (list addr-code (arm64:str :x0 :sp :offset (temp-slot td))  ; addr is RAW, no untagging
-              len-code (arm64:lsr :x0 :x0 4 :imm t)
-              (arm64:mov :x1 :x0)                     ; x1 = len
-              (arm64:ldr :x0 :sp :offset (temp-slot td))  ; x0 = addr (raw)
-              (list (list :extern-call "_munmap"))))))
+(defun ir-may-call? (ir)
+  "OLD ACCUMULATOR CODEGEN HELPER - REMOVED."
+  (declare (ignore ir))
+  (error "OLD ACCUMULATOR CODEGEN REMOVED: ir-may-call? should not be called"))
 
-    ;; mmap-jit-ir: mmap for JIT code with MAP_JIT flag (macOS ARM64)
-    ;; (mmap-jit-ir size) -> raw pointer to executable memory
-    ;; Uses: addr=0, prot=RWX(7), flags=MAP_PRIVATE|MAP_ANON|MAP_JIT(0x1802), fd=-1, offset=0
-    ((has-tag ir 'mmap-jit-ir)
-     (let* ((size-ir (cadr ir))
-            (size-code (codegen size-ir rtaddrs fnoffs td)))
-       (append-all
-        (list size-code
-              (arm64:lsr :x1 :x0 4 :imm t)           ; x1 = size (untagged)
-              (arm64:movz :x0 0)                   ; x0 = addr (0 = let system choose)
-              (arm64:movz :x2 7)                   ; x2 = prot (PROT_READ|PROT_WRITE|PROT_EXEC)
-              (arm64:movz :x3 #x1802)              ; x3 = flags (MAP_PRIVATE|MAP_ANON|MAP_JIT)
-              ;; x4 = -1 (fd): load 0xFFFFFFFFFFFFFFFF via movz+movk
-              (arm64:movz :x4 #xFFFF)
-              (arm64:movk :x4 #xFFFF :lsl 16)
-              (arm64:movk :x4 #xFFFF :lsl 32)
-              (arm64:movk :x4 #xFFFF :lsl 48)
-              (arm64:movz :x5 0)                   ; x5 = offset (0)
-              (list (list :extern-call "_mmap"))))))  ; returns raw pointer in x0
+(defun ir-is-simple? (ir)
+  "OLD ACCUMULATOR CODEGEN HELPER - REMOVED."
+  (declare (ignore ir))
+  (error "OLD ACCUMULATOR CODEGEN REMOVED: ir-is-simple? should not be called"))
 
-    ;; pthread-jit-write-protect-np-ir: pthread_jit_write_protect_np(enabled)
-    ;; enabled = 0: allow write, 1: allow execute
-    ((has-tag ir 'pthread-jit-write-protect-np-ir)
-     (let* ((enabled-ir (cadr ir))
-            (enabled-code (codegen enabled-ir rtaddrs fnoffs td)))
-       (append-all
-        (list enabled-code
-              (arm64:lsr :x0 :x0 4 :imm t)           ; untag enabled
-              (list (list :extern-call "_pthread_jit_write_protect_np"))))))
-
-    ;; sys-dcache-flush-ir: sys_dcache_flush(start, size)
-    ;; NOTE: start is a RAW pointer, size is tagged
-    ((has-tag ir 'sys-dcache-flush-ir)
-     (let* ((start-ir (cadr ir))
-            (size-ir (caddr ir))
-            (nd (+ td 2))
-            (start-code (codegen start-ir rtaddrs fnoffs nd))
-            (size-code (codegen size-ir rtaddrs fnoffs nd)))
-       (append-all
-        (list start-code (arm64:str :x0 :sp :offset (temp-slot td))  ; start is RAW, no untagging
-              size-code (arm64:lsr :x0 :x0 4 :imm t)
-              (arm64:mov :x1 :x0)                     ; x1 = size
-              (arm64:ldr :x0 :sp :offset (temp-slot td))  ; x0 = start (raw)
-              (list (list :extern-call "_sys_dcache_flush"))))))
-
-    ;; sys-icache-invalidate-ir: sys_icache_invalidate(start, size)
-    ;; NOTE: start is a RAW pointer, size is tagged
-    ((has-tag ir 'sys-icache-invalidate-ir)
-     (let* ((start-ir (cadr ir))
-            (size-ir (caddr ir))
-            (nd (+ td 2))
-            (start-code (codegen start-ir rtaddrs fnoffs nd))
-            (size-code (codegen size-ir rtaddrs fnoffs nd)))
-       (append-all
-        (list start-code (arm64:str :x0 :sp :offset (temp-slot td))  ; start is RAW, no untagging
-              size-code (arm64:lsr :x0 :x0 4 :imm t)
-              (arm64:mov :x1 :x0)                     ; x1 = size
-              (arm64:ldr :x0 :sp :offset (temp-slot td))  ; x0 = start (raw)
-              (list (list :extern-call "_sys_icache_invalidate"))))))
-
-    ;; funcall-ptr-ir: call function pointer
-    ;; The function pointer is a RAW address (from mmap), NOT tagged
-    ;; The called code returns a TAGGED value in x0 - do NOT retag
-    ((has-tag ir 'funcall-ptr-ir)
-     (let* ((ptr-ir (cadr ir))
-            (ptr-code (codegen ptr-ir rtaddrs fnoffs td)))
-       (append-all
-        (list ptr-code
-              (arm64:blr :x0)))))                    ; branch-link to x0, result is tagged
-
-    ;; mem-set-byte-ir: store byte at ptr+offset
-    ;; (mem-set-byte ptr offset byte-value)
-    ;; NOTE: ptr is a RAW pointer (from mmap), NOT tagged
-    ;; offset and byte-value are tagged fixnums
-    ((has-tag ir 'mem-set-byte-ir)
-     (let* ((ptr-ir (cadr ir))
-            (offset-ir (caddr ir))
-            (byte-ir (cadddr ir))
-            (nd (+ td 3))
-            (ptr-code (codegen ptr-ir rtaddrs fnoffs nd))
-            (offset-code (codegen offset-ir rtaddrs fnoffs nd))
-            (byte-code (codegen byte-ir rtaddrs fnoffs nd)))
-       (append-all
-        (list ptr-code (arm64:str :x0 :sp :offset (temp-slot td))  ; ptr is RAW, no untagging
-              offset-code (arm64:lsr :x0 :x0 4 :imm t) (arm64:str :x0 :sp :offset (temp-slot (+ td 1)))
-              byte-code (arm64:lsr :x0 :x0 4 :imm t)
-              ;; x0 = byte value, x1 = offset, x2 = ptr
-              (arm64:mov :x3 :x0)                     ; x3 = byte
-              (arm64:ldr :x1 :sp :offset (temp-slot (+ td 1)))  ; x1 = offset
-              (arm64:ldr :x0 :sp :offset (temp-slot td))  ; x0 = ptr (raw)
-              (arm64:add :x0 :x0 :x1)             ; x0 = ptr + offset
-              (arm64:strb :x3 :x0 0)))))              ; store byte at [x0]
-
-    ;; mem-load-64-ir: load 64-bit word from ptr+offset
-    ;; (mem-load-64 ptr offset)
-    ;; NOTE: ptr is a RAW pointer (from mmap), NOT tagged
-    ;; offset is a tagged fixnum
-    ((has-tag ir 'mem-load-64-ir)
-     (let* ((ptr-ir (cadr ir))
-            (offset-ir (caddr ir))
-            (nd (+ td 2))
-            (ptr-code (codegen ptr-ir rtaddrs fnoffs nd))
-            (offset-code (codegen offset-ir rtaddrs fnoffs nd)))
-       (append-all
-        (list ptr-code (arm64:str :x0 :sp :offset (temp-slot td))  ; ptr is RAW, no untagging
-              offset-code (arm64:lsr :x0 :x0 4 :imm t)
-              ;; x0 = offset, load ptr, compute address, load word
-              (arm64:mov :x1 :x0)                     ; x1 = offset
-              (arm64:ldr :x0 :sp :offset (temp-slot td))  ; x0 = ptr (raw)
-              (arm64:add :x0 :x0 :x1)                   ; x0 = ptr + offset
-              (arm64:ldr :x0 :x0 :offset 0)))))       ; x0 = [x0] (raw 64-bit value)
-
-    (t (arm64:movz :x0 0))))
+(defun cmp-result-to-bool (cond-code)
+  "OLD ACCUMULATOR CODEGEN HELPER - REMOVED."
+  (declare (ignore cond-code))
+  (error "OLD ACCUMULATOR CODEGEN REMOVED: cmp-result-to-bool should not be called"))
 
 ;;; ============================================================
 ;;; Part 8: Multi-Function Compiler
@@ -5564,6 +3535,8 @@
            (let* ((name (cadr f))
                   (params (caddr f))
                   (parsed (parse-lambda-list params)))
+             ;; Mark as defined to clear any forward reference warnings
+             (mark-function-defined name)
              (collect-defun-names (cdr forms) (cons (cons name parsed) acc))))
           ((and (consp f) (eq (car f) 'progn))
            ;; Recurse into progn body, then continue with rest
@@ -5585,6 +3558,18 @@
                           (car body-forms)
                           (cons 'progn body-forms)))
                   (cf (compile-defun nm ps bd env fenv)))
+             ;; DEBUG: Print all function names
+             (format t "~%DEBUG: Compiled defun ~S~%" nm)
+             ;; DEBUG: Print MAIN's IR in detail
+             (when (string= (symbol-name nm) "MAIN")
+               (format t "  ** FOUND MAIN **~%")
+               (format t "  body-forms count: ~D~%" (length body-forms))
+               (format t "  bd: ~S~%" (if (and (consp bd) (eq (car bd) 'progn))
+                                          (list 'progn (length (cdr bd)) 'forms)
+                                          bd))
+               (format t "  IR tag: ~S~%" (car (third cf)))
+               (when (eq (car (third cf)) 'progn-ir)
+                 (format t "  IR progn forms: ~D~%" (length (cadr (third cf))))))
              (compile-defuns (cdr forms) env fenv (cons cf acc))))
           ((and (consp f) (eq (car f) 'progn))
            ;; Recurse into progn body, then continue with rest
@@ -5900,9 +3885,11 @@
     code))
 
 (defun codegen-main (mir rtaddrs)
-  (append (prologue)
-          (codegen mir rtaddrs nil 0)
-          (epilogue)))
+  "Generate main program code using register-allocated codegen.
+   NOTE: This now uses codegen-main-reg-alloc exclusively.
+   The old accumulator-based codegen has been removed."
+  (declare (ignore rtaddrs))
+  (codegen-main-reg-alloc mir))
 
 (defparameter *lambda-counter* 0)
 
@@ -6136,7 +4123,8 @@
                                (eq (car item) :extern-call)
                                (eq (car item) :continue)
                                (eq (car item) :loop-continue)
-                               (eq (car item) :return-from)))
+                               (eq (car item) :return-from)
+                               (eq (car item) :lambda-ref-marker)))
                       ;; 4-byte instructions
                       (calc (cdr items) (+ acc 4)))
                      ((consp item)
@@ -6217,19 +4205,15 @@
               ;; Still need to resolve extern calls
               (resolve-calls (codegen-main mir rtaddrs) nil)
               ;; Functions defined - need linking
-              (let* (;; First, generate main code with nil fnoffs to get size
-                     ;; This code contains (:call-fn name) markers
-                     (main-code-temp (append (prologue)
-                                             (codegen mir rtaddrs nil 0)
-                                             (epilogue)))
+              ;; NOTE: codegen-main-reg-alloc generates code with :call-fn markers
+              ;; that get resolved by resolve-calls at the end. The markers are
+              ;; position-independent so we only need to generate code once.
+              (let* (;; Generate main code - markers will be resolved later
+                     (main-code (codegen-main-reg-alloc mir))
                      ;; Use code-size to handle markers
-                     (main-size (code-size main-code-temp))
+                     (main-size (code-size main-code))
                      ;; Build fnoffs starting after main code
                      (fnoffs (build-fnoffs fns main-size))
-                     ;; Generate main code again - markers remain, fnoffs now known
-                     (main-code (append (prologue)
-                                        (codegen mir rtaddrs fnoffs 0)
-                                        (epilogue)))
                      ;; Generate function code with fnoffs (functions can call each other)
                      (fn-code (codegen-all-fns fns rtaddrs fnoffs nil))
                      ;; Combine all code (still has markers)
@@ -7063,6 +5047,21 @@
            (dolist (b b-bytes)
              (push b result))
            (incf pos 4)))
+        ;; Lambda-ref marker - resolve to ADR (load function address)
+        ;; Format: (:lambda-ref-marker dest-reg lambda-name)
+        ((and (consp item) (eq (car item) :lambda-ref-marker))
+         (let* ((dest-reg (cadr item))
+                (lambda-name (caddr item))
+                (fn-entry (assoc lambda-name symtab))
+                (fn-pos (if fn-entry (cdr fn-entry)
+                           (error "Link error: undefined lambda ~A" lambda-name)))
+                (rel-offset (- fn-pos pos))
+                ;; ADR: rd = PC + imm21
+                ;; Encode ADR instruction
+                (adr-bytes (arm64:adr dest-reg rel-offset)))
+           (dolist (b adr-bytes)
+             (push b result))
+           (incf pos 4)))
         ;; Other markers pass through (extern-call, etc)
         ((consp item)
          (push item result)
@@ -7331,7 +5330,7 @@
     ;; Phase 5: Resolve extern calls and calculate layout
     (let* ((import-names (remove-duplicates (mapcar #'car all-imports) :test #'string=))
            (import-names (if (null import-names) '("_exit") import-names))
-           (wrapper-size 116)
+           (wrapper-size 168)
            (num-imports (length import-names))
            (stub-size 12)
            (stubs-total (* num-imports stub-size))

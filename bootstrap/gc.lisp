@@ -20,11 +20,13 @@
 ;;;   [x27+80]:  packages          (package list for native reader)
 ;;;   [x27+88]:  current-package   (current package name)
 ;;;   [x27+96]:  stack_base        (initial SP for stack scanning)
-;;;   [x27+104]: reserved (for 16-byte alignment)
-;;;   [x27+112]: heap data starts (MUST be 16-byte aligned for tag masking)
+;;;   [x27+104]: global_vars       (defvar/defparameter storage vector)
+;;;   [x27+112]: symtab_ptr        (symbol table base for stack traces)
+;;;   [x27+120]: symtab_count      (symbol table entry count)
+;;;   [x27+128]: heap data starts (MUST be 16-byte aligned for tag masking)
 ;;;
-;;; Semispace 0: [x27+112 .. x27+112+half)
-;;; Semispace 1: [x27+112+half .. x27+112+2*half)
+;;; Semispace 0: [x27+128 .. x27+128+half)
+;;; Semispace 1: [x27+128+half .. x27+128+2*half)
 ;;;
 ;;; Tags: 0=fixnum, 1=cons, 2=symbol, 3=vector, 4=string, 5=closure, 6=nil, 7=forward
 ;;;
@@ -55,7 +57,10 @@
 (defconstant +gc-packages-offset+ 80)        ;; Package list for native reader
 (defconstant +gc-current-package-offset+ 88) ;; Current package name
 (defconstant +gc-stack-base-offset+ 96)      ;; Initial SP for stack scanning
-(defconstant +gc-heap-data-offset+ 112)      ;; Heap data starts after globals (must be 16-byte aligned!)
+(defconstant +gc-global-vars-offset+ 104)    ;; Global variables vector (defvar/defparameter)
+(defconstant +gc-symtab-offset+ 112)         ;; Symbol table base pointer for stack traces
+(defconstant +gc-symtab-count-offset+ 120)   ;; Symbol table entry count
+(defconstant +gc-heap-data-offset+ 128)      ;; Heap data starts after globals (must be 16-byte aligned!)
 
 (defconstant +gc-tag-mask+ #xF)
 (defconstant +gc-tag-forward+ 7)
@@ -66,10 +71,11 @@
 
 (defun gc-trigger-check ()
   "Generate inline GC trigger check. Call after bumping x28.
-   Uses x9 as scratch. Calls gc_collect if x28 >= from_end."
+   Uses x8 as scratch (reserved for runtime, not allocatable).
+   Calls gc_collect if x28 >= from_end."
   (append
-   (arm64:ldr :x9 :gc :offset +gc-from-end-offset+)  ; x9 = from_end
-   (arm64:cmp :heap :x9)                                ; compare x28, from_end
+   (arm64:ldr :x8 :gc :offset +gc-from-end-offset+)  ; x8 = from_end
+   (arm64:cmp :heap :x8)                                ; compare x28, from_end
    (arm64:b.lo 2)                                  ; skip if x28 < from_end
    (list '(:call-fn GC-COLLECT))))                 ; bl gc_collect
 
@@ -252,7 +258,7 @@
    (arm64:str :code-base :sp :offset 192)
 
    ;; ===== Setup GC pointers =====
-   ;; x22 = from_start = x27 + 112 + space_flag
+   ;; x22 = from_start = x27 + 128 + space_flag
    ;; NOTE: Cannot use x18 on Apple ARM64 - it's platform reserved!
    (arm64:ldr :x22 :gc :offset +gc-space-flag-offset+)
    (arm64:add :x22 :x22 :gc)
@@ -334,7 +340,7 @@
    ;; stack_scan_loop:
    (list '(:label GC-STACK-SCAN-LOOP))
    (arm64:cmp :env :x21)
-   (arm64:b.hs 25)                          ; if x20 >= stack_base, done scanning
+   (arm64:b.hs 14)                          ; if x20 >= stack_base, done scanning
 
    ;; Load slot value
    (arm64:ldr :x0 :env :offset 0)
@@ -343,15 +349,15 @@
    ;; - Must be in from-space range [x22..x19)
    ;; - Must have a valid object tag (1-5)
    (arm64:cmp :x0 :x22)
-   (arm64:b.lo 19)                          ; skip if below from_start
+   (arm64:b.lo 9)                           ; skip if below from_start
    (arm64:cmp :x0 :x19)
-   (arm64:b.hs 17)                          ; skip if >= from_end
+   (arm64:b.hs 7)                           ; skip if >= from_end
 
    ;; Check tag: must be 1-5 (cons, symbol, vector, string, closure)
    (arm64:and* :x1 :x0 +gc-tag-mask+ :imm t)    ; x1 = tag
-   (arm64:cbz :x1 14)                         ; skip if fixnum (tag 0)
+   (arm64:cbz :x1 5)                          ; skip if fixnum (tag 0)
    (arm64:cmp :x1 6 :imm t)
-   (arm64:b.hs 12)                          ; skip if nil (6) or forward (7)
+   (arm64:b.hs 3)                           ; skip if nil (6) or forward (7)
 
    ;; Looks like a heap pointer - copy it
    (list '(:call-fn GC-COPY))
@@ -359,7 +365,7 @@
 
    ;; Advance to next stack slot
    (arm64:add :env :env 8 :imm t)
-   (arm64:b -20)                            ; back to stack_scan_loop
+   (arm64:b -14)                            ; back to stack_scan_loop
 
    ;; stack_scan_done:
    (list '(:label GC-STACK-SCAN-DONE))
@@ -369,16 +375,16 @@
    ;; scan_loop:
    (list '(:label GC-SCAN-LOOP))
    (arm64:cmp :x16 :x17)
-   (arm64:b.hs 20)                     ; if to_scan >= to_free, done
+   (arm64:b.hs 12)                     ; if to_scan >= to_free, done
 
    ;; Load word at to_scan, check if it's a heap pointer to copy
    (arm64:ldr :x0 :x16 :offset 0)
    (arm64:and* :x1 :x0 +gc-tag-mask+ :imm t)  ; x1 = tag
-   (arm64:cbz :x1 6)                     ; skip if fixnum (tag 0)
+   (arm64:cbz :x1 7)                     ; skip if fixnum (tag 0)
    (arm64:cmp :x1 6 :imm t)
-   (arm64:b.eq 4)                      ; skip if nil (tag 6)
+   (arm64:b.eq 5)                      ; skip if nil (tag 6)
    (arm64:cmp :x1 7 :imm t)
-   (arm64:b.eq 2)                      ; skip if forward (tag 7)
+   (arm64:b.eq 3)                      ; skip if forward (tag 7)
 
    ;; It's a potential heap pointer - copy it
    (list '(:call-fn GC-COPY))
@@ -386,7 +392,7 @@
 
    ;; Advance to_scan by 8 bytes
    (arm64:add :x16 :x16 8 :imm t)
-   (arm64:b -14)                       ; back to scan_loop
+   (arm64:b -12)                       ; back to scan_loop
 
    ;; ===== Flip spaces =====
    (list '(:label GC-SCAN-DONE))
@@ -500,7 +506,7 @@
      x27 = mmap'd heap base
      [x27+0]:   intern_table = nil (0x06)
      [x27+8]:   lambda_counter = 0
-     [x27+16]:  from_end = x27 + 112 + half_heap_size
+     [x27+16]:  from_end = x27 + 128 + half_heap_size
      [x27+24]:  half_heap_size
      [x27+32]:  space_flag = 0
      [x27+40]:  gc_state = 0
@@ -511,8 +517,11 @@
      [x27+80]:  packages = nil
      [x27+88]:  current-package = nil
      [x27+96]:  stack_base = sp
-     [x27+112]: heap data starts
-     x28 = x27 + 112 (allocation pointer)"
+     [x27+104]: global_vars = nil (defvar/defparameter storage)
+     [x27+112]: symtab_ptr = nil (symbol table for stack traces)
+     [x27+120]: symtab_count = 0
+     [x27+128]: heap data starts
+     x28 = x27 + 128 (allocation pointer)"
   (let* ((half-heap-size (ash (- heap-size +gc-heap-data-offset+) -1))
          (half-high (ash half-heap-size -16))
          (half-low (logand half-heap-size #xFFFF))
@@ -610,12 +619,15 @@
      (arm64:mov :x12 :sp)  ; x12 = sp
      (arm64:str :x12 :gc :offset +gc-stack-base-offset+)
 
-     ;; Compute from_end = x27 + 112 + half_heap_size
+     ;; Store global_vars = nil [x27+104]
+     (arm64:str :x9 :gc :offset +gc-global-vars-offset+)  ; x9 still 6 (nil)
+
+     ;; Compute from_end = x27 + 128 + half_heap_size
      (arm64:add :x12 :gc +gc-heap-data-offset+ :imm t)
      (arm64:add :x12 :x12 :x11)
      (arm64:str :x12 :gc :offset +gc-from-end-offset+)
 
-     ;; Set x28 = x27 + 112 (allocation pointer)
+     ;; Set x28 = x27 + 128 (allocation pointer)
      (arm64:add :heap :gc +gc-heap-data-offset+ :imm t))))
 
 ;;; ============================================================

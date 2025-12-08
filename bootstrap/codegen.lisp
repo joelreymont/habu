@@ -415,28 +415,29 @@
 
 (defun gc-trigger-code ()
   "Generate inline GC trigger check. Insert after allocations.
-   Uses x9 as scratch. Emits :call-fn marker if GC needed.
+   Uses x8 as scratch (reserved for runtime, not allocatable).
+   Emits :call-fn marker if GC needed.
    In generational mode: checks nursery-end, calls GEN-MINOR-GC.
    In simple mode: checks from-end, calls GC-COLLECT."
   #+sbcl
   (if *use-generational-gc*
       ;; Generational GC: compare against nursery-end
       (append-all
-       (list (arm64:ldr :x9 :gc :offset +gen-nursery-end-offset+)  ; x9 = nursery_end
-             (arm64:cmp :heap :x9)                                   ; compare x28, nursery_end
+       (list (arm64:ldr :x8 :gc :offset +gen-nursery-end-offset+)  ; x8 = nursery_end
+             (arm64:cmp :heap :x8)                                   ; compare x28, nursery_end
              (arm64:b.lo 2)                                     ; skip if x28 < nursery_end
              (list (list :call-fn 'GEN-MINOR-GC))))
       ;; Simple GC: compare against from-end
       (append-all
-       (list (arm64:ldr :x9 :gc :offset +gc-from-end-offset+)  ; x9 = from_end
-             (arm64:cmp :heap :x9)                               ; compare x28, from_end
+       (list (arm64:ldr :x8 :gc :offset +gc-from-end-offset+)  ; x8 = from_end
+             (arm64:cmp :heap :x8)                               ; compare x28, from_end
              (arm64:b.lo 2)
              (list (list :call-fn 'GC-COLLECT)))))
   #-sbcl
   ;; Native mode: always use simple GC for now
   (append-all
-   (list (arm64:ldr :x9 :gc :offset +gc-from-end-offset+)
-         (arm64:cmp :heap :x9)
+   (list (arm64:ldr :x8 :gc :offset +gc-from-end-offset+)
+         (arm64:cmp :heap :x8)
          (arm64:b.lo 2)
          (list (list :call-fn 'GC-COLLECT)))))
 
@@ -805,7 +806,7 @@
                                         (ir-may-call (cadddr ir))))
     ((has-tag ir 'mem-load-64-ir) (or (ir-may-call (cadr ir))
                                        (ir-may-call (caddr ir))))
-    (t nil)))
+    (t (error "ir-may-call: unknown IR type ~S" (if (consp ir) (car ir) ir)))))
 
 ;;; ============================================================
 ;;; String Lookup in Fnoffs (lambda names are strings)
@@ -1326,6 +1327,12 @@
             (len-temp (linearize-expr len-ir))
             (dst (fresh-temp)))
        (emit-linear (list 'buffer-to-string dst buf-temp len-temp))
+       dst))
+
+    ;; get-symtab-offset-ir: load symbol table offset from GC globals
+    ((has-tag ir 'get-symtab-offset-ir)
+     (let ((dst (fresh-temp)))
+       (emit-linear (list 'get-symtab-offset dst))
        dst))
 
     ;; Default: unknown IR
@@ -1903,15 +1910,14 @@
          (append (arm64:movz :x0 6)  ; nil
                  (linear-save-temp dst))))
 
-      ;; Sys-exit: exit with value
+      ;; Sys-exit: exit with value (via libSystem stub)
       (sys-exit
        (let ((val-temp (cadr instr)))
          (append (linear-load-temp :x0 val-temp)
                  (arm64:lsr :x0 :x0 4 :imm t)  ; untag
-                 (arm64:movz :x16 1)           ; exit syscall
-                 (arm64:svc 0))))
+                 (list (list :extern-call "_exit")))))
 
-      ;; Sys-open: open file (path flags mode) -> fd
+      ;; Sys-open: open file (path flags mode) -> fd (via libSystem stub)
       (sys-open
        (let ((dst (cadr instr))
              (path-temp (caddr instr))
@@ -1922,12 +1928,11 @@
                  (linear-load-temp :x1 flags-temp)
                  (arm64:lsr :x1 :x1 4 :imm t)  ; untag flags
                  (arm64:movz :x2 0)            ; mode = 0
-                 (arm64:movz :x16 5)           ; open syscall
-                 (arm64:svc 0)
+                 (list (list :extern-call "_open"))
                  (arm64:lsl :x0 :x0 4 :imm t)  ; tag result
                  (linear-save-temp dst))))
 
-      ;; Sys-read: read(fd, buf, len) -> bytes read
+      ;; Sys-read: read(fd, buf, len) -> bytes read (via libSystem stub)
       (sys-read
        (let ((dst (cadr instr))
              (fd-temp (caddr instr))
@@ -1940,12 +1945,11 @@
                  (arm64:add :x1 :x1 8 :imm t)  ; skip length
                  (linear-load-temp :x2 len-temp)
                  (arm64:lsr :x2 :x2 4 :imm t)
-                 (arm64:movz :x16 3)           ; read syscall
-                 (arm64:svc 0)
+                 (list (list :extern-call "_read"))
                  (arm64:lsl :x0 :x0 4 :imm t)
                  (linear-save-temp dst))))
 
-      ;; Sys-write: write(fd, buf, len) -> bytes written
+      ;; Sys-write: write(fd, buf, len) -> bytes written (via libSystem stub)
       (sys-write
        (let ((dst (cadr instr))
              (fd-temp (caddr instr))
@@ -1958,19 +1962,17 @@
                  (arm64:add :x1 :x1 8 :imm t)  ; skip length
                  (linear-load-temp :x2 len-temp)
                  (arm64:lsr :x2 :x2 4 :imm t)
-                 (arm64:movz :x16 4)           ; write syscall
-                 (arm64:svc 0)
+                 (list (list :extern-call "_write"))
                  (arm64:lsl :x0 :x0 4 :imm t)
                  (linear-save-temp dst))))
 
-      ;; Sys-close: close(fd)
+      ;; Sys-close: close(fd) (via libSystem stub)
       (sys-close
        (let ((dst (cadr instr))
              (fd-temp (caddr instr)))
          (append (linear-load-temp :x0 fd-temp)
                  (arm64:lsr :x0 :x0 4 :imm t)
-                 (arm64:movz :x16 6)           ; close syscall
-                 (arm64:svc 0)
+                 (list (list :extern-call "_close"))
                  (arm64:lsl :x0 :x0 4 :imm t)
                  (linear-save-temp dst))))
 
@@ -2181,17 +2183,18 @@
           ;; x3 = loop counter = 0
           (arm64:movz :x3 0)
           ;; Loop: copy chars from vector to string
-          (arm64:cmp :x3 :x5)                    ; 0
-          (arm64:b.ge 10)                        ; +10 = skip 10 instructions to end
+          ;; Offsets: cmp=0, b.ge=1, body=2-8, b=9, exit=10
+          (arm64:cmp :x3 :x5)                    ; 0: compare counter with length
+          (arm64:b.ge 9)                         ; 1: skip 9 instrs to exit (instr 10)
           ;; Load vec[x3]: address = x1 + 8 + x3*8
-          (arm64:lsl :x4 :x3 3 :imm t)           ; x4 = x3 * 8
-          (arm64:add :x4 :x4 8 :imm t)           ; x4 = 8 + x3*8
-          (arm64:add :x4 :x1 :x4)                ; x4 = vec_base + offset
-          (arm64:ldr :x4 :x4 :offset 0)          ; x4 = tagged fixnum
-          (arm64:lsr :x4 :x4 4 :imm t)           ; x4 = char value
-          (arm64:strb :x4 :x2 :x3 :reg t)        ; [x2 + x3] = x4 (byte)
-          (arm64:add :x3 :x3 1 :imm t)           ; x3++
-          (arm64:b -10)                          ; back to cmp
+          (arm64:lsl :x4 :x3 3 :imm t)           ; 2: x4 = x3 * 8
+          (arm64:add :x4 :x4 8 :imm t)           ; 3: x4 = 8 + x3*8
+          (arm64:add :x4 :x1 :x4)                ; 4: x4 = vec_base + offset
+          (arm64:ldr :x4 :x4 :offset 0)          ; 5: x4 = tagged fixnum
+          (arm64:lsr :x4 :x4 4 :imm t)           ; 6: x4 = char value
+          (arm64:strb :x4 :x2 :x3 :reg t)        ; 7: [x2 + x3] = x4 (byte)
+          (arm64:add :x3 :x3 1 :imm t)           ; 8: x3++
+          (arm64:b -9)                           ; 9: back to cmp (instr 0)
           ;; Tag result with string tag (4)
           (arm64:movz :x4 4)
           (arm64:orr :x0 :x0 :x4)
@@ -2213,8 +2216,10 @@
               (name (caddr instr))
               (free-offsets (cadddr instr))
               ;; Look up function offset
-              (fn-entry (lookup-string name fnoffs))
-              (fn-offset (if fn-entry (cdr fn-entry) 0)))
+              (fn-entry (lookup-string name fnoffs)))
+         (unless fn-entry
+           (error "Function not found in fnoffs: ~A" name))
+         (let* ((fn-offset (cdr fn-entry)))
          (if (null free-offsets)
              ;; No captures - simple closure
              (append
@@ -2262,7 +2267,7 @@
                 (arm64:add :x0 :x0 5 :imm t)
                 (arm64:add :heap :heap 16 :imm t)
                 (gc-trigger-code)
-                (linear-save-temp dst))))))
+                (linear-save-temp dst)))))))
 
       ;; buffer-to-string: convert raw byte buffer to string (inline)
       ;; Allocates string on heap, copies bytes from buffer
@@ -2303,6 +2308,13 @@
           ;; loop_end: tag result with string tag (4)
           (arm64:movz :x4 4)                ; x4 = string tag
           (arm64:orr :x0 :x0 :x4)           ; x0 |= tag
+          (linear-save-temp dst))))
+
+      (get-symtab-offset
+       ;; Load tagged symtab offset from [x27+112]
+       (let ((dst (cadr instr)))
+         (append
+          (arm64:ldr :x0 :gc :offset 112)    ; load tagged value from x27+112
           (linear-save-temp dst))))
 
       (otherwise
@@ -2416,9 +2428,11 @@
       (let* ((branch-offset (car fixup))
              (label (cdr fixup))
              (target-offset (cdr (assoc label *linear-labels*))))
-        (when target-offset
-          ;; Calculate relative offset in instructions (bytes / 4)
-          (let ((rel-offset (ash (- target-offset branch-offset) -2)))
+        (unless target-offset
+          (error "codegen: unresolved branch to label ~S (fixups: ~S, labels: ~S)"
+                 label *linear-fixups* *linear-labels*))
+        ;; Calculate relative offset in instructions (bytes / 4)
+        (let ((rel-offset (ash (- target-offset branch-offset) -2)))
             ;; Patch the branch instruction
             (let ((old-instr (logior (ash (elt code branch-offset) 0)
                                     (ash (elt code (+ branch-offset 1)) 8)
@@ -2437,7 +2451,7 @@
                 (setf (elt code branch-offset) (logand new-instr #xFF))
                 (setf (elt code (+ branch-offset 1)) (logand (ash new-instr -8) #xFF))
                 (setf (elt code (+ branch-offset 2)) (logand (ash new-instr -16) #xFF))
-                (setf (elt code (+ branch-offset 3)) (logand (ash new-instr -24) #xFF))))))))
+                (setf (elt code (+ branch-offset 3)) (logand (ash new-instr -24) #xFF)))))))
 
     code))
 
@@ -3191,8 +3205,8 @@
             (then-size (code-size then-code)))
        (append-all
         (list cond-code
-              (arm64:cmp :x0 0 :imm t)
-              ;; Branch if cond==0 (false) to skip then + unconditional branch
+              (arm64:cmp :x0 6 :imm t)  ; nil is #x06, not 0
+              ;; Branch if cond==nil (false) to skip then + unconditional branch
               (arm64:b.eq (ash (+ then-size 8) -2))
               then-code
               ;; Unconditional branch to skip else
@@ -3212,8 +3226,8 @@
        ;; exit at X+4+body_size+4. So skip = (body_size+8)/4 instructions
        (append-all
         (list test-code
-              (arm64:cmp :x0 0 :imm t)
-              ;; If test is false (x0==0), skip body and back-branch
+              (arm64:cmp :x0 6 :imm t)  ; nil is #x06, not 0
+              ;; If test is false (x0==nil), skip body and back-branch
               (arm64:b.eq (ash (+ body-size 8) -2))
               body-code
               ;; Jump back to start of test
@@ -3798,8 +3812,10 @@
      (let* ((name (cadr ir))
             (free-offsets (caddr ir))
             ;; Look up function offset in fnoffs
-            (fn-entry (lookup-string name fnoffs))
-            (fn-offset (if fn-entry (cdr fn-entry) 0)))
+            (fn-entry (lookup-string name fnoffs)))
+       (unless fn-entry
+         (error "Function not found in fnoffs: ~A" name))
+       (let* ((fn-offset (cdr fn-entry)))
        ;; Build closure on heap: (fn-offset . captured-env)
        ;; First, build captured environment on heap (list of captured values)
        (if (null free-offsets)
@@ -3835,7 +3851,7 @@
                     (arm64:add :heap :heap 16 :imm t)
                     (gc-trigger-code)  ; GC check after closure allocation
                     ;; Restore x24
-                    (arm64:ldr :closure :sp :offset xs)))))))
+                    (arm64:ldr :closure :sp :offset xs))))))))
 
     ;; Function reference (closure for named function)
     ;; fn-ref-ir = (fn-ref-ir name) where name is a symbol
@@ -3844,8 +3860,10 @@
     ((has-tag ir 'fn-ref-ir)
      (let* ((name (cadr ir))
             ;; Look up function offset in fnoffs (symbol key)
-            (fn-entry (lookup-string name fnoffs))
-            (fn-offset (if fn-entry (cdr fn-entry) 0)))
+            (fn-entry (lookup-string name fnoffs)))
+       (unless fn-entry
+         (error "Function not found in fnoffs: ~A" name))
+       (let* ((fn-offset (cdr fn-entry)))
        ;; Build closure on heap: (fn-offset . nil)
        ;; No captures, so env is nil
        (append-all
@@ -3857,7 +3875,7 @@
               (arm64:mov :x0 :heap)
               (arm64:add :x0 :x0 5 :imm t)  ;; closure tag
               (arm64:add :heap :heap 16 :imm t)
-              (gc-trigger-code)))))
+              (gc-trigger-code))))))
 
     ;; Funcall-IR
     ((has-tag ir 'funcall-ir)
@@ -3906,6 +3924,10 @@
      (let ((val-code (codegen (cadr ir) rtaddrs fnoffs td)))
        (append val-code
                (arm64:str :x0 :gc :offset 8))))
+
+    ;; Get-frame-pointer: get x29 as raw pointer for stack walking
+    ((has-tag ir 'get-frame-pointer-ir)
+     (arm64:mov :x0 :x29))
 
     ;; Get-symbol-counter: load counter from [x27 + 48]
     ;; Returns tagged fixnum (counter stored pre-tagged at offset 48)
@@ -3979,8 +4001,8 @@
             (branch-code (list (list :tco-branch))))
        (append-all (list args-code copy-code branch-code))))
 
-    ;; Default - return empty
-    (t nil)))
+    ;; Default - unknown IR type
+    (t (error "codegen: unknown IR type ~S" (if (consp ir) (car ir) ir)))))
 
 ;;; ============================================================
 ;;; Helper: TCO Args Codegen (old recursive codegen - native only)
@@ -4096,7 +4118,7 @@
                        acc
                        (gen-load (+ i 1)
                                  (append acc
-                                              (arm64:ldr i 31 :offset (+ base (* i 8))))))))
+                                              (arm64:ldr (num-to-reg i) :sp :offset (+ base (* i 8))))))))
           (gen-load 0 nil)))))
 
 ;;; ============================================================
@@ -4177,18 +4199,25 @@
 ;;; Function Codegen
 ;;; ============================================================
 
+#+sbcl
 (defun codegen-fn (fn rtaddrs fnoffs)
-  "Generate code for a function. Tries register allocator first, falls back to linear.
+  "Generate code for a function using register allocation.
    Accepts two formats:
    - Native: (name params body-ir param-base) - 4 elements
    - SBCL:   (name params body-ir free-vars free-offsets) - 5 elements
-   For SBCL format, param-base = (length free-vars)."
-  ;; Try register allocator first (produces much better code)
-  #+sbcl
+   For SBCL format, param-base = (length free-vars).
+
+   NOTE: Only uses register-allocated codegen. No fallback."
+  (declare (ignore rtaddrs fnoffs))
   (let ((reg-alloc-code (codegen-fn-reg-alloc fn)))
-    (when reg-alloc-code
-      (return-from codegen-fn reg-alloc-code)))
-  ;; Fall back to linear codegen (reg-alloc returned nil)
+    (if reg-alloc-code
+        reg-alloc-code
+        (error "codegen-fn-reg-alloc failed for ~A - unsupported IR in body" (car fn)))))
+
+#-sbcl
+(defun codegen-fn (fn rtaddrs fnoffs)
+  "Generate code for a function (native Habu version).
+   Uses linear codegen until register allocator is ported."
   (let* ((params (cadr fn))
          (body-ir (caddr fn))
          (fourth (cadddr fn))
@@ -4333,6 +4362,8 @@
                       (tally (cdr items) (+ acc 4)))
                      ((and (consp item) (eq (car item) :return-from))
                       (tally (cdr items) (+ acc 4)))
+                     ((and (consp item) (eq (car item) :lambda-ref-marker))
+                      (tally (cdr items) (+ acc 4))) ; ADR instruction = 4 bytes
                      ((and (consp item) (eq (car item) :loop-start))
                       (tally (cdr items) acc)) ; 0 bytes - position marker only
                      ((and (consp item) (eq (car item) :block-start))
@@ -4437,8 +4468,8 @@
 
 (defun deliver (source output-path &optional (heap-size #x4000000))
   "Compile source string to native executable.
-   Heap is allocated via mmap at runtime.
-   HEAP-SIZE: runtime heap size in bytes (default 64MB).
+   Heap is pre-allocated in __DATA segment (mapped by dyld at load time).
+   HEAP-SIZE: heap size in bytes (default 64MB).
    Supports: defun, lambda, funcall, GC runtime."
   #-sbcl (register-compiler-symbols)
   (reset-symbol-table)
@@ -4446,12 +4477,9 @@
   #+sbcl (reset-compile-warnings)
   (let* ((forms (read-all source))
          (result (compile-forms forms))
-         ;; Check for undefined functions (compile-time)
-         (_ #+sbcl (when (report-compile-warnings)
-                     (error "Compilation aborted due to undefined functions")))
          (defuns-orig (car result))
          (main-ir-orig (cadr result))
-         (wrapper-size 216)  ;; mmap heap initialization wrapper (5+40+2+7)*4
+         (wrapper-size 168)  ;; heap initialization wrapper (42 instructions * 4 bytes)
          ;; Lift lambdas from main-ir
          (main-lift-result #+sbcl (lift-lambdas-2 main-ir-orig nil)
                            #-sbcl (lift-lambdas main-ir-orig nil))
@@ -4496,15 +4524,19 @@
            (bytes-with-markers (flatten-code-keep-markers-and-calls all-code))
            ;; Collect extern calls
            (extern-calls (collect-extern-calls bytes-with-markers))
-           (imports (get-unique-imports extern-calls))
-           (imports (if (null imports) '("_exit") imports))
-           ;; Calculate stubs - use same code-offset as macho.lisp
-           (code-offset (mmap-heap-code-offset))
+           (imports-raw (get-unique-imports extern-calls))
+           ;; Always ensure _exit is in imports (wrapper needs it)
+           (imports (if (member "_exit" imports-raw :test #'string=)
+                        imports-raw
+                        (cons "_exit" imports-raw)))
+           ;; Calculate layout
+           (code-offset #x400)
            (exact-flat-size (count-actual-bytes bytes-with-markers))
-           (exact-code-size (+ exact-flat-size wrapper-size))
-           (stubs-offset-unaligned (+ code-offset exact-code-size))
+           (stubs-total (* (length imports) 12))
+           (stubs-offset-unaligned (+ code-offset wrapper-size exact-flat-size))
            (stubs-offset (* (ceiling stubs-offset-unaligned 4) 4))
            (stub-size 12)
+           (stubs-end (+ stubs-offset stubs-total))
            ;; Build stub alist
            (stub-alist (build-stub-alist imports stubs-offset stub-size))
            ;; Convert fnoffs to byte addresses
@@ -4517,17 +4549,39 @@
            ;; Flatten all call markers
            (flatten-result (flatten-all-calls bytes-with-markers fn-alist stub-alist fn-addr-base))
            (flat-code (car flatten-result))
-           ;; Wrap with mmap-heap initialization
-           (wrapped-code (wrap-bytecode-with-mmap-heap flat-code heap-size)))
+           ;; Build all-fnoffs early (needed for symtab)
+           (all-fnoffs (append fnoffs
+                               (mapcar (lambda (entry)
+                                         (cons (car entry)
+                                               (- (cdr entry) fn-addr-base)))
+                                       gc-fn-alist)))
+           ;; Emit symbol table bytes - MUST be before heap-page-offset calculation
+           (symtab-bytes (emit-symbol-table all-fnoffs main-size))
+           (symtab-size (length symtab-bytes))
+           ;; Calculate heap page offset for ADRP instruction
+           ;; MUST include symtab-size since build-macho adds symtab after stubs
+           (text-content-end (+ stubs-end symtab-size))
+           (text-vmsize (* (ceiling text-content-end #x4000) #x4000))
+           (text-pages-4kb (/ text-vmsize #x1000))
+           (heap-page-offset (+ text-pages-4kb 4))  ;; +4 for __DATA_CONST pages (16KB = 4 pages)
+           ;; Calculate symtab offset relative to user code start (x26)
+           ;; x26 points to user code start, symtab is after code + stubs
+           (symtab-offset (+ exact-flat-size
+                             (- stubs-offset (+ code-offset wrapper-size))  ; alignment padding
+                             stubs-total))
+           (symtab-count (1+ (length all-fnoffs)))  ; +1 for _main entry
+           ;; Append symtab to code (after stubs will be added by linker)
+           (code-with-symtab flat-code)  ; symtab goes after stubs in linker
+           ;; Wrap with __DATA segment heap initialization
+           (wrapped-code (wrap-bytecode-with-heap-for-imports code-with-symtab
+                                                               heap-page-offset
+                                                               symtab-offset
+                                                               symtab-count)))
 
-      ;; Write executable
-      (let ((all-fnoffs (append fnoffs
-                                (mapcar (lambda (entry)
-                                          (cons (car entry)
-                                                (- (cdr entry) fn-addr-base)))
-                                        gc-fn-alist))))
-        (write-macho-executable-mmap-heap output-path wrapped-code imports all-fnoffs)
-        #+sbcl (write-symbol-map output-path all-fnoffs main-size imports stubs-offset)))))
+      ;; Write executable with imports, heap, and symbol table
+      (write-macho-executable-with-imports-and-heap output-path wrapped-code imports heap-size
+                                                    all-fnoffs symtab-bytes)
+      #+sbcl (write-symbol-map output-path all-fnoffs main-size imports stubs-offset))))
 
 (defun deliver-file (source-path output-path &optional (heap-size #x4000000))
   "Compile Lisp file to native executable.
@@ -4539,14 +4593,14 @@
   "Write a symbol map file for debugging.
    Format: HEX_OFFSET NAME (one per line)
    HEX_OFFSET is relative to __TEXT segment start (0x100000000 on macOS).
-   To find function from PC: offset = PC - 0x100000454 (base + code_offset + wrapper)"
+   To find function from PC: offset = PC - 0x100000468 (VM_BASE + code_offset + wrapper)"
   (let ((map-path (concatenate 'string output-path ".map"))
-        (wrapper-size 216)  ;; mmap heap wrapper (5+40+2+7)*4
-        (code-offset (mmap-heap-code-offset)))
+        (wrapper-size 168)  ;; heap wrapper (42 instructions * 4 bytes)
+        (code-offset #x400))
     (with-open-file (f map-path :direction :output :if-exists :supersede)
       ;; Header comment
       (format f ";; Symbol map for ~A~%" output-path)
-      (format f ";; PC to offset: (PC - 0x10000044C) for functions~%")
+      (format f ";; PC to offset: (PC - 0x1000003E8) for functions~%")
       (format f ";; Offset is relative to code start (after wrapper)~%~%")
       ;; Main entry
       (format f "0x~8,'0X _main~%" (+ code-offset wrapper-size))
@@ -4564,6 +4618,62 @@
           (format f "0x~8,'0X stub_~A~%" stub-off imp)
           (setf stub-off (+ stub-off 12))))
       (format t "Symbol map written to ~A~%" map-path))))
+
+;;; ============================================================
+;;; Embedded Symbol Table for Runtime Symbolication
+;;; ============================================================
+
+(defun emit-symbol-table (fnoffs main-size)
+  "Emit symbol table bytes for embedding in binary.
+   Returns a list of bytes containing:
+   - u64 count (number of entries)
+   - For each entry (sorted by offset):
+     - u64 offset (relative to wrapper end = user code start)
+     - u64 name_len
+     - name bytes (null-terminated, padded to 8)
+   The table includes _main at offset 0."
+  (let* ((sorted-entries (sort (copy-list fnoffs) #'< :key #'cdr))
+         ;; Add _main entry at the beginning
+         (all-entries (cons (cons 'main 0) sorted-entries))
+         (count (length all-entries)))
+    (labels ((u64-bytes (val)
+               (list (logand val #xFF)
+                     (logand (ash val -8) #xFF)
+                     (logand (ash val -16) #xFF)
+                     (logand (ash val -24) #xFF)
+                     (logand (ash val -32) #xFF)
+                     (logand (ash val -40) #xFF)
+                     (logand (ash val -48) #xFF)
+                     (logand (ash val -56) #xFF)))
+             (name-bytes (name)
+               (let* ((name-str (if (symbolp name) (symbol-name name) (string name)))
+                      (chars (loop for c across name-str collect (char-code c)))
+                      (len (length chars))
+                      (padded-len (* (ceiling (+ len 1) 8) 8)))  ; +1 for null, pad to 8
+                 (append chars
+                         (make-list (- padded-len len) :initial-element 0))))
+             (emit-entry (entry)
+               (let* ((name (car entry))
+                      (offset (cdr entry))
+                      (name-str (if (symbolp name) (symbol-name name) (string name))))
+                 (append (u64-bytes offset)
+                         (u64-bytes (length name-str))
+                         (name-bytes name)))))
+      (append (u64-bytes count)
+              (apply #'append (mapcar #'emit-entry all-entries))))))
+
+(defun symbol-table-size (fnoffs)
+  "Calculate the size of the embedded symbol table in bytes."
+  (let ((count (1+ (length fnoffs))))  ; +1 for _main
+    (labels ((entry-size (entry)
+               (let* ((name (car entry))
+                      (name-str (if (symbolp name) (symbol-name name) (string name)))
+                      (len (length name-str))
+                      (padded-len (* (ceiling (+ len 1) 8) 8)))
+                 (+ 8 8 padded-len))))  ; offset + name_len + padded_name
+      (+ 8  ; count
+         16 ; _main entry (8+8+8 padded "MAIN\0\0\0\0")
+         (reduce #'+ (mapcar #'entry-size fnoffs) :initial-value 0)))))
 
 (defun count-actual-bytes (items)
   "Count actual bytes in a flattened list, excluding markers.
@@ -4599,7 +4709,7 @@
   (let ((work-stack (list (list code 0 nil nil))))
     (loop
       (when (null work-stack)
-        (return nil))  ; Should not reach here
+        (error "flatten-code-keep-markers-and-calls: work stack unexpectedly empty"))
       (let* ((state (car work-stack))
              (items (first state))
              (pos (second state))
@@ -4687,6 +4797,14 @@
                ;; Internal label marker - skip entirely
                ((and (consp item) (eq (car item) :label))
                 (push (list (cdr items) pos acc parent) work-stack))
+               ;; Lambda-ref marker - reserve 4 bytes for ADR instruction
+               ((and (consp item) (eq (car item) :lambda-ref-marker))
+                (let ((marker (list :lambda-ref-marker (cadr item) (caddr item) pos)))
+                  (push (list (cdr items)
+                              (+ pos 4)
+                              (cons 0 (cons 0 (cons 0 (cons 0 (cons marker acc)))))
+                              parent)
+                        work-stack)))
                ;; Nested list - push current state as parent, process nested list
                ((consp item)
                 (push (list item 0 nil (list (cdr items) pos acc parent)) work-stack))
@@ -4783,18 +4901,42 @@
                       (let* ((name (cadr item))
                              (pos (caddr item))
                              (bl-addr (+ code-base-addr pos))
-                             (fn-addr (lookup-fn name))
-                             (new-result (if fn-addr
-                                            (emit-bl bl-addr fn-addr result)
-                                            ;; Function not found - emit NOP
-                                            (cons #xD5 (cons #x03 (cons #x20 (cons #x1F result)))))))
-                        (process (cdr items) 4 new-result (cons (cons name pos) positions) loop-stack block-ends)))
+                             (fn-addr (lookup-fn name)))
+                        (unless fn-addr
+                          (error "Function not found during code flattening: ~A" name))
+                        (let ((new-result (emit-bl bl-addr fn-addr result)))
+                          (process (cdr items) 4 new-result (cons (cons name pos) positions) loop-stack block-ends))))
                      ;; Function label marker - skip (no bytes)
                      ((and (consp item) (eq (car item) :fn-label))
                       (process (cdr items) 0 result positions loop-stack block-ends))
                     ;; Internal label marker - skip (no bytes)
                     ((and (consp item) (eq (car item) :label))
                      (process (cdr items) 0 result positions loop-stack block-ends))
+                    ;; Lambda-ref marker - emit ADR instruction
+                    ((and (consp item) (eq (car item) :lambda-ref-marker))
+                     (let* ((dest-reg (cadr item))
+                            (lambda-name (caddr item))
+                            (pos (cadddr item))
+                            (adr-addr (+ code-base-addr pos))
+                            (fn-addr (lookup-fn lambda-name)))
+                       (unless fn-addr
+                         (error "Lambda not found during code flattening: ~A" lambda-name))
+                       (let* ((rel-offset (- fn-addr adr-addr))
+                              ;; ADR: rd = PC + imm21
+                              ;; Format: 0 immlo[2] 10000 immhi[19] Rd[5]
+                              (immlo (logand (ash rel-offset 0) #x3))
+                              (immhi (logand (ash rel-offset -2) #x7FFFF))
+                              (rd (arm64:reg dest-reg))
+                              (adr-instr (logior (ash immlo 29)
+                                                 #x10000000
+                                                 (ash immhi 5)
+                                                 rd)))
+                         (process (cdr items) 4
+                                  (cons (logand (ash adr-instr -24) #xFF)
+                                        (cons (logand (ash adr-instr -16) #xFF)
+                                              (cons (logand (ash adr-instr -8) #xFF)
+                                                    (cons (logand adr-instr #xFF) result))))
+                                  positions loop-stack block-ends))))
                      ;; Regular byte
                      (t
                       (process (cdr items) 0 (cons item result) positions loop-stack block-ends)))))))
@@ -4836,7 +4978,7 @@
   (let ((work-stack (list (list code 0 nil nil))))
     (loop
       (when (null work-stack)
-        (return nil))
+        (error "flatten-code-keep-markers: work stack unexpectedly empty"))
       (let* ((state (car work-stack))
              (items (first state))
              (pos (second state))
