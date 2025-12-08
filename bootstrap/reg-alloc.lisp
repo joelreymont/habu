@@ -221,7 +221,9 @@
        (list (list (list 'tac-var vr (cadr ir))) vr)))
 
     ;; Binary operations: add, sub, mul, div, mod, bsh, band, bor, bxor
-    ((and (consp ir) (ir-tag-member (car ir) '("ADD" "SUB" "MUL" "DIV" "MOD" "BSH" "BAND" "BOR" "BXOR")))
+    ;; Note: some forms use -IR suffix (MOD-IR, DIV-IR) depending on compiler path
+    ((and (consp ir) (ir-tag-member (car ir) '("ADD" "SUB" "MUL" "DIV" "MOD" "BSH" "BAND" "BOR" "BXOR"
+                                               "MOD-IR" "DIV-IR" "ADD-IR" "SUB-IR" "MUL-IR")))
      (let* ((left-result (ir-to-tac (cadr ir) counter))
             (left-instrs (car left-result))
             (left-vr (cadr left-result))
@@ -229,11 +231,16 @@
             (right-instrs (car right-result))
             (right-vr (cadr right-result))
             (result-vr (next-vreg counter))
-            (op-name (ir-tag-name (car ir))))
+            (raw-name (ir-tag-name (car ir)))
+            ;; Strip -IR suffix if present (e.g., "MOD-IR" -> "MOD")
+            (op-name (if (and (> (length raw-name) 3)
+                              (string= (subseq raw-name (- (length raw-name) 3)) "-IR"))
+                         (subseq raw-name 0 (- (length raw-name) 3))
+                         raw-name)))
        (list (append left-instrs
                      right-instrs
                      (list (list 'tac-binop result-vr
-                                 (intern op-name :keyword)  ; :ADD, :SUB, etc.
+                                 (intern op-name :keyword)  ; :ADD, :SUB, :MOD, etc.
                                  left-vr right-vr)))
              result-vr)))
 
@@ -245,10 +252,11 @@
             (right-result (ir-to-tac (caddr ir) counter))
             (right-instrs (car right-result))
             (right-vr (cadr right-result))
-            (result-vr (next-vreg counter)))
+            (result-vr (next-vreg counter))
+            (op-name (ir-tag-name (car ir))))
        (list (append left-instrs
                      right-instrs
-                     (list (list 'tac-cmp result-vr (car ir) left-vr right-vr)))
+                     (list (list 'tac-cmp result-vr (intern op-name :keyword) left-vr right-vr)))
              result-vr)))
 
     ;; if-ir: conditional expression
@@ -528,6 +536,19 @@
                      (list (list 'tac-make-string result-vr vec-vr)))
              result-vr)))
 
+    ;; buffer-to-string-ir: convert raw byte buffer to string
+    ((and (consp ir) (ir-tag-matches (car ir) "BUFFER-TO-STRING-IR"))
+     (let* ((buf-result (ir-to-tac (cadr ir) counter))
+            (buf-instrs (car buf-result))
+            (buf-vr (cadr buf-result))
+            (len-result (ir-to-tac (caddr ir) counter))
+            (len-instrs (car len-result))
+            (len-vr (cadr len-result))
+            (result-vr (next-vreg counter)))
+       (list (append buf-instrs len-instrs
+                     (list (list 'tac-buffer-to-string result-vr buf-vr len-vr)))
+             result-vr)))
+
     ;; loop-ir: TCO loop (loop-ir body marker)
     ((and (consp ir) (ir-tag-matches (car ir) "LOOP-IR"))
      (let* ((loop-label (next-vreg counter))
@@ -550,14 +571,15 @@
      (let* ((new-args (cadr ir))
             (result-vr (next-vreg counter)))
        ;; Evaluate all new arg values to temp vregs first (avoid overwriting params mid-eval)
+       ;; NOTE: Must append instructions in correct order - arg-instrs AFTER acc-instrs
        (labels ((eval-args (args acc-instrs acc-vrs)
                   (if (null args)
-                      (list (reverse acc-instrs) (reverse acc-vrs))
+                      (list acc-instrs (reverse acc-vrs))
                       (let* ((arg-result (ir-to-tac (car args) counter))
                              (arg-instrs (car arg-result))
                              (arg-vr (cadr arg-result)))
                         (eval-args (cdr args)
-                                   (append arg-instrs acc-instrs)
+                                   (append acc-instrs arg-instrs)
                                    (cons arg-vr acc-vrs)))))
                 (gen-setvars (vrs idx)
                   ;; Store each vreg to param slot (offset = idx)
@@ -773,9 +795,130 @@
                      (list (list 'tac-bnot result-vr val-vr)))
              result-vr)))
 
-    ;; Default: return nil vreg for unhandled cases
+    ;; lambda-ref: reference to lifted lambda
+    ;; IR: (lambda-ref name free-offsets)
+    ;; free-offsets is list of env offsets for captured variables
+    ((and (consp ir) (ir-tag-matches (car ir) "LAMBDA-REF"))
+     (let ((result-vr (next-vreg counter))
+           (lambda-name (cadr ir))
+           (free-offsets (caddr ir)))
+       (list (list (list 'tac-lambda-ref result-vr lambda-name free-offsets)) result-vr)))
+
+    ;; symbol-name-ir: get symbol's name as string
+    ((and (consp ir) (ir-tag-matches (car ir) "SYMBOL-NAME-IR"))
+     (let* ((sym-result (ir-to-tac (cadr ir) counter))
+            (sym-instrs (car sym-result))
+            (sym-vr (cadr sym-result))
+            (result-vr (next-vreg counter)))
+       (list (append sym-instrs
+                     (list (list 'tac-symbol-name result-vr sym-vr)))
+             result-vr)))
+
+    ;; make-symbol-ir: create symbol from string
+    ((and (consp ir) (ir-tag-matches (car ir) "MAKE-SYMBOL-IR"))
+     (let* ((name-result (ir-to-tac (cadr ir) counter))
+            (name-instrs (car name-result))
+            (name-vr (cadr name-result))
+            (result-vr (next-vreg counter)))
+       (list (append name-instrs
+                     (list (list 'tac-make-symbol result-vr name-vr)))
+             result-vr)))
+
+    ;; make-symbol-from-string-ir: same as make-symbol-ir
+    ((and (consp ir) (ir-tag-matches (car ir) "MAKE-SYMBOL-FROM-STRING-IR"))
+     (let* ((name-result (ir-to-tac (cadr ir) counter))
+            (name-instrs (car name-result))
+            (name-vr (cadr name-result))
+            (result-vr (next-vreg counter)))
+       (list (append name-instrs
+                     (list (list 'tac-make-symbol result-vr name-vr)))
+             result-vr)))
+
+    ;; string-concat-ir: concatenate two strings
+    ((and (consp ir) (ir-tag-matches (car ir) "STRING-CONCAT-IR"))
+     (let* ((s1-result (ir-to-tac (cadr ir) counter))
+            (s1-instrs (car s1-result))
+            (s1-vr (cadr s1-result))
+            (s2-result (ir-to-tac (caddr ir) counter))
+            (s2-instrs (car s2-result))
+            (s2-vr (cadr s2-result))
+            (result-vr (next-vreg counter)))
+       (list (append s1-instrs s2-instrs
+                     (list (list 'tac-string-concat result-vr s1-vr s2-vr)))
+             result-vr)))
+
+    ;; string-equal-ir: compare two strings
+    ((and (consp ir) (ir-tag-matches (car ir) "STRING-EQUAL-IR"))
+     (let* ((s1-result (ir-to-tac (cadr ir) counter))
+            (s1-instrs (car s1-result))
+            (s1-vr (cadr s1-result))
+            (s2-result (ir-to-tac (caddr ir) counter))
+            (s2-instrs (car s2-result))
+            (s2-vr (cadr s2-result))
+            (result-vr (next-vreg counter)))
+       (list (append s1-instrs s2-instrs
+                     (list (list 'tac-string-equal result-vr s1-vr s2-vr)))
+             result-vr)))
+
+    ;; get-intern-table-ir: load intern table from [x27 + 0]
+    ((and (consp ir) (ir-tag-matches (car ir) "GET-INTERN-TABLE-IR"))
+     (let ((result-vr (next-vreg counter)))
+       (list (list (list 'tac-get-intern-table result-vr)) result-vr)))
+
+    ;; set-intern-table-ir: store intern table to [x27 + 0]
+    ((and (consp ir) (ir-tag-matches (car ir) "SET-INTERN-TABLE-IR"))
+     (let* ((val-result (ir-to-tac (cadr ir) counter))
+            (val-instrs (car val-result))
+            (val-vr (cadr val-result)))
+       (list (append val-instrs
+                     (list (list 'tac-set-intern-table val-vr)))
+             val-vr)))
+
+    ;; get-lambda-counter-ir: load lambda counter from [x27 + 8]
+    ((and (consp ir) (ir-tag-matches (car ir) "GET-LAMBDA-COUNTER-IR"))
+     (let ((result-vr (next-vreg counter)))
+       (list (list (list 'tac-get-lambda-counter result-vr)) result-vr)))
+
+    ;; set-lambda-counter-ir: store lambda counter to [x27 + 8]
+    ((and (consp ir) (ir-tag-matches (car ir) "SET-LAMBDA-COUNTER-IR"))
+     (let* ((val-result (ir-to-tac (cadr ir) counter))
+            (val-instrs (car val-result))
+            (val-vr (cadr val-result)))
+       (list (append val-instrs
+                     (list (list 'tac-set-lambda-counter val-vr)))
+             val-vr)))
+
+    ;; get-symbol-counter-ir: load symbol counter from [x27 + 48]
+    ((and (consp ir) (ir-tag-matches (car ir) "GET-SYMBOL-COUNTER-IR"))
+     (let ((result-vr (next-vreg counter)))
+       (list (list (list 'tac-get-symbol-counter result-vr)) result-vr)))
+
+    ;; set-symbol-counter-ir: store symbol counter to [x27 + 48]
+    ((and (consp ir) (ir-tag-matches (car ir) "SET-SYMBOL-COUNTER-IR"))
+     (let* ((val-result (ir-to-tac (cadr ir) counter))
+            (val-instrs (car val-result))
+            (val-vr (cadr val-result)))
+       (list (append val-instrs
+                     (list (list 'tac-set-symbol-counter val-vr)))
+             val-vr)))
+
+    ;; get-symbol-table-sym-ir: load symbol table from [x27 + 56]
+    ((and (consp ir) (ir-tag-matches (car ir) "GET-SYMBOL-TABLE-SYM-IR"))
+     (let ((result-vr (next-vreg counter)))
+       (list (list (list 'tac-get-symbol-table result-vr)) result-vr)))
+
+    ;; set-symbol-table-sym-ir: store symbol table to [x27 + 56]
+    ((and (consp ir) (ir-tag-matches (car ir) "SET-SYMBOL-TABLE-SYM-IR"))
+     (let* ((val-result (ir-to-tac (cadr ir) counter))
+            (val-instrs (car val-result))
+            (val-vr (cadr val-result)))
+       (list (append val-instrs
+                     (list (list 'tac-set-symbol-table val-vr)))
+             val-vr)))
+
+    ;; Default: error on unhandled IR
     (t
-     (list nil 0))))
+     (error "ir-to-tac: Unhandled IR form: ~A" ir))))
 
 ;;; ============================================================
 ;;; Pass 2: Liveness Analysis
@@ -796,10 +939,19 @@
       tac-string-length tac-string-ref tac-make-string
       tac-get-tag tac-funcall tac-make-closure
       tac-get-global-vars tac-get-cmdline-args
-      tac-sys-open tac-sys-read tac-sys-write tac-sys-close
-      tac-buffer-byte-set tac-buffer-byte-ref tac-mem-set-byte tac-mem-load-64 tac-bnot)
+      tac-sys-open tac-sys-read tac-sys-write tac-sys-close tac-buffer-to-string
+      tac-buffer-byte-set tac-buffer-byte-ref tac-mem-set-byte tac-mem-load-64 tac-bnot
+      ;; New TAC instructions
+      tac-lambda-ref tac-symbol-name tac-make-symbol
+      tac-string-concat tac-string-equal
+      tac-get-intern-table tac-get-lambda-counter tac-get-symbol-counter tac-get-symbol-table)
      (cadr instr))
-    (t nil)))
+    ;; Instructions that don't define a vreg (control flow, stores, etc.)
+    ((tac-return tac-if tac-goto tac-label tac-setvar tac-sys-exit
+      tac-loop-start tac-continue tac-setcar tac-setcdr tac-vector-set
+      tac-set-global-vars tac-set-intern-table)
+     nil)
+    (t (error "tac-def: Unhandled TAC instruction: ~A" (car instr)))))
 
 (defun tac-use (instr)
   "Return list of vregs used by this instruction"
@@ -807,13 +959,18 @@
     ;; Instructions with no vreg uses
     ((tac-lit tac-param tac-var tac-label tac-goto tac-nil tac-sym tac-str
       tac-loop-start tac-continue tac-make-closure
-      tac-get-global-vars tac-get-cmdline-args)
+      tac-get-global-vars tac-get-cmdline-args
+      ;; New no-use instructions
+      tac-lambda-ref tac-get-intern-table tac-get-lambda-counter
+      tac-get-symbol-counter tac-get-symbol-table)
      nil)
     ;; Binary operations: (tac-binop dest op vr1 vr2)
     ((tac-binop tac-cmp)
      (list (cadddr instr) (nth 4 instr)))
     ;; setvar: (tac-setvar offset vreg)
-    ((tac-setvar tac-set-global-vars tac-sys-exit)
+    ((tac-setvar tac-set-global-vars tac-sys-exit
+      ;; New single-use setters
+      tac-set-intern-table tac-set-lambda-counter tac-set-symbol-counter tac-set-symbol-table)
      (list (caddr instr)))
     ;; Conditionals: (tac-if cond-vreg then else)
     ((tac-if tac-if-not)
@@ -823,10 +980,18 @@
      (list (cadr instr)))
     ;; Unary ops: (tac-X dest src)
     ((tac-move tac-car tac-cdr tac-vector-length tac-string-length
-      tac-make-vector tac-make-string tac-get-tag tac-bnot tac-sys-close)
+      tac-make-vector tac-make-string tac-get-tag tac-bnot tac-sys-close
+      ;; New unary ops
+      tac-symbol-name tac-make-symbol)
      (list (caddr instr)))
     ;; Cons: (tac-cons dest car cdr)
     ((tac-cons tac-mem-load-64)
+     (list (caddr instr) (cadddr instr)))
+    ;; buffer-to-string: (tac-buffer-to-string dest buf len)
+    ((tac-buffer-to-string)
+     (list (caddr instr) (cadddr instr)))
+    ;; Binary string ops: (tac-X dest vr1 vr2)
+    ((tac-string-concat tac-string-equal)
      (list (caddr instr) (cadddr instr)))
     ;; Mutation: (tac-setcar cons-vr val-vr), (tac-setcdr cons-vr val-vr)
     ((tac-setcar tac-setcdr)
@@ -852,7 +1017,7 @@
     ;; buffer-byte-set, mem-set-byte: (tac-X dest buf/ptr idx/off val)
     ((tac-buffer-byte-set tac-mem-set-byte)
      (list (caddr instr) (cadddr instr) (nth 4 instr)))
-    (t nil)))
+    (t (error "tac-use: Unhandled TAC instruction: ~A" (car instr)))))
 
 (defun compute-liveness (tac-instrs)
   "Compute liveness for TAC instructions.
@@ -1056,6 +1221,13 @@
 ;;; Generates ARM64 machine code from TAC + allocation.
 ;;; Uses arm64 package intrinsics for instruction encoding.
 
+;; Spill slots start at sp+0x40 (after saved callee registers at sp+0x10-0x38)
+(defparameter +spill-base-offset+ #x40)
+
+(defun spill-offset (slot)
+  "Calculate stack offset for spill slot. Spill area starts at sp+0x40."
+  (+ +spill-base-offset+ (* slot 8)))
+
 (defun vreg-to-reg (vreg allocation)
   "Look up physical register for vreg. Returns reg keyword (:x9, etc.) or (:spill slot)."
   (let ((entry (assoc vreg allocation)))
@@ -1066,8 +1238,8 @@
    If vreg is in a register, emit MOV. If spilled, emit LDR from stack."
   (let ((loc (vreg-to-reg vreg allocation)))
     (if (and (consp loc) (eq (car loc) :spill))
-        ;; Spilled: load from stack
-        (arm64:ldr dest-reg :sp :offset (* (cadr loc) 8))
+        ;; Spilled: load from stack (spill area starts at sp+0x40)
+        (arm64:ldr dest-reg :sp :offset (spill-offset (cadr loc)))
         ;; In register: move if different
         (if (eq loc dest-reg)
             nil  ; Already in dest
@@ -1078,8 +1250,8 @@
    If vreg is in a register, emit MOV. If spilled, emit STR to stack."
   (let ((loc (vreg-to-reg vreg allocation)))
     (if (and (consp loc) (eq (car loc) :spill))
-        ;; Spilled: store to stack
-        (arm64:str src-reg :sp :offset (* (cadr loc) 8))
+        ;; Spilled: store to stack (spill area starts at sp+0x40)
+        (arm64:str src-reg :sp :offset (spill-offset (cadr loc)))
         ;; In register: move if different
         (if (eq loc src-reg)
             nil  ; Already there
@@ -1121,6 +1293,7 @@
     (case op
       ;; tac-lit: load literal into vreg
       ;; Value must be tagged as fixnum (value << 4, tag 0)
+      ;; Uses load-addr to handle constants > 16 bits (movz + movk)
       ((tac-lit)
        (let* ((vreg (cadr instr))
               (value (caddr instr))
@@ -1128,10 +1301,10 @@
               (dest (vreg-to-reg vreg allocation)))
          (if (and (consp dest) (eq (car dest) :spill))
              ;; Spilled: load to x0, then store
-             (append (arm64:movz :x0 (logand tagged #xFFFF))
-                     (arm64:str :x0 :sp :offset (* (cadr dest) 8)))
+             (append (load-addr :x0 tagged)
+                     (arm64:str :x0 :sp :offset (spill-offset (cadr dest))))
              ;; In register
-             (arm64:movz dest (logand tagged #xFFFF)))))
+             (load-addr dest tagged))))
 
       ;; tac-var: load from environment
       ;; Environment is at x20, params at negative offsets from x20
@@ -1144,7 +1317,7 @@
          (if (and (consp dest) (eq (car dest) :spill))
              ;; Spilled: load to x0, then store
              (append (arm64:ldur :x0 :env :offset byte-off)
-                     (arm64:str :x0 :sp :offset (* (cadr dest) 8)))
+                     (arm64:str :x0 :sp :offset (spill-offset (cadr dest))))
              ;; In register
              (arm64:ldur dest :env :offset byte-off))))
 
@@ -1157,7 +1330,7 @@
               (byte-off (* offset -8)))
          (if (and (consp src) (eq (car src) :spill))
              ;; Spilled: load to x0, then store to env
-             (append (arm64:ldr :x0 :sp :offset (* (cadr src) 8))
+             (append (arm64:ldr :x0 :sp :offset (spill-offset (cadr src)))
                      (arm64:stur :x0 :env :offset byte-off))
              ;; In register
              (arm64:stur src :env :offset byte-off))))
@@ -1178,9 +1351,9 @@
          (append
           ;; Load spilled operands
           (when (and (consp left) (eq (car left) :spill))
-            (arm64:ldr :x0 :sp :offset (* (cadr left) 8)))
+            (arm64:ldr :x0 :sp :offset (spill-offset (cadr left))))
           (when (and (consp right) (eq (car right) :spill))
-            (arm64:ldr :x1 :sp :offset (* (cadr right) 8)))
+            (arm64:ldr :x1 :sp :offset (spill-offset (cadr right))))
           ;; Perform operation
           ;; Note: For tagged fixnums, ADD/SUB work directly since tags cancel out.
           ;; MUL needs to untag one operand: (a<<4)*(b>>4) = (a*b)<<4
@@ -1232,10 +1405,10 @@
              ;; Bitwise XOR - need to preserve tag bits
              ;; XOR the values, then restore tag (low 4 bits should be 0 for fixnums)
              (arm64:eor dest-reg left-reg right-reg))
-            (t (arm64:mov dest-reg :x0)))  ; Unknown op
+            (t (error "tac-codegen-instr: Unknown binop: ~A" binop)))
           ;; Store if spilled
           (when (and (consp dest) (eq (car dest) :spill))
-            (arm64:str :x0 :sp :offset (* (cadr dest) 8))))))
+            (arm64:str :x0 :sp :offset (spill-offset (cadr dest)))))))
 
       ;; tac-cmp: comparison (result is tagged nil=6 or t=16)
       ((tac-cmp)
@@ -1252,20 +1425,20 @@
          (append
           ;; Load spilled operands
           (when (and (consp left) (eq (car left) :spill))
-            (arm64:ldr :x0 :sp :offset (* (cadr left) 8)))
+            (arm64:ldr :x0 :sp :offset (spill-offset (cadr left))))
           (when (and (consp right) (eq (car right) :spill))
-            (arm64:ldr :x1 :sp :offset (* (cadr right) 8)))
+            (arm64:ldr :x1 :sp :offset (spill-offset (cadr right))))
           ;; Compare
           (arm64:cmp left-reg right-reg)
           ;; Set result based on condition (0 or 1)
           (case cmp-op
-            ((cmp-eq) (arm64:cset dest-reg arm64:+eq+))
-            ((cmp-ne) (arm64:cset dest-reg arm64:+ne+))
-            ((cmp-lt) (arm64:cset dest-reg arm64:+lt+))
-            ((cmp-le) (arm64:cset dest-reg arm64:+le+))
-            ((cmp-gt) (arm64:cset dest-reg arm64:+gt+))
-            ((cmp-ge) (arm64:cset dest-reg arm64:+ge+))
-            (t (arm64:movz dest-reg 0)))
+            ((:CMP-EQ) (arm64:cset dest-reg arm64:+eq+))
+            ((:CMP-NE) (arm64:cset dest-reg arm64:+ne+))
+            ((:CMP-LT) (arm64:cset dest-reg arm64:+lt+))
+            ((:CMP-LE) (arm64:cset dest-reg arm64:+le+))
+            ((:CMP-GT) (arm64:cset dest-reg arm64:+gt+))
+            ((:CMP-GE) (arm64:cset dest-reg arm64:+ge+))
+            (t (error "tac-codegen-instr: Unknown comparison op: ~A" cmp-op)))
           ;; Convert 0/1 to tagged nil(6)/t(16):
           ;; neg dest, dest  => -1 (all 1s) or 0
           ;; and dest, dest, #10 => 10 or 0 (use x2 as scratch for mask)
@@ -1276,7 +1449,7 @@
           (arm64:add dest-reg dest-reg 6 :imm t)
           ;; Store if spilled
           (when (and (consp dest) (eq (car dest) :spill))
-            (arm64:str :x0 :sp :offset (* (cadr dest) 8))))))
+            (arm64:str :x0 :sp :offset (spill-offset (cadr dest)))))))
 
       ;; tac-move: copy between vregs
       ((tac-move)
@@ -1287,14 +1460,14 @@
          (cond
            ;; Both spilled
            ((and (consp dest) (consp src))
-            (append (arm64:ldr :x0 :sp :offset (* (cadr src) 8))
-                    (arm64:str :x0 :sp :offset (* (cadr dest) 8))))
+            (append (arm64:ldr :x0 :sp :offset (spill-offset (cadr src)))
+                    (arm64:str :x0 :sp :offset (spill-offset (cadr dest)))))
            ;; Src spilled
            ((consp src)
-            (arm64:ldr dest :sp :offset (* (cadr src) 8)))
+            (arm64:ldr dest :sp :offset (spill-offset (cadr src))))
            ;; Dest spilled
            ((consp dest)
-            (arm64:str src :sp :offset (* (cadr dest) 8)))
+            (arm64:str src :sp :offset (spill-offset (cadr dest))))
            ;; Both in registers
            ((eq dest src) nil)
            (t (arm64:mov dest src)))))
@@ -1304,7 +1477,7 @@
        (let* ((vreg (cadr instr))
               (src (vreg-to-reg vreg allocation)))
          (if (and (consp src) (eq (car src) :spill))
-             (arm64:ldr :x0 :sp :offset (* (cadr src) 8))
+             (arm64:ldr :x0 :sp :offset (spill-offset (cadr src)))
              (if (eq src :x0)
                  nil  ; Already in x0
                  (arm64:mov :x0 src)))))
@@ -1326,7 +1499,7 @@
          (append
           ;; Load condition if spilled
           (when (and (consp cond-loc) (eq (car cond-loc) :spill))
-            (arm64:ldr :x0 :sp :offset (* (cadr cond-loc) 8)))
+            (arm64:ldr :x0 :sp :offset (spill-offset (cadr cond-loc))))
           ;; Compare with nil (0x06)
           (arm64:cmp cond-reg #x06 :imm t)
           ;; Branch markers (resolved in second pass)
@@ -1365,7 +1538,7 @@
                  (if (and (consp arg-loc) (eq (car arg-loc) :spill))
                      ;; Load from spill slot to arg register
                      (setq arg-code (append arg-code
-                                            (arm64:ldr arg-reg :sp :offset (* (cadr arg-loc) 8))))
+                                            (arm64:ldr arg-reg :sp :offset (spill-offset (cadr arg-loc)))))
                      ;; Move from allocated reg to arg register
                      (unless (eq arg-loc arg-reg)
                        (setq arg-code (append arg-code (arm64:mov arg-reg arg-loc))))))
@@ -1379,10 +1552,15 @@
                (setq restore-code (append restore-code
                                           (arm64:ldr reg :sp :offset restore-offset)))
                (setq restore-offset (+ restore-offset 8)))
+            ;; Recompute x20 (env) = sp + 0x3F80 (must match fn-fixed-prologue in codegen.lisp)
+            ;; We can't just load from sp+24 - that's the CALLER's x20, not ours
+            (setq restore-code (append restore-code
+                                        (arm64:add :env :sp #x3 :imm t :shift12 t)   ; x20 = sp + 0x3000
+                                        (arm64:add :env :env #xF80 :imm t)))          ; x20 = x20 + 0xF80
              ;; Move result from x0 to dest
              (let ((result-code
                      (if (and (consp dest) (eq (car dest) :spill))
-                         (arm64:str :x0 :sp :offset (* (cadr dest) 8))
+                         (arm64:str :x0 :sp :offset (spill-offset (cadr dest)))
                          (if (eq dest :x0)
                              nil
                              (arm64:mov dest :x0)))))
@@ -1394,7 +1572,7 @@
               (dest (vreg-to-reg vreg allocation)))
          (if (and (consp dest) (eq (car dest) :spill))
              (append (arm64:movz :x0 6)
-                     (arm64:str :x0 :sp :offset (* (cadr dest) 8)))
+                     (arm64:str :x0 :sp :offset (spill-offset (cadr dest))))
              (arm64:movz dest 6))))
 
       ;; tac-cons: allocate cons cell (needs heap allocation)
@@ -1411,9 +1589,9 @@
          (append
           ;; Load spilled car/cdr
           (when (and (consp car-loc) (eq (car car-loc) :spill))
-            (arm64:ldr :x0 :sp :offset (* (cadr car-loc) 8)))
+            (arm64:ldr :x0 :sp :offset (spill-offset (cadr car-loc))))
           (when (and (consp cdr-loc) (eq (car cdr-loc) :spill))
-            (arm64:ldr :x1 :sp :offset (* (cadr cdr-loc) 8)))
+            (arm64:ldr :x1 :sp :offset (spill-offset (cadr cdr-loc))))
           ;; Store car at [x28]
           (arm64:str car-reg :heap :offset 0)
           ;; Store cdr at [x28+8]
@@ -1424,7 +1602,7 @@
           (arm64:add :heap :heap 16 :imm t)
           ;; Store if spilled
           (when (and (consp dest) (eq (car dest) :spill))
-            (arm64:str :x2 :sp :offset (* (cadr dest) 8))))))
+            (arm64:str :x2 :sp :offset (spill-offset (cadr dest)))))))
 
       ;; tac-car: extract car from cons cell
       ((tac-car)
@@ -1437,14 +1615,14 @@
          (append
           ;; Load if spilled
           (when (and (consp src-loc) (eq (car src-loc) :spill))
-            (arm64:ldr :x0 :sp :offset (* (cadr src-loc) 8)))
+            (arm64:ldr :x0 :sp :offset (spill-offset (cadr src-loc))))
           ;; Clear tag bits to get base address
           (arm64:and* dest-reg src-reg -16 :imm t)
           ;; Load car from [base]
           (arm64:ldr dest-reg dest-reg :offset 0)
           ;; Store if spilled
           (when (and (consp dest) (eq (car dest) :spill))
-            (arm64:str :x0 :sp :offset (* (cadr dest) 8))))))
+            (arm64:str :x0 :sp :offset (spill-offset (cadr dest)))))))
 
       ;; tac-cdr: extract cdr from cons cell
       ((tac-cdr)
@@ -1457,14 +1635,14 @@
          (append
           ;; Load if spilled
           (when (and (consp src-loc) (eq (car src-loc) :spill))
-            (arm64:ldr :x0 :sp :offset (* (cadr src-loc) 8)))
+            (arm64:ldr :x0 :sp :offset (spill-offset (cadr src-loc))))
           ;; Clear tag bits to get base address
           (arm64:and* dest-reg src-reg -16 :imm t)
           ;; Load cdr from [base+8]
           (arm64:ldr dest-reg dest-reg :offset 8)
           ;; Store if spilled
           (when (and (consp dest) (eq (car dest) :spill))
-            (arm64:str :x0 :sp :offset (* (cadr dest) 8))))))
+            (arm64:str :x0 :sp :offset (spill-offset (cadr dest)))))))
 
       ;; tac-if-not: conditional branch on nil
       ((tac-if-not)
@@ -1475,7 +1653,7 @@
          (append
           ;; Load condition if spilled
           (when (and (consp cond-loc) (eq (car cond-loc) :spill))
-            (arm64:ldr :x0 :sp :offset (* (cadr cond-loc) 8)))
+            (arm64:ldr :x0 :sp :offset (spill-offset (cadr cond-loc))))
           ;; Compare with nil (0x06)
           (arm64:cmp cond-reg #x06 :imm t)
           ;; Branch if equal to nil
@@ -1493,9 +1671,9 @@
          (append
           ;; Load spilled values
           (when (and (consp cons-loc) (eq (car cons-loc) :spill))
-            (arm64:ldr :x0 :sp :offset (* (cadr cons-loc) 8)))
+            (arm64:ldr :x0 :sp :offset (spill-offset (cadr cons-loc))))
           (when (and (consp val-loc) (eq (car val-loc) :spill))
-            (arm64:ldr :x1 :sp :offset (* (cadr val-loc) 8)))
+            (arm64:ldr :x1 :sp :offset (spill-offset (cadr val-loc))))
           ;; Clear tag to get base address into x2
           (arm64:and* :x2 cons-reg -16 :imm t)
           ;; Store value at [base]
@@ -1511,9 +1689,9 @@
               (val-reg (if (and (consp val-loc) (eq (car val-loc) :spill)) :x1 val-loc)))
          (append
           (when (and (consp cons-loc) (eq (car cons-loc) :spill))
-            (arm64:ldr :x0 :sp :offset (* (cadr cons-loc) 8)))
+            (arm64:ldr :x0 :sp :offset (spill-offset (cadr cons-loc))))
           (when (and (consp val-loc) (eq (car val-loc) :spill))
-            (arm64:ldr :x1 :sp :offset (* (cadr val-loc) 8)))
+            (arm64:ldr :x1 :sp :offset (spill-offset (cadr val-loc))))
           ;; Clear tag to get base address into x2
           (arm64:and* :x2 cons-reg -16 :imm t)
           ;; Store value at [base+8]
@@ -1529,13 +1707,13 @@
               (dest-reg (if (and (consp dest) (eq (car dest) :spill)) :x0 dest)))
          (append
           (when (and (consp src-loc) (eq (car src-loc) :spill))
-            (arm64:ldr :x0 :sp :offset (* (cadr src-loc) 8)))
+            (arm64:ldr :x0 :sp :offset (spill-offset (cadr src-loc))))
           ;; AND with 0xF to get tag
           (arm64:and* dest-reg src-reg #xF :imm t)
           ;; Shift left 4 to make it a tagged fixnum
           (arm64:lsl dest-reg dest-reg 4 :imm t)
           (when (and (consp dest) (eq (car dest) :spill))
-            (arm64:str :x0 :sp :offset (* (cadr dest) 8))))))
+            (arm64:str :x0 :sp :offset (spill-offset (cadr dest)))))))
 
       ;; tac-vector-length: get vector length from header
       ((tac-vector-length)
@@ -1547,7 +1725,7 @@
               (dest-reg (if (and (consp dest) (eq (car dest) :spill)) :x0 dest)))
          (append
           (when (and (consp vec-loc) (eq (car vec-loc) :spill))
-            (arm64:ldr :x0 :sp :offset (* (cadr vec-loc) 8)))
+            (arm64:ldr :x0 :sp :offset (spill-offset (cadr vec-loc))))
           ;; Clear tag to get base address
           (arm64:and* dest-reg vec-reg -16 :imm t)
           ;; Load length from header (first word)
@@ -1555,7 +1733,7 @@
           ;; Tag as fixnum
           (arm64:lsl dest-reg dest-reg 4 :imm t)
           (when (and (consp dest) (eq (car dest) :spill))
-            (arm64:str :x0 :sp :offset (* (cadr dest) 8))))))
+            (arm64:str :x0 :sp :offset (spill-offset (cadr dest)))))))
 
       ;; tac-string-length: same as vector-length (strings have length header)
       ((tac-string-length)
@@ -1567,7 +1745,7 @@
               (dest-reg (if (and (consp dest) (eq (car dest) :spill)) :x0 dest)))
          (append
           (when (and (consp str-loc) (eq (car str-loc) :spill))
-            (arm64:ldr :x0 :sp :offset (* (cadr str-loc) 8)))
+            (arm64:ldr :x0 :sp :offset (spill-offset (cadr str-loc))))
           ;; Clear tag to get base address
           (arm64:and* dest-reg str-reg -16 :imm t)
           ;; Load length from header
@@ -1575,7 +1753,7 @@
           ;; Tag as fixnum
           (arm64:lsl dest-reg dest-reg 4 :imm t)
           (when (and (consp dest) (eq (car dest) :spill))
-            (arm64:str :x0 :sp :offset (* (cadr dest) 8))))))
+            (arm64:str :x0 :sp :offset (spill-offset (cadr dest)))))))
 
       ;; tac-vector-ref: load vector element
       ((tac-vector-ref)
@@ -1590,9 +1768,9 @@
               (dest-reg (if (and (consp dest) (eq (car dest) :spill)) :x0 dest)))
          (append
           (when (and (consp vec-loc) (eq (car vec-loc) :spill))
-            (arm64:ldr :x0 :sp :offset (* (cadr vec-loc) 8)))
+            (arm64:ldr :x0 :sp :offset (spill-offset (cadr vec-loc))))
           (when (and (consp idx-loc) (eq (car idx-loc) :spill))
-            (arm64:ldr :x1 :sp :offset (* (cadr idx-loc) 8)))
+            (arm64:ldr :x1 :sp :offset (spill-offset (cadr idx-loc))))
           ;; Clear vector tag to get base
           (arm64:and* :x2 vec-reg -16 :imm t)
           ;; Index is tagged fixnum, use as byte offset (already * 16, need * 8)
@@ -1603,7 +1781,7 @@
           ;; Load from [base + 8] (skip header)
           (arm64:ldr dest-reg :x2 :offset 8)
           (when (and (consp dest) (eq (car dest) :spill))
-            (arm64:str :x0 :sp :offset (* (cadr dest) 8))))))
+            (arm64:str :x0 :sp :offset (spill-offset (cadr dest)))))))
 
       ;; tac-vector-set: store vector element
       ((tac-vector-set)
@@ -1618,11 +1796,11 @@
               (val-reg (if (and (consp val-loc) (eq (car val-loc) :spill)) :x2 val-loc)))
          (append
           (when (and (consp vec-loc) (eq (car vec-loc) :spill))
-            (arm64:ldr :x0 :sp :offset (* (cadr vec-loc) 8)))
+            (arm64:ldr :x0 :sp :offset (spill-offset (cadr vec-loc))))
           (when (and (consp idx-loc) (eq (car idx-loc) :spill))
-            (arm64:ldr :x1 :sp :offset (* (cadr idx-loc) 8)))
+            (arm64:ldr :x1 :sp :offset (spill-offset (cadr idx-loc))))
           (when (and (consp val-loc) (eq (car val-loc) :spill))
-            (arm64:ldr :x2 :sp :offset (* (cadr val-loc) 8)))
+            (arm64:ldr :x2 :sp :offset (spill-offset (cadr val-loc))))
           ;; Clear vector tag
           (arm64:and* :x3 vec-reg -16 :imm t)
           ;; Compute element address
@@ -1644,9 +1822,9 @@
               (dest-reg (if (and (consp dest) (eq (car dest) :spill)) :x0 dest)))
          (append
           (when (and (consp str-loc) (eq (car str-loc) :spill))
-            (arm64:ldr :x0 :sp :offset (* (cadr str-loc) 8)))
+            (arm64:ldr :x0 :sp :offset (spill-offset (cadr str-loc))))
           (when (and (consp idx-loc) (eq (car idx-loc) :spill))
-            (arm64:ldr :x1 :sp :offset (* (cadr idx-loc) 8)))
+            (arm64:ldr :x1 :sp :offset (spill-offset (cadr idx-loc))))
           ;; Clear string tag
           (arm64:and* :x2 str-reg -16 :imm t)
           ;; Index >> 4 gives actual index, + 8 for header
@@ -1657,7 +1835,7 @@
           ;; Tag as fixnum
           (arm64:lsl dest-reg dest-reg 4 :imm t)
           (when (and (consp dest) (eq (car dest) :spill))
-            (arm64:str :x0 :sp :offset (* (cadr dest) 8))))))
+            (arm64:str :x0 :sp :offset (spill-offset (cadr dest)))))))
 
       ;; tac-loop-start: marker for loop, no code generated
       ((tac-loop-start) nil)
@@ -1667,12 +1845,53 @@
       ((tac-continue)
        (list :continue-marker (cadr instr)))
 
-      ;; tac-funcall: call through closure - complex, delegate to runtime helper
+      ;; tac-funcall: call through closure
       ;; Format: (tac-funcall dest fn-vr arg-vrs)
+      ;; Closure format: [tagged-fn-offset (8), captured-env (8)] with tag 5
+      ;; Call convention:
+      ;;   - Set x24 to captured env (cons list from closure+8)
+      ;;   - Extract fn-offset, add x26, call via BLR
       ((tac-funcall)
-       ;; For now, emit as marker for later resolution
-       ;; Full implementation needs closure unpacking
-       (list (list :funcall-marker instr)))
+       (let* ((dest-vreg (cadr instr))
+              (fn-vr (caddr instr))
+              (arg-vrs (cadddr instr))
+              (dest (vreg-to-reg dest-vreg allocation))
+              (fn-loc (vreg-to-reg fn-vr allocation))
+              (dest-reg (if (and (consp dest) (eq (car dest) :spill)) :x0 dest)))
+         ;; BUG FIX: Load arguments into x0-x7 FIRST, before loading closure to x9
+         ;; This prevents clobbering args that may be allocated to x9
+         (append
+          (let ((arg-code nil)
+                (arg-idx 0))
+            (dolist (arg-vr arg-vrs)
+              (let* ((arg-loc (vreg-to-reg arg-vr allocation))
+                     (arg-reg (nth arg-idx '(:x0 :x1 :x2 :x3 :x4 :x5 :x6 :x7))))
+                (when (< arg-idx 8)
+                  (setq arg-code
+                        (append arg-code
+                                (if (and (consp arg-loc) (eq (car arg-loc) :spill))
+                                    (arm64:ldr arg-reg :sp :offset (spill-offset (cadr arg-loc)))
+                                    (unless (eq arg-loc arg-reg)
+                                      (arm64:mov arg-reg arg-loc)))))
+                  (setq arg-idx (+ arg-idx 1)))))
+            arg-code)
+          ;; Now load closure into x9 (after args are safely in x0-x7)
+          (if (and (consp fn-loc) (eq (car fn-loc) :spill))
+              (arm64:ldr :x9 :sp :offset (spill-offset (cadr fn-loc)))
+              (arm64:mov :x9 fn-loc))
+          ;; Extract captured env from closure+8, put in x24 for callee
+          (arm64:sub :x9 :x9 5 :imm t)       ; remove closure tag
+          (arm64:ldr :closure :x9 :offset 8) ; x24 = captured env
+          ;; Extract code pointer from closure+0
+          (arm64:ldr :x10 :x9 :offset 0)     ; load tagged fn-offset
+          (arm64:lsr :x10 :x10 4 :imm t)     ; untag to get raw offset
+          (arm64:add :x10 :x26 :x10)         ; add code base to get address
+          (arm64:blr :x10)                   ; call through register
+          ;; Result is in x0, move to dest
+          (unless (eq dest-reg :x0)
+            (arm64:mov dest-reg :x0))
+          (when (and (consp dest) (eq (car dest) :spill))
+            (arm64:str :x0 :sp :offset (spill-offset (cadr dest)))))))
 
       ;; tac-make-closure: create closure object - complex
       ((tac-make-closure)
@@ -1706,7 +1925,7 @@
           ;; Now move from x19 to final destination
           (if (and (consp dest) (eq (car dest) :spill))
               ;; Spill slot destination
-              (arm64:str :x19 :sp :offset (* (cadr dest) 8))
+              (arm64:str :x19 :sp :offset (spill-offset (cadr dest)))
               ;; Register destination
               (arm64:mov dest :x19)))))
 
@@ -1737,13 +1956,94 @@
           ;; Now move from x19 to final destination
           (if (and (consp dest) (eq (car dest) :spill))
               ;; Spill slot destination
-              (arm64:str :x19 :sp :offset (* (cadr dest) 8))
+              (arm64:str :x19 :sp :offset (spill-offset (cadr dest)))
               ;; Register destination
               (arm64:mov dest :x19)))))
 
-      ;; tac-make-vector, tac-make-string: heap allocation - emit markers
-      ((tac-make-vector tac-make-string)
-       (list (list :heap-alloc-marker instr)))
+      ;; tac-make-vector: allocate vector on heap
+      ;; Format: (tac-make-vector dest-vreg size-vreg)
+      ;; Vector layout: [length (8 bytes)] [data (n * 8 bytes)]
+      ((tac-make-vector)
+       (let* ((dest-vreg (cadr instr))
+              (size-vreg (caddr instr))
+              (dest (vreg-to-reg dest-vreg allocation))
+              (size-loc (vreg-to-reg size-vreg allocation)))
+         (append
+          ;; Load size to x0
+          (if (and (consp size-loc) (eq (car size-loc) :spill))
+              (arm64:ldr :x0 :sp :offset (spill-offset (cadr size-loc)))
+              (arm64:mov :x0 size-loc))
+          ;; GC pre-check
+          (gc-trigger-code)
+          ;; x0 = tagged size, store untagged length at [x28+0]
+          (arm64:lsr :x1 :x0 4 :imm t)           ; x1 = untagged length
+          (arm64:str :x1 :heap :offset 0)        ; [x28+0] = length
+          ;; Calculate allocation size: 8 + (x0 >> 1)
+          (arm64:lsr :x1 :x0 1 :imm t)           ; x1 = untagged_size * 8
+          (arm64:add :x1 :x1 8 :imm t)           ; x1 = 8 + data_size
+          ;; Round to 16-byte alignment
+          (arm64:add :x1 :x1 15 :imm t)
+          (arm64:and* :x1 :x1 -16 :imm t)
+          ;; Return tagged pointer, bump heap
+          (arm64:mov :x19 :heap)                 ; x19 = base (callee-saved, survives GC)
+          (arm64:add :heap :heap :x1)
+          ;; Tag with vector tag (0x3)
+          (arm64:add :x19 :x19 3 :imm t)
+          ;; GC trigger check
+          (gc-trigger-code)
+          ;; Move result to destination
+          (if (and (consp dest) (eq (car dest) :spill))
+              (arm64:str :x19 :sp :offset (spill-offset (cadr dest)))
+              (arm64:mov dest :x19)))))
+
+      ;; tac-make-string: make string from vector of char codes
+      ;; Format: (tac-make-string dest-vreg vec-vreg)
+      ((tac-make-string)
+       (let* ((dest-vreg (cadr instr))
+              (vec-vreg (caddr instr))
+              (dest (vreg-to-reg dest-vreg allocation))
+              (vec-loc (vreg-to-reg vec-vreg allocation)))
+         (append
+          ;; Load vector to x1
+          (if (and (consp vec-loc) (eq (car vec-loc) :spill))
+              (arm64:ldr :x1 :sp :offset (spill-offset (cadr vec-loc)))
+              (arm64:mov :x1 vec-loc))
+          (arm64:sub :x1 :x1 3 :imm t)           ; untag vector
+          ;; x5 = vec length
+          (arm64:ldr :x5 :x1 :offset 0)
+          ;; GC pre-check
+          (gc-trigger-code)
+          ;; Allocate string: store length at [x28]
+          (arm64:str :x5 :heap :offset 0)
+          ;; x4 = alloc size = (8 + len + 15) & ~15
+          (arm64:add :x4 :x5 23 :imm t)
+          (arm64:and* :x4 :x4 -16 :imm t)
+          ;; x19 = string base (callee-saved, survives GC), bump heap
+          (arm64:mov :x19 :heap)
+          (arm64:add :heap :heap :x4)
+          ;; x2 = string data = x19 + 8
+          (arm64:add :x2 :x19 8 :imm t)
+          ;; x3 = loop counter = 0
+          (arm64:movz :x3 0)
+          ;; Loop: copy chars from vector to string
+          ;; Offsets: cmp=0, b.ge=1, body=2-8, b=9, exit=10
+          (arm64:cmp :x3 :x5)                    ; 0: compare counter with length
+          (arm64:b.ge 9)                         ; 1: skip 9 instrs to exit (instr 10)
+          ;; Load vec[x3]: address = x1 + 8 + x3*8
+          (arm64:lsl :x4 :x3 3 :imm t)           ; 2: x4 = x3 * 8
+          (arm64:add :x4 :x4 8 :imm t)           ; 3: x4 = 8 + x3*8
+          (arm64:add :x4 :x1 :x4)                ; 4: x4 = vec_base + offset
+          (arm64:ldr :x4 :x4 :offset 0)          ; 5: x4 = tagged fixnum
+          (arm64:lsr :x4 :x4 4 :imm t)           ; 6: x4 = char value
+          (arm64:strb :x4 :x2 :x3 :reg t)        ; 7: [x2 + x3] = x4 (byte)
+          (arm64:add :x3 :x3 1 :imm t)           ; 8: x3++
+          (arm64:b -9)                           ; 9: back to cmp (instr 0)
+          ;; Tag result with string tag (4)
+          (arm64:add :x19 :x19 4 :imm t)         ; 10: exit point
+          ;; Move result to destination
+          (if (and (consp dest) (eq (car dest) :spill))
+              (arm64:str :x19 :sp :offset (spill-offset (cadr dest)))
+              (arm64:mov dest :x19)))))
 
       ;; tac-get-global-vars: load from [x27 + 104]
       ((tac-get-global-vars)
@@ -1753,7 +2053,7 @@
          (append
           (arm64:ldr dest-reg :gc :offset 104)
           (when (and (consp dest) (eq (car dest) :spill))
-            (arm64:str :x0 :sp :offset (* (cadr dest) 8))))))
+            (arm64:str :x0 :sp :offset (spill-offset (cadr dest)))))))
 
       ;; tac-set-global-vars: store to [x27 + 104]
       ((tac-set-global-vars)
@@ -1762,7 +2062,7 @@
               (val-reg (if (and (consp val-loc) (eq (car val-loc) :spill)) :x0 val-loc)))
          (append
           (when (and (consp val-loc) (eq (car val-loc) :spill))
-            (arm64:ldr :x0 :sp :offset (* (cadr val-loc) 8)))
+            (arm64:ldr :x0 :sp :offset (spill-offset (cadr val-loc))))
           (arm64:str val-reg :gc :offset 104))))
 
       ;; tac-get-cmdline-args: return nil for now
@@ -1773,7 +2073,7 @@
          (append
           (arm64:movz dest-reg 6)  ; nil
           (when (and (consp dest) (eq (car dest) :spill))
-            (arm64:str :x0 :sp :offset (* (cadr dest) 8))))))
+            (arm64:str :x0 :sp :offset (spill-offset (cadr dest)))))))
 
       ;; tac-sys-exit: exit syscall
       ((tac-sys-exit)
@@ -1782,7 +2082,7 @@
               (val-reg (if (and (consp val-loc) (eq (car val-loc) :spill)) :x0 val-loc)))
          (append
           (when (and (consp val-loc) (eq (car val-loc) :spill))
-            (arm64:ldr :x0 :sp :offset (* (cadr val-loc) 8)))
+            (arm64:ldr :x0 :sp :offset (spill-offset (cadr val-loc))))
           (arm64:lsr :x0 val-reg 4 :imm t)  ; untag
           (arm64:movz :x16 1)               ; exit syscall
           (arm64:svc 0))))
@@ -1800,18 +2100,18 @@
          (append
           ;; Load path string, skip tag and length
           (if (and (consp path-loc) (eq (car path-loc) :spill))
-              (arm64:ldr :x0 :sp :offset (* (cadr path-loc) 8))
+              (arm64:ldr :x0 :sp :offset (spill-offset (cadr path-loc)))
               (arm64:mov :x0 path-loc))
           (arm64:sub :x0 :x0 4 :imm t)  ; untag string
           (arm64:add :x0 :x0 8 :imm t)  ; skip length
           ;; Load flags
           (if (and (consp flags-loc) (eq (car flags-loc) :spill))
-              (arm64:ldr :x1 :sp :offset (* (cadr flags-loc) 8))
+              (arm64:ldr :x1 :sp :offset (spill-offset (cadr flags-loc)))
               (arm64:mov :x1 flags-loc))
           (arm64:lsr :x1 :x1 4 :imm t)
           ;; Load mode
           (if (and (consp mode-loc) (eq (car mode-loc) :spill))
-              (arm64:ldr :x2 :sp :offset (* (cadr mode-loc) 8))
+              (arm64:ldr :x2 :sp :offset (spill-offset (cadr mode-loc)))
               (arm64:mov :x2 mode-loc))
           (arm64:lsr :x2 :x2 4 :imm t)
           ;; syscall
@@ -1819,7 +2119,7 @@
           (arm64:svc 0)
           (arm64:lsl :x0 :x0 4 :imm t)  ; tag result
           (if (and (consp dest) (eq (car dest) :spill))
-              (arm64:str :x0 :sp :offset (* (cadr dest) 8))
+              (arm64:str :x0 :sp :offset (spill-offset (cadr dest)))
               (unless (eq dest :x0) (arm64:mov dest :x0))))))
 
       ;; tac-sys-read: read(fd, buf, len)
@@ -1834,23 +2134,23 @@
               (len-loc (vreg-to-reg len-vreg allocation)))
          (append
           (if (and (consp fd-loc) (eq (car fd-loc) :spill))
-              (arm64:ldr :x0 :sp :offset (* (cadr fd-loc) 8))
+              (arm64:ldr :x0 :sp :offset (spill-offset (cadr fd-loc)))
               (arm64:mov :x0 fd-loc))
           (arm64:lsr :x0 :x0 4 :imm t)
           (if (and (consp buf-loc) (eq (car buf-loc) :spill))
-              (arm64:ldr :x1 :sp :offset (* (cadr buf-loc) 8))
+              (arm64:ldr :x1 :sp :offset (spill-offset (cadr buf-loc)))
               (arm64:mov :x1 buf-loc))
           (arm64:sub :x1 :x1 3 :imm t)  ; untag vector
           (arm64:add :x1 :x1 8 :imm t)  ; skip length
           (if (and (consp len-loc) (eq (car len-loc) :spill))
-              (arm64:ldr :x2 :sp :offset (* (cadr len-loc) 8))
+              (arm64:ldr :x2 :sp :offset (spill-offset (cadr len-loc)))
               (arm64:mov :x2 len-loc))
           (arm64:lsr :x2 :x2 4 :imm t)
           (arm64:movz :x16 3)
           (arm64:svc 0)
           (arm64:lsl :x0 :x0 4 :imm t)
           (if (and (consp dest) (eq (car dest) :spill))
-              (arm64:str :x0 :sp :offset (* (cadr dest) 8))
+              (arm64:str :x0 :sp :offset (spill-offset (cadr dest)))
               (unless (eq dest :x0) (arm64:mov dest :x0))))))
 
       ;; tac-sys-write: write(fd, buf, len)
@@ -1865,23 +2165,23 @@
               (len-loc (vreg-to-reg len-vreg allocation)))
          (append
           (if (and (consp fd-loc) (eq (car fd-loc) :spill))
-              (arm64:ldr :x0 :sp :offset (* (cadr fd-loc) 8))
+              (arm64:ldr :x0 :sp :offset (spill-offset (cadr fd-loc)))
               (arm64:mov :x0 fd-loc))
           (arm64:lsr :x0 :x0 4 :imm t)
           (if (and (consp buf-loc) (eq (car buf-loc) :spill))
-              (arm64:ldr :x1 :sp :offset (* (cadr buf-loc) 8))
+              (arm64:ldr :x1 :sp :offset (spill-offset (cadr buf-loc)))
               (arm64:mov :x1 buf-loc))
           (arm64:sub :x1 :x1 3 :imm t)
           (arm64:add :x1 :x1 8 :imm t)
           (if (and (consp len-loc) (eq (car len-loc) :spill))
-              (arm64:ldr :x2 :sp :offset (* (cadr len-loc) 8))
+              (arm64:ldr :x2 :sp :offset (spill-offset (cadr len-loc)))
               (arm64:mov :x2 len-loc))
           (arm64:lsr :x2 :x2 4 :imm t)
           (arm64:movz :x16 4)
           (arm64:svc 0)
           (arm64:lsl :x0 :x0 4 :imm t)
           (if (and (consp dest) (eq (car dest) :spill))
-              (arm64:str :x0 :sp :offset (* (cadr dest) 8))
+              (arm64:str :x0 :sp :offset (spill-offset (cadr dest)))
               (unless (eq dest :x0) (arm64:mov dest :x0))))))
 
       ;; tac-sys-close: close(fd)
@@ -1892,14 +2192,69 @@
               (fd-loc (vreg-to-reg fd-vreg allocation)))
          (append
           (if (and (consp fd-loc) (eq (car fd-loc) :spill))
-              (arm64:ldr :x0 :sp :offset (* (cadr fd-loc) 8))
+              (arm64:ldr :x0 :sp :offset (spill-offset (cadr fd-loc)))
               (arm64:mov :x0 fd-loc))
           (arm64:lsr :x0 :x0 4 :imm t)
           (arm64:movz :x16 6)
           (arm64:svc 0)
           (arm64:lsl :x0 :x0 4 :imm t)
           (if (and (consp dest) (eq (car dest) :spill))
-              (arm64:str :x0 :sp :offset (* (cadr dest) 8))
+              (arm64:str :x0 :sp :offset (spill-offset (cadr dest)))
+              (unless (eq dest :x0) (arm64:mov dest :x0))))))
+
+      ;; tac-buffer-to-string: convert raw byte buffer to string
+      ;; (tac-buffer-to-string dest buf-vr len-vr)
+      ((tac-buffer-to-string)
+       (let* ((dest-vreg (cadr instr))
+              (buf-vreg (caddr instr))
+              (len-vreg (cadddr instr))
+              (dest (vreg-to-reg dest-vreg allocation))
+              (buf-loc (vreg-to-reg buf-vreg allocation))
+              (len-loc (vreg-to-reg len-vreg allocation)))
+         ;; Register usage: x0=result, x1=buf_data, x2=str_data, x3=counter, x4=temp, x5=len
+         (append
+          ;; Load len into x5, untag
+          (if (and (consp len-loc) (eq (car len-loc) :spill))
+              (arm64:ldr :x5 :sp :offset (spill-offset (cadr len-loc)))
+              (arm64:mov :x5 len-loc))
+          (arm64:lsr :x5 :x5 4 :imm t)  ; x5 = len >> 4 (untag)
+          ;; Load buf into x1, untag, add 8 to skip length header
+          (if (and (consp buf-loc) (eq (car buf-loc) :spill))
+              (arm64:ldr :x1 :sp :offset (spill-offset (cadr buf-loc)))
+              (arm64:mov :x1 buf-loc))
+          (arm64:and* :x1 :x1 -8 :imm t)  ; x1 = buf & ~7 (clear tag)
+          (arm64:add :x1 :x1 8 :imm t)    ; x1 = buf + 8 (skip length header)
+          ;; GC pre-check BEFORE writing to heap
+          (gc-trigger-code)
+          ;; Allocate string: store length at [x28]
+          (arm64:str :x5 :heap :offset 0)  ; [x28+0] = length
+          ;; x4 = alloc size = (8 + len + 15) & ~15 for 16-byte alignment
+          (arm64:add :x4 :x5 23 :imm t)    ; x4 = len + 23 (= len + 8 + 15)
+          (arm64:and* :x4 :x4 -16 :imm t)  ; x4 = (len + 23) & ~15
+          ;; Save string ptr (will be result), bump heap
+          (arm64:mov :x0 :heap)            ; x0 = string base (untagged)
+          (arm64:add :heap :heap :x4)      ; x28 += alloc_size
+          ;; x2 = string data base = x0 + 8
+          (arm64:add :x2 :x0 8 :imm t)     ; x2 = string data start
+          ;; x3 = loop counter = 0
+          (arm64:movz :x3 0)               ; x3 = 0
+          ;; Loop: while x3 < x5
+          (arm64:cmp :x3 :x5)              ; cmp x3, x5
+          (arm64:b.ge 5)                   ; if x3 >= x5, jump to loop_end (+5 instructions)
+          ;; Load buf[x3] - raw byte (using register offset mode)
+          (arm64:ldrb :x4 :x1 :x3 :reg t)  ; x4 = byte at [x1 + x3]
+          ;; Store byte: str_data[x3] = x4 (using register offset mode)
+          (arm64:strb :x4 :x2 :x3 :reg t)  ; [x2 + x3] = x4
+          ;; x3++
+          (arm64:add :x3 :x3 1 :imm t)     ; x3++
+          ;; Jump back to loop_start (cmp instruction)
+          (arm64:b -5)                     ; back 5 instructions
+          ;; loop_end: Tag result with string tag (0x4)
+          ;; Note: pointer is 16-byte aligned, so add 4 == orr 4
+          (arm64:add :x0 :x0 4 :imm t)     ; x0 += 4 (string tag)
+          ;; Move result to destination
+          (if (and (consp dest) (eq (car dest) :spill))
+              (arm64:str :x0 :sp :offset (spill-offset (cadr dest)))
               (unless (eq dest :x0) (arm64:mov dest :x0))))))
 
       ;; tac-buffer-byte-set: set byte in buffer
@@ -1914,23 +2269,23 @@
               (val-loc (vreg-to-reg val-vreg allocation)))
          (append
           (if (and (consp buf-loc) (eq (car buf-loc) :spill))
-              (arm64:ldr :x0 :sp :offset (* (cadr buf-loc) 8))
+              (arm64:ldr :x0 :sp :offset (spill-offset (cadr buf-loc)))
               (arm64:mov :x0 buf-loc))
           (arm64:sub :x0 :x0 3 :imm t)
           (arm64:add :x0 :x0 8 :imm t)
           (if (and (consp idx-loc) (eq (car idx-loc) :spill))
-              (arm64:ldr :x1 :sp :offset (* (cadr idx-loc) 8))
+              (arm64:ldr :x1 :sp :offset (spill-offset (cadr idx-loc)))
               (arm64:mov :x1 idx-loc))
           (arm64:lsr :x1 :x1 4 :imm t)
           (arm64:add :x0 :x0 :x1)
           (if (and (consp val-loc) (eq (car val-loc) :spill))
-              (arm64:ldr :x2 :sp :offset (* (cadr val-loc) 8))
+              (arm64:ldr :x2 :sp :offset (spill-offset (cadr val-loc)))
               (arm64:mov :x2 val-loc))
           (arm64:lsr :x2 :x2 4 :imm t)
           (arm64:strb :x2 :x0 :offset 0)
           (arm64:movz :x0 6)  ; return nil
           (if (and (consp dest) (eq (car dest) :spill))
-              (arm64:str :x0 :sp :offset (* (cadr dest) 8))
+              (arm64:str :x0 :sp :offset (spill-offset (cadr dest)))
               (unless (eq dest :x0) (arm64:mov dest :x0))))))
 
       ;; tac-buffer-byte-ref: get byte from buffer at index
@@ -1946,13 +2301,13 @@
          (append
           ;; Load buf into x0, untag vector (sub 3), add 8 to skip length
           (if (and (consp buf-loc) (eq (car buf-loc) :spill))
-              (arm64:ldr :x0 :sp :offset (* (cadr buf-loc) 8))
+              (arm64:ldr :x0 :sp :offset (spill-offset (cadr buf-loc)))
               (arm64:mov :x0 buf-loc))
           (arm64:sub :x0 :x0 3 :imm t)  ; untag vector (tag 3)
           (arm64:add :x0 :x0 8 :imm t)  ; skip length
           ;; Load idx into x1, untag, add to address
           (if (and (consp idx-loc) (eq (car idx-loc) :spill))
-              (arm64:ldr :x1 :sp :offset (* (cadr idx-loc) 8))
+              (arm64:ldr :x1 :sp :offset (spill-offset (cadr idx-loc)))
               (arm64:mov :x1 idx-loc))
           (arm64:lsr :x1 :x1 4 :imm t)  ; untag index
           (arm64:add :x0 :x0 :x1)       ; x0 = address of byte
@@ -1961,7 +2316,7 @@
           (arm64:lsl :x0 :x0 4 :imm t)  ; tag as fixnum
           ;; Store result
           (if (and (consp dest) (eq (car dest) :spill))
-              (arm64:str :x0 :sp :offset (* (cadr dest) 8))
+              (arm64:str :x0 :sp :offset (spill-offset (cadr dest)))
               (unless (eq dest :x0) (arm64:mov dest :x0))))))
 
       ;; tac-mem-set-byte: set byte at ptr + offset
@@ -1976,22 +2331,22 @@
               (val-loc (vreg-to-reg val-vreg allocation)))
          (append
           (if (and (consp ptr-loc) (eq (car ptr-loc) :spill))
-              (arm64:ldr :x0 :sp :offset (* (cadr ptr-loc) 8))
+              (arm64:ldr :x0 :sp :offset (spill-offset (cadr ptr-loc)))
               (arm64:mov :x0 ptr-loc))
           (arm64:lsr :x0 :x0 4 :imm t)
           (if (and (consp off-loc) (eq (car off-loc) :spill))
-              (arm64:ldr :x1 :sp :offset (* (cadr off-loc) 8))
+              (arm64:ldr :x1 :sp :offset (spill-offset (cadr off-loc)))
               (arm64:mov :x1 off-loc))
           (arm64:lsr :x1 :x1 4 :imm t)
           (arm64:add :x0 :x0 :x1)
           (if (and (consp val-loc) (eq (car val-loc) :spill))
-              (arm64:ldr :x2 :sp :offset (* (cadr val-loc) 8))
+              (arm64:ldr :x2 :sp :offset (spill-offset (cadr val-loc)))
               (arm64:mov :x2 val-loc))
           (arm64:lsr :x2 :x2 4 :imm t)
           (arm64:strb :x2 :x0 :offset 0)
           (arm64:movz :x0 6)
           (if (and (consp dest) (eq (car dest) :spill))
-              (arm64:str :x0 :sp :offset (* (cadr dest) 8))
+              (arm64:str :x0 :sp :offset (spill-offset (cadr dest)))
               (unless (eq dest :x0) (arm64:mov dest :x0))))))
 
       ;; tac-mem-load-64: load 64-bit from ptr + offset
@@ -2005,18 +2360,18 @@
               (dest-reg (if (and (consp dest) (eq (car dest) :spill)) :x0 dest)))
          (append
           (if (and (consp ptr-loc) (eq (car ptr-loc) :spill))
-              (arm64:ldr :x0 :sp :offset (* (cadr ptr-loc) 8))
+              (arm64:ldr :x0 :sp :offset (spill-offset (cadr ptr-loc)))
               (arm64:mov :x0 ptr-loc))
           (arm64:lsr :x0 :x0 4 :imm t)
           (if (and (consp off-loc) (eq (car off-loc) :spill))
-              (arm64:ldr :x1 :sp :offset (* (cadr off-loc) 8))
+              (arm64:ldr :x1 :sp :offset (spill-offset (cadr off-loc)))
               (arm64:mov :x1 off-loc))
           (arm64:lsr :x1 :x1 4 :imm t)
           (arm64:add :x0 :x0 :x1)
           (arm64:ldr dest-reg :x0 :offset 0)
           (arm64:lsl dest-reg dest-reg 4 :imm t)
           (when (and (consp dest) (eq (car dest) :spill))
-            (arm64:str :x0 :sp :offset (* (cadr dest) 8))))))
+            (arm64:str :x0 :sp :offset (spill-offset (cadr dest)))))))
 
       ;; tac-bnot: boolean not
       ((tac-bnot)
@@ -2028,7 +2383,7 @@
               (dest-reg (if (and (consp dest) (eq (car dest) :spill)) :x0 dest)))
          (append
           (when (and (consp val-loc) (eq (car val-loc) :spill))
-            (arm64:ldr :x0 :sp :offset (* (cadr val-loc) 8)))
+            (arm64:ldr :x0 :sp :offset (spill-offset (cadr val-loc))))
           (arm64:cmp val-reg 6 :imm t)  ; compare to nil
           (arm64:cset dest-reg arm64:+eq+)  ; 1 if nil, 0 otherwise
           ;; Convert 0/1 to nil(6)/t(16)
@@ -2037,10 +2392,230 @@
           (arm64:and* dest-reg dest-reg :x2)
           (arm64:add dest-reg dest-reg 6 :imm t)
           (when (and (consp dest) (eq (car dest) :spill))
-            (arm64:str :x0 :sp :offset (* (cadr dest) 8))))))
+            (arm64:str :x0 :sp :offset (spill-offset (cadr dest)))))))
+
+      ;; tac-lambda-ref: create closure for lifted lambda
+      ;; TAC format: (tac-lambda-ref dest-vreg lambda-name free-offsets)
+      ;; Closure format: [tagged-fn-offset (8), captured-env (8)] with tag 5
+      ;; tagged-fn-offset = (fn_addr - x26) << 4
+      ((tac-lambda-ref)
+       (let* ((dest-vreg (cadr instr))
+              (lambda-name (caddr instr))
+              (free-offsets (cadddr instr))
+              (dest (vreg-to-reg dest-vreg allocation))
+              (dest-reg (if (and (consp dest) (eq (car dest) :spill)) :x0 dest)))
+         (append
+          ;; GC trigger check BEFORE allocation
+          ;; Compare x28 (heap) with from_end at [x27 + 16]
+          (arm64:ldr :x9 :gc :offset 16)    ; x9 = from_end
+          (arm64:cmp :heap :x9)             ; compare heap ptr with from_end
+          (arm64:b.lo 2)                    ; skip GC call if heap < from_end
+          (list (list :call-fn 'GC-COLLECT))
+          ;; Load lambda address via ADR into x9
+          (list (list :lambda-ref-marker :x9 lambda-name))
+          ;; Compute offset from code base: x9 = fn_addr - x26
+          (arm64:sub :x9 :x9 :x26)
+          ;; Tag as fixnum: x9 = offset << 4
+          (arm64:lsl :x9 :x9 4 :imm t)
+          ;; Store tagged fn-offset at heap+0
+          (arm64:str :x9 :heap :offset 0)
+          ;; Build captured env or nil at heap+8
+          (if (null free-offsets)
+              ;; No captures - store nil (6)
+              (append
+               (arm64:movz :x9 6)
+               (arm64:str :x9 :heap :offset 8))
+              ;; Has captures - build cons chain
+              ;; Process offsets in reverse so first offset ends up as car
+              ;; Gen code: start with nil, cons each value onto it
+              (labels ((gen-capture-chain (offs)
+                         ;; Generate code to build cons chain, result in x9
+                         ;; Process from end to start of offs list
+                         (if (null offs)
+                             ;; Base case: x9 = nil (6)
+                             (arm64:movz :x9 6)
+                             ;; Recursive: first build rest of chain, then cons current
+                             (let* ((rest-code (gen-capture-chain (cdr offs)))
+                                    (off (car offs))
+                                    (off8 (* off 8)))
+                               (append
+                                rest-code
+                                ;; x9 has rest of list (cdr)
+                                ;; Store cdr at heap+8
+                                (arm64:str :x9 :heap :offset 8)
+                                ;; Load captured value from [env - offset*8]
+                                (arm64:sub :x10 :env off8 :imm t)
+                                (arm64:ldr :x10 :x10 :offset 0)
+                                ;; Store as car at heap+0
+                                (arm64:str :x10 :heap :offset 0)
+                                ;; Make cons pointer: x9 = heap | 1
+                                (arm64:orr :x9 :heap 1 :imm t)
+                                ;; Bump heap for this cons
+                                (arm64:add :heap :heap 16 :imm t))))))
+                ;; Save closure base, build chain, store at closure+8
+                (append
+                 ;; Save closure base in x11
+                 (arm64:mov :x11 :heap)
+                 ;; Bump heap past closure (16 bytes)
+                 (arm64:add :heap :heap 16 :imm t)
+                 ;; Build capture chain (result in x9)
+                 ;; Reverse so first offset becomes car of result
+                 (gen-capture-chain (reverse free-offsets))
+                 ;; Store captured env at closure+8
+                 (arm64:str :x9 :x11 :offset 8))))
+          ;; Create closure pointer: dest = heap_base + 5 (closure tag)
+          ;; For no-captures case, heap still points to closure start
+          ;; For captures case, x11 has closure base
+          ;; Note: Use ADD not ORR since 5 is not a valid ORR immediate
+          (if (null free-offsets)
+              (append
+               (arm64:add dest-reg :heap 5 :imm t)
+               (arm64:add :heap :heap 16 :imm t))
+              ;; With captures, closure base is in x11
+              (arm64:add dest-reg :x11 5 :imm t))
+          ;; Store if dest is spilled
+          (when (and (consp dest) (eq (car dest) :spill))
+            (arm64:str :x0 :sp :offset (spill-offset (cadr dest)))))))
+
+      ;; tac-symbol-name: get symbol's name string
+      ;; Symbol: [name-ptr | tag 2], name is string ptr at offset 0
+      ((tac-symbol-name)
+       (let* ((dest-vreg (cadr instr))
+              (sym-vreg (caddr instr))
+              (dest (vreg-to-reg dest-vreg allocation))
+              (sym-loc (vreg-to-reg sym-vreg allocation))
+              (dest-reg (if (and (consp dest) (eq (car dest) :spill)) :x0 dest)))
+         (append
+          (if (and (consp sym-loc) (eq (car sym-loc) :spill))
+              (arm64:ldr :x0 :sp :offset (spill-offset (cadr sym-loc)))
+              (arm64:mov :x0 sym-loc))
+          (arm64:sub :x0 :x0 2 :imm t)  ; untag symbol (tag 2)
+          (arm64:ldr dest-reg :x0 :offset 0)  ; load name string ptr
+          (when (and (consp dest) (eq (car dest) :spill))
+            (arm64:str :x0 :sp :offset (spill-offset (cadr dest)))))))
+
+      ;; tac-make-symbol: create symbol from string name
+      ;; Allocates: [name-ptr (8 bytes)] with tag 2
+      ((tac-make-symbol)
+       (let* ((dest-vreg (cadr instr))
+              (name-vreg (caddr instr))
+              (dest (vreg-to-reg dest-vreg allocation))
+              (name-loc (vreg-to-reg name-vreg allocation))
+              (dest-reg (if (and (consp dest) (eq (car dest) :spill)) :x0 dest)))
+         (append
+          (if (and (consp name-loc) (eq (car name-loc) :spill))
+              (arm64:ldr :x1 :sp :offset (spill-offset (cadr name-loc)))
+              (arm64:mov :x1 name-loc))
+          ;; Store name-ptr at x28 (heap alloc ptr)
+          (arm64:str :x1 :heap :offset 0)
+          ;; Result = x28 | 2 (symbol tag)
+          (arm64:mov dest-reg :heap)
+          (arm64:add dest-reg dest-reg 2 :imm t)
+          ;; Bump heap by 16 (8-byte aligned, minimum 16)
+          (arm64:add :heap :heap 16 :imm t)
+          (when (and (consp dest) (eq (car dest) :spill))
+            (arm64:str :x0 :sp :offset (spill-offset (cadr dest)))))))
+
+      ;; tac-string-concat: concatenate two strings
+      ;; This is complex - emit marker for now
+      ((tac-string-concat)
+       (let* ((dest-vreg (cadr instr))
+              (s1-vreg (caddr instr))
+              (s2-vreg (cadddr instr))
+              (dest (vreg-to-reg dest-vreg allocation)))
+         (list (list :string-concat-marker dest s1-vreg s2-vreg))))
+
+      ;; tac-string-equal: compare two strings
+      ;; This is complex - emit marker for now
+      ((tac-string-equal)
+       (let* ((dest-vreg (cadr instr))
+              (s1-vreg (caddr instr))
+              (s2-vreg (cadddr instr))
+              (dest (vreg-to-reg dest-vreg allocation)))
+         (list (list :string-equal-marker dest s1-vreg s2-vreg))))
+
+      ;; tac-get-intern-table: load from [x27 + 0]
+      ((tac-get-intern-table)
+       (let* ((dest-vreg (cadr instr))
+              (dest (vreg-to-reg dest-vreg allocation))
+              (dest-reg (if (and (consp dest) (eq (car dest) :spill)) :x0 dest)))
+         (append
+          (arm64:ldr dest-reg :gc :offset 0)
+          (when (and (consp dest) (eq (car dest) :spill))
+            (arm64:str :x0 :sp :offset (spill-offset (cadr dest)))))))
+
+      ;; tac-set-intern-table: store to [x27 + 0]
+      ((tac-set-intern-table)
+       (let* ((val-vreg (caddr instr))
+              (val-loc (vreg-to-reg val-vreg allocation)))
+         (append
+          (if (and (consp val-loc) (eq (car val-loc) :spill))
+              (arm64:ldr :x0 :sp :offset (spill-offset (cadr val-loc)))
+              (arm64:mov :x0 val-loc))
+          (arm64:str :x0 :gc :offset 0))))
+
+      ;; tac-get-lambda-counter: load from [x27 + 8]
+      ((tac-get-lambda-counter)
+       (let* ((dest-vreg (cadr instr))
+              (dest (vreg-to-reg dest-vreg allocation))
+              (dest-reg (if (and (consp dest) (eq (car dest) :spill)) :x0 dest)))
+         (append
+          (arm64:ldr dest-reg :gc :offset 8)
+          (when (and (consp dest) (eq (car dest) :spill))
+            (arm64:str :x0 :sp :offset (spill-offset (cadr dest)))))))
+
+      ;; tac-set-lambda-counter: store to [x27 + 8]
+      ((tac-set-lambda-counter)
+       (let* ((val-vreg (caddr instr))
+              (val-loc (vreg-to-reg val-vreg allocation)))
+         (append
+          (if (and (consp val-loc) (eq (car val-loc) :spill))
+              (arm64:ldr :x0 :sp :offset (spill-offset (cadr val-loc)))
+              (arm64:mov :x0 val-loc))
+          (arm64:str :x0 :gc :offset 8))))
+
+      ;; tac-get-symbol-counter: load from [x27 + 48]
+      ((tac-get-symbol-counter)
+       (let* ((dest-vreg (cadr instr))
+              (dest (vreg-to-reg dest-vreg allocation))
+              (dest-reg (if (and (consp dest) (eq (car dest) :spill)) :x0 dest)))
+         (append
+          (arm64:ldr dest-reg :gc :offset 48)
+          (when (and (consp dest) (eq (car dest) :spill))
+            (arm64:str :x0 :sp :offset (spill-offset (cadr dest)))))))
+
+      ;; tac-set-symbol-counter: store to [x27 + 48]
+      ((tac-set-symbol-counter)
+       (let* ((val-vreg (caddr instr))
+              (val-loc (vreg-to-reg val-vreg allocation)))
+         (append
+          (if (and (consp val-loc) (eq (car val-loc) :spill))
+              (arm64:ldr :x0 :sp :offset (spill-offset (cadr val-loc)))
+              (arm64:mov :x0 val-loc))
+          (arm64:str :x0 :gc :offset 48))))
+
+      ;; tac-get-symbol-table: load from [x27 + 56]
+      ((tac-get-symbol-table)
+       (let* ((dest-vreg (cadr instr))
+              (dest (vreg-to-reg dest-vreg allocation))
+              (dest-reg (if (and (consp dest) (eq (car dest) :spill)) :x0 dest)))
+         (append
+          (arm64:ldr dest-reg :gc :offset 56)
+          (when (and (consp dest) (eq (car dest) :spill))
+            (arm64:str :x0 :sp :offset (spill-offset (cadr dest)))))))
+
+      ;; tac-set-symbol-table: store to [x27 + 56]
+      ((tac-set-symbol-table)
+       (let* ((val-vreg (caddr instr))
+              (val-loc (vreg-to-reg val-vreg allocation)))
+         (append
+          (if (and (consp val-loc) (eq (car val-loc) :spill))
+              (arm64:ldr :x0 :sp :offset (spill-offset (cadr val-loc)))
+              (arm64:mov :x0 val-loc))
+          (arm64:str :x0 :gc :offset 56))))
 
       ;; Default
-      (t nil))))
+      (t (error "tac-codegen-instr: Unhandled TAC instruction: ~A" op)))))
 
 (defun count-bytes-in-code (code)
   "Count bytes in code, skipping markers and labels"
@@ -2104,8 +2679,8 @@
               (cond
                 ((numberp b)
                  (setq current-pos (+ current-pos 1)))
-                ;; Branch markers will become 4-byte instructions
-                ((and (consp b) (member (car b) '(:branch-marker :branch-ne-marker :branch-eq-marker :continue-marker)))
+                ;; Branch markers and call markers will become 4-byte instructions
+                ((and (consp b) (member (car b) '(:branch-marker :branch-ne-marker :branch-eq-marker :continue-marker :call-fn :tail-call-fn :lambda-ref-marker)))
                  (setq current-pos (+ current-pos 4))))))))))
 
     ;; Pass 2: Resolve branch markers to actual instructions
@@ -2120,35 +2695,32 @@
           ;; Resolve unconditional branch
           ((and (consp item) (eq (car item) :branch-marker))
            (let* ((target-label (cadr item))
-                  (target-pos (cdr (assoc target-label label-positions)))
-                  ;; ARM64: target = PC + (offset * 4), where PC is branch address
-                  (offset (if target-pos
-                              (ash (- target-pos pos) -2)
-                              0)))
-             (setq resolved (append resolved (arm64:b offset)))
-             (setq pos (+ pos 4))))
+                  (target-pos (cdr (assoc target-label label-positions))))
+             (unless target-pos
+               (error "tac-codegen: unresolved branch to label ~S" target-label))
+             (let ((offset (ash (- target-pos pos) -2)))
+               (setq resolved (append resolved (arm64:b offset)))
+               (setq pos (+ pos 4)))))
 
           ;; Resolve conditional branch (branch if not equal)
           ((and (consp item) (eq (car item) :branch-ne-marker))
            (let* ((target-label (cadr item))
-                  (target-pos (cdr (assoc target-label label-positions)))
-                  ;; ARM64: target = PC + (offset * 4), where PC is branch address
-                  (offset (if target-pos
-                              (ash (- target-pos pos) -2)
-                              0)))
-             (setq resolved (append resolved (arm64:b.ne offset)))
-             (setq pos (+ pos 4))))
+                  (target-pos (cdr (assoc target-label label-positions))))
+             (unless target-pos
+               (error "tac-codegen: unresolved branch-ne to label ~S" target-label))
+             (let ((offset (ash (- target-pos pos) -2)))
+               (setq resolved (append resolved (arm64:b.ne offset)))
+               (setq pos (+ pos 4)))))
 
           ;; Resolve conditional branch (branch if equal)
           ((and (consp item) (eq (car item) :branch-eq-marker))
            (let* ((target-label (cadr item))
-                  (target-pos (cdr (assoc target-label label-positions)))
-                  ;; ARM64: target = PC + (offset * 4), where PC is branch address
-                  (offset (if target-pos
-                              (ash (- target-pos pos) -2)
-                              0)))
-             (setq resolved (append resolved (arm64:b.eq offset)))
-             (setq pos (+ pos 4))))
+                  (target-pos (cdr (assoc target-label label-positions))))
+             (unless target-pos
+               (error "tac-codegen: unresolved branch-eq to label ~S" target-label))
+             (let ((offset (ash (- target-pos pos) -2)))
+               (setq resolved (append resolved (arm64:b.eq offset)))
+               (setq pos (+ pos 4)))))
 
           ;; Function call marker - pass through for resolve-calls
           ((and (consp item) (eq (car item) :call-fn))
@@ -2158,6 +2730,18 @@
           ;; Heap allocation marker - pass through for has-unresolved-markers
           ((and (consp item) (eq (car item) :heap-alloc-marker))
            (setq resolved (append resolved (list item))))
+
+          ;; Lambda-ref marker - pass through for link-time resolution
+          ;; Format: (:lambda-ref-marker dest-reg lambda-name)
+          ;; Will be resolved to ADR instruction by linker
+          ((and (consp item) (eq (car item) :lambda-ref-marker))
+           (setq resolved (append resolved (list item)))
+           (setq pos (+ pos 4)))  ; ADR is 4 bytes
+
+          ;; Tail call marker - pass through for resolve-calls
+          ((and (consp item) (eq (car item) :tail-call-fn))
+           (setq resolved (append resolved (list item)))
+           (setq pos (+ pos 4)))  ; B is 4 bytes
 
           ;; Regular byte - keep it
           ((numberp item)
@@ -2269,6 +2853,31 @@
     (check code)))
 
 #+sbcl
+(defun gen-capture-loads-reg (num-captures)
+  "Generate code to load captured values from x24 cons list into env slots.
+   x24 = (v0 . (v1 . (v2 . nil))) - load into offsets 0, 1, 2, etc.
+   Each captured value goes at [x20 - idx*8]."
+  (if (<= num-captures 0)
+      nil
+      (labels ((gen-loads (idx acc)
+                 (if (>= idx num-captures)
+                     acc
+                     (let* ((offset (* idx 8)))
+                       (gen-loads (+ idx 1)
+                                  (append acc
+                                          ;; x24 points to current cons cell
+                                          ;; Load car: untag cons (tag 1), load car
+                                          (arm64:sub :x9 :closure 1 :imm t)
+                                          (arm64:ldr :x9 :x9 :offset 0)
+                                          ;; Store at [x20 - offset]
+                                          (arm64:sub :x10 :env offset :imm t)
+                                          (arm64:str :x9 :x10 :offset 0)
+                                          ;; Advance x24 to cdr: x24 = cdr(x24)
+                                          (arm64:sub :x9 :closure 1 :imm t)
+                                          (arm64:ldr :closure :x9 :offset 8)))))))
+        (gen-loads 0 nil))))
+
+#+sbcl
 (defun codegen-fn-reg-alloc (fn)
   "Generate code for a function using register allocation.
    Accepts two formats:
@@ -2279,9 +2888,14 @@
          (body-ir (caddr fn))
          (fourth (cadddr fn))
          ;; Detect format: number = param-base (defun), list = free-vars (lambda)
-         (param-base (if (numberp fourth)
-                         fourth
-                         (if fourth (length fourth) 0)))
+         ;; For defuns, param-base IS the number of captures (from lambdas-to-defuns)
+         ;; For raw lambdas, fourth is free-vars list
+         (is-lambda (and fourth (listp fourth)))  ; nil or list = lambda, number = defun
+         (num-captures (cond
+                         ((numberp fourth) fourth)   ; defun: param-base = capture count
+                         ((listp fourth) (length fourth))  ; lambda: free-vars list
+                         (t 0)))
+         (param-base num-captures)
          ;; Apply register allocation pipeline
          (counter (make-vreg-counter))
          (tac-result (ir-to-tac body-ir counter))
@@ -2301,6 +2915,8 @@
                (allocation (linear-scan intervals))
                ;; Generate prologue - use fn-fixed-prologue for consistent frame layout
                (prologue-code (fn-fixed-prologue))
+               ;; Generate capture loads (for lifted lambdas with captures, not defuns)
+               (capture-code (gen-capture-loads-reg num-captures))
                ;; Generate param stores
                (param-code (reg-alloc-gen-param-stores params param-base))
                ;; Generate body code with allocation
@@ -2308,7 +2924,7 @@
                ;; Generate epilogue - use fn-fixed-epilogue for consistent frame layout
                (epilogue-code (fn-fixed-epilogue))
                ;; Combine all code
-               (all-code (append prologue-code param-code body-code epilogue-code)))
+               (all-code (append prologue-code capture-code param-code body-code epilogue-code)))
           ;; Check for unresolved markers - if present, fall back to regular codegen
           (if (has-unresolved-markers all-code)
               nil
