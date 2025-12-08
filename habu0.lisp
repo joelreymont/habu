@@ -39,6 +39,19 @@
 (defvar *op-not* nil)
 (defvar *op-and* nil)
 (defvar *op-or* nil)
+(defvar *op-defpackage* nil)
+(defvar *op-in-package* nil)
+(defvar *op-case* nil)
+(defvar *op-when* nil)
+(defvar *op-unless* nil)
+(defvar *op-declaim* nil)
+(defvar *op-setq* nil)
+(defvar *op-error* nil)
+
+;;; Package system globals
+;;; Packages are ((name . symbols) ...) where symbols is ((name . sym) ...)
+(defvar *packages* nil)
+(defvar *current-package* nil)  ; string name of current package, nil = CL-USER
 
 ;;; ==========================================================
 ;;; Error Infrastructure - crash with message, no silent fallbacks
@@ -96,7 +109,7 @@
 (defun symtab-scan-to-entry (base ptr idx)
   (let* ((entry-offset (read-u64 ptr))
          (name-len (read-u64 (+ ptr 8)))
-         (padded-len (* (quotient (+ name-len 8) 8) 8)))  ; round up to 8
+         (padded-len (* (/ (+ name-len 8) 8) 8)))  ; round up to 8
     (if (= idx 0)
         (cons entry-offset name-len)
         (symtab-scan-to-entry base (+ ptr 16 padded-len) (- idx 1)))))
@@ -112,65 +125,83 @@
   (let* ((entry-offset (read-u64 ptr))
          (name-len (read-u64 (+ ptr 8)))
          (name-addr (+ ptr 16))
-         (padded-len (* (quotient (+ name-len 8) 8) 8)))
+         (padded-len (* (/ (+ name-len 8) 8) 8)))
     (if (= idx 0)
         (list entry-offset name-len name-addr)
         (symtab-get-entry-scan (+ ptr 16 padded-len) (- idx 1)))))
 
 ;; Find the symbol containing addr using linear search
-;; Returns (name-addr . name-len) or nil if not found
-;; addr should be relative to code base
+;; Returns (offset name-len name-addr) or nil if not found
+;; addr is absolute, will be converted to relative offset from code base
 (defun lookup-symbol (addr)
   (let* ((symtab-addr (get-symtab-addr))
          (count (read-u64 symtab-addr))
-         (code-base (get-code-base)))
-    ;; Convert absolute addr to offset from code base
-    (let ((rel-addr (- addr code-base)))
-      (lookup-symbol-scan symtab-addr count rel-addr 0 nil))))
+         (code-base (get-code-base))
+         ;; Convert absolute addr to offset from code base (user code start)
+         (rel-addr (- addr code-base)))
+    ;; Iterative scan through entries
+    (lookup-symbol-scan (+ symtab-addr 8) count rel-addr)))
 
-;; Scan through entries, keeping track of best match so far
-;; best is (offset name-len name-addr) or nil
-(defun lookup-symbol-scan (symtab-addr count target-offset idx best)
-  (if (>= idx count)
-      best  ; return best match found
-      (let* ((entry (symtab-get-entry symtab-addr idx))
-             (entry-offset (car entry))
-             (name-len (cadr entry))
-             (name-addr (caddr entry)))
-        (if (and (<= entry-offset target-offset)
-                 (or (null best)
-                     (> entry-offset (car best))))
-            ;; This entry is better (closer to target)
-            (lookup-symbol-scan symtab-addr count target-offset (+ idx 1)
-                                (list entry-offset name-len name-addr))
-            ;; Keep current best
-            (lookup-symbol-scan symtab-addr count target-offset (+ idx 1) best)))))
+;; Iterative scan through symbol table entries
+;; Uses while loop for zero stack growth - handles any table size
+;; Symbol table is sorted by offset, so we can stop early when we pass target
+(defun lookup-symbol-scan (initial-ptr count target-offset)
+  (let ((ptr initial-ptr)
+        (remaining count)
+        (best nil)
+        (done nil))
+    (while (and (> remaining 0) (not done))
+      (let* ((entry-offset (read-u64 ptr))
+             (name-len (read-u64 (+ ptr 8)))
+             (name-addr (+ ptr 16))
+             (padded-len (* (/ (+ name-len 8) 8) 8)))
+        ;; Early termination: if entry > target and we have best, stop
+        (if (and (> entry-offset target-offset) best)
+            (setq done t)
+            (progn
+              ;; Check if this entry is a better match
+              (if (and (<= entry-offset target-offset)
+                       (or (null best)
+                           (> entry-offset (car best))))
+                  (setq best (list entry-offset name-len name-addr)))
+              ;; Move to next entry
+              (setq ptr (+ ptr 16 padded-len))
+              (setq remaining (- remaining 1))))))
+    best))
 
-;; Print a symbol name from addr for len bytes
+;; Print a symbol name from addr for len bytes (iterative)
+;; Uses while loop for zero stack growth
+;; Pattern: fill vector with bytes, convert to string, write string
 (defun print-symbol-name (addr len)
-  (print-symbol-name-loop addr len 0))
+  (let ((buf (make-vector 64))
+        (idx 0)
+        (remaining len))
+    ;; Copy bytes to buffer (up to 63 chars)
+    ;; mem-load-byte returns raw byte, vector-set stores it (compiler will tag)
+    (while (and (> remaining 0) (< idx 63))
+      (let ((byte (mem-load-byte addr idx)))
+        (vector-set buf idx byte)
+        (setq idx (+ idx 1))
+        (setq remaining (- remaining 1))))
+    ;; Convert vector to string and write (make-string-from-vector handles untagging)
+    (sys-write 2 (make-string-from-vector buf) idx)))
 
-(defun print-symbol-name-loop (addr len idx)
-  (if (>= idx len)
-      nil
-      (let ((buf (make-vector 1)))
-        (vector-set buf 0 (mem-load-byte addr idx))
-        (sys-write 2 (make-string-from-vector buf) 1)
-        (print-symbol-name-loop addr len (+ idx 1)))))
-
-;; Print symbolicated address: "FUNC+0x123" or just hex if not found
+;; Print symbolicated address: "0xADDR FUNC+0xOFF" or just hex if not found
 (defun print-symbolicated-addr (addr)
+  ;; First print the hex address
+  (print-hex addr)
+  ;; Try to add symbol info (function name and offset)
   (let ((sym (lookup-symbol addr)))
     (if (null sym)
-        ;; No symbol found, just print hex
-        (print-hex addr)
-        ;; Found symbol: print NAME+offset
+        nil  ; no symbol found, just show hex
+        ;; Found symbol: print " FUNC+0xOFFSET"
         (let* ((sym-offset (car sym))
                (name-len (cadr sym))
                (name-addr (caddr sym))
                (code-base (get-code-base))
                (rel-addr (- addr code-base))
                (offset-in-func (- rel-addr sym-offset)))
+          (sys-write 2 " " 1)
           (print-symbol-name name-addr name-len)
           (sys-write 2 "+" 1)
           (print-hex offset-in-func)))))
@@ -183,6 +214,8 @@
   (print-stack-frames fp max-depth 0))
 
 (defun print-stack-frames (fp depth count)
+  ;; Standard ARM64 layout: [fp+0]=saved fp, [fp+8]=return address
+  ;; (fn-fixed-prologue sets fp = sp + 0x3FF0 to match this)
   (if (or (= fp 0) (>= count depth))
       nil
       (let ((ret-addr (mem-load-64 fp 8))
@@ -197,8 +230,8 @@
 (defun fatal-error (msg)
   (sys-write 2 "\n=== FATAL ERROR ===\n" 21)
   (sys-write 2 msg (string-length msg))
-  (sys-write 2 "\n\n" 2)
-  (print-stack-trace (get-frame-pointer) 20)
+  (sys-write 2 "\n" 1)
+  (print-stack-trace (get-frame-pointer) 10)
   (sys-exit 1))
 
 ;; Generate IR that will crash with error message and stack trace at runtime
@@ -219,17 +252,81 @@
             (cdr entry)
             (find-interned name (cdr table))))))
 
+;; NOTE: get-intern-table and set-intern-table are compiler primitives
+;; They generate code to load/store from [x27+0] (intern table at GC globals base)
+;; Do NOT define them here - they're built-in primitives handled by the compiler
+
 ;; Intern a string as a symbol
-;; Returns existing symbol if found in intern table, else creates new and adds it
+;; Handles pkg:sym syntax for package-qualified symbols
+;; Returns existing symbol if found, else creates new and adds it
 ;; This ensures all symbols with the same name are eq
 (defun intern (name)
   (let* ((uname (string-upcase name))
-         (existing (find-interned uname (get-intern-table))))
+         (parsed (parse-symbol-name uname))
+         (pkg-name (car parsed))
+         (sym-name (cdr parsed)))
+    (if pkg-name
+        ;; Explicit package prefix: intern in that package
+        (intern-in-package sym-name pkg-name)
+        ;; No package prefix: use current package or fall back to global table
+        (if *current-package*
+            (intern-in-package sym-name *current-package*)
+            ;; Default: use global intern table (CL-USER equivalent)
+            (let ((existing (find-interned uname (get-intern-table))))
+              (if existing
+                  existing
+                  (let ((sym (make-symbol-from-string uname)))
+                    (set-intern-table (cons (cons uname sym) (get-intern-table)))
+                    sym)))))))
+
+;;; Keyword interning - keywords use tag 7, stored in separate keyword table
+;;; Keywords are self-evaluating symbols in the KEYWORD package
+;;; Keywords have same memory layout as symbols: [length:8][chars:N]
+
+;; Get keyword name - same layout as symbols, just different tag
+;; Untag by masking off tag bits, then read string data
+(defun keyword-name (kw)
+  ;; Keywords use tag 7, mask off to get raw pointer
+  (let ((ptr (logand kw (lognot #xF))))
+    ;; Same layout as symbol: [length:8][chars:N]
+    ;; symbol-name works on raw pointer + tag, so use raw ptr | 2 to trick it
+    (symbol-name (logior ptr #x2))))
+
+;; Make keyword from string - allocate like symbol but with tag 7
+(defun make-keyword-from-string (name)
+  ;; Use make-symbol-from-string which allocates [length:8][chars:N]
+  ;; Then change tag from 2 to 7
+  (let ((sym (make-symbol-from-string name)))
+    (logior (logand sym (lognot #xF)) #x7)))
+
+;; Keyword table - for now, use intern table to store keywords too
+;; TODO: Add get-keyword-table-ir and set-keyword-table-ir primitives to compiler
+;; for proper separate keyword table at [x27+120]
+(defun get-keyword-table ()
+  (get-intern-table))  ; Temporarily share intern table
+
+(defun set-keyword-table (table)
+  (set-intern-table table))  ; Temporarily share intern table
+
+;; Search keyword table for name
+(defun find-keyword (name table)
+  (if (null table)
+      nil
+      (let ((entry (car table)))
+        (if (string= (car entry) name)
+            (cdr entry)
+            (find-keyword name (cdr table))))))
+
+;; Intern a keyword by name (without the leading colon)
+;; Keywords are like symbols but with tag 7 instead of tag 2
+(defun intern-keyword (name)
+  (let* ((uname (string-upcase name))
+         (existing (find-keyword uname (get-keyword-table))))
     (if existing
         existing
-        (let ((sym (make-symbol-from-string uname)))
-          (set-intern-table (cons (cons uname sym) (get-intern-table)))
-          sym))))
+        (let ((kw (make-keyword-from-string uname)))
+          (set-keyword-table (cons (cons uname kw) (get-keyword-table)))
+          kw))))
 
 ;; String upcase helper - converts lowercase to uppercase
 (defun string-upcase (s)
@@ -244,6 +341,137 @@
       (progn
         (vector-set dst i (h0-char-upcase (string-ref src i)))
         (string-upcase-loop src dst len (+ i #x1)))))
+
+;;; ============================================================
+;;; String utilities for package system
+;;; ============================================================
+
+;; Find position of first colon in string, or nil if none
+(defun find-colon (str)
+  (find-colon-loop str 0 (string-length str)))
+
+(defun find-colon-loop (str i len)
+  (if (>= i len)
+      nil
+      (if (= (string-ref str i) #x3A)  ; colon
+          i
+          (find-colon-loop str (+ i 1) len))))
+
+;; Extract substring from start to end (exclusive)
+(defun substring (str start end)
+  (let* ((len (- end start))
+         (vec (make-vector len)))
+    (substring-copy str vec start 0 len)
+    (make-string-from-vector vec)))
+
+(defun substring-copy (src dst start i len)
+  (if (>= i len)
+      dst
+      (progn
+        (vector-set dst i (string-ref src (+ start i)))
+        (substring-copy src dst start (+ i 1) len))))
+
+;; Concatenate two strings
+(defun string-concat (s1 s2)
+  (let* ((len1 (string-length s1))
+         (len2 (string-length s2))
+         (vec (make-vector (+ len1 len2))))
+    (string-copy-to-vec s1 vec 0 len1)
+    (string-copy-to-vec s2 vec len1 len2)
+    (make-string-from-vector vec)))
+
+(defun string-copy-to-vec (src dst start len)
+  (string-copy-to-vec-loop src dst start 0 len))
+
+(defun string-copy-to-vec-loop (src dst start i len)
+  (if (>= i len)
+      dst
+      (progn
+        (vector-set dst (+ start i) (string-ref src i))
+        (string-copy-to-vec-loop src dst start (+ i 1) len))))
+
+;; Concatenate three strings
+(defun string-concat3 (s1 s2 s3)
+  (string-concat (string-concat s1 s2) s3))
+
+;;; ============================================================
+;;; Package system
+;;; ============================================================
+
+;; Find package by name string, returns (name . symbols) or nil
+(defun find-package (name)
+  (find-package-in *packages* name))
+
+(defun find-package-in (pkgs name)
+  (if (null pkgs)
+      nil
+      (if (string= (caar pkgs) name)
+          (car pkgs)
+          (find-package-in (cdr pkgs) name))))
+
+;; Create new package if doesn't exist, returns package
+(defun make-package (name)
+  (let ((existing (find-package name)))
+    (if existing
+        existing
+        (let ((pkg (cons name nil)))
+          (setq *packages* (cons pkg *packages*))
+          pkg))))
+
+;; Get symbols from package
+(defun package-symbols (pkg)
+  (cdr pkg))
+
+;; Add symbol to package
+(defun package-add-symbol (pkg sym-name sym)
+  (let ((new-symbols (cons (cons sym-name sym) (cdr pkg))))
+    ;; Note: setcdr not available, rebuild package
+    ;; Actually in habu0 we can use set-cdr if it exists
+    ;; For now, update *packages* by rebuilding
+    (setq *packages* (update-package-symbols *packages* (car pkg) new-symbols))))
+
+(defun update-package-symbols (pkgs pkg-name new-symbols)
+  (if (null pkgs)
+      nil
+      (if (string= (caar pkgs) pkg-name)
+          (cons (cons pkg-name new-symbols) (cdr pkgs))
+          (cons (car pkgs) (update-package-symbols (cdr pkgs) pkg-name new-symbols)))))
+
+;; Find symbol in package's symbol list
+(defun find-symbol-in-package (sym-name pkg)
+  (find-in-alist sym-name (package-symbols pkg)))
+
+(defun find-in-alist (key alist)
+  (if (null alist)
+      nil
+      (if (string= (caar alist) key)
+          (car alist)
+          (find-in-alist key (cdr alist)))))
+
+;; Parse symbol name: "PKG:SYM" -> (pkg-name . sym-name), "SYM" -> (nil . sym-name)
+(defun parse-symbol-name (name)
+  (let ((colon-pos (find-colon name)))
+    (if colon-pos
+        (cons (substring name 0 colon-pos)
+              (substring name (+ colon-pos 1) (string-length name)))
+        (cons nil name))))
+
+;; Intern symbol in specific package
+(defun intern-in-package (sym-name pkg-name)
+  (let ((pkg (find-package pkg-name)))
+    (if (null pkg)
+        (setq pkg (make-package pkg-name)))
+    ;; Look for existing symbol in package
+    (let ((existing (find-symbol-in-package sym-name pkg)))
+      (if existing
+          (cdr existing)
+          ;; Create new symbol with qualified name
+          (let* ((full-name (if (string= pkg-name "CL-USER")
+                               sym-name
+                               (string-concat3 pkg-name ":" sym-name)))
+                 (sym (make-symbol-from-string full-name)))
+            (package-add-symbol pkg sym-name sym)
+            sym)))))
 
 ;; File I/O constants
 (defun o-rdonly () #x0)
@@ -363,17 +591,19 @@
         pos)))
 
 ;; String equality check
+;; String comparison helper - no labels
+(defun string=-loop (s1 s2 len i)
+  (if (>= i len)
+      t
+      (if (= (string-ref s1 i) (string-ref s2 i))
+          (string=-loop s1 s2 len (+ i 1))
+          nil)))
+
 (defun string= (s1 s2)
   (let ((len1 (string-length s1))
         (len2 (string-length s2)))
     (if (= len1 len2)
-        (labels ((cmp (i)
-                   (if (>= i len1)
-                       t
-                       (if (= (string-ref s1 i) (string-ref s2 i))
-                           (cmp (+ i #x1))
-                           nil))))
-          (cmp #x0))
+        (string=-loop s1 s2 len1 0)
         nil)))
 
 ;; Operator checks - pure eq comparison
@@ -410,6 +640,14 @@
 (defun op=not (sym) (eq sym *op-not*))
 (defun op=and (sym) (eq sym *op-and*))
 (defun op=or (sym) (eq sym *op-or*))
+(defun op=defpackage (sym) (eq sym *op-defpackage*))
+(defun op=in-package (sym) (eq sym *op-in-package*))
+(defun op=case (sym) (eq sym *op-case*))
+(defun op=when (sym) (eq sym *op-when*))
+(defun op=unless (sym) (eq sym *op-unless*))
+(defun op=declaim (sym) (eq sym *op-declaim*))
+(defun op=setq (sym) (eq sym *op-setq*))
+(defun op=error (sym) (eq sym *op-error*))
 
 ;; Generic symbol comparison - uses eq with interned symbol
 ;; For operators not in the cached *op-* variables
@@ -439,6 +677,14 @@
          (end (cdr r)))
     ;; Use intern to ensure all symbols with same name are eq
     (cons (intern (chars-to-string chars)) end)))
+
+;; Read keyword - starts after the ':'
+(defun read-keyword (source pos)
+  (let* ((r (read-sym-chars source pos nil))
+         (chars (car r))
+         (end (cdr r)))
+    ;; Use intern-keyword to ensure all keywords with same name are eq
+    (cons (intern-keyword (chars-to-string chars)) end)))
 
 ;; Read string literal
 (defun read-str-chars (source pos acc)
@@ -502,6 +748,20 @@
                      (pos (cdr r))
                      (result (list 'function val)))
                 (cons result pos)))
+             ;; #+ reader conditional - include if feature present
+             ;; habu0 has no features (not SBCL), so always skip form and read next
+             ((= ch #x2B)
+              (let* ((p2 (+ p #x2))                    ; position after #+
+                     (p3 (skip-symbol source p2))      ; position after feature name
+                     (skip-result (read-one p3))       ; read form to skip
+                     (p4 (cdr skip-result)))           ; position after skipped form
+                (read-one p4)))                        ; read and return next form
+             ;; #- reader conditional - include if feature NOT present
+             ;; habu0 has no features (not SBCL), so always include the form
+             ((= ch #x2D)
+              (let* ((p2 (+ p #x2))                    ; position after #-
+                     (p3 (skip-symbol source p2)))     ; position after feature name
+                (read-one p3)))                        ; read and return the form
              (t (cons nil (+ p #x2))))))
        (read-one (p)
          (let* ((p2 (skip-ws source p))
@@ -513,7 +773,7 @@
                  (#x27 (let* ((r (read-one (+ p2 #x1)))          ; '
                               (val (car r))
                               (pos (cdr r)))
-                         (cons (list 'quote val) pos)))
+                         (cons (list *op-quote* val) pos)))
                  (#x22 (read-str source p2))                     ; "
                  (#x23 (read-sharp p2))                          ; #
                  (#x29 (cons nil (+ p2 #x1)))                    ; )
@@ -523,6 +783,7 @@
                  (#x2B (if (digit? (char-at source (+ p2 #x1)))  ; + followed by digit
                            (read-int source p2)
                            (read-sym source p2)))
+                 (#x3A (read-keyword source (+ p2 #x1)))         ; : keyword
                  (_                                              ; default
                   (if (digit? ch)
                       (read-int source p2)
@@ -574,6 +835,114 @@
   (if (null params) env
       (cons (cons (car params) (car args))
             (bind-args (cdr params) (cdr args) env))))
+
+;;; ==========================================================================
+;;; &key Lambda Support
+;;; ==========================================================================
+;;; Allows functions to accept keyword arguments:
+;;;   (defun foo (x y &key opt1 (opt2 default)) ...)
+;;;   (foo 1 2 :opt1 val1 :opt2 val2)
+
+;; Check if a symbol is &KEY marker
+(defun is-key-marker (sym)
+  (if (symbolp sym)
+      (string= (symbol-name sym) "&KEY")
+      nil))
+
+;; Split lambda list at &key marker
+;; Returns (required-params . key-params)
+(defun split-lambda-list (params)
+  (labels ((split-loop (rest required)
+             (cond
+               ((null rest) (cons (reverse required) nil))
+               ((is-key-marker (car rest))
+                (cons (reverse required) (cdr rest)))
+               (t (split-loop (cdr rest) (cons (car rest) required))))))
+    (split-loop params nil)))
+
+;; Get the parameter name from a key param spec
+;; (param default) -> param, or just param -> param
+(defun key-param-name (spec)
+  (if (consp spec)
+      (car spec)
+      spec))
+
+;; Get the default value from a key param spec
+;; (param default) -> default, or just param -> nil
+(defun key-param-default (spec)
+  (if (consp spec)
+      (cadr spec)
+      nil))
+
+;; Convert a keyword to its corresponding parameter symbol
+;; :foo -> FOO (intern the name)
+(defun keyword-to-param (kw)
+  (intern (keyword-name kw)))
+
+;; Find value for a keyword in argument list
+;; Args: (:foo val1 :bar val2 ...), key: :foo
+;; Returns (found . value) or nil if not found
+(defun find-key-arg (args key-name)
+  (cond
+    ((null args) nil)
+    ((null (cdr args)) nil)  ; keyword without value - error case
+    ((keywordp (car args))
+     (if (string= (keyword-name (car args)) key-name)
+         (cons t (cadr args))   ; Found it
+         (find-key-arg (cddr args) key-name)))
+    (t (find-key-arg (cdr args) key-name))))
+
+;; Bind keyword arguments to environment
+;; key-params: list of (name default) or just name
+;; key-args: list of :key val :key val ...
+(defun bind-key-args (key-params key-args env fenv)
+  (if (null key-params) env
+      (let* ((spec (car key-params))
+             (name (key-param-name spec))
+             (default (key-param-default spec))
+             (name-str (symbol-name name))
+             (found (find-key-arg key-args name-str))
+             (val (if found
+                      (cdr found)
+                      (if default
+                          (h0-eval default nil fenv)
+                          nil))))
+        (bind-key-args (cdr key-params)
+                       key-args
+                       (cons (cons name val) env)
+                       fenv))))
+
+;; Count required arguments (non-keyword args)
+(defun count-required-args (args)
+  (cond
+    ((null args) 0)
+    ((keywordp (car args)) 0)  ; Reached keyword args
+    (t (+ 1 (count-required-args (cdr args))))))
+
+;; Get required arguments from arg list
+(defun get-required-args (args n)
+  (if (= n 0) nil
+      (cons (car args) (get-required-args (cdr args) (- n 1)))))
+
+;; Get keyword arguments from arg list (after required args)
+(defun get-key-args (args n)
+  (if (= n 0) args
+      (get-key-args (cdr args) (- n 1))))
+
+;; Full lambda binding: handles both required and keyword params
+(defun bind-lambda-args (params args env fenv)
+  (let* ((split (split-lambda-list params))
+         (req-params (car split))
+         (key-params (cdr split)))
+    (if (null key-params)
+        ;; No keyword params - use simple binding
+        (bind-args req-params args env)
+        ;; Has keyword params - split args and bind both
+        (let* ((n-required (length req-params))
+               (req-args (get-required-args args n-required))
+               (key-args (get-key-args args n-required))
+               (env1 (bind-args req-params req-args env)))
+          (bind-key-args key-params key-args env1 fenv)))))
 
 ;; Look up by symbol in environment using eq
 ;; Returns the entry (cons sym val) or nil if not found
@@ -637,6 +1006,49 @@
             val
             (h0-eval-or (cdr forms) env fenv)))))
 
+;; EQL - same as EQ for symbols, uses = for numbers
+;; This is the standard CL comparison used by CASE
+(defun eql (a b)
+  (cond
+    ((eq a b) t)
+    ((and (numberp a) (numberp b)) (= a b))
+    (t nil)))
+
+;; Helper for case - check if key matches a clause's keys
+;; Keys can be a single value or a list of values
+;; Returns t if match, nil otherwise
+(defun case-key-matches (key keys)
+  (cond
+    ((null keys) nil)
+    ((consp keys)
+     ;; List of keys - check each one
+     (if (eql key (car keys))
+         t
+         (case-key-matches key (cdr keys))))
+    ;; Single key
+    (t (eql key keys))))
+
+;; Helper for case - evaluate clauses
+;; Each clause is (keys body...) or (t body...) or (otherwise body...)
+(defun h0-eval-case-clauses (key clauses env fenv)
+  (if (null clauses)
+      nil
+      (let* ((clause (car clauses))
+             (keys (car clause))
+             (body (cdr clause)))
+        (cond
+          ;; t or otherwise - default case
+          ((or (eq keys t)
+               (if (symbolp keys)
+                   (string= (symbol-name keys) "OTHERWISE")
+                   nil))
+           (h0-eval-progn body env fenv))
+          ;; Check if key matches
+          ((case-key-matches key keys)
+           (h0-eval-progn body env fenv))
+          ;; Try next clause
+          (t (h0-eval-case-clauses key (cdr clauses) env fenv))))))
+
 ;; Eval function with fenv for function definitions
 ;; Uses cached op= functions for O(1) amortized dispatch
 (defun h0-eval (expr env fenv)
@@ -645,6 +1057,8 @@
     ((numberp expr) expr)
     ;; Strings are self-evaluating
     ((stringp expr) expr)
+    ;; Keywords are self-evaluating
+    ((keywordp expr) expr)
     ;; nil is false (both Lisp nil and symbol NIL)
     ((null expr) nil)
     ;; Symbol NIL - return nil (catches reader-created NIL symbol)
@@ -683,6 +1097,37 @@
           (h0-eval-cond (cdr expr) env fenv))
          ;; Defun - returns nil but defines function
          ((if (symbolp op) (op=defun op) nil) nil)
+         ;; Defpackage - create package, returns nil
+         ((if (symbolp op) (op=defpackage op) nil)
+          (let ((pkg-name (keyword-name (cadr expr))))
+            (make-package (string-upcase pkg-name))
+            nil))
+         ;; In-package - set current package, returns nil
+         ((if (symbolp op) (op=in-package op) nil)
+          (let ((pkg-name (keyword-name (cadr expr))))
+            (setq *current-package* (string-upcase pkg-name))
+            ;; Ensure package exists
+            (make-package *current-package*)
+            nil))
+         ;; Case - multi-way conditional on value
+         ((if (symbolp op) (op=case op) nil)
+          (let ((key (h0-eval (cadr expr) env fenv)))
+            (h0-eval-case-clauses key (cddr expr) env fenv)))
+         ;; When - conditional execution (returns nil if false)
+         ((if (symbolp op) (op=when op) nil)
+          (if (h0-eval (cadr expr) env fenv)
+              (h0-eval-progn (cddr expr) env fenv)
+              nil))
+         ;; Unless - inverse conditional (executes when false)
+         ((if (symbolp op) (op=unless op) nil)
+          (if (h0-eval (cadr expr) env fenv)
+              nil
+              (h0-eval-progn (cddr expr) env fenv)))
+         ;; Declaim - declaration, no-op in interpreter
+         ((if (symbolp op) (op=declaim op) nil) nil)
+         ;; Error - signal error (crash with message)
+         ((if (symbolp op) (op=error op) nil)
+          (fatal-error "h0-eval: error called"))
          ;; Arithmetic - use cached op= functions
          ((if (symbolp op) (op=plus op) nil)
           (let* ((left (h0-eval (cadr expr) env fenv))
@@ -855,7 +1300,8 @@
                 (let* ((params (car fn-entry))
                        (body (cdr fn-entry))
                        (args (h0-eval-list (cdr expr) env fenv))
-                       (new-env (bind-args params args nil)))
+                       ;; Use bind-lambda-args to support &key parameters
+                       (new-env (bind-lambda-args params args nil fenv)))
                   (h0-eval body new-env fenv))
                 ;; Unknown function
                 (fatal-error "h0-eval: unknown function")))))))
@@ -959,6 +1405,14 @@
   (setq *op-not* (intern "NOT"))
   (setq *op-and* (intern "AND"))
   (setq *op-or* (intern "OR"))
+  (setq *op-defpackage* (intern "DEFPACKAGE"))
+  (setq *op-in-package* (intern "IN-PACKAGE"))
+  (setq *op-case* (intern "CASE"))
+  (setq *op-when* (intern "WHEN"))
+  (setq *op-unless* (intern "UNLESS"))
+  (setq *op-declaim* (intern "DECLAIM"))
+  (setq *op-setq* (intern "SETQ"))
+  (setq *op-error* (intern "ERROR"))
   nil)
 
 ;; Environment lookup for compilation - returns offset or nil
@@ -1023,6 +1477,21 @@
 (defun ir-tag-null () #x11)
 (defun ir-tag-let () #x12)
 (defun ir-tag-progn () #x13)
+;; Additional tags for self-hosting
+(defun ir-tag-str-len () #x14)    ; string-length
+(defun ir-tag-str-ref () #x15)    ; string-ref
+(defun ir-tag-eq () #x16)         ; eq
+(defun ir-tag-consp () #x17)      ; consp
+(defun ir-tag-symbolp () #x18)    ; symbolp
+(defun ir-tag-numberp () #x19)    ; numberp (fixnump)
+(defun ir-tag-stringp () #x1A)    ; stringp
+(defun ir-tag-logand () #x1B)     ; logand
+(defun ir-tag-logior () #x1C)     ; logior
+(defun ir-tag-ash () #x1D)        ; ash (arithmetic shift)
+(defun ir-tag-not () #x1E)        ; not (boolean)
+(defun ir-tag-str-lit () #x1F)    ; string literal (heap-allocated)
+(defun ir-tag-kw-lit () #x20)     ; keyword literal (heap-allocated)
+(defun ir-tag-keywordp () #x21)   ; keywordp predicate
 
 ;; Check if IR node has a specific tag (numeric comparison)
 (defun h0-has-tag-n (ir tag)
@@ -1040,6 +1509,10 @@
     ((null expr) (list (ir-tag-lit) #x0))
     ;; t is 1
     ((sym= expr "T") (list (ir-tag-lit) #x1))
+    ;; String literals - allocate on heap
+    ((stringp expr) (list (ir-tag-str-lit) expr))
+    ;; Keyword literals - allocate on heap (self-evaluating)
+    ((keywordp expr) (list (ir-tag-kw-lit) expr))
     ;; Symbols - variable lookup
     ((symbolp expr)
      (let ((result (c-env-lookup expr env)))
@@ -1128,6 +1601,51 @@
          ((sym= op "NULL")
           (let ((v (h0-compile (cadr expr) env fenv)))
             (list (ir-tag-null) v)))
+         ;; String operations
+         ((sym= op "STRING-LENGTH")
+          (let ((v (h0-compile (cadr expr) env fenv)))
+            (list (ir-tag-str-len) v)))
+         ((sym= op "STRING-REF")
+          (let* ((str (h0-compile (cadr expr) env fenv))
+                 (idx (h0-compile (caddr expr) env fenv)))
+            (list (ir-tag-str-ref) str idx)))
+         ;; Type predicates
+         ((sym= op "EQ")
+          (let* ((l (h0-compile (cadr expr) env fenv))
+                 (r (h0-compile (caddr expr) env fenv)))
+            (list (ir-tag-eq) l r)))
+         ((sym= op "CONSP")
+          (let ((v (h0-compile (cadr expr) env fenv)))
+            (list (ir-tag-consp) v)))
+         ((sym= op "SYMBOLP")
+          (let ((v (h0-compile (cadr expr) env fenv)))
+            (list (ir-tag-symbolp) v)))
+         ((sym= op "NUMBERP")
+          (let ((v (h0-compile (cadr expr) env fenv)))
+            (list (ir-tag-numberp) v)))
+         ((sym= op "STRINGP")
+          (let ((v (h0-compile (cadr expr) env fenv)))
+            (list (ir-tag-stringp) v)))
+         ((sym= op "KEYWORDP")
+          (let ((v (h0-compile (cadr expr) env fenv)))
+            (list (ir-tag-keywordp) v)))
+         ;; Bitwise operations
+         ((sym= op "LOGAND")
+          (let* ((l (h0-compile (cadr expr) env fenv))
+                 (r (h0-compile (caddr expr) env fenv)))
+            (list (ir-tag-logand) l r)))
+         ((sym= op "LOGIOR")
+          (let* ((l (h0-compile (cadr expr) env fenv))
+                 (r (h0-compile (caddr expr) env fenv)))
+            (list (ir-tag-logior) l r)))
+         ((sym= op "ASH")
+          (let* ((val (h0-compile (cadr expr) env fenv))
+                 (shift (h0-compile (caddr expr) env fenv)))
+            (list (ir-tag-ash) val shift)))
+         ;; Boolean not
+         ((sym= op "NOT")
+          (let ((v (h0-compile (cadr expr) env fenv)))
+            (list (ir-tag-not) v)))
          ;; Default - unknown operator - CRASH
          (t (fatal-error-ir "h0-compile: Unknown operator")))))
     ;; Default - unknown expression type - CRASH
@@ -1428,6 +1946,99 @@
 (defun a64-ret ()
   (list #xC0 #x03 #x5F #xD6))
 
+;; LDRB Wt, [Xn, #offset] - load byte, zero-extend
+;; Encoding: 0x39400000 | (offset << 10) | (Rn << 5) | Rt
+(defun a64-ldrb (rt rn offset)
+  (let ((inst (logior #x39400000
+                      (ash (logand offset #xFFF) #xA)
+                      (ash rn #x5)
+                      rt)))
+    (list (logand inst #xFF)
+          (logand (ash inst #x-8) #xFF)
+          (logand (ash inst #x-10) #xFF)
+          (logand (ash inst #x-18) #xFF))))
+
+;; STRB Wt, [Xn, #offset] - store byte
+;; Encoding: 0x39000000 | (offset << 10) | (Rn << 5) | Rt
+(defun a64-strb (rt rn offset)
+  (let ((inst (logior #x39000000
+                      (ash (logand offset #xFFF) #xA)
+                      (ash rn #x5)
+                      rt)))
+    (list (logand inst #xFF)
+          (logand (ash inst #x-8) #xFF)
+          (logand (ash inst #x-10) #xFF)
+          (logand (ash inst #x-18) #xFF))))
+
+;; AND Xd, Xn, #mask - AND with immediate
+;; ARM64 logical immediate encoding is complex
+;; For common masks: #xF (low 4 bits), #x7 (low 3 bits)
+(defun a64-and-imm (rd rn mask)
+  (let* ((base #x92400000)
+         (inst (cond
+                 ;; Low 3 bits: N=1, immr=0, imms=2
+                 ((= mask #x7) (logior base (ash #x2 #xA) (ash rn #x5) rd))
+                 ;; Low 4 bits: N=1, immr=0, imms=3
+                 ((= mask #xF) (logior base (ash #x3 #xA) (ash rn #x5) rd))
+                 ;; Low 8 bits: N=1, immr=0, imms=7
+                 ((= mask #xFF) (logior base (ash #x7 #xA) (ash rn #x5) rd))
+                 ;; Low 16 bits: N=1, immr=0, imms=15
+                 ((= mask #xFFFF) (logior base (ash #xF #xA) (ash rn #x5) rd))
+                 ;; Default: return nop for unsupported masks
+                 (t #xD503201F))))
+    (list (logand inst #xFF)
+          (logand (ash inst #x-8) #xFF)
+          (logand (ash inst #x-10) #xFF)
+          (logand (ash inst #x-18) #xFF))))
+
+;; AND Xd, Xn, Xm - AND registers
+;; Encoding: 0x8A000000 | (Rm << 16) | (Rn << 5) | Rd
+(defun a64-and-reg (rd rn rm)
+  (let ((inst (logior #x8A000000
+                      (ash rm #x10)
+                      (ash rn #x5)
+                      rd)))
+    (list (logand inst #xFF)
+          (logand (ash inst #x-8) #xFF)
+          (logand (ash inst #x-10) #xFF)
+          (logand (ash inst #x-18) #xFF))))
+
+;; ORR Xd, Xn, Xm - OR registers
+;; Encoding: 0xAA000000 | (Rm << 16) | (Rn << 5) | Rd
+(defun a64-orr-reg (rd rn rm)
+  (let ((inst (logior #xAA000000
+                      (ash rm #x10)
+                      (ash rn #x5)
+                      rd)))
+    (list (logand inst #xFF)
+          (logand (ash inst #x-8) #xFF)
+          (logand (ash inst #x-10) #xFF)
+          (logand (ash inst #x-18) #xFF))))
+
+;; ASR Xd, Xn, #shift - arithmetic shift right immediate
+;; Encoding: SBFM Xd, Xn, #shift, #63 = 0x9340FC00 | (shift << 16) | (Rn << 5) | Rd
+(defun a64-asr-imm (rd rn shift)
+  (let ((inst (logior #x9340FC00
+                      (ash shift #x10)
+                      (ash rn #x5)
+                      rd)))
+    (list (logand inst #xFF)
+          (logand (ash inst #x-8) #xFF)
+          (logand (ash inst #x-10) #xFF)
+          (logand (ash inst #x-18) #xFF))))
+
+;; LSL Xd, Xn, Xm - logical shift left register
+;; Encoding: LSLV = 0x9AC02000 | (Rm << 16) | (Rn << 5) | Rd
+(defun a64-lsl-reg (rd rn rm)
+  (let ((inst (logior #x9AC02000
+                      (ash rm #x10)
+                      (ash rn #x5)
+                      rd)))
+    (list (logand inst #xFF)
+          (logand (ash inst #x-8) #xFF)
+          (logand (ash inst #x-10) #xFF)
+          (logand (ash inst #x-18) #xFF))))
+
 ;; Append byte lists
 (defun bytes-append (a b)
   (if (null a) b
@@ -1457,6 +2068,27 @@
            (let ((movz-code (a64-movz #x0 (logand tagged #xFFFF)))
                  (movk-code (a64-movk #x0 (logand (ash tagged #x-10) #xFFFF) #x10)))
              (bytes-append movz-code movk-code)))))
+
+    ;; String literal - allocate on heap
+    ;; Layout: [length:8][chars:N][padding to 16]
+    ;; Returns tagged pointer with tag 4
+    ((h0-has-tag-n ir (ir-tag-str-lit))
+     (let* ((str (cadr ir))
+            (len (string-length str))
+            ;; Round up (len + 8) to 16-byte boundary
+            (total-size (logand (+ len #x8 #xF) (lognot #xF))))
+       (h0-codegen-str-lit str len total-size)))
+
+    ;; Keyword literal - allocate on heap
+    ;; Layout: same as string [length:8][chars:N][padding to 16]
+    ;; Returns tagged pointer with tag 7
+    ((h0-has-tag-n ir (ir-tag-kw-lit))
+     (let* ((kw (cadr ir))
+            (str (keyword-name kw))
+            (len (string-length str))
+            ;; Round up (len + 8) to 16-byte boundary
+            (total-size (logand (+ len #x8 #xF) (lognot #xF))))
+       (h0-codegen-kw-lit str len total-size)))
 
     ;; Variable - load from stack frame at x20
     ((h0-has-tag-n ir (ir-tag-var))
@@ -1620,8 +2252,185 @@
     ((h0-has-tag-n ir (ir-tag-progn))
      (h0-codegen-progn (cadr ir) td))
 
-    ;; Default - return 0
-    (t (a64-movz #x0 #x0))))
+    ;; String-length: get length from string header (offset -8 from tagged ptr)
+    ;; String layout: [length:u64][chars...]  with tag 4
+    ((h0-has-tag-n ir (ir-tag-str-len))
+     (let* ((arg-code (h0-codegen (cadr ir) td))
+            ;; Untag (subtract 4), then load length from offset 0
+            (untag (a64-sub-imm #x0 #x0 #x4))
+            (load-len (a64-ldr #x0 #x0 #x0))
+            ;; Length is already untagged, need to tag it
+            (tag-result (a64-lsl-imm #x0 #x0 #x4)))
+       (bytes-append-all (list arg-code untag load-len tag-result))))
+
+    ;; String-ref: get char at index
+    ;; String layout: [length:u64][chars...]
+    ((h0-has-tag-n ir (ir-tag-str-ref))
+     (let* ((slot-off (+ #x30 (* td #x8)))
+            (str-code (h0-codegen (cadr ir) td))
+            (save-str (a64-str #x0 #x1F slot-off))
+            (idx-code (h0-codegen (caddr ir) (+ td #x1)))
+            ;; Untag index
+            (untag-idx (a64-lsr-imm #x1 #x0 #x4))
+            ;; Load string ptr
+            (load-str (a64-ldr #x0 #x1F slot-off))
+            ;; Untag string (subtract 4)
+            (untag-str (a64-sub-imm #x0 #x0 #x4))
+            ;; Add 8 to skip length field, then add index
+            (add-offset (a64-add-imm #x0 #x0 #x8))
+            (add-idx (a64-add-reg #x0 #x0 #x1))
+            ;; Load byte
+            (load-byte (a64-ldrb #x0 #x0 #x0))
+            ;; Tag result
+            (tag-result (a64-lsl-imm #x0 #x0 #x4)))
+       (bytes-append-all (list str-code save-str idx-code untag-idx load-str
+                               untag-str add-offset add-idx load-byte tag-result))))
+
+    ;; EQ: pointer equality
+    ((h0-has-tag-n ir (ir-tag-eq))
+     (h0-codegen-cmp (cadr ir) (caddr ir) (cond-eq) td))
+
+    ;; Consp: check if tag is 1
+    ((h0-has-tag-n ir (ir-tag-consp))
+     (let* ((arg-code (h0-codegen (cadr ir) td))
+            (and-tag (a64-and-imm #x0 #x0 #xF))
+            (cmp-tag (a64-cmp-imm #x0 #x1))
+            (cset (a64-cset #x0 (cond-eq)))
+            (tag-result (a64-lsl-imm #x0 #x0 #x4)))
+       (bytes-append-all (list arg-code and-tag cmp-tag cset tag-result))))
+
+    ;; Symbolp: check if tag is 2
+    ((h0-has-tag-n ir (ir-tag-symbolp))
+     (let* ((arg-code (h0-codegen (cadr ir) td))
+            (and-tag (a64-and-imm #x0 #x0 #xF))
+            (cmp-tag (a64-cmp-imm #x0 #x2))
+            (cset (a64-cset #x0 (cond-eq)))
+            (tag-result (a64-lsl-imm #x0 #x0 #x4)))
+       (bytes-append-all (list arg-code and-tag cmp-tag cset tag-result))))
+
+    ;; Numberp: check if tag is 0 (fixnum)
+    ((h0-has-tag-n ir (ir-tag-numberp))
+     (let* ((arg-code (h0-codegen (cadr ir) td))
+            (and-tag (a64-and-imm #x0 #x0 #xF))
+            (cmp-tag (a64-cmp-imm #x0 #x0))
+            (cset (a64-cset #x0 (cond-eq)))
+            (tag-result (a64-lsl-imm #x0 #x0 #x4)))
+       (bytes-append-all (list arg-code and-tag cmp-tag cset tag-result))))
+
+    ;; Stringp: check if tag is 4
+    ((h0-has-tag-n ir (ir-tag-stringp))
+     (let* ((arg-code (h0-codegen (cadr ir) td))
+            (and-tag (a64-and-imm #x0 #x0 #xF))
+            (cmp-tag (a64-cmp-imm #x0 #x4))
+            (cset (a64-cset #x0 (cond-eq)))
+            (tag-result (a64-lsl-imm #x0 #x0 #x4)))
+       (bytes-append-all (list arg-code and-tag cmp-tag cset tag-result))))
+
+    ;; Keywordp: check if tag is 7
+    ((h0-has-tag-n ir (ir-tag-keywordp))
+     (let* ((arg-code (h0-codegen (cadr ir) td))
+            (and-tag (a64-and-imm #x0 #x0 #xF))
+            (cmp-tag (a64-cmp-imm #x0 #x7))
+            (cset (a64-cset #x0 (cond-eq)))
+            (tag-result (a64-lsl-imm #x0 #x0 #x4)))
+       (bytes-append-all (list arg-code and-tag cmp-tag cset tag-result))))
+
+    ;; Logand: bitwise AND (both operands tagged, result tagged)
+    ((h0-has-tag-n ir (ir-tag-logand))
+     (h0-codegen-binop (cadr ir) (caddr ir)
+                       (a64-and-reg #x0 #x0 #x1)
+                       td))
+
+    ;; Logior: bitwise OR
+    ((h0-has-tag-n ir (ir-tag-logior))
+     (h0-codegen-binop (cadr ir) (caddr ir)
+                       (a64-orr-reg #x0 #x0 #x1)
+                       td))
+
+    ;; ASH: arithmetic shift (untag, shift, retag)
+    ;; Positive shift = left, negative = right
+    ((h0-has-tag-n ir (ir-tag-ash))
+     (let* ((slot-off (+ #x30 (* td #x8)))
+            (val-code (h0-codegen (cadr ir) td))
+            (save-val (a64-str #x0 #x1F slot-off))
+            (shift-code (h0-codegen (caddr ir) (+ td #x1)))
+            ;; Untag shift amount
+            (untag-shift (a64-asr-imm #x1 #x0 #x4))
+            ;; Load value
+            (load-val (a64-ldr #x0 #x1F slot-off))
+            ;; Untag value
+            (untag-val (a64-asr-imm #x0 #x0 #x4))
+            ;; Variable shift: if x1 >= 0, LSL; else ASR by -x1
+            ;; For simplicity, use LSL for now (assume positive shifts)
+            (shift-op (a64-lsl-reg #x0 #x0 #x1))
+            ;; Retag
+            (retag (a64-lsl-imm #x0 #x0 #x4)))
+       (bytes-append-all (list val-code save-val shift-code untag-shift
+                               load-val untag-val shift-op retag))))
+
+    ;; NOT: boolean negation (nil -> t, anything else -> nil)
+    ((h0-has-tag-n ir (ir-tag-not))
+     (let* ((arg-code (h0-codegen (cadr ir) td))
+            ;; Compare to nil (6)
+            (cmp-nil (a64-cmp-imm #x0 #x6))
+            ;; If equal to nil, result is 1 (t), else 0
+            (cset (a64-cset #x0 (cond-eq)))
+            ;; Tag result
+            (tag-result (a64-lsl-imm #x0 #x0 #x4)))
+       (bytes-append-all (list arg-code cmp-nil cset tag-result))))
+
+    ;; Default - CRASH: unknown IR tag
+    (t (fatal-error "h0-codegen: Unknown IR tag"))))
+
+;; Codegen helper for string literals
+;; Allocates string on heap: [length:8][chars:N][padding]
+;; Returns tagged pointer with tag 4
+(defun h0-codegen-str-lit (str len total-size)
+  (let* (;; Store length at x28
+         (mov-len-lo (a64-movz #x0 (logand len #xFFFF)))
+         (str-len (a64-str #x0 #x1C #x0))
+         ;; Get string base address (x28 + 8)
+         (add-base (a64-add-imm #x1 #x1C #x8))
+         ;; Generate STRB instructions for each character
+         (char-stores (h0-gen-str-bytes str #x0))
+         ;; Save tagged pointer to x0: x28 | 4
+         (mov-ptr (a64-mov-reg #x0 #x1C))
+         (tag-ptr (a64-add-imm #x0 #x0 #x4))
+         ;; Bump heap pointer
+         (bump-heap (a64-add-imm #x1C #x1C total-size)))
+    (bytes-append-all (list mov-len-lo str-len add-base
+                            char-stores mov-ptr tag-ptr bump-heap))))
+
+;; Codegen helper for keyword literals
+;; Same layout as strings but with tag 7 instead of 4
+(defun h0-codegen-kw-lit (str len total-size)
+  (let* (;; Store length at x28
+         (mov-len-lo (a64-movz #x0 (logand len #xFFFF)))
+         (str-len (a64-str #x0 #x1C #x0))
+         ;; Get string base address (x28 + 8)
+         (add-base (a64-add-imm #x1 #x1C #x8))
+         ;; Generate STRB instructions for each character
+         (char-stores (h0-gen-str-bytes str #x0))
+         ;; Save tagged pointer to x0: x28 | 7 (keyword tag)
+         (mov-ptr (a64-mov-reg #x0 #x1C))
+         (tag-ptr (a64-add-imm #x0 #x0 #x7))
+         ;; Bump heap pointer
+         (bump-heap (a64-add-imm #x1C #x1C total-size)))
+    (bytes-append-all (list mov-len-lo str-len add-base
+                            char-stores mov-ptr tag-ptr bump-heap))))
+
+;; Generate STRB instructions for string characters
+(defun h0-gen-str-bytes (str idx)
+  (if (>= idx (string-length str))
+      nil
+      (let* ((char (string-ref str idx))
+             ;; MOVZ x0, #char
+             (mov-char (a64-movz #x0 char))
+             ;; STRB w0, [x1, #idx]
+             (strb (a64-strb #x0 #x1 idx)))
+        (bytes-append mov-char
+                      (bytes-append strb
+                                    (h0-gen-str-bytes str (+ idx #x1)))))))
 
 ;; Codegen helper for binary operations
 ;; Inline temp slot calculation: 48 + td*8
@@ -1718,8 +2527,8 @@
     ;; Progn
     ((h0-has-tag-n ir (ir-tag-progn))
      (h0-eval-ir-progn (cadr ir) env))
-    ;; Default
-    (t #x0)))
+    ;; Default - CRASH: unknown IR tag
+    (t (fatal-error "h0-eval-ir: Unknown IR tag"))))
 
 (defun h0-eval-ir-progn (forms env)
   (if (null forms)

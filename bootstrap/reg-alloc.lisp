@@ -1012,6 +1012,34 @@
                      (list (list 'tac-set-symbol-table val-vr)))
              val-vr)))
 
+    ;; get-packages-ir: load packages alist from [x27 + 80]
+    ((and (consp ir) (ir-tag-matches (car ir) "GET-PACKAGES-IR"))
+     (let ((result-vr (next-vreg counter)))
+       (list (list (list 'tac-get-packages result-vr)) result-vr)))
+
+    ;; set-packages-ir: store packages alist to [x27 + 80]
+    ((and (consp ir) (ir-tag-matches (car ir) "SET-PACKAGES-IR"))
+     (let* ((val-result (ir-to-tac (cadr ir) counter))
+            (val-instrs (car val-result))
+            (val-vr (cadr val-result)))
+       (list (append val-instrs
+                     (list (list 'tac-set-packages val-vr)))
+             val-vr)))
+
+    ;; get-current-package-ir: load current package name from [x27 + 88]
+    ((and (consp ir) (ir-tag-matches (car ir) "GET-CURRENT-PACKAGE-IR"))
+     (let ((result-vr (next-vreg counter)))
+       (list (list (list 'tac-get-current-package result-vr)) result-vr)))
+
+    ;; set-current-package-ir: store current package name to [x27 + 88]
+    ((and (consp ir) (ir-tag-matches (car ir) "SET-CURRENT-PACKAGE-IR"))
+     (let* ((val-result (ir-to-tac (cadr ir) counter))
+            (val-instrs (car val-result))
+            (val-vr (cadr val-result)))
+       (list (append val-instrs
+                     (list (list 'tac-set-current-package val-vr)))
+             val-vr)))
+
     ;; Default: error on unhandled IR
     (t
      (error "ir-to-tac: Unhandled IR form: ~A" ir))))
@@ -1041,12 +1069,14 @@
       tac-lambda-ref tac-symbol-name tac-make-symbol
       tac-string-concat tac-string-equal
       tac-get-intern-table tac-get-lambda-counter tac-get-symbol-counter tac-get-symbol-table
-      tac-get-frame-pointer tac-get-code-base tac-get-symtab-offset tac-get-symtab-count)
+      tac-get-frame-pointer tac-get-code-base tac-get-symtab-offset tac-get-symtab-count
+      tac-get-packages tac-get-current-package)
      (cadr instr))
     ;; Instructions that don't define a vreg (control flow, stores, etc.)
     ((tac-return tac-if tac-if-not tac-goto tac-label tac-setvar tac-sys-exit
       tac-loop-start tac-continue tac-setcar tac-setcdr tac-vector-set
-      tac-set-global-vars tac-set-intern-table)
+      tac-set-global-vars tac-set-intern-table
+      tac-set-packages tac-set-current-package)
      nil)
     (t (error "tac-def: Unhandled TAC instruction: ~A" (car instr)))))
 
@@ -1060,16 +1090,20 @@
       ;; New no-use instructions
       tac-lambda-ref tac-get-intern-table tac-get-lambda-counter
       tac-get-symbol-counter tac-get-symbol-table tac-get-frame-pointer
-      tac-get-code-base tac-get-symtab-offset tac-get-symtab-count)
+      tac-get-code-base tac-get-symtab-offset tac-get-symtab-count
+      tac-get-packages tac-get-current-package)
      nil)
     ;; Binary operations: (tac-binop dest op vr1 vr2)
     ((tac-binop tac-cmp)
      (list (cadddr instr) (nth 4 instr)))
-    ;; setvar: (tac-setvar offset vreg)
-    ((tac-setvar tac-set-global-vars tac-sys-exit
-      ;; New single-use setters
-      tac-set-intern-table tac-set-lambda-counter tac-set-symbol-counter tac-set-symbol-table)
+    ;; setvar: (tac-setvar offset vreg) - uses 3rd element
+    ((tac-setvar)
      (list (caddr instr)))
+    ;; Global/system setters: (tac-set-X vreg) - uses 2nd element
+    ((tac-set-global-vars tac-set-intern-table tac-set-lambda-counter
+      tac-set-symbol-counter tac-set-symbol-table tac-sys-exit
+      tac-set-packages tac-set-current-package)
+     (list (cadr instr)))
     ;; Conditionals: (tac-if cond-vreg then else)
     ((tac-if tac-if-not)
      (list (cadr instr)))
@@ -1621,11 +1655,12 @@
                           (remove-if-not
                            (lambda (r) (member r allocatable))
                            (mapcar #'cdr allocation))))
-              ;; Generate saves to stack at offsets 0x40+ (temp area)
+              ;; Generate saves to stack at offsets 0x100+ (caller-save area)
               ;; Frame layout: 0x10=x19/x20, 0x20=x21/x22, 0x30=x23/x24
-              ;; So 0x40 is safe for caller-saved registers
+              ;; Spill slots use 0x40-0xFF, so caller-save starts at 0x100
+              ;; This avoids corrupting spilled args when saving regs before calls
               (save-code nil)
-              (save-offset #x40)
+              (save-offset #x100)
               (reg-offsets nil))  ; Track which reg is at which offset for restore
          ;; Save only actually-used caller-saved registers
          (dolist (reg used-regs)
@@ -2255,6 +2290,7 @@
               (unless (eq dest :x0) (arm64:mov dest :x0))))))
 
       ;; tac-sys-write: write(fd, buf, len) via libSystem stub
+      ;; Buffer can be string (tag 4) or vector (tag 3), so use AND to clear tag bits
       ((tac-sys-write)
        (let* ((dest-vreg (cadr instr))
               (fd-vreg (caddr instr))
@@ -2272,7 +2308,7 @@
           (if (and (consp buf-loc) (eq (car buf-loc) :spill))
               (arm64:ldr :x1 :sp :offset (spill-offset (cadr buf-loc)))
               (arm64:mov :x1 buf-loc))
-          (arm64:sub :x1 :x1 3 :imm t)
+          (arm64:and* :x1 :x1 -8 :imm t)  ; clear tag bits (works for string tag 4 or vector tag 3)
           (arm64:add :x1 :x1 8 :imm t)
           (if (and (consp len-loc) (eq (car len-loc) :spill))
               (arm64:ldr :x2 :sp :offset (spill-offset (cadr len-loc)))
@@ -2472,7 +2508,7 @@
           (when (and (consp dest) (eq (car dest) :spill))
             (arm64:str :x0 :sp :offset (spill-offset (cadr dest)))))))
 
-      ;; tac-mem-load-byte: load single byte from ptr+offset (raw value)
+      ;; tac-mem-load-byte: load single byte from ptr+offset, return as tagged fixnum
       ((tac-mem-load-byte)
        (let* ((dest-vreg (cadr instr))
               (ptr-vreg (caddr instr))
@@ -2482,10 +2518,11 @@
               (off-loc (vreg-to-reg off-vreg allocation))
               (dest-reg (if (and (consp dest) (eq (car dest) :spill)) :x0 dest)))
          (append
-          ;; Load ptr (raw pointer, no untagging needed for symtab addr)
+          ;; Load ptr and untag (ptr is a tagged fixnum)
           (if (and (consp ptr-loc) (eq (car ptr-loc) :spill))
               (arm64:ldr :x0 :sp :offset (spill-offset (cadr ptr-loc)))
               (arm64:mov :x0 ptr-loc))
+          (arm64:lsr :x0 :x0 4 :imm t)  ; untag pointer
           ;; Load offset and untag (offset is a fixnum)
           (if (and (consp off-loc) (eq (car off-loc) :spill))
               (arm64:ldr :x1 :sp :offset (spill-offset (cadr off-loc)))
@@ -2493,6 +2530,7 @@
           (arm64:lsr :x1 :x1 4 :imm t)  ; untag offset
           (arm64:add :x0 :x0 :x1)       ; ptr + offset
           (arm64:ldrb dest-reg :x0 0)   ; load byte (zero-extended)
+          (arm64:lsl dest-reg dest-reg 4 :imm t)  ; tag as fixnum
           (when (and (consp dest) (eq (car dest) :spill))
             (arm64:str :x0 :sp :offset (spill-offset (cadr dest)))))))
 
@@ -2725,7 +2763,7 @@
 
       ;; tac-set-intern-table: store to [x27 + 0]
       ((tac-set-intern-table)
-       (let* ((val-vreg (caddr instr))
+       (let* ((val-vreg (cadr instr))
               (val-loc (vreg-to-reg val-vreg allocation)))
          (append
           (if (and (consp val-loc) (eq (car val-loc) :spill))
@@ -2743,27 +2781,32 @@
           (when (and (consp dest) (eq (car dest) :spill))
             (arm64:str :x0 :sp :offset (spill-offset (cadr dest)))))))
 
-      ;; tac-get-frame-pointer: get x29 as raw pointer for stack walking
+      ;; tac-get-frame-pointer: get x29 as tagged fixnum for stack walking
+      ;; Must be tagged since mem-load-64 expects tagged pointers
       ((tac-get-frame-pointer)
        (let* ((dest-vreg (cadr instr))
               (dest (vreg-to-reg dest-vreg allocation))
               (dest-reg (if (and (consp dest) (eq (car dest) :spill)) :x0 dest)))
          (append
           (arm64:mov dest-reg :x29)
+          (arm64:lsl dest-reg dest-reg 4 :imm t)  ; tag as fixnum
           (when (and (consp dest) (eq (car dest) :spill))
             (arm64:str :x0 :sp :offset (spill-offset (cadr dest)))))))
 
-      ;; tac-get-code-base: get x26 as raw pointer for symbol table access
+      ;; tac-get-code-base: get x26 as tagged fixnum for symbol table access
+      ;; Must be tagged since mem-load-64/mem-load-byte expect tagged pointers
       ((tac-get-code-base)
        (let* ((dest-vreg (cadr instr))
               (dest (vreg-to-reg dest-vreg allocation))
               (dest-reg (if (and (consp dest) (eq (car dest) :spill)) :x0 dest)))
          (append
           (arm64:mov dest-reg :code-base)
+          (arm64:lsl dest-reg dest-reg 4 :imm t)  ; tag as fixnum
           (when (and (consp dest) (eq (car dest) :spill))
             (arm64:str :x0 :sp :offset (spill-offset (cadr dest)))))))
 
       ;; tac-get-symtab-offset: load from [x27 + 112]
+      ;; Note: value is ALREADY tagged (pre-shifted << 4) in wrapper storage
       ((tac-get-symtab-offset)
        (let* ((dest-vreg (cadr instr))
               (dest (vreg-to-reg dest-vreg allocation))
@@ -2785,7 +2828,7 @@
 
       ;; tac-set-lambda-counter: store to [x27 + 8]
       ((tac-set-lambda-counter)
-       (let* ((val-vreg (caddr instr))
+       (let* ((val-vreg (cadr instr))
               (val-loc (vreg-to-reg val-vreg allocation)))
          (append
           (if (and (consp val-loc) (eq (car val-loc) :spill))
@@ -2805,7 +2848,7 @@
 
       ;; tac-set-symbol-counter: store to [x27 + 48]
       ((tac-set-symbol-counter)
-       (let* ((val-vreg (caddr instr))
+       (let* ((val-vreg (cadr instr))
               (val-loc (vreg-to-reg val-vreg allocation)))
          (append
           (if (and (consp val-loc) (eq (car val-loc) :spill))
@@ -2825,13 +2868,53 @@
 
       ;; tac-set-symbol-table: store to [x27 + 56]
       ((tac-set-symbol-table)
-       (let* ((val-vreg (caddr instr))
+       (let* ((val-vreg (cadr instr))
               (val-loc (vreg-to-reg val-vreg allocation)))
          (append
           (if (and (consp val-loc) (eq (car val-loc) :spill))
               (arm64:ldr :x0 :sp :offset (spill-offset (cadr val-loc)))
               (arm64:mov :x0 val-loc))
           (arm64:str :x0 :gc :offset 56))))
+
+      ;; tac-get-packages: load from [x27 + 80]
+      ((tac-get-packages)
+       (let* ((dest-vreg (cadr instr))
+              (dest (vreg-to-reg dest-vreg allocation))
+              (dest-reg (if (and (consp dest) (eq (car dest) :spill)) :x0 dest)))
+         (append
+          (arm64:ldr dest-reg :gc :offset 80)
+          (when (and (consp dest) (eq (car dest) :spill))
+            (arm64:str :x0 :sp :offset (spill-offset (cadr dest)))))))
+
+      ;; tac-set-packages: store to [x27 + 80]
+      ((tac-set-packages)
+       (let* ((val-vreg (cadr instr))
+              (val-loc (vreg-to-reg val-vreg allocation)))
+         (append
+          (if (and (consp val-loc) (eq (car val-loc) :spill))
+              (arm64:ldr :x0 :sp :offset (spill-offset (cadr val-loc)))
+              (arm64:mov :x0 val-loc))
+          (arm64:str :x0 :gc :offset 80))))
+
+      ;; tac-get-current-package: load from [x27 + 88]
+      ((tac-get-current-package)
+       (let* ((dest-vreg (cadr instr))
+              (dest (vreg-to-reg dest-vreg allocation))
+              (dest-reg (if (and (consp dest) (eq (car dest) :spill)) :x0 dest)))
+         (append
+          (arm64:ldr dest-reg :gc :offset 88)
+          (when (and (consp dest) (eq (car dest) :spill))
+            (arm64:str :x0 :sp :offset (spill-offset (cadr dest)))))))
+
+      ;; tac-set-current-package: store to [x27 + 88]
+      ((tac-set-current-package)
+       (let* ((val-vreg (cadr instr))
+              (val-loc (vreg-to-reg val-vreg allocation)))
+         (append
+          (if (and (consp val-loc) (eq (car val-loc) :spill))
+              (arm64:ldr :x0 :sp :offset (spill-offset (cadr val-loc)))
+              (arm64:mov :x0 val-loc))
+          (arm64:str :x0 :gc :offset 88))))
 
       ;; Default
       (t (error "tac-codegen-instr: Unhandled TAC instruction: ~A" op)))))
