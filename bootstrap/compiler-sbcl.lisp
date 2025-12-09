@@ -1732,8 +1732,8 @@
                         (list 'bxor (sys:compile (car args) env fenv) (sys:compile (cadr args) env fenv))
                         (sys:compile (list 'logxor (list 'logxor (car args) (cadr args)) (caddr args)) env fenv))))))
          ((eq op 'lognot)
-          ;; Bitwise NOT - bnot-ir
-          (list 'bnot-ir (sys:compile (cadr expr) env fenv)))
+          ;; Bitwise NOT - use mvn-ir for ARM64 MVN instruction
+          (list 'mvn-ir (sys:compile (cadr expr) env fenv)))
          ((eq op 'ash)
           (list 'bsh (sys:compile (cadr expr) env fenv) (sys:compile (caddr expr) env fenv)))
          ((eq op '=)

@@ -877,6 +877,16 @@
                      (list (list 'tac-bnot result-vr val-vr)))
              result-vr)))
 
+    ;; mvn-ir: bitwise NOT (ARM64 MVN instruction)
+    ((and (consp ir) (ir-tag-matches (car ir) "MVN-IR"))
+     (let* ((val-result (ir-to-tac (cadr ir) counter))
+            (val-instrs (car val-result))
+            (val-vr (cadr val-result))
+            (result-vr (next-vreg counter)))
+       (list (append val-instrs
+                     (list (list 'tac-mvn result-vr val-vr)))
+             result-vr)))
+
     ;; lambda-ref: reference to lifted lambda
     ;; IR: (lambda-ref name free-offsets)
     ;; free-offsets is list of env offsets for captured variables
@@ -1111,7 +1121,7 @@
       tac-get-tag tac-funcall tac-make-closure
       tac-get-global-vars tac-get-cmdline-args
       tac-sys-open tac-sys-read tac-sys-write tac-sys-close tac-buffer-to-string
-      tac-buffer-byte-set tac-buffer-byte-ref tac-mem-set-byte tac-mem-load-64 tac-mem-load-byte tac-bnot
+      tac-buffer-byte-set tac-buffer-byte-ref tac-mem-set-byte tac-mem-load-64 tac-mem-load-byte tac-bnot tac-mvn
       ;; New TAC instructions
       tac-lambda-ref tac-symbol-name tac-make-symbol
       tac-string-concat tac-string-equal
@@ -1159,7 +1169,7 @@
      (list (cadr instr)))
     ;; Unary ops: (tac-X dest src)
     ((tac-move tac-car tac-cdr tac-vector-length tac-string-length
-      tac-make-vector tac-make-string tac-get-tag tac-bnot tac-sys-close
+      tac-make-vector tac-make-string tac-get-tag tac-bnot tac-mvn tac-sys-close
       ;; New unary ops
       tac-symbol-name tac-make-symbol)
      (list (caddr instr)))
@@ -2603,6 +2613,27 @@
           (arm64:movz :x2 10)
           (arm64:and* dest-reg dest-reg :x2)
           (arm64:add dest-reg dest-reg 6 :imm t)
+          (when (and (consp dest) (eq (car dest) :spill))
+            (arm64:str :x0 :sp :offset (spill-offset (cadr dest)))))))
+
+      ;; tac-mvn: bitwise NOT (ARM64 MVN instruction)
+      ;; For tagged fixnums: untag, MVN, retag
+      ((tac-mvn)
+       (let* ((dest-vreg (cadr instr))
+              (val-vreg (caddr instr))
+              (dest (vreg-to-reg dest-vreg allocation))
+              (val-loc (vreg-to-reg val-vreg allocation))
+              (val-reg (if (and (consp val-loc) (eq (car val-loc) :spill)) :x0 val-loc))
+              (dest-reg (if (and (consp dest) (eq (car dest) :spill)) :x0 dest)))
+         (append
+          (when (and (consp val-loc) (eq (car val-loc) :spill))
+            (arm64:ldr :x0 :sp :offset (spill-offset (cadr val-loc))))
+          ;; Untag: ASR 4 (arithmetic shift to preserve sign)
+          (arm64:asr :x1 val-reg 4 :imm t)
+          ;; MVN: bitwise NOT
+          (arm64:mvn dest-reg :x1)
+          ;; Retag: LSL 4
+          (arm64:lsl dest-reg dest-reg 4 :imm t)
           (when (and (consp dest) (eq (car dest) :spill))
             (arm64:str :x0 :sp :offset (spill-offset (cadr dest)))))))
 
