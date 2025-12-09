@@ -1716,8 +1716,9 @@
   (cond
     ;; Numbers compile to literals
     ((numberp expr) (list (ir-tag-lit) expr))
-    ;; nil is 0
+    ;; nil is 0 (both Lisp nil and NIL symbol)
     ((null expr) (list (ir-tag-lit) #x0))
+    ((sym= expr "NIL") (list (ir-tag-lit) #x0))
     ;; t is 1
     ((sym= expr "T") (list (ir-tag-lit) #x1))
     ;; String literals - allocate on heap
@@ -3356,6 +3357,45 @@
     ;; Progn
     ((h0-has-tag-n ir (ir-tag-progn))
      (h0-eval-ir-progn (cadr ir) env))
+    ;; String operations
+    ((h0-has-tag-n ir (ir-tag-str-lit))
+     (cadr ir))
+    ((h0-has-tag-n ir (ir-tag-str-len))
+     (string-length (h0-eval-ir (cadr ir) env)))
+    ((h0-has-tag-n ir (ir-tag-str-ref))
+     (let* ((str (h0-eval-ir (cadr ir) env))
+            (idx (h0-eval-ir (caddr ir) env)))
+       (string-ref str idx)))
+    ;; Keyword operations
+    ((h0-has-tag-n ir (ir-tag-kw-lit))
+     (cadr ir))
+    ;; Eq comparison
+    ((h0-has-tag-n ir (ir-tag-eq))
+     (if (eq (h0-eval-ir (cadr ir) env) (h0-eval-ir (caddr ir) env)) #x1 #x0))
+    ;; Type predicates
+    ((h0-has-tag-n ir (ir-tag-consp))
+     (if (consp (h0-eval-ir (cadr ir) env)) #x1 #x0))
+    ((h0-has-tag-n ir (ir-tag-symbolp))
+     (if (symbolp (h0-eval-ir (cadr ir) env)) #x1 #x0))
+    ((h0-has-tag-n ir (ir-tag-numberp))
+     (if (numberp (h0-eval-ir (cadr ir) env)) #x1 #x0))
+    ((h0-has-tag-n ir (ir-tag-stringp))
+     (if (stringp (h0-eval-ir (cadr ir) env)) #x1 #x0))
+    ((h0-has-tag-n ir (ir-tag-keywordp))
+     (if (keywordp (h0-eval-ir (cadr ir) env)) #x1 #x0))
+    ;; Bitwise operations
+    ((h0-has-tag-n ir (ir-tag-logand))
+     (logand (h0-eval-ir (cadr ir) env) (h0-eval-ir (caddr ir) env)))
+    ((h0-has-tag-n ir (ir-tag-logior))
+     (logior (h0-eval-ir (cadr ir) env) (h0-eval-ir (caddr ir) env)))
+    ((h0-has-tag-n ir (ir-tag-ash))
+     (ash (h0-eval-ir (cadr ir) env) (h0-eval-ir (caddr ir) env)))
+    ;; Boolean not
+    ((h0-has-tag-n ir (ir-tag-not))
+     (if (= (h0-eval-ir (cadr ir) env) #x0) #x1 #x0))
+    ;; List length
+    ((h0-has-tag-n ir (ir-tag-length))
+     (length (h0-eval-ir (cadr ir) env)))
     ;; Lambda - create closure
     ((h0-has-tag-n ir (ir-tag-lambda))
      (let* ((params (cadr ir))
