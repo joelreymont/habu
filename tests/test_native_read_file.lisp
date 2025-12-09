@@ -2,7 +2,11 @@
 (require :asdf)
 (push (truename "bootstrap/") asdf:*central-registry*)
 (asdf:load-system :habu)
-(in-package :habu)
+
+(defpackage :habu-test-native-read-file
+  (:use :cl))
+
+(in-package :habu-test-native-read-file)
 (load "bootstrap/compiler.lisp")
 (load "bootstrap/macho.lisp")
 
@@ -15,7 +19,7 @@
   (let ((path (format nil "/tmp/rfp_~A" name)))
     (handler-case
         (progn
-          (deliver source path)
+          (habu:deliver source path)
           (sb-ext:run-program "/usr/bin/codesign" (list "-s" "-" path)
                               :output nil :error nil :wait t)
           (let* ((proc (sb-ext:run-program path nil :output nil :error nil :wait t))

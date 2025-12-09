@@ -2,7 +2,33 @@
 ;;;;
 ;;;; Unit tests and property tests for FASL serialization.
 
-(in-package :habu)
+(defpackage :habu-test-fasl
+  (:use :cl :habu-test-quickcheck)
+  (:shadowing-import-from :habu #:compile-file #:compile-to-fasl #:read-fasl
+                          #:+fasl-magic+ #:+fasl-version+ #:+fasl-arch-arm64+
+                          #:+fasl-header-size+ #:+fasl-function-size+ #:+fasl-relocation-size+
+                          #:fasl-header #:make-fasl-header #:fasl-header-p
+                          #:fasl-header-magic #:fasl-header-version #:fasl-header-arch
+                          #:fasl-header-flags #:fasl-header-num-functions
+                          #:fasl-header-code-size #:fasl-header-const-pool-size
+                          #:fasl-header-num-relocations #:fasl-header-num-imports
+                          #:fasl-function #:make-fasl-function #:fasl-function-p
+                          #:fasl-function-name #:fasl-function-name-offset
+                          #:fasl-function-code-offset #:fasl-function-code-size
+                          #:fasl-function-arity #:fasl-function-flags
+                          #:fasl-relocation #:make-fasl-relocation #:fasl-relocation-p
+                          #:fasl-relocation-type #:fasl-relocation-offset #:fasl-relocation-target
+                          #:+reloc-fn-call+ #:+reloc-extern-call+ #:+reloc-constant+
+                          #:+fn-flag-exported+ #:+fn-flag-entry+
+                          #:write-fasl-header #:read-fasl-header
+                          #:write-fasl-function #:read-fasl-function
+                          #:write-fasl-relocation #:read-fasl-relocation
+                          #:link-fasls
+                          #:build-string-table #:read-string-from-table
+                          #:build-fasl-functions
+                          #:write-u32-le #:function-exported-p))
+
+(in-package :habu-test-fasl)
 
 ;;; ============================================================
 ;;; Test Infrastructure

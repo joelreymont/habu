@@ -1,7 +1,11 @@
 ;;; Test FASL file format - compile to FASL and execute
 
 (load "bootstrap/compiler.lisp")
-(in-package :habu)
+
+(defpackage :habu-test-fasl
+  (:use :cl)
+  (:import-from :habu #:read-all #:compile-program))
+(in-package :habu-test-fasl)
 
 ;;; FASL format constants
 (defconstant +fasl-magic+ #x4C534648)  ; "HFSL" in little-endian

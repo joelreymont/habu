@@ -1,6 +1,10 @@
 ;;; Test bitwise operations (logand, logior, logxor, ash) in bootstrap compiler
 (load "bootstrap/compiler.lisp")
-(in-package :habu)
+
+(defpackage :habu-test-bootstrap-bitwise
+  (:use :cl))
+
+(in-package :habu-test-bootstrap-bitwise)
 
 (defvar *passed* 0)
 (defvar *failed* 0)
@@ -24,7 +28,7 @@
 (defun test-case (name source expected)
   (format t "~A: " name)
   (handler-case
-    (let* ((code (compile-program (read-all source) nil)))
+    (let* ((code (habu:compile-program (habu:read-all source) nil)))
       (with-open-file (out "/tmp/bitwise-test.bin" :direction :output
                            :if-exists :supersede
                            :element-type '(unsigned-byte 8))

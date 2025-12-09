@@ -570,7 +570,9 @@
 ;;; ============================================================
 
 (defun compile-file (input-file &key (output-file nil) (verbose *compile-verbose*)
-                                     (print *compile-print*) exports imports)
+                                     (print *compile-print*) exports imports
+                                     ;; Standard CL compile-file keys (passed through)
+                                     external-format)
   "Compile a Lisp source file to FASL.
    INPUT-FILE: pathname designator for source file
    OUTPUT-FILE: pathname for output (default: input with .fasl extension)
@@ -578,8 +580,21 @@
    PRINT: print each form as compiled
    EXPORTS: list of function names to export (visible to other modules)
    IMPORTS: list of function names that will be resolved at link time
-   Returns: output-truename, warnings-p, failure-p"
-  (declare (ignore print))  ; TODO: implement print
+   Returns: output-truename, warnings-p, failure-p
+
+   NOTE: If output file ends in .fasl, uses Habu compiler. Otherwise delegates
+   to CL:COMPILE-FILE for SBCL compatibility (e.g., for ASDF loading)."
+  ;; Delegate to SBCL's compiler for non-FASL output (e.g., ASDF loading .lisp files)
+  (let ((output-ext (and output-file (pathname-type (pathname output-file)))))
+    (when (and (null exports) (null imports)
+               (not (equal output-ext "fasl")))
+      (return-from compile-file
+        (cl:compile-file input-file
+                         :output-file output-file
+                         :verbose verbose
+                         :print print
+                         :external-format (or external-format :default)))))
+  ;; Habu native compilation path (print and external-format not used here)
   (let* ((input (pathname input-file))
          (output (or output-file
                      (make-pathname :type "fasl" :defaults input)))

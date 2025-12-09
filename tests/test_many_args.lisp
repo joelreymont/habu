@@ -2,7 +2,13 @@
 ;;; Uses let* pattern to avoid deep nesting bug
 (load "bootstrap/compiler.lisp")
 (load "bootstrap/macho.lisp")
-(in-package :habu)
+
+(defpackage :habu-test-many-args
+  (:use :cl)
+  (:import-from :habu
+                #:deliver))
+
+(in-package :habu-test-many-args)
 
 (format t "~%=== Many Arguments (>8) Tests ===~%~%")
 

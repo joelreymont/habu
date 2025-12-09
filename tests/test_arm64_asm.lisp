@@ -2,7 +2,11 @@
 (load "arm64/asm.lisp")
 (load "bootstrap/compiler.lisp")
 (load "bootstrap/macho.lisp")
-(in-package :habu)
+
+(defpackage :habu-test-arm64-asm
+  (:use :cl))
+
+(in-package :habu-test-arm64-asm)
 
 (format t "~%=== ARM64 Assembler Tests ===~%~%")
 

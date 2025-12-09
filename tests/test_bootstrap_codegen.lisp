@@ -3,14 +3,18 @@
 ;;; Verifies that codegen produces correct instruction sequences
 
 (load "bootstrap/compiler.lisp")
-(in-package :habu)
+
+(defpackage :habu-test-bootstrap-codegen
+  (:use :cl))
+
+(in-package :habu-test-bootstrap-codegen)
 
 (defparameter *tests-passed* 0)
 (defparameter *tests-failed* 0)
 
 (defun run-codegen-test (name ir expected-len)
   "Test that codegen produces non-empty bytecode of expected length"
-  (let* ((code (codegen ir nil nil 0))
+  (let* ((code (habu:codegen ir nil nil 0))
          (len (length code)))
     (if (and (listp code) (>= len expected-len))
         (progn

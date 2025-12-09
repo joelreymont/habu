@@ -2,7 +2,11 @@
 ;;; Tests inline heap allocation, symbols, closures without runtime
 (load "bootstrap/compiler.lisp")
 (load "bootstrap/macho.lisp")
-(in-package :habu)
+
+(defpackage :habu-test-native-macho
+  (:use :cl))
+
+(in-package :habu-test-native-macho)
 
 (format t "~%=== Native Mach-O Executable Tests ===~%~%")
 

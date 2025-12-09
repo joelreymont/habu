@@ -1,6 +1,10 @@
 ;;; Test function linking for multi-function programs
 (load "bootstrap/compiler.lisp")
-(in-package :habu)
+
+(defpackage :habu-test-bootstrap-funlink
+  (:use :cl))
+
+(in-package :habu-test-bootstrap-funlink)
 
 (defvar *passed* 0)
 (defvar *failed* 0)

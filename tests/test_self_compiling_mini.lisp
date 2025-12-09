@@ -2,7 +2,11 @@
 (require :asdf)
 (push (truename "bootstrap/") asdf:*central-registry*)
 (asdf:load-system :habu)
-(in-package :habu)
+
+(defpackage :habu-test-self-compiling-mini
+  (:use :cl)
+  (:import-from :habu #:deliver))
+(in-package :habu-test-self-compiling-mini)
 (load "bootstrap/compiler.lisp")
 (load "bootstrap/macho.lisp")
 

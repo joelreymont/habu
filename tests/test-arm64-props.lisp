@@ -2,7 +2,10 @@
 ;;;;
 ;;;; Property-based tests for ARM64 instruction encoding.
 
-(in-package :habu)
+(defpackage :habu-test-arm64-props
+  (:use :cl :habu-test-quickcheck))
+
+(in-package :habu-test-arm64-props)
 
 ;;; ============================================================
 ;;; ARM64-Specific Generators

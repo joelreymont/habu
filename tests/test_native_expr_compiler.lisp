@@ -3,7 +3,13 @@
 (require :asdf)
 (push (truename "bootstrap/") asdf:*central-registry*)
 (asdf:load-system :habu)
-(in-package :habu)
+
+(defpackage :habu-test-native-expr-compiler
+  (:use :cl)
+  (:import-from :habu
+                #:deliver))
+
+(in-package :habu-test-native-expr-compiler)
 (load "bootstrap/compiler.lisp")
 (load "bootstrap/macho.lisp")
 

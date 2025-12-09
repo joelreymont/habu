@@ -2,7 +2,11 @@
 ;;; This validates self-hosting capability by compiling a compiler
 (load "bootstrap/compiler.lisp")
 (load "bootstrap/macho.lisp")
-(in-package :habu)
+
+(defpackage :habu-test-bootstrap-compiler
+  (:use :cl))
+
+(in-package :habu-test-bootstrap-compiler)
 
 (format t "~%=== Bootstrap Compiler Self-Hosting Test ===~%~%")
 
@@ -15,7 +19,7 @@
     (let* ((output-path (format nil "/tmp/bootstrap_~A" name))
            ;; Wrap the source: all defuns stay, last expression wrapped in sys-exit
            (full-source (format nil "(sys-exit (progn ~A))" source)))
-      (deliver full-source output-path :verbose nil)
+      (habu:deliver full-source output-path :verbose nil)
       (let* ((proc (sb-ext:run-program output-path nil :output nil :error nil :wait t))
              (result (sb-ext:process-exit-code proc)))
         (if (= result expected)
@@ -31,7 +35,7 @@
   "Test compilation with full source (already has sys-exit)."
   (handler-case
     (let ((output-path (format nil "/tmp/bootstrap_~A" name)))
-      (deliver source output-path :verbose nil)
+      (habu:deliver source output-path :verbose nil)
       (let* ((proc (sb-ext:run-program output-path nil :output nil :error nil :wait t))
              (result (sb-ext:process-exit-code proc)))
         (if (= result expected)

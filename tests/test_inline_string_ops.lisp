@@ -2,7 +2,13 @@
 (require :asdf)
 (push (truename "bootstrap/") asdf:*central-registry*)
 (asdf:load-system :habu)
-(in-package :habu)
+
+(defpackage :habu-test-inline-string-ops
+  (:use :cl)
+  (:import-from :habu
+                #:deliver))
+
+(in-package :habu-test-inline-string-ops)
 (load "bootstrap/compiler.lisp")
 (load "bootstrap/macho.lisp")
 

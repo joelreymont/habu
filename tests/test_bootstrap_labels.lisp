@@ -1,6 +1,13 @@
 ;;; Test labels/flet support in bootstrap compiler
 (load "bootstrap/compiler.lisp")
-(in-package :habu)
+
+(defpackage :habu-test-bootstrap-labels
+  (:use :cl)
+  (:import-from :habu
+                #:read-all
+                #:nc-eval-forms))
+
+(in-package :habu-test-bootstrap-labels)
 
 (defvar *tests-passed* 0)
 (defvar *tests-failed* 0)

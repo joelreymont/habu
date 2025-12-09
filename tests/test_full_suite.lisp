@@ -1,6 +1,10 @@
 (load "bootstrap/compiler.lisp")
 (load "bootstrap/macho.lisp")
-(in-package :habu)
+
+(defpackage :habu-test-full-suite
+  (:use :cl)
+  (:import-from :habu #:deliver))
+(in-package :habu-test-full-suite)
 
 (format t "~%=== Full Compiler Test Suite ===~%~%")
 

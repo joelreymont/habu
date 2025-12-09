@@ -2,7 +2,11 @@
 ;;; Tests that compile compiler-like code patterns to native executables
 (load "bootstrap/compiler.lisp")
 (load "bootstrap/macho.lisp")
-(in-package :habu)
+
+(defpackage :habu-test-self-hosting-native
+  (:use :cl))
+
+(in-package :habu-test-self-hosting-native)
 
 (format t "~%=== Self-Hosting Native Compiler Tests ===~%~%")
 

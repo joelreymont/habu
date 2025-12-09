@@ -3,7 +3,11 @@
 ;;; Updated to use deliver with sys-exit
 (load "bootstrap/compiler.lisp")
 (load "bootstrap/macho.lisp")
-(in-package :habu)
+
+(defpackage :habu-test-bootstrap-compiler-v2
+  (:use :cl))
+
+(in-package :habu-test-bootstrap-compiler-v2)
 
 (format t "~%=== Bootstrap Compiler Self-Hosting Test (v2) ===~%~%")
 
@@ -13,7 +17,7 @@
 (defun test-compile (name source expected)
   (handler-case
     (let ((output-path (format nil "/tmp/bootstrap_~A" name)))
-      (deliver source output-path)
+      (habu:deliver source output-path)
       (let* ((proc (sb-ext:run-program output-path nil :output nil :error nil :wait t))
              (result (sb-ext:process-exit-code proc)))
         (if (= result expected)

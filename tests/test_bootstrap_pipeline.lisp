@@ -3,7 +3,11 @@
 ;;; Compiles Lisp source to ARM64 bytecode and verifies output
 
 (load "bootstrap/compiler.lisp")
-(in-package :habu)
+
+(defpackage :habu-test-bootstrap-pipeline
+  (:use :cl))
+
+(in-package :habu-test-bootstrap-pipeline)
 
 (defparameter *tests-passed* 0)
 (defparameter *tests-failed* 0)

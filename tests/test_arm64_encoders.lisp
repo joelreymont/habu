@@ -2,9 +2,11 @@
 (require :asdf)
 (push (truename "bootstrap/") asdf:*central-registry*)
 (asdf:load-system :habu)
-(in-package :habu)
-(load "bootstrap/compiler.lisp")
-(load "bootstrap/macho.lisp")
+
+;; Use test-specific package to avoid polluting :habu namespace
+(defpackage :habu-test-arm64-encoders
+  (:use :cl))
+(in-package :habu-test-arm64-encoders)
 
 (format t "~%=== Test compiling ARM64 encoder functions ===~%~%")
 

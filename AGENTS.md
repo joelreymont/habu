@@ -101,15 +101,22 @@ x0-x7: args | x20: env | x24: closure | x26: code | x27: GC globals | x28: heap 
 
 ## ARM64 Instructions - CRITICAL
 
-**Use `arm64/asm.lisp` encoders. NEVER hand-encode.**
+**ALL assembler intrinsics live in `arm64/asm.lisp`. NO DUPLICATES.**
+
+- `arm64/asm.lisp` is the SINGLE SOURCE for all ARM64 encoding
+- NEVER define movz, movk, ldr, str, add, sub, etc. elsewhere
+- Use `arm64:*` prefix in bootstrap code, bare names in habu0.lisp (via fenv)
 
 ```lisp
-;; CORRECT
+;; CORRECT - use arm64/asm.lisp encoders
 (arm64:ldr :x0 :sp :offset 8)
 (arm64:add :x0 :x0 4 :imm t)
 
-;; WRONG
+;; WRONG - hand-encoding
 (logior #x39000000 ...)
+
+;; WRONG - duplicate definition
+(defun movz (rd imm) ...)  ; DELETE THIS - use arm64:movz
 ```
 
 Registers MUST be keywords: `:x0`, `:x1`, `:env`, `:heap`, etc.

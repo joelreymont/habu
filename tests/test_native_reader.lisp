@@ -2,7 +2,11 @@
 (require :asdf)
 (push (truename "bootstrap/") asdf:*central-registry*)
 (asdf:load-system :habu)
-(in-package :habu)
+
+(defpackage :habu-test-native-reader
+  (:use :cl))
+
+(in-package :habu-test-native-reader)
 (load "bootstrap/compiler.lisp")
 (load "bootstrap/macho.lisp")
 
@@ -15,7 +19,7 @@
   "Test deliver: builds executable, runs it, checks exit code only."
   (handler-case
     (let ((output-path (format nil "/tmp/reader_~A" name)))
-      (deliver source output-path)
+      (habu:deliver source output-path)
       (sb-ext:run-program "/usr/bin/codesign" (list "-s" "-" "-f" output-path)
                           :output nil :error nil :wait t)
       (let* ((proc (sb-ext:run-program output-path nil :output nil :error nil :wait t))

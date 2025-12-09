@@ -3,7 +3,10 @@
 ;;;; Property-based tests for match macro expansion.
 ;;;; Tests the source transformation, not compiled execution.
 
-(in-package :habu)
+(defpackage :habu-test-match-props
+  (:use :cl :habu-test-quickcheck))
+
+(in-package :habu-test-match-props)
 
 ;;; ============================================================
 ;;; Match-Specific Generators

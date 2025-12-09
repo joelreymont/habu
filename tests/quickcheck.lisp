@@ -5,7 +5,15 @@
 ;;;;
 ;;;; No CLOS, no multiple values, no conditions - just functions and cons cells.
 
-(in-package :habu)
+(defpackage :habu-test-quickcheck
+  (:use :cl)
+  (:export #:make-gen #:gen-value #:shrink-value
+           #:gen-int #:gen-bool #:gen-one-of #:gen-list #:gen-tuple
+           #:for-all #:check-property #:defprop #:defproperty
+           #:*quickcheck-trials* #:reset-property-stats #:run-property
+           #:*property-pass-count* #:*property-fail-count* #:*property-results*))
+
+(in-package :habu-test-quickcheck)
 
 ;;; ============================================================
 ;;; Generator Framework

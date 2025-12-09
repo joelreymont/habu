@@ -1,6 +1,10 @@
 ;;; Test multiple values (values, multiple-value-bind) in bootstrap compiler
 (load "bootstrap/compiler.lisp")
-(in-package :habu)
+
+(defpackage :habu-test-bootstrap-mvb
+  (:use :cl))
+
+(in-package :habu-test-bootstrap-mvb)
 
 (defvar *passed* 0)
 (defvar *failed* 0)
@@ -24,7 +28,7 @@
 (defun test-case (name source expected)
   (format t "~A: " name)
   (handler-case
-    (let* ((code (compile-program (read-all source) nil)))
+    (let* ((code (habu:compile-program (habu:read-all source) nil)))
       (with-open-file (out "/tmp/mvb-test.bin" :direction :output
                            :if-exists :supersede
                            :element-type '(unsigned-byte 8))

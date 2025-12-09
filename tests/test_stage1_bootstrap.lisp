@@ -4,7 +4,11 @@
 (require :asdf)
 (push (truename "bootstrap/") asdf:*central-registry*)
 (asdf:load-system :habu)
-(in-package :habu)
+
+(defpackage :habu-test-stage1-bootstrap
+  (:use :cl))
+
+(in-package :habu-test-stage1-bootstrap)
 (load "bootstrap/compiler.lisp")
 (load "bootstrap/macho.lisp")
 

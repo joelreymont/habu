@@ -3,7 +3,15 @@
 ;;; Compiles Lisp source to ARM64 bytecode and executes via run-bytecode
 
 (load "bootstrap/compiler.lisp")
-(in-package :habu)
+
+(defpackage :habu-test-bootstrap-execute
+  (:use :cl)
+  (:import-from :habu
+                #:read-all
+                #:sys
+                #:codegen-main))
+
+(in-package :habu-test-bootstrap-execute)
 
 (defparameter *tests-passed* 0)
 (defparameter *tests-failed* 0)
