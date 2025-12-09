@@ -13,6 +13,8 @@
 (defvar *op-let* nil)
 (defvar *op-let-star* nil)
 (defvar *op-defun* nil)
+(defvar *op-defvar* nil)
+(defvar *op-while* nil)
 (defvar *op-progn* nil)
 (defvar *op-cond* nil)
 (defvar *op-t* nil)
@@ -75,6 +77,10 @@
 ;;; Packages are ((name . symbols) ...) where symbols is ((name . sym) ...)
 (defvar *packages* nil)
 (defvar *current-package* nil)  ; string name of current package, nil = CL-USER
+
+;;; Global variable environment for h0-eval
+;;; Alist of (symbol . value) pairs for DEFVAR/SETQ globals
+(defvar *h0-globals* nil)
 
 ;;; ==========================================================
 ;;; Error Infrastructure - crash with message, no silent fallbacks
@@ -636,6 +642,8 @@
 (defun op=if (sym) (eq sym *op-if*))
 (defun op=let (sym) (eq sym *op-let*))
 (defun op=defun (sym) (eq sym *op-defun*))
+(defun op=defvar (sym) (eq sym *op-defvar*))
+(defun op=while (sym) (eq sym *op-while*))
 (defun op=t (sym) (eq sym *op-t*))
 (defun op=plus (sym) (eq sym *op-plus*))
 (defun op=minus (sym) (eq sym *op-minus*))
@@ -1019,6 +1027,36 @@
             (h0-eval (car forms) env fenv)
             (h0-eval-progn (cdr forms) env fenv)))))
 
+;; Global variable lookup - search *h0-globals* alist by symbol name
+(defun h0-global-lookup (sym)
+  (h0-global-lookup-in sym *h0-globals*))
+
+(defun h0-global-lookup-in (sym globals)
+  (if (null globals)
+      nil
+      (let ((entry (car globals)))
+        (if (string= (symbol-name sym) (symbol-name (car entry)))
+            entry
+            (h0-global-lookup-in sym (cdr globals))))))
+
+;; Set global variable - adds or updates entry in *h0-globals*
+(defun h0-global-set (sym val)
+  (let ((entry (h0-global-lookup sym)))
+    (if entry
+        ;; Update existing - we can't mutate, so rebuild
+        (setq *h0-globals* (h0-global-update sym val *h0-globals*))
+        ;; Add new
+        (setq *h0-globals* (cons (cons sym val) *h0-globals*))))
+  val)
+
+(defun h0-global-update (sym val globals)
+  (if (null globals)
+      nil
+      (let ((entry (car globals)))
+        (if (string= (symbol-name sym) (symbol-name (car entry)))
+            (cons (cons sym val) (cdr globals))
+            (cons entry (h0-global-update sym val (cdr globals)))))))
+
 ;; Helper for cond - evaluates clauses until one matches
 (defun h0-eval-cond (clauses env fenv)
   (if (null clauses)
@@ -1031,6 +1069,15 @@
                 t
                 (h0-eval-progn body env fenv))
             (h0-eval-cond (cdr clauses) env fenv)))))
+
+;; Helper for while - iterative loop
+;; (while test body...) - evaluates body while test is non-nil, returns nil
+(defun h0-eval-while (test body env fenv)
+  (if (h0-eval test env fenv)
+      (progn
+        (h0-eval-progn body env fenv)
+        (h0-eval-while test body env fenv))
+      nil))
 
 ;; Helper for and - short-circuit evaluation
 (defun h0-eval-and (forms env fenv)
@@ -1111,13 +1158,17 @@
     ((if (symbolp expr) (string= (symbol-name expr) "NIL") nil) nil)
     ;; t is true
     ((if (symbolp expr) (op=t expr) nil) t)
-    ;; Symbol lookup in variable environment
+    ;; Symbol lookup - first local env, then global env
     ((symbolp expr)
      (let ((entry (env-lookup expr env)))
        (if entry
-           (cdr entry)  ; Extract value from entry
-           ;; Not found - undefined symbol
-           (fatal-error "h0-eval: undefined symbol"))))
+           (cdr entry)  ; Extract value from local entry
+           ;; Try global env
+           (let ((global-entry (h0-global-lookup expr)))
+             (if global-entry
+                 (cdr global-entry)  ; Extract value from global entry
+                 ;; Not found - undefined symbol
+                 (fatal-error "h0-eval: undefined symbol"))))))
     ;; List - function call or special form
     ((consp expr)
      (let ((op (car expr)))
@@ -1143,6 +1194,19 @@
           (h0-eval-cond (cdr expr) env fenv))
          ;; Defun - returns nil but defines function
          ((if (symbolp op) (op=defun op) nil) nil)
+         ;; Defvar - define global variable with initial value (or nil)
+         ;; (defvar name) or (defvar name value)
+         ((if (symbolp op) (op=defvar op) nil)
+          (let* ((var-sym (cadr expr))
+                 (init-val (if (cddr expr) (h0-eval (caddr expr) env fenv) nil)))
+            ;; Only initialize if not already defined
+            (if (null (h0-global-lookup var-sym))
+                (h0-global-set var-sym init-val))
+            var-sym))
+         ;; While - loop while condition is true
+         ;; (while test body...) - evaluates body while test is non-nil
+         ((if (symbolp op) (op=while op) nil)
+          (h0-eval-while (cadr expr) (cddr expr) env fenv))
          ;; Defpackage - create package, returns nil
          ((if (symbolp op) (op=defpackage op) nil)
           (let ((pkg-name (keyword-name (cadr expr))))
@@ -1171,6 +1235,19 @@
               (h0-eval-progn (cddr expr) env fenv)))
          ;; Declaim - declaration, no-op in interpreter
          ((if (symbolp op) (op=declaim op) nil) nil)
+         ;; Setq - variable assignment
+         ;; First check local env, then global env
+         ((if (symbolp op) (op=setq op) nil)
+          (let* ((var-sym (cadr expr))
+                 (val (h0-eval (caddr expr) env fenv))
+                 (local-cell (env-lookup var-sym env)))
+            (if local-cell
+                val  ; Return value (local mutation not supported in alist env)
+                ;; Try global
+                (let ((global-cell (h0-global-lookup var-sym)))
+                  (if global-cell
+                      (h0-global-set var-sym val)
+                      (fatal-error "h0-eval: SETQ unknown variable"))))))
          ;; Error - signal error (crash with message)
          ((if (symbolp op) (op=error op) nil)
           (fatal-error "h0-eval: error called"))
@@ -1436,6 +1513,8 @@
   (setq *op-let* (intern "LET"))
   (setq *op-let-star* (intern "LET*"))
   (setq *op-defun* (intern "DEFUN"))
+  (setq *op-defvar* (intern "DEFVAR"))
+  (setq *op-while* (intern "WHILE"))
   (setq *op-progn* (intern "PROGN"))
   (setq *op-cond* (intern "COND"))
   (setq *op-t* (intern "T"))
@@ -1576,6 +1655,13 @@
 (defun ir-tag-funcall () #x23)    ; funcall (closure invocation)
 (defun ir-tag-setq () #x24)       ; setq (variable assignment)
 (defun ir-tag-length () #x25)     ; length (list length)
+(defun ir-tag-string-eq () #x26)  ; string= comparison
+(defun ir-tag-symbol-name () #x27) ; symbol-name extraction
+(defun ir-tag-make-vector () #x28) ; make-vector allocation
+(defun ir-tag-vector-ref () #x29)  ; vector-ref access
+(defun ir-tag-vector-set () #x2A)  ; vector-set mutation
+(defun ir-tag-vector-length () #x2B) ; vector-length
+(defun ir-tag-quote-sym () #x2C)  ; quoted symbol literal
 
 ;; Check if IR node has a specific tag (numeric comparison)
 (defun h0-has-tag-n (ir tag)
@@ -1738,9 +1824,11 @@
          ;; Quote
          ((sym= op "QUOTE")
           (let ((val (cadr expr)))
-            (if (numberp val)
-                (list (ir-tag-lit) val)
-                (fatal-error-ir "h0-compile: Non-number quote"))))
+            (cond
+              ((numberp val) (list (ir-tag-lit) val))
+              ((symbolp val) (list (ir-tag-quote-sym) val))
+              ((null val) (list (ir-tag-lit) #x0))
+              (t (fatal-error-ir "h0-compile: Unsupported quote type")))))
          ;; If
          ((sym= op "IF")
           (let* ((test-ir (h0-compile (cadr expr) env fenv))
@@ -1769,6 +1857,13 @@
          ;; Defun returns nil during compilation
          ((sym= op "DEFUN")
           (list (ir-tag-lit) #x0))
+         ;; Defvar returns nil during compilation (global var is runtime)
+         ((sym= op "DEFVAR")
+          (list (ir-tag-lit) #x0))
+         ;; While - transform to labels loop
+         ;; (while test body...) => (labels ((loop () (if test (progn body... (loop)) nil))) (loop))
+         ((sym= op "WHILE")
+          (h0-compile-while (cadr expr) (cddr expr) env fenv))
          ;; Arithmetic
          ((sym= op "+")
           (h0-compile-add (cdr expr) env fenv))
@@ -1843,6 +1938,31 @@
                  (then-ir (list (ir-tag-str-ref) str-ir pos-ir))
                  (else-ir (list (ir-tag-lit) #x0)))
             (list (ir-tag-if) test-ir then-ir else-ir)))
+         ;; STRING= - string equality comparison
+         ((sym= op "STRING=")
+          (let* ((l (h0-compile (cadr expr) env fenv))
+                 (r (h0-compile (caddr expr) env fenv)))
+            (list (ir-tag-string-eq) l r)))
+         ;; SYMBOL-NAME - extract name string from symbol
+         ((sym= op "SYMBOL-NAME")
+          (let ((v (h0-compile (cadr expr) env fenv)))
+            (list (ir-tag-symbol-name) v)))
+         ;; Vector operations
+         ((sym= op "MAKE-VECTOR")
+          (let ((size (h0-compile (cadr expr) env fenv)))
+            (list (ir-tag-make-vector) size)))
+         ((sym= op "VECTOR-REF")
+          (let* ((vec (h0-compile (cadr expr) env fenv))
+                 (idx (h0-compile (caddr expr) env fenv)))
+            (list (ir-tag-vector-ref) vec idx)))
+         ((sym= op "VECTOR-SET")
+          (let* ((vec (h0-compile (cadr expr) env fenv))
+                 (idx (h0-compile (caddr expr) env fenv))
+                 (val (h0-compile (cadddr expr) env fenv)))
+            (list (ir-tag-vector-set) vec idx val)))
+         ((sym= op "VECTOR-LENGTH")
+          (let ((vec (h0-compile (cadr expr) env fenv)))
+            (list (ir-tag-vector-length) vec)))
          ;; Type predicates
          ((sym= op "EQ")
           (let* ((l (h0-compile (cadr expr) env fenv))
@@ -2254,6 +2374,32 @@
       list2
       (cons (car list1) (h0-append (cdr list1) list2))))
 
+;; Compile WHILE - transform to labels loop
+;; (while test body...) =>
+;; (labels ((while-loop ()
+;;            (if test
+;;                (progn body... (while-loop))
+;;                nil)))
+;;   (while-loop))
+(defun h0-compile-while (test body env fenv)
+  (let* ((loop-sym (intern "WHILE-LOOP"))
+         (progn-sym (intern "PROGN"))
+         (if-sym (intern "IF"))
+         (labels-sym (intern "LABELS"))
+         ;; Build body + recursive call
+         (loop-body (h0-append body (list (list loop-sym))))
+         ;; Build the expanded form
+         (expanded
+          (list labels-sym
+                ;; ((while-loop () (if test (progn body... (while-loop)) nil)))
+                (list (list loop-sym (list)
+                            (list if-sym test
+                                  (cons progn-sym loop-body)
+                                  nil)))
+                ;; (while-loop)
+                (list loop-sym))))
+    (h0-compile expanded env fenv)))
+
 ;; Compile MAPCAR - expand to labels loop with reverse at end
 ;; (mapcar fn list) =>
 ;; (let ((fn-temp fn))
@@ -2586,6 +2732,11 @@
 (defun a64-ret ()
   (list #xC0 #x03 #x5F #xD6))
 
+;; NOP - no operation
+;; Encoding: 0xD503201F
+(defun a64-nop ()
+  (list #x1F #x20 #x03 #xD5))
+
 ;; BLR Xn - branch with link to register (indirect call)
 ;; Encoding: 0xD63F0000 | (Rn << 5)
 (defun a64-blr (rn)
@@ -2640,6 +2791,18 @@
 (defun a64-ldrb (rt rn offset)
   (let ((inst (logior #x39400000
                       (ash (logand offset #xFFF) #xA)
+                      (ash rn #x5)
+                      rt)))
+    (list (logand inst #xFF)
+          (logand (ash inst #x-8) #xFF)
+          (logand (ash inst #x-10) #xFF)
+          (logand (ash inst #x-18) #xFF))))
+
+;; LDRB Wt, [Xn, Xm] - load byte with register offset
+;; Encoding: 0x38606800 | (Rm << 16) | (Rn << 5) | Rt
+(defun a64-ldrb-reg (rt rn rm)
+  (let ((inst (logior #x38606800
+                      (ash rm #x10)
                       (ash rn #x5)
                       rt)))
     (list (logand inst #xFF)
@@ -3188,6 +3351,17 @@
             (tag-result (a64-lsl-imm #x0 #x0 #x4)))
        (bytes-append-all (list arg-code and-tag cmp-tag cset tag-result))))
 
+    ;; Symbol-name: extract name string from symbol
+    ;; Symbol structure: tagged with |2, points to [name-string | value | plist | package]
+    ;; name-string is at offset 0 from untagged pointer
+    ((h0-has-tag-n ir (ir-tag-symbol-name))
+     (let* ((arg-code (h0-codegen (cadr ir) td))
+            ;; Remove tag: and x0, x0, #~7 (clear lower 3 bits)
+            (untag (a64-and-imm #x0 #x0 #xFFFFFFFFFFFFFFF8))
+            ;; Load name string: ldr x0, [x0, #0]
+            (load-name (a64-ldr #x0 #x0 #x0)))
+       (bytes-append-all (list arg-code untag load-name))))
+
     ;; Logand: bitwise AND (both operands tagged, result tagged)
     ((h0-has-tag-n ir (ir-tag-logand))
      (h0-codegen-binop (cadr ir) (caddr ir)
@@ -3257,6 +3431,105 @@
        (bytes-append-all (list arg-code init-counter cmp-nil branch-end
                                inc-counter untag-cons load-cdr branch-loop
                                move-result))))
+
+    ;; MAKE-VECTOR: Allocate vector on heap
+    ;; Vector layout: [length:u64][elem0][elem1]...
+    ;; Tagged with tag 3 (vector)
+    ;; Input: size (tagged fixnum)
+    ;; Output: tagged vector pointer
+    ((h0-has-tag-n ir (ir-tag-make-vector))
+     (let* ((size-code (h0-codegen (cadr ir) td))
+            ;; Unshift size from tagged fixnum: lsr x1, x0, #4
+            (unshift-size (a64-lsr-imm #x1 #x0 #x4))
+            ;; Store length at heap: str x1, [x28]
+            (store-len (a64-str #x1 #x1C #x0))
+            ;; Calculate total bytes: (size + 1) * 8
+            ;; x2 = x1 + 1
+            (add-one (a64-add-imm #x2 #x1 #x1))
+            ;; x2 = x2 * 8 = x2 << 3
+            (mul-eight (a64-lsl-imm #x2 #x2 #x3))
+            ;; Tag result: x0 = x28 + 3
+            (mov-ptr (a64-mov-reg #x0 #x1C))
+            (tag-vec (a64-add-imm #x0 #x0 #x3))
+            ;; Bump heap pointer: x28 += x2
+            (bump-heap (a64-add-reg #x1C #x1C #x2)))
+       (bytes-append-all (list size-code unshift-size store-len
+                               add-one mul-eight mov-ptr tag-vec bump-heap))))
+
+    ;; VECTOR-REF: Get element from vector
+    ;; Vector layout: [length:u64][elem0][elem1]...
+    ;; Input: vec (tagged), idx (tagged fixnum)
+    ;; Output: element value
+    ((h0-has-tag-n ir (ir-tag-vector-ref))
+     (let* ((slot-off (+ #x30 (* td #x8)))
+            (vec-code (h0-codegen (cadr ir) td))
+            (save-vec (a64-str #x0 #x1F slot-off))
+            (idx-code (h0-codegen (caddr ir) (+ td #x1)))
+            ;; Load vec to x2
+            (load-vec (a64-ldr #x2 #x1F slot-off))
+            ;; Untag vec: sub x2, x2, #3
+            (untag-vec (a64-sub-imm #x2 #x2 #x3))
+            ;; Unshift idx: lsr x1, x0, #4
+            (unshift-idx (a64-lsr-imm #x1 #x0 #x4))
+            ;; Add 1 to skip length slot: add x1, x1, #1
+            (add-one (a64-add-imm #x1 #x1 #x1))
+            ;; Calculate byte offset: lsl x1, x1, #3 (multiply by 8)
+            (calc-offset (a64-lsl-imm #x1 #x1 #x3))
+            ;; Add offset to base: add x2, x2, x1
+            (add-offset (a64-add-reg #x2 #x2 #x1))
+            ;; Load element: ldr x0, [x2]
+            (load-elem (a64-ldr #x0 #x2 #x0)))
+       (bytes-append-all (list vec-code save-vec idx-code load-vec
+                               untag-vec unshift-idx add-one calc-offset
+                               add-offset load-elem))))
+
+    ;; VECTOR-SET: Set element in vector
+    ;; Input: vec (tagged), idx (tagged fixnum), val
+    ;; Output: val (return the value that was set)
+    ((h0-has-tag-n ir (ir-tag-vector-set))
+     (let* ((slot-vec (+ #x30 (* td #x8)))
+            (slot-idx (+ #x30 (* (+ td #x1) #x8)))
+            (vec-code (h0-codegen (cadr ir) td))
+            (save-vec (a64-str #x0 #x1F slot-vec))
+            (idx-code (h0-codegen (caddr ir) (+ td #x1)))
+            (save-idx (a64-str #x0 #x1F slot-idx))
+            (val-code (h0-codegen (cadddr ir) (+ td #x2)))
+            ;; Save val in x3
+            (save-val (a64-mov-reg #x3 #x0))
+            ;; Load vec and idx
+            (load-vec (a64-ldr #x2 #x1F slot-vec))
+            (load-idx (a64-ldr #x1 #x1F slot-idx))
+            ;; Untag vec: sub x2, x2, #3
+            (untag-vec (a64-sub-imm #x2 #x2 #x3))
+            ;; Unshift idx: lsr x1, x1, #4
+            (unshift-idx (a64-lsr-imm #x1 #x1 #x4))
+            ;; Add 1 to skip length slot
+            (add-one (a64-add-imm #x1 #x1 #x1))
+            ;; Calculate byte offset: lsl x1, x1, #3
+            (calc-offset (a64-lsl-imm #x1 #x1 #x3))
+            ;; Add offset to base: add x2, x2, x1
+            (add-offset (a64-add-reg #x2 #x2 #x1))
+            ;; Store: str x3, [x2]
+            (store-elem (a64-str #x3 #x2 #x0))
+            ;; Return val: mov x0, x3
+            (ret-val (a64-mov-reg #x0 #x3)))
+       (bytes-append-all (list vec-code save-vec idx-code save-idx val-code
+                               save-val load-vec load-idx untag-vec unshift-idx
+                               add-one calc-offset add-offset store-elem ret-val))))
+
+    ;; VECTOR-LENGTH: Get length of vector
+    ;; Input: vec (tagged)
+    ;; Output: length (tagged fixnum)
+    ((h0-has-tag-n ir (ir-tag-vector-length))
+     (let* ((vec-code (h0-codegen (cadr ir) td))
+            ;; Untag vec: sub x0, x0, #3
+            (untag-vec (a64-sub-imm #x0 #x0 #x3))
+            ;; Load length: ldr x0, [x0]
+            (load-len (a64-ldr #x0 #x0 #x0))
+            ;; Shift to tag: lsl x0, x0, #4
+            (tag-result (a64-lsl-imm #x0 #x0 #x4)))
+       (bytes-append-all (list vec-code untag-vec load-len tag-result))))
+
     ;; LAMBDA: Create closure (simplified - no lambda lifting yet)
     ;; Layout: [fn-offset:8][env-ptr:8] = 16 bytes
     ;; Returns tagged pointer with tag 5
@@ -3291,6 +3564,95 @@
            (fatal-error "h0-codegen: FUNCALL supports max 2 args")
            (h0-codegen-funcall fn-ir args-ir num-args td))))
 
+    ;; STRING=: Compare two strings byte-by-byte
+    ;; Both strings must have same length and same bytes
+    ;; Returns 1 (true) or 0 (false) as tagged fixnum
+    ((h0-has-tag-n ir (ir-tag-string-eq))
+     (let* ((slot-off (+ #x30 (* td #x8)))
+            (slot-off2 (+ #x30 (* (+ td #x1) #x8)))
+            ;; Compile both string arguments
+            (str1-code (h0-codegen (cadr ir) td))
+            (save-str1 (a64-str #x0 #x1F slot-off))
+            (str2-code (h0-codegen (caddr ir) (+ td #x1)))
+            (save-str2 (a64-str #x0 #x1F slot-off2))
+            ;; Load str1 and untag (subtract 4 for string tag)
+            (load-str1 (a64-ldr #x0 #x1F slot-off))
+            (untag-str1 (a64-sub-imm #x0 #x0 #x4))   ; x0 = str1 untagged
+            ;; Load str2 and untag
+            (load-str2 (a64-ldr #x1 #x1F slot-off2))
+            (untag-str2 (a64-sub-imm #x1 #x1 #x4))   ; x1 = str2 untagged
+            ;; Compare lengths first: [x0+0] vs [x1+0]
+            (ldr-len1 (a64-ldr #x2 #x0 #x0))         ; x2 = len1
+            (ldr-len2 (a64-ldr #x3 #x1 #x0))         ; x3 = len2
+            (cmp-lens (a64-cmp-reg #x2 #x3))         ; compare lengths
+            ;; Branch to fail if lengths differ
+            ;; Skip: loop setup (1) + loop (7) + success (2) = 10 instrs = 40 bytes
+            (branch-ne-lens (a64-b-cond (cond-ne) #x2C))  ; 44 bytes forward to fail
+            ;; Setup loop: x4 = 0 (index), x2 = len (already loaded)
+            (mov-idx (a64-movz #x4 #x0))             ; x4 = 0
+            ;; Loop: while x4 < x2
+            (cmp-idx-len (a64-cmp-reg #x4 #x2))      ; compare idx < len
+            ;; Skip loop body (5 instrs = 20 bytes) + success (2 instrs = 8 bytes) = 28 bytes
+            (branch-done (a64-b-cond (cond-ge) #x1C))
+            ;; Calculate offset: x5 = x4 + 8 (skip length header)
+            (add-off (a64-add-imm #x5 #x4 #x8))      ; x5 = idx + 8
+            ;; Load bytes from both strings at offset
+            (ldrb-byte1 (a64-ldrb-reg #x6 #x0 #x5))  ; x6 = str1[idx+8]
+            (ldrb-byte2 (a64-ldrb-reg #x7 #x1 #x5))  ; x7 = str2[idx+8]
+            (cmp-bytes (a64-cmp-reg #x6 #x7))        ; compare bytes
+            ;; Skip inc+loop (2) + success (2) = 4 instrs = 16 bytes
+            (branch-ne-byte (a64-b-cond (cond-ne) #x10))
+            ;; Increment and loop back
+            (inc-idx (a64-add-imm #x4 #x4 #x1))      ; x4++
+            ;; Back to cmp-idx-len: 6 instrs = 24 bytes
+            (branch-loop (a64-b #x-18))              ; back 24 bytes
+            ;; Success: return tagged 1 (16)
+            (mov-one (a64-movz #x0 #x10))            ; x0 = 16 (tagged 1)
+            ;; Skip fail (1 instr = 4 bytes) + nop (1 = 4) = 8 bytes
+            (branch-end (a64-b #x8))                 ; skip to nop
+            ;; Fail: return tagged 0
+            (mov-zero (a64-movz #x0 #x0))            ; x0 = 0 (tagged 0)
+            ;; NOP to align (common exit point)
+            (nop-exit (a64-nop)))
+       (bytes-append-all (list str1-code save-str1 str2-code save-str2
+                               load-str1 untag-str1 load-str2 untag-str2
+                               ldr-len1 ldr-len2 cmp-lens branch-ne-lens
+                               mov-idx cmp-idx-len branch-done
+                               add-off ldrb-byte1 ldrb-byte2 cmp-bytes branch-ne-byte
+                               inc-idx branch-loop
+                               mov-one branch-end
+                               mov-zero nop-exit))))
+
+    ;; QUOTE-SYM: Allocate symbol on heap
+    ;; Symbol layout: [name-string | value | plist | package] = 32 bytes
+    ;; Returns tagged pointer with tag 2
+    ((h0-has-tag-n ir (ir-tag-quote-sym))
+     (let* ((sym (cadr ir))
+            (name (symbol-name sym))
+            (name-len (string-length name))
+            ;; First allocate the name string on heap
+            (name-total-size (logand (+ name-len #x8 #xF) (lognot #xF)))
+            (name-code (h0-codegen-str-lit name name-len name-total-size))
+            ;; Save name string pointer
+            (save-name (a64-mov-reg #x1 #x0))
+            ;; Now allocate symbol: 32 bytes for [name | value | plist | package]
+            ;; Store name string at heap[0]
+            (str-name (a64-str #x1 #x1C #x0))
+            ;; Store nil (0x6) for value at heap[8]
+            (mov-nil (a64-movz #x0 #x6))
+            (str-value (a64-str #x0 #x1C #x8))
+            ;; Store nil for plist at heap[16]
+            (str-plist (a64-str #x0 #x1C #x10))
+            ;; Store nil for package at heap[24]
+            (str-package (a64-str #x0 #x1C #x18))
+            ;; Get symbol pointer and tag with 2
+            (mov-ptr (a64-mov-reg #x0 #x1C))
+            (tag-sym (a64-add-imm #x0 #x0 #x2))
+            ;; Bump heap by 32 bytes
+            (bump-heap (a64-add-imm #x1C #x1C #x20)))
+       (bytes-append-all (list name-code save-name str-name mov-nil
+                               str-value str-plist str-package
+                               mov-ptr tag-sym bump-heap))))
 
     ;; Default - CRASH: unknown IR tag
     (t (fatal-error "h0-codegen: Unknown IR tag"))))
@@ -3304,7 +3666,10 @@
 (defun h0-eval-ir (ir env)
   (cond
     ;; Literal
-    ((h0-has-tag-n ir (ir-tag-lit)) (cadr ir))
+    ((h0-has-tag-n ir (ir-tag-lit))
+     (let ((val (cadr ir)))
+       ;; Convert 0 to NIL for proper list handling
+       (if (= val #x0) nil val)))
     ;; Variable reference
     ((h0-has-tag-n ir (ir-tag-var))
      (let ((off (cadr ir)))
@@ -3366,6 +3731,11 @@
      (let* ((str (h0-eval-ir (cadr ir) env))
             (idx (h0-eval-ir (caddr ir) env)))
        (string-ref str idx)))
+    ;; String equality
+    ((h0-has-tag-n ir (ir-tag-string-eq))
+     (let* ((str1 (h0-eval-ir (cadr ir) env))
+            (str2 (h0-eval-ir (caddr ir) env)))
+       (if (string= str1 str2) #x1 #x0)))
     ;; Keyword operations
     ((h0-has-tag-n ir (ir-tag-kw-lit))
      (cadr ir))
@@ -3383,6 +3753,9 @@
      (if (stringp (h0-eval-ir (cadr ir) env)) #x1 #x0))
     ((h0-has-tag-n ir (ir-tag-keywordp))
      (if (keywordp (h0-eval-ir (cadr ir) env)) #x1 #x0))
+    ;; Symbol-name extraction
+    ((h0-has-tag-n ir (ir-tag-symbol-name))
+     (symbol-name (h0-eval-ir (cadr ir) env)))
     ;; Bitwise operations
     ((h0-has-tag-n ir (ir-tag-logand))
      (logand (h0-eval-ir (cadr ir) env) (h0-eval-ir (caddr ir) env)))
@@ -3392,10 +3765,31 @@
      (ash (h0-eval-ir (cadr ir) env) (h0-eval-ir (caddr ir) env)))
     ;; Boolean not
     ((h0-has-tag-n ir (ir-tag-not))
-     (if (= (h0-eval-ir (cadr ir) env) #x0) #x1 #x0))
+     (let ((val (h0-eval-ir (cadr ir) env)))
+       (if (or (null val) (= val #x0)) #x1 #x0)))
     ;; List length
     ((h0-has-tag-n ir (ir-tag-length))
-     (length (h0-eval-ir (cadr ir) env)))
+     (h0-list-length (h0-eval-ir (cadr ir) env)))
+    ;; Vector operations
+    ((h0-has-tag-n ir (ir-tag-make-vector))
+     (let ((size (h0-eval-ir (cadr ir) env)))
+       (make-vector size)))
+    ((h0-has-tag-n ir (ir-tag-vector-ref))
+     (let* ((vec (h0-eval-ir (cadr ir) env))
+            (idx (h0-eval-ir (caddr ir) env)))
+       (vector-ref vec idx)))
+    ((h0-has-tag-n ir (ir-tag-vector-set))
+     (let* ((vec (h0-eval-ir (cadr ir) env))
+            (idx (h0-eval-ir (caddr ir) env))
+            (val (h0-eval-ir (cadddr ir) env)))
+       (vector-set vec idx val)
+       val))
+    ((h0-has-tag-n ir (ir-tag-vector-length))
+     (let ((vec (h0-eval-ir (cadr ir) env)))
+       (vector-length vec)))
+    ;; Quoted symbol - return the symbol itself
+    ((h0-has-tag-n ir (ir-tag-quote-sym))
+     (cadr ir))
     ;; Lambda - create closure
     ((h0-has-tag-n ir (ir-tag-lambda))
      (let* ((params (cadr ir))
