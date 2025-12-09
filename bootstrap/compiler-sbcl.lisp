@@ -1283,6 +1283,19 @@
                                         (acc2 (collect vl bnd acc)))
                                    (do-bindings (cdr bs) (cons nm bnd) acc2)))))
                     (do-bindings bindings bnd acc))))
+               ;; CASE/ECASE - walk keyform and clause bodies (skip keys)
+               ((or (eq (car e) 'case) (eq (car e) 'CASE)
+                    (eq (car e) 'ecase) (eq (car e) 'ECASE))
+                (let* ((keyform (cadr e))
+                       (clauses (cddr e))
+                       (acc2 (collect keyform bnd acc)))
+                  ;; Walk each clause body, skip the key
+                  (labels ((do-clauses (cs acc)
+                             (if (null cs) acc
+                                 (let* ((clause (car cs))
+                                        (body (cdr clause)))  ; skip key (car clause)
+                                   (do-clauses (cdr cs) (collect-list body bnd acc))))))
+                    (do-clauses clauses acc2))))
                (t (collect-list e bnd acc))))
            (collect-list (lst bnd acc)
              (if (null lst) acc
@@ -1333,6 +1346,19 @@
                                         (acc2 (collect vl bnd acc)))
                                    (do-bindings (cdr bs) (cons nm bnd) acc2)))))
                     (do-bindings bindings bnd acc))))
+               ;; CASE/ECASE - walk keyform and clause bodies (skip keys)
+               ((or (eq (car e) 'case) (eq (car e) 'CASE)
+                    (eq (car e) 'ecase) (eq (car e) 'ECASE))
+                (let* ((keyform (cadr e))
+                       (clauses (cddr e))
+                       (acc2 (collect keyform bnd acc)))
+                  ;; Walk each clause body, skip the key
+                  (labels ((do-clauses (cs acc)
+                             (if (null cs) acc
+                                 (let* ((clause (car cs))
+                                        (body (cdr clause)))  ; skip key (car clause)
+                                   (do-clauses (cdr cs) (collect-list body bnd acc))))))
+                    (do-clauses clauses acc2))))
                (t (collect-list e bnd acc))))
            (collect-list (lst bnd acc)
              (if (null lst) acc
@@ -1370,6 +1396,19 @@
                                  (let* ((b (car bs)) (nm (car b)) (vl (cadr b)))
                                    (do-bs (cdr bs) (cons nm bnd) (collect vl bnd acc))))))
                     (do-bs bindings bnd acc))))
+               ;; CASE/ECASE - walk keyform and clause bodies (skip keys)
+               ((or (eq (car e) 'case) (eq (car e) 'CASE)
+                    (eq (car e) 'ecase) (eq (car e) 'ECASE))
+                (let* ((keyform (cadr e))
+                       (clauses (cddr e))
+                       (acc2 (collect keyform bnd acc)))
+                  ;; Walk each clause body, skip the key
+                  (labels ((do-clauses (cs acc)
+                             (if (null cs) acc
+                                 (let* ((clause (car cs))
+                                        (body (cdr clause)))
+                                   (do-clauses (cdr cs) (collect-list body bnd acc))))))
+                    (do-clauses clauses acc2))))
                (t (collect-list e bnd acc))))
            (collect-list (lst bnd acc)
              (if (null lst) acc
@@ -1412,6 +1451,19 @@
                 (transform-let e boxed))
                ((or (eq (car e) 'LET*) (eq (car e) 'let*))
                 (transform-let* e boxed))
+               ;; CASE/ECASE - transform keyform and clause bodies (keep keys intact)
+               ((or (eq (car e) 'case) (eq (car e) 'CASE)
+                    (eq (car e) 'ecase) (eq (car e) 'ECASE))
+                (let* ((keyform (cadr e))
+                       (clauses (cddr e))
+                       (transformed-keyform (transform keyform boxed))
+                       (transformed-clauses
+                        (mapcar (lambda (clause)
+                                  (cons (car clause)  ; keep key intact
+                                        (mapcar (lambda (x) (transform x boxed))
+                                                (cdr clause))))
+                                clauses)))
+                  (cons (car e) (cons transformed-keyform transformed-clauses))))
                (t (mapcar (lambda (x) (transform x boxed)) e))))
 
            (transform-let (e boxed)

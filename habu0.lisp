@@ -1618,324 +1618,269 @@
     ;; List - function call or special form
     ((consp expr)
      (let ((op (car expr)))
-       (cond
-         ;; Quote - use cached op=quote
-         ((if (symbolp op) (op=quote op) nil) (cadr expr))
-         ;; If - use cached op=if
-         ((if (symbolp op) (op=if op) nil)
-          (if (h0-eval (cadr expr) env fenv)
-              (h0-eval (caddr expr) env fenv)
-              (if (cadddr expr) (h0-eval (cadddr expr) env fenv) nil)))
-         ;; Let - use cached op=let, delegate to helper for iteration
-         ;; Let body has implicit progn: (let ((x 1)) body1 body2...)
-         ((if (symbolp op) (op=let op) nil)
-          (h0-eval-let-body (cadr expr) (cddr expr) env fenv))
-         ;; Let* - same as let for sequential binding
-         ((if (symbolp op) (op=let-star op) nil)
-          (h0-eval-let-body (cadr expr) (cddr expr) env fenv))
-         ;; Progn - evaluate forms in sequence
-         ((if (symbolp op) (op=progn op) nil)
-          (h0-eval-progn (cdr expr) env fenv))
-         ;; Cond - multi-way conditional
-         ((if (symbolp op) (op=cond op) nil)
-          (h0-eval-cond (cdr expr) env fenv))
-         ;; Defun - returns nil but defines function
-         ((if (symbolp op) (op=defun op) nil) nil)
-         ;; Defvar - define global variable with initial value (or nil)
-         ;; (defvar name) or (defvar name value)
-         ((if (symbolp op) (op=defvar op) nil)
-          (let* ((var-sym (cadr expr))
-                 (init-val (if (cddr expr) (h0-eval (caddr expr) env fenv) nil)))
-            ;; Only initialize if not already defined
-            (if (null (h0-global-lookup var-sym))
-                (h0-global-set var-sym init-val))
-            var-sym))
-         ;; While - loop while condition is true
-         ;; (while test body...) - evaluates body while test is non-nil
-         ((if (symbolp op) (op=while op) nil)
-          (h0-eval-while (cadr expr) (cddr expr) env fenv))
-         ;; Defpackage - create package, returns nil
-         ((if (symbolp op) (op=defpackage op) nil)
-          (let ((pkg-name (keyword-name (cadr expr))))
-            (make-package (string-upcase pkg-name))
-            nil))
-         ;; In-package - set current package, returns nil
-         ((if (symbolp op) (op=in-package op) nil)
-          (let ((pkg-name (keyword-name (cadr expr))))
-            (setq *current-package* (string-upcase pkg-name))
-            ;; Ensure package exists
-            (make-package *current-package*)
-            nil))
-         ;; Case - multi-way conditional on value
-         ((if (symbolp op) (op=case op) nil)
-          (let ((key (h0-eval (cadr expr) env fenv)))
-            (h0-eval-case-clauses key (cddr expr) env fenv)))
-         ;; When - conditional execution (returns nil if false)
-         ((if (symbolp op) (op=when op) nil)
-          (if (h0-eval (cadr expr) env fenv)
-              (h0-eval-progn (cddr expr) env fenv)
-              nil))
-         ;; Unless - inverse conditional (executes when false)
-         ((if (symbolp op) (op=unless op) nil)
-          (if (h0-eval (cadr expr) env fenv)
-              nil
-              (h0-eval-progn (cddr expr) env fenv)))
-         ;; Declaim - declaration, no-op in interpreter
-         ((if (symbolp op) (op=declaim op) nil) nil)
-         ;; Setq - variable assignment
-         ;; First check local env, then global env
-         ((if (symbolp op) (op=setq op) nil)
-          (let* ((var-sym (cadr expr))
-                 (val (h0-eval (caddr expr) env fenv))
-                 (local-cell (env-lookup var-sym env)))
-            (if local-cell
-                val  ; Return value (local mutation not supported in alist env)
-                ;; Try global
-                (let ((global-cell (h0-global-lookup var-sym)))
-                  (if global-cell
-                      (h0-global-set var-sym val)
-                      (fatal-error "h0-eval: SETQ unknown variable"))))))
-         ;; Error - signal error (crash with message)
-         ((if (symbolp op) (op=error op) nil)
-          (fatal-error "h0-eval: error called"))
-         ;; Arithmetic - use cached op= functions (variadic support)
-         ((if (symbolp op) (op=plus op) nil)
-          (h0-eval-add (cdr expr) env fenv))
-         ((if (symbolp op) (op=minus op) nil)
-          (h0-eval-sub (cdr expr) env fenv))
-         ((if (symbolp op) (op=mul op) nil)
-          (let* ((left (h0-eval (cadr expr) env fenv))
-                 (right (h0-eval (caddr expr) env fenv)))
-            (* left right)))
-         ((if (symbolp op) (op=div op) nil)
-          (let* ((left (h0-eval (cadr expr) env fenv))
-                 (right (h0-eval (caddr expr) env fenv)))
-            (/ left right)))
-         ((if (symbolp op) (op=mod op) nil)
-          (let* ((left (h0-eval (cadr expr) env fenv))
-                 (right (h0-eval (caddr expr) env fenv)))
-            (mod left right)))
-         ;; List operations
-         ((if (symbolp op) (op=cons op) nil)
-          (let* ((car-val (h0-eval (cadr expr) env fenv))
-                 (cdr-val (h0-eval (caddr expr) env fenv)))
-            (cons car-val cdr-val)))
-         ((if (symbolp op) (op=car op) nil)
-          (let ((arg (h0-eval (cadr expr) env fenv)))
-            (car arg)))
-         ((if (symbolp op) (op=cdr op) nil)
-          (let ((arg (h0-eval (cadr expr) env fenv)))
-            (cdr arg)))
-         ((if (symbolp op) (op=cadr op) nil)
-          (let ((arg (h0-eval (cadr expr) env fenv)))
-            (car (cdr arg))))
-         ((if (symbolp op) (op=cddr op) nil)
-          (let ((arg (h0-eval (cadr expr) env fenv)))
-            (cdr (cdr arg))))
-         ((if (symbolp op) (op=caddr op) nil)
-          (let ((arg (h0-eval (cadr expr) env fenv)))
-            (car (cdr (cdr arg)))))
-         ((if (symbolp op) (op=cadddr op) nil)
-          (let ((arg (h0-eval (cadr expr) env fenv)))
-            (car (cdr (cdr (cdr arg))))))
-         ((if (symbolp op) (op=list op) nil) (h0-eval-list (cdr expr) env fenv))
-         ;; SETCAR - mutate car of cons cell (for boxed mutable captures)
-         ((if (symbolp op) (op=setcar op) nil)
-          (let* ((cell (h0-eval (cadr expr) env fenv))
-                 (val (h0-eval (caddr expr) env fenv)))
-            (setcar cell val)
-            val))
-         ;; Type predicates
-         ((if (symbolp op) (op=null op) nil)
-          (let ((arg (h0-eval (cadr expr) env fenv)))
-            (if (null arg) t nil)))
-         ((if (symbolp op) (op=consp op) nil)
-          (let ((arg (h0-eval (cadr expr) env fenv)))
-            (if (consp arg) t nil)))
-         ;; Boolean operations
-         ((if (symbolp op) (op=not op) nil)
-          (let ((arg (h0-eval (cadr expr) env fenv)))
-            (if arg nil t)))
-         ((if (symbolp op) (op=and op) nil) (h0-eval-and (cdr expr) env fenv))
-         ((if (symbolp op) (op=or op) nil) (h0-eval-or (cdr expr) env fenv))
-         ;; Comparisons - use cached op= functions
-         ((if (symbolp op) (op=eq-num op) nil)
-          (let* ((left (h0-eval (cadr expr) env fenv))
-                 (right (h0-eval (caddr expr) env fenv)))
-            (if (= left right) t nil)))
-         ((if (symbolp op) (op=lt op) nil)
-          (let* ((left (h0-eval (cadr expr) env fenv))
-                 (right (h0-eval (caddr expr) env fenv)))
-            (if (< left right) t nil)))
-         ((if (symbolp op) (op=gt op) nil)
-          (let* ((left (h0-eval (cadr expr) env fenv))
-                 (right (h0-eval (caddr expr) env fenv)))
-            (if (> left right) t nil)))
-         ((if (symbolp op) (op=le op) nil)
-          (let* ((left (h0-eval (cadr expr) env fenv))
-                 (right (h0-eval (caddr expr) env fenv)))
-            (if (<= left right) t nil)))
-         ((if (symbolp op) (op=ge op) nil)
-          (let* ((left (h0-eval (cadr expr) env fenv))
-                 (right (h0-eval (caddr expr) env fenv)))
-            (if (>= left right) t nil)))
-         ;; Type predicates - primitives (use cached symbols, not string comparison)
-         ((if (symbolp op) (op=symbolp op) nil)
-          (let ((arg (h0-eval (cadr expr) env fenv)))
-            (if (symbolp arg) t nil)))
-         ((if (symbolp op) (op=numberp op) nil)
-          (let ((arg (h0-eval (cadr expr) env fenv)))
-            (if (numberp arg) t nil)))
-         ((if (symbolp op) (op=stringp op) nil)
-          (let ((arg (h0-eval (cadr expr) env fenv)))
-            (if (stringp arg) t nil)))
-         ((if (symbolp op) (op=keywordp op) nil)
-          (let ((arg (h0-eval (cadr expr) env fenv)))
-            (if (keywordp arg) t nil)))
-         ;; String primitives (use cached symbols)
-         ((if (symbolp op) (op=string-length op) nil)
-          (let ((arg (h0-eval (cadr expr) env fenv)))
-            (string-length arg)))
-         ((if (symbolp op) (op=string-ref op) nil)
-          (let* ((str (h0-eval (cadr expr) env fenv))
-                 (idx (h0-eval (caddr expr) env fenv)))
-            (string-ref str idx)))
-         ((if (symbolp op) (op=char-at op) nil)
-          (let* ((str (h0-eval (cadr expr) env fenv))
-                 (idx (h0-eval (caddr expr) env fenv)))
-            (if (< idx (string-length str))
-                (string-ref str idx)
-                0)))
-         ((if (symbolp op) (op=string= op) nil)
-          (let* ((s1 (h0-eval (cadr expr) env fenv))
-                 (s2 (h0-eval (caddr expr) env fenv)))
-            (if (string= s1 s2) t nil)))
-         ;; Symbol primitives (use cached symbols)
-         ((if (symbolp op) (op=symbol-name op) nil)
-          (let ((arg (h0-eval (cadr expr) env fenv)))
-            (symbol-name arg)))
-         ;; Bitwise operations (use cached symbols)
-         ((if (symbolp op) (op=logand op) nil)
-          (let* ((left (h0-eval (cadr expr) env fenv))
-                 (right (h0-eval (caddr expr) env fenv)))
-            (logand left right)))
-         ((if (symbolp op) (op=logior op) nil)
-          (let* ((left (h0-eval (cadr expr) env fenv))
-                 (right (h0-eval (caddr expr) env fenv)))
-            (logior left right)))
-         ((if (symbolp op) (op=ash op) nil)
-          (let* ((val (h0-eval (cadr expr) env fenv))
-                 (shift (h0-eval (caddr expr) env fenv)))
-            (ash val shift)))
-         ;; EQ comparison (use cached symbol)
-         ((if (symbolp op) (op=eq op) nil)
-          (let* ((left (h0-eval (cadr expr) env fenv))
-                 (right (h0-eval (caddr expr) env fenv)))
-            (if (eq left right) t nil)))
-         ;; EQL comparison (eq for symbols, = for numbers)
-         ((if (symbolp op) (op=eql op) nil)
-          (let* ((left (h0-eval (cadr expr) env fenv))
-                 (right (h0-eval (caddr expr) env fenv)))
-            (eql left right)))
-         ;; Get-tag - use native get-tag primitive
-         ((if (symbolp op) (op=get-tag op) nil)
-          (let ((arg (h0-eval (cadr expr) env fenv)))
-            (get-tag arg)))
-         ;; Length - count list elements (use cached symbol)
-         ((if (symbolp op) (op=length op) nil)
-          (let ((arg (h0-eval (cadr expr) env fenv)))
-            (labels ((count-len (lst n)
-                       (if (null lst) n
-                           (count-len (cdr lst) (+ n 1)))))
-              (count-len arg 0))))
-         ;; Vector primitives (use cached symbols)
-         ((if (symbolp op) (op=make-vector op) nil)
-          (let ((size (h0-eval (cadr expr) env fenv)))
-            (make-vector size)))
-         ((if (symbolp op) (op=vector-length op) nil)
-          (let ((vec (h0-eval (cadr expr) env fenv)))
-            (vector-length vec)))
-         ((if (symbolp op) (op=vector-set op) nil)
-          (let* ((vec (h0-eval (cadr expr) env fenv))
-                 (idx (h0-eval (caddr expr) env fenv))
-                 (val (h0-eval (cadddr expr) env fenv)))
-            (vector-set vec idx val)
-            val))
-         ((if (symbolp op) (op=vector-ref op) nil)
-          (let* ((vec (h0-eval (cadr expr) env fenv))
-                 (idx (h0-eval (caddr expr) env fenv)))
-            (vector-ref vec idx)))
-         ;; Reverse list (use cached symbol)
-         ((if (symbolp op) (op=reverse op) nil)
-          (let ((arg (h0-eval (cadr expr) env fenv)))
-            (labels ((rev-acc (lst acc)
-                       (if (null lst) acc
-                           (rev-acc (cdr lst) (cons (car lst) acc)))))
-              (rev-acc arg nil))))
-         ;; String/Symbol creation (use cached symbols)
-         ((if (symbolp op) (op=make-string-from-vector op) nil)
-          (let ((vec (h0-eval (cadr expr) env fenv)))
-            (make-string-from-vector vec)))
-         ((if (symbolp op) (op=make-symbol-from-string op) nil)
-          (let ((str (h0-eval (cadr expr) env fenv)))
-            (make-symbol-from-string str)))
-         ;; CAAR - (car (car x))
-         ((if (symbolp op) (op=caar op) nil)
-          (let ((arg (h0-eval (cadr expr) env fenv)))
-            (car (car arg))))
-         ;; CDAR - (cdr (car x))
-         ((if (symbolp op) (op=cdar op) nil)
-          (let ((arg (h0-eval (cadr expr) env fenv)))
-            (cdr (car arg))))
-         ;; NTH - get nth element of list
-         ((if (symbolp op) (op=nth op) nil)
-          (let* ((n (h0-eval (cadr expr) env fenv))
-                 (lst (h0-eval (caddr expr) env fenv)))
-            (labels ((nth-helper (i l)
-                       (if (= i #x0)
-                           (car l)
-                           (nth-helper (- i #x1) (cdr l)))))
-              (nth-helper n lst))))
-         ;; LOGNOT - bitwise NOT (two's complement)
-         ((if (symbolp op) (op=lognot op) nil)
-          (let ((arg (h0-eval (cadr expr) env fenv)))
-            (lognot arg)))
-         ;; /= - not equal comparison
-         ((if (symbolp op) (op=neq op) nil)
-          (let* ((left (h0-eval (cadr expr) env fenv))
-                 (right (h0-eval (caddr expr) env fenv)))
-            (if (= left right) nil t)))
-         ;; LAMBDA - create closure capturing current environment
-         ((if (symbolp op) (op=lambda op) nil)
-          (let ((params (cadr expr))
-                (body (caddr expr)))
-            ;; Return closure: (CLOSURE-TAG params body captured-env)
-            ;; Use interned symbol for reliable eq comparison
-            (list (intern "CLOSURE-TAG") params body env)))
-         ;; FUNCALL - call a function value (closure)
-         ((if (symbolp op) (op=funcall op) nil)
-          (let ((fn (h0-eval (cadr expr) env fenv))
-                (args (h0-eval-list (cddr expr) env fenv)))
-            (if (and (consp fn) (eq (car fn) (intern "CLOSURE-TAG")))
-                ;; Closure: (CLOSURE-TAG params body captured-env)
-                (let* ((params (cadr fn))
-                       (body (caddr fn))
-                       (captured-env (cadddr fn))
-                       (new-env (bind-lambda-args params args captured-env fenv)))
-                  (h0-eval body new-env fenv))
-                (fatal-error "h0-eval: FUNCALL on non-closure"))))
-         ;; Function call - look up in fenv
-         (t
-          (let ((fn-entry (fenv-lookup op fenv)))
-            (if fn-entry
-                (let* ((params (car fn-entry))
-                       (body (cdr fn-entry))
-                       (args (h0-eval-list (cdr expr) env fenv))
-                       ;; Use bind-lambda-args to support &key parameters
-                       (new-env (bind-lambda-args params args nil fenv)))
-                  (h0-eval body new-env fenv))
-                ;; Unknown function
-                (fatal-error "h0-eval: unknown function")))))))
+       (if (symbolp op)
+           (case op
+             ;; Quote
+             (QUOTE (cadr expr))
+             ;; If
+             (IF (if (h0-eval (cadr expr) env fenv)
+                     (h0-eval (caddr expr) env fenv)
+                     (if (cadddr expr) (h0-eval (cadddr expr) env fenv) nil)))
+             ;; Let - delegate to helper for iteration
+             ;; Let body has implicit progn: (let ((x 1)) body1 body2...)
+             (LET (h0-eval-let-body (cadr expr) (cddr expr) env fenv))
+             ;; Let* - same as let for sequential binding
+             (LET* (h0-eval-let-body (cadr expr) (cddr expr) env fenv))
+             ;; Progn - evaluate forms in sequence
+             (PROGN (h0-eval-progn (cdr expr) env fenv))
+             ;; Cond - multi-way conditional
+             (COND (h0-eval-cond (cdr expr) env fenv))
+             ;; Defun - returns nil but defines function
+             (DEFUN nil)
+             ;; Defvar - define global variable with initial value (or nil)
+             ;; (defvar name) or (defvar name value)
+             (DEFVAR
+              (let* ((var-sym (cadr expr))
+                     (init-val (if (cddr expr) (h0-eval (caddr expr) env fenv) nil)))
+                ;; Only initialize if not already defined
+                (if (null (h0-global-lookup var-sym))
+                    (h0-global-set var-sym init-val))
+                var-sym))
+             ;; While - loop while condition is true
+             ;; (while test body...) - evaluates body while test is non-nil
+             (WHILE (h0-eval-while (cadr expr) (cddr expr) env fenv))
+             ;; Defpackage - create package, returns nil
+             (DEFPACKAGE
+              (let ((pkg-name (keyword-name (cadr expr))))
+                (make-package (string-upcase pkg-name))
+                nil))
+             ;; In-package - set current package, returns nil
+             (IN-PACKAGE
+              (let ((pkg-name (keyword-name (cadr expr))))
+                (setq *current-package* (string-upcase pkg-name))
+                ;; Ensure package exists
+                (make-package *current-package*)
+                nil))
+             ;; Case - multi-way conditional on value
+             (CASE
+              (let ((key (h0-eval (cadr expr) env fenv)))
+                (h0-eval-case-clauses key (cddr expr) env fenv)))
+             ;; When - conditional execution (returns nil if false)
+             (WHEN
+              (if (h0-eval (cadr expr) env fenv)
+                  (h0-eval-progn (cddr expr) env fenv)
+                  nil))
+             ;; Unless - inverse conditional (executes when false)
+             (UNLESS
+              (if (h0-eval (cadr expr) env fenv)
+                  nil
+                  (h0-eval-progn (cddr expr) env fenv)))
+             ;; Declaim - declaration, no-op in interpreter
+             (DECLAIM nil)
+             ;; Setq - variable assignment
+             ;; First check local env, then global env
+             (SETQ
+              (let* ((var-sym (cadr expr))
+                     (val (h0-eval (caddr expr) env fenv))
+                     (local-cell (env-lookup var-sym env)))
+                (if local-cell
+                    val  ; Return value (local mutation not supported in alist env)
+                    ;; Try global
+                    (let ((global-cell (h0-global-lookup var-sym)))
+                      (if global-cell
+                          (h0-global-set var-sym val)
+                          (fatal-error "h0-eval: SETQ unknown variable"))))))
+             ;; Error - signal error (crash with message)
+             (ERROR (fatal-error "h0-eval: error called"))
+             ;; Arithmetic (variadic support)
+             (+ (h0-eval-add (cdr expr) env fenv))
+             (- (h0-eval-sub (cdr expr) env fenv))
+             (* (let* ((left (h0-eval (cadr expr) env fenv))
+                       (right (h0-eval (caddr expr) env fenv)))
+                  (* left right)))
+             (/ (let* ((left (h0-eval (cadr expr) env fenv))
+                       (right (h0-eval (caddr expr) env fenv)))
+                  (/ left right)))
+             (MOD (let* ((left (h0-eval (cadr expr) env fenv))
+                         (right (h0-eval (caddr expr) env fenv)))
+                    (mod left right)))
+             ;; List operations
+             (CONS (let* ((car-val (h0-eval (cadr expr) env fenv))
+                          (cdr-val (h0-eval (caddr expr) env fenv)))
+                     (cons car-val cdr-val)))
+             (CAR (let ((arg (h0-eval (cadr expr) env fenv)))
+                    (car arg)))
+             (CDR (let ((arg (h0-eval (cadr expr) env fenv)))
+                    (cdr arg)))
+             (CADR (let ((arg (h0-eval (cadr expr) env fenv)))
+                     (car (cdr arg))))
+             (CDDR (let ((arg (h0-eval (cadr expr) env fenv)))
+                     (cdr (cdr arg))))
+             (CADDR (let ((arg (h0-eval (cadr expr) env fenv)))
+                      (car (cdr (cdr arg)))))
+             (CADDDR (let ((arg (h0-eval (cadr expr) env fenv)))
+                       (car (cdr (cdr (cdr arg))))))
+             (LIST (h0-eval-list (cdr expr) env fenv))
+             ;; SETCAR - mutate car of cons cell (for boxed mutable captures)
+             (SETCAR (let* ((cell (h0-eval (cadr expr) env fenv))
+                            (val (h0-eval (caddr expr) env fenv)))
+                       (setcar cell val)
+                       val))
+             ;; Type predicates
+             (NULL (let ((arg (h0-eval (cadr expr) env fenv)))
+                     (if (null arg) t nil)))
+             (CONSP (let ((arg (h0-eval (cadr expr) env fenv)))
+                      (if (consp arg) t nil)))
+             ;; Boolean operations
+             (NOT (let ((arg (h0-eval (cadr expr) env fenv)))
+                    (if arg nil t)))
+             (AND (h0-eval-and (cdr expr) env fenv))
+             (OR (h0-eval-or (cdr expr) env fenv))
+             ;; Comparisons
+             (= (let* ((left (h0-eval (cadr expr) env fenv))
+                       (right (h0-eval (caddr expr) env fenv)))
+                  (if (= left right) t nil)))
+             (< (let* ((left (h0-eval (cadr expr) env fenv))
+                       (right (h0-eval (caddr expr) env fenv)))
+                  (if (< left right) t nil)))
+             (> (let* ((left (h0-eval (cadr expr) env fenv))
+                       (right (h0-eval (caddr expr) env fenv)))
+                  (if (> left right) t nil)))
+             (<= (let* ((left (h0-eval (cadr expr) env fenv))
+                        (right (h0-eval (caddr expr) env fenv)))
+                   (if (<= left right) t nil)))
+             (>= (let* ((left (h0-eval (cadr expr) env fenv))
+                        (right (h0-eval (caddr expr) env fenv)))
+                   (if (>= left right) t nil)))
+             ;; Type predicates - primitives
+             (SYMBOLP (let ((arg (h0-eval (cadr expr) env fenv)))
+                        (if (symbolp arg) t nil)))
+             (NUMBERP (let ((arg (h0-eval (cadr expr) env fenv)))
+                        (if (numberp arg) t nil)))
+             (STRINGP (let ((arg (h0-eval (cadr expr) env fenv)))
+                        (if (stringp arg) t nil)))
+             (KEYWORDP (let ((arg (h0-eval (cadr expr) env fenv)))
+                         (if (keywordp arg) t nil)))
+             ;; String primitives
+             (STRING-LENGTH (let ((arg (h0-eval (cadr expr) env fenv)))
+                              (string-length arg)))
+             (STRING-REF (let* ((str (h0-eval (cadr expr) env fenv))
+                                (idx (h0-eval (caddr expr) env fenv)))
+                           (string-ref str idx)))
+             (CHAR-AT (let* ((str (h0-eval (cadr expr) env fenv))
+                             (idx (h0-eval (caddr expr) env fenv)))
+                        (if (< idx (string-length str))
+                            (string-ref str idx)
+                            0)))
+             (STRING= (let* ((s1 (h0-eval (cadr expr) env fenv))
+                             (s2 (h0-eval (caddr expr) env fenv)))
+                        (if (string= s1 s2) t nil)))
+             ;; Symbol primitives
+             (SYMBOL-NAME (let ((arg (h0-eval (cadr expr) env fenv)))
+                            (symbol-name arg)))
+             ;; Bitwise operations
+             (LOGAND (let* ((left (h0-eval (cadr expr) env fenv))
+                            (right (h0-eval (caddr expr) env fenv)))
+                       (logand left right)))
+             (LOGIOR (let* ((left (h0-eval (cadr expr) env fenv))
+                            (right (h0-eval (caddr expr) env fenv)))
+                       (logior left right)))
+             (ASH (let* ((val (h0-eval (cadr expr) env fenv))
+                         (shift (h0-eval (caddr expr) env fenv)))
+                    (ash val shift)))
+             ;; EQ comparison
+             (EQ (let* ((left (h0-eval (cadr expr) env fenv))
+                        (right (h0-eval (caddr expr) env fenv)))
+                   (if (eq left right) t nil)))
+             ;; EQL comparison (eq for symbols, = for numbers)
+             (EQL (let* ((left (h0-eval (cadr expr) env fenv))
+                         (right (h0-eval (caddr expr) env fenv)))
+                    (eql left right)))
+             ;; Get-tag - use native get-tag primitive
+             (GET-TAG (let ((arg (h0-eval (cadr expr) env fenv)))
+                        (get-tag arg)))
+             ;; Length - count list elements
+             (LENGTH (let ((arg (h0-eval (cadr expr) env fenv)))
+                       (labels ((count-len (lst n)
+                                  (if (null lst) n
+                                      (count-len (cdr lst) (+ n 1)))))
+                         (count-len arg 0))))
+             ;; Vector primitives
+             (MAKE-VECTOR (let ((size (h0-eval (cadr expr) env fenv)))
+                            (make-vector size)))
+             (VECTOR-LENGTH (let ((vec (h0-eval (cadr expr) env fenv)))
+                              (vector-length vec)))
+             (VECTOR-SET (let* ((vec (h0-eval (cadr expr) env fenv))
+                                (idx (h0-eval (caddr expr) env fenv))
+                                (val (h0-eval (cadddr expr) env fenv)))
+                           (vector-set vec idx val)
+                           val))
+             (VECTOR-REF (let* ((vec (h0-eval (cadr expr) env fenv))
+                                (idx (h0-eval (caddr expr) env fenv)))
+                           (vector-ref vec idx)))
+             ;; Reverse list
+             (REVERSE (let ((arg (h0-eval (cadr expr) env fenv)))
+                        (labels ((rev-acc (lst acc)
+                                   (if (null lst) acc
+                                       (rev-acc (cdr lst) (cons (car lst) acc)))))
+                          (rev-acc arg nil))))
+             ;; String/Symbol creation
+             (MAKE-STRING-FROM-VECTOR (let ((vec (h0-eval (cadr expr) env fenv)))
+                                        (make-string-from-vector vec)))
+             (MAKE-SYMBOL-FROM-STRING (let ((str (h0-eval (cadr expr) env fenv)))
+                                        (make-symbol-from-string str)))
+             ;; CAAR - (car (car x))
+             (CAAR (let ((arg (h0-eval (cadr expr) env fenv)))
+                     (car (car arg))))
+             ;; CDAR - (cdr (car x))
+             (CDAR (let ((arg (h0-eval (cadr expr) env fenv)))
+                     (cdr (car arg))))
+             ;; NTH - get nth element of list
+             (NTH (let* ((n (h0-eval (cadr expr) env fenv))
+                         (lst (h0-eval (caddr expr) env fenv)))
+                    (labels ((nth-helper (i l)
+                               (if (= i #x0)
+                                   (car l)
+                                   (nth-helper (- i #x1) (cdr l)))))
+                      (nth-helper n lst))))
+             ;; LOGNOT - bitwise NOT (two's complement)
+             (LOGNOT (let ((arg (h0-eval (cadr expr) env fenv)))
+                       (lognot arg)))
+             ;; /= - not equal comparison
+             (/= (let* ((left (h0-eval (cadr expr) env fenv))
+                        (right (h0-eval (caddr expr) env fenv)))
+                   (if (= left right) nil t)))
+             ;; LAMBDA - create closure capturing current environment
+             (LAMBDA (let ((params (cadr expr))
+                           (body (caddr expr)))
+                       ;; Return closure: (CLOSURE-TAG params body captured-env)
+                       ;; Use interned symbol for reliable eq comparison
+                       (list (intern "CLOSURE-TAG") params body env)))
+             ;; FUNCALL - call a function value (closure)
+             (FUNCALL (let ((fn (h0-eval (cadr expr) env fenv))
+                            (args (h0-eval-list (cddr expr) env fenv)))
+                        (if (and (consp fn) (eq (car fn) (intern "CLOSURE-TAG")))
+                            ;; Closure: (CLOSURE-TAG params body captured-env)
+                            (let* ((params (cadr fn))
+                                   (body (caddr fn))
+                                   (captured-env (cadddr fn))
+                                   (new-env (bind-lambda-args params args captured-env fenv)))
+                              (h0-eval body new-env fenv))
+                            (fatal-error "h0-eval: FUNCALL on non-closure"))))
+             ;; Function call - look up in fenv
+             (otherwise
+              (let ((fn-entry (fenv-lookup op fenv)))
+                (if fn-entry
+                    (let* ((params (car fn-entry))
+                           (body (cdr fn-entry))
+                           (args (h0-eval-list (cdr expr) env fenv))
+                           ;; Use bind-lambda-args to support &key parameters
+                           (new-env (bind-lambda-args params args nil fenv)))
+                      (h0-eval body new-env fenv))
+                    ;; Unknown function
+                    (fatal-error "h0-eval: unknown function")))))
+           ;; Non-symbol operator - error
+           (fatal-error "h0-eval: non-symbol operator"))))
     ;; Unknown expression type
     (t (fatal-error "h0-eval: unknown expression type"))))
 
@@ -2222,24 +2167,26 @@
          (h0-add-free expr acc)
          acc))
     ((not (consp expr)) acc)
-    ((sym= (car expr) "QUOTE") acc)
-    ((sym= (car expr) "LAMBDA")
-     (let ((params (cadr expr))
-           (body (caddr expr)))
-       (h0-collect-free body (h0-append-lists params bound) env acc)))
-    ((sym= (car expr) "LET")
-     (let* ((bindings (cadr expr))
-            (body (caddr expr))
-            (names (h0-binding-names bindings))
-            (vals (h0-binding-vals bindings))
-            (acc2 (h0-collect-free-list vals bound env acc))
-            (new-bound (h0-append-lists names bound)))
-       (h0-collect-free body new-bound env acc2)))
-    ((sym= (car expr) "LET*")
-     (let* ((bindings (cadr expr))
-            (body (caddr expr)))
-       (h0-collect-free-let* bindings body bound env acc)))
-    (t (h0-collect-free-list expr bound env acc))))
+    (t
+     (case (car expr)
+       (QUOTE acc)
+       (LAMBDA
+        (let ((params (cadr expr))
+              (body (caddr expr)))
+          (h0-collect-free body (h0-append-lists params bound) env acc)))
+       (LET
+        (let* ((bindings (cadr expr))
+               (body (caddr expr))
+               (names (h0-binding-names bindings))
+               (vals (h0-binding-vals bindings))
+               (acc2 (h0-collect-free-list vals bound env acc))
+               (new-bound (h0-append-lists names bound)))
+          (h0-collect-free body new-bound env acc2)))
+       (LET*
+        (let* ((bindings (cadr expr))
+               (body (caddr expr)))
+          (h0-collect-free-let* bindings body bound env acc)))
+       (t (h0-collect-free-list expr bound env acc))))))
 
 (defun h0-collect-free-list (exprs bound env acc)
   (if (null exprs)
@@ -2323,9 +2270,9 @@
     ((numberp expr) (list (ir-tag-lit) expr))
     ;; nil is 0 (both Lisp nil and NIL symbol)
     ((null expr) (list (ir-tag-lit) #x0))
-    ((sym= expr "NIL") (list (ir-tag-lit) #x0))
+    ((eq expr 'NIL) (list (ir-tag-lit) #x0))
     ;; t is 1
-    ((sym= expr "T") (list (ir-tag-lit) #x1))
+    ((eq expr 'T) (list (ir-tag-lit) #x1))
     ;; String literals - allocate on heap
     ((stringp expr) (list (ir-tag-str-lit) expr))
     ;; Keyword literals - allocate on heap (self-evaluating)
@@ -2339,9 +2286,9 @@
     ;; Lists - special forms or function calls
     ((consp expr)
      (let ((op (car expr)))
-       (cond
+       (case op
          ;; Quote
-         ((sym= op "QUOTE")
+         (QUOTE
           (let ((val (cadr expr)))
             (cond
               ((numberp val) (list (ir-tag-lit) val))
@@ -2349,7 +2296,7 @@
               ((null val) (list (ir-tag-lit) #x0))
               (t (fatal-error-ir "h0-compile: Unsupported quote type")))))
          ;; If
-         ((sym= op "IF")
+         (IF
           (let* ((test-ir (h0-compile (cadr expr) env fenv))
                  (then-ir (h0-compile (caddr expr) env fenv))
                  (else-ir (if (cadddr expr)
@@ -2357,13 +2304,13 @@
                               (list (ir-tag-lit) #x0))))
             (list (ir-tag-if) test-ir then-ir else-ir)))
          ;; Let
-         ((sym= op "LET")
+         (LET
           (h0-compile-let (cadr expr) (caddr expr) env fenv))
          ;; Let*
-         ((sym= op "LET*")
+         (LET*
           (h0-compile-let (cadr expr) (caddr expr) env fenv))
          ;; Setq
-         ((sym= op "SETQ")
+         (SETQ
           (let* ((var-sym (cadr expr))
                  (val-ir (h0-compile (caddr expr) env fenv))
                  (result (c-env-lookup var-sym env)))
@@ -2371,89 +2318,89 @@
                 (list (ir-tag-setq) (car result) val-ir)
                 (fatal-error-ir "h0-compile: SETQ unknown variable"))))
          ;; Progn
-         ((sym= op "PROGN")
+         (PROGN
           (h0-compile-progn (cdr expr) env fenv))
          ;; Defun returns nil during compilation
-         ((sym= op "DEFUN")
+         (DEFUN
           (list (ir-tag-lit) #x0))
          ;; Defvar returns nil during compilation (global var is runtime)
-         ((sym= op "DEFVAR")
+         (DEFVAR
           (list (ir-tag-lit) #x0))
          ;; While - transform to labels loop
          ;; (while test body...) => (labels ((loop () (when test body... (loop)))) (loop))
-         ((sym= op "WHILE")
+         (WHILE
           (h0-compile-while (cadr expr) (cddr expr) env fenv))
          ;; Arithmetic
-         ((sym= op "+")
+         (+
           (h0-compile-add (cdr expr) env fenv))
-         ((sym= op "-")
+         (-
           (h0-compile-sub (cdr expr) env fenv))
-         ((sym= op "*")
+         (*
           (let* ((l (h0-compile (cadr expr) env fenv))
                  (r (h0-compile (caddr expr) env fenv)))
             (list (ir-tag-mul) l r)))
-         ((sym= op "/")
+         (/
           (let* ((l (h0-compile (cadr expr) env fenv))
                  (r (h0-compile (caddr expr) env fenv)))
             (list (ir-tag-div) l r)))
-         ((sym= op "MOD")
+         (MOD
           (let* ((l (h0-compile (cadr expr) env fenv))
                  (r (h0-compile (caddr expr) env fenv)))
             (list (ir-tag-mod) l r)))
          ;; Comparisons
-         ((sym= op "=")
+         (=
           (let* ((l (h0-compile (cadr expr) env fenv))
                  (r (h0-compile (caddr expr) env fenv)))
             (list (ir-tag-cmp-eq) l r)))
-         ((sym= op "<")
+         (<
           (let* ((l (h0-compile (cadr expr) env fenv))
                  (r (h0-compile (caddr expr) env fenv)))
             (list (ir-tag-cmp-lt) l r)))
-         ((sym= op ">")
+         (>
           (let* ((l (h0-compile (cadr expr) env fenv))
                  (r (h0-compile (caddr expr) env fenv)))
             (list (ir-tag-cmp-gt) l r)))
-         ((sym= op "<=")
+         (<=
           (let* ((l (h0-compile (cadr expr) env fenv))
                  (r (h0-compile (caddr expr) env fenv)))
             (list (ir-tag-cmp-le) l r)))
-         ((sym= op ">=")
+         (>=
           (let* ((l (h0-compile (cadr expr) env fenv))
                  (r (h0-compile (caddr expr) env fenv)))
             (list (ir-tag-cmp-ge) l r)))
          ;; List operations
-         ((sym= op "CONS")
+         (CONS
           (let* ((l (h0-compile (cadr expr) env fenv))
                  (r (h0-compile (caddr expr) env fenv)))
             (list (ir-tag-cons) l r)))
-         ((sym= op "CAR")
+         (CAR
           (let ((v (h0-compile (cadr expr) env fenv)))
             (list (ir-tag-car) v)))
-         ((sym= op "CDR")
+         (CDR
           (let ((v (h0-compile (cadr expr) env fenv)))
             (list (ir-tag-cdr) v)))
-         ((sym= op "SETCAR")
+         (SETCAR
           (let* ((cell-ir (h0-compile (cadr expr) env fenv))
                  (val-ir (h0-compile (caddr expr) env fenv)))
             (list 'setcar-ir cell-ir val-ir)))
-         ((sym= op "SETCDR")
+         (SETCDR
           (let* ((cell-ir (h0-compile (cadr expr) env fenv))
                  (val-ir (h0-compile (caddr expr) env fenv)))
             (list 'setcdr-ir cell-ir val-ir)))
-         ((sym= op "NULL")
+         (NULL
           (let ((v (h0-compile (cadr expr) env fenv)))
             (list (ir-tag-null) v)))
          ;; String operations
-         ((sym= op "STRING-LENGTH")
+         (STRING-LENGTH
           (let ((v (h0-compile (cadr expr) env fenv)))
             (list (ir-tag-str-len) v)))
-         ((sym= op "STRING-REF")
+         (STRING-REF
           (let* ((str (h0-compile (cadr expr) env fenv))
                  (idx (h0-compile (caddr expr) env fenv)))
             (list (ir-tag-str-ref) str idx)))
          ;; CHAR-AT - safe string-ref that returns 0 beyond end
          ;; Expands to: (if (< pos (string-length str)) (string-ref str pos) 0)
-         ((sym= op "CHAR-AT")
+         (CHAR-AT
           (let* ((str-expr (cadr expr))
                  (pos-expr (caddr expr))
                  ;; To avoid evaluating str and pos twice, we need let bindings
@@ -2466,96 +2413,117 @@
                  (else-ir (list (ir-tag-lit) #x0)))
             (list (ir-tag-if) test-ir then-ir else-ir)))
          ;; STRING= - string equality comparison
-         ((sym= op "STRING=")
+         (STRING=
           (let* ((l (h0-compile (cadr expr) env fenv))
                  (r (h0-compile (caddr expr) env fenv)))
             (list (ir-tag-string-eq) l r)))
          ;; SYMBOL-NAME - extract name string from symbol
-         ((sym= op "SYMBOL-NAME")
+         (SYMBOL-NAME
           (let ((v (h0-compile (cadr expr) env fenv)))
             (list (ir-tag-symbol-name) v)))
          ;; Vector operations
-         ((sym= op "MAKE-VECTOR")
+         (MAKE-VECTOR
           (let ((size (h0-compile (cadr expr) env fenv)))
             (list (ir-tag-make-vector) size)))
-         ((sym= op "VECTOR-REF")
+         (VECTOR-REF
           (let* ((vec (h0-compile (cadr expr) env fenv))
                  (idx (h0-compile (caddr expr) env fenv)))
             (list (ir-tag-vector-ref) vec idx)))
-         ((sym= op "VECTOR-SET")
+         (VECTOR-SET
           (let* ((vec (h0-compile (cadr expr) env fenv))
                  (idx (h0-compile (caddr expr) env fenv))
                  (val (h0-compile (cadddr expr) env fenv)))
             (list (ir-tag-vector-set) vec idx val)))
-         ((sym= op "VECTOR-LENGTH")
+         (VECTOR-LENGTH
           (let ((vec (h0-compile (cadr expr) env fenv)))
             (list (ir-tag-vector-length) vec)))
          ;; Type predicates
-         ((sym= op "EQ")
+         (EQ
           (let* ((l (h0-compile (cadr expr) env fenv))
                  (r (h0-compile (caddr expr) env fenv)))
             (list (ir-tag-eq) l r)))
-         ((sym= op "CONSP")
+         (CONSP
           (let ((v (h0-compile (cadr expr) env fenv)))
             (list (ir-tag-consp) v)))
-         ((sym= op "SYMBOLP")
+         (SYMBOLP
           (let ((v (h0-compile (cadr expr) env fenv)))
             (list (ir-tag-symbolp) v)))
-         ((sym= op "NUMBERP")
+         (NUMBERP
           (let ((v (h0-compile (cadr expr) env fenv)))
             (list (ir-tag-numberp) v)))
-         ((sym= op "STRINGP")
+         (STRINGP
           (let ((v (h0-compile (cadr expr) env fenv)))
             (list (ir-tag-stringp) v)))
-         ((sym= op "KEYWORDP")
+         (KEYWORDP
           (let ((v (h0-compile (cadr expr) env fenv)))
             (list (ir-tag-keywordp) v)))
          ;; Bitwise operations
-         ((sym= op "LOGAND")
+         (LOGAND
           (let* ((l (h0-compile (cadr expr) env fenv))
                  (r (h0-compile (caddr expr) env fenv)))
             (list (ir-tag-logand) l r)))
-         ((sym= op "LOGIOR")
+         (LOGIOR
           (let* ((l (h0-compile (cadr expr) env fenv))
                  (r (h0-compile (caddr expr) env fenv)))
             (list (ir-tag-logior) l r)))
-         ((sym= op "ASH")
+         (ASH
           (let* ((val (h0-compile (cadr expr) env fenv))
                  (shift (h0-compile (caddr expr) env fenv)))
             (list (ir-tag-ash) val shift)))
          ;; Boolean not
-         ((sym= op "NOT")
+         (NOT
           (let ((v (h0-compile (cadr expr) env fenv)))
             (list (ir-tag-not) v)))
          ;; OR - expand to if chain: (or a b c) => (if a a (if b b c))
-         ((sym= op "OR")
+         (OR
           (h0-compile-or (cdr expr) env fenv))
          ;; AND - expand to if chain: (and a b c) => (if a (if b c nil) nil)
-         ((sym= op "AND")
+         (AND
           (h0-compile-and (cdr expr) env fenv))
          ;; LENGTH - list length
-         ((sym= op "LENGTH")
+         (LENGTH
           (let ((v (h0-compile (cadr expr) env fenv)))
             (list (ir-tag-length) v)))
          ;; COND - expand to nested IFs
-         ((sym= op "COND")
+         (COND
           (h0-compile-cond (cdr expr) env fenv))
-         ;; CASE - expand to nested IFs with EQ comparisons
-         ((sym= op "CASE")
-          (h0-compile-case (cadr expr) (cddr expr) env fenv))
          ;; WHEN - expand to (if test (progn body...))
-         ((sym= op "WHEN")
+         (WHEN
           (let* ((test-ir (h0-compile (cadr expr) env fenv))
                  (body-ir (h0-compile-progn (cddr expr) env fenv))
                  (else-ir (list (ir-tag-lit) #x0)))
             (list (ir-tag-if) test-ir body-ir else-ir)))
          ;; UNLESS - expand to (if (not test) (progn body...))
-         ((sym= op "UNLESS")
+         (UNLESS
           (let* ((test-ir (h0-compile (cadr expr) env fenv))
                  (not-test-ir (list (ir-tag-not) test-ir))
                  (body-ir (h0-compile-progn (cddr expr) env fenv))
                  (else-ir (list (ir-tag-lit) #x0)))
             (list (ir-tag-if) not-test-ir body-ir else-ir)))
+         ;; CASE - expand to cond with eql comparisons
+         ;; (case key (k1 body1...) ((k2 k3) body2...) (t default...))
+         (CASE
+          (let* ((keyform (cadr expr))
+                 (clauses (cddr expr))
+                 (key-var (intern "#:CASE-KEY")))
+            ;; Expand to (let ((key keyform)) (cond ...))
+            (h0-compile
+             (list 'let (list (list key-var keyform))
+                   (cons 'cond (h0-expand-case-clauses key-var clauses)))
+             env fenv)))
+         ;; ECASE - like CASE but signals error if no clause matches
+         (ECASE
+          (let* ((keyform (cadr expr))
+                 (clauses (cddr expr))
+                 (key-var (intern "#:CASE-KEY"))
+                 ;; Add error clause at end
+                 (clauses-with-error
+                  (h0-append clauses
+                             (list (list 't (list 'error "ecase: no matching clause"))))))
+            (h0-compile
+             (list 'let (list (list key-var keyform))
+                   (cons 'cond (h0-expand-case-clauses key-var clauses-with-error)))
+             env fenv)))
          ;; DOLIST - expand to labels loop
          ;; (dolist (var list) body...) =>
          ;; (let ((#:list list))
@@ -2567,7 +2535,7 @@
          ;;                  (#:loop)))))
          ;;     (#:loop))
          ;;   nil)
-         ((sym= op "DOLIST")
+         (DOLIST
           (let* ((binding (cadr expr))
                  (var (car binding))
                  (list-expr (cadr binding))
@@ -2590,7 +2558,7 @@
                         nil)))
             (h0-compile expanded env fenv)))
          ;; LAMBDA - create closure
-         ((sym= op "LAMBDA")
+         (LAMBDA
           (let* ((params (cadr expr))
                  (body (caddr expr))
                  (free-vars (h0-find-free-vars body params env))
@@ -2599,93 +2567,94 @@
                  (body-ir (h0-compile body param-env fenv)))
             (list (ir-tag-lambda) params body-ir free-vars free-offsets)))
          ;; FUNCALL - call function value
-         ((sym= op "FUNCALL")
+         (FUNCALL
           (let* ((fn-ir (h0-compile (cadr expr) env fenv))
                  (args (cddr expr))
                  (args-ir (h0-compile-args args env fenv)))
             (list (ir-tag-funcall) fn-ir args-ir)))
          ;; FLET - local function definitions (non-recursive)
-         ((sym= op "FLET")
+         (FLET
           (h0-compile-flet (cadr expr) (cddr expr) env fenv))
          ;; LABELS - local function definitions (recursive)
-         ((sym= op "LABELS")
+         (LABELS
           (h0-compile-labels (cadr expr) (cddr expr) env fenv))
          ;; MAPCAR - expand to labels loop
          ;; (mapcar fn list) => (labels ((loop (l acc) ...)) (loop list nil))
-         ((sym= op "MAPCAR")
+         (MAPCAR
           (h0-compile-mapcar (cadr expr) (caddr expr) env fenv))
          ;; REVERSE - expand to labels loop
-         ((sym= op "REVERSE")
+         (REVERSE
           (h0-compile-reverse (cadr expr) env fenv))
          ;; LIST - expand to nested CONS
-         ((sym= op "LIST")
+         (LIST
           (h0-compile-list (cdr expr) env fenv))
          ;; CADR - (car (cdr x))
-         ((sym= op "CADR")
+         (CADR
           (let ((v (h0-compile (cadr expr) env fenv)))
             (list (ir-tag-car) (list (ir-tag-cdr) v))))
          ;; CDDR - (cdr (cdr x))
-         ((sym= op "CDDR")
+         (CDDR
           (let ((v (h0-compile (cadr expr) env fenv)))
             (list (ir-tag-cdr) (list (ir-tag-cdr) v))))
          ;; CADDR - (car (cdr (cdr x)))
-         ((sym= op "CADDR")
+         (CADDR
           (let ((v (h0-compile (cadr expr) env fenv)))
             (list (ir-tag-car) (list (ir-tag-cdr) (list (ir-tag-cdr) v)))))
          ;; CADDDR - (car (cdr (cdr (cdr x))))
-         ((sym= op "CADDDR")
+         (CADDDR
           (let ((v (h0-compile (cadr expr) env fenv)))
             (list (ir-tag-car) (list (ir-tag-cdr) (list (ir-tag-cdr) (list (ir-tag-cdr) v))))))
          ;; CAAR - (car (car x))
-         ((sym= op "CAAR")
+         (CAAR
           (let ((v (h0-compile (cadr expr) env fenv)))
             (list (ir-tag-car) (list (ir-tag-car) v))))
          ;; CDAR - (cdr (car x))
-         ((sym= op "CDAR")
+         (CDAR
           (let ((v (h0-compile (cadr expr) env fenv)))
             (list (ir-tag-cdr) (list (ir-tag-car) v))))
          ;; NTH - expand to nested CDRs and CAR
-         ((sym= op "NTH")
+         (NTH
           (h0-compile-nth (cadr expr) (caddr expr) env fenv))
          ;; LOGNOT - (logxor x -1) but we don't have logxor, use (- -1 x) for 2's complement
-         ((sym= op "LOGNOT")
+         (LOGNOT
           (let ((v (h0-compile (cadr expr) env fenv)))
             ;; lognot x = -1 - x in 2's complement (actually xor with -1)
             ;; For now use subtraction: (- (- 0 1) x) = -1 - x
             (list (ir-tag-sub) (list (ir-tag-lit) #x-1) v)))
          ;; EQL - equal for numbers and symbols (eq for symbols, = for numbers)
-         ((sym= op "EQL")
+         (EQL
           (let* ((l (h0-compile (cadr expr) env fenv))
                  (r (h0-compile (caddr expr) env fenv)))
             (list (ir-tag-eql) l r)))
          ;; GET-TAG - extract tag from tagged value
-         ((sym= op "GET-TAG")
+         (GET-TAG
           (let ((v (h0-compile (cadr expr) env fenv)))
             (list (ir-tag-get-tag) v)))
          ;; MAKE-STRING-FROM-VECTOR - create string from vector of chars
-         ((sym= op "MAKE-STRING-FROM-VECTOR")
+         (MAKE-STRING-FROM-VECTOR
           (let ((v (h0-compile (cadr expr) env fenv)))
             (list (ir-tag-make-string-from-vector) v)))
          ;; MAKE-SYMBOL-FROM-STRING - create symbol from string
-         ((sym= op "MAKE-SYMBOL-FROM-STRING")
+         (MAKE-SYMBOL-FROM-STRING
           (let ((v (h0-compile (cadr expr) env fenv)))
             (list (ir-tag-make-symbol-from-string) v)))
          ;; ERROR - signal error and crash
-         ((sym= op "ERROR")
+         (ERROR
           (list (ir-tag-error)))
          ;; >= comparison already exists, add /= (not equal)
-         ((sym= op "/=")
+         (/=
           (let* ((l (h0-compile (cadr expr) env fenv))
                  (r (h0-compile (caddr expr) env fenv)))
             (list (ir-tag-not) (list (ir-tag-cmp-eq) l r))))
-         ;; If op is a cons (e.g., lambda expression), compile as funcall
-         ((consp op)
-          (let* ((fn-ir (h0-compile op env fenv))
-                 (args (cdr expr))
-                 (args-ir (h0-compile-args args env fenv)))
-            (list (ir-tag-funcall) fn-ir args-ir)))
-         ;; Default - unknown operator - CRASH
-         (t (fatal-error-ir "h0-compile: Unknown operator")))))
+         ;; Default case - if op is a cons (e.g., lambda expression), compile as funcall
+         ;; otherwise it's an unknown operator
+         (t
+          (if (consp op)
+              (let* ((fn-ir (h0-compile op env fenv))
+                     (args (cdr expr))
+                     (args-ir (h0-compile-args args env fenv)))
+                (list (ir-tag-funcall) fn-ir args-ir))
+              (fatal-error-ir "h0-compile: Unknown operator"))))))
     ;; Default - unknown expression type - CRASH
     (t (fatal-error-ir "h0-compile: Unknown expression type"))))
 
@@ -2763,6 +2732,35 @@
              (rest-ir (h0-compile-progn-rest (cdr forms) env fenv)))
         (cons first-ir rest-ir))))
 
+;; Expand CASE clauses to COND clauses
+;; Each clause (key body...) becomes ((eql key-var 'key) body...)
+;; Multiple keys ((k1 k2) body...) becomes ((or (eql key-var 'k1) (eql key-var 'k2)) body...)
+;; Default clause (t body...) stays as (t body...)
+(defun h0-expand-case-clauses (key-var clauses)
+  (if (null clauses)
+      nil
+      (let* ((clause (car clauses))
+             (keys (car clause))
+             (body (cdr clause))
+             (rest (h0-expand-case-clauses key-var (cdr clauses))))
+        (cond
+          ;; Default clause: t or otherwise
+          ((or (eq keys 't) (eq keys 'T) (eq keys 'otherwise))
+           (cons (cons 't body) rest))
+          ;; Single key (not a list)
+          ((not (consp keys))
+           (cons (cons (list 'eql key-var (list 'quote keys)) body) rest))
+          ;; Multiple keys (list)
+          (t
+           (cons (cons (cons 'or (h0-expand-case-keys key-var keys)) body) rest))))))
+
+(defun h0-expand-case-keys (key-var keys)
+  "Expand list of keys to (eql key-var 'k1) (eql key-var 'k2) ..."
+  (if (null keys)
+      nil
+      (cons (list 'eql key-var (list 'quote (car keys)))
+            (h0-expand-case-keys key-var (cdr keys)))))
+
 ;; Compile OR - expand to if chain: (or a b c) => (if a a (if b b c))
 ;; Returns the first true value or nil
 (defun h0-compile-or (args env fenv)
@@ -2810,7 +2808,7 @@
              (body (cdr clause)))
         (if (null (cdr clauses))
             ;; Last clause - just compile it
-            (if (sym= test "T")
+            (if (eq test 'T)
                 ;; (t body...) - always true, just execute body
                 (if (null body)
                     (list (ir-tag-lit) #x0)
@@ -2827,7 +2825,7 @@
                        (else-ir (list (ir-tag-lit) #x0)))
                   (list (ir-tag-if) test-ir body-ir else-ir)))
             ;; Multiple clauses - nested if
-            (if (sym= test "T")
+            (if (eq test 'T)
                 ;; (t body...) in middle - execute body (subsequent clauses ignored)
                 (if (null body)
                     (list (ir-tag-lit) #x0)
@@ -2866,7 +2864,7 @@
       (let* ((clause (car clauses))
              (keys (car clause))
              (body (cdr clause)))
-        (if (or (sym= keys "OTHERWISE") (sym= keys "T"))
+        (if (or (eq keys 'OTHERWISE) (eq keys 'T))
             ;; Default clause - just execute body
             (if (null body)
                 (list (ir-tag-lit) #x0)
@@ -3338,88 +3336,86 @@
   (if (h0-linear-leaf-p ir)
       (h0-linearize-leaf ir state)
       (let ((tag (car ir)))
-        ;; Binary arithmetic
-        (if (= tag (intern "ADD")) (h0-linearize-binary (intern "ADD") ir state)
-            (if (= tag (intern "ADD-IR")) (h0-linearize-binary (intern "ADD") ir state)
-                (if (= tag (intern "SUB")) (h0-linearize-binary (intern "SUB") ir state)
-                    (if (= tag (intern "SUB-IR")) (h0-linearize-binary (intern "SUB") ir state)
-                        (if (= tag (intern "MUL")) (h0-linearize-binary (intern "MUL") ir state)
-                            (if (= tag (intern "MUL-IR")) (h0-linearize-binary (intern "MUL") ir state)
-                                (if (= tag (intern "DIV")) (h0-linearize-binary (intern "DIV") ir state)
-                                    (if (= tag (intern "DIV-IR")) (h0-linearize-binary (intern "DIV") ir state)
-                                        (if (= tag (intern "MOD")) (h0-linearize-binary (intern "MOD") ir state)
-                                            (if (= tag (intern "MOD-IR")) (h0-linearize-binary (intern "MOD") ir state)
-                                                ;; Comparisons
-                                                (if (= tag (intern "CMP-EQ")) (h0-linearize-binary (intern "CMP-EQ") ir state)
-                                                    (if (= tag (intern "CMP-LT")) (h0-linearize-binary (intern "CMP-LT") ir state)
-                                                        (if (= tag (intern "CMP-GT")) (h0-linearize-binary (intern "CMP-GT") ir state)
-                                                            (if (= tag (intern "CMP-LE")) (h0-linearize-binary (intern "CMP-LE") ir state)
-                                                                (if (= tag (intern "CMP-GE")) (h0-linearize-binary (intern "CMP-GE") ir state)
-                                                                    ;; Bitwise operations
-                                                                    (if (= tag (intern "BAND")) (h0-linearize-binary (intern "BAND") ir state)
-                                                                        (if (= tag (intern "BOR")) (h0-linearize-binary (intern "BOR") ir state)
-                                                                            (if (= tag (intern "BXOR")) (h0-linearize-binary (intern "BXOR") ir state)
-                                                                                (if (= tag (intern "BSH")) (h0-linearize-binary (intern "BSH") ir state)
-                                                                                    (if (= tag (intern "BNOT")) (h0-linearize-unary (intern "BNOT") ir state)
-                                                                                        ;; List operations
-                                                                                        (if (= tag (intern "CONS-IR")) (h0-linearize-cons ir state)
-                                                                                            (if (= tag (intern "CAR-IR")) (h0-linearize-unary (intern "CAR") ir state)
-                                                                                                (if (= tag (intern "CDR-IR")) (h0-linearize-unary (intern "CDR") ir state)
-                                                                                                    (if (= tag (intern "SETCAR-IR")) (h0-linearize-binary (intern "SETCAR") ir state)
-                                                                                                        (if (= tag (intern "SETCDR-IR")) (h0-linearize-binary (intern "SETCDR") ir state)
-                                                                                                            ;; String operations
-                                                                                                            (if (= tag (intern "STRING-LENGTH-IR")) (h0-linearize-unary (intern "STRING-LENGTH") ir state)
-                                                                                                                (if (= tag (intern "STRING-REF-IR")) (h0-linearize-binary (intern "STRING-REF") ir state)
-                                                                                                                    (if (= tag (intern "STRING-CONCAT-IR")) (h0-linearize-binary (intern "STRING-CONCAT") ir state)
-                                                                                                                        (if (= tag (intern "STRING-EQUAL-IR")) (h0-linearize-binary (intern "STRING-EQUAL") ir state)
-                                                                                                                            (if (= tag (intern "MAKE-STRING-FROM-VECTOR-IR")) (h0-linearize-unary (intern "MAKE-STRING-FROM-VECTOR") ir state)
-                                                                                                                                ;; Symbol operations
-                                                                                                                                (if (= tag (intern "SYMBOL-NAME-IR")) (h0-linearize-unary (intern "SYMBOL-NAME") ir state)
-                                                                                                                                    (if (= tag (intern "MAKE-SYMBOL-IR")) (h0-linearize-unary (intern "MAKE-SYMBOL") ir state)
-                                                                                                                                        (if (= tag (intern "MAKE-SYMBOL-FROM-STRING-IR")) (h0-linearize-unary (intern "MAKE-SYMBOL") ir state)
-                                                                                                                                            ;; Vector operations
-                                                                                                                                            (if (= tag (intern "MAKE-VECTOR-IR")) (h0-linearize-unary (intern "MAKE-VECTOR") ir state)
-                                                                                                                                                (if (= tag (intern "VECTOR-LENGTH-IR")) (h0-linearize-unary (intern "VECTOR-LENGTH") ir state)
-                                                                                                                                                    (if (= tag (intern "VECTOR-REF-IR")) (h0-linearize-binary (intern "VECTOR-REF") ir state)
-                                                                                                                                                        (if (= tag (intern "VECTOR-SET-IR")) (h0-linearize-vector-set ir state)
-                                                                                                                                                            ;; Buffer operations
-                                                                                                                                                            (if (= tag (intern "BUFFER-BYTE-REF-IR")) (h0-linearize-binary (intern "BUFFER-BYTE-REF") ir state)
-                                                                                                                                                                (if (= tag (intern "BUFFER-BYTE-SET-IR")) (h0-linearize-buffer-byte-set ir state)
-                                                                                                                                                                    ;; Tag operations
-                                                                                                                                                                    (if (= tag (intern "GET-TAG")) (h0-linearize-unary (intern "GET-TAG") ir state)
-                                                                                                                                                                        ;; Control flow
-                                                                                                                                                                        (if (= tag (intern "IF-IR")) (h0-linearize-if ir state)
-                                                                                                                                                                            (if (= tag (intern "WHILE-IR")) (h0-linearize-while ir state)
-                                                                                                                                                                                (if (= tag (intern "PROGN-IR")) (h0-linearize-progn ir state)
-                                                                                                                                                                                    ;; Bindings
-                                                                                                                                                                                    (if (= tag (intern "LET-IR")) (h0-linearize-let ir state)
-                                                                                                                                                                                        (if (= tag (intern "LET*-IR")) (h0-linearize-let ir state)
-                                                                                                                                                                                            (if (= tag (intern "SETQ-IR")) (h0-linearize-setq ir state)
-                                                                                                                                                                                                ;; Function calls
-                                                                                                                                                                                                (if (= tag (intern "CALL-FN")) (h0-linearize-call ir state)
-                                                                                                                                                                                                    (if (= tag (intern "FUNCALL-IR")) (h0-linearize-funcall ir state)
-                                                                                                                                                                                                        ;; System calls
-                                                                                                                                                                                                        (if (= tag (intern "SYS-EXIT-IR")) (h0-linearize-sys-exit ir state)
-                                                                                                                                                                                                            (if (= tag (intern "SYS-OPEN-IR")) (h0-linearize-sys-open ir state)
-                                                                                                                                                                                                                (if (= tag (intern "SYS-READ-IR")) (h0-linearize-sys-read ir state)
-                                                                                                                                                                                                                    (if (= tag (intern "SYS-WRITE-IR")) (h0-linearize-sys-write ir state)
-                                                                                                                                                                                                                        (if (= tag (intern "SYS-CLOSE-IR")) (h0-linearize-sys-close ir state)
-                                                                                                                                                                                                                            ;; Global vars
-                                                                                                                                                                                                                            (if (= tag (intern "SET-GLOBAL-VARS-IR")) (h0-linearize-set-global-vars ir state)
-                                                                                                                                                                                                                                ;; Memory operations
-                                                                                                                                                                                                                                (if (= tag (intern "MEM-SET-BYTE-IR")) (h0-linearize-mem-set-byte ir state)
-                                                                                                                                                                                                                                    (if (= tag (intern "MEM-LOAD-64-IR")) (h0-linearize-mem-load-64 ir state)
-                                                                                                                                                                                                                                        ;; Block/return-from
-                                                                                                                                                                                                                                        (if (= tag (intern "BLOCK-IR")) (h0-linearize-block ir state)
-                                                                                                                                                                                                                                            (if (= tag (intern "RETURN-FROM-IR")) (h0-linearize-return-from ir state)
-                                                                                                                                                                                                                                                ;; Loop/continue
-                                                                                                                                                                                                                                                (if (= tag (intern "LOOP-IR")) (h0-linearize-loop ir state)
-                                                                                                                                                                                                                                                    (if (= tag (intern "CONTINUE-IR")) (h0-linearize-continue ir state)
-                                                                                                                                                                                                                                                        ;; Buffer to string
-                                                                                                                                                                                                                                                        (if (= tag (intern "BUFFER-TO-STRING-IR")) (h0-linearize-buffer-to-string ir state)
-                                                                                                                                                                                                                                                            ;; Symbol table
-                                                                                                                                                                                                                                                            (if (= tag (intern "GET-SYMTAB-OFFSET-IR")) (h0-linearize-get-symtab-offset ir state)
-                                                                                                                                                                                                                                                                (error "linearize-expr: unknown IR type"))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))
+        (case tag
+          ;; Binary arithmetic (with and without -IR suffix)
+          ((ADD ADD-IR) (h0-linearize-binary (intern "ADD") ir state))
+          ((SUB SUB-IR) (h0-linearize-binary (intern "SUB") ir state))
+          ((MUL MUL-IR) (h0-linearize-binary (intern "MUL") ir state))
+          ((DIV DIV-IR) (h0-linearize-binary (intern "DIV") ir state))
+          ((MOD MOD-IR) (h0-linearize-binary (intern "MOD") ir state))
+          ;; Comparisons
+          (CMP-EQ (h0-linearize-binary (intern "CMP-EQ") ir state))
+          (CMP-LT (h0-linearize-binary (intern "CMP-LT") ir state))
+          (CMP-GT (h0-linearize-binary (intern "CMP-GT") ir state))
+          (CMP-LE (h0-linearize-binary (intern "CMP-LE") ir state))
+          (CMP-GE (h0-linearize-binary (intern "CMP-GE") ir state))
+          ;; Bitwise binary
+          (BAND (h0-linearize-binary (intern "BAND") ir state))
+          (BOR (h0-linearize-binary (intern "BOR") ir state))
+          (BXOR (h0-linearize-binary (intern "BXOR") ir state))
+          (BSH (h0-linearize-binary (intern "BSH") ir state))
+          ;; List mutations
+          (SETCAR-IR (h0-linearize-binary (intern "SETCAR") ir state))
+          (SETCDR-IR (h0-linearize-binary (intern "SETCDR") ir state))
+          ;; String binary
+          (STRING-REF-IR (h0-linearize-binary (intern "STRING-REF") ir state))
+          (STRING-CONCAT-IR (h0-linearize-binary (intern "STRING-CONCAT") ir state))
+          (STRING-EQUAL-IR (h0-linearize-binary (intern "STRING-EQUAL") ir state))
+          ;; Vector binary
+          (VECTOR-REF-IR (h0-linearize-binary (intern "VECTOR-REF") ir state))
+          ;; Buffer binary
+          (BUFFER-BYTE-REF-IR (h0-linearize-binary (intern "BUFFER-BYTE-REF") ir state))
+          ;; Unary operations
+          (BNOT (h0-linearize-unary (intern "BNOT") ir state))
+          (CAR-IR (h0-linearize-unary (intern "CAR") ir state))
+          (CDR-IR (h0-linearize-unary (intern "CDR") ir state))
+          (STRING-LENGTH-IR (h0-linearize-unary (intern "STRING-LENGTH") ir state))
+          (MAKE-STRING-FROM-VECTOR-IR (h0-linearize-unary (intern "MAKE-STRING-FROM-VECTOR") ir state))
+          (SYMBOL-NAME-IR (h0-linearize-unary (intern "SYMBOL-NAME") ir state))
+          (MAKE-SYMBOL-IR (h0-linearize-unary (intern "MAKE-SYMBOL") ir state))
+          (MAKE-SYMBOL-FROM-STRING-IR (h0-linearize-unary (intern "MAKE-SYMBOL") ir state))
+          (MAKE-VECTOR-IR (h0-linearize-unary (intern "MAKE-VECTOR") ir state))
+          (VECTOR-LENGTH-IR (h0-linearize-unary (intern "VECTOR-LENGTH") ir state))
+          (GET-TAG (h0-linearize-unary (intern "GET-TAG") ir state))
+          ;; List cons
+          (CONS-IR (h0-linearize-cons ir state))
+          ;; Vector/buffer set (ternary)
+          (VECTOR-SET-IR (h0-linearize-vector-set ir state))
+          (BUFFER-BYTE-SET-IR (h0-linearize-buffer-byte-set ir state))
+          ;; Control flow
+          (IF-IR (h0-linearize-if ir state))
+          (WHILE-IR (h0-linearize-while ir state))
+          (PROGN-IR (h0-linearize-progn ir state))
+          ;; Bindings
+          (LET-IR (h0-linearize-let ir state))
+          (LET*-IR (h0-linearize-let ir state))
+          (SETQ-IR (h0-linearize-setq ir state))
+          ;; Function calls
+          (CALL-FN (h0-linearize-call ir state))
+          (FUNCALL-IR (h0-linearize-funcall ir state))
+          ;; System calls
+          (SYS-EXIT-IR (h0-linearize-sys-exit ir state))
+          (SYS-OPEN-IR (h0-linearize-sys-open ir state))
+          (SYS-READ-IR (h0-linearize-sys-read ir state))
+          (SYS-WRITE-IR (h0-linearize-sys-write ir state))
+          (SYS-CLOSE-IR (h0-linearize-sys-close ir state))
+          ;; Global vars
+          (SET-GLOBAL-VARS-IR (h0-linearize-set-global-vars ir state))
+          ;; Memory operations
+          (MEM-SET-BYTE-IR (h0-linearize-mem-set-byte ir state))
+          (MEM-LOAD-64-IR (h0-linearize-mem-load-64 ir state))
+          ;; Block/return-from
+          (BLOCK-IR (h0-linearize-block ir state))
+          (RETURN-FROM-IR (h0-linearize-return-from ir state))
+          ;; Loop/continue
+          (LOOP-IR (h0-linearize-loop ir state))
+          (CONTINUE-IR (h0-linearize-continue ir state))
+          ;; Buffer to string
+          (BUFFER-TO-STRING-IR (h0-linearize-buffer-to-string ir state))
+          ;; Symbol table
+          (GET-SYMTAB-OFFSET-IR (h0-linearize-get-symtab-offset ir state))
+          ;; Unknown IR type
+          (t (error "linearize-expr: unknown IR type"))))))
 
 ;; Helper functions for complex operations
 
@@ -4991,7 +4987,7 @@
             (args-ir (caddr ir))
             (args-vals (h0-eval-ir-args args-ir env)))
        ;; fn-val should be (closure params body-ir captured-vals)
-       (if (and (consp fn-val) (sym= (car fn-val) "CLOSURE"))
+       (if (and (consp fn-val) (eq (car fn-val) 'CLOSURE))
            (let* ((body-ir (caddr fn-val))
                   (captured-vals (cadddr fn-val))
                   ;; Build env: free vars (captured) first, then args
