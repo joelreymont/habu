@@ -1741,6 +1741,9 @@
          ((eq op 'eq)
           ;; eq is pointer equality - same as = for our tagged values
           (list 'cmp-eq (sys:compile (cadr expr) env fenv) (sys:compile (caddr expr) env fenv)))
+         ((eq op 'eql)
+          ;; eql is eq for symbols, = for numbers - for tagged values same as eq
+          (list 'cmp-eq (sys:compile (cadr expr) env fenv) (sys:compile (caddr expr) env fenv)))
          ((eq op '<)
           (list 'cmp-lt (sys:compile (cadr expr) env fenv) (sys:compile (caddr expr) env fenv)))
          ((eq op '>)
@@ -1777,6 +1780,32 @@
                                     (sys:compile (car body) env fenv)
                                     (sys:compile (cons 'progn body) env fenv)))
                             (sys:compile (cons 'cond (cdr clauses)) env fenv)))))))
+         ;; case - multi-branch conditional with key comparison
+         ;; (case keyform (key1 body1...) (key2 body2...) ... [(t default...)])
+         ((or (eq op 'case) (eq op 'CASE))
+          (let* ((keyform (cadr expr))
+                 (clauses (cddr expr))
+                 ;; Generate a gensym for the key variable
+                 (key-var (gensym "CASE-KEY-")))
+            ;; Expand to: (let ((key-var keyform)) (cond ...))
+            (sys:compile
+             `(let ((,key-var ,keyform))
+                (cond ,@(mapcar (lambda (clause)
+                                  (let ((keys (car clause))
+                                        (body (cdr clause)))
+                                    (cond
+                                      ;; t or otherwise clause
+                                      ((or (eq keys 't) (eq keys 'T) (eq keys 'otherwise))
+                                       `(t ,@body))
+                                      ;; Single key
+                                      ((atom keys)
+                                       `((eql ,key-var ',keys) ,@body))
+                                      ;; Multiple keys - (k1 k2 k3)
+                                      (t
+                                       `((or ,@(mapcar (lambda (k) `(eql ,key-var ',k)) keys))
+                                         ,@body)))))
+                                clauses)))
+             env fenv)))
          ;; when - if with implicit progn (no else branch)
          ((eq op 'when)
           (let ((test (cadr expr))
@@ -2338,6 +2367,10 @@
          ;; system - execute shell command
          ((eq op 'system)
           (list 'system-ir (sys:compile (cadr expr) env fenv)))
+         ;; error - signal error and crash (for now, just exit with code 1)
+         ((eq op 'error)
+          ;; Ignoring the error message for now, just crash
+          (list 'sys-exit (list 'lit 16)))  ; Exit code 1 (16 = 1 << 4 tagged)
          ;; string= - compare two strings (via runtime)
          ((eq op 'string=)
           (list 'string-equal-ir
@@ -2413,6 +2446,9 @@
                 (sys:compile (caddr expr) env fenv))) ; length
          ;; make-symbol-from-string - create NEW symbol (not interned!)
          ((eq op 'make-symbol-from-string)
+          (list 'make-symbol-from-string-ir (sys:compile (cadr expr) env fenv)))
+         ;; make-symbol - CL function to create uninterned symbol (same as make-symbol-from-string)
+         ((eq op 'make-symbol)
           (list 'make-symbol-from-string-ir (sys:compile (cadr expr) env fenv)))
          ;; NOTE: intern is NOT an intrinsic - it's a regular function that
          ;; uses get-intern-table/set-intern-table to manage the intern table

@@ -401,16 +401,24 @@
         ;; TCO and loop markers - emit placeholder B 0
         ((and (consp item) (member (car item) '(:tco-branch :loop-start :loop-continue)))
          (setf result (append (reverse (arm64:b 0)) result)))
+        ;; Block/return-from markers - emit placeholder B 0 for return-from, nothing for start/end
+        ((and (consp item) (member (car item) '(:block-start :block-end)))
+         nil)  ; position markers only, no bytes
+        ((and (consp item) (eq (car item) :return-from))
+         (setf result (append (reverse (arm64:b 0)) result)))
+        ;; Lambda-ref markers - emit placeholder ADR (4 bytes)
+        ((and (consp item) (eq (car item) :lambda-ref-marker))
+         (setf result (append (reverse (arm64:adr :x0 0)) result)))
         ;; Label markers - no bytes
         ((and (consp item) (eq (car item) :fn-label))
          nil)
         ;; Regular byte
         ((integerp item)
          (push item result))
-        ;; Nested list
+        ;; Nested list - flatten recursively but only push actual bytes (0-255)
         ((consp item)
          (dolist (b item)
-           (when (integerp b)
+           (when (and (integerp b) (<= 0 b 255))
              (push b result))))))
     (nreverse result)))
 

@@ -28,7 +28,7 @@
    ;; Public compiler API (clean names)
    #:read-all           ; Parse source string to forms
    #:compile-program    ; Compile forms to ARM64 bytecode
-   #:deliver            ; Compile source to native executable (mmap heap)
+   #:deliver            ; Compile source to native executable (__DATA segment heap)
    #:deliver-file       ; Compile file to native executable
    ;; Disassembler
    #:disassemble
@@ -53,11 +53,6 @@
    #:self-compile
    ;; Codegen internals
    #:reset-symbol-table #:prologue #:epilogue
-   ;; Mach-O and linking (mmap heap)
-   #:mmap-heap-init-code
-   #:wrap-bytecode-with-mmap-heap
-   #:build-macho-executable-mmap-heap
-   #:write-macho-executable-mmap-heap
    ;; JIT infrastructure
    #:jit-alloc-code
    #:jit-cache-flush-code
@@ -76,7 +71,7 @@
    #:+fasl-relocation-size+ #:+fasl-import-size+
    #:+fn-flag-exported+ #:+fn-flag-entry+
    ;; Wrapper size constants (single source of truth for Mach-O generation)
-   #:+heap-wrapper-size+ #:+mmap-wrapper-size+
+   #:+heap-wrapper-size+
    ;; JIT executor (from executor.lisp)
    #:jit-eval #:jit-compile-expression #:jit-disasm
    #:jit-test #:jit-run-tests #:tag-fixnum #:untag-fixnum

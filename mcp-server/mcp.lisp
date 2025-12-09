@@ -49,7 +49,7 @@
 (in-package :habu-mcp)
 
 ;;; Version to verify new code is running (update on each change)
-(defparameter *server-version* "v5-2025-12-08-resilient")
+(defparameter *server-version* "v7-2025-12-09-bd-fix")
 
 ;;; Forward declarations to suppress style warnings
 (declaim (ftype (function (string character) list) split-string))
@@ -263,6 +263,109 @@
       (concatenate 'string (subseq str 0 (- max-len 20)) "... [truncated]")
       str))
 
+;;; ============================================================
+;;; Large Output to Temp File Support
+;;; ============================================================
+
+(defparameter *large-output-threshold* 500 "Chars above which output goes to temp file")
+
+(defun maybe-write-to-file (content)
+  "If content exceeds threshold, write to temp file and return path message.
+   Otherwise return content as-is."
+  (if (and content (> (length content) *large-output-threshold*))
+      (let* ((filename (namestring
+                        (uiop:merge-pathnames*
+                         (format nil "habu-mcp-~A.txt" (get-universal-time))
+                         (uiop:temporary-directory))))
+             (bytes (length content)))
+        (with-open-file (f filename :direction :output :if-exists :supersede)
+          (write-string content f))
+        (format nil "See: ~A (~:D bytes)" filename bytes))
+      content))
+
+;;; ============================================================
+;;; Generic Process Runner with Timeout
+;;; ============================================================
+
+(defparameter *default-timeouts*
+  '((:eval . 60)
+    (:run . 30)
+    (:debug . 30)
+    (:build . 300)
+    (:oracle . 1800)
+    (:habu0 . 30))
+  "Default timeouts in seconds for various tool types")
+
+(defun get-default-timeout (tool-type)
+  "Get default timeout for a tool type."
+  (or (cdr (assoc tool-type *default-timeouts*)) 60))
+
+(defun run-process-with-timeout (program args &key (timeout 30) directory input-string (search nil))
+  "Run a program with timeout, capturing stdout/stderr via background threads.
+   Returns (values stdout stderr exit-code killed-p)."
+  (let* ((proc (sb-ext:run-program program args
+                                   :input (if input-string :stream nil)
+                                   :output :stream
+                                   :error :stream
+                                   :wait nil
+                                   :search search
+                                   :directory directory))
+         (stdout-acc (make-array 0 :element-type 'character :adjustable t :fill-pointer 0))
+         (stderr-acc (make-array 0 :element-type 'character :adjustable t :fill-pointer 0))
+         (stdout-lock (sb-thread:make-mutex :name "proc-stdout"))
+         (stderr-lock (sb-thread:make-mutex :name "proc-stderr")))
+    ;; Write input if provided
+    (when input-string
+      (let ((input-stream (sb-ext:process-input proc)))
+        (write-string input-string input-stream)
+        (terpri input-stream)
+        (close input-stream)))
+    ;; Start drainer threads
+    (let ((stdout-thread
+            (sb-thread:make-thread
+             (lambda ()
+               (ignore-errors
+                 (loop for char = (read-char (sb-ext:process-output proc) nil nil)
+                       while char do
+                       (sb-thread:with-mutex (stdout-lock)
+                         (vector-push-extend char stdout-acc)))))
+             :name "proc-stdout-drainer"))
+          (stderr-thread
+            (sb-thread:make-thread
+             (lambda ()
+               (ignore-errors
+                 (loop for char = (read-char (sb-ext:process-error proc) nil nil)
+                       while char do
+                       (sb-thread:with-mutex (stderr-lock)
+                         (vector-push-extend char stderr-acc)))))
+             :name "proc-stderr-drainer")))
+      ;; Wait with timeout
+      (let ((start-time (get-internal-real-time))
+            (killed nil))
+        (loop
+          (when (not (sb-ext:process-alive-p proc)) (return))
+          (when (> (/ (- (get-internal-real-time) start-time)
+                     internal-time-units-per-second)
+                   timeout)
+            (sb-ext:process-kill proc 9)
+            (setf killed t)
+            (sleep 0.1)
+            (return))
+          (sleep 0.1))
+        (sb-ext:process-wait proc)
+        ;; Clean up threads
+        (sleep 0.2)
+        (when (sb-thread:thread-alive-p stdout-thread)
+          (ignore-errors (sb-thread:terminate-thread stdout-thread)))
+        (when (sb-thread:thread-alive-p stderr-thread)
+          (ignore-errors (sb-thread:terminate-thread stderr-thread)))
+        ;; Return results
+        (values
+         (sb-thread:with-mutex (stdout-lock) (coerce stdout-acc 'string))
+         (sb-thread:with-mutex (stderr-lock) (coerce stderr-acc 'string))
+         (sb-ext:process-exit-code proc)
+         killed)))))
+
 ;;; Structured output for AI consumption - always minimal tokens
 (defun compact-result (status &key val err out (detail nil))
   "Create compact result string. Status is :ok or :err.
@@ -474,7 +577,8 @@
     ("ask-oracle"
      "Ask the Codex model (default) for help with a complex problem. Use this when stuck on difficult issues that require deep reasoning."
      (("question" "string" "The question or problem to ask the oracle" t)
-      ("context" "string" "Additional context about the problem (optional)" nil))
+      ("context" "string" "Additional context about the problem (optional)" nil)
+      ("timeout" "number" "Timeout in seconds (default: 1800 = 30 minutes)" nil))
      tool-ask-oracle)))
 
 (defun format-tool-schema (name description params)
@@ -574,49 +678,56 @@
 
 (defun tool-eval (args)
   (let ((code (jget args "code"))
-        (timeout (jget args "timeout")))
-    (safe-eval code (when (numberp timeout) (floor timeout)))))
+        (timeout (or (jget args "timeout") (get-default-timeout :eval))))
+    (maybe-write-to-file
+     (safe-eval code (when (numberp timeout) (floor timeout))))))
 
 (defun tool-compile (args)
-  (let ((source (jget args "source")))
-    (safe-eval
-     (format nil
-             "(let* ((form (read-from-string ~S))
-                     (habu::*function-table* (make-hash-table))
-                     (compiled (habu:compile-forms (list form)))
-                     (fns (car compiled))
-                     (main-ir (cadr compiled)))
-                (if fns
-                    ;; With functions: generate main + all fns, combine properly
-                    (let* ((main-code-temp (append (habu::prologue)
-                                                   (habu:codegen main-ir nil nil 0)
-                                                   (habu::epilogue)))
-                           (main-size (habu::code-size main-code-temp))
-                           (fnoffs (habu::build-fnoffs fns main-size))
-                           (main-code (append (habu::prologue)
-                                              (habu:codegen main-ir nil fnoffs 0)
-                                              (habu::epilogue)))
-                           (fn-code (habu:codegen-all-fns fns nil fnoffs nil))
-                           (all-code (append main-code fn-code))
-                           (resolved (habu::resolve-calls all-code fnoffs))
-                           (len (length resolved)))
-                      (format nil \"Size: ~~D bytes~~%%Hex: ~~{~~2,'0X~~}\" len resolved))
-                    ;; No functions: just compile main-ir
-                    (let* ((code (habu:codegen main-ir nil nil 0))
-                           (len (length code)))
-                      (format nil \"Size: ~~D bytes~~%%Hex: ~~{~~2,'0X~~}\" len code))))"
-             source))))
+  (let ((source (jget args "source"))
+        (timeout (or (jget args "timeout") (get-default-timeout :eval))))
+    (maybe-write-to-file
+     (safe-eval
+      (format nil
+              "(let* ((form (read-from-string ~S))
+                      (habu::*function-table* (make-hash-table))
+                      (compiled (habu:compile-forms (list form)))
+                      (fns (car compiled))
+                      (main-ir (cadr compiled)))
+                 (if fns
+                     ;; With functions: generate main + all fns, combine properly
+                     (let* ((main-code-temp (append (habu::prologue)
+                                                    (habu:codegen main-ir nil nil 0)
+                                                    (habu::epilogue)))
+                            (main-size (habu::code-size main-code-temp))
+                            (fnoffs (habu::build-fnoffs fns main-size))
+                            (main-code (append (habu::prologue)
+                                               (habu:codegen main-ir nil fnoffs 0)
+                                               (habu::epilogue)))
+                            (fn-code (habu:codegen-all-fns fns nil fnoffs nil))
+                            (all-code (append main-code fn-code))
+                            (resolved (habu::resolve-calls all-code fnoffs))
+                            (len (length resolved)))
+                       (format nil \"Size: ~~D bytes~~%%Hex: ~~{~~2,'0X~~}\" len resolved))
+                     ;; No functions: just compile main-ir
+                     (let* ((code (habu:codegen main-ir nil nil 0))
+                            (len (length code)))
+                       (format nil \"Size: ~~D bytes~~%%Hex: ~~{~~2,'0X~~}\" len code))))"
+              source)
+      timeout))))
 
 (defun tool-disasm (args)
-  (let ((hex (jget args "hex")))
-    (safe-eval
-     (format nil
-             "(let* ((clean (remove-if (lambda (c) (member c '(#\\Space #\\Newline #\\Tab))) ~S))
-                     (bytes (loop for i from 0 below (length clean) by 2
-                                  collect (parse-integer clean :start i :end (+ i 2) :radix 16))))
-                (with-output-to-string (*standard-output*)
-                  (habu::disassemble-bytes bytes)))"
-             hex))))
+  (let ((hex (jget args "hex"))
+        (timeout (or (jget args "timeout") (get-default-timeout :eval))))
+    (maybe-write-to-file
+     (safe-eval
+      (format nil
+              "(let* ((clean (remove-if (lambda (c) (member c '(#\\Space #\\Newline #\\Tab))) ~S))
+                      (bytes (loop for i from 0 below (length clean) by 2
+                                   collect (parse-integer clean :start i :end (+ i 2) :radix 16))))
+                 (with-output-to-string (*standard-output*)
+                   (habu::disassemble-bytes bytes)))"
+              hex)
+      timeout))))
 
 (defun tool-jit (args)
   "JIT compile and execute an expression via subprocess.
@@ -637,20 +748,25 @@
         (safe-eval (format nil "(untrace ~A)" fn-name)))))
 
 (defun tool-inspect (args)
-  (let ((obj (jget args "object")))
-    (safe-eval
-     (format nil
-             "(let ((val (eval (read-from-string ~S))))
-                (with-output-to-string (*standard-output*)
-                  (describe val)))"
-             obj))))
+  (let ((obj (jget args "object"))
+        (timeout (or (jget args "timeout") (get-default-timeout :eval))))
+    (maybe-write-to-file
+     (safe-eval
+      (format nil
+              "(let ((val (eval (read-from-string ~S))))
+                 (with-output-to-string (*standard-output*)
+                   (describe val)))"
+              obj)
+      timeout))))
 
 (defun tool-apropos (args)
   (let ((pattern (jget args "pattern"))
-        (pkg (jget args "package")))
-    (if (and pkg (not (string= pkg "")))
-        (safe-eval (format nil "(apropos ~S (find-package ~S))" pattern pkg))
-        (safe-eval (format nil "(apropos ~S)" pattern)))))
+        (pkg (jget args "package"))
+        (timeout (or (jget args "timeout") (get-default-timeout :eval))))
+    (maybe-write-to-file
+     (if (and pkg (not (string= pkg "")))
+         (safe-eval (format nil "(apropos ~S (find-package ~S))" pattern pkg) timeout)
+         (safe-eval (format nil "(apropos ~S)" pattern) timeout)))))
 
 (defun tool-paren-check (args)
   "Check parenthesis balance in a Lisp file."
@@ -1010,88 +1126,26 @@
 
 (defun tool-run (args)
   "Run a binary and capture output/exit code.
-   Uses background threads to drain stdout/stderr to prevent pipe blocking."
+   Uses generic process runner with timeout."
   (let ((binary (jget args "binary"))
         (cmd-args (or (jget args "args") ""))
         (stdin-input (jget args "stdin"))
-        (timeout (or (jget args "timeout") 30)))
+        (timeout (or (jget args "timeout") (get-default-timeout :run))))
     (handler-case
-        (let* ((args-list (if (string= cmd-args "")
-                              nil
-                              (split-string cmd-args #\Space)))
-               ;; Use stdin stream if input provided, else /dev/null
-               (proc (sb-ext:run-program binary args-list
-                                        :input (if stdin-input :stream nil)
-                                        :output :stream
-                                        :error :stream
-                                        :wait nil))
-               ;; Accumulators for output (protected by locks)
-               (stdout-acc (make-array 0 :element-type 'character :adjustable t :fill-pointer 0))
-               (stderr-acc (make-array 0 :element-type 'character :adjustable t :fill-pointer 0))
-               (stdout-lock (sb-thread:make-mutex :name "stdout-lock"))
-               (stderr-lock (sb-thread:make-mutex :name "stderr-lock")))
-          ;; Write stdin input if provided
-          (when stdin-input
-            (let ((input-stream (sb-ext:process-input proc)))
-              (write-string stdin-input input-stream)
-              (terpri input-stream)
-              (close input-stream)))
-          ;; Start background threads to drain stdout/stderr
-          (let ((stdout-thread
-                  (sb-thread:make-thread
-                   (lambda ()
-                     (ignore-errors
-                       (loop for char = (read-char (sb-ext:process-output proc) nil nil)
-                             while char do
-                             (sb-thread:with-mutex (stdout-lock)
-                               (vector-push-extend char stdout-acc)))))
-                   :name "stdout-drainer"))
-                (stderr-thread
-                  (sb-thread:make-thread
-                   (lambda ()
-                     (ignore-errors
-                       (loop for char = (read-char (sb-ext:process-error proc) nil nil)
-                             while char do
-                             (sb-thread:with-mutex (stderr-lock)
-                               (vector-push-extend char stderr-acc)))))
-                   :name "stderr-drainer")))
-            ;; Wait with timeout
-            (let ((start-time (get-internal-real-time))
-                  (killed nil))
-              (loop
-                (when (not (sb-ext:process-alive-p proc))
-                  (return))
-                (when (> (/ (- (get-internal-real-time) start-time)
-                           internal-time-units-per-second)
-                         timeout)
-                  (sb-ext:process-kill proc 9)
-                  (setf killed t)
-                  (sleep 0.1)
-                  (return))
-                (sleep 0.1))
-              ;; Wait for process to be fully reaped
-              (sb-ext:process-wait proc)
-              ;; Give threads a moment to finish draining, then terminate if needed
-              (sleep 0.2)
-              (when (sb-thread:thread-alive-p stdout-thread)
-                (ignore-errors (sb-thread:terminate-thread stdout-thread)))
-              (when (sb-thread:thread-alive-p stderr-thread)
-                (ignore-errors (sb-thread:terminate-thread stderr-thread)))
-              ;; Get results
-              (let ((stdout (sb-thread:with-mutex (stdout-lock)
-                              (coerce stdout-acc 'string)))
-                    (stderr (sb-thread:with-mutex (stderr-lock)
-                              (coerce stderr-acc 'string)))
-                    (exit-code (sb-ext:process-exit-code proc)))
-                ;; Compact output: exit=N [signal] | stdout | stderr
-                (let ((sig (when (and exit-code (> exit-code 128))
-                             (case (- exit-code 128)
-                               (4 "SIGILL") (6 "SIGABRT") (9 "SIGKILL")
-                               (10 "SIGBUS") (11 "SIGSEGV") (t "SIG?")))))
-                  (format nil "exit=~A~@[ ~A~]~@[ killed~]~@[|out:~A~]~@[|err:~A~]"
-                          exit-code sig killed
-                          (when (> (length stdout) 0) (string-trim '(#\Newline) stdout))
-                          (when (> (length stderr) 0) (string-trim '(#\Newline) stderr))))))))
+        (let ((args-list (if (string= cmd-args "") nil (split-string cmd-args #\Space))))
+          (multiple-value-bind (stdout stderr exit-code killed)
+              (run-process-with-timeout binary args-list
+                                        :timeout timeout
+                                        :input-string stdin-input)
+            (let ((sig (when (and exit-code (> exit-code 128))
+                         (case (- exit-code 128)
+                           (4 "SIGILL") (6 "SIGABRT") (9 "SIGKILL")
+                           (10 "SIGBUS") (11 "SIGSEGV") (t "SIG?")))))
+              (maybe-write-to-file
+               (format nil "exit=~A~@[ ~A~]~@[ killed~]~@[|out:~A~]~@[|err:~A~]"
+                       exit-code sig killed
+                       (when (> (length stdout) 0) (string-trim '(#\Newline) stdout))
+                       (when (> (length stderr) 0) (string-trim '(#\Newline) stderr)))))))
       (error (e)
         (compact-result :err :err (format nil "~A: ~A" binary e))))))
 
@@ -1104,70 +1158,41 @@
 
 (defun tool-debug (args)
   "Run binary under lldb and capture crash info - compact output.
-   Uses background threads to drain output to prevent pipe blocking."
+   Uses generic process runner with timeout."
   (let ((binary (jget args "binary"))
-        (cmd-args (or (jget args "args") ""))
-        (timeout (or (jget args "timeout") 30)))
-    (declare (ignore cmd-args))
+        (timeout (or (jget args "timeout") (get-default-timeout :debug))))
     (handler-case
-        (let* ((proc (sb-ext:run-program "/usr/bin/lldb"
-                                        (list binary
-                                              "-o" "run"
-                                              "-o" "register read x0 x1 x9 x19 x20 x24 x26 x27 x28 pc sp"
-                                              "-o" "bt"
-                                              "-o" "quit")
-                                        :input nil
-                                        :output :stream
-                                        :error :stream
-                                        :wait nil))
-               ;; Accumulate output lines in a thread-safe list
-               (output-lines nil)
-               (output-lock (sb-thread:make-mutex :name "debug-output-lock")))
-          ;; Start background thread to drain stdout
-          (let ((output-thread
-                  (sb-thread:make-thread
-                   (lambda ()
-                     (ignore-errors
-                       (loop for line = (read-line (sb-ext:process-output proc) nil nil)
-                             while line do
-                             (sb-thread:with-mutex (output-lock)
-                               (push line output-lines)))))
-                   :name "lldb-output-drainer")))
-            ;; Wait with timeout
-            (let ((start-time (get-internal-real-time))
-                  (killed nil))
-              (loop
-                (when (not (sb-ext:process-alive-p proc)) (return))
-                (when (> (/ (- (get-internal-real-time) start-time)
-                           internal-time-units-per-second) timeout)
-                  (sb-ext:process-kill proc 9) (setf killed t) (sleep 0.1) (return))
-                (sleep 0.1))
-              (sb-ext:process-wait proc)
-              ;; Give thread time to finish draining
-              (sleep 0.2)
-              (when (sb-thread:thread-alive-p output-thread)
-                (ignore-errors (sb-thread:terminate-thread output-thread)))
-              ;; Extract key info from accumulated lines
-              (let ((lines (sb-thread:with-mutex (output-lock) (nreverse output-lines)))
-                    (in-regs nil) (in-bt nil) (regs nil) (bt nil) (stop-reason nil))
-                (dolist (line lines)
-                  (cond
-                    ((search "stop reason" line) (setf stop-reason line))
-                    ((search "General Purpose Registers" line) (setf in-regs t in-bt nil))
-                    ((search "frame #" line) (setf in-bt t in-regs nil) (push line bt))
-                    (in-regs (when (and (> (length line) 0)
-                                        (or (search "x0" line) (search "x1 " line)
-                                            (search "x9" line) (search "x19" line)
-                                            (search "x20" line) (search "x24" line)
-                                            (search "x26" line) (search "x27" line)
-                                            (search "x28" line) (search "pc" line)
-                                            (search "sp" line)))
-                               (push (string-trim '(#\Space #\Tab) line) regs)))))
-                (with-output-to-string (s)
-                  (when killed (format s "[timeout]~%"))
-                  (when stop-reason (format s "~A~%" stop-reason))
-                  (when regs (format s "REGS:~%~{  ~A~%~}" (nreverse regs)))
-                  (when bt (format s "BT:~%~{~A~%~}" (nreverse (subseq (nreverse bt) 0 (min 5 (length bt)))))))))))
+        (multiple-value-bind (stdout stderr exit-code killed)
+            (run-process-with-timeout "/usr/bin/lldb"
+                                      (list binary
+                                            "-o" "run"
+                                            "-o" "register read x0 x1 x9 x19 x20 x24 x26 x27 x28 pc sp"
+                                            "-o" "bt"
+                                            "-o" "quit")
+                                      :timeout timeout)
+          (declare (ignore stderr exit-code))
+          ;; Parse lldb output to extract key info
+          (let ((lines (split-string stdout #\Newline))
+                (in-regs nil) (in-bt nil) (regs nil) (bt nil) (stop-reason nil))
+            (dolist (line lines)
+              (cond
+                ((search "stop reason" line) (setf stop-reason line))
+                ((search "General Purpose Registers" line) (setf in-regs t in-bt nil))
+                ((search "frame #" line) (setf in-bt t in-regs nil) (push line bt))
+                (in-regs (when (and (> (length line) 0)
+                                    (or (search "x0" line) (search "x1 " line)
+                                        (search "x9" line) (search "x19" line)
+                                        (search "x20" line) (search "x24" line)
+                                        (search "x26" line) (search "x27" line)
+                                        (search "x28" line) (search "pc" line)
+                                        (search "sp" line)))
+                           (push (string-trim '(#\Space #\Tab) line) regs)))))
+            (maybe-write-to-file
+             (with-output-to-string (s)
+               (when killed (format s "[timeout]~%"))
+               (when stop-reason (format s "~A~%" stop-reason))
+               (when regs (format s "REGS:~%~{  ~A~%~}" (nreverse regs)))
+               (when bt (format s "BT:~%~{~A~%~}" (nreverse (subseq (nreverse bt) 0 (min 5 (length bt))))))))))
       (error (e)
         (compact-result :err :err (format nil "~A" e))))))
 
@@ -1385,43 +1410,35 @@
   "Evaluate code with tracing enabled for specified functions."
   (let ((code (jget args "code"))
         (functions (jget args "functions"))
-        (timeout (jget args "timeout")))
+        (timeout (or (jget args "timeout") (get-default-timeout :eval))))
     (let ((fn-list (split-string functions #\Space)))
       ;; Build code that traces, evals, untraces
-      (safe-eval
-       (format nil
-               "(let ((*trace-output* *standard-output*))
-                  (unwind-protect
-                      (progn
-                        ~{(trace ~A)~%~}
-                        (eval (read-from-string ~S)))
-                    ~{(ignore-errors (untrace ~A))~%~}))"
-               fn-list code fn-list)
-       (when (numberp timeout) (floor timeout))))))
+      (maybe-write-to-file
+       (safe-eval
+        (format nil
+                "(let ((*trace-output* *standard-output*))
+                   (unwind-protect
+                       (progn
+                         ~{(trace ~A)~%~}
+                         (eval (read-from-string ~S)))
+                     ~{(ignore-errors (untrace ~A))~%~}))"
+                fn-list code fn-list)
+        (when (numberp timeout) (floor timeout)))))))
 
 ;;; ============================================================
 ;;; Beads (bd) Tool Implementations
 ;;; ============================================================
 
 (defun run-bd-command (args-list)
-  "Run bd command and return output."
+  "Run bd command and return output.
+   Uses run-process-with-timeout for reliable output capture."
   (handler-case
-      (let ((proc (sb-ext:run-program "bd" args-list
-                                      :search t
-                                      :input nil
-                                      :output :stream
-                                      :error :stream
-                                      :wait t)))
-        (let ((stdout (with-output-to-string (s)
-                        (loop for line = (read-line (sb-ext:process-output proc) nil nil)
-                              while line do (format s "~A~%" line))))
-              (stderr (with-output-to-string (s)
-                        (loop for line = (read-line (sb-ext:process-error proc) nil nil)
-                              while line do (format s "~A~%" line))))
-              (exit-code (sb-ext:process-exit-code proc)))
-          (if (zerop exit-code)
-              stdout
-              (format nil "~A~@[Error: ~A~]" stdout (if (string= stderr "") nil stderr)))))
+      (multiple-value-bind (stdout stderr exit-code killed)
+          (run-process-with-timeout "bd" args-list :timeout 30 :search t)
+        (declare (ignore killed))
+        (if (and exit-code (zerop exit-code))
+            stdout
+            (format nil "~A~@[Error: ~A~]" stdout (if (string= stderr "") nil stderr))))
     (error (e)
       (format nil "Error running bd: ~A" e))))
 
@@ -1470,47 +1487,99 @@
 
 (defun tool-habu0-eval (args)
   "Evaluate Lisp code using habu0 native interpreter.
-   Uses threaded output draining with timeout to prevent hanging."
+   Uses generic process runner with timeout."
   (let* ((code (jget args "code"))
-         (timeout 30)  ; 30 second timeout
+         (timeout (or (jget args "timeout") (get-default-timeout :habu0)))
          (habu-dir (merge-pathnames
                     (make-pathname :directory '(:relative :up))
                     (make-pathname :directory (pathname-directory *load-truename*))))
          (input-file (merge-pathnames "input.lisp" habu-dir))
-         (binary (merge-pathnames "habu0" habu-dir)))
+         (binary (namestring (merge-pathnames "habu0" habu-dir))))
     ;; Write code to input.lisp
     (with-open-file (f input-file :direction :output :if-exists :supersede)
       (write-string code f))
-    ;; Run habu0 and capture result with timeout
+    ;; Run habu0 and capture result
     (handler-case
-        (let* ((proc (sb-ext:run-program (namestring binary) nil
-                                         :output :stream
-                                         :error :stream
-                                         :wait nil
-                                         :directory habu-dir))
-               (stdout-acc (make-array 0 :element-type 'character :adjustable t :fill-pointer 0))
-               (stderr-acc (make-array 0 :element-type 'character :adjustable t :fill-pointer 0))
-               (stdout-lock (sb-thread:make-mutex :name "habu0-stdout"))
-               (stderr-lock (sb-thread:make-mutex :name "habu0-stderr")))
-          ;; Start threads to drain output
-          (let ((stdout-thread
-                  (sb-thread:make-thread
-                   (lambda ()
-                     (ignore-errors
-                       (loop for char = (read-char (sb-ext:process-output proc) nil nil)
-                             while char do
-                             (sb-thread:with-mutex (stdout-lock)
-                               (vector-push-extend char stdout-acc)))))
-                   :name "habu0-stdout-drainer"))
-                (stderr-thread
-                  (sb-thread:make-thread
-                   (lambda ()
-                     (ignore-errors
-                       (loop for char = (read-char (sb-ext:process-error proc) nil nil)
-                             while char do
-                             (sb-thread:with-mutex (stderr-lock)
-                               (vector-push-extend char stderr-acc)))))
-                   :name "habu0-stderr-drainer")))
+        (multiple-value-bind (stdout stderr exit-code killed)
+            (run-process-with-timeout binary nil :timeout timeout :directory habu-dir)
+          (maybe-write-to-file
+           (format nil "Exit: ~D~@[ killed~]~@[|out:~A~]~@[|err:~A~]"
+                   exit-code killed
+                   (when (> (length stdout) 0) (string-trim '(#\Newline) stdout))
+                   (when (> (length stderr) 0) (string-trim '(#\Newline) stderr)))))
+      (error (e)
+        (format nil "Error: ~A" e)))))
+
+(defun tool-build-habu0 (args)
+  "Build habu0 binary in a separate SBCL process for isolation.
+   Uses generic process runner with timeout."
+  (let* ((habu-dir (merge-pathnames
+                    (make-pathname :directory '(:relative :up))
+                    (make-pathname :directory (pathname-directory *load-truename*))))
+         (bootstrap-dir (merge-pathnames "bootstrap/" habu-dir))
+         (source (or (jget args "source")
+                     (namestring (merge-pathnames "habu0.lisp" habu-dir))))
+         (output (or (jget args "output")
+                     (namestring (merge-pathnames "habu0" habu-dir))))
+         (script (format nil "(habu:self-compile ~S ~S)" source output))
+         (timeout (or (jget args "timeout") (get-default-timeout :build))))
+    (handler-case
+        (multiple-value-bind (stdout stderr exit-code killed)
+            (run-process-with-timeout "/opt/homebrew/bin/sbcl"
+                                      (list "--noinform"
+                                            "--disable-debugger"
+                                            "--eval" "(require :asdf)"
+                                            "--eval" (format nil "(push #p~S asdf:*central-registry*)"
+                                                             (namestring bootstrap-dir))
+                                            "--eval" "(asdf:load-system :habu)"
+                                            "--eval" script
+                                            "--eval" "(sb-ext:exit :code 0)")
+                                      :timeout timeout
+                                      :directory habu-dir)
+          (maybe-write-to-file
+           (cond
+             (killed (format nil "Build timeout after ~A seconds" timeout))
+             ((zerop exit-code)
+              (format nil "Successfully built: ~A~@[~%~A~]" output
+                      (when (> (length stdout) 0) stdout)))
+             (t (format nil "Build failed (exit ~A):~%~A~A"
+                        exit-code stderr stdout)))))
+      (error (e)
+        (format nil "Error: ~A" e)))))
+
+(defun tool-ask-oracle (args)
+  "Ask the Codex model for help with a complex problem (uses default model).
+   Uses -o flag to write output to file, avoiding pipe blocking issues.
+   Timeout is configurable (default 1800 seconds = 30 minutes)."
+  (let* ((question (jget args "question"))
+         (context (jget args "context"))
+         (timeout (or (jget args "timeout") (get-default-timeout :oracle)))
+         (habu-dir (merge-pathnames
+                    (make-pathname :directory '(:relative :up))
+                    (make-pathname :directory (pathname-directory *load-truename*))))
+         ;; Build the full prompt
+         (full-prompt (if context
+                          (format nil "~A~%~%Context: ~A" question context)
+                          question))
+         ;; Temp file for codex output
+         (output-file (namestring
+                        (uiop:merge-pathnames*
+                         (format nil "oracle-~A.txt" (get-universal-time))
+                         (uiop:temporary-directory)))))
+    (handler-case
+        (progn
+          ;; Run codex exec with -o flag to capture output to file
+          ;; Use -s read-only for safety, --color never for headless
+          (let* ((proc (sb-ext:run-program "/opt/homebrew/bin/codex"
+                                           (list "exec"
+                                                 "-s" "read-only"
+                                                 "--color" "never"
+                                                 "-o" output-file
+                                                 full-prompt)
+                                           :output nil
+                                           :error nil
+                                           :wait nil
+                                           :directory habu-dir)))
             ;; Wait with timeout
             (let ((start-time (get-internal-real-time))
                   (killed nil))
@@ -1523,192 +1592,23 @@
                   (setf killed t)
                   (sleep 0.1)
                   (return))
-                (sleep 0.1))
+                (sleep 1.0))
               (sb-ext:process-wait proc)
-              ;; Clean up threads
-              (sleep 0.2)
-              (when (sb-thread:thread-alive-p stdout-thread)
-                (ignore-errors (sb-thread:terminate-thread stdout-thread)))
-              (when (sb-thread:thread-alive-p stderr-thread)
-                (ignore-errors (sb-thread:terminate-thread stderr-thread)))
-              ;; Format result
-              (let ((exit-code (sb-ext:process-exit-code proc))
-                    (stdout (sb-thread:with-mutex (stdout-lock)
-                              (string-trim '(#\Newline) (coerce stdout-acc 'string))))
-                    (stderr (sb-thread:with-mutex (stderr-lock)
-                              (string-trim '(#\Newline) (coerce stderr-acc 'string)))))
-                (format nil "Exit: ~D~@[ killed~]~@[ | stdout: ~A~]~@[ | stderr: ~A~]"
-                        exit-code killed
-                        (when (> (length stdout) 0) stdout)
-                        (when (> (length stderr) 0) stderr))))))
-      (error (e)
-        (format nil "Error: ~A" e)))))
-
-(defun tool-build-habu0 (args)
-  "Build habu0 binary in a separate SBCL process for isolation.
-   Uses threaded output draining to prevent pipe blocking."
-  (let* ((habu-dir (merge-pathnames
-                    (make-pathname :directory '(:relative :up))
-                    (make-pathname :directory (pathname-directory *load-truename*))))
-         (bootstrap-dir (merge-pathnames "bootstrap/" habu-dir))
-         (source (or (jget args "source")
-                     (namestring (merge-pathnames "habu0.lisp" habu-dir))))
-         (output (or (jget args "output")
-                     (namestring (merge-pathnames "habu0" habu-dir))))
-         (script (format nil "(habu:self-compile ~S ~S)" source output))
-         (timeout 300))  ; 5 minute timeout for compilation
-    (handler-case
-        (let* ((proc (sb-ext:run-program "/opt/homebrew/bin/sbcl"
-                                         (list "--noinform"
-                                               "--disable-debugger"
-                                               "--eval" "(require :asdf)"
-                                               "--eval" (format nil "(push #p~S asdf:*central-registry*)"
-                                                                (namestring bootstrap-dir))
-                                               "--eval" "(asdf:load-system :habu)"
-                                               "--eval" script
-                                               "--eval" "(sb-ext:exit :code 0)")
-                                         :output :stream
-                                         :error :stream
-                                         :wait nil
-                                         :directory habu-dir))
-               (stdout-acc (make-array 0 :element-type 'character :adjustable t :fill-pointer 0))
-               (stderr-acc (make-array 0 :element-type 'character :adjustable t :fill-pointer 0))
-               (stdout-lock (sb-thread:make-mutex :name "build-stdout"))
-               (stderr-lock (sb-thread:make-mutex :name "build-stderr")))
-          ;; Start threads to drain output
-          (let ((stdout-thread
-                  (sb-thread:make-thread
-                   (lambda ()
-                     (ignore-errors
-                       (loop for char = (read-char (sb-ext:process-output proc) nil nil)
-                             while char do
-                             (sb-thread:with-mutex (stdout-lock)
-                               (vector-push-extend char stdout-acc)))))
-                   :name "build-stdout-drainer"))
-                (stderr-thread
-                  (sb-thread:make-thread
-                   (lambda ()
-                     (ignore-errors
-                       (loop for char = (read-char (sb-ext:process-error proc) nil nil)
-                             while char do
-                             (sb-thread:with-mutex (stderr-lock)
-                               (vector-push-extend char stderr-acc)))))
-                   :name "build-stderr-drainer")))
-            ;; Wait with timeout
-            (let ((start-time (get-internal-real-time))
-                  (killed nil))
-              (loop
-                (when (not (sb-ext:process-alive-p proc))
-                  (return))
-                (when (> (/ (- (get-internal-real-time) start-time)
-                           internal-time-units-per-second)
-                         timeout)
-                  (sb-ext:process-kill proc 9)
-                  (setf killed t)
-                  (sleep 0.1)
-                  (return))
-                (sleep 1))
-              (sb-ext:process-wait proc)
-              ;; Clean up threads
-              (sleep 0.3)
-              (when (sb-thread:thread-alive-p stdout-thread)
-                (ignore-errors (sb-thread:terminate-thread stdout-thread)))
-              (when (sb-thread:thread-alive-p stderr-thread)
-                (ignore-errors (sb-thread:terminate-thread stderr-thread)))
-              ;; Get results
-              (let ((stdout (sb-thread:with-mutex (stdout-lock) (coerce stdout-acc 'string)))
-                    (stderr (sb-thread:with-mutex (stderr-lock) (coerce stderr-acc 'string)))
+              ;; Read output from file
+              (let ((output (if (probe-file output-file)
+                                (with-open-file (in output-file :direction :input)
+                                  (let ((content (make-string (file-length in))))
+                                    (read-sequence content in)
+                                    content))
+                                ""))
                     (exit-code (sb-ext:process-exit-code proc)))
-                (cond
-                  (killed (format nil "Build timeout after ~A seconds" timeout))
-                  ((zerop exit-code)
-                   (format nil "Successfully built: ~A~@[~%~A~]" output
-                           (when (> (length stdout) 0) stdout)))
-                  (t (format nil "Build failed (exit ~A):~%~A~A"
-                             exit-code stderr stdout)))))))
-      (error (e)
-        (format nil "Error: ~A" e)))))
-
-(defun tool-ask-oracle (args)
-  "Ask the Codex model for help with a complex problem (uses default model).
-   Uses threaded output draining to prevent pipe blocking."
-  (let* ((question (jget args "question"))
-         (context (jget args "context"))
-         (habu-dir (merge-pathnames
-                    (make-pathname :directory '(:relative :up))
-                    (make-pathname :directory (pathname-directory *load-truename*))))
-         ;; Build the full prompt
-         (full-prompt (if context
-                          (format nil "~A~%~%Context: ~A" question context)
-                          question))
-         (timeout 300))  ; 5 minute timeout for o3 reasoning
-    (handler-case
-        (let* ((proc (sb-ext:run-program "codex"
-                                         (list "exec" full-prompt)
-                                         :output :stream
-                                         :error :stream
-                                         :wait nil
-                                         :search t
-                                         :directory habu-dir))
-               ;; Accumulators for output (protected by locks)
-               (stdout-acc (make-array 0 :element-type 'character :adjustable t :fill-pointer 0))
-               (stderr-acc (make-array 0 :element-type 'character :adjustable t :fill-pointer 0))
-               (stdout-lock (sb-thread:make-mutex :name "oracle-stdout"))
-               (stderr-lock (sb-thread:make-mutex :name "oracle-stderr")))
-          ;; Start background threads to drain stdout/stderr
-          (let ((stdout-thread
-                  (sb-thread:make-thread
-                   (lambda ()
-                     (ignore-errors
-                       (loop for char = (read-char (sb-ext:process-output proc) nil nil)
-                             while char do
-                             (sb-thread:with-mutex (stdout-lock)
-                               (vector-push-extend char stdout-acc)))))
-                   :name "oracle-stdout-drainer"))
-                (stderr-thread
-                  (sb-thread:make-thread
-                   (lambda ()
-                     (ignore-errors
-                       (loop for char = (read-char (sb-ext:process-error proc) nil nil)
-                             while char do
-                             (sb-thread:with-mutex (stderr-lock)
-                               (vector-push-extend char stderr-acc)))))
-                   :name "oracle-stderr-drainer")))
-            ;; Wait with timeout
-            (let ((start-time (get-internal-real-time))
-                  (killed nil))
-              (loop
-                (when (not (sb-ext:process-alive-p proc))
-                  (return))
-                (when (> (/ (- (get-internal-real-time) start-time)
-                           internal-time-units-per-second)
-                         timeout)
-                  (sb-ext:process-kill proc 9)
-                  (setf killed t)
-                  (sleep 0.1)
-                  (return))
-                (sleep 0.5))
-              (sb-ext:process-wait proc)
-              ;; Give threads time to finish draining
-              (sleep 0.2)
-              (when (sb-thread:thread-alive-p stdout-thread)
-                (ignore-errors (sb-thread:terminate-thread stdout-thread)))
-              (when (sb-thread:thread-alive-p stderr-thread)
-                (ignore-errors (sb-thread:terminate-thread stderr-thread)))
-              ;; Get results
-              (let ((stdout (sb-thread:with-mutex (stdout-lock)
-                              (coerce stdout-acc 'string)))
-                    (stderr (sb-thread:with-mutex (stderr-lock)
-                              (coerce stderr-acc 'string)))
-                    (exit-code (sb-ext:process-exit-code proc)))
-                (with-output-to-string (out)
-                  (when killed
-                    (format out "[Timeout after ~A seconds]~%~%" timeout))
-                  (when (and exit-code (/= exit-code 0))
-                    (format out "[Exit code: ~A]~%~%" exit-code))
-                  (when (> (length stderr) 0)
-                    (format out "~A~%" stderr))
-                  (format out "~A" stdout))))))
+                (maybe-write-to-file
+                 (with-output-to-string (out)
+                   (when killed
+                     (format out "[Timeout after ~A seconds]~%~%" timeout))
+                   (when (and exit-code (/= exit-code 0))
+                     (format out "[Exit code: ~A]~%~%" exit-code))
+                   (format out "~A" output)))))))
       (error (e)
         (format nil "Error invoking oracle: ~A" e)))))
 

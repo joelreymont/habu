@@ -73,6 +73,11 @@
 (defvar *op-reverse* nil)
 (defvar *op-make-string-from-vector* nil)
 (defvar *op-make-symbol-from-string* nil)
+(defvar *op-caar* nil)
+(defvar *op-cdar* nil)
+(defvar *op-nth* nil)
+(defvar *op-lognot* nil)
+(defvar *op-neq* nil)
 
 ;;; Package system globals
 ;;; Packages are ((name . symbols) ...) where symbols is ((name . sym) ...)
@@ -571,7 +576,7 @@
   (cond ((digit? ch) (- ch #x30))
         ((and (>= ch #x41) (<= ch #x46)) (+ (- ch #x41) #xA))
         ((and (>= ch #x61) (<= ch #x66)) (+ (- ch #x61) #xA))
-        (t #x0)))
+        (t (fatal-error "hex-val: invalid hex character"))))
 
 ;; Convert lowercase letter to uppercase (a-z -> A-Z)
 (defun h0-char-upcase (ch)
@@ -722,6 +727,11 @@
 (defun op=reverse (sym) (eq sym *op-reverse*))
 (defun op=make-string-from-vector (sym) (eq sym *op-make-string-from-vector*))
 (defun op=make-symbol-from-string (sym) (eq sym *op-make-symbol-from-string*))
+(defun op=caar (sym) (eq sym *op-caar*))
+(defun op=cdar (sym) (eq sym *op-cdar*))
+(defun op=nth (sym) (eq sym *op-nth*))
+(defun op=lognot (sym) (eq sym *op-lognot*))
+(defun op=neq (sym) (eq sym *op-neq*))
 
 ;; Generic symbol comparison - uses eq with interned symbol
 ;; WARNING: This calls intern which uses string= - avoid circular dependency
@@ -866,7 +876,7 @@
                 (if (has-feature? feat-name)
                     (read-one p4)                      ; feature present: skip form, read next
                     (cons form p4))))                  ; feature absent: return form
-             (t (cons nil (+ p #x2))))))
+             (t (fatal-error "read-sharp: unknown # syntax")))))
        (read-one (p)
          (let* ((p2 (skip-ws source p))
                 (ch (char-at source p2)))
@@ -934,11 +944,12 @@
             (fenv-lookup sym (cdr fenv))))))
 
 ;; Create binding list from params and args
-;; Stores (symbol . value) pairs for eq-based lookup
+;; Flat list format: interleaves symbols and values (sym1 val1 sym2 val2 ...)
+;; More efficient than alist for native code generation
 (defun bind-args (params args env)
   (if (null params) env
-      (cons (cons (car params) (car args))
-            (bind-args (cdr params) (cdr args) env))))
+      (bind-args (cdr params) (cdr args)
+                 (cons (car params) (cons (car args) env)))))
 
 ;;; ==========================================================================
 ;;; &key Lambda Support
@@ -999,6 +1010,7 @@
 ;; Bind keyword arguments to environment
 ;; key-params: list of (name default) or just name
 ;; key-args: list of :key val :key val ...
+;; Uses flat list format (sym val sym val ...)
 (defun bind-key-args (key-params key-args env fenv)
   (if (null key-params) env
       (let* ((spec (car key-params))
@@ -1013,7 +1025,7 @@
                           nil))))
         (bind-key-args (cdr key-params)
                        key-args
-                       (cons (cons name val) env)
+                       (cons name (cons val env))
                        fenv))))
 
 ;; Count required arguments (non-keyword args)
@@ -1049,23 +1061,23 @@
           (bind-key-args key-params key-args env1 fenv)))))
 
 ;; Look up by symbol in environment using eq
-;; Returns the entry (cons sym val) or nil if not found
+;; Flat list format: (sym1 val1 sym2 val2 ...)
+;; Returns the value entry (cons sym val) or nil if not found
 ;; This allows distinguishing "not found" from "found with nil value"
 (defun env-lookup (sym env)
   (if (null env) nil
-      (let ((entry (car env)))
-        (if (eq sym (car entry))
-            entry  ; Return whole entry so caller can check nil values
-            (env-lookup sym (cdr env))))))
+      (if (eq sym (car env))
+          (cons (car env) (cadr env))  ; Return (sym . value) for compatibility
+          (env-lookup sym (cddr env)))))
 
-;; Helper for let bindings - stores (symbol . value) pairs for eq lookup
+;; Helper for let bindings - uses flat list format (sym val sym val ...)
 (defun h0-eval-let (bindings body env fenv)
   (if (null bindings)
       (h0-eval body env fenv)
       (let* ((b (car bindings))
              (var (car b))  ;; Keep as symbol for eq lookup
              (val (h0-eval (cadr b) env fenv)))
-        (h0-eval-let (cdr bindings) body (cons (cons var val) env) fenv))))
+        (h0-eval-let (cdr bindings) body (cons var (cons val env)) fenv))))
 
 ;; Helper for progn - evaluates forms in sequence, returns last value
 (defun h0-eval-progn (forms env fenv)
@@ -1480,6 +1492,32 @@
          ((if (symbolp op) (op=make-symbol-from-string op) nil)
           (let ((str (h0-eval (cadr expr) env fenv)))
             (make-symbol-from-string str)))
+         ;; CAAR - (car (car x))
+         ((if (symbolp op) (op=caar op) nil)
+          (let ((arg (h0-eval (cadr expr) env fenv)))
+            (car (car arg))))
+         ;; CDAR - (cdr (car x))
+         ((if (symbolp op) (op=cdar op) nil)
+          (let ((arg (h0-eval (cadr expr) env fenv)))
+            (cdr (car arg))))
+         ;; NTH - get nth element of list
+         ((if (symbolp op) (op=nth op) nil)
+          (let* ((n (h0-eval (cadr expr) env fenv))
+                 (lst (h0-eval (caddr expr) env fenv)))
+            (labels ((nth-helper (i l)
+                       (if (= i #x0)
+                           (car l)
+                           (nth-helper (- i #x1) (cdr l)))))
+              (nth-helper n lst))))
+         ;; LOGNOT - bitwise NOT (two's complement)
+         ((if (symbolp op) (op=lognot op) nil)
+          (let ((arg (h0-eval (cadr expr) env fenv)))
+            (lognot arg)))
+         ;; /= - not equal comparison
+         ((if (symbolp op) (op=neq op) nil)
+          (let* ((left (h0-eval (cadr expr) env fenv))
+                 (right (h0-eval (caddr expr) env fenv)))
+            (if (= left right) nil t)))
          ;; Function call - look up in fenv
          (t
           (let ((fn-entry (fenv-lookup op fenv)))
@@ -1626,6 +1664,11 @@
   (setq *op-reverse* (intern "REVERSE"))
   (setq *op-make-string-from-vector* (intern "MAKE-STRING-FROM-VECTOR"))
   (setq *op-make-symbol-from-string* (intern "MAKE-SYMBOL-FROM-STRING"))
+  (setq *op-caar* (intern "CAAR"))
+  (setq *op-cdar* (intern "CDAR"))
+  (setq *op-nth* (intern "NTH"))
+  (setq *op-lognot* (intern "LOGNOT"))
+  (setq *op-neq* (intern "/="))
   nil)
 
 ;; Environment lookup for compilation - returns offset or nil
@@ -1654,11 +1697,12 @@
         (c-chars-match s1 s2 len1 #x0)
         nil)))
 
-;; Compare characters of two strings up to length len, starting at index i
+;; Compare characters of two strings up to length len, starting at index i (case-insensitive)
 (defun c-chars-match (s1 s2 len i)
   (if (>= i len)
       t
-      (if (= (string-ref s1 i) (string-ref s2 i))
+      (if (= (h0-char-upcase (string-ref s1 i))
+             (h0-char-upcase (string-ref s2 i)))
           (c-chars-match s1 s2 len (+ i #x1))
           nil)))
 
@@ -1669,7 +1713,7 @@
       env
       (let ((b (car bindings)))
         (c-env-extend (cdr bindings)
-                      (cons (cons (symbol-name (car b)) nil) env)))))
+                      (cons (car b) env)))))
 
 ;; IR tag constants (using numbers to avoid symbol-name issues in native code)
 (defun ir-tag-lit () #x1)
@@ -2227,10 +2271,9 @@
       (h0-compile body env fenv)
       (let* ((b (car bindings))
              (var-sym (car b))
-             (var-name (symbol-name var-sym))
              (val-ir (h0-compile (cadr b) env fenv))
-             ;; Store symbol name string for string= lookup
-             (new-env (cons (cons var-name nil) env))
+             ;; Store symbol for flat list lookup
+             (new-env (cons var-sym env))
              (body-ir (h0-compile-let (cdr bindings) body new-env fenv)))
         (list (ir-tag-let) #x0 val-ir body-ir))))
 
@@ -2265,8 +2308,8 @@
           (let* ((first-ir (h0-compile (car args) env fenv))
                  (rest-ir (h0-compile-or (cdr args) env fenv))
                  ;; Create a temp variable for the first argument
-                 (temp-name "OR-TMP")
-                 (temp-env (cons (cons temp-name nil) env))
+                 (temp-sym (make-symbol "OR-TMP"))
+                 (temp-env (cons temp-sym env))
                  (temp-ref (list (ir-tag-var) #x0))
                  (if-ir (list (ir-tag-if) temp-ref temp-ref rest-ir)))
             (list (ir-tag-let) #x0 first-ir if-ir)))))
@@ -2341,8 +2384,8 @@
 (defun h0-compile-case (keyform clauses env fenv)
   (let* ((key-ir (h0-compile keyform env fenv))
          ;; Create a temporary binding for the key
-         (temp-name "#:CASE-KEY")
-         (new-env (cons (cons temp-name nil) env)))
+         (temp-sym (make-symbol "#:CASE-KEY"))
+         (new-env (cons temp-sym env)))
     ;; Compile the case clauses with the key in environment
     (list (ir-tag-let) #x0 key-ir
           (h0-compile-case-clauses clauses new-env fenv))))
@@ -2776,6 +2819,18 @@
 (defun a64-strb (rt rn offset)
   (arm64:strb (reg-keyword rt) (reg-keyword rn) offset))
 
+
+;; STRB Wt, [Xn, Xm] - store byte with register offset
+(defun a64-strb-idx (rt rn rm)
+  (arm64:strb (reg-keyword rt) (reg-keyword rn) (reg-keyword rm) :reg t))
+
+;; LDR Xt, [Xn, Xm] - load with register offset
+(defun a64-ldr-idx (rt rn rm)
+  (arm64:ldr (reg-keyword rt) (reg-keyword rn) (reg-keyword rm) :reg t))
+
+;; UDF #imm16 - undefined instruction (causes crash)
+(defun a64-udf (imm)
+  (arm64:udf imm))
 
 ;; AND Xd, Xn, #mask - AND with immediate
 ;; ARM64 logical immediate encoding is complex
@@ -3571,6 +3626,52 @@
                                str-value str-plist str-package
                                mov-ptr tag-sym bump-heap))))
 
+    ;; EQL - compare for equality (works for numbers and symbols)
+    ;; For tagged values: compare directly, result is 1 (t) or 0 (nil)
+    ((h0-has-tag-n ir (ir-tag-eql))
+     (h0-codegen-cmp (cadr ir) (caddr ir) (cond-eq) td))
+
+    ;; GET-TAG - extract tag bits from tagged value
+    ;; Result is tag (0-15) as tagged fixnum
+    ((h0-has-tag-n ir (ir-tag-get-tag))
+     (let* ((arg-code (h0-codegen (cadr ir) td))
+            ;; Extract tag: and x0, x0, #0xF
+            (extract-tag (a64-and-imm #x0 #x0 #xF))
+            ;; Tag result as fixnum
+            (tag-result (a64-lsl-imm #x0 #x0 #x4)))
+       (bytes-append-all (list arg-code extract-tag tag-result))))
+
+    ;; MAKE-STRING-FROM-VECTOR - create string from vector of character codes
+    ;; This is complex and needs a loop - simplified version
+    ((h0-has-tag-n ir (ir-tag-make-string-from-vector))
+     ;; For now, just call the runtime primitive via placeholder
+     ;; In a full implementation, this would generate loop code
+     (fatal-error "h0-codegen: MAKE-STRING-FROM-VECTOR not yet implemented"))
+
+    ;; MAKE-SYMBOL-FROM-STRING - create symbol from string
+    ((h0-has-tag-n ir (ir-tag-make-symbol-from-string))
+     (let* ((name-code (h0-codegen (cadr ir) td))
+            ;; Save name string at heap
+            (str-name (a64-str #x0 #x1C #x0))
+            ;; Store nil (0x6) for value, plist, package
+            (mov-nil (a64-movz #x0 #x6))
+            (str-value (a64-str #x0 #x1C #x8))
+            (str-plist (a64-str #x0 #x1C #x10))
+            (str-package (a64-str #x0 #x1C #x18))
+            ;; Get symbol pointer and tag with 2
+            (mov-ptr (a64-mov-reg #x0 #x1C))
+            (tag-sym (a64-add-imm #x0 #x0 #x2))
+            ;; Bump heap by 32 bytes
+            (bump-heap (a64-add-imm #x1C #x1C #x20)))
+       (bytes-append-all (list name-code str-name mov-nil
+                               str-value str-plist str-package
+                               mov-ptr tag-sym bump-heap))))
+
+    ;; ERROR - crash the program
+    ((h0-has-tag-n ir (ir-tag-error))
+     ;; Generate invalid instruction to crash: udf #0
+     (a64-udf #x0))
+
     ;; Default - CRASH: unknown IR tag
     (t (fatal-error "h0-codegen: Unknown IR tag"))))
 
@@ -3780,10 +3881,8 @@
 (defun h0-extend-env-with-params (params args-vals base-env)
   (if (null params)
       base-env
-      (h0-extend-env-with-params
-        (cdr params)
-        (cdr args-vals)
-        (cons (car args-vals) base-env))))
+      (cons (car args-vals)
+            (h0-extend-env-with-params (cdr params) (cdr args-vals) base-env))))
 
 ;;; ==========================================================================
 ;;; Test Mode - compile expression and evaluate IR

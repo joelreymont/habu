@@ -450,28 +450,28 @@
    1. Checks if target is in old space (address >= nursery_end)
    2. If so, computes card index and marks card dirty
 
-   Uses x9, x10 as scratch. Only generated in generational GC mode."
+   Uses x16, x17 (IP0/IP1) as scratch. Only generated in generational GC mode."
   #+sbcl
   (if *use-generational-gc*
       (append-all
        (list
         ;; Clear tag bits to get base address
-        (arm64:and* :x9 target-reg -16 :imm t)     ; x9 = base address
+        (arm64:and* :x16 target-reg -16 :imm t)     ; x9 = base address
         ;; Load nursery_end (old space starts here)
-        (arm64:ldr :x10 :gc :offset +gen-nursery-end-offset+)  ; x10 = nursery_end
+        (arm64:ldr :x17 :gc :offset +gen-nursery-end-offset+)  ; x10 = nursery_end
         ;; Check if target < nursery_end (in nursery, no barrier needed)
-        (arm64:cmp :x9 :x10)
+        (arm64:cmp :x16 :x17)
         (arm64:b.lo 7)                           ; skip barrier if in nursery (7 instrs)
         ;; Target is in old space - mark card dirty
         ;; card_index = (addr - old_space_start) >> 9
-        (arm64:sub :x9 :x9 :x10)                       ; x9 = addr - old_space_start
-        (arm64:lsr :x9 :x9 +gen-card-shift+ :imm t)  ; x9 = card index
+        (arm64:sub :x16 :x16 :x17)                       ; x9 = addr - old_space_start
+        (arm64:lsr :x16 :x16 +gen-card-shift+ :imm t)  ; x9 = card index
         ;; card_addr = card_table + card_index
-        (arm64:ldr :x10 :gc :offset +gen-card-table-offset+)   ; x10 = card_table
-        (arm64:add :x9 :x9 :x10)                       ; x9 = card address
+        (arm64:ldr :x17 :gc :offset +gen-card-table-offset+)   ; x10 = card_table
+        (arm64:add :x16 :x16 :x17)                       ; x9 = card address
         ;; Mark card dirty (store 1)
-        (arm64:movz :x10 1)
-        (arm64:strb :x10 :x9 0)))                    ; card[index] = 1
+        (arm64:movz :x17 1)
+        (arm64:strb :x17 :x16 0)))                    ; card[index] = 1
       ;; No barrier in simple GC mode
       nil)
   #-sbcl
@@ -603,8 +603,8 @@
                 rest
                 (append-all
                  (list acc
-                       (load-addr :x9 val)
-                       (arm64:str :x9 :heap :offset offset)))))))
+                       (load-addr :x16 val)
+                       (arm64:str :x16 :heap :offset offset)))))))
        ;; Convert string to list of bytes
        (str-to-bytes (s i acc)
          (if (>= i (string-length s))
@@ -617,8 +617,8 @@
            (pre-check (gc-trigger-code))
            ;; Store length first, then data starting at offset 8
            (len-code (append-all
-                      (list (load-addr :x9 len)
-                            (arm64:str :x9 :heap :offset 0))))
+                      (list (load-addr :x16 len)
+                            (arm64:str :x16 :heap :offset 0))))
            (data-code (gen-store-bytes 8 bytes-with-nul nil))
            ;; Return tagged pointer and bump heap
            (result-code (append-all
@@ -645,8 +645,8 @@
                 rest
                 (append-all
                  (list acc
-                       (load-addr :x9 val)
-                       (arm64:str :x9 :heap :offset offset)))))))
+                       (load-addr :x16 val)
+                       (arm64:str :x16 :heap :offset offset)))))))
        ;; Convert string to list of bytes
        (str-to-bytes (s i acc)
          (if (>= i (string-length s))
@@ -659,8 +659,8 @@
            (pre-check (gc-trigger-code))
            ;; Store length first, then data starting at offset 8
            (len-code (append-all
-                      (list (load-addr :x9 len)
-                            (arm64:str :x9 :heap :offset 0))))
+                      (list (load-addr :x16 len)
+                            (arm64:str :x16 :heap :offset 0))))
            (data-code (gen-store-bytes 8 bytes-with-nul nil))
            ;; Return tagged pointer with symbol tag (2) and bump heap
            (result-code (append-all
@@ -1792,9 +1792,9 @@
        ;; (store-param src-temp param-idx) - store temp to param slot at [env - param-idx*8]
        (let ((src-temp (cadr instr))
              (param-idx (caddr instr)))
-         (append (linear-load-temp :x9 src-temp)
+         (append (linear-load-temp :x16 src-temp)
                  (arm64:sub :x10 :env (* param-idx 8) :imm t)
-                 (arm64:str :x9 :x10 :offset 0))))
+                 (arm64:str :x16 :x10 :offset 0))))
 
       (continue
        ;; TCO continue - emit branch marker (args already stored by store-param)
@@ -1848,14 +1848,14 @@
           (loop for temp in arg-temps
                 for reg in '(:x0 :x1 :x2 :x3 :x4 :x5 :x6 :x7)
                 append (linear-load-temp reg temp))
-          ;; Load function (closure) into x9, then call
-          (linear-load-temp :x9 fn-temp)
+          ;; Load function (closure) into x16 (IP0), then call
+          (linear-load-temp :x16 fn-temp)
           ;; Extract code pointer from closure (closure tag = 5)
-          (arm64:sub :x9 :x9 5 :imm t)    ; remove closure tag
-          (arm64:ldr :x9 :x9 :offset 0)   ; load tagged fn offset
-          (arm64:lsr :x9 :x9 4 :imm t)    ; untag to get raw offset
-          (arm64:add :x9 :x26 :x9)        ; add code base to get address
-          (arm64:blr :x9)                 ; call through register
+          (arm64:sub :x16 :x16 5 :imm t)    ; remove closure tag
+          (arm64:ldr :x16 :x16 :offset 0)   ; load tagged fn offset
+          (arm64:lsr :x16 :x16 4 :imm t)    ; untag to get raw offset
+          (arm64:add :x16 :x26 :x16)        ; add code base to get address
+          (arm64:blr :x16)                 ; call through register
           (linear-save-temp dst))))
 
       ;; Result marker - just load result temp to x0
@@ -2112,21 +2112,21 @@
          (append
           ;; Load both strings
           (linear-load-temp :x0 str1-temp)
-          (linear-load-temp :x9 str2-temp)
+          (linear-load-temp :x8 str2-temp)
           ;; Check for nil (tag 6)
           (arm64:cmp :x0 6 :imm t)           ; is str1 nil?
           (arm64:b.eq 4)                     ; yes, jump to nil_check (+4)
-          (arm64:cmp :x9 6 :imm t)           ; is str2 nil?
+          (arm64:cmp :x8 6 :imm t)           ; is str2 nil?
           (arm64:b.eq 25)                    ; yes, str1!=nil so return false (+25)
           (arm64:b 5)                        ; both non-nil, skip to compare (+5)
           ;; nil_check: str1 is nil
-          (arm64:cmp :x9 6 :imm t)           ; is str2 also nil?
+          (arm64:cmp :x8 6 :imm t)           ; is str2 also nil?
           (arm64:b.ne 22)                    ; no, return false (+22)
           ;; Both are nil, return true
           (arm64:movz :x0 16)                ; x0 = 16 (tagged 1)
           (arm64:b 21)                       ; jump to end (+21)
           ;; compare: both are valid strings
-          (arm64:and* :x2 :x9 -16 :imm t)    ; x2 = str2 & ~0xF (untagged)
+          (arm64:and* :x2 :x8 -16 :imm t)    ; x2 = str2 & ~0xF (untagged)
           (arm64:and* :x1 :x0 -16 :imm t)    ; x1 = str1 & ~0xF (untagged)
           ;; Load lengths
           (arm64:ldr :x3 :x1 :offset 0)      ; x3 = len1
@@ -2260,8 +2260,8 @@
                 ;; x0 now has captured env, save to heap+8
                 (arm64:str :x0 :heap :offset 8)
                 ;; Store fn-offset at heap+0
-                (load-addr-8 :x9 (ash fn-offset 4))
-                (arm64:str :x9 :heap :offset 0)
+                (load-addr-8 :x16 (ash fn-offset 4))
+                (arm64:str :x16 :heap :offset 0)
                 ;; Create closure pointer (tag 5)
                 (arm64:mov :x0 :heap)
                 (arm64:add :x0 :x0 5 :imm t)
@@ -3262,10 +3262,10 @@
                   (if (>= idx nargs)
                       nil
                       (let* ((temp-off (+ #x40 (* idx 8)))
-                             (load (arm64:ldr :x9 :sp :offset temp-off))
+                             (load (arm64:ldr :x16 :sp :offset temp-off))
                              (param-off (* idx 8))
                              (store-param (append (arm64:sub :x10 :env param-off :imm t)
-                                                  (arm64:str :x9 :x10 :offset 0))))
+                                                  (arm64:str :x16 :x10 :offset 0))))
                         (append-all (list load store-param (gen-copies (+ idx 1))))))))
          (let ((args-code (gen-args arg-irs 0 nil))
                (copy-code (gen-copies 0)))
@@ -3348,12 +3348,12 @@
          ;; Save callee-saved registers we'll use (x20)
          (arm64:str :env :sp :offset slot0)
          ;; Load argc and argv from GC globals
-         (arm64:ldr :x9 :gc :offset 64)   ; x9 = argc (at [x27+64])
+         (arm64:ldr :x16 :gc :offset 64)   ; x9 = argc (at [x27+64])
          (arm64:ldr :x10 :gc :offset 72)  ; x10 = argv (at [x27+72])
          ;; result = nil (tagged 0x06)
          (movz 0 6)
          ;; i = argc - 1, set flags
-         (arm64:subs :x11 :x9 1 :imm t)
+         (arm64:subs :x11 :x16 1 :imm t)
          ;; if argc <= 0, skip to done (branch forward 44 instructions)
          (arm64:b.lt 44)
 
@@ -3895,14 +3895,14 @@
               (arm64:str :x0 :sp :offset cs)  ;; Save closure to temp
               arg-code                    ;; Eval and spill args
               load-code                   ;; Load args to x0-x7
-              ;; Use x9 for closure to avoid clobbering x0-x7 (args)
-              (arm64:ldr :x9 :sp :offset cs)  ;; x9 = closure
-              (arm64:sub :x9 :x9 5 :imm t)       ;; Untag closure
-              (arm64:ldr :closure :x9 :offset 8)   ;; x24 = [x9 + 8] = env
-              (arm64:ldr :x9 :x9 :offset 0)    ;; x9 = [x9 + 0] = fn-offset
-              (arm64:lsr :x9 :x9 4 :imm t)       ;; Untag fn-offset
-              (arm64:add :x9 :x9 :code-base)      ;; x9 = x26 + fn-offset = absolute addr
-              (arm64:blr :x9)))))
+              ;; Use x16 (IP0) for closure to avoid clobbering x0-x7 (args)
+              (arm64:ldr :x16 :sp :offset cs)  ;; x9 = closure
+              (arm64:sub :x16 :x16 5 :imm t)       ;; Untag closure
+              (arm64:ldr :closure :x16 :offset 8)   ;; x24 = [x9 + 8] = env
+              (arm64:ldr :x16 :x16 :offset 0)    ;; x9 = [x9 + 0] = fn-offset
+              (arm64:lsr :x16 :x16 4 :imm t)       ;; Untag fn-offset
+              (arm64:add :x16 :x16 :code-base)      ;; x9 = x26 + fn-offset = absolute addr
+              (arm64:blr :x16)))))
 
     ;; Get-intern-table: load intern table from [x27 + 0]
     ((has-tag ir 'get-intern-table-ir)
@@ -4031,11 +4031,11 @@
       nil
       (let* (;; Load from temp slot
              (slot-offset (+ #x40 (* idx 8)))
-             (load-code (arm64:ldr :x9 :sp :offset slot-offset))
+             (load-code (arm64:ldr :x16 :sp :offset slot-offset))
              ;; Store to param slot [x20 - idx*8]
              (param-offset (* idx 8))
              (store-code (append (arm64:sub :x10 :env param-offset :imm t)
-                                 (arm64:str :x9 :x10 :offset 0)))
+                                 (arm64:str :x16 :x10 :offset 0)))
              (rest-code (codegen-tco-copy-args nargs (+ idx 1))))
         (append-all (list load-code store-code rest-code)))))
 
@@ -4119,7 +4119,7 @@
                        acc
                        (gen-load (+ i 1)
                                  (append acc
-                                              (arm64:ldr (num-to-reg i) :sp :offset (+ base (* i 8))))))))
+                                              (arm64:ldr (arm64:num-to-reg i) :sp :offset (+ base (* i 8))))))))
           (gen-load 0 nil)))))
 
 ;;; ============================================================
@@ -4317,14 +4317,14 @@
                         ;; Load car into x9, store at [x20 - offset*8]
                         ;; Then advance: x24 = cdr(x24)
                         (load-car (append
-                                   (arm64:sub :x9 :closure 1 :imm t)      ; untag cons
-                                   (arm64:ldr :x9 :x9 :offset 0)))  ; x9 = car
+                                   (arm64:sub :x16 :closure 1 :imm t)      ; untag cons
+                                   (arm64:ldr :x16 :x16 :offset 0)))  ; x9 = car
                         (store-env (append
                                     (arm64:sub :x10 :env offset :imm t)
-                                    (arm64:str :x9 :x10 :offset 0))) ; [x20-off] = x9
+                                    (arm64:str :x16 :x10 :offset 0))) ; [x20-off] = x9
                         (advance (append
-                                  (arm64:sub :x9 :closure 1 :imm t)       ; untag cons
-                                  (arm64:ldr :closure :x9 :offset 8)))) ; x24 = cdr
+                                  (arm64:sub :x16 :closure 1 :imm t)       ; untag cons
+                                  (arm64:ldr :closure :x16 :offset 8)))) ; x24 = cdr
                    (gen-loads (+ idx 1)
                               (append-all (list acc load-car store-env advance)))))))
     (gen-loads 0 nil)))
@@ -4337,8 +4337,8 @@
       (if (< idx 8)
           (let* ((offset (* (+ base idx) 8))
                  (arg-reg (arm64:num-to-reg idx))
-                 (store (append (arm64:sub :x9 :env offset :imm t)
-                                     (arm64:str arg-reg :x9 :offset 0))))
+                 (store (append (arm64:sub :x16 :env offset :imm t)
+                                     (arm64:str arg-reg :x16 :offset 0))))
             (gen-param-stores (cdr params) base (+ idx 1)
                                    (append acc store)))
           ;; Args 8+ would need stack loading - skip for now
