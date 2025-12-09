@@ -83,7 +83,6 @@
    #:make-vector #:vector-set
    #:string-concat #:number-to-string
    ;; Compiler configuration toggles
-   #:*use-register-allocation*
    #:*use-generational-gc*
    ;; Trace facility
    #:trace

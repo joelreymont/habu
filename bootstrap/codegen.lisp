@@ -409,8 +409,7 @@
 #+sbcl (defvar *use-generational-gc* nil)
 
 ;;; Register allocation is ALWAYS used - no fallback to accumulator codegen
-;;; The accumulator-based codegen has register clobbering bugs
-#+sbcl (defvar *use-register-allocation* t)
+;;; The old accumulator-based codegen had register clobbering bugs and was removed
 
 
 (defun gc-trigger-code ()

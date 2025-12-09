@@ -3949,11 +3949,11 @@
                 all-code))))))))
 
 #+sbcl
-(defun compare-codegen (fn &optional (stream t))
-  "Compare register-allocated vs accumulator codegen for a function.
-   Useful for finding discrepancies."
+(defun show-codegen (fn &optional (stream t))
+  "Show register-allocated codegen for a function.
+   Useful for debugging."
   (format stream "~%========================================~%")
-  (format stream "Codegen Comparison~%")
+  (format stream "Codegen Output~%")
   (format stream "========================================~%")
   (format stream "~%Function: ~S~%" fn)
 
@@ -3964,14 +3964,7 @@
         (progn
           (format stream "Generated ~D bytes~%" (length reg-code))
           (disassemble-bytes reg-code stream))
-        (format stream "Fell back to accumulator (returned nil)~%")))
-
-  ;; Generate with accumulator (force by binding *use-register-allocation* nil)
-  (format stream "~%--- Accumulator Codegen ---~%")
-  (let* ((*use-register-allocation* nil)
-         (acc-code (codegen-fn fn nil nil)))
-    (format stream "Generated ~D bytes~%" (length acc-code))
-    (disassemble-bytes acc-code stream)))
+        (format stream "Codegen failed (returned nil)~%"))))
 
 #+sbcl
 (defun test-fn-execution (source &optional (stream t))
@@ -3980,9 +3973,8 @@
   (format stream "~%Testing: ~S~%" source)
   (let ((tmp-path "/tmp/habu_reg_alloc_test"))
     ;; Compile with reg-alloc
-    (format stream "~%Compiling with *use-register-allocation* = t~%")
-    (let ((*use-register-allocation* t))
-      (deliver source tmp-path))
+    (format stream "~%Compiling...~%")
+    (deliver source tmp-path)
     ;; Run and capture exit code
     (let ((exit-code (nth-value 2 (uiop:run-program tmp-path :ignore-error-status t))))
       (format stream "Exit code: ~D~%" exit-code)
