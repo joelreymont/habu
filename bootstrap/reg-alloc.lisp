@@ -3277,7 +3277,7 @@
          (result-vr (cadr tac-result)))
     ;; Check if IR converted successfully
     (if (null tac-instrs)
-        ;; Fall back to regular codegen for unsupported IR
+        ;; IR not supported - return nil (caller will error)
         nil
         (let* (;; Add return instruction
                (full-tac (append tac-instrs (list (list 'tac-return result-vr))))
@@ -3299,7 +3299,7 @@
                (epilogue-code (fn-fixed-epilogue))
                ;; Combine all code
                (all-code (append prologue-code capture-code param-code body-code epilogue-code)))
-          ;; Check for unresolved markers - if present, fall back to regular codegen
+          ;; Check for unresolved markers - if present, return nil (caller will error)
           (if (has-unresolved-markers all-code)
               nil
               all-code)))))
@@ -3930,7 +3930,7 @@
                 (format stream "~%Checking for unresolved markers...~%")
                 (if (has-unresolved-markers all-code)
                     (progn
-                      (format stream "Found unresolved markers - would fall back to accumulator codegen~%")
+                      (format stream "Found unresolved markers - codegen will fail~%")
                       (format stream "Markers found: ~S~%"
                               (remove-if-not (lambda (x)
                                                (and (consp x)
