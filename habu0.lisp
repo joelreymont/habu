@@ -78,6 +78,9 @@
 (defvar *op-nth* nil)
 (defvar *op-lognot* nil)
 (defvar *op-neq* nil)
+(defvar *op-lambda* nil)
+(defvar *op-funcall* nil)
+(defvar *op-setcar* nil)
 
 ;;; Package system globals
 ;;; Packages are ((name . symbols) ...) where symbols is ((name . sym) ...)
@@ -732,6 +735,9 @@
 (defun op=nth (sym) (eq sym *op-nth*))
 (defun op=lognot (sym) (eq sym *op-lognot*))
 (defun op=neq (sym) (eq sym *op-neq*))
+(defun op=lambda (sym) (eq sym *op-lambda*))
+(defun op=funcall (sym) (eq sym *op-funcall*))
+(defun op=setcar (sym) (eq sym *op-setcar*))
 
 ;; Generic symbol comparison - uses eq with interned symbol
 ;; WARNING: This calls intern which uses string= - avoid circular dependency
@@ -1060,6 +1066,297 @@
                (env1 (bind-args req-params req-args env)))
           (bind-key-args key-params key-args env1 fenv)))))
 
+;;; ==========================================================
+;;; Mutable Capture Boxing - transform setq on captured vars
+;;; ==========================================================
+;;; Variables that are both captured by a lambda AND mutated via setq
+;;; must be boxed in cons cells so mutations are visible to closures.
+
+;; Check if symbol is in list (using eq)
+(defun h0-member-eq (sym lst)
+  (if (null lst) nil
+      (if (eq sym (car lst)) t
+          (h0-member-eq sym (cdr lst)))))
+
+;; Find all variables that are targets of setq in expr
+;; bound = list of currently bound variable names
+(defun h0-find-setq-targets (expr bound)
+  (h0-collect-setq-targets expr bound nil))
+
+;; Find setq targets in a list of expressions
+(defun h0-find-setq-targets-list (exprs bound)
+  (h0-collect-list-setq exprs bound nil))
+
+(defun h0-collect-setq-targets (e bnd acc)
+  (cond
+    ((null e) acc)
+    ((not (consp e)) acc)
+    ((and (symbolp (car e)) (string-equal (symbol-name (car e)) "QUOTE")) acc)
+    ((and (symbolp (car e)) (string-equal (symbol-name (car e)) "SETQ"))
+     (let ((var (cadr e))
+           (val (caddr e)))
+       (if (h0-member-eq var bnd)
+           (h0-collect-setq-targets val bnd
+             (if (h0-member-eq var acc) acc (cons var acc)))
+           (h0-collect-setq-targets val bnd acc))))
+    ((and (symbolp (car e)) (string-equal (symbol-name (car e)) "LAMBDA"))
+     (let ((params (cadr e))
+           (body-forms (cddr e)))  ;; Lambda can have multiple body forms
+       (h0-collect-list-setq body-forms (h0-append params bnd) acc)))
+    ((and (symbolp (car e)) (or (string-equal (symbol-name (car e)) "LET")
+                                 (string-equal (symbol-name (car e)) "LET*")))
+     (let* ((bindings (cadr e))
+            (body-forms (cddr e))
+            (names (h0-mapcar-car bindings))
+            (acc2 (h0-collect-list-setq (h0-mapcar-cadr bindings) bnd acc)))
+       (h0-collect-list-setq body-forms (h0-append names bnd) acc2)))
+    (t (h0-collect-list-setq e bnd acc))))
+
+(defun h0-collect-list-setq (lst bnd acc)
+  (if (null lst) acc
+      (h0-collect-list-setq (cdr lst) bnd
+        (h0-collect-setq-targets (car lst) bnd acc))))
+
+(defun h0-collect-let*-setq (bindings body bnd acc)
+  (if (null bindings)
+      (h0-collect-setq-targets body bnd acc)
+      (let* ((b (car bindings))
+             (nm (car b))
+             (vl (cadr b))
+             (acc2 (h0-collect-setq-targets vl bnd acc)))
+        (h0-collect-let*-setq (cdr bindings) body (cons nm bnd) acc2))))
+
+;; Find all variables captured by lambdas (free in lambda bodies)
+(defun h0-find-captured-vars (expr bound)
+  (h0-collect-captured expr bound nil))
+
+;; Find captured vars in a list of expressions
+(defun h0-find-captured-vars-list (exprs bound)
+  (h0-collect-list-captured exprs bound nil))
+
+(defun h0-collect-captured (e bnd acc)
+  (cond
+    ((null e) acc)
+    ((not (consp e)) acc)
+    ((and (symbolp (car e)) (string-equal (symbol-name (car e)) "QUOTE")) acc)
+    ((and (symbolp (car e)) (string-equal (symbol-name (car e)) "LAMBDA"))
+     (let* ((params (cadr e))
+            (body-forms (cddr e))  ;; Multiple body forms
+            (new-bnd (h0-append params bnd))
+            (acc2 (h0-collect-list-captured body-forms new-bnd acc))
+            (free-vars (h0-find-free-vars-list body-forms params)))
+       (h0-add-captured-vars free-vars bnd acc2)))
+    ((and (symbolp (car e)) (or (string-equal (symbol-name (car e)) "LET")
+                                 (string-equal (symbol-name (car e)) "LET*")))
+     (let* ((bindings (cadr e))
+            (body-forms (cddr e))
+            (names (h0-mapcar-car bindings))
+            (acc2 (h0-collect-list-captured (h0-mapcar-cadr bindings) bnd acc)))
+       (h0-collect-list-captured body-forms (h0-append names bnd) acc2)))
+    (t (h0-collect-list-captured e bnd acc))))
+
+(defun h0-collect-list-captured (lst bnd acc)
+  (if (null lst) acc
+      (h0-collect-list-captured (cdr lst) bnd
+        (h0-collect-captured (car lst) bnd acc))))
+
+(defun h0-collect-let*-captured (bindings body bnd acc)
+  (if (null bindings)
+      (h0-collect-captured body bnd acc)
+      (let* ((b (car bindings))
+             (nm (car b))
+             (vl (cadr b))
+             (acc2 (h0-collect-captured vl bnd acc)))
+        (h0-collect-let*-captured (cdr bindings) body (cons nm bnd) acc2))))
+
+(defun h0-add-captured-vars (vars bnd acc)
+  (if (null vars) acc
+      (let ((v (car vars)))
+        (h0-add-captured-vars (cdr vars) bnd
+          (if (and (h0-member-eq v bnd) (not (h0-member-eq v acc)))
+              (cons v acc)
+              acc)))))
+
+;; Simple free variable finder
+(defun h0-find-free-vars-simple (expr bound)
+  (h0-collect-free expr bound nil))
+
+;; Find free vars in a list of expressions
+(defun h0-find-free-vars-list (exprs bound)
+  (h0-collect-list-free exprs bound nil))
+
+(defun h0-collect-free (e bnd acc)
+  (cond
+    ((null e) acc)
+    ((symbolp e)
+     (if (and (not (h0-member-eq e bnd))
+              (not (h0-member-eq e acc))
+              (not (string-equal (symbol-name e) "T"))
+              (not (string-equal (symbol-name e) "NIL")))
+         (cons e acc)
+         acc))
+    ((not (consp e)) acc)
+    ((and (symbolp (car e)) (string-equal (symbol-name (car e)) "QUOTE")) acc)
+    ((and (symbolp (car e)) (string-equal (symbol-name (car e)) "LAMBDA"))
+     (let ((params (cadr e))
+           (body-forms (cddr e)))  ;; Multiple body forms
+       (h0-collect-list-free body-forms (h0-append params bnd) acc)))
+    ((and (symbolp (car e)) (or (string-equal (symbol-name (car e)) "LET")
+                                 (string-equal (symbol-name (car e)) "LET*")))
+     (let* ((bindings (cadr e))
+            (body-forms (cddr e))
+            (names (h0-mapcar-car bindings))
+            (acc2 (h0-collect-list-free (h0-mapcar-cadr bindings) bnd acc)))
+       (h0-collect-list-free body-forms (h0-append names bnd) acc2)))
+    (t (h0-collect-list-free e bnd acc))))
+
+(defun h0-collect-list-free (lst bnd acc)
+  (if (null lst) acc
+      (h0-collect-list-free (cdr lst) bnd
+        (h0-collect-free (car lst) bnd acc))))
+
+(defun h0-collect-let*-free (bindings body bnd acc)
+  (if (null bindings)
+      (h0-collect-free body bnd acc)
+      (let* ((b (car bindings))
+             (nm (car b))
+             (vl (cadr b))
+             (acc2 (h0-collect-free vl bnd acc)))
+        (h0-collect-let*-free (cdr bindings) body (cons nm bnd) acc2))))
+
+;; Intersection of two lists
+(defun h0-intersection (lst1 lst2)
+  (if (null lst1) nil
+      (if (h0-member-eq (car lst1) lst2)
+          (cons (car lst1) (h0-intersection (cdr lst1) lst2))
+          (h0-intersection (cdr lst1) lst2))))
+
+;; Remove elements of lst2 from lst1
+(defun h0-remove-if-member (lst1 lst2)
+  (if (null lst1) nil
+      (if (h0-member-eq (car lst1) lst2)
+          (h0-remove-if-member (cdr lst1) lst2)
+          (cons (car lst1) (h0-remove-if-member (cdr lst1) lst2)))))
+
+;; Helpers for list operations
+(defun h0-append (a b)
+  (if (null a) b
+      (cons (car a) (h0-append (cdr a) b))))
+
+(defun h0-mapcar-car (lst)
+  (if (null lst) nil
+      (cons (car (car lst)) (h0-mapcar-car (cdr lst)))))
+
+(defun h0-mapcar-cadr (lst)
+  (if (null lst) nil
+      (cons (cadr (car lst)) (h0-mapcar-cadr (cdr lst)))))
+
+;;; Box Mutable Captures - main transformation
+;;; Transforms expr to box variables that are both captured and mutated:
+;;; - Wraps mutable captured vars in (cons val nil) at binding site
+;;; - Transforms reads of boxed vars to (car var)
+;;; - Transforms (setq var val) to (setcar var val)
+
+(defun h0-box-mutable-captures (expr)
+  (h0-box-transform expr nil))
+
+;; Helper to check if symbol has a given name (case-insensitive)
+(defun h0-sym-named (sym name)
+  (and (symbolp sym)
+       (string-equal (symbol-name sym) name)))
+
+(defun h0-box-transform (e boxed)
+  (cond
+    ((null e) e)
+    ((symbolp e)
+     ;; If this var is boxed, transform to (car var) - use interned symbol
+     (if (h0-member-eq e boxed)
+         (list (intern "CAR") e)
+         e))
+    ((not (consp e)) e)
+    ((h0-sym-named (car e) "QUOTE") e)
+    ((h0-sym-named (car e) "SETQ")
+     (let ((var (cadr e))
+           (val (caddr e)))
+       (if (h0-member-eq var boxed)
+           ;; Transform to (setcar var val) - use interned symbol for runtime match
+           (list (intern "SETCAR") var (h0-box-transform val boxed))
+           (list (intern "SETQ") var (h0-box-transform val boxed)))))
+    ((h0-sym-named (car e) "LAMBDA")
+     (let* ((params (cadr e))
+            (body-forms (cddr e))
+            ;; Don't transform params - they shadow boxed vars
+            (new-boxed (h0-remove-if-member boxed params))
+            ;; Transform each body form and return lambda with all of them
+            (transformed-forms (h0-box-transform-list body-forms new-boxed)))
+       (cons (intern "LAMBDA") (cons params transformed-forms))))
+    ((or (h0-sym-named (car e) "LET") (h0-sym-named (car e) "LET*"))
+     (if (h0-sym-named (car e) "LET")
+         (h0-box-transform-let e boxed)
+         (h0-box-transform-let* e boxed)))
+    (t (h0-box-transform-list e boxed))))
+
+(defun h0-box-transform-list (lst boxed)
+  (if (null lst) nil
+      (cons (h0-box-transform (car lst) boxed)
+            (h0-box-transform-list (cdr lst) boxed))))
+
+(defun h0-box-transform-let (e boxed)
+  (let* ((bindings (cadr e))
+         (body-forms (cddr e))
+         (names (h0-mapcar-car bindings))
+         ;; Find which new bindings need to be boxed - analyze ALL body forms
+         (setq-targets (h0-find-setq-targets-list body-forms names))
+         (captured (h0-find-captured-vars-list body-forms names))
+         (to-box (h0-intersection setq-targets captured))
+         ;; Transform binding values and box if needed
+         (new-bindings (h0-box-bindings bindings boxed to-box))
+         ;; Add new boxed vars to the set
+         (new-boxed (h0-append to-box (h0-remove-if-member boxed names)))
+         ;; Transform each body form
+         (transformed-forms (h0-box-transform-list body-forms new-boxed)))
+    (cons (intern "LET") (cons new-bindings transformed-forms))))
+
+(defun h0-box-bindings (bindings boxed to-box)
+  (if (null bindings) nil
+      (let* ((b (car bindings))
+             (nm (car b))
+             (vl (h0-box-transform (cadr b) boxed))
+             (new-val (if (h0-member-eq nm to-box)
+                          ;; Box: (cons val nil) - use interned symbol
+                          (list (intern "CONS") vl nil)
+                          vl)))
+        (cons (list nm new-val)
+              (h0-box-bindings (cdr bindings) boxed to-box)))))
+
+(defun h0-box-transform-let* (e boxed)
+  (let* ((bindings (cadr e))
+         (body-forms (cddr e))
+         (names (h0-mapcar-car bindings))
+         ;; Find which new bindings need to be boxed - analyze ALL body forms
+         (setq-targets (h0-find-setq-targets-list body-forms names))
+         (captured (h0-find-captured-vars-list body-forms names))
+         (to-box (h0-intersection setq-targets captured)))
+    (h0-box-let*-bindings bindings body-forms boxed to-box)))
+
+(defun h0-box-let*-bindings (bindings body-forms boxed to-box)
+  (if (null bindings)
+      ;; No more bindings - transform body forms and return let* with them
+      (cons (intern "LET*") (cons nil (h0-box-transform-list body-forms boxed)))
+      (let* ((b (car bindings))
+             (nm (car b))
+             (vl (h0-box-transform (cadr b) boxed))
+             (is-boxed (h0-member-eq nm to-box))
+             ;; Box: (cons val nil) - use interned symbol
+             (new-val (if is-boxed (list (intern "CONS") vl nil) vl))
+             (new-binding (list nm new-val))
+             (new-boxed (if is-boxed
+                            (cons nm boxed)
+                            (h0-remove-if-member boxed (list nm))))
+             (rest (h0-box-let*-bindings (cdr bindings) body-forms new-boxed to-box)))
+        ;; Reconstruct let* with transformed bindings - use interned symbol
+        (cons (intern "LET*") (cons (cons new-binding (cadr rest)) (cddr rest))))))
+
 ;; Look up by symbol in environment using eq
 ;; Flat list format: (sym1 val1 sym2 val2 ...)
 ;; Returns the value entry (cons sym val) or nil if not found
@@ -1078,6 +1375,19 @@
              (var (car b))  ;; Keep as symbol for eq lookup
              (val (h0-eval (cadr b) env fenv)))
         (h0-eval-let (cdr bindings) body (cons var (cons val env)) fenv))))
+
+;; Helper for let with implicit progn body - binds then evaluates body forms
+(defun h0-eval-let-body (bindings body-forms env fenv)
+  (h0-eval-let-bind bindings body-forms env fenv))
+
+(defun h0-eval-let-bind (bindings body-forms env fenv)
+  (if (null bindings)
+      ;; All bindings done, evaluate body forms as progn
+      (h0-eval-progn body-forms env fenv)
+      (let* ((b (car bindings))
+             (var (car b))
+             (val (h0-eval (cadr b) env fenv)))
+        (h0-eval-let-bind (cdr bindings) body-forms (cons var (cons val env)) fenv))))
 
 ;; Helper for progn - evaluates forms in sequence, returns last value
 (defun h0-eval-progn (forms env fenv)
@@ -1267,11 +1577,12 @@
               (h0-eval (caddr expr) env fenv)
               (if (cadddr expr) (h0-eval (cadddr expr) env fenv) nil)))
          ;; Let - use cached op=let, delegate to helper for iteration
+         ;; Let body has implicit progn: (let ((x 1)) body1 body2...)
          ((if (symbolp op) (op=let op) nil)
-          (h0-eval-let (cadr expr) (caddr expr) env fenv))
+          (h0-eval-let-body (cadr expr) (cddr expr) env fenv))
          ;; Let* - same as let for sequential binding
          ((if (symbolp op) (op=let-star op) nil)
-          (h0-eval-let (cadr expr) (caddr expr) env fenv))
+          (h0-eval-let-body (cadr expr) (cddr expr) env fenv))
          ;; Progn - evaluate forms in sequence
          ((if (symbolp op) (op=progn op) nil)
           (h0-eval-progn (cdr expr) env fenv))
@@ -1378,6 +1689,12 @@
           (let ((arg (h0-eval (cadr expr) env fenv)))
             (car (cdr (cdr (cdr arg))))))
          ((if (symbolp op) (op=list op) nil) (h0-eval-list (cdr expr) env fenv))
+         ;; SETCAR - mutate car of cons cell (for boxed mutable captures)
+         ((if (symbolp op) (op=setcar op) nil)
+          (let* ((cell (h0-eval (cadr expr) env fenv))
+                 (val (h0-eval (caddr expr) env fenv)))
+            (setcar cell val)
+            val))
          ;; Type predicates
          ((if (symbolp op) (op=null op) nil)
           (let ((arg (h0-eval (cadr expr) env fenv)))
@@ -1538,6 +1855,25 @@
           (let* ((left (h0-eval (cadr expr) env fenv))
                  (right (h0-eval (caddr expr) env fenv)))
             (if (= left right) nil t)))
+         ;; LAMBDA - create closure capturing current environment
+         ((if (symbolp op) (op=lambda op) nil)
+          (let ((params (cadr expr))
+                (body (caddr expr)))
+            ;; Return closure: (CLOSURE-TAG params body captured-env)
+            ;; Use interned symbol for reliable eq comparison
+            (list (intern "CLOSURE-TAG") params body env)))
+         ;; FUNCALL - call a function value (closure)
+         ((if (symbolp op) (op=funcall op) nil)
+          (let ((fn (h0-eval (cadr expr) env fenv))
+                (args (h0-eval-list (cddr expr) env fenv)))
+            (if (and (consp fn) (eq (car fn) (intern "CLOSURE-TAG")))
+                ;; Closure: (CLOSURE-TAG params body captured-env)
+                (let* ((params (cadr fn))
+                       (body (caddr fn))
+                       (captured-env (cadddr fn))
+                       (new-env (bind-lambda-args params args captured-env fenv)))
+                  (h0-eval body new-env fenv))
+                (fatal-error "h0-eval: FUNCALL on non-closure"))))
          ;; Function call - look up in fenv
          (t
           (let ((fn-entry (fenv-lookup op fenv)))
@@ -1567,11 +1903,14 @@
         (if (and (consp form) (symbolp (car form)) (op=defun (car form)))
             (let* ((name (cadr form))  ;; Keep as symbol, not string
                    (params (caddr form))
-                   (body (cadddr form)))
+                   (raw-body (cadddr form))
+                   ;; Transform body to handle mutable captured variables
+                   (body (h0-box-mutable-captures raw-body)))
               (collect-defuns (cdr forms) (cons (cons name (cons params body)) fenv)))
             (collect-defuns (cdr forms) fenv)))))
 
 ;; Eval forms with collected function definitions
+;; Applies box-mutable-captures transformation to handle setq in closures
 (defun h0-eval-forms (forms env fenv)
   (if (null forms)
       nil
@@ -1579,11 +1918,13 @@
         ;; Skip defun forms during evaluation
         (if (and (consp form) (symbolp (car form)) (op=defun (car form)))
             (h0-eval-forms (cdr forms) env fenv)
-            (if (null (cdr forms))
-                (h0-eval form env fenv)
-                (progn
-                  (h0-eval form env fenv)
-                  (h0-eval-forms (cdr forms) env fenv)))))))
+            ;; Transform form to box mutable captured variables
+            (let ((transformed (h0-box-mutable-captures form)))
+              (if (null (cdr forms))
+                  (h0-eval transformed env fenv)
+                  (progn
+                    (h0-eval transformed env fenv)
+                    (h0-eval-forms (cdr forms) env fenv))))))))
 
 ;;; ==========================================================================
 ;;; IR Compiler - Source to IR transformation
@@ -1689,6 +2030,9 @@
   (setq *op-nth* (intern "NTH"))
   (setq *op-lognot* (intern "LOGNOT"))
   (setq *op-neq* (intern "/="))
+  (setq *op-lambda* (intern "LAMBDA"))
+  (setq *op-funcall* (intern "FUNCALL"))
+  (setq *op-setcar* (intern "SETCAR"))
   nil)
 
 ;; Environment lookup for compilation - returns offset or nil
@@ -1796,11 +2140,11 @@
 
 ;;; Free variable analysis for closures
 
-;; Check if a symbol is in the environment (string-based lookup)
+;; Check if a symbol is in the environment (flat list of symbols)
 (defun h0-in-env (sym env)
   (if (null env)
       nil
-      (if (string-equal (symbol-name sym) (car (car env)))
+      (if (string-equal (symbol-name sym) (symbol-name (car env)))
           t
           (h0-in-env sym (cdr env)))))
 
@@ -1886,7 +2230,7 @@
 (defun h0-get-var-offset (sym env)
   (if (null env)
       nil
-      (if (string-equal (symbol-name sym) (car (car env)))
+      (if (string-equal (symbol-name sym) (symbol-name (car env)))
           #x0
           (let ((rest-off (h0-get-var-offset sym (cdr env))))
             (if rest-off
@@ -2818,18 +3162,28 @@
                                  (cons combined acc)))))
 
 ;; Helper: Generate code to load arguments back to x0, x1, etc.
+;; Supports up to 8 arguments (x0-x7) for ARM64 calling convention
 (defun h0-codegen-funcall-load-args (num-args td)
-  (if (= num-args 0)
-      nil
-      (if (= num-args 1)
-          (let ((slot-off (+ 48 (* td 8))))
-            (ldr :x0 :sp :offset slot-off))
-          (if (= num-args 2)
-              (let ((slot-off1 (+ 48 (* td 8)))
-                    (slot-off2 (+ 48 (* (+ td 1) 8))))
-                (bytes-append (ldr :x0 :sp :offset slot-off1)
-                              (ldr :x1 :sp :offset slot-off2)))
-              (fatal-error "h0-codegen-funcall-load-args: too many args")))))
+  (h0-codegen-funcall-load-args-loop num-args td 0 nil))
+
+;; Helper: Loop to generate LDR instructions for each argument
+(defun h0-codegen-funcall-load-args-loop (num-args td idx acc)
+  (if (>= idx num-args)
+      (if acc
+          (bytes-append-all (reverse acc))
+          nil)
+      (let* ((slot-off (+ 48 (* (+ td idx) 8)))
+             (reg (cond ((= idx 0) :x0)
+                        ((= idx 1) :x1)
+                        ((= idx 2) :x2)
+                        ((= idx 3) :x3)
+                        ((= idx 4) :x4)
+                        ((= idx 5) :x5)
+                        ((= idx 6) :x6)
+                        ((= idx 7) :x7)
+                        (t (fatal-error "h0-codegen-funcall-load-args: too many args"))))
+             (load-code (ldr reg :sp :offset slot-off)))
+        (h0-codegen-funcall-load-args-loop num-args td (+ idx 1) (cons load-code acc)))))
 
 ;; Generate code for IR (using numeric tags)
 ;; td = temp slot depth (for nested expressions)
@@ -3329,14 +3683,14 @@
                                  mov-env str-env
                                  mov-ptr tag-closure bump-heap)))))
 
-    ;; FUNCALL: Call closure (simplified version for 0-2 args)
+    ;; FUNCALL: Call closure (supports up to 8 args via x0-x7)
     ((h0-has-tag-n ir (ir-tag-funcall))
      (let* ((fn-ir (cadr ir))
             (args-ir (caddr ir))
             (num-args (h0-list-length args-ir)))
-       ;; Support 0-2 arguments for now
-       (if (> num-args 2)
-           (fatal-error "h0-codegen: FUNCALL supports max 2 args")
+       ;; Support 0-8 arguments (ARM64 calling convention)
+       (if (> num-args 8)
+           (fatal-error "h0-codegen: FUNCALL supports max 8 args")
            (h0-codegen-funcall fn-ir args-ir num-args td))))
 
     ;; STRING=: Compare two strings byte-by-byte
@@ -3615,22 +3969,24 @@
      (let* ((params (cadr ir))
             (body-ir (caddr ir))
             (free-vars (cadddr ir))
-            (free-offsets (nth #x4 ir)))
-       ;; Create closure: (closure params body-ir env)
-       ;; The env captures free variables at closure creation time
-       (list (intern "CLOSURE") params body-ir env)))
+            (free-offsets (nth #x4 ir))
+            ;; Capture only the free variables using their offsets
+            (captured-vals (h0-capture-free-vars free-offsets env)))
+       ;; Create closure: (closure params body-ir captured-vals)
+       ;; captured-vals contains the values of free variables at closure creation
+       (list (intern "CLOSURE") params body-ir captured-vals)))
     ;; Funcall - call closure
     ((h0-has-tag-n ir (ir-tag-funcall))
      (let* ((fn-val (h0-eval-ir (cadr ir) env))
             (args-ir (caddr ir))
             (args-vals (h0-eval-ir-args args-ir env)))
-       ;; fn-val should be (closure params body-ir closure-env)
+       ;; fn-val should be (closure params body-ir captured-vals)
        (if (and (consp fn-val) (sym= (car fn-val) "CLOSURE"))
-           (let* ((params (cadr fn-val))
-                  (body-ir (caddr fn-val))
-                  (closure-env (cadddr fn-val))
-                  ;; Bind args to params in new env extending closure-env
-                  (new-env (h0-extend-env-with-params params args-vals closure-env)))
+           (let* ((body-ir (caddr fn-val))
+                  (captured-vals (cadddr fn-val))
+                  ;; Build env: free vars (captured) first, then args
+                  ;; This matches the IR's variable indexing scheme
+                  (new-env (append captured-vals args-vals)))
              (h0-eval-ir body-ir new-env))
            (fatal-error "h0-eval-ir: FUNCALL on non-closure"))))
     ;; EQL - equal for numbers and symbols
@@ -3676,6 +4032,14 @@
       nil
       (cons (h0-eval-ir (car args-ir) env)
             (h0-eval-ir-args (cdr args-ir) env))))
+
+;; Capture free variables from env using their compile-time offsets
+;; Returns a list of captured values in order
+(defun h0-capture-free-vars (offsets env)
+  (if (null offsets)
+      nil
+      (cons (ir-env-get env (car offsets))
+            (h0-capture-free-vars (cdr offsets) env))))
 
 ;; Extend environment by binding params to args
 ;; params is a list of parameter symbols, args-vals is a list of values
