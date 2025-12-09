@@ -367,29 +367,20 @@
         (lambdas-to-defuns (cdr lambdas) (cons defun-entry acc)))))
 
 ;;; ============================================================
-;;; ARM64 Instruction Wrappers
-;;; These thin wrappers call arm64:* functions in both SBCL and native modes.
-;;; They provide convenience (e.g., converting shift16 to :lsl, byte to
-;;; instruction offsets) while encoding is done in arm64/asm.lisp.
-;;; ============================================================
-
-(defun movz (rd imm)
-  (arm64:movz rd imm))
-
-(defun movk (rd imm shift16)
-  "MOVK Rd, #imm, LSL #shift16 - shift16 is 0, 1, 2, or 3 (for 0, 16, 32, 48)"
-  (arm64:movk rd imm :lsl (* shift16 16)))
-
-;;; REMOVED: All ARM64 wrapper functions
-;;; Now using arm64:* intrinsics directly with keyword arguments.
-;;; See arm64/asm.lisp for the full API.
+;;; ARM64 Instruction API
+;;; All ARM64 encoding lives in arm64/asm.lisp. Use arm64:* directly.
 ;;;
 ;;; Examples:
-;;;   (arm64:add rd rn imm :imm t)     - ADD immediate
-;;;   (arm64:ldr rt rn :offset off)    - LDR with offset
-;;;   (arm64:cmp rn imm :imm t)        - CMP immediate
-;;;   (arm64:b.eq offset)              - Branch if equal (instruction count)
-;;;   arm64:+eq+                       - Condition code constants
+;;;   (arm64:movz rd imm)             - Move with zero
+;;;   (arm64:movk rd imm :lsl 16)     - Move with keep, shift by 16
+;;;   (arm64:add rd rn imm :imm t)    - ADD immediate
+;;;   (arm64:ldr rt rn :offset off)   - LDR with offset
+;;;   (arm64:cmp rn imm :imm t)       - CMP immediate
+;;;   (arm64:b.eq offset)             - Branch if equal (instruction count)
+;;;   (arm64:strb rt rn offset)       - Store byte with immediate offset
+;;;   (arm64:strb rt rn rm :reg t)    - Store byte with register offset
+;;;   arm64:+cc-eq+                   - Condition code constants
+;;; ============================================================
 
 
 ;;; ============================================================
@@ -563,26 +554,26 @@
 (defun load-addr (rd addr)
   "Load large address into register (up to 64 bits)"
   (if (< addr #x10000)
-      (movz rd addr)
+      (arm64:movz rd addr)
       (if (< addr #x100000000)
-          (append (movz rd (logand addr #xFFFF))
-                  (movk rd (ash addr -16) 1))
+          (append (arm64:movz rd (logand addr #xFFFF))
+                  (arm64:movk rd (ash addr -16) :lsl 16))
           (if (< addr #x1000000000000)
               ;; 48-bit address
-              (append-all (list (movz rd (logand addr #xFFFF))
-                                (movk rd (logand (ash addr -16) #xFFFF) 1)
-                                (movk rd (logand (ash addr -32) #xFFFF) 2)))
+              (append-all (list (arm64:movz rd (logand addr #xFFFF))
+                                (arm64:movk rd (logand (ash addr -16) #xFFFF) :lsl 16)
+                                (arm64:movk rd (logand (ash addr -32) #xFFFF) :lsl 32)))
               ;; 64-bit address (for packed string data)
-              (append-all (list (movz rd (logand addr #xFFFF))
-                                (movk rd (logand (ash addr -16) #xFFFF) 1)
-                                (movk rd (logand (ash addr -32) #xFFFF) 2)
-                                (movk rd (logand (ash addr -48) #xFFFF) 3)))))))
+              (append-all (list (arm64:movz rd (logand addr #xFFFF))
+                                (arm64:movk rd (logand (ash addr -16) #xFFFF) :lsl 16)
+                                (arm64:movk rd (logand (ash addr -32) #xFFFF) :lsl 32)
+                                (arm64:movk rd (logand (ash addr -48) #xFFFF) :lsl 48)))))))
 
 (defun load-addr-8 (rd addr)
   "Load address into register, always producing 8 bytes (2 instructions).
    Used for lambda/function references where consistent code size is needed."
-  (append (movz rd (logand addr #xFFFF))
-          (movk rd (ash addr -16) 1)))
+  (append (arm64:movz rd (logand addr #xFFFF))
+          (arm64:movk rd (ash addr -16) :lsl 16)))
 
 (defun gen-string-lit (str len total-size)
   "Generate code to allocate string literal on heap.
@@ -699,13 +690,6 @@
 (defun load-temp (rd td)
   (arm64:ldr rd :sp :offset (temp-slot td)))
 
-(defun strb (rt rn offset)
-  "Store byte from rt to [rn + offset]"
-  (arm64:strb rt rn offset))
-
-(defun strb-reg (rt rn rm)
-  "STRB Wt, [Xn, Xm] - store byte to address Xn+Xm"
-  (arm64:strb rt rn rm :reg t))
 
 (defun gen-memcpy-inline (count-reg)
   "Generate inline memcpy loop.
@@ -721,7 +705,7 @@
   ;;       b loop (-24)
   (let* ((skip-if-zero (arm64:cbz count-reg 7))  ; skip 7 instructions if zero
          (load-byte (arm64:ldrb :x4 :x1 0))
-         (store-byte (strb 4 3 0))
+         (store-byte (arm64:strb :x4 :x3 0))
          (inc-src (arm64:add :x1 :x1 1 :imm t))
          (inc-dst (arm64:add :x3 :x3 1 :imm t))
          (dec-count (arm64:sub count-reg count-reg 1 :imm t))
@@ -843,7 +827,7 @@
    free-offsets = list of stack offsets where captured values live.
    Result in x0 is a tagged cons list."
   (if (null free-offsets)
-      (movz 0 0)  ;; nil
+      (arm64:movz :x0 0)  ;; nil
       (labels ((build-list (offs acc)
                  ;; Build list in reverse, then we cons onto it
                  ;; Each captured value is loaded from [x20 - offset*8]
@@ -874,7 +858,7 @@
         ;; are rare enough that skipping GC check here is acceptable.
         (labels ((gen-cons-chain (offs)
                    (if (null offs)
-                       (movz 0 0)
+                       (arm64:movz :x0 0)
                        (let* ((off (car offs))
                               (off8 (* off 8))
                               (rest-code (gen-cons-chain (cdr offs))))
@@ -2524,13 +2508,13 @@
      (let* ((v (cadr ir))
             (tg (ash v 4)))
        (if (and (>= tg 0) (< tg #x10000))
-           (movz 0 tg)
+           (arm64:movz :x0 tg)
            (load-addr 0 tg))))
 
     ;; Nil - use tag 6 to distinguish from fixnum 0
     ;; nil = 0x06 (tag 6), fixnum 0 = 0x00 (tag 0)
     ((has-tag ir 'nil-ir)
-     (movz 0 6))
+     (arm64:movz :x0 6))
 
     ;; Symbol literal - allocate name on heap like str-lit, but with tag 2
     ;; Symbol layout: same as string [length:8][name:N][padding to 16]
@@ -2827,7 +2811,7 @@
               (arm64:cmp :x9 6 :imm t)           ; is str2 also nil?
               (arm64:b.ne 22)                    ; no, return false (+22)
               ;; Both are nil, return true
-              (movz 0 16)                        ; x0 = 16 (tagged 1)
+              (arm64:movz :x0 16)                        ; x0 = 16 (tagged 1)
               (arm64:b 21)                       ; jump to end (+21)
               ;; compare: both are valid strings
               ;; x2 = str2 base (untagged)
@@ -2843,7 +2827,7 @@
               ;; Lengths equal, setup for loop
               (arm64:add :x1 :x1 8 :imm t)             ; x1 = str1 data start
               (arm64:add :x2 :x2 8 :imm t)             ; x2 = str2 data start
-              (movz 4 0)                  ; x4 = 0 (loop counter)
+              (arm64:movz :x4 0)                  ; x4 = 0 (loop counter)
               ;; loop_start:
               (arm64:cmp :x4 :x3)               ; cmp counter, len
               (arm64:b.ge 7)                    ; if counter >= len, return_true
@@ -2857,10 +2841,10 @@
               (arm64:add :x4 :x4 1 :imm t)             ; x4++
               (arm64:b -7)                ; back to loop_start (-7)
               ;; return_true:
-              (movz 0 16)                 ; x0 = 16 (tagged 1)
+              (arm64:movz :x0 16)                 ; x0 = 16 (tagged 1)
               (arm64:b 2)                 ; skip return_false
               ;; return_false:
-              (movz 0 6)))))
+              (arm64:movz :x0 6)))))
 
     ;; Make-vector: allocate vector on heap
     ;; Vector layout: [length (8 bytes)] [data (n * 8 bytes)]
@@ -2885,7 +2869,7 @@
               (arm64:mov :x0 :heap)            ; x0 = current heap ptr
               (arm64:add :heap :heap :x1)         ; x28 += total size (now 16-aligned)
               ;; Tag with vector tag (0x3)
-              (movz 1 3)
+              (arm64:movz :x1 3)
               (arm64:orr :x0 :x0 :x1)
               ;; GC trigger check (x0 is tagged, safe for GC)
               (gc-trigger-code)))))
@@ -3025,7 +3009,7 @@
               ;; Store byte
               (arm64:strb :x0 :x1 0)                  ; [x1] = byte
               ;; Return nil (stored value already consumed)
-              (movz 0 6)))))                      ; x0 = nil (0x06)
+              (arm64:movz :x0 6)))))                      ; x0 = nil (0x06)
 
     ;; Make-string-from-vector: convert vector OR list of char codes to string
     ;; (make-string-from-vector-ir seq-ir)
@@ -3060,7 +3044,7 @@
               ;; x2 = string data base = x0 + 8
               (arm64:add :x2 :x0 8 :imm t)              ; x2 = string data start
               ;; x3 = loop counter = 0
-              (movz 3 0)                   ; x3 = 0
+              (arm64:movz :x3 0)                   ; x3 = 0
               ;; vec_loop_start:
               (arm64:cmp :x3 :x5)                ; cmp x3, x5
               (arm64:b.ge 9)        ; if x3 >= x5, jump to vec_loop_end (+9 instrs)
@@ -3070,11 +3054,11 @@
               (arm64:add :x4 :x1 :x4)              ; x4 = vec_base + offset
               (arm64:ldr :x4 :x4 :offset 0)           ; x4 = [x4] = tagged fixnum
               (arm64:lsr :x4 :x4 4 :imm t)              ; x4 = char value (untagged)
-              (strb-reg 4 2 3)             ; [x2 + x3] = x4 (byte)
+              (arm64:strb :x4 :x2 :x3 :reg t)  ; [x2 + x3] = x4 (byte)
               (arm64:add :x3 :x3 1 :imm t)              ; x3++
               (arm64:b -9)               ; back to vec_loop_start
               ;; vec_loop_end: tag result
-              (movz 4 4)                   ; x4 = 4
+              (arm64:movz :x4 4)                   ; x4 = 4
               (arm64:orr :x0 :x0 :x4)              ; x0 = string (tagged)
               (arm64:b 33)               ; jump to end (+33 instrs, gc-trigger added to list path)
 
@@ -3082,7 +3066,7 @@
               ;; First count list length
               ;; x1 = list ptr, x5 = count
               (arm64:mov :x1 :x0)                ; x1 = list (tagged)
-              (movz 5 0)                   ; x5 = 0
+              (arm64:movz :x5 0)                   ; x5 = 0
               ;; count_loop:
               (arm64:cmp :x1 6 :imm t)                ; compare with nil (0x06)
               (arm64:b.eq 5)        ; if nil, jump to count_done (+5 instrs)
@@ -3104,20 +3088,20 @@
               (arm64:add :x2 :x6 8 :imm t)
               ;; x1 = list (from x0), x3 = index = 0
               (arm64:mov :x1 :x0)
-              (movz 3 0)
+              (arm64:movz :x3 0)
               ;; copy_loop:
               (arm64:cmp :x1 6 :imm t)                ; compare with nil
               (arm64:b.eq 8)        ; if nil, jump to copy_done (+8 instrs)
               (arm64:sub :x4 :x1 1 :imm t)              ; x4 = untag cons
               (arm64:ldr :x7 :x4 :offset 0)           ; x7 = car (tagged fixnum)
               (arm64:lsr :x7 :x7 4 :imm t)              ; x7 = char value (untagged)
-              (strb-reg 7 2 3)             ; [x2 + x3] = byte
+              (arm64:strb :x7 :x2 :x3 :reg t)  ; [x2 + x3] = byte
               (arm64:add :x3 :x3 1 :imm t)              ; x3++
               (arm64:ldr :x1 :x4 :offset 8)           ; x1 = cdr (tagged)
               (arm64:b -8)               ; back to copy_loop
               ;; copy_done: x0 = result = x6 | 4
               (arm64:mov :x0 :x6)
-              (movz 4 4)
+              (arm64:movz :x4 4)
               (arm64:orr :x0 :x0 :x4)))))
 
     ;; Setcar - mutate car of cons cell
@@ -3350,7 +3334,7 @@
          (arm64:ldr :x16 :gc :offset 64)   ; x9 = argc (at [x27+64])
          (arm64:ldr :x10 :gc :offset 72)  ; x10 = argv (at [x27+72])
          ;; result = nil (tagged 0x06)
-         (movz 0 6)
+         (arm64:movz :x0 6)
          ;; i = argc - 1, set flags
          (arm64:subs :x11 :x16 1 :imm t)
          ;; if argc <= 0, skip to done (branch forward 44 instructions)
@@ -3363,7 +3347,7 @@
          ;; === STRLEN LOOP ===
          ;; x13 = scan pointer (start at x12), x14 = length counter
          (arm64:mov :x13 :x12)
-         (movz 14 0)
+         (arm64:movz :x14 0)
          ;; strlen_loop (instruction 8):
          (arm64:ldrb :x15 :x13 0)
          (arm64:cbz :x15 4)   ; if zero, skip 4 instructions to strlen_done
@@ -3625,15 +3609,15 @@
        (append-all
         (list size-code
               (arm64:lsr :x1 :x0 4 :imm t)           ; x1 = size (untagged)
-              (movz 0 0)                         ; x0 = addr (0 = let system choose)
-              (movz 2 7)                         ; x2 = prot (PROT_READ|PROT_WRITE|PROT_EXEC)
-              (movz 3 #x1802)                    ; x3 = flags (MAP_PRIVATE|MAP_ANON|MAP_JIT)
+              (arm64:movz :x0 0)                         ; x0 = addr (0 = let system choose)
+              (arm64:movz :x2 7)                         ; x2 = prot (PROT_READ|PROT_WRITE|PROT_EXEC)
+              (arm64:movz :x3 #x1802)                    ; x3 = flags (MAP_PRIVATE|MAP_ANON|MAP_JIT)
               ;; x4 = -1 (fd): load 0xFFFFFFFFFFFFFFFF via movz+movk
               (arm64:movz :x4 #xFFFF)
               (arm64:movk :x4 #xFFFF :lsl 16)
               (arm64:movk :x4 #xFFFF :lsl 32)
               (arm64:movk :x4 #xFFFF :lsl 48)
-              (movz 5 0)                         ; x5 = offset (0)
+              (arm64:movz :x5 0)                         ; x5 = offset (0)
               (list (list :extern-call "_mmap"))))))  ; returns raw pointer in x0
 
     ;; pthread-jit-write-protect-np-ir: pthread_jit_write_protect_np(enabled)
@@ -3773,7 +3757,7 @@
          ;; x2 = string data base = x0 + 8
          (arm64:add :x2 :x0 8 :imm t)                 ; x2 = string data start
          ;; x3 = loop counter = 0
-         (movz 3 0)                      ; x3 = 0
+         (arm64:movz :x3 0)                      ; x3 = 0
          ;; Loop: while x3 < x5
          ;; loop_start: (offset 0 from here)
          (arm64:cmp :x3 :x5)                   ; cmp x3, x5
@@ -3782,14 +3766,14 @@
          (arm64:add :x4 :x1 :x3)                 ; x4 = buf_data + x3
          (arm64:ldrb :x4 :x4 0)                    ; x4 = byte at [x4]
          ;; Store byte: str_data[x3] = x4
-         (strb-reg 4 2 3)                ; [x2 + x3] = x4 (byte)
+         (arm64:strb :x4 :x2 :x3 :reg t)   ; [x2 + x3] = x4 (byte)
          ;; x3++
          (arm64:add :x3 :x3 1 :imm t)                 ; x3++
          ;; Jump back to loop_start (cmp instruction)
          (arm64:b -6)                  ; back 6 instructions = -24 bytes
          ;; loop_end:
          ;; Tag result with string tag (0x4)
-         (movz 4 4)                      ; x4 = 4
+         (arm64:movz :x4 4)                      ; x4 = 4
          (arm64:orr :x0 :x0 :x4)))))
 
     ;; Function call
@@ -3824,7 +3808,7 @@
             (list (gc-trigger-code)  ; GC pre-check BEFORE writing to heap
                   (load-addr-8 0 (ash fn-offset 4))
                   (arm64:str :x0 :heap :offset 0)
-                  (movz 0 0)  ;; nil for empty env
+                  (arm64:movz :x0 0)  ;; nil for empty env
                   (arm64:str :x0 :heap :offset 8)
                   (arm64:mov :x0 :heap)
                   (arm64:add :x0 :x0 5 :imm t)  ;; closure tag
@@ -3870,7 +3854,7 @@
         (list (gc-trigger-code)  ; GC pre-check BEFORE writing to heap
               (load-addr-8 0 (ash fn-offset 4))
               (arm64:str :x0 :heap :offset 0)
-              (movz 0 0)  ;; nil for empty env
+              (arm64:movz :x0 0)  ;; nil for empty env
               (arm64:str :x0 :heap :offset 8)
               (arm64:mov :x0 :heap)
               (arm64:add :x0 :x0 5 :imm t)  ;; closure tag
