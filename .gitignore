@@ -111,3 +111,37 @@ test-nil-value.vars
 # Session logs (large files, not version controlled)
 SESSION.md
 SESSION.md.archive
+
+# Temporary test files
+test-*.lisp
+test-*.sh
+test-*.md
+input.lisp
+
+# Backup files
+*.backup-*
+*.original
+*.broken
+*.with-reader-cond
+
+# Analysis and report files (generated)
+BEAD-*.md
+*-REPORT.md
+*-STATUS.md
+*-STATUS-REPORT.md
+*-SUMMARY.md
+*-PLAN.md
+ir-handlers-summary.txt
+self-hosting-summary.txt
+
+# Temporary scripts
+analyze-*.lisp
+check-*.lisp
+verify-*.lisp
+refactor*.py
+refactor.sh
+fix-*.sed
+final-tests.sh
+
+# Intermediate stage source
+habu-stage1-src.lisp
