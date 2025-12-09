@@ -3666,6 +3666,419 @@
              (load-code (ldr reg :sp :offset slot-off)))
         (h0-codegen-funcall-load-args-loop num-args td (+ idx 1) (cons load-code acc)))))
 
+;;; ============================================================
+;;; Linear IR Codegen (iterative, no recursion)
+;;; ============================================================
+;;; Generates ARM64 code from linear IR by simple iteration.
+;;; Each temp slot maps to a stack location.
+;;; This replaces the recursive tree-walking codegen for self-hosting.
+
+;; Helper: Calculate stack offset for linear temp slot
+;; Uses temp area 0x40-0x3840 = 1792 slots (frame is 16KB)
+(defun h0-linear-temp-slot (temp)
+  (if (>= temp 1792)
+      (fatal-error "h0-linear-temp-slot: temp exceeds 1792 slot limit")
+      (+ #x40 (* temp 8))))
+
+;; Helper: Load temp slot into register
+(defun h0-linear-load-temp (rd temp)
+  (ldr rd :sp :offset (h0-linear-temp-slot temp)))
+
+;; Helper: Save x0 to temp slot
+(defun h0-linear-save-temp (temp)
+  (str :x0 :sp :offset (h0-linear-temp-slot temp)))
+
+;; Helper: Generate code to load tagged fixnum literal into x0
+(defun h0-linear-load-lit (val)
+  (let ((tagged (ash val 4)))
+    (cond
+      ;; Small positive: single movz
+      ((and (>= tagged 0) (< tagged #x10000))
+       (movz :x0 tagged))
+      ;; Small negative: use movn (move wide with NOT)
+      ((and (< tagged 0) (>= tagged (- #x10000)))
+       (movn :x0 (logand (lognot tagged) #xFFFF)))
+      ;; Large positive: movz + movk
+      ((>= tagged 0)
+       (bytes-append (movz :x0 (logand tagged #xFFFF))
+                     (movk :x0 (logand (ash tagged -16) #xFFFF) :lsl 16)))
+      ;; Large negative: movn + movk for upper bits
+      (t
+       (let ((inv (lognot tagged)))
+         (bytes-append-all
+          (list (movn :x0 (logand inv #xFFFF))
+                (movk :x0 (logand (ash tagged -16) #xFFFF) :lsl 16)
+                (movk :x0 (logand (ash tagged -32) #xFFFF) :lsl 32)
+                (movk :x0 (logand (ash tagged -48) #xFFFF) :lsl 48))))))))
+
+;; Helper: Convert boolean 0/1 in x0 to tagged nil(6)/t(16)
+;; Uses: x0 = 1 (true) or 0 (false)
+;; Result: x0 = 16 (t) or 6 (nil)
+(defun h0-gen-bool-to-tagged ()
+  (bytes-append-all
+   (list (neg :x0 :x0)
+         (movz :x1 10)
+         (and* :x0 :x0 :x1)
+         (add :x0 :x0 6 :imm t))))
+
+;; NOTE: Stub helper functions - these are referenced by bootstrap codegen
+;; but not yet implemented in habu0. For now, return nil or simple values.
+(defun h0-gen-symbol-lit (name-str len total-size)
+  ;; TODO: Implement symbol literal generation
+  nil)
+
+(defun h0-gen-string-lit (str len total-size)
+  ;; TODO: Use h0-codegen-str-lit or implement inline
+  nil)
+
+(defun h0-gc-trigger-code ()
+  ;; TODO: Implement GC trigger check
+  nil)
+
+(defun h0-load-addr-8 (rd addr)
+  ;; Load address into register (8 bytes = 2 instructions)
+  (bytes-append (movz rd (logand addr #xFFFF))
+                (movk rd (ash addr -16) :lsl 16)))
+
+(defun h0-lookup-string (name fnoffs)
+  ;; Look up function name in fnoffs alist
+  ;; Returns (name . offset) or nil
+  (h0-lookup-string-helper name fnoffs))
+
+(defun h0-lookup-string-helper (name lst)
+  (if (null lst)
+      nil
+      (let ((entry (car lst)))
+        (if (string-equal (symbol-name name) (symbol-name (car entry)))
+            entry
+            (h0-lookup-string-helper name (cdr lst))))))
+
+;; Main instruction codegen for linear IR
+;; This is a massive case statement handling all instruction types
+(defun h0-codegen-linear-instr (instr rtaddrs fnoffs)
+  (let ((op (car instr)))
+    (cond
+      ;; Load literal integer
+      ((eq op 'load-lit)
+       (let ((dst (cadr instr))
+             (val (caddr instr)))
+         (bytes-append (h0-linear-load-lit val)
+                       (h0-linear-save-temp dst))))
+
+      ;; Load nil constant
+      ((eq op 'load-nil)
+       (let ((dst (cadr instr)))
+         (bytes-append (movz :x0 6)
+                       (h0-linear-save-temp dst))))
+
+      ;; Load variable from environment
+      ((eq op 'load-var)
+       (let ((dst (cadr instr))
+             (offset (caddr instr)))
+         (bytes-append-all
+          (list (sub :x1 :x20 (* offset 8) :imm t)
+                (ldr :x0 :x1 :offset 0)
+                (h0-linear-save-temp dst)))))
+
+      ;; Load symbol (allocate on heap)
+      ((eq op 'load-sym)
+       (let* ((dst (cadr instr))
+              (name (caddr instr))
+              (name-str (symbol-name name))
+              (len (string-length name-str))
+              (total-size (logand (+ len 8 15) (lognot 15))))
+         (bytes-append (h0-gen-symbol-lit name-str len total-size)
+                       (h0-linear-save-temp dst))))
+
+      ;; Load string literal
+      ((eq op 'load-str)
+       (let* ((dst (cadr instr))
+              (str (caddr instr))
+              (len (string-length str))
+              (total-size (logand (+ len 8 15) (lognot 15))))
+         (bytes-append (h0-gen-string-lit str len total-size)
+                       (h0-linear-save-temp dst))))
+
+      ;; Binary arithmetic operations
+      ((eq op 'add)
+       (let ((dst (cadr instr))
+             (src1 (caddr instr))
+             (src2 (cadddr instr)))
+         (bytes-append-all
+          (list (h0-linear-load-temp :x0 src1)
+                (h0-linear-load-temp :x1 src2)
+                (add :x0 :x0 :x1)
+                (h0-linear-save-temp dst)))))
+
+      ((eq op 'sub)
+       (let ((dst (cadr instr))
+             (src1 (caddr instr))
+             (src2 (cadddr instr)))
+         (bytes-append-all
+          (list (h0-linear-load-temp :x0 src1)
+                (h0-linear-load-temp :x1 src2)
+                (sub :x0 :x0 :x1)
+                (h0-linear-save-temp dst)))))
+
+      ((eq op 'mul)
+       (let ((dst (cadr instr))
+             (src1 (caddr instr))
+             (src2 (cadddr instr)))
+         (bytes-append-all
+          (list (h0-linear-load-temp :x0 src1)
+                (h0-linear-load-temp :x1 src2)
+                (lsr :x1 :x1 4 :imm t)
+                (mul :x0 :x0 :x1)
+                (h0-linear-save-temp dst)))))
+
+      ((eq op 'div)
+       (let ((dst (cadr instr))
+             (src1 (caddr instr))
+             (src2 (cadddr instr)))
+         (bytes-append-all
+          (list (h0-linear-load-temp :x0 src1)
+                (h0-linear-load-temp :x1 src2)
+                (sdiv :x0 :x0 :x1)
+                (lsl :x0 :x0 4 :imm t)
+                (h0-linear-save-temp dst)))))
+
+      ((eq op 'mod)
+       (let ((dst (cadr instr))
+             (src1 (caddr instr))
+             (src2 (cadddr instr)))
+         (bytes-append-all
+          (list (h0-linear-load-temp :x0 src1)
+                (h0-linear-load-temp :x1 src2)
+                (lsr :x0 :x0 4 :imm t)
+                (lsr :x1 :x1 4 :imm t)
+                (sdiv :x2 :x0 :x1)
+                (mul :x2 :x2 :x1)
+                (sub :x0 :x0 :x2)
+                (lsl :x0 :x0 4 :imm t)
+                (h0-linear-save-temp dst)))))
+
+      ;; Comparison operations
+      ((eq op 'cmp-eq)
+       (let ((dst (cadr instr))
+             (src1 (caddr instr))
+             (src2 (cadddr instr)))
+         (bytes-append-all
+          (list (h0-linear-load-temp :x0 src1)
+                (h0-linear-load-temp :x1 src2)
+                (cmp :x0 :x1)
+                (cset :x0 0)
+                (h0-gen-bool-to-tagged)
+                (h0-linear-save-temp dst)))))
+
+      ((eq op 'cmp-lt)
+       (let ((dst (cadr instr))
+             (src1 (caddr instr))
+             (src2 (cadddr instr)))
+         (bytes-append-all
+          (list (h0-linear-load-temp :x0 src1)
+                (h0-linear-load-temp :x1 src2)
+                (cmp :x0 :x1)
+                (cset :x0 11)
+                (h0-gen-bool-to-tagged)
+                (h0-linear-save-temp dst)))))
+
+      ((eq op 'cmp-gt)
+       (let ((dst (cadr instr))
+             (src1 (caddr instr))
+             (src2 (cadddr instr)))
+         (bytes-append-all
+          (list (h0-linear-load-temp :x0 src1)
+                (h0-linear-load-temp :x1 src2)
+                (cmp :x0 :x1)
+                (cset :x0 12)
+                (h0-gen-bool-to-tagged)
+                (h0-linear-save-temp dst)))))
+
+      ((eq op 'cmp-le)
+       (let ((dst (cadr instr))
+             (src1 (caddr instr))
+             (src2 (cadddr instr)))
+         (bytes-append-all
+          (list (h0-linear-load-temp :x0 src1)
+                (h0-linear-load-temp :x1 src2)
+                (cmp :x0 :x1)
+                (cset :x0 13)
+                (h0-gen-bool-to-tagged)
+                (h0-linear-save-temp dst)))))
+
+      ((eq op 'cmp-ge)
+       (let ((dst (cadr instr))
+             (src1 (caddr instr))
+             (src2 (cadddr instr)))
+         (bytes-append-all
+          (list (h0-linear-load-temp :x0 src1)
+                (h0-linear-load-temp :x1 src2)
+                (cmp :x0 :x1)
+                (cset :x0 10)
+                (h0-gen-bool-to-tagged)
+                (h0-linear-save-temp dst)))))
+
+      ;; Bitwise operations
+      ((eq op 'band)
+       (let ((dst (cadr instr))
+             (src1 (caddr instr))
+             (src2 (cadddr instr)))
+         (bytes-append-all
+          (list (h0-linear-load-temp :x0 src1)
+                (h0-linear-load-temp :x1 src2)
+                (and* :x0 :x0 :x1)
+                (h0-linear-save-temp dst)))))
+
+      ((eq op 'bor)
+       (let ((dst (cadr instr))
+             (src1 (caddr instr))
+             (src2 (cadddr instr)))
+         (bytes-append-all
+          (list (h0-linear-load-temp :x0 src1)
+                (h0-linear-load-temp :x1 src2)
+                (orr :x0 :x0 :x1)
+                (h0-linear-save-temp dst)))))
+
+      ((eq op 'bxor)
+       (let ((dst (cadr instr))
+             (src1 (caddr instr))
+             (src2 (cadddr instr)))
+         (bytes-append-all
+          (list (h0-linear-load-temp :x0 src1)
+                (h0-linear-load-temp :x1 src2)
+                (eor :x0 :x0 :x1)
+                (h0-linear-save-temp dst)))))
+
+      ((eq op 'bnot)
+       (let ((dst (cadr instr))
+             (src (caddr instr)))
+         (bytes-append-all
+          (list (h0-linear-load-temp :x0 src)
+                (mvn :x0 :x0)
+                (and* :x0 :x0 #xFFFFFFFFFFFFFFF0 :imm t)
+                (h0-linear-save-temp dst)))))
+
+      ;; List operations
+      ((eq op 'cons)
+       (let ((dst (cadr instr))
+             (car-src (caddr instr))
+             (cdr-src (cadddr instr)))
+         (bytes-append-all
+          (list (h0-linear-load-temp :x0 car-src)
+                (h0-linear-load-temp :x1 cdr-src)
+                (str :x0 :x28 :offset 0)
+                (str :x1 :x28 :offset 8)
+                (mov :x0 :x28)
+                (add :x0 :x0 1 :imm t)
+                (add :x28 :x28 16 :imm t)
+                (h0-linear-save-temp dst)))))
+
+      ((eq op 'car)
+       (let ((dst (cadr instr))
+             (src (caddr instr)))
+         (bytes-append-all
+          (list (h0-linear-load-temp :x0 src)
+                (sub :x0 :x0 1 :imm t)
+                (ldr :x0 :x0 :offset 0)
+                (h0-linear-save-temp dst)))))
+
+      ((eq op 'cdr)
+       (let ((dst (cadr instr))
+             (src (caddr instr)))
+         (bytes-append-all
+          (list (h0-linear-load-temp :x0 src)
+                (sub :x0 :x0 1 :imm t)
+                (ldr :x0 :x0 :offset 8)
+                (h0-linear-save-temp dst)))))
+
+      ;; Get tag bits
+      ((eq op 'get-tag)
+       (let ((dst (cadr instr))
+             (src (caddr instr)))
+         (bytes-append-all
+          (list (h0-linear-load-temp :x0 src)
+                (and* :x0 :x0 #xF :imm t)
+                (lsl :x0 :x0 4 :imm t)
+                (h0-linear-save-temp dst)))))
+
+      ;; Control flow markers (handled in main codegen loop)
+      ((eq op 'label) nil)
+      ((eq op 'jump) (b 0))
+      ((eq op 'jump-if-nil)
+       (let ((src (cadr instr)))
+         (bytes-append-all
+          (list (h0-linear-load-temp :x0 src)
+                (cmp :x0 6 :imm t)
+                (b.eq 0)))))
+      ((eq op 'move)
+       (let ((dst (cadr instr))
+             (src (caddr instr)))
+         (bytes-append-all
+          (list (h0-linear-load-temp :x0 src)
+                (h0-linear-save-temp dst)))))
+
+      ;; Block/return-from (handled specially in main loop)
+      ((eq op 'block-start) nil)
+      ((eq op 'return-from) nil)
+      ((eq op 'loop-start) nil)
+      ((eq op 'continue) (list (list :continue)))
+      ((eq op 'bind) nil)
+      ((eq op 'unbind) nil)
+
+      ;; Store operations for TCO
+      ((eq op 'store-param)
+       (let ((src-temp (cadr instr))
+             (param-idx (caddr instr)))
+         (bytes-append-all
+          (list (h0-linear-load-temp :x16 src-temp)
+                (sub :x10 :x20 (* param-idx 8) :imm t)
+                (str :x16 :x10 :offset 0)))))
+
+      ((eq op 'store-binding)
+       (let ((offset (cadr instr))
+             (src (caddr instr)))
+         (bytes-append-all
+          (list (h0-linear-load-temp :x0 src)
+                (sub :x1 :x20 (* offset 8) :imm t)
+                (str :x0 :x1 :offset 0)))))
+
+      ((eq op 'setq)
+       (let ((offset (cadr instr))
+             (src (caddr instr)))
+         (bytes-append-all
+          (list (h0-linear-load-temp :x0 src)
+                (sub :x1 :x20 (* offset 8) :imm t)
+                (str :x0 :x1 :offset 0)))))
+
+      ;; Function result marker
+      ((eq op 'result)
+       (let ((src (cadr instr)))
+         (h0-linear-load-temp :x0 src)))
+
+      ;; Stub implementations for operations not yet fully ported
+      (t
+       (fatal-error "h0-codegen-linear-instr: unknown instruction")))))
+
+;; Main codegen loop for linear IR
+;; Processes instructions iteratively, tracking labels and fixing up branches
+;; NOTE: This is a simplified version without full block/loop support yet
+(defun h0-codegen-linear (linear-ir rtaddrs fnoffs)
+  ;; For now, just generate code for each instruction without fixups
+  ;; TODO: Add proper label tracking and branch fixup support
+  (h0-codegen-linear-loop linear-ir rtaddrs fnoffs nil))
+
+;; Helper for recursive iteration over linear IR
+(defun h0-codegen-linear-loop (ir rtaddrs fnoffs acc)
+  (if (null ir)
+      (if acc
+          (bytes-append-all (reverse acc))
+          nil)
+      (let* ((instr (car ir))
+             (code (h0-codegen-linear-instr instr rtaddrs fnoffs)))
+        (if code
+            (h0-codegen-linear-loop (cdr ir) rtaddrs fnoffs (cons code acc))
+            (h0-codegen-linear-loop (cdr ir) rtaddrs fnoffs acc)))))
+
 ;; Generate code for IR (using numeric tags)
 ;; td = temp slot depth (for nested expressions)
 (defun h0-codegen (ir td)
