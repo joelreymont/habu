@@ -2629,238 +2629,7 @@
 ;;;   x20     - environment base (stack frame)
 ;;;   x28     - heap bump pointer
 
-;; ARM64 instruction encoders (inline for self-hosting)
-
-
-;; Helper: Convert numeric register to keyword for arm64:* functions
-(defun reg-keyword (n)
-  "Convert numeric register (0-31) to keyword for arm64 package.
-   Used to bridge between habu0 numeric conventions and arm64:* API."
-  (case n
-    (#x0 :x0) (#x1 :x1) (#x2 :x2) (#x3 :x3) (#x4 :x4) (#x5 :x5) (#x6 :x6) (#x7 :x7)
-    (#x8 :x8) (#x9 :x9) (#xA :x10) (#xB :x11) (#xC :x12) (#xD :x13) (#xE :x14) (#xF :x15)
-    (#x10 :x16) (#x11 :x17) (#x12 :x18) (#x13 :x19) (#x14 :x20) (#x15 :x21) (#x16 :x22) (#x17 :x23)
-    (#x18 :x24) (#x19 :x25) (#x1A :x26) (#x1B :x27) (#x1C :x28) (#x1D :x29) (#x1E :x30) (#x1F :sp)
-    (t (error "Invalid register number: ~D" n))))
-
-;; MOVZ Xd, #imm16
-(defun a64-movz (rd imm)
-  (arm64:movz (reg-keyword rd) imm))
-
-
-;; MOVK Xd, #imm16, LSL #shift
-(defun a64-movk (rd imm shift)
-  (arm64:movk (reg-keyword rd) imm :lsl shift))
-
-
-;; ADD Xd, Xn, #imm12
-(defun a64-add-imm (rd rn imm)
-  (arm64:add (reg-keyword rd) (reg-keyword rn) imm :imm t))
-
-
-;; ADD Xd, Xn, Xm
-(defun a64-add-reg (rd rn rm)
-  (arm64:add (reg-keyword rd) (reg-keyword rn) (reg-keyword rm)))
-
-
-;; SUB Xd, Xn, #imm12
-(defun a64-sub-imm (rd rn imm)
-  (arm64:sub (reg-keyword rd) (reg-keyword rn) imm :imm t))
-
-
-;; SUB Xd, Xn, Xm
-(defun a64-sub-reg (rd rn rm)
-  (arm64:sub (reg-keyword rd) (reg-keyword rn) (reg-keyword rm)))
-
-
-;; MUL Xd, Xn, Xm (actually MADD Xd, Xn, Xm, XZR)
-(defun a64-mul (rd rn rm)
-  (arm64:mul (reg-keyword rd) (reg-keyword rn) (reg-keyword rm)))
-
-
-;; SDIV Xd, Xn, Xm
-(defun a64-sdiv (rd rn rm)
-  (arm64:sdiv (reg-keyword rd) (reg-keyword rn) (reg-keyword rm)))
-
-
-;; MSUB Xd, Xn, Xm, Xa (Xa - Xn*Xm)
-(defun a64-msub (rd rn rm ra)
-  ;; MSUB Xd, Xn, Xm, Xa: Xd = Xa - Xn*Xm
-  ;; arm64:* package does not have msub, keep manual encoding
-  (let ((inst (logior #x9B008000
-                      (ash rm #x10)
-                      (ash ra #xA)
-                      (ash rn #x5)
-                      rd)))
-    (list (logand inst #xFF)
-          (logand (ash inst #x-8) #xFF)
-          (logand (ash inst #x-10) #xFF)
-          (logand (ash inst #x-18) #xFF))))
-
-
-;; LSL Xd, Xn, #shift (actually UBFM)
-(defun a64-lsl-imm (rd rn shift)
-  (arm64:lsl (reg-keyword rd) (reg-keyword rn) shift :imm t))
-
-
-;; LSR Xd, Xn, #shift (actually UBFM)
-(defun a64-lsr-imm (rd rn shift)
-  (arm64:lsr (reg-keyword rd) (reg-keyword rn) shift :imm t))
-
-
-;; CMP Xn, #imm12 (actually SUBS XZR, Xn, #imm)
-(defun a64-cmp-imm (rn imm)
-  (arm64:cmp (reg-keyword rn) imm :imm t))
-
-
-;; CMP Xn, Xm (actually SUBS XZR, Xn, Xm)
-(defun a64-cmp-reg (rn rm)
-  (arm64:cmp (reg-keyword rn) (reg-keyword rm)))
-
-
-;; CSET Xd, cond (actually CSINC Xd, XZR, XZR, invert(cond))
-(defun a64-cset (rd cond)
-  (arm64:cset (reg-keyword rd) cond))
-
-
-;; Condition codes
-(defun cond-eq () #x0)
-(defun cond-ne () #x1)
-(defun cond-lt () #xB)
-(defun cond-gt () #xC)
-(defun cond-le () #xD)
-(defun cond-ge () #xA)
-
-;; B.cond offset (conditional branch)
-(defun a64-b-cond (cond offset)
-  ;; Convert byte offset to instruction offset and dispatch to correct branch
-  (let ((inst-offset (ash offset -2)))
-    (cond
-      ((= cond (cond-eq)) (arm64:b.eq inst-offset))
-      ((= cond (cond-ne)) (arm64:b.ne inst-offset))
-      ((= cond (cond-lt)) (arm64:b.lt inst-offset))
-      ((= cond (cond-gt)) (arm64:b.gt inst-offset))
-      ((= cond (cond-le)) (arm64:b.le inst-offset))
-      ((= cond (cond-ge)) (arm64:b.ge inst-offset))
-      (t (error "Unknown condition code: ~D" cond)))))
-
-
-;; B offset (unconditional branch)
-(defun a64-b (offset)
-  ;; Convert byte offset to instruction offset
-  (arm64:b (ash offset -2)))
-
-
-;; LDR Xt, [Xn, #imm12*8]
-(defun a64-ldr (rt rn imm)
-  (arm64:ldr (reg-keyword rt) (reg-keyword rn) :offset imm))
-
-
-;; STR Xt, [Xn, #imm12*8]
-(defun a64-str (rt rn imm)
-  (arm64:str (reg-keyword rt) (reg-keyword rn) :offset imm))
-
-
-;; MOV Xd, Xm (ORR Xd, XZR, Xm)
-(defun a64-mov-reg (rd rm)
-  (arm64:mov (reg-keyword rd) (reg-keyword rm)))
-
-
-;; RET (BR LR)
-(defun a64-ret ()
-  (arm64:ret))
-
-
-;; NOP - no operation
-;; Encoding: 0xD503201F
-(defun a64-nop ()
-  (arm64:nop))
-
-
-;; BLR Xn - branch with link to register (indirect call)
-;; Encoding: 0xD63F0000 | (Rn << 5)
-(defun a64-blr (rn)
-  (arm64:blr (reg-keyword rn)))
-
-
-;; BR Xn - branch to register (indirect jump, no link)
-;; Encoding: 0xD61F0000 | (Rn << 5)
-(defun a64-br (rn)
-  (arm64:br (reg-keyword rn)))
-
-
-;; STP X1, X2, [Xn, #imm] - store pair (for saving registers)
-;; Encoding: 0xA9000000 | (imm7 << 15) | (Rt2 << 10) | (Rn << 5) | Rt
-;; imm7 is offset/8 (must be multiple of 8)
-(defun a64-stp (rt rt2 rn imm)
-  (arm64:stp (reg-keyword rt) (reg-keyword rt2) (reg-keyword rn) :offset imm))
-
-
-;; LDP X1, X2, [Xn, #imm] - load pair (for restoring registers)
-;; Encoding: 0xA9400000 | (imm7 << 15) | (Rt2 << 10) | (Rn << 5) | Rt
-(defun a64-ldp (rt rt2 rn imm)
-  (arm64:ldp (reg-keyword rt) (reg-keyword rt2) (reg-keyword rn) :offset imm))
-
-
-;; LDRB Wt, [Xn, #offset] - load byte, zero-extend
-;; Encoding: 0x39400000 | (offset << 10) | (Rn << 5) | Rt
-(defun a64-ldrb (rt rn offset)
-  (arm64:ldrb (reg-keyword rt) (reg-keyword rn) offset))
-
-
-;; LDRB Wt, [Xn, Xm] - load byte with register offset
-;; Encoding: 0x38606800 | (Rm << 16) | (Rn << 5) | Rt
-(defun a64-ldrb-reg (rt rn rm)
-  (arm64:ldrb (reg-keyword rt) (reg-keyword rn) (reg-keyword rm) :reg t))
-
-
-;; STRB Wt, [Xn, #offset] - store byte
-;; Encoding: 0x39000000 | (offset << 10) | (Rn << 5) | Rt
-(defun a64-strb (rt rn offset)
-  (arm64:strb (reg-keyword rt) (reg-keyword rn) offset))
-
-
-;; STRB Wt, [Xn, Xm] - store byte with register offset
-(defun a64-strb-idx (rt rn rm)
-  (arm64:strb (reg-keyword rt) (reg-keyword rn) (reg-keyword rm) :reg t))
-
-;; LDR Xt, [Xn, Xm] - load with register offset
-(defun a64-ldr-idx (rt rn rm)
-  (arm64:ldr (reg-keyword rt) (reg-keyword rn) (reg-keyword rm) :reg t))
-
-;; UDF #imm16 - undefined instruction (causes crash)
-(defun a64-udf (imm)
-  (arm64:udf imm))
-
-;; AND Xd, Xn, #mask - AND with immediate
-;; ARM64 logical immediate encoding is complex
-;; For common masks: #xF (low 4 bits), #x7 (low 3 bits)
-(defun a64-and-imm (rd rn mask)
-  (arm64:and* (reg-keyword rd) (reg-keyword rn) mask :imm t))
-
-
-;; AND Xd, Xn, Xm - AND registers
-;; Encoding: 0x8A000000 | (Rm << 16) | (Rn << 5) | Rd
-(defun a64-and-reg (rd rn rm)
-  (arm64:and* (reg-keyword rd) (reg-keyword rn) (reg-keyword rm)))
-
-
-;; ORR Xd, Xn, Xm - OR registers
-;; Encoding: 0xAA000000 | (Rm << 16) | (Rn << 5) | Rd
-(defun a64-orr-reg (rd rn rm)
-  (arm64:orr (reg-keyword rd) (reg-keyword rn) (reg-keyword rm)))
-
-
-;; ASR Xd, Xn, #shift - arithmetic shift right immediate
-;; Encoding: SBFM Xd, Xn, #shift, #63 = 0x9340FC00 | (shift << 16) | (Rn << 5) | Rd
-(defun a64-asr-imm (rd rn shift)
-  (arm64:asr (reg-keyword rd) (reg-keyword rn) shift :imm t))
-
-
-;; LSL Xd, Xn, Xm - logical shift left register
-;; Encoding: LSLV = 0x9AC02000 | (Rm << 16) | (Rn << 5) | Rd
-(defun a64-lsl-reg (rd rn rm)
-  (arm64:lsl (reg-keyword rd) (reg-keyword rn) (reg-keyword rm)))
+;; ARM64 instructions are called directly via arm64:* with keyword registers
 
 
 ;; Append byte lists
@@ -2885,12 +2654,12 @@
       nil
       (let* ((char (string-ref str idx))
              ;; MOVZ x0, #char
-             (mov-char (a64-movz #x0 char))
+             (mov-char (movz :x0 char))
              ;; STRB w0, [x1, #idx]
-             (strb (a64-strb #x0 #x1 idx)))
+             (store-byte (strb :x0 :x1 idx)))
         (bytes-append mov-char
-                      (bytes-append strb
-                                    (h0-gen-str-bytes str (+ idx #x1)))))))
+                      (bytes-append store-byte
+                                    (h0-gen-str-bytes str (+ idx 1)))))))
 
 ;; Codegen helper for string literals
 ;; Allocates string on heap: [length:8][chars:N][padding]
@@ -2898,17 +2667,17 @@
 ;; MUST be defined before h0-codegen which calls it
 (defun h0-codegen-str-lit (str len total-size)
   (let* (;; Store length at x28
-         (mov-len-lo (a64-movz #x0 (logand len #xFFFF)))
-         (str-len (a64-str #x0 #x1C #x0))
+         (mov-len-lo (movz :x0 (logand len #xFFFF)))
+         (str-len (str :x0 :x28 :offset 0))
          ;; Get string base address (x28 + 8)
-         (add-base (a64-add-imm #x1 #x1C #x8))
+         (add-base (add :x1 :x28 8 :imm t))
          ;; Generate STRB instructions for each character
-         (char-stores (h0-gen-str-bytes str #x0))
+         (char-stores (h0-gen-str-bytes str 0))
          ;; Save tagged pointer to x0: x28 | 4
-         (mov-ptr (a64-mov-reg #x0 #x1C))
-         (tag-ptr (a64-add-imm #x0 #x0 #x4))
+         (mov-ptr (mov :x0 :x28))
+         (tag-ptr (add :x0 :x0 4 :imm t))
          ;; Bump heap pointer
-         (bump-heap (a64-add-imm #x1C #x1C total-size)))
+         (bump-heap (add :x28 :x28 total-size :imm t)))
     (bytes-append-all (list mov-len-lo str-len add-base
                             char-stores mov-ptr tag-ptr bump-heap))))
 
@@ -2917,44 +2686,44 @@
 ;; MUST be defined before h0-codegen which calls it
 (defun h0-codegen-kw-lit (str len total-size)
   (let* (;; Store length at x28
-         (mov-len-lo (a64-movz #x0 (logand len #xFFFF)))
-         (str-len (a64-str #x0 #x1C #x0))
+         (mov-len-lo (movz :x0 (logand len #xFFFF)))
+         (str-len (str :x0 :x28 :offset 0))
          ;; Get string base address (x28 + 8)
-         (add-base (a64-add-imm #x1 #x1C #x8))
+         (add-base (add :x1 :x28 8 :imm t))
          ;; Generate STRB instructions for each character
-         (char-stores (h0-gen-str-bytes str #x0))
+         (char-stores (h0-gen-str-bytes str 0))
          ;; Save tagged pointer to x0: x28 | 7 (keyword tag)
-         (mov-ptr (a64-mov-reg #x0 #x1C))
-         (tag-ptr (a64-add-imm #x0 #x0 #x7))
+         (mov-ptr (mov :x0 :x28))
+         (tag-ptr (add :x0 :x0 7 :imm t))
          ;; Bump heap pointer
-         (bump-heap (a64-add-imm #x1C #x1C total-size)))
+         (bump-heap (add :x28 :x28 total-size :imm t)))
     (bytes-append-all (list mov-len-lo str-len add-base
                             char-stores mov-ptr tag-ptr bump-heap))))
 
 ;; Codegen helper for binary operations
 ;; Inline temp slot calculation: 48 + td*8
 (defun h0-codegen-binop (left-ir right-ir op-instrs td)
-  (let* ((slot-off (+ #x30 (* td #x8)))
+  (let* ((slot-off (+ 48 (* td 8)))
          (left-code (h0-codegen left-ir td))
-         (save-left (a64-str #x0 #x1F slot-off))
-         (right-code (h0-codegen right-ir (+ td #x1)))
-         (move-right (a64-mov-reg #x1 #x0))
-         (load-left (a64-ldr #x0 #x1F slot-off)))
+         (save-left (str :x0 :sp :offset slot-off))
+         (right-code (h0-codegen right-ir (+ td 1)))
+         (move-right (mov :x1 :x0))
+         (load-left (ldr :x0 :sp :offset slot-off)))
     (bytes-append-all
      (list left-code save-left right-code move-right load-left op-instrs))))
 
 ;; Codegen helper for comparisons
 ;; Inline temp slot calculation: 48 + td*8
 (defun h0-codegen-cmp (left-ir right-ir cond td)
-  (let* ((slot-off (+ #x30 (* td #x8)))
+  (let* ((slot-off (+ 48 (* td 8)))
          (left-code (h0-codegen left-ir td))
-         (save-left (a64-str #x0 #x1F slot-off))
-         (right-code (h0-codegen right-ir (+ td #x1)))
-         (move-right (a64-mov-reg #x1 #x0))
-         (load-left (a64-ldr #x0 #x1F slot-off)))
-    (let* ((cmp-code (a64-cmp-reg #x0 #x1))
-           (cset-code (a64-cset #x0 cond))
-           (tag-code (a64-lsl-imm #x0 #x0 #x4)))
+         (save-left (str :x0 :sp :offset slot-off))
+         (right-code (h0-codegen right-ir (+ td 1)))
+         (move-right (mov :x1 :x0))
+         (load-left (ldr :x0 :sp :offset slot-off)))
+    (let* ((cmp-code (cmp :x0 :x1))
+           (cset-code (cset :x0 cond))
+           (tag-code (lsl :x0 :x0 4 :imm t)))
       (bytes-append-all
        (list left-code save-left right-code move-right load-left
              cmp-code cset-code tag-code)))))
@@ -2962,7 +2731,7 @@
 ;; Codegen helper for progn (list of IR forms)
 (defun h0-codegen-progn (forms td)
   (if (null forms)
-      (a64-movz #x0 #x0)
+      (movz :x0 0)
       (if (null (cdr forms))
           (h0-codegen (car forms) td)
           (bytes-append (h0-codegen (car forms) td)
@@ -2970,32 +2739,32 @@
 
 ;; Helper: Generate code for FUNCALL (0-2 args)
 ;; Closure structure (assumed): [env_ptr:8][code_ptr:8] with tag 5
-;; ARM64 calling convention: x0-x7 for args, x24 (0x18) for closure env
+;; ARM64 calling convention: x0-x7 for args, x24 for closure env
 (defun h0-codegen-funcall (fn-ir args-ir num-args td)
   (let* (;; Evaluate function expression to x0 (closure pointer)
          (fn-code (h0-codegen fn-ir td))
          ;; Save closure to temp slot 0
-         (fn-slot (+ #x30 (* td #x8)))
-         (save-fn (a64-str #x0 #x1F fn-slot))
+         (fn-slot (+ 48 (* td 8)))
+         (save-fn (str :x0 :sp :offset fn-slot))
          ;; Generate code to evaluate and save arguments
-         (arg-code-list (h0-codegen-funcall-args args-ir (+ td #x1) #x0 nil))
+         (arg-code-list (h0-codegen-funcall-args args-ir (+ td 1) 0 nil))
          ;; arg-code-list is now a list of code sequences
          (arg-code (if arg-code-list
                        (bytes-append-all arg-code-list)
                        nil)))
     ;; Now load arguments back to x0, x1, etc. and call
     (let* (;; Load closure from temp slot 0
-           (load-fn (a64-ldr #x10 #x1F fn-slot))
+           (load-fn (ldr :x16 :sp :offset fn-slot))
            ;; Untag closure (subtract 5)
-           (untag-fn (a64-sub-imm #x10 #x10 #x5))
+           (untag-fn (sub :x16 :x16 5 :imm t))
            ;; Load env pointer to x24 from [x16+0]
-           (load-env (a64-ldr #x18 #x10 #x0))
+           (load-env (ldr :x24 :x16 :offset 0))
            ;; Load code pointer from [x16+8] directly to x16
-           (load-code (a64-ldr #x10 #x10 #x8))
+           (load-code (ldr :x16 :x16 :offset 8))
            ;; Load args back to registers
-           (load-args (h0-codegen-funcall-load-args num-args (+ td #x1)))
+           (load-args (h0-codegen-funcall-load-args num-args (+ td 1)))
            ;; Call via BLR x16
-           (call (a64-blr #x10)))
+           (call (blr :x16)))
       (if arg-code
           (bytes-append-all (list fn-code save-fn arg-code load-fn untag-fn
                                   load-env load-code load-args call))
@@ -3008,24 +2777,24 @@
   (if (null args-ir)
       (reverse acc)
       (let* ((arg-code (h0-codegen (car args-ir) td))
-             (slot-off (+ #x30 (* td #x8)))
-             (save-code (a64-str #x0 #x1F slot-off))
+             (slot-off (+ 48 (* td 8)))
+             (save-code (str :x0 :sp :offset slot-off))
              (combined (bytes-append arg-code save-code)))
-        (h0-codegen-funcall-args (cdr args-ir) (+ td #x1) (+ idx #x1)
+        (h0-codegen-funcall-args (cdr args-ir) (+ td 1) (+ idx 1)
                                  (cons combined acc)))))
 
 ;; Helper: Generate code to load arguments back to x0, x1, etc.
 (defun h0-codegen-funcall-load-args (num-args td)
-  (if (= num-args #x0)
+  (if (= num-args 0)
       nil
-      (if (= num-args #x1)
-          (let ((slot-off (+ #x30 (* td #x8))))
-            (a64-ldr #x0 #x1F slot-off))
-          (if (= num-args #x2)
-              (let ((slot-off1 (+ #x30 (* td #x8)))
-                    (slot-off2 (+ #x30 (* (+ td #x1) #x8))))
-                (bytes-append (a64-ldr #x0 #x1F slot-off1)
-                              (a64-ldr #x1 #x1F slot-off2)))
+      (if (= num-args 1)
+          (let ((slot-off (+ 48 (* td 8))))
+            (ldr :x0 :sp :offset slot-off))
+          (if (= num-args 2)
+              (let ((slot-off1 (+ 48 (* td 8)))
+                    (slot-off2 (+ 48 (* (+ td 1) 8))))
+                (bytes-append (ldr :x0 :sp :offset slot-off1)
+                              (ldr :x1 :sp :offset slot-off2)))
               (fatal-error "h0-codegen-funcall-load-args: too many args")))))
 
 ;; Generate code for IR (using numeric tags)
@@ -3035,12 +2804,12 @@
     ;; Literal - MOVZ x0, #(val << 4)
     ((h0-has-tag-n ir (ir-tag-lit))
      (let* ((val (cadr ir))
-            (tagged (ash val #x4)))
+            (tagged (ash val 4)))
        (if (< tagged #x10000)
-           (a64-movz #x0 tagged)
+           (movz :x0 tagged)
            ;; Larger values need MOVZ + MOVK
-           (let ((movz-code (a64-movz #x0 (logand tagged #xFFFF)))
-                 (movk-code (a64-movk #x0 (logand (ash tagged #x-10) #xFFFF) #x10)))
+           (let ((movz-code (movz :x0 (logand tagged #xFFFF)))
+                 (movk-code (movk :x0 (logand (ash tagged -16) #xFFFF) :lsl 16)))
              (bytes-append movz-code movk-code)))))
 
     ;; String literal - allocate on heap
@@ -3050,7 +2819,7 @@
      (let* ((str (cadr ir))
             (len (string-length str))
             ;; Round up (len + 8) to 16-byte boundary
-            (total-size (logand (+ len #x8 #xF) (lognot #xF))))
+            (total-size (logand (+ len 8 15) (lognot 15))))
        (h0-codegen-str-lit str len total-size)))
 
     ;; Keyword literal - allocate on heap
@@ -3061,85 +2830,85 @@
             (str (keyword-name kw))
             (len (string-length str))
             ;; Round up (len + 8) to 16-byte boundary
-            (total-size (logand (+ len #x8 #xF) (lognot #xF))))
+            (total-size (logand (+ len 8 15) (lognot 15))))
        (h0-codegen-kw-lit str len total-size)))
 
     ;; Variable - load from stack frame at x20
     ((h0-has-tag-n ir (ir-tag-var))
      (let* ((off (cadr ir))
-            (byte-off (* off #x8))
-            (sub-code (a64-sub-imm #x1 #x14 byte-off))
-            (ldr-code (a64-ldr #x0 #x1 #x0)))
+            (byte-off (* off 8))
+            (sub-code (sub :x1 :x20 byte-off :imm t))
+            (ldr-code (ldr :x0 :x1 :offset 0)))
        (bytes-append sub-code ldr-code)))
 
     ;; Addition
     ((h0-has-tag-n ir (ir-tag-add))
      (h0-codegen-binop (cadr ir) (caddr ir)
-                       (a64-add-reg #x0 #x0 #x1)
+                       (add :x0 :x0 :x1)
                        td))
 
     ;; Subtraction
     ((h0-has-tag-n ir (ir-tag-sub))
      (h0-codegen-binop (cadr ir) (caddr ir)
-                       (a64-sub-reg #x0 #x0 #x1)
+                       (sub :x0 :x0 :x1)
                        td))
 
     ;; Multiplication (need to untag one operand)
     ((h0-has-tag-n ir (ir-tag-mul))
-     (let* ((slot-off (+ #x30 (* td #x8)))
+     (let* ((slot-off (+ 48 (* td 8)))
             (left-code (h0-codegen (cadr ir) td))
-            (save-code (a64-str #x0 #x1F slot-off))
-            (right-code (h0-codegen (caddr ir) (+ td #x1)))
-            (untag-code (a64-lsr-imm #x1 #x0 #x4))
-            (load-code (a64-ldr #x0 #x1F slot-off)))
-       (let ((mul-code (a64-mul #x0 #x0 #x1)))
+            (save-code (str :x0 :sp :offset slot-off))
+            (right-code (h0-codegen (caddr ir) (+ td 1)))
+            (untag-code (lsr :x1 :x0 4 :imm t))
+            (load-code (ldr :x0 :sp :offset slot-off)))
+       (let ((mul-code (mul :x0 :x0 :x1)))
          (bytes-append-all
           (list left-code save-code right-code untag-code load-code mul-code)))))
 
     ;; Division
     ((h0-has-tag-n ir (ir-tag-div))
-     (let* ((slot-off (+ #x30 (* td #x8)))
+     (let* ((slot-off (+ 48 (* td 8)))
             (left-code (h0-codegen (cadr ir) td))
-            (save-left (a64-str #x0 #x1F slot-off))
-            (right-code (h0-codegen (caddr ir) (+ td #x1)))
-            (untag-right (a64-lsr-imm #x1 #x0 #x4))
-            (load-left (a64-ldr #x0 #x1F slot-off))
-            (untag-left (a64-lsr-imm #x0 #x0 #x4))
-            (divide (a64-sdiv #x0 #x0 #x1))
-            (retag (a64-lsl-imm #x0 #x0 #x4)))
+            (save-left (str :x0 :sp :offset slot-off))
+            (right-code (h0-codegen (caddr ir) (+ td 1)))
+            (untag-right (lsr :x1 :x0 4 :imm t))
+            (load-left (ldr :x0 :sp :offset slot-off))
+            (untag-left (lsr :x0 :x0 4 :imm t))
+            (divide (sdiv :x0 :x0 :x1))
+            (retag (lsl :x0 :x0 4 :imm t)))
        (bytes-append-all
         (list left-code save-left right-code untag-right load-left
               untag-left divide retag))))           ; retag result
 
     ;; Modulo (a mod b = a - (a/b)*b)
     ((h0-has-tag-n ir (ir-tag-mod))
-     (let* ((slot-off (+ #x30 (* td #x8)))
-            (slot-off2 (+ #x30 (* (+ td #x1) #x8)))
+     (let* ((slot-off (+ 48 (* td 8)))
+            (slot-off2 (+ 48 (* (+ td 1) 8)))
             (left-code (h0-codegen (cadr ir) td))
-            (save-left (a64-str #x0 #x1F slot-off))
-            (right-code (h0-codegen (caddr ir) (+ td #x1)))
-            (save-right (a64-str #x0 #x1F slot-off2)))
-       (let* ((untag-right (a64-lsr-imm #x1 #x0 #x4))
-              (load-left (a64-ldr #x0 #x1F slot-off))
-              (untag-left (a64-lsr-imm #x0 #x0 #x4))
-              (divide (a64-sdiv #x2 #x0 #x1))
-              (msub (a64-msub #x0 #x2 #x1 #x0))
-              (retag (a64-lsl-imm #x0 #x0 #x4)))
+            (save-left (str :x0 :sp :offset slot-off))
+            (right-code (h0-codegen (caddr ir) (+ td 1)))
+            (save-right (str :x0 :sp :offset slot-off2)))
+       (let* ((untag-right (lsr :x1 :x0 4 :imm t))
+              (load-left (ldr :x0 :sp :offset slot-off))
+              (untag-left (lsr :x0 :x0 4 :imm t))
+              (divide (sdiv :x2 :x0 :x1))
+              (msub-code (msub :x0 :x2 :x1 :x0))
+              (retag (lsl :x0 :x0 4 :imm t)))
          (bytes-append-all
           (list left-code save-left right-code save-right untag-right
-                load-left untag-left divide msub retag)))))                ; retag
+                load-left untag-left divide msub-code retag)))))                ; retag
 
-    ;; Comparisons
+    ;; Comparisons - condition codes: eq=0, lt=11, gt=12, le=13, ge=10
     ((h0-has-tag-n ir (ir-tag-cmp-eq))
-     (h0-codegen-cmp (cadr ir) (caddr ir) (cond-eq) td))
+     (h0-codegen-cmp (cadr ir) (caddr ir) 0 td))
     ((h0-has-tag-n ir (ir-tag-cmp-lt))
-     (h0-codegen-cmp (cadr ir) (caddr ir) (cond-lt) td))
+     (h0-codegen-cmp (cadr ir) (caddr ir) 11 td))
     ((h0-has-tag-n ir (ir-tag-cmp-gt))
-     (h0-codegen-cmp (cadr ir) (caddr ir) (cond-gt) td))
+     (h0-codegen-cmp (cadr ir) (caddr ir) 12 td))
     ((h0-has-tag-n ir (ir-tag-cmp-le))
-     (h0-codegen-cmp (cadr ir) (caddr ir) (cond-le) td))
+     (h0-codegen-cmp (cadr ir) (caddr ir) 13 td))
     ((h0-has-tag-n ir (ir-tag-cmp-ge))
-     (h0-codegen-cmp (cadr ir) (caddr ir) (cond-ge) td))
+     (h0-codegen-cmp (cadr ir) (caddr ir) 10 td))
 
     ;; If
     ((h0-has-tag-n ir (ir-tag-if))
@@ -3153,25 +2922,25 @@
             (else-len (length else-code)))
        (bytes-append-all
         (list test-code
-              (a64-cmp-imm #x0 #x0)               ; test == 0?
-              (a64-b-cond (cond-eq) (+ then-len #x8)) ; skip then + jump
+              (cmp :x0 0 :imm t)                  ; test == 0?
+              (b.eq (ash (+ then-len 8) -2))      ; skip then + jump (instruction offset)
               then-code
-              (a64-b (+ else-len #x4))            ; skip else
+              (b (ash (+ else-len 4) -2))         ; skip else (instruction offset)
               else-code))))
 
     ;; Cons
     ((h0-has-tag-n ir (ir-tag-cons))
-     (let* ((slot-off (+ #x30 (* td #x8)))
+     (let* ((slot-off (+ 48 (* td 8)))
             (car-code (h0-codegen (cadr ir) td))
-            (save-car (a64-str #x0 #x1F slot-off))
-            (cdr-code (h0-codegen (caddr ir) (+ td #x1)))
-            (move-cdr (a64-mov-reg #x1 #x0)))
-       (let* ((load-car (a64-ldr #x0 #x1F slot-off))
-              (store-car (a64-str #x0 #x1C #x0))
-              (store-cdr (a64-str #x1 #x1C #x8))
-              (get-ptr (a64-mov-reg #x0 #x1C))
-              (tag-cons (a64-add-imm #x0 #x0 #x1))
-              (bump-heap (a64-add-imm #x1C #x1C #x10)))
+            (save-car (str :x0 :sp :offset slot-off))
+            (cdr-code (h0-codegen (caddr ir) (+ td 1)))
+            (move-cdr (mov :x1 :x0)))
+       (let* ((load-car (ldr :x0 :sp :offset slot-off))
+              (store-car (str :x0 :x28 :offset 0))
+              (store-cdr (str :x1 :x28 :offset 8))
+              (get-ptr (mov :x0 :x28))
+              (tag-cons (add :x0 :x0 1 :imm t))
+              (bump-heap (add :x28 :x28 16 :imm t)))
          (bytes-append-all
           (list car-code save-car cdr-code move-cdr load-car
                 store-car store-cdr get-ptr tag-cons bump-heap)))))        ; bump heap
@@ -3180,8 +2949,8 @@
     ((h0-has-tag-n ir (ir-tag-car))
      (let* ((arg-ir (cadr ir))
             (arg-code (h0-codegen arg-ir td))
-            (untag (a64-sub-imm #x0 #x0 #x1))
-            (load-car (a64-ldr #x0 #x0 #x0)))
+            (untag (sub :x0 :x0 1 :imm t))
+            (load-car (ldr :x0 :x0 :offset 0)))
        (bytes-append-all
         (list arg-code untag load-car))))
 
@@ -3189,8 +2958,8 @@
     ((h0-has-tag-n ir (ir-tag-cdr))
      (let* ((arg-ir (cadr ir))
             (arg-code (h0-codegen arg-ir td))
-            (untag (a64-sub-imm #x0 #x0 #x1))
-            (load-cdr (a64-ldr #x0 #x0 #x8)))
+            (untag (sub :x0 :x0 1 :imm t))
+            (load-cdr (ldr :x0 :x0 :offset 8)))
        (bytes-append-all
         (list arg-code untag load-cdr))))          ; load cdr
 
@@ -3198,9 +2967,9 @@
     ((h0-has-tag-n ir (ir-tag-null))
      (let* ((arg-ir (cadr ir))
             (arg-code (h0-codegen arg-ir td))
-            (cmp-nil (a64-cmp-imm #x0 #x6))
-            (set-cond (a64-cset #x0 (cond-eq)))
-            (tag-result (a64-lsl-imm #x0 #x0 #x4)))
+            (cmp-nil (cmp :x0 6 :imm t))
+            (set-cond (cset :x0 0))
+            (tag-result (lsl :x0 :x0 4 :imm t)))
        (bytes-append-all
         (list arg-code cmp-nil set-cond tag-result))))
 
@@ -3217,10 +2986,10 @@
        (bytes-append-all
         (list val-code
               ;; Decrement x20 BEFORE storing (so offset 0 refers to new slot)
-              (a64-sub-imm #x14 #x14 #x8)        ; x20 -= 8 (grow frame)
-              (a64-str #x0 #x14 #x0)             ; [x20] = value (at new x20)
+              (sub :x20 :x20 8 :imm t)            ; x20 -= 8 (grow frame)
+              (str :x0 :x20 :offset 0)            ; [x20] = value (at new x20)
               body-code
-              (a64-add-imm #x14 #x14 #x8)))))    ; x20 += 8 (restore frame)
+              (add :x20 :x20 8 :imm t)))))        ; x20 += 8 (restore frame)
 
     ;; Setq - variable assignment
     ;; IR: (setq-ir offset value-ir)
@@ -3228,12 +2997,12 @@
     ((h0-has-tag-n ir (ir-tag-setq))
      (let* ((offset (cadr ir))
             (val-ir (caddr ir))
-            (byte-off (* offset #x8))
+            (byte-off (* offset 8))
             (val-code (h0-codegen val-ir td))
             ;; Calculate address: x1 = x20 - byte_offset
-            (sub-code (a64-sub-imm #x1 #x14 byte-off))
+            (sub-code (sub :x1 :x20 byte-off :imm t))
             ;; Store x0 to [x1]
-            (str-code (a64-str #x0 #x1 #x0)))
+            (str-code (str :x0 :x1 :offset 0)))
        (bytes-append-all (list val-code sub-code str-code))))
 
     ;; Progn
@@ -3245,83 +3014,83 @@
     ((h0-has-tag-n ir (ir-tag-str-len))
      (let* ((arg-code (h0-codegen (cadr ir) td))
             ;; Untag (subtract 4), then load length from offset 0
-            (untag (a64-sub-imm #x0 #x0 #x4))
-            (load-len (a64-ldr #x0 #x0 #x0))
+            (untag (sub :x0 :x0 4 :imm t))
+            (load-len (ldr :x0 :x0 :offset 0))
             ;; Length is already untagged, need to tag it
-            (tag-result (a64-lsl-imm #x0 #x0 #x4)))
+            (tag-result (lsl :x0 :x0 4 :imm t)))
        (bytes-append-all (list arg-code untag load-len tag-result))))
 
     ;; String-ref: get char at index
     ;; String layout: [length:u64][chars...]
     ((h0-has-tag-n ir (ir-tag-str-ref))
-     (let* ((slot-off (+ #x30 (* td #x8)))
+     (let* ((slot-off (+ 48 (* td 8)))
             (str-code (h0-codegen (cadr ir) td))
-            (save-str (a64-str #x0 #x1F slot-off))
-            (idx-code (h0-codegen (caddr ir) (+ td #x1)))
+            (save-str (str :x0 :sp :offset slot-off))
+            (idx-code (h0-codegen (caddr ir) (+ td 1)))
             ;; Untag index
-            (untag-idx (a64-lsr-imm #x1 #x0 #x4))
+            (untag-idx (lsr :x1 :x0 4 :imm t))
             ;; Load string ptr
-            (load-str (a64-ldr #x0 #x1F slot-off))
+            (load-str (ldr :x0 :sp :offset slot-off))
             ;; Untag string (subtract 4)
-            (untag-str (a64-sub-imm #x0 #x0 #x4))
+            (untag-str (sub :x0 :x0 4 :imm t))
             ;; Add 8 to skip length field, then add index
-            (add-offset (a64-add-imm #x0 #x0 #x8))
-            (add-idx (a64-add-reg #x0 #x0 #x1))
+            (add-offset (add :x0 :x0 8 :imm t))
+            (add-idx (add :x0 :x0 :x1))
             ;; Load byte
-            (load-byte (a64-ldrb #x0 #x0 #x0))
+            (load-byte (ldrb :x0 :x0 0))
             ;; Tag result
-            (tag-result (a64-lsl-imm #x0 #x0 #x4)))
+            (tag-result (lsl :x0 :x0 4 :imm t)))
        (bytes-append-all (list str-code save-str idx-code untag-idx load-str
                                untag-str add-offset add-idx load-byte tag-result))))
 
-    ;; EQ: pointer equality
+    ;; EQ: pointer equality (cond-eq = 0)
     ((h0-has-tag-n ir (ir-tag-eq))
-     (h0-codegen-cmp (cadr ir) (caddr ir) (cond-eq) td))
+     (h0-codegen-cmp (cadr ir) (caddr ir) 0 td))
 
     ;; Consp: check if tag is 1
     ((h0-has-tag-n ir (ir-tag-consp))
      (let* ((arg-code (h0-codegen (cadr ir) td))
-            (and-tag (a64-and-imm #x0 #x0 #xF))
-            (cmp-tag (a64-cmp-imm #x0 #x1))
-            (cset (a64-cset #x0 (cond-eq)))
-            (tag-result (a64-lsl-imm #x0 #x0 #x4)))
-       (bytes-append-all (list arg-code and-tag cmp-tag cset tag-result))))
+            (and-tag (and* :x0 :x0 #xF :imm t))
+            (cmp-tag (cmp :x0 1 :imm t))
+            (cset-code (cset :x0 0))
+            (tag-result (lsl :x0 :x0 4 :imm t)))
+       (bytes-append-all (list arg-code and-tag cmp-tag cset-code tag-result))))
 
     ;; Symbolp: check if tag is 2
     ((h0-has-tag-n ir (ir-tag-symbolp))
      (let* ((arg-code (h0-codegen (cadr ir) td))
-            (and-tag (a64-and-imm #x0 #x0 #xF))
-            (cmp-tag (a64-cmp-imm #x0 #x2))
-            (cset (a64-cset #x0 (cond-eq)))
-            (tag-result (a64-lsl-imm #x0 #x0 #x4)))
-       (bytes-append-all (list arg-code and-tag cmp-tag cset tag-result))))
+            (and-tag (and* :x0 :x0 #xF :imm t))
+            (cmp-tag (cmp :x0 2 :imm t))
+            (cset-code (cset :x0 0))
+            (tag-result (lsl :x0 :x0 4 :imm t)))
+       (bytes-append-all (list arg-code and-tag cmp-tag cset-code tag-result))))
 
     ;; Numberp: check if tag is 0 (fixnum)
     ((h0-has-tag-n ir (ir-tag-numberp))
      (let* ((arg-code (h0-codegen (cadr ir) td))
-            (and-tag (a64-and-imm #x0 #x0 #xF))
-            (cmp-tag (a64-cmp-imm #x0 #x0))
-            (cset (a64-cset #x0 (cond-eq)))
-            (tag-result (a64-lsl-imm #x0 #x0 #x4)))
-       (bytes-append-all (list arg-code and-tag cmp-tag cset tag-result))))
+            (and-tag (and* :x0 :x0 #xF :imm t))
+            (cmp-tag (cmp :x0 0 :imm t))
+            (cset-code (cset :x0 0))
+            (tag-result (lsl :x0 :x0 4 :imm t)))
+       (bytes-append-all (list arg-code and-tag cmp-tag cset-code tag-result))))
 
     ;; Stringp: check if tag is 4
     ((h0-has-tag-n ir (ir-tag-stringp))
      (let* ((arg-code (h0-codegen (cadr ir) td))
-            (and-tag (a64-and-imm #x0 #x0 #xF))
-            (cmp-tag (a64-cmp-imm #x0 #x4))
-            (cset (a64-cset #x0 (cond-eq)))
-            (tag-result (a64-lsl-imm #x0 #x0 #x4)))
-       (bytes-append-all (list arg-code and-tag cmp-tag cset tag-result))))
+            (and-tag (and* :x0 :x0 #xF :imm t))
+            (cmp-tag (cmp :x0 4 :imm t))
+            (cset-code (cset :x0 0))
+            (tag-result (lsl :x0 :x0 4 :imm t)))
+       (bytes-append-all (list arg-code and-tag cmp-tag cset-code tag-result))))
 
     ;; Keywordp: check if tag is 7
     ((h0-has-tag-n ir (ir-tag-keywordp))
      (let* ((arg-code (h0-codegen (cadr ir) td))
-            (and-tag (a64-and-imm #x0 #x0 #xF))
-            (cmp-tag (a64-cmp-imm #x0 #x7))
-            (cset (a64-cset #x0 (cond-eq)))
-            (tag-result (a64-lsl-imm #x0 #x0 #x4)))
-       (bytes-append-all (list arg-code and-tag cmp-tag cset tag-result))))
+            (and-tag (and* :x0 :x0 #xF :imm t))
+            (cmp-tag (cmp :x0 7 :imm t))
+            (cset-code (cset :x0 0))
+            (tag-result (lsl :x0 :x0 4 :imm t)))
+       (bytes-append-all (list arg-code and-tag cmp-tag cset-code tag-result))))
 
     ;; Symbol-name: extract name string from symbol
     ;; Symbol structure: tagged with |2, points to [name-string | value | plist | package]
@@ -3329,41 +3098,41 @@
     ((h0-has-tag-n ir (ir-tag-symbol-name))
      (let* ((arg-code (h0-codegen (cadr ir) td))
             ;; Remove tag: and x0, x0, #~7 (clear lower 3 bits)
-            (untag (a64-and-imm #x0 #x0 #xFFFFFFFFFFFFFFF8))
+            (untag (and* :x0 :x0 #xFFFFFFFFFFFFFFF8 :imm t))
             ;; Load name string: ldr x0, [x0, #0]
-            (load-name (a64-ldr #x0 #x0 #x0)))
+            (load-name (ldr :x0 :x0 :offset 0)))
        (bytes-append-all (list arg-code untag load-name))))
 
     ;; Logand: bitwise AND (both operands tagged, result tagged)
     ((h0-has-tag-n ir (ir-tag-logand))
      (h0-codegen-binop (cadr ir) (caddr ir)
-                       (a64-and-reg #x0 #x0 #x1)
+                       (and* :x0 :x0 :x1)
                        td))
 
     ;; Logior: bitwise OR
     ((h0-has-tag-n ir (ir-tag-logior))
      (h0-codegen-binop (cadr ir) (caddr ir)
-                       (a64-orr-reg #x0 #x0 #x1)
+                       (orr :x0 :x0 :x1)
                        td))
 
     ;; ASH: arithmetic shift (untag, shift, retag)
     ;; Positive shift = left, negative = right
     ((h0-has-tag-n ir (ir-tag-ash))
-     (let* ((slot-off (+ #x30 (* td #x8)))
+     (let* ((slot-off (+ 48 (* td 8)))
             (val-code (h0-codegen (cadr ir) td))
-            (save-val (a64-str #x0 #x1F slot-off))
-            (shift-code (h0-codegen (caddr ir) (+ td #x1)))
+            (save-val (str :x0 :sp :offset slot-off))
+            (shift-code (h0-codegen (caddr ir) (+ td 1)))
             ;; Untag shift amount
-            (untag-shift (a64-asr-imm #x1 #x0 #x4))
+            (untag-shift (asr :x1 :x0 4 :imm t))
             ;; Load value
-            (load-val (a64-ldr #x0 #x1F slot-off))
+            (load-val (ldr :x0 :sp :offset slot-off))
             ;; Untag value
-            (untag-val (a64-asr-imm #x0 #x0 #x4))
+            (untag-val (asr :x0 :x0 4 :imm t))
             ;; Variable shift: if x1 >= 0, LSL; else ASR by -x1
             ;; For simplicity, use LSL for now (assume positive shifts)
-            (shift-op (a64-lsl-reg #x0 #x0 #x1))
+            (shift-op (lsl :x0 :x0 :x1))
             ;; Retag
-            (retag (a64-lsl-imm #x0 #x0 #x4)))
+            (retag (lsl :x0 :x0 4 :imm t)))
        (bytes-append-all (list val-code save-val shift-code untag-shift
                                load-val untag-val shift-op retag))))
 
@@ -3371,12 +3140,12 @@
     ((h0-has-tag-n ir (ir-tag-not))
      (let* ((arg-code (h0-codegen (cadr ir) td))
             ;; Compare to nil (6)
-            (cmp-nil (a64-cmp-imm #x0 #x6))
+            (cmp-nil (cmp :x0 6 :imm t))
             ;; If equal to nil, result is 1 (t), else 0
-            (cset (a64-cset #x0 (cond-eq)))
+            (cset-code (cset :x0 0))
             ;; Tag result
-            (tag-result (a64-lsl-imm #x0 #x0 #x4)))
-       (bytes-append-all (list arg-code cmp-nil cset tag-result))))
+            (tag-result (lsl :x0 :x0 4 :imm t)))
+       (bytes-append-all (list arg-code cmp-nil cset-code tag-result))))
 
     ;; LENGTH: count cons cells in list
     ;; Loop: x0 = list ptr, x1 = counter
@@ -3384,22 +3153,22 @@
     ((h0-has-tag-n ir (ir-tag-length))
      (let* ((arg-code (h0-codegen (cadr ir) td))
             ;; Initialize counter to 0
-            (init-counter (a64-movz #x1 #x0))
+            (init-counter (movz :x1 0))
             ;; Loop start label offset (will be patched)
             ;; Check if x0 == nil (6)
-            (loop-start-offset #x0)
-            (cmp-nil (a64-cmp-imm #x0 #x6))
+            (loop-start-offset 0)
+            (cmp-nil (cmp :x0 6 :imm t))
             ;; Branch to end if equal (skip to move-result)
-            (branch-end (a64-b-cond (cond-eq) #x14))  ; skip 20 bytes (5 instructions * 4)
+            (branch-end (b.eq 5))  ; skip 5 instructions
             ;; Increment counter (tagged add: add 16 for +1)
-            (inc-counter (a64-add-imm #x1 #x1 #x10))
+            (inc-counter (add :x1 :x1 16 :imm t))
             ;; Get CDR: untag, load offset 8, keep tagged
-            (untag-cons (a64-sub-imm #x0 #x0 #x1))
-            (load-cdr (a64-ldr #x0 #x0 #x8))
+            (untag-cons (sub :x0 :x0 1 :imm t))
+            (load-cdr (ldr :x0 :x0 :offset 8))
             ;; Branch back to loop start (back to cmp-nil)
-            (branch-loop (a64-b #x-14))  ; back 20 bytes (5 instructions)
+            (branch-loop (b -5))  ; back 5 instructions
             ;; Move counter to result
-            (move-result (a64-mov-reg #x0 #x1)))
+            (move-result (mov :x0 :x1)))
        (bytes-append-all (list arg-code init-counter cmp-nil branch-end
                                inc-counter untag-cons load-cdr branch-loop
                                move-result))))
@@ -3412,19 +3181,19 @@
     ((h0-has-tag-n ir (ir-tag-make-vector))
      (let* ((size-code (h0-codegen (cadr ir) td))
             ;; Unshift size from tagged fixnum: lsr x1, x0, #4
-            (unshift-size (a64-lsr-imm #x1 #x0 #x4))
+            (unshift-size (lsr :x1 :x0 4 :imm t))
             ;; Store length at heap: str x1, [x28]
-            (store-len (a64-str #x1 #x1C #x0))
+            (store-len (str :x1 :x28 :offset 0))
             ;; Calculate total bytes: (size + 1) * 8
             ;; x2 = x1 + 1
-            (add-one (a64-add-imm #x2 #x1 #x1))
+            (add-one (add :x2 :x1 1 :imm t))
             ;; x2 = x2 * 8 = x2 << 3
-            (mul-eight (a64-lsl-imm #x2 #x2 #x3))
+            (mul-eight (lsl :x2 :x2 3 :imm t))
             ;; Tag result: x0 = x28 + 3
-            (mov-ptr (a64-mov-reg #x0 #x1C))
-            (tag-vec (a64-add-imm #x0 #x0 #x3))
+            (mov-ptr (mov :x0 :x28))
+            (tag-vec (add :x0 :x0 3 :imm t))
             ;; Bump heap pointer: x28 += x2
-            (bump-heap (a64-add-reg #x1C #x1C #x2)))
+            (bump-heap (add :x28 :x28 :x2)))
        (bytes-append-all (list size-code unshift-size store-len
                                add-one mul-eight mov-ptr tag-vec bump-heap))))
 
@@ -3433,24 +3202,24 @@
     ;; Input: vec (tagged), idx (tagged fixnum)
     ;; Output: element value
     ((h0-has-tag-n ir (ir-tag-vector-ref))
-     (let* ((slot-off (+ #x30 (* td #x8)))
+     (let* ((slot-off (+ 48 (* td 8)))
             (vec-code (h0-codegen (cadr ir) td))
-            (save-vec (a64-str #x0 #x1F slot-off))
-            (idx-code (h0-codegen (caddr ir) (+ td #x1)))
+            (save-vec (str :x0 :sp :offset slot-off))
+            (idx-code (h0-codegen (caddr ir) (+ td 1)))
             ;; Load vec to x2
-            (load-vec (a64-ldr #x2 #x1F slot-off))
+            (load-vec (ldr :x2 :sp :offset slot-off))
             ;; Untag vec: sub x2, x2, #3
-            (untag-vec (a64-sub-imm #x2 #x2 #x3))
+            (untag-vec (sub :x2 :x2 3 :imm t))
             ;; Unshift idx: lsr x1, x0, #4
-            (unshift-idx (a64-lsr-imm #x1 #x0 #x4))
+            (unshift-idx (lsr :x1 :x0 4 :imm t))
             ;; Add 1 to skip length slot: add x1, x1, #1
-            (add-one (a64-add-imm #x1 #x1 #x1))
+            (add-one (add :x1 :x1 1 :imm t))
             ;; Calculate byte offset: lsl x1, x1, #3 (multiply by 8)
-            (calc-offset (a64-lsl-imm #x1 #x1 #x3))
+            (calc-offset (lsl :x1 :x1 3 :imm t))
             ;; Add offset to base: add x2, x2, x1
-            (add-offset (a64-add-reg #x2 #x2 #x1))
+            (add-offset (add :x2 :x2 :x1))
             ;; Load element: ldr x0, [x2]
-            (load-elem (a64-ldr #x0 #x2 #x0)))
+            (load-elem (ldr :x0 :x2 :offset 0)))
        (bytes-append-all (list vec-code save-vec idx-code load-vec
                                untag-vec unshift-idx add-one calc-offset
                                add-offset load-elem))))
@@ -3459,32 +3228,32 @@
     ;; Input: vec (tagged), idx (tagged fixnum), val
     ;; Output: val (return the value that was set)
     ((h0-has-tag-n ir (ir-tag-vector-set))
-     (let* ((slot-vec (+ #x30 (* td #x8)))
-            (slot-idx (+ #x30 (* (+ td #x1) #x8)))
+     (let* ((slot-vec (+ 48 (* td 8)))
+            (slot-idx (+ 48 (* (+ td 1) 8)))
             (vec-code (h0-codegen (cadr ir) td))
-            (save-vec (a64-str #x0 #x1F slot-vec))
-            (idx-code (h0-codegen (caddr ir) (+ td #x1)))
-            (save-idx (a64-str #x0 #x1F slot-idx))
-            (val-code (h0-codegen (cadddr ir) (+ td #x2)))
+            (save-vec (str :x0 :sp :offset slot-vec))
+            (idx-code (h0-codegen (caddr ir) (+ td 1)))
+            (save-idx (str :x0 :sp :offset slot-idx))
+            (val-code (h0-codegen (cadddr ir) (+ td 2)))
             ;; Save val in x3
-            (save-val (a64-mov-reg #x3 #x0))
+            (save-val (mov :x3 :x0))
             ;; Load vec and idx
-            (load-vec (a64-ldr #x2 #x1F slot-vec))
-            (load-idx (a64-ldr #x1 #x1F slot-idx))
+            (load-vec (ldr :x2 :sp :offset slot-vec))
+            (load-idx (ldr :x1 :sp :offset slot-idx))
             ;; Untag vec: sub x2, x2, #3
-            (untag-vec (a64-sub-imm #x2 #x2 #x3))
+            (untag-vec (sub :x2 :x2 3 :imm t))
             ;; Unshift idx: lsr x1, x1, #4
-            (unshift-idx (a64-lsr-imm #x1 #x1 #x4))
+            (unshift-idx (lsr :x1 :x1 4 :imm t))
             ;; Add 1 to skip length slot
-            (add-one (a64-add-imm #x1 #x1 #x1))
+            (add-one (add :x1 :x1 1 :imm t))
             ;; Calculate byte offset: lsl x1, x1, #3
-            (calc-offset (a64-lsl-imm #x1 #x1 #x3))
+            (calc-offset (lsl :x1 :x1 3 :imm t))
             ;; Add offset to base: add x2, x2, x1
-            (add-offset (a64-add-reg #x2 #x2 #x1))
+            (add-offset (add :x2 :x2 :x1))
             ;; Store: str x3, [x2]
-            (store-elem (a64-str #x3 #x2 #x0))
+            (store-elem (str :x3 :x2 :offset 0))
             ;; Return val: mov x0, x3
-            (ret-val (a64-mov-reg #x0 #x3)))
+            (ret-val (mov :x0 :x3)))
        (bytes-append-all (list vec-code save-vec idx-code save-idx val-code
                                save-val load-vec load-idx untag-vec unshift-idx
                                add-one calc-offset add-offset store-elem ret-val))))
@@ -3495,11 +3264,11 @@
     ((h0-has-tag-n ir (ir-tag-vector-length))
      (let* ((vec-code (h0-codegen (cadr ir) td))
             ;; Untag vec: sub x0, x0, #3
-            (untag-vec (a64-sub-imm #x0 #x0 #x3))
+            (untag-vec (sub :x0 :x0 3 :imm t))
             ;; Load length: ldr x0, [x0]
-            (load-len (a64-ldr #x0 #x0 #x0))
+            (load-len (ldr :x0 :x0 :offset 0))
             ;; Shift to tag: lsl x0, x0, #4
-            (tag-result (a64-lsl-imm #x0 #x0 #x4)))
+            (tag-result (lsl :x0 :x0 4 :imm t)))
        (bytes-append-all (list vec-code untag-vec load-len tag-result))))
 
     ;; LAMBDA: Create closure (simplified - no lambda lifting yet)
@@ -3509,19 +3278,19 @@
      (let* ((params (cadr ir))
             (body-ir (caddr ir))
             (free-vars (cadddr ir))
-            (free-offsets (nth #x4 ir)))
+            (free-offsets (nth 4 ir)))
        ;; Simplified closure: placeholder fn-offset (0) and nil env (0x6)
        (let* (;; Store placeholder function offset (0) at heap+0
-              (mov-fn-offset (a64-movz #x0 #x0))         ; x0 = 0
-              (str-fn-offset (a64-str #x0 #x1C #x0))     ; [x28+0] = x0
+              (mov-fn-offset (movz :x0 0))               ; x0 = 0
+              (str-fn-offset (str :x0 :x28 :offset 0))   ; [x28+0] = x0
               ;; Store nil environment (0x6) at heap+8
-              (mov-env (a64-movz #x0 #x6))               ; x0 = 6 (nil)
-              (str-env (a64-str #x0 #x1C #x8))           ; [x28+8] = x0
+              (mov-env (movz :x0 6))                     ; x0 = 6 (nil)
+              (str-env (str :x0 :x28 :offset 8))         ; [x28+8] = x0
               ;; Create tagged closure pointer: x28 | 5
-              (mov-ptr (a64-mov-reg #x0 #x1C))           ; x0 = x28
-              (tag-closure (a64-add-imm #x0 #x0 #x5))    ; x0 = x0 | 5
+              (mov-ptr (mov :x0 :x28))                   ; x0 = x28
+              (tag-closure (add :x0 :x0 5 :imm t))       ; x0 = x0 | 5
               ;; Bump heap pointer by 16 bytes
-              (bump-heap (a64-add-imm #x1C #x1C #x10)))  ; x28 += 16
+              (bump-heap (add :x28 :x28 16 :imm t)))     ; x28 += 16
          (bytes-append-all (list mov-fn-offset str-fn-offset
                                  mov-env str-env
                                  mov-ptr tag-closure bump-heap)))))
@@ -3532,7 +3301,7 @@
             (args-ir (caddr ir))
             (num-args (h0-list-length args-ir)))
        ;; Support 0-2 arguments for now
-       (if (> num-args #x2)
+       (if (> num-args 2)
            (fatal-error "h0-codegen: FUNCALL supports max 2 args")
            (h0-codegen-funcall fn-ir args-ir num-args td))))
 
@@ -3540,52 +3309,51 @@
     ;; Both strings must have same length and same bytes
     ;; Returns 1 (true) or 0 (false) as tagged fixnum
     ((h0-has-tag-n ir (ir-tag-string-eq))
-     (let* ((slot-off (+ #x30 (* td #x8)))
-            (slot-off2 (+ #x30 (* (+ td #x1) #x8)))
+     (let* ((slot-off (+ 48 (* td 8)))
+            (slot-off2 (+ 48 (* (+ td 1) 8)))
             ;; Compile both string arguments
             (str1-code (h0-codegen (cadr ir) td))
-            (save-str1 (a64-str #x0 #x1F slot-off))
-            (str2-code (h0-codegen (caddr ir) (+ td #x1)))
-            (save-str2 (a64-str #x0 #x1F slot-off2))
+            (save-str1 (str :x0 :sp :offset slot-off))
+            (str2-code (h0-codegen (caddr ir) (+ td 1)))
+            (save-str2 (str :x0 :sp :offset slot-off2))
             ;; Load str1 and untag (subtract 4 for string tag)
-            (load-str1 (a64-ldr #x0 #x1F slot-off))
-            (untag-str1 (a64-sub-imm #x0 #x0 #x4))   ; x0 = str1 untagged
+            (load-str1 (ldr :x0 :sp :offset slot-off))
+            (untag-str1 (sub :x0 :x0 4 :imm t))      ; x0 = str1 untagged
             ;; Load str2 and untag
-            (load-str2 (a64-ldr #x1 #x1F slot-off2))
-            (untag-str2 (a64-sub-imm #x1 #x1 #x4))   ; x1 = str2 untagged
+            (load-str2 (ldr :x1 :sp :offset slot-off2))
+            (untag-str2 (sub :x1 :x1 4 :imm t))      ; x1 = str2 untagged
             ;; Compare lengths first: [x0+0] vs [x1+0]
-            (ldr-len1 (a64-ldr #x2 #x0 #x0))         ; x2 = len1
-            (ldr-len2 (a64-ldr #x3 #x1 #x0))         ; x3 = len2
-            (cmp-lens (a64-cmp-reg #x2 #x3))         ; compare lengths
-            ;; Branch to fail if lengths differ
-            ;; Skip: loop setup (1) + loop (7) + success (2) = 10 instrs = 40 bytes
-            (branch-ne-lens (a64-b-cond (cond-ne) #x2C))  ; 44 bytes forward to fail
+            (ldr-len1 (ldr :x2 :x0 :offset 0))       ; x2 = len1
+            (ldr-len2 (ldr :x3 :x1 :offset 0))       ; x3 = len2
+            (cmp-lens (cmp :x2 :x3))                 ; compare lengths
+            ;; Branch to fail if lengths differ (11 instructions forward)
+            (branch-ne-lens (b.ne 11))
             ;; Setup loop: x4 = 0 (index), x2 = len (already loaded)
-            (mov-idx (a64-movz #x4 #x0))             ; x4 = 0
+            (mov-idx (movz :x4 0))                   ; x4 = 0
             ;; Loop: while x4 < x2
-            (cmp-idx-len (a64-cmp-reg #x4 #x2))      ; compare idx < len
-            ;; Skip loop body (5 instrs = 20 bytes) + success (2 instrs = 8 bytes) = 28 bytes
-            (branch-done (a64-b-cond (cond-ge) #x1C))
+            (cmp-idx-len (cmp :x4 :x2))              ; compare idx < len
+            ;; Skip loop body (5) + success (2) = 7 instructions
+            (branch-done (b.ge 7))
             ;; Calculate offset: x5 = x4 + 8 (skip length header)
-            (add-off (a64-add-imm #x5 #x4 #x8))      ; x5 = idx + 8
+            (add-off (add :x5 :x4 8 :imm t))         ; x5 = idx + 8
             ;; Load bytes from both strings at offset
-            (ldrb-byte1 (a64-ldrb-reg #x6 #x0 #x5))  ; x6 = str1[idx+8]
-            (ldrb-byte2 (a64-ldrb-reg #x7 #x1 #x5))  ; x7 = str2[idx+8]
-            (cmp-bytes (a64-cmp-reg #x6 #x7))        ; compare bytes
-            ;; Skip inc+loop (2) + success (2) = 4 instrs = 16 bytes
-            (branch-ne-byte (a64-b-cond (cond-ne) #x10))
+            (ldrb-byte1 (ldrb :x6 :x0 :x5 :reg t))   ; x6 = str1[idx+8]
+            (ldrb-byte2 (ldrb :x7 :x1 :x5 :reg t))   ; x7 = str2[idx+8]
+            (cmp-bytes (cmp :x6 :x7))                ; compare bytes
+            ;; Skip inc+loop (2) + success (2) = 4 instructions
+            (branch-ne-byte (b.ne 4))
             ;; Increment and loop back
-            (inc-idx (a64-add-imm #x4 #x4 #x1))      ; x4++
-            ;; Back to cmp-idx-len: 6 instrs = 24 bytes
-            (branch-loop (a64-b #x-18))              ; back 24 bytes
+            (inc-idx (add :x4 :x4 1 :imm t))         ; x4++
+            ;; Back to cmp-idx-len: -6 instructions
+            (branch-loop (b -6))
             ;; Success: return tagged 1 (16)
-            (mov-one (a64-movz #x0 #x10))            ; x0 = 16 (tagged 1)
-            ;; Skip fail (1 instr = 4 bytes) + nop (1 = 4) = 8 bytes
-            (branch-end (a64-b #x8))                 ; skip to nop
+            (mov-one (movz :x0 16))                  ; x0 = 16 (tagged 1)
+            ;; Skip fail (1) + nop (1) = 2 instructions
+            (branch-end (b 2))
             ;; Fail: return tagged 0
-            (mov-zero (a64-movz #x0 #x0))            ; x0 = 0 (tagged 0)
+            (mov-zero (movz :x0 0))                  ; x0 = 0 (tagged 0)
             ;; NOP to align (common exit point)
-            (nop-exit (a64-nop)))
+            (nop-exit (nop)))
        (bytes-append-all (list str1-code save-str1 str2-code save-str2
                                load-str1 untag-str1 load-str2 untag-str2
                                ldr-len1 ldr-len2 cmp-lens branch-ne-lens
@@ -3603,25 +3371,25 @@
             (name (symbol-name sym))
             (name-len (string-length name))
             ;; First allocate the name string on heap
-            (name-total-size (logand (+ name-len #x8 #xF) (lognot #xF)))
+            (name-total-size (logand (+ name-len 8 15) (lognot 15)))
             (name-code (h0-codegen-str-lit name name-len name-total-size))
             ;; Save name string pointer
-            (save-name (a64-mov-reg #x1 #x0))
+            (save-name (mov :x1 :x0))
             ;; Now allocate symbol: 32 bytes for [name | value | plist | package]
             ;; Store name string at heap[0]
-            (str-name (a64-str #x1 #x1C #x0))
+            (str-name (str :x1 :x28 :offset 0))
             ;; Store nil (0x6) for value at heap[8]
-            (mov-nil (a64-movz #x0 #x6))
-            (str-value (a64-str #x0 #x1C #x8))
+            (mov-nil (movz :x0 6))
+            (str-value (str :x0 :x28 :offset 8))
             ;; Store nil for plist at heap[16]
-            (str-plist (a64-str #x0 #x1C #x10))
+            (str-plist (str :x0 :x28 :offset 16))
             ;; Store nil for package at heap[24]
-            (str-package (a64-str #x0 #x1C #x18))
+            (str-package (str :x0 :x28 :offset 24))
             ;; Get symbol pointer and tag with 2
-            (mov-ptr (a64-mov-reg #x0 #x1C))
-            (tag-sym (a64-add-imm #x0 #x0 #x2))
+            (mov-ptr (mov :x0 :x28))
+            (tag-sym (add :x0 :x0 2 :imm t))
             ;; Bump heap by 32 bytes
-            (bump-heap (a64-add-imm #x1C #x1C #x20)))
+            (bump-heap (add :x28 :x28 32 :imm t)))
        (bytes-append-all (list name-code save-name str-name mov-nil
                                str-value str-plist str-package
                                mov-ptr tag-sym bump-heap))))
@@ -3629,16 +3397,16 @@
     ;; EQL - compare for equality (works for numbers and symbols)
     ;; For tagged values: compare directly, result is 1 (t) or 0 (nil)
     ((h0-has-tag-n ir (ir-tag-eql))
-     (h0-codegen-cmp (cadr ir) (caddr ir) (cond-eq) td))
+     (h0-codegen-cmp (cadr ir) (caddr ir) 0 td))
 
     ;; GET-TAG - extract tag bits from tagged value
     ;; Result is tag (0-15) as tagged fixnum
     ((h0-has-tag-n ir (ir-tag-get-tag))
      (let* ((arg-code (h0-codegen (cadr ir) td))
             ;; Extract tag: and x0, x0, #0xF
-            (extract-tag (a64-and-imm #x0 #x0 #xF))
+            (extract-tag (and* :x0 :x0 #xF :imm t))
             ;; Tag result as fixnum
-            (tag-result (a64-lsl-imm #x0 #x0 #x4)))
+            (tag-result (lsl :x0 :x0 4 :imm t)))
        (bytes-append-all (list arg-code extract-tag tag-result))))
 
     ;; MAKE-STRING-FROM-VECTOR - create string from vector of character codes
@@ -3652,17 +3420,17 @@
     ((h0-has-tag-n ir (ir-tag-make-symbol-from-string))
      (let* ((name-code (h0-codegen (cadr ir) td))
             ;; Save name string at heap
-            (str-name (a64-str #x0 #x1C #x0))
+            (str-name (str :x0 :x28 :offset 0))
             ;; Store nil (0x6) for value, plist, package
-            (mov-nil (a64-movz #x0 #x6))
-            (str-value (a64-str #x0 #x1C #x8))
-            (str-plist (a64-str #x0 #x1C #x10))
-            (str-package (a64-str #x0 #x1C #x18))
+            (mov-nil (movz :x0 6))
+            (str-value (str :x0 :x28 :offset 8))
+            (str-plist (str :x0 :x28 :offset 16))
+            (str-package (str :x0 :x28 :offset 24))
             ;; Get symbol pointer and tag with 2
-            (mov-ptr (a64-mov-reg #x0 #x1C))
-            (tag-sym (a64-add-imm #x0 #x0 #x2))
+            (mov-ptr (mov :x0 :x28))
+            (tag-sym (add :x0 :x0 2 :imm t))
             ;; Bump heap by 32 bytes
-            (bump-heap (a64-add-imm #x1C #x1C #x20)))
+            (bump-heap (add :x28 :x28 32 :imm t)))
        (bytes-append-all (list name-code str-name mov-nil
                                str-value str-plist str-package
                                mov-ptr tag-sym bump-heap))))
@@ -3670,7 +3438,7 @@
     ;; ERROR - crash the program
     ((h0-has-tag-n ir (ir-tag-error))
      ;; Generate invalid instruction to crash: udf #0
-     (a64-udf #x0))
+     (udf 0))
 
     ;; Default - CRASH: unknown IR tag
     (t (fatal-error "h0-codegen: Unknown IR tag"))))
@@ -4334,26 +4102,26 @@
   "Wrap bytecode with heap initialization for executables with imports.
    heap-page-offset is the page offset from ADRP to __DATA segment."
   ;; Pre-compute all instructions to avoid function-calls-in-list crash
-  (let* ((i1 (a64-sub-imm #x1F #x1F #x200))        ; sub sp, sp, #512
-         (i2 (a64-str #x1E #x1F #x0))              ; str x30, [sp]
-         (i3 (a64-str #x1C #x1F #x8))              ; str x28, [sp, #8]
-         (i4 (a64-str #x1A #x1F #x10))             ; str x26, [sp, #16]
-         (i5 (a64-str #x1B #x1F #x18)))            ; str x27, [sp, #24]
-    (let* ((i6 (a64-str #x14 #x1F #x20))           ; str x20, [sp, #32]
-           (i7 (a64-add-imm #x14 #x1F #x40))       ; add x20, sp, #64
-           (i8 (macho-adrp #x1C heap-page-offset)) ; adrp x28, heap_page
-           (i9 (a64-mov-reg #x1B #x1C))            ; mov x27, x28
-           (i10 (a64-add-imm #x1C #x1C #x10)))     ; add x28, x28, #16
-      (let* ((i11 (macho-adr #x1A #x28))           ; adr x26, +40
-             (i12 (macho-bl #x9))                  ; bl +9
-             (i13 (a64-lsr-imm #x0 #x0 #x4))       ; lsr x0, x0, #4
-             (i14 (a64-ldr #x14 #x1F #x20))        ; ldr x20, [sp, #32]
-             (i15 (a64-ldr #x1B #x1F #x18)))       ; ldr x27, [sp, #24]
-        (let* ((i16 (a64-ldr #x1A #x1F #x10))      ; ldr x26, [sp, #16]
-               (i17 (a64-ldr #x1C #x1F #x8))       ; ldr x28, [sp, #8]
-               (i18 (a64-ldr #x1E #x1F #x0))       ; ldr x30, [sp]
-               (i19 (a64-add-imm #x1F #x1F #x200)) ; add sp, sp, #512
-               (i20 (a64-ret)))                    ; ret
+  (let* ((i1 (sub :sp :sp 512 :imm t))             ; sub sp, sp, #512
+         (i2 (str :x30 :sp :offset 0))             ; str x30, [sp]
+         (i3 (str :x28 :sp :offset 8))             ; str x28, [sp, #8]
+         (i4 (str :x26 :sp :offset 16))            ; str x26, [sp, #16]
+         (i5 (str :x27 :sp :offset 24)))           ; str x27, [sp, #24]
+    (let* ((i6 (str :x20 :sp :offset 32))          ; str x20, [sp, #32]
+           (i7 (add :x20 :sp 64 :imm t))           ; add x20, sp, #64
+           (i8 (macho-adrp 28 heap-page-offset))   ; adrp x28, heap_page
+           (i9 (mov :x27 :x28))                    ; mov x27, x28
+           (i10 (add :x28 :x28 16 :imm t)))        ; add x28, x28, #16
+      (let* ((i11 (macho-adr 26 40))               ; adr x26, +40
+             (i12 (macho-bl 9))                    ; bl +9
+             (i13 (lsr :x0 :x0 4 :imm t))          ; lsr x0, x0, #4
+             (i14 (ldr :x20 :sp :offset 32))       ; ldr x20, [sp, #32]
+             (i15 (ldr :x27 :sp :offset 24)))      ; ldr x27, [sp, #24]
+        (let* ((i16 (ldr :x26 :sp :offset 16))     ; ldr x26, [sp, #16]
+               (i17 (ldr :x28 :sp :offset 8))      ; ldr x28, [sp, #8]
+               (i18 (ldr :x30 :sp :offset 0))      ; ldr x30, [sp]
+               (i19 (add :sp :sp 512 :imm t))      ; add sp, sp, #512
+               (i20 (ret)))                        ; ret
           (let ((stub (bytes-append-all
                        (list i1 i2 i3 i4 i5 i6 i7 i8 i9 i10
                              i11 i12 i13 i14 i15 i16 i17 i18 i19 i20))))

@@ -15,7 +15,7 @@
    ;; Data movement
    #:movz #:movk #:movn #:mov #:adrp #:adr #:add-lo12
    ;; Arithmetic
-   #:add #:sub #:subs #:mul #:sdiv #:neg
+   #:add #:sub #:subs #:mul #:sdiv #:msub #:neg
    ;; Bitwise
    #:and* #:orr #:eor #:bic #:mvn #:lsl #:lsr #:asr
    ;; Memory
@@ -319,6 +319,15 @@
    Signed divide."
   (encode (logior #x9AC00C00
                   (ash (reg rm) 16)
+                  (ash (reg rn) 5)
+                  (reg rd))))
+
+(defun msub (rd rn rm ra)
+  "MSUB Xd, Xn, Xm, Xa
+   Multiply-subtract: Xd = Xa - Xn * Xm"
+  (encode (logior #x9B008000
+                  (ash (reg rm) 16)
+                  (ash (reg ra) 10)
                   (ash (reg rn) 5)
                   (reg rd))))
 

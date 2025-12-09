@@ -3686,8 +3686,10 @@
          (*defined-globals* (collect-globals forms nil))
          ;; Pass 2: Collect all defun names
          (fn-names (collect-defun-names forms nil))
-         ;; Build fenv with all function names as placeholders
-         (fenv fn-names))
+         ;; Add declared imports to fn-names (they have unknown params, use nil)
+         (import-fenv (mapcar (lambda (name) (cons name (cons nil nil))) *declared-imports*))
+         ;; Build fenv with all function names + imports
+         (fenv (append fn-names import-fenv)))
     ;; Pass 2: Compile all defuns with complete fenv
     (let* ((compiled-fns (reverse (compile-defuns forms nil fenv nil)))
            ;; Find and compile the main expression

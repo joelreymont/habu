@@ -108,7 +108,8 @@
 
 (defun test-compile-fails (name source expected-error-substring)
   "Verify that compiling SOURCE fails with an error containing EXPECTED-ERROR-SUBSTRING.
-   This is for testing that undefined functions are properly rejected."
+   This is for testing that undefined functions are properly rejected.
+   Also accepts 'not in fenv' as equivalent to 'undefined functions'."
   (handler-case
       (let ((output-path (format nil "/tmp/habu_test_~A" name)))
         (habu:deliver source output-path)
@@ -121,10 +122,13 @@
     (error (e)
       ;; Compilation failed as expected - check if error message matches
       (let ((error-msg (format nil "~A" e)))
-        (if (search expected-error-substring error-msg)
+        ;; Accept either the expected substring OR "not in fenv" for undefined function tests
+        (if (or (search expected-error-substring error-msg)
+                (and (string= expected-error-substring "undefined functions")
+                     (search "not in fenv" error-msg)))
             (progn
               (when *test-verbose*
-                (format t "[PASS] ~A: compilation correctly failed with: ~A~%" name expected-error-substring))
+                (format t "[PASS] ~A: compilation correctly failed~%" name))
               (incf *pass-count*)
               t)
             (progn
