@@ -1524,12 +1524,13 @@
          (output (or (jget args "output")
                      (namestring (merge-pathnames "habu0" habu-dir))))
          ;; Read with SBCL's reader in HABU package (so primitives resolve correctly)
+         ;; Use (code-char 10) for newline to avoid reader macro issues
          (script (format nil "(habu:deliver-forms ~
                                (let ((*package* (find-package :habu))) ~
                                  (with-input-from-string ~
                                    (s (concatenate 'string ~
                                         (uiop:read-file-string ~S) ~
-                                        (string #~~Newline) ~
+                                        (string (code-char 10)) ~
                                         (uiop:read-file-string ~S))) ~
                                    (loop for form = (read s nil :eof) ~
                                          until (eq form :eof) ~

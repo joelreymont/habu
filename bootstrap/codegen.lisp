@@ -4599,7 +4599,9 @@
 (defun deliver-forms (forms output-path &optional (heap-size #x4000000))
   "Compile pre-parsed forms to native executable.
    Use when you need SBCL's reader for package-qualified symbols.
-   Usage: (habu:deliver-forms (read-forms-with-sbcl source) \"output\")"
+   Usage: (habu:deliver-forms (read-forms-with-sbcl source) \"output\")
+
+   This is identical to deliver but takes pre-parsed forms instead of source string."
   (reset-symbol-table)
   (reset-lambda-counter)
   (reset-compile-warnings)
@@ -4607,26 +4609,101 @@
          (defuns-orig (car result))
          (main-ir-orig (cadr result))
          (wrapper-size +heap-wrapper-size+)
+         ;; Lift lambdas from main-ir
          (main-lift-result (lift-lambdas-2 main-ir-orig nil))
          (main-ir (car main-lift-result))
          (main-lambdas (cdr main-lift-result))
+         ;; Lift lambdas from defun bodies
          (defun-lift-result (lift-lambdas-from-defuns defuns-orig nil nil))
          (defuns (car defun-lift-result))
          (defun-lambdas (cdr defun-lift-result))
+         ;; Combine all lambdas
          (all-lambdas (append main-lambdas defun-lambdas)))
+
     ;; Full compilation path with GC runtime
-    (let* ((all-fns (append defuns all-lambdas))
+    (let* ((lambda-as-defuns (lambdas-to-defuns all-lambdas nil))
+           (all-fns-raw (append defuns lambda-as-defuns))
+           ;; Apply TCO to all functions
+           (all-fns (apply-tco-to-all-functions all-fns-raw))
+           ;; Link-time verification
+           (_ (when (verify-link-references (mapcar #'car all-fns))
+                (error "Link failed: undefined function references")))
+           ;; Generate main code using linear codegen
+           (main-linear (linearize main-ir))
+           (main-code-temp (append-all
+                            (list (fn-fixed-prologue)
+                                  (codegen main-linear nil nil)
+                                  (fn-fixed-epilogue))))
+           (main-size (code-size main-code-temp))
+           ;; Build fnoffs starting after main code
+           (fnoffs (build-fnoffs all-fns main-size))
+           ;; Regenerate main with fnoffs
+           (main-code (append-all
+                       (list (fn-fixed-prologue)
+                             (codegen main-linear nil fnoffs)
+                             (fn-fixed-epilogue))))
+           ;; Generate all function code
+           (fn-code (codegen-all-fns all-fns nil fnoffs nil))
+           ;; Generate GC runtime code
            (gc-code (gc-runtime-code))
-           (gc-size (length gc-code))
-           (all-fnoffs (codegen-all-fns all-fns gc-size wrapper-size nil nil))
-           (fn-code (extract-fn-code all-fnoffs nil))
-           (main-code (codegen main-ir all-fnoffs))
-           (main-size (length main-code))
-           (all-code (append gc-code fn-code main-code))
-           (code-bytes (wrap-bytecode-with-heap-for-imports all-code 0))
-           (imports nil))
-      (deliver-with-imports-and-heap output-path code-bytes imports heap-size)
-      (write-symbol-map output-path all-fnoffs main-size imports 0)
+           ;; Combine all code
+           (all-code (append main-code fn-code gc-code))
+           ;; Flatten with markers
+           (bytes-with-markers (flatten-code-keep-markers-and-calls all-code))
+           ;; Collect extern calls
+           (extern-calls (collect-extern-calls bytes-with-markers))
+           (imports-raw (get-unique-imports extern-calls))
+           ;; Always ensure _exit is in imports
+           (imports (if (member "_exit" imports-raw :test #'string=)
+                        imports-raw
+                        (cons "_exit" imports-raw)))
+           ;; Calculate layout
+           (code-offset #x400)
+           (exact-flat-size (count-actual-bytes bytes-with-markers))
+           (stubs-total (* (length imports) 12))
+           (stubs-offset-unaligned (+ code-offset wrapper-size exact-flat-size))
+           (stubs-offset (* (ceiling stubs-offset-unaligned 4) 4))
+           (stub-size 12)
+           (stubs-end (+ stubs-offset stubs-total))
+           ;; Build stub alist
+           (stub-alist (build-stub-alist imports stubs-offset stub-size))
+           ;; Convert fnoffs to byte addresses
+           (fn-addr-base (+ code-offset wrapper-size))
+           (fn-alist-base (build-fn-addr-alist fnoffs fn-addr-base nil))
+           ;; Extract GC function labels
+           (gc-fn-alist (extract-fn-labels bytes-with-markers fn-addr-base))
+           ;; Merge user functions + GC functions
+           (fn-alist (append fn-alist-base gc-fn-alist))
+           ;; Flatten all call markers
+           (flatten-result (flatten-all-calls bytes-with-markers fn-alist stub-alist fn-addr-base))
+           (flat-code (car flatten-result))
+           ;; Build all-fnoffs (needed for symtab)
+           (all-fnoffs (append fnoffs
+                               (mapcar (lambda (entry)
+                                         (cons (car entry)
+                                               (- (cdr entry) fn-addr-base)))
+                                       gc-fn-alist)))
+           ;; Emit symbol table bytes
+           (symtab-bytes (emit-symbol-table all-fnoffs main-size))
+           (symtab-size (length symtab-bytes))
+           ;; Calculate heap page offset
+           (text-content-end (+ stubs-end symtab-size))
+           (text-vmsize (* (ceiling text-content-end #x4000) #x4000))
+           (text-pages-4kb (/ text-vmsize #x1000))
+           (heap-page-offset (+ text-pages-4kb 4))
+           ;; Calculate symtab offset
+           (symtab-offset (- stubs-end (+ code-offset wrapper-size)))
+           (symtab-count (1+ (length all-fnoffs)))
+           ;; Wrap with heap initialization
+           (wrapped-code (wrap-bytecode-with-heap-for-imports flat-code
+                                                               heap-page-offset
+                                                               symtab-offset
+                                                               symtab-count)))
+
+      ;; Write executable
+      (write-macho-executable-with-imports-and-heap output-path wrapped-code imports heap-size
+                                                    all-fnoffs symtab-bytes)
+      (write-symbol-map output-path all-fnoffs main-size imports stubs-offset)
       (let* ((debug-vars (extract-debug-vars all-fns))
              (debug-table (emit-debug-table debug-vars all-fnoffs)))
         (write-debug-info output-path debug-vars debug-table)))))
