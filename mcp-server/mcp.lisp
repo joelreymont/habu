@@ -1523,16 +1523,17 @@
                            (namestring (merge-pathnames "habu0.lisp" habu-dir))))
          (output (or (jget args "output")
                      (namestring (merge-pathnames "habu0" habu-dir))))
-         ;; Read with SBCL's reader (respects packages), then compile with Habu
+         ;; Read with SBCL's reader in HABU package (so primitives resolve correctly)
          (script (format nil "(habu:deliver-forms ~
-                               (with-input-from-string ~
-                                 (s (concatenate 'string ~
-                                      (uiop:read-file-string ~S) ~
-                                      (string #~~Newline) ~
-                                      (uiop:read-file-string ~S))) ~
-                                 (loop for form = (read s nil :eof) ~
-                                       until (eq form :eof) ~
-                                       collect form)) ~
+                               (let ((*package* (find-package :habu))) ~
+                                 (with-input-from-string ~
+                                   (s (concatenate 'string ~
+                                        (uiop:read-file-string ~S) ~
+                                        (string #~~Newline) ~
+                                        (uiop:read-file-string ~S))) ~
+                                   (loop for form = (read s nil :eof) ~
+                                         until (eq form :eof) ~
+                                         collect form))) ~
                                ~S)"
                          arm64-source habu0-source output))
          (timeout (or (jget args "timeout") (get-default-timeout :build))))

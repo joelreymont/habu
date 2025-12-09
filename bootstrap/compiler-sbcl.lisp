@@ -2367,10 +2367,12 @@
          ;; system - execute shell command
          ((eq op 'system)
           (list 'system-ir (sys:compile (cadr expr) env fenv)))
-         ;; error - signal error and crash (for now, just exit with code 1)
+         ;; error - call fatal-error with message for stack trace and proper crash
          ((eq op 'error)
-          ;; Ignoring the error message for now, just crash
-          (list 'sys-exit (list 'lit 16)))  ; Exit code 1 (16 = 1 << 4 tagged)
+          (let ((msg-ir (if (cdr expr)
+                            (sys:compile (cadr expr) env fenv)
+                            (list 'str-lit "error"))))
+            (list 'call-fn 'fatal-error (list msg-ir))))
          ;; string= - compare two strings (via runtime)
          ((eq op 'string=)
           (list 'string-equal-ir
@@ -3072,7 +3074,7 @@
                         (bind (cdr vs) (cdr os)
                               (append e (list v)))))))
          (eval-ir bir (bind vals offs env)))))
-    (t 0)))
+    (t (error "eval-ir: Unhandled IR tag ~S" (if (consp ir) (car ir) ir)))))
 
 ;; Global function environment for IR evaluation
 (defvar *fenv* nil)
@@ -3431,7 +3433,7 @@
                         (pad (cdr vs) (- n 1) (cons (car vs) acc)))))
            (let ((padded-vals (pad vals nvars nil)))
              (eval-ir-with-fns body-ir (append env padded-vals) fenv))))))
-    (t 0)))
+    (t (error "eval-ir-with-fns: Unhandled IR tag ~S" (if (consp ir) (car ir) ir)))))
 
 
 ;;; ============================================================
@@ -4738,8 +4740,8 @@
         ((integerp item)
          (push item result)
          (incf pos))
-        ;; Skip other markers (shouldn't happen but be safe)
-        (t nil)))
+        ;; Unknown marker type - this indicates a compiler bug
+        (t (error "extract-markers-from-bytecode: Unknown marker ~S at position ~D" item pos))))
     (values (nreverse result) (nreverse extern-calls) (nreverse internal-calls))))
 
 ;; Backward compatibility alias
@@ -5203,8 +5205,8 @@
          (dolist (b item)
            (push b flat)
            (incf current-pos)))
-        ;; Skip unknown markers
-        (t nil)))
+        ;; Unknown marker type - indicates compiler bug
+        (t (error "flatten-gc-code: Unknown marker type ~S" item))))
     (list (reverse flat) (reverse labels) (reverse internal-calls))))
 
 (defun generate-gc-fasl (output-path)
