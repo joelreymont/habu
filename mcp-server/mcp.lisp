@@ -1512,16 +1512,24 @@
 
 (defun tool-build-habu0 (args)
   "Build habu0 binary in a separate SBCL process for isolation.
+   Concatenates arm64/asm.lisp + habu0.lisp to provide ARM64 encoders.
    Uses generic process runner with timeout."
   (let* ((habu-dir (merge-pathnames
                     (make-pathname :directory '(:relative :up))
                     (make-pathname :directory (pathname-directory *load-truename*))))
          (bootstrap-dir (merge-pathnames "bootstrap/" habu-dir))
-         (source (or (jget args "source")
-                     (namestring (merge-pathnames "habu0.lisp" habu-dir))))
+         (arm64-source (namestring (merge-pathnames "arm64/asm.lisp" habu-dir)))
+         (habu0-source (or (jget args "source")
+                           (namestring (merge-pathnames "habu0.lisp" habu-dir))))
          (output (or (jget args "output")
                      (namestring (merge-pathnames "habu0" habu-dir))))
-         (script (format nil "(habu:self-compile ~S ~S)" source output))
+         ;; Concatenate arm64/asm.lisp + habu0.lisp, then compile
+         (script (format nil "(habu:deliver (concatenate 'string ~
+                               (uiop:read-file-string ~S) ~
+                               (string #\\Newline) ~
+                               (uiop:read-file-string ~S)) ~
+                               ~S)"
+                         arm64-source habu0-source output))
          (timeout (or (jget args "timeout") (get-default-timeout :build))))
     (handler-case
         (multiple-value-bind (stdout stderr exit-code killed)
