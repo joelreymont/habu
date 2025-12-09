@@ -49,7 +49,7 @@
 (in-package :habu-mcp)
 
 ;;; Version to verify new code is running (update on each change)
-(defparameter *server-version* "v7-2025-12-09-bd-fix")
+(defparameter *server-version* "v8-2025-12-09-dispatch-file-output")
 
 ;;; Forward declarations to suppress style warnings
 (declaim (ftype (function (string character) list) split-string))
@@ -267,7 +267,7 @@
 ;;; Large Output to Temp File Support
 ;;; ============================================================
 
-(defparameter *large-output-threshold* 500 "Chars above which output goes to temp file")
+(defparameter *large-output-threshold* 10000 "Chars above which output goes to temp file (~2500 tokens)")
 
 (defun maybe-write-to-file (content)
   "If content exceeds threshold, write to temp file and return path message.
@@ -1512,23 +1512,38 @@
 
 (defun tool-build-habu0 (args)
   "Build habu0 binary in a separate SBCL process for isolation.
-   Concatenates arm64/asm.lisp + habu0.lisp to provide ARM64 encoders.
+   Concatenates files in order:
+   1. shared/macros.lisp - macro definitions (dolist, when, unless)
+   2. arm64/asm.lisp - ARM64 instruction encoders
+   3. habu0.lisp - core compiler/interpreter
+   4. bootstrap/reg-alloc.lisp - register allocator (UNCHANGED)
+   5. bootstrap/codegen.lisp - code generator (UNCHANGED)
    Uses generic process runner with timeout."
   (let* ((habu-dir (merge-pathnames
                     (make-pathname :directory '(:relative :up))
                     (make-pathname :directory (pathname-directory *load-truename*))))
          (bootstrap-dir (merge-pathnames "bootstrap/" habu-dir))
+         ;; Source files in concatenation order
+         (macros-source (namestring (merge-pathnames "shared/macros.lisp" habu-dir)))
          (arm64-source (namestring (merge-pathnames "arm64/asm.lisp" habu-dir)))
          (habu0-source (or (jget args "source")
                            (namestring (merge-pathnames "habu0.lisp" habu-dir))))
+         (reg-alloc-source (namestring (merge-pathnames "bootstrap/reg-alloc.lisp" habu-dir)))
+         (codegen-source (namestring (merge-pathnames "bootstrap/codegen.lisp" habu-dir)))
          (output (or (jget args "output")
                      (namestring (merge-pathnames "habu0" habu-dir))))
          ;; Read with SBCL's reader in HABU package (so primitives resolve correctly)
-         ;; Use (code-char 10) for newline to avoid reader macro issues
+         ;; Concatenate: macros + arm64 + habu0 + reg-alloc + codegen
          (script (format nil "(habu:deliver-forms ~
                                (let ((*package* (find-package :habu))) ~
                                  (with-input-from-string ~
                                    (s (concatenate 'string ~
+                                        (uiop:read-file-string ~S) ~
+                                        (string (code-char 10)) ~
+                                        (uiop:read-file-string ~S) ~
+                                        (string (code-char 10)) ~
+                                        (uiop:read-file-string ~S) ~
+                                        (string (code-char 10)) ~
                                         (uiop:read-file-string ~S) ~
                                         (string (code-char 10)) ~
                                         (uiop:read-file-string ~S))) ~
@@ -1536,7 +1551,7 @@
                                          until (eq form :eof) ~
                                          collect form))) ~
                                ~S)"
-                         arm64-source habu0-source output))
+                         macros-source arm64-source habu0-source reg-alloc-source codegen-source output))
          (timeout (or (jget args "timeout") (get-default-timeout :build))))
     (handler-case
         (multiple-value-bind (stdout stderr exit-code killed)
@@ -1675,11 +1690,12 @@
       (format out "run~%"))))
 
 (defun dispatch-tool (name args)
-  "Dispatch tool by name using handler from *tools*."
+  "Dispatch tool by name using handler from *tools*.
+   All tool outputs are automatically checked for size and written to file if large."
   (let* ((tool (find name *tools* :key #'car :test #'string=))
          (handler (when tool (fourth tool))))
     (if handler
-        (funcall handler args)
+        (maybe-write-to-file (funcall handler args))
         (format nil "Unknown tool: ~A" name))))
 
 ;;; ============================================================

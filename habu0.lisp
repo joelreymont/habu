@@ -434,6 +434,56 @@
 (defun string-concat3 (s1 s2 s3)
   (string-concat (string-concat s1 s2) s3))
 
+;; Create a list of n nil values
+(defun make-list (n)
+  (make-list-loop n nil))
+
+(defun make-list-loop (n acc)
+  (if (<= n 0)
+      acc
+      (make-list-loop (- n 1) (cons nil acc))))
+
+;; Standard list utility functions (needed by register allocator)
+(defun equal (a b)
+  (cond
+    ((eq a b) t)
+    ((and (consp a) (consp b))
+     (and (equal (car a) (car b))
+          (equal (cdr a) (cdr b))))
+    ((and (stringp a) (stringp b))
+     (string= a b))
+    (t nil)))
+
+(defun member (item lst)
+  (if (null lst)
+      nil
+      (if (eq item (car lst))
+          lst
+          (member item (cdr lst)))))
+
+(defun assoc (key alist)
+  (if (null alist)
+      nil
+      (if (eq key (caar alist))
+          (car alist)
+          (assoc key (cdr alist)))))
+
+(defun copy-list (lst)
+  (if (null lst)
+      nil
+      (cons (car lst) (copy-list (cdr lst)))))
+
+(defun listp (x)
+  (or (null x) (consp x)))
+
+;; Compound car/cdr accessors (needed by register allocator)
+(defun cadar (x) (car (cdr (car x))))
+(defun cddr (x) (cdr (cdr x)))
+
+;; subseq - works on strings (for register allocator compatibility)
+(defun subseq (s start &optional end)
+  (substring s start (if end end (string-length s))))
+
 ;;; ============================================================
 ;;; Package system
 ;;; ============================================================
@@ -2382,6 +2432,14 @@
          ((sym= op "CDR")
           (let ((v (h0-compile (cadr expr) env fenv)))
             (list (ir-tag-cdr) v)))
+         ((sym= op "SETCAR")
+          (let* ((cell-ir (h0-compile (cadr expr) env fenv))
+                 (val-ir (h0-compile (caddr expr) env fenv)))
+            (list 'setcar-ir cell-ir val-ir)))
+         ((sym= op "SETCDR")
+          (let* ((cell-ir (h0-compile (cadr expr) env fenv))
+                 (val-ir (h0-compile (caddr expr) env fenv)))
+            (list 'setcdr-ir cell-ir val-ir)))
          ((sym= op "NULL")
           (let ((v (h0-compile (cadr expr) env fenv)))
             (list (ir-tag-null) v)))
@@ -2498,6 +2556,39 @@
                  (body-ir (h0-compile-progn (cddr expr) env fenv))
                  (else-ir (list (ir-tag-lit) #x0)))
             (list (ir-tag-if) not-test-ir body-ir else-ir)))
+         ;; DOLIST - expand to labels loop
+         ;; (dolist (var list) body...) =>
+         ;; (let ((#:list list))
+         ;;   (labels ((#:loop ()
+         ;;              (when #:list
+         ;;                (let ((var (car #:list)))
+         ;;                  body...
+         ;;                  (setq #:list (cdr #:list))
+         ;;                  (#:loop)))))
+         ;;     (#:loop))
+         ;;   nil)
+         ((sym= op "DOLIST")
+          (let* ((binding (cadr expr))
+                 (var (car binding))
+                 (list-expr (cadr binding))
+                 (body (cddr expr))
+                 ;; Generate unique names using gensym-like approach
+                 (list-var (intern "#:DOLIST-LIST"))
+                 (loop-fn (intern "#:DOLIST-LOOP"))
+                 ;; Build the expanded form and compile it
+                 (expanded
+                  (list 'let (list (list list-var list-expr))
+                        (list 'labels
+                              (list (list loop-fn (list)
+                                          (list 'when list-var
+                                                (list 'let (list (list var (list 'car list-var)))
+                                                      (cons 'progn
+                                                            (append body
+                                                                    (list (list 'setq list-var (list 'cdr list-var))
+                                                                          (list loop-fn))))))))
+                              (list loop-fn))
+                        nil)))
+            (h0-compile expanded env fenv)))
          ;; LAMBDA - create closure
          ((sym= op "LAMBDA")
           (let* ((params (cadr expr))
@@ -3328,7 +3419,7 @@
                                                                                                                                                                                                                                                         (if (= tag (intern "BUFFER-TO-STRING-IR")) (h0-linearize-buffer-to-string ir state)
                                                                                                                                                                                                                                                             ;; Symbol table
                                                                                                                                                                                                                                                             (if (= tag (intern "GET-SYMTAB-OFFSET-IR")) (h0-linearize-get-symtab-offset ir state)
-                                                                                                                                                                                                                                                                (error "linearize-expr: unknown IR type")))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))
+                                                                                                                                                                                                                                                                (error "linearize-expr: unknown IR type"))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))
 
 ;; Helper functions for complex operations
 
@@ -3989,6 +4080,31 @@
           (list (h0-linear-load-temp :x0 src)
                 (sub :x0 :x0 1 :imm t)
                 (ldr :x0 :x0 :offset 8)
+                (h0-linear-save-temp dst)))))
+
+      ;; Cons cell mutation
+      ((eq op 'setcar)
+       (let ((dst (cadr instr))
+             (cell (caddr instr))
+             (val (cadddr instr)))
+         (bytes-append-all
+          (list (h0-linear-load-temp :x0 cell)
+                (h0-linear-load-temp :x1 val)
+                (sub :x0 :x0 1 :imm t)           ; untag cons ptr
+                (str :x1 :x0 :offset 0)          ; store to car slot
+                (mov :x0 :x1)                     ; return value
+                (h0-linear-save-temp dst)))))
+
+      ((eq op 'setcdr)
+       (let ((dst (cadr instr))
+             (cell (caddr instr))
+             (val (cadddr instr)))
+         (bytes-append-all
+          (list (h0-linear-load-temp :x0 cell)
+                (h0-linear-load-temp :x1 val)
+                (sub :x0 :x0 1 :imm t)           ; untag cons ptr
+                (str :x1 :x0 :offset 8)          ; store to cdr slot
+                (mov :x0 :x1)                     ; return value
                 (h0-linear-save-temp dst)))))
 
       ;; Get tag bits
@@ -4724,706 +4840,6 @@
 
     ;; Default - CRASH: unknown IR tag
     (t (fatal-error "h0-codegen: Unknown IR tag"))))
-
-;;; ==========================================================================
-;;; Register Allocation via 5-Pass Pipeline
-;;; ==========================================================================
-;;;
-;;; Ported from bootstrap/reg-alloc.lisp to habu0.lisp syntax
-;;; (no loop, case, incf, hash tables - uses recursion, cond, explicit arithmetic)
-
-;;; Virtual register management
-(defun make-vreg-counter ()
-  "Create a fresh virtual register counter (mutable cons cell)"
-  (cons 0 nil))
-
-(defun next-vreg (counter)
-  "Allocate next virtual register number"
-  (let ((n (car counter)))
-    (setcar counter (+ n 1))
-    n))
-
-;;; IR tag helpers
-(defun ir-tag-name (sym)
-  "Get the symbol name as a string for tag comparison"
-  (if (symbolp sym)
-      (symbol-name sym)
-      ""))
-
-(defun ir-tag-matches (sym name)
-  "Check if symbol matches the given name string (case-insensitive)"
-  (string-equal (ir-tag-name sym) name))
-
-(defun ir-tag-member (sym names)
-  "Check if symbol matches any of the given name strings"
-  (let ((tag (ir-tag-name sym)))
-    (labels ((check (lst)
-               (if (null lst)
-                   nil
-                   (if (string-equal tag (car lst))
-                       t
-                       (check (cdr lst))))))
-      (check names))))
-
-;;; TCO loop tracking for continue-ir resolution
-(defvar *tco-loop-label* nil
-  "Current loop label for TCO. Set by loop-ir, used by continue-ir.")
-(defvar *tco-loop-marker* nil
-  "Current loop marker for TCO. Set by loop-ir, used by continue-ir.")
-
-;;; Block/return-from tracking
-(defvar *block-labels* nil
-  "Alist of (block-id . end-label) for return-from resolution.")
-(defvar *block-results* nil
-  "Alist of (block-id . result-vreg) for return-from resolution.")
-
-;;; ============================================================
-;;; Pass 1: IR to TAC Conversion
-;;; ============================================================
-
-(defun ir-to-tac (ir counter)
-  "Convert IR tree to TAC instructions.
-   Returns (instructions result-vreg) where result-vreg holds the value."
-  (cond
-    ;; Literal number - raw value, tagging applied in tac-codegen
-    ((numberp ir)
-     (let ((vr (next-vreg counter)))
-       (list (list (list 'tac-lit vr ir)) vr)))
-
-    ;; (lit value) - literal
-    ((and (consp ir) (ir-tag-matches (car ir) "LIT"))
-     (let ((vr (next-vreg counter)))
-       (list (list (list 'tac-lit vr (cadr ir))) vr)))
-
-    ;; (var offset) - variable reference
-    ((and (consp ir) (ir-tag-matches (car ir) "VAR"))
-     (let ((vr (next-vreg counter)))
-       (list (list (list 'tac-var vr (cadr ir))) vr)))
-
-    ;; Binary operations: add, sub, mul, div, mod, bsh, band, bor, bxor
-    ((and (consp ir) (ir-tag-member (car ir) '("ADD" "SUB" "MUL" "DIV" "MOD" "BSH" "BAND" "BOR" "BXOR"
-                                               "MOD-IR" "DIV-IR" "ADD-IR" "SUB-IR" "MUL-IR")))
-     (let* ((left-result (ir-to-tac (cadr ir) counter))
-            (left-instrs (car left-result))
-            (left-vr (cadr left-result))
-            (right-result (ir-to-tac (caddr ir) counter))
-            (right-instrs (car right-result))
-            (right-vr (cadr right-result))
-            (result-vr (next-vreg counter))
-            (raw-name (ir-tag-name (car ir)))
-            ;; Strip -IR suffix if present
-            (op-name (if (and (> (length raw-name) 3)
-                              (string= (subseq raw-name (- (length raw-name) 3)) "-IR"))
-                         (subseq raw-name 0 (- (length raw-name) 3))
-                         raw-name)))
-       (list (append left-instrs
-                     right-instrs
-                     (list (list 'tac-binop result-vr
-                                 (intern op-name :keyword)
-                                 left-vr right-vr)))
-             result-vr)))
-
-    ;; Comparison operations
-    ((and (consp ir) (ir-tag-member (car ir) '("CMP-EQ" "CMP-NE" "CMP-LT" "CMP-LE" "CMP-GT" "CMP-GE")))
-     (let* ((left-result (ir-to-tac (cadr ir) counter))
-            (left-instrs (car left-result))
-            (left-vr (cadr left-result))
-            (right-result (ir-to-tac (caddr ir) counter))
-            (right-instrs (car right-result))
-            (right-vr (cadr right-result))
-            (result-vr (next-vreg counter))
-            (op-name (ir-tag-name (car ir))))
-       (list (append left-instrs
-                     right-instrs
-                     (list (list 'tac-cmp result-vr (intern op-name :keyword) left-vr right-vr)))
-             result-vr)))
-
-    ;; if-ir: conditional expression
-    ((and (consp ir) (ir-tag-matches (car ir) "IF-IR"))
-     (let* ((cond-result (ir-to-tac (cadr ir) counter))
-            (cond-instrs (car cond-result))
-            (cond-vr (cadr cond-result))
-            (result-vr (next-vreg counter))
-            (then-label (next-vreg counter))
-            (else-label (next-vreg counter))
-            (end-label (next-vreg counter))
-            (then-result (ir-to-tac (caddr ir) counter))
-            (then-instrs (car then-result))
-            (then-vr (cadr then-result))
-            (else-result (ir-to-tac (cadddr ir) counter))
-            (else-instrs (car else-result))
-            (else-vr (cadr else-result)))
-       (list (append cond-instrs
-                     (list (list 'tac-if cond-vr then-label else-label))
-                     (list (list 'tac-label then-label))
-                     then-instrs
-                     (list (list 'tac-move result-vr then-vr))
-                     (list (list 'tac-goto end-label))
-                     (list (list 'tac-label else-label))
-                     else-instrs
-                     (list (list 'tac-move result-vr else-vr))
-                     (list (list 'tac-label end-label)))
-             result-vr)))
-
-    ;; Default: return nil for unsupported IR
-    (t
-     (list nil nil))))
-
-;;; ============================================================
-;;; Pass 2: Liveness Analysis
-;;; ============================================================
-
-(defun tac-def (instr)
-  "Return the vreg defined by this instruction (or nil)"
-  (let ((op (car instr)))
-    (cond
-      ;; Instructions that define a result vreg (vreg is second element)
-      ((or (eq op 'tac-lit) (eq op 'tac-param) (eq op 'tac-var)
-           (eq op 'tac-binop) (eq op 'tac-cmp) (eq op 'tac-call)
-           (eq op 'tac-move) (eq op 'tac-nil) (eq op 'tac-cons)
-           (eq op 'tac-car) (eq op 'tac-cdr))
-       (cadr instr))
-      ;; Instructions that don't define a vreg
-      (t nil))))
-
-(defun tac-use (instr)
-  "Return list of vregs used by this instruction"
-  (let ((op (car instr)))
-    (cond
-      ;; Instructions with no vreg uses
-      ((or (eq op 'tac-lit) (eq op 'tac-param) (eq op 'tac-var)
-           (eq op 'tac-label) (eq op 'tac-goto) (eq op 'tac-nil))
-       nil)
-      ;; Binary operations: (tac-binop dest op vr1 vr2)
-      ((or (eq op 'tac-binop) (eq op 'tac-cmp))
-       (list (cadddr instr) (nth 4 instr)))
-      ;; setvar: (tac-setvar offset vreg)
-      ((eq op 'tac-setvar)
-       (list (caddr instr)))
-      ;; Conditionals: (tac-if cond-vreg then else)
-      ((eq op 'tac-if)
-       (list (cadr instr)))
-      ;; Return: (tac-return vreg)
-      ((eq op 'tac-return)
-       (list (cadr instr)))
-      ;; Unary ops: (tac-X dest src)
-      ((or (eq op 'tac-move) (eq op 'tac-car) (eq op 'tac-cdr))
-       (list (caddr instr)))
-      ;; Cons: (tac-cons dest car cdr)
-      ((eq op 'tac-cons)
-       (list (caddr instr) (cadddr instr)))
-      ;; Default: no uses
-      (t nil))))
-
-(defun compute-liveness (tac-instrs)
-  "Compute liveness for TAC instructions.
-   Returns list of (instr live-in live-out) tuples."
-  (let* ((n (length tac-instrs))
-         (live-in (make-list n))
-         (live-out (make-list n))
-         (changed t))
-    ;; Helper functions
-    (labels ((find-label-index (label instrs idx)
-               (if (null instrs)
-                   nil
-                   (if (and (eq (caar instrs) 'tac-label)
-                            (= (cadar instrs) label))
-                       idx
-                       (find-label-index label (cdr instrs) (+ idx 1)))))
-
-             (successors (instr idx)
-               ;; Return indices of successor instructions
-               (cond
-                 ((eq (car instr) 'tac-goto)
-                  (let ((target (find-label-index (cadr instr) tac-instrs 0)))
-                    (if target (list target) nil)))
-                 ((eq (car instr) 'tac-if)
-                  (let ((then-idx (find-label-index (caddr instr) tac-instrs 0))
-                        (else-idx (find-label-index (cadddr instr) tac-instrs 0)))
-                    (append (if then-idx (list then-idx) nil)
-                            (if else-idx (list else-idx) nil))))
-                 ((eq (car instr) 'tac-return)
-                  nil)
-                 (t
-                  (if (< (+ idx 1) n) (list (+ idx 1)) nil))))
-
-             (set-union (a b)
-               (if (null a) b
-                   (if (member (car a) b)
-                       (set-union (cdr a) b)
-                       (cons (car a) (set-union (cdr a) b)))))
-
-             (set-diff (a b)
-               (if (null a) nil
-                   (if (member (car a) b)
-                       (set-diff (cdr a) b)
-                       (cons (car a) (set-diff (cdr a) b)))))
-
-             (nth-set (lst idx val)
-               ;; Destructively set nth element
-               (if (= idx 0)
-                   (setcar lst val)
-                   (nth-set (cdr lst) (- idx 1) val)))
-
-             (iterate ()
-               ;; One pass of backward dataflow
-               (setq changed nil)
-               (let ((idx (- n 1)))
-                 (labels ((process-instr (instrs)
-                            (when instrs
-                              (let* ((instr (car instrs))
-                                     (succs (successors instr idx))
-                                     (new-out (let ((result nil))
-                                                (dolist (s succs)
-                                                  (setq result (set-union result (nth s live-in))))
-                                                result))
-                                     (def (tac-def instr))
-                                     (use (tac-use instr))
-                                     (new-in (set-union use (set-diff new-out (if def (list def) nil)))))
-                                (unless (equal new-in (nth idx live-in))
-                                  (setq changed t)
-                                  (nth-set live-in idx new-in))
-                                (nth-set live-out idx new-out)
-                                (setq idx (- idx 1))
-                                (process-instr (cdr instrs))))))
-                   (process-instr (reverse tac-instrs))))))
-
-      ;; Iterate until fixed point
-      (labels ((iterate-loop ()
-                 (when changed
-                   (iterate)
-                   (iterate-loop))))
-        (iterate-loop))
-
-      ;; Return annotated instructions
-      (let ((result nil)
-            (idx 0))
-        (dolist (instr tac-instrs)
-          (setq result (cons (list instr (nth idx live-in) (nth idx live-out)) result))
-          (setq idx (+ idx 1)))
-        (reverse result)))))
-
-;;; ============================================================
-;;; Pass 3: Compute Live Intervals
-;;; ============================================================
-
-(defun compute-intervals (annotated-tac)
-  "Compute live intervals from annotated TAC.
-   Returns alist: ((vreg start end) ...)"
-  (let ((intervals nil)
-        (pos 0))
-    (labels ((update-interval (vr p)
-               (let ((entry (assoc vr intervals)))
-                 (if entry
-                     ;; Extend end position
-                     (setcar (cddr entry) p)
-                     ;; New interval
-                     (setq intervals (cons (list vr p p) intervals))))))
-      (dolist (annotated annotated-tac)
-        (let ((instr (car annotated))
-              (live-in (cadr annotated)))
-          ;; Record definition
-          (let ((def (tac-def instr)))
-            (when def (update-interval def pos)))
-          ;; Record uses
-          (dolist (vr live-in)
-            (update-interval vr pos))
-          (setq pos (+ pos 1))))
-      intervals)))
-
-;;; ============================================================
-;;; Pass 4: Linear Scan Register Allocation
-;;; ============================================================
-
-(defun allocatable-regs ()
-  "Registers available for allocation"
-  '(:x9 :x10 :x11 :x12 :x13 :x14 :x15))
-
-(defun linear-scan (intervals)
-  "Perform linear scan register allocation.
-   Returns allocation: ((vreg . physical-reg-or-spill) ...)"
-  (let* ((sorted (sort-intervals-by-start intervals))
-         (active nil)
-         (allocation nil)
-         (free-regs (copy-list (allocatable-regs)))
-         (spill-slot 0))
-
-    (labels ((expire-old (pos)
-               ;; Remove intervals ending before pos, free their registers
-               (let ((still-active nil))
-                 (dolist (a active)
-                   (if (< (cadr a) pos)
-                       ;; Expired - return register to pool
-                       (setq free-regs (cons (cddr a) free-regs))
-                       ;; Still active
-                       (setq still-active (cons a still-active))))
-                 (setq active still-active)))
-
-             (allocate-one (interval)
-               (let* ((vr (car interval))
-                      (start (cadr interval))
-                      (end (caddr interval)))
-                 (expire-old start)
-                 (if free-regs
-                     ;; Allocate register
-                     (let ((reg (car free-regs)))
-                       (setq free-regs (cdr free-regs))
-                       (setq active (cons (cons vr (cons end reg)) active))
-                       (setq allocation (cons (cons vr reg) allocation)))
-                     ;; Spill - no free registers
-                     (let ((slot spill-slot))
-                       (setq spill-slot (+ spill-slot 1))
-                       (setq allocation (cons (cons vr (list :spill slot)) allocation)))))))
-
-      (dolist (interval sorted)
-        (allocate-one interval))
-
-      allocation)))
-
-(defun sort-intervals-by-start (intervals)
-  "Sort intervals by start position (ascending)"
-  (labels ((insert-sorted (item sorted)
-             (if (null sorted)
-                 (list item)
-                 (if (<= (cadr item) (cadar sorted))
-                     (cons item sorted)
-                     (cons (car sorted)
-                           (insert-sorted item (cdr sorted)))))))
-    (let ((result nil))
-      (dolist (i intervals)
-        (setq result (insert-sorted i result)))
-      result)))
-
-;;; ============================================================
-;;; Pass 5: TAC Code Generation Helpers
-;;; ============================================================
-
-(defparameter +spill-base-offset+ #x40)
-
-(defun spill-offset (slot)
-  "Calculate stack offset for spill slot"
-  (+ +spill-base-offset+ (* slot 8)))
-
-(defun vreg-to-reg (vreg allocation)
-  "Look up physical register for vreg"
-  (let ((entry (assoc vreg allocation)))
-    (if entry (cdr entry) :x0)))
-
-(defun load-addr (rd addr)
-  "Load large address into register (up to 64 bits)"
-  (if (< addr #x10000)
-      (movz rd addr)
-      (if (< addr #x100000000)
-          (append (movz rd (logand addr #xFFFF))
-                  (movk rd (ash addr -16) :lsl 16))
-          (if (< addr #x1000000000000)
-              ;; 48-bit address
-              (bytes-append-all
-               (list (movz rd (logand addr #xFFFF))
-                     (movk rd (logand (ash addr -16) #xFFFF) :lsl 16)
-                     (movk rd (logand (ash addr -32) #xFFFF) :lsl 32)))
-              ;; 64-bit address
-              (bytes-append-all
-               (list (movz rd (logand addr #xFFFF))
-                     (movk rd (logand (ash addr -16) #xFFFF) :lsl 16)
-                     (movk rd (logand (ash addr -32) #xFFFF) :lsl 32)
-                     (movk rd (logand (ash addr -48) #xFFFF) :lsl 48)))))))
-
-;;; ============================================================
-;;; Pass 5: TAC Code Generation
-;;; ============================================================
-
-(defun tac-codegen-instr (instr allocation)
-  "Generate ARM64 code for a single TAC instruction"
-  (let ((op (car instr)))
-    (cond
-      ;; tac-lit: load literal into vreg
-      ((eq op 'tac-lit)
-       (let* ((vreg (cadr instr))
-              (value (caddr instr))
-              (tagged (ash value 4))
-              (dest (vreg-to-reg vreg allocation)))
-         (if (and (consp dest) (eq (car dest) :spill))
-             ;; Spilled: load to x0, then store
-             (append (load-addr :x0 tagged)
-                     (str :x0 :sp :offset (spill-offset (cadr dest))))
-             ;; In register
-             (load-addr dest tagged))))
-
-      ;; tac-var: load from environment
-      ((eq op 'tac-var)
-       (let* ((vreg (cadr instr))
-              (offset (caddr instr))
-              (dest (vreg-to-reg vreg allocation))
-              (byte-off (* offset -8)))
-         (if (and (consp dest) (eq (car dest) :spill))
-             ;; Spilled: load to x0, then store
-             (append (ldur :x0 :x20 :offset byte-off)
-                     (str :x0 :sp :offset (spill-offset (cadr dest))))
-             ;; In register
-             (ldur dest :x20 :offset byte-off))))
-
-      ;; tac-setvar: store to environment
-      ((eq op 'tac-setvar)
-       (let* ((offset (cadr instr))
-              (vreg (caddr instr))
-              (src (vreg-to-reg vreg allocation))
-              (byte-off (* offset -8)))
-         (if (and (consp src) (eq (car src) :spill))
-             ;; Spilled: load to x0, then store to env
-             (append (ldr :x0 :sp :offset (spill-offset (cadr src)))
-                     (stur :x0 :x20 :offset byte-off))
-             ;; In register
-             (stur src :x20 :offset byte-off))))
-
-      ;; tac-binop: binary operation
-      ((eq op 'tac-binop)
-       (let* ((dest-vreg (cadr instr))
-              (binop (caddr instr))
-              (left-vreg (cadddr instr))
-              (right-vreg (nth 4 instr))
-              (dest (vreg-to-reg dest-vreg allocation))
-              (left (vreg-to-reg left-vreg allocation))
-              (right (vreg-to-reg right-vreg allocation))
-              (left-reg (if (and (consp left) (eq (car left) :spill)) :x0 left))
-              (right-reg (if (and (consp right) (eq (car right) :spill)) :x1 right))
-              (dest-reg (if (and (consp dest) (eq (car dest) :spill)) :x0 dest)))
-         (append
-          ;; Load spilled operands
-          (when (and (consp left) (eq (car left) :spill))
-            (ldr :x0 :sp :offset (spill-offset (cadr left))))
-          (when (and (consp right) (eq (car right) :spill))
-            (ldr :x1 :sp :offset (spill-offset (cadr right))))
-          ;; Perform operation
-          (cond
-            ((eq binop :ADD) (add dest-reg left-reg right-reg))
-            ((eq binop :SUB) (sub dest-reg left-reg right-reg))
-            ((eq binop :MUL)
-             (append (lsr right-reg right-reg 4 :imm t)
-                     (mul dest-reg left-reg right-reg)))
-            ((eq binop :DIV)
-             (append (lsr left-reg left-reg 4 :imm t)
-                     (lsr right-reg right-reg 4 :imm t)
-                     (sdiv dest-reg left-reg right-reg)
-                     (lsl dest-reg dest-reg 4 :imm t)))
-            ((eq binop :MOD)
-             (append (lsr left-reg left-reg 4 :imm t)
-                     (lsr right-reg right-reg 4 :imm t)
-                     (sdiv :x8 left-reg right-reg)
-                     (msub dest-reg :x8 right-reg left-reg)
-                     (lsl dest-reg dest-reg 4 :imm t)))
-            ((eq binop :BAND) (and* dest-reg left-reg right-reg))
-            ((eq binop :BOR) (orr dest-reg left-reg right-reg))
-            ((eq binop :BXOR) (eor dest-reg left-reg right-reg))
-            (t nil))
-          ;; Store if spilled
-          (when (and (consp dest) (eq (car dest) :spill))
-            (str :x0 :sp :offset (spill-offset (cadr dest)))))))
-
-      ;; tac-cmp: comparison
-      ((eq op 'tac-cmp)
-       (let* ((dest-vreg (cadr instr))
-              (cmp-op (caddr instr))
-              (left-vreg (cadddr instr))
-              (right-vreg (nth 4 instr))
-              (dest (vreg-to-reg dest-vreg allocation))
-              (left (vreg-to-reg left-vreg allocation))
-              (right (vreg-to-reg right-vreg allocation))
-              (left-reg (if (and (consp left) (eq (car left) :spill)) :x0 left))
-              (right-reg (if (and (consp right) (eq (car right) :spill)) :x1 right))
-              (dest-reg (if (and (consp dest) (eq (car dest) :spill)) :x0 dest)))
-         (append
-          ;; Load spilled operands
-          (when (and (consp left) (eq (car left) :spill))
-            (ldr :x0 :sp :offset (spill-offset (cadr left))))
-          (when (and (consp right) (eq (car right) :spill))
-            (ldr :x1 :sp :offset (spill-offset (cadr right))))
-          ;; Compare
-          (cmp left-reg right-reg)
-          ;; Set result based on condition
-          (cond
-            ((eq cmp-op :CMP-EQ) (cset dest-reg 0))
-            ((eq cmp-op :CMP-NE) (cset dest-reg 1))
-            ((eq cmp-op :CMP-LT) (cset dest-reg 11))
-            ((eq cmp-op :CMP-LE) (cset dest-reg 13))
-            ((eq cmp-op :CMP-GT) (cset dest-reg 12))
-            ((eq cmp-op :CMP-GE) (cset dest-reg 10))
-            (t nil))
-          ;; Convert 0/1 to tagged nil(6)/t(16)
-          (neg dest-reg dest-reg)
-          (movz :x2 10)
-          (and* dest-reg dest-reg :x2)
-          (add dest-reg dest-reg 6 :imm t)
-          ;; Store if spilled
-          (when (and (consp dest) (eq (car dest) :spill))
-            (str :x0 :sp :offset (spill-offset (cadr dest)))))))
-
-      ;; tac-move: copy between vregs
-      ((eq op 'tac-move)
-       (let* ((dest-vreg (cadr instr))
-              (src-vreg (caddr instr))
-              (dest (vreg-to-reg dest-vreg allocation))
-              (src (vreg-to-reg src-vreg allocation)))
-         (cond
-           ;; Both spilled
-           ((and (consp dest) (consp src))
-            (append (ldr :x0 :sp :offset (spill-offset (cadr src)))
-                    (str :x0 :sp :offset (spill-offset (cadr dest)))))
-           ;; Src spilled
-           ((consp src)
-            (ldr dest :sp :offset (spill-offset (cadr src))))
-           ;; Dest spilled
-           ((consp dest)
-            (str src :sp :offset (spill-offset (cadr dest))))
-           ;; Both in registers
-           ((eq dest src) nil)
-           (t (mov dest src)))))
-
-      ;; tac-return: move result to x0
-      ((eq op 'tac-return)
-       (let* ((vreg (cadr instr))
-              (src (vreg-to-reg vreg allocation)))
-         (if (and (consp src) (eq (car src) :spill))
-             (ldr :x0 :sp :offset (spill-offset (cadr src)))
-             (if (eq src :x0)
-                 nil
-                 (mov :x0 src)))))
-
-      ;; tac-label: no code
-      ((eq op 'tac-label) nil)
-
-      ;; tac-goto: unconditional branch (resolved later)
-      ((eq op 'tac-goto)
-       (list (list :branch-marker (cadr instr))))
-
-      ;; tac-if: conditional branch
-      ((eq op 'tac-if)
-       (let* ((cond-vreg (cadr instr))
-              (then-label (caddr instr))
-              (else-label (cadddr instr))
-              (cond-loc (vreg-to-reg cond-vreg allocation))
-              (cond-reg (if (and (consp cond-loc) (eq (car cond-loc) :spill)) :x0 cond-loc)))
-         (append
-          ;; Load condition if spilled
-          (when (and (consp cond-loc) (eq (car cond-loc) :spill))
-            (ldr :x0 :sp :offset (spill-offset (cadr cond-loc))))
-          ;; Compare with nil (0x06)
-          (cmp cond-reg #x06 :imm t)
-          ;; Branch markers (resolved in second pass)
-          (list (list :branch-ne-marker then-label))
-          (list (list :branch-marker else-label)))))
-
-      ;; Default: no code
-      (t nil))))
-
-(defun count-bytes-in-code (code)
-  "Count actual bytes in code (skip markers)"
-  (let ((count 0))
-    (dolist (item code)
-      (cond
-        ;; Known 4-byte markers
-        ((and (consp item) (member (car item) '(:branch-marker :branch-ne-marker :branch-eq-marker)))
-         (setq count (+ count 4)))
-        ;; Regular byte
-        ((numberp item)
-         (setq count (+ count 1)))))
-    count))
-
-(defun tac-codegen (tac-instrs allocation)
-  "Generate ARM64 code from TAC with register allocation"
-  ;; Pass 1: Generate code with markers
-  (let ((code-with-markers nil)
-        (label-positions nil)
-        (current-pos 0))
-    ;; Generate code for each instruction
-    (dolist (instr tac-instrs)
-      (cond
-       ;; tac-label: record label position
-       ((eq (car instr) 'tac-label)
-        (let ((label (cadr instr)))
-          (setq label-positions (cons (cons label current-pos) label-positions))
-          (setq code-with-markers (append code-with-markers
-                                          (list (list :label-marker label))))))
-
-       ;; All other instructions: generate code
-       (t
-        (let ((bytes (tac-codegen-instr instr allocation)))
-          (when bytes
-            (setq code-with-markers (append code-with-markers bytes))
-            ;; Update position
-            (dolist (b bytes)
-              (cond
-                ((numberp b)
-                 (setq current-pos (+ current-pos 1)))
-                ((and (consp b) (member (car b) '(:branch-marker :branch-ne-marker :branch-eq-marker)))
-                 (setq current-pos (+ current-pos 4))))))))))
-
-    ;; Pass 2: Resolve branch markers
-    (let ((resolved nil)
-          (pos 0))
-      (dolist (item code-with-markers)
-        (cond
-          ;; Skip label markers
-          ((and (consp item) (eq (car item) :label-marker))
-           nil)
-
-          ;; Resolve unconditional branch
-          ((and (consp item) (eq (car item) :branch-marker))
-           (let* ((target-label (cadr item))
-                  (target-pos (cdr (assoc target-label label-positions))))
-             (let ((offset (ash (- target-pos pos) -2)))
-               (setq resolved (append resolved (b offset)))
-               (setq pos (+ pos 4)))))
-
-          ;; Resolve conditional branch (not equal)
-          ((and (consp item) (eq (car item) :branch-ne-marker))
-           (let* ((target-label (cadr item))
-                  (target-pos (cdr (assoc target-label label-positions))))
-             (let ((offset (ash (- target-pos pos) -2)))
-               (setq resolved (append resolved (b.ne offset)))
-               (setq pos (+ pos 4)))))
-
-          ;; Regular byte
-          ((numberp item)
-           (setq resolved (append resolved (list item)))
-           (setq pos (+ pos 1)))))
-      resolved)))
-
-;;; ============================================================
-;;; Main Entry Point
-;;; ============================================================
-
-(defun codegen-fn-reg-alloc (fn)
-  "Generate code for a function using register allocation.
-   Returns list of ARM64 instruction bytes, or nil if IR not supported."
-  (let* ((params (cadr fn))
-         (body-ir (caddr fn))
-         (fourth (cadddr fn))
-         (is-lambda (and fourth (listp fourth)))
-         (num-captures (cond
-                         ((numberp fourth) fourth)
-                         ((listp fourth) (length fourth))
-                         (t 0)))
-         (param-base num-captures)
-         ;; Apply register allocation pipeline
-         (counter (make-vreg-counter))
-         (tac-result (ir-to-tac body-ir counter))
-         (tac-instrs (car tac-result))
-         (result-vr (cadr tac-result)))
-    ;; Check if IR converted successfully
-    (if (null tac-instrs)
-        nil
-        (let* (;; Add return instruction
-               (full-tac (append tac-instrs (list (list 'tac-return result-vr))))
-               ;; Liveness analysis
-               (annotated (compute-liveness full-tac))
-               ;; Live intervals
-               (intervals (compute-intervals annotated))
-               ;; Register allocation
-               (allocation (linear-scan intervals))
-               ;; Code generation
-               (code (tac-codegen full-tac allocation)))
-          code))))
 
 ;;; ==========================================================================
 ;;; IR Evaluator - for testing the compiler without native execution
