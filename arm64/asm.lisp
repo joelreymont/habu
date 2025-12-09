@@ -29,7 +29,7 @@
    #:b #:bl #:br #:blr #:cbz #:cbnz #:b.eq #:b.ne #:b.lt #:b.le #:b.gt #:b.ge
    #:b.lo #:b.hs #:b.hi #:b.ls #:ret
    ;; System
-   #:svc #:brk #:nop
+   #:svc #:brk #:udf #:nop
    ;; Condition codes (for cset instruction)
    #:+cc-eq+ #:+cc-ne+ #:+cc-lt+ #:+cc-le+ #:+cc-gt+ #:+cc-ge+
    #:+cc-lo+ #:+cc-hs+ #:+cc-hi+ #:+cc-ls+
@@ -774,6 +774,14 @@
   ;; BRK encoding: 1101 0100 001 imm16[15:0] 00000
   ;; = 0xD4200000 | (imm16 << 5)
   (encode (logior #xD4200000 (ash (logand imm16 #xFFFF) 5))))
+
+(defun udf (imm16)
+  "UDF #imm16
+   Permanently undefined instruction. Causes SIGILL signal.
+   Use for fatal errors, unreachable code paths."
+  ;; UDF encoding: 0000 0000 0000 imm16[15:0]
+  ;; = 0x00000000 | imm16
+  (encode (logand imm16 #xFFFF)))
 
 (defun nop ()
   "NOP - No operation"
