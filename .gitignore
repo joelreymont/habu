@@ -84,6 +84,30 @@ run-fasl
 /habu
 !bin/habu
 
+# Stage binaries and debug artifacts (rebuild with build-habu0)
+habu0
+habu0.dbg
+habu0.map
+habu0.vars
+habu1
+habu1.dbg
+habu1.map
+habu1.vars
+habu2
+habu2.dbg
+habu2.map
+habu2.vars
+
+# Test binaries and artifacts
+test-crash
+test-crash.dbg
+test-crash.map
+test-crash.vars
+test-nil-value
+test-nil-value.dbg
+test-nil-value.map
+test-nil-value.vars
+
 # Session logs (large files, not version controlled)
 SESSION.md
 SESSION.md.archive
