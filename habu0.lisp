@@ -1161,6 +1161,30 @@
             val
             (h0-eval-or (cdr forms) env fenv)))))
 
+;; Helper for variadic addition
+(defun h0-eval-add (args env fenv)
+  (if (null args)
+      #x0
+      (if (null (cdr args))
+          (h0-eval (car args) env fenv)
+          (+ (h0-eval (car args) env fenv)
+             (h0-eval-add (cdr args) env fenv)))))
+
+;; Helper for variadic subtraction (left-associative)
+(defun h0-eval-sub (args env fenv)
+  (if (null args)
+      #x0
+      (if (null (cdr args))
+          ;; Unary minus
+          (- #x0 (h0-eval (car args) env fenv))
+          ;; Binary and more - left-associative
+          (h0-eval-sub-left (h0-eval (car args) env fenv) (cdr args) env fenv))))
+
+(defun h0-eval-sub-left (acc args env fenv)
+  (if (null args)
+      acc
+      (h0-eval-sub-left (- acc (h0-eval (car args) env fenv)) (cdr args) env fenv)))
+
 ;; EQL - same as EQ for symbols, uses = for numbers
 ;; This is the standard CL comparison used by CASE
 (defun eql (a b)
@@ -1313,15 +1337,11 @@
          ;; Error - signal error (crash with message)
          ((if (symbolp op) (op=error op) nil)
           (fatal-error "h0-eval: error called"))
-         ;; Arithmetic - use cached op= functions
+         ;; Arithmetic - use cached op= functions (variadic support)
          ((if (symbolp op) (op=plus op) nil)
-          (let* ((left (h0-eval (cadr expr) env fenv))
-                 (right (h0-eval (caddr expr) env fenv)))
-            (+ left right)))
+          (h0-eval-add (cdr expr) env fenv))
          ((if (symbolp op) (op=minus op) nil)
-          (let* ((left (h0-eval (cadr expr) env fenv))
-                 (right (h0-eval (caddr expr) env fenv)))
-            (- left right)))
+          (h0-eval-sub (cdr expr) env fenv))
          ((if (symbolp op) (op=mul op) nil)
           (let* ((left (h0-eval (cadr expr) env fenv))
                  (right (h0-eval (caddr expr) env fenv)))
@@ -2234,20 +2254,29 @@
     ;; Default - unknown expression type - CRASH
     (t (fatal-error-ir "h0-compile: Unknown expression type"))))
 
-;; Compile addition with constant folding
+;; Compile addition with constant folding (handles variadic args)
 (defun h0-compile-add (args env fenv)
   (if (null args)
       (fatal-error-ir "h0-compile-add: Empty addition")
       (if (null (cdr args))
+          ;; Single argument: just compile it
           (h0-compile (car args) env fenv)
-          (let* ((left-ir (h0-compile (car args) env fenv))
-                 (right-ir (h0-compile (cadr args) env fenv)))
-            ;; Constant folding
-            (if (and (h0-has-tag-n left-ir (ir-tag-lit)) (h0-has-tag-n right-ir (ir-tag-lit)))
-                (list (ir-tag-lit) (+ (cadr left-ir) (cadr right-ir)))
-                (list (ir-tag-add) left-ir right-ir))))))
+          (if (null (cddr args))
+              ;; Two arguments: normal binary add
+              (let* ((left-ir (h0-compile (car args) env fenv))
+                     (right-ir (h0-compile (cadr args) env fenv)))
+                ;; Constant folding
+                (if (and (h0-has-tag-n left-ir (ir-tag-lit)) (h0-has-tag-n right-ir (ir-tag-lit)))
+                    (list (ir-tag-lit) (+ (cadr left-ir) (cadr right-ir)))
+                    (list (ir-tag-add) left-ir right-ir)))
+              ;; More than two: recurse - (+ a b c ...) => (+ a (+ b c ...))
+              (let* ((left-ir (h0-compile (car args) env fenv))
+                     (right-ir (h0-compile-add (cdr args) env fenv)))
+                (if (and (h0-has-tag-n left-ir (ir-tag-lit)) (h0-has-tag-n right-ir (ir-tag-lit)))
+                    (list (ir-tag-lit) (+ (cadr left-ir) (cadr right-ir)))
+                    (list (ir-tag-add) left-ir right-ir)))))))
 
-;; Compile subtraction with constant folding
+;; Compile subtraction with constant folding (handles variadic args)
 (defun h0-compile-sub (args env fenv)
   (if (null args)
       (fatal-error-ir "h0-compile-sub: Empty subtraction")
@@ -2257,12 +2286,17 @@
             (if (h0-has-tag-n arg-ir (ir-tag-lit))
                 (list (ir-tag-lit) (- #x0 (cadr arg-ir)))
                 (list (ir-tag-sub) (list (ir-tag-lit) #x0) arg-ir)))
-          (let* ((left-ir (h0-compile (car args) env fenv))
-                 (right-ir (h0-compile (cadr args) env fenv)))
-            ;; Constant folding
-            (if (and (h0-has-tag-n left-ir (ir-tag-lit)) (h0-has-tag-n right-ir (ir-tag-lit)))
-                (list (ir-tag-lit) (- (cadr left-ir) (cadr right-ir)))
-                (list (ir-tag-sub) left-ir right-ir))))))
+          (if (null (cddr args))
+              ;; Two arguments: normal binary sub
+              (let* ((left-ir (h0-compile (car args) env fenv))
+                     (right-ir (h0-compile (cadr args) env fenv)))
+                ;; Constant folding
+                (if (and (h0-has-tag-n left-ir (ir-tag-lit)) (h0-has-tag-n right-ir (ir-tag-lit)))
+                    (list (ir-tag-lit) (- (cadr left-ir) (cadr right-ir)))
+                    (list (ir-tag-sub) left-ir right-ir)))
+              ;; More than two: (- a b c ...) => (- (- a b) c ...)
+              ;; Note: subtraction is left-associative unlike addition
+              (h0-compile-sub (cons (list '- (car args) (cadr args)) (cddr args)) env fenv)))))
 
 ;; Compile let - iterate through bindings, extending environment
 ;; Store symbol name (string) in env for string-based lookup
