@@ -2998,6 +2998,487 @@
     (h0-compile expanded env fenv)))
 
 ;;; ==========================================================================
+;;; Linearization - Convert tree IR to linear IR
+;;; ==========================================================================
+;;; Converts nested IR expressions to a flat sequence of instructions with
+;;; explicit temporaries and control flow labels.
+;;;
+;;; State management:
+;;; Linear state is a cons cell: ((temp-counter . label-counter) . output)
+;;; - temp-counter: next available temp slot number
+;;; - label-counter: next available label number
+;;; - output: list of instructions (in reverse order, reversed at end)
+
+;; Helper: Convert number to string using recursive digit extraction
+(defun h0-number-to-string (n)
+  (if (< n 0)
+      (cons #x2D (h0-number-to-string-helper (- 0 n)))  ; prepend '-' for negative
+      (h0-number-to-string-helper n)))
+
+(defun h0-number-to-string-helper (n)
+  (if (< n 10)
+      (list (+ #x30 n))  ; '0' is 48 (0x30)
+      (h0-append (h0-number-to-string-helper (/ n 10))
+                 (list (+ #x30 (mod n 10))))))
+
+;; Helper: Create label symbol from number (L0, L1, etc.)
+(defun h0-make-label-symbol (n)
+  (let* ((l-char (list #x4C))  ; 'L' = 76 (0x4C)
+         (digits (h0-number-to-string n))
+         (name-chars (h0-append l-char digits))
+         (name-str (make-string-from-vector (make-vector name-chars))))
+    (make-symbol-from-string name-str)))
+
+;; Create initial linear state
+(defun h0-make-linear-state ()
+  (cons (cons 0 0) nil))
+
+;; Allocate a fresh temp slot, returns temp number
+(defun h0-fresh-temp (state)
+  (let* ((counter-cell (car state))
+         (n (car counter-cell)))
+    (setcar counter-cell (+ n 1))
+    n))
+
+;; Allocate a fresh label, returns label symbol
+(defun h0-fresh-label (state)
+  (let* ((counter-cell (car state))
+         (n (cdr counter-cell)))
+    (setcdr counter-cell (+ n 1))
+    (h0-make-label-symbol n)))
+
+;; Emit a linear IR instruction
+(defun h0-emit-linear (state instr)
+  (setcdr state (cons instr (cdr state))))
+
+;; Get final output (in correct order)
+(defun h0-get-linear-output (state)
+  (reverse (cdr state)))
+
+;; Check if IR is a leaf node (no sub-expressions to linearize)
+(defun h0-linear-leaf-p (ir)
+  (if (consp ir)
+      (let ((tag (car ir)))
+        (if (= tag (intern "LIT")) t
+            (if (= tag (intern "NIL-IR")) t
+                (if (= tag (intern "VAR")) t
+                    (if (= tag (intern "SYM-LIT")) t
+                        (if (= tag (intern "STR-LIT")) t
+                            (if (= tag (intern "LAMBDA-REF")) t
+                                (if (= tag (intern "GET-GLOBAL-VARS-IR")) t
+                                    (if (= tag (intern "GET-CMDLINE-ARGS-IR")) t
+                                        nil)))))))))
+      t))  ; non-cons is a leaf (e.g., bare number)
+
+;; Linearize a leaf IR node, returns temp holding result
+(defun h0-linearize-leaf (ir state)
+  (let ((dst (h0-fresh-temp state)))
+    (if (consp ir)
+        (let ((tag (car ir)))
+          (if (= tag (intern "LIT"))
+              (h0-emit-linear state (list (intern "LOAD-LIT") dst (car (cdr ir))))
+              (if (= tag (intern "NIL-IR"))
+                  (h0-emit-linear state (list (intern "LOAD-NIL") dst))
+                  (if (= tag (intern "VAR"))
+                      (h0-emit-linear state (list (intern "LOAD-VAR") dst (car (cdr ir))))
+                      (if (= tag (intern "SYM-LIT"))
+                          (h0-emit-linear state (list (intern "LOAD-SYM") dst (car (cdr ir))))
+                          (if (= tag (intern "STR-LIT"))
+                              (h0-emit-linear state (list (intern "LOAD-STR") dst (car (cdr ir))))
+                              (if (= tag (intern "LAMBDA-REF"))
+                                  (h0-emit-linear state (list (intern "LOAD-LAMBDA") dst (car (cdr ir)) (car (cdr (cdr ir)))))
+                                  (if (= tag (intern "GET-GLOBAL-VARS-IR"))
+                                      (h0-emit-linear state (list (intern "GET-GLOBAL-VARS") dst))
+                                      (if (= tag (intern "GET-CMDLINE-ARGS-IR"))
+                                          (h0-emit-linear state (list (intern "GET-CMDLINE-ARGS") dst))
+                                          (error "linearize-leaf: unknown leaf type"))))))))))
+        ;; bare number
+        (h0-emit-linear state (list (intern "LOAD-LIT") dst ir)))
+    dst))
+
+;; Linearize a binary operation, returns temp holding result
+(defun h0-linearize-binary (tag ir state)
+  (let* ((left-temp (h0-linearize-expr (car (cdr ir)) state))
+         (right-temp (h0-linearize-expr (car (cdr (cdr ir))) state))
+         (dst (h0-fresh-temp state)))
+    (h0-emit-linear state (list tag dst left-temp right-temp))
+    dst))
+
+;; Linearize a unary operation, returns temp holding result
+(defun h0-linearize-unary (tag ir state)
+  (let* ((arg-temp (h0-linearize-expr (car (cdr ir)) state))
+         (dst (h0-fresh-temp state)))
+    (h0-emit-linear state (list tag dst arg-temp))
+    dst))
+
+;; Linearize if expression with explicit jumps
+(defun h0-linearize-if (ir state)
+  (let* ((else-label (h0-fresh-label state))
+         (end-label (h0-fresh-label state))
+         (test-temp (h0-linearize-expr (car (cdr ir)) state))
+         (dst (h0-fresh-temp state)))
+    ;; Jump to else if test is nil
+    (h0-emit-linear state (list (intern "JUMP-IF-NIL") test-temp else-label))
+    ;; Then branch
+    (let ((then-temp (h0-linearize-expr (car (cdr (cdr ir))) state)))
+      (h0-emit-linear state (list (intern "MOVE") dst then-temp)))
+    (h0-emit-linear state (list (intern "JUMP") end-label))
+    ;; Else branch
+    (h0-emit-linear state (list (intern "LABEL") else-label))
+    (let ((else-ir (car (cdr (cdr (cdr ir))))))
+      (if else-ir
+          (let ((else-temp (h0-linearize-expr else-ir state)))
+            (h0-emit-linear state (list (intern "MOVE") dst else-temp)))
+          (let ((nil-dst (h0-fresh-temp state)))
+            (h0-emit-linear state (list (intern "LOAD-NIL") nil-dst))
+            (h0-emit-linear state (list (intern "MOVE") dst nil-dst)))))
+    (h0-emit-linear state (list (intern "LABEL") end-label))
+    dst))
+
+;; Linearize progn, returns temp of last expression
+(defun h0-linearize-progn (ir state)
+  (let ((forms (car (cdr ir))))
+    (h0-linearize-progn-forms forms state)))
+
+(defun h0-linearize-progn-forms (forms state)
+  (if (null forms)
+      (let ((nil-dst (h0-fresh-temp state)))
+        (h0-emit-linear state (list (intern "LOAD-NIL") nil-dst))
+        nil-dst)
+      (let ((temp (h0-linearize-expr (car forms) state)))
+        (if (null (cdr forms))
+            temp
+            (h0-linearize-progn-forms (cdr forms) state)))))
+
+;; Linearize let binding
+(defun h0-linearize-let (ir state)
+  (let* ((vals (car (cdr ir)))
+         (body (car (cdr (cdr ir))))
+         (count (car (cdr (cdr (cdr ir)))))
+         (offs-raw (car (cdr (cdr (cdr (cdr ir))))))
+         ;; Handle both formats: (0 1 2) or just 0
+         (offs (if (consp offs-raw) offs-raw (list offs-raw))))
+    ;; Emit bind instruction
+    (h0-emit-linear state (list (intern "BIND") count offs))
+    ;; Linearize each binding value and store using actual offsets
+    (h0-linearize-let-bindings vals offs 0 state)
+    ;; Linearize body
+    (let ((body-temp (h0-linearize-expr body state)))
+      ;; Emit unbind
+      (h0-emit-linear state (list (intern "UNBIND") count))
+      body-temp)))
+
+(defun h0-linearize-let-bindings (vals offsets idx state)
+  (if vals
+      (let* ((val-temp (h0-linearize-expr (car vals) state))
+             (offset (if offsets (car offsets) idx)))
+        (h0-emit-linear state (list (intern "STORE-BINDING") offset val-temp))
+        (h0-linearize-let-bindings (cdr vals)
+                                    (if offsets (cdr offsets) nil)
+                                    (+ idx 1)
+                                    state))
+      nil))
+
+;; Linearize function call
+(defun h0-linearize-call (ir state)
+  (let* ((name (car (cdr ir)))
+         (args (car (cdr (cdr ir))))
+         (arg-temps (h0-linearize-call-args args state))
+         (dst (h0-fresh-temp state)))
+    (h0-emit-linear state (cons (intern "CALL") (cons dst (cons name arg-temps))))
+    dst))
+
+(defun h0-linearize-call-args (args state)
+  (if (null args)
+      nil
+      (cons (h0-linearize-expr (car args) state)
+            (h0-linearize-call-args (cdr args) state))))
+
+;; Linearize funcall (indirect call)
+(defun h0-linearize-funcall (ir state)
+  (let* ((fn-ir (car (cdr ir)))
+         (args (car (cdr (cdr ir))))
+         (fn-temp (h0-linearize-expr fn-ir state))
+         (arg-temps (h0-linearize-call-args args state))
+         (dst (h0-fresh-temp state)))
+    (h0-emit-linear state (cons (intern "FUNCALL") (cons dst (cons fn-temp arg-temps))))
+    dst))
+
+;; Linearize variable assignment
+(defun h0-linearize-setq (ir state)
+  (let* ((off (car (cdr ir)))
+         (val-ir (car (cdr (cdr ir))))
+         (val-temp (h0-linearize-expr val-ir state)))
+    (h0-emit-linear state (list (intern "SETQ") off val-temp))
+    val-temp))  ; setq returns the value
+
+;; Linearize cons cell creation
+(defun h0-linearize-cons (ir state)
+  (let* ((car-temp (h0-linearize-expr (car (cdr ir)) state))
+         (cdr-temp (h0-linearize-expr (car (cdr (cdr ir))) state))
+         (dst (h0-fresh-temp state)))
+    (h0-emit-linear state (list (intern "CONS") dst car-temp cdr-temp))
+    dst))
+
+;; Linearize while loop
+(defun h0-linearize-while (ir state)
+  (let* ((loop-label (h0-fresh-label state))
+         (end-label (h0-fresh-label state))
+         (dst (h0-fresh-temp state)))
+    ;; Result starts as nil
+    (h0-emit-linear state (list (intern "LOAD-NIL") dst))
+    (h0-emit-linear state (list (intern "LABEL") loop-label))
+    ;; Test
+    (let ((test-temp (h0-linearize-expr (car (cdr ir)) state)))
+      (h0-emit-linear state (list (intern "JUMP-IF-NIL") test-temp end-label)))
+    ;; Body
+    (let ((body-temp (h0-linearize-expr (car (cdr (cdr ir))) state)))
+      (h0-emit-linear state (list (intern "MOVE") dst body-temp)))
+    (h0-emit-linear state (list (intern "JUMP") loop-label))
+    (h0-emit-linear state (list (intern "LABEL") end-label))
+    dst))
+
+;; Forward declaration for mutual recursion
+(defun h0-linearize-expr (ir state)
+  (h0-linearize-expr-impl ir state))
+
+;; Linearize any IR expression, returns temp holding result
+(defun h0-linearize-expr-impl (ir state)
+  (if (h0-linear-leaf-p ir)
+      (h0-linearize-leaf ir state)
+      (let ((tag (car ir)))
+        ;; Binary arithmetic
+        (if (= tag (intern "ADD")) (h0-linearize-binary (intern "ADD") ir state)
+            (if (= tag (intern "ADD-IR")) (h0-linearize-binary (intern "ADD") ir state)
+                (if (= tag (intern "SUB")) (h0-linearize-binary (intern "SUB") ir state)
+                    (if (= tag (intern "SUB-IR")) (h0-linearize-binary (intern "SUB") ir state)
+                        (if (= tag (intern "MUL")) (h0-linearize-binary (intern "MUL") ir state)
+                            (if (= tag (intern "MUL-IR")) (h0-linearize-binary (intern "MUL") ir state)
+                                (if (= tag (intern "DIV")) (h0-linearize-binary (intern "DIV") ir state)
+                                    (if (= tag (intern "DIV-IR")) (h0-linearize-binary (intern "DIV") ir state)
+                                        (if (= tag (intern "MOD")) (h0-linearize-binary (intern "MOD") ir state)
+                                            (if (= tag (intern "MOD-IR")) (h0-linearize-binary (intern "MOD") ir state)
+                                                ;; Comparisons
+                                                (if (= tag (intern "CMP-EQ")) (h0-linearize-binary (intern "CMP-EQ") ir state)
+                                                    (if (= tag (intern "CMP-LT")) (h0-linearize-binary (intern "CMP-LT") ir state)
+                                                        (if (= tag (intern "CMP-GT")) (h0-linearize-binary (intern "CMP-GT") ir state)
+                                                            (if (= tag (intern "CMP-LE")) (h0-linearize-binary (intern "CMP-LE") ir state)
+                                                                (if (= tag (intern "CMP-GE")) (h0-linearize-binary (intern "CMP-GE") ir state)
+                                                                    ;; Bitwise operations
+                                                                    (if (= tag (intern "BAND")) (h0-linearize-binary (intern "BAND") ir state)
+                                                                        (if (= tag (intern "BOR")) (h0-linearize-binary (intern "BOR") ir state)
+                                                                            (if (= tag (intern "BXOR")) (h0-linearize-binary (intern "BXOR") ir state)
+                                                                                (if (= tag (intern "BSH")) (h0-linearize-binary (intern "BSH") ir state)
+                                                                                    (if (= tag (intern "BNOT")) (h0-linearize-unary (intern "BNOT") ir state)
+                                                                                        ;; List operations
+                                                                                        (if (= tag (intern "CONS-IR")) (h0-linearize-cons ir state)
+                                                                                            (if (= tag (intern "CAR-IR")) (h0-linearize-unary (intern "CAR") ir state)
+                                                                                                (if (= tag (intern "CDR-IR")) (h0-linearize-unary (intern "CDR") ir state)
+                                                                                                    (if (= tag (intern "SETCAR-IR")) (h0-linearize-binary (intern "SETCAR") ir state)
+                                                                                                        (if (= tag (intern "SETCDR-IR")) (h0-linearize-binary (intern "SETCDR") ir state)
+                                                                                                            ;; String operations
+                                                                                                            (if (= tag (intern "STRING-LENGTH-IR")) (h0-linearize-unary (intern "STRING-LENGTH") ir state)
+                                                                                                                (if (= tag (intern "STRING-REF-IR")) (h0-linearize-binary (intern "STRING-REF") ir state)
+                                                                                                                    (if (= tag (intern "STRING-CONCAT-IR")) (h0-linearize-binary (intern "STRING-CONCAT") ir state)
+                                                                                                                        (if (= tag (intern "STRING-EQUAL-IR")) (h0-linearize-binary (intern "STRING-EQUAL") ir state)
+                                                                                                                            (if (= tag (intern "MAKE-STRING-FROM-VECTOR-IR")) (h0-linearize-unary (intern "MAKE-STRING-FROM-VECTOR") ir state)
+                                                                                                                                ;; Symbol operations
+                                                                                                                                (if (= tag (intern "SYMBOL-NAME-IR")) (h0-linearize-unary (intern "SYMBOL-NAME") ir state)
+                                                                                                                                    (if (= tag (intern "MAKE-SYMBOL-IR")) (h0-linearize-unary (intern "MAKE-SYMBOL") ir state)
+                                                                                                                                        (if (= tag (intern "MAKE-SYMBOL-FROM-STRING-IR")) (h0-linearize-unary (intern "MAKE-SYMBOL") ir state)
+                                                                                                                                            ;; Vector operations
+                                                                                                                                            (if (= tag (intern "MAKE-VECTOR-IR")) (h0-linearize-unary (intern "MAKE-VECTOR") ir state)
+                                                                                                                                                (if (= tag (intern "VECTOR-LENGTH-IR")) (h0-linearize-unary (intern "VECTOR-LENGTH") ir state)
+                                                                                                                                                    (if (= tag (intern "VECTOR-REF-IR")) (h0-linearize-binary (intern "VECTOR-REF") ir state)
+                                                                                                                                                        (if (= tag (intern "VECTOR-SET-IR")) (h0-linearize-vector-set ir state)
+                                                                                                                                                            ;; Buffer operations
+                                                                                                                                                            (if (= tag (intern "BUFFER-BYTE-REF-IR")) (h0-linearize-binary (intern "BUFFER-BYTE-REF") ir state)
+                                                                                                                                                                (if (= tag (intern "BUFFER-BYTE-SET-IR")) (h0-linearize-buffer-byte-set ir state)
+                                                                                                                                                                    ;; Tag operations
+                                                                                                                                                                    (if (= tag (intern "GET-TAG")) (h0-linearize-unary (intern "GET-TAG") ir state)
+                                                                                                                                                                        ;; Control flow
+                                                                                                                                                                        (if (= tag (intern "IF-IR")) (h0-linearize-if ir state)
+                                                                                                                                                                            (if (= tag (intern "WHILE-IR")) (h0-linearize-while ir state)
+                                                                                                                                                                                (if (= tag (intern "PROGN-IR")) (h0-linearize-progn ir state)
+                                                                                                                                                                                    ;; Bindings
+                                                                                                                                                                                    (if (= tag (intern "LET-IR")) (h0-linearize-let ir state)
+                                                                                                                                                                                        (if (= tag (intern "LET*-IR")) (h0-linearize-let ir state)
+                                                                                                                                                                                            (if (= tag (intern "SETQ-IR")) (h0-linearize-setq ir state)
+                                                                                                                                                                                                ;; Function calls
+                                                                                                                                                                                                (if (= tag (intern "CALL-FN")) (h0-linearize-call ir state)
+                                                                                                                                                                                                    (if (= tag (intern "FUNCALL-IR")) (h0-linearize-funcall ir state)
+                                                                                                                                                                                                        ;; System calls
+                                                                                                                                                                                                        (if (= tag (intern "SYS-EXIT-IR")) (h0-linearize-sys-exit ir state)
+                                                                                                                                                                                                            (if (= tag (intern "SYS-OPEN-IR")) (h0-linearize-sys-open ir state)
+                                                                                                                                                                                                                (if (= tag (intern "SYS-READ-IR")) (h0-linearize-sys-read ir state)
+                                                                                                                                                                                                                    (if (= tag (intern "SYS-WRITE-IR")) (h0-linearize-sys-write ir state)
+                                                                                                                                                                                                                        (if (= tag (intern "SYS-CLOSE-IR")) (h0-linearize-sys-close ir state)
+                                                                                                                                                                                                                            ;; Global vars
+                                                                                                                                                                                                                            (if (= tag (intern "SET-GLOBAL-VARS-IR")) (h0-linearize-set-global-vars ir state)
+                                                                                                                                                                                                                                ;; Memory operations
+                                                                                                                                                                                                                                (if (= tag (intern "MEM-SET-BYTE-IR")) (h0-linearize-mem-set-byte ir state)
+                                                                                                                                                                                                                                    (if (= tag (intern "MEM-LOAD-64-IR")) (h0-linearize-mem-load-64 ir state)
+                                                                                                                                                                                                                                        ;; Block/return-from
+                                                                                                                                                                                                                                        (if (= tag (intern "BLOCK-IR")) (h0-linearize-block ir state)
+                                                                                                                                                                                                                                            (if (= tag (intern "RETURN-FROM-IR")) (h0-linearize-return-from ir state)
+                                                                                                                                                                                                                                                ;; Loop/continue
+                                                                                                                                                                                                                                                (if (= tag (intern "LOOP-IR")) (h0-linearize-loop ir state)
+                                                                                                                                                                                                                                                    (if (= tag (intern "CONTINUE-IR")) (h0-linearize-continue ir state)
+                                                                                                                                                                                                                                                        ;; Buffer to string
+                                                                                                                                                                                                                                                        (if (= tag (intern "BUFFER-TO-STRING-IR")) (h0-linearize-buffer-to-string ir state)
+                                                                                                                                                                                                                                                            ;; Symbol table
+                                                                                                                                                                                                                                                            (if (= tag (intern "GET-SYMTAB-OFFSET-IR")) (h0-linearize-get-symtab-offset ir state)
+                                                                                                                                                                                                                                                                (error "linearize-expr: unknown IR type")))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))
+
+;; Helper functions for complex operations
+
+(defun h0-linearize-vector-set (ir state)
+  (let* ((vec-temp (h0-linearize-expr (car (cdr ir)) state))
+         (idx-temp (h0-linearize-expr (car (cdr (cdr ir))) state))
+         (val-temp (h0-linearize-expr (car (cdr (cdr (cdr ir)))) state))
+         (dst (h0-fresh-temp state)))
+    (h0-emit-linear state (list (intern "VECTOR-SET") dst vec-temp idx-temp val-temp))
+    dst))
+
+(defun h0-linearize-buffer-byte-set (ir state)
+  (let* ((buf-temp (h0-linearize-expr (car (cdr ir)) state))
+         (idx-temp (h0-linearize-expr (car (cdr (cdr ir))) state))
+         (val-temp (h0-linearize-expr (car (cdr (cdr (cdr ir)))) state))
+         (dst (h0-fresh-temp state)))
+    (h0-emit-linear state (list (intern "BUFFER-BYTE-SET") dst buf-temp idx-temp val-temp))
+    dst))
+
+(defun h0-linearize-sys-exit (ir state)
+  (let ((arg-temp (h0-linearize-expr (car (cdr ir)) state)))
+    (h0-emit-linear state (list (intern "SYS-EXIT") arg-temp))
+    arg-temp))
+
+(defun h0-linearize-sys-open (ir state)
+  (let* ((path-temp (h0-linearize-expr (car (cdr ir)) state))
+         (flags-temp (h0-linearize-expr (car (cdr (cdr ir))) state))
+         (dst (h0-fresh-temp state)))
+    (h0-emit-linear state (list (intern "SYS-OPEN") dst path-temp flags-temp))
+    dst))
+
+(defun h0-linearize-sys-read (ir state)
+  (let* ((fd-temp (h0-linearize-expr (car (cdr ir)) state))
+         (buf-temp (h0-linearize-expr (car (cdr (cdr ir))) state))
+         (len-temp (h0-linearize-expr (car (cdr (cdr (cdr ir)))) state))
+         (dst (h0-fresh-temp state)))
+    (h0-emit-linear state (list (intern "SYS-READ") dst fd-temp buf-temp len-temp))
+    dst))
+
+(defun h0-linearize-sys-write (ir state)
+  (let* ((fd-temp (h0-linearize-expr (car (cdr ir)) state))
+         (buf-temp (h0-linearize-expr (car (cdr (cdr ir))) state))
+         (len-temp (h0-linearize-expr (car (cdr (cdr (cdr ir)))) state))
+         (dst (h0-fresh-temp state)))
+    (h0-emit-linear state (list (intern "SYS-WRITE") dst fd-temp buf-temp len-temp))
+    dst))
+
+(defun h0-linearize-sys-close (ir state)
+  (let* ((fd-temp (h0-linearize-expr (car (cdr ir)) state))
+         (dst (h0-fresh-temp state)))
+    (h0-emit-linear state (list (intern "SYS-CLOSE") dst fd-temp))
+    dst))
+
+(defun h0-linearize-set-global-vars (ir state)
+  (let ((val-temp (h0-linearize-expr (car (cdr ir)) state)))
+    (h0-emit-linear state (list (intern "SET-GLOBAL-VARS") val-temp))
+    val-temp))
+
+(defun h0-linearize-mem-set-byte (ir state)
+  (let* ((ptr-temp (h0-linearize-expr (car (cdr ir)) state))
+         (off-temp (h0-linearize-expr (car (cdr (cdr ir))) state))
+         (val-temp (h0-linearize-expr (car (cdr (cdr (cdr ir)))) state))
+         (dst (h0-fresh-temp state)))
+    (h0-emit-linear state (list (intern "MEM-SET-BYTE") dst ptr-temp off-temp val-temp))
+    dst))
+
+(defun h0-linearize-mem-load-64 (ir state)
+  (let* ((ptr-temp (h0-linearize-expr (car (cdr ir)) state))
+         (off-temp (h0-linearize-expr (car (cdr (cdr ir))) state))
+         (dst (h0-fresh-temp state)))
+    (h0-emit-linear state (list (intern "MEM-LOAD-64") dst ptr-temp off-temp))
+    dst))
+
+(defun h0-linearize-block (ir state)
+  (let* ((block-id (car (cdr ir)))
+         (body-ir (car (cdr (cdr ir))))
+         (end-label (h0-fresh-label state))
+         (dst (h0-fresh-temp state)))
+    ;; Emit block start marker, body, then end marker
+    (h0-emit-linear state (list (intern "BLOCK-START") block-id end-label dst))
+    (let ((body-temp (h0-linearize-expr body-ir state)))
+      ;; Move body result to dst
+      (h0-emit-linear state (list (intern "MOVE") dst body-temp)))
+    (h0-emit-linear state (list (intern "LABEL") end-label))
+    dst))
+
+(defun h0-linearize-return-from (ir state)
+  (let* ((block-id (car (cdr ir)))
+         (value-ir (car (cdr (cdr ir))))
+         (val-temp (h0-linearize-expr value-ir state)))
+    (h0-emit-linear state (list (intern "RETURN-FROM") block-id val-temp))
+    ;; Return nil since we're jumping away
+    (let ((dst (h0-fresh-temp state)))
+      (h0-emit-linear state (list (intern "LOAD-NIL") dst))
+      dst)))
+
+(defun h0-linearize-loop (ir state)
+  (let* ((body-ir (car (cdr ir)))
+         (loop-label (h0-fresh-label state))
+         (dst (h0-fresh-temp state)))
+    ;; Emit loop start marker
+    (h0-emit-linear state (list (intern "LOOP-START") loop-label))
+    (h0-emit-linear state (list (intern "LABEL") loop-label))
+    ;; Linearize body
+    (let ((body-temp (h0-linearize-expr body-ir state)))
+      (h0-emit-linear state (list (intern "MOVE") dst body-temp)))
+    dst))
+
+(defun h0-linearize-continue (ir state)
+  (let* ((args (car (cdr ir)))
+         (arg-temps (h0-linearize-call-args args state))
+         (dst (h0-fresh-temp state)))
+    ;; Emit stores for each arg to param slots
+    (h0-linearize-continue-stores arg-temps 0 state)
+    ;; Emit continue marker
+    (h0-emit-linear state (list (intern "CONTINUE")))
+    dst))
+
+(defun h0-linearize-continue-stores (arg-temps idx state)
+  (if arg-temps
+      (let ((arg-temp (car arg-temps)))
+        (h0-emit-linear state (list (intern "STORE-PARAM") arg-temp idx))
+        (h0-linearize-continue-stores (cdr arg-temps) (+ idx 1) state))
+      nil))
+
+(defun h0-linearize-buffer-to-string (ir state)
+  (let* ((buf-ir (car (cdr ir)))
+         (len-ir (car (cdr (cdr ir))))
+         (buf-temp (h0-linearize-expr buf-ir state))
+         (len-temp (h0-linearize-expr len-ir state))
+         (dst (h0-fresh-temp state)))
+    (h0-emit-linear state (list (intern "BUFFER-TO-STRING") dst buf-temp len-temp))
+    dst))
+
+(defun h0-linearize-get-symtab-offset (ir state)
+  (let ((dst (h0-fresh-temp state)))
+    (h0-emit-linear state (list (intern "GET-SYMTAB-OFFSET") dst))
+    dst))
+
+;; Entry point: Convert tree IR to linear IR
+;; Returns a list of linear instructions in execution order
+(defun h0-linearize (ir)
+  (let* ((state (h0-make-linear-state))
+         (result-temp (h0-linearize-expr ir state)))
+    ;; Add final instruction to mark result
+    (h0-emit-linear state (list (intern "RESULT") result-temp))
+    ;; Return in execution order
+    (h0-get-linear-output state)))
+
+;;; ==========================================================================
 ;;; ARM64 Code Generation - IR to machine code
 ;;; ==========================================================================
 ;;; Generates ARM64 machine code bytes from IR
