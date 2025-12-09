@@ -165,8 +165,7 @@
 (defun next-vreg (counter)
   "Allocate next virtual register number"
   (let ((n (car counter)))
-    #+sbcl (setf (car counter) (+ n 1))
-    #-sbcl (setcar counter (+ n 1))
+    (setcar counter (+ n 1))
     n))
 
 (defun ir-tag-name (sym)
@@ -1257,8 +1256,7 @@
              (nth-set (lst idx val)
                ;; Destructively set nth element
                (if (= idx 0)
-                   #+sbcl (setf (car lst) val)
-                   #-sbcl (setcar lst val)
+                   (setcar lst val)
                    (nth-set (cdr lst) (- idx 1) val)))
 
              (iterate ()
@@ -1312,8 +1310,7 @@
                (let ((entry (assoc vr intervals)))
                  (if entry
                      ;; Extend end position
-                     #+sbcl (setf (caddr entry) p)
-                     #-sbcl (setcar (cddr entry) p)
+                     (setcar (cddr entry) p)
                      ;; New interval
                      (setq intervals (cons (list vr p p) intervals))))))
       (dolist (annotated annotated-tac)
@@ -3186,7 +3183,6 @@
 ;;; These functions provide an alternate code generation path using
 ;;; the register allocator instead of the accumulator-based codegen.
 
-#+sbcl
 (defun reg-alloc-prologue ()
   "Generate function prologue for register-allocated functions.
    Saves x30 (link register) and sets up minimal frame.
@@ -3201,7 +3197,6 @@
    ;; add x20, sp, #128 - set env base in middle of frame
    (arm64:add :env :sp #x80 :imm t)))
 
-#+sbcl
 (defun reg-alloc-epilogue ()
   "Generate function epilogue for register-allocated functions."
   (append
@@ -3214,7 +3209,6 @@
    ;; ret
    (arm64:ret)))
 
-#+sbcl
 (defun reg-alloc-gen-param-stores (params base-offset)
   "Generate code to store parameters from x0-x7 to stack.
    For register-allocated code, params are stored at [x20 - offset*8].
@@ -3231,7 +3225,6 @@
                    (gen-stores (cdr ps) (+ idx 1) (append acc store))))))
     (gen-stores params 0 nil)))
 
-#+sbcl
 (defun has-unresolved-markers (code)
   "Check if code contains any unresolved markers.
    Only these markers are VALID (resolved by linker or tac-codegen pass 2):
@@ -3257,7 +3250,6 @@
                (t (check (cdr items))))))
     (check code)))
 
-#+sbcl
 (defun gen-capture-loads-reg (num-captures)
   "Generate code to load captured values from x24 cons list into env slots.
    x24 = (v0 . (v1 . (v2 . nil))) - load into offsets 0, 1, 2, etc.
@@ -3282,7 +3274,6 @@
                                           (arm64:ldr :closure :x9 :offset 8)))))))
         (gen-loads 0 nil))))
 
-#+sbcl
 (defun codegen-fn-reg-alloc (fn)
   "Generate code for a function using register allocation.
    Accepts two formats:
@@ -3335,7 +3326,6 @@
               nil
               all-code)))))
 
-#+sbcl
 (defun compile-expr-reg-alloc (ir)
   "Compile a single expression using register allocation.
    Returns list of ARM64 instruction bytes, or nil if IR not supported.
@@ -3352,7 +3342,6 @@
                (allocation (linear-scan intervals)))
           (tac-codegen full-tac allocation)))))
 
-#+sbcl
 (defun codegen-main-reg-alloc (mir)
   "Compile main program IR using register allocation.
    Returns list of ARM64 instruction bytes with call markers for resolution.
