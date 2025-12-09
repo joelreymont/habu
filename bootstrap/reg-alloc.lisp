@@ -197,6 +197,12 @@
 (defvar *tco-loop-marker* nil
   "Current loop marker for TCO. Set by loop-ir, used by continue-ir.")
 
+;;; Block/return-from tracking
+(defvar *block-labels* nil
+  "Alist of (block-id . end-label) for return-from resolution.")
+(defvar *block-results* nil
+  "Alist of (block-id . result-vreg) for return-from resolution.")
+
 (defun ir-to-tac (ir counter)
   "Convert IR tree to TAC instructions.
    Returns (instructions result-vreg) where result-vreg holds the value.
@@ -1040,6 +1046,47 @@
                      (list (list 'tac-set-current-package val-vr)))
              val-vr)))
 
+    ;; block-ir: named block with return-from support
+    ;; Format: (block-ir (name . block-id) body)
+    ((and (consp ir) (ir-tag-matches (car ir) "BLOCK-IR"))
+     (let* ((name-info (cadr ir))  ; (name . block-id)
+            (block-id (if (consp name-info) (cdr name-info) name-info))
+            (body (caddr ir))
+            (result-vr (next-vreg counter))
+            (end-label (next-vreg counter))
+            ;; Store end-label in association list for return-from to reference
+            (*block-labels* (cons (cons block-id end-label) *block-labels*))
+            (*block-results* (cons (cons block-id result-vr) *block-results*)))
+       (let* ((body-result (ir-to-tac body counter))
+              (body-instrs (car body-result))
+              (body-vr (cadr body-result)))
+         (list (append body-instrs
+                       (list (list 'tac-move result-vr body-vr))
+                       (list (list 'tac-label end-label)))
+               result-vr))))
+
+    ;; return-from-ir: early exit from named block
+    ;; Format: (return-from-ir (name . block-id) value)
+    ((and (consp ir) (ir-tag-matches (car ir) "RETURN-FROM-IR"))
+     (let* ((name-info (cadr ir))  ; (name . block-id)
+            (block-id (if (consp name-info) (cdr name-info) name-info))
+            (value-ir (caddr ir))
+            (end-label (cdr (assoc block-id *block-labels*)))
+            (result-vr (cdr (assoc block-id *block-results*))))
+       (if (and end-label result-vr)
+           (let* ((val-result (ir-to-tac value-ir counter))
+                  (val-instrs (car val-result))
+                  (val-vr (cadr val-result)))
+             (list (append val-instrs
+                           (list (list 'tac-move result-vr val-vr))
+                           (list (list 'tac-goto end-label)))
+                   result-vr))
+           ;; Fallback if block not found (shouldn't happen)
+           (let* ((val-result (ir-to-tac value-ir counter))
+                  (val-instrs (car val-result))
+                  (val-vr (cadr val-result)))
+             (list val-instrs val-vr)))))
+
     ;; Default: error on unhandled IR
     (t
      (error "ir-to-tac: Unhandled IR form: ~A" ir))))
@@ -1655,12 +1702,16 @@
                           (remove-if-not
                            (lambda (r) (member r allocatable))
                            (mapcar #'cdr allocation))))
-              ;; Generate saves to stack at offsets 0x100+ (caller-save area)
-              ;; Frame layout: 0x10=x19/x20, 0x20=x21/x22, 0x30=x23/x24
-              ;; Spill slots use 0x40-0xFF, so caller-save starts at 0x100
-              ;; This avoids corrupting spilled args when saving regs before calls
+              ;; Generate saves to stack at offsets 0x3850+ (caller-save area)
+              ;; Frame layout (16KB frame):
+              ;;   0x10-0x38: saved callee-save regs (x19-x24)
+              ;;   0x40-0x3840: temp slots (1792 slots for linear codegen)
+              ;;   0x3850-0x38F0: caller-save area (13 slots for x9-x15 + args)
+              ;;   0x3F80: env pointer (x20)
+              ;;   0x3FF0/0x3FF8: saved fp/lr
+              ;; This avoids corrupting temps when saving regs before calls
               (save-code nil)
-              (save-offset #x100)
+              (save-offset #x3850)
               (reg-offsets nil))  ; Track which reg is at which offset for restore
          ;; Save only actually-used caller-saved registers
          (dolist (reg used-regs)

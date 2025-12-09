@@ -169,16 +169,18 @@
 ;; String comparison helper - no closures to avoid labels/closure bugs
 #-sbcl
 (defun string-equal-iter (s1 s2 i len)
-  "Internal: compare strings starting at index i"
+  "Internal: compare strings starting at index i (case-insensitive)"
   (if (>= i len)
       t
-      (if (= (string-ref s1 i) (string-ref s2 i))
-          (string-equal-iter s1 s2 (+ i 1) len)
-          nil)))
+      (let ((c1 (string-ref s1 i))
+            (c2 (string-ref s2 i)))
+        (if (= (h0-char-upcase c1) (h0-char-upcase c2))
+            (string-equal-iter s1 s2 (+ i 1) len)
+            nil))))
 
 #-sbcl
 (defun string-equal (s1 s2)
-  "Compare two strings character by character - pure Habu implementation"
+  "Compare two strings case-insensitively - pure Habu implementation"
   (if (or (null s1) (null s2))
       (and (null s1) (null s2))  ; nil = nil, nil != string
       (let ((len1 (string-length s1))

@@ -53,6 +53,7 @@
 (defvar *op-symbolp* nil)
 (defvar *op-numberp* nil)
 (defvar *op-stringp* nil)
+(defvar *op-keywordp* nil)
 (defvar *op-string-length* nil)
 (defvar *op-string-ref* nil)
 (defvar *op-char-at* nil)
@@ -273,11 +274,12 @@
 
 ;; Search intern table (alist of (name . symbol)) for name
 ;; Returns the symbol if found, nil otherwise
+;; Uses case-insensitive comparison to match bootstrap compiler behavior
 (defun find-interned (name table)
   (if (null table)
       nil
       (let ((entry (car table)))
-        (if (string= (car entry) name)
+        (if (string-equal (car entry) name)
             (cdr entry)
             (find-interned name (cdr table))))))
 
@@ -338,11 +340,12 @@
   (set-intern-table table))  ; Temporarily share intern table
 
 ;; Search keyword table for name
+;; Uses case-insensitive comparison to match bootstrap compiler behavior
 (defun find-keyword (name table)
   (if (null table)
       nil
       (let ((entry (car table)))
-        (if (string= (car entry) name)
+        (if (string-equal (car entry) name)
             (cdr entry)
             (find-keyword name (cdr table))))))
 
@@ -473,7 +476,7 @@
 (defun find-in-alist (key alist)
   (if (null alist)
       nil
-      (if (string= (caar alist) key)
+      (if (string-equal (caar alist) key)
           (car alist)
           (find-in-alist key (cdr alist)))))
 
@@ -635,6 +638,22 @@
         (string=-loop s1 s2 len1 0)
         nil)))
 
+;; Case-insensitive string comparison
+(defun string-equal-loop (s1 s2 len i)
+  (if (>= i len)
+      t
+      (if (= (h0-char-upcase (string-ref s1 i))
+             (h0-char-upcase (string-ref s2 i)))
+          (string-equal-loop s1 s2 len (+ i 1))
+          nil)))
+
+(defun string-equal (s1 s2)
+  (let ((len1 (string-length s1))
+        (len2 (string-length s2)))
+    (if (= len1 len2)
+        (string-equal-loop s1 s2 len1 0)
+        nil)))
+
 ;; Operator checks - pure eq comparison
 ;; All symbols are properly interned, so eq is sufficient
 ;; If eq fails, that indicates a symbol interning bug - fail fast
@@ -683,6 +702,7 @@
 (defun op=symbolp (sym) (eq sym *op-symbolp*))
 (defun op=numberp (sym) (eq sym *op-numberp*))
 (defun op=stringp (sym) (eq sym *op-stringp*))
+(defun op=keywordp (sym) (eq sym *op-keywordp*))
 (defun op=string-length (sym) (eq sym *op-string-length*))
 (defun op=string-ref (sym) (eq sym *op-string-ref*))
 (defun op=char-at (sym) (eq sym *op-char-at*))
@@ -768,6 +788,26 @@
                      (fill-vec (cdr cs) (+ i 1))))))
       (cons (make-string-from-vector (fill-vec chars 0)) end))))
 
+;; Feature list for reader conditionals
+;; habu0 includes the :habu feature but not :sbcl
+(defun has-feature? (feature-name)
+  (string= feature-name "HABU"))
+
+;; Read a feature name (can be a symbol or keyword)
+;; Returns (name . pos) where name is the uppercased string
+(defun read-feature-name (source pos)
+  (let* ((p2 (skip-ws source pos))
+         (ch (char-at source p2)))
+    (if (= ch #x3A)  ; colon - keyword syntax
+        (let* ((r (read-sym-chars source (+ p2 #x1) nil))
+               (chars (car r))
+               (end (cdr r)))
+          (cons (chars-to-string chars) end))
+        (let* ((r (read-sym-chars source p2 nil))
+               (chars (car r))
+               (end (cdr r)))
+          (cons (chars-to-string chars) end)))))
+
 ;; Main reader with labels for mutual recursion
 (defun habu-read (source pos)
   (labels
@@ -803,19 +843,29 @@
                      (result (list 'function val)))
                 (cons result pos)))
              ;; #+ reader conditional - include if feature present
-             ;; habu0 has no features (not SBCL), so always skip form and read next
              ((= ch #x2B)
               (let* ((p2 (+ p #x2))                    ; position after #+
-                     (p3 (skip-symbol source p2))      ; position after feature name
-                     (skip-result (read-one p3))       ; read form to skip
-                     (p4 (cdr skip-result)))           ; position after skipped form
-                (read-one p4)))                        ; read and return next form
+                     (feat-result (read-feature-name source p2))
+                     (feat-name (car feat-result))     ; feature name as string
+                     (p3 (cdr feat-result))            ; position after feature name
+                     (form-result (read-one p3))       ; read the conditional form
+                     (form (car form-result))          ; the form itself
+                     (p4 (cdr form-result)))           ; position after form
+                (if (has-feature? feat-name)
+                    (cons form p4)                     ; feature present: return form
+                    (read-one p4))))                   ; feature absent: skip form, read next
              ;; #- reader conditional - include if feature NOT present
-             ;; habu0 has no features (not SBCL), so always include the form
              ((= ch #x2D)
               (let* ((p2 (+ p #x2))                    ; position after #-
-                     (p3 (skip-symbol source p2)))     ; position after feature name
-                (read-one p3)))                        ; read and return the form
+                     (feat-result (read-feature-name source p2))
+                     (feat-name (car feat-result))     ; feature name as string
+                     (p3 (cdr feat-result))            ; position after feature name
+                     (form-result (read-one p3))       ; read the conditional form
+                     (form (car form-result))          ; the form itself
+                     (p4 (cdr form-result)))           ; position after form
+                (if (has-feature? feat-name)
+                    (read-one p4)                      ; feature present: skip form, read next
+                    (cons form p4))))                  ; feature absent: return form
              (t (cons nil (+ p #x2))))))
        (read-one (p)
          (let* ((p2 (skip-ws source p))
@@ -1035,7 +1085,7 @@
   (if (null globals)
       nil
       (let ((entry (car globals)))
-        (if (string= (symbol-name sym) (symbol-name (car entry)))
+        (if (string-equal (symbol-name sym) (symbol-name (car entry)))
             entry
             (h0-global-lookup-in sym (cdr globals))))))
 
@@ -1053,7 +1103,7 @@
   (if (null globals)
       nil
       (let ((entry (car globals)))
-        (if (string= (symbol-name sym) (symbol-name (car entry)))
+        (if (string-equal (symbol-name sym) (symbol-name (car entry)))
             (cons (cons sym val) (cdr globals))
             (cons entry (h0-global-update sym val (cdr globals)))))))
 
@@ -1133,7 +1183,7 @@
           ;; t or otherwise - default case
           ((or (eq keys t)
                (if (symbolp keys)
-                   (string= (symbol-name keys) "OTHERWISE")
+                   (string-equal (symbol-name keys) "OTHERWISE")
                    nil))
            (h0-eval-progn body env fenv))
           ;; Check if key matches
@@ -1155,7 +1205,7 @@
     ;; nil is false (both Lisp nil and symbol NIL)
     ((null expr) nil)
     ;; Symbol NIL - return nil (catches reader-created NIL symbol)
-    ((if (symbolp expr) (string= (symbol-name expr) "NIL") nil) nil)
+    ((if (symbolp expr) (string-equal (symbol-name expr) "NIL") nil) nil)
     ;; t is true
     ((if (symbolp expr) (op=t expr) nil) t)
     ;; Symbol lookup - first local env, then global env
@@ -1340,6 +1390,9 @@
          ((if (symbolp op) (op=stringp op) nil)
           (let ((arg (h0-eval (cadr expr) env fenv)))
             (if (stringp arg) t nil)))
+         ((if (symbolp op) (op=keywordp op) nil)
+          (let ((arg (h0-eval (cadr expr) env fenv)))
+            (if (keywordp arg) t nil)))
          ;; String primitives (use cached symbols)
          ((if (symbolp op) (op=string-length op) nil)
           (let ((arg (h0-eval (cadr expr) env fenv)))
@@ -1553,6 +1606,7 @@
   (setq *op-symbolp* (intern "SYMBOLP"))
   (setq *op-numberp* (intern "NUMBERP"))
   (setq *op-stringp* (intern "STRINGP"))
+  (setq *op-keywordp* (intern "KEYWORDP"))
   (setq *op-string-length* (intern "STRING-LENGTH"))
   (setq *op-string-ref* (intern "STRING-REF"))
   (setq *op-char-at* (intern "CHAR-AT"))
@@ -1582,11 +1636,12 @@
 
 ;; Search environment for matching name - returns (cons offset nil) or nil
 ;; Returns cons cell so offset 0 is distinguishable from not-found (nil)
+;; Env is flat list of symbols: (sym1 sym2 sym3 ...)
 (defun c-env-search (sym-name env offset)
   (if (null env)
       nil
-      (let ((entry-name (car (car env))))
-        (if (c-names-match sym-name entry-name)
+      (let ((entry-sym (car env)))
+        (if (c-names-match sym-name (symbol-name entry-sym))
             (cons offset nil)  ;; Return cons to distinguish 0 from nil
             (c-env-search sym-name (cdr env) (+ offset #x1))))))
 
@@ -1662,6 +1717,11 @@
 (defun ir-tag-vector-set () #x2A)  ; vector-set mutation
 (defun ir-tag-vector-length () #x2B) ; vector-length
 (defun ir-tag-quote-sym () #x2C)  ; quoted symbol literal
+(defun ir-tag-eql () #x2D)        ; eql comparison
+(defun ir-tag-get-tag () #x2E)    ; get-tag primitive
+(defun ir-tag-make-string-from-vector () #x2F) ; make-string-from-vector
+(defun ir-tag-make-symbol-from-string () #x30) ; make-symbol-from-string
+(defun ir-tag-error () #x31)      ; error primitive
 
 ;; Check if IR node has a specific tag (numeric comparison)
 (defun h0-has-tag-n (ir tag)
@@ -1676,15 +1736,15 @@
 (defun h0-in-env (sym env)
   (if (null env)
       nil
-      (if (string= (symbol-name sym) (car (car env)))
+      (if (string-equal (symbol-name sym) (car (car env)))
           t
           (h0-in-env sym (cdr env)))))
 
-;; Check if a symbol is in a list (using string= on symbol names)
+;; Check if a symbol is in a list (using case-insensitive comparison on symbol names)
 (defun h0-member-sym (sym lst)
   (if (null lst)
       nil
-      (if (string= (symbol-name sym) (symbol-name (car lst)))
+      (if (string-equal (symbol-name sym) (symbol-name (car lst)))
           t
           (h0-member-sym sym (cdr lst)))))
 
@@ -1762,7 +1822,7 @@
 (defun h0-get-var-offset (sym env)
   (if (null env)
       nil
-      (if (string= (symbol-name sym) (car (car env)))
+      (if (string-equal (symbol-name sym) (car (car env)))
           #x0
           (let ((rest-off (h0-get-var-offset sym (cdr env))))
             (if rest-off
@@ -1779,10 +1839,11 @@
   (h0-make-env-with-offset params #x0
     (h0-make-env-with-offset free-vars (h0-list-length params) nil)))
 
+;; Create flat list environment: (sym1 sym2 sym3 ...)
 (defun h0-make-env-with-offset (syms base rest)
   (if (null syms)
       rest
-      (cons (cons (symbol-name (car syms)) nil)
+      (cons (car syms)
             (h0-make-env-with-offset (cdr syms) (+ base #x1) rest))))
 
 (defun h0-list-length (lst)
@@ -1861,7 +1922,7 @@
          ((sym= op "DEFVAR")
           (list (ir-tag-lit) #x0))
          ;; While - transform to labels loop
-         ;; (while test body...) => (labels ((loop () (if test (progn body... (loop)) nil))) (loop))
+         ;; (while test body...) => (labels ((loop () (when test body... (loop)))) (loop))
          ((sym= op "WHILE")
           (h0-compile-while (cadr expr) (cddr expr) env fenv))
          ;; Arithmetic
@@ -2093,6 +2154,26 @@
             ;; lognot x = -1 - x in 2's complement (actually xor with -1)
             ;; For now use subtraction: (- (- 0 1) x) = -1 - x
             (list (ir-tag-sub) (list (ir-tag-lit) #x-1) v)))
+         ;; EQL - equal for numbers and symbols (eq for symbols, = for numbers)
+         ((sym= op "EQL")
+          (let* ((l (h0-compile (cadr expr) env fenv))
+                 (r (h0-compile (caddr expr) env fenv)))
+            (list (ir-tag-eql) l r)))
+         ;; GET-TAG - extract tag from tagged value
+         ((sym= op "GET-TAG")
+          (let ((v (h0-compile (cadr expr) env fenv)))
+            (list (ir-tag-get-tag) v)))
+         ;; MAKE-STRING-FROM-VECTOR - create string from vector of chars
+         ((sym= op "MAKE-STRING-FROM-VECTOR")
+          (let ((v (h0-compile (cadr expr) env fenv)))
+            (list (ir-tag-make-string-from-vector) v)))
+         ;; MAKE-SYMBOL-FROM-STRING - create symbol from string
+         ((sym= op "MAKE-SYMBOL-FROM-STRING")
+          (let ((v (h0-compile (cadr expr) env fenv)))
+            (list (ir-tag-make-symbol-from-string) v)))
+         ;; ERROR - signal error and crash
+         ((sym= op "ERROR")
+          (list (ir-tag-error)))
          ;; >= comparison already exists, add /= (not equal)
          ((sym= op "/=")
           (let* ((l (h0-compile (cadr expr) env fenv))
@@ -2376,27 +2457,24 @@
 
 ;; Compile WHILE - transform to labels loop
 ;; (while test body...) =>
-;; (labels ((while-loop ()
-;;            (if test
-;;                (progn body... (while-loop))
-;;                nil)))
-;;   (while-loop))
+;; (labels ((loop ()
+;;            (when test
+;;              body...
+;;              (loop))))
+;;   (loop))
 (defun h0-compile-while (test body env fenv)
-  (let* ((loop-sym (intern "WHILE-LOOP"))
-         (progn-sym (intern "PROGN"))
-         (if-sym (intern "IF"))
+  (let* ((loop-sym (intern "LOOP"))
+         (when-sym (intern "WHEN"))
          (labels-sym (intern "LABELS"))
-         ;; Build body + recursive call
+         ;; Build body + recursive call: (when test body... (loop))
          (loop-body (h0-append body (list (list loop-sym))))
+         (when-form (cons when-sym (cons test loop-body)))
          ;; Build the expanded form
          (expanded
           (list labels-sym
-                ;; ((while-loop () (if test (progn body... (while-loop)) nil)))
-                (list (list loop-sym (list)
-                            (list if-sym test
-                                  (cons progn-sym loop-body)
-                                  nil)))
-                ;; (while-loop)
+                ;; ((loop () (when test body... (loop))))
+                (list (list loop-sym (list) when-form))
+                ;; (loop)
                 (list loop-sym))))
     (h0-compile expanded env fenv)))
 
@@ -2510,96 +2588,62 @@
 
 ;; ARM64 instruction encoders (inline for self-hosting)
 
+
+;; Helper: Convert numeric register to keyword for arm64:* functions
+(defun reg-keyword (n)
+  "Convert numeric register (0-31) to keyword for arm64 package.
+   Used to bridge between habu0 numeric conventions and arm64:* API."
+  (case n
+    (#x0 :x0) (#x1 :x1) (#x2 :x2) (#x3 :x3) (#x4 :x4) (#x5 :x5) (#x6 :x6) (#x7 :x7)
+    (#x8 :x8) (#x9 :x9) (#xA :x10) (#xB :x11) (#xC :x12) (#xD :x13) (#xE :x14) (#xF :x15)
+    (#x10 :x16) (#x11 :x17) (#x12 :x18) (#x13 :x19) (#x14 :x20) (#x15 :x21) (#x16 :x22) (#x17 :x23)
+    (#x18 :x24) (#x19 :x25) (#x1A :x26) (#x1B :x27) (#x1C :x28) (#x1D :x29) (#x1E :x30) (#x1F :sp)
+    (t (error "Invalid register number: ~D" n))))
+
 ;; MOVZ Xd, #imm16
 (defun a64-movz (rd imm)
-  (let ((inst (logior #xD2800000
-                      (ash (logand imm #xFFFF) #x5)
-                      rd)))
-    (list (logand inst #xFF)
-          (logand (ash inst #x-8) #xFF)
-          (logand (ash inst #x-10) #xFF)
-          (logand (ash inst #x-18) #xFF))))
+  (arm64:movz (reg-keyword rd) imm))
+
 
 ;; MOVK Xd, #imm16, LSL #shift
 (defun a64-movk (rd imm shift)
-  (let* ((hw (/ shift #x10))  ; hw field: 0, 1, 2, or 3 for 0, 16, 32, 48
-         (inst (logior #xF2800000
-                       (ash hw #x15)  ; hw at bits 21-22
-                       (ash (logand imm #xFFFF) #x5)
-                       rd)))
-    (list (logand inst #xFF)
-          (logand (ash inst #x-8) #xFF)
-          (logand (ash inst #x-10) #xFF)
-          (logand (ash inst #x-18) #xFF))))
+  (arm64:movk (reg-keyword rd) imm :lsl shift))
+
 
 ;; ADD Xd, Xn, #imm12
 (defun a64-add-imm (rd rn imm)
-  (let ((inst (logior #x91000000
-                      (ash (logand imm #xFFF) #xA)
-                      (ash rn #x5)
-                      rd)))
-    (list (logand inst #xFF)
-          (logand (ash inst #x-8) #xFF)
-          (logand (ash inst #x-10) #xFF)
-          (logand (ash inst #x-18) #xFF))))
+  (arm64:add (reg-keyword rd) (reg-keyword rn) imm :imm t))
+
 
 ;; ADD Xd, Xn, Xm
 (defun a64-add-reg (rd rn rm)
-  (let ((inst (logior #x8B000000
-                      (ash rm #x10)
-                      (ash rn #x5)
-                      rd)))
-    (list (logand inst #xFF)
-          (logand (ash inst #x-8) #xFF)
-          (logand (ash inst #x-10) #xFF)
-          (logand (ash inst #x-18) #xFF))))
+  (arm64:add (reg-keyword rd) (reg-keyword rn) (reg-keyword rm)))
+
 
 ;; SUB Xd, Xn, #imm12
 (defun a64-sub-imm (rd rn imm)
-  (let ((inst (logior #xD1000000
-                      (ash (logand imm #xFFF) #xA)
-                      (ash rn #x5)
-                      rd)))
-    (list (logand inst #xFF)
-          (logand (ash inst #x-8) #xFF)
-          (logand (ash inst #x-10) #xFF)
-          (logand (ash inst #x-18) #xFF))))
+  (arm64:sub (reg-keyword rd) (reg-keyword rn) imm :imm t))
+
 
 ;; SUB Xd, Xn, Xm
 (defun a64-sub-reg (rd rn rm)
-  (let ((inst (logior #xCB000000
-                      (ash rm #x10)
-                      (ash rn #x5)
-                      rd)))
-    (list (logand inst #xFF)
-          (logand (ash inst #x-8) #xFF)
-          (logand (ash inst #x-10) #xFF)
-          (logand (ash inst #x-18) #xFF))))
+  (arm64:sub (reg-keyword rd) (reg-keyword rn) (reg-keyword rm)))
+
 
 ;; MUL Xd, Xn, Xm (actually MADD Xd, Xn, Xm, XZR)
 (defun a64-mul (rd rn rm)
-  (let ((inst (logior #x9B007C00
-                      (ash rm #x10)
-                      (ash rn #x5)
-                      rd)))
-    (list (logand inst #xFF)
-          (logand (ash inst #x-8) #xFF)
-          (logand (ash inst #x-10) #xFF)
-          (logand (ash inst #x-18) #xFF))))
+  (arm64:mul (reg-keyword rd) (reg-keyword rn) (reg-keyword rm)))
+
 
 ;; SDIV Xd, Xn, Xm
 (defun a64-sdiv (rd rn rm)
-  (let ((inst (logior #x9AC00C00
-                      (ash rm #x10)
-                      (ash rn #x5)
-                      rd)))
-    (list (logand inst #xFF)
-          (logand (ash inst #x-8) #xFF)
-          (logand (ash inst #x-10) #xFF)
-          (logand (ash inst #x-18) #xFF))))
+  (arm64:sdiv (reg-keyword rd) (reg-keyword rn) (reg-keyword rm)))
+
 
 ;; MSUB Xd, Xn, Xm, Xa (Xa - Xn*Xm)
 (defun a64-msub (rd rn rm ra)
+  ;; MSUB Xd, Xn, Xm, Xa: Xd = Xa - Xn*Xm
+  ;; arm64:* package does not have msub, keep manual encoding
   (let ((inst (logior #x9B008000
                       (ash rm #x10)
                       (ash ra #xA)
@@ -2610,61 +2654,31 @@
           (logand (ash inst #x-10) #xFF)
           (logand (ash inst #x-18) #xFF))))
 
+
 ;; LSL Xd, Xn, #shift (actually UBFM)
 (defun a64-lsl-imm (rd rn shift)
-  (let* ((immr (logand (- #x40 shift) #x3F))
-         (imms (- #x3F shift))
-         (inst (logior #xD3400000
-                       (ash immr #x10)
-                       (ash imms #xA)
-                       (ash rn #x5)
-                       rd)))
-    (list (logand inst #xFF)
-          (logand (ash inst #x-8) #xFF)
-          (logand (ash inst #x-10) #xFF)
-          (logand (ash inst #x-18) #xFF))))
+  (arm64:lsl (reg-keyword rd) (reg-keyword rn) shift :imm t))
+
 
 ;; LSR Xd, Xn, #shift (actually UBFM)
 (defun a64-lsr-imm (rd rn shift)
-  (let ((inst (logior #xD340FC00
-                      (ash shift #x10)
-                      (ash rn #x5)
-                      rd)))
-    (list (logand inst #xFF)
-          (logand (ash inst #x-8) #xFF)
-          (logand (ash inst #x-10) #xFF)
-          (logand (ash inst #x-18) #xFF))))
+  (arm64:lsr (reg-keyword rd) (reg-keyword rn) shift :imm t))
+
 
 ;; CMP Xn, #imm12 (actually SUBS XZR, Xn, #imm)
 (defun a64-cmp-imm (rn imm)
-  (let ((inst (logior #xF100001F
-                      (ash (logand imm #xFFF) #xA)
-                      (ash rn #x5))))
-    (list (logand inst #xFF)
-          (logand (ash inst #x-8) #xFF)
-          (logand (ash inst #x-10) #xFF)
-          (logand (ash inst #x-18) #xFF))))
+  (arm64:cmp (reg-keyword rn) imm :imm t))
+
 
 ;; CMP Xn, Xm (actually SUBS XZR, Xn, Xm)
 (defun a64-cmp-reg (rn rm)
-  (let ((inst (logior #xEB00001F
-                      (ash rm #x10)
-                      (ash rn #x5))))
-    (list (logand inst #xFF)
-          (logand (ash inst #x-8) #xFF)
-          (logand (ash inst #x-10) #xFF)
-          (logand (ash inst #x-18) #xFF))))
+  (arm64:cmp (reg-keyword rn) (reg-keyword rm)))
+
 
 ;; CSET Xd, cond (actually CSINC Xd, XZR, XZR, invert(cond))
 (defun a64-cset (rd cond)
-  (let* ((inv-cond (logxor cond #x1))  ; Invert condition
-         (inst (logior #x9A9F07E0
-                       (ash inv-cond #xC)
-                       rd)))
-    (list (logand inst #xFF)
-          (logand (ash inst #x-8) #xFF)
-          (logand (ash inst #x-10) #xFF)
-          (logand (ash inst #x-18) #xFF))))
+  (arm64:cset (reg-keyword rd) cond))
+
 
 ;; Condition codes
 (defun cond-eq () #x0)
@@ -2676,220 +2690,123 @@
 
 ;; B.cond offset (conditional branch)
 (defun a64-b-cond (cond offset)
-  (let* ((imm19 (logand (ash offset #x-2) #x7FFFF))
-         (inst (logior #x54000000
-                       (ash imm19 #x5)
-                       cond)))
-    (list (logand inst #xFF)
-          (logand (ash inst #x-8) #xFF)
-          (logand (ash inst #x-10) #xFF)
-          (logand (ash inst #x-18) #xFF))))
+  ;; Convert byte offset to instruction offset and dispatch to correct branch
+  (let ((inst-offset (ash offset -2)))
+    (cond
+      ((= cond (cond-eq)) (arm64:b.eq inst-offset))
+      ((= cond (cond-ne)) (arm64:b.ne inst-offset))
+      ((= cond (cond-lt)) (arm64:b.lt inst-offset))
+      ((= cond (cond-gt)) (arm64:b.gt inst-offset))
+      ((= cond (cond-le)) (arm64:b.le inst-offset))
+      ((= cond (cond-ge)) (arm64:b.ge inst-offset))
+      (t (error "Unknown condition code: ~D" cond)))))
+
 
 ;; B offset (unconditional branch)
 (defun a64-b (offset)
-  (let* ((imm26 (logand (ash offset #x-2) #x3FFFFFF))
-         (inst (logior #x14000000 imm26)))
-    (list (logand inst #xFF)
-          (logand (ash inst #x-8) #xFF)
-          (logand (ash inst #x-10) #xFF)
-          (logand (ash inst #x-18) #xFF))))
+  ;; Convert byte offset to instruction offset
+  (arm64:b (ash offset -2)))
+
 
 ;; LDR Xt, [Xn, #imm12*8]
 (defun a64-ldr (rt rn imm)
-  (let* ((offset (ash imm #x-3))  ; Divide by 8 for scaled offset
-         (inst (logior #xF9400000
-                       (ash (logand offset #xFFF) #xA)
-                       (ash rn #x5)
-                       rt)))
-    (list (logand inst #xFF)
-          (logand (ash inst #x-8) #xFF)
-          (logand (ash inst #x-10) #xFF)
-          (logand (ash inst #x-18) #xFF))))
+  (arm64:ldr (reg-keyword rt) (reg-keyword rn) :offset imm))
+
 
 ;; STR Xt, [Xn, #imm12*8]
 (defun a64-str (rt rn imm)
-  (let* ((offset (ash imm #x-3))  ; Divide by 8 for scaled offset
-         (inst (logior #xF9000000
-                       (ash (logand offset #xFFF) #xA)
-                       (ash rn #x5)
-                       rt)))
-    (list (logand inst #xFF)
-          (logand (ash inst #x-8) #xFF)
-          (logand (ash inst #x-10) #xFF)
-          (logand (ash inst #x-18) #xFF))))
+  (arm64:str (reg-keyword rt) (reg-keyword rn) :offset imm))
+
 
 ;; MOV Xd, Xm (ORR Xd, XZR, Xm)
 (defun a64-mov-reg (rd rm)
-  (let ((inst (logior #xAA0003E0
-                      (ash rm #x10)
-                      rd)))
-    (list (logand inst #xFF)
-          (logand (ash inst #x-8) #xFF)
-          (logand (ash inst #x-10) #xFF)
-          (logand (ash inst #x-18) #xFF))))
+  (arm64:mov (reg-keyword rd) (reg-keyword rm)))
+
 
 ;; RET (BR LR)
 (defun a64-ret ()
-  (list #xC0 #x03 #x5F #xD6))
+  (arm64:ret))
+
 
 ;; NOP - no operation
 ;; Encoding: 0xD503201F
 (defun a64-nop ()
-  (list #x1F #x20 #x03 #xD5))
+  (arm64:nop))
+
 
 ;; BLR Xn - branch with link to register (indirect call)
 ;; Encoding: 0xD63F0000 | (Rn << 5)
 (defun a64-blr (rn)
-  (let ((inst (logior #xD63F0000
-                      (ash rn #x5))))
-    (list (logand inst #xFF)
-          (logand (ash inst #x-8) #xFF)
-          (logand (ash inst #x-10) #xFF)
-          (logand (ash inst #x-18) #xFF))))
+  (arm64:blr (reg-keyword rn)))
+
 
 ;; BR Xn - branch to register (indirect jump, no link)
 ;; Encoding: 0xD61F0000 | (Rn << 5)
 (defun a64-br (rn)
-  (let ((inst (logior #xD61F0000
-                      (ash rn #x5))))
-    (list (logand inst #xFF)
-          (logand (ash inst #x-8) #xFF)
-          (logand (ash inst #x-10) #xFF)
-          (logand (ash inst #x-18) #xFF))))
+  (arm64:br (reg-keyword rn)))
+
 
 ;; STP X1, X2, [Xn, #imm] - store pair (for saving registers)
 ;; Encoding: 0xA9000000 | (imm7 << 15) | (Rt2 << 10) | (Rn << 5) | Rt
 ;; imm7 is offset/8 (must be multiple of 8)
 (defun a64-stp (rt rt2 rn imm)
-  (let* ((imm7 (logand (ash imm #x-3) #x7F))
-         (inst (logior #xA9000000
-                       (ash imm7 #xF)
-                       (ash rt2 #xA)
-                       (ash rn #x5)
-                       rt)))
-    (list (logand inst #xFF)
-          (logand (ash inst #x-8) #xFF)
-          (logand (ash inst #x-10) #xFF)
-          (logand (ash inst #x-18) #xFF))))
+  (arm64:stp (reg-keyword rt) (reg-keyword rt2) (reg-keyword rn) :offset imm))
+
 
 ;; LDP X1, X2, [Xn, #imm] - load pair (for restoring registers)
 ;; Encoding: 0xA9400000 | (imm7 << 15) | (Rt2 << 10) | (Rn << 5) | Rt
 (defun a64-ldp (rt rt2 rn imm)
-  (let* ((imm7 (logand (ash imm #x-3) #x7F))
-         (inst (logior #xA9400000
-                       (ash imm7 #xF)
-                       (ash rt2 #xA)
-                       (ash rn #x5)
-                       rt)))
-    (list (logand inst #xFF)
-          (logand (ash inst #x-8) #xFF)
-          (logand (ash inst #x-10) #xFF)
-          (logand (ash inst #x-18) #xFF))))
+  (arm64:ldp (reg-keyword rt) (reg-keyword rt2) (reg-keyword rn) :offset imm))
+
 
 ;; LDRB Wt, [Xn, #offset] - load byte, zero-extend
 ;; Encoding: 0x39400000 | (offset << 10) | (Rn << 5) | Rt
 (defun a64-ldrb (rt rn offset)
-  (let ((inst (logior #x39400000
-                      (ash (logand offset #xFFF) #xA)
-                      (ash rn #x5)
-                      rt)))
-    (list (logand inst #xFF)
-          (logand (ash inst #x-8) #xFF)
-          (logand (ash inst #x-10) #xFF)
-          (logand (ash inst #x-18) #xFF))))
+  (arm64:ldrb (reg-keyword rt) (reg-keyword rn) offset))
+
 
 ;; LDRB Wt, [Xn, Xm] - load byte with register offset
 ;; Encoding: 0x38606800 | (Rm << 16) | (Rn << 5) | Rt
 (defun a64-ldrb-reg (rt rn rm)
-  (let ((inst (logior #x38606800
-                      (ash rm #x10)
-                      (ash rn #x5)
-                      rt)))
-    (list (logand inst #xFF)
-          (logand (ash inst #x-8) #xFF)
-          (logand (ash inst #x-10) #xFF)
-          (logand (ash inst #x-18) #xFF))))
+  (arm64:ldrb (reg-keyword rt) (reg-keyword rn) (reg-keyword rm) :reg t))
+
 
 ;; STRB Wt, [Xn, #offset] - store byte
 ;; Encoding: 0x39000000 | (offset << 10) | (Rn << 5) | Rt
 (defun a64-strb (rt rn offset)
-  (let ((inst (logior #x39000000
-                      (ash (logand offset #xFFF) #xA)
-                      (ash rn #x5)
-                      rt)))
-    (list (logand inst #xFF)
-          (logand (ash inst #x-8) #xFF)
-          (logand (ash inst #x-10) #xFF)
-          (logand (ash inst #x-18) #xFF))))
+  (arm64:strb (reg-keyword rt) (reg-keyword rn) offset))
+
 
 ;; AND Xd, Xn, #mask - AND with immediate
 ;; ARM64 logical immediate encoding is complex
 ;; For common masks: #xF (low 4 bits), #x7 (low 3 bits)
 (defun a64-and-imm (rd rn mask)
-  (let* ((base #x92400000)
-         (inst (cond
-                 ;; Low 3 bits: N=1, immr=0, imms=2
-                 ((= mask #x7) (logior base (ash #x2 #xA) (ash rn #x5) rd))
-                 ;; Low 4 bits: N=1, immr=0, imms=3
-                 ((= mask #xF) (logior base (ash #x3 #xA) (ash rn #x5) rd))
-                 ;; Low 8 bits: N=1, immr=0, imms=7
-                 ((= mask #xFF) (logior base (ash #x7 #xA) (ash rn #x5) rd))
-                 ;; Low 16 bits: N=1, immr=0, imms=15
-                 ((= mask #xFFFF) (logior base (ash #xF #xA) (ash rn #x5) rd))
-                 ;; Default: return nop for unsupported masks
-                 (t #xD503201F))))
-    (list (logand inst #xFF)
-          (logand (ash inst #x-8) #xFF)
-          (logand (ash inst #x-10) #xFF)
-          (logand (ash inst #x-18) #xFF))))
+  (arm64:and* (reg-keyword rd) (reg-keyword rn) mask :imm t))
+
 
 ;; AND Xd, Xn, Xm - AND registers
 ;; Encoding: 0x8A000000 | (Rm << 16) | (Rn << 5) | Rd
 (defun a64-and-reg (rd rn rm)
-  (let ((inst (logior #x8A000000
-                      (ash rm #x10)
-                      (ash rn #x5)
-                      rd)))
-    (list (logand inst #xFF)
-          (logand (ash inst #x-8) #xFF)
-          (logand (ash inst #x-10) #xFF)
-          (logand (ash inst #x-18) #xFF))))
+  (arm64:and* (reg-keyword rd) (reg-keyword rn) (reg-keyword rm)))
+
 
 ;; ORR Xd, Xn, Xm - OR registers
 ;; Encoding: 0xAA000000 | (Rm << 16) | (Rn << 5) | Rd
 (defun a64-orr-reg (rd rn rm)
-  (let ((inst (logior #xAA000000
-                      (ash rm #x10)
-                      (ash rn #x5)
-                      rd)))
-    (list (logand inst #xFF)
-          (logand (ash inst #x-8) #xFF)
-          (logand (ash inst #x-10) #xFF)
-          (logand (ash inst #x-18) #xFF))))
+  (arm64:orr (reg-keyword rd) (reg-keyword rn) (reg-keyword rm)))
+
 
 ;; ASR Xd, Xn, #shift - arithmetic shift right immediate
 ;; Encoding: SBFM Xd, Xn, #shift, #63 = 0x9340FC00 | (shift << 16) | (Rn << 5) | Rd
 (defun a64-asr-imm (rd rn shift)
-  (let ((inst (logior #x9340FC00
-                      (ash shift #x10)
-                      (ash rn #x5)
-                      rd)))
-    (list (logand inst #xFF)
-          (logand (ash inst #x-8) #xFF)
-          (logand (ash inst #x-10) #xFF)
-          (logand (ash inst #x-18) #xFF))))
+  (arm64:asr (reg-keyword rd) (reg-keyword rn) shift :imm t))
+
 
 ;; LSL Xd, Xn, Xm - logical shift left register
 ;; Encoding: LSLV = 0x9AC02000 | (Rm << 16) | (Rn << 5) | Rd
 (defun a64-lsl-reg (rd rn rm)
-  (let ((inst (logior #x9AC02000
-                      (ash rm #x10)
-                      (ash rn #x5)
-                      rd)))
-    (list (logand inst #xFF)
-          (logand (ash inst #x-8) #xFF)
-          (logand (ash inst #x-10) #xFF)
-          (logand (ash inst #x-18) #xFF))))
+  (arm64:lsl (reg-keyword rd) (reg-keyword rn) (reg-keyword rm)))
+
 
 ;; Append byte lists
 (defun bytes-append (a b)
@@ -3013,17 +2930,17 @@
                        nil)))
     ;; Now load arguments back to x0, x1, etc. and call
     (let* (;; Load closure from temp slot 0
-           (load-fn (a64-ldr #x9 #x1F fn-slot))
+           (load-fn (a64-ldr #x10 #x1F fn-slot))
            ;; Untag closure (subtract 5)
-           (untag-fn (a64-sub-imm #x9 #x9 #x5))
-           ;; Load env pointer to x24 from [x9+0]
-           (load-env (a64-ldr #x18 #x9 #x0))
-           ;; Load code pointer from [x9+8] directly to x9
-           (load-code (a64-ldr #x9 #x9 #x8))
+           (untag-fn (a64-sub-imm #x10 #x10 #x5))
+           ;; Load env pointer to x24 from [x16+0]
+           (load-env (a64-ldr #x18 #x10 #x0))
+           ;; Load code pointer from [x16+8] directly to x16
+           (load-code (a64-ldr #x10 #x10 #x8))
            ;; Load args back to registers
            (load-args (h0-codegen-funcall-load-args num-args (+ td #x1)))
-           ;; Call via BLR x9
-           (call (a64-blr #x9)))
+           ;; Call via BLR x16
+           (call (a64-blr #x10)))
       (if arg-code
           (bytes-append-all (list fn-code save-fn arg-code load-fn untag-fn
                                   load-env load-code load-args call))
@@ -3813,6 +3730,26 @@
                   (new-env (h0-extend-env-with-params params args-vals closure-env)))
              (h0-eval-ir body-ir new-env))
            (fatal-error "h0-eval-ir: FUNCALL on non-closure"))))
+    ;; EQL - equal for numbers and symbols
+    ((h0-has-tag-n ir (ir-tag-eql))
+     (let* ((left (h0-eval-ir (cadr ir) env))
+            (right (h0-eval-ir (caddr ir) env)))
+       (if (eql left right) #x1 #x0)))
+    ;; GET-TAG - extract tag from tagged value
+    ((h0-has-tag-n ir (ir-tag-get-tag))
+     (let ((val (h0-eval-ir (cadr ir) env)))
+       (get-tag val)))
+    ;; MAKE-STRING-FROM-VECTOR - create string from vector of chars
+    ((h0-has-tag-n ir (ir-tag-make-string-from-vector))
+     (let ((vec (h0-eval-ir (cadr ir) env)))
+       (make-string-from-vector vec)))
+    ;; MAKE-SYMBOL-FROM-STRING - create symbol from string
+    ((h0-has-tag-n ir (ir-tag-make-symbol-from-string))
+     (let ((str (h0-eval-ir (cadr ir) env)))
+       (make-symbol-from-string str)))
+    ;; ERROR - signal error and crash
+    ((h0-has-tag-n ir (ir-tag-error))
+     (fatal-error "h0-eval-ir: ERROR called"))
     ;; Default - CRASH: unknown IR tag
     (t (fatal-error "h0-eval-ir: Unknown IR tag"))))
 
@@ -4577,12 +4514,36 @@
           (setq b (buf-zeros b (- target current)))))
     b))
 
+;; Write vector of bytes to file
+(defun write-bytes-to-file (path bytes-vec)
+  "Write a vector of bytes to a file. Returns 0 on success, -1 on error."
+  (let* ((flags (logior (logior (o-wronly) (o-creat)) (o-trunc)))
+         (fd (sys-open path flags #x1FF)))
+    (if (< fd #x0)
+        #x-1  ; Failed to open
+        (let* ((len (length bytes-vec))
+               (str (make-string-from-vector bytes-vec))
+               (written (sys-write fd str len)))
+          (sys-close fd)
+          (if (= written len)
+              #x0   ; Success
+              #x-1))))) ; Failed to write
+
 (defun write-macho-with-imports-and-heap (output-path code-bytes imports heap-size)
   "Write a Mach-O executable with external imports and heap."
   (let* ((num-imports (length imports))
-         (code-size (length code-bytes)))
-    ;; DEBUG: test basic let* then return
-    (+ num-imports code-size)))                              ; Success
+         (code-size (length code-bytes))
+         (ncmds #xC)
+         (sizeofcmds (calc-sizeofcmds))
+         (b nil))
+    ;; Build Mach-O in buffer (as reversed byte list)
+    (setq b (buf-mach-header-64 b ncmds sizeofcmds (mh-dyldlink)))
+    (setq b (write-load-commands b code-size num-imports heap-size))
+    (setq b (write-code-section b code-bytes num-imports))
+    (setq b (write-data-sections b code-size num-imports heap-size))
+    (setq b (write-linkedit-section b code-size num-imports heap-size imports))
+    ;; Convert buffer to vector and write to file
+    (write-bytes-to-file output-path (buf-to-vector b))))
 
 ;; Helper: generate stubs for each import
 (defun generate-stubs (buf got-page-diff num-imports i)
@@ -4647,8 +4608,7 @@
   "Create a standalone executable with imports and heap"
   (let* ((heap-page-offset (calc-heap-page-offset code-bytes imports))
          (wrapped-code (wrap-with-heap-stub code-bytes heap-page-offset)))
-    ;; DEBUG: return wrapped code length
-    (length wrapped-code)))
+    (write-macho-with-imports-and-heap output-path wrapped-code imports heap-size)))
 
 ;;; Main entry point
 ;;; Mode is determined by first form in input.lisp:
