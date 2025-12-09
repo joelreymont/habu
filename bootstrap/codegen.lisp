@@ -4596,6 +4596,42 @@
   (deliver (native-read-file source-path) output-path heap-size))
 
 #+sbcl
+(defun deliver-forms (forms output-path &optional (heap-size #x4000000))
+  "Compile pre-parsed forms to native executable.
+   Use when you need SBCL's reader for package-qualified symbols.
+   Usage: (habu:deliver-forms (read-forms-with-sbcl source) \"output\")"
+  (reset-symbol-table)
+  (reset-lambda-counter)
+  (reset-compile-warnings)
+  (let* ((result (compile-forms forms))
+         (defuns-orig (car result))
+         (main-ir-orig (cadr result))
+         (wrapper-size +heap-wrapper-size+)
+         (main-lift-result (lift-lambdas-2 main-ir-orig nil))
+         (main-ir (car main-lift-result))
+         (main-lambdas (cdr main-lift-result))
+         (defun-lift-result (lift-lambdas-from-defuns defuns-orig nil nil))
+         (defuns (car defun-lift-result))
+         (defun-lambdas (cdr defun-lift-result))
+         (all-lambdas (append main-lambdas defun-lambdas)))
+    ;; Full compilation path with GC runtime
+    (let* ((all-fns (append defuns all-lambdas))
+           (gc-code (gc-runtime-code))
+           (gc-size (length gc-code))
+           (all-fnoffs (codegen-all-fns all-fns gc-size wrapper-size nil nil))
+           (fn-code (extract-fn-code all-fnoffs nil))
+           (main-code (codegen main-ir all-fnoffs))
+           (main-size (length main-code))
+           (all-code (append gc-code fn-code main-code))
+           (code-bytes (wrap-bytecode-with-heap-for-imports all-code 0))
+           (imports nil))
+      (deliver-with-imports-and-heap output-path code-bytes imports heap-size)
+      (write-symbol-map output-path all-fnoffs main-size imports 0)
+      (let* ((debug-vars (extract-debug-vars all-fns))
+             (debug-table (emit-debug-table debug-vars all-fnoffs)))
+        (write-debug-info output-path debug-vars debug-table)))))
+
+#+sbcl
 (defun write-symbol-map (output-path fnoffs main-size imports stubs-offset)
   "Write a symbol map file for debugging.
    Format: HEX_OFFSET NAME (one per line)

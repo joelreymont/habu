@@ -30,6 +30,7 @@
    #:compile-program    ; Compile forms to ARM64 bytecode
    #:deliver            ; Compile source to native executable (__DATA segment heap)
    #:deliver-file       ; Compile file to native executable
+   #:deliver-forms      ; Compile pre-parsed forms (for package-qualified symbols)
    ;; Disassembler
    #:disassemble
    #:disasm
