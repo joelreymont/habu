@@ -23,17 +23,13 @@
 (setf *error-output* (make-broadcast-stream))
 (setf *trace-output* (make-broadcast-stream))
 
-;;; Load Habu compiler
-(handler-case
-    (let* ((mcp-dir (make-pathname :directory (pathname-directory *load-truename*)))
-           (bootstrap-dir (merge-pathnames (make-pathname :directory '(:relative :up "bootstrap"))
-                                           mcp-dir)))
-      (push bootstrap-dir asdf:*central-registry*)
-      (asdf:load-system :habu))
-  (error (e)
-    ;; Log error to stderr for debugging
-    (format *error-output* "Failed to load Habu: ~A~%" e)
-    (force-output *error-output*)))
+;;; Load Habu compiler - NO SILENT FALLBACKS
+;;; If this fails, the MCP server cannot function. Crash loudly.
+(let* ((mcp-dir (make-pathname :directory (pathname-directory *load-truename*)))
+       (bootstrap-dir (merge-pathnames (make-pathname :directory '(:relative :up "bootstrap"))
+                                       mcp-dir)))
+  (push bootstrap-dir asdf:*central-registry*)
+  (asdf:load-system :habu))
 
 ;;; Restore output streams for MCP communication
 (setf *standard-output* (sb-sys:make-fd-stream 1 :output t :buffering :line))

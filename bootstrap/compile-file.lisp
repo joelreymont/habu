@@ -21,11 +21,10 @@
             (pos 0)
             (compiled-forms nil))
 
-        ;; Read all forms from the file
+        ;; Read all forms from the file - NO SILENT FALLBACKS
         (loop
           (multiple-value-bind (form new-pos)
-              (ignore-errors
-                (read-from-string file-contents nil :eof :start pos))
+              (read-from-string file-contents nil :eof :start pos)
             (when (eq form :eof)
               (return))
             (push form forms)
@@ -43,15 +42,11 @@
               (when verbose
                 (format t "~D. ~A~%" i (if (consp form) (first form) form)))
 
-              (handler-case
-                  (let ((code (compile-expression form :arch arch)))
-                    (when verbose
-                      (format t "   => ~D bytes~%" (length code)))
-                    (push (cons form code) compiled-forms))
-                (error (e)
-                  (when verbose
-                    (format t "   ERROR: ~A~%" e))
-                  (push (cons form nil) compiled-forms))))
+              ;; Let errors propagate - NO SILENT FALLBACKS
+              (let ((code (compile-expression form :arch arch)))
+                (when verbose
+                  (format t "   => ~D bytes~%" (length code)))
+                (push (cons form code) compiled-forms)))
 
         (setf compiled-forms (reverse compiled-forms))
 
