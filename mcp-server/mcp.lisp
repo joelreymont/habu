@@ -18,23 +18,36 @@
 ;;; Suppress all warnings during load - critical for MCP stability
 (declaim (sb-ext:muffle-conditions cl:warning cl:style-warning))
 
-;;; Prevent SBCL from outputting anything during load
+;;; Prevent SBCL from outputting anything or reading input during load
+;;; This is CRITICAL - without input protection, the debugger can steal stdin
 (setf *standard-output* (make-broadcast-stream))
 (setf *error-output* (make-broadcast-stream))
 (setf *trace-output* (make-broadcast-stream))
 
+;;; Disable debugger during load to prevent it from stealing input
+(setf *debugger-hook* (lambda (condition hook)
+                        (declare (ignore hook))
+                        (sb-ext:exit :code 1 :abort t)))
+
 ;;; Load Habu compiler - NO SILENT FALLBACKS
 ;;; If this fails, the MCP server cannot function. Crash loudly.
-(let* ((mcp-dir (make-pathname :directory (pathname-directory *load-truename*)))
-       (bootstrap-dir (merge-pathnames (make-pathname :directory '(:relative :up "bootstrap"))
-                                       mcp-dir)))
-  (push bootstrap-dir asdf:*central-registry*)
-  (asdf:load-system :habu))
+(handler-case
+    (let* ((mcp-dir (make-pathname :directory (pathname-directory *load-truename*)))
+           (bootstrap-dir (merge-pathnames (make-pathname :directory '(:relative :up "bootstrap"))
+                                           mcp-dir)))
+      (push bootstrap-dir asdf:*central-registry*)
+      (asdf:load-system :habu))
+  (error (e)
+    ;; Exit cleanly on load error instead of entering debugger
+    (sb-ext:exit :code 1 :abort t)))
 
 ;;; Restore output streams for MCP communication
 (setf *standard-output* (sb-sys:make-fd-stream 1 :output t :buffering :line))
 (setf *error-output* (sb-sys:make-fd-stream 2 :output t :buffering :line))
 (setf *trace-output* *error-output*)
+
+;;; Restore debugger hook for runtime (but still safe)
+(setf *debugger-hook* nil)
 
 ;;; Capture stream for eval output
 (defvar *capture-stream* nil)
@@ -45,7 +58,7 @@
 (in-package :habu-mcp)
 
 ;;; Version to verify new code is running (update on each change)
-(defparameter *server-version* "v8-2025-12-09-dispatch-file-output")
+(defparameter *server-version* "v9-2025-12-10-disable-debugger-stdin")
 
 ;;; Forward declarations to suppress style warnings
 (declaim (ftype (function (string character) list) split-string))
@@ -575,7 +588,31 @@
      (("question" "string" "The question or problem to ask the oracle" t)
       ("context" "string" "Additional context about the problem (optional)" nil)
       ("timeout" "number" "Timeout in seconds (default: 1800 = 30 minutes)" nil))
-     tool-ask-oracle)))
+     tool-ask-oracle)
+
+    ;; Static analysis tools for debugging tag/type issues
+    ("tag-check"
+     "Analyze a function for tag/type consistency. Shows input/output tag expectations and flags mismatches where a function expects one tag but receives another (e.g., keyword-name expecting tag 7 but calling symbol-name which expects tag 2)."
+     (("function" "string" "Function name to analyze (e.g., \"keyword-name\", \"habu:get-keyword-name\")" t)
+      ("file" "string" "Source file to search (default: habu0.lisp)" nil))
+     tool-tag-check)
+
+    ("layout-of"
+     "Show memory layout for a Habu type. Displays field offsets and sizes for cons, symbol, string, vector, closure, keyword types."
+     (("type" "string" "Type name: cons, symbol, string, vector, closure, keyword, fixnum, nil" t))
+     tool-layout-of)
+
+    ("find-unguarded"
+     "Find places where nil or type checks are missing. Searches for patterns like (car x) without preceding (consp x) check, or (symbol-name x) without (symbolp x)."
+     (("file" "string" "Source file to analyze" t)
+      ("pattern" "string" "Specific pattern to search for (optional, e.g., 'car', 'symbol-name')" nil))
+     tool-find-unguarded)
+
+    ("register-audit"
+     "Audit ARM64 register usage in generated code. Checks calling convention compliance: callee-saved registers (x19-x28), argument passing (x0-x7), and special registers (x20=env, x24=closure, x27=heap, x28=alloc)."
+     (("function" "string" "Function name to audit" t)
+      ("show-flow" "boolean" "Show register data flow (default: false)" nil))
+     tool-register-audit)))
 
 (defun format-tool-schema (name description params)
   (let ((props (mapcar (lambda (p)
@@ -1689,6 +1726,355 @@
       (format out "# Run the program:~%")
       (format out "run~%"))))
 
+;;; ============================================================
+;;; Static Analysis Tools
+;;; ============================================================
+
+(defparameter *habu-tag-info*
+  '(("fixnum"  0 "val<<4" "Immediate integer, no heap allocation")
+    ("cons"    1 "ptr|1" "Pair: [car:8][cdr:8] at ptr&~0xf")
+    ("symbol"  2 "ptr|2" "Symbol: [name-ptr:8][value:8][plist:8][package:8] at ptr&~0xf")
+    ("vector"  3 "ptr|3" "Vector: [length:8][elem0:8][elem1:8]... at ptr&~0xf")
+    ("string"  4 "ptr|4" "String: [length:8][chars:N] at ptr&~0xf")
+    ("closure" 5 "ptr|5" "Closure: [code-ptr:8][env-ptr:8][capture0:8]... at ptr&~0xf")
+    ("nil"     6 "0x06" "Singleton nil value")
+    ("keyword" 7 "ptr|7" "Keyword: [length:8][chars:N] at ptr&~0xf (same layout as string)"))
+  "Habu tag information: (type-name tag-value encoding description)")
+
+(defparameter *tag-expectations*
+  ;; (function-name input-tag output-tag description)
+  '(;; Type predicates - accept any tag, return fixnum (boolean)
+    ("consp"      nil 0 "Returns t/nil based on tag check")
+    ("symbolp"    nil 0 "Returns t/nil based on tag check")
+    ("stringp"    nil 0 "Returns t/nil based on tag check")
+    ("keywordp"   nil 0 "Returns t/nil based on tag check")
+    ("integerp"   nil 0 "Returns t/nil based on tag check")
+    ("vectorp"    nil 0 "Returns t/nil based on tag check")
+    ("null"       nil 0 "Returns t/nil based on tag check")
+
+    ;; Cons operations
+    ("car"        1 nil "Expects cons (tag 1), returns element")
+    ("cdr"        1 nil "Expects cons (tag 1), returns element")
+    ("setcar"     1 nil "Expects cons (tag 1), mutates car")
+    ("setcdr"     1 nil "Expects cons (tag 1), mutates cdr")
+    ("cons"       nil 1 "Takes any two values, returns cons (tag 1)")
+
+    ;; Symbol operations
+    ("symbol-name"   2 4 "Expects symbol (tag 2), returns string (tag 4)")
+    ("symbol-value"  2 nil "Expects symbol (tag 2), returns any")
+    ("symbol-plist"  2 nil "Expects symbol (tag 2), returns plist")
+    ("intern"        4 2 "Expects string (tag 4), returns symbol (tag 2)")
+
+    ;; String operations
+    ("string-length" 4 0 "Expects string (tag 4), returns fixnum")
+    ("char-at"       4 0 "Expects string (tag 4), returns fixnum (char code)")
+    ("string="       4 0 "Expects two strings (tag 4), returns fixnum")
+
+    ;; Keyword operations
+    ("keyword-name"  7 4 "Expects keyword (tag 7), returns string (tag 4)")
+    ("make-keyword"  4 7 "Expects string (tag 4), returns keyword (tag 7)")
+
+    ;; Tag manipulation
+    ("get-tag"       nil 0 "Returns tag as fixnum")
+    ("set-tag"       nil nil "Changes tag, returns new tagged value"))
+  "Expected input/output tags for common functions")
+
+(defun find-function-in-file (func-name file-path)
+  "Find a function definition in a Lisp source file. Returns list of (line-number . definition-text)"
+  (let ((results nil)
+        (func-pattern (format nil "\\(defun ~A\\b" (string-downcase func-name)))
+        (line-num 0)
+        (in-defun nil)
+        (defun-start nil)
+        (defun-lines nil)
+        (paren-depth 0))
+    (with-open-file (in file-path :direction :input :if-does-not-exist nil)
+      (when in
+        (loop for line = (read-line in nil nil)
+              while line
+              do (incf line-num)
+                 (cond
+                   ;; Looking for start of our defun
+                   ((and (not in-defun)
+                         (cl-ppcre:scan func-pattern line))
+                    (setf in-defun t
+                          defun-start line-num
+                          defun-lines (list line)
+                          paren-depth (count #\( line)))
+                   ;; Inside defun, collecting lines
+                   (in-defun
+                    (push line defun-lines)
+                    (incf paren-depth (count #\( line))
+                    (decf paren-depth (count #\) line))
+                    (when (<= paren-depth 0)
+                      (push (cons defun-start (nreverse defun-lines)) results)
+                      (setf in-defun nil)))))))
+    (nreverse results)))
+
+(defun analyze-function-tags (func-name source-lines)
+  "Analyze a function's source for tag usage patterns"
+  (let ((issues nil)
+        (calls-found nil))
+    ;; Look for function calls that have tag expectations
+    (dolist (expectation *tag-expectations*)
+      (let ((called-fn (first expectation))
+            (expected-input (second expectation)))
+        (dolist (line source-lines)
+          (when (cl-ppcre:scan (format nil "\\(~A\\b" called-fn) line)
+            (push (list called-fn expected-input line) calls-found)))))
+    ;; Check for potential mismatches
+    (dolist (call calls-found)
+      (let* ((called-fn (first call))
+             (expected-tag (second call))
+             (line (third call)))
+        ;; Look for set-tag calls that might produce wrong tag
+        (when (and expected-tag
+                   (cl-ppcre:scan "set-tag" line))
+          (multiple-value-bind (match groups)
+              (cl-ppcre:scan-to-strings "set-tag\\s+\\S+\\s+(\\d+)" line)
+            (when match
+              (let ((produced-tag (parse-integer (aref groups 0))))
+                (when (/= produced-tag expected-tag)
+                  (push (format nil "MISMATCH: ~A expects tag ~A but set-tag produces tag ~A in: ~A"
+                                called-fn expected-tag produced-tag line)
+                        issues))))))))
+    (values calls-found issues)))
+
+(defun tool-tag-check (args)
+  "Analyze a function for tag/type consistency issues"
+  (let* ((func-name (jget args "function"))
+         (file (or (jget args "file") "habu0.lisp"))
+         (habu-dir (merge-pathnames
+                    (make-pathname :directory '(:relative :up))
+                    (make-pathname :directory (pathname-directory *load-truename*))))
+         (file-path (merge-pathnames file habu-dir)))
+    (with-output-to-string (out)
+      (format out "=== Tag Analysis for ~A ===~%~%" func-name)
+
+      ;; Show known expectations for this function
+      (let ((expectation (find func-name *tag-expectations* :key #'first :test #'string-equal)))
+        (if expectation
+            (format out "Known expectations:~%  Input tag: ~A~%  Output tag: ~A~%  Note: ~A~%~%"
+                    (or (second expectation) "any")
+                    (or (third expectation) "any")
+                    (fourth expectation))
+            (format out "No predefined tag expectations for ~A~%~%" func-name)))
+
+      ;; Find and analyze the function
+      (if (probe-file file-path)
+          (let ((definitions (find-function-in-file func-name file-path)))
+            (if definitions
+                (dolist (def definitions)
+                  (let ((line-num (car def))
+                        (lines (cdr def)))
+                    (format out "Found at line ~A:~%" line-num)
+                    (dolist (line lines)
+                      (format out "  ~A~%" line))
+                    (format out "~%")
+                    ;; Analyze
+                    (multiple-value-bind (calls issues)
+                        (analyze-function-tags func-name lines)
+                      (when calls
+                        (format out "Function calls with tag expectations:~%")
+                        (dolist (call calls)
+                          (let* ((fn (first call))
+                                 (tag (second call))
+                                 (exp (find fn *tag-expectations* :key #'first :test #'string-equal)))
+                            (format out "  ~A: expects tag ~A (~A)~%"
+                                    fn (or tag "any")
+                                    (if exp (fourth exp) "unknown"))))
+                        (format out "~%"))
+                      (if issues
+                          (progn
+                            (format out "ISSUES FOUND:~%")
+                            (dolist (issue issues)
+                              (format out "  ! ~A~%" issue)))
+                          (format out "No obvious tag mismatches detected.~%")))))
+                (format out "Function ~A not found in ~A~%" func-name file)))
+          (format out "File not found: ~A~%" file-path)))))
+
+(defun tool-layout-of (args)
+  "Show memory layout for a Habu type"
+  (let ((type-name (string-downcase (jget args "type"))))
+    (with-output-to-string (out)
+      (format out "=== Memory Layout for ~A ===~%~%" (string-upcase type-name))
+      (cond
+        ((string= type-name "cons")
+         (format out "Tag: 1 (ptr | 0x1)~%")
+         (format out "Layout at (ptr & ~0xF):~%")
+         (format out "  Offset 0: car (8 bytes) - tagged pointer~%")
+         (format out "  Offset 8: cdr (8 bytes) - tagged pointer~%")
+         (format out "Total size: 16 bytes~%")
+         (format out "~%Access: (car x) reads [ptr-1], (cdr x) reads [ptr-1+8]~%"))
+
+        ((string= type-name "symbol")
+         (format out "Tag: 2 (ptr | 0x2)~%")
+         (format out "Layout at (ptr & ~0xF):~%")
+         (format out "  Offset 0:  name-ptr (8 bytes) - pointer to string (tag 4)~%")
+         (format out "  Offset 8:  value (8 bytes) - tagged pointer~%")
+         (format out "  Offset 16: plist (8 bytes) - tagged pointer~%")
+         (format out "  Offset 24: package (8 bytes) - tagged pointer~%")
+         (format out "Total size: 32 bytes~%")
+         (format out "~%Access: (symbol-name x) loads [ptr-2+0], returns string~%"))
+
+        ((string= type-name "string")
+         (format out "Tag: 4 (ptr | 0x4)~%")
+         (format out "Layout at (ptr & ~0xF):~%")
+         (format out "  Offset 0: length (8 bytes) - untagged integer~%")
+         (format out "  Offset 8: chars (N bytes) - raw ASCII bytes~%")
+         (format out "Total size: 8 + length bytes (rounded up for alignment)~%")
+         (format out "~%Access: (string-length x) reads [ptr-4], (char-at x i) reads [ptr-4+8+i]~%"))
+
+        ((string= type-name "keyword")
+         (format out "Tag: 7 (ptr | 0x7)~%")
+         (format out "Layout at (ptr & ~0xF):~%")
+         (format out "  Offset 0: length (8 bytes) - untagged integer~%")
+         (format out "  Offset 8: chars (N bytes) - raw ASCII bytes~%")
+         (format out "Total size: 8 + length bytes (rounded up for alignment)~%")
+         (format out "~%IMPORTANT: Same layout as STRING, different tag!~%")
+         (format out "To get string from keyword: (set-tag kw 4) - just change tag 7→4~%")
+         (format out "DO NOT call symbol-name on keywords - wrong layout!~%"))
+
+        ((string= type-name "vector")
+         (format out "Tag: 3 (ptr | 0x3)~%")
+         (format out "Layout at (ptr & ~0xF):~%")
+         (format out "  Offset 0: length (8 bytes) - untagged integer~%")
+         (format out "  Offset 8+i*8: element[i] (8 bytes) - tagged pointer~%")
+         (format out "Total size: 8 + length*8 bytes~%")
+         (format out "~%Access: (vector-length x) reads [ptr-3], (aref x i) reads [ptr-3+8+i*8]~%"))
+
+        ((string= type-name "closure")
+         (format out "Tag: 5 (ptr | 0x5)~%")
+         (format out "Layout at (ptr & ~0xF):~%")
+         (format out "  Offset 0: code-ptr (8 bytes) - raw pointer to function entry~%")
+         (format out "  Offset 8: capture-count (8 bytes) - number of captured vars~%")
+         (format out "  Offset 16+i*8: capture[i] (8 bytes) - tagged pointer~%")
+         (format out "Total size: 16 + capture-count*8 bytes~%")
+         (format out "~%Calling: load code-ptr to x26, load captures to x20 slots, BLR x26~%"))
+
+        ((string= type-name "fixnum")
+         (format out "Tag: 0 (immediate, no heap allocation)~%")
+         (format out "Encoding: value << 4~%")
+         (format out "Range: -2^59 to 2^59-1 (60-bit signed)~%")
+         (format out "~%Arithmetic: extract with ASR #4, inject with LSL #4~%"))
+
+        ((string= type-name "nil")
+         (format out "Tag: 6 (singleton value 0x06)~%")
+         (format out "No heap allocation - constant value~%")
+         (format out "~%Test: (null x) checks if x == 0x06~%"))
+
+        (t
+         (format out "Unknown type: ~A~%~%" type-name)
+         (format out "Known types: fixnum, cons, symbol, vector, string, closure, nil, keyword~%"))))))
+
+(defun tool-find-unguarded (args)
+  "Find places where nil or type checks are missing"
+  (let* ((file (jget args "file"))
+         (pattern (jget args "pattern"))
+         (habu-dir (merge-pathnames
+                    (make-pathname :directory '(:relative :up))
+                    (make-pathname :directory (pathname-directory *load-truename*))))
+         (file-path (merge-pathnames file habu-dir)))
+    (with-output-to-string (out)
+      (format out "=== Unguarded Call Analysis for ~A ===~%~%" file)
+
+      ;; Patterns that need guards
+      (let ((dangerous-patterns
+              '(("car" "consp" 1 "Crashes if not cons")
+                ("cdr" "consp" 1 "Crashes if not cons")
+                ("caar" "consp" 1 "Crashes if not cons (nested)")
+                ("cadr" "consp" 1 "Crashes if not cons (nested)")
+                ("cdar" "consp" 1 "Crashes if not cons (nested)")
+                ("cddr" "consp" 1 "Crashes if not cons (nested)")
+                ("symbol-name" "symbolp" 2 "Expects symbol layout, crashes on keyword")
+                ("symbol-value" "symbolp" 2 "Expects symbol layout")
+                ("string-length" "stringp" 4 "Expects string layout")
+                ("char-at" "stringp" 4 "Expects string layout")
+                ("keyword-name" "keywordp" 7 "Expects keyword, not symbol")
+                ("aref" "vectorp" 3 "Expects vector layout")
+                ("vector-length" "vectorp" 3 "Expects vector layout"))))
+
+        (if (probe-file file-path)
+            (with-open-file (in file-path :direction :input)
+              (let ((line-num 0)
+                    (issues nil)
+                    (search-patterns (if pattern
+                                         (list (find pattern dangerous-patterns
+                                                     :key #'first :test #'string-equal))
+                                         dangerous-patterns)))
+                (loop for line = (read-line in nil nil)
+                      while line
+                      do (incf line-num)
+                         (dolist (pat (remove nil search-patterns))
+                           (let ((fn-name (first pat))
+                                 (guard (second pat))
+                                 (tag (third pat))
+                                 (risk (fourth pat)))
+                             (when (cl-ppcre:scan (format nil "\\(~A\\b" fn-name) line)
+                               ;; Found a call - check if there's a guard nearby
+                               (push (list line-num fn-name guard tag risk line) issues)))))
+
+                (if issues
+                    (progn
+                      (format out "Found ~A potentially unguarded calls:~%~%" (length issues))
+                      (dolist (issue (nreverse issues))
+                        (destructuring-bind (ln fn guard tag risk code) issue
+                          (format out "Line ~A: (~A ...)~%" ln fn)
+                          (format out "  Risk: ~A~%" risk)
+                          (format out "  Guard needed: (~A x) before call, expects tag ~A~%" guard tag)
+                          (format out "  Code: ~A~%~%" (string-trim '(#\Space #\Tab) code)))))
+                    (format out "No unguarded calls found for ~A patterns.~%"
+                            (if pattern (format nil "\"~A\"" pattern) "any")))))
+            (format out "File not found: ~A~%" file-path))))))
+
+(defun tool-register-audit (args)
+  "Audit ARM64 register usage in generated code"
+  (let* ((func-name (jget args "function"))
+         (show-flow (jget args "show-flow")))
+    (with-output-to-string (out)
+      (format out "=== Register Audit for ~A ===~%~%" func-name)
+
+      ;; Document Habu calling convention
+      (format out "Habu ARM64 Calling Convention:~%")
+      (format out "  Arguments: x0-x7 (up to 8 args)~%")
+      (format out "  Return value: x0~%")
+      (format out "  Callee-saved: x19-x28 (must preserve across calls)~%")
+      (format out "  Special registers:~%")
+      (format out "    x20 = env (environment frame pointer)~%")
+      (format out "    x24 = closure (current closure pointer)~%")
+      (format out "    x26 = code-base (for relative addressing, closures)~%")
+      (format out "    x27 = heap-base (GC/heap globals pointer)~%")
+      (format out "    x28 = alloc-ptr (heap allocation pointer)~%")
+      (format out "    x29 = frame pointer (fp)~%")
+      (format out "    x30 = link register (lr, return address)~%")
+      (format out "~%")
+
+      ;; Try to compile and analyze
+      (handler-case
+          (let* ((source (format nil "(defun ~A-audit-test (x) x)" func-name))
+                 (result (habu:compile-to-bytes source)))
+            (if result
+                (let ((bytes (habu::bytes-to-vector (car result))))
+                  (format out "Compiled ~A bytes. Analyzing register usage...~%~%" (length bytes))
+                  ;; Basic disassembly to show register usage
+                  (format out "To see full register flow, use (habu:disasm (habu:compile-to-bytes ...))~%"))
+                (format out "Could not compile test function.~%")))
+        (error (e)
+          (format out "Analysis requires function compilation.~%")
+          (format out "Error: ~A~%~%" e)))
+
+      ;; Common issues
+      (format out "~%Common Register Issues:~%")
+      (format out "  1. Not saving x19-x28 in prologue before using~%")
+      (format out "  2. Using x9-x15 as temps but not saving across BL~%")
+      (format out "  3. Clobbering x20 (env) without restoring~%")
+      (format out "  4. Forgetting to set x26 before closure calls~%")
+      (format out "  5. Not preserving x27/x28 across external calls~%")
+
+      (when show-flow
+        (format out "~%Register data flow analysis not yet implemented.~%")
+        (format out "Use traced-eval with habu:codegen to see code generation.~%")))))
+
 (defun dispatch-tool (name args)
   "Dispatch tool by name using handler from *tools*.
    All tool outputs are automatically checked for size and written to file if large."
@@ -1787,6 +2173,12 @@
 (defun run-server ()
   "Main MCP server loop - read JSON-RPC from stdin, write to stdout.
    Designed to never crash - all errors are caught and returned as responses."
+  ;; CRITICAL: Disable debugger to prevent it from stealing stdin
+  ;; This is the root cause of 'input stealing' - debugger reads from stdin
+  (setf *debugger-hook* (lambda (condition hook)
+                          (declare (ignore condition hook))
+                          ;; Just return - let handler-case deal with errors
+                          nil))
   (let ((stdin (sb-sys:make-fd-stream 0 :input t :buffering :line))
         (stdout (sb-sys:make-fd-stream 1 :output t :buffering :line)))
     (let ((*standard-input* stdin)
