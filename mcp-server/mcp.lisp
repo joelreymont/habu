@@ -58,7 +58,7 @@
 (in-package :habu-mcp)
 
 ;;; Version to verify new code is running (update on each change)
-(defparameter *server-version* "v9-2025-12-10-disable-debugger-stdin")
+(defparameter *server-version* "v10-2025-12-10-sb-ext-disable-debugger")
 
 ;;; Forward declarations to suppress style warnings
 (declaim (ftype (function (string character) list) split-string))
@@ -2175,10 +2175,8 @@
    Designed to never crash - all errors are caught and returned as responses."
   ;; CRITICAL: Disable debugger to prevent it from stealing stdin
   ;; This is the root cause of 'input stealing' - debugger reads from stdin
-  (setf *debugger-hook* (lambda (condition hook)
-                          (declare (ignore condition hook))
-                          ;; Just return - let handler-case deal with errors
-                          nil))
+  ;; sb-ext:disable-debugger makes unhandled errors exit instead of entering debugger
+  (sb-ext:disable-debugger)
   (let ((stdin (sb-sys:make-fd-stream 0 :input t :buffering :line))
         (stdout (sb-sys:make-fd-stream 1 :output t :buffering :line)))
     (let ((*standard-input* stdin)
