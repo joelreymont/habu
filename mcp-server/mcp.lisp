@@ -15,6 +15,9 @@
 (require :sb-posix)
 (require :asdf)
 
+;;; Load cl-ppcre for regex matching in analysis tools
+(ql:quickload :cl-ppcre :silent t)
+
 ;;; Suppress all warnings during load - critical for MCP stability
 (declaim (sb-ext:muffle-conditions cl:warning cl:style-warning))
 
@@ -2053,19 +2056,8 @@
       (format out "    x30 = link register (lr, return address)~%")
       (format out "~%")
 
-      ;; Try to compile and analyze
-      (handler-case
-          (let* ((source (format nil "(defun ~A-audit-test (x) x)" func-name))
-                 (result (habu:compile-to-bytes source)))
-            (if result
-                (let ((bytes (habu::bytes-to-vector (car result))))
-                  (format out "Compiled ~A bytes. Analyzing register usage...~%~%" (length bytes))
-                  ;; Basic disassembly to show register usage
-                  (format out "To see full register flow, use (habu:disasm (habu:compile-to-bytes ...))~%"))
-                (format out "Could not compile test function.~%")))
-        (error (e)
-          (format out "Analysis requires function compilation.~%")
-          (format out "Error: ~A~%~%" e)))
+      ;; Compile and analyze if needed
+      (format out "To analyze register usage, compile with habu:compile-forms and use habu:disasm~%~%")
 
       ;; Common issues
       (format out "~%Common Register Issues:~%")
