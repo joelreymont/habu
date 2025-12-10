@@ -3320,7 +3320,7 @@
           (t (error "tac-codegen: Unknown item type in code: ~S" item))))
       (nreverse resolved-rev))))
 
-;; Native version uses append (simpler, already works)
+;; Native version - also uses push+nreverse for O(n) performance
 #-sbcl
 (defun tac-codegen (tac-instrs allocation)
   "Generate ARM64 code from TAC with register allocation.
@@ -3330,8 +3330,8 @@
    Uses two-pass approach:
    Pass 1: Generate code with markers, track label positions
    Pass 2: Resolve branch markers to actual branch instructions"
-  ;; Pass 1: Generate code with markers
-  (let ((code-with-markers nil)
+  ;; Pass 1: Generate code with markers (collect in reverse, nreverse at end)
+  (let ((code-rev nil)         ; collected in reverse order
         (label-positions nil)  ; alist of (label . byte-position)
         (loop-markers nil)     ; alist of (marker . label) for TCO continue
         (current-pos 0))
@@ -3348,23 +3348,23 @@
        ((eq (car instr) 'tac-label)
         (let ((label (cadr instr)))
           (setq label-positions (cons (cons label current-pos) label-positions))
-          (setq code-with-markers (append code-with-markers
-                                          (list (list :label-marker label))))))
+          (setq code-rev (cons (list :label-marker label) code-rev))))
 
        ;; tac-continue: emit branch marker to loop start (resolve later)
        ((eq (car instr) 'tac-continue)
         (let* ((marker (cadr instr))
                (label (cdr (assoc marker loop-markers))))
           (when label
-            (setq code-with-markers (append code-with-markers
-                                            (list (list :branch-marker label))))
+            (setq code-rev (cons (list :branch-marker label) code-rev))
             (setq current-pos (+ current-pos 4)))))
 
        ;; All other instructions: generate code
        (t
         (let ((bytes (tac-codegen-instr instr allocation)))
           (when bytes
-            (setq code-with-markers (append code-with-markers bytes))
+            ;; Push bytes in reverse order (will be reversed at end)
+            (dolist (b (reverse bytes))
+              (setq code-rev (cons b code-rev)))
             ;; Update position: count actual bytes AND known markers (4 bytes each)
             (dolist (b bytes)
               (cond
@@ -3377,9 +3377,10 @@
                 ((and (consp b) (keywordp (car b)))
                  (error "tac-codegen Pass 1: Unknown marker ~S from instruction ~S - needs implementation" b instr)))))))))
 
-    ;; Pass 2: Resolve branch markers to actual instructions
-    (let ((resolved nil)
-          (pos 0))
+    ;; Pass 2: Resolve branch markers to actual instructions (collect in reverse)
+    (let ((resolved-rev nil)
+          (pos 0)
+          (code-with-markers (nreverse code-rev)))
       (dolist (item code-with-markers)
         (cond
           ;; Skip label markers in output
@@ -3393,7 +3394,8 @@
              (unless target-pos
                (error "tac-codegen: unresolved branch to label ~S" target-label))
              (let ((offset (ash (- target-pos pos) -2)))
-               (setq resolved (append resolved (arm64:b offset)))
+               (dolist (b (reverse (arm64:b offset)))
+                 (setq resolved-rev (cons b resolved-rev)))
                (setq pos (+ pos 4)))))
 
           ;; Resolve conditional branch (branch if not equal)
@@ -3403,7 +3405,8 @@
              (unless target-pos
                (error "tac-codegen: unresolved branch-ne to label ~S" target-label))
              (let ((offset (ash (- target-pos pos) -2)))
-               (setq resolved (append resolved (arm64:b.ne offset)))
+               (dolist (b (reverse (arm64:b.ne offset)))
+                 (setq resolved-rev (cons b resolved-rev)))
                (setq pos (+ pos 4)))))
 
           ;; Resolve conditional branch (branch if equal)
@@ -3413,38 +3416,39 @@
              (unless target-pos
                (error "tac-codegen: unresolved branch-eq to label ~S" target-label))
              (let ((offset (ash (- target-pos pos) -2)))
-               (setq resolved (append resolved (arm64:b.eq offset)))
+               (dolist (b (reverse (arm64:b.eq offset)))
+                 (setq resolved-rev (cons b resolved-rev)))
                (setq pos (+ pos 4)))))
 
           ;; Function call marker - pass through for resolve-calls
           ((and (consp item) (eq (car item) :call-fn))
-           (setq resolved (append resolved (list item)))
+           (setq resolved-rev (cons item resolved-rev))
            (setq pos (+ pos 4)))  ; BL is 4 bytes
 
           ;; Heap allocation marker - pass through for has-unresolved-markers
           ((and (consp item) (eq (car item) :heap-alloc-marker))
-           (setq resolved (append resolved (list item))))
+           (setq resolved-rev (cons item resolved-rev)))
 
           ;; Lambda-ref marker - pass through for link-time resolution
           ;; Format: (:lambda-ref-marker dest-reg lambda-name)
           ;; Will be resolved to ADR instruction by linker
           ((and (consp item) (eq (car item) :lambda-ref-marker))
-           (setq resolved (append resolved (list item)))
+           (setq resolved-rev (cons item resolved-rev))
            (setq pos (+ pos 4)))  ; ADR is 4 bytes
 
           ;; Tail call marker - pass through for resolve-calls
           ((and (consp item) (eq (car item) :tail-call-fn))
-           (setq resolved (append resolved (list item)))
+           (setq resolved-rev (cons item resolved-rev))
            (setq pos (+ pos 4)))  ; B is 4 bytes
 
           ;; Extern call marker - pass through for resolve-calls (libSystem stubs)
           ((and (consp item) (eq (car item) :extern-call))
-           (setq resolved (append resolved (list item)))
+           (setq resolved-rev (cons item resolved-rev))
            (setq pos (+ pos 4)))  ; BL is 4 bytes
 
           ;; Regular byte - keep it
           ((numberp item)
-           (setq resolved (append resolved (list item)))
+           (setq resolved-rev (cons item resolved-rev))
            (setq pos (+ pos 1)))
 
           ;; Unknown marker - ERROR instead of silently dropping
@@ -3454,7 +3458,7 @@
 
           ;; Truly unknown item type
           (t (error "tac-codegen: Unknown item type in code: ~S" item))))
-      resolved)))
+      (nreverse resolved-rev))))
 
 ;;; ============================================================
 ;;; Top-Level Interface
