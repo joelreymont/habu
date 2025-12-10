@@ -221,6 +221,32 @@
             (l2 (cdr body-result)))
        (cons (list 'while-ir new-test new-body) l2)))
 
+    ;; dolist-ir: (dolist-ir var list body)
+    ((has-tag ir 'dolist-ir)
+     (let* ((var (cadr ir))
+            (list-expr (caddr ir))
+            (body (cadddr ir))
+            (list-result (lift-lambdas list-expr lambdas))
+            (new-list (car list-result))
+            (l1 (cdr list-result))
+            (body-result (lift-lambdas body l1))
+            (new-body (car body-result))
+            (l2 (cdr body-result)))
+       (cons (list 'dolist-ir var new-list new-body) l2)))
+
+    ;; dotimes-ir: (dotimes-ir var count body)
+    ((has-tag ir 'dotimes-ir)
+     (let* ((var (cadr ir))
+            (count-expr (caddr ir))
+            (body (cadddr ir))
+            (count-result (lift-lambdas count-expr lambdas))
+            (new-count (car count-result))
+            (l1 (cdr count-result))
+            (body-result (lift-lambdas body l1))
+            (new-body (car body-result))
+            (l2 (cdr body-result)))
+       (cons (list 'dotimes-ir var new-count new-body) l2)))
+
     ;; progn-ir
     ((has-tag ir 'progn-ir)
      (let* ((forms (cadr ir))
@@ -260,7 +286,8 @@
          (has-tag ir 'string-ref-ir) (has-tag ir 'string-concat-ir)
          (has-tag ir 'string-equal-ir) (has-tag ir 'vector-ref-ir)
          (has-tag ir 'buffer-byte-ref-ir)
-         (has-tag ir 'set-tag))
+         (has-tag ir 'set-tag)
+         (has-tag ir 'nthcdr-ir))
      (let* ((left (cadr ir))
             (right (caddr ir))
             (left-result (lift-lambdas left lambdas))
@@ -271,9 +298,10 @@
             (l2 (cdr right-result)))
        (cons (list (car ir) new-left new-right) l2)))
 
-    ;; Ternary ops (vector-set-ir, buffer-byte-set-ir)
+    ;; Ternary ops (vector-set-ir, buffer-byte-set-ir, substring-ir)
     ((or (has-tag ir 'vector-set-ir)
-         (has-tag ir 'buffer-byte-set-ir))
+         (has-tag ir 'buffer-byte-set-ir)
+         (has-tag ir 'substring-ir))
      (let* ((arg1 (cadr ir))
             (arg2 (caddr ir))
             (arg3 (cadddr ir))
@@ -289,7 +317,11 @@
          (has-tag ir 'make-vector-ir) (has-tag ir 'vector-length-ir)
          (has-tag ir 'make-string-from-vector-ir)
          (has-tag ir 'set-global-vars-ir)
-         (has-tag ir 'set-intern-table-ir))
+         (has-tag ir 'set-intern-table-ir)
+         (has-tag ir 'consp-ir) (has-tag ir 'numberp-ir)
+         (has-tag ir 'stringp-ir) (has-tag ir 'symbolp-ir)
+         (has-tag ir 'vectorp-ir) (has-tag ir 'null-ir)
+         (has-tag ir 'println-ir) (has-tag ir 'system-ir))
      (let* ((arg (cadr ir))
             (arg-result (lift-lambdas arg lambdas))
             (new-arg (car arg-result))
@@ -754,6 +786,10 @@
     ((has-tag ir 'string-ref-ir) (or (ir-may-call (cadr ir)) (ir-may-call (caddr ir))))
     ((has-tag ir 'string-concat-ir) (or (ir-may-call (cadr ir)) (ir-may-call (caddr ir))))
     ((has-tag ir 'string-equal-ir) (or (ir-may-call (cadr ir)) (ir-may-call (caddr ir))))
+    ((has-tag ir 'substring-ir) (or (ir-may-call (cadr ir)) (ir-may-call (caddr ir)) (ir-may-call (cadddr ir))))
+    ((has-tag ir 'nthcdr-ir) (or (ir-may-call (cadr ir)) (ir-may-call (caddr ir))))
+    ((has-tag ir 'println-ir) (ir-may-call (cadr ir)))
+    ((has-tag ir 'system-ir) (ir-may-call (cadr ir)))
     ((has-tag ir 'make-vector-ir) (ir-may-call (cadr ir)))
     ((has-tag ir 'vector-ref-ir) (or (ir-may-call (cadr ir)) (ir-may-call (caddr ir))))
     ((has-tag ir 'vector-set-ir) (or (ir-may-call (cadr ir))
@@ -769,9 +805,17 @@
     ((has-tag ir 'get-intern-table-ir) nil)
     ((has-tag ir 'set-global-vars-ir) (ir-may-call (cadr ir)))
     ((has-tag ir 'set-intern-table-ir) (ir-may-call (cadr ir)))
+    ((has-tag ir 'consp-ir) (ir-may-call (cadr ir)))
+    ((has-tag ir 'numberp-ir) (ir-may-call (cadr ir)))
+    ((has-tag ir 'stringp-ir) (ir-may-call (cadr ir)))
+    ((has-tag ir 'symbolp-ir) (ir-may-call (cadr ir)))
+    ((has-tag ir 'vectorp-ir) (ir-may-call (cadr ir)))
+    ((has-tag ir 'null-ir) (ir-may-call (cadr ir)))
     ((has-tag ir 'str-lit) nil)
     ((has-tag ir 'if-ir) t)
     ((has-tag ir 'while-ir) t)
+    ((has-tag ir 'dolist-ir) t)
+    ((has-tag ir 'dotimes-ir) t)
     ((has-tag ir 'let-ir) t)
     ((has-tag ir 'let*-ir) t)
     ((has-tag ir 'progn-ir) t)
@@ -1106,6 +1150,84 @@
     (emit-linear (list 'label end-label))
     dst))
 
+(defun linearize-dolist (ir)
+  "Linearize dolist loop: (dolist-ir var list body)
+   Expands to a while loop that iterates over list"
+  (let* ((var-offset (cadr ir))
+         (list-expr (caddr ir))
+         (body (cadddr ir))
+         (loop-label (fresh-label))
+         (end-label (fresh-label))
+         (list-temp (linearize-expr list-expr))
+         (dst (fresh-temp))
+         (current-temp (fresh-temp)))
+    ;; Initialize result to nil
+    (emit-linear (list 'load-nil dst))
+    ;; Initialize current to the list
+    (emit-linear (list 'move current-temp list-temp))
+    ;; Loop label
+    (emit-linear (list 'label loop-label))
+    ;; Test if current is nil (end of list)
+    (emit-linear (list 'jump-if-nil current-temp end-label))
+    ;; Set var to (car current)
+    (let ((car-temp (fresh-temp)))
+      (emit-linear (list 'car car-temp current-temp))
+      (emit-linear (list 'setq var-offset car-temp)))
+    ;; Execute body
+    (let ((body-temp (linearize-expr body)))
+      (emit-linear (list 'move dst body-temp)))
+    ;; Advance current to (cdr current)
+    (let ((cdr-temp (fresh-temp)))
+      (emit-linear (list 'cdr cdr-temp current-temp))
+      (emit-linear (list 'move current-temp cdr-temp)))
+    ;; Jump back to loop start
+    (emit-linear (list 'jump loop-label))
+    ;; End label
+    (emit-linear (list 'label end-label))
+    dst))
+
+(defun linearize-dotimes (ir)
+  "Linearize dotimes loop: (dotimes-ir var count body)
+   Expands to a while loop that counts from 0 to count-1"
+  (let* ((var-offset (cadr ir))
+         (count-expr (caddr ir))
+         (body (cadddr ir))
+         (loop-label (fresh-label))
+         (end-label (fresh-label))
+         (count-temp (linearize-expr count-expr))
+         (dst (fresh-temp))
+         (idx-temp (fresh-temp))
+         (zero-temp (fresh-temp)))
+    ;; Initialize result to nil
+    (emit-linear (list 'load-nil dst))
+    ;; Initialize index to 0
+    (emit-linear (list 'load-lit zero-temp 0))
+    (emit-linear (list 'move idx-temp zero-temp))
+    ;; Set var to initial index
+    (emit-linear (list 'setq var-offset idx-temp))
+    ;; Loop label
+    (emit-linear (list 'label loop-label))
+    ;; Test if idx >= count
+    (let ((test-temp (fresh-temp)))
+      (emit-linear (list 'cmp-lt test-temp idx-temp count-temp))
+      (emit-linear (list 'jump-if-nil test-temp end-label)))
+    ;; Execute body
+    (let ((body-temp (linearize-expr body)))
+      (emit-linear (list 'move dst body-temp)))
+    ;; Increment index
+    (let ((one-temp (fresh-temp))
+          (new-idx-temp (fresh-temp)))
+      (emit-linear (list 'load-lit one-temp 1))
+      (emit-linear (list 'add new-idx-temp idx-temp one-temp))
+      (emit-linear (list 'move idx-temp new-idx-temp))
+      ;; Update var
+      (emit-linear (list 'setq var-offset idx-temp)))
+    ;; Jump back to loop start
+    (emit-linear (list 'jump loop-label))
+    ;; End label
+    (emit-linear (list 'label end-label))
+    dst))
+
 (defun linearize-expr (ir)
   "Linearize any IR expression, returns temp holding result"
   (cond
@@ -1144,6 +1266,7 @@
     ((has-tag ir 'cdr-ir) (linearize-unary 'cdr ir))
     ((has-tag ir 'setcar-ir) (linearize-binary 'setcar ir))
     ((has-tag ir 'setcdr-ir) (linearize-binary 'setcdr ir))
+    ((has-tag ir 'nthcdr-ir) (linearize-binary 'nthcdr ir))
 
     ;; String operations
     ((has-tag ir 'string-length-ir) (linearize-unary 'string-length ir))
@@ -1151,6 +1274,15 @@
     ((has-tag ir 'string-concat-ir) (linearize-binary 'string-concat ir))
     ((has-tag ir 'string-equal-ir) (linearize-binary 'string-equal ir))
     ((has-tag ir 'make-string-from-vector-ir) (linearize-unary 'make-string-from-vector ir))
+    ((has-tag ir 'substring-ir)
+     (let* ((str-temp (linearize-expr (cadr ir)))
+            (start-temp (linearize-expr (caddr ir)))
+            (end-temp (linearize-expr (cadddr ir)))
+            (dst (fresh-temp)))
+       (emit-linear (list 'substring dst str-temp start-temp end-temp))
+       dst))
+    ((has-tag ir 'println-ir) (linearize-unary 'println ir))
+    ((has-tag ir 'system-ir) (linearize-unary 'system ir))
 
     ;; Symbol operations
     ((has-tag ir 'symbol-name-ir) (linearize-unary 'symbol-name ir))
@@ -1183,9 +1315,19 @@
     ((has-tag ir 'get-tag) (linearize-unary 'get-tag ir))
     ((has-tag ir 'set-tag) (linearize-binary 'set-tag ir))
 
+    ;; Type predicates
+    ((has-tag ir 'consp-ir) (linearize-unary 'consp ir))
+    ((has-tag ir 'numberp-ir) (linearize-unary 'numberp ir))
+    ((has-tag ir 'stringp-ir) (linearize-unary 'stringp ir))
+    ((has-tag ir 'symbolp-ir) (linearize-unary 'symbolp ir))
+    ((has-tag ir 'vectorp-ir) (linearize-unary 'vectorp ir))
+    ((has-tag ir 'null-ir) (linearize-unary 'null-check ir))
+
     ;; Control flow
     ((has-tag ir 'if-ir) (linearize-if ir))
     ((has-tag ir 'while-ir) (linearize-while ir))
+    ((has-tag ir 'dolist-ir) (linearize-dolist ir))
+    ((has-tag ir 'dotimes-ir) (linearize-dotimes ir))
     ((has-tag ir 'progn-ir) (linearize-progn ir))
 
     ;; Bindings
@@ -1735,6 +1877,72 @@
                  (linear-save-temp dst))))
 
       ;; String operations
+
+      ;; Type predicates
+      (consp
+       ;; Test if value is cons (tag == 1)
+       (let ((dst (cadr instr))
+             (src (caddr instr)))
+         (append (linear-load-temp :x0 src)
+                 (arm64:and* :x0 :x0 #xF :imm t)  ; extract tag bits
+                 (arm64:cmp :x0 1 :imm t)         ; compare to cons tag (1)
+                 (arm64:cset :x0 arm64:+eq+)      ; set x0 to 1 if equal, 0 otherwise
+                 (gen-bool-to-tagged)             ; convert to t (16) or nil (6)
+                 (linear-save-temp dst))))
+
+      (numberp
+       ;; Test if value is fixnum (tag == 0)
+       (let ((dst (cadr instr))
+             (src (caddr instr)))
+         (append (linear-load-temp :x0 src)
+                 (arm64:and* :x0 :x0 #xF :imm t)  ; extract tag bits
+                 (arm64:cmp :x0 0 :imm t)         ; compare to fixnum tag (0)
+                 (arm64:cset :x0 arm64:+eq+)      ; set x0 to 1 if equal, 0 otherwise
+                 (gen-bool-to-tagged)             ; convert to t (16) or nil (6)
+                 (linear-save-temp dst))))
+
+      (stringp
+       ;; Test if value is string (tag == 4)
+       (let ((dst (cadr instr))
+             (src (caddr instr)))
+         (append (linear-load-temp :x0 src)
+                 (arm64:and* :x0 :x0 #xF :imm t)  ; extract tag bits
+                 (arm64:cmp :x0 4 :imm t)         ; compare to string tag (4)
+                 (arm64:cset :x0 arm64:+eq+)      ; set x0 to 1 if equal, 0 otherwise
+                 (gen-bool-to-tagged)             ; convert to t (16) or nil (6)
+                 (linear-save-temp dst))))
+
+      (symbolp
+       ;; Test if value is symbol (tag == 2)
+       (let ((dst (cadr instr))
+             (src (caddr instr)))
+         (append (linear-load-temp :x0 src)
+                 (arm64:and* :x0 :x0 #xF :imm t)  ; extract tag bits
+                 (arm64:cmp :x0 2 :imm t)         ; compare to symbol tag (2)
+                 (arm64:cset :x0 arm64:+eq+)      ; set x0 to 1 if equal, 0 otherwise
+                 (gen-bool-to-tagged)             ; convert to t (16) or nil (6)
+                 (linear-save-temp dst))))
+
+      (vectorp
+       ;; Test if value is vector (tag == 3)
+       (let ((dst (cadr instr))
+             (src (caddr instr)))
+         (append (linear-load-temp :x0 src)
+                 (arm64:and* :x0 :x0 #xF :imm t)  ; extract tag bits
+                 (arm64:cmp :x0 3 :imm t)         ; compare to vector tag (3)
+                 (arm64:cset :x0 arm64:+eq+)      ; set x0 to 1 if equal, 0 otherwise
+                 (gen-bool-to-tagged)             ; convert to t (16) or nil (6)
+                 (linear-save-temp dst))))
+
+      (null-check
+       ;; Test if value is nil (== 6)
+       (let ((dst (cadr instr))
+             (src (caddr instr)))
+         (append (linear-load-temp :x0 src)
+                 (arm64:cmp :x0 6 :imm t)         ; compare to nil (6)
+                 (arm64:cset :x0 arm64:+eq+)      ; set x0 to 1 if equal, 0 otherwise
+                 (gen-bool-to-tagged)             ; convert to t (16) or nil (6)
+                 (linear-save-temp dst))))
       (string-length
        (let ((dst (cadr instr))
              (src (caddr instr)))
@@ -1760,6 +1968,68 @@
                  ;; Load byte at [x0]
                  (arm64:ldrb :x0 :x0 0)
                  ;; Tag as fixnum
+                 (arm64:lsl :x0 :x0 4 :imm t)
+                 (linear-save-temp dst))))
+
+      ;; nthcdr: (nthcdr n list) - take cdr n times
+      (nthcdr
+       (let ((dst (cadr instr))
+             (n-src (caddr instr))
+             (list-src (cadddr instr)))
+         ;; Generate inline loop: while n > 0, list = cdr(list), n--
+         (append (linear-load-temp :x0 n-src)      ; x0 = n (tagged)
+                 (linear-load-temp :x1 list-src)   ; x1 = list
+                 ;; Loop: while x0 > 0
+                 ;; Generate label references (will be fixed up)
+                 (list (list :local-loop-start))
+                 (arm64:cmp :x0 0 :imm t)           ; compare n to 0
+                 (list (list :local-branch-le))     ; if n <= 0, exit
+                 ;; x1 = cdr(x1)
+                 (arm64:sub :x1 :x1 1 :imm t)       ; untag cons
+                 (arm64:ldr :x1 :x1 :offset 8)      ; load cdr
+                 ;; x0 = x0 - 1 (decrement n, keep tagged)
+                 (arm64:sub :x0 :x0 16 :imm t)      ; subtract 1 << 4
+                 (list (list :local-jump-back))     ; jump to loop start
+                 (list (list :local-loop-end))
+                 ;; Result is in x1
+                 (arm64:mov :x0 :x1)
+                 (linear-save-temp dst))))
+
+      ;; substring: (substring str start end) - extract substring
+      (substring
+       (let ((dst (cadr instr))
+             (str-src (caddr instr))
+             (start-src (cadddr instr))
+             (end-src (car (cddddr instr))))
+         ;; Call external substring implementation or inline it
+         ;; For now, generate a runtime call (simplified - requires runtime function)
+         (append (linear-load-temp :x0 str-src)
+                 (linear-load-temp :x1 start-src)
+                 (linear-load-temp :x2 end-src)
+                 ;; Call runtime function SUBSTRING
+                 (list (list :call-fn 'SUBSTRING))
+                 (linear-save-temp dst))))
+
+      ;; println: print value with newline
+      (println
+       (let ((dst (cadr instr))
+             (val-src (caddr instr)))
+         ;; Call runtime function PRINTLN
+         (append (linear-load-temp :x0 val-src)
+                 (list (list :call-fn 'PRINTLN))
+                 (linear-save-temp dst))))
+
+      ;; system: execute system command (string)
+      (system
+       (let ((dst (cadr instr))
+             (cmd-src (caddr instr)))
+         ;; Call C system() function via extern
+         (append (linear-load-temp :x0 cmd-src)
+                 ;; Untag string and add 8 to get C string pointer
+                 (arm64:sub :x0 :x0 4 :imm t)
+                 (arm64:add :x0 :x0 8 :imm t)
+                 (list (list :extern-call "_system"))
+                 ;; Tag result as fixnum
                  (arm64:lsl :x0 :x0 4 :imm t)
                  (linear-save-temp dst))))
 
