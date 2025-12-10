@@ -950,6 +950,8 @@
 #+sbcl (defvar *linear-temp-map* nil)  ; maps IR node identity to temp slot
 #+sbcl (defvar *linear-label-counter* 0)
 
+;;; Old linearize-based codegen (SBCL only - habu0 uses reg-alloc codegen)
+#+sbcl
 (defun reset-linear-state ()
   "Reset linearization state"
   #+sbcl (progn
@@ -959,6 +961,7 @@
            (setf *linear-label-counter* 0))
   #-sbcl nil)  ; Native uses stack-allocated state
 
+#+sbcl
 (defun fresh-temp ()
   "Allocate a fresh temp slot"
   #+sbcl (let ((n *linear-temp-counter*))
@@ -966,6 +969,7 @@
            n)
   #-sbcl (error "fresh-temp: native mode not yet implemented"))
 
+#+sbcl
 (defun fresh-label ()
   "Allocate a fresh label name"
   #+sbcl (let ((n *linear-label-counter*))
@@ -973,11 +977,13 @@
            (intern (format nil "L~D" n) :habu))
   #-sbcl (error "fresh-label: native mode not yet implemented"))
 
+#+sbcl
 (defun emit-linear (instr)
   "Emit a linear IR instruction"
   #+sbcl (push instr *linear-output*)
   #-sbcl (error "emit-linear: native mode not yet implemented"))
 
+#+sbcl
 (defun linear-leaf-p (ir)
   "Check if IR is a leaf node (no sub-expressions to linearize)"
   (or (not (consp ir))
@@ -993,6 +999,7 @@
       (has-tag ir 'get-intern-table-ir)
       (has-tag ir 'get-keyword-table-ir)))
 
+#+sbcl
 (defun linearize-leaf (ir)
   "Linearize a leaf IR node, returns temp holding result"
   (let ((dst (fresh-temp)))
@@ -1026,6 +1033,7 @@
       (t (error "linearize-leaf: unknown leaf type ~S" ir)))
     dst))
 
+#+sbcl
 (defun linearize-binary (tag ir)
   "Linearize a binary operation, returns temp holding result"
   (let* ((left-temp (linearize-expr (cadr ir)))
@@ -1034,6 +1042,7 @@
     (emit-linear (list tag dst left-temp right-temp))
     dst))
 
+#+sbcl
 (defun linearize-unary (tag ir)
   "Linearize a unary operation, returns temp holding result"
   (let* ((arg-temp (linearize-expr (cadr ir)))
@@ -1041,6 +1050,7 @@
     (emit-linear (list tag dst arg-temp))
     dst))
 
+#+sbcl
 (defun linearize-if (ir)
   "Linearize if expression with explicit jumps"
   (let* ((else-label (fresh-label))
@@ -1064,6 +1074,7 @@
     (emit-linear (list 'label end-label))
     dst))
 
+#+sbcl
 (defun linearize-progn (ir)
   "Linearize progn, returns temp of last expression"
   (let ((forms (cadr ir))
@@ -1079,6 +1090,7 @@
                      (do-forms (cdr fs))))))
       (do-forms forms))))
 
+#+sbcl
 (defun linearize-let (ir)
   "Linearize let binding"
   (let* ((vals (cadr ir))
@@ -1104,6 +1116,7 @@
       (emit-linear (list 'unbind count))
       body-temp)))
 
+#+sbcl
 (defun linearize-call (ir)
   "Linearize function call"
   (let* ((name (cadr ir))
@@ -1113,6 +1126,7 @@
     (emit-linear (cons 'call (cons dst (cons name arg-temps))))
     dst))
 
+#+sbcl
 (defun linearize-funcall (ir)
   "Linearize funcall (indirect call)"
   (let* ((fn-ir (cadr ir))
@@ -1123,6 +1137,7 @@
     (emit-linear (cons 'funcall (cons dst (cons fn-temp arg-temps))))
     dst))
 
+#+sbcl
 (defun linearize-setq (ir)
   "Linearize variable assignment"
   (let* ((off (cadr ir))
@@ -1131,6 +1146,7 @@
     (emit-linear (list 'setq off val-temp))
     val-temp))  ; setq returns the value
 
+#+sbcl
 (defun linearize-cons (ir)
   "Linearize cons cell creation"
   (let* ((car-temp (linearize-expr (cadr ir)))
@@ -1139,6 +1155,7 @@
     (emit-linear (list 'cons dst car-temp cdr-temp))
     dst))
 
+#+sbcl
 (defun linearize-while (ir)
   "Linearize while loop"
   (let* ((loop-label (fresh-label))
@@ -1157,6 +1174,7 @@
     (emit-linear (list 'label end-label))
     dst))
 
+#+sbcl
 (defun linearize-dolist (ir)
   "Linearize dolist loop: (dolist-ir var list body)
    Expands to a while loop that iterates over list"
@@ -1193,6 +1211,7 @@
     (emit-linear (list 'label end-label))
     dst))
 
+#+sbcl
 (defun linearize-dotimes (ir)
   "Linearize dotimes loop: (dotimes-ir var count body)
    Expands to a while loop that counts from 0 to count-1"
@@ -1235,6 +1254,7 @@
     (emit-linear (list 'label end-label))
     dst))
 
+#+sbcl
 (defun linearize-expr (ir)
   "Linearize any IR expression, returns temp holding result"
   (cond
@@ -2882,6 +2902,8 @@
         reg-alloc-code
         (error "codegen-fn-reg-alloc failed for ~A - unsupported IR in body" (car fn)))))
 
+;;; Dead code - unused
+#+sbcl
 (defun resolve-tco-branches (code loop-label-offset)
   "Resolve :tco-branch markers into actual B (unconditional branch) instructions.
    Each marker is (:tco-branch loop-label-offset) and needs to become a backward branch.
@@ -2940,6 +2962,8 @@
                       (process (cdr items) (+ pos 1) (cons item acc))))))))
     (process code 0 nil)))
 
+;;; Dead code - replaced by gen-capture-loads-reg in reg-alloc.lisp
+#+sbcl
 (defun gen-capture-loads (num-captures)
   "Generate code to load captured values from x24 cons list into env slots.
    x24 = (v0 . (v1 . (v2 . nil))) - load into offsets 0, 1, 2, etc."
@@ -2963,6 +2987,8 @@
                               (append-all (list acc load-car store-env advance)))))))
     (gen-loads 0 nil)))
 
+;;; Old fnoffs builder (SBCL only - uses code-size)
+#+sbcl
 (defun build-fnoffs-pass (fns offset fnoffs acc)
   "Build function offset table: ((name . byte-offset) ...)
    Uses fnoffs for accurate size calculation (may be nil for first pass)."
@@ -2975,6 +3001,7 @@
              (entry (cons name offset)))
         (build-fnoffs-pass (cdr fns) (+ offset size) fnoffs (cons entry acc)))))
 
+#+sbcl
 (defun fnoffs-equal (a b)
   "Compare two fnoffs tables for equality"
   (cond
@@ -2987,6 +3014,7 @@
              (fnoffs-equal (cdr a) (cdr b))
              nil)))))
 
+#+sbcl
 (defun build-fnoffs (fns offset)
   "Build function offset table with iteration until stable.
    Code size depends on function offsets (load-addr size varies),
@@ -3006,6 +3034,7 @@
 ;;; Resolve Calls (simple version without function linking)
 ;;; ============================================================
 
+#+sbcl
 (defun resolve-calls-simple (code)
   "Simple resolve - just flatten the code list.
    For now, this just removes the :call-fn and :extern-call markers.
@@ -3870,7 +3899,7 @@
                      ((and (consp item) (eq (car item) :extern-call))
                       (resolve-at (cdr items)
                                   (+ pos 4)
-                                  (list* 0 0 0 (list :extern-call (cadr item) pos) acc)
+                                  (cons 0 (cons 0 (cons 0 (cons (list :extern-call (cadr item) pos) acc))))
                                   loop-stack block-ends))
                      ;; Regular byte
                      (t

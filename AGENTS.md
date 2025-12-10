@@ -37,7 +37,9 @@ x0-x7:args | x20:env | x24:closure | x27:GC | x28:heap
 ```
 
 ## Exit Codes
-132=SIGILL | 137=SIGKILL | 138=SIGBUS | 139=SIGSEGV
+11=SIGSEGV (macOS) | 132=SIGILL | 137=SIGKILL | 138=SIGBUS | 139=SIGSEGV (Linux)
+
+**Note:** On macOS, exit code 11 = SIGSEGV crash. Always run `crash-analyze` when you see exit=11.
 
 ## Key Files
 `habu0.lisp` (Stage 1) | `bootstrap/*.lisp` (SBCL) | `arm64/asm.lisp` (encoders - SINGLE SOURCE)

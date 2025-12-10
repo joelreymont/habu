@@ -756,7 +756,11 @@
 ;; Operator checks - compare symbol names using string-equal
 ;; Native Habu creates new symbol objects at runtime, so eq comparison fails.
 ;; Use string-equal on symbol-name for reliable operator matching.
-(defun sym-eq (s1 s2) (string-equal (symbol-name s1) (symbol-name s2)))
+;; Must handle nil arguments - nil has tag 6, not a proper symbol.
+(defun sym-eq (s1 s2)
+  (if (or (null s1) (null s2))
+      nil  ;; nil can't match any symbol by name
+      (string-equal (symbol-name s1) (symbol-name s2))))
 (defun op=quote (sym) (sym-eq sym *op-quote*))
 (defun op=if (sym) (sym-eq sym *op-if*))
 (defun op=let (sym) (sym-eq sym *op-let*))

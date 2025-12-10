@@ -362,17 +362,24 @@
             sym)))))
 
 ;;; Global state accessors (implemented in codegen for native)
+;;; These are SBCL-only - in native habu, these are compiler primitives
+;;; that access the GC region at x27+offset
+#+sbcl
 (defun get-intern-table () *intern-table*)
 
+#+sbcl
 (defun set-intern-table (table)
   (setq *intern-table* table))
 
+#+sbcl
 (defun get-lambda-counter () *lambda-counter*)
 
+#+sbcl
 (defun set-lambda-counter (n)
   (setq *lambda-counter* n))
 
 ;;; Package system accessors
+;;; These are NOT primitives, just regular functions that access global vars
 (defun get-current-package () *current-package*)
 
 (defun set-current-package (pkg)

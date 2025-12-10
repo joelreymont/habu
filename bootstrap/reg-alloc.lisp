@@ -2868,7 +2868,8 @@
             (arm64:str :x0 :sp :offset (spill-offset (cadr dest)))))))
 
       ;; tac-symbol-name: get symbol's name string
-      ;; Symbol: [name-ptr | tag 2], name is string ptr at offset 0
+      ;; Symbol and string share same base pointer, just different tags
+      ;; Symbol = ptr|2, String = ptr|4, so: string = symbol - 2 + 4
       ((tac-symbol-name)
        (let* ((dest-vreg (cadr instr))
               (sym-vreg (caddr instr))
@@ -2880,12 +2881,13 @@
               (arm64:ldr :x0 :sp :offset (spill-offset (cadr sym-loc)))
               (arm64:mov :x0 sym-loc))
           (arm64:sub :x0 :x0 2 :imm t)  ; untag symbol (tag 2)
-          (arm64:ldr dest-reg :x0 :offset 0)  ; load name string ptr
+          (arm64:add dest-reg :x0 4 :imm t)  ; add string tag (4)
           (when (and (consp dest) (eq (car dest) :spill))
-            (arm64:str :x0 :sp :offset (spill-offset (cadr dest)))))))
+            (arm64:str dest-reg :sp :offset (spill-offset (cadr dest)))))))
 
       ;; tac-make-symbol: create symbol from string name
-      ;; Allocates: [name-ptr (8 bytes)] with tag 2
+      ;; Symbol and string share same base pointer, just different tags
+      ;; String = ptr|4, Symbol = ptr|2, so: symbol = string - 4 + 2
       ((tac-make-symbol)
        (let* ((dest-vreg (cadr instr))
               (name-vreg (caddr instr))
@@ -2894,17 +2896,12 @@
               (dest-reg (if (and (consp dest) (eq (car dest) :spill)) :x0 dest)))
          (append
           (if (and (consp name-loc) (eq (car name-loc) :spill))
-              (arm64:ldr :x1 :sp :offset (spill-offset (cadr name-loc)))
-              (arm64:mov :x1 name-loc))
-          ;; Store name-ptr at x28 (heap alloc ptr)
-          (arm64:str :x1 :heap :offset 0)
-          ;; Result = x28 | 2 (symbol tag)
-          (arm64:mov dest-reg :heap)
-          (arm64:add dest-reg dest-reg 2 :imm t)
-          ;; Bump heap by 16 (8-byte aligned, minimum 16)
-          (arm64:add :heap :heap 16 :imm t)
+              (arm64:ldr :x0 :sp :offset (spill-offset (cadr name-loc)))
+              (arm64:mov :x0 name-loc))
+          (arm64:sub :x0 :x0 4 :imm t)  ; untag string (tag 4)
+          (arm64:add dest-reg :x0 2 :imm t)  ; add symbol tag (2)
           (when (and (consp dest) (eq (car dest) :spill))
-            (arm64:str :x0 :sp :offset (spill-offset (cadr dest)))))))
+            (arm64:str dest-reg :sp :offset (spill-offset (cadr dest)))))))
 
       ;; tac-string-concat: concatenate two strings
       ;; This is complex - emit marker for now

@@ -16,6 +16,9 @@
    ;; Package definitions
    (:file "package" :depends-on ("host-sbcl"))
 
+   ;; Shared macros (while, incf, decf) - needed before reg-alloc
+   (:file "../shared/macros" :depends-on ("package"))
+
    ;; ARM64 assembler
    (:module "arm64"
     :pathname "../arm64/"
@@ -32,7 +35,7 @@
    (:file "optimize" :depends-on ("compiler-sbcl"))
 
    ;; Register allocation nanopasses
-   (:file "reg-alloc" :depends-on ("compiler-sbcl" "optimize"))
+   (:file "reg-alloc" :depends-on ("compiler-sbcl" "optimize" "../shared/macros"))
 
    ;; Native ARM64 garbage collector
    (:file "gc" :depends-on ("arm64"))

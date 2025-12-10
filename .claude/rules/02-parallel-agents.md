@@ -2,16 +2,16 @@
 
 **ALWAYS launch 2-4 agents in parallel when possible.**
 
+**NEVER idle waiting for agents. Continue working on other tasks while agents run.**
+
 ## Before launching code-writing agents:
 1. Commit current changes
-2. Create git worktrees in `/tmp/habu-*` directories, branched from HEAD
+2. Agents create git worktrees in `/tmp/habu-*` directories, branched from HEAD
 3. Merge agent work after completion
 
 ## Read-only agents (search, research) don't need worktrees.
 
-## Example:
-```
-git add -A && git commit -m "WIP before parallel work"
-# Launch agents with separate worktrees
-# Merge results when done
-```
+## While agents run:
+- Work on unrelated tasks
+- Check agent status with `block=false`
+- Only block-wait when truly nothing else to do
