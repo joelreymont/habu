@@ -220,6 +220,12 @@
      (let ((vr (next-vreg counter)))
        (list (list (list 'tac-lit vr (cadr ir))) vr)))
 
+    ;; (kw-lit keyword) - keyword literal (e.g., :x0, :sp for registers)
+    ;; Used by habu0 to pass register keywords to ARM64 functions
+    ((and (consp ir) (ir-tag-matches (car ir) "KW-LIT"))
+     (let ((vr (next-vreg counter)))
+       (list (list (list 'tac-kw-lit vr (cadr ir))) vr)))
+
     ;; (var offset) - variable reference
     ((and (consp ir) (ir-tag-matches (car ir) "VAR"))
      (let ((vr (next-vreg counter)))
@@ -1141,7 +1147,7 @@
   "Return the vreg defined by this instruction (or nil)"
   (case (car instr)
     ;; Instructions that define a result vreg (vreg is second element)
-    ((tac-lit tac-param tac-var tac-binop tac-cmp tac-call tac-move
+    ((tac-lit tac-kw-lit tac-param tac-var tac-binop tac-cmp tac-call tac-move
       tac-nil tac-cons tac-car tac-cdr tac-sym tac-str
       tac-make-vector tac-vector-ref tac-vector-length
       tac-string-length tac-string-ref tac-make-string
@@ -1169,7 +1175,7 @@
   "Return list of vregs used by this instruction"
   (case (car instr)
     ;; Instructions with no vreg uses
-    ((tac-lit tac-param tac-var tac-label tac-goto tac-nil tac-sym tac-str
+    ((tac-lit tac-kw-lit tac-param tac-var tac-label tac-goto tac-nil tac-sym tac-str
       tac-loop-start tac-continue tac-make-closure
       tac-get-global-vars tac-get-cmdline-args
       ;; New no-use instructions
@@ -2185,6 +2191,34 @@
               ;; Spill slot destination
               (arm64:str :x19 :sp :offset (spill-offset (cadr dest)))
               ;; Register destination
+              (arm64:mov dest :x19)))))
+
+      ;; tac-kw-lit: keyword literal - allocate on heap inline
+      ;; Format: (tac-kw-lit dest-vr keyword-name-string)
+      ;; Keywords have tag 7, same layout as strings [length:8][chars:N]
+      ;; Note: compiler stores keyword as string (symbol-name), not the keyword itself
+      ((tac-kw-lit)
+       (let* ((dest-vreg (cadr instr))
+              (name (caddr instr))  ; Already a string like "X0"
+              (dest (vreg-to-reg dest-vreg allocation))
+              (len (length name))
+              (total-size (logand (+ len 8 15) (lognot 15))))
+         (append
+          ;; Store length at x28
+          (load-addr :x8 len)
+          (arm64:str :x8 :heap :offset 0)
+          ;; Store keyword name bytes at x28+8
+          (gen-str-bytes-code name 8)
+          ;; Get tagged pointer: x28 | 7 (keyword tag) -- put in x19
+          (arm64:mov :x19 :heap)
+          (arm64:add :x19 :x19 7 :imm t)
+          ;; Bump heap
+          (arm64:add :heap :heap total-size :imm t)
+          ;; GC trigger check
+          (gc-trigger-code)
+          ;; Move from x19 to final destination
+          (if (and (consp dest) (eq (car dest) :spill))
+              (arm64:str :x19 :sp :offset (spill-offset (cadr dest)))
               (arm64:mov dest :x19)))))
 
       ;; tac-sym: symbol literal - allocate on heap inline

@@ -483,9 +483,13 @@
 (defun listp (x)
   (or (null x) (consp x)))
 
-;; Compound car/cdr accessors (needed by register allocator)
+;; Compound car/cdr accessors (needed by register allocator and codegen)
 (defun cadar (x) (car (cdr (car x))))
 (defun cddr (x) (cdr (cdr x)))
+(defun cdddr (x) (cdr (cdr (cdr x))))
+(defun cddddr (x) (cdr (cdr (cdr (cdr x)))))
+(defun caddr (x) (car (cdr (cdr x))))
+(defun cadddr (x) (car (cdr (cdr (cdr x)))))
 
 ;; subseq - works on strings (for register allocator compatibility)
 (defun subseq (s start &optional end)
