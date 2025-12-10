@@ -2127,17 +2127,33 @@
     ;; Unknown register - error
     (t (error "habu0-reg: unknown register keyword"))))
 
-;;; get-arm64-fn: Look up ARM64 function by name
-;;; Returns the function object, crashes if not found (no fallbacks)
-;;; Works in both SBCL (arm64 package loaded) and native habu0 (after arm64/asm.lisp loaded)
-(defun get-arm64-fn (name)
-  "Get ARM64 function by symbol name. Crashes if not found."
-  (let* ((pkg (find-package "ARM64"))
-         (sym (if pkg (find-symbol (symbol-name name) pkg) nil))
-         (fn (if (and sym (fboundp sym)) (symbol-function sym) nil)))
-    (if fn
-        fn
-        (error "ARM64 function not available: ~A (is arm64/asm.lisp loaded?)" name))))
+;;; fenv-call-arm64: Call an ARM64 function from fenv
+;;; In SBCL mode 1024, ARM64 functions are in fenv as (name . fn-entry)
+;;; where fn-entry = (:builtin . impl-fn) for builtins
+;;; In native habu0, this function exists but ARM64 functions aren't in fenv,
+;;; so fenv-lookup returns nil and we crash (no silent fallback)
+;;; Note: Uses funcall with explicit arity since apply isn't a habu0 primitive
+(defun fenv-call-arm64 (name nargs fenv)
+  "Call ARM64 function by name from fenv. Crashes if not found."
+  (let ((fn-entry (fenv-lookup name fenv)))
+    (if (null fn-entry)
+        (error "ARM64 function not in fenv: ~A" name)
+        ;; fn-entry should be (:builtin . actual-function)
+        ;; The actual-function is callable via funcall
+        (let ((impl (cdr fn-entry))
+              (n (length nargs)))
+          (if (null impl)
+              (error "ARM64 function has no impl: ~A" name)
+              ;; Dispatch by arity using case
+              (case n
+                (0 (funcall impl))
+                (1 (funcall impl (car nargs)))
+                (2 (funcall impl (car nargs) (cadr nargs)))
+                (3 (funcall impl (car nargs) (cadr nargs) (caddr nargs)))
+                (4 (funcall impl (car nargs) (cadr nargs) (caddr nargs) (cadddr nargs)))
+                (5 (funcall impl (car nargs) (cadr nargs) (caddr nargs) (cadddr nargs) (nth 4 nargs)))
+                (6 (funcall impl (car nargs) (cadr nargs) (caddr nargs) (cadddr nargs) (nth 4 nargs) (nth 5 nargs)))
+                (otherwise (error "fenv-call-arm64: too many args"))))))))
 
 ;; Dispatch builtin functions via ID lookup and match
 ;; IMPORTANT: Normalize args at this boundary to ensure keywords are
@@ -2156,32 +2172,27 @@
           (5 (read-all (car args)))
           (6 (native-read-file (car args)))
           (7 (collect-defuns (car args) (cadr args)))
-          ;; ARM64 functions - accessed via symbol-function lookup
-          ;; Works in both SBCL and native habu0 (once arm64/asm.lisp is loaded)
-          ;; No fallbacks - crash if ARM64 not available
-          (10 (funcall (get-arm64-fn 'str) (car nargs) (cadr nargs) :offset (get-kw-arg nargs *kw-offset* 0)))
-          (11 (funcall (get-arm64-fn 'ldr) (car nargs) (cadr nargs) :offset (get-kw-arg nargs *kw-offset* 0)))
-          (12 (funcall (get-arm64-fn 'stp) (car nargs) (cadr nargs) (caddr nargs) :offset (get-kw-arg nargs *kw-offset* 0)))
-          (13 (funcall (get-arm64-fn 'ldp) (car nargs) (cadr nargs) (caddr nargs) :offset (get-kw-arg nargs *kw-offset* 0)))
-          (20 (funcall (get-arm64-fn 'mov) (car nargs) (cadr nargs)))
-          (21 (funcall (get-arm64-fn 'movz) (car nargs) (cadr nargs)))
-          (30 (if (cddr nargs)
-                  (funcall (get-arm64-fn 'add) (car nargs) (cadr nargs) (caddr nargs) :imm (get-kw-arg nargs *kw-imm* nil))
-                  (funcall (get-arm64-fn 'add) (car nargs) (cadr nargs) 0)))
-          (31 (if (cddr nargs)
-                  (funcall (get-arm64-fn 'sub) (car nargs) (cadr nargs) (caddr nargs) :imm (get-kw-arg nargs *kw-imm* nil))
-                  (funcall (get-arm64-fn 'sub) (car nargs) (cadr nargs) 0)))
-          (40 (if (get-kw-arg nargs *kw-imm* nil)
-                  (funcall (get-arm64-fn 'cmp) (car nargs) (cadr nargs) :imm t)
-                  (funcall (get-arm64-fn 'cmp) (car nargs) (cadr nargs))))
-          (41 (funcall (get-arm64-fn 'b) (car nargs)))
-          (42 (funcall (get-arm64-fn 'bl) (car nargs)))
-          (43 (funcall (get-arm64-fn 'b.eq) (car nargs)))
-          (44 (funcall (get-arm64-fn 'b.ne) (car nargs)))
-          (45 (funcall (get-arm64-fn 'cbz) (car nargs) (cadr nargs)))
-          (46 (funcall (get-arm64-fn 'cbnz) (car nargs) (cadr nargs)))
-          (47 (funcall (get-arm64-fn 'ret)))
-          (48 (funcall (get-arm64-fn 'nop)))
+          ;; ARM64 functions - SBCL mode 1024 only
+          ;; In SBCL, calls arm64:* functions directly via fenv-lookup
+          ;; In native habu0, ARM64 IDs 10-48 fall through to fatal-error
+          ;; (native habu0 generates ARM64 code directly, doesn't use h0-eval-builtin)
+          (10 (fenv-call-arm64 'str nargs fenv))
+          (11 (fenv-call-arm64 'ldr nargs fenv))
+          (12 (fenv-call-arm64 'stp nargs fenv))
+          (13 (fenv-call-arm64 'ldp nargs fenv))
+          (20 (fenv-call-arm64 'mov nargs fenv))
+          (21 (fenv-call-arm64 'movz nargs fenv))
+          (30 (fenv-call-arm64 'add nargs fenv))
+          (31 (fenv-call-arm64 'sub nargs fenv))
+          (40 (fenv-call-arm64 'cmp nargs fenv))
+          (41 (fenv-call-arm64 'b nargs fenv))
+          (42 (fenv-call-arm64 'bl nargs fenv))
+          (43 (fenv-call-arm64 'b.eq nargs fenv))
+          (44 (fenv-call-arm64 'b.ne nargs fenv))
+          (45 (fenv-call-arm64 'cbz nargs fenv))
+          (46 (fenv-call-arm64 'cbnz nargs fenv))
+          (47 (fenv-call-arm64 'ret nargs fenv))
+          (48 (fenv-call-arm64 'nop nargs fenv))
           ;; ARM64 - utility (use nargs with habu0-reg for eq comparison)
           (50 (habu0-reg (car nargs)))
           (_ (fatal-error "h0-eval-builtin: unhandled dispatch ID"))))))
