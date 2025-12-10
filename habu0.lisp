@@ -59,6 +59,7 @@
 (defvar *op-char-at* nil)
 (defvar *op-string=* nil)
 (defvar *op-symbol-name* nil)
+(defvar *op-keyword-name* nil)
 (defvar *op-logand* nil)
 (defvar *op-logior* nil)
 (defvar *op-ash* nil)
@@ -100,6 +101,11 @@
 ;;; Global variable environment for h0-eval
 ;;; Alist of (symbol . value) pairs for DEFVAR/SETQ globals
 (defvar *h0-globals* nil)
+
+;;; Runtime keyword variables - interned at startup for eq comparison
+;;; SBCL-compiled keywords != habu0-reader keywords, so we intern at runtime
+(defvar *kw-offset* nil)
+(defvar *kw-imm* nil)
 
 ;;; ==========================================================
 ;;; Error Infrastructure - crash with message, no silent fallbacks
@@ -335,11 +341,9 @@
 ;; Get keyword name - same layout as symbols, just different tag
 ;; Untag by masking off tag bits, then read string data
 (defun keyword-name (kw)
-  ;; Keywords use tag 7, mask off to get raw pointer
-  (let ((ptr (logand kw (lognot #xF))))
-    ;; Same layout as symbol: [length:8][chars:N]
-    ;; symbol-name works on raw pointer + tag, so use raw ptr | 2 to trick it
-    (symbol-name (logior ptr #x2))))
+  ;; Keywords have same layout as symbols, just different tag (7 vs 2)
+  ;; Use set-tag to change tag from 7 to 2, then call symbol-name
+  (symbol-name (set-tag kw 2)))
 
 ;; Make keyword from string - allocate like symbol but with tag 7
 (defun make-keyword-from-string (name)
@@ -566,11 +570,9 @@
     (let ((existing (find-symbol-in-package sym-name pkg)))
       (if existing
           (cdr existing)
-          ;; Create new symbol with qualified name
-          (let* ((full-name (if (string= pkg-name "CL-USER")
-                               sym-name
-                               (string-concat3 pkg-name ":" sym-name)))
-                 (sym (make-symbol-from-string full-name)))
+          ;; Create new symbol with just the bare name (not qualified)
+          ;; Package membership is tracked by the package, not the symbol name
+          (let ((sym (make-symbol-from-string sym-name)))
             (package-add-symbol pkg sym-name sym)
             sym)))))
 
@@ -777,6 +779,7 @@
 (defun op=char-at (sym) (eq sym *op-char-at*))
 (defun op=string= (sym) (eq sym *op-string=*))
 (defun op=symbol-name (sym) (eq sym *op-symbol-name*))
+(defun op=keyword-name (sym) (eq sym *op-keyword-name*))
 (defun op=logand (sym) (eq sym *op-logand*))
 (defun op=logior (sym) (eq sym *op-logior*))
 (defun op=ash (sym) (eq sym *op-ash*))
@@ -1071,18 +1074,22 @@
 (defun keyword-to-param (kw)
   (intern (keyword-name kw)))
 
+;; Convert a symbol to its corresponding keyword
+;; FOO -> :FOO (intern-keyword the name)
+(defun symbol-to-keyword (sym)
+  (intern-keyword (symbol-name sym)))
+
 ;; Find value for a keyword in argument list
-;; Args: (:foo val1 :bar val2 ...), key: :foo
+;; Args: (:foo val1 :bar val2 ...), key-kw: :foo (a keyword)
 ;; Returns (found . value) or nil if not found
-(defun find-key-arg (args key-name)
+;; Uses eq - key-kw must be from *kw-* variables (runtime-interned)
+(defun find-key-arg (args key-kw)
   (cond
     ((null args) nil)
     ((null (cdr args)) nil)  ; keyword without value - error case
-    ((keywordp (car args))
-     (if (string= (keyword-name (car args)) key-name)
-         (cons t (cadr args))   ; Found it
-         (find-key-arg (cddr args) key-name)))
-    (t (find-key-arg (cdr args) key-name))))
+    ((eq (car args) key-kw)
+     (cons t (cadr args)))   ; Found it
+    (t (find-key-arg (cddr args) key-kw))))
 
 ;; Bind keyword arguments to environment
 ;; key-params: list of (name default) or just name
@@ -1093,8 +1100,8 @@
       (let* ((spec (car key-params))
              (name (key-param-name spec))
              (default (key-param-default spec))
-             (name-str (symbol-name name))
-             (found (find-key-arg key-args name-str))
+             (key-kw (symbol-to-keyword name))
+             (found (find-key-arg key-args key-kw))
              (val (if found
                       (cdr found)
                       (if default
@@ -1835,6 +1842,10 @@
          ((if (symbolp op) (op=symbol-name op) nil)
           (let ((arg (h0-eval (cadr expr) env fenv)))
             (symbol-name arg)))
+         ;; Keyword-name - extract string name from keyword
+         ((if (symbolp op) (op=keyword-name op) nil)
+          (let ((arg (h0-eval (cadr expr) env fenv)))
+            (keyword-name arg)))
          ;; Bitwise operations (use cached symbols)
          ((if (symbolp op) (op=logand op) nil)
           (let* ((left (h0-eval (cadr expr) env fenv))
@@ -1976,32 +1987,105 @@
     ;; Unknown expression type
     (t (fatal-error "h0-eval: unknown expression type"))))
 
-;; Dispatch builtin compiler functions
-;; These are native functions exposed to user code in mode #x400
+;; Builtin dispatch table - maps symbol name strings to handler functions
+;; Built once at init, used for O(n) lookup (could use hash table for O(1))
+(defvar *builtin-dispatch* nil)
+
+;; Get keyword argument value from args list
+;; key-kw is a keyword like :OFFSET, not a string
+(defun get-kw-arg (args key-kw default)
+  (let ((found (find-key-arg args key-kw)))
+    (if found (cdr found) default)))
+
+(defun init-builtin-dispatch ()
+  "Build dispatch table mapping symbol to dispatch ID (simple integer)"
+  ;; Use integers as dispatch keys - avoids #' function references
+  (setq *builtin-dispatch*
+        (list
+         ;; Compiler functions (IDs 1-7)
+         (cons (intern "H0-COMPILE") 1)
+         (cons (intern "H0-CODEGEN") 2)
+         (cons (intern "H0-LINEARIZE") 3)
+         (cons (intern "DELIVER-WITH-IMPORTS-AND-HEAP") 4)
+         (cons (intern "READ-ALL") 5)
+         (cons (intern "NATIVE-READ-FILE") 6)
+         (cons (intern "COLLECT-DEFUNS") 7)
+         ;; ARM64 - memory (IDs 10-13)
+         (cons (intern "STR") 10)
+         (cons (intern "LDR") 11)
+         (cons (intern "STP") 12)
+         (cons (intern "LDP") 13)
+         ;; ARM64 - data movement (IDs 20-21)
+         (cons (intern "MOV") 20)
+         (cons (intern "MOVZ") 21)
+         ;; ARM64 - arithmetic (IDs 30-31)
+         (cons (intern "ADD") 30)
+         (cons (intern "SUB") 31)
+         ;; ARM64 - compare/branch (IDs 40-48)
+         (cons (intern "CMP") 40)
+         (cons (intern "B") 41)
+         (cons (intern "BL") 42)
+         (cons (intern "B.EQ") 43)
+         (cons (intern "B.NE") 44)
+         (cons (intern "CBZ") 45)
+         (cons (intern "CBNZ") 46)
+         (cons (intern "RET") 47)
+         (cons (intern "NOP") 48)
+         ;; ARM64 - utility (IDs 50+)
+         (cons (intern "REG") 50))))
+
+;; Lookup dispatch ID in table
+(defun find-builtin-id (name table)
+  (if (null table)
+      nil
+      (if (eq name (caar table))
+          (cdar table)
+          (find-builtin-id name (cdr table)))))
+
+;; Dispatch builtin functions via ID lookup and match
 (defun h0-eval-builtin (name args fenv)
-  (cond
-    ((eq name (intern "H0-COMPILE"))
-     ;; (h0-compile expr env fenv) - compile expression to IR
-     (h0-compile (car args) (cadr args) (caddr args)))
-    ((eq name (intern "H0-CODEGEN"))
-     ;; (h0-codegen ir code-offset) - generate machine code from IR
-     (h0-codegen (car args) (cadr args)))
-    ((eq name (intern "H0-LINEARIZE"))
-     ;; (h0-linearize ir) - linearize tree IR to linear IR
-     (h0-linearize (car args)))
-    ((eq name (intern "DELIVER-WITH-IMPORTS-AND-HEAP"))
-     ;; (deliver-with-imports-and-heap path code imports heap-size)
-     (deliver-with-imports-and-heap (car args) (cadr args) (caddr args) (cadddr args)))
-    ((eq name (intern "READ-ALL"))
-     ;; (read-all source-string) - parse source to list of forms
-     (read-all (car args)))
-    ((eq name (intern "NATIVE-READ-FILE"))
-     ;; (native-read-file path) - read file contents as string
-     (native-read-file (car args)))
-    ((eq name (intern "COLLECT-DEFUNS"))
-     ;; (collect-defuns forms fenv) - collect function definitions
-     (collect-defuns (car args) (cadr args)))
-    (t (fatal-error "h0-eval-builtin: unknown builtin"))))
+  (let ((id (find-builtin-id name *builtin-dispatch*)))
+    (if (null id)
+        (fatal-error "h0-eval-builtin: unknown builtin")
+        (match id
+          ;; Compiler functions
+          (1 (h0-compile (car args) (cadr args) (caddr args)))
+          (2 (h0-codegen (car args) (cadr args)))
+          (3 (h0-linearize (car args)))
+          (4 (deliver-with-imports-and-heap (car args) (cadr args) (caddr args) (cadddr args)))
+          (5 (read-all (car args)))
+          (6 (native-read-file (car args)))
+          (7 (collect-defuns (car args) (cadr args)))
+          ;; ARM64 - memory
+          (10 (str (car args) (cadr args) :offset (get-kw-arg args *kw-offset* 0)))
+          (11 (ldr (car args) (cadr args) :offset (get-kw-arg args *kw-offset* 0)))
+          (12 (stp (car args) (cadr args) (caddr args) :offset (get-kw-arg args *kw-offset* 0)))
+          (13 (ldp (car args) (cadr args) (caddr args) :offset (get-kw-arg args *kw-offset* 0)))
+          ;; ARM64 - data movement
+          (20 (mov (car args) (cadr args)))
+          (21 (movz (car args) (cadr args)))
+          ;; ARM64 - arithmetic
+          (30 (if (cddr args)
+                  (add (car args) (cadr args) (caddr args) :imm (get-kw-arg args *kw-imm* nil))
+                  (add (car args) (cadr args) 0)))
+          (31 (if (cddr args)
+                  (sub (car args) (cadr args) (caddr args) :imm (get-kw-arg args *kw-imm* nil))
+                  (sub (car args) (cadr args) 0)))
+          ;; ARM64 - compare/branch
+          (40 (if (get-kw-arg args *kw-imm* nil)
+                  (cmp (car args) (cadr args) :imm t)
+                  (cmp (car args) (cadr args))))
+          (41 (b (car args)))
+          (42 (bl (car args)))
+          (43 (b.eq (car args)))
+          (44 (b.ne (car args)))
+          (45 (cbz (car args) (cadr args)))
+          (46 (cbnz (car args) (cadr args)))
+          (47 (ret))
+          (48 (nop))
+          ;; ARM64 - utility
+          (50 (reg (car args)))
+          (_ (fatal-error "h0-eval-builtin: unhandled dispatch ID"))))))
 
 ;; Eval a list of expressions
 (defun h0-eval-list (exprs env fenv)
@@ -2125,6 +2209,7 @@
   (setq *op-char-at* (intern "CHAR-AT"))
   (setq *op-string=* (intern "STRING="))
   (setq *op-symbol-name* (intern "SYMBOL-NAME"))
+  (setq *op-keyword-name* (intern "KEYWORD-NAME"))
   (setq *op-logand* (intern "LOGAND"))
   (setq *op-logior* (intern "LOGIOR"))
   (setq *op-ash* (intern "ASH"))
@@ -2157,6 +2242,9 @@
   (setq *op-listp* (intern "LISTP"))
   (setq *op-nil* (intern "NIL"))
   (setq *op-otherwise* (intern "OTHERWISE"))
+  ;; Initialize runtime keywords for eq comparison
+  (setq *kw-offset* (intern-keyword "OFFSET"))
+  (setq *kw-imm* (intern-keyword "IMM"))
   nil)
 
 ;; Environment lookup for compilation - returns offset or nil
@@ -2255,6 +2343,8 @@
 (defun ir-tag-make-string-from-vector () #x2F) ; make-string-from-vector
 (defun ir-tag-make-symbol-from-string () #x30) ; make-symbol-from-string
 (defun ir-tag-error () #x31)      ; error primitive
+(defun ir-tag-lognot () #x33)     ; lognot (bitwise NOT via MVN)
+(defun ir-tag-keyword-name () #x34) ; keyword-name extraction
 
 ;; Check if IR node has a specific tag (numeric comparison)
 (defun h0-has-tag-n (ir tag)
@@ -2545,6 +2635,10 @@
          ((if (symbolp op) (op=symbol-name op) nil)
           (let ((v (h0-compile (cadr expr) env fenv)))
             (list (ir-tag-symbol-name) v)))
+         ;; KEYWORD-NAME - extract name string from keyword
+         ((if (symbolp op) (op=keyword-name op) nil)
+          (let ((v (h0-compile (cadr expr) env fenv)))
+            (list (ir-tag-keyword-name) v)))
          ;; Vector operations
          ((if (symbolp op) (op=make-vector op) nil)
           (let ((size (h0-compile (cadr expr) env fenv)))
@@ -2723,10 +2817,10 @@
          ;; NTH - expand to nested CDRs and CAR
          ((if (symbolp op) (op=nth op) nil)
           (h0-compile-nth (cadr expr) (caddr expr) env fenv))
-         ;; LOGNOT - use MVN instruction via subtraction
+         ;; LOGNOT - use MVN instruction (bitwise NOT)
          ((if (symbolp op) (op=lognot op) nil)
           (let ((v (h0-compile (cadr expr) env fenv)))
-            (list (ir-tag-sub) (list (ir-tag-lit) #x-1) v)))
+            (list (ir-tag-lognot) v)))
          ;; EQL - equal for numbers and symbols
          ((if (symbolp op) (op=eql op) nil)
           (let* ((l (h0-compile (cadr expr) env fenv))
@@ -4835,17 +4929,48 @@
             (load-name (ldr :x0 :x0 :offset 0)))
        (bytes-append-all (list arg-code untag load-name))))
 
-    ;; Logand: bitwise AND (both operands tagged, result tagged)
+    ;; Logand: bitwise AND - must untag, operate, retag
     ((h0-has-tag-n ir (ir-tag-logand))
-     (h0-codegen-binop (cadr ir) (caddr ir)
-                       (and* :x0 :x0 :x1)
-                       td))
+     (let* ((slot-off (+ 48 (* td 8)))
+            (left-code (h0-codegen (cadr ir) td))
+            (save-left (str :x0 :sp :offset slot-off))
+            (right-code (h0-codegen (caddr ir) (+ td 1)))
+            (move-right (mov :x1 :x0))
+            (load-left (ldr :x0 :sp :offset slot-off))
+            (untag-x0 (asr :x0 :x0 4 :imm t))
+            (untag-x1 (asr :x1 :x1 4 :imm t))
+            (do-and (and* :x0 :x0 :x1))
+            (retag (lsl :x0 :x0 4 :imm t)))
+       (bytes-append-all
+        (list left-code save-left right-code move-right load-left
+              untag-x0 untag-x1 do-and retag))))
 
-    ;; Logior: bitwise OR
+    ;; Logior: bitwise OR - must untag, operate, retag
     ((h0-has-tag-n ir (ir-tag-logior))
-     (h0-codegen-binop (cadr ir) (caddr ir)
-                       (orr :x0 :x0 :x1)
-                       td))
+     (let* ((slot-off (+ 48 (* td 8)))
+            (left-code (h0-codegen (cadr ir) td))
+            (save-left (str :x0 :sp :offset slot-off))
+            (right-code (h0-codegen (caddr ir) (+ td 1)))
+            (move-right (mov :x1 :x0))
+            (load-left (ldr :x0 :sp :offset slot-off))
+            (untag-x0 (asr :x0 :x0 4 :imm t))
+            (untag-x1 (asr :x1 :x1 4 :imm t))
+            (do-or (orr :x0 :x0 :x1))
+            (retag (lsl :x0 :x0 4 :imm t)))
+       (bytes-append-all
+        (list left-code save-left right-code move-right load-left
+              untag-x0 untag-x1 do-or retag))))
+
+    ;; Lognot: bitwise NOT (untag, MVN, retag)
+    ((h0-has-tag-n ir (ir-tag-lognot))
+     (let* ((arg-code (h0-codegen (cadr ir) td))
+            ;; Untag: ASR x0, x0, #4
+            (untag (asr :x0 :x0 4 :imm t))
+            ;; MVN x0, x0 - bitwise complement
+            (invert (mvn :x0 :x0))
+            ;; Retag: LSL x0, x0, #4
+            (retag (lsl :x0 :x0 4 :imm t)))
+       (bytes-append-all (list arg-code untag invert retag))))
 
     ;; ASH: arithmetic shift (untag, shift, retag)
     ;; Positive shift = left, negative = right
@@ -5298,6 +5423,8 @@
      (logior (h0-eval-ir (cadr ir) env) (h0-eval-ir (caddr ir) env)))
     ((h0-has-tag-n ir (ir-tag-ash))
      (ash (h0-eval-ir (cadr ir) env) (h0-eval-ir (caddr ir) env)))
+    ((h0-has-tag-n ir (ir-tag-lognot))
+     (lognot (h0-eval-ir (cadr ir) env)))
     ;; Boolean not
     ((h0-has-tag-n ir (ir-tag-not))
      (let ((val (h0-eval-ir (cadr ir) env)))
@@ -6252,48 +6379,104 @@
 ;;; Build fenv with compiler functions for self-compilation mode
 ;;; Each entry is (name params . body) matching collect-defuns format
 ;;; For built-in functions, we use a special :builtin marker
+;; Helper to create builtin fenv entry - interns name once
+(defun make-builtin-entry (name builtin-kw)
+  (let ((sym (intern name)))
+    (cons sym (cons builtin-kw sym))))
+
 (defun make-compiler-fenv ()
   "Build fenv with core compiler functions exposed"
-  ;; We add entries with :builtin marker that h0-eval can dispatch on
   ;; Format: (name . (:builtin . impl-symbol))
-  ;; Use intern-keyword to ensure keyword eq works at runtime
-  (let ((builtin-kw (intern-keyword "BUILTIN")))
+  (let ((kw (intern-keyword "BUILTIN")))
     (list
-     (cons (intern "H0-COMPILE") (cons builtin-kw (intern "H0-COMPILE")))
-     (cons (intern "H0-CODEGEN") (cons builtin-kw (intern "H0-CODEGEN")))
-     (cons (intern "H0-LINEARIZE") (cons builtin-kw (intern "H0-LINEARIZE")))
-     (cons (intern "DELIVER-WITH-IMPORTS-AND-HEAP") (cons builtin-kw (intern "DELIVER-WITH-IMPORTS-AND-HEAP")))
-     (cons (intern "READ-ALL") (cons builtin-kw (intern "READ-ALL")))
-     (cons (intern "NATIVE-READ-FILE") (cons builtin-kw (intern "NATIVE-READ-FILE")))
-     (cons (intern "COLLECT-DEFUNS") (cons builtin-kw (intern "COLLECT-DEFUNS"))))))
+     ;; Compiler functions
+     (make-builtin-entry "H0-COMPILE" kw)
+     (make-builtin-entry "H0-CODEGEN" kw)
+     (make-builtin-entry "H0-LINEARIZE" kw)
+     (make-builtin-entry "DELIVER-WITH-IMPORTS-AND-HEAP" kw)
+     (make-builtin-entry "READ-ALL" kw)
+     (make-builtin-entry "NATIVE-READ-FILE" kw)
+     (make-builtin-entry "COLLECT-DEFUNS" kw)
+     ;; ARM64 - data movement
+     (make-builtin-entry "STR" kw)
+     (make-builtin-entry "LDR" kw)
+     (make-builtin-entry "STUR" kw)
+     (make-builtin-entry "LDUR" kw)
+     (make-builtin-entry "STP" kw)
+     (make-builtin-entry "LDP" kw)
+     (make-builtin-entry "STRB" kw)
+     (make-builtin-entry "LDRB" kw)
+     (make-builtin-entry "MOV" kw)
+     (make-builtin-entry "MOVZ" kw)
+     (make-builtin-entry "MOVK" kw)
+     (make-builtin-entry "MOVN" kw)
+     ;; ARM64 - arithmetic
+     (make-builtin-entry "ADD" kw)
+     (make-builtin-entry "SUB" kw)
+     (make-builtin-entry "SUBS" kw)
+     (make-builtin-entry "MUL" kw)
+     (make-builtin-entry "SDIV" kw)
+     (make-builtin-entry "NEG" kw)
+     ;; ARM64 - bitwise
+     (make-builtin-entry "AND*" kw)
+     (make-builtin-entry "ORR" kw)
+     (make-builtin-entry "EOR" kw)
+     (make-builtin-entry "LSL" kw)
+     (make-builtin-entry "LSR" kw)
+     (make-builtin-entry "ASR" kw)
+     (make-builtin-entry "MVN" kw)
+     ;; ARM64 - compare and branch
+     (make-builtin-entry "CMP" kw)
+     (make-builtin-entry "CSET" kw)
+     (make-builtin-entry "B" kw)
+     (make-builtin-entry "BL" kw)
+     (make-builtin-entry "BR" kw)
+     (make-builtin-entry "BLR" kw)
+     (make-builtin-entry "CBZ" kw)
+     (make-builtin-entry "CBNZ" kw)
+     (make-builtin-entry "B.EQ" kw)
+     (make-builtin-entry "B.NE" kw)
+     (make-builtin-entry "B.LT" kw)
+     (make-builtin-entry "B.LE" kw)
+     (make-builtin-entry "B.GT" kw)
+     (make-builtin-entry "B.GE" kw)
+     (make-builtin-entry "RET" kw)
+     ;; ARM64 - system
+     (make-builtin-entry "SVC" kw)
+     (make-builtin-entry "BRK" kw)
+     (make-builtin-entry "NOP" kw)
+     ;; ARM64 - utility
+     (make-builtin-entry "REG" kw)
+     (make-builtin-entry "ENCODE" kw))))
 
 (defun main ()
-  ;; Initialize compile-time operators first (uses eq, no symbol-name)
+  ;; Initialize dispatch tables
   (init-compile-ops)
+  (init-builtin-dispatch)
   (let ((source (native-read-file "input.lisp")))
     (if (null source)
-        #xFF  ;; File not found
+        (fatal-error "main: input.lisp not found")
         (let ((forms (read-all source)))
           (if (null forms)
-              #xFE  ;; Parse error
+              (fatal-error "main: parse error - no forms")
               (let ((first-form (car forms)))
                 (cond
                   ;; Compile test mode: compile and eval IR
                   ((if (numberp first-form) (= first-form #x100) nil)
                    (if (null (cdr forms))
-                       #xFD  ;; No expression to compile
+                       (fatal-error "main: mode 256 requires expression")
                        (h0-compile-and-eval (cadr forms))))
                   ;; Codegen test mode: compile and return bytecode length
                   ((if (numberp first-form) (= first-form #x200) nil)
                    (if (null (cdr forms))
-                       #xFD
+                       (fatal-error "main: mode 512 requires expression")
                        (let* ((ir (h0-compile (cadr forms) nil nil))
                               (code (h0-codegen ir #x0)))
                          (length code))))
                   ;; Link test mode: compile, codegen, link to /tmp/h0out
                   ((if (numberp first-form) (= first-form #x300) nil)
                    (if (null (cdr forms))
-                       #xFD
+                       (fatal-error "main: mode 768 requires expression")
                        (let* ((ir (h0-compile (cadr forms) nil nil))
                               (code (h0-codegen ir #x0)))
                          (deliver-with-imports-and-heap "/tmp/h0out"

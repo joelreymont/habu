@@ -288,7 +288,7 @@
     (:run . 30)
     (:debug . 30)
     (:build . 300)
-    (:oracle . 1800)
+    (:oracle . 30)    ; Changed from 1800 to 30 for faster iteration
     (:habu0 . 30))
   "Default timeouts in seconds for various tool types")
 
@@ -1511,9 +1511,10 @@
    Concatenates files in order:
    1. shared/macros.lisp - macro definitions (dolist, when, unless)
    2. arm64/asm.lisp - ARM64 instruction encoders
-   3. habu0.lisp - core compiler/interpreter
-   4. bootstrap/reg-alloc.lisp - register allocator (UNCHANGED)
-   5. bootstrap/codegen.lisp - code generator (UNCHANGED)
+   3. bootstrap/reader.lisp - shared reader with package support
+   4. habu0.lisp - core compiler/interpreter
+   5. bootstrap/reg-alloc.lisp - register allocator (UNCHANGED)
+   6. bootstrap/codegen.lisp - code generator (UNCHANGED)
    Uses generic process runner with timeout."
   (let* ((habu-dir (merge-pathnames
                     (make-pathname :directory '(:relative :up))
@@ -1522,6 +1523,7 @@
          ;; Source files in concatenation order
          (macros-source (namestring (merge-pathnames "shared/macros.lisp" habu-dir)))
          (arm64-source (namestring (merge-pathnames "arm64/asm.lisp" habu-dir)))
+         (reader-source (namestring (merge-pathnames "bootstrap/reader.lisp" habu-dir)))
          (habu0-source (or (jget args "source")
                            (namestring (merge-pathnames "habu0.lisp" habu-dir))))
          (reg-alloc-source (namestring (merge-pathnames "bootstrap/reg-alloc.lisp" habu-dir)))
@@ -1529,11 +1531,13 @@
          (output (or (jget args "output")
                      (namestring (merge-pathnames "habu0" habu-dir))))
          ;; Read with SBCL's reader in HABU package (so primitives resolve correctly)
-         ;; Concatenate: macros + arm64 + habu0 + reg-alloc + codegen
+         ;; Concatenate: macros + arm64 + reader + habu0 + reg-alloc + codegen
          (script (format nil "(habu:deliver-forms ~
                                (let ((*package* (find-package :habu))) ~
                                  (with-input-from-string ~
                                    (s (concatenate 'string ~
+                                        (uiop:read-file-string ~S) ~
+                                        (string (code-char 10)) ~
                                         (uiop:read-file-string ~S) ~
                                         (string (code-char 10)) ~
                                         (uiop:read-file-string ~S) ~
@@ -1547,7 +1551,7 @@
                                          until (eq form :eof) ~
                                          collect form))) ~
                                ~S)"
-                         macros-source arm64-source habu0-source reg-alloc-source codegen-source output))
+                         macros-source arm64-source reader-source habu0-source reg-alloc-source codegen-source output))
          (timeout (or (jget args "timeout") (get-default-timeout :build))))
     (handler-case
         (multiple-value-bind (stdout stderr exit-code killed)

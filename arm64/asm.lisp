@@ -45,6 +45,7 @@
 
 (in-package :arm64)
 
+
 ;;; ============================================================
 ;;; Constants
 ;;; ============================================================
@@ -172,6 +173,31 @@
 ;;; Raw numbers are rejected with an error.
 ;;; Special aliases: :sp, :xzr, :lr, :fp, :env, :closure, :gc, :heap
 
+;; Helper to get keyword name string - works in both SBCL and habu0
+;; In SBCL, keywords are symbols in KEYWORD package, so symbol-name works.
+;; In habu0 native binary, keywords have tag 7 and need keyword-name.
+;; RUNTIME DISPATCH: Check the tag bits to decide which function to use.
+;; Keywords in habu0 have tag 7, symbols have tag 2.
+;; In SBCL, keywords are symbols (same tag), so symbolp returns t.
+;; Prevent inlining - these are boundary functions between SBCL and habu0
+(declaim (notinline get-keyword-name reg-name=))
+(defun get-keyword-name (kw)
+  ;; Runtime check: if it's a symbol (SBCL keywords are symbols),
+  ;; use symbol-name. If it's a keyword with different tag (habu0),
+  ;; use keyword-name.
+  ;; In SBCL: keywordp = t AND symbolp = t -> use symbol-name
+  ;; In habu0: keywordp = t BUT symbolp = nil -> use keyword-name
+  (if (symbolp kw)
+      (symbol-name kw)      ; SBCL path: keywords are symbols
+      (keyword-name kw)))   ; habu0 path: keywords have tag 7, not symbolp
+
+;; Helper to check if keyword name matches string
+(defun reg-name= (kw name)
+  (and (keywordp kw)
+       (string= (get-keyword-name kw) name)))
+
+;; Prevent inlining so callers always use the current version
+(declaim (notinline reg))
 (defun reg (r)
   "Convert register specifier to number.
    ONLY accepts keyword symbols - raw numbers are an error.
@@ -179,51 +205,50 @@
    General purpose: :x0 through :x30
    Special: :sp (31), :xzr (31), :lr (30), :fp (29)
    Habu conventions: :env (20), :closure (24), :code-base (26), :gc (27), :heap (28)"
-  ;; Use eq comparison with literal keywords - works in both SBCL (keywords interned)
-  ;; and habu0 (all keyword literals go through intern-keyword at runtime)
+  ;; Use string comparison on keyword name - works across SBCL/habu0 boundary
   (cond
-    ((eq r :x0) 0)
-    ((eq r :x1) 1)
-    ((eq r :x2) 2)
-    ((eq r :x3) 3)
-    ((eq r :x4) 4)
-    ((eq r :x5) 5)
-    ((eq r :x6) 6)
-    ((eq r :x7) 7)
-    ((eq r :x8) 8)
-    ((eq r :x9) 9)
-    ((eq r :x10) 10)
-    ((eq r :x11) 11)
-    ((eq r :x12) 12)
-    ((eq r :x13) 13)
-    ((eq r :x14) 14)
-    ((eq r :x15) 15)
-    ((eq r :x16) 16)
-    ((eq r :x17) 17)
-    ((eq r :x18) 18)
-    ((eq r :x19) 19)
-    ((eq r :x20) 20)
-    ((eq r :x21) 21)
-    ((eq r :x22) 22)
-    ((eq r :x23) 23)
-    ((eq r :x24) 24)
-    ((eq r :x25) 25)
-    ((eq r :x26) 26)
-    ((eq r :x27) 27)
-    ((eq r :x28) 28)
-    ((eq r :x29) 29)
-    ((eq r :x30) 30)
+    ((reg-name= r "X0") 0)
+    ((reg-name= r "X1") 1)
+    ((reg-name= r "X2") 2)
+    ((reg-name= r "X3") 3)
+    ((reg-name= r "X4") 4)
+    ((reg-name= r "X5") 5)
+    ((reg-name= r "X6") 6)
+    ((reg-name= r "X7") 7)
+    ((reg-name= r "X8") 8)
+    ((reg-name= r "X9") 9)
+    ((reg-name= r "X10") 10)
+    ((reg-name= r "X11") 11)
+    ((reg-name= r "X12") 12)
+    ((reg-name= r "X13") 13)
+    ((reg-name= r "X14") 14)
+    ((reg-name= r "X15") 15)
+    ((reg-name= r "X16") 16)
+    ((reg-name= r "X17") 17)
+    ((reg-name= r "X18") 18)
+    ((reg-name= r "X19") 19)
+    ((reg-name= r "X20") 20)
+    ((reg-name= r "X21") 21)
+    ((reg-name= r "X22") 22)
+    ((reg-name= r "X23") 23)
+    ((reg-name= r "X24") 24)
+    ((reg-name= r "X25") 25)
+    ((reg-name= r "X26") 26)
+    ((reg-name= r "X27") 27)
+    ((reg-name= r "X28") 28)
+    ((reg-name= r "X29") 29)
+    ((reg-name= r "X30") 30)
     ;; Special registers
-    ((eq r :sp) 31)
-    ((eq r :xzr) 31)
-    ((eq r :lr) 30)
-    ((eq r :fp) 29)
+    ((reg-name= r "SP") 31)
+    ((reg-name= r "XZR") 31)
+    ((reg-name= r "LR") 30)
+    ((reg-name= r "FP") 29)
     ;; Habu-specific register aliases
-    ((eq r :env) 20)
-    ((eq r :closure) 24)
-    ((eq r :code-base) 26)
-    ((eq r :gc) 27)
-    ((eq r :heap) 28)
+    ((reg-name= r "ENV") 20)
+    ((reg-name= r "CLOSURE") 24)
+    ((reg-name= r "CODE-BASE") 26)
+    ((reg-name= r "GC") 27)
+    ((reg-name= r "HEAP") 28)
     ;; Error cases
     ((numberp r)
      (error "Raw register numbers not allowed. Use keywords like :x0, :x1, :sp, :env instead of ~D" r))

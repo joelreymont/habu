@@ -1266,6 +1266,11 @@
             (dst (fresh-temp)))
        (emit-linear (list 'bnot dst arg-temp))
        dst))
+    ((has-tag ir 'mvn-ir)
+     (let* ((arg-temp (linearize-expr (cadr ir)))
+            (dst (fresh-temp)))
+       (emit-linear (list 'bnot dst arg-temp))  ; mvn-ir uses same codegen as bnot
+       dst))
 
     ;; List operations
     ((has-tag ir 'cons-ir) (linearize-cons ir))
@@ -1759,14 +1764,19 @@
                  (gen-bool-to-tagged)
                  (linear-save-temp dst))))
 
-      ;; Bitwise operations (operands are tagged, but AND/OR/XOR preserve tags)
+      ;; Bitwise operations: must untag, operate, retag (like bsh and bnot)
+      ;; Operands are tagged fixnums, so we shift right 4 to get values,
+      ;; perform the operation, then shift left 4 to retag.
       (band
        (let ((dst (cadr instr))
              (src1 (caddr instr))
              (src2 (cadddr instr)))
          (append (linear-load-temp :x0 src1)
                  (linear-load-temp :x1 src2)
-                 (arm64:and* :x0 :x0 :x1)
+                 (arm64:asr :x0 :x0 4 :imm t)  ; untag src1
+                 (arm64:asr :x1 :x1 4 :imm t)  ; untag src2
+                 (arm64:and* :x0 :x0 :x1)      ; bitwise AND
+                 (arm64:lsl :x0 :x0 4 :imm t)  ; retag result
                  (linear-save-temp dst))))
 
       (bor
@@ -1775,7 +1785,10 @@
              (src2 (cadddr instr)))
          (append (linear-load-temp :x0 src1)
                  (linear-load-temp :x1 src2)
-                 (arm64:orr :x0 :x0 :x1)
+                 (arm64:asr :x0 :x0 4 :imm t)  ; untag src1
+                 (arm64:asr :x1 :x1 4 :imm t)  ; untag src2
+                 (arm64:orr :x0 :x0 :x1)       ; bitwise OR
+                 (arm64:lsl :x0 :x0 4 :imm t)  ; retag result
                  (linear-save-temp dst))))
 
       (bxor
@@ -1784,7 +1797,10 @@
              (src2 (cadddr instr)))
          (append (linear-load-temp :x0 src1)
                  (linear-load-temp :x1 src2)
-                 (arm64:eor :x0 :x0 :x1)
+                 (arm64:asr :x0 :x0 4 :imm t)  ; untag src1
+                 (arm64:asr :x1 :x1 4 :imm t)  ; untag src2
+                 (arm64:eor :x0 :x0 :x1)       ; bitwise XOR
+                 (arm64:lsl :x0 :x0 4 :imm t)  ; retag result
                  (linear-save-temp dst))))
 
       (bsh
