@@ -46,8 +46,12 @@
 (setf *error-output* (sb-sys:make-fd-stream 2 :output t :buffering :line))
 (setf *trace-output* *error-output*)
 
-;;; Restore debugger hook for runtime (but still safe)
-(setf *debugger-hook* nil)
+;;; CRITICAL: Disable debugger IMMEDIATELY after load
+;;; This prevents the debugger from:
+;;; 1. Outputting crash info to stdout (corrupting JSON-RPC)
+;;; 2. Reading from stdin (stealing input from Claude Code)
+;;; 3. Entering interactive mode on any unhandled error
+(sb-ext:disable-debugger)
 
 ;;; Capture stream for eval output
 (defvar *capture-stream* nil)
@@ -58,7 +62,7 @@
 (in-package :habu-mcp)
 
 ;;; Version to verify new code is running (update on each change)
-(defparameter *server-version* "v10-2025-12-10-sb-ext-disable-debugger")
+(defparameter *server-version* "v11-2025-12-10-disable-debugger-early")
 
 ;;; Forward declarations to suppress style warnings
 (declaim (ftype (function (string character) list) split-string))
