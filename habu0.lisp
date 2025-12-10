@@ -1048,11 +1048,11 @@
 
 ;; Look up function by symbol in fenv
 ;; Entry is (symbol . (params . body))
-;; Uses eq since all symbols are properly interned
+;; Uses sym-eq (name comparison) since symbols may be from different intern tables
 (defun fenv-lookup (sym fenv)
   (if (null fenv) nil
       (let ((entry (car fenv)))
-        (if (eq sym (car entry))
+        (if (sym-eq sym (car entry))
             (cdr entry)  ;; Returns (params . body)
             (fenv-lookup sym (cdr fenv))))))
 
@@ -1468,13 +1468,14 @@
         ;; Reconstruct let* with transformed bindings - use interned symbol
         (cons (intern "LET*") (cons (cons new-binding (cadr rest)) (cddr rest))))))
 
-;; Look up by symbol in environment using eq
+;; Look up by symbol in environment using sym-eq
 ;; Flat list format: (sym1 val1 sym2 val2 ...)
 ;; Returns the value entry (cons sym val) or nil if not found
 ;; This allows distinguishing "not found" from "found with nil value"
+;; Uses sym-eq for name comparison since symbols may be from different intern tables
 (defun env-lookup (sym env)
   (if (null env) nil
-      (if (eq sym (car env))
+      (if (sym-eq sym (car env))
           (cons (car env) (cadr env))  ; Return (sym . value) for compatibility
           (env-lookup sym (cddr env)))))
 
@@ -1665,7 +1666,7 @@
     ((if (symbolp expr) (op=nil expr) nil) nil)
     ;; t is true
     ((if (symbolp expr) (op=t expr) nil) t)
-    ;; Symbol lookup - first local env, then global env
+    ;; Symbol lookup - first local env, then global env, then fenv (as function designator)
     ((symbolp expr)
      (let ((entry (env-lookup expr env)))
        (if entry
@@ -1674,8 +1675,14 @@
            (let ((global-entry (h0-global-lookup expr)))
              (if global-entry
                  (cdr global-entry)  ; Extract value from global entry
-                 ;; Not found - undefined symbol
-                 (fatal-error "h0-eval: undefined symbol"))))))
+                 ;; Not in var namespaces - check fenv for function
+                 ;; If found, return the symbol itself as a function designator
+                 ;; This allows (funcall fn ...) where fn is a function name
+                 (let ((fn-entry (fenv-lookup expr fenv)))
+                   (if fn-entry
+                       expr  ; Return symbol as function designator
+                       ;; Not found anywhere - undefined symbol
+                       (fatal-error "h0-eval: undefined symbol"))))))))
     ;; List - function call or special form
     ((consp expr)
      (let ((op (car expr)))
@@ -1984,18 +1991,70 @@
             ;; Return closure: (CLOSURE-TAG params body captured-env)
             ;; Use interned symbol for reliable eq comparison
             (list (intern "CLOSURE-TAG") params body env)))
-         ;; FUNCALL - call a function value (closure)
+         ;; FUNCALL - call a function value (closure or symbol)
+         ;; Supports: (funcall fn-name args...) where fn-name is a symbol
+         ;;           (funcall closure args...) where closure is a lambda
+         ;;           (funcall var args...) where var holds a closure
          ((if (symbolp op) (op=funcall op) nil)
-          (let ((fn (h0-eval (cadr expr) env fenv))
-                (args (h0-eval-list (cddr expr) env fenv)))
-            (if (and (consp fn) (eq (car fn) (intern "CLOSURE-TAG")))
-                ;; Closure: (CLOSURE-TAG params body captured-env)
-                (let* ((params (cadr fn))
-                       (body (caddr fn))
-                       (captured-env (cadddr fn))
-                       (new-env (bind-lambda-args params args captured-env fenv)))
-                  (h0-eval body new-env fenv))
-                (fatal-error "h0-eval: FUNCALL on non-closure"))))
+          (let* ((fn-expr (cadr expr))
+                 (args (h0-eval-list (cddr expr) env fenv)))
+            (cond
+              ;; Quoted symbol: (funcall 'foo ...) - look up in fenv
+              ((and (consp fn-expr) (op=quote (car fn-expr)))
+               (let* ((fn-sym (cadr fn-expr))
+                      (fn-entry (fenv-lookup fn-sym fenv)))
+                 (if fn-entry
+                     (if (keywordp (car fn-entry))
+                         (h0-eval-builtin (cdr fn-entry) args fenv)
+                         (let* ((params (car fn-entry))
+                                (body (cdr fn-entry))
+                                (new-env (bind-lambda-args params args nil fenv)))
+                           (h0-eval body new-env fenv)))
+                     (fatal-error "h0-eval: FUNCALL unknown function"))))
+              ;; Bare symbol: (funcall foo ...) - try var lookup first, then fenv
+              ((symbolp fn-expr)
+               (let ((var-entry (env-lookup fn-expr env)))
+                 (if var-entry
+                     ;; Found in local env - should be a closure
+                     (let ((fn (cdr var-entry)))
+                       (if (and (consp fn) (eq (car fn) (intern "CLOSURE-TAG")))
+                           (let* ((params (cadr fn))
+                                  (body (caddr fn))
+                                  (captured-env (cadddr fn))
+                                  (new-env (bind-lambda-args params args captured-env fenv)))
+                             (h0-eval body new-env fenv))
+                           ;; Maybe it's a symbol - look up in fenv
+                           (if (symbolp fn)
+                               (let ((fn-entry (fenv-lookup fn fenv)))
+                                 (if fn-entry
+                                     (if (keywordp (car fn-entry))
+                                         (h0-eval-builtin (cdr fn-entry) args fenv)
+                                         (let* ((params (car fn-entry))
+                                                (body (cdr fn-entry))
+                                                (new-env (bind-lambda-args params args nil fenv)))
+                                           (h0-eval body new-env fenv)))
+                                     (fatal-error "h0-eval: FUNCALL unknown function")))
+                               (fatal-error "h0-eval: FUNCALL on non-closure"))))
+                     ;; Not in env - try fenv directly (Lisp-2 style)
+                     (let ((fn-entry (fenv-lookup fn-expr fenv)))
+                       (if fn-entry
+                           (if (keywordp (car fn-entry))
+                               (h0-eval-builtin (cdr fn-entry) args fenv)
+                               (let* ((params (car fn-entry))
+                                      (body (cdr fn-entry))
+                                      (new-env (bind-lambda-args params args nil fenv)))
+                                 (h0-eval body new-env fenv)))
+                           (fatal-error "h0-eval: FUNCALL unknown function"))))))
+              ;; Expression that evaluates to closure
+              (t
+               (let ((fn (h0-eval fn-expr env fenv)))
+                 (if (and (consp fn) (eq (car fn) (intern "CLOSURE-TAG")))
+                     (let* ((params (cadr fn))
+                            (body (caddr fn))
+                            (captured-env (cadddr fn))
+                            (new-env (bind-lambda-args params args captured-env fenv)))
+                       (h0-eval body new-env fenv))
+                     (fatal-error "h0-eval: FUNCALL on non-closure")))))))
          ;; Function call - look up in fenv
          (t
           (let ((fn-entry (fenv-lookup op fenv)))
