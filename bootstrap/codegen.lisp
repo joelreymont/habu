@@ -259,7 +259,8 @@
          (has-tag ir 'setcar-ir) (has-tag ir 'setcdr-ir)
          (has-tag ir 'string-ref-ir) (has-tag ir 'string-concat-ir)
          (has-tag ir 'string-equal-ir) (has-tag ir 'vector-ref-ir)
-         (has-tag ir 'buffer-byte-ref-ir))
+         (has-tag ir 'buffer-byte-ref-ir)
+         (has-tag ir 'set-tag))
      (let* ((left (cadr ir))
             (right (caddr ir))
             (left-result (lift-lambdas left lambdas))
@@ -287,7 +288,8 @@
          (has-tag ir 'string-length-ir)
          (has-tag ir 'make-vector-ir) (has-tag ir 'vector-length-ir)
          (has-tag ir 'make-string-from-vector-ir)
-         (has-tag ir 'set-global-vars-ir))
+         (has-tag ir 'set-global-vars-ir)
+         (has-tag ir 'set-intern-table-ir))
      (let* ((arg (cadr ir))
             (arg-result (lift-lambdas arg lambdas))
             (new-arg (car arg-result))
@@ -742,6 +744,7 @@
     ((has-tag ir 'car-ir) (ir-may-call (cadr ir)))
     ((has-tag ir 'cdr-ir) (ir-may-call (cadr ir)))
     ((has-tag ir 'get-tag) (ir-may-call (cadr ir)))
+    ((has-tag ir 'set-tag) (or (ir-may-call (cadr ir)) (ir-may-call (caddr ir))))
     ((has-tag ir 'setq-ir) (ir-may-call (caddr ir)))
     ((has-tag ir 'setcar-ir) (or (ir-may-call (cadr ir)) (ir-may-call (caddr ir))))
     ((has-tag ir 'setcdr-ir) (or (ir-may-call (cadr ir)) (ir-may-call (caddr ir))))
@@ -763,7 +766,9 @@
                                            (ir-may-call (cadddr ir))))
     ((has-tag ir 'make-string-from-vector-ir) (ir-may-call (cadr ir)))
     ((has-tag ir 'get-global-vars-ir) nil)
+    ((has-tag ir 'get-intern-table-ir) nil)
     ((has-tag ir 'set-global-vars-ir) (ir-may-call (cadr ir)))
+    ((has-tag ir 'set-intern-table-ir) (ir-may-call (cadr ir)))
     ((has-tag ir 'str-lit) nil)
     ((has-tag ir 'if-ir) t)
     ((has-tag ir 'while-ir) t)
@@ -934,9 +939,11 @@
       (has-tag ir 'var)
       (has-tag ir 'sym-lit)
       (has-tag ir 'str-lit)
+      (has-tag ir 'kw-lit)
       (has-tag ir 'lambda-ref)
       (has-tag ir 'get-global-vars-ir)
-      (has-tag ir 'get-cmdline-args-ir)))
+      (has-tag ir 'get-cmdline-args-ir)
+      (has-tag ir 'get-intern-table-ir)))
 
 (defun linearize-leaf (ir)
   "Linearize a leaf IR node, returns temp holding result"
@@ -952,12 +959,17 @@
        (emit-linear (list 'load-sym dst (cadr ir))))
       ((has-tag ir 'str-lit)
        (emit-linear (list 'load-str dst (cadr ir))))
+      ((has-tag ir 'kw-lit)
+       (emit-linear (list 'load-kw dst (cadr ir))))
       ((has-tag ir 'lambda-ref)
        (emit-linear (list 'load-lambda dst (cadr ir) (caddr ir))))
       ((has-tag ir 'get-global-vars-ir)
        (emit-linear (list 'get-global-vars dst)))
       ((has-tag ir 'get-cmdline-args-ir)
        (emit-linear (list 'get-cmdline-args dst)))
+      ;; get-intern-table: load from [x27 + 0]
+      ((has-tag ir 'get-intern-table-ir)
+       (emit-linear (list 'get-intern-table dst)))
       ((numberp ir)  ; bare number
        (emit-linear (list 'load-lit dst ir)))
       (t (error "linearize-leaf: unknown leaf type ~S" ir)))
@@ -1169,6 +1181,7 @@
 
     ;; Tag operations
     ((has-tag ir 'get-tag) (linearize-unary 'get-tag ir))
+    ((has-tag ir 'set-tag) (linearize-binary 'set-tag ir))
 
     ;; Control flow
     ((has-tag ir 'if-ir) (linearize-if ir))
@@ -1223,6 +1236,12 @@
     ((has-tag ir 'set-global-vars-ir)
      (let ((val-temp (linearize-expr (cadr ir))))
        (emit-linear (list 'set-global-vars val-temp))
+       val-temp))
+
+    ;; Intern table
+    ((has-tag ir 'set-intern-table-ir)
+     (let ((val-temp (linearize-expr (cadr ir))))
+       (emit-linear (list 'set-intern-table val-temp))
        val-temp))
 
     ;; Memory operations
@@ -1441,13 +1460,16 @@
                  (linear-save-temp dst))))
 
       (load-sym
-       ;; For now, generate symbol on heap (similar to sym-lit in tree codegen)
+       ;; Call intern at runtime to get the interned symbol
        (let* ((dst (cadr instr))
               (name (caddr instr))
               (name-str (symbol-name name))
               (len (length name-str))
               (total-size (logand (+ len 8 15) (lognot 15))))
-         (append (gen-symbol-lit name-str len total-size)
+         (append (gen-string-lit name-str len total-size)
+                 ;; String is now in x0, call intern with it
+                 (list (list :call-fn 'INTERN))
+                 ;; Result (interned symbol) is in x0
                  (linear-save-temp dst))))
 
       (load-str
@@ -1456,6 +1478,19 @@
               (len (length str))
               (total-size (logand (+ len 8 15) (lognot 15))))
          (append (gen-string-lit str len total-size)
+                 (linear-save-temp dst))))
+
+      (load-kw
+       ;; Keyword literal: allocate string, call intern-keyword
+       ;; Name is uppercase without colon (e.g., "TEST" for :test)
+       (let* ((dst (cadr instr))
+              (name (caddr instr))
+              (len (length name))
+              (total-size (logand (+ len 8 15) (lognot 15))))
+         (append (gen-string-lit name len total-size)
+                 ;; String is now in x0, call intern-keyword to get keyword with tag 7
+                 (list (list :call-fn 'INTERN-KEYWORD))
+                 ;; Result (interned keyword) is in x0
                  (linear-save-temp dst))))
 
       ;; Binary arithmetic
@@ -1622,11 +1657,16 @@
                  (linear-save-temp dst))))
 
       (bnot
+       ;; Bitwise NOT on tagged fixnum:
+       ;; 1. Untag (arithmetic shift right 4)
+       ;; 2. MVN (bitwise NOT)
+       ;; 3. Retag (shift left 4)
        (let ((dst (cadr instr))
              (src (caddr instr)))
          (append (linear-load-temp :x0 src)
-                 (arm64:mvn :x0 :x0)           ; bitwise NOT
-                 (arm64:and* :x0 :x0 #xFFFFFFFFFFFFFFF0 :imm t) ; preserve tag bits
+                 (arm64:asr :x0 :x0 4 :imm t)   ; untag
+                 (arm64:mvn :x0 :x0)            ; bitwise NOT
+                 (arm64:lsl :x0 :x0 4 :imm t)   ; retag
                  (linear-save-temp dst))))
 
       ;; System calls
@@ -1678,6 +1718,20 @@
          (append (linear-load-temp :x0 src)
                  (arm64:and* :x0 :x0 #xF :imm t)  ; extract tag bits
                  (arm64:lsl :x0 :x0 4 :imm t)      ; tag as fixnum
+                 (linear-save-temp dst))))
+
+      ;; Set tag: (set-tag dst value new-tag)
+      ;; Changes the low 4 bits of value to (untag new-tag)
+      (set-tag
+       (let ((dst (cadr instr))
+             (val (caddr instr))
+             (new-tag (cadddr instr)))
+         (append (linear-load-temp :x0 val)       ; load value
+                 (linear-load-temp :x1 new-tag)   ; load new tag (tagged)
+                 (arm64:asr :x1 :x1 4 :imm t)     ; untag new-tag
+                 (arm64:movz :x2 15 :lsl 0)       ; x2 = 0xF mask
+                 (arm64:bic :x0 :x0 :x2)          ; clear low 4 bits of value
+                 (arm64:orr :x0 :x0 :x1)          ; apply new tag bits
                  (linear-save-temp dst))))
 
       ;; String operations
@@ -1880,11 +1934,23 @@
          (append (arm64:ldr :x0 :gc :offset 104)
                  (linear-save-temp dst))))
 
+      ;; Get-intern-table: load from [x27 + 0]
+      (get-intern-table
+       (let ((dst (cadr instr)))
+         (append (arm64:ldr :x0 :gc :offset 0)
+                 (linear-save-temp dst))))
+
       ;; Set-global-vars: store to [x27 + 104]
       (set-global-vars
        (let ((val-temp (cadr instr)))
          (append (linear-load-temp :x0 val-temp)
                  (arm64:str :x0 :gc :offset 104))))
+
+      ;; Set-intern-table: store to [x27 + 0]
+      (set-intern-table
+       (let ((val-temp (cadr instr)))
+         (append (linear-load-temp :x0 val-temp)
+                 (arm64:str :x0 :gc :offset 0))))
 
       ;; Get-cmdline-args: load argc/argv from [x27 + 64/72]
       (get-cmdline-args
@@ -2066,15 +2132,9 @@
                  (arm64:lsl :x0 :x0 4 :imm t)  ; tag as fixnum
                  (linear-save-temp dst))))
 
-      ;; Boolean not
-      (bnot
-       (let ((dst (cadr instr))
-             (arg-temp (caddr instr)))
-         (append (linear-load-temp :x0 arg-temp)
-                 (arm64:cmp :x0 6 :imm t)  ; compare to nil
-                 (arm64:cset :x0 :eq)      ; x0 = 1 if nil, 0 otherwise
-                 (arm64:lsl :x0 :x0 4 :imm t)  ; tag result
-                 (linear-save-temp dst))))
+      ;; NOTE: bnot (bitwise NOT) handler is at line ~1627
+      ;; This was a duplicate that was unreachable (case only uses first match)
+      ;; Boolean NOT uses (cmp-eq x nil-ir) in compiler.lisp, not bnot
 
       ;; symbol-name: get string name from symbol
       ;; Symbol = (string-ptr | 2), String = (ptr | 4)
