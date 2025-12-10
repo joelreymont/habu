@@ -310,6 +310,7 @@
   (make-fasl-import
    :name-offset (read-u32-le stream)))
 
+#+sbcl
 (defun read-fasl (input-path)
   "Read complete FASL file.
    Returns (values header functions code relocations constants string-table imports)."
@@ -443,6 +444,7 @@
                  :flags flags)))
             fnoffs)))
 
+#+sbcl
 (defun build-fasl-relocations (markers fn-names)
   "Convert call markers to fasl-relocation structs.
    FN-NAMES is list of defined function names for indexing."

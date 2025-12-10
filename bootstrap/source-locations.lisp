@@ -36,6 +36,7 @@
 ;;; Position to Line/Column Conversion
 ;;; ============================================================
 
+#+sbcl
 (defun count-newlines-before (source pos)
   "Count newlines in source[0..pos-1]. Returns (line . last-newline-pos).
    Line is 1-indexed (first line is line 1)."
