@@ -1576,24 +1576,25 @@
                      (namestring (merge-pathnames "habu0" habu-dir))))
          ;; Read with SBCL's reader in HABU package (so primitives resolve correctly)
          ;; Concatenate: macros + arm64 + reader + habu0 + reg-alloc + codegen
+         ;; First load macros in SBCL env so macroexpand-1 works
+         (load-macros (format nil "(load ~S)" macros-source))
+         ;; Read each file separately, respecting in-package forms
+         ;; so that ARM64:* symbols are read in the correct package.
+         ;; After each read, process defpackage/in-package before reading next form.
          (script (format nil "(habu:deliver-forms ~
-                               (let ((*package* (find-package :habu))) ~
-                                 (with-input-from-string ~
-                                   (s (concatenate 'string ~
-                                        (uiop:read-file-string ~S) ~
-                                        (string (code-char 10)) ~
-                                        (uiop:read-file-string ~S) ~
-                                        (string (code-char 10)) ~
-                                        (uiop:read-file-string ~S) ~
-                                        (string (code-char 10)) ~
-                                        (uiop:read-file-string ~S) ~
-                                        (string (code-char 10)) ~
-                                        (uiop:read-file-string ~S) ~
-                                        (string (code-char 10)) ~
-                                        (uiop:read-file-string ~S))) ~
-                                   (loop for form = (read s nil :eof) ~
-                                         until (eq form :eof) ~
-                                         collect form))) ~
+                               (let ((forms nil)) ~
+                                 (dolist (file (list ~S ~S ~S ~S ~S ~S)) ~
+                                   (let ((*package* (find-package :habu))) ~
+                                     (with-open-file (s file) ~
+                                       (loop for form = (read s nil :eof) ~
+                                             until (eq form :eof) ~
+                                             do (cond ~
+                                                  ((and (consp form) (eq (car form) 'defpackage)) ~
+                                                   (eval form)) ~
+                                                  ((and (consp form) (eq (car form) 'in-package)) ~
+                                                   (setq *package* (find-package (cadr form))))) ~
+                                             do (push form forms))))) ~
+                                 (nreverse forms)) ~
                                ~S)"
                          macros-source arm64-source reader-source habu0-source reg-alloc-source codegen-source output))
          (timeout (or (jget args "timeout") (get-default-timeout :build))))
@@ -1606,6 +1607,7 @@
                                             "--eval" (format nil "(push #p~S asdf:*central-registry*)"
                                                              (namestring bootstrap-dir))
                                             "--eval" "(asdf:load-system :habu)"
+                                            "--eval" load-macros  ; Load macros in SBCL env for macroexpand-1
                                             "--eval" script
                                             "--eval" "(sb-ext:exit :code 0)")
                                       :timeout timeout
@@ -1908,7 +1910,7 @@
       (cond
         ((string= type-name "cons")
          (format out "Tag: 1 (ptr | 0x1)~%")
-         (format out "Layout at (ptr & ~0xF):~%")
+         (format out "Layout at (ptr & ~~0xF):~%")
          (format out "  Offset 0: car (8 bytes) - tagged pointer~%")
          (format out "  Offset 8: cdr (8 bytes) - tagged pointer~%")
          (format out "Total size: 16 bytes~%")
@@ -1916,7 +1918,7 @@
 
         ((string= type-name "symbol")
          (format out "Tag: 2 (ptr | 0x2)~%")
-         (format out "Layout at (ptr & ~0xF):~%")
+         (format out "Layout at (ptr & ~~0xF):~%")
          (format out "  Offset 0:  name-ptr (8 bytes) - pointer to string (tag 4)~%")
          (format out "  Offset 8:  value (8 bytes) - tagged pointer~%")
          (format out "  Offset 16: plist (8 bytes) - tagged pointer~%")
@@ -1926,7 +1928,7 @@
 
         ((string= type-name "string")
          (format out "Tag: 4 (ptr | 0x4)~%")
-         (format out "Layout at (ptr & ~0xF):~%")
+         (format out "Layout at (ptr & ~~0xF):~%")
          (format out "  Offset 0: length (8 bytes) - untagged integer~%")
          (format out "  Offset 8: chars (N bytes) - raw ASCII bytes~%")
          (format out "Total size: 8 + length bytes (rounded up for alignment)~%")
@@ -1934,7 +1936,7 @@
 
         ((string= type-name "keyword")
          (format out "Tag: 7 (ptr | 0x7)~%")
-         (format out "Layout at (ptr & ~0xF):~%")
+         (format out "Layout at (ptr & ~~0xF):~%")
          (format out "  Offset 0: length (8 bytes) - untagged integer~%")
          (format out "  Offset 8: chars (N bytes) - raw ASCII bytes~%")
          (format out "Total size: 8 + length bytes (rounded up for alignment)~%")
@@ -1944,7 +1946,7 @@
 
         ((string= type-name "vector")
          (format out "Tag: 3 (ptr | 0x3)~%")
-         (format out "Layout at (ptr & ~0xF):~%")
+         (format out "Layout at (ptr & ~~0xF):~%")
          (format out "  Offset 0: length (8 bytes) - untagged integer~%")
          (format out "  Offset 8+i*8: element[i] (8 bytes) - tagged pointer~%")
          (format out "Total size: 8 + length*8 bytes~%")
@@ -1952,7 +1954,7 @@
 
         ((string= type-name "closure")
          (format out "Tag: 5 (ptr | 0x5)~%")
-         (format out "Layout at (ptr & ~0xF):~%")
+         (format out "Layout at (ptr & ~~0xF):~%")
          (format out "  Offset 0: code-ptr (8 bytes) - raw pointer to function entry~%")
          (format out "  Offset 8: capture-count (8 bytes) - number of captured vars~%")
          (format out "  Offset 16+i*8: capture[i] (8 bytes) - tagged pointer~%")

@@ -1321,7 +1321,7 @@
                    (process-instr (reverse tac-instrs))))))
 
       ;; Iterate until fixed point
-      (loop while changed do (iterate))
+      (while changed (iterate))
 
       ;; Return annotated instructions
       (let ((result nil)
@@ -3666,7 +3666,7 @@
   (format stream "~4A  ~8A    ~A~%" "OFF" "HEX" "INSTRUCTION")
   (format stream "~4,,,'-A  ~8,,,'-A    ~,,,'-A~%" "" "" "")
   (let ((i 0))
-    (loop while (< i (- (length bytes) 3)) do
+    (while (< i (- (length bytes) 3))
       (let* ((b0 (nth i bytes))
              (b1 (nth (+ i 1) bytes))
              (b2 (nth (+ i 2) bytes))

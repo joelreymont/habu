@@ -222,38 +222,93 @@
   "Set macro definition for name."
   (setf (gethash (if (symbolp name) (symbol-name name) name) *macro-table*) value))
 
+(defun parse-macro-params (params args)
+  "Parse macro parameter list and build alist of (param . value).
+   Handles &body and &rest by collecting remaining args into a list."
+  (let ((result nil)
+        (p params)
+        (a args)
+        (rest-mode nil))
+    (loop while p do
+          (let ((param (car p)))
+            (cond
+              ;; Skip &body and &rest markers, set rest-mode
+              ((or (eq param '&body) (eq param '&rest)
+                   (and (symbolp param)
+                        (or (string= (symbol-name param) "&BODY")
+                            (string= (symbol-name param) "&REST"))))
+               (setq rest-mode t))
+              ;; In rest mode, bind param to remaining args
+              (rest-mode
+               (push (cons param a) result)
+               (setq a nil))  ; Consume all remaining
+              ;; Normal param
+              (t
+               (push (cons param (car a)) result)
+               (setq a (cdr a)))))
+          (setq p (cdr p)))
+    result))
+
 (defun substitute-params (body params args)
   "Substitute parameter names with QUOTED argument forms in macro body.
-   Arguments are quoted so they are not evaluated when the body is eval'd."
+   Arguments are quoted so they are not evaluated when the body is eval'd.
+   Handles &body and &rest parameters."
+  (let ((bindings (parse-macro-params params args)))
+    (substitute-params-with-bindings body bindings)))
+
+(defun substitute-params-with-bindings (body bindings)
+  "Substitute parameters using pre-computed bindings alist."
   (cond
     ((null body) nil)
     ((symbolp body)
-     (let ((pos (position body params)))
-       (if pos
-           ;; Quote the argument form so it's not evaluated
-           (let ((arg (nth pos args)))
+     (let ((binding (assoc body bindings :test #'eq)))
+       (if (null binding)
+           ;; Try string comparison for cross-package symbols
+           (let ((binding2 (assoc body bindings
+                                  :test (lambda (a b)
+                                          (string= (symbol-name a)
+                                                   (symbol-name b))))))
+             (if binding2
+                 (let ((arg (cdr binding2)))
+                   (if (or (symbolp arg) (consp arg))
+                       (list 'quote arg)
+                       arg))
+                 body))
+           (let ((arg (cdr binding)))
              (if (or (symbolp arg) (consp arg))
                  (list 'quote arg)
-                 arg))  ; Literals don't need quoting
-           body)))
+                 arg)))))
     ((atom body) body)
-    (t (cons (substitute-params (car body) params args)
-             (substitute-params (cdr body) params args)))))
+    (t (cons (substitute-params-with-bindings (car body) bindings)
+             (substitute-params-with-bindings (cdr body) bindings)))))
 
 (defun macroexpand-1 (form)
   "Expand macro form once. Returns (values expanded-form expanded-p).
-   The macro body is evaluated with parameters bound to argument forms."
+   Prioritizes our *macro-table* to override CL macros like DOTIMES.
+   Uses SBCL's built-in macroexpand for HABU:: macros (for backquote handling)."
   (if (and (consp form) (symbolp (car form)))
+      ;; First check our *macro-table* - this takes priority
       (let ((macro-def (macro-function (car form))))
         (if macro-def
-            (let* ((params (car macro-def))
-                   (body (cdr macro-def))
-                   (args (cdr form))
-                   ;; Substitute parameters with arguments, then evaluate
-                   (substituted (substitute-params body params args)))
-              ;; Evaluate the macro body at compile time (under SBCL)
-              (values (cl:eval substituted) t))
-            (values form nil)))
+            ;; Check if this was defined in HABU package (has SBCL definition too)
+            (let* ((name (car form))
+                   (sbcl-macro (and (symbolp name)
+                                    (eq (symbol-package name) (find-package :habu))
+                                    (cl:macro-function name))))
+              (if sbcl-macro
+                  ;; Use SBCL's macroexpand for HABU:: macros (proper backquote)
+                  (cl:macroexpand-1 form)
+                  ;; Use our substitution for CL-inherited macros
+                  (let* ((params (car macro-def))
+                         (body (cdr macro-def))
+                         (args (cdr form))
+                         (substituted (substitute-params body params args)))
+                    (values (cl:eval substituted) t))))
+            ;; No macro in our table - check SBCL
+            (let ((sbcl-macro (cl:macro-function (car form))))
+              (if sbcl-macro
+                  (cl:macroexpand-1 form)
+                  (values form nil)))))
       (values form nil)))
 
 (defun macroexpand (form)
@@ -1645,6 +1700,8 @@
   (cond
     ((numberp obj) (list 'lit obj))
     ((null obj) (list 'nil-ir))  ;; Use nil-ir for proper nil, not (lit 0)
+    ;; Keywords MUST be checked before symbolp (keywords are symbols in CL)
+    ((keywordp obj) (list 'kw-lit (symbol-name obj)))
     ((symbolp obj) (list 'sym-lit (symbol-name obj)))
     ((consp obj) (list 'cons-ir (quote-ir (car obj)) (quote-ir (cdr obj))))
     ((stringp obj) (list 'str-lit obj))
@@ -2289,9 +2346,16 @@
          ;; string-length - get length of string
          ((eq op 'string-length)
           (list 'string-length-ir (sys:compile (cadr expr) env fenv)))
-         ;; string-ref - get character at index
+         ;; string-ref - get character at index (returns char code)
          ((eq op 'string-ref)
           (list 'string-ref-ir (sys:compile (cadr expr) env fenv) (sys:compile (caddr expr) env fenv)))
+         ;; char - CL alias for string-ref (for compatibility with CL code)
+         ((eq op 'char)
+          (list 'string-ref-ir (sys:compile (cadr expr) env fenv) (sys:compile (caddr expr) env fenv)))
+         ;; char-code - identity since string-ref already returns char code
+         ;; In CL, (char-code #\A) returns 65. In habu, characters ARE their codes.
+         ((eq op 'char-code)
+          (sys:compile (cadr expr) env fenv))
          ;; char-at - safe string-ref that returns 0 beyond end
          ;; Expands to: (if (>= pos (string-length str)) 0 (string-ref str pos))
          ((eq op 'char-at)
@@ -3581,6 +3645,7 @@
 
 (defun collect-defmacros (forms)
   "Collect all defmacro definitions and register them in *macro-table*.
+   Also evaluates non-CL macros in SBCL for proper backquote expansion.
    Recurses into progn forms. Must be called before any macro expansion."
   (dolist (f forms)
     (cond
@@ -3592,7 +3657,13 @@
                         (car body-forms)
                         (cons 'progn body-forms)))
               (name-str (if (symbolp name) (symbol-name name) name)))
-         (setf (gethash name-str *macro-table*) (cons params body))))
+         ;; Store in *macro-table* for reference
+         (setf (gethash name-str *macro-table*) (cons params body))
+         ;; Only eval in SBCL if it's not a CL symbol (avoid package lock)
+         ;; Check if the symbol is in the HABU package (not inherited from CL)
+         (when (and (symbolp name)
+                    (eq (symbol-package name) (find-package :habu)))
+           (cl:eval f))))
       ((and (consp f) (eq (car f) 'progn))
        (collect-defmacros (cdr f))))))
 
@@ -3659,6 +3730,47 @@
            (collect-defun-names (cdr forms)
                                    (collect-defun-names (cdr f) acc)))
           (t (collect-defun-names (cdr forms) acc))))))
+
+#+sbcl
+(defun collect-arm64-functions ()
+  "Collect all exported ARM64 package functions for fenv.
+   These are SBCL functions that return ARM64 instruction bytes.
+   Returns alist of (symbol . (nil . nil)) for variadic params."
+  (let ((acc nil))
+    (do-external-symbols (sym (find-package :arm64))
+      ;; Only include functions (not constants like +CC-EQ+)
+      (when (and (fboundp sym)
+                 (not (macro-function sym))
+                 (not (special-operator-p sym)))
+        (push (cons sym (cons nil nil)) acc)))
+    acc))
+
+#+sbcl
+(defun collect-habu-functions ()
+  "Collect all HABU package functions for fenv.
+   These are SBCL-defined compiler helper functions.
+   Returns alist of (symbol . (nil . nil)) for variadic params."
+  (let ((acc nil))
+    (do-symbols (sym (find-package :habu))
+      ;; Only include bound functions (not macros or special operators)
+      (when (and (fboundp sym)
+                 (not (macro-function sym))
+                 (not (special-operator-p sym)))
+        (push (cons sym (cons nil nil)) acc)))
+    acc))
+
+#+sbcl
+(defun collect-arm64-constants ()
+  "Collect all ARM64 package constants for *constants*.
+   These are defconstant values like +EQ+, +NE+, etc.
+   Returns alist of (symbol . value)."
+  (let ((acc nil))
+    (do-external-symbols (sym (find-package :arm64))
+      ;; Only include bound symbols that are NOT functions (constants)
+      (when (and (boundp sym)
+                 (not (fboundp sym)))
+        (push (cons sym (symbol-value sym)) acc)))
+    acc))
 
 (defun compile-defuns (forms env fenv acc)
   "Pass 2: Compile all defuns using complete fenv, recursing into progn"
@@ -3752,14 +3864,30 @@
   (collect-defmacros forms)
   ;; Pass 1a: Collect constants from defconstant forms
   ;; Pass 1b: Collect globals from defvar/defparameter forms
-  (let* ((*constants* (collect-constants forms nil))
+  ;; Also add ARM64 package constants (SBCL only)
+  (let* ((form-constants (collect-constants forms nil))
+         #+sbcl
+         (arm64-constants (collect-arm64-constants))
+         #-sbcl
+         (arm64-constants nil)
+         (*constants* (append form-constants arm64-constants))
          (*defined-globals* (collect-globals forms nil))
          ;; Pass 2: Collect all defun names
          (fn-names (collect-defun-names forms nil))
          ;; Add declared imports to fn-names (they have unknown params, use nil)
          (import-fenv (mapcar (lambda (name) (cons name (cons nil nil))) *declared-imports*))
-         ;; Build fenv with all function names + imports
-         (fenv (append fn-names import-fenv)))
+         ;; Add ARM64 package functions (SBCL only - they generate instruction bytes)
+         #+sbcl
+         (arm64-fenv (collect-arm64-functions))
+         #-sbcl
+         (arm64-fenv nil)
+         ;; Add HABU package functions (SBCL only - compiler helpers like load-addr)
+         #+sbcl
+         (habu-fenv (collect-habu-functions))
+         #-sbcl
+         (habu-fenv nil)
+         ;; Build fenv with all function names + imports + ARM64 + HABU functions
+         (fenv (append fn-names import-fenv arm64-fenv habu-fenv)))
     ;; Pass 2: Compile all defuns with complete fenv
     (let* ((compiled-fns (reverse (compile-defuns forms nil fenv nil)))
            ;; Find and compile the main expression

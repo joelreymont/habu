@@ -2827,7 +2827,8 @@
    sp+0x10:  x19, x20 (saved)
    sp+0x20:  x21, x22 (saved)
    sp+0x30:  x23, x24 (saved)
-   sp+0x40:  temp slots (1792 slots = 14336 bytes, to 0x3840)
+   sp+0x38:  x26 (code-base) - MUST be preserved across calls for literal loading
+   sp+0x40:  temp slots (1791 slots, to 0x3840)
    sp+0x3840: [free space for env slots to expand down]
    sp+0x3F80: environment base (x20) - allows 48+ env slots before collision
    sp+0x3FF0: x29 (fp)
@@ -2844,6 +2845,7 @@
    (arm64:stp :x19 :env :sp :offset 16)
    (arm64:stp :x21 :x22 :sp :offset 32)
    (arm64:stp :x23 :closure :sp :offset 48)
+   (arm64:str :code-base :sp :offset 56)    ;; Save x26 (code-base) - critical for literal loading
    ;; x20 = sp + 0x3F80 - split into two adds since 0x3F80 > 4095
    (arm64:add :env :sp #x3 :imm t :shift12 t)  ;; x20 = sp + 0x3000
    (arm64:add :env :env #xF80 :imm t)))        ;; x20 = x20 + 0xF80 = sp + 0x3F80
@@ -2851,6 +2853,7 @@
 (defun fn-fixed-epilogue ()
   "Generate function epilogue for fixed 16KB frame"
   (append
+   (arm64:ldr :code-base :sp :offset 56)    ;; Restore x26 (code-base)
    (arm64:ldp :x23 :closure :sp :offset 48)
    (arm64:ldp :x21 :x22 :sp :offset 32)
    (arm64:ldp :x19 :env :sp :offset 16)

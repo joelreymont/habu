@@ -59,14 +59,12 @@
 (defvar *op-char-at* nil)
 (defvar *op-string=* nil)
 (defvar *op-symbol-name* nil)
-(defvar *op-keyword-name* nil)
 (defvar *op-logand* nil)
 (defvar *op-logior* nil)
 (defvar *op-ash* nil)
 (defvar *op-eq* nil)
 (defvar *op-eql* nil)
 (defvar *op-get-tag* nil)
-(defvar *op-set-tag* nil)
 (defvar *op-length* nil)
 (defvar *op-make-vector* nil)
 (defvar *op-vector-length* nil)
@@ -82,16 +80,7 @@
 (defvar *op-neq* nil)
 (defvar *op-lambda* nil)
 (defvar *op-funcall* nil)
-(defvar *op-setcar* nil)
-(defvar *op-setcdr* nil)
-(defvar *op-dolist* nil)
-(defvar *op-flet* nil)
-(defvar *op-labels* nil)
-(defvar *op-mapcar* nil)
-(defvar *op-ecase* nil)
-(defvar *op-listp* nil)
-(defvar *op-nil* nil)
-(defvar *op-otherwise* nil)
+(defvar *op-closure* nil)  ; tag for closure values in interpreter
 
 ;;; Package system globals
 ;;; Packages are ((name . symbols) ...) where symbols is ((name . sym) ...)
@@ -101,25 +90,6 @@
 ;;; Global variable environment for h0-eval
 ;;; Alist of (symbol . value) pairs for DEFVAR/SETQ globals
 (defvar *h0-globals* nil)
-
-;;; Runtime keyword variables - interned at startup for eq comparison
-;;; SBCL-compiled keywords != habu0-reader keywords, so we intern at runtime
-(defvar *kw-offset* nil)
-(defvar *kw-imm* nil)
-
-;;; Register keywords - pre-interned for eq comparison in arm64:reg
-;;; These are initialized in init-compile-ops and used via habu0-reg
-(defvar *kw-x0* nil) (defvar *kw-x1* nil) (defvar *kw-x2* nil) (defvar *kw-x3* nil)
-(defvar *kw-x4* nil) (defvar *kw-x5* nil) (defvar *kw-x6* nil) (defvar *kw-x7* nil)
-(defvar *kw-x8* nil) (defvar *kw-x9* nil) (defvar *kw-x10* nil) (defvar *kw-x11* nil)
-(defvar *kw-x12* nil) (defvar *kw-x13* nil) (defvar *kw-x14* nil) (defvar *kw-x15* nil)
-(defvar *kw-x16* nil) (defvar *kw-x17* nil) (defvar *kw-x18* nil) (defvar *kw-x19* nil)
-(defvar *kw-x20* nil) (defvar *kw-x21* nil) (defvar *kw-x22* nil) (defvar *kw-x23* nil)
-(defvar *kw-x24* nil) (defvar *kw-x25* nil) (defvar *kw-x26* nil) (defvar *kw-x27* nil)
-(defvar *kw-x28* nil) (defvar *kw-x29* nil) (defvar *kw-x30* nil)
-(defvar *kw-sp* nil) (defvar *kw-xzr* nil) (defvar *kw-lr* nil) (defvar *kw-fp* nil)
-(defvar *kw-env* nil) (defvar *kw-closure* nil) (defvar *kw-code-base* nil)
-(defvar *kw-gc* nil) (defvar *kw-heap* nil)
 
 ;;; ==========================================================
 ;;; Error Infrastructure - crash with message, no silent fallbacks
@@ -348,43 +318,34 @@
                     (set-intern-table (cons (cons uname sym) (get-intern-table)))
                     sym)))))))
 
-;;; Tag manipulation primitives
-;;; In Habu, all values have a 4-bit tag in the low bits:
-;;;   0 = fixnum (value << 4), 1 = cons, 2 = symbol, 3 = vector,
-;;;   4 = string, 5 = closure, 6 = nil, 7 = keyword
-;;;
-;;; NOTE: get-tag and set-tag are COMPILER PRIMITIVES - they are recognized
-;;; by both the bootstrap compiler and h0-compile as special forms that
-;;; generate inline ARM64 code. Do NOT define them as functions here.
-;;; The h0-eval special form handlers at lines ~1900-1912 call these
-;;; primitives directly, and the bootstrap compiler compiles those calls
-;;; to inline ARM64 instructions.
-
 ;;; Keyword interning - keywords use tag 7, stored in separate keyword table
 ;;; Keywords are self-evaluating symbols in the KEYWORD package
-;;; Keywords have same memory layout as STRINGS: [length:8][chars:N]
-;;; (NOT symbols - symbols have a pointer to name string at offset 0)
+;;; Keywords have same memory layout as symbols: [length:8][chars:N]
 
-;; Get keyword name - keywords have STRING layout, just different tag (7 vs 4)
-;; Layout: [length:8][chars:N] - same as strings, NOT symbols
-;; Symbols have pointer to name at offset 0, keywords ARE the string data
+;; Get keyword name - same layout as symbols, just different tag
+;; Untag by masking off tag bits, then read string data
 (defun keyword-name (kw)
-  ;; Keywords have same layout as STRINGS, not symbols
-  ;; Just change tag from 7 (keyword) to 4 (string)
-  (set-tag kw 4))
+  ;; Keywords use tag 7, mask off to get raw pointer
+  (let ((ptr (logand kw (lognot #xF))))
+    ;; Same layout as symbol: [length:8][chars:N]
+    ;; symbol-name works on raw pointer + tag, so use raw ptr | 2 to trick it
+    (symbol-name (logior ptr #x2))))
 
 ;; Make keyword from string - allocate like symbol but with tag 7
 (defun make-keyword-from-string (name)
   ;; Use make-symbol-from-string which allocates [length:8][chars:N]
-  ;; Then change tag from 2 (symbol) to 7 (keyword)
+  ;; Then change tag from 2 to 7
   (let ((sym (make-symbol-from-string name)))
-    (set-tag sym 7)))
+    (logior (logand sym (lognot #xF)) #x7)))
 
-;; Keyword table primitives
-;; NOTE: get-keyword-table and set-keyword-table are compiler primitives
-;; that access the separate keyword table at [x27+128], distinct from
-;; the intern (symbol) table at [x27+0]. This separation ensures that
-;; keywords like :X0 remain distinct from symbols like X0.
+;; Keyword table - for now, use intern table to store keywords too
+;; TODO: Add get-keyword-table-ir and set-keyword-table-ir primitives to compiler
+;; for proper separate keyword table at [x27+120]
+(defun get-keyword-table ()
+  (get-intern-table))  ; Temporarily share intern table
+
+(defun set-keyword-table (table)
+  (set-intern-table table))  ; Temporarily share intern table
 
 ;; Search keyword table for name
 ;; Uses case-insensitive comparison to match bootstrap compiler behavior
@@ -473,60 +434,6 @@
 (defun string-concat3 (s1 s2 s3)
   (string-concat (string-concat s1 s2) s3))
 
-;; Create a list of n nil values
-(defun make-list (n)
-  (make-list-loop n nil))
-
-(defun make-list-loop (n acc)
-  (if (<= n 0)
-      acc
-      (make-list-loop (- n 1) (cons nil acc))))
-
-;; Standard list utility functions (needed by register allocator)
-(defun equal (a b)
-  (cond
-    ((eq a b) t)
-    ((and (consp a) (consp b))
-     (and (equal (car a) (car b))
-          (equal (cdr a) (cdr b))))
-    ((and (stringp a) (stringp b))
-     (string= a b))
-    (t nil)))
-
-(defun member (item lst)
-  (if (null lst)
-      nil
-      (if (eq item (car lst))
-          lst
-          (member item (cdr lst)))))
-
-(defun assoc (key alist)
-  (if (null alist)
-      nil
-      (if (eq key (caar alist))
-          (car alist)
-          (assoc key (cdr alist)))))
-
-(defun copy-list (lst)
-  (if (null lst)
-      nil
-      (cons (car lst) (copy-list (cdr lst)))))
-
-(defun listp (x)
-  (or (null x) (consp x)))
-
-;; Compound car/cdr accessors (needed by register allocator and codegen)
-(defun cadar (x) (car (cdr (car x))))
-(defun cddr (x) (cdr (cdr x)))
-(defun cdddr (x) (cdr (cdr (cdr x))))
-(defun cddddr (x) (cdr (cdr (cdr (cdr x)))))
-(defun caddr (x) (car (cdr (cdr x))))
-(defun cadddr (x) (car (cdr (cdr (cdr x)))))
-
-;; subseq - works on strings (for register allocator compatibility)
-(defun subseq (s start &optional end)
-  (substring s start (if end end (string-length s))))
-
 ;;; ============================================================
 ;;; Package system
 ;;; ============================================================
@@ -598,9 +505,11 @@
     (let ((existing (find-symbol-in-package sym-name pkg)))
       (if existing
           (cdr existing)
-          ;; Create new symbol with just the bare name (not qualified)
-          ;; Package membership is tracked by the package, not the symbol name
-          (let ((sym (make-symbol-from-string sym-name)))
+          ;; Create new symbol with qualified name
+          (let* ((full-name (if (string= pkg-name "CL-USER")
+                               sym-name
+                               (string-concat3 pkg-name ":" sym-name)))
+                 (sym (make-symbol-from-string full-name)))
             (package-add-symbol pkg sym-name sym)
             sym)))))
 
@@ -807,14 +716,12 @@
 (defun op=char-at (sym) (eq sym *op-char-at*))
 (defun op=string= (sym) (eq sym *op-string=*))
 (defun op=symbol-name (sym) (eq sym *op-symbol-name*))
-(defun op=keyword-name (sym) (eq sym *op-keyword-name*))
 (defun op=logand (sym) (eq sym *op-logand*))
 (defun op=logior (sym) (eq sym *op-logior*))
 (defun op=ash (sym) (eq sym *op-ash*))
 (defun op=eq (sym) (eq sym *op-eq*))
 (defun op=eql (sym) (eq sym *op-eql*))
 (defun op=get-tag (sym) (eq sym *op-get-tag*))
-(defun op=set-tag (sym) (eq sym *op-set-tag*))
 (defun op=length (sym) (eq sym *op-length*))
 (defun op=make-vector (sym) (eq sym *op-make-vector*))
 (defun op=vector-length (sym) (eq sym *op-vector-length*))
@@ -830,16 +737,6 @@
 (defun op=neq (sym) (eq sym *op-neq*))
 (defun op=lambda (sym) (eq sym *op-lambda*))
 (defun op=funcall (sym) (eq sym *op-funcall*))
-(defun op=setcar (sym) (eq sym *op-setcar*))
-(defun op=setcdr (sym) (eq sym *op-setcdr*))
-(defun op=dolist (sym) (eq sym *op-dolist*))
-(defun op=flet (sym) (eq sym *op-flet*))
-(defun op=labels (sym) (eq sym *op-labels*))
-(defun op=mapcar (sym) (eq sym *op-mapcar*))
-(defun op=ecase (sym) (eq sym *op-ecase*))
-(defun op=listp (sym) (eq sym *op-listp*))
-(defun op=nil (sym) (eq sym *op-nil*))
-(defun op=otherwise (sym) (eq sym *op-otherwise*))
 
 ;; Generic symbol comparison - uses eq with interned symbol
 ;; WARNING: This calls intern which uses string= - avoid circular dependency
@@ -1102,22 +999,18 @@
 (defun keyword-to-param (kw)
   (intern (keyword-name kw)))
 
-;; Convert a symbol to its corresponding keyword
-;; FOO -> :FOO (intern-keyword the name)
-(defun symbol-to-keyword (sym)
-  (intern-keyword (symbol-name sym)))
-
 ;; Find value for a keyword in argument list
-;; Args: (:foo val1 :bar val2 ...), key-kw: :foo (a keyword)
+;; Args: (:foo val1 :bar val2 ...), key: :foo
 ;; Returns (found . value) or nil if not found
-;; Uses eq - key-kw must be from *kw-* variables (runtime-interned)
-(defun find-key-arg (args key-kw)
+(defun find-key-arg (args key-name)
   (cond
     ((null args) nil)
     ((null (cdr args)) nil)  ; keyword without value - error case
-    ((eq (car args) key-kw)
-     (cons t (cadr args)))   ; Found it
-    (t (find-key-arg (cddr args) key-kw))))
+    ((keywordp (car args))
+     (if (string= (keyword-name (car args)) key-name)
+         (cons t (cadr args))   ; Found it
+         (find-key-arg (cddr args) key-name)))
+    (t (find-key-arg (cdr args) key-name))))
 
 ;; Bind keyword arguments to environment
 ;; key-params: list of (name default) or just name
@@ -1128,8 +1021,8 @@
       (let* ((spec (car key-params))
              (name (key-param-name spec))
              (default (key-param-default spec))
-             (key-kw (symbol-to-keyword name))
-             (found (find-key-arg key-args key-kw))
+             (name-str (symbol-name name))
+             (found (find-key-arg key-args name-str))
              (val (if found
                       (cdr found)
                       (if default
@@ -1172,297 +1065,6 @@
                (env1 (bind-args req-params req-args env)))
           (bind-key-args key-params key-args env1 fenv)))))
 
-;;; ==========================================================
-;;; Mutable Capture Boxing - transform setq on captured vars
-;;; ==========================================================
-;;; Variables that are both captured by a lambda AND mutated via setq
-;;; must be boxed in cons cells so mutations are visible to closures.
-
-;; Check if symbol is in list (using eq)
-(defun h0-member-eq (sym lst)
-  (if (null lst) nil
-      (if (eq sym (car lst)) t
-          (h0-member-eq sym (cdr lst)))))
-
-;; Find all variables that are targets of setq in expr
-;; bound = list of currently bound variable names
-(defun h0-find-setq-targets (expr bound)
-  (h0-collect-setq-targets expr bound nil))
-
-;; Find setq targets in a list of expressions
-(defun h0-find-setq-targets-list (exprs bound)
-  (h0-collect-list-setq exprs bound nil))
-
-(defun h0-collect-setq-targets (e bnd acc)
-  (cond
-    ((null e) acc)
-    ((not (consp e)) acc)
-    ((and (symbolp (car e)) (op=quote (car e))) acc)
-    ((and (symbolp (car e)) (op=setq (car e)))
-     (let ((var (cadr e))
-           (val (caddr e)))
-       (if (h0-member-eq var bnd)
-           (h0-collect-setq-targets val bnd
-             (if (h0-member-eq var acc) acc (cons var acc)))
-           (h0-collect-setq-targets val bnd acc))))
-    ((and (symbolp (car e)) (op=lambda (car e)))
-     (let ((params (cadr e))
-           (body-forms (cddr e)))  ;; Lambda can have multiple body forms
-       (h0-collect-list-setq body-forms (h0-append params bnd) acc)))
-    ((and (symbolp (car e)) (or (op=let (car e))
-                                 (op=let-star (car e))))
-     (let* ((bindings (cadr e))
-            (body-forms (cddr e))
-            (names (h0-mapcar-car bindings))
-            (acc2 (h0-collect-list-setq (h0-mapcar-cadr bindings) bnd acc)))
-       (h0-collect-list-setq body-forms (h0-append names bnd) acc2)))
-    (t (h0-collect-list-setq e bnd acc))))
-
-(defun h0-collect-list-setq (lst bnd acc)
-  (if (null lst) acc
-      (h0-collect-list-setq (cdr lst) bnd
-        (h0-collect-setq-targets (car lst) bnd acc))))
-
-(defun h0-collect-let*-setq (bindings body bnd acc)
-  (if (null bindings)
-      (h0-collect-setq-targets body bnd acc)
-      (let* ((b (car bindings))
-             (nm (car b))
-             (vl (cadr b))
-             (acc2 (h0-collect-setq-targets vl bnd acc)))
-        (h0-collect-let*-setq (cdr bindings) body (cons nm bnd) acc2))))
-
-;; Find all variables captured by lambdas (free in lambda bodies)
-(defun h0-find-captured-vars (expr bound)
-  (h0-collect-captured expr bound nil))
-
-;; Find captured vars in a list of expressions
-(defun h0-find-captured-vars-list (exprs bound)
-  (h0-collect-list-captured exprs bound nil))
-
-(defun h0-collect-captured (e bnd acc)
-  (cond
-    ((null e) acc)
-    ((not (consp e)) acc)
-    ((and (symbolp (car e)) (op=quote (car e))) acc)
-    ((and (symbolp (car e)) (op=lambda (car e)))
-     (let* ((params (cadr e))
-            (body-forms (cddr e))  ;; Multiple body forms
-            (new-bnd (h0-append params bnd))
-            (acc2 (h0-collect-list-captured body-forms new-bnd acc))
-            (free-vars (h0-find-free-vars-list body-forms params)))
-       (h0-add-captured-vars free-vars bnd acc2)))
-    ((and (symbolp (car e)) (or (op=let (car e))
-                                 (op=let-star (car e))))
-     (let* ((bindings (cadr e))
-            (body-forms (cddr e))
-            (names (h0-mapcar-car bindings))
-            (acc2 (h0-collect-list-captured (h0-mapcar-cadr bindings) bnd acc)))
-       (h0-collect-list-captured body-forms (h0-append names bnd) acc2)))
-    (t (h0-collect-list-captured e bnd acc))))
-
-(defun h0-collect-list-captured (lst bnd acc)
-  (if (null lst) acc
-      (h0-collect-list-captured (cdr lst) bnd
-        (h0-collect-captured (car lst) bnd acc))))
-
-(defun h0-collect-let*-captured (bindings body bnd acc)
-  (if (null bindings)
-      (h0-collect-captured body bnd acc)
-      (let* ((b (car bindings))
-             (nm (car b))
-             (vl (cadr b))
-             (acc2 (h0-collect-captured vl bnd acc)))
-        (h0-collect-let*-captured (cdr bindings) body (cons nm bnd) acc2))))
-
-(defun h0-add-captured-vars (vars bnd acc)
-  (if (null vars) acc
-      (let ((v (car vars)))
-        (h0-add-captured-vars (cdr vars) bnd
-          (if (and (h0-member-eq v bnd) (not (h0-member-eq v acc)))
-              (cons v acc)
-              acc)))))
-
-;; Simple free variable finder
-(defun h0-find-free-vars-simple (expr bound)
-  (h0-collect-free expr bound nil))
-
-;; Find free vars in a list of expressions
-(defun h0-find-free-vars-list (exprs bound)
-  (h0-collect-list-free exprs bound nil))
-
-(defun h0-collect-free (e bnd acc)
-  (cond
-    ((null e) acc)
-    ((symbolp e)
-     (if (and (not (h0-member-eq e bnd))
-              (not (h0-member-eq e acc))
-              (not (op=t e))
-              (not (op=nil e)))
-         (cons e acc)
-         acc))
-    ((not (consp e)) acc)
-    ((and (symbolp (car e)) (op=quote (car e))) acc)
-    ((and (symbolp (car e)) (op=lambda (car e)))
-     (let ((params (cadr e))
-           (body-forms (cddr e)))  ;; Multiple body forms
-       (h0-collect-list-free body-forms (h0-append params bnd) acc)))
-    ((and (symbolp (car e)) (or (op=let (car e))
-                                 (op=let-star (car e))))
-     (let* ((bindings (cadr e))
-            (body-forms (cddr e))
-            (names (h0-mapcar-car bindings))
-            (acc2 (h0-collect-list-free (h0-mapcar-cadr bindings) bnd acc)))
-       (h0-collect-list-free body-forms (h0-append names bnd) acc2)))
-    (t (h0-collect-list-free e bnd acc))))
-
-(defun h0-collect-list-free (lst bnd acc)
-  (if (null lst) acc
-      (h0-collect-list-free (cdr lst) bnd
-        (h0-collect-free (car lst) bnd acc))))
-
-(defun h0-collect-let*-free (bindings body bnd acc)
-  (if (null bindings)
-      (h0-collect-free body bnd acc)
-      (let* ((b (car bindings))
-             (nm (car b))
-             (vl (cadr b))
-             (acc2 (h0-collect-free vl bnd acc)))
-        (h0-collect-let*-free (cdr bindings) body (cons nm bnd) acc2))))
-
-;; Intersection of two lists
-(defun h0-intersection (lst1 lst2)
-  (if (null lst1) nil
-      (if (h0-member-eq (car lst1) lst2)
-          (cons (car lst1) (h0-intersection (cdr lst1) lst2))
-          (h0-intersection (cdr lst1) lst2))))
-
-;; Remove elements of lst2 from lst1
-(defun h0-remove-if-member (lst1 lst2)
-  (if (null lst1) nil
-      (if (h0-member-eq (car lst1) lst2)
-          (h0-remove-if-member (cdr lst1) lst2)
-          (cons (car lst1) (h0-remove-if-member (cdr lst1) lst2)))))
-
-;; Helpers for list operations
-(defun h0-append (a b)
-  (if (null a) b
-      (cons (car a) (h0-append (cdr a) b))))
-
-(defun h0-mapcar-car (lst)
-  (if (null lst) nil
-      (cons (car (car lst)) (h0-mapcar-car (cdr lst)))))
-
-(defun h0-mapcar-cadr (lst)
-  (if (null lst) nil
-      (cons (cadr (car lst)) (h0-mapcar-cadr (cdr lst)))))
-
-;;; Box Mutable Captures - main transformation
-;;; Transforms expr to box variables that are both captured and mutated:
-;;; - Wraps mutable captured vars in (cons val nil) at binding site
-;;; - Transforms reads of boxed vars to (car var)
-;;; - Transforms (setq var val) to (setcar var val)
-
-(defun h0-box-mutable-captures (expr)
-  (h0-box-transform expr nil))
-
-;; Helper to check if symbol has a given name (case-insensitive)
-(defun h0-sym-named (sym name)
-  (and (symbolp sym)
-       (string-equal (symbol-name sym) name)))
-
-(defun h0-box-transform (e boxed)
-  (cond
-    ((null e) e)
-    ((symbolp e)
-     ;; If this var is boxed, transform to (car var) - use interned symbol
-     (if (h0-member-eq e boxed)
-         (list (intern "CAR") e)
-         e))
-    ((not (consp e)) e)
-    ((h0-sym-named (car e) "QUOTE") e)
-    ((h0-sym-named (car e) "SETQ")
-     (let ((var (cadr e))
-           (val (caddr e)))
-       (if (h0-member-eq var boxed)
-           ;; Transform to (setcar var val) - use interned symbol for runtime match
-           (list (intern "SETCAR") var (h0-box-transform val boxed))
-           (list (intern "SETQ") var (h0-box-transform val boxed)))))
-    ((h0-sym-named (car e) "LAMBDA")
-     (let* ((params (cadr e))
-            (body-forms (cddr e))
-            ;; Don't transform params - they shadow boxed vars
-            (new-boxed (h0-remove-if-member boxed params))
-            ;; Transform each body form and return lambda with all of them
-            (transformed-forms (h0-box-transform-list body-forms new-boxed)))
-       (cons (intern "LAMBDA") (cons params transformed-forms))))
-    ((or (h0-sym-named (car e) "LET") (h0-sym-named (car e) "LET*"))
-     (if (h0-sym-named (car e) "LET")
-         (h0-box-transform-let e boxed)
-         (h0-box-transform-let* e boxed)))
-    (t (h0-box-transform-list e boxed))))
-
-(defun h0-box-transform-list (lst boxed)
-  (if (null lst) nil
-      (cons (h0-box-transform (car lst) boxed)
-            (h0-box-transform-list (cdr lst) boxed))))
-
-(defun h0-box-transform-let (e boxed)
-  (let* ((bindings (cadr e))
-         (body-forms (cddr e))
-         (names (h0-mapcar-car bindings))
-         ;; Find which new bindings need to be boxed - analyze ALL body forms
-         (setq-targets (h0-find-setq-targets-list body-forms names))
-         (captured (h0-find-captured-vars-list body-forms names))
-         (to-box (h0-intersection setq-targets captured))
-         ;; Transform binding values and box if needed
-         (new-bindings (h0-box-bindings bindings boxed to-box))
-         ;; Add new boxed vars to the set
-         (new-boxed (h0-append to-box (h0-remove-if-member boxed names)))
-         ;; Transform each body form
-         (transformed-forms (h0-box-transform-list body-forms new-boxed)))
-    (cons (intern "LET") (cons new-bindings transformed-forms))))
-
-(defun h0-box-bindings (bindings boxed to-box)
-  (if (null bindings) nil
-      (let* ((b (car bindings))
-             (nm (car b))
-             (vl (h0-box-transform (cadr b) boxed))
-             (new-val (if (h0-member-eq nm to-box)
-                          ;; Box: (cons val nil) - use interned symbol
-                          (list (intern "CONS") vl nil)
-                          vl)))
-        (cons (list nm new-val)
-              (h0-box-bindings (cdr bindings) boxed to-box)))))
-
-(defun h0-box-transform-let* (e boxed)
-  (let* ((bindings (cadr e))
-         (body-forms (cddr e))
-         (names (h0-mapcar-car bindings))
-         ;; Find which new bindings need to be boxed - analyze ALL body forms
-         (setq-targets (h0-find-setq-targets-list body-forms names))
-         (captured (h0-find-captured-vars-list body-forms names))
-         (to-box (h0-intersection setq-targets captured)))
-    (h0-box-let*-bindings bindings body-forms boxed to-box)))
-
-(defun h0-box-let*-bindings (bindings body-forms boxed to-box)
-  (if (null bindings)
-      ;; No more bindings - transform body forms and return let* with them
-      (cons (intern "LET*") (cons nil (h0-box-transform-list body-forms boxed)))
-      (let* ((b (car bindings))
-             (nm (car b))
-             (vl (h0-box-transform (cadr b) boxed))
-             (is-boxed (h0-member-eq nm to-box))
-             ;; Box: (cons val nil) - use interned symbol
-             (new-val (if is-boxed (list (intern "CONS") vl nil) vl))
-             (new-binding (list nm new-val))
-             (new-boxed (if is-boxed
-                            (cons nm boxed)
-                            (h0-remove-if-member boxed (list nm))))
-             (rest (h0-box-let*-bindings (cdr bindings) body-forms new-boxed to-box)))
-        ;; Reconstruct let* with transformed bindings - use interned symbol
-        (cons (intern "LET*") (cons (cons new-binding (cadr rest)) (cddr rest))))))
-
 ;; Look up by symbol in environment using eq
 ;; Flat list format: (sym1 val1 sym2 val2 ...)
 ;; Returns the value entry (cons sym val) or nil if not found
@@ -1481,19 +1083,6 @@
              (var (car b))  ;; Keep as symbol for eq lookup
              (val (h0-eval (cadr b) env fenv)))
         (h0-eval-let (cdr bindings) body (cons var (cons val env)) fenv))))
-
-;; Helper for let with implicit progn body - binds then evaluates body forms
-(defun h0-eval-let-body (bindings body-forms env fenv)
-  (h0-eval-let-bind bindings body-forms env fenv))
-
-(defun h0-eval-let-bind (bindings body-forms env fenv)
-  (if (null bindings)
-      ;; All bindings done, evaluate body forms as progn
-      (h0-eval-progn body-forms env fenv)
-      (let* ((b (car bindings))
-             (var (car b))
-             (val (h0-eval (cadr b) env fenv)))
-        (h0-eval-let-bind (cdr bindings) body-forms (cons var (cons val env)) fenv))))
 
 ;; Helper for progn - evaluates forms in sequence, returns last value
 (defun h0-eval-progn (forms env fenv)
@@ -1577,30 +1166,6 @@
             val
             (h0-eval-or (cdr forms) env fenv)))))
 
-;; Helper for variadic addition
-(defun h0-eval-add (args env fenv)
-  (if (null args)
-      #x0
-      (if (null (cdr args))
-          (h0-eval (car args) env fenv)
-          (+ (h0-eval (car args) env fenv)
-             (h0-eval-add (cdr args) env fenv)))))
-
-;; Helper for variadic subtraction (left-associative)
-(defun h0-eval-sub (args env fenv)
-  (if (null args)
-      #x0
-      (if (null (cdr args))
-          ;; Unary minus
-          (- #x0 (h0-eval (car args) env fenv))
-          ;; Binary and more - left-associative
-          (h0-eval-sub-left (h0-eval (car args) env fenv) (cdr args) env fenv))))
-
-(defun h0-eval-sub-left (acc args env fenv)
-  (if (null args)
-      acc
-      (h0-eval-sub-left (- acc (h0-eval (car args) env fenv)) (cdr args) env fenv)))
-
 ;; EQL - same as EQ for symbols, uses = for numbers
 ;; This is the standard CL comparison used by CASE
 (defun eql (a b)
@@ -1635,7 +1200,7 @@
           ;; t or otherwise - default case
           ((or (eq keys t)
                (if (symbolp keys)
-                   (op=otherwise keys)
+                   (string-equal (symbol-name keys) "OTHERWISE")
                    nil))
            (h0-eval-progn body env fenv))
           ;; Check if key matches
@@ -1657,7 +1222,7 @@
     ;; nil is false (both Lisp nil and symbol NIL)
     ((null expr) nil)
     ;; Symbol NIL - return nil (catches reader-created NIL symbol)
-    ((if (symbolp expr) (op=nil expr) nil) nil)
+    ((if (symbolp expr) (string-equal (symbol-name expr) "NIL") nil) nil)
     ;; t is true
     ((if (symbolp expr) (op=t expr) nil) t)
     ;; Symbol lookup - first local env, then global env
@@ -1683,12 +1248,11 @@
               (h0-eval (caddr expr) env fenv)
               (if (cadddr expr) (h0-eval (cadddr expr) env fenv) nil)))
          ;; Let - use cached op=let, delegate to helper for iteration
-         ;; Let body has implicit progn: (let ((x 1)) body1 body2...)
          ((if (symbolp op) (op=let op) nil)
-          (h0-eval-let-body (cadr expr) (cddr expr) env fenv))
+          (h0-eval-let (cadr expr) (caddr expr) env fenv))
          ;; Let* - same as let for sequential binding
          ((if (symbolp op) (op=let-star op) nil)
-          (h0-eval-let-body (cadr expr) (cddr expr) env fenv))
+          (h0-eval-let (cadr expr) (caddr expr) env fenv))
          ;; Progn - evaluate forms in sequence
          ((if (symbolp op) (op=progn op) nil)
           (h0-eval-progn (cdr expr) env fenv))
@@ -1754,11 +1318,34 @@
          ;; Error - signal error (crash with message)
          ((if (symbolp op) (op=error op) nil)
           (fatal-error "h0-eval: error called"))
-         ;; Arithmetic - use cached op= functions (variadic support)
+         ;; Lambda - create a closure (list of params, body, and captured env)
+         ;; Closure representation: (closure params body captured-env)
+         ((if (symbolp op) (op=lambda op) nil)
+          (let* ((params (cadr expr))
+                 (body (caddr expr)))
+            ;; Return a closure: (closure params body env)
+            (list *op-closure* params body env)))
+         ;; Funcall - call a closure or function value
+         ((if (symbolp op) (op=funcall op) nil)
+          (let* ((fn-val (h0-eval (cadr expr) env fenv))
+                 (args (h0-eval-list (cddr expr) env fenv)))
+            ;; fn-val should be (closure params body captured-env)
+            (if (and (consp fn-val) (eq (car fn-val) *op-closure*))
+                (let* ((params (cadr fn-val))
+                       (body (caddr fn-val))
+                       (captured-env (cadddr fn-val))
+                       (new-env (bind-lambda-args params args captured-env fenv)))
+                  (h0-eval body new-env fenv))
+                (fatal-error "h0-eval: FUNCALL on non-closure"))))
+         ;; Arithmetic - use cached op= functions
          ((if (symbolp op) (op=plus op) nil)
-          (h0-eval-add (cdr expr) env fenv))
+          (let* ((left (h0-eval (cadr expr) env fenv))
+                 (right (h0-eval (caddr expr) env fenv)))
+            (+ left right)))
          ((if (symbolp op) (op=minus op) nil)
-          (h0-eval-sub (cdr expr) env fenv))
+          (let* ((left (h0-eval (cadr expr) env fenv))
+                 (right (h0-eval (caddr expr) env fenv)))
+            (- left right)))
          ((if (symbolp op) (op=mul op) nil)
           (let* ((left (h0-eval (cadr expr) env fenv))
                  (right (h0-eval (caddr expr) env fenv)))
@@ -1795,12 +1382,6 @@
           (let ((arg (h0-eval (cadr expr) env fenv)))
             (car (cdr (cdr (cdr arg))))))
          ((if (symbolp op) (op=list op) nil) (h0-eval-list (cdr expr) env fenv))
-         ;; SETCAR - mutate car of cons cell (for boxed mutable captures)
-         ((if (symbolp op) (op=setcar op) nil)
-          (let* ((cell (h0-eval (cadr expr) env fenv))
-                 (val (h0-eval (caddr expr) env fenv)))
-            (setcar cell val)
-            val))
          ;; Type predicates
          ((if (symbolp op) (op=null op) nil)
           (let ((arg (h0-eval (cadr expr) env fenv)))
@@ -1870,10 +1451,6 @@
          ((if (symbolp op) (op=symbol-name op) nil)
           (let ((arg (h0-eval (cadr expr) env fenv)))
             (symbol-name arg)))
-         ;; Keyword-name - extract string name from keyword
-         ((if (symbolp op) (op=keyword-name op) nil)
-          (let ((arg (h0-eval (cadr expr) env fenv)))
-            (keyword-name arg)))
          ;; Bitwise operations (use cached symbols)
          ((if (symbolp op) (op=logand op) nil)
           (let* ((left (h0-eval (cadr expr) env fenv))
@@ -1901,13 +1478,6 @@
          ((if (symbolp op) (op=get-tag op) nil)
           (let ((arg (h0-eval (cadr expr) env fenv)))
             (get-tag arg)))
-         ;; Set-tag - change tag bits on a pointer value
-         ;; (set-tag value new-tag) -> value with its tag bits replaced
-         ;; Both value and new-tag are tagged values
-         ((if (symbolp op) (op=set-tag op) nil)
-          (let ((value (h0-eval (cadr expr) env fenv))
-                (new-tag (h0-eval (caddr expr) env fenv)))
-            (set-tag value new-tag)))
          ;; Length - count list elements (use cached symbol)
          ((if (symbolp op) (op=length op) nil)
           (let ((arg (h0-eval (cadr expr) env fenv)))
@@ -1972,242 +1542,20 @@
           (let* ((left (h0-eval (cadr expr) env fenv))
                  (right (h0-eval (caddr expr) env fenv)))
             (if (= left right) nil t)))
-         ;; LAMBDA - create closure capturing current environment
-         ((if (symbolp op) (op=lambda op) nil)
-          (let ((params (cadr expr))
-                (body (caddr expr)))
-            ;; Return closure: (CLOSURE-TAG params body captured-env)
-            ;; Use interned symbol for reliable eq comparison
-            (list (intern "CLOSURE-TAG") params body env)))
-         ;; FUNCALL - call a function value (closure)
-         ((if (symbolp op) (op=funcall op) nil)
-          (let ((fn (h0-eval (cadr expr) env fenv))
-                (args (h0-eval-list (cddr expr) env fenv)))
-            (if (and (consp fn) (eq (car fn) (intern "CLOSURE-TAG")))
-                ;; Closure: (CLOSURE-TAG params body captured-env)
-                (let* ((params (cadr fn))
-                       (body (caddr fn))
-                       (captured-env (cadddr fn))
-                       (new-env (bind-lambda-args params args captured-env fenv)))
-                  (h0-eval body new-env fenv))
-                (fatal-error "h0-eval: FUNCALL on non-closure"))))
          ;; Function call - look up in fenv
          (t
           (let ((fn-entry (fenv-lookup op fenv)))
             (if fn-entry
-                ;; Check for builtin marker: fn-entry = (:builtin . impl-symbol)
-                ;; Use keywordp to detect - builtins have keyword as car
-                ;; keywordp is a primitive recognized by bootstrap compiler
-                (if (keywordp (car fn-entry))
-                    ;; Builtin function - dispatch based on name
-                    (let ((builtin-name (cdr fn-entry))
-                          (args (h0-eval-list (cdr expr) env fenv)))
-                      (h0-eval-builtin builtin-name args fenv))
-                    ;; User-defined function: fn-entry = (params . body)
-                    (let* ((params (car fn-entry))
-                           (body (cdr fn-entry))
-                           (args (h0-eval-list (cdr expr) env fenv))
-                           ;; Use bind-lambda-args to support &key parameters
-                           (new-env (bind-lambda-args params args nil fenv)))
-                      (h0-eval body new-env fenv)))
+                (let* ((params (car fn-entry))
+                       (body (cdr fn-entry))
+                       (args (h0-eval-list (cdr expr) env fenv))
+                       ;; Use bind-lambda-args to support &key parameters
+                       (new-env (bind-lambda-args params args nil fenv)))
+                  (h0-eval body new-env fenv))
                 ;; Unknown function
                 (fatal-error "h0-eval: unknown function")))))))
     ;; Unknown expression type
     (t (fatal-error "h0-eval: unknown expression type"))))
-
-;; Builtin dispatch table - maps symbol name strings to handler functions
-;; Built once at init, used for O(n) lookup (could use hash table for O(1))
-(defvar *builtin-dispatch* nil)
-
-;; Get keyword argument value from args list
-;; key-kw is a keyword like :OFFSET, not a string
-(defun get-kw-arg (args key-kw default)
-  (let ((found (find-key-arg args key-kw)))
-    (if found (cdr found) default)))
-
-(defun init-builtin-dispatch ()
-  "Build dispatch table mapping symbol to dispatch ID (simple integer)"
-  ;; Use integers as dispatch keys - avoids #' function references
-  (setq *builtin-dispatch*
-        (list
-         ;; Compiler functions (IDs 1, 4-7)
-         ;; Note: IDs 2,3 (h0-codegen, h0-linearize) REMOVED - use codegen-fn-reg-alloc
-         (cons (intern "H0-COMPILE") 1)
-         (cons (intern "DELIVER-WITH-IMPORTS-AND-HEAP") 4)
-         (cons (intern "READ-ALL") 5)
-         (cons (intern "NATIVE-READ-FILE") 6)
-         (cons (intern "COLLECT-DEFUNS") 7)
-         ;; ARM64 - memory (IDs 10-13)
-         (cons (intern "STR") 10)
-         (cons (intern "LDR") 11)
-         (cons (intern "STP") 12)
-         (cons (intern "LDP") 13)
-         ;; ARM64 - data movement (IDs 20-21)
-         (cons (intern "MOV") 20)
-         (cons (intern "MOVZ") 21)
-         ;; ARM64 - arithmetic (IDs 30-31)
-         (cons (intern "ADD") 30)
-         (cons (intern "SUB") 31)
-         ;; ARM64 - compare/branch (IDs 40-48)
-         (cons (intern "CMP") 40)
-         (cons (intern "B") 41)
-         (cons (intern "BL") 42)
-         (cons (intern "B.EQ") 43)
-         (cons (intern "B.NE") 44)
-         (cons (intern "CBZ") 45)
-         (cons (intern "CBNZ") 46)
-         (cons (intern "RET") 47)
-         (cons (intern "NOP") 48)
-         ;; ARM64 - utility (IDs 50+)
-         (cons (intern "REG") 50))))
-
-;; Lookup dispatch ID in table
-(defun find-builtin-id (name table)
-  (if (null table)
-      nil
-      (if (eq name (caar table))
-          (cdar table)
-          (find-builtin-id name (cdr table)))))
-
-;;; ============================================================
-;;; Keyword Normalization for SBCL/habu0 Boundary
-;;; ============================================================
-;;
-;; Problem: In SBCL, keywords like :x0 are SBCL keyword symbols.
-;; In habu0 native, keywords should be habu0-interned with tag 7.
-;; When ARM64 functions use eq-comparison, SBCL keywords won't match
-;; habu0 interned keywords.
-;;
-;; Solution: At the h0-eval-builtin boundary (where SBCL-evaluated
-;; values cross into ARM64/habu0 code), normalize all keywords to
-;; habu0-interned keywords. This allows eq comparison to work.
-;;
-;; Note: This only matters in mode 1024 (self-compile) where SBCL
-;; evaluates code that produces keywords which then get passed to
-;; ARM64 assembler functions.
-
-(defun normalize-keyword (kw)
-  "Normalize a keyword to habu0-interned form.
-   If kw is an SBCL keyword (symbolp = t, keywordp = t), re-intern it.
-   If kw is already a habu0 keyword (tag 7, symbolp = nil), return as-is."
-  (if (keywordp kw)
-      (if (symbolp kw)
-          ;; SBCL keyword: symbol-name works, re-intern in habu0
-          (intern-keyword (symbol-name kw))
-          ;; Already habu0 keyword (tag 7, not symbolp)
-          kw)
-      ;; Not a keyword, return as-is
-      kw))
-
-(defun normalize-args (args)
-  "Normalize all keywords in an argument list.
-   Recursively handles nested lists for keyword args like :offset 8."
-  (if (null args)
-      nil
-      (let ((arg (car args)))
-        (cons (if (consp arg)
-                  (normalize-args arg)  ; Handle nested structures
-                  (normalize-keyword arg))
-              (normalize-args (cdr args))))))
-
-;;; habu0-reg: Register lookup using eq comparison
-;;; After normalization, keywords are habu0-interned, so eq works.
-;;; This replaces arm64:reg's string comparison at the boundary.
-(defun habu0-reg (r)
-  "Convert normalized register keyword to number using eq.
-   Called after normalize-keyword ensures r is habu0-interned."
-  (cond
-    ;; General purpose registers x0-x30
-    ((eq r *kw-x0*) 0)   ((eq r *kw-x1*) 1)   ((eq r *kw-x2*) 2)   ((eq r *kw-x3*) 3)
-    ((eq r *kw-x4*) 4)   ((eq r *kw-x5*) 5)   ((eq r *kw-x6*) 6)   ((eq r *kw-x7*) 7)
-    ((eq r *kw-x8*) 8)   ((eq r *kw-x9*) 9)   ((eq r *kw-x10*) 10) ((eq r *kw-x11*) 11)
-    ((eq r *kw-x12*) 12) ((eq r *kw-x13*) 13) ((eq r *kw-x14*) 14) ((eq r *kw-x15*) 15)
-    ((eq r *kw-x16*) 16) ((eq r *kw-x17*) 17) ((eq r *kw-x18*) 18) ((eq r *kw-x19*) 19)
-    ((eq r *kw-x20*) 20) ((eq r *kw-x21*) 21) ((eq r *kw-x22*) 22) ((eq r *kw-x23*) 23)
-    ((eq r *kw-x24*) 24) ((eq r *kw-x25*) 25) ((eq r *kw-x26*) 26) ((eq r *kw-x27*) 27)
-    ((eq r *kw-x28*) 28) ((eq r *kw-x29*) 29) ((eq r *kw-x30*) 30)
-    ;; Special registers
-    ((eq r *kw-sp*) 31)
-    ((eq r *kw-xzr*) 31)
-    ((eq r *kw-lr*) 30)
-    ((eq r *kw-fp*) 29)
-    ;; Habu-specific aliases
-    ((eq r *kw-env*) 20)
-    ((eq r *kw-closure*) 24)
-    ((eq r *kw-code-base*) 26)
-    ((eq r *kw-gc*) 27)
-    ((eq r *kw-heap*) 28)
-    ;; Unknown register - error
-    (t (error "habu0-reg: unknown register keyword"))))
-
-;;; fenv-call-arm64: Call an ARM64 function from fenv
-;;; In SBCL mode 1024, ARM64 functions are in fenv as (name . fn-entry)
-;;; where fn-entry = (:builtin . impl-fn) for builtins
-;;; In native habu0, this function exists but ARM64 functions aren't in fenv,
-;;; so fenv-lookup returns nil and we crash (no silent fallback)
-;;; Note: Uses funcall with explicit arity since apply isn't a habu0 primitive
-(defun fenv-call-arm64 (name nargs fenv)
-  "Call ARM64 function by name from fenv. Crashes if not found."
-  (let ((fn-entry (fenv-lookup name fenv)))
-    (if (null fn-entry)
-        (error "ARM64 function not in fenv: ~A" name)
-        ;; fn-entry should be (:builtin . actual-function)
-        ;; The actual-function is callable via funcall
-        (let ((impl (cdr fn-entry))
-              (n (length nargs)))
-          (if (null impl)
-              (error "ARM64 function has no impl: ~A" name)
-              ;; Dispatch by arity using case
-              (case n
-                (0 (funcall impl))
-                (1 (funcall impl (car nargs)))
-                (2 (funcall impl (car nargs) (cadr nargs)))
-                (3 (funcall impl (car nargs) (cadr nargs) (caddr nargs)))
-                (4 (funcall impl (car nargs) (cadr nargs) (caddr nargs) (cadddr nargs)))
-                (5 (funcall impl (car nargs) (cadr nargs) (caddr nargs) (cadddr nargs) (nth 4 nargs)))
-                (6 (funcall impl (car nargs) (cadr nargs) (caddr nargs) (cadddr nargs) (nth 4 nargs) (nth 5 nargs)))
-                (otherwise (error "fenv-call-arm64: too many args"))))))))
-
-;; Dispatch builtin functions via ID lookup and match
-;; IMPORTANT: Normalize args at this boundary to ensure keywords are
-;; habu0-interned, allowing eq comparison in ARM64 functions.
-(defun h0-eval-builtin (name args fenv)
-  (let* ((nargs (normalize-args args))  ; Normalize keywords at boundary
-         (id (find-builtin-id name *builtin-dispatch*)))
-    (if (null id)
-        (fatal-error "h0-eval-builtin: unknown builtin")
-        (match id
-          ;; Compiler functions (don't need normalization - no keywords)
-          (1 (h0-compile (car args) (cadr args) (caddr args)))
-          ;; IDs 2,3 (h0-codegen, h0-linearize) REMOVED - use codegen-fn-reg-alloc
-          (4 (deliver-with-imports-and-heap (car args) (cadr args) (caddr args) (cadddr args)))
-          (5 (read-all (car args)))
-          (6 (native-read-file (car args)))
-          (7 (collect-defuns (car args) (cadr args)))
-          ;; ARM64 functions - SBCL mode 1024 only
-          ;; In SBCL, calls arm64:* functions directly via fenv-lookup
-          ;; In native habu0, ARM64 IDs 10-48 fall through to fatal-error
-          ;; (native habu0 generates ARM64 code directly, doesn't use h0-eval-builtin)
-          (10 (fenv-call-arm64 'str nargs fenv))
-          (11 (fenv-call-arm64 'ldr nargs fenv))
-          (12 (fenv-call-arm64 'stp nargs fenv))
-          (13 (fenv-call-arm64 'ldp nargs fenv))
-          (20 (fenv-call-arm64 'mov nargs fenv))
-          (21 (fenv-call-arm64 'movz nargs fenv))
-          (30 (fenv-call-arm64 'add nargs fenv))
-          (31 (fenv-call-arm64 'sub nargs fenv))
-          (40 (fenv-call-arm64 'cmp nargs fenv))
-          (41 (fenv-call-arm64 'b nargs fenv))
-          (42 (fenv-call-arm64 'bl nargs fenv))
-          (43 (fenv-call-arm64 'b.eq nargs fenv))
-          (44 (fenv-call-arm64 'b.ne nargs fenv))
-          (45 (fenv-call-arm64 'cbz nargs fenv))
-          (46 (fenv-call-arm64 'cbnz nargs fenv))
-          (47 (fenv-call-arm64 'ret nargs fenv))
-          (48 (fenv-call-arm64 'nop nargs fenv))
-          ;; ARM64 - utility (use nargs with habu0-reg for eq comparison)
-          (50 (habu0-reg (car nargs)))
-          (_ (fatal-error "h0-eval-builtin: unhandled dispatch ID"))))))
 
 ;; Eval a list of expressions
 (defun h0-eval-list (exprs env fenv)
@@ -2223,14 +1571,14 @@
         (if (and (consp form) (symbolp (car form)) (op=defun (car form)))
             (let* ((name (cadr form))  ;; Keep as symbol, not string
                    (params (caddr form))
-                   (raw-body (cadddr form))
-                   ;; Transform body to handle mutable captured variables
-                   (body (h0-box-mutable-captures raw-body)))
+                   (body (cadddr form)))
+              (write-string "collect-defuns: found " 1)
+              (write-string (symbol-name name) 1)
+              (sys-write-char 10 1)
               (collect-defuns (cdr forms) (cons (cons name (cons params body)) fenv)))
             (collect-defuns (cdr forms) fenv)))))
 
 ;; Eval forms with collected function definitions
-;; Applies box-mutable-captures transformation to handle setq in closures
 (defun h0-eval-forms (forms env fenv)
   (if (null forms)
       nil
@@ -2238,13 +1586,11 @@
         ;; Skip defun forms during evaluation
         (if (and (consp form) (symbolp (car form)) (op=defun (car form)))
             (h0-eval-forms (cdr forms) env fenv)
-            ;; Transform form to box mutable captured variables
-            (let ((transformed (h0-box-mutable-captures form)))
-              (if (null (cdr forms))
-                  (h0-eval transformed env fenv)
-                  (progn
-                    (h0-eval transformed env fenv)
-                    (h0-eval-forms (cdr forms) env fenv))))))))
+            (if (null (cdr forms))
+                (h0-eval form env fenv)
+                (progn
+                  (h0-eval form env fenv)
+                  (h0-eval-forms (cdr forms) env fenv)))))))
 
 ;;; ==========================================================================
 ;;; IR Compiler - Source to IR transformation
@@ -2331,14 +1677,12 @@
   (setq *op-char-at* (intern "CHAR-AT"))
   (setq *op-string=* (intern "STRING="))
   (setq *op-symbol-name* (intern "SYMBOL-NAME"))
-  (setq *op-keyword-name* (intern "KEYWORD-NAME"))
   (setq *op-logand* (intern "LOGAND"))
   (setq *op-logior* (intern "LOGIOR"))
   (setq *op-ash* (intern "ASH"))
   (setq *op-eq* (intern "EQ"))
   (setq *op-eql* (intern "EQL"))
   (setq *op-get-tag* (intern "GET-TAG"))
-  (setq *op-set-tag* (intern "SET-TAG"))
   (setq *op-length* (intern "LENGTH"))
   (setq *op-make-vector* (intern "MAKE-VECTOR"))
   (setq *op-vector-length* (intern "VECTOR-LENGTH"))
@@ -2354,60 +1698,7 @@
   (setq *op-neq* (intern "/="))
   (setq *op-lambda* (intern "LAMBDA"))
   (setq *op-funcall* (intern "FUNCALL"))
-  (setq *op-setcar* (intern "SETCAR"))
-  (setq *op-setcdr* (intern "SETCDR"))
-  (setq *op-dolist* (intern "DOLIST"))
-  (setq *op-flet* (intern "FLET"))
-  (setq *op-labels* (intern "LABELS"))
-  (setq *op-mapcar* (intern "MAPCAR"))
-  (setq *op-ecase* (intern "ECASE"))
-  (setq *op-listp* (intern "LISTP"))
-  (setq *op-nil* (intern "NIL"))
-  (setq *op-otherwise* (intern "OTHERWISE"))
-  ;; Initialize runtime keywords for eq comparison
-  (setq *kw-offset* (intern-keyword "OFFSET"))
-  (setq *kw-imm* (intern-keyword "IMM"))
-  ;; Initialize register keywords for eq comparison in habu0-reg
-  (setq *kw-x0* (intern-keyword "X0"))
-  (setq *kw-x1* (intern-keyword "X1"))
-  (setq *kw-x2* (intern-keyword "X2"))
-  (setq *kw-x3* (intern-keyword "X3"))
-  (setq *kw-x4* (intern-keyword "X4"))
-  (setq *kw-x5* (intern-keyword "X5"))
-  (setq *kw-x6* (intern-keyword "X6"))
-  (setq *kw-x7* (intern-keyword "X7"))
-  (setq *kw-x8* (intern-keyword "X8"))
-  (setq *kw-x9* (intern-keyword "X9"))
-  (setq *kw-x10* (intern-keyword "X10"))
-  (setq *kw-x11* (intern-keyword "X11"))
-  (setq *kw-x12* (intern-keyword "X12"))
-  (setq *kw-x13* (intern-keyword "X13"))
-  (setq *kw-x14* (intern-keyword "X14"))
-  (setq *kw-x15* (intern-keyword "X15"))
-  (setq *kw-x16* (intern-keyword "X16"))
-  (setq *kw-x17* (intern-keyword "X17"))
-  (setq *kw-x18* (intern-keyword "X18"))
-  (setq *kw-x19* (intern-keyword "X19"))
-  (setq *kw-x20* (intern-keyword "X20"))
-  (setq *kw-x21* (intern-keyword "X21"))
-  (setq *kw-x22* (intern-keyword "X22"))
-  (setq *kw-x23* (intern-keyword "X23"))
-  (setq *kw-x24* (intern-keyword "X24"))
-  (setq *kw-x25* (intern-keyword "X25"))
-  (setq *kw-x26* (intern-keyword "X26"))
-  (setq *kw-x27* (intern-keyword "X27"))
-  (setq *kw-x28* (intern-keyword "X28"))
-  (setq *kw-x29* (intern-keyword "X29"))
-  (setq *kw-x30* (intern-keyword "X30"))
-  (setq *kw-sp* (intern-keyword "SP"))
-  (setq *kw-xzr* (intern-keyword "XZR"))
-  (setq *kw-lr* (intern-keyword "LR"))
-  (setq *kw-fp* (intern-keyword "FP"))
-  (setq *kw-env* (intern-keyword "ENV"))
-  (setq *kw-closure* (intern-keyword "CLOSURE"))
-  (setq *kw-code-base* (intern-keyword "CODE-BASE"))
-  (setq *kw-gc* (intern-keyword "GC"))
-  (setq *kw-heap* (intern-keyword "HEAP"))
+  (setq *op-closure* (intern "CLOSURE"))
   nil)
 
 ;; Environment lookup for compilation - returns offset or nil
@@ -2502,12 +1793,9 @@
 (defun ir-tag-quote-sym () #x2C)  ; quoted symbol literal
 (defun ir-tag-eql () #x2D)        ; eql comparison
 (defun ir-tag-get-tag () #x2E)    ; get-tag primitive
-(defun ir-tag-set-tag () #x32)    ; set-tag primitive (change pointer tag bits)
 (defun ir-tag-make-string-from-vector () #x2F) ; make-string-from-vector
 (defun ir-tag-make-symbol-from-string () #x30) ; make-symbol-from-string
 (defun ir-tag-error () #x31)      ; error primitive
-(defun ir-tag-lognot () #x33)     ; lognot (bitwise NOT via MVN)
-(defun ir-tag-keyword-name () #x34) ; keyword-name extraction
 
 ;; Check if IR node has a specific tag (numeric comparison)
 (defun h0-has-tag-n (ir tag)
@@ -2518,7 +1806,8 @@
 
 ;;; Free variable analysis for closures
 
-;; Check if a symbol is in the environment (flat list of symbols)
+;; Check if a symbol is in the environment (string-based lookup)
+;; Env is flat list of symbols: (sym1 sym2 sym3 ...)
 (defun h0-in-env (sym env)
   (if (null env)
       nil
@@ -2550,26 +1839,24 @@
          (h0-add-free expr acc)
          acc))
     ((not (consp expr)) acc)
-    (t
-     (case (car expr)
-       (QUOTE acc)
-       (LAMBDA
-        (let ((params (cadr expr))
-              (body (caddr expr)))
-          (h0-collect-free body (h0-append-lists params bound) env acc)))
-       (LET
-        (let* ((bindings (cadr expr))
-               (body (caddr expr))
-               (names (h0-binding-names bindings))
-               (vals (h0-binding-vals bindings))
-               (acc2 (h0-collect-free-list vals bound env acc))
-               (new-bound (h0-append-lists names bound)))
-          (h0-collect-free body new-bound env acc2)))
-       (LET*
-        (let* ((bindings (cadr expr))
-               (body (caddr expr)))
-          (h0-collect-free-let* bindings body bound env acc)))
-       (t (h0-collect-free-list expr bound env acc))))))
+    ((sym= (car expr) "QUOTE") acc)
+    ((sym= (car expr) "LAMBDA")
+     (let ((params (cadr expr))
+           (body (caddr expr)))
+       (h0-collect-free body (h0-append-lists params bound) env acc)))
+    ((sym= (car expr) "LET")
+     (let* ((bindings (cadr expr))
+            (body (caddr expr))
+            (names (h0-binding-names bindings))
+            (vals (h0-binding-vals bindings))
+            (acc2 (h0-collect-free-list vals bound env acc))
+            (new-bound (h0-append-lists names bound)))
+       (h0-collect-free body new-bound env acc2)))
+    ((sym= (car expr) "LET*")
+     (let* ((bindings (cadr expr))
+            (body (caddr expr)))
+       (h0-collect-free-let* bindings body bound env acc)))
+    (t (h0-collect-free-list expr bound env acc))))
 
 (defun h0-collect-free-list (exprs bound env acc)
   (if (null exprs)
@@ -2607,6 +1894,8 @@
 (defun h0-find-free-vars (expr bound env)
   (h0-collect-free expr bound env nil))
 
+;; Get variable offset in flat list environment
+;; Env is flat list of symbols: (sym1 sym2 sym3 ...)
 (defun h0-get-var-offset (sym env)
   (if (null env)
       nil
@@ -2646,14 +1935,16 @@
             (h0-compile-args (cdr args) env fenv))))
 
 ;; Compile expression to IR (using numeric tags)
-;; Uses op=* predicates for runtime symbol comparison (works in native habu0)
+;; Uses sym= for string-based symbol comparison (no symbol deduplication)
 (defun h0-compile (expr env fenv)
   (cond
     ;; Numbers compile to literals
     ((numberp expr) (list (ir-tag-lit) expr))
     ;; nil is 0 (both Lisp nil and NIL symbol)
     ((null expr) (list (ir-tag-lit) #x0))
-    ((if (symbolp expr) (op=t expr) nil) (list (ir-tag-lit) #x1))
+    ((sym= expr "NIL") (list (ir-tag-lit) #x0))
+    ;; t is 1
+    ((sym= expr "T") (list (ir-tag-lit) #x1))
     ;; String literals - allocate on heap
     ((stringp expr) (list (ir-tag-str-lit) expr))
     ;; Keyword literals - allocate on heap (self-evaluating)
@@ -2669,17 +1960,15 @@
      (let ((op (car expr)))
        (cond
          ;; Quote
-         ((if (symbolp op) (op=quote op) nil)
+         ((sym= op "QUOTE")
           (let ((val (cadr expr)))
             (cond
               ((numberp val) (list (ir-tag-lit) val))
-              ;; Keywords MUST be checked before symbolp (keywords are symbols)
-              ((keywordp val) (list (ir-tag-kw-lit) val))
               ((symbolp val) (list (ir-tag-quote-sym) val))
               ((null val) (list (ir-tag-lit) #x0))
               (t (fatal-error-ir "h0-compile: Unsupported quote type")))))
          ;; If
-         ((if (symbolp op) (op=if op) nil)
+         ((sym= op "IF")
           (let* ((test-ir (h0-compile (cadr expr) env fenv))
                  (then-ir (h0-compile (caddr expr) env fenv))
                  (else-ir (if (cadddr expr)
@@ -2687,13 +1976,13 @@
                               (list (ir-tag-lit) #x0))))
             (list (ir-tag-if) test-ir then-ir else-ir)))
          ;; Let
-         ((if (symbolp op) (op=let op) nil)
+         ((sym= op "LET")
           (h0-compile-let (cadr expr) (caddr expr) env fenv))
          ;; Let*
-         ((if (symbolp op) (op=let-star op) nil)
+         ((sym= op "LET*")
           (h0-compile-let (cadr expr) (caddr expr) env fenv))
          ;; Setq
-         ((if (symbolp op) (op=setq op) nil)
+         ((sym= op "SETQ")
           (let* ((var-sym (cadr expr))
                  (val-ir (h0-compile (caddr expr) env fenv))
                  (result (c-env-lookup var-sym env)))
@@ -2701,89 +1990,85 @@
                 (list (ir-tag-setq) (car result) val-ir)
                 (fatal-error-ir "h0-compile: SETQ unknown variable"))))
          ;; Progn
-         ((if (symbolp op) (op=progn op) nil)
+         ((sym= op "PROGN")
           (h0-compile-progn (cdr expr) env fenv))
          ;; Defun returns nil during compilation
-         ((if (symbolp op) (op=defun op) nil)
+         ((sym= op "DEFUN")
           (list (ir-tag-lit) #x0))
          ;; Defvar returns nil during compilation (global var is runtime)
-         ((if (symbolp op) (op=defvar op) nil)
+         ((sym= op "DEFVAR")
           (list (ir-tag-lit) #x0))
          ;; While - transform to labels loop
-         ((if (symbolp op) (op=while op) nil)
+         ;; (while test body...) => (labels ((loop () (when test body... (loop)))) (loop))
+         ((sym= op "WHILE")
           (h0-compile-while (cadr expr) (cddr expr) env fenv))
          ;; Arithmetic
-         ((if (symbolp op) (op=plus op) nil)
+         ((sym= op "+")
           (h0-compile-add (cdr expr) env fenv))
-         ((if (symbolp op) (op=minus op) nil)
+         ((sym= op "-")
           (h0-compile-sub (cdr expr) env fenv))
-         ((if (symbolp op) (op=mul op) nil)
+         ((sym= op "*")
           (let* ((l (h0-compile (cadr expr) env fenv))
                  (r (h0-compile (caddr expr) env fenv)))
             (list (ir-tag-mul) l r)))
-         ((if (symbolp op) (op=div op) nil)
+         ((sym= op "/")
           (let* ((l (h0-compile (cadr expr) env fenv))
                  (r (h0-compile (caddr expr) env fenv)))
             (list (ir-tag-div) l r)))
-         ((if (symbolp op) (op=mod op) nil)
+         ((sym= op "MOD")
           (let* ((l (h0-compile (cadr expr) env fenv))
                  (r (h0-compile (caddr expr) env fenv)))
             (list (ir-tag-mod) l r)))
          ;; Comparisons
-         ((if (symbolp op) (op=eq-num op) nil)
+         ((sym= op "=")
           (let* ((l (h0-compile (cadr expr) env fenv))
                  (r (h0-compile (caddr expr) env fenv)))
             (list (ir-tag-cmp-eq) l r)))
-         ((if (symbolp op) (op=lt op) nil)
+         ((sym= op "<")
           (let* ((l (h0-compile (cadr expr) env fenv))
                  (r (h0-compile (caddr expr) env fenv)))
             (list (ir-tag-cmp-lt) l r)))
-         ((if (symbolp op) (op=gt op) nil)
+         ((sym= op ">")
           (let* ((l (h0-compile (cadr expr) env fenv))
                  (r (h0-compile (caddr expr) env fenv)))
             (list (ir-tag-cmp-gt) l r)))
-         ((if (symbolp op) (op=le op) nil)
+         ((sym= op "<=")
           (let* ((l (h0-compile (cadr expr) env fenv))
                  (r (h0-compile (caddr expr) env fenv)))
             (list (ir-tag-cmp-le) l r)))
-         ((if (symbolp op) (op=ge op) nil)
+         ((sym= op ">=")
           (let* ((l (h0-compile (cadr expr) env fenv))
                  (r (h0-compile (caddr expr) env fenv)))
             (list (ir-tag-cmp-ge) l r)))
          ;; List operations
-         ((if (symbolp op) (op=cons op) nil)
+         ((sym= op "CONS")
           (let* ((l (h0-compile (cadr expr) env fenv))
                  (r (h0-compile (caddr expr) env fenv)))
             (list (ir-tag-cons) l r)))
-         ((if (symbolp op) (op=car op) nil)
+         ((sym= op "CAR")
           (let ((v (h0-compile (cadr expr) env fenv)))
             (list (ir-tag-car) v)))
-         ((if (symbolp op) (op=cdr op) nil)
+         ((sym= op "CDR")
           (let ((v (h0-compile (cadr expr) env fenv)))
             (list (ir-tag-cdr) v)))
-         ((if (symbolp op) (op=setcar op) nil)
-          (let* ((cell-ir (h0-compile (cadr expr) env fenv))
-                 (val-ir (h0-compile (caddr expr) env fenv)))
-            (list 'setcar-ir cell-ir val-ir)))
-         ((if (symbolp op) (op=setcdr op) nil)
-          (let* ((cell-ir (h0-compile (cadr expr) env fenv))
-                 (val-ir (h0-compile (caddr expr) env fenv)))
-            (list 'setcdr-ir cell-ir val-ir)))
-         ((if (symbolp op) (op=null op) nil)
+         ((sym= op "NULL")
           (let ((v (h0-compile (cadr expr) env fenv)))
             (list (ir-tag-null) v)))
          ;; String operations
-         ((if (symbolp op) (op=string-length op) nil)
+         ((sym= op "STRING-LENGTH")
           (let ((v (h0-compile (cadr expr) env fenv)))
             (list (ir-tag-str-len) v)))
-         ((if (symbolp op) (op=string-ref op) nil)
+         ((sym= op "STRING-REF")
           (let* ((str (h0-compile (cadr expr) env fenv))
                  (idx (h0-compile (caddr expr) env fenv)))
             (list (ir-tag-str-ref) str idx)))
          ;; CHAR-AT - safe string-ref that returns 0 beyond end
-         ((if (symbolp op) (op=char-at op) nil)
+         ;; Expands to: (if (< pos (string-length str)) (string-ref str pos) 0)
+         ((sym= op "CHAR-AT")
           (let* ((str-expr (cadr expr))
                  (pos-expr (caddr expr))
+                 ;; To avoid evaluating str and pos twice, we need let bindings
+                 ;; For now, compile directly assuming no side effects
                  (str-ir (h0-compile str-expr env fenv))
                  (pos-ir (h0-compile pos-expr env fenv))
                  (len-ir (list (ir-tag-str-len) str-ir))
@@ -2792,141 +2077,98 @@
                  (else-ir (list (ir-tag-lit) #x0)))
             (list (ir-tag-if) test-ir then-ir else-ir)))
          ;; STRING= - string equality comparison
-         ((if (symbolp op) (op=string= op) nil)
+         ((sym= op "STRING=")
           (let* ((l (h0-compile (cadr expr) env fenv))
                  (r (h0-compile (caddr expr) env fenv)))
             (list (ir-tag-string-eq) l r)))
          ;; SYMBOL-NAME - extract name string from symbol
-         ((if (symbolp op) (op=symbol-name op) nil)
+         ((sym= op "SYMBOL-NAME")
           (let ((v (h0-compile (cadr expr) env fenv)))
             (list (ir-tag-symbol-name) v)))
-         ;; KEYWORD-NAME - extract name string from keyword
-         ((if (symbolp op) (op=keyword-name op) nil)
-          (let ((v (h0-compile (cadr expr) env fenv)))
-            (list (ir-tag-keyword-name) v)))
          ;; Vector operations
-         ((if (symbolp op) (op=make-vector op) nil)
+         ((sym= op "MAKE-VECTOR")
           (let ((size (h0-compile (cadr expr) env fenv)))
             (list (ir-tag-make-vector) size)))
-         ((if (symbolp op) (op=vector-ref op) nil)
+         ((sym= op "VECTOR-REF")
           (let* ((vec (h0-compile (cadr expr) env fenv))
                  (idx (h0-compile (caddr expr) env fenv)))
             (list (ir-tag-vector-ref) vec idx)))
-         ((if (symbolp op) (op=vector-set op) nil)
+         ((sym= op "VECTOR-SET")
           (let* ((vec (h0-compile (cadr expr) env fenv))
                  (idx (h0-compile (caddr expr) env fenv))
                  (val (h0-compile (cadddr expr) env fenv)))
             (list (ir-tag-vector-set) vec idx val)))
-         ((if (symbolp op) (op=vector-length op) nil)
+         ((sym= op "VECTOR-LENGTH")
           (let ((vec (h0-compile (cadr expr) env fenv)))
             (list (ir-tag-vector-length) vec)))
          ;; Type predicates
-         ((if (symbolp op) (op=eq op) nil)
+         ((sym= op "EQ")
           (let* ((l (h0-compile (cadr expr) env fenv))
                  (r (h0-compile (caddr expr) env fenv)))
             (list (ir-tag-eq) l r)))
-         ((if (symbolp op) (op=consp op) nil)
+         ((sym= op "CONSP")
           (let ((v (h0-compile (cadr expr) env fenv)))
             (list (ir-tag-consp) v)))
-         ((if (symbolp op) (op=symbolp op) nil)
+         ((sym= op "SYMBOLP")
           (let ((v (h0-compile (cadr expr) env fenv)))
             (list (ir-tag-symbolp) v)))
-         ((if (symbolp op) (op=numberp op) nil)
+         ((sym= op "NUMBERP")
           (let ((v (h0-compile (cadr expr) env fenv)))
             (list (ir-tag-numberp) v)))
-         ((if (symbolp op) (op=stringp op) nil)
+         ((sym= op "STRINGP")
           (let ((v (h0-compile (cadr expr) env fenv)))
             (list (ir-tag-stringp) v)))
-         ((if (symbolp op) (op=keywordp op) nil)
+         ((sym= op "KEYWORDP")
           (let ((v (h0-compile (cadr expr) env fenv)))
             (list (ir-tag-keywordp) v)))
          ;; Bitwise operations
-         ((if (symbolp op) (op=logand op) nil)
+         ((sym= op "LOGAND")
           (let* ((l (h0-compile (cadr expr) env fenv))
                  (r (h0-compile (caddr expr) env fenv)))
             (list (ir-tag-logand) l r)))
-         ((if (symbolp op) (op=logior op) nil)
+         ((sym= op "LOGIOR")
           (let* ((l (h0-compile (cadr expr) env fenv))
                  (r (h0-compile (caddr expr) env fenv)))
             (list (ir-tag-logior) l r)))
-         ((if (symbolp op) (op=ash op) nil)
+         ((sym= op "ASH")
           (let* ((val (h0-compile (cadr expr) env fenv))
                  (shift (h0-compile (caddr expr) env fenv)))
             (list (ir-tag-ash) val shift)))
          ;; Boolean not
-         ((if (symbolp op) (op=not op) nil)
+         ((sym= op "NOT")
           (let ((v (h0-compile (cadr expr) env fenv)))
             (list (ir-tag-not) v)))
-         ;; OR - expand to if chain
-         ((if (symbolp op) (op=or op) nil)
+         ;; OR - expand to if chain: (or a b c) => (if a a (if b b c))
+         ((sym= op "OR")
           (h0-compile-or (cdr expr) env fenv))
-         ;; AND - expand to if chain
-         ((if (symbolp op) (op=and op) nil)
+         ;; AND - expand to if chain: (and a b c) => (if a (if b c nil) nil)
+         ((sym= op "AND")
           (h0-compile-and (cdr expr) env fenv))
          ;; LENGTH - list length
-         ((if (symbolp op) (op=length op) nil)
+         ((sym= op "LENGTH")
           (let ((v (h0-compile (cadr expr) env fenv)))
             (list (ir-tag-length) v)))
          ;; COND - expand to nested IFs
-         ((if (symbolp op) (op=cond op) nil)
+         ((sym= op "COND")
           (h0-compile-cond (cdr expr) env fenv))
+         ;; CASE - expand to nested IFs with EQ comparisons
+         ((sym= op "CASE")
+          (h0-compile-case (cadr expr) (cddr expr) env fenv))
          ;; WHEN - expand to (if test (progn body...))
-         ((if (symbolp op) (op=when op) nil)
+         ((sym= op "WHEN")
           (let* ((test-ir (h0-compile (cadr expr) env fenv))
                  (body-ir (h0-compile-progn (cddr expr) env fenv))
                  (else-ir (list (ir-tag-lit) #x0)))
             (list (ir-tag-if) test-ir body-ir else-ir)))
          ;; UNLESS - expand to (if (not test) (progn body...))
-         ((if (symbolp op) (op=unless op) nil)
+         ((sym= op "UNLESS")
           (let* ((test-ir (h0-compile (cadr expr) env fenv))
                  (not-test-ir (list (ir-tag-not) test-ir))
                  (body-ir (h0-compile-progn (cddr expr) env fenv))
                  (else-ir (list (ir-tag-lit) #x0)))
             (list (ir-tag-if) not-test-ir body-ir else-ir)))
-         ;; CASE - expand to cond with eql comparisons
-         ((if (symbolp op) (op=case op) nil)
-          (let* ((keyform (cadr expr))
-                 (clauses (cddr expr))
-                 (key-var (intern "#:CASE-KEY")))
-            (h0-compile
-             (list 'let (list (list key-var keyform))
-                   (cons 'cond (h0-expand-case-clauses key-var clauses)))
-             env fenv)))
-         ;; ECASE - like CASE but signals error if no clause matches
-         ((if (symbolp op) (op=ecase op) nil)
-          (let* ((keyform (cadr expr))
-                 (clauses (cddr expr))
-                 (key-var (intern "#:CASE-KEY"))
-                 (clauses-with-error
-                  (h0-append clauses
-                             (list (list 't (list 'error "ecase: no matching clause"))))))
-            (h0-compile
-             (list 'let (list (list key-var keyform))
-                   (cons 'cond (h0-expand-case-clauses key-var clauses-with-error)))
-             env fenv)))
-         ;; DOLIST - expand to labels loop
-         ((if (symbolp op) (op=dolist op) nil)
-          (let* ((binding (cadr expr))
-                 (var (car binding))
-                 (list-expr (cadr binding))
-                 (body (cddr expr))
-                 (list-var (intern "#:DOLIST-LIST"))
-                 (loop-fn (intern "#:DOLIST-LOOP"))
-                 (expanded
-                  (list 'let (list (list list-var list-expr))
-                        (list 'labels
-                              (list (list loop-fn (list)
-                                          (list 'when list-var
-                                                (list 'let (list (list var (list 'car list-var)))
-                                                      (cons 'progn
-                                                            (append body
-                                                                    (list (list 'setq list-var (list 'cdr list-var))
-                                                                          (list loop-fn))))))))
-                              (list loop-fn))
-                        nil)))
-            (h0-compile expanded env fenv)))
          ;; LAMBDA - create closure
-         ((if (symbolp op) (op=lambda op) nil)
+         ((sym= op "LAMBDA")
           (let* ((params (cadr expr))
                  (body (caddr expr))
                  (free-vars (h0-find-free-vars body params env))
@@ -2935,122 +2177,110 @@
                  (body-ir (h0-compile body param-env fenv)))
             (list (ir-tag-lambda) params body-ir free-vars free-offsets)))
          ;; FUNCALL - call function value
-         ((if (symbolp op) (op=funcall op) nil)
+         ((sym= op "FUNCALL")
           (let* ((fn-ir (h0-compile (cadr expr) env fenv))
                  (args (cddr expr))
                  (args-ir (h0-compile-args args env fenv)))
             (list (ir-tag-funcall) fn-ir args-ir)))
          ;; FLET - local function definitions (non-recursive)
-         ((if (symbolp op) (op=flet op) nil)
+         ((sym= op "FLET")
           (h0-compile-flet (cadr expr) (cddr expr) env fenv))
          ;; LABELS - local function definitions (recursive)
-         ((if (symbolp op) (op=labels op) nil)
+         ((sym= op "LABELS")
           (h0-compile-labels (cadr expr) (cddr expr) env fenv))
          ;; MAPCAR - expand to labels loop
-         ((if (symbolp op) (op=mapcar op) nil)
+         ;; (mapcar fn list) => (labels ((loop (l acc) ...)) (loop list nil))
+         ((sym= op "MAPCAR")
           (h0-compile-mapcar (cadr expr) (caddr expr) env fenv))
          ;; REVERSE - expand to labels loop
-         ((if (symbolp op) (op=reverse op) nil)
+         ((sym= op "REVERSE")
           (h0-compile-reverse (cadr expr) env fenv))
          ;; LIST - expand to nested CONS
-         ((if (symbolp op) (op=list op) nil)
+         ((sym= op "LIST")
           (h0-compile-list (cdr expr) env fenv))
          ;; CADR - (car (cdr x))
-         ((if (symbolp op) (op=cadr op) nil)
+         ((sym= op "CADR")
           (let ((v (h0-compile (cadr expr) env fenv)))
             (list (ir-tag-car) (list (ir-tag-cdr) v))))
          ;; CDDR - (cdr (cdr x))
-         ((if (symbolp op) (op=cddr op) nil)
+         ((sym= op "CDDR")
           (let ((v (h0-compile (cadr expr) env fenv)))
             (list (ir-tag-cdr) (list (ir-tag-cdr) v))))
          ;; CADDR - (car (cdr (cdr x)))
-         ((if (symbolp op) (op=caddr op) nil)
+         ((sym= op "CADDR")
           (let ((v (h0-compile (cadr expr) env fenv)))
             (list (ir-tag-car) (list (ir-tag-cdr) (list (ir-tag-cdr) v)))))
          ;; CADDDR - (car (cdr (cdr (cdr x))))
-         ((if (symbolp op) (op=cadddr op) nil)
+         ((sym= op "CADDDR")
           (let ((v (h0-compile (cadr expr) env fenv)))
             (list (ir-tag-car) (list (ir-tag-cdr) (list (ir-tag-cdr) (list (ir-tag-cdr) v))))))
          ;; CAAR - (car (car x))
-         ((if (symbolp op) (op=caar op) nil)
+         ((sym= op "CAAR")
           (let ((v (h0-compile (cadr expr) env fenv)))
             (list (ir-tag-car) (list (ir-tag-car) v))))
          ;; CDAR - (cdr (car x))
-         ((if (symbolp op) (op=cdar op) nil)
+         ((sym= op "CDAR")
           (let ((v (h0-compile (cadr expr) env fenv)))
             (list (ir-tag-cdr) (list (ir-tag-car) v))))
          ;; NTH - expand to nested CDRs and CAR
-         ((if (symbolp op) (op=nth op) nil)
+         ((sym= op "NTH")
           (h0-compile-nth (cadr expr) (caddr expr) env fenv))
-         ;; LOGNOT - use MVN instruction (bitwise NOT)
-         ((if (symbolp op) (op=lognot op) nil)
+         ;; LOGNOT - (logxor x -1) but we don't have logxor, use (- -1 x) for 2's complement
+         ((sym= op "LOGNOT")
           (let ((v (h0-compile (cadr expr) env fenv)))
-            (list (ir-tag-lognot) v)))
-         ;; EQL - equal for numbers and symbols
-         ((if (symbolp op) (op=eql op) nil)
+            ;; lognot x = -1 - x in 2's complement (actually xor with -1)
+            ;; For now use subtraction: (- (- 0 1) x) = -1 - x
+            (list (ir-tag-sub) (list (ir-tag-lit) #x-1) v)))
+         ;; EQL - equal for numbers and symbols (eq for symbols, = for numbers)
+         ((sym= op "EQL")
           (let* ((l (h0-compile (cadr expr) env fenv))
                  (r (h0-compile (caddr expr) env fenv)))
             (list (ir-tag-eql) l r)))
          ;; GET-TAG - extract tag from tagged value
-         ((if (symbolp op) (op=get-tag op) nil)
+         ((sym= op "GET-TAG")
           (let ((v (h0-compile (cadr expr) env fenv)))
             (list (ir-tag-get-tag) v)))
-         ;; SET-TAG - change tag bits on a pointer value
-         ((if (symbolp op) (op=set-tag op) nil)
-          (let ((val (h0-compile (cadr expr) env fenv))
-                (new-tag (h0-compile (caddr expr) env fenv)))
-            (list (ir-tag-set-tag) val new-tag)))
          ;; MAKE-STRING-FROM-VECTOR - create string from vector of chars
-         ((if (symbolp op) (op=make-string-from-vector op) nil)
+         ((sym= op "MAKE-STRING-FROM-VECTOR")
           (let ((v (h0-compile (cadr expr) env fenv)))
             (list (ir-tag-make-string-from-vector) v)))
          ;; MAKE-SYMBOL-FROM-STRING - create symbol from string
-         ((if (symbolp op) (op=make-symbol-from-string op) nil)
+         ((sym= op "MAKE-SYMBOL-FROM-STRING")
           (let ((v (h0-compile (cadr expr) env fenv)))
             (list (ir-tag-make-symbol-from-string) v)))
          ;; ERROR - signal error and crash
-         ((if (symbolp op) (op=error op) nil)
+         ((sym= op "ERROR")
           (list (ir-tag-error)))
-         ;; /= (not equal)
-         ((if (symbolp op) (op=neq op) nil)
+         ;; >= comparison already exists, add /= (not equal)
+         ((sym= op "/=")
           (let* ((l (h0-compile (cadr expr) env fenv))
                  (r (h0-compile (caddr expr) env fenv)))
             (list (ir-tag-not) (list (ir-tag-cmp-eq) l r))))
-         ;; Default case - if op is a cons (e.g., lambda expression), compile as funcall
-         ;; otherwise it's an unknown operator
-         (t
-          (if (consp op)
-              (let* ((fn-ir (h0-compile op env fenv))
-                     (args (cdr expr))
-                     (args-ir (h0-compile-args args env fenv)))
-                (list (ir-tag-funcall) fn-ir args-ir))
-              (fatal-error-ir "h0-compile: Unknown operator"))))))
+         ;; If op is a cons (e.g., lambda expression), compile as funcall
+         ((consp op)
+          (let* ((fn-ir (h0-compile op env fenv))
+                 (args (cdr expr))
+                 (args-ir (h0-compile-args args env fenv)))
+            (list (ir-tag-funcall) fn-ir args-ir)))
+         ;; Default - unknown operator - CRASH
+         (t (fatal-error-ir "h0-compile: Unknown operator")))))
     ;; Default - unknown expression type - CRASH
     (t (fatal-error-ir "h0-compile: Unknown expression type"))))
 
-;; Compile addition with constant folding (handles variadic args)
+;; Compile addition with constant folding
 (defun h0-compile-add (args env fenv)
   (if (null args)
       (fatal-error-ir "h0-compile-add: Empty addition")
       (if (null (cdr args))
-          ;; Single argument: just compile it
           (h0-compile (car args) env fenv)
-          (if (null (cddr args))
-              ;; Two arguments: normal binary add
-              (let* ((left-ir (h0-compile (car args) env fenv))
-                     (right-ir (h0-compile (cadr args) env fenv)))
-                ;; Constant folding
-                (if (and (h0-has-tag-n left-ir (ir-tag-lit)) (h0-has-tag-n right-ir (ir-tag-lit)))
-                    (list (ir-tag-lit) (+ (cadr left-ir) (cadr right-ir)))
-                    (list (ir-tag-add) left-ir right-ir)))
-              ;; More than two: recurse - (+ a b c ...) => (+ a (+ b c ...))
-              (let* ((left-ir (h0-compile (car args) env fenv))
-                     (right-ir (h0-compile-add (cdr args) env fenv)))
-                (if (and (h0-has-tag-n left-ir (ir-tag-lit)) (h0-has-tag-n right-ir (ir-tag-lit)))
-                    (list (ir-tag-lit) (+ (cadr left-ir) (cadr right-ir)))
-                    (list (ir-tag-add) left-ir right-ir)))))))
+          (let* ((left-ir (h0-compile (car args) env fenv))
+                 (right-ir (h0-compile (cadr args) env fenv)))
+            ;; Constant folding
+            (if (and (h0-has-tag-n left-ir (ir-tag-lit)) (h0-has-tag-n right-ir (ir-tag-lit)))
+                (list (ir-tag-lit) (+ (cadr left-ir) (cadr right-ir)))
+                (list (ir-tag-add) left-ir right-ir))))))
 
-;; Compile subtraction with constant folding (handles variadic args)
+;; Compile subtraction with constant folding
 (defun h0-compile-sub (args env fenv)
   (if (null args)
       (fatal-error-ir "h0-compile-sub: Empty subtraction")
@@ -3060,17 +2290,12 @@
             (if (h0-has-tag-n arg-ir (ir-tag-lit))
                 (list (ir-tag-lit) (- #x0 (cadr arg-ir)))
                 (list (ir-tag-sub) (list (ir-tag-lit) #x0) arg-ir)))
-          (if (null (cddr args))
-              ;; Two arguments: normal binary sub
-              (let* ((left-ir (h0-compile (car args) env fenv))
-                     (right-ir (h0-compile (cadr args) env fenv)))
-                ;; Constant folding
-                (if (and (h0-has-tag-n left-ir (ir-tag-lit)) (h0-has-tag-n right-ir (ir-tag-lit)))
-                    (list (ir-tag-lit) (- (cadr left-ir) (cadr right-ir)))
-                    (list (ir-tag-sub) left-ir right-ir)))
-              ;; More than two: (- a b c ...) => (- (- a b) c ...)
-              ;; Note: subtraction is left-associative unlike addition
-              (h0-compile-sub (cons (list '- (car args) (cadr args)) (cddr args)) env fenv)))))
+          (let* ((left-ir (h0-compile (car args) env fenv))
+                 (right-ir (h0-compile (cadr args) env fenv)))
+            ;; Constant folding
+            (if (and (h0-has-tag-n left-ir (ir-tag-lit)) (h0-has-tag-n right-ir (ir-tag-lit)))
+                (list (ir-tag-lit) (- (cadr left-ir) (cadr right-ir)))
+                (list (ir-tag-sub) left-ir right-ir))))))
 
 ;; Compile let - iterate through bindings, extending environment
 ;; Store symbol name (string) in env for string-based lookup
@@ -3101,35 +2326,6 @@
       (let* ((first-ir (h0-compile (car forms) env fenv))
              (rest-ir (h0-compile-progn-rest (cdr forms) env fenv)))
         (cons first-ir rest-ir))))
-
-;; Expand CASE clauses to COND clauses
-;; Each clause (key body...) becomes ((eql key-var 'key) body...)
-;; Multiple keys ((k1 k2) body...) becomes ((or (eql key-var 'k1) (eql key-var 'k2)) body...)
-;; Default clause (t body...) stays as (t body...)
-(defun h0-expand-case-clauses (key-var clauses)
-  (if (null clauses)
-      nil
-      (let* ((clause (car clauses))
-             (keys (car clause))
-             (body (cdr clause))
-             (rest (h0-expand-case-clauses key-var (cdr clauses))))
-        (cond
-          ;; Default clause: t or otherwise
-          ((or (eq keys 't) (eq keys 'T) (eq keys 'otherwise))
-           (cons (cons 't body) rest))
-          ;; Single key (not a list)
-          ((not (consp keys))
-           (cons (cons (list 'eql key-var (list 'quote keys)) body) rest))
-          ;; Multiple keys (list)
-          (t
-           (cons (cons (cons 'or (h0-expand-case-keys key-var keys)) body) rest))))))
-
-(defun h0-expand-case-keys (key-var keys)
-  "Expand list of keys to (eql key-var 'k1) (eql key-var 'k2) ..."
-  (if (null keys)
-      nil
-      (cons (list 'eql key-var (list 'quote (car keys)))
-            (h0-expand-case-keys key-var (cdr keys)))))
 
 ;; Compile OR - expand to if chain: (or a b c) => (if a a (if b b c))
 ;; Returns the first true value or nil
@@ -3178,7 +2374,7 @@
              (body (cdr clause)))
         (if (null (cdr clauses))
             ;; Last clause - just compile it
-            (if (eq test 'T)
+            (if (sym= test "T")
                 ;; (t body...) - always true, just execute body
                 (if (null body)
                     (list (ir-tag-lit) #x0)
@@ -3195,7 +2391,7 @@
                        (else-ir (list (ir-tag-lit) #x0)))
                   (list (ir-tag-if) test-ir body-ir else-ir)))
             ;; Multiple clauses - nested if
-            (if (eq test 'T)
+            (if (sym= test "T")
                 ;; (t body...) in middle - execute body (subsequent clauses ignored)
                 (if (null body)
                     (list (ir-tag-lit) #x0)
@@ -3234,7 +2430,7 @@
       (let* ((clause (car clauses))
              (keys (car clause))
              (body (cdr clause)))
-        (if (or (eq keys 'OTHERWISE) (eq keys 'T))
+        (if (or (sym= keys "OTHERWISE") (sym= keys "T"))
             ;; Default clause - just execute body
             (if (null body)
                 (list (ir-tag-lit) #x0)
@@ -3455,6 +2651,1048 @@
                                         (list (intern "CDR") l-sym)))))
                 (list loop-sym n-expr list-expr))))
     (h0-compile expanded env fenv)))
+
+;;; ==========================================================================
+;;; ARM64 Code Generation - IR to machine code
+;;; ==========================================================================
+;;; Generates ARM64 machine code bytes from IR
+;;; Uses tagged fixnum representation: value << 4
+;;; Registers:
+;;;   x0-x4   - arguments and return value
+;;;   x20     - environment base (stack frame)
+;;;   x28     - heap bump pointer
+
+;; ARM64 instructions are called directly via arm64:* with keyword registers
+
+
+;; Append byte lists
+(defun bytes-append (a b)
+  (if (null a) b
+      (cons (car a) (bytes-append (cdr a) b))))
+
+(defun bytes-append-all (lists)
+  (if (null lists)
+      nil
+      (bytes-append (car lists) (bytes-append-all (cdr lists)))))
+
+;; Temp slot offset calculation:
+;; Temp slots start at sp+48 (#x30) to avoid overlap with saved registers (sp+0..sp+40)
+;; Formula: 48 + td*8 = #x30 + (* td #x8)
+;; Note: Inlined everywhere because function calls have overhead in native code
+
+;; Generate STRB instructions for string characters
+;; MUST be defined before h0-codegen-str-lit which calls it
+(defun h0-gen-str-bytes (str idx)
+  (if (>= idx (string-length str))
+      nil
+      (let* ((char (string-ref str idx))
+             ;; MOVZ x0, #char
+             (mov-char (movz :x0 char))
+             ;; STRB w0, [x1, #idx]
+             (store-byte (strb :x0 :x1 idx)))
+        (bytes-append mov-char
+                      (bytes-append store-byte
+                                    (h0-gen-str-bytes str (+ idx 1)))))))
+
+;; Codegen helper for string literals
+;; Allocates string on heap: [length:8][chars:N][padding]
+;; Returns tagged pointer with tag 4
+;; MUST be defined before h0-codegen which calls it
+(defun h0-codegen-str-lit (str len total-size)
+  (let* (;; Store length at x28
+         (mov-len-lo (movz :x0 (logand len #xFFFF)))
+         (str-len (str :x0 :x28 :offset 0))
+         ;; Get string base address (x28 + 8)
+         (add-base (add :x1 :x28 8 :imm t))
+         ;; Generate STRB instructions for each character
+         (char-stores (h0-gen-str-bytes str 0))
+         ;; Save tagged pointer to x0: x28 | 4
+         (mov-ptr (mov :x0 :x28))
+         (tag-ptr (add :x0 :x0 4 :imm t))
+         ;; Bump heap pointer
+         (bump-heap (add :x28 :x28 total-size :imm t)))
+    (bytes-append-all (list mov-len-lo str-len add-base
+                            char-stores mov-ptr tag-ptr bump-heap))))
+
+;; Codegen helper for keyword literals
+;; Same layout as strings but with tag 7 instead of 4
+;; MUST be defined before h0-codegen which calls it
+(defun h0-codegen-kw-lit (str len total-size)
+  (let* (;; Store length at x28
+         (mov-len-lo (movz :x0 (logand len #xFFFF)))
+         (str-len (str :x0 :x28 :offset 0))
+         ;; Get string base address (x28 + 8)
+         (add-base (add :x1 :x28 8 :imm t))
+         ;; Generate STRB instructions for each character
+         (char-stores (h0-gen-str-bytes str 0))
+         ;; Save tagged pointer to x0: x28 | 7 (keyword tag)
+         (mov-ptr (mov :x0 :x28))
+         (tag-ptr (add :x0 :x0 7 :imm t))
+         ;; Bump heap pointer
+         (bump-heap (add :x28 :x28 total-size :imm t)))
+    (bytes-append-all (list mov-len-lo str-len add-base
+                            char-stores mov-ptr tag-ptr bump-heap))))
+
+;; Codegen helper for binary operations
+;; Inline temp slot calculation: 48 + td*8
+(defun h0-codegen-binop (left-ir right-ir op-instrs td)
+  (let* ((slot-off (+ 48 (* td 8)))
+         (left-code (h0-codegen left-ir td))
+         (save-left (str :x0 :sp :offset slot-off))
+         (right-code (h0-codegen right-ir (+ td 1)))
+         (move-right (mov :x1 :x0))
+         (load-left (ldr :x0 :sp :offset slot-off)))
+    (bytes-append-all
+     (list left-code save-left right-code move-right load-left op-instrs))))
+
+;; Codegen helper for comparisons
+;; Inline temp slot calculation: 48 + td*8
+(defun h0-codegen-cmp (left-ir right-ir cond td)
+  (let* ((slot-off (+ 48 (* td 8)))
+         (left-code (h0-codegen left-ir td))
+         (save-left (str :x0 :sp :offset slot-off))
+         (right-code (h0-codegen right-ir (+ td 1)))
+         (move-right (mov :x1 :x0))
+         (load-left (ldr :x0 :sp :offset slot-off)))
+    (let* ((cmp-code (cmp :x0 :x1))
+           (cset-code (cset :x0 cond))
+           (tag-code (lsl :x0 :x0 4 :imm t)))
+      (bytes-append-all
+       (list left-code save-left right-code move-right load-left
+             cmp-code cset-code tag-code)))))
+
+;; Codegen helper for progn (list of IR forms)
+(defun h0-codegen-progn (forms td)
+  (if (null forms)
+      (movz :x0 0)
+      (if (null (cdr forms))
+          (h0-codegen (car forms) td)
+          (bytes-append (h0-codegen (car forms) td)
+                        (h0-codegen-progn (cdr forms) td)))))
+
+;; Helper: Generate code for FUNCALL (0-2 args)
+;; Closure structure (assumed): [env_ptr:8][code_ptr:8] with tag 5
+;; ARM64 calling convention: x0-x7 for args, x24 for closure env
+(defun h0-codegen-funcall (fn-ir args-ir num-args td)
+  (let* (;; Evaluate function expression to x0 (closure pointer)
+         (fn-code (h0-codegen fn-ir td))
+         ;; Save closure to temp slot 0
+         (fn-slot (+ 48 (* td 8)))
+         (save-fn (str :x0 :sp :offset fn-slot))
+         ;; Generate code to evaluate and save arguments
+         (arg-code-list (h0-codegen-funcall-args args-ir (+ td 1) 0 nil))
+         ;; arg-code-list is now a list of code sequences
+         (arg-code (if arg-code-list
+                       (bytes-append-all arg-code-list)
+                       nil)))
+    ;; Now load arguments back to x0, x1, etc. and call
+    (let* (;; Load closure from temp slot 0
+           (load-fn (ldr :x16 :sp :offset fn-slot))
+           ;; Untag closure (subtract 5)
+           (untag-fn (sub :x16 :x16 5 :imm t))
+           ;; Load env pointer to x24 from [x16+0]
+           (load-env (ldr :x24 :x16 :offset 0))
+           ;; Load code pointer from [x16+8] directly to x16
+           (load-code (ldr :x16 :x16 :offset 8))
+           ;; Load args back to registers
+           (load-args (h0-codegen-funcall-load-args num-args (+ td 1)))
+           ;; Call via BLR x16
+           (call (blr :x16)))
+      (if arg-code
+          (bytes-append-all (list fn-code save-fn arg-code load-fn untag-fn
+                                  load-env load-code load-args call))
+          (bytes-append-all (list fn-code save-fn load-fn untag-fn
+                                  load-env load-code load-args call))))))
+
+;; Helper: Generate code to evaluate and save arguments
+;; Returns list of code sequences
+(defun h0-codegen-funcall-args (args-ir td idx acc)
+  (if (null args-ir)
+      (reverse acc)
+      (let* ((arg-code (h0-codegen (car args-ir) td))
+             (slot-off (+ 48 (* td 8)))
+             (save-code (str :x0 :sp :offset slot-off))
+             (combined (bytes-append arg-code save-code)))
+        (h0-codegen-funcall-args (cdr args-ir) (+ td 1) (+ idx 1)
+                                 (cons combined acc)))))
+
+;; Helper: Generate code to load arguments back to x0, x1, etc.
+(defun h0-codegen-funcall-load-args (num-args td)
+  (if (= num-args 0)
+      nil
+      (if (= num-args 1)
+          (let ((slot-off (+ 48 (* td 8))))
+            (ldr :x0 :sp :offset slot-off))
+          (if (= num-args 2)
+              (let ((slot-off1 (+ 48 (* td 8)))
+                    (slot-off2 (+ 48 (* (+ td 1) 8))))
+                (bytes-append (ldr :x0 :sp :offset slot-off1)
+                              (ldr :x1 :sp :offset slot-off2)))
+              (fatal-error "h0-codegen-funcall-load-args: too many args")))))
+
+;; Generate code for IR (using numeric tags)
+;; td = temp slot depth (for nested expressions)
+(defun h0-codegen (ir td)
+  (cond
+    ;; Literal - MOVZ x0, #(val << 4)
+    ((h0-has-tag-n ir (ir-tag-lit))
+     (let* ((val (cadr ir))
+            (tagged (ash val 4)))
+       (if (< tagged #x10000)
+           (movz :x0 tagged)
+           ;; Larger values need MOVZ + MOVK
+           (let ((movz-code (movz :x0 (logand tagged #xFFFF)))
+                 (movk-code (movk :x0 (logand (ash tagged -16) #xFFFF) :lsl 16)))
+             (bytes-append movz-code movk-code)))))
+
+    ;; String literal - allocate on heap
+    ;; Layout: [length:8][chars:N][padding to 16]
+    ;; Returns tagged pointer with tag 4
+    ((h0-has-tag-n ir (ir-tag-str-lit))
+     (let* ((str (cadr ir))
+            (len (string-length str))
+            ;; Round up (len + 8) to 16-byte boundary
+            (total-size (logand (+ len 8 15) (lognot 15))))
+       (h0-codegen-str-lit str len total-size)))
+
+    ;; Keyword literal - allocate on heap
+    ;; Layout: same as string [length:8][chars:N][padding to 16]
+    ;; Returns tagged pointer with tag 7
+    ((h0-has-tag-n ir (ir-tag-kw-lit))
+     (let* ((kw (cadr ir))
+            (str (keyword-name kw))
+            (len (string-length str))
+            ;; Round up (len + 8) to 16-byte boundary
+            (total-size (logand (+ len 8 15) (lognot 15))))
+       (h0-codegen-kw-lit str len total-size)))
+
+    ;; Variable - load from stack frame at x20
+    ((h0-has-tag-n ir (ir-tag-var))
+     (let* ((off (cadr ir))
+            (byte-off (* off 8))
+            (sub-code (sub :x1 :x20 byte-off :imm t))
+            (ldr-code (ldr :x0 :x1 :offset 0)))
+       (bytes-append sub-code ldr-code)))
+
+    ;; Addition
+    ((h0-has-tag-n ir (ir-tag-add))
+     (h0-codegen-binop (cadr ir) (caddr ir)
+                       (add :x0 :x0 :x1)
+                       td))
+
+    ;; Subtraction
+    ((h0-has-tag-n ir (ir-tag-sub))
+     (h0-codegen-binop (cadr ir) (caddr ir)
+                       (sub :x0 :x0 :x1)
+                       td))
+
+    ;; Multiplication (need to untag one operand)
+    ((h0-has-tag-n ir (ir-tag-mul))
+     (let* ((slot-off (+ 48 (* td 8)))
+            (left-code (h0-codegen (cadr ir) td))
+            (save-code (str :x0 :sp :offset slot-off))
+            (right-code (h0-codegen (caddr ir) (+ td 1)))
+            (untag-code (lsr :x1 :x0 4 :imm t))
+            (load-code (ldr :x0 :sp :offset slot-off)))
+       (let ((mul-code (mul :x0 :x0 :x1)))
+         (bytes-append-all
+          (list left-code save-code right-code untag-code load-code mul-code)))))
+
+    ;; Division
+    ((h0-has-tag-n ir (ir-tag-div))
+     (let* ((slot-off (+ 48 (* td 8)))
+            (left-code (h0-codegen (cadr ir) td))
+            (save-left (str :x0 :sp :offset slot-off))
+            (right-code (h0-codegen (caddr ir) (+ td 1)))
+            (untag-right (lsr :x1 :x0 4 :imm t))
+            (load-left (ldr :x0 :sp :offset slot-off))
+            (untag-left (lsr :x0 :x0 4 :imm t))
+            (divide (sdiv :x0 :x0 :x1))
+            (retag (lsl :x0 :x0 4 :imm t)))
+       (bytes-append-all
+        (list left-code save-left right-code untag-right load-left
+              untag-left divide retag))))           ; retag result
+
+    ;; Modulo (a mod b = a - (a/b)*b)
+    ((h0-has-tag-n ir (ir-tag-mod))
+     (let* ((slot-off (+ 48 (* td 8)))
+            (slot-off2 (+ 48 (* (+ td 1) 8)))
+            (left-code (h0-codegen (cadr ir) td))
+            (save-left (str :x0 :sp :offset slot-off))
+            (right-code (h0-codegen (caddr ir) (+ td 1)))
+            (save-right (str :x0 :sp :offset slot-off2)))
+       (let* ((untag-right (lsr :x1 :x0 4 :imm t))
+              (load-left (ldr :x0 :sp :offset slot-off))
+              (untag-left (lsr :x0 :x0 4 :imm t))
+              (divide (sdiv :x2 :x0 :x1))
+              (msub-code (msub :x0 :x2 :x1 :x0))
+              (retag (lsl :x0 :x0 4 :imm t)))
+         (bytes-append-all
+          (list left-code save-left right-code save-right untag-right
+                load-left untag-left divide msub-code retag)))))                ; retag
+
+    ;; Comparisons - condition codes: eq=0, lt=11, gt=12, le=13, ge=10
+    ((h0-has-tag-n ir (ir-tag-cmp-eq))
+     (h0-codegen-cmp (cadr ir) (caddr ir) 0 td))
+    ((h0-has-tag-n ir (ir-tag-cmp-lt))
+     (h0-codegen-cmp (cadr ir) (caddr ir) 11 td))
+    ((h0-has-tag-n ir (ir-tag-cmp-gt))
+     (h0-codegen-cmp (cadr ir) (caddr ir) 12 td))
+    ((h0-has-tag-n ir (ir-tag-cmp-le))
+     (h0-codegen-cmp (cadr ir) (caddr ir) 13 td))
+    ((h0-has-tag-n ir (ir-tag-cmp-ge))
+     (h0-codegen-cmp (cadr ir) (caddr ir) 10 td))
+
+    ;; If
+    ((h0-has-tag-n ir (ir-tag-if))
+     (let* ((test-ir (cadr ir))
+            (then-ir (caddr ir))
+            (else-ir (cadddr ir))
+            (test-code (h0-codegen test-ir td))
+            (then-code (h0-codegen then-ir td))
+            (else-code (h0-codegen else-ir td))
+            (then-len (length then-code))
+            (else-len (length else-code)))
+       (bytes-append-all
+        (list test-code
+              (cmp :x0 0 :imm t)                  ; test == 0?
+              (b.eq (ash (+ then-len 8) -2))      ; skip then + jump (instruction offset)
+              then-code
+              (b (ash (+ else-len 4) -2))         ; skip else (instruction offset)
+              else-code))))
+
+    ;; Cons
+    ((h0-has-tag-n ir (ir-tag-cons))
+     (let* ((slot-off (+ 48 (* td 8)))
+            (car-code (h0-codegen (cadr ir) td))
+            (save-car (str :x0 :sp :offset slot-off))
+            (cdr-code (h0-codegen (caddr ir) (+ td 1)))
+            (move-cdr (mov :x1 :x0)))
+       (let* ((load-car (ldr :x0 :sp :offset slot-off))
+              (store-car (str :x0 :x28 :offset 0))
+              (store-cdr (str :x1 :x28 :offset 8))
+              (get-ptr (mov :x0 :x28))
+              (tag-cons (add :x0 :x0 1 :imm t))
+              (bump-heap (add :x28 :x28 16 :imm t)))
+         (bytes-append-all
+          (list car-code save-car cdr-code move-cdr load-car
+                store-car store-cdr get-ptr tag-cons bump-heap)))))        ; bump heap
+
+    ;; Car
+    ((h0-has-tag-n ir (ir-tag-car))
+     (let* ((arg-ir (cadr ir))
+            (arg-code (h0-codegen arg-ir td))
+            (untag (sub :x0 :x0 1 :imm t))
+            (load-car (ldr :x0 :x0 :offset 0)))
+       (bytes-append-all
+        (list arg-code untag load-car))))
+
+    ;; Cdr
+    ((h0-has-tag-n ir (ir-tag-cdr))
+     (let* ((arg-ir (cadr ir))
+            (arg-code (h0-codegen arg-ir td))
+            (untag (sub :x0 :x0 1 :imm t))
+            (load-cdr (ldr :x0 :x0 :offset 8)))
+       (bytes-append-all
+        (list arg-code untag load-cdr))))          ; load cdr
+
+    ;; Null check - compare to nil (0x6), not zero
+    ((h0-has-tag-n ir (ir-tag-null))
+     (let* ((arg-ir (cadr ir))
+            (arg-code (h0-codegen arg-ir td))
+            (cmp-nil (cmp :x0 6 :imm t))
+            (set-cond (cset :x0 0))
+            (tag-result (lsl :x0 :x0 4 :imm t)))
+       (bytes-append-all
+        (list arg-code cmp-nil set-cond tag-result))))
+
+    ;; Let binding
+    ;; h0-compile assigns offset 0 to the innermost binding
+    ;; Offset 0 -> [x20-0], offset 1 -> [x20-8], etc.
+    ;; Nested lets: inner var gets offset 0, outer var gets offset 1
+    ;; Store value at x20-0 (the slot for offset 0), decrement x20 for body
+    ((h0-has-tag-n ir (ir-tag-let))
+     (let* ((val-ir (caddr ir))
+            (body-ir (cadddr ir))
+            (val-code (h0-codegen val-ir td))
+            (body-code (h0-codegen body-ir td)))
+       (bytes-append-all
+        (list val-code
+              ;; Decrement x20 BEFORE storing (so offset 0 refers to new slot)
+              (sub :x20 :x20 8 :imm t)            ; x20 -= 8 (grow frame)
+              (str :x0 :x20 :offset 0)            ; [x20] = value (at new x20)
+              body-code
+              (add :x20 :x20 8 :imm t)))))        ; x20 += 8 (restore frame)
+
+    ;; Setq - variable assignment
+    ;; IR: (setq-ir offset value-ir)
+    ;; Evaluate value, then store to variable's stack slot
+    ((h0-has-tag-n ir (ir-tag-setq))
+     (let* ((offset (cadr ir))
+            (val-ir (caddr ir))
+            (byte-off (* offset 8))
+            (val-code (h0-codegen val-ir td))
+            ;; Calculate address: x1 = x20 - byte_offset
+            (sub-code (sub :x1 :x20 byte-off :imm t))
+            ;; Store x0 to [x1]
+            (str-code (str :x0 :x1 :offset 0)))
+       (bytes-append-all (list val-code sub-code str-code))))
+
+    ;; Progn
+    ((h0-has-tag-n ir (ir-tag-progn))
+     (h0-codegen-progn (cadr ir) td))
+
+    ;; String-length: get length from string header (offset -8 from tagged ptr)
+    ;; String layout: [length:u64][chars...]  with tag 4
+    ((h0-has-tag-n ir (ir-tag-str-len))
+     (let* ((arg-code (h0-codegen (cadr ir) td))
+            ;; Untag (subtract 4), then load length from offset 0
+            (untag (sub :x0 :x0 4 :imm t))
+            (load-len (ldr :x0 :x0 :offset 0))
+            ;; Length is already untagged, need to tag it
+            (tag-result (lsl :x0 :x0 4 :imm t)))
+       (bytes-append-all (list arg-code untag load-len tag-result))))
+
+    ;; String-ref: get char at index
+    ;; String layout: [length:u64][chars...]
+    ((h0-has-tag-n ir (ir-tag-str-ref))
+     (let* ((slot-off (+ 48 (* td 8)))
+            (str-code (h0-codegen (cadr ir) td))
+            (save-str (str :x0 :sp :offset slot-off))
+            (idx-code (h0-codegen (caddr ir) (+ td 1)))
+            ;; Untag index
+            (untag-idx (lsr :x1 :x0 4 :imm t))
+            ;; Load string ptr
+            (load-str (ldr :x0 :sp :offset slot-off))
+            ;; Untag string (subtract 4)
+            (untag-str (sub :x0 :x0 4 :imm t))
+            ;; Add 8 to skip length field, then add index
+            (add-offset (add :x0 :x0 8 :imm t))
+            (add-idx (add :x0 :x0 :x1))
+            ;; Load byte
+            (load-byte (ldrb :x0 :x0 0))
+            ;; Tag result
+            (tag-result (lsl :x0 :x0 4 :imm t)))
+       (bytes-append-all (list str-code save-str idx-code untag-idx load-str
+                               untag-str add-offset add-idx load-byte tag-result))))
+
+    ;; EQ: pointer equality (cond-eq = 0)
+    ((h0-has-tag-n ir (ir-tag-eq))
+     (h0-codegen-cmp (cadr ir) (caddr ir) 0 td))
+
+    ;; Consp: check if tag is 1
+    ((h0-has-tag-n ir (ir-tag-consp))
+     (let* ((arg-code (h0-codegen (cadr ir) td))
+            (and-tag (and* :x0 :x0 #xF :imm t))
+            (cmp-tag (cmp :x0 1 :imm t))
+            (cset-code (cset :x0 0))
+            (tag-result (lsl :x0 :x0 4 :imm t)))
+       (bytes-append-all (list arg-code and-tag cmp-tag cset-code tag-result))))
+
+    ;; Symbolp: check if tag is 2
+    ((h0-has-tag-n ir (ir-tag-symbolp))
+     (let* ((arg-code (h0-codegen (cadr ir) td))
+            (and-tag (and* :x0 :x0 #xF :imm t))
+            (cmp-tag (cmp :x0 2 :imm t))
+            (cset-code (cset :x0 0))
+            (tag-result (lsl :x0 :x0 4 :imm t)))
+       (bytes-append-all (list arg-code and-tag cmp-tag cset-code tag-result))))
+
+    ;; Numberp: check if tag is 0 (fixnum)
+    ((h0-has-tag-n ir (ir-tag-numberp))
+     (let* ((arg-code (h0-codegen (cadr ir) td))
+            (and-tag (and* :x0 :x0 #xF :imm t))
+            (cmp-tag (cmp :x0 0 :imm t))
+            (cset-code (cset :x0 0))
+            (tag-result (lsl :x0 :x0 4 :imm t)))
+       (bytes-append-all (list arg-code and-tag cmp-tag cset-code tag-result))))
+
+    ;; Stringp: check if tag is 4
+    ((h0-has-tag-n ir (ir-tag-stringp))
+     (let* ((arg-code (h0-codegen (cadr ir) td))
+            (and-tag (and* :x0 :x0 #xF :imm t))
+            (cmp-tag (cmp :x0 4 :imm t))
+            (cset-code (cset :x0 0))
+            (tag-result (lsl :x0 :x0 4 :imm t)))
+       (bytes-append-all (list arg-code and-tag cmp-tag cset-code tag-result))))
+
+    ;; Keywordp: check if tag is 7
+    ((h0-has-tag-n ir (ir-tag-keywordp))
+     (let* ((arg-code (h0-codegen (cadr ir) td))
+            (and-tag (and* :x0 :x0 #xF :imm t))
+            (cmp-tag (cmp :x0 7 :imm t))
+            (cset-code (cset :x0 0))
+            (tag-result (lsl :x0 :x0 4 :imm t)))
+       (bytes-append-all (list arg-code and-tag cmp-tag cset-code tag-result))))
+
+    ;; Symbol-name: extract name string from symbol
+    ;; Symbol structure: tagged with |2, points to [name-string | value | plist | package]
+    ;; name-string is at offset 0 from untagged pointer
+    ((h0-has-tag-n ir (ir-tag-symbol-name))
+     (let* ((arg-code (h0-codegen (cadr ir) td))
+            ;; Remove tag: and x0, x0, #~7 (clear lower 3 bits)
+            (untag (and* :x0 :x0 #xFFFFFFFFFFFFFFF8 :imm t))
+            ;; Load name string: ldr x0, [x0, #0]
+            (load-name (ldr :x0 :x0 :offset 0)))
+       (bytes-append-all (list arg-code untag load-name))))
+
+    ;; Logand: bitwise AND (both operands tagged, result tagged)
+    ((h0-has-tag-n ir (ir-tag-logand))
+     (h0-codegen-binop (cadr ir) (caddr ir)
+                       (and* :x0 :x0 :x1)
+                       td))
+
+    ;; Logior: bitwise OR
+    ((h0-has-tag-n ir (ir-tag-logior))
+     (h0-codegen-binop (cadr ir) (caddr ir)
+                       (orr :x0 :x0 :x1)
+                       td))
+
+    ;; ASH: arithmetic shift (untag, shift, retag)
+    ;; Positive shift = left, negative = right
+    ((h0-has-tag-n ir (ir-tag-ash))
+     (let* ((slot-off (+ 48 (* td 8)))
+            (val-code (h0-codegen (cadr ir) td))
+            (save-val (str :x0 :sp :offset slot-off))
+            (shift-code (h0-codegen (caddr ir) (+ td 1)))
+            ;; Untag shift amount
+            (untag-shift (asr :x1 :x0 4 :imm t))
+            ;; Load value
+            (load-val (ldr :x0 :sp :offset slot-off))
+            ;; Untag value
+            (untag-val (asr :x0 :x0 4 :imm t))
+            ;; Variable shift: if x1 >= 0, LSL; else ASR by -x1
+            ;; For simplicity, use LSL for now (assume positive shifts)
+            (shift-op (lsl :x0 :x0 :x1))
+            ;; Retag
+            (retag (lsl :x0 :x0 4 :imm t)))
+       (bytes-append-all (list val-code save-val shift-code untag-shift
+                               load-val untag-val shift-op retag))))
+
+    ;; NOT: boolean negation (nil -> t, anything else -> nil)
+    ((h0-has-tag-n ir (ir-tag-not))
+     (let* ((arg-code (h0-codegen (cadr ir) td))
+            ;; Compare to nil (6)
+            (cmp-nil (cmp :x0 6 :imm t))
+            ;; If equal to nil, result is 1 (t), else 0
+            (cset-code (cset :x0 0))
+            ;; Tag result
+            (tag-result (lsl :x0 :x0 4 :imm t)))
+       (bytes-append-all (list arg-code cmp-nil cset-code tag-result))))
+
+    ;; LENGTH: count cons cells in list
+    ;; Loop: x0 = list ptr, x1 = counter
+    ;; While x0 != nil: x1++, x0 = cdr(x0)
+    ((h0-has-tag-n ir (ir-tag-length))
+     (let* ((arg-code (h0-codegen (cadr ir) td))
+            ;; Initialize counter to 0
+            (init-counter (movz :x1 0))
+            ;; Loop start label offset (will be patched)
+            ;; Check if x0 == nil (6)
+            (loop-start-offset 0)
+            (cmp-nil (cmp :x0 6 :imm t))
+            ;; Branch to end if equal (skip to move-result)
+            (branch-end (b.eq 5))  ; skip 5 instructions
+            ;; Increment counter (tagged add: add 16 for +1)
+            (inc-counter (add :x1 :x1 16 :imm t))
+            ;; Get CDR: untag, load offset 8, keep tagged
+            (untag-cons (sub :x0 :x0 1 :imm t))
+            (load-cdr (ldr :x0 :x0 :offset 8))
+            ;; Branch back to loop start (back to cmp-nil)
+            (branch-loop (b -5))  ; back 5 instructions
+            ;; Move counter to result
+            (move-result (mov :x0 :x1)))
+       (bytes-append-all (list arg-code init-counter cmp-nil branch-end
+                               inc-counter untag-cons load-cdr branch-loop
+                               move-result))))
+
+    ;; MAKE-VECTOR: Allocate vector on heap
+    ;; Vector layout: [length:u64][elem0][elem1]...
+    ;; Tagged with tag 3 (vector)
+    ;; Input: size (tagged fixnum)
+    ;; Output: tagged vector pointer
+    ((h0-has-tag-n ir (ir-tag-make-vector))
+     (let* ((size-code (h0-codegen (cadr ir) td))
+            ;; Unshift size from tagged fixnum: lsr x1, x0, #4
+            (unshift-size (lsr :x1 :x0 4 :imm t))
+            ;; Store length at heap: str x1, [x28]
+            (store-len (str :x1 :x28 :offset 0))
+            ;; Calculate total bytes: (size + 1) * 8
+            ;; x2 = x1 + 1
+            (add-one (add :x2 :x1 1 :imm t))
+            ;; x2 = x2 * 8 = x2 << 3
+            (mul-eight (lsl :x2 :x2 3 :imm t))
+            ;; Tag result: x0 = x28 + 3
+            (mov-ptr (mov :x0 :x28))
+            (tag-vec (add :x0 :x0 3 :imm t))
+            ;; Bump heap pointer: x28 += x2
+            (bump-heap (add :x28 :x28 :x2)))
+       (bytes-append-all (list size-code unshift-size store-len
+                               add-one mul-eight mov-ptr tag-vec bump-heap))))
+
+    ;; VECTOR-REF: Get element from vector
+    ;; Vector layout: [length:u64][elem0][elem1]...
+    ;; Input: vec (tagged), idx (tagged fixnum)
+    ;; Output: element value
+    ((h0-has-tag-n ir (ir-tag-vector-ref))
+     (let* ((slot-off (+ 48 (* td 8)))
+            (vec-code (h0-codegen (cadr ir) td))
+            (save-vec (str :x0 :sp :offset slot-off))
+            (idx-code (h0-codegen (caddr ir) (+ td 1)))
+            ;; Load vec to x2
+            (load-vec (ldr :x2 :sp :offset slot-off))
+            ;; Untag vec: sub x2, x2, #3
+            (untag-vec (sub :x2 :x2 3 :imm t))
+            ;; Unshift idx: lsr x1, x0, #4
+            (unshift-idx (lsr :x1 :x0 4 :imm t))
+            ;; Add 1 to skip length slot: add x1, x1, #1
+            (add-one (add :x1 :x1 1 :imm t))
+            ;; Calculate byte offset: lsl x1, x1, #3 (multiply by 8)
+            (calc-offset (lsl :x1 :x1 3 :imm t))
+            ;; Add offset to base: add x2, x2, x1
+            (add-offset (add :x2 :x2 :x1))
+            ;; Load element: ldr x0, [x2]
+            (load-elem (ldr :x0 :x2 :offset 0)))
+       (bytes-append-all (list vec-code save-vec idx-code load-vec
+                               untag-vec unshift-idx add-one calc-offset
+                               add-offset load-elem))))
+
+    ;; VECTOR-SET: Set element in vector
+    ;; Input: vec (tagged), idx (tagged fixnum), val
+    ;; Output: val (return the value that was set)
+    ((h0-has-tag-n ir (ir-tag-vector-set))
+     (let* ((slot-vec (+ 48 (* td 8)))
+            (slot-idx (+ 48 (* (+ td 1) 8)))
+            (vec-code (h0-codegen (cadr ir) td))
+            (save-vec (str :x0 :sp :offset slot-vec))
+            (idx-code (h0-codegen (caddr ir) (+ td 1)))
+            (save-idx (str :x0 :sp :offset slot-idx))
+            (val-code (h0-codegen (cadddr ir) (+ td 2)))
+            ;; Save val in x3
+            (save-val (mov :x3 :x0))
+            ;; Load vec and idx
+            (load-vec (ldr :x2 :sp :offset slot-vec))
+            (load-idx (ldr :x1 :sp :offset slot-idx))
+            ;; Untag vec: sub x2, x2, #3
+            (untag-vec (sub :x2 :x2 3 :imm t))
+            ;; Unshift idx: lsr x1, x1, #4
+            (unshift-idx (lsr :x1 :x1 4 :imm t))
+            ;; Add 1 to skip length slot
+            (add-one (add :x1 :x1 1 :imm t))
+            ;; Calculate byte offset: lsl x1, x1, #3
+            (calc-offset (lsl :x1 :x1 3 :imm t))
+            ;; Add offset to base: add x2, x2, x1
+            (add-offset (add :x2 :x2 :x1))
+            ;; Store: str x3, [x2]
+            (store-elem (str :x3 :x2 :offset 0))
+            ;; Return val: mov x0, x3
+            (ret-val (mov :x0 :x3)))
+       (bytes-append-all (list vec-code save-vec idx-code save-idx val-code
+                               save-val load-vec load-idx untag-vec unshift-idx
+                               add-one calc-offset add-offset store-elem ret-val))))
+
+    ;; VECTOR-LENGTH: Get length of vector
+    ;; Input: vec (tagged)
+    ;; Output: length (tagged fixnum)
+    ((h0-has-tag-n ir (ir-tag-vector-length))
+     (let* ((vec-code (h0-codegen (cadr ir) td))
+            ;; Untag vec: sub x0, x0, #3
+            (untag-vec (sub :x0 :x0 3 :imm t))
+            ;; Load length: ldr x0, [x0]
+            (load-len (ldr :x0 :x0 :offset 0))
+            ;; Shift to tag: lsl x0, x0, #4
+            (tag-result (lsl :x0 :x0 4 :imm t)))
+       (bytes-append-all (list vec-code untag-vec load-len tag-result))))
+
+    ;; LAMBDA: Create closure (simplified - no lambda lifting yet)
+    ;; Layout: [fn-offset:8][env-ptr:8] = 16 bytes
+    ;; Returns tagged pointer with tag 5
+    ((h0-has-tag-n ir (ir-tag-lambda))
+     (let* ((params (cadr ir))
+            (body-ir (caddr ir))
+            (free-vars (cadddr ir))
+            (free-offsets (nth 4 ir)))
+       ;; Simplified closure: placeholder fn-offset (0) and nil env (0x6)
+       (let* (;; Store placeholder function offset (0) at heap+0
+              (mov-fn-offset (movz :x0 0))               ; x0 = 0
+              (str-fn-offset (str :x0 :x28 :offset 0))   ; [x28+0] = x0
+              ;; Store nil environment (0x6) at heap+8
+              (mov-env (movz :x0 6))                     ; x0 = 6 (nil)
+              (str-env (str :x0 :x28 :offset 8))         ; [x28+8] = x0
+              ;; Create tagged closure pointer: x28 | 5
+              (mov-ptr (mov :x0 :x28))                   ; x0 = x28
+              (tag-closure (add :x0 :x0 5 :imm t))       ; x0 = x0 | 5
+              ;; Bump heap pointer by 16 bytes
+              (bump-heap (add :x28 :x28 16 :imm t)))     ; x28 += 16
+         (bytes-append-all (list mov-fn-offset str-fn-offset
+                                 mov-env str-env
+                                 mov-ptr tag-closure bump-heap)))))
+
+    ;; FUNCALL: Call closure (simplified version for 0-2 args)
+    ((h0-has-tag-n ir (ir-tag-funcall))
+     (let* ((fn-ir (cadr ir))
+            (args-ir (caddr ir))
+            (num-args (h0-list-length args-ir)))
+       ;; Support 0-2 arguments for now
+       (if (> num-args 2)
+           (fatal-error "h0-codegen: FUNCALL supports max 2 args")
+           (h0-codegen-funcall fn-ir args-ir num-args td))))
+
+    ;; STRING=: Compare two strings byte-by-byte
+    ;; Both strings must have same length and same bytes
+    ;; Returns 1 (true) or 0 (false) as tagged fixnum
+    ((h0-has-tag-n ir (ir-tag-string-eq))
+     (let* ((slot-off (+ 48 (* td 8)))
+            (slot-off2 (+ 48 (* (+ td 1) 8)))
+            ;; Compile both string arguments
+            (str1-code (h0-codegen (cadr ir) td))
+            (save-str1 (str :x0 :sp :offset slot-off))
+            (str2-code (h0-codegen (caddr ir) (+ td 1)))
+            (save-str2 (str :x0 :sp :offset slot-off2))
+            ;; Load str1 and untag (subtract 4 for string tag)
+            (load-str1 (ldr :x0 :sp :offset slot-off))
+            (untag-str1 (sub :x0 :x0 4 :imm t))      ; x0 = str1 untagged
+            ;; Load str2 and untag
+            (load-str2 (ldr :x1 :sp :offset slot-off2))
+            (untag-str2 (sub :x1 :x1 4 :imm t))      ; x1 = str2 untagged
+            ;; Compare lengths first: [x0+0] vs [x1+0]
+            (ldr-len1 (ldr :x2 :x0 :offset 0))       ; x2 = len1
+            (ldr-len2 (ldr :x3 :x1 :offset 0))       ; x3 = len2
+            (cmp-lens (cmp :x2 :x3))                 ; compare lengths
+            ;; Branch to fail if lengths differ (11 instructions forward)
+            (branch-ne-lens (b.ne 11))
+            ;; Setup loop: x4 = 0 (index), x2 = len (already loaded)
+            (mov-idx (movz :x4 0))                   ; x4 = 0
+            ;; Loop: while x4 < x2
+            (cmp-idx-len (cmp :x4 :x2))              ; compare idx < len
+            ;; Skip loop body (5) + success (2) = 7 instructions
+            (branch-done (b.ge 7))
+            ;; Calculate offset: x5 = x4 + 8 (skip length header)
+            (add-off (add :x5 :x4 8 :imm t))         ; x5 = idx + 8
+            ;; Load bytes from both strings at offset
+            (ldrb-byte1 (ldrb :x6 :x0 :x5 :reg t))   ; x6 = str1[idx+8]
+            (ldrb-byte2 (ldrb :x7 :x1 :x5 :reg t))   ; x7 = str2[idx+8]
+            (cmp-bytes (cmp :x6 :x7))                ; compare bytes
+            ;; Skip inc+loop (2) + success (2) = 4 instructions
+            (branch-ne-byte (b.ne 4))
+            ;; Increment and loop back
+            (inc-idx (add :x4 :x4 1 :imm t))         ; x4++
+            ;; Back to cmp-idx-len: -6 instructions
+            (branch-loop (b -6))
+            ;; Success: return tagged 1 (16)
+            (mov-one (movz :x0 16))                  ; x0 = 16 (tagged 1)
+            ;; Skip fail (1) + nop (1) = 2 instructions
+            (branch-end (b 2))
+            ;; Fail: return tagged 0
+            (mov-zero (movz :x0 0))                  ; x0 = 0 (tagged 0)
+            ;; NOP to align (common exit point)
+            (nop-exit (nop)))
+       (bytes-append-all (list str1-code save-str1 str2-code save-str2
+                               load-str1 untag-str1 load-str2 untag-str2
+                               ldr-len1 ldr-len2 cmp-lens branch-ne-lens
+                               mov-idx cmp-idx-len branch-done
+                               add-off ldrb-byte1 ldrb-byte2 cmp-bytes branch-ne-byte
+                               inc-idx branch-loop
+                               mov-one branch-end
+                               mov-zero nop-exit))))
+
+    ;; QUOTE-SYM: Allocate symbol on heap
+    ;; Symbol layout: [name-string | value | plist | package] = 32 bytes
+    ;; Returns tagged pointer with tag 2
+    ((h0-has-tag-n ir (ir-tag-quote-sym))
+     (let* ((sym (cadr ir))
+            (name (symbol-name sym))
+            (name-len (string-length name))
+            ;; First allocate the name string on heap
+            (name-total-size (logand (+ name-len 8 15) (lognot 15)))
+            (name-code (h0-codegen-str-lit name name-len name-total-size))
+            ;; Save name string pointer
+            (save-name (mov :x1 :x0))
+            ;; Now allocate symbol: 32 bytes for [name | value | plist | package]
+            ;; Store name string at heap[0]
+            (str-name (str :x1 :x28 :offset 0))
+            ;; Store nil (0x6) for value at heap[8]
+            (mov-nil (movz :x0 6))
+            (str-value (str :x0 :x28 :offset 8))
+            ;; Store nil for plist at heap[16]
+            (str-plist (str :x0 :x28 :offset 16))
+            ;; Store nil for package at heap[24]
+            (str-package (str :x0 :x28 :offset 24))
+            ;; Get symbol pointer and tag with 2
+            (mov-ptr (mov :x0 :x28))
+            (tag-sym (add :x0 :x0 2 :imm t))
+            ;; Bump heap by 32 bytes
+            (bump-heap (add :x28 :x28 32 :imm t)))
+       (bytes-append-all (list name-code save-name str-name mov-nil
+                               str-value str-plist str-package
+                               mov-ptr tag-sym bump-heap))))
+
+    ;; EQL - compare for equality (works for numbers and symbols)
+    ;; For tagged values: compare directly, result is 1 (t) or 0 (nil)
+    ((h0-has-tag-n ir (ir-tag-eql))
+     (h0-codegen-cmp (cadr ir) (caddr ir) 0 td))
+
+    ;; GET-TAG - extract tag bits from tagged value
+    ;; Result is tag (0-15) as tagged fixnum
+    ((h0-has-tag-n ir (ir-tag-get-tag))
+     (let* ((arg-code (h0-codegen (cadr ir) td))
+            ;; Extract tag: and x0, x0, #0xF
+            (extract-tag (and* :x0 :x0 #xF :imm t))
+            ;; Tag result as fixnum
+            (tag-result (lsl :x0 :x0 4 :imm t)))
+       (bytes-append-all (list arg-code extract-tag tag-result))))
+
+    ;; MAKE-STRING-FROM-VECTOR - create string from vector of character codes
+    ;; This is complex and needs a loop - simplified version
+    ((h0-has-tag-n ir (ir-tag-make-string-from-vector))
+     ;; For now, just call the runtime primitive via placeholder
+     ;; In a full implementation, this would generate loop code
+     (fatal-error "h0-codegen: MAKE-STRING-FROM-VECTOR not yet implemented"))
+
+    ;; MAKE-SYMBOL-FROM-STRING - create symbol from string
+    ((h0-has-tag-n ir (ir-tag-make-symbol-from-string))
+     (let* ((name-code (h0-codegen (cadr ir) td))
+            ;; Save name string at heap
+            (str-name (str :x0 :x28 :offset 0))
+            ;; Store nil (0x6) for value, plist, package
+            (mov-nil (movz :x0 6))
+            (str-value (str :x0 :x28 :offset 8))
+            (str-plist (str :x0 :x28 :offset 16))
+            (str-package (str :x0 :x28 :offset 24))
+            ;; Get symbol pointer and tag with 2
+            (mov-ptr (mov :x0 :x28))
+            (tag-sym (add :x0 :x0 2 :imm t))
+            ;; Bump heap by 32 bytes
+            (bump-heap (add :x28 :x28 32 :imm t)))
+       (bytes-append-all (list name-code str-name mov-nil
+                               str-value str-plist str-package
+                               mov-ptr tag-sym bump-heap))))
+
+    ;; ERROR - crash the program
+    ((h0-has-tag-n ir (ir-tag-error))
+     ;; Generate invalid instruction to crash: udf #0
+     (udf 0))
+
+    ;; Default - CRASH: unknown IR tag
+    (t (fatal-error "h0-codegen: Unknown IR tag"))))
+
+;;; ==========================================================================
+;;; IR Evaluator - for testing the compiler without native execution
+;;; ==========================================================================
+
+;; Evaluate IR directly (for testing compiler output)
+;; Uses numeric tags for native code compatibility
+(defun h0-eval-ir (ir env)
+  (cond
+    ;; Literal
+    ((h0-has-tag-n ir (ir-tag-lit))
+     (let ((val (cadr ir)))
+       ;; Convert 0 to NIL for proper list handling
+       (if (= val #x0) nil val)))
+    ;; Variable reference
+    ((h0-has-tag-n ir (ir-tag-var))
+     (let ((off (cadr ir)))
+       (ir-env-get env off)))
+    ;; Arithmetic
+    ((h0-has-tag-n ir (ir-tag-add))
+     (+ (h0-eval-ir (cadr ir) env) (h0-eval-ir (caddr ir) env)))
+    ((h0-has-tag-n ir (ir-tag-sub))
+     (- (h0-eval-ir (cadr ir) env) (h0-eval-ir (caddr ir) env)))
+    ((h0-has-tag-n ir (ir-tag-mul))
+     (* (h0-eval-ir (cadr ir) env) (h0-eval-ir (caddr ir) env)))
+    ((h0-has-tag-n ir (ir-tag-div))
+     (/ (h0-eval-ir (cadr ir) env) (h0-eval-ir (caddr ir) env)))
+    ((h0-has-tag-n ir (ir-tag-mod))
+     (mod (h0-eval-ir (cadr ir) env) (h0-eval-ir (caddr ir) env)))
+    ;; Comparisons
+    ((h0-has-tag-n ir (ir-tag-cmp-eq))
+     (if (= (h0-eval-ir (cadr ir) env) (h0-eval-ir (caddr ir) env)) #x1 #x0))
+    ((h0-has-tag-n ir (ir-tag-cmp-lt))
+     (if (< (h0-eval-ir (cadr ir) env) (h0-eval-ir (caddr ir) env)) #x1 #x0))
+    ((h0-has-tag-n ir (ir-tag-cmp-gt))
+     (if (> (h0-eval-ir (cadr ir) env) (h0-eval-ir (caddr ir) env)) #x1 #x0))
+    ((h0-has-tag-n ir (ir-tag-cmp-le))
+     (if (<= (h0-eval-ir (cadr ir) env) (h0-eval-ir (caddr ir) env)) #x1 #x0))
+    ((h0-has-tag-n ir (ir-tag-cmp-ge))
+     (if (>= (h0-eval-ir (cadr ir) env) (h0-eval-ir (caddr ir) env)) #x1 #x0))
+    ;; Conditional
+    ((h0-has-tag-n ir (ir-tag-if))
+     (if (= (h0-eval-ir (cadr ir) env) #x0)
+         (h0-eval-ir (cadddr ir) env)
+         (h0-eval-ir (caddr ir) env)))
+    ;; Cons/car/cdr
+    ((h0-has-tag-n ir (ir-tag-cons))
+     (cons (h0-eval-ir (cadr ir) env) (h0-eval-ir (caddr ir) env)))
+    ((h0-has-tag-n ir (ir-tag-car))
+     (car (h0-eval-ir (cadr ir) env)))
+    ((h0-has-tag-n ir (ir-tag-cdr))
+     (cdr (h0-eval-ir (cadr ir) env)))
+    ((h0-has-tag-n ir (ir-tag-null))
+     (if (null (h0-eval-ir (cadr ir) env)) #x1 #x0))
+    ;; Let binding
+    ((h0-has-tag-n ir (ir-tag-let))
+     (let* ((val (h0-eval-ir (caddr ir) env))
+            (new-env (cons val env)))
+       (h0-eval-ir (cadddr ir) new-env)))
+    ;; Setq - variable assignment (stub: mutation requires rplaca primitive)
+    ((h0-has-tag-n ir (ir-tag-setq))
+     (let* ((val (h0-eval-ir (caddr ir) env)))
+       val))
+    ;; Progn
+    ((h0-has-tag-n ir (ir-tag-progn))
+     (h0-eval-ir-progn (cadr ir) env))
+    ;; String operations
+    ((h0-has-tag-n ir (ir-tag-str-lit))
+     (cadr ir))
+    ((h0-has-tag-n ir (ir-tag-str-len))
+     (string-length (h0-eval-ir (cadr ir) env)))
+    ((h0-has-tag-n ir (ir-tag-str-ref))
+     (let* ((str (h0-eval-ir (cadr ir) env))
+            (idx (h0-eval-ir (caddr ir) env)))
+       (string-ref str idx)))
+    ;; String equality
+    ((h0-has-tag-n ir (ir-tag-string-eq))
+     (let* ((str1 (h0-eval-ir (cadr ir) env))
+            (str2 (h0-eval-ir (caddr ir) env)))
+       (if (string= str1 str2) #x1 #x0)))
+    ;; Keyword operations
+    ((h0-has-tag-n ir (ir-tag-kw-lit))
+     (cadr ir))
+    ;; Eq comparison
+    ((h0-has-tag-n ir (ir-tag-eq))
+     (if (eq (h0-eval-ir (cadr ir) env) (h0-eval-ir (caddr ir) env)) #x1 #x0))
+    ;; Type predicates
+    ((h0-has-tag-n ir (ir-tag-consp))
+     (if (consp (h0-eval-ir (cadr ir) env)) #x1 #x0))
+    ((h0-has-tag-n ir (ir-tag-symbolp))
+     (if (symbolp (h0-eval-ir (cadr ir) env)) #x1 #x0))
+    ((h0-has-tag-n ir (ir-tag-numberp))
+     (if (numberp (h0-eval-ir (cadr ir) env)) #x1 #x0))
+    ((h0-has-tag-n ir (ir-tag-stringp))
+     (if (stringp (h0-eval-ir (cadr ir) env)) #x1 #x0))
+    ((h0-has-tag-n ir (ir-tag-keywordp))
+     (if (keywordp (h0-eval-ir (cadr ir) env)) #x1 #x0))
+    ;; Symbol-name extraction
+    ((h0-has-tag-n ir (ir-tag-symbol-name))
+     (symbol-name (h0-eval-ir (cadr ir) env)))
+    ;; Bitwise operations
+    ((h0-has-tag-n ir (ir-tag-logand))
+     (logand (h0-eval-ir (cadr ir) env) (h0-eval-ir (caddr ir) env)))
+    ((h0-has-tag-n ir (ir-tag-logior))
+     (logior (h0-eval-ir (cadr ir) env) (h0-eval-ir (caddr ir) env)))
+    ((h0-has-tag-n ir (ir-tag-ash))
+     (ash (h0-eval-ir (cadr ir) env) (h0-eval-ir (caddr ir) env)))
+    ;; Boolean not
+    ((h0-has-tag-n ir (ir-tag-not))
+     (let ((val (h0-eval-ir (cadr ir) env)))
+       (if (or (null val) (= val #x0)) #x1 #x0)))
+    ;; List length
+    ((h0-has-tag-n ir (ir-tag-length))
+     (h0-list-length (h0-eval-ir (cadr ir) env)))
+    ;; Vector operations
+    ((h0-has-tag-n ir (ir-tag-make-vector))
+     (let ((size (h0-eval-ir (cadr ir) env)))
+       (make-vector size)))
+    ((h0-has-tag-n ir (ir-tag-vector-ref))
+     (let* ((vec (h0-eval-ir (cadr ir) env))
+            (idx (h0-eval-ir (caddr ir) env)))
+       (vector-ref vec idx)))
+    ((h0-has-tag-n ir (ir-tag-vector-set))
+     (let* ((vec (h0-eval-ir (cadr ir) env))
+            (idx (h0-eval-ir (caddr ir) env))
+            (val (h0-eval-ir (cadddr ir) env)))
+       (vector-set vec idx val)
+       val))
+    ((h0-has-tag-n ir (ir-tag-vector-length))
+     (let ((vec (h0-eval-ir (cadr ir) env)))
+       (vector-length vec)))
+    ;; Quoted symbol - return the symbol itself
+    ((h0-has-tag-n ir (ir-tag-quote-sym))
+     (cadr ir))
+    ;; Lambda - create closure
+    ((h0-has-tag-n ir (ir-tag-lambda))
+     (let* ((params (cadr ir))
+            (body-ir (caddr ir))
+            (free-vars (cadddr ir))
+            (free-offsets (nth #x4 ir)))
+       ;; Create closure: (closure params body-ir env)
+       ;; The env captures free variables at closure creation time
+       (list *op-closure* params body-ir env)))
+    ;; Funcall - call closure
+    ((h0-has-tag-n ir (ir-tag-funcall))
+     (let* ((fn-val (h0-eval-ir (cadr ir) env))
+            (args-ir (caddr ir))
+            (args-vals (h0-eval-ir-args args-ir env)))
+       ;; fn-val should be (closure params body-ir closure-env)
+       (if (and (consp fn-val) (sym= (car fn-val) "CLOSURE"))
+           (let* ((params (cadr fn-val))
+                  (body-ir (caddr fn-val))
+                  (closure-env (cadddr fn-val))
+                  ;; Bind args to params in new env extending closure-env
+                  (new-env (h0-extend-env-with-params params args-vals closure-env)))
+             (h0-eval-ir body-ir new-env))
+           (fatal-error "h0-eval-ir: FUNCALL on non-closure"))))
+    ;; EQL - equal for numbers and symbols
+    ((h0-has-tag-n ir (ir-tag-eql))
+     (let* ((left (h0-eval-ir (cadr ir) env))
+            (right (h0-eval-ir (caddr ir) env)))
+       (if (eql left right) #x1 #x0)))
+    ;; GET-TAG - extract tag from tagged value
+    ((h0-has-tag-n ir (ir-tag-get-tag))
+     (let ((val (h0-eval-ir (cadr ir) env)))
+       (get-tag val)))
+    ;; MAKE-STRING-FROM-VECTOR - create string from vector of chars
+    ((h0-has-tag-n ir (ir-tag-make-string-from-vector))
+     (let ((vec (h0-eval-ir (cadr ir) env)))
+       (make-string-from-vector vec)))
+    ;; MAKE-SYMBOL-FROM-STRING - create symbol from string
+    ((h0-has-tag-n ir (ir-tag-make-symbol-from-string))
+     (let ((str (h0-eval-ir (cadr ir) env)))
+       (make-symbol-from-string str)))
+    ;; ERROR - signal error and crash
+    ((h0-has-tag-n ir (ir-tag-error))
+     (fatal-error "h0-eval-ir: ERROR called"))
+    ;; Default - CRASH: unknown IR tag
+    (t (fatal-error "h0-eval-ir: Unknown IR tag"))))
+
+(defun h0-eval-ir-progn (forms env)
+  (if (null forms)
+      #x0
+      (if (null (cdr forms))
+          (h0-eval-ir (car forms) env)
+          (progn
+            (h0-eval-ir (car forms) env)
+            (h0-eval-ir-progn (cdr forms) env)))))
+
+(defun ir-env-get (env off)
+  (if (= off #x0)
+      (car env)
+      (ir-env-get (cdr env) (- off #x1))))
+
+;; Evaluate a list of argument IRs
+(defun h0-eval-ir-args (args-ir env)
+  (if (null args-ir)
+      nil
+      (cons (h0-eval-ir (car args-ir) env)
+            (h0-eval-ir-args (cdr args-ir) env))))
+
+;; Extend environment by binding params to args
+;; params is a list of parameter symbols, args-vals is a list of values
+;; Returns new env with args prepended in order
+(defun h0-extend-env-with-params (params args-vals base-env)
+  (if (null params)
+      base-env
+      (cons (car args-vals)
+            (h0-extend-env-with-params (cdr params) (cdr args-vals) base-env))))
+
+;;; ==========================================================================
+;;; Test Mode - compile expression and evaluate IR
+;;; ==========================================================================
+
+(defun h0-compile-and-eval (expr)
+  "Compile expression to IR and evaluate it"
+  (let ((ir (h0-compile expr nil nil)))
+    (h0-eval-ir ir nil)))
 
 ;;; ==========================================================================
 ;;; Mach-O Linker - Native executable generation with chained fixups
@@ -3774,19 +4012,6 @@
           (logand (ash inst #x-8) #xFF)
           (logand (ash inst #x-10) #xFF)
           (logand (ash inst #x-18) #xFF))))
-
-;;; Byte list utilities for linker
-
-;; Append two byte lists
-(defun bytes-append (a b)
-  (if (null a) b
-      (cons (car a) (bytes-append (cdr a) b))))
-
-;; Append multiple byte lists
-(defun bytes-append-all (lists)
-  (if (null lists)
-      nil
-      (bytes-append (car lists) (bytes-append-all (cdr lists)))))
 
 ;; Generate stub: ADRP x16, got_page; LDR x16, [x16, #offset]; BR x16
 (defun generate-stub (got-page-diff got-slot-offset)
@@ -4290,116 +4515,49 @@
 ;;;   #x100 - compile expression to IR and evaluate (compile-test)
 ;;;   #x200 - compile expression to IR and generate bytecode length (codegen-test)
 ;;;   #x300 - compile, codegen, and link to executable (link-test)
-;;;   #x400 - self-compile mode (exposes compiler functions to user code)
 ;;;   anything else - interpret using h0-eval
-
-;;; Build fenv with compiler functions for self-compilation mode
-;;; Each entry is (name params . body) matching collect-defuns format
-;;; For built-in functions, we use a special :builtin marker
-;; Helper to create builtin fenv entry - interns name once
-(defun make-builtin-entry (name builtin-kw)
-  (let ((sym (intern name)))
-    (cons sym (cons builtin-kw sym))))
-
-(defun make-compiler-fenv ()
-  "Build fenv with core compiler functions exposed"
-  ;; Format: (name . (:builtin . impl-symbol))
-  (let ((kw (intern-keyword "BUILTIN")))
-    (list
-     ;; Compiler functions
-     (make-builtin-entry "H0-COMPILE" kw)
-     (make-builtin-entry "H0-CODEGEN" kw)
-     (make-builtin-entry "H0-LINEARIZE" kw)
-     (make-builtin-entry "DELIVER-WITH-IMPORTS-AND-HEAP" kw)
-     (make-builtin-entry "READ-ALL" kw)
-     (make-builtin-entry "NATIVE-READ-FILE" kw)
-     (make-builtin-entry "COLLECT-DEFUNS" kw)
-     ;; ARM64 - data movement
-     (make-builtin-entry "STR" kw)
-     (make-builtin-entry "LDR" kw)
-     (make-builtin-entry "STUR" kw)
-     (make-builtin-entry "LDUR" kw)
-     (make-builtin-entry "STP" kw)
-     (make-builtin-entry "LDP" kw)
-     (make-builtin-entry "STRB" kw)
-     (make-builtin-entry "LDRB" kw)
-     (make-builtin-entry "MOV" kw)
-     (make-builtin-entry "MOVZ" kw)
-     (make-builtin-entry "MOVK" kw)
-     (make-builtin-entry "MOVN" kw)
-     ;; ARM64 - arithmetic
-     (make-builtin-entry "ADD" kw)
-     (make-builtin-entry "SUB" kw)
-     (make-builtin-entry "SUBS" kw)
-     (make-builtin-entry "MUL" kw)
-     (make-builtin-entry "SDIV" kw)
-     (make-builtin-entry "NEG" kw)
-     ;; ARM64 - bitwise
-     (make-builtin-entry "AND*" kw)
-     (make-builtin-entry "ORR" kw)
-     (make-builtin-entry "EOR" kw)
-     (make-builtin-entry "LSL" kw)
-     (make-builtin-entry "LSR" kw)
-     (make-builtin-entry "ASR" kw)
-     (make-builtin-entry "MVN" kw)
-     ;; ARM64 - compare and branch
-     (make-builtin-entry "CMP" kw)
-     (make-builtin-entry "CSET" kw)
-     (make-builtin-entry "B" kw)
-     (make-builtin-entry "BL" kw)
-     (make-builtin-entry "BR" kw)
-     (make-builtin-entry "BLR" kw)
-     (make-builtin-entry "CBZ" kw)
-     (make-builtin-entry "CBNZ" kw)
-     (make-builtin-entry "B.EQ" kw)
-     (make-builtin-entry "B.NE" kw)
-     (make-builtin-entry "B.LT" kw)
-     (make-builtin-entry "B.LE" kw)
-     (make-builtin-entry "B.GT" kw)
-     (make-builtin-entry "B.GE" kw)
-     (make-builtin-entry "RET" kw)
-     ;; ARM64 - system
-     (make-builtin-entry "SVC" kw)
-     (make-builtin-entry "BRK" kw)
-     (make-builtin-entry "NOP" kw)
-     ;; ARM64 - utility
-     (make-builtin-entry "REG" kw)
-     (make-builtin-entry "ENCODE" kw))))
-
 (defun main ()
-  ;; Initialize dispatch tables
+  ;; Initialize compile-time operators first (uses eq, no symbol-name)
   (init-compile-ops)
-  (init-builtin-dispatch)
   (let ((source (native-read-file "input.lisp")))
     (if (null source)
-        (fatal-error "main: input.lisp not found")
+        #xFF  ;; File not found
         (let ((forms (read-all source)))
           (if (null forms)
-              (fatal-error "main: parse error - no forms")
+              #xFE  ;; Parse error
               (let ((first-form (car forms)))
                 (cond
-                  ;; Compile test mode REMOVED: h0-compile-and-eval was removed with old codegen
+                  ;; Compile test mode: compile and eval IR
                   ((if (numberp first-form) (= first-form #x100) nil)
-                   (fatal-error "main: mode 256 removed"))
-                  ;; Codegen test mode REMOVED: use deliver-file instead
-                  ;; The old h0-codegen interface (ir, dest-reg) was replaced by
-                  ;; codegen-fn-reg-alloc which takes (name params body-ir param-base)
+                   (if (null (cdr forms))
+                       #xFD  ;; No expression to compile
+                       (h0-compile-and-eval (cadr forms))))
+                  ;; Codegen test mode: compile and return bytecode length
                   ((if (numberp first-form) (= first-form #x200) nil)
-                   (fatal-error "main: mode 512 removed - use deliver-file"))
-                  ;; Link test mode REMOVED: use deliver-file instead
+                   (if (null (cdr forms))
+                       #xFD
+                       (let* ((ir (h0-compile (cadr forms) nil nil))
+                              (code (h0-codegen ir #x0)))
+                         (length code))))
+                  ;; Link test mode: compile, codegen, link to /tmp/h0out
                   ((if (numberp first-form) (= first-form #x300) nil)
-                   (fatal-error "main: mode 768 removed - use deliver-file"))
-                  ;; Self-compile mode: expose compiler functions to user code
-                  ((if (numberp first-form) (= first-form #x400) nil)
-                   (let* ((rest-forms (cdr forms))
-                          (compiler-fenv (make-compiler-fenv))
-                          (user-fenv (collect-defuns rest-forms nil))
-                          ;; Merge user defuns with compiler functions
-                          (fenv (h0-append user-fenv compiler-fenv)))
-                     (h0-eval-forms rest-forms nil fenv)))
+                   (if (null (cdr forms))
+                       #xFD
+                       (let* ((ir (h0-compile (cadr forms) nil nil))
+                              (code (h0-codegen ir #x0)))
+                         (deliver-with-imports-and-heap "/tmp/h0out"
+                                                        code
+                                                        (list "_write")
+                                                        #x100000))))
                   ;; Normal interpretation mode
                   (t
-                   (let ((fenv (collect-defuns forms nil)))
+                   ;; Bootstrap fenv: collect functions from habu0.lisp itself first
+                   ;; This makes compiler functions like h0-compile accessible
+                   (let* ((habu0-source (native-read-file "habu0.lisp"))
+                          (habu0-forms (if habu0-source (read-all habu0-source) nil))
+                          (fenv-base (if habu0-forms (collect-defuns habu0-forms nil) nil))
+                          ;; Then add functions from input file (can override)
+                          (fenv (collect-defuns forms fenv-base)))
                      (h0-eval-forms forms nil fenv))))))))))
 
 (main)

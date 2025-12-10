@@ -1,40 +1,26 @@
 ;;; macros.lisp - Macro definitions for habu0 build
 ;;;
-;;; These macros must be included BEFORE reg-alloc.lisp and codegen.lisp
-;;; so that collect-defmacros can register them before compilation.
-;;;
-;;; The bootstrap compiler (compiler-sbcl.lisp) has special-form handling
-;;; for DOLIST that produces dolist-ir, but ir-to-tac doesn't handle it.
-;;; These macros expand BEFORE sys:compile sees them, avoiding the issue.
+;;; Defines non-CL macros used in habu0.lisp and bootstrap code.
+;;; CL standard macros (dolist, dotimes, when, unless) use SBCL's native
+;;; implementations during bootstrap.
 
-(defmacro dolist ((var list-form &optional result) &body body)
-  "Iterate over list elements. Expands to labels loop."
-  (let ((loop-fn (gensym "DOLIST"))
-        (lst (gensym "LST")))
-    `(let ((,lst ,list-form))
-       (labels ((,loop-fn (,lst)
-                  (if (null ,lst)
-                      ,result
-                      (let ((,var (car ,lst)))
-                        ,@body
-                        (,loop-fn (cdr ,lst))))))
-         (,loop-fn ,lst)))))
+(defmacro while (test &body body)
+  "While loop - expands to labels recursion to avoid package issues with LOOP"
+  (let ((loop-fn (gensym "WHILE")))
+    `(labels ((,loop-fn ()
+                (if ,test
+                    (progn ,@body (,loop-fn))
+                    nil)))
+       (,loop-fn))))
 
-(defmacro when (test &body body)
-  "Execute body when test is true."
-  `(if ,test (progn ,@body) nil))
+;;; Native habu0 needs its own incf/decf since CL:INCF can't be used
+;;; These are only for native compilation, not SBCL bootstrap
+#-sbcl
+(defmacro incf (place &optional (delta 1))
+  "Increment PLACE by DELTA (default 1)"
+  `(setq ,place (+ ,place ,delta)))
 
-(defmacro unless (test &body body)
-  "Execute body when test is false."
-  `(if ,test nil (progn ,@body)))
-
-(defmacro dotimes ((var count &optional result) &body body)
-  "Iterate var from 0 to count-1."
-  (let ((loop-fn (gensym "DOTIMES"))
-        (limit (gensym "LIMIT")))
-    `(let ((,limit ,count))
-       (labels ((,loop-fn (,var)
-                  (if (< ,var ,limit)
-                      (progn ,@body (,loop-fn (+ ,var 1)))
-                      ,result)))
-         (,loop-fn 0)))))
+#-sbcl
+(defmacro decf (place &optional (delta 1))
+  "Decrement PLACE by DELTA (default 1)"
+  `(setq ,place (- ,place ,delta)))

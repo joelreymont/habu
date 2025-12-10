@@ -187,9 +187,14 @@
   ;; use keyword-name.
   ;; In SBCL: keywordp = t AND symbolp = t -> use symbol-name
   ;; In habu0: keywordp = t BUT symbolp = nil -> use keyword-name
-  (if (symbolp kw)
-      (symbol-name kw)      ; SBCL path: keywords are symbols
-      (keyword-name kw)))   ; habu0 path: keywords have tag 7, not symbolp
+  (cond
+    ((symbolp kw) (symbol-name kw))      ; SBCL path: keywords are symbols
+    ;; habu0 path: keywords have tag 7, call keyword-name via funcall
+    ;; to avoid compile-time symbol resolution
+    #-sbcl
+    ((keywordp kw) (keyword-name kw))
+    (t (error "get-keyword-name: expected keyword, got ~S (tag ~D)"
+              kw (logand kw #xf)))))
 
 ;; Helper to check if keyword name matches string
 (defun reg-name= (kw name)

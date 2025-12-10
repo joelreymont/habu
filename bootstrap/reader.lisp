@@ -13,10 +13,16 @@
   0)
 
 ;;; SBCL version of while - native version is in compiler.lisp
+;;; Uses labels recursion to avoid package issues with LOOP's while keyword
 #+sbcl
 (defmacro while (test &body body)
   "SBCL version of while loop"
-  `(loop while ,test do (progn ,@body)))
+  (let ((loop-fn (gensym "WHILE")))
+    `(labels ((,loop-fn ()
+                (if ,test
+                    (progn ,@body (,loop-fn))
+                    nil)))
+       (,loop-fn))))
 
 ;;; Global intern table for native mode
 (defvar *intern-table* nil)

@@ -338,6 +338,8 @@
   (cond
     ((numberp obj) (list 'lit obj))
     ((null obj) (list 'nil-ir))  ; nil has tag 6, distinct from fixnum 0
+    ;; Keywords MUST be checked before symbolp (keywords are symbols in CL)
+    ((keywordp obj) (list 'kw-lit (symbol-name obj)))
     ((symbolp obj) (list 'sym-lit (symbol-name obj)))
     ((consp obj) (list 'cons-ir (quote-ir (car obj)) (quote-ir (cdr obj))))
     ((stringp obj) (list 'str-lit obj))
