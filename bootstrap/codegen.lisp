@@ -318,6 +318,7 @@
          (has-tag ir 'make-string-from-vector-ir)
          (has-tag ir 'set-global-vars-ir)
          (has-tag ir 'set-intern-table-ir)
+         (has-tag ir 'set-keyword-table-ir)
          (has-tag ir 'consp-ir) (has-tag ir 'numberp-ir)
          (has-tag ir 'stringp-ir) (has-tag ir 'symbolp-ir)
          (has-tag ir 'vectorp-ir) (has-tag ir 'null-ir)
@@ -803,8 +804,10 @@
     ((has-tag ir 'make-string-from-vector-ir) (ir-may-call (cadr ir)))
     ((has-tag ir 'get-global-vars-ir) nil)
     ((has-tag ir 'get-intern-table-ir) nil)
+    ((has-tag ir 'get-keyword-table-ir) nil)
     ((has-tag ir 'set-global-vars-ir) (ir-may-call (cadr ir)))
     ((has-tag ir 'set-intern-table-ir) (ir-may-call (cadr ir)))
+    ((has-tag ir 'set-keyword-table-ir) (ir-may-call (cadr ir)))
     ((has-tag ir 'consp-ir) (ir-may-call (cadr ir)))
     ((has-tag ir 'numberp-ir) (ir-may-call (cadr ir)))
     ((has-tag ir 'stringp-ir) (ir-may-call (cadr ir)))
@@ -987,7 +990,8 @@
       (has-tag ir 'lambda-ref)
       (has-tag ir 'get-global-vars-ir)
       (has-tag ir 'get-cmdline-args-ir)
-      (has-tag ir 'get-intern-table-ir)))
+      (has-tag ir 'get-intern-table-ir)
+      (has-tag ir 'get-keyword-table-ir)))
 
 (defun linearize-leaf (ir)
   "Linearize a leaf IR node, returns temp holding result"
@@ -1014,6 +1018,9 @@
       ;; get-intern-table: load from [x27 + 0]
       ((has-tag ir 'get-intern-table-ir)
        (emit-linear (list 'get-intern-table dst)))
+      ;; get-keyword-table: load from [x27 + 128]
+      ((has-tag ir 'get-keyword-table-ir)
+       (emit-linear (list 'get-keyword-table dst)))
       ((numberp ir)  ; bare number
        (emit-linear (list 'load-lit dst ir)))
       (t (error "linearize-leaf: unknown leaf type ~S" ir)))
@@ -1384,6 +1391,12 @@
     ((has-tag ir 'set-intern-table-ir)
      (let ((val-temp (linearize-expr (cadr ir))))
        (emit-linear (list 'set-intern-table val-temp))
+       val-temp))
+
+    ;; Keyword table (separate from intern table)
+    ((has-tag ir 'set-keyword-table-ir)
+     (let ((val-temp (linearize-expr (cadr ir))))
+       (emit-linear (list 'set-keyword-table val-temp))
        val-temp))
 
     ;; Memory operations
@@ -2221,6 +2234,18 @@
        (let ((val-temp (cadr instr)))
          (append (linear-load-temp :x0 val-temp)
                  (arm64:str :x0 :gc :offset 0))))
+
+      ;; Get-keyword-table: load from [x27 + 128]
+      (get-keyword-table
+       (let ((dst (cadr instr)))
+         (append (arm64:ldr :x0 :gc :offset 128)
+                 (linear-save-temp dst))))
+
+      ;; Set-keyword-table: store to [x27 + 128]
+      (set-keyword-table
+       (let ((val-temp (cadr instr)))
+         (append (linear-load-temp :x0 val-temp)
+                 (arm64:str :x0 :gc :offset 128))))
 
       ;; Get-cmdline-args: load argc/argv from [x27 + 64/72]
       (get-cmdline-args

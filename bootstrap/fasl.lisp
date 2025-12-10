@@ -569,32 +569,25 @@
 ;;; compile-file - CL-compatible interface
 ;;; ============================================================
 
+(defvar *compile-verbose* t "Default verbosity for compile-file.")
+(defvar *compile-print* nil "Default print setting for compile-file.")
+
 (defun compile-file (input-file &key (output-file nil) (verbose *compile-verbose*)
                                      (print *compile-print*) exports imports
-                                     ;; Standard CL compile-file keys (passed through)
+                                     ;; Standard CL compile-file keys (ignored for Habu)
                                      external-format)
-  "Compile a Lisp source file to FASL.
+  "Compile a Lisp source file to Habu FASL.
    INPUT-FILE: pathname designator for source file
    OUTPUT-FILE: pathname for output (default: input with .fasl extension)
    VERBOSE: print progress messages
-   PRINT: print each form as compiled
+   PRINT: print each form as compiled (ignored)
    EXPORTS: list of function names to export (visible to other modules)
    IMPORTS: list of function names that will be resolved at link time
    Returns: output-truename, warnings-p, failure-p
 
-   NOTE: If output file ends in .fasl, uses Habu compiler. Otherwise delegates
-   to CL:COMPILE-FILE for SBCL compatibility (e.g., for ASDF loading)."
-  ;; Delegate to SBCL's compiler for non-FASL output (e.g., ASDF loading .lisp files)
-  (let ((output-ext (and output-file (pathname-type (pathname output-file)))))
-    (when (and (null exports) (null imports)
-               (not (equal output-ext "fasl")))
-      (return-from compile-file
-        (cl:compile-file input-file
-                         :output-file output-file
-                         :verbose verbose
-                         :print print
-                         :external-format (or external-format :default)))))
-  ;; Habu native compilation path (print and external-format not used here)
+   NOTE: This ALWAYS uses the Habu compiler. For SBCL compilation, use CL:COMPILE-FILE."
+  (declare (ignore print external-format))
+  ;; Always use Habu compiler - no silent fallbacks
   (let* ((input (pathname input-file))
          (output (or output-file
                      (make-pathname :type "fasl" :defaults input)))
@@ -602,16 +595,10 @@
          (forms (read-all source)))
     (when verbose
       (format t "; Compiling file ~A~%" (namestring input)))
-    (handler-case
-        (progn
-          (compile-to-fasl forms (namestring output) :exports exports :imports imports)
-          (values (truename output) nil nil))
-      (error (e)
-        (format *error-output* "; Compilation failed: ~A~%" e)
-        (values nil t t)))))
+    (compile-to-fasl forms (namestring output) :exports exports :imports imports)
+    (values (truename output) nil nil)))
 
-(defvar *compile-verbose* t "Default verbosity for compile-file.")
-(defvar *compile-print* nil "Default print setting for compile-file.")
+;; *compile-verbose* and *compile-print* moved to before compile-file definition
 
 ;;; ============================================================
 ;;; Load FASL
@@ -655,6 +642,9 @@
          ;; TODO: Build stub table for extern calls
          nil)))))
 
+(defvar *load-verbose* t "Default verbosity for load.")
+(defvar *load-print* nil "Default print setting for load.")
+
 (defun load (filespec &key (verbose *load-verbose*) (print *load-print*)
                            (if-does-not-exist t) (external-format :default))
   "Load a compiled FASL or source file.
@@ -678,8 +668,7 @@
            (error "Unknown file type: ~A" path)
            nil)))))
 
-(defvar *load-verbose* t "Default verbosity for load.")
-(defvar *load-print* nil "Default print setting for load.")
+;; *load-verbose* and *load-print* moved to before load definition
 
 ;;; ============================================================
 ;;; Module Linking

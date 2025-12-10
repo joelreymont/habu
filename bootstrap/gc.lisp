@@ -23,10 +23,12 @@
 ;;;   [x27+104]: global_vars       (defvar/defparameter storage vector)
 ;;;   [x27+112]: symtab_ptr        (symbol table base for stack traces)
 ;;;   [x27+120]: symtab_count      (symbol table entry count)
-;;;   [x27+128]: heap data starts (MUST be 16-byte aligned for tag masking)
+;;;   [x27+128]: keyword_table     (keyword intern table, separate from symbols)
+;;;   [x27+136]: (reserved for future use)
+;;;   [x27+144]: heap data starts (MUST be 16-byte aligned for tag masking)
 ;;;
-;;; Semispace 0: [x27+128 .. x27+128+half)
-;;; Semispace 1: [x27+128+half .. x27+128+2*half)
+;;; Semispace 0: [x27+144 .. x27+144+half)
+;;; Semispace 1: [x27+144+half .. x27+144+2*half)
 ;;;
 ;;; Tags: 0=fixnum, 1=cons, 2=symbol, 3=vector, 4=string, 5=closure, 6=nil, 7=forward
 ;;;
@@ -60,7 +62,8 @@
 (defconstant +gc-global-vars-offset+ 104)    ;; Global variables vector (defvar/defparameter)
 (defconstant +gc-symtab-offset+ 112)         ;; Symbol table base pointer for stack traces
 (defconstant +gc-symtab-count-offset+ 120)   ;; Symbol table entry count
-(defconstant +gc-heap-data-offset+ 128)      ;; Heap data starts after globals (must be 16-byte aligned!)
+(defconstant +gc-keyword-table-offset+ 128)  ;; Keyword intern table (separate from symbols)
+(defconstant +gc-heap-data-offset+ 144)      ;; Heap data starts after globals (must be 16-byte aligned!)
 
 (defconstant +gc-tag-mask+ #xF)
 (defconstant +gc-tag-forward+ 7)

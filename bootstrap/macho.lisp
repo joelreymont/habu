@@ -14,8 +14,8 @@
 ;;; wrap-bytecode-with-heap-for-imports.
 ;;; If you change the wrapper code, update the constant here.
 
-(defconstant +heap-wrapper-size+ 168
-  "Size of heap initialization wrapper in bytes (42 instructions * 4).
+(defconstant +heap-wrapper-size+ 172
+  "Size of heap initialization wrapper in bytes (43 instructions * 4).
    Used by wrap-bytecode-with-heap-for-imports for __DATA segment heap.")
 
 ;;; SBCL compatibility: native-write-file
@@ -814,15 +814,15 @@
    HEAP-PAGE-OFFSET is the page offset from the ADRP instruction to __DATA (in 4KB pages).
    SYMTAB-OFFSET is the offset from user code start (x26) to the symbol table.
    SYMTAB-COUNT is the number of entries in the symbol table.
-   Returns +heap-wrapper-size+ bytes (42 instructions) + original code.
+   Returns +heap-wrapper-size+ bytes (43 instructions) + original code.
    Returns via RET after user code returns.
-   Initializes all GC globals at [x27+0..128], heap data starts at x27+128.
+   Initializes all GC globals at [x27+0..136], heap data starts at x27+144.
 
    NOTE: If you change this wrapper, update +heap-wrapper-size+ in this file!"
   ;; GC layout at x27 (all fields initialized by wrapper):
   ;;   [x27+0]:   intern_table = nil (0x06)
   ;;   [x27+8]:   lambda_counter = 0
-  ;;   [x27+16]:  from_end = x27 + 128 + 32MB
+  ;;   [x27+16]:  from_end = x27 + 144 + 32MB
   ;;   [x27+24]:  half_heap_size = 32MB (0x2000000)
   ;;   [x27+32]:  space_flag = 0
   ;;   [x27+40]:  gc_state = 0
@@ -836,7 +836,8 @@
   ;;   [x27+104]: global_vars = nil
   ;;   [x27+112]: symtab_offset (from x26 to embedded symbol table)
   ;;   [x27+120]: symtab_count (number of symbol table entries)
-  ;;   [x27+128]: heap data starts, x28 points here (16-byte aligned)
+  ;;   [x27+128]: keyword_table = nil (separate from intern_table for keywords)
+  ;;   [x27+144]: heap data starts, x28 points here (16-byte aligned)
   ;; Wrapper size: see +heap-wrapper-size+ constant at top of file
   (let* (;; Tag symtab values as fixnums (value << 4) before storing
          (symtab-offset-tagged (ash symtab-offset 4))
@@ -860,37 +861,38 @@
                 (cons (arm64:str :x9 :gc :offset 80)             ; 12: str x9, [x27+80] (packages = nil)
                 (cons (arm64:str :x9 :gc :offset 88)             ; 13: str x9, [x27+88] (current-package = nil)
                 (cons (arm64:str :x9 :gc :offset 104)            ; 14: str x9, [x27+104] (global_vars = nil)
-                (cons (arm64:movz :x9 0)                         ; 15: movz x9, 0
-                (cons (arm64:str :x9 :gc :offset 8)              ; 16: str x9, [x27+8] (lambda_counter = 0)
-                (cons (arm64:str :x9 :gc :offset 32)             ; 17: str x9, [x27+32] (space_flag = 0)
-                (cons (arm64:str :x9 :gc :offset 40)             ; 18: str x9, [x27+40] (gc_state = 0)
-                (cons (arm64:str :x9 :gc :offset 48)             ; 19: str x9, [x27+48] (symbol_counter = 0)
-                (cons (arm64:str :x9 :gc :offset 64)             ; 20: str x9, [x27+64] (argc = 0)
-                (cons (arm64:movz :x10 0)                        ; 21: movz x10, 0
-                (cons (arm64:movk :x10 #x200 :lsl 16)            ; 22: movk x10, #0x200, lsl 16 (=32MB)
-                (cons (arm64:str :x10 :gc :offset 24)            ; 23: str x10, [x27+24] (half_heap)
-                (cons (arm64:add :x11 :gc 128 :imm t)            ; 24: add x11, x27, #128
-                (cons (arm64:add :x11 :x11 :x10)                 ; 25: add x11, x11, x10 (from_end)
-                (cons (arm64:str :x11 :gc :offset 16)            ; 26: str x11, [x27+16]
-                (cons (arm64:add :heap :gc 128 :imm t)           ; 27: add x28, x27, #128
-                (cons (arm64:str :sp :gc :offset 96)             ; 28: str sp, [x27+96] (stack_base)
+                (cons (arm64:str :x9 :gc :offset 128)            ; 15: str x9, [x27+128] (keyword_table = nil)
+                (cons (arm64:movz :x9 0)                         ; 16: movz x9, 0
+                (cons (arm64:str :x9 :gc :offset 8)              ; 17: str x9, [x27+8] (lambda_counter = 0)
+                (cons (arm64:str :x9 :gc :offset 32)             ; 18: str x9, [x27+32] (space_flag = 0)
+                (cons (arm64:str :x9 :gc :offset 40)             ; 19: str x9, [x27+40] (gc_state = 0)
+                (cons (arm64:str :x9 :gc :offset 48)             ; 20: str x9, [x27+48] (symbol_counter = 0)
+                (cons (arm64:str :x9 :gc :offset 64)             ; 21: str x9, [x27+64] (argc = 0)
+                (cons (arm64:movz :x10 0)                        ; 22: movz x10, 0
+                (cons (arm64:movk :x10 #x200 :lsl 16)            ; 23: movk x10, #0x200, lsl 16 (=32MB)
+                (cons (arm64:str :x10 :gc :offset 24)            ; 24: str x10, [x27+24] (half_heap)
+                (cons (arm64:add :x11 :gc 144 :imm t)            ; 25: add x11, x27, #144
+                (cons (arm64:add :x11 :x11 :x10)                 ; 26: add x11, x11, x10 (from_end)
+                (cons (arm64:str :x11 :gc :offset 16)            ; 27: str x11, [x27+16]
+                (cons (arm64:add :heap :gc 144 :imm t)           ; 28: add x28, x27, #144
+                (cons (arm64:str :sp :gc :offset 96)             ; 29: str sp, [x27+96] (stack_base)
                 ;; Symbol table setup (5 instructions)
-                (cons (arm64:movz :x9 symtab-lo)                 ; 29: movz x9, #symtab_lo
-                (cons (arm64:movk :x9 symtab-hi :lsl 16)         ; 30: movk x9, #symtab_hi, lsl 16
-                (cons (arm64:str :x9 :gc :offset 112)            ; 31: str x9, [x27+112] (symtab_offset)
-                (cons (arm64:movz :x9 (logand symtab-count-tagged #xFFFF))  ; 32: movz x9, #symtab_count (tagged)
-                (cons (arm64:str :x9 :gc :offset 120)            ; 33: str x9, [x27+120] (symtab_count)
-                ;; Call user code - adr at instr 34 (offset 132), bl at 35 (offset 136), MAIN at offset 168
-                (cons (arm64:adr :code-base 36)                  ; 34: adr x26, +36 bytes to MAIN
-                (cons (arm64:bl 8)                               ; 35: bl +8 instrs to MAIN
+                (cons (arm64:movz :x9 symtab-lo)                 ; 30: movz x9, #symtab_lo
+                (cons (arm64:movk :x9 symtab-hi :lsl 16)         ; 31: movk x9, #symtab_hi, lsl 16
+                (cons (arm64:str :x9 :gc :offset 112)            ; 32: str x9, [x27+112] (symtab_offset)
+                (cons (arm64:movz :x9 (logand symtab-count-tagged #xFFFF))  ; 33: movz x9, #symtab_count (tagged)
+                (cons (arm64:str :x9 :gc :offset 120)            ; 34: str x9, [x27+120] (symtab_count)
+                ;; Call user code - adr at instr 35 (offset 136), bl at 36 (offset 140), MAIN at offset 172
+                (cons (arm64:adr :code-base 36)                  ; 35: adr x26, +36 bytes to MAIN
+                (cons (arm64:bl 8)                               ; 36: bl +8 instrs to MAIN
                 ;; Exit handling - restore and return
-                (cons (arm64:lsr :x0 :x0 4 :imm t)               ; 36: lsr x0, x0, #4 (untag)
-                (cons (arm64:ldr :gc :sp :offset 24)             ; 37: ldr x27, [sp+24]
-                (cons (arm64:ldr :code-base :sp :offset 16)      ; 38: ldr x26, [sp+16]
-                (cons (arm64:ldr :heap :sp :offset 8)            ; 39: ldr x28, [sp+8]
-                (cons (arm64:ldr :lr :sp :offset 0)              ; 40: ldr x30, [sp]
-                (cons (arm64:add :sp :sp #x30 :imm t)            ; 41: add sp, sp, #0x30
-                (cons (arm64:ret) nil))))))))))))))))))))))))))))))))))))))))))))) ; 42: ret
+                (cons (arm64:lsr :x0 :x0 4 :imm t)               ; 37: lsr x0, x0, #4 (untag)
+                (cons (arm64:ldr :gc :sp :offset 24)             ; 38: ldr x27, [sp+24]
+                (cons (arm64:ldr :code-base :sp :offset 16)      ; 39: ldr x26, [sp+16]
+                (cons (arm64:ldr :heap :sp :offset 8)            ; 40: ldr x28, [sp+8]
+                (cons (arm64:ldr :lr :sp :offset 0)              ; 41: ldr x30, [sp]
+                (cons (arm64:add :sp :sp #x30 :imm t)            ; 42: add sp, sp, #0x30
+                (cons (arm64:ret) nil)))))))))))))))))))))))))))))))))))))))))))))) ; 43: ret
     (append stub code-bytes)))
 
 ;;; ============================================================

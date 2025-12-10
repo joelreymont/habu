@@ -1128,11 +1128,11 @@
     ((numberp expr) (compile-lit expr))
     ((stringp expr) (list 'str-lit expr))  ; String literals
     ((symbolp expr)
-     (if (eq expr 'nil)
-         (list 'nil-ir)  ; nil has tag 6, distinct from fixnum 0
-         (if (eq expr 't)
-             (list 'sym-lit "T")
-             (compile-var expr env))))
+     (cond
+       ((eq expr 'nil) (list 'nil-ir))  ; nil has tag 6, distinct from fixnum 0
+       ((eq expr 't) (list 'sym-lit "T"))
+       ((cl:keywordp expr) (list 'kw-lit (symbol-name expr)))  ; Keywords
+       (t (compile-var expr env))))
     ((not (consp expr)) (compile-lit 0))
     (t
      (cond
@@ -1233,6 +1233,12 @@
          ;; eq: compare two values directly
          ((eq (car expr) 'eq) (list 'cmp-eq (compile-expr-full (nth 1 expr) env fenv)
                                    (compile-expr-full (nth 2 expr) env fenv)))
+
+         ;; set-tag: change tag bits on a pointer value
+         ;; (set-tag value new-tag) -> value with low 4 bits replaced by (untag new-tag)
+         ((eq (car expr) 'set-tag)
+          (list 'set-tag (compile-expr-full (nth 1 expr) env fenv)
+                (compile-expr-full (nth 2 expr) env fenv)))
 
          ;; length - list length via inline labels
          ;; NOTE: Uses list instead of backquote for portability (no SB-IMPL::COMMA)

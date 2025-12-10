@@ -676,6 +676,20 @@
                      (list (list 'tac-get-tag result-vr val-vr)))
              result-vr)))
 
+    ;; set-tag: change tag bits on a pointer value
+    ;; (set-tag value new-tag) -> value with low 4 bits replaced by (untag new-tag)
+    ((and (consp ir) (ir-tag-matches (car ir) "SET-TAG"))
+     (let* ((val-result (ir-to-tac (cadr ir) counter))
+            (val-instrs (car val-result))
+            (val-vr (cadr val-result))
+            (tag-result (ir-to-tac (caddr ir) counter))
+            (tag-instrs (car tag-result))
+            (tag-vr (cadr tag-result))
+            (result-vr (next-vreg counter)))
+       (list (append val-instrs tag-instrs
+                     (list (list 'tac-set-tag result-vr val-vr tag-vr)))
+             result-vr)))
+
     ;; funcall-ir: call through function value
     ;; IR format: (FUNCALL-IR fn-expr (arg1 arg2 ...))
     ;; Use caddr (not cddr) to get the args list directly
@@ -965,6 +979,20 @@
                      (list (list 'tac-set-intern-table val-vr)))
              val-vr)))
 
+    ;; get-keyword-table-ir: load keyword table from [x27 + 128]
+    ((and (consp ir) (ir-tag-matches (car ir) "GET-KEYWORD-TABLE-IR"))
+     (let ((result-vr (next-vreg counter)))
+       (list (list (list 'tac-get-keyword-table result-vr)) result-vr)))
+
+    ;; set-keyword-table-ir: store keyword table to [x27 + 128]
+    ((and (consp ir) (ir-tag-matches (car ir) "SET-KEYWORD-TABLE-IR"))
+     (let* ((val-result (ir-to-tac (cadr ir) counter))
+            (val-instrs (car val-result))
+            (val-vr (cadr val-result)))
+       (list (append val-instrs
+                     (list (list 'tac-set-keyword-table val-vr)))
+             val-vr)))
+
     ;; get-lambda-counter-ir: load lambda counter from [x27 + 8]
     ((and (consp ir) (ir-tag-matches (car ir) "GET-LAMBDA-COUNTER-IR"))
      (let ((result-vr (next-vreg counter)))
@@ -1117,21 +1145,22 @@
       tac-nil tac-cons tac-car tac-cdr tac-sym tac-str
       tac-make-vector tac-vector-ref tac-vector-length
       tac-string-length tac-string-ref tac-make-string
-      tac-get-tag tac-funcall tac-make-closure
+      tac-get-tag tac-set-tag tac-funcall tac-make-closure
       tac-get-global-vars tac-get-cmdline-args
       tac-sys-open tac-sys-read tac-sys-write tac-sys-close tac-buffer-to-string
       tac-buffer-byte-set tac-buffer-byte-ref tac-mem-set-byte tac-mem-load-64 tac-mem-load-byte tac-bnot tac-mvn
       ;; New TAC instructions
       tac-lambda-ref tac-symbol-name tac-make-symbol
       tac-string-concat tac-string-equal
-      tac-get-intern-table tac-get-lambda-counter tac-get-symbol-counter tac-get-symbol-table
+      tac-get-intern-table tac-get-keyword-table
+      tac-get-lambda-counter tac-get-symbol-counter tac-get-symbol-table
       tac-get-frame-pointer tac-get-code-base tac-get-symtab-offset tac-get-symtab-count
       tac-get-packages tac-get-current-package)
      (cadr instr))
     ;; Instructions that don't define a vreg (control flow, stores, etc.)
     ((tac-return tac-if tac-if-not tac-goto tac-label tac-setvar tac-sys-exit
       tac-loop-start tac-continue tac-setcar tac-setcdr tac-vector-set
-      tac-set-global-vars tac-set-intern-table
+      tac-set-global-vars tac-set-intern-table tac-set-keyword-table
       tac-set-packages tac-set-current-package)
      nil)
     (t (error "tac-def: Unhandled TAC instruction: ~A" (car instr)))))
@@ -1144,9 +1173,9 @@
       tac-loop-start tac-continue tac-make-closure
       tac-get-global-vars tac-get-cmdline-args
       ;; New no-use instructions
-      tac-lambda-ref tac-get-intern-table tac-get-lambda-counter
-      tac-get-symbol-counter tac-get-symbol-table tac-get-frame-pointer
-      tac-get-code-base tac-get-symtab-offset tac-get-symtab-count
+      tac-lambda-ref tac-get-intern-table tac-get-keyword-table
+      tac-get-lambda-counter tac-get-symbol-counter tac-get-symbol-table
+      tac-get-frame-pointer tac-get-code-base tac-get-symtab-offset tac-get-symtab-count
       tac-get-packages tac-get-current-package)
      nil)
     ;; Binary operations: (tac-binop dest op vr1 vr2)
@@ -1156,9 +1185,9 @@
     ((tac-setvar)
      (list (caddr instr)))
     ;; Global/system setters: (tac-set-X vreg) - uses 2nd element
-    ((tac-set-global-vars tac-set-intern-table tac-set-lambda-counter
-      tac-set-symbol-counter tac-set-symbol-table tac-sys-exit
-      tac-set-packages tac-set-current-package)
+    ((tac-set-global-vars tac-set-intern-table tac-set-keyword-table
+      tac-set-lambda-counter tac-set-symbol-counter tac-set-symbol-table
+      tac-sys-exit tac-set-packages tac-set-current-package)
      (list (cadr instr)))
     ;; Conditionals: (tac-if cond-vreg then else)
     ((tac-if tac-if-not)
@@ -1180,6 +1209,9 @@
      (list (caddr instr) (cadddr instr)))
     ;; Binary string ops: (tac-X dest vr1 vr2)
     ((tac-string-concat tac-string-equal)
+     (list (caddr instr) (cadddr instr)))
+    ;; set-tag: (tac-set-tag dest val-vr tag-vr)
+    ((tac-set-tag)
      (list (caddr instr) (cadddr instr)))
     ;; Mutation: (tac-setcar cons-vr val-vr), (tac-setcdr cons-vr val-vr)
     ((tac-setcar tac-setcdr)
@@ -1909,6 +1941,35 @@
           (arm64:and* dest-reg src-reg #xF :imm t)
           ;; Shift left 4 to make it a tagged fixnum
           (arm64:lsl dest-reg dest-reg 4 :imm t)
+          (when (and (consp dest) (eq (car dest) :spill))
+            (arm64:str :x0 :sp :offset (spill-offset (cadr dest)))))))
+
+      ;; tac-set-tag: change tag bits on a pointer value
+      ;; (tac-set-tag dest val-vr tag-vr)
+      ;; Result = (val & ~0xF) | (tag >> 4)
+      ((tac-set-tag)
+       (let* ((dest-vreg (cadr instr))
+              (val-vreg (caddr instr))
+              (tag-vreg (cadddr instr))
+              (val-loc (vreg-to-reg val-vreg allocation))
+              (tag-loc (vreg-to-reg tag-vreg allocation))
+              (dest (vreg-to-reg dest-vreg allocation))
+              (val-reg (if (and (consp val-loc) (eq (car val-loc) :spill)) :x0 val-loc))
+              (tag-reg (if (and (consp tag-loc) (eq (car tag-loc) :spill)) :x1 tag-loc))
+              (dest-reg (if (and (consp dest) (eq (car dest) :spill)) :x0 dest)))
+         (append
+          (when (and (consp val-loc) (eq (car val-loc) :spill))
+            (arm64:ldr :x0 :sp :offset (spill-offset (cadr val-loc))))
+          (when (and (consp tag-loc) (eq (car tag-loc) :spill))
+            (arm64:ldr :x1 :sp :offset (spill-offset (cadr tag-loc))))
+          ;; Untag the tag value: tag >> 4
+          (arm64:asr tag-reg tag-reg 4 :imm t)
+          ;; Load mask 0xF into x2
+          (arm64:movz :x2 15 :lsl 0)
+          ;; Clear low 4 bits of value: BIC clears bits where mask is 1
+          (arm64:bic dest-reg val-reg :x2)
+          ;; Apply new tag: OR with untagged tag value
+          (arm64:orr dest-reg dest-reg tag-reg)
           (when (and (consp dest) (eq (car dest) :spill))
             (arm64:str :x0 :sp :offset (spill-offset (cadr dest)))))))
 
@@ -2849,6 +2910,26 @@
               (arm64:ldr :x0 :sp :offset (spill-offset (cadr val-loc)))
               (arm64:mov :x0 val-loc))
           (arm64:str :x0 :gc :offset 0))))
+
+      ;; tac-get-keyword-table: load from [x27 + 128]
+      ((tac-get-keyword-table)
+       (let* ((dest-vreg (cadr instr))
+              (dest (vreg-to-reg dest-vreg allocation))
+              (dest-reg (if (and (consp dest) (eq (car dest) :spill)) :x0 dest)))
+         (append
+          (arm64:ldr dest-reg :gc :offset 128)
+          (when (and (consp dest) (eq (car dest) :spill))
+            (arm64:str :x0 :sp :offset (spill-offset (cadr dest)))))))
+
+      ;; tac-set-keyword-table: store to [x27 + 128]
+      ((tac-set-keyword-table)
+       (let* ((val-vreg (cadr instr))
+              (val-loc (vreg-to-reg val-vreg allocation)))
+         (append
+          (if (and (consp val-loc) (eq (car val-loc) :spill))
+              (arm64:ldr :x0 :sp :offset (spill-offset (cadr val-loc)))
+              (arm64:mov :x0 val-loc))
+          (arm64:str :x0 :gc :offset 128))))
 
       ;; tac-get-lambda-counter: load from [x27 + 8]
       ((tac-get-lambda-counter)

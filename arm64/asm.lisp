@@ -179,22 +179,56 @@
    General purpose: :x0 through :x30
    Special: :sp (31), :xzr (31), :lr (30), :fp (29)
    Habu conventions: :env (20), :closure (24), :code-base (26), :gc (27), :heap (28)"
-  (when (numberp r)
-    (error "Raw register numbers not allowed. Use keywords like :x0, :x1, :sp, :env instead of ~D" r))
-  (case r
-    ;; General purpose registers
-    (:x0 0) (:x1 1) (:x2 2) (:x3 3) (:x4 4) (:x5 5) (:x6 6) (:x7 7)
-    (:x8 8) (:x9 9) (:x10 10) (:x11 11) (:x12 12) (:x13 13) (:x14 14) (:x15 15)
-    (:x16 16) (:x17 17) (:x18 18) (:x19 19) (:x20 20) (:x21 21) (:x22 22) (:x23 23)
-    (:x24 24) (:x25 25) (:x26 26) (:x27 27) (:x28 28) (:x29 29) (:x30 30)
+  ;; Use eq comparison with literal keywords - works in both SBCL (keywords interned)
+  ;; and habu0 (all keyword literals go through intern-keyword at runtime)
+  (cond
+    ((eq r :x0) 0)
+    ((eq r :x1) 1)
+    ((eq r :x2) 2)
+    ((eq r :x3) 3)
+    ((eq r :x4) 4)
+    ((eq r :x5) 5)
+    ((eq r :x6) 6)
+    ((eq r :x7) 7)
+    ((eq r :x8) 8)
+    ((eq r :x9) 9)
+    ((eq r :x10) 10)
+    ((eq r :x11) 11)
+    ((eq r :x12) 12)
+    ((eq r :x13) 13)
+    ((eq r :x14) 14)
+    ((eq r :x15) 15)
+    ((eq r :x16) 16)
+    ((eq r :x17) 17)
+    ((eq r :x18) 18)
+    ((eq r :x19) 19)
+    ((eq r :x20) 20)
+    ((eq r :x21) 21)
+    ((eq r :x22) 22)
+    ((eq r :x23) 23)
+    ((eq r :x24) 24)
+    ((eq r :x25) 25)
+    ((eq r :x26) 26)
+    ((eq r :x27) 27)
+    ((eq r :x28) 28)
+    ((eq r :x29) 29)
+    ((eq r :x30) 30)
     ;; Special registers
-    (:sp 31) (:xzr 31) (:lr 30) (:fp 29)
+    ((eq r :sp) 31)
+    ((eq r :xzr) 31)
+    ((eq r :lr) 30)
+    ((eq r :fp) 29)
     ;; Habu-specific register aliases
-    (:env 20)        ; environment frame base
-    (:closure 24)    ; closure environment pointer
-    (:code-base 26)  ; code base register
-    (:gc 27)         ; GC globals base
-    (:heap 28)       ; heap bump pointer
+    ((eq r :env) 20)
+    ((eq r :closure) 24)
+    ((eq r :code-base) 26)
+    ((eq r :gc) 27)
+    ((eq r :heap) 28)
+    ;; Error cases
+    ((numberp r)
+     (error "Raw register numbers not allowed. Use keywords like :x0, :x1, :sp, :env instead of ~D" r))
+    ((null r)
+     (error "Register cannot be nil - got nil instead of keyword like :x0, :sp, etc."))
     (t (error "Unknown register: ~S" r))))
 
 (declaim (inline num-to-reg))

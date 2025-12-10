@@ -89,6 +89,8 @@
 (defvar *op-mapcar* nil)
 (defvar *op-ecase* nil)
 (defvar *op-listp* nil)
+(defvar *op-nil* nil)
+(defvar *op-otherwise* nil)
 
 ;;; Package system globals
 ;;; Packages are ((name . symbols) ...) where symbols is ((name . sym) ...)
@@ -346,14 +348,11 @@
   (let ((sym (make-symbol-from-string name)))
     (set-tag sym 7)))
 
-;; Keyword table - for now, use intern table to store keywords too
-;; TODO: Add get-keyword-table-ir and set-keyword-table-ir primitives to compiler
-;; for proper separate keyword table at [x27+120]
-(defun get-keyword-table ()
-  (get-intern-table))  ; Temporarily share intern table
-
-(defun set-keyword-table (table)
-  (set-intern-table table))  ; Temporarily share intern table
+;; Keyword table primitives
+;; NOTE: get-keyword-table and set-keyword-table are compiler primitives
+;; that access the separate keyword table at [x27+128], distinct from
+;; the intern (symbol) table at [x27+0]. This separation ensures that
+;; keywords like :X0 remain distinct from symbols like X0.
 
 ;; Search keyword table for name
 ;; Uses case-insensitive comparison to match bootstrap compiler behavior
@@ -804,6 +803,8 @@
 (defun op=mapcar (sym) (eq sym *op-mapcar*))
 (defun op=ecase (sym) (eq sym *op-ecase*))
 (defun op=listp (sym) (eq sym *op-listp*))
+(defun op=nil (sym) (eq sym *op-nil*))
+(defun op=otherwise (sym) (eq sym *op-otherwise*))
 
 ;; Generic symbol comparison - uses eq with interned symbol
 ;; WARNING: This calls intern which uses string= - avoid circular dependency
@@ -1157,20 +1158,20 @@
   (cond
     ((null e) acc)
     ((not (consp e)) acc)
-    ((and (symbolp (car e)) (string-equal (symbol-name (car e)) "QUOTE")) acc)
-    ((and (symbolp (car e)) (string-equal (symbol-name (car e)) "SETQ"))
+    ((and (symbolp (car e)) (op=quote (car e))) acc)
+    ((and (symbolp (car e)) (op=setq (car e)))
      (let ((var (cadr e))
            (val (caddr e)))
        (if (h0-member-eq var bnd)
            (h0-collect-setq-targets val bnd
              (if (h0-member-eq var acc) acc (cons var acc)))
            (h0-collect-setq-targets val bnd acc))))
-    ((and (symbolp (car e)) (string-equal (symbol-name (car e)) "LAMBDA"))
+    ((and (symbolp (car e)) (op=lambda (car e)))
      (let ((params (cadr e))
            (body-forms (cddr e)))  ;; Lambda can have multiple body forms
        (h0-collect-list-setq body-forms (h0-append params bnd) acc)))
-    ((and (symbolp (car e)) (or (string-equal (symbol-name (car e)) "LET")
-                                 (string-equal (symbol-name (car e)) "LET*")))
+    ((and (symbolp (car e)) (or (op=let (car e))
+                                 (op=let-star (car e))))
      (let* ((bindings (cadr e))
             (body-forms (cddr e))
             (names (h0-mapcar-car bindings))
@@ -1204,16 +1205,16 @@
   (cond
     ((null e) acc)
     ((not (consp e)) acc)
-    ((and (symbolp (car e)) (string-equal (symbol-name (car e)) "QUOTE")) acc)
-    ((and (symbolp (car e)) (string-equal (symbol-name (car e)) "LAMBDA"))
+    ((and (symbolp (car e)) (op=quote (car e))) acc)
+    ((and (symbolp (car e)) (op=lambda (car e)))
      (let* ((params (cadr e))
             (body-forms (cddr e))  ;; Multiple body forms
             (new-bnd (h0-append params bnd))
             (acc2 (h0-collect-list-captured body-forms new-bnd acc))
             (free-vars (h0-find-free-vars-list body-forms params)))
        (h0-add-captured-vars free-vars bnd acc2)))
-    ((and (symbolp (car e)) (or (string-equal (symbol-name (car e)) "LET")
-                                 (string-equal (symbol-name (car e)) "LET*")))
+    ((and (symbolp (car e)) (or (op=let (car e))
+                                 (op=let-star (car e))))
      (let* ((bindings (cadr e))
             (body-forms (cddr e))
             (names (h0-mapcar-car bindings))
@@ -1257,18 +1258,18 @@
     ((symbolp e)
      (if (and (not (h0-member-eq e bnd))
               (not (h0-member-eq e acc))
-              (not (string-equal (symbol-name e) "T"))
-              (not (string-equal (symbol-name e) "NIL")))
+              (not (op=t e))
+              (not (op=nil e)))
          (cons e acc)
          acc))
     ((not (consp e)) acc)
-    ((and (symbolp (car e)) (string-equal (symbol-name (car e)) "QUOTE")) acc)
-    ((and (symbolp (car e)) (string-equal (symbol-name (car e)) "LAMBDA"))
+    ((and (symbolp (car e)) (op=quote (car e))) acc)
+    ((and (symbolp (car e)) (op=lambda (car e)))
      (let ((params (cadr e))
            (body-forms (cddr e)))  ;; Multiple body forms
        (h0-collect-list-free body-forms (h0-append params bnd) acc)))
-    ((and (symbolp (car e)) (or (string-equal (symbol-name (car e)) "LET")
-                                 (string-equal (symbol-name (car e)) "LET*")))
+    ((and (symbolp (car e)) (or (op=let (car e))
+                                 (op=let-star (car e))))
      (let* ((bindings (cadr e))
             (body-forms (cddr e))
             (names (h0-mapcar-car bindings))
@@ -1595,7 +1596,7 @@
           ;; t or otherwise - default case
           ((or (eq keys t)
                (if (symbolp keys)
-                   (string-equal (symbol-name keys) "OTHERWISE")
+                   (op=otherwise keys)
                    nil))
            (h0-eval-progn body env fenv))
           ;; Check if key matches
@@ -1617,7 +1618,7 @@
     ;; nil is false (both Lisp nil and symbol NIL)
     ((null expr) nil)
     ;; Symbol NIL - return nil (catches reader-created NIL symbol)
-    ((if (symbolp expr) (string-equal (symbol-name expr) "NIL") nil) nil)
+    ((if (symbolp expr) (op=nil expr) nil) nil)
     ;; t is true
     ((if (symbolp expr) (op=t expr) nil) t)
     ;; Symbol lookup - first local env, then global env
@@ -2150,6 +2151,8 @@
   (setq *op-mapcar* (intern "MAPCAR"))
   (setq *op-ecase* (intern "ECASE"))
   (setq *op-listp* (intern "LISTP"))
+  (setq *op-nil* (intern "NIL"))
+  (setq *op-otherwise* (intern "OTHERWISE"))
   nil)
 
 ;; Environment lookup for compilation - returns offset or nil

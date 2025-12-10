@@ -137,7 +137,9 @@
   (let ((undefined nil))
     (dolist (target *all-call-targets*)
       (unless (or (member target defined-fns)
-                  (member target *declared-imports*))
+                  ;; Compare imports by symbol-name (packages may differ)
+                  (member (symbol-name target) *declared-imports*
+                          :test #'string= :key #'symbol-name))
         (push target undefined)))
     (when undefined
       (format t "~%LINK ERROR: Functions called but not compiled:~%")
@@ -1660,8 +1662,8 @@
        ;; In boolean context, any non-zero value is truthy
        ((eq expr 't) (list 'lit 1))           ; t = 1 (truthy)
        ((eq expr 'nil) (list 'nil-ir))          ; nil is 0x06 (tag 6)
-       ;; Keywords are self-evaluating symbols - compile as symbol literal
-       ((keywordp expr) (list 'sym-lit (symbol-name expr)))
+       ;; Keywords are self-evaluating - compile as keyword literal (tag 7)
+       ((keywordp expr) (list 'kw-lit (symbol-name expr)))
        (t
         ;; Use numberp since offset 0 is falsey in Habu
         (let ((off (env-lookup expr env)))
@@ -2084,6 +2086,11 @@
          ;; get-tag - extract type tag as tagged fixnum (tag << 4)
          ((eq op 'get-tag)
           (list 'get-tag (sys:compile (cadr expr) env fenv)))
+         ;; set-tag - change tag bits on a pointer value
+         ;; (set-tag value new-tag) -> value with low 4 bits replaced by (untag new-tag)
+         ((eq op 'set-tag)
+          (list 'set-tag (sys:compile (cadr expr) env fenv)
+                (sys:compile (caddr expr) env fenv)))
          ;; length - polymorphic: works on strings, vectors, and lists
          ((eq op 'length)
           (let ((val-sym (gensym "VAL"))
@@ -2656,6 +2663,13 @@
          ;; get-symtab-count - get embedded symbol table entry count from [x27+120]
          ((eq op 'get-symtab-count)
           (list 'get-symtab-count-ir))
+         ;; get-keyword-table - get the global keyword table from [x27+128]
+         ((eq op 'get-keyword-table)
+          (list 'get-keyword-table-ir))
+         ;; set-keyword-table - set the global keyword table at [x27+128]
+         ((eq op 'set-keyword-table)
+          (list 'set-keyword-table-ir
+                (sys:compile (cadr expr) env fenv)))
          ;; === High-level file I/O (using sys-* primitives) ===
          ;; native-read-file - read entire file to string
          ;; Expands to: (let* ((fd (sys-open path O_RDONLY 0))
@@ -3065,6 +3079,11 @@
               (progn
                 (habu::record-call-target op)
                 (list 'call-fn op (mapcar (lambda (a) (sys:compile a env fenv)) final-args)))))
+           ;; op is a declared import - external function resolved at link time
+           ((member (symbol-name op) *declared-imports*
+                    :test #'string= :key #'symbol-name)
+            (habu::record-call-target op)
+            (list 'call-fn op (mapcar (lambda (a) (sys:compile a env fenv)) (cdr expr))))
            ;; op is a variable (parameter) - compile as funcall
            (t
             (let ((off (env-lookup op env)))
@@ -3499,14 +3518,10 @@
 ;;;
 ;;; The following functions are stubs that ERROR if called:
 
-(defun codegen (ir rtaddrs fnoffs td)
-  "OLD ACCUMULATOR CODEGEN - REMOVED.
-   This function should NEVER be called. If you see this error, there is
-   a code path that hasn't been updated to use register allocation."
-  (declare (ignore rtaddrs fnoffs td))
-  (error "OLD ACCUMULATOR CODEGEN REMOVED: codegen called with IR: ~S~%~
-          Use codegen-fn-reg-alloc for functions or codegen-main-reg-alloc for main."
-         (if (consp ir) (car ir) ir)))
+;; NOTE: codegen function is now defined in codegen.lisp with 3 args:
+;;   (defun codegen (linear-ir rtaddrs fnoffs) ...)
+;; The old 4-arg accumulator codegen has been completely removed.
+;; See codegen.lisp for the linear IR -> ARM64 code generator.
 
 (defun codegen-binop (left-ir right-ir op-instrs rtaddrs fnoffs td)
   "OLD ACCUMULATOR CODEGEN HELPER - REMOVED."
