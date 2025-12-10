@@ -3772,6 +3772,17 @@
         (push (cons sym (symbol-value sym)) acc)))
     acc))
 
+#+sbcl
+(defun collect-habu-constants ()
+  "Collect all HABU package constants for *constants*."
+  (let ((acc nil))
+    (do-symbols (sym (find-package :habu))
+      (when (and (boundp sym)
+                 (not (fboundp sym))
+                 (constantp sym))
+        (push (cons sym (symbol-value sym)) acc)))
+    acc))
+
 (defun compile-defuns (forms env fenv acc)
   "Pass 2: Compile all defuns using complete fenv, recursing into progn"
   (if (null forms)
@@ -3870,7 +3881,11 @@
          (arm64-constants (collect-arm64-constants))
          #-sbcl
          (arm64-constants nil)
-         (*constants* (append form-constants arm64-constants))
+         #+sbcl
+         (habu-constants (collect-habu-constants))
+         #-sbcl
+         (habu-constants nil)
+         (*constants* (append form-constants arm64-constants habu-constants))
          (*defined-globals* (collect-globals forms nil))
          ;; Pass 2: Collect all defun names
          (fn-names (collect-defun-names forms nil))
