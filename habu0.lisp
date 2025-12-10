@@ -107,6 +107,20 @@
 (defvar *kw-offset* nil)
 (defvar *kw-imm* nil)
 
+;;; Register keywords - pre-interned for eq comparison in arm64:reg
+;;; These are initialized in init-compile-ops and used via habu0-reg
+(defvar *kw-x0* nil) (defvar *kw-x1* nil) (defvar *kw-x2* nil) (defvar *kw-x3* nil)
+(defvar *kw-x4* nil) (defvar *kw-x5* nil) (defvar *kw-x6* nil) (defvar *kw-x7* nil)
+(defvar *kw-x8* nil) (defvar *kw-x9* nil) (defvar *kw-x10* nil) (defvar *kw-x11* nil)
+(defvar *kw-x12* nil) (defvar *kw-x13* nil) (defvar *kw-x14* nil) (defvar *kw-x15* nil)
+(defvar *kw-x16* nil) (defvar *kw-x17* nil) (defvar *kw-x18* nil) (defvar *kw-x19* nil)
+(defvar *kw-x20* nil) (defvar *kw-x21* nil) (defvar *kw-x22* nil) (defvar *kw-x23* nil)
+(defvar *kw-x24* nil) (defvar *kw-x25* nil) (defvar *kw-x26* nil) (defvar *kw-x27* nil)
+(defvar *kw-x28* nil) (defvar *kw-x29* nil) (defvar *kw-x30* nil)
+(defvar *kw-sp* nil) (defvar *kw-xzr* nil) (defvar *kw-lr* nil) (defvar *kw-fp* nil)
+(defvar *kw-env* nil) (defvar *kw-closure* nil) (defvar *kw-code-base* nil)
+(defvar *kw-gc* nil) (defvar *kw-heap* nil)
+
 ;;; ==========================================================
 ;;; Error Infrastructure - crash with message, no silent fallbacks
 ;;; ==========================================================
@@ -2042,13 +2056,99 @@
           (cdar table)
           (find-builtin-id name (cdr table)))))
 
+;;; ============================================================
+;;; Keyword Normalization for SBCL/habu0 Boundary
+;;; ============================================================
+;;
+;; Problem: In SBCL, keywords like :x0 are SBCL keyword symbols.
+;; In habu0 native, keywords should be habu0-interned with tag 7.
+;; When ARM64 functions use eq-comparison, SBCL keywords won't match
+;; habu0 interned keywords.
+;;
+;; Solution: At the h0-eval-builtin boundary (where SBCL-evaluated
+;; values cross into ARM64/habu0 code), normalize all keywords to
+;; habu0-interned keywords. This allows eq comparison to work.
+;;
+;; Note: This only matters in mode 1024 (self-compile) where SBCL
+;; evaluates code that produces keywords which then get passed to
+;; ARM64 assembler functions.
+
+(defun normalize-keyword (kw)
+  "Normalize a keyword to habu0-interned form.
+   If kw is an SBCL keyword (symbolp = t, keywordp = t), re-intern it.
+   If kw is already a habu0 keyword (tag 7, symbolp = nil), return as-is."
+  (if (keywordp kw)
+      (if (symbolp kw)
+          ;; SBCL keyword: symbol-name works, re-intern in habu0
+          (intern-keyword (symbol-name kw))
+          ;; Already habu0 keyword (tag 7, not symbolp)
+          kw)
+      ;; Not a keyword, return as-is
+      kw))
+
+(defun normalize-args (args)
+  "Normalize all keywords in an argument list.
+   Recursively handles nested lists for keyword args like :offset 8."
+  (if (null args)
+      nil
+      (let ((arg (car args)))
+        (cons (if (consp arg)
+                  (normalize-args arg)  ; Handle nested structures
+                  (normalize-keyword arg))
+              (normalize-args (cdr args))))))
+
+;;; habu0-reg: Register lookup using eq comparison
+;;; After normalization, keywords are habu0-interned, so eq works.
+;;; This replaces arm64:reg's string comparison at the boundary.
+(defun habu0-reg (r)
+  "Convert normalized register keyword to number using eq.
+   Called after normalize-keyword ensures r is habu0-interned."
+  (cond
+    ;; General purpose registers x0-x30
+    ((eq r *kw-x0*) 0)   ((eq r *kw-x1*) 1)   ((eq r *kw-x2*) 2)   ((eq r *kw-x3*) 3)
+    ((eq r *kw-x4*) 4)   ((eq r *kw-x5*) 5)   ((eq r *kw-x6*) 6)   ((eq r *kw-x7*) 7)
+    ((eq r *kw-x8*) 8)   ((eq r *kw-x9*) 9)   ((eq r *kw-x10*) 10) ((eq r *kw-x11*) 11)
+    ((eq r *kw-x12*) 12) ((eq r *kw-x13*) 13) ((eq r *kw-x14*) 14) ((eq r *kw-x15*) 15)
+    ((eq r *kw-x16*) 16) ((eq r *kw-x17*) 17) ((eq r *kw-x18*) 18) ((eq r *kw-x19*) 19)
+    ((eq r *kw-x20*) 20) ((eq r *kw-x21*) 21) ((eq r *kw-x22*) 22) ((eq r *kw-x23*) 23)
+    ((eq r *kw-x24*) 24) ((eq r *kw-x25*) 25) ((eq r *kw-x26*) 26) ((eq r *kw-x27*) 27)
+    ((eq r *kw-x28*) 28) ((eq r *kw-x29*) 29) ((eq r *kw-x30*) 30)
+    ;; Special registers
+    ((eq r *kw-sp*) 31)
+    ((eq r *kw-xzr*) 31)
+    ((eq r *kw-lr*) 30)
+    ((eq r *kw-fp*) 29)
+    ;; Habu-specific aliases
+    ((eq r *kw-env*) 20)
+    ((eq r *kw-closure*) 24)
+    ((eq r *kw-code-base*) 26)
+    ((eq r *kw-gc*) 27)
+    ((eq r *kw-heap*) 28)
+    ;; Unknown register - error
+    (t (error "habu0-reg: unknown register keyword"))))
+
+;;; get-arm64-fn: Look up ARM64 function by name
+;;; Returns the function object, crashes if not found (no fallbacks)
+;;; Works in both SBCL (arm64 package loaded) and native habu0 (after arm64/asm.lisp loaded)
+(defun get-arm64-fn (name)
+  "Get ARM64 function by symbol name. Crashes if not found."
+  (let* ((pkg (find-package "ARM64"))
+         (sym (if pkg (find-symbol (symbol-name name) pkg) nil))
+         (fn (if (and sym (fboundp sym)) (symbol-function sym) nil)))
+    (if fn
+        fn
+        (error "ARM64 function not available: ~A (is arm64/asm.lisp loaded?)" name))))
+
 ;; Dispatch builtin functions via ID lookup and match
+;; IMPORTANT: Normalize args at this boundary to ensure keywords are
+;; habu0-interned, allowing eq comparison in ARM64 functions.
 (defun h0-eval-builtin (name args fenv)
-  (let ((id (find-builtin-id name *builtin-dispatch*)))
+  (let* ((nargs (normalize-args args))  ; Normalize keywords at boundary
+         (id (find-builtin-id name *builtin-dispatch*)))
     (if (null id)
         (fatal-error "h0-eval-builtin: unknown builtin")
         (match id
-          ;; Compiler functions
+          ;; Compiler functions (don't need normalization - no keywords)
           (1 (h0-compile (car args) (cadr args) (caddr args)))
           (2 (h0-codegen (car args) (cadr args)))
           (3 (h0-linearize (car args)))
@@ -2056,35 +2156,34 @@
           (5 (read-all (car args)))
           (6 (native-read-file (car args)))
           (7 (collect-defuns (car args) (cadr args)))
-          ;; ARM64 - memory
-          (10 (str (car args) (cadr args) :offset (get-kw-arg args *kw-offset* 0)))
-          (11 (ldr (car args) (cadr args) :offset (get-kw-arg args *kw-offset* 0)))
-          (12 (stp (car args) (cadr args) (caddr args) :offset (get-kw-arg args *kw-offset* 0)))
-          (13 (ldp (car args) (cadr args) (caddr args) :offset (get-kw-arg args *kw-offset* 0)))
-          ;; ARM64 - data movement
-          (20 (mov (car args) (cadr args)))
-          (21 (movz (car args) (cadr args)))
-          ;; ARM64 - arithmetic
-          (30 (if (cddr args)
-                  (add (car args) (cadr args) (caddr args) :imm (get-kw-arg args *kw-imm* nil))
-                  (add (car args) (cadr args) 0)))
-          (31 (if (cddr args)
-                  (sub (car args) (cadr args) (caddr args) :imm (get-kw-arg args *kw-imm* nil))
-                  (sub (car args) (cadr args) 0)))
-          ;; ARM64 - compare/branch
-          (40 (if (get-kw-arg args *kw-imm* nil)
-                  (cmp (car args) (cadr args) :imm t)
-                  (cmp (car args) (cadr args))))
-          (41 (b (car args)))
-          (42 (bl (car args)))
-          (43 (b.eq (car args)))
-          (44 (b.ne (car args)))
-          (45 (cbz (car args) (cadr args)))
-          (46 (cbnz (car args) (cadr args)))
-          (47 (ret))
-          (48 (nop))
-          ;; ARM64 - utility
-          (50 (reg (car args)))
+          ;; ARM64 functions - accessed via symbol-function lookup
+          ;; Works in both SBCL and native habu0 (once arm64/asm.lisp is loaded)
+          ;; No fallbacks - crash if ARM64 not available
+          (10 (funcall (get-arm64-fn 'str) (car nargs) (cadr nargs) :offset (get-kw-arg nargs *kw-offset* 0)))
+          (11 (funcall (get-arm64-fn 'ldr) (car nargs) (cadr nargs) :offset (get-kw-arg nargs *kw-offset* 0)))
+          (12 (funcall (get-arm64-fn 'stp) (car nargs) (cadr nargs) (caddr nargs) :offset (get-kw-arg nargs *kw-offset* 0)))
+          (13 (funcall (get-arm64-fn 'ldp) (car nargs) (cadr nargs) (caddr nargs) :offset (get-kw-arg nargs *kw-offset* 0)))
+          (20 (funcall (get-arm64-fn 'mov) (car nargs) (cadr nargs)))
+          (21 (funcall (get-arm64-fn 'movz) (car nargs) (cadr nargs)))
+          (30 (if (cddr nargs)
+                  (funcall (get-arm64-fn 'add) (car nargs) (cadr nargs) (caddr nargs) :imm (get-kw-arg nargs *kw-imm* nil))
+                  (funcall (get-arm64-fn 'add) (car nargs) (cadr nargs) 0)))
+          (31 (if (cddr nargs)
+                  (funcall (get-arm64-fn 'sub) (car nargs) (cadr nargs) (caddr nargs) :imm (get-kw-arg nargs *kw-imm* nil))
+                  (funcall (get-arm64-fn 'sub) (car nargs) (cadr nargs) 0)))
+          (40 (if (get-kw-arg nargs *kw-imm* nil)
+                  (funcall (get-arm64-fn 'cmp) (car nargs) (cadr nargs) :imm t)
+                  (funcall (get-arm64-fn 'cmp) (car nargs) (cadr nargs))))
+          (41 (funcall (get-arm64-fn 'b) (car nargs)))
+          (42 (funcall (get-arm64-fn 'bl) (car nargs)))
+          (43 (funcall (get-arm64-fn 'b.eq) (car nargs)))
+          (44 (funcall (get-arm64-fn 'b.ne) (car nargs)))
+          (45 (funcall (get-arm64-fn 'cbz) (car nargs) (cadr nargs)))
+          (46 (funcall (get-arm64-fn 'cbnz) (car nargs) (cadr nargs)))
+          (47 (funcall (get-arm64-fn 'ret)))
+          (48 (funcall (get-arm64-fn 'nop)))
+          ;; ARM64 - utility (use nargs with habu0-reg for eq comparison)
+          (50 (habu0-reg (car nargs)))
           (_ (fatal-error "h0-eval-builtin: unhandled dispatch ID"))))))
 
 ;; Eval a list of expressions
@@ -2245,6 +2344,47 @@
   ;; Initialize runtime keywords for eq comparison
   (setq *kw-offset* (intern-keyword "OFFSET"))
   (setq *kw-imm* (intern-keyword "IMM"))
+  ;; Initialize register keywords for eq comparison in habu0-reg
+  (setq *kw-x0* (intern-keyword "X0"))
+  (setq *kw-x1* (intern-keyword "X1"))
+  (setq *kw-x2* (intern-keyword "X2"))
+  (setq *kw-x3* (intern-keyword "X3"))
+  (setq *kw-x4* (intern-keyword "X4"))
+  (setq *kw-x5* (intern-keyword "X5"))
+  (setq *kw-x6* (intern-keyword "X6"))
+  (setq *kw-x7* (intern-keyword "X7"))
+  (setq *kw-x8* (intern-keyword "X8"))
+  (setq *kw-x9* (intern-keyword "X9"))
+  (setq *kw-x10* (intern-keyword "X10"))
+  (setq *kw-x11* (intern-keyword "X11"))
+  (setq *kw-x12* (intern-keyword "X12"))
+  (setq *kw-x13* (intern-keyword "X13"))
+  (setq *kw-x14* (intern-keyword "X14"))
+  (setq *kw-x15* (intern-keyword "X15"))
+  (setq *kw-x16* (intern-keyword "X16"))
+  (setq *kw-x17* (intern-keyword "X17"))
+  (setq *kw-x18* (intern-keyword "X18"))
+  (setq *kw-x19* (intern-keyword "X19"))
+  (setq *kw-x20* (intern-keyword "X20"))
+  (setq *kw-x21* (intern-keyword "X21"))
+  (setq *kw-x22* (intern-keyword "X22"))
+  (setq *kw-x23* (intern-keyword "X23"))
+  (setq *kw-x24* (intern-keyword "X24"))
+  (setq *kw-x25* (intern-keyword "X25"))
+  (setq *kw-x26* (intern-keyword "X26"))
+  (setq *kw-x27* (intern-keyword "X27"))
+  (setq *kw-x28* (intern-keyword "X28"))
+  (setq *kw-x29* (intern-keyword "X29"))
+  (setq *kw-x30* (intern-keyword "X30"))
+  (setq *kw-sp* (intern-keyword "SP"))
+  (setq *kw-xzr* (intern-keyword "XZR"))
+  (setq *kw-lr* (intern-keyword "LR"))
+  (setq *kw-fp* (intern-keyword "FP"))
+  (setq *kw-env* (intern-keyword "ENV"))
+  (setq *kw-closure* (intern-keyword "CLOSURE"))
+  (setq *kw-code-base* (intern-keyword "CODE-BASE"))
+  (setq *kw-gc* (intern-keyword "GC"))
+  (setq *kw-heap* (intern-keyword "HEAP"))
   nil)
 
 ;; Environment lookup for compilation - returns offset or nil
