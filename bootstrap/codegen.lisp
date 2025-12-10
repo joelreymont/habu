@@ -3031,6 +3031,7 @@
 ;;; Delivery Functions
 ;;; ============================================================
 
+#+sbcl
 (defun deliver (source output-path &optional (heap-size #x4000000))
   "Compile source string to native executable.
    Heap is pre-allocated in __DATA segment (mapped by dyld at load time).
@@ -3304,6 +3305,7 @@
 ;;; Embedded Symbol Table for Runtime Symbolication
 ;;; ============================================================
 
+#+sbcl
 (defun emit-symbol-table (fnoffs main-size)
   "Emit symbol table bytes for embedding in binary.
    Returns a list of bytes containing:
@@ -3343,6 +3345,7 @@
       (append (u64-bytes count)
               (apply #'append (mapcar #'emit-entry all-entries))))))
 
+#+sbcl
 (defun symbol-table-size (fnoffs)
   "Calculate the size of the embedded symbol table in bytes."
   (let ((count (1+ (length fnoffs))))  ; +1 for _main
@@ -3382,6 +3385,7 @@
         (build-fn-addr-alist (cdr fnoffs) base
                                    (cons (cons name addr) acc)))))
 
+#+sbcl
 (defun flatten-code-keep-markers-and-calls (code)
   "Flatten code lists but keep both :extern-call, :call-fn, :tco-branch, :loop-start, :loop-continue and :fn-label markers with positions.
    ITERATIVE version using explicit work stack to avoid deep recursion."
@@ -3651,6 +3655,7 @@
           (cdar alist)
           (alist-lookup key (cdr alist)))))
 
+#+sbcl
 (defun flatten-code-keep-markers (code)
   "Flatten nested code lists but keep :extern-call markers intact.
    Tracks position and transforms (:extern-call name) to (:extern-call name pos).
