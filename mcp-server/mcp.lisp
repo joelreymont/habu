@@ -326,8 +326,8 @@
                                    :wait nil
                                    :search search
                                    :directory directory))
-         (stdout-acc (make-array 0 :element-type 'character :adjustable t :fill-pointer 0))
-         (stderr-acc (make-array 0 :element-type 'character :adjustable t :fill-pointer 0))
+         (stdout-lines nil)
+         (stderr-lines nil)
          (stdout-lock (sb-thread:make-mutex :name "proc-stdout"))
          (stderr-lock (sb-thread:make-mutex :name "proc-stderr")))
     ;; Write input if provided
@@ -336,24 +336,24 @@
         (write-string input-string input-stream)
         (terpri input-stream)
         (close input-stream)))
-    ;; Start drainer threads
+    ;; Start drainer threads - use read-line for efficiency (fewer stack frames)
     (let ((stdout-thread
             (sb-thread:make-thread
              (lambda ()
                (ignore-errors
-                 (loop for char = (read-char (sb-ext:process-output proc) nil nil)
-                       while char do
+                 (loop for line = (read-line (sb-ext:process-output proc) nil nil)
+                       while line do
                        (sb-thread:with-mutex (stdout-lock)
-                         (vector-push-extend char stdout-acc)))))
+                         (push line stdout-lines)))))
              :name "proc-stdout-drainer"))
           (stderr-thread
             (sb-thread:make-thread
              (lambda ()
                (ignore-errors
-                 (loop for char = (read-char (sb-ext:process-error proc) nil nil)
-                       while char do
+                 (loop for line = (read-line (sb-ext:process-error proc) nil nil)
+                       while line do
                        (sb-thread:with-mutex (stderr-lock)
-                         (vector-push-extend char stderr-acc)))))
+                         (push line stderr-lines)))))
              :name "proc-stderr-drainer")))
       ;; Wait with timeout
       (let ((start-time (get-internal-real-time))
@@ -375,10 +375,12 @@
           (ignore-errors (sb-thread:terminate-thread stdout-thread)))
         (when (sb-thread:thread-alive-p stderr-thread)
           (ignore-errors (sb-thread:terminate-thread stderr-thread)))
-        ;; Return results
+        ;; Return results - join lines with newlines
         (values
-         (sb-thread:with-mutex (stdout-lock) (coerce stdout-acc 'string))
-         (sb-thread:with-mutex (stderr-lock) (coerce stderr-acc 'string))
+         (sb-thread:with-mutex (stdout-lock)
+           (format nil "~{~A~^~%~}" (nreverse stdout-lines)))
+         (sb-thread:with-mutex (stderr-lock)
+           (format nil "~{~A~^~%~}" (nreverse stderr-lines)))
          (sb-ext:process-exit-code proc)
          killed)))))
 
