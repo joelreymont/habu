@@ -1756,7 +1756,7 @@
      ;; Note: LOOP is handled by SBCL macro expansion - complex forms aren't worth reimplementing
      (if (and (symbolp (car expr))
               (macro-function (car expr))
-              (not (member (car expr) '(incf decf))))
+              (not (member (car expr) '(incf decf while))))
          (sys:compile (macroexpand-1 expr) env fenv)
          (let ((op (car expr)))
            (cond
@@ -3780,11 +3780,15 @@
 (defun collect-habu-functions ()
   "Collect all HABU package functions for fenv.
    These are SBCL-defined compiler helper functions.
+   Only includes functions actually defined in HABU, not inherited CL functions.
    Returns alist of (symbol . (nil . nil)) for variadic params."
-  (let ((acc nil))
-    (do-symbols (sym (find-package :habu))
-      ;; Only include bound functions (not macros or special operators)
-      (when (and (fboundp sym)
+  (let ((acc nil)
+        (habu-pkg (find-package :habu)))
+    (do-symbols (sym habu-pkg)
+      ;; Only include functions actually defined in HABU package
+      ;; (not CL functions that are accessible via inheritance)
+      (when (and (eq (symbol-package sym) habu-pkg)
+                 (fboundp sym)
                  (not (macro-function sym))
                  (not (special-operator-p sym)))
         (push (cons sym (cons nil nil)) acc)))

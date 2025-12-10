@@ -429,6 +429,51 @@
                      (list (list 'tac-nil result-vr)))
              result-vr)))
 
+    ;; dolist-ir: iterate over list (dolist-ir var-sym list-ir body-ir result-ir env)
+    ;; var-sym is the symbol, env has ((var . offset) ...) bindings
+    ((and (consp ir) (ir-tag-matches (car ir) "DOLIST-IR"))
+     (let* ((var-sym (cadr ir))                ; Variable symbol
+            (list-result (ir-to-tac (caddr ir) counter))
+            (list-instrs (car list-result))
+            (list-vr (cadr list-result))
+            (loop-label (next-vreg counter))
+            (end-label (next-vreg counter))
+            (iter-vr (next-vreg counter))      ; Current list pointer
+            (elem-vr (next-vreg counter))      ; Current element
+            (nil-vr (next-vreg counter))       ; For nil check
+            ;; Get var offset from compile-env (6th element)
+            (compile-env (nth 5 ir))
+            (var-entry (assoc var-sym compile-env))
+            (var-offset (if var-entry (cdr var-entry) 0))
+            ;; Process body with variable bound
+            (body-result (ir-to-tac (cadddr ir) counter))
+            (body-instrs (car body-result))
+            ;; Result form (or nil)
+            (result-result (ir-to-tac (nth 4 ir) counter))
+            (result-instrs (car result-result))
+            (result-vr (cadr result-result)))
+       ;; Generate: init iter; loop: if iter=nil goto end; elem=car(iter); setvar; body; iter=cdr(iter); goto loop; end: result
+       ;; Use tac-if-not (like while-ir) - if NOT condition, jump to end
+       ;; First compare iter to nil, result in cmp-vr
+       (let ((cmp-vr (next-vreg counter)))
+         (list (append list-instrs
+                       (list (list 'tac-move iter-vr list-vr))
+                       (list (list 'tac-label loop-label))
+                       (list (list 'tac-nil nil-vr))
+                       ;; Compare: cmp-vr = (iter != nil) - if iter IS nil, cmp is false
+                       (list (list 'tac-cmp cmp-vr :cmp-ne iter-vr nil-vr))
+                       ;; If NOT (iter != nil), i.e., if iter IS nil, jump to end
+                       (list (list 'tac-if-not cmp-vr end-label))
+                       (list (list 'tac-car elem-vr iter-vr))
+                       ;; Store elem in env slot for var
+                       (list (list 'tac-setvar var-offset elem-vr))
+                       body-instrs
+                       (list (list 'tac-cdr iter-vr iter-vr))
+                       (list (list 'tac-goto loop-label))
+                       (list (list 'tac-label end-label))
+                       result-instrs)
+               result-vr))))
+
     ;; str-lit: string literal
     ((and (consp ir) (ir-tag-matches (car ir) "STR-LIT"))
      (let ((vr (next-vreg counter)))
@@ -1167,6 +1212,7 @@
     ((tac-return tac-if tac-if-not tac-goto tac-label tac-setvar tac-sys-exit
       tac-loop-start tac-continue tac-setcar tac-setcdr tac-vector-set
       tac-set-global-vars tac-set-intern-table tac-set-keyword-table
+      tac-set-lambda-counter tac-set-symbol-counter tac-set-symbol-table
       tac-set-packages tac-set-current-package)
      nil)
     (t (error "tac-def: Unhandled TAC instruction: ~A" (car instr)))))
@@ -1274,6 +1320,14 @@
                         (else-idx (find-label-index (cadddr instr) tac-instrs 0)))
                     (append (if then-idx (list then-idx) nil)
                             (if else-idx (list else-idx) nil))))
+                 ((tac-if-not)
+                  ;; tac-if-not: (tac-if-not cond label) - jumps to label if false, falls through if true
+                  (let ((target-idx (find-label-index (caddr instr) tac-instrs 0))
+                        (fall-through (if (< (+ idx 1) n) (+ idx 1) nil)))
+                    (if (null target-idx)
+                        (error "tac-if-not: target label ~A not found" (caddr instr))
+                        (append (list target-idx)
+                                (if fall-through (list fall-through) nil)))))
                  ((tac-return)
                   nil)  ; no successor
                  (t
@@ -1746,7 +1800,7 @@
               (used-regs (remove-duplicates
                           (remove-if-not
                            (lambda (r) (member r allocatable))
-                           (mapcar #'cdr allocation))))
+                           (mapcar (lambda (x) (cdr x)) allocation))))
               ;; Generate saves to stack at offsets 0x3850+ (caller-save area)
               ;; Frame layout (16KB frame):
               ;;   0x10-0x38: saved callee-save regs (x19-x24)
@@ -3127,6 +3181,147 @@
          (setq count (+ count 1)))))
     count))
 
+#+sbcl
+(defun tac-codegen (tac-instrs allocation)
+  "Generate ARM64 code from TAC with register allocation.
+   Returns list of ARM64 instruction bytes.
+
+   This is Pass 5 of the register allocation pipeline.
+   Uses two-pass approach:
+   Pass 1: Generate code with markers, track label positions
+   Pass 2: Resolve branch markers to actual branch instructions"
+  ;; Pass 1: Generate code with markers (collect in reverse, nreverse at end)
+  (let ((code-rev nil)         ; collected in reverse order
+        (label-positions nil)  ; alist of (label . byte-position)
+        (loop-markers nil)     ; alist of (marker . label) for TCO continue
+        (current-pos 0))
+    ;; Generate code for each instruction, tracking positions
+    (dolist (instr tac-instrs)
+      (cond
+       ;; tac-loop-start: record marker → label mapping for TCO
+       ((eq (car instr) 'tac-loop-start)
+        (let ((label (cadr instr))
+              (marker (caddr instr)))
+          (push (cons marker label) loop-markers)))
+
+       ;; tac-label: record label position
+       ((eq (car instr) 'tac-label)
+        (let ((label (cadr instr)))
+          (push (cons label current-pos) label-positions)
+          (push (list :label-marker label) code-rev)))
+
+       ;; tac-continue: emit branch marker to loop start (resolve later)
+       ((eq (car instr) 'tac-continue)
+        (let* ((marker (cadr instr))
+               (label (cdr (assoc marker loop-markers))))
+          (when label
+            (push (list :branch-marker label) code-rev)
+            (setq current-pos (+ current-pos 4)))))
+
+       ;; All other instructions: generate code
+       (t
+        (let ((bytes (tac-codegen-instr instr allocation)))
+          (when bytes
+            ;; Push bytes in reverse order (will be reversed at end)
+            (dolist (b (reverse bytes))
+              (push b code-rev))
+            ;; Update position: count actual bytes AND known markers (4 bytes each)
+            (dolist (b bytes)
+              (cond
+                ((numberp b)
+                 (setq current-pos (+ current-pos 1)))
+                ;; Known markers that will become 4-byte instructions
+                ((and (consp b) (member (car b) '(:branch-marker :branch-ne-marker :branch-eq-marker :call-fn :tail-call-fn :lambda-ref-marker :extern-call)))
+                 (setq current-pos (+ current-pos 4)))
+                ;; Unknown marker - error immediately to prevent silent bugs
+                ((and (consp b) (keywordp (car b)))
+                 (error "tac-codegen Pass 1: Unknown marker ~S from instruction ~S - needs implementation" b instr)))))))))
+
+    ;; Pass 2: Resolve branch markers to actual instructions (collect in reverse)
+    (let ((resolved-rev nil)
+          (pos 0)
+          (code-with-markers (nreverse code-rev)))
+      (dolist (item code-with-markers)
+        (cond
+          ;; Skip label markers in output
+          ((and (consp item) (eq (car item) :label-marker))
+           nil)
+
+          ;; Resolve unconditional branch
+          ((and (consp item) (eq (car item) :branch-marker))
+           (let* ((target-label (cadr item))
+                  (target-pos (cdr (assoc target-label label-positions))))
+             (unless target-pos
+               (error "tac-codegen: unresolved branch to label ~S" target-label))
+             (let ((offset (ash (- target-pos pos) -2)))
+               (dolist (b (reverse (arm64:b offset)))
+                 (push b resolved-rev))
+               (setq pos (+ pos 4)))))
+
+          ;; Resolve conditional branch (branch if not equal)
+          ((and (consp item) (eq (car item) :branch-ne-marker))
+           (let* ((target-label (cadr item))
+                  (target-pos (cdr (assoc target-label label-positions))))
+             (unless target-pos
+               (error "tac-codegen: unresolved branch-ne to label ~S" target-label))
+             (let ((offset (ash (- target-pos pos) -2)))
+               (dolist (b (reverse (arm64:b.ne offset)))
+                 (push b resolved-rev))
+               (setq pos (+ pos 4)))))
+
+          ;; Resolve conditional branch (branch if equal)
+          ((and (consp item) (eq (car item) :branch-eq-marker))
+           (let* ((target-label (cadr item))
+                  (target-pos (cdr (assoc target-label label-positions))))
+             (unless target-pos
+               (error "tac-codegen: unresolved branch-eq to label ~S" target-label))
+             (let ((offset (ash (- target-pos pos) -2)))
+               (dolist (b (reverse (arm64:b.eq offset)))
+                 (push b resolved-rev))
+               (setq pos (+ pos 4)))))
+
+          ;; Function call marker - pass through for resolve-calls
+          ((and (consp item) (eq (car item) :call-fn))
+           (push item resolved-rev)
+           (setq pos (+ pos 4)))  ; BL is 4 bytes
+
+          ;; Heap allocation marker - pass through for has-unresolved-markers
+          ((and (consp item) (eq (car item) :heap-alloc-marker))
+           (push item resolved-rev))
+
+          ;; Lambda-ref marker - pass through for link-time resolution
+          ;; Format: (:lambda-ref-marker dest-reg lambda-name)
+          ;; Will be resolved to ADR instruction by linker
+          ((and (consp item) (eq (car item) :lambda-ref-marker))
+           (push item resolved-rev)
+           (setq pos (+ pos 4)))  ; ADR is 4 bytes
+
+          ;; Tail call marker - pass through for resolve-calls
+          ((and (consp item) (eq (car item) :tail-call-fn))
+           (push item resolved-rev)
+           (setq pos (+ pos 4)))  ; B is 4 bytes
+
+          ;; Extern call marker - pass through for resolve-calls (libSystem stubs)
+          ((and (consp item) (eq (car item) :extern-call))
+           (push item resolved-rev)
+           (setq pos (+ pos 4)))  ; BL is 4 bytes
+
+          ;; Regular byte - keep it
+          ((numberp item)
+           (push item resolved-rev)
+           (setq pos (+ pos 1)))
+
+          ;; Unknown marker - ERROR instead of silently dropping
+          ;; This catches unimplemented TAC instructions that emit markers
+          ((consp item)
+           (error "tac-codegen: Unhandled marker ~S - this TAC instruction needs implementation" item))
+
+          ;; Truly unknown item type
+          (t (error "tac-codegen: Unknown item type in code: ~S" item))))
+      (nreverse resolved-rev))))
+
+;; Native version uses append (simpler, already works)
+#-sbcl
 (defun tac-codegen (tac-instrs allocation)
   "Generate ARM64 code from TAC with register allocation.
    Returns list of ARM64 instruction bytes.
@@ -3289,7 +3484,7 @@
     (list (car fn) (cadr fn) (caddr fn) (cadddr fn) allocation full-tac)))
 
 ;;; Register as optimization pass
-(register-optimization 'register-allocation #'allocate-registers-for-function)
+#+sbcl (register-optimization 'register-allocation #'allocate-registers-for-function)
 
 ;;; ============================================================
 ;;; Register-Allocated Code Generation

@@ -307,7 +307,7 @@
   '((:eval . 60)
     (:run . 30)
     (:debug . 30)
-    (:build . 300)
+    (:build . 600)
     (:oracle . 30)    ; Changed from 1800 to 30 for faster iteration
     (:habu0 . 30))
   "Default timeouts in seconds for various tool types")
@@ -1609,7 +1609,7 @@
                                             "--eval" (format nil "(push #p~S asdf:*central-registry*)"
                                                              (namestring bootstrap-dir))
                                             "--eval" "(asdf:load-system :habu)"
-                                            "--eval" load-macros  ; Load macros in SBCL env for macroexpand-1
+                                            "--eval" load-macros  ; Also load macros for macroexpand-1 in sys:compile
                                             "--eval" script
                                             "--eval" "(sb-ext:exit :code 0)")
                                       :timeout timeout
