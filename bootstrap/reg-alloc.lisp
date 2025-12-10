@@ -3222,8 +3222,8 @@
        (t
         (let ((bytes (tac-codegen-instr instr allocation)))
           (when bytes
-            ;; Push bytes in reverse order (will be reversed at end)
-            (dolist (b (reverse bytes))
+            ;; Push bytes (nreverse at end will restore correct order)
+            (dolist (b bytes)
               (push b code-rev))
             ;; Update position: count actual bytes AND known markers (4 bytes each)
             (dolist (b bytes)
@@ -3254,7 +3254,7 @@
              (unless target-pos
                (error "tac-codegen: unresolved branch to label ~S" target-label))
              (let ((offset (ash (- target-pos pos) -2)))
-               (dolist (b (reverse (arm64:b offset)))
+               (dolist (b (arm64:b offset))
                  (push b resolved-rev))
                (setq pos (+ pos 4)))))
 
@@ -3265,7 +3265,7 @@
              (unless target-pos
                (error "tac-codegen: unresolved branch-ne to label ~S" target-label))
              (let ((offset (ash (- target-pos pos) -2)))
-               (dolist (b (reverse (arm64:b.ne offset)))
+               (dolist (b (arm64:b.ne offset))
                  (push b resolved-rev))
                (setq pos (+ pos 4)))))
 
@@ -3276,7 +3276,7 @@
              (unless target-pos
                (error "tac-codegen: unresolved branch-eq to label ~S" target-label))
              (let ((offset (ash (- target-pos pos) -2)))
-               (dolist (b (reverse (arm64:b.eq offset)))
+               (dolist (b (arm64:b.eq offset))
                  (push b resolved-rev))
                (setq pos (+ pos 4)))))
 
@@ -3362,8 +3362,8 @@
        (t
         (let ((bytes (tac-codegen-instr instr allocation)))
           (when bytes
-            ;; Push bytes in reverse order (will be reversed at end)
-            (dolist (b (reverse bytes))
+            ;; Push bytes (nreverse at end will restore correct order)
+            (dolist (b bytes)
               (setq code-rev (cons b code-rev)))
             ;; Update position: count actual bytes AND known markers (4 bytes each)
             (dolist (b bytes)
@@ -3394,7 +3394,7 @@
              (unless target-pos
                (error "tac-codegen: unresolved branch to label ~S" target-label))
              (let ((offset (ash (- target-pos pos) -2)))
-               (dolist (b (reverse (arm64:b offset)))
+               (dolist (b (arm64:b offset))
                  (setq resolved-rev (cons b resolved-rev)))
                (setq pos (+ pos 4)))))
 
@@ -3405,7 +3405,7 @@
              (unless target-pos
                (error "tac-codegen: unresolved branch-ne to label ~S" target-label))
              (let ((offset (ash (- target-pos pos) -2)))
-               (dolist (b (reverse (arm64:b.ne offset)))
+               (dolist (b (arm64:b.ne offset))
                  (setq resolved-rev (cons b resolved-rev)))
                (setq pos (+ pos 4)))))
 
@@ -3416,7 +3416,7 @@
              (unless target-pos
                (error "tac-codegen: unresolved branch-eq to label ~S" target-label))
              (let ((offset (ash (- target-pos pos) -2)))
-               (dolist (b (reverse (arm64:b.eq offset)))
+               (dolist (b (arm64:b.eq offset))
                  (setq resolved-rev (cons b resolved-rev)))
                (setq pos (+ pos 4)))))
 
