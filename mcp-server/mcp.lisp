@@ -1581,8 +1581,10 @@
          ;; Read each file separately, respecting in-package forms
          ;; so that ARM64:* symbols are read in the correct package.
          ;; After each read, process defpackage/in-package before reading next form.
+         ;; Bind *features* without :sbcl to skip #+sbcl forms (SBCL-only debug code with loop).
          (script (format nil "(habu:deliver-forms ~
-                               (let ((forms nil)) ~
+                               (let ((forms nil) ~
+                                     (*features* (remove :sbcl *features*))) ~
                                  (dolist (file (list ~S ~S ~S ~S ~S ~S)) ~
                                    (let ((*package* (find-package :habu))) ~
                                      (with-open-file (s file) ~

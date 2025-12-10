@@ -3910,26 +3910,26 @@
   "Wrap bytecode with heap initialization for executables with imports.
    heap-page-offset is the page offset from ADRP to __DATA segment."
   ;; Pre-compute all instructions to avoid function-calls-in-list crash
-  (let* ((i1 (sub :sp :sp 512 :imm t))             ; sub sp, sp, #512
-         (i2 (str :x30 :sp :offset 0))             ; str x30, [sp]
-         (i3 (str :x28 :sp :offset 8))             ; str x28, [sp, #8]
-         (i4 (str :x26 :sp :offset 16))            ; str x26, [sp, #16]
-         (i5 (str :x27 :sp :offset 24)))           ; str x27, [sp, #24]
-    (let* ((i6 (str :x20 :sp :offset 32))          ; str x20, [sp, #32]
-           (i7 (add :x20 :sp 64 :imm t))           ; add x20, sp, #64
-           (i8 (macho-adrp 28 heap-page-offset))   ; adrp x28, heap_page
-           (i9 (mov :x27 :x28))                    ; mov x27, x28
-           (i10 (add :x28 :x28 16 :imm t)))        ; add x28, x28, #16
-      (let* ((i11 (macho-adr 26 40))               ; adr x26, +40
-             (i12 (macho-bl 9))                    ; bl +9
-             (i13 (lsr :x0 :x0 4 :imm t))          ; lsr x0, x0, #4
-             (i14 (ldr :x20 :sp :offset 32))       ; ldr x20, [sp, #32]
-             (i15 (ldr :x27 :sp :offset 24)))      ; ldr x27, [sp, #24]
-        (let* ((i16 (ldr :x26 :sp :offset 16))     ; ldr x26, [sp, #16]
-               (i17 (ldr :x28 :sp :offset 8))      ; ldr x28, [sp, #8]
-               (i18 (ldr :x30 :sp :offset 0))      ; ldr x30, [sp]
-               (i19 (add :sp :sp 512 :imm t))      ; add sp, sp, #512
-               (i20 (ret)))                        ; ret
+  (let* ((i1 (arm64:sub :sp :sp 512 :imm t))             ; sub sp, sp, #512
+         (i2 (arm64:str :x30 :sp :offset 0))             ; str x30, [sp]
+         (i3 (arm64:str :x28 :sp :offset 8))             ; str x28, [sp, #8]
+         (i4 (arm64:str :x26 :sp :offset 16))            ; str x26, [sp, #16]
+         (i5 (arm64:str :x27 :sp :offset 24)))           ; str x27, [sp, #24]
+    (let* ((i6 (arm64:str :x20 :sp :offset 32))          ; str x20, [sp, #32]
+           (i7 (arm64:add :x20 :sp 64 :imm t))           ; add x20, sp, #64
+           (i8 (macho-adrp 28 heap-page-offset))         ; adrp x28, heap_page
+           (i9 (arm64:mov :x27 :x28))                    ; mov x27, x28
+           (i10 (arm64:add :x28 :x28 16 :imm t)))        ; add x28, x28, #16
+      (let* ((i11 (macho-adr 26 40))                     ; adr x26, +40
+             (i12 (macho-bl 9))                          ; bl +9
+             (i13 (arm64:lsr :x0 :x0 4 :imm t))          ; lsr x0, x0, #4
+             (i14 (arm64:ldr :x20 :sp :offset 32))       ; ldr x20, [sp, #32]
+             (i15 (arm64:ldr :x27 :sp :offset 24)))      ; ldr x27, [sp, #24]
+        (let* ((i16 (arm64:ldr :x26 :sp :offset 16))     ; ldr x26, [sp, #16]
+               (i17 (arm64:ldr :x28 :sp :offset 8))      ; ldr x28, [sp, #8]
+               (i18 (arm64:ldr :x30 :sp :offset 0))      ; ldr x30, [sp]
+               (i19 (arm64:add :sp :sp 512 :imm t))      ; add sp, sp, #512
+               (i20 (arm64:ret)))                        ; ret
           (let ((stub (bytes-append-all
                        (list i1 i2 i3 i4 i5 i6 i7 i8 i9 i10
                              i11 i12 i13 i14 i15 i16 i17 i18 i19 i20))))

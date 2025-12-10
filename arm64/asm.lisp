@@ -179,6 +179,14 @@
 ;; RUNTIME DISPATCH: Check the tag bits to decide which function to use.
 ;; Keywords in habu0 have tag 7, symbols have tag 2.
 ;; In SBCL, keywords are symbols (same tag), so symbolp returns t.
+
+;; keyword-name: get the string from a keyword (habu0 native only)
+;; Keywords have same layout as strings, just different tag (7 vs 4)
+;; set-tag: change low 4 bits: (logior (logand val #xFFFFFFFFFFFFFFF0) new-tag)
+#-sbcl
+(defun keyword-name (kw)
+  (logior (logand kw #xFFFFFFFFFFFFFFF0) 4))
+
 ;; Prevent inlining - these are boundary functions between SBCL and habu0
 (declaim (notinline get-keyword-name reg-name=))
 (defun get-keyword-name (kw)

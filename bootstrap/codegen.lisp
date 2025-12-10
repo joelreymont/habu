@@ -1500,6 +1500,7 @@
     ;; Default: unknown IR
     (t (error "linearize-expr: unknown IR type ~S" (if (consp ir) (car ir) ir)))))
 
+#+sbcl
 (defun linearize (ir)
   "Convert tree IR to linear IR.
    Returns a list of linear instructions in execution order."
@@ -2675,6 +2676,7 @@
       (otherwise
        (error "codegen-linear-instr: unknown instruction ~S" op)))))
 
+#+sbcl
 (defun codegen (linear-ir rtaddrs fnoffs)
   "Generate ARM64 code from linear IR.
    Simple iteration over instructions - no recursion.
