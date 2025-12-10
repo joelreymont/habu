@@ -74,6 +74,7 @@
               (return (nreverse result)))
             (push (logior byte #x80) result))))))
 
+#+sbcl
 (defun encode-sleb128 (value)
   "Encode VALUE as SLEB128, returning list of bytes"
   (let ((result nil)
@@ -392,6 +393,7 @@
 ;;; Integration with Source Locations
 ;;; ============================================================
 
+#+sbcl
 (defun build-dwarf-function-list (fnoffs fn-locations)
   "Build function list for DWARF from fnoffs and source locations.
    FNOFFS: alist of (symbol . byte-offset) from codegen
