@@ -3152,6 +3152,7 @@
                     (debug-table (emit-debug-table debug-vars all-fnoffs)))
                (write-debug-info output-path debug-vars debug-table)))))
 
+#+sbcl
 (defun deliver-file (source-path output-path &optional (heap-size #x4000000))
   "Compile Lisp file to native executable.
    Usage: (habu:deliver-file \"program.lisp\" \"program\")"
@@ -3188,8 +3189,8 @@
            ;; Apply TCO to all functions
            (all-fns (apply-tco-to-all-functions all-fns-raw))
            ;; Link-time verification
-           (_ (when (verify-link-references (mapcar #'car all-fns))
-                (error "Link failed: undefined function references")))
+           (_ #+sbcl (when (verify-link-references (mapcar #'car all-fns))
+                       (error "Link failed: undefined function references")))
            ;; Generate main code using linear codegen
            (main-linear (linearize main-ir))
            (main-code-temp (append-all
@@ -3265,10 +3266,10 @@
       ;; Write executable
       (write-macho-executable-with-imports-and-heap output-path wrapped-code imports heap-size
                                                     all-fnoffs symtab-bytes)
-      (write-symbol-map output-path all-fnoffs main-size imports stubs-offset)
-      (let* ((debug-vars (extract-debug-vars all-fns))
-             (debug-table (emit-debug-table debug-vars all-fnoffs)))
-        (write-debug-info output-path debug-vars debug-table)))))
+      #+sbcl (write-symbol-map output-path all-fnoffs main-size imports stubs-offset)
+      #+sbcl (let* ((debug-vars (extract-debug-vars all-fns))
+                    (debug-table (emit-debug-table debug-vars all-fnoffs)))
+               (write-debug-info output-path debug-vars debug-table)))))
 
 #+sbcl
 (defun write-symbol-map (output-path fnoffs main-size imports stubs-offset)
