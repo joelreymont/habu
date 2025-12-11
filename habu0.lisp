@@ -1817,474 +1817,262 @@
           (t (h0-eval-case-clauses key (cdr clauses) env fenv))))))
 
 ;; Eval function with fenv for function definitions
-;; Uses cached op= functions for O(1) amortized dispatch
+;; Uses dispatch table with case for O(1) amortized dispatch (jump table in SBCL)
+;; Dispatch IDs: 1-30 special forms, 30-39 self-eval, 101-220 primitives
 (defun h0-eval (expr env fenv)
   (cond
-    ;; Numbers are self-evaluating
+    ;; Self-evaluating types
     ((numberp expr) expr)
-    ;; Strings are self-evaluating
     ((stringp expr) expr)
-    ;; Keywords are self-evaluating
     ((keywordp expr) expr)
-    ;; nil is false (both Lisp nil and symbol NIL)
     ((null expr) nil)
-    ;; Symbol NIL - return nil (catches reader-created NIL symbol)
-    ((if (symbolp expr) (op=nil expr) nil) nil)
-    ;; t is true
-    ((if (symbolp expr) (op=t expr) nil) t)
-    ;; Symbol lookup - first local env, then global env, then fenv (as function designator)
+    ;; Symbols - check for T/NIL first, then variable lookup
     ((symbolp expr)
-     (let ((entry (env-lookup expr env)))
-       (if entry
-           (cdr entry)  ; Extract value from local entry
-           ;; Try global env
-           (let ((global-entry (h0-global-lookup expr)))
-             (if global-entry
-                 (cdr global-entry)  ; Extract value from global entry
-                 ;; Not in var namespaces - check fenv for function
-                 ;; If found, return the symbol itself as a function designator
-                 ;; This allows (funcall fn ...) where fn is a function name
-                 (let ((fn-entry (fenv-lookup expr fenv)))
-                   (if fn-entry
-                       expr  ; Return symbol as function designator
-                       ;; Not found anywhere - undefined symbol
-                       (fatal-error "h0-eval: undefined symbol"))))))))
-    ;; List - function call or special form
-    ((consp expr)
-     (let ((op (car expr)))
+     (let ((id (op-lookup expr)))
        (cond
-         ;; Quote - use cached op=quote
-         ((if (symbolp op) (op=quote op) nil) (cadr expr))
-         ;; If - use cached op=if
-         ((if (symbolp op) (op=if op) nil)
-          (if (h0-eval (cadr expr) env fenv)
-              (h0-eval (caddr expr) env fenv)
-              (if (cadddr expr) (h0-eval (cadddr expr) env fenv) nil)))
-         ;; Let - use cached op=let, delegate to helper for iteration
-         ;; Let body has implicit progn: (let ((x 1)) body1 body2...)
-         ((if (symbolp op) (op=let op) nil)
-          (h0-eval-let-body (cadr expr) (cddr expr) env fenv))
-         ;; Let* - same as let for sequential binding
-         ((if (symbolp op) (op=let-star op) nil)
-          (h0-eval-let-body (cadr expr) (cddr expr) env fenv))
-         ;; Progn - evaluate forms in sequence
-         ((if (symbolp op) (op=progn op) nil)
-          (h0-eval-progn (cdr expr) env fenv))
-         ;; Cond - multi-way conditional
-         ((if (symbolp op) (op=cond op) nil)
-          (h0-eval-cond (cdr expr) env fenv))
-         ;; Defun - returns nil but defines function
-         ((if (symbolp op) (op=defun op) nil) nil)
-         ;; Defvar - define global variable with initial value (or nil)
-         ;; (defvar name) or (defvar name value)
-         ((if (symbolp op) (op=defvar op) nil)
-          (let* ((var-sym (cadr expr))
-                 (init-val (if (cddr expr) (h0-eval (caddr expr) env fenv) nil)))
-            ;; Only initialize if not already defined
-            (if (null (h0-global-lookup var-sym))
-                (h0-global-set var-sym init-val))
-            var-sym))
-         ;; While - loop while condition is true
-         ;; (while test body...) - evaluates body while test is non-nil
-         ((if (symbolp op) (op=while op) nil)
-          (h0-eval-while (cadr expr) (cddr expr) env fenv))
-         ;; Defpackage - create package, returns nil
-         ((if (symbolp op) (op=defpackage op) nil)
-          (let ((pkg-name (keyword-name (cadr expr))))
-            (make-package (string-upcase pkg-name))
-            nil))
-         ;; In-package - set current package, returns nil
-         ((if (symbolp op) (op=in-package op) nil)
-          (let ((pkg-name (keyword-name (cadr expr))))
-            (setq *current-package* (string-upcase pkg-name))
-            ;; Ensure package exists
-            (make-package *current-package*)
-            nil))
-         ;; Case - multi-way conditional on value
-         ((if (symbolp op) (op=case op) nil)
-          (let ((key (h0-eval (cadr expr) env fenv)))
-            (h0-eval-case-clauses key (cddr expr) env fenv)))
-         ;; When - conditional execution (returns nil if false)
-         ((if (symbolp op) (op=when op) nil)
-          (if (h0-eval (cadr expr) env fenv)
-              (h0-eval-progn (cddr expr) env fenv)
-              nil))
-         ;; Unless - inverse conditional (executes when false)
-         ((if (symbolp op) (op=unless op) nil)
-          (if (h0-eval (cadr expr) env fenv)
-              nil
-              (h0-eval-progn (cddr expr) env fenv)))
-         ;; Declaim - declaration, no-op in interpreter
-         ((if (symbolp op) (op=declaim op) nil) nil)
-         ;; Setq - variable assignment
-         ;; First check local env, then global env
-         ((if (symbolp op) (op=setq op) nil)
-          (let* ((var-sym (cadr expr))
-                 (val (h0-eval (caddr expr) env fenv))
-                 (local-cell (env-lookup var-sym env)))
-            (if local-cell
-                val  ; Return value (local mutation not supported in alist env)
-                ;; Try global
-                (let ((global-cell (h0-global-lookup var-sym)))
-                  (if global-cell
-                      (h0-global-set var-sym val)
-                      (fatal-error "h0-eval: SETQ unknown variable"))))))
-         ;; Error - signal error (crash with message)
-         ((if (symbolp op) (op=error op) nil)
-          (fatal-error "h0-eval: error called"))
-         ;; Arithmetic - use cached op= functions (variadic support)
-         ((if (symbolp op) (op=plus op) nil)
-          (h0-eval-add (cdr expr) env fenv))
-         ((if (symbolp op) (op=minus op) nil)
-          (h0-eval-sub (cdr expr) env fenv))
-         ((if (symbolp op) (op=mul op) nil)
-          (let* ((left (h0-eval (cadr expr) env fenv))
-                 (right (h0-eval (caddr expr) env fenv)))
-            (* left right)))
-         ((if (symbolp op) (op=div op) nil)
-          (let* ((left (h0-eval (cadr expr) env fenv))
-                 (right (h0-eval (caddr expr) env fenv)))
-            (/ left right)))
-         ((if (symbolp op) (op=mod op) nil)
-          (let* ((left (h0-eval (cadr expr) env fenv))
-                 (right (h0-eval (caddr expr) env fenv)))
-            (mod left right)))
-         ;; List operations
-         ((if (symbolp op) (op=cons op) nil)
-          (let* ((car-val (h0-eval (cadr expr) env fenv))
-                 (cdr-val (h0-eval (caddr expr) env fenv)))
-            (cons car-val cdr-val)))
-         ((if (symbolp op) (op=car op) nil)
-          (let ((arg (h0-eval (cadr expr) env fenv)))
-            (car arg)))
-         ((if (symbolp op) (op=cdr op) nil)
-          (let ((arg (h0-eval (cadr expr) env fenv)))
-            (cdr arg)))
-         ((if (symbolp op) (op=cadr op) nil)
-          (let ((arg (h0-eval (cadr expr) env fenv)))
-            (car (cdr arg))))
-         ((if (symbolp op) (op=cddr op) nil)
-          (let ((arg (h0-eval (cadr expr) env fenv)))
-            (cdr (cdr arg))))
-         ((if (symbolp op) (op=caddr op) nil)
-          (let ((arg (h0-eval (cadr expr) env fenv)))
-            (car (cdr (cdr arg)))))
-         ((if (symbolp op) (op=cadddr op) nil)
-          (let ((arg (h0-eval (cadr expr) env fenv)))
-            (car (cdr (cdr (cdr arg))))))
-         ((if (symbolp op) (op=list op) nil) (h0-eval-list (cdr expr) env fenv))
-         ;; SETCAR - mutate car of cons cell (for boxed mutable captures)
-         ((if (symbolp op) (op=setcar op) nil)
-          (let* ((cell (h0-eval (cadr expr) env fenv))
-                 (val (h0-eval (caddr expr) env fenv)))
-            (setcar cell val)
-            val))
-         ;; Type predicates
-         ((if (symbolp op) (op=null op) nil)
-          (let ((arg (h0-eval (cadr expr) env fenv)))
-            (if (null arg) t nil)))
-         ((if (symbolp op) (op=consp op) nil)
-          (let ((arg (h0-eval (cadr expr) env fenv)))
-            (if (consp arg) t nil)))
-         ;; Boolean operations
-         ((if (symbolp op) (op=not op) nil)
-          (let ((arg (h0-eval (cadr expr) env fenv)))
-            (if arg nil t)))
-         ((if (symbolp op) (op=and op) nil) (h0-eval-and (cdr expr) env fenv))
-         ((if (symbolp op) (op=or op) nil) (h0-eval-or (cdr expr) env fenv))
-         ;; Comparisons - use cached op= functions
-         ((if (symbolp op) (op=eq-num op) nil)
-          (let* ((left (h0-eval (cadr expr) env fenv))
-                 (right (h0-eval (caddr expr) env fenv)))
-            (if (= left right) t nil)))
-         ((if (symbolp op) (op=lt op) nil)
-          (let* ((left (h0-eval (cadr expr) env fenv))
-                 (right (h0-eval (caddr expr) env fenv)))
-            (if (< left right) t nil)))
-         ((if (symbolp op) (op=gt op) nil)
-          (let* ((left (h0-eval (cadr expr) env fenv))
-                 (right (h0-eval (caddr expr) env fenv)))
-            (if (> left right) t nil)))
-         ((if (symbolp op) (op=le op) nil)
-          (let* ((left (h0-eval (cadr expr) env fenv))
-                 (right (h0-eval (caddr expr) env fenv)))
-            (if (<= left right) t nil)))
-         ((if (symbolp op) (op=ge op) nil)
-          (let* ((left (h0-eval (cadr expr) env fenv))
-                 (right (h0-eval (caddr expr) env fenv)))
-            (if (>= left right) t nil)))
-         ;; Type predicates - primitives (use cached symbols, not string comparison)
-         ((if (symbolp op) (op=symbolp op) nil)
-          (let ((arg (h0-eval (cadr expr) env fenv)))
-            (if (symbolp arg) t nil)))
-         ((if (symbolp op) (op=numberp op) nil)
-          (let ((arg (h0-eval (cadr expr) env fenv)))
-            (if (numberp arg) t nil)))
-         ((if (symbolp op) (op=stringp op) nil)
-          (let ((arg (h0-eval (cadr expr) env fenv)))
-            (if (stringp arg) t nil)))
-         ((if (symbolp op) (op=keywordp op) nil)
-          (let ((arg (h0-eval (cadr expr) env fenv)))
-            (if (keywordp arg) t nil)))
-         ;; String primitives (use cached symbols)
-         ((if (symbolp op) (op=string-length op) nil)
-          (let ((arg (h0-eval (cadr expr) env fenv)))
-            (string-length arg)))
-         ((if (symbolp op) (op=string-ref op) nil)
-          (let* ((str (h0-eval (cadr expr) env fenv))
-                 (idx (h0-eval (caddr expr) env fenv)))
-            (string-ref str idx)))
-         ((if (symbolp op) (op=char-at op) nil)
-          (let* ((str (h0-eval (cadr expr) env fenv))
-                 (idx (h0-eval (caddr expr) env fenv)))
-            (if (< idx (string-length str))
-                (string-ref str idx)
-                0)))
-         ((if (symbolp op) (op=string= op) nil)
-          (let* ((s1 (h0-eval (cadr expr) env fenv))
-                 (s2 (h0-eval (caddr expr) env fenv)))
-            (if (string= s1 s2) t nil)))
-         ;; String-equal (case-insensitive string comparison)
-         ((if (symbolp op) (op=string-equal op) nil)
-          (let* ((s1 (h0-eval (cadr expr) env fenv))
-                 (s2 (h0-eval (caddr expr) env fenv)))
-            (string-equal s1 s2)))
-         ;; Sym-eq (symbol name comparison)
-         ((if (symbolp op) (op=sym-eq op) nil)
-          (let* ((s1 (h0-eval (cadr expr) env fenv))
-                 (s2 (h0-eval (caddr expr) env fenv)))
-            (sym-eq s1 s2)))
-         ;; Member (list membership using eq)
-         ((if (symbolp op) (op=member op) nil)
-          (let* ((item (h0-eval (cadr expr) env fenv))
-                 (lst (h0-eval (caddr expr) env fenv)))
-            (member item lst)))
-         ;; Symbol primitives (use cached symbols)
-         ((if (symbolp op) (op=symbol-name op) nil)
-          (let ((arg (h0-eval (cadr expr) env fenv)))
-            (symbol-name arg)))
-         ;; Keyword-name - extract string name from keyword
-         ((if (symbolp op) (op=keyword-name op) nil)
-          (let ((arg (h0-eval (cadr expr) env fenv)))
-            (keyword-name arg)))
-         ;; Bitwise operations (use cached symbols)
-         ((if (symbolp op) (op=logand op) nil)
-          (let* ((left (h0-eval (cadr expr) env fenv))
-                 (right (h0-eval (caddr expr) env fenv)))
-            (logand left right)))
-         ((if (symbolp op) (op=logior op) nil)
-          (let* ((left (h0-eval (cadr expr) env fenv))
-                 (right (h0-eval (caddr expr) env fenv)))
-            (logior left right)))
-         ((if (symbolp op) (op=ash op) nil)
-          (let* ((val (h0-eval (cadr expr) env fenv))
-                 (shift (h0-eval (caddr expr) env fenv)))
-            (ash val shift)))
-         ;; EQ comparison (use cached symbol)
-         ((if (symbolp op) (op=eq op) nil)
-          (let* ((left (h0-eval (cadr expr) env fenv))
-                 (right (h0-eval (caddr expr) env fenv)))
-            (if (eq left right) t nil)))
-         ;; EQL comparison (eq for symbols, = for numbers)
-         ((if (symbolp op) (op=eql op) nil)
-          (let* ((left (h0-eval (cadr expr) env fenv))
-                 (right (h0-eval (caddr expr) env fenv)))
-            (eql left right)))
-         ;; Get-tag - use native get-tag primitive
-         ((if (symbolp op) (op=get-tag op) nil)
-          (let ((arg (h0-eval (cadr expr) env fenv)))
-            (get-tag arg)))
-         ;; Set-tag - change tag bits on a pointer value
-         ;; (set-tag value new-tag) -> value with its tag bits replaced
-         ;; Both value and new-tag are tagged values
-         ((if (symbolp op) (op=set-tag op) nil)
-          (let ((value (h0-eval (cadr expr) env fenv))
-                (new-tag (h0-eval (caddr expr) env fenv)))
-            (set-tag value new-tag)))
-         ;; Length - count list elements (use cached symbol)
-         ((if (symbolp op) (op=length op) nil)
-          (let ((arg (h0-eval (cadr expr) env fenv)))
-            (labels ((count-len (lst n)
-                       (if (null lst) n
-                           (count-len (cdr lst) (+ n 1)))))
-              (count-len arg 0))))
-         ;; Vector primitives (use cached symbols)
-         ((if (symbolp op) (op=make-vector op) nil)
-          (let ((size (h0-eval (cadr expr) env fenv)))
-            (make-vector size)))
-         ((if (symbolp op) (op=vector-length op) nil)
-          (let ((vec (h0-eval (cadr expr) env fenv)))
-            (vector-length vec)))
-         ((if (symbolp op) (op=vector-set op) nil)
-          (let* ((vec (h0-eval (cadr expr) env fenv))
-                 (idx (h0-eval (caddr expr) env fenv))
-                 (val (h0-eval (cadddr expr) env fenv)))
-            (vector-set vec idx val)
-            val))
-         ((if (symbolp op) (op=vector-ref op) nil)
-          (let* ((vec (h0-eval (cadr expr) env fenv))
-                 (idx (h0-eval (caddr expr) env fenv)))
-            (vector-ref vec idx)))
-         ;; Reverse list (use cached symbol)
-         ((if (symbolp op) (op=reverse op) nil)
-          (let ((arg (h0-eval (cadr expr) env fenv)))
-            (labels ((rev-acc (lst acc)
-                       (if (null lst) acc
-                           (rev-acc (cdr lst) (cons (car lst) acc)))))
-              (rev-acc arg nil))))
-         ;; String/Symbol creation (use cached symbols)
-         ((if (symbolp op) (op=make-string-from-vector op) nil)
-          (let ((vec (h0-eval (cadr expr) env fenv)))
-            (make-string-from-vector vec)))
-         ((if (symbolp op) (op=make-symbol-from-string op) nil)
-          (let ((str (h0-eval (cadr expr) env fenv)))
-            (make-symbol-from-string str)))
-         ;; CAAR - (car (car x))
-         ((if (symbolp op) (op=caar op) nil)
-          (let ((arg (h0-eval (cadr expr) env fenv)))
-            (car (car arg))))
-         ;; CDAR - (cdr (car x))
-         ((if (symbolp op) (op=cdar op) nil)
-          (let ((arg (h0-eval (cadr expr) env fenv)))
-            (cdr (car arg))))
-         ;; NTH - get nth element of list
-         ((if (symbolp op) (op=nth op) nil)
-          (let* ((n (h0-eval (cadr expr) env fenv))
-                 (lst (h0-eval (caddr expr) env fenv)))
-            (labels ((nth-helper (i l)
-                       (if (= i #x0)
-                           (car l)
-                           (nth-helper (- i #x1) (cdr l)))))
-              (nth-helper n lst))))
-         ;; LOGNOT - bitwise NOT (two's complement)
-         ((if (symbolp op) (op=lognot op) nil)
-          (let ((arg (h0-eval (cadr expr) env fenv)))
-            (lognot arg)))
-         ;; /= - not equal comparison
-         ((if (symbolp op) (op=neq op) nil)
-          (let* ((left (h0-eval (cadr expr) env fenv))
-                 (right (h0-eval (caddr expr) env fenv)))
-            (if (= left right) nil t)))
-         ;; LAMBDA - create closure capturing current environment
-         ((if (symbolp op) (op=lambda op) nil)
-          (let ((params (cadr expr))
-                (body (caddr expr)))
-            ;; Return closure: (CLOSURE-TAG params body captured-env)
-            ;; Use interned symbol for reliable eq comparison
-            (list (intern "CLOSURE-TAG") params body env)))
-         ;; DOLIST - iterate over list
-         ;; (dolist (var list-form) body...) - evaluates body for each element
-         ((if (symbolp op) (op=dolist op) nil)
-          (let* ((binding (cadr expr))
-                 (var (car binding))
-                 (list-val (h0-eval (cadr binding) env fenv))
-                 (body (cddr expr)))
-            (h0-eval-dolist var list-val body env fenv)))
-         ;; LABELS - local recursive function definitions
-         ;; (labels ((f1 (x) body1) (f2 (y) body2)) body...)
-         ;; Creates closures that can call each other recursively
-         ((if (symbolp op) (op=labels op) nil)
-          (let* ((bindings (cadr expr))
-                 (body-forms (cddr expr))
-                 ;; Create closures for all functions, they share the extended fenv
-                 (labels-fenv (h0-eval-labels-bindings bindings fenv env)))
-            ;; Evaluate body with extended fenv
-            (h0-eval-progn body-forms env labels-fenv)))
-         ;; FLET - local non-recursive function definitions
-         ;; (flet ((f1 (x) body1)) body...) - f1 cannot call itself
-         ((if (symbolp op) (op=flet op) nil)
-          (let* ((bindings (cadr expr))
-                 (body-forms (cddr expr))
-                 ;; For flet, closures capture outer fenv (not recursive)
-                 (flet-fenv (h0-eval-flet-bindings bindings fenv env)))
-            (h0-eval-progn body-forms env flet-fenv)))
-         ;; FUNCALL - call a function value (closure or symbol)
-         ;; Supports: (funcall fn-name args...) where fn-name is a symbol
-         ;;           (funcall closure args...) where closure is a lambda
-         ;;           (funcall var args...) where var holds a closure
-         ((if (symbolp op) (op=funcall op) nil)
-          (let* ((fn-expr (cadr expr))
-                 (args (h0-eval-list (cddr expr) env fenv)))
-            (cond
-              ;; Quoted symbol: (funcall 'foo ...) - look up in fenv
-              ((and (consp fn-expr) (op=quote (car fn-expr)))
-               (let* ((fn-sym (cadr fn-expr))
-                      (fn-entry (fenv-lookup fn-sym fenv)))
-                 (if fn-entry
-                     (if (keywordp (car fn-entry))
-                         (h0-eval-builtin (cdr fn-entry) args fenv)
-                         (let* ((params (car fn-entry))
-                                (body (cdr fn-entry))
-                                (new-env (bind-lambda-args params args nil fenv)))
-                           (h0-eval body new-env fenv)))
-                     (fatal-error "h0-eval: FUNCALL unknown function"))))
-              ;; Bare symbol: (funcall foo ...) - try var lookup first, then fenv
-              ((symbolp fn-expr)
-               (let ((var-entry (env-lookup fn-expr env)))
-                 (if var-entry
-                     ;; Found in local env - should be a closure
-                     (let ((fn (cdr var-entry)))
-                       (if (and (consp fn) (eq (car fn) (intern "CLOSURE-TAG")))
-                           (let* ((params (cadr fn))
-                                  (body (caddr fn))
-                                  (captured-env (cadddr fn))
-                                  (new-env (bind-lambda-args params args captured-env fenv)))
-                             (h0-eval body new-env fenv))
-                           ;; Maybe it's a symbol - look up in fenv
-                           (if (symbolp fn)
-                               (let ((fn-entry (fenv-lookup fn fenv)))
-                                 (if fn-entry
-                                     (if (keywordp (car fn-entry))
-                                         (h0-eval-builtin (cdr fn-entry) args fenv)
-                                         (let* ((params (car fn-entry))
-                                                (body (cdr fn-entry))
-                                                (new-env (bind-lambda-args params args nil fenv)))
-                                           (h0-eval body new-env fenv)))
-                                     (fatal-error "h0-eval: FUNCALL unknown function")))
-                               (fatal-error "h0-eval: FUNCALL on non-closure"))))
-                     ;; Not in env - try fenv directly (Lisp-2 style)
-                     (let ((fn-entry (fenv-lookup fn-expr fenv)))
-                       (if fn-entry
-                           (if (keywordp (car fn-entry))
-                               (h0-eval-builtin (cdr fn-entry) args fenv)
-                               (let* ((params (car fn-entry))
-                                      (body (cdr fn-entry))
-                                      (new-env (bind-lambda-args params args nil fenv)))
-                                 (h0-eval body new-env fenv)))
-                           (fatal-error "h0-eval: FUNCALL unknown function"))))))
-              ;; Expression that evaluates to closure
-              (t
-               (let ((fn (h0-eval fn-expr env fenv)))
-                 (if (and (consp fn) (eq (car fn) (intern "CLOSURE-TAG")))
-                     (let* ((params (cadr fn))
-                            (body (caddr fn))
-                            (captured-env (cadddr fn))
-                            (new-env (bind-lambda-args params args captured-env fenv)))
-                       (h0-eval body new-env fenv))
-                     (fatal-error "h0-eval: FUNCALL on non-closure")))))))
-         ;; Function call - look up in fenv
-         (t
-          (let ((fn-entry (fenv-lookup op fenv)))
-            (if fn-entry
-                ;; Check for builtin marker: fn-entry = (:builtin . impl-symbol)
-                ;; Use keywordp to detect - builtins have keyword as car
-                ;; keywordp is a primitive recognized by bootstrap compiler
-                (if (keywordp (car fn-entry))
-                    ;; Builtin function - dispatch based on name
-                    (let ((builtin-name (cdr fn-entry))
-                          (args (h0-eval-list (cdr expr) env fenv)))
-                      (h0-eval-builtin builtin-name args fenv))
-                    ;; User-defined function: fn-entry = (params . body)
-                    (let* ((params (car fn-entry))
-                           (body (cdr fn-entry))
-                           (args (h0-eval-list (cdr expr) env fenv))
-                           ;; Use bind-lambda-args to support &key parameters
-                           (new-env (bind-lambda-args params args nil fenv)))
-                      (h0-eval body new-env fenv)))
-                ;; Unknown function
-                (fatal-error "h0-eval: unknown function")))))))
-    ;; Unknown expression type
+         ((eq id 30) t)    ; T
+         ((eq id 31) nil)  ; NIL
+         (t (h0-eval-symbol expr env fenv)))))
+    ;; List - special form or function call
+    ((consp expr)
+     (let* ((op (car expr))
+            (id (if (symbolp op) (op-lookup op) nil)))
+       (if id
+           (h0-eval-dispatch id expr env fenv)
+           ;; Not in dispatch table - function call
+           (h0-eval-call op expr env fenv))))
     (t (fatal-error "h0-eval: unknown expression type"))))
+
+;; Symbol lookup helper - local env, global env, or function designator
+(defun h0-eval-symbol (sym env fenv)
+  (let ((entry (env-lookup sym env)))
+    (if entry
+        (cdr entry)
+        (let ((global-entry (h0-global-lookup sym)))
+          (if global-entry
+              (cdr global-entry)
+              (let ((fn-entry (fenv-lookup sym fenv)))
+                (if fn-entry
+                    sym  ; Return symbol as function designator
+                    (fatal-error "h0-eval: undefined symbol"))))))))
+
+;; Dispatch on operator ID using case
+;; IDs: 1-23 special forms, 30-32 self-eval, 101-209 primitives
+(defun h0-eval-dispatch (id expr env fenv)
+  (case id
+    ;; Special forms (1-23)
+    (1 (cadr expr))  ; QUOTE
+    (2 (if (h0-eval (cadr expr) env fenv)  ; IF
+           (h0-eval (caddr expr) env fenv)
+           (if (cadddr expr) (h0-eval (cadddr expr) env fenv) nil)))
+    (3 (h0-eval-let-body (cadr expr) (cddr expr) env fenv))   ; LET
+    (4 (h0-eval-let-body (cadr expr) (cddr expr) env fenv))   ; LET*
+    (5 nil)  ; DEFUN - handled at load time
+    (6 (let* ((var-sym (cadr expr))  ; DEFVAR
+              (init-val (if (cddr expr) (h0-eval (caddr expr) env fenv) nil)))
+         (if (null (h0-global-lookup var-sym))
+             (h0-global-set var-sym init-val))
+         var-sym))
+    (7 (h0-eval-while (cadr expr) (cddr expr) env fenv))  ; WHILE
+    (8 (h0-eval-progn (cdr expr) env fenv))  ; PROGN
+    (9 (h0-eval-cond (cdr expr) env fenv))   ; COND
+    (10 (let ((pkg-name (keyword-name (cadr expr))))  ; DEFPACKAGE
+          (make-package (string-upcase pkg-name)) nil))
+    (11 (let ((pkg-name (keyword-name (cadr expr))))  ; IN-PACKAGE
+          (setq *current-package* (string-upcase pkg-name))
+          (make-package *current-package*) nil))
+    (12 (let ((key (h0-eval (cadr expr) env fenv)))  ; CASE
+          (h0-eval-case-clauses key (cddr expr) env fenv)))
+    (13 (if (h0-eval (cadr expr) env fenv)  ; WHEN
+            (h0-eval-progn (cddr expr) env fenv) nil))
+    (14 (if (h0-eval (cadr expr) env fenv) nil  ; UNLESS
+            (h0-eval-progn (cddr expr) env fenv)))
+    (15 nil)  ; DECLAIM - no-op
+    (16 (let* ((var-sym (cadr expr))  ; SETQ
+               (val (h0-eval (caddr expr) env fenv))
+               (local-cell (env-lookup var-sym env)))
+          (if local-cell val
+              (let ((global-cell (h0-global-lookup var-sym)))
+                (if global-cell (h0-global-set var-sym val)
+                    (fatal-error "h0-eval: SETQ unknown variable"))))))
+    (17 (fatal-error "h0-eval: error called"))  ; ERROR
+    (18 (list (intern "CLOSURE-TAG") (cadr expr) (caddr expr) env))  ; LAMBDA
+    (19 (let* ((binding (cadr expr))  ; DOLIST
+               (var (car binding))
+               (list-val (h0-eval (cadr binding) env fenv)))
+          (h0-eval-dolist var list-val (cddr expr) env fenv)))
+    (20 (let* ((bindings (cadr expr))  ; LABELS
+               (labels-fenv (h0-eval-labels-bindings bindings fenv env)))
+          (h0-eval-progn (cddr expr) env labels-fenv)))
+    (21 (let* ((bindings (cadr expr))  ; FLET
+               (flet-fenv (h0-eval-flet-bindings bindings fenv env)))
+          (h0-eval-progn (cddr expr) env flet-fenv)))
+    (22 (h0-eval-funcall expr env fenv))  ; FUNCALL
+    (23 (let ((key (h0-eval (cadr expr) env fenv)))  ; ECASE
+          (h0-eval-case-clauses key (cddr expr) env fenv)))
+    ;; Self-evaluating symbols (30-32) - handled in h0-eval for expr case
+    (30 t)         ; T
+    (31 nil)       ; NIL
+    (32 t)         ; OTHERWISE (true in case context)
+    ;; Arithmetic (101-105)
+    (101 (h0-eval-add (cdr expr) env fenv))  ; +
+    (102 (h0-eval-sub (cdr expr) env fenv))  ; -
+    (103 (* (h0-eval (cadr expr) env fenv) (h0-eval (caddr expr) env fenv)))  ; *
+    (104 (/ (h0-eval (cadr expr) env fenv) (h0-eval (caddr expr) env fenv)))  ; /
+    (105 (mod (h0-eval (cadr expr) env fenv) (h0-eval (caddr expr) env fenv)))  ; MOD
+    ;; Comparisons (111-116)
+    (111 (if (= (h0-eval (cadr expr) env fenv) (h0-eval (caddr expr) env fenv)) t nil))   ; =
+    (112 (if (< (h0-eval (cadr expr) env fenv) (h0-eval (caddr expr) env fenv)) t nil))   ; <
+    (113 (if (> (h0-eval (cadr expr) env fenv) (h0-eval (caddr expr) env fenv)) t nil))   ; >
+    (114 (if (<= (h0-eval (cadr expr) env fenv) (h0-eval (caddr expr) env fenv)) t nil))  ; <=
+    (115 (if (>= (h0-eval (cadr expr) env fenv) (h0-eval (caddr expr) env fenv)) t nil))  ; >=
+    (116 (if (= (h0-eval (cadr expr) env fenv) (h0-eval (caddr expr) env fenv)) nil t))   ; /=
+    ;; List operations (121-135)
+    (121 (cons (h0-eval (cadr expr) env fenv) (h0-eval (caddr expr) env fenv)))  ; CONS
+    (122 (car (h0-eval (cadr expr) env fenv)))   ; CAR
+    (123 (cdr (h0-eval (cadr expr) env fenv)))   ; CDR
+    (124 (cadr (h0-eval (cadr expr) env fenv)))  ; CADR
+    (125 (cddr (h0-eval (cadr expr) env fenv)))  ; CDDR
+    (126 (caddr (h0-eval (cadr expr) env fenv))) ; CADDR
+    (127 (cadddr (h0-eval (cadr expr) env fenv))) ; CADDDR
+    (128 (h0-eval-list (cdr expr) env fenv))  ; LIST
+    (129 (caar (h0-eval (cadr expr) env fenv)))  ; CAAR
+    (130 (cdar (h0-eval (cadr expr) env fenv)))  ; CDAR
+    (131 (let ((n (h0-eval (cadr expr) env fenv))  ; NTH
+               (lst (h0-eval (caddr expr) env fenv)))
+           (labels ((nth-helper (i l) (if (= i 0) (car l) (nth-helper (- i 1) (cdr l)))))
+             (nth-helper n lst))))
+    (132 (let ((cell (h0-eval (cadr expr) env fenv))  ; SETCAR
+               (val (h0-eval (caddr expr) env fenv)))
+           (setcar cell val) val))
+    (133 (let ((cell (h0-eval (cadr expr) env fenv))  ; SETCDR
+               (val (h0-eval (caddr expr) env fenv)))
+           (setcdr cell val) val))
+    (134 (let ((arg (h0-eval (cadr expr) env fenv)))  ; REVERSE
+           (labels ((rev-acc (lst acc) (if (null lst) acc (rev-acc (cdr lst) (cons (car lst) acc)))))
+             (rev-acc arg nil))))
+    (135 (h0-eval-mapcar expr env fenv))  ; MAPCAR
+    ;; Type predicates (141-147)
+    (141 (if (null (h0-eval (cadr expr) env fenv)) t nil))     ; NULL
+    (142 (if (consp (h0-eval (cadr expr) env fenv)) t nil))    ; CONSP
+    (143 (if (symbolp (h0-eval (cadr expr) env fenv)) t nil))  ; SYMBOLP
+    (144 (if (numberp (h0-eval (cadr expr) env fenv)) t nil))  ; NUMBERP
+    (145 (if (stringp (h0-eval (cadr expr) env fenv)) t nil))  ; STRINGP
+    (146 (if (keywordp (h0-eval (cadr expr) env fenv)) t nil)) ; KEYWORDP
+    (147 (let ((arg (h0-eval (cadr expr) env fenv)))  ; LISTP
+           (if (or (null arg) (consp arg)) t nil)))
+    ;; Boolean operations (151-153)
+    (151 (if (h0-eval (cadr expr) env fenv) nil t))  ; NOT
+    (152 (h0-eval-and (cdr expr) env fenv))  ; AND
+    (153 (h0-eval-or (cdr expr) env fenv))   ; OR
+    ;; String operations (161-165)
+    (161 (string-length (h0-eval (cadr expr) env fenv)))  ; STRING-LENGTH
+    (162 (string-ref (h0-eval (cadr expr) env fenv) (h0-eval (caddr expr) env fenv)))  ; STRING-REF
+    (163 (let ((str (h0-eval (cadr expr) env fenv))  ; CHAR-AT
+               (idx (h0-eval (caddr expr) env fenv)))
+           (if (< idx (string-length str)) (string-ref str idx) 0)))
+    (164 (if (string= (h0-eval (cadr expr) env fenv) (h0-eval (caddr expr) env fenv)) t nil))  ; STRING=
+    (165 (string-equal (h0-eval (cadr expr) env fenv) (h0-eval (caddr expr) env fenv)))  ; STRING-EQUAL
+    ;; Symbol operations (171-174)
+    (171 (sym-eq (h0-eval (cadr expr) env fenv) (h0-eval (caddr expr) env fenv)))  ; SYM-EQ
+    (172 (member (h0-eval (cadr expr) env fenv) (h0-eval (caddr expr) env fenv)))  ; MEMBER
+    (173 (symbol-name (h0-eval (cadr expr) env fenv)))   ; SYMBOL-NAME
+    (174 (keyword-name (h0-eval (cadr expr) env fenv)))  ; KEYWORD-NAME
+    ;; Bitwise operations (181-184)
+    (181 (logand (h0-eval (cadr expr) env fenv) (h0-eval (caddr expr) env fenv)))  ; LOGAND
+    (182 (logior (h0-eval (cadr expr) env fenv) (h0-eval (caddr expr) env fenv)))  ; LOGIOR
+    (183 (ash (h0-eval (cadr expr) env fenv) (h0-eval (caddr expr) env fenv)))     ; ASH
+    (184 (lognot (h0-eval (cadr expr) env fenv)))  ; LOGNOT
+    ;; Equality (191-192)
+    (191 (if (eq (h0-eval (cadr expr) env fenv) (h0-eval (caddr expr) env fenv)) t nil))  ; EQ
+    (192 (eql (h0-eval (cadr expr) env fenv) (h0-eval (caddr expr) env fenv)))  ; EQL
+    ;; Low-level operations (201-209)
+    (201 (get-tag (h0-eval (cadr expr) env fenv)))  ; GET-TAG
+    (202 (set-tag (h0-eval (cadr expr) env fenv) (h0-eval (caddr expr) env fenv)))  ; SET-TAG
+    (203 (let ((arg (h0-eval (cadr expr) env fenv)))  ; LENGTH
+           (labels ((count-len (lst n) (if (null lst) n (count-len (cdr lst) (+ n 1)))))
+             (count-len arg 0))))
+    (204 (make-vector (h0-eval (cadr expr) env fenv)))  ; MAKE-VECTOR
+    (205 (vector-length (h0-eval (cadr expr) env fenv)))  ; VECTOR-LENGTH
+    (206 (let ((vec (h0-eval (cadr expr) env fenv))  ; VECTOR-SET
+               (idx (h0-eval (caddr expr) env fenv))
+               (val (h0-eval (cadddr expr) env fenv)))
+           (vector-set vec idx val) val))
+    (207 (vector-ref (h0-eval (cadr expr) env fenv) (h0-eval (caddr expr) env fenv)))  ; VECTOR-REF
+    (208 (make-string-from-vector (h0-eval (cadr expr) env fenv)))  ; MAKE-STRING-FROM-VECTOR
+    (209 (make-symbol-from-string (h0-eval (cadr expr) env fenv)))  ; MAKE-SYMBOL-FROM-STRING
+    ;; Default - function call
+    (t (h0-eval-call (car expr) expr env fenv))))
+
+;; FUNCALL handler - extracted for clarity
+(defun h0-eval-funcall (expr env fenv)
+  (let* ((fn-expr (cadr expr))
+         (args (h0-eval-list (cddr expr) env fenv)))
+    (cond
+      ;; Quoted symbol: (funcall 'foo ...)
+      ((and (consp fn-expr) (eq (op-lookup (car fn-expr)) 1))  ; QUOTE=1
+       (let* ((fn-sym (cadr fn-expr))
+              (fn-entry (fenv-lookup fn-sym fenv)))
+         (if fn-entry
+             (if (keywordp (car fn-entry))
+                 (h0-eval-builtin (cdr fn-entry) args fenv)
+                 (let ((new-env (bind-lambda-args (car fn-entry) args nil fenv)))
+                   (h0-eval (cdr fn-entry) new-env fenv)))
+             (fatal-error "h0-eval: FUNCALL unknown function"))))
+      ;; Bare symbol
+      ((symbolp fn-expr)
+       (let ((var-entry (env-lookup fn-expr env)))
+         (if var-entry
+             (let ((fn (cdr var-entry)))
+               (if (and (consp fn) (eq (car fn) (intern "CLOSURE-TAG")))
+                   (let ((new-env (bind-lambda-args (cadr fn) args (cadddr fn) fenv)))
+                     (h0-eval (caddr fn) new-env fenv))
+                   (if (symbolp fn)
+                       (let ((fn-entry (fenv-lookup fn fenv)))
+                         (if fn-entry
+                             (if (keywordp (car fn-entry))
+                                 (h0-eval-builtin (cdr fn-entry) args fenv)
+                                 (let ((new-env (bind-lambda-args (car fn-entry) args nil fenv)))
+                                   (h0-eval (cdr fn-entry) new-env fenv)))
+                             (fatal-error "h0-eval: FUNCALL unknown function")))
+                       (fatal-error "h0-eval: FUNCALL on non-closure"))))
+             (let ((fn-entry (fenv-lookup fn-expr fenv)))
+               (if fn-entry
+                   (if (keywordp (car fn-entry))
+                       (h0-eval-builtin (cdr fn-entry) args fenv)
+                       (let ((new-env (bind-lambda-args (car fn-entry) args nil fenv)))
+                         (h0-eval (cdr fn-entry) new-env fenv)))
+                   (fatal-error "h0-eval: FUNCALL unknown function"))))))
+      ;; Expression that evaluates to closure
+      (t (let ((fn (h0-eval fn-expr env fenv)))
+           (if (and (consp fn) (eq (car fn) (intern "CLOSURE-TAG")))
+               (let ((new-env (bind-lambda-args (cadr fn) args (cadddr fn) fenv)))
+                 (h0-eval (caddr fn) new-env fenv))
+               (fatal-error "h0-eval: FUNCALL on non-closure")))))))
+
+;; MAPCAR handler
+(defun h0-eval-mapcar (expr env fenv)
+  (let* ((fn-expr (cadr expr))
+         (lst (h0-eval (caddr expr) env fenv)))
+    (labels ((map-loop (items acc)
+               (if (null items) (reverse acc)
+                   (let ((result (h0-eval (list 'funcall fn-expr (list 'quote (car items))) env fenv)))
+                     (map-loop (cdr items) (cons result acc))))))
+      (map-loop lst nil))))
+
+;; Function call handler
+(defun h0-eval-call (op expr env fenv)
+  (let ((fn-entry (fenv-lookup op fenv)))
+    (if fn-entry
+        (if (keywordp (car fn-entry))
+            (let ((args (h0-eval-list (cdr expr) env fenv)))
+              (h0-eval-builtin (cdr fn-entry) args fenv))
+            (let* ((params (car fn-entry))
+                   (body (cdr fn-entry))
+                   (args (h0-eval-list (cdr expr) env fenv))
+                   (new-env (bind-lambda-args params args nil fenv)))
+              (h0-eval body new-env fenv)))
+        (fatal-error "h0-eval: unknown function"))))
 
 ;; Builtin dispatch table - maps symbol name strings to handler functions
 ;; Built once at init, used for O(n) lookup (could use hash table for O(1))
