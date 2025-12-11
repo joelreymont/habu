@@ -2164,13 +2164,28 @@
   ;; Use integers as dispatch keys - avoids #' function references
   (setq *builtin-dispatch*
         (list
-         ;; Compiler functions (IDs 1, 4-7)
-         ;; Note: IDs 2,3 (h0-codegen, h0-linearize) REMOVED - use codegen-fn-reg-alloc
+         ;; Compiler functions - front end (IDs 1-3)
          (cons (intern "H0-COMPILE") 1)
+         (cons (intern "LIFT-LAMBDAS") 2)
+         (cons (intern "LAMBDAS-TO-DEFUNS") 3)
+         ;; Register allocator pipeline (IDs 60-69)
+         (cons (intern "CODEGEN-FN-REG-ALLOC") 60)
+         (cons (intern "CODEGEN-MAIN-REG-ALLOC") 61)
+         (cons (intern "IR-TO-TAC") 62)
+         (cons (intern "COMPUTE-LIVENESS") 63)
+         (cons (intern "COMPUTE-INTERVALS") 64)
+         (cons (intern "LINEAR-SCAN") 65)
+         (cons (intern "TAC-CODEGEN") 66)
+         (cons (intern "MAKE-VREG-COUNTER") 67)
+         (cons (intern "NEXT-VREG") 68)
+         ;; Backend - codegen.lisp (IDs 4-7, 70+)
          (cons (intern "DELIVER-WITH-IMPORTS-AND-HEAP") 4)
          (cons (intern "READ-ALL") 5)
          (cons (intern "NATIVE-READ-FILE") 6)
          (cons (intern "COLLECT-DEFUNS") 7)
+         (cons (intern "CODEGEN-FN") 70)
+         (cons (intern "RESOLVE-CALLS") 71)
+         (cons (intern "FLATTEN-ALL-CALLS") 72)
          ;; ARM64 - memory (IDs 10-13)
          (cons (intern "STR") 10)
          (cons (intern "LDR") 11)
@@ -2196,10 +2211,12 @@
          (cons (intern "REG") 50))))
 
 ;; Lookup dispatch ID in table
+;; Uses string= for symbol name comparison to handle compile-time
+;; vs runtime interned symbol identity issues.
 (defun find-builtin-id (name table)
   (if (null table)
       nil
-      (if (eq name (caar table))
+      (if (string= (symbol-name name) (symbol-name (caar table)))
           (cdar table)
           (find-builtin-id name (cdr table)))))
 
@@ -2311,13 +2328,29 @@
     (if (null id)
         (fatal-error "h0-eval-builtin: unknown builtin")
         (match id
-          ;; Compiler functions (don't need normalization - no keywords)
+          ;; Compiler functions - front end
           (1 (h0-compile (car args) (cadr args) (caddr args)))
-          ;; IDs 2,3 (h0-codegen, h0-linearize) REMOVED - use codegen-fn-reg-alloc
+          (2 (lift-lambdas (car args)))
+          (3 (lambdas-to-defuns (car args)))
+          ;; Backend - codegen.lisp
           (4 (deliver-with-imports-and-heap (car args) (cadr args) (caddr args) (cadddr args)))
           (5 (read-all (car args)))
           (6 (native-read-file (car args)))
           (7 (collect-defuns (car args) (cadr args)))
+          ;; Register allocator pipeline (IDs 60-69)
+          (60 (codegen-fn-reg-alloc (car args)))
+          (61 (codegen-main-reg-alloc (car args)))
+          (62 (ir-to-tac (car args) (cadr args)))
+          (63 (compute-liveness (car args)))
+          (64 (compute-intervals (car args)))
+          (65 (linear-scan (car args)))
+          (66 (tac-codegen (car args) (cadr args)))
+          (67 (make-vreg-counter))
+          (68 (next-vreg (car args)))
+          ;; More codegen.lisp functions (IDs 70+)
+          (70 (codegen-fn (car args)))
+          (71 (resolve-calls (car args) (cadr args) (caddr args)))
+          (72 (flatten-all-calls (car args)))
           ;; ARM64 functions - SBCL mode 1024 only
           ;; In SBCL, calls arm64:* functions directly via fenv-lookup
           ;; In native habu0, ARM64 IDs 10-48 fall through to fatal-error
@@ -2918,12 +2951,12 @@
                               (h0-compile (cadddr expr) env fenv)
                               (list (ir-tag-lit) #x0))))
             (list (ir-tag-if) test-ir then-ir else-ir)))
-         ;; Let
+         ;; Let - pass all body forms (cddr), not just first (caddr)
          ((if (symbolp op) (op=let op) nil)
-          (h0-compile-let (cadr expr) (caddr expr) env fenv))
-         ;; Let*
+          (h0-compile-let (cadr expr) (cddr expr) env fenv))
+         ;; Let* - pass all body forms (cddr), not just first (caddr)
          ((if (symbolp op) (op=let-star op) nil)
-          (h0-compile-let (cadr expr) (caddr expr) env fenv))
+          (h0-compile-let (cadr expr) (cddr expr) env fenv))
          ;; Setq
          ((if (symbolp op) (op=setq op) nil)
           (let* ((var-sym (cadr expr))
@@ -3305,16 +3338,20 @@
               (h0-compile-sub (cons (list '- (car args) (cadr args)) (cddr args)) env fenv)))))
 
 ;; Compile let - iterate through bindings, extending environment
+;; body-forms is a list of forms (implicit progn)
 ;; Store symbol name (string) in env for string-based lookup
-(defun h0-compile-let (bindings body env fenv)
+(defun h0-compile-let (bindings body-forms env fenv)
   (if (null bindings)
-      (h0-compile body env fenv)
+      ;; No more bindings - compile body as implicit progn
+      (if (null (cdr body-forms))
+          (h0-compile (car body-forms) env fenv)
+          (h0-compile-progn body-forms env fenv))
       (let* ((b (car bindings))
              (var-sym (car b))
              (val-ir (h0-compile (cadr b) env fenv))
              ;; Store symbol for flat list lookup
              (new-env (cons var-sym env))
-             (body-ir (h0-compile-let (cdr bindings) body new-env fenv)))
+             (body-ir (h0-compile-let (cdr bindings) body-forms new-env fenv)))
         (list (ir-tag-let) #x0 val-ir body-ir))))
 
 ;; Compile progn - sequence of forms
@@ -3517,7 +3554,7 @@
   (if (null bindings)
       (h0-compile-progn body env fenv)
       (let* ((let-bindings (h0-flet-bindings-to-let bindings)))
-        (h0-compile-let let-bindings (car body) env fenv))))
+        (h0-compile-let let-bindings body env fenv))))
 
 (defun h0-flet-bindings-to-let (bindings)
   (if (null bindings)
@@ -3541,7 +3578,8 @@
       (let* ((let-bindings (h0-labels-nil-bindings bindings))
              (setq-forms (h0-labels-setq-forms bindings))
              (combined-body (h0-append setq-forms body)))
-        (h0-compile-let let-bindings (cons (intern "PROGN") combined-body) env fenv))))
+        ;; combined-body is already a list of forms - pass directly
+        (h0-compile-let let-bindings combined-body env fenv))))
 
 (defun h0-labels-nil-bindings (bindings)
   (if (null bindings)
@@ -4534,69 +4572,86 @@
     (cons sym (cons builtin-kw sym))))
 
 (defun make-compiler-fenv ()
-  "Build fenv with core compiler functions exposed"
+  "Build fenv with core compiler functions exposed.
+   Uses setq to mutate a single variable to avoid bootstrap bugs."
   ;; Format: (name . (:builtin . impl-symbol))
-  (let ((kw (intern-keyword "BUILTIN")))
-    (list
-     ;; Compiler functions
-     (make-builtin-entry "H0-COMPILE" kw)
-     (make-builtin-entry "H0-CODEGEN" kw)
-     (make-builtin-entry "H0-LINEARIZE" kw)
-     (make-builtin-entry "DELIVER-WITH-IMPORTS-AND-HEAP" kw)
-     (make-builtin-entry "READ-ALL" kw)
-     (make-builtin-entry "NATIVE-READ-FILE" kw)
-     (make-builtin-entry "COLLECT-DEFUNS" kw)
-     ;; ARM64 - data movement
-     (make-builtin-entry "STR" kw)
-     (make-builtin-entry "LDR" kw)
-     (make-builtin-entry "STUR" kw)
-     (make-builtin-entry "LDUR" kw)
-     (make-builtin-entry "STP" kw)
-     (make-builtin-entry "LDP" kw)
-     (make-builtin-entry "STRB" kw)
-     (make-builtin-entry "LDRB" kw)
-     (make-builtin-entry "MOV" kw)
-     (make-builtin-entry "MOVZ" kw)
-     (make-builtin-entry "MOVK" kw)
-     (make-builtin-entry "MOVN" kw)
-     ;; ARM64 - arithmetic
-     (make-builtin-entry "ADD" kw)
-     (make-builtin-entry "SUB" kw)
-     (make-builtin-entry "SUBS" kw)
-     (make-builtin-entry "MUL" kw)
-     (make-builtin-entry "SDIV" kw)
-     (make-builtin-entry "NEG" kw)
-     ;; ARM64 - bitwise
-     (make-builtin-entry "AND*" kw)
-     (make-builtin-entry "ORR" kw)
-     (make-builtin-entry "EOR" kw)
-     (make-builtin-entry "LSL" kw)
-     (make-builtin-entry "LSR" kw)
-     (make-builtin-entry "ASR" kw)
-     (make-builtin-entry "MVN" kw)
-     ;; ARM64 - compare and branch
-     (make-builtin-entry "CMP" kw)
-     (make-builtin-entry "CSET" kw)
-     (make-builtin-entry "B" kw)
-     (make-builtin-entry "BL" kw)
-     (make-builtin-entry "BR" kw)
-     (make-builtin-entry "BLR" kw)
-     (make-builtin-entry "CBZ" kw)
-     (make-builtin-entry "CBNZ" kw)
-     (make-builtin-entry "B.EQ" kw)
-     (make-builtin-entry "B.NE" kw)
-     (make-builtin-entry "B.LT" kw)
-     (make-builtin-entry "B.LE" kw)
-     (make-builtin-entry "B.GT" kw)
-     (make-builtin-entry "B.GE" kw)
-     (make-builtin-entry "RET" kw)
-     ;; ARM64 - system
-     (make-builtin-entry "SVC" kw)
-     (make-builtin-entry "BRK" kw)
-     (make-builtin-entry "NOP" kw)
-     ;; ARM64 - utility
-     (make-builtin-entry "REG" kw)
-     (make-builtin-entry "ENCODE" kw))))
+  ;; Build list by mutating lst with setq - most reliable for bootstrap
+  (let ((kw (intern-keyword "BUILTIN"))
+        (lst nil))
+    ;; ARM64 - utility (add in reverse order, H0-COMPILE last = first in result)
+    (setq lst (cons (make-builtin-entry "ENCODE" kw) lst))
+    (setq lst (cons (make-builtin-entry "REG" kw) lst))
+    ;; ARM64 - system
+    (setq lst (cons (make-builtin-entry "NOP" kw) lst))
+    (setq lst (cons (make-builtin-entry "BRK" kw) lst))
+    (setq lst (cons (make-builtin-entry "SVC" kw) lst))
+    ;; ARM64 - compare and branch
+    (setq lst (cons (make-builtin-entry "RET" kw) lst))
+    (setq lst (cons (make-builtin-entry "B.GE" kw) lst))
+    (setq lst (cons (make-builtin-entry "B.GT" kw) lst))
+    (setq lst (cons (make-builtin-entry "B.LE" kw) lst))
+    (setq lst (cons (make-builtin-entry "B.LT" kw) lst))
+    (setq lst (cons (make-builtin-entry "B.NE" kw) lst))
+    (setq lst (cons (make-builtin-entry "B.EQ" kw) lst))
+    (setq lst (cons (make-builtin-entry "CBNZ" kw) lst))
+    (setq lst (cons (make-builtin-entry "CBZ" kw) lst))
+    (setq lst (cons (make-builtin-entry "BLR" kw) lst))
+    (setq lst (cons (make-builtin-entry "BR" kw) lst))
+    (setq lst (cons (make-builtin-entry "BL" kw) lst))
+    (setq lst (cons (make-builtin-entry "B" kw) lst))
+    (setq lst (cons (make-builtin-entry "CSET" kw) lst))
+    (setq lst (cons (make-builtin-entry "CMP" kw) lst))
+    ;; ARM64 - bitwise
+    (setq lst (cons (make-builtin-entry "MVN" kw) lst))
+    (setq lst (cons (make-builtin-entry "ASR" kw) lst))
+    (setq lst (cons (make-builtin-entry "LSR" kw) lst))
+    (setq lst (cons (make-builtin-entry "LSL" kw) lst))
+    (setq lst (cons (make-builtin-entry "EOR" kw) lst))
+    (setq lst (cons (make-builtin-entry "ORR" kw) lst))
+    (setq lst (cons (make-builtin-entry "AND*" kw) lst))
+    ;; ARM64 - arithmetic
+    (setq lst (cons (make-builtin-entry "NEG" kw) lst))
+    (setq lst (cons (make-builtin-entry "SDIV" kw) lst))
+    (setq lst (cons (make-builtin-entry "MUL" kw) lst))
+    (setq lst (cons (make-builtin-entry "SUBS" kw) lst))
+    (setq lst (cons (make-builtin-entry "SUB" kw) lst))
+    (setq lst (cons (make-builtin-entry "ADD" kw) lst))
+    ;; ARM64 - data movement
+    (setq lst (cons (make-builtin-entry "MOVN" kw) lst))
+    (setq lst (cons (make-builtin-entry "MOVK" kw) lst))
+    (setq lst (cons (make-builtin-entry "MOVZ" kw) lst))
+    (setq lst (cons (make-builtin-entry "MOV" kw) lst))
+    (setq lst (cons (make-builtin-entry "LDRB" kw) lst))
+    (setq lst (cons (make-builtin-entry "STRB" kw) lst))
+    (setq lst (cons (make-builtin-entry "LDP" kw) lst))
+    (setq lst (cons (make-builtin-entry "STP" kw) lst))
+    (setq lst (cons (make-builtin-entry "LDUR" kw) lst))
+    (setq lst (cons (make-builtin-entry "STUR" kw) lst))
+    (setq lst (cons (make-builtin-entry "LDR" kw) lst))
+    (setq lst (cons (make-builtin-entry "STR" kw) lst))
+    ;; Backend - codegen.lisp
+    (setq lst (cons (make-builtin-entry "COLLECT-DEFUNS" kw) lst))
+    (setq lst (cons (make-builtin-entry "NATIVE-READ-FILE" kw) lst))
+    (setq lst (cons (make-builtin-entry "READ-ALL" kw) lst))
+    (setq lst (cons (make-builtin-entry "FLATTEN-ALL-CALLS" kw) lst))
+    (setq lst (cons (make-builtin-entry "RESOLVE-CALLS" kw) lst))
+    (setq lst (cons (make-builtin-entry "CODEGEN-FN" kw) lst))
+    (setq lst (cons (make-builtin-entry "DELIVER-WITH-IMPORTS-AND-HEAP" kw) lst))
+    ;; Register allocator pipeline
+    (setq lst (cons (make-builtin-entry "NEXT-VREG" kw) lst))
+    (setq lst (cons (make-builtin-entry "MAKE-VREG-COUNTER" kw) lst))
+    (setq lst (cons (make-builtin-entry "TAC-CODEGEN" kw) lst))
+    (setq lst (cons (make-builtin-entry "LINEAR-SCAN" kw) lst))
+    (setq lst (cons (make-builtin-entry "COMPUTE-INTERVALS" kw) lst))
+    (setq lst (cons (make-builtin-entry "COMPUTE-LIVENESS" kw) lst))
+    (setq lst (cons (make-builtin-entry "IR-TO-TAC" kw) lst))
+    (setq lst (cons (make-builtin-entry "CODEGEN-MAIN-REG-ALLOC" kw) lst))
+    (setq lst (cons (make-builtin-entry "CODEGEN-FN-REG-ALLOC" kw) lst))
+    ;; Compiler functions - front end (added last, will be first)
+    (setq lst (cons (make-builtin-entry "LAMBDAS-TO-DEFUNS" kw) lst))
+    (setq lst (cons (make-builtin-entry "LIFT-LAMBDAS" kw) lst))
+    (setq lst (cons (make-builtin-entry "H0-COMPILE" kw) lst))
+    lst))
 
 (defun main ()
   ;; Initialize dispatch tables
