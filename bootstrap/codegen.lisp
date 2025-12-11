@@ -648,7 +648,7 @@
            ;; Return tagged pointer and bump heap
            (result-code (append-all
                          (list (arm64:mov :x0 :heap)
-                               (arm64:add :x0 :x0 4 :imm t)  ; string tag
+                               (arm64:add :x0 :x0 #.+tag-string+ :imm t)
                                (arm64:add :heap :heap total-size :imm t)
                                (gc-trigger-code)))))
       (append-all (list pre-check len-code data-code result-code)))))
@@ -687,10 +687,10 @@
                       (list (load-addr :x16 len)
                             (arm64:str :x16 :heap :offset 0))))
            (data-code (gen-store-bytes 8 bytes-with-nul nil))
-           ;; Return tagged pointer with symbol tag (2) and bump heap
+           ;; Return tagged pointer with symbol tag and bump heap
            (result-code (append-all
                          (list (arm64:mov :x0 :heap)
-                               (arm64:add :x0 :x0 2 :imm t)  ; symbol tag (2 not 4)
+                               (arm64:add :x0 :x0 #.+tag-symbol+ :imm t)
                                (arm64:add :heap :heap total-size :imm t)
                                (gc-trigger-code)))))
       (append-all (list pre-check len-code data-code result-code)))))
@@ -926,7 +926,7 @@
                                 (arm64:str :x0 :heap :offset 0)
                                 ;; Make cons pointer
                                 (arm64:mov :x0 :heap)
-                                (arm64:add :x0 :x0 1 :imm t)  ;; cons tag
+                                (arm64:add :x0 :x0 #.+tag-cons+ :imm t)
                                 (arm64:add :heap :heap 16 :imm t)))))))
           ;; Don't reverse - gen-cons-chain builds in correct order
           ;; for free-vars list (first offset becomes car)
@@ -1578,7 +1578,7 @@
 #+sbcl
 (defun linear-load-lit (val)
   "Generate code to load tagged fixnum literal into x0"
-  (let ((tagged (ash val 4)))
+  (let ((tagged (logior (ash val 1) +fixnum-bit+)))
     (cond
       ;; Small positive: single movz
       ((and (>= tagged 0) (< tagged #x10000))
@@ -1603,17 +1603,14 @@
 
 #+sbcl
 (defun gen-bool-to-tagged ()
-  "Convert boolean 0/1 in x0 to tagged nil(6)/t(16).
+  "Convert boolean 0/1 in x0 to tagged nil/t.
    Uses: x0 = 1 (true) or 0 (false)
-   Result: x0 = 16 (t) or 6 (nil)"
+   Result: x0 = +t-value+ (3) or +nil-value+ (0)"
   ;; x0 = 1 or 0
   ;; neg x0, x0      => x0 = -1 or 0 (negate: 0-x0)
-  ;; and x0, x0, #10 => x0 = 10 or 0 (need register for mask)
-  ;; add x0, x0, #6  => x0 = 16 or 6
+  ;; and x0, x0, #3  => x0 = 3 or 0
   (append (arm64:neg :x0 :x0)
-          (arm64:movz :x1 10)
-          (arm64:and* :x0 :x0 :x1)
-          (arm64:add :x0 :x0 6 :imm t)))
+          (arm64:and* :x0 :x0 #.+t-value+ :imm t)))
 
 #+sbcl
 (defun codegen-linear-instr (instr rtaddrs fnoffs)
@@ -1630,7 +1627,7 @@
 
       (load-nil
        (let ((dst (cadr instr)))
-         (append (arm64:movz :x0 6)  ; nil tag = 6
+         (append (arm64:movz :x0 #.+nil-value+)
                  (linear-save-temp dst))))
 
       (load-var
@@ -1699,7 +1696,7 @@
              (src2 (cadddr instr)))
          (append (linear-load-temp :x0 src1)
                  (linear-load-temp :x1 src2)
-                 (arm64:lsr :x1 :x1 4 :imm t)  ; untag one operand
+                 (arm64:asr :x1 :x1 1 :imm t)  ; untag one operand
                  (arm64:mul :x0 :x0 :x1)
                  (linear-save-temp dst))))
 
@@ -1710,7 +1707,8 @@
          (append (linear-load-temp :x0 src1)
                  (linear-load-temp :x1 src2)
                  (arm64:sdiv :x0 :x0 :x1)
-                 (arm64:lsl :x0 :x0 4 :imm t)  ; retag result
+                 (arm64:lsl :x0 :x0 1 :imm t)  ; shift left
+                 (arm64:orr :x0 :x0 #.+fixnum-bit+ :imm t)  ; set fixnum bit
                  (linear-save-temp dst))))
 
       (mod
@@ -1721,12 +1719,13 @@
          ;; Need to untag, compute, retag
          (append (linear-load-temp :x0 src1)
                  (linear-load-temp :x1 src2)
-                 (arm64:lsr :x0 :x0 4 :imm t)   ; untag a
-                 (arm64:lsr :x1 :x1 4 :imm t)   ; untag b
+                 (arm64:asr :x0 :x0 1 :imm t)   ; untag a
+                 (arm64:asr :x1 :x1 1 :imm t)   ; untag b
                  (arm64:sdiv :x2 :x0 :x1)       ; x2 = a/b
                  (arm64:mul :x2 :x2 :x1)        ; x2 = (a/b)*b
                  (arm64:sub :x0 :x0 :x2)        ; x0 = a - (a/b)*b
-                 (arm64:lsl :x0 :x0 4 :imm t)   ; retag result
+                 (arm64:lsl :x0 :x0 1 :imm t)   ; shift left
+                 (arm64:orr :x0 :x0 #.+fixnum-bit+ :imm t)  ; set fixnum bit
                  (linear-save-temp dst))))
 
       ;; Comparisons - return tagged t (16) or nil (6)
@@ -1794,10 +1793,11 @@
              (src2 (cadddr instr)))
          (append (linear-load-temp :x0 src1)
                  (linear-load-temp :x1 src2)
-                 (arm64:asr :x0 :x0 4 :imm t)  ; untag src1
-                 (arm64:asr :x1 :x1 4 :imm t)  ; untag src2
+                 (arm64:asr :x0 :x0 #.+fixnum-bit+ :imm t)  ; untag src1
+                 (arm64:asr :x1 :x1 #.+fixnum-bit+ :imm t)  ; untag src2
                  (arm64:and* :x0 :x0 :x1)      ; bitwise AND
-                 (arm64:lsl :x0 :x0 4 :imm t)  ; retag result
+                 (arm64:lsl :x0 :x0 #.+fixnum-bit+ :imm t)  ; shift left
+                 (arm64:orr :x0 :x0 #.+fixnum-bit+ :imm t)  ; set fixnum bit
                  (linear-save-temp dst))))
 
       (bor
@@ -1806,10 +1806,11 @@
              (src2 (cadddr instr)))
          (append (linear-load-temp :x0 src1)
                  (linear-load-temp :x1 src2)
-                 (arm64:asr :x0 :x0 4 :imm t)  ; untag src1
-                 (arm64:asr :x1 :x1 4 :imm t)  ; untag src2
+                 (arm64:asr :x0 :x0 #.+fixnum-bit+ :imm t)  ; untag src1
+                 (arm64:asr :x1 :x1 #.+fixnum-bit+ :imm t)  ; untag src2
                  (arm64:orr :x0 :x0 :x1)       ; bitwise OR
-                 (arm64:lsl :x0 :x0 4 :imm t)  ; retag result
+                 (arm64:lsl :x0 :x0 #.+fixnum-bit+ :imm t)  ; shift left
+                 (arm64:orr :x0 :x0 #.+fixnum-bit+ :imm t)  ; set fixnum bit
                  (linear-save-temp dst))))
 
       (bxor
@@ -1818,10 +1819,11 @@
              (src2 (cadddr instr)))
          (append (linear-load-temp :x0 src1)
                  (linear-load-temp :x1 src2)
-                 (arm64:asr :x0 :x0 4 :imm t)  ; untag src1
-                 (arm64:asr :x1 :x1 4 :imm t)  ; untag src2
+                 (arm64:asr :x0 :x0 #.+fixnum-bit+ :imm t)  ; untag src1
+                 (arm64:asr :x1 :x1 #.+fixnum-bit+ :imm t)  ; untag src2
                  (arm64:eor :x0 :x0 :x1)       ; bitwise XOR
-                 (arm64:lsl :x0 :x0 4 :imm t)  ; retag result
+                 (arm64:lsl :x0 :x0 #.+fixnum-bit+ :imm t)  ; shift left
+                 (arm64:orr :x0 :x0 #.+fixnum-bit+ :imm t)  ; set fixnum bit
                  (linear-save-temp dst))))
 
       (bsh
@@ -1833,39 +1835,41 @@
              (src2 (cadddr instr))) ; shift amount
          (append (linear-load-temp :x0 src1)
                  (linear-load-temp :x1 src2)
-                 (arm64:asr :x0 :x0 4 :imm t)   ; untag value
-                 (arm64:asr :x1 :x1 4 :imm t)   ; untag amount
+                 (arm64:asr :x0 :x0 #.+fixnum-bit+ :imm t)   ; untag value
+                 (arm64:asr :x1 :x1 #.+fixnum-bit+ :imm t)   ; untag amount
                  ;; Check if shift amount is negative
                  (arm64:cmp :x1 0 :imm t)       ; compare amount to 0
                  (arm64:b.lt 3)                 ; if negative, jump to right shift
                  ;; Positive (left shift)
                  (arm64:lsl :x0 :x0 :x1)        ; LSLV - variable left shift
-                 (arm64:b 3)                    ; skip right shift
+                 (arm64:b 4)                    ; skip right shift (now 4 instructions)
                  ;; Negative (right shift): negate amount first
                  (arm64:neg :x1 :x1)            ; x1 = -x1 (make positive)
                  (arm64:asr :x0 :x0 :x1)        ; ASRV - variable arithmetic right shift
                  ;; Retag result
-                 (arm64:lsl :x0 :x0 4 :imm t)   ; retag result
+                 (arm64:lsl :x0 :x0 #.+fixnum-bit+ :imm t)   ; shift left
+                 (arm64:orr :x0 :x0 #.+fixnum-bit+ :imm t)   ; set fixnum bit
                  (linear-save-temp dst))))
 
       (bnot
        ;; Bitwise NOT on tagged fixnum:
-       ;; 1. Untag (arithmetic shift right 4)
+       ;; 1. Untag (arithmetic shift right 1)
        ;; 2. MVN (bitwise NOT)
-       ;; 3. Retag (shift left 4)
+       ;; 3. Retag (shift left 1, then OR with fixnum bit)
        (let ((dst (cadr instr))
              (src (caddr instr)))
          (append (linear-load-temp :x0 src)
-                 (arm64:asr :x0 :x0 4 :imm t)   ; untag
+                 (arm64:asr :x0 :x0 #.+fixnum-bit+ :imm t)   ; untag
                  (arm64:mvn :x0 :x0)            ; bitwise NOT
-                 (arm64:lsl :x0 :x0 4 :imm t)   ; retag
+                 (arm64:lsl :x0 :x0 #.+fixnum-bit+ :imm t)   ; shift left
+                 (arm64:orr :x0 :x0 #.+fixnum-bit+ :imm t)   ; set fixnum bit
                  (linear-save-temp dst))))
 
       ;; System calls
       (sys-exit
        (let ((src (cadr instr)))
          (append (linear-load-temp :x0 src)
-                 (arm64:asr :x0 :x0 4 :imm t)  ; untag exit code
+                 (arm64:asr :x0 :x0 #.+fixnum-bit+ :imm t)  ; untag exit code
                  (arm64:movz :x16 1)           ; syscall number for exit
                  (arm64:svc 0))))              ; supervisor call
 
@@ -1880,9 +1884,9 @@
                  ;; Store car at heap, cdr at heap+8
                  (arm64:str :x0 :heap :offset 0)
                  (arm64:str :x1 :heap :offset 8)
-                 ;; Make tagged cons pointer
+                 ;; Make tagged cons pointer (cons tag = 0)
                  (arm64:mov :x0 :heap)
-                 (arm64:add :x0 :x0 1 :imm t)  ; cons tag = 1
+                 ;; cons tag is 0, so no add needed
                  ;; Bump heap
                  (arm64:add :heap :heap 16 :imm t)
                  (linear-save-temp dst))))
@@ -1891,7 +1895,7 @@
        (let ((dst (cadr instr))
              (src (caddr instr)))
          (append (linear-load-temp :x0 src)
-                 (arm64:sub :x0 :x0 1 :imm t)  ; remove tag
+                 ;; cons tag is 0, so no need to untag
                  (arm64:ldr :x0 :x0 :offset 0)
                  (linear-save-temp dst))))
 
@@ -1899,7 +1903,7 @@
        (let ((dst (cadr instr))
              (src (caddr instr)))
          (append (linear-load-temp :x0 src)
-                 (arm64:sub :x0 :x0 1 :imm t)  ; remove tag
+                 ;; cons tag is 0, so no need to untag
                  (arm64:ldr :x0 :x0 :offset 8)
                  (linear-save-temp dst))))
 
@@ -1909,7 +1913,8 @@
              (src (caddr instr)))
          (append (linear-load-temp :x0 src)
                  (arm64:and* :x0 :x0 #xF :imm t)  ; extract tag bits
-                 (arm64:lsl :x0 :x0 4 :imm t)      ; tag as fixnum
+                 (arm64:lsl :x0 :x0 #.+fixnum-bit+ :imm t)  ; shift left
+                 (arm64:orr :x0 :x0 #.+fixnum-bit+ :imm t)  ; set fixnum bit
                  (linear-save-temp dst))))
 
       ;; Set tag: (set-tag dst value new-tag)
@@ -1920,7 +1925,7 @@
              (new-tag (cadddr instr)))
          (append (linear-load-temp :x0 val)       ; load value
                  (linear-load-temp :x1 new-tag)   ; load new tag (tagged)
-                 (arm64:asr :x1 :x1 4 :imm t)     ; untag new-tag
+                 (arm64:asr :x1 :x1 #.+fixnum-bit+ :imm t)     ; untag new-tag
                  (arm64:movz :x2 15 :lsl 0)       ; x2 = 0xF mask
                  (arm64:bic :x0 :x0 :x2)          ; clear low 4 bits of value
                  (arm64:orr :x0 :x0 :x1)          ; apply new tag bits
@@ -1997,9 +2002,10 @@
        (let ((dst (cadr instr))
              (src (caddr instr)))
          (append (linear-load-temp :x0 src)
-                 (arm64:sub :x0 :x0 4 :imm t)      ; remove string tag
+                 (arm64:sub :x0 :x0 #.+tag-string+ :imm t)      ; remove string tag
                  (arm64:ldr :x0 :x0 :offset 0)    ; load length
-                 (arm64:lsl :x0 :x0 4 :imm t)      ; tag as fixnum
+                 (arm64:lsl :x0 :x0 #.+fixnum-bit+ :imm t)      ; shift left
+                 (arm64:orr :x0 :x0 #.+fixnum-bit+ :imm t)      ; set fixnum bit
                  (linear-save-temp dst))))
 
       (string-ref
@@ -2008,17 +2014,18 @@
              (idx-src (cadddr instr)))
          (append (linear-load-temp :x0 str-src)
                  (linear-load-temp :x1 idx-src)
-                 ;; Untag index (shift right 4)
-                 (arm64:lsr :x1 :x1 4 :imm t)
+                 ;; Untag index (shift right 1)
+                 (arm64:asr :x1 :x1 #.+fixnum-bit+ :imm t)
                  ;; Untag string pointer
-                 (arm64:sub :x0 :x0 4 :imm t)
+                 (arm64:sub :x0 :x0 #.+tag-string+ :imm t)
                  ;; Add 8 for header, then add index
                  (arm64:add :x0 :x0 8 :imm t)
                  (arm64:add :x0 :x0 :x1)
                  ;; Load byte at [x0]
                  (arm64:ldrb :x0 :x0 0)
                  ;; Tag as fixnum
-                 (arm64:lsl :x0 :x0 4 :imm t)
+                 (arm64:lsl :x0 :x0 #.+fixnum-bit+ :imm t)
+                 (arm64:orr :x0 :x0 #.+fixnum-bit+ :imm t)
                  (linear-save-temp dst))))
 
       ;; nthcdr: (nthcdr n list) - take cdr n times
@@ -2035,10 +2042,10 @@
                  (arm64:cmp :x0 0 :imm t)           ; compare n to 0
                  (list (list :local-branch-le))     ; if n <= 0, exit
                  ;; x1 = cdr(x1)
-                 (arm64:sub :x1 :x1 1 :imm t)       ; untag cons
+                 ;; cons tag is 0, so no need to untag
                  (arm64:ldr :x1 :x1 :offset 8)      ; load cdr
                  ;; x0 = x0 - 1 (decrement n, keep tagged)
-                 (arm64:sub :x0 :x0 16 :imm t)      ; subtract 1 << 4
+                 (arm64:sub :x0 :x0 2 :imm t)      ; subtract tagged 1 (1 << 1)
                  (list (list :local-jump-back))     ; jump to loop start
                  (list (list :local-loop-end))
                  ;; Result is in x1
@@ -2076,11 +2083,12 @@
          ;; Call C system() function via extern
          (append (linear-load-temp :x0 cmd-src)
                  ;; Untag string and add 8 to get C string pointer
-                 (arm64:sub :x0 :x0 4 :imm t)
+                 (arm64:sub :x0 :x0 #.+tag-string+ :imm t)
                  (arm64:add :x0 :x0 8 :imm t)
                  (list (list :extern-call "_system"))
                  ;; Tag result as fixnum
-                 (arm64:lsl :x0 :x0 4 :imm t)
+                 (arm64:lsl :x0 :x0 #.+fixnum-bit+ :imm t)
+                 (arm64:orr :x0 :x0 #.+fixnum-bit+ :imm t)
                  (linear-save-temp dst))))
 
       ;; setcar/setcdr mutations
@@ -2090,9 +2098,9 @@
              (val-src (cadddr instr)))
          (append (linear-load-temp :x0 cons-src)
                  (linear-load-temp :x1 val-src)
-                 (arm64:sub :x0 :x0 1 :imm t)  ; remove cons tag
+                 ;; cons tag is 0, so no need to untag/retag
                  (arm64:str :x1 :x0 :offset 0) ; store car
-                 (arm64:add :x0 :x0 1 :imm t)  ; restore tag
+                 (arm64:mov :x0 :x0)           ; x0 already has the cons pointer
                  (linear-save-temp dst))))
 
       (setcdr
@@ -2101,9 +2109,9 @@
              (val-src (cadddr instr)))
          (append (linear-load-temp :x0 cons-src)
                  (linear-load-temp :x1 val-src)
-                 (arm64:sub :x0 :x0 1 :imm t)  ; remove cons tag
+                 ;; cons tag is 0, so no need to untag/retag
                  (arm64:str :x1 :x0 :offset 8) ; store cdr
-                 (arm64:add :x0 :x0 1 :imm t)  ; restore tag
+                 (arm64:mov :x0 :x0)           ; x0 already has the cons pointer
                  (linear-save-temp dst))))
 
       ;; Control flow
@@ -2207,10 +2215,10 @@
                 append (linear-load-temp reg temp))
           ;; Load function (closure) into x16 (IP0), then call
           (linear-load-temp :x16 fn-temp)
-          ;; Extract code pointer from closure (closure tag = 5)
-          (arm64:sub :x16 :x16 5 :imm t)    ; remove closure tag
+          ;; Extract code pointer from closure
+          (arm64:sub :x16 :x16 #.+tag-closure+ :imm t)    ; remove closure tag
           (arm64:ldr :x16 :x16 :offset 0)   ; load tagged fn offset
-          (arm64:lsr :x16 :x16 4 :imm t)    ; untag to get raw offset
+          (arm64:asr :x16 :x16 #.+fixnum-bit+ :imm t)    ; untag to get raw offset
           (arm64:add :x16 :x26 :x16)        ; add code base to get address
           (arm64:blr :x16)                 ; call through register
           (linear-save-temp dst))))
@@ -2230,10 +2238,10 @@
           ;; GC pre-check
           (gc-trigger-code)
           ;; x0 = tagged size, store untagged length at [x28+0]
-          (arm64:lsr :x1 :x0 4 :imm t)           ; x1 = untagged length
+          (arm64:asr :x1 :x0 #.+fixnum-bit+ :imm t)           ; x1 = untagged length
           (arm64:str :x1 :heap :offset 0)        ; [x28+0] = length
-          ;; Calculate allocation size: 8 + (x0 >> 1)
-          (arm64:lsr :x1 :x0 1 :imm t)           ; x1 = untagged_size * 8
+          ;; Calculate allocation size: 8 + length*8
+          (arm64:lsl :x1 :x1 3 :imm t)           ; x1 = length * 8
           (arm64:add :x1 :x1 8 :imm t)           ; x1 = 8 + data_size
           ;; Round to 16-byte alignment
           (arm64:add :x1 :x1 15 :imm t)
@@ -2241,8 +2249,8 @@
           ;; Return tagged pointer, bump heap
           (arm64:mov :x0 :heap)
           (arm64:add :heap :heap :x1)
-          ;; Tag with vector tag (0x3)
-          (arm64:movz :x1 3)
+          ;; Tag with vector tag
+          (arm64:movz :x1 #.+tag-vector+)
           (arm64:orr :x0 :x0 :x1)
           ;; GC trigger check
           (gc-trigger-code)
@@ -2288,14 +2296,14 @@
       (get-cmdline-args
        (let ((dst (cadr instr)))
          ;; Return nil for now - full implementation would build list from argv
-         (append (arm64:movz :x0 6)  ; nil
+         (append (arm64:movz :x0 +nil-value+)  ; nil = 0
                  (linear-save-temp dst))))
 
       ;; Sys-exit: exit with value (via libSystem stub)
       (sys-exit
        (let ((val-temp (cadr instr)))
          (append (linear-load-temp :x0 val-temp)
-                 (arm64:lsr :x0 :x0 4 :imm t)  ; untag
+                 (arm64:asr :x0 :x0 #.+fixnum-bit+ :imm t)  ; untag
                  (list (list :extern-call "_exit")))))
 
       ;; Sys-open: open file (path flags mode) -> fd (via libSystem stub)
@@ -2304,13 +2312,14 @@
              (path-temp (caddr instr))
              (flags-temp (cadddr instr)))
          (append (linear-load-temp :x0 path-temp)
-                 (arm64:sub :x0 :x0 4 :imm t)  ; untag string
+                 (arm64:sub :x0 :x0 #.+tag-string+ :imm t)  ; untag string
                  (arm64:add :x0 :x0 8 :imm t)  ; skip length
                  (linear-load-temp :x1 flags-temp)
-                 (arm64:lsr :x1 :x1 4 :imm t)  ; untag flags
+                 (arm64:asr :x1 :x1 #.+fixnum-bit+ :imm t)  ; untag flags
                  (arm64:movz :x2 0)            ; mode = 0
                  (list (list :extern-call "_open"))
-                 (arm64:lsl :x0 :x0 4 :imm t)  ; tag result
+                 (arm64:lsl :x0 :x0 #.+fixnum-bit+ :imm t)  ; shift left
+                 (arm64:orr :x0 :x0 #.+fixnum-bit+ :imm t)  ; set fixnum bit
                  (linear-save-temp dst))))
 
       ;; Sys-read: read(fd, buf, len) -> bytes read (via libSystem stub)
@@ -2320,14 +2329,15 @@
              (buf-temp (cadddr instr))
              (len-temp (car (cddddr instr))))
          (append (linear-load-temp :x0 fd-temp)
-                 (arm64:lsr :x0 :x0 4 :imm t)
+                 (arm64:asr :x0 :x0 #.+fixnum-bit+ :imm t)
                  (linear-load-temp :x1 buf-temp)
-                 (arm64:sub :x1 :x1 3 :imm t)  ; untag vector
+                 (arm64:sub :x1 :x1 #.+tag-vector+ :imm t)  ; untag vector
                  (arm64:add :x1 :x1 8 :imm t)  ; skip length
                  (linear-load-temp :x2 len-temp)
-                 (arm64:lsr :x2 :x2 4 :imm t)
+                 (arm64:asr :x2 :x2 #.+fixnum-bit+ :imm t)
                  (list (list :extern-call "_read"))
-                 (arm64:lsl :x0 :x0 4 :imm t)
+                 (arm64:lsl :x0 :x0 #.+fixnum-bit+ :imm t)
+                 (arm64:orr :x0 :x0 #.+fixnum-bit+ :imm t)
                  (linear-save-temp dst))))
 
       ;; Sys-write: write(fd, buf, len) -> bytes written (via libSystem stub)
@@ -2337,14 +2347,15 @@
              (buf-temp (cadddr instr))
              (len-temp (car (cddddr instr))))
          (append (linear-load-temp :x0 fd-temp)
-                 (arm64:lsr :x0 :x0 4 :imm t)
+                 (arm64:asr :x0 :x0 #.+fixnum-bit+ :imm t)
                  (linear-load-temp :x1 buf-temp)
-                 (arm64:sub :x1 :x1 3 :imm t)  ; untag vector
+                 (arm64:sub :x1 :x1 #.+tag-vector+ :imm t)  ; untag vector
                  (arm64:add :x1 :x1 8 :imm t)  ; skip length
                  (linear-load-temp :x2 len-temp)
-                 (arm64:lsr :x2 :x2 4 :imm t)
+                 (arm64:asr :x2 :x2 #.+fixnum-bit+ :imm t)
                  (list (list :extern-call "_write"))
-                 (arm64:lsl :x0 :x0 4 :imm t)
+                 (arm64:lsl :x0 :x0 #.+fixnum-bit+ :imm t)
+                 (arm64:orr :x0 :x0 #.+fixnum-bit+ :imm t)
                  (linear-save-temp dst))))
 
       ;; Sys-close: close(fd) (via libSystem stub)
@@ -2352,9 +2363,10 @@
        (let ((dst (cadr instr))
              (fd-temp (caddr instr)))
          (append (linear-load-temp :x0 fd-temp)
-                 (arm64:lsr :x0 :x0 4 :imm t)
+                 (arm64:asr :x0 :x0 #.+fixnum-bit+ :imm t)
                  (list (list :extern-call "_close"))
-                 (arm64:lsl :x0 :x0 4 :imm t)
+                 (arm64:lsl :x0 :x0 #.+fixnum-bit+ :imm t)
+                 (arm64:orr :x0 :x0 #.+fixnum-bit+ :imm t)
                  (linear-save-temp dst))))
 
       ;; Vector-ref: (vector-ref dst vec idx)
@@ -2363,9 +2375,10 @@
        (let ((dst (cadr instr))
              (vec-temp (caddr instr)))
          (append (linear-load-temp :x0 vec-temp)
-                 (arm64:sub :x0 :x0 3 :imm t)     ; untag vector (tag 3)
+                 (arm64:sub :x0 :x0 #.+tag-vector+ :imm t)     ; untag vector
                  (arm64:ldr :x0 :x0 :offset 0)    ; x0 = raw length
-                 (arm64:lsl :x0 :x0 4 :imm t)     ; tag as fixnum
+                 (arm64:lsl :x0 :x0 #.+fixnum-bit+ :imm t)     ; shift left
+                 (arm64:orr :x0 :x0 #.+fixnum-bit+ :imm t)     ; set fixnum bit
                  (linear-save-temp dst))))
 
       (vector-ref
@@ -2373,10 +2386,11 @@
              (vec-temp (caddr instr))
              (idx-temp (cadddr instr)))
          (append (linear-load-temp :x1 vec-temp)
-                 (arm64:sub :x1 :x1 3 :imm t)  ; untag vector
+                 (arm64:sub :x1 :x1 #.+tag-vector+ :imm t)  ; untag vector
                  (linear-load-temp :x0 idx-temp)
-                 ;; offset = (idx >> 1) + 8 = idx_untagged * 8 + 8
-                 (arm64:lsr :x0 :x0 1 :imm t)  ; x0 = idx_untagged * 8
+                 ;; Untag index and calculate offset: idx_untagged * 8 + 8
+                 (arm64:asr :x0 :x0 #.+fixnum-bit+ :imm t)  ; x0 = idx_untagged
+                 (arm64:lsl :x0 :x0 3 :imm t)  ; x0 = idx_untagged * 8
                  (arm64:add :x0 :x0 8 :imm t)  ; x0 = 8 + idx_untagged * 8
                  (arm64:add :x1 :x1 :x0)       ; x1 = address
                  (arm64:ldr :x0 :x1 :offset 0) ; x0 = [x1] = element
@@ -2389,9 +2403,9 @@
              (idx-temp (cadddr instr))
              (val-temp (car (cddddr instr))))
          (append (linear-load-temp :x0 vec-temp)
-                 (arm64:sub :x0 :x0 3 :imm t)  ; untag vector
+                 (arm64:sub :x0 :x0 #.+tag-vector+ :imm t)  ; untag vector
                  (linear-load-temp :x1 idx-temp)
-                 (arm64:lsr :x1 :x1 4 :imm t)  ; untag index
+                 (arm64:asr :x1 :x1 #.+fixnum-bit+ :imm t)  ; untag index
                  (arm64:add :x1 :x1 1 :imm t)  ; skip length slot
                  (arm64:lsl :x1 :x1 3 :imm t)  ; *8 for offset
                  (arm64:add :x0 :x0 :x1)       ; x0 = address
@@ -2407,13 +2421,14 @@
              (buf-temp (caddr instr))
              (idx-temp (cadddr instr)))
          (append (linear-load-temp :x0 buf-temp)
-                 (arm64:sub :x0 :x0 3 :imm t)  ; untag vector (tag 3)
+                 (arm64:sub :x0 :x0 #.+tag-vector+ :imm t)  ; untag vector
                  (arm64:add :x0 :x0 8 :imm t)  ; skip length
                  (linear-load-temp :x1 idx-temp)
-                 (arm64:lsr :x1 :x1 4 :imm t)  ; untag index
+                 (arm64:asr :x1 :x1 #.+fixnum-bit+ :imm t)  ; untag index
                  (arm64:add :x0 :x0 :x1)       ; x0 = address
                  (arm64:ldrb :x0 :x0 0)        ; load byte
-                 (arm64:lsl :x0 :x0 4 :imm t)  ; tag as fixnum
+                 (arm64:lsl :x0 :x0 #.+fixnum-bit+ :imm t)  ; shift left
+                 (arm64:orr :x0 :x0 #.+fixnum-bit+ :imm t)  ; set fixnum bit
                  (linear-save-temp dst))))
 
       ;; Buffer-byte-set: set byte in buffer
@@ -2423,13 +2438,13 @@
              (idx-temp (cadddr instr))
              (val-temp (car (cddddr instr))))
          (append (linear-load-temp :x0 buf-temp)
-                 (arm64:sub :x0 :x0 3 :imm t)  ; untag vector
+                 (arm64:sub :x0 :x0 #.+tag-vector+ :imm t)  ; untag vector
                  (arm64:add :x0 :x0 8 :imm t)  ; skip length
                  (linear-load-temp :x1 idx-temp)
-                 (arm64:lsr :x1 :x1 4 :imm t)
+                 (arm64:asr :x1 :x1 #.+fixnum-bit+ :imm t)
                  (arm64:add :x0 :x0 :x1)       ; x0 = address
                  (linear-load-temp :x2 val-temp)
-                 (arm64:lsr :x2 :x2 4 :imm t)
+                 (arm64:asr :x2 :x2 #.+fixnum-bit+ :imm t)
                  (arm64:strb :x2 :x0 :offset 0)
                  (linear-save-temp dst))))
 
@@ -2440,14 +2455,14 @@
              (off-temp (cadddr instr))
              (val-temp (car (cddddr instr))))
          (append (linear-load-temp :x0 ptr-temp)
-                 (arm64:lsr :x0 :x0 4 :imm t)
+                 (arm64:asr :x0 :x0 #.+fixnum-bit+ :imm t)
                  (linear-load-temp :x1 off-temp)
-                 (arm64:lsr :x1 :x1 4 :imm t)
+                 (arm64:asr :x1 :x1 #.+fixnum-bit+ :imm t)
                  (arm64:add :x0 :x0 :x1)
                  (linear-load-temp :x2 val-temp)
-                 (arm64:lsr :x2 :x2 4 :imm t)
+                 (arm64:asr :x2 :x2 #.+fixnum-bit+ :imm t)
                  (arm64:strb :x2 :x0 :offset 0)
-                 (arm64:movz :x0 6)  ; return nil
+                 (arm64:movz :x0 +nil-value+)  ; return nil = 0
                  (linear-save-temp dst))))
 
       ;; Mem-load-64: load 64-bit value from pointer + offset
@@ -2456,12 +2471,13 @@
              (ptr-temp (caddr instr))
              (off-temp (cadddr instr)))
          (append (linear-load-temp :x0 ptr-temp)
-                 (arm64:lsr :x0 :x0 4 :imm t)
+                 (arm64:asr :x0 :x0 #.+fixnum-bit+ :imm t)
                  (linear-load-temp :x1 off-temp)
-                 (arm64:lsr :x1 :x1 4 :imm t)
+                 (arm64:asr :x1 :x1 #.+fixnum-bit+ :imm t)
                  (arm64:add :x0 :x0 :x1)
                  (arm64:ldr :x0 :x0 :offset 0)
-                 (arm64:lsl :x0 :x0 4 :imm t)  ; tag as fixnum
+                 (arm64:lsl :x0 :x0 #.+fixnum-bit+ :imm t)  ; shift left
+                 (arm64:orr :x0 :x0 #.+fixnum-bit+ :imm t)  ; set fixnum bit
                  (linear-save-temp dst))))
 
       ;; NOTE: bnot (bitwise NOT) handler is at line ~1627
@@ -2469,13 +2485,13 @@
       ;; Boolean NOT uses (cmp-eq x nil-ir) in compiler.lisp, not bnot
 
       ;; symbol-name: get string name from symbol
-      ;; Symbol = (string-ptr | 2), String = (ptr | 4)
+      ;; Symbol has tag 2, String has tag 6
       (symbol-name
        (let ((dst (cadr instr))
              (sym-temp (caddr instr)))
          (append (linear-load-temp :x0 sym-temp)
-                 (arm64:sub :x0 :x0 2 :imm t)  ; untag symbol (tag 2)
-                 (arm64:add :x0 :x0 4 :imm t)  ; add string tag (4)
+                 (arm64:sub :x0 :x0 #.+tag-symbol+ :imm t)  ; untag symbol
+                 (arm64:add :x0 :x0 #.+tag-string+ :imm t)  ; add string tag
                  (linear-save-temp dst))))
 
       ;; string-equal: compare two strings for equality
@@ -2526,10 +2542,10 @@
           (arm64:add :x4 :x4 1 :imm t)       ; x4++
           (arm64:b -7)                       ; back to loop_start (-7)
           ;; return_true:
-          (arm64:movz :x0 16)                ; x0 = 16 (tagged 1)
+          (arm64:movz :x0 +t-value+)         ; x0 = t (tagged 1)
           (arm64:b 2)                        ; skip return_false
           ;; return_false:
-          (arm64:movz :x0 6)                 ; x0 = 6 (nil)
+          (arm64:movz :x0 +nil-value+)       ; x0 = nil
           (linear-save-temp dst))))
 
       ;; make-string-from-vector: convert vector of char codes to string
@@ -2540,7 +2556,7 @@
          (append
           ;; Load vector
           (linear-load-temp :x1 vec-temp)
-          (arm64:sub :x1 :x1 3 :imm t)           ; untag vector
+          (arm64:sub :x1 :x1 #.+tag-vector+ :imm t)           ; untag vector
           ;; x5 = vec length
           (arm64:ldr :x5 :x1 :offset 0)
           ;; GC pre-check
@@ -2566,12 +2582,12 @@
           (arm64:add :x4 :x4 8 :imm t)           ; 3: x4 = 8 + x3*8
           (arm64:add :x4 :x1 :x4)                ; 4: x4 = vec_base + offset
           (arm64:ldr :x4 :x4 :offset 0)          ; 5: x4 = tagged fixnum
-          (arm64:lsr :x4 :x4 4 :imm t)           ; 6: x4 = char value
+          (arm64:asr :x4 :x4 #.+fixnum-bit+ :imm t)           ; 6: x4 = char value
           (arm64:strb :x4 :x2 :x3 :reg t)        ; 7: [x2 + x3] = x4 (byte)
           (arm64:add :x3 :x3 1 :imm t)           ; 8: x3++
           (arm64:b -9)                           ; 9: back to cmp (instr 0)
-          ;; Tag result with string tag (4)
-          (arm64:movz :x4 4)
+          ;; Tag result with string tag
+          (arm64:movz :x4 #.+tag-string+)
           (arm64:orr :x0 :x0 :x4)
           (linear-save-temp dst))))
 
@@ -2580,8 +2596,8 @@
        (let ((dst (cadr instr))
              (str-temp (caddr instr)))
          (append (linear-load-temp :x0 str-temp)
-                 (arm64:sub :x0 :x0 4 :imm t)  ; untag string (tag 4)
-                 (arm64:add :x0 :x0 2 :imm t)  ; add symbol tag (2)
+                 (arm64:sub :x0 :x0 #.+tag-string+ :imm t)  ; untag string
+                 (arm64:add :x0 :x0 #.+tag-symbol+ :imm t)  ; add symbol tag
                  (linear-save-temp dst))))
 
       ;; load-lambda: create closure on heap
@@ -2604,7 +2620,7 @@
               (arm64:movz :x0 0)              ; nil for empty env
               (arm64:str :x0 :heap :offset 8)
               (arm64:mov :x0 :heap)
-              (arm64:add :x0 :x0 5 :imm t)    ; closure tag
+              (arm64:add :x0 :x0 #.+tag-closure+ :imm t)    ; closure tag
               (arm64:add :heap :heap 16 :imm t)
               (gc-trigger-code)
               (linear-save-temp dst))
@@ -2624,9 +2640,9 @@
                                (arm64:ldr :x0 :x1 :offset 0)
                                ;; Store as car
                                (arm64:str :x0 :heap :offset 0)
-                               ;; Make cons pointer (tag 1)
+                               ;; Make cons pointer (tag 0)
                                (arm64:mov :x0 :heap)
-                               (arm64:add :x0 :x0 1 :imm t)
+                               ;; cons tag is 0, so no add needed
                                (arm64:add :heap :heap 16 :imm t))))))
                (append
                 (gc-trigger-code)
@@ -2637,9 +2653,9 @@
                 ;; Store fn-offset at heap+0
                 (load-addr-8 :x16 (ash fn-offset 4))
                 (arm64:str :x16 :heap :offset 0)
-                ;; Create closure pointer (tag 5)
+                ;; Create closure pointer
                 (arm64:mov :x0 :heap)
-                (arm64:add :x0 :x0 5 :imm t)
+                (arm64:add :x0 :x0 #.+tag-closure+ :imm t)
                 (arm64:add :heap :heap 16 :imm t)
                 (gc-trigger-code)
                 (linear-save-temp dst)))))))
@@ -2653,10 +2669,10 @@
          (append
           ;; Load buf to x1, len to x5 (untagged)
           (linear-load-temp :x1 buf-temp)
-          (arm64:sub :x1 :x1 3 :imm t)      ; untag vector (tag 3)
+          (arm64:sub :x1 :x1 #.+tag-vector+ :imm t)      ; untag vector
           (arm64:add :x1 :x1 8 :imm t)      ; skip length header, x1 = data ptr
           (linear-load-temp :x5 len-temp)
-          (arm64:lsr :x5 :x5 4 :imm t)      ; untag length
+          (arm64:asr :x5 :x5 #.+fixnum-bit+ :imm t)      ; untag length
           ;; GC pre-check
           (gc-trigger-code)
           ;; Allocate string: store length at [x28]
