@@ -1,8 +1,8 @@
 {
   "mcpServers": {
     "habu": {
-      "command": "/opt/homebrew/bin/sbcl",
-      "args": ["--noinform", "--load", "./mcp-server/mcp.lisp"]
+      "command": "/bin/sh",
+      "args": ["-c", "/opt/homebrew/bin/sbcl --noinform --load ./mcp-server/mcp.lisp 2>/tmp/habu-mcp.log"]
     }
   }
 }

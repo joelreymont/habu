@@ -308,7 +308,7 @@
     (:run . 30)
     (:debug . 30)
     (:build . 600)
-    (:oracle . 30)    ; Changed from 1800 to 30 for faster iteration
+    (:oracle . 1800)  ; 30 minutes for complex reasoning
     (:habu0 . 30))
   "Default timeouts in seconds for various tool types")
 
