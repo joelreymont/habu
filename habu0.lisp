@@ -2460,11 +2460,25 @@
 
 ;;; Look up operator dispatch ID from symbol
 ;;; Returns dispatch ID (integer) or nil if not a special form
-;;; Uses eq comparison on habu symbols for O(1) per-entry lookup
+;;; Uses eq first for O(1) when symbols are properly interned,
+;;; falls back to string comparison when symbols are from different intern tables.
 (defun op-lookup (sym)
   "Look up dispatch ID for operator symbol. Returns nil for function calls."
   (let ((entry (assoc sym *op-dispatch-table* :test #'eq)))
-    (if entry (cdr entry) nil)))
+    (if entry
+        (cdr entry)
+        ;; Fallback: string comparison for cross-intern-table symbols
+        (op-lookup-by-name (symbol-name sym) *op-dispatch-table*))))
+
+;; Helper for op-lookup - linear search by symbol name
+(defun op-lookup-by-name (name table)
+  (if (null table)
+      nil
+      (let* ((entry (car table))
+             (table-sym (car entry)))
+        (if (c-names-match name (symbol-name table-sym))
+            (cdr entry)
+            (op-lookup-by-name name (cdr table))))))
 
 ;; Initialize compile ops - create habu symbols at runtime
 ;; Uses macros to expand string literals to integer-based construction at compile time.
