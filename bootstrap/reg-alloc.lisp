@@ -1237,6 +1237,20 @@
                   (val-vr (cadr val-result)))
              (list val-instrs val-vr)))))
 
+    ;; sym-eq-ir: compare two symbols by name (not pointer identity)
+    ;; Used by case dispatch since habu0 creates new symbol objects at runtime
+    ((and (consp ir) (ir-tag-matches (car ir) "SYM-EQ-IR"))
+     (let* ((s1-result (ir-to-tac (cadr ir) counter))
+            (s1-instrs (car s1-result))
+            (s1-vr (cadr s1-result))
+            (s2-result (ir-to-tac (caddr ir) counter))
+            (s2-instrs (car s2-result))
+            (s2-vr (cadr s2-result))
+            (result-vr (next-vreg counter)))
+       (list (append s1-instrs s2-instrs
+                     (list (list 'tac-sym-eq result-vr s1-vr s2-vr)))
+             result-vr)))
+
     ;; Default: error on unhandled IR
     (t
      (error "ir-to-tac: Unhandled IR form: ~A" ir))))
@@ -1250,202 +1264,290 @@
 ;;;   live-in[i] = use[i] ∪ (live-out[i] - def[i])
 ;;;   live-out[i] = ∪ live-in[successors of i]
 
+;; Helper for symbol comparison that works across compilation boundaries
+;; When habu0 interpreter calls compiled code, symbols may not be eq
+;; but should match by name
+(defun tac-name= (sym str)
+  "Check if symbol SYM's symbol-name equals STR"
+  (string= (symbol-name sym) str))
+
+;;; Helper functions for compute-liveness (hoisted to avoid labels FNTAB issue)
+
+(defun liveness-find-label-index (label instrs idx)
+  "Find index of label in TAC instruction list"
+  (if (null instrs)
+      nil
+      (if (and (tac-name= (caar instrs) "TAC-LABEL")
+               (= (cadar instrs) label))
+          idx
+          (liveness-find-label-index label (cdr instrs) (+ idx 1)))))
+
+(defun liveness-set-union (a b)
+  "Set union for vreg lists"
+  (if (null a) b
+      (if (member (car a) b)
+          (liveness-set-union (cdr a) b)
+          (cons (car a) (liveness-set-union (cdr a) b)))))
+
+(defun liveness-set-diff (a b)
+  "Set difference for vreg lists"
+  (if (null a) nil
+      (if (member (car a) b)
+          (liveness-set-diff (cdr a) b)
+          (cons (car a) (liveness-set-diff (cdr a) b)))))
+
+(defun liveness-nth-set (lst idx val)
+  "Destructively set nth element of list"
+  (if (= idx 0)
+      (setcar lst val)
+      (liveness-nth-set (cdr lst) (- idx 1) val)))
+
+;; Custom nth that doesn't use labels (avoid FNTAB unpacking issue)
+(defun liveness-nth (n lst)
+  "Get nth element of list without using labels."
+  (if (= n 0)
+      (car lst)
+      (liveness-nth (- n 1) (cdr lst))))
+
+(defun liveness-union-succs (succs live-in result)
+  "Union live-in sets for all successors. Replaces dolist to avoid lambda/FNTAB."
+  (if (null succs)
+      result
+      (liveness-union-succs (cdr succs) live-in
+                            (liveness-set-union result (liveness-nth (car succs) live-in)))))
+
+;; Separate helper for TAC-GOTO successors
+;; Takes tac-instrs directly instead of closure to avoid FNTAB unpacking issue
+(defun successors-goto (instr tac-instrs)
+  (let ((target (liveness-find-label-index (cadr instr) tac-instrs 0)))
+    (if target (list target) nil)))
+
+;; Separate helper for TAC-IF successors
+(defun successors-if (instr tac-instrs)
+  (let ((then-idx (liveness-find-label-index (caddr instr) tac-instrs 0))
+        (else-idx (liveness-find-label-index (cadddr instr) tac-instrs 0)))
+    (append (if then-idx (list then-idx) nil)
+            (if else-idx (list else-idx) nil))))
+
+;; Separate helper for TAC-IF-NOT successors
+(defun successors-if-not (instr idx n tac-instrs)
+  (let ((target-idx (liveness-find-label-index (caddr instr) tac-instrs 0))
+        (fall-through (if (< (+ idx 1) n) (+ idx 1) nil)))
+    (if (null target-idx)
+        (error "tac-if-not: target label ~A not found" (caddr instr))
+        (append (list target-idx)
+                (if fall-through (list fall-through) nil)))))
+
+;; Separate helper for default fall-through
+(defun successors-default (idx n)
+  (if (< (+ idx 1) n) (list (+ idx 1)) nil))
+
+(defun successors-dispatch (instr idx n tac-instrs)
+  "Compute successor indices for an instruction.
+   Uses separate helper functions for each case to avoid eager evaluation.
+   Takes tac-instrs directly instead of closure to avoid FNTAB unpacking issue."
+  (let ((op (car instr)))
+    (if (tac-name= op "TAC-GOTO")
+        (successors-goto instr tac-instrs)
+        (if (tac-name= op "TAC-IF")
+            (successors-if instr tac-instrs)
+            (if (tac-name= op "TAC-IF-NOT")
+                (successors-if-not instr idx n tac-instrs)
+                (if (tac-name= op "TAC-RETURN")
+                    nil
+                    (successors-default idx n)))))))
+
+(defun tac-name-member-helper (name-str names)
+  "Helper: check if NAME-STR is in NAMES list of strings"
+  (if (null names)
+      nil
+      (if (string= name-str (car names))
+          t
+          (tac-name-member-helper name-str (cdr names)))))
+
+(defun tac-name-member (name names)
+  "Check if symbol NAME's symbol-name is a member of NAMES (list of strings)"
+  (tac-name-member-helper (symbol-name name) names))
+
+;; Instead of defvar (which doesn't work across compilation boundaries),
+;; we use helper functions that return the constant lists
+(defun tac-def-instrs ()
+  "TAC instructions that define a result vreg (vreg is second element)"
+  '("TAC-LIT" "TAC-KW-LIT" "TAC-PARAM" "TAC-VAR" "TAC-BINOP" "TAC-CMP" "TAC-CALL" "TAC-MOVE"
+    "TAC-NIL" "TAC-CONS" "TAC-CAR" "TAC-CDR" "TAC-SYM" "TAC-STR"
+    "TAC-MAKE-VECTOR" "TAC-VECTOR-REF" "TAC-VECTOR-LENGTH"
+    "TAC-STRING-LENGTH" "TAC-STRING-REF" "TAC-MAKE-STRING"
+    "TAC-GET-TAG" "TAC-SET-TAG" "TAC-FUNCALL" "TAC-MAKE-CLOSURE"
+    "TAC-GET-GLOBAL-VARS" "TAC-GET-CMDLINE-ARGS"
+    "TAC-SYS-OPEN" "TAC-SYS-READ" "TAC-SYS-WRITE" "TAC-SYS-CLOSE" "TAC-BUFFER-TO-STRING"
+    "TAC-BUFFER-BYTE-SET" "TAC-BUFFER-BYTE-REF" "TAC-MEM-SET-BYTE" "TAC-MEM-LOAD-64" "TAC-MEM-LOAD-BYTE" "TAC-BNOT" "TAC-MVN"
+    "TAC-LAMBDA-REF" "TAC-SYMBOL-NAME" "TAC-MAKE-SYMBOL"
+    "TAC-STRING-CONCAT" "TAC-STRING-EQUAL" "TAC-SYM-EQ"
+    "TAC-GET-INTERN-TABLE" "TAC-GET-KEYWORD-TABLE"
+    "TAC-GET-LAMBDA-COUNTER" "TAC-GET-SYMBOL-COUNTER" "TAC-GET-SYMBOL-TABLE"
+    "TAC-GET-FRAME-POINTER" "TAC-GET-CODE-BASE" "TAC-GET-SYMTAB-OFFSET" "TAC-GET-SYMTAB-COUNT"
+    "TAC-GET-PACKAGES" "TAC-GET-CURRENT-PACKAGE"))
+
+(defun tac-no-def-instrs ()
+  "TAC instructions that don't define a vreg (control flow, stores, etc.)"
+  '("TAC-RETURN" "TAC-IF" "TAC-IF-NOT" "TAC-GOTO" "TAC-LABEL" "TAC-SETVAR" "TAC-SYS-EXIT"
+    "TAC-LOOP-START" "TAC-CONTINUE" "TAC-SETCAR" "TAC-SETCDR" "TAC-VECTOR-SET"
+    "TAC-SET-GLOBAL-VARS" "TAC-SET-INTERN-TABLE" "TAC-SET-KEYWORD-TABLE"
+    "TAC-SET-LAMBDA-COUNTER" "TAC-SET-SYMBOL-COUNTER" "TAC-SET-SYMBOL-TABLE"
+    "TAC-SET-PACKAGES" "TAC-SET-CURRENT-PACKAGE"))
+
 (defun tac-def (instr)
   "Return the vreg defined by this instruction (or nil)"
-  (case (car instr)
-    ;; Instructions that define a result vreg (vreg is second element)
-    ((tac-lit tac-kw-lit tac-param tac-var tac-binop tac-cmp tac-call tac-move
-      tac-nil tac-cons tac-car tac-cdr tac-sym tac-str
-      tac-make-vector tac-vector-ref tac-vector-length
-      tac-string-length tac-string-ref tac-make-string
-      tac-get-tag tac-set-tag tac-funcall tac-make-closure
-      tac-get-global-vars tac-get-cmdline-args
-      tac-sys-open tac-sys-read tac-sys-write tac-sys-close tac-buffer-to-string
-      tac-buffer-byte-set tac-buffer-byte-ref tac-mem-set-byte tac-mem-load-64 tac-mem-load-byte tac-bnot tac-mvn
-      ;; New TAC instructions
-      tac-lambda-ref tac-symbol-name tac-make-symbol
-      tac-string-concat tac-string-equal
-      tac-get-intern-table tac-get-keyword-table
-      tac-get-lambda-counter tac-get-symbol-counter tac-get-symbol-table
-      tac-get-frame-pointer tac-get-code-base tac-get-symtab-offset tac-get-symtab-count
-      tac-get-packages tac-get-current-package)
-     (cadr instr))
-    ;; Instructions that don't define a vreg (control flow, stores, etc.)
-    ((tac-return tac-if tac-if-not tac-goto tac-label tac-setvar tac-sys-exit
-      tac-loop-start tac-continue tac-setcar tac-setcdr tac-vector-set
-      tac-set-global-vars tac-set-intern-table tac-set-keyword-table
-      tac-set-lambda-counter tac-set-symbol-counter tac-set-symbol-table
-      tac-set-packages tac-set-current-package)
-     nil)
-    (t (error "tac-def: Unhandled TAC instruction: ~A" (car instr)))))
+  (let ((op (car instr)))
+    (cond
+      ((tac-name-member op (tac-def-instrs))
+       (cadr instr))
+      ((tac-name-member op (tac-no-def-instrs))
+       nil)
+      (t (error "tac-def: Unhandled TAC instruction: ~A" op)))))
+
+;; TAC instruction categories for tac-use (as functions to avoid defvar issues)
+(defun tac-no-use-instrs ()
+  '("TAC-LIT" "TAC-KW-LIT" "TAC-PARAM" "TAC-VAR" "TAC-LABEL" "TAC-GOTO" "TAC-NIL" "TAC-SYM" "TAC-STR"
+    "TAC-LOOP-START" "TAC-CONTINUE" "TAC-MAKE-CLOSURE"
+    "TAC-GET-GLOBAL-VARS" "TAC-GET-CMDLINE-ARGS"
+    "TAC-LAMBDA-REF" "TAC-GET-INTERN-TABLE" "TAC-GET-KEYWORD-TABLE"
+    "TAC-GET-LAMBDA-COUNTER" "TAC-GET-SYMBOL-COUNTER" "TAC-GET-SYMBOL-TABLE"
+    "TAC-GET-FRAME-POINTER" "TAC-GET-CODE-BASE" "TAC-GET-SYMTAB-OFFSET" "TAC-GET-SYMTAB-COUNT"
+    "TAC-GET-PACKAGES" "TAC-GET-CURRENT-PACKAGE"))
+
+(defun tac-binop-instrs ()
+  '("TAC-BINOP" "TAC-CMP"))
+
+(defun tac-setter-instrs ()
+  '("TAC-SET-GLOBAL-VARS" "TAC-SET-INTERN-TABLE" "TAC-SET-KEYWORD-TABLE"
+    "TAC-SET-LAMBDA-COUNTER" "TAC-SET-SYMBOL-COUNTER" "TAC-SET-SYMBOL-TABLE"
+    "TAC-SYS-EXIT" "TAC-SET-PACKAGES" "TAC-SET-CURRENT-PACKAGE"))
+
+(defun tac-unary-instrs ()
+  '("TAC-MOVE" "TAC-CAR" "TAC-CDR" "TAC-VECTOR-LENGTH" "TAC-STRING-LENGTH"
+    "TAC-MAKE-VECTOR" "TAC-MAKE-STRING" "TAC-GET-TAG" "TAC-BNOT" "TAC-MVN" "TAC-SYS-CLOSE"
+    "TAC-SYMBOL-NAME" "TAC-MAKE-SYMBOL"))
+
+(defun tac-binary-str-instrs ()
+  '("TAC-STRING-CONCAT" "TAC-STRING-EQUAL" "TAC-SYM-EQ"))
 
 (defun tac-use (instr)
   "Return list of vregs used by this instruction"
-  (case (car instr)
-    ;; Instructions with no vreg uses
-    ((tac-lit tac-kw-lit tac-param tac-var tac-label tac-goto tac-nil tac-sym tac-str
-      tac-loop-start tac-continue tac-make-closure
-      tac-get-global-vars tac-get-cmdline-args
-      ;; New no-use instructions
-      tac-lambda-ref tac-get-intern-table tac-get-keyword-table
-      tac-get-lambda-counter tac-get-symbol-counter tac-get-symbol-table
-      tac-get-frame-pointer tac-get-code-base tac-get-symtab-offset tac-get-symtab-count
-      tac-get-packages tac-get-current-package)
-     nil)
-    ;; Binary operations: (tac-binop dest op vr1 vr2)
-    ((tac-binop tac-cmp)
-     (list (cadddr instr) (nth 4 instr)))
-    ;; setvar: (tac-setvar offset vreg) - uses 3rd element
-    ((tac-setvar)
-     (list (caddr instr)))
-    ;; Global/system setters: (tac-set-X vreg) - uses 2nd element
-    ((tac-set-global-vars tac-set-intern-table tac-set-keyword-table
-      tac-set-lambda-counter tac-set-symbol-counter tac-set-symbol-table
-      tac-sys-exit tac-set-packages tac-set-current-package)
-     (list (cadr instr)))
-    ;; Conditionals: (tac-if cond-vreg then else)
-    ((tac-if tac-if-not)
-     (list (cadr instr)))
-    ;; Return: (tac-return vreg)
-    ((tac-return)
-     (list (cadr instr)))
-    ;; Unary ops: (tac-X dest src)
-    ((tac-move tac-car tac-cdr tac-vector-length tac-string-length
-      tac-make-vector tac-make-string tac-get-tag tac-bnot tac-mvn tac-sys-close
-      ;; New unary ops
-      tac-symbol-name tac-make-symbol)
-     (list (caddr instr)))
-    ;; Cons: (tac-cons dest car cdr)
-    ((tac-cons tac-mem-load-64 tac-mem-load-byte)
-     (list (caddr instr) (cadddr instr)))
-    ;; buffer-to-string: (tac-buffer-to-string dest buf len)
-    ((tac-buffer-to-string)
-     (list (caddr instr) (cadddr instr)))
-    ;; Binary string ops: (tac-X dest vr1 vr2)
-    ((tac-string-concat tac-string-equal)
-     (list (caddr instr) (cadddr instr)))
-    ;; set-tag: (tac-set-tag dest val-vr tag-vr)
-    ((tac-set-tag)
-     (list (caddr instr) (cadddr instr)))
-    ;; Mutation: (tac-setcar cons-vr val-vr), (tac-setcdr cons-vr val-vr)
-    ((tac-setcar tac-setcdr)
-     (list (cadr instr) (caddr instr)))
-    ;; Vector ops: (tac-vector-ref dest vec idx), (tac-string-ref dest str idx), (tac-buffer-byte-ref dest buf idx)
-    ((tac-vector-ref tac-string-ref tac-buffer-byte-ref)
-     (list (caddr instr) (cadddr instr)))
-    ;; Vector set: (tac-vector-set vec idx val) - no dest, returns val
-    ((tac-vector-set)
-     (list (cadr instr) (caddr instr) (cadddr instr)))
-    ;; Call: (tac-call dest fn args)
-    ((tac-call)
-     (cadddr instr))
-    ;; Funcall: (tac-funcall dest fn-vr args)
-    ((tac-funcall)
-     (cons (caddr instr) (cadddr instr)))
-    ;; sys-open: (tac-sys-open dest path flags mode)
-    ((tac-sys-open)
-     (list (caddr instr) (cadddr instr) (nth 4 instr)))
-    ;; sys-read/write: (tac-sys-read/write dest fd buf len)
-    ((tac-sys-read tac-sys-write)
-     (list (caddr instr) (cadddr instr) (nth 4 instr)))
-    ;; buffer-byte-set, mem-set-byte: (tac-X dest buf/ptr idx/off val)
-    ((tac-buffer-byte-set tac-mem-set-byte)
-     (list (caddr instr) (cadddr instr) (nth 4 instr)))
-    (t (error "tac-use: Unhandled TAC instruction: ~A" (car instr)))))
+  (let ((op (car instr)))
+    (cond
+      ;; Instructions with no vreg uses
+      ((tac-name-member op (tac-no-use-instrs))
+       nil)
+      ;; Binary operations: (tac-binop dest op vr1 vr2)
+      ((tac-name-member op (tac-binop-instrs))
+       (list (cadddr instr) (nth 4 instr)))
+      ;; setvar: (tac-setvar offset vreg) - uses 3rd element
+      ((tac-name= op "TAC-SETVAR")
+       (list (caddr instr)))
+      ;; Global/system setters: (tac-set-X vreg) - uses 2nd element
+      ((tac-name-member op (tac-setter-instrs))
+       (list (cadr instr)))
+      ;; Conditionals: (tac-if cond-vreg then else)
+      ((or (tac-name= op "TAC-IF") (tac-name= op "TAC-IF-NOT"))
+       (list (cadr instr)))
+      ;; Return: (tac-return vreg)
+      ((tac-name= op "TAC-RETURN")
+       (list (cadr instr)))
+      ;; Unary ops: (tac-X dest src)
+      ((tac-name-member op (tac-unary-instrs))
+       (list (caddr instr)))
+      ;; Cons: (tac-cons dest car cdr)
+      ((or (tac-name= op "TAC-CONS") (tac-name= op "TAC-MEM-LOAD-64") (tac-name= op "TAC-MEM-LOAD-BYTE"))
+       (list (caddr instr) (cadddr instr)))
+      ;; buffer-to-string: (tac-buffer-to-string dest buf len)
+      ((tac-name= op "TAC-BUFFER-TO-STRING")
+       (list (caddr instr) (cadddr instr)))
+      ;; Binary string ops: (tac-X dest vr1 vr2)
+      ((tac-name-member op (tac-binary-str-instrs))
+       (list (caddr instr) (cadddr instr)))
+      ;; set-tag: (tac-set-tag dest val-vr tag-vr)
+      ((tac-name= op "TAC-SET-TAG")
+       (list (caddr instr) (cadddr instr)))
+      ;; Mutation: (tac-setcar cons-vr val-vr), (tac-setcdr cons-vr val-vr)
+      ((or (tac-name= op "TAC-SETCAR") (tac-name= op "TAC-SETCDR"))
+       (list (cadr instr) (caddr instr)))
+      ;; Vector ops: (tac-vector-ref dest vec idx), (tac-string-ref dest str idx), (tac-buffer-byte-ref dest buf idx)
+      ((or (tac-name= op "TAC-VECTOR-REF") (tac-name= op "TAC-STRING-REF") (tac-name= op "TAC-BUFFER-BYTE-REF"))
+       (list (caddr instr) (cadddr instr)))
+      ;; Vector set: (tac-vector-set vec idx val) - no dest, returns val
+      ((tac-name= op "TAC-VECTOR-SET")
+       (list (cadr instr) (caddr instr) (cadddr instr)))
+      ;; Call: (tac-call dest fn args)
+      ((tac-name= op "TAC-CALL")
+       (cadddr instr))
+      ;; Funcall: (tac-funcall dest fn-vr args)
+      ((tac-name= op "TAC-FUNCALL")
+       (cons (caddr instr) (cadddr instr)))
+      ;; sys-open: (tac-sys-open dest path flags mode)
+      ((tac-name= op "TAC-SYS-OPEN")
+       (list (caddr instr) (cadddr instr) (nth 4 instr)))
+      ;; sys-read/write: (tac-sys-read/write dest fd buf len)
+      ((or (tac-name= op "TAC-SYS-READ") (tac-name= op "TAC-SYS-WRITE"))
+       (list (caddr instr) (cadddr instr) (nth 4 instr)))
+      ;; buffer-byte-set, mem-set-byte: (tac-X dest buf/ptr idx/off val)
+      ((or (tac-name= op "TAC-BUFFER-BYTE-SET") (tac-name= op "TAC-MEM-SET-BYTE"))
+       (list (caddr instr) (cadddr instr) (nth 4 instr)))
+      (t (error "tac-use: Unhandled TAC instruction: ~A" op)))))
+
+;; Helper to process one instruction during liveness iteration
+;; No lambdas, closures, dolist, or labels - all functions are top-level to avoid FNTAB unpacking
+(defun liveness-process-instr (instr idx n tac-instrs live-in live-out)
+  "Process one instruction for liveness analysis. Returns (changed new-in new-out)."
+  (let* ((succs (successors-dispatch instr idx n tac-instrs))
+         (new-out (liveness-union-succs succs live-in nil))
+         (def (tac-def instr))
+         (use (tac-use instr))
+         (new-in (liveness-set-union use (liveness-set-diff new-out (if def (list def) nil))))
+         (changed (not (equal new-in (liveness-nth idx live-in)))))
+    (liveness-nth-set live-in idx new-in)
+    (liveness-nth-set live-out idx new-out)
+    changed))
+
+;; Helper to process all instructions in one iteration pass
+(defun liveness-iterate-instrs (instrs idx n tac-instrs live-in live-out)
+  "Process instructions backwards, returns t if any changed."
+  (if (null instrs)
+      nil
+      (let* ((instr (car instrs))
+             (this-changed (liveness-process-instr instr idx n tac-instrs live-in live-out))
+             (rest-changed (liveness-iterate-instrs (cdr instrs) (- idx 1) n tac-instrs live-in live-out)))
+        (or this-changed rest-changed))))
+
+;; Helper to run one full iteration
+(defun liveness-iterate (n tac-instrs live-in live-out)
+  "One pass of backward dataflow. Returns t if anything changed."
+  (liveness-iterate-instrs (reverse tac-instrs) (- n 1) n tac-instrs live-in live-out))
+
+;; Helper to build annotated result list without dolist or variable-index nth
+(defun liveness-build-result (instrs live-in live-out idx)
+  "Build annotated TAC list. Uses explicit recursion instead of dolist."
+  (if (null instrs)
+      nil
+      (cons (list (car instrs) (liveness-nth idx live-in) (liveness-nth idx live-out))
+            (liveness-build-result (cdr instrs) live-in live-out (+ idx 1)))))
 
 (defun compute-liveness (tac-instrs)
   "Compute liveness for TAC instructions.
    Returns list of (instr live-in live-out) tuples.
 
-   This is Pass 2 of the register allocation pipeline."
+   This is Pass 2 of the register allocation pipeline.
+   NOTE: Uses top-level helper functions to avoid labels FNTAB unpacking issue."
   (let* ((n (length tac-instrs))
          (live-in (make-list n))
          (live-out (make-list n))
          (changed t))
-    ;; Build successor map for control flow
-    (labels ((find-label-index (label instrs idx)
-               (if (null instrs)
-                   nil
-                   (if (and (eq (caar instrs) 'tac-label)
-                            (= (cadar instrs) label))
-                       idx
-                       (find-label-index label (cdr instrs) (+ idx 1)))))
+    ;; Iterate until fixed point
+    (while changed
+      (setq changed (liveness-iterate n tac-instrs live-in live-out)))
 
-             (successors (instr idx)
-               ;; Return indices of successor instructions
-               (case (car instr)
-                 ((tac-goto)
-                  (let ((target (find-label-index (cadr instr) tac-instrs 0)))
-                    (if target (list target) nil)))
-                 ((tac-if)
-                  (let ((then-idx (find-label-index (caddr instr) tac-instrs 0))
-                        (else-idx (find-label-index (cadddr instr) tac-instrs 0)))
-                    (append (if then-idx (list then-idx) nil)
-                            (if else-idx (list else-idx) nil))))
-                 ((tac-if-not)
-                  ;; tac-if-not: (tac-if-not cond label) - jumps to label if false, falls through if true
-                  (let ((target-idx (find-label-index (caddr instr) tac-instrs 0))
-                        (fall-through (if (< (+ idx 1) n) (+ idx 1) nil)))
-                    (if (null target-idx)
-                        (error "tac-if-not: target label ~A not found" (caddr instr))
-                        (append (list target-idx)
-                                (if fall-through (list fall-through) nil)))))
-                 ((tac-return)
-                  nil)  ; no successor
-                 (t
-                  (if (< (+ idx 1) n) (list (+ idx 1)) nil))))
-
-             (set-union (a b)
-               (if (null a) b
-                   (if (member (car a) b)
-                       (set-union (cdr a) b)
-                       (cons (car a) (set-union (cdr a) b)))))
-
-             (set-diff (a b)
-               (if (null a) nil
-                   (if (member (car a) b)
-                       (set-diff (cdr a) b)
-                       (cons (car a) (set-diff (cdr a) b)))))
-
-             (nth-set (lst idx val)
-               ;; Destructively set nth element
-               (if (= idx 0)
-                   (setcar lst val)
-                   (nth-set (cdr lst) (- idx 1) val)))
-
-             (iterate ()
-               ;; One pass of backward dataflow
-               (setq changed nil)
-               (let ((idx (- n 1)))
-                 (labels ((process-instr (instrs)
-                            (when instrs
-                              (let* ((instr (car instrs))
-                                     (succs (successors instr idx))
-                                     (new-out (let ((result nil))
-                                                (dolist (s succs)
-                                                  (setq result (set-union result (nth s live-in))))
-                                                result))
-                                     (def (tac-def instr))
-                                     (use (tac-use instr))
-                                     (new-in (set-union use (set-diff new-out (if def (list def) nil)))))
-                                (unless (equal new-in (nth idx live-in))
-                                  (setq changed t)
-                                  (nth-set live-in idx new-in))
-                                (nth-set live-out idx new-out)
-                                (setq idx (- idx 1))
-                                (process-instr (cdr instrs))))))
-                   (process-instr (reverse tac-instrs))))))
-
-      ;; Iterate until fixed point
-      (while changed (iterate))
-
-      ;; Return annotated instructions
-      (let ((result nil)
-            (idx 0))
-        (dolist (instr tac-instrs)
-          (setq result (cons (list instr (nth idx live-in) (nth idx live-out)) result))
-          (setq idx (+ idx 1)))
-        (reverse result)))))
+    ;; Return annotated instructions using helper to avoid dolist/labels
+    (liveness-build-result tac-instrs live-in live-out 0)))
 
 ;;; ============================================================
 ;;; Pass 3: Compute Live Intervals
@@ -2341,19 +2443,23 @@
       ;; Format: (tac-sym dest-vr symbol-name-string)
       ;; NOTE: GC trigger uses x8 as scratch and may call GC-COLLECT (clobbers x0-x7)
       ;; We use x19 (callee-saved) to preserve result across GC check
+      ;;
+      ;; IMPORTANT: This creates NEW symbols every time, so symbols are NOT eq.
+      ;; For symbol interning to work, use the INTERN function at runtime or
+      ;; fix the case dispatch to use sym-eq (string comparison) instead of eq.
       ((tac-sym)
        (let* ((dest-vreg (cadr instr))
               (name (caddr instr))
               (dest (vreg-to-reg dest-vreg allocation))
-              ;; Always use x19 as temp, then move to dest after GC check
-              (len (length name))
+              (name-str (if (symbolp name) (symbol-name name) name))
+              (len (length name-str))
               (total-size (logand (+ len 8 15) (lognot 15))))
          (append
           ;; Store length at x28 (use x8 as scratch - reserved for runtime)
           (load-addr :x8 len)
           (arm64:str :x8 :heap :offset 0)
           ;; Store symbol name bytes at x28+8 (gen-str-bytes-code uses x8)
-          (gen-str-bytes-code name 8)
+          (gen-str-bytes-code name-str 8)
           ;; Get tagged pointer: x28 | 2 (symbol tag) -- put in x19 (callee-saved, survives GC)
           (arm64:mov :x19 :heap)
           (arm64:add :x19 :x19 2 :imm t)
@@ -3035,6 +3141,79 @@
           ;; return_false: (instruction 20)
           (arm64:movz dest-reg 6)        ; result = 6 (nil tag)
           ;; end: (instruction 21) - store if spilled
+          (when (and (consp dest) (eq (car dest) :spill))
+            (arm64:str :x0 :sp :offset (spill-offset (cadr dest)))))))
+
+      ;; tac-sym-eq: compare two symbols by name (not pointer identity)
+      ;; Used by case dispatch since habu0 creates new symbol objects at runtime
+      ;; Symbol layout: tag=2 in low bits, name string pointer at [sym & ~0xF + 0]
+      ;; This extracts symbol-name from each symbol, then compares strings
+      ;; Returns: tagged 16 (t) or 6 (nil)
+      ;; Register usage:
+      ;;   x0: result
+      ;;   x1: str1 base (untagged) / sym1 untagged
+      ;;   x2: str2 base (untagged) / sym2 untagged
+      ;;   x3: len1
+      ;;   x4: len2 / loop counter
+      ;;   x5: char from str1
+      ;;   x6: char from str2
+      ((tac-sym-eq)
+       (let* ((dest-vreg (cadr instr))
+              (s1-vreg (caddr instr))
+              (s2-vreg (cadddr instr))
+              (s1-loc (vreg-to-reg s1-vreg allocation))
+              (s2-loc (vreg-to-reg s2-vreg allocation))
+              (dest (vreg-to-reg dest-vreg allocation))
+              (dest-reg (if (and (consp dest) (eq (car dest) :spill)) :x0 dest)))
+         (append
+          ;; Load sym1 into x1
+          (if (and (consp s1-loc) (eq (car s1-loc) :spill))
+              (arm64:ldr :x1 :sp :offset (spill-offset (cadr s1-loc)))
+              (arm64:mov :x1 s1-loc))
+          ;; Load sym2 into x2
+          (if (and (consp s2-loc) (eq (car s2-loc) :spill))
+              (arm64:ldr :x2 :sp :offset (spill-offset (cadr s2-loc)))
+              (arm64:mov :x2 s2-loc))
+          ;; Untag symbols to get struct base: x1 = sym1 & ~0xF, x2 = sym2 & ~0xF
+          (arm64:and* :x1 :x1 -16 :imm t)
+          (arm64:and* :x2 :x2 -16 :imm t)
+          ;; Load symbol-name string pointers (at offset 0 in symbol struct)
+          (arm64:ldr :x1 :x1 :offset 0)  ; x1 = sym1->name (tagged string)
+          (arm64:ldr :x2 :x2 :offset 0)  ; x2 = sym2->name (tagged string)
+          ;; Untag strings: x1 = str1 & ~0xF, x2 = str2 & ~0xF
+          (arm64:and* :x1 :x1 -16 :imm t)
+          (arm64:and* :x2 :x2 -16 :imm t)
+          ;; Load lengths
+          (arm64:ldr :x3 :x1 :offset 0)  ; x3 = len1
+          (arm64:ldr :x4 :x2 :offset 0)  ; x4 = len2
+          ;; Compare lengths - b.ne jumps 15 instrs to return_false
+          ;; Path: 3 setup + 1 cmp + 1 b.ge + 2 ldrb + 1 cmp + 1 b.ne + 1 add + 1 b + 1 movz + 1 b + 1 movz = 14, +1 for b.ne itself? Actually count post-branch
+          ;; After b.ne: add, add, movz, cmp, b.ge, ldrb, ldrb, cmp, b.ne, add, b, movz, b, movz = 14 instrs
+          (arm64:cmp :x3 :x4)            ; cmp len1, len2
+          (arm64:b.ne (ash 56 -2))       ; if len1 != len2, jump to return_false (14 instrs = 56 bytes)
+          ;; Lengths equal, setup for loop
+          (arm64:add :x1 :x1 8 :imm t)   ; x1 = str1 data start
+          (arm64:add :x2 :x2 8 :imm t)   ; x2 = str2 data start
+          (arm64:movz :x4 0)             ; x4 = 0 (loop counter)
+          ;; loop_start:
+          (arm64:cmp :x4 :x3)            ; cmp counter, len
+          (arm64:b.ge (ash 28 -2))       ; if counter >= len, jump to return_true (7 instrs = 28 bytes)
+          ;; Load bytes from both strings
+          (arm64:ldrb :x5 :x1 :x4 :reg t)  ; x5 = str1[counter]
+          (arm64:ldrb :x6 :x2 :x4 :reg t)  ; x6 = str2[counter]
+          ;; Compare bytes
+          (arm64:cmp :x5 :x6)            ; cmp char1, char2
+          (arm64:b.ne (ash 20 -2))       ; if char1 != char2, jump to return_false (5 instrs = 20 bytes)
+          ;; Increment counter
+          (arm64:add :x4 :x4 1 :imm t)   ; x4++
+          ;; Loop back to cmp at loop_start (7 instructions back = -28 bytes)
+          (arm64:b (ash -28 -2))
+          ;; return_true:
+          (arm64:movz dest-reg 16)       ; result = 16 (tagged t)
+          (arm64:b (ash 8 -2))           ; skip return_false (2 instrs = 8 bytes)
+          ;; return_false:
+          (arm64:movz dest-reg 6)        ; result = 6 (nil tag)
+          ;; end: - store if spilled
           (when (and (consp dest) (eq (car dest) :spill))
             (arm64:str :x0 :sp :offset (spill-offset (cadr dest)))))))
 

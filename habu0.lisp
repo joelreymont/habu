@@ -58,6 +58,9 @@
 (defvar *op-string-ref* nil)
 (defvar *op-char-at* nil)
 (defvar *op-string=* nil)
+(defvar *op-string-equal* nil)
+(defvar *op-sym-eq* nil)
+(defvar *op-member* nil)
 (defvar *op-symbol-name* nil)
 (defvar *op-keyword-name* nil)
 (defvar *op-logand* nil)
@@ -811,6 +814,9 @@
 (defun op=string-ref (sym) (sym-eq sym *op-string-ref*))
 (defun op=char-at (sym) (sym-eq sym *op-char-at*))
 (defun op=string= (sym) (sym-eq sym *op-string=*))
+(defun op=string-equal (sym) (sym-eq sym *op-string-equal*))
+(defun op=sym-eq (sym) (sym-eq sym *op-sym-eq*))
+(defun op=member (sym) (sym-eq sym *op-member*))
 (defun op=symbol-name (sym) (sym-eq sym *op-symbol-name*))
 (defun op=keyword-name (sym) (sym-eq sym *op-keyword-name*))
 (defun op=logand (sym) (sym-eq sym *op-logand*))
@@ -1663,15 +1669,24 @@
 ;; Keys can be a single value or a list of values
 ;; Returns t if match, nil otherwise
 (defun case-key-matches (key keys)
+  ;; Use sym-eq for symbols since habu0 creates new symbol objects at runtime
+  ;; that are not eq to symbols from the reader
   (cond
     ((null keys) nil)
     ((consp keys)
      ;; List of keys - check each one
-     (if (eql key (car keys))
+     (if (case-key-eq key (car keys))
          t
          (case-key-matches key (cdr keys))))
     ;; Single key
-    (t (eql key keys))))
+    (t (case-key-eq key keys))))
+
+(defun case-key-eq (a b)
+  ;; If both are symbols, use sym-eq (name comparison)
+  ;; Otherwise use eql (works for numbers, etc.)
+  (if (if (symbolp a) (symbolp b) nil)
+      (sym-eq a b)
+      (eql a b)))
 
 ;; Helper for case - evaluate clauses
 ;; Each clause is (keys body...) or (t body...) or (otherwise body...)
@@ -1922,6 +1937,21 @@
           (let* ((s1 (h0-eval (cadr expr) env fenv))
                  (s2 (h0-eval (caddr expr) env fenv)))
             (if (string= s1 s2) t nil)))
+         ;; String-equal (case-insensitive string comparison)
+         ((if (symbolp op) (op=string-equal op) nil)
+          (let* ((s1 (h0-eval (cadr expr) env fenv))
+                 (s2 (h0-eval (caddr expr) env fenv)))
+            (string-equal s1 s2)))
+         ;; Sym-eq (symbol name comparison)
+         ((if (symbolp op) (op=sym-eq op) nil)
+          (let* ((s1 (h0-eval (cadr expr) env fenv))
+                 (s2 (h0-eval (caddr expr) env fenv)))
+            (sym-eq s1 s2)))
+         ;; Member (list membership using eq)
+         ((if (symbolp op) (op=member op) nil)
+          (let* ((item (h0-eval (cadr expr) env fenv))
+                 (lst (h0-eval (caddr expr) env fenv)))
+            (member item lst)))
          ;; Symbol primitives (use cached symbols)
          ((if (symbolp op) (op=symbol-name op) nil)
           (let ((arg (h0-eval (cadr expr) env fenv)))
@@ -2168,7 +2198,7 @@
          (cons (intern "H0-COMPILE") 1)
          (cons (intern "LIFT-LAMBDAS") 2)
          (cons (intern "LAMBDAS-TO-DEFUNS") 3)
-         ;; Register allocator pipeline (IDs 60-69)
+         ;; Register allocator pipeline (IDs 60-79)
          (cons (intern "CODEGEN-FN-REG-ALLOC") 60)
          (cons (intern "CODEGEN-MAIN-REG-ALLOC") 61)
          (cons (intern "IR-TO-TAC") 62)
@@ -2178,6 +2208,8 @@
          (cons (intern "TAC-CODEGEN") 66)
          (cons (intern "MAKE-VREG-COUNTER") 67)
          (cons (intern "NEXT-VREG") 68)
+         (cons (intern "TAC-DEF") 73)
+         (cons (intern "TAC-USE") 74)
          ;; Backend - codegen.lisp (IDs 4-7, 70+)
          (cons (intern "DELIVER-WITH-IMPORTS-AND-HEAP") 4)
          (cons (intern "READ-ALL") 5)
@@ -2347,6 +2379,9 @@
           (66 (tac-codegen (car args) (cadr args)))
           (67 (make-vreg-counter))
           (68 (next-vreg (car args)))
+          ;; TAC helpers (IDs 73-74)
+          (73 (tac-def (car args)))
+          (74 (tac-use (car args)))
           ;; More codegen.lisp functions (IDs 70+)
           (70 (codegen-fn (car args)))
           (71 (resolve-calls (car args) (cadr args) (caddr args)))
@@ -2510,6 +2545,9 @@
   (setq *op-string-ref* 'string-ref)
   (setq *op-char-at* 'char-at)
   (setq *op-string=* 'string=)
+  (setq *op-string-equal* 'string-equal)
+  (setq *op-sym-eq* 'sym-eq)
+  (setq *op-member* 'member)
   (setq *op-symbol-name* 'symbol-name)
   (setq *op-keyword-name* 'keyword-name)
   (setq *op-logand* 'logand)
@@ -2773,6 +2811,7 @@
 (defun ir-tag-error () #x31)      ; error primitive
 (defun ir-tag-lognot () #x33)     ; lognot (bitwise NOT via MVN)
 (defun ir-tag-keyword-name () #x34) ; keyword-name extraction
+(defun ir-tag-sym-eq () #x35)     ; sym-eq (symbol name comparison, not pointer eq)
 
 ;; Check if IR node has a specific tag (numeric comparison)
 (defun h0-has-tag-n (ir tag)
@@ -3522,13 +3561,16 @@
 
 (defun h0-compile-case-test (keys env fenv)
   ;; Get the temporary key variable from environment
+  ;; Use sym-eq (symbol name comparison) instead of eq (pointer comparison)
+  ;; because habu0 creates new symbol objects at runtime, so symbols with
+  ;; the same name may not be eq.
   (let ((key-var-ir (list (ir-tag-var) #x0)))
     (if (consp keys)
-        ;; Multiple keys - (or (eq key k1) (eq key k2) ...)
+        ;; Multiple keys - (or (sym-eq key k1) (sym-eq key k2) ...)
         (h0-compile-case-test-list keys key-var-ir env fenv)
-        ;; Single key - (eq key k)
+        ;; Single key - (sym-eq key k)
         (let ((key-lit-ir (h0-compile (list 'quote keys) env fenv)))
-          (list (ir-tag-eq) key-var-ir key-lit-ir)))))
+          (list (ir-tag-sym-eq) key-var-ir key-lit-ir)))))
 
 (defun h0-compile-case-test-list (keys key-var-ir env fenv)
   (if (null keys)
@@ -3537,10 +3579,10 @@
       (if (null (cdr keys))
           ;; Single key left
           (let ((key-lit-ir (h0-compile (list 'quote (car keys)) env fenv)))
-            (list (ir-tag-eq) key-var-ir key-lit-ir))
-          ;; Multiple keys - (or (eq key k1) (rest...))
+            (list (ir-tag-sym-eq) key-var-ir key-lit-ir))
+          ;; Multiple keys - (or (sym-eq key k1) (rest...))
           (let* ((key-lit-ir (h0-compile (list 'quote (car keys)) env fenv))
-                 (test-ir (list (ir-tag-eq) key-var-ir key-lit-ir))
+                 (test-ir (list (ir-tag-sym-eq) key-var-ir key-lit-ir))
                  (rest-ir (h0-compile-case-test-list (cdr keys) key-var-ir env fenv)))
             ;; (if test t rest) - implements OR
             (list (ir-tag-if) test-ir (list (ir-tag-lit) #x1) rest-ir)))))
@@ -4647,6 +4689,9 @@
     (setq lst (cons (make-builtin-entry "IR-TO-TAC" kw) lst))
     (setq lst (cons (make-builtin-entry "CODEGEN-MAIN-REG-ALLOC" kw) lst))
     (setq lst (cons (make-builtin-entry "CODEGEN-FN-REG-ALLOC" kw) lst))
+    ;; TAC helpers
+    (setq lst (cons (make-builtin-entry "TAC-DEF" kw) lst))
+    (setq lst (cons (make-builtin-entry "TAC-USE" kw) lst))
     ;; Compiler functions - front end (added last, will be first)
     (setq lst (cons (make-builtin-entry "LAMBDAS-TO-DEFUNS" kw) lst))
     (setq lst (cons (make-builtin-entry "LIFT-LAMBDAS" kw) lst))
