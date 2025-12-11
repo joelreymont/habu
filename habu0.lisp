@@ -2284,14 +2284,16 @@
 
 (defun normalize-args (args)
   "Normalize all keywords in an argument list.
-   Recursively handles nested lists for keyword args like :offset 8."
-  (if (null args)
-      nil
-      (let ((arg (car args)))
-        (cons (if (consp arg)
-                  (normalize-args arg)  ; Handle nested structures
-                  (normalize-keyword arg))
-              (normalize-args (cdr args))))))
+   Recursively handles nested lists for keyword args like :offset 8.
+   Non-cons atoms (fixnums, etc.) pass through unchanged."
+  (cond
+    ((null args) nil)
+    ((not (consp args)) args)  ; Atoms (fixnums, symbols) pass through
+    (t (let ((arg (car args)))
+         (cons (if (consp arg)
+                   (normalize-args arg)  ; Handle nested structures
+                   (normalize-keyword arg))
+               (normalize-args (cdr args)))))))
 
 ;;; habu0-reg: Register lookup using eq comparison
 ;;; After normalization, keywords are habu0-interned, so eq works.
