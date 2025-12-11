@@ -14,6 +14,31 @@
       (string-equal (symbol-name a) (symbol-name b))
       (eq a b)))
 
+;;; sym-case macro - like case but uses sym-eq for symbol comparison
+;;; This is needed because native Habu creates different symbol objects
+;;; than those embedded in SBCL-compiled code.
+(defmacro sym-case (keyform &rest clauses)
+  "Like CASE but uses sym-eq for symbol comparison.
+   Works across different symbol tables (interpreter vs compiled)."
+  (let ((key-var (gensym "KEY")))
+    `(let ((,key-var ,keyform))
+       (cond
+         ,@(mapcar (lambda (clause)
+                     (let ((keys (car clause))
+                           (body (cdr clause)))
+                       (cond
+                         ;; Default clause
+                         ((or (eq keys 't) (eq keys 'otherwise))
+                          `(t ,@body))
+                         ;; Single key
+                         ((atom keys)
+                          `((sym-eq ,key-var ',keys) ,@body))
+                         ;; Multiple keys
+                         (t
+                          `((or ,@(mapcar (lambda (k) `(sym-eq ,key-var ',k)) keys))
+                            ,@body)))))
+                   clauses)))))
+
 ;;; Type predicates
 (defun zerop (x) (= x 0))
 (defun integerp (x)

@@ -30,7 +30,7 @@
 ;;; Pass 1: ir-to-tac (IR → Three-Address Code)
 ;;;   Input:  Tree-structured IR: (add (var 0) (mul (lit 2) (var 1)))
 ;;;   Output: Linear TAC instructions with virtual registers
-;;;           ((tac-var v0 0)
+;;;           ((:tac-var v0 0)
 ;;;            (tac-lit v1 2)
 ;;;            (tac-var v2 1)
 ;;;            (tac-binop v3 mul v1 v2)
@@ -102,7 +102,7 @@
 ;;;   (add (var 0) (add (var 1) (var 2)))
 ;;;
 ;;; After ir-to-tac:
-;;;   ((tac-var v0 0)        ; v0 = a
+;;;   ((:tac-var v0 0)        ; v0 = a
 ;;;    (tac-var v1 1)        ; v1 = b
 ;;;    (tac-var v2 2)        ; v2 = c
 ;;;    (tac-binop v3 add v1 v2)  ; v3 = b + c
@@ -270,28 +270,28 @@
 
    This is Pass 1 of the register allocation pipeline.
    Input: Tree IR like (add (var 0) (lit 1))
-   Output: Linear TAC like ((tac-var v0 0) (tac-lit v1 1) (tac-binop v2 add v0 v1))"
+   Output: Linear TAC like ((:tac-var v0 0) (tac-lit v1 1) (tac-binop v2 add v0 v1))"
   (cond
     ;; Literal number - raw value, tagging applied in tac-codegen
     ((numberp ir)
      (let ((vr (next-vreg counter)))
-       (list (list (list 'tac-lit vr ir)) vr)))
+       (list (list (list :tac-lit vr ir)) vr)))
 
     ;; (lit value) - literal, raw value, tagging applied in tac-codegen
     ((and (consp ir) (ir-tag-matches (car ir) "LIT"))
      (let ((vr (next-vreg counter)))
-       (list (list (list 'tac-lit vr (cadr ir))) vr)))
+       (list (list (list :tac-lit vr (cadr ir))) vr)))
 
     ;; (kw-lit keyword) - keyword literal (e.g., :x0, :sp for registers)
     ;; Used by habu0 to pass register keywords to ARM64 functions
     ((and (consp ir) (ir-tag-matches (car ir) "KW-LIT"))
      (let ((vr (next-vreg counter)))
-       (list (list (list 'tac-kw-lit vr (cadr ir))) vr)))
+       (list (list (list :tac-kw-lit vr (cadr ir))) vr)))
 
     ;; (var offset) - variable reference
     ((and (consp ir) (ir-tag-matches (car ir) "VAR"))
      (let ((vr (next-vreg counter)))
-       (list (list (list 'tac-var vr (cadr ir))) vr)))
+       (list (list (list :tac-var vr (cadr ir))) vr)))
 
     ;; Binary operations: add, sub, mul, div, mod, bsh, band, bor, bxor
     ;; Note: some forms use -IR suffix (MOD-IR, DIV-IR) depending on compiler path
@@ -312,7 +312,7 @@
                          raw-name)))
        (list (append left-instrs
                      right-instrs
-                     (list (list 'tac-binop result-vr
+                     (list (list :tac-binop result-vr
                                  (intern op-name :keyword)  ; :ADD, :SUB, :MOD, etc.
                                  left-vr right-vr)))
              result-vr)))
@@ -329,7 +329,7 @@
             (op-name (ir-tag-name (car ir))))
        (list (append left-instrs
                      right-instrs
-                     (list (list 'tac-cmp result-vr (intern op-name :keyword) left-vr right-vr)))
+                     (list (list :tac-cmp result-vr (intern op-name :keyword) left-vr right-vr)))
              result-vr)))
 
     ;; if-ir: conditional expression
@@ -348,15 +348,15 @@
             (else-instrs (car else-result))
             (else-vr (cadr else-result)))
        (list (append cond-instrs
-                     (list (list 'tac-if cond-vr then-label else-label))
-                     (list (list 'tac-label then-label))
+                     (list (list :tac-if cond-vr then-label else-label))
+                     (list (list :tac-label then-label))
                      then-instrs
-                     (list (list 'tac-move result-vr then-vr))
-                     (list (list 'tac-goto end-label))
-                     (list (list 'tac-label else-label))
+                     (list (list :tac-move result-vr then-vr))
+                     (list (list :tac-goto end-label))
+                     (list (list :tac-label else-label))
                      else-instrs
-                     (list (list 'tac-move result-vr else-vr))
-                     (list (list 'tac-label end-label)))
+                     (list (list :tac-move result-vr else-vr))
+                     (list (list :tac-label end-label)))
              result-vr)))
 
     ;; let-ir: local bindings
@@ -370,7 +370,7 @@
                       (let* ((val-result (ir-to-tac (car vs) counter))
                              (val-instrs (car val-result))
                              (val-vr (cadr val-result))
-                             (store-instr (list 'tac-setvar (car os) val-vr)))
+                             (store-instr (list :tac-setvar (car os) val-vr)))
                         (convert-bindings (cdr vs) (cdr os)
                                           (append instrs val-instrs (list store-instr)))))))
          (let* ((binding-instrs (convert-bindings vals offsets nil))
@@ -413,18 +413,18 @@
                 (arg-vrs (cadr args-result))
                 (result-vr (next-vreg counter)))
            (list (append args-instrs
-                         (list (list 'tac-call result-vr fn-name arg-vrs)))
+                         (list (list :tac-call result-vr fn-name arg-vrs)))
                  result-vr)))))
 
     ;; nil-ir: nil literal (0x06 in tagged representation)
     ((and (consp ir) (ir-tag-matches (car ir) "NIL-IR"))
      (let ((vr (next-vreg counter)))
-       (list (list (list 'tac-nil vr)) vr)))
+       (list (list (list :tac-nil vr)) vr)))
 
     ;; sym-lit: symbol literal
     ((and (consp ir) (ir-tag-matches (car ir) "SYM-LIT"))
      (let ((vr (next-vreg counter)))
-       (list (list (list 'tac-sym vr (cadr ir))) vr)))
+       (list (list (list :tac-sym vr (cadr ir))) vr)))
 
     ;; cons-ir: cons operation (car cdr)
     ((and (consp ir) (ir-tag-matches (car ir) "CONS-IR"))
@@ -437,7 +437,7 @@
             (result-vr (next-vreg counter)))
        (list (append car-instrs
                      cdr-instrs
-                     (list (list 'tac-cons result-vr car-vr cdr-vr)))
+                     (list (list :tac-cons result-vr car-vr cdr-vr)))
              result-vr)))
 
     ;; car-ir: car operation (unary)
@@ -447,7 +447,7 @@
             (arg-vr (cadr arg-result))
             (result-vr (next-vreg counter)))
        (list (append arg-instrs
-                     (list (list 'tac-car result-vr arg-vr)))
+                     (list (list :tac-car result-vr arg-vr)))
              result-vr)))
 
     ;; cdr-ir: cdr operation (unary)
@@ -457,7 +457,7 @@
             (arg-vr (cadr arg-result))
             (result-vr (next-vreg counter)))
        (list (append arg-instrs
-                     (list (list 'tac-cdr result-vr arg-vr)))
+                     (list (list :tac-cdr result-vr arg-vr)))
              result-vr)))
 
     ;; setq-ir: variable assignment (setq-ir offset value)
@@ -468,7 +468,7 @@
             (val-vr (cadr val-result)))
        ;; setq returns the assigned value
        (list (append val-instrs
-                     (list (list 'tac-setvar offset val-vr)))
+                     (list (list :tac-setvar offset val-vr)))
              val-vr)))
 
     ;; while-ir: while loop (while-ir cond body)
@@ -482,13 +482,13 @@
             (body-instrs (car body-result))
             (result-vr (next-vreg counter)))
        ;; while returns nil
-       (list (append (list (list 'tac-label loop-label))
+       (list (append (list (list :tac-label loop-label))
                      cond-instrs
-                     (list (list 'tac-if-not cond-vr end-label))
+                     (list (list :tac-if-not cond-vr end-label))
                      body-instrs
-                     (list (list 'tac-goto loop-label))
-                     (list (list 'tac-label end-label))
-                     (list (list 'tac-nil result-vr)))
+                     (list (list :tac-goto loop-label))
+                     (list (list :tac-label end-label))
+                     (list (list :tac-nil result-vr)))
              result-vr)))
 
     ;; dolist-ir: iterate over list (dolist-ir var-sym list-ir body-ir result-ir env)
@@ -519,27 +519,27 @@
        ;; First compare iter to nil, result in cmp-vr
        (let ((cmp-vr (next-vreg counter)))
          (list (append list-instrs
-                       (list (list 'tac-move iter-vr list-vr))
-                       (list (list 'tac-label loop-label))
-                       (list (list 'tac-nil nil-vr))
+                       (list (list :tac-move iter-vr list-vr))
+                       (list (list :tac-label loop-label))
+                       (list (list :tac-nil nil-vr))
                        ;; Compare: cmp-vr = (iter != nil) - if iter IS nil, cmp is false
-                       (list (list 'tac-cmp cmp-vr :cmp-ne iter-vr nil-vr))
+                       (list (list :tac-cmp cmp-vr :cmp-ne iter-vr nil-vr))
                        ;; If NOT (iter != nil), i.e., if iter IS nil, jump to end
-                       (list (list 'tac-if-not cmp-vr end-label))
-                       (list (list 'tac-car elem-vr iter-vr))
+                       (list (list :tac-if-not cmp-vr end-label))
+                       (list (list :tac-car elem-vr iter-vr))
                        ;; Store elem in env slot for var
-                       (list (list 'tac-setvar var-offset elem-vr))
+                       (list (list :tac-setvar var-offset elem-vr))
                        body-instrs
-                       (list (list 'tac-cdr iter-vr iter-vr))
-                       (list (list 'tac-goto loop-label))
-                       (list (list 'tac-label end-label))
+                       (list (list :tac-cdr iter-vr iter-vr))
+                       (list (list :tac-goto loop-label))
+                       (list (list :tac-label end-label))
                        result-instrs)
                result-vr))))
 
     ;; str-lit: string literal
     ((and (consp ir) (ir-tag-matches (car ir) "STR-LIT"))
      (let ((vr (next-vreg counter)))
-       (list (list (list 'tac-str vr (cadr ir))) vr)))
+       (list (list (list :tac-str vr (cadr ir))) vr)))
 
     ;; setcar-ir: mutate car of cons cell
     ((and (consp ir) (ir-tag-matches (car ir) "SETCAR-IR"))
@@ -552,7 +552,7 @@
        ;; setcar returns the value
        (list (append cons-instrs
                      val-instrs
-                     (list (list 'tac-setcar cons-vr val-vr)))
+                     (list (list :tac-setcar cons-vr val-vr)))
              val-vr)))
 
     ;; setcdr-ir: mutate cdr of cons cell
@@ -565,7 +565,7 @@
             (val-vr (cadr val-result)))
        (list (append cons-instrs
                      val-instrs
-                     (list (list 'tac-setcdr cons-vr val-vr)))
+                     (list (list :tac-setcdr cons-vr val-vr)))
              val-vr)))
 
     ;; make-vector-ir: allocate vector
@@ -575,7 +575,7 @@
             (size-vr (cadr size-result))
             (result-vr (next-vreg counter)))
        (list (append size-instrs
-                     (list (list 'tac-make-vector result-vr size-vr)))
+                     (list (list :tac-make-vector result-vr size-vr)))
              result-vr)))
 
     ;; vector-ref-ir: read vector element
@@ -589,7 +589,7 @@
             (result-vr (next-vreg counter)))
        (list (append vec-instrs
                      idx-instrs
-                     (list (list 'tac-vector-ref result-vr vec-vr idx-vr)))
+                     (list (list :tac-vector-ref result-vr vec-vr idx-vr)))
              result-vr)))
 
     ;; vector-set-ir: write vector element
@@ -607,7 +607,7 @@
        (list (append vec-instrs
                      idx-instrs
                      val-instrs
-                     (list (list 'tac-vector-set vec-vr idx-vr val-vr)))
+                     (list (list :tac-vector-set vec-vr idx-vr val-vr)))
              val-vr)))
 
     ;; vector-length-ir: get vector length
@@ -617,7 +617,7 @@
             (vec-vr (cadr vec-result))
             (result-vr (next-vreg counter)))
        (list (append vec-instrs
-                     (list (list 'tac-vector-length result-vr vec-vr)))
+                     (list (list :tac-vector-length result-vr vec-vr)))
              result-vr)))
 
     ;; string-length-ir: get string length
@@ -627,7 +627,7 @@
             (str-vr (cadr str-result))
             (result-vr (next-vreg counter)))
        (list (append str-instrs
-                     (list (list 'tac-string-length result-vr str-vr)))
+                     (list (list :tac-string-length result-vr str-vr)))
              result-vr)))
 
     ;; string-ref-ir: read string character
@@ -641,7 +641,7 @@
             (result-vr (next-vreg counter)))
        (list (append str-instrs
                      idx-instrs
-                     (list (list 'tac-string-ref result-vr str-vr idx-vr)))
+                     (list (list :tac-string-ref result-vr str-vr idx-vr)))
              result-vr)))
 
     ;; make-string-from-vector-ir: create string from char vector
@@ -651,7 +651,7 @@
             (vec-vr (cadr vec-result))
             (result-vr (next-vreg counter)))
        (list (append vec-instrs
-                     (list (list 'tac-make-string result-vr vec-vr)))
+                     (list (list :tac-make-string result-vr vec-vr)))
              result-vr)))
 
     ;; buffer-to-string-ir: convert raw byte buffer to string
@@ -664,7 +664,7 @@
             (len-vr (cadr len-result))
             (result-vr (next-vreg counter)))
        (list (append buf-instrs len-instrs
-                     (list (list 'tac-buffer-to-string result-vr buf-vr len-vr)))
+                     (list (list :tac-buffer-to-string result-vr buf-vr len-vr)))
              result-vr)))
 
     ;; loop-ir: TCO loop (loop-ir body marker)
@@ -678,8 +678,8 @@
               (body-instrs (car body-result))
               (body-vr (cadr body-result)))
          ;; Emit loop-start with marker and label
-         (list (append (list (list 'tac-loop-start loop-label marker))
-                       (list (list 'tac-label loop-label))
+         (list (append (list (list :tac-loop-start loop-label marker))
+                       (list (list :tac-label loop-label))
                        body-instrs)
                body-vr))))
 
@@ -703,7 +703,7 @@
                   ;; Store each vreg to param slot (offset = idx)
                   (if (null vrs)
                       nil
-                      (cons (list 'tac-setvar idx (car vrs))
+                      (cons (list :tac-setvar idx (car vrs))
                             (gen-setvars (cdr vrs) (+ idx 1))))))
          (let* ((eval-result (eval-args new-args nil nil))
                 (all-instrs (car eval-result))
@@ -712,8 +712,8 @@
            ;; Emit: arg evals, setvars, continue (with marker from *tco-loop-marker*)
            (list (append all-instrs
                          setvar-instrs
-                         (list (list 'tac-continue *tco-loop-marker*))
-                         (list (list 'tac-nil result-vr)))  ; unreachable but needed
+                         (list (list :tac-continue *tco-loop-marker*))
+                         (list (list :tac-nil result-vr)))  ; unreachable but needed
                  result-vr)))))
 
     ;; dotimes-ir: counted iteration loop
@@ -751,32 +751,32 @@
                 ;; Evaluate count
                 count-instrs
                 ;; Load literal 1 for increment
-                (list (list 'tac-lit one-vr 1))
+                (list (list :tac-lit one-vr 1))
                 ;; Initialize counter to 0 and store in loop var slot
-                (list (list 'tac-lit counter-vr 0))
-                (list (list 'tac-setvar loop-var-slot counter-vr))
+                (list (list :tac-lit counter-vr 0))
+                (list (list :tac-setvar loop-var-slot counter-vr))
                 ;; Loop start
-                (list (list 'tac-label loop-label))
+                (list (list :tac-label loop-label))
                 ;; Load current counter from slot
-                (list (list 'tac-var counter-vr loop-var-slot))
+                (list (list :tac-var counter-vr loop-var-slot))
                 ;; Compare counter < count (returns tagged t/nil)
-                (list (list 'tac-cmp cmp-vr :CMP-LT counter-vr count-vr))
+                (list (list :tac-cmp cmp-vr :CMP-LT counter-vr count-vr))
                 ;; Branch to end if counter NOT < count (i.e., counter >= count)
-                (list (list 'tac-if-not cmp-vr end-label))
+                (list (list :tac-if-not cmp-vr end-label))
                 ;; Execute body
                 body-instrs
                 ;; Load counter, increment, store back
-                (list (list 'tac-var counter-vr loop-var-slot))
-                (list (list 'tac-binop inc-vr :add counter-vr one-vr))
-                (list (list 'tac-setvar loop-var-slot inc-vr))
+                (list (list :tac-var counter-vr loop-var-slot))
+                (list (list :tac-binop inc-vr :add counter-vr one-vr))
+                (list (list :tac-setvar loop-var-slot inc-vr))
                 ;; Branch back to loop start (unconditional)
-                (list (list 'tac-goto loop-label))
+                (list (list :tac-goto loop-label))
                 ;; End label
-                (list (list 'tac-label end-label))
+                (list (list :tac-label end-label))
                 ;; Evaluate result
                 result-instrs
                 ;; Move final result to result-vr
-                (list (list 'tac-move result-vr final-vr)))
+                (list (list :tac-move result-vr final-vr)))
                result-vr))))
 
     ;; get-tag: extract tag bits from value
@@ -786,7 +786,7 @@
             (val-vr (cadr val-result))
             (result-vr (next-vreg counter)))
        (list (append val-instrs
-                     (list (list 'tac-get-tag result-vr val-vr)))
+                     (list (list :tac-get-tag result-vr val-vr)))
              result-vr)))
 
     ;; set-tag: change tag bits on a pointer value
@@ -800,7 +800,7 @@
             (tag-vr (cadr tag-result))
             (result-vr (next-vreg counter)))
        (list (append val-instrs tag-instrs
-                     (list (list 'tac-set-tag result-vr val-vr tag-vr)))
+                     (list (list :tac-set-tag result-vr val-vr tag-vr)))
              result-vr)))
 
     ;; funcall-ir: call through function value
@@ -826,7 +826,7 @@
                 (result-vr (next-vreg counter)))
            (list (append fn-instrs
                          args-instrs
-                         (list (list 'tac-funcall result-vr fn-vr arg-vrs)))
+                         (list (list :tac-funcall result-vr fn-vr arg-vrs)))
                  result-vr)))))
 
     ;; lambda-ir: create closure
@@ -834,12 +834,12 @@
      ;; (lambda-ir params body-ir free-vars free-offsets)
      ;; For now, emit as opaque closure creation
      (let ((result-vr (next-vreg counter)))
-       (list (list (list 'tac-make-closure result-vr ir)) result-vr)))
+       (list (list (list :tac-make-closure result-vr ir)) result-vr)))
 
     ;; get-global-vars-ir: load global vars table from [x27 + 104]
     ((and (consp ir) (ir-tag-matches (car ir) "GET-GLOBAL-VARS-IR"))
      (let ((result-vr (next-vreg counter)))
-       (list (list (list 'tac-get-global-vars result-vr)) result-vr)))
+       (list (list (list :tac-get-global-vars result-vr)) result-vr)))
 
     ;; set-global-vars-ir: store global vars table to [x27 + 104]
     ((and (consp ir) (ir-tag-matches (car ir) "SET-GLOBAL-VARS-IR"))
@@ -847,13 +847,13 @@
             (val-instrs (car val-result))
             (val-vr (cadr val-result)))
        (list (append val-instrs
-                     (list (list 'tac-set-global-vars val-vr)))
+                     (list (list :tac-set-global-vars val-vr)))
              val-vr)))
 
     ;; get-cmdline-args-ir: get command line args
     ((and (consp ir) (ir-tag-matches (car ir) "GET-CMDLINE-ARGS-IR"))
      (let ((result-vr (next-vreg counter)))
-       (list (list (list 'tac-get-cmdline-args result-vr)) result-vr)))
+       (list (list (list :tac-get-cmdline-args result-vr)) result-vr)))
 
     ;; sys-exit-ir: exit with code
     ((and (consp ir) (ir-tag-matches (car ir) "SYS-EXIT-IR"))
@@ -861,7 +861,7 @@
             (val-instrs (car val-result))
             (val-vr (cadr val-result)))
        (list (append val-instrs
-                     (list (list 'tac-sys-exit val-vr)))
+                     (list (list :tac-sys-exit val-vr)))
              val-vr)))
 
     ;; sys-open-ir: open(path, flags, mode)
@@ -877,7 +877,7 @@
             (mode-vr (cadr mode-result))
             (result-vr (next-vreg counter)))
        (list (append path-instrs flags-instrs mode-instrs
-                     (list (list 'tac-sys-open result-vr path-vr flags-vr mode-vr)))
+                     (list (list :tac-sys-open result-vr path-vr flags-vr mode-vr)))
              result-vr)))
 
     ;; sys-read-ir: read(fd, buf, len)
@@ -893,7 +893,7 @@
             (len-vr (cadr len-result))
             (result-vr (next-vreg counter)))
        (list (append fd-instrs buf-instrs len-instrs
-                     (list (list 'tac-sys-read result-vr fd-vr buf-vr len-vr)))
+                     (list (list :tac-sys-read result-vr fd-vr buf-vr len-vr)))
              result-vr)))
 
     ;; sys-write-ir: write(fd, buf, len)
@@ -909,7 +909,7 @@
             (len-vr (cadr len-result))
             (result-vr (next-vreg counter)))
        (list (append fd-instrs buf-instrs len-instrs
-                     (list (list 'tac-sys-write result-vr fd-vr buf-vr len-vr)))
+                     (list (list :tac-sys-write result-vr fd-vr buf-vr len-vr)))
              result-vr)))
 
     ;; sys-close-ir: close(fd)
@@ -919,7 +919,7 @@
             (fd-vr (cadr fd-result))
             (result-vr (next-vreg counter)))
        (list (append fd-instrs
-                     (list (list 'tac-sys-close result-vr fd-vr)))
+                     (list (list :tac-sys-close result-vr fd-vr)))
              result-vr)))
 
     ;; buffer-byte-set-ir: set byte in buffer
@@ -935,7 +935,7 @@
             (val-vr (cadr val-result))
             (result-vr (next-vreg counter)))
        (list (append buf-instrs idx-instrs val-instrs
-                     (list (list 'tac-buffer-byte-set result-vr buf-vr idx-vr val-vr)))
+                     (list (list :tac-buffer-byte-set result-vr buf-vr idx-vr val-vr)))
              result-vr)))
 
     ;; buffer-byte-ref-ir: get byte from buffer at index
@@ -948,7 +948,7 @@
             (idx-vr (cadr idx-result))
             (result-vr (next-vreg counter)))
        (list (append buf-instrs idx-instrs
-                     (list (list 'tac-buffer-byte-ref result-vr buf-vr idx-vr)))
+                     (list (list :tac-buffer-byte-ref result-vr buf-vr idx-vr)))
              result-vr)))
 
     ;; mem-set-byte-ir: set byte at pointer + offset
@@ -964,7 +964,7 @@
             (val-vr (cadr val-result))
             (result-vr (next-vreg counter)))
        (list (append ptr-instrs off-instrs val-instrs
-                     (list (list 'tac-mem-set-byte result-vr ptr-vr off-vr val-vr)))
+                     (list (list :tac-mem-set-byte result-vr ptr-vr off-vr val-vr)))
              result-vr)))
 
     ;; mem-load-64-ir: load 64-bit from pointer + offset
@@ -977,7 +977,7 @@
             (off-vr (cadr off-result))
             (result-vr (next-vreg counter)))
        (list (append ptr-instrs off-instrs
-                     (list (list 'tac-mem-load-64 result-vr ptr-vr off-vr)))
+                     (list (list :tac-mem-load-64 result-vr ptr-vr off-vr)))
              result-vr)))
 
     ;; mem-load-byte-ir: load single byte from pointer + offset
@@ -990,7 +990,7 @@
             (off-vr (cadr off-result))
             (result-vr (next-vreg counter)))
        (list (append ptr-instrs off-instrs
-                     (list (list 'tac-mem-load-byte result-vr ptr-vr off-vr)))
+                     (list (list :tac-mem-load-byte result-vr ptr-vr off-vr)))
              result-vr)))
 
     ;; bnot-ir: boolean not
@@ -1000,7 +1000,7 @@
             (val-vr (cadr val-result))
             (result-vr (next-vreg counter)))
        (list (append val-instrs
-                     (list (list 'tac-bnot result-vr val-vr)))
+                     (list (list :tac-bnot result-vr val-vr)))
              result-vr)))
 
     ;; mvn-ir: bitwise NOT (ARM64 MVN instruction)
@@ -1010,7 +1010,7 @@
             (val-vr (cadr val-result))
             (result-vr (next-vreg counter)))
        (list (append val-instrs
-                     (list (list 'tac-mvn result-vr val-vr)))
+                     (list (list :tac-mvn result-vr val-vr)))
              result-vr)))
 
     ;; lambda-ref: reference to lifted lambda
@@ -1020,7 +1020,7 @@
      (let ((result-vr (next-vreg counter))
            (lambda-name (cadr ir))
            (free-offsets (caddr ir)))
-       (list (list (list 'tac-lambda-ref result-vr lambda-name free-offsets)) result-vr)))
+       (list (list (list :tac-lambda-ref result-vr lambda-name free-offsets)) result-vr)))
 
     ;; symbol-name-ir: get symbol's name as string
     ((and (consp ir) (ir-tag-matches (car ir) "SYMBOL-NAME-IR"))
@@ -1029,7 +1029,7 @@
             (sym-vr (cadr sym-result))
             (result-vr (next-vreg counter)))
        (list (append sym-instrs
-                     (list (list 'tac-symbol-name result-vr sym-vr)))
+                     (list (list :tac-symbol-name result-vr sym-vr)))
              result-vr)))
 
     ;; make-symbol-ir: create symbol from string
@@ -1039,7 +1039,7 @@
             (name-vr (cadr name-result))
             (result-vr (next-vreg counter)))
        (list (append name-instrs
-                     (list (list 'tac-make-symbol result-vr name-vr)))
+                     (list (list :tac-make-symbol result-vr name-vr)))
              result-vr)))
 
     ;; make-symbol-from-string-ir: same as make-symbol-ir
@@ -1049,7 +1049,7 @@
             (name-vr (cadr name-result))
             (result-vr (next-vreg counter)))
        (list (append name-instrs
-                     (list (list 'tac-make-symbol result-vr name-vr)))
+                     (list (list :tac-make-symbol result-vr name-vr)))
              result-vr)))
 
     ;; string-concat-ir: concatenate two strings
@@ -1062,7 +1062,7 @@
             (s2-vr (cadr s2-result))
             (result-vr (next-vreg counter)))
        (list (append s1-instrs s2-instrs
-                     (list (list 'tac-string-concat result-vr s1-vr s2-vr)))
+                     (list (list :tac-string-concat result-vr s1-vr s2-vr)))
              result-vr)))
 
     ;; string-equal-ir: compare two strings
@@ -1075,13 +1075,13 @@
             (s2-vr (cadr s2-result))
             (result-vr (next-vreg counter)))
        (list (append s1-instrs s2-instrs
-                     (list (list 'tac-string-equal result-vr s1-vr s2-vr)))
+                     (list (list :tac-string-equal result-vr s1-vr s2-vr)))
              result-vr)))
 
     ;; get-intern-table-ir: load intern table from [x27 + 0]
     ((and (consp ir) (ir-tag-matches (car ir) "GET-INTERN-TABLE-IR"))
      (let ((result-vr (next-vreg counter)))
-       (list (list (list 'tac-get-intern-table result-vr)) result-vr)))
+       (list (list (list :tac-get-intern-table result-vr)) result-vr)))
 
     ;; set-intern-table-ir: store intern table to [x27 + 0]
     ((and (consp ir) (ir-tag-matches (car ir) "SET-INTERN-TABLE-IR"))
@@ -1089,13 +1089,13 @@
             (val-instrs (car val-result))
             (val-vr (cadr val-result)))
        (list (append val-instrs
-                     (list (list 'tac-set-intern-table val-vr)))
+                     (list (list :tac-set-intern-table val-vr)))
              val-vr)))
 
     ;; get-keyword-table-ir: load keyword table from [x27 + 128]
     ((and (consp ir) (ir-tag-matches (car ir) "GET-KEYWORD-TABLE-IR"))
      (let ((result-vr (next-vreg counter)))
-       (list (list (list 'tac-get-keyword-table result-vr)) result-vr)))
+       (list (list (list :tac-get-keyword-table result-vr)) result-vr)))
 
     ;; set-keyword-table-ir: store keyword table to [x27 + 128]
     ((and (consp ir) (ir-tag-matches (car ir) "SET-KEYWORD-TABLE-IR"))
@@ -1103,13 +1103,13 @@
             (val-instrs (car val-result))
             (val-vr (cadr val-result)))
        (list (append val-instrs
-                     (list (list 'tac-set-keyword-table val-vr)))
+                     (list (list :tac-set-keyword-table val-vr)))
              val-vr)))
 
     ;; get-lambda-counter-ir: load lambda counter from [x27 + 8]
     ((and (consp ir) (ir-tag-matches (car ir) "GET-LAMBDA-COUNTER-IR"))
      (let ((result-vr (next-vreg counter)))
-       (list (list (list 'tac-get-lambda-counter result-vr)) result-vr)))
+       (list (list (list :tac-get-lambda-counter result-vr)) result-vr)))
 
     ;; set-lambda-counter-ir: store lambda counter to [x27 + 8]
     ((and (consp ir) (ir-tag-matches (car ir) "SET-LAMBDA-COUNTER-IR"))
@@ -1117,33 +1117,33 @@
             (val-instrs (car val-result))
             (val-vr (cadr val-result)))
        (list (append val-instrs
-                     (list (list 'tac-set-lambda-counter val-vr)))
+                     (list (list :tac-set-lambda-counter val-vr)))
              val-vr)))
 
     ;; get-frame-pointer-ir: get x29 as raw pointer for stack walking
     ((and (consp ir) (ir-tag-matches (car ir) "GET-FRAME-POINTER-IR"))
      (let ((result-vr (next-vreg counter)))
-       (list (list (list 'tac-get-frame-pointer result-vr)) result-vr)))
+       (list (list (list :tac-get-frame-pointer result-vr)) result-vr)))
 
     ;; get-code-base-ir: get x26 as raw pointer for symbol table access
     ((and (consp ir) (ir-tag-matches (car ir) "GET-CODE-BASE-IR"))
      (let ((result-vr (next-vreg counter)))
-       (list (list (list 'tac-get-code-base result-vr)) result-vr)))
+       (list (list (list :tac-get-code-base result-vr)) result-vr)))
 
     ;; get-symtab-offset-ir: load symtab offset from [x27 + 112]
     ((and (consp ir) (ir-tag-matches (car ir) "GET-SYMTAB-OFFSET-IR"))
      (let ((result-vr (next-vreg counter)))
-       (list (list (list 'tac-get-symtab-offset result-vr)) result-vr)))
+       (list (list (list :tac-get-symtab-offset result-vr)) result-vr)))
 
     ;; get-symtab-count-ir: load symtab count from [x27 + 120]
     ((and (consp ir) (ir-tag-matches (car ir) "GET-SYMTAB-COUNT-IR"))
      (let ((result-vr (next-vreg counter)))
-       (list (list (list 'tac-get-symtab-count result-vr)) result-vr)))
+       (list (list (list :tac-get-symtab-count result-vr)) result-vr)))
 
     ;; get-symbol-counter-ir: load symbol counter from [x27 + 48]
     ((and (consp ir) (ir-tag-matches (car ir) "GET-SYMBOL-COUNTER-IR"))
      (let ((result-vr (next-vreg counter)))
-       (list (list (list 'tac-get-symbol-counter result-vr)) result-vr)))
+       (list (list (list :tac-get-symbol-counter result-vr)) result-vr)))
 
     ;; set-symbol-counter-ir: store symbol counter to [x27 + 48]
     ((and (consp ir) (ir-tag-matches (car ir) "SET-SYMBOL-COUNTER-IR"))
@@ -1151,13 +1151,13 @@
             (val-instrs (car val-result))
             (val-vr (cadr val-result)))
        (list (append val-instrs
-                     (list (list 'tac-set-symbol-counter val-vr)))
+                     (list (list :tac-set-symbol-counter val-vr)))
              val-vr)))
 
     ;; get-symbol-table-sym-ir: load symbol table from [x27 + 56]
     ((and (consp ir) (ir-tag-matches (car ir) "GET-SYMBOL-TABLE-SYM-IR"))
      (let ((result-vr (next-vreg counter)))
-       (list (list (list 'tac-get-symbol-table result-vr)) result-vr)))
+       (list (list (list :tac-get-symbol-table result-vr)) result-vr)))
 
     ;; set-symbol-table-sym-ir: store symbol table to [x27 + 56]
     ((and (consp ir) (ir-tag-matches (car ir) "SET-SYMBOL-TABLE-SYM-IR"))
@@ -1165,13 +1165,13 @@
             (val-instrs (car val-result))
             (val-vr (cadr val-result)))
        (list (append val-instrs
-                     (list (list 'tac-set-symbol-table val-vr)))
+                     (list (list :tac-set-symbol-table val-vr)))
              val-vr)))
 
     ;; get-packages-ir: load packages alist from [x27 + 80]
     ((and (consp ir) (ir-tag-matches (car ir) "GET-PACKAGES-IR"))
      (let ((result-vr (next-vreg counter)))
-       (list (list (list 'tac-get-packages result-vr)) result-vr)))
+       (list (list (list :tac-get-packages result-vr)) result-vr)))
 
     ;; set-packages-ir: store packages alist to [x27 + 80]
     ((and (consp ir) (ir-tag-matches (car ir) "SET-PACKAGES-IR"))
@@ -1179,13 +1179,13 @@
             (val-instrs (car val-result))
             (val-vr (cadr val-result)))
        (list (append val-instrs
-                     (list (list 'tac-set-packages val-vr)))
+                     (list (list :tac-set-packages val-vr)))
              val-vr)))
 
     ;; get-current-package-ir: load current package name from [x27 + 88]
     ((and (consp ir) (ir-tag-matches (car ir) "GET-CURRENT-PACKAGE-IR"))
      (let ((result-vr (next-vreg counter)))
-       (list (list (list 'tac-get-current-package result-vr)) result-vr)))
+       (list (list (list :tac-get-current-package result-vr)) result-vr)))
 
     ;; set-current-package-ir: store current package name to [x27 + 88]
     ((and (consp ir) (ir-tag-matches (car ir) "SET-CURRENT-PACKAGE-IR"))
@@ -1193,7 +1193,7 @@
             (val-instrs (car val-result))
             (val-vr (cadr val-result)))
        (list (append val-instrs
-                     (list (list 'tac-set-current-package val-vr)))
+                     (list (list :tac-set-current-package val-vr)))
              val-vr)))
 
     ;; block-ir: named block with return-from support
@@ -1211,8 +1211,8 @@
               (body-instrs (car body-result))
               (body-vr (cadr body-result)))
          (list (append body-instrs
-                       (list (list 'tac-move result-vr body-vr))
-                       (list (list 'tac-label end-label)))
+                       (list (list :tac-move result-vr body-vr))
+                       (list (list :tac-label end-label)))
                result-vr))))
 
     ;; return-from-ir: early exit from named block
@@ -1228,8 +1228,8 @@
                   (val-instrs (car val-result))
                   (val-vr (cadr val-result)))
              (list (append val-instrs
-                           (list (list 'tac-move result-vr val-vr))
-                           (list (list 'tac-goto end-label)))
+                           (list (list :tac-move result-vr val-vr))
+                           (list (list :tac-goto end-label)))
                    result-vr))
            ;; Fallback if block not found (shouldn't happen)
            (let* ((val-result (ir-to-tac value-ir counter))
@@ -1248,7 +1248,7 @@
             (s2-vr (cadr s2-result))
             (result-vr (next-vreg counter)))
        (list (append s1-instrs s2-instrs
-                     (list (list 'tac-sym-eq result-vr s1-vr s2-vr)))
+                     (list (list :tac-sym-eq result-vr s1-vr s2-vr)))
              result-vr)))
 
     ;; Default: error on unhandled IR
@@ -1264,12 +1264,11 @@
 ;;;   live-in[i] = use[i] ∪ (live-out[i] - def[i])
 ;;;   live-out[i] = ∪ live-in[successors of i]
 
-;; Helper for symbol comparison that works across compilation boundaries
-;; When habu0 interpreter calls compiled code, symbols may not be eq
-;; but should match by name
-(defun tac-name= (sym str)
-  "Check if symbol SYM's symbol-name equals STR"
-  (string= (symbol-name sym) str))
+;; Helper for TAC opcode comparison - now uses keywords so eq works directly
+;; Takes keyword as second arg (not string) for eq comparison
+(defun tac-name= (sym kw)
+  "Check if TAC opcode SYM equals keyword KW. Now uses eq since opcodes are keywords."
+  (eq sym kw))
 
 ;;; Helper functions for compute-liveness (hoisted to avoid labels FNTAB issue)
 
@@ -1277,7 +1276,7 @@
   "Find index of label in TAC instruction list"
   (if (null instrs)
       nil
-      (if (and (tac-name= (caar instrs) "TAC-LABEL")
+      (if (and (eq (caar instrs) :tac-label)
                (= (cadar instrs) label))
           idx
           (liveness-find-label-index label (cdr instrs) (+ idx 1)))))
@@ -1316,20 +1315,20 @@
       (liveness-union-succs (cdr succs) live-in
                             (liveness-set-union result (liveness-nth (car succs) live-in)))))
 
-;; Separate helper for TAC-GOTO successors
+;; Separate helper for :tac-goto successors
 ;; Takes tac-instrs directly instead of closure to avoid FNTAB unpacking issue
 (defun successors-goto (instr tac-instrs)
   (let ((target (liveness-find-label-index (cadr instr) tac-instrs 0)))
     (if target (list target) nil)))
 
-;; Separate helper for TAC-IF successors
+;; Separate helper for :tac-if successors
 (defun successors-if (instr tac-instrs)
   (let ((then-idx (liveness-find-label-index (caddr instr) tac-instrs 0))
         (else-idx (liveness-find-label-index (cadddr instr) tac-instrs 0)))
     (append (if then-idx (list then-idx) nil)
             (if else-idx (list else-idx) nil))))
 
-;; Separate helper for TAC-IF-NOT successors
+;; Separate helper for :tac-if-NOT successors
 (defun successors-if-not (instr idx n tac-instrs)
   (let ((target-idx (liveness-find-label-index (caddr instr) tac-instrs 0))
         (fall-through (if (< (+ idx 1) n) (+ idx 1) nil)))
@@ -1347,151 +1346,150 @@
    Uses separate helper functions for each case to avoid eager evaluation.
    Takes tac-instrs directly instead of closure to avoid FNTAB unpacking issue."
   (let ((op (car instr)))
-    (if (tac-name= op "TAC-GOTO")
-        (successors-goto instr tac-instrs)
-        (if (tac-name= op "TAC-IF")
-            (successors-if instr tac-instrs)
-            (if (tac-name= op "TAC-IF-NOT")
-                (successors-if-not instr idx n tac-instrs)
-                (if (tac-name= op "TAC-RETURN")
-                    nil
-                    (successors-default idx n)))))))
+    (case op
+      ((:tac-goto) (successors-goto instr tac-instrs))
+      ((:tac-if) (successors-if instr tac-instrs))
+      ((:tac-if-not) (successors-if-not instr idx n tac-instrs))
+      ((:tac-return) nil)
+      (t (successors-default idx n)))))
 
-(defun tac-name-member-helper (name-str names)
-  "Helper: check if NAME-STR is in NAMES list of strings"
-  (if (null names)
-      nil
-      (if (string= name-str (car names))
-          t
-          (tac-name-member-helper name-str (cdr names)))))
-
-(defun tac-name-member (name names)
-  "Check if symbol NAME's symbol-name is a member of NAMES (list of strings)"
-  (tac-name-member-helper (symbol-name name) names))
+(defun tac-name-member (kw kws)
+  "Check if keyword KW is a member of KWS (list of keywords). Uses eq."
+  (member kw kws :test #'eq))
 
 ;; Instead of defvar (which doesn't work across compilation boundaries),
 ;; we use helper functions that return the constant lists
 (defun tac-def-instrs ()
   "TAC instructions that define a result vreg (vreg is second element)"
-  '("TAC-LIT" "TAC-KW-LIT" "TAC-PARAM" "TAC-VAR" "TAC-BINOP" "TAC-CMP" "TAC-CALL" "TAC-MOVE"
-    "TAC-NIL" "TAC-CONS" "TAC-CAR" "TAC-CDR" "TAC-SYM" "TAC-STR"
-    "TAC-MAKE-VECTOR" "TAC-VECTOR-REF" "TAC-VECTOR-LENGTH"
-    "TAC-STRING-LENGTH" "TAC-STRING-REF" "TAC-MAKE-STRING"
-    "TAC-GET-TAG" "TAC-SET-TAG" "TAC-FUNCALL" "TAC-MAKE-CLOSURE"
-    "TAC-GET-GLOBAL-VARS" "TAC-GET-CMDLINE-ARGS"
-    "TAC-SYS-OPEN" "TAC-SYS-READ" "TAC-SYS-WRITE" "TAC-SYS-CLOSE" "TAC-BUFFER-TO-STRING"
-    "TAC-BUFFER-BYTE-SET" "TAC-BUFFER-BYTE-REF" "TAC-MEM-SET-BYTE" "TAC-MEM-LOAD-64" "TAC-MEM-LOAD-BYTE" "TAC-BNOT" "TAC-MVN"
-    "TAC-LAMBDA-REF" "TAC-SYMBOL-NAME" "TAC-MAKE-SYMBOL"
-    "TAC-STRING-CONCAT" "TAC-STRING-EQUAL" "TAC-SYM-EQ"
-    "TAC-GET-INTERN-TABLE" "TAC-GET-KEYWORD-TABLE"
-    "TAC-GET-LAMBDA-COUNTER" "TAC-GET-SYMBOL-COUNTER" "TAC-GET-SYMBOL-TABLE"
-    "TAC-GET-FRAME-POINTER" "TAC-GET-CODE-BASE" "TAC-GET-SYMTAB-OFFSET" "TAC-GET-SYMTAB-COUNT"
-    "TAC-GET-PACKAGES" "TAC-GET-CURRENT-PACKAGE"))
+  '(:tac-lit :tac-kw-lit :tac-param :tac-var :tac-binop :tac-cmp :tac-call :tac-move
+    :tac-nil :tac-cons :tac-car :tac-cdr :tac-sym :tac-str
+    :tac-make-vector :tac-vector-ref :tac-vector-length
+    :tac-string-length :tac-string-ref :tac-make-string
+    :tac-get-tag :tac-set-tag :tac-funcall :tac-make-closure
+    :tac-get-global-vars :tac-get-cmdline-args
+    :tac-sys-open :tac-sys-read :tac-sys-write :tac-sys-close :tac-buffer-to-string
+    :tac-buffer-byte-set :tac-buffer-byte-ref :tac-mem-set-byte :tac-mem-load-64 :tac-mem-load-byte :tac-bnot :tac-mvn
+    :tac-lambda-ref :tac-symbol-name :tac-make-symbol
+    :tac-string-concat :tac-string-equal :tac-sym-eq
+    :tac-get-intern-table :tac-get-keyword-table
+    :tac-get-lambda-counter :tac-get-symbol-counter :tac-get-symbol-table
+    :tac-get-frame-pointer :tac-get-code-base :tac-get-symtab-offset :tac-get-symtab-count
+    :tac-get-packages :tac-get-current-package))
 
 (defun tac-no-def-instrs ()
   "TAC instructions that don't define a vreg (control flow, stores, etc.)"
-  '("TAC-RETURN" "TAC-IF" "TAC-IF-NOT" "TAC-GOTO" "TAC-LABEL" "TAC-SETVAR" "TAC-SYS-EXIT"
-    "TAC-LOOP-START" "TAC-CONTINUE" "TAC-SETCAR" "TAC-SETCDR" "TAC-VECTOR-SET"
-    "TAC-SET-GLOBAL-VARS" "TAC-SET-INTERN-TABLE" "TAC-SET-KEYWORD-TABLE"
-    "TAC-SET-LAMBDA-COUNTER" "TAC-SET-SYMBOL-COUNTER" "TAC-SET-SYMBOL-TABLE"
-    "TAC-SET-PACKAGES" "TAC-SET-CURRENT-PACKAGE"))
+  '(:tac-return :tac-if :tac-if-not :tac-goto :tac-label :tac-setvar :tac-sys-exit
+    :tac-loop-start :tac-continue :tac-setcar :tac-setcdr :tac-vector-set
+    :tac-set-global-vars :tac-set-intern-table :tac-set-keyword-table
+    :tac-set-lambda-counter :tac-set-symbol-counter :tac-set-symbol-table
+    :tac-set-packages :tac-set-current-package))
 
 (defun tac-def (instr)
   "Return the vreg defined by this instruction (or nil)"
   (let ((op (car instr)))
-    (cond
-      ((tac-name-member op (tac-def-instrs))
+    (case op
+      ;; Instructions that define a vreg (vreg is second element)
+      ((:tac-lit :tac-kw-lit :tac-param :tac-var :tac-binop :tac-cmp :tac-call :tac-move
+        :tac-nil :tac-cons :tac-car :tac-cdr :tac-sym :tac-str
+        :tac-make-vector :tac-vector-ref :tac-vector-length
+        :tac-string-length :tac-string-ref :tac-make-string
+        :tac-get-tag :tac-set-tag :tac-funcall :tac-make-closure
+        :tac-get-global-vars :tac-get-cmdline-args
+        :tac-sys-open :tac-sys-read :tac-sys-write :tac-sys-close :tac-buffer-to-string
+        :tac-buffer-byte-set :tac-buffer-byte-ref :tac-mem-set-byte :tac-mem-load-64 :tac-mem-load-byte :tac-bnot :tac-mvn
+        :tac-lambda-ref :tac-symbol-name :tac-make-symbol
+        :tac-string-concat :tac-string-equal :tac-sym-eq
+        :tac-get-intern-table :tac-get-keyword-table
+        :tac-get-lambda-counter :tac-get-symbol-counter :tac-get-symbol-table
+        :tac-get-frame-pointer :tac-get-code-base :tac-get-symtab-offset :tac-get-symtab-count
+        :tac-get-packages :tac-get-current-package)
        (cadr instr))
-      ((tac-name-member op (tac-no-def-instrs))
+      ;; Instructions that don't define a vreg (control flow, stores, etc.)
+      ((:tac-return :tac-if :tac-if-not :tac-goto :tac-label :tac-setvar :tac-sys-exit
+        :tac-loop-start :tac-continue :tac-setcar :tac-setcdr :tac-vector-set
+        :tac-set-global-vars :tac-set-intern-table :tac-set-keyword-table
+        :tac-set-lambda-counter :tac-set-symbol-counter :tac-set-symbol-table
+        :tac-set-packages :tac-set-current-package)
        nil)
       (t (error "tac-def: Unhandled TAC instruction: ~A" op)))))
 
 ;; TAC instruction categories for tac-use (as functions to avoid defvar issues)
 (defun tac-no-use-instrs ()
-  '("TAC-LIT" "TAC-KW-LIT" "TAC-PARAM" "TAC-VAR" "TAC-LABEL" "TAC-GOTO" "TAC-NIL" "TAC-SYM" "TAC-STR"
-    "TAC-LOOP-START" "TAC-CONTINUE" "TAC-MAKE-CLOSURE"
-    "TAC-GET-GLOBAL-VARS" "TAC-GET-CMDLINE-ARGS"
-    "TAC-LAMBDA-REF" "TAC-GET-INTERN-TABLE" "TAC-GET-KEYWORD-TABLE"
-    "TAC-GET-LAMBDA-COUNTER" "TAC-GET-SYMBOL-COUNTER" "TAC-GET-SYMBOL-TABLE"
-    "TAC-GET-FRAME-POINTER" "TAC-GET-CODE-BASE" "TAC-GET-SYMTAB-OFFSET" "TAC-GET-SYMTAB-COUNT"
-    "TAC-GET-PACKAGES" "TAC-GET-CURRENT-PACKAGE"))
+  '(:tac-lit :tac-kw-lit :tac-param :tac-var :tac-label :tac-goto :tac-nil :tac-sym :tac-str
+    :tac-loop-start :tac-continue :tac-make-closure
+    :tac-get-global-vars :tac-get-cmdline-args
+    :tac-lambda-ref :tac-get-intern-table :tac-get-keyword-table
+    :tac-get-lambda-counter :tac-get-symbol-counter :tac-get-symbol-table
+    :tac-get-frame-pointer :tac-get-code-base :tac-get-symtab-offset :tac-get-symtab-count
+    :tac-get-packages :tac-get-current-package))
 
 (defun tac-binop-instrs ()
-  '("TAC-BINOP" "TAC-CMP"))
+  '(:tac-binop :tac-cmp))
 
 (defun tac-setter-instrs ()
-  '("TAC-SET-GLOBAL-VARS" "TAC-SET-INTERN-TABLE" "TAC-SET-KEYWORD-TABLE"
-    "TAC-SET-LAMBDA-COUNTER" "TAC-SET-SYMBOL-COUNTER" "TAC-SET-SYMBOL-TABLE"
-    "TAC-SYS-EXIT" "TAC-SET-PACKAGES" "TAC-SET-CURRENT-PACKAGE"))
+  '(:tac-set-global-vars :tac-set-intern-table :tac-set-keyword-table
+    :tac-set-lambda-counter :tac-set-symbol-counter :tac-set-symbol-table
+    :tac-sys-exit :tac-set-packages :tac-set-current-package))
 
 (defun tac-unary-instrs ()
-  '("TAC-MOVE" "TAC-CAR" "TAC-CDR" "TAC-VECTOR-LENGTH" "TAC-STRING-LENGTH"
-    "TAC-MAKE-VECTOR" "TAC-MAKE-STRING" "TAC-GET-TAG" "TAC-BNOT" "TAC-MVN" "TAC-SYS-CLOSE"
-    "TAC-SYMBOL-NAME" "TAC-MAKE-SYMBOL"))
+  '(:tac-move :tac-car :tac-cdr :tac-vector-length :tac-string-length
+    :tac-make-vector :tac-make-string :tac-get-tag :tac-bnot :tac-mvn :tac-sys-close
+    :tac-symbol-name :tac-make-symbol))
 
 (defun tac-binary-str-instrs ()
-  '("TAC-STRING-CONCAT" "TAC-STRING-EQUAL" "TAC-SYM-EQ"))
+  '(:tac-string-concat :tac-string-equal :tac-sym-eq))
 
 (defun tac-use (instr)
   "Return list of vregs used by this instruction"
   (let ((op (car instr)))
-    (cond
-      ;; Instructions with no vreg uses
-      ((tac-name-member op (tac-no-use-instrs))
+    (case op
+      ;; No vreg uses - control flow, literals, etc.
+      ((:tac-lit :tac-kw-lit :tac-param :tac-var :tac-label :tac-goto :tac-nil :tac-sym :tac-str
+        :tac-loop-start :tac-continue :tac-make-closure
+        :tac-get-global-vars :tac-get-cmdline-args
+        :tac-lambda-ref :tac-get-intern-table :tac-get-keyword-table
+        :tac-get-lambda-counter :tac-get-symbol-counter :tac-get-symbol-table
+        :tac-get-frame-pointer :tac-get-code-base :tac-get-symtab-offset :tac-get-symtab-count
+        :tac-get-packages :tac-get-current-package)
        nil)
-      ;; Binary operations: (tac-binop dest op vr1 vr2)
-      ((tac-name-member op (tac-binop-instrs))
+      ;; Binary operations: (tac-binop dest op vr1 vr2), (tac-cmp dest op vr1 vr2)
+      ((:tac-binop :tac-cmp)
        (list (cadddr instr) (nth 4 instr)))
       ;; setvar: (tac-setvar offset vreg) - uses 3rd element
-      ((tac-name= op "TAC-SETVAR")
+      ((:tac-setvar)
        (list (caddr instr)))
-      ;; Global/system setters: (tac-set-X vreg) - uses 2nd element
-      ((tac-name-member op (tac-setter-instrs))
+      ;; Setters: (tac-set-X vreg) - uses 2nd element
+      ((:tac-set-global-vars :tac-set-intern-table :tac-set-keyword-table
+        :tac-set-lambda-counter :tac-set-symbol-counter :tac-set-symbol-table
+        :tac-sys-exit :tac-set-packages :tac-set-current-package)
        (list (cadr instr)))
-      ;; Conditionals: (tac-if cond-vreg then else)
-      ((or (tac-name= op "TAC-IF") (tac-name= op "TAC-IF-NOT"))
-       (list (cadr instr)))
-      ;; Return: (tac-return vreg)
-      ((tac-name= op "TAC-RETURN")
+      ;; Conditionals: uses cond-vreg
+      ((:tac-if :tac-if-not :tac-return)
        (list (cadr instr)))
       ;; Unary ops: (tac-X dest src)
-      ((tac-name-member op (tac-unary-instrs))
+      ((:tac-move :tac-car :tac-cdr :tac-vector-length :tac-string-length
+        :tac-make-vector :tac-make-string :tac-get-tag :tac-bnot :tac-mvn :tac-sys-close
+        :tac-symbol-name :tac-make-symbol)
        (list (caddr instr)))
-      ;; Cons: (tac-cons dest car cdr)
-      ((or (tac-name= op "TAC-CONS") (tac-name= op "TAC-MEM-LOAD-64") (tac-name= op "TAC-MEM-LOAD-BYTE"))
-       (list (caddr instr) (cadddr instr)))
-      ;; buffer-to-string: (tac-buffer-to-string dest buf len)
-      ((tac-name= op "TAC-BUFFER-TO-STRING")
-       (list (caddr instr) (cadddr instr)))
-      ;; Binary string ops: (tac-X dest vr1 vr2)
-      ((tac-name-member op (tac-binary-str-instrs))
-       (list (caddr instr) (cadddr instr)))
-      ;; set-tag: (tac-set-tag dest val-vr tag-vr)
-      ((tac-name= op "TAC-SET-TAG")
+      ;; Binary ops with dest: (tac-X dest vr1 vr2)
+      ((:tac-cons :tac-mem-load-64 :tac-mem-load-byte :tac-buffer-to-string
+        :tac-string-concat :tac-string-equal :tac-sym-eq :tac-set-tag
+        :tac-vector-ref :tac-string-ref :tac-buffer-byte-ref)
        (list (caddr instr) (cadddr instr)))
       ;; Mutation: (tac-setcar cons-vr val-vr), (tac-setcdr cons-vr val-vr)
-      ((or (tac-name= op "TAC-SETCAR") (tac-name= op "TAC-SETCDR"))
+      ((:tac-setcar :tac-setcdr)
        (list (cadr instr) (caddr instr)))
-      ;; Vector ops: (tac-vector-ref dest vec idx), (tac-string-ref dest str idx), (tac-buffer-byte-ref dest buf idx)
-      ((or (tac-name= op "TAC-VECTOR-REF") (tac-name= op "TAC-STRING-REF") (tac-name= op "TAC-BUFFER-BYTE-REF"))
-       (list (caddr instr) (cadddr instr)))
-      ;; Vector set: (tac-vector-set vec idx val) - no dest, returns val
-      ((tac-name= op "TAC-VECTOR-SET")
+      ;; Vector set: (tac-vector-set vec idx val)
+      ((:tac-vector-set)
        (list (cadr instr) (caddr instr) (cadddr instr)))
       ;; Call: (tac-call dest fn args)
-      ((tac-name= op "TAC-CALL")
+      ((:tac-call)
        (cadddr instr))
       ;; Funcall: (tac-funcall dest fn-vr args)
-      ((tac-name= op "TAC-FUNCALL")
+      ((:tac-funcall)
        (cons (caddr instr) (cadddr instr)))
       ;; sys-open: (tac-sys-open dest path flags mode)
-      ((tac-name= op "TAC-SYS-OPEN")
-       (list (caddr instr) (cadddr instr) (nth 4 instr)))
-      ;; sys-read/write: (tac-sys-read/write dest fd buf len)
-      ((or (tac-name= op "TAC-SYS-READ") (tac-name= op "TAC-SYS-WRITE"))
-       (list (caddr instr) (cadddr instr) (nth 4 instr)))
-      ;; buffer-byte-set, mem-set-byte: (tac-X dest buf/ptr idx/off val)
-      ((or (tac-name= op "TAC-BUFFER-BYTE-SET") (tac-name= op "TAC-MEM-SET-BYTE"))
+      ((:tac-sys-open :tac-sys-read :tac-sys-write :tac-buffer-byte-set :tac-mem-set-byte)
        (list (caddr instr) (cadddr instr) (nth 4 instr)))
       (t (error "tac-use: Unhandled TAC instruction: ~A" op)))))
 
@@ -1797,7 +1795,7 @@
       ;; tac-lit: load literal into vreg
       ;; Value must be tagged as fixnum (value << 4, tag 0)
       ;; Uses load-addr to handle constants > 16 bits (movz + movk)
-      ((tac-lit)
+      ((:tac-lit)
        (let* ((vreg (cadr instr))
               (value (caddr instr))
               (tagged (ash value 4))  ; Fixnum tagging: value << 4
@@ -1812,7 +1810,7 @@
       ;; tac-var: load from environment
       ;; Environment is at x20, params at negative offsets from x20
       ;; Use LDUR for negative offsets (unscaled signed 9-bit)
-      ((tac-var)
+      ((:tac-var)
        (let* ((vreg (cadr instr))
               (offset (caddr instr))
               (dest (vreg-to-reg vreg allocation))
@@ -1826,7 +1824,7 @@
 
       ;; tac-setvar: store to environment
       ;; Use STUR for negative offsets
-      ((tac-setvar)
+      ((:tac-setvar)
        (let* ((offset (cadr instr))
               (vreg (caddr instr))
               (src (vreg-to-reg vreg allocation))
@@ -1839,7 +1837,7 @@
              (arm64:stur src :env :offset byte-off))))
 
       ;; tac-binop: binary operation
-      ((tac-binop)
+      ((:tac-binop)
        (let* ((dest-vreg (cadr instr))
               (binop (caddr instr))
               (left-vreg (cadddr instr))
@@ -1914,7 +1912,7 @@
             (arm64:str :x0 :sp :offset (spill-offset (cadr dest)))))))
 
       ;; tac-cmp: comparison (result is tagged nil=6 or t=16)
-      ((tac-cmp)
+      ((:tac-cmp)
        (let* ((dest-vreg (cadr instr))
               (cmp-op (caddr instr))
               (left-vreg (cadddr instr))
@@ -1955,7 +1953,7 @@
             (arm64:str :x0 :sp :offset (spill-offset (cadr dest)))))))
 
       ;; tac-move: copy between vregs
-      ((tac-move)
+      ((:tac-move)
        (let* ((dest-vreg (cadr instr))
               (src-vreg (caddr instr))
               (dest (vreg-to-reg dest-vreg allocation))
@@ -1976,7 +1974,7 @@
            (t (arm64:mov dest src)))))
 
       ;; tac-return: move result to x0
-      ((tac-return)
+      ((:tac-return)
        (let* ((vreg (cadr instr))
               (src (vreg-to-reg vreg allocation)))
          (if (and (consp src) (eq (car src) :spill))
@@ -1986,14 +1984,14 @@
                  (arm64:mov :x0 src)))))
 
       ;; tac-label: no code, just record position
-      ((tac-label) nil)
+      ((:tac-label) nil)
 
       ;; tac-goto: unconditional branch (resolved later)
-      ((tac-goto)
+      ((:tac-goto)
        (list (list :branch-marker (cadr instr))))
 
       ;; tac-if: conditional branch
-      ((tac-if)
+      ((:tac-if)
        (let* ((cond-vreg (cadr instr))
               (then-label (caddr instr))
               (else-label (cadddr instr))
@@ -2012,7 +2010,7 @@
 
       ;; tac-call: function call with ABI handling
       ;; Format: (tac-call dest-vreg fn-name (arg-vregs...))
-      ((tac-call)
+      ((:tac-call)
        (let* ((dest-vreg (cadr instr))
               (fn-name (caddr instr))
               (arg-vregs (cadddr instr))
@@ -2079,7 +2077,7 @@
                (append save-code arg-code call-marker restore-code result-code))))))
 
       ;; tac-nil: load nil (0x06) into vreg
-      ((tac-nil)
+      ((:tac-nil)
        (let* ((vreg (cadr instr))
               (dest (vreg-to-reg vreg allocation)))
          (if (and (consp dest) (eq (car dest) :spill))
@@ -2088,7 +2086,7 @@
              (arm64:movz dest 6))))
 
       ;; tac-cons: allocate cons cell (needs heap allocation)
-      ((tac-cons)
+      ((:tac-cons)
        (let* ((dest-vreg (cadr instr))
               (car-vreg (caddr instr))
               (cdr-vreg (cadddr instr))
@@ -2117,7 +2115,7 @@
             (arm64:str :x2 :sp :offset (spill-offset (cadr dest)))))))
 
       ;; tac-car: extract car from cons cell
-      ((tac-car)
+      ((:tac-car)
        (let* ((dest-vreg (cadr instr))
               (src-vreg (caddr instr))
               (src-loc (vreg-to-reg src-vreg allocation))
@@ -2137,7 +2135,7 @@
             (arm64:str :x0 :sp :offset (spill-offset (cadr dest)))))))
 
       ;; tac-cdr: extract cdr from cons cell
-      ((tac-cdr)
+      ((:tac-cdr)
        (let* ((dest-vreg (cadr instr))
               (src-vreg (caddr instr))
               (src-loc (vreg-to-reg src-vreg allocation))
@@ -2157,7 +2155,7 @@
             (arm64:str :x0 :sp :offset (spill-offset (cadr dest)))))))
 
       ;; tac-if-not: conditional branch on nil
-      ((tac-if-not)
+      ((:tac-if-not)
        (let* ((cond-vreg (cadr instr))
               (target-label (caddr instr))
               (cond-loc (vreg-to-reg cond-vreg allocation))
@@ -2173,7 +2171,7 @@
           (list (list :branch-eq-marker target-label)))))
 
       ;; tac-setcar: mutate car of cons
-      ((tac-setcar)
+      ((:tac-setcar)
        (let* ((cons-vreg (cadr instr))
               (val-vreg (caddr instr))
               (cons-loc (vreg-to-reg cons-vreg allocation))
@@ -2192,7 +2190,7 @@
           (arm64:str val-reg :x2 :offset 0))))
 
       ;; tac-setcdr: mutate cdr of cons
-      ((tac-setcdr)
+      ((:tac-setcdr)
        (let* ((cons-vreg (cadr instr))
               (val-vreg (caddr instr))
               (cons-loc (vreg-to-reg cons-vreg allocation))
@@ -2210,7 +2208,7 @@
           (arm64:str val-reg :x2 :offset 8))))
 
       ;; tac-get-tag: extract tag bits (value & 0xF)
-      ((tac-get-tag)
+      ((:tac-get-tag)
        (let* ((dest-vreg (cadr instr))
               (src-vreg (caddr instr))
               (src-loc (vreg-to-reg src-vreg allocation))
@@ -2230,7 +2228,7 @@
       ;; tac-set-tag: change tag bits on a pointer value
       ;; (tac-set-tag dest val-vr tag-vr)
       ;; Result = (val & ~0xF) | (tag >> 4)
-      ((tac-set-tag)
+      ((:tac-set-tag)
        (let* ((dest-vreg (cadr instr))
               (val-vreg (caddr instr))
               (tag-vreg (cadddr instr))
@@ -2257,7 +2255,7 @@
             (arm64:str :x0 :sp :offset (spill-offset (cadr dest)))))))
 
       ;; tac-vector-length: get vector length from header
-      ((tac-vector-length)
+      ((:tac-vector-length)
        (let* ((dest-vreg (cadr instr))
               (vec-vreg (caddr instr))
               (vec-loc (vreg-to-reg vec-vreg allocation))
@@ -2277,7 +2275,7 @@
             (arm64:str :x0 :sp :offset (spill-offset (cadr dest)))))))
 
       ;; tac-string-length: same as vector-length (strings have length header)
-      ((tac-string-length)
+      ((:tac-string-length)
        (let* ((dest-vreg (cadr instr))
               (str-vreg (caddr instr))
               (str-loc (vreg-to-reg str-vreg allocation))
@@ -2297,7 +2295,7 @@
             (arm64:str :x0 :sp :offset (spill-offset (cadr dest)))))))
 
       ;; tac-vector-ref: load vector element
-      ((tac-vector-ref)
+      ((:tac-vector-ref)
        (let* ((dest-vreg (cadr instr))
               (vec-vreg (caddr instr))
               (idx-vreg (cadddr instr))
@@ -2325,7 +2323,7 @@
             (arm64:str :x0 :sp :offset (spill-offset (cadr dest)))))))
 
       ;; tac-vector-set: store vector element
-      ((tac-vector-set)
+      ((:tac-vector-set)
        (let* ((vec-vreg (cadr instr))
               (idx-vreg (caddr instr))
               (val-vreg (cadddr instr))
@@ -2351,7 +2349,7 @@
           (arm64:str val-reg :x3 :offset 8))))
 
       ;; tac-string-ref: load string character (byte)
-      ((tac-string-ref)
+      ((:tac-string-ref)
        (let* ((dest-vreg (cadr instr))
               (str-vreg (caddr instr))
               (idx-vreg (cadddr instr))
@@ -2379,11 +2377,11 @@
             (arm64:str :x0 :sp :offset (spill-offset (cadr dest)))))))
 
       ;; tac-loop-start: marker for loop, no code generated
-      ((tac-loop-start) nil)
+      ((:tac-loop-start) nil)
 
       ;; tac-continue: jump back to loop - need loop label tracking
       ;; For now, emit as unresolved marker
-      ((tac-continue)
+      ((:tac-continue)
        (list :continue-marker (cadr instr)))
 
       ;; tac-funcall: call through closure
@@ -2392,7 +2390,7 @@
       ;; Call convention:
       ;;   - Set x24 to captured env (cons list from closure+8)
       ;;   - Extract fn-offset, add x26, call via BLR
-      ((tac-funcall)
+      ((:tac-funcall)
        (let* ((dest-vreg (cadr instr))
               (fn-vr (caddr instr))
               (arg-vrs (cadddr instr))
@@ -2435,7 +2433,7 @@
             (arm64:str :x0 :sp :offset (spill-offset (cadr dest)))))))
 
       ;; tac-make-closure: create closure object - complex
-      ((tac-make-closure)
+      ((:tac-make-closure)
        ;; Emit as marker for later resolution (double-wrap so append keeps it as one item)
        (list (list :make-closure-marker instr)))
 
@@ -2443,7 +2441,7 @@
       ;; Format: (tac-str dest-vr string-value)
       ;; NOTE: GC trigger uses x8 as scratch and may call GC-COLLECT (clobbers x0-x7)
       ;; We use x19 (callee-saved) to preserve result across GC check
-      ((tac-str)
+      ((:tac-str)
        (let* ((dest-vreg (cadr instr))
               (str (caddr instr))
               (dest (vreg-to-reg dest-vreg allocation))
@@ -2474,7 +2472,7 @@
       ;; Format: (tac-kw-lit dest-vr keyword-name-string)
       ;; Keywords have tag 7, same layout as strings [length:8][chars:N]
       ;; Note: compiler stores keyword as string (symbol-name), not the keyword itself
-      ((tac-kw-lit)
+      ((:tac-kw-lit)
        (let* ((dest-vreg (cadr instr))
               (name (caddr instr))  ; Already a string like "X0"
               (dest (vreg-to-reg dest-vreg allocation))
@@ -2506,7 +2504,7 @@
       ;; IMPORTANT: This creates NEW symbols every time, so symbols are NOT eq.
       ;; For symbol interning to work, use the INTERN function at runtime or
       ;; fix the case dispatch to use sym-eq (string comparison) instead of eq.
-      ((tac-sym)
+      ((:tac-sym)
        (let* ((dest-vreg (cadr instr))
               (name (caddr instr))
               (dest (vreg-to-reg dest-vreg allocation))
@@ -2536,7 +2534,7 @@
       ;; tac-make-vector: allocate vector on heap
       ;; Format: (tac-make-vector dest-vreg size-vreg)
       ;; Vector layout: [length (8 bytes)] [data (n * 8 bytes)]
-      ((tac-make-vector)
+      ((:tac-make-vector)
        (let* ((dest-vreg (cadr instr))
               (size-vreg (caddr instr))
               (dest (vreg-to-reg dest-vreg allocation))
@@ -2571,7 +2569,7 @@
 
       ;; tac-make-string: make string from vector of char codes
       ;; Format: (tac-make-string dest-vreg vec-vreg)
-      ((tac-make-string)
+      ((:tac-make-string)
        (let* ((dest-vreg (cadr instr))
               (vec-vreg (caddr instr))
               (dest (vreg-to-reg dest-vreg allocation))
@@ -2619,7 +2617,7 @@
               (arm64:mov dest :x19)))))
 
       ;; tac-get-global-vars: load from [x27 + 104]
-      ((tac-get-global-vars)
+      ((:tac-get-global-vars)
        (let* ((dest-vreg (cadr instr))
               (dest (vreg-to-reg dest-vreg allocation))
               (dest-reg (if (and (consp dest) (eq (car dest) :spill)) :x0 dest)))
@@ -2629,7 +2627,7 @@
             (arm64:str :x0 :sp :offset (spill-offset (cadr dest)))))))
 
       ;; tac-set-global-vars: store to [x27 + 104]
-      ((tac-set-global-vars)
+      ((:tac-set-global-vars)
        (let* ((val-vreg (cadr instr))
               (val-loc (vreg-to-reg val-vreg allocation))
               (val-reg (if (and (consp val-loc) (eq (car val-loc) :spill)) :x0 val-loc)))
@@ -2639,7 +2637,7 @@
           (arm64:str val-reg :gc :offset 104))))
 
       ;; tac-get-cmdline-args: return nil for now
-      ((tac-get-cmdline-args)
+      ((:tac-get-cmdline-args)
        (let* ((dest-vreg (cadr instr))
               (dest (vreg-to-reg dest-vreg allocation))
               (dest-reg (if (and (consp dest) (eq (car dest) :spill)) :x0 dest)))
@@ -2649,7 +2647,7 @@
             (arm64:str :x0 :sp :offset (spill-offset (cadr dest)))))))
 
       ;; tac-sys-exit: exit via libSystem stub
-      ((tac-sys-exit)
+      ((:tac-sys-exit)
        (let* ((val-vreg (cadr instr))
               (val-loc (vreg-to-reg val-vreg allocation))
               (val-reg (if (and (consp val-loc) (eq (car val-loc) :spill)) :x0 val-loc)))
@@ -2660,7 +2658,7 @@
           (list (list :extern-call "_exit")))))
 
       ;; tac-sys-open: open(path, flags, mode) via libSystem stub
-      ((tac-sys-open)
+      ((:tac-sys-open)
        (let* ((dest-vreg (cadr instr))
               (path-vreg (caddr instr))
               (flags-vreg (cadddr instr))
@@ -2694,7 +2692,7 @@
               (unless (eq dest :x0) (arm64:mov dest :x0))))))
 
       ;; tac-sys-read: read(fd, buf, len) via libSystem stub
-      ((tac-sys-read)
+      ((:tac-sys-read)
        (let* ((dest-vreg (cadr instr))
               (fd-vreg (caddr instr))
               (buf-vreg (cadddr instr))
@@ -2725,7 +2723,7 @@
 
       ;; tac-sys-write: write(fd, buf, len) via libSystem stub
       ;; Buffer can be string (tag 4) or vector (tag 3), so use AND to clear tag bits
-      ((tac-sys-write)
+      ((:tac-sys-write)
        (let* ((dest-vreg (cadr instr))
               (fd-vreg (caddr instr))
               (buf-vreg (cadddr instr))
@@ -2755,7 +2753,7 @@
               (unless (eq dest :x0) (arm64:mov dest :x0))))))
 
       ;; tac-sys-close: close(fd) via libSystem stub
-      ((tac-sys-close)
+      ((:tac-sys-close)
        (let* ((dest-vreg (cadr instr))
               (fd-vreg (caddr instr))
               (dest (vreg-to-reg dest-vreg allocation))
@@ -2773,7 +2771,7 @@
 
       ;; tac-buffer-to-string: convert raw byte buffer to string
       ;; (tac-buffer-to-string dest buf-vr len-vr)
-      ((tac-buffer-to-string)
+      ((:tac-buffer-to-string)
        (let* ((dest-vreg (cadr instr))
               (buf-vreg (caddr instr))
               (len-vreg (cadddr instr))
@@ -2827,7 +2825,7 @@
               (unless (eq dest :x0) (arm64:mov dest :x0))))))
 
       ;; tac-buffer-byte-set: set byte in buffer
-      ((tac-buffer-byte-set)
+      ((:tac-buffer-byte-set)
        (let* ((dest-vreg (cadr instr))
               (buf-vreg (caddr instr))
               (idx-vreg (cadddr instr))
@@ -2860,7 +2858,7 @@
       ;; tac-buffer-byte-ref: get byte from buffer at index
       ;; Format: (tac-buffer-byte-ref dest buf-vr idx-vr)
       ;; Vector layout: [length (8 bytes)][raw bytes...]
-      ((tac-buffer-byte-ref)
+      ((:tac-buffer-byte-ref)
        (let* ((dest-vreg (cadr instr))
               (buf-vreg (caddr instr))
               (idx-vreg (cadddr instr))
@@ -2889,7 +2887,7 @@
               (unless (eq dest :x0) (arm64:mov dest :x0))))))
 
       ;; tac-mem-set-byte: set byte at ptr + offset
-      ((tac-mem-set-byte)
+      ((:tac-mem-set-byte)
        (let* ((dest-vreg (cadr instr))
               (ptr-vreg (caddr instr))
               (off-vreg (cadddr instr))
@@ -2919,7 +2917,7 @@
               (unless (eq dest :x0) (arm64:mov dest :x0))))))
 
       ;; tac-mem-load-64: load 64-bit from ptr + offset
-      ((tac-mem-load-64)
+      ((:tac-mem-load-64)
        (let* ((dest-vreg (cadr instr))
               (ptr-vreg (caddr instr))
               (off-vreg (cadddr instr))
@@ -2943,7 +2941,7 @@
             (arm64:str :x0 :sp :offset (spill-offset (cadr dest)))))))
 
       ;; tac-mem-load-byte: load single byte from ptr+offset, return as tagged fixnum
-      ((tac-mem-load-byte)
+      ((:tac-mem-load-byte)
        (let* ((dest-vreg (cadr instr))
               (ptr-vreg (caddr instr))
               (off-vreg (cadddr instr))
@@ -2969,7 +2967,7 @@
             (arm64:str :x0 :sp :offset (spill-offset (cadr dest)))))))
 
       ;; tac-bnot: boolean not
-      ((tac-bnot)
+      ((:tac-bnot)
        (let* ((dest-vreg (cadr instr))
               (val-vreg (caddr instr))
               (dest (vreg-to-reg dest-vreg allocation))
@@ -2991,7 +2989,7 @@
 
       ;; tac-mvn: bitwise NOT (ARM64 MVN instruction)
       ;; For tagged fixnums: untag, MVN, retag
-      ((tac-mvn)
+      ((:tac-mvn)
        (let* ((dest-vreg (cadr instr))
               (val-vreg (caddr instr))
               (dest (vreg-to-reg dest-vreg allocation))
@@ -3014,7 +3012,7 @@
       ;; TAC format: (tac-lambda-ref dest-vreg lambda-name free-offsets)
       ;; Closure format: [tagged-fn-offset (8), captured-env (8)] with tag 5
       ;; tagged-fn-offset = (fn_addr - x26) << 4
-      ((tac-lambda-ref)
+      ((:tac-lambda-ref)
        (let* ((dest-vreg (cadr instr))
               (lambda-name (caddr instr))
               (free-offsets (cadddr instr))
@@ -3097,7 +3095,7 @@
       ;; tac-symbol-name: get symbol's name string
       ;; Symbol and string share same base pointer, just different tags
       ;; Symbol = ptr|2, String = ptr|4, so: string = symbol - 2 + 4
-      ((tac-symbol-name)
+      ((:tac-symbol-name)
        (let* ((dest-vreg (cadr instr))
               (sym-vreg (caddr instr))
               (dest (vreg-to-reg dest-vreg allocation))
@@ -3115,7 +3113,7 @@
       ;; tac-make-symbol: create symbol from string name
       ;; Symbol and string share same base pointer, just different tags
       ;; String = ptr|4, Symbol = ptr|2, so: symbol = string - 4 + 2
-      ((tac-make-symbol)
+      ((:tac-make-symbol)
        (let* ((dest-vreg (cadr instr))
               (name-vreg (caddr instr))
               (dest (vreg-to-reg dest-vreg allocation))
@@ -3132,7 +3130,7 @@
 
       ;; tac-string-concat: concatenate two strings
       ;; This is complex - emit marker for now
-      ((tac-string-concat)
+      ((:tac-string-concat)
        (let* ((dest-vreg (cadr instr))
               (s1-vreg (caddr instr))
               (s2-vreg (cadddr instr))
@@ -3151,7 +3149,7 @@
       ;;   x4: len2 / loop counter
       ;;   x5: char from str1
       ;;   x6: char from str2
-      ((tac-string-equal)
+      ((:tac-string-equal)
        (let* ((dest-vreg (cadr instr))
               (s1-vreg (caddr instr))
               (s2-vreg (cadddr instr))
@@ -3216,7 +3214,7 @@
       ;;   x4: len2 / loop counter
       ;;   x5: char from str1
       ;;   x6: char from str2
-      ((tac-sym-eq)
+      ((:tac-sym-eq)
        (let* ((dest-vreg (cadr instr))
               (s1-vreg (caddr instr))
               (s2-vreg (cadddr instr))
@@ -3277,7 +3275,7 @@
             (arm64:str :x0 :sp :offset (spill-offset (cadr dest)))))))
 
       ;; tac-get-intern-table: load from [x27 + 0]
-      ((tac-get-intern-table)
+      ((:tac-get-intern-table)
        (let* ((dest-vreg (cadr instr))
               (dest (vreg-to-reg dest-vreg allocation))
               (dest-reg (if (and (consp dest) (eq (car dest) :spill)) :x0 dest)))
@@ -3287,7 +3285,7 @@
             (arm64:str :x0 :sp :offset (spill-offset (cadr dest)))))))
 
       ;; tac-set-intern-table: store to [x27 + 0]
-      ((tac-set-intern-table)
+      ((:tac-set-intern-table)
        (let* ((val-vreg (cadr instr))
               (val-loc (vreg-to-reg val-vreg allocation)))
          (append
@@ -3297,7 +3295,7 @@
           (arm64:str :x0 :gc :offset 0))))
 
       ;; tac-get-keyword-table: load from [x27 + 128]
-      ((tac-get-keyword-table)
+      ((:tac-get-keyword-table)
        (let* ((dest-vreg (cadr instr))
               (dest (vreg-to-reg dest-vreg allocation))
               (dest-reg (if (and (consp dest) (eq (car dest) :spill)) :x0 dest)))
@@ -3307,7 +3305,7 @@
             (arm64:str :x0 :sp :offset (spill-offset (cadr dest)))))))
 
       ;; tac-set-keyword-table: store to [x27 + 128]
-      ((tac-set-keyword-table)
+      ((:tac-set-keyword-table)
        (let* ((val-vreg (cadr instr))
               (val-loc (vreg-to-reg val-vreg allocation)))
          (append
@@ -3317,7 +3315,7 @@
           (arm64:str :x0 :gc :offset 128))))
 
       ;; tac-get-lambda-counter: load from [x27 + 8]
-      ((tac-get-lambda-counter)
+      ((:tac-get-lambda-counter)
        (let* ((dest-vreg (cadr instr))
               (dest (vreg-to-reg dest-vreg allocation))
               (dest-reg (if (and (consp dest) (eq (car dest) :spill)) :x0 dest)))
@@ -3328,7 +3326,7 @@
 
       ;; tac-get-frame-pointer: get x29 as tagged fixnum for stack walking
       ;; Must be tagged since mem-load-64 expects tagged pointers
-      ((tac-get-frame-pointer)
+      ((:tac-get-frame-pointer)
        (let* ((dest-vreg (cadr instr))
               (dest (vreg-to-reg dest-vreg allocation))
               (dest-reg (if (and (consp dest) (eq (car dest) :spill)) :x0 dest)))
@@ -3340,7 +3338,7 @@
 
       ;; tac-get-code-base: get x26 as tagged fixnum for symbol table access
       ;; Must be tagged since mem-load-64/mem-load-byte expect tagged pointers
-      ((tac-get-code-base)
+      ((:tac-get-code-base)
        (let* ((dest-vreg (cadr instr))
               (dest (vreg-to-reg dest-vreg allocation))
               (dest-reg (if (and (consp dest) (eq (car dest) :spill)) :x0 dest)))
@@ -3352,7 +3350,7 @@
 
       ;; tac-get-symtab-offset: load from [x27 + 112]
       ;; Note: value is ALREADY tagged (pre-shifted << 4) in wrapper storage
-      ((tac-get-symtab-offset)
+      ((:tac-get-symtab-offset)
        (let* ((dest-vreg (cadr instr))
               (dest (vreg-to-reg dest-vreg allocation))
               (dest-reg (if (and (consp dest) (eq (car dest) :spill)) :x0 dest)))
@@ -3362,7 +3360,7 @@
             (arm64:str :x0 :sp :offset (spill-offset (cadr dest)))))))
 
       ;; tac-get-symtab-count: load from [x27 + 120]
-      ((tac-get-symtab-count)
+      ((:tac-get-symtab-count)
        (let* ((dest-vreg (cadr instr))
               (dest (vreg-to-reg dest-vreg allocation))
               (dest-reg (if (and (consp dest) (eq (car dest) :spill)) :x0 dest)))
@@ -3372,7 +3370,7 @@
             (arm64:str :x0 :sp :offset (spill-offset (cadr dest)))))))
 
       ;; tac-set-lambda-counter: store to [x27 + 8]
-      ((tac-set-lambda-counter)
+      ((:tac-set-lambda-counter)
        (let* ((val-vreg (cadr instr))
               (val-loc (vreg-to-reg val-vreg allocation)))
          (append
@@ -3382,7 +3380,7 @@
           (arm64:str :x0 :gc :offset 8))))
 
       ;; tac-get-symbol-counter: load from [x27 + 48]
-      ((tac-get-symbol-counter)
+      ((:tac-get-symbol-counter)
        (let* ((dest-vreg (cadr instr))
               (dest (vreg-to-reg dest-vreg allocation))
               (dest-reg (if (and (consp dest) (eq (car dest) :spill)) :x0 dest)))
@@ -3392,7 +3390,7 @@
             (arm64:str :x0 :sp :offset (spill-offset (cadr dest)))))))
 
       ;; tac-set-symbol-counter: store to [x27 + 48]
-      ((tac-set-symbol-counter)
+      ((:tac-set-symbol-counter)
        (let* ((val-vreg (cadr instr))
               (val-loc (vreg-to-reg val-vreg allocation)))
          (append
@@ -3402,7 +3400,7 @@
           (arm64:str :x0 :gc :offset 48))))
 
       ;; tac-get-symbol-table: load from [x27 + 56]
-      ((tac-get-symbol-table)
+      ((:tac-get-symbol-table)
        (let* ((dest-vreg (cadr instr))
               (dest (vreg-to-reg dest-vreg allocation))
               (dest-reg (if (and (consp dest) (eq (car dest) :spill)) :x0 dest)))
@@ -3412,7 +3410,7 @@
             (arm64:str :x0 :sp :offset (spill-offset (cadr dest)))))))
 
       ;; tac-set-symbol-table: store to [x27 + 56]
-      ((tac-set-symbol-table)
+      ((:tac-set-symbol-table)
        (let* ((val-vreg (cadr instr))
               (val-loc (vreg-to-reg val-vreg allocation)))
          (append
@@ -3422,7 +3420,7 @@
           (arm64:str :x0 :gc :offset 56))))
 
       ;; tac-get-packages: load from [x27 + 80]
-      ((tac-get-packages)
+      ((:tac-get-packages)
        (let* ((dest-vreg (cadr instr))
               (dest (vreg-to-reg dest-vreg allocation))
               (dest-reg (if (and (consp dest) (eq (car dest) :spill)) :x0 dest)))
@@ -3432,7 +3430,7 @@
             (arm64:str :x0 :sp :offset (spill-offset (cadr dest)))))))
 
       ;; tac-set-packages: store to [x27 + 80]
-      ((tac-set-packages)
+      ((:tac-set-packages)
        (let* ((val-vreg (cadr instr))
               (val-loc (vreg-to-reg val-vreg allocation)))
          (append
@@ -3442,7 +3440,7 @@
           (arm64:str :x0 :gc :offset 80))))
 
       ;; tac-get-current-package: load from [x27 + 88]
-      ((tac-get-current-package)
+      ((:tac-get-current-package)
        (let* ((dest-vreg (cadr instr))
               (dest (vreg-to-reg dest-vreg allocation))
               (dest-reg (if (and (consp dest) (eq (car dest) :spill)) :x0 dest)))
@@ -3452,7 +3450,7 @@
             (arm64:str :x0 :sp :offset (spill-offset (cadr dest)))))))
 
       ;; tac-set-current-package: store to [x27 + 88]
-      ((tac-set-current-package)
+      ((:tac-set-current-package)
        (let* ((val-vreg (cadr instr))
               (val-loc (vreg-to-reg val-vreg allocation)))
          (append
@@ -3496,19 +3494,19 @@
     (dolist (instr tac-instrs)
       (cond
        ;; tac-loop-start: record marker → label mapping for TCO
-       ((eq (car instr) 'tac-loop-start)
+       ((eq (car instr) :tac-loop-start)
         (let ((label (cadr instr))
               (marker (caddr instr)))
           (push (cons marker label) loop-markers)))
 
        ;; tac-label: record label position
-       ((eq (car instr) 'tac-label)
+       ((eq (car instr) :tac-label)
         (let ((label (cadr instr)))
           (push (cons label current-pos) label-positions)
           (push (list :label-marker label) code-rev)))
 
        ;; tac-continue: emit branch marker to loop start (resolve later)
-       ((eq (car instr) 'tac-continue)
+       ((eq (car instr) :tac-continue)
         (let* ((marker (cadr instr))
                (label (cdr (assoc marker loop-markers))))
           (when label
@@ -3636,19 +3634,19 @@
     (dolist (instr tac-instrs)
       (cond
        ;; tac-loop-start: record marker → label mapping for TCO
-       ((eq (car instr) 'tac-loop-start)
+       ((eq (car instr) :tac-loop-start)
         (let ((label (cadr instr))
               (marker (caddr instr)))
           (setq loop-markers (cons (cons marker label) loop-markers))))
 
        ;; tac-label: record label position
-       ((eq (car instr) 'tac-label)
+       ((eq (car instr) :tac-label)
         (let ((label (cadr instr)))
           (setq label-positions (cons (cons label current-pos) label-positions))
           (setq code-rev (cons (list :label-marker label) code-rev))))
 
        ;; tac-continue: emit branch marker to loop start (resolve later)
-       ((eq (car instr) 'tac-continue)
+       ((eq (car instr) :tac-continue)
         (let* ((marker (cadr instr))
                (label (cdr (assoc marker loop-markers))))
           (when label
@@ -3775,7 +3773,7 @@
          (tac-instrs (car tac-result))
          (result-vr (cadr tac-result))
          ;; Add return instruction
-         (full-tac (append tac-instrs (list (list 'tac-return result-vr))))
+         (full-tac (append tac-instrs (list (list :tac-return result-vr))))
          ;; Pass 2: Liveness analysis
          (annotated (compute-liveness full-tac))
          ;; Pass 3: Compute intervals
@@ -3913,7 +3911,7 @@
         ;; IR not supported - return nil (caller will error)
         nil
         (let* (;; Add return instruction
-               (full-tac (append tac-instrs (list (list 'tac-return result-vr))))
+               (full-tac (append tac-instrs (list (list :tac-return result-vr))))
                ;; Liveness analysis
                (annotated (compute-liveness full-tac))
                ;; Compute intervals
@@ -3947,7 +3945,7 @@
          (result-vr (cadr tac-result)))
     (if (null tac-instrs)
         nil
-        (let* ((full-tac (append tac-instrs (list (list 'tac-return result-vr))))
+        (let* ((full-tac (append tac-instrs (list (list :tac-return result-vr))))
                (annotated (compute-liveness full-tac))
                (intervals (compute-intervals annotated))
                (allocation (linear-scan intervals)))
@@ -3971,7 +3969,7 @@
         (error "codegen-main-reg-alloc: IR not supported by register allocator: ~S"
                (if (consp mir) (car mir) mir))
         (let* (;; Add return instruction (main returns result in x0)
-               (full-tac (append tac-instrs (list (list 'tac-return result-vr))))
+               (full-tac (append tac-instrs (list (list :tac-return result-vr))))
                ;; Liveness analysis
                (annotated (compute-liveness full-tac))
                ;; Compute intervals
@@ -4072,7 +4070,7 @@
         (progn
           ;; Add return instruction
           (let ((full-tac (append tac-instrs
-                                  (list (list 'tac-return result-vr)))))
+                                  (list (list :tac-return result-vr)))))
 
             (format stream "~%--- Pass 1: IR to TAC ---")
             (print-tac full-tac stream)
@@ -4532,7 +4530,7 @@
             (format stream "Result vreg: v~D~%" result-vr)))
 
       ;; Add return
-      (let ((full-tac (append tac-instrs (list (list 'tac-return result-vr)))))
+      (let ((full-tac (append tac-instrs (list (list :tac-return result-vr)))))
 
         ;; Pass 2: Liveness
         (format stream "~%--- Pass 2: Liveness Analysis ---~%")
