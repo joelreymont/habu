@@ -1555,31 +1555,51 @@
 ;;;
 ;;; Converts liveness info to live intervals: (vreg start end)
 
+;; Helper to update interval for a vreg (hoisted to avoid labels)
+(defun intervals-update (vr p intervals)
+  "Update interval for vreg vr at position p. Returns updated intervals list."
+  (let ((entry (assoc vr intervals)))
+    (if entry
+        ;; Extend end position
+        (progn (setcar (cddr entry) p) intervals)
+        ;; New interval
+        (cons (list vr p p) intervals))))
+
+;; Helper to update intervals for all vregs in live-in set
+(defun intervals-update-uses (vregs pos intervals)
+  "Update intervals for all vregs in list. Returns updated intervals."
+  (if (null vregs)
+      intervals
+      (intervals-update-uses (cdr vregs) pos
+                             (intervals-update (car vregs) pos intervals))))
+
+;; Helper to process one annotated instruction
+(defun intervals-process-one (annotated pos intervals)
+  "Process one annotated TAC instruction. Returns updated intervals."
+  (let* ((instr (car annotated))
+         (live-in (cadr annotated))
+         (def (tac-def instr))
+         ;; First update for definition
+         (intervals1 (if def (intervals-update def pos intervals) intervals)))
+    ;; Then update for all uses
+    (intervals-update-uses live-in pos intervals1)))
+
+;; Helper to process all annotated instructions
+(defun intervals-process-all (annotated-tac pos intervals)
+  "Process all annotated TAC. Returns final intervals."
+  (if (null annotated-tac)
+      intervals
+      (intervals-process-all (cdr annotated-tac)
+                             (+ pos 1)
+                             (intervals-process-one (car annotated-tac) pos intervals))))
+
 (defun compute-intervals (annotated-tac)
   "Compute live intervals from annotated TAC.
    Returns alist: ((vreg start end) ...)
 
-   This is Pass 3 of the register allocation pipeline."
-  (let ((intervals nil)
-        (pos 0))
-    (labels ((update-interval (vr p)
-               (let ((entry (assoc vr intervals)))
-                 (if entry
-                     ;; Extend end position
-                     (setcar (cddr entry) p)
-                     ;; New interval
-                     (setq intervals (cons (list vr p p) intervals))))))
-      (dolist (annotated annotated-tac)
-        (let ((instr (car annotated))
-              (live-in (cadr annotated)))
-          ;; Record definition
-          (let ((def (tac-def instr)))
-            (when def (update-interval def pos)))
-          ;; Record uses
-          (dolist (vr live-in)
-            (update-interval vr pos))
-          (setq pos (+ pos 1))))
-      intervals)))
+   This is Pass 3 of the register allocation pipeline.
+   NOTE: Rewritten without labels/dolist to avoid FNTAB issue in mode 1024."
+  (intervals-process-all annotated-tac 0 nil))
 
 ;;; ============================================================
 ;;; Pass 4: Linear Scan Register Allocation
@@ -1599,63 +1619,102 @@
    x19, x21, x22 (x20 reserved for env base)"
   '(:x19 :x21 :x22))
 
+;; Helper to insert interval into sorted list (hoisted from labels)
+(defun linscan-insert-sorted (item sorted)
+  "Insert interval into list sorted by start position."
+  (if (null sorted)
+      (list item)
+      (if (<= (cadr item) (cadar sorted))
+          (cons item sorted)
+          (cons (car sorted)
+                (linscan-insert-sorted item (cdr sorted))))))
+
+;; Helper to sort intervals
+(defun linscan-sort-helper (intervals result)
+  "Build sorted list by inserting each interval."
+  (if (null intervals)
+      result
+      (linscan-sort-helper (cdr intervals)
+                           (linscan-insert-sorted (car intervals) result))))
+
+(defun sort-intervals-by-start (intervals)
+  "Sort intervals by start position (ascending).
+   NOTE: Rewritten without labels/dolist for mode 1024."
+  (linscan-sort-helper intervals nil))
+
+;; Helper to expire old intervals - returns (still-active . new-free-regs)
+(defun linscan-expire-helper (active pos free-regs still-active)
+  "Process active list, expiring intervals ending before pos."
+  (if (null active)
+      (cons still-active free-regs)
+      (let ((a (car active)))
+        (if (< (cadr a) pos)
+            ;; Expired - return register to pool
+            (linscan-expire-helper (cdr active) pos
+                                   (cons (cddr a) free-regs)
+                                   still-active)
+            ;; Still active
+            (linscan-expire-helper (cdr active) pos
+                                   free-regs
+                                   (cons a still-active))))))
+
+;; State for linear scan: (active free-regs allocation spill-slot)
+;; Each is a cons cell for mutation
+
+;; Helper to allocate one interval
+(defun linscan-allocate-one (interval state)
+  "Allocate register for one interval. Mutates state."
+  (let* ((vr (car interval))
+         (start (cadr interval))
+         (end (caddr interval))
+         (active (car state))
+         (free-regs (cadr state))
+         (allocation (caddr state))
+         (spill-slot (cadddr state))
+         ;; Expire old intervals
+         (expired-result (linscan-expire-helper (car active) start (car free-regs) nil))
+         (new-active (car expired-result))
+         (new-free-regs (cdr expired-result)))
+    ;; Update active and free-regs
+    (setcar active new-active)
+    (setcar free-regs new-free-regs)
+    ;; Allocate
+    (if (car free-regs)
+        ;; Allocate register
+        (let ((reg (car (car free-regs))))
+          (setcar free-regs (cdr (car free-regs)))
+          (setcar active (cons (cons vr (cons end reg)) (car active)))
+          (setcar allocation (cons (cons vr reg) (car allocation))))
+        ;; Spill - no free registers
+        (let ((slot (car spill-slot)))
+          (setcar spill-slot (+ slot 1))
+          (setcar allocation (cons (cons vr (list :spill slot)) (car allocation)))))))
+
+;; Helper to process all intervals
+(defun linscan-allocate-all (intervals state)
+  "Allocate registers for all intervals."
+  (if (null intervals)
+      nil
+      (progn
+        (linscan-allocate-one (car intervals) state)
+        (linscan-allocate-all (cdr intervals) state))))
+
 (defun linear-scan (intervals)
   "Perform linear scan register allocation.
    Returns allocation: ((vreg . physical-reg-or-spill) ...)
    where spill is (:spill slot-number)
 
-   This is Pass 4 of the register allocation pipeline."
+   This is Pass 4 of the register allocation pipeline.
+   NOTE: Rewritten without labels/dolist for mode 1024."
   (let* ((sorted (sort-intervals-by-start intervals))
-         (active nil)           ; currently active: ((vreg end . reg) ...)
-         (allocation nil)       ; result
-         (free-regs (copy-list (allocatable-regs)))
-         (spill-slot 0))
-
-    (labels ((expire-old (pos)
-               ;; Remove intervals ending before pos, free their registers
-               (let ((still-active nil))
-                 (dolist (a active)
-                   (if (< (cadr a) pos)
-                       ;; Expired - return register to pool
-                       (setq free-regs (cons (cddr a) free-regs))
-                       ;; Still active
-                       (setq still-active (cons a still-active))))
-                 (setq active still-active)))
-
-             (allocate-one (interval)
-               (let* ((vr (car interval))
-                      (start (cadr interval))
-                      (end (caddr interval)))
-                 (expire-old start)
-                 (if free-regs
-                     ;; Allocate register
-                     (let ((reg (car free-regs)))
-                       (setq free-regs (cdr free-regs))
-                       (setq active (cons (cons vr (cons end reg)) active))
-                       (setq allocation (cons (cons vr reg) allocation)))
-                     ;; Spill - no free registers
-                     (let ((slot spill-slot))
-                       (setq spill-slot (+ spill-slot 1))
-                       (setq allocation (cons (cons vr (list :spill slot)) allocation)))))))
-
-      (dolist (interval sorted)
-        (allocate-one interval))
-
-      allocation)))
-
-(defun sort-intervals-by-start (intervals)
-  "Sort intervals by start position (ascending)"
-  (labels ((insert-sorted (item sorted)
-             (if (null sorted)
-                 (list item)
-                 (if (<= (cadr item) (cadar sorted))
-                     (cons item sorted)
-                     (cons (car sorted)
-                           (insert-sorted item (cdr sorted)))))))
-    (let ((result nil))
-      (dolist (i intervals)
-        (setq result (insert-sorted i result)))
-      result)))
+         ;; State as mutable cons cells: (active free-regs allocation spill-slot)
+         (active (cons nil nil))
+         (free-regs (cons (copy-list (allocatable-regs)) nil))
+         (allocation (cons nil nil))
+         (spill-slot (cons 0 nil))
+         (state (list active free-regs allocation spill-slot)))
+    (linscan-allocate-all sorted state)
+    (car allocation)))
 
 ;;; ============================================================
 ;;; Pass 5: TAC Code Generation
