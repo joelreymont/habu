@@ -3913,22 +3913,23 @@ Cons/car/cdr are required; others should be provided in production."
                     (list 'lit 1))  ; not cons -> t (is atom)
               (list 'lit 1)))
 
-         ;; Numberp predicate (tag #x0 = fixnum) (also fixnum?, integerp)
+         ;; Numberp predicate (hybrid scheme: bit 0 = 1 means fixnum)
          ((or (eq op 'numberp) (eq op 'integerp) (op= op "FIXNUM?"))
           (if (consp (cdr expr))
+              ;; Test if bit 0 == 1 (fixnum in hybrid scheme)
               (list 'cmp-eq
-                    (list 'get-tag (compile-expr (cadr expr) env fenv))
-                    (list 'lit #x0)) ; tag 0
+                    (list 'band (compile-expr (cadr expr) env fenv) (list 'lit 1))
+                    (list 'lit 1))
               (list 'lit #x0)))
 
          ;; Characterp predicate - characters are fixnums in Habu
          ;; In full CL, characterp would check a character type, but Habu uses fixnums
          ((eq op 'characterp)
-          ;; Characters are represented as fixnums, so check for fixnum tag
+          ;; Characters are represented as fixnums, check bit 0 == 1 (hybrid scheme)
           (if (consp (cdr expr))
               (list 'cmp-eq
-                    (list 'get-tag (compile-expr (cadr expr) env fenv))
-                    (list 'lit #x0)) ; tag 0 (fixnum)
+                    (list 'band (compile-expr (cadr expr) env fenv) (list 'lit 1))
+                    (list 'lit 1))
               (list 'lit #x0)))
 
          ;; Symbolp predicate (tag #x2) (also symbol?)

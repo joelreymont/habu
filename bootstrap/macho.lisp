@@ -820,7 +820,7 @@
 
    NOTE: If you change this wrapper, update +heap-wrapper-size+ in this file!"
   ;; GC layout at x27 (all fields initialized by wrapper):
-  ;;   [x27+0]:   intern_table = nil (0x06)
+  ;;   [x27+0]:   intern_table = nil (0)
   ;;   [x27+8]:   lambda_counter = 0
   ;;   [x27+16]:  from_end = x27 + 144 + 32MB
   ;;   [x27+24]:  half_heap_size = 32MB (0x2000000)
@@ -854,7 +854,7 @@
                 (cons (arm64:str :gc :sp :offset 24)             ; 5: str x27, [sp, 24]
                 (cons (arm64:adrp :heap heap-page-offset)        ; 6: adrp x28, heap
                 (cons (arm64:mov :gc :heap)                      ; 7: mov x27, x28
-                (cons (arm64:movz :x9 6)                         ; 8: movz x9, 6 (nil)
+                (cons (arm64:movz :x9 +nil-value+)               ; 8: movz x9, nil (0)
                 (cons (arm64:str :x9 :gc :offset 0)              ; 9: str x9, [x27+0] (intern_table)
                 (cons (arm64:str :x9 :gc :offset 56)             ; 10: str x9, [x27+56] (symbol_table = nil)
                 (cons (arm64:str :x9 :gc :offset 72)             ; 11: str x9, [x27+72] (argv = nil)
@@ -886,7 +886,7 @@
                 (cons (arm64:adr :code-base 36)                  ; 35: adr x26, +36 bytes to MAIN
                 (cons (arm64:bl 8)                               ; 36: bl +8 instrs to MAIN
                 ;; Exit handling - restore and return
-                (cons (arm64:lsr :x0 :x0 4 :imm t)               ; 37: lsr x0, x0, #4 (untag)
+                (cons (arm64:asr :x0 :x0 +fixnum-bit+ :imm t)    ; 37: asr x0, x0, #1 (untag fixnum)
                 (cons (arm64:ldr :gc :sp :offset 24)             ; 38: ldr x27, [sp+24]
                 (cons (arm64:ldr :code-base :sp :offset 16)      ; 39: ldr x26, [sp+16]
                 (cons (arm64:ldr :heap :sp :offset 8)            ; 40: ldr x28, [sp+8]

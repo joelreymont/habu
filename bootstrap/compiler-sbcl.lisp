@@ -98,6 +98,7 @@
 (defvar *undefined-functions* nil "Functions called but not defined")
 (defvar *all-call-targets* nil "All call-fn targets for link-time check")
 (defvar *declared-imports* nil "Functions declared as imports (resolved at link time)")
+(defvar *skip-link-verification* nil "When T, skip link-time verification entirely")
 
 (defun reset-compile-warnings ()
   "Reset undefined function tracking before compilation"
@@ -133,7 +134,11 @@
     t))
 
 (defun verify-link-references (defined-fns)
-  "Verify all call-fn targets are in defined-fns list (or declared imports). Returns T if errors found."
+  "Verify all call-fn targets are in defined-fns list (or declared imports). Returns T if errors found.
+   If *skip-link-verification* is true, always returns NIL (skips verification)."
+  (when *skip-link-verification*
+    (format t "~%Note: Link verification skipped~%")
+    (return-from verify-link-references nil))
   (let ((undefined nil))
     (dolist (target *all-call-targets*)
       (unless (or (member target defined-fns)
@@ -640,31 +645,31 @@
                        (arm64:str :x0 :sp :offset vec-slot)))))
     ;; Store each character: ldr x0, [sp, vec-slot]; movz x1, tagged-idx; movz x2, tagged-ch; ldr x11, [x19, #64]; blr x11
     ;; Runtime table index 8 = vector_set at offset 64
-    (labels ((store-chars (chs idx acc)
-               (if (null chs)
-                   acc
-                   (let* ((ch (car chs))
-                          (tagged-idx (ash idx 4))    ; Tag index as fixnum
-                          (tagged-ch (ash ch 4))      ; Tag character as fixnum
-                          (store-code (append-all
-                                       (list (arm64:ldr :x0 :sp :offset vec-slot)
-                                             (if (< tagged-idx #x10000)
-                                                 (arm64:movz :x1 tagged-idx)
-                                                 (load-addr 1 tagged-idx))
-                                             (if (< tagged-ch #x10000)
-                                                 (arm64:movz :x2 tagged-ch)
-                                                 (load-addr 2 tagged-ch))
-                                             (arm64:ldr :x11 :x19 :offset 64)
-                                             (arm64:blr :x11)))))
-                     (store-chars (cdr chs) (+ idx 1) (append acc store-code))))))
-      (let* ((stores (store-chars chars 0 nil))
+    (let ((stores-reversed nil))
+      (let ((idx 0))
+        (dolist (ch chars)
+          (let* ((tagged-idx (ash idx 4))    ; Tag index as fixnum
+                 (tagged-ch (ash ch 4))      ; Tag character as fixnum
+                 (store-code (append-all
+                              (list (arm64:ldr :x0 :sp :offset vec-slot)
+                                    (if (< tagged-idx #x10000)
+                                        (arm64:movz :x1 tagged-idx)
+                                        (load-addr 1 tagged-idx))
+                                    (if (< tagged-ch #x10000)
+                                        (arm64:movz :x2 tagged-ch)
+                                        (load-addr 2 tagged-ch))
+                                    (arm64:ldr :x11 :x19 :offset 64)
+                                    (arm64:blr :x11)))))
+            (setq stores-reversed (revappend store-code stores-reversed))
+            (setq idx (+ idx 1)))))
+      (let* ((stores (nreverse stores-reversed))
              ;; Make string from vector: ldr x0, [sp, vec-slot]; ldr x9, [x19, #80]; blr x9
              ;; Runtime table index 10 = make_string_from_vector at offset 80
              (make-str (append-all
                         (list (arm64:ldr :x0 :sp :offset vec-slot)
                               (arm64:ldr :x9 :x19 :offset 80)
                               (arm64:blr :x9)))))
-        (append-all (list alloc stores make-str))))))
+        (append-all (list alloc stores make-str))))
 
 (defun codegen-string-inline (chars)
   "Generate code to build a string inline on the heap using x28 bump pointer.
@@ -675,17 +680,16 @@
   (let* ((len (length chars))
          ;; Round up allocation to 16-byte alignment: (8 + len + 15) & ~15
          (alloc-size (logand (+ 8 len 15) (lognot 15))))
-    (labels ((store-chars (chs idx acc)
-               (if (null chs)
-                   acc
-                   (let* ((ch (car chs))
-                          ;; Store char at x28 + 8 + idx
-                          (offset (+ 8 idx))
-                          (code (append-all
-                                 (list (arm64:movz :x1 ch)
-                                       (arm64:strb :x1 :heap offset)))))
-                     (store-chars (cdr chs) (+ idx 1) (append acc code))))))
-      (let ((store-code (store-chars chars 0 nil)))
+    (let ((stores-reversed nil))
+      (let ((idx 0))
+        (dolist (ch chars)
+          (let* ((offset (+ 8 idx))
+                 (code (append-all
+                        (list (arm64:movz :x1 ch)
+                              (arm64:strb :x1 :heap offset)))))
+            (setq stores-reversed (revappend code stores-reversed))
+            (setq idx (+ idx 1)))))
+      (let ((store-code (nreverse stores-reversed)))
         (append-all
          (list
           ;; GC pre-check BEFORE writing to heap
@@ -744,15 +748,12 @@
   (let ((ar a))
     (append ar b)))
 
-;; Append list of lists using fold - avoiding nested calls
+;; Append list of lists using push/nreverse - O(n) instead of O(n²)
 (defun append-all (lists)
-  (labels ((iter (ls acc)
-             (if (null ls) acc
-                 (let* ((hd (car ls))
-                        (tl (cdr ls))
-                        (na (append acc hd)))
-                   (iter tl na)))))
-    (iter lists nil)))
+  (let ((result-reversed nil))
+    (dolist (lst lists)
+      (setq result-reversed (revappend lst result-reversed)))
+    (nreverse result-reversed)))
 
 ;;; ============================================================
 ;;; Keyword Argument Support
@@ -1718,8 +1719,8 @@
        ;; t compiles to non-zero literal for native executables without runtime
        ;; In boolean context, any non-zero value is truthy
        ((eq expr 't) (list 'lit 1))           ; t = 1 (truthy)
-       ((eq expr 'nil) (list 'nil-ir))          ; nil is 0x06 (tag 6)
-       ;; Keywords are self-evaluating - compile as keyword literal (tag 7)
+       ((eq expr 'nil) (list 'nil-ir))          ; nil is 0 (hybrid scheme)
+       ;; Keywords are self-evaluating - compile as keyword literal (tag 10)
        ((keywordp expr) (list 'kw-lit (symbol-name expr)))
        (t
         ;; Use numberp since offset 0 is falsey in Habu
@@ -2121,13 +2122,11 @@
                          (list 'cons-ir (sys:compile (car args) env fenv) (bl (cdr args))))))
             (bl (cdr expr))))
          ((eq op 'null)
-          ;; nil is 0x06 (tag 6), so compare directly against that value
-          ;; Using nil-ir which generates 0x06
+          ;; nil = 0 in hybrid scheme
           (list 'cmp-eq (sys:compile (cadr expr) env fenv) '(nil-ir)))
-         ((eq op 'numberp)
-          ;; get-tag returns tagged fixnum (tag << 4), lit also tags its value
-          ;; so to compare tag=0, use (lit 0) -> becomes 0
-          (list 'cmp-eq (list 'get-tag (sys:compile (cadr expr) env fenv)) (list 'lit 0)))
+        ((eq op 'numberp)
+         ;; Hybrid scheme: fixnum has bit0=1, use numberp-ir to check
+         (list 'numberp-ir (sys:compile (cadr expr) env fenv)))
          ((eq op 'consp)
           ;; get-tag returns tagged fixnum (tag << 4), lit also tags its value
           ;; so to compare tag=1, use (lit 1) -> becomes 1<<4=16
@@ -2302,7 +2301,7 @@
                        (list 'LET (list (list tmp (car args)))
                              (list 'if tmp tmp (cons 'or (cdr args))))
                        env fenv))))))
-         ;; not - logical not (nil is 0x06, not 0 - use nil-ir)
+         ;; not - logical not (nil = 0 in hybrid scheme)
          ((eq op 'not)
           (list 'cmp-eq (sys:compile (cadr expr) env fenv) '(nil-ir)))
          ;; funcall - call function by value
@@ -3962,22 +3961,25 @@
    Args 0-7 come from registers x0-x7.
    Args 8+ come from caller's stack at [sp + frame_size + (i-8)*8].
    Frame size is 0x200 for leaf functions, 0x400 for non-leaf."
-  (let ((arg-regs '(:x0 :x1 :x2 :x3 :x4 :x5 :x6 :x7)))
-    (if (null params)
-        acc
+  (let ((arg-regs '(:x0 :x1 :x2 :x3 :x4 :x5 :x6 :x7))
+        (result-reversed acc))
+    (let ((i idx))
+      (dolist (param params)
         (let* ((frame-size (if leaf #x1000 #x1000))  ; Must match fn-prologue - now 4KB for all functions
-               (st (if (< idx 8)
+               (st (if (< i 8)
                        ;; Args 0-7: copy from register xi to stack
-                       (append (arm64:mov :x22 (nth idx arg-regs))
-                               (arm64:sub :x21 :env (* (+ base idx) 8) :imm t)
+                       (append (arm64:mov :x22 (nth i arg-regs))
+                               (arm64:sub :x21 :env (* (+ base i) 8) :imm t)
                                (arm64:str :x22 :x21 :offset 0))
                        ;; Args 8+: load from caller's stack, store to our env frame
                        ;; Caller's stack args are at [sp + frame_size + (i-8)*8]
-                       (let ((stack-off (+ frame-size (* (- idx 8) 8))))
+                       (let ((stack-off (+ frame-size (* (- i 8) 8))))
                          (append (arm64:ldr :x22 :sp :offset stack-off)
-                                 (arm64:sub :x21 :env (* (+ base idx) 8) :imm t)
+                                 (arm64:sub :x21 :env (* (+ base i) 8) :imm t)
                                  (arm64:str :x22 :x21 :offset 0))))))
-          (gen-param-stores (cdr params) base (+ idx 1) (append acc st) :leaf leaf)))))
+          (setq result-reversed (revappend st result-reversed))
+          (setq i (+ i 1)))))
+    (nreverse result-reversed)))
 
 (defun fn-prologue (frame-size x20-offset &key leaf)
   "Function prologue: allocate frame, save caller's x20/lr/x24, set up new env base.

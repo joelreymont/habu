@@ -202,25 +202,22 @@
 ;;; ============================================================
 
 (defun print-value (val)
-  "Print a tagged Habu value."
-  (let ((tag (logand val 15)))
-    (cond
-      ;; Fixnum (tag 0)
-      ((= tag 0) (print-fixnum (ash val -4)))
-      ;; Cons (tag 1)
-      ((= tag 1) (print-cons val))
-      ;; Symbol (tag 2)
-      ((= tag 2) (print-symbol val))
-      ;; Vector (tag 3)
-      ((= tag 3) (print-vector val))
-      ;; String (tag 4)
-      ((= tag 4) (print-string-value val))
-      ;; Closure (tag 5)
-      ((= tag 5) (print-string "#<CLOSURE>"))
-      ;; Nil (0x06)
-      ((= val 6) (print-nil))
-      ;; Unknown
-      (t (print-string "#<UNKNOWN>")))))
+  "Print a tagged Habu value (hybrid 1+3 bit scheme)."
+  (cond
+    ;; nil = 0
+    ((= val +nil-value+) (print-nil))
+    ;; Fixnum: bit0 = 1
+    ((= (logand val +fixnum-bit+) 1) (print-fixnum (ash val -1)))
+    ;; Pointer types: check tag
+    (t (let ((tag (logand val +tag-mask+)))
+         (case tag
+           (#.+tag-cons+    (print-cons val))
+           (#.+tag-symbol+  (print-symbol val))
+           (#.+tag-vector+  (print-vector val))
+           (#.+tag-string+  (print-string-value val))
+           (#.+tag-closure+ (print-string "#<CLOSURE>"))
+           (#.+tag-keyword+ (print-string "#<KEYWORD>"))
+           (t (print-string "#<UNKNOWN>")))))))
 
 (defun print-cons (val)
   "Print a cons cell."
@@ -229,18 +226,18 @@
   (print-string *char-rparen*))
 
 (defun print-cons-contents (val)
-  "Print cons contents (car cdr ...)."
-  (if (= val 6)  ;; nil
+  "Print cons contents (car cdr ...) - hybrid scheme."
+  (if (= val +nil-value+)  ;; nil = 0
       nil
-      (let ((tag (logand val 15)))
-        (if (= tag 1)  ;; cons
-            (let ((ptr (logand val -16)))  ;; mask off tag
+      (let ((tag (logand val +tag-mask+)))
+        (if (= tag +tag-cons+)  ;; cons tag 0
+            (let ((ptr (logand val +ptr-mask+)))  ;; mask off tag bits
               (print-value (car-raw ptr))
               (let ((tail (cdr-raw ptr)))
-                (if (= tail 6)  ;; nil
+                (if (= tail +nil-value+)  ;; nil = 0
                     nil
-                    (let ((tail-tag (logand tail 15)))
-                      (if (= tail-tag 1)  ;; another cons
+                    (let ((tail-tag (logand tail +tag-mask+)))
+                      (if (= tail-tag +tag-cons+)  ;; another cons
                           (progn
                             (print-string *char-space*)
                             (print-cons-contents tail))
@@ -250,11 +247,10 @@
             (print-value val)))))
 
 (defun print-symbol (val)
-  "Print a symbol."
-  ;; Symbol format: id in upper bits, tag 2
-  ;; Need to look up name in symbol table
+  "Print a symbol (hybrid scheme: ptr|tag, tag=2)."
+  ;; Symbol is a pointer with tag 2, need to look up name
   (print-string "#<SYM:")
-  (print-fixnum (ash val -4))
+  (print-fixnum (logand val +ptr-mask+))  ; print pointer part
   (print-string *char-gt*))
 
 (defun print-vector (val)

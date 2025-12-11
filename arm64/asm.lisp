@@ -24,7 +24,7 @@
    ;; Bitwise with immediate
    #:orr-imm
    ;; Compare
-   #:cmp #:cset
+   #:cmp #:tst #:cset
    ;; Branch
    #:b #:bl #:br #:blr #:cbz #:cbnz #:b.eq #:b.ne #:b.lt #:b.le #:b.gt #:b.ge
    #:b.lo #:b.hs #:b.hi #:b.ls #:ret
@@ -476,8 +476,8 @@
   "AND Xd, Xn, Xm  or  AND Xd, Xn, #mask
    Bitwise AND. Named and* to avoid CL conflict.
    Use :imm t for immediate mode with common masks:
-   #x7 (low 3 bits), #xF (low 4 bits), #xFF (low 8 bits),
-   -4 (~3), -8 (~7), -16 (~15), -32 (~31) for alignment."
+   1, 3, 7, #xF, #xFF for keeping low bits;
+   -4, -8, -16, -32 for alignment (clearing low bits)."
   (let ((rd-reg (reg rd))
         (rn-reg (reg rn)))
     (if imm
@@ -485,26 +485,28 @@
         ;; ARM64 logical immediate encoding: 0x92400000 | (immr << 16) | (imms << 10) | Rn | Rd
         (let ((base #x92400000)
               (rn-shift (ash rn-reg 5)))
-          (cond
+          ;; Use case for simple masks, handle alignment masks separately
+          (case rm-or-imm
             ;; Keep low bits masks (N=1, immr=0, imms=bits-1)
-            ((= rm-or-imm #x7)   ; low 3 bits: imms=2
-             (encode (logior base (ash 2 10) rn-shift rd-reg)))
-            ((= rm-or-imm #xF)   ; low 4 bits: imms=3
-             (encode (logior base (ash 3 10) rn-shift rd-reg)))
-            ((= rm-or-imm #xFF)  ; low 8 bits: imms=7
-             (encode (logior base (ash 7 10) rn-shift rd-reg)))
+            (1   (encode (logior base (ash 0 10) rn-shift rd-reg)))  ; bit 0
+            (3   (encode (logior base (ash 1 10) rn-shift rd-reg)))  ; bits 0-1
+            (7   (encode (logior base (ash 2 10) rn-shift rd-reg)))  ; bits 0-2
+            (15  (encode (logior base (ash 3 10) rn-shift rd-reg)))  ; bits 0-3
+            (255 (encode (logior base (ash 7 10) rn-shift rd-reg)))  ; bits 0-7
             ;; Alignment masks (clear low bits) - immr=64-N, imms=63-N
-            ((or (= rm-or-imm #xFFFFFFFFFFFFFFFC) (= rm-or-imm -4))   ; ~3
+            ((-2 #xFFFFFFFFFFFFFFFE)
+             (encode (logior base (ash 63 16) (ash 62 10) rn-shift rd-reg)))
+            ((-4 #xFFFFFFFFFFFFFFFC)
              (encode (logior base (ash 62 16) (ash 61 10) rn-shift rd-reg)))
-            ((or (= rm-or-imm #xFFFFFFFFFFFFFFF8) (= rm-or-imm -8))   ; ~7
+            ((-8 #xFFFFFFFFFFFFFFF8)
              (encode (logior base (ash 61 16) (ash 60 10) rn-shift rd-reg)))
-            ((or (= rm-or-imm #xFFFFFFFFFFFFFFF0) (= rm-or-imm -16))  ; ~15
+            ((-16 #xFFFFFFFFFFFFFFF0)
              (encode (logior base (ash 60 16) (ash 59 10) rn-shift rd-reg)))
-            ((or (= rm-or-imm #xFFFFFFFFFFFFFFE0) (= rm-or-imm -32))  ; ~31
+            ((-32 #xFFFFFFFFFFFFFFE0)
              (encode (logior base (ash 59 16) (ash 58 10) rn-shift rd-reg)))
-            ;; Unsupported mask - return nil (compile-time error detection)
-            #+sbcl (t (error "and* :imm - unsupported mask #x~X. Use common masks or encode manually." rm-or-imm))
-            #-sbcl (t nil)))
+            (otherwise
+             #+sbcl (error "and* :imm - unsupported mask #x~X. Use 1,3,7,15,255 or -4,-8,-16,-32." rm-or-imm)
+             #-sbcl nil)))
         ;; Register mode
         (encode (logior #x8A000000
                         (ash (reg rm-or-imm) 16)
@@ -716,6 +718,31 @@
                         (ash (logand rm-or-imm #xFFF) 10)
                         (ash rn-reg 5)))
         (encode (logior #xEB00001F
+                        (ash (reg rm-or-imm) 16)
+                        (ash rn-reg 5))))))
+
+(defun tst (rn rm-or-imm &key imm)
+  "TST Xn, Xm  or  TST Xn, #mask
+   Test bits (alias for ANDS XZR, Xn, ...). Sets flags but discards result.
+   Use :imm t for immediate mode with common masks:
+   1 (bit 0), 3 (bits 0-1), 7 (bits 0-2), 15 (bits 0-3)."
+  (let ((rn-reg (reg rn)))
+    (if imm
+        ;; Immediate mode - ANDS XZR, Xn, #mask
+        ;; ARM64 logical immediate: 0xF2400000 | (N << 22) | (immr << 16) | (imms << 10) | Rn | Rd
+        ;; N=1 for 64-bit, Rd=31 (XZR)
+        (let ((base #xF240001F)  ; ANDS XZR with N=1
+              (rn-shift (ash rn-reg 5)))
+          (cond
+            ;; Single bit masks: N=1, immr=0, imms=bit_count-1
+            ((= rm-or-imm 1)  (encode (logior base (ash 0 10) rn-shift)))   ; imms=0
+            ((= rm-or-imm 3)  (encode (logior base (ash 1 10) rn-shift)))   ; imms=1
+            ((= rm-or-imm 7)  (encode (logior base (ash 2 10) rn-shift)))   ; imms=2
+            ((= rm-or-imm 15) (encode (logior base (ash 3 10) rn-shift)))   ; imms=3
+            #+sbcl (t (error "tst :imm - unsupported mask ~D. Use 1, 3, 7, or 15." rm-or-imm))
+            #-sbcl (t nil)))
+        ;; Register mode: ANDS XZR, Xn, Xm = 0xEA00001F | (Xm << 16) | (Xn << 5)
+        (encode (logior #xEA00001F
                         (ash (reg rm-or-imm) 16)
                         (ash rn-reg 5))))))
 

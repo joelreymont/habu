@@ -30,7 +30,8 @@
 ;;; Semispace 0: [x27+144 .. x27+144+half)
 ;;; Semispace 1: [x27+144+half .. x27+144+2*half)
 ;;;
-;;; Tags: 0=fixnum, 1=cons, 2=symbol, 3=vector, 4=string, 5=closure, 6=nil, 7=forward
+;;; Tags: 0=cons, 2=symbol, 4=vector, 6=string, 8=closure, 10=keyword, 14=forward
+;;; Fixnum: bit 0 = 1, nil = 0
 ;;;
 ;;; Register usage during GC:
 ;;;   x16 = to_scan (Cheney scan pointer)
@@ -65,8 +66,8 @@
 (defconstant +gc-keyword-table-offset+ 128)  ;; Keyword intern table (separate from symbols)
 (defconstant +gc-heap-data-offset+ 144)      ;; Heap data starts after globals (must be 16-byte aligned!)
 
-(defconstant +gc-tag-mask+ #xF)
-(defconstant +gc-tag-forward+ 7)
+;;; Import tag constants from shared/tags.lisp
+;;; We don't redefine them here, just reference them
 
 ;;; ============================================================
 ;;; GC Trigger Check (inline after allocations)
@@ -89,43 +90,43 @@
 (defun gc-object-size-asm ()
   "Generate code to calculate object size from tagged pointer in x0.
    Result in x1 (size in bytes). Uses x2 as scratch.
-   Assumes tag is NOT 0 (fixnum), 6 (nil), or 7 (forward)."
+   Assumes value is NOT fixnum (bit 0 = 1) or nil (value = 0)."
   (append
    ;; Extract tag
-   (arm64:and* :x2 :x0 +gc-tag-mask+ :imm t)  ; x2 = tag
+   (arm64:and* :x2 :x0 +tag-mask+ :imm t)  ; x2 = tag
 
-   ;; Check for cons (tag 1) -> 16 bytes
-   (arm64:cmp :x2 1 :imm t)
+   ;; Check for cons (tag 0) -> 16 bytes
+   (arm64:cmp :x2 +tag-cons+ :imm t)
    (arm64:b.ne 3)
    (arm64:movz :x1 16)
    (arm64:b 24)  ; jump to end
 
-   ;; Check for symbol (tag 2) -> 8 bytes
-   (arm64:cmp :x2 2 :imm t)
+   ;; Check for symbol (tag 2) -> 16 bytes
+   (arm64:cmp :x2 +tag-symbol+ :imm t)
    (arm64:b.ne 3)
-   (arm64:movz :x1 8)
+   (arm64:movz :x1 16)
    (arm64:b 20)
 
-   ;; Check for closure (tag 5) -> 16 bytes
-   (arm64:cmp :x2 5 :imm t)
+   ;; Check for closure (tag 8) -> 16 bytes
+   (arm64:cmp :x2 +tag-closure+ :imm t)
    (arm64:b.ne 3)
    (arm64:movz :x1 16)
    (arm64:b 16)
 
-   ;; Check for vector (tag 3) -> 8 + length*8
-   (arm64:cmp :x2 3 :imm t)
+   ;; Check for vector (tag 4) -> 8 + length*8
+   (arm64:cmp :x2 +tag-vector+ :imm t)
    (arm64:b.ne 7)
-   (arm64:and* :x2 :x0 -16 :imm t)        ; x2 = base address (clear low 4 bits)
+   (arm64:and* :x2 :x0 +ptr-mask+ :imm t)        ; x2 = base address (clear low 4 bits)
    (arm64:ldr :x1 :x2 :offset 0)          ; x1 = length (untagged)
    (arm64:lsl :x1 :x1 3 :imm t)           ; x1 = length * 8
    (arm64:add :x1 :x1 8 :imm t)           ; x1 = 8 + length*8
    (arm64:b 7)
 
-   ;; String (tag 4) -> align16(8 + length)
-   (arm64:and* :x2 :x0 -16 :imm t)        ; x2 = base address (clear low 4 bits)
+   ;; String (tag 6) -> align16(8 + length)
+   (arm64:and* :x2 :x0 +ptr-mask+ :imm t)        ; x2 = base address (clear low 4 bits)
    (arm64:ldr :x1 :x2 :offset 0)          ; x1 = length (untagged)
    (arm64:add :x1 :x1 23 :imm t)          ; x1 = length + 8 + 15
-   (arm64:and* :x1 :x1 -16 :imm t)))      ; x1 = align to 16
+   (arm64:and* :x1 :x1 +ptr-mask+ :imm t)))      ; x1 = align to 16
 
 ;;; ============================================================
 ;;; gc_copy: Copy one object to to-space
@@ -141,14 +142,15 @@
    ;; Function entry
    (list '(:fn-label GC-COPY))
 
-   ;; Check if immediate (fixnum tag 0 or nil tag 6)
-   (arm64:and* :x1 :x0 +gc-tag-mask+ :imm t)  ; x1 = tag
-   (arm64:cbz :x1 14)                    ; if tag=0 (fixnum), return unchanged (skip to ret)
-   (arm64:cmp :x1 6 :imm t)
-   (arm64:b.eq 12)                     ; if tag=6 (nil), return unchanged (skip to ret)
+   ;; Check if immediate (fixnum bit 0 = 1 or nil value = 0)
+   ;; First check if nil (value == 0)
+   (arm64:cbz :x0 14)                    ; if x0=0 (nil), return unchanged (skip to ret)
+   ;; Check if fixnum (bit 0 = 1)
+   (arm64:and* :x1 :x0 +fixnum-bit+ :imm t)  ; x1 = bit 0
+   (arm64:cbnz :x1 12)                   ; if bit 0 set (fixnum), return unchanged (skip to ret)
 
    ;; Get base address (clear low 4 bits)
-   (arm64:and* :x2 :x0 -16 :imm t)        ; x2 = base (ptr & ~0xF)
+   (arm64:and* :x2 :x0 +ptr-mask+ :imm t)        ; x2 = base (ptr & ~0xF)
 
    ;; Check if in from-space: from_start <= base < from_end
    (arm64:cmp :x2 :x22)                    ; compare base, from_start
@@ -158,12 +160,12 @@
 
    ;; Check if already forwarded
    (arm64:ldr :x3 :x2 :offset 0)          ; x3 = first word at base
-   (arm64:and* :x4 :x3 +gc-tag-mask+ :imm t)  ; x4 = tag of first word
-   (arm64:cmp :x4 +gc-tag-forward+ :imm t)
+   (arm64:and* :x4 :x3 +tag-mask+ :imm t)  ; x4 = tag of first word
+   (arm64:cmp :x4 +tag-forward+ :imm t)
    (arm64:b.ne 4)                      ; if not forwarded, go copy
 
    ;; Already forwarded: return forward_addr | original_tag
-   (arm64:and* :x0 :x3 -16 :imm t)        ; x0 = forward address (clear tag)
+   (arm64:and* :x0 :x3 +ptr-mask+ :imm t)        ; x0 = forward address (clear tag)
    (arm64:orr :x0 :x0 :x1)                   ; x0 = forward_addr | original_tag
    (arm64:ret)
 
@@ -176,32 +178,32 @@
 
    ;; Calculate object size -> x1
    ;; (inline size calculation based on tag in x5)
-   (arm64:cmp :x5 1 :imm t)             ; cons?
+   (arm64:cmp :x5 +tag-cons+ :imm t)             ; cons?
    (arm64:b.ne 3)
    (arm64:movz :x1 16)
    (arm64:b 20)
 
-   (arm64:cmp :x5 2 :imm t)             ; symbol?
+   (arm64:cmp :x5 +tag-symbol+ :imm t)             ; symbol?
    (arm64:b.ne 3)
-   (arm64:movz :x1 8)
+   (arm64:movz :x1 16)
    (arm64:b 16)
 
-   (arm64:cmp :x5 5 :imm t)             ; closure?
+   (arm64:cmp :x5 +tag-closure+ :imm t)             ; closure?
    (arm64:b.ne 3)
    (arm64:movz :x1 16)
    (arm64:b 12)
 
-   (arm64:cmp :x5 3 :imm t)             ; vector?
+   (arm64:cmp :x5 +tag-vector+ :imm t)             ; vector?
    (arm64:b.ne 6)
    (arm64:ldr :x1 :x4 :offset 0)          ; x1 = length
    (arm64:lsl :x1 :x1 3 :imm t)           ; * 8
    (arm64:add :x1 :x1 8 :imm t)           ; + 8
    (arm64:b 5)
 
-   ;; string (tag 4)
+   ;; string (tag 6)
    (arm64:ldr :x1 :x4 :offset 0)          ; x1 = length
    (arm64:add :x1 :x1 23 :imm t)          ; + 8 + 15
-   (arm64:and* :x1 :x1 -16 :imm t)        ; align to 16
+   (arm64:and* :x1 :x1 +ptr-mask+ :imm t)        ; align to 16
 
    ;; x1 = size, x4 = from_base, x5 = original tag, x17 = to_free
    ;; Copy bytes: from x4 to x17, size x1
@@ -222,9 +224,9 @@
    ;; x2 = new base, x4 = (advanced past object), x5 = original tag
    ;; Need original base - recalculate from x4 and x1
    (arm64:sub :x4 :x4 :x1)                   ; x4 = original base again
-   ;; Load forward tag (7) into x6, then OR with x2
-   (arm64:movz :x6 +gc-tag-forward+)
-   (arm64:orr :x0 :x2 :x6)                   ; x0 = new_base | 7
+   ;; Load forward tag (14) into x6, then OR with x2
+   (arm64:movz :x6 +tag-forward+)
+   (arm64:orr :x0 :x2 :x6)                   ; x0 = new_base | 14
    (arm64:str :x0 :x4 :offset 0)          ; store forwarding pointer
 
    ;; Return new address with original tag
@@ -350,17 +352,21 @@
 
    ;; Check if it's a potential heap pointer:
    ;; - Must be in from-space range [x22..x19)
-   ;; - Must have a valid object tag (1-5)
+   ;; - Must have a valid object tag (0, 2, 4, 6, 8, 10)
    (arm64:cmp :x0 :x22)
    (arm64:b.lo 9)                           ; skip if below from_start
    (arm64:cmp :x0 :x19)
    (arm64:b.hs 7)                           ; skip if >= from_end
 
-   ;; Check tag: must be 1-5 (cons, symbol, vector, string, closure)
-   (arm64:and* :x1 :x0 +gc-tag-mask+ :imm t)    ; x1 = tag
-   (arm64:cbz :x1 5)                          ; skip if fixnum (tag 0)
-   (arm64:cmp :x1 6 :imm t)
-   (arm64:b.hs 3)                           ; skip if nil (6) or forward (7)
+   ;; Check if it looks like a heap pointer:
+   ;; - Not nil (already in range)
+   ;; - Not fixnum (bit 0 != 1)
+   ;; - Valid object tag (0, 2, 4, 6, 8, 10 - not 14 which is forward)
+   (arm64:and* :x1 :x0 +fixnum-bit+ :imm t)    ; x1 = bit 0
+   (arm64:cbnz :x1 5)                          ; skip if fixnum (bit 0 = 1)
+   (arm64:and* :x1 :x0 +tag-mask+ :imm t)      ; x1 = tag
+   (arm64:cmp :x1 +tag-forward+ :imm t)
+   (arm64:b.eq 3)                           ; skip if forward (tag 14)
 
    ;; Looks like a heap pointer - copy it
    (list '(:call-fn GC-COPY))
@@ -382,12 +388,15 @@
 
    ;; Load word at to_scan, check if it's a heap pointer to copy
    (arm64:ldr :x0 :x16 :offset 0)
-   (arm64:and* :x1 :x0 +gc-tag-mask+ :imm t)  ; x1 = tag
-   (arm64:cbz :x1 7)                     ; skip if fixnum (tag 0)
-   (arm64:cmp :x1 6 :imm t)
-   (arm64:b.eq 5)                      ; skip if nil (tag 6)
-   (arm64:cmp :x1 7 :imm t)
-   (arm64:b.eq 3)                      ; skip if forward (tag 7)
+   ;; Skip if nil (value == 0)
+   (arm64:cbz :x0 7)
+   ;; Skip if fixnum (bit 0 = 1)
+   (arm64:and* :x1 :x0 +fixnum-bit+ :imm t)  ; x1 = bit 0
+   (arm64:cbnz :x1 5)                     ; skip if fixnum
+   ;; Skip if forward (tag 14)
+   (arm64:and* :x1 :x0 +tag-mask+ :imm t)  ; x1 = tag
+   (arm64:cmp :x1 +tag-forward+ :imm t)
+   (arm64:b.eq 3)                      ; skip if forward
 
    ;; It's a potential heap pointer - copy it
    (list '(:call-fn GC-COPY))
@@ -452,7 +461,7 @@
    HALF-HEAP-SIZE: size of each semispace in bytes
 
    Initializes:
-     [x27+0]:  intern_table = nil (0x06)
+     [x27+0]:  intern_table = nil (0)
      [x27+8]:  lambda_counter = 0
      [x27+16]: from_end = x27 + 64 + half_heap_size
      [x27+24]: half_heap_size
@@ -467,8 +476,8 @@
      ;; Setup heap base via ADRP
      (arm64:adrp :gc heap-page-offset)
 
-     ;; Store nil (0x06) at intern_table
-     (arm64:movz :x9 6)
+     ;; Store nil (0) at intern_table
+     (arm64:movz :x9 +nil-value+)
      (arm64:str :x9 :gc :offset +gc-intern-table-offset+)
 
      ;; Store 0 at lambda_counter

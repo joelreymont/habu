@@ -87,7 +87,7 @@
    Uses x9, x10 as scratch registers."
   (append
    ;; Get base address (clear tag bits)
-   (arm64:and* :x9 target-reg -16 :imm t)  ; x9 = base address
+   (arm64:and* :x9 target-reg +ptr-mask+ :imm t)  ; x9 = base address
 
    ;; Load nursery_end (old space starts here)
    (arm64:ldr :x10 :gc :offset +gen-nursery-end-offset+)  ; x10 = nursery_end
@@ -334,14 +334,13 @@
   (append
    (list '(:fn-label GEN-COPY-IF-NURSERY))
 
-   ;; Check if immediate (fixnum tag 0 or nil tag 6)
-   (arm64:and* 1 0 +gc-tag-mask+ :imm t)
-   (arm64:cbz :x1 14)                     ; if tag=0, return unchanged
-   (arm64:cmp :x1 6 :imm t)
-   (arm64:b.eq 12)                      ; if tag=6 (nil), return unchanged
+   ;; Check if immediate (fixnum bit 0 = 1 or nil value = 0)
+   (arm64:cbz :x0 14)                     ; if x0=0 (nil), return unchanged
+   (arm64:and* 1 0 +fixnum-bit+ :imm t)   ; x1 = bit 0
+   (arm64:cbnz :x1 12)                    ; if bit 0 set (fixnum), return unchanged
 
    ;; Get base address
-   (arm64:and* 2 0 -16 :imm t)         ; x2 = base
+   (arm64:and* 2 0 +ptr-mask+ :imm t)         ; x2 = base
 
    ;; Check if in nursery: nursery_start <= base < nursery_end
    (arm64:cmp :x2 :x18)
@@ -351,8 +350,8 @@
 
    ;; Check if already forwarded
    (arm64:ldr :x3 :x2 :offset 0)           ; x3 = first word
-   (arm64:and* 4 3 +gc-tag-mask+ :imm t)
-   (arm64:cmp :x4 +gc-tag-forward+ :imm t)
+   (arm64:and* 4 3 +tag-mask+ :imm t)
+   (arm64:cmp :x4 +tag-forward+ :imm t)
    (arm64:b.ne 4)                       ; if not forwarded, copy
 
    ;; Already forwarded
@@ -366,32 +365,32 @@
    (arm64:mov :x4 :x2)                      ; x4 = original base
 
    ;; Calculate size based on tag in x5
-   (arm64:cmp :x5 1 :imm t)              ; cons?
+   (arm64:cmp :x5 +tag-cons+ :imm t)              ; cons?
    (arm64:b.ne 3)
    (arm64:movz :x1 16)
    (arm64:b 20)
 
-   (arm64:cmp :x5 2 :imm t)              ; symbol?
+   (arm64:cmp :x5 +tag-symbol+ :imm t)              ; symbol?
    (arm64:b.ne 3)
-   (arm64:movz :x1 8)
+   (arm64:movz :x1 16)
    (arm64:b 16)
 
-   (arm64:cmp :x5 5 :imm t)              ; closure?
+   (arm64:cmp :x5 +tag-closure+ :imm t)              ; closure?
    (arm64:b.ne 3)
    (arm64:movz :x1 16)
    (arm64:b 12)
 
-   (arm64:cmp :x5 3 :imm t)              ; vector?
+   (arm64:cmp :x5 +tag-vector+ :imm t)              ; vector?
    (arm64:b.ne 6)
    (arm64:ldr :x1 :x4 :offset 0)
    (arm64:lsl :x1 :x1 3 :imm t)
    (arm64:add :x1 :x1 8 :imm t)
    (arm64:b 5)
 
-   ;; string
+   ;; string (tag 6)
    (arm64:ldr :x1 :x4 :offset 0)
    (arm64:add :x1 :x1 23 :imm t)
-   (arm64:and* 1 1 -16 :imm t)
+   (arm64:and* 1 1 +ptr-mask+ :imm t)
 
    ;; Copy bytes from nursery to old space
    (arm64:mov :x2 :x17)                     ; x2 = to_free (new location in old space)
@@ -408,7 +407,7 @@
 
    ;; Install forwarding pointer
    (arm64:sub :x4 :x4 :x1)
-   (arm64:movz :x6 +gc-tag-forward+)
+   (arm64:movz :x6 +tag-forward+)
    (arm64:orr :x0 :x2 :x6)
    (arm64:str :x0 :x4 :offset 0)
 
@@ -532,14 +531,13 @@
   (append
    (list '(:fn-label GEN-COPY-FULL))
 
-   ;; Check if immediate
-   (arm64:and* 1 0 +gc-tag-mask+ :imm t)
-   (arm64:cbz :x1 24)                         ; fixnum -> return
-   (arm64:cmp :x1 6 :imm t)
-   (arm64:b.eq 22)                          ; nil -> return
+   ;; Check if immediate (fixnum bit 0 = 1 or nil value = 0)
+   (arm64:cbz :x0 24)                         ; if x0=0 (nil), return
+   (arm64:and* 1 0 +fixnum-bit+ :imm t)       ; x1 = bit 0
+   (arm64:cbnz :x1 22)                        ; if bit 0 set (fixnum), return
 
    ;; Get base address
-   (arm64:and* 2 0 -16 :imm t)             ; x2 = base
+   (arm64:and* 2 0 +ptr-mask+ :imm t)             ; x2 = base
 
    ;; Check if in nursery
    (arm64:cmp :x2 :env)
@@ -557,12 +555,12 @@
    ;; Object is in nursery or old from-space -> copy it
    ;; Check if already forwarded
    (arm64:ldr :x3 :x2 :offset 0)
-   (arm64:and* 4 3 +gc-tag-mask+ :imm t)
-   (arm64:cmp :x4 +gc-tag-forward+ :imm t)
+   (arm64:and* 4 3 +tag-mask+ :imm t)
+   (arm64:cmp :x4 +tag-forward+ :imm t)
    (arm64:b.ne 4)
 
    ;; Already forwarded
-   (arm64:and* 0 3 -16 :imm t)
+   (arm64:and* 0 3 +ptr-mask+ :imm t)
    (arm64:orr :x0 :x0 :x1)
    (arm64:ret)
 
@@ -571,22 +569,22 @@
    (arm64:mov :x4 :x2)                          ; save base
 
    ;; Calculate size
-   (arm64:cmp :x5 1 :imm t)
+   (arm64:cmp :x5 +tag-cons+ :imm t)
    (arm64:b.ne 3)
    (arm64:movz :x1 16)
    (arm64:b 20)
 
-   (arm64:cmp :x5 2 :imm t)
+   (arm64:cmp :x5 +tag-symbol+ :imm t)
    (arm64:b.ne 3)
-   (arm64:movz :x1 8)
+   (arm64:movz :x1 16)
    (arm64:b 16)
 
-   (arm64:cmp :x5 5 :imm t)
+   (arm64:cmp :x5 +tag-closure+ :imm t)
    (arm64:b.ne 3)
    (arm64:movz :x1 16)
    (arm64:b 12)
 
-   (arm64:cmp :x5 3 :imm t)
+   (arm64:cmp :x5 +tag-vector+ :imm t)
    (arm64:b.ne 6)
    (arm64:ldr :x1 :x4 :offset 0)
    (arm64:lsl :x1 :x1 3 :imm t)
@@ -595,7 +593,7 @@
 
    (arm64:ldr :x1 :x4 :offset 0)
    (arm64:add :x1 :x1 23 :imm t)
-   (arm64:and* 1 1 -16 :imm t)
+   (arm64:and* 1 1 +ptr-mask+ :imm t)
 
    ;; Copy bytes
    (arm64:mov :x2 :x17)
@@ -611,7 +609,7 @@
 
    ;; Install forwarding pointer
    (arm64:sub :x4 :x4 :x1)
-   (arm64:movz :x6 +gc-tag-forward+)
+   (arm64:movz :x6 +tag-forward+)
    (arm64:orr :x7 :x2 :x6)
    (arm64:str :x7 :x4 :offset 0)
 
@@ -635,7 +633,7 @@
      (arm64:adrp :gc heap-page-offset)
 
      ;; Initialize existing GC globals (intern_table, lambda_counter, etc.)
-     (arm64:movz :x9 6)                   ; nil
+     (arm64:movz :x9 +nil-value+)                   ; nil = 0
      (arm64:str :x9 :gc :offset +gc-intern-table-offset+)
      (arm64:movz :x9 0)
      (arm64:str :x9 :gc :offset +gc-lambda-counter-offset+)

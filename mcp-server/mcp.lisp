@@ -60,12 +60,25 @@
 (defvar *capture-stream* nil)
 
 (defpackage :habu-mcp
-  (:use :cl))
+  (:use :cl)
+  (:import-from :habu
+                #:+tag-cons+
+                #:+tag-symbol+
+                #:+tag-vector+
+                #:+tag-string+
+                #:+tag-closure+
+                #:+tag-keyword+
+                #:+tag-forward+
+                #:+tag-mask+
+                #:+ptr-mask+
+                #:+nil-value+
+                #:+t-value+
+                #:+fixnum-bit+))
 
 (in-package :habu-mcp)
 
 ;;; Version to verify new code is running (update on each change)
-(defparameter *server-version* "v11-2025-12-10-disable-debugger-early")
+(defparameter *server-version* "v12-2025-12-11-use-tag-constants")
 
 ;;; Forward declarations to suppress style warnings
 (declaim (ftype (function (string character) list) split-string))
@@ -945,30 +958,30 @@
   (let ((value (jget args "value")))
     (if (not (integerp value))
         "Error: value must be an integer"
-        (let ((tag (logand value #xF)))
+        (let ((tag (logand value +tag-mask+)))
           (with-output-to-string (out)
             (format out "Raw value: ~16,'0X~%" value)
             (format out "Tag bits:  ~D (~4,'0B)~%" tag tag)
             (cond
-              ;; Nil: 0x06
-              ((= value #x06)
+              ;; Nil: 0
+              ((= value +nil-value+)
                (format out "Type: NIL~%")
                (format out "Value: NIL~%"))
-              ;; Fixnum: tag 0, value in upper bits
-              ((= tag 0)
-               (let ((fixnum (ash value -4)))
+              ;; Fixnum: bit 0 = 1
+              ((= (logand value +fixnum-bit+) +fixnum-bit+)
+               (let ((fixnum (ash value -1)))
                  (format out "Type: FIXNUM~%")
                  (format out "Value: ~D (0x~X)~%" fixnum fixnum)))
-              ;; Cons: tag 1
-              ((= tag 1)
-               (let ((ptr (logand value (lognot #xF))))
+              ;; Cons: tag 0 (but not nil)
+              ((= tag +tag-cons+)
+               (let ((ptr (logand value +ptr-mask+)))
                  (format out "Type: CONS~%")
                  (format out "Pointer: 0x~X~%" ptr)
                  (format out "  CAR at: 0x~X~%" ptr)
                  (format out "  CDR at: 0x~X~%" (+ ptr 8))))
               ;; Symbol: tag 2
-              ((= tag 2)
-               (let ((ptr (logand value (lognot #xF))))
+              ((= tag +tag-symbol+)
+               (let ((ptr (logand value +ptr-mask+)))
                  (format out "Type: SYMBOL~%")
                  (format out "Pointer: 0x~X~%" ptr)
                  (format out "  Name string at: 0x~X~%" ptr)))

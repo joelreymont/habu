@@ -313,7 +313,8 @@
 ;;; Hash function: DJB2 (fast, good distribution)
 ;;; Collision handling: chaining (alist per bucket)
 
-(defvar *hash-table-size* 256)  ; Number of buckets (power of 2 for fast modulo)
+;; Hash table size - use literal value to avoid global variable lookup issues
+(defconstant +hash-table-size+ 256)  ; Number of buckets (power of 2 for fast modulo)
 
 ;; DJB2 hash function for strings
 ;; Returns hash value as fixnum
@@ -329,12 +330,23 @@
                           (+ (ash hash 5) hash c)))))
 
 ;; Create empty hash table (vector of nil buckets)
+;; Note: make-vector doesn't initialize elements, so we must fill with nil
 (defun make-string-hash-table ()
-  (make-vector *hash-table-size*))
+  (let ((table (make-vector +hash-table-size+)))
+    (fill-vector-nil table 0 +hash-table-size+)
+    table))
+
+;; Fill vector elements with nil from index start to end
+(defun fill-vector-nil (vec i end)
+  (if (>= i end)
+      nil
+      (progn
+        (vector-set vec i nil)
+        (fill-vector-nil vec (+ i 1) end))))
 
 ;; Get bucket index for string key
 (defun hash-bucket-index (key)
-  (logand (string-hash key) (- *hash-table-size* 1)))
+  (logand (string-hash key) (- +hash-table-size+ 1)))
 
 ;; Look up key in hash table, returns value or nil
 ;; Uses string= for key comparison (case-sensitive, already uppercased)
@@ -344,9 +356,9 @@
     (hash-bucket-find key bucket)))
 
 (defun hash-bucket-find (key bucket)
-  ;; Check for empty bucket: nil (tag 6) or 0 (uninitialized vector slot)
-  ;; make-vector initializes to 0, not nil
-  (if (or (null bucket) (= bucket 0))
+  ;; Check for empty bucket: nil (= 0 in hybrid tagging)
+  ;; Note: (= bucket 0) would check for fixnum 0 (tagged as 1), not nil
+  (if (null bucket)
       nil
       (let ((entry (car bucket)))
         (if (string= (car entry) key)
@@ -426,36 +438,38 @@
                     (intern-table-add uname sym))))))))
 
 ;;; Tag manipulation primitives
-;;; In Habu, all values have a 4-bit tag in the low bits:
-;;;   0 = fixnum (value << 4), 1 = cons, 2 = symbol, 3 = vector,
-;;;   4 = string, 5 = closure, 6 = nil, 7 = keyword
+;;; HYBRID 1+3 BIT TAGGING (16-byte aligned objects):
+;;;   bit0=1: fixnum (63-bit signed, val >> 1)
+;;;   bit0=0: pointer | tag, nil = 0
+;;;     0=cons, 2=symbol, 4=vector, 6=string, 8=closure, 10=keyword, 14=forward
 ;;;
 ;;; NOTE: get-tag and set-tag are COMPILER PRIMITIVES - they are recognized
 ;;; by both the bootstrap compiler and h0-compile as special forms that
 ;;; generate inline ARM64 code. Do NOT define them as functions here.
-;;; The h0-eval special form handlers at lines ~1900-1912 call these
-;;; primitives directly, and the bootstrap compiler compiles those calls
-;;; to inline ARM64 instructions.
 
-;;; Keyword interning - keywords use tag 7, stored in separate keyword table
+;;; Keyword interning - keywords use tag 10, stored in separate keyword table
 ;;; Keywords are self-evaluating symbols in the KEYWORD package
 ;;; Keywords have same memory layout as STRINGS: [length:8][chars:N]
 ;;; (NOT symbols - symbols have a pointer to name string at offset 0)
 
-;; Get keyword name - keywords have STRING layout, just different tag (7 vs 4)
+;; Get keyword name - keywords have STRING layout, just different tag
 ;; Layout: [length:8][chars:N] - same as strings, NOT symbols
-;; Symbols have pointer to name at offset 0, keywords ARE the string data
+;; keyword(10) → string(6): XOR with 12 toggles between them efficiently
 (defun keyword-name (kw)
-  ;; Keywords have same layout as STRINGS, not symbols
-  ;; Just change tag from 7 (keyword) to 4 (string)
-  (set-tag kw 4))
+  ;; XOR tag bits: 10 XOR 12 = 6 (keyword → string)
+  (logxor kw 12))
 
-;; Make keyword from string - allocate like symbol but with tag 7
+;; Make keyword from string - allocate string-like, apply keyword tag
+;; make-symbol-from-string allocates [length:8][chars:N] with tag 2
+;; We need: change tag 2 to tag 10 → add 8 (= 10 - 2)
+;; Note: Can't use logxor because that operates on tagged fixnums,
+;; not raw pointer bits. Simple addition works because we're just
+;; changing the low tag bits.
 (defun make-keyword-from-string (name)
-  ;; Use make-symbol-from-string which allocates [length:8][chars:N]
-  ;; Then change tag from 2 (symbol) to 7 (keyword)
   (let ((sym (make-symbol-from-string name)))
-    (set-tag sym 7)))
+    ;; sym has tag 2, we want tag 10
+    ;; Use set-tag to change low 4 bits to keyword tag (10)
+    (set-tag sym 10)))
 
 ;; Keyword table primitives
 ;; NOTE: get-keyword-table and set-keyword-table are compiler primitives
@@ -488,7 +502,7 @@
     kw))
 
 ;; Intern a keyword by name (without the leading colon)
-;; Keywords are like symbols but with tag 7 instead of tag 2
+;; Keywords are like symbols but with tag 10 instead of tag 2
 (defun intern-keyword (name)
   (let* ((uname (string-upcase name))
          (existing (find-keyword uname (get-keyword-table))))
@@ -1827,16 +1841,25 @@
           ;; Try next clause
           (t (h0-eval-case-clauses key (cdr clauses) env fenv))))))
 
+;; Check if value is a habu keyword (tag 10)
+;; Uses keywordp which compiles to tag-10 check in native habu.
+;; In SBCL mode, this checks for symbols in the KEYWORD package.
+;; In native mode, this checks for tag 10 in the low bits.
+(defun h0-keywordp (x)
+  (keywordp x))
+
 ;; Eval function with fenv for function definitions
 ;; Uses dispatch table with case for O(1) amortized dispatch (jump table in SBCL)
 ;; Dispatch IDs: 1-30 special forms, 30-39 self-eval, 101-220 primitives
+;; NOTE: Order matters! Keywords must be checked before symbols since
+;; SBCL keywords are also symbols (in the KEYWORD package).
 (defun h0-eval (expr env fenv)
   (cond
-    ;; Self-evaluating types
+    ;; Self-evaluating types - order matters!
+    ((null expr) nil)            ; nil check first (nil is both null and symbol)
+    ((h0-keywordp expr) expr)    ; Keywords before symbols (keywords ARE symbols in CL)
     ((numberp expr) expr)
     ((stringp expr) expr)
-    ((keywordp expr) expr)
-    ((null expr) nil)
     ;; Symbols - check for T/NIL first, then variable lookup
     ((symbolp expr)
      (let ((id (op-lookup expr)))
@@ -2178,7 +2201,7 @@
 ;;; ============================================================
 ;;
 ;; Problem: In SBCL, keywords like :x0 are SBCL keyword symbols.
-;; In habu0 native, keywords should be habu0-interned with tag 7.
+;; In habu0 native, keywords should be habu0-interned with tag 10.
 ;; When ARM64 functions use eq-comparison, SBCL keywords won't match
 ;; habu0 interned keywords.
 ;;
@@ -2193,12 +2216,12 @@
 (defun normalize-keyword (kw)
   "Normalize a keyword to habu0-interned form.
    If kw is an SBCL keyword (symbolp = t, keywordp = t), re-intern it.
-   If kw is already a habu0 keyword (tag 7, symbolp = nil), return as-is."
+   If kw is already a habu0 keyword (tag 10, symbolp = nil), return as-is."
   (if (keywordp kw)
       (if (symbolp kw)
           ;; SBCL keyword: symbol-name works, re-intern in habu0
           (intern-keyword (symbol-name kw))
-          ;; Already habu0 keyword (tag 7, not symbolp)
+          ;; Already habu0 keyword (tag 10, not symbolp)
           kw)
       ;; Not a keyword, return as-is
       kw))
@@ -2389,7 +2412,7 @@
 ;;; Problem: In mode 1024, the binary contains SBCL-compiled code.
 ;;; String literals like "QUOTE" become SBCL strings embedded in the binary.
 ;;; Habu's string primitives (string-length, string-ref) expect habu strings
-;;; (tag 4), so they crash when given SBCL strings.
+;;; (tag 6), so they crash when given SBCL strings.
 ;;;
 ;;; Solution: Use macros to expand string literals at SBCL compile time
 ;;; into code that builds habu strings using only integer literals and
@@ -4039,11 +4062,22 @@
   (if (null a) b
       (cons (car a) (bytes-append (cdr a) b))))
 
-;; Append multiple byte lists
+;; Append multiple byte lists - O(n) using accumulator
+;; Strategy: reverse the input lists, accumulate in reverse, then reverse final result
 (defun bytes-append-all (lists)
+  (reverse (bytes-append-all-helper (reverse lists) nil)))
+
+(defun bytes-append-all-helper (lists acc)
   (if (null lists)
-      nil
-      (bytes-append (car lists) (bytes-append-all (cdr lists)))))
+      acc
+      (bytes-append-all-helper (cdr lists)
+                               (bytes-append-reversed (car lists) acc))))
+
+;; Append list a to b, with a reversed during the append
+(defun bytes-append-reversed (a b)
+  (if (null a)
+      b
+      (bytes-append-reversed (cdr a) (cons (car a) b))))
 
 ;; Generate stub: ADRP x16, got_page; LDR x16, [x16, #offset]; BR x16
 (defun generate-stub (got-page-diff got-slot-offset)
@@ -4060,12 +4094,25 @@
       (list #x0)  ; Just leading NUL
       (cons #x0 (build-import-strings-helper imports))))
 
+;; O(n) - accumulate in reverse then reverse at end
 (defun build-import-strings-helper (imports)
+  (reverse (build-import-strings-acc imports nil)))
+
+(defun build-import-strings-acc (imports acc)
   (if (null imports)
-      nil
-      (let ((name (car imports)))
-        (bytes-append (string-to-bytes name)
-                      (cons #x0 (build-import-strings-helper (cdr imports)))))))
+      acc
+      (let* ((name (car imports))
+             (bytes (string-to-bytes name))
+             ;; Push NUL separator then all bytes in reverse
+             (acc-with-nul (cons #x0 acc))
+             (acc-with-bytes (push-bytes-reversed bytes acc-with-nul)))
+        (build-import-strings-acc (cdr imports) acc-with-bytes))))
+
+;; Push all bytes from list onto acc in reversed order
+(defun push-bytes-reversed (bytes acc)
+  (if (null bytes)
+      acc
+      (push-bytes-reversed (cdr bytes) (cons (car bytes) acc))))
 
 (defun string-to-bytes (str)
   (string-to-bytes-helper str #x0 (string-length str) nil))

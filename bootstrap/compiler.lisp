@@ -337,7 +337,7 @@
   "Build IR for quoted value - recursively builds cons-ir for lists"
   (cond
     ((numberp obj) (list 'lit obj))
-    ((null obj) (list 'nil-ir))  ; nil has tag 6, distinct from fixnum 0
+    ((null obj) (list 'nil-ir))  ; nil = 0 (hybrid scheme)
     ;; Keywords MUST be checked before symbolp (keywords are symbols in CL)
     ((keywordp obj) (list 'kw-lit (symbol-name obj)))
     ((symbolp obj) (list 'sym-lit (symbol-name obj)))
@@ -369,7 +369,7 @@
   ;; Expand to nested cons: (cons a (cons b (cons c nil)))
   (labels ((expand-list (elems)
              (if (null elems)
-                 (list 'nil-ir)  ;; nil = tag 6
+                 (list 'nil-ir)  ;; nil = 0
                  (list 'cons-ir
                        (compile-expr (car elems) env)
                        (expand-list (cdr elems))))))
@@ -1131,7 +1131,7 @@
     ((stringp expr) (list 'str-lit expr))  ; String literals
     ((symbolp expr)
      (cond
-       ((eq expr 'nil) (list 'nil-ir))  ; nil has tag 6, distinct from fixnum 0
+       ((eq expr 'nil) (list 'nil-ir))  ; nil = 0 (hybrid scheme)
        ((eq expr 't) (list 'sym-lit "T"))
        ((cl:keywordp expr) (list 'kw-lit (symbol-name expr)))  ; Keywords
        (t (compile-var expr env))))
@@ -1217,21 +1217,21 @@
          ((eq (car expr) 'nth) (compile-nth expr env fenv))
          ((eq (car expr) 'list) (compile-list-full expr env fenv))
 
-         ;; Predicates - use cmp-eq/get-tag to match main compiler codegen
-         ;; null: compare value to nil (tag 6)
+         ;; Predicates - hybrid 1+3 bit scheme
+         ;; null: compare value to nil (0)
          ((eq (car expr) 'null) (list 'cmp-eq (compile-expr-full (nth 1 expr) env fenv) (list 'nil-ir)))
-         ;; consp: compare tag to 1 (cons tag)
-         ((eq (car expr) 'consp) (list 'cmp-eq (list 'get-tag (compile-expr-full (nth 1 expr) env fenv)) (list 'lit 1)))
-         ;; numberp: compare tag to 0 (fixnum tag)
-         ((eq (car expr) 'numberp) (list 'cmp-eq (list 'get-tag (compile-expr-full (nth 1 expr) env fenv)) (list 'lit 0)))
-         ;; symbolp: compare tag to 2 (symbol tag)
-         ((eq (car expr) 'symbolp) (list 'cmp-eq (list 'get-tag (compile-expr-full (nth 1 expr) env fenv)) (list 'lit 2)))
-         ;; stringp: compare tag to 4 (string tag)
-         ((eq (car expr) 'stringp) (list 'cmp-eq (list 'get-tag (compile-expr-full (nth 1 expr) env fenv)) (list 'lit 4)))
-         ;; vectorp: compare tag to 3 (vector tag)
-         ((eq (car expr) 'vectorp) (list 'cmp-eq (list 'get-tag (compile-expr-full (nth 1 expr) env fenv)) (list 'lit 3)))
-         ;; keywordp: compare tag to 7 (keyword tag)
-         ((eq (car expr) 'keywordp) (list 'cmp-eq (list 'get-tag (compile-expr-full (nth 1 expr) env fenv)) (list 'lit 7)))
+         ;; consp: tag 0 AND value != 0 (nil also has tag bits = 0)
+         ((eq (car expr) 'consp) (list 'consp (compile-expr-full (nth 1 expr) env fenv)))
+         ;; numberp: bit0 = 1 (fixnum)
+         ((eq (car expr) 'numberp) (list 'numberp (compile-expr-full (nth 1 expr) env fenv)))
+         ;; symbolp: tag 2
+         ((eq (car expr) 'symbolp) (list 'cmp-eq (list 'get-tag (compile-expr-full (nth 1 expr) env fenv)) (list 'lit +tag-symbol+)))
+         ;; stringp: tag 6
+         ((eq (car expr) 'stringp) (list 'cmp-eq (list 'get-tag (compile-expr-full (nth 1 expr) env fenv)) (list 'lit +tag-string+)))
+         ;; vectorp: tag 4
+         ((eq (car expr) 'vectorp) (list 'cmp-eq (list 'get-tag (compile-expr-full (nth 1 expr) env fenv)) (list 'lit +tag-vector+)))
+         ;; keywordp: tag 10
+         ((eq (car expr) 'keywordp) (list 'cmp-eq (list 'get-tag (compile-expr-full (nth 1 expr) env fenv)) (list 'lit +tag-keyword+)))
          ;; eq: compare two values directly
          ((eq (car expr) 'eq) (list 'cmp-eq (compile-expr-full (nth 1 expr) env fenv)
                                    (compile-expr-full (nth 2 expr) env fenv)))

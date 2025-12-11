@@ -127,9 +127,10 @@
              (new-body (car body-result))
              (new-lambdas (cdr body-result))
              (new-defun (list name params new-body param-base)))
+        ;; Use nconc instead of append - O(1) amortized instead of O(n)
         (lift-lambdas-from-defuns (cdr defuns)
                                   (cons new-defun acc-defuns)
-                                  (append acc-lambdas new-lambdas)))))
+                                  (nconc acc-lambdas new-lambdas)))))
 
 #+sbcl
 (defun lambdas-to-defuns (lambdas acc)
@@ -880,57 +881,30 @@
    Result in x0 is a tagged cons list."
   (if (null free-offsets)
       (arm64:movz :x0 0)  ;; nil
-      (labels ((build-list (offs acc)
-                 ;; Build list in reverse, then we cons onto it
-                 ;; Each captured value is loaded from [x20 - offset*8]
-                 (if (null offs)
-                     acc
-                     (let* ((off (car offs))
-                            (off8 (* off 8))
-                            ;; Load value from stack
-                            (load-code (append (arm64:sub :x1 :env off8 :imm t)
-                                                    (arm64:ldr :x0 :x1 :offset 0)))
-                            ;; Save in temp if not first
-                            (store-code (if (null (cdr offs))
-                                           nil  ;; Last one, keep in x0
-                                           (append-all
-                                            (list load-code
-                                                  ;; Store car
-                                                  (arm64:str :x0 :heap :offset 0)
-                                                  ;; Load/cons previous result
-                                                  (arm64:ldr :x0 :heap :offset 8)  ; get cdr (prev result)
-                                                  ;; This doesn't work... need different approach
-                                                  nil)))))
-                       (build-list (cdr offs)
-                                   (append acc load-code))))))
-        ;; Simpler approach: build cons list iteratively
-        ;; Start with nil, then cons each value
-        ;; NOTE: No GC trigger here - the variable-length cons chain causes
-        ;; issues with function offset calculations. Closures with captures
-        ;; are rare enough that skipping GC check here is acceptable.
-        (labels ((gen-cons-chain (offs)
-                   (if (null offs)
-                       (arm64:movz :x0 0)
-                       (let* ((off (car offs))
-                              (off8 (* off 8))
-                              (rest-code (gen-cons-chain (cdr offs))))
-                         ;; First build rest of list, then cons current onto it
-                         (append-all
-                          (list rest-code
-                                ;; Save cdr in heap
-                                (arm64:str :x0 :heap :offset 8)
-                                ;; Load current value
-                                (arm64:sub :x1 :env off8 :imm t)
-                                (arm64:ldr :x0 :x1 :offset 0)
-                                ;; Store as car
-                                (arm64:str :x0 :heap :offset 0)
-                                ;; Make cons pointer
-                                (arm64:mov :x0 :heap)
-                                (arm64:add :x0 :x0 #.+tag-cons+ :imm t)
-                                (arm64:add :heap :heap 16 :imm t)))))))
-          ;; Don't reverse - gen-cons-chain builds in correct order
-          ;; for free-vars list (first offset becomes car)
-          (gen-cons-chain free-offsets)))))
+      ;; Build cons list iteratively using push/nreverse for O(n) performance
+      ;; Start with nil, then cons each value
+      ;; NOTE: No GC trigger here - the variable-length cons chain causes
+      ;; issues with function offset calculations. Closures with captures
+      ;; are rare enough that skipping GC check here is acceptable.
+      (let ((code-parts nil))
+        ;; Start with movz :x0 0 (nil)
+        (push (arm64:movz :x0 0) code-parts)
+        ;; For each offset, generate code to cons it onto the list
+        (dolist (off free-offsets)
+          (let ((off8 (* off 8)))
+            ;; Save cdr in heap
+            (push (arm64:str :x0 :heap :offset 8) code-parts)
+            ;; Load current value
+            (push (arm64:sub :x1 :env off8 :imm t) code-parts)
+            (push (arm64:ldr :x0 :x1 :offset 0) code-parts)
+            ;; Store as car
+            (push (arm64:str :x0 :heap :offset 0) code-parts)
+            ;; Make cons pointer
+            (push (arm64:mov :x0 :heap) code-parts)
+            (push (arm64:add :x0 :x0 #.+tag-cons+ :imm t) code-parts)
+            (push (arm64:add :heap :heap 16 :imm t) code-parts)))
+        ;; Flatten and return
+        (append-all (nreverse code-parts)))))
 
 ;;; ============================================================
 ;;; Linearization Pass (Tree IR → Linear IR)
@@ -1484,10 +1458,11 @@
             (dst (fresh-temp)))
        ;; Linearize args and emit stores to param slots (at sp+0x40+)
        (let ((arg-temps nil))
-         ;; First, linearize all args to get their temp slots
+         ;; First, linearize all args to get their temp slots (use push, then reverse)
          (dolist (arg-ir args)
            (let ((arg-temp (linearize-expr arg-ir)))
-             (setq arg-temps (append arg-temps (list arg-temp)))))
+             (push arg-temp arg-temps)))
+         (setq arg-temps (nreverse arg-temps))
          ;; Now emit copies from arg temps to param slots
          ;; Param slots start at sp+0x380 (environment base)
          (let ((idx 0))
@@ -1672,6 +1647,8 @@
                  (linear-save-temp dst))))
 
       ;; Binary arithmetic
+      ;; With hybrid 1-bit tagging, fixnums are (val << 1) | 1
+      ;; add: (a<<1|1) + (b<<1|1) = (a+b)<<1 + 2, need to subtract 1
       (add
        (let ((dst (cadr instr))
              (src1 (caddr instr))
@@ -1679,8 +1656,10 @@
          (append (linear-load-temp :x0 src1)
                  (linear-load-temp :x1 src2)
                  (arm64:add :x0 :x0 :x1)
+                 (arm64:sub :x0 :x0 #.+fixnum-bit+ :imm t)  ; fix tag: subtract 1
                  (linear-save-temp dst))))
 
+      ;; sub: (a<<1|1) - (b<<1|1) = (a-b)<<1, need to set low bit
       (sub
        (let ((dst (cadr instr))
              (src1 (caddr instr))
@@ -1688,26 +1667,34 @@
          (append (linear-load-temp :x0 src1)
                  (linear-load-temp :x1 src2)
                  (arm64:sub :x0 :x0 :x1)
+                 (arm64:orr :x0 :x0 #.+fixnum-bit+ :imm t)  ; fix tag: set low bit
                  (linear-save-temp dst))))
 
+      ;; mul: untag both, multiply, retag
       (mul
        (let ((dst (cadr instr))
              (src1 (caddr instr))
              (src2 (cadddr instr)))
          (append (linear-load-temp :x0 src1)
                  (linear-load-temp :x1 src2)
-                 (arm64:asr :x1 :x1 1 :imm t)  ; untag one operand
+                 (arm64:asr :x0 :x0 #.+fixnum-bit+ :imm t)  ; untag x0
+                 (arm64:asr :x1 :x1 #.+fixnum-bit+ :imm t)  ; untag x1
                  (arm64:mul :x0 :x0 :x1)
+                 (arm64:lsl :x0 :x0 #.+fixnum-bit+ :imm t)  ; shift left
+                 (arm64:orr :x0 :x0 #.+fixnum-bit+ :imm t)  ; set fixnum bit
                  (linear-save-temp dst))))
 
+      ;; div: untag both, divide, retag
       (div
        (let ((dst (cadr instr))
              (src1 (caddr instr))
              (src2 (cadddr instr)))
          (append (linear-load-temp :x0 src1)
                  (linear-load-temp :x1 src2)
+                 (arm64:asr :x0 :x0 #.+fixnum-bit+ :imm t)  ; untag x0
+                 (arm64:asr :x1 :x1 #.+fixnum-bit+ :imm t)  ; untag x1
                  (arm64:sdiv :x0 :x0 :x1)
-                 (arm64:lsl :x0 :x0 1 :imm t)  ; shift left
+                 (arm64:lsl :x0 :x0 #.+fixnum-bit+ :imm t)  ; shift left
                  (arm64:orr :x0 :x0 #.+fixnum-bit+ :imm t)  ; set fixnum bit
                  (linear-save-temp dst))))
 
@@ -1728,7 +1715,7 @@
                  (arm64:orr :x0 :x0 #.+fixnum-bit+ :imm t)  ; set fixnum bit
                  (linear-save-temp dst))))
 
-      ;; Comparisons - return tagged t (16) or nil (6)
+      ;; Comparisons - return tagged t (3) or nil (0)
       (cmp-eq
        (let ((dst (cadr instr))
              (src1 (caddr instr))
@@ -1935,36 +1922,40 @@
 
       ;; Type predicates
       (consp
-       ;; Test if value is cons (tag == 1)
+       ;; Test if value is cons: tag == 0 AND value != 0 (not nil)
+       ;; Hybrid scheme: cons tag is 0, same as nil's tag bits, so must check non-zero
        (let ((dst (cadr instr))
              (src (caddr instr)))
          (append (linear-load-temp :x0 src)
-                 (arm64:and* :x0 :x0 #xF :imm t)  ; extract tag bits
-                 (arm64:cmp :x0 1 :imm t)         ; compare to cons tag (1)
-                 (arm64:cset :x0 arm64:+eq+)      ; set x0 to 1 if equal, 0 otherwise
-                 (gen-bool-to-tagged)             ; convert to t (16) or nil (6)
+                 (arm64:cmp :x0 #.+nil-value+ :imm t) ; check if nil
+                 (arm64:b.eq 3)                    ; if nil, skip to set false (+3)
+                 (arm64:and* :x0 :x0 #.+tag-mask+ :imm t) ; extract tag
+                 (arm64:cmp :x0 #.+tag-cons+ :imm t) ; compare to cons tag (0)
+                 (arm64:cset :x0 arm64:+eq+)
+                 (arm64:b 1)                       ; skip false-path (+1)
+                 (arm64:movz :x0 0)                ; false: set 0
+                 (gen-bool-to-tagged)
                  (linear-save-temp dst))))
 
       (numberp
-       ;; Test if value is fixnum (tag == 0)
+       ;; Test if value is fixnum: bit 0 == 1 (hybrid scheme)
        (let ((dst (cadr instr))
              (src (caddr instr)))
          (append (linear-load-temp :x0 src)
-                 (arm64:and* :x0 :x0 #xF :imm t)  ; extract tag bits
-                 (arm64:cmp :x0 0 :imm t)         ; compare to fixnum tag (0)
-                 (arm64:cset :x0 arm64:+eq+)      ; set x0 to 1 if equal, 0 otherwise
-                 (gen-bool-to-tagged)             ; convert to t (16) or nil (6)
+                 (arm64:and* :x0 :x0 #.+fixnum-bit+ :imm t) ; extract bit 0
+                 ;; x0 is now 1 if fixnum, 0 if pointer
+                 (gen-bool-to-tagged)
                  (linear-save-temp dst))))
 
       (stringp
-       ;; Test if value is string (tag == 4)
+       ;; Test if value is string (tag == 6)
        (let ((dst (cadr instr))
              (src (caddr instr)))
          (append (linear-load-temp :x0 src)
-                 (arm64:and* :x0 :x0 #xF :imm t)  ; extract tag bits
-                 (arm64:cmp :x0 4 :imm t)         ; compare to string tag (4)
-                 (arm64:cset :x0 arm64:+eq+)      ; set x0 to 1 if equal, 0 otherwise
-                 (gen-bool-to-tagged)             ; convert to t (16) or nil (6)
+                 (arm64:and* :x0 :x0 #.+tag-mask+ :imm t)
+                 (arm64:cmp :x0 #.+tag-string+ :imm t)
+                 (arm64:cset :x0 arm64:+eq+)
+                 (gen-bool-to-tagged)
                  (linear-save-temp dst))))
 
       (symbolp
@@ -1972,31 +1963,31 @@
        (let ((dst (cadr instr))
              (src (caddr instr)))
          (append (linear-load-temp :x0 src)
-                 (arm64:and* :x0 :x0 #xF :imm t)  ; extract tag bits
-                 (arm64:cmp :x0 2 :imm t)         ; compare to symbol tag (2)
-                 (arm64:cset :x0 arm64:+eq+)      ; set x0 to 1 if equal, 0 otherwise
-                 (gen-bool-to-tagged)             ; convert to t (16) or nil (6)
+                 (arm64:and* :x0 :x0 #.+tag-mask+ :imm t)
+                 (arm64:cmp :x0 #.+tag-symbol+ :imm t)
+                 (arm64:cset :x0 arm64:+eq+)
+                 (gen-bool-to-tagged)
                  (linear-save-temp dst))))
 
       (vectorp
-       ;; Test if value is vector (tag == 3)
+       ;; Test if value is vector (tag == 4)
        (let ((dst (cadr instr))
              (src (caddr instr)))
          (append (linear-load-temp :x0 src)
-                 (arm64:and* :x0 :x0 #xF :imm t)  ; extract tag bits
-                 (arm64:cmp :x0 3 :imm t)         ; compare to vector tag (3)
-                 (arm64:cset :x0 arm64:+eq+)      ; set x0 to 1 if equal, 0 otherwise
-                 (gen-bool-to-tagged)             ; convert to t (16) or nil (6)
+                 (arm64:and* :x0 :x0 #.+tag-mask+ :imm t)
+                 (arm64:cmp :x0 #.+tag-vector+ :imm t)
+                 (arm64:cset :x0 arm64:+eq+)
+                 (gen-bool-to-tagged)
                  (linear-save-temp dst))))
 
       (null-check
-       ;; Test if value is nil (== 6)
+       ;; Test if value is nil (== 0 in hybrid scheme)
        (let ((dst (cadr instr))
              (src (caddr instr)))
          (append (linear-load-temp :x0 src)
-                 (arm64:cmp :x0 6 :imm t)         ; compare to nil (6)
+                 (arm64:cmp :x0 #.+nil-value+ :imm t) ; compare to nil (0)
                  (arm64:cset :x0 arm64:+eq+)      ; set x0 to 1 if equal, 0 otherwise
-                 (gen-bool-to-tagged)             ; convert to t (16) or nil (6)
+                 (gen-bool-to-tagged)             ; convert to t or nil
                  (linear-save-temp dst))))
       (string-length
        (let ((dst (cadr instr))
@@ -2128,9 +2119,9 @@
       (jump-if-nil
        (let ((src (cadr instr))
              (label (caddr instr)))
-         ;; Compare with nil (6), branch if equal
+         ;; Compare with nil (0), branch if equal
          (append (linear-load-temp :x0 src)
-                 (arm64:cmp :x0 6 :imm t)
+                 (arm64:cmp :x0 #.+nil-value+ :imm t)
                  (arm64:b.eq 0))))  ; offset filled in later
 
       (move
@@ -2495,7 +2486,7 @@
                  (linear-save-temp dst))))
 
       ;; string-equal: compare two strings for equality
-      ;; Returns tagged 16 (true) or 6 (nil/false)
+      ;; Returns tagged t or nil
       (string-equal
        (let ((dst (cadr instr))
              (str1-temp (caddr instr))
@@ -2504,17 +2495,17 @@
           ;; Load both strings
           (linear-load-temp :x0 str1-temp)
           (linear-load-temp :x8 str2-temp)
-          ;; Check for nil (tag 6)
-          (arm64:cmp :x0 6 :imm t)           ; is str1 nil?
+          ;; Check for nil (= 0)
+          (arm64:cmp :x0 #.+nil-value+ :imm t) ; is str1 nil?
           (arm64:b.eq 4)                     ; yes, jump to nil_check (+4)
-          (arm64:cmp :x8 6 :imm t)           ; is str2 nil?
+          (arm64:cmp :x8 #.+nil-value+ :imm t) ; is str2 nil?
           (arm64:b.eq 25)                    ; yes, str1!=nil so return false (+25)
           (arm64:b 5)                        ; both non-nil, skip to compare (+5)
           ;; nil_check: str1 is nil
-          (arm64:cmp :x8 6 :imm t)           ; is str2 also nil?
+          (arm64:cmp :x8 #.+nil-value+ :imm t) ; is str2 also nil?
           (arm64:b.ne 22)                    ; no, return false (+22)
           ;; Both are nil, return true
-          (arm64:movz :x0 16)                ; x0 = 16 (tagged 1)
+          (arm64:movz :x0 +t-value+)         ; x0 = t
           (arm64:b 21)                       ; jump to end (+21)
           ;; compare: both are valid strings
           (arm64:and* :x2 :x8 -16 :imm t)    ; x2 = str2 & ~0xF (untagged)
@@ -2721,7 +2712,7 @@
   (setf *linear-fixups* nil)
   (setf *linear-block-info* nil)
   (setf *linear-loop-stack* nil)
-  (let ((code nil)
+  (let ((code-parts nil)  ;; Use push/nreverse for O(n) instead of append
         (offset 0))
     ;; First pass: generate code, record label positions and fixups
     (dolist (instr linear-ir)
@@ -2737,7 +2728,7 @@
            (let ((label (cadr instr)))
              (push (cons offset label) *linear-fixups*)
              (let ((instr-code (arm64:b 0)))
-               (setf code (append code instr-code))
+               (push instr-code code-parts)
                (incf offset (length instr-code)))))
 
           ((eq op 'jump-if-nil)
@@ -2745,13 +2736,13 @@
                  (label (caddr instr)))
              ;; Generate compare + conditional branch
              (let ((cmp-code (append (linear-load-temp :x0 src)
-                                     (arm64:cmp :x0 6 :imm t))))
-               (setf code (append code cmp-code))
+                                     (arm64:cmp :x0 #.+nil-value+ :imm t))))
+               (push cmp-code code-parts)
                (incf offset (length cmp-code)))
              ;; Record fixup for the branch
              (push (cons offset label) *linear-fixups*)
              (let ((branch-code (arm64:b.eq 0)))
-               (setf code (append code branch-code))
+               (push branch-code code-parts)
                (incf offset (length branch-code)))))
 
           ;; Block start - record block info for return-from
@@ -2771,12 +2762,12 @@
              ;; Generate: load value, save to dst, then branch
              (let ((save-code (append (linear-load-temp :x0 val-temp)
                                       (linear-save-temp dst-temp))))
-               (setf code (append code save-code))
+               (push save-code code-parts)
                (incf offset (length save-code)))
              ;; Record fixup for the jump
              (push (cons offset end-label) *linear-fixups*)
              (let ((branch-code (arm64:b 0)))
-               (setf code (append code branch-code))
+               (push branch-code code-parts)
                (incf offset (length branch-code)))))
 
           ;; Loop start - push label onto loop stack for continue
@@ -2792,7 +2783,7 @@
              ;; Emit jump to loop start (fixup later)
              (push (cons offset loop-label) *linear-fixups*)
              (let ((branch-code (arm64:b 0)))
-               (setf code (append code branch-code))
+               (push branch-code code-parts)
                (incf offset (length branch-code)))))
 
           ;; Store-param - store temp value back to parameter slot for TCO
@@ -2805,47 +2796,49 @@
              (let ((store-code (append (linear-load-temp :x0 src-temp)
                                        (arm64:sub :x1 :env param-offset :imm t)
                                        (arm64:str :x0 :x1 :offset 0))))
-               (setf code (append code store-code))
+               (push store-code code-parts)
                (incf offset (length store-code)))))
 
           ;; Normal instruction
           (t
            (let ((instr-code (codegen-linear-instr instr rtaddrs fnoffs)))
              (when instr-code
-               (setf code (append code instr-code))
+               (push instr-code code-parts)
                (incf offset (length instr-code))))))))
 
-    ;; Second pass: fix up branch offsets
-    (dolist (fixup *linear-fixups*)
-      (let* ((branch-offset (car fixup))
-             (label (cdr fixup))
-             (target-offset (cdr (assoc label *linear-labels*))))
-        (unless target-offset
-          (error "codegen: unresolved branch to label ~S (fixups: ~S, labels: ~S)"
-                 label *linear-fixups* *linear-labels*))
-        ;; Calculate relative offset in instructions (bytes / 4)
-        (let ((rel-offset (ash (- target-offset branch-offset) -2)))
-            ;; Patch the branch instruction
-            (let ((old-instr (logior (ash (elt code branch-offset) 0)
-                                    (ash (elt code (+ branch-offset 1)) 8)
-                                    (ash (elt code (+ branch-offset 2)) 16)
-                                    (ash (elt code (+ branch-offset 3)) 24))))
-              ;; Check if conditional branch (B.cond) vs unconditional (B/BL)
-              ;; B.cond has opcode 0x54 in bits [31:24]
-              (let ((new-instr
-                      (if (= (logand (ash old-instr -24) #xFF) #x54)
-                          ;; B.cond: imm19 in bits [23:5], cond in bits [3:0]
-                          (logior (logand old-instr #xFF00001F)  ; keep opcode and cond
-                                  (ash (logand rel-offset #x7FFFF) 5))  ; imm19 << 5
-                          ;; B/BL: imm26 in bits [25:0]
-                          (logior (logand old-instr #xFC000000)
-                                  (logand rel-offset #x3FFFFFF)))))
-                (setf (elt code branch-offset) (logand new-instr #xFF))
-                (setf (elt code (+ branch-offset 1)) (logand (ash new-instr -8) #xFF))
-                (setf (elt code (+ branch-offset 2)) (logand (ash new-instr -16) #xFF))
-                (setf (elt code (+ branch-offset 3)) (logand (ash new-instr -24) #xFF)))))))
+    ;; Flatten code-parts: reverse and flatten into single list
+    (let ((code (apply #'append (nreverse code-parts))))
+      ;; Second pass: fix up branch offsets
+      (dolist (fixup *linear-fixups*)
+        (let* ((branch-offset (car fixup))
+               (label (cdr fixup))
+               (target-offset (cdr (assoc label *linear-labels*))))
+          (unless target-offset
+            (error "codegen: unresolved branch to label ~S (fixups: ~S, labels: ~S)"
+                   label *linear-fixups* *linear-labels*))
+          ;; Calculate relative offset in instructions (bytes / 4)
+          (let ((rel-offset (ash (- target-offset branch-offset) -2)))
+              ;; Patch the branch instruction
+              (let ((old-instr (logior (ash (elt code branch-offset) 0)
+                                      (ash (elt code (+ branch-offset 1)) 8)
+                                      (ash (elt code (+ branch-offset 2)) 16)
+                                      (ash (elt code (+ branch-offset 3)) 24))))
+                ;; Check if conditional branch (B.cond) vs unconditional (B/BL)
+                ;; B.cond has opcode 0x54 in bits [31:24]
+                (let ((new-instr
+                        (if (= (logand (ash old-instr -24) #xFF) #x54)
+                            ;; B.cond: imm19 in bits [23:5], cond in bits [3:0]
+                            (logior (logand old-instr #xFF00001F)  ; keep opcode and cond
+                                    (ash (logand rel-offset #x7FFFF) 5))  ; imm19 << 5
+                            ;; B/BL: imm26 in bits [25:0]
+                            (logior (logand old-instr #xFC000000)
+                                    (logand rel-offset #x3FFFFFF)))))
+                  (setf (elt code branch-offset) (logand new-instr #xFF))
+                  (setf (elt code (+ branch-offset 1)) (logand (ash new-instr -8) #xFF))
+                  (setf (elt code (+ branch-offset 2)) (logand (ash new-instr -16) #xFF))
+                  (setf (elt code (+ branch-offset 3)) (logand (ash new-instr -24) #xFF)))))))
 
-    code))
+      code)))
 
 ;;; ============================================================
 ;;; Main Codegen Function (handles all IR nodes)
@@ -3109,7 +3102,8 @@
            ;; Apply TCO to all functions (converts self-tail-calls to loops)
            (all-fns (apply-tco-to-all-functions all-fns-raw))
            ;; Link-time verification: check all call-fn targets resolve
-           (_ #+sbcl (when (verify-link-references (mapcar #'car all-fns))
+           (_ #+sbcl (when (and (not *skip-link-verification*)
+                                (verify-link-references (mapcar #'car all-fns)))
                        (error "Link failed: undefined function references")))
            ;; Generate main code using linear codegen (simpler, well-tested)
            (main-linear (linearize main-ir))

@@ -16,6 +16,9 @@
    ;; Package definitions
    (:file "package" :depends-on ("host-sbcl"))
 
+   ;; Tag constants (SINGLE SOURCE OF TRUTH for hybrid 1+3 bit tagging)
+   (:file "../shared/tags" :depends-on ("package"))
+
    ;; Shared macros (while, incf, decf) - needed before reg-alloc
    (:file "../shared/macros" :depends-on ("package"))
 
@@ -24,6 +27,9 @@
     :pathname "../arm64/"
     :depends-on ("package")
     :components ((:file "asm")))
+
+   ;; ARM64 tag operation helpers (combines tags.lisp constants with arm64 encoding)
+   (:file "../shared/tag-ops" :depends-on ("../shared/tags" "arm64"))
 
    ;; Source-to-source expansions (shared by both compilers)
    (:file "expand" :depends-on ("package" "arm64"))
