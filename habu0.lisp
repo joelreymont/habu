@@ -1563,6 +1563,41 @@
         (h0-eval-while test body env fenv))
       nil))
 
+;; Helper for labels - create recursive local functions
+;; bindings is ((name (params...) body) ...)
+;; Returns extended fenv where each function can call any other (including itself)
+(defun h0-eval-labels-bindings (bindings fenv env)
+  ;; First pass: create fenv entries with placeholder bodies
+  ;; The fenv format is ((name params . body) ...)
+  (let ((new-fenv (h0-eval-labels-build-fenv bindings fenv)))
+    ;; All labels functions share this new-fenv (for mutual recursion)
+    new-fenv))
+
+(defun h0-eval-labels-build-fenv (bindings fenv)
+  (if (null bindings)
+      fenv
+      (let* ((binding (car bindings))
+             (name (car binding))
+             (params (cadr binding))
+             (body (caddr binding))
+             ;; Add function to fenv: (name . (params . body))
+             (entry (cons name (cons params body))))
+        (h0-eval-labels-build-fenv (cdr bindings) (cons entry fenv)))))
+
+;; Helper for flet - create non-recursive local functions
+;; bindings is ((name (params...) body) ...)
+;; Returns extended fenv where functions capture outer fenv (no self-recursion)
+(defun h0-eval-flet-bindings (bindings fenv env)
+  (if (null bindings)
+      fenv
+      (let* ((binding (car bindings))
+             (name (car binding))
+             (params (cadr binding))
+             (body (caddr binding))
+             ;; Add function to fenv: (name . (params . body))
+             (entry (cons name (cons params body))))
+        (h0-eval-flet-bindings (cdr bindings) (cons entry fenv) env))))
+
 ;; Helper for and - short-circuit evaluation
 (defun h0-eval-and (forms env fenv)
   (if (null forms)
@@ -1991,6 +2026,24 @@
             ;; Return closure: (CLOSURE-TAG params body captured-env)
             ;; Use interned symbol for reliable eq comparison
             (list (intern "CLOSURE-TAG") params body env)))
+         ;; LABELS - local recursive function definitions
+         ;; (labels ((f1 (x) body1) (f2 (y) body2)) body...)
+         ;; Creates closures that can call each other recursively
+         ((if (symbolp op) (op=labels op) nil)
+          (let* ((bindings (cadr expr))
+                 (body-forms (cddr expr))
+                 ;; Create closures for all functions, they share the extended fenv
+                 (labels-fenv (h0-eval-labels-bindings bindings fenv env)))
+            ;; Evaluate body with extended fenv
+            (h0-eval-progn body-forms env labels-fenv)))
+         ;; FLET - local non-recursive function definitions
+         ;; (flet ((f1 (x) body1)) body...) - f1 cannot call itself
+         ((if (symbolp op) (op=flet op) nil)
+          (let* ((bindings (cadr expr))
+                 (body-forms (cddr expr))
+                 ;; For flet, closures capture outer fenv (not recursive)
+                 (flet-fenv (h0-eval-flet-bindings bindings fenv env)))
+            (h0-eval-progn body-forms env flet-fenv)))
          ;; FUNCALL - call a function value (closure or symbol)
          ;; Supports: (funcall fn-name args...) where fn-name is a symbol
          ;;           (funcall closure args...) where closure is a lambda
