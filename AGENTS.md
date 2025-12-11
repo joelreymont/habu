@@ -24,8 +24,12 @@ Launch 2-4 agents simultaneously. Use git worktrees for parallel file changes.
 
 Example: `tag-check keyword-name` → warns if function expects wrong tag
 
-## Tags & Registers
-`val<<4`:fixnum | `ptr|1`:cons | `ptr|2`:sym | `ptr|3`:vec | `ptr|4`:str | `ptr|5`:closure | `0x06`:nil
+## Tags & Registers (Hybrid 1+3 bit, 16-byte aligned)
+```
+bit0=1: fixnum (63-bit, val>>1)
+bit0=0: ptr|tag (nil=0)
+  0:cons  2:sym  4:vec  6:str  8:closure  10:keyword  14:forward
+```
 
 x0-x7:args | x20:env | x24:closure | x27:GC | x28:heap
 
