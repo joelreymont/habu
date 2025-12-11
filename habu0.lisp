@@ -1598,6 +1598,15 @@
              (entry (cons name (cons params body))))
         (h0-eval-flet-bindings (cdr bindings) (cons entry fenv) env))))
 
+;; Helper for dolist - iterate over list evaluating body for each element
+;; env is flat list format: (sym val sym val ...)
+(defun h0-eval-dolist (var list-val body env fenv)
+  (if (null list-val)
+      nil
+      (let ((new-env (cons var (cons (car list-val) env))))
+        (h0-eval-progn body new-env fenv)
+        (h0-eval-dolist var (cdr list-val) body env fenv))))
+
 ;; Helper for and - short-circuit evaluation
 (defun h0-eval-and (forms env fenv)
   (if (null forms)
@@ -2026,6 +2035,14 @@
             ;; Return closure: (CLOSURE-TAG params body captured-env)
             ;; Use interned symbol for reliable eq comparison
             (list (intern "CLOSURE-TAG") params body env)))
+         ;; DOLIST - iterate over list
+         ;; (dolist (var list-form) body...) - evaluates body for each element
+         ((if (symbolp op) (op=dolist op) nil)
+          (let* ((binding (cadr expr))
+                 (var (car binding))
+                 (list-val (h0-eval (cadr binding) env fenv))
+                 (body (cddr expr)))
+            (h0-eval-dolist var list-val body env fenv)))
          ;; LABELS - local recursive function definitions
          ;; (labels ((f1 (x) body1) (f2 (y) body2)) body...)
          ;; Creates closures that can call each other recursively
