@@ -105,24 +105,14 @@
 ;;; Alist of (symbol . value) pairs for DEFVAR/SETQ globals
 (defvar *h0-globals* nil)
 
-;;; Runtime keyword variables - interned at startup for eq comparison
-;;; SBCL-compiled keywords != habu0-reader keywords, so we intern at runtime
+;;; Register keyword dispatch table - maps keyword -> register number
+;;; Populated by init-register-table, used by habu0-reg for O(1) lookup
+(defvar *register-table* nil)
+
+;;; Special keywords for other purposes (offset, imm)
+;;; These are interned at startup for eq comparison
 (defvar *kw-offset* nil)
 (defvar *kw-imm* nil)
-
-;;; Register keywords - pre-interned for eq comparison in arm64:reg
-;;; These are initialized in init-compile-ops and used via habu0-reg
-(defvar *kw-x0* nil) (defvar *kw-x1* nil) (defvar *kw-x2* nil) (defvar *kw-x3* nil)
-(defvar *kw-x4* nil) (defvar *kw-x5* nil) (defvar *kw-x6* nil) (defvar *kw-x7* nil)
-(defvar *kw-x8* nil) (defvar *kw-x9* nil) (defvar *kw-x10* nil) (defvar *kw-x11* nil)
-(defvar *kw-x12* nil) (defvar *kw-x13* nil) (defvar *kw-x14* nil) (defvar *kw-x15* nil)
-(defvar *kw-x16* nil) (defvar *kw-x17* nil) (defvar *kw-x18* nil) (defvar *kw-x19* nil)
-(defvar *kw-x20* nil) (defvar *kw-x21* nil) (defvar *kw-x22* nil) (defvar *kw-x23* nil)
-(defvar *kw-x24* nil) (defvar *kw-x25* nil) (defvar *kw-x26* nil) (defvar *kw-x27* nil)
-(defvar *kw-x28* nil) (defvar *kw-x29* nil) (defvar *kw-x30* nil)
-(defvar *kw-sp* nil) (defvar *kw-xzr* nil) (defvar *kw-lr* nil) (defvar *kw-fp* nil)
-(defvar *kw-env* nil) (defvar *kw-closure* nil) (defvar *kw-code-base* nil)
-(defvar *kw-gc* nil) (defvar *kw-heap* nil)
 
 ;;; ==========================================================
 ;;; Error Infrastructure - crash with message, no silent fallbacks
@@ -332,21 +322,25 @@
 ;; Handles pkg:sym syntax for package-qualified symbols
 ;; Returns existing symbol if found, else creates new and adds it
 ;; This ensures all symbols with the same name are eq
+;; IMPORTANT: Always check global table FIRST - this is where register-symbol
+;; puts SBCL symbols for mode 1024 cross-symbol-table compatibility.
 (defun intern (name)
   (let* ((uname (string-upcase name))
          (parsed (parse-symbol-name uname))
          (pkg-name (car parsed))
          (sym-name (cdr parsed)))
-    (if pkg-name
-        ;; Explicit package prefix: intern in that package
-        (intern-in-package sym-name pkg-name)
-        ;; No package prefix: use current package or fall back to global table
-        (if *current-package*
-            (intern-in-package sym-name *current-package*)
-            ;; Default: use global intern table (CL-USER equivalent)
-            (let ((existing (find-interned uname (get-intern-table))))
-              (if existing
-                  existing
+    ;; First check global table - registered SBCL symbols live here
+    (let ((global-existing (find-interned (if pkg-name sym-name uname) (get-intern-table))))
+      (if global-existing
+          global-existing
+          ;; Not in global table, proceed with package interning
+          (if pkg-name
+              ;; Explicit package prefix: intern in that package
+              (intern-in-package sym-name pkg-name)
+              ;; No package prefix: use current package or create global
+              (if *current-package*
+                  (intern-in-package sym-name *current-package*)
+                  ;; Default: add to global intern table
                   (let ((sym (make-symbol-from-string uname)))
                     (set-intern-table (cons (cons uname sym) (get-intern-table)))
                     sym)))))))
@@ -750,20 +744,25 @@
           nil)))
 
 (defun string-equal (s1 s2)
-  (let ((len1 (string-length s1))
-        (len2 (string-length s2)))
-    (if (= len1 len2)
-        (string-equal-loop s1 s2 len1 0)
-        nil)))
+  ;; TEMPORARY CRASH: Catch all uses of string-equal for symbol comparison.
+  ;; Symbol comparison should use eq after proper interning.
+  ;; Remove this crash once all string-equal usages are converted.
+  ;; See bead: habu-z1vra (remove string-compare fallbacks)
+  (fatal-error "string-equal: DO NOT USE for symbol comparison - use eq after interning")
+  ;; Original implementation (restore when bead habu-z1vra is complete):
+  ;; (let ((len1 (string-length s1))
+  ;;       (len2 (string-length s2)))
+  ;;   (if (= len1 len2)
+  ;;       (string-equal-loop s1 s2 len1 0)
+  ;;       nil))
+  )
 
-;; Operator checks - compare symbol names using string-equal
-;; Native Habu creates new symbol objects at runtime, so eq comparison fails.
-;; Use string-equal on symbol-name for reliable operator matching.
-;; Must handle nil arguments - nil has tag 6, not a proper symbol.
+;; Symbol equality - uses eq on properly interned symbols
+;; All operator symbols are registered in habu's intern table at startup.
+;; habu-read looks up symbols and returns the registered object.
+;; This enables O(1) eq comparison instead of O(n) string comparison.
 (defun sym-eq (s1 s2)
-  (if (or (null s1) (null s2))
-      nil  ;; nil can't match any symbol by name
-      (string-equal (symbol-name s1) (symbol-name s2))))
+  (eq s1 s2))
 (defun op=quote (sym) (sym-eq sym *op-quote*))
 (defun op=if (sym) (sym-eq sym *op-if*))
 (defun op=let (sym) (sym-eq sym *op-let*))
@@ -1053,13 +1052,17 @@
 ;;; This interpreter supports defun, let, and recursion.
 
 ;; Look up function by symbol in fenv
-;; Entry is (symbol . (params . body))
-;; Uses sym-eq (name comparison) since symbols may be from different intern tables
+;; All fenv keys are habu symbols (properly interned at startup).
+;; Both user defuns and builtins use symbols as keys.
+;; sym-eq (eq) gives O(1) comparison.
 (defun fenv-lookup (sym fenv)
+  ;; All fenv keys are habu symbols (properly interned).
+  ;; Use sym-eq (eq) for O(1) comparison.
+  ;; Both user defuns and builtins use symbols as keys.
   (if (null fenv) nil
       (let ((entry (car fenv)))
         (if (sym-eq sym (car entry))
-            (cdr entry)  ;; Returns (params . body)
+            (cdr entry)
             (fenv-lookup sym (cdr fenv))))))
 
 ;; Create binding list from params and args
@@ -2243,12 +2246,12 @@
          (cons (intern "REG") 50))))
 
 ;; Lookup dispatch ID in table
-;; Uses string= for symbol name comparison to handle compile-time
-;; vs runtime interned symbol identity issues.
+;; Uses eq because both name and table keys are SBCL symbols
+;; interned at compile time - they share identity.
 (defun find-builtin-id (name table)
   (if (null table)
       nil
-      (if (string= (symbol-name name) (symbol-name (caar table)))
+      (if (eq name (caar table))
           (cdar table)
           (find-builtin-id name (cdr table)))))
 
@@ -2299,31 +2302,12 @@
 ;;; After normalization, keywords are habu0-interned, so eq works.
 ;;; This replaces arm64:reg's string comparison at the boundary.
 (defun habu0-reg (r)
-  "Convert normalized register keyword to number using eq.
-   Called after normalize-keyword ensures r is habu0-interned."
-  (cond
-    ;; General purpose registers x0-x30
-    ((eq r *kw-x0*) 0)   ((eq r *kw-x1*) 1)   ((eq r *kw-x2*) 2)   ((eq r *kw-x3*) 3)
-    ((eq r *kw-x4*) 4)   ((eq r *kw-x5*) 5)   ((eq r *kw-x6*) 6)   ((eq r *kw-x7*) 7)
-    ((eq r *kw-x8*) 8)   ((eq r *kw-x9*) 9)   ((eq r *kw-x10*) 10) ((eq r *kw-x11*) 11)
-    ((eq r *kw-x12*) 12) ((eq r *kw-x13*) 13) ((eq r *kw-x14*) 14) ((eq r *kw-x15*) 15)
-    ((eq r *kw-x16*) 16) ((eq r *kw-x17*) 17) ((eq r *kw-x18*) 18) ((eq r *kw-x19*) 19)
-    ((eq r *kw-x20*) 20) ((eq r *kw-x21*) 21) ((eq r *kw-x22*) 22) ((eq r *kw-x23*) 23)
-    ((eq r *kw-x24*) 24) ((eq r *kw-x25*) 25) ((eq r *kw-x26*) 26) ((eq r *kw-x27*) 27)
-    ((eq r *kw-x28*) 28) ((eq r *kw-x29*) 29) ((eq r *kw-x30*) 30)
-    ;; Special registers
-    ((eq r *kw-sp*) 31)
-    ((eq r *kw-xzr*) 31)
-    ((eq r *kw-lr*) 30)
-    ((eq r *kw-fp*) 29)
-    ;; Habu-specific aliases
-    ((eq r *kw-env*) 20)
-    ((eq r *kw-closure*) 24)
-    ((eq r *kw-code-base*) 26)
-    ((eq r *kw-gc*) 27)
-    ((eq r *kw-heap*) 28)
-    ;; Unknown register - error
-    (t (error "habu0-reg: unknown register keyword"))))
+  "Convert register keyword to number using dispatch table lookup.
+   Uses *register-table* populated by init-compile-ops."
+  (let ((entry (assoc r *register-table* :test #'eq)))
+    (if entry
+        (cdr entry)
+        (error "habu0-reg: unknown register keyword"))))
 
 ;;; fenv-call-arm64: Call an ARM64 function from fenv
 ;;; In SBCL mode 1024, ARM64 functions are in fenv as (name . fn-entry)
@@ -2480,239 +2464,201 @@
   "Check if symbol equals the interned symbol for name"
   (eq sym (intern name)))
 
-;; Register a compile-time symbol in the runtime intern table
-;; This ensures that when the reader interns the same name, it gets
-;; the same symbol object (enabling eq comparison to work)
-;; NOTE: Takes name STRING and symbol separately because (symbol-name sym)
-;; at runtime would use SBCL's symbol-name, not habu's, which creates
-;; an incompatible string object.
-(defun register-symbol (name sym)
-  (set-intern-table (cons (cons name sym) (get-intern-table))))
+;;; ============================================================
+;;; Macro-based symbol interning for mode 1024
+;;; ============================================================
+;;;
+;;; Problem: In mode 1024, the binary contains SBCL-compiled code.
+;;; String literals like "QUOTE" become SBCL strings embedded in the binary.
+;;; Habu's string primitives (string-length, string-ref) expect habu strings
+;;; (tag 4), so they crash when given SBCL strings.
+;;;
+;;; Solution: Use macros to expand string literals at SBCL compile time
+;;; into code that builds habu strings using only integer literals and
+;;; habu primitives. The generated code works correctly at runtime.
+;;;
+;;; Example: (make-habu-string-form "HI") expands to:
+;;;   (let ((vec (make-vector 2)))
+;;;     (vector-set vec 0 72)  ; H
+;;;     (vector-set vec 1 73)  ; I
+;;;     (make-string-from-vector vec))
 
-;; Initialize compile ops - register symbols in intern table for eq comparison
+#+sbcl
+(defmacro make-habu-string-form (str)
+  "Expand a string literal to habu primitive calls at compile time.
+   The generated code uses only integer literals - no SBCL strings."
+  (let ((len (length str))
+        (vec-sym (gensym "VEC")))
+    `(let ((,vec-sym (make-vector ,len)))
+       ,@(loop for i from 0 below len
+               collect `(vector-set ,vec-sym ,i ,(char-code (char str i))))
+       (make-string-from-vector ,vec-sym))))
+
+#+sbcl
+(defmacro make-habu-symbol-form (str)
+  "Create a habu symbol and register it in the intern table.
+   Expands at compile time to code using only integer literals."
+  (let ((str-sym (gensym "STR"))
+        (sym-sym (gensym "SYM")))
+    `(let* ((,str-sym (make-habu-string-form ,str))
+            (,sym-sym (make-symbol-from-string ,str-sym)))
+       (set-intern-table (cons (cons ,str-sym ,sym-sym) (get-intern-table)))
+       ,sym-sym)))
+
+#+sbcl
+(defmacro make-habu-keyword-form (str)
+  "Create a habu keyword and register it in the keyword table.
+   Expands at compile time to code using only integer literals."
+  (let ((str-sym (gensym "STR"))
+        (kw-sym (gensym "KW")))
+    `(let* ((,str-sym (make-habu-string-form ,str))
+            (,kw-sym (make-keyword-from-string ,str-sym)))
+       (set-keyword-table (cons (cons ,str-sym ,kw-sym) (get-keyword-table)))
+       ,kw-sym)))
+
+;; For non-SBCL (native habu), these just use regular functions
+#-sbcl
+(defun make-habu-string-form (str) str)  ; Native strings are already habu strings
+
+#-sbcl
+(defun make-habu-symbol-form (str)
+  (intern str))
+
+#-sbcl
+(defun make-habu-keyword-form (str)
+  (intern-keyword str))
+
+;;; Macro to define the register dispatch table
+;;; Each entry maps a register keyword to its number
+;;; Expands at compile time to code using only integer literals
+#+sbcl
+(defmacro define-registers (&rest entries)
+  "Populate *register-table* with (keyword . number) pairs.
+   ENTRIES are (name number) lists like (\"X0\" 0).
+   Expands at compile time to code that builds habu keywords."
+  `(setq *register-table*
+     (list ,@(loop for entry in entries
+                   collect `(cons (make-habu-keyword-form ,(car entry)) ,(cadr entry))))))
+
+#-sbcl
+(defmacro define-registers (&rest entries)
+  "Native habu version - strings work directly."
+  `(setq *register-table*
+     (list ,@(loop for entry in entries
+                   collect `(cons (intern-keyword ,(car entry)) ,(cadr entry))))))
+
+;; Initialize compile ops - create habu symbols at runtime
+;; Uses macros to expand string literals to integer-based construction at compile time.
+;; This ensures habu-read returns the SAME symbol object, enabling eq comparison.
 (defun init-compile-ops ()
-  ;; Initialize all operator symbols using quoted symbols
-  ;; IMPORTANT: Use 'SYMBOL not (intern "SYMBOL") because:
-  ;; - Quoted symbols are created at compile-time by SBCL
-  ;; - They are the SAME objects used in compiled code like '(+ 1 2)
-  ;; - Runtime (intern ...) creates DIFFERENT symbol objects
-  ;; - eq comparison requires object identity, not name equality
-  (setq *op-quote* 'quote)
-  (setq *op-if* 'if)
-  (setq *op-let* 'let)
-  (setq *op-let-star* 'let*)
-  (setq *op-defun* 'defun)
-  (setq *op-defvar* 'defvar)
-  (setq *op-while* 'while)
-  (setq *op-progn* 'progn)
-  (setq *op-cond* 'cond)
-  (setq *op-t* 't)
-  (setq *op-plus* '+)
-  (setq *op-minus* '-)
-  (setq *op-mul* '*)
-  (setq *op-div* '/)
-  (setq *op-mod* 'mod)
-  (setq *op-eq-num* '=)
-  (setq *op-lt* '<)
-  (setq *op-gt* '>)
-  (setq *op-le* '<=)
-  (setq *op-ge* '>=)
-  (setq *op-cons* 'cons)
-  (setq *op-car* 'car)
-  (setq *op-cdr* 'cdr)
-  (setq *op-cadr* 'cadr)
-  (setq *op-cddr* 'cddr)
-  (setq *op-caddr* 'caddr)
-  (setq *op-cadddr* 'cadddr)
-  (setq *op-null* 'null)
-  (setq *op-consp* 'consp)
-  (setq *op-list* 'list)
-  (setq *op-not* 'not)
-  (setq *op-and* 'and)
-  (setq *op-or* 'or)
-  (setq *op-defpackage* 'defpackage)
-  (setq *op-in-package* 'in-package)
-  (setq *op-case* 'case)
-  (setq *op-when* 'when)
-  (setq *op-unless* 'unless)
-  (setq *op-declaim* 'declaim)
-  (setq *op-setq* 'setq)
-  (setq *op-error* 'error)
+  ;; Create habu symbols using macro-generated code
+  ;; Each macro call expands at SBCL compile time to code that:
+  ;; 1. Creates a habu string from char codes (integers)
+  ;; 2. Creates a habu symbol from that string
+  ;; 3. Registers it in the intern table
+  ;; No SBCL strings in the generated runtime code!
+  (setq *op-quote* (make-habu-symbol-form "QUOTE"))
+  (setq *op-if* (make-habu-symbol-form "IF"))
+  (setq *op-let* (make-habu-symbol-form "LET"))
+  (setq *op-let-star* (make-habu-symbol-form "LET*"))
+  (setq *op-defun* (make-habu-symbol-form "DEFUN"))
+  (setq *op-defvar* (make-habu-symbol-form "DEFVAR"))
+  (setq *op-while* (make-habu-symbol-form "WHILE"))
+  (setq *op-progn* (make-habu-symbol-form "PROGN"))
+  (setq *op-cond* (make-habu-symbol-form "COND"))
+  (setq *op-t* (make-habu-symbol-form "T"))
+  (setq *op-plus* (make-habu-symbol-form "+"))
+  (setq *op-minus* (make-habu-symbol-form "-"))
+  (setq *op-mul* (make-habu-symbol-form "*"))
+  (setq *op-div* (make-habu-symbol-form "/"))
+  (setq *op-mod* (make-habu-symbol-form "MOD"))
+  (setq *op-eq-num* (make-habu-symbol-form "="))
+  (setq *op-lt* (make-habu-symbol-form "<"))
+  (setq *op-gt* (make-habu-symbol-form ">"))
+  (setq *op-le* (make-habu-symbol-form "<="))
+  (setq *op-ge* (make-habu-symbol-form ">="))
+  (setq *op-cons* (make-habu-symbol-form "CONS"))
+  (setq *op-car* (make-habu-symbol-form "CAR"))
+  (setq *op-cdr* (make-habu-symbol-form "CDR"))
+  (setq *op-cadr* (make-habu-symbol-form "CADR"))
+  (setq *op-cddr* (make-habu-symbol-form "CDDR"))
+  (setq *op-caddr* (make-habu-symbol-form "CADDR"))
+  (setq *op-cadddr* (make-habu-symbol-form "CADDDR"))
+  (setq *op-null* (make-habu-symbol-form "NULL"))
+  (setq *op-consp* (make-habu-symbol-form "CONSP"))
+  (setq *op-list* (make-habu-symbol-form "LIST"))
+  (setq *op-not* (make-habu-symbol-form "NOT"))
+  (setq *op-and* (make-habu-symbol-form "AND"))
+  (setq *op-or* (make-habu-symbol-form "OR"))
+  (setq *op-defpackage* (make-habu-symbol-form "DEFPACKAGE"))
+  (setq *op-in-package* (make-habu-symbol-form "IN-PACKAGE"))
+  (setq *op-case* (make-habu-symbol-form "CASE"))
+  (setq *op-when* (make-habu-symbol-form "WHEN"))
+  (setq *op-unless* (make-habu-symbol-form "UNLESS"))
+  (setq *op-declaim* (make-habu-symbol-form "DECLAIM"))
+  (setq *op-setq* (make-habu-symbol-form "SETQ"))
+  (setq *op-error* (make-habu-symbol-form "ERROR"))
   ;; Additional operators
-  (setq *op-symbolp* 'symbolp)
-  (setq *op-numberp* 'numberp)
-  (setq *op-stringp* 'stringp)
-  (setq *op-keywordp* 'keywordp)
-  (setq *op-string-length* 'string-length)
-  (setq *op-string-ref* 'string-ref)
-  (setq *op-char-at* 'char-at)
-  (setq *op-string=* 'string=)
-  (setq *op-string-equal* 'string-equal)
-  (setq *op-sym-eq* 'sym-eq)
-  (setq *op-member* 'member)
-  (setq *op-symbol-name* 'symbol-name)
-  (setq *op-keyword-name* 'keyword-name)
-  (setq *op-logand* 'logand)
-  (setq *op-logior* 'logior)
-  (setq *op-ash* 'ash)
-  (setq *op-eq* 'eq)
-  (setq *op-eql* 'eql)
-  (setq *op-get-tag* 'get-tag)
-  (setq *op-set-tag* 'set-tag)
-  (setq *op-length* 'length)
-  (setq *op-make-vector* 'make-vector)
-  (setq *op-vector-length* 'vector-length)
-  (setq *op-vector-set* 'vector-set)
-  (setq *op-vector-ref* 'vector-ref)
-  (setq *op-reverse* 'reverse)
-  (setq *op-make-string-from-vector* 'make-string-from-vector)
-  (setq *op-make-symbol-from-string* 'make-symbol-from-string)
-  (setq *op-caar* 'caar)
-  (setq *op-cdar* 'cdar)
-  (setq *op-nth* 'nth)
-  (setq *op-lognot* 'lognot)
-  (setq *op-neq* '/=)
-  (setq *op-lambda* 'lambda)
-  (setq *op-funcall* 'funcall)
-  (setq *op-setcar* 'setcar)
-  (setq *op-setcdr* 'setcdr)
-  (setq *op-dolist* 'dolist)
-  (setq *op-flet* 'flet)
-  (setq *op-labels* 'labels)
-  (setq *op-mapcar* 'mapcar)
-  (setq *op-ecase* 'ecase)
-  (setq *op-listp* 'listp)
-  (setq *op-nil* 'nil)
-  (setq *op-otherwise* 'otherwise)
-  ;; Initialize runtime keywords for eq comparison
-  (setq *kw-offset* (intern-keyword "OFFSET"))
-  (setq *kw-imm* (intern-keyword "IMM"))
-  ;; Initialize register keywords for eq comparison in habu0-reg
-  (setq *kw-x0* (intern-keyword "X0"))
-  (setq *kw-x1* (intern-keyword "X1"))
-  (setq *kw-x2* (intern-keyword "X2"))
-  (setq *kw-x3* (intern-keyword "X3"))
-  (setq *kw-x4* (intern-keyword "X4"))
-  (setq *kw-x5* (intern-keyword "X5"))
-  (setq *kw-x6* (intern-keyword "X6"))
-  (setq *kw-x7* (intern-keyword "X7"))
-  (setq *kw-x8* (intern-keyword "X8"))
-  (setq *kw-x9* (intern-keyword "X9"))
-  (setq *kw-x10* (intern-keyword "X10"))
-  (setq *kw-x11* (intern-keyword "X11"))
-  (setq *kw-x12* (intern-keyword "X12"))
-  (setq *kw-x13* (intern-keyword "X13"))
-  (setq *kw-x14* (intern-keyword "X14"))
-  (setq *kw-x15* (intern-keyword "X15"))
-  (setq *kw-x16* (intern-keyword "X16"))
-  (setq *kw-x17* (intern-keyword "X17"))
-  (setq *kw-x18* (intern-keyword "X18"))
-  (setq *kw-x19* (intern-keyword "X19"))
-  (setq *kw-x20* (intern-keyword "X20"))
-  (setq *kw-x21* (intern-keyword "X21"))
-  (setq *kw-x22* (intern-keyword "X22"))
-  (setq *kw-x23* (intern-keyword "X23"))
-  (setq *kw-x24* (intern-keyword "X24"))
-  (setq *kw-x25* (intern-keyword "X25"))
-  (setq *kw-x26* (intern-keyword "X26"))
-  (setq *kw-x27* (intern-keyword "X27"))
-  (setq *kw-x28* (intern-keyword "X28"))
-  (setq *kw-x29* (intern-keyword "X29"))
-  (setq *kw-x30* (intern-keyword "X30"))
-  (setq *kw-sp* (intern-keyword "SP"))
-  (setq *kw-xzr* (intern-keyword "XZR"))
-  (setq *kw-lr* (intern-keyword "LR"))
-  (setq *kw-fp* (intern-keyword "FP"))
-  (setq *kw-env* (intern-keyword "ENV"))
-  (setq *kw-closure* (intern-keyword "CLOSURE"))
-  (setq *kw-code-base* (intern-keyword "CODE-BASE"))
-  (setq *kw-gc* (intern-keyword "GC"))
-  (setq *kw-heap* (intern-keyword "HEAP"))
-  ;; Register all operator symbols in intern table so reader returns same objects
-  ;; Each call passes (name-string symbol) to avoid calling symbol-name at runtime
-  (register-symbol "QUOTE" 'quote)
-  (register-symbol "IF" 'if)
-  (register-symbol "LET" 'let)
-  (register-symbol "LET*" 'let*)
-  (register-symbol "DEFUN" 'defun)
-  (register-symbol "DEFVAR" 'defvar)
-  (register-symbol "WHILE" 'while)
-  (register-symbol "PROGN" 'progn)
-  (register-symbol "COND" 'cond)
-  (register-symbol "T" 't)
-  (register-symbol "+" '+)
-  (register-symbol "-" '-)
-  (register-symbol "*" '*)
-  (register-symbol "/" '/)
-  (register-symbol "MOD" 'mod)
-  (register-symbol "=" '=)
-  (register-symbol "<" '<)
-  (register-symbol ">" '>)
-  (register-symbol "<=" '<=)
-  (register-symbol ">=" '>=)
-  (register-symbol "CONS" 'cons)
-  (register-symbol "CAR" 'car)
-  (register-symbol "CDR" 'cdr)
-  (register-symbol "CADR" 'cadr)
-  (register-symbol "CDDR" 'cddr)
-  (register-symbol "CADDR" 'caddr)
-  (register-symbol "CADDDR" 'cadddr)
-  (register-symbol "NULL" 'null)
-  (register-symbol "CONSP" 'consp)
-  (register-symbol "LIST" 'list)
-  (register-symbol "NOT" 'not)
-  (register-symbol "AND" 'and)
-  (register-symbol "OR" 'or)
-  (register-symbol "DEFPACKAGE" 'defpackage)
-  (register-symbol "IN-PACKAGE" 'in-package)
-  (register-symbol "CASE" 'case)
-  (register-symbol "WHEN" 'when)
-  (register-symbol "UNLESS" 'unless)
-  (register-symbol "DECLAIM" 'declaim)
-  (register-symbol "SETQ" 'setq)
-  (register-symbol "ERROR" 'error)
-  (register-symbol "SYMBOLP" 'symbolp)
-  (register-symbol "NUMBERP" 'numberp)
-  (register-symbol "STRINGP" 'stringp)
-  (register-symbol "KEYWORDP" 'keywordp)
-  (register-symbol "STRING-LENGTH" 'string-length)
-  (register-symbol "STRING-REF" 'string-ref)
-  (register-symbol "CHAR-AT" 'char-at)
-  (register-symbol "STRING=" 'string=)
-  (register-symbol "SYMBOL-NAME" 'symbol-name)
-  (register-symbol "KEYWORD-NAME" 'keyword-name)
-  (register-symbol "LOGAND" 'logand)
-  (register-symbol "LOGIOR" 'logior)
-  (register-symbol "ASH" 'ash)
-  (register-symbol "EQ" 'eq)
-  (register-symbol "EQL" 'eql)
-  (register-symbol "GET-TAG" 'get-tag)
-  (register-symbol "SET-TAG" 'set-tag)
-  (register-symbol "LENGTH" 'length)
-  (register-symbol "MAKE-VECTOR" 'make-vector)
-  (register-symbol "VECTOR-LENGTH" 'vector-length)
-  (register-symbol "VECTOR-SET" 'vector-set)
-  (register-symbol "VECTOR-REF" 'vector-ref)
-  (register-symbol "REVERSE" 'reverse)
-  (register-symbol "MAKE-STRING-FROM-VECTOR" 'make-string-from-vector)
-  (register-symbol "MAKE-SYMBOL-FROM-STRING" 'make-symbol-from-string)
-  (register-symbol "CAAR" 'caar)
-  (register-symbol "CDAR" 'cdar)
-  (register-symbol "NTH" 'nth)
-  (register-symbol "LOGNOT" 'lognot)
-  (register-symbol "/=" '/=)
-  (register-symbol "LAMBDA" 'lambda)
-  (register-symbol "FUNCALL" 'funcall)
-  (register-symbol "SETCAR" 'setcar)
-  (register-symbol "SETCDR" 'setcdr)
-  (register-symbol "DOLIST" 'dolist)
-  (register-symbol "FLET" 'flet)
-  (register-symbol "LABELS" 'labels)
-  (register-symbol "MAPCAR" 'mapcar)
-  (register-symbol "ECASE" 'ecase)
-  (register-symbol "LISTP" 'listp)
-  ;; Note: 'nil is literally NIL (not a symbol), so don't register it
-  (register-symbol "OTHERWISE" 'otherwise)
+  (setq *op-symbolp* (make-habu-symbol-form "SYMBOLP"))
+  (setq *op-numberp* (make-habu-symbol-form "NUMBERP"))
+  (setq *op-stringp* (make-habu-symbol-form "STRINGP"))
+  (setq *op-keywordp* (make-habu-symbol-form "KEYWORDP"))
+  (setq *op-string-length* (make-habu-symbol-form "STRING-LENGTH"))
+  (setq *op-string-ref* (make-habu-symbol-form "STRING-REF"))
+  (setq *op-char-at* (make-habu-symbol-form "CHAR-AT"))
+  (setq *op-string=* (make-habu-symbol-form "STRING="))
+  (setq *op-string-equal* (make-habu-symbol-form "STRING-EQUAL"))
+  (setq *op-sym-eq* (make-habu-symbol-form "SYM-EQ"))
+  (setq *op-member* (make-habu-symbol-form "MEMBER"))
+  (setq *op-symbol-name* (make-habu-symbol-form "SYMBOL-NAME"))
+  (setq *op-keyword-name* (make-habu-symbol-form "KEYWORD-NAME"))
+  (setq *op-logand* (make-habu-symbol-form "LOGAND"))
+  (setq *op-logior* (make-habu-symbol-form "LOGIOR"))
+  (setq *op-ash* (make-habu-symbol-form "ASH"))
+  (setq *op-eq* (make-habu-symbol-form "EQ"))
+  (setq *op-eql* (make-habu-symbol-form "EQL"))
+  (setq *op-get-tag* (make-habu-symbol-form "GET-TAG"))
+  (setq *op-set-tag* (make-habu-symbol-form "SET-TAG"))
+  (setq *op-length* (make-habu-symbol-form "LENGTH"))
+  (setq *op-make-vector* (make-habu-symbol-form "MAKE-VECTOR"))
+  (setq *op-vector-length* (make-habu-symbol-form "VECTOR-LENGTH"))
+  (setq *op-vector-set* (make-habu-symbol-form "VECTOR-SET"))
+  (setq *op-vector-ref* (make-habu-symbol-form "VECTOR-REF"))
+  (setq *op-reverse* (make-habu-symbol-form "REVERSE"))
+  (setq *op-make-string-from-vector* (make-habu-symbol-form "MAKE-STRING-FROM-VECTOR"))
+  (setq *op-make-symbol-from-string* (make-habu-symbol-form "MAKE-SYMBOL-FROM-STRING"))
+  (setq *op-caar* (make-habu-symbol-form "CAAR"))
+  (setq *op-cdar* (make-habu-symbol-form "CDAR"))
+  (setq *op-nth* (make-habu-symbol-form "NTH"))
+  (setq *op-lognot* (make-habu-symbol-form "LOGNOT"))
+  (setq *op-neq* (make-habu-symbol-form "/="))
+  (setq *op-lambda* (make-habu-symbol-form "LAMBDA"))
+  (setq *op-funcall* (make-habu-symbol-form "FUNCALL"))
+  (setq *op-setcar* (make-habu-symbol-form "SETCAR"))
+  (setq *op-setcdr* (make-habu-symbol-form "SETCDR"))
+  (setq *op-dolist* (make-habu-symbol-form "DOLIST"))
+  (setq *op-flet* (make-habu-symbol-form "FLET"))
+  (setq *op-labels* (make-habu-symbol-form "LABELS"))
+  (setq *op-mapcar* (make-habu-symbol-form "MAPCAR"))
+  (setq *op-ecase* (make-habu-symbol-form "ECASE"))
+  (setq *op-listp* (make-habu-symbol-form "LISTP"))
+  (setq *op-nil* (make-habu-symbol-form "NIL"))
+  (setq *op-otherwise* (make-habu-symbol-form "OTHERWISE"))
+  ;; Initialize special keywords for eq comparison
+  (setq *kw-offset* (make-habu-keyword-form "OFFSET"))
+  (setq *kw-imm* (make-habu-keyword-form "IMM"))
+  ;; Initialize register dispatch table - single table instead of 40+ variables
+  ;; Each entry is (keyword . register-number) for O(1) lookup in habu0-reg
+  (define-registers
+    ;; General purpose registers x0-x30
+    ("X0" 0) ("X1" 1) ("X2" 2) ("X3" 3) ("X4" 4) ("X5" 5) ("X6" 6) ("X7" 7)
+    ("X8" 8) ("X9" 9) ("X10" 10) ("X11" 11) ("X12" 12) ("X13" 13) ("X14" 14) ("X15" 15)
+    ("X16" 16) ("X17" 17) ("X18" 18) ("X19" 19) ("X20" 20) ("X21" 21) ("X22" 22) ("X23" 23)
+    ("X24" 24) ("X25" 25) ("X26" 26) ("X27" 27) ("X28" 28) ("X29" 29) ("X30" 30)
+    ;; Special registers
+    ("SP" 31) ("XZR" 31) ("LR" 30) ("FP" 29)
+    ;; Habu-specific aliases
+    ("ENV" 20) ("CLOSURE" 24) ("CODE-BASE" 26) ("GC" 27) ("HEAP" 28))
   nil)
 
 ;; Environment lookup for compilation - returns offset or nil
@@ -4610,10 +4556,19 @@
 ;;; Build fenv with compiler functions for self-compilation mode
 ;;; Each entry is (name params . body) matching collect-defuns format
 ;;; For built-in functions, we use a special :builtin marker
-;; Helper to create builtin fenv entry - interns name once
+;; Helper to create builtin fenv entry - uses habu symbol as key
+;; Mode 1024: fenv keys are habu symbols, lookup uses sym-eq (O(1) eq comparison)
+;; The symbol is interned at startup, habu-read returns the same symbol
+#+sbcl
+(defmacro make-builtin-entry (name builtin-kw)
+  "Create fenv entry with habu symbol key (macro expands at compile time).
+   The name is converted to a habu symbol, enabling eq comparison at runtime."
+  `(cons (make-habu-symbol-form ,name) (cons ,builtin-kw (intern ,name))))
+
+#-sbcl
 (defun make-builtin-entry (name builtin-kw)
-  (let ((sym (intern name)))
-    (cons sym (cons builtin-kw sym))))
+  ;; Native habu - intern to get canonical symbol
+  (cons (intern name) (cons builtin-kw (intern name))))
 
 (defun make-compiler-fenv ()
   "Build fenv with core compiler functions exposed.
