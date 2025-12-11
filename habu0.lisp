@@ -109,6 +109,11 @@
 ;;; Populated by init-register-table, used by habu0-reg for O(1) lookup
 (defvar *register-table* nil)
 
+;;; Operator dispatch table - maps habu symbol -> dispatch ID (integer)
+;;; Single table replaces 88 *op-* variables. Built by init-compile-ops.
+;;; Dispatch IDs are assigned by define-ops macro for efficient match dispatch.
+(defvar *op-dispatch-table* nil)
+
 ;;; Special keywords for other purposes (offset, imm)
 ;;; These are interned at startup for eq comparison
 (defvar *kw-offset* nil)
@@ -300,19 +305,95 @@
 (defun fatal-error-ir (msg)
   (list 'call-ir 'fatal-error (list (list 'str-lit msg))))
 
-;;; Symbol interning - ensures eq works for all symbols with same name
-;;; The intern table is stored at [x27+0] and accessed via primitives
+;;; ==========================================================
+;;; Hash Table Implementation - O(1) amortized lookup
+;;; ==========================================================
+;;;
+;;; Structure: vector of N buckets, each bucket is an alist
+;;; Hash function: DJB2 (fast, good distribution)
+;;; Collision handling: chaining (alist per bucket)
 
-;; Search intern table (alist of (name . symbol)) for name
+(defvar *hash-table-size* 256)  ; Number of buckets (power of 2 for fast modulo)
+
+;; DJB2 hash function for strings
+;; Returns hash value as fixnum
+(defun string-hash (s)
+  (string-hash-loop s (string-length s) 0 5381))
+
+(defun string-hash-loop (s len i hash)
+  (if (>= i len)
+      hash
+      (let ((c (string-ref s i)))
+        ;; hash = hash * 33 + c = (hash << 5) + hash + c
+        (string-hash-loop s len (+ i 1)
+                          (+ (ash hash 5) hash c)))))
+
+;; Create empty hash table (vector of nil buckets)
+(defun make-string-hash-table ()
+  (make-vector *hash-table-size*))
+
+;; Get bucket index for string key
+(defun hash-bucket-index (key)
+  (logand (string-hash key) (- *hash-table-size* 1)))
+
+;; Look up key in hash table, returns value or nil
+;; Uses string= for key comparison (case-sensitive, already uppercased)
+(defun hash-table-get (table key)
+  (let* ((idx (hash-bucket-index key))
+         (bucket (vector-ref table idx)))
+    (hash-bucket-find key bucket)))
+
+(defun hash-bucket-find (key bucket)
+  ;; Check for empty bucket: nil (tag 6) or 0 (uninitialized vector slot)
+  ;; make-vector initializes to 0, not nil
+  (if (or (null bucket) (= bucket 0))
+      nil
+      (let ((entry (car bucket)))
+        (if (string= (car entry) key)
+            (cdr entry)
+            (hash-bucket-find key (cdr bucket))))))
+
+;; Insert or update key-value pair in hash table
+;; Returns the value
+(defun hash-table-set (table key value)
+  (let* ((idx (hash-bucket-index key))
+         (bucket (vector-ref table idx))
+         (existing (hash-bucket-find key bucket)))
+    (if existing
+        value  ; Already exists (shouldn't happen for intern tables)
+        (progn
+          (vector-set table idx (cons (cons key value) bucket))
+          value))))
+
+;;; ==========================================================
+;;; Symbol interning - uses hash table for O(1) lookup
+;;; ==========================================================
+;;;
+;;; The intern table stored at [x27+0] is now a hash table (vector)
+;;; Each bucket is an alist of (name-string . symbol) pairs
+
+;; Ensure intern table is a hash table (lazy initialization)
+;; If table is nil, create new hash table and store it
+(defun ensure-intern-hash-table ()
+  (let ((table (get-intern-table)))
+    (if (null table)
+        (let ((new-table (make-string-hash-table)))
+          (set-intern-table new-table)
+          new-table)
+        table)))
+
+;; Search intern table (hash table) for name
 ;; Returns the symbol if found, nil otherwise
-;; Uses case-insensitive comparison to match bootstrap compiler behavior
 (defun find-interned (name table)
   (if (null table)
       nil
-      (let ((entry (car table)))
-        (if (string-equal (car entry) name)
-            (cdr entry)
-            (find-interned name (cdr table))))))
+      (hash-table-get table name)))
+
+;; Add symbol to intern table (hash table)
+(defun intern-table-add (name sym)
+  (let ((table (ensure-intern-hash-table)))
+    (hash-table-set table name sym)
+    sym))
 
 ;; NOTE: get-intern-table and set-intern-table are compiler primitives
 ;; They generate code to load/store from [x27+0] (intern table at GC globals base)
@@ -340,10 +421,9 @@
               ;; No package prefix: use current package or create global
               (if *current-package*
                   (intern-in-package sym-name *current-package*)
-                  ;; Default: add to global intern table
+                  ;; Default: add to global intern table (now a hash table)
                   (let ((sym (make-symbol-from-string uname)))
-                    (set-intern-table (cons (cons uname sym) (get-intern-table)))
-                    sym)))))))
+                    (intern-table-add uname sym))))))))
 
 ;;; Tag manipulation primitives
 ;;; In Habu, all values have a 4-bit tag in the low bits:
@@ -382,16 +462,30 @@
 ;; that access the separate keyword table at [x27+128], distinct from
 ;; the intern (symbol) table at [x27+0]. This separation ensures that
 ;; keywords like :X0 remain distinct from symbols like X0.
+;; The keyword table is now a hash table (vector) for O(1) lookup.
 
-;; Search keyword table for name
-;; Uses case-insensitive comparison to match bootstrap compiler behavior
+;; Ensure keyword table is a hash table (lazy initialization)
+(defun ensure-keyword-hash-table ()
+  (let ((table (get-keyword-table)))
+    (if (null table)
+        (let ((new-table (make-string-hash-table)))
+          (set-keyword-table new-table)
+          new-table)
+        table)))
+
+;; Search keyword table (hash table) for name
+;; Returns the keyword if found, nil otherwise
 (defun find-keyword (name table)
+  "Look up keyword by name in table. Uses hash table for O(1) lookup."
   (if (null table)
       nil
-      (let ((entry (car table)))
-        (if (string-equal (car entry) name)
-            (cdr entry)
-            (find-keyword name (cdr table))))))
+      (hash-table-get table name)))
+
+;; Add keyword to keyword table (hash table)
+(defun keyword-table-add (name kw)
+  (let ((table (ensure-keyword-hash-table)))
+    (hash-table-set table name kw)
+    kw))
 
 ;; Intern a keyword by name (without the leading colon)
 ;; Keywords are like symbols but with tag 7 instead of tag 2
@@ -401,7 +495,7 @@
     (if existing
         existing
         (let ((kw (make-keyword-from-string uname)))
-          (set-keyword-table (cons (cons uname kw) (get-keyword-table)))
+          (keyword-table-add uname kw)
           kw))))
 
 ;; String upcase helper - converts lowercase to uppercase
@@ -744,11 +838,20 @@
           nil)))
 
 (defun string-equal (s1 s2)
-  ;; TEMPORARY CRASH: Catch all uses of string-equal for symbol comparison.
-  ;; Symbol comparison should use eq after proper interning.
-  ;; Remove this crash once all string-equal usages are converted.
-  ;; See bead: habu-z1vra (remove string-compare fallbacks)
-  (fatal-error "string-equal: DO NOT USE for symbol comparison - use eq after interning")
+  ;; CRASH GUARD: Catch all uses of string-equal for symbol comparison.
+  ;;
+  ;; WHY THIS EXISTS:
+  ;; - Symbol/keyword comparison MUST use eq after proper interning
+  ;; - Intern tables now use hash tables with string= for O(1) lookup
+  ;; - Any code using string-equal for symbol dispatch is a BUG
+  ;;
+  ;; CORRECT PATTERNS:
+  ;; - Intern table lookup: hash-table-get with string= (case-sensitive)
+  ;; - Symbol dispatch: eq on interned symbols via *op-dispatch-table*
+  ;; - String comparison: use string= (case-sensitive) directly
+  ;;
+  ;; See bead: habu-z1vra (remove once all violations audited)
+  (fatal-error "string-equal: DO NOT USE - intern tables use hash tables with string=, symbol dispatch uses eq")
   ;; Original implementation (restore when bead habu-z1vra is complete):
   ;; (let ((len1 (string-length s1))
   ;;       (len2 (string-length s2)))
@@ -1382,8 +1485,9 @@
 
 ;; Helper to check if symbol has a given name (case-insensitive)
 (defun h0-sym-named (sym name)
+  "Check if symbol has given name. Uses eq after interning for efficiency."
   (and (symbolp sym)
-       (string-equal (symbol-name sym) name)))
+       (eq sym (intern name))))
 
 (defun h0-box-transform (e boxed)
   (cond
@@ -2547,6 +2651,33 @@
      (list ,@(loop for entry in entries
                    collect `(cons (intern-keyword ,(car entry)) ,(cadr entry))))))
 
+;;; Macro to define the operator dispatch table
+;;; Each entry maps a habu symbol to a dispatch ID (integer)
+;;; This replaces 88 *op-* variables with a single dispatch table
+#+sbcl
+(defmacro define-ops (&rest entries)
+  "Populate *op-dispatch-table* with (habu-symbol . dispatch-id) pairs.
+   ENTRIES are (name id) lists like (\"QUOTE\" 1) (\"IF\" 2).
+   Expands at compile time to code that builds habu symbols."
+  `(setq *op-dispatch-table*
+     (list ,@(loop for entry in entries
+                   collect `(cons (make-habu-symbol-form ,(car entry)) ,(cadr entry))))))
+
+#-sbcl
+(defmacro define-ops (&rest entries)
+  "Native habu version - strings work directly via intern."
+  `(setq *op-dispatch-table*
+     (list ,@(loop for entry in entries
+                   collect `(cons (intern ,(car entry)) ,(cadr entry))))))
+
+;;; Look up operator dispatch ID from symbol
+;;; Returns dispatch ID (integer) or nil if not a special form
+;;; Uses eq comparison on habu symbols for O(1) per-entry lookup
+(defun op-lookup (sym)
+  "Look up dispatch ID for operator symbol. Returns nil for function calls."
+  (let ((entry (assoc sym *op-dispatch-table* :test #'eq)))
+    (if entry (cdr entry) nil)))
+
 ;; Initialize compile ops - create habu symbols at runtime
 ;; Uses macros to expand string literals to integer-based construction at compile time.
 ;; This ensures habu-read returns the SAME symbol object, enabling eq comparison.
@@ -2659,6 +2790,44 @@
     ("SP" 31) ("XZR" 31) ("LR" 30) ("FP" 29)
     ;; Habu-specific aliases
     ("ENV" 20) ("CLOSURE" 24) ("CODE-BASE" 26) ("GC" 27) ("HEAP" 28))
+  ;; Initialize operator dispatch table - single table for efficient h0-eval dispatch
+  ;; Dispatch IDs 1-100: special forms (quote, if, let, etc.)
+  ;; Dispatch IDs 101-200: primitives (+, -, car, cdr, etc.)
+  ;; nil from op-lookup means function call via fenv
+  (define-ops
+    ;; Special forms (1-30)
+    ("QUOTE" 1) ("IF" 2) ("LET" 3) ("LET*" 4) ("DEFUN" 5) ("DEFVAR" 6)
+    ("WHILE" 7) ("PROGN" 8) ("COND" 9) ("DEFPACKAGE" 10) ("IN-PACKAGE" 11)
+    ("CASE" 12) ("WHEN" 13) ("UNLESS" 14) ("DECLAIM" 15) ("SETQ" 16)
+    ("ERROR" 17) ("LAMBDA" 18) ("DOLIST" 19) ("LABELS" 20) ("FLET" 21)
+    ("FUNCALL" 22) ("ECASE" 23)
+    ;; Self-evaluating symbols (30-39)
+    ("T" 30) ("NIL" 31) ("OTHERWISE" 32)
+    ;; Arithmetic (101-110)
+    ("+" 101) ("-" 102) ("*" 103) ("/" 104) ("MOD" 105)
+    ;; Comparisons (111-120)
+    ("=" 111) ("<" 112) (">" 113) ("<=" 114) (">=" 115) ("/=" 116)
+    ;; List operations (121-140)
+    ("CONS" 121) ("CAR" 122) ("CDR" 123) ("CADR" 124) ("CDDR" 125)
+    ("CADDR" 126) ("CADDDR" 127) ("LIST" 128) ("CAAR" 129) ("CDAR" 130)
+    ("NTH" 131) ("SETCAR" 132) ("SETCDR" 133) ("REVERSE" 134) ("MAPCAR" 135)
+    ;; Type predicates (141-150)
+    ("NULL" 141) ("CONSP" 142) ("SYMBOLP" 143) ("NUMBERP" 144) ("STRINGP" 145)
+    ("KEYWORDP" 146) ("LISTP" 147)
+    ;; Boolean operations (151-160)
+    ("NOT" 151) ("AND" 152) ("OR" 153)
+    ;; String operations (161-170)
+    ("STRING-LENGTH" 161) ("STRING-REF" 162) ("CHAR-AT" 163) ("STRING=" 164) ("STRING-EQUAL" 165)
+    ;; Symbol operations (171-180)
+    ("SYM-EQ" 171) ("MEMBER" 172) ("SYMBOL-NAME" 173) ("KEYWORD-NAME" 174)
+    ;; Bitwise operations (181-190)
+    ("LOGAND" 181) ("LOGIOR" 182) ("ASH" 183) ("LOGNOT" 184)
+    ;; Equality (191-200)
+    ("EQ" 191) ("EQL" 192)
+    ;; Low-level operations (201-220)
+    ("GET-TAG" 201) ("SET-TAG" 202) ("LENGTH" 203)
+    ("MAKE-VECTOR" 204) ("VECTOR-LENGTH" 205) ("VECTOR-SET" 206) ("VECTOR-REF" 207)
+    ("MAKE-STRING-FROM-VECTOR" 208) ("MAKE-SYMBOL-FROM-STRING" 209))
   nil)
 
 ;; Environment lookup for compilation - returns offset or nil
