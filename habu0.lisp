@@ -1155,18 +1155,29 @@
 ;;; This interpreter supports defun, let, and recursion.
 
 ;; Look up function by symbol in fenv
-;; All fenv keys are habu symbols (properly interned at startup).
-;; Both user defuns and builtins use symbols as keys.
-;; sym-eq (eq) gives O(1) comparison.
+;; Uses eq first for O(1) when symbols are from the same intern table,
+;; falls back to string comparison when symbols are from different intern tables.
 (defun fenv-lookup (sym fenv)
-  ;; All fenv keys are habu symbols (properly interned).
-  ;; Use sym-eq (eq) for O(1) comparison.
-  ;; Both user defuns and builtins use symbols as keys.
+  (let ((result (fenv-lookup-eq sym fenv)))
+    (if result
+        result
+        (fenv-lookup-by-name (symbol-name sym) fenv))))
+
+;; Fast path: eq comparison for same-intern-table symbols
+(defun fenv-lookup-eq (sym fenv)
   (if (null fenv) nil
       (let ((entry (car fenv)))
-        (if (sym-eq sym (car entry))
+        (if (eq sym (car entry))
             (cdr entry)
-            (fenv-lookup sym (cdr fenv))))))
+            (fenv-lookup-eq sym (cdr fenv))))))
+
+;; Fallback: string comparison for cross-intern-table symbols
+(defun fenv-lookup-by-name (name-str fenv)
+  (if (null fenv) nil
+      (let ((entry (car fenv)))
+        (if (c-names-match name-str (symbol-name (car entry)))
+            (cdr entry)
+            (fenv-lookup-by-name name-str (cdr fenv))))))
 
 ;; Create binding list from params and args
 ;; Flat list format: interleaves symbols and values (sym1 val1 sym2 val2 ...)
@@ -2138,14 +2149,29 @@
          (cons (intern "REG") 50))))
 
 ;; Lookup dispatch ID in table
-;; Uses eq because both name and table keys are SBCL symbols
-;; interned at compile time - they share identity.
+;; Uses eq first for O(1) when symbols are from the same intern table,
+;; falls back to string comparison when symbols are from different intern tables.
 (defun find-builtin-id (name table)
+  (let ((result (find-builtin-id-eq name table)))
+    (if result
+        result
+        (find-builtin-id-by-name (symbol-name name) table))))
+
+;; Fast path: eq comparison for same-intern-table symbols
+(defun find-builtin-id-eq (name table)
   (if (null table)
       nil
       (if (eq name (caar table))
           (cdar table)
-          (find-builtin-id name (cdr table)))))
+          (find-builtin-id-eq name (cdr table)))))
+
+;; Fallback: string comparison for cross-intern-table symbols
+(defun find-builtin-id-by-name (name-str table)
+  (if (null table)
+      nil
+      (if (c-names-match name-str (symbol-name (caar table)))
+          (cdar table)
+          (find-builtin-id-by-name name-str (cdr table)))))
 
 ;;; ============================================================
 ;;; Keyword Normalization for SBCL/habu0 Boundary
