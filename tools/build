@@ -1,0 +1,4 @@
+#!/bin/bash
+# Build habu0 - Usage: tools/build [output-name] [heap-size]
+cd "$(dirname "$0")/.."
+exec /opt/homebrew/bin/sbcl --noinform --disable-debugger --load tools/build.lisp -- "$@"

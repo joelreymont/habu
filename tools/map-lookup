@@ -1,0 +1,3 @@
+#!/bin/bash
+# Find function containing address - Usage: tools/map-lookup mapfile address
+exec /opt/homebrew/bin/sbcl --noinform --disable-debugger --script "$(dirname "$0")/map-lookup.lisp" "$@"

@@ -1,0 +1,3 @@
+#!/bin/bash
+# Check paren balance - Usage: tools/paren-check file.lisp
+exec /opt/homebrew/bin/sbcl --noinform --disable-debugger --script "$(dirname "$0")/paren-check.lisp" "$1"

@@ -669,7 +669,7 @@
                         (list (arm64:ldr :x0 :sp :offset vec-slot)
                               (arm64:ldr :x9 :x19 :offset 80)
                               (arm64:blr :x9)))))
-        (append-all (list alloc stores make-str))))
+        (append-all (list alloc stores make-str))))))
 
 (defun codegen-string-inline (chars)
   "Generate code to build a string inline on the heap using x28 bump pointer.

@@ -1,0 +1,3 @@
+#!/bin/bash
+# Debug binary under lldb - Usage: tools/debug binary [stdin-input]
+exec /opt/homebrew/bin/sbcl --noinform --disable-debugger --script "$(dirname "$0")/debug.lisp" "$@"

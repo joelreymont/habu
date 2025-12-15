@@ -1,0 +1,33 @@
+#!/bin/bash
+# Run a habu binary with timeout
+# Usage: tools/run <binary> [args] [--timeout N]
+
+BINARY="$1"
+shift
+
+TIMEOUT=30
+ARGS=()
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --timeout) TIMEOUT="$2"; shift 2 ;;
+    *) ARGS+=("$1"); shift ;;
+  esac
+done
+
+if [[ ! -x "$BINARY" ]]; then
+  echo "Error: $BINARY not found or not executable"
+  exit 1
+fi
+
+timeout "$TIMEOUT" "$BINARY" "${ARGS[@]}"
+EXIT_CODE=$?
+
+if [[ $EXIT_CODE -eq 124 ]]; then
+  echo "Timeout after ${TIMEOUT}s"
+elif [[ $EXIT_CODE -eq 11 ]]; then
+  echo "SIGSEGV (exit 11)"
+elif [[ $EXIT_CODE -ne 0 ]]; then
+  echo "Exit code: $EXIT_CODE"
+fi
+
+exit $EXIT_CODE
