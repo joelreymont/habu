@@ -37,6 +37,41 @@
            :tac-make-symbol :tac-symbol-name :tac-intern :tac-symbol-lit
            ;; Keyword operations
            :tac-keyword-name :tac-keyword-lit
+           ;; List mutations
+           :tac-setcar :tac-setcdr :tac-nthcdr :tac-length
+           ;; Type tag operations
+           :tac-get-tag :tac-set-tag
+           ;; String mutations
+           :tac-make-string :tac-make-string-from-vector :tac-string-equal :tac-string-set
+           ;; Buffer operations
+           :tac-buffer-byte-ref :tac-buffer-byte-set :tac-buffer-to-string
+           ;; Symbol operations extended
+           :tac-make-symbol-from-string
+           ;; File I/O
+           :tac-read-file :tac-write-file :tac-write-bytes :tac-println
+           :tac-sys-read :tac-sys-read-byte :tac-sys-write :tac-sys-write-char
+           :tac-sys-open :tac-sys-close
+           ;; System/Low-level
+           :tac-system :tac-mmap :tac-mmap-jit :tac-munmap
+           :tac-pthread-jit-write-protect :tac-sys-dcache-flush :tac-sys-icache-invalidate
+           :tac-funcall-ptr :tac-mem-set-byte :tac-mem-load-64 :tac-mem-load-byte
+           ;; Heap/Runtime access
+           :tac-get-intern-table :tac-set-intern-table
+           :tac-get-keyword-table :tac-set-keyword-table
+           :tac-get-lambda-counter :tac-set-lambda-counter
+           :tac-get-symbol-counter :tac-set-symbol-counter
+           :tac-get-symbol-table :tac-set-symbol-table
+           :tac-get-symtab-offset :tac-get-symtab-count
+           :tac-get-frame-pointer :tac-get-code-base
+           :tac-set-global-vars :tac-get-global-vars
+           :tac-get-cmdline-args
+           ;; Control flow extended
+           :tac-block-begin :tac-block-end :tac-return-from
+           :tac-continue :tac-dolist-init :tac-dolist-next :tac-dotimes-init :tac-dotimes-next
+           ;; Functions extended
+           :tac-lambda :tac-lambda-ref :tac-tail-call
+           ;; Multiple values
+           :tac-values :tac-mvb
            ;; System
            :tac-exit :tac-error))
 
@@ -130,6 +165,93 @@
   (keyword-name dest kw)
   (keyword-lit dest name)  ; load keyword literal
 
+  ;; === List Mutations ===
+  (setcar cell value)
+  (setcdr cell value)
+  (nthcdr dest n list)
+  (length dest list)
+
+  ;; === Type Tag Operations ===
+  (get-tag dest value)
+  (set-tag dest value tag)
+
+  ;; === String Mutations ===
+  (make-string dest length init)
+  (make-string-from-vector dest vec)
+  (string-equal dest left right)
+  (string-set str index value)
+
+  ;; === Buffer Operations ===
+  (buffer-byte-ref dest buf index)
+  (buffer-byte-set buf index value)
+  (buffer-to-string dest buf length)
+
+  ;; === Symbol Operations Extended ===
+  (make-symbol-from-string dest str)
+
+  ;; === File I/O ===
+  (read-file dest path)
+  (write-file path content)
+  (write-bytes fd bytes)
+  (println value)
+  (sys-read dest fd buf count)
+  (sys-read-byte dest fd)
+  (sys-write dest fd buf count)
+  (sys-write-char fd char)
+  (sys-open dest path flags mode)
+  (sys-close dest fd)
+
+  ;; === System/Low-level ===
+  (system dest cmd)
+  (mmap dest addr length prot flags fd offset)
+  (mmap-jit dest length)
+  (munmap dest addr length)
+  (pthread-jit-write-protect enable)
+  (sys-dcache-flush addr length)
+  (sys-icache-invalidate addr length)
+  (funcall-ptr dest ptr args)
+  (mem-set-byte addr value)
+  (mem-load-64 dest addr)
+  (mem-load-byte dest addr)
+
+  ;; === Heap/Runtime Access ===
+  (get-intern-table dest)
+  (set-intern-table value)
+  (get-keyword-table dest)
+  (set-keyword-table value)
+  (get-lambda-counter dest)
+  (set-lambda-counter value)
+  (get-symbol-counter dest)
+  (set-symbol-counter value)
+  (get-symbol-table dest)
+  (set-symbol-table value)
+  (get-symtab-offset dest)
+  (get-symtab-count dest)
+  (get-frame-pointer dest)
+  (get-code-base dest)
+  (set-global-vars value)
+  (get-global-vars dest)
+  (get-cmdline-args dest)
+
+  ;; === Control Flow Extended ===
+  (block-begin id)           ; mark block start
+  (block-end id)             ; mark block end
+  (return-from id value)     ; return from named block
+  (continue)                 ; continue to next iteration
+  (dolist-init dest var-offset list)  ; init dolist iteration
+  (dolist-next dest var-offset list end-label)  ; advance dolist
+  (dotimes-init dest var-offset count) ; init dotimes iteration
+  (dotimes-next dest var-offset count end-label) ; advance dotimes
+
+  ;; === Functions Extended ===
+  (lambda dest params body captures) ; create closure
+  (lambda-ref dest name captures)    ; reference to lifted lambda
+  (tail-call name args)              ; tail call optimization
+
+  ;; === Multiple Values ===
+  (values vals)              ; return multiple values
+  (mvb vars expr body)       ; multiple-value-bind
+
   ;; === System ===
   (exit code)
   (error message))
@@ -200,6 +322,83 @@
     (symbol-lit (dest name) dest)
     (keyword-name (dest kw) dest)
     (keyword-lit (dest name) dest)
+    ;; List mutations
+    (setcar (cell value) nil)
+    (setcdr (cell value) nil)
+    (nthcdr (dest n list) dest)
+    (length (dest list) dest)
+    ;; Type tags
+    (get-tag (dest value) dest)
+    (set-tag (dest value tag) dest)
+    ;; String mutations
+    (make-string (dest length init) dest)
+    (make-string-from-vector (dest vec) dest)
+    (string-equal (dest left right) dest)
+    (string-set (str index value) nil)
+    ;; Buffer ops
+    (buffer-byte-ref (dest buf index) dest)
+    (buffer-byte-set (buf index value) nil)
+    (buffer-to-string (dest buf length) dest)
+    ;; Symbol extended
+    (make-symbol-from-string (dest str) dest)
+    ;; File I/O
+    (read-file (dest path) dest)
+    (write-file (path content) nil)
+    (write-bytes (fd bytes) nil)
+    (println (value) nil)
+    (sys-read (dest fd buf count) dest)
+    (sys-read-byte (dest fd) dest)
+    (sys-write (dest fd buf count) dest)
+    (sys-write-char (fd char) nil)
+    (sys-open (dest path flags mode) dest)
+    (sys-close (dest fd) dest)
+    ;; System/low-level
+    (system (dest cmd) dest)
+    (mmap (dest addr length prot flags fd offset) dest)
+    (mmap-jit (dest length) dest)
+    (munmap (dest addr length) dest)
+    (pthread-jit-write-protect (enable) nil)
+    (sys-dcache-flush (addr length) nil)
+    (sys-icache-invalidate (addr length) nil)
+    (funcall-ptr (dest ptr args) dest)
+    (mem-set-byte (addr value) nil)
+    (mem-load-64 (dest addr) dest)
+    (mem-load-byte (dest addr) dest)
+    ;; Heap access
+    (get-intern-table (dest) dest)
+    (set-intern-table (value) nil)
+    (get-keyword-table (dest) dest)
+    (set-keyword-table (value) nil)
+    (get-lambda-counter (dest) dest)
+    (set-lambda-counter (value) nil)
+    (get-symbol-counter (dest) dest)
+    (set-symbol-counter (value) nil)
+    (get-symbol-table (dest) dest)
+    (set-symbol-table (value) nil)
+    (get-symtab-offset (dest) dest)
+    (get-symtab-count (dest) dest)
+    (get-frame-pointer (dest) dest)
+    (get-code-base (dest) dest)
+    (set-global-vars (value) nil)
+    (get-global-vars (dest) dest)
+    (get-cmdline-args (dest) dest)
+    ;; Control flow extended
+    (block-begin (id) nil)
+    (block-end (id) nil)
+    (return-from (id value) nil)
+    (continue () nil)
+    (dolist-init (dest var-offset list) dest)
+    (dolist-next (dest var-offset list end-label) dest)
+    (dotimes-init (dest var-offset count) dest)
+    (dotimes-next (dest var-offset count end-label) dest)
+    ;; Functions extended
+    (lambda (dest params body captures) dest)
+    (lambda-ref (dest name captures) dest)
+    (tail-call (name args) nil)
+    ;; Multiple values
+    (values (vals) nil)
+    (mvb (vars expr body) nil)
+    ;; System
     (exit (code) nil)
     (error (message) nil)))
 
@@ -267,7 +466,84 @@
     (symbol-lit (dest name) nil)
     (keyword-name (dest kw) (list kw))
     (keyword-lit (dest name) nil)
+    ;; List mutations
+    (setcar (cell value) (list cell value))
+    (setcdr (cell value) (list cell value))
+    (nthcdr (dest n list) (list n list))
+    (length (dest list) (list list))
+    ;; Type tags
+    (get-tag (dest value) (list value))
+    (set-tag (dest value tag) (list value tag))
+    ;; String mutations
+    (make-string (dest length init) (list length init))
+    (make-string-from-vector (dest vec) (list vec))
+    (string-equal (dest left right) (list left right))
+    (string-set (str index value) (list str index value))
+    ;; Buffer ops
+    (buffer-byte-ref (dest buf index) (list buf index))
+    (buffer-byte-set (buf index value) (list buf index value))
+    (buffer-to-string (dest buf length) (list buf length))
+    ;; Symbol extended
+    (make-symbol-from-string (dest str) (list str))
+    ;; File I/O
+    (read-file (dest path) (list path))
+    (write-file (path content) (list path content))
+    (write-bytes (fd bytes) (list fd bytes))
+    (println (value) (list value))
+    (sys-read (dest fd buf count) (list fd buf count))
+    (sys-read-byte (dest fd) (list fd))
+    (sys-write (dest fd buf count) (list fd buf count))
+    (sys-write-char (fd char) (list fd char))
+    (sys-open (dest path flags mode) (list path flags mode))
+    (sys-close (dest fd) (list fd))
+    ;; System/low-level
+    (system (dest cmd) (list cmd))
+    (mmap (dest addr length prot flags fd offset) (list addr length prot flags fd offset))
+    (mmap-jit (dest length) (list length))
+    (munmap (dest addr length) (list addr length))
+    (pthread-jit-write-protect (enable) (list enable))
+    (sys-dcache-flush (addr length) (list addr length))
+    (sys-icache-invalidate (addr length) (list addr length))
+    (funcall-ptr (dest ptr args) (cons ptr args))
+    (mem-set-byte (addr value) (list addr value))
+    (mem-load-64 (dest addr) (list addr))
+    (mem-load-byte (dest addr) (list addr))
+    ;; Heap access
+    (get-intern-table (dest) nil)
+    (set-intern-table (value) (list value))
+    (get-keyword-table (dest) nil)
+    (set-keyword-table (value) (list value))
+    (get-lambda-counter (dest) nil)
+    (set-lambda-counter (value) (list value))
+    (get-symbol-counter (dest) nil)
+    (set-symbol-counter (value) (list value))
+    (get-symbol-table (dest) nil)
+    (set-symbol-table (value) (list value))
+    (get-symtab-offset (dest) nil)
+    (get-symtab-count (dest) nil)
+    (get-frame-pointer (dest) nil)
+    (get-code-base (dest) nil)
+    (set-global-vars (value) (list value))
+    (get-global-vars (dest) nil)
+    (get-cmdline-args (dest) nil)
+    ;; Control flow extended
+    (block-begin (id) nil)
+    (block-end (id) nil)
+    (return-from (id value) (list value))
+    (continue () nil)
+    (dolist-init (dest var-offset list) (list list))
+    (dolist-next (dest var-offset list end-label) (list list))
+    (dotimes-init (dest var-offset count) (list count))
+    (dotimes-next (dest var-offset count end-label) (list count))
+    ;; Functions extended
+    (lambda (dest params body captures) captures)
+    (lambda-ref (dest name captures) captures)
+    (tail-call (name args) args)
+    ;; Multiple values
+    (values (vals) vals)
+    (mvb (vars expr body) nil)  ; expr/body are IR, not vregs
+    ;; System
     (exit (code) (list code))
     (error (message) (list message))))
 
-;; Current count: 65 variants
+;; Total: ~130 variants (comprehensive for self-hosting)

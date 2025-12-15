@@ -1,6 +1,6 @@
 ;;;; IR - Intermediate Representation Types
 ;;;;
-;;;; Each variant is a node in the IR tree.
+;;;; Complete IR ADT for the Habu compiler.
 ;;;; Every pass that processes IR must handle ALL variants.
 ;;;; The match macro enforces this at compile time.
 ;;;;
@@ -25,22 +25,50 @@
            :ir-band :ir-bor :ir-bxor :ir-bsh :ir-bnot
            ;; Control flow
            :ir-if :ir-progn :ir-while :ir-let
+           :ir-block :ir-return-from :ir-loop :ir-continue
+           :ir-dolist :ir-dotimes
            ;; Functions
-           :ir-call :ir-lambda :ir-funcall
+           :ir-call :ir-lambda :ir-funcall :ir-lambda-ref :ir-tail-call
            ;; List operations
            :ir-cons :ir-car :ir-cdr :ir-list :ir-length
+           :ir-setcar :ir-setcdr :ir-nthcdr
            ;; Type predicates
-           :ir-null :ir-consp :ir-symbolp :ir-stringp :ir-numberp :ir-keywordp :ir-functionp
+           :ir-null :ir-consp :ir-symbolp :ir-stringp :ir-numberp
+           :ir-keywordp :ir-functionp
+           :ir-get-tag :ir-set-tag
            ;; String operations
            :ir-string-length :ir-string-ref :ir-string-concat
+           :ir-make-string :ir-make-string-from-vector
+           :ir-string-equal :ir-string-set
            ;; Vector operations
            :ir-make-vector :ir-vector-ref :ir-vector-set :ir-vector-length
+           :ir-buffer-byte-ref :ir-buffer-byte-set :ir-buffer-to-string
            ;; Symbol operations
-           :ir-make-symbol :ir-symbol-name :ir-intern
+           :ir-make-symbol :ir-make-symbol-from-string
+           :ir-symbol-name :ir-intern
            ;; Keyword operations
            :ir-keyword-name
-           ;; System
-           :ir-exit :ir-error))
+           ;; File I/O
+           :ir-read-file :ir-write-file :ir-write-bytes :ir-println
+           :ir-sys-read :ir-sys-read-byte :ir-sys-write :ir-sys-write-char
+           :ir-sys-open :ir-sys-close
+           ;; System/Low-level
+           :ir-exit :ir-error :ir-system
+           :ir-mmap :ir-mmap-jit :ir-munmap
+           :ir-pthread-jit-write-protect :ir-sys-dcache-flush :ir-sys-icache-invalidate
+           :ir-funcall-ptr :ir-mem-set-byte :ir-mem-load-64 :ir-mem-load-byte
+           ;; Heap/Runtime access
+           :ir-get-intern-table :ir-set-intern-table
+           :ir-get-keyword-table :ir-set-keyword-table
+           :ir-get-lambda-counter :ir-set-lambda-counter
+           :ir-get-symbol-counter :ir-set-symbol-counter
+           :ir-get-symbol-table :ir-set-symbol-table
+           :ir-get-symtab-offset :ir-get-symtab-count
+           :ir-get-frame-pointer :ir-get-code-base
+           :ir-set-global-vars :ir-get-global-vars
+           :ir-get-cmdline-args
+           ;; Multiple values
+           :ir-values :ir-mvb))
 
 (in-package :habu.ir)
 
@@ -92,12 +120,20 @@
   (if test then else)
   (progn forms)            ; sequence, forms is a list
   (while test body)
-  (let bindings body)      ; bindings is list of (offset . init)
+  (let bindings body count offsets)  ; bindings with metadata
+  (block id body)          ; named block for return-from
+  (return-from id value)   ; non-local return
+  (loop body)              ; infinite loop (use return to exit)
+  (continue)               ; continue to next iteration
+  (dolist var-offset list-ir body end-label) ; iterate over list
+  (dotimes var-offset count-ir body end-label) ; iterate n times
 
   ;; === Functions ===
   (call name args)         ; named function call, args is a list
-  (lambda params body captures) ; lambda with capture list
+  (lambda params body captures offsets) ; lambda with capture list
+  (lambda-ref name captures) ; reference to lifted lambda
   (funcall fn args)        ; indirect call through closure/function
+  (tail-call name args)    ; tail call optimization
 
   ;; === List Operations ===
   (cons car cdr)
@@ -105,6 +141,9 @@
   (cdr cell)
   (list elems)             ; list constructor
   (length list)            ; list length
+  (setcar cell value)      ; destructive car update
+  (setcdr cell value)      ; destructive cdr update
+  (nthcdr n list)          ; skip n cdrs
 
   ;; === Type Predicates ===
   (null value)
@@ -114,29 +153,84 @@
   (numberp value)
   (keywordp value)
   (functionp value)
+  (get-tag value)          ; extract type tag
+  (set-tag value tag)      ; set type tag
 
   ;; === String Operations ===
   (string-length str)
   (string-ref str index)
   (string-concat left right)
+  (make-string length init)
+  (make-string-from-vector vec)
+  (string-equal left right)
+  (string-set str index value)
 
   ;; === Vector Operations ===
   (make-vector size init)
   (vector-ref vec index)
   (vector-set vec index value)
   (vector-length vec)
+  (buffer-byte-ref buf index)
+  (buffer-byte-set buf index value)
+  (buffer-to-string buf length)
 
   ;; === Symbol Operations ===
   (make-symbol name)
+  (make-symbol-from-string str)
   (symbol-name sym)
   (intern str)
 
   ;; === Keyword Operations ===
   (keyword-name kw)
 
-  ;; === System ===
-  (exit code)
-  (error message))
+  ;; === File I/O ===
+  (read-file path)
+  (write-file path content)
+  (write-bytes fd bytes)
+  (println value)
+  (sys-read fd buf count)
+  (sys-read-byte fd)
+  (sys-write fd buf count)
+  (sys-write-char fd char)
+  (sys-open path flags mode)
+  (sys-close fd)
 
-;; Convenience: count variants for documentation
-;; Current count: 60 variants
+  ;; === System/Low-level ===
+  (exit code)
+  (error message)
+  (system cmd)
+  (mmap addr length prot flags fd offset)
+  (mmap-jit length)
+  (munmap addr length)
+  (pthread-jit-write-protect enable)
+  (sys-dcache-flush addr length)
+  (sys-icache-invalidate addr length)
+  (funcall-ptr ptr args)   ; call function at raw pointer
+  (mem-set-byte addr value)
+  (mem-load-64 addr)
+  (mem-load-byte addr)
+
+  ;; === Heap/Runtime Access ===
+  (get-intern-table)
+  (set-intern-table value)
+  (get-keyword-table)
+  (set-keyword-table value)
+  (get-lambda-counter)
+  (set-lambda-counter value)
+  (get-symbol-counter)
+  (set-symbol-counter value)
+  (get-symbol-table)
+  (set-symbol-table value)
+  (get-symtab-offset)
+  (get-symtab-count)
+  (get-frame-pointer)
+  (get-code-base)
+  (set-global-vars value)
+  (get-global-vars)
+  (get-cmdline-args)
+
+  ;; === Multiple Values ===
+  (values vals)            ; return multiple values
+  (mvb vars expr body))    ; multiple-value-bind
+
+;; Total: ~105 variants (comprehensive for self-hosting)
