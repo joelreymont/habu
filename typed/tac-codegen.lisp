@@ -21,6 +21,19 @@
   (unless (find-package :arm64)
     (load "arm64/asm.lisp")))
 
+;;; Hybrid 1+3 bit tag constants (from shared/tags.lisp)
+(defconstant +nil-value+ 0)
+(defconstant +t-value+ 3)
+(defconstant +fixnum-bit+ 1)
+(defconstant +tag-mask+ 15)
+(defconstant +ptr-mask+ -16)
+(defconstant +tag-cons+ 0)
+(defconstant +tag-symbol+ 2)
+(defconstant +tag-vector+ 4)
+(defconstant +tag-string+ 6)
+(defconstant +tag-closure+ 8)
+(defconstant +tag-keyword+ 10)
+
 ;;; Code generation state
 (defvar *code* nil "List of instruction bytes (reversed)")
 (defvar *vreg-to-reg* nil "Hash table from vreg to physical register")
@@ -238,39 +251,59 @@
           (emit (arm64:mov arg-reg rs)))))
 
     (tac-call (dest name nargs)
-      (declare (ignore name nargs))
-      ;; TODO: resolve function address and emit BL
-      (emit (arm64:bl 0))
+      (declare (ignore nargs))
+      ;; BL to function - use fixup for internal functions
+      ;; For external functions, would need import table lookup
+      (let ((target-offset (gethash name *labels*)))
+        (if target-offset
+            ;; Label already defined - calculate offset
+            (let ((rel-instrs (ash (- target-offset (current-offset)) -2)))
+              (emit (arm64:bl rel-instrs)))
+            ;; Forward reference - add fixup
+            (progn
+              (push (list (current-offset) name :bl) *fixups*)
+              (emit (arm64:bl 0)))))
+      ;; Move result from x0 to dest if needed
       (let ((rd (vreg->reg dest)))
         (unless (eq rd :x0)
           (emit (arm64:mov rd :x0)))))
 
     (tac-funcall (dest fn nargs)
       (declare (ignore nargs))
-      (emit (arm64:blr (vreg->reg fn)))
+      ;; Move closure/function pointer to x24 if not already there
+      (let ((fn-reg (vreg->reg fn)))
+        (unless (eq fn-reg :x24)
+          (emit (arm64:mov :x24 fn-reg))))
+      ;; Call through closure - BLR x24
+      ;; x24 holds closure pointer per habu calling convention
+      (emit (arm64:blr :x24))
+      ;; Move result from x0 to dest if needed
       (let ((rd (vreg->reg dest)))
         (unless (eq rd :x0)
           (emit (arm64:mov rd :x0)))))
 
     ;; === List Operations ===
-    (tac-cons (dest car cdr)
-      ;; Call runtime cons
-      (emit (arm64:mov :x0 (vreg->reg car)))
-      (emit (arm64:mov :x1 (vreg->reg cdr)))
-      ;; TODO: call cons runtime
-      (emit (arm64:bl 0))
-      (let ((rd (vreg->reg dest)))
-        (unless (eq rd :x0)
-          (emit (arm64:mov rd :x0)))))
+    (tac-cons (dest car-vreg cdr-vreg)
+      ;; Inline heap allocation: x28 = alloc ptr, x27 = heap base
+      ;; Store car at x28+0, cdr at x28+8
+      (emit (arm64:str (vreg->reg car-vreg) :x28 :offset 0))
+      (emit (arm64:str (vreg->reg cdr-vreg) :x28 :offset 8))
+      ;; Result = x28 (already tagged with 0 = cons tag)
+      (emit (arm64:mov (vreg->reg dest) :x28))
+      ;; Bump allocator: x28 += 16
+      (emit (arm64:add :x28 :x28 16 :imm t)))
 
     (tac-car (dest cell)
-      ;; Clear tag bits and load
-      (emit (arm64:and* (vreg->reg dest) (vreg->reg cell) -16 :imm t))
-      (emit (arm64:ldr (vreg->reg dest) (vreg->reg dest))))
+      ;; Untag pointer: clear low 4 bits (tag mask = -16)
+      (emit (arm64:and* :x19 (vreg->reg cell) -16 :imm t))
+      ;; Load car from offset 0
+      (emit (arm64:ldr (vreg->reg dest) :x19 :offset 0)))
 
     (tac-cdr (dest cell)
-      (emit (arm64:and* (vreg->reg dest) (vreg->reg cell) -16 :imm t))
-      (emit (arm64:ldr (vreg->reg dest) (vreg->reg dest) :offset 8)))
+      ;; Untag pointer: clear low 4 bits (tag mask = -16)
+      (emit (arm64:and* :x19 (vreg->reg cell) -16 :imm t))
+      ;; Load cdr from offset 8
+      (emit (arm64:ldr (vreg->reg dest) :x19 :offset 8)))
 
     (tac-list (dest elems)
       (declare (ignore elems))
@@ -278,39 +311,92 @@
       (emit (arm64:movz (vreg->reg dest) 0)))
 
     ;; === Type Predicates ===
+    ;; All predicates return t-value (3) for true, nil-value (0) for false
     (tac-null (dest value)
-      (emit (arm64:cmp (vreg->reg value) 0 :imm t))
-      (emit (arm64:cset (vreg->reg dest) #.arm64:+cc-eq+)))
+      ;; nil = 0, so if value == 0 then t (3) else nil (0)
+      (let ((rd (vreg->reg dest)))
+        (emit (arm64:cmp (vreg->reg value) #.+nil-value+ :imm t))
+        (emit (arm64:cset rd #.arm64:+cc-eq+))
+        ;; Convert 1 -> 3 (t-value), 0 -> 0 (nil-value): rd = rd * 3
+        (emit (arm64:mov :x19 rd))
+        (emit (arm64:add rd rd rd))
+        (emit (arm64:add rd rd :x19))))
 
     (tac-consp (dest value)
-      ;; Check tag == 0 and value != 0
-      (emit (arm64:and* :x19 (vreg->reg value) 15 :imm t))
-      (emit (arm64:cmp :x19 0 :imm t))
-      (emit (arm64:cset (vreg->reg dest) #.arm64:+cc-eq+)))
+      ;; Cons: tag == 0 AND value != 0 (to exclude nil which is also 0)
+      (let ((rd (vreg->reg dest))
+            (rv (vreg->reg value)))
+        ;; Check value != 0
+        (emit (arm64:cmp rv #.+nil-value+ :imm t))
+        (emit (arm64:cset :x19 #.arm64:+cc-ne+))
+        ;; Check tag == 0
+        (emit (arm64:and* rd rv #.+tag-mask+ :imm t))
+        (emit (arm64:cmp rd #.+tag-cons+ :imm t))
+        (emit (arm64:cset rd #.arm64:+cc-eq+))
+        ;; AND the two conditions
+        (emit (arm64:and* rd rd :x19))
+        ;; Convert 1 -> 3, 0 -> 0
+        (emit (arm64:mov :x19 rd))
+        (emit (arm64:add rd rd rd))
+        (emit (arm64:add rd rd :x19))))
 
     (tac-symbolp (dest value)
-      (emit (arm64:and* :x19 (vreg->reg value) 15 :imm t))
-      (emit (arm64:cmp :x19 2 :imm t))
-      (emit (arm64:cset (vreg->reg dest) #.arm64:+cc-eq+)))
+      ;; Symbol: tag == 2
+      (let ((rd (vreg->reg dest))
+            (rv (vreg->reg value)))
+        (emit (arm64:and* rd rv #.+tag-mask+ :imm t))
+        (emit (arm64:cmp rd #.+tag-symbol+ :imm t))
+        (emit (arm64:cset rd #.arm64:+cc-eq+))
+        ;; Convert 1 -> 3, 0 -> 0
+        (emit (arm64:mov :x19 rd))
+        (emit (arm64:add rd rd rd))
+        (emit (arm64:add rd rd :x19))))
 
     (tac-stringp (dest value)
-      (emit (arm64:and* :x19 (vreg->reg value) 15 :imm t))
-      (emit (arm64:cmp :x19 6 :imm t))
-      (emit (arm64:cset (vreg->reg dest) #.arm64:+cc-eq+)))
+      ;; String: tag == 6
+      (let ((rd (vreg->reg dest))
+            (rv (vreg->reg value)))
+        (emit (arm64:and* rd rv #.+tag-mask+ :imm t))
+        (emit (arm64:cmp rd #.+tag-string+ :imm t))
+        (emit (arm64:cset rd #.arm64:+cc-eq+))
+        ;; Convert 1 -> 3, 0 -> 0
+        (emit (arm64:mov :x19 rd))
+        (emit (arm64:add rd rd rd))
+        (emit (arm64:add rd rd :x19))))
 
     (tac-numberp (dest value)
       ;; Fixnum: bit 0 = 1
-      (emit (arm64:and* (vreg->reg dest) (vreg->reg value) 1 :imm t)))
+      (let ((rd (vreg->reg dest))
+            (rv (vreg->reg value)))
+        (emit (arm64:and* rd rv #.+fixnum-bit+ :imm t))
+        ;; Result is 1 or 0, convert 1 -> 3
+        (emit (arm64:mov :x19 rd))
+        (emit (arm64:add rd rd rd))
+        (emit (arm64:add rd rd :x19))))
 
     (tac-keywordp (dest value)
-      (emit (arm64:and* :x19 (vreg->reg value) 15 :imm t))
-      (emit (arm64:cmp :x19 10 :imm t))
-      (emit (arm64:cset (vreg->reg dest) #.arm64:+cc-eq+)))
+      ;; Keyword: tag == 10
+      (let ((rd (vreg->reg dest))
+            (rv (vreg->reg value)))
+        (emit (arm64:and* rd rv #.+tag-mask+ :imm t))
+        (emit (arm64:cmp rd #.+tag-keyword+ :imm t))
+        (emit (arm64:cset rd #.arm64:+cc-eq+))
+        ;; Convert 1 -> 3, 0 -> 0
+        (emit (arm64:mov :x19 rd))
+        (emit (arm64:add rd rd rd))
+        (emit (arm64:add rd rd :x19))))
 
     (tac-functionp (dest value)
-      (emit (arm64:and* :x19 (vreg->reg value) 15 :imm t))
-      (emit (arm64:cmp :x19 8 :imm t))
-      (emit (arm64:cset (vreg->reg dest) #.arm64:+cc-eq+)))
+      ;; Closure: tag == 8
+      (let ((rd (vreg->reg dest))
+            (rv (vreg->reg value)))
+        (emit (arm64:and* rd rv #.+tag-mask+ :imm t))
+        (emit (arm64:cmp rd #.+tag-closure+ :imm t))
+        (emit (arm64:cset rd #.arm64:+cc-eq+))
+        ;; Convert 1 -> 3, 0 -> 0
+        (emit (arm64:mov :x19 rd))
+        (emit (arm64:add rd rd rd))
+        (emit (arm64:add rd rd :x19))))
 
     ;; === String Operations ===
     (tac-string-length (dest str)
@@ -433,7 +519,8 @@
                (patched (ecase type
                           (:b (arm64:b rel-instrs))
                           (:b.eq (arm64:b.eq rel-instrs))
-                          (:b.ne (arm64:b.ne rel-instrs)))))
+                          (:b.ne (arm64:b.ne rel-instrs))
+                          (:bl (arm64:bl rel-instrs)))))
           ;; Patch the 4 bytes at branch-offset
           (loop for i from 0 below 4
                 for byte in patched
