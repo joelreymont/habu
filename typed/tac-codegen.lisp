@@ -32,13 +32,13 @@
   (setf *labels* (make-hash-table :test 'equal))
   (setf *fixups* nil))
 
-(defun emit (&rest bytes)
-  "Emit bytes to code stream."
-  (dolist (b bytes)
+(defun emit (&rest items)
+  "Emit bytes to code stream. ARM64 functions return byte lists."
+  (dolist (item items)
     (cond
-      ((listp b) (dolist (byte b) (push byte *code*)))
-      ((integerp b) (push b *code*))
-      (t (error "emit: invalid byte ~S" b)))))
+      ((listp item) (dolist (byte item) (push byte *code*)))
+      ((integerp item) (push item *code*))
+      (t (error "emit: invalid item ~S" item)))))
 
 (defun current-offset ()
   (length *code*))
@@ -380,7 +380,8 @@
 
     ;; === System ===
     (tac-exit (code)
-      (emit (arm64:mov :x0 (vreg->reg code)))
+      ;; Untag fixnum: x0 = value >> 1
+      (emit (arm64:lsr :x0 (vreg->reg code) 1 :imm t))
       ;; syscall exit
       (emit (arm64:movz :x16 1))
       (emit (arm64:svc 0)))
@@ -393,21 +394,15 @@
 ;;; Apply fixups for forward branches
 (defun apply-fixups ()
   "Patch branch instructions with resolved offsets."
-  ;; Note: *code* is reversed, so we need to adjust
-  (let ((code-vec (coerce (nreverse *code*) 'vector)))
-    (dolist (fixup *fixups*)
-      (let* ((offset (first fixup))
-             (label (second fixup))
-             (type (third fixup))
-             (target (gethash label *labels*)))
-        (unless target
-          (error "Undefined label: ~S" label))
-        (let ((rel-offset (ash (- target offset) -2)))
-          ;; Patch the instruction at offset
-          ;; For now, just warn - proper patching would modify code-vec
-          (declare (ignore type rel-offset))
-          (format t "FIXUP: ~S at ~D -> ~D~%" label offset target))))
-    (setf *code* (coerce code-vec 'list))))
+  ;; TODO: implement actual patching
+  ;; For now, just report fixups (don't modify *code*)
+  (dolist (fixup *fixups*)
+    (let* ((offset (first fixup))
+           (label (second fixup))
+           (target (gethash label *labels*)))
+      (declare (ignore offset label))
+      (unless target
+        (error "Undefined label in fixup")))))
 
 ;;; High-level function codegen
 

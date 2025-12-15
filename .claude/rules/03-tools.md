@@ -1,6 +1,8 @@
-# Standalone Tools
+# Standalone Tools - MANDATORY USE
 
 **NO MCP. All tools are in `tools/` directory. NEVER look for or try to call MCP tools.**
+
+**USE THESE TOOLS - DO NOT USE RAW SBCL COMMANDS.** The tools minimize output tokens and provide consistent error handling. Using raw `sbcl --eval` wastes tokens on backtraces.
 
 **WRITE TOOLS IN LISP, NOT BASH.** Shell wrappers are thin exec lines only. All logic in .lisp files.
 
@@ -35,6 +37,15 @@ tools/debug <binary> [stdin-input]
 tools/map-lookup <mapfile> <address>
 # Finds function containing hex address in .map file
 ```
+
+## Eval SBCL code (concise output)
+```bash
+tools/eval file.lisp        # Load and run file
+tools/eval -e "(+ 1 2)"     # Eval expression
+# Returns only result or error - NO backtraces
+```
+
+**ALWAYS use `tools/eval` instead of raw `sbcl` commands to minimize output tokens.**
 
 ## Build process
 1. Loads ASDF :habu system

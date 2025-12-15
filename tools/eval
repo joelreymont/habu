@@ -1,0 +1,4 @@
+#!/bin/bash
+# Eval SBCL code/file with concise output
+cd "$(dirname "$0")/.."
+exec sbcl --noinform --disable-debugger --script tools/eval.lisp "$@"
