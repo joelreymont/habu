@@ -158,6 +158,7 @@
     (dolist (compile-dolist args env))
     (dotimes (compile-dotimes args env))
     (ecase (compile-ecase args env))
+    ((match habu::match) (compile-match args env))
     (length (ir-length (compile-expr (first args) env)))
 
     ;; Arithmetic
@@ -279,9 +280,16 @@
                          (mapcar (lambda (a) (compile-expr a env))
                                  (rest args))))
 
-    ;; Default: named function call
+    ;; Default: check for macro or named function call
     (otherwise
-     (ir-call op (mapcar (lambda (a) (compile-expr a env)) args)))))
+     ;; Check if it's a macro
+     (let ((expander (gethash op *macros*)))
+       (if expander
+           ;; Expand macro and compile result
+           (let ((expanded (apply expander args)))
+             (compile-expr expanded env))
+           ;; Named function call
+           (ir-call op (mapcar (lambda (a) (compile-expr a env)) args)))))))
 
 ;;; Special form compilers
 
@@ -457,6 +465,23 @@
       (ir-or (ir-eql (ir-var (env-lookup key-var env))
                      (compile-quote (car keys)))
              (compile-case-key-test key-var (cdr keys) env))))
+
+(defun compile-match (args env)
+  "Compile match form as case. (match expr (pat1 body1) (pat2 body2) (_ default))
+   Patterns are either literal values or _ for default."
+  ;; Transform match to case format
+  (let ((expr (car args))
+        (clauses (cdr args)))
+    (compile-case
+     (cons expr
+           (mapcar (lambda (clause)
+                     (let ((pat (car clause))
+                           (body (cdr clause)))
+                       (if (eq pat '_)
+                           (cons 'otherwise body)
+                           (cons pat body))))
+                   clauses))
+     env)))
 
 (defun compile-when (args env)
   "Compile when form: (when test body...) -> (if test (progn body...) nil)"
@@ -655,12 +680,19 @@
 (defvar *fenv* nil "Function environment: ((name params . info) ...)")
 (defvar *macros* (make-hash-table) "Hash table of macro name -> expander function")
 
+(defun normalize-macro-params (params)
+  "Convert macro lambda list to regular lambda list.
+   Replaces &body with &rest (they're equivalent at runtime)."
+  (mapcar (lambda (p)
+            (if (eq p '&body) '&rest p))
+          params))
+
 (defun collect-defmacros (forms)
   "Pass 0: Collect all defmacro forms and register expanders."
   (dolist (form forms)
     (when (and (consp form) (eq (car form) 'defmacro))
       (let* ((name (second form))
-             (params (third form))
+             (params (normalize-macro-params (third form)))
              (body (cdddr form))
              ;; Create expander function using SBCL's eval
              (expander (eval `(lambda ,params ,@body))))

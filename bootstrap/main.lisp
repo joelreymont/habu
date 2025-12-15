@@ -180,7 +180,7 @@
 (defun codegen-defun-ir (defun-ir)
   "Compile a defun-ir to ARM64 bytes with proper prologue/epilogue.
    Input: defun-ir from compile-forms (name params body param-base)
-   Returns: list of bytes for complete function"
+   Returns: (values code-bytes markers) where markers is list of (offset marker-data)"
   (let* ((name (defun-fn-name defun-ir))
          (params (defun-fn-params defun-ir))
          (body-ir (defun-fn-body defun-ir))
@@ -188,11 +188,10 @@
          ;; Convert typed IR body to TAC
          (tac (habu.ir-to-tac:ir-to-tac body-ir))
          ;; Allocate registers
-         (alloc (habu.regalloc:allocate-registers tac))
-         ;; Generate function code with prologue/epilogue
-         (code (habu.codegen:codegen-function name params tac alloc)))
+         (alloc (habu.regalloc:allocate-registers tac)))
     (declare (ignore param-base))  ; TODO: handle captures
-    code))
+    ;; Generate function code with prologue/epilogue
+    (habu.codegen:codegen-function name params tac alloc)))
 
 ;;; ============================================================
 ;;; Typed Deliver Pipeline
@@ -202,21 +201,29 @@
 
 (defun codegen-all-defuns (defuns)
   "Compile all defun-ir to bytes with function offsets.
-   Returns (cons fn-alist all-bytes) where fn-alist maps names to byte offsets."
+   Returns (values fn-alist all-bytes all-markers) where:
+   - fn-alist maps names to byte offsets
+   - all-bytes is the concatenated code
+   - all-markers is list of (abs-offset marker-data) for all functions"
   (let ((fn-alist nil)
         (all-bytes nil)
+        (all-markers nil)
         (offset 0))
     (dolist (dfn defuns)
-      (let* ((name (defun-fn-name dfn))
-             (code (codegen-defun-ir dfn))
-             (size (count-code-size code)))
-        ;; Record function at current offset
-        (push (cons name offset) fn-alist)
-        ;; Append code
-        (setf all-bytes (append all-bytes code))
-        ;; Update offset
-        (incf offset size)))
-    (cons (reverse fn-alist) all-bytes)))
+      (let ((name (defun-fn-name dfn)))
+        (multiple-value-bind (code markers)
+            (codegen-defun-ir dfn)
+          (let ((size (length code)))  ; Code is now flat bytes
+            ;; Record function at current offset
+            (push (cons name offset) fn-alist)
+            ;; Adjust marker offsets and collect
+            (dolist (m markers)
+              (push (list (+ offset (first m)) (second m)) all-markers))
+            ;; Append code
+            (setf all-bytes (append all-bytes code))
+            ;; Update offset
+            (incf offset size)))))
+    (values (reverse fn-alist) all-bytes (reverse all-markers))))
 
 (defun count-code-size (code)
   "Count the actual byte size of code (handling markers)."
@@ -229,36 +236,35 @@
           (incf size)))
     size))
 
-(defun resolve-call-markers (code fn-alist code-start-offset)
-  "Resolve :call-fn markers to BL instructions.
-   fn-alist maps function names to absolute byte offsets in final binary.
-   code-start-offset is where this code segment starts in final binary.
-   Returns list of bytes with markers replaced."
-  (let ((result nil)
-        (pos-in-code 0))  ; Position within this code segment
-    (dolist (item code)
-      (cond
-        ;; Call marker - resolve to BL instruction
-        ((and (consp item) (eq (car item) :call-fn))
-         (let* ((fn-name (second item))
-                (fn-abs-offset (cdr (assoc fn-name fn-alist :test #'equal))))
-           (if fn-abs-offset
-               ;; Calculate relative offset: target - current position
-               (let* ((current-abs (+ code-start-offset pos-in-code))
-                      (rel (- fn-abs-offset current-abs))
-                      (rel-instrs (ash rel -2)))
-                 ;; Emit BL instruction
-                 (let ((bl-bytes (arm64:bl rel-instrs)))
-                   (dolist (b bl-bytes)
-                     (push b result))))
-               ;; Unknown function - error
-               (error "resolve-call-markers: unknown function ~S" fn-name)))
-         (incf pos-in-code 4))
-        ;; Regular byte
-        (t
-         (push item result)
-         (incf pos-in-code))))
-    (nreverse result)))
+(defun resolve-call-markers (code markers fn-alist code-start-offset)
+  "Resolve call markers by patching placeholder bytes.
+   code: list of bytes (with placeholder bytes DE AD BE EF at marker positions)
+   markers: list of (offset (:call-fn name)) relative to this code segment
+   fn-alist: maps function names to absolute byte offsets in final binary
+   code-start-offset: where this code segment starts in final binary
+   Returns (values resolved-code unresolved-markers) where unresolved-markers
+   contains external function calls that need linker resolution."
+  (if (null markers)
+      (values code nil)
+      (let ((code-vec (coerce code 'vector))
+            (unresolved nil))
+        (dolist (marker markers)
+          (let* ((marker-offset (first marker))
+                 (marker-data (second marker))
+                 (fn-name (second marker-data))  ; (:call-fn name) -> name
+                 (fn-abs-offset (cdr (assoc fn-name fn-alist :test #'equal))))
+            (if fn-abs-offset
+                ;; Known local function - resolve to BL
+                (let* ((current-abs (+ code-start-offset marker-offset))
+                       (rel (- fn-abs-offset current-abs))
+                       (rel-instrs (ash rel -2))
+                       (bl-bytes (arm64:bl rel-instrs)))
+                  (loop for i from 0 below 4
+                        for b in bl-bytes
+                        do (setf (aref code-vec (+ marker-offset i)) b)))
+                ;; Unknown function - leave placeholder, track for linker
+                (push (list (+ code-start-offset marker-offset) fn-name) unresolved))))
+        (values (coerce code-vec 'list) (nreverse unresolved)))))
 
 (defun deliver-forms-typed (forms output-path &optional (heap-size #x4000000))
   "Compile forms to native executable using typed IR pipeline.
@@ -281,45 +287,46 @@
              (defun-lambdas (cdr defun-lift)))
 
         ;; Combine all functions (defuns + lifted lambdas)
-        (let* ((all-defuns (append defuns main-lambdas defun-lambdas))
-               ;; Generate code for all functions
-               (fn-result (codegen-all-defuns all-defuns))
-               (fn-alist (car fn-result))
-               (fn-bytes (cdr fn-result))
-               ;; Generate main code (raw, may have markers)
-               (main-bytes-raw (codegen-ir main-ir))
-               ;; Layout: prologue(16) + main_expr + epilogue(24) + functions
-               (prologue-size 16)   ; 4 instructions
-               (epilogue-size 24)   ; 6 instructions
-               (main-expr-size (count-code-size main-bytes-raw))
-               (fn-start-offset (+ prologue-size main-expr-size epilogue-size))
-               ;; Adjust fn-alist to absolute offsets in final binary
-               (fn-alist-abs (mapcar (lambda (e)
-                                       (cons (car e) (+ fn-start-offset (cdr e))))
-                                     fn-alist))
-               ;; Resolve call markers in main expr (starts at prologue-size)
-               (main-bytes (resolve-call-markers main-bytes-raw fn-alist-abs prologue-size))
-               ;; Resolve call markers in functions (start at fn-start-offset)
-               (fn-bytes-resolved (resolve-call-markers fn-bytes fn-alist-abs fn-start-offset))
-               ;; Wrap main with prologue/epilogue
-               (main-code (wrap-expr-as-main main-bytes))
-               ;; Combine all code
-               (all-code (append main-code fn-bytes-resolved)))
+        (let ((all-defuns (append defuns main-lambdas defun-lambdas)))
+          (multiple-value-bind (fn-alist fn-bytes fn-markers)
+              (codegen-all-defuns all-defuns)
+            ;; Generate main code (may have markers)
+            (let ((main-bytes-raw (codegen-ir main-ir)))
+              ;; Layout: prologue(16) + main_expr + epilogue(24) + functions
+              (let* ((prologue-size 16)   ; 4 instructions
+                     (epilogue-size 24)   ; 6 instructions
+                     (main-expr-size (length main-bytes-raw))
+                     (fn-start-offset (+ prologue-size main-expr-size epilogue-size))
+                     ;; Adjust fn-alist to absolute offsets in final binary
+                     (fn-alist-abs (mapcar (lambda (e)
+                                             (cons (car e) (+ fn-start-offset (cdr e))))
+                                           fn-alist)))
+                ;; Resolve call markers in functions
+                (multiple-value-bind (fn-bytes-resolved unresolved)
+                    (resolve-call-markers fn-bytes fn-markers fn-alist-abs fn-start-offset)
+                  ;; Warn about unresolved external calls
+                  (when unresolved
+                    (format t "Warning: ~D unresolved external calls~%" (length unresolved)))
+                  ;; Wrap main with prologue/epilogue
+                  (let* ((main-bytes (resolve-call-markers main-bytes-raw nil fn-alist-abs prologue-size))
+                         (main-code (wrap-expr-as-main main-bytes))
+                         (all-code (append main-code fn-bytes-resolved)))
 
-          (format t "Compiled ~D functions, main ~D bytes, total ~D bytes~%"
-                  (length all-defuns) (length main-code) (length all-code))
+                    (format t "Compiled ~D functions, main ~D bytes, total ~D bytes~%"
+                            (length all-defuns) (length main-code) (length all-code))
 
-          ;; Write executable
-          (if (find-package :habu)
-              (let ((write-fn (intern "WRITE-MACHO-EXECUTABLE-WITH-IMPORTS-AND-HEAP" :habu)))
-                (funcall write-fn output-path all-code '("_exit") heap-size nil nil)
-                (format t "Wrote executable: ~A~%" output-path))
-              (progn
-                (with-open-file (f output-path
-                                   :direction :output
-                                   :element-type '(unsigned-byte 8)
-                                   :if-exists :supersede)
-                  (dolist (b all-code)
-                    (write-byte b f)))
-                (format t "Wrote raw bytes: ~A~%" output-path)))
-          output-path)))))
+                    ;; Write executable
+                    (if (find-package :habu)
+                        (let ((write-fn (intern "WRITE-MACHO-EXECUTABLE-WITH-IMPORTS-AND-HEAP" :habu)))
+                          (funcall write-fn output-path all-code '("_exit") heap-size nil nil)
+                          (format t "Wrote executable: ~A~%" output-path))
+                        (progn
+                          (with-open-file (f output-path
+                                             :direction :output
+                                             :element-type '(unsigned-byte 8)
+                                             :if-exists :supersede)
+                            (dolist (b all-code)
+                              (write-byte b f)))
+                          (format t "Wrote raw bytes: ~A~%" output-path)))
+                    output-path)))))))))
+)

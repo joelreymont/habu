@@ -7,6 +7,22 @@
 ;; Always use HABU package so macros are defined there for cross-compilation
 (in-package :habu)
 
+;;; Simple pattern match - expands to case/cond
+;;; Used by habu0.lisp: (match expr (pattern body) ... (_ default))
+;;; Pattern can be literal (number/symbol) or _ for default
+(defmacro match (expr &body clauses)
+  "Simple pattern match expanding to case.
+   (match id (1 body1) (2 body2) (_ default))"
+  (let ((val (gensym "VAL")))
+    `(let ((,val ,expr))
+       (case ,val
+         ,@(loop for clause in clauses
+                 for pattern = (car clause)
+                 for body = (cdr clause)
+                 collect (if (eq pattern '_)
+                             `(otherwise ,@body)
+                             `(,pattern ,@body)))))))
+
 (defmacro while (test &body body)
   "While loop - expands to labels recursion to avoid package issues with LOOP"
   (let ((loop-fn (gensym "WHILE")))

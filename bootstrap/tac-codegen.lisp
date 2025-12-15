@@ -11,6 +11,7 @@
   (:import-from :habu.tac :tac-instr)
   (:import-from :habu.regalloc :allocation-result
                 :allocation-result-vreg-to-reg
+                :allocation-result-spills
                 :allocation-result-stack-size)
   (:export :generate-code :codegen-function))
 
@@ -36,27 +37,41 @@
 
 ;;; Code generation state
 (defvar *code* nil "List of instruction bytes (reversed)")
-(defvar *byte-offset* 0 "Current byte offset (accounts for marker sizes)")
+(defvar *byte-offset* 0 "Current byte offset in code stream")
 (defvar *vreg-to-reg* nil "Hash table from vreg to physical register")
+(defvar *spill-slots* nil "Hash table from spilled vreg to stack slot index")
+(defvar *stack-size* 0 "Number of stack slots for spills")
 (defvar *labels* nil "Hash table from label -> byte offset")
 (defvar *fixups* nil "List of (offset label type) for forward refs")
+(defvar *markers* nil "List of (offset marker-data) for linker resolution")
 (defvar *local-functions* nil "List of function names in current compilation unit")
+(defvar *extra-args-allocated* 0 "Number of extra arg slots allocated on stack (for args >= 8)")
+
+;; Spill temp registers - use x8 (not used by habu calling convention)
+(defconstant +spill-temp+ :x8)
+(defconstant +spill-temp2+ :x17)  ; Second spill temp for binary ops
 
 (defun reset-codegen ()
   (setf *code* nil)
   (setf *byte-offset* 0)
   (setf *labels* (make-hash-table :test 'equal))
-  (setf *fixups* nil))
+  (setf *fixups* nil)
+  (setf *markers* nil)
+  (setf *spill-slots* nil)
+  (setf *stack-size* 0)
+  (setf *extra-args-allocated* 0))
 
 (defun emit (&rest items)
   "Emit bytes to code stream. ARM64 functions return byte lists.
-   Special markers (:call-fn name) are emitted as single list items."
+   Markers (:call-fn name) become 4 placeholder bytes + entry in *markers*."
   (dolist (item items)
     (cond
-      ;; Marker - a list starting with a keyword (like :call-fn)
-      ;; Markers represent 4-byte instructions (BL)
+      ;; Marker - store in *markers* and emit 4 placeholder bytes
       ((and (consp item) (keywordp (car item)))
-       (push item *code*)
+       (push (list *byte-offset* item) *markers*)
+       ;; Emit 4 placeholder bytes (will be patched by linker)
+       (push #xDE *code*) (push #xAD *code*)
+       (push #xBE *code*) (push #xEF *code*)
        (incf *byte-offset* 4))
       ;; Regular byte list from ARM64 encoder
       ((listp item)
@@ -73,13 +88,44 @@
   "Return current byte offset in code stream."
   *byte-offset*)
 
+(defun is-spilled (vreg)
+  "Check if vreg is spilled."
+  (eq (gethash vreg *vreg-to-reg*) :spill))
+
+(defun spill-offset (vreg)
+  "Get stack offset for spilled vreg. Returns byte offset from sp.
+   Spill slots start at sp+0x40 (after saved registers in habu frame)."
+  (+ #x40 (* (gethash vreg *spill-slots*) 8)))
+
 (defun vreg->reg (vreg)
-  "Convert vreg to physical register keyword."
+  "Convert vreg to physical register keyword. Errors on spilled vregs."
   (let ((reg (gethash vreg *vreg-to-reg*)))
     (cond
       ((null reg) (error "vreg ~D not allocated" vreg))
-      ((eq reg :spill) (error "vreg ~D spilled, need spill code" vreg))
+      ((eq reg :spill) (error "vreg ~D spilled - use load-vreg/store-vreg" vreg))
       (t (arm64:num-to-reg reg)))))
+
+(defun vreg->reg-or-temp (vreg &optional (temp +spill-temp+))
+  "Get physical reg for vreg, or temp reg for spilled vreg (after loading).
+   For spilled vregs, emits load from stack to temp."
+  (if (is-spilled vreg)
+      (progn
+        (emit (arm64:ldr temp :sp :offset (spill-offset vreg)))
+        temp)
+      (vreg->reg vreg)))
+
+(defun store-if-spilled (vreg &optional (temp +spill-temp+))
+  "If vreg is spilled, emit store from temp to stack slot."
+  (when (is-spilled vreg)
+    (emit (arm64:str temp :sp :offset (spill-offset vreg)))))
+
+(defun dest-reg (vreg)
+  "Get register to use as destination for vreg.
+   For non-spilled: the allocated register.
+   For spilled: the spill temp (caller must store-if-spilled after)."
+  (if (is-spilled vreg)
+      +spill-temp+
+      (vreg->reg vreg)))
 
 (defun load-imm (rd value)
   "Load a 64-bit immediate value into register.
@@ -138,32 +184,44 @@
   (match tac-instr instr
     ;; === Data Movement ===
     (lit (dest value)
-      (emit (load-imm (vreg->reg dest) value)))
+      (let ((rd (dest-reg dest)))
+        (emit (load-imm rd value))
+        (store-if-spilled dest)))
 
     (nil (dest)
-      (emit (arm64:movz (vreg->reg dest) 0)))
+      (let ((rd (dest-reg dest)))
+        (emit (arm64:movz rd 0))
+        (store-if-spilled dest)))
 
     (t (dest)
       ;; t = pointer to T symbol, use small constant for now
-      (emit (arm64:movz (vreg->reg dest) 3)))
+      (let ((rd (dest-reg dest)))
+        (emit (arm64:movz rd 3))
+        (store-if-spilled dest)))
 
     (move (dest src)
-      (let ((rd (vreg->reg dest))
-            (rs (vreg->reg src)))
+      (let ((rd (dest-reg dest))
+            (rs (vreg->reg-or-temp src +spill-temp2+)))
         (unless (eq rd rs)
-          (emit (arm64:mov rd rs)))))
+          (emit (arm64:mov rd rs)))
+        (store-if-spilled dest)))
 
     (var (dest offset)
       ;; Load from env (x20) at offset
-      (emit (arm64:ldr (vreg->reg dest) :x20 :offset (* offset 8))))
+      (let ((rd (dest-reg dest)))
+        (emit (arm64:ldr rd :x20 :offset (* offset 8)))
+        (store-if-spilled dest)))
 
     (setvar (offset src)
-      (emit (arm64:str (vreg->reg src) :x20 :offset (* offset 8))))
+      (let ((rs (vreg->reg-or-temp src)))
+        (emit (arm64:str rs :x20 :offset (* offset 8)))))
 
     (global (dest name)
       (declare (ignore name))
       ;; TODO: global variable lookup
-      (emit (arm64:movz (vreg->reg dest) 0)))
+      (let ((rd (dest-reg dest)))
+        (emit (arm64:movz rd 0))
+        (store-if-spilled dest)))
 
     (set-global (name src)
       (declare (ignore name src))
@@ -174,107 +232,168 @@
     ;; Hybrid tagging: fixnum = (value << 1) | 1
     ;; (2a+1) + (2b+1) = 2(a+b) + 2, but want 2(a+b) + 1, so subtract 1
     (add (dest left right)
-      (emit (arm64:add (vreg->reg dest) (vreg->reg left) (vreg->reg right)))
-      (emit (arm64:sub (vreg->reg dest) (vreg->reg dest) 1 :imm t)))
+      (let ((rd (dest-reg dest))
+            (rl (vreg->reg-or-temp left +spill-temp2+))
+            (rr (vreg->reg-or-temp right +spill-temp+)))
+        (emit (arm64:add rd rl rr))
+        (emit (arm64:sub rd rd 1 :imm t))
+        (store-if-spilled dest)))
 
     ;; (2a+1) - (2b+1) = 2(a-b), but want 2(a-b) + 1, so add 1
     (sub (dest left right)
-      (emit (arm64:sub (vreg->reg dest) (vreg->reg left) (vreg->reg right)))
-      (emit (arm64:add (vreg->reg dest) (vreg->reg dest) 1 :imm t)))
+      (let ((rd (dest-reg dest))
+            (rl (vreg->reg-or-temp left +spill-temp2+))
+            (rr (vreg->reg-or-temp right +spill-temp+)))
+        (emit (arm64:sub rd rl rr))
+        (emit (arm64:add rd rd 1 :imm t))
+        (store-if-spilled dest)))
 
     (mul (dest left right)
       ;; Untag both operands, multiply, re-tag result
-      ;; asr tmp1, left, #1; asr tmp2, right, #1; mul dest, tmp1, tmp2
-      ;; lsl dest, dest, #1; orr dest, dest, #1
-      (let ((rd (vreg->reg dest))
-            (rl (vreg->reg left))
-            (rr (vreg->reg right)))
+      (let ((rd (dest-reg dest))
+            (rl (vreg->reg-or-temp left +spill-temp2+))
+            (rr (vreg->reg-or-temp right +spill-temp+)))
         (emit (arm64:asr :x9 rl 1 :imm t))    ; untag left → x9
         (emit (arm64:asr :x10 rr 1 :imm t))   ; untag right → x10
         (emit (arm64:mul rd :x9 :x10))        ; multiply
         (emit (arm64:lsl rd rd 1 :imm t))     ; shift left
-        (emit (arm64:orr rd rd 1 :imm t))))   ; set tag bit
+        (emit (arm64:orr rd rd 1 :imm t))     ; set tag bit
+        (store-if-spilled dest)))
 
     (div (dest left right)
       ;; Untag both operands, divide, re-tag result
-      (let ((rd (vreg->reg dest))
-            (rl (vreg->reg left))
-            (rr (vreg->reg right)))
+      (let ((rd (dest-reg dest))
+            (rl (vreg->reg-or-temp left +spill-temp2+))
+            (rr (vreg->reg-or-temp right +spill-temp+)))
         (emit (arm64:asr :x9 rl 1 :imm t))    ; untag left → x9
         (emit (arm64:asr :x10 rr 1 :imm t))   ; untag right → x10
         (emit (arm64:sdiv rd :x9 :x10))       ; signed divide
         (emit (arm64:lsl rd rd 1 :imm t))     ; shift left
-        (emit (arm64:orr rd rd 1 :imm t))))   ; set tag bit
+        (emit (arm64:orr rd rd 1 :imm t))     ; set tag bit
+        (store-if-spilled dest)))
 
     (mod (dest left right)
       ;; Untag both, compute mod = a - (a/b)*b, retag
-      (let ((rd (vreg->reg dest))
-            (rl (vreg->reg left))
-            (rr (vreg->reg right)))
+      (let ((rd (dest-reg dest))
+            (rl (vreg->reg-or-temp left +spill-temp2+))
+            (rr (vreg->reg-or-temp right +spill-temp+)))
         (emit (arm64:asr :x9 rl 1 :imm t))    ; untag left → x9
         (emit (arm64:asr :x10 rr 1 :imm t))   ; untag right → x10
         (emit (arm64:sdiv :x11 :x9 :x10))     ; div
         (emit (arm64:msub rd :x11 :x10 :x9))  ; dest = x9 - x11*x10
         (emit (arm64:lsl rd rd 1 :imm t))     ; shift left
-        (emit (arm64:orr rd rd 1 :imm t))))   ; set tag bit
+        (emit (arm64:orr rd rd 1 :imm t))     ; set tag bit
+        (store-if-spilled dest)))
 
     (neg (dest value)
       ;; neg(2a+1) = -(2a+1) = -2a-1, but want 2(-a)+1 = -2a+1
       ;; So negate and add 2
-      (emit (arm64:neg (vreg->reg dest) (vreg->reg value)))
-      (emit (arm64:add (vreg->reg dest) (vreg->reg dest) 2 :imm t)))
+      (let ((rd (dest-reg dest))
+            (rv (vreg->reg-or-temp value)))
+        (emit (arm64:neg rd rv))
+        (emit (arm64:add rd rd 2 :imm t))
+        (store-if-spilled dest)))
 
     ;; === Comparison ===
     (eq (dest left right)
-      (emit (arm64:cmp (vreg->reg left) (vreg->reg right)))
-      (emit (arm64:cset (vreg->reg dest) #.arm64:+cc-eq+)))
+      (let ((rd (dest-reg dest))
+            (rl (vreg->reg-or-temp left +spill-temp2+))
+            (rr (vreg->reg-or-temp right +spill-temp+)))
+        (emit (arm64:cmp rl rr))
+        (emit (arm64:cset rd #.arm64:+cc-eq+))
+        (store-if-spilled dest)))
 
     (eql (dest left right)
-      (emit (arm64:cmp (vreg->reg left) (vreg->reg right)))
-      (emit (arm64:cset (vreg->reg dest) #.arm64:+cc-eq+)))
+      (let ((rd (dest-reg dest))
+            (rl (vreg->reg-or-temp left +spill-temp2+))
+            (rr (vreg->reg-or-temp right +spill-temp+)))
+        (emit (arm64:cmp rl rr))
+        (emit (arm64:cset rd #.arm64:+cc-eq+))
+        (store-if-spilled dest)))
 
     (lt (dest left right)
-      (emit (arm64:cmp (vreg->reg left) (vreg->reg right)))
-      (emit (arm64:cset (vreg->reg dest) #.arm64:+cc-lt+)))
+      (let ((rd (dest-reg dest))
+            (rl (vreg->reg-or-temp left +spill-temp2+))
+            (rr (vreg->reg-or-temp right +spill-temp+)))
+        (emit (arm64:cmp rl rr))
+        (emit (arm64:cset rd #.arm64:+cc-lt+))
+        (store-if-spilled dest)))
 
     (gt (dest left right)
-      (emit (arm64:cmp (vreg->reg left) (vreg->reg right)))
-      (emit (arm64:cset (vreg->reg dest) #.arm64:+cc-gt+)))
+      (let ((rd (dest-reg dest))
+            (rl (vreg->reg-or-temp left +spill-temp2+))
+            (rr (vreg->reg-or-temp right +spill-temp+)))
+        (emit (arm64:cmp rl rr))
+        (emit (arm64:cset rd #.arm64:+cc-gt+))
+        (store-if-spilled dest)))
 
     (le (dest left right)
-      (emit (arm64:cmp (vreg->reg left) (vreg->reg right)))
-      (emit (arm64:cset (vreg->reg dest) #.arm64:+cc-le+)))
+      (let ((rd (dest-reg dest))
+            (rl (vreg->reg-or-temp left +spill-temp2+))
+            (rr (vreg->reg-or-temp right +spill-temp+)))
+        (emit (arm64:cmp rl rr))
+        (emit (arm64:cset rd #.arm64:+cc-le+))
+        (store-if-spilled dest)))
 
     (ge (dest left right)
-      (emit (arm64:cmp (vreg->reg left) (vreg->reg right)))
-      (emit (arm64:cset (vreg->reg dest) #.arm64:+cc-ge+)))
+      (let ((rd (dest-reg dest))
+            (rl (vreg->reg-or-temp left +spill-temp2+))
+            (rr (vreg->reg-or-temp right +spill-temp+)))
+        (emit (arm64:cmp rl rr))
+        (emit (arm64:cset rd #.arm64:+cc-ge+))
+        (store-if-spilled dest)))
 
     (zerop (dest value)
-      (emit (arm64:cmp (vreg->reg value) 0 :imm t))
-      (emit (arm64:cset (vreg->reg dest) #.arm64:+cc-eq+)))
+      (let ((rd (dest-reg dest))
+            (rv (vreg->reg-or-temp value)))
+        (emit (arm64:cmp rv 0 :imm t))
+        (emit (arm64:cset rd #.arm64:+cc-eq+))
+        (store-if-spilled dest)))
 
     ;; === Logical ===
     (not (dest value)
-      (emit (arm64:cmp (vreg->reg value) 0 :imm t))
-      (emit (arm64:cset (vreg->reg dest) #.arm64:+cc-eq+)))
+      (let ((rd (dest-reg dest))
+            (rv (vreg->reg-or-temp value)))
+        (emit (arm64:cmp rv 0 :imm t))
+        (emit (arm64:cset rd #.arm64:+cc-eq+))
+        (store-if-spilled dest)))
 
     ;; === Bitwise ===
     (band (dest left right)
-      (emit (arm64:and* (vreg->reg dest) (vreg->reg left) (vreg->reg right))))
+      (let ((rd (dest-reg dest))
+            (rl (vreg->reg-or-temp left +spill-temp2+))
+            (rr (vreg->reg-or-temp right +spill-temp+)))
+        (emit (arm64:and* rd rl rr))
+        (store-if-spilled dest)))
 
     (bor (dest left right)
-      (emit (arm64:orr (vreg->reg dest) (vreg->reg left) (vreg->reg right))))
+      (let ((rd (dest-reg dest))
+            (rl (vreg->reg-or-temp left +spill-temp2+))
+            (rr (vreg->reg-or-temp right +spill-temp+)))
+        (emit (arm64:orr rd rl rr))
+        (store-if-spilled dest)))
 
     (bxor (dest left right)
-      (emit (arm64:eor (vreg->reg dest) (vreg->reg left) (vreg->reg right))))
+      (let ((rd (dest-reg dest))
+            (rl (vreg->reg-or-temp left +spill-temp2+))
+            (rr (vreg->reg-or-temp right +spill-temp+)))
+        (emit (arm64:eor rd rl rr))
+        (store-if-spilled dest)))
 
     (bsh (dest value shift)
       ;; Positive = left shift, negative = right shift
       ;; For now, assume left shift
-      (emit (arm64:lsl (vreg->reg dest) (vreg->reg value) (vreg->reg shift))))
+      (let ((rd (dest-reg dest))
+            (rv (vreg->reg-or-temp value +spill-temp2+))
+            (rs (vreg->reg-or-temp shift +spill-temp+)))
+        (emit (arm64:lsl rd rv rs))
+        (store-if-spilled dest)))
 
     (bnot (dest value)
-      (emit (arm64:mvn (vreg->reg dest) (vreg->reg value))))
+      (let ((rd (dest-reg dest))
+            (rv (vreg->reg-or-temp value)))
+        (emit (arm64:mvn rd rv))
+        (store-if-spilled dest)))
 
     ;; === Control Flow ===
     (label (name)
@@ -289,26 +408,28 @@
               (emit (arm64:b 0))))))
 
     (if (cond then-label)
-      (emit (arm64:cmp (vreg->reg cond) 0 :imm t))
-      (let ((target-offset (gethash then-label *labels*)))
-        (if target-offset
-            (emit (arm64:b.ne (ash (- target-offset (current-offset)) -2)))
-            (progn
-              (push (list (current-offset) then-label :b.ne) *fixups*)
-              (emit (arm64:b.ne 0))))))
+      (let ((rc (vreg->reg-or-temp cond)))
+        (emit (arm64:cmp rc 0 :imm t))
+        (let ((target-offset (gethash then-label *labels*)))
+          (if target-offset
+              (emit (arm64:b.ne (ash (- target-offset (current-offset)) -2)))
+              (progn
+                (push (list (current-offset) then-label :b.ne) *fixups*)
+                (emit (arm64:b.ne 0)))))))
 
     (ifnot (cond else-label)
-      (emit (arm64:cmp (vreg->reg cond) 0 :imm t))
-      (let ((target-offset (gethash else-label *labels*)))
-        (if target-offset
-            (emit (arm64:b.eq (ash (- target-offset (current-offset)) -2)))
-            (progn
-              (push (list (current-offset) else-label :b.eq) *fixups*)
-              (emit (arm64:b.eq 0))))))
+      (let ((rc (vreg->reg-or-temp cond)))
+        (emit (arm64:cmp rc 0 :imm t))
+        (let ((target-offset (gethash else-label *labels*)))
+          (if target-offset
+              (emit (arm64:b.eq (ash (- target-offset (current-offset)) -2)))
+              (progn
+                (push (list (current-offset) else-label :b.eq) *fixups*)
+                (emit (arm64:b.eq 0)))))))
 
     (return (value)
       ;; Move result to x0
-      (let ((rv (vreg->reg value)))
+      (let ((rv (vreg->reg-or-temp value)))
         (unless (eq rv :x0)
           (emit (arm64:mov :x0 rv))))
       ;; Use fixed epilogue for habu calling convention
@@ -317,116 +438,161 @@
     ;; === Function Calls ===
     (param (dest index)
       ;; Load parameter from x0-x7
-      (let ((rd (vreg->reg dest))
+      (let ((rd (dest-reg dest))
             (param-reg (arm64:num-to-reg index)))
-        (unless (eq rd param-reg)
-          (emit (arm64:mov rd param-reg)))))
+        (emit (arm64:mov rd param-reg))
+        (store-if-spilled dest)))
 
     (arg (index src)
-      (let ((arg-reg (arm64:num-to-reg index))
-            (rs (vreg->reg src)))
-        (unless (eq arg-reg rs)
-          (emit (arm64:mov arg-reg rs)))))
+      ;; x0-x7 for first 8 args, stack for args >= 8
+      ;; Extra args stored temporarily at sp+0x100+offset, copied to call stack in :call
+      (let ((rs (vreg->reg-or-temp src)))
+        (if (< index 8)
+            ;; Register arg
+            (let ((arg-reg (arm64:num-to-reg index)))
+              (unless (eq arg-reg rs)
+                (emit (arm64:mov arg-reg rs))))
+            ;; Stack arg - store in temp area, will be copied in :call
+            (let ((stack-index (- index 8)))
+              ;; Track max extra args needed
+              (when (>= stack-index *extra-args-allocated*)
+                (setf *extra-args-allocated* (1+ stack-index)))
+              ;; Store at temp location: sp+0x100+(stack_index*8)
+              (emit (arm64:str rs :sp :offset (+ #x100 (* stack-index 8))))))))
 
     (call (dest name nargs)
       (declare (ignore nargs))
-      ;; Save caller-saved registers x9-x15 before call (56 bytes, 8-aligned)
-      ;; sub sp, sp, #64
-      (emit (arm64:sub :sp :sp 64 :imm t))
-      (emit (arm64:stp :x9 :x10 :sp :offset 0))
-      (emit (arm64:stp :x11 :x12 :sp :offset 16))
-      (emit (arm64:stp :x13 :x14 :sp :offset 32))
-      (emit (arm64:str :x15 :sp :offset 48))
+      ;; Remember extra args count for this call
+      (let ((extra-args *extra-args-allocated*)
+            (extra-args-space 0))
+        ;; Save caller-saved registers x9-x15 before call (56 bytes, 8-aligned)
+        ;; sub sp, sp, #64
+        (emit (arm64:sub :sp :sp 64 :imm t))
+        (emit (arm64:stp :x9 :x10 :sp :offset 0))
+        (emit (arm64:stp :x11 :x12 :sp :offset 16))
+        (emit (arm64:stp :x13 :x14 :sp :offset 32))
+        (emit (arm64:str :x15 :sp :offset 48))
 
-      ;; BL to function - check if label is defined (local function)
-      ;; or emit :call-fn marker for linker resolution
-      (let ((target-offset (gethash name *labels*)))
-        (cond
-          ;; Label already defined - calculate offset
-          (target-offset
-           (let ((rel-instrs (ash (- target-offset (current-offset)) -2)))
-             (emit (arm64:bl rel-instrs))))
-          ;; Check if it's a known local function (forward ref within same code)
-          ((member name *local-functions*)
-           (push (list (current-offset) name :bl) *fixups*)
-           (emit (arm64:bl 0)))
-          ;; External function - emit marker for linker
-          (t
-           (emit (list :call-fn name)))))
+        ;; Allocate stack space for extra args and copy from temp area
+        (when (> extra-args 0)
+          ;; Round up to even for 16-byte alignment
+          (setf extra-args-space (* (if (oddp extra-args) (1+ extra-args) extra-args) 8))
+          (emit (arm64:sub :sp :sp extra-args-space :imm t))
+          ;; Copy args from temp area (sp+64+0x100+i*8) to call stack (sp+i*8)
+          (dotimes (i extra-args)
+            (emit (arm64:ldr +spill-temp+ :sp :offset (+ 64 #x100 (* i 8))))
+            (emit (arm64:str +spill-temp+ :sp :offset (* i 8)))))
 
-      ;; Save result to x8 before restoring (x8 is not in our save set)
-      (emit (arm64:mov :x8 :x0))
+        ;; BL to function - check if label is defined (local function)
+        ;; or emit :call-fn marker for linker resolution
+        (let ((target-offset (gethash name *labels*)))
+          (cond
+            ;; Label already defined - calculate offset
+            (target-offset
+             (let ((rel-instrs (ash (- target-offset (current-offset)) -2)))
+               (emit (arm64:bl rel-instrs))))
+            ;; Check if it's a known local function (forward ref within same code)
+            ((member name *local-functions*)
+             (push (list (current-offset) name :bl) *fixups*)
+             (emit (arm64:bl 0)))
+            ;; External function - emit marker for linker
+            (t
+             (emit (list :call-fn name)))))
 
-      ;; Restore caller-saved registers
-      (emit (arm64:ldr :x15 :sp :offset 48))
-      (emit (arm64:ldp :x13 :x14 :sp :offset 32))
-      (emit (arm64:ldp :x11 :x12 :sp :offset 16))
-      (emit (arm64:ldp :x9 :x10 :sp :offset 0))
-      (emit (arm64:add :sp :sp 64 :imm t))
+        ;; Save result to x8 before restoring (x8 is not in our save set)
+        (emit (arm64:mov :x8 :x0))
 
-      ;; Now move result to destination
-      (let ((rd (vreg->reg dest)))
-        (unless (eq rd :x8)
-          (emit (arm64:mov rd :x8)))))
+        ;; Deallocate extra args stack space
+        (when (> extra-args-space 0)
+          (emit (arm64:add :sp :sp extra-args-space :imm t)))
+
+        ;; Restore caller-saved registers
+        (emit (arm64:ldr :x15 :sp :offset 48))
+        (emit (arm64:ldp :x13 :x14 :sp :offset 32))
+        (emit (arm64:ldp :x11 :x12 :sp :offset 16))
+        (emit (arm64:ldp :x9 :x10 :sp :offset 0))
+        (emit (arm64:add :sp :sp 64 :imm t))
+
+        ;; Reset extra args count for next call
+        (setf *extra-args-allocated* 0)
+
+        ;; Now move result to destination
+        (let ((rd (dest-reg dest)))
+          (emit (arm64:mov rd :x8))
+          (store-if-spilled dest))))
 
     (funcall (dest fn nargs)
       (declare (ignore nargs))
       ;; Move closure/function pointer to x24 if not already there
-      (let ((fn-reg (vreg->reg fn)))
+      (let ((fn-reg (vreg->reg-or-temp fn)))
         (unless (eq fn-reg :x24)
           (emit (arm64:mov :x24 fn-reg))))
       ;; Call through closure - BLR x24
       ;; x24 holds closure pointer per habu calling convention
       (emit (arm64:blr :x24))
       ;; Move result from x0 to dest if needed
-      (let ((rd (vreg->reg dest)))
-        (unless (eq rd :x0)
-          (emit (arm64:mov rd :x0)))))
+      (let ((rd (dest-reg dest)))
+        (emit (arm64:mov rd :x0))
+        (store-if-spilled dest)))
 
     ;; === List Operations ===
     (cons (dest car-vreg cdr-vreg)
       ;; Inline heap allocation: x28 = alloc ptr, x27 = heap base
       ;; Store car at x28+0, cdr at x28+8
-      (emit (arm64:str (vreg->reg car-vreg) :x28 :offset 0))
-      (emit (arm64:str (vreg->reg cdr-vreg) :x28 :offset 8))
+      (let ((rcar (vreg->reg-or-temp car-vreg +spill-temp2+))
+            (rcdr (vreg->reg-or-temp cdr-vreg +spill-temp+)))
+        (emit (arm64:str rcar :x28 :offset 0))
+        (emit (arm64:str rcdr :x28 :offset 8)))
       ;; Result = x28 (already tagged with 0 = cons tag)
-      (emit (arm64:mov (vreg->reg dest) :x28))
+      (let ((rd (dest-reg dest)))
+        (emit (arm64:mov rd :x28))
+        (store-if-spilled dest))
       ;; Bump allocator: x28 += 16
       (emit (arm64:add :x28 :x28 16 :imm t)))
 
     (car (dest cell)
       ;; Untag pointer: clear low 4 bits (tag mask = -16)
-      (emit (arm64:and* :x19 (vreg->reg cell) -16 :imm t))
-      ;; Load car from offset 0
-      (emit (arm64:ldr (vreg->reg dest) :x19 :offset 0)))
+      (let ((rd (dest-reg dest))
+            (rc (vreg->reg-or-temp cell)))
+        (emit (arm64:and* :x19 rc -16 :imm t))
+        ;; Load car from offset 0
+        (emit (arm64:ldr rd :x19 :offset 0))
+        (store-if-spilled dest)))
 
     (cdr (dest cell)
       ;; Untag pointer: clear low 4 bits (tag mask = -16)
-      (emit (arm64:and* :x19 (vreg->reg cell) -16 :imm t))
-      ;; Load cdr from offset 8
-      (emit (arm64:ldr (vreg->reg dest) :x19 :offset 8)))
+      (let ((rd (dest-reg dest))
+            (rc (vreg->reg-or-temp cell)))
+        (emit (arm64:and* :x19 rc -16 :imm t))
+        ;; Load cdr from offset 8
+        (emit (arm64:ldr rd :x19 :offset 8))
+        (store-if-spilled dest)))
 
     (list (dest elems)
       (declare (ignore elems))
       ;; TODO: build list
-      (emit (arm64:movz (vreg->reg dest) 0)))
+      (let ((rd (dest-reg dest)))
+        (emit (arm64:movz rd 0))
+        (store-if-spilled dest)))
 
     ;; === Type Predicates ===
     ;; All predicates return t-value (3) for true, nil-value (0) for false
     (null (dest value)
       ;; nil = 0, so if value == 0 then t (3) else nil (0)
-      (let ((rd (vreg->reg dest)))
-        (emit (arm64:cmp (vreg->reg value) #.+nil-value+ :imm t))
+      (let ((rd (dest-reg dest))
+            (rv (vreg->reg-or-temp value)))
+        (emit (arm64:cmp rv #.+nil-value+ :imm t))
         (emit (arm64:cset rd #.arm64:+cc-eq+))
         ;; Convert 1 -> 3 (t-value), 0 -> 0 (nil-value): rd = rd * 3
         (emit (arm64:mov :x19 rd))
         (emit (arm64:add rd rd rd))
-        (emit (arm64:add rd rd :x19))))
+        (emit (arm64:add rd rd :x19))
+        (store-if-spilled dest)))
 
     (consp (dest value)
       ;; Cons: tag == 0 AND value != 0 (to exclude nil which is also 0)
-      (let ((rd (vreg->reg dest))
-            (rv (vreg->reg value)))
+      (let ((rd (dest-reg dest))
+            (rv (vreg->reg-or-temp value)))
         ;; Check value != 0
         (emit (arm64:cmp rv #.+nil-value+ :imm t))
         (emit (arm64:cset :x19 #.arm64:+cc-ne+))
@@ -439,204 +605,281 @@
         ;; Convert 1 -> 3, 0 -> 0
         (emit (arm64:mov :x19 rd))
         (emit (arm64:add rd rd rd))
-        (emit (arm64:add rd rd :x19))))
+        (emit (arm64:add rd rd :x19))
+        (store-if-spilled dest)))
 
     (symbolp (dest value)
       ;; Symbol: tag == 2
-      (let ((rd (vreg->reg dest))
-            (rv (vreg->reg value)))
+      (let ((rd (dest-reg dest))
+            (rv (vreg->reg-or-temp value)))
         (emit (arm64:and* rd rv #.+tag-mask+ :imm t))
         (emit (arm64:cmp rd #.+tag-symbol+ :imm t))
         (emit (arm64:cset rd #.arm64:+cc-eq+))
         ;; Convert 1 -> 3, 0 -> 0
         (emit (arm64:mov :x19 rd))
         (emit (arm64:add rd rd rd))
-        (emit (arm64:add rd rd :x19))))
+        (emit (arm64:add rd rd :x19))
+        (store-if-spilled dest)))
 
     (stringp (dest value)
       ;; String: tag == 6
-      (let ((rd (vreg->reg dest))
-            (rv (vreg->reg value)))
+      (let ((rd (dest-reg dest))
+            (rv (vreg->reg-or-temp value)))
         (emit (arm64:and* rd rv #.+tag-mask+ :imm t))
         (emit (arm64:cmp rd #.+tag-string+ :imm t))
         (emit (arm64:cset rd #.arm64:+cc-eq+))
         ;; Convert 1 -> 3, 0 -> 0
         (emit (arm64:mov :x19 rd))
         (emit (arm64:add rd rd rd))
-        (emit (arm64:add rd rd :x19))))
+        (emit (arm64:add rd rd :x19))
+        (store-if-spilled dest)))
 
     (numberp (dest value)
       ;; Fixnum: bit 0 = 1
-      (let ((rd (vreg->reg dest))
-            (rv (vreg->reg value)))
+      (let ((rd (dest-reg dest))
+            (rv (vreg->reg-or-temp value)))
         (emit (arm64:and* rd rv #.+fixnum-bit+ :imm t))
         ;; Result is 1 or 0, convert 1 -> 3
         (emit (arm64:mov :x19 rd))
         (emit (arm64:add rd rd rd))
-        (emit (arm64:add rd rd :x19))))
+        (emit (arm64:add rd rd :x19))
+        (store-if-spilled dest)))
 
     (keywordp (dest value)
       ;; Keyword: tag == 10
-      (let ((rd (vreg->reg dest))
-            (rv (vreg->reg value)))
+      (let ((rd (dest-reg dest))
+            (rv (vreg->reg-or-temp value)))
         (emit (arm64:and* rd rv #.+tag-mask+ :imm t))
         (emit (arm64:cmp rd #.+tag-keyword+ :imm t))
         (emit (arm64:cset rd #.arm64:+cc-eq+))
         ;; Convert 1 -> 3, 0 -> 0
         (emit (arm64:mov :x19 rd))
         (emit (arm64:add rd rd rd))
-        (emit (arm64:add rd rd :x19))))
+        (emit (arm64:add rd rd :x19))
+        (store-if-spilled dest)))
 
     (functionp (dest value)
       ;; Closure: tag == 8
-      (let ((rd (vreg->reg dest))
-            (rv (vreg->reg value)))
+      (let ((rd (dest-reg dest))
+            (rv (vreg->reg-or-temp value)))
         (emit (arm64:and* rd rv #.+tag-mask+ :imm t))
         (emit (arm64:cmp rd #.+tag-closure+ :imm t))
         (emit (arm64:cset rd #.arm64:+cc-eq+))
         ;; Convert 1 -> 3, 0 -> 0
         (emit (arm64:mov :x19 rd))
         (emit (arm64:add rd rd rd))
-        (emit (arm64:add rd rd :x19))))
+        (emit (arm64:add rd rd :x19))
+        (store-if-spilled dest)))
 
     ;; === String Operations ===
     (string-length (dest str)
-      (emit (arm64:and* :x19 (vreg->reg str) -16 :imm t))
-      (emit (arm64:ldr (vreg->reg dest) :x19)))
+      (let ((rd (dest-reg dest))
+            (rs (vreg->reg-or-temp str)))
+        (emit (arm64:and* :x19 rs -16 :imm t))
+        (emit (arm64:ldr rd :x19))
+        (store-if-spilled dest)))
 
     (string-ref (dest str index)
       ;; Load byte at str + 8 + index
-      (emit (arm64:and* :x19 (vreg->reg str) -16 :imm t))
-      (emit (arm64:add :x19 :x19 8 :imm t))
-      (emit (arm64:ldrb (vreg->reg dest) :x19 (vreg->reg index) :reg t)))
+      (let ((rd (dest-reg dest))
+            (rs (vreg->reg-or-temp str +spill-temp2+))
+            (ri (vreg->reg-or-temp index +spill-temp+)))
+        (emit (arm64:and* :x19 rs -16 :imm t))
+        (emit (arm64:add :x19 :x19 8 :imm t))
+        (emit (arm64:ldrb rd :x19 ri :reg t))
+        (store-if-spilled dest)))
 
     (string-concat (dest left right)
       (declare (ignore left right))
       ;; TODO: implement
-      (emit (arm64:movz (vreg->reg dest) 0)))
+      (let ((rd (dest-reg dest)))
+        (emit (arm64:movz rd 0))
+        (store-if-spilled dest)))
 
     (string-lit (dest string)
       (declare (ignore string))
       ;; TODO: load string literal address
-      (emit (arm64:movz (vreg->reg dest) 0)))
+      (let ((rd (dest-reg dest)))
+        (emit (arm64:movz rd 0))
+        (store-if-spilled dest)))
 
     ;; === Vector Operations ===
     (make-vector (dest size init)
       (declare (ignore size init))
-      (emit (arm64:movz (vreg->reg dest) 0)))
+      (let ((rd (dest-reg dest)))
+        (emit (arm64:movz rd 0))
+        (store-if-spilled dest)))
 
     (vector-ref (dest vec index)
-      (emit (arm64:and* :x19 (vreg->reg vec) -16 :imm t))
-      (emit (arm64:add :x19 :x19 8 :imm t))
-      (emit (arm64:ldr (vreg->reg dest) :x19)))
+      (let ((rv (vreg->reg-or-temp vec))
+            (rd (dest-reg dest)))
+        (emit (arm64:and* :x19 rv -16 :imm t))
+        (emit (arm64:add :x19 :x19 8 :imm t))
+        (emit (arm64:ldr rd :x19))
+        (store-if-spilled dest)))
 
     (vector-set (vec index value)
       (declare (ignore vec index value)))
 
     (vector-length (dest vec)
-      (emit (arm64:and* :x19 (vreg->reg vec) -16 :imm t))
-      (emit (arm64:ldr (vreg->reg dest) :x19)))
+      (let ((rv (vreg->reg-or-temp vec))
+            (rd (dest-reg dest)))
+        (emit (arm64:and* :x19 rv -16 :imm t))
+        (emit (arm64:ldr rd :x19))
+        (store-if-spilled dest)))
 
     ;; === Symbol Operations ===
     (make-symbol (dest name)
       (declare (ignore name))
-      (emit (arm64:movz (vreg->reg dest) 0)))
+      (let ((rd (dest-reg dest)))
+        (emit (arm64:movz rd 0))
+        (store-if-spilled dest)))
 
     (symbol-name (dest sym)
-      (emit (arm64:and* :x19 (vreg->reg sym) -16 :imm t))
-      (emit (arm64:ldr (vreg->reg dest) :x19 :offset 8)))
+      (let ((rs (vreg->reg-or-temp sym))
+            (rd (dest-reg dest)))
+        (emit (arm64:and* :x19 rs -16 :imm t))
+        (emit (arm64:ldr rd :x19 :offset 8))
+        (store-if-spilled dest)))
 
     (intern (dest str)
       (declare (ignore str))
-      (emit (arm64:movz (vreg->reg dest) 0)))
+      (let ((rd (dest-reg dest)))
+        (emit (arm64:movz rd 0))
+        (store-if-spilled dest)))
 
     (symbol-lit (dest name)
       (declare (ignore name))
-      (emit (arm64:movz (vreg->reg dest) 0)))
+      ;; For now, emit nil - real symbol literals need intern support
+      (let ((rd (dest-reg dest)))
+        (emit (arm64:movz rd 0))
+        (store-if-spilled dest)))
 
     ;; === Keyword Operations ===
     (keyword-name (dest kw)
-      (emit (arm64:and* :x19 (vreg->reg kw) -16 :imm t))
-      (emit (arm64:ldr (vreg->reg dest) :x19 :offset 8)))
+      (let ((rs (vreg->reg-or-temp kw))
+            (rd (dest-reg dest)))
+        (emit (arm64:and* :x19 rs -16 :imm t))
+        (emit (arm64:ldr rd :x19 :offset 8))
+        (store-if-spilled dest)))
 
     (keyword-lit (dest name)
       (declare (ignore name))
-      (emit (arm64:movz (vreg->reg dest) 0)))
+      (let ((rd (dest-reg dest)))
+        (emit (arm64:movz rd 0))
+        (store-if-spilled dest)))
 
     ;; === List Mutations ===
     (setcar (cell value)
-      (emit (arm64:and* :x19 (vreg->reg cell) -16 :imm t))
-      (emit (arm64:str (vreg->reg value) :x19 :offset 0)))
+      (let ((rc (vreg->reg-or-temp cell))
+            (rv (vreg->reg-or-temp value +spill-temp2+)))
+        (emit (arm64:and* :x19 rc -16 :imm t))
+        (emit (arm64:str rv :x19 :offset 0))))
 
     (setcdr (cell value)
-      (emit (arm64:and* :x19 (vreg->reg cell) -16 :imm t))
-      (emit (arm64:str (vreg->reg value) :x19 :offset 8)))
+      (let ((rc (vreg->reg-or-temp cell))
+            (rv (vreg->reg-or-temp value +spill-temp2+)))
+        (emit (arm64:and* :x19 rc -16 :imm t))
+        (emit (arm64:str rv :x19 :offset 8))))
 
     (nthcdr (dest n lst)
       (declare (ignore n lst))
       ;; TODO: implement nthcdr loop
-      (emit (arm64:movz (vreg->reg dest) 0)))
+      (let ((rd (dest-reg dest)))
+        (emit (arm64:movz rd 0))
+        (store-if-spilled dest)))
 
     (length (dest lst)
       (declare (ignore lst))
       ;; TODO: implement length loop
-      (emit (arm64:movz (vreg->reg dest) 0)))
+      (let ((rd (dest-reg dest)))
+        (emit (arm64:movz rd 0))
+        (store-if-spilled dest)))
 
     ;; === Type Tag Operations ===
     (get-tag (dest value)
-      (emit (arm64:and* (vreg->reg dest) (vreg->reg value) #.+tag-mask+ :imm t)))
+      (let ((rv (vreg->reg-or-temp value))
+            (rd (dest-reg dest)))
+        (emit (arm64:and* rd rv #.+tag-mask+ :imm t))
+        (store-if-spilled dest)))
 
     (set-tag (dest value tag)
-      (emit (arm64:and* :x19 (vreg->reg value) #.+ptr-mask+ :imm t))
-      (emit (arm64:orr (vreg->reg dest) :x19 (vreg->reg tag))))
+      (let ((rv (vreg->reg-or-temp value))
+            (rt (vreg->reg-or-temp tag +spill-temp2+))
+            (rd (dest-reg dest)))
+        (emit (arm64:and* :x19 rv #.+ptr-mask+ :imm t))
+        (emit (arm64:orr rd :x19 rt))
+        (store-if-spilled dest)))
 
     ;; === String Mutations ===
     (make-string (dest len init)
       (declare (ignore len init))
-      ;; TODO: implement
-      (emit (arm64:movz (vreg->reg dest) 0)))
+      (let ((rd (dest-reg dest)))
+        (emit (arm64:movz rd 0))
+        (store-if-spilled dest)))
 
     (make-string-from-vector (dest vec)
       (declare (ignore vec))
-      ;; TODO: implement
-      (emit (arm64:movz (vreg->reg dest) 0)))
+      (let ((rd (dest-reg dest)))
+        (emit (arm64:movz rd 0))
+        (store-if-spilled dest)))
 
     (string-equal (dest left right)
       (declare (ignore left right))
-      ;; TODO: implement string comparison
-      (emit (arm64:movz (vreg->reg dest) 0)))
+      (let ((rd (dest-reg dest)))
+        (emit (arm64:movz rd 0))
+        (store-if-spilled dest)))
 
     (string-set (str index value)
-      (emit (arm64:and* :x19 (vreg->reg str) -16 :imm t))
-      (emit (arm64:add :x19 :x19 8 :imm t))
-      (emit (arm64:strb (vreg->reg value) :x19 (vreg->reg index) :reg t)))
+      (let ((rs (vreg->reg-or-temp str))
+            (ri (vreg->reg-or-temp index +spill-temp2+)))
+        ;; Need third temp for value - use x17
+        (when (is-spilled value)
+          (emit (arm64:ldr :x17 :sp :offset (spill-offset value))))
+        (let ((rv (if (is-spilled value) :x17 (vreg->reg value))))
+          (emit (arm64:and* :x19 rs -16 :imm t))
+          (emit (arm64:add :x19 :x19 8 :imm t))
+          (emit (arm64:strb rv :x19 ri :reg t)))))
 
     ;; === Buffer Operations ===
     (buffer-byte-ref (dest buf index)
-      (emit (arm64:and* :x19 (vreg->reg buf) -16 :imm t))
-      (emit (arm64:add :x19 :x19 8 :imm t))
-      (emit (arm64:ldrb (vreg->reg dest) :x19 (vreg->reg index) :reg t)))
+      (let ((rb (vreg->reg-or-temp buf))
+            (ri (vreg->reg-or-temp index +spill-temp2+))
+            (rd (dest-reg dest)))
+        (emit (arm64:and* :x19 rb -16 :imm t))
+        (emit (arm64:add :x19 :x19 8 :imm t))
+        (emit (arm64:ldrb rd :x19 ri :reg t))
+        (store-if-spilled dest)))
 
     (buffer-byte-set (buf index value)
-      (emit (arm64:and* :x19 (vreg->reg buf) -16 :imm t))
-      (emit (arm64:add :x19 :x19 8 :imm t))
-      (emit (arm64:strb (vreg->reg value) :x19 (vreg->reg index) :reg t)))
+      (let ((rb (vreg->reg-or-temp buf))
+            (ri (vreg->reg-or-temp index +spill-temp2+)))
+        (when (is-spilled value)
+          (emit (arm64:ldr :x17 :sp :offset (spill-offset value))))
+        (let ((rv (if (is-spilled value) :x17 (vreg->reg value))))
+          (emit (arm64:and* :x19 rb -16 :imm t))
+          (emit (arm64:add :x19 :x19 8 :imm t))
+          (emit (arm64:strb rv :x19 ri :reg t)))))
 
     (buffer-to-string (dest buf len)
       (declare (ignore buf len))
-      ;; TODO: implement
-      (emit (arm64:movz (vreg->reg dest) 0)))
+      (let ((rd (dest-reg dest)))
+        (emit (arm64:movz rd 0))
+        (store-if-spilled dest)))
 
     ;; === Symbol Extended ===
     (make-symbol-from-string (dest str)
       (declare (ignore str))
-      ;; TODO: implement
-      (emit (arm64:movz (vreg->reg dest) 0)))
+      (let ((rd (dest-reg dest)))
+        (emit (arm64:movz rd 0))
+        (store-if-spilled dest)))
 
     ;; === File I/O ===
     (read-file (dest path)
       (declare (ignore path))
-      (emit (arm64:movz (vreg->reg dest) 0)))
+      (let ((rd (dest-reg dest)))
+        (emit (arm64:movz rd 0))
+        (store-if-spilled dest)))
 
     (write-file (path content)
       (declare (ignore path content)))
@@ -649,43 +892,61 @@
 
     (sys-read (dest fd buf count)
       (declare (ignore fd buf count))
-      (emit (arm64:movz (vreg->reg dest) 0)))
+      (let ((rd (dest-reg dest)))
+        (emit (arm64:movz rd 0))
+        (store-if-spilled dest)))
 
     (sys-read-byte (dest fd)
       (declare (ignore fd))
-      (emit (arm64:movz (vreg->reg dest) 0)))
+      (let ((rd (dest-reg dest)))
+        (emit (arm64:movz rd 0))
+        (store-if-spilled dest)))
 
     (sys-write (dest fd buf count)
       (declare (ignore fd buf count))
-      (emit (arm64:movz (vreg->reg dest) 0)))
+      (let ((rd (dest-reg dest)))
+        (emit (arm64:movz rd 0))
+        (store-if-spilled dest)))
 
     (sys-write-char (fd char)
       (declare (ignore fd char)))
 
     (sys-open (dest path flags mode)
       (declare (ignore path flags mode))
-      (emit (arm64:movz (vreg->reg dest) 0)))
+      (let ((rd (dest-reg dest)))
+        (emit (arm64:movz rd 0))
+        (store-if-spilled dest)))
 
     (sys-close (dest fd)
       (declare (ignore fd))
-      (emit (arm64:movz (vreg->reg dest) 0)))
+      (let ((rd (dest-reg dest)))
+        (emit (arm64:movz rd 0))
+        (store-if-spilled dest)))
 
     ;; === System/Low-level ===
     (system (dest cmd)
       (declare (ignore cmd))
-      (emit (arm64:movz (vreg->reg dest) 0)))
+      (let ((rd (dest-reg dest)))
+        (emit (arm64:movz rd 0))
+        (store-if-spilled dest)))
 
     (mmap (dest addr len prot flags fd offset)
       (declare (ignore addr len prot flags fd offset))
-      (emit (arm64:movz (vreg->reg dest) 0)))
+      (let ((rd (dest-reg dest)))
+        (emit (arm64:movz rd 0))
+        (store-if-spilled dest)))
 
     (mmap-jit (dest len)
       (declare (ignore len))
-      (emit (arm64:movz (vreg->reg dest) 0)))
+      (let ((rd (dest-reg dest)))
+        (emit (arm64:movz rd 0))
+        (store-if-spilled dest)))
 
     (munmap (dest addr len)
       (declare (ignore addr len))
-      (emit (arm64:movz (vreg->reg dest) 0)))
+      (let ((rd (dest-reg dest)))
+        (emit (arm64:movz rd 0))
+        (store-if-spilled dest)))
 
     (pthread-jit-write-protect (enable)
       (declare (ignore enable)))
@@ -698,68 +959,106 @@
 
     (funcall-ptr (dest ptr args)
       (declare (ignore ptr args))
-      (emit (arm64:movz (vreg->reg dest) 0)))
+      (let ((rd (dest-reg dest)))
+        (emit (arm64:movz rd 0))
+        (store-if-spilled dest)))
 
     (mem-set-byte (addr value)
-      (emit (arm64:strb (vreg->reg value) (vreg->reg addr) :offset 0)))
+      (let ((ra (vreg->reg-or-temp addr))
+            (rv (vreg->reg-or-temp value +spill-temp2+)))
+        (emit (arm64:strb rv ra :offset 0))))
 
     (mem-load-64 (dest addr)
-      (emit (arm64:ldr (vreg->reg dest) (vreg->reg addr) :offset 0)))
+      (let ((ra (vreg->reg-or-temp addr))
+            (rd (dest-reg dest)))
+        (emit (arm64:ldr rd ra :offset 0))
+        (store-if-spilled dest)))
 
     (mem-load-byte (dest addr)
-      (emit (arm64:ldrb (vreg->reg dest) (vreg->reg addr) :offset 0)))
+      (let ((ra (vreg->reg-or-temp addr))
+            (rd (dest-reg dest)))
+        (emit (arm64:ldrb rd ra :offset 0))
+        (store-if-spilled dest)))
 
     ;; === Heap/Runtime Access ===
     (get-intern-table (dest)
-      (emit (arm64:ldr (vreg->reg dest) :x27 :offset 0)))
+      (let ((rd (dest-reg dest)))
+        (emit (arm64:ldr rd :x27 :offset 0))
+        (store-if-spilled dest)))
 
     (set-intern-table (value)
-      (emit (arm64:str (vreg->reg value) :x27 :offset 0)))
+      (let ((rv (vreg->reg-or-temp value)))
+        (emit (arm64:str rv :x27 :offset 0))))
 
     (get-keyword-table (dest)
-      (emit (arm64:ldr (vreg->reg dest) :x27 :offset 128)))
+      (let ((rd (dest-reg dest)))
+        (emit (arm64:ldr rd :x27 :offset 128))
+        (store-if-spilled dest)))
 
     (set-keyword-table (value)
-      (emit (arm64:str (vreg->reg value) :x27 :offset 128)))
+      (let ((rv (vreg->reg-or-temp value)))
+        (emit (arm64:str rv :x27 :offset 128))))
 
     (get-lambda-counter (dest)
-      (emit (arm64:ldr (vreg->reg dest) :x27 :offset 8)))
+      (let ((rd (dest-reg dest)))
+        (emit (arm64:ldr rd :x27 :offset 8))
+        (store-if-spilled dest)))
 
     (set-lambda-counter (value)
-      (emit (arm64:str (vreg->reg value) :x27 :offset 8)))
+      (let ((rv (vreg->reg-or-temp value)))
+        (emit (arm64:str rv :x27 :offset 8))))
 
     (get-symbol-counter (dest)
-      (emit (arm64:ldr (vreg->reg dest) :x27 :offset 48)))
+      (let ((rd (dest-reg dest)))
+        (emit (arm64:ldr rd :x27 :offset 48))
+        (store-if-spilled dest)))
 
     (set-symbol-counter (value)
-      (emit (arm64:str (vreg->reg value) :x27 :offset 48)))
+      (let ((rv (vreg->reg-or-temp value)))
+        (emit (arm64:str rv :x27 :offset 48))))
 
     (get-symbol-table (dest)
-      (emit (arm64:ldr (vreg->reg dest) :x27 :offset 56)))
+      (let ((rd (dest-reg dest)))
+        (emit (arm64:ldr rd :x27 :offset 56))
+        (store-if-spilled dest)))
 
     (set-symbol-table (value)
-      (emit (arm64:str (vreg->reg value) :x27 :offset 56)))
+      (let ((rv (vreg->reg-or-temp value)))
+        (emit (arm64:str rv :x27 :offset 56))))
 
     (get-symtab-offset (dest)
-      (emit (arm64:ldr (vreg->reg dest) :x27 :offset 112)))
+      (let ((rd (dest-reg dest)))
+        (emit (arm64:ldr rd :x27 :offset 112))
+        (store-if-spilled dest)))
 
     (get-symtab-count (dest)
-      (emit (arm64:ldr (vreg->reg dest) :x27 :offset 120)))
+      (let ((rd (dest-reg dest)))
+        (emit (arm64:ldr rd :x27 :offset 120))
+        (store-if-spilled dest)))
 
     (get-frame-pointer (dest)
-      (emit (arm64:mov (vreg->reg dest) :x29)))
+      (let ((rd (dest-reg dest)))
+        (emit (arm64:mov rd :x29))
+        (store-if-spilled dest)))
 
     (get-code-base (dest)
-      (emit (arm64:mov (vreg->reg dest) :x26)))
+      (let ((rd (dest-reg dest)))
+        (emit (arm64:mov rd :x26))
+        (store-if-spilled dest)))
 
     (set-global-vars (value)
-      (emit (arm64:str (vreg->reg value) :x27 :offset 104)))
+      (let ((rv (vreg->reg-or-temp value)))
+        (emit (arm64:str rv :x27 :offset 104))))
 
     (get-global-vars (dest)
-      (emit (arm64:ldr (vreg->reg dest) :x27 :offset 104)))
+      (let ((rd (dest-reg dest)))
+        (emit (arm64:ldr rd :x27 :offset 104))
+        (store-if-spilled dest)))
 
     (get-cmdline-args (dest)
-      (emit (arm64:ldr (vreg->reg dest) :x27 :offset 72)))
+      (let ((rd (dest-reg dest)))
+        (emit (arm64:ldr rd :x27 :offset 72))
+        (store-if-spilled dest)))
 
     ;; === Control Flow Extended ===
     (block-begin (id)
@@ -779,30 +1078,42 @@
 
     (dolist-init (dest var-offset lst)
       (declare (ignore var-offset lst))
-      (emit (arm64:movz (vreg->reg dest) 0)))
+      (let ((rd (dest-reg dest)))
+        (emit (arm64:movz rd 0))
+        (store-if-spilled dest)))
 
     (dolist-next (dest var-offset lst end-label)
       (declare (ignore var-offset lst end-label))
-      (emit (arm64:movz (vreg->reg dest) 0)))
+      (let ((rd (dest-reg dest)))
+        (emit (arm64:movz rd 0))
+        (store-if-spilled dest)))
 
     (dotimes-init (dest var-offset count)
       (declare (ignore var-offset count))
-      (emit (arm64:movz (vreg->reg dest) 0)))
+      (let ((rd (dest-reg dest)))
+        (emit (arm64:movz rd 0))
+        (store-if-spilled dest)))
 
     (dotimes-next (dest var-offset count end-label)
       (declare (ignore var-offset count end-label))
-      (emit (arm64:movz (vreg->reg dest) 0)))
+      (let ((rd (dest-reg dest)))
+        (emit (arm64:movz rd 0))
+        (store-if-spilled dest)))
 
     ;; === Functions Extended ===
     (lambda (dest params body captures)
       (declare (ignore params body captures))
       ;; TODO: closure creation
-      (emit (arm64:movz (vreg->reg dest) 0)))
+      (let ((rd (dest-reg dest)))
+        (emit (arm64:movz rd 0))
+        (store-if-spilled dest)))
 
     (lambda-ref (dest name captures)
       (declare (ignore name captures))
       ;; TODO: lambda reference
-      (emit (arm64:movz (vreg->reg dest) 0)))
+      (let ((rd (dest-reg dest)))
+        (emit (arm64:movz rd 0))
+        (store-if-spilled dest)))
 
     (tail-call (name args)
       (declare (ignore name args))
@@ -819,7 +1130,8 @@
     ;; === System ===
     (exit (code)
       ;; Untag fixnum: x0 = value >> 1
-      (emit (arm64:lsr :x0 (vreg->reg code) 1 :imm t))
+      (let ((rc (vreg->reg-or-temp code)))
+        (emit (arm64:lsr :x0 rc 1 :imm t)))
       ;; syscall exit
       (emit (arm64:movz :x16 1))
       (emit (arm64:svc 0)))
@@ -882,6 +1194,12 @@
    (arm64:add :x20 :sp #x3 :imm t :shift12 t) ;; x20 = sp + 0x3000
    (arm64:add :x20 :x20 #xF80 :imm t)))       ;; x20 = sp + 0x3F80
 
+(defun fn-prologue-with-spills (spill-count)
+  "Generate prologue with space for spills. Uses fixed 16KB frame which has
+   plenty of room for spills (temp slots at sp+0x40 can hold ~2000 values)."
+  (declare (ignore spill-count))  ; Frame already has room
+  (fn-fixed-prologue))
+
 (defun fn-fixed-epilogue ()
   "Generate function epilogue for fixed 16KB frame"
   (append
@@ -907,13 +1225,22 @@
     code))
 
 (defun codegen-function (name params body-tac alloc)
-  "Generate complete function code with prologue/epilogue."
+  "Generate complete function code with prologue/epilogue.
+   Returns: (values code-bytes markers) where markers is list of (offset marker-data)."
   (declare (ignore name))
   (reset-codegen)
   (setf *vreg-to-reg* (allocation-result-vreg-to-reg alloc))
 
-  ;; Emit prologue
-  (emit (fn-fixed-prologue))
+  ;; Set up spill slots mapping
+  (setf *stack-size* (allocation-result-stack-size alloc))
+  (setf *spill-slots* (make-hash-table))
+  (let ((slot 0))
+    (dolist (vreg (allocation-result-spills alloc))
+      (setf (gethash vreg *spill-slots*) slot)
+      (incf slot)))
+
+  ;; Emit prologue (includes stack allocation for spills)
+  (emit (fn-prologue-with-spills *stack-size*))
 
   ;; Store parameters from x0-x7 to environment
   (emit (gen-param-stores params))
@@ -924,5 +1251,6 @@
 
   ;; Reverse to correct order, then apply fixups
   (setf *code* (nreverse *code*))
+  (setf *markers* (nreverse *markers*))
   (apply-fixups)
-  *code*)
+  (values *code* *markers*))

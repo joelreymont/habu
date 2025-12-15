@@ -309,9 +309,10 @@
           (emit (tac-call dest name (length args)))
           dest)))
 
-    (lambda (params body captures)
+    (lambda (params body captures offsets)
       ;; For now, emit as a symbol representing the lambda
       ;; Full closure support would need more work
+      (declare (ignore params body captures offsets))
       (let ((dest (next-vreg)))
         ;; TODO: proper lambda/closure compilation
         (emit (tac-nil dest))
