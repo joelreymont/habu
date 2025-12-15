@@ -59,22 +59,14 @@
   (reset-codegen)
   (setf *vreg-to-reg* (allocation-result-vreg-to-reg alloc))
 
-  ;; First pass: collect labels
-  (let ((offset 0))
-    (dolist (instr tac-instrs)
-      (when (and (consp instr) (eq (car instr) :tac-label))
-        (setf (gethash (cadr instr) *labels*) offset))
-      ;; Estimate: each TAC instruction ~1-3 ARM64 instructions (4-12 bytes)
-      (incf offset 8)))
-
-  ;; Second pass: generate code
+  ;; Generate code - labels record their position during this pass
   (dolist (instr tac-instrs)
     (codegen-instr instr))
 
-  ;; Apply fixups
+  ;; Reverse to get correct order, then apply fixups, then return
+  (setf *code* (nreverse *code*))
   (apply-fixups)
-
-  (nreverse *code*))
+  *code*)
 
 (defun codegen-instr (instr)
   "Generate ARM64 for a single TAC instruction."
@@ -378,6 +370,31 @@
       (declare (ignore name))
       (emit (arm64:movz (vreg->reg dest) 0)))
 
+    ;; === Control Flow ===
+    (tac-label (name)
+      ;; Record label position (will be correct after nreverse)
+      (setf (gethash name *labels*) (current-offset)))
+
+    (tac-goto (target)
+      ;; Unconditional branch - record fixup
+      (let ((offset (current-offset)))
+        (push (list offset target :b) *fixups*)
+        (emit (arm64:b 0))))  ; placeholder, will be patched
+
+    (tac-if (cond-vreg target)
+      ;; Branch if condition is true (non-nil/non-zero)
+      (let ((offset (current-offset)))
+        (emit (arm64:cmp (vreg->reg cond-vreg) 0 :imm t))
+        (push (list (current-offset) target :b.ne) *fixups*)
+        (emit (arm64:b.ne 0))))
+
+    (tac-ifnot (cond-vreg target)
+      ;; Branch if condition is false (nil/zero)
+      (emit (arm64:cmp (vreg->reg cond-vreg) 0 :imm t))
+      (let ((offset (current-offset)))
+        (push (list offset target :b.eq) *fixups*)
+        (emit (arm64:b.eq 0))))
+
     ;; === System ===
     (tac-exit (code)
       ;; Untag fixnum: x0 = value >> 1
@@ -393,16 +410,29 @@
 
 ;;; Apply fixups for forward branches
 (defun apply-fixups ()
-  "Patch branch instructions with resolved offsets."
-  ;; TODO: implement actual patching
-  ;; For now, just report fixups (don't modify *code*)
-  (dolist (fixup *fixups*)
-    (let* ((offset (first fixup))
-           (label (second fixup))
-           (target (gethash label *labels*)))
-      (declare (ignore offset label))
-      (unless target
-        (error "Undefined label in fixup")))))
+  "Patch branch instructions with resolved offsets.
+   *code* must be in final order (already nreversed) when called."
+  (let ((code-vec (coerce *code* 'vector)))
+    (dolist (fixup *fixups*)
+      (let* ((branch-offset (first fixup))
+             (label (second fixup))
+             (type (third fixup))
+             (target-offset (gethash label *labels*)))
+        (unless target-offset
+          (error "Undefined label: ~S" label))
+        ;; Calculate relative offset in instructions (bytes / 4)
+        (let* ((rel-bytes (- target-offset branch-offset))
+               (rel-instrs (ash rel-bytes -2))
+               ;; Generate patched instruction
+               (patched (ecase type
+                          (:b (arm64:b rel-instrs))
+                          (:b.eq (arm64:b.eq rel-instrs))
+                          (:b.ne (arm64:b.ne rel-instrs)))))
+          ;; Patch the 4 bytes at branch-offset
+          (loop for i from 0 below 4
+                for byte in patched
+                do (setf (aref code-vec (+ branch-offset i)) byte)))))
+    (setf *code* (coerce code-vec 'list))))
 
 ;;; High-level function codegen
 
