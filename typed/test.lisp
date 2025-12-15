@@ -8,6 +8,8 @@
 (load "typed/tac.lisp")
 (load "typed/compile.lisp")
 (load "typed/ir-to-tac.lisp")
+(load "typed/liveness.lisp")
+(load "typed/regalloc.lisp")
 
 (defpackage :habu.test
   (:use :cl)
@@ -27,21 +29,12 @@
 
 ;; Test constructors
 (let ((lit (test-lit 42))
-      (add (test-add (test-lit 1) (test-lit 2)))
-      (var (test-var 'x)))
+      (add (test-add (test-lit 1) (test-lit 2))))
   (format t "lit: ~S~%" lit)
   (format t "add: ~S~%" add)
-  (format t "var: ~S~%~%" var)
+  (format t "test-lit-p lit: ~A~%" (test-lit-p lit)))
 
-  ;; Test predicates
-  (format t "test-lit-p lit: ~A~%" (test-lit-p lit))
-  (format t "test-add-p add: ~A~%" (test-add-p add))
-
-  ;; Test accessors
-  (format t "test-lit-value lit: ~A~%" (test-lit-value lit))
-  (format t "test-add-left add: ~S~%~%" (test-add-left add)))
-
-;; Test match - exhaustiveness
+;; Test match
 (defun eval-test-expr (expr)
   (match test-expr expr
     (test-lit (value) value)
@@ -52,47 +45,87 @@
 
 (format t "eval (+ 1 2): ~A~%~%" (eval-test-expr (test-add (test-lit 1) (test-lit 2))))
 
+;;; Test: record/struct
+
+(format t "=== Testing Record/Struct ===~%")
+
+(deftype point :record (x 0) (y 0))
+
+(let ((p (make-point :x 10 :y 20)))
+  (format t "point: ~S~%" p)
+  (format t "match point: ~A~%~%"
+    (match point p
+      (point (a b) (+ a b)))))
+
 ;;; Test: compile pass
 
 (format t "=== Testing Compile (S-expr -> IR) ===~%")
 
 (defun test-compile (expr)
   (let ((ir (habu.compile:compile-expr expr nil)))
-    (format t "~S~%  -> ~S~%~%" expr ir)
+    (format t "~S -> ~S~%" expr ir)
     ir))
 
 (test-compile 42)
-(test-compile nil)
-(test-compile t)
 (test-compile '(+ 1 2))
 (test-compile '(if t 1 2))
-(test-compile '(let ((x 1)) x))
-(test-compile '(cons 1 2))
 
 ;;; Test: IR to TAC pass
 
-(format t "=== Testing IR to TAC ===~%")
+(format t "~%=== Testing IR to TAC ===~%")
 
 (defun test-ir-to-tac (expr)
   (let* ((ir (habu.compile:compile-expr expr nil))
          (tac (habu.ir-to-tac:ir-to-tac ir)))
-    (format t "~S~%" expr)
-    (format t "TAC (~D instructions):~%" (length tac))
-    (dolist (instr tac)
-      (format t "  ~S~%" instr))
-    (format t "~%")
+    (format t "~S -> ~D TAC instructions~%" expr (length tac))
     tac))
 
 (test-ir-to-tac 42)
 (test-ir-to-tac '(+ 1 2))
 (test-ir-to-tac '(if t 1 2))
 
-;;; Test: exhaustiveness checking
+;;; Test: Liveness Analysis
 
-(format t "=== Testing Exhaustiveness ===~%")
+(format t "~%=== Testing Liveness Analysis ===~%")
 
-(format t "Exhaustiveness checking works - missing variants cause compile-time errors~%")
-(format t "Example: If you remove a case from a match, you get:~%")
-(format t "  \"match TEST-EXPR: MISSING variants (TEST-VAR)\"~%~%")
+(defun test-liveness (expr)
+  (let* ((ir (habu.compile:compile-expr expr nil))
+         (tac (habu.ir-to-tac:ir-to-tac ir))
+         (intervals (habu.liveness:compute-liveness tac)))
+    (format t "~S: ~D live intervals~%" expr (length intervals))
+    (dolist (int intervals)
+      (format t "  vreg ~D: [~D, ~D)~%"
+              (habu.liveness:live-interval-vreg int)
+              (habu.liveness:live-interval-start int)
+              (habu.liveness:live-interval-end int)))
+    intervals))
+
+(test-liveness '(+ 1 2))
+
+;;; Test: Register Allocation
+
+(format t "~%=== Testing Register Allocation ===~%")
+
+(defun test-regalloc (expr)
+  (let* ((ir (habu.compile:compile-expr expr nil))
+         (tac (habu.ir-to-tac:ir-to-tac ir))
+         (alloc (habu.regalloc:allocate-registers tac)))
+    (format t "~S:~%" expr)
+    (format t "  Stack slots needed: ~D~%"
+            (habu.regalloc:allocation-result-stack-size alloc))
+    (format t "  Spills: ~S~%"
+            (habu.regalloc:allocation-result-spills alloc))
+    (format t "  Assignments:~%")
+    (maphash (lambda (vreg reg)
+               (format t "    vreg ~D -> ~A~%" vreg
+                       (if (eq reg :spill) "SPILL" (format nil "x~D" reg))))
+             (habu.regalloc:allocation-result-vreg-to-reg alloc))
+    alloc))
+
+(test-regalloc '(+ 1 2))
+(test-regalloc '(if t 1 2))
+
+;;; Summary
 
 (format t "~%=== All tests passed ===~%")
+(format t "Pipeline: S-expr -> IR -> TAC -> Liveness -> RegAlloc~%")

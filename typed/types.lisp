@@ -63,21 +63,31 @@
      ',name))
 
 (defun expand-record-type (name fields)
-  (let ((field-names (mapcar #'car fields)))
+  "Expand record type using defstruct internally.
+   Fields can be: field-name or (field-name default)"
+  (let* ((parsed-fields (mapcar (lambda (f)
+                                  (if (consp f)
+                                      (list (car f) (cadr f))
+                                      (list f nil)))
+                                fields))
+         (field-names (mapcar #'car parsed-fields))
+         (make-name (intern (format nil "MAKE-~A" name)))
+         (copy-name (intern (format nil "COPY-~A" name)))
+         (pred-name (intern (format nil "~A-P" name))))
     `(progn
+       ;; Use defstruct for efficient implementation
+       (cl:defstruct (,name
+                      (:constructor ,make-name)
+                      (:copier ,copy-name)
+                      (:predicate ,pred-name))
+         ,@parsed-fields)
+
+       ;; Register in type system for match integration
        (setf (gethash ',name *type-registry*)
-             '(:kind :record :fields ,field-names))
-       ;; Constructor
-       (defun ,name ,field-names
-         (list ,(symbol-to-keyword name) ,@field-names))
-       ;; Predicate
-       (defun ,(intern (format nil "~A-P" name)) (x)
-         (and (consp x) (eq (car x) ,(symbol-to-keyword name))))
-       ;; Accessors
-       ,@(loop for field in field-names
-               for i from 1
-               collect `(defun ,(intern (format nil "~A-~A" name field)) (x)
-                          (nth ,i x)))
+             '(:kind :record
+               :fields ,field-names
+               :constructor ,make-name
+               :predicate ,pred-name))
        ',name)))
 
 (defun expand-sum-type (name variants)
@@ -188,14 +198,27 @@
                collect `(,val ,@body)))))
 
 (defun expand-record-match (type-name info expr clauses)
-  ;; Records have only one "variant" - the type itself
-  (declare (ignore info))
+  "Expand match for record/struct types.
+   Binds fields using struct accessors."
   (unless (= (length clauses) 1)
     (error "match ~A: record types have exactly one pattern" type-name))
   (let* ((clause (car clauses))
+         (pattern-name (first clause))
          (pattern-fields (second clause))
-         (body (cddr clause)))
-    `(destructuring-bind ,pattern-fields (cdr ,expr)
+         (body (cddr clause))
+         (registered-fields (getf info :fields))
+         (obj (gensym "OBJ")))
+    (declare (ignore pattern-name))
+    ;; Verify field count matches
+    (unless (= (length pattern-fields) (length registered-fields))
+      (error "match ~A: expected ~D fields, got ~D"
+             type-name (length registered-fields) (length pattern-fields)))
+    ;; Generate accessor bindings
+    `(let* ((,obj ,expr)
+            ,@(loop for pat-field in pattern-fields
+                    for reg-field in registered-fields
+                    collect `(,pat-field (,(intern (format nil "~A-~A" type-name reg-field))
+                                          ,obj))))
        ,@body)))
 
 (defmacro match (type-name expr &body clauses)
