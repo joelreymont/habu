@@ -295,12 +295,92 @@
     ((length habu::length)
      (ir-length (compile-expr (first args) env)))
 
+    ;; Memory operations
+    ((mem-load-byte habu::mem-load-byte)
+     (ir-mem-load-byte (compile-expr (first args) env)))
+    ((mem-load-64 habu::mem-load-64)
+     (ir-mem-load-64 (compile-expr (first args) env)))
+    ((mem-set-byte habu::mem-set-byte)
+     (ir-mem-set-byte (compile-expr (first args) env)
+                      (compile-expr (second args) env)))
+
+    ;; Runtime table access
+    ((get-intern-table habu::get-intern-table)
+     (ir-get-intern-table))
+    ((set-intern-table habu::set-intern-table)
+     (ir-set-intern-table (compile-expr (first args) env)))
+    ((get-keyword-table habu::get-keyword-table)
+     (ir-get-keyword-table))
+    ((set-keyword-table habu::set-keyword-table)
+     (ir-set-keyword-table (compile-expr (first args) env)))
+    ((get-symtab-offset habu::get-symtab-offset)
+     (ir-get-symtab-offset))
+    ((get-code-base habu::get-code-base)
+     (ir-get-code-base))
+    ((get-frame-pointer habu::get-frame-pointer)
+     (ir-get-frame-pointer))
+
+    ;; Tag operations
+    ((get-tag habu::get-tag)
+     (ir-get-tag (compile-expr (first args) env)))
+    ((set-tag habu::set-tag)
+     (ir-set-tag (compile-expr (first args) env)
+                 (compile-expr (second args) env)))
+
+    ;; Buffer operations
+    ((buffer-byte-ref habu::buffer-byte-ref)
+     (ir-buffer-byte-ref (compile-expr (first args) env)
+                         (compile-expr (second args) env)))
+
+    ;; File I/O
+    ((sys-read habu::sys-read)
+     (ir-sys-read (compile-expr (first args) env)
+                  (compile-expr (second args) env)
+                  (compile-expr (third args) env)))
+    ((sys-open habu::sys-open)
+     (ir-sys-open (compile-expr (first args) env)
+                  (compile-expr (second args) env)
+                  (compile-expr (third args) env)))
+    ((sys-write habu::sys-write)
+     (ir-sys-write (compile-expr (first args) env)
+                   (compile-expr (second args) env)
+                   (compile-expr (third args) env)))
+    ((sys-close habu::sys-close)
+     (ir-sys-close (compile-expr (first args) env)))
+
+    ;; String/Symbol construction
+    ((make-symbol-from-string habu::make-symbol-from-string)
+     (ir-make-symbol-from-string (compile-expr (first args) env)))
+    ((make-string-from-vector habu::make-string-from-vector)
+     (ir-make-string-from-vector (compile-expr (first args) env)))
+
+    ;; Append - compile as recursive cons
+    ((append habu::append)
+     (if (null args)
+         (ir-nil)
+         (if (null (cdr args))
+             (compile-expr (first args) env)
+             (compile-append (compile-expr (first args) env)
+                             (compile-expr (second args) env)))))
+
+    ;; #'function syntax
+    (function
+     (if (and (= (length args) 1) (symbolp (first args)))
+         ;; #'name - compile as lambda-ref or lookup
+         (let ((name (first args)))
+           (let ((offset (env-lookup name env)))
+             (if offset
+                 (ir-var offset)
+                 ;; Global function - return symbol
+                 (ir-sym name))))
+         (error "compile: invalid function form ~S" args)))
+
     ;; Funcall - indirect function call
     (funcall (ir-funcall (compile-expr (first args) env)
                          (mapcar (lambda (a) (compile-expr a env))
                                  (rest args))))
 
-    ;; Default: check for macro or named function call
+    ;; Default: check for macro, local binding, or named function call
     (otherwise
      ;; Check if it's a macro
      (let ((expander (gethash op *macros*)))
@@ -308,8 +388,14 @@
            ;; Expand macro and compile result
            (let ((expanded (apply expander args)))
              (compile-expr expanded env))
-           ;; Named function call
-           (ir-call op (mapcar (lambda (a) (compile-expr a env)) args)))))))
+           ;; Check if it's bound in env (local function from labels/flet)
+           (let ((local-offset (env-lookup op env)))
+             (if local-offset
+                 ;; Local function - compile as funcall on bound lambda
+                 (ir-funcall (ir-var local-offset)
+                             (mapcar (lambda (a) (compile-expr a env)) args))
+                 ;; Named function call
+                 (ir-call op (mapcar (lambda (a) (compile-expr a env)) args)))))))))
 
 ;;; Special form compilers
 
@@ -581,6 +667,12 @@
   (if args
       (compile-expr (car args) env)
       (ir-nil)))
+
+(defun compile-append (list1 list2)
+  "Compile append of two lists at IR level.
+   Generates code to copy list1 and attach list2 at end."
+  ;; Compile as a call to the append function
+  (ir-call 'append (list list1 list2)))
 
 (defun compile-nth (args env)
   "Compile (nth n list) as repeated cdr then car.

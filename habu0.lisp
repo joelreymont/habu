@@ -1156,6 +1156,12 @@
       tail
       (revappend (cdr lst) (cons (car lst) tail))))
 
+;; append - copy list1 and attach list2 at end
+(defun append (list1 list2)
+  (if (null list1)
+      list2
+      (cons (car list1) (append (cdr list1) list2))))
+
 ;; Helper for read-all - avoids labels which has codegen issues
 (defun read-all-loop (source len pos acc)
   (let ((p2 (skip-ws source pos)))

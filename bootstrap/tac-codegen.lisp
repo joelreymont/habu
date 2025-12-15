@@ -977,7 +977,7 @@
     (mem-load-byte (dest addr)
       (let ((ra (vreg->reg-or-temp addr))
             (rd (dest-reg dest)))
-        (emit (arm64:ldrb rd ra :offset 0))
+        (emit (arm64:ldrb rd ra 0))  ; immediate offset mode
         (store-if-spilled dest)))
 
     ;; === Heap/Runtime Access ===

@@ -290,43 +290,57 @@
         (let ((all-defuns (append defuns main-lambdas defun-lambdas)))
           (multiple-value-bind (fn-alist fn-bytes fn-markers)
               (codegen-all-defuns all-defuns)
-            ;; Generate main code (may have markers)
-            (let ((main-bytes-raw (codegen-ir main-ir)))
-              ;; Layout: prologue(16) + main_expr + epilogue(24) + functions
-              (let* ((prologue-size 16)   ; 4 instructions
-                     (epilogue-size 24)   ; 6 instructions
-                     (main-expr-size (length main-bytes-raw))
-                     (fn-start-offset (+ prologue-size main-expr-size epilogue-size))
-                     ;; Adjust fn-alist to absolute offsets in final binary
-                     (fn-alist-abs (mapcar (lambda (e)
-                                             (cons (car e) (+ fn-start-offset (cdr e))))
-                                           fn-alist)))
-                ;; Resolve call markers in functions
-                (multiple-value-bind (fn-bytes-resolved unresolved)
-                    (resolve-call-markers fn-bytes fn-markers fn-alist-abs fn-start-offset)
-                  ;; Warn about unresolved external calls
-                  (when unresolved
-                    (format t "Warning: ~D unresolved external calls~%" (length unresolved)))
-                  ;; Wrap main with prologue/epilogue
-                  (let* ((main-bytes (resolve-call-markers main-bytes-raw nil fn-alist-abs prologue-size))
-                         (main-code (wrap-expr-as-main main-bytes))
-                         (all-code (append main-code fn-bytes-resolved)))
+            ;; Generate main code with proper prologue/epilogue
+            (let* ((main-tac (habu.ir-to-tac:ir-to-tac main-ir))
+                   (main-alloc (habu.regalloc:allocate-registers main-tac)))
+              (multiple-value-bind (main-code main-markers)
+                  (habu.codegen:codegen-function '_main nil main-tac main-alloc)
+                (let* ((main-size (length main-code))
+                       (fn-start-offset main-size)
+                       ;; Adjust fn-alist to absolute offsets
+                       (fn-alist-abs (mapcar (lambda (e)
+                                               (cons (car e) (+ fn-start-offset (cdr e))))
+                                             fn-alist))
+                       ;; Combine all markers
+                       (all-markers (append main-markers
+                                            (mapcar (lambda (m)
+                                                      (list (+ main-size (first m)) (second m)))
+                                                    fn-markers)))
+                       ;; Combine main + functions
+                       (all-code-raw (append main-code fn-bytes)))
+                  ;; Resolve call markers
+                  (multiple-value-bind (all-code unresolved)
+                      (resolve-call-markers all-code-raw all-markers fn-alist-abs 0)
+                    (when unresolved
+                      (format t "Warning: ~D unresolved external calls~%" (length unresolved)))
 
-                    (format t "Compiled ~D functions, main ~D bytes, total ~D bytes~%"
-                            (length all-defuns) (length main-code) (length all-code))
+                    ;; Calculate heap page offset for wrapper
+                    ;; Layout: code at 0x400, wrapper adds 172 bytes
+                    ;; After text segment comes DATA_CONST (1 page), then heap
+                    (let* ((wrapper-size 172)  ; +heap-wrapper-size+
+                           (code-offset #x400)
+                           (stubs-size 12)     ; Single _exit stub
+                           (text-end (+ code-offset wrapper-size (length all-code) stubs-size))
+                           (text-vmsize (* (ceiling text-end #x4000) #x4000))
+                           (text-pages-4kb (/ text-vmsize #x1000))
+                           (heap-page-offset (+ text-pages-4kb 4)))
 
-                    ;; Write executable
-                    (if (find-package :habu)
-                        (let ((write-fn (intern "WRITE-MACHO-EXECUTABLE-WITH-IMPORTS-AND-HEAP" :habu)))
-                          (funcall write-fn output-path all-code '("_exit") heap-size nil nil)
-                          (format t "Wrote executable: ~A~%" output-path))
-                        (progn
-                          (with-open-file (f output-path
-                                             :direction :output
-                                             :element-type '(unsigned-byte 8)
-                                             :if-exists :supersede)
-                            (dolist (b all-code)
-                              (write-byte b f)))
-                          (format t "Wrote raw bytes: ~A~%" output-path)))
-                    output-path)))))))))
-)
+                      (format t "Compiled ~D functions, main ~D bytes, total ~D bytes~%"
+                              (length all-defuns) main-size (length all-code))
+
+                      ;; Wrap with heap initialization and write
+                      (if (find-package :habu)
+                          (let ((wrap-fn (intern "WRAP-BYTECODE-WITH-HEAP-FOR-IMPORTS" :habu))
+                                (write-fn (intern "WRITE-MACHO-EXECUTABLE-WITH-IMPORTS-AND-HEAP" :habu)))
+                            (let ((wrapped-code (funcall wrap-fn all-code heap-page-offset 0 0)))
+                              (funcall write-fn output-path wrapped-code '("_exit") heap-size nil nil))
+                            (format t "Wrote executable: ~A~%" output-path))
+                          (progn
+                            (with-open-file (f output-path
+                                               :direction :output
+                                               :element-type '(unsigned-byte 8)
+                                               :if-exists :supersede)
+                              (dolist (b all-code)
+                                (write-byte b f)))
+                            (format t "Wrote raw bytes: ~A~%" output-path)))
+                      output-path)))))))))))
