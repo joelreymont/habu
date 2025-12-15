@@ -5,7 +5,11 @@
 (defpackage :habu.main
   (:use :cl)
   (:shadowing-import-from :habu.types :deftype :match :match*)
-  (:export :deliver :compile-to-bytes :compile-to-function :compile-defun))
+  (:import-from :habu.ir
+                :defun-fn-name :defun-fn-params :defun-fn-body :defun-fn-param-base
+                :cr-result-defuns :cr-result-main-ir)
+  (:export :deliver :compile-to-bytes :compile-to-function :compile-defun
+           :codegen-defun-ir :codegen-ir))
 
 (in-package :habu.main)
 
@@ -152,3 +156,34 @@
 
     ;; Concatenate: prologue + expr + epilogue
     (append prologue expr-bytes epilogue)))
+
+;;; ============================================================
+;;; Typed Pipeline Integration
+;;; ============================================================
+;;;
+;;; These functions integrate with the typed IR from compile-forms.
+
+(defun codegen-ir (ir)
+  "Compile typed IR to ARM64 bytes using the typed pipeline.
+   Returns: list of bytes"
+  (let* ((tac (habu.ir-to-tac:ir-to-tac ir))
+         (alloc (habu.regalloc:allocate-registers tac))
+         (code (habu.codegen:generate-code tac alloc)))
+    code))
+
+(defun codegen-defun-ir (defun-ir)
+  "Compile a defun-ir to ARM64 bytes with proper prologue/epilogue.
+   Input: defun-ir from compile-forms (name params body param-base)
+   Returns: list of bytes for complete function"
+  (let* ((name (defun-fn-name defun-ir))
+         (params (defun-fn-params defun-ir))
+         (body-ir (defun-fn-body defun-ir))
+         (param-base (defun-fn-param-base defun-ir))
+         ;; Convert typed IR body to TAC
+         (tac (habu.ir-to-tac:ir-to-tac body-ir))
+         ;; Allocate registers
+         (alloc (habu.regalloc:allocate-registers tac))
+         ;; Generate function code with prologue/epilogue
+         (code (habu.codegen:codegen-function name params tac alloc)))
+    (declare (ignore param-base))  ; TODO: handle captures
+    code))

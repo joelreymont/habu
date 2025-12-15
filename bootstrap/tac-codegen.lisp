@@ -39,6 +39,7 @@
 (defvar *vreg-to-reg* nil "Hash table from vreg to physical register")
 (defvar *labels* nil "Hash table from label -> byte offset")
 (defvar *fixups* nil "List of (offset label type) for forward refs")
+(defvar *local-functions* nil "List of function names in current compilation unit")
 
 (defun reset-codegen ()
   (setf *code* nil)
@@ -46,10 +47,16 @@
   (setf *fixups* nil))
 
 (defun emit (&rest items)
-  "Emit bytes to code stream. ARM64 functions return byte lists."
+  "Emit bytes to code stream. ARM64 functions return byte lists.
+   Special markers (:call-fn name) are emitted as single list items."
   (dolist (item items)
     (cond
+      ;; Marker - a list starting with a keyword (like :call-fn)
+      ((and (consp item) (keywordp (car item)))
+       (push item *code*))
+      ;; Regular byte list from ARM64 encoder
       ((listp item) (dolist (byte item) (push byte *code*)))
+      ;; Single byte
       ((integerp item) (push item *code*))
       (t (error "emit: invalid item ~S" item)))))
 
@@ -252,17 +259,21 @@
 
     (call (dest name nargs)
       (declare (ignore nargs))
-      ;; BL to function - use fixup for internal functions
-      ;; For external functions, would need import table lookup
+      ;; BL to function - check if label is defined (local function)
+      ;; or emit :call-fn marker for linker resolution
       (let ((target-offset (gethash name *labels*)))
-        (if target-offset
-            ;; Label already defined - calculate offset
-            (let ((rel-instrs (ash (- target-offset (current-offset)) -2)))
-              (emit (arm64:bl rel-instrs)))
-            ;; Forward reference - add fixup
-            (progn
-              (push (list (current-offset) name :bl) *fixups*)
-              (emit (arm64:bl 0)))))
+        (cond
+          ;; Label already defined - calculate offset
+          (target-offset
+           (let ((rel-instrs (ash (- target-offset (current-offset)) -2)))
+             (emit (arm64:bl rel-instrs))))
+          ;; Check if it's a known local function (forward ref within same code)
+          ((member name *local-functions*)
+           (push (list (current-offset) name :bl) *fixups*)
+           (emit (arm64:bl 0)))
+          ;; External function - emit marker for linker
+          (t
+           (emit (list :call-fn name)))))
       ;; Move result from x0 to dest if needed
       (let ((rd (vreg->reg dest)))
         (unless (eq rd :x0)

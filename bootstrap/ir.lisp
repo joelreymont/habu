@@ -234,3 +234,34 @@
   (mvb vars expr body))    ; multiple-value-bind
 
 ;; Total: ~105 variants (comprehensive for self-hosting)
+
+;;; ============================================================
+;;; Compiled Function Representation
+;;; ============================================================
+;;;
+;;; After compiling a defun, we get a defun-ir structure that holds
+;;; all information needed for code generation.
+
+;; Compiled function (defun or lifted lambda)
+;; name: symbol, params: list, body: ir-node, param-base: fixnum
+(deftype defun-ir :prefix defun
+  (fn name params body param-base))
+
+;; Export defun-ir constructors
+(export '(defun-ir defun-fn defun-fn-name defun-fn-params defun-fn-body defun-fn-param-base))
+
+;;; ============================================================
+;;; Compile-Forms Result
+;;; ============================================================
+;;;
+;;; compile-forms returns a compile-result containing:
+;;; - defuns: list of defun-ir for all compiled functions
+;;; - main-ir: ir-node for the main expression
+
+;; Result of compile-forms
+;; defuns: list of defun-ir, main-ir: ir-node
+(deftype compile-result :prefix cr
+  (result defuns main-ir))
+
+;; Export compile-result constructors
+(export '(compile-result cr-result cr-result-defuns cr-result-main-ir))

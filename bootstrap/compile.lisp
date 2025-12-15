@@ -8,23 +8,67 @@
   (:use :cl)
   (:shadowing-import-from :habu.types :deftype :match :match*)
   (:import-from :habu.ir
+                ;; Literals
                 :ir-lit :ir-nil :ir-t :ir-str :ir-sym :ir-kw
+                ;; Variables
                 :ir-var :ir-setq :ir-global :ir-set-global
+                ;; Arithmetic
                 :ir-add :ir-sub :ir-mul :ir-div :ir-mod :ir-neg
+                ;; Comparison
                 :ir-eq :ir-eql :ir-lt :ir-gt :ir-le :ir-ge :ir-zerop
+                ;; Logical
                 :ir-not :ir-and :ir-or
+                ;; Bitwise
                 :ir-band :ir-bor :ir-bxor :ir-bsh :ir-bnot
+                ;; Control flow
                 :ir-if :ir-progn :ir-while :ir-let
-                :ir-call :ir-lambda :ir-funcall
-                :ir-cons :ir-car :ir-cdr :ir-list
+                :ir-block :ir-return-from :ir-loop :ir-continue
+                :ir-dolist :ir-dotimes
+                ;; Functions
+                :ir-call :ir-lambda :ir-funcall :ir-lambda-ref :ir-tail-call
+                ;; List operations
+                :ir-cons :ir-car :ir-cdr :ir-list :ir-length
+                :ir-setcar :ir-setcdr :ir-nthcdr
+                ;; Type predicates
                 :ir-null :ir-consp :ir-symbolp :ir-stringp :ir-numberp
                 :ir-keywordp :ir-functionp
-                :ir-string-length :ir-string-ref
+                :ir-get-tag :ir-set-tag
+                ;; String operations
+                :ir-string-length :ir-string-ref :ir-string-concat
+                :ir-make-string :ir-make-string-from-vector
+                :ir-string-equal :ir-string-set
+                ;; Vector operations
                 :ir-make-vector :ir-vector-ref :ir-vector-set :ir-vector-length
-                :ir-make-symbol :ir-symbol-name :ir-intern
+                :ir-buffer-byte-ref :ir-buffer-byte-set :ir-buffer-to-string
+                ;; Symbol operations
+                :ir-make-symbol :ir-make-symbol-from-string
+                :ir-symbol-name :ir-intern
+                ;; Keyword operations
                 :ir-keyword-name
-                :ir-exit :ir-error)
-  (:export :compile-expr :env-lookup :env-extend :find-free-vars))
+                ;; File I/O
+                :ir-read-file :ir-write-file :ir-write-bytes :ir-println
+                :ir-sys-read :ir-sys-read-byte :ir-sys-write :ir-sys-write-char
+                :ir-sys-open :ir-sys-close
+                ;; System/Low-level
+                :ir-exit :ir-error :ir-system
+                :ir-mmap :ir-mmap-jit :ir-munmap
+                :ir-pthread-jit-write-protect :ir-sys-dcache-flush :ir-sys-icache-invalidate
+                :ir-funcall-ptr :ir-mem-set-byte :ir-mem-load-64 :ir-mem-load-byte
+                ;; Heap/Runtime access
+                :ir-get-intern-table :ir-set-intern-table
+                :ir-get-keyword-table :ir-set-keyword-table
+                :ir-get-lambda-counter :ir-set-lambda-counter
+                :ir-get-symbol-counter :ir-set-symbol-counter
+                :ir-get-symbol-table :ir-set-symbol-table
+                :ir-get-symtab-offset :ir-get-symtab-count
+                :ir-get-frame-pointer :ir-get-code-base
+                :ir-set-global-vars :ir-get-global-vars
+                :ir-get-cmdline-args
+                ;; Multiple values
+                :ir-values :ir-mvb)
+  (:export :compile-expr :compile-forms :compile-defuns
+           :env-lookup :env-extend :find-free-vars
+           :*constants* :*defined-globals* :*fenv* :*macros*))
 
 (in-package :habu.compile)
 
@@ -272,12 +316,16 @@
          (inits (mapcar #'cadr bindings))
          (ext (env-extend names env))
          (new-env (car ext))
-         (base-offset (cdr ext)))
+         (base-offset (cdr ext))
+         (count (length names))
+         (offsets (loop for i from base-offset below (+ base-offset count) collect i)))
     (ir-let (loop for name in names
                   for init in inits
                   for offset from base-offset
                   collect (cons offset (compile-expr init env)))
-            (compile-progn body new-env))))
+            (compile-progn body new-env)
+            count
+            offsets)))
 
 (defun compile-let* (args env)
   "Compile let* form (sequential bindings)."
@@ -292,7 +340,9 @@
                (new-env (car ext))
                (offset (cdr ext)))
           (ir-let (list (cons offset (compile-expr init env)))
-                  (compile-let* (cons (cdr bindings) body) new-env))))))
+                  (compile-let* (cons (cdr bindings) body) new-env)
+                  1
+                  (list offset))))))
 
 (defun compile-setq (args env)
   "Compile setq form."
@@ -314,10 +364,13 @@
          (body (rest args))
          (ext (env-extend params nil))  ; fresh env for lambda body
          (new-env (car ext))
-         (captures (find-free-vars body params env)))
+         (captures (find-free-vars body params env))
+         ;; Compute capture offsets from env
+         (offsets (mapcar (lambda (c) (or (env-lookup c env) 0)) captures)))
     (ir-lambda params
                (compile-progn body new-env)
-               captures)))
+               captures
+               offsets)))
 
 (defun compile-and (args env)
   "Compile and form (short-circuit)."
@@ -362,7 +415,9 @@
            (new-env (car ext))
            (offset (cdr ext)))
       (ir-let (list (cons offset (compile-expr keyform env)))
-              (compile-case-clauses key-var clauses new-env)))))
+              (compile-case-clauses key-var clauses new-env)
+              1
+              (list offset)))))
 
 (defun compile-case-clauses (key-var clauses env)
   "Compile case clauses to cond."
@@ -415,11 +470,13 @@
   ;; -> Compile local functions as lambdas in let bindings
   (let* ((bindings (car args))
          (body (cdr args))
-         (names (mapcar #'car bindings)))
+         (names (mapcar #'car bindings))
+         (count (length names)))
     ;; Extend env with function names
     (let* ((ext (env-extend names env))
            (new-env (car ext))
-           (base-offset (cdr ext)))
+           (base-offset (cdr ext))
+           (offsets (loop for i from base-offset below (+ base-offset count) collect i)))
       ;; Create ir-let with lambda bindings
       (ir-let (loop for binding in bindings
                     for offset from base-offset
@@ -430,18 +487,22 @@
                                          (fn-env (car fn-ext)))
                                     (ir-lambda params
                                                (compile-progn fn-body fn-env)
-                                               nil))))
-              (compile-progn body new-env)))))
+                                               nil nil))))
+              (compile-progn body new-env)
+              count
+              offsets))))
 
 (defun compile-flet (args env)
   "Compile flet form (local non-recursive functions)."
   ;; Same as labels but functions can't see each other
   (let* ((bindings (car args))
          (body (cdr args))
-         (names (mapcar #'car bindings)))
+         (names (mapcar #'car bindings))
+         (count (length names)))
     (let* ((ext (env-extend names env))
            (new-env (car ext))
-           (base-offset (cdr ext)))
+           (base-offset (cdr ext))
+           (offsets (loop for i from base-offset below (+ base-offset count) collect i)))
       (ir-let (loop for binding in bindings
                     for offset from base-offset
                     collect (cons offset
@@ -452,8 +513,10 @@
                                          (fn-env (car fn-ext)))
                                     (ir-lambda params
                                                (compile-progn fn-body fn-env)
-                                               nil))))
-              (compile-progn body new-env)))))
+                                               nil nil))))
+              (compile-progn body new-env)
+              count
+              offsets))))
 
 (defun compile-loop (args env)
   "Compile simple loop form as (while t body...)."
@@ -520,3 +583,183 @@
           (dolist (form expr) (walk form bound))
           (walk expr bound)))
     (nreverse free)))
+
+;;; ============================================================
+;;; Dolist/Dotimes Support
+;;; ============================================================
+
+(defun compile-dolist (args env)
+  "Compile (dolist (var list [result]) body...)"
+  (let* ((spec (first args))
+         (var (first spec))
+         (list-form (second spec))
+         (result-form (third spec))
+         (body (rest args))
+         ;; Extend env with var
+         (ext (env-extend (list var) env))
+         (new-env (car ext))
+         (var-offset (cdr ext))
+         ;; Compile components
+         (list-ir (compile-expr list-form env))
+         (body-ir (compile-progn body new-env))
+         (result-ir (if result-form
+                        (compile-expr result-form new-env)
+                        (ir-nil))))
+    (ir-dolist var-offset list-ir body-ir result-ir)))
+
+(defun compile-dotimes (args env)
+  "Compile (dotimes (var count [result]) body...)"
+  (let* ((spec (first args))
+         (var (first spec))
+         (count-form (second spec))
+         (result-form (third spec))
+         (body (rest args))
+         ;; Extend env with var
+         (ext (env-extend (list var) env))
+         (new-env (car ext))
+         (var-offset (cdr ext))
+         ;; Compile components
+         (count-ir (compile-expr count-form env))
+         (body-ir (compile-progn body new-env))
+         (result-ir (if result-form
+                        (compile-expr result-form new-env)
+                        (ir-nil))))
+    (ir-dotimes var-offset count-ir body-ir result-ir)))
+
+(defun compile-ecase (args env)
+  "Compile ecase form (error on no match)."
+  ;; For now, same as case - proper error handling TBD
+  (compile-case args env))
+
+;;; ============================================================
+;;; compile-forms - Full Program Compilation
+;;; ============================================================
+;;;
+;;; Multi-pass compilation of a list of forms (defuns, defmacro, etc.)
+;;; Returns: compile-result (cr-result defuns main-ir)
+
+;; Import defun-ir and compile-result constructors
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  (import '(habu.ir:defun-fn habu.ir:cr-result)))
+
+;;; Global compiler state
+(defvar *constants* nil "Alist of (name . value) for defconstant")
+(defvar *defined-globals* nil "Alist of (name . init-value) for defvar/defparameter")
+(defvar *fenv* nil "Function environment: ((name params . info) ...)")
+(defvar *macros* (make-hash-table) "Hash table of macro name -> expander function")
+
+(defun collect-defmacros (forms)
+  "Pass 0: Collect all defmacro forms and register expanders."
+  (dolist (form forms)
+    (when (and (consp form) (eq (car form) 'defmacro))
+      (let* ((name (second form))
+             (params (third form))
+             (body (cdddr form))
+             ;; Create expander function using SBCL's eval
+             (expander (eval `(lambda ,params ,@body))))
+        (setf (gethash name *macros*) expander)))))
+
+(defun collect-constants (forms acc)
+  "Pass 1a: Collect defconstant forms."
+  (if (null forms)
+      (nreverse acc)
+      (let ((form (car forms)))
+        (if (and (consp form)
+                 (eq (car form) 'defconstant)
+                 (>= (length form) 3))
+            (let* ((name (second form))
+                   (value (eval (third form))))  ; Evaluate constant value
+              (collect-constants (cdr forms) (cons (cons name value) acc)))
+            (collect-constants (cdr forms) acc)))))
+
+(defun collect-globals (forms acc)
+  "Pass 1b: Collect defvar/defparameter forms."
+  (if (null forms)
+      (nreverse acc)
+      (let ((form (car forms)))
+        (if (and (consp form)
+                 (or (eq (car form) 'defvar)
+                     (eq (car form) 'defparameter))
+                 (>= (length form) 2))
+            (let* ((name (second form))
+                   (init (if (>= (length form) 3)
+                             (third form)
+                             nil)))
+              (collect-globals (cdr forms) (cons (cons name init) acc)))
+            (collect-globals (cdr forms) acc)))))
+
+(defun collect-defun-names (forms acc)
+  "Pass 2: Collect all defun names with their parameter lists.
+   Returns: ((name . params) ...)"
+  (if (null forms)
+      (nreverse acc)
+      (let ((form (car forms)))
+        (if (and (consp form)
+                 (eq (car form) 'defun)
+                 (>= (length form) 4))
+            (let ((name (second form))
+                  (params (third form)))
+              (collect-defun-names (cdr forms) (cons (cons name params) acc)))
+            (collect-defun-names (cdr forms) acc)))))
+
+(defun compile-defuns (forms fenv acc)
+  "Pass 3: Compile all defun forms.
+   Returns: list of defun-ir"
+  (if (null forms)
+      (nreverse acc)
+      (let ((form (car forms)))
+        (if (and (consp form)
+                 (eq (car form) 'defun)
+                 (>= (length form) 4))
+            (let* ((name (second form))
+                   (params (third form))
+                   (body-forms (cdddr form))
+                   ;; Create env for function body
+                   (ext (env-extend params nil))
+                   (env (car ext))
+                   ;; Compile body
+                   (body-ir (compile-progn body-forms env))
+                   ;; Create defun-ir
+                   (dfn (defun-fn name params body-ir 0)))
+              (compile-defuns (cdr forms) fenv (cons dfn acc)))
+            (compile-defuns (cdr forms) fenv acc)))))
+
+(defun find-main-form (forms)
+  "Find the main expression (last non-definition form)."
+  (let ((main nil))
+    (dolist (form forms)
+      (unless (and (consp form)
+                   (member (car form) '(defun defmacro defconstant defvar defparameter
+                                        in-package require eval-when)))
+        (setf main form)))
+    main))
+
+(defun compile-forms (forms)
+  "Multi-pass compilation of forms to typed IR.
+   Returns: compile-result (cr-result defuns main-ir)"
+  ;; Reset global state
+  (setf *constants* nil)
+  (setf *defined-globals* nil)
+  (setf *macros* (make-hash-table))
+
+  ;; Pass 0: Collect macros
+  (collect-defmacros forms)
+
+  ;; Pass 1: Collect constants and globals
+  (setf *constants* (collect-constants forms nil))
+  (setf *defined-globals* (collect-globals forms nil))
+
+  ;; Pass 2: Collect function names for forward references
+  (let* ((fn-names (collect-defun-names forms nil))
+         (fenv fn-names))
+    (setf *fenv* fenv)
+
+    ;; Pass 3: Compile all defuns
+    (let* ((defuns (compile-defuns forms fenv nil))
+           ;; Find and compile main
+           (main-form (find-main-form forms))
+           (main-ir (if main-form
+                        (compile-expr main-form nil)
+                        (ir-nil))))
+      ;; Return typed result
+      (cr-result defuns main-ir))))
