@@ -4,7 +4,27 @@
 ;;;; Each instruction has at most 3 operands.
 ;;;; Virtual registers are integers starting from 0.
 
-(in-package :habu)
+(defpackage :habu.tac
+  (:use :cl)
+  (:shadowing-import-from :habu.types :deftype :match :match*)
+  (:export :tac-instr :tac-def :tac-use
+           :tac-lit :tac-nil :tac-t :tac-move :tac-var :tac-setvar
+           :tac-global :tac-set-global
+           :tac-add :tac-sub :tac-mul :tac-div :tac-mod :tac-neg
+           :tac-eq :tac-eql :tac-lt :tac-gt :tac-le :tac-ge :tac-zerop
+           :tac-not :tac-band :tac-bor :tac-bxor :tac-bsh :tac-bnot
+           :tac-label :tac-goto :tac-if :tac-ifnot :tac-return
+           :tac-param :tac-arg :tac-call :tac-funcall
+           :tac-cons :tac-car :tac-cdr :tac-list
+           :tac-null :tac-consp :tac-symbolp :tac-stringp :tac-numberp
+           :tac-keywordp :tac-functionp
+           :tac-string-length :tac-string-ref :tac-string-concat :tac-string-lit
+           :tac-make-vector :tac-vector-ref :tac-vector-set :tac-vector-length
+           :tac-make-symbol :tac-symbol-name :tac-intern :tac-symbol-lit
+           :tac-keyword-name :tac-keyword-lit
+           :tac-exit :tac-error))
+
+(in-package :habu.tac)
 
 (deftype tac-instr
   ;; === Data Movement ===

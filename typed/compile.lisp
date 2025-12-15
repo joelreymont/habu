@@ -4,7 +4,29 @@
 ;;;; Input: S-expressions (source code)
 ;;;; Output: Typed IR (ir-node)
 
-(in-package :habu)
+(defpackage :habu.compile
+  (:use :cl)
+  (:shadowing-import-from :habu.types :deftype :match :match*)
+  (:import-from :habu.ir
+                :ir-lit :ir-nil :ir-t :ir-str :ir-sym :ir-kw
+                :ir-var :ir-setq :ir-global :ir-set-global
+                :ir-add :ir-sub :ir-mul :ir-div :ir-mod :ir-neg
+                :ir-eq :ir-eql :ir-lt :ir-gt :ir-le :ir-ge :ir-zerop
+                :ir-not :ir-and :ir-or
+                :ir-band :ir-bor :ir-bxor :ir-bsh :ir-bnot
+                :ir-if :ir-progn :ir-while :ir-let
+                :ir-call :ir-lambda :ir-funcall
+                :ir-cons :ir-car :ir-cdr :ir-list
+                :ir-null :ir-consp :ir-symbolp :ir-stringp :ir-numberp
+                :ir-keywordp :ir-functionp
+                :ir-string-length :ir-string-ref
+                :ir-make-vector :ir-vector-ref :ir-vector-set :ir-vector-length
+                :ir-make-symbol :ir-symbol-name :ir-intern
+                :ir-keyword-name
+                :ir-exit :ir-error)
+  (:export :compile-expr :env-lookup :env-extend :find-free-vars))
+
+(in-package :habu.compile)
 
 ;;; Environment is a simple alist: ((name . offset) ...)
 ;;; Offset is the stack slot for this variable
@@ -284,12 +306,12 @@
 (defun find-free-vars (expr bound env)
   "Find free variables in expr not in bound list but in env."
   (let ((free nil))
-    (labels ((walk (e)
+    (labels ((walk (e cur-bound)
                (cond
                  ((null e) nil)
                  ((symbolp e)
                   (when (and (env-lookup e env)
-                             (not (member e bound))
+                             (not (member e cur-bound))
                              (not (member e free)))
                     (push e free)))
                  ((consp e)
@@ -300,21 +322,20 @@
                       (let ((params (cadr e))
                             (body (cddr e)))
                         (dolist (form body)
-                          (find-free-in form (append params bound)))))
+                          (walk form (append params cur-bound)))))
                     (let
                       ;; Let shadows its bindings
                       (let* ((bindings (cadr e))
                              (body (cddr e))
                              (names (mapcar #'car bindings)))
                         (dolist (b bindings)
-                          (walk (cadr b)))
+                          (walk (cadr b) cur-bound))
                         (dolist (form body)
-                          (find-free-in form (append names bound)))))
-                    (t (dolist (sub e) (walk sub))))))))
-             (find-free-in (e new-bound)
-               (let ((bound new-bound))
-                 (walk e))))
+                          (walk form (append names cur-bound)))))
+                    (otherwise
+                     (dolist (sub e)
+                       (walk sub cur-bound))))))))
       (if (consp expr)
-          (dolist (form expr) (walk form))
-          (walk expr)))
+          (dolist (form expr) (walk form bound))
+          (walk expr bound)))
     (nreverse free)))

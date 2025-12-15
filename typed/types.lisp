@@ -157,12 +157,15 @@
 (defun expand-sum-match (type-name info expr clauses)
   (let* ((variants (getf info :variants))
          (clause-names (mapcar #'car clauses))
-         (missing (set-difference variants clause-names))
-         (extra (set-difference clause-names variants)))
-    (when missing
-      (error "match ~A: MISSING variants ~S" type-name missing))
-    (when extra
-      (error "match ~A: UNKNOWN variants ~S" type-name extra))
+         ;; Compare by symbol-name for cross-package compatibility
+         (variant-names (mapcar #'symbol-name variants))
+         (clause-name-strs (mapcar #'symbol-name clause-names))
+         (missing-strs (set-difference variant-names clause-name-strs :test #'string=))
+         (extra-strs (set-difference clause-name-strs variant-names :test #'string=)))
+    (when missing-strs
+      (error "match ~A: MISSING variants ~S" type-name missing-strs))
+    (when extra-strs
+      (error "match ~A: UNKNOWN variants ~S" type-name extra-strs))
     (let ((val (gensym "VAL")))
       `(let ((,val ,expr))
          (ecase (car ,val)
