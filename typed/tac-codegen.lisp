@@ -113,10 +113,16 @@
       (emit (arm64:sub (vreg->reg dest) (vreg->reg left) (vreg->reg right))))
 
     (tac-mul (dest left right)
-      (emit (arm64:mul (vreg->reg dest) (vreg->reg left) (vreg->reg right))))
+      ;; Tagged mul: (a<<1) * (b<<1) = a*b<<2, need a*b<<1
+      ;; So: mul dest, left, right; asr dest, dest, #1
+      (emit (arm64:mul (vreg->reg dest) (vreg->reg left) (vreg->reg right)))
+      (emit (arm64:asr (vreg->reg dest) (vreg->reg dest) 1 :imm t)))
 
     (tac-div (dest left right)
-      (emit (arm64:sdiv (vreg->reg dest) (vreg->reg left) (vreg->reg right))))
+      ;; Tagged div: (a<<1) / (b<<1) = a/b (untagged), need a/b<<1
+      ;; So: sdiv dest, left, right; lsl dest, dest, #1
+      (emit (arm64:sdiv (vreg->reg dest) (vreg->reg left) (vreg->reg right)))
+      (emit (arm64:lsl (vreg->reg dest) (vreg->reg dest) 1 :imm t)))
 
     (tac-mod (dest left right)
       ;; mod = a - (a / b) * b
