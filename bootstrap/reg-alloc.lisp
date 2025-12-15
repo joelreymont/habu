@@ -1,5 +1,18 @@
 ;;; ============================================================
-;;; Register Allocation via Nanopasses
+;;; Register Allocation via Nanopasses (DEPRECATED)
+;;; ============================================================
+;;;
+;;; NOTE: This file contains the OLD untyped nanopass implementation.
+;;; The new TYPED pipeline is in separate files:
+;;;   - bootstrap/ir-to-tac.lisp   (IR → TAC conversion)
+;;;   - bootstrap/liveness.lisp    (liveness analysis)
+;;;   - bootstrap/regalloc.lisp    (register allocation)
+;;;   - bootstrap/tac-codegen.lisp (TAC → ARM64 codegen)
+;;;   - bootstrap/main.lisp        (delivers executables)
+;;;
+;;; Use deliver-forms-typed from main.lisp for new code.
+;;; This file is kept for reference and may be removed in the future.
+;;;
 ;;; ============================================================
 ;;;
 ;;; This file implements register allocation as a series of nanopasses

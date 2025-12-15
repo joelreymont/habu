@@ -65,10 +65,17 @@
                 :ir-set-global-vars :ir-get-global-vars
                 :ir-get-cmdline-args
                 ;; Multiple values
-                :ir-values :ir-mvb)
+                :ir-values :ir-mvb
+                ;; Defun IR
+                :defun-fn :defun-fn-name :defun-fn-params :defun-fn-body :defun-fn-param-base
+                ;; Compile result
+                :cr-result :cr-result-defuns :cr-result-main-ir)
   (:export :compile-expr :compile-forms :compile-defuns
            :env-lookup :env-extend :find-free-vars
-           :*constants* :*defined-globals* :*fenv* :*macros*))
+           :*constants* :*defined-globals* :*fenv* :*macros*
+           ;; Lambda lifting
+           :lift-lambdas-typed :lift-lambdas-from-defuns-typed
+           :reset-typed-lambda-counter :ir-tag))
 
 (in-package :habu.compile)
 
@@ -101,7 +108,7 @@
     ((null expr) (ir-nil))
 
     ;; Integer literal - tag it
-    ((integerp expr) (ir-lit (ash expr 1)))  ; fixnum tag: shift left 1, set bit 0
+    ((integerp expr) (ir-lit (logior (ash expr 1) 1)))  ; fixnum tag: shift left 1, set bit 0
 
     ;; String literal
     ((stringp expr) (ir-str expr))
@@ -283,7 +290,7 @@
   (cond
     ((null datum) (ir-nil))
     ((eq datum t) (ir-t))
-    ((integerp datum) (ir-lit (ash datum 1)))
+    ((integerp datum) (ir-lit (logior (ash datum 1) 1)))
     ((stringp datum) (ir-str datum))
     ((keywordp datum) (ir-kw (symbol-name datum)))
     ((symbolp datum) (ir-sym datum))
@@ -763,3 +770,218 @@
                         (ir-nil))))
       ;; Return typed result
       (cr-result defuns main-ir))))
+
+;;; ============================================================
+;;; Lambda Lifting for Typed IR
+;;; ============================================================
+;;;
+;;; Extract all ir-lambda nodes from IR, replacing them with ir-lambda-ref nodes.
+;;; This transforms closures into named functions that can be compiled separately.
+
+(defvar *typed-lambda-counter* 0)
+
+(defun typed-gensym-lambda ()
+  "Generate a unique lambda name."
+  (incf *typed-lambda-counter*)
+  (intern (format nil "LAMBDA-~D" *typed-lambda-counter*) :keyword))
+
+(defun reset-typed-lambda-counter ()
+  "Reset the lambda counter for a new compilation."
+  (setf *typed-lambda-counter* 0))
+
+(defun ir-tag (ir)
+  "Get the keyword tag of a typed IR node."
+  (if (and (consp ir) (keywordp (car ir)))
+      (car ir)
+      nil))
+
+(defun lift-lambdas-typed (ir lambdas)
+  "Extract all ir-lambda nodes from typed IR, replacing with ir-lambda-ref.
+   Returns (cons transformed-ir lambdas) where lambdas is list of defun-ir."
+  (let ((tag (ir-tag ir)))
+    (cond
+      ;; Not an IR node
+      ((null tag)
+       (cons ir lambdas))
+
+      ;; Lambda - replace with reference
+      ((eq tag :IR-LAMBDA)
+       (let* ((name (typed-gensym-lambda))
+              (params (second ir))
+              (body (third ir))
+              (captures (fourth ir))
+              (offsets (fifth ir)))
+         ;; Recursively lift from body
+         (let* ((result (lift-lambdas-typed body lambdas))
+                (new-body (car result))
+                (more-lambdas (cdr result)))
+           ;; Create defun-ir for the lambda
+           (let ((lambda-defun (defun-fn name params new-body 0)))
+             (cons (ir-lambda-ref name captures)
+                   (cons lambda-defun more-lambdas))))))
+
+      ;; Let - lift from bindings and body
+      ((eq tag :IR-LET)
+       (let ((bindings (second ir))
+             (body (third ir))
+             (count (fourth ir))
+             (offs (fifth ir)))
+         (let* ((result1 (lift-lambdas-list bindings lambdas))
+                (new-bindings (car result1))
+                (lambdas1 (cdr result1)))
+           (let* ((result2 (lift-lambdas-typed body lambdas1))
+                  (new-body (car result2))
+                  (lambdas2 (cdr result2)))
+             (cons (ir-let new-bindings new-body count offs) lambdas2)))))
+
+      ;; If - lift from all branches
+      ((eq tag :IR-IF)
+       (let ((test (second ir))
+             (then (third ir))
+             (else (fourth ir)))
+         (let* ((r1 (lift-lambdas-typed test lambdas))
+                (new-test (car r1)) (l1 (cdr r1)))
+           (let* ((r2 (lift-lambdas-typed then l1))
+                  (new-then (car r2)) (l2 (cdr r2)))
+             (let* ((r3 (lift-lambdas-typed else l2))
+                    (new-else (car r3)) (l3 (cdr r3)))
+               (cons (ir-if new-test new-then new-else) l3))))))
+
+      ;; Progn - lift from all forms
+      ((eq tag :IR-PROGN)
+       (let ((forms (second ir)))
+         (let* ((result (lift-lambdas-list forms lambdas))
+                (new-forms (car result))
+                (new-lambdas (cdr result)))
+           (cons (ir-progn new-forms) new-lambdas))))
+
+      ;; While - lift from test and body
+      ((eq tag :IR-WHILE)
+       (let ((test (second ir))
+             (body (third ir)))
+         (let* ((r1 (lift-lambdas-typed test lambdas))
+                (new-test (car r1)) (l1 (cdr r1)))
+           (let* ((r2 (lift-lambdas-typed body l1))
+                  (new-body (car r2)) (l2 (cdr r2)))
+             (cons (ir-while new-test new-body) l2)))))
+
+      ;; Call - lift from args
+      ((eq tag :IR-CALL)
+       (let ((name (second ir))
+             (args (third ir)))
+         (let* ((result (lift-lambdas-list args lambdas))
+                (new-args (car result))
+                (new-lambdas (cdr result)))
+           (cons (ir-call name new-args) new-lambdas))))
+
+      ;; Funcall - lift from fn and args
+      ((eq tag :IR-FUNCALL)
+       (let ((fn (second ir))
+             (args (third ir)))
+         (let* ((r1 (lift-lambdas-typed fn lambdas))
+                (new-fn (car r1)) (l1 (cdr r1)))
+           (let* ((r2 (lift-lambdas-list args l1))
+                  (new-args (car r2)) (l2 (cdr r2)))
+             (cons (ir-funcall new-fn new-args) l2)))))
+
+      ;; Binary ops - lift from both operands
+      ((member tag '(:IR-ADD :IR-SUB :IR-MUL :IR-DIV :IR-MOD
+                     :IR-EQ :IR-EQL :IR-LT :IR-GT :IR-LE :IR-GE
+                     :IR-AND :IR-OR :IR-BAND :IR-BOR :IR-BXOR
+                     :IR-CONS :IR-STRING-CONCAT :IR-STRING-EQUAL))
+       (let ((left (second ir))
+             (right (third ir)))
+         (let* ((r1 (lift-lambdas-typed left lambdas))
+                (new-left (car r1)) (l1 (cdr r1)))
+           (let* ((r2 (lift-lambdas-typed right l1))
+                  (new-right (car r2)) (l2 (cdr r2)))
+             (cons (list tag new-left new-right) l2)))))
+
+      ;; Unary ops - lift from operand
+      ((member tag '(:IR-NOT :IR-NEG :IR-BNOT :IR-CAR :IR-CDR :IR-LENGTH
+                     :IR-NULL :IR-CONSP :IR-SYMBOLP :IR-STRINGP :IR-NUMBERP
+                     :IR-KEYWORDP :IR-FUNCTIONP :IR-ZEROP
+                     :IR-STRING-LENGTH :IR-SYMBOL-NAME :IR-KEYWORD-NAME
+                     :IR-VECTOR-LENGTH))
+       (let ((val (second ir)))
+         (let* ((result (lift-lambdas-typed val lambdas))
+                (new-val (car result))
+                (new-lambdas (cdr result)))
+           (cons (list tag new-val) new-lambdas))))
+
+      ;; Setq - lift from value
+      ((eq tag :IR-SETQ)
+       (let ((offset (second ir))
+             (val (third ir)))
+         (let* ((result (lift-lambdas-typed val lambdas))
+                (new-val (car result))
+                (new-lambdas (cdr result)))
+           (cons (ir-setq offset new-val) new-lambdas))))
+
+      ;; Set-global - lift from value
+      ((eq tag :IR-SET-GLOBAL)
+       (let ((name (second ir))
+             (val (third ir)))
+         (let* ((result (lift-lambdas-typed val lambdas))
+                (new-val (car result))
+                (new-lambdas (cdr result)))
+           (cons (ir-set-global name new-val) new-lambdas))))
+
+      ;; Leaf nodes - no transformation needed
+      ((member tag '(:IR-LIT :IR-NIL :IR-T :IR-STR :IR-SYM :IR-KW
+                     :IR-VAR :IR-GLOBAL :IR-LAMBDA-REF
+                     :IR-GET-INTERN-TABLE :IR-GET-KEYWORD-TABLE
+                     :IR-GET-LAMBDA-COUNTER :IR-GET-SYMBOL-COUNTER
+                     :IR-GET-SYMBOL-TABLE :IR-GET-SYMTAB-OFFSET
+                     :IR-GET-SYMTAB-COUNT :IR-GET-FRAME-POINTER
+                     :IR-GET-CODE-BASE :IR-GET-GLOBAL-VARS
+                     :IR-GET-CMDLINE-ARGS :IR-CONTINUE))
+       (cons ir lambdas))
+
+      ;; Default - recursively process any remaining IR
+      (t
+       (let ((result ir)
+             (current-lambdas lambdas))
+         ;; Process each element after the tag
+         (let ((new-elems nil)
+               (rest (cdr ir)))
+           (dolist (elem rest)
+             (if (and (consp elem) (keywordp (car elem)))
+                 ;; It's an IR node - recurse
+                 (let* ((r (lift-lambdas-typed elem current-lambdas)))
+                   (push (car r) new-elems)
+                   (setf current-lambdas (cdr r)))
+                 ;; Not an IR node - keep as is
+                 (push elem new-elems)))
+           (cons (cons tag (reverse new-elems)) current-lambdas)))))))
+
+(defun lift-lambdas-list (lst lambdas)
+  "Lift lambdas from a list of IR nodes."
+  (if (null lst)
+      (cons nil lambdas)
+      (let* ((r1 (lift-lambdas-typed (car lst) lambdas))
+             (new-first (car r1))
+             (l1 (cdr r1)))
+        (let* ((r2 (lift-lambdas-list (cdr lst) l1))
+               (new-rest (car r2))
+               (l2 (cdr r2)))
+          (cons (cons new-first new-rest) l2)))))
+
+(defun lift-lambdas-from-defuns-typed (defuns acc-defuns acc-lambdas)
+  "Lift lambdas from defun-ir bodies.
+   Returns (cons lifted-defuns all-lambdas)."
+  (if (null defuns)
+      (cons (reverse acc-defuns) acc-lambdas)
+      (let* ((dfn (car defuns))
+             (name (defun-fn-name dfn))
+             (params (defun-fn-params dfn))
+             (body (defun-fn-body dfn))
+             (param-base (defun-fn-param-base dfn)))
+        (let* ((result (lift-lambdas-typed body acc-lambdas))
+               (new-body (car result))
+               (new-lambdas (cdr result)))
+          (let ((new-dfn (defun-fn name params new-body param-base)))
+            (lift-lambdas-from-defuns-typed
+             (cdr defuns)
+             (cons new-dfn acc-defuns)
+             new-lambdas))))))

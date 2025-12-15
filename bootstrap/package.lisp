@@ -31,6 +31,7 @@
    #:deliver            ; Compile source to native executable (__DATA segment heap)
    #:deliver-file       ; Compile file to native executable
    #:deliver-forms      ; Compile pre-parsed forms (for package-qualified symbols)
+   #:deliver-forms-typed ; Compile forms using typed IR pipeline
    ;; Disassembler
    #:disassemble
    #:disasm

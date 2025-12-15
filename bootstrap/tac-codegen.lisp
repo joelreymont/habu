@@ -36,6 +36,7 @@
 
 ;;; Code generation state
 (defvar *code* nil "List of instruction bytes (reversed)")
+(defvar *byte-offset* 0 "Current byte offset (accounts for marker sizes)")
 (defvar *vreg-to-reg* nil "Hash table from vreg to physical register")
 (defvar *labels* nil "Hash table from label -> byte offset")
 (defvar *fixups* nil "List of (offset label type) for forward refs")
@@ -43,6 +44,7 @@
 
 (defun reset-codegen ()
   (setf *code* nil)
+  (setf *byte-offset* 0)
   (setf *labels* (make-hash-table :test 'equal))
   (setf *fixups* nil))
 
@@ -52,16 +54,24 @@
   (dolist (item items)
     (cond
       ;; Marker - a list starting with a keyword (like :call-fn)
+      ;; Markers represent 4-byte instructions (BL)
       ((and (consp item) (keywordp (car item)))
-       (push item *code*))
+       (push item *code*)
+       (incf *byte-offset* 4))
       ;; Regular byte list from ARM64 encoder
-      ((listp item) (dolist (byte item) (push byte *code*)))
+      ((listp item)
+       (dolist (byte item)
+         (push byte *code*)
+         (incf *byte-offset*)))
       ;; Single byte
-      ((integerp item) (push item *code*))
+      ((integerp item)
+       (push item *code*)
+       (incf *byte-offset*))
       (t (error "emit: invalid item ~S" item)))))
 
 (defun current-offset ()
-  (length *code*))
+  "Return current byte offset in code stream."
+  *byte-offset*)
 
 (defun vreg->reg (vreg)
   "Convert vreg to physical register keyword."
@@ -70,6 +80,41 @@
       ((null reg) (error "vreg ~D not allocated" vreg))
       ((eq reg :spill) (error "vreg ~D spilled, need spill code" vreg))
       (t (arm64:num-to-reg reg)))))
+
+(defun load-imm (rd value)
+  "Load a 64-bit immediate value into register.
+   Handles negative numbers using MOVN, positive using MOVZ/MOVK."
+  (if (< value 0)
+      ;; Negative: use MOVN with bitwise NOT of value
+      ;; MOVN sets rd = ~(imm << lsl)
+      ;; For values -1 to -65536, ~value fits in 16 bits
+      (let ((inv (lognot value)))
+        (if (<= inv #xFFFF)
+            (arm64:movn rd inv)
+            ;; Larger negative: use MOVN + MOVK sequence
+            (let ((lo16 (logand inv #xFFFF))
+                  (hi16 (logand (ash inv -16) #xFFFF)))
+              (if (<= hi16 #xFFFF)
+                  (append (arm64:movn rd #xFFFF :lsl 48)  ; Start with all 1s
+                          (arm64:movk rd (logand value #xFFFF) :lsl 0)
+                          (arm64:movk rd (logand (ash value -16) #xFFFF) :lsl 16)
+                          (arm64:movk rd (logand (ash value -32) #xFFFF) :lsl 32))
+                  ;; Very large negative - full sequence
+                  (append (arm64:movn rd (logand (lognot (ash value -48)) #xFFFF) :lsl 48)
+                          (arm64:movk rd (logand value #xFFFF) :lsl 0)
+                          (arm64:movk rd (logand (ash value -16) #xFFFF) :lsl 16)
+                          (arm64:movk rd (logand (ash value -32) #xFFFF) :lsl 32))))))
+      ;; Positive: use MOVZ + MOVK
+      (if (<= value #xFFFF)
+          (arm64:movz rd value)
+          (if (<= value #xFFFFFFFF)
+              (append (arm64:movz rd (logand value #xFFFF))
+                      (arm64:movk rd (logand (ash value -16) #xFFFF) :lsl 16))
+              ;; Larger: need more MOVK
+              (append (arm64:movz rd (logand value #xFFFF))
+                      (arm64:movk rd (logand (ash value -16) #xFFFF) :lsl 16)
+                      (arm64:movk rd (logand (ash value -32) #xFFFF) :lsl 32)
+                      (arm64:movk rd (logand (ash value -48) #xFFFF) :lsl 48))))))
 
 ;;; Main code generation
 
@@ -93,7 +138,7 @@
   (match tac-instr instr
     ;; === Data Movement ===
     (lit (dest value)
-      (emit (arm64:movz (vreg->reg dest) (logand value #xFFFF))))
+      (emit (load-imm (vreg->reg dest) value)))
 
     (nil (dest)
       (emit (arm64:movz (vreg->reg dest) 0)))
@@ -126,32 +171,58 @@
       )
 
     ;; === Arithmetic ===
+    ;; Hybrid tagging: fixnum = (value << 1) | 1
+    ;; (2a+1) + (2b+1) = 2(a+b) + 2, but want 2(a+b) + 1, so subtract 1
     (add (dest left right)
-      (emit (arm64:add (vreg->reg dest) (vreg->reg left) (vreg->reg right))))
+      (emit (arm64:add (vreg->reg dest) (vreg->reg left) (vreg->reg right)))
+      (emit (arm64:sub (vreg->reg dest) (vreg->reg dest) 1 :imm t)))
 
+    ;; (2a+1) - (2b+1) = 2(a-b), but want 2(a-b) + 1, so add 1
     (sub (dest left right)
-      (emit (arm64:sub (vreg->reg dest) (vreg->reg left) (vreg->reg right))))
+      (emit (arm64:sub (vreg->reg dest) (vreg->reg left) (vreg->reg right)))
+      (emit (arm64:add (vreg->reg dest) (vreg->reg dest) 1 :imm t)))
 
     (mul (dest left right)
-      ;; Tagged mul: (a<<1) * (b<<1) = a*b<<2, need a*b<<1
-      ;; So: mul dest, left, right; asr dest, dest, #1
-      (emit (arm64:mul (vreg->reg dest) (vreg->reg left) (vreg->reg right)))
-      (emit (arm64:asr (vreg->reg dest) (vreg->reg dest) 1 :imm t)))
+      ;; Untag both operands, multiply, re-tag result
+      ;; asr tmp1, left, #1; asr tmp2, right, #1; mul dest, tmp1, tmp2
+      ;; lsl dest, dest, #1; orr dest, dest, #1
+      (let ((rd (vreg->reg dest))
+            (rl (vreg->reg left))
+            (rr (vreg->reg right)))
+        (emit (arm64:asr :x9 rl 1 :imm t))    ; untag left → x9
+        (emit (arm64:asr :x10 rr 1 :imm t))   ; untag right → x10
+        (emit (arm64:mul rd :x9 :x10))        ; multiply
+        (emit (arm64:lsl rd rd 1 :imm t))     ; shift left
+        (emit (arm64:orr rd rd 1 :imm t))))   ; set tag bit
 
     (div (dest left right)
-      ;; Tagged div: (a<<1) / (b<<1) = a/b (untagged), need a/b<<1
-      ;; So: sdiv dest, left, right; lsl dest, dest, #1
-      (emit (arm64:sdiv (vreg->reg dest) (vreg->reg left) (vreg->reg right)))
-      (emit (arm64:lsl (vreg->reg dest) (vreg->reg dest) 1 :imm t)))
+      ;; Untag both operands, divide, re-tag result
+      (let ((rd (vreg->reg dest))
+            (rl (vreg->reg left))
+            (rr (vreg->reg right)))
+        (emit (arm64:asr :x9 rl 1 :imm t))    ; untag left → x9
+        (emit (arm64:asr :x10 rr 1 :imm t))   ; untag right → x10
+        (emit (arm64:sdiv rd :x9 :x10))       ; signed divide
+        (emit (arm64:lsl rd rd 1 :imm t))     ; shift left
+        (emit (arm64:orr rd rd 1 :imm t))))   ; set tag bit
 
     (mod (dest left right)
-      ;; mod = a - (a / b) * b
-      ;; Use x19 as temp
-      (emit (arm64:sdiv :x19 (vreg->reg left) (vreg->reg right)))
-      (emit (arm64:msub (vreg->reg dest) :x19 (vreg->reg right) (vreg->reg left))))
+      ;; Untag both, compute mod = a - (a/b)*b, retag
+      (let ((rd (vreg->reg dest))
+            (rl (vreg->reg left))
+            (rr (vreg->reg right)))
+        (emit (arm64:asr :x9 rl 1 :imm t))    ; untag left → x9
+        (emit (arm64:asr :x10 rr 1 :imm t))   ; untag right → x10
+        (emit (arm64:sdiv :x11 :x9 :x10))     ; div
+        (emit (arm64:msub rd :x11 :x10 :x9))  ; dest = x9 - x11*x10
+        (emit (arm64:lsl rd rd 1 :imm t))     ; shift left
+        (emit (arm64:orr rd rd 1 :imm t))))   ; set tag bit
 
     (neg (dest value)
-      (emit (arm64:neg (vreg->reg dest) (vreg->reg value))))
+      ;; neg(2a+1) = -(2a+1) = -2a-1, but want 2(-a)+1 = -2a+1
+      ;; So negate and add 2
+      (emit (arm64:neg (vreg->reg dest) (vreg->reg value)))
+      (emit (arm64:add (vreg->reg dest) (vreg->reg dest) 2 :imm t)))
 
     ;; === Comparison ===
     (eq (dest left right)
@@ -259,6 +330,14 @@
 
     (call (dest name nargs)
       (declare (ignore nargs))
+      ;; Save caller-saved registers x9-x15 before call (56 bytes, 8-aligned)
+      ;; sub sp, sp, #64
+      (emit (arm64:sub :sp :sp 64 :imm t))
+      (emit (arm64:stp :x9 :x10 :sp :offset 0))
+      (emit (arm64:stp :x11 :x12 :sp :offset 16))
+      (emit (arm64:stp :x13 :x14 :sp :offset 32))
+      (emit (arm64:str :x15 :sp :offset 48))
+
       ;; BL to function - check if label is defined (local function)
       ;; or emit :call-fn marker for linker resolution
       (let ((target-offset (gethash name *labels*)))
@@ -274,10 +353,21 @@
           ;; External function - emit marker for linker
           (t
            (emit (list :call-fn name)))))
-      ;; Move result from x0 to dest if needed
+
+      ;; Save result to x8 before restoring (x8 is not in our save set)
+      (emit (arm64:mov :x8 :x0))
+
+      ;; Restore caller-saved registers
+      (emit (arm64:ldr :x15 :sp :offset 48))
+      (emit (arm64:ldp :x13 :x14 :sp :offset 32))
+      (emit (arm64:ldp :x11 :x12 :sp :offset 16))
+      (emit (arm64:ldp :x9 :x10 :sp :offset 0))
+      (emit (arm64:add :sp :sp 64 :imm t))
+
+      ;; Now move result to destination
       (let ((rd (vreg->reg dest)))
-        (unless (eq rd :x0)
-          (emit (arm64:mov rd :x0)))))
+        (unless (eq rd :x8)
+          (emit (arm64:mov rd :x8)))))
 
     (funcall (dest fn nargs)
       (declare (ignore nargs))
@@ -804,19 +894,35 @@
    (arm64:add :sp :sp #x4 :imm t :shift12 t) ;; add sp, sp, #0x4000
    (arm64:ret)))
 
+(defun gen-param-stores (params)
+  "Generate code to store parameters from x0-x7 to environment (x20).
+   Params are stored at [x20 + idx*8] for simple access."
+  (let ((code nil)
+        (idx 0))
+    (dolist (p params)
+      (declare (ignore p))
+      (let ((reg (arm64:num-to-reg idx)))
+        (setf code (append code (arm64:str reg :x20 :offset (* idx 8)))))
+      (incf idx))
+    code))
+
 (defun codegen-function (name params body-tac alloc)
   "Generate complete function code with prologue/epilogue."
-  (declare (ignore name params))
+  (declare (ignore name))
   (reset-codegen)
   (setf *vreg-to-reg* (allocation-result-vreg-to-reg alloc))
 
   ;; Emit prologue
   (emit (fn-fixed-prologue))
 
+  ;; Store parameters from x0-x7 to environment
+  (emit (gen-param-stores params))
+
   ;; Generate body
   (dolist (instr body-tac)
     (codegen-instr instr))
 
-  ;; Apply fixups and return
+  ;; Reverse to correct order, then apply fixups
+  (setf *code* (nreverse *code*))
   (apply-fixups)
-  (nreverse *code*))
+  *code*)

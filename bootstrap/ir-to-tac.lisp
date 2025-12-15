@@ -283,11 +283,12 @@
           (emit (tac-label end-label))
           dest)))
 
-    (let (bindings body)
-      ;; bindings is ((offset . init-ir) ...)
+    (let (bindings body count offsets)
+      (declare (ignore count offsets))
+      ;; bindings is ((offset . init-ir) ...) where init-ir is (:IR-LIT value) etc
       (dolist (binding bindings)
         (let ((offset (car binding))
-              (init-ir (cdr binding)))
+              (init-ir (cdr binding)))  ; cdr to get the full IR node
           (let ((init-vreg (convert-ir init-ir)))
             (emit (tac-setvar offset init-vreg)))))
       (convert-ir body))
