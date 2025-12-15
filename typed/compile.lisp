@@ -1,0 +1,320 @@
+;;;; Compile - S-expression to IR
+;;;;
+;;;; This is the front-end of the compiler.
+;;;; Input: S-expressions (source code)
+;;;; Output: Typed IR (ir-node)
+
+(in-package :habu)
+
+;;; Environment is a simple alist: ((name . offset) ...)
+;;; Offset is the stack slot for this variable
+
+(defun env-lookup (name env)
+  "Look up variable in environment. Returns offset or nil."
+  (let ((entry (assoc name env :test #'eq)))
+    (if entry (cdr entry) nil)))
+
+(defun env-extend (names env)
+  "Extend environment with new bindings. Returns (new-env . base-offset)."
+  (let ((offset (if env
+                    (1+ (apply #'max (mapcar #'cdr env)))
+                    0)))
+    (cons (append (loop for name in names
+                        for i from offset
+                        collect (cons name i))
+                  env)
+          offset)))
+
+;;; Main compilation function
+
+(defun compile-expr (expr env)
+  "Compile s-expression to typed IR.
+   Returns: ir-node"
+  (cond
+    ;; nil literal
+    ((null expr) (ir-nil))
+
+    ;; Integer literal - tag it
+    ((integerp expr) (ir-lit (ash expr 1)))  ; fixnum tag: shift left 1, set bit 0
+
+    ;; String literal
+    ((stringp expr) (ir-str expr))
+
+    ;; Keyword literal
+    ((keywordp expr) (ir-kw (symbol-name expr)))
+
+    ;; Symbol - variable reference or special
+    ((symbolp expr)
+     (cond
+       ((eq expr t) (ir-t))
+       (t
+        (let ((offset (env-lookup expr env)))
+          (if offset
+              (ir-var offset)
+              (ir-global expr))))))
+
+    ;; Compound form
+    ((consp expr)
+     (compile-form (car expr) (cdr expr) env))
+
+    (t (error "compile-expr: unknown expression ~S" expr))))
+
+(defun compile-form (op args env)
+  "Compile a compound form."
+  (case op
+    ;; Special forms
+    (quote (compile-quote (car args)))
+    (if (compile-if args env))
+    (progn (compile-progn args env))
+    (let (compile-let args env))
+    (let* (compile-let* args env))
+    (setq (compile-setq args env))
+    (while (compile-while args env))
+    (lambda (compile-lambda args env))
+    (and (compile-and args env))
+    (or (compile-or args env))
+
+    ;; Arithmetic
+    (+ (ir-add (compile-expr (first args) env)
+               (compile-expr (second args) env)))
+    (- (if (= (length args) 1)
+           (ir-neg (compile-expr (first args) env))
+           (ir-sub (compile-expr (first args) env)
+                   (compile-expr (second args) env))))
+    (* (ir-mul (compile-expr (first args) env)
+               (compile-expr (second args) env)))
+    (/ (ir-div (compile-expr (first args) env)
+               (compile-expr (second args) env)))
+    (mod (ir-mod (compile-expr (first args) env)
+                 (compile-expr (second args) env)))
+
+    ;; Comparison
+    (eq (ir-eq (compile-expr (first args) env)
+               (compile-expr (second args) env)))
+    (eql (ir-eql (compile-expr (first args) env)
+                 (compile-expr (second args) env)))
+    (= (ir-eq (compile-expr (first args) env)
+              (compile-expr (second args) env)))
+    (< (ir-lt (compile-expr (first args) env)
+              (compile-expr (second args) env)))
+    (> (ir-gt (compile-expr (first args) env)
+              (compile-expr (second args) env)))
+    (<= (ir-le (compile-expr (first args) env)
+               (compile-expr (second args) env)))
+    (>= (ir-ge (compile-expr (first args) env)
+               (compile-expr (second args) env)))
+    (zerop (ir-zerop (compile-expr (first args) env)))
+
+    ;; Logical
+    (not (ir-not (compile-expr (first args) env)))
+
+    ;; Bitwise
+    (logand (ir-band (compile-expr (first args) env)
+                     (compile-expr (second args) env)))
+    (logior (ir-bor (compile-expr (first args) env)
+                    (compile-expr (second args) env)))
+    (logxor (ir-bxor (compile-expr (first args) env)
+                     (compile-expr (second args) env)))
+    (ash (ir-bsh (compile-expr (first args) env)
+                 (compile-expr (second args) env)))
+    (lognot (ir-bnot (compile-expr (first args) env)))
+
+    ;; List operations
+    (cons (ir-cons (compile-expr (first args) env)
+                   (compile-expr (second args) env)))
+    (car (ir-car (compile-expr (first args) env)))
+    (cdr (ir-cdr (compile-expr (first args) env)))
+    (list (ir-list (mapcar (lambda (a) (compile-expr a env)) args)))
+
+    ;; Type predicates
+    (null (ir-null (compile-expr (first args) env)))
+    (consp (ir-consp (compile-expr (first args) env)))
+    (symbolp (ir-symbolp (compile-expr (first args) env)))
+    (stringp (ir-stringp (compile-expr (first args) env)))
+    (numberp (ir-numberp (compile-expr (first args) env)))
+    (integerp (ir-numberp (compile-expr (first args) env)))  ; same as numberp for now
+    (keywordp (ir-keywordp (compile-expr (first args) env)))
+    (functionp (ir-functionp (compile-expr (first args) env)))
+
+    ;; String operations
+    (string-length (ir-string-length (compile-expr (first args) env)))
+    (string-ref (ir-string-ref (compile-expr (first args) env)
+                               (compile-expr (second args) env)))
+    (char (ir-string-ref (compile-expr (first args) env)
+                         (compile-expr (second args) env)))  ; alias
+
+    ;; Vector operations
+    (make-vector (ir-make-vector (compile-expr (first args) env)
+                                 (compile-expr (second args) env)))
+    (vector-ref (ir-vector-ref (compile-expr (first args) env)
+                               (compile-expr (second args) env)))
+    (aref (ir-vector-ref (compile-expr (first args) env)
+                         (compile-expr (second args) env)))  ; alias
+    (vector-set (ir-vector-set (compile-expr (first args) env)
+                               (compile-expr (second args) env)
+                               (compile-expr (third args) env)))
+    (vector-length (ir-vector-length (compile-expr (first args) env)))
+
+    ;; Symbol operations
+    (make-symbol (ir-make-symbol (compile-expr (first args) env)))
+    (symbol-name (ir-symbol-name (compile-expr (first args) env)))
+    (intern (ir-intern (compile-expr (first args) env)))
+
+    ;; Keyword operations
+    (keyword-name (ir-keyword-name (compile-expr (first args) env)))
+
+    ;; System
+    (exit (ir-exit (compile-expr (first args) env)))
+    (error (ir-error (compile-expr (first args) env)))
+
+    ;; Funcall - indirect function call
+    (funcall (ir-funcall (compile-expr (first args) env)
+                         (mapcar (lambda (a) (compile-expr a env))
+                                 (rest args))))
+
+    ;; Default: named function call
+    (otherwise
+     (ir-call op (mapcar (lambda (a) (compile-expr a env)) args)))))
+
+;;; Special form compilers
+
+(defun compile-quote (datum)
+  "Compile quoted datum."
+  (cond
+    ((null datum) (ir-nil))
+    ((eq datum t) (ir-t))
+    ((integerp datum) (ir-lit (ash datum 1)))
+    ((stringp datum) (ir-str datum))
+    ((keywordp datum) (ir-kw (symbol-name datum)))
+    ((symbolp datum) (ir-sym datum))
+    ((consp datum)
+     ;; Quoted list - build at compile time
+     (ir-cons (compile-quote (car datum))
+              (compile-quote (cdr datum))))
+    (t (error "compile-quote: can't quote ~S" datum))))
+
+(defun compile-if (args env)
+  "Compile if form."
+  (let ((test (compile-expr (first args) env))
+        (then (compile-expr (second args) env))
+        (else (if (third args)
+                  (compile-expr (third args) env)
+                  (ir-nil))))
+    (ir-if test then else)))
+
+(defun compile-progn (forms env)
+  "Compile progn form."
+  (if (null forms)
+      (ir-nil)
+      (ir-progn (mapcar (lambda (f) (compile-expr f env)) forms))))
+
+(defun compile-let (args env)
+  "Compile let form."
+  (let* ((bindings (first args))
+         (body (rest args))
+         (names (mapcar #'car bindings))
+         (inits (mapcar #'cadr bindings))
+         (ext (env-extend names env))
+         (new-env (car ext))
+         (base-offset (cdr ext)))
+    (ir-let (loop for name in names
+                  for init in inits
+                  for offset from base-offset
+                  collect (cons offset (compile-expr init env)))
+            (compile-progn body new-env))))
+
+(defun compile-let* (args env)
+  "Compile let* form (sequential bindings)."
+  (let ((bindings (first args))
+        (body (rest args)))
+    (if (null bindings)
+        (compile-progn body env)
+        (let* ((binding (car bindings))
+               (name (car binding))
+               (init (cadr binding))
+               (ext (env-extend (list name) env))
+               (new-env (car ext))
+               (offset (cdr ext)))
+          (ir-let (list (cons offset (compile-expr init env)))
+                  (compile-let* (cons (cdr bindings) body) new-env))))))
+
+(defun compile-setq (args env)
+  "Compile setq form."
+  (let* ((name (first args))
+         (value (compile-expr (second args) env))
+         (offset (env-lookup name env)))
+    (if offset
+        (ir-setq offset value)
+        (ir-set-global name value))))
+
+(defun compile-while (args env)
+  "Compile while form."
+  (ir-while (compile-expr (first args) env)
+            (compile-progn (rest args) env)))
+
+(defun compile-lambda (args env)
+  "Compile lambda form."
+  (let* ((params (first args))
+         (body (rest args))
+         (ext (env-extend params nil))  ; fresh env for lambda body
+         (new-env (car ext))
+         (captures (find-free-vars body params env)))
+    (ir-lambda params
+               (compile-progn body new-env)
+               captures)))
+
+(defun compile-and (args env)
+  "Compile and form (short-circuit)."
+  (cond
+    ((null args) (ir-t))
+    ((null (cdr args)) (compile-expr (car args) env))
+    (t (ir-and (compile-expr (car args) env)
+               (compile-and (cdr args) env)))))
+
+(defun compile-or (args env)
+  "Compile or form (short-circuit)."
+  (cond
+    ((null args) (ir-nil))
+    ((null (cdr args)) (compile-expr (car args) env))
+    (t (ir-or (compile-expr (car args) env)
+              (compile-or (cdr args) env)))))
+
+;;; Free variable analysis
+
+(defun find-free-vars (expr bound env)
+  "Find free variables in expr not in bound list but in env."
+  (let ((free nil))
+    (labels ((walk (e)
+               (cond
+                 ((null e) nil)
+                 ((symbolp e)
+                  (when (and (env-lookup e env)
+                             (not (member e bound))
+                             (not (member e free)))
+                    (push e free)))
+                 ((consp e)
+                  (case (car e)
+                    (quote nil)  ; don't walk into quotes
+                    (lambda
+                      ;; Lambda shadows its params
+                      (let ((params (cadr e))
+                            (body (cddr e)))
+                        (dolist (form body)
+                          (find-free-in form (append params bound)))))
+                    (let
+                      ;; Let shadows its bindings
+                      (let* ((bindings (cadr e))
+                             (body (cddr e))
+                             (names (mapcar #'car bindings)))
+                        (dolist (b bindings)
+                          (walk (cadr b)))
+                        (dolist (form body)
+                          (find-free-in form (append names bound)))))
+                    (t (dolist (sub e) (walk sub))))))))
+             (find-free-in (e new-bound)
+               (let ((bound new-bound))
+                 (walk e))))
+      (if (consp expr)
+          (dolist (form expr) (walk form))
+          (walk expr)))
+    (nreverse free)))
