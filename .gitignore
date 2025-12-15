@@ -88,11 +88,12 @@ run-fasl
 /habu
 !bin/habu
 
-# Stage binaries and debug artifacts (rebuild with build-habu0)
+# Stage binaries and debug artifacts (rebuild with tools/build)
 habu0
 habu0.dbg
 habu0.map
 habu0.vars
+habu0-*
 habu1
 habu1.dbg
 habu1.map
@@ -101,6 +102,15 @@ habu2
 habu2.dbg
 habu2.map
 habu2.vars
+
+# Temp assembly and duplicate files
+test-tmp.s
+native/arm64-asm.lisp
+
+# Weird filenames from bad tool output
+--
+--.dbg
+--.map
 
 # Test binaries and artifacts
 test-crash
