@@ -147,7 +147,7 @@
     (let (compile-let args env))
     (let* (compile-let* args env))
     (setq (compile-setq args env))
-    (while (compile-while args env))
+    ((while habu::while) (compile-while args env))
     (lambda (compile-lambda args env))
     (labels (compile-labels args env))
     (flet (compile-flet args env))
@@ -225,6 +225,14 @@
     (cdadr (ir-cdr (ir-car (ir-cdr (compile-expr (first args) env)))))
     (cddar (ir-cdr (ir-cdr (ir-car (compile-expr (first args) env)))))
     (cadddr (ir-car (ir-cdr (ir-cdr (ir-cdr (compile-expr (first args) env))))))
+    ((cdar habu::cdar) (ir-cdr (ir-car (compile-expr (first args) env))))
+    ;; Setcar/Setcdr
+    ((setcar habu::setcar rplaca habu::rplaca)
+     (ir-setcar (compile-expr (first args) env)
+                (compile-expr (second args) env)))
+    ((setcdr habu::setcdr rplacd habu::rplacd)
+     (ir-setcdr (compile-expr (first args) env)
+                (compile-expr (second args) env)))
     ;; Aliases
     (first (ir-car (compile-expr (first args) env)))
     (rest (ir-cdr (compile-expr (first args) env)))
@@ -244,36 +252,48 @@
     (keywordp (ir-keywordp (compile-expr (first args) env)))
     (functionp (ir-functionp (compile-expr (first args) env)))
 
-    ;; String operations
-    (string-length (ir-string-length (compile-expr (first args) env)))
-    (string-ref (ir-string-ref (compile-expr (first args) env)
-                               (compile-expr (second args) env)))
-    (char (ir-string-ref (compile-expr (first args) env)
-                         (compile-expr (second args) env)))  ; alias
+    ;; String operations (handle both CL and HABU package symbols)
+    ((string-length habu::string-length)
+     (ir-string-length (compile-expr (first args) env)))
+    ((string-ref habu::string-ref char habu::char)
+     (ir-string-ref (compile-expr (first args) env)
+                    (compile-expr (second args) env)))
 
     ;; Vector operations
-    (make-vector (ir-make-vector (compile-expr (first args) env)
-                                 (compile-expr (second args) env)))
-    (vector-ref (ir-vector-ref (compile-expr (first args) env)
-                               (compile-expr (second args) env)))
-    (aref (ir-vector-ref (compile-expr (first args) env)
-                         (compile-expr (second args) env)))  ; alias
-    (vector-set (ir-vector-set (compile-expr (first args) env)
-                               (compile-expr (second args) env)
-                               (compile-expr (third args) env)))
-    (vector-length (ir-vector-length (compile-expr (first args) env)))
+    ((make-vector habu::make-vector)
+     (ir-make-vector (compile-expr (first args) env)
+                     (compile-expr (second args) env)))
+    ((vector-ref habu::vector-ref aref habu::aref)
+     (ir-vector-ref (compile-expr (first args) env)
+                    (compile-expr (second args) env)))
+    ((vector-set habu::vector-set)
+     (ir-vector-set (compile-expr (first args) env)
+                    (compile-expr (second args) env)
+                    (compile-expr (third args) env)))
+    ((vector-length habu::vector-length)
+     (ir-vector-length (compile-expr (first args) env)))
 
     ;; Symbol operations
-    (make-symbol (ir-make-symbol (compile-expr (first args) env)))
-    (symbol-name (ir-symbol-name (compile-expr (first args) env)))
-    (intern (ir-intern (compile-expr (first args) env)))
+    ((make-symbol habu::make-symbol)
+     (ir-make-symbol (compile-expr (first args) env)))
+    ((symbol-name habu::symbol-name)
+     (ir-symbol-name (compile-expr (first args) env)))
+    ((intern habu::intern)
+     (ir-intern (compile-expr (first args) env)))
 
     ;; Keyword operations
-    (keyword-name (ir-keyword-name (compile-expr (first args) env)))
+    ((keyword-name habu::keyword-name)
+     (ir-keyword-name (compile-expr (first args) env)))
 
     ;; System
-    (exit (ir-exit (compile-expr (first args) env)))
-    (error (ir-error (compile-expr (first args) env)))
+    ((exit habu::exit sys-exit habu::sys-exit)
+     (ir-exit (compile-expr (first args) env)))
+    ((error habu::error)
+     (ir-error (compile-expr (first args) env)))
+
+    ;; Length - works for strings, vectors, lists
+    ((length habu::length)
+     (ir-length (compile-expr (first args) env)))
 
     ;; Funcall - indirect function call
     (funcall (ir-funcall (compile-expr (first args) env)
