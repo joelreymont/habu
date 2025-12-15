@@ -1467,7 +1467,9 @@
         :tac-get-intern-table :tac-get-keyword-table
         :tac-get-lambda-counter :tac-get-symbol-counter :tac-get-symbol-table
         :tac-get-frame-pointer :tac-get-code-base :tac-get-symtab-offset :tac-get-symtab-count
-        :tac-get-packages :tac-get-current-package)
+        :tac-get-packages :tac-get-current-package
+        ;; Type predicates
+        :tac-numberp :tac-consp :tac-symbolp :tac-stringp :tac-vectorp :tac-keywordp)
        (cadr instr))
       ;; Instructions that don't define a vreg (control flow, stores, etc.)
       ((:tac-return :tac-if :tac-if-not :tac-goto :tac-label :tac-setvar :tac-sys-exit
@@ -1534,7 +1536,9 @@
       ;; Unary ops: (tac-X dest src)
       ((:tac-move :tac-car :tac-cdr :tac-vector-length :tac-string-length
         :tac-make-vector :tac-make-string :tac-get-tag :tac-bnot :tac-mvn :tac-sys-close
-        :tac-symbol-name :tac-make-symbol)
+        :tac-symbol-name :tac-make-symbol
+        ;; Type predicates
+        :tac-numberp :tac-consp :tac-symbolp :tac-stringp :tac-vectorp :tac-keywordp)
        (list (caddr instr)))
       ;; Binary ops with dest: (tac-X dest vr1 vr2)
       ((:tac-cons :tac-mem-load-64 :tac-mem-load-byte :tac-buffer-to-string
@@ -1842,7 +1846,7 @@
                     (val (bytes-to-u64 chunk))
                     (rest (drop-bytes bytes 8))
                     ;; Push instructions in reverse order for O(n) performance
-                    (new-acc (cons (arm64:str :x8 :heap :offset offset)
+                    (new-acc (revappend (arm64:str :x8 :heap :offset offset)
                                    (revappend (load-addr :x8 val) acc))))
                (gen-stores
                 (+ offset 8)
@@ -2120,7 +2124,8 @@
               (reg-offsets nil))  ; Track which reg is at which offset for restore
          ;; Save only actually-used caller-saved registers (O(n) with push/nreverse)
          (dolist (reg used-regs)
-           (push (arm64:str reg :sp :offset save-offset) save-code)
+           (dolist (b (arm64:str reg :sp :offset save-offset))
+             (push b save-code))
            (setq reg-offsets (cons (cons reg save-offset) reg-offsets))
            (setq save-offset (+ save-offset 8)))
          (setq save-code (nreverse save-code))

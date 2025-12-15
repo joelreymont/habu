@@ -1,4 +1,4 @@
-;;;; Main Entry Point for Typed Compiler
+;;;; Main Entry Point for Compiler
 ;;;;
 ;;;; Provides deliver function that compiles s-expression to native binary.
 
@@ -12,15 +12,15 @@
 ;;; Load dependencies
 (eval-when (:compile-toplevel :load-toplevel :execute)
   (unless (find-package :habu.compile)
-    (load "typed/compile.lisp"))
+    (load "bootstrap/compile.lisp"))
   (unless (find-package :habu.ir-to-tac)
-    (load "typed/ir-to-tac.lisp"))
+    (load "bootstrap/ir-to-tac.lisp"))
   (unless (find-package :habu.liveness)
-    (load "typed/liveness.lisp"))
+    (load "bootstrap/liveness.lisp"))
   (unless (find-package :habu.regalloc)
-    (load "typed/regalloc.lisp"))
+    (load "bootstrap/regalloc.lisp"))
   (unless (find-package :habu.codegen)
-    (load "typed/tac-codegen.lisp")))
+    (load "bootstrap/tac-codegen.lisp")))
 
 ;;; Compile a single expression to ARM64 bytes
 (defun compile-to-bytes (expr)

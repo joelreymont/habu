@@ -1590,13 +1590,19 @@
          ;; Quote - don't descend
          ((eq op 'quote) expr)
          ;; LABELS/FLET - don't descend (BUG #20 FIX: let sys:compile handle nested labels)
-         ((or (eq op 'LABELS) (eq op 'FLET) (eq op 'labels) (eq op 'flet)) expr)
+         ((or (eq op 'LABELS) (eq op 'FLET)) expr)
          ;; Lambda - rewrite body but don't rewrite param list
          ((eq op 'lambda)
           (list 'lambda (cadr expr)
                 (rewrite-labels-calls (caddr expr) fn-names)))
+         ;; while - rewrite test and body (BUG FIX: while inside labels)
+         ((eq op 'while)
+          (let ((test (cadr expr))
+                (body (cddr expr)))
+            (cons 'while (cons (rewrite-labels-calls test fn-names)
+                               (mapcar (lambda (e) (rewrite-labels-calls e fn-names)) body)))))
          ;; let/let* - rewrite values and body, not binding names
-         ((or (eq op 'LET) (eq op 'LET*) (eq op 'let) (eq op 'let*))
+         ((or (eq op 'LET) (eq op 'LET*))
           (let* ((bindings (cadr expr))
                  (body (cddr expr))
                  (new-bindings (mapcar (lambda (b)
@@ -1626,13 +1632,19 @@
          ;; Quote - don't descend
          ((eq op 'quote) expr)
          ;; LABELS/FLET - don't descend (BUG #20 FIX: let sys:compile handle nested labels)
-         ((or (eq op 'LABELS) (eq op 'FLET) (eq op 'labels) (eq op 'flet)) expr)
+         ((or (eq op 'LABELS) (eq op 'FLET)) expr)
          ;; Lambda - rewrite body but don't rewrite param list
          ((eq op 'lambda)
           (list 'lambda (cadr expr)
                 (rewrite-labels-body (caddr expr) fn-names fntab-var)))
+         ;; while - rewrite test and body (BUG FIX: while inside labels)
+         ((eq op 'while)
+          (let ((test (cadr expr))
+                (body (cddr expr)))
+            (cons 'while (cons (rewrite-labels-body test fn-names fntab-var)
+                               (mapcar (lambda (e) (rewrite-labels-body e fn-names fntab-var)) body)))))
          ;; let/let* - rewrite values and body
-         ((or (eq op 'LET) (eq op 'LET*) (eq op 'let) (eq op 'let*))
+         ((or (eq op 'LET) (eq op 'LET*))
           (let* ((bindings (cadr expr))
                  (body (cddr expr))
                  (new-bindings (mapcar (lambda (b)
@@ -1661,13 +1673,19 @@
          ;; Quote - don't descend
          ((eq op 'quote) expr)
          ;; LABELS/FLET - don't descend (BUG #20 FIX: let sys:compile handle nested labels)
-         ((or (eq op 'LABELS) (eq op 'FLET) (eq op 'labels) (eq op 'flet)) expr)
+         ((or (eq op 'LABELS) (eq op 'FLET)) expr)
          ;; Lambda - rewrite body but don't rewrite param list
          ((eq op 'lambda)
           (list 'lambda (cadr expr)
                 (rewrite-labels-main (caddr expr) fn-names)))
+         ;; while - rewrite test and body (BUG FIX: while inside labels)
+         ((eq op 'while)
+          (let ((test (cadr expr))
+                (body (cddr expr)))
+            (cons 'while (cons (rewrite-labels-main test fn-names)
+                               (mapcar (lambda (e) (rewrite-labels-main e fn-names)) body)))))
          ;; let/let* - rewrite values and body
-         ((or (eq op 'LET) (eq op 'LET*) (eq op 'let) (eq op 'let*))
+         ((or (eq op 'LET) (eq op 'LET*))
           (let* ((bindings (cadr expr))
                  (body (cddr expr))
                  (new-bindings (mapcar (lambda (b)
@@ -1901,7 +1919,7 @@
                             (sys:compile (cons 'cond (cdr clauses)) env fenv)))))))
          ;; case - multi-branch conditional with key comparison
          ;; (case keyform (key1 body1...) (key2 body2...) ... [(t default...)])
-         ((or (eq op 'case) (eq op 'CASE))
+         ((eq op 'case)
           (let* ((keyform (cadr expr))
                  (clauses (cddr expr))
                  ;; Generate a gensym for the key variable
@@ -1914,7 +1932,7 @@
                                         (body (cdr clause)))
                                     (cond
                                       ;; t or otherwise clause
-                                      ((or (eq keys 't) (eq keys 'T) (eq keys 'otherwise))
+                                      ((or (eq keys 't) (eq keys 'otherwise))
                                        `(t ,@body))
                                       ;; Single key
                                       ((atom keys)

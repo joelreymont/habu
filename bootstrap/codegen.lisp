@@ -347,8 +347,8 @@
             (new-lambdas (cdr val-result)))
        (cons (list 'setq-ir off new-val) new-lambdas)))
 
-    ;; Default - return unchanged
-    (t (cons ir lambdas))))
+    ;; Default - crash on unknown IR tag
+    (t (error "lift-lambdas: unhandled IR tag ~S in ~S" (car ir) ir))))
 
 #-sbcl
 (defun lift-list (lst lambdas)

@@ -1,9 +1,9 @@
 ;;; types.lisp - Type system for habu0 self-hosting
 ;;;
-;;; Simplified version of typed/types.lisp compatible with habu0 primitives.
+;;; Simplified version of shared/types.lisp compatible with habu0 primitives.
 ;;; Provides deftype for ADTs and match for pattern matching.
 ;;;
-;;; Key differences from typed/types.lisp:
+;;; Key differences from shared/types.lisp:
 ;;; - Uses alists instead of hash-tables
 ;;; - No compile-time exhaustiveness checking (runtime error instead)
 ;;; - No format (uses string-concat for messages)

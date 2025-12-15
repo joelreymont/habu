@@ -1150,6 +1150,12 @@
 (defun reverse (lst)
   (reverse-acc lst nil))
 
+;; revappend - same as reverse-acc but CL-standard name
+(defun revappend (lst tail)
+  (if (null lst)
+      tail
+      (revappend (cdr lst) (cons (car lst) tail))))
+
 ;; Helper for read-all - avoids labels which has codegen issues
 (defun read-all-loop (source len pos acc)
   (let ((p2 (skip-ws source pos)))
