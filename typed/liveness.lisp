@@ -114,7 +114,17 @@
   (let ((intervals (make-hash-table))  ; vreg -> (start . end)
         (n (length instrs)))
 
-    ;; Scan through all instructions
+    ;; First pass: ensure every DEFined vreg has an interval
+    ;; This handles dead vregs that are still needed for codegen
+    (loop for i from 0 below n
+          for instr = (nth i instrs)
+          do
+          (let ((def (tac-def instr)))
+            (when (and def (integerp def))
+              (unless (gethash def intervals)
+                (setf (gethash def intervals) (cons i (1+ i)))))))
+
+    ;; Second pass: extend intervals based on liveness
     (loop for i from 0 below n
           do
           ;; Every vreg live at this point extends its interval

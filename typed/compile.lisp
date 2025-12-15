@@ -83,149 +83,151 @@
 
 (defun compile-form (op args env)
   "Compile a compound form."
-  (case op
-    ;; Special forms
-    (quote (compile-quote (car args)))
-    (if (compile-if args env))
-    (cond (compile-cond args env))
-    (case (compile-case args env))
-    (when (compile-when args env))
-    (unless (compile-unless args env))
-    (progn (compile-progn args env))
-    (let (compile-let args env))
-    (let* (compile-let* args env))
-    (setq (compile-setq args env))
-    (while (compile-while args env))
-    (lambda (compile-lambda args env))
-    (labels (compile-labels args env))
-    (flet (compile-flet args env))
-    (loop (compile-loop args env))
-    (return (compile-return args env))
-    (and (compile-and args env))
-    (or (compile-or args env))
+  ;; Convert op to keyword for package-independent dispatch
+  (let ((key (intern (symbol-name op) :keyword)))
+    (case key
+      ;; Special forms
+      (:quote (compile-quote (car args)))
+      (:if (compile-if args env))
+      (:cond (compile-cond args env))
+      (:case (compile-case args env))
+      (:when (compile-when args env))
+      (:unless (compile-unless args env))
+      (:progn (compile-progn args env))
+      (:let (compile-let args env))
+      (:let* (compile-let* args env))
+      (:setq (compile-setq args env))
+      (:while (compile-while args env))
+      (:lambda (compile-lambda args env))
+      (:labels (compile-labels args env))
+      (:flet (compile-flet args env))
+      (:loop (compile-loop args env))
+      (:return (compile-return args env))
+      (:and (compile-and args env))
+      (:or (compile-or args env))
 
-    ;; Arithmetic
-    (+ (ir-add (compile-expr (first args) env)
-               (compile-expr (second args) env)))
-    (- (if (= (length args) 1)
-           (ir-neg (compile-expr (first args) env))
-           (ir-sub (compile-expr (first args) env)
-                   (compile-expr (second args) env))))
-    (* (ir-mul (compile-expr (first args) env)
-               (compile-expr (second args) env)))
-    (/ (ir-div (compile-expr (first args) env)
-               (compile-expr (second args) env)))
-    (mod (ir-mod (compile-expr (first args) env)
-                 (compile-expr (second args) env)))
-
-    ;; Comparison
-    (eq (ir-eq (compile-expr (first args) env)
-               (compile-expr (second args) env)))
-    (eql (ir-eql (compile-expr (first args) env)
-                 (compile-expr (second args) env)))
-    (= (ir-eq (compile-expr (first args) env)
-              (compile-expr (second args) env)))
-    (< (ir-lt (compile-expr (first args) env)
-              (compile-expr (second args) env)))
-    (> (ir-gt (compile-expr (first args) env)
-              (compile-expr (second args) env)))
-    (<= (ir-le (compile-expr (first args) env)
-               (compile-expr (second args) env)))
-    (>= (ir-ge (compile-expr (first args) env)
-               (compile-expr (second args) env)))
-    (zerop (ir-zerop (compile-expr (first args) env)))
-
-    ;; Logical
-    (not (ir-not (compile-expr (first args) env)))
-
-    ;; Bitwise
-    (logand (ir-band (compile-expr (first args) env)
-                     (compile-expr (second args) env)))
-    (logior (ir-bor (compile-expr (first args) env)
+      ;; Arithmetic
+      (:+ (ir-add (compile-expr (first args) env)
+                  (compile-expr (second args) env)))
+      (:- (if (= (length args) 1)
+              (ir-neg (compile-expr (first args) env))
+              (ir-sub (compile-expr (first args) env)
+                      (compile-expr (second args) env))))
+      (:* (ir-mul (compile-expr (first args) env)
+                  (compile-expr (second args) env)))
+      (:/ (ir-div (compile-expr (first args) env)
+                  (compile-expr (second args) env)))
+      (:mod (ir-mod (compile-expr (first args) env)
                     (compile-expr (second args) env)))
-    (logxor (ir-bxor (compile-expr (first args) env)
-                     (compile-expr (second args) env)))
-    (ash (ir-bsh (compile-expr (first args) env)
+
+      ;; Comparison
+      (:eq (ir-eq (compile-expr (first args) env)
+                  (compile-expr (second args) env)))
+      (:eql (ir-eql (compile-expr (first args) env)
+                    (compile-expr (second args) env)))
+      (:= (ir-eq (compile-expr (first args) env)
                  (compile-expr (second args) env)))
-    (lognot (ir-bnot (compile-expr (first args) env)))
+      (:< (ir-lt (compile-expr (first args) env)
+                 (compile-expr (second args) env)))
+      (:> (ir-gt (compile-expr (first args) env)
+                 (compile-expr (second args) env)))
+      (:<= (ir-le (compile-expr (first args) env)
+                  (compile-expr (second args) env)))
+      (:>= (ir-ge (compile-expr (first args) env)
+                  (compile-expr (second args) env)))
+      (:zerop (ir-zerop (compile-expr (first args) env)))
 
-    ;; List operations
-    (cons (ir-cons (compile-expr (first args) env)
-                   (compile-expr (second args) env)))
-    (car (ir-car (compile-expr (first args) env)))
-    (cdr (ir-cdr (compile-expr (first args) env)))
-    (list (ir-list (mapcar (lambda (a) (compile-expr a env)) args)))
-    ;; Car/cdr combinations
-    (cadr (ir-car (ir-cdr (compile-expr (first args) env))))
-    (cddr (ir-cdr (ir-cdr (compile-expr (first args) env))))
-    (caar (ir-car (ir-car (compile-expr (first args) env))))
-    (caddr (ir-car (ir-cdr (ir-cdr (compile-expr (first args) env)))))
-    (cdddr (ir-cdr (ir-cdr (ir-cdr (compile-expr (first args) env)))))
-    (caaar (ir-car (ir-car (ir-car (compile-expr (first args) env)))))
-    (caadr (ir-car (ir-car (ir-cdr (compile-expr (first args) env)))))
-    (cadar (ir-car (ir-cdr (ir-car (compile-expr (first args) env)))))
-    (cdaar (ir-cdr (ir-car (ir-car (compile-expr (first args) env)))))
-    (cdadr (ir-cdr (ir-car (ir-cdr (compile-expr (first args) env)))))
-    (cddar (ir-cdr (ir-cdr (ir-car (compile-expr (first args) env)))))
-    (cadddr (ir-car (ir-cdr (ir-cdr (ir-cdr (compile-expr (first args) env))))))
-    ;; Aliases
-    (first (ir-car (compile-expr (first args) env)))
-    (rest (ir-cdr (compile-expr (first args) env)))
-    (second (ir-car (ir-cdr (compile-expr (first args) env))))
-    (third (ir-car (ir-cdr (ir-cdr (compile-expr (first args) env)))))
-    (fourth (ir-car (ir-cdr (ir-cdr (ir-cdr (compile-expr (first args) env))))))
-    ;; nth - compile as repeated cdr then car
-    (nth (compile-nth args env))
+      ;; Logical
+      (:not (ir-not (compile-expr (first args) env)))
 
-    ;; Type predicates
-    (null (ir-null (compile-expr (first args) env)))
-    (consp (ir-consp (compile-expr (first args) env)))
-    (symbolp (ir-symbolp (compile-expr (first args) env)))
-    (stringp (ir-stringp (compile-expr (first args) env)))
-    (numberp (ir-numberp (compile-expr (first args) env)))
-    (integerp (ir-numberp (compile-expr (first args) env)))  ; same as numberp for now
-    (keywordp (ir-keywordp (compile-expr (first args) env)))
-    (functionp (ir-functionp (compile-expr (first args) env)))
+      ;; Bitwise
+      (:logand (ir-band (compile-expr (first args) env)
+                        (compile-expr (second args) env)))
+      (:logior (ir-bor (compile-expr (first args) env)
+                       (compile-expr (second args) env)))
+      (:logxor (ir-bxor (compile-expr (first args) env)
+                        (compile-expr (second args) env)))
+      (:ash (ir-bsh (compile-expr (first args) env)
+                    (compile-expr (second args) env)))
+      (:lognot (ir-bnot (compile-expr (first args) env)))
 
-    ;; String operations
-    (string-length (ir-string-length (compile-expr (first args) env)))
-    (string-ref (ir-string-ref (compile-expr (first args) env)
-                               (compile-expr (second args) env)))
-    (char (ir-string-ref (compile-expr (first args) env)
-                         (compile-expr (second args) env)))  ; alias
+      ;; List operations
+      (:cons (ir-cons (compile-expr (first args) env)
+                      (compile-expr (second args) env)))
+      (:car (ir-car (compile-expr (first args) env)))
+      (:cdr (ir-cdr (compile-expr (first args) env)))
+      (:list (ir-list (mapcar (lambda (a) (compile-expr a env)) args)))
+      ;; Car/cdr combinations
+      (:cadr (ir-car (ir-cdr (compile-expr (first args) env))))
+      (:cddr (ir-cdr (ir-cdr (compile-expr (first args) env))))
+      (:caar (ir-car (ir-car (compile-expr (first args) env))))
+      (:caddr (ir-car (ir-cdr (ir-cdr (compile-expr (first args) env)))))
+      (:cdddr (ir-cdr (ir-cdr (ir-cdr (compile-expr (first args) env)))))
+      (:caaar (ir-car (ir-car (ir-car (compile-expr (first args) env)))))
+      (:caadr (ir-car (ir-car (ir-cdr (compile-expr (first args) env)))))
+      (:cadar (ir-car (ir-cdr (ir-car (compile-expr (first args) env)))))
+      (:cdaar (ir-cdr (ir-car (ir-car (compile-expr (first args) env)))))
+      (:cdadr (ir-cdr (ir-car (ir-cdr (compile-expr (first args) env)))))
+      (:cddar (ir-cdr (ir-cdr (ir-car (compile-expr (first args) env)))))
+      (:cadddr (ir-car (ir-cdr (ir-cdr (ir-cdr (compile-expr (first args) env))))))
+      ;; Aliases
+      (:first (ir-car (compile-expr (first args) env)))
+      (:rest (ir-cdr (compile-expr (first args) env)))
+      (:second (ir-car (ir-cdr (compile-expr (first args) env))))
+      (:third (ir-car (ir-cdr (ir-cdr (compile-expr (first args) env)))))
+      (:fourth (ir-car (ir-cdr (ir-cdr (ir-cdr (compile-expr (first args) env))))))
+      ;; nth - compile as repeated cdr then car
+      (:nth (compile-nth args env))
 
-    ;; Vector operations
-    (make-vector (ir-make-vector (compile-expr (first args) env)
-                                 (compile-expr (second args) env)))
-    (vector-ref (ir-vector-ref (compile-expr (first args) env)
-                               (compile-expr (second args) env)))
-    (aref (ir-vector-ref (compile-expr (first args) env)
-                         (compile-expr (second args) env)))  ; alias
-    (vector-set (ir-vector-set (compile-expr (first args) env)
-                               (compile-expr (second args) env)
-                               (compile-expr (third args) env)))
-    (vector-length (ir-vector-length (compile-expr (first args) env)))
+      ;; Type predicates
+      (:null (ir-null (compile-expr (first args) env)))
+      (:consp (ir-consp (compile-expr (first args) env)))
+      (:symbolp (ir-symbolp (compile-expr (first args) env)))
+      (:stringp (ir-stringp (compile-expr (first args) env)))
+      (:numberp (ir-numberp (compile-expr (first args) env)))
+      (:integerp (ir-numberp (compile-expr (first args) env)))  ; same as numberp for now
+      (:keywordp (ir-keywordp (compile-expr (first args) env)))
+      (:functionp (ir-functionp (compile-expr (first args) env)))
 
-    ;; Symbol operations
-    (make-symbol (ir-make-symbol (compile-expr (first args) env)))
-    (symbol-name (ir-symbol-name (compile-expr (first args) env)))
-    (intern (ir-intern (compile-expr (first args) env)))
+      ;; String operations
+      (:string-length (ir-string-length (compile-expr (first args) env)))
+      (:string-ref (ir-string-ref (compile-expr (first args) env)
+                                  (compile-expr (second args) env)))
+      (:char (ir-string-ref (compile-expr (first args) env)
+                            (compile-expr (second args) env)))  ; alias
 
-    ;; Keyword operations
-    (keyword-name (ir-keyword-name (compile-expr (first args) env)))
+      ;; Vector operations
+      (:make-vector (ir-make-vector (compile-expr (first args) env)
+                                    (compile-expr (second args) env)))
+      (:vector-ref (ir-vector-ref (compile-expr (first args) env)
+                                  (compile-expr (second args) env)))
+      (:aref (ir-vector-ref (compile-expr (first args) env)
+                            (compile-expr (second args) env)))  ; alias
+      (:vector-set (ir-vector-set (compile-expr (first args) env)
+                                  (compile-expr (second args) env)
+                                  (compile-expr (third args) env)))
+      (:vector-length (ir-vector-length (compile-expr (first args) env)))
 
-    ;; System
-    (exit (ir-exit (compile-expr (first args) env)))
-    (error (ir-error (compile-expr (first args) env)))
+      ;; Symbol operations
+      (:make-symbol (ir-make-symbol (compile-expr (first args) env)))
+      (:symbol-name (ir-symbol-name (compile-expr (first args) env)))
+      (:intern (ir-intern (compile-expr (first args) env)))
 
-    ;; Funcall - indirect function call
-    (funcall (ir-funcall (compile-expr (first args) env)
-                         (mapcar (lambda (a) (compile-expr a env))
-                                 (rest args))))
+      ;; Keyword operations
+      (:keyword-name (ir-keyword-name (compile-expr (first args) env)))
 
-    ;; Default: named function call
-    (otherwise
-     (ir-call op (mapcar (lambda (a) (compile-expr a env)) args)))))
+      ;; System
+      (:exit (ir-exit (compile-expr (first args) env)))
+      (:error (ir-error (compile-expr (first args) env)))
+
+      ;; Funcall - indirect function call
+      (:funcall (ir-funcall (compile-expr (first args) env)
+                            (mapcar (lambda (a) (compile-expr a env))
+                                    (rest args))))
+
+      ;; Default: named function call
+      (otherwise
+       (ir-call op (mapcar (lambda (a) (compile-expr a env)) args))))))
 
 ;;; Special form compilers
 
