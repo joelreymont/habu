@@ -10,6 +10,8 @@
 (load "typed/ir-to-tac.lisp")
 (load "typed/liveness.lisp")
 (load "typed/regalloc.lisp")
+(load "arm64/asm.lisp")
+(load "typed/tac-codegen.lisp")
 
 (defpackage :habu.test
   (:use :cl)
@@ -125,7 +127,30 @@
 (test-regalloc '(+ 1 2))
 (test-regalloc '(if t 1 2))
 
+;;; Test: Code Generation
+
+(format t "~%=== Testing Code Generation ===~%")
+
+(defun test-codegen (expr)
+  (let* ((ir (habu.compile:compile-expr expr nil))
+         (tac (habu.ir-to-tac:ir-to-tac ir))
+         (alloc (habu.regalloc:allocate-registers tac))
+         (code (habu.codegen:generate-code tac alloc)))
+    (format t "~S -> ~D bytes of ARM64~%" expr (length code))
+    ;; Show first 16 bytes as hex
+    (format t "  bytes: ")
+    (loop for b in code
+          for i from 0 below 16
+          do (format t "~2,'0X " b))
+    (when (> (length code) 16)
+      (format t "..."))
+    (format t "~%")
+    code))
+
+(test-codegen 42)
+(test-codegen '(+ 1 2))
+
 ;;; Summary
 
 (format t "~%=== All tests passed ===~%")
-(format t "Pipeline: S-expr -> IR -> TAC -> Liveness -> RegAlloc~%")
+(format t "Pipeline: S-expr -> IR -> TAC -> Liveness -> RegAlloc -> ARM64~%")

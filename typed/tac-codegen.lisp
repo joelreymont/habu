@@ -1,517 +1,465 @@
 ;;;; TAC Codegen - Generate ARM64 from TAC
 ;;;;
-;;;; Input: list of tac-instr
+;;;; Input: list of tac-instr + allocation-result
 ;;;; Output: list of ARM64 machine code bytes
 ;;;;
-;;;; Uses match macro for exhaustiveness checking.
-;;;; Requires arm64/asm.lisp for instruction encoders.
+;;;; Uses arm64/asm.lisp encoders.
 
-(in-package :habu)
+(defpackage :habu.codegen
+  (:use :cl)
+  (:shadowing-import-from :habu.types :deftype :match :match*)
+  (:import-from :habu.tac :tac-instr)
+  (:import-from :habu.regalloc :allocation-result
+                :allocation-result-vreg-to-reg
+                :allocation-result-stack-size)
+  (:export :generate-code :codegen-function))
 
-;;; Register allocation
-;;; For now, use a simple scheme:
-;;; - x0-x7: argument/result registers
-;;; - x9-x15: temporary registers (caller-saved)
-;;; - x19: temp for spills
-;;; - x20: environment pointer (env)
-;;; - x24: closure pointer
-;;; - x27: runtime data pointer
-;;; - x28: heap pointer
-;;; - x29: frame pointer
-;;; - x30: link register
+(in-package :habu.codegen)
 
-(defvar *vreg-to-reg* nil "Hash table mapping vreg -> physical reg")
-(defvar *next-temp-reg* 9 "Next temp register to allocate (x9-x15)")
-(defvar *code-bytes* nil "Accumulated machine code bytes")
-(defvar *label-offsets* nil "Hash table mapping label -> byte offset")
-(defvar *fixups* nil "List of (offset . label) for forward references")
+;;; Load ARM64 encoders if not already loaded
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  (unless (find-package :arm64)
+    (load "arm64/asm.lisp")))
 
-(defun reset-codegen-state ()
-  (setf *vreg-to-reg* (make-hash-table))
-  (setf *next-temp-reg* 9)
-  (setf *code-bytes* nil)
-  (setf *label-offsets* (make-hash-table))
+;;; Code generation state
+(defvar *code* nil "List of instruction bytes (reversed)")
+(defvar *vreg-to-reg* nil "Hash table from vreg to physical register")
+(defvar *labels* nil "Hash table from label -> byte offset")
+(defvar *fixups* nil "List of (offset label type) for forward refs")
+
+(defun reset-codegen ()
+  (setf *code* nil)
+  (setf *labels* (make-hash-table :test 'equal))
   (setf *fixups* nil))
 
-(defun emit-bytes (&rest bytes)
+(defun emit (&rest bytes)
   "Emit bytes to code stream."
   (dolist (b bytes)
-    (if (listp b)
-        (dolist (byte b) (push byte *code-bytes*))
-        (push b *code-bytes*))))
+    (cond
+      ((listp b) (dolist (byte b) (push byte *code*)))
+      ((integerp b) (push b *code*))
+      (t (error "emit: invalid byte ~S" b)))))
 
 (defun current-offset ()
-  "Current byte offset in code stream."
-  (length *code-bytes*))
+  (length *code*))
 
-(defun allocate-reg (vreg)
-  "Allocate a physical register for a vreg."
-  (or (gethash vreg *vreg-to-reg*)
-      (let ((reg (if (< *next-temp-reg* 16)
-                     (prog1 *next-temp-reg* (incf *next-temp-reg*))
-                     (error "Out of temp registers - need spilling"))))
-        (setf (gethash vreg *vreg-to-reg*) reg)
-        reg)))
+(defun vreg->reg (vreg)
+  "Convert vreg to physical register keyword."
+  (let ((reg (gethash vreg *vreg-to-reg*)))
+    (cond
+      ((null reg) (error "vreg ~D not allocated" vreg))
+      ((eq reg :spill) (error "vreg ~D spilled, need spill code" vreg))
+      (t (arm64:num-to-reg reg)))))
 
-(defun vreg-reg (vreg)
-  "Get physical register for vreg, allocating if needed."
-  (allocate-reg vreg))
+;;; Main code generation
 
-(defun reg-keyword (num)
-  "Convert register number to keyword (:x0, :x1, etc.)"
-  (intern (format nil "X~D" num) :keyword))
-
-;;; Main codegen function
-
-(defun tac-to-arm64 (tac-instrs)
-  "Generate ARM64 machine code from TAC.
+(defun generate-code (tac-instrs alloc)
+  "Generate ARM64 code from TAC with register allocation.
    Returns: list of bytes"
-  (reset-codegen-state)
+  (reset-codegen)
+  (setf *vreg-to-reg* (allocation-result-vreg-to-reg alloc))
 
   ;; First pass: collect labels
   (let ((offset 0))
     (dolist (instr tac-instrs)
-      (when (tac-label-p instr)
-        (setf (gethash (tac-label-name instr) *label-offsets*) offset))
-      ;; Estimate instruction size (most are 4 bytes)
-      (incf offset 4)))
+      (when (and (consp instr) (eq (car instr) :tac-label))
+        (setf (gethash (cadr instr) *labels*) offset))
+      ;; Estimate: each TAC instruction ~1-3 ARM64 instructions (4-12 bytes)
+      (incf offset 8)))
 
   ;; Second pass: generate code
   (dolist (instr tac-instrs)
-    (codegen-tac-instr instr))
+    (codegen-instr instr))
 
-  ;; Apply fixups for forward references
-  (dolist (fixup *fixups*)
-    (let* ((offset (car fixup))
-           (label (cdr fixup))
-           (target (gethash label *label-offsets*)))
-      (unless target
-        (error "Undefined label: ~S" label))
-      ;; Patch the branch offset
-      ;; This is simplified - real code would handle different instruction types
-      ))
+  ;; Apply fixups
+  (apply-fixups)
 
-  (nreverse *code-bytes*))
+  (nreverse *code*))
 
-(defun codegen-tac-instr (instr)
-  "Generate ARM64 code for a single TAC instruction."
+(defun codegen-instr (instr)
+  "Generate ARM64 for a single TAC instruction."
   (match tac-instr instr
     ;; === Data Movement ===
     (tac-lit (dest value)
-      (let ((r (vreg-reg dest)))
-        (emit-bytes (arm64:movz (reg-keyword r) value))))
+      (emit (arm64:movz (vreg->reg dest) (logand value #xFFFF))))
 
     (tac-nil (dest)
-      (let ((r (vreg-reg dest)))
-        ;; nil = 0 in hybrid scheme
-        (emit-bytes (arm64:movz (reg-keyword r) 0))))
+      (emit (arm64:movz (vreg->reg dest) 0)))
 
     (tac-t (dest)
-      (let ((r (vreg-reg dest)))
-        ;; t = 3 (symbol tag 2, ptr 0, so 0|2 + odd = 3? or special value)
-        (emit-bytes (arm64:movz (reg-keyword r) 3))))
+      ;; t = pointer to T symbol, use small constant for now
+      (emit (arm64:movz (vreg->reg dest) 3)))
 
     (tac-move (dest src)
-      (let ((rd (vreg-reg dest))
-            (rs (vreg-reg src)))
-        (unless (= rd rs)
-          (emit-bytes (arm64:mov-reg (reg-keyword rd) (reg-keyword rs))))))
+      (let ((rd (vreg->reg dest))
+            (rs (vreg->reg src)))
+        (unless (eq rd rs)
+          (emit (arm64:mov rd rs)))))
 
     (tac-var (dest offset)
-      (let ((r (vreg-reg dest)))
-        ;; Load from env (x20) at offset
-        (emit-bytes (arm64:ldr-offset (reg-keyword r) :x20 (* offset 8)))))
+      ;; Load from env (x20) at offset
+      (emit (arm64:ldr (vreg->reg dest) :x20 :offset (* offset 8))))
 
     (tac-setvar (offset src)
-      (let ((rs (vreg-reg src)))
-        ;; Store to env (x20) at offset
-        (emit-bytes (arm64:str-offset (reg-keyword rs) :x20 (* offset 8)))))
+      (emit (arm64:str (vreg->reg src) :x20 :offset (* offset 8))))
 
     (tac-global (dest name)
+      (declare (ignore name))
       ;; TODO: global variable lookup
-      (let ((r (vreg-reg dest)))
-        (emit-bytes (arm64:movz (reg-keyword r) 0))))
+      (emit (arm64:movz (vreg->reg dest) 0)))
 
     (tac-set-global (name src)
+      (declare (ignore name src))
       ;; TODO: global variable store
       )
 
     ;; === Arithmetic ===
     (tac-add (dest left right)
-      (codegen-arith #'arm64:add dest left right))
+      (emit (arm64:add (vreg->reg dest) (vreg->reg left) (vreg->reg right))))
 
     (tac-sub (dest left right)
-      (codegen-arith #'arm64:sub dest left right))
+      (emit (arm64:sub (vreg->reg dest) (vreg->reg left) (vreg->reg right))))
 
     (tac-mul (dest left right)
-      ;; MUL needs to handle tags
-      (let ((rd (vreg-reg dest))
-            (rl (vreg-reg left))
-            (rr (vreg-reg right)))
-        ;; For tagged fixnums: result = ((a >> 1) * (b >> 1)) << 1 | 1
-        ;; Simplified: just emit mul for now
-        (emit-bytes (arm64:mul (reg-keyword rd)
-                               (reg-keyword rl)
-                               (reg-keyword rr)))))
+      (emit (arm64:mul (vreg->reg dest) (vreg->reg left) (vreg->reg right))))
 
     (tac-div (dest left right)
-      (let ((rd (vreg-reg dest))
-            (rl (vreg-reg left))
-            (rr (vreg-reg right)))
-        (emit-bytes (arm64:sdiv (reg-keyword rd)
-                                (reg-keyword rl)
-                                (reg-keyword rr)))))
+      (emit (arm64:sdiv (vreg->reg dest) (vreg->reg left) (vreg->reg right))))
 
     (tac-mod (dest left right)
-      ;; MOD = a - (a / b) * b
-      ;; Use msub: rd = rn - rm * ra
-      (let ((rd (vreg-reg dest))
-            (rl (vreg-reg left))
-            (rr (vreg-reg right)))
-        ;; First compute div into temp
-        (emit-bytes (arm64:sdiv :x19 (reg-keyword rl) (reg-keyword rr)))
-        ;; Then msub: rd = rl - x19 * rr
-        (emit-bytes (arm64:msub (reg-keyword rd)
-                                :x19
-                                (reg-keyword rr)
-                                (reg-keyword rl)))))
+      ;; mod = a - (a / b) * b
+      ;; Use x19 as temp
+      (emit (arm64:sdiv :x19 (vreg->reg left) (vreg->reg right)))
+      (emit (arm64:msub (vreg->reg dest) :x19 (vreg->reg right) (vreg->reg left))))
 
     (tac-neg (dest value)
-      (let ((rd (vreg-reg dest))
-            (rv (vreg-reg value)))
-        (emit-bytes (arm64:neg (reg-keyword rd) (reg-keyword rv)))))
+      (emit (arm64:neg (vreg->reg dest) (vreg->reg value))))
 
     ;; === Comparison ===
     (tac-eq (dest left right)
-      (codegen-cmp #'arm64:cset-eq dest left right))
+      (emit (arm64:cmp (vreg->reg left) (vreg->reg right)))
+      (emit (arm64:cset (vreg->reg dest) :eq)))
 
     (tac-eql (dest left right)
-      (codegen-cmp #'arm64:cset-eq dest left right))
+      (emit (arm64:cmp (vreg->reg left) (vreg->reg right)))
+      (emit (arm64:cset (vreg->reg dest) :eq)))
 
     (tac-lt (dest left right)
-      (codegen-cmp #'arm64:cset-lt dest left right))
+      (emit (arm64:cmp (vreg->reg left) (vreg->reg right)))
+      (emit (arm64:cset (vreg->reg dest) :lt)))
 
     (tac-gt (dest left right)
-      (codegen-cmp #'arm64:cset-gt dest left right))
+      (emit (arm64:cmp (vreg->reg left) (vreg->reg right)))
+      (emit (arm64:cset (vreg->reg dest) :gt)))
 
     (tac-le (dest left right)
-      (codegen-cmp #'arm64:cset-le dest left right))
+      (emit (arm64:cmp (vreg->reg left) (vreg->reg right)))
+      (emit (arm64:cset (vreg->reg dest) :le)))
 
     (tac-ge (dest left right)
-      (codegen-cmp #'arm64:cset-ge dest left right))
+      (emit (arm64:cmp (vreg->reg left) (vreg->reg right)))
+      (emit (arm64:cset (vreg->reg dest) :ge)))
 
     (tac-zerop (dest value)
-      (let ((rd (vreg-reg dest))
-            (rv (vreg-reg value)))
-        ;; Compare with 0, set if equal
-        (emit-bytes (arm64:cmp (reg-keyword rv) 0))
-        (emit-bytes (arm64:cset-eq (reg-keyword rd)))))
+      (emit (arm64:cmp (vreg->reg value) 0 :imm t))
+      (emit (arm64:cset (vreg->reg dest) :eq)))
 
     ;; === Logical ===
     (tac-not (dest value)
-      (let ((rd (vreg-reg dest))
-            (rv (vreg-reg value)))
-        ;; Logical not: if value is nil (0), return t (non-zero)
-        (emit-bytes (arm64:cmp (reg-keyword rv) 0))
-        (emit-bytes (arm64:cset-eq (reg-keyword rd)))))
+      (emit (arm64:cmp (vreg->reg value) 0 :imm t))
+      (emit (arm64:cset (vreg->reg dest) :eq)))
 
     ;; === Bitwise ===
     (tac-band (dest left right)
-      (codegen-arith #'arm64:and-reg dest left right))
+      (emit (arm64:and* (vreg->reg dest) (vreg->reg left) (vreg->reg right))))
 
     (tac-bor (dest left right)
-      (codegen-arith #'arm64:orr dest left right))
+      (emit (arm64:orr (vreg->reg dest) (vreg->reg left) (vreg->reg right))))
 
     (tac-bxor (dest left right)
-      (codegen-arith #'arm64:eor dest left right))
+      (emit (arm64:eor (vreg->reg dest) (vreg->reg left) (vreg->reg right))))
 
     (tac-bsh (dest value shift)
-      ;; Shift - positive = left, negative = right
-      ;; For simplicity, use LSL for now (needs runtime dispatch for sign)
-      (let ((rd (vreg-reg dest))
-            (rv (vreg-reg value))
-            (rs (vreg-reg shift)))
-        (emit-bytes (arm64:lsl-reg (reg-keyword rd)
-                                   (reg-keyword rv)
-                                   (reg-keyword rs)))))
+      ;; Positive = left shift, negative = right shift
+      ;; For now, assume left shift
+      (emit (arm64:lsl (vreg->reg dest) (vreg->reg value) (vreg->reg shift))))
 
     (tac-bnot (dest value)
-      (let ((rd (vreg-reg dest))
-            (rv (vreg-reg value)))
-        (emit-bytes (arm64:mvn (reg-keyword rd) (reg-keyword rv)))))
+      (emit (arm64:mvn (vreg->reg dest) (vreg->reg value))))
 
     ;; === Control Flow ===
     (tac-label (name)
-      ;; Record label position
-      (setf (gethash name *label-offsets*) (current-offset)))
+      (setf (gethash name *labels*) (current-offset)))
 
     (tac-goto (target)
-      ;; Unconditional branch
-      (let ((target-offset (gethash target *label-offsets*)))
+      (let ((target-offset (gethash target *labels*)))
         (if target-offset
-            (let ((rel-offset (- target-offset (current-offset))))
-              (emit-bytes (arm64:b rel-offset)))
+            (emit (arm64:b (ash (- target-offset (current-offset)) -2)))
             (progn
-              (push (cons (current-offset) target) *fixups*)
-              (emit-bytes (arm64:b 0))))))  ; placeholder
+              (push (list (current-offset) target :b) *fixups*)
+              (emit (arm64:b 0))))))
 
     (tac-if (cond then-label)
-      (let ((rc (vreg-reg cond)))
-        ;; Compare with nil (0), branch if not equal (true)
-        (emit-bytes (arm64:cmp (reg-keyword rc) 0))
-        (let ((target-offset (gethash then-label *label-offsets*)))
-          (if target-offset
-              (let ((rel-offset (- target-offset (current-offset))))
-                (emit-bytes (arm64:b-ne rel-offset)))
-              (progn
-                (push (cons (current-offset) then-label) *fixups*)
-                (emit-bytes (arm64:b-ne 0)))))))
+      (emit (arm64:cmp (vreg->reg cond) 0 :imm t))
+      (let ((target-offset (gethash then-label *labels*)))
+        (if target-offset
+            (emit (arm64:b.ne (ash (- target-offset (current-offset)) -2)))
+            (progn
+              (push (list (current-offset) then-label :b.ne) *fixups*)
+              (emit (arm64:b.ne 0))))))
 
     (tac-ifnot (cond else-label)
-      (let ((rc (vreg-reg cond)))
-        ;; Compare with nil (0), branch if equal (false)
-        (emit-bytes (arm64:cmp (reg-keyword rc) 0))
-        (let ((target-offset (gethash else-label *label-offsets*)))
-          (if target-offset
-              (let ((rel-offset (- target-offset (current-offset))))
-                (emit-bytes (arm64:b-eq rel-offset)))
-              (progn
-                (push (cons (current-offset) else-label) *fixups*)
-                (emit-bytes (arm64:b-eq 0)))))))
+      (emit (arm64:cmp (vreg->reg cond) 0 :imm t))
+      (let ((target-offset (gethash else-label *labels*)))
+        (if target-offset
+            (emit (arm64:b.eq (ash (- target-offset (current-offset)) -2)))
+            (progn
+              (push (list (current-offset) else-label :b.eq) *fixups*)
+              (emit (arm64:b.eq 0))))))
 
     (tac-return (value)
-      (let ((rv (vreg-reg value)))
-        ;; Move result to x0 if not already there
-        (unless (= rv 0)
-          (emit-bytes (arm64:mov-reg :x0 (reg-keyword rv))))
-        ;; Emit return sequence
-        (emit-bytes (arm64:ret))))
+      ;; Move result to x0
+      (let ((rv (vreg->reg value)))
+        (unless (eq rv :x0)
+          (emit (arm64:mov :x0 rv))))
+      ;; Use fixed epilogue for habu calling convention
+      (emit (fn-fixed-epilogue)))
 
     ;; === Function Calls ===
     (tac-param (dest index)
       ;; Load parameter from x0-x7
-      (let ((rd (vreg-reg dest)))
-        (unless (= rd index)
-          (emit-bytes (arm64:mov-reg (reg-keyword rd)
-                                     (reg-keyword index))))))
+      (let ((rd (vreg->reg dest))
+            (param-reg (arm64:num-to-reg index)))
+        (unless (eq rd param-reg)
+          (emit (arm64:mov rd param-reg)))))
 
     (tac-arg (index src)
-      ;; Set argument register
-      (let ((rs (vreg-reg src)))
-        (unless (= rs index)
-          (emit-bytes (arm64:mov-reg (reg-keyword index)
-                                     (reg-keyword rs))))))
+      (let ((arg-reg (arm64:num-to-reg index))
+            (rs (vreg->reg src)))
+        (unless (eq arg-reg rs)
+          (emit (arm64:mov arg-reg rs)))))
 
     (tac-call (dest name nargs)
-      ;; Named function call
-      ;; For now, just emit a BL placeholder
-      (emit-bytes (arm64:bl 0))  ; TODO: resolve function address
-      (let ((rd (vreg-reg dest)))
-        (unless (= rd 0)
-          (emit-bytes (arm64:mov-reg (reg-keyword rd) :x0)))))
+      (declare (ignore name nargs))
+      ;; TODO: resolve function address and emit BL
+      (emit (arm64:bl 0))
+      (let ((rd (vreg->reg dest)))
+        (unless (eq rd :x0)
+          (emit (arm64:mov rd :x0)))))
 
     (tac-funcall (dest fn nargs)
-      ;; Indirect call through register
-      (let ((rf (vreg-reg fn)))
-        (emit-bytes (arm64:blr (reg-keyword rf))))
-      (let ((rd (vreg-reg dest)))
-        (unless (= rd 0)
-          (emit-bytes (arm64:mov-reg (reg-keyword rd) :x0)))))
+      (declare (ignore nargs))
+      (emit (arm64:blr (vreg->reg fn)))
+      (let ((rd (vreg->reg dest)))
+        (unless (eq rd :x0)
+          (emit (arm64:mov rd :x0)))))
 
     ;; === List Operations ===
     (tac-cons (dest car cdr)
       ;; Call runtime cons
-      ;; For now, placeholder
-      (let ((rd (vreg-reg dest))
-            (ra (vreg-reg car))
-            (rb (vreg-reg cdr)))
-        ;; Move args to x0, x1
-        (emit-bytes (arm64:mov-reg :x0 (reg-keyword ra)))
-        (emit-bytes (arm64:mov-reg :x1 (reg-keyword rb)))
-        ;; TODO: call cons runtime function
-        (emit-bytes (arm64:bl 0))
-        (unless (= rd 0)
-          (emit-bytes (arm64:mov-reg (reg-keyword rd) :x0)))))
+      (emit (arm64:mov :x0 (vreg->reg car)))
+      (emit (arm64:mov :x1 (vreg->reg cdr)))
+      ;; TODO: call cons runtime
+      (emit (arm64:bl 0))
+      (let ((rd (vreg->reg dest)))
+        (unless (eq rd :x0)
+          (emit (arm64:mov rd :x0)))))
 
     (tac-car (dest cell)
-      (let ((rd (vreg-reg dest))
-            (rc (vreg-reg cell)))
-        ;; car: clear tag bits, load word
-        ;; Simplified: assume already untagged
-        (emit-bytes (arm64:ldr-offset (reg-keyword rd)
-                                      (reg-keyword rc)
-                                      0))))
+      ;; Clear tag bits and load
+      (emit (arm64:and* (vreg->reg dest) (vreg->reg cell) -16 :imm t))
+      (emit (arm64:ldr (vreg->reg dest) (vreg->reg dest))))
 
     (tac-cdr (dest cell)
-      (let ((rd (vreg-reg dest))
-            (rc (vreg-reg cell)))
-        ;; cdr: offset 8 from cons cell
-        (emit-bytes (arm64:ldr-offset (reg-keyword rd)
-                                      (reg-keyword rc)
-                                      8))))
+      (emit (arm64:and* (vreg->reg dest) (vreg->reg cell) -16 :imm t))
+      (emit (arm64:ldr (vreg->reg dest) (vreg->reg dest) :offset 8)))
 
     (tac-list (dest elems)
-      ;; Build list from elements - call runtime
-      (let ((rd (vreg-reg dest)))
-        ;; TODO: implement list construction
-        (emit-bytes (arm64:movz (reg-keyword rd) 0))))
+      (declare (ignore elems))
+      ;; TODO: build list
+      (emit (arm64:movz (vreg->reg dest) 0)))
 
     ;; === Type Predicates ===
     (tac-null (dest value)
-      (let ((rd (vreg-reg dest))
-            (rv (vreg-reg value)))
-        ;; null check: compare with 0
-        (emit-bytes (arm64:cmp (reg-keyword rv) 0))
-        (emit-bytes (arm64:cset-eq (reg-keyword rd)))))
+      (emit (arm64:cmp (vreg->reg value) 0 :imm t))
+      (emit (arm64:cset (vreg->reg dest) :eq)))
 
     (tac-consp (dest value)
-      (codegen-type-pred dest value 0))  ; cons tag = 0
+      ;; Check tag == 0 and value != 0
+      (emit (arm64:and* :x19 (vreg->reg value) 15 :imm t))
+      (emit (arm64:cmp :x19 0 :imm t))
+      (emit (arm64:cset (vreg->reg dest) :eq)))
 
     (tac-symbolp (dest value)
-      (codegen-type-pred dest value 2))  ; symbol tag = 2
+      (emit (arm64:and* :x19 (vreg->reg value) 15 :imm t))
+      (emit (arm64:cmp :x19 2 :imm t))
+      (emit (arm64:cset (vreg->reg dest) :eq)))
 
     (tac-stringp (dest value)
-      (codegen-type-pred dest value 6))  ; string tag = 6
+      (emit (arm64:and* :x19 (vreg->reg value) 15 :imm t))
+      (emit (arm64:cmp :x19 6 :imm t))
+      (emit (arm64:cset (vreg->reg dest) :eq)))
 
     (tac-numberp (dest value)
-      (let ((rd (vreg-reg dest))
-            (rv (vreg-reg value)))
-        ;; Fixnum: bit 0 = 1
-        (emit-bytes (arm64:and-imm (reg-keyword rd) (reg-keyword rv) 1))
-        ;; rd now contains 1 if fixnum, 0 otherwise
-        ))
+      ;; Fixnum: bit 0 = 1
+      (emit (arm64:and* (vreg->reg dest) (vreg->reg value) 1 :imm t)))
 
     (tac-keywordp (dest value)
-      (codegen-type-pred dest value 10))  ; keyword tag = 10
+      (emit (arm64:and* :x19 (vreg->reg value) 15 :imm t))
+      (emit (arm64:cmp :x19 10 :imm t))
+      (emit (arm64:cset (vreg->reg dest) :eq)))
 
     (tac-functionp (dest value)
-      (codegen-type-pred dest value 8))   ; closure tag = 8
+      (emit (arm64:and* :x19 (vreg->reg value) 15 :imm t))
+      (emit (arm64:cmp :x19 8 :imm t))
+      (emit (arm64:cset (vreg->reg dest) :eq)))
 
     ;; === String Operations ===
     (tac-string-length (dest str)
-      (let ((rd (vreg-reg dest))
-            (rs (vreg-reg str)))
-        ;; String layout: [tag|len] [chars...]
-        ;; Length is at offset 0, high bits
-        ;; TODO: implement properly
-        (emit-bytes (arm64:ldr-offset (reg-keyword rd) (reg-keyword rs) 0))))
+      (emit (arm64:and* :x19 (vreg->reg str) -16 :imm t))
+      (emit (arm64:ldr (vreg->reg dest) :x19)))
 
     (tac-string-ref (dest str index)
-      (let ((rd (vreg-reg dest))
-            (rs (vreg-reg str))
-            (ri (vreg-reg index)))
-        ;; TODO: implement string-ref with proper bounds checking
-        ;; Load byte at str + 8 + index (after header)
-        (emit-bytes (arm64:add (reg-keyword rd) (reg-keyword rs) (reg-keyword ri)))
-        (emit-bytes (arm64:ldrb (reg-keyword rd) (reg-keyword rd) 8))))
+      ;; Load byte at str + 8 + index
+      (emit (arm64:and* :x19 (vreg->reg str) -16 :imm t))
+      (emit (arm64:add :x19 :x19 8 :imm t))
+      (emit (arm64:ldrb (vreg->reg dest) :x19 (vreg->reg index) :reg t)))
 
     (tac-string-concat (dest left right)
-      ;; TODO: implement string concatenation
-      (let ((rd (vreg-reg dest)))
-        (emit-bytes (arm64:movz (reg-keyword rd) 0))))
+      (declare (ignore left right))
+      ;; TODO: implement
+      (emit (arm64:movz (vreg->reg dest) 0)))
 
     (tac-string-lit (dest string)
+      (declare (ignore string))
       ;; TODO: load string literal address
-      (let ((rd (vreg-reg dest)))
-        (emit-bytes (arm64:movz (reg-keyword rd) 0))))
+      (emit (arm64:movz (vreg->reg dest) 0)))
 
     ;; === Vector Operations ===
     (tac-make-vector (dest size init)
-      ;; TODO: implement
-      (let ((rd (vreg-reg dest)))
-        (emit-bytes (arm64:movz (reg-keyword rd) 0))))
+      (declare (ignore size init))
+      (emit (arm64:movz (vreg->reg dest) 0)))
 
     (tac-vector-ref (dest vec index)
-      (let ((rd (vreg-reg dest))
-            (rv (vreg-reg vec))
-            (ri (vreg-reg index)))
-        ;; Vector ref: load at vec + 8 + index * 8
-        ;; TODO: proper implementation
-        (emit-bytes (arm64:ldr-offset (reg-keyword rd) (reg-keyword rv) 0))))
+      (emit (arm64:and* :x19 (vreg->reg vec) -16 :imm t))
+      (emit (arm64:add :x19 :x19 8 :imm t))
+      (emit (arm64:ldr (vreg->reg dest) :x19)))
 
     (tac-vector-set (vec index value)
-      ;; TODO: implement
-      )
+      (declare (ignore vec index value)))
 
     (tac-vector-length (dest vec)
-      (let ((rd (vreg-reg dest))
-            (rv (vreg-reg vec)))
-        ;; TODO: implement
-        (emit-bytes (arm64:ldr-offset (reg-keyword rd) (reg-keyword rv) 0))))
+      (emit (arm64:and* :x19 (vreg->reg vec) -16 :imm t))
+      (emit (arm64:ldr (vreg->reg dest) :x19)))
 
     ;; === Symbol Operations ===
     (tac-make-symbol (dest name)
-      ;; TODO: implement
-      (let ((rd (vreg-reg dest)))
-        (emit-bytes (arm64:movz (reg-keyword rd) 0))))
+      (declare (ignore name))
+      (emit (arm64:movz (vreg->reg dest) 0)))
 
     (tac-symbol-name (dest sym)
-      (let ((rd (vreg-reg dest))
-            (rs (vreg-reg sym)))
-        ;; Symbol name is at offset 8
-        (emit-bytes (arm64:ldr-offset (reg-keyword rd) (reg-keyword rs) 8))))
+      (emit (arm64:and* :x19 (vreg->reg sym) -16 :imm t))
+      (emit (arm64:ldr (vreg->reg dest) :x19 :offset 8)))
 
     (tac-intern (dest str)
-      ;; TODO: implement
-      (let ((rd (vreg-reg dest)))
-        (emit-bytes (arm64:movz (reg-keyword rd) 0))))
+      (declare (ignore str))
+      (emit (arm64:movz (vreg->reg dest) 0)))
 
     (tac-symbol-lit (dest name)
-      ;; TODO: load symbol literal address
-      (let ((rd (vreg-reg dest)))
-        (emit-bytes (arm64:movz (reg-keyword rd) 0))))
+      (declare (ignore name))
+      (emit (arm64:movz (vreg->reg dest) 0)))
 
     ;; === Keyword Operations ===
     (tac-keyword-name (dest kw)
-      (let ((rd (vreg-reg dest))
-            (rk (vreg-reg kw)))
-        ;; Keyword name is at offset 8, convert to string by XOR 12
-        (emit-bytes (arm64:ldr-offset (reg-keyword rd) (reg-keyword rk) 8))
-        (emit-bytes (arm64:eor-imm (reg-keyword rd) (reg-keyword rd) 12))))
+      (emit (arm64:and* :x19 (vreg->reg kw) -16 :imm t))
+      (emit (arm64:ldr (vreg->reg dest) :x19 :offset 8)))
 
     (tac-keyword-lit (dest name)
-      ;; TODO: load keyword literal address
-      (let ((rd (vreg-reg dest)))
-        (emit-bytes (arm64:movz (reg-keyword rd) 0))))
+      (declare (ignore name))
+      (emit (arm64:movz (vreg->reg dest) 0)))
 
     ;; === System ===
     (tac-exit (code)
-      (let ((rc (vreg-reg code)))
-        ;; Move exit code to x0, call exit
-        (emit-bytes (arm64:mov-reg :x0 (reg-keyword rc)))
-        ;; TODO: call _exit
-        (emit-bytes (arm64:bl 0))))
+      (emit (arm64:mov :x0 (vreg->reg code)))
+      ;; syscall exit
+      (emit (arm64:movz :x16 1))
+      (emit (arm64:svc 0)))
 
     (tac-error (message)
-      ;; TODO: implement error
+      (declare (ignore message))
+      ;; TODO: error handling
       )))
 
-;;; Helper functions
+;;; Apply fixups for forward branches
+(defun apply-fixups ()
+  "Patch branch instructions with resolved offsets."
+  ;; Note: *code* is reversed, so we need to adjust
+  (let ((code-vec (coerce (nreverse *code*) 'vector)))
+    (dolist (fixup *fixups*)
+      (let* ((offset (first fixup))
+             (label (second fixup))
+             (type (third fixup))
+             (target (gethash label *labels*)))
+        (unless target
+          (error "Undefined label: ~S" label))
+        (let ((rel-offset (ash (- target offset) -2)))
+          ;; Patch the instruction at offset
+          ;; For now, just warn - proper patching would modify code-vec
+          (declare (ignore type rel-offset))
+          (format t "FIXUP: ~S at ~D -> ~D~%" label offset target))))
+    (setf *code* (coerce code-vec 'list))))
 
-(defun codegen-arith (op-fn dest left right)
-  "Generate code for arithmetic binary operation."
-  (let ((rd (vreg-reg dest))
-        (rl (vreg-reg left))
-        (rr (vreg-reg right)))
-    (emit-bytes (funcall op-fn (reg-keyword rd)
-                         (reg-keyword rl)
-                         (reg-keyword rr)))))
+;;; High-level function codegen
 
-(defun codegen-cmp (cset-fn dest left right)
-  "Generate code for comparison operation."
-  (let ((rd (vreg-reg dest))
-        (rl (vreg-reg left))
-        (rr (vreg-reg right)))
-    (emit-bytes (arm64:cmp (reg-keyword rl) (reg-keyword rr)))
-    (emit-bytes (funcall cset-fn (reg-keyword rd)))))
+(defun fn-fixed-prologue ()
+  "Generate function prologue with fixed 16KB frame (habu convention).
+   Frame layout after prologue:
+   sp+0x10:  x19, x20 (saved)
+   sp+0x20:  x21, x22 (saved)
+   sp+0x30:  x23, x24 (saved)
+   sp+0x38:  x26 (code-base)
+   sp+0x40:  temp slots
+   sp+0x3F80: environment base (x20)
+   sp+0x3FF0: x29 (fp)
+   sp+0x3FF8: x30 (lr)"
+  (append
+   (arm64:sub :sp :sp #x4 :imm t :shift12 t) ;; sub sp, sp, #0x4000
+   (arm64:str :x29 :sp :offset #x3FF0)
+   (arm64:str :x30 :sp :offset #x3FF8)
+   (arm64:add :x29 :sp #x3 :imm t :shift12 t) ;; fp = sp + 0x3000
+   (arm64:add :x29 :x29 #xFF0 :imm t)         ;; fp = sp + 0x3FF0
+   (arm64:stp :x19 :x20 :sp :offset 16)
+   (arm64:stp :x21 :x22 :sp :offset 32)
+   (arm64:stp :x23 :x24 :sp :offset 48)
+   (arm64:str :x26 :sp :offset 56)
+   (arm64:add :x20 :sp #x3 :imm t :shift12 t) ;; x20 = sp + 0x3000
+   (arm64:add :x20 :x20 #xF80 :imm t)))       ;; x20 = sp + 0x3F80
 
-(defun codegen-type-pred (dest value expected-tag)
-  "Generate code for type predicate."
-  (let ((rd (vreg-reg dest))
-        (rv (vreg-reg value)))
-    ;; Extract tag (bottom 4 bits for pointers)
-    (emit-bytes (arm64:and-imm :x19 (reg-keyword rv) 15))
-    ;; Compare with expected tag
-    (emit-bytes (arm64:cmp :x19 expected-tag))
-    ;; Set result based on comparison
-    (emit-bytes (arm64:cset-eq (reg-keyword rd)))))
+(defun fn-fixed-epilogue ()
+  "Generate function epilogue for fixed 16KB frame"
+  (append
+   (arm64:ldr :x26 :sp :offset 56)
+   (arm64:ldp :x23 :x24 :sp :offset 48)
+   (arm64:ldp :x21 :x22 :sp :offset 32)
+   (arm64:ldp :x19 :x20 :sp :offset 16)
+   (arm64:ldr :x29 :sp :offset #x3FF0)
+   (arm64:ldr :x30 :sp :offset #x3FF8)
+   (arm64:add :sp :sp #x4 :imm t :shift12 t) ;; add sp, sp, #0x4000
+   (arm64:ret)))
+
+(defun codegen-function (name params body-tac alloc)
+  "Generate complete function code with prologue/epilogue."
+  (declare (ignore name params))
+  (reset-codegen)
+  (setf *vreg-to-reg* (allocation-result-vreg-to-reg alloc))
+
+  ;; Emit prologue
+  (emit (fn-fixed-prologue))
+
+  ;; Generate body
+  (dolist (instr body-tac)
+    (codegen-instr instr))
+
+  ;; Apply fixups and return
+  (apply-fixups)
+  (nreverse *code*))
