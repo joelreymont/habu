@@ -138,36 +138,36 @@
     ;; === Comparison ===
     (tac-eq (dest left right)
       (emit (arm64:cmp (vreg->reg left) (vreg->reg right)))
-      (emit (arm64:cset (vreg->reg dest) :eq)))
+      (emit (arm64:cset (vreg->reg dest) #.arm64:+cc-eq+)))
 
     (tac-eql (dest left right)
       (emit (arm64:cmp (vreg->reg left) (vreg->reg right)))
-      (emit (arm64:cset (vreg->reg dest) :eq)))
+      (emit (arm64:cset (vreg->reg dest) #.arm64:+cc-eq+)))
 
     (tac-lt (dest left right)
       (emit (arm64:cmp (vreg->reg left) (vreg->reg right)))
-      (emit (arm64:cset (vreg->reg dest) :lt)))
+      (emit (arm64:cset (vreg->reg dest) #.arm64:+cc-lt+)))
 
     (tac-gt (dest left right)
       (emit (arm64:cmp (vreg->reg left) (vreg->reg right)))
-      (emit (arm64:cset (vreg->reg dest) :gt)))
+      (emit (arm64:cset (vreg->reg dest) #.arm64:+cc-gt+)))
 
     (tac-le (dest left right)
       (emit (arm64:cmp (vreg->reg left) (vreg->reg right)))
-      (emit (arm64:cset (vreg->reg dest) :le)))
+      (emit (arm64:cset (vreg->reg dest) #.arm64:+cc-le+)))
 
     (tac-ge (dest left right)
       (emit (arm64:cmp (vreg->reg left) (vreg->reg right)))
-      (emit (arm64:cset (vreg->reg dest) :ge)))
+      (emit (arm64:cset (vreg->reg dest) #.arm64:+cc-ge+)))
 
     (tac-zerop (dest value)
       (emit (arm64:cmp (vreg->reg value) 0 :imm t))
-      (emit (arm64:cset (vreg->reg dest) :eq)))
+      (emit (arm64:cset (vreg->reg dest) #.arm64:+cc-eq+)))
 
     ;; === Logical ===
     (tac-not (dest value)
       (emit (arm64:cmp (vreg->reg value) 0 :imm t))
-      (emit (arm64:cset (vreg->reg dest) :eq)))
+      (emit (arm64:cset (vreg->reg dest) #.arm64:+cc-eq+)))
 
     ;; === Bitwise ===
     (tac-band (dest left right)
@@ -282,23 +282,23 @@
     ;; === Type Predicates ===
     (tac-null (dest value)
       (emit (arm64:cmp (vreg->reg value) 0 :imm t))
-      (emit (arm64:cset (vreg->reg dest) :eq)))
+      (emit (arm64:cset (vreg->reg dest) #.arm64:+cc-eq+)))
 
     (tac-consp (dest value)
       ;; Check tag == 0 and value != 0
       (emit (arm64:and* :x19 (vreg->reg value) 15 :imm t))
       (emit (arm64:cmp :x19 0 :imm t))
-      (emit (arm64:cset (vreg->reg dest) :eq)))
+      (emit (arm64:cset (vreg->reg dest) #.arm64:+cc-eq+)))
 
     (tac-symbolp (dest value)
       (emit (arm64:and* :x19 (vreg->reg value) 15 :imm t))
       (emit (arm64:cmp :x19 2 :imm t))
-      (emit (arm64:cset (vreg->reg dest) :eq)))
+      (emit (arm64:cset (vreg->reg dest) #.arm64:+cc-eq+)))
 
     (tac-stringp (dest value)
       (emit (arm64:and* :x19 (vreg->reg value) 15 :imm t))
       (emit (arm64:cmp :x19 6 :imm t))
-      (emit (arm64:cset (vreg->reg dest) :eq)))
+      (emit (arm64:cset (vreg->reg dest) #.arm64:+cc-eq+)))
 
     (tac-numberp (dest value)
       ;; Fixnum: bit 0 = 1
@@ -307,12 +307,12 @@
     (tac-keywordp (dest value)
       (emit (arm64:and* :x19 (vreg->reg value) 15 :imm t))
       (emit (arm64:cmp :x19 10 :imm t))
-      (emit (arm64:cset (vreg->reg dest) :eq)))
+      (emit (arm64:cset (vreg->reg dest) #.arm64:+cc-eq+)))
 
     (tac-functionp (dest value)
       (emit (arm64:and* :x19 (vreg->reg value) 15 :imm t))
       (emit (arm64:cmp :x19 8 :imm t))
-      (emit (arm64:cset (vreg->reg dest) :eq)))
+      (emit (arm64:cset (vreg->reg dest) #.arm64:+cc-eq+)))
 
     ;; === String Operations ===
     (tac-string-length (dest str)

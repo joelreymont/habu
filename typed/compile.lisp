@@ -87,12 +87,20 @@
     ;; Special forms
     (quote (compile-quote (car args)))
     (if (compile-if args env))
+    (cond (compile-cond args env))
+    (case (compile-case args env))
+    (when (compile-when args env))
+    (unless (compile-unless args env))
     (progn (compile-progn args env))
     (let (compile-let args env))
     (let* (compile-let* args env))
     (setq (compile-setq args env))
     (while (compile-while args env))
     (lambda (compile-lambda args env))
+    (labels (compile-labels args env))
+    (flet (compile-flet args env))
+    (loop (compile-loop args env))
+    (return (compile-return args env))
     (and (compile-and args env))
     (or (compile-or args env))
 
@@ -147,6 +155,27 @@
     (car (ir-car (compile-expr (first args) env)))
     (cdr (ir-cdr (compile-expr (first args) env)))
     (list (ir-list (mapcar (lambda (a) (compile-expr a env)) args)))
+    ;; Car/cdr combinations
+    (cadr (ir-car (ir-cdr (compile-expr (first args) env))))
+    (cddr (ir-cdr (ir-cdr (compile-expr (first args) env))))
+    (caar (ir-car (ir-car (compile-expr (first args) env))))
+    (caddr (ir-car (ir-cdr (ir-cdr (compile-expr (first args) env)))))
+    (cdddr (ir-cdr (ir-cdr (ir-cdr (compile-expr (first args) env)))))
+    (caaar (ir-car (ir-car (ir-car (compile-expr (first args) env)))))
+    (caadr (ir-car (ir-car (ir-cdr (compile-expr (first args) env)))))
+    (cadar (ir-car (ir-cdr (ir-car (compile-expr (first args) env)))))
+    (cdaar (ir-cdr (ir-car (ir-car (compile-expr (first args) env)))))
+    (cdadr (ir-cdr (ir-car (ir-cdr (compile-expr (first args) env)))))
+    (cddar (ir-cdr (ir-cdr (ir-car (compile-expr (first args) env)))))
+    (cadddr (ir-car (ir-cdr (ir-cdr (ir-cdr (compile-expr (first args) env))))))
+    ;; Aliases
+    (first (ir-car (compile-expr (first args) env)))
+    (rest (ir-cdr (compile-expr (first args) env)))
+    (second (ir-car (ir-cdr (compile-expr (first args) env))))
+    (third (ir-car (ir-cdr (ir-cdr (compile-expr (first args) env)))))
+    (fourth (ir-car (ir-cdr (ir-cdr (ir-cdr (compile-expr (first args) env))))))
+    ;; nth - compile as repeated cdr then car
+    (nth (compile-nth args env))
 
     ;; Type predicates
     (null (ir-null (compile-expr (first args) env)))
@@ -300,6 +329,153 @@
     ((null (cdr args)) (compile-expr (car args) env))
     (t (ir-or (compile-expr (car args) env)
               (compile-or (cdr args) env)))))
+
+(defun compile-cond (clauses env)
+  "Compile cond form to nested if."
+  (if (null clauses)
+      (ir-nil)
+      (let* ((clause (car clauses))
+             (test (car clause))
+             (body (cdr clause)))
+        (if (eq test t)
+            ;; (t ...) clause - always true
+            (compile-progn body env)
+            ;; Normal clause
+            (ir-if (compile-expr test env)
+                   (if body
+                       (compile-progn body env)
+                       (compile-expr test env))  ; (cond (x)) returns x if true
+                   (compile-cond (cdr clauses) env))))))
+
+(defun compile-case (args env)
+  "Compile case form to cond."
+  (let ((key-var (gensym "CASE-KEY"))
+        (keyform (car args))
+        (clauses (cdr args)))
+    ;; Compile as: (let ((key keyform)) (cond ...))
+    (let* ((ext (env-extend (list key-var) env))
+           (new-env (car ext))
+           (offset (cdr ext)))
+      (ir-let (list (cons offset (compile-expr keyform env)))
+              (compile-case-clauses key-var clauses new-env)))))
+
+(defun compile-case-clauses (key-var clauses env)
+  "Compile case clauses to cond."
+  (if (null clauses)
+      (ir-nil)
+      (let* ((clause (car clauses))
+             (keys (car clause))
+             (body (cdr clause)))
+        (cond
+          ;; (otherwise ...) or (t ...) clause
+          ((or (eq keys 'otherwise) (eq keys t))
+           (compile-progn body env))
+          ;; Single key
+          ((atom keys)
+           (ir-if (ir-eql (ir-var (env-lookup key-var env))
+                          (compile-quote keys))
+                  (compile-progn body env)
+                  (compile-case-clauses key-var (cdr clauses) env)))
+          ;; Multiple keys - (key1 key2 ...)
+          (t
+           (ir-if (compile-case-key-test key-var keys env)
+                  (compile-progn body env)
+                  (compile-case-clauses key-var (cdr clauses) env)))))))
+
+(defun compile-case-key-test (key-var keys env)
+  "Compile test for multiple case keys as (or (eql key k1) (eql key k2) ...)"
+  (if (null (cdr keys))
+      (ir-eql (ir-var (env-lookup key-var env))
+              (compile-quote (car keys)))
+      (ir-or (ir-eql (ir-var (env-lookup key-var env))
+                     (compile-quote (car keys)))
+             (compile-case-key-test key-var (cdr keys) env))))
+
+(defun compile-when (args env)
+  "Compile when form: (when test body...) -> (if test (progn body...) nil)"
+  (ir-if (compile-expr (car args) env)
+         (compile-progn (cdr args) env)
+         (ir-nil)))
+
+(defun compile-unless (args env)
+  "Compile unless form: (unless test body...) -> (if test nil (progn body...))"
+  (ir-if (compile-expr (car args) env)
+         (ir-nil)
+         (compile-progn (cdr args) env)))
+
+(defun compile-labels (args env)
+  "Compile labels form (local recursive functions).
+   For now, compile as nested let with lambdas."
+  ;; (labels ((f1 (params) body) (f2 (params) body)) body)
+  ;; -> Compile local functions as lambdas in let bindings
+  (let* ((bindings (car args))
+         (body (cdr args))
+         (names (mapcar #'car bindings)))
+    ;; Extend env with function names
+    (let* ((ext (env-extend names env))
+           (new-env (car ext))
+           (base-offset (cdr ext)))
+      ;; Create ir-let with lambda bindings
+      (ir-let (loop for binding in bindings
+                    for offset from base-offset
+                    collect (cons offset
+                                  (let* ((params (cadr binding))
+                                         (fn-body (cddr binding))
+                                         (fn-ext (env-extend params new-env))
+                                         (fn-env (car fn-ext)))
+                                    (ir-lambda params
+                                               (compile-progn fn-body fn-env)
+                                               nil))))
+              (compile-progn body new-env)))))
+
+(defun compile-flet (args env)
+  "Compile flet form (local non-recursive functions)."
+  ;; Same as labels but functions can't see each other
+  (let* ((bindings (car args))
+         (body (cdr args))
+         (names (mapcar #'car bindings)))
+    (let* ((ext (env-extend names env))
+           (new-env (car ext))
+           (base-offset (cdr ext)))
+      (ir-let (loop for binding in bindings
+                    for offset from base-offset
+                    collect (cons offset
+                                  (let* ((params (cadr binding))
+                                         (fn-body (cddr binding))
+                                         ;; Use original env, not new-env
+                                         (fn-ext (env-extend params env))
+                                         (fn-env (car fn-ext)))
+                                    (ir-lambda params
+                                               (compile-progn fn-body fn-env)
+                                               nil))))
+              (compile-progn body new-env)))))
+
+(defun compile-loop (args env)
+  "Compile simple loop form as (while t body...)."
+  (ir-while (ir-t) (compile-progn args env)))
+
+(defun compile-return (args env)
+  "Compile return form.
+   Note: This is a simplified version - real return needs block support."
+  ;; For now, just return the value (loop exit handled by runtime)
+  (if args
+      (compile-expr (car args) env)
+      (ir-nil)))
+
+(defun compile-nth (args env)
+  "Compile (nth n list) as repeated cdr then car.
+   If n is a constant, unroll at compile time."
+  (let ((n (first args))
+        (list-expr (second args)))
+    (if (integerp n)
+        ;; Constant index - unroll
+        (let ((result (compile-expr list-expr env)))
+          (dotimes (i n)
+            (setf result (ir-cdr result)))
+          (ir-car result))
+        ;; Variable index - need runtime loop (compile as function call for now)
+        (ir-call 'nth (list (compile-expr n env)
+                            (compile-expr list-expr env))))))
 
 ;;; Free variable analysis
 
