@@ -4,6 +4,7 @@
 ;;;;
 ;;;; Supports:
 ;;;; - Sum types (variants)    : (deftype name (ctor1 fields) (ctor2 fields) ...)
+;;;; - Sum types with prefix   : (deftype name :prefix pfx (ctor1 fields) ...) -> pfx-ctor1
 ;;;; - Product types (records) : (deftype name :record (field1) (field2) ...)
 ;;;; - Enumerations           : (deftype name :enum :val1 :val2 :val3)
 ;;;; - Type aliases           : (deftype name := other-type)
@@ -13,6 +14,10 @@
 ;;;; - Type predicates
 ;;;; - Constructors
 ;;;; - Accessors
+;;;;
+;;;; With :prefix, match patterns use short names:
+;;;;   (deftype ir-node :prefix ir (lit value) (add left right))
+;;;;   (match ir-node x (lit (v) ...) (add (l r) ...))  ; not ir-lit, ir-add
 
 (defpackage :habu.types
   (:use :cl)
@@ -90,37 +95,52 @@
                :predicate ,pred-name))
        ',name)))
 
-(defun expand-sum-type (name variants)
-  (let ((variant-names (mapcar #'car variants)))
+(defun expand-sum-type (name variants &optional prefix)
+  "Expand sum type definition.
+   If PREFIX is given, variant names become prefix-variant (e.g., ir-lit).
+   Short names are stored for match pattern resolution."
+  (let* ((short-names (mapcar #'car variants))
+         (full-names (if prefix
+                         (mapcar (lambda (v)
+                                   (intern (format nil "~A-~A" prefix v)))
+                                 short-names)
+                         short-names))
+         ;; Map short name -> full name for match resolution
+         (name-map (mapcar #'cons short-names full-names)))
     `(progn
        (setf (gethash ',name *type-registry*)
-             '(:kind :sum :variants ,variant-names))
+             '(:kind :sum
+               :prefix ,prefix
+               :variants ,full-names
+               :short-names ,short-names
+               :name-map ,name-map))
 
        ;; For each variant: constructor, predicate, accessors
        ,@(loop for variant in variants
-               for vname = (car variant)
+               for short-name = (car variant)
+               for full-name in full-names
                for fields = (cdr variant)
                nconc
                (append
-                ;; Constructor
-                (list `(defun ,vname ,fields
-                         (list ,(symbol-to-keyword vname) ,@fields)))
+                ;; Constructor (uses full name)
+                (list `(defun ,full-name ,fields
+                         (list ,(symbol-to-keyword full-name) ,@fields)))
                 ;; Predicate
-                (list `(defun ,(intern (format nil "~A-P" vname)) (x)
+                (list `(defun ,(intern (format nil "~A-P" full-name)) (x)
                          (and (consp x)
-                              (eq (car x) ,(symbol-to-keyword vname)))))
+                              (eq (car x) ,(symbol-to-keyword full-name)))))
                 ;; Accessors
                 (loop for field in fields
                       for i from 1
                       collect
-                      `(defun ,(intern (format nil "~A-~A" vname field)) (x)
+                      `(defun ,(intern (format nil "~A-~A" full-name field)) (x)
                          (nth ,i x)))))
 
        ;; Type predicate (any variant)
        (defun ,(intern (format nil "~A-P" name)) (x)
          (and (consp x)
               (member (car x)
-                      ',(mapcar #'symbol-to-keyword variant-names))))
+                      ',(mapcar #'symbol-to-keyword full-names))))
        ',name)))
 
 ;;; Main macro
@@ -133,6 +153,12 @@
      (ir-lit value)
      (ir-var offset)
      (ir-add left right))
+
+   ;; Sum type with prefix (DRY variant names)
+   (deftype ir-node :prefix ir
+     (lit value)          ; generates ir-lit
+     (var offset)         ; generates ir-var
+     (add left right))    ; generates ir-add
 
    ;; Record type (single product)
    (deftype point :record
@@ -158,29 +184,70 @@
     ((eq (first spec) ':record)
      (expand-record-type name (rest spec)))
 
+    ;; Sum type with prefix: (deftype ir-node :prefix ir (lit v) ...)
+    ((eq (first spec) ':prefix)
+     (expand-sum-type name (cddr spec) (second spec)))
+
     ;; Sum type (default): (deftype ir (ir-lit v) (ir-var o) ...)
     (t
      (expand-sum-type name spec))))
 
 ;;;; Pattern Matching
 
+(defun resolve-variant-name (clause-name info)
+  "Resolve a clause name to a full variant name.
+   If type has :prefix, short names are accepted and mapped to full names.
+   Returns the full name or nil if not found."
+  (let ((prefix (getf info :prefix))
+        (name-map (getf info :name-map))
+        (full-names (getf info :variants)))
+    (cond
+      ;; No prefix - clause name should be a full name
+      ((null prefix)
+       (if (member clause-name full-names :test #'string= :key #'symbol-name)
+           clause-name
+           nil))
+      ;; Has prefix - check short names first, then full names
+      (t
+       (let ((mapped (cdr (assoc clause-name name-map
+                                 :test (lambda (a b)
+                                         (string= (symbol-name a) (symbol-name b)))))))
+         (or mapped
+             ;; Also accept full names directly
+             (if (member clause-name full-names :test #'string= :key #'symbol-name)
+                 clause-name
+                 nil)))))))
+
 (defun expand-sum-match (type-name info expr clauses)
-  (let* ((variants (getf info :variants))
-         (clause-names (mapcar #'car clauses))
-         ;; Compare by symbol-name for cross-package compatibility
-         (variant-names (mapcar #'symbol-name variants))
-         (clause-name-strs (mapcar #'symbol-name clause-names))
-         (missing-strs (set-difference variant-names clause-name-strs :test #'string=))
-         (extra-strs (set-difference clause-name-strs variant-names :test #'string=)))
-    (when missing-strs
-      (error "match ~A: MISSING variants ~S" type-name missing-strs))
-    (when extra-strs
-      (error "match ~A: UNKNOWN variants ~S" type-name extra-strs))
+  (let* ((full-variants (getf info :variants))
+         (short-names (getf info :short-names))
+         (prefix (getf info :prefix))
+         ;; Resolve each clause name to full variant name
+         (resolved-clauses
+           (loop for (cname fields . body) in clauses
+                 for resolved = (resolve-variant-name cname info)
+                 do (unless resolved
+                      (error "match ~A: unknown variant ~S~@[ (valid: ~{~A~^, ~})~]"
+                             type-name cname (or short-names full-variants)))
+                 collect (list* resolved fields body)))
+         ;; Check exhaustiveness using resolved names
+         (resolved-names (mapcar #'car resolved-clauses))
+         (variant-strs (mapcar #'symbol-name full-variants))
+         (resolved-strs (mapcar #'symbol-name resolved-names))
+         (missing (set-difference variant-strs resolved-strs :test #'string=))
+         (duplicates (loop for name in resolved-strs
+                           when (> (count name resolved-strs :test #'string=) 1)
+                           collect name)))
+    (when missing
+      (error "match ~A: MISSING variants ~S~@[ (use short names: ~{~A~^, ~})~]"
+             type-name missing (when prefix short-names)))
+    (when duplicates
+      (error "match ~A: DUPLICATE variants ~S" type-name (remove-duplicates duplicates :test #'string=)))
     (let ((val (gensym "VAL")))
       `(let ((,val ,expr))
          (ecase (car ,val)
-           ,@(loop for (vname fields . body) in clauses
-                   collect `(,(symbol-to-keyword vname)
+           ,@(loop for (full-name fields . body) in resolved-clauses
+                   collect `(,(symbol-to-keyword full-name)
                              (destructuring-bind ,fields (cdr ,val)
                                ,@body))))))))
 

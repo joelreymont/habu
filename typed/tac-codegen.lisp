@@ -462,31 +462,6 @@
       (declare (ignore name))
       (emit (arm64:movz (vreg->reg dest) 0)))
 
-    ;; === Control Flow ===
-    (tac-label (name)
-      ;; Record label position (will be correct after nreverse)
-      (setf (gethash name *labels*) (current-offset)))
-
-    (tac-goto (target)
-      ;; Unconditional branch - record fixup
-      (let ((offset (current-offset)))
-        (push (list offset target :b) *fixups*)
-        (emit (arm64:b 0))))  ; placeholder, will be patched
-
-    (tac-if (cond-vreg target)
-      ;; Branch if condition is true (non-nil/non-zero)
-      (let ((offset (current-offset)))
-        (emit (arm64:cmp (vreg->reg cond-vreg) 0 :imm t))
-        (push (list (current-offset) target :b.ne) *fixups*)
-        (emit (arm64:b.ne 0))))
-
-    (tac-ifnot (cond-vreg target)
-      ;; Branch if condition is false (nil/zero)
-      (emit (arm64:cmp (vreg->reg cond-vreg) 0 :imm t))
-      (let ((offset (current-offset)))
-        (push (list offset target :b.eq) *fixups*)
-        (emit (arm64:b.eq 0))))
-
     ;; === System ===
     (tac-exit (code)
       ;; Untag fixnum: x0 = value >> 1

@@ -104,6 +104,10 @@
     (return (compile-return args env))
     (and (compile-and args env))
     (or (compile-or args env))
+    (dolist (compile-dolist args env))
+    (dotimes (compile-dotimes args env))
+    (ecase (compile-ecase args env))
+    (length (ir-length (compile-expr (first args) env)))
 
     ;; Arithmetic
     (+ (ir-add (compile-expr (first args) env)
