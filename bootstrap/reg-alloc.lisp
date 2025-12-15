@@ -267,13 +267,21 @@
 (defvar *block-results* nil
   "Alist of (block-id . result-vreg) for return-from resolution.")
 
+;;; NOTE: This ir-to-tac is UNTYPED and processes old-style IR format.
+;;; A TYPED equivalent exists in bootstrap/ir-to-tac.lisp using ADTs and
+;;; exhaustive match patterns. Once compile-forms is ported to produce
+;;; typed IR (:IR-LIT etc.), this function can be removed.
+;;; See bootstrap/ir.lisp for typed IR ADT, bootstrap/tac.lisp for TAC ADT.
+
 (defun ir-to-tac (ir counter)
   "Convert IR tree to TAC instructions.
    Returns (instructions result-vreg) where result-vreg holds the value.
 
    This is Pass 1 of the register allocation pipeline.
    Input: Tree IR like (add (var 0) (lit 1))
-   Output: Linear TAC like ((:tac-var v0 0) (tac-lit v1 1) (tac-binop v2 add v0 v1))"
+   Output: Linear TAC like ((:tac-var v0 0) (tac-lit v1 1) (tac-binop v2 add v0 v1))
+
+   DEPRECATED: Use habu.ir-to-tac:ir-to-tac with typed IR instead."
   (cond
     ;; Literal number - raw value, tagging applied in tac-codegen
     ((numberp ir)
@@ -1449,8 +1457,13 @@
     :tac-set-lambda-counter :tac-set-symbol-counter :tac-set-symbol-table
     :tac-set-packages :tac-set-current-package))
 
+;;; NOTE: UNTYPED tac-def/tac-use. TYPED equivalents exist in bootstrap/tac.lisp
+;;; using exhaustive match patterns over all 65 TAC variants.
+;;; DEPRECATED: Use habu.tac:tac-def and habu.tac:tac-use instead.
+
 (defun tac-def (instr)
-  "Return the vreg defined by this instruction (or nil)"
+  "Return the vreg defined by this instruction (or nil)
+   DEPRECATED: Use habu.tac:tac-def with typed TAC instead."
   (let ((op (car instr)))
     (case op
       ;; Instructions that define a vreg (vreg is second element)
@@ -1599,12 +1612,17 @@
       (cons (list (car instrs) (liveness-nth idx live-in) (liveness-nth idx live-out))
             (liveness-build-result (cdr instrs) live-in live-out (+ idx 1)))))
 
+;;; NOTE: UNTYPED compute-liveness. TYPED equivalent exists in bootstrap/liveness.lisp
+;;; using habu.tac:tac-def and habu.tac:tac-use which have exhaustive match patterns.
+;;; DEPRECATED: Use habu.liveness:compute-liveness with typed TAC instead.
+
 (defun compute-liveness (tac-instrs)
   "Compute liveness for TAC instructions.
    Returns list of (instr live-in live-out) tuples.
 
    This is Pass 2 of the register allocation pipeline.
-   NOTE: Uses top-level helper functions to avoid labels FNTAB unpacking issue."
+   NOTE: Uses top-level helper functions to avoid labels FNTAB unpacking issue.
+   DEPRECATED: Use habu.liveness:compute-liveness with typed TAC instead."
   (let* ((n (length tac-instrs))
          (live-in (make-list n))
          (live-out (make-list n))
@@ -1766,13 +1784,18 @@
         (linscan-allocate-one (car intervals) state)
         (linscan-allocate-all (cdr intervals) state))))
 
+;;; NOTE: UNTYPED linear-scan. TYPED equivalent exists in bootstrap/regalloc.lisp
+;;; using deftype allocation-result :record for the return value.
+;;; DEPRECATED: Use habu.regalloc:allocate-registers with typed TAC instead.
+
 (defun linear-scan (intervals)
   "Perform linear scan register allocation.
    Returns allocation: ((vreg . physical-reg-or-spill) ...)
    where spill is (:spill slot-number)
 
    This is Pass 4 of the register allocation pipeline.
-   NOTE: Rewritten without labels/dolist for mode 1024."
+   NOTE: Rewritten without labels/dolist for mode 1024.
+   DEPRECATED: Use habu.regalloc:allocate-registers with typed intervals instead."
   (let* ((sorted (sort-intervals-by-start intervals))
          ;; State as mutable cons cells: (active free-regs allocation spill-slot)
          (active (cons nil nil))
@@ -1784,11 +1807,15 @@
     (car allocation)))
 
 ;;; ============================================================
-;;; Pass 5: TAC Code Generation
+;;; Pass 5: TAC Code Generation (UNTYPED)
 ;;; ============================================================
 ;;;
 ;;; Generates ARM64 machine code from TAC + allocation.
 ;;; Uses arm64 package intrinsics for instruction encoding.
+;;;
+;;; NOTE: UNTYPED tac-codegen. TYPED equivalent exists in bootstrap/tac-codegen.lisp
+;;; using exhaustive match patterns over all 65 TAC variants.
+;;; DEPRECATED: Use habu.codegen:generate-code with typed TAC instead.
 
 ;; Spill slots start at sp+0x40 (after saved callee registers at sp+0x10-0x38)
 (defparameter +spill-base-offset+ #x40)
