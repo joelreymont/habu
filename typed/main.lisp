@@ -5,7 +5,7 @@
 (defpackage :habu.main
   (:use :cl)
   (:shadowing-import-from :habu.types :deftype :match :match*)
-  (:export :deliver :compile-to-bytes :compile-to-function))
+  (:export :deliver :compile-to-bytes :compile-to-function :compile-defun))
 
 (in-package :habu.main)
 
@@ -33,14 +33,40 @@
     code))
 
 ;;; Compile to function with proper prologue/epilogue
-(defun compile-to-function (name params expr)
+(defun compile-to-function (name params body)
   "Compile expression to function bytes with prologue/epilogue.
    Returns: list of bytes"
-  (let* ((ir (habu.compile:compile-expr expr nil))
+  (let* ((env (make-param-env params))
+         (ir (habu.compile:compile-expr body env))
          (tac (habu.ir-to-tac:ir-to-tac ir))
          (alloc (habu.regalloc:allocate-registers tac))
          (code (habu.codegen:codegen-function name params tac alloc)))
     code))
+
+(defun make-param-env (params)
+  "Create environment mapping params to stack offsets."
+  (let ((env nil)
+        (offset 0))
+    (dolist (p params)
+      (push (cons p offset) env)
+      (incf offset))
+    (nreverse env)))
+
+;;; Compile a defun form
+(defun compile-defun (form)
+  "Compile (defun name (params) body...) to function bytes.
+   Returns: (name . bytes)"
+  (unless (and (consp form)
+               (eq (car form) 'defun)
+               (>= (length form) 4))
+    (error "Invalid defun form: ~S" form))
+  (let* ((name (second form))
+         (params (third form))
+         (body (if (= (length (cdddr form)) 1)
+                   (fourth form)
+                   (cons 'progn (cdddr form))))
+         (code (compile-to-function name params body)))
+    (cons name code)))
 
 ;;; Full pipeline to executable
 (defun deliver (expr output-path &optional (heap-size #x4000000))
