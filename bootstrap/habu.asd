@@ -22,6 +22,12 @@
    ;; Shared macros (while, incf, decf) - needed before reg-alloc
    (:file "../shared/macros" :depends-on ("package"))
 
+   ;; Type system (ADT definitions)
+   (:file "../shared/types" :depends-on ("package"))
+
+   ;; IR ADT definitions (frame-layout, lambda-entry, etc.)
+   (:file "../shared/ir" :depends-on ("../shared/types"))
+
    ;; ARM64 assembler
    (:module "arm64"
     :pathname "../arm64/"
@@ -41,7 +47,7 @@
    (:file "optimize" :depends-on ("compiler-sbcl"))
 
    ;; Register allocation nanopasses
-   (:file "reg-alloc" :depends-on ("compiler-sbcl" "optimize" "../shared/macros"))
+   (:file "reg-alloc" :depends-on ("compiler-sbcl" "optimize" "../shared/macros" "../shared/ir"))
 
    ;; Native ARM64 garbage collector
    (:file "gc" :depends-on ("arm64"))
@@ -68,7 +74,7 @@
      (:file "execute" :depends-on ("core"))))
 
    ;; ARM64 code generator (uses JIT core)
-   (:file "codegen" :depends-on ("compiler-sbcl" "optimize" "arm64" "gc" "jit"))
+   (:file "codegen" :depends-on ("compiler-sbcl" "optimize" "arm64" "gc" "jit" "../shared/ir"))
 
    ;; Mach-O utilities for native code
    (:file "macho-utils" :depends-on ("compiler-sbcl" "macho"))
@@ -89,7 +95,34 @@
    (:file "debug-info" :depends-on ("dwarf"))
 
    ;; Source location tracking
-   (:file "source-locations" :depends-on ("compiler-sbcl" "debug-info"))))
+   (:file "source-locations" :depends-on ("compiler-sbcl" "debug-info"))
+
+   ;; === TYPED COMPILER PIPELINE ===
+   ;; These modules use exhaustive ADT matching for type safety
+
+   ;; IR ADT - habu.ir package for typed IR nodes
+   (:file "ir" :depends-on ("../shared/types"))
+
+   ;; TAC ADT - Three Address Code intermediate representation
+   (:file "tac" :depends-on ("../shared/types" "ir"))
+
+   ;; Typed front-end: S-expression to IR
+   (:file "compile" :depends-on ("../shared/types" "ir"))
+
+   ;; IR to TAC conversion with typed pattern matching
+   (:file "ir-to-tac" :depends-on ("../shared/types" "ir" "tac"))
+
+   ;; Liveness analysis for register allocation
+   (:file "liveness" :depends-on ("tac"))
+
+   ;; Register allocation with typed TAC
+   (:file "regalloc" :depends-on ("tac" "liveness"))
+
+   ;; TAC to ARM64 code generation with exhaustive matching
+   (:file "tac-codegen" :depends-on ("../shared/types" "tac" "regalloc" "arm64"))
+
+   ;; Main entry point with deliver-forms-typed
+   (:file "main" :depends-on ("compile" "ir-to-tac" "regalloc" "tac-codegen" "macho"))))
 
 ;;;; Test system
 (asdf:defsystem "habu/tests"

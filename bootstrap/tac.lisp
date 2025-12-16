@@ -9,7 +9,7 @@
 
 (defpackage :habu.tac
   (:use :cl)
-  (:shadowing-import-from :habu.types :deftype :match :match*)
+  (:shadowing-import-from :habu.types :deftype :match)
   (:export ;; Literal value types
            :tac-literal :tac-literal-p
            :lit-fixnum :lit-fixnum-p :lit-fixnum-value

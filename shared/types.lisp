@@ -22,7 +22,7 @@
 (defpackage :habu.types
   (:use :cl)
   (:shadow :deftype)
-  (:export :deftype :match :*type-registry* :*variant-to-type*
+  (:export :deftype :match :match* :*type-registry* :*variant-to-type*
            :type-info :type-kind :type-variants :type-docstring
            ;; Code marker ADT
            :code-marker :code-marker-p
@@ -47,8 +47,10 @@
 
 (in-package :habu.types)
 
-(defvar *type-registry* (make-hash-table)
-  "Maps type-name -> type-info plist")
+;; Must be available at compile time for deftype/match integration
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  (defvar *type-registry* (make-hash-table)
+    "Maps type-name -> type-info plist"))
 
 (defun type-info (name)
   (gethash name *type-registry*))
@@ -63,16 +65,20 @@
   "Get the docstring for a type, or nil if none."
   (getf (type-info name) :docstring))
 
+;;; Expansion functions for each type kind
+;;; Must be available at compile time for macro expansion
+
+(eval-when (:compile-toplevel :load-toplevel :execute)
+
 ;;; Helper to make keyword from symbol
 (defun symbol-to-keyword (sym)
   (intern (symbol-name sym) :keyword))
 
-;;; Expansion functions for each type kind
-
 (defun expand-type-alias (name target)
   `(progn
-     (setf (gethash ',name *type-registry*)
-           '(:kind :alias :target ,target))
+     (eval-when (:compile-toplevel :load-toplevel :execute)
+       (setf (gethash ',name *type-registry*)
+             '(:kind :alias :target ,target)))
      ;; Predicate delegates to target
      (defun ,(intern (format nil "~A-P" name)) (x)
        (,(intern (format nil "~A-P" target)) x))
@@ -80,8 +86,9 @@
 
 (defun expand-enum-type (name values &optional docstring)
   `(progn
-     (setf (gethash ',name *type-registry*)
-           '(:kind :enum :values ,values :docstring ,docstring))
+     (eval-when (:compile-toplevel :load-toplevel :execute)
+       (setf (gethash ',name *type-registry*)
+             '(:kind :enum :values ,values :docstring ,docstring)))
      ;; Predicate
      (defun ,(intern (format nil "~A-P" name)) (x)
        (member x ',values))
@@ -113,16 +120,19 @@
          ,@parsed-fields)
 
        ;; Register in type system for match integration
-       (setf (gethash ',name *type-registry*)
-             '(:kind :record
-               :fields ,field-names
-               :constructor ,make-name
-               :predicate ,pred-name
-               :docstring ,docstring))
+       (eval-when (:compile-toplevel :load-toplevel :execute)
+         (setf (gethash ',name *type-registry*)
+               '(:kind :record
+                 :fields ,field-names
+                 :constructor ,make-name
+                 :predicate ,pred-name
+                 :docstring ,docstring)))
        ',name)))
 
-(defvar *variant-to-type* (make-hash-table)
-  "Maps variant keyword -> (type-name . short-name) for type inference in match")
+;; Must be available at compile time for deftype/match integration
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  (defvar *variant-to-type* (make-hash-table)
+    "Maps variant keyword -> (type-name . short-name) for type inference in match"))
 
 (defun expand-sum-type (name variants &optional prefix docstring)
   "Expand sum type definition.
@@ -141,21 +151,22 @@
          ;; Map short name -> full name for match resolution
          (name-map (mapcar #'cons short-names full-names)))
     `(progn
-       (setf (gethash ',name *type-registry*)
-             '(:kind :sum
-               :prefix ,prefix
-               :variants ,full-names
-               :short-names ,short-names
-               :name-map ,name-map
-               :type-keyword ,type-kw
-               :variant-keywords ,variant-kws
-               :docstring ,docstring))
-
-       ;; Register reverse mapping: variant-kw -> (type-name . short-name)
-       ,@(loop for short in short-names
-               for var-kw in variant-kws
-               collect `(setf (gethash ,var-kw *variant-to-type*)
-                              '(,name . ,short)))
+       ;; Register at compile-time so match can find the type during compilation
+       (eval-when (:compile-toplevel :load-toplevel :execute)
+         (setf (gethash ',name *type-registry*)
+               '(:kind :sum
+                 :prefix ,prefix
+                 :variants ,full-names
+                 :short-names ,short-names
+                 :name-map ,name-map
+                 :type-keyword ,type-kw
+                 :variant-keywords ,variant-kws
+                 :docstring ,docstring))
+         ;; Register reverse mapping: variant-kw -> (type-name . short-name)
+         ,@(loop for short in short-names
+                 for var-kw in variant-kws
+                 collect `(setf (gethash ,var-kw *variant-to-type*)
+                                '(,name . ,short))))
 
        ;; For each variant: constructor, predicate, accessors
        ,@(loop for variant in variants
@@ -185,6 +196,8 @@
          (and (consp x)
               (eq (car x) ,type-kw)))
        ',name)))
+
+) ; end eval-when
 
 ;;; Main macro
 
@@ -433,6 +446,20 @@
                                        (destructuring-bind ,fields (cddr ,val)
                                          ,@body)))
                      (t (error "match: unhandled variant ~S in ~S" (cadr ,val) ,val))))))))))
+
+(defmacro match* (type-name expr &body clauses)
+  "Non-exhaustive pattern match. Use sparingly - prefer match with wildcard.
+   Like match but without exhaustiveness checking. Errors at runtime
+   if no clause matches."
+  (declare (ignore type-name))
+  (let ((val (gensym "VAL")))
+    `(let ((,val ,expr))
+       (case (cadr ,val)  ; variant-kw is at position 1
+         ,@(loop for (vname fields . body) in clauses
+                 collect `(,(symbol-to-keyword vname)
+                           (destructuring-bind ,fields (cddr ,val)
+                             ,@body)))
+         (t (error "match*: unhandled variant ~S in ~S" (cadr ,val) ,val))))))
 
 
 ;;;; ============================================================

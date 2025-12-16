@@ -29,16 +29,18 @@
     ;; Setq macros: expand but keep as progn (used inside function bodies)
     ((member (car form) '(habu::init-all-op-symbols habu::init-all-kw-symbols))
      (expand-habu-macros (macroexpand-1 form)))
-    ;; habu.types:deftype - expand and filter out registry updates (gethash calls)
+    ;; habu.types:deftype - expand and filter out registry updates
+    ;; Registry updates may be (setf (gethash ...)) or (eval-when ... (setf (gethash ...)))
     ((and (symbolp (car form))
           (macro-function (car form))
           (eq (car form) 'habu.types:deftype))
      (let ((expanded (macroexpand-1 form)))
-       ;; Filter out SETF GETHASH calls, keep only DEFUNs and the final quote
+       ;; Filter out eval-when and setf gethash calls, keep only DEFUNs
        (cons 'progn
              (remove-if (lambda (f)
-                          (and (consp f) (eq (car f) 'setf)
-                               (consp (cadr f)) (eq (car (cadr f)) 'gethash)))
+                          (or (and (consp f) (eq (car f) 'eval-when))
+                              (and (consp f) (eq (car f) 'setf)
+                                   (consp (cadr f)) (eq (car (cadr f)) 'gethash))))
                         (cdr expanded)))))
     ;; habu.types:match - expand but don't recurse (produces standard CL)
     ((and (symbolp (car form))
@@ -46,9 +48,11 @@
           (eq (car form) 'habu.types:match))
      (macroexpand-1 form))
     ;; Other habu macros: expand and recurse
+    ;; NOTE: habu::while is NOT expanded here - pass through to bootstrap compiler
+    ;; which handles (eq op 'while) specially to generate while-ir
     ((and (symbolp (car form))
           (macro-function (car form))
-          (member (car form) '(habu::while habu::sym-case habu::sym-eq)))
+          (member (car form) '(habu::sym-case habu::sym-eq)))
      (expand-habu-macros (macroexpand-1 form)))
     ;; Proper list - can safely map
     ((proper-list-p form)
@@ -100,6 +104,8 @@
          (heap-size (or (parse-integer (or (second args) "") :junk-allowed t)
                         67108864)))
     (format t "Building ~A (heap ~A bytes)...~%" output heap-size)
+    ;; TODO: Use typed pipeline once habu.ir/habu package mismatch is resolved
+    ;; For now use untyped pipeline, but with tac-null handler fix
     (habu:deliver-forms (collect-forms) output heap-size)
     (format t "Done: ~A~%" output)))
 
