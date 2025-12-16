@@ -21,6 +21,34 @@
 (defpackage :habu
   (:use :cl :sys)
   (:shadowing-import-from :sys #:read)  ; Use SYS reader
+  (:shadowing-import-from :habu.types #:deftype #:match)  ; Use habu.types type system
+  (:import-from :habu.types
+                ;; Code marker ADT - exhaustive matching for codegen
+                #:code-marker #:code-marker-p
+                #:marker-call-fn #:marker-call-fn-p #:marker-call-fn-name
+                #:marker-tail-call-fn #:marker-tail-call-fn-p #:marker-tail-call-fn-name
+                #:marker-extern-call #:marker-extern-call-p #:marker-extern-call-name
+                #:marker-branch #:marker-branch-p #:marker-branch-label
+                #:marker-loop-start #:marker-loop-start-p #:marker-loop-start-id
+                #:marker-loop-continue #:marker-loop-continue-p #:marker-loop-continue-id
+                #:marker-block-start #:marker-block-start-p #:marker-block-start-name
+                #:marker-block-end #:marker-block-end-p #:marker-block-end-name
+                #:marker-return-from #:marker-return-from-p #:marker-return-from-name
+                #:marker-tco-branch #:marker-tco-branch-p #:marker-tco-branch-target
+                #:marker-fn-label #:marker-fn-label-p #:marker-fn-label-name
+                #:marker-lambda-ref #:marker-lambda-ref-p #:marker-lambda-ref-name
+                #:marker-funcall-marker #:marker-funcall-marker-p #:marker-funcall-marker-arity
+                #:marker-heap-alloc #:marker-heap-alloc-p #:marker-heap-alloc-size
+                ;; Frame offset ADT - type-safe frame slot access
+                #:frame-offset #:frame-offset-p
+                #:foff-env #:foff-env-p #:foff-env-idx
+                #:foff-spill #:foff-spill-p #:foff-spill-slot
+                #:foff-callee #:foff-callee-p #:foff-callee-reg
+                #:foff-temp #:foff-temp-p #:foff-temp-slot
+                #:foff-fp-save #:foff-fp-save-p
+                #:foff-lr-save #:foff-lr-save-p
+                #:make-env-offset #:make-spill-offset #:make-temp-offset
+                #:callee-save-offset)
   (:shadow #:trace #:untrace #:eval #:compile #:compile-file #:load #:disassemble
            #:*compile-verbose* #:*compile-print* #:*load-verbose* #:*load-print*
            #:macro-function #:macroexpand #:macroexpand-1)  ; Shadow CL versions
@@ -102,6 +130,8 @@
    #:expand-let*
    #:expand-dotimes
    #:expand-dolist
+   ;; Macros
+   #:while
    ;; Macro system
    #:macro-function
    #:macroexpand
@@ -116,6 +146,10 @@
    #:fn-fixed-epilogue
    #:flatten-code-keep-markers-and-calls
    #:code-size
+   ;; Frame layout helpers (from ir.lisp)
+   #:frame-offset-to-bytes
+   #:frame-offsets-may-collide-p
+   #:validate-frame-layout
    ;; Debug info infrastructure
    #:make-debug-collector
    #:debug-add-function

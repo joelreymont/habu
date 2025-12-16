@@ -682,10 +682,15 @@
 
     ;; === String Operations ===
     (string-length (dest str)
+      ;; Return length as tagged fixnum
+      ;; Length is stored UNTAGGED at str[0] per +string-length-repr+
       (let ((rd (dest-reg dest))
             (rs (vreg->reg-or-temp str)))
-        (emit (arm64:and* :x19 rs -16 :imm t))
-        (emit (arm64:ldr rd :x19))
+        (emit (arm64:and* :x19 rs -16 :imm t))    ; x19 = untagged string base
+        (emit (arm64:ldr :x0 :x19))               ; x0 = UNTAGGED length
+        ;; Re-tag as fixnum: (val << 1) | 1
+        (emit (arm64:lsl rd :x0 1 :imm t))        ; rd = length << 1
+        (emit (arm64:orr rd rd 1 :imm t))         ; rd = tagged fixnum
         (store-if-spilled dest)))
 
     (string-ref (dest str index)
@@ -716,15 +721,14 @@
     (make-vector (dest size init)
       ;; Allocate vector with given size
       ;; Size is tagged fixnum, each element is 8 bytes
-      ;; Store tagged length at [heap+0] for vector-length to read
+      ;; Store UNTAGGED length at [heap+0] per +vector-length-repr+ convention
       (declare (ignore init))
       (let ((rs (vreg->reg-or-temp size))
             (rd (dest-reg dest)))
-        ;; x0 = tagged size (stored as length), x1 = untagged for alloc calc
+        ;; x0 = tagged size, x1 = untagged for storage and alloc calc
         (emit (arm64:mov :x0 rs))
-        (emit (arm64:str :x0 :x28 :offset 0))     ; [heap+0] = tagged length
-        ;; x1 = untagged length for allocation size calculation
         (emit (arm64:asr :x1 :x0 1 :imm t))       ; x1 = untagged length
+        (emit (arm64:str :x1 :x28 :offset 0))     ; [heap+0] = UNTAGGED length
         ;; Calculate alloc size: 8 + length*8, rounded to 16
         (emit (arm64:lsl :x1 :x1 3 :imm t))       ; x1 = length * 8
         (emit (arm64:add :x1 :x1 8 :imm t))       ; x1 = 8 + data_size
@@ -778,10 +782,15 @@
           (emit (arm64:str rval :x0 :offset 0)))))
 
     (vector-length (dest vec)
+      ;; Return length as tagged fixnum
+      ;; Length is stored UNTAGGED at vec[0] per +vector-length-repr+
       (let ((rv (vreg->reg-or-temp vec))
             (rd (dest-reg dest)))
-        (emit (arm64:and* :x19 rv -16 :imm t))
-        (emit (arm64:ldr rd :x19))
+        (emit (arm64:and* :x19 rv -16 :imm t))    ; x19 = untagged vector base
+        (emit (arm64:ldr :x0 :x19))               ; x0 = UNTAGGED length
+        ;; Re-tag as fixnum: (val << 1) | 1
+        (emit (arm64:lsl rd :x0 1 :imm t))        ; rd = length << 1
+        (emit (arm64:orr rd rd 1 :imm t))         ; rd = tagged fixnum
         (store-if-spilled dest)))
 
     ;; === Symbol Operations ===
@@ -878,18 +887,16 @@
       ;; Convert vector of char codes to string
       ;; vec: tagged vector pointer, each element is a tagged fixnum char code
       ;; Result: tagged string pointer
+      ;; NOTE: Vector length is UNTAGGED at vec[0] per +vector-length-repr+
+      ;;       String length is UNTAGGED at str[0] per +string-length-repr+
       (let ((rv (vreg->reg-or-temp vec))
             (rd (dest-reg dest)))
         ;; x1 = untagged vector base
         (emit (arm64:and* :x1 rv -16 :imm t))     ; untag vector (clear low 4 bits)
-        ;; x5 = vector length (tagged fixnum at [vec+0])
-        (emit (arm64:ldr :x5 :x1 :offset 0))
-        ;; x5 = untagged length for loop count
-        (emit (arm64:asr :x5 :x5 1 :imm t))       ; x5 = length (untag)
-        ;; Allocate string: store length at [heap] (as tagged fixnum)
-        (emit (arm64:lsl :x4 :x5 1 :imm t))       ; x4 = length << 1 (tag as fixnum)
-        (emit (arm64:orr :x4 :x4 1 :imm t))       ; x4 = tagged length
-        (emit (arm64:str :x4 :x28 :offset 0))     ; [heap] = length
+        ;; x5 = vector length (UNTAGGED at [vec+0])
+        (emit (arm64:ldr :x5 :x1 :offset 0))      ; x5 = UNTAGGED length, no untag needed
+        ;; Allocate string: store UNTAGGED length at [heap]
+        (emit (arm64:str :x5 :x28 :offset 0))     ; [heap] = UNTAGGED length
         ;; x4 = alloc size = (8 + len + 15) & ~15
         (emit (arm64:add :x4 :x5 23 :imm t))
         (emit (arm64:and* :x4 :x4 -16 :imm t))
@@ -1284,7 +1291,7 @@
    (arm64:stp :x19 :x20 :sp :offset 16)
    (arm64:stp :x21 :x22 :sp :offset 32)
    (arm64:stp :x23 :x24 :sp :offset 48)
-   (arm64:str :x26 :sp :offset 56)
+   (arm64:str :x26 :sp :offset 64)
    (arm64:add :x20 :sp #x3 :imm t :shift12 t) ;; x20 = sp + 0x3000
    (arm64:add :x20 :x20 #xF80 :imm t)))       ;; x20 = sp + 0x3F80
 
@@ -1297,7 +1304,7 @@
 (defun fn-fixed-epilogue ()
   "Generate function epilogue for fixed 16KB frame"
   (append
-   (arm64:ldr :x26 :sp :offset 56)
+   (arm64:ldr :x26 :sp :offset 64)
    (arm64:ldp :x23 :x24 :sp :offset 48)
    (arm64:ldp :x21 :x22 :sp :offset 32)
    (arm64:ldp :x19 :x20 :sp :offset 16)

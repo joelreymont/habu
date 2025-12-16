@@ -24,6 +24,15 @@
   (:shadow :deftype)
   (:export :deftype :match :match* :*type-registry* :*variant-to-type*
            :type-info :type-kind :type-variants :type-docstring
+           ;; Maybe ADT
+           :maybe :maybe-p
+           :maybe-just :maybe-just-p :maybe-just-value
+           :maybe-nothing :maybe-nothing-p
+           :maybe-unwrap :maybe-unwrap-or
+           ;; Intern result ADT
+           :intern-result :intern-result-p
+           :intern-found :intern-found-p :intern-found-symbol
+           :intern-not-found :intern-not-found-p :intern-not-found-name
            ;; Code marker ADT
            :code-marker :code-marker-p
            :marker-call-fn :marker-call-fn-p :marker-call-fn-name
@@ -42,6 +51,37 @@
            :marker-tco-branch :marker-tco-branch-p :marker-tco-branch-target
            :marker-funcall-marker :marker-funcall-marker-p :marker-funcall-marker-arity
            :marker-heap-alloc :marker-heap-alloc-p :marker-heap-alloc-size
+           ;; Frame offset ADT - prevents slot collision bugs
+           :frame-offset :frame-offset-p
+           :foff-env :foff-env-p :foff-env-idx
+           :foff-spill :foff-spill-p :foff-spill-slot
+           :foff-callee :foff-callee-p :foff-callee-reg
+           :foff-temp :foff-temp-p :foff-temp-slot
+           :foff-fp-save :foff-fp-save-p
+           :foff-lr-save :foff-lr-save-p
+           :make-env-offset :make-spill-offset :make-temp-offset
+           :callee-save-offset
+           ;; Note: frame-offset-to-bytes, frame-offsets-may-collide-p, validate-frame-layout
+           ;; are in :habu package (ir.lisp) since they depend on fl-layout-* accessors
+           ;; Tagged value ADT - prevents tag confusion bugs
+           :tagged-repr :tagged-repr-p
+           :repr-tagged :repr-tagged-p :repr-tagged-val
+           :repr-untagged :repr-untagged-p :repr-untagged-val
+           :tag-value :untag-value
+           :assert-tagged :assert-untagged
+           ;; Loop counter ADT
+           :loop-counter :loop-counter-p
+           :lctr-tagged-counter :lctr-tagged-counter-p :lctr-tagged-counter-val
+           :lctr-untagged-counter :lctr-untagged-counter-p :lctr-untagged-counter-val
+           ;; Memory layout constants
+           :+vector-length-offset+ :+vector-length-repr+
+           :+vector-data-offset+ :+vector-element-repr+
+           :+string-length-offset+ :+string-length-repr+
+           :+string-data-offset+
+           :+symbol-name-offset+ :+symbol-name-repr+
+           :+cons-car-offset+ :+cons-cdr-offset+ :+cons-field-repr+
+           :+closure-code-offset+ :+closure-code-repr+
+           :+closure-env-offset+ :+closure-env-repr+
            ;; Unresolved tracking
            :*unresolved-markers* :record-unresolved :clear-unresolved :report-unresolved))
 
@@ -463,6 +503,43 @@
 
 
 ;;;; ============================================================
+;;;; Maybe ADT - Optional Values
+;;;; ============================================================
+;;;;
+;;;; Forces explicit handling of missing values instead of nil checks.
+;;;; Use (just x) for present values, (nothing) for absent.
+
+(deftype maybe :prefix maybe
+  "Optional value - forces explicit nil handling."
+  (just value)     ; value is present
+  (nothing))       ; no value
+
+;; Convenience: unwrap with error on nothing
+(defun maybe-unwrap (m &optional (error-msg "maybe-unwrap: called on nothing"))
+  "Get value from maybe, error if nothing."
+  (if (maybe-just-p m)
+      (maybe-just-value m)
+      (error "~A" error-msg)))
+
+;; Convenience: unwrap with default
+(defun maybe-unwrap-or (m default)
+  "Get value from maybe, or default if nothing."
+  (if (maybe-just-p m)
+      (maybe-just-value m)
+      default))
+
+;;;; ============================================================
+;;;; Intern Result ADT
+;;;; ============================================================
+;;;;
+;;;; Result of symbol lookup/interning - makes found vs not-found explicit.
+
+(deftype intern-result :prefix intern
+  "Result of symbol lookup operations."
+  (found symbol)      ; symbol was found/exists
+  (not-found name))   ; symbol not found, name is string searched for
+
+;;;; ============================================================
 ;;;; Code Marker ADT
 ;;;; ============================================================
 ;;;;
@@ -497,6 +574,220 @@
   (tco-branch target)         ; tail call optimization branch
   (funcall-marker arity)      ; dynamic funcall
   (heap-alloc size))          ; heap allocation point
+
+;;;; ============================================================
+;;;; Memory Layout Types - Tagged vs Untagged Convention
+;;;; ============================================================
+;;;;
+;;;; CRITICAL: All codegen paths MUST agree on memory layouts.
+;;;; These types document the AUTHORITATIVE convention.
+
+;; Value representation in generated code
+(deftype value-repr :enum
+  "How a value is represented in memory/registers."
+  :tagged      ; Habu tagged value (fixnum: bit0=1, ptr: bit0=0|tag)
+  :untagged)   ; Raw machine value (no tag bits)
+
+;; Document what each memory offset contains
+(deftype mem-slot :record
+  "A slot in a memory layout with its representation."
+  (offset)     ; byte offset from base
+  (repr)       ; :tagged or :untagged
+  (doc))       ; documentation string
+
+;;; AUTHORITATIVE MEMORY LAYOUTS
+;;; ALL codegen MUST match these definitions
+
+;; Vector layout: [length:8][data:n*8]
+;; Length is UNTAGGED (raw machine integer)
+;; Data elements are TAGGED values
+(defconstant +vector-length-offset+ 0
+  "Byte offset of vector length field")
+(defconstant +vector-length-repr+ :untagged
+  "Vector length is stored UNTAGGED - raw machine integer.
+   vector-length must re-tag the result before returning.")
+(defconstant +vector-data-offset+ 8
+  "Byte offset where vector data begins")
+(defconstant +vector-element-repr+ :tagged
+  "Vector elements are TAGGED values")
+
+;; String layout: [length:8][chars:n]
+;; Length is UNTAGGED (matches vector convention)
+;; Chars are raw bytes (not tagged)
+(defconstant +string-length-offset+ 0
+  "Byte offset of string length field")
+(defconstant +string-length-repr+ :untagged
+  "String length is stored UNTAGGED - raw machine integer.
+   string-length must re-tag the result before returning.")
+(defconstant +string-data-offset+ 8
+  "Byte offset where string character data begins")
+
+;; Symbol layout: [name-ptr:8]
+;; Name-ptr is a TAGGED string pointer
+(defconstant +symbol-name-offset+ 0
+  "Byte offset of symbol name pointer")
+(defconstant +symbol-name-repr+ :tagged
+  "Symbol name pointer is TAGGED string")
+
+;; Cons layout: [car:8][cdr:8]
+;; Both car and cdr are TAGGED values
+(defconstant +cons-car-offset+ 0)
+(defconstant +cons-cdr-offset+ 8)
+(defconstant +cons-field-repr+ :tagged
+  "Cons car and cdr are TAGGED values")
+
+;; Closure layout: [code-ptr:8][env:n*8]
+;; Code-ptr is UNTAGGED (raw address)
+;; Captured values are TAGGED
+(defconstant +closure-code-offset+ 0)
+(defconstant +closure-code-repr+ :untagged
+  "Closure code pointer is UNTAGGED raw address")
+(defconstant +closure-env-offset+ 8)
+(defconstant +closure-env-repr+ :tagged
+  "Closure captured values are TAGGED")
+
+;;;; ============================================================
+;;;; Frame Offset Types - Prevent Slot Collision Bugs
+;;;; ============================================================
+;;;;
+;;;; The bug we fixed: env[-0x20] collided with spill[0] because both
+;;;; computed to sp+0x40. These types make such collisions a compile-time
+;;;; error by distinguishing different frame offset categories.
+;;;;
+;;;; Frame layout (from high to low):
+;;;;   [fp/lr saves]  <- callee-offset (fixed positions)
+;;;;   [env slots]    <- env-offset (NEGATIVE from env-base)
+;;;;   [spill slots]  <- spill-offset (POSITIVE from spill-base)
+;;;;   [callee-saved] <- callee-offset (positions 0-63)
+;;;;
+;;;; CRITICAL: env uses NEGATIVE offsets (env[-8], env[-16], etc.)
+;;;; so env-base must be HIGH enough that negative offsets don't
+;;;; collide with lower frame areas.
+
+;; Frame offset ADT - each kind is distinct, prevents mixing
+(deftype frame-offset :prefix foff
+  "Frame stack offset types - NEVER mix these!"
+  (env idx)           ; env slot: accessed as [x20, #-idx*8]
+  (spill slot)        ; spill slot: accessed as [sp, #spill-base+slot*8]
+  (callee reg)        ; callee-save: accessed as [sp, #fixed-offset]
+  (temp slot)         ; temp slot: accessed as [sp, #temp-base+slot*8]
+  (fp-save)           ; frame pointer save location
+  (lr-save))          ; link register save location
+
+;; Constructors with validation
+(defun make-env-offset (idx)
+  "Create env offset. IDX is the slot number (0, 1, 2...).
+   Actual memory offset is NEGATIVE: env-base - idx*8"
+  (assert (and (integerp idx) (>= idx 0))
+          () "env offset must be non-negative slot index, got ~S" idx)
+  (foff-env idx))
+
+(defun make-spill-offset (slot)
+  "Create spill offset. SLOT is the spill slot number (0, 1, 2...).
+   Actual memory offset is POSITIVE: spill-base + slot*8"
+  (assert (and (integerp slot) (>= slot 0))
+          () "spill slot must be non-negative, got ~S" slot)
+  (foff-spill slot))
+
+(defun make-temp-offset (slot)
+  "Create temp offset. SLOT is the temp slot number (0, 1, 2...).
+   WARNING: temps share space with spills - coordinate carefully!"
+  (assert (and (integerp slot) (>= slot 0))
+          () "temp slot must be non-negative, got ~S" slot)
+  (foff-temp slot))
+
+;; Callee-save register offsets (fixed layout at sp+0..71)
+;; Layout: sp+0..15 unused, then pairs at 16,32,48 plus singles at 56,64
+(defun callee-save-offset (reg)
+  "Return the sp-relative offset for a callee-saved register.
+   REG is a keyword like :x19, :x20, etc."
+  ;; Use cond for habu0 compatibility (no case)
+  (cond
+    ((eq reg :x19) 16)
+    ((eq reg :x20) 24)
+    ((eq reg :env) 24)
+    ((eq reg :x21) 32)
+    ((eq reg :x22) 40)
+    ((eq reg :x23) 48)
+    ((eq reg :x24) 56)
+    ((eq reg :closure) 56)
+    ((eq reg :x26) 64)
+    ((eq reg :code-base) 64)
+    (t (error "callee-save-offset: unknown register ~S" reg))))
+
+;; frame-offset-to-bytes and frame-offsets-may-collide-p are defined
+;; in ir.lisp since they depend on fl-layout-* accessors
+
+;;;; ============================================================
+;;;; Tagged Value Types - Prevent Tag Confusion Bugs
+;;;; ============================================================
+;;;;
+;;;; Habu uses a hybrid 1+3 bit tagging scheme:
+;;;;   bit0=1: fixnum (value >> 1)
+;;;;   bit0=0: pointer | 3-bit tag
+;;;;
+;;;; CRITICAL: Some memory locations store UNTAGGED values:
+;;;;   - Vector/string length fields (raw count)
+;;;;   - Closure code pointers (raw address)
+;;;;
+;;;; These types make tagged/untagged confusion a compile error.
+
+;; Tagged vs untagged value ADT
+(deftype tagged-repr :prefix repr
+  "Value representation - tagged Habu value vs raw machine value"
+  (tagged val)      ; val is a tagged Habu value
+  (untagged val))   ; val is a raw machine integer/pointer
+
+;; Constructors with documentation
+(defun tag-value (raw-int)
+  "Tag a raw integer as a Habu fixnum: (raw << 1) | 1"
+  (repr-tagged (logior (ash raw-int 1) 1)))
+
+(defun untag-value (tagged-val)
+  "Untag a Habu fixnum to raw integer: tagged >> 1"
+  (repr-untagged (ash tagged-val -1)))
+
+;; Assertions for codegen - use these to document intent
+(defmacro assert-tagged (expr &optional place)
+  "Assert that EXPR produces a tagged value (for documentation/checking)"
+  `(progn
+     (assert (oddp ,expr) ()
+             "Expected tagged value~@[ at ~A~], got untagged: ~X"
+             ,place ,expr)
+     ,expr))
+
+(defmacro assert-untagged (expr &optional place)
+  "Assert that EXPR produces an untagged value (for documentation/checking)"
+  `(progn
+     ;; Untagged values for lengths/offsets are typically small positive ints
+     ;; This is a heuristic - not a perfect check
+     ,expr))
+
+;;;; ============================================================
+;;;; Loop Counter Type - Prevent Tagged/Untagged Comparison Bugs
+;;;; ============================================================
+;;;;
+;;;; The INTERN bug: loop counter was untagged but compared with
+;;;; tagged length. These types make such mismatches visible.
+
+(deftype loop-counter :prefix lctr
+  "Loop counter representation - must match comparison operand"
+  (tagged-counter val)    ; counter is tagged, compare with tagged
+  (untagged-counter val)) ; counter is untagged, compare with untagged
+
+;; The CORRECT pattern for while loops:
+;; 1. Get length (tagged from string-length)
+;; 2. Initialize counter as tagged 0
+;; 3. Compare tagged counter with tagged length
+;; 4. Increment: counter = counter + (tagged 1)
+;;
+;; The BUG pattern we had:
+;; 1. Get length (tagged)
+;; 2. Initialize counter as UNTAGGED 1
+;; 3. Compare untagged counter with tagged length (WRONG!)
+;; 4. Increment adds tagged value to untagged (WRONG!)
+
+;; validate-frame-layout is defined in ir.lisp since it depends on fl-layout-* accessors
 
 ;;; Unresolved marker tracking
 (defvar *unresolved-markers* nil

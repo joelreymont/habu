@@ -2886,7 +2886,7 @@
    with spill slots. Since env uses negative offsets, we place env-base
    at spill_end + env_bytes, so env[-env_bytes] = spill_end."
   (let* ((callee-base 0)
-         (callee-size 64)  ; 8 registers × 8 bytes
+         (callee-size 72)  ; 9 slots: unused(0,8), x19(16), x20(24), x21(32), x22(40), x23(48), x24(56), x26(64)
          (spill-base (+ callee-base callee-size))
          (spill-bytes (* spill-count 8))
          (actual-env-slots (if (> env-slots +min-env-slots+) env-slots +min-env-slots+))
@@ -2899,10 +2899,13 @@
          (raw-size (+ lr-offset 8))
          ;; Round up to 16-byte alignment
          (frame-size (logand (+ raw-size 15) (lognot 15))))
-    (fl-layout frame-size fp-offset lr-offset
-               callee-base callee-size
-               spill-base spill-count
-               env-base actual-env-slots)))
+    (let ((layout (fl-layout frame-size fp-offset lr-offset
+                              callee-base callee-size
+                              spill-base spill-count
+                              env-base actual-env-slots)))
+      ;; Validate at construction time - crashes early on frame slot collision
+      (validate-frame-layout layout)
+      layout)))
 
 (defun frame-spill-offset (layout slot)
   "Get offset for spill slot N from frame layout."
@@ -2914,9 +2917,9 @@
              #x3FF0      ; fp-offset
              #x3FF8      ; lr-offset
              0           ; callee-base
-             64          ; callee-size
-             64          ; spill-base (0x40)
-             480         ; spill-count (enough for old code)
+             72          ; callee-size (9 slots: unused(0,8), x19-x24, x26)
+             72          ; spill-base (0x48)
+             479         ; spill-count (adjusted for new callee-size)
              #x3F80      ; env-base
              16)         ; env-slots
   "Pre-computed layout for legacy 16KB frames")
@@ -2941,7 +2944,7 @@
          (arm64:stp :x19 :env :sp :offset 16)
          (arm64:stp :x21 :x22 :sp :offset 32)
          (arm64:stp :x23 :closure :sp :offset 48)
-         (arm64:str :code-base :sp :offset 56)
+         (arm64:str :code-base :sp :offset 64)
          (arm64:str :fp :sp :offset fp-offset)
          (arm64:str :lr :sp :offset lr-offset)
          (arm64:add :fp :sp fp-offset :imm t)
@@ -2960,7 +2963,7 @@
            (arm64:stp :x19 :env :sp :offset 16)
            (arm64:stp :x21 :x22 :sp :offset 32)
            (arm64:stp :x23 :closure :sp :offset 48)
-           (arm64:str :code-base :sp :offset 56)
+           (arm64:str :code-base :sp :offset 64)
            ;; fp/lr at their computed offsets
            (gen-store-at-large-offset :fp fp-offset)
            (gen-store-at-large-offset :lr lr-offset)
@@ -2976,7 +2979,7 @@
         (lr-offset (fl-layout-lr-offset layout)))
     (if (<= frame-size 4095)
         (append
-         (arm64:ldr :code-base :sp :offset 56)
+         (arm64:ldr :code-base :sp :offset 64)
          (arm64:ldp :x23 :closure :sp :offset 48)
          (arm64:ldp :x21 :x22 :sp :offset 32)
          (arm64:ldp :x19 :env :sp :offset 16)
@@ -2987,7 +2990,7 @@
         (let ((shift-val (ash frame-size -12))
               (rem (logand frame-size #xFFF)))
           (append
-           (arm64:ldr :code-base :sp :offset 56)
+           (arm64:ldr :code-base :sp :offset 64)
            (arm64:ldp :x23 :closure :sp :offset 48)
            (arm64:ldp :x21 :x22 :sp :offset 32)
            (arm64:ldp :x19 :env :sp :offset 16)
@@ -3045,14 +3048,14 @@
    (arm64:stp :x19 :env :sp :offset 16)
    (arm64:stp :x21 :x22 :sp :offset 32)
    (arm64:stp :x23 :closure :sp :offset 48)
-   (arm64:str :code-base :sp :offset 56)
+   (arm64:str :code-base :sp :offset 64)
    (arm64:add :env :sp #x3 :imm t :shift12 t)
    (arm64:add :env :env #xF80 :imm t)))
 
 (defun fn-fixed-epilogue-internal ()
   "Internal: Generate 16KB frame epilogue (legacy fallback)"
   (append
-   (arm64:ldr :code-base :sp :offset 56)
+   (arm64:ldr :code-base :sp :offset 64)
    (arm64:ldp :x23 :closure :sp :offset 48)
    (arm64:ldp :x21 :x22 :sp :offset 32)
    (arm64:ldp :x19 :env :sp :offset 16)
