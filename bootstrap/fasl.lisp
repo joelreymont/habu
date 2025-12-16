@@ -103,9 +103,10 @@
   "Normalize a function/import name to string.
    Called at phase boundary when creating FASL structures.
    CONTRACT: After this, name is ALWAYS a string - no downstream checks needed."
-  (etypecase name
-    (string name)
-    (symbol (symbol-name name))))
+  (cond
+    ((stringp name) name)
+    ((symbolp name) (symbol-name name))
+    (t (error "normalize-name: expected string or symbol, got ~S" name))))
 
 ;;; ============================================================
 ;;; Binary I/O Helpers

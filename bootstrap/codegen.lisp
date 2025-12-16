@@ -854,9 +854,10 @@
 (defun normalize-fn-name (name)
   "Normalize a function name to string at phase boundary.
    CONTRACT: After normalization, all fnoffs entries are strings."
-  (etypecase name
-    (string name)
-    (symbol (symbol-name name))))
+  (cond
+    ((stringp name) name)
+    ((symbolp name) (symbol-name name))
+    (t (error "normalize-fn-name: expected string or symbol, got ~S" name))))
 
 ;;; ============================================================
 ;;; String Lookup in Fnoffs (all names are strings after normalization)
@@ -3680,16 +3681,16 @@
 (defun extract-fn-labels (code base-addr)
   "Extract :fn-label markers from flattened code and build fn-alist.
    BASE-ADDR is the absolute address where code starts.
-   Returns alist of (name . addr)."
+   Returns alist of (name-string . addr). Names are normalized to strings."
   (labels ((collect (items acc)
              (if (null items)
                  (reverse acc)
                  (let ((item (car items)))
                    (if (and (consp item) (eq (car item) :fn-label))
-                       (let* ((name (cadr item))
+                       (let* ((name-str (normalize-fn-name (cadr item)))
                               (pos (caddr item))
                               (addr (+ base-addr pos)))
-                         (collect (cdr items) (cons (cons name addr) acc)))
+                         (collect (cdr items) (cons (cons name-str addr) acc)))
                        (collect (cdr items) acc))))))
     (collect code nil)))
 
