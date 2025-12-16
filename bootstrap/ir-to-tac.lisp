@@ -10,6 +10,8 @@
   (:shadowing-import-from :habu.types :deftype :match :match*)
   (:import-from :habu.ir :ir-node)
   (:import-from :habu.tac
+                ;; Literal value types
+                :lit-fixnum :lit-raw
                 ;; Data movement
                 :tac-lit :tac-nil :tac-t :tac-move :tac-var :tac-setvar
                 :tac-global :tac-set-global
@@ -108,8 +110,9 @@
   (match ir-node ir
     ;; === Literals ===
     (lit (value)
+      ;; Lisp literal - wrap in lit-fixnum so codegen knows to tag it
       (let ((dest (next-vreg)))
-        (emit (tac-lit dest value))
+        (emit (tac-lit dest (lit-fixnum value)))
         dest))
 
     (nil ()

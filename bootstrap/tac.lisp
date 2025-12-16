@@ -10,7 +10,12 @@
 (defpackage :habu.tac
   (:use :cl)
   (:shadowing-import-from :habu.types :deftype :match :match*)
-  (:export :tac-instr :tac-def :tac-use
+  (:export ;; Literal value types
+           :tac-literal :tac-literal-p
+           :lit-fixnum :lit-fixnum-p :lit-fixnum-value
+           :lit-raw :lit-raw-p :lit-raw-value
+           ;; TAC instructions
+           :tac-instr :tac-def :tac-use
            ;; Data movement
            :tac-lit :tac-nil :tac-t :tac-move :tac-var :tac-setvar
            :tac-global :tac-set-global
@@ -77,9 +82,17 @@
 
 (in-package :habu.tac)
 
+;;; === Literal Value Types ===
+;;; Distinguishes Lisp values (tagged) from raw integers (untagged)
+;;; This prevents the bug where literal 256 was loaded as-is instead of tagged 513
+
+(deftype tac-literal :prefix lit
+  (fixnum value)           ; Lisp fixnum - emit as (value << 1) | 1
+  (raw value))             ; Raw integer - emit as-is (for internal use)
+
 (deftype tac-instr :prefix tac
   ;; === Data Movement ===
-  (lit dest value)         ; dest := literal
+  (lit dest literal)       ; dest := literal (tac-literal value)
   (nil dest)               ; dest := nil
   (t dest)                 ; dest := t
   (move dest src)          ; dest := src

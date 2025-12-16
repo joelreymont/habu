@@ -8,7 +8,9 @@
 (defpackage :habu.codegen
   (:use :cl)
   (:shadowing-import-from :habu.types :deftype :match :match*)
-  (:import-from :habu.tac :tac-instr)
+  (:import-from :habu.tac :tac-instr :tac-literal
+                :lit-fixnum :lit-fixnum-p :lit-fixnum-value
+                :lit-raw :lit-raw-p :lit-raw-value)
   (:import-from :habu.regalloc :allocation-result
                 :allocation-result-vreg-to-reg
                 :allocation-result-spills
@@ -183,9 +185,16 @@
   "Generate ARM64 for a single TAC instruction."
   (match tac-instr instr
     ;; === Data Movement ===
-    (lit (dest value)
+    (lit (dest literal)
+      ;; Type-safe literal handling via tac-literal ADT
       (let ((rd (dest-reg dest)))
-        (emit (load-imm rd value))
+        (match literal
+          (fixnum (value)
+            ;; Lisp fixnum → tag it: (value << 1) | 1
+            (emit (load-imm rd (logior (ash value 1) 1))))
+          (raw (value)
+            ;; Raw integer → use as-is (for internal constants)
+            (emit (load-imm rd value))))
         (store-if-spilled dest)))
 
     (nil (dest)
@@ -705,21 +714,68 @@
 
     ;; === Vector Operations ===
     (make-vector (dest size init)
-      (declare (ignore size init))
-      (let ((rd (dest-reg dest)))
-        (emit (arm64:movz rd 0))
+      ;; Allocate vector with given size
+      ;; Size is tagged fixnum, each element is 8 bytes
+      ;; Store tagged length at [heap+0] for vector-length to read
+      (declare (ignore init))
+      (let ((rs (vreg->reg-or-temp size))
+            (rd (dest-reg dest)))
+        ;; x0 = tagged size (stored as length), x1 = untagged for alloc calc
+        (emit (arm64:mov :x0 rs))
+        (emit (arm64:str :x0 :x28 :offset 0))     ; [heap+0] = tagged length
+        ;; x1 = untagged length for allocation size calculation
+        (emit (arm64:asr :x1 :x0 1 :imm t))       ; x1 = untagged length
+        ;; Calculate alloc size: 8 + length*8, rounded to 16
+        (emit (arm64:lsl :x1 :x1 3 :imm t))       ; x1 = length * 8
+        (emit (arm64:add :x1 :x1 8 :imm t))       ; x1 = 8 + data_size
+        (emit (arm64:add :x1 :x1 15 :imm t))      ; x1 += 15
+        (emit (arm64:and* :x1 :x1 -16 :imm t))    ; x1 &= ~15 (align to 16)
+        ;; x0 = tagged pointer, bump heap
+        (emit (arm64:mov :x0 :x28))
+        (emit (arm64:add :x28 :x28 :x1))
+        ;; Tag with vector tag (4)
+        (emit (arm64:movz :x1 4))
+        (emit (arm64:orr rd :x0 :x1))
         (store-if-spilled dest)))
 
     (vector-ref (dest vec index)
+      ;; Load vec[index]
+      ;; vec: tagged vector, index: tagged fixnum
       (let ((rv (vreg->reg-or-temp vec))
+            (ri (vreg->reg-or-temp index +spill-temp2+))
             (rd (dest-reg dest)))
-        (emit (arm64:and* :x19 rv -16 :imm t))
-        (emit (arm64:add :x19 :x19 8 :imm t))
-        (emit (arm64:ldr rd :x19))
+        ;; x1 = untagged vector base
+        (emit (arm64:and* :x1 rv -16 :imm t))
+        ;; x0 = untagged index
+        (emit (arm64:asr :x0 ri 1 :imm t))
+        ;; x0 = index * 8 + 8 (skip length slot)
+        (emit (arm64:lsl :x0 :x0 3 :imm t))
+        (emit (arm64:add :x0 :x0 8 :imm t))
+        ;; x1 = address of element
+        (emit (arm64:add :x1 :x1 :x0))
+        ;; Load element
+        (emit (arm64:ldr rd :x1 :offset 0))
         (store-if-spilled dest)))
 
     (vector-set (vec index value)
-      (declare (ignore vec index value)))
+      ;; Store value at vec[index]
+      ;; vec: tagged vector, index: tagged fixnum, value: any tagged value
+      (let ((rv (vreg->reg-or-temp vec))
+            (ri (vreg->reg-or-temp index +spill-temp2+)))
+        (when (is-spilled value)
+          (emit (arm64:ldr :x17 :sp :offset (spill-offset value))))
+        (let ((rval (if (is-spilled value) :x17 (vreg->reg value))))
+          ;; x0 = untagged vector base
+          (emit (arm64:and* :x0 rv -16 :imm t))
+          ;; x1 = untagged index
+          (emit (arm64:asr :x1 ri 1 :imm t))
+          ;; x1 = (index + 1) * 8 = offset (skip length slot)
+          (emit (arm64:add :x1 :x1 1 :imm t))
+          (emit (arm64:lsl :x1 :x1 3 :imm t))
+          ;; x0 = address of slot
+          (emit (arm64:add :x0 :x0 :x1))
+          ;; Store value
+          (emit (arm64:str rval :x0 :offset 0)))))
 
     (vector-length (dest vec)
       (let ((rv (vreg->reg-or-temp vec))
@@ -819,9 +875,47 @@
         (store-if-spilled dest)))
 
     (make-string-from-vector (dest vec)
-      (declare (ignore vec))
-      (let ((rd (dest-reg dest)))
-        (emit (arm64:movz rd 0))
+      ;; Convert vector of char codes to string
+      ;; vec: tagged vector pointer, each element is a tagged fixnum char code
+      ;; Result: tagged string pointer
+      (let ((rv (vreg->reg-or-temp vec))
+            (rd (dest-reg dest)))
+        ;; x1 = untagged vector base
+        (emit (arm64:and* :x1 rv -16 :imm t))     ; untag vector (clear low 4 bits)
+        ;; x5 = vector length (tagged fixnum at [vec+0])
+        (emit (arm64:ldr :x5 :x1 :offset 0))
+        ;; x5 = untagged length for loop count
+        (emit (arm64:asr :x5 :x5 1 :imm t))       ; x5 = length (untag)
+        ;; Allocate string: store length at [heap] (as tagged fixnum)
+        (emit (arm64:lsl :x4 :x5 1 :imm t))       ; x4 = length << 1 (tag as fixnum)
+        (emit (arm64:orr :x4 :x4 1 :imm t))       ; x4 = tagged length
+        (emit (arm64:str :x4 :x28 :offset 0))     ; [heap] = length
+        ;; x4 = alloc size = (8 + len + 15) & ~15
+        (emit (arm64:add :x4 :x5 23 :imm t))
+        (emit (arm64:and* :x4 :x4 -16 :imm t))
+        ;; x0 = string base, bump heap
+        (emit (arm64:mov :x0 :x28))
+        (emit (arm64:add :x28 :x28 :x4))
+        ;; x2 = string data = x0 + 8
+        (emit (arm64:add :x2 :x0 8 :imm t))
+        ;; x3 = loop counter = 0
+        (emit (arm64:movz :x3 0))
+        ;; Loop: copy chars from vector to string
+        ;; Entry point (offset 0 from here)
+        (emit (arm64:cmp :x3 :x5))                ; compare counter with length
+        (emit (arm64:b.ge 9))                     ; skip 9 instrs to exit
+        ;; Load vec[x3]: address = x1 + 8 + x3*8
+        (emit (arm64:lsl :x4 :x3 3 :imm t))       ; x4 = x3 * 8
+        (emit (arm64:add :x4 :x4 8 :imm t))       ; x4 = 8 + x3*8
+        (emit (arm64:add :x4 :x1 :x4))            ; x4 = vec_base + offset
+        (emit (arm64:ldr :x4 :x4 :offset 0))      ; x4 = tagged fixnum
+        (emit (arm64:asr :x4 :x4 1 :imm t))       ; x4 = char value (untag fixnum)
+        (emit (arm64:strb :x4 :x2 :x3 :reg t))    ; [x2 + x3] = x4 (byte)
+        (emit (arm64:add :x3 :x3 1 :imm t))       ; x3++
+        (emit (arm64:b -9))                       ; back to cmp
+        ;; Tag result with string tag (6)
+        (emit (arm64:movz :x4 6))                 ; x4 = string tag
+        (emit (arm64:orr rd :x0 :x4))             ; rd = x0 | 6
         (store-if-spilled dest)))
 
     (string-equal (dest left right)

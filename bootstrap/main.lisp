@@ -5,6 +5,8 @@
 (defpackage :habu.main
   (:use :cl)
   (:shadowing-import-from :habu.types :deftype :match :match*)
+  (:import-from :habu.types
+                :clear-unresolved :record-unresolved :report-unresolved)
   (:import-from :habu.ir
                 :defun-fn :defun-fn-name :defun-fn-params :defun-fn-body :defun-fn-param-base
                 :cr-result :cr-result-defuns :cr-result-main-ir)
@@ -242,12 +244,10 @@
    markers: list of (offset (:call-fn name)) relative to this code segment
    fn-alist: maps function names to absolute byte offsets in final binary
    code-start-offset: where this code segment starts in final binary
-   Returns (values resolved-code unresolved-markers) where unresolved-markers
-   contains external function calls that need linker resolution."
+   Returns resolved-code. Unresolved markers are recorded via record-unresolved."
   (if (null markers)
-      (values code nil)
-      (let ((code-vec (coerce code 'vector))
-            (unresolved nil))
+      code
+      (let ((code-vec (coerce code 'vector)))
         (dolist (marker markers)
           (let* ((marker-offset (first marker))
                  (marker-data (second marker))
@@ -262,14 +262,15 @@
                   (loop for i from 0 below 4
                         for b in bl-bytes
                         do (setf (aref code-vec (+ marker-offset i)) b)))
-                ;; Unknown function - leave placeholder, track for linker
-                (push (list (+ code-start-offset marker-offset) fn-name) unresolved))))
-        (values (coerce code-vec 'list) (nreverse unresolved)))))
+                ;; Unknown function - record as unresolved (will error at end)
+                (record-unresolved (+ code-start-offset marker-offset) marker-data))))
+        (coerce code-vec 'list))))
 
 (defun deliver-forms-typed (forms output-path &optional (heap-size #x4000000))
   "Compile forms to native executable using typed IR pipeline.
    This is the typed replacement for deliver-forms in codegen.lisp."
   (reset-typed-lambda-counter)
+  (clear-unresolved)  ; Reset unresolved marker tracking
 
   ;; Compile forms to typed IR
   (let* ((result (habu.compile:compile-forms forms))
@@ -308,12 +309,8 @@
                                                     fn-markers)))
                        ;; Combine main + functions
                        (all-code-raw (append main-code fn-bytes)))
-                  ;; Resolve call markers
-                  (multiple-value-bind (all-code unresolved)
-                      (resolve-call-markers all-code-raw all-markers fn-alist-abs 0)
-                    (when unresolved
-                      (format t "Warning: ~D unresolved external calls~%" (length unresolved)))
-
+                  ;; Resolve call markers (unresolved tracked via record-unresolved)
+                  (let ((all-code (resolve-call-markers all-code-raw all-markers fn-alist-abs 0)))
                     ;; Calculate heap page offset for wrapper
                     ;; Layout: code at 0x400, wrapper adds 172 bytes
                     ;; After text segment comes DATA_CONST (1 page), then heap
@@ -343,4 +340,21 @@
                               (dolist (b all-code)
                                 (write-byte b f)))
                             (format t "Wrote raw bytes: ~A~%" output-path)))
+
+                      ;; Write map file for debugging
+                      (let ((map-path (concatenate 'string (namestring output-path) ".map")))
+                        (with-open-file (f map-path :direction :output
+                                                    :if-exists :supersede)
+                          (format f "# Function map for ~A~%" output-path)
+                          (format f "# Offset from code start (after 172-byte wrapper)~%")
+                          (format f "# Main at offset 0, functions follow~%~%")
+                          (format f "~8@A  ~A~%" "Offset" "Name")
+                          (format f "~8,'0X  ~A~%" 0 "_main")
+                          (dolist (entry fn-alist-abs)
+                            (format f "~8,'0X  ~A~%" (cdr entry) (car entry))))
+                        (format t "Wrote map file: ~A~%" map-path))
+
+                      ;; Bomb if any unresolved markers remain
+                      (report-unresolved)
+
                       output-path)))))))))))

@@ -135,24 +135,21 @@
 #+sbcl
 (defun lambdas-to-defuns (lambdas acc)
   "Convert lifted lambda entries to defun format (SBCL version).
-   Lambda entry: (name params body free-vars free-offsets) or (name . lambda-ir)
+   CONTRACT: Lambda entry is ALWAYS (name params body free-vars free-offsets).
+   The (name . lambda-ir) format was a bug - lift-lambdas must always produce
+   the canonical 5-element list format.
    Defun format: (name params body param-base)"
   (if (null lambdas)
       (reverse acc)
       (let* ((entry (car lambdas))
              (name (car entry))
-             ;; Handle both formats: (name params body fv fo) and (name . lambda-ir)
-             (rest (cdr entry))
-             (params (if (and (consp rest) (consp (car rest)) (eq (car (car rest)) 'lambda-ir))
-                         ;; (name . lambda-ir) format
-                         (cadr (car rest))
-                         (car rest)))
-             (body (if (and (consp rest) (consp (car rest)) (eq (car (car rest)) 'lambda-ir))
-                       (caddr (car rest))
-                       (cadr rest)))
-             (free-vars (if (and (consp rest) (consp (car rest)) (eq (car (car rest)) 'lambda-ir))
-                            (cadddr (car rest))
-                            (caddr rest)))
+             (params (cadr entry))
+             (body (caddr entry))
+             (free-vars (cadddr entry))
+             ;; Validate format - crash on unexpected input
+             (_ (unless (and (consp entry)
+                             (= (length entry) 5))
+                  (error "lambdas-to-defuns: invalid lambda-entry ~S~%Expected (name params body free-vars free-offsets)" entry)))
              (param-base (length free-vars))
              (defun-entry (list name params body param-base)))
         (lambdas-to-defuns (cdr lambdas) (cons defun-entry acc)))))

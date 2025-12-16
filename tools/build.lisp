@@ -6,6 +6,13 @@
 (asdf:load-system :habu)
 (load "shared/macros.lisp")
 (load "shared/tags.lisp")
+(load "shared/types.lisp")  ; ADT system - deftype macro
+
+(defun proper-list-p (x)
+  "Check if X is a proper list (not dotted)."
+  (or (null x)
+      (and (consp x)
+           (proper-list-p (cdr x)))))
 
 (defun expand-habu-macros (form)
   "Recursively expand habu macros before passing to habu compiler.
@@ -22,12 +29,32 @@
     ;; Setq macros: expand but keep as progn (used inside function bodies)
     ((member (car form) '(habu::init-all-op-symbols habu::init-all-kw-symbols))
      (expand-habu-macros (macroexpand-1 form)))
-    ;; Other habu macros
+    ;; habu.types:deftype - expand and filter out registry updates (gethash calls)
+    ((and (symbolp (car form))
+          (macro-function (car form))
+          (eq (car form) 'habu.types:deftype))
+     (let ((expanded (macroexpand-1 form)))
+       ;; Filter out SETF GETHASH calls, keep only DEFUNs and the final quote
+       (cons 'progn
+             (remove-if (lambda (f)
+                          (and (consp f) (eq (car f) 'setf)
+                               (consp (cadr f)) (eq (car (cadr f)) 'gethash)))
+                        (cdr expanded)))))
+    ;; habu.types:match - expand but don't recurse (produces standard CL)
+    ((and (symbolp (car form))
+          (macro-function (car form))
+          (eq (car form) 'habu.types:match))
+     (macroexpand-1 form))
+    ;; Other habu macros: expand and recurse
     ((and (symbolp (car form))
           (macro-function (car form))
           (member (car form) '(habu::while habu::sym-case habu::sym-eq)))
      (expand-habu-macros (macroexpand-1 form)))
-    (t (mapcar #'expand-habu-macros form))))
+    ;; Proper list - can safely map
+    ((proper-list-p form)
+     (mapcar #'expand-habu-macros form))
+    ;; Dotted list or improper - just return as-is
+    (t form)))
 
 (defun splice-forms (forms)
   "Flatten forms, splicing any (:splice ...) markers. Skip nil entries."
@@ -41,10 +68,14 @@
         (t (push form result))))))
 
 (defun collect-forms ()
-  "Read and collect all source forms for habu0."
+  "Read and collect all source forms for habu0.
+   Expands macros during reading to preserve correct package context."
   (let ((forms nil)
         (*features* (remove :sbcl *features*)))
-    (dolist (file '("shared/macros.lisp"
+    ;; Note: shared/types.lisp is loaded for macro expansion only (deftype, match)
+    ;; but NOT included in habu0 since it uses gethash for type registry
+    (dolist (file '("shared/ir.lisp"
+                    "shared/macros.lisp"
                     "arm64/asm.lisp"
                     "bootstrap/reader.lisp"
                     "habu0.lisp"
@@ -59,8 +90,9 @@
                       (eval form))
                      ((and (consp form) (eq (car form) 'in-package))
                       (setq *package* (find-package (cadr form)))))
-                do (push form forms)))))
-    (splice-forms (mapcar #'expand-habu-macros (nreverse forms)))))
+                ;; Expand macros now while we have the correct *package*
+                do (push (expand-habu-macros form) forms)))))
+    (splice-forms (nreverse forms))))
 
 (defun main ()
   (let* ((args (remove "--" (uiop:command-line-arguments) :test #'string=))

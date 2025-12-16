@@ -124,7 +124,11 @@
         (let ((offset (env-lookup expr env)))
           (if offset
               (ir-var offset)
-              (ir-global expr))))))
+              ;; Check for defconstant before treating as global
+              (let ((const (assoc expr *constants*)))
+                (if const
+                    (ir-lit (cdr const))  ; Inline constant value
+                    (ir-global expr))))))))
 
     ;; Compound form
     ((consp expr)
