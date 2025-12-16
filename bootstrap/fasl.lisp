@@ -76,7 +76,7 @@
   (num-imports 0 :type fixnum))      ; Functions required from other modules
 
 (defstruct fasl-function
-  (name nil :type (or null symbol string))  ; Function name (symbol during build)
+  (name "" :type string)          ; Function name - ALWAYS string, normalize at creation
   (name-offset 0 :type fixnum)    ; Offset into string table (set at write time)
   (code-offset 0 :type fixnum)    ; Offset into code section
   (code-size 0 :type fixnum)      ; Size in bytes
@@ -89,8 +89,23 @@
   (target 0 :type fixnum))        ; Index into function/extern/const table
 
 (defstruct fasl-import
-  (name nil :type (or null symbol string))  ; Required function name
+  (name "" :type string)          ; Required function name - ALWAYS string
   (name-offset 0 :type fixnum))   ; Offset into string table
+
+;;; ============================================================
+;;; Name Normalization - Convert symbol/string to canonical string
+;;; ============================================================
+;;;
+;;; All FASL names are stored as strings. This function normalizes
+;;; at the BOUNDARY where data enters FASL structures.
+
+(defun normalize-name (name)
+  "Normalize a function/import name to string.
+   Called at phase boundary when creating FASL structures.
+   CONTRACT: After this, name is ALWAYS a string - no downstream checks needed."
+  (etypecase name
+    (string name)
+    (symbol (symbol-name name))))
 
 ;;; ============================================================
 ;;; Binary I/O Helpers
@@ -178,43 +193,29 @@
 (defun write-fasl (output-path functions code relocations constants
                    &key (imports nil))
   "Write complete FASL file.
-   FUNCTIONS: list of fasl-function structs
+   FUNCTIONS: list of fasl-function structs (names are strings)
    CODE: byte vector of machine code
    RELOCATIONS: list of fasl-relocation structs
    CONSTANTS: constant pool bytes
-   IMPORTS: list of fasl-import structs (functions required from other modules)"
+   IMPORTS: list of fasl-import structs (names are strings)"
   (with-open-file (stream output-path
                           :direction :output
                           :if-exists :supersede
                           :element-type '(unsigned-byte 8))
-    ;; Collect all names for string table (functions + imports)
-    (let* ((fn-names (mapcar (lambda (f)
-                               (let ((name (fasl-function-name f)))
-                                 (if (symbolp name)
-                                     (symbol-name name)
-                                     name)))
-                             functions))
-           (import-names (mapcar (lambda (i)
-                                   (let ((name (fasl-import-name i)))
-                                     (if (symbolp name)
-                                         (symbol-name name)
-                                         name)))
-                                 imports))
+    ;; Collect all names for string table - names are already strings
+    (let* ((fn-names (mapcar #'fasl-function-name functions))
+           (import-names (mapcar #'fasl-import-name imports))
            (all-names (append fn-names import-names)))
       (multiple-value-bind (str-bytes str-offsets) (build-string-table all-names)
-        ;; Update function name offsets
+        ;; Update function name offsets - names are already strings
         (dolist (fn functions)
-          (let* ((name (fasl-function-name fn))
-                 (name-str (if (symbolp name) (symbol-name name) name)))
-            (setf (fasl-function-name-offset fn)
-                  (cdr (assoc name-str str-offsets :test #'string=)))))
+          (setf (fasl-function-name-offset fn)
+                (cdr (assoc (fasl-function-name fn) str-offsets :test #'string=))))
 
-        ;; Update import name offsets
+        ;; Update import name offsets - names are already strings
         (dolist (imp imports)
-          (let* ((name (fasl-import-name imp))
-                 (name-str (if (symbolp name) (symbol-name name) name)))
-            (setf (fasl-import-name-offset imp)
-                  (cdr (assoc name-str str-offsets :test #'string=)))))
+          (setf (fasl-import-name-offset imp)
+                (cdr (assoc (fasl-import-name imp) str-offsets :test #'string=))))
 
         ;; Write header
         (let ((header (make-fasl-header
@@ -425,50 +426,50 @@
 
 (defun build-fasl-functions (fnoffs &key exports)
   "Convert fnoffs alist to fasl-function structs.
-   EXPORTS: list of function names to mark as exported."
+   EXPORTS: list of function names to mark as exported.
+   Names are normalized to strings at this boundary."
   (let ((export-set (make-hash-table :test 'equal)))
-    ;; Build export lookup
+    ;; Build export lookup - normalize names
     (dolist (name exports)
-      (setf (gethash (if (symbolp name) (symbol-name name) name) export-set) t))
+      (setf (gethash (normalize-name name) export-set) t))
     (mapcar (lambda (entry)
-              (let* ((name (car entry))
-                     (name-str (if (symbolp name) (symbol-name name) name))
+              (let* ((name-str (normalize-name (car entry)))
                      (flags (if (gethash name-str export-set)
                                 +fn-flag-exported+
                                 0)))
                 (make-fasl-function
-                 :name name
+                 :name name-str  ; Already normalized
                  :code-offset (cdr entry)
-                 :code-size 0  ; Could compute from next function offset
-                 :arity 0      ; Could extract from IR
+                 :code-size 0
+                 :arity 0
                  :flags flags)))
             fnoffs)))
 
 #+sbcl
 (defun build-fasl-relocations (markers fn-names)
   "Convert call markers to fasl-relocation structs.
-   FN-NAMES is list of defined function names for indexing."
+   FN-NAMES is list of defined function names for indexing.
+   Names are normalized to strings."
   (let ((fn-index (make-hash-table :test 'equal))
         (extern-index (make-hash-table :test 'equal))
         (extern-list nil))
-    ;; Build function name -> index map
+    ;; Build function name -> index map (normalize names)
     (loop for name in fn-names
           for i from 0
-          do (setf (gethash (if (symbolp name) (symbol-name name) name) fn-index) i))
+          do (setf (gethash (normalize-name name) fn-index) i))
     ;; Process markers
     (mapcar (lambda (marker)
               (let ((type (first marker))
                     (offset (second marker))
-                    (target (third marker)))
+                    (target-str (normalize-name (third marker))))
                 (if (eq type :fn-call)
                     ;; Internal function call
-                    (let ((target-name (if (symbolp target) (symbol-name target) target)))
-                      (make-fasl-relocation
-                       :type +reloc-fn-call+
-                       :offset offset
-                       :target (or (gethash target-name fn-index) 0)))
+                    (make-fasl-relocation
+                     :type +reloc-fn-call+
+                     :offset offset
+                     :target (or (gethash target-str fn-index) 0))
                     ;; External call
-                    (let ((target-str (if (symbolp target) (symbol-name target) target)))
+                    (progn
                       (unless (gethash target-str extern-index)
                         (setf (gethash target-str extern-index) (length extern-list))
                         (push target-str extern-list))
@@ -541,7 +542,7 @@
            ;; Build FASL structures
            (fn-names (cons '_main (mapcar #'car all-fns)))
            ;; Mark _main as entry point, mark exported functions
-           (main-fn (make-fasl-function :name '_main
+           (main-fn (make-fasl-function :name "_main"  ; String, not symbol
                                         :code-offset 0
                                         :code-size main-size
                                         :arity 0
@@ -555,9 +556,9 @@
                                    functions)))
       (declare (ignore _))
 
-      ;; Build import structs
+      ;; Build import structs - normalize names at boundary
       (let ((import-structs (mapcar (lambda (name)
-                                      (make-fasl-import :name name))
+                                      (make-fasl-import :name (normalize-name name)))
                                     (or imports nil))))
         ;; Write FASL
         (write-fasl output-path functions code-bytes relocations nil :imports import-structs)

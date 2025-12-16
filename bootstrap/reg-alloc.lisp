@@ -2644,18 +2644,20 @@
       ;; For symbol interning to work, use the INTERN function at runtime or
       ;; fix the case dispatch to use sym-eq (string comparison) instead of eq.
       ((:tac-sym)
+       ;; CONTRACT: name is always a STRING (from sym-lit which uses symbol-name)
        (let* ((dest-vreg (cadr instr))
               (name (caddr instr))
               (dest (vreg-to-reg dest-vreg allocation))
-              (name-str (if (symbolp name) (symbol-name name) name))
-              (len (length name-str))
+              (_ (unless (stringp name)
+                   (error "tac-sym: expected string name, got ~S" name)))
+              (len (length name))
               (total-size (logand (+ len 8 15) (lognot 15))))
          (append
           ;; Store length at x28 (use x8 as scratch - reserved for runtime)
           (load-addr :x8 len)
           (arm64:str :x8 :heap :offset 0)
           ;; Store symbol name bytes at x28+8 (gen-str-bytes-code uses x8)
-          (gen-str-bytes-code name-str 8)
+          (gen-str-bytes-code name 8)
           ;; Get tagged pointer: x28 | +tag-symbol+ -- put in x19 (callee-saved, survives GC)
           (arm64:mov :x19 :heap)
           (arm64:add :x19 :x19 +tag-symbol+ :imm t)
@@ -3614,6 +3616,153 @@
               (arm64:ldr :x0 :sp :offset (spill-offset (cadr val-loc)))
               (arm64:mov :x0 val-loc))
           (arm64:str :x0 :gc :offset 88))))
+
+      ;; Type predicates - check tag and convert to tagged boolean
+      ;; Result is nil (0) or t (3)
+      ;; Uses cset+neg+and pattern: cset sets 1/0, neg makes -1/0, and with 3 gives 3/0
+
+      ;; tac-numberp: check if fixnum (bit0=1 in hybrid scheme)
+      ((:tac-numberp)
+       (let* ((dest-vreg (cadr instr))
+              (src-vreg (caddr instr))
+              (src-loc (vreg-to-reg src-vreg allocation))
+              (dest (vreg-to-reg dest-vreg allocation))
+              (src-reg (if (and (consp src-loc) (eq (car src-loc) :spill)) :x0 src-loc))
+              (dest-reg (if (and (consp dest) (eq (car dest) :spill)) :x0 dest)))
+         (append
+          ;; Load src if spilled
+          (when (and (consp src-loc) (eq (car src-loc) :spill))
+            (arm64:ldr :x0 :sp :offset (spill-offset (cadr src-loc))))
+          ;; Extract bit 0 (fixnum bit) - result is 0 or 1
+          (arm64:and* dest-reg src-reg +fixnum-bit+ :imm t)
+          ;; Convert to tagged boolean: neg + and with 3
+          ;; If bit0=1: neg=-1, and with 3 = 3 (t)
+          ;; If bit0=0: neg=0, and with 3 = 0 (nil)
+          (arm64:neg dest-reg dest-reg)
+          (arm64:and* dest-reg dest-reg +t-value+ :imm t)
+          ;; Store if spilled
+          (when (and (consp dest) (eq (car dest) :spill))
+            (arm64:str :x0 :sp :offset (spill-offset (cadr dest)))))))
+
+      ;; tac-consp: check if cons cell (tag=0, value!=nil)
+      ((:tac-consp)
+       (let* ((dest-vreg (cadr instr))
+              (src-vreg (caddr instr))
+              (src-loc (vreg-to-reg src-vreg allocation))
+              (dest (vreg-to-reg dest-vreg allocation))
+              (src-reg (if (and (consp src-loc) (eq (car src-loc) :spill)) :x0 src-loc))
+              (dest-reg (if (and (consp dest) (eq (car dest) :spill)) :x0 dest)))
+         (append
+          ;; Load src if spilled
+          (when (and (consp src-loc) (eq (car src-loc) :spill))
+            (arm64:ldr :x0 :sp :offset (spill-offset (cadr src-loc))))
+          ;; Check nil first - if nil, result is 0 (nil)
+          (arm64:cmp src-reg +nil-value+ :imm t)
+          (arm64:b.eq 3)  ; if nil, skip to set false (+3 instructions)
+          ;; Not nil, check tag is 0 (cons)
+          (arm64:and* dest-reg src-reg +tag-mask+ :imm t)
+          (arm64:cmp dest-reg +tag-cons+ :imm t)
+          (arm64:cset dest-reg arm64:+eq+)  ; 1 if cons, 0 otherwise
+          (arm64:b 1)  ; skip false case
+          (arm64:movz dest-reg 0)  ; false case for nil input
+          ;; Convert 0/1 to 0/3
+          (arm64:neg dest-reg dest-reg)
+          (arm64:and* dest-reg dest-reg +t-value+ :imm t)
+          ;; Store if spilled
+          (when (and (consp dest) (eq (car dest) :spill))
+            (arm64:str :x0 :sp :offset (spill-offset (cadr dest)))))))
+
+      ;; tac-symbolp: check if symbol (tag=2)
+      ((:tac-symbolp)
+       (let* ((dest-vreg (cadr instr))
+              (src-vreg (caddr instr))
+              (src-loc (vreg-to-reg src-vreg allocation))
+              (dest (vreg-to-reg dest-vreg allocation))
+              (src-reg (if (and (consp src-loc) (eq (car src-loc) :spill)) :x0 src-loc))
+              (dest-reg (if (and (consp dest) (eq (car dest) :spill)) :x0 dest)))
+         (append
+          ;; Load src if spilled
+          (when (and (consp src-loc) (eq (car src-loc) :spill))
+            (arm64:ldr :x0 :sp :offset (spill-offset (cadr src-loc))))
+          ;; Extract tag and compare to symbol tag
+          (arm64:and* dest-reg src-reg +tag-mask+ :imm t)
+          (arm64:cmp dest-reg +tag-symbol+ :imm t)
+          (arm64:cset dest-reg arm64:+eq+)  ; 1 if symbol, 0 otherwise
+          ;; Convert to tagged boolean
+          (arm64:neg dest-reg dest-reg)
+          (arm64:and* dest-reg dest-reg +t-value+ :imm t)
+          ;; Store if spilled
+          (when (and (consp dest) (eq (car dest) :spill))
+            (arm64:str :x0 :sp :offset (spill-offset (cadr dest)))))))
+
+      ;; tac-stringp: check if string (tag=6)
+      ((:tac-stringp)
+       (let* ((dest-vreg (cadr instr))
+              (src-vreg (caddr instr))
+              (src-loc (vreg-to-reg src-vreg allocation))
+              (dest (vreg-to-reg dest-vreg allocation))
+              (src-reg (if (and (consp src-loc) (eq (car src-loc) :spill)) :x0 src-loc))
+              (dest-reg (if (and (consp dest) (eq (car dest) :spill)) :x0 dest)))
+         (append
+          ;; Load src if spilled
+          (when (and (consp src-loc) (eq (car src-loc) :spill))
+            (arm64:ldr :x0 :sp :offset (spill-offset (cadr src-loc))))
+          ;; Extract tag and compare to string tag
+          (arm64:and* dest-reg src-reg +tag-mask+ :imm t)
+          (arm64:cmp dest-reg +tag-string+ :imm t)
+          (arm64:cset dest-reg arm64:+eq+)
+          ;; Convert to tagged boolean
+          (arm64:neg dest-reg dest-reg)
+          (arm64:and* dest-reg dest-reg +t-value+ :imm t)
+          ;; Store if spilled
+          (when (and (consp dest) (eq (car dest) :spill))
+            (arm64:str :x0 :sp :offset (spill-offset (cadr dest)))))))
+
+      ;; tac-vectorp: check if vector (tag=4)
+      ((:tac-vectorp)
+       (let* ((dest-vreg (cadr instr))
+              (src-vreg (caddr instr))
+              (src-loc (vreg-to-reg src-vreg allocation))
+              (dest (vreg-to-reg dest-vreg allocation))
+              (src-reg (if (and (consp src-loc) (eq (car src-loc) :spill)) :x0 src-loc))
+              (dest-reg (if (and (consp dest) (eq (car dest) :spill)) :x0 dest)))
+         (append
+          ;; Load src if spilled
+          (when (and (consp src-loc) (eq (car src-loc) :spill))
+            (arm64:ldr :x0 :sp :offset (spill-offset (cadr src-loc))))
+          ;; Extract tag and compare to vector tag
+          (arm64:and* dest-reg src-reg +tag-mask+ :imm t)
+          (arm64:cmp dest-reg +tag-vector+ :imm t)
+          (arm64:cset dest-reg arm64:+eq+)
+          ;; Convert to tagged boolean
+          (arm64:neg dest-reg dest-reg)
+          (arm64:and* dest-reg dest-reg +t-value+ :imm t)
+          ;; Store if spilled
+          (when (and (consp dest) (eq (car dest) :spill))
+            (arm64:str :x0 :sp :offset (spill-offset (cadr dest)))))))
+
+      ;; tac-keywordp: check if keyword (tag=10)
+      ((:tac-keywordp)
+       (let* ((dest-vreg (cadr instr))
+              (src-vreg (caddr instr))
+              (src-loc (vreg-to-reg src-vreg allocation))
+              (dest (vreg-to-reg dest-vreg allocation))
+              (src-reg (if (and (consp src-loc) (eq (car src-loc) :spill)) :x0 src-loc))
+              (dest-reg (if (and (consp dest) (eq (car dest) :spill)) :x0 dest)))
+         (append
+          ;; Load src if spilled
+          (when (and (consp src-loc) (eq (car src-loc) :spill))
+            (arm64:ldr :x0 :sp :offset (spill-offset (cadr src-loc))))
+          ;; Extract tag and compare to keyword tag
+          (arm64:and* dest-reg src-reg +tag-mask+ :imm t)
+          (arm64:cmp dest-reg +tag-keyword+ :imm t)
+          (arm64:cset dest-reg arm64:+eq+)
+          ;; Convert to tagged boolean
+          (arm64:neg dest-reg dest-reg)
+          (arm64:and* dest-reg dest-reg +t-value+ :imm t)
+          ;; Store if spilled
+          (when (and (consp dest) (eq (car dest) :spill))
+            (arm64:str :x0 :sp :offset (spill-offset (cadr dest)))))))
 
       ;; Default
       (t (error "tac-codegen-instr: Unhandled TAC instruction: ~A" op)))))

@@ -845,31 +845,36 @@
     (t (error "ir-may-call: unknown IR type ~S" (if (consp ir) (car ir) ir)))))
 
 ;;; ============================================================
-;;; String Lookup in Fnoffs (lambda names are strings)
+;;; Name Normalization - Phase Boundary Conversion
+;;; ============================================================
+;;;
+;;; Function names transition from symbols (reader/compiler) to strings
+;;; (codegen/linker). Normalize at the boundary, then use strings throughout.
+
+(defun normalize-fn-name (name)
+  "Normalize a function name to string at phase boundary.
+   CONTRACT: After normalization, all fnoffs entries are strings."
+  (etypecase name
+    (string name)
+    (symbol (symbol-name name))))
+
+;;; ============================================================
+;;; String Lookup in Fnoffs (all names are strings after normalization)
 ;;; ============================================================
 
 (defun lookup-string (name fnoffs)
-  "Look up a string name in fnoffs alist.
-   fnoffs entries can have either symbol or string keys.
-   Returns (name . offset) or nil if not found."
-  (labels ((str-match (s1 s2)
-             ;; Compare two strings (or string to symbol name)
-             (cond
-               ((and (stringp s1) (stringp s2))
-                (string-equal s1 s2))
-               ((and (stringp s1) (symbolp s2))
-                (string-equal s1 (symbol-name s2)))
-               ((and (symbolp s1) (stringp s2))
-                (string-equal (symbol-name s1) s2))
-               (t (eq s1 s2))))
-           (search-list (lst)
-             (if (null lst)
-                 nil
-                 (let ((entry (car lst)))
-                   (if (str-match name (car entry))
-                       entry
-                       (search-list (cdr lst)))))))
-    (search-list fnoffs)))
+  "Look up a name in fnoffs alist.
+   fnoffs entries are normalized to strings at creation.
+   NAME can be symbol or string (will be normalized for lookup)."
+  (let ((name-str (normalize-fn-name name)))
+    (labels ((search-list (lst)
+               (if (null lst)
+                   nil
+                   (let ((entry (car lst)))
+                     (if (string-equal name-str (car entry))
+                         entry
+                         (search-list (cdr lst)))))))
+      (search-list fnoffs))))
 
 ;;; ============================================================
 ;;; Build Captures for Closure Creation
@@ -1614,12 +1619,14 @@
 
       (load-sym
        ;; Call intern at runtime to get the interned symbol
+       ;; CONTRACT: name is always a STRING (produced by compiler's sym-lit)
        (let* ((dst (cadr instr))
               (name (caddr instr))
-              (name-str (symbol-name name))
-              (len (length name-str))
+              (len (length name))
               (total-size (logand (+ len 8 15) (lognot 15))))
-         (append (gen-string-lit name-str len total-size)
+         (unless (stringp name)
+           (error "load-sym: expected string name, got ~S" name))
+         (append (gen-string-lit name len total-size)
                  ;; String is now in x0, call intern with it
                  (list (list :call-fn 'INTERN))
                  ;; Result (interned symbol) is in x0
@@ -2999,15 +3006,16 @@
 ;;; Old fnoffs builder (SBCL only - uses code-size)
 #+sbcl
 (defun build-fnoffs-pass (fns offset fnoffs acc)
-  "Build function offset table: ((name . byte-offset) ...)
+  "Build function offset table: ((name-string . byte-offset) ...)
+   Names are normalized to strings at this boundary.
    Uses fnoffs for accurate size calculation (may be nil for first pass)."
   (if (null fns)
       (reverse acc)
       (let* ((fn (car fns))
-             (name (car fn))
+             (name-str (normalize-fn-name (car fn)))  ; Normalize at creation
              (code (codegen-fn fn nil fnoffs))
              (size (code-size code))
-             (entry (cons name offset)))
+             (entry (cons name-str offset)))
         (build-fnoffs-pass (cdr fns) (+ offset size) fnoffs (cons entry acc)))))
 
 #+sbcl
@@ -3327,12 +3335,11 @@
       ;; Main entry
       (format f "0x~8,'0X _main~%" (+ code-offset wrapper-size))
       (format f "0x~8,'0X _main_end~%" (+ code-offset wrapper-size main-size))
-      ;; Functions from fnoffs
+      ;; Functions from fnoffs (names are already strings)
       (dolist (entry fnoffs)
-        (let* ((name (car entry))
+        (let* ((name-str (car entry))  ; Already normalized
                (offset (cdr entry))
-               (abs-offset (+ code-offset wrapper-size offset))
-               (name-str (if (symbolp name) (symbol-name name) name)))
+               (abs-offset (+ code-offset wrapper-size offset)))
           (format f "0x~8,'0X ~A~%" abs-offset name-str)))
       ;; Import stubs
       (let ((stub-off stubs-offset))
@@ -3354,10 +3361,12 @@
      - u64 offset (relative to wrapper end = user code start)
      - u64 name_len
      - name bytes (null-terminated, padded to 8)
-   The table includes _main at offset 0."
+   The table includes _main at offset 0.
+   fnoffs names are already normalized to strings."
+  (declare (ignore main-size))
   (let* ((sorted-entries (sort (copy-list fnoffs) #'< :key #'cdr))
-         ;; Add _main entry at the beginning
-         (all-entries (cons (cons 'main 0) sorted-entries))
+         ;; Add _main entry at the beginning (use string, not symbol)
+         (all-entries (cons (cons "MAIN" 0) sorted-entries))
          (count (length all-entries)))
     (labels ((u64-bytes (val)
                (list (logand val #xFF)
@@ -3368,30 +3377,29 @@
                      (logand (ash val -40) #xFF)
                      (logand (ash val -48) #xFF)
                      (logand (ash val -56) #xFF)))
-             (name-bytes (name)
-               (let* ((name-str (if (symbolp name) (symbol-name name) (string name)))
-                      (chars (loop for c across name-str collect (char-code c)))
+             (name-bytes (name-str)
+               ;; name-str is already a string
+               (let* ((chars (loop for c across name-str collect (char-code c)))
                       (len (length chars))
                       (padded-len (* (ceiling (+ len 1) 8) 8)))  ; +1 for null, pad to 8
                  (append chars
                          (make-list (- padded-len len) :initial-element 0))))
              (emit-entry (entry)
-               (let* ((name (car entry))
-                      (offset (cdr entry))
-                      (name-str (if (symbolp name) (symbol-name name) (string name))))
+               (let* ((name-str (car entry))  ; Already normalized
+                      (offset (cdr entry)))
                  (append (u64-bytes offset)
                          (u64-bytes (length name-str))
-                         (name-bytes name)))))
+                         (name-bytes name-str)))))
       (append (u64-bytes count)
               (apply #'append (mapcar #'emit-entry all-entries))))))
 
 #+sbcl
 (defun symbol-table-size (fnoffs)
-  "Calculate the size of the embedded symbol table in bytes."
+  "Calculate the size of the embedded symbol table in bytes.
+   fnoffs names are already normalized to strings."
   (let ((count (1+ (length fnoffs))))  ; +1 for _main
     (labels ((entry-size (entry)
-               (let* ((name (car entry))
-                      (name-str (if (symbolp name) (symbol-name name) (string name)))
+               (let* ((name-str (car entry))  ; Already normalized
                       (len (length name-str))
                       (padded-len (* (ceiling (+ len 1) 8) 8)))
                  (+ 8 8 padded-len))))  ; offset + name_len + padded_name
@@ -3686,12 +3694,11 @@
     (collect code nil)))
 
 (defun alist-lookup (key alist)
-  "Look up key in alist, return value or nil"
+  "Look up key in alist, return value or nil.
+   Keys are strings (fnoffs/stub names are normalized)."
   (if (null alist)
       nil
-      (if (if (symbolp key)
-              (eq key (caar alist))
-              (equal key (caar alist)))
+      (if (string-equal key (caar alist))
           (cdar alist)
           (alist-lookup key (cdr alist)))))
 
