@@ -402,14 +402,18 @@
   (let ((result nil)
         (sorted-fnoffs (sort (copy-list fnoffs) #'< :key #'cdr)))
     ;; Calculate sizes from consecutive offsets
+    ;; fnoffs names are now strings (normalized in codegen.lisp)
     (loop for (fn-entry . rest) on sorted-fnoffs do
-      (let* ((name (car fn-entry))
+      (let* ((name-str (car fn-entry))  ; Already a string
              (offset (cdr fn-entry))
              (next-offset (if rest (cdar rest) (+ offset 100))) ; default size
              (size (- next-offset offset))
-             (name-str (if (symbolp name) (symbol-name name) (format nil "~A" name)))
-             ;; Look up source location
-             (loc-entry (assoc name fn-locations))
+             ;; Look up source location - fn-locations uses symbol keys
+             ;; so we need to find by string match
+             (loc-entry (find-if (lambda (e)
+                                   (and (symbolp (car e))
+                                        (string= name-str (symbol-name (car e)))))
+                                 fn-locations))
              (line (if (and loc-entry (cdr loc-entry))
                        (srcloc-line (cdr loc-entry))
                        1)))

@@ -674,11 +674,11 @@
 ;;; ============================================================
 
 (defun local-symbol-name (name)
-  "Convert function name to symbol name (add _ prefix if needed)"
-  (let ((str (if (symbolp name) (symbol-name name) name)))
-    (if (char= (char str 0) #\_)
-        str
-        (concatenate 'string "_" str))))
+  "Convert function name to Mach-O symbol name (add _ prefix if needed).
+   NAME is a string (fnoffs names are normalized in codegen.lisp)."
+  (if (char= (char name 0) #\_)
+      name
+      (concatenate 'string "_" name)))
 
 (defun build-string-table-with-locals (local-fns imports)
   "Build string table with local function names, _main, and imports.
