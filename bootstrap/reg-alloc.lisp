@@ -3708,6 +3708,11 @@
             (arm64:str :x0 :sp :offset (spill-offset (cadr dest)))))))
 
       ;; tac-consp: check if cons cell (tag=0, value!=nil)
+      ;; Type contract: (tagged-value) -> tagged-boolean
+      ;; Input: any tagged Habu value (in src-vreg)
+      ;; Output: nil (0) if not cons, t (3) if cons (in dest-vreg)
+      ;;
+      ;; Hybrid tagging: cons has low nibble = 0, non-nil
       ((:tac-consp)
        (let* ((dest-vreg (cadr instr))
               (src-vreg (caddr instr))
@@ -3719,16 +3724,17 @@
           ;; Load src if spilled
           (when (and (consp src-loc) (eq (car src-loc) :spill))
             (arm64:ldr :x0 :sp :offset (spill-offset (cadr src-loc))))
-          ;; Check nil first - if nil, result is 0 (nil)
+          ;; Assume false (nil=0)
+          (arm64:movz dest-reg 0)
+          ;; Check nil first - if nil, skip to convert (dest already 0)
           (arm64:cmp src-reg +nil-value+ :imm t)
-          (arm64:b.eq 3)  ; if nil, skip to set false (+3 instructions)
-          ;; Not nil, check tag is 0 (cons)
-          (arm64:and* dest-reg src-reg +tag-mask+ :imm t)
-          (arm64:cmp dest-reg +tag-cons+ :imm t)
-          (arm64:cset dest-reg arm64:+eq+)  ; 1 if cons, 0 otherwise
-          (arm64:b 1)  ; skip false case
-          (arm64:movz dest-reg 0)  ; false case for nil input
-          ;; Convert 0/1 to 0/3
+          (arm64:b.eq 4)  ; if nil, skip to convert (+4 instrs to neg)
+          ;; Not nil, check if low nibble == 0 (cons tag)
+          (arm64:and* :x9 src-reg +tag-mask+ :imm t)
+          (arm64:cbnz :x9 2)  ; if tag != 0, skip to convert (+2 instrs to neg)
+          ;; It's a cons! Set dest to 1
+          (arm64:movz dest-reg 1)
+          ;; Convert 0/1 to nil(0)/t(3)
           (arm64:neg dest-reg dest-reg)
           (arm64:and* dest-reg dest-reg +t-value+ :imm t)
           ;; Store if spilled

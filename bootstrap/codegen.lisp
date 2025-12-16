@@ -1927,19 +1927,28 @@
 
       ;; Type predicates
       (consp
+       ;; Type contract: (tagged-value) -> tagged-boolean
+       ;; Input: any tagged Habu value
+       ;; Output: nil (0) if not cons, t (3) if cons
+       ;;
        ;; Test if value is cons: tag == 0 AND value != 0 (not nil)
        ;; Hybrid scheme: cons tag is 0, same as nil's tag bits, so must check non-zero
        (let ((dst (cadr instr))
              (src (caddr instr)))
          (append (linear-load-temp :x0 src)
-                 (arm64:cmp :x0 #.+nil-value+ :imm t) ; check if nil
-                 (arm64:b.eq 3)                    ; if nil, skip to set false (+3)
-                 (arm64:and* :x0 :x0 #.+tag-mask+ :imm t) ; extract tag
-                 (arm64:cmp :x0 #.+tag-cons+ :imm t) ; compare to cons tag (0)
-                 (arm64:cset :x0 arm64:+eq+)
-                 (arm64:b 1)                       ; skip false-path (+1)
-                 (arm64:movz :x0 0)                ; false: set 0
-                 (gen-bool-to-tagged)
+                 ;; Assume false first
+                 (arm64:movz :x9 0)
+                 ;; Check nil - if nil, skip to convert (x9=0)
+                 (arm64:cmp :x0 #.+nil-value+ :imm t)
+                 (arm64:b.eq 4)                    ; if nil, skip to convert (+4 instrs to neg)
+                 ;; Not nil, check if low nibble == 0 (cons tag)
+                 (arm64:and* :x10 :x0 #.+tag-mask+ :imm t)
+                 (arm64:cbnz :x10 2)               ; if tag != 0, skip to convert (+2 instrs to neg)
+                 ;; It's a cons! Set x9 to 1
+                 (arm64:movz :x9 1)
+                 ;; Convert x9 (0/1) to nil(0)/t(3)
+                 (arm64:neg :x0 :x9)
+                 (arm64:and* :x0 :x0 #.+t-value+ :imm t)
                  (linear-save-temp dst))))
 
       (numberp

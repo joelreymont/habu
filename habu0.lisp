@@ -317,19 +317,19 @@
 (defconstant +hash-table-size+ 256)  ; Number of buckets (power of 2 for fast modulo)
 
 ;; DJB2 hash function for strings
-;; Returns hash value as fixnum
+;; Returns hash value as fixnum - iterative to avoid stack overflow
 (defun string-hash (s)
   (if (null s)
       (error "string-hash: received nil")
-      (string-hash-loop s (string-length s) 0 5381)))
-
-(defun string-hash-loop (s len i hash)
-  (if (>= i len)
-      hash
-      (let ((c (string-ref s i)))
-        ;; hash = hash * 33 + c = (hash << 5) + hash + c
-        (string-hash-loop s len (+ i 1)
-                          (+ (ash hash 5) hash c)))))
+      (let ((len (string-length s))
+            (i 0)
+            (hash 5381))
+        (while (< i len)
+          (let ((c (string-ref s i)))
+            ;; hash = hash * 33 + c = (hash << 5) + hash + c
+            (setq hash (+ (ash hash 5) hash c)))
+          (setq i (+ i 1)))
+        hash)))
 
 ;; Create empty hash table (vector of nil buckets)
 ;; Note: make-vector doesn't initialize elements, so we must fill with nil
@@ -338,13 +338,12 @@
     (fill-vector-nil table 0 +hash-table-size+)
     table))
 
-;; Fill vector elements with nil from index start to end
-(defun fill-vector-nil (vec i end)
-  (if (>= i end)
-      nil
-      (progn
-        (vector-set vec i nil)
-        (fill-vector-nil vec (+ i 1) end))))
+;; Fill vector elements with nil from index start to end - iterative
+(defun fill-vector-nil (vec start end)
+  (let ((i start))
+    (while (< i end)
+      (vector-set vec i nil)
+      (setq i (+ i 1)))))
 
 ;; Get bucket index for string key
 (defun hash-bucket-index (key)
@@ -516,48 +515,44 @@
 
 ;; String upcase helper - converts lowercase to uppercase
 (defun string-upcase (s)
+  "Convert string to uppercase. Uses iterative loop to avoid stack overflow."
   (if (null s)
       (error "string-upcase: received nil")
       (let* ((len (string-length s))
-             (vec (make-vector len)))
-        (string-upcase-loop s vec len #x0)
+             (vec (make-vector len))
+             (i 0))
+        (while (< i len)
+          (vector-set vec i (h0-char-upcase (string-ref s i)))
+          (setq i (+ i 1)))
         (make-string-from-vector vec))))
-
-(defun string-upcase-loop (src dst len i)
-  (if (>= i len)
-      dst
-      (progn
-        (vector-set dst i (h0-char-upcase (string-ref src i)))
-        (string-upcase-loop src dst len (+ i #x1)))))
 
 ;;; ============================================================
 ;;; String utilities for package system
 ;;; ============================================================
 
 ;; Find position of first colon in string, or nil if none
+;; Uses iterative loop to avoid stack overflow during startup
 (defun find-colon (str)
-  (find-colon-loop str 0 (string-length str)))
-
-(defun find-colon-loop (str i len)
-  (if (>= i len)
-      nil
+  (let ((len (string-length str))
+        (i 0)
+        (result nil)
+        (done nil))
+    (while (and (not done) (< i len))
       (if (= (string-ref str i) #x3A)  ; colon
-          i
-          (find-colon-loop str (+ i 1) len))))
+          (progn (setq result i) (setq done t))
+          (setq i (+ i 1))))
+    result))
 
 ;; Extract substring from start to end (exclusive)
+;; Uses iterative loop to avoid stack overflow
 (defun substring (str start end)
   (let* ((len (- end start))
-         (vec (make-vector len)))
-    (substring-copy str vec start 0 len)
+         (vec (make-vector len))
+         (i 0))
+    (while (< i len)
+      (vector-set vec i (string-ref str (+ start i)))
+      (setq i (+ i 1)))
     (make-string-from-vector vec)))
-
-(defun substring-copy (src dst start i len)
-  (if (>= i len)
-      dst
-      (progn
-        (vector-set dst i (string-ref src (+ start i)))
-        (substring-copy src dst start (+ i 1) len))))
 
 ;; Concatenate two strings
 (defun string-concat (s1 s2)
@@ -568,28 +563,26 @@
     (string-copy-to-vec s2 vec len1 len2)
     (make-string-from-vector vec)))
 
+;; Copy string to vector at offset - iterative
 (defun string-copy-to-vec (src dst start len)
-  (string-copy-to-vec-loop src dst start 0 len))
-
-(defun string-copy-to-vec-loop (src dst start i len)
-  (if (>= i len)
-      dst
-      (progn
-        (vector-set dst (+ start i) (string-ref src i))
-        (string-copy-to-vec-loop src dst start (+ i 1) len))))
+  (let ((i 0))
+    (while (< i len)
+      (vector-set dst (+ start i) (string-ref src i))
+      (setq i (+ i 1)))
+    dst))
 
 ;; Concatenate three strings
 (defun string-concat3 (s1 s2 s3)
   (string-concat (string-concat s1 s2) s3))
 
-;; Create a list of n nil values
+;; Create a list of n nil values - iterative
 (defun make-list (n)
-  (make-list-loop n nil))
-
-(defun make-list-loop (n acc)
-  (if (<= n 0)
-      acc
-      (make-list-loop (- n 1) (cons nil acc))))
+  (let ((acc nil)
+        (i n))
+    (while (> i 0)
+      (setq acc (cons nil acc))
+      (setq i (- i 1)))
+    acc))
 
 ;; Standard list utility functions (needed by register allocator)
 (defun equal (a b)
@@ -824,36 +817,37 @@
 (defun read-hex (source pos)
   (read-hex-digits source pos #x0))
 
+;; Skip symbol characters - iterative
 (defun skip-symbol (source pos)
-  (let ((ch (char-at source pos)))
-    (if (symbol-char? ch)
-        (skip-symbol source (+ pos #x1))
-        pos)))
+  (let ((p pos))
+    (while (symbol-char? (char-at source p))
+      (setq p (+ p 1)))
+    p))
 
-;; String equality check
-;; String comparison helper - no labels
-(defun string=-loop (s1 s2 len i)
-  (if (>= i len)
-      t
-      (if (= (string-ref s1 i) (string-ref s2 i))
-          (string=-loop s1 s2 len (+ i 1))
-          nil)))
-
+;; String equality check - iterative
 (defun string= (s1 s2)
   (let ((len1 (string-length s1))
         (len2 (string-length s2)))
     (if (= len1 len2)
-        (string=-loop s1 s2 len1 0)
+        (let ((i 0)
+              (result t))
+          (while (and result (< i len1))
+            (if (= (string-ref s1 i) (string-ref s2 i))
+                (setq i (+ i 1))
+                (setq result nil)))
+          result)
         nil)))
 
-;; Case-insensitive string comparison
-(defun string-equal-loop (s1 s2 len i)
-  (if (>= i len)
-      t
+;; Case-insensitive string comparison - iterative
+(defun string-equal-iter (s1 s2 len)
+  (let ((i 0)
+        (result t))
+    (while (and result (< i len))
       (if (= (h0-char-upcase (string-ref s1 i))
              (h0-char-upcase (string-ref s2 i)))
-          (string-equal-loop s1 s2 len (+ i 1))
-          nil)))
+          (setq i (+ i 1))
+          (setq result nil)))
+    result))
 
 (defun string-equal (s1 s2)
   ;; CRASH GUARD: Catch all uses of string-equal for symbol comparison.
@@ -1057,132 +1051,149 @@
                (end (cdr r)))
           (cons (chars-to-string chars) end)))))
 
-;; Main reader with labels for mutual recursion
+;; Reader functions as top-level defuns to enable TCO for self-recursive calls.
+;; Previously used labels, but labels transforms recursive calls to funcall through FNTAB,
+;; which prevents TCO from recognizing self-tail-calls.
+
+(defun hr-read-list-elems (source p)
+  "Read list elements until ) or EOF. Returns (elements . new-pos)."
+  (let* ((p2 (skip-ws source p))
+         (ch (char-at source p2)))
+    (cond
+      ((= ch #x29) (cons nil (+ p2 #x1)))  ; ) - end of list
+      ((= ch #x2E)                          ; . - dotted pair
+       (let* ((r (hr-read-one source (+ p2 #x1)))
+              (cdr-val (car r))
+              (p3 (cdr r))
+              (p4 (skip-ws source p3)))
+         (cons cdr-val (+ p4 #x1))))
+      ((= ch #x0) (cons nil p2))            ; EOF
+      (t (let* ((er (hr-read-one source p2))
+                (el (car er))
+                (p3 (cdr er))
+                (rr (hr-read-list-elems source p3))  ; TCO: self-tail-call
+                (rest-list (car rr))
+                (rest-pos (cdr rr)))
+           (cons (cons el rest-list) rest-pos))))))
+
+(defun hr-read-list (source p)
+  "Read a list starting at (. Returns (list . new-pos)."
+  (hr-read-list-elems source (+ p #x1)))
+
+(defun hr-read-sharp (source p)
+  "Read # syntax. Returns (value . new-pos)."
+  (let ((ch (char-at source (+ p #x1))))
+    (cond
+      ((or (= ch #x78) (= ch #x58)) (read-hex source (+ p #x2)))  ; #x or #X
+      ((= ch #x27)                                                 ; #'
+       (let* ((r (hr-read-one source (+ p #x2)))
+              (val (car r))
+              (pos (cdr r)))
+         (cons (list 'function val) pos)))
+      ;; #+ reader conditional - include if feature present
+      ((= ch #x2B)
+       (let* ((p2 (+ p #x2))
+              (feat-result (read-feature-name source p2))
+              (feat-name (car feat-result))
+              (p3 (cdr feat-result))
+              (form-result (hr-read-one source p3))
+              (form (car form-result))
+              (p4 (cdr form-result)))
+         (if (has-feature? feat-name)
+             (cons form p4)
+             (hr-read-one source p4))))  ; TCO: tail-call to read-one
+      ;; #- reader conditional - include if feature NOT present
+      ((= ch #x2D)
+       (let* ((p2 (+ p #x2))
+              (feat-result (read-feature-name source p2))
+              (feat-name (car feat-result))
+              (p3 (cdr feat-result))
+              (form-result (hr-read-one source p3))
+              (form (car form-result))
+              (p4 (cdr form-result)))
+         (if (has-feature? feat-name)
+             (hr-read-one source p4)  ; TCO: tail-call to read-one
+             (cons form p4))))
+      (t (fatal-error "read-sharp: unknown # syntax")))))
+
+(defun hr-read-one (source p)
+  "Read one form from source at position p. Returns (form . new-pos)."
+  (let* ((p2 (skip-ws source p))
+         (ch (char-at source p2)))
+    (if (>= p2 (string-length source))
+        (cons nil p2)
+        (case ch
+          (#x28 (hr-read-list source p2))                    ; (
+          (#x27 (let* ((r (hr-read-one source (+ p2 #x1)))   ; '
+                       (val (car r))
+                       (pos (cdr r)))
+                  (cons (list *op-quote* val) pos)))
+          (#x22 (read-str source p2))                        ; "
+          (#x23 (hr-read-sharp source p2))                   ; #
+          (#x29 (cons nil (+ p2 #x1)))                       ; )
+          (#x2D (if (digit? (char-at source (+ p2 #x1)))     ; -
+                    (read-int source p2)
+                    (read-sym source p2)))
+          (#x2B (if (digit? (char-at source (+ p2 #x1)))     ; +
+                    (read-int source p2)
+                    (read-sym source p2)))
+          (#x3A (read-keyword source (+ p2 #x1)))            ; :
+          (otherwise                                          ; default
+           (if (digit? ch)
+               (read-int source p2)
+               (if (symbol-char? ch)
+                   (read-sym source p2)
+                   (hr-read-one source (+ p2 #x1)))))))))  ; TCO: tail-call
+
+;; Main entry point - just calls the top-level reader function
 (defun habu-read (source pos)
-  (labels
-      ((read-list-elems (p)
-         (let* ((p2 (skip-ws source p))
-                (ch (char-at source p2)))
-           (cond
-             ((= ch #x29) (cons nil (+ p2 #x1)))
-             ((= ch #x2E)
-              (let* ((r (read-one (+ p2 #x1)))
-                     (cdr-val (car r))
-                     (p3 (cdr r))
-                     (p4 (skip-ws source p3)))
-                (cons cdr-val (+ p4 #x1))))
-             ((= ch #x0) (cons nil p2))
-             (t (let* ((er (read-one p2))
-                       (el (car er))
-                       (p3 (cdr er))
-                       (rr (read-list-elems p3))
-                       (rest-list (car rr))
-                       (rest-pos (cdr rr))
-                       (new-list (cons el rest-list)))
-                  (cons new-list rest-pos))))))
-       (read-list (p) (read-list-elems (+ p #x1)))
-       (read-sharp (p)
-         (let ((ch (char-at source (+ p #x1))))
-           (cond
-             ((or (= ch #x78) (= ch #x58)) (read-hex source (+ p #x2)))
-             ((= ch #x27)
-              (let* ((r (read-one (+ p #x2)))
-                     (val (car r))
-                     (pos (cdr r))
-                     (result (list 'function val)))
-                (cons result pos)))
-             ;; #+ reader conditional - include if feature present
-             ((= ch #x2B)
-              (let* ((p2 (+ p #x2))                    ; position after #+
-                     (feat-result (read-feature-name source p2))
-                     (feat-name (car feat-result))     ; feature name as string
-                     (p3 (cdr feat-result))            ; position after feature name
-                     (form-result (read-one p3))       ; read the conditional form
-                     (form (car form-result))          ; the form itself
-                     (p4 (cdr form-result)))           ; position after form
-                (if (has-feature? feat-name)
-                    (cons form p4)                     ; feature present: return form
-                    (read-one p4))))                   ; feature absent: skip form, read next
-             ;; #- reader conditional - include if feature NOT present
-             ((= ch #x2D)
-              (let* ((p2 (+ p #x2))                    ; position after #-
-                     (feat-result (read-feature-name source p2))
-                     (feat-name (car feat-result))     ; feature name as string
-                     (p3 (cdr feat-result))            ; position after feature name
-                     (form-result (read-one p3))       ; read the conditional form
-                     (form (car form-result))          ; the form itself
-                     (p4 (cdr form-result)))           ; position after form
-                (if (has-feature? feat-name)
-                    (read-one p4)                      ; feature present: skip form, read next
-                    (cons form p4))))                  ; feature absent: return form
-             (t (fatal-error "read-sharp: unknown # syntax")))))
-       (read-one (p)
-         (let* ((p2 (skip-ws source p))
-                (ch (char-at source p2)))
-           (if (>= p2 (string-length source))
-               (cons nil p2)
-               (match ch
-                 (#x28 (read-list p2))                           ; (
-                 (#x27 (let* ((r (read-one (+ p2 #x1)))          ; '
-                              (val (car r))
-                              (pos (cdr r)))
-                         (cons (list *op-quote* val) pos)))
-                 (#x22 (read-str source p2))                     ; "
-                 (#x23 (read-sharp p2))                          ; #
-                 (#x29 (cons nil (+ p2 #x1)))                    ; )
-                 (#x2D (if (digit? (char-at source (+ p2 #x1)))  ; - followed by digit
-                           (read-int source p2)
-                           (read-sym source p2)))
-                 (#x2B (if (digit? (char-at source (+ p2 #x1)))  ; + followed by digit
-                           (read-int source p2)
-                           (read-sym source p2)))
-                 (#x3A (read-keyword source (+ p2 #x1)))         ; : keyword
-                 (_                                              ; default
-                  (if (digit? ch)
-                      (read-int source p2)
-                      (if (symbol-char? ch)
-                          (read-sym source p2)
-                          (read-one (+ p2 #x1))))))))))
-    (read-one pos)))
+  (hr-read-one source pos))
 
-;; Reverse a list
-(defun reverse-acc (lst acc)
-  (if (null lst)
-      acc
-      (reverse-acc (cdr lst) (cons (car lst) acc))))
-
+;; Reverse a list - iterative
 (defun reverse (lst)
-  (reverse-acc lst nil))
+  (let ((l lst)
+        (acc nil))
+    (while l
+      (setq acc (cons (car l) acc))
+      (setq l (cdr l)))
+    acc))
 
-;; revappend - same as reverse-acc but CL-standard name
+;; revappend - iterative
 (defun revappend (lst tail)
-  (if (null lst)
-      tail
-      (revappend (cdr lst) (cons (car lst) tail))))
+  (let ((l lst)
+        (acc tail))
+    (while l
+      (setq acc (cons (car l) acc))
+      (setq l (cdr l)))
+    acc))
 
-;; append - copy list1 and attach list2 at end
+;; append - iterative using reverse
 (defun append (list1 list2)
   (if (null list1)
       list2
-      (cons (car list1) (append (cdr list1) list2))))
+      (revappend (reverse list1) list2)))
 
-;; length - count elements in list
+;; length - count elements in list - iterative
 (defun length (lst)
-  (if (null lst)
-      0
-      (+ 1 (length (cdr lst)))))
+  (let ((l lst)
+        (n 0))
+    (while l
+      (setq n (+ n 1))
+      (setq l (cdr l)))
+    n))
 
-;; Helper for read-all - avoids labels which has codegen issues
-(defun read-all-loop (source len pos acc)
-  (let ((p2 (skip-ws source pos)))
-    (if (>= p2 len)
-        (reverse acc)
-        (let ((r (habu-read source p2)))
-          (read-all-loop source len (cdr r) (cons (car r) acc))))))
-
+;; Read all forms from source - iterative
 (defun read-all (source)
-  (let ((len (string-length source)))
-    (read-all-loop source len #x0 nil)))
+  (let ((len (string-length source))
+        (pos 0)
+        (acc nil))
+    (while (< pos len)
+      (setq pos (skip-ws source pos))
+      (if (< pos len)
+          (let ((r (habu-read source pos)))
+            (setq acc (cons (car r) acc))
+            (setq pos (cdr r)))))
+    (reverse acc)))
 
 (defun h0-read-from-string (s)
   (car (habu-read s 0)))
@@ -1542,7 +1553,7 @@
     ((symbolp e)
      ;; If this var is boxed, transform to (car var) - use interned symbol
      (if (h0-member-eq e boxed)
-         (list (intern "CAR") e)
+         (list *op-car* e)
          e))
     ((not (consp e)) e)
     ((h0-sym-named (car e) "QUOTE") e)
@@ -1550,9 +1561,8 @@
      (let ((var (cadr e))
            (val (caddr e)))
        (if (h0-member-eq var boxed)
-           ;; Transform to (setcar var val) - use interned symbol for runtime match
-           (list (intern "SETCAR") var (h0-box-transform val boxed))
-           (list (intern "SETQ") var (h0-box-transform val boxed)))))
+           (list *op-setcar* var (h0-box-transform val boxed))
+           (list *op-setq* var (h0-box-transform val boxed)))))
     ((h0-sym-named (car e) "LAMBDA")
      (let* ((params (cadr e))
             (body-forms (cddr e))
@@ -1560,7 +1570,7 @@
             (new-boxed (h0-remove-if-member boxed params))
             ;; Transform each body form and return lambda with all of them
             (transformed-forms (h0-box-transform-list body-forms new-boxed)))
-       (cons (intern "LAMBDA") (cons params transformed-forms))))
+       (cons *op-lambda* (cons params transformed-forms))))
     ((or (h0-sym-named (car e) "LET") (h0-sym-named (car e) "LET*"))
      (if (h0-sym-named (car e) "LET")
          (h0-box-transform-let e boxed)
@@ -1586,7 +1596,7 @@
          (new-boxed (h0-append to-box (h0-remove-if-member boxed names)))
          ;; Transform each body form
          (transformed-forms (h0-box-transform-list body-forms new-boxed)))
-    (cons (intern "LET") (cons new-bindings transformed-forms))))
+    (cons *op-let* (cons new-bindings transformed-forms))))
 
 (defun h0-box-bindings (bindings boxed to-box)
   (if (null bindings) nil
@@ -1594,8 +1604,7 @@
              (nm (car b))
              (vl (h0-box-transform (cadr b) boxed))
              (new-val (if (h0-member-eq nm to-box)
-                          ;; Box: (cons val nil) - use interned symbol
-                          (list (intern "CONS") vl nil)
+                          (list *op-cons* vl nil)
                           vl)))
         (cons (list nm new-val)
               (h0-box-bindings (cdr bindings) boxed to-box)))))
@@ -1612,21 +1621,18 @@
 
 (defun h0-box-let*-bindings (bindings body-forms boxed to-box)
   (if (null bindings)
-      ;; No more bindings - transform body forms and return let* with them
-      (cons (intern "LET*") (cons nil (h0-box-transform-list body-forms boxed)))
+      (cons *op-let-star* (cons nil (h0-box-transform-list body-forms boxed)))
       (let* ((b (car bindings))
              (nm (car b))
              (vl (h0-box-transform (cadr b) boxed))
              (is-boxed (h0-member-eq nm to-box))
-             ;; Box: (cons val nil) - use interned symbol
-             (new-val (if is-boxed (list (intern "CONS") vl nil) vl))
+             (new-val (if is-boxed (list *op-cons* vl nil) vl))
              (new-binding (list nm new-val))
              (new-boxed (if is-boxed
                             (cons nm boxed)
                             (h0-remove-if-member boxed (list nm))))
              (rest (h0-box-let*-bindings (cdr bindings) body-forms new-boxed to-box)))
-        ;; Reconstruct let* with transformed bindings - use interned symbol
-        (cons (intern "LET*") (cons (cons new-binding (cadr rest)) (cddr rest))))))
+        (cons *op-let-star* (cons (cons new-binding (cadr rest)) (cddr rest))))))
 
 ;; Look up by symbol in environment using sym-eq
 ;; Flat list format: (sym1 val1 sym2 val2 ...)
@@ -2193,30 +2199,22 @@
          ;; ARM64 - utility (IDs 50+)
          (cons (intern "REG") 50))))
 
-;; Lookup dispatch ID in table
-;; Uses eq first for O(1) when symbols are from the same intern table,
-;; falls back to string comparison when symbols are from different intern tables.
+;; Lookup dispatch ID in table - NO FALLBACK
+;; Uses eq comparison only. If symbol not found, crashes with error.
+;; Fallbacks mask bugs - if symbols don't match by eq, fix the root cause.
 (defun find-builtin-id (name table)
   (let ((result (find-builtin-id-eq name table)))
     (if result
         result
-        (find-builtin-id-by-name (symbol-name name) table))))
+        (fatal-error "find-builtin-id: unknown function - symbol mismatch"))))
 
-;; Fast path: eq comparison for same-intern-table symbols
+;; eq comparison for same-intern-table symbols
 (defun find-builtin-id-eq (name table)
   (if (null table)
       nil
       (if (eq name (caar table))
           (cdar table)
           (find-builtin-id-eq name (cdr table)))))
-
-;; Fallback: string comparison for cross-intern-table symbols
-(defun find-builtin-id-by-name (name-str table)
-  (if (null table)
-      nil
-      (if (c-names-match name-str (symbol-name (caar table)))
-          (cdar table)
-          (find-builtin-id-by-name name-str (cdr table)))))
 
 ;;; ============================================================
 ;;; Keyword Normalization for SBCL/habu0 Boundary
@@ -2308,7 +2306,7 @@
          (id (find-builtin-id name *builtin-dispatch*)))
     (if (null id)
         (fatal-error "h0-eval-builtin: unknown builtin")
-        (match id
+        (case id
           ;; Compiler functions - front end
           (1 (h0-compile (car args) (cadr args) (caddr args)))
           (2 (lift-lambdas (car args)))
@@ -2358,7 +2356,7 @@
           (48 (fenv-call-arm64 'nop nargs fenv))
           ;; ARM64 - utility (use nargs with habu0-reg for eq comparison)
           (50 (habu0-reg (car nargs)))
-          (_ (fatal-error "h0-eval-builtin: unhandled dispatch ID"))))))
+          (otherwise (fatal-error "h0-eval-builtin: unhandled dispatch ID"))))))
 
 ;; Eval a list of expressions
 (defun h0-eval-list (exprs env fenv)
@@ -2531,27 +2529,15 @@
      (list ,@(loop for entry in entries
                    collect `(cons (intern ,(car entry)) ,(cadr entry))))))
 
-;;; Look up operator dispatch ID from symbol
+;;; Look up operator dispatch ID from symbol - NO FALLBACK
 ;;; Returns dispatch ID (integer) or nil if not a special form
-;;; Uses eq first for O(1) when symbols are properly interned,
-;;; falls back to string comparison when symbols are from different intern tables.
+;;; Uses eq comparison only. No string fallbacks - they mask bugs.
 (defun op-lookup (sym)
   "Look up dispatch ID for operator symbol. Returns nil for function calls."
   (let ((entry (assoc sym *op-dispatch-table* :test #'eq)))
     (if entry
         (cdr entry)
-        ;; Fallback: string comparison for cross-intern-table symbols
-        (op-lookup-by-name (symbol-name sym) *op-dispatch-table*))))
-
-;; Helper for op-lookup - linear search by symbol name
-(defun op-lookup-by-name (name table)
-  (if (null table)
-      nil
-      (let* ((entry (car table))
-             (table-sym (car entry)))
-        (if (c-names-match name (symbol-name table-sym))
-            (cdr entry)
-            (op-lookup-by-name name (cdr table))))))
+        nil)))
 
 ;; Initialize compile ops - create habu symbols at runtime
 ;; Uses macros to expand string literals to integer-based construction at compile time.
@@ -3082,15 +3068,15 @@
          ((if (symbolp op) (op=logand op) nil)
           (let* ((l (h0-compile (cadr expr) env fenv))
                  (r (h0-compile (caddr expr) env fenv)))
-            (ir-logand l r)))
+            (ir-band l r)))
          ((if (symbolp op) (op=logior op) nil)
           (let* ((l (h0-compile (cadr expr) env fenv))
                  (r (h0-compile (caddr expr) env fenv)))
-            (ir-logior l r)))
+            (ir-bor l r)))
          ((if (symbolp op) (op=ash op) nil)
           (let* ((val (h0-compile (cadr expr) env fenv))
                  (shift (h0-compile (caddr expr) env fenv)))
-            (ir-ash val shift)))
+            (ir-bsh val shift)))
          ;; Boolean not
          ((if (symbolp op) (op=not op) nil)
           (let ((v (h0-compile (cadr expr) env fenv)))
@@ -3125,22 +3111,22 @@
          ((if (symbolp op) (op=case op) nil)
           (let* ((keyform (cadr expr))
                  (clauses (cddr expr))
-                 (key-var (intern "#:CASE-KEY")))
+                 (key-var (make-habu-symbol-form "CASE-KEY")))
             (h0-compile
-             (list 'let (list (list key-var keyform))
-                   (cons 'cond (h0-expand-case-clauses key-var clauses)))
+             (list *op-let* (list (list key-var keyform))
+                   (cons *op-cond* (h0-expand-case-clauses key-var clauses)))
              env fenv)))
          ;; ECASE - like CASE but signals error if no clause matches
          ((if (symbolp op) (op=ecase op) nil)
           (let* ((keyform (cadr expr))
                  (clauses (cddr expr))
-                 (key-var (intern "#:CASE-KEY"))
+                 (key-var (make-habu-symbol-form "CASE-KEY"))
                  (clauses-with-error
                   (h0-append clauses
-                             (list (list 't (list 'error "ecase: no matching clause"))))))
+                             (list (list *op-t* (list *op-error* "ecase: no matching clause"))))))
             (h0-compile
-             (list 'let (list (list key-var keyform))
-                   (cons 'cond (h0-expand-case-clauses key-var clauses-with-error)))
+             (list *op-let* (list (list key-var keyform))
+                   (cons *op-cond* (h0-expand-case-clauses key-var clauses-with-error)))
              env fenv)))
          ;; DOLIST - expand to labels loop
          ((if (symbolp op) (op=dolist op) nil)
@@ -3148,17 +3134,17 @@
                  (var (car binding))
                  (list-expr (cadr binding))
                  (body (cddr expr))
-                 (list-var (intern "#:DOLIST-LIST"))
-                 (loop-fn (intern "#:DOLIST-LOOP"))
+                 (list-var (make-habu-symbol-form "DOLIST-LIST"))
+                 (loop-fn (make-habu-symbol-form "DOLIST-LOOP"))
                  (expanded
-                  (list 'let (list (list list-var list-expr))
-                        (list 'labels
+                  (list *op-let* (list (list list-var list-expr))
+                        (list *op-labels*
                               (list (list loop-fn (list)
-                                          (list 'when list-var
-                                                (list 'let (list (list var (list 'car list-var)))
-                                                      (cons 'progn
+                                          (list *op-when* list-var
+                                                (list *op-let* (list (list var (list *op-car* list-var)))
+                                                      (cons *op-progn*
                                                             (append body
-                                                                    (list (list 'setq list-var (list 'cdr list-var))
+                                                                    (list (list *op-setq* list-var (list *op-cdr* list-var))
                                                                           (list loop-fn))))))))
                               (list loop-fn))
                         nil)))
@@ -3223,7 +3209,7 @@
          ;; LOGNOT - use MVN instruction (bitwise NOT)
          ((if (symbolp op) (op=lognot op) nil)
           (let ((v (h0-compile (cadr expr) env fenv)))
-            (ir-lognot v)))
+            (ir-bnot v)))
          ;; EQL - equal for numbers and symbols
          ((if (symbolp op) (op=eql op) nil)
           (let* ((l (h0-compile (cadr expr) env fenv))
@@ -3539,7 +3525,7 @@
              (fname (car binding))
              (params (cadr binding))
              (fbody (caddr binding))
-             (lambda-expr (list (intern "LAMBDA") params fbody))
+             (lambda-expr (list *op-lambda* params fbody))
              (let-binding (list fname lambda-expr)))
         (cons let-binding (h0-flet-bindings-to-let (cdr bindings))))))
 
@@ -3572,8 +3558,8 @@
              (fname (car binding))
              (params (cadr binding))
              (fbody (caddr binding))
-             (lambda-expr (list (intern "LAMBDA") params fbody))
-             (setq-form (list (intern "SETQ") fname lambda-expr)))
+             (lambda-expr (list *op-lambda* params fbody))
+             (setq-form (list *op-setq* fname lambda-expr)))
         (cons setq-form (h0-labels-setq-forms (cdr bindings))))))
 
 (defun h0-append (list1 list2)
@@ -3581,81 +3567,61 @@
       list2
       (cons (car list1) (h0-append (cdr list1) list2))))
 
-;; Compile WHILE - transform to labels loop
-;; (while test body...) =>
-;; (labels ((loop ()
-;;            (when test
-;;              body...
-;;              (loop))))
-;;   (loop))
+;; Compile WHILE - generate while-ir directly for proper loop codegen
+;; (while test body...) => (while-ir test-ir body-ir)
+;; This generates a true iterative loop without function calls.
+;; Previously expanded to labels, but that broke TCO because labels uses funcall.
 (defun h0-compile-while (test body env fenv)
-  (let* ((loop-sym (intern "LOOP"))
-         (when-sym (intern "WHEN"))
-         (labels-sym (intern "LABELS"))
-         ;; Build body + recursive call: (when test body... (loop))
-         (loop-body (h0-append body (list (list loop-sym))))
-         (when-form (cons when-sym (cons test loop-body)))
-         ;; Build the expanded form
-         (expanded
-          (list labels-sym
-                ;; ((loop () (when test body... (loop))))
-                (list (list loop-sym (list) when-form))
-                ;; (loop)
-                (list loop-sym))))
-    (h0-compile expanded env fenv)))
+  (let ((test-ir (h0-compile test env fenv))
+        (body-ir (if (null (cdr body))
+                     (h0-compile (car body) env fenv)
+                     (h0-compile (cons 'progn body) env fenv))))
+    (list 'while-ir test-ir body-ir)))
 
-;; Compile MAPCAR - expand to labels loop with reverse at end
-;; (mapcar fn list) =>
-;; (let ((fn-temp fn))
-;;   (labels ((loop (l acc)
-;;              (if (null l)
-;;                  (reverse acc)
-;;                  (loop (cdr l) (cons (funcall fn-temp (car l)) acc)))))
-;;     (loop list nil)))
+;; Compile MAPCAR - generate dolist-style IR directly
+;; (mapcar fn list) => iterate, cons results, reverse at end
+;; Uses while-ir to avoid labels which breaks TCO
+;; IMPORTANT: Use *op-* symbols (habu symbols), not (intern ...) (SBCL symbols)
 (defun h0-compile-mapcar (fn-expr list-expr env fenv)
-  (let* ((fn-sym (intern "FN-TEMP"))
-         (l-sym (intern "L"))
-         (acc-sym (intern "ACC"))
-         (loop-sym (intern "MAPCAR-LOOP"))
-         ;; Build the expanded form
+  (let* ((fn-var (make-habu-symbol-form "FN-TEMP"))
+         (l-var (make-habu-symbol-form "L-TEMP"))
+         (acc-var (make-habu-symbol-form "ACC-TEMP"))
          (expanded
-          (list (intern "LET")
-                (list (list fn-sym fn-expr))
-                (list (intern "LABELS")
-                      (list (list loop-sym (list l-sym acc-sym)
-                                  (list (intern "IF") (list (intern "NULL") l-sym)
-                                        (list (intern "REVERSE") acc-sym)
-                                        (list loop-sym
-                                              (list (intern "CDR") l-sym)
-                                              (list (intern "CONS")
-                                                    (list (intern "FUNCALL") fn-sym (list (intern "CAR") l-sym))
-                                                    acc-sym)))))
-                      (list loop-sym list-expr nil)))))
+          (list *op-let*
+                (list (list fn-var fn-expr)
+                      (list l-var list-expr)
+                      (list acc-var nil))
+                (list *op-progn*
+                      (list *op-while* l-var
+                            (list *op-setq* acc-var
+                                  (list *op-cons*
+                                        (list *op-funcall* fn-var
+                                              (list *op-car* l-var))
+                                        acc-var))
+                            (list *op-setq* l-var
+                                  (list *op-cdr* l-var)))
+                      (list *op-reverse* acc-var)))))
     (h0-compile expanded env fenv)))
 
-;; Compile REVERSE - expand to labels loop
-;; (reverse list) =>
-;; (labels ((loop (l acc)
-;;            (if (null l)
-;;                acc
-;;                (loop (cdr l) (cons (car l) acc)))))
-;;   (loop list nil))
+;; Compile REVERSE - use while-ir directly
+;; (reverse list) => (let ((l list) (acc nil)) (while l (setq acc (cons (car l) acc)) (setq l (cdr l))) acc)
+;; IMPORTANT: Use *op-* symbols (habu symbols), not (intern ...) (SBCL symbols)
 (defun h0-compile-reverse (list-expr env fenv)
-  (let* ((l-sym (intern "L"))
-         (acc-sym (intern "ACC"))
-         (loop-sym (intern "REV-LOOP"))
-         ;; Build the expanded form
+  (let* ((l-var (make-habu-symbol-form "L-TEMP"))
+         (acc-var (make-habu-symbol-form "ACC-TEMP"))
          (expanded
-          (list (intern "LABELS")
-                (list (list loop-sym (list l-sym acc-sym)
-                            (list (intern "IF") (list (intern "NULL") l-sym)
-                                  acc-sym
-                                  (list loop-sym
-                                        (list (intern "CDR") l-sym)
-                                        (list (intern "CONS")
-                                              (list (intern "CAR") l-sym)
-                                              acc-sym)))))
-                (list loop-sym list-expr nil))))
+          (list *op-let*
+                (list (list l-var list-expr)
+                      (list acc-var nil))
+                (list *op-progn*
+                      (list *op-while* l-var
+                            (list *op-setq* acc-var
+                                  (list *op-cons*
+                                        (list *op-car* l-var)
+                                        acc-var))
+                            (list *op-setq* l-var
+                                  (list *op-cdr* l-var)))
+                      acc-var))))
     (h0-compile expanded env fenv)))
 
 ;; Compile LIST - expand to nested CONS
@@ -3687,19 +3653,20 @@
       (h0-nth-chain (- n #x1) (ir-cdr list-ir))))
 
 (defun h0-compile-nth-var (n-expr list-expr env fenv)
-  ;; Expand to: (labels ((loop (i l) (if (= i 0) (car l) (loop (- i 1) (cdr l))))) (loop n list))
-  (let* ((i-sym (intern "I"))
-         (l-sym (intern "L"))
-         (loop-sym (intern "NTH-LOOP"))
+  ;; Expand to: (let ((i n) (l list)) (while (> i 0) (setq i (- i 1)) (setq l (cdr l))) (car l))
+  (let* ((i-temp (make-habu-symbol-form "I-TEMP"))
+         (l-temp (make-habu-symbol-form "L-TEMP"))
          (expanded
-          (list (intern "LABELS")
-                (list (list loop-sym (list i-sym l-sym)
-                            (list (intern "IF") (list (intern "=") i-sym #x0)
-                                  (list (intern "CAR") l-sym)
-                                  (list loop-sym
-                                        (list (intern "-") i-sym #x1)
-                                        (list (intern "CDR") l-sym)))))
-                (list loop-sym n-expr list-expr))))
+          (list *op-let*
+                (list (list i-temp n-expr)
+                      (list l-temp list-expr))
+                (list *op-progn*
+                      (list *op-while* (list *op-gt* i-temp 0)
+                            (list *op-setq* i-temp
+                                  (list *op-minus* i-temp 1))
+                            (list *op-setq* l-temp
+                                  (list *op-cdr* l-temp)))
+                      (list *op-car* l-temp)))))
     (h0-compile expanded env fenv)))
 
 ;;; ==========================================================================
@@ -3794,37 +3761,44 @@
       buf
       (buf-bytes (buf-u8 buf (car bytes)) (cdr bytes))))
 
-;; Append string as bytes (without null terminator)
+;; Append string as bytes (without null terminator) - iterative
 (defun buf-string (buf str)
-  (buf-string-helper buf str #x0 (string-length str)))
+  (let ((len (string-length str))
+        (i 0)
+        (b buf))
+    (while (< i len)
+      (setq b (buf-u8 b (string-ref str i)))
+      (setq i (+ i 1)))
+    b))
 
-(defun buf-string-helper (buf str i len)
-  (if (>= i len)
-      buf
-      (buf-string-helper (buf-u8 buf (string-ref str i)) str (+ i #x1) len)))
-
-;; Append string padded to length with zeros
+;; Append string padded to length with zeros - iterative
 (defun buf-string-padded (buf str len)
   (let* ((slen (string-length str))
-         (buf2 (buf-string-helper buf str #x0 (if (< slen len) slen len))))
-    (buf-zeros buf2 (- len slen))))
+         (copylen (if (< slen len) slen len))
+         (i 0)
+         (b buf))
+    ;; Copy string bytes up to copylen
+    (while (< i copylen)
+      (setq b (buf-u8 b (string-ref str i)))
+      (setq i (+ i 1)))
+    ;; Pad with zeros
+    (buf-zeros b (- len slen))))
 
 ;; Get current buffer length
 (defun buf-length (buf)
   (length buf))
 
-;; Convert buffer to vector (reverses the list)
+;; Convert buffer to vector (reverses the list) - iterative
 (defun buf-to-vector (buf)
   (let* ((len (length buf))
-         (vec (make-vector len)))
-    (buf-to-vector-helper (reverse buf) vec #x0)))
-
-(defun buf-to-vector-helper (lst vec i)
-  (if (null lst)
-      vec
-      (progn
-        (vector-set vec i (car lst))
-        (buf-to-vector-helper (cdr lst) vec (+ i #x1)))))
+         (vec (make-vector len))
+         (lst (reverse buf))
+         (i 0))
+    (while (and lst (< i len))
+      (vector-set vec i (car lst))
+      (setq lst (cdr lst))
+      (setq i (+ i 1)))
+    vec))
 
 ;;; Mach-O structure writers
 
@@ -4074,19 +4048,24 @@
              (acc-with-bytes (push-bytes-reversed bytes acc-with-nul)))
         (build-import-strings-acc (cdr imports) acc-with-bytes))))
 
-;; Push all bytes from list onto acc in reversed order
+;; Push all bytes from list onto acc in reversed order - iterative
 (defun push-bytes-reversed (bytes acc)
-  (if (null bytes)
-      acc
-      (push-bytes-reversed (cdr bytes) (cons (car bytes) acc))))
+  (let ((b bytes)
+        (a acc))
+    (while b
+      (setq a (cons (car b) a))
+      (setq b (cdr b)))
+    a))
 
+;; Convert string to list of bytes - iterative
 (defun string-to-bytes (str)
-  (string-to-bytes-helper str #x0 (string-length str) nil))
-
-(defun string-to-bytes-helper (str i len acc)
-  (if (>= i len)
-      (reverse acc)
-      (string-to-bytes-helper str (+ i #x1) len (cons (string-ref str i) acc))))
+  (let ((len (string-length str))
+        (i 0)
+        (acc nil))
+    (while (< i len)
+      (setq acc (cons (string-ref str i) acc))
+      (setq i (+ i 1)))
+    (reverse acc)))
 
 ;; Build chained fixups data blob
 (defun build-chained-fixups-data (num-imports num-segments got-segment-index got-vm-offset)

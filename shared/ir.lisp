@@ -60,10 +60,10 @@
   (keywordp value)
 
   ;; === Bitwise/Logical ===
-  (logand left right)
-  (logior left right)
-  (lognot value)
-  (ash value count)
+  (band left right)              ; bitwise AND (logand)
+  (bor left right)               ; bitwise OR (logior)
+  (bnot value)                   ; bitwise NOT (lognot)
+  (bsh value count)              ; bit shift (ash)
   (not value)                    ; boolean not
 
   ;; === String Operations ===
