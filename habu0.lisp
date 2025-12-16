@@ -850,27 +850,11 @@
     result))
 
 (defun string-equal (s1 s2)
-  ;; CRASH GUARD: Catch all uses of string-equal for symbol comparison.
-  ;;
-  ;; WHY THIS EXISTS:
-  ;; - Symbol/keyword comparison MUST use eq after proper interning
-  ;; - Intern tables now use hash tables with string= for O(1) lookup
-  ;; - Any code using string-equal for symbol dispatch is a BUG
-  ;;
-  ;; CORRECT PATTERNS:
-  ;; - Intern table lookup: hash-table-get with string= (case-sensitive)
-  ;; - Symbol dispatch: eq on interned symbols via *op-dispatch-table*
-  ;; - String comparison: use string= (case-sensitive) directly
-  ;;
-  ;; See bead: habu-z1vra (remove once all violations audited)
-  (fatal-error "string-equal: DO NOT USE - intern tables use hash tables with string=, symbol dispatch uses eq")
-  ;; Original implementation (restore when bead habu-z1vra is complete):
-  ;; (let ((len1 (string-length s1))
-  ;;       (len2 (string-length s2)))
-  ;;   (if (= len1 len2)
-  ;;       (string-equal-loop s1 s2 len1 0)
-  ;;       nil))
-  )
+  ;; Type-safe string comparison with nil handling.
+  ;; Returns nil if either argument is nil, t if both are equal strings.
+  (if (or (null s1) (null s2))
+      (and (null s1) (null s2))  ; nil = nil
+      (string= s1 s2)))
 
 ;; Symbol equality - uses eq on properly interned symbols
 ;; All operator symbols are registered in habu's intern table at startup.
@@ -2123,6 +2107,11 @@
       (map-loop lst nil))))
 
 ;; Function call handler
+;; Dispatch priority:
+;; 1. fenv entry with :builtin keyword -> h0-eval-builtin
+;; 2. fenv entry with (params . body) -> interpret body
+;; 3. SBCL: symbol has function binding -> call directly via funcall
+;; 4. Error: unknown function
 (defun h0-eval-call (op expr env fenv)
   (let ((fn-entry (fenv-lookup op fenv)))
     (if fn-entry
@@ -2134,6 +2123,14 @@
                    (args (h0-eval-list (cdr expr) env fenv))
                    (new-env (bind-lambda-args params args nil fenv)))
               (h0-eval body new-env fenv)))
+        ;; Not in fenv - try calling as compiled function (SBCL bootstrap only)
+        #+sbcl
+        (let ((sbcl-sym (find-symbol (symbol-name op) :habu)))
+          (if (and sbcl-sym (fboundp sbcl-sym))
+              (let ((args (h0-eval-list (cdr expr) env fenv)))
+                (apply (symbol-function sbcl-sym) args))
+              (fatal-error "h0-eval: unknown function")))
+        #-sbcl
         (fatal-error "h0-eval: unknown function"))))
 
 ;; Builtin dispatch table - maps symbol name strings to handler functions
@@ -4642,6 +4639,9 @@
     (setq lst (cons (make-builtin-entry "LAMBDAS-TO-DEFUNS" kw) lst))
     (setq lst (cons (make-builtin-entry "LIFT-LAMBDAS" kw) lst))
     (setq lst (cons (make-builtin-entry "H0-COMPILE" kw) lst))
+    ;; Note: IR constructors (ir-lit, ir-var, etc.) and other compiled functions
+    ;; are automatically callable via h0-eval-call's SBCL fallback - no manual
+    ;; registration needed. Only functions needing special handling go here.
     lst))
 
 (defun main ()

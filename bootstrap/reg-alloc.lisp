@@ -184,6 +184,51 @@
     (setcar counter (+ n 1))
     n))
 
+(defun ir-typed-p (ir)
+  "Check if IR is in typed format (:IR :VARIANT ...)"
+  (and (consp ir) (eq (car ir) :ir)))
+
+(defun ir-variant (ir)
+  "Extract the variant from IR in either typed or untyped format.
+   Typed:   (:IR :LIT 42) -> :LIT
+   Untyped: (LIT 42) -> LIT
+   Untyped: (1 42) -> 1"
+  (if (consp ir)
+      (if (ir-typed-p ir)
+          (cadr ir)   ; typed format: variant at index 1
+          (car ir))   ; untyped format: variant is first
+      ir))  ; not a cons - return as-is (shouldn't happen)
+
+(defun ir-field1 (ir)
+  "Get first field from IR.
+   Typed:   (:IR :LIT 42) -> 42
+   Untyped: (LIT 42) -> 42"
+  (if (ir-typed-p ir)
+      (caddr ir)   ; typed: index 2
+      (cadr ir)))  ; untyped: index 1
+
+(defun ir-field2 (ir)
+  "Get second field from IR.
+   Typed:   (:IR :ADD left right) -> right
+   Untyped: (ADD left right) -> right"
+  (if (ir-typed-p ir)
+      (cadddr ir)  ; typed: index 3
+      (caddr ir))) ; untyped: index 2
+
+(defun ir-field3 (ir)
+  "Get third field from IR.
+   Typed:   (:IR :IF test then else) -> else
+   Untyped: (IF-IR test then else) -> else"
+  (if (ir-typed-p ir)
+      (nth 4 ir)    ; typed: index 4
+      (cadddr ir))) ; untyped: index 3
+
+(defun ir-field-n (ir n)
+  "Get nth field (0-indexed) from IR."
+  (if (ir-typed-p ir)
+      (nth (+ n 2) ir)   ; typed: fields start at index 2
+      (nth (+ n 1) ir))) ; untyped: fields start at index 1
+
 (defun ir-tag-name (sym)
   "Get the symbol name as a string for tag comparison.
    Handles symbols from different packages, and numeric IR tags from habu0."
@@ -302,33 +347,33 @@
        (list (list (list :tac-lit vr ir)) vr)))
 
     ;; (lit value) - literal, raw value, tagging applied in tac-codegen
-    ((and (consp ir) (ir-tag-matches (car ir) "LIT"))
+    ((and (consp ir) (ir-tag-matches (ir-variant ir) "LIT"))
      (let ((vr (next-vreg counter)))
-       (list (list (list :tac-lit vr (cadr ir))) vr)))
+       (list (list (list :tac-lit vr (ir-field1 ir))) vr)))
 
     ;; (kw-lit keyword) - keyword literal (e.g., :x0, :sp for registers)
     ;; Used by habu0 to pass register keywords to ARM64 functions
-    ((and (consp ir) (ir-tag-matches (car ir) "KW-LIT"))
+    ((and (consp ir) (ir-tag-matches (ir-variant ir) "KW-LIT"))
      (let ((vr (next-vreg counter)))
-       (list (list (list :tac-kw-lit vr (cadr ir))) vr)))
+       (list (list (list :tac-kw-lit vr (ir-field1 ir))) vr)))
 
     ;; (var offset) - variable reference
-    ((and (consp ir) (ir-tag-matches (car ir) "VAR"))
+    ((and (consp ir) (ir-tag-matches (ir-variant ir) "VAR"))
      (let ((vr (next-vreg counter)))
-       (list (list (list :tac-var vr (cadr ir))) vr)))
+       (list (list (list :tac-var vr (ir-field1 ir))) vr)))
 
     ;; Binary operations: add, sub, mul, div, mod, bsh, band, bor, bxor
     ;; Note: some forms use -IR suffix (MOD-IR, DIV-IR) depending on compiler path
-    ((and (consp ir) (ir-tag-member (car ir) '("ADD" "SUB" "MUL" "DIV" "MOD" "BSH" "BAND" "BOR" "BXOR"
+    ((and (consp ir) (ir-tag-member (ir-variant ir) '("ADD" "SUB" "MUL" "DIV" "MOD" "BSH" "BAND" "BOR" "BXOR"
                                                "MOD-IR" "DIV-IR" "ADD-IR" "SUB-IR" "MUL-IR")))
-     (let* ((left-result (ir-to-tac (cadr ir) counter))
+     (let* ((left-result (ir-to-tac (ir-field1 ir) counter))
             (left-instrs (car left-result))
             (left-vr (cadr left-result))
-            (right-result (ir-to-tac (caddr ir) counter))
+            (right-result (ir-to-tac (ir-field2 ir) counter))
             (right-instrs (car right-result))
             (right-vr (cadr right-result))
             (result-vr (next-vreg counter))
-            (raw-name (ir-tag-name (car ir)))
+            (raw-name (ir-tag-name (ir-variant ir)))
             ;; Strip -IR suffix if present (e.g., "MOD-IR" -> "MOD")
             (op-name (if (and (> (length raw-name) 3)
                               (string= (subseq raw-name (- (length raw-name) 3)) "-IR"))
@@ -342,33 +387,33 @@
              result-vr)))
 
     ;; Comparison operations
-    ((and (consp ir) (ir-tag-member (car ir) '("CMP-EQ" "CMP-NE" "CMP-LT" "CMP-LE" "CMP-GT" "CMP-GE")))
-     (let* ((left-result (ir-to-tac (cadr ir) counter))
+    ((and (consp ir) (ir-tag-member (ir-variant ir) '("CMP-EQ" "CMP-NE" "CMP-LT" "CMP-LE" "CMP-GT" "CMP-GE")))
+     (let* ((left-result (ir-to-tac (ir-field1 ir) counter))
             (left-instrs (car left-result))
             (left-vr (cadr left-result))
-            (right-result (ir-to-tac (caddr ir) counter))
+            (right-result (ir-to-tac (ir-field2 ir) counter))
             (right-instrs (car right-result))
             (right-vr (cadr right-result))
             (result-vr (next-vreg counter))
-            (op-name (ir-tag-name (car ir))))
+            (op-name (ir-tag-name (ir-variant ir))))
        (list (append left-instrs
                      right-instrs
                      (list (list :tac-cmp result-vr (intern op-name :keyword) left-vr right-vr)))
              result-vr)))
 
     ;; if-ir: conditional expression
-    ((and (consp ir) (ir-tag-matches (car ir) "IF-IR"))
-     (let* ((cond-result (ir-to-tac (cadr ir) counter))
+    ((and (consp ir) (ir-tag-matches (ir-variant ir) "IF-IR"))
+     (let* ((cond-result (ir-to-tac (ir-field1 ir) counter))
             (cond-instrs (car cond-result))
             (cond-vr (cadr cond-result))
             (result-vr (next-vreg counter))
             (then-label (next-vreg counter))
             (else-label (next-vreg counter))
             (end-label (next-vreg counter))
-            (then-result (ir-to-tac (caddr ir) counter))
+            (then-result (ir-to-tac (ir-field2 ir) counter))
             (then-instrs (car then-result))
             (then-vr (cadr then-result))
-            (else-result (ir-to-tac (cadddr ir) counter))
+            (else-result (ir-to-tac (ir-field3 ir) counter))
             (else-instrs (car else-result))
             (else-vr (cadr else-result)))
        (list (append cond-instrs
@@ -384,10 +429,10 @@
              result-vr)))
 
     ;; let-ir: local bindings
-    ((and (consp ir) (ir-tag-matches (car ir) "LET-IR"))
-     (let* ((vals (cadr ir))
-            (body (caddr ir))
-            (offsets (nth 4 ir)))  ; (let-ir vals body count offsets)
+    ((and (consp ir) (ir-tag-matches (ir-variant ir) "LET-IR"))
+     (let* ((vals (ir-field1 ir))
+            (body (ir-field2 ir))
+            (offsets (ir-field-n ir 3)))  ; (let-ir vals body count offsets)
        (labels ((convert-bindings (vs os instrs)
                   (if (null vs)
                       instrs
@@ -404,8 +449,8 @@
            (list (append binding-instrs body-instrs) body-vr)))))
 
     ;; progn-ir: sequence
-    ((and (consp ir) (ir-tag-matches (car ir) "PROGN-IR"))
-     (let ((forms (cadr ir)))
+    ((and (consp ir) (ir-tag-matches (ir-variant ir) "PROGN-IR"))
+     (let ((forms (ir-field1 ir)))
        (labels ((convert-forms (fs instrs last-vr)
                   (if (null fs)
                       (list instrs last-vr)
@@ -420,9 +465,9 @@
     ;; call-fn: function call
     ;; IR format: (CALL-FN fn-name (arg1 arg2 ...))
     ;; Use caddr (not cddr) to get the args list directly
-    ((and (consp ir) (ir-tag-matches (car ir) "CALL-FN"))
-     (let* ((fn-name (cadr ir))
-            (args (caddr ir)))
+    ((and (consp ir) (ir-tag-matches (ir-variant ir) "CALL-FN"))
+     (let* ((fn-name (ir-field1 ir))
+            (args (ir-field2 ir)))
        (labels ((convert-args (as instrs vrs)
                   (if (null as)
                       (list instrs (reverse vrs))
@@ -441,21 +486,21 @@
                  result-vr)))))
 
     ;; nil-ir: nil literal (0 in hybrid scheme)
-    ((and (consp ir) (ir-tag-matches (car ir) "NIL-IR"))
+    ((and (consp ir) (ir-tag-matches (ir-variant ir) "NIL-IR"))
      (let ((vr (next-vreg counter)))
        (list (list (list :tac-nil vr)) vr)))
 
     ;; sym-lit: symbol literal
-    ((and (consp ir) (ir-tag-matches (car ir) "SYM-LIT"))
+    ((and (consp ir) (ir-tag-matches (ir-variant ir) "SYM-LIT"))
      (let ((vr (next-vreg counter)))
-       (list (list (list :tac-sym vr (cadr ir))) vr)))
+       (list (list (list :tac-sym vr (ir-field1 ir))) vr)))
 
     ;; cons-ir: cons operation (car cdr)
-    ((and (consp ir) (ir-tag-matches (car ir) "CONS-IR"))
-     (let* ((car-result (ir-to-tac (cadr ir) counter))
+    ((and (consp ir) (ir-tag-matches (ir-variant ir) "CONS-IR"))
+     (let* ((car-result (ir-to-tac (ir-field1 ir) counter))
             (car-instrs (car car-result))
             (car-vr (cadr car-result))
-            (cdr-result (ir-to-tac (caddr ir) counter))
+            (cdr-result (ir-to-tac (ir-field2 ir) counter))
             (cdr-instrs (car cdr-result))
             (cdr-vr (cadr cdr-result))
             (result-vr (next-vreg counter)))
@@ -465,8 +510,8 @@
              result-vr)))
 
     ;; car-ir: car operation (unary)
-    ((and (consp ir) (ir-tag-matches (car ir) "CAR-IR"))
-     (let* ((arg-result (ir-to-tac (cadr ir) counter))
+    ((and (consp ir) (ir-tag-matches (ir-variant ir) "CAR-IR"))
+     (let* ((arg-result (ir-to-tac (ir-field1 ir) counter))
             (arg-instrs (car arg-result))
             (arg-vr (cadr arg-result))
             (result-vr (next-vreg counter)))
@@ -475,8 +520,8 @@
              result-vr)))
 
     ;; cdr-ir: cdr operation (unary)
-    ((and (consp ir) (ir-tag-matches (car ir) "CDR-IR"))
-     (let* ((arg-result (ir-to-tac (cadr ir) counter))
+    ((and (consp ir) (ir-tag-matches (ir-variant ir) "CDR-IR"))
+     (let* ((arg-result (ir-to-tac (ir-field1 ir) counter))
             (arg-instrs (car arg-result))
             (arg-vr (cadr arg-result))
             (result-vr (next-vreg counter)))
@@ -485,9 +530,9 @@
              result-vr)))
 
     ;; setq-ir: variable assignment (setq-ir offset value)
-    ((and (consp ir) (ir-tag-matches (car ir) "SETQ-IR"))
-     (let* ((offset (cadr ir))
-            (val-result (ir-to-tac (caddr ir) counter))
+    ((and (consp ir) (ir-tag-matches (ir-variant ir) "SETQ-IR"))
+     (let* ((offset (ir-field1 ir))
+            (val-result (ir-to-tac (ir-field2 ir) counter))
             (val-instrs (car val-result))
             (val-vr (cadr val-result)))
        ;; setq returns the assigned value
@@ -496,13 +541,13 @@
              val-vr)))
 
     ;; while-ir: while loop (while-ir cond body)
-    ((and (consp ir) (ir-tag-matches (car ir) "WHILE-IR"))
+    ((and (consp ir) (ir-tag-matches (ir-variant ir) "WHILE-IR"))
      (let* ((loop-label (next-vreg counter))
             (end-label (next-vreg counter))
-            (cond-result (ir-to-tac (cadr ir) counter))
+            (cond-result (ir-to-tac (ir-field1 ir) counter))
             (cond-instrs (car cond-result))
             (cond-vr (cadr cond-result))
-            (body-result (ir-to-tac (caddr ir) counter))
+            (body-result (ir-to-tac (ir-field2 ir) counter))
             (body-instrs (car body-result))
             (result-vr (next-vreg counter)))
        ;; while returns nil
@@ -517,9 +562,9 @@
 
     ;; dolist-ir: iterate over list (dolist-ir var-sym list-ir body-ir result-ir env)
     ;; var-sym is the symbol, env has ((var . offset) ...) bindings
-    ((and (consp ir) (ir-tag-matches (car ir) "DOLIST-IR"))
-     (let* ((var-sym (cadr ir))                ; Variable symbol
-            (list-result (ir-to-tac (caddr ir) counter))
+    ((and (consp ir) (ir-tag-matches (ir-variant ir) "DOLIST-IR"))
+     (let* ((var-sym (ir-field1 ir))                ; Variable symbol
+            (list-result (ir-to-tac (ir-field2 ir) counter))
             (list-instrs (car list-result))
             (list-vr (cadr list-result))
             (loop-label (next-vreg counter))
@@ -527,15 +572,15 @@
             (iter-vr (next-vreg counter))      ; Current list pointer
             (elem-vr (next-vreg counter))      ; Current element
             (nil-vr (next-vreg counter))       ; For nil check
-            ;; Get var offset from compile-env (6th element)
-            (compile-env (nth 5 ir))
+            ;; Get var offset from compile-env (field5)
+            (compile-env (ir-field-n ir 4))
             (var-entry (assoc var-sym compile-env))
             (var-offset (if var-entry (cdr var-entry) 0))
             ;; Process body with variable bound
-            (body-result (ir-to-tac (cadddr ir) counter))
+            (body-result (ir-to-tac (ir-field3 ir) counter))
             (body-instrs (car body-result))
-            ;; Result form (or nil)
-            (result-result (ir-to-tac (nth 4 ir) counter))
+            ;; Result form (or nil) is field4
+            (result-result (ir-to-tac (ir-field-n ir 3) counter))
             (result-instrs (car result-result))
             (result-vr (cadr result-result)))
        ;; Generate: init iter; loop: if iter=nil goto end; elem=car(iter); setvar; body; iter=cdr(iter); goto loop; end: result
@@ -561,16 +606,16 @@
                result-vr))))
 
     ;; str-lit: string literal
-    ((and (consp ir) (ir-tag-matches (car ir) "STR-LIT"))
+    ((and (consp ir) (ir-tag-matches (ir-variant ir) "STR-LIT"))
      (let ((vr (next-vreg counter)))
-       (list (list (list :tac-str vr (cadr ir))) vr)))
+       (list (list (list :tac-str vr (ir-field1 ir))) vr)))
 
     ;; setcar-ir: mutate car of cons cell
-    ((and (consp ir) (ir-tag-matches (car ir) "SETCAR-IR"))
-     (let* ((cons-result (ir-to-tac (cadr ir) counter))
+    ((and (consp ir) (ir-tag-matches (ir-variant ir) "SETCAR-IR"))
+     (let* ((cons-result (ir-to-tac (ir-field1 ir) counter))
             (cons-instrs (car cons-result))
             (cons-vr (cadr cons-result))
-            (val-result (ir-to-tac (caddr ir) counter))
+            (val-result (ir-to-tac (ir-field2 ir) counter))
             (val-instrs (car val-result))
             (val-vr (cadr val-result)))
        ;; setcar returns the value
@@ -580,11 +625,11 @@
              val-vr)))
 
     ;; setcdr-ir: mutate cdr of cons cell
-    ((and (consp ir) (ir-tag-matches (car ir) "SETCDR-IR"))
-     (let* ((cons-result (ir-to-tac (cadr ir) counter))
+    ((and (consp ir) (ir-tag-matches (ir-variant ir) "SETCDR-IR"))
+     (let* ((cons-result (ir-to-tac (ir-field1 ir) counter))
             (cons-instrs (car cons-result))
             (cons-vr (cadr cons-result))
-            (val-result (ir-to-tac (caddr ir) counter))
+            (val-result (ir-to-tac (ir-field2 ir) counter))
             (val-instrs (car val-result))
             (val-vr (cadr val-result)))
        (list (append cons-instrs
@@ -593,8 +638,8 @@
              val-vr)))
 
     ;; make-vector-ir: allocate vector
-    ((and (consp ir) (ir-tag-matches (car ir) "MAKE-VECTOR-IR"))
-     (let* ((size-result (ir-to-tac (cadr ir) counter))
+    ((and (consp ir) (ir-tag-matches (ir-variant ir) "MAKE-VECTOR-IR"))
+     (let* ((size-result (ir-to-tac (ir-field1 ir) counter))
             (size-instrs (car size-result))
             (size-vr (cadr size-result))
             (result-vr (next-vreg counter)))
@@ -603,11 +648,11 @@
              result-vr)))
 
     ;; vector-ref-ir: read vector element
-    ((and (consp ir) (ir-tag-matches (car ir) "VECTOR-REF-IR"))
-     (let* ((vec-result (ir-to-tac (cadr ir) counter))
+    ((and (consp ir) (ir-tag-matches (ir-variant ir) "VECTOR-REF-IR"))
+     (let* ((vec-result (ir-to-tac (ir-field1 ir) counter))
             (vec-instrs (car vec-result))
             (vec-vr (cadr vec-result))
-            (idx-result (ir-to-tac (caddr ir) counter))
+            (idx-result (ir-to-tac (ir-field2 ir) counter))
             (idx-instrs (car idx-result))
             (idx-vr (cadr idx-result))
             (result-vr (next-vreg counter)))
@@ -617,14 +662,14 @@
              result-vr)))
 
     ;; vector-set-ir: write vector element
-    ((and (consp ir) (ir-tag-matches (car ir) "VECTOR-SET-IR"))
-     (let* ((vec-result (ir-to-tac (cadr ir) counter))
+    ((and (consp ir) (ir-tag-matches (ir-variant ir) "VECTOR-SET-IR"))
+     (let* ((vec-result (ir-to-tac (ir-field1 ir) counter))
             (vec-instrs (car vec-result))
             (vec-vr (cadr vec-result))
-            (idx-result (ir-to-tac (caddr ir) counter))
+            (idx-result (ir-to-tac (ir-field2 ir) counter))
             (idx-instrs (car idx-result))
             (idx-vr (cadr idx-result))
-            (val-result (ir-to-tac (cadddr ir) counter))
+            (val-result (ir-to-tac (ir-field3 ir) counter))
             (val-instrs (car val-result))
             (val-vr (cadr val-result)))
        ;; vector-set returns the value
@@ -635,8 +680,8 @@
              val-vr)))
 
     ;; vector-length-ir: get vector length
-    ((and (consp ir) (ir-tag-matches (car ir) "VECTOR-LENGTH-IR"))
-     (let* ((vec-result (ir-to-tac (cadr ir) counter))
+    ((and (consp ir) (ir-tag-matches (ir-variant ir) "VECTOR-LENGTH-IR"))
+     (let* ((vec-result (ir-to-tac (ir-field1 ir) counter))
             (vec-instrs (car vec-result))
             (vec-vr (cadr vec-result))
             (result-vr (next-vreg counter)))
@@ -645,8 +690,8 @@
              result-vr)))
 
     ;; string-length-ir: get string length
-    ((and (consp ir) (ir-tag-matches (car ir) "STRING-LENGTH-IR"))
-     (let* ((str-result (ir-to-tac (cadr ir) counter))
+    ((and (consp ir) (ir-tag-matches (ir-variant ir) "STRING-LENGTH-IR"))
+     (let* ((str-result (ir-to-tac (ir-field1 ir) counter))
             (str-instrs (car str-result))
             (str-vr (cadr str-result))
             (result-vr (next-vreg counter)))
@@ -655,11 +700,11 @@
              result-vr)))
 
     ;; string-ref-ir: read string character
-    ((and (consp ir) (ir-tag-matches (car ir) "STRING-REF-IR"))
-     (let* ((str-result (ir-to-tac (cadr ir) counter))
+    ((and (consp ir) (ir-tag-matches (ir-variant ir) "STRING-REF-IR"))
+     (let* ((str-result (ir-to-tac (ir-field1 ir) counter))
             (str-instrs (car str-result))
             (str-vr (cadr str-result))
-            (idx-result (ir-to-tac (caddr ir) counter))
+            (idx-result (ir-to-tac (ir-field2 ir) counter))
             (idx-instrs (car idx-result))
             (idx-vr (cadr idx-result))
             (result-vr (next-vreg counter)))
@@ -669,8 +714,8 @@
              result-vr)))
 
     ;; make-string-from-vector-ir: create string from char vector
-    ((and (consp ir) (ir-tag-matches (car ir) "MAKE-STRING-FROM-VECTOR-IR"))
-     (let* ((vec-result (ir-to-tac (cadr ir) counter))
+    ((and (consp ir) (ir-tag-matches (ir-variant ir) "MAKE-STRING-FROM-VECTOR-IR"))
+     (let* ((vec-result (ir-to-tac (ir-field1 ir) counter))
             (vec-instrs (car vec-result))
             (vec-vr (cadr vec-result))
             (result-vr (next-vreg counter)))
@@ -679,11 +724,11 @@
              result-vr)))
 
     ;; buffer-to-string-ir: convert raw byte buffer to string
-    ((and (consp ir) (ir-tag-matches (car ir) "BUFFER-TO-STRING-IR"))
-     (let* ((buf-result (ir-to-tac (cadr ir) counter))
+    ((and (consp ir) (ir-tag-matches (ir-variant ir) "BUFFER-TO-STRING-IR"))
+     (let* ((buf-result (ir-to-tac (ir-field1 ir) counter))
             (buf-instrs (car buf-result))
             (buf-vr (cadr buf-result))
-            (len-result (ir-to-tac (caddr ir) counter))
+            (len-result (ir-to-tac (ir-field2 ir) counter))
             (len-instrs (car len-result))
             (len-vr (cadr len-result))
             (result-vr (next-vreg counter)))
@@ -692,13 +737,13 @@
              result-vr)))
 
     ;; loop-ir: TCO loop (loop-ir body marker)
-    ((and (consp ir) (ir-tag-matches (car ir) "LOOP-IR"))
+    ((and (consp ir) (ir-tag-matches (ir-variant ir) "LOOP-IR"))
      (let* ((loop-label (next-vreg counter))
-            (marker (caddr ir)))
+            (marker (ir-field2 ir)))
        ;; Set current loop info for continue-ir to reference
        (setf *tco-loop-label* loop-label)
        (setf *tco-loop-marker* marker)
-       (let* ((body-result (ir-to-tac (cadr ir) counter))
+       (let* ((body-result (ir-to-tac (ir-field1 ir) counter))
               (body-instrs (car body-result))
               (body-vr (cadr body-result)))
          ;; Emit loop-start with marker and label
@@ -709,8 +754,8 @@
 
     ;; continue-ir: jump back to loop start after updating params
     ;; Format: (continue-ir (new-arg1 new-arg2 ...))
-    ((and (consp ir) (ir-tag-matches (car ir) "CONTINUE-IR"))
-     (let* ((new-args (cadr ir))
+    ((and (consp ir) (ir-tag-matches (ir-variant ir) "CONTINUE-IR"))
+     (let* ((new-args (ir-field1 ir))
             (result-vr (next-vreg counter)))
        ;; Evaluate all new arg values to temp vregs first (avoid overwriting params mid-eval)
        ;; NOTE: Must append instructions in correct order - arg-instrs AFTER acc-instrs
@@ -744,11 +789,11 @@
     ;; dotimes-ir: counted iteration loop
     ;; Format: (dotimes-ir var count-ir body-ir result-ir compile-env)
     ;; The loop var is at slot (length compile-env) in the extended env
-    ((and (consp ir) (ir-tag-matches (car ir) "DOTIMES-IR"))
-     (let* ((count-ir (caddr ir))
-            (body-ir (cadddr ir))
-            (result-ir (nth 4 ir))
-            (compile-env (nth 5 ir))
+    ((and (consp ir) (ir-tag-matches (ir-variant ir) "DOTIMES-IR"))
+     (let* ((count-ir (ir-field2 ir))
+            (body-ir (ir-field3 ir))
+            (result-ir (ir-field-n ir 3))
+            (compile-env (ir-field-n ir 4))
             (loop-var-slot (length compile-env))
             ;; Generate labels
             (loop-label (next-vreg counter))
@@ -805,8 +850,8 @@
                result-vr))))
 
     ;; get-tag: extract tag bits from value
-    ((and (consp ir) (ir-tag-matches (car ir) "GET-TAG"))
-     (let* ((val-result (ir-to-tac (cadr ir) counter))
+    ((and (consp ir) (ir-tag-matches (ir-variant ir) "GET-TAG"))
+     (let* ((val-result (ir-to-tac (ir-field1 ir) counter))
             (val-instrs (car val-result))
             (val-vr (cadr val-result))
             (result-vr (next-vreg counter)))
@@ -816,11 +861,11 @@
 
     ;; set-tag: change tag bits on a pointer value
     ;; (set-tag value new-tag) -> value with low 4 bits replaced by (untag new-tag)
-    ((and (consp ir) (ir-tag-matches (car ir) "SET-TAG"))
-     (let* ((val-result (ir-to-tac (cadr ir) counter))
+    ((and (consp ir) (ir-tag-matches (ir-variant ir) "SET-TAG"))
+     (let* ((val-result (ir-to-tac (ir-field1 ir) counter))
             (val-instrs (car val-result))
             (val-vr (cadr val-result))
-            (tag-result (ir-to-tac (caddr ir) counter))
+            (tag-result (ir-to-tac (ir-field2 ir) counter))
             (tag-instrs (car tag-result))
             (tag-vr (cadr tag-result))
             (result-vr (next-vreg counter)))
@@ -831,11 +876,11 @@
     ;; funcall-ir: call through function value
     ;; IR format: (FUNCALL-IR fn-expr (arg1 arg2 ...))
     ;; Use caddr (not cddr) to get the args list directly
-    ((and (consp ir) (ir-tag-matches (car ir) "FUNCALL-IR"))
-     (let* ((fn-result (ir-to-tac (cadr ir) counter))
+    ((and (consp ir) (ir-tag-matches (ir-variant ir) "FUNCALL-IR"))
+     (let* ((fn-result (ir-to-tac (ir-field1 ir) counter))
             (fn-instrs (car fn-result))
             (fn-vr (cadr fn-result))
-            (args (caddr ir)))
+            (args (ir-field2 ir)))
        (labels ((convert-args (as instrs vrs)
                   (if (null as)
                       (list instrs (reverse vrs))
@@ -855,20 +900,20 @@
                  result-vr)))))
 
     ;; lambda-ir: create closure
-    ((and (consp ir) (ir-tag-matches (car ir) "LAMBDA-IR"))
+    ((and (consp ir) (ir-tag-matches (ir-variant ir) "LAMBDA-IR"))
      ;; (lambda-ir params body-ir free-vars free-offsets)
      ;; For now, emit as opaque closure creation
      (let ((result-vr (next-vreg counter)))
        (list (list (list :tac-make-closure result-vr ir)) result-vr)))
 
     ;; get-global-vars-ir: load global vars table from [x27 + 104]
-    ((and (consp ir) (ir-tag-matches (car ir) "GET-GLOBAL-VARS-IR"))
+    ((and (consp ir) (ir-tag-matches (ir-variant ir) "GET-GLOBAL-VARS-IR"))
      (let ((result-vr (next-vreg counter)))
        (list (list (list :tac-get-global-vars result-vr)) result-vr)))
 
     ;; set-global-vars-ir: store global vars table to [x27 + 104]
-    ((and (consp ir) (ir-tag-matches (car ir) "SET-GLOBAL-VARS-IR"))
-     (let* ((val-result (ir-to-tac (cadr ir) counter))
+    ((and (consp ir) (ir-tag-matches (ir-variant ir) "SET-GLOBAL-VARS-IR"))
+     (let* ((val-result (ir-to-tac (ir-field1 ir) counter))
             (val-instrs (car val-result))
             (val-vr (cadr val-result)))
        (list (append val-instrs
@@ -876,13 +921,13 @@
              val-vr)))
 
     ;; get-cmdline-args-ir: get command line args
-    ((and (consp ir) (ir-tag-matches (car ir) "GET-CMDLINE-ARGS-IR"))
+    ((and (consp ir) (ir-tag-matches (ir-variant ir) "GET-CMDLINE-ARGS-IR"))
      (let ((result-vr (next-vreg counter)))
        (list (list (list :tac-get-cmdline-args result-vr)) result-vr)))
 
     ;; sys-exit-ir: exit with code
-    ((and (consp ir) (ir-tag-matches (car ir) "SYS-EXIT-IR"))
-     (let* ((val-result (ir-to-tac (cadr ir) counter))
+    ((and (consp ir) (ir-tag-matches (ir-variant ir) "SYS-EXIT-IR"))
+     (let* ((val-result (ir-to-tac (ir-field1 ir) counter))
             (val-instrs (car val-result))
             (val-vr (cadr val-result)))
        (list (append val-instrs
@@ -890,14 +935,14 @@
              val-vr)))
 
     ;; sys-open-ir: open(path, flags, mode)
-    ((and (consp ir) (ir-tag-matches (car ir) "SYS-OPEN-IR"))
-     (let* ((path-result (ir-to-tac (cadr ir) counter))
+    ((and (consp ir) (ir-tag-matches (ir-variant ir) "SYS-OPEN-IR"))
+     (let* ((path-result (ir-to-tac (ir-field1 ir) counter))
             (path-instrs (car path-result))
             (path-vr (cadr path-result))
-            (flags-result (ir-to-tac (caddr ir) counter))
+            (flags-result (ir-to-tac (ir-field2 ir) counter))
             (flags-instrs (car flags-result))
             (flags-vr (cadr flags-result))
-            (mode-result (ir-to-tac (cadddr ir) counter))
+            (mode-result (ir-to-tac (ir-field3 ir) counter))
             (mode-instrs (car mode-result))
             (mode-vr (cadr mode-result))
             (result-vr (next-vreg counter)))
@@ -906,14 +951,14 @@
              result-vr)))
 
     ;; sys-read-ir: read(fd, buf, len)
-    ((and (consp ir) (ir-tag-matches (car ir) "SYS-READ-IR"))
-     (let* ((fd-result (ir-to-tac (cadr ir) counter))
+    ((and (consp ir) (ir-tag-matches (ir-variant ir) "SYS-READ-IR"))
+     (let* ((fd-result (ir-to-tac (ir-field1 ir) counter))
             (fd-instrs (car fd-result))
             (fd-vr (cadr fd-result))
-            (buf-result (ir-to-tac (caddr ir) counter))
+            (buf-result (ir-to-tac (ir-field2 ir) counter))
             (buf-instrs (car buf-result))
             (buf-vr (cadr buf-result))
-            (len-result (ir-to-tac (cadddr ir) counter))
+            (len-result (ir-to-tac (ir-field3 ir) counter))
             (len-instrs (car len-result))
             (len-vr (cadr len-result))
             (result-vr (next-vreg counter)))
@@ -922,14 +967,14 @@
              result-vr)))
 
     ;; sys-write-ir: write(fd, buf, len)
-    ((and (consp ir) (ir-tag-matches (car ir) "SYS-WRITE-IR"))
-     (let* ((fd-result (ir-to-tac (cadr ir) counter))
+    ((and (consp ir) (ir-tag-matches (ir-variant ir) "SYS-WRITE-IR"))
+     (let* ((fd-result (ir-to-tac (ir-field1 ir) counter))
             (fd-instrs (car fd-result))
             (fd-vr (cadr fd-result))
-            (buf-result (ir-to-tac (caddr ir) counter))
+            (buf-result (ir-to-tac (ir-field2 ir) counter))
             (buf-instrs (car buf-result))
             (buf-vr (cadr buf-result))
-            (len-result (ir-to-tac (cadddr ir) counter))
+            (len-result (ir-to-tac (ir-field3 ir) counter))
             (len-instrs (car len-result))
             (len-vr (cadr len-result))
             (result-vr (next-vreg counter)))
@@ -938,8 +983,8 @@
              result-vr)))
 
     ;; sys-close-ir: close(fd)
-    ((and (consp ir) (ir-tag-matches (car ir) "SYS-CLOSE-IR"))
-     (let* ((fd-result (ir-to-tac (cadr ir) counter))
+    ((and (consp ir) (ir-tag-matches (ir-variant ir) "SYS-CLOSE-IR"))
+     (let* ((fd-result (ir-to-tac (ir-field1 ir) counter))
             (fd-instrs (car fd-result))
             (fd-vr (cadr fd-result))
             (result-vr (next-vreg counter)))
@@ -948,14 +993,14 @@
              result-vr)))
 
     ;; buffer-byte-set-ir: set byte in buffer
-    ((and (consp ir) (ir-tag-matches (car ir) "BUFFER-BYTE-SET-IR"))
-     (let* ((buf-result (ir-to-tac (cadr ir) counter))
+    ((and (consp ir) (ir-tag-matches (ir-variant ir) "BUFFER-BYTE-SET-IR"))
+     (let* ((buf-result (ir-to-tac (ir-field1 ir) counter))
             (buf-instrs (car buf-result))
             (buf-vr (cadr buf-result))
-            (idx-result (ir-to-tac (caddr ir) counter))
+            (idx-result (ir-to-tac (ir-field2 ir) counter))
             (idx-instrs (car idx-result))
             (idx-vr (cadr idx-result))
-            (val-result (ir-to-tac (cadddr ir) counter))
+            (val-result (ir-to-tac (ir-field3 ir) counter))
             (val-instrs (car val-result))
             (val-vr (cadr val-result))
             (result-vr (next-vreg counter)))
@@ -964,11 +1009,11 @@
              result-vr)))
 
     ;; buffer-byte-ref-ir: get byte from buffer at index
-    ((and (consp ir) (ir-tag-matches (car ir) "BUFFER-BYTE-REF-IR"))
-     (let* ((buf-result (ir-to-tac (cadr ir) counter))
+    ((and (consp ir) (ir-tag-matches (ir-variant ir) "BUFFER-BYTE-REF-IR"))
+     (let* ((buf-result (ir-to-tac (ir-field1 ir) counter))
             (buf-instrs (car buf-result))
             (buf-vr (cadr buf-result))
-            (idx-result (ir-to-tac (caddr ir) counter))
+            (idx-result (ir-to-tac (ir-field2 ir) counter))
             (idx-instrs (car idx-result))
             (idx-vr (cadr idx-result))
             (result-vr (next-vreg counter)))
@@ -977,14 +1022,14 @@
              result-vr)))
 
     ;; mem-set-byte-ir: set byte at pointer + offset
-    ((and (consp ir) (ir-tag-matches (car ir) "MEM-SET-BYTE-IR"))
-     (let* ((ptr-result (ir-to-tac (cadr ir) counter))
+    ((and (consp ir) (ir-tag-matches (ir-variant ir) "MEM-SET-BYTE-IR"))
+     (let* ((ptr-result (ir-to-tac (ir-field1 ir) counter))
             (ptr-instrs (car ptr-result))
             (ptr-vr (cadr ptr-result))
-            (off-result (ir-to-tac (caddr ir) counter))
+            (off-result (ir-to-tac (ir-field2 ir) counter))
             (off-instrs (car off-result))
             (off-vr (cadr off-result))
-            (val-result (ir-to-tac (cadddr ir) counter))
+            (val-result (ir-to-tac (ir-field3 ir) counter))
             (val-instrs (car val-result))
             (val-vr (cadr val-result))
             (result-vr (next-vreg counter)))
@@ -993,11 +1038,11 @@
              result-vr)))
 
     ;; mem-load-64-ir: load 64-bit from pointer + offset
-    ((and (consp ir) (ir-tag-matches (car ir) "MEM-LOAD-64-IR"))
-     (let* ((ptr-result (ir-to-tac (cadr ir) counter))
+    ((and (consp ir) (ir-tag-matches (ir-variant ir) "MEM-LOAD-64-IR"))
+     (let* ((ptr-result (ir-to-tac (ir-field1 ir) counter))
             (ptr-instrs (car ptr-result))
             (ptr-vr (cadr ptr-result))
-            (off-result (ir-to-tac (caddr ir) counter))
+            (off-result (ir-to-tac (ir-field2 ir) counter))
             (off-instrs (car off-result))
             (off-vr (cadr off-result))
             (result-vr (next-vreg counter)))
@@ -1006,11 +1051,11 @@
              result-vr)))
 
     ;; mem-load-byte-ir: load single byte from pointer + offset
-    ((and (consp ir) (ir-tag-matches (car ir) "MEM-LOAD-BYTE-IR"))
-     (let* ((ptr-result (ir-to-tac (cadr ir) counter))
+    ((and (consp ir) (ir-tag-matches (ir-variant ir) "MEM-LOAD-BYTE-IR"))
+     (let* ((ptr-result (ir-to-tac (ir-field1 ir) counter))
             (ptr-instrs (car ptr-result))
             (ptr-vr (cadr ptr-result))
-            (off-result (ir-to-tac (caddr ir) counter))
+            (off-result (ir-to-tac (ir-field2 ir) counter))
             (off-instrs (car off-result))
             (off-vr (cadr off-result))
             (result-vr (next-vreg counter)))
@@ -1019,8 +1064,8 @@
              result-vr)))
 
     ;; bnot-ir: boolean not
-    ((and (consp ir) (ir-tag-matches (car ir) "BNOT-IR"))
-     (let* ((val-result (ir-to-tac (cadr ir) counter))
+    ((and (consp ir) (ir-tag-matches (ir-variant ir) "BNOT-IR"))
+     (let* ((val-result (ir-to-tac (ir-field1 ir) counter))
             (val-instrs (car val-result))
             (val-vr (cadr val-result))
             (result-vr (next-vreg counter)))
@@ -1029,8 +1074,8 @@
              result-vr)))
 
     ;; mvn-ir: bitwise NOT (ARM64 MVN instruction)
-    ((and (consp ir) (ir-tag-matches (car ir) "MVN-IR"))
-     (let* ((val-result (ir-to-tac (cadr ir) counter))
+    ((and (consp ir) (ir-tag-matches (ir-variant ir) "MVN-IR"))
+     (let* ((val-result (ir-to-tac (ir-field1 ir) counter))
             (val-instrs (car val-result))
             (val-vr (cadr val-result))
             (result-vr (next-vreg counter)))
@@ -1041,15 +1086,15 @@
     ;; lambda-ref: reference to lifted lambda
     ;; IR: (lambda-ref name free-offsets)
     ;; free-offsets is list of env offsets for captured variables
-    ((and (consp ir) (ir-tag-matches (car ir) "LAMBDA-REF"))
+    ((and (consp ir) (ir-tag-matches (ir-variant ir) "LAMBDA-REF"))
      (let ((result-vr (next-vreg counter))
-           (lambda-name (cadr ir))
-           (free-offsets (caddr ir)))
+           (lambda-name (ir-field1 ir))
+           (free-offsets (ir-field2 ir)))
        (list (list (list :tac-lambda-ref result-vr lambda-name free-offsets)) result-vr)))
 
     ;; symbol-name-ir: get symbol's name as string
-    ((and (consp ir) (ir-tag-matches (car ir) "SYMBOL-NAME-IR"))
-     (let* ((sym-result (ir-to-tac (cadr ir) counter))
+    ((and (consp ir) (ir-tag-matches (ir-variant ir) "SYMBOL-NAME-IR"))
+     (let* ((sym-result (ir-to-tac (ir-field1 ir) counter))
             (sym-instrs (car sym-result))
             (sym-vr (cadr sym-result))
             (result-vr (next-vreg counter)))
@@ -1058,8 +1103,8 @@
              result-vr)))
 
     ;; make-symbol-ir: create symbol from string
-    ((and (consp ir) (ir-tag-matches (car ir) "MAKE-SYMBOL-IR"))
-     (let* ((name-result (ir-to-tac (cadr ir) counter))
+    ((and (consp ir) (ir-tag-matches (ir-variant ir) "MAKE-SYMBOL-IR"))
+     (let* ((name-result (ir-to-tac (ir-field1 ir) counter))
             (name-instrs (car name-result))
             (name-vr (cadr name-result))
             (result-vr (next-vreg counter)))
@@ -1068,8 +1113,8 @@
              result-vr)))
 
     ;; make-symbol-from-string-ir: same as make-symbol-ir
-    ((and (consp ir) (ir-tag-matches (car ir) "MAKE-SYMBOL-FROM-STRING-IR"))
-     (let* ((name-result (ir-to-tac (cadr ir) counter))
+    ((and (consp ir) (ir-tag-matches (ir-variant ir) "MAKE-SYMBOL-FROM-STRING-IR"))
+     (let* ((name-result (ir-to-tac (ir-field1 ir) counter))
             (name-instrs (car name-result))
             (name-vr (cadr name-result))
             (result-vr (next-vreg counter)))
@@ -1078,11 +1123,11 @@
              result-vr)))
 
     ;; string-concat-ir: concatenate two strings
-    ((and (consp ir) (ir-tag-matches (car ir) "STRING-CONCAT-IR"))
-     (let* ((s1-result (ir-to-tac (cadr ir) counter))
+    ((and (consp ir) (ir-tag-matches (ir-variant ir) "STRING-CONCAT-IR"))
+     (let* ((s1-result (ir-to-tac (ir-field1 ir) counter))
             (s1-instrs (car s1-result))
             (s1-vr (cadr s1-result))
-            (s2-result (ir-to-tac (caddr ir) counter))
+            (s2-result (ir-to-tac (ir-field2 ir) counter))
             (s2-instrs (car s2-result))
             (s2-vr (cadr s2-result))
             (result-vr (next-vreg counter)))
@@ -1091,11 +1136,11 @@
              result-vr)))
 
     ;; string-equal-ir: compare two strings
-    ((and (consp ir) (ir-tag-matches (car ir) "STRING-EQUAL-IR"))
-     (let* ((s1-result (ir-to-tac (cadr ir) counter))
+    ((and (consp ir) (ir-tag-matches (ir-variant ir) "STRING-EQUAL-IR"))
+     (let* ((s1-result (ir-to-tac (ir-field1 ir) counter))
             (s1-instrs (car s1-result))
             (s1-vr (cadr s1-result))
-            (s2-result (ir-to-tac (caddr ir) counter))
+            (s2-result (ir-to-tac (ir-field2 ir) counter))
             (s2-instrs (car s2-result))
             (s2-vr (cadr s2-result))
             (result-vr (next-vreg counter)))
@@ -1104,13 +1149,13 @@
              result-vr)))
 
     ;; get-intern-table-ir: load intern table from [x27 + 0]
-    ((and (consp ir) (ir-tag-matches (car ir) "GET-INTERN-TABLE-IR"))
+    ((and (consp ir) (ir-tag-matches (ir-variant ir) "GET-INTERN-TABLE-IR"))
      (let ((result-vr (next-vreg counter)))
        (list (list (list :tac-get-intern-table result-vr)) result-vr)))
 
     ;; set-intern-table-ir: store intern table to [x27 + 0]
-    ((and (consp ir) (ir-tag-matches (car ir) "SET-INTERN-TABLE-IR"))
-     (let* ((val-result (ir-to-tac (cadr ir) counter))
+    ((and (consp ir) (ir-tag-matches (ir-variant ir) "SET-INTERN-TABLE-IR"))
+     (let* ((val-result (ir-to-tac (ir-field1 ir) counter))
             (val-instrs (car val-result))
             (val-vr (cadr val-result)))
        (list (append val-instrs
@@ -1118,13 +1163,13 @@
              val-vr)))
 
     ;; get-keyword-table-ir: load keyword table from [x27 + 128]
-    ((and (consp ir) (ir-tag-matches (car ir) "GET-KEYWORD-TABLE-IR"))
+    ((and (consp ir) (ir-tag-matches (ir-variant ir) "GET-KEYWORD-TABLE-IR"))
      (let ((result-vr (next-vreg counter)))
        (list (list (list :tac-get-keyword-table result-vr)) result-vr)))
 
     ;; set-keyword-table-ir: store keyword table to [x27 + 128]
-    ((and (consp ir) (ir-tag-matches (car ir) "SET-KEYWORD-TABLE-IR"))
-     (let* ((val-result (ir-to-tac (cadr ir) counter))
+    ((and (consp ir) (ir-tag-matches (ir-variant ir) "SET-KEYWORD-TABLE-IR"))
+     (let* ((val-result (ir-to-tac (ir-field1 ir) counter))
             (val-instrs (car val-result))
             (val-vr (cadr val-result)))
        (list (append val-instrs
@@ -1132,13 +1177,13 @@
              val-vr)))
 
     ;; get-lambda-counter-ir: load lambda counter from [x27 + 8]
-    ((and (consp ir) (ir-tag-matches (car ir) "GET-LAMBDA-COUNTER-IR"))
+    ((and (consp ir) (ir-tag-matches (ir-variant ir) "GET-LAMBDA-COUNTER-IR"))
      (let ((result-vr (next-vreg counter)))
        (list (list (list :tac-get-lambda-counter result-vr)) result-vr)))
 
     ;; set-lambda-counter-ir: store lambda counter to [x27 + 8]
-    ((and (consp ir) (ir-tag-matches (car ir) "SET-LAMBDA-COUNTER-IR"))
-     (let* ((val-result (ir-to-tac (cadr ir) counter))
+    ((and (consp ir) (ir-tag-matches (ir-variant ir) "SET-LAMBDA-COUNTER-IR"))
+     (let* ((val-result (ir-to-tac (ir-field1 ir) counter))
             (val-instrs (car val-result))
             (val-vr (cadr val-result)))
        (list (append val-instrs
@@ -1146,33 +1191,33 @@
              val-vr)))
 
     ;; get-frame-pointer-ir: get x29 as raw pointer for stack walking
-    ((and (consp ir) (ir-tag-matches (car ir) "GET-FRAME-POINTER-IR"))
+    ((and (consp ir) (ir-tag-matches (ir-variant ir) "GET-FRAME-POINTER-IR"))
      (let ((result-vr (next-vreg counter)))
        (list (list (list :tac-get-frame-pointer result-vr)) result-vr)))
 
     ;; get-code-base-ir: get x26 as raw pointer for symbol table access
-    ((and (consp ir) (ir-tag-matches (car ir) "GET-CODE-BASE-IR"))
+    ((and (consp ir) (ir-tag-matches (ir-variant ir) "GET-CODE-BASE-IR"))
      (let ((result-vr (next-vreg counter)))
        (list (list (list :tac-get-code-base result-vr)) result-vr)))
 
     ;; get-symtab-offset-ir: load symtab offset from [x27 + 112]
-    ((and (consp ir) (ir-tag-matches (car ir) "GET-SYMTAB-OFFSET-IR"))
+    ((and (consp ir) (ir-tag-matches (ir-variant ir) "GET-SYMTAB-OFFSET-IR"))
      (let ((result-vr (next-vreg counter)))
        (list (list (list :tac-get-symtab-offset result-vr)) result-vr)))
 
     ;; get-symtab-count-ir: load symtab count from [x27 + 120]
-    ((and (consp ir) (ir-tag-matches (car ir) "GET-SYMTAB-COUNT-IR"))
+    ((and (consp ir) (ir-tag-matches (ir-variant ir) "GET-SYMTAB-COUNT-IR"))
      (let ((result-vr (next-vreg counter)))
        (list (list (list :tac-get-symtab-count result-vr)) result-vr)))
 
     ;; get-symbol-counter-ir: load symbol counter from [x27 + 48]
-    ((and (consp ir) (ir-tag-matches (car ir) "GET-SYMBOL-COUNTER-IR"))
+    ((and (consp ir) (ir-tag-matches (ir-variant ir) "GET-SYMBOL-COUNTER-IR"))
      (let ((result-vr (next-vreg counter)))
        (list (list (list :tac-get-symbol-counter result-vr)) result-vr)))
 
     ;; set-symbol-counter-ir: store symbol counter to [x27 + 48]
-    ((and (consp ir) (ir-tag-matches (car ir) "SET-SYMBOL-COUNTER-IR"))
-     (let* ((val-result (ir-to-tac (cadr ir) counter))
+    ((and (consp ir) (ir-tag-matches (ir-variant ir) "SET-SYMBOL-COUNTER-IR"))
+     (let* ((val-result (ir-to-tac (ir-field1 ir) counter))
             (val-instrs (car val-result))
             (val-vr (cadr val-result)))
        (list (append val-instrs
@@ -1180,13 +1225,13 @@
              val-vr)))
 
     ;; get-symbol-table-sym-ir: load symbol table from [x27 + 56]
-    ((and (consp ir) (ir-tag-matches (car ir) "GET-SYMBOL-TABLE-SYM-IR"))
+    ((and (consp ir) (ir-tag-matches (ir-variant ir) "GET-SYMBOL-TABLE-SYM-IR"))
      (let ((result-vr (next-vreg counter)))
        (list (list (list :tac-get-symbol-table result-vr)) result-vr)))
 
     ;; set-symbol-table-sym-ir: store symbol table to [x27 + 56]
-    ((and (consp ir) (ir-tag-matches (car ir) "SET-SYMBOL-TABLE-SYM-IR"))
-     (let* ((val-result (ir-to-tac (cadr ir) counter))
+    ((and (consp ir) (ir-tag-matches (ir-variant ir) "SET-SYMBOL-TABLE-SYM-IR"))
+     (let* ((val-result (ir-to-tac (ir-field1 ir) counter))
             (val-instrs (car val-result))
             (val-vr (cadr val-result)))
        (list (append val-instrs
@@ -1194,13 +1239,13 @@
              val-vr)))
 
     ;; get-packages-ir: load packages alist from [x27 + 80]
-    ((and (consp ir) (ir-tag-matches (car ir) "GET-PACKAGES-IR"))
+    ((and (consp ir) (ir-tag-matches (ir-variant ir) "GET-PACKAGES-IR"))
      (let ((result-vr (next-vreg counter)))
        (list (list (list :tac-get-packages result-vr)) result-vr)))
 
     ;; set-packages-ir: store packages alist to [x27 + 80]
-    ((and (consp ir) (ir-tag-matches (car ir) "SET-PACKAGES-IR"))
-     (let* ((val-result (ir-to-tac (cadr ir) counter))
+    ((and (consp ir) (ir-tag-matches (ir-variant ir) "SET-PACKAGES-IR"))
+     (let* ((val-result (ir-to-tac (ir-field1 ir) counter))
             (val-instrs (car val-result))
             (val-vr (cadr val-result)))
        (list (append val-instrs
@@ -1208,13 +1253,13 @@
              val-vr)))
 
     ;; get-current-package-ir: load current package name from [x27 + 88]
-    ((and (consp ir) (ir-tag-matches (car ir) "GET-CURRENT-PACKAGE-IR"))
+    ((and (consp ir) (ir-tag-matches (ir-variant ir) "GET-CURRENT-PACKAGE-IR"))
      (let ((result-vr (next-vreg counter)))
        (list (list (list :tac-get-current-package result-vr)) result-vr)))
 
     ;; set-current-package-ir: store current package name to [x27 + 88]
-    ((and (consp ir) (ir-tag-matches (car ir) "SET-CURRENT-PACKAGE-IR"))
-     (let* ((val-result (ir-to-tac (cadr ir) counter))
+    ((and (consp ir) (ir-tag-matches (ir-variant ir) "SET-CURRENT-PACKAGE-IR"))
+     (let* ((val-result (ir-to-tac (ir-field1 ir) counter))
             (val-instrs (car val-result))
             (val-vr (cadr val-result)))
        (list (append val-instrs
@@ -1223,10 +1268,10 @@
 
     ;; block-ir: named block with return-from support
     ;; Format: (block-ir (name . block-id) body)
-    ((and (consp ir) (ir-tag-matches (car ir) "BLOCK-IR"))
-     (let* ((name-info (cadr ir))  ; (name . block-id)
+    ((and (consp ir) (ir-tag-matches (ir-variant ir) "BLOCK-IR"))
+     (let* ((name-info (ir-field1 ir))  ; (name . block-id)
             (block-id (if (consp name-info) (cdr name-info) name-info))
-            (body (caddr ir))
+            (body (ir-field2 ir))
             (result-vr (next-vreg counter))
             (end-label (next-vreg counter))
             ;; Store end-label in association list for return-from to reference
@@ -1242,10 +1287,10 @@
 
     ;; return-from-ir: early exit from named block
     ;; Format: (return-from-ir (name . block-id) value)
-    ((and (consp ir) (ir-tag-matches (car ir) "RETURN-FROM-IR"))
-     (let* ((name-info (cadr ir))  ; (name . block-id)
+    ((and (consp ir) (ir-tag-matches (ir-variant ir) "RETURN-FROM-IR"))
+     (let* ((name-info (ir-field1 ir))  ; (name . block-id)
             (block-id (if (consp name-info) (cdr name-info) name-info))
-            (value-ir (caddr ir))
+            (value-ir (ir-field2 ir))
             (end-label (cdr (assoc block-id *block-labels*)))
             (result-vr (cdr (assoc block-id *block-results*))))
        (if (and end-label result-vr)
@@ -1264,11 +1309,11 @@
 
     ;; sym-eq-ir: compare two symbols by name (not pointer identity)
     ;; Used by case dispatch since habu0 creates new symbol objects at runtime
-    ((and (consp ir) (ir-tag-matches (car ir) "SYM-EQ-IR"))
-     (let* ((s1-result (ir-to-tac (cadr ir) counter))
+    ((and (consp ir) (ir-tag-matches (ir-variant ir) "SYM-EQ-IR"))
+     (let* ((s1-result (ir-to-tac (ir-field1 ir) counter))
             (s1-instrs (car s1-result))
             (s1-vr (cadr s1-result))
-            (s2-result (ir-to-tac (caddr ir) counter))
+            (s2-result (ir-to-tac (ir-field2 ir) counter))
             (s2-instrs (car s2-result))
             (s2-vr (cadr s2-result))
             (result-vr (next-vreg counter)))
@@ -1278,8 +1323,8 @@
 
     ;; Type predicate IR forms
     ;; numberp-ir: check if value is a fixnum (bit0=1 in hybrid scheme)
-    ((and (consp ir) (ir-tag-matches (car ir) "NUMBERP-IR"))
-     (let* ((arg-result (ir-to-tac (cadr ir) counter))
+    ((and (consp ir) (ir-tag-matches (ir-variant ir) "NUMBERP-IR"))
+     (let* ((arg-result (ir-to-tac (ir-field1 ir) counter))
             (arg-instrs (car arg-result))
             (arg-vr (cadr arg-result))
             (result-vr (next-vreg counter)))
@@ -1288,8 +1333,8 @@
              result-vr)))
 
     ;; consp-ir: check if value is a cons cell (tag 0, non-nil)
-    ((and (consp ir) (ir-tag-matches (car ir) "CONSP-IR"))
-     (let* ((arg-result (ir-to-tac (cadr ir) counter))
+    ((and (consp ir) (ir-tag-matches (ir-variant ir) "CONSP-IR"))
+     (let* ((arg-result (ir-to-tac (ir-field1 ir) counter))
             (arg-instrs (car arg-result))
             (arg-vr (cadr arg-result))
             (result-vr (next-vreg counter)))
@@ -1298,8 +1343,8 @@
              result-vr)))
 
     ;; symbolp-ir: check if value is a symbol (tag 2)
-    ((and (consp ir) (ir-tag-matches (car ir) "SYMBOLP-IR"))
-     (let* ((arg-result (ir-to-tac (cadr ir) counter))
+    ((and (consp ir) (ir-tag-matches (ir-variant ir) "SYMBOLP-IR"))
+     (let* ((arg-result (ir-to-tac (ir-field1 ir) counter))
             (arg-instrs (car arg-result))
             (arg-vr (cadr arg-result))
             (result-vr (next-vreg counter)))
@@ -1308,8 +1353,8 @@
              result-vr)))
 
     ;; stringp-ir: check if value is a string (tag 6)
-    ((and (consp ir) (ir-tag-matches (car ir) "STRINGP-IR"))
-     (let* ((arg-result (ir-to-tac (cadr ir) counter))
+    ((and (consp ir) (ir-tag-matches (ir-variant ir) "STRINGP-IR"))
+     (let* ((arg-result (ir-to-tac (ir-field1 ir) counter))
             (arg-instrs (car arg-result))
             (arg-vr (cadr arg-result))
             (result-vr (next-vreg counter)))
@@ -1318,8 +1363,8 @@
              result-vr)))
 
     ;; vectorp-ir: check if value is a vector (tag 4)
-    ((and (consp ir) (ir-tag-matches (car ir) "VECTORP-IR"))
-     (let* ((arg-result (ir-to-tac (cadr ir) counter))
+    ((and (consp ir) (ir-tag-matches (ir-variant ir) "VECTORP-IR"))
+     (let* ((arg-result (ir-to-tac (ir-field1 ir) counter))
             (arg-instrs (car arg-result))
             (arg-vr (cadr arg-result))
             (result-vr (next-vreg counter)))
@@ -1328,8 +1373,8 @@
              result-vr)))
 
     ;; null-ir: check if value is nil (value = 0)
-    ((and (consp ir) (ir-tag-matches (car ir) "NULL-IR"))
-     (let* ((arg-result (ir-to-tac (cadr ir) counter))
+    ((and (consp ir) (ir-tag-matches (ir-variant ir) "NULL-IR"))
+     (let* ((arg-result (ir-to-tac (ir-field1 ir) counter))
             (arg-instrs (car arg-result))
             (arg-vr (cadr arg-result))
             (result-vr (next-vreg counter)))
@@ -1339,8 +1384,8 @@
 
     ;; values-ir: return multiple values - return first value or nil
     ;; Format: (values-ir (ir1 ir2 ...)) or (values-ir nil)
-    ((and (consp ir) (ir-tag-matches (car ir) "VALUES-IR"))
-     (let ((values-list (cadr ir)))
+    ((and (consp ir) (ir-tag-matches (ir-variant ir) "VALUES-IR"))
+     (let ((values-list (ir-field1 ir)))
        (if (null values-list)
            ;; (values) -> nil
            (let ((result-vr (next-vreg counter)))
@@ -1946,6 +1991,7 @@
       ;; tac-var: load from environment
       ;; Environment is at x20, params at negative offsets from x20
       ;; Use LDUR for negative offsets (unscaled signed 9-bit)
+      ;; Offset 0 = env[0], offset 1 = env[-8], offset 2 = env[-16], etc.
       ((:tac-var)
        (let* ((vreg (cadr instr))
               (offset (caddr instr))
@@ -1960,6 +2006,7 @@
 
       ;; tac-setvar: store to environment
       ;; Use STUR for negative offsets
+      ;; Offset 0 = env[0], offset 1 = env[-8], offset 2 = env[-16], etc.
       ((:tac-setvar)
        (let* ((offset (cadr instr))
               (vreg (caddr instr))
@@ -2008,13 +2055,12 @@
              (append (arm64:sub dest-reg left-reg right-reg)
                      (arm64:add dest-reg dest-reg +fixnum-bit+ :imm t)))
             ((:MUL)
-             ;; Untag right operand, multiply, fix tag
-             ;; (2a+1)*b = 2ab+b, need 2ab+1, so subtract (b-1)
-             ;; Or: clear bit 0, set bit 0 using AND with -2 then ORR with 1
-             (append (arm64:asr right-reg right-reg +fixnum-bit+ :imm t)
-                     (arm64:mul dest-reg left-reg right-reg)
-                     (arm64:and* dest-reg dest-reg -2 :imm t)
-                     (arm64:orr dest-reg dest-reg +fixnum-bit+ :imm t)))
+             ;; Untag both, multiply, retag (same pattern as DIV)
+             (append (arm64:asr left-reg left-reg +fixnum-bit+ :imm t)    ; untag a
+                     (arm64:asr right-reg right-reg +fixnum-bit+ :imm t)  ; untag b
+                     (arm64:mul dest-reg left-reg right-reg)               ; a*b
+                     (arm64:lsl dest-reg dest-reg +fixnum-bit+ :imm t)    ; (a*b)<<1
+                     (arm64:orr dest-reg dest-reg +fixnum-bit+ :imm t)))  ; set tag
             ((:DIV)
              ;; Untag both, divide, retag result
              (append (arm64:asr left-reg left-reg +fixnum-bit+ :imm t)
