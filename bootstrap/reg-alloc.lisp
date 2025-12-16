@@ -1337,6 +1337,26 @@
                      (list (list :tac-null result-vr arg-vr)))
              result-vr)))
 
+    ;; values-ir: return multiple values - return first value or nil
+    ;; Format: (values-ir (ir1 ir2 ...)) or (values-ir nil)
+    ((and (consp ir) (ir-tag-matches (car ir) "VALUES-IR"))
+     (let ((values-list (cadr ir)))
+       (if (null values-list)
+           ;; (values) -> nil
+           (let ((result-vr (next-vreg counter)))
+             (list (list (list :tac-lit result-vr 0)) result-vr))
+           ;; (values x y z) -> evaluate all, return first
+           (let ((first-result (ir-to-tac (car values-list) counter)))
+             ;; Evaluate remaining values for side effects (if any)
+             (let ((all-instrs (car first-result))
+                   (result-vr (cadr first-result)))
+               (labels ((process-rest (vals instrs)
+                          (if (null vals)
+                              instrs
+                              (let ((r (ir-to-tac (car vals) counter)))
+                                (process-rest (cdr vals) (append instrs (car r)))))))
+                 (list (process-rest (cdr values-list) all-instrs) result-vr)))))))
+
     ;; Default: error on unhandled IR
     (t
      (error "ir-to-tac: Unhandled IR form: ~A" ir))))
@@ -1830,12 +1850,18 @@
 ;;; using exhaustive match patterns over all 65 TAC variants.
 ;;; DEPRECATED: Use habu.codegen:generate-code with typed TAC instead.
 
-;; Spill slots start at sp+0x40 (after saved callee registers at sp+0x10-0x38)
+;; Spill slots start at sp+0x40 (after saved callee registers)
+;; When *current-frame-layout* is set, uses layout's spill-base
+;; Otherwise falls back to fixed 0x40 for compatibility
 (defparameter +spill-base-offset+ #x40)
 
 (defun spill-offset (slot)
-  "Calculate stack offset for spill slot. Spill area starts at sp+0x40."
-  (+ +spill-base-offset+ (* slot 8)))
+  "Calculate stack offset for spill slot.
+   Uses *current-frame-layout* if set, else fixed offset."
+  (let ((base (if *current-frame-layout*
+                  (fl-layout-spill-base *current-frame-layout*)
+                  +spill-base-offset+)))
+    (+ base (* slot 8))))
 
 (defun vreg-to-reg (vreg allocation)
   "Look up physical register for vreg. Returns reg keyword (:x9, etc.) or (:spill slot)."
@@ -2151,16 +2177,17 @@
                           (remove-if-not
                            (lambda (r) (member r allocatable))
                            (mapcar (lambda (x) (cdr x)) allocation))))
-              ;; Generate saves to stack at offsets 0x3850+ (caller-save area)
-              ;; Frame layout (16KB frame):
-              ;;   0x10-0x38: saved callee-save regs (x19-x24)
-              ;;   0x40-0x3840: temp slots (1792 slots for linear codegen)
-              ;;   0x3850-0x38F0: caller-save area (13 slots for x9-x15 + args)
-              ;;   0x3F80: env pointer (x20)
-              ;;   0x3FF0/0x3FF8: saved fp/lr
-              ;; This avoids corrupting temps when saving regs before calls
+              ;; Generate saves to stack - caller-save area is after spill slots
+              ;; For small frames, use area right after spill slots, before fp/lr
+              ;; Calculate from frame layout if available
               (save-code nil)
-              (save-offset #x3850)
+              ;; Calculate caller-save offset: right after spill slots
+              ;; spill-base + spill-count * 8 gives us the first free slot after spills
+              (caller-save-start (if *current-frame-layout*
+                                     (+ (fl-layout-spill-base *current-frame-layout*)
+                                        (* (fl-layout-spill-count *current-frame-layout*) 8))
+                                     #xa0))  ; Default for small frames
+              (save-offset caller-save-start)
               (reg-offsets nil))  ; Track which reg is at which offset for restore
          ;; Save only actually-used caller-saved registers (O(n) with push/nreverse)
          (dolist (reg used-regs)
@@ -2194,12 +2221,24 @@
              (dolist (reg-off reg-offsets)
                (dolist (instr (arm64:ldr (car reg-off) :sp :offset (cdr reg-off)))
                  (push instr restore-code)))
-            ;; Recompute x20 (env) = sp + 0x3F80 (must match fn-fixed-prologue in codegen.lisp)
+            ;; Recompute x20 (env) from actual frame layout
             ;; We can't just load from sp+24 - that's the CALLER's x20, not ours
-            (dolist (instr (arm64:add :env :sp #x3 :imm t :shift12 t))
-              (push instr restore-code))
-            (dolist (instr (arm64:add :env :env #xF80 :imm t))
-              (push instr restore-code))
+            ;; MUST use *current-frame-layout* to get correct env-base (not hardcoded!)
+            (let ((env-base (if *current-frame-layout*
+                               (fl-layout-env-base *current-frame-layout*)
+                               #x60)))  ; Default small frame env-base
+              (if (<= env-base 4095)
+                  ;; Small offset - single add
+                  (dolist (instr (arm64:add :env :sp env-base :imm t))
+                    (push instr restore-code))
+                  ;; Large offset - shifted add + remainder
+                  (let ((shift-val (ash env-base -12))
+                        (rem (logand env-base #xFFF)))
+                    (dolist (instr (arm64:add :env :sp shift-val :imm t :shift12 t))
+                      (push instr restore-code))
+                    (when (> rem 0)
+                      (dolist (instr (arm64:add :env :env rem :imm t))
+                        (push instr restore-code))))))
             (setq restore-code (nreverse restore-code))
              ;; Move result from x0 to dest
              (let ((result-code
@@ -2303,6 +2342,33 @@
           ;; Branch if equal to nil
           ;; Use nested list so append doesn't flatten the marker
           (list (list :branch-eq-marker target-label)))))
+
+      ;; tac-null: check if value is nil, return t or nil
+      ;; Format: (tac-null dest-vreg src-vreg)
+      ((:tac-null)
+       (let* ((dest-vreg (cadr instr))
+              (src-vreg (caddr instr))
+              (src-loc (vreg-to-reg src-vreg allocation))
+              (dest (vreg-to-reg dest-vreg allocation))
+              (src-reg (if (and (consp src-loc) (eq (car src-loc) :spill)) :x0 src-loc))
+              (dest-reg (if (and (consp dest) (eq (car dest) :spill)) :x0 dest)))
+         (append
+          ;; Load source if spilled
+          (when (and (consp src-loc) (eq (car src-loc) :spill))
+            (arm64:ldr :x0 :sp :offset (spill-offset (cadr src-loc))))
+          ;; Compare with nil (hybrid: nil = 0)
+          (arm64:cmp src-reg +nil-value+ :imm t)
+          ;; Set to 1 if equal, 0 otherwise
+          (arm64:cset dest-reg arm64:+eq+)
+          ;; Convert 0/1 to tagged nil(0)/t(+t-value+):
+          ;; neg dest => -1 (all 1s) or 0
+          ;; and dest, dest, +t-value+ => +t-value+ or 0
+          (arm64:neg dest-reg dest-reg)
+          (arm64:movz :x2 +t-value+)
+          (arm64:and* dest-reg dest-reg :x2)
+          ;; Store if spilled
+          (when (and (consp dest) (eq (car dest) :spill))
+            (arm64:str :x0 :sp :offset (spill-offset (cadr dest)))))))
 
       ;; tac-setcar: mutate car of cons
       ((:tac-setcar)
@@ -2593,13 +2659,12 @@
           (arm64:str :x8 :heap :offset 0)
           ;; Store string bytes at x28+8 (gen-str-bytes-code uses x8)
           (gen-str-bytes-code str 8)
-          ;; Get tagged pointer: x28 | +tag-string+ -- put in x19 (callee-saved, survives GC)
+          ;; Get tagged pointer: x28 | +tag-string+ -- put in x19
           (arm64:mov :x19 :heap)
           (arm64:add :x19 :x19 +tag-string+ :imm t)
           ;; Bump heap
           (arm64:add :heap :heap total-size :imm t)
-          ;; GC trigger check (uses x8, may call GC-COLLECT which clobbers x0-x7)
-          (gc-trigger-code)
+          ;; Note: NO post-allocation GC check - x19 is unrooted until saved
           ;; Now move from x19 to final destination
           (if (and (consp dest) (eq (car dest) :spill))
               ;; Spill slot destination
@@ -2628,8 +2693,7 @@
           (arm64:add :x19 :x19 +tag-keyword+ :imm t)
           ;; Bump heap
           (arm64:add :heap :heap total-size :imm t)
-          ;; GC trigger check
-          (gc-trigger-code)
+          ;; Note: NO post-allocation GC check - x19 is unrooted until saved
           ;; Move from x19 to final destination
           (if (and (consp dest) (eq (car dest) :spill))
               (arm64:str :x19 :sp :offset (spill-offset (cadr dest)))
@@ -2658,13 +2722,12 @@
           (arm64:str :x8 :heap :offset 0)
           ;; Store symbol name bytes at x28+8 (gen-str-bytes-code uses x8)
           (gen-str-bytes-code name 8)
-          ;; Get tagged pointer: x28 | +tag-symbol+ -- put in x19 (callee-saved, survives GC)
+          ;; Get tagged pointer: x28 | +tag-symbol+ -- put in x19
           (arm64:mov :x19 :heap)
           (arm64:add :x19 :x19 +tag-symbol+ :imm t)
           ;; Bump heap
           (arm64:add :heap :heap total-size :imm t)
-          ;; GC trigger check (uses x8, may call GC-COLLECT which clobbers x0-x7)
-          (gc-trigger-code)
+          ;; Note: NO post-allocation GC check - x19 is unrooted until saved
           ;; Now move from x19 to final destination
           (if (and (consp dest) (eq (car dest) :spill))
               ;; Spill slot destination
@@ -2699,12 +2762,12 @@
           (arm64:add :x1 :x1 15 :imm t)
           (arm64:and* :x1 :x1 +ptr-mask+ :imm t)
           ;; Return tagged pointer, bump heap
-          (arm64:mov :x19 :heap)                 ; x19 = base (callee-saved, survives GC)
+          (arm64:mov :x19 :heap)                 ; x19 = base
           (arm64:add :heap :heap :x1)
           ;; Tag with vector tag
           (arm64:add :x19 :x19 +tag-vector+ :imm t)
-          ;; GC trigger check
-          (gc-trigger-code)
+          ;; Note: NO post-allocation GC check - x19 is unrooted until saved
+          ;; (x19 is callee-saved for CALLS but GC doesn't update registers)
           ;; Move result to destination
           (if (and (consp dest) (eq (car dest) :spill))
               (arm64:str :x19 :sp :offset (spill-offset (cadr dest)))
@@ -4219,8 +4282,18 @@
                (intervals (compute-intervals annotated))
                ;; Linear scan allocation
                (allocation (linear-scan intervals))
-               ;; Generate prologue - use fn-fixed-prologue for consistent frame layout
-               (prologue-code (fn-fixed-prologue))
+               ;; Count spills for frame sizing
+               (spill-count (labels ((count-spills (lst n)
+                                       (if (null lst) n
+                                           (let ((a (car lst)))
+                                             (if (and (consp (cdr a)) (eq (cadr a) :spill))
+                                                 (count-spills (cdr lst) (+ n 1))
+                                                 (count-spills (cdr lst) n))))))
+                              (count-spills allocation 0)))
+               ;; Env slots needed = params + captures + some extra
+               (env-slots (+ (length params) num-captures 8))
+               ;; Generate prologue with dynamic frame size
+               (prologue-code (fn-fixed-prologue spill-count env-slots))
                ;; Generate capture loads (for lifted lambdas with captures, not defuns)
                (capture-code (gen-capture-loads-reg num-captures))
                ;; Generate param stores
@@ -4277,8 +4350,16 @@
                (intervals (compute-intervals annotated))
                ;; Linear scan allocation
                (allocation (linear-scan intervals))
-               ;; Generate prologue - use fn-fixed-prologue for consistent frame layout
-               (prologue-code (fn-fixed-prologue))
+               ;; Count spills for frame sizing
+               (spill-count (labels ((count-spills (lst n)
+                                       (if (null lst) n
+                                           (let ((a (car lst)))
+                                             (if (and (consp (cdr a)) (eq (cadr a) :spill))
+                                                 (count-spills (cdr lst) (+ n 1))
+                                                 (count-spills (cdr lst) n))))))
+                              (count-spills allocation 0)))
+               ;; Generate prologue with dynamic frame size (main has no params/captures)
+               (prologue-code (fn-fixed-prologue spill-count 8))
                ;; Generate body code with allocation
                (body-code (tac-codegen full-tac allocation))
                ;; Generate epilogue

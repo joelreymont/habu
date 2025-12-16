@@ -644,11 +644,11 @@
                             (arm64:str :x16 :heap :offset 0))))
            (data-code (gen-store-bytes 8 bytes-with-nul nil))
            ;; Return tagged pointer and bump heap
+           ;; Note: NO post-allocation GC check - x0 is unrooted until caller saves it
            (result-code (append-all
                          (list (arm64:mov :x0 :heap)
                                (arm64:add :x0 :x0 #.+tag-string+ :imm t)
-                               (arm64:add :heap :heap total-size :imm t)
-                               (gc-trigger-code)))))
+                               (arm64:add :heap :heap total-size :imm t)))))
       (append-all (list pre-check len-code data-code result-code)))))
 
 (defun gen-symbol-lit (str len total-size)
@@ -686,11 +686,11 @@
                             (arm64:str :x16 :heap :offset 0))))
            (data-code (gen-store-bytes 8 bytes-with-nul nil))
            ;; Return tagged pointer with symbol tag and bump heap
+           ;; Note: NO post-allocation GC check - x0 is unrooted until caller saves it
            (result-code (append-all
                          (list (arm64:mov :x0 :heap)
                                (arm64:add :x0 :x0 #.+tag-symbol+ :imm t)
-                               (arm64:add :heap :heap total-size :imm t)
-                               (gc-trigger-code)))))
+                               (arm64:add :heap :heap total-size :imm t)))))
       (append-all (list pre-check len-code data-code result-code)))))
 
 (defun take-bytes (bytes n)
@@ -2248,8 +2248,7 @@
           ;; Tag with vector tag
           (arm64:movz :x1 #.+tag-vector+)
           (arm64:orr :x0 :x0 :x1)
-          ;; GC trigger check
-          (gc-trigger-code)
+          ;; Note: NO post-allocation GC check - x0 is unrooted until saved
           (linear-save-temp dst))))
 
       ;; Get-global-vars: load from [x27 + 104]
@@ -2618,7 +2617,7 @@
               (arm64:mov :x0 :heap)
               (arm64:add :x0 :x0 #.+tag-closure+ :imm t)    ; closure tag
               (arm64:add :heap :heap 16 :imm t)
-              (gc-trigger-code)
+              ;; Note: NO post-allocation GC check - x0 is unrooted until saved
               (linear-save-temp dst))
              ;; Has captures - build cons chain of captured values
              (labels ((gen-cons-chain (offs)
@@ -2653,7 +2652,7 @@
                 (arm64:mov :x0 :heap)
                 (arm64:add :x0 :x0 #.+tag-closure+ :imm t)
                 (arm64:add :heap :heap 16 :imm t)
-                (gc-trigger-code)
+                ;; Note: NO post-allocation GC check - x0 is unrooted until saved
                 (linear-save-temp dst)))))))
 
       ;; buffer-to-string: convert raw byte buffer to string (inline)
@@ -2853,50 +2852,222 @@
 ;;; Prologue and Epilogue
 ;;; ============================================================
 
-;;; Fixed-size function prologue/epilogue used by codegen-fn for native delivery.
-;;; These are used in BOTH SBCL-hosted mode (for Stage 1 compilation) and native mode.
-;;; The frame layout supports up to 48 env slots.
+;;; Dynamic function prologue/epilogue with sized frames.
+;;; Small functions get small frames to allow deeper recursion.
 
-(defun fn-fixed-prologue ()
-  "Generate function prologue with fixed 16KB frame.
-   Frame layout after prologue (0x4000 bytes = 16384 bytes):
-   sp+0x10:  x19, x20 (saved)
-   sp+0x20:  x21, x22 (saved)
-   sp+0x30:  x23, x24 (saved)
-   sp+0x38:  x26 (code-base) - MUST be preserved across calls for literal loading
-   sp+0x40:  temp slots (1791 slots, to 0x3840)
-   sp+0x3840: [free space for env slots to expand down]
-   sp+0x3F80: environment base (x20) - allows 48+ env slots before collision
-   sp+0x3FF0: x29 (fp)
-   sp+0x3FF8: x30 (lr)
-   Note: 16KB frame allows ~500 nested calls with 8MB stack."
+(defconstant +fn-header-size+ 64
+  "Fixed overhead for saved registers: fp, lr, x19-x24, x26 = 8 × 8 bytes")
+
+(defconstant +min-env-slots+ 16
+  "Minimum environment slots (128 bytes) for small functions")
+
+(defvar *current-frame-layout* nil
+  "Current function's frame layout, set during prologue for epilogue/spills to use")
+
+;;; Frame Layout Calculation
+;;;
+;;; The frame-layout ADT is the SINGLE SOURCE OF TRUTH for all frame offsets.
+;;; This function computes it once; all codegen uses the accessors.
+
+(defun make-frame-layout (spill-count env-slots)
+  "Calculate frame layout based on actual needs.
+   Returns a frame-layout ADT instance.
+
+   Layout (16-byte aligned):
+     sp+0:           callee-saved (x19,x20,x21,x22,x23,x24,x26) = 64 bytes
+     sp+64:          spill slots (spill-count × 8 bytes)
+     sp+env-base:    environment slots (env-slots × 8 bytes)
+     sp+fp-offset:   saved frame pointer
+     sp+lr-offset:   saved link register
+     sp+frame-size:  original sp"
+  (let* ((callee-base 0)
+         (callee-size 64)  ; 8 registers × 8 bytes
+         (spill-base (+ callee-base callee-size))
+         (spill-bytes (* spill-count 8))
+         (actual-env-slots (if (> env-slots +min-env-slots+) env-slots +min-env-slots+))
+         (env-base (+ spill-base spill-bytes))
+         (env-bytes (* actual-env-slots 8))
+         (fp-offset (+ env-base env-bytes))
+         (lr-offset (+ fp-offset 8))
+         (raw-size (+ lr-offset 8))
+         ;; Round up to 16-byte alignment
+         (frame-size (logand (+ raw-size 15) (lognot 15))))
+    (fl-layout frame-size fp-offset lr-offset
+               callee-base callee-size
+               spill-base spill-count
+               env-base actual-env-slots)))
+
+(defun frame-spill-offset (layout slot)
+  "Get offset for spill slot N from frame layout."
+  (+ (fl-layout-spill-base layout) (* slot 8)))
+
+;;; Fixed 16KB frame layout (legacy compatibility)
+(defvar *fixed-16k-layout*
+  (fl-layout #x4000      ; frame-size
+             #x3FF0      ; fp-offset
+             #x3FF8      ; lr-offset
+             0           ; callee-base
+             64          ; callee-size
+             64          ; spill-base (0x40)
+             480         ; spill-count (enough for old code)
+             #x3F80      ; env-base
+             16)         ; env-slots
+  "Pre-computed layout for legacy 16KB frames")
+
+;;; Typed Prologue/Epilogue - use frame-layout ADT for all offsets
+;;;
+;;; These are the ONLY functions that should generate prologue/epilogue code.
+;;; They take a frame-layout and use its accessors, ensuring consistency.
+
+(defun gen-prologue (layout)
+  "Generate function prologue from frame-layout.
+   Sets *current-frame-layout* for epilogue and spill access."
+  (setf *current-frame-layout* layout)
+  (let ((frame-size (fl-layout-frame-size layout))
+        (fp-offset (fl-layout-fp-offset layout))
+        (lr-offset (fl-layout-lr-offset layout))
+        (env-base (fl-layout-env-base layout)))
+    (if (<= frame-size 4095)
+        ;; Small frame - single SUB, direct offsets
+        (append
+         (arm64:sub :sp :sp frame-size :imm t)
+         (arm64:stp :x19 :env :sp :offset 16)
+         (arm64:stp :x21 :x22 :sp :offset 32)
+         (arm64:stp :x23 :closure :sp :offset 48)
+         (arm64:str :code-base :sp :offset 56)
+         (arm64:str :fp :sp :offset fp-offset)
+         (arm64:str :lr :sp :offset lr-offset)
+         (arm64:add :fp :sp fp-offset :imm t)
+         (arm64:add :env :sp env-base :imm t))
+        ;; Large frame - use shifted immediate plus optional remainder
+        (let ((shift-val (ash frame-size -12))
+              (rem (logand frame-size #xFFF)))
+          (append
+           ;; Subtract 4K-aligned part
+           (when (> shift-val 0)
+             (arm64:sub :sp :sp shift-val :imm t :shift12 t))
+           ;; Subtract remainder if any
+           (when (> rem 0)
+             (arm64:sub :sp :sp rem :imm t))
+           ;; Save callee-saved registers at low offsets
+           (arm64:stp :x19 :env :sp :offset 16)
+           (arm64:stp :x21 :x22 :sp :offset 32)
+           (arm64:stp :x23 :closure :sp :offset 48)
+           (arm64:str :code-base :sp :offset 56)
+           ;; fp/lr at their computed offsets
+           (gen-store-at-large-offset :fp fp-offset)
+           (gen-store-at-large-offset :lr lr-offset)
+           ;; Set fp to point to fp slot
+           (gen-add-large-offset :fp :sp fp-offset)
+           ;; Set env to point to env area
+           (gen-add-large-offset :env :sp env-base))))))
+
+(defun gen-epilogue (layout)
+  "Generate function epilogue from frame-layout."
+  (let ((frame-size (fl-layout-frame-size layout))
+        (fp-offset (fl-layout-fp-offset layout))
+        (lr-offset (fl-layout-lr-offset layout)))
+    (if (<= frame-size 4095)
+        (append
+         (arm64:ldr :code-base :sp :offset 56)
+         (arm64:ldp :x23 :closure :sp :offset 48)
+         (arm64:ldp :x21 :x22 :sp :offset 32)
+         (arm64:ldp :x19 :env :sp :offset 16)
+         (arm64:ldr :fp :sp :offset fp-offset)
+         (arm64:ldr :lr :sp :offset lr-offset)
+         (arm64:add :sp :sp frame-size :imm t)
+         (arm64:ret))
+        (let ((shift-val (ash frame-size -12))
+              (rem (logand frame-size #xFFF)))
+          (append
+           (arm64:ldr :code-base :sp :offset 56)
+           (arm64:ldp :x23 :closure :sp :offset 48)
+           (arm64:ldp :x21 :x22 :sp :offset 32)
+           (arm64:ldp :x19 :env :sp :offset 16)
+           (gen-load-from-large-offset :fp fp-offset)
+           (gen-load-from-large-offset :lr lr-offset)
+           ;; Restore sp: add remainder first, then shifted part
+           (when (> rem 0)
+             (arm64:add :sp :sp rem :imm t))
+           (when (> shift-val 0)
+             (arm64:add :sp :sp shift-val :imm t :shift12 t))
+           (arm64:ret))))))
+
+;;; Helpers for large offset addressing
+(defun gen-store-at-large-offset (reg offset)
+  "Generate store to [sp + large-offset] using x8 as scratch."
+  (let ((shift (ash offset -12))
+        (rem (logand offset #xFFF)))
+    (if (= 0 shift)
+        (arm64:str reg :sp :offset offset)
+        (append
+         (arm64:add :x8 :sp shift :imm t :shift12 t)
+         (arm64:str reg :x8 :offset rem)))))
+
+(defun gen-load-from-large-offset (reg offset)
+  "Generate load from [sp + large-offset] using x8 as scratch."
+  (let ((shift (ash offset -12))
+        (rem (logand offset #xFFF)))
+    (if (= 0 shift)
+        (arm64:ldr reg :sp :offset offset)
+        (append
+         (arm64:add :x8 :sp shift :imm t :shift12 t)
+         (arm64:ldr reg :x8 :offset rem)))))
+
+(defun gen-add-large-offset (dest base offset)
+  "Generate dest = base + large-offset."
+  (let ((shift (ash offset -12))
+        (rem (logand offset #xFFF)))
+    (if (= 0 shift)
+        (arm64:add dest base offset :imm t)
+        (if (= 0 rem)
+            (arm64:add dest base shift :imm t :shift12 t)
+            (append
+             (arm64:add dest base shift :imm t :shift12 t)
+             (arm64:add dest dest rem :imm t))))))
+
+(defun fn-fixed-prologue-internal ()
+  "Internal: Generate 16KB frame prologue (legacy fallback)"
+  (setf *current-frame-size* #x4000)
   (append
-   (arm64:sub :sp :sp #x4 :imm t :shift12 t) ;; sub sp, sp, #4, lsl #12 = sub sp, sp, #0x4000
-   (arm64:str :fp :sp :offset #x3FF0)       ;; Save fp at sp+0x3FF0
-   (arm64:str :lr :sp :offset #x3FF8)       ;; Save lr at sp+0x3FF8
-   ;; fp points to saved fp/lr for standard stack walking: [fp+0]=old fp, [fp+8]=lr
-   ;; 0x3FF0 > 4095, so split into shifted add + regular add
-   (arm64:add :fp :sp #x3 :imm t :shift12 t)  ;; fp = sp + 0x3000
-   (arm64:add :fp :fp #xFF0 :imm t)           ;; fp = fp + 0xFF0 = sp + 0x3FF0
+   (arm64:sub :sp :sp #x4 :imm t :shift12 t)
+   (arm64:str :fp :sp :offset #x3FF0)
+   (arm64:str :lr :sp :offset #x3FF8)
+   (arm64:add :fp :sp #x3 :imm t :shift12 t)
+   (arm64:add :fp :fp #xFF0 :imm t)
    (arm64:stp :x19 :env :sp :offset 16)
    (arm64:stp :x21 :x22 :sp :offset 32)
    (arm64:stp :x23 :closure :sp :offset 48)
-   (arm64:str :code-base :sp :offset 56)    ;; Save x26 (code-base) - critical for literal loading
-   ;; x20 = sp + 0x3F80 - split into two adds since 0x3F80 > 4095
-   (arm64:add :env :sp #x3 :imm t :shift12 t)  ;; x20 = sp + 0x3000
-   (arm64:add :env :env #xF80 :imm t)))        ;; x20 = x20 + 0xF80 = sp + 0x3F80
+   (arm64:str :code-base :sp :offset 56)
+   (arm64:add :env :sp #x3 :imm t :shift12 t)
+   (arm64:add :env :env #xF80 :imm t)))
 
-(defun fn-fixed-epilogue ()
-  "Generate function epilogue for fixed 16KB frame"
+(defun fn-fixed-epilogue-internal ()
+  "Internal: Generate 16KB frame epilogue (legacy fallback)"
   (append
-   (arm64:ldr :code-base :sp :offset 56)    ;; Restore x26 (code-base)
+   (arm64:ldr :code-base :sp :offset 56)
    (arm64:ldp :x23 :closure :sp :offset 48)
    (arm64:ldp :x21 :x22 :sp :offset 32)
    (arm64:ldp :x19 :env :sp :offset 16)
-   (arm64:ldr :fp :sp :offset #x3FF0)       ;; Restore fp from sp+0x3FF0
-   (arm64:ldr :lr :sp :offset #x3FF8)       ;; Restore lr from sp+0x3FF8
-   (arm64:add :sp :sp #x4 :imm t :shift12 t) ;; add sp, sp, #4, lsl #12 = add sp, sp, #0x4000
+   (arm64:ldr :fp :sp :offset #x3FF0)
+   (arm64:ldr :lr :sp :offset #x3FF8)
+   (arm64:add :sp :sp #x4 :imm t :shift12 t)
    (arm64:ret)))
+
+(defun fn-fixed-prologue (&optional (spill-count 0) (env-slots 32))
+  "Generate function prologue.
+   When spill-count=0 and env-slots=32, uses fixed 16KB layout for compatibility.
+   Otherwise computes a dynamic layout based on actual needs."
+  (if (and (= spill-count 0) (= env-slots 32))
+      ;; Use fixed 16KB layout for backward compatibility
+      (gen-prologue *fixed-16k-layout*)
+      ;; Compute dynamic layout
+      (gen-prologue (make-frame-layout spill-count env-slots))))
+
+(defun fn-fixed-epilogue ()
+  "Generate function epilogue matching fn-fixed-prologue.
+   Uses *current-frame-layout* set by gen-prologue."
+  (gen-epilogue (or *current-frame-layout* *fixed-16k-layout*)))
 
 ;;; ============================================================
 ;;; Function Codegen
