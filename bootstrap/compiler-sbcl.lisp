@@ -213,19 +213,27 @@
 ;;; ============================================================
 
 (defparameter *macro-table* (make-hash-table :test 'equal)
-  "Compile-time macro storage: name -> (params . body)")
+  "Compile-time macro storage: name-string -> (params . body)")
 
 (defun reset-macro-table ()
   "Clear all macro definitions."
   (clrhash *macro-table*))
 
+(defun normalize-macro-name (name)
+  "Normalize macro name to string for table lookup.
+   Macros come from reader (symbols) but table uses string keys."
+  (cond
+    ((stringp name) name)
+    ((symbolp name) (symbol-name name))
+    (t (error "normalize-macro-name: expected symbol or string, got ~S" name))))
+
 (defun macro-function (name)
   "Look up macro definition by name. Returns (params . body) or nil."
-  (gethash (if (symbolp name) (symbol-name name) name) *macro-table*))
+  (gethash (normalize-macro-name name) *macro-table*))
 
 (defun (setf macro-function) (value name)
   "Set macro definition for name."
-  (setf (gethash (if (symbolp name) (symbol-name name) name) *macro-table*) value))
+  (setf (gethash (normalize-macro-name name) *macro-table*) value))
 
 (defun parse-macro-params (params args)
   "Parse macro parameter list and build alist of (param . value).
@@ -1068,6 +1076,7 @@
                     (let* ((feat-result (read-sym source (+ p 2)))
                            (feature-sym (car feat-result))
                            (after-feat (cdr feat-result))
+                           ;; Normalize feature name - reader produces symbols
                            (feature-name (if (symbolp feature-sym) (symbol-name feature-sym) "")))
                       (if (feature-present-p feature-name)
                           ;; Feature present: skip the form, return marker
@@ -3704,7 +3713,7 @@
               (body (if (null (cdr body-forms))
                         (car body-forms)
                         (cons 'progn body-forms)))
-              (name-str (if (symbolp name) (symbol-name name) name)))
+              (name-str (normalize-macro-name name)))
          ;; Store in *macro-table* for reference
          (setf (gethash name-str *macro-table*) (cons params body))
          ;; Only eval in SBCL if it's not a CL symbol (avoid package lock)
@@ -5067,10 +5076,11 @@
              ;; Calculate sizes for offset computation
              (symtab-size (loop for entry in symbol-table
                                 sum (+ 4 (length (symbol-name (car entry))) 8)))
+             ;; Helper to normalize names to strings
+             (normalize-entry-name (lambda (name)
+                                     (if (symbolp name) (symbol-name name) name)))
              (import-size (loop for entry in extern-calls
-                               sum (+ 4 (length (if (symbolp (car entry))
-                                                    (symbol-name (car entry))
-                                                    (car entry))) 4)))
+                               sum (+ 4 (length (funcall normalize-entry-name (car entry))) 4)))
              (header-size 64)  ;; v4 uses 64-byte header
              (symtab-offset (+ header-size code-len))
              (import-offset (+ symtab-offset symtab-size))
@@ -5113,9 +5123,7 @@
         ;; Write import table (extern calls)
         (when extern-calls
           (dolist (entry extern-calls)
-            (let* ((name (if (symbolp (car entry))
-                            (symbol-name (car entry))
-                            (car entry)))
+            (let* ((name (funcall normalize-entry-name (car entry)))
                    (offset (cdr entry))
                    (name-bytes (map 'list #'char-code name))
                    (name-len (length name-bytes)))
