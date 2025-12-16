@@ -2876,18 +2876,25 @@
    Layout (16-byte aligned):
      sp+0:           callee-saved (x19,x20,x21,x22,x23,x24,x26) = 64 bytes
      sp+64:          spill slots (spill-count × 8 bytes)
-     sp+env-base:    environment slots (env-slots × 8 bytes)
+     sp+env-base:    x20 points here; env slots use NEGATIVE offsets from x20
+                     (env[-8] = first slot, env[-16] = second, etc.)
      sp+fp-offset:   saved frame pointer
      sp+lr-offset:   saved link register
-     sp+frame-size:  original sp"
+     sp+frame-size:  original sp
+
+   IMPORTANT: env-base must be high enough that env[-N*8] doesn't overlap
+   with spill slots. Since env uses negative offsets, we place env-base
+   at spill_end + env_bytes, so env[-env_bytes] = spill_end."
   (let* ((callee-base 0)
          (callee-size 64)  ; 8 registers × 8 bytes
          (spill-base (+ callee-base callee-size))
          (spill-bytes (* spill-count 8))
          (actual-env-slots (if (> env-slots +min-env-slots+) env-slots +min-env-slots+))
-         (env-base (+ spill-base spill-bytes))
          (env-bytes (* actual-env-slots 8))
-         (fp-offset (+ env-base env-bytes))
+         ;; env-base must be high enough for negative env offsets
+         ;; env[-env-bytes] should be at spill-base + spill-bytes (no overlap)
+         (env-base (+ spill-base spill-bytes env-bytes))
+         (fp-offset (+ env-base 8))  ; fp right after env-base
          (lr-offset (+ fp-offset 8))
          (raw-size (+ lr-offset 8))
          ;; Round up to 16-byte alignment
