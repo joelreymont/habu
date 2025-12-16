@@ -329,37 +329,8 @@
               equal)
             nil))))
 
-(defun find-interned (name table)
-  "Find symbol with NAME in intern TABLE (alist of (name . symbol)) - iterative"
-  (let ((current table)
-        (found nil)
-        (result nil))
-    (while (and (not found) (not (null current)))
-      (if (string= name (car (car current)))
-          (progn
-            (setq found t)
-            (setq result (cdr (car current))))
-          (setq current (cdr current))))
-    result))
-
-#-sbcl
-(defun intern (name)
-  "Intern a string as a symbol. Returns existing symbol if found, else creates new.
-   Preserves package prefix if present (ARM64:MOVZ stays ARM64:MOVZ).
-   Adds current package prefix for unqualified names."
-  (let ((qname (if (and (contains-colon name)
-                        (> (string-length name) 0)
-                        (not (= (string-ref name 0) #x3A)))  ; not a keyword
-                   ;; Already package-qualified - preserve it (upcase for CL convention)
-                   (string-upcase name)
-                   ;; No package prefix - qualify with current package
-                   (qualify-symbol-name name))))
-    (let ((existing (find-interned qname (get-intern-table))))
-      (if existing
-          existing
-          (let ((sym (make-symbol-from-string qname)))
-            (set-intern-table (cons (cons qname sym) (get-intern-table)))
-            sym)))))
+;; NOTE: find-interned and intern are defined in habu0.lisp (hash-table based)
+;; They are NOT defined here to avoid duplicates in habu0 build and CL shadowing issues
 
 ;;; Global state accessors (implemented in codegen for native)
 ;;; These are SBCL-only - in native habu, these are compiler primitives
@@ -735,6 +706,9 @@
                 (t (cons (intern uname) end-pos)))))))))
 
 ;;; habu-read returns (value . new-pos)
+;;; This labels-based version is for SBCL only (uses CL:LABELS)
+;;; habu0.lisp has a simpler version using defun-based helpers
+#+sbcl
 (defun habu-read (source pos)
   (labels
       ;; Read list elements iteratively using while loop
@@ -924,8 +898,14 @@
 
 (defun process-package-form (form)
   "Process defpackage or in-package form, updating reader state.
-   Returns t if form was processed, nil otherwise."
-  (if (and (consp form) (symbolp (car form)))
+   Returns t if form was processed, nil otherwise.
+   TYPE CONTRACT: form must be a valid Lisp form.
+   Uses safe accessors to prevent type confusion crashes."
+  ;; Only process if form is a proper list starting with a symbol
+  ;; Using explicit consp check followed by safe-car prevents crash on non-cons
+  (if (and (consp form)
+           (let ((head (car form)))  ; car is safe here because consp passed
+             (symbolp head)))
       (let ((head-name (symbol-name (car form))))
         (cond
           ;; (in-package :pkg) or (in-package :pkg)
