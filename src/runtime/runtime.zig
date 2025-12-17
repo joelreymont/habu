@@ -10,6 +10,7 @@ pub const value = @import("value.zig");
 pub const objects = @import("objects.zig");
 pub const heap = @import("heap.zig");
 pub const gc = @import("gc.zig");
+pub const primitives = @import("primitives/primitives.zig");
 
 // Re-export commonly used types
 pub const Value = value.Value;
@@ -31,4 +32,5 @@ test {
     _ = objects;
     _ = heap;
     _ = gc;
+    _ = primitives;
 }

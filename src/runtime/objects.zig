@@ -64,15 +64,19 @@ pub const Vector = extern struct {
     }
 };
 
-/// String: immutable byte sequence
+/// String: mutable byte sequence (CL strings are mutable)
 /// Size: 16 bytes header + data (inline for short strings)
 pub const String = extern struct {
     /// Length in bytes
     length: u64,
     /// Pointer to byte data
-    data: [*]const u8,
+    data: [*]u8,
 
     pub fn bytes(self: *const String) []const u8 {
+        return self.data[0..self.length];
+    }
+
+    pub fn mutableBytes(self: *String) []u8 {
         return self.data[0..self.length];
     }
 };
