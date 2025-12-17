@@ -9,9 +9,11 @@
 pub const diagnostic = @import("diagnostic.zig");
 pub const types = @import("types/types.zig");
 pub const runtime = @import("runtime/runtime.zig");
+pub const reader = @import("reader/reader.zig");
 
 test {
     _ = diagnostic;
     _ = types;
     _ = runtime;
+    _ = reader;
 }

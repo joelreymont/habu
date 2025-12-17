@@ -45,7 +45,7 @@ pub fn stringBytes(val: Value) ?[]const u8 {
 pub fn symbolName(heap: *Heap, val: Value) error{OutOfMemory}!Value {
     if (!val.isSymbol()) return Value.nil;
     const sym = val.toPtr(objects.Symbol);
-    const name_bytes = sym.name();
+    const name_bytes = sym.getName();
     return heap.allocString(name_bytes) orelse error.OutOfMemory;
 }
 
@@ -53,7 +53,7 @@ pub fn symbolName(heap: *Heap, val: Value) error{OutOfMemory}!Value {
 pub fn symbolNameBytes(val: Value) ?[]const u8 {
     if (!val.isSymbol()) return null;
     const sym = val.toPtr(objects.Symbol);
-    return sym.name();
+    return sym.getName();
 }
 
 /// Check if value is a string
@@ -163,7 +163,7 @@ pub fn stringDowncase(heap: *Heap, val: Value) error{OutOfMemory}!Value {
 pub fn keywordName(heap: *Heap, val: Value) error{OutOfMemory}!Value {
     if (!val.isKeyword()) return Value.nil;
     const kw = val.toPtr(objects.Keyword);
-    const name_bytes = kw.name();
+    const name_bytes = kw.getName();
     return heap.allocString(name_bytes) orelse error.OutOfMemory;
 }
 
@@ -171,7 +171,7 @@ pub fn keywordName(heap: *Heap, val: Value) error{OutOfMemory}!Value {
 pub fn keywordNameBytes(val: Value) ?[]const u8 {
     if (!val.isKeyword()) return null;
     const kw = val.toPtr(objects.Keyword);
-    return kw.name();
+    return kw.getName();
 }
 
 /// Check if value is a keyword
