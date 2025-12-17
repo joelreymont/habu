@@ -7,7 +7,9 @@
 //! - Cheney copying GC
 
 pub const diagnostic = @import("diagnostic.zig");
+pub const types = @import("types/types.zig");
 
 test {
     _ = diagnostic;
+    _ = types;
 }

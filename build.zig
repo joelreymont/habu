@@ -32,6 +32,10 @@ pub fn build(b: *std.Build) void {
             .optimize = optimize,
         }),
     });
+
+    // TODO: Add ohsnap for snapshot testing when dependency hash issue resolved
+    // See: https://github.com/mnemnion/ohsnap
+
     const test_step = b.step("test", "Run unit tests");
     test_step.dependOn(&b.addRunArtifact(lib_tests).step);
 }

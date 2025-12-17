@@ -86,7 +86,7 @@ pub const ContractError = struct {
         writer: anytype,
     ) !void {
         try writer.print(
-            "Contract violation: expected {s}, got {s}\n  Blame: {f}\n",
+            "Contract violation: expected {s}, got {s}\n  Blame: {}\n",
             .{ self.expected, self.got_type, self.blame },
         );
     }
