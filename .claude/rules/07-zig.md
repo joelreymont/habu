@@ -4,6 +4,19 @@
 
 **ALWAYS use Zig 0.15 APIs.** Common changes from 0.14:
 
+## Conventions
+
+### Allocator First
+Allocator is ALWAYS the first argument to any function that allocates:
+```zig
+// RIGHT
+pub fn init(allocator: std.mem.Allocator) Self { ... }
+pub fn create(allocator: std.mem.Allocator, value: T) !*T { ... }
+
+// WRONG
+pub fn init(config: Config, allocator: std.mem.Allocator) Self { ... }
+```
+
 ### ArrayList (now unmanaged)
 ```zig
 // WRONG (0.14 style)
