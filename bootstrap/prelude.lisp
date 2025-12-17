@@ -42,8 +42,8 @@
 ;;; Type predicates
 (defun zerop (x) (= x 0))
 (defun integerp (x)
-  ;; In Habu, fixnums have tag 0 (low 4 bits = 0)
-  (= (logand x #xF) 0))
+  ;; In Habu, fixnums have bit 0 = 1 (tagged fixnum representation)
+  (= (logand x 1) 1))
 (defun listp (x)
   ;; nil or cons
   (or (null x) (consp x)))

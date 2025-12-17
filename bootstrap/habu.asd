@@ -13,17 +13,17 @@
    (:file "host-compat")
    (:file "host-sbcl" :depends-on ("host-compat"))
 
-   ;; Package definitions
-   (:file "package" :depends-on ("host-sbcl"))
+   ;; Type system (ADT definitions) - MUST load before package for code-marker import
+   (:file "../shared/types" :depends-on ("host-sbcl"))
+
+   ;; Package definitions - imports from habu.types
+   (:file "package" :depends-on ("host-sbcl" "../shared/types"))
 
    ;; Tag constants (SINGLE SOURCE OF TRUTH for hybrid 1+3 bit tagging)
    (:file "../shared/tags" :depends-on ("package"))
 
    ;; Shared macros (while, incf, decf) - needed before reg-alloc
    (:file "../shared/macros" :depends-on ("package"))
-
-   ;; Type system (ADT definitions)
-   (:file "../shared/types" :depends-on ("package"))
 
    ;; IR ADT definitions (frame-layout, lambda-entry, etc.)
    (:file "../shared/ir" :depends-on ("../shared/types"))

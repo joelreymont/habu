@@ -78,10 +78,11 @@
         (*features* (remove :sbcl *features*)))
     ;; Note: shared/types.lisp is loaded for macro expansion only (deftype, match)
     ;; but NOT included in habu0 since it uses gethash for type registry
+    ;; NOTE: bootstrap/reader.lisp removed - habu0.lisp has its own reader
+    ;; Including both causes duplicate read-sym-chars, crashing keyword reading
     (dolist (file '("shared/ir.lisp"
                     "shared/macros.lisp"
                     "arm64/asm.lisp"
-                    "bootstrap/reader.lisp"
                     "habu0.lisp"
                     "bootstrap/reg-alloc.lisp"
                     "bootstrap/codegen.lisp"))

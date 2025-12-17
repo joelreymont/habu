@@ -255,6 +255,8 @@
     (integerp (ir-numberp (compile-expr (first args) env)))  ; same as numberp for now
     (keywordp (ir-keywordp (compile-expr (first args) env)))
     (functionp (ir-functionp (compile-expr (first args) env)))
+    (listp (let ((v (compile-expr (first args) env)))
+             (ir-if (ir-null v) (ir-lit 1) (ir-consp v))))
 
     ;; String operations (handle both CL and HABU package symbols)
     ((string-length habu::string-length)

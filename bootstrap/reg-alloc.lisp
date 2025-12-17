@@ -233,6 +233,8 @@
   "Get the symbol name as a string for tag comparison.
    Handles symbols from different packages, and numeric IR tags from habu0."
   (cond
+    ;; Keywords first - in native habu, symbolp returns nil for keywords
+    ((keywordp sym) (symbol-name sym))
     ((symbolp sym) (symbol-name sym))
     ;; Numeric IR tags from habu0.lisp (h0-compile uses numbers for efficiency)
     ((eql sym #x1) "LIT")
@@ -300,7 +302,7 @@
 
 (defun ir-tag-matches (sym name)
   "Check if symbol matches the given name string (case-insensitive)."
-  (string-equal (ir-tag-name sym) name))
+  (string= (ir-tag-name sym) name))
 
 (defun ir-tag-member (sym names)
   "Check if symbol matches any of the given name strings."
@@ -308,7 +310,7 @@
     (labels ((check (lst)
                (if (null lst)
                    nil
-                   (if (string-equal tag (car lst))
+                   (if (string= tag (car lst))
                        t
                        (check (cdr lst))))))
       (check names))))
@@ -1370,6 +1372,16 @@
             (result-vr (next-vreg counter)))
        (list (append arg-instrs
                      (list (list :tac-vectorp result-vr arg-vr)))
+             result-vr)))
+
+    ;; keywordp-ir: check if value is a keyword (tag 10)
+    ((and (consp ir) (ir-tag-matches (ir-variant ir) "KEYWORDP-IR"))
+     (let* ((arg-result (ir-to-tac (ir-field1 ir) counter))
+            (arg-instrs (car arg-result))
+            (arg-vr (cadr arg-result))
+            (result-vr (next-vreg counter)))
+       (list (append arg-instrs
+                     (list (list :tac-keywordp result-vr arg-vr)))
              result-vr)))
 
     ;; null-ir: check if value is nil (value = 0)
@@ -3357,9 +3369,10 @@
           (when (and (consp dest) (eq (car dest) :spill))
             (arm64:str :x0 :sp :offset (spill-offset (cadr dest)))))))
 
-      ;; tac-symbol-name: get symbol's name string
-      ;; Symbol and string share same base pointer, just different tags
-      ;; Symbol = ptr|2, String = ptr|4, so: string = symbol - 2 + 4
+      ;; tac-symbol-name: get symbol's/keyword's name string
+      ;; Symbols, keywords, and strings share same base structure [length:8][chars:N]
+      ;; Symbol = ptr|2, String = ptr|6, Keyword = ptr|10
+      ;; Mask off all tag bits, add string tag - works for both symbols and keywords
       ((:tac-symbol-name)
        (let* ((dest-vreg (cadr instr))
               (sym-vreg (caddr instr))
@@ -3370,7 +3383,7 @@
           (if (and (consp sym-loc) (eq (car sym-loc) :spill))
               (arm64:ldr :x0 :sp :offset (spill-offset (cadr sym-loc)))
               (arm64:mov :x0 sym-loc))
-          (arm64:sub :x0 :x0 +tag-symbol+ :imm t)  ; untag symbol
+          (arm64:and* :x0 :x0 (lognot +tag-mask+) :imm t)  ; clear tag bits
           (arm64:add dest-reg :x0 +tag-string+ :imm t)  ; add string tag
           (when (and (consp dest) (eq (car dest) :spill))
             (arm64:str dest-reg :sp :offset (spill-offset (cadr dest)))))))

@@ -1973,13 +1973,17 @@
                  (linear-save-temp dst))))
 
       (symbolp
-       ;; Test if value is symbol (tag == 2)
+       ;; Test if value is symbol (tag == 2) OR keyword (tag == 10)
+       ;; In CL, keywords are symbols - (symbolp :foo) => t
        (let ((dst (cadr instr))
              (src (caddr instr)))
          (append (linear-load-temp :x0 src)
-                 (arm64:and* :x0 :x0 #.+tag-mask+ :imm t)
-                 (arm64:cmp :x0 #.+tag-symbol+ :imm t)
-                 (arm64:cset :x0 arm64:+eq+)
+                 (arm64:and* :x1 :x0 #.+tag-mask+ :imm t)  ; x1 = tag
+                 (arm64:cmp :x1 #.+tag-symbol+ :imm t)     ; tag == 2?
+                 (arm64:cset :x0 arm64:+eq+)               ; x0 = (tag == 2)
+                 (arm64:cmp :x1 #.+tag-keyword+ :imm t)    ; tag == 10?
+                 (arm64:cset :x1 arm64:+eq+)               ; x1 = (tag == 10)
+                 (arm64:orr :x0 :x0 :x1)                   ; x0 = symbol OR keyword
                  (gen-bool-to-tagged)
                  (linear-save-temp dst))))
 
@@ -2488,14 +2492,16 @@
       ;; This was a duplicate that was unreachable (case only uses first match)
       ;; Boolean NOT uses (cmp-eq x nil-ir) in compiler.lisp, not bnot
 
-      ;; symbol-name: get string name from symbol
-      ;; Symbol has tag 2, String has tag 6
+      ;; symbol-name: get string name from symbol or keyword
+      ;; Symbol has tag 2, Keyword has tag 10, String has tag 6
+      ;; Symbols and keywords have same layout as strings (length + chars)
+      ;; Just need to change the tag to 6
       (symbol-name
        (let ((dst (cadr instr))
              (sym-temp (caddr instr)))
          (append (linear-load-temp :x0 sym-temp)
-                 (arm64:sub :x0 :x0 #.+tag-symbol+ :imm t)  ; untag symbol
-                 (arm64:add :x0 :x0 #.+tag-string+ :imm t)  ; add string tag
+                 (arm64:and* :x0 :x0 -16 :imm t)           ; clear all tag bits
+                 (arm64:add :x0 :x0 #.+tag-string+ :imm t) ; add string tag
                  (linear-save-temp dst))))
 
       ;; string-equal: compare two strings for equality

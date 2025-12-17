@@ -83,7 +83,10 @@
            :+closure-code-offset+ :+closure-code-repr+
            :+closure-env-offset+ :+closure-env-repr+
            ;; Unresolved tracking
-           :*unresolved-markers* :record-unresolved :clear-unresolved :report-unresolved))
+           :*unresolved-markers* :record-unresolved :clear-unresolved :report-unresolved
+           ;; Safe form accessors - prevent type confusion crashes
+           :safe-car :safe-cdr :safe-cadr :safe-caddr
+           :form-type :assert-form-cons :assert-form-symbol :assert-form-list))
 
 (in-package :habu.types)
 
@@ -821,3 +824,74 @@
                by-type))
     (error "~D unresolved markers - implementation incomplete"
            (length *unresolved-markers*))))
+
+;;;; ============================================================
+;;;; Safe Form Accessors - Prevent Type Confusion Crashes
+;;;; ============================================================
+;;;;
+;;;; The bug: consp returned t for nil due to branch flag preservation.
+;;;; The crash: (car fixnum) tried to dereference address 0x10.
+;;;;
+;;;; Solution: Type-safe accessors that ERROR instead of crashing.
+;;;; These are for habu0 code that can't use match macros.
+
+(defun safe-car (form)
+  "Get car of form, error if not a cons.
+   TYPE CONTRACT: form must be a cons cell.
+   Use this instead of raw (car form) to get clear errors."
+  (if (consp form)
+      (car form)
+      (error "safe-car: expected cons, got ~S (type ~A)"
+             form (type-of form))))
+
+(defun safe-cdr (form)
+  "Get cdr of form, error if not a cons.
+   TYPE CONTRACT: form must be a cons cell.
+   Use this instead of raw (cdr form) to get clear errors."
+  (if (consp form)
+      (cdr form)
+      (error "safe-cdr: expected cons, got ~S (type ~A)"
+             form (type-of form))))
+
+(defun safe-cadr (form)
+  "Get (car (cdr form)), error if form is not a list with 2+ elements."
+  (safe-car (safe-cdr form)))
+
+(defun safe-caddr (form)
+  "Get (car (cdr (cdr form))), error if form is not a list with 3+ elements."
+  (safe-car (safe-cdr (safe-cdr form))))
+
+(defun form-type (form)
+  "Return keyword describing form type - for error messages and debugging.
+   Returns :cons :symbol :fixnum :string :vector :nil :keyword or :unknown."
+  (cond
+    ((null form) :nil)
+    ((consp form) :cons)
+    ((symbolp form) :symbol)
+    ((numberp form) :fixnum)
+    ((stringp form) :string)
+    ((vectorp form) :vector)
+    ((keywordp form) :keyword)
+    (t :unknown)))
+
+(defun assert-form-cons (form context)
+  "Assert form is a cons cell, error with CONTEXT if not.
+   Use at function entry to enforce type contracts."
+  (unless (consp form)
+    (error "~A: expected cons, got ~S (type ~A)"
+           context form (form-type form)))
+  form)
+
+(defun assert-form-symbol (form context)
+  "Assert form is a symbol, error with CONTEXT if not."
+  (unless (symbolp form)
+    (error "~A: expected symbol, got ~S (type ~A)"
+           context form (form-type form)))
+  form)
+
+(defun assert-form-list (form context)
+  "Assert form is a list (cons or nil), error with CONTEXT if not."
+  (unless (listp form)
+    (error "~A: expected list, got ~S (type ~A)"
+           context form (form-type form)))
+  form)

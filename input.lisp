@@ -1,1 +1,1 @@
-42
+(get-tag :test)

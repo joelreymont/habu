@@ -614,8 +614,36 @@
       nil
       (cons (car lst) (copy-list (cdr lst)))))
 
-(defun listp (x)
-  (or (null x) (consp x)))
+;;; Type predicates for h0-eval-dispatch
+;;; In SBCL-compiled mode, values are CL objects (cons, symbol, integer, etc.)
+;;; These predicates wrap CL predicates for use in h0-eval-dispatch.
+
+(defun h0-consp (x)
+  ;; In SBCL mode, cons cells are CL cons cells
+  (cl:consp x))
+
+(defun h0-symbolp (x)
+  ;; In SBCL mode, symbols are CL symbols
+  (cl:symbolp x))
+
+(defun h0-numberp (x)
+  ;; In SBCL mode, numbers are CL integers
+  (cl:numberp x))
+
+(defun h0-stringp (x)
+  ;; In SBCL mode, strings are CL strings
+  (cl:stringp x))
+
+(defun h0-vectorp (x)
+  ;; In SBCL mode, vectors are CL vectors (but not strings)
+  (and (cl:vectorp x) (not (cl:stringp x))))
+
+(defun h0-keywordp (x)
+  ;; In SBCL mode, keywords are CL keywords
+  (cl:keywordp x))
+
+(defun h0-listp (x)
+  (or (null x) (h0-consp x)))
 
 ;; Compound car/cdr accessors (needed by register allocator and codegen)
 (defun cadar (x) (car (cdr (car x))))
@@ -2000,13 +2028,13 @@
     (135 (h0-eval-mapcar expr env fenv))  ; MAPCAR
     ;; Type predicates (141-147)
     (141 (if (null (h0-eval (cadr expr) env fenv)) t nil))     ; NULL
-    (142 (if (consp (h0-eval (cadr expr) env fenv)) t nil))    ; CONSP
-    (143 (if (symbolp (h0-eval (cadr expr) env fenv)) t nil))  ; SYMBOLP
-    (144 (if (numberp (h0-eval (cadr expr) env fenv)) t nil))  ; NUMBERP
-    (145 (if (stringp (h0-eval (cadr expr) env fenv)) t nil))  ; STRINGP
-    (146 (if (keywordp (h0-eval (cadr expr) env fenv)) t nil)) ; KEYWORDP
+    (142 (if (h0-consp (h0-eval (cadr expr) env fenv)) t nil))    ; CONSP
+    (143 (if (h0-symbolp (h0-eval (cadr expr) env fenv)) t nil))  ; SYMBOLP
+    (144 (if (h0-numberp (h0-eval (cadr expr) env fenv)) t nil))  ; NUMBERP
+    (145 (if (h0-stringp (h0-eval (cadr expr) env fenv)) t nil))  ; STRINGP
+    (146 (if (h0-keywordp (h0-eval (cadr expr) env fenv)) t nil)) ; KEYWORDP
     (147 (let ((arg (h0-eval (cadr expr) env fenv)))  ; LISTP
-           (if (or (null arg) (consp arg)) t nil)))
+           (if (or (null arg) (h0-consp arg)) t nil)))
     ;; Boolean operations (151-153)
     (151 (if (h0-eval (cadr expr) env fenv) nil t))  ; NOT
     (152 (h0-eval-and (cdr expr) env fenv))  ; AND
@@ -2194,7 +2222,20 @@
          (cons (intern "RET") 47)
          (cons (intern "NOP") 48)
          ;; ARM64 - utility (IDs 50+)
-         (cons (intern "REG") 50))))
+         (cons (intern "REG") 50)
+         ;; IR constructors (IDs 80-99) - needed for native mode 1024
+         ;; In SBCL mode, h0-eval-call falls back to symbol-function
+         ;; In native mode, these must be explicitly registered
+         (cons (intern "IR-LIT") 80)
+         (cons (intern "IR-VAR") 81)
+         (cons (intern "IR-ADD") 82)
+         (cons (intern "IR-SUB") 83)
+         (cons (intern "IR-IF") 84)
+         (cons (intern "IR-CONS") 85)
+         (cons (intern "IR-CAR") 86)
+         (cons (intern "IR-CDR") 87)
+         (cons (intern "MAKE-VREG-COUNTER") 88)
+         (cons (intern "NEXT-VREG") 89))))
 
 ;; Lookup dispatch ID in table - NO FALLBACK
 ;; Uses eq comparison only. If symbol not found, crashes with error.
@@ -2353,6 +2394,17 @@
           (48 (fenv-call-arm64 'nop nargs fenv))
           ;; ARM64 - utility (use nargs with habu0-reg for eq comparison)
           (50 (habu0-reg (car nargs)))
+          ;; IR constructors (IDs 80-89)
+          (80 (ir-lit (car args)))
+          (81 (ir-var (car args)))
+          (82 (ir-add (car args) (cadr args)))
+          (83 (ir-sub (car args) (cadr args)))
+          (84 (ir-if (car args) (cadr args) (caddr args)))
+          (85 (ir-cons (car args) (cadr args)))
+          (86 (ir-car (car args)))
+          (87 (ir-cdr (car args)))
+          (88 (make-vreg-counter))
+          (89 (next-vreg (car args)))
           (otherwise (fatal-error "h0-eval-builtin: unhandled dispatch ID"))))))
 
 ;; Eval a list of expressions
@@ -3061,6 +3113,14 @@
          ((if (symbolp op) (op=keywordp op) nil)
           (let ((v (h0-compile (cadr expr) env fenv)))
             (ir-keywordp v)))
+         ((if (symbolp op) (op=listp op) nil)
+          ;; listp = (or (null x) (consp x))
+          ;; Compile as: (if (null x) t (consp x))
+          (let* ((arg (cadr expr))
+                 (arg-ir (h0-compile arg env fenv)))
+            (ir-if (ir-null arg-ir)
+                   (ir-lit #x1)
+                   (ir-consp arg-ir))))
          ;; Bitwise operations
          ((if (symbolp op) (op=logand op) nil)
           (let* ((l (h0-compile (cadr expr) env fenv))
@@ -4639,9 +4699,18 @@
     (setq lst (cons (make-builtin-entry "LAMBDAS-TO-DEFUNS" kw) lst))
     (setq lst (cons (make-builtin-entry "LIFT-LAMBDAS" kw) lst))
     (setq lst (cons (make-builtin-entry "H0-COMPILE" kw) lst))
-    ;; Note: IR constructors (ir-lit, ir-var, etc.) and other compiled functions
-    ;; are automatically callable via h0-eval-call's SBCL fallback - no manual
-    ;; registration needed. Only functions needing special handling go here.
+    ;; IR constructors - in SBCL mode, h0-eval-call's fallback handles these
+    ;; automatically. In native mode, explicit registration is required.
+    (setq lst (cons (make-builtin-entry "IR-LIT" kw) lst))
+    (setq lst (cons (make-builtin-entry "IR-VAR" kw) lst))
+    (setq lst (cons (make-builtin-entry "IR-ADD" kw) lst))
+    (setq lst (cons (make-builtin-entry "IR-SUB" kw) lst))
+    (setq lst (cons (make-builtin-entry "IR-IF" kw) lst))
+    (setq lst (cons (make-builtin-entry "IR-CONS" kw) lst))
+    (setq lst (cons (make-builtin-entry "IR-CAR" kw) lst))
+    (setq lst (cons (make-builtin-entry "IR-CDR" kw) lst))
+    (setq lst (cons (make-builtin-entry "MAKE-VREG-COUNTER" kw) lst))
+    (setq lst (cons (make-builtin-entry "NEXT-VREG" kw) lst))
     lst))
 
 (defun main ()

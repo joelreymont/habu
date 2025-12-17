@@ -216,14 +216,25 @@
         (store-if-spilled dest)))
 
     (var (dest offset)
-      ;; Load from env (x20) at offset
-      (let ((rd (dest-reg dest)))
-        (emit (arm64:ldr rd :x20 :offset (* offset 8)))
+      ;; Load from env (x20) at NEGATIVE offset
+      ;; Offset 0 = env[0], offset 1 = env[-8], offset 2 = env[-16], etc.
+      ;; Use LDUR for negative offsets (signed unscaled immediate)
+      (let* ((rd (dest-reg dest))
+             (off (* offset -8)))
+        (if (< off 0)
+            (emit (arm64:ldur rd :x20 :offset off))
+            (emit (arm64:ldr rd :x20 :offset off)))
         (store-if-spilled dest)))
 
     (setvar (offset src)
-      (let ((rs (vreg->reg-or-temp src)))
-        (emit (arm64:str rs :x20 :offset (* offset 8)))))
+      ;; Store to env (x20) at NEGATIVE offset
+      ;; Offset 0 = env[0], offset 1 = env[-8], offset 2 = env[-16], etc.
+      ;; Use STUR for negative offsets (signed unscaled immediate)
+      (let* ((rs (vreg->reg-or-temp src))
+             (off (* offset -8)))
+        (if (< off 0)
+            (emit (arm64:stur rs :x20 :offset off))
+            (emit (arm64:str rs :x20 :offset off)))))
 
     (global (dest name)
       (declare (ignore name))
@@ -801,10 +812,12 @@
         (store-if-spilled dest)))
 
     (symbol-name (dest sym)
+      ;; Symbols, keywords, and strings share same structure [length:8][chars:N]
+      ;; Just mask off tag bits and add string tag (works for symbol tag 2 and keyword tag 10)
       (let ((rs (vreg->reg-or-temp sym))
             (rd (dest-reg dest)))
-        (emit (arm64:and* :x19 rs -16 :imm t))
-        (emit (arm64:ldr rd :x19 :offset 8))
+        (emit (arm64:and* :x19 rs (lognot +tag-mask+) :imm t))  ; clear tag bits
+        (emit (arm64:add rd :x19 +tag-string+ :imm t))
         (store-if-spilled dest)))
 
     (intern (dest str)
@@ -822,10 +835,12 @@
 
     ;; === Keyword Operations ===
     (keyword-name (dest kw)
+      ;; Keywords and strings share same structure [length:8][chars:N]
+      ;; Just mask off tag bits and add string tag (keyword tag 10 -> string tag 6)
       (let ((rs (vreg->reg-or-temp kw))
             (rd (dest-reg dest)))
-        (emit (arm64:and* :x19 rs -16 :imm t))
-        (emit (arm64:ldr rd :x19 :offset 8))
+        (emit (arm64:and* :x19 rs (lognot +tag-mask+) :imm t))  ; clear tag bits
+        (emit (arm64:add rd :x19 +tag-string+ :imm t))
         (store-if-spilled dest)))
 
     (keyword-lit (dest name)

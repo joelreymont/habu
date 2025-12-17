@@ -1605,10 +1605,10 @@
           (list 'lambda (cadr expr)
                 (rewrite-labels-calls (caddr expr) fn-names)))
          ;; while - rewrite test and body (BUG FIX: while inside labels)
-         ((eq op 'while)
+         ((eq op 'habu:while)
           (let ((test (cadr expr))
                 (body (cddr expr)))
-            (cons 'while (cons (rewrite-labels-calls test fn-names)
+            (cons 'habu:while (cons (rewrite-labels-calls test fn-names)
                                (mapcar (lambda (e) (rewrite-labels-calls e fn-names)) body)))))
          ;; let/let* - rewrite values and body, not binding names
          ((or (eq op 'LET) (eq op 'LET*))
@@ -1647,10 +1647,10 @@
           (list 'lambda (cadr expr)
                 (rewrite-labels-body (caddr expr) fn-names fntab-var)))
          ;; while - rewrite test and body (BUG FIX: while inside labels)
-         ((eq op 'while)
+         ((eq op 'habu:while)
           (let ((test (cadr expr))
                 (body (cddr expr)))
-            (cons 'while (cons (rewrite-labels-body test fn-names fntab-var)
+            (cons 'habu:while (cons (rewrite-labels-body test fn-names fntab-var)
                                (mapcar (lambda (e) (rewrite-labels-body e fn-names fntab-var)) body)))))
          ;; let/let* - rewrite values and body
          ((or (eq op 'LET) (eq op 'LET*))
@@ -1688,10 +1688,10 @@
           (list 'lambda (cadr expr)
                 (rewrite-labels-main (caddr expr) fn-names)))
          ;; while - rewrite test and body (BUG FIX: while inside labels)
-         ((eq op 'while)
+         ((eq op 'habu:while)
           (let ((test (cadr expr))
                 (body (cddr expr)))
-            (cons 'while (cons (rewrite-labels-main test fn-names)
+            (cons 'habu:while (cons (rewrite-labels-main test fn-names)
                                (mapcar (lambda (e) (rewrite-labels-main e fn-names)) body)))))
          ;; let/let* - rewrite values and body
          ((or (eq op 'LET) (eq op 'LET*))
@@ -1840,7 +1840,7 @@
                         (sys:compile (cons '* (cons (list '* (car args) (cadr args)) (cddr args))) env fenv))))))
          ;; division with constant folding
          ((eq op '/)
-          (if (and (numberp (cadr expr)) (numberp (caddr expr)) (not (zerop (caddr expr))))
+          (if (and (numberp (cadr expr)) (numberp (caddr expr)) (not (= 0 (caddr expr))))
               (list 'lit (truncate (cadr expr) (caddr expr)))
               (list 'div (sys:compile (cadr expr) env fenv) (sys:compile (caddr expr) env fenv))))
          ;; modulo
@@ -1976,7 +1976,7 @@
          ((eq op 'match)
           (sys:compile (expand-match (cadr expr) (cddr expr)) env fenv))
          ;; while - iterative loop
-         ((eq op 'while)
+         ((eq op 'habu:while)
           (let ((test (cadr expr))
                 (body (cddr expr)))
             (list 'while-ir
@@ -2155,24 +2155,29 @@
          ;; Hybrid scheme: fixnum has bit0=1, use numberp-ir to check
          (list 'numberp-ir (sys:compile (cadr expr) env fenv)))
          ((eq op 'consp)
-          ;; get-tag returns tagged fixnum (tag << 4), lit also tags its value
-          ;; so to compare tag=1, use (lit 1) -> becomes 1<<4=16
-          (list 'cmp-eq (list 'get-tag (sys:compile (cadr expr) env fenv)) (list 'lit 1)))
+          ;; Use consp-ir which handles nil correctly (nil has tag 0 but is NOT a cons)
+          (list 'consp-ir (sys:compile (cadr expr) env fenv)))
          ((eq op 'symbolp)
-          ;; Symbol tag is 2, so compare with (lit 2) -> becomes 2<<4=32
-          (list 'cmp-eq (list 'get-tag (sys:compile (cadr expr) env fenv)) (list 'lit 2)))
+          ;; Symbol tag is +tag-symbol+ (2)
+          (list 'cmp-eq (list 'get-tag (sys:compile (cadr expr) env fenv)) (list 'lit +tag-symbol+)))
          ((eq op 'stringp)
-          ;; String tag is 4, so compare with (lit 4) -> becomes 4<<4=64
-          (list 'cmp-eq (list 'get-tag (sys:compile (cadr expr) env fenv)) (list 'lit 4)))
+          ;; String tag is +tag-string+ (6)
+          (list 'cmp-eq (list 'get-tag (sys:compile (cadr expr) env fenv)) (list 'lit +tag-string+)))
          ((eq op 'vectorp)
-          ;; Vector tag is 3, so compare with (lit 3) -> becomes 3<<4=48
-          (list 'cmp-eq (list 'get-tag (sys:compile (cadr expr) env fenv)) (list 'lit 3)))
+          ;; Vector tag is +tag-vector+ (4)
+          (list 'cmp-eq (list 'get-tag (sys:compile (cadr expr) env fenv)) (list 'lit +tag-vector+)))
          ((eq op 'keywordp)
-          ;; Keyword tag is 7, so compare with (lit 7) -> becomes 7<<4=112
-          (list 'cmp-eq (list 'get-tag (sys:compile (cadr expr) env fenv)) (list 'lit 7)))
+          ;; Keyword tag is +tag-keyword+ (10)
+          (list 'cmp-eq (list 'get-tag (sys:compile (cadr expr) env fenv)) (list 'lit +tag-keyword+)))
          ((eq op 'closurep)
-          ;; Closure tag is 5, so compare with (lit 5) -> becomes 5<<4=80
-          (list 'cmp-eq (list 'get-tag (sys:compile (cadr expr) env fenv)) (list 'lit 5)))
+          ;; Closure tag is +tag-closure+ (8)
+          (list 'cmp-eq (list 'get-tag (sys:compile (cadr expr) env fenv)) (list 'lit +tag-closure+)))
+         ((eq op 'listp)
+          ;; listp = (or (null x) (consp x))
+          (let ((v (sys:compile (cadr expr) env fenv)))
+            (list 'if-ir (list 'cmp-eq v '(nil-ir))
+                  '(lit 1)
+                  (list 'consp-ir v))))
          ;; get-tag - extract type tag as tagged fixnum (tag << 4)
          ((eq op 'get-tag)
           (list 'get-tag (sys:compile (cadr expr) env fenv)))
@@ -2547,6 +2552,11 @@
           (list 'string-equal-ir
                 (sys:compile (cadr expr) env fenv)
                 (sys:compile (caddr expr) env fenv)))
+         ;; string-equal - alias for string= (CL has both, we treat them identically)
+         ((eq op 'string-equal)
+          (list 'string-equal-ir
+                (sys:compile (cadr expr) env fenv)
+                (sys:compile (caddr expr) env fenv)))
          ;; make-vector - allocate a vector of size n
          ((eq op 'make-vector)
           (list 'make-vector-ir (sys:compile (cadr expr) env fenv)))
@@ -2908,7 +2918,7 @@
                                (list chunks-var nil)
                                (list total-var 0)
                                (list n-var 0))
-                   (list 'while (list 'progn
+                   (list 'habu:while (list 'progn
                                      (list 'setq n-var (list 'sys-read fd-var buf-var 4096))
                                      (list '> n-var 0))
                          (list 'setq chunks-var (list 'cons (list 'buffer-to-string buf-var n-var) chunks-var))
@@ -3005,11 +3015,11 @@
                                (list vec-var (list 'make-vector total-var))
                                (list rev-chunks-var (list 'reverse chunks-var))
                                (list offset-var 0))
-                   (list 'while rev-chunks-var
+                   (list 'habu:while rev-chunks-var
                          (list 'let* (list (list chunk-var (list 'car rev-chunks-var))
                                            (list len-var (list 'string-length chunk-var))
                                            (list i-var 0))
-                               (list 'while (list '< i-var len-var)
+                               (list 'habu:while (list '< i-var len-var)
                                      (list 'vector-set vec-var
                                            (list '+ offset-var i-var)
                                            (list 'string-ref chunk-var i-var))
@@ -4223,7 +4233,299 @@
   (incf *lambda-counter*)
   (intern (sys:string-concat "LAMBDA-" (sys:number-to-string *lambda-counter*))))
 
+;;; Iterative lift-lambdas using explicit work stack
+;;; This avoids stack overflow on deeply nested IR (e.g., habu-read's labels)
+
+(defun ir-child-spec (tag)
+  "Return child extraction spec for IR tag.
+   Returns (arity . positions) where positions is list of 0-indexed child positions.
+   Returns nil for leaf nodes or unknown tags."
+  (case tag
+    ;; 0 children (leaves)
+    ((lit var nil-ir lit-ir var-ir sym-lit-ir kw-lit-ir str-lit-ir
+      get-global-vars-ir get-cmdline-args-ir lambda-ref)
+     '(0))
+    ;; 1 child at position 1 (tag arg)
+    ((car-ir cdr-ir set-global-vars-ir make-vector-ir make-string-from-vector-ir
+      make-symbol-from-string-ir symbol-name-ir string-length-ir vector-length-ir
+      system-ir null-ir consp-ir symbolp-ir stringp-ir vectorp-ir numberp-ir
+      sys-exit-ir sys-close-ir sys-read-byte-ir pthread-jit-write-protect-np-ir
+      funcall-ptr-ir loop-ir keywordp-ir lognot-ir get-tag-ir keyword-name-ir neg-ir
+      eql-ir eq-ir not-ir)
+     '(1 . (1)))
+    ;; 2 children at positions 1,2 (tag arg1 arg2)
+    ((add sub mul div mod cmp-eq cmp-lt cmp-gt cmp-le cmp-ge cons-ir band bor bxor bsh
+      vector-ref-ir buffer-byte-ref-ir buffer-to-string-ir string-ref-ir string-equal-ir
+      make-string-ir munmap-ir sys-dcache-flush-ir sys-icache-invalidate-ir mem-load-64-ir
+      sys-write-char-ir while-ir setcar-ir setcdr-ir sym-eq-ir set-tag-ir)
+     '(2 . (1 2)))
+    ;; 3 children at positions 1,2,3
+    ((if-ir vector-set-ir sys-write-ir sys-read-ir sys-open-ir mem-set-byte-ir
+      string-set!-ir substring-ir)
+     '(3 . (1 2 3)))
+    ;; Special: let-ir (vals body count offs) - vals is list, body is single
+    (let-ir :let-ir)
+    ;; Special: progn-ir (forms) - forms is list
+    (progn-ir :progn-ir)
+    ;; Special: funcall-ir (fn args) - fn is single, args is list
+    (funcall-ir :funcall-ir)
+    ;; Special: call-fn/tail-call-fn (name args) - args is list
+    ((call-fn tail-call-fn) :call-fn)
+    ;; Special: lambda-ir - extract and replace
+    (lambda-ir :lambda-ir)
+    ;; Special: dotimes-ir/dolist-ir (var ir1 ir2 ir3 env)
+    ((dotimes-ir dolist-ir) :iter-ir)
+    ;; Special: mmap-ir (6 args)
+    (mmap-ir :mmap-ir)
+    ;; Special: continue-ir (args) - args is list
+    (continue-ir :continue-ir)
+    ;; Special: setq-ir (offset val)
+    (setq-ir :setq-ir)
+    ;; Unknown - treat as leaf
+    (t nil)))
+
 (defun lift-lambdas (ir)
+  "Extract all lambda-ir nodes from IR, replacing them with lambda-ref nodes.
+   Returns (cons transformed-ir lambdas) where lambdas is alist of (name . lambda-ir).
+   Uses iterative processing to avoid stack overflow on deep IR trees."
+  (let ((work (list (list :process ir)))  ; work stack: ((:process ir) | (:rebuild ...) | (:list ...))
+        (results nil)                      ; result stack
+        (lambdas nil))                     ; accumulated lambda entries
+    (loop while work do
+      (let* ((item (pop work))
+             (op (car item)))
+        (case op
+          ;; Process an IR node
+          (:process
+           (let ((node (cadr item)))
+             (cond
+               ;; Atoms pass through unchanged
+               ((null node)
+                (push node results))
+               ((not (consp node))
+                (push node results))
+               ;; Dispatch by tag
+               (t
+                (let* ((tag (car node))
+                       (spec (ir-child-spec tag)))
+                  (cond
+                    ;; Lambda - extract, push body for processing
+                    ((eq spec :lambda-ir)
+                     (let* ((name (gensym-lambda))
+                            (params (cadr node))
+                            (body (caddr node))
+                            (free-vars (cadddr node))
+                            (free-offsets (nth 4 node)))
+                       ;; Push rebuild continuation, then body
+                       (push (list :rebuild-lambda name params free-vars free-offsets) work)
+                       (push (list :process body) work)))
+
+                    ;; let-ir - process vals list then body
+                    ((eq spec :let-ir)
+                     (let ((vals (cadr node))
+                           (body (caddr node))
+                           (count (cadddr node))
+                           (offs (nth 4 node)))
+                       (push (list :rebuild-let count offs (length vals)) work)
+                       (push (list :process body) work)
+                       (push (list :list vals) work)))
+
+                    ;; progn-ir - process forms list
+                    ((eq spec :progn-ir)
+                     (let ((forms (cadr node)))
+                       (push (list :rebuild-progn (length forms)) work)
+                       (push (list :list forms) work)))
+
+                    ;; funcall-ir - process fn then args list
+                    ((eq spec :funcall-ir)
+                     (let ((fn-ir (cadr node))
+                           (args-ir (caddr node)))
+                       (push (list :rebuild-funcall (length args-ir)) work)
+                       (push (list :list args-ir) work)
+                       (push (list :process fn-ir) work)))
+
+                    ;; call-fn/tail-call-fn - process args list
+                    ((eq spec :call-fn)
+                     (let ((name (cadr node))
+                           (args-ir (caddr node)))
+                       (push (list :rebuild-call tag name (length args-ir)) work)
+                       (push (list :list args-ir) work)))
+
+                    ;; continue-ir - process args list
+                    ((eq spec :continue-ir)
+                     (let ((args-ir (cadr node)))
+                       (push (list :rebuild-continue (length args-ir)) work)
+                       (push (list :list args-ir) work)))
+
+                    ;; dotimes/dolist-ir - process count/list, body, result
+                    ((eq spec :iter-ir)
+                     (let ((var (cadr node))
+                           (ir1 (caddr node))
+                           (ir2 (cadddr node))
+                           (ir3 (nth 4 node))
+                           (env (nth 5 node)))
+                       (push (list :rebuild-iter tag var env) work)
+                       (push (list :process ir3) work)
+                       (push (list :process ir2) work)
+                       (push (list :process ir1) work)))
+
+                    ;; mmap-ir - 6 children
+                    ((eq spec :mmap-ir)
+                     (push (list :rebuild-mmap) work)
+                     (dolist (i '(6 5 4 3 2 1))
+                       (push (list :process (nth i node)) work)))
+
+                    ;; setq-ir - offset then value
+                    ((eq spec :setq-ir)
+                     (let ((offset (cadr node))
+                           (val-ir (caddr node)))
+                       (push (list :rebuild-setq offset) work)
+                       (push (list :process val-ir) work)))
+
+                    ;; Standard N-ary nodes
+                    ((and (consp spec) (numberp (car spec)))
+                     (let ((arity (car spec))
+                           (positions (cdr spec)))
+                       (cond
+                         ((= arity 0)
+                          ;; Leaf node - pass through unchanged
+                          (push node results))
+                         (t
+                          ;; Push rebuild marker, then children in reverse order
+                          (push (list :rebuild-nary tag arity node) work)
+                          (dolist (pos (reverse positions))
+                            (push (list :process (nth pos node)) work))))))
+
+                    ;; Unknown - pass through unchanged
+                    (t
+                     (push node results))))))))
+
+          ;; Process a list of IR nodes
+          (:list
+           (let ((nodes (cadr item)))
+             (if (null nodes)
+                 (push nil results)
+                 (progn
+                   (push (list :rebuild-list (length nodes)) work)
+                   (dolist (n (reverse nodes))
+                     (push (list :process n) work))))))
+
+          ;; Rebuild lambda - body is on results stack
+          (:rebuild-lambda
+           (let ((name (cadr item))
+                 (params (caddr item))
+                 (free-vars (cadddr item))
+                 (free-offsets (nth 4 item))
+                 (new-body (pop results)))
+             ;; Add lambda entry
+             (push (list name params new-body free-vars free-offsets) lambdas)
+             ;; Push lambda-ref as result
+             (push (list 'lambda-ref name free-offsets) results)))
+
+          ;; Rebuild let-ir - vals-list and body on results stack
+          (:rebuild-let
+           (let ((count (cadr item))
+                 (offs (caddr item))
+                 (n-vals (cadddr item))
+                 (new-body (pop results))
+                 (new-vals (pop results)))
+             (declare (ignore n-vals))
+             (push (list 'let-ir new-vals new-body count offs) results)))
+
+          ;; Rebuild progn-ir
+          (:rebuild-progn
+           (let ((n (cadr item))
+                 (new-forms (pop results)))
+             (declare (ignore n))
+             (push (list 'progn-ir new-forms) results)))
+
+          ;; Rebuild funcall-ir - fn and args-list on results
+          (:rebuild-funcall
+           (let ((n-args (cadr item))
+                 (new-args (pop results))
+                 (new-fn (pop results)))
+             (declare (ignore n-args))
+             (push (list 'funcall-ir new-fn new-args) results)))
+
+          ;; Rebuild call-fn/tail-call-fn
+          (:rebuild-call
+           (let ((tag (cadr item))
+                 (name (caddr item))
+                 (n-args (cadddr item))
+                 (new-args (pop results)))
+             (declare (ignore n-args))
+             (push (list tag name new-args) results)))
+
+          ;; Rebuild continue-ir
+          (:rebuild-continue
+           (let ((n (cadr item))
+                 (new-args (pop results)))
+             (declare (ignore n))
+             (push (list 'continue-ir new-args) results)))
+
+          ;; Rebuild dotimes/dolist-ir
+          (:rebuild-iter
+           (let ((tag (cadr item))
+                 (var (caddr item))
+                 (env (cadddr item))
+                 (new-ir3 (pop results))
+                 (new-ir2 (pop results))
+                 (new-ir1 (pop results)))
+             (push (list tag var new-ir1 new-ir2 new-ir3 env) results)))
+
+          ;; Rebuild mmap-ir
+          (:rebuild-mmap
+           (let ((new-arg1 (pop results))
+                 (new-arg2 (pop results))
+                 (new-arg3 (pop results))
+                 (new-arg4 (pop results))
+                 (new-arg5 (pop results))
+                 (new-arg6 (pop results)))
+             (push (list 'mmap-ir new-arg1 new-arg2 new-arg3 new-arg4 new-arg5 new-arg6) results)))
+
+          ;; Rebuild setq-ir
+          (:rebuild-setq
+           (let ((offset (cadr item))
+                 (new-val (pop results)))
+             (push (list 'setq-ir offset new-val) results)))
+
+          ;; Rebuild N-ary node
+          (:rebuild-nary
+           (let* ((tag (cadr item))
+                  (arity (caddr item))
+                  (original (cadddr item))
+                  (new-children nil))
+             ;; Pop arity children from results
+             (dotimes (i arity)
+               (push (pop results) new-children))
+             ;; Reconstruct node: (tag ...preserved-data... new-children...)
+             ;; The child positions tell us where children go
+             (let ((spec (ir-child-spec tag)))
+               (if (and spec (consp spec))
+                   (let ((positions (cdr spec))
+                         (result (copy-list original)))
+                     ;; Replace children at their positions
+                     (loop for pos in positions
+                           for child in new-children
+                           do (setf (nth pos result) child))
+                     (push result results))
+                   ;; Fallback - shouldn't happen
+                   (push original results)))))
+
+          ;; Rebuild list from N items on results stack
+          (:rebuild-list
+           (let ((n (cadr item))
+                 (new-list nil))
+             (dotimes (i n)
+               (push (pop results) new-list))
+             (push new-list results))))))
+
+    ;; Return (transformed-ir . lambdas)
+    (cons (car results) lambdas)))
+
+;; Keep old recursive version commented for reference
+#|
+(defun lift-lambdas-recursive (ir)
   "Extract all lambda-ir nodes from IR, replacing them with lambda-ref nodes.
    Returns (cons transformed-ir lambdas) where lambdas is alist of (name . lambda-ir)"
   (labels ((lift (ir lambdas)
@@ -4416,6 +4718,7 @@
                     (let* ((mvb-result-34 (lift-list (cdr irs) l1)) (new-rest (car mvb-result-34)) (l2 (cdr mvb-result-34)))
                     (cons (cons new-first new-rest) l2))))))
     (lift ir nil)))
+|#
 
 (defun codegen-lambda (lambda-entry rtaddrs fnoffs)
   "Generate code for a lifted lambda.
