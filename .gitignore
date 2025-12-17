@@ -152,3 +152,7 @@ verify-*.lisp
 
 # Intermediate stage source
 habu-stage1-src.lisp
+
+# Zig
+.zig-cache/
+zig-out/

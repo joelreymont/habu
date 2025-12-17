@@ -1,2 +1,0 @@
-#!/bin/bash
-SBCL_SOURCE_ROOT="/opt/homebrew/Cellar/sbcl/2.5.9/share/sbcl/src" SBCL_HOME="/opt/homebrew/Cellar/sbcl/2.5.9/lib/sbcl" exec "/Users/joel/Work/habu/bin/sbcl-bin" "$@"

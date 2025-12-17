@@ -1,0 +1,11 @@
+.{
+    .name = .habu,
+    .version = "0.1.0",
+    .fingerprint = 0xe1672d71b8ccd567,
+    .minimum_zig_version = "0.15.0",
+    .paths = .{
+        "build.zig",
+        "build.zig.zon",
+        "src",
+    },
+}
