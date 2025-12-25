@@ -1,12 +1,15 @@
 //! Cheney Copying Garbage Collector
 //!
 //! Algorithm:
-//! 1. Copy roots to to-space
-//! 2. Scan to-space, copying referenced objects
+//! 1. Copy roots to to-space, building work list
+//! 2. Process work list, copying referenced objects
 //! 3. Replace old pointers with forwarding pointers
 //! 4. Swap spaces
 //!
 //! Forwarding pointers use tag 14 to mark already-copied objects.
+//!
+//! Work-list approach: Instead of sequential scanning (which requires knowing
+//! object types), we maintain a list of (address, tag) pairs to process.
 
 const std = @import("std");
 const Value = @import("value.zig").Value;
@@ -15,25 +18,38 @@ const objects = @import("objects.zig");
 const Heap = @import("heap.zig").Heap;
 const ALIGNMENT = @import("heap.zig").ALIGNMENT;
 
+/// Work item: object to scan
+const WorkItem = struct {
+    addr: usize,
+    tag: Tag,
+};
+
 /// Garbage collector state
 pub const GC = struct {
     heap: *Heap,
-    /// Scan pointer (where we're reading in to-space)
-    scan_ptr: [*]align(ALIGNMENT) u8,
+    /// Allocator for work list
+    allocator: std.mem.Allocator,
+    /// Work list of objects to scan
+    work_list: std.ArrayList(WorkItem),
 
     /// Initialize GC with heap
-    pub fn init(heap: *Heap) GC {
+    pub fn init(heap: *Heap, allocator: std.mem.Allocator) GC {
         return .{
             .heap = heap,
-            .scan_ptr = heap.to_start,
+            .allocator = allocator,
+            .work_list = std.ArrayList(WorkItem){},
         };
+    }
+
+    pub fn deinit(self: *GC) void {
+        self.work_list.deinit(self.allocator);
     }
 
     /// Run a garbage collection cycle
     /// Returns the number of bytes copied
     pub fn collect(self: *GC, roots: []Value) usize {
-        // Reset to-space allocation pointer
-        self.scan_ptr = self.heap.to_start;
+        // Clear work list
+        self.work_list.clearRetainingCapacity();
         var alloc_ptr = self.heap.to_start;
 
         // Phase 1: Copy roots
@@ -41,10 +57,11 @@ pub const GC = struct {
             root.* = self.copyValue(root.*, &alloc_ptr);
         }
 
-        // Phase 2: Scan to-space and copy referenced objects
-        while (@intFromPtr(self.scan_ptr) < @intFromPtr(alloc_ptr)) {
-            const val = self.scanNextObject(&alloc_ptr);
-            _ = val;
+        // Phase 2: Process work list, scanning objects and copying references
+        while (self.work_list.items.len > 0) {
+            const item = self.work_list.items[self.work_list.items.len - 1];
+            self.work_list.items.len -= 1;
+            self.scanObject(item.addr, item.tag, &alloc_ptr);
         }
 
         // Calculate bytes copied
@@ -110,38 +127,71 @@ pub const GC = struct {
         const new_addr = @intFromPtr(dest);
         first_word.* = Value.makeForwarding(@as(*u8, @ptrFromInt(new_addr)));
 
+        // Add to work list for scanning (except strings/keywords which have no Value refs)
+        if (tag != .string and tag != .keyword) {
+            self.work_list.append(self.allocator, .{
+                .addr = new_addr,
+                .tag = tag,
+            }) catch {};
+        }
+
         // Return new tagged pointer
         return .{ .raw = new_addr | @as(u64, @intFromEnum(tag)) };
     }
 
     /// Get the original tag from a forwarding pointer
-    /// (stored in bits 1-3 before forwarding)
     fn getOriginalTag(self: *GC, val: Value) Tag {
         _ = self;
-        // The forwarding pointer stores the new address
-        // We need to look at the destination to get the tag
-        // For now, assume we stored it correctly
         return val.getTag();
     }
 
-    /// Scan the next object in to-space and update its references
-    /// For now, we scan cons cells only (16 bytes each)
-    fn scanNextObject(self: *GC, alloc_ptr: *[*]align(ALIGNMENT) u8) void {
-        const addr = @intFromPtr(self.scan_ptr);
+    /// Scan an object and copy its referenced values
+    fn scanObject(self: *GC, addr: usize, tag: Tag, alloc_ptr: *[*]align(ALIGNMENT) u8) void {
+        switch (tag) {
+            .cons => {
+                // Scan car and cdr
+                const car_ptr: *Value = @ptrFromInt(addr);
+                const cdr_ptr: *Value = @ptrFromInt(addr + @sizeOf(Value));
 
-        // Scan two words (car and cdr of cons cell)
-        const car_ptr: *Value = @ptrFromInt(addr);
-        const cdr_ptr: *Value = @ptrFromInt(addr + @sizeOf(Value));
-
-        if (car_ptr.isPointer() and !car_ptr.isNil()) {
-            car_ptr.* = self.copyValue(car_ptr.*, alloc_ptr);
+                if (car_ptr.isPointer() and !car_ptr.isNil()) {
+                    car_ptr.* = self.copyValue(car_ptr.*, alloc_ptr);
+                }
+                if (cdr_ptr.isPointer() and !cdr_ptr.isNil()) {
+                    cdr_ptr.* = self.copyValue(cdr_ptr.*, alloc_ptr);
+                }
+            },
+            .symbol => {
+                // Scan plist (offset 16: after name_len and name_ptr)
+                const plist_ptr: *Value = @ptrFromInt(addr + 16);
+                if (plist_ptr.isPointer() and !plist_ptr.isNil()) {
+                    plist_ptr.* = self.copyValue(plist_ptr.*, alloc_ptr);
+                }
+            },
+            .vector => {
+                // Scan all elements
+                const vec: *objects.Vector = @ptrFromInt(addr);
+                for (vec.items()) |*item| {
+                    if (item.isPointer() and !item.isNil()) {
+                        item.* = self.copyValue(item.*, alloc_ptr);
+                    }
+                }
+            },
+            .closure => {
+                // Scan captured values
+                const cls: *objects.Closure = @ptrFromInt(addr);
+                for (cls.getCapturedValues()) |*cap| {
+                    if (cap.isPointer() and !cap.isNil()) {
+                        cap.* = self.copyValue(cap.*, alloc_ptr);
+                    }
+                }
+            },
+            .string, .keyword => {
+                // No Value references to scan
+            },
+            .forwarding => {
+                // Should not happen - forwarding pointers aren't added to work list
+            },
         }
-        if (cdr_ptr.isPointer() and !cdr_ptr.isNil()) {
-            cdr_ptr.* = self.copyValue(cdr_ptr.*, alloc_ptr);
-        }
-
-        // Move scan pointer forward by cons cell size (16 bytes, maintains alignment)
-        self.scan_ptr = @ptrFromInt(addr + @sizeOf(objects.Cons));
     }
 };
 
@@ -186,8 +236,8 @@ test "gc init" {
     var heap = try Heap.init(testing.allocator, .{ .total_size = 1024 * 1024 });
     defer heap.deinit();
 
-    const gc_inst = GC.init(&heap);
-    _ = gc_inst;
+    var gc_inst = GC.init(&heap, testing.allocator);
+    defer gc_inst.deinit();
 }
 
 test "gc collect empty" {
@@ -196,7 +246,8 @@ test "gc collect empty" {
     var heap = try Heap.init(testing.allocator, .{ .total_size = 1024 * 1024 });
     defer heap.deinit();
 
-    var gc = GC.init(&heap);
+    var gc = GC.init(&heap, testing.allocator);
+    defer gc.deinit();
 
     var roots = [_]Value{};
     const bytes = gc.collect(&roots);
@@ -216,7 +267,8 @@ test "gc collect with cons" {
     // Verify it's valid
     try testing.expect(root.isCons());
 
-    var gc = GC.init(&heap);
+    var gc = GC.init(&heap, testing.allocator);
+    defer gc.deinit();
 
     // Collect with root
     var roots = [_]Value{root};
@@ -233,4 +285,37 @@ test "gc collect with cons" {
     const cons = root.toPtr(objects.Cons);
     try testing.expectEqual(@as(i64, 1), cons.car.toFixnum());
     try testing.expectEqual(@as(i64, 2), cons.cdr.toFixnum());
+}
+
+test "gc collect with nested cons" {
+    const testing = std.testing;
+
+    var heap = try Heap.init(testing.allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    // Build (1 . (2 . (3 . nil)))
+    const c3 = heap.allocCons(Value.makeFixnum(3), Value.nil) orelse return error.OutOfMemory;
+    const c2 = heap.allocCons(Value.makeFixnum(2), c3) orelse return error.OutOfMemory;
+    var root = heap.allocCons(Value.makeFixnum(1), c2) orelse return error.OutOfMemory;
+
+    var gc = GC.init(&heap, testing.allocator);
+    defer gc.deinit();
+
+    var roots = [_]Value{root};
+    _ = gc.collect(&roots);
+
+    // Verify structure is preserved
+    root = roots[0];
+    try testing.expect(root.isCons());
+    const cons1 = root.toPtr(objects.Cons);
+    try testing.expectEqual(@as(i64, 1), cons1.car.toFixnum());
+
+    try testing.expect(cons1.cdr.isCons());
+    const cons2 = cons1.cdr.toPtr(objects.Cons);
+    try testing.expectEqual(@as(i64, 2), cons2.car.toFixnum());
+
+    try testing.expect(cons2.cdr.isCons());
+    const cons3 = cons2.cdr.toPtr(objects.Cons);
+    try testing.expectEqual(@as(i64, 3), cons3.car.toFixnum());
+    try testing.expect(cons3.cdr.isNil());
 }
