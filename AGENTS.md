@@ -28,6 +28,15 @@ Habu is being rewritten from Common Lisp to Zig.
 - `src/interp/vm.zig` - Stack-based bytecode VM
 - `src/interp/repl.zig` - Interactive REPL
 
+**Phase 4: Type System** ✓
+- `src/types/type.zig` - Type ADT (primitives, or, arrow, list, vec, non-nil, any)
+- `src/types/check.zig` - TypeEnv, OccurrenceCtx, TypeChecker
+- `src/types/contract.zig` - Contract ADT + ContractCompiler
+- `src/types/blame.zig` - Blame tracking for contract errors
+- `src/compiler/ir.zig` - assert_* IR nodes for type checks
+- `src/bytecode/opcodes.zig` - check_* opcodes (0xA0-0xA6)
+- `src/interp/vm.zig` - Runtime type checking (TypeMismatch error)
+
 **Running the REPL:**
 ```bash
 zig build && ./zig-out/bin/habu
@@ -36,11 +45,6 @@ zig build && ./zig-out/bin/habu
 All tests pass.
 
 ### Next Steps
-
-**Phase 4: Type System**
-- `src/types/` has type.zig, contract.zig, blame.zig
-- Integrate with compiler for occurrence typing
-- Add type inference for numeric specialization
 
 **Phase 5: JIT**
 - Copy-and-patch JIT for native platforms (ARM64)

@@ -40,9 +40,9 @@ pub const Config = struct {
     /// Show bytecode bytes
     show_bytes: bool = false,
     /// Prompt string
-    prompt: []const u8 = "> ",
+    prompt: []const u8 = "🐍 ",
     /// Continuation prompt (for multi-line input)
-    cont_prompt: []const u8 = "  ",
+    cont_prompt: []const u8 = "   ",
 };
 
 /// REPL state
