@@ -181,6 +181,32 @@ pub const Ir = union(enum) {
     print: UnaryOp,
 
     // ========================================================================
+    // Type assertions (gradual typing)
+    // ========================================================================
+
+    /// Assert value is fixnum (error if not)
+    /// ( x -- x ) but errors if not fixnum
+    assert_fixnum: UnaryOp,
+
+    /// Assert value is cons (error if not)
+    assert_cons: UnaryOp,
+
+    /// Assert value is symbol (error if not)
+    assert_symbol: UnaryOp,
+
+    /// Assert value is string (error if not)
+    assert_string: UnaryOp,
+
+    /// Assert value is vector (error if not)
+    assert_vector: UnaryOp,
+
+    /// Assert value is closure (error if not)
+    assert_closure: UnaryOp,
+
+    /// Assert value is non-nil (error if nil)
+    assert_non_nil: UnaryOp,
+
+    // ========================================================================
     // Helper types
     // ========================================================================
 
@@ -229,6 +255,8 @@ pub const Ir = union(enum) {
             .vec_new, .vec_ref, .vec_set, .vec_len,
             .str_ref, .str_len, .str_concat,
             .print,
+            .assert_fixnum, .assert_cons, .assert_symbol, .assert_string,
+            .assert_vector, .assert_closure, .assert_non_nil,
             => true,
             else => false,
         };
@@ -466,6 +494,49 @@ pub const IrBuilder = struct {
     pub fn print(self: IrBuilder, operand: *const Ir) !*Ir {
         const node = try self.allocator.create(Ir);
         node.* = .{ .print = .{ .operand = operand } };
+        return node;
+    }
+
+    // Type assertions
+    pub fn assertFixnum(self: IrBuilder, operand: *const Ir) !*Ir {
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .assert_fixnum = .{ .operand = operand } };
+        return node;
+    }
+
+    pub fn assertCons(self: IrBuilder, operand: *const Ir) !*Ir {
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .assert_cons = .{ .operand = operand } };
+        return node;
+    }
+
+    pub fn assertSymbol(self: IrBuilder, operand: *const Ir) !*Ir {
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .assert_symbol = .{ .operand = operand } };
+        return node;
+    }
+
+    pub fn assertString(self: IrBuilder, operand: *const Ir) !*Ir {
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .assert_string = .{ .operand = operand } };
+        return node;
+    }
+
+    pub fn assertVector(self: IrBuilder, operand: *const Ir) !*Ir {
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .assert_vector = .{ .operand = operand } };
+        return node;
+    }
+
+    pub fn assertClosure(self: IrBuilder, operand: *const Ir) !*Ir {
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .assert_closure = .{ .operand = operand } };
+        return node;
+    }
+
+    pub fn assertNonNil(self: IrBuilder, operand: *const Ir) !*Ir {
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .assert_non_nil = .{ .operand = operand } };
         return node;
     }
 };

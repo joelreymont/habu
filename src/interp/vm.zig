@@ -356,6 +356,36 @@ pub const Vm = struct {
                     _ = val;
                 },
 
+                // Type assertions (gradual typing)
+                .check_fixnum => {
+                    const val = try self.peek(0);
+                    if (!val.isFixnum()) return error.TypeMismatch;
+                },
+                .check_cons => {
+                    const val = try self.peek(0);
+                    if (!val.isCons()) return error.TypeMismatch;
+                },
+                .check_symbol => {
+                    const val = try self.peek(0);
+                    if (!val.isSymbol()) return error.TypeMismatch;
+                },
+                .check_string => {
+                    const val = try self.peek(0);
+                    if (!val.isString()) return error.TypeMismatch;
+                },
+                .check_vector => {
+                    const val = try self.peek(0);
+                    if (!val.isVector()) return error.TypeMismatch;
+                },
+                .check_closure => {
+                    const val = try self.peek(0);
+                    if (!val.isClosure()) return error.TypeMismatch;
+                },
+                .check_non_nil => {
+                    const val = try self.peek(0);
+                    if (val.isNil()) return error.TypeMismatch;
+                },
+
                 .halt => return error.Halt,
             }
         }

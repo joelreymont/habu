@@ -45,6 +45,8 @@ pub fn disassembleInstruction(chunk: *const Chunk, offset: usize, writer: anytyp
         .vec_ref, .vec_set, .vec_len,
         .str_ref, .str_len, .str_concat,
         .ret, .print, .halt,
+        .check_fixnum, .check_cons, .check_symbol, .check_string,
+        .check_vector, .check_closure, .check_non_nil,
         => {
             try writer.print("{s}\n", .{op.name()});
             return offset + 1;

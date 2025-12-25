@@ -280,6 +280,38 @@ pub const Op = enum(u8) {
     print = 0x90,
 
     // ========================================================================
+    // Type assertions (gradual typing)
+    // ========================================================================
+
+    /// Assert value is fixnum, error if not
+    /// ( x -- x )
+    check_fixnum = 0xA0,
+
+    /// Assert value is cons, error if not
+    /// ( x -- x )
+    check_cons = 0xA1,
+
+    /// Assert value is symbol, error if not
+    /// ( x -- x )
+    check_symbol = 0xA2,
+
+    /// Assert value is string, error if not
+    /// ( x -- x )
+    check_string = 0xA3,
+
+    /// Assert value is vector, error if not
+    /// ( x -- x )
+    check_vector = 0xA4,
+
+    /// Assert value is closure, error if not
+    /// ( x -- x )
+    check_closure = 0xA5,
+
+    /// Assert value is non-nil, error if nil
+    /// ( x -- x )
+    check_non_nil = 0xA6,
+
+    // ========================================================================
     // Special
     // ========================================================================
 
@@ -299,6 +331,8 @@ pub const Op = enum(u8) {
             .vec_ref, .vec_set, .vec_len,
             .str_ref, .str_len, .str_concat,
             .ret, .print, .halt,
+            .check_fixnum, .check_cons, .check_symbol, .check_string,
+            .check_vector, .check_closure, .check_non_nil,
             => 0,
 
             // 1 byte operand

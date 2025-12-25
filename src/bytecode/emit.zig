@@ -115,6 +115,15 @@ pub const Emitter = struct {
 
             // I/O
             .print => |op| try self.emitUnaryOp(op.operand, .print),
+
+            // Type assertions
+            .assert_fixnum => |op| try self.emitUnaryOp(op.operand, .check_fixnum),
+            .assert_cons => |op| try self.emitUnaryOp(op.operand, .check_cons),
+            .assert_symbol => |op| try self.emitUnaryOp(op.operand, .check_symbol),
+            .assert_string => |op| try self.emitUnaryOp(op.operand, .check_string),
+            .assert_vector => |op| try self.emitUnaryOp(op.operand, .check_vector),
+            .assert_closure => |op| try self.emitUnaryOp(op.operand, .check_closure),
+            .assert_non_nil => |op| try self.emitUnaryOp(op.operand, .check_non_nil),
         }
     }
 
