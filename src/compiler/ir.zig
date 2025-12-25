@@ -188,11 +188,12 @@ pub const Ir = union(enum) {
     str_concat: BinaryOp,
 
     // ========================================================================
-    // Primitives - I/O
+    // Primitives - I/O and Symbol
     // ========================================================================
 
     print: UnaryOp,
     random: UnaryOp,
+    intern: UnaryOp,
 
     // ========================================================================
     // Type assertions (gradual typing)
@@ -268,7 +269,7 @@ pub const Ir = union(enum) {
             .consp, .symbolp, .numberp, .stringp, .vectorp, .closurep, .keywordp, .nilp,
             .vec_new, .vec_ref, .vec_set, .vec_len,
             .str_ref, .str_len, .str_concat,
-            .print,
+            .print, .random, .intern,
             .assert_fixnum, .assert_cons, .assert_symbol, .assert_string,
             .assert_vector, .assert_closure, .assert_non_nil,
             => true,

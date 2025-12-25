@@ -235,6 +235,10 @@ pub const Op = enum(u8) {
     /// ( s1 s2 -- s3 )
     str_concat = 0x6A,
 
+    /// Intern - create symbol from string
+    /// ( str -- sym )
+    intern = 0x6B,
+
     // ========================================================================
     // Control flow
     // ========================================================================
@@ -334,7 +338,7 @@ pub const Op = enum(u8) {
             .consp, .symbolp, .numberp, .stringp, .vectorp, .closurep, .keywordp, .nilp,
             .vec_ref, .vec_set, .vec_len,
             .str_ref, .str_len, .str_concat,
-            .ret, .print, .random, .halt,
+            .ret, .print, .random, .intern, .halt,
             .check_fixnum, .check_cons, .check_symbol, .check_string,
             .check_vector, .check_closure, .check_non_nil,
             => 0,

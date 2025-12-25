@@ -203,6 +203,27 @@ pub const Heap = struct {
         return Value.makeClosure(closure);
     }
 
+    /// Allocate a symbol from a string
+    pub fn allocSymbol(self: *Heap, name: []const u8) ?Value {
+        const aligned_name_len = std.mem.alignForward(usize, name.len, 8);
+        const total_size = @sizeOf(objects.Symbol) + aligned_name_len;
+
+        const ptr = self.allocRaw(total_size) orelse return null;
+        const sym: *objects.Symbol = @ptrCast(@alignCast(ptr));
+        const name_ptr: [*]u8 = @ptrCast(ptr + @sizeOf(objects.Symbol));
+
+        @memcpy(name_ptr[0..name.len], name);
+
+        sym.* = .{
+            .name_len = name.len,
+            .name_ptr = name_ptr,
+            .plist = Value.nil,
+            .reserved = 0,
+        };
+
+        return Value.makeSymbol(sym);
+    }
+
     /// Swap from-space and to-space
     pub fn swapSpaces(self: *Heap) void {
         const tmp = self.from_start;

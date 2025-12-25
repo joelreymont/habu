@@ -44,7 +44,7 @@ pub fn disassembleInstruction(chunk: *const Chunk, offset: usize, writer: anytyp
         .consp, .symbolp, .numberp, .stringp, .vectorp, .closurep, .keywordp, .nilp,
         .vec_ref, .vec_set, .vec_len,
         .str_ref, .str_len, .str_concat,
-        .ret, .print, .random, .halt,
+        .ret, .print, .random, .intern, .halt,
         .check_fixnum, .check_cons, .check_symbol, .check_string,
         .check_vector, .check_closure, .check_non_nil,
         => {

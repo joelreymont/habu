@@ -130,6 +130,7 @@ pub const Emitter = struct {
             // I/O
             .print => |op| try self.emitUnaryOp(op.operand, .print),
             .random => |op| try self.emitUnaryOp(op.operand, .random),
+            .intern => |op| try self.emitUnaryOp(op.operand, .intern),
 
             // Type assertions
             .assert_fixnum => |op| try self.emitUnaryOp(op.operand, .check_fixnum),

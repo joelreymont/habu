@@ -982,10 +982,15 @@ pub const Compiler = struct {
             return self.compileUnaryPrim(args, env, .random);
         }
 
+        // Symbol creation
+        if (std.mem.eql(u8, name, "intern")) {
+            return self.compileUnaryPrim(args, env, .intern);
+        }
+
         return error.InvalidSyntax; // Not a known primitive
     }
 
-    const PrimTag = enum { add, sub, mul, div, mod, eq, lt, gt, le, ge, num_eq, cons, car, cdr, consp, symbolp, numberp, stringp, vectorp, nilp, not, vec_ref, vec_len, str_ref, str_len, print, random };
+    const PrimTag = enum { add, sub, mul, div, mod, eq, lt, gt, le, ge, num_eq, cons, car, cdr, consp, symbolp, numberp, stringp, vectorp, nilp, not, vec_ref, vec_len, str_ref, str_len, print, random, intern };
 
     fn compileBinaryPrim(self: *Compiler, args: Value, env: *const Env, prim: PrimTag) CompileError!*Ir {
         if (!args.isCons()) return error.InvalidSyntax;
@@ -1064,6 +1069,11 @@ pub const Compiler = struct {
             .random => blk: {
                 const node = self.allocator.create(Ir) catch return error.OutOfMemory;
                 node.* = .{ .random = .{ .operand = operand } };
+                break :blk node;
+            },
+            .intern => blk: {
+                const node = self.allocator.create(Ir) catch return error.OutOfMemory;
+                node.* = .{ .intern = .{ .operand = operand } };
                 break :blk node;
             },
             else => error.InvalidSyntax,

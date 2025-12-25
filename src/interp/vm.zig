@@ -11,6 +11,7 @@ const runtime = @import("../runtime/runtime.zig");
 const Value = runtime.Value;
 const Heap = runtime.Heap;
 const Cons = runtime.Cons;
+const String = runtime.String;
 const arith = @import("../runtime/primitives/arith.zig");
 const io = @import("../runtime/primitives/io.zig");
 
@@ -438,6 +439,13 @@ pub const Vm = struct {
                     const n = try self.pop();
                     const result = arith.random(n);
                     try self.push(result);
+                },
+                .intern => {
+                    const str_val = try self.pop();
+                    if (!str_val.isString()) return error.TypeMismatch;
+                    const str = str_val.toPtr(String);
+                    const sym = self.heap.allocSymbol(str.bytes()) orelse return error.OutOfMemory;
+                    try self.push(sym);
                 },
 
                 // Type assertions (gradual typing)
