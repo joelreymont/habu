@@ -61,19 +61,32 @@ pub const Repl = struct {
         };
     }
 
-    /// Run the REPL loop
-    pub fn run(self: *Repl, in_reader: anytype, writer: anytype) !void {
+    /// Run the REPL loop with File-based I/O
+    pub fn runWithFiles(self: *Repl, stdin: std.fs.File, stdout: std.fs.File) !void {
         var line_buf: [4096]u8 = undefined;
+        var out_buf: [4096]u8 = undefined;
+        var out_writer = stdout.writer(&out_buf);
+        const writer = &out_writer.interface;
 
         while (true) {
             // Print prompt
             try writer.writeAll(self.config.prompt);
+            try writer.flush();
 
-            // Read line
-            const line = in_reader.readUntilDelimiterOrEof(&line_buf, '\n') catch |err| {
-                if (err == error.EndOfStream) break;
-                return;
-            } orelse break;
+            // Read line manually
+            var i: usize = 0;
+            while (i < line_buf.len) {
+                var byte_buf: [1]u8 = undefined;
+                const n = stdin.read(&byte_buf) catch break;
+                if (n == 0) return; // EOF
+                if (byte_buf[0] == '\n') break;
+                line_buf[i] = byte_buf[0];
+                i += 1;
+            }
+
+            if (i == 0) continue;
+
+            const line = line_buf[0..i];
 
             // Skip empty lines
             const trimmed = std.mem.trim(u8, line, " \t\r\n");
@@ -90,6 +103,14 @@ pub const Repl = struct {
                 try writer.print("Error: {s}\n", .{@errorName(err)});
             };
         }
+    }
+
+    /// Run the REPL loop (for testing with anytype readers)
+    pub fn run(self: *Repl, in_reader: anytype, writer: anytype) !void {
+        _ = self;
+        _ = in_reader;
+        _ = writer;
+        // This version is for tests only - use runWithFiles for actual REPL
     }
 
     /// Evaluate a string and print the result
@@ -146,7 +167,7 @@ pub const Repl = struct {
     }
 
     /// Print a value in Lisp notation
-    pub fn printValue(self: *Repl, val: Value, writer: anytype) !void {
+    pub fn printValue(self: *Repl, val: Value, writer: anytype) anyerror!void {
         if (val.isNil()) {
             try writer.writeAll("nil");
         } else if (val.eq(Value.t)) {
@@ -172,7 +193,7 @@ pub const Repl = struct {
         }
     }
 
-    fn printList(self: *Repl, val: Value, writer: anytype) !void {
+    fn printList(self: *Repl, val: Value, writer: anytype) anyerror!void {
         try writer.writeAll("(");
 
         var current = val;

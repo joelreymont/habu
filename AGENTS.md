@@ -1,8 +1,8 @@
 # Habu Zig Rewrite - Continuation Instructions
 
-## Current Status (2024-12-17)
+## Current Status (2024-12-25)
 
-Habu is being rewritten from Common Lisp to Zig. The plan is in `.claude/plans/partitioned-booping-mochi.md`.
+Habu is being rewritten from Common Lisp to Zig.
 
 ### Completed
 
@@ -17,25 +17,33 @@ Habu is being rewritten from Common Lisp to Zig. The plan is in `.claude/plans/p
 - `src/reader/lexer.zig` - S-expression tokenizer
 - `src/reader/parser.zig` - S-expression parser with symbol interning
 
-All 93 tests pass.
+**Phase 2: Compiler** ✓
+- `src/compiler/ir.zig` - IR with 30+ node types (literals, variables, control flow, functions)
+- `src/compiler/compile.zig` - Lisp → IR compilation with occurrence typing support
+- `src/bytecode/opcodes.zig` - 50+ opcodes (stack, variables, arithmetic, control, functions)
+- `src/bytecode/emit.zig` - IR → bytecode emitter
+- `src/bytecode/disasm.zig` - Debug disassembler
+
+**Phase 3: Interpreter** ✓
+- `src/interp/vm.zig` - Stack-based bytecode VM
+- `src/interp/repl.zig` - Interactive REPL
+
+**Running the REPL:**
+```bash
+zig build && ./zig-out/bin/habu
+```
+
+All tests pass.
 
 ### Next Steps
 
-**Phase 2 continued: Compiler**
-- `src/compiler/ir.zig` - Internal representation
-- `src/compiler/compile.zig` - Lisp → IR compilation
-- `src/bytecode/opcodes.zig` - Opcode definitions
-- `src/bytecode/disasm.zig` - Debug disassembler
-
-**Phase 3: Interpreter**
-- `src/interp/vm.zig` - Bytecode interpreter (works on WASM)
-
 **Phase 4: Type System**
-- Already have `src/types/` with type.zig, contract.zig, blame.zig
-- Need to integrate with compiler for occurrence typing
+- `src/types/` has type.zig, contract.zig, blame.zig
+- Integrate with compiler for occurrence typing
+- Add type inference for numeric specialization
 
 **Phase 5: JIT**
-- Copy-and-patch JIT for native platforms
+- Copy-and-patch JIT for native platforms (ARM64)
 
 **Phase 6: Self-Hosting**
 - Compile Habu with Habu

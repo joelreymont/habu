@@ -1,12 +1,38 @@
+//! Habu Lisp - Main Entry Point
+//!
+//! A Lisp implementation in Zig with:
+//! - Bytecode compiler
+//! - Stack-based VM (WASM compatible)
+//! - Copy-and-patch JIT (native platforms)
+//! - Gradual typing with occurrence typing
+
 const std = @import("std");
 const fs = std.fs;
+const runtime = @import("runtime/runtime.zig");
+const Heap = runtime.Heap;
+const repl_mod = @import("interp/repl.zig");
+const Repl = repl_mod.Repl;
 
 pub fn main() !void {
-    const stdout_file = fs.File.stdout();
-    var buf: [4096]u8 = undefined;
-    var file_writer = stdout_file.writer(&buf);
-    const w = &file_writer.interface;
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    defer _ = gpa.deinit();
+    const allocator = gpa.allocator();
 
-    try w.print("Habu Lisp v0.1.0\n", .{});
-    try w.flush();
+    // Initialize heap (64MB)
+    var heap = try Heap.init(allocator, .{});
+    defer heap.deinit();
+
+    // Print banner
+    const stdout = fs.File.stdout();
+    var buf: [4096]u8 = undefined;
+    var stdout_writer = stdout.writer(&buf);
+    const writer = &stdout_writer.interface;
+
+    try writer.print("Habu Lisp v0.1.0\n", .{});
+    try writer.print("Type expressions to evaluate, ,h for help, ,q to quit\n\n", .{});
+    try writer.flush();
+
+    // Run REPL
+    var repl = Repl.init(allocator, &heap, .{});
+    try repl.runWithFiles(fs.File.stdin(), stdout);
 }
