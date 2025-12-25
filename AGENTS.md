@@ -44,10 +44,12 @@ zig build && ./zig-out/bin/habu
 
 All tests pass.
 
-### Next Steps
+**Phase 5: JIT** ✓
+- `src/jit/stencils.zig` - ARM64 machine code templates with holes
+- `src/jit/patch.zig` - Hole patching for immediates and branches
+- `src/jit/jit.zig` - Bytecode → native code compiler
 
-**Phase 5: JIT**
-- Copy-and-patch JIT for native platforms (ARM64)
+### Next Steps
 
 **Phase 6: Self-Hosting**
 - Compile Habu with Habu

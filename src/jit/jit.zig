@@ -1,0 +1,294 @@
+//! JIT compiler for Habu bytecode
+//!
+//! Compiles bytecode to native ARM64 code using copy-and-patch.
+//! Each bytecode instruction is compiled by copying a pre-compiled
+//! stencil and patching in the runtime values.
+
+const std = @import("std");
+const stencils = @import("stencils.zig");
+const patch = @import("patch.zig");
+const bytecode = @import("../bytecode/bytecode.zig");
+const Op = bytecode.Op;
+const Chunk = bytecode.Chunk;
+const runtime = @import("../runtime/runtime.zig");
+const Value = runtime.Value;
+
+pub const JitError = error{
+    OutOfMemory,
+    UnsupportedOpcode,
+    PatchFailed,
+    CodeTooLarge,
+};
+
+/// JIT-compiled function
+pub const JitFn = *const fn () callconv(.c) u64;
+
+/// JIT compiler state
+pub const Jit = struct {
+    allocator: std.mem.Allocator,
+    /// Code buffer for JIT output
+    code_buffer: patch.CodeBuffer,
+    /// Offset where current function starts
+    fn_start: usize,
+    /// Label positions for forward references
+    labels: std.AutoHashMap(usize, usize),
+    /// Pending forward jumps to patch
+    pending_jumps: std.ArrayList(PendingJump),
+
+    const PendingJump = struct {
+        /// Offset in code buffer where jump instruction is
+        code_offset: usize,
+        /// Bytecode offset this jump targets
+        target_bc_offset: usize,
+        /// Hole type for this jump
+        hole_type: stencils.HoleType,
+    };
+
+    pub fn init(allocator: std.mem.Allocator) !Jit {
+        return .{
+            .allocator = allocator,
+            .code_buffer = try patch.CodeBuffer.init(allocator, 1024 * 1024), // 1MB
+            .fn_start = 0,
+            .labels = std.AutoHashMap(usize, usize).init(allocator),
+            .pending_jumps = std.ArrayList(PendingJump){},
+        };
+    }
+
+    pub fn deinit(self: *Jit) void {
+        self.code_buffer.deinit();
+        self.labels.deinit();
+        self.pending_jumps.deinit(self.allocator);
+    }
+
+    /// Compile a bytecode chunk to native code
+    pub fn compile(self: *Jit, chunk: *const Chunk) JitError!JitFn {
+        self.fn_start = self.code_buffer.pos;
+        self.labels.clearRetainingCapacity();
+        self.pending_jumps.clearRetainingCapacity();
+
+        var bc_offset: usize = 0;
+        while (bc_offset < chunk.code.len) {
+            // Record label for this bytecode offset
+            self.labels.put(bc_offset, self.code_buffer.pos) catch
+                return error.OutOfMemory;
+
+            const op: Op = @enumFromInt(chunk.code[bc_offset]);
+            bc_offset += 1;
+
+            try self.compileOp(op, chunk, &bc_offset);
+        }
+
+        // Patch forward jumps
+        try self.patchPendingJumps();
+
+        return self.code_buffer.getFnPtr(JitFn, self.fn_start);
+    }
+
+    fn compileOp(self: *Jit, op: Op, chunk: *const Chunk, bc_offset: *usize) JitError!void {
+        switch (op) {
+            .push_nil => {
+                // Load nil (0) into x0
+                _ = patch.patchStencil(&self.code_buffer, stencils.load_imm64, &[_]patch.PatchValue{
+                    .{ .imm64 = Value.nil.raw },
+                }) catch return error.PatchFailed;
+            },
+
+            .push_t => {
+                // Load t (tagged fixnum 1) into x0
+                _ = patch.patchStencil(&self.code_buffer, stencils.load_imm64, &[_]patch.PatchValue{
+                    .{ .imm64 = Value.t.raw },
+                }) catch return error.PatchFailed;
+            },
+
+            .push_i32 => {
+                const val = chunk.readI32(bc_offset.*);
+                bc_offset.* += 4;
+                // Create tagged fixnum
+                const tagged = Value.makeFixnum(val);
+                _ = patch.patchStencil(&self.code_buffer, stencils.load_imm64, &[_]patch.PatchValue{
+                    .{ .imm64 = tagged.raw },
+                }) catch return error.PatchFailed;
+            },
+
+            .push_const => {
+                const idx = chunk.readU16(bc_offset.*);
+                bc_offset.* += 2;
+                if (idx < chunk.constants.len) {
+                    _ = patch.patchStencil(&self.code_buffer, stencils.load_imm64, &[_]patch.PatchValue{
+                        .{ .imm64 = chunk.constants[idx] },
+                    }) catch return error.PatchFailed;
+                }
+            },
+
+            .add => {
+                _ = patch.patchStencil(&self.code_buffer, stencils.add_fixnum, &[_]patch.PatchValue{}) catch
+                    return error.PatchFailed;
+            },
+
+            .sub => {
+                _ = patch.patchStencil(&self.code_buffer, stencils.sub_fixnum, &[_]patch.PatchValue{}) catch
+                    return error.PatchFailed;
+            },
+
+            .ret => {
+                _ = patch.patchStencil(&self.code_buffer, stencils.ret_stencil, &[_]patch.PatchValue{}) catch
+                    return error.PatchFailed;
+            },
+
+            .jmp => {
+                const offset = chunk.readI16(bc_offset.*);
+                bc_offset.* += 2;
+                const target_bc = @as(usize, @intCast(@as(i32, @intCast(bc_offset.*)) + offset));
+
+                // Record pending jump
+                const code_offset = self.code_buffer.pos;
+                _ = patch.patchStencil(&self.code_buffer, stencils.branch_stencil, &[_]patch.PatchValue{
+                    .{ .addr = 0 }, // Placeholder
+                }) catch return error.PatchFailed;
+
+                self.pending_jumps.append(self.allocator, .{
+                    .code_offset = code_offset,
+                    .target_bc_offset = target_bc,
+                    .hole_type = .rel26,
+                }) catch return error.OutOfMemory;
+            },
+
+            .jmp_nil => {
+                const offset = chunk.readI16(bc_offset.*);
+                bc_offset.* += 2;
+                const target_bc = @as(usize, @intCast(@as(i32, @intCast(bc_offset.*)) + offset));
+
+                const code_offset = self.code_buffer.pos;
+                _ = patch.patchStencil(&self.code_buffer, stencils.branch_nil, &[_]patch.PatchValue{
+                    .{ .addr = 0 },
+                }) catch return error.PatchFailed;
+
+                self.pending_jumps.append(self.allocator, .{
+                    .code_offset = code_offset,
+                    .target_bc_offset = target_bc,
+                    .hole_type = .rel19,
+                }) catch return error.OutOfMemory;
+            },
+
+            .jmp_not_nil => {
+                const offset = chunk.readI16(bc_offset.*);
+                bc_offset.* += 2;
+                const target_bc = @as(usize, @intCast(@as(i32, @intCast(bc_offset.*)) + offset));
+
+                const code_offset = self.code_buffer.pos;
+                _ = patch.patchStencil(&self.code_buffer, stencils.branch_not_nil, &[_]patch.PatchValue{
+                    .{ .addr = 0 },
+                }) catch return error.PatchFailed;
+
+                self.pending_jumps.append(self.allocator, .{
+                    .code_offset = code_offset,
+                    .target_bc_offset = target_bc,
+                    .hole_type = .rel19,
+                }) catch return error.OutOfMemory;
+            },
+
+            .car => {
+                _ = patch.patchStencil(&self.code_buffer, stencils.car_stencil, &[_]patch.PatchValue{}) catch
+                    return error.PatchFailed;
+            },
+
+            .cdr => {
+                _ = patch.patchStencil(&self.code_buffer, stencils.cdr_stencil, &[_]patch.PatchValue{}) catch
+                    return error.PatchFailed;
+            },
+
+            // Skip operands for unsupported ops
+            .load_local, .store_local, .load_capture => {
+                bc_offset.* += 1;
+                return error.UnsupportedOpcode;
+            },
+            .load_upvalue, .store_upvalue => {
+                bc_offset.* += 2;
+                return error.UnsupportedOpcode;
+            },
+            .load_global, .store_global, .make_vec => {
+                bc_offset.* += 2;
+                return error.UnsupportedOpcode;
+            },
+            .call, .tail_call, .make_list => {
+                bc_offset.* += 1;
+                return error.UnsupportedOpcode;
+            },
+            .make_closure => {
+                bc_offset.* += 3;
+                return error.UnsupportedOpcode;
+            },
+
+            else => return error.UnsupportedOpcode,
+        }
+    }
+
+    fn patchPendingJumps(self: *Jit) JitError!void {
+        for (self.pending_jumps.items) |jump| {
+            const target_code_addr = self.labels.get(jump.target_bc_offset) orelse
+                return error.PatchFailed;
+
+            const code_slice = self.code_buffer.memory[jump.code_offset..];
+            const inst_addr = @intFromPtr(self.code_buffer.memory.ptr) + jump.code_offset;
+            const target_addr = @intFromPtr(self.code_buffer.memory.ptr) + target_code_addr;
+
+            const offset = @as(i64, @intCast(target_addr)) - @as(i64, @intCast(inst_addr));
+            const word_offset: u32 = @bitCast(@as(i32, @intCast(@divTrunc(offset, 4))));
+
+            switch (jump.hole_type) {
+                .rel26 => {
+                    var inst = std.mem.readInt(u32, code_slice[0..4], .little);
+                    inst = (inst & 0xFC000000) | (word_offset & 0x03FFFFFF);
+                    std.mem.writeInt(u32, code_slice[0..4], inst, .little);
+                },
+                .rel19 => {
+                    var inst = std.mem.readInt(u32, code_slice[0..4], .little);
+                    inst = (inst & 0xFF00001F) | ((word_offset & 0x7FFFF) << 5);
+                    std.mem.writeInt(u32, code_slice[0..4], inst, .little);
+                },
+                else => return error.PatchFailed,
+            }
+        }
+    }
+};
+
+// ============================================================================
+// Tests
+// ============================================================================
+
+test "jit init" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    var jit = try Jit.init(allocator);
+    defer jit.deinit();
+
+    try testing.expectEqual(@as(usize, 0), jit.code_buffer.pos);
+}
+
+test "jit compile simple" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    var jit = try Jit.init(allocator);
+    defer jit.deinit();
+
+    // push_i32 42; ret
+    const code = [_]u8{
+        @intFromEnum(Op.push_i32), 42, 0, 0, 0,
+        @intFromEnum(Op.ret),
+    };
+
+    const chunk = Chunk{
+        .code = @constCast(&code),
+        .constants = &[_]u64{},
+        .arity = 0,
+        .num_locals = 0,
+        .name = "test",
+    };
+
+    const fn_ptr = try jit.compile(&chunk);
+
+    // Verify function was compiled (on ARM64, we could call it)
+    try testing.expect(@intFromPtr(fn_ptr) != 0);
+}

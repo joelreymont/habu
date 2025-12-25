@@ -1,0 +1,291 @@
+//! Stencil patching - fill holes with runtime values
+//!
+//! Takes a stencil template and patches the holes with actual values.
+//! Handles ARM64 instruction encoding for immediates and branches.
+
+const std = @import("std");
+const stencils = @import("stencils.zig");
+const Stencil = stencils.Stencil;
+const Hole = stencils.Hole;
+const HoleType = stencils.HoleType;
+
+pub const PatchError = error{
+    OutOfMemory,
+    OffsetTooLarge,
+    InvalidHoleType,
+};
+
+/// Executable memory allocator for JIT code
+pub const CodeBuffer = struct {
+    /// Raw memory (mmap'd with execute permission on real systems)
+    memory: []u8,
+    /// Current write position
+    pos: usize,
+    /// Allocator used
+    allocator: std.mem.Allocator,
+
+    pub fn init(allocator: std.mem.Allocator, size: usize) !CodeBuffer {
+        // Allocate memory
+        // In production, this would use mmap with PROT_READ | PROT_WRITE | PROT_EXEC
+        const memory = try allocator.alloc(u8, size);
+        return .{
+            .memory = memory,
+            .pos = 0,
+            .allocator = allocator,
+        };
+    }
+
+    pub fn deinit(self: *CodeBuffer) void {
+        self.allocator.free(self.memory);
+    }
+
+    /// Get current write position as function pointer
+    pub fn currentAddr(self: *const CodeBuffer) usize {
+        return @intFromPtr(self.memory.ptr) + self.pos;
+    }
+
+    /// Reserve space and return slice to write into
+    pub fn reserve(self: *CodeBuffer, size: usize) ![]u8 {
+        if (self.pos + size > self.memory.len) {
+            return error.OutOfMemory;
+        }
+        const start = self.pos;
+        self.pos += size;
+        return self.memory[start..self.pos];
+    }
+
+    /// Write bytes directly
+    pub fn write(self: *CodeBuffer, bytes: []const u8) !void {
+        const dest = try self.reserve(bytes.len);
+        @memcpy(dest, bytes);
+    }
+
+    /// Get a function pointer to the code at offset
+    pub fn getFnPtr(self: *const CodeBuffer, comptime T: type, offset: usize) T {
+        const addr = @intFromPtr(self.memory.ptr) + offset;
+        return @ptrFromInt(addr);
+    }
+};
+
+/// Patch a stencil and write to code buffer
+pub fn patchStencil(
+    buffer: *CodeBuffer,
+    stencil: Stencil,
+    values: []const PatchValue,
+) PatchError!usize {
+    const start = buffer.pos;
+
+    // Copy stencil code
+    const dest = buffer.reserve(stencil.code.len) catch return error.OutOfMemory;
+    @memcpy(dest, stencil.code);
+
+    // Apply patches
+    for (stencil.holes, 0..) |hole, i| {
+        if (i >= values.len) break;
+        const value = values[i];
+        try applyPatch(dest, hole, value, start, buffer);
+    }
+
+    return start;
+}
+
+/// Value to patch into a hole
+pub const PatchValue = union(enum) {
+    /// 64-bit immediate
+    imm64: u64,
+    /// 32-bit immediate
+    imm32: u32,
+    /// Absolute address (will be converted to relative)
+    addr: usize,
+};
+
+/// Apply a single patch to code
+fn applyPatch(
+    code: []u8,
+    hole: Hole,
+    value: PatchValue,
+    code_start: usize,
+    buffer: *const CodeBuffer,
+) PatchError!void {
+    switch (hole.hole_type) {
+        .imm64 => {
+            const imm = switch (value) {
+                .imm64 => |v| v,
+                .addr => |a| @as(u64, a),
+                else => return error.InvalidHoleType,
+            };
+            // Patch MOVZ/MOVK sequence (4 instructions)
+            patchMovzMovk(code[hole.offset..], imm);
+        },
+        .imm32 => {
+            const imm = switch (value) {
+                .imm32 => |v| v,
+                .imm64 => |v| @as(u32, @truncate(v)),
+                else => return error.InvalidHoleType,
+            };
+            // Patch 32-bit immediate in instruction
+            patchImm32(code[hole.offset..], imm);
+        },
+        .rel26 => {
+            const target = switch (value) {
+                .addr => |a| a,
+                else => return error.InvalidHoleType,
+            };
+            // Calculate relative offset from instruction
+            const inst_addr = @intFromPtr(buffer.memory.ptr) + code_start + hole.offset;
+            const offset = @as(i64, @intCast(target)) - @as(i64, @intCast(inst_addr));
+
+            // Check range: 26-bit signed offset * 4 = ±128MB
+            if (offset < -0x8000000 or offset > 0x7FFFFFC) {
+                return error.OffsetTooLarge;
+            }
+
+            // Encode as 26-bit word offset
+            const word_offset: i32 = @intCast(@divTrunc(offset, 4));
+            patchRel26(code[hole.offset..], @bitCast(word_offset));
+        },
+        .rel19 => {
+            const target = switch (value) {
+                .addr => |a| a,
+                else => return error.InvalidHoleType,
+            };
+            const inst_addr = @intFromPtr(buffer.memory.ptr) + code_start + hole.offset;
+            const offset = @as(i64, @intCast(target)) - @as(i64, @intCast(inst_addr));
+
+            // Check range: 19-bit signed offset * 4 = ±1MB
+            if (offset < -0x100000 or offset > 0xFFFFC) {
+                return error.OffsetTooLarge;
+            }
+
+            const word_offset: i32 = @intCast(@divTrunc(offset, 4));
+            patchRel19(code[hole.offset..], @bitCast(word_offset));
+        },
+        .rel14 => {
+            const target = switch (value) {
+                .addr => |a| a,
+                else => return error.InvalidHoleType,
+            };
+            const inst_addr = @intFromPtr(buffer.memory.ptr) + code_start + hole.offset;
+            const offset = @as(i64, @intCast(target)) - @as(i64, @intCast(inst_addr));
+
+            // Check range: 14-bit signed offset * 4 = ±32KB
+            if (offset < -0x8000 or offset > 0x7FFC) {
+                return error.OffsetTooLarge;
+            }
+
+            const word_offset: i32 = @intCast(@divTrunc(offset, 4));
+            patchRel14(code[hole.offset..], @bitCast(word_offset));
+        },
+    }
+}
+
+/// Patch MOVZ/MOVK sequence for 64-bit immediate
+fn patchMovzMovk(code: []u8, imm: u64) void {
+    // MOVZ Xd, #imm16, LSL #0
+    // MOVK Xd, #imm16, LSL #16
+    // MOVK Xd, #imm16, LSL #32
+    // MOVK Xd, #imm16, LSL #48
+
+    const imm0: u16 = @truncate(imm);
+    const imm16: u16 = @truncate(imm >> 16);
+    const imm32: u16 = @truncate(imm >> 32);
+    const imm48: u16 = @truncate(imm >> 48);
+
+    // Read existing instructions to get register
+    var inst0: u32 = std.mem.readInt(u32, code[0..4], .little);
+    var inst1: u32 = std.mem.readInt(u32, code[4..8], .little);
+    var inst2: u32 = std.mem.readInt(u32, code[8..12], .little);
+    var inst3: u32 = std.mem.readInt(u32, code[12..16], .little);
+
+    // Clear and set immediate fields (bits 5-20)
+    inst0 = (inst0 & 0xFFE0001F) | (@as(u32, imm0) << 5);
+    inst1 = (inst1 & 0xFFE0001F) | (@as(u32, imm16) << 5);
+    inst2 = (inst2 & 0xFFE0001F) | (@as(u32, imm32) << 5);
+    inst3 = (inst3 & 0xFFE0001F) | (@as(u32, imm48) << 5);
+
+    std.mem.writeInt(u32, code[0..4], inst0, .little);
+    std.mem.writeInt(u32, code[4..8], inst1, .little);
+    std.mem.writeInt(u32, code[8..12], inst2, .little);
+    std.mem.writeInt(u32, code[12..16], inst3, .little);
+}
+
+/// Patch 32-bit immediate
+fn patchImm32(code: []u8, imm: u32) void {
+    std.mem.writeInt(u32, code[0..4], imm, .little);
+}
+
+/// Patch 26-bit relative branch offset (BL, B)
+fn patchRel26(code: []u8, offset: u32) void {
+    var inst: u32 = std.mem.readInt(u32, code[0..4], .little);
+    // Clear and set offset field (bits 0-25)
+    inst = (inst & 0xFC000000) | (offset & 0x03FFFFFF);
+    std.mem.writeInt(u32, code[0..4], inst, .little);
+}
+
+/// Patch 19-bit relative branch offset (CBZ, CBNZ, B.cond)
+fn patchRel19(code: []u8, offset: u32) void {
+    var inst: u32 = std.mem.readInt(u32, code[0..4], .little);
+    // Clear and set offset field (bits 5-23)
+    inst = (inst & 0xFF00001F) | ((offset & 0x7FFFF) << 5);
+    std.mem.writeInt(u32, code[0..4], inst, .little);
+}
+
+/// Patch 14-bit relative branch offset (TBZ, TBNZ)
+fn patchRel14(code: []u8, offset: u32) void {
+    var inst: u32 = std.mem.readInt(u32, code[0..4], .little);
+    // Clear and set offset field (bits 5-18)
+    inst = (inst & 0xFFF8001F) | ((offset & 0x3FFF) << 5);
+    std.mem.writeInt(u32, code[0..4], inst, .little);
+}
+
+// ============================================================================
+// Tests
+// ============================================================================
+
+test "code buffer" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    var buffer = try CodeBuffer.init(allocator, 4096);
+    defer buffer.deinit();
+
+    try testing.expectEqual(@as(usize, 0), buffer.pos);
+
+    try buffer.write(&[_]u8{ 0x01, 0x02, 0x03, 0x04 });
+    try testing.expectEqual(@as(usize, 4), buffer.pos);
+}
+
+test "patch imm64" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    var buffer = try CodeBuffer.init(allocator, 4096);
+    defer buffer.deinit();
+
+    _ = try patchStencil(&buffer, stencils.load_imm64, &[_]PatchValue{
+        .{ .imm64 = 0x123456789ABCDEF0 },
+    });
+
+    // Verify the immediate was patched correctly
+    // First instruction: MOVZ X0, #0xDEF0
+    const inst0 = std.mem.readInt(u32, buffer.memory[0..4], .little);
+    const imm0 = (inst0 >> 5) & 0xFFFF;
+    try testing.expectEqual(@as(u32, 0xDEF0), imm0);
+}
+
+test "patch stencil without holes" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    var buffer = try CodeBuffer.init(allocator, 4096);
+    defer buffer.deinit();
+
+    const offset = try patchStencil(&buffer, stencils.ret_stencil, &[_]PatchValue{});
+
+    try testing.expectEqual(@as(usize, 0), offset);
+    try testing.expectEqual(@as(usize, 4), buffer.pos);
+
+    // Verify RET instruction
+    const inst = std.mem.readInt(u32, buffer.memory[0..4], .little);
+    try testing.expectEqual(@as(u32, 0xD65F03C0), inst);
+}

@@ -13,6 +13,7 @@ pub const reader = @import("reader/reader.zig");
 pub const compiler = @import("compiler/compiler.zig");
 pub const bytecode = @import("bytecode/bytecode.zig");
 pub const interp = @import("interp/interp.zig");
+pub const jit = @import("jit/mod.zig");
 
 test {
     _ = diagnostic;
@@ -22,4 +23,5 @@ test {
     _ = compiler;
     _ = bytecode;
     _ = interp;
+    _ = jit;
 }
