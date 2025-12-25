@@ -971,6 +971,9 @@ pub const Compiler = struct {
         if (std.mem.eql(u8, name, "string-length")) {
             return self.compileUnaryPrim(args, env, .str_len);
         }
+        if (std.mem.eql(u8, name, "substring")) {
+            return self.compileSubstring(args, env);
+        }
 
         // I/O
         if (std.mem.eql(u8, name, "print")) {
@@ -1078,6 +1081,25 @@ pub const Compiler = struct {
             },
             else => error.InvalidSyntax,
         } catch return error.OutOfMemory;
+    }
+
+    fn compileSubstring(self: *Compiler, args: Value, env: *const Env) CompileError!*Ir {
+        // (substring str start end) - 3 arguments
+        if (!args.isCons()) return error.InvalidSyntax;
+        const cons1 = args.toPtr(Cons);
+        const str_ir = try self.compile(cons1.car, env);
+
+        if (!cons1.cdr.isCons()) return error.InvalidSyntax;
+        const cons2 = cons1.cdr.toPtr(Cons);
+        const start_ir = try self.compile(cons2.car, env);
+
+        if (!cons2.cdr.isCons()) return error.InvalidSyntax;
+        const cons3 = cons2.cdr.toPtr(Cons);
+        const end_ir = try self.compile(cons3.car, env);
+
+        const node = self.allocator.create(Ir) catch return error.OutOfMemory;
+        node.* = .{ .substring = .{ .str = str_ir, .start = start_ir, .end = end_ir } };
+        return node;
     }
 
     fn compileCall(self: *Compiler, func_expr: Value, args_expr: Value, env: *const Env) CompileError!*Ir {

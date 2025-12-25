@@ -126,6 +126,12 @@ pub const Emitter = struct {
             .str_ref => |op| try self.emitBinaryOp(op, .str_ref),
             .str_len => |op| try self.emitUnaryOp(op.operand, .str_len),
             .str_concat => |op| try self.emitBinaryOp(op, .str_concat),
+            .substring => |op| {
+                try self.emit(op.str);
+                try self.emit(op.start);
+                try self.emit(op.end);
+                try self.emitOp(.substring);
+            },
 
             // I/O
             .print => |op| try self.emitUnaryOp(op.operand, .print),

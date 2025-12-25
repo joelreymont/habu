@@ -14,6 +14,7 @@ const Cons = runtime.Cons;
 const String = runtime.String;
 const arith = @import("../runtime/primitives/arith.zig");
 const io = @import("../runtime/primitives/io.zig");
+const stringPrims = @import("../runtime/primitives/string.zig");
 
 pub const VmError = error{
     StackOverflow,
@@ -446,6 +447,16 @@ pub const Vm = struct {
                     const str = str_val.toPtr(String);
                     const sym = self.heap.allocSymbol(str.bytes()) orelse return error.OutOfMemory;
                     try self.push(sym);
+                },
+                .substring => {
+                    const end_val = try self.pop();
+                    const start_val = try self.pop();
+                    const str_val = try self.pop();
+                    if (!end_val.isFixnum() or !start_val.isFixnum()) return error.TypeMismatch;
+                    const start: usize = @intCast(start_val.toFixnum());
+                    const end: usize = @intCast(end_val.toFixnum());
+                    const result = stringPrims.substring(self.heap, str_val, start, end) catch return error.OutOfMemory;
+                    try self.push(result);
                 },
 
                 // Type assertions (gradual typing)

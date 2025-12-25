@@ -239,6 +239,10 @@ pub const Op = enum(u8) {
     /// ( str -- sym )
     intern = 0x6B,
 
+    /// Substring - extract part of a string
+    /// ( str start end -- substr )
+    substring = 0x6C,
+
     // ========================================================================
     // Control flow
     // ========================================================================
@@ -338,7 +342,7 @@ pub const Op = enum(u8) {
             .consp, .symbolp, .numberp, .stringp, .vectorp, .closurep, .keywordp, .nilp,
             .vec_ref, .vec_set, .vec_len,
             .str_ref, .str_len, .str_concat,
-            .ret, .print, .random, .intern, .halt,
+            .ret, .print, .random, .intern, .substring, .halt,
             .check_fixnum, .check_cons, .check_symbol, .check_string,
             .check_vector, .check_closure, .check_non_nil,
             => 0,
