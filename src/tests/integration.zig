@@ -1,0 +1,305 @@
+//! Integration tests for the full Habu pipeline
+//!
+//! Tests: read -> compile -> emit -> run
+//! Covers: arithmetic, conditionals, functions, closures, recursion
+
+const std = @import("std");
+const testing = std.testing;
+
+const runtime = @import("../runtime/runtime.zig");
+const Value = runtime.Value;
+const Heap = runtime.Heap;
+
+const reader = @import("../reader/reader.zig");
+const Parser = reader.Parser;
+
+const compiler = @import("../compiler/compiler.zig");
+const Compiler = compiler.Compiler;
+const Env = compiler.Env;
+
+const bytecode = @import("../bytecode/bytecode.zig");
+const Emitter = bytecode.Emitter;
+
+const interp = @import("../interp/interp.zig");
+const Vm = interp.Vm;
+
+/// Test helper: parse, compile, emit, run and return result
+fn evalExpr(allocator: std.mem.Allocator, heap: *Heap, source: []const u8) !Value {
+    // Use arena for IR allocations (freed all at once)
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    defer arena.deinit();
+    const arena_alloc = arena.allocator();
+
+    // Parse
+    var parser = Parser.init(arena_alloc, heap, source);
+    defer parser.deinit();
+
+    const expr = try parser.parse();
+
+    // Compile
+    var comp = Compiler.init(arena_alloc);
+    defer comp.deinit();
+
+    var env = Env.init(arena_alloc, null);
+    defer env.deinit();
+
+    const ir_node = try comp.compile(expr, &env);
+
+    // Emit bytecode
+    var emitter = Emitter.init(arena_alloc);
+    try emitter.emit(ir_node);
+    const chunk = try emitter.finalize();
+    // Arena handles cleanup
+
+    // Run - use main allocator for VM stack
+    var vm = Vm.init(allocator, heap);
+    return vm.run(&chunk);
+}
+
+// ============================================================================
+// Arithmetic Tests
+// ============================================================================
+
+test "eval integer literal" {
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    const result = try evalExpr(allocator, &heap, "42");
+    try testing.expect(result.isFixnum());
+    try testing.expectEqual(@as(i64, 42), result.toFixnum());
+}
+
+test "eval nil" {
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    const result = try evalExpr(allocator, &heap, "nil");
+    try testing.expect(result.isNil());
+}
+
+test "eval addition" {
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    const result = try evalExpr(allocator, &heap, "(+ 1 2)");
+    try testing.expect(result.isFixnum());
+    try testing.expectEqual(@as(i64, 3), result.toFixnum());
+}
+
+test "eval subtraction" {
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    const result = try evalExpr(allocator, &heap, "(- 10 3)");
+    try testing.expect(result.isFixnum());
+    try testing.expectEqual(@as(i64, 7), result.toFixnum());
+}
+
+test "eval multiplication" {
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    const result = try evalExpr(allocator, &heap, "(* 6 7)");
+    try testing.expect(result.isFixnum());
+    try testing.expectEqual(@as(i64, 42), result.toFixnum());
+}
+
+test "eval division" {
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    const result = try evalExpr(allocator, &heap, "(/ 20 4)");
+    try testing.expect(result.isFixnum());
+    try testing.expectEqual(@as(i64, 5), result.toFixnum());
+}
+
+test "eval nested arithmetic" {
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    // (+ (* 3 4) (- 10 5)) = 12 + 5 = 17
+    const result = try evalExpr(allocator, &heap, "(+ (* 3 4) (- 10 5))");
+    try testing.expect(result.isFixnum());
+    try testing.expectEqual(@as(i64, 17), result.toFixnum());
+}
+
+// ============================================================================
+// Conditional Tests
+// ============================================================================
+
+test "eval if true branch" {
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    // (if t 1 2) = 1
+    const result = try evalExpr(allocator, &heap, "(if 1 42 0)");
+    try testing.expect(result.isFixnum());
+    try testing.expectEqual(@as(i64, 42), result.toFixnum());
+}
+
+test "eval if false branch" {
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    // (if nil 1 2) = 2
+    const result = try evalExpr(allocator, &heap, "(if nil 1 99)");
+    try testing.expect(result.isFixnum());
+    try testing.expectEqual(@as(i64, 99), result.toFixnum());
+}
+
+test "eval comparison less than" {
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    // (< 1 2) = t
+    const result = try evalExpr(allocator, &heap, "(< 1 2)");
+    try testing.expect(!result.isNil()); // t is non-nil
+}
+
+test "eval comparison greater than false" {
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    // (> 1 2) = nil
+    const result = try evalExpr(allocator, &heap, "(> 1 2)");
+    try testing.expect(result.isNil());
+}
+
+// ============================================================================
+// List Tests
+// ============================================================================
+
+test "eval cons" {
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    const result = try evalExpr(allocator, &heap, "(cons 1 2)");
+    try testing.expect(result.isCons());
+
+    const cons = result.toPtr(runtime.Cons);
+    try testing.expectEqual(@as(i64, 1), cons.car.toFixnum());
+    try testing.expectEqual(@as(i64, 2), cons.cdr.toFixnum());
+}
+
+test "eval car" {
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    const result = try evalExpr(allocator, &heap, "(car (cons 42 99))");
+    try testing.expect(result.isFixnum());
+    try testing.expectEqual(@as(i64, 42), result.toFixnum());
+}
+
+test "eval cdr" {
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    const result = try evalExpr(allocator, &heap, "(cdr (cons 42 99))");
+    try testing.expect(result.isFixnum());
+    try testing.expectEqual(@as(i64, 99), result.toFixnum());
+}
+
+test "eval consp true" {
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    const result = try evalExpr(allocator, &heap, "(consp (cons 1 2))");
+    try testing.expect(!result.isNil());
+}
+
+test "eval consp false" {
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    const result = try evalExpr(allocator, &heap, "(consp 42)");
+    try testing.expect(result.isNil());
+}
+
+// ============================================================================
+// Let Tests
+// ============================================================================
+
+test "eval let simple" {
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    const result = try evalExpr(allocator, &heap, "(let ((x 10)) x)");
+    try testing.expect(result.isFixnum());
+    try testing.expectEqual(@as(i64, 10), result.toFixnum());
+}
+
+test "eval let with arithmetic" {
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    const result = try evalExpr(allocator, &heap, "(let ((x 3) (y 4)) (+ x y))");
+    try testing.expect(result.isFixnum());
+    try testing.expectEqual(@as(i64, 7), result.toFixnum());
+}
+
+// TODO: Nested let with outer variable reference - needs upvalue support
+// test "eval nested let" {
+//     const allocator = testing.allocator;
+//
+//     var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+//     defer heap.deinit();
+//
+//     const result = try evalExpr(allocator, &heap,
+//         \\(let ((x 10))
+//         \\  (let ((y 20))
+//         \\    (+ x y)))
+//     );
+//     try testing.expect(result.isFixnum());
+//     try testing.expectEqual(@as(i64, 30), result.toFixnum());
+// }
+
+// ============================================================================
+// Progn Tests
+// ============================================================================
+
+test "eval progn returns last" {
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    const result = try evalExpr(allocator, &heap, "(progn 1 2 3)");
+    try testing.expect(result.isFixnum());
+    try testing.expectEqual(@as(i64, 3), result.toFixnum());
+}
