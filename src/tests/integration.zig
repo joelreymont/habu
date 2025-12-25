@@ -303,3 +303,110 @@ test "eval progn returns last" {
     try testing.expect(result.isFixnum());
     try testing.expectEqual(@as(i64, 3), result.toFixnum());
 }
+
+// ============================================================================
+// Global Variable Tests (using REPL for persistent state)
+// ============================================================================
+
+const repl_mod = @import("../interp/repl.zig");
+const Repl = repl_mod.Repl;
+
+test "eval define simple" {
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl = Repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+
+    // Define a variable
+    const def_result = try repl.eval("(define x 42)");
+    try testing.expect(def_result.isFixnum());
+    try testing.expectEqual(@as(i64, 42), def_result.toFixnum());
+
+    // Use the variable
+    const use_result = try repl.eval("x");
+    try testing.expect(use_result.isFixnum());
+    try testing.expectEqual(@as(i64, 42), use_result.toFixnum());
+}
+
+test "eval define with expression" {
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl = Repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+
+    // Define with computed value
+    _ = try repl.eval("(define y (+ 10 20))");
+
+    // Use in expression
+    const result = try repl.eval("(* y 2)");
+    try testing.expect(result.isFixnum());
+    try testing.expectEqual(@as(i64, 60), result.toFixnum());
+}
+
+test "eval multiple defines" {
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl = Repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+
+    _ = try repl.eval("(define a 10)");
+    _ = try repl.eval("(define b 20)");
+
+    const result = try repl.eval("(+ a b)");
+    try testing.expect(result.isFixnum());
+    try testing.expectEqual(@as(i64, 30), result.toFixnum());
+}
+
+test "eval defun simple" {
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl = Repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+
+    _ = try repl.eval("(defun double (x) (* x 2))");
+    const result = try repl.eval("(double 21)");
+    try testing.expect(result.isFixnum());
+    try testing.expectEqual(@as(i64, 42), result.toFixnum());
+}
+
+test "eval defun two params" {
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl = Repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+
+    _ = try repl.eval("(defun add (a b) (+ a b))");
+    const result = try repl.eval("(add 10 20)");
+    try testing.expect(result.isFixnum());
+    try testing.expectEqual(@as(i64, 30), result.toFixnum());
+}
+
+test "eval defun recursive" {
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl = Repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+
+    _ = try repl.eval("(defun fact (n) (if (= n 0) 1 (* n (fact (- n 1)))))");
+    const result = try repl.eval("(fact 5)");
+    try testing.expect(result.isFixnum());
+    try testing.expectEqual(@as(i64, 120), result.toFixnum());
+}

@@ -47,6 +47,19 @@ pub const Ir = union(enum) {
         value: *const Ir,
     },
 
+    /// Global variable reference
+    global_ref: struct {
+        name: []const u8,
+        index: u16,
+    },
+
+    /// Global variable definition
+    define: struct {
+        name: []const u8,
+        index: u16,
+        value: *const Ir,
+    },
+
     // ========================================================================
     // Binding forms
     // ========================================================================
@@ -305,6 +318,20 @@ pub const IrBuilder = struct {
         const node = try self.allocator.create(Ir);
         const name_copy = try self.allocator.dupe(u8, name);
         node.* = .{ .set = .{ .name = name_copy, .depth = depth, .index = index, .value = value } };
+        return node;
+    }
+
+    pub fn globalRef(self: IrBuilder, name: []const u8, index: u16) !*Ir {
+        const node = try self.allocator.create(Ir);
+        const name_copy = try self.allocator.dupe(u8, name);
+        node.* = .{ .global_ref = .{ .name = name_copy, .index = index } };
+        return node;
+    }
+
+    pub fn define(self: IrBuilder, name: []const u8, index: u16, value: *const Ir) !*Ir {
+        const node = try self.allocator.create(Ir);
+        const name_copy = try self.allocator.dupe(u8, name);
+        node.* = .{ .define = .{ .name = name_copy, .index = index, .value = value } };
         return node;
     }
 

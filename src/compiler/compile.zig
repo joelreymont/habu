@@ -119,6 +119,43 @@ pub const CaptureSet = struct {
     }
 };
 
+/// Global environment for top-level definitions
+pub const GlobalEnv = struct {
+    /// Map from name to global index
+    bindings: std.StringHashMap(u16),
+    /// Next available index
+    next_index: u16,
+    allocator: std.mem.Allocator,
+
+    pub fn init(allocator: std.mem.Allocator) GlobalEnv {
+        return .{
+            .bindings = std.StringHashMap(u16).init(allocator),
+            .next_index = 0,
+            .allocator = allocator,
+        };
+    }
+
+    pub fn deinit(self: *GlobalEnv) void {
+        self.bindings.deinit();
+    }
+
+    /// Define a global, returns its index
+    pub fn define(self: *GlobalEnv, name: []const u8) !u16 {
+        if (self.bindings.get(name)) |idx| {
+            return idx; // Already defined, return existing index
+        }
+        const idx = self.next_index;
+        try self.bindings.put(name, idx);
+        self.next_index += 1;
+        return idx;
+    }
+
+    /// Lookup a global, returns index or null
+    pub fn lookup(self: *const GlobalEnv, name: []const u8) ?u16 {
+        return self.bindings.get(name);
+    }
+};
+
 /// Compiler state
 pub const Compiler = struct {
     builder: IrBuilder,
@@ -127,6 +164,8 @@ pub const Compiler = struct {
     type_checker: TypeChecker,
     /// Whether to enable type checking (gradual typing)
     type_checking_enabled: bool,
+    /// Global environment for top-level definitions
+    globals: GlobalEnv,
 
     pub fn init(allocator: std.mem.Allocator) Compiler {
         return .{
@@ -134,11 +173,13 @@ pub const Compiler = struct {
             .allocator = allocator,
             .type_checker = TypeChecker.init(allocator),
             .type_checking_enabled = false, // Off by default for gradual typing
+            .globals = GlobalEnv.init(allocator),
         };
     }
 
     pub fn deinit(self: *Compiler) void {
         self.type_checker.deinit();
+        self.globals.deinit();
     }
 
     /// Enable type checking mode
@@ -347,8 +388,12 @@ pub const Compiler = struct {
                 return self.builder.variable(name, binding.depth, binding.index) catch
                     return error.OutOfMemory;
             }
-            // Unbound variable - could be a global/primitive
-            // For now, treat as error
+            // Check globals
+            if (self.globals.lookup(name)) |idx| {
+                return self.builder.globalRef(name, idx) catch
+                    return error.OutOfMemory;
+            }
+            // Unbound variable
             return error.UnboundVariable;
         }
 
@@ -395,6 +440,12 @@ pub const Compiler = struct {
             }
             if (std.mem.eql(u8, name, "while")) {
                 return self.compileWhile(tail, env);
+            }
+            if (std.mem.eql(u8, name, "define")) {
+                return self.compileDefine(tail, env);
+            }
+            if (std.mem.eql(u8, name, "defun")) {
+                return self.compileDefun(tail, env);
             }
 
             // Check for primitives
@@ -690,6 +741,44 @@ pub const Compiler = struct {
         const body_ir = try self.compileBody(body_exprs, env);
 
         return self.builder.loop(test_ir, body_ir) catch return error.OutOfMemory;
+    }
+
+    fn compileDefine(self: *Compiler, args: Value, env: *const Env) CompileError!*Ir {
+        // (define name value)
+        if (!args.isCons()) return error.InvalidSyntax;
+
+        const cons1 = args.toPtr(Cons);
+        if (!cons1.car.isSymbol()) return error.InvalidSyntax;
+        const name_sym = cons1.car.toPtr(Symbol);
+        const name = name_sym.getName();
+
+        if (!cons1.cdr.isCons()) return error.InvalidSyntax;
+        const cons2 = cons1.cdr.toPtr(Cons);
+        const value_ir = try self.compile(cons2.car, env);
+
+        // Register global
+        const idx = self.globals.define(name) catch return error.OutOfMemory;
+
+        return self.builder.define(name, idx, value_ir) catch return error.OutOfMemory;
+    }
+
+    fn compileDefun(self: *Compiler, args: Value, env: *const Env) CompileError!*Ir {
+        // (defun name (params...) body...) -> (define name (lambda (params...) body...))
+        if (!args.isCons()) return error.InvalidSyntax;
+
+        const cons1 = args.toPtr(Cons);
+        if (!cons1.car.isSymbol()) return error.InvalidSyntax;
+        const name_sym = cons1.car.toPtr(Symbol);
+        const name = name_sym.getName();
+
+        // Pre-register the global so recursive calls work
+        const idx = self.globals.define(name) catch return error.OutOfMemory;
+
+        // Rest is (params...) body...
+        const lambda_args = cons1.cdr;
+        const lambda_ir = try self.compileLambda(lambda_args, env);
+
+        return self.builder.define(name, idx, lambda_ir) catch return error.OutOfMemory;
     }
 
     fn compileBody(self: *Compiler, exprs: Value, env: *const Env) CompileError!*Ir {

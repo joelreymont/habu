@@ -29,6 +29,8 @@ pub const Emitter = struct {
     code: std.ArrayList(u8),
     /// Constant pool (raw u64 values)
     constants: std.ArrayList(u64),
+    /// Child chunks (for lambdas)
+    child_chunks: std.ArrayList(Chunk),
     /// Number of local variables
     num_locals: u8,
     /// Function arity
@@ -41,6 +43,7 @@ pub const Emitter = struct {
             .allocator = allocator,
             .code = std.ArrayList(u8){},
             .constants = std.ArrayList(u64){},
+            .child_chunks = std.ArrayList(Chunk){},
             .num_locals = 0,
             .arity = 0,
             .name = "",
@@ -50,6 +53,12 @@ pub const Emitter = struct {
     pub fn deinit(self: *Emitter) void {
         self.code.deinit(self.allocator);
         self.constants.deinit(self.allocator);
+        // Free child chunks
+        for (self.child_chunks.items) |chunk| {
+            self.allocator.free(chunk.code);
+            self.allocator.free(chunk.constants);
+        }
+        self.child_chunks.deinit(self.allocator);
     }
 
     /// Emit bytecode for an IR node
@@ -60,6 +69,8 @@ pub const Emitter = struct {
             .quote => |inner| try self.emitQuote(inner),
             .@"var" => |v| try self.emitVar(v.depth, v.index),
             .set => |s| try self.emitSet(s),
+            .global_ref => |g| try self.emitGlobalRef(g.index),
+            .define => |d| try self.emitDefine(d),
             .let => |l| try self.emitLet(l),
             .lambda => |lam| try self.emitLambda(lam),
             .@"if" => |i| try self.emitIf(i),
@@ -146,6 +157,14 @@ pub const Emitter = struct {
             .num_locals = self.num_locals,
             .name = self.name,
         };
+    }
+
+    /// Get child chunks (caller takes ownership via duped slice)
+    pub fn getChildChunks(self: *Emitter) ![]Chunk {
+        const chunks = try self.allocator.dupe(Chunk, self.child_chunks.items);
+        // Clear the list so deinit doesn't free the chunk contents
+        self.child_chunks.items.len = 0;
+        return chunks;
     }
 
     // ========================================================================
@@ -279,6 +298,22 @@ pub const Emitter = struct {
         }
     }
 
+    fn emitGlobalRef(self: *Emitter, index: u16) EmitError!void {
+        try self.emitOp(.load_global);
+        try self.emitU16(index);
+    }
+
+    fn emitDefine(self: *Emitter, d: anytype) EmitError!void {
+        // Emit value
+        try self.emit(d.value);
+        // Store to global
+        try self.emitOp(.store_global);
+        try self.emitU16(d.index);
+        // Define leaves value on stack (for REPL)
+        try self.emitOp(.load_global);
+        try self.emitU16(d.index);
+    }
+
     fn emitSet(self: *Emitter, s: anytype) EmitError!void {
         // Emit value first
         try self.emit(s.value);
@@ -312,21 +347,53 @@ pub const Emitter = struct {
     fn emitLambda(self: *Emitter, lam: anytype) EmitError!void {
         // Create nested emitter for lambda body
         var lambda_emitter = Emitter.init(self.allocator);
-        defer lambda_emitter.deinit();
 
         lambda_emitter.arity = @intCast(lam.params.len);
         lambda_emitter.num_locals = @intCast(lam.params.len);
 
         // Emit body
-        try lambda_emitter.emit(lam.body);
+        lambda_emitter.emit(lam.body) catch {
+            lambda_emitter.deinit();
+            return error.InvalidIr;
+        };
 
         // Finalize lambda chunk
-        const chunk = try lambda_emitter.finalize();
-        _ = chunk;
+        const chunk = lambda_emitter.finalize() catch {
+            lambda_emitter.deinit();
+            return error.OutOfMemory;
+        };
 
-        // TODO: Store chunk in constant pool and emit make_closure
-        // For now, just push nil as placeholder
-        try self.emitOp(.push_nil);
+        // Collect any child chunks from the lambda
+        for (lambda_emitter.child_chunks.items) |child_chunk| {
+            self.child_chunks.append(self.allocator, child_chunk) catch {
+                lambda_emitter.deinit();
+                return error.OutOfMemory;
+            };
+        }
+        lambda_emitter.child_chunks.items.len = 0; // Prevent double-free
+        lambda_emitter.deinit();
+
+        // Store chunk in child_chunks, get its index
+        const chunk_idx: u16 = @intCast(self.child_chunks.items.len);
+        self.child_chunks.append(self.allocator, chunk) catch return error.OutOfMemory;
+
+        // Emit captures (if any)
+        for (lam.captures) |cap| {
+            // Load the captured value from upvalue
+            if (cap.depth == 0) {
+                try self.emitOp(.load_local);
+                try self.emitU8(@intCast(cap.index));
+            } else {
+                try self.emitOp(.load_upvalue);
+                try self.emitU8(@intCast(cap.depth - 1));
+                try self.emitU8(@intCast(cap.index));
+            }
+        }
+
+        // Emit make_closure: u16 chunk_index, u8 num_captures
+        try self.emitOp(.make_closure);
+        try self.emitU16(chunk_idx);
+        try self.emitU8(@intCast(lam.captures.len));
     }
 
     fn emitIf(self: *Emitter, i: anytype) EmitError!void {

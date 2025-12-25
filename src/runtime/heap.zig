@@ -178,6 +178,31 @@ pub const Heap = struct {
         return Value.makeString(str);
     }
 
+    /// Allocate a closure
+    pub fn allocClosure(self: *Heap, code: *const anyopaque, arity: u32, captures: []const Value) ?Value {
+        const total_size = @sizeOf(objects.Closure) + captures.len * @sizeOf(Value);
+
+        const ptr = self.allocRaw(total_size) orelse return null;
+        const closure: *objects.Closure = @ptrCast(@alignCast(ptr));
+
+        // Captures follow immediately after header
+        const captures_ptr: [*]Value = @ptrCast(@alignCast(ptr + @sizeOf(objects.Closure)));
+
+        // Copy captures
+        for (captures, 0..) |cap, i| {
+            captures_ptr[i] = cap;
+        }
+
+        closure.* = .{
+            .code = code,
+            .arity = arity,
+            .num_captures = @intCast(captures.len),
+            .captures = captures_ptr,
+        };
+
+        return Value.makeClosure(closure);
+    }
+
     /// Swap from-space and to-space
     pub fn swapSpaces(self: *Heap) void {
         const tmp = self.from_start;

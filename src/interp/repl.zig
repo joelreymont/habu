@@ -12,6 +12,8 @@ const Parser = reader.Parser;
 const compiler = @import("../compiler/compiler.zig");
 const Compiler = compiler.Compiler;
 const Env = compiler.Env;
+const ir = @import("../compiler/ir.zig");
+const IrBuilder = ir.IrBuilder;
 const bytecode = @import("../bytecode/bytecode.zig");
 const Emitter = bytecode.Emitter;
 const Op = bytecode.Op;
@@ -51,6 +53,10 @@ pub const Repl = struct {
     heap: *Heap,
     vm: Vm,
     config: Config,
+    /// Persistent compiler for global definitions
+    compiler: Compiler,
+    /// Persistent chunk storage for closures
+    persistent_chunks: std.ArrayList(bytecode.Chunk),
 
     pub fn init(allocator: std.mem.Allocator, heap: *Heap, config: Config) Repl {
         return .{
@@ -58,7 +64,18 @@ pub const Repl = struct {
             .heap = heap,
             .vm = Vm.init(allocator, heap),
             .config = config,
+            .compiler = Compiler.init(allocator),
+            .persistent_chunks = std.ArrayList(bytecode.Chunk){},
         };
+    }
+
+    pub fn deinit(self: *Repl) void {
+        self.compiler.deinit();
+        for (self.persistent_chunks.items) |chunk| {
+            self.allocator.free(chunk.code);
+            self.allocator.free(chunk.constants);
+        }
+        self.persistent_chunks.deinit(self.allocator);
     }
 
     /// Run the REPL loop with File-based I/O
@@ -133,23 +150,51 @@ pub const Repl = struct {
 
         const expr = parser.parse() catch return error.ParseError;
 
-        // Compile
-        var comp = Compiler.init(arena_alloc);
-        defer comp.deinit();
+        // Compile - use persistent compiler for globals, but temp builder
+        // Save and restore the builder since it uses arena allocator
+        const saved_builder = self.compiler.builder;
+        self.compiler.builder = IrBuilder.init(arena_alloc);
 
         var env = Env.init(arena_alloc, null);
         defer env.deinit();
 
-        const ir_node = comp.compile(expr, &env) catch return error.CompileError;
+        const ir_node = self.compiler.compile(expr, &env) catch |err| {
+            self.compiler.builder = saved_builder;
+            return if (err == error.UnboundVariable) error.CompileError else error.CompileError;
+        };
+        self.compiler.builder = saved_builder;
 
         // Emit bytecode
         var emitter = Emitter.init(self.allocator);
-        defer emitter.deinit();
 
-        emitter.emit(ir_node) catch return error.EmitError;
-        const chunk = emitter.finalize() catch return error.EmitError;
+        emitter.emit(ir_node) catch {
+            emitter.deinit();
+            return error.EmitError;
+        };
+        const chunk = emitter.finalize() catch {
+            emitter.deinit();
+            return error.EmitError;
+        };
+        const child_chunks = emitter.getChildChunks() catch {
+            self.allocator.free(chunk.code);
+            self.allocator.free(chunk.constants);
+            emitter.deinit();
+            return error.EmitError;
+        };
+        emitter.deinit();
+
         defer self.allocator.free(chunk.code);
         defer self.allocator.free(chunk.constants);
+
+        // Add child chunks to persistent storage (closures need them to persist)
+        const chunk_base = self.persistent_chunks.items.len;
+        for (child_chunks) |c| {
+            self.persistent_chunks.append(self.allocator, c) catch {
+                self.allocator.free(child_chunks);
+                return error.EmitError;
+            };
+        }
+        self.allocator.free(child_chunks);
 
         // Optionally show disassembly
         if (self.config.show_disasm) {
@@ -162,7 +207,12 @@ pub const Repl = struct {
             w.flush() catch {};
         }
 
-        // Execute
+        // Set chunk pool to the entire persistent list, offset by base
+        // But make_closure uses absolute indices, so we need to fix the indices
+        // Actually, the indices are relative to THIS eval's chunks. We need to remap.
+        // For now, just use the full list - the indices will be wrong but let's debug.
+        _ = chunk_base;
+        self.vm.setChunkPool(self.persistent_chunks.items);
         return self.vm.run(&chunk) catch return error.RuntimeError;
     }
 

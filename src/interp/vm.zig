@@ -55,11 +55,20 @@ pub const Vm = struct {
     /// Allocator
     allocator: std.mem.Allocator,
 
+    /// Global variables (indexed by constant pool index)
+    globals: [MAX_GLOBALS]Value,
+    /// Number of defined globals
+    num_globals: usize,
+
+    /// Chunk pool for closures
+    chunk_pool: []const Chunk,
+
     const STACK_SIZE = 1024;
     const MAX_FRAMES = 64;
+    const MAX_GLOBALS = 256;
 
     pub fn init(allocator: std.mem.Allocator, heap: *Heap) Vm {
-        return .{
+        var vm = Vm{
             .stack = undefined,
             .sp = 0,
             .frames = undefined,
@@ -68,7 +77,20 @@ pub const Vm = struct {
             .ip = 0,
             .heap = heap,
             .allocator = allocator,
+            .globals = undefined,
+            .num_globals = 0,
+            .chunk_pool = &[_]Chunk{},
         };
+        // Initialize globals to nil
+        for (&vm.globals) |*g| {
+            g.* = Value.nil;
+        }
+        return vm;
+    }
+
+    /// Set the chunk pool for closures
+    pub fn setChunkPool(self: *Vm, chunks: []const Chunk) void {
+        self.chunk_pool = chunks;
     }
 
     /// Run a chunk to completion
@@ -127,14 +149,24 @@ pub const Vm = struct {
                     const bp = if (self.fp > 0) self.frames[self.fp - 1].bp else 0;
                     self.stack[bp + idx] = try self.pop();
                 },
-                .load_capture, .load_upvalue, .store_upvalue,
-                .load_global, .store_global,
-                => {
-                    // TODO: Implement closures and globals
+                .load_capture, .load_upvalue, .store_upvalue => {
+                    // TODO: Implement closures
                     _ = self.readU8();
                     if (op == .load_upvalue or op == .store_upvalue) _ = self.readU8();
-                    if (op == .load_global or op == .store_global) _ = self.readU8();
                     try self.push(Value.nil);
+                },
+                .load_global => {
+                    const idx = self.readU16();
+                    if (idx >= MAX_GLOBALS) return error.InvalidConstant;
+                    try self.push(self.globals[idx]);
+                },
+                .store_global => {
+                    const idx = self.readU16();
+                    if (idx >= MAX_GLOBALS) return error.InvalidConstant;
+                    self.globals[idx] = try self.pop();
+                    if (idx >= self.num_globals) {
+                        self.num_globals = idx + 1;
+                    }
                 },
 
                 // Arithmetic
@@ -317,15 +349,11 @@ pub const Vm = struct {
                 // Function calls
                 .call => {
                     const argc = self.readU8();
-                    // TODO: Implement function calls
-                    _ = argc;
-                    try self.push(Value.nil);
+                    try self.doCall(argc, false);
                 },
                 .tail_call => {
                     const argc = self.readU8();
-                    // TODO: Implement tail calls
-                    _ = argc;
-                    try self.push(Value.nil);
+                    try self.doCall(argc, true);
                 },
                 .ret => {
                     const result = try self.pop();
@@ -341,12 +369,30 @@ pub const Vm = struct {
                     try self.push(result);
                 },
                 .make_closure => {
-                    _ = self.readU16(); // code index
+                    const chunk_idx = self.readU16();
                     const num_captures = self.readU8();
-                    // Pop captures
-                    self.sp -= num_captures;
-                    // TODO: Create closure
-                    try self.push(Value.nil);
+
+                    // Get the chunk from the pool
+                    if (chunk_idx >= self.chunk_pool.len) return error.InvalidConstant;
+                    const closure_chunk = &self.chunk_pool[chunk_idx];
+
+                    // Collect captures from stack
+                    var captures: [64]Value = undefined;
+                    if (num_captures > 64) return error.StackOverflow;
+                    var i: usize = num_captures;
+                    while (i > 0) {
+                        i -= 1;
+                        captures[i] = try self.pop();
+                    }
+
+                    // Create closure
+                    const closure = self.heap.allocClosure(
+                        @ptrCast(closure_chunk),
+                        closure_chunk.arity,
+                        captures[0..num_captures],
+                    ) orelse return error.OutOfMemory;
+
+                    try self.push(closure);
                 },
 
                 // I/O
@@ -387,6 +433,88 @@ pub const Vm = struct {
                 },
 
                 .halt => return error.Halt,
+            }
+        }
+    }
+
+    // ========================================================================
+    // Function call support
+    // ========================================================================
+
+    fn doCall(self: *Vm, argc: u8, tail: bool) VmError!void {
+        // Get function value (below args on stack)
+        const fn_val = self.stack[self.sp - argc - 1];
+
+        if (!fn_val.isClosure()) {
+            return error.TypeMismatch;
+        }
+
+        const closure = fn_val.toPtr(runtime.Closure);
+        const callee_chunk: *const Chunk = @ptrCast(@alignCast(closure.code));
+
+        // Check arity
+        if (argc != callee_chunk.arity) {
+            return error.TypeMismatch;
+        }
+
+        if (tail) {
+            // Tail call: reuse current frame
+            // Move arguments to start of current frame
+            const current_bp = if (self.fp > 0) self.frames[self.fp - 1].bp else 0;
+            const arg_start = self.sp - argc;
+
+            // Copy args to current frame's base
+            for (0..argc) |i| {
+                self.stack[current_bp + i] = self.stack[arg_start + i];
+            }
+
+            // Reset stack pointer
+            self.sp = current_bp + argc;
+
+            // Switch to callee
+            self.chunk = callee_chunk;
+            self.ip = 0;
+
+            // Reserve space for additional locals
+            var i: usize = argc;
+            while (i < callee_chunk.num_locals) : (i += 1) {
+                try self.push(Value.nil);
+            }
+        } else {
+            // Regular call: push new frame
+            if (self.fp >= MAX_FRAMES) {
+                return error.StackOverflow;
+            }
+
+            // Save current state
+            self.frames[self.fp] = .{
+                .chunk = self.chunk,
+                .return_ip = self.ip,
+                .bp = self.sp - argc - 1, // -1 for function value
+            };
+            self.fp += 1;
+
+            // The arguments are already on stack above the function value
+            // We need to set bp to point to first arg (overwriting fn_val slot)
+            const new_bp = self.sp - argc - 1;
+
+            // Copy args down to overwrite fn_val (args are now locals 0..argc-1)
+            for (0..argc) |i| {
+                self.stack[new_bp + i] = self.stack[new_bp + 1 + i];
+            }
+            self.sp = new_bp + argc;
+
+            // Update frame bp
+            self.frames[self.fp - 1].bp = new_bp;
+
+            // Switch to callee
+            self.chunk = callee_chunk;
+            self.ip = 0;
+
+            // Reserve space for additional locals
+            var i: usize = argc;
+            while (i < callee_chunk.num_locals) : (i += 1) {
+                try self.push(Value.nil);
             }
         }
     }
