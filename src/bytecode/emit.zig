@@ -126,6 +126,7 @@ pub const Emitter = struct {
             .str_ref => |op| try self.emitBinaryOp(op, .str_ref),
             .str_len => |op| try self.emitUnaryOp(op.operand, .str_len),
             .str_concat => |op| try self.emitBinaryOp(op, .str_concat),
+            .str_eq => |op| try self.emitBinaryOp(op, .str_eq),
             .substring => |op| {
                 try self.emit(op.str);
                 try self.emit(op.start);
@@ -137,6 +138,7 @@ pub const Emitter = struct {
             .print => |op| try self.emitUnaryOp(op.operand, .print),
             .random => |op| try self.emitUnaryOp(op.operand, .random),
             .intern => |op| try self.emitUnaryOp(op.operand, .intern),
+            .sym_name => |op| try self.emitUnaryOp(op.operand, .sym_name),
 
             // Type assertions
             .assert_fixnum => |op| try self.emitUnaryOp(op.operand, .check_fixnum),

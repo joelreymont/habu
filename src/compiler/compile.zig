@@ -971,6 +971,9 @@ pub const Compiler = struct {
         if (std.mem.eql(u8, name, "string-length")) {
             return self.compileUnaryPrim(args, env, .str_len);
         }
+        if (std.mem.eql(u8, name, "string=")) {
+            return self.compileBinaryPrim(args, env, .str_eq);
+        }
         if (std.mem.eql(u8, name, "substring")) {
             return self.compileSubstring(args, env);
         }
@@ -989,11 +992,14 @@ pub const Compiler = struct {
         if (std.mem.eql(u8, name, "intern")) {
             return self.compileUnaryPrim(args, env, .intern);
         }
+        if (std.mem.eql(u8, name, "symbol-name")) {
+            return self.compileUnaryPrim(args, env, .sym_name);
+        }
 
         return error.InvalidSyntax; // Not a known primitive
     }
 
-    const PrimTag = enum { add, sub, mul, div, mod, eq, lt, gt, le, ge, num_eq, cons, car, cdr, consp, symbolp, numberp, stringp, vectorp, nilp, not, vec_ref, vec_len, str_ref, str_len, print, random, intern };
+    const PrimTag = enum { add, sub, mul, div, mod, eq, lt, gt, le, ge, num_eq, cons, car, cdr, consp, symbolp, numberp, stringp, vectorp, nilp, not, vec_ref, vec_len, str_ref, str_len, str_eq, print, random, intern, sym_name };
 
     fn compileBinaryPrim(self: *Compiler, args: Value, env: *const Env, prim: PrimTag) CompileError!*Ir {
         if (!args.isCons()) return error.InvalidSyntax;
@@ -1039,6 +1045,11 @@ pub const Compiler = struct {
                 node.* = .{ .str_ref = .{ .left = left, .right = right } };
                 break :blk node;
             },
+            .str_eq => blk: {
+                const node = self.allocator.create(Ir) catch return error.OutOfMemory;
+                node.* = .{ .str_eq = .{ .left = left, .right = right } };
+                break :blk node;
+            },
             else => error.InvalidSyntax,
         } catch return error.OutOfMemory;
     }
@@ -1077,6 +1088,11 @@ pub const Compiler = struct {
             .intern => blk: {
                 const node = self.allocator.create(Ir) catch return error.OutOfMemory;
                 node.* = .{ .intern = .{ .operand = operand } };
+                break :blk node;
+            },
+            .sym_name => blk: {
+                const node = self.allocator.create(Ir) catch return error.OutOfMemory;
+                node.* = .{ .sym_name = .{ .operand = operand } };
                 break :blk node;
             },
             else => error.InvalidSyntax,

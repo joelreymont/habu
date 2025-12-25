@@ -243,6 +243,14 @@ pub const Op = enum(u8) {
     /// ( str start end -- substr )
     substring = 0x6C,
 
+    /// Symbol name - get name of symbol as string
+    /// ( sym -- str )
+    sym_name = 0x6D,
+
+    /// String equal
+    /// ( s1 s2 -- bool )
+    str_eq = 0x6E,
+
     // ========================================================================
     // Control flow
     // ========================================================================
@@ -342,7 +350,7 @@ pub const Op = enum(u8) {
             .consp, .symbolp, .numberp, .stringp, .vectorp, .closurep, .keywordp, .nilp,
             .vec_ref, .vec_set, .vec_len,
             .str_ref, .str_len, .str_concat,
-            .ret, .print, .random, .intern, .substring, .halt,
+            .ret, .print, .random, .intern, .substring, .sym_name, .str_eq, .halt,
             .check_fixnum, .check_cons, .check_symbol, .check_string,
             .check_vector, .check_closure, .check_non_nil,
             => 0,

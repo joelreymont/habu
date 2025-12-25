@@ -186,6 +186,7 @@ pub const Ir = union(enum) {
     str_ref: BinaryOp,
     str_len: UnaryOp,
     str_concat: BinaryOp,
+    str_eq: BinaryOp,
     substring: struct {
         str: *const Ir,
         start: *const Ir,
@@ -199,6 +200,7 @@ pub const Ir = union(enum) {
     print: UnaryOp,
     random: UnaryOp,
     intern: UnaryOp,
+    sym_name: UnaryOp,
 
     // ========================================================================
     // Type assertions (gradual typing)
@@ -273,8 +275,8 @@ pub const Ir = union(enum) {
             .cons, .car, .cdr, .list,
             .consp, .symbolp, .numberp, .stringp, .vectorp, .closurep, .keywordp, .nilp,
             .vec_new, .vec_ref, .vec_set, .vec_len,
-            .str_ref, .str_len, .str_concat, .substring,
-            .print, .random, .intern,
+            .str_ref, .str_len, .str_concat, .str_eq, .substring,
+            .print, .random, .intern, .sym_name,
             .assert_fixnum, .assert_cons, .assert_symbol, .assert_string,
             .assert_vector, .assert_closure, .assert_non_nil,
             => true,

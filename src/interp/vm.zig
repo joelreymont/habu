@@ -12,6 +12,7 @@ const Value = runtime.Value;
 const Heap = runtime.Heap;
 const Cons = runtime.Cons;
 const String = runtime.String;
+const Symbol = runtime.Symbol;
 const arith = @import("../runtime/primitives/arith.zig");
 const io = @import("../runtime/primitives/io.zig");
 const stringPrims = @import("../runtime/primitives/string.zig");
@@ -456,6 +457,19 @@ pub const Vm = struct {
                     const start: usize = @intCast(start_val.toFixnum());
                     const end: usize = @intCast(end_val.toFixnum());
                     const result = stringPrims.substring(self.heap, str_val, start, end) catch return error.OutOfMemory;
+                    try self.push(result);
+                },
+                .sym_name => {
+                    const sym_val = try self.pop();
+                    if (!sym_val.isSymbol()) return error.TypeMismatch;
+                    const sym = sym_val.toPtr(Symbol);
+                    const name_str = self.heap.allocString(sym.getName()) orelse return error.OutOfMemory;
+                    try self.push(name_str);
+                },
+                .str_eq => {
+                    const b = try self.pop();
+                    const a = try self.pop();
+                    const result = if (stringPrims.stringEqual(a, b)) Value.t else Value.nil;
                     try self.push(result);
                 },
 
