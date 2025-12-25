@@ -11,6 +11,7 @@ pub const types = @import("types/types.zig");
 pub const runtime = @import("runtime/runtime.zig");
 pub const reader = @import("reader/reader.zig");
 pub const compiler = @import("compiler/compiler.zig");
+pub const bytecode = @import("bytecode/bytecode.zig");
 
 test {
     _ = diagnostic;
@@ -18,4 +19,5 @@ test {
     _ = runtime;
     _ = reader;
     _ = compiler;
+    _ = bytecode;
 }
