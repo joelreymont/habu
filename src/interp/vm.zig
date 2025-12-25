@@ -60,8 +60,10 @@ pub const Vm = struct {
     /// Number of defined globals
     num_globals: usize,
 
-    /// Chunk pool for closures
-    chunk_pool: []const Chunk,
+    /// Chunk pool for closures (pointers to individually allocated chunks)
+    chunk_pool: []*Chunk,
+    /// Base offset for current eval's chunks
+    chunk_base: usize,
 
     const STACK_SIZE = 1024;
     const MAX_FRAMES = 64;
@@ -79,7 +81,8 @@ pub const Vm = struct {
             .allocator = allocator,
             .globals = undefined,
             .num_globals = 0,
-            .chunk_pool = &[_]Chunk{},
+            .chunk_pool = &[_]*Chunk{},
+            .chunk_base = 0,
         };
         // Initialize globals to nil
         for (&vm.globals) |*g| {
@@ -88,9 +91,10 @@ pub const Vm = struct {
         return vm;
     }
 
-    /// Set the chunk pool for closures
-    pub fn setChunkPool(self: *Vm, chunks: []const Chunk) void {
+    /// Set the chunk pool for closures with a base offset
+    pub fn setChunkPoolWithBase(self: *Vm, chunks: []*Chunk, base: usize) void {
         self.chunk_pool = chunks;
+        self.chunk_base = base;
     }
 
     /// Run a chunk to completion
@@ -372,9 +376,10 @@ pub const Vm = struct {
                     const chunk_idx = self.readU16();
                     const num_captures = self.readU8();
 
-                    // Get the chunk from the pool
-                    if (chunk_idx >= self.chunk_pool.len) return error.InvalidConstant;
-                    const closure_chunk = &self.chunk_pool[chunk_idx];
+                    // Get the chunk from the pool (offset by base for this eval)
+                    const abs_idx = self.chunk_base + chunk_idx;
+                    if (abs_idx >= self.chunk_pool.len) return error.InvalidConstant;
+                    const closure_chunk = self.chunk_pool[abs_idx];
 
                     // Collect captures from stack
                     var captures: [64]Value = undefined;

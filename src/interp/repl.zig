@@ -55,8 +55,8 @@ pub const Repl = struct {
     config: Config,
     /// Persistent compiler for global definitions
     compiler: Compiler,
-    /// Persistent chunk storage for closures
-    persistent_chunks: std.ArrayList(bytecode.Chunk),
+    /// Persistent chunk storage for closures (stored individually to avoid reallocation)
+    persistent_chunk_ptrs: std.ArrayList(*bytecode.Chunk),
 
     pub fn init(allocator: std.mem.Allocator, heap: *Heap, config: Config) Repl {
         return .{
@@ -65,17 +65,18 @@ pub const Repl = struct {
             .vm = Vm.init(allocator, heap),
             .config = config,
             .compiler = Compiler.init(allocator),
-            .persistent_chunks = std.ArrayList(bytecode.Chunk){},
+            .persistent_chunk_ptrs = std.ArrayList(*bytecode.Chunk){},
         };
     }
 
     pub fn deinit(self: *Repl) void {
         self.compiler.deinit();
-        for (self.persistent_chunks.items) |chunk| {
-            self.allocator.free(chunk.code);
-            self.allocator.free(chunk.constants);
+        for (self.persistent_chunk_ptrs.items) |chunk_ptr| {
+            self.allocator.free(chunk_ptr.code);
+            self.allocator.free(chunk_ptr.constants);
+            self.allocator.destroy(chunk_ptr);
         }
-        self.persistent_chunks.deinit(self.allocator);
+        self.persistent_chunk_ptrs.deinit(self.allocator);
     }
 
     /// Run the REPL loop with File-based I/O
@@ -186,10 +187,19 @@ pub const Repl = struct {
         defer self.allocator.free(chunk.code);
         defer self.allocator.free(chunk.constants);
 
-        // Add child chunks to persistent storage (closures need them to persist)
-        const chunk_base = self.persistent_chunks.items.len;
+        // Add child chunks to persistent storage (each allocated separately)
+        // Store the base index for this eval's chunks
+        const chunk_base = self.persistent_chunk_ptrs.items.len;
         for (child_chunks) |c| {
-            self.persistent_chunks.append(self.allocator, c) catch {
+            const chunk_ptr = self.allocator.create(bytecode.Chunk) catch {
+                self.allocator.free(child_chunks);
+                return error.EmitError;
+            };
+            chunk_ptr.* = c;
+            self.persistent_chunk_ptrs.append(self.allocator, chunk_ptr) catch {
+                self.allocator.free(c.code);
+                self.allocator.free(c.constants);
+                self.allocator.destroy(chunk_ptr);
                 self.allocator.free(child_chunks);
                 return error.EmitError;
             };
@@ -207,12 +217,9 @@ pub const Repl = struct {
             w.flush() catch {};
         }
 
-        // Set chunk pool to the entire persistent list, offset by base
-        // But make_closure uses absolute indices, so we need to fix the indices
-        // Actually, the indices are relative to THIS eval's chunks. We need to remap.
-        // For now, just use the full list - the indices will be wrong but let's debug.
-        _ = chunk_base;
-        self.vm.setChunkPool(self.persistent_chunks.items);
+        // Set chunk pool - VM uses pointers from persistent storage
+        // The make_closure indices are relative to this eval, so offset by chunk_base
+        self.vm.setChunkPoolWithBase(self.persistent_chunk_ptrs.items, chunk_base);
         return self.vm.run(&chunk) catch return error.RuntimeError;
     }
 
