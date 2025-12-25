@@ -37,6 +37,8 @@ pub const Emitter = struct {
     arity: u8,
     /// Function name
     name: []const u8,
+    /// Captured variables (for inner lambdas)
+    captures: []const Ir.Capture,
 
     pub fn init(allocator: std.mem.Allocator) Emitter {
         return .{
@@ -47,6 +49,7 @@ pub const Emitter = struct {
             .num_locals = 0,
             .arity = 0,
             .name = "",
+            .captures = &[_]Ir.Capture{},
         };
     }
 
@@ -126,6 +129,7 @@ pub const Emitter = struct {
 
             // I/O
             .print => |op| try self.emitUnaryOp(op.operand, .print),
+            .random => |op| try self.emitUnaryOp(op.operand, .random),
 
             // Type assertions
             .assert_fixnum => |op| try self.emitUnaryOp(op.operand, .check_fixnum),
@@ -290,7 +294,18 @@ pub const Emitter = struct {
             try self.emitOp(.load_local);
             try self.emitU8(@intCast(index));
         } else {
-            // Upvalue
+            // Check if this is a captured variable
+            // Captures are stored with depth from enclosing function's perspective
+            // IR nodes have depth from this function's perspective (so +1)
+            for (self.captures, 0..) |cap, i| {
+                if (cap.depth + 1 == depth and cap.index == index) {
+                    // Load from capture array
+                    try self.emitOp(.load_capture);
+                    try self.emitU8(@intCast(i));
+                    return;
+                }
+            }
+            // Upvalue (nested closure case)
             if (depth > 255 or index > 255) return error.TooManyLocals;
             try self.emitOp(.load_upvalue);
             try self.emitU8(@intCast(depth));
@@ -350,6 +365,8 @@ pub const Emitter = struct {
 
         lambda_emitter.arity = @intCast(lam.params.len);
         lambda_emitter.num_locals = @intCast(lam.params.len);
+        // Pass captures so emitVar knows which variables to load from capture array
+        lambda_emitter.captures = lam.captures;
 
         // Emit body
         lambda_emitter.emit(lam.body) catch {

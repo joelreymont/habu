@@ -193,6 +193,41 @@ pub fn ge(a: Value, b: Value) bool {
 }
 
 // ============================================================================
+// Random number generation
+// ============================================================================
+
+var prng: std.Random.DefaultPrng = std.Random.DefaultPrng.init(0);
+var prng_seeded: bool = false;
+
+/// Seed the random number generator
+pub fn randomSeed(seed: Value) Value {
+    if (!seed.isFixnum()) return Value.nil;
+    const s: u64 = @bitCast(seed.toFixnum());
+    prng = std.Random.DefaultPrng.init(s);
+    prng_seeded = true;
+    return seed;
+}
+
+/// Generate random integer in [0, n)
+pub fn random(n: Value) Value {
+    if (!n.isFixnum()) return Value.nil;
+    const max = n.toFixnum();
+    if (max <= 0) return Value.nil;
+
+    // Auto-seed on first use
+    if (!prng_seeded) {
+        const ts = std.time.nanoTimestamp();
+        const seed: u64 = @truncate(@as(u128, @bitCast(ts)));
+        prng = std.Random.DefaultPrng.init(seed);
+        prng_seeded = true;
+    }
+
+    const rand = prng.random();
+    const result = rand.intRangeLessThan(i64, 0, max);
+    return Value.makeFixnum(result);
+}
+
+// ============================================================================
 // Tests
 // ============================================================================
 

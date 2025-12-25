@@ -101,6 +101,67 @@ pub fn sysReadChar() !i64 {
     return @intCast(byte);
 }
 
+/// Print a Habu value to stdout (Lisp-style)
+pub fn printValue(val: Value) !void {
+    const stdout_file = fs.File.stdout();
+    var buf: [4096]u8 = undefined;
+    var file_writer = stdout_file.writer(&buf);
+    const w = &file_writer.interface;
+
+    try printValueTo(val, w);
+    try w.flush();
+}
+
+fn printValueTo(val: Value, w: anytype) !void {
+    if (val.isNil()) {
+        try w.writeAll("nil");
+    } else if (val.isFixnum()) {
+        try w.print("{d}", .{val.toFixnum()});
+    } else if (val.isCons()) {
+        // Print as list
+        try w.writeByte('(');
+        var current = val;
+        var first = true;
+        while (current.isCons()) {
+            if (!first) try w.writeByte(' ');
+            first = false;
+            const cons = current.toPtr(objects.Cons);
+            try printValueTo(cons.car, w);
+            current = cons.cdr;
+        }
+        // Handle dotted list
+        if (!current.isNil()) {
+            try w.writeAll(" . ");
+            try printValueTo(current, w);
+        }
+        try w.writeByte(')');
+    } else if (val.isSymbol()) {
+        const sym = val.toPtr(objects.Symbol);
+        try w.writeAll(sym.getName());
+    } else if (val.isString()) {
+        const str = val.toPtr(objects.String);
+        try w.writeByte('"');
+        try w.writeAll(str.bytes());
+        try w.writeByte('"');
+    } else if (val.isClosure()) {
+        try w.writeAll("#<closure>");
+    } else if (val.isKeyword()) {
+        const kw = val.toPtr(objects.Keyword);
+        try w.writeByte(':');
+        try w.writeAll(kw.getName());
+    } else if (val.isVector()) {
+        const vec = val.toPtr(objects.Vector);
+        try w.writeAll("#(");
+        for (vec.items(), 0..) |item, i| {
+            if (i > 0) try w.writeByte(' ');
+            try printValueTo(item, w);
+        }
+        try w.writeByte(')');
+    } else {
+        try w.writeAll("#<unknown>");
+    }
+}
+
 /// Exit the process
 pub fn sysExit(code: i64) noreturn {
     const exit_code: u8 = @truncate(@as(u64, @bitCast(code)));

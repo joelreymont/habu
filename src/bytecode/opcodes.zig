@@ -279,6 +279,10 @@ pub const Op = enum(u8) {
     /// ( val -- )
     print = 0x90,
 
+    /// Random number [0, n)
+    /// ( n -- rand )
+    random = 0x91,
+
     // ========================================================================
     // Type assertions (gradual typing)
     // ========================================================================
@@ -330,7 +334,7 @@ pub const Op = enum(u8) {
             .consp, .symbolp, .numberp, .stringp, .vectorp, .closurep, .keywordp, .nilp,
             .vec_ref, .vec_set, .vec_len,
             .str_ref, .str_len, .str_concat,
-            .ret, .print, .halt,
+            .ret, .print, .random, .halt,
             .check_fixnum, .check_cons, .check_symbol, .check_string,
             .check_vector, .check_closure, .check_non_nil,
             => 0,

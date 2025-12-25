@@ -189,13 +189,15 @@ pub const Repl = struct {
 
         // Add child chunks to persistent storage (each allocated separately)
         // Store the base index for this eval's chunks
-        const chunk_base = self.persistent_chunk_ptrs.items.len;
+        const chunk_base: u16 = @intCast(self.persistent_chunk_ptrs.items.len);
         for (child_chunks) |c| {
             const chunk_ptr = self.allocator.create(bytecode.Chunk) catch {
                 self.allocator.free(child_chunks);
                 return error.EmitError;
             };
             chunk_ptr.* = c;
+            // Patch make_closure indices to absolute
+            patchMakeClosureIndices(chunk_ptr.code, chunk_base);
             self.persistent_chunk_ptrs.append(self.allocator, chunk_ptr) catch {
                 self.allocator.free(c.code);
                 self.allocator.free(c.constants);
@@ -205,6 +207,9 @@ pub const Repl = struct {
             };
         }
         self.allocator.free(child_chunks);
+
+        // Patch main chunk as well
+        patchMakeClosureIndices(chunk.code, chunk_base);
 
         // Optionally show disassembly
         if (self.config.show_disasm) {
@@ -217,9 +222,8 @@ pub const Repl = struct {
             w.flush() catch {};
         }
 
-        // Set chunk pool - VM uses pointers from persistent storage
-        // The make_closure indices are relative to this eval, so offset by chunk_base
-        self.vm.setChunkPoolWithBase(self.persistent_chunk_ptrs.items, chunk_base);
+        // Set chunk pool - VM uses absolute indices now
+        self.vm.setChunkPool(self.persistent_chunk_ptrs.items);
         return self.vm.run(&chunk) catch return error.RuntimeError;
     }
 
@@ -280,19 +284,159 @@ pub const Repl = struct {
         } else if (std.mem.eql(u8, cmd, ",d") or std.mem.eql(u8, cmd, ",disasm")) {
             self.config.show_disasm = !self.config.show_disasm;
             try writer.print("Disassembly: {s}\n", .{if (self.config.show_disasm) "on" else "off"});
+        } else if (std.mem.startsWith(u8, cmd, ",l ") or std.mem.startsWith(u8, cmd, ",load ")) {
+            const path = if (std.mem.startsWith(u8, cmd, ",l "))
+                std.mem.trim(u8, cmd[3..], " \t")
+            else
+                std.mem.trim(u8, cmd[6..], " \t");
+            self.loadFile(path, writer) catch |err| {
+                try writer.print("Load error: {s}\n", .{@errorName(err)});
+            };
         } else if (std.mem.eql(u8, cmd, ",h") or std.mem.eql(u8, cmd, ",help")) {
             try writer.writeAll(
                 \\Commands:
-                \\  ,q ,quit    Exit REPL
-                \\  ,d ,disasm  Toggle disassembly display
-                \\  ,h ,help    Show this help
+                \\  ,q ,quit       Exit REPL
+                \\  ,d ,disasm     Toggle disassembly display
+                \\  ,l ,load FILE  Load and evaluate a file
+                \\  ,h ,help       Show this help
                 \\
             );
         } else {
             try writer.print("Unknown command: {s}\n", .{cmd});
         }
     }
+
+    /// Load and evaluate a file
+    fn loadFile(self: *Repl, path: []const u8, writer: anytype) !void {
+        const file = std.fs.cwd().openFile(path, .{}) catch |err| {
+            try writer.print("Cannot open '{s}': {s}\n", .{ path, @errorName(err) });
+            return error.IoError;
+        };
+        defer file.close();
+
+        const content = file.readToEndAlloc(self.allocator, 1024 * 1024) catch |err| {
+            try writer.print("Cannot read '{s}': {s}\n", .{ path, @errorName(err) });
+            return error.IoError;
+        };
+        defer self.allocator.free(content);
+
+        // Evaluate all expressions in the file
+        try self.evalFileContent(content, writer);
+        try writer.print("; loaded {s}\n", .{path});
+    }
+
+    /// Evaluate file content (multiple expressions)
+    fn evalFileContent(self: *Repl, content: []const u8, writer: anytype) !void {
+        var pos: usize = 0;
+
+        while (pos < content.len) {
+            // Skip whitespace and comments
+            while (pos < content.len) {
+                if (content[pos] == ' ' or content[pos] == '\t' or
+                    content[pos] == '\n' or content[pos] == '\r')
+                {
+                    pos += 1;
+                } else if (content[pos] == ';') {
+                    // Skip comment line
+                    while (pos < content.len and content[pos] != '\n') {
+                        pos += 1;
+                    }
+                } else {
+                    break;
+                }
+            }
+
+            if (pos >= content.len) break;
+
+            // Find end of expression (simple approach: match parens)
+            const start = pos;
+            const end = self.findExprEnd(content, pos) catch |err| {
+                try writer.print("Parse error at position {d}: {s}\n", .{ pos, @errorName(err) });
+                return error.ParseError;
+            };
+
+            if (end > start) {
+                const expr = content[start..end];
+                _ = self.eval(expr) catch |err| {
+                    try writer.print("Error evaluating: {s}\n  {s}\n", .{ expr[0..@min(50, expr.len)], @errorName(err) });
+                    return err;
+                };
+                pos = end;
+            } else {
+                break;
+            }
+        }
+    }
+
+    /// Find end of S-expression
+    fn findExprEnd(self: *Repl, content: []const u8, start: usize) !usize {
+        _ = self;
+        var pos = start;
+        if (pos >= content.len) return start;
+
+        // Handle list
+        if (content[pos] == '(') {
+            var depth: usize = 1;
+            pos += 1;
+            while (pos < content.len and depth > 0) {
+                if (content[pos] == '(') {
+                    depth += 1;
+                } else if (content[pos] == ')') {
+                    depth -= 1;
+                } else if (content[pos] == '"') {
+                    // Skip string
+                    pos += 1;
+                    while (pos < content.len and content[pos] != '"') {
+                        if (content[pos] == '\\' and pos + 1 < content.len) {
+                            pos += 1;
+                        }
+                        pos += 1;
+                    }
+                } else if (content[pos] == ';') {
+                    // Skip comment
+                    while (pos < content.len and content[pos] != '\n') {
+                        pos += 1;
+                    }
+                    pos -= 1; // will be incremented below
+                }
+                pos += 1;
+            }
+            if (depth > 0) return error.ParseError;
+            return pos;
+        }
+
+        // Handle atom
+        while (pos < content.len) {
+            const c = content[pos];
+            if (c == ' ' or c == '\t' or c == '\n' or c == '\r' or
+                c == '(' or c == ')' or c == ';')
+            {
+                break;
+            }
+            pos += 1;
+        }
+        return pos;
+    }
 };
+
+/// Patch make_closure instructions to use absolute chunk indices
+fn patchMakeClosureIndices(code: []u8, base: u16) void {
+    var i: usize = 0;
+    while (i < code.len) {
+        const op: Op = @enumFromInt(code[i]);
+        const size = op.operandSize();
+
+        if (op == .make_closure) {
+            // make_closure has: u16 chunk_index, u8 num_captures
+            // Patch the u16 index at code[i+1..i+3]
+            const rel_idx = std.mem.readInt(u16, code[i + 1 ..][0..2], .little);
+            const abs_idx = base + rel_idx;
+            std.mem.writeInt(u16, code[i + 1 ..][0..2], abs_idx, .little);
+        }
+
+        i += 1 + size;
+    }
+}
 
 /// Convenience function to evaluate a string
 pub fn evalString(allocator: std.mem.Allocator, heap: *Heap, source: []const u8) !Value {

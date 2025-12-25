@@ -1,0 +1,193 @@
+; Habu Standard Library
+
+; Identity function
+(defun identity (x) x)
+
+; Constant combinator
+(defun constantly (x)
+  (lambda (y) x))
+
+; Function composition (f . g)(x) = f(g(x))
+(defun compose (f g)
+  (lambda (x) (f (g x))))
+
+; Flip argument order
+(defun flip (f)
+  (lambda (a b) (f b a)))
+
+; Boolean operations
+(defun not (x) (if x nil t))
+
+(defun and2 (a b) (if a b nil))
+(defun or2 (a b) (if a a b))
+
+; Arithmetic helpers
+(defun inc (n) (+ n 1))
+(defun dec (n) (- n 1))
+(defun zerop (n) (= n 0))
+(defun plusp (n) (> n 0))
+(defun minusp (n) (< n 0))
+(defun evenp (n) (= (mod n 2) 0))
+(defun oddp (n) (= (mod n 1) 1))
+(defun abs (n) (if (< n 0) (- 0 n) n))
+(defun max2 (a b) (if (> a b) a b))
+(defun min2 (a b) (if (< a b) a b))
+
+; List operations
+(defun null (x) (eq x nil))
+(defun atom (x) (not (consp x)))
+
+(defun cadr (x) (car (cdr x)))
+(defun caddr (x) (car (cdr (cdr x))))
+(defun caar (x) (car (car x)))
+(defun cddr (x) (cdr (cdr x)))
+(defun cadar (x) (car (cdr (car x))))
+
+(defun first (x) (car x))
+(defun second (x) (cadr x))
+(defun third (x) (caddr x))
+(defun rest (x) (cdr x))
+
+; List construction
+(defun list1 (a) (cons a nil))
+(defun list2 (a b) (cons a (cons b nil)))
+(defun list3 (a b c) (cons a (cons b (cons c nil))))
+(defun list4 (a b c d) (cons a (cons b (cons c (cons d nil)))))
+
+; Length with TCO
+(defun length-aux (lst acc)
+  (if (null lst)
+      acc
+      (length-aux (cdr lst) (+ acc 1))))
+
+(defun length (lst)
+  (length-aux lst 0))
+
+; Append
+(defun append (xs ys)
+  (if (null xs)
+      ys
+      (cons (car xs) (append (cdr xs) ys))))
+
+; Reverse with TCO
+(defun reverse-aux (lst acc)
+  (if (null lst)
+      acc
+      (reverse-aux (cdr lst) (cons (car lst) acc))))
+
+(defun reverse (lst)
+  (reverse-aux lst nil))
+
+; Map (applies f to each element)
+(defun map (f lst)
+  (if (null lst)
+      nil
+      (cons (f (car lst)) (map f (cdr lst)))))
+
+; Filter (keeps elements where pred is true)
+(defun filter (pred lst)
+  (if (null lst)
+      nil
+      (if (pred (car lst))
+          (cons (car lst) (filter pred (cdr lst)))
+          (filter pred (cdr lst)))))
+
+; Fold left (reduce)
+(defun foldl (f acc lst)
+  (if (null lst)
+      acc
+      (foldl f (f acc (car lst)) (cdr lst))))
+
+; Fold right
+(defun foldr (f acc lst)
+  (if (null lst)
+      acc
+      (f (car lst) (foldr f acc (cdr lst)))))
+
+; Take first n elements
+(defun take (n lst)
+  (if (or2 (zerop n) (null lst))
+      nil
+      (cons (car lst) (take (dec n) (cdr lst)))))
+
+; Drop first n elements
+(defun drop (n lst)
+  (if (or2 (zerop n) (null lst))
+      lst
+      (drop (dec n) (cdr lst))))
+
+; Nth element (0-indexed)
+(defun nth (n lst)
+  (if (zerop n)
+      (car lst)
+      (nth (dec n) (cdr lst))))
+
+; Last element
+(defun last (lst)
+  (if (null (cdr lst))
+      (car lst)
+      (last (cdr lst))))
+
+; Any/All predicates
+(defun any (pred lst)
+  (if (null lst)
+      nil
+      (if (pred (car lst))
+          t
+          (any pred (cdr lst)))))
+
+(defun all (pred lst)
+  (if (null lst)
+      t
+      (if (pred (car lst))
+          (all pred (cdr lst))
+          nil)))
+
+; Member test
+(defun member (x lst)
+  (if (null lst)
+      nil
+      (if (eq x (car lst))
+          lst
+          (member x (cdr lst)))))
+
+; Zip two lists
+(defun zip (xs ys)
+  (if (or2 (null xs) (null ys))
+      nil
+      (cons (list2 (car xs) (car ys))
+            (zip (cdr xs) (cdr ys)))))
+
+; Range [start, end)
+(defun range-aux (n end acc)
+  (if (= n end)
+      acc
+      (range-aux (inc n) end (cons n acc))))
+
+(defun range (start end)
+  (reverse (range-aux start end nil)))
+
+; Sum/Product
+(defun sum (lst)
+  (foldl (lambda (a b) (+ a b)) 0 lst))
+
+(defun product (lst)
+  (foldl (lambda (a b) (* a b)) 1 lst))
+
+; Factorial
+(defun factorial-aux (n acc)
+  (if (zerop n)
+      acc
+      (factorial-aux (dec n) (* n acc))))
+
+(defun factorial (n)
+  (factorial-aux n 1))
+
+; Fibonacci with TCO
+(defun fib-aux (n a b)
+  (if (zerop n)
+      a
+      (fib-aux (dec n) b (+ a b))))
+
+(defun fib (n)
+  (fib-aux n 0 1))

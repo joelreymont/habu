@@ -45,14 +45,33 @@ pub const Env = struct {
     parent: ?*const Env,
     /// Depth from root (0 = top level)
     depth: u16,
+    /// Whether this is a new frame (lambda) or same frame (let)
+    new_frame: bool,
+    /// Base index for bindings (for let, continues from parent)
+    base_index: u16,
     /// Allocator for bindings
     allocator: std.mem.Allocator,
 
+    /// Create a new frame environment (for lambda)
     pub fn init(allocator: std.mem.Allocator, parent: ?*const Env) Env {
         return .{
             .bindings = std.StringHashMap(u16).init(allocator),
             .parent = parent,
             .depth = if (parent) |p| p.depth + 1 else 0,
+            .new_frame = true,
+            .base_index = 0,
+            .allocator = allocator,
+        };
+    }
+
+    /// Create a same-frame environment (for let)
+    pub fn initLet(allocator: std.mem.Allocator, parent: *const Env) Env {
+        return .{
+            .bindings = std.StringHashMap(u16).init(allocator),
+            .parent = parent,
+            .depth = parent.depth, // Same depth - same frame
+            .new_frame = false,
+            .base_index = parent.localCount(), // Continue from parent's count
             .allocator = allocator,
         };
     }
@@ -61,11 +80,24 @@ pub const Env = struct {
         self.bindings.deinit();
     }
 
-    /// Add a binding, returns the index
+    /// Get total local count in this frame
+    pub fn localCount(self: *const Env) u16 {
+        const own_count: u16 = @intCast(self.bindings.count());
+        if (!self.new_frame) {
+            // For let envs, add parent's count
+            if (self.parent) |p| {
+                return p.localCount() + own_count;
+            }
+        }
+        return self.base_index + own_count;
+    }
+
+    /// Add a binding, returns the absolute index
     pub fn bind(self: *Env, name: []const u8) !u16 {
-        const index: u16 = @intCast(self.bindings.count());
-        try self.bindings.put(name, index);
-        return index;
+        const local_index: u16 = @intCast(self.bindings.count());
+        const abs_index = self.base_index + local_index;
+        try self.bindings.put(name, abs_index);
+        return abs_index;
     }
 
     /// Look up a variable, returns (depth, index) or null
@@ -75,7 +107,13 @@ pub const Env = struct {
         }
         if (self.parent) |parent| {
             if (parent.lookup(name)) |result| {
-                return .{ .depth = result.depth + 1, .index = result.index };
+                if (self.new_frame) {
+                    // Cross frame boundary - increment depth
+                    return .{ .depth = result.depth + 1, .index = result.index };
+                } else {
+                    // Same frame (let) - keep same depth
+                    return result;
+                }
             }
         }
         return null;
@@ -364,6 +402,11 @@ pub const Compiler = struct {
 
     /// Compile a single expression
     pub fn compile(self: *Compiler, expr: Value, env: *const Env) CompileError!*Ir {
+        return self.compileWithTail(expr, env, false);
+    }
+
+    /// Compile with tail position tracking
+    fn compileWithTail(self: *Compiler, expr: Value, env: *const Env, in_tail: bool) CompileError!*Ir {
         // Nil
         if (expr.isNil()) {
             return self.builder.lit(Value.nil) catch return error.OutOfMemory;
@@ -399,7 +442,7 @@ pub const Compiler = struct {
 
         // List (special form or function call)
         if (expr.isCons()) {
-            return self.compileList(expr, env);
+            return self.compileListWithTail(expr, env, in_tail);
         }
 
         // Keyword - just return as literal
@@ -411,6 +454,10 @@ pub const Compiler = struct {
     }
 
     fn compileList(self: *Compiler, expr: Value, env: *const Env) CompileError!*Ir {
+        return self.compileListWithTail(expr, env, false);
+    }
+
+    fn compileListWithTail(self: *Compiler, expr: Value, env: *const Env, in_tail: bool) CompileError!*Ir {
         const cons = expr.toPtr(Cons);
         const head = cons.car;
         const tail = cons.cdr;
@@ -421,13 +468,13 @@ pub const Compiler = struct {
             const name = sym.getName();
 
             if (std.mem.eql(u8, name, "if")) {
-                return self.compileIf(tail, env);
+                return self.compileIfWithTail(tail, env, in_tail);
             }
             if (std.mem.eql(u8, name, "lambda")) {
                 return self.compileLambda(tail, env);
             }
             if (std.mem.eql(u8, name, "let")) {
-                return self.compileLet(tail, env);
+                return self.compileLetWithTail(tail, env, in_tail);
             }
             if (std.mem.eql(u8, name, "set!")) {
                 return self.compileSet(tail, env);
@@ -436,7 +483,7 @@ pub const Compiler = struct {
                 return self.compileQuote(tail);
             }
             if (std.mem.eql(u8, name, "progn") or std.mem.eql(u8, name, "begin")) {
-                return self.compileProgn(tail, env);
+                return self.compilePrognWithTail(tail, env, in_tail);
             }
             if (std.mem.eql(u8, name, "while")) {
                 return self.compileWhile(tail, env);
@@ -456,11 +503,15 @@ pub const Compiler = struct {
             }
         }
 
-        // Function call
-        return self.compileCall(head, tail, env);
+        // Function call - pass tail position
+        return self.compileCallWithTail(head, tail, env, in_tail);
     }
 
     fn compileIf(self: *Compiler, args: Value, env: *const Env) CompileError!*Ir {
+        return self.compileIfWithTail(args, env, false);
+    }
+
+    fn compileIfWithTail(self: *Compiler, args: Value, env: *const Env, in_tail: bool) CompileError!*Ir {
         // (if test then else?)
         if (!args.isCons()) return error.InvalidIf;
 
@@ -480,8 +531,9 @@ pub const Compiler = struct {
             Value.nil;
 
         const test_ir = try self.compile(test_expr, env);
-        const then_ir = try self.compile(then_expr, env);
-        const else_ir = try self.compile(else_expr, env);
+        // Both branches are in tail position if the if is
+        const then_ir = try self.compileWithTail(then_expr, env, in_tail);
+        const else_ir = try self.compileWithTail(else_expr, env, in_tail);
 
         return self.builder.ifExpr(test_ir, then_ir, else_ir) catch return error.OutOfMemory;
     }
@@ -522,8 +574,8 @@ pub const Compiler = struct {
         self.collectFreeVars(body_exprs, &lambda_env, &capture_set) catch
             return error.OutOfMemory;
 
-        // Compile body (implicit progn)
-        const body_ir = try self.compileBody(body_exprs, &lambda_env);
+        // Compile body (implicit progn) - body is in tail position
+        const body_ir = try self.compileBodyWithTail(body_exprs, &lambda_env, true);
 
         // Convert captures to slice
         const captures = self.allocator.dupe(Ir.Capture, capture_set.captures.items) catch
@@ -550,6 +602,7 @@ pub const Compiler = struct {
             if (env.parent) |parent| {
                 if (parent.lookup(name)) |binding| {
                     // This is a free variable - needs to be captured
+                    // Store original depth for loading, emitVar adjusts for matching
                     try captures.addCapture(name, binding.depth, binding.index);
                 }
             }
@@ -593,8 +646,8 @@ pub const Compiler = struct {
                             binding_list = binding_cons.cdr;
                         }
 
-                        // Create temp env for let body
-                        var let_env = Env.init(self.allocator, env);
+                        // Create temp env for let body (same frame)
+                        var let_env = Env.initLet(self.allocator, env);
                         defer let_env.deinit();
 
                         binding_list = bindings_expr;
@@ -639,6 +692,10 @@ pub const Compiler = struct {
     }
 
     fn compileLet(self: *Compiler, args: Value, env: *const Env) CompileError!*Ir {
+        return self.compileLetWithTail(args, env, false);
+    }
+
+    fn compileLetWithTail(self: *Compiler, args: Value, env: *const Env, in_tail: bool) CompileError!*Ir {
         // (let ((x 1) (y 2)) body)
         if (!args.isCons()) return error.InvalidLet;
 
@@ -673,16 +730,16 @@ pub const Compiler = struct {
             binding_list = binding_cons.cdr;
         }
 
-        // Create new environment with bindings
-        var let_env = Env.init(self.allocator, env);
+        // Create same-frame environment with bindings (let doesn't create new frame)
+        var let_env = Env.initLet(self.allocator, env);
         defer let_env.deinit();
 
         for (bindings.items) |b| {
             _ = let_env.bind(b.name) catch return error.OutOfMemory;
         }
 
-        // Compile body
-        const body_ir = try self.compileBody(body_exprs, &let_env);
+        // Compile body - body is in tail position if let is
+        const body_ir = try self.compileBodyWithTail(body_exprs, &let_env, in_tail);
 
         return self.builder.letExpr(bindings.items, body_ir) catch return error.OutOfMemory;
     }
@@ -727,6 +784,10 @@ pub const Compiler = struct {
 
     fn compileProgn(self: *Compiler, args: Value, env: *const Env) CompileError!*Ir {
         return self.compileBody(args, env);
+    }
+
+    fn compilePrognWithTail(self: *Compiler, args: Value, env: *const Env, in_tail: bool) CompileError!*Ir {
+        return self.compileBodyWithTail(args, env, in_tail);
     }
 
     fn compileWhile(self: *Compiler, args: Value, env: *const Env) CompileError!*Ir {
@@ -782,19 +843,35 @@ pub const Compiler = struct {
     }
 
     fn compileBody(self: *Compiler, exprs: Value, env: *const Env) CompileError!*Ir {
+        return self.compileBodyWithTail(exprs, env, false);
+    }
+
+    fn compileBodyWithTail(self: *Compiler, exprs: Value, env: *const Env, in_tail: bool) CompileError!*Ir {
         if (exprs.isNil()) {
             return self.builder.lit(Value.nil) catch return error.OutOfMemory;
+        }
+
+        // Count expressions first to know which is last
+        var count: usize = 0;
+        var tmp = exprs;
+        while (tmp.isCons()) {
+            count += 1;
+            tmp = tmp.toPtr(Cons).cdr;
         }
 
         var expr_list = std.ArrayList(*Ir){};
         defer expr_list.deinit(self.allocator);
 
         var list = exprs;
+        var idx: usize = 0;
         while (list.isCons()) {
             const cons = list.toPtr(Cons);
-            const expr_ir = try self.compile(cons.car, env);
+            const is_last = idx == count - 1;
+            // Only last expression is in tail position
+            const expr_ir = try self.compileWithTail(cons.car, env, in_tail and is_last);
             expr_list.append(self.allocator, expr_ir) catch return error.OutOfMemory;
             list = cons.cdr;
+            idx += 1;
         }
 
         if (expr_list.items.len == 1) {
@@ -900,10 +977,15 @@ pub const Compiler = struct {
             return self.compileUnaryPrim(args, env, .print);
         }
 
+        // Random
+        if (std.mem.eql(u8, name, "random")) {
+            return self.compileUnaryPrim(args, env, .random);
+        }
+
         return error.InvalidSyntax; // Not a known primitive
     }
 
-    const PrimTag = enum { add, sub, mul, div, mod, eq, lt, gt, le, ge, num_eq, cons, car, cdr, consp, symbolp, numberp, stringp, vectorp, nilp, not, vec_ref, vec_len, str_ref, str_len, print };
+    const PrimTag = enum { add, sub, mul, div, mod, eq, lt, gt, le, ge, num_eq, cons, car, cdr, consp, symbolp, numberp, stringp, vectorp, nilp, not, vec_ref, vec_len, str_ref, str_len, print, random };
 
     fn compileBinaryPrim(self: *Compiler, args: Value, env: *const Env, prim: PrimTag) CompileError!*Ir {
         if (!args.isCons()) return error.InvalidSyntax;
@@ -979,11 +1061,20 @@ pub const Compiler = struct {
                 node.* = .{ .vectorp = .{ .operand = operand } };
                 break :blk node;
             },
+            .random => blk: {
+                const node = self.allocator.create(Ir) catch return error.OutOfMemory;
+                node.* = .{ .random = .{ .operand = operand } };
+                break :blk node;
+            },
             else => error.InvalidSyntax,
         } catch return error.OutOfMemory;
     }
 
     fn compileCall(self: *Compiler, func_expr: Value, args_expr: Value, env: *const Env) CompileError!*Ir {
+        return self.compileCallWithTail(func_expr, args_expr, env, false);
+    }
+
+    fn compileCallWithTail(self: *Compiler, func_expr: Value, args_expr: Value, env: *const Env, in_tail: bool) CompileError!*Ir {
         const func_ir = try self.compile(func_expr, env);
 
         var args = std.ArrayList(*Ir){};
@@ -1000,7 +1091,12 @@ pub const Compiler = struct {
         // Convert to const slice
         const items = self.allocator.dupe(*const Ir, args.items) catch
             return error.OutOfMemory;
-        return self.builder.call(func_ir, items) catch return error.OutOfMemory;
+
+        if (in_tail) {
+            return self.builder.tailcall(func_ir, items) catch return error.OutOfMemory;
+        } else {
+            return self.builder.call(func_ir, items) catch return error.OutOfMemory;
+        }
     }
 };
 

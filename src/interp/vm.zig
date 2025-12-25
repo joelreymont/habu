@@ -11,6 +11,8 @@ const runtime = @import("../runtime/runtime.zig");
 const Value = runtime.Value;
 const Heap = runtime.Heap;
 const Cons = runtime.Cons;
+const arith = @import("../runtime/primitives/arith.zig");
+const io = @import("../runtime/primitives/io.zig");
 
 pub const VmError = error{
     StackOverflow,
@@ -30,6 +32,8 @@ pub const Frame = struct {
     return_ip: usize,
     /// Base pointer (stack index of first local)
     bp: usize,
+    /// Current closure (for accessing captures)
+    closure: ?*const runtime.Closure,
 };
 
 /// Virtual Machine
@@ -91,10 +95,16 @@ pub const Vm = struct {
         return vm;
     }
 
-    /// Set the chunk pool for closures with a base offset
+    /// Set the chunk pool for closures with a base offset (deprecated)
     pub fn setChunkPoolWithBase(self: *Vm, chunks: []*Chunk, base: usize) void {
         self.chunk_pool = chunks;
         self.chunk_base = base;
+    }
+
+    /// Set the chunk pool for closures (indices are absolute)
+    pub fn setChunkPool(self: *Vm, chunks: []*Chunk) void {
+        self.chunk_pool = chunks;
+        self.chunk_base = 0;
     }
 
     /// Run a chunk to completion
@@ -153,10 +163,27 @@ pub const Vm = struct {
                     const bp = if (self.fp > 0) self.frames[self.fp - 1].bp else 0;
                     self.stack[bp + idx] = try self.pop();
                 },
-                .load_capture, .load_upvalue, .store_upvalue => {
-                    // TODO: Implement closures
+                .load_capture => {
+                    const idx = self.readU8();
+                    // Get current closure from frame
+                    if (self.fp > 0) {
+                        if (self.frames[self.fp - 1].closure) |closure| {
+                            if (idx < closure.num_captures) {
+                                try self.push(closure.getCapture(idx));
+                            } else {
+                                return error.InvalidConstant;
+                            }
+                        } else {
+                            return error.InvalidConstant;
+                        }
+                    } else {
+                        return error.InvalidConstant;
+                    }
+                },
+                .load_upvalue, .store_upvalue => {
+                    // TODO: Implement nested closures
                     _ = self.readU8();
-                    if (op == .load_upvalue or op == .store_upvalue) _ = self.readU8();
+                    _ = self.readU8();
                     try self.push(Value.nil);
                 },
                 .load_global => {
@@ -403,8 +430,14 @@ pub const Vm = struct {
                 // I/O
                 .print => {
                     const val = try self.pop();
-                    // TODO: Proper printing
-                    _ = val;
+                    io.printValue(val) catch return error.Halt;
+                    io.sysNewline() catch return error.Halt;
+                    try self.push(val); // Return the printed value
+                },
+                .random => {
+                    const n = try self.pop();
+                    const result = arith.random(n);
+                    try self.push(result);
                 },
 
                 // Type assertions (gradual typing)
@@ -480,6 +513,11 @@ pub const Vm = struct {
             self.chunk = callee_chunk;
             self.ip = 0;
 
+            // Update closure in current frame for captures
+            if (self.fp > 0) {
+                self.frames[self.fp - 1].closure = closure;
+            }
+
             // Reserve space for additional locals
             var i: usize = argc;
             while (i < callee_chunk.num_locals) : (i += 1) {
@@ -496,6 +534,7 @@ pub const Vm = struct {
                 .chunk = self.chunk,
                 .return_ip = self.ip,
                 .bp = self.sp - argc - 1, // -1 for function value
+                .closure = closure,
             };
             self.fp += 1;
 
