@@ -88,12 +88,41 @@ pub const TypedIr = struct {
     ty: *const Type,
 };
 
+/// Capture analysis result
+pub const CaptureSet = struct {
+    /// Free variables that need to be captured
+    captures: std.ArrayList(Ir.Capture),
+    allocator: std.mem.Allocator,
+
+    pub fn init(allocator: std.mem.Allocator) CaptureSet {
+        return .{
+            .captures = std.ArrayList(Ir.Capture){},
+            .allocator = allocator,
+        };
+    }
+
+    pub fn deinit(self: *CaptureSet) void {
+        self.captures.deinit(self.allocator);
+    }
+
+    /// Add a capture if not already present
+    pub fn addCapture(self: *CaptureSet, name: []const u8, depth: u16, index: u16) !void {
+        // Check if already captured
+        for (self.captures.items) |cap| {
+            if (std.mem.eql(u8, cap.name, name)) return;
+        }
+        try self.captures.append(self.allocator, .{
+            .name = name,
+            .depth = depth,
+            .index = index,
+        });
+    }
+};
+
 /// Compiler state
 pub const Compiler = struct {
     builder: IrBuilder,
     allocator: std.mem.Allocator,
-    /// Track free variables during lambda compilation
-    captures: std.ArrayList(Ir.Capture),
     /// Type checker for type errors and subtype checking
     type_checker: TypeChecker,
     /// Whether to enable type checking (gradual typing)
@@ -103,14 +132,12 @@ pub const Compiler = struct {
         return .{
             .builder = IrBuilder.init(allocator),
             .allocator = allocator,
-            .captures = std.ArrayList(Ir.Capture){},
             .type_checker = TypeChecker.init(allocator),
             .type_checking_enabled = false, // Off by default for gradual typing
         };
     }
 
     pub fn deinit(self: *Compiler) void {
-        self.captures.deinit(self.allocator);
         self.type_checker.deinit();
     }
 
@@ -437,14 +464,127 @@ pub const Compiler = struct {
             _ = lambda_env.bind(param) catch return error.OutOfMemory;
         }
 
+        // Capture analysis: collect free variables before compiling body
+        var capture_set = CaptureSet.init(self.allocator);
+        defer capture_set.deinit();
+
+        self.collectFreeVars(body_exprs, &lambda_env, &capture_set) catch
+            return error.OutOfMemory;
+
         // Compile body (implicit progn)
         const body_ir = try self.compileBody(body_exprs, &lambda_env);
 
-        // TODO: Capture analysis for free variables
-        const captures = &[_]Ir.Capture{};
+        // Convert captures to slice
+        const captures = self.allocator.dupe(Ir.Capture, capture_set.captures.items) catch
+            return error.OutOfMemory;
 
         return self.builder.lambda(params.items, captures, body_ir) catch
             return error.OutOfMemory;
+    }
+
+    /// Collect free variables in an expression
+    fn collectFreeVars(self: *Compiler, expr: Value, env: *const Env, captures: *CaptureSet) error{OutOfMemory}!void {
+        if (expr.isNil() or expr.isFixnum() or expr.isString() or expr.isKeyword()) {
+            return; // Literals have no free variables
+        }
+
+        if (expr.isSymbol()) {
+            const sym = expr.toPtr(Symbol);
+            const name = sym.getName();
+
+            // Check if bound locally
+            if (env.bindings.get(name) != null) return;
+
+            // Check if in outer scope (free variable)
+            if (env.parent) |parent| {
+                if (parent.lookup(name)) |binding| {
+                    // This is a free variable - needs to be captured
+                    try captures.addCapture(name, binding.depth, binding.index);
+                }
+            }
+            return;
+        }
+
+        if (expr.isCons()) {
+            const cons = expr.toPtr(Cons);
+            const head = cons.car;
+            const tail = cons.cdr;
+
+            // Check for special forms that introduce bindings
+            if (head.isSymbol()) {
+                const sym = head.toPtr(Symbol);
+                const name = sym.getName();
+
+                if (std.mem.eql(u8, name, "lambda")) {
+                    // Lambda creates new scope - handled recursively by compileLambda
+                    return;
+                }
+
+                if (std.mem.eql(u8, name, "let")) {
+                    // Let introduces bindings - need to handle carefully
+                    if (tail.isCons()) {
+                        const let_cons = tail.toPtr(Cons);
+                        const bindings_expr = let_cons.car;
+                        const body_expr = let_cons.cdr;
+
+                        // Collect free vars in binding values (before let scope)
+                        var binding_list = bindings_expr;
+                        while (binding_list.isCons()) {
+                            const binding_cons = binding_list.toPtr(Cons);
+                            const binding = binding_cons.car;
+                            if (binding.isCons()) {
+                                const b = binding.toPtr(Cons);
+                                if (b.cdr.isCons()) {
+                                    const val_cons = b.cdr.toPtr(Cons);
+                                    try self.collectFreeVars(val_cons.car, env, captures);
+                                }
+                            }
+                            binding_list = binding_cons.cdr;
+                        }
+
+                        // Create temp env for let body
+                        var let_env = Env.init(self.allocator, env);
+                        defer let_env.deinit();
+
+                        binding_list = bindings_expr;
+                        while (binding_list.isCons()) {
+                            const binding_cons = binding_list.toPtr(Cons);
+                            const binding = binding_cons.car;
+                            if (binding.isCons()) {
+                                const b = binding.toPtr(Cons);
+                                if (b.car.isSymbol()) {
+                                    const bname_sym = b.car.toPtr(Symbol);
+                                    _ = let_env.bind(bname_sym.getName()) catch return;
+                                }
+                            }
+                            binding_list = binding_cons.cdr;
+                        }
+
+                        // Collect from body with extended env
+                        try self.collectFreeVarsInList(body_expr, &let_env, captures);
+                    }
+                    return;
+                }
+
+                if (std.mem.eql(u8, name, "quote")) {
+                    return; // Quoted expressions have no free variables
+                }
+            }
+
+            // Recurse on head and tail
+            try self.collectFreeVars(head, env, captures);
+            try self.collectFreeVarsInList(tail, env, captures);
+        }
+    }
+
+    /// Collect free variables in a list of expressions
+    fn collectFreeVarsInList(self: *Compiler, list: Value, env: *const Env, captures: *CaptureSet) error{OutOfMemory}!void {
+        var current = list;
+        while (current.isCons()) {
+            const cons = current.toPtr(Cons);
+            try self.collectFreeVars(cons.car, env, captures);
+            current = cons.cdr;
+        }
     }
 
     fn compileLet(self: *Compiler, args: Value, env: *const Env) CompileError!*Ir {
