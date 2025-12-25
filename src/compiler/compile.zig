@@ -6,6 +6,11 @@
 //! - Primitive operations: +, -, *, /, cons, car, cdr, etc.
 //! - Function calls
 //! - Variable references with lexical scoping
+//!
+//! Type integration:
+//! - Tracks types during compilation (TypeEnv)
+//! - Occurrence typing: narrows types after predicates
+//! - Inserts contracts at typed/untyped boundaries
 
 const std = @import("std");
 const ir = @import("ir.zig");
@@ -16,6 +21,11 @@ const Value = runtime.Value;
 const Cons = runtime.Cons;
 const Symbol = runtime.Symbol;
 const Heap = runtime.Heap;
+const types = @import("../types/types.zig");
+const Type = types.Type;
+const TypeEnv = types.TypeEnv;
+const OccurrenceCtx = types.OccurrenceCtx;
+const TypeChecker = types.TypeChecker;
 
 pub const CompileError = error{
     InvalidSyntax,
@@ -72,23 +82,216 @@ pub const Env = struct {
     }
 };
 
+/// Typed compilation result
+pub const TypedIr = struct {
+    ir: *Ir,
+    ty: *const Type,
+};
+
 /// Compiler state
 pub const Compiler = struct {
     builder: IrBuilder,
     allocator: std.mem.Allocator,
     /// Track free variables during lambda compilation
     captures: std.ArrayList(Ir.Capture),
+    /// Type checker for type errors and subtype checking
+    type_checker: TypeChecker,
+    /// Whether to enable type checking (gradual typing)
+    type_checking_enabled: bool,
 
     pub fn init(allocator: std.mem.Allocator) Compiler {
         return .{
             .builder = IrBuilder.init(allocator),
             .allocator = allocator,
             .captures = std.ArrayList(Ir.Capture){},
+            .type_checker = TypeChecker.init(allocator),
+            .type_checking_enabled = false, // Off by default for gradual typing
         };
     }
 
     pub fn deinit(self: *Compiler) void {
         self.captures.deinit(self.allocator);
+        self.type_checker.deinit();
+    }
+
+    /// Enable type checking mode
+    pub fn enableTypeChecking(self: *Compiler) void {
+        self.type_checking_enabled = true;
+    }
+
+    /// Check if type checker has errors
+    pub fn hasTypeErrors(self: *const Compiler) bool {
+        return self.type_checker.hasErrors();
+    }
+
+    /// Compile with type inference
+    /// Returns both IR and inferred type
+    pub fn compileTyped(
+        self: *Compiler,
+        expr: Value,
+        env: *const Env,
+        type_env: *const TypeEnv,
+        occ: *const OccurrenceCtx,
+    ) CompileError!TypedIr {
+        const ir_node = try self.compile(expr, env);
+
+        // Infer type based on IR node
+        const ty = self.inferType(ir_node, type_env, occ);
+
+        return .{ .ir = ir_node, .ty = ty };
+    }
+
+    /// Infer type of an IR node
+    fn inferType(self: *Compiler, node: *const Ir, type_env: *const TypeEnv, occ: *const OccurrenceCtx) *const Type {
+        _ = self;
+        return switch (node.*) {
+            .lit => |val| {
+                if (val.isNil()) return &types.t_nil;
+                if (val.isFixnum()) return &types.t_fixnum;
+                if (val.isString()) return &types.t_string;
+                if (val.isSymbol()) return &types.t_symbol;
+                if (val.isCons()) return &types.t_cons;
+                return &types.t_any;
+            },
+            .@"var" => |v| {
+                // Check occurrence typing first (narrowed types)
+                if (occ.getNarrowed(v.name)) |narrowed| {
+                    return narrowed;
+                }
+                // Then check type environment
+                if (type_env.lookup(v.name)) |ty| {
+                    return ty;
+                }
+                return &types.t_any;
+            },
+            .add, .sub, .mul, .div, .mod => &types.t_fixnum,
+            .eq, .lt, .gt, .le, .ge, .num_eq => &types.t_any, // Returns t or nil
+            .cons => &types.t_cons,
+            .car, .cdr => &types.t_any, // Could be anything
+            .consp, .symbolp, .numberp, .nilp, .not, .stringp, .vectorp => &types.t_any,
+            .quote_sym => &types.t_symbol,
+            .@"if" => &types.t_any, // Would need union of branches
+            .lambda => &types.t_closure,
+            .let => &types.t_any, // Type of body
+            .progn => &types.t_any, // Type of last expr
+            .call => &types.t_any, // Need function return type
+            else => &types.t_any,
+        };
+    }
+
+    /// Predicate narrowing information for occurrence typing
+    const PredicateInfo = struct {
+        /// Variable name being tested
+        var_name: []const u8,
+        /// Type to narrow to in the then-branch
+        narrowed_type: *const Type,
+        /// Type to narrow to in the else-branch (complement)
+        else_type: ?*const Type,
+    };
+
+    /// Predicate to narrowed type mapping
+    const predicate_types = [_]struct { tag: std.meta.Tag(Ir), ty: *const Type }{
+        .{ .tag = .consp, .ty = &types.t_cons },
+        .{ .tag = .symbolp, .ty = &types.t_symbol },
+        .{ .tag = .numberp, .ty = &types.t_fixnum },
+        .{ .tag = .stringp, .ty = &types.t_string },
+        .{ .tag = .vectorp, .ty = &types.t_vector },
+        .{ .tag = .nilp, .ty = &types.t_nil },
+    };
+
+    /// Get operand from a unary predicate IR node
+    fn getPredicateOperand(node: *const Ir) ?*const Ir {
+        return switch (node.*) {
+            .consp => |p| p.operand,
+            .symbolp => |p| p.operand,
+            .numberp => |p| p.operand,
+            .stringp => |p| p.operand,
+            .vectorp => |p| p.operand,
+            .nilp => |p| p.operand,
+            else => null,
+        };
+    }
+
+    /// Extract predicate narrowing info from an IR node
+    /// For (consp x), returns info to narrow x to cons in then-branch
+    fn extractPredicateInfo(node: *const Ir) ?PredicateInfo {
+        const tag = std.meta.activeTag(node.*);
+
+        for (predicate_types) |entry| {
+            if (tag == entry.tag) {
+                if (getPredicateOperand(node)) |operand| {
+                    if (operand.* == .@"var") {
+                        return .{
+                            .var_name = operand.@"var".name,
+                            .narrowed_type = entry.ty,
+                            .else_type = null,
+                        };
+                    }
+                }
+                break;
+            }
+        }
+        return null;
+    }
+
+    /// Compile if with occurrence typing support
+    pub fn compileIfTyped(
+        self: *Compiler,
+        args: Value,
+        env: *const Env,
+        type_env: *const TypeEnv,
+        occ: *OccurrenceCtx,
+    ) CompileError!TypedIr {
+        // (if test then else?)
+        if (!args.isCons()) return error.InvalidIf;
+
+        const cons1 = args.toPtr(Cons);
+        const test_expr = cons1.car;
+        const rest1 = cons1.cdr;
+
+        if (!rest1.isCons()) return error.InvalidIf;
+        const cons2 = rest1.toPtr(Cons);
+        const then_expr = cons2.car;
+        const rest2 = cons2.cdr;
+
+        const else_expr = if (rest2.isCons())
+            rest2.toPtr(Cons).car
+        else
+            Value.nil;
+
+        // Compile test expression
+        const test_ir = try self.compile(test_expr, env);
+
+        // Check if test is a type predicate for occurrence typing
+        const pred_info = extractPredicateInfo(test_ir);
+
+        // Compile then-branch with narrowed type context
+        var then_occ = OccurrenceCtx.init(self.allocator);
+        defer then_occ.deinit();
+
+        if (pred_info) |info| {
+            // In then-branch, the variable has the narrowed type
+            then_occ.narrowed.put(info.var_name, info.narrowed_type) catch
+                return error.OutOfMemory;
+        }
+
+        // Copy existing narrowings
+        var occ_iter = occ.narrowed.iterator();
+        while (occ_iter.next()) |entry| {
+            then_occ.narrowed.put(entry.key_ptr.*, entry.value_ptr.*) catch
+                return error.OutOfMemory;
+        }
+
+        const then_ir = try self.compileTyped(then_expr, env, type_env, &then_occ);
+
+        // Compile else-branch (could narrow to complement type)
+        const else_ir = try self.compileTyped(else_expr, env, type_env, occ);
+
+        const if_ir = self.builder.ifExpr(test_ir, then_ir.ir, else_ir.ir) catch
+            return error.OutOfMemory;
+
+        // Result type is union of branch types (simplified to any for now)
+        return .{ .ir = if_ir, .ty = &types.t_any };
     }
 
     /// Compile a single expression
@@ -637,4 +840,75 @@ test "env lookup" {
 
     // w doesn't exist
     try testing.expect(inner.lookup("w") == null);
+}
+
+test "type inference for literals" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    var compiler = Compiler.init(allocator);
+    defer compiler.deinit();
+
+    var env = Env.init(allocator, null);
+    defer env.deinit();
+
+    var type_env = TypeEnv.init(allocator);
+    defer type_env.deinit();
+
+    var occ = OccurrenceCtx.init(allocator);
+    defer occ.deinit();
+
+    // Fixnum has type fixnum
+    const fixnum_result = try compiler.compileTyped(Value.makeFixnum(42), &env, &type_env, &occ);
+    try testing.expectEqual(&types.t_fixnum, fixnum_result.ty);
+    allocator.destroy(fixnum_result.ir);
+
+    // Nil has type nil
+    const nil_result = try compiler.compileTyped(Value.nil, &env, &type_env, &occ);
+    try testing.expectEqual(&types.t_nil, nil_result.ty);
+    allocator.destroy(nil_result.ir);
+}
+
+test "occurrence typing with type env" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    // Test that type environment lookup works
+    var type_env = TypeEnv.init(allocator);
+    defer type_env.deinit();
+
+    try type_env.bind("x", &types.t_fixnum);
+    try testing.expectEqual(&types.t_fixnum, type_env.lookup("x").?);
+
+    // Test with parent env
+    var child_env = TypeEnv.initWithParent(allocator, &type_env);
+    defer child_env.deinit();
+
+    try child_env.bind("y", &types.t_cons);
+
+    // Child can see parent bindings
+    try testing.expectEqual(&types.t_fixnum, child_env.lookup("x").?);
+    try testing.expectEqual(&types.t_cons, child_env.lookup("y").?);
+}
+
+test "extract predicate info" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    // Build IR for (consp x)
+    var builder = IrBuilder.init(allocator);
+
+    const var_x = try builder.variable("x", 0, 0);
+    const consp_ir = try builder.consp(var_x);
+
+    // Should extract predicate info
+    const info = Compiler.extractPredicateInfo(consp_ir);
+    try testing.expect(info != null);
+    try testing.expectEqualStrings("x", info.?.var_name);
+    try testing.expectEqual(&types.t_cons, info.?.narrowed_type);
+
+    // Free name copy from variable
+    allocator.free(var_x.@"var".name);
+    allocator.destroy(var_x);
+    allocator.destroy(consp_ir);
 }

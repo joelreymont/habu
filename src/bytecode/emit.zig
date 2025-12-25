@@ -121,10 +121,12 @@ pub const Emitter = struct {
     /// Finalize and return the chunk
     pub fn finalize(self: *Emitter) EmitError!Chunk {
         // Add implicit return if not present
-        if (self.code.items.len == 0 or
-            self.code.items[self.code.items.len - 1] != @intFromEnum(Op.ret))
-        {
+        if (self.code.items.len == 0) {
+            // Empty function returns nil
             try self.emitOp(.push_nil);
+            try self.emitOp(.ret);
+        } else if (self.code.items[self.code.items.len - 1] != @intFromEnum(Op.ret)) {
+            // Non-empty function: just add ret (value already on stack)
             try self.emitOp(.ret);
         }
 

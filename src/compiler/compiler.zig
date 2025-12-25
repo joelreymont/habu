@@ -10,6 +10,7 @@ pub const compile = @import("compile.zig");
 pub const Compiler = compile.Compiler;
 pub const Env = compile.Env;
 pub const CompileError = compile.CompileError;
+pub const TypedIr = compile.TypedIr;
 
 test {
     _ = ir;

@@ -15,6 +15,10 @@ const std = @import("std");
 const Type = @import("type.zig").Type;
 const Primitive = @import("type.zig").Primitive;
 const Blame = @import("blame.zig").Blame;
+const runtime = @import("../runtime/runtime.zig");
+const Value = runtime.Value;
+const Cons = runtime.Cons;
+const Vector = runtime.Vector;
 
 /// Contract representation
 pub const Contract = union(enum) {
@@ -58,21 +62,61 @@ pub fn check(value: u64, contract: *const Contract, blame: Blame) !u64 {
             }
             return blame.raise(f.type_name, value);
         },
-        .arrow => {
-            // Higher-order: return wrapped function (proxy)
-            // TODO: implement function proxies
+        .arrow => |a| {
+            // Higher-order: wrap function to check args/return at call time
+            // For now, just verify it's a closure and return it
+            // Full proxy support would require runtime function wrapping
+            if (!predicates.isClosure(value)) {
+                return blame.raise("function", value);
+            }
+            // Store arrow contract info for later checking
+            // (actual proxy implementation requires VM support)
+            _ = a;
             return value;
         },
         .listof => |elem_ctc| {
             // Check each list element
-            _ = elem_ctc;
-            // TODO: traverse list and check elements
+            const val = Value{ .raw = value };
+
+            // Empty list (nil) is valid for listof
+            if (val.isNil()) {
+                return value;
+            }
+
+            // Must be a cons
+            if (!val.isCons()) {
+                return blame.raise("list", value);
+            }
+
+            // Traverse and check each element
+            var current = val;
+            while (current.isCons()) {
+                const cons = current.toPtr(Cons);
+                _ = try check(cons.car.raw, elem_ctc, blame);
+                current = cons.cdr;
+            }
+
+            // Must be proper list (ends with nil)
+            if (!current.isNil()) {
+                return blame.raise("proper list", value);
+            }
+
             return value;
         },
         .vectorof => |elem_ctc| {
             // Check each vector element
-            _ = elem_ctc;
-            // TODO: traverse vector and check elements
+            const val = Value{ .raw = value };
+
+            if (!val.isVector()) {
+                return blame.raise("vector", value);
+            }
+
+            const vec = val.toPtr(Vector);
+            const items = vec.items();
+            for (items) |elem| {
+                _ = try check(elem.raw, elem_ctc, blame);
+            }
+
             return value;
         },
         .@"and" => |a| {
@@ -321,4 +365,43 @@ test "contract check" {
     // Check fails for non-fixnum
     const err_result = check(0, fixnum_ctc, blame); // nil
     try testing.expectError(error.ContractViolation, err_result);
+}
+
+test "listof contract check" {
+    const testing = std.testing;
+    const t = @import("type.zig");
+    const Heap = @import("../runtime/runtime.zig").Heap;
+
+    var compiler = ContractCompiler.init(testing.allocator);
+    defer compiler.deinit();
+
+    // Create (listof any) contract
+    const listof_any = try compiler.compile(&t.t_list_any);
+
+    // Create a heap for allocating cons cells
+    var heap = Heap.init(testing.allocator, .{ .total_size = 1024 * 64 }) catch unreachable;
+    defer heap.deinit();
+
+    // Test: empty list (nil) passes
+    const blame = Blame{
+        .positive = .{ .name = "test" },
+        .negative = .{ .name = "test" },
+    };
+
+    // Nil is valid for listof
+    const nil_result = check(Value.nil.raw, listof_any, blame);
+    try testing.expectEqual(Value.nil.raw, nil_result catch unreachable);
+
+    // Build a list: (1 2 3)
+    const fixnum3 = Value.makeFixnum(3);
+    const pair3 = heap.allocCons(fixnum3, Value.nil) orelse unreachable;
+    const fixnum2 = Value.makeFixnum(2);
+    const pair2 = heap.allocCons(fixnum2, pair3) orelse unreachable;
+    const fixnum1 = Value.makeFixnum(1);
+    const pair1 = heap.allocCons(fixnum1, pair2) orelse unreachable;
+
+    // For now just test that list traversal doesn't crash
+    // (since t_list_any uses isAny which always passes)
+    const list_result = check(pair1.raw, listof_any, blame);
+    try testing.expectEqual(pair1.raw, list_result catch unreachable);
 }
