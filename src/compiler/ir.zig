@@ -1,0 +1,575 @@
+//! Intermediate Representation for Habu compiler
+//!
+//! The IR is a tree structure representing Habu programs after parsing
+//! but before bytecode emission. It's designed to be:
+//! - Easy to generate from S-expressions
+//! - Easy to type-check (occurrence typing)
+//! - Easy to compile to bytecode or JIT
+//!
+//! IR nodes use tagged unions for exhaustive matching.
+
+const std = @import("std");
+const Value = @import("../runtime/value.zig").Value;
+
+/// IR node - represents a Habu expression
+pub const Ir = union(enum) {
+    // ========================================================================
+    // Literals
+    // ========================================================================
+
+    /// Literal value (fixnum, nil, t)
+    lit: Value,
+
+    /// Symbol literal (for quote)
+    quote_sym: []const u8,
+
+    /// Quoted expression (for complex quoted data)
+    quote: *const Ir,
+
+    // ========================================================================
+    // Variables
+    // ========================================================================
+
+    /// Variable reference
+    @"var": struct {
+        name: []const u8,
+        /// Lexical depth (0 = current frame, 1 = parent, etc.)
+        depth: u16,
+        /// Slot index within frame
+        index: u16,
+    },
+
+    /// Variable assignment
+    set: struct {
+        name: []const u8,
+        depth: u16,
+        index: u16,
+        value: *const Ir,
+    },
+
+    // ========================================================================
+    // Binding forms
+    // ========================================================================
+
+    /// Let binding: (let ((x 1) (y 2)) body)
+    let: struct {
+        bindings: []const Binding,
+        body: *const Ir,
+    },
+
+    /// Lambda: (lambda (x y) body)
+    lambda: struct {
+        params: []const []const u8,
+        /// Free variables captured from enclosing scope
+        captures: []const Capture,
+        body: *const Ir,
+    },
+
+    // ========================================================================
+    // Control flow
+    // ========================================================================
+
+    /// Conditional: (if cond then else)
+    @"if": struct {
+        cond: *const Ir,
+        then_branch: *const Ir,
+        else_branch: *const Ir,
+    },
+
+    /// Sequence: (progn e1 e2 ... en)
+    progn: []const *const Ir,
+
+    /// While loop: (while cond body...)
+    loop: struct {
+        cond: *const Ir,
+        body: *const Ir,
+    },
+
+    // ========================================================================
+    // Function calls
+    // ========================================================================
+
+    /// Function call: (f arg1 arg2 ...)
+    call: struct {
+        func: *const Ir,
+        args: []const *const Ir,
+    },
+
+    /// Tail call (same as call but in tail position)
+    tailcall: struct {
+        func: *const Ir,
+        args: []const *const Ir,
+    },
+
+    // ========================================================================
+    // Primitives - Arithmetic
+    // ========================================================================
+
+    add: BinaryOp,
+    sub: BinaryOp,
+    mul: BinaryOp,
+    div: BinaryOp,
+    mod: BinaryOp,
+
+    // ========================================================================
+    // Primitives - Comparison
+    // ========================================================================
+
+    eq: BinaryOp, // eq (pointer/fixnum equality)
+    lt: BinaryOp,
+    gt: BinaryOp,
+    le: BinaryOp,
+    ge: BinaryOp,
+    num_eq: BinaryOp, // = (numeric equality)
+
+    // ========================================================================
+    // Primitives - Logic
+    // ========================================================================
+
+    not: UnaryOp,
+
+    // ========================================================================
+    // Primitives - List operations
+    // ========================================================================
+
+    cons: BinaryOp,
+    car: UnaryOp,
+    cdr: UnaryOp,
+    list: []const *const Ir, // (list a b c)
+
+    // ========================================================================
+    // Primitives - Type predicates
+    // ========================================================================
+
+    consp: UnaryOp,
+    symbolp: UnaryOp,
+    numberp: UnaryOp,
+    stringp: UnaryOp,
+    vectorp: UnaryOp,
+    closurep: UnaryOp,
+    keywordp: UnaryOp,
+    nilp: UnaryOp,
+
+    // ========================================================================
+    // Primitives - Vector operations
+    // ========================================================================
+
+    vec_new: struct {
+        size: *const Ir,
+        init: ?*const Ir,
+    },
+    vec_ref: BinaryOp,
+    vec_set: struct {
+        vec: *const Ir,
+        index: *const Ir,
+        value: *const Ir,
+    },
+    vec_len: UnaryOp,
+
+    // ========================================================================
+    // Primitives - String operations
+    // ========================================================================
+
+    str_ref: BinaryOp,
+    str_len: UnaryOp,
+    str_concat: BinaryOp,
+
+    // ========================================================================
+    // Primitives - I/O
+    // ========================================================================
+
+    print: UnaryOp,
+
+    // ========================================================================
+    // Helper types
+    // ========================================================================
+
+    pub const BinaryOp = struct {
+        left: *const Ir,
+        right: *const Ir,
+    };
+
+    pub const UnaryOp = struct {
+        operand: *const Ir,
+    };
+
+    pub const Binding = struct {
+        name: []const u8,
+        value: *const Ir,
+    };
+
+    pub const Capture = struct {
+        name: []const u8,
+        /// Depth in enclosing scope chain
+        depth: u16,
+        /// Index in that scope
+        index: u16,
+    };
+
+    // ========================================================================
+    // Predicates
+    // ========================================================================
+
+    /// Check if this node is in tail position (for TCO)
+    pub fn isTailPosition(self: Ir) bool {
+        return switch (self) {
+            .tailcall => true,
+            else => false,
+        };
+    }
+
+    /// Check if this is a primitive operation
+    pub fn isPrimitive(self: Ir) bool {
+        return switch (self) {
+            .add, .sub, .mul, .div, .mod,
+            .eq, .lt, .gt, .le, .ge, .num_eq,
+            .not,
+            .cons, .car, .cdr, .list,
+            .consp, .symbolp, .numberp, .stringp, .vectorp, .closurep, .keywordp, .nilp,
+            .vec_new, .vec_ref, .vec_set, .vec_len,
+            .str_ref, .str_len, .str_concat,
+            .print,
+            => true,
+            else => false,
+        };
+    }
+
+    /// Get the active tag name for debugging
+    pub fn tagName(self: Ir) []const u8 {
+        return @tagName(self);
+    }
+};
+
+// ============================================================================
+// IR Builder - allocates IR nodes
+// ============================================================================
+
+pub const IrBuilder = struct {
+    allocator: std.mem.Allocator,
+
+    pub fn init(allocator: std.mem.Allocator) IrBuilder {
+        return .{ .allocator = allocator };
+    }
+
+    // Literals
+    pub fn lit(self: IrBuilder, v: Value) !*Ir {
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .lit = v };
+        return node;
+    }
+
+    pub fn quoteSym(self: IrBuilder, name: []const u8) !*Ir {
+        const node = try self.allocator.create(Ir);
+        const name_copy = try self.allocator.dupe(u8, name);
+        node.* = .{ .quote_sym = name_copy };
+        return node;
+    }
+
+    // Variables
+    pub fn variable(self: IrBuilder, name: []const u8, depth: u16, index: u16) !*Ir {
+        const node = try self.allocator.create(Ir);
+        const name_copy = try self.allocator.dupe(u8, name);
+        node.* = .{ .@"var" = .{ .name = name_copy, .depth = depth, .index = index } };
+        return node;
+    }
+
+    pub fn set(self: IrBuilder, name: []const u8, depth: u16, index: u16, value: *const Ir) !*Ir {
+        const node = try self.allocator.create(Ir);
+        const name_copy = try self.allocator.dupe(u8, name);
+        node.* = .{ .set = .{ .name = name_copy, .depth = depth, .index = index, .value = value } };
+        return node;
+    }
+
+    // Binding forms
+    pub fn letExpr(self: IrBuilder, bindings: []const Ir.Binding, body: *const Ir) !*Ir {
+        const node = try self.allocator.create(Ir);
+        const bindings_copy = try self.allocator.dupe(Ir.Binding, bindings);
+        node.* = .{ .let = .{ .bindings = bindings_copy, .body = body } };
+        return node;
+    }
+
+    pub fn lambda(self: IrBuilder, params: []const []const u8, captures: []const Ir.Capture, body: *const Ir) !*Ir {
+        const node = try self.allocator.create(Ir);
+        // Copy params
+        var params_copy = try self.allocator.alloc([]const u8, params.len);
+        for (params, 0..) |p, i| {
+            params_copy[i] = try self.allocator.dupe(u8, p);
+        }
+        const captures_copy = try self.allocator.dupe(Ir.Capture, captures);
+        node.* = .{ .lambda = .{ .params = params_copy, .captures = captures_copy, .body = body } };
+        return node;
+    }
+
+    // Control flow
+    pub fn ifExpr(self: IrBuilder, cond: *const Ir, then_branch: *const Ir, else_branch: *const Ir) !*Ir {
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .@"if" = .{ .cond = cond, .then_branch = then_branch, .else_branch = else_branch } };
+        return node;
+    }
+
+    pub fn progn(self: IrBuilder, exprs: []const *const Ir) !*Ir {
+        const node = try self.allocator.create(Ir);
+        const exprs_copy = try self.allocator.dupe(*const Ir, exprs);
+        node.* = .{ .progn = exprs_copy };
+        return node;
+    }
+
+    pub fn loop(self: IrBuilder, cond: *const Ir, body: *const Ir) !*Ir {
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .loop = .{ .cond = cond, .body = body } };
+        return node;
+    }
+
+    // Function calls
+    pub fn call(self: IrBuilder, func: *const Ir, args: []const *const Ir) !*Ir {
+        const node = try self.allocator.create(Ir);
+        const args_copy = try self.allocator.dupe(*const Ir, args);
+        node.* = .{ .call = .{ .func = func, .args = args_copy } };
+        return node;
+    }
+
+    pub fn tailcall(self: IrBuilder, func: *const Ir, args: []const *const Ir) !*Ir {
+        const node = try self.allocator.create(Ir);
+        const args_copy = try self.allocator.dupe(*const Ir, args);
+        node.* = .{ .tailcall = .{ .func = func, .args = args_copy } };
+        return node;
+    }
+
+    // Arithmetic
+    pub fn add(self: IrBuilder, left: *const Ir, right: *const Ir) !*Ir {
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .add = .{ .left = left, .right = right } };
+        return node;
+    }
+
+    pub fn sub(self: IrBuilder, left: *const Ir, right: *const Ir) !*Ir {
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .sub = .{ .left = left, .right = right } };
+        return node;
+    }
+
+    pub fn mul(self: IrBuilder, left: *const Ir, right: *const Ir) !*Ir {
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .mul = .{ .left = left, .right = right } };
+        return node;
+    }
+
+    pub fn div(self: IrBuilder, left: *const Ir, right: *const Ir) !*Ir {
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .div = .{ .left = left, .right = right } };
+        return node;
+    }
+
+    // Comparison
+    pub fn eq(self: IrBuilder, left: *const Ir, right: *const Ir) !*Ir {
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .eq = .{ .left = left, .right = right } };
+        return node;
+    }
+
+    pub fn lt(self: IrBuilder, left: *const Ir, right: *const Ir) !*Ir {
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .lt = .{ .left = left, .right = right } };
+        return node;
+    }
+
+    pub fn gt(self: IrBuilder, left: *const Ir, right: *const Ir) !*Ir {
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .gt = .{ .left = left, .right = right } };
+        return node;
+    }
+
+    // List operations
+    pub fn cons(self: IrBuilder, car_val: *const Ir, cdr_val: *const Ir) !*Ir {
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .cons = .{ .left = car_val, .right = cdr_val } };
+        return node;
+    }
+
+    pub fn car(self: IrBuilder, pair_val: *const Ir) !*Ir {
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .car = .{ .operand = pair_val } };
+        return node;
+    }
+
+    pub fn cdr(self: IrBuilder, pair_val: *const Ir) !*Ir {
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .cdr = .{ .operand = pair_val } };
+        return node;
+    }
+
+    pub fn list(self: IrBuilder, elements: []const *const Ir) !*Ir {
+        const node = try self.allocator.create(Ir);
+        const elems_copy = try self.allocator.dupe(*const Ir, elements);
+        node.* = .{ .list = elems_copy };
+        return node;
+    }
+
+    // Type predicates
+    pub fn consp(self: IrBuilder, operand: *const Ir) !*Ir {
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .consp = .{ .operand = operand } };
+        return node;
+    }
+
+    pub fn symbolp(self: IrBuilder, operand: *const Ir) !*Ir {
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .symbolp = .{ .operand = operand } };
+        return node;
+    }
+
+    pub fn numberp(self: IrBuilder, operand: *const Ir) !*Ir {
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .numberp = .{ .operand = operand } };
+        return node;
+    }
+
+    pub fn nilp(self: IrBuilder, operand: *const Ir) !*Ir {
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .nilp = .{ .operand = operand } };
+        return node;
+    }
+
+    pub fn not(self: IrBuilder, operand: *const Ir) !*Ir {
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .not = .{ .operand = operand } };
+        return node;
+    }
+
+    // Vector operations
+    pub fn vecNew(self: IrBuilder, size: *const Ir, init_val: ?*const Ir) !*Ir {
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .vec_new = .{ .size = size, .init = init_val } };
+        return node;
+    }
+
+    pub fn vecRef(self: IrBuilder, vec: *const Ir, index: *const Ir) !*Ir {
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .vec_ref = .{ .left = vec, .right = index } };
+        return node;
+    }
+
+    pub fn vecLen(self: IrBuilder, vec: *const Ir) !*Ir {
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .vec_len = .{ .operand = vec } };
+        return node;
+    }
+
+    // String operations
+    pub fn strLen(self: IrBuilder, s: *const Ir) !*Ir {
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .str_len = .{ .operand = s } };
+        return node;
+    }
+
+    // I/O
+    pub fn print(self: IrBuilder, operand: *const Ir) !*Ir {
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .print = .{ .operand = operand } };
+        return node;
+    }
+};
+
+// ============================================================================
+// Tests
+// ============================================================================
+
+test "ir literal" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    const builder = IrBuilder.init(allocator);
+    const node = try builder.lit(Value.makeFixnum(42));
+    defer allocator.destroy(node);
+
+    try testing.expectEqual(Ir.lit, std.meta.activeTag(node.*));
+    try testing.expectEqual(@as(i64, 42), node.lit.toFixnum());
+}
+
+test "ir binary op" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    const builder = IrBuilder.init(allocator);
+    const left = try builder.lit(Value.makeFixnum(1));
+    const right = try builder.lit(Value.makeFixnum(2));
+    const sum = try builder.add(left, right);
+    defer {
+        allocator.destroy(left);
+        allocator.destroy(right);
+        allocator.destroy(sum);
+    }
+
+    try testing.expectEqual(Ir.add, std.meta.activeTag(sum.*));
+    try testing.expect(sum.isPrimitive());
+}
+
+test "ir if expression" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    const builder = IrBuilder.init(allocator);
+    const test_expr = try builder.lit(Value.t);
+    const then_expr = try builder.lit(Value.makeFixnum(1));
+    const else_expr = try builder.lit(Value.makeFixnum(0));
+    const if_node = try builder.ifExpr(test_expr, then_expr, else_expr);
+    defer {
+        allocator.destroy(test_expr);
+        allocator.destroy(then_expr);
+        allocator.destroy(else_expr);
+        allocator.destroy(if_node);
+    }
+
+    try testing.expectEqual(Ir.@"if", std.meta.activeTag(if_node.*));
+    try testing.expect(!if_node.isPrimitive());
+}
+
+test "ir lambda" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    const builder = IrBuilder.init(allocator);
+    const body = try builder.lit(Value.nil);
+    const params = [_][]const u8{ "x", "y" };
+    const captures = [_]Ir.Capture{};
+    const lam = try builder.lambda(&params, &captures, body);
+    defer {
+        allocator.destroy(body);
+        for (lam.lambda.params) |p| allocator.free(p);
+        allocator.free(lam.lambda.params);
+        allocator.free(lam.lambda.captures);
+        allocator.destroy(lam);
+    }
+
+    try testing.expectEqual(Ir.lambda, std.meta.activeTag(lam.*));
+    try testing.expectEqual(@as(usize, 2), lam.lambda.params.len);
+    try testing.expectEqualStrings("x", lam.lambda.params[0]);
+}
+
+test "ir variable" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    const builder = IrBuilder.init(allocator);
+    const v = try builder.variable("foo", 0, 3);
+    defer {
+        allocator.free(v.@"var".name);
+        allocator.destroy(v);
+    }
+
+    try testing.expectEqual(Ir.@"var", std.meta.activeTag(v.*));
+    try testing.expectEqualStrings("foo", v.@"var".name);
+    try testing.expectEqual(@as(u16, 0), v.@"var".depth);
+    try testing.expectEqual(@as(u16, 3), v.@"var".index);
+}
+
+test "ir tag name" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    const builder = IrBuilder.init(allocator);
+    const node = try builder.lit(Value.nil);
+    defer allocator.destroy(node);
+
+    try testing.expectEqualStrings("lit", node.tagName());
+}
