@@ -872,6 +872,10 @@ pub const Vm = struct {
                     const val = try self.pop();
                     try self.push(if (val.isCharacter()) Value.t else Value.nil);
                 },
+                .floatp => {
+                    const val = try self.pop();
+                    try self.push(if (val.isFloat()) Value.t else Value.nil);
+                },
                 .char_code => {
                     const val = try self.pop();
                     if (!val.isCharacter()) return error.TypeMismatch;

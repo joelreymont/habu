@@ -503,6 +503,10 @@ pub const Op = enum(u8) {
     /// ( -- )
     pop_unwind = 0xB4,
 
+    /// Check if value is a float
+    /// ( x -- t/nil )
+    floatp = 0xB5,
+
     // ========================================================================
     // Multiple values
     // ========================================================================
@@ -548,7 +552,7 @@ pub const Op = enum(u8) {
             .check_vector, .check_closure, .check_non_nil, .check_list,
             .apply, .pop_catch, .throw,
             .hash_get, .hash_set, .hash_rem, .hash_count, .hashtablep,
-            .characterp, .char_code, .code_char, .char_eq, .char_lt, .char_gt,
+            .characterp, .floatp, .char_code, .code_char, .char_eq, .char_lt, .char_gt,
             .read_char, .peek_char, .unread_char, .boundp, .fboundp,
             .symbol_value, .symbol_function, .typep,
             .abs, .zerop, .plusp, .minusp, .evenp, .oddp,

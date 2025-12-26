@@ -284,6 +284,7 @@ pub const Ir = union(enum) {
     keywordp: UnaryOp,
     nilp: UnaryOp,
     characterp: UnaryOp,
+    floatp: UnaryOp,
 
     // ========================================================================
     // Primitives - Character operations
@@ -737,6 +738,12 @@ pub const IrBuilder = struct {
     pub fn characterp(self: IrBuilder, operand: *const Ir) !*Ir {
         const node = try self.allocator.create(Ir);
         node.* = .{ .characterp = .{ .operand = operand } };
+        return node;
+    }
+
+    pub fn floatp(self: IrBuilder, operand: *const Ir) !*Ir {
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .floatp = .{ .operand = operand } };
         return node;
     }
 

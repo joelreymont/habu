@@ -202,6 +202,7 @@ pub const Emitter = struct {
             .keywordp => |op| try self.emitUnaryOp(op.operand, .keywordp),
             .nilp => |op| try self.emitUnaryOp(op.operand, .nilp),
             .characterp => |op| try self.emitUnaryOp(op.operand, .characterp),
+            .floatp => |op| try self.emitUnaryOp(op.operand, .floatp),
 
             // Character operations
             .char_code => |op| try self.emitUnaryOp(op.operand, .char_code),

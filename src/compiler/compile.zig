@@ -429,8 +429,14 @@ pub const Compiler = struct {
         .{ .tag = .numberp, .then_ty = &types.t_fixnum, .else_ty = null },
         .{ .tag = .stringp, .then_ty = &types.t_string, .else_ty = null },
         .{ .tag = .vectorp, .then_ty = &types.t_vector, .else_ty = null },
+        .{ .tag = .closurep, .then_ty = &types.t_closure, .else_ty = null },
+        .{ .tag = .keywordp, .then_ty = &types.t_keyword, .else_ty = null },
+        .{ .tag = .characterp, .then_ty = &types.t_char, .else_ty = null },
+        .{ .tag = .floatp, .then_ty = &types.t_float, .else_ty = null },
         // nilp: if nil then x is nil, else x is non-nil
         .{ .tag = .nilp, .then_ty = &types.t_nil, .else_ty = &types.t_non_nil },
+        // not: if (not x) is true then x is nil, else x is non-nil
+        .{ .tag = .not, .then_ty = &types.t_nil, .else_ty = &types.t_non_nil },
     };
 
     /// Get operand from a unary predicate IR node
@@ -441,7 +447,12 @@ pub const Compiler = struct {
             .numberp => |p| p.operand,
             .stringp => |p| p.operand,
             .vectorp => |p| p.operand,
+            .closurep => |p| p.operand,
+            .keywordp => |p| p.operand,
+            .characterp => |p| p.operand,
+            .floatp => |p| p.operand,
             .nilp => |p| p.operand,
+            .not => |p| p.operand,
             else => null,
         };
     }
@@ -2269,6 +2280,9 @@ pub const Compiler = struct {
         if (std.mem.eql(u8, name, "characterp") or std.mem.eql(u8, name, "character?")) {
             return self.compileUnaryPrim(args, env, .characterp);
         }
+        if (std.mem.eql(u8, name, "floatp") or std.mem.eql(u8, name, "float?")) {
+            return self.compileUnaryPrim(args, env, .floatp);
+        }
 
         // Character operations
         if (std.mem.eql(u8, name, "char-code")) {
@@ -2409,7 +2423,7 @@ pub const Compiler = struct {
         return error.InvalidSyntax; // Not a known primitive
     }
 
-    const PrimTag = enum { add, sub, mul, div, mod, eq, lt, gt, le, ge, num_eq, cons, car, cdr, consp, symbolp, numberp, stringp, vectorp, nilp, not, vec_ref, vec_len, str_ref, str_len, str_eq, print, random, intern, sym_name, type_of, characterp, char_code, code_char, char_eq, char_lt, char_gt, read_char, peek_char, read, unread_char, boundp, fboundp, symbol_value, symbol_function, typep, abs, zerop, plusp, minusp, evenp, oddp };
+    const PrimTag = enum { add, sub, mul, div, mod, eq, lt, gt, le, ge, num_eq, cons, car, cdr, consp, symbolp, numberp, stringp, vectorp, nilp, not, vec_ref, vec_len, str_ref, str_len, str_eq, print, random, intern, sym_name, type_of, characterp, floatp, char_code, code_char, char_eq, char_lt, char_gt, read_char, peek_char, read, unread_char, boundp, fboundp, symbol_value, symbol_function, typep, abs, zerop, plusp, minusp, evenp, oddp };
 
     fn compileBinaryPrim(self: *Compiler, args: Value, env: *const Env, prim: PrimTag) CompileError!*Ir {
         if (!args.isCons()) return error.InvalidSyntax;
@@ -2511,6 +2525,7 @@ pub const Compiler = struct {
             },
             .type_of => self.builder.typeOf(operand),
             .characterp => self.builder.characterp(operand),
+            .floatp => self.builder.floatp(operand),
             .char_code => self.builder.charCode(operand),
             .code_char => self.builder.codeChar(operand),
             .unread_char => self.builder.unreadChar(operand),
