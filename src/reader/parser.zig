@@ -22,12 +22,7 @@ pub const Parser = struct {
     heap: *Heap,
     current: Token,
 
-    /// Interned symbols (for eq comparison)
-    symbol_table: std.StringHashMap(Value),
-    /// Backing allocator for symbol table
-    allocator: std.mem.Allocator,
-
-    pub fn init(allocator: std.mem.Allocator, heap: *Heap, source: []const u8) Parser {
+    pub fn init(_: std.mem.Allocator, heap: *Heap, source: []const u8) Parser {
         var lexer = Lexer.init(source);
         const first_token = lexer.next();
 
@@ -35,18 +30,11 @@ pub const Parser = struct {
             .lexer = lexer,
             .heap = heap,
             .current = first_token,
-            .symbol_table = std.StringHashMap(Value).init(allocator),
-            .allocator = allocator,
         };
     }
 
-    pub fn deinit(self: *Parser) void {
-        // Free all interned symbol keys
-        var it = self.symbol_table.keyIterator();
-        while (it.next()) |key| {
-            self.allocator.free(key.*);
-        }
-        self.symbol_table.deinit();
+    pub fn deinit(_: *Parser) void {
+        // Symbol table is now owned by Heap - nothing to clean up here
     }
 
     /// Parse one S-expression
@@ -55,10 +43,10 @@ pub const Parser = struct {
     }
 
     /// Parse all expressions until EOF
-    pub fn parseAll(self: *Parser, results: *std.ArrayList(Value)) ParseError!void {
+    pub fn parseAll(self: *Parser, allocator: std.mem.Allocator, results: *std.ArrayList(Value)) ParseError!void {
         while (self.current.kind != .eof) {
             const expr = try self.parseExpr();
-            results.append(self.allocator, expr) catch return error.OutOfMemory;
+            results.append(allocator, expr) catch return error.OutOfMemory;
         }
     }
 
@@ -193,40 +181,7 @@ pub const Parser = struct {
 
     /// Intern a symbol (same name = same Value)
     fn internSymbol(self: *Parser, name: []const u8) ParseError!Value {
-        if (self.symbol_table.get(name)) |existing| {
-            return existing;
-        }
-
-        // Allocate symbol in heap
-        const sym = self.allocSymbol(name) catch return error.OutOfMemory;
-
-        // Store in table (need to dupe the key)
-        const key = self.allocator.dupe(u8, name) catch return error.OutOfMemory;
-        self.symbol_table.put(key, sym) catch return error.OutOfMemory;
-
-        return sym;
-    }
-
-    fn allocSymbol(self: *Parser, name: []const u8) !Value {
-        const objects = @import("../runtime/objects.zig");
-
-        const aligned_name_len = std.mem.alignForward(usize, name.len, 8);
-        const total_size = @sizeOf(objects.Symbol) + aligned_name_len;
-
-        const ptr = self.heap.allocRaw(total_size) orelse return error.OutOfMemory;
-        const sym: *objects.Symbol = @ptrCast(@alignCast(ptr));
-        const name_ptr: [*]u8 = @ptrCast(ptr + @sizeOf(objects.Symbol));
-
-        @memcpy(name_ptr[0..name.len], name);
-
-        sym.* = .{
-            .name_len = name.len,
-            .name_ptr = name_ptr,
-            .plist = Value.nil,
-            .reserved = 0,
-        };
-
-        return Value.makeSymbol(sym);
+        return self.heap.intern(name) orelse error.OutOfMemory;
     }
 
     fn allocKeyword(self: *Parser, name: []const u8) ParseError!Value {

@@ -14,6 +14,39 @@ const objects = @import("objects.zig");
 
 pub const ALIGNMENT: usize = 16;
 
+/// Interned symbol table for eq comparison
+pub const SymbolTable = struct {
+    /// Map from name to interned symbol Value
+    map: std.StringHashMapUnmanaged(Value),
+    /// Backing allocator for keys
+    allocator: std.mem.Allocator,
+
+    pub fn init(allocator: std.mem.Allocator) SymbolTable {
+        return .{
+            .map = .{},
+            .allocator = allocator,
+        };
+    }
+
+    pub fn deinit(self: *SymbolTable) void {
+        // Free all interned symbol keys
+        var it = self.map.keyIterator();
+        while (it.next()) |key| {
+            self.allocator.free(key.*);
+        }
+        self.map.deinit(self.allocator);
+    }
+
+    pub fn get(self: *const SymbolTable, name: []const u8) ?Value {
+        return self.map.get(name);
+    }
+
+    pub fn put(self: *SymbolTable, name: []const u8, sym: Value) !void {
+        const key = try self.allocator.dupe(u8, name);
+        try self.map.put(self.allocator, key, sym);
+    }
+};
+
 /// Heap configuration
 pub const Config = struct {
     /// Total heap size (both semispaces combined)
@@ -42,6 +75,8 @@ pub const Heap = struct {
     backing_allocator: std.mem.Allocator,
     /// Statistics
     stats: Stats,
+    /// Interned symbol table
+    symbols: SymbolTable,
 
     pub const Stats = struct {
         allocations: usize = 0,
@@ -69,11 +104,13 @@ pub const Heap = struct {
             .gc_threshold = @intFromFloat(@as(f32, @floatFromInt(space_size)) * config.gc_threshold),
             .backing_allocator = allocator,
             .stats = .{},
+            .symbols = SymbolTable.init(allocator),
         };
     }
 
     /// Deinitialize heap
     pub fn deinit(self: *Heap) void {
+        self.symbols.deinit();
         self.backing_allocator.free(self.memory);
     }
 
@@ -222,6 +259,23 @@ pub const Heap = struct {
         };
 
         return Value.makeSymbol(sym);
+    }
+
+    /// Intern a symbol (same name = same Value)
+    /// Returns existing symbol if already interned, otherwise creates new one
+    pub fn intern(self: *Heap, name: []const u8) ?Value {
+        // Check for existing symbol
+        if (self.symbols.get(name)) |existing| {
+            return existing;
+        }
+
+        // Allocate new symbol
+        const sym = self.allocSymbol(name) orelse return null;
+
+        // Add to symbol table
+        self.symbols.put(name, sym) catch return null;
+
+        return sym;
     }
 
     /// Swap from-space and to-space

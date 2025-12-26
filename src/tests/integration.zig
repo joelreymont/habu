@@ -36,8 +36,8 @@ fn evalExpr(allocator: std.mem.Allocator, heap: *Heap, source: []const u8) !Valu
 
     const expr = try parser.parse();
 
-    // Compile
-    var comp = Compiler.init(arena_alloc);
+    // Compile (with heap for symbol interning)
+    var comp = Compiler.initWithHeap(arena_alloc, heap);
     defer comp.deinit();
 
     var env = Env.init(arena_alloc, null);

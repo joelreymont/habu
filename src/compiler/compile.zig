@@ -37,6 +37,59 @@ pub const CompileError = error{
     OutOfMemory,
 };
 
+/// Pre-interned special form symbols for identity comparison
+pub const Builtins = struct {
+    // Control flow
+    @"if": Value,
+    cond: Value,
+    @"and": Value,
+    @"or": Value,
+
+    // Binding forms
+    let: Value,
+    @"let*": Value,
+    letrec: Value,
+    lambda: Value,
+    define: Value,
+    defun: Value,
+    @"set!": Value,
+
+    // Sequencing
+    progn: Value,
+    begin: Value,
+    @"while": Value,
+
+    // Quoting
+    quote: Value,
+
+    // Function application
+    funcall: Value,
+    apply: Value,
+
+    /// Initialize all builtin symbols from heap
+    pub fn init(heap: *Heap) ?Builtins {
+        return .{
+            .@"if" = heap.intern("if") orelse return null,
+            .cond = heap.intern("cond") orelse return null,
+            .@"and" = heap.intern("and") orelse return null,
+            .@"or" = heap.intern("or") orelse return null,
+            .let = heap.intern("let") orelse return null,
+            .@"let*" = heap.intern("let*") orelse return null,
+            .letrec = heap.intern("letrec") orelse return null,
+            .lambda = heap.intern("lambda") orelse return null,
+            .define = heap.intern("define") orelse return null,
+            .defun = heap.intern("defun") orelse return null,
+            .@"set!" = heap.intern("set!") orelse return null,
+            .progn = heap.intern("progn") orelse return null,
+            .begin = heap.intern("begin") orelse return null,
+            .@"while" = heap.intern("while") orelse return null,
+            .quote = heap.intern("quote") orelse return null,
+            .funcall = heap.intern("funcall") orelse return null,
+            .apply = heap.intern("apply") orelse return null,
+        };
+    }
+};
+
 /// Lexical environment for variable resolution
 pub const Env = struct {
     /// Variable bindings at this level
@@ -204,6 +257,8 @@ pub const Compiler = struct {
     type_checking_enabled: bool,
     /// Global environment for top-level definitions
     globals: GlobalEnv,
+    /// Pre-interned builtin symbols for identity comparison
+    builtins: ?Builtins,
 
     pub fn init(allocator: std.mem.Allocator) Compiler {
         return .{
@@ -212,6 +267,19 @@ pub const Compiler = struct {
             .type_checker = TypeChecker.init(allocator),
             .type_checking_enabled = false, // Off by default for gradual typing
             .globals = GlobalEnv.init(allocator),
+            .builtins = null, // Lazily initialized when heap is available
+        };
+    }
+
+    /// Initialize with heap for symbol interning
+    pub fn initWithHeap(allocator: std.mem.Allocator, heap: *Heap) Compiler {
+        return .{
+            .builder = IrBuilder.init(allocator),
+            .allocator = allocator,
+            .type_checker = TypeChecker.init(allocator),
+            .type_checking_enabled = false,
+            .globals = GlobalEnv.init(allocator),
+            .builtins = Builtins.init(heap),
         };
     }
 
@@ -506,35 +574,58 @@ pub const Compiler = struct {
         const head = cons.car;
         const tail = cons.cdr;
 
-        // Check for special forms
+        // Check for special forms using symbol identity comparison
         if (head.isSymbol()) {
-            const sym = head.toPtr(Symbol);
-            const name = sym.getName();
+            if (self.builtins) |b| {
+                // Fast path: identity comparison (single u64 compare)
+                if (head.raw == b.@"if".raw) return self.compileIfWithTail(tail, env, in_tail);
+                if (head.raw == b.let.raw) return self.compileLetWithTail(tail, env, in_tail);
+                if (head.raw == b.letrec.raw) return self.compileLetrecWithTail(tail, env, in_tail);
+                if (head.raw == b.@"let*".raw) return self.compileLetStarWithTail(tail, env, in_tail);
+                if (head.raw == b.cond.raw) return self.compileCondWithTail(tail, env, in_tail);
+                if (head.raw == b.progn.raw or head.raw == b.begin.raw) return self.compilePrognWithTail(tail, env, in_tail);
+                if (head.raw == b.lambda.raw) return self.compileLambda(tail, env);
+                if (head.raw == b.@"and".raw) return self.compileAnd(tail, env);
+                if (head.raw == b.@"or".raw) return self.compileOr(tail, env);
+                if (head.raw == b.funcall.raw) return self.compileFuncall(tail, env);
+                if (head.raw == b.apply.raw) return self.compileApply(tail, env);
+                if (head.raw == b.@"set!".raw) return self.compileSet(tail, env);
+                if (head.raw == b.quote.raw) return self.compileQuote(tail);
+                if (head.raw == b.@"while".raw) return self.compileWhile(tail, env);
+                if (head.raw == b.define.raw) return self.compileDefine(tail, env);
+                if (head.raw == b.defun.raw) return self.compileDefun(tail, env);
+            } else {
+                // Fallback: string comparison via StaticStringMap
+                const sym = head.toPtr(Symbol);
+                const name = sym.getName();
 
-            if (special_forms.get(name)) |form| {
-                return switch (form) {
-                    // Tail-position aware forms
-                    .@"if" => self.compileIfWithTail(tail, env, in_tail),
-                    .let => self.compileLetWithTail(tail, env, in_tail),
-                    .letrec => self.compileLetrecWithTail(tail, env, in_tail),
-                    .@"let*" => self.compileLetStarWithTail(tail, env, in_tail),
-                    .cond => self.compileCondWithTail(tail, env, in_tail),
-                    .progn, .begin => self.compilePrognWithTail(tail, env, in_tail),
-                    // Non-tail forms
-                    .lambda => self.compileLambda(tail, env),
-                    .@"and" => self.compileAnd(tail, env),
-                    .@"or" => self.compileOr(tail, env),
-                    .funcall => self.compileFuncall(tail, env),
-                    .apply => self.compileApply(tail, env),
-                    .@"set!" => self.compileSet(tail, env),
-                    .quote => self.compileQuote(tail),
-                    .@"while" => self.compileWhile(tail, env),
-                    .define => self.compileDefine(tail, env),
-                    .defun => self.compileDefun(tail, env),
-                };
+                if (special_forms.get(name)) |form| {
+                    return switch (form) {
+                        // Tail-position aware forms
+                        .@"if" => self.compileIfWithTail(tail, env, in_tail),
+                        .let => self.compileLetWithTail(tail, env, in_tail),
+                        .letrec => self.compileLetrecWithTail(tail, env, in_tail),
+                        .@"let*" => self.compileLetStarWithTail(tail, env, in_tail),
+                        .cond => self.compileCondWithTail(tail, env, in_tail),
+                        .progn, .begin => self.compilePrognWithTail(tail, env, in_tail),
+                        // Non-tail forms
+                        .lambda => self.compileLambda(tail, env),
+                        .@"and" => self.compileAnd(tail, env),
+                        .@"or" => self.compileOr(tail, env),
+                        .funcall => self.compileFuncall(tail, env),
+                        .apply => self.compileApply(tail, env),
+                        .@"set!" => self.compileSet(tail, env),
+                        .quote => self.compileQuote(tail),
+                        .@"while" => self.compileWhile(tail, env),
+                        .define => self.compileDefine(tail, env),
+                        .defun => self.compileDefun(tail, env),
+                    };
+                }
             }
 
-            // Check for primitives
+            // Check for primitives (both paths need this)
+            const sym = head.toPtr(Symbol);
+            const name = sym.getName();
             if (self.compilePrimitive(name, tail, env)) |prim| {
                 return prim;
             } else |_| {

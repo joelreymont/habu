@@ -64,7 +64,7 @@ pub const Repl = struct {
             .heap = heap,
             .vm = Vm.init(allocator, heap),
             .config = config,
-            .compiler = Compiler.init(allocator),
+            .compiler = Compiler.initWithHeap(allocator, heap),
             .persistent_chunk_ptrs = std.ArrayList(*bytecode.Chunk){},
         };
     }
