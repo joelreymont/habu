@@ -69,6 +69,10 @@ pub const Builtins = struct {
     funcall: Value,
     apply: Value,
 
+    // Macros
+    defmacro: Value,
+    macroexpand: Value,
+
     /// Initialize all builtin symbols from heap
     pub fn init(heap: *Heap) ?Builtins {
         return .{
@@ -92,6 +96,8 @@ pub const Builtins = struct {
             .@"unquote-splicing" = heap.intern("unquote-splicing") orelse return null,
             .funcall = heap.intern("funcall") orelse return null,
             .apply = heap.intern("apply") orelse return null,
+            .defmacro = heap.intern("defmacro") orelse return null,
+            .macroexpand = heap.intern("macroexpand") orelse return null,
         };
     }
 };

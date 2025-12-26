@@ -396,8 +396,11 @@ pub const Emitter = struct {
     }
 
     fn emitLambda(self: *Emitter, lam: anytype) EmitError!void {
-        // Create nested emitter for lambda body
-        var lambda_emitter = Emitter.init(self.allocator);
+        // Create nested emitter for lambda body - inherit heap for symbol interning
+        var lambda_emitter = if (self.heap) |h|
+            Emitter.initWithHeap(self.allocator, h)
+        else
+            Emitter.init(self.allocator);
 
         lambda_emitter.arity = @intCast(lam.params.len);
         lambda_emitter.num_locals = @intCast(lam.params.len);

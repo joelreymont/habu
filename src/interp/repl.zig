@@ -57,6 +57,8 @@ pub const Repl = struct {
     compiler: Compiler,
     /// Persistent chunk storage for closures (stored individually to avoid reallocation)
     persistent_chunk_ptrs: std.ArrayList(*bytecode.Chunk),
+    /// Macro definitions: name -> closure
+    macros: std.StringHashMap(Value),
 
     pub fn init(allocator: std.mem.Allocator, heap: *Heap, config: Config) Repl {
         return .{
@@ -66,6 +68,7 @@ pub const Repl = struct {
             .config = config,
             .compiler = Compiler.initWithHeap(allocator, heap),
             .persistent_chunk_ptrs = std.ArrayList(*bytecode.Chunk){},
+            .macros = std.StringHashMap(Value).init(allocator),
         };
     }
 
@@ -77,6 +80,7 @@ pub const Repl = struct {
             self.allocator.destroy(chunk_ptr);
         }
         self.persistent_chunk_ptrs.deinit(self.allocator);
+        self.macros.deinit();
     }
 
     /// Run the REPL loop with File-based I/O
@@ -149,7 +153,15 @@ pub const Repl = struct {
         var parser = Parser.init(arena_alloc, self.heap, source);
         defer parser.deinit();
 
-        const expr = parser.parse() catch return error.ParseError;
+        var expr = parser.parse() catch return error.ParseError;
+
+        // Check for defmacro
+        if (self.isDefmacro(expr)) {
+            return self.handleDefmacro(expr, arena_alloc);
+        }
+
+        // Expand macros before compilation
+        expr = self.expandMacros(expr) catch return error.CompileError;
 
         // Compile - use persistent compiler for globals, but temp builder/allocator
         // Save and restore since they use arena allocator
@@ -419,6 +431,243 @@ pub const Repl = struct {
             pos += 1;
         }
         return pos;
+    }
+
+    // ========================================================================
+    // Macro support
+    // ========================================================================
+
+    /// Check if expression is (defmacro name (args) body)
+    fn isDefmacro(self: *Repl, expr: Value) bool {
+        if (!expr.isCons()) return false;
+        const cons = expr.toPtr(Cons);
+        if (!cons.car.isSymbol()) return false;
+
+        if (self.compiler.builtins) |b| {
+            return cons.car.raw == b.defmacro.raw;
+        }
+
+        const sym = cons.car.toPtr(Symbol);
+        return std.mem.eql(u8, sym.getName(), "defmacro");
+    }
+
+    /// Handle defmacro: compile the macro body and store the closure
+    /// (defmacro name (args...) body...) -> stores (lambda (args...) body...) as macro
+    fn handleDefmacro(self: *Repl, expr: Value, arena_alloc: std.mem.Allocator) !Value {
+        // Extract: (defmacro name (args...) body...)
+        const cons1 = expr.toPtr(Cons);
+        const rest1 = cons1.cdr;
+        if (!rest1.isCons()) return error.CompileError;
+
+        const cons2 = rest1.toPtr(Cons);
+        if (!cons2.car.isSymbol()) return error.CompileError;
+        const name_sym = cons2.car.toPtr(Symbol);
+        const name = name_sym.getName();
+
+        const rest2 = cons2.cdr;
+        if (!rest2.isCons()) return error.CompileError;
+
+        // Build (lambda (args...) body...) to evaluate
+        const lambda_sym = self.heap.intern("lambda") orelse return error.CompileError;
+        const lambda_expr = self.heap.allocCons(lambda_sym, rest2) orelse return error.CompileError;
+
+        // Compile and evaluate the lambda to get a closure
+        const saved_builder = self.compiler.builder;
+        const saved_allocator = self.compiler.allocator;
+        self.compiler.builder = IrBuilder.init(arena_alloc);
+        self.compiler.allocator = arena_alloc;
+
+        var env = Env.init(arena_alloc, null);
+        defer env.deinit();
+
+        const ir_node = self.compiler.compile(lambda_expr, &env) catch |err| {
+            self.compiler.builder = saved_builder;
+            self.compiler.allocator = saved_allocator;
+            return if (err == error.UnboundVariable) error.CompileError else error.CompileError;
+        };
+        self.compiler.builder = saved_builder;
+        self.compiler.allocator = saved_allocator;
+
+        // Emit bytecode
+        var emitter = Emitter.initWithHeap(self.allocator, self.heap);
+        emitter.emit(ir_node) catch {
+            emitter.deinit();
+            return error.EmitError;
+        };
+        const chunk = emitter.finalize() catch {
+            emitter.deinit();
+            return error.EmitError;
+        };
+        const child_chunks = emitter.getChildChunks() catch {
+            self.allocator.free(chunk.code);
+            self.allocator.free(chunk.constants);
+            emitter.deinit();
+            return error.EmitError;
+        };
+        emitter.deinit();
+
+        defer self.allocator.free(chunk.code);
+        defer self.allocator.free(chunk.constants);
+
+        // Add child chunks
+        const chunk_base: u16 = @intCast(self.persistent_chunk_ptrs.items.len);
+        for (child_chunks) |c| {
+            const chunk_ptr = self.allocator.create(bytecode.Chunk) catch {
+                self.allocator.free(child_chunks);
+                return error.EmitError;
+            };
+            chunk_ptr.* = c;
+            patchMakeClosureIndices(chunk_ptr.code, chunk_base);
+            self.persistent_chunk_ptrs.append(self.allocator, chunk_ptr) catch {
+                self.allocator.free(c.code);
+                self.allocator.free(c.constants);
+                self.allocator.destroy(chunk_ptr);
+                self.allocator.free(child_chunks);
+                return error.EmitError;
+            };
+        }
+        self.allocator.free(child_chunks);
+
+        var mutable_chunk = chunk;
+        patchMakeClosureIndices(mutable_chunk.code, chunk_base);
+
+        self.vm.setChunkPool(self.persistent_chunk_ptrs.items);
+        const closure = self.vm.run(&mutable_chunk) catch return error.RuntimeError;
+
+        if (!closure.isClosure()) return error.CompileError;
+
+        // Store the closure in the macros table
+        self.macros.put(name, closure) catch return error.CompileError;
+
+        // Return the macro name as a symbol
+        return cons2.car;
+    }
+
+    /// Expand macros in an expression (recursive)
+    fn expandMacros(self: *Repl, expr: Value) ReplError!Value {
+        // Non-list: no expansion
+        if (!expr.isCons()) return expr;
+
+        const cons = expr.toPtr(Cons);
+        const head = cons.car;
+
+        // Check if head is a macro
+        if (head.isSymbol()) {
+            const sym = head.toPtr(Symbol);
+            const name = sym.getName();
+
+            // Skip special forms that shouldn't be expanded
+            if (self.compiler.builtins) |b| {
+                if (head.raw == b.quote.raw or head.raw == b.quasiquote.raw) {
+                    return expr; // Don't expand inside quote
+                }
+            }
+
+            if (self.macros.get(name)) |macro_closure| {
+                // Expand macro: call the closure with the args
+                const expansion = try self.callMacro(macro_closure, cons.cdr);
+                // Recursively expand the result
+                return self.expandMacros(expansion);
+            }
+        }
+
+        // Recursively expand in subexpressions
+        const expanded_car = try self.expandMacros(cons.car);
+        const expanded_cdr = try self.expandMacroList(cons.cdr);
+
+        // Rebuild cons if changed
+        if (expanded_car.raw != cons.car.raw or expanded_cdr.raw != cons.cdr.raw) {
+            return self.heap.allocCons(expanded_car, expanded_cdr) orelse return error.RuntimeError;
+        }
+        return expr;
+    }
+
+    /// Expand macros in a list (for cdr of cons)
+    fn expandMacroList(self: *Repl, list: Value) ReplError!Value {
+        if (!list.isCons()) return list;
+
+        const cons = list.toPtr(Cons);
+        const expanded_car = try self.expandMacros(cons.car);
+        const expanded_cdr = try self.expandMacroList(cons.cdr);
+
+        if (expanded_car.raw != cons.car.raw or expanded_cdr.raw != cons.cdr.raw) {
+            return self.heap.allocCons(expanded_car, expanded_cdr) orelse return error.RuntimeError;
+        }
+        return list;
+    }
+
+    /// Call a macro closure with arguments (as a list)
+    fn callMacro(self: *Repl, closure: Value, args: Value) ReplError!Value {
+        // Build the function call: we need to apply the closure to the args
+        // The args should NOT be evaluated - they're passed as-is (like quote)
+
+        // Count args
+        var argc: usize = 0;
+        var arg_list = args;
+        while (arg_list.isCons()) {
+            argc += 1;
+            arg_list = arg_list.toPtr(Cons).cdr;
+        }
+
+        // Push closure and args onto VM stack, then call
+        // We'll generate bytecode to do this
+        var code_buf: [256]u8 = undefined;
+        var code_len: usize = 0;
+
+        // push_const for closure (we'll add it as constant 0)
+        code_buf[code_len] = @intFromEnum(Op.push_const);
+        code_len += 1;
+        std.mem.writeInt(u16, code_buf[code_len..][0..2], 0, .little);
+        code_len += 2;
+
+        // Push each arg as a constant (quoted values)
+        var const_idx: u16 = 1;
+        arg_list = args;
+        while (arg_list.isCons()) {
+            const arg_cons = arg_list.toPtr(Cons);
+            _ = arg_cons; // We'll add the constant later
+            code_buf[code_len] = @intFromEnum(Op.push_const);
+            code_len += 1;
+            std.mem.writeInt(u16, code_buf[code_len..][0..2], const_idx, .little);
+            code_len += 2;
+            const_idx += 1;
+            arg_list = arg_list.toPtr(Cons).cdr;
+        }
+
+        // call instruction
+        code_buf[code_len] = @intFromEnum(Op.call);
+        code_len += 1;
+        code_buf[code_len] = @intCast(argc);
+        code_len += 1;
+
+        // ret to return the result
+        code_buf[code_len] = @intFromEnum(Op.ret);
+        code_len += 1;
+
+        // Build constants array
+        var constants = self.allocator.alloc(u64, const_idx) catch return error.RuntimeError;
+        defer self.allocator.free(constants);
+
+        constants[0] = closure.raw;
+        var idx: u16 = 1;
+        arg_list = args;
+        while (arg_list.isCons()) {
+            const arg_cons = arg_list.toPtr(Cons);
+            constants[idx] = arg_cons.car.raw;
+            idx += 1;
+            arg_list = arg_cons.cdr;
+        }
+
+        const chunk = bytecode.Chunk{
+            .code = code_buf[0..code_len],
+            .constants = constants,
+            .arity = 0,
+            .num_locals = 0,
+            .name = "<macro-call>",
+        };
+
+        self.vm.setChunkPool(self.persistent_chunk_ptrs.items);
+        return self.vm.run(&chunk) catch return error.RuntimeError;
     }
 };
 

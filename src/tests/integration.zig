@@ -438,3 +438,84 @@ test "eval letrec recursive" {
     try testing.expect(result.isFixnum());
     try testing.expectEqual(@as(i64, 120), result.toFixnum());
 }
+
+// ============================================================================
+// Macro Tests
+// ============================================================================
+
+test "eval defmacro simple" {
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl = Repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+
+    // First test: identity macro (just returns its argument)
+    const def_result = try repl.eval("(defmacro identity-macro (x) x)");
+    try testing.expect(def_result.isSymbol()); // Should return the macro name
+
+    // Use the identity macro - should just return 42
+    const result = try repl.eval("(identity-macro 42)");
+    try testing.expect(result.isFixnum());
+    try testing.expectEqual(@as(i64, 42), result.toFixnum());
+}
+
+test "eval defmacro with cons" {
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl = Repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+
+    // Define macro that builds (+ x 1) using cons
+    _ = try repl.eval("(defmacro inc (x) (cons '+ (cons x (cons 1 nil))))");
+
+    // Use the macro
+    const result = try repl.eval("(inc 41)");
+    try testing.expect(result.isFixnum());
+    try testing.expectEqual(@as(i64, 42), result.toFixnum());
+}
+
+test "eval defmacro with quasiquote" {
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl = Repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+
+    // Define when macro using quasiquote
+    _ = try repl.eval("(defmacro when (test body) `(if ,test ,body nil))");
+
+    // Use the macro
+    const result = try repl.eval("(when (< 1 2) 42)");
+    try testing.expect(result.isFixnum());
+    try testing.expectEqual(@as(i64, 42), result.toFixnum());
+
+    // Test false branch
+    const result2 = try repl.eval("(when (> 1 2) 42)");
+    try testing.expect(result2.isNil());
+}
+
+test "eval defmacro unless" {
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl = Repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+
+    // Define unless macro
+    _ = try repl.eval("(defmacro unless (test body) `(if ,test nil ,body))");
+
+    // Use the macro
+    const result = try repl.eval("(unless (> 1 2) 99)");
+    try testing.expect(result.isFixnum());
+    try testing.expectEqual(@as(i64, 99), result.toFixnum());
+}
