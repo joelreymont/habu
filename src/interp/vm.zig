@@ -92,7 +92,13 @@ pub const Vm = struct {
     /// Catch stack pointer
     catch_sp: usize,
 
+    /// Secondary values buffer for multiple-value-bind
+    secondary_values: [MAX_SECONDARY_VALUES]Value,
+    /// Number of secondary values currently available
+    secondary_values_count: usize,
+
     const STACK_SIZE = 1024;
+    const MAX_SECONDARY_VALUES = 20;
     const MAX_FRAMES = 64;
     const MAX_GLOBALS = 256;
     const MAX_CATCHES = 32;
@@ -113,6 +119,8 @@ pub const Vm = struct {
             .chunk_base = 0,
             .catch_stack = undefined,
             .catch_sp = 0,
+            .secondary_values = undefined,
+            .secondary_values_count = 0,
         };
         // Initialize globals to nil
         for (&vm.globals) |*g| {
@@ -645,6 +653,49 @@ pub const Vm = struct {
                     const value = try self.pop();
                     const tag = try self.pop();
                     try self.doThrow(tag, value);
+                },
+
+                // Multiple values
+                .values => {
+                    const count = self.readU8();
+                    if (count == 0) {
+                        // (values) returns nil
+                        try self.push(Value.nil);
+                        self.secondary_values_count = 0;
+                    } else {
+                        // Pop all values, store secondary values, push primary
+                        // Values are on stack in order: v1 v2 ... vN (vN on top)
+                        // We want: primary=v1, secondary=[v2, v3, ...]
+                        const secondary_count = count - 1;
+                        if (secondary_count > MAX_SECONDARY_VALUES) return error.StackOverflow;
+
+                        // Pop secondary values in reverse order
+                        var i: usize = 0;
+                        while (i < secondary_count) : (i += 1) {
+                            const idx = secondary_count - 1 - i;
+                            self.secondary_values[idx] = try self.pop();
+                        }
+                        self.secondary_values_count = secondary_count;
+                        // Primary value remains on stack
+                    }
+                },
+
+                .mv_bind => {
+                    const count = self.readU8();
+
+                    // Primary value is already on stack
+                    // Now push secondary values (or nil if not enough)
+                    var i: usize = 1;
+                    while (i < count) : (i += 1) {
+                        if (i - 1 < self.secondary_values_count) {
+                            try self.push(self.secondary_values[i - 1]);
+                        } else {
+                            try self.push(Value.nil);
+                        }
+                    }
+
+                    // Clear secondary values
+                    self.secondary_values_count = 0;
                 },
 
                 .halt => return error.Halt,

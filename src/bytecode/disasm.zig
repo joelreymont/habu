@@ -54,7 +54,7 @@ pub fn disassembleInstruction(chunk: *const Chunk, offset: usize, writer: anytyp
         },
 
         // 1 byte operand
-        .load_local, .store_local, .load_capture, .call, .tail_call, .make_list => {
+        .load_local, .store_local, .load_capture, .call, .tail_call, .make_list, .values, .mv_bind => {
             const operand = chunk.readU8(offset + 1);
             try writer.print("{s} {d}\n", .{ op.name(), operand });
             return offset + 2;

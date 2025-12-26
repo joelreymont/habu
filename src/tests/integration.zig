@@ -1403,6 +1403,97 @@ test "tagbody loop" {
 }
 
 // ============================================================================
+// multiple values tests
+// ============================================================================
+
+test "values single" {
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl = Repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+
+    // (values 42) returns 42
+    const result = try repl.eval("(values 42)");
+    try testing.expect(result.isFixnum());
+    try testing.expectEqual(@as(i64, 42), result.toFixnum());
+}
+
+test "values empty" {
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl = Repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+
+    // (values) returns nil
+    const result = try repl.eval("(values)");
+    try testing.expect(result.isNil());
+}
+
+test "multiple-value-bind basic" {
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl = Repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+
+    // Bind multiple values and use them
+    const result = try repl.eval(
+        \\(multiple-value-bind (a b c)
+        \\    (values 1 2 3)
+        \\  (+ a (* b c)))
+    );
+    try testing.expect(result.isFixnum());
+    try testing.expectEqual(@as(i64, 7), result.toFixnum()); // 1 + 2*3 = 7
+}
+
+test "multiple-value-bind fewer values" {
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl = Repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+
+    // When fewer values than variables, extras are nil
+    const result = try repl.eval(
+        \\(multiple-value-bind (a b c)
+        \\    (values 10)
+        \\  (if c 999 a))
+    );
+    // c is nil (falsy), so (if c 999 a) returns a which is 10
+    try testing.expect(result.isFixnum());
+    try testing.expectEqual(@as(i64, 10), result.toFixnum());
+}
+
+test "multiple-value-bind single var" {
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl = Repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+
+    // Single var gets primary value
+    const result = try repl.eval(
+        \\(multiple-value-bind (x)
+        \\    (values 42 99 100)
+        \\  x)
+    );
+    try testing.expect(result.isFixnum());
+    try testing.expectEqual(@as(i64, 42), result.toFixnum());
+}
+
+// ============================================================================
 // stdlib tests
 // ============================================================================
 

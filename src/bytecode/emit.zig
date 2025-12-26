@@ -152,6 +152,8 @@ pub const Emitter = struct {
             .throw => |t| try self.emitThrow(t),
             .tagbody => |tb| try self.emitTagbody(tb),
             .go => |g| try self.emitGo(g),
+            .values => |v| try self.emitValues(v),
+            .mv_bind => |m| try self.emitMvBind(m),
             .call => |c| try self.emitCall(c, false),
             .tailcall => |c| try self.emitCall(c, true),
             .apply => |a| try self.emitApply(a),
@@ -780,6 +782,33 @@ pub const Emitter = struct {
         }
         // Tag not found
         return error.InvalidIr;
+    }
+
+    fn emitValues(self: *Emitter, v: anytype) EmitError!void {
+        // Emit each value expression
+        for (v) |val| {
+            try self.emit(val);
+        }
+
+        // Emit values opcode with count
+        if (v.len > 255) return error.TooManyLocals;
+        try self.emitOp(.values);
+        try self.emitU8(@intCast(v.len));
+    }
+
+    fn emitMvBind(self: *Emitter, m: anytype) EmitError!void {
+        // Emit the expression that produces multiple values
+        // This may produce a `values` opcode that stores secondary values
+        try self.emit(m.expr);
+
+        // Emit mv_bind opcode with count
+        // This takes primary from stack, expands secondary values onto stack
+        if (m.vars.len > 255) return error.TooManyLocals;
+        try self.emitOp(.mv_bind);
+        try self.emitU8(@intCast(m.vars.len));
+
+        // Emit body - variables are now on stack as locals
+        try self.emit(m.body);
     }
 
     /// Patch a jump to a specific target offset

@@ -144,6 +144,16 @@ pub const Ir = union(enum) {
         tag: []const u8,
     },
 
+    /// Multiple values: (values v1 v2 ...)
+    values: []const *const Ir,
+
+    /// Multiple-value-bind: (multiple-value-bind (vars...) expr body...)
+    mv_bind: struct {
+        vars: []const []const u8,
+        expr: *const Ir,
+        body: *const Ir,
+    },
+
     // ========================================================================
     // Function calls
     // ========================================================================
@@ -482,6 +492,20 @@ pub const IrBuilder = struct {
     pub fn go(self: IrBuilder, tag: []const u8) !*Ir {
         const node = try self.allocator.create(Ir);
         node.* = .{ .go = .{ .tag = tag } };
+        return node;
+    }
+
+    pub fn values(self: IrBuilder, vals: []const *const Ir) !*Ir {
+        const node = try self.allocator.create(Ir);
+        const vals_copy = try self.allocator.dupe(*const Ir, vals);
+        node.* = .{ .values = vals_copy };
+        return node;
+    }
+
+    pub fn mvBind(self: IrBuilder, vars: []const []const u8, expr: *const Ir, body: *const Ir) !*Ir {
+        const node = try self.allocator.create(Ir);
+        const vars_copy = try self.allocator.dupe([]const u8, vars);
+        node.* = .{ .mv_bind = .{ .vars = vars_copy, .expr = expr, .body = body } };
         return node;
     }
 

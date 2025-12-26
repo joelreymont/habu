@@ -365,6 +365,21 @@ pub const Op = enum(u8) {
     throw = 0xB2,
 
     // ========================================================================
+    // Multiple values
+    // ========================================================================
+
+    /// Return multiple values (operand: u8 count)
+    /// Pops count values, pushes first, stores rest in secondary values
+    /// ( v1 v2 ... vN -- v1 )
+    values = 0xC0,
+
+    /// Bind multiple values to locals (operand: u8 count)
+    /// Takes primary value from stack, secondaries from buffer
+    /// Stores into consecutive locals starting at next operand
+    /// ( primary -- )
+    mv_bind = 0xC1,
+
+    // ========================================================================
     // Special
     // ========================================================================
 
@@ -391,7 +406,7 @@ pub const Op = enum(u8) {
 
             // 1 byte operand
             .load_local, .store_local, .load_capture,
-            .call, .tail_call, .make_list,
+            .call, .tail_call, .make_list, .values, .mv_bind,
             => 1,
 
             // 2 byte operand

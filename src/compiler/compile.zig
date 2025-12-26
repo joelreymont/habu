@@ -86,6 +86,8 @@ pub const Builtins = struct {
     throw: Value,
     tagbody: Value,
     go: Value,
+    values: Value,
+    @"multiple-value-bind": Value,
 
     /// Initialize all builtin symbols from heap
     pub fn init(heap: *Heap) ?Builtins {
@@ -122,6 +124,8 @@ pub const Builtins = struct {
             .throw = heap.intern("throw") orelse return null,
             .tagbody = heap.intern("tagbody") orelse return null,
             .go = heap.intern("go") orelse return null,
+            .values = heap.intern("values") orelse return null,
+            .@"multiple-value-bind" = heap.intern("multiple-value-bind") orelse return null,
         };
     }
 };
@@ -605,6 +609,8 @@ pub const Compiler = struct {
         throw,
         tagbody,
         go,
+        values,
+        @"multiple-value-bind",
     };
 
     /// Comptime dispatch table for special forms
@@ -637,6 +643,8 @@ pub const Compiler = struct {
         .{ "throw", .throw },
         .{ "tagbody", .tagbody },
         .{ "go", .go },
+        .{ "values", .values },
+        .{ "multiple-value-bind", .@"multiple-value-bind" },
     });
 
     fn compileListWithTail(self: *Compiler, expr: Value, env: *const Env, in_tail: bool) CompileError!*Ir {
@@ -663,6 +671,8 @@ pub const Compiler = struct {
                 if (head.raw == b.throw.raw) return self.compileThrow(tail, env);
                 if (head.raw == b.tagbody.raw) return self.compileTagbody(tail, env);
                 if (head.raw == b.go.raw) return self.compileGo(tail);
+                if (head.raw == b.values.raw) return self.compileValues(tail, env);
+                if (head.raw == b.@"multiple-value-bind".raw) return self.compileMvBind(tail, env);
                 if (head.raw == b.lambda.raw) return self.compileLambda(tail, env);
                 if (head.raw == b.@"and".raw) return self.compileAnd(tail, env);
                 if (head.raw == b.@"or".raw) return self.compileOr(tail, env);
@@ -711,6 +721,8 @@ pub const Compiler = struct {
                         .throw => self.compileThrow(tail, env),
                         .tagbody => self.compileTagbody(tail, env),
                         .go => self.compileGo(tail),
+                        .values => self.compileValues(tail, env),
+                        .@"multiple-value-bind" => self.compileMvBind(tail, env),
                     };
                 }
             }
@@ -1800,6 +1812,60 @@ pub const Compiler = struct {
         const name = sym.getName();
 
         return self.builder.go(name) catch return error.OutOfMemory;
+    }
+
+    fn compileValues(self: *Compiler, args: Value, env: *const Env) CompileError!*Ir {
+        // (values v1 v2 ...)
+        var vals = std.ArrayList(*const Ir){};
+        defer vals.deinit(self.allocator);
+
+        var current = args;
+        while (current.isCons()) {
+            const cons = current.toPtr(Cons);
+            const val_ir = try self.compile(cons.car, env);
+            vals.append(self.allocator, val_ir) catch return error.OutOfMemory;
+            current = cons.cdr;
+        }
+
+        return self.builder.values(vals.items) catch return error.OutOfMemory;
+    }
+
+    fn compileMvBind(self: *Compiler, args: Value, env: *const Env) CompileError!*Ir {
+        // (multiple-value-bind (var1 var2 ...) expr body...)
+        if (!args.isCons()) return error.InvalidSyntax;
+        const cons1 = args.toPtr(Cons);
+
+        // Parse variable list
+        var vars = std.ArrayList([]const u8){};
+        defer vars.deinit(self.allocator);
+
+        var var_list = cons1.car;
+        while (var_list.isCons()) {
+            const var_cons = var_list.toPtr(Cons);
+            if (!var_cons.car.isSymbol()) return error.InvalidSyntax;
+            const sym = var_cons.car.toPtr(Symbol);
+            vars.append(self.allocator, sym.getName()) catch return error.OutOfMemory;
+            var_list = var_cons.cdr;
+        }
+
+        if (!cons1.cdr.isCons()) return error.InvalidSyntax;
+        const cons2 = cons1.cdr.toPtr(Cons);
+
+        // Compile the expression that produces multiple values
+        const expr_ir = try self.compile(cons2.car, env);
+
+        // Create environment with bindings for vars
+        var let_env = Env.initLet(self.allocator, env);
+        defer let_env.deinit();
+
+        for (vars.items) |var_name| {
+            _ = let_env.bind(var_name) catch return error.OutOfMemory;
+        }
+
+        // Compile body forms
+        const body_ir = try self.compileBody(cons2.cdr, &let_env);
+
+        return self.builder.mvBind(vars.items, expr_ir, body_ir) catch return error.OutOfMemory;
     }
 
     fn compileDefine(self: *Compiler, args: Value, env: *const Env) CompileError!*Ir {
