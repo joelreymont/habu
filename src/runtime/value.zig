@@ -23,7 +23,7 @@ pub const Tag = enum(u4) {
     string = 6,
     closure = 8,
     keyword = 10,
-    // 12 is unused
+    hashtable = 12,
     forwarding = 14, // GC forwarding pointer
 };
 
@@ -88,6 +88,11 @@ pub const Value = packed struct {
     /// Check if value is a keyword
     pub inline fn isKeyword(self: Value) bool {
         return self.isPointer() and self.getTag() == .keyword;
+    }
+
+    /// Check if value is a hash table
+    pub inline fn isHashTable(self: Value) bool {
+        return self.isPointer() and self.getTag() == .hashtable;
     }
 
     /// Check if value is a forwarding pointer (GC)
@@ -180,6 +185,11 @@ pub const Value = packed struct {
     /// Create a keyword value
     pub inline fn makeKeyword(ptr: anytype) Value {
         return makePtr(ptr, .keyword);
+    }
+
+    /// Create a hash table value
+    pub inline fn makeHashTable(ptr: anytype) Value {
+        return makePtr(ptr, .hashtable);
     }
 
     /// Create a forwarding pointer (GC)

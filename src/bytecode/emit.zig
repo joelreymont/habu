@@ -155,6 +155,12 @@ pub const Emitter = struct {
             .values => |v| try self.emitValues(v),
             .mv_bind => |m| try self.emitMvBind(m),
             .format => |f| try self.emitFormat(f),
+            .make_hash => |h| try self.emitMakeHash(h),
+            .hash_get => |h| try self.emitHashGet(h),
+            .hash_set => |h| try self.emitHashSet(h),
+            .hash_rem => |h| try self.emitHashRem(h),
+            .hash_count => |h| try self.emitUnaryOp(h.operand, .hash_count),
+            .hashtablep => |h| try self.emitUnaryOp(h.operand, .hashtablep),
             .call => |c| try self.emitCall(c, false),
             .tailcall => |c| try self.emitCall(c, true),
             .apply => |a| try self.emitApply(a),
@@ -825,6 +831,30 @@ pub const Emitter = struct {
         if (f.args.len > 255) return error.TooManyLocals;
         try self.emitOp(.format);
         try self.emitU8(@intCast(f.args.len));
+    }
+
+    fn emitMakeHash(self: *Emitter, h: anytype) EmitError!void {
+        try self.emitOp(.make_hash);
+        try self.emitU16(h.capacity);
+    }
+
+    fn emitHashGet(self: *Emitter, h: anytype) EmitError!void {
+        try self.emit(h.table);
+        try self.emit(h.key);
+        try self.emitOp(.hash_get);
+    }
+
+    fn emitHashSet(self: *Emitter, h: anytype) EmitError!void {
+        try self.emit(h.table);
+        try self.emit(h.key);
+        try self.emit(h.value);
+        try self.emitOp(.hash_set);
+    }
+
+    fn emitHashRem(self: *Emitter, h: anytype) EmitError!void {
+        try self.emit(h.table);
+        try self.emit(h.key);
+        try self.emitOp(.hash_rem);
     }
 
     /// Patch a jump to a specific target offset

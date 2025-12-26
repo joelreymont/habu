@@ -118,6 +118,49 @@ pub const Keyword = extern struct {
     }
 };
 
+/// Hash table entry (key-value pair)
+pub const HashEntry = extern struct {
+    key: Value,
+    value: Value,
+};
+
+/// Hash table: mutable key-value mapping
+/// Uses open addressing with linear probing
+/// Size: 24 bytes header + entries array
+pub const HashTable = extern struct {
+    /// Number of entries currently stored
+    count: u64,
+    /// Capacity (size of entries array)
+    capacity: u64,
+    /// Pointer to entries array
+    entries: [*]HashEntry,
+
+    /// Sentinel for empty entry
+    pub const EMPTY: Value = Value{ .raw = 0xFFFFFFFFFFFFFFFF };
+    /// Sentinel for deleted entry
+    pub const DELETED: Value = Value{ .raw = 0xFFFFFFFFFFFFFFFE };
+
+    /// Check if an entry is empty
+    pub fn isEmpty(entry: HashEntry) bool {
+        return entry.key.raw == EMPTY.raw;
+    }
+
+    /// Check if an entry is deleted
+    pub fn isDeleted(entry: HashEntry) bool {
+        return entry.key.raw == DELETED.raw;
+    }
+
+    /// Check if an entry is available (empty or deleted)
+    pub fn isAvailable(entry: HashEntry) bool {
+        return isEmpty(entry) or isDeleted(entry);
+    }
+
+    /// Get entries slice
+    pub fn getEntries(self: *const HashTable) []HashEntry {
+        return self.entries[0..self.capacity];
+    }
+};
+
 // ============================================================================
 // Object size calculations (for GC)
 // ============================================================================
@@ -144,6 +187,11 @@ pub fn objectSize(val: Value) usize {
             break :blk @sizeOf(Closure) + cls.num_captures * @sizeOf(Value);
         },
         .keyword => @sizeOf(Keyword),
+        .hashtable => blk: {
+            const ht = val.toPtr(HashTable);
+            // Header + entries array
+            break :blk @sizeOf(HashTable) + ht.capacity * @sizeOf(HashEntry);
+        },
         .forwarding => @sizeOf(usize), // Just a pointer
     };
 }
@@ -174,6 +222,15 @@ pub fn forEachValue(val: Value, callback: *const fn (Value) void) void {
             const cls = val.toPtr(Closure);
             for (cls.getCapturedValues()) |cap| {
                 callback(cap);
+            }
+        },
+        .hashtable => {
+            const ht = val.toPtr(HashTable);
+            for (ht.getEntries()) |entry| {
+                if (!HashTable.isAvailable(entry)) {
+                    callback(entry.key);
+                    callback(entry.value);
+                }
             }
         },
         .forwarding => {

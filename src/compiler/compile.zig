@@ -2238,6 +2238,26 @@ pub const Compiler = struct {
             return self.compileFormat(args, env);
         }
 
+        // Hash tables
+        if (std.mem.eql(u8, name, "make-hash-table")) {
+            return self.compileMakeHash(args);
+        }
+        if (std.mem.eql(u8, name, "gethash")) {
+            return self.compileGethash(args, env);
+        }
+        if (std.mem.eql(u8, name, "sethash")) {
+            return self.compileSethash(args, env);
+        }
+        if (std.mem.eql(u8, name, "remhash")) {
+            return self.compileRemhash(args, env);
+        }
+        if (std.mem.eql(u8, name, "hash-table-count")) {
+            return self.compileHashTableCount(args, env);
+        }
+        if (std.mem.eql(u8, name, "hash-table-p")) {
+            return self.compileHashTableP(args, env);
+        }
+
         // Random
         if (std.mem.eql(u8, name, "random")) {
             return self.compileUnaryPrim(args, env, .random);
@@ -2400,6 +2420,86 @@ pub const Compiler = struct {
         }
 
         return self.builder.format(dest_ir, control_ir, arg_list.items) catch return error.OutOfMemory;
+    }
+
+    fn compileMakeHash(self: *Compiler, args: Value) CompileError!*Ir {
+        // (make-hash-table) or (make-hash-table :size n)
+        // For now, just use default capacity
+        _ = args;
+        const node = self.allocator.create(Ir) catch return error.OutOfMemory;
+        node.* = .{ .make_hash = .{ .capacity = 16 } };
+        return node;
+    }
+
+    fn compileGethash(self: *Compiler, args: Value, env: *const Env) CompileError!*Ir {
+        // (gethash key hashtable)
+        if (!args.isCons()) return error.InvalidSyntax;
+        const cons1 = args.toPtr(Cons);
+        const key_ir = try self.compile(cons1.car, env);
+
+        if (!cons1.cdr.isCons()) return error.InvalidSyntax;
+        const cons2 = cons1.cdr.toPtr(Cons);
+        const table_ir = try self.compile(cons2.car, env);
+
+        const node = self.allocator.create(Ir) catch return error.OutOfMemory;
+        node.* = .{ .hash_get = .{ .table = table_ir, .key = key_ir } };
+        return node;
+    }
+
+    fn compileSethash(self: *Compiler, args: Value, env: *const Env) CompileError!*Ir {
+        // (sethash key hashtable value)
+        if (!args.isCons()) return error.InvalidSyntax;
+        const cons1 = args.toPtr(Cons);
+        const key_ir = try self.compile(cons1.car, env);
+
+        if (!cons1.cdr.isCons()) return error.InvalidSyntax;
+        const cons2 = cons1.cdr.toPtr(Cons);
+        const table_ir = try self.compile(cons2.car, env);
+
+        if (!cons2.cdr.isCons()) return error.InvalidSyntax;
+        const cons3 = cons2.cdr.toPtr(Cons);
+        const value_ir = try self.compile(cons3.car, env);
+
+        const node = self.allocator.create(Ir) catch return error.OutOfMemory;
+        node.* = .{ .hash_set = .{ .table = table_ir, .key = key_ir, .value = value_ir } };
+        return node;
+    }
+
+    fn compileRemhash(self: *Compiler, args: Value, env: *const Env) CompileError!*Ir {
+        // (remhash key hashtable)
+        if (!args.isCons()) return error.InvalidSyntax;
+        const cons1 = args.toPtr(Cons);
+        const key_ir = try self.compile(cons1.car, env);
+
+        if (!cons1.cdr.isCons()) return error.InvalidSyntax;
+        const cons2 = cons1.cdr.toPtr(Cons);
+        const table_ir = try self.compile(cons2.car, env);
+
+        const node = self.allocator.create(Ir) catch return error.OutOfMemory;
+        node.* = .{ .hash_rem = .{ .table = table_ir, .key = key_ir } };
+        return node;
+    }
+
+    fn compileHashTableCount(self: *Compiler, args: Value, env: *const Env) CompileError!*Ir {
+        // (hash-table-count hashtable)
+        if (!args.isCons()) return error.InvalidSyntax;
+        const cons = args.toPtr(Cons);
+        const table_ir = try self.compile(cons.car, env);
+
+        const node = self.allocator.create(Ir) catch return error.OutOfMemory;
+        node.* = .{ .hash_count = .{ .operand = table_ir } };
+        return node;
+    }
+
+    fn compileHashTableP(self: *Compiler, args: Value, env: *const Env) CompileError!*Ir {
+        // (hash-table-p x)
+        if (!args.isCons()) return error.InvalidSyntax;
+        const cons = args.toPtr(Cons);
+        const operand_ir = try self.compile(cons.car, env);
+
+        const node = self.allocator.create(Ir) catch return error.OutOfMemory;
+        node.* = .{ .hashtablep = .{ .operand = operand_ir } };
+        return node;
     }
 
     fn compileCall(self: *Compiler, func_expr: Value, args_expr: Value, env: *const Env) CompileError!*Ir {

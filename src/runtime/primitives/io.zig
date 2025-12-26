@@ -157,6 +157,9 @@ fn printValueTo(val: Value, w: anytype) !void {
             try printValueTo(item, w);
         }
         try w.writeByte(')');
+    } else if (val.isHashTable()) {
+        const ht = val.toPtr(objects.HashTable);
+        try w.print("#<hash-table count={d}>", .{ht.count});
     } else {
         try w.writeAll("#<unknown>");
     }

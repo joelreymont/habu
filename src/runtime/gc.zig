@@ -185,6 +185,20 @@ pub const GC = struct {
                     }
                 }
             },
+            .hashtable => {
+                // Scan all key-value entries
+                const ht: *objects.HashTable = @ptrFromInt(addr);
+                for (ht.getEntries()) |*entry| {
+                    if (!objects.HashTable.isAvailable(entry.*)) {
+                        if (entry.key.isPointer() and !entry.key.isNil()) {
+                            entry.key = self.copyValue(entry.key, alloc_ptr);
+                        }
+                        if (entry.value.isPointer() and !entry.value.isNil()) {
+                            entry.value = self.copyValue(entry.value, alloc_ptr);
+                        }
+                    }
+                }
+            },
             .string, .keyword => {
                 // No Value references to scan
             },

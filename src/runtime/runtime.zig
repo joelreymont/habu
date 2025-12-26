@@ -22,6 +22,8 @@ pub const Vector = objects.Vector;
 pub const String = objects.String;
 pub const Closure = objects.Closure;
 pub const Keyword = objects.Keyword;
+pub const HashTable = objects.HashTable;
+pub const HashEntry = objects.HashEntry;
 
 pub const Heap = heap.Heap;
 pub const GC = gc.GC;

@@ -317,6 +317,35 @@ pub const Op = enum(u8) {
     format = 0x93,
 
     // ========================================================================
+    // Hash table operations
+    // ========================================================================
+
+    /// Create hash table (operand: u16 initial capacity)
+    /// ( -- hashtable )
+    make_hash = 0x94,
+
+    /// Get value from hash table
+    /// ( hashtable key -- value )
+    /// Returns nil if key not found
+    hash_get = 0x95,
+
+    /// Set value in hash table
+    /// ( hashtable key value -- )
+    hash_set = 0x96,
+
+    /// Remove key from hash table
+    /// ( hashtable key -- removed? )
+    hash_rem = 0x97,
+
+    /// Get count of entries in hash table
+    /// ( hashtable -- count )
+    hash_count = 0x98,
+
+    /// Check if value is a hash table
+    /// ( x -- t/nil )
+    hashtablep = 0x99,
+
+    // ========================================================================
     // Type assertions (gradual typing)
     // ========================================================================
 
@@ -407,6 +436,7 @@ pub const Op = enum(u8) {
             .check_fixnum, .check_cons, .check_symbol, .check_string,
             .check_vector, .check_closure, .check_non_nil, .check_list,
             .apply, .pop_catch, .throw,
+            .hash_get, .hash_set, .hash_rem, .hash_count, .hashtablep,
             => 0,
 
             // 1 byte operand
@@ -417,7 +447,7 @@ pub const Op = enum(u8) {
             // 2 byte operand
             .push_const, .load_global, .store_global,
             .make_vec, .jmp, .jmp_nil, .jmp_not_nil,
-            .load_upvalue, .store_upvalue, .push_catch,
+            .load_upvalue, .store_upvalue, .push_catch, .make_hash,
             => 2,
 
             // 3 byte operand

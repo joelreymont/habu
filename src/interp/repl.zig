@@ -264,6 +264,9 @@ pub const Repl = struct {
             try writer.writeAll("#<closure>");
         } else if (val.isVector()) {
             try writer.writeAll("#<vector>");
+        } else if (val.isHashTable()) {
+            const ht = val.toPtr(runtime.HashTable);
+            try writer.print("#<hash-table count={d}>", .{ht.count});
         } else {
             try writer.print("#<unknown 0x{x}>", .{val.raw});
         }

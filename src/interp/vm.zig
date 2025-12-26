@@ -16,6 +16,7 @@ const Symbol = runtime.Symbol;
 const arith = @import("../runtime/primitives/arith.zig");
 const io = @import("../runtime/primitives/io.zig");
 const stringPrims = @import("../runtime/primitives/string.zig");
+const HashTable = runtime.HashTable;
 
 pub const VmError = error{
     StackOverflow,
@@ -580,6 +581,8 @@ pub const Vm = struct {
                         "closure"
                     else if (val.isKeyword())
                         "keyword"
+                    else if (val.isHashTable())
+                        "hash-table"
                     else
                         "unknown";
                     const type_sym = self.heap.intern(type_name) orelse return error.OutOfMemory;
@@ -714,6 +717,48 @@ pub const Vm = struct {
 
                     const result = try self.doFormat(dest, control, args[0..argc]);
                     try self.push(result);
+                },
+
+                // Hash table operations
+                .make_hash => {
+                    const capacity = self.readU16();
+                    const ht = self.heap.allocHashTable(capacity) orelse return error.OutOfMemory;
+                    try self.push(ht);
+                },
+                .hash_get => {
+                    const key = try self.pop();
+                    const ht_val = try self.pop();
+                    if (!ht_val.isHashTable()) return error.TypeMismatch;
+                    const ht = ht_val.toPtr(HashTable);
+                    const result = hashTableGet(ht, key);
+                    try self.push(result);
+                },
+                .hash_set => {
+                    const value = try self.pop();
+                    const key = try self.pop();
+                    const ht_val = try self.pop();
+                    if (!ht_val.isHashTable()) return error.TypeMismatch;
+                    const ht = ht_val.toPtr(HashTable);
+                    hashTableSet(ht, key, value);
+                    try self.push(value); // Return the set value (CL convention)
+                },
+                .hash_rem => {
+                    const key = try self.pop();
+                    const ht_val = try self.pop();
+                    if (!ht_val.isHashTable()) return error.TypeMismatch;
+                    const ht = ht_val.toPtr(HashTable);
+                    const removed = hashTableRemove(ht, key);
+                    try self.push(if (removed) Value.t else Value.nil);
+                },
+                .hash_count => {
+                    const ht_val = try self.pop();
+                    if (!ht_val.isHashTable()) return error.TypeMismatch;
+                    const ht = ht_val.toPtr(HashTable);
+                    try self.push(Value.makeFixnum(@intCast(ht.count)));
+                },
+                .hashtablep => {
+                    const val = try self.pop();
+                    try self.push(if (val.isHashTable()) Value.t else Value.nil);
                 },
 
                 .halt => return error.Halt,
@@ -856,6 +901,8 @@ pub const Vm = struct {
             result.appendSlice(self.allocator, "#<closure>") catch return error.OutOfMemory;
         } else if (val.isVector()) {
             result.appendSlice(self.allocator, "#<vector>") catch return error.OutOfMemory;
+        } else if (val.isHashTable()) {
+            result.appendSlice(self.allocator, "#<hash-table>") catch return error.OutOfMemory;
         } else {
             result.appendSlice(self.allocator, "#<unknown>") catch return error.OutOfMemory;
         }
@@ -1131,6 +1178,113 @@ pub const Vm = struct {
 };
 
 // ============================================================================
+// Hash table helpers (open addressing with linear probing)
+// ============================================================================
+
+/// Hash a Value for use in hash table lookup
+fn hashValue(val: Value) u64 {
+    // Simple FNV-1a style hash on the raw value
+    // For fixnums, this gives good distribution
+    // For pointers, mixing helps distribute
+    var hash: u64 = 0xcbf29ce484222325; // FNV offset basis
+    const raw = val.raw;
+    hash ^= raw & 0xFF;
+    hash *%= 0x100000001b3; // FNV prime
+    hash ^= (raw >> 8) & 0xFF;
+    hash *%= 0x100000001b3;
+    hash ^= (raw >> 16) & 0xFF;
+    hash *%= 0x100000001b3;
+    hash ^= (raw >> 24) & 0xFF;
+    hash *%= 0x100000001b3;
+    hash ^= (raw >> 32) & 0xFF;
+    hash *%= 0x100000001b3;
+    hash ^= (raw >> 40) & 0xFF;
+    hash *%= 0x100000001b3;
+    hash ^= (raw >> 48) & 0xFF;
+    hash *%= 0x100000001b3;
+    hash ^= (raw >> 56) & 0xFF;
+    hash *%= 0x100000001b3;
+    return hash;
+}
+
+/// Get value from hash table, returns nil if not found
+fn hashTableGet(ht: *HashTable, key: Value) Value {
+    const entries = ht.getEntries();
+    const mask = ht.capacity - 1;
+    var idx = hashValue(key) & mask;
+
+    var probes: usize = 0;
+    while (probes < ht.capacity) : (probes += 1) {
+        const entry = entries[idx];
+        if (HashTable.isEmpty(entry)) {
+            return Value.nil; // Not found
+        }
+        if (!HashTable.isDeleted(entry) and entry.key.raw == key.raw) {
+            return entry.value; // Found
+        }
+        idx = (idx + 1) & mask; // Linear probe
+    }
+    return Value.nil; // Table full and key not found
+}
+
+/// Set value in hash table (insert or update)
+fn hashTableSet(ht: *HashTable, key: Value, value: Value) void {
+    const entries = ht.getEntries();
+    const mask = ht.capacity - 1;
+    var idx = hashValue(key) & mask;
+
+    var first_deleted: ?usize = null;
+    var probes: usize = 0;
+    while (probes < ht.capacity) : (probes += 1) {
+        const entry = entries[idx];
+        if (HashTable.isEmpty(entry)) {
+            // Insert at first deleted slot if we found one, else here
+            const insert_idx = first_deleted orelse idx;
+            entries[insert_idx] = .{ .key = key, .value = value };
+            ht.count += 1;
+            return;
+        }
+        if (HashTable.isDeleted(entry)) {
+            if (first_deleted == null) first_deleted = idx;
+        } else if (entry.key.raw == key.raw) {
+            // Update existing
+            entries[idx].value = value;
+            return;
+        }
+        idx = (idx + 1) & mask;
+    }
+    // Table full - insert at first deleted if available
+    if (first_deleted) |del_idx| {
+        entries[del_idx] = .{ .key = key, .value = value };
+        ht.count += 1;
+    }
+    // Otherwise table is truly full, silently fail (should resize in practice)
+}
+
+/// Remove key from hash table, returns true if removed
+fn hashTableRemove(ht: *HashTable, key: Value) bool {
+    const entries = ht.getEntries();
+    const mask = ht.capacity - 1;
+    var idx = hashValue(key) & mask;
+
+    var probes: usize = 0;
+    while (probes < ht.capacity) : (probes += 1) {
+        const entry = entries[idx];
+        if (HashTable.isEmpty(entry)) {
+            return false; // Not found
+        }
+        if (!HashTable.isDeleted(entry) and entry.key.raw == key.raw) {
+            // Mark as deleted
+            entries[idx].key = HashTable.DELETED;
+            ht.count -= 1;
+            return true;
+        }
+        idx = (idx + 1) & mask;
+    }
+    return false;
+}
+
+// ============================================================================
 // Tests
 // ============================================================================
 
@@ -1278,4 +1432,89 @@ test "vm locals" {
 
     const result = try vm.run(&chunk);
     try testing.expectEqual(@as(i64, 42), result.toFixnum());
+}
+
+test "vm hash table" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    var heap = Heap.init(allocator, .{ .total_size = 1024 * 1024 }) catch unreachable;
+    defer heap.deinit();
+
+    var vm = Vm.init(allocator, &heap);
+
+    // Create hash table, set key 42 to value 100, get key 42
+    // Use local 0 to store ht
+    const code = [_]u8{
+        // make_hash with capacity 16, store in local 0
+        @intFromEnum(Op.make_hash), 16, 0,
+        @intFromEnum(Op.store_local), 0,
+        // load ht, push key (42), push value (100), hash_set
+        @intFromEnum(Op.load_local), 0,
+        @intFromEnum(Op.push_i32), 42, 0, 0, 0,
+        @intFromEnum(Op.push_i32), 100, 0, 0, 0,
+        @intFromEnum(Op.hash_set), // pushes value back
+        @intFromEnum(Op.pop), // discard returned value
+        // load ht, push key, hash_get
+        @intFromEnum(Op.load_local), 0,
+        @intFromEnum(Op.push_i32), 42, 0, 0, 0,
+        @intFromEnum(Op.hash_get),
+        @intFromEnum(Op.ret),
+    };
+
+    const chunk = Chunk{
+        .code = @constCast(&code),
+        .constants = &[_]u64{},
+        .arity = 0,
+        .num_locals = 1,
+        .name = "test",
+    };
+
+    const result = try vm.run(&chunk);
+    try testing.expectEqual(@as(i64, 100), result.toFixnum());
+}
+
+test "vm hash table count and remove" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    var heap = Heap.init(allocator, .{ .total_size = 1024 * 1024 }) catch unreachable;
+    defer heap.deinit();
+
+    var vm = Vm.init(allocator, &heap);
+
+    // Create hash table, set 2 keys, get count
+    const code = [_]u8{
+        // make_hash with capacity 16
+        @intFromEnum(Op.make_hash), 16, 0,
+        // store in local 0
+        @intFromEnum(Op.store_local), 0,
+        // Set key 1 -> 10
+        @intFromEnum(Op.load_local), 0,
+        @intFromEnum(Op.push_i32), 1, 0, 0, 0,
+        @intFromEnum(Op.push_i32), 10, 0, 0, 0,
+        @intFromEnum(Op.hash_set),
+        @intFromEnum(Op.pop), // discard returned value
+        // Set key 2 -> 20
+        @intFromEnum(Op.load_local), 0,
+        @intFromEnum(Op.push_i32), 2, 0, 0, 0,
+        @intFromEnum(Op.push_i32), 20, 0, 0, 0,
+        @intFromEnum(Op.hash_set),
+        @intFromEnum(Op.pop), // discard returned value
+        // Get count (should be 2)
+        @intFromEnum(Op.load_local), 0,
+        @intFromEnum(Op.hash_count),
+        @intFromEnum(Op.ret),
+    };
+
+    const chunk = Chunk{
+        .code = @constCast(&code),
+        .constants = &[_]u64{},
+        .arity = 0,
+        .num_locals = 1,
+        .name = "test",
+    };
+
+    const result = try vm.run(&chunk);
+    try testing.expectEqual(@as(i64, 2), result.toFixnum());
 }

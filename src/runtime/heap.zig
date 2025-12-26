@@ -240,6 +240,34 @@ pub const Heap = struct {
         return Value.makeClosure(closure);
     }
 
+    /// Allocate a hash table with given initial capacity
+    pub fn allocHashTable(self: *Heap, capacity: usize) ?Value {
+        const actual_capacity = if (capacity < 8) 8 else capacity;
+        const total_size = @sizeOf(objects.HashTable) + actual_capacity * @sizeOf(objects.HashEntry);
+
+        const ptr = self.allocRaw(total_size) orelse return null;
+        const ht: *objects.HashTable = @ptrCast(@alignCast(ptr));
+
+        // Entries follow immediately after header
+        const entries_ptr: [*]objects.HashEntry = @ptrCast(@alignCast(ptr + @sizeOf(objects.HashTable)));
+
+        // Initialize all entries to EMPTY
+        for (0..actual_capacity) |i| {
+            entries_ptr[i] = .{
+                .key = objects.HashTable.EMPTY,
+                .value = Value.nil,
+            };
+        }
+
+        ht.* = .{
+            .count = 0,
+            .capacity = actual_capacity,
+            .entries = entries_ptr,
+        };
+
+        return Value.makeHashTable(ht);
+    }
+
     /// Allocate a symbol from a string
     pub fn allocSymbol(self: *Heap, name: []const u8) ?Value {
         const aligned_name_len = std.mem.alignForward(usize, name.len, 8);

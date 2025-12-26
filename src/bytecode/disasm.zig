@@ -48,6 +48,7 @@ pub fn disassembleInstruction(chunk: *const Chunk, offset: usize, writer: anytyp
         .check_fixnum, .check_cons, .check_symbol, .check_string,
         .check_vector, .check_closure, .check_non_nil, .check_list,
         .apply, .pop_catch, .throw,
+        .hash_get, .hash_set, .hash_rem, .hash_count, .hashtablep,
         => {
             try writer.print("{s}\n", .{op.name()});
             return offset + 1;
@@ -61,7 +62,7 @@ pub fn disassembleInstruction(chunk: *const Chunk, offset: usize, writer: anytyp
         },
 
         // 2 byte operand (u16)
-        .push_const, .load_global, .store_global, .make_vec => {
+        .push_const, .load_global, .store_global, .make_vec, .make_hash => {
             const operand = chunk.readU16(offset + 1);
             try writer.print("{s} {d}\n", .{ op.name(), operand });
             return offset + 3;

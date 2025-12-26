@@ -162,6 +162,44 @@ pub const Ir = union(enum) {
     },
 
     // ========================================================================
+    // Hash table operations
+    // ========================================================================
+
+    /// Make hash table: (make-hash-table)
+    make_hash: struct {
+        capacity: u16,
+    },
+
+    /// Hash table get: (gethash key hashtable)
+    hash_get: struct {
+        table: *const Ir,
+        key: *const Ir,
+    },
+
+    /// Hash table set: (sethash key hashtable value)
+    hash_set: struct {
+        table: *const Ir,
+        key: *const Ir,
+        value: *const Ir,
+    },
+
+    /// Hash table remove: (remhash key hashtable)
+    hash_rem: struct {
+        table: *const Ir,
+        key: *const Ir,
+    },
+
+    /// Hash table count: (hash-table-count hashtable)
+    hash_count: struct {
+        operand: *const Ir,
+    },
+
+    /// Hash table predicate: (hash-table-p x)
+    hashtablep: struct {
+        operand: *const Ir,
+    },
+
+    // ========================================================================
     // Function calls
     // ========================================================================
 
