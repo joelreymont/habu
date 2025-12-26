@@ -348,3 +348,7 @@
 ;;; typep - check if value is of given type
 (defun typep (x (type symbol))
   (eq (type-of x) type))
+
+;;; Arithmetic helpers
+(defun (inc -> fixnum) ((n fixnum)) (+ n 1))
+(defun (dec -> fixnum) ((n fixnum)) (- n 1))
