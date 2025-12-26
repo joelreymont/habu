@@ -293,3 +293,52 @@
                 (and2 (negative? n) (negative? d)))
             (+ q 1)
             q))))
+
+;;; Sorting
+
+;;; insert - insert element into sorted list
+(defun insert (x lst pred)
+  (if (null? lst)
+      (list1 x)
+      (if (pred x (car lst))
+          (cons x lst)
+          (cons (car lst) (insert x (cdr lst) pred)))))
+
+;;; sort - insertion sort (simple, stable)
+(defun sort (lst pred)
+  (if (null? lst)
+      nil
+      (insert (car lst) (sort (cdr lst) pred) pred)))
+
+;;; merge - merge two sorted lists
+(defun merge-lists (lst1 lst2 pred)
+  (cond
+    ((null? lst1) lst2)
+    ((null? lst2) lst1)
+    ((pred (car lst1) (car lst2))
+     (cons (car lst1) (merge-lists (cdr lst1) lst2 pred)))
+    (t (cons (car lst2) (merge-lists lst1 (cdr lst2) pred)))))
+
+;;; split-half - split list into two halves
+(defun split-half (lst)
+  (let ((len (length lst)))
+    (split-at (/ len 2) lst)))
+
+(defun split-at (n lst)
+  (if (= n 0)
+      (cons nil lst)
+      (let ((rest (split-at (- n 1) (cdr lst))))
+        (cons (cons (car lst) (car rest)) (cdr rest)))))
+
+;;; merge-sort - stable O(n log n) sort
+(defun merge-sort (lst pred)
+  (if (or2 (null? lst) (null? (cdr lst)))
+      lst
+      (let ((halves (split-half lst)))
+        (merge-lists (merge-sort (car halves) pred)
+                     (merge-sort (cdr halves) pred)
+                     pred))))
+
+;;; Convenience
+(defun sort-asc (lst) (sort lst <))
+(defun sort-desc (lst) (sort lst >))
