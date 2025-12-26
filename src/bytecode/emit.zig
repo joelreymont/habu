@@ -168,6 +168,7 @@ pub const Emitter = struct {
             .assert_vector => |op| try self.emitUnaryOp(op.operand, .check_vector),
             .assert_closure => |op| try self.emitUnaryOp(op.operand, .check_closure),
             .assert_non_nil => |op| try self.emitUnaryOp(op.operand, .check_non_nil),
+            .assert_list => |op| try self.emitUnaryOp(op.operand, .check_list),
         }
     }
 

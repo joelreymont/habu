@@ -40,6 +40,7 @@ pub const t_keyword = type_adt.t_keyword;
 pub const t_nil = type_adt.t_nil;
 pub const t_any = type_adt.t_any;
 pub const t_list_any = type_adt.t_list_any;
+pub const t_non_nil = type_adt.t_non_nil;
 
 test {
     _ = type_adt;

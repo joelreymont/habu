@@ -235,6 +235,9 @@ pub const Ir = union(enum) {
     /// Assert value is non-nil (error if nil)
     assert_non_nil: UnaryOp,
 
+    /// Assert value is list (nil or cons)
+    assert_list: UnaryOp,
+
     // ========================================================================
     // Helper types
     // ========================================================================
@@ -285,7 +288,7 @@ pub const Ir = union(enum) {
             .str_ref, .str_len, .str_concat, .str_eq, .substring,
             .print, .random, .intern, .sym_name,
             .assert_fixnum, .assert_cons, .assert_symbol, .assert_string,
-            .assert_vector, .assert_closure, .assert_non_nil,
+            .assert_vector, .assert_closure, .assert_non_nil, .assert_list,
             => true,
             else => false,
         };
@@ -586,6 +589,12 @@ pub const IrBuilder = struct {
     pub fn assertNonNil(self: IrBuilder, operand: *const Ir) !*Ir {
         const node = try self.allocator.create(Ir);
         node.* = .{ .assert_non_nil = .{ .operand = operand } };
+        return node;
+    }
+
+    pub fn assertList(self: IrBuilder, operand: *const Ir) !*Ir {
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .assert_list = .{ .operand = operand } };
         return node;
     }
 };

@@ -141,6 +141,8 @@ pub const t_any = Type{ .any = {} };
 
 // Common compound types
 pub const t_list_any = Type{ .list = &t_any };
+/// Non-nil: any value that is not nil (used in else-branch of null? checks)
+pub const t_non_nil = Type{ .non_nil = &t_any };
 
 // ============================================================================
 // Type constructors (for runtime type building)

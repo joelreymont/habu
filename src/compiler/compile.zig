@@ -384,13 +384,20 @@ pub const Compiler = struct {
     };
 
     /// Predicate to narrowed type mapping
-    const predicate_types = [_]struct { tag: std.meta.Tag(Ir), ty: *const Type }{
-        .{ .tag = .consp, .ty = &types.t_cons },
-        .{ .tag = .symbolp, .ty = &types.t_symbol },
-        .{ .tag = .numberp, .ty = &types.t_fixnum },
-        .{ .tag = .stringp, .ty = &types.t_string },
-        .{ .tag = .vectorp, .ty = &types.t_vector },
-        .{ .tag = .nilp, .ty = &types.t_nil },
+    /// then_ty: type to narrow to in then-branch
+    /// else_ty: type to narrow to in else-branch (null if unknown)
+    const predicate_types = [_]struct {
+        tag: std.meta.Tag(Ir),
+        then_ty: *const Type,
+        else_ty: ?*const Type,
+    }{
+        .{ .tag = .consp, .then_ty = &types.t_cons, .else_ty = null },
+        .{ .tag = .symbolp, .then_ty = &types.t_symbol, .else_ty = null },
+        .{ .tag = .numberp, .then_ty = &types.t_fixnum, .else_ty = null },
+        .{ .tag = .stringp, .then_ty = &types.t_string, .else_ty = null },
+        .{ .tag = .vectorp, .then_ty = &types.t_vector, .else_ty = null },
+        // nilp: if nil then x is nil, else x is non-nil
+        .{ .tag = .nilp, .then_ty = &types.t_nil, .else_ty = &types.t_non_nil },
     };
 
     /// Get operand from a unary predicate IR node
@@ -408,6 +415,7 @@ pub const Compiler = struct {
 
     /// Extract predicate narrowing info from an IR node
     /// For (consp x), returns info to narrow x to cons in then-branch
+    /// For (nilp x), returns info to narrow x to nil in then, non-nil in else
     fn extractPredicateInfo(node: *const Ir) ?PredicateInfo {
         const tag = std.meta.activeTag(node.*);
 
@@ -417,8 +425,8 @@ pub const Compiler = struct {
                     if (operand.* == .@"var") {
                         return .{
                             .var_name = operand.@"var".name,
-                            .narrowed_type = entry.ty,
-                            .else_type = null,
+                            .narrowed_type = entry.then_ty,
+                            .else_type = entry.else_ty,
                         };
                     }
                 }
@@ -713,7 +721,26 @@ pub const Compiler = struct {
             }
         };
 
-        const else_ir = try self.compileWithTail(else_expr, env, in_tail);
+        // Compile else-branch with else-type narrowing if available
+        const else_ir = blk: {
+            if (pred_info) |info| {
+                if (info.else_type) |else_ty| {
+                    // Create occurrence context for else-branch
+                    var else_occ = OccurrenceCtx.init(self.allocator);
+                    defer else_occ.deinit();
+                    else_occ.narrowed.put(info.var_name, else_ty) catch
+                        return error.OutOfMemory;
+
+                    // Save and restore outer occ context
+                    const saved_occ = self.occ;
+                    self.occ = &else_occ;
+                    defer self.occ = saved_occ;
+
+                    break :blk try self.compileWithTail(else_expr, env, in_tail);
+                }
+            }
+            break :blk try self.compileWithTail(else_expr, env, in_tail);
+        };
 
         return self.builder.ifExpr(test_ir, then_ir, else_ir) catch return error.OutOfMemory;
     }
@@ -1536,7 +1563,15 @@ pub const Compiler = struct {
         const cons2 = rest.toPtr(Cons);
         const expr = cons2.car;
 
-        // Type must be a symbol
+        // Compile the expression first
+        const expr_ir = try self.compile(expr, env);
+
+        // Handle compound type specs: (or type1 type2 ...)
+        if (type_spec.isCons()) {
+            return self.compileCompoundTypeCheck(type_spec, expr_ir);
+        }
+
+        // Type must be a symbol for simple types
         if (!type_spec.isSymbol()) return error.InvalidSyntax;
         const type_sym = type_spec.toPtr(Symbol);
         const type_name = type_sym.getName();
@@ -1551,15 +1586,17 @@ pub const Compiler = struct {
                     // Check if narrowed type matches requested type
                     if (self.typeMatchesName(narrowed_type, type_name)) {
                         // Already narrowed - just compile the expression, skip the check
-                        return self.compile(expr, env);
+                        return expr_ir;
                     }
                 }
             }
         }
 
-        // Compile the expression
-        const expr_ir = try self.compile(expr, env);
+        return self.compileSimpleTypeCheck(type_name, expr_ir);
+    }
 
+    /// Compile a simple type check for a single type name
+    fn compileSimpleTypeCheck(self: *Compiler, type_name: []const u8, expr_ir: *const Ir) CompileError!*Ir {
         // Map type name to assertion IR
         if (std.mem.eql(u8, type_name, "fixnum")) {
             return self.builder.assertFixnum(expr_ir) catch return error.OutOfMemory;
@@ -1582,18 +1619,85 @@ pub const Compiler = struct {
         if (std.mem.eql(u8, type_name, "non-nil")) {
             return self.builder.assertNonNil(expr_ir) catch return error.OutOfMemory;
         }
+        if (std.mem.eql(u8, type_name, "list")) {
+            return self.builder.assertList(expr_ir) catch return error.OutOfMemory;
+        }
+        if (std.mem.eql(u8, type_name, "any")) {
+            // No check needed for any type
+            return @constCast(expr_ir);
+        }
 
         // Unknown type
         return error.InvalidSyntax;
     }
 
+    /// Compile a compound type check: (or type1 type2 ...)
+    fn compileCompoundTypeCheck(self: *Compiler, type_spec: Value, expr_ir: *const Ir) CompileError!*Ir {
+        const cons = type_spec.toPtr(Cons);
+        if (!cons.car.isSymbol()) return error.InvalidSyntax;
+
+        const head_sym = cons.car.toPtr(Symbol);
+        const head_name = head_sym.getName();
+
+        if (std.mem.eql(u8, head_name, "or")) {
+            return self.compileOrTypeCheck(cons.cdr, expr_ir);
+        }
+
+        // Unknown compound type
+        return error.InvalidSyntax;
+    }
+
+    /// Compile (or type1 type2 ...) check
+    /// Expands to: check_list if (or cons nil), else check each type
+    fn compileOrTypeCheck(self: *Compiler, type_list: Value, expr_ir: *const Ir) CompileError!*Ir {
+        // Collect type names (symbols are names, nil value means "nil" type)
+        var type_names = std.ArrayList([]const u8){};
+        defer type_names.deinit(self.allocator);
+
+        var list = type_list;
+        while (list.isCons()) {
+            const c = list.toPtr(Cons);
+            if (c.car.isSymbol()) {
+                const type_sym = c.car.toPtr(Symbol);
+                type_names.append(self.allocator, type_sym.getName()) catch return error.OutOfMemory;
+            } else if (c.car.isNil()) {
+                // nil value in type position means the nil type
+                type_names.append(self.allocator, "nil") catch return error.OutOfMemory;
+            } else {
+                return error.InvalidSyntax;
+            }
+            list = c.cdr;
+        }
+
+        if (type_names.items.len == 0) return error.InvalidSyntax;
+
+        // Special case: (or cons nil) or (or nil cons) -> list
+        if (type_names.items.len == 2) {
+            const has_cons = for (type_names.items) |n| {
+                if (std.mem.eql(u8, n, "cons")) break true;
+            } else false;
+            const has_nil = for (type_names.items) |n| {
+                if (std.mem.eql(u8, n, "nil")) break true;
+            } else false;
+            if (has_cons and has_nil) {
+                return self.builder.assertList(expr_ir) catch return error.OutOfMemory;
+            }
+        }
+
+        // For other or-types, we need runtime checks with predicates
+        // This is more complex - for now, return the expression without check
+        // TODO: Implement full or-type checking
+        return @constCast(expr_ir);
+    }
+
     /// Check if a Type matches a type name string
     fn typeMatchesName(self: *Compiler, ty: *const Type, name: []const u8) bool {
         _ = self;
-        if (ty.* == .primitive) {
-            return std.mem.eql(u8, ty.primitive.name(), name);
+        switch (ty.*) {
+            .primitive => |p| return std.mem.eql(u8, p.name(), name),
+            .non_nil => return std.mem.eql(u8, name, "non-nil"),
+            else => return false,
         }
-        return false;
     }
 
     fn compileBody(self: *Compiler, exprs: Value, env: *const Env) CompileError!*Ir {

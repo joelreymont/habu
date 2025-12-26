@@ -533,6 +533,10 @@ pub const Vm = struct {
                     const val = try self.peek(0);
                     if (val.isNil()) return error.TypeMismatch;
                 },
+                .check_list => {
+                    const val = try self.peek(0);
+                    if (!val.isNil() and !val.isCons()) return error.TypeMismatch;
+                },
 
                 .halt => return error.Halt,
             }

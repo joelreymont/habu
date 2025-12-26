@@ -608,6 +608,79 @@ test "the non-nil failure" {
     try testing.expectError(error.TypeMismatch, err);
 }
 
+test "the list success with cons" {
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    const result = try evalExpr(allocator, &heap, "(the list (cons 1 2))");
+    try testing.expect(result.isCons());
+}
+
+test "the list success with nil" {
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    const result = try evalExpr(allocator, &heap, "(the list nil)");
+    try testing.expect(result.isNil());
+}
+
+test "the list failure" {
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    // fixnum is not a list
+    const err = evalExpr(allocator, &heap, "(the list 42)");
+    try testing.expectError(error.TypeMismatch, err);
+}
+
+test "the any" {
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    // any type accepts anything
+    const result1 = try evalExpr(allocator, &heap, "(the any 42)");
+    try testing.expect(result1.isFixnum());
+
+    const result2 = try evalExpr(allocator, &heap, "(the any nil)");
+    try testing.expect(result2.isNil());
+
+    const result3 = try evalExpr(allocator, &heap, "(the any (cons 1 2))");
+    try testing.expect(result3.isCons());
+}
+
+test "the or cons nil equals list" {
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    // (or cons nil) is equivalent to list type
+    const result1 = try evalExpr(allocator, &heap, "(the (or cons nil) (cons 1 2))");
+    try testing.expect(result1.isCons());
+
+    const result2 = try evalExpr(allocator, &heap, "(the (or nil cons) nil)");
+    try testing.expect(result2.isNil());
+}
+
+test "the or cons nil failure" {
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    // fixnum is not (or cons nil)
+    const err = evalExpr(allocator, &heap, "(the (or cons nil) 42)");
+    try testing.expectError(error.TypeMismatch, err);
+}
+
 test "the in function" {
     const allocator = testing.allocator;
 
@@ -684,6 +757,33 @@ test "occurrence typing with numberp" {
     try testing.expectEqual(@as(i64, 42), result.toFixnum());
 
     const result2 = try repl.eval("(safe-double \"not a number\")");
+    try testing.expect(result2.isFixnum());
+    try testing.expectEqual(@as(i64, 0), result2.toFixnum());
+}
+
+test "else-branch occurrence typing with null?" {
+    // After (null? x) in if condition:
+    // - then-branch: x is nil
+    // - else-branch: x is non-nil (check skipped)
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl = Repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+
+    // safe-first: if null, return 0; else car the non-nil value
+    // The (the non-nil x) should be skipped in else-branch because we know x is not nil
+    _ = try repl.eval("(defun safe-first (x) (if (null? x) 0 (car (the non-nil x))))");
+
+    // Works on cons - x is non-nil, assertion skipped
+    const result = try repl.eval("(safe-first (cons 42 nil))");
+    try testing.expect(result.isFixnum());
+    try testing.expectEqual(@as(i64, 42), result.toFixnum());
+
+    // Works on nil - returns 0 without error
+    const result2 = try repl.eval("(safe-first nil)");
     try testing.expect(result2.isFixnum());
     try testing.expectEqual(@as(i64, 0), result2.toFixnum());
 }

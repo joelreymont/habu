@@ -339,6 +339,10 @@ pub const Op = enum(u8) {
     /// ( x -- x )
     check_non_nil = 0xA6,
 
+    /// Assert value is list (nil or cons), error if not
+    /// ( x -- x )
+    check_list = 0xA7,
+
     // ========================================================================
     // Special
     // ========================================================================
@@ -360,7 +364,7 @@ pub const Op = enum(u8) {
             .str_ref, .str_len, .str_concat,
             .ret, .print, .random, .intern, .substring, .sym_name, .str_eq, .halt,
             .check_fixnum, .check_cons, .check_symbol, .check_string,
-            .check_vector, .check_closure, .check_non_nil,
+            .check_vector, .check_closure, .check_non_nil, .check_list,
             .apply,
             => 0,
 

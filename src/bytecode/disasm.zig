@@ -46,7 +46,7 @@ pub fn disassembleInstruction(chunk: *const Chunk, offset: usize, writer: anytyp
         .str_ref, .str_len, .str_concat,
         .ret, .print, .random, .intern, .substring, .sym_name, .str_eq, .halt,
         .check_fixnum, .check_cons, .check_symbol, .check_string,
-        .check_vector, .check_closure, .check_non_nil,
+        .check_vector, .check_closure, .check_non_nil, .check_list,
         .apply,
         => {
             try writer.print("{s}\n", .{op.name()});
