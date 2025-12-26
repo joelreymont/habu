@@ -410,6 +410,22 @@ pub const Op = enum(u8) {
     check_list = 0xA7,
 
     // ========================================================================
+    // Character I/O
+    // ========================================================================
+
+    /// Read a character from stdin
+    /// ( -- char | fixnum(-1) )
+    read_char = 0xA8,
+
+    /// Peek at next character without consuming
+    /// ( -- char | fixnum(-1) )
+    peek_char = 0xA9,
+
+    /// Push character back to input
+    /// ( char -- )
+    unread_char = 0xAA,
+
+    // ========================================================================
     // Dynamic exception handling (catch/throw)
     // ========================================================================
 
@@ -475,6 +491,7 @@ pub const Op = enum(u8) {
             .apply, .pop_catch, .throw,
             .hash_get, .hash_set, .hash_rem, .hash_count, .hashtablep,
             .characterp, .char_code, .code_char, .char_eq, .char_lt, .char_gt,
+            .read_char, .peek_char, .unread_char,
             => 0,
 
             // 1 byte operand

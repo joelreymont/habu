@@ -281,6 +281,9 @@ pub const Ir = union(enum) {
     char_eq: BinaryOp,
     char_lt: BinaryOp,
     char_gt: BinaryOp,
+    read_char: void, // No operands - reads from stdin
+    peek_char: void, // No operands - peeks at stdin
+    unread_char: UnaryOp, // Push character back
 
     // ========================================================================
     // Primitives - Vector operations
@@ -728,6 +731,24 @@ pub const IrBuilder = struct {
     pub fn charGt(self: IrBuilder, left: *const Ir, right: *const Ir) !*Ir {
         const node = try self.allocator.create(Ir);
         node.* = .{ .char_gt = .{ .left = left, .right = right } };
+        return node;
+    }
+
+    pub fn readChar(self: IrBuilder) !*Ir {
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .read_char = {} };
+        return node;
+    }
+
+    pub fn peekChar(self: IrBuilder) !*Ir {
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .peek_char = {} };
+        return node;
+    }
+
+    pub fn unreadChar(self: IrBuilder, char: *const Ir) !*Ir {
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .unread_char = .{ .operand = char } };
         return node;
     }
 

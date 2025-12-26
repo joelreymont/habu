@@ -868,6 +868,29 @@ pub const Vm = struct {
                     try self.push(if (a.toCharacter() > b.toCharacter()) Value.t else Value.nil);
                 },
 
+                .read_char => {
+                    const ch = io.sysReadChar() catch -1;
+                    if (ch < 0) {
+                        try self.push(Value.makeFixnum(-1));
+                    } else {
+                        try self.push(Value.makeCharacter(@intCast(ch)));
+                    }
+                },
+                .peek_char => {
+                    const ch = io.sysPeekChar() catch -1;
+                    if (ch < 0) {
+                        try self.push(Value.makeFixnum(-1));
+                    } else {
+                        try self.push(Value.makeCharacter(@intCast(ch)));
+                    }
+                },
+                .unread_char => {
+                    const val = try self.pop();
+                    if (!val.isCharacter()) return error.TypeMismatch;
+                    io.sysUnreadChar(@intCast(val.toCharacter()));
+                    try self.push(Value.nil);
+                },
+
                 .halt => return error.Halt,
             }
         }

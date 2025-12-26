@@ -207,6 +207,9 @@ pub const Emitter = struct {
             .char_eq => |op| try self.emitBinaryOp(op, .char_eq),
             .char_lt => |op| try self.emitBinaryOp(op, .char_lt),
             .char_gt => |op| try self.emitBinaryOp(op, .char_gt),
+            .read_char => try self.emitOp(.read_char),
+            .peek_char => try self.emitOp(.peek_char),
+            .unread_char => |op| try self.emitUnaryOp(op.operand, .unread_char),
 
             // Vector operations
             .vec_new => |v| try self.emitVecNew(v),

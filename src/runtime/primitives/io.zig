@@ -8,6 +8,9 @@ const Value = @import("../value.zig").Value;
 const objects = @import("../objects.zig");
 const Heap = @import("../heap.zig").Heap;
 
+/// Pushback buffer for unread-char (single character)
+var pushback_char: ?u8 = null;
+
 /// Write a string to stdout
 pub fn sysWrite(val: Value) !void {
     if (!val.isString()) return;
@@ -73,9 +76,7 @@ pub fn sysReadLine(heap: *Heap) !Value {
     var line_len: usize = 0;
 
     while (line_len < line_buf.len) {
-        const byte = reader.readByte() catch |err| switch (err) {
-            error.ReadFailed => break,
-        };
+        const byte = reader.takeByte() catch break;
 
         if (byte == '\n') break;
         line_buf[line_len] = byte;
@@ -89,16 +90,44 @@ pub fn sysReadLine(heap: *Heap) !Value {
 
 /// Read a single character from stdin
 pub fn sysReadChar() !i64 {
+    // Check pushback buffer first
+    if (pushback_char) |ch| {
+        pushback_char = null;
+        return @intCast(ch);
+    }
+
     const stdin_file = fs.File.stdin();
     var read_buf: [4096]u8 = undefined;
     var file_reader = stdin_file.reader(&read_buf);
     const reader = &file_reader.interface;
 
-    const byte = reader.readByte() catch |err| switch (err) {
-        error.ReadFailed => return -1,
-    };
+    const byte = reader.takeByte() catch return -1;
 
     return @intCast(byte);
+}
+
+/// Peek at next character without consuming it
+pub fn sysPeekChar() !i64 {
+    // If already have pushback, return it
+    if (pushback_char) |ch| {
+        return @intCast(ch);
+    }
+
+    // Read and push back
+    const stdin_file = fs.File.stdin();
+    var read_buf: [4096]u8 = undefined;
+    var file_reader = stdin_file.reader(&read_buf);
+    const reader = &file_reader.interface;
+
+    const byte = reader.takeByte() catch return -1;
+
+    pushback_char = byte;
+    return @intCast(byte);
+}
+
+/// Push a character back to be read again
+pub fn sysUnreadChar(ch: u8) void {
+    pushback_char = ch;
 }
 
 /// Print a Habu value to stdout (Lisp-style)
