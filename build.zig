@@ -33,8 +33,13 @@ pub fn build(b: *std.Build) void {
         }),
     });
 
-    // TODO: Add ohsnap for snapshot testing when dependency hash issue resolved
-    // See: https://github.com/mnemnion/ohsnap
+    // Add ohsnap for snapshot testing
+    if (b.lazyDependency("ohsnap", .{
+        .target = target,
+        .optimize = optimize,
+    })) |ohsnap_dep| {
+        lib_tests.root_module.addImport("ohsnap", ohsnap_dep.module("ohsnap"));
+    }
 
     const test_step = b.step("test", "Run unit tests");
     test_step.dependOn(&b.addRunArtifact(lib_tests).step);

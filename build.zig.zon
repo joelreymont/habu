@@ -2,8 +2,9 @@
     .name = .habu,
     .version = "0.1.0",
     .dependencies = .{
-        // ohsnap for snapshot testing - disabled until dependency hash issue resolved
-        // See: https://github.com/mnemnion/ohsnap
+        .ohsnap = .{
+            .path = "deps/ohsnap",
+        },
     },
     .fingerprint = 0xe1672d71b8ccd567,
     .minimum_zig_version = "0.15.0",
@@ -11,5 +12,6 @@
         "build.zig",
         "build.zig.zon",
         "src",
+        "deps",
     },
 }

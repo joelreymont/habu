@@ -1,7 +1,5 @@
 # Zig 0.15 API Reference
 
-Local reference for Zig 0.15 API changes and patterns.
-
 ## Comptime for Performance
 
 Use `comptime` aggressively for zero-cost abstractions:
@@ -23,6 +21,27 @@ fn classifyChar(c: u8) CharType {
 }
 ```
 
+### Comptime Type Generation
+```zig
+fn Instruction(comptime fields: []const Field) type {
+    return packed struct {
+        // Generate fields at compile time
+        // ...
+    };
+}
+```
+
+### Comptime vs Runtime Branching
+```zig
+// BAD - runtime check on every call
+fn encode(comptime big_endian: bool, value: u32) [4]u8 {
+    if (big_endian) { ... } else { ... }  // evaluated at compile time!
+}
+
+// Comptime parameter eliminates dead branch at compile time
+// Both versions exist as separate functions
+```
+
 ### Force Inlining for Hot Paths
 ```zig
 inline fn decodeFast(bytes: []const u8) u32 {
@@ -32,43 +51,49 @@ inline fn decodeFast(bytes: []const u8) u32 {
 
 ### Comptime String Operations
 ```zig
+// BAD - runtime format
+const msg = std.fmt.allocPrint(alloc, "error: {s}", .{name});
+
+// GOOD - comptime format validation, but still runtime allocation
+const msg = try std.fmt.allocPrint(alloc, "error: {s}", .{name});
+
 // BEST - comptime when possible
 const msg = comptime std.fmt.comptimePrint("error: {s}", .{"known"});
 ```
 
-## Memory Allocation
-
-### Alignment Enum
-
-`alignedAlloc` uses `std.mem.Alignment` enum instead of raw integers:
-
+### Comptime State Machines
 ```zig
-// 16-byte aligned allocation
-const mem = try allocator.alignedAlloc(u8, .@"16", size);
+// Generate DFA transition table at compile time from regex
+const dfa = comptime buildDFA("identifier|number|string");
 
-// Available values: .@"1", .@"2", .@"4", .@"8", .@"16", .@"32", .@"64"
-// Use null for natural alignment of the type
-const mem = try allocator.alignedAlloc(u8, null, size);
+fn lex(input: []const u8) Token {
+    var state: u8 = 0;
+    for (input) |c| {
+        state = dfa.transition[state][c];  // single lookup
+    }
+    return dfa.accept[state];
+}
 ```
 
-### ArrayList (Unmanaged)
+## CRITICAL: ArrayList is Unmanaged
 
-**CRITICAL**: `std.ArrayList(T)` no longer stores allocator. Pass allocator to every method:
+In Zig 0.15, `std.ArrayList(T)` no longer stores an allocator. You MUST pass the allocator to every method.
 
 ```zig
 // OLD (pre-0.15) - WRONG:
 var list = std.ArrayList(T).init(allocator);
 try list.append(item);
+const slice = list.toOwnedSlice();
 list.deinit();
 
 // NEW (0.15) - CORRECT:
-var list = std.ArrayList(T){};
+var list = std.ArrayList(T){};  // or: var list: std.ArrayList(T) = .{};
 try list.append(allocator, item);
 const slice = try list.toOwnedSlice(allocator);
 list.deinit(allocator);
 ```
 
-### ArrayList Method Signatures (0.15)
+## ArrayList Method Signatures (0.15)
 
 | Method | Old | New |
 |--------|-----|-----|
@@ -80,7 +105,7 @@ list.deinit(allocator);
 | deinit | `.deinit()` | `.deinit(alloc)` |
 | items | `.items` | `.items` (no change) |
 
-### StringHashMap - Still Managed
+## StringHashMap - Still Managed
 
 `std.StringHashMap(V)` still uses `.init(allocator)` - it's managed.
 
@@ -90,18 +115,9 @@ defer map.deinit();
 try map.put(key, value);
 ```
 
-### ArenaAllocator
+## I/O Changes
 
-```zig
-var arena = std.heap.ArenaAllocator.init(backing_allocator);
-defer arena.deinit();
-const alloc = arena.allocator();
-// allocator.free() is a no-op - arena frees all at once
-```
-
-## I/O
-
-### stdout Pattern
+## stdout Pattern
 
 ```zig
 const std = @import("std");
@@ -120,17 +136,18 @@ pub fn main() !void {
 }
 ```
 
-### File.Writer Structure
+## File.Writer Structure
 
 ```zig
 pub const Writer = struct {
     file: File,
     err: ?WriteError = null,
     interface: std.Io.Writer,  // <-- use this for print/writeAll
+    // ...
 };
 ```
 
-### std.Io.Writer Methods
+## std.Io.Writer Methods
 
 | Method | Signature | Notes |
 |--------|-----------|-------|
@@ -140,7 +157,7 @@ pub const Writer = struct {
 | `write` | `fn(*Writer, []const u8) Error!usize` | Partial write OK |
 | `flush` | `fn(*Writer) Error!void` | Drain buffer |
 
-### No writeByteNTimes - Use Loop
+## No writeByteNTimes - Use Loop
 
 ```zig
 fn writeByteNTimes(w: *std.Io.Writer, byte: u8, n: usize) !void {
@@ -148,7 +165,25 @@ fn writeByteNTimes(w: *std.Io.Writer, byte: u8, n: usize) !void {
 }
 ```
 
-### File Reading
+## ArrayList Changes
+
+```zig
+// Old (pre-0.15):
+var list = std.ArrayList(T).init(allocator);
+try list.append(item);
+list.deinit();
+
+// New (0.15):
+var list = std.ArrayList(T){};  // or .empty
+try list.append(allocator, item);  // allocator passed to methods
+list.deinit(allocator);
+```
+
+## ArrayListUnmanaged
+
+Same API as new ArrayList - they're now equivalent.
+
+## File Reading
 
 ```zig
 const file = try fs.openFileAbsolute(path, .{});
@@ -157,7 +192,7 @@ const content = try file.readToEndAlloc(allocator, max_size);
 defer allocator.free(content);
 ```
 
-### File.Reader (buffered line reading)
+## File.Reader (buffered line reading)
 
 ```zig
 const file = try fs.openFileAbsolute(path, .{});
@@ -179,99 +214,83 @@ while (true) {
 }
 ```
 
-## Build System
-
-### build.zig
-
-```zig
-const exe = b.addExecutable(.{
-    .name = "name",
-    .root_module = b.createModule(.{
-        .root_source_file = b.path("src/main.zig"),
-        .target = target,
-        .optimize = optimize,
-    }),
-});
-```
-
-### build.zig.zon
-
-```zig
-.{
-    .name = .package_name,  // enum literal, not string
-    .version = "0.1.0",
-    .fingerprint = 0xABCD1234,  // required
-    .dependencies = .{},
-    .paths = .{ "build.zig", "build.zig.zon", "src" },
-}
-```
-
-### Lazy Dependencies
-
-```zig
-if (b.lazyDependency("dep_name", .{
-    .target = target,
-    .optimize = optimize,
-})) |dep| {
-    exe.root_module.addImport("dep", dep.module("dep"));
-}
-```
-
-## Formatting
-
-### Custom Format Functions
-
-Types with custom `format` method need explicit specifier:
-
-```zig
-// If type has format method, use {f} to call it
-try writer.print("{f}", .{my_type});
-
-// Use {any} for default debug formatting
-try writer.print("{any}", .{my_type});
-
-// Plain {} is ambiguous if type has format - causes compile error
-```
-
-## Testing
-
-### Unused Variables
-
-Zig 0.15 is stricter about unused mutable variables:
-
-```zig
-// ERROR: var never mutated
-var x = something();
-_ = x;
-
-// FIX: use const
-const x = something();
-_ = x;
-```
-
-## Threading
-
-### Per-thread Arena
+## Threading with ArenaAllocator
 
 ```zig
 // Per-thread arena to avoid allocator contention
 var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
 const allocator = arena.allocator();
+// allocator.free() is a no-op - arena frees all at once
 
 // Atomic work stealing
 var work_index = std.atomic.Value(usize).init(0);
 const idx = work_index.fetchAdd(1, .monotonic);
 ```
 
-## JSON
+## JSON Parsing
+
+### Parse JSON string into typed struct (PREFERRED)
 
 ```zig
-const parsed = try std.json.parseFromSlice(
-    std.json.Value,
-    allocator,
-    json_string,
-    .{}
-);
+const MyParams = struct {
+    name: []const u8,
+    count: i32 = 0,
+    optional_field: ?[]const u8 = null,
+};
+
+const parsed = try std.json.parseFromSlice(MyParams, allocator, json_string, .{});
+defer parsed.deinit();
+const params = parsed.value;
+// Use params.name, params.count, params.optional_field
+```
+
+### Parse json.Value into typed struct
+
+When you already have a `std.json.Value` (e.g., from JSON-RPC params):
+
+```zig
+const parsed = try std.json.parseFromValue(MyParams, allocator, json_value, .{});
+defer parsed.deinit();
+const params = parsed.value;
+```
+
+### Parse into dynamic Value (avoid if possible)
+
+```zig
+const parsed = try std.json.parseFromSlice(std.json.Value, allocator, json_string, .{});
 defer parsed.deinit();
 const obj = parsed.value.object;
 ```
+
+## JSON Stringify
+
+Use `std.json.Stringify` for writing JSON:
+
+```zig
+var out: std.io.Writer.Allocating = .init(allocator);
+defer out.deinit();
+var jw: std.json.Stringify = .{ .writer = &out.writer };
+
+try jw.beginObject();
+try jw.objectField("name");
+try jw.write("value");
+try jw.objectField("count");
+try jw.write(42);
+try jw.objectField("nested");
+try jw.beginObject();
+try jw.objectField("inner");
+try jw.write(true);
+try jw.endObject();
+try jw.endObject();
+
+const result = try out.toOwnedSlice();  // {"name":"value","count":42,"nested":{"inner":true}}
+```
+
+For encoding strings with escapes:
+```zig
+try std.json.Stringify.encodeJsonString(my_string, .{}, &out.writer);
+```
+
+**WRONG**: `value.jsonStringify(array_list.writer())` - ArrayList.Writer is NOT a Stringify!
+
+**RIGHT**: Create a `std.json.Stringify` and pass it to `jsonStringify`.
