@@ -296,6 +296,7 @@ pub const Ir = union(enum) {
     char_gt: BinaryOp,
     read_char: void, // No operands - reads from stdin
     peek_char: void, // No operands - peeks at stdin
+    read: void, // Read S-expression from stdin
     unread_char: UnaryOp, // Push character back
     boundp: UnaryOp, // Check if symbol has global binding
     fboundp: UnaryOp, // Check if symbol has function binding
@@ -785,6 +786,12 @@ pub const IrBuilder = struct {
     pub fn peekChar(self: IrBuilder) !*Ir {
         const node = try self.allocator.create(Ir);
         node.* = .{ .peek_char = {} };
+        return node;
+    }
+
+    pub fn readSexp(self: IrBuilder) !*Ir {
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .read = {} };
         return node;
     }
 

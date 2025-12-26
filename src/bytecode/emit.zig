@@ -211,6 +211,7 @@ pub const Emitter = struct {
             .char_gt => |op| try self.emitBinaryOp(op, .char_gt),
             .read_char => try self.emitOp(.read_char),
             .peek_char => try self.emitOp(.peek_char),
+            .read => try self.emitOp(.read),
             .unread_char => |op| try self.emitUnaryOp(op.operand, .unread_char),
             .boundp => |op| try self.emitUnaryOp(op.operand, .boundp),
             .fboundp => |op| try self.emitUnaryOp(op.operand, .fboundp),

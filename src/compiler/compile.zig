@@ -2282,6 +2282,9 @@ pub const Compiler = struct {
         if (std.mem.eql(u8, name, "peek-char")) {
             return self.compileNullaryPrim(.peek_char);
         }
+        if (std.mem.eql(u8, name, "read")) {
+            return self.compileNullaryPrim(.read);
+        }
         if (std.mem.eql(u8, name, "unread-char")) {
             return self.compileUnaryPrim(args, env, .unread_char);
         }
@@ -2396,7 +2399,7 @@ pub const Compiler = struct {
         return error.InvalidSyntax; // Not a known primitive
     }
 
-    const PrimTag = enum { add, sub, mul, div, mod, eq, lt, gt, le, ge, num_eq, cons, car, cdr, consp, symbolp, numberp, stringp, vectorp, nilp, not, vec_ref, vec_len, str_ref, str_len, str_eq, print, random, intern, sym_name, type_of, characterp, char_code, code_char, char_eq, char_lt, char_gt, read_char, peek_char, unread_char, boundp, fboundp, symbol_value, symbol_function, typep, abs, zerop, plusp, minusp, evenp, oddp };
+    const PrimTag = enum { add, sub, mul, div, mod, eq, lt, gt, le, ge, num_eq, cons, car, cdr, consp, symbolp, numberp, stringp, vectorp, nilp, not, vec_ref, vec_len, str_ref, str_len, str_eq, print, random, intern, sym_name, type_of, characterp, char_code, code_char, char_eq, char_lt, char_gt, read_char, peek_char, read, unread_char, boundp, fboundp, symbol_value, symbol_function, typep, abs, zerop, plusp, minusp, evenp, oddp };
 
     fn compileBinaryPrim(self: *Compiler, args: Value, env: *const Env, prim: PrimTag) CompileError!*Ir {
         if (!args.isCons()) return error.InvalidSyntax;
@@ -2519,6 +2522,7 @@ pub const Compiler = struct {
         return switch (prim) {
             .read_char => self.builder.readChar(),
             .peek_char => self.builder.peekChar(),
+            .read => self.builder.readSexp(),
             else => error.InvalidSyntax,
         } catch return error.OutOfMemory;
     }

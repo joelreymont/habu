@@ -19,6 +19,7 @@ const stringPrims = @import("../runtime/primitives/string.zig");
 const HashTable = runtime.HashTable;
 const compiler = @import("../compiler/compiler.zig");
 const GlobalEnv = compiler.GlobalEnv;
+const Parser = @import("../reader/parser.zig").Parser;
 
 pub const VmError = error{
     StackOverflow,
@@ -919,6 +920,25 @@ pub const Vm = struct {
                         try self.push(Value.makeCharacter(@intCast(ch)));
                     }
                 },
+
+                .read => {
+                    // Read a complete S-expression from stdin
+                    var buffer: [4096]u8 = undefined;
+                    const len = io.sysReadSexp(&buffer) catch {
+                        // EOF or error - return nil
+                        try self.push(Value.nil);
+                        continue;
+                    };
+
+                    // Parse the S-expression
+                    var parser = Parser.init(self.allocator, self.heap, buffer[0..len]);
+                    const result = parser.parse() catch {
+                        try self.push(Value.nil);
+                        continue;
+                    };
+                    try self.push(result);
+                },
+
                 .unread_char => {
                     const val = try self.pop();
                     if (!val.isCharacter()) return error.TypeMismatch;

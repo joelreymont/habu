@@ -130,6 +130,71 @@ pub fn sysUnreadChar(ch: u8) void {
     pushback_char = ch;
 }
 
+/// Read a complete S-expression from stdin into buffer
+/// Returns the number of bytes read, or error
+pub fn sysReadSexp(buffer: []u8) !usize {
+    const stdin_file = fs.File.stdin();
+    var read_buf: [4096]u8 = undefined;
+    var file_reader = stdin_file.reader(&read_buf);
+    const reader = &file_reader.interface;
+
+    var len: usize = 0;
+    var paren_depth: i32 = 0;
+    var in_string = false;
+    var in_escape = false;
+    var started = false;
+
+    while (len < buffer.len) {
+        // Check pushback buffer first
+        const byte: u8 = if (pushback_char) |ch| blk: {
+            pushback_char = null;
+            break :blk ch;
+        } else reader.takeByte() catch break;
+
+        buffer[len] = byte;
+        len += 1;
+
+        if (in_escape) {
+            in_escape = false;
+            continue;
+        }
+
+        if (byte == '\\' and in_string) {
+            in_escape = true;
+            continue;
+        }
+
+        if (byte == '"') {
+            in_string = !in_string;
+            started = true;
+            continue;
+        }
+
+        if (in_string) continue;
+
+        // Skip leading whitespace
+        if (!started and (byte == ' ' or byte == '\t' or byte == '\n' or byte == '\r')) {
+            len -= 1;
+            continue;
+        }
+
+        started = true;
+
+        if (byte == '(') {
+            paren_depth += 1;
+        } else if (byte == ')') {
+            paren_depth -= 1;
+            if (paren_depth == 0) break; // Complete expression
+        } else if (paren_depth == 0 and (byte == ' ' or byte == '\t' or byte == '\n' or byte == '\r')) {
+            // Atom terminated by whitespace
+            len -= 1; // Don't include the whitespace
+            break;
+        }
+    }
+
+    return if (len > 0) len else error.EndOfStream;
+}
+
 /// Print a Habu value to stdout (Lisp-style)
 pub fn printValue(val: Value) !void {
     const stdout_file = fs.File.stdout();

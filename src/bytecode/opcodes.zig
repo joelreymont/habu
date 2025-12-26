@@ -473,6 +473,10 @@ pub const Op = enum(u8) {
     /// ( n -- t/nil )
     oddp = 0xD5,
 
+    /// Read S-expression from stdin
+    /// ( -- value )
+    read = 0xD6,
+
     // ========================================================================
     // Dynamic exception handling (catch/throw)
     // ========================================================================
@@ -548,7 +552,7 @@ pub const Op = enum(u8) {
             .read_char, .peek_char, .unread_char, .boundp, .fboundp,
             .symbol_value, .symbol_function, .typep,
             .abs, .zerop, .plusp, .minusp, .evenp, .oddp,
-            .mv_list,
+            .mv_list, .read,
             => 0,
 
             // 1 byte operand
