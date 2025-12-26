@@ -725,6 +725,10 @@ pub const Compiler = struct {
     };
 
     fn compileLambda(self: *Compiler, args: Value, env: *const Env) CompileError!*Ir {
+        return self.compileLambdaCore(args, env, null);
+    }
+
+    fn compileLambdaCore(self: *Compiler, args: Value, env: *const Env, return_type: ?[]const u8) CompileError!*Ir {
         // (lambda (params...) body)
         // Params can be: symbol for untyped, (symbol type) for typed
         if (!args.isCons()) return error.InvalidLambda;
@@ -817,6 +821,15 @@ pub const Compiler = struct {
             const items = self.allocator.dupe(*const Ir, assertions.items) catch
                 return error.OutOfMemory;
             body_ir = self.builder.progn(items) catch return error.OutOfMemory;
+        }
+
+        // Wrap body in return type assertion if specified
+        if (return_type) |ret_type| {
+            const assert_ir = self.makeTypeAssertion(body_ir, ret_type) catch
+                return error.InvalidSyntax;
+            if (assert_ir) |wrapped| {
+                body_ir = wrapped;
+            }
         }
 
         // Convert captures to slice
@@ -1455,21 +1468,57 @@ pub const Compiler = struct {
 
     fn compileDefun(self: *Compiler, args: Value, env: *const Env) CompileError!*Ir {
         // (defun name (params...) body...) -> (define name (lambda (params...) body...))
+        // (defun (name -> type) (params...) body...) -> with return type assertion
         if (!args.isCons()) return error.InvalidSyntax;
 
         const cons1 = args.toPtr(Cons);
-        if (!cons1.car.isSymbol()) return error.InvalidSyntax;
-        const name_sym = cons1.car.toPtr(Symbol);
-        const name = name_sym.getName();
+        const name_spec = cons1.car;
+
+        var name: []const u8 = undefined;
+        var return_type: ?[]const u8 = null;
+
+        if (name_spec.isSymbol()) {
+            // Simple: (defun name ...)
+            const name_sym = name_spec.toPtr(Symbol);
+            name = name_sym.getName();
+        } else if (name_spec.isCons()) {
+            // Typed: (defun (name -> type) ...)
+            const spec_cons = name_spec.toPtr(Cons);
+            if (!spec_cons.car.isSymbol()) return error.InvalidSyntax;
+            const name_sym = spec_cons.car.toPtr(Symbol);
+            name = name_sym.getName();
+
+            // Check for -> arrow
+            if (!spec_cons.cdr.isCons()) return error.InvalidSyntax;
+            const arrow_cons = spec_cons.cdr.toPtr(Cons);
+            if (!arrow_cons.car.isSymbol()) return error.InvalidSyntax;
+            const arrow_sym = arrow_cons.car.toPtr(Symbol);
+            if (!std.mem.eql(u8, arrow_sym.getName(), "->")) return error.InvalidSyntax;
+
+            // Get return type
+            if (!arrow_cons.cdr.isCons()) return error.InvalidSyntax;
+            const type_cons = arrow_cons.cdr.toPtr(Cons);
+            if (!type_cons.car.isSymbol()) return error.InvalidSyntax;
+            const type_sym = type_cons.car.toPtr(Symbol);
+            return_type = type_sym.getName();
+        } else {
+            return error.InvalidSyntax;
+        }
 
         // Pre-register the global so recursive calls work
         const idx = self.globals.define(name) catch return error.OutOfMemory;
 
         // Rest is (params...) body...
         const lambda_args = cons1.cdr;
-        const lambda_ir = try self.compileLambda(lambda_args, env);
+        const lambda_ir = try self.compileLambdaWithReturnType(lambda_args, env, return_type);
 
         return self.builder.define(name, idx, lambda_ir) catch return error.OutOfMemory;
+    }
+
+    fn compileLambdaWithReturnType(self: *Compiler, args: Value, env: *const Env, return_type: ?[]const u8) CompileError!*Ir {
+        // Delegate to compileLambda but wrap result if return type specified
+        const lambda_ir = try self.compileLambdaCore(args, env, return_type);
+        return lambda_ir;
     }
 
     /// Compile type assertion: (the type expr)

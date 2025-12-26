@@ -775,3 +775,74 @@ test "typed lambda" {
     try testing.expect(result.isFixnum());
     try testing.expectEqual(@as(i64, 42), result.toFixnum());
 }
+
+// ============================================================================
+// Return type declarations: (defun (name -> type) ...)
+// ============================================================================
+
+test "defun with return type" {
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl = Repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+
+    // Function with return type
+    _ = try repl.eval("(defun (always-42 -> fixnum) () 42)");
+
+    const result = try repl.eval("(always-42)");
+    try testing.expect(result.isFixnum());
+    try testing.expectEqual(@as(i64, 42), result.toFixnum());
+}
+
+test "defun with return type and params" {
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl = Repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+
+    // Fully typed function
+    _ = try repl.eval("(defun (add -> fixnum) ((a fixnum) (b fixnum)) (+ a b))");
+
+    const result = try repl.eval("(add 20 22)");
+    try testing.expect(result.isFixnum());
+    try testing.expectEqual(@as(i64, 42), result.toFixnum());
+}
+
+test "defun return type failure" {
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl = Repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+
+    // Function claims to return fixnum but returns string
+    _ = try repl.eval("(defun (bad -> fixnum) () \"not a number\")");
+
+    // Calling it should fail type check
+    const err = repl.eval("(bad)");
+    try testing.expectError(error.RuntimeError, err);
+}
+
+test "defun return type cons" {
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl = Repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+
+    // Function returns a cons
+    _ = try repl.eval("(defun (make-pair -> cons) (a b) (cons a b))");
+
+    const result = try repl.eval("(make-pair 1 2)");
+    try testing.expect(result.isCons());
+}
