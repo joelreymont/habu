@@ -212,6 +212,8 @@ pub const Emitter = struct {
             .unread_char => |op| try self.emitUnaryOp(op.operand, .unread_char),
             .boundp => |op| try self.emitUnaryOp(op.operand, .boundp),
             .fboundp => |op| try self.emitUnaryOp(op.operand, .fboundp),
+            .symbol_value => |op| try self.emitUnaryOp(op.operand, .symbol_value),
+            .symbol_function => |op| try self.emitUnaryOp(op.operand, .symbol_function),
 
             // Vector operations
             .vec_new => |v| try self.emitVecNew(v),

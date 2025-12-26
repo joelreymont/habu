@@ -31,6 +31,7 @@ pub const VmError = error{
     OutOfMemory,
     Halt,
     UnhandledThrow,
+    UnboundSymbol,
 };
 
 /// Catch frame for exception handling
@@ -913,6 +914,23 @@ pub const Vm = struct {
                     else
                         false;
                     try self.push(if (is_bound) Value.t else Value.nil);
+                },
+
+                .symbol_value, .symbol_function => {
+                    const val = try self.pop();
+                    if (!val.isSymbol()) return error.TypeMismatch;
+                    const sym = val.toPtr(Symbol);
+                    const name = sym.getName();
+                    // Look up symbol in global environment
+                    if (self.global_env) |env| {
+                        if (env.lookup(name)) |idx| {
+                            try self.push(self.globals[idx]);
+                        } else {
+                            return error.UnboundSymbol;
+                        }
+                    } else {
+                        return error.UnboundSymbol;
+                    }
                 },
 
                 .halt => return error.Halt,

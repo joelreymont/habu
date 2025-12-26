@@ -51,6 +51,7 @@ pub fn disassembleInstruction(chunk: *const Chunk, offset: usize, writer: anytyp
         .hash_get, .hash_set, .hash_rem, .hash_count, .hashtablep,
         .characterp, .char_code, .code_char, .char_eq, .char_lt, .char_gt,
         .read_char, .peek_char, .unread_char, .boundp, .fboundp,
+        .symbol_value, .symbol_function,
         => {
             try writer.print("{s}\n", .{op.name()});
             return offset + 1;

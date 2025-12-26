@@ -2247,6 +2247,12 @@ pub const Compiler = struct {
         if (std.mem.eql(u8, name, "fboundp")) {
             return self.compileUnaryPrim(args, env, .fboundp);
         }
+        if (std.mem.eql(u8, name, "symbol-value")) {
+            return self.compileUnaryPrim(args, env, .symbol_value);
+        }
+        if (std.mem.eql(u8, name, "symbol-function")) {
+            return self.compileUnaryPrim(args, env, .symbol_function);
+        }
 
         // Vector operations
         if (std.mem.eql(u8, name, "vector-ref")) {
@@ -2323,7 +2329,7 @@ pub const Compiler = struct {
         return error.InvalidSyntax; // Not a known primitive
     }
 
-    const PrimTag = enum { add, sub, mul, div, mod, eq, lt, gt, le, ge, num_eq, cons, car, cdr, consp, symbolp, numberp, stringp, vectorp, nilp, not, vec_ref, vec_len, str_ref, str_len, str_eq, print, random, intern, sym_name, type_of, characterp, char_code, code_char, char_eq, char_lt, char_gt, read_char, peek_char, unread_char, boundp, fboundp };
+    const PrimTag = enum { add, sub, mul, div, mod, eq, lt, gt, le, ge, num_eq, cons, car, cdr, consp, symbolp, numberp, stringp, vectorp, nilp, not, vec_ref, vec_len, str_ref, str_len, str_eq, print, random, intern, sym_name, type_of, characterp, char_code, code_char, char_eq, char_lt, char_gt, read_char, peek_char, unread_char, boundp, fboundp, symbol_value, symbol_function };
 
     fn compileBinaryPrim(self: *Compiler, args: Value, env: *const Env, prim: PrimTag) CompileError!*Ir {
         if (!args.isCons()) return error.InvalidSyntax;
@@ -2429,6 +2435,8 @@ pub const Compiler = struct {
             .unread_char => self.builder.unreadChar(operand),
             .boundp => self.builder.boundp(operand),
             .fboundp => self.builder.fboundp(operand),
+            .symbol_value => self.builder.symbolValue(operand),
+            .symbol_function => self.builder.symbolFunction(operand),
             else => error.InvalidSyntax,
         } catch return error.OutOfMemory;
     }

@@ -286,6 +286,8 @@ pub const Ir = union(enum) {
     unread_char: UnaryOp, // Push character back
     boundp: UnaryOp, // Check if symbol has global binding
     fboundp: UnaryOp, // Check if symbol has function binding
+    symbol_value: UnaryOp, // Get symbol's global value
+    symbol_function: UnaryOp, // Get symbol's function binding
 
     // ========================================================================
     // Primitives - Vector operations
@@ -763,6 +765,18 @@ pub const IrBuilder = struct {
     pub fn fboundp(self: IrBuilder, sym: *const Ir) !*Ir {
         const node = try self.allocator.create(Ir);
         node.* = .{ .fboundp = .{ .operand = sym } };
+        return node;
+    }
+
+    pub fn symbolValue(self: IrBuilder, sym: *const Ir) !*Ir {
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .symbol_value = .{ .operand = sym } };
+        return node;
+    }
+
+    pub fn symbolFunction(self: IrBuilder, sym: *const Ir) !*Ir {
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .symbol_function = .{ .operand = sym } };
         return node;
     }
 
