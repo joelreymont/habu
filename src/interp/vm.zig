@@ -497,6 +497,30 @@ pub const Vm = struct {
                     const name_str = self.heap.allocString(sym.getName()) orelse return error.OutOfMemory;
                     try self.push(name_str);
                 },
+                .type_of => {
+                    const val = try self.pop();
+                    // Return symbol naming the type
+                    const type_name: []const u8 = if (val.isNil())
+                        "nil"
+                    else if (val.isFixnum())
+                        "fixnum"
+                    else if (val.isCons())
+                        "cons"
+                    else if (val.isSymbol())
+                        "symbol"
+                    else if (val.isVector())
+                        "vector"
+                    else if (val.isString())
+                        "string"
+                    else if (val.isClosure())
+                        "closure"
+                    else if (val.isKeyword())
+                        "keyword"
+                    else
+                        "unknown";
+                    const type_sym = self.heap.intern(type_name) orelse return error.OutOfMemory;
+                    try self.push(type_sym);
+                },
                 .str_eq => {
                     const b = try self.pop();
                     const a = try self.pop();

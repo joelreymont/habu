@@ -307,6 +307,10 @@ pub const Op = enum(u8) {
     /// ( n -- rand )
     random = 0x91,
 
+    /// Get type of value as symbol
+    /// ( x -- type-sym )
+    type_of = 0x92,
+
     // ========================================================================
     // Type assertions (gradual typing)
     // ========================================================================
@@ -362,7 +366,7 @@ pub const Op = enum(u8) {
             .consp, .symbolp, .numberp, .stringp, .vectorp, .closurep, .keywordp, .nilp,
             .vec_ref, .vec_set, .vec_len,
             .str_ref, .str_len, .str_concat,
-            .ret, .print, .random, .intern, .substring, .sym_name, .str_eq, .halt,
+            .ret, .print, .random, .type_of, .intern, .substring, .sym_name, .str_eq, .halt,
             .check_fixnum, .check_cons, .check_symbol, .check_string,
             .check_vector, .check_closure, .check_non_nil, .check_list,
             .apply,

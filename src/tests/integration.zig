@@ -789,6 +789,41 @@ test "else-branch occurrence typing with null?" {
 }
 
 // ============================================================================
+// Type introspection: type-of
+// ============================================================================
+
+test "type-of returns correct type symbols" {
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl = Repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+
+    // Check that type-of returns the expected symbol for each type
+    const r1 = try repl.eval("(eq (type-of 42) 'fixnum)");
+    try testing.expect(r1.raw == Value.t.raw);
+
+    // nil returns symbol 'nil - compare via symbol-name since 'nil may differ from interned nil
+    const r2 = try repl.eval("(string= (symbol-name (type-of nil)) \"nil\")");
+    try testing.expect(r2.raw == Value.t.raw);
+
+    const r3 = try repl.eval("(eq (type-of (cons 1 2)) 'cons)");
+    try testing.expect(r3.raw == Value.t.raw);
+
+    const r4 = try repl.eval("(eq (type-of 'foo) 'symbol)");
+    try testing.expect(r4.raw == Value.t.raw);
+
+    const r5 = try repl.eval("(eq (type-of \"hello\") 'string)");
+    try testing.expect(r5.raw == Value.t.raw);
+
+    // Note: No vector constructor available yet, skip vector test
+    const r7 = try repl.eval("(eq (type-of (lambda (x) x)) 'closure)");
+    try testing.expect(r7.raw == Value.t.raw);
+}
+
+// ============================================================================
 // Typed function parameters: (defun name ((x type) ...) body)
 // ============================================================================
 

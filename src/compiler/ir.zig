@@ -208,6 +208,7 @@ pub const Ir = union(enum) {
     random: UnaryOp,
     intern: UnaryOp,
     sym_name: UnaryOp,
+    type_of: UnaryOp, // Get type of value as symbol
 
     // ========================================================================
     // Type assertions (gradual typing)
@@ -286,7 +287,7 @@ pub const Ir = union(enum) {
             .consp, .symbolp, .numberp, .stringp, .vectorp, .closurep, .keywordp, .nilp,
             .vec_new, .vec_ref, .vec_set, .vec_len,
             .str_ref, .str_len, .str_concat, .str_eq, .substring,
-            .print, .random, .intern, .sym_name,
+            .print, .random, .intern, .sym_name, .type_of,
             .assert_fixnum, .assert_cons, .assert_symbol, .assert_string,
             .assert_vector, .assert_closure, .assert_non_nil, .assert_list,
             => true,
@@ -546,6 +547,12 @@ pub const IrBuilder = struct {
     pub fn print(self: IrBuilder, operand: *const Ir) !*Ir {
         const node = try self.allocator.create(Ir);
         node.* = .{ .print = .{ .operand = operand } };
+        return node;
+    }
+
+    pub fn typeOf(self: IrBuilder, operand: *const Ir) !*Ir {
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .type_of = .{ .operand = operand } };
         return node;
     }
 

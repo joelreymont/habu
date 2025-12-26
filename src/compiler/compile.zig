@@ -1853,11 +1853,14 @@ pub const Compiler = struct {
         if (std.mem.eql(u8, name, "symbol-name")) {
             return self.compileUnaryPrim(args, env, .sym_name);
         }
+        if (std.mem.eql(u8, name, "type-of")) {
+            return self.compileUnaryPrim(args, env, .type_of);
+        }
 
         return error.InvalidSyntax; // Not a known primitive
     }
 
-    const PrimTag = enum { add, sub, mul, div, mod, eq, lt, gt, le, ge, num_eq, cons, car, cdr, consp, symbolp, numberp, stringp, vectorp, nilp, not, vec_ref, vec_len, str_ref, str_len, str_eq, print, random, intern, sym_name };
+    const PrimTag = enum { add, sub, mul, div, mod, eq, lt, gt, le, ge, num_eq, cons, car, cdr, consp, symbolp, numberp, stringp, vectorp, nilp, not, vec_ref, vec_len, str_ref, str_len, str_eq, print, random, intern, sym_name, type_of };
 
     fn compileBinaryPrim(self: *Compiler, args: Value, env: *const Env, prim: PrimTag) CompileError!*Ir {
         if (!args.isCons()) return error.InvalidSyntax;
@@ -1953,6 +1956,7 @@ pub const Compiler = struct {
                 node.* = .{ .sym_name = .{ .operand = operand } };
                 break :blk node;
             },
+            .type_of => self.builder.typeOf(operand),
             else => error.InvalidSyntax,
         } catch return error.OutOfMemory;
     }

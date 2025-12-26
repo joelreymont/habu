@@ -342,3 +342,8 @@
 ;;; Convenience
 (defun sort-asc (lst) (sort lst <))
 (defun sort-desc (lst) (sort lst >))
+
+;;; Type introspection
+;;; typep - check if value is of given type
+(defun typep (x type)
+  (eq (type-of x) type))
