@@ -341,7 +341,7 @@ pub const Repl = struct {
     }
 
     /// Evaluate file content (multiple expressions)
-    fn evalFileContent(self: *Repl, content: []const u8, writer: anytype) !void {
+    pub fn evalFileContent(self: *Repl, content: []const u8, writer: anytype) !void {
         var pos: usize = 0;
 
         while (pos < content.len) {

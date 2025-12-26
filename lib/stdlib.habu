@@ -7,23 +7,23 @@
 (defun list? (x) (if (null? x) t (consp x)))
 
 ;;; List accessors
-(defun caar (x) (car (car x)))
-(defun cadr (x) (car (cdr x)))
-(defun cdar (x) (cdr (car x)))
-(defun cddr (x) (cdr (cdr x)))
-(defun caaar (x) (car (car (car x))))
-(defun caadr (x) (car (car (cdr x))))
-(defun cadar (x) (car (cdr (car x))))
-(defun caddr (x) (car (cdr (cdr x))))
-(defun first (x) (car x))
-(defun second (x) (cadr x))
-(defun third (x) (caddr x))
-(defun rest (x) (cdr x))
+(defun caar ((x cons)) (car (car x)))
+(defun cadr ((x cons)) (car (cdr x)))
+(defun cdar ((x cons)) (cdr (car x)))
+(defun cddr ((x cons)) (cdr (cdr x)))
+(defun caaar ((x cons)) (car (car (car x))))
+(defun caadr ((x cons)) (car (car (cdr x))))
+(defun cadar ((x cons)) (car (cdr (car x))))
+(defun caddr ((x cons)) (car (cdr (cdr x))))
+(defun first ((x cons)) (car x))
+(defun second ((x cons)) (cadr x))
+(defun third ((x cons)) (caddr x))
+(defun rest ((x cons)) (cdr x))
 
 ;;; List constructors
-(defun list1 (a) (cons a nil))
-(defun list2 (a b) (cons a (cons b nil)))
-(defun list3 (a b c) (cons a (cons b (cons c nil))))
+(defun (list1 -> cons) (a) (cons a nil))
+(defun (list2 -> cons) (a b) (cons a (cons b nil)))
+(defun (list3 -> cons) (a b c) (cons a (cons b (cons c nil))))
 
 ;;; List operations
 (defun (length -> fixnum) ((lst list))
@@ -55,15 +55,15 @@
       (last (cdr lst))))
 
 ;;; Higher-order functions
-(defun map (f lst)
+(defun (map -> list) ((f closure) (lst list))
   (if (null? lst)
       nil
       (cons (f (car lst)) (map f (cdr lst)))))
 
-(defun mapcar (f lst)
+(defun (mapcar -> list) ((f closure) (lst list))
   (map f lst))
 
-(defun mapc (f lst)
+(defun (mapc -> list) ((f closure) (lst list))
   (if (null? lst)
       lst
       (progn
@@ -71,29 +71,29 @@
         (mapc f (cdr lst))
         lst)))
 
-(defun maplist (f lst)
+(defun (maplist -> list) ((f closure) (lst list))
   (if (null? lst)
       nil
       (cons (f lst) (maplist f (cdr lst)))))
 
-(defun filter (pred lst)
+(defun (filter -> list) ((pred closure) (lst list))
   (if (null? lst)
       nil
       (if (pred (car lst))
           (cons (car lst) (filter pred (cdr lst)))
           (filter pred (cdr lst)))))
 
-(defun foldl (f acc lst)
+(defun foldl ((f closure) acc (lst list))
   (if (null? lst)
       acc
       (foldl f (f acc (car lst)) (cdr lst))))
 
-(defun foldr (f acc lst)
+(defun foldr ((f closure) acc (lst list))
   (if (null? lst)
       acc
       (f (car lst) (foldr f acc (cdr lst)))))
 
-(defun for-each (f lst)
+(defun for-each ((f closure) (lst list))
   (if (null? lst)
       nil
       (progn
@@ -101,26 +101,26 @@
         (for-each f (cdr lst)))))
 
 ;;; Association lists
-(defun assoc (key alist)
+(defun assoc (key (alist list))
   (if (null? alist)
       nil
       (if (eq key (caar alist))
           (car alist)
           (assoc key (cdr alist)))))
 
-(defun assoc-ref (key alist)
+(defun assoc-ref (key (alist list))
   (let ((pair (assoc key alist)))
     (if pair (cdr pair) nil)))
 
 ;;; Membership
-(defun member (x lst)
+(defun (member -> list) (x (lst list))
   (if (null? lst)
       nil
       (if (eq x (car lst))
           lst
           (member x (cdr lst)))))
 
-(defun memq (x lst)
+(defun (memq -> list) (x (lst list))
   (member x lst))
 
 ;;; Numeric utilities
@@ -162,45 +162,45 @@
           (foldl f (car lst) (cdr lst)))))
 
 ;;; every/some/notevery/notany
-(defun every (pred lst)
+(defun every ((pred closure) (lst list))
   (if (null? lst)
       t
       (if (pred (car lst))
           (every pred (cdr lst))
           nil)))
 
-(defun some (pred lst)
+(defun some ((pred closure) (lst list))
   (if (null? lst)
       nil
       (if (pred (car lst))
           (car lst)
           (some pred (cdr lst)))))
 
-(defun notevery (pred lst)
+(defun notevery ((pred closure) (lst list))
   (not (every pred lst)))
 
-(defun notany (pred lst)
+(defun notany ((pred closure) (lst list))
   (not (some pred lst)))
 
 ;;; find-if/remove-if/count-if
-(defun find-if (pred lst)
+(defun find-if ((pred closure) (lst list))
   (if (null? lst)
       nil
       (if (pred (car lst))
           (car lst)
           (find-if pred (cdr lst)))))
 
-(defun remove-if (pred lst)
+(defun (remove-if -> list) ((pred closure) (lst list))
   (if (null? lst)
       nil
       (if (pred (car lst))
           (remove-if pred (cdr lst))
           (cons (car lst) (remove-if pred (cdr lst))))))
 
-(defun remove-if-not (pred lst)
+(defun (remove-if-not -> list) ((pred closure) (lst list))
   (filter pred lst))
 
-(defun count-if (pred lst)
+(defun (count-if -> fixnum) ((pred closure) (lst list))
   (if (null? lst)
       0
       (if (pred (car lst))
@@ -208,7 +208,7 @@
           (count-if pred (cdr lst)))))
 
 ;;; rassoc - reverse assoc (search by value)
-(defun rassoc (val alist)
+(defun rassoc (val (alist list))
   (if (null? alist)
       nil
       (if (eq val (cdar alist))
@@ -216,7 +216,7 @@
           (rassoc val (cdr alist)))))
 
 ;;; butlast - all but last element
-(defun butlast (lst)
+(defun (butlast -> list) ((lst list))
   (if (null? lst)
       nil
       (if (null? (cdr lst))
@@ -224,13 +224,13 @@
           (cons (car lst) (butlast (cdr lst))))))
 
 ;;; nthcdr - cdr n times
-(defun nthcdr (n lst)
+(defun (nthcdr -> list) ((n fixnum) (lst list))
   (if (= n 0)
       lst
       (nthcdr (- n 1) (cdr lst))))
 
 ;;; subseq - subsequence (simple version)
-(defun subseq (lst start end)
+(defun (subseq -> list) ((lst list) (start fixnum) (end fixnum))
   (if (= start end)
       nil
       (cons (nth start lst) (subseq lst (+ start 1) end))))
@@ -239,11 +239,11 @@
 (defun identity (x) x)
 
 ;;; constantly - return a function that always returns the same value
-(defun constantly (val)
+(defun (constantly -> closure) (val)
   (lambda (x) val))
 
 ;;; complement - return a function that returns the opposite of pred
-(defun complement (pred)
+(defun (complement -> closure) ((pred closure))
   (lambda (x) (not (pred x))))
 
 ;;; Math utilities
@@ -297,7 +297,7 @@
 ;;; Sorting
 
 ;;; insert - insert element into sorted list
-(defun insert (x lst pred)
+(defun (insert -> list) (x (lst list) (pred closure))
   (if (null? lst)
       (list1 x)
       (if (pred x (car lst))
@@ -305,13 +305,13 @@
           (cons (car lst) (insert x (cdr lst) pred)))))
 
 ;;; sort - insertion sort (simple, stable)
-(defun sort (lst pred)
+(defun (sort -> list) ((lst list) (pred closure))
   (if (null? lst)
       nil
       (insert (car lst) (sort (cdr lst) pred) pred)))
 
 ;;; merge - merge two sorted lists
-(defun merge-lists (lst1 lst2 pred)
+(defun (merge-lists -> list) ((lst1 list) (lst2 list) (pred closure))
   (cond
     ((null? lst1) lst2)
     ((null? lst2) lst1)
@@ -319,19 +319,20 @@
      (cons (car lst1) (merge-lists (cdr lst1) lst2 pred)))
     (t (cons (car lst2) (merge-lists lst1 (cdr lst2) pred)))))
 
-;;; split-half - split list into two halves
-(defun split-half (lst)
-  (let ((len (length lst)))
-    (split-at (/ len 2) lst)))
-
-(defun split-at (n lst)
+;;; split-at - split list at position n
+(defun (split-at -> cons) ((n fixnum) (lst list))
   (if (= n 0)
       (cons nil lst)
       (let ((rest (split-at (- n 1) (cdr lst))))
         (cons (cons (car lst) (car rest)) (cdr rest)))))
 
+;;; split-half - split list into two halves
+(defun (split-half -> cons) ((lst list))
+  (let ((len (length lst)))
+    (split-at (/ len 2) lst)))
+
 ;;; merge-sort - stable O(n log n) sort
-(defun merge-sort (lst pred)
+(defun (merge-sort -> list) ((lst list) (pred closure))
   (if (or2 (null? lst) (null? (cdr lst)))
       lst
       (let ((halves (split-half lst)))
@@ -340,10 +341,10 @@
                      pred))))
 
 ;;; Convenience
-(defun sort-asc (lst) (sort lst <))
-(defun sort-desc (lst) (sort lst >))
+(defun (sort-asc -> list) ((lst list)) (sort lst (lambda (a b) (< a b))))
+(defun (sort-desc -> list) ((lst list)) (sort lst (lambda (a b) (> a b))))
 
 ;;; Type introspection
 ;;; typep - check if value is of given type
-(defun typep (x type)
+(defun typep (x (type symbol))
   (eq (type-of x) type))

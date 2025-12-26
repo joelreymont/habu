@@ -1111,3 +1111,37 @@ test "labels mutual recursion" {
     try testing.expect(!cons.car.isNil()); // is-even 4 = t
     try testing.expect(!cons.cdr.isNil()); // is-odd 5 = t
 }
+
+// ============================================================================
+// stdlib tests
+// ============================================================================
+
+test "stdlib compiles" {
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 4 * 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl = Repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+
+    // Read stdlib file
+    const file = try std.fs.cwd().openFile("lib/stdlib.habu", .{});
+    defer file.close();
+    const stdlib = try file.readToEndAlloc(allocator, 64 * 1024);
+    defer allocator.free(stdlib);
+
+    // Use evalFileContent to evaluate the whole file (handles multiple expressions)
+    const null_writer = std.io.null_writer;
+    try repl.evalFileContent(stdlib, null_writer);
+
+    // Test a few stdlib functions
+    const length_result = try repl.eval("(length (list3 1 2 3))");
+    try testing.expectEqual(@as(i64, 3), length_result.toFixnum());
+
+    const reverse_result = try repl.eval("(reverse (list3 1 2 3))");
+    try testing.expect(reverse_result.isCons());
+
+    const map_result = try repl.eval("(map (lambda (x) (* x 2)) (list3 1 2 3))");
+    try testing.expect(map_result.isCons());
+}

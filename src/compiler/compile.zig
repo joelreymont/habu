@@ -899,6 +899,9 @@ pub const Compiler = struct {
         if (std.mem.eql(u8, type_name, "closure")) {
             return self.builder.assertClosure(expr_ir);
         }
+        if (std.mem.eql(u8, type_name, "list")) {
+            return self.builder.assertList(expr_ir);
+        }
         if (std.mem.eql(u8, type_name, "non-nil")) {
             return self.builder.assertNonNil(expr_ir);
         }
