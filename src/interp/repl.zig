@@ -255,6 +255,8 @@ pub const Repl = struct {
         } else if (val.isFixnum()) {
             // Note: t is fixnum 1, print both as number for clarity
             try writer.print("{d}", .{val.toFixnum()});
+        } else if (val.isFloat()) {
+            try writer.print("{d}", .{val.toFloat()});
         } else if (val.isCharacter()) {
             const cp = val.toCharacter();
             // Named characters

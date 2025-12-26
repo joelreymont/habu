@@ -31,6 +31,7 @@ pub const TypeChecker = check.TypeChecker;
 
 // Common type constants
 pub const t_fixnum = type_adt.t_fixnum;
+pub const t_float = type_adt.t_float;
 pub const t_cons = type_adt.t_cons;
 pub const t_symbol = type_adt.t_symbol;
 pub const t_string = type_adt.t_string;
@@ -38,6 +39,7 @@ pub const t_vector = type_adt.t_vector;
 pub const t_closure = type_adt.t_closure;
 pub const t_keyword = type_adt.t_keyword;
 pub const t_nil = type_adt.t_nil;
+pub const t_char = type_adt.t_char;
 pub const t_any = type_adt.t_any;
 pub const t_list_any = type_adt.t_list_any;
 pub const t_non_nil = type_adt.t_non_nil;

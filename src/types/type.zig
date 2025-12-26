@@ -17,6 +17,7 @@ const std = @import("std");
 /// Note: enum values are NOT the runtime tags (see tag() method)
 pub const Primitive = enum {
     fixnum, // bit0=1, value >> 1
+    float, // bit63=0, bit62=1, f64>>2
     cons, // tag 0
     symbol, // tag 2
     vector, // tag 4
@@ -24,6 +25,7 @@ pub const Primitive = enum {
     closure, // tag 8
     keyword, // tag 10
     nil, // value 0
+    char, // bit63=1, bits 0-20 = codepoint
 
     /// Get the runtime tag value for pointer types
     /// Returns null for fixnum (bit0=1) and nil (special value 0)
@@ -35,14 +37,14 @@ pub const Primitive = enum {
             .string => 6,
             .closure => 8,
             .keyword => 10,
-            .fixnum, .nil => null, // Not pointer-tagged
+            .fixnum, .float, .nil, .char => null, // Not pointer-tagged
         };
     }
 
     /// Check if this is a pointer type (vs fixnum/nil)
     pub fn isPointer(self: Primitive) bool {
         return switch (self) {
-            .fixnum, .nil => false,
+            .fixnum, .float, .nil, .char => false,
             else => true,
         };
     }
@@ -130,6 +132,7 @@ pub const Type = union(enum) {
 // ============================================================================
 
 pub const t_fixnum = Type{ .primitive = .fixnum };
+pub const t_float = Type{ .primitive = .float };
 pub const t_cons = Type{ .primitive = .cons };
 pub const t_symbol = Type{ .primitive = .symbol };
 pub const t_string = Type{ .primitive = .string };
@@ -137,6 +140,7 @@ pub const t_vector = Type{ .primitive = .vector };
 pub const t_closure = Type{ .primitive = .closure };
 pub const t_keyword = Type{ .primitive = .keyword };
 pub const t_nil = Type{ .primitive = .nil };
+pub const t_char = Type{ .primitive = .char };
 pub const t_any = Type{ .any = {} };
 
 // Common compound types

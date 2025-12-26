@@ -22,6 +22,7 @@ pub const TokenKind = enum {
 
     // Literals
     number,
+    float,
     string,
     symbol,
     keyword,
@@ -179,9 +180,42 @@ pub const Lexer = struct {
     }
 
     fn readNumber(self: *Lexer) Token {
+        // Consume integer part
         while (isDigit(self.peek())) {
             _ = self.advance();
         }
+
+        // Check for decimal point followed by digits
+        if (self.peek() == '.' and isDigit(self.peekNext())) {
+            _ = self.advance(); // consume '.'
+            while (isDigit(self.peek())) {
+                _ = self.advance();
+            }
+            // Check for exponent
+            if (self.peek() == 'e' or self.peek() == 'E') {
+                _ = self.advance();
+                if (self.peek() == '+' or self.peek() == '-') {
+                    _ = self.advance();
+                }
+                while (isDigit(self.peek())) {
+                    _ = self.advance();
+                }
+            }
+            return self.makeToken(.float);
+        }
+
+        // Check for exponent (scientific notation for integers becomes float)
+        if (self.peek() == 'e' or self.peek() == 'E') {
+            _ = self.advance();
+            if (self.peek() == '+' or self.peek() == '-') {
+                _ = self.advance();
+            }
+            while (isDigit(self.peek())) {
+                _ = self.advance();
+            }
+            return self.makeToken(.float);
+        }
+
         return self.makeToken(.number);
     }
 

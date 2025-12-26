@@ -367,13 +367,18 @@ pub const Compiler = struct {
     fn inferType(self: *Compiler, node: *const Ir, type_env: *const TypeEnv, occ: *const OccurrenceCtx) *const Type {
         _ = self;
         return switch (node.*) {
-            .lit => |val| {
-                if (val.isNil()) return &types.t_nil;
-                if (val.isFixnum()) return &types.t_fixnum;
-                if (val.isString()) return &types.t_string;
-                if (val.isSymbol()) return &types.t_symbol;
-                if (val.isCons()) return &types.t_cons;
-                return &types.t_any;
+            .lit => |val| return switch (val.typeKind()) {
+                .nil => &types.t_nil,
+                .fixnum => &types.t_fixnum,
+                .float => &types.t_float,
+                .char => &types.t_char,
+                .string => &types.t_string,
+                .symbol => &types.t_symbol,
+                .cons => &types.t_cons,
+                .vector => &types.t_vector,
+                .keyword => &types.t_keyword,
+                .closure => &types.t_closure,
+                .hashtable => &types.t_any,
             },
             .@"var" => |v| {
                 // Check occurrence typing first (narrowed types)
@@ -538,6 +543,11 @@ pub const Compiler = struct {
 
         // Fixnum
         if (expr.isFixnum()) {
+            return self.builder.lit(expr) catch return error.OutOfMemory;
+        }
+
+        // Float
+        if (expr.isFloat()) {
             return self.builder.lit(expr) catch return error.OutOfMemory;
         }
 

@@ -15,6 +15,7 @@ pub const primitives = @import("primitives/primitives.zig");
 // Re-export commonly used types
 pub const Value = value.Value;
 pub const Tag = value.Tag;
+pub const TypeKind = value.TypeKind;
 
 pub const Cons = objects.Cons;
 pub const Symbol = objects.Symbol;

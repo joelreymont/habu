@@ -6,12 +6,14 @@
 //!     0: cons, 2: symbol, 4: vector, 6: string
 //!     8: closure, 10: keyword, 14: forwarding (GC)
 //!   Special: 0 = nil
-//!   Character: bit63=1, codepoint in bits 0-20
+//!   Character: bit63=1, codepoint in bits 1-21
+//!   Float: bit63=0, bit62=1, f64 >> 2 in bits 0-61
 //!
 //! This scheme allows:
 //! - Fast fixnum check: (v & 1) == 1
 //! - Fast nil check: v == 0
 //! - Fast character check: (v >> 63) == 1
+//! - Fast float check: ((v >> 62) & 3) == 1
 //! - Pointer extraction: v & ~0xF (mask off low 4 bits)
 //! - Tag extraction: v & 0xE (bits 1-3, ignoring bit 0)
 
@@ -27,6 +29,21 @@ pub const Tag = enum(u4) {
     keyword = 10,
     hashtable = 12,
     forwarding = 14, // GC forwarding pointer
+};
+
+/// High-level type kind for dispatching (covers all value types)
+pub const TypeKind = enum {
+    nil,
+    fixnum,
+    float,
+    char,
+    cons,
+    symbol,
+    vector,
+    string,
+    closure,
+    keyword,
+    hashtable,
 };
 
 /// A tagged Habu value (64-bit)
@@ -57,10 +74,10 @@ pub const Value = packed struct {
         return (self.raw & 1) == 1;
     }
 
-    /// Check if value is a pointer (bit0 = 0, bit63 = 0, not nil)
+    /// Check if value is a pointer (bit0 = 0, bit63 = 0, bit62 = 0, not nil)
     pub inline fn isPointer(self: Value) bool {
-        // bit0=0 and bit63=0 distinguishes pointers from fixnums and characters
-        return self.raw != 0 and (self.raw & 1) == 0 and (self.raw >> 63) == 0;
+        // bit0=0 and high bits=0 distinguishes pointers from fixnums, characters, and floats
+        return self.raw != 0 and (self.raw & 1) == 0 and (self.raw >> 62) == 0;
     }
 
     /// Check if value is a cons cell
@@ -111,6 +128,35 @@ pub const Value = packed struct {
     /// Check if value is a character (bit63=1)
     pub inline fn isCharacter(self: Value) bool {
         return (self.raw >> 63) == 1;
+    }
+
+    /// Check if value is a float (bit63=0, bit62=1)
+    pub inline fn isFloat(self: Value) bool {
+        return ((self.raw >> 62) & 3) == 1;
+    }
+
+    /// Check if value is a number (fixnum or float)
+    pub inline fn isNumber(self: Value) bool {
+        return self.isFixnum() or self.isFloat();
+    }
+
+    /// Get the high-level type kind for this value
+    pub inline fn typeKind(self: Value) TypeKind {
+        if (self.raw == 0) return .nil;
+        if ((self.raw & 1) == 1) return .fixnum;
+        if ((self.raw >> 63) == 1) return .char;
+        if (((self.raw >> 62) & 3) == 1) return .float;
+        // Must be a pointer
+        return switch (self.getTag()) {
+            .cons => .cons,
+            .symbol => .symbol,
+            .vector => .vector,
+            .string => .string,
+            .closure => .closure,
+            .keyword => .keyword,
+            .hashtable => .hashtable,
+            .forwarding => .cons, // Shouldn't happen outside GC
+        };
     }
 
     // ========================================================================
@@ -171,6 +217,28 @@ pub const Value = packed struct {
     pub inline fn toCharacter(self: Value) u21 {
         std.debug.assert(self.isCharacter());
         return @truncate((self.raw >> 1) & 0x1FFFFF); // Bits 1-21
+    }
+
+    // ========================================================================
+    // Float operations
+    // ========================================================================
+
+    const FLOAT_TAG: u64 = 1 << 62;
+
+    /// Create a float from an f64
+    /// Note: loses 2 bits of mantissa precision due to tagging
+    pub inline fn makeFloat(f: f64) Value {
+        const bits: u64 = @bitCast(f);
+        // Shift right by 2 and clear bit0 to avoid confusion with fixnum, then set bit62
+        return .{ .raw = ((bits >> 2) & ~@as(u64, 1)) | FLOAT_TAG };
+    }
+
+    /// Extract float value
+    pub inline fn toFloat(self: Value) f64 {
+        std.debug.assert(self.isFloat());
+        // Clear tag bit and shift left to restore f64
+        const bits = (self.raw & ~FLOAT_TAG) << 2;
+        return @bitCast(bits);
     }
 
     // ========================================================================
@@ -336,4 +404,19 @@ test "truthiness" {
     try testing.expect(!Value.nil.isTruthy());
     try testing.expect(Value.makeFixnum(0).isTruthy()); // 0 is truthy (not nil)
     try testing.expect(Value.t.isTruthy());
+}
+
+test "float" {
+    const testing = std.testing;
+
+    const f = Value.makeFloat(3.14);
+    try testing.expect(f.isFloat());
+    try testing.expect(!f.isFixnum());
+    try testing.expect(!f.isPointer());
+    try testing.expect(!f.isNil());
+    try testing.expect(!f.isCharacter());
+
+    // Recover the value (with possible precision loss)
+    const recovered = f.toFloat();
+    try testing.expect(@abs(recovered - 3.14) < 0.0001);
 }

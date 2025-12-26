@@ -177,6 +177,16 @@ pub const predicates = struct {
         return (value & 0b1111) == 10;
     }
 
+    /// Check if value is a float (bit63=0, bit62=1)
+    pub fn isFloat(value: u64) bool {
+        return ((value >> 62) & 3) == 1;
+    }
+
+    /// Check if value is a character (bit63=1)
+    pub fn isCharacter(value: u64) bool {
+        return (value >> 63) == 1;
+    }
+
     /// Always true (for 'any' type)
     pub fn isAny(value: u64) bool {
         _ = value;
@@ -291,6 +301,7 @@ pub const ContractCompiler = struct {
     fn predicateForPrimitive(p: Primitive) *const fn (u64) bool {
         return switch (p) {
             .fixnum => predicates.isFixnum,
+            .float => predicates.isFloat,
             .cons => predicates.isCons,
             .symbol => predicates.isSymbol,
             .vector => predicates.isVector,
@@ -298,6 +309,7 @@ pub const ContractCompiler = struct {
             .closure => predicates.isClosure,
             .keyword => predicates.isKeyword,
             .nil => predicates.isNil,
+            .char => predicates.isCharacter,
         };
     }
 };

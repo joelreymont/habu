@@ -211,6 +211,8 @@ fn printValueTo(val: Value, w: anytype) !void {
         try w.writeAll("nil");
     } else if (val.isFixnum()) {
         try w.print("{d}", .{val.toFixnum()});
+    } else if (val.isFloat()) {
+        try w.print("{d}", .{val.toFloat()});
     } else if (val.isCharacter()) {
         const cp = val.toCharacter();
         if (cp == ' ') {

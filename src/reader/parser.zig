@@ -58,6 +58,7 @@ pub const Parser = struct {
             .comma => return self.parseQuote("unquote"),
             .comma_at => return self.parseQuote("unquote-splicing"),
             .number => return self.parseNumber(),
+            .float => return self.parseFloat(),
             .string => return self.parseString(),
             .symbol => return self.parseSymbol(),
             .keyword => return self.parseKeyword(),
@@ -138,6 +139,14 @@ pub const Parser = struct {
 
         const n = std.fmt.parseInt(i64, text, 10) catch return error.InvalidNumber;
         return Value.makeFixnum(n);
+    }
+
+    fn parseFloat(self: *Parser) ParseError!Value {
+        const text = self.current.text;
+        self.advance();
+
+        const f = std.fmt.parseFloat(f64, text) catch return error.InvalidNumber;
+        return Value.makeFloat(f);
     }
 
     fn parseString(self: *Parser) ParseError!Value {
