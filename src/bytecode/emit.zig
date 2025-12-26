@@ -30,6 +30,17 @@ const BlockInfo = struct {
     pending_exits: std.ArrayList(usize),
 };
 
+/// Unified control stack entry (for blocks and unwind-protects)
+const ControlEntry = union(enum) {
+    block: struct {
+        name: []const u8,
+        pending_exits: std.ArrayList(usize),
+    },
+    unwind_protect: struct {
+        cleanup: *const Ir,
+    },
+};
+
 /// Bytecode emitter
 pub const Emitter = struct {
     allocator: std.mem.Allocator,
@@ -49,8 +60,8 @@ pub const Emitter = struct {
     captures: []const Ir.Capture,
     /// Heap for symbol interning (optional)
     heap: ?*Heap,
-    /// Active blocks for return-from
-    block_stack: std.ArrayList(BlockInfo),
+    /// Unified control stack for blocks and unwind-protects
+    control_stack: std.ArrayList(ControlEntry),
 
     pub fn init(allocator: std.mem.Allocator) Emitter {
         return .{
@@ -63,7 +74,7 @@ pub const Emitter = struct {
             .name = "",
             .captures = &[_]Ir.Capture{},
             .heap = null,
-            .block_stack = std.ArrayList(BlockInfo){},
+            .control_stack = std.ArrayList(ControlEntry){},
         };
     }
 
@@ -78,7 +89,7 @@ pub const Emitter = struct {
             .name = "",
             .captures = &[_]Ir.Capture{},
             .heap = heap,
-            .block_stack = std.ArrayList(BlockInfo){},
+            .control_stack = std.ArrayList(ControlEntry){},
         };
     }
 
@@ -91,11 +102,14 @@ pub const Emitter = struct {
             self.allocator.free(chunk.constants);
         }
         self.child_chunks.deinit(self.allocator);
-        // Free block stack
-        for (self.block_stack.items) |*block| {
-            block.pending_exits.deinit(self.allocator);
+        // Free control stack
+        for (self.control_stack.items) |*entry| {
+            switch (entry.*) {
+                .block => |*b| b.pending_exits.deinit(self.allocator),
+                .unwind_protect => {},
+            }
         }
-        self.block_stack.deinit(self.allocator);
+        self.control_stack.deinit(self.allocator);
     }
 
     /// Emit bytecode for an IR node
@@ -115,6 +129,7 @@ pub const Emitter = struct {
             .loop => |l| try self.emitLoop(l),
             .block => |b| try self.emitBlock(b),
             .return_from => |r| try self.emitReturnFrom(r),
+            .unwind_protect => |u| try self.emitUnwindProtect(u),
             .call => |c| try self.emitCall(c, false),
             .tailcall => |c| try self.emitCall(c, true),
             .apply => |a| try self.emitApply(a),
@@ -541,42 +556,79 @@ pub const Emitter = struct {
     }
 
     fn emitBlock(self: *Emitter, b: anytype) EmitError!void {
-        // Push a new block onto the stack
-        const block_info = BlockInfo{
-            .name = b.name,
-            .pending_exits = std.ArrayList(usize){},
+        // Push a new block onto the control stack
+        const entry = ControlEntry{
+            .block = .{
+                .name = b.name,
+                .pending_exits = std.ArrayList(usize){},
+            },
         };
-        self.block_stack.append(self.allocator, block_info) catch return error.OutOfMemory;
+        self.control_stack.append(self.allocator, entry) catch return error.OutOfMemory;
 
         // Emit body
         try self.emit(b.body);
 
         // Pop block and patch all pending exit jumps to here
-        var block = self.block_stack.pop().?;
-        for (block.pending_exits.items) |jump_loc| {
-            try self.patchJumpAt(jump_loc);
+        var popped = self.control_stack.pop().?;
+        switch (popped) {
+            .block => |*blk| {
+                for (blk.pending_exits.items) |jump_loc| {
+                    try self.patchJumpAt(jump_loc);
+                }
+                blk.pending_exits.deinit(self.allocator);
+            },
+            .unwind_protect => unreachable,
         }
-        block.pending_exits.deinit(self.allocator);
     }
 
     fn emitReturnFrom(self: *Emitter, r: anytype) EmitError!void {
         // Emit the return value
         try self.emit(r.value);
 
-        // Find the block by name (search from innermost to outermost)
-        var i = self.block_stack.items.len;
+        // Find the block by name, emitting cleanup for any unwind-protects crossed
+        var i = self.control_stack.items.len;
         while (i > 0) {
             i -= 1;
-            if (std.mem.eql(u8, self.block_stack.items[i].name, r.name)) {
-                // Record this jump location for patching later
-                const jump_loc = try self.emitJump(.jmp);
-                self.block_stack.items[i].pending_exits.append(self.allocator, jump_loc) catch
-                    return error.OutOfMemory;
-                return;
+            switch (self.control_stack.items[i]) {
+                .block => |*blk| {
+                    if (std.mem.eql(u8, blk.name, r.name)) {
+                        // Found target block - record jump for patching
+                        const jump_loc = try self.emitJump(.jmp);
+                        blk.pending_exits.append(self.allocator, jump_loc) catch
+                            return error.OutOfMemory;
+                        return;
+                    }
+                    // Not our target block, keep searching
+                },
+                .unwind_protect => |up| {
+                    // Crossing an unwind-protect - emit cleanup
+                    // Note: cleanup result is discarded, value is already on stack
+                    try self.emit(up.cleanup);
+                    try self.emitOp(.pop);
+                },
             }
         }
         // Block not found - this is a compile error
         return error.InvalidIr;
+    }
+
+    fn emitUnwindProtect(self: *Emitter, u: anytype) EmitError!void {
+        // Push unwind-protect onto control stack
+        const entry = ControlEntry{
+            .unwind_protect = .{ .cleanup = u.cleanup },
+        };
+        self.control_stack.append(self.allocator, entry) catch return error.OutOfMemory;
+
+        // Emit protected form
+        try self.emit(u.protected);
+
+        // Pop unwind-protect
+        _ = self.control_stack.pop();
+
+        // Emit cleanup (for normal exit)
+        // The cleanup result is discarded, protected value is already on stack
+        try self.emit(u.cleanup);
+        try self.emitOp(.pop);
     }
 
     /// Patch a jump at a specific location to jump to current offset

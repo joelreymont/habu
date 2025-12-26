@@ -110,6 +110,12 @@ pub const Ir = union(enum) {
         value: *const Ir,
     },
 
+    /// Unwind-protect: (unwind-protect protected cleanup...)
+    unwind_protect: struct {
+        protected: *const Ir,
+        cleanup: *const Ir,
+    },
+
     // ========================================================================
     // Function calls
     // ========================================================================
@@ -416,6 +422,12 @@ pub const IrBuilder = struct {
     pub fn returnFrom(self: IrBuilder, name: []const u8, value: *const Ir) !*Ir {
         const node = try self.allocator.create(Ir);
         node.* = .{ .return_from = .{ .name = name, .value = value } };
+        return node;
+    }
+
+    pub fn unwindProtect(self: IrBuilder, protected: *const Ir, cleanup: *const Ir) !*Ir {
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .unwind_protect = .{ .protected = protected, .cleanup = cleanup } };
         return node;
     }
 

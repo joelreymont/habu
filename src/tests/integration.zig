@@ -1192,6 +1192,73 @@ test "nested blocks" {
 }
 
 // ============================================================================
+// unwind-protect tests
+// ============================================================================
+
+test "unwind-protect normal exit" {
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl = Repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+
+    // unwind-protect returns the protected value (cleanup result discarded)
+    const result = try repl.eval(
+        \\(unwind-protect
+        \\    42
+        \\  (+ 1 2))
+    );
+    try testing.expect(result.isFixnum());
+    try testing.expectEqual(@as(i64, 42), result.toFixnum());
+}
+
+test "unwind-protect with return-from" {
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl = Repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+
+    // return-from exits block but unwind-protect still returns correct value
+    const result = try repl.eval(
+        \\(block done
+        \\  (unwind-protect
+        \\      (return-from done 99)
+        \\    (+ 100 200))
+        \\  888)
+    );
+    try testing.expect(result.isFixnum());
+    try testing.expectEqual(@as(i64, 99), result.toFixnum());
+}
+
+test "nested unwind-protect" {
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl = Repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+
+    // Nested unwind-protects with return-from
+    const result = try repl.eval(
+        \\(block done
+        \\  (unwind-protect
+        \\      (unwind-protect
+        \\          (return-from done 100)
+        \\        (+ 1 1))
+        \\    (+ 2 2))
+        \\  999)
+    );
+    try testing.expect(result.isFixnum());
+    try testing.expectEqual(@as(i64, 100), result.toFixnum());
+}
+
+// ============================================================================
 // stdlib tests
 // ============================================================================
 
