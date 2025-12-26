@@ -245,3 +245,51 @@
 ;;; complement - return a function that returns the opposite of pred
 (defun complement (pred)
   (lambda (x) (not (pred x))))
+
+;;; Math utilities
+
+;;; gcd - greatest common divisor (Euclidean algorithm)
+(defun gcd (a b)
+  (if (= b 0)
+      (abs a)
+      (gcd b (mod a b))))
+
+;;; lcm - least common multiple
+(defun lcm (a b)
+  (if (or2 (= a 0) (= b 0))
+      0
+      (abs (* (/ a (gcd a b)) b))))
+
+;;; expt - exponentiation (positive integer exponents)
+(defun expt (base exp)
+  (if (= exp 0)
+      1
+      (if (even? exp)
+          (let ((half (expt base (/ exp 2))))
+            (* half half))
+          (* base (expt base (- exp 1))))))
+
+;;; Integer division utilities (for fixnums only)
+(defun truncate (n d)
+  (/ n d))
+
+(defun floor-div (n d)
+  (let ((q (/ n d)))
+    (if (and2 (negative? (mod n d))
+              (or2 (positive? n) (positive? d)))
+        (if (and2 (negative? n) (positive? d))
+            (- q 1)
+            (if (and2 (positive? n) (negative? d))
+                (- q 1)
+                q))
+        q)))
+
+(defun ceiling-div (n d)
+  (let ((q (/ n d))
+        (r (mod n d)))
+    (if (= r 0)
+        q
+        (if (or2 (and2 (positive? n) (positive? d))
+                (and2 (negative? n) (negative? d)))
+            (+ q 1)
+            q))))
