@@ -304,6 +304,238 @@ pub const cdr_stencil = Stencil{
     .holes = &[_]Hole{},
 };
 
+/// Multiply two fixnums: x0 = x0 * x1 (preserving tag)
+pub const mul_fixnum = Stencil{
+    .name = "mul_fixnum",
+    .code = &(
+    // Untag x0: x9 = x0 >> 1
+        inst_bytes(lsr_imm(X9, X0, 1)) ++
+        // Untag x1: x10 = x1 >> 1
+        inst_bytes(lsr_imm(X10, X1, 1)) ++
+        // Multiply: x0 = x9 * x10 (using MUL)
+        inst_bytes(0x9B0A7D20) ++ // MUL x0, x9, x10
+        // Retag: x0 = (x0 << 1) | 1
+        inst_bytes(lsl_imm(X0, X0, 1)) ++
+        inst_bytes(orr_imm_bit0(X0, X0))),
+    .holes = &[_]Hole{},
+};
+
+/// Negate fixnum: x0 = -x0 (preserving tag)
+pub const neg_fixnum = Stencil{
+    .name = "neg_fixnum",
+    .code = &(
+    // Untag: x9 = x0 >> 1
+        inst_bytes(lsr_imm(X9, X0, 1)) ++
+        // Negate: x0 = 0 - x9 (using SUB from XZR)
+        inst_bytes(0xCB0903E0) ++ // SUB x0, xzr, x9
+        // Retag: x0 = (x0 << 1) | 1
+        inst_bytes(lsl_imm(X0, X0, 1)) ++
+        inst_bytes(orr_imm_bit0(X0, X0))),
+    .holes = &[_]Hole{},
+};
+
+/// Push nil (zero) onto accumulator
+pub const push_nil_stencil = Stencil{
+    .name = "push_nil",
+    .code = &inst_bytes(0xD2800000), // MOV x0, #0
+    .holes = &[_]Hole{},
+};
+
+/// Push t (fixnum 1 = 0x3) onto accumulator
+pub const push_t_stencil = Stencil{
+    .name = "push_t",
+    .code = &inst_bytes(0xD2800060), // MOV x0, #3
+    .holes = &[_]Hole{},
+};
+
+/// Compare equal (eq): x0 = (x0 == x1) ? t : nil
+pub const eq_stencil = Stencil{
+    .name = "eq",
+    .code = &(
+    // CMP x0, x1
+        inst_bytes(0xEB01001F) ++
+        // CSET x0, EQ (set to 1 if equal, 0 otherwise)
+        inst_bytes(0x9A9F17E0) ++
+        // Convert to tagged: x0 = (x0 << 1) | x0 (gives 0 or 3)
+        inst_bytes(lsl_imm(X9, X0, 1)) ++
+        inst_bytes(orr_imm_bit0(X0, X9))),
+    .holes = &[_]Hole{},
+};
+
+/// Compare less than: x0 = (x0 < x1) ? t : nil (for fixnums)
+pub const lt_stencil = Stencil{
+    .name = "lt",
+    .code = &(
+    // CMP x0, x1 (signed compare for tagged fixnums)
+        inst_bytes(0xEB01001F) ++
+        // CSET x0, LT
+        inst_bytes(0x9A9FB7E0) ++
+        // Convert to tagged
+        inst_bytes(lsl_imm(X9, X0, 1)) ++
+        inst_bytes(orr_imm_bit0(X0, X9))),
+    .holes = &[_]Hole{},
+};
+
+/// Compare greater than: x0 = (x0 > x1) ? t : nil
+pub const gt_stencil = Stencil{
+    .name = "gt",
+    .code = &(
+    // CMP x0, x1
+        inst_bytes(0xEB01001F) ++
+        // CSET x0, GT
+        inst_bytes(0x9A9FC7E0) ++
+        // Convert to tagged
+        inst_bytes(lsl_imm(X9, X0, 1)) ++
+        inst_bytes(orr_imm_bit0(X0, X9))),
+    .holes = &[_]Hole{},
+};
+
+/// Compare less than or equal: x0 = (x0 <= x1) ? t : nil
+pub const le_stencil = Stencil{
+    .name = "le",
+    .code = &(
+    // CMP x0, x1
+        inst_bytes(0xEB01001F) ++
+        // CSET x0, LE
+        inst_bytes(0x9A9FD7E0) ++
+        // Convert to tagged
+        inst_bytes(lsl_imm(X9, X0, 1)) ++
+        inst_bytes(orr_imm_bit0(X0, X9))),
+    .holes = &[_]Hole{},
+};
+
+/// Compare greater than or equal: x0 = (x0 >= x1) ? t : nil
+pub const ge_stencil = Stencil{
+    .name = "ge",
+    .code = &(
+    // CMP x0, x1
+        inst_bytes(0xEB01001F) ++
+        // CSET x0, GE
+        inst_bytes(0x9A9FA7E0) ++
+        // Convert to tagged
+        inst_bytes(lsl_imm(X9, X0, 1)) ++
+        inst_bytes(orr_imm_bit0(X0, X9))),
+    .holes = &[_]Hole{},
+};
+
+/// Stack push: store x0 to stack and advance sp
+/// Uses x19 as stack pointer (callee-saved)
+const X19: u5 = 19;
+
+pub const stack_push = Stencil{
+    .name = "stack_push",
+    .code = &(
+    // STR x0, [x19], #8 (post-increment)
+        inst_bytes(0xF8008660)),
+    .holes = &[_]Hole{},
+};
+
+/// Stack pop: load from stack to x0 and decrement sp
+pub const stack_pop = Stencil{
+    .name = "stack_pop",
+    .code = &(
+    // LDR x0, [x19, #-8]! (pre-decrement)
+        inst_bytes(0xF85F8660)),
+    .holes = &[_]Hole{},
+};
+
+/// Stack pop to x1 (for binary ops)
+pub const stack_pop_x1 = Stencil{
+    .name = "stack_pop_x1",
+    .code = &(
+    // LDR x1, [x19, #-8]!
+        inst_bytes(0xF85F8661)),
+    .holes = &[_]Hole{},
+};
+
+/// Dup: push x0 without popping
+pub const dup_stencil = Stencil{
+    .name = "dup",
+    .code = &(
+    // STR x0, [x19], #8
+        inst_bytes(0xF8008660)),
+    .holes = &[_]Hole{},
+};
+
+/// Swap top two values
+pub const swap_stencil = Stencil{
+    .name = "swap",
+    .code = &(
+    // LDR x9, [x19, #-8] (peek second value)
+        inst_bytes(0xF85F8269) ++
+        // STR x0, [x19, #-8] (store top to second position)
+        inst_bytes(0xF81F8260) ++
+        // MOV x0, x9
+        inst_bytes(0xAA0903E0)),
+    .holes = &[_]Hole{},
+};
+
+/// Load local variable (using x20 as frame pointer)
+/// Hole: imm32 for offset
+const X20: u5 = 20;
+
+pub const load_local = Stencil{
+    .name = "load_local",
+    .code = &(
+    // LDR x0, [x20, #offset] - offset patched
+        inst_bytes(0xF9400280)), // Base LDR with x20
+    .holes = &[_]Hole{
+        .{ .offset = 0, .hole_type = .imm32, .name = "offset" },
+    },
+};
+
+/// Store to local variable
+pub const store_local = Stencil{
+    .name = "store_local",
+    .code = &(
+    // STR x0, [x20, #offset]
+        inst_bytes(0xF9000280)),
+    .holes = &[_]Hole{
+        .{ .offset = 0, .hole_type = .imm32, .name = "offset" },
+    },
+};
+
+/// Logical not: x0 = (x0 == nil) ? t : nil
+pub const not_stencil = Stencil{
+    .name = "not",
+    .code = &(
+    // CBZ x0, is_nil  (if nil, result is t)
+    // For now simplified: CMP x0, #0; CSET x0, EQ; convert to tagged
+        inst_bytes(0xF100001F) ++ // CMP x0, #0
+        inst_bytes(0x9A9F17E0) ++ // CSET x0, EQ
+        inst_bytes(lsl_imm(X9, X0, 1)) ++
+        inst_bytes(orr_imm_bit0(X0, X9))),
+    .holes = &[_]Hole{},
+};
+
+/// Type check: is fixnum? x0 = (x0 & 1) ? t : nil
+pub const fixnump_stencil = Stencil{
+    .name = "fixnump",
+    .code = &(
+    // TST x0, #1
+        inst_bytes(0xF240001F) ++
+        // CSET x0, NE (non-zero = has bit0 set = fixnum)
+        inst_bytes(0x9A9F07E0) ++
+        // Convert to tagged
+        inst_bytes(lsl_imm(X9, X0, 1)) ++
+        inst_bytes(orr_imm_bit0(X0, X9))),
+    .holes = &[_]Hole{},
+};
+
+/// Type check: is nil? x0 = (x0 == 0) ? t : nil
+pub const nilp_stencil = Stencil{
+    .name = "nilp",
+    .code = &(
+    // CMP x0, #0
+        inst_bytes(0xF100001F) ++
+        // CSET x0, EQ
+        inst_bytes(0x9A9F17E0) ++
+        // Convert to tagged
+        inst_bytes(lsl_imm(X9, X0, 1)) ++
+        inst_bytes(orr_imm_bit0(X0, X9))),
+    .holes = &[_]Hole{},
+};
+
 // ============================================================================
 // Tests
 // ============================================================================
@@ -314,11 +546,30 @@ test "stencil sizes" {
     // load_imm64 should be 16 bytes (4 instructions)
     try testing.expectEqual(@as(usize, 16), load_imm64.code.len);
 
-    // add_fixnum should be 20 bytes (5 instructions)
+    // Arithmetic stencils (5 instructions each)
     try testing.expectEqual(@as(usize, 20), add_fixnum.code.len);
+    try testing.expectEqual(@as(usize, 20), sub_fixnum.code.len);
+    try testing.expectEqual(@as(usize, 20), mul_fixnum.code.len);
+    try testing.expectEqual(@as(usize, 16), neg_fixnum.code.len);
 
-    // ret should be 4 bytes (1 instruction)
+    // Simple stencils (1 instruction)
     try testing.expectEqual(@as(usize, 4), ret_stencil.code.len);
+    try testing.expectEqual(@as(usize, 4), push_nil_stencil.code.len);
+    try testing.expectEqual(@as(usize, 4), push_t_stencil.code.len);
+    try testing.expectEqual(@as(usize, 4), stack_push.code.len);
+    try testing.expectEqual(@as(usize, 4), stack_pop.code.len);
+
+    // Comparison stencils (4 instructions each)
+    try testing.expectEqual(@as(usize, 16), eq_stencil.code.len);
+    try testing.expectEqual(@as(usize, 16), lt_stencil.code.len);
+    try testing.expectEqual(@as(usize, 16), gt_stencil.code.len);
+    try testing.expectEqual(@as(usize, 16), le_stencil.code.len);
+    try testing.expectEqual(@as(usize, 16), ge_stencil.code.len);
+
+    // Type check stencils (4 instructions each)
+    try testing.expectEqual(@as(usize, 16), not_stencil.code.len);
+    try testing.expectEqual(@as(usize, 16), nilp_stencil.code.len);
+    try testing.expectEqual(@as(usize, 16), fixnump_stencil.code.len);
 }
 
 test "instruction encoding" {

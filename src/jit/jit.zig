@@ -121,12 +121,94 @@ pub const Jit = struct {
             },
 
             .add => {
+                // Pop x1 from stack, add with x0
+                _ = patch.patchStencil(&self.code_buffer, stencils.stack_pop_x1, &[_]patch.PatchValue{}) catch
+                    return error.PatchFailed;
                 _ = patch.patchStencil(&self.code_buffer, stencils.add_fixnum, &[_]patch.PatchValue{}) catch
                     return error.PatchFailed;
             },
 
             .sub => {
+                _ = patch.patchStencil(&self.code_buffer, stencils.stack_pop_x1, &[_]patch.PatchValue{}) catch
+                    return error.PatchFailed;
                 _ = patch.patchStencil(&self.code_buffer, stencils.sub_fixnum, &[_]patch.PatchValue{}) catch
+                    return error.PatchFailed;
+            },
+
+            .mul => {
+                _ = patch.patchStencil(&self.code_buffer, stencils.stack_pop_x1, &[_]patch.PatchValue{}) catch
+                    return error.PatchFailed;
+                _ = patch.patchStencil(&self.code_buffer, stencils.mul_fixnum, &[_]patch.PatchValue{}) catch
+                    return error.PatchFailed;
+            },
+
+            .neg => {
+                _ = patch.patchStencil(&self.code_buffer, stencils.neg_fixnum, &[_]patch.PatchValue{}) catch
+                    return error.PatchFailed;
+            },
+
+            .eq => {
+                _ = patch.patchStencil(&self.code_buffer, stencils.stack_pop_x1, &[_]patch.PatchValue{}) catch
+                    return error.PatchFailed;
+                _ = patch.patchStencil(&self.code_buffer, stencils.eq_stencil, &[_]patch.PatchValue{}) catch
+                    return error.PatchFailed;
+            },
+
+            .lt => {
+                _ = patch.patchStencil(&self.code_buffer, stencils.stack_pop_x1, &[_]patch.PatchValue{}) catch
+                    return error.PatchFailed;
+                _ = patch.patchStencil(&self.code_buffer, stencils.lt_stencil, &[_]patch.PatchValue{}) catch
+                    return error.PatchFailed;
+            },
+
+            .gt => {
+                _ = patch.patchStencil(&self.code_buffer, stencils.stack_pop_x1, &[_]patch.PatchValue{}) catch
+                    return error.PatchFailed;
+                _ = patch.patchStencil(&self.code_buffer, stencils.gt_stencil, &[_]patch.PatchValue{}) catch
+                    return error.PatchFailed;
+            },
+
+            .le => {
+                _ = patch.patchStencil(&self.code_buffer, stencils.stack_pop_x1, &[_]patch.PatchValue{}) catch
+                    return error.PatchFailed;
+                _ = patch.patchStencil(&self.code_buffer, stencils.le_stencil, &[_]patch.PatchValue{}) catch
+                    return error.PatchFailed;
+            },
+
+            .ge => {
+                _ = patch.patchStencil(&self.code_buffer, stencils.stack_pop_x1, &[_]patch.PatchValue{}) catch
+                    return error.PatchFailed;
+                _ = patch.patchStencil(&self.code_buffer, stencils.ge_stencil, &[_]patch.PatchValue{}) catch
+                    return error.PatchFailed;
+            },
+
+            .not => {
+                _ = patch.patchStencil(&self.code_buffer, stencils.not_stencil, &[_]patch.PatchValue{}) catch
+                    return error.PatchFailed;
+            },
+
+            .nilp => {
+                _ = patch.patchStencil(&self.code_buffer, stencils.nilp_stencil, &[_]patch.PatchValue{}) catch
+                    return error.PatchFailed;
+            },
+
+            .numberp => {
+                _ = patch.patchStencil(&self.code_buffer, stencils.fixnump_stencil, &[_]patch.PatchValue{}) catch
+                    return error.PatchFailed;
+            },
+
+            .dup => {
+                _ = patch.patchStencil(&self.code_buffer, stencils.dup_stencil, &[_]patch.PatchValue{}) catch
+                    return error.PatchFailed;
+            },
+
+            .pop => {
+                _ = patch.patchStencil(&self.code_buffer, stencils.stack_pop, &[_]patch.PatchValue{}) catch
+                    return error.PatchFailed;
+            },
+
+            .swap => {
+                _ = patch.patchStencil(&self.code_buffer, stencils.swap_stencil, &[_]patch.PatchValue{}) catch
                     return error.PatchFailed;
             },
 
