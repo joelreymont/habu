@@ -718,24 +718,58 @@ pub const Compiler = struct {
         return self.builder.ifExpr(test_ir, then_ir, else_ir) catch return error.OutOfMemory;
     }
 
+    /// Typed parameter info for function declarations
+    const TypedParam = struct {
+        name: []const u8,
+        type_name: ?[]const u8, // null for untyped
+    };
+
     fn compileLambda(self: *Compiler, args: Value, env: *const Env) CompileError!*Ir {
         // (lambda (params...) body)
+        // Params can be: symbol for untyped, (symbol type) for typed
         if (!args.isCons()) return error.InvalidLambda;
 
         const cons = args.toPtr(Cons);
         const params_expr = cons.car;
         const body_exprs = cons.cdr;
 
-        // Parse parameters
+        // Parse parameters (supports typed and untyped)
         var params = std.ArrayList([]const u8){};
         defer params.deinit(self.allocator);
+
+        var typed_params = std.ArrayList(TypedParam){};
+        defer typed_params.deinit(self.allocator);
 
         var param_list = params_expr;
         while (param_list.isCons()) {
             const param_cons = param_list.toPtr(Cons);
-            if (!param_cons.car.isSymbol()) return error.InvalidLambda;
-            const param_sym = param_cons.car.toPtr(Symbol);
-            params.append(self.allocator, param_sym.getName()) catch return error.OutOfMemory;
+            const param_item = param_cons.car;
+
+            if (param_item.isSymbol()) {
+                // Untyped parameter: just a symbol
+                const param_sym = param_item.toPtr(Symbol);
+                const name = param_sym.getName();
+                params.append(self.allocator, name) catch return error.OutOfMemory;
+                typed_params.append(self.allocator, .{ .name = name, .type_name = null }) catch return error.OutOfMemory;
+            } else if (param_item.isCons()) {
+                // Typed parameter: (name type)
+                const typed = param_item.toPtr(Cons);
+                if (!typed.car.isSymbol()) return error.InvalidLambda;
+                const name_sym = typed.car.toPtr(Symbol);
+                const name = name_sym.getName();
+
+                if (!typed.cdr.isCons()) return error.InvalidLambda;
+                const type_cons = typed.cdr.toPtr(Cons);
+                if (!type_cons.car.isSymbol()) return error.InvalidLambda;
+                const type_sym = type_cons.car.toPtr(Symbol);
+                const type_name = type_sym.getName();
+
+                params.append(self.allocator, name) catch return error.OutOfMemory;
+                typed_params.append(self.allocator, .{ .name = name, .type_name = type_name }) catch return error.OutOfMemory;
+            } else {
+                return error.InvalidLambda;
+            }
+
             param_list = param_cons.cdr;
         }
 
@@ -755,7 +789,35 @@ pub const Compiler = struct {
             return error.OutOfMemory;
 
         // Compile body (implicit progn) - body is in tail position
-        const body_ir = try self.compileBodyWithTail(body_exprs, &lambda_env, true);
+        var body_ir = try self.compileBodyWithTail(body_exprs, &lambda_env, true);
+
+        // Prepend type assertions for typed parameters
+        var assertions = std.ArrayList(*Ir){};
+        defer assertions.deinit(self.allocator);
+
+        for (typed_params.items) |tp| {
+            if (tp.type_name) |type_name| {
+                // Create variable reference for parameter
+                const binding = lambda_env.lookup(tp.name) orelse return error.OutOfMemory;
+                const var_ir = self.builder.variable(tp.name, binding.depth, binding.index) catch
+                    return error.OutOfMemory;
+
+                // Create assertion based on type name
+                const assert_ir = self.makeTypeAssertion(var_ir, type_name) catch
+                    return error.InvalidSyntax;
+                if (assert_ir) |assert_node| {
+                    assertions.append(self.allocator, assert_node) catch return error.OutOfMemory;
+                }
+            }
+        }
+
+        // If we have assertions, wrap body in progn with assertions first
+        if (assertions.items.len > 0) {
+            assertions.append(self.allocator, body_ir) catch return error.OutOfMemory;
+            const items = self.allocator.dupe(*const Ir, assertions.items) catch
+                return error.OutOfMemory;
+            body_ir = self.builder.progn(items) catch return error.OutOfMemory;
+        }
 
         // Convert captures to slice
         const captures = self.allocator.dupe(Ir.Capture, capture_set.captures.items) catch
@@ -763,6 +825,36 @@ pub const Compiler = struct {
 
         return self.builder.lambda(params.items, captures, body_ir) catch
             return error.OutOfMemory;
+    }
+
+    /// Create a type assertion IR node for a given type name
+    fn makeTypeAssertion(self: *Compiler, expr_ir: *Ir, type_name: []const u8) !?*Ir {
+        if (std.mem.eql(u8, type_name, "fixnum")) {
+            return self.builder.assertFixnum(expr_ir);
+        }
+        if (std.mem.eql(u8, type_name, "cons")) {
+            return self.builder.assertCons(expr_ir);
+        }
+        if (std.mem.eql(u8, type_name, "symbol")) {
+            return self.builder.assertSymbol(expr_ir);
+        }
+        if (std.mem.eql(u8, type_name, "string")) {
+            return self.builder.assertString(expr_ir);
+        }
+        if (std.mem.eql(u8, type_name, "vector")) {
+            return self.builder.assertVector(expr_ir);
+        }
+        if (std.mem.eql(u8, type_name, "closure")) {
+            return self.builder.assertClosure(expr_ir);
+        }
+        if (std.mem.eql(u8, type_name, "non-nil")) {
+            return self.builder.assertNonNil(expr_ir);
+        }
+        // "any" means no check needed
+        if (std.mem.eql(u8, type_name, "any")) {
+            return null;
+        }
+        return error.InvalidSyntax;
     }
 
     /// Collect free variables in an expression

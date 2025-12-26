@@ -687,3 +687,91 @@ test "occurrence typing with numberp" {
     try testing.expect(result2.isFixnum());
     try testing.expectEqual(@as(i64, 0), result2.toFixnum());
 }
+
+// ============================================================================
+// Typed function parameters: (defun name ((x type) ...) body)
+// ============================================================================
+
+test "typed defun parameter" {
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl = Repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+
+    // Define function with typed parameter
+    _ = try repl.eval("(defun inc ((x fixnum)) (+ x 1))");
+
+    // Valid call
+    const result = try repl.eval("(inc 41)");
+    try testing.expect(result.isFixnum());
+    try testing.expectEqual(@as(i64, 42), result.toFixnum());
+}
+
+test "typed defun parameter failure" {
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl = Repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+
+    // Define function with typed parameter
+    _ = try repl.eval("(defun inc ((x fixnum)) (+ x 1))");
+
+    // Invalid call - string is not fixnum
+    const err = repl.eval("(inc \"hello\")");
+    try testing.expectError(error.RuntimeError, err);
+}
+
+test "typed defun multiple params" {
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl = Repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+
+    // Define function with multiple typed parameters
+    _ = try repl.eval("(defun add ((a fixnum) (b fixnum)) (+ a b))");
+
+    const result = try repl.eval("(add 20 22)");
+    try testing.expect(result.isFixnum());
+    try testing.expectEqual(@as(i64, 42), result.toFixnum());
+}
+
+test "typed defun mixed params" {
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl = Repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+
+    // Mix of typed and untyped parameters
+    _ = try repl.eval("(defun add-to ((x fixnum) y) (+ x y))");
+
+    const result = try repl.eval("(add-to 40 2)");
+    try testing.expect(result.isFixnum());
+    try testing.expectEqual(@as(i64, 42), result.toFixnum());
+}
+
+test "typed lambda" {
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl = Repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+
+    // Lambda with typed parameter
+    const result = try repl.eval("((lambda ((x fixnum)) (+ x 1)) 41)");
+    try testing.expect(result.isFixnum());
+    try testing.expectEqual(@as(i64, 42), result.toFixnum());
+}
