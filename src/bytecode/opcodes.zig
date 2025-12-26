@@ -514,6 +514,12 @@ pub const Op = enum(u8) {
     /// ( primary -- )
     mv_bind = 0xC1,
 
+    /// Gather multiple values into a list (multiple-value-list)
+    /// Takes primary from stack, secondaries from buffer
+    /// Pushes list of all values
+    /// ( primary -- list )
+    mv_list = 0xC2,
+
     // ========================================================================
     // Special
     // ========================================================================
@@ -542,6 +548,7 @@ pub const Op = enum(u8) {
             .read_char, .peek_char, .unread_char, .boundp, .fboundp,
             .symbol_value, .symbol_function, .typep,
             .abs, .zerop, .plusp, .minusp, .evenp, .oddp,
+            .mv_list,
             => 0,
 
             // 1 byte operand

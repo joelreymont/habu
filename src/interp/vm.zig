@@ -783,6 +783,29 @@ pub const Vm = struct {
                     self.secondary_values_count = 0;
                 },
 
+                .mv_list => {
+                    // Primary value is on stack, secondaries in buffer
+                    // Create a list of all values: (primary secondary1 secondary2 ...)
+                    const primary = try self.pop();
+
+                    // Build list in reverse: start with nil, cons secondaries, then cons primary
+                    var result = Value.nil;
+
+                    // Add secondary values in reverse order
+                    var i: usize = self.secondary_values_count;
+                    while (i > 0) : (i -= 1) {
+                        result = self.heap.allocCons(self.secondary_values[i - 1], result) orelse return error.OutOfMemory;
+                    }
+
+                    // Add primary at front
+                    result = self.heap.allocCons(primary, result) orelse return error.OutOfMemory;
+
+                    // Clear secondary values
+                    self.secondary_values_count = 0;
+
+                    try self.push(result);
+                },
+
                 .format => {
                     const argc = self.readU8();
                     // Stack: dest, control-string, arg1, ..., argN (argN on top)

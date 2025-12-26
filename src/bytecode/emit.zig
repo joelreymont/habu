@@ -154,6 +154,8 @@ pub const Emitter = struct {
             .go => |g| try self.emitGo(g),
             .values => |v| try self.emitValues(v),
             .mv_bind => |m| try self.emitMvBind(m),
+            .mv_list => |m| try self.emitMvList(m),
+            .mv_call => |m| try self.emitMvCall(m),
             .format => |f| try self.emitFormat(f),
             .make_hash => |h| try self.emitMakeHash(h),
             .hash_get => |h| try self.emitHashGet(h),
@@ -859,6 +861,44 @@ pub const Emitter = struct {
 
         // Emit body - variables are now on stack as locals
         try self.emit(m.body);
+    }
+
+    fn emitMvList(self: *Emitter, m: anytype) EmitError!void {
+        // Evaluate the expression (leaves primary on stack, secondaries in buffer)
+        try self.emit(m.expr);
+        // Emit mv_list opcode - gathers all values into a list
+        try self.emitOp(.mv_list);
+    }
+
+    fn emitMvCall(self: *Emitter, m: anytype) EmitError!void {
+        // (multiple-value-call fn form1 form2 ...)
+        // Compiles to: (apply fn (append (mv-list form1) (mv-list form2) ...))
+
+        // First, emit each form wrapped in mv_list
+        for (m.forms) |form| {
+            try self.emit(form);
+            try self.emitOp(.mv_list);
+        }
+
+        // Append all the lists together
+        // (append l1 l2 l3) = (append (append l1 l2) l3)
+        if (m.forms.len > 1) {
+            var i: usize = 1;
+            while (i < m.forms.len) : (i += 1) {
+                try self.emitOp(.append_lists);
+            }
+        } else if (m.forms.len == 0) {
+            // No forms - pass nil as args
+            try self.emitOp(.push_nil);
+        }
+
+        // Now we have the combined args list on stack
+        // Emit function
+        try self.emit(m.func);
+        // Swap so args are on top (apply expects func, args)
+        try self.emitOp(.swap);
+        // Apply
+        try self.emitOp(.apply);
     }
 
     fn emitFormat(self: *Emitter, f: anytype) EmitError!void {

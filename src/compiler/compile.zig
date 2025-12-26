@@ -88,6 +88,8 @@ pub const Builtins = struct {
     go: Value,
     values: Value,
     @"multiple-value-bind": Value,
+    @"multiple-value-call": Value,
+    @"multiple-value-list": Value,
 
     /// Initialize all builtin symbols from heap
     pub fn init(heap: *Heap) ?Builtins {
@@ -126,6 +128,8 @@ pub const Builtins = struct {
             .go = heap.intern("go") orelse return null,
             .values = heap.intern("values") orelse return null,
             .@"multiple-value-bind" = heap.intern("multiple-value-bind") orelse return null,
+            .@"multiple-value-call" = heap.intern("multiple-value-call") orelse return null,
+            .@"multiple-value-list" = heap.intern("multiple-value-list") orelse return null,
         };
     }
 };
@@ -616,6 +620,8 @@ pub const Compiler = struct {
         go,
         values,
         @"multiple-value-bind",
+        @"multiple-value-call",
+        @"multiple-value-list",
     };
 
     /// Comptime dispatch table for special forms
@@ -650,6 +656,8 @@ pub const Compiler = struct {
         .{ "go", .go },
         .{ "values", .values },
         .{ "multiple-value-bind", .@"multiple-value-bind" },
+        .{ "multiple-value-call", .@"multiple-value-call" },
+        .{ "multiple-value-list", .@"multiple-value-list" },
     });
 
     fn compileListWithTail(self: *Compiler, expr: Value, env: *const Env, in_tail: bool) CompileError!*Ir {
@@ -678,6 +686,8 @@ pub const Compiler = struct {
                 if (head.raw == b.go.raw) return self.compileGo(tail);
                 if (head.raw == b.values.raw) return self.compileValues(tail, env);
                 if (head.raw == b.@"multiple-value-bind".raw) return self.compileMvBind(tail, env);
+                if (head.raw == b.@"multiple-value-call".raw) return self.compileMvCall(tail, env);
+                if (head.raw == b.@"multiple-value-list".raw) return self.compileMvList(tail, env);
                 if (head.raw == b.lambda.raw) return self.compileLambda(tail, env);
                 if (head.raw == b.@"and".raw) return self.compileAnd(tail, env);
                 if (head.raw == b.@"or".raw) return self.compileOr(tail, env);
@@ -728,6 +738,8 @@ pub const Compiler = struct {
                         .go => self.compileGo(tail),
                         .values => self.compileValues(tail, env),
                         .@"multiple-value-bind" => self.compileMvBind(tail, env),
+                        .@"multiple-value-call" => self.compileMvCall(tail, env),
+                        .@"multiple-value-list" => self.compileMvList(tail, env),
                     };
                 }
             }
@@ -1871,6 +1883,38 @@ pub const Compiler = struct {
         const body_ir = try self.compileBody(cons2.cdr, &let_env);
 
         return self.builder.mvBind(vars.items, expr_ir, body_ir) catch return error.OutOfMemory;
+    }
+
+    fn compileMvCall(self: *Compiler, args: Value, env: *const Env) CompileError!*Ir {
+        // (multiple-value-call fn form1 form2 ...)
+        if (!args.isCons()) return error.InvalidSyntax;
+        const cons1 = args.toPtr(Cons);
+
+        // Compile function expression
+        const func_ir = try self.compile(cons1.car, env);
+
+        // Compile forms
+        var forms = std.ArrayList(*const Ir){};
+        defer forms.deinit(self.allocator);
+
+        var current = cons1.cdr;
+        while (current.isCons()) {
+            const cons = current.toPtr(Cons);
+            const form_ir = try self.compile(cons.car, env);
+            forms.append(self.allocator, form_ir) catch return error.OutOfMemory;
+            current = cons.cdr;
+        }
+
+        return self.builder.mvCall(func_ir, forms.items) catch return error.OutOfMemory;
+    }
+
+    fn compileMvList(self: *Compiler, args: Value, env: *const Env) CompileError!*Ir {
+        // (multiple-value-list expr)
+        if (!args.isCons()) return error.InvalidSyntax;
+        const cons = args.toPtr(Cons);
+
+        const expr_ir = try self.compile(cons.car, env);
+        return self.builder.mvList(expr_ir) catch return error.OutOfMemory;
     }
 
     fn compileDefine(self: *Compiler, args: Value, env: *const Env) CompileError!*Ir {

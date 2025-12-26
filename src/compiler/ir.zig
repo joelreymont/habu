@@ -154,6 +154,12 @@ pub const Ir = union(enum) {
         body: *const Ir,
     },
 
+    /// Multiple-value-list: (multiple-value-list expr)
+    /// Evaluates expr and gathers all values into a list
+    mv_list: struct {
+        expr: *const Ir,
+    },
+
     /// Format: (format dest control-string args...)
     format: struct {
         dest: *const Ir,
@@ -219,6 +225,13 @@ pub const Ir = union(enum) {
     apply: struct {
         func: *const Ir,
         args: *const Ir,
+    },
+
+    /// Multiple-value-call: (multiple-value-call fn form1 form2 ...)
+    /// Gathers all values from each form and passes them as args to fn
+    mv_call: struct {
+        func: *const Ir,
+        forms: []const *const Ir,
     },
 
     // ========================================================================
@@ -581,6 +594,19 @@ pub const IrBuilder = struct {
         const node = try self.allocator.create(Ir);
         const vars_copy = try self.allocator.dupe([]const u8, vars);
         node.* = .{ .mv_bind = .{ .vars = vars_copy, .expr = expr, .body = body } };
+        return node;
+    }
+
+    pub fn mvCall(self: IrBuilder, func: *const Ir, forms: []const *const Ir) !*Ir {
+        const node = try self.allocator.create(Ir);
+        const forms_copy = try self.allocator.dupe(*const Ir, forms);
+        node.* = .{ .mv_call = .{ .func = func, .forms = forms_copy } };
+        return node;
+    }
+
+    pub fn mvList(self: IrBuilder, expr: *const Ir) !*Ir {
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .mv_list = .{ .expr = expr } };
         return node;
     }
 
