@@ -2253,6 +2253,9 @@ pub const Compiler = struct {
         if (std.mem.eql(u8, name, "symbol-function")) {
             return self.compileUnaryPrim(args, env, .symbol_function);
         }
+        if (std.mem.eql(u8, name, "typep")) {
+            return self.compileBinaryPrim(args, env, .typep);
+        }
 
         // Vector operations
         if (std.mem.eql(u8, name, "vector-ref")) {
@@ -2329,7 +2332,7 @@ pub const Compiler = struct {
         return error.InvalidSyntax; // Not a known primitive
     }
 
-    const PrimTag = enum { add, sub, mul, div, mod, eq, lt, gt, le, ge, num_eq, cons, car, cdr, consp, symbolp, numberp, stringp, vectorp, nilp, not, vec_ref, vec_len, str_ref, str_len, str_eq, print, random, intern, sym_name, type_of, characterp, char_code, code_char, char_eq, char_lt, char_gt, read_char, peek_char, unread_char, boundp, fboundp, symbol_value, symbol_function };
+    const PrimTag = enum { add, sub, mul, div, mod, eq, lt, gt, le, ge, num_eq, cons, car, cdr, consp, symbolp, numberp, stringp, vectorp, nilp, not, vec_ref, vec_len, str_ref, str_len, str_eq, print, random, intern, sym_name, type_of, characterp, char_code, code_char, char_eq, char_lt, char_gt, read_char, peek_char, unread_char, boundp, fboundp, symbol_value, symbol_function, typep };
 
     fn compileBinaryPrim(self: *Compiler, args: Value, env: *const Env, prim: PrimTag) CompileError!*Ir {
         if (!args.isCons()) return error.InvalidSyntax;
@@ -2383,6 +2386,7 @@ pub const Compiler = struct {
             .char_eq => self.builder.charEq(left, right),
             .char_lt => self.builder.charLt(left, right),
             .char_gt => self.builder.charGt(left, right),
+            .typep => self.builder.typep(left, right),
             else => error.InvalidSyntax,
         } catch return error.OutOfMemory;
     }

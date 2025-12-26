@@ -214,6 +214,7 @@ pub const Emitter = struct {
             .fboundp => |op| try self.emitUnaryOp(op.operand, .fboundp),
             .symbol_value => |op| try self.emitUnaryOp(op.operand, .symbol_value),
             .symbol_function => |op| try self.emitUnaryOp(op.operand, .symbol_function),
+            .typep => |op| try self.emitBinaryOp(op, .typep),
 
             // Vector operations
             .vec_new => |v| try self.emitVecNew(v),

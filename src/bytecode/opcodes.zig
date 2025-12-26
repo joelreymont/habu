@@ -441,6 +441,10 @@ pub const Op = enum(u8) {
     /// ( symbol -- value )
     symbol_function = 0xAE,
 
+    /// Check if object is of given type
+    /// ( obj type-sym -- t/nil )
+    typep = 0xAF,
+
     // ========================================================================
     // Dynamic exception handling (catch/throw)
     // ========================================================================
@@ -508,7 +512,7 @@ pub const Op = enum(u8) {
             .hash_get, .hash_set, .hash_rem, .hash_count, .hashtablep,
             .characterp, .char_code, .code_char, .char_eq, .char_lt, .char_gt,
             .read_char, .peek_char, .unread_char, .boundp, .fboundp,
-            .symbol_value, .symbol_function,
+            .symbol_value, .symbol_function, .typep,
             => 0,
 
             // 1 byte operand

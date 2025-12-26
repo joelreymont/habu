@@ -933,6 +933,45 @@ pub const Vm = struct {
                     }
                 },
 
+                .typep => {
+                    const type_spec = try self.pop();
+                    const obj = try self.pop();
+                    if (!type_spec.isSymbol()) return error.TypeMismatch;
+                    const type_sym = type_spec.toPtr(Symbol);
+                    const type_name = type_sym.getName();
+
+                    const matches = if (std.mem.eql(u8, type_name, "fixnum"))
+                        obj.isFixnum()
+                    else if (std.mem.eql(u8, type_name, "cons"))
+                        obj.isCons()
+                    else if (std.mem.eql(u8, type_name, "symbol"))
+                        obj.isSymbol()
+                    else if (std.mem.eql(u8, type_name, "string"))
+                        obj.isString()
+                    else if (std.mem.eql(u8, type_name, "vector"))
+                        obj.isVector()
+                    else if (std.mem.eql(u8, type_name, "closure") or std.mem.eql(u8, type_name, "function"))
+                        obj.isClosure()
+                    else if (std.mem.eql(u8, type_name, "keyword"))
+                        obj.isKeyword()
+                    else if (std.mem.eql(u8, type_name, "character"))
+                        obj.isCharacter()
+                    else if (std.mem.eql(u8, type_name, "hash-table"))
+                        obj.isHashTable()
+                    else if (std.mem.eql(u8, type_name, "nil") or std.mem.eql(u8, type_name, "null"))
+                        obj.isNil()
+                    else if (std.mem.eql(u8, type_name, "list"))
+                        obj.isNil() or obj.isCons()
+                    else if (std.mem.eql(u8, type_name, "atom"))
+                        !obj.isCons()
+                    else if (std.mem.eql(u8, type_name, "t"))
+                        true // Everything is of type t
+                    else
+                        false; // Unknown type
+
+                    try self.push(if (matches) Value.t else Value.nil);
+                },
+
                 .halt => return error.Halt,
             }
         }
