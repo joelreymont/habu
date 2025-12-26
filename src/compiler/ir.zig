@@ -98,6 +98,18 @@ pub const Ir = union(enum) {
         body: *const Ir,
     },
 
+    /// Named block: (block name body...)
+    block: struct {
+        name: []const u8,
+        body: *const Ir,
+    },
+
+    /// Return from block: (return-from name value)
+    return_from: struct {
+        name: []const u8,
+        value: *const Ir,
+    },
+
     // ========================================================================
     // Function calls
     // ========================================================================
@@ -392,6 +404,18 @@ pub const IrBuilder = struct {
     pub fn loop(self: IrBuilder, cond: *const Ir, body: *const Ir) !*Ir {
         const node = try self.allocator.create(Ir);
         node.* = .{ .loop = .{ .cond = cond, .body = body } };
+        return node;
+    }
+
+    pub fn block(self: IrBuilder, name: []const u8, body: *const Ir) !*Ir {
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .block = .{ .name = name, .body = body } };
+        return node;
+    }
+
+    pub fn returnFrom(self: IrBuilder, name: []const u8, value: *const Ir) !*Ir {
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .return_from = .{ .name = name, .value = value } };
         return node;
     }
 

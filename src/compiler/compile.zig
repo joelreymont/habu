@@ -78,6 +78,10 @@ pub const Builtins = struct {
     // Type assertions
     the: Value,
 
+    // Non-local exits
+    block: Value,
+    @"return-from": Value,
+
     /// Initialize all builtin symbols from heap
     pub fn init(heap: *Heap) ?Builtins {
         return .{
@@ -106,6 +110,8 @@ pub const Builtins = struct {
             .the = heap.intern("the") orelse return null,
             .flet = heap.intern("flet") orelse return null,
             .labels = heap.intern("labels") orelse return null,
+            .block = heap.intern("block") orelse return null,
+            .@"return-from" = heap.intern("return-from") orelse return null,
         };
     }
 };
@@ -569,6 +575,7 @@ pub const Compiler = struct {
         begin,
         flet,
         labels,
+        block,
         // Non-tail forms
         lambda,
         @"and",
@@ -582,6 +589,7 @@ pub const Compiler = struct {
         define,
         defun,
         the,
+        @"return-from",
     };
 
     /// Comptime dispatch table for special forms
@@ -607,6 +615,8 @@ pub const Compiler = struct {
         .{ "define", .define },
         .{ "defun", .defun },
         .{ "the", .the },
+        .{ "block", .block },
+        .{ "return-from", .@"return-from" },
     });
 
     fn compileListWithTail(self: *Compiler, expr: Value, env: *const Env, in_tail: bool) CompileError!*Ir {
@@ -626,6 +636,8 @@ pub const Compiler = struct {
                 if (head.raw == b.progn.raw or head.raw == b.begin.raw) return self.compilePrognWithTail(tail, env, in_tail);
                 if (head.raw == b.flet.raw) return self.compileFletWithTail(tail, env, in_tail);
                 if (head.raw == b.labels.raw) return self.compileLabelsWithTail(tail, env, in_tail);
+                if (head.raw == b.block.raw) return self.compileBlockWithTail(tail, env, in_tail);
+                if (head.raw == b.@"return-from".raw) return self.compileReturnFrom(tail, env);
                 if (head.raw == b.lambda.raw) return self.compileLambda(tail, env);
                 if (head.raw == b.@"and".raw) return self.compileAnd(tail, env);
                 if (head.raw == b.@"or".raw) return self.compileOr(tail, env);
@@ -654,6 +666,7 @@ pub const Compiler = struct {
                         .progn, .begin => self.compilePrognWithTail(tail, env, in_tail),
                         .flet => self.compileFletWithTail(tail, env, in_tail),
                         .labels => self.compileLabelsWithTail(tail, env, in_tail),
+                        .block => self.compileBlockWithTail(tail, env, in_tail),
                         // Non-tail forms
                         .lambda => self.compileLambda(tail, env),
                         .@"and" => self.compileAnd(tail, env),
@@ -667,6 +680,7 @@ pub const Compiler = struct {
                         .define => self.compileDefine(tail, env),
                         .defun => self.compileDefun(tail, env),
                         .the => self.compileThe(tail, env),
+                        .@"return-from" => self.compileReturnFrom(tail, env),
                     };
                 }
             }
@@ -1600,6 +1614,41 @@ pub const Compiler = struct {
         const body_ir = try self.compileBody(body_exprs, env);
 
         return self.builder.loop(test_ir, body_ir) catch return error.OutOfMemory;
+    }
+
+    fn compileBlockWithTail(self: *Compiler, args: Value, env: *const Env, in_tail: bool) CompileError!*Ir {
+        // (block name body...)
+        if (!args.isCons()) return error.InvalidSyntax;
+
+        const cons = args.toPtr(Cons);
+        if (!cons.car.isSymbol()) return error.InvalidSyntax;
+        const name_sym = cons.car.toPtr(Symbol);
+        const name = name_sym.getName();
+
+        // Compile body
+        const body_ir = try self.compileBodyWithTail(cons.cdr, env, in_tail);
+
+        return self.builder.block(name, body_ir) catch return error.OutOfMemory;
+    }
+
+    fn compileReturnFrom(self: *Compiler, args: Value, env: *const Env) CompileError!*Ir {
+        // (return-from name value)
+        if (!args.isCons()) return error.InvalidSyntax;
+
+        const cons = args.toPtr(Cons);
+        if (!cons.car.isSymbol()) return error.InvalidSyntax;
+        const name_sym = cons.car.toPtr(Symbol);
+        const name = name_sym.getName();
+
+        // Get value (defaults to nil if not provided)
+        const value = if (cons.cdr.isCons())
+            cons.cdr.toPtr(Cons).car
+        else
+            Value.nil;
+
+        const value_ir = try self.compile(value, env);
+
+        return self.builder.returnFrom(name, value_ir) catch return error.OutOfMemory;
     }
 
     fn compileDefine(self: *Compiler, args: Value, env: *const Env) CompileError!*Ir {

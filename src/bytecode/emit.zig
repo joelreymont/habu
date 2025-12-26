@@ -23,6 +23,13 @@ pub const EmitError = error{
     InvalidIr,
 };
 
+/// Block info for tracking named exits
+const BlockInfo = struct {
+    name: []const u8,
+    /// Pending jump locations to patch when block ends
+    pending_exits: std.ArrayList(usize),
+};
+
 /// Bytecode emitter
 pub const Emitter = struct {
     allocator: std.mem.Allocator,
@@ -42,6 +49,8 @@ pub const Emitter = struct {
     captures: []const Ir.Capture,
     /// Heap for symbol interning (optional)
     heap: ?*Heap,
+    /// Active blocks for return-from
+    block_stack: std.ArrayList(BlockInfo),
 
     pub fn init(allocator: std.mem.Allocator) Emitter {
         return .{
@@ -54,6 +63,7 @@ pub const Emitter = struct {
             .name = "",
             .captures = &[_]Ir.Capture{},
             .heap = null,
+            .block_stack = std.ArrayList(BlockInfo){},
         };
     }
 
@@ -68,6 +78,7 @@ pub const Emitter = struct {
             .name = "",
             .captures = &[_]Ir.Capture{},
             .heap = heap,
+            .block_stack = std.ArrayList(BlockInfo){},
         };
     }
 
@@ -80,6 +91,11 @@ pub const Emitter = struct {
             self.allocator.free(chunk.constants);
         }
         self.child_chunks.deinit(self.allocator);
+        // Free block stack
+        for (self.block_stack.items) |*block| {
+            block.pending_exits.deinit(self.allocator);
+        }
+        self.block_stack.deinit(self.allocator);
     }
 
     /// Emit bytecode for an IR node
@@ -97,6 +113,8 @@ pub const Emitter = struct {
             .@"if" => |i| try self.emitIf(i),
             .progn => |exprs| try self.emitProgn(exprs),
             .loop => |l| try self.emitLoop(l),
+            .block => |b| try self.emitBlock(b),
+            .return_from => |r| try self.emitReturnFrom(r),
             .call => |c| try self.emitCall(c, false),
             .tailcall => |c| try self.emitCall(c, true),
             .apply => |a| try self.emitApply(a),
@@ -520,6 +538,57 @@ pub const Emitter = struct {
 
         // Push nil as loop result
         try self.emitOp(.push_nil);
+    }
+
+    fn emitBlock(self: *Emitter, b: anytype) EmitError!void {
+        // Push a new block onto the stack
+        const block_info = BlockInfo{
+            .name = b.name,
+            .pending_exits = std.ArrayList(usize){},
+        };
+        self.block_stack.append(self.allocator, block_info) catch return error.OutOfMemory;
+
+        // Emit body
+        try self.emit(b.body);
+
+        // Pop block and patch all pending exit jumps to here
+        var block = self.block_stack.pop().?;
+        for (block.pending_exits.items) |jump_loc| {
+            try self.patchJumpAt(jump_loc);
+        }
+        block.pending_exits.deinit(self.allocator);
+    }
+
+    fn emitReturnFrom(self: *Emitter, r: anytype) EmitError!void {
+        // Emit the return value
+        try self.emit(r.value);
+
+        // Find the block by name (search from innermost to outermost)
+        var i = self.block_stack.items.len;
+        while (i > 0) {
+            i -= 1;
+            if (std.mem.eql(u8, self.block_stack.items[i].name, r.name)) {
+                // Record this jump location for patching later
+                const jump_loc = try self.emitJump(.jmp);
+                self.block_stack.items[i].pending_exits.append(self.allocator, jump_loc) catch
+                    return error.OutOfMemory;
+                return;
+            }
+        }
+        // Block not found - this is a compile error
+        return error.InvalidIr;
+    }
+
+    /// Patch a jump at a specific location to jump to current offset
+    fn patchJumpAt(self: *Emitter, jump_loc: usize) EmitError!void {
+        const target = self.currentOffset();
+        const offset = @as(i32, @intCast(target)) - @as(i32, @intCast(jump_loc + 2));
+        if (offset > 32767 or offset < -32768) {
+            return error.JumpTooLong;
+        }
+        const displacement: i16 = @intCast(offset);
+        self.code.items[jump_loc] = @bitCast(@as(u8, @truncate(@as(u16, @bitCast(displacement)))));
+        self.code.items[jump_loc + 1] = @bitCast(@as(u8, @truncate(@as(u16, @bitCast(displacement)) >> 8)));
     }
 
     fn emitCall(self: *Emitter, c: anytype, tail: bool) EmitError!void {

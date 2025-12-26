@@ -1113,6 +1113,85 @@ test "labels mutual recursion" {
 }
 
 // ============================================================================
+// block/return-from tests
+// ============================================================================
+
+test "block basic" {
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl = Repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+
+    // block without return-from returns body value
+    const result = try repl.eval("(block done (+ 1 2))");
+    try testing.expect(result.isFixnum());
+    try testing.expectEqual(@as(i64, 3), result.toFixnum());
+}
+
+test "return-from early exit" {
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl = Repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+
+    // return-from exits early with value
+    const result = try repl.eval(
+        \\(block found
+        \\  (return-from found 42)
+        \\  999)
+    );
+    try testing.expect(result.isFixnum());
+    try testing.expectEqual(@as(i64, 42), result.toFixnum());
+}
+
+test "return-from in conditional" {
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl = Repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+
+    // return-from in conditional branch
+    const result = try repl.eval(
+        \\(block search
+        \\  (if t
+        \\      (return-from search 'found)
+        \\      (return-from search 'not-found))
+        \\  'unreachable)
+    );
+    try testing.expect(result.isSymbol());
+}
+
+test "nested blocks" {
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl = Repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+
+    // return-from targets outer block from inner block
+    const result = try repl.eval(
+        \\(block outer
+        \\  (block inner
+        \\    (return-from outer 100)
+        \\    999)
+        \\  888)
+    );
+    try testing.expect(result.isFixnum());
+    try testing.expectEqual(@as(i64, 100), result.toFixnum());
+}
+
+// ============================================================================
 // stdlib tests
 // ============================================================================
 
