@@ -287,6 +287,10 @@ pub const Op = enum(u8) {
     /// ( cap1 ... capN -- closure )
     make_closure = 0x83,
 
+    /// Apply function to list of args
+    /// ( fn args-list -- result )
+    apply = 0x84,
+
     // ========================================================================
     // I/O
     // ========================================================================
@@ -353,6 +357,7 @@ pub const Op = enum(u8) {
             .ret, .print, .random, .intern, .substring, .sym_name, .str_eq, .halt,
             .check_fixnum, .check_cons, .check_symbol, .check_string,
             .check_vector, .check_closure, .check_non_nil,
+            .apply,
             => 0,
 
             // 1 byte operand

@@ -457,6 +457,50 @@ pub const Compiler = struct {
         return self.compileListWithTail(expr, env, false);
     }
 
+    /// Special form types for dispatch
+    const SpecialForm = enum {
+        // Tail-position aware forms
+        @"if",
+        let,
+        letrec,
+        @"let*",
+        cond,
+        progn,
+        begin,
+        // Non-tail forms
+        lambda,
+        @"and",
+        @"or",
+        funcall,
+        apply,
+        @"set!",
+        quote,
+        @"while",
+        define,
+        defun,
+    };
+
+    /// Comptime dispatch table for special forms
+    const special_forms = std.StaticStringMap(SpecialForm).initComptime(.{
+        .{ "if", .@"if" },
+        .{ "let", .let },
+        .{ "letrec", .letrec },
+        .{ "let*", .@"let*" },
+        .{ "cond", .cond },
+        .{ "progn", .progn },
+        .{ "begin", .begin },
+        .{ "lambda", .lambda },
+        .{ "and", .@"and" },
+        .{ "or", .@"or" },
+        .{ "funcall", .funcall },
+        .{ "apply", .apply },
+        .{ "set!", .@"set!" },
+        .{ "quote", .quote },
+        .{ "while", .@"while" },
+        .{ "define", .define },
+        .{ "defun", .defun },
+    });
+
     fn compileListWithTail(self: *Compiler, expr: Value, env: *const Env, in_tail: bool) CompileError!*Ir {
         const cons = expr.toPtr(Cons);
         const head = cons.car;
@@ -467,35 +511,27 @@ pub const Compiler = struct {
             const sym = head.toPtr(Symbol);
             const name = sym.getName();
 
-            if (std.mem.eql(u8, name, "if")) {
-                return self.compileIfWithTail(tail, env, in_tail);
-            }
-            if (std.mem.eql(u8, name, "lambda")) {
-                return self.compileLambda(tail, env);
-            }
-            if (std.mem.eql(u8, name, "let")) {
-                return self.compileLetWithTail(tail, env, in_tail);
-            }
-            if (std.mem.eql(u8, name, "letrec")) {
-                return self.compileLetrecWithTail(tail, env, in_tail);
-            }
-            if (std.mem.eql(u8, name, "set!")) {
-                return self.compileSet(tail, env);
-            }
-            if (std.mem.eql(u8, name, "quote")) {
-                return self.compileQuote(tail);
-            }
-            if (std.mem.eql(u8, name, "progn") or std.mem.eql(u8, name, "begin")) {
-                return self.compilePrognWithTail(tail, env, in_tail);
-            }
-            if (std.mem.eql(u8, name, "while")) {
-                return self.compileWhile(tail, env);
-            }
-            if (std.mem.eql(u8, name, "define")) {
-                return self.compileDefine(tail, env);
-            }
-            if (std.mem.eql(u8, name, "defun")) {
-                return self.compileDefun(tail, env);
+            if (special_forms.get(name)) |form| {
+                return switch (form) {
+                    // Tail-position aware forms
+                    .@"if" => self.compileIfWithTail(tail, env, in_tail),
+                    .let => self.compileLetWithTail(tail, env, in_tail),
+                    .letrec => self.compileLetrecWithTail(tail, env, in_tail),
+                    .@"let*" => self.compileLetStarWithTail(tail, env, in_tail),
+                    .cond => self.compileCondWithTail(tail, env, in_tail),
+                    .progn, .begin => self.compilePrognWithTail(tail, env, in_tail),
+                    // Non-tail forms
+                    .lambda => self.compileLambda(tail, env),
+                    .@"and" => self.compileAnd(tail, env),
+                    .@"or" => self.compileOr(tail, env),
+                    .funcall => self.compileFuncall(tail, env),
+                    .apply => self.compileApply(tail, env),
+                    .@"set!" => self.compileSet(tail, env),
+                    .quote => self.compileQuote(tail),
+                    .@"while" => self.compileWhile(tail, env),
+                    .define => self.compileDefine(tail, env),
+                    .defun => self.compileDefun(tail, env),
+                };
             }
 
             // Check for primitives
@@ -809,6 +845,192 @@ pub const Compiler = struct {
         // Return progn of defines + body
         const items = self.allocator.dupe(*const Ir, exprs.items) catch return error.OutOfMemory;
         return self.builder.progn(items) catch return error.OutOfMemory;
+    }
+
+    fn compileLetStarWithTail(self: *Compiler, args: Value, env: *const Env, in_tail: bool) CompileError!*Ir {
+        // (let* ((x 1) (y (+ x 1))) body)
+        // Compiles to nested lets: (let ((x 1)) (let ((y (+ x 1))) body))
+        if (!args.isCons()) return error.InvalidLet;
+
+        const cons = args.toPtr(Cons);
+        const bindings_expr = cons.car;
+        const body_exprs = cons.cdr;
+
+        // If no bindings, just compile body
+        if (bindings_expr.isNil()) {
+            return self.compileBodyWithTail(body_exprs, env, in_tail);
+        }
+
+        if (!bindings_expr.isCons()) return error.InvalidLet;
+
+        // Recursively compile as nested lets
+        return self.compileLetStarBindings(bindings_expr, body_exprs, env, in_tail);
+    }
+
+    fn compileLetStarBindings(self: *Compiler, bindings_list: Value, body_exprs: Value, env: *const Env, in_tail: bool) CompileError!*Ir {
+        if (!bindings_list.isCons()) return error.InvalidLet;
+
+        const binding_cons = bindings_list.toPtr(Cons);
+        const binding = binding_cons.car;
+        const rest = binding_cons.cdr;
+
+        if (!binding.isCons()) return error.InvalidLet;
+        const b = binding.toPtr(Cons);
+
+        if (!b.car.isSymbol()) return error.InvalidLet;
+        const name_sym = b.car.toPtr(Symbol);
+        const name = name_sym.getName();
+
+        if (!b.cdr.isCons()) return error.InvalidLet;
+        const val_cons = b.cdr.toPtr(Cons);
+
+        // Compile value in current environment
+        const val_ir = try self.compile(val_cons.car, env);
+
+        // Create single-binding array
+        const binding_array = [_]ir.Ir.Binding{.{ .name = name, .value = val_ir }};
+
+        // Create extended environment for rest
+        var let_env = Env.initLet(self.allocator, env);
+        defer let_env.deinit();
+        _ = try let_env.bind(name);
+
+        // Compile rest or body
+        const inner_ir = if (rest.isNil())
+            try self.compileBodyWithTail(body_exprs, &let_env, in_tail)
+        else
+            try self.compileLetStarBindings(rest, body_exprs, &let_env, in_tail);
+
+        return self.builder.letExpr(&binding_array, inner_ir) catch return error.OutOfMemory;
+    }
+
+    fn compileCondWithTail(self: *Compiler, args: Value, env: *const Env, in_tail: bool) CompileError!*Ir {
+        // (cond (test1 expr1...) (test2 expr2...) ... [(t exprN...)])
+        // Transform to nested ifs
+        if (args.isNil()) {
+            return self.builder.lit(Value.nil) catch return error.OutOfMemory;
+        }
+
+        if (!args.isCons()) return error.InvalidSyntax;
+
+        const cons = args.toPtr(Cons);
+        const clause = cons.car;
+        const rest_clauses = cons.cdr;
+
+        if (!clause.isCons()) return error.InvalidSyntax;
+        const clause_cons = clause.toPtr(Cons);
+        const test_expr = clause_cons.car;
+        const body_exprs = clause_cons.cdr;
+
+        // Check for default clause (t or else)
+        const is_default = if (test_expr.isSymbol()) blk: {
+            const sym = test_expr.toPtr(Symbol);
+            const name = sym.getName();
+            break :blk std.mem.eql(u8, name, "t") or std.mem.eql(u8, name, "else");
+        } else false;
+
+        if (is_default) {
+            return self.compileBodyWithTail(body_exprs, env, in_tail);
+        }
+
+        const test_ir = try self.compile(test_expr, env);
+        const then_ir = try self.compileBodyWithTail(body_exprs, env, in_tail);
+        const else_ir = try self.compileCondWithTail(rest_clauses, env, in_tail);
+
+        return self.builder.ifExpr(test_ir, then_ir, else_ir) catch return error.OutOfMemory;
+    }
+
+    fn compileAnd(self: *Compiler, args: Value, env: *const Env) CompileError!*Ir {
+        // (and a b) -> (if a b nil)
+        if (!args.isCons()) return error.InvalidSyntax;
+
+        const cons1 = args.toPtr(Cons);
+        const first = cons1.car;
+        const rest = cons1.cdr;
+
+        if (rest.isNil()) {
+            return self.compile(first, env);
+        }
+
+        if (!rest.isCons()) return error.InvalidSyntax;
+        const cons2 = rest.toPtr(Cons);
+        const second = cons2.car;
+
+        // Handle variadic: (and a b c ...) -> (and a (and b c ...))
+        if (!cons2.cdr.isNil()) {
+            const nested_and = try self.compileAnd(rest, env);
+            const first_ir = try self.compile(first, env);
+            const nil_ir = try self.builder.lit(Value.nil);
+            return self.builder.ifExpr(first_ir, nested_and, nil_ir) catch return error.OutOfMemory;
+        }
+
+        const first_ir = try self.compile(first, env);
+        const second_ir = try self.compile(second, env);
+        const nil_ir = try self.builder.lit(Value.nil);
+
+        return self.builder.ifExpr(first_ir, second_ir, nil_ir) catch return error.OutOfMemory;
+    }
+
+    fn compileOr(self: *Compiler, args: Value, env: *const Env) CompileError!*Ir {
+        // (or a b) -> (let ((tmp a)) (if tmp tmp b))
+        if (!args.isCons()) return error.InvalidSyntax;
+
+        const cons1 = args.toPtr(Cons);
+        const first = cons1.car;
+        const rest = cons1.cdr;
+
+        if (rest.isNil()) {
+            return self.compile(first, env);
+        }
+
+        if (!rest.isCons()) return error.InvalidSyntax;
+
+        // Compile rest for else branch
+        const else_ir = try self.compileOr(rest, env);
+        const first_ir = try self.compile(first, env);
+
+        // Create let binding for tmp
+        const tmp_name = "__or_tmp";
+        const bindings = self.allocator.alloc(ir.Ir.Binding, 1) catch return error.OutOfMemory;
+        bindings[0] = .{ .name = tmp_name, .value = first_ir };
+
+        var tmp_env = Env.initLet(self.allocator, env);
+        defer tmp_env.deinit();
+        const tmp_idx = try tmp_env.bind(tmp_name);
+
+        const tmp_var1 = try self.builder.variable(tmp_name, 0, tmp_idx);
+        const tmp_var2 = try self.builder.variable(tmp_name, 0, tmp_idx);
+
+        const body = try self.builder.ifExpr(tmp_var1, tmp_var2, else_ir);
+        return self.builder.letExpr(bindings, body) catch return error.OutOfMemory;
+    }
+
+    fn compileFuncall(self: *Compiler, args: Value, env: *const Env) CompileError!*Ir {
+        // (funcall fn arg1 arg2 ...) - same as regular call with computed function
+        if (!args.isCons()) return error.InvalidSyntax;
+
+        const cons1 = args.toPtr(Cons);
+        return self.compileCallWithTail(cons1.car, cons1.cdr, env, false);
+    }
+
+    fn compileApply(self: *Compiler, args: Value, env: *const Env) CompileError!*Ir {
+        // (apply fn args-list)
+        if (!args.isCons()) return error.InvalidSyntax;
+
+        const cons1 = args.toPtr(Cons);
+        const fn_expr = cons1.car;
+        const rest = cons1.cdr;
+
+        if (!rest.isCons()) return error.InvalidSyntax;
+        const cons2 = rest.toPtr(Cons);
+        const args_list_expr = cons2.car;
+
+        const fn_ir = try self.compile(fn_expr, env);
+        const args_ir = try self.compile(args_list_expr, env);
+
+        const node = self.allocator.create(ir.Ir) catch return error.OutOfMemory;
+        node.* = .{ .apply = .{ .func = fn_ir, .args = args_ir } };
+        return node;
     }
 
     fn compileSet(self: *Compiler, args: Value, env: *const Env) CompileError!*Ir {

@@ -81,6 +81,7 @@ pub const Emitter = struct {
             .loop => |l| try self.emitLoop(l),
             .call => |c| try self.emitCall(c, false),
             .tailcall => |c| try self.emitCall(c, true),
+            .apply => |a| try self.emitApply(a),
 
             // Arithmetic
             .add => |op| try self.emitBinaryOp(op, .add),
@@ -503,6 +504,13 @@ pub const Emitter = struct {
         if (c.args.len > 255) return error.TooManyLocals;
         try self.emitOp(if (tail) .tail_call else .call);
         try self.emitU8(@intCast(c.args.len));
+    }
+
+    fn emitApply(self: *Emitter, a: anytype) EmitError!void {
+        // Emit function then args list
+        try self.emit(a.func);
+        try self.emit(a.args);
+        try self.emitOp(.apply);
     }
 
     fn emitBinaryOp(self: *Emitter, op: Ir.BinaryOp, opcode: Op) EmitError!void {

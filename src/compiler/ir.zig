@@ -114,6 +114,12 @@ pub const Ir = union(enum) {
         args: []const *const Ir,
     },
 
+    /// Apply function to list of args
+    apply: struct {
+        func: *const Ir,
+        args: *const Ir,
+    },
+
     // ========================================================================
     // Primitives - Arithmetic
     // ========================================================================

@@ -389,6 +389,9 @@ pub const Vm = struct {
                     const argc = self.readU8();
                     try self.doCall(argc, true);
                 },
+                .apply => {
+                    try self.doApply();
+                },
                 .ret => {
                     const result = try self.pop();
                     if (self.fp == 0) {
@@ -594,6 +597,47 @@ pub const Vm = struct {
                 try self.push(Value.nil);
             }
         }
+    }
+
+    fn doApply(self: *Vm) VmError!void {
+        // Stack: ... fn args-list
+        const args_list = try self.pop();
+        const fn_val = try self.pop();
+
+        if (!fn_val.isClosure()) {
+            return error.TypeMismatch;
+        }
+
+        // Count and push args from list
+        var count: u8 = 0;
+        var list = args_list;
+        while (list.isCons()) {
+            if (count >= 255) return error.StackOverflow;
+            const cons = list.toPtr(runtime.Cons);
+            try self.push(cons.car);
+            count += 1;
+            list = cons.cdr;
+        }
+
+        // Push function before args on stack
+        // Current stack: ... arg1 arg2 ... argN
+        // Need: ... fn arg1 arg2 ... argN
+        // So we shift args up and insert fn
+        if (count > 0) {
+            // Make room by moving args up one slot
+            var i: usize = count;
+            while (i > 0) {
+                i -= 1;
+                self.stack[self.sp - count + i + 1] = self.stack[self.sp - count + i];
+            }
+            self.stack[self.sp - count] = fn_val;
+            self.sp += 1;
+        } else {
+            try self.push(fn_val);
+        }
+
+        // Now call with unpacked args
+        try self.doCall(count, false);
     }
 
     // ========================================================================
