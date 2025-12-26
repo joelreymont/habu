@@ -84,6 +84,8 @@ pub const Builtins = struct {
     @"unwind-protect": Value,
     @"catch": Value,
     throw: Value,
+    tagbody: Value,
+    go: Value,
 
     /// Initialize all builtin symbols from heap
     pub fn init(heap: *Heap) ?Builtins {
@@ -118,6 +120,8 @@ pub const Builtins = struct {
             .@"unwind-protect" = heap.intern("unwind-protect") orelse return null,
             .@"catch" = heap.intern("catch") orelse return null,
             .throw = heap.intern("throw") orelse return null,
+            .tagbody = heap.intern("tagbody") orelse return null,
+            .go = heap.intern("go") orelse return null,
         };
     }
 };
@@ -599,6 +603,8 @@ pub const Compiler = struct {
         @"unwind-protect",
         @"catch",
         throw,
+        tagbody,
+        go,
     };
 
     /// Comptime dispatch table for special forms
@@ -629,6 +635,8 @@ pub const Compiler = struct {
         .{ "unwind-protect", .@"unwind-protect" },
         .{ "catch", .@"catch" },
         .{ "throw", .throw },
+        .{ "tagbody", .tagbody },
+        .{ "go", .go },
     });
 
     fn compileListWithTail(self: *Compiler, expr: Value, env: *const Env, in_tail: bool) CompileError!*Ir {
@@ -653,6 +661,8 @@ pub const Compiler = struct {
                 if (head.raw == b.@"unwind-protect".raw) return self.compileUnwindProtectWithTail(tail, env, in_tail);
                 if (head.raw == b.@"catch".raw) return self.compileCatchWithTail(tail, env, in_tail);
                 if (head.raw == b.throw.raw) return self.compileThrow(tail, env);
+                if (head.raw == b.tagbody.raw) return self.compileTagbody(tail, env);
+                if (head.raw == b.go.raw) return self.compileGo(tail);
                 if (head.raw == b.lambda.raw) return self.compileLambda(tail, env);
                 if (head.raw == b.@"and".raw) return self.compileAnd(tail, env);
                 if (head.raw == b.@"or".raw) return self.compileOr(tail, env);
@@ -699,6 +709,8 @@ pub const Compiler = struct {
                         .@"unwind-protect" => self.compileUnwindProtectWithTail(tail, env, in_tail),
                         .@"catch" => self.compileCatchWithTail(tail, env, in_tail),
                         .throw => self.compileThrow(tail, env),
+                        .tagbody => self.compileTagbody(tail, env),
+                        .go => self.compileGo(tail),
                     };
                 }
             }
@@ -1716,6 +1728,78 @@ pub const Compiler = struct {
         const value_ir = try self.compile(value, env);
 
         return self.builder.throw(tag_ir, value_ir) catch return error.OutOfMemory;
+    }
+
+    fn compileTagbody(self: *Compiler, args: Value, env: *const Env) CompileError!*Ir {
+        // (tagbody [tag | form]...)
+        // Parse body into tags and segments
+        var tags = std.ArrayList([]const u8){};
+        defer tags.deinit(self.allocator);
+
+        var segments = std.ArrayList(*const Ir){};
+        defer segments.deinit(self.allocator);
+
+        var current_forms = std.ArrayList(Value){};
+        defer current_forms.deinit(self.allocator);
+
+        // Walk through body
+        var rest = args;
+        while (rest.isCons()) {
+            const cons = rest.toPtr(Cons);
+            const elem = cons.car;
+            rest = cons.cdr;
+
+            if (elem.isSymbol()) {
+                // This is a tag - close current segment and start new one
+                const segment_ir = try self.compileFormsToProgn(current_forms.items, env);
+                segments.append(self.allocator, segment_ir) catch return error.OutOfMemory;
+                current_forms.clearRetainingCapacity();
+
+                const sym = elem.toPtr(Symbol);
+                tags.append(self.allocator, sym.getName()) catch return error.OutOfMemory;
+            } else {
+                // This is a form - add to current segment
+                current_forms.append(self.allocator, elem) catch return error.OutOfMemory;
+            }
+        }
+
+        // Close final segment
+        const final_segment = try self.compileFormsToProgn(current_forms.items, env);
+        segments.append(self.allocator, final_segment) catch return error.OutOfMemory;
+
+        return self.builder.tagbody(
+            tags.items,
+            segments.items,
+        ) catch return error.OutOfMemory;
+    }
+
+    fn compileFormsToProgn(self: *Compiler, forms: []const Value, env: *const Env) CompileError!*Ir {
+        if (forms.len == 0) {
+            return self.builder.lit(Value.nil) catch return error.OutOfMemory;
+        }
+        if (forms.len == 1) {
+            return self.compile(forms[0], env);
+        }
+        var exprs = std.ArrayList(*const Ir){};
+        defer exprs.deinit(self.allocator);
+        for (forms) |form| {
+            const form_ir = try self.compile(form, env);
+            exprs.append(self.allocator, form_ir) catch return error.OutOfMemory;
+        }
+        return self.builder.progn(exprs.items) catch return error.OutOfMemory;
+    }
+
+    fn compileGo(self: *Compiler, args: Value) CompileError!*Ir {
+        // (go tag)
+        if (!args.isCons()) return error.InvalidSyntax;
+
+        const cons = args.toPtr(Cons);
+        if (!cons.car.isSymbol()) return error.InvalidSyntax;
+
+        const sym = cons.car.toPtr(Symbol);
+        const name = sym.getName();
+
+        return self.builder.go(name) catch return error.OutOfMemory;
     }
 
     fn compileDefine(self: *Compiler, args: Value, env: *const Env) CompileError!*Ir {

@@ -30,7 +30,13 @@ const BlockInfo = struct {
     pending_exits: std.ArrayList(usize),
 };
 
-/// Unified control stack entry (for blocks and unwind-protects)
+/// Pending go jump entry
+const PendingGoJump = struct {
+    tag_idx: usize,
+    jump_loc: usize,
+};
+
+/// Unified control stack entry (for blocks, unwind-protects, tagbodies)
 const ControlEntry = union(enum) {
     block: struct {
         name: []const u8,
@@ -38,6 +44,14 @@ const ControlEntry = union(enum) {
     },
     unwind_protect: struct {
         cleanup: *const Ir,
+    },
+    tagbody: struct {
+        /// Tag names
+        tags: []const []const u8,
+        /// Bytecode offset of each tag (populated during emission)
+        tag_offsets: []usize,
+        /// Pending go jumps that need patching
+        pending_jumps: std.ArrayList(PendingGoJump),
     },
 };
 
@@ -107,6 +121,10 @@ pub const Emitter = struct {
             switch (entry.*) {
                 .block => |*b| b.pending_exits.deinit(self.allocator),
                 .unwind_protect => {},
+                .tagbody => |*tb| {
+                    self.allocator.free(tb.tag_offsets);
+                    tb.pending_jumps.deinit(self.allocator);
+                },
             }
         }
         self.control_stack.deinit(self.allocator);
@@ -132,6 +150,8 @@ pub const Emitter = struct {
             .unwind_protect => |u| try self.emitUnwindProtect(u),
             .@"catch" => |c| try self.emitCatch(c),
             .throw => |t| try self.emitThrow(t),
+            .tagbody => |tb| try self.emitTagbody(tb),
+            .go => |g| try self.emitGo(g),
             .call => |c| try self.emitCall(c, false),
             .tailcall => |c| try self.emitCall(c, true),
             .apply => |a| try self.emitApply(a),
@@ -579,7 +599,7 @@ pub const Emitter = struct {
                 }
                 blk.pending_exits.deinit(self.allocator);
             },
-            .unwind_protect => unreachable,
+            .unwind_protect, .tagbody => unreachable,
         }
     }
 
@@ -607,6 +627,9 @@ pub const Emitter = struct {
                     // Note: cleanup result is discarded, value is already on stack
                     try self.emit(up.cleanup);
                     try self.emitOp(.pop);
+                },
+                .tagbody => {
+                    // Crossing a tagbody - no cleanup, just continue
                 },
             }
         }
@@ -667,6 +690,107 @@ pub const Emitter = struct {
 
         // Emit throw opcode - VM will unwind to matching catch
         try self.emitOp(.throw);
+    }
+
+    fn emitTagbody(self: *Emitter, tb: anytype) EmitError!void {
+        // Allocate offset array for tags
+        const tag_offsets = self.allocator.alloc(usize, tb.tags.len) catch return error.OutOfMemory;
+        @memset(tag_offsets, 0);
+
+        // Push tagbody entry onto control stack
+        const entry = ControlEntry{
+            .tagbody = .{
+                .tags = tb.tags,
+                .tag_offsets = tag_offsets,
+                .pending_jumps = std.ArrayList(PendingGoJump){},
+            },
+        };
+        self.control_stack.append(self.allocator, entry) catch return error.OutOfMemory;
+
+        // Emit segments, recording tag positions
+        // segments[0] = code before first tag
+        // segments[i] = code after tags[i-1]
+        for (tb.segments, 0..) |segment, i| {
+            if (i > 0) {
+                // Record position of this tag (tags[i-1])
+                const tag_idx = i - 1;
+                // Get the tagbody entry (should be at top of control stack)
+                const top_idx = self.control_stack.items.len - 1;
+                self.control_stack.items[top_idx].tagbody.tag_offsets[tag_idx] = self.currentOffset();
+            }
+
+            try self.emit(segment);
+            // Pop result of each segment (except the last one is the tagbody result)
+            if (i < tb.segments.len - 1) {
+                try self.emitOp(.pop);
+            }
+        }
+
+        // Pop tagbody and patch pending jumps
+        var popped = self.control_stack.pop().?;
+        switch (popped) {
+            .tagbody => |*tbe| {
+                // Patch all pending go jumps
+                for (tbe.pending_jumps.items) |pending| {
+                    const target = tbe.tag_offsets[pending.tag_idx];
+                    try self.patchJumpTo(pending.jump_loc, target);
+                }
+                // Free resources
+                self.allocator.free(tbe.tag_offsets);
+                tbe.pending_jumps.deinit(self.allocator);
+            },
+            else => unreachable,
+        }
+
+        // tagbody always returns nil
+        try self.emitOp(.pop);
+        try self.emitOp(.push_nil);
+    }
+
+    fn emitGo(self: *Emitter, g: anytype) EmitError!void {
+        // Find enclosing tagbody with matching tag
+        var i = self.control_stack.items.len;
+        while (i > 0) {
+            i -= 1;
+            switch (self.control_stack.items[i]) {
+                .tagbody => |*tbe| {
+                    // Search for tag
+                    for (tbe.tags, 0..) |tag, tag_idx| {
+                        if (std.mem.eql(u8, tag, g.tag)) {
+                            // Found! Check if tag position is known (forward vs backward jump)
+                            if (tbe.tag_offsets[tag_idx] != 0) {
+                                // Backward jump - target is known
+                                const target = tbe.tag_offsets[tag_idx];
+                                const jump_loc = try self.emitJump(.jmp);
+                                try self.patchJumpTo(jump_loc, target);
+                            } else {
+                                // Forward jump - record for later patching
+                                const jump_loc = try self.emitJump(.jmp);
+                                tbe.pending_jumps.append(self.allocator, .{
+                                    .tag_idx = tag_idx,
+                                    .jump_loc = jump_loc,
+                                }) catch return error.OutOfMemory;
+                            }
+                            return;
+                        }
+                    }
+                },
+                else => {},
+            }
+        }
+        // Tag not found
+        return error.InvalidIr;
+    }
+
+    /// Patch a jump to a specific target offset
+    fn patchJumpTo(self: *Emitter, jump_loc: usize, target: usize) EmitError!void {
+        const offset = @as(i32, @intCast(target)) - @as(i32, @intCast(jump_loc + 2));
+        if (offset > 32767 or offset < -32768) {
+            return error.JumpTooLong;
+        }
+        const displacement: i16 = @intCast(offset);
+        self.code.items[jump_loc] = @bitCast(@as(u8, @truncate(@as(u16, @bitCast(displacement)))));
+        self.code.items[jump_loc + 1] = @bitCast(@as(u8, @truncate(@as(u16, @bitCast(displacement)) >> 8)));
     }
 
     /// Patch a jump at a specific location to jump to current offset

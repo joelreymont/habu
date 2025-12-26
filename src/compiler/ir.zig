@@ -128,6 +128,22 @@ pub const Ir = union(enum) {
         value: *const Ir,
     },
 
+    /// Tagbody: (tagbody tag1 form1 tag2 form2 ...)
+    /// Tags are symbols, forms are expressions
+    tagbody: struct {
+        /// Tag names (for go targets)
+        tags: []const []const u8,
+        /// Segments: code between tags (segments.len == tags.len + 1)
+        /// segments[0] = code before first tag
+        /// segments[i] = code after tags[i-1]
+        segments: []const *const Ir,
+    },
+
+    /// Go: (go tag)
+    go: struct {
+        tag: []const u8,
+    },
+
     // ========================================================================
     // Function calls
     // ========================================================================
@@ -452,6 +468,20 @@ pub const IrBuilder = struct {
     pub fn throw(self: IrBuilder, tag: *const Ir, value: *const Ir) !*Ir {
         const node = try self.allocator.create(Ir);
         node.* = .{ .throw = .{ .tag = tag, .value = value } };
+        return node;
+    }
+
+    pub fn tagbody(self: IrBuilder, tags: []const []const u8, segments: []const *const Ir) !*Ir {
+        const node = try self.allocator.create(Ir);
+        const tags_copy = try self.allocator.dupe([]const u8, tags);
+        const segments_copy = try self.allocator.dupe(*const Ir, segments);
+        node.* = .{ .tagbody = .{ .tags = tags_copy, .segments = segments_copy } };
+        return node;
+    }
+
+    pub fn go(self: IrBuilder, tag: []const u8) !*Ir {
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .go = .{ .tag = tag } };
         return node;
     }
 

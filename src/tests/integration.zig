@@ -1340,6 +1340,69 @@ test "throw across function call" {
 }
 
 // ============================================================================
+// tagbody/go tests
+// ============================================================================
+
+test "tagbody basic" {
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl = Repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+
+    // tagbody without go returns nil
+    const result = try repl.eval("(tagbody (+ 1 2))");
+    try testing.expect(result.isNil());
+}
+
+test "tagbody with go forward" {
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl = Repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+
+    // go skips to end tag
+    _ = try repl.eval("(define x 0)");
+    _ = try repl.eval(
+        \\(tagbody
+        \\  (go end)
+        \\  (define x 100)
+        \\  end)
+    );
+    const result = try repl.eval("x");
+    try testing.expect(result.isFixnum());
+    try testing.expectEqual(@as(i64, 0), result.toFixnum());
+}
+
+test "tagbody loop" {
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl = Repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+
+    // Simple loop using tagbody/go
+    _ = try repl.eval("(define counter 0)");
+    _ = try repl.eval(
+        \\(tagbody
+        \\  loop
+        \\  (define counter (+ counter 1))
+        \\  (if (< counter 5)
+        \\      (go loop)))
+    );
+    const result = try repl.eval("counter");
+    try testing.expect(result.isFixnum());
+    try testing.expectEqual(@as(i64, 5), result.toFixnum());
+}
+
+// ============================================================================
 // stdlib tests
 // ============================================================================
 
