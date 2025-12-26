@@ -35,5 +35,17 @@ pub fn main() !void {
     // Run REPL
     var repl = Repl.init(allocator, &heap, .{});
     repl.wireGlobalEnv();
+
+    // Load files from command line arguments
+    const args = try std.process.argsAlloc(allocator);
+    defer std.process.argsFree(allocator, args);
+
+    for (args[1..]) |arg| {
+        repl.loadFilePublic(arg, writer) catch |err| {
+            try writer.print("Error loading {s}: {s}\n", .{ arg, @errorName(err) });
+        };
+        try writer.flush();
+    }
+
     try repl.runWithFiles(fs.File.stdin(), stdout);
 }

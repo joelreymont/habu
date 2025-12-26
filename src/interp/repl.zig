@@ -345,6 +345,11 @@ pub const Repl = struct {
         }
     }
 
+    /// Load and evaluate a file (public for main.zig)
+    pub fn loadFilePublic(self: *Repl, path: []const u8, writer: anytype) !void {
+        return self.loadFile(path, writer);
+    }
+
     /// Load and evaluate a file
     fn loadFile(self: *Repl, path: []const u8, writer: anytype) !void {
         const file = std.fs.cwd().openFile(path, .{}) catch |err| {
