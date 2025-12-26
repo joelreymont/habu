@@ -169,8 +169,8 @@ pub const Repl = struct {
         self.compiler.builder = saved_builder;
         self.compiler.allocator = saved_allocator;
 
-        // Emit bytecode
-        var emitter = Emitter.init(self.allocator);
+        // Emit bytecode (with heap for symbol interning)
+        var emitter = Emitter.initWithHeap(self.allocator, self.heap);
 
         emitter.emit(ir_node) catch {
             emitter.deinit();
@@ -235,9 +235,8 @@ pub const Repl = struct {
     pub fn printValue(self: *Repl, val: Value, writer: anytype) anyerror!void {
         if (val.isNil()) {
             try writer.writeAll("nil");
-        } else if (val.eq(Value.t)) {
-            try writer.writeAll("t");
         } else if (val.isFixnum()) {
+            // Note: t is fixnum 1, print both as number for clarity
             try writer.print("{d}", .{val.toFixnum()});
         } else if (val.isCons()) {
             try self.printList(val, writer);

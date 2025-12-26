@@ -13,6 +13,7 @@ const opcodes = @import("opcodes.zig");
 const Op = opcodes.Op;
 const Chunk = opcodes.Chunk;
 const Value = @import("../runtime/value.zig").Value;
+const Heap = @import("../runtime/heap.zig").Heap;
 
 pub const EmitError = error{
     OutOfMemory,
@@ -39,6 +40,8 @@ pub const Emitter = struct {
     name: []const u8,
     /// Captured variables (for inner lambdas)
     captures: []const Ir.Capture,
+    /// Heap for symbol interning (optional)
+    heap: ?*Heap,
 
     pub fn init(allocator: std.mem.Allocator) Emitter {
         return .{
@@ -50,6 +53,21 @@ pub const Emitter = struct {
             .arity = 0,
             .name = "",
             .captures = &[_]Ir.Capture{},
+            .heap = null,
+        };
+    }
+
+    pub fn initWithHeap(allocator: std.mem.Allocator, heap: *Heap) Emitter {
+        return .{
+            .allocator = allocator,
+            .code = std.ArrayList(u8){},
+            .constants = std.ArrayList(u64){},
+            .child_chunks = std.ArrayList(Chunk){},
+            .num_locals = 0,
+            .arity = 0,
+            .name = "",
+            .captures = &[_]Ir.Capture{},
+            .heap = heap,
         };
     }
 
@@ -106,6 +124,7 @@ pub const Emitter = struct {
             .car => |op| try self.emitUnaryOp(op.operand, .car),
             .cdr => |op| try self.emitUnaryOp(op.operand, .cdr),
             .list => |elements| try self.emitList(elements),
+            .append => |op| try self.emitBinaryOp(op, .append_lists),
 
             // Type predicates
             .consp => |op| try self.emitUnaryOp(op.operand, .consp),
@@ -286,10 +305,17 @@ pub const Emitter = struct {
         }
     }
 
-    fn emitQuoteSym(self: *Emitter, _: []const u8) EmitError!void {
-        // TODO: Intern symbol and add to constant pool
-        // For now, just push nil as placeholder
-        try self.emitOp(.push_nil);
+    fn emitQuoteSym(self: *Emitter, name: []const u8) EmitError!void {
+        if (self.heap) |heap| {
+            // Intern symbol and add to constant pool
+            const sym = heap.intern(name) orelse return error.OutOfMemory;
+            const idx = try self.addConstant(sym.raw);
+            try self.emitOp(.push_const);
+            try self.emitU16(idx);
+        } else {
+            // No heap available - push nil as fallback
+            try self.emitOp(.push_nil);
+        }
     }
 
     fn emitQuote(self: *Emitter, inner: *const Ir) EmitError!void {

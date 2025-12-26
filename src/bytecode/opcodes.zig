@@ -163,6 +163,10 @@ pub const Op = enum(u8) {
     /// ( e1 e2 ... eN -- list )
     make_list = 0x43,
 
+    /// Append two lists
+    /// ( list1 list2 -- result )
+    append_lists = 0x44,
+
     // ========================================================================
     // Type predicates
     // ========================================================================
@@ -350,7 +354,7 @@ pub const Op = enum(u8) {
             .push_nil, .push_t, .dup, .pop, .swap,
             .add, .sub, .mul, .div, .mod, .neg,
             .eq, .lt, .gt, .le, .ge, .num_eq, .not,
-            .cons, .car, .cdr,
+            .cons, .car, .cdr, .append_lists,
             .consp, .symbolp, .numberp, .stringp, .vectorp, .closurep, .keywordp, .nilp,
             .vec_ref, .vec_set, .vec_len,
             .str_ref, .str_len, .str_concat,

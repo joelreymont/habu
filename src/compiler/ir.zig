@@ -155,6 +155,7 @@ pub const Ir = union(enum) {
     car: UnaryOp,
     cdr: UnaryOp,
     list: []const *const Ir, // (list a b c)
+    append: BinaryOp, // (append list1 list2)
 
     // ========================================================================
     // Primitives - Type predicates
@@ -472,6 +473,12 @@ pub const IrBuilder = struct {
         const node = try self.allocator.create(Ir);
         const elems_copy = try self.allocator.dupe(*const Ir, elements);
         node.* = .{ .list = elems_copy };
+        return node;
+    }
+
+    pub fn append(self: IrBuilder, list1: *const Ir, list2: *const Ir) !*Ir {
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .append = .{ .left = list1, .right = list2 } };
         return node;
     }
 

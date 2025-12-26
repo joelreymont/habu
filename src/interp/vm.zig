@@ -267,6 +267,34 @@ pub const Vm = struct {
                     }
                     try self.push(reversed);
                 },
+                .append_lists => {
+                    const list2 = try self.pop();
+                    const list1 = try self.pop();
+                    // Append list1 to list2: (append '(a b) '(c d)) -> (a b c d)
+                    // Copy list1, set last cdr to list2
+                    if (list1.isNil()) {
+                        try self.push(list2);
+                    } else if (!list1.isCons()) {
+                        return error.TypeMismatch;
+                    } else {
+                        // Build reversed copy of list1
+                        var reversed = Value.nil;
+                        var curr = list1;
+                        while (curr.isCons()) {
+                            const c = curr.toPtr(Cons);
+                            reversed = self.heap.allocCons(c.car, reversed) orelse return error.OutOfMemory;
+                            curr = c.cdr;
+                        }
+                        // Build result by consing reversed elements onto list2
+                        var result = list2;
+                        while (reversed.isCons()) {
+                            const c = reversed.toPtr(Cons);
+                            result = self.heap.allocCons(c.car, result) orelse return error.OutOfMemory;
+                            reversed = c.cdr;
+                        }
+                        try self.push(result);
+                    }
+                },
 
                 // Type predicates
                 .consp => {

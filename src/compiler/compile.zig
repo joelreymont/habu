@@ -61,6 +61,9 @@ pub const Builtins = struct {
 
     // Quoting
     quote: Value,
+    quasiquote: Value,
+    unquote: Value,
+    @"unquote-splicing": Value,
 
     // Function application
     funcall: Value,
@@ -84,6 +87,9 @@ pub const Builtins = struct {
             .begin = heap.intern("begin") orelse return null,
             .@"while" = heap.intern("while") orelse return null,
             .quote = heap.intern("quote") orelse return null,
+            .quasiquote = heap.intern("quasiquote") orelse return null,
+            .unquote = heap.intern("unquote") orelse return null,
+            .@"unquote-splicing" = heap.intern("unquote-splicing") orelse return null,
             .funcall = heap.intern("funcall") orelse return null,
             .apply = heap.intern("apply") orelse return null,
         };
@@ -543,6 +549,7 @@ pub const Compiler = struct {
         apply,
         @"set!",
         quote,
+        quasiquote,
         @"while",
         define,
         defun,
@@ -564,6 +571,7 @@ pub const Compiler = struct {
         .{ "apply", .apply },
         .{ "set!", .@"set!" },
         .{ "quote", .quote },
+        .{ "quasiquote", .quasiquote },
         .{ "while", .@"while" },
         .{ "define", .define },
         .{ "defun", .defun },
@@ -591,6 +599,7 @@ pub const Compiler = struct {
                 if (head.raw == b.apply.raw) return self.compileApply(tail, env);
                 if (head.raw == b.@"set!".raw) return self.compileSet(tail, env);
                 if (head.raw == b.quote.raw) return self.compileQuote(tail);
+                if (head.raw == b.quasiquote.raw) return self.compileQuasiquote(tail, env);
                 if (head.raw == b.@"while".raw) return self.compileWhile(tail, env);
                 if (head.raw == b.define.raw) return self.compileDefine(tail, env);
                 if (head.raw == b.defun.raw) return self.compileDefun(tail, env);
@@ -616,6 +625,7 @@ pub const Compiler = struct {
                         .apply => self.compileApply(tail, env),
                         .@"set!" => self.compileSet(tail, env),
                         .quote => self.compileQuote(tail),
+                        .quasiquote => self.compileQuasiquote(tail, env),
                         .@"while" => self.compileWhile(tail, env),
                         .define => self.compileDefine(tail, env),
                         .defun => self.compileDefun(tail, env),
@@ -1160,6 +1170,114 @@ pub const Compiler = struct {
 
         // For other values, return as literal
         return self.builder.lit(quoted) catch return error.OutOfMemory;
+    }
+
+    /// Compile quasiquote (backquote)
+    /// Handles unquote (,) and unquote-splicing (,@)
+    fn compileQuasiquote(self: *Compiler, args: Value, env: *const Env) CompileError!*Ir {
+        // (quasiquote expr)
+        if (!args.isCons()) return error.InvalidSyntax;
+
+        const cons = args.toPtr(Cons);
+        const expr = cons.car;
+
+        return self.quasiquoteExpr(expr, env);
+    }
+
+    /// Process an expression inside quasiquote
+    fn quasiquoteExpr(self: *Compiler, expr: Value, env: *const Env) CompileError!*Ir {
+        // Non-list: return as quoted literal
+        if (!expr.isCons()) {
+            if (expr.isSymbol()) {
+                const sym = expr.toPtr(Symbol);
+                return self.builder.quoteSym(sym.getName()) catch return error.OutOfMemory;
+            }
+            return self.builder.lit(expr) catch return error.OutOfMemory;
+        }
+
+        const cons = expr.toPtr(Cons);
+        const head = cons.car;
+
+        // Check for (unquote x) - evaluate x
+        if (head.isSymbol()) {
+            if (self.builtins) |b| {
+                if (head.raw == b.unquote.raw) {
+                    // (unquote x) -> compile x
+                    if (!cons.cdr.isCons()) return error.InvalidSyntax;
+                    const unquoted = cons.cdr.toPtr(Cons).car;
+                    return self.compile(unquoted, env);
+                }
+                if (head.raw == b.@"unquote-splicing".raw) {
+                    // unquote-splicing outside of list context is an error
+                    return error.InvalidSyntax;
+                }
+            } else {
+                // Fallback: string comparison
+                const sym = head.toPtr(Symbol);
+                const name = sym.getName();
+                if (std.mem.eql(u8, name, "unquote")) {
+                    if (!cons.cdr.isCons()) return error.InvalidSyntax;
+                    const unquoted = cons.cdr.toPtr(Cons).car;
+                    return self.compile(unquoted, env);
+                }
+                if (std.mem.eql(u8, name, "unquote-splicing")) {
+                    return error.InvalidSyntax;
+                }
+            }
+        }
+
+        // Regular list: build with cons at runtime
+        return self.quasiquoteList(expr, env);
+    }
+
+    /// Build a list from quasiquoted elements using cons/append
+    fn quasiquoteList(self: *Compiler, list: Value, env: *const Env) CompileError!*Ir {
+        if (list.isNil()) {
+            return self.builder.lit(Value.nil) catch return error.OutOfMemory;
+        }
+
+        if (!list.isCons()) {
+            // Improper list tail - just quote it
+            if (list.isSymbol()) {
+                const sym = list.toPtr(Symbol);
+                return self.builder.quoteSym(sym.getName()) catch return error.OutOfMemory;
+            }
+            return self.builder.lit(list) catch return error.OutOfMemory;
+        }
+
+        const cons = list.toPtr(Cons);
+        const head = cons.car;
+        const tail = cons.cdr;
+
+        // Check for (unquote-splicing x) - splice x into result
+        if (head.isCons()) {
+            const head_cons = head.toPtr(Cons);
+            if (head_cons.car.isSymbol()) {
+                const is_splice = if (self.builtins) |b|
+                    head_cons.car.raw == b.@"unquote-splicing".raw
+                else blk: {
+                    const sym = head_cons.car.toPtr(Symbol);
+                    break :blk std.mem.eql(u8, sym.getName(), "unquote-splicing");
+                };
+
+                if (is_splice) {
+                    // (,@x ...) -> (append x (quasiquote-list ...))
+                    if (!head_cons.cdr.isCons()) return error.InvalidSyntax;
+                    const spliced = head_cons.cdr.toPtr(Cons).car;
+                    const spliced_ir = try self.compile(spliced, env);
+                    const rest_ir = try self.quasiquoteList(tail, env);
+
+                    // Build (append spliced rest)
+                    return self.builder.append(spliced_ir, rest_ir) catch return error.OutOfMemory;
+                }
+            }
+        }
+
+        // Regular element: (cons (quasiquote head) (quasiquote-list tail))
+        const head_ir = try self.quasiquoteExpr(head, env);
+        const tail_ir = try self.quasiquoteList(tail, env);
+
+        return self.builder.cons(head_ir, tail_ir) catch return error.OutOfMemory;
     }
 
     fn compileProgn(self: *Compiler, args: Value, env: *const Env) CompileError!*Ir {

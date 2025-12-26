@@ -46,7 +46,7 @@ fn evalExpr(allocator: std.mem.Allocator, heap: *Heap, source: []const u8) !Valu
     const ir_node = try comp.compile(expr, &env);
 
     // Emit bytecode
-    var emitter = Emitter.init(arena_alloc);
+    var emitter = Emitter.initWithHeap(arena_alloc, heap);
     try emitter.emit(ir_node);
     const chunk = try emitter.finalize();
     // Arena handles cleanup
