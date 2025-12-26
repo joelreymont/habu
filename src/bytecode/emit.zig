@@ -130,6 +130,8 @@ pub const Emitter = struct {
             .block => |b| try self.emitBlock(b),
             .return_from => |r| try self.emitReturnFrom(r),
             .unwind_protect => |u| try self.emitUnwindProtect(u),
+            .@"catch" => |c| try self.emitCatch(c),
+            .throw => |t| try self.emitThrow(t),
             .call => |c| try self.emitCall(c, false),
             .tailcall => |c| try self.emitCall(c, true),
             .apply => |a| try self.emitApply(a),
@@ -629,6 +631,42 @@ pub const Emitter = struct {
         // The cleanup result is discarded, protected value is already on stack
         try self.emit(u.cleanup);
         try self.emitOp(.pop);
+    }
+
+    fn emitCatch(self: *Emitter, c: anytype) EmitError!void {
+        // Emit tag expression (will be on stack for push_catch)
+        try self.emit(c.tag);
+
+        // Emit push_catch with forward jump to handler/end
+        // push_catch pops tag and saves catch frame
+        const catch_jump = try self.emitJump(.push_catch);
+
+        // Emit body
+        try self.emit(c.body);
+
+        // Normal exit: pop catch frame
+        try self.emitOp(.pop_catch);
+
+        // Jump over the throw handler (body completed normally)
+        const end_jump = try self.emitJump(.jmp);
+
+        // Patch catch_jump to point here (throw lands here)
+        try self.patchJumpAt(catch_jump);
+
+        // When throw happens, thrown value is on stack (pushed by throw opcode)
+        // Nothing more needed - value is already the result
+
+        // Patch end_jump
+        try self.patchJumpAt(end_jump);
+    }
+
+    fn emitThrow(self: *Emitter, t: anytype) EmitError!void {
+        // Emit tag and value
+        try self.emit(t.tag);
+        try self.emit(t.value);
+
+        // Emit throw opcode - VM will unwind to matching catch
+        try self.emitOp(.throw);
     }
 
     /// Patch a jump at a specific location to jump to current offset

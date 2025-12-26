@@ -82,6 +82,8 @@ pub const Builtins = struct {
     block: Value,
     @"return-from": Value,
     @"unwind-protect": Value,
+    @"catch": Value,
+    throw: Value,
 
     /// Initialize all builtin symbols from heap
     pub fn init(heap: *Heap) ?Builtins {
@@ -114,6 +116,8 @@ pub const Builtins = struct {
             .block = heap.intern("block") orelse return null,
             .@"return-from" = heap.intern("return-from") orelse return null,
             .@"unwind-protect" = heap.intern("unwind-protect") orelse return null,
+            .@"catch" = heap.intern("catch") orelse return null,
+            .throw = heap.intern("throw") orelse return null,
         };
     }
 };
@@ -593,6 +597,8 @@ pub const Compiler = struct {
         the,
         @"return-from",
         @"unwind-protect",
+        @"catch",
+        throw,
     };
 
     /// Comptime dispatch table for special forms
@@ -621,6 +627,8 @@ pub const Compiler = struct {
         .{ "block", .block },
         .{ "return-from", .@"return-from" },
         .{ "unwind-protect", .@"unwind-protect" },
+        .{ "catch", .@"catch" },
+        .{ "throw", .throw },
     });
 
     fn compileListWithTail(self: *Compiler, expr: Value, env: *const Env, in_tail: bool) CompileError!*Ir {
@@ -643,6 +651,8 @@ pub const Compiler = struct {
                 if (head.raw == b.block.raw) return self.compileBlockWithTail(tail, env, in_tail);
                 if (head.raw == b.@"return-from".raw) return self.compileReturnFrom(tail, env);
                 if (head.raw == b.@"unwind-protect".raw) return self.compileUnwindProtectWithTail(tail, env, in_tail);
+                if (head.raw == b.@"catch".raw) return self.compileCatchWithTail(tail, env, in_tail);
+                if (head.raw == b.throw.raw) return self.compileThrow(tail, env);
                 if (head.raw == b.lambda.raw) return self.compileLambda(tail, env);
                 if (head.raw == b.@"and".raw) return self.compileAnd(tail, env);
                 if (head.raw == b.@"or".raw) return self.compileOr(tail, env);
@@ -687,6 +697,8 @@ pub const Compiler = struct {
                         .the => self.compileThe(tail, env),
                         .@"return-from" => self.compileReturnFrom(tail, env),
                         .@"unwind-protect" => self.compileUnwindProtectWithTail(tail, env, in_tail),
+                        .@"catch" => self.compileCatchWithTail(tail, env, in_tail),
+                        .throw => self.compileThrow(tail, env),
                     };
                 }
             }
@@ -1671,6 +1683,39 @@ pub const Compiler = struct {
         const cleanup_ir = try self.compileBody(cons.cdr, env);
 
         return self.builder.unwindProtect(protected_ir, cleanup_ir) catch return error.OutOfMemory;
+    }
+
+    fn compileCatchWithTail(self: *Compiler, args: Value, env: *const Env, in_tail: bool) CompileError!*Ir {
+        // (catch tag body...)
+        if (!args.isCons()) return error.InvalidSyntax;
+
+        const cons = args.toPtr(Cons);
+        const tag = cons.car;
+
+        // Tag is evaluated at runtime
+        const tag_ir = try self.compile(tag, env);
+
+        // Body can be in tail position
+        const body_ir = try self.compileBodyWithTail(cons.cdr, env, in_tail);
+
+        return self.builder.@"catch"(tag_ir, body_ir) catch return error.OutOfMemory;
+    }
+
+    fn compileThrow(self: *Compiler, args: Value, env: *const Env) CompileError!*Ir {
+        // (throw tag value)
+        if (!args.isCons()) return error.InvalidSyntax;
+
+        const cons = args.toPtr(Cons);
+        const tag = cons.car;
+
+        // Tag is evaluated
+        const tag_ir = try self.compile(tag, env);
+
+        // Value defaults to nil
+        const value = if (cons.cdr.isCons()) cons.cdr.toPtr(Cons).car else Value.nil;
+        const value_ir = try self.compile(value, env);
+
+        return self.builder.throw(tag_ir, value_ir) catch return error.OutOfMemory;
     }
 
     fn compileDefine(self: *Compiler, args: Value, env: *const Env) CompileError!*Ir {

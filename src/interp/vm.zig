@@ -26,6 +26,21 @@ pub const VmError = error{
     InvalidConstant,
     OutOfMemory,
     Halt,
+    UnhandledThrow,
+};
+
+/// Catch frame for exception handling
+pub const CatchFrame = struct {
+    /// Tag value to match against
+    tag: Value,
+    /// Chunk to return to
+    chunk: *const Chunk,
+    /// IP to jump to when throw is caught
+    catch_ip: usize,
+    /// Stack pointer to restore
+    catch_sp: usize,
+    /// Frame pointer to restore
+    catch_fp: usize,
 };
 
 /// Call frame for function calls
@@ -72,9 +87,15 @@ pub const Vm = struct {
     /// Base offset for current eval's chunks
     chunk_base: usize,
 
+    /// Catch stack for exception handling
+    catch_stack: [MAX_CATCHES]CatchFrame,
+    /// Catch stack pointer
+    catch_sp: usize,
+
     const STACK_SIZE = 1024;
     const MAX_FRAMES = 64;
     const MAX_GLOBALS = 256;
+    const MAX_CATCHES = 32;
 
     pub fn init(allocator: std.mem.Allocator, heap: *Heap) Vm {
         var vm = Vm{
@@ -90,6 +111,8 @@ pub const Vm = struct {
             .num_globals = 0,
             .chunk_pool = &[_]*Chunk{},
             .chunk_base = 0,
+            .catch_stack = undefined,
+            .catch_sp = 0,
         };
         // Initialize globals to nil
         for (&vm.globals) |*g| {
@@ -595,9 +618,64 @@ pub const Vm = struct {
                     if (!val.isNil() and !val.isCons()) return error.TypeMismatch;
                 },
 
+                // Catch/throw exception handling
+                .push_catch => {
+                    const offset = self.readI16();
+                    const tag = try self.pop();
+                    // Calculate absolute jump target
+                    const catch_ip = @as(usize, @intCast(@as(isize, @intCast(self.ip)) + offset));
+                    // Push catch frame
+                    if (self.catch_sp >= MAX_CATCHES) return error.StackOverflow;
+                    self.catch_stack[self.catch_sp] = .{
+                        .tag = tag,
+                        .chunk = self.chunk,
+                        .catch_ip = catch_ip,
+                        .catch_sp = self.sp,
+                        .catch_fp = self.fp,
+                    };
+                    self.catch_sp += 1;
+                },
+
+                .pop_catch => {
+                    if (self.catch_sp == 0) return error.StackUnderflow;
+                    self.catch_sp -= 1;
+                },
+
+                .throw => {
+                    const value = try self.pop();
+                    const tag = try self.pop();
+                    try self.doThrow(tag, value);
+                },
+
                 .halt => return error.Halt,
             }
         }
+    }
+
+    // ========================================================================
+    // Exception handling
+    // ========================================================================
+
+    fn doThrow(self: *Vm, tag: Value, value: Value) VmError!void {
+        // Search for matching catch frame (from innermost to outermost)
+        while (self.catch_sp > 0) {
+            self.catch_sp -= 1;
+            const frame = self.catch_stack[self.catch_sp];
+
+            // Check if tag matches (using eq comparison)
+            if (tag.raw == frame.tag.raw) {
+                // Found matching catch - restore state and jump
+                self.chunk = frame.chunk;
+                self.ip = frame.catch_ip;
+                self.sp = frame.catch_sp;
+                self.fp = frame.catch_fp;
+                // Push the thrown value as result
+                try self.push(value);
+                return;
+            }
+        }
+        // No matching catch found
+        return error.UnhandledThrow;
     }
 
     // ========================================================================

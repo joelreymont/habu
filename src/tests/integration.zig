@@ -1259,6 +1259,87 @@ test "nested unwind-protect" {
 }
 
 // ============================================================================
+// catch/throw tests
+// ============================================================================
+
+test "catch basic" {
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl = Repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+
+    // catch without throw returns body value
+    const result = try repl.eval("(catch 'done 42)");
+    try testing.expect(result.isFixnum());
+    try testing.expectEqual(@as(i64, 42), result.toFixnum());
+}
+
+test "throw to catch" {
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl = Repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+
+    // throw exits to matching catch with value
+    const result = try repl.eval(
+        \\(catch 'exit
+        \\  (progn
+        \\    (throw 'exit 99)
+        \\    888))
+    );
+    try testing.expect(result.isFixnum());
+    try testing.expectEqual(@as(i64, 99), result.toFixnum());
+}
+
+test "nested catch" {
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl = Repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+
+    // throw targets inner catch, not outer
+    const result = try repl.eval(
+        \\(catch 'outer
+        \\  (catch 'inner
+        \\    (throw 'inner 100)))
+    );
+    try testing.expect(result.isFixnum());
+    try testing.expectEqual(@as(i64, 100), result.toFixnum());
+}
+
+test "throw across function call" {
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl = Repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+
+    // Define a function that throws
+    _ = try repl.eval("(defun thrower () (throw 'bail 42))");
+
+    // throw from inside function to outer catch
+    const result = try repl.eval(
+        \\(catch 'bail
+        \\  (progn
+        \\    (thrower)
+        \\    999))
+    );
+    try testing.expect(result.isFixnum());
+    try testing.expectEqual(@as(i64, 42), result.toFixnum());
+}
+
+// ============================================================================
 // stdlib tests
 // ============================================================================
 

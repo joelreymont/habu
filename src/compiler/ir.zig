@@ -116,6 +116,18 @@ pub const Ir = union(enum) {
         cleanup: *const Ir,
     },
 
+    /// Catch: (catch tag body...)
+    @"catch": struct {
+        tag: *const Ir,
+        body: *const Ir,
+    },
+
+    /// Throw: (throw tag value)
+    throw: struct {
+        tag: *const Ir,
+        value: *const Ir,
+    },
+
     // ========================================================================
     // Function calls
     // ========================================================================
@@ -428,6 +440,18 @@ pub const IrBuilder = struct {
     pub fn unwindProtect(self: IrBuilder, protected: *const Ir, cleanup: *const Ir) !*Ir {
         const node = try self.allocator.create(Ir);
         node.* = .{ .unwind_protect = .{ .protected = protected, .cleanup = cleanup } };
+        return node;
+    }
+
+    pub fn @"catch"(self: IrBuilder, tag: *const Ir, body: *const Ir) !*Ir {
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .@"catch" = .{ .tag = tag, .body = body } };
+        return node;
+    }
+
+    pub fn throw(self: IrBuilder, tag: *const Ir, value: *const Ir) !*Ir {
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .throw = .{ .tag = tag, .value = value } };
         return node;
     }
 

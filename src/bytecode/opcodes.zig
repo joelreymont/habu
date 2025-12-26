@@ -348,6 +348,23 @@ pub const Op = enum(u8) {
     check_list = 0xA7,
 
     // ========================================================================
+    // Dynamic exception handling (catch/throw)
+    // ========================================================================
+
+    /// Push catch frame (operand: i16 offset to catch handler)
+    /// Pops tag from stack, saves state for unwinding
+    /// ( tag -- )
+    push_catch = 0xB0,
+
+    /// Pop catch frame on normal exit
+    /// ( -- )
+    pop_catch = 0xB1,
+
+    /// Throw to matching catch (tag on stack, value on stack)
+    /// ( tag value -- )
+    throw = 0xB2,
+
+    // ========================================================================
     // Special
     // ========================================================================
 
@@ -369,7 +386,7 @@ pub const Op = enum(u8) {
             .ret, .print, .random, .type_of, .intern, .substring, .sym_name, .str_eq, .halt,
             .check_fixnum, .check_cons, .check_symbol, .check_string,
             .check_vector, .check_closure, .check_non_nil, .check_list,
-            .apply,
+            .apply, .pop_catch, .throw,
             => 0,
 
             // 1 byte operand
@@ -380,7 +397,7 @@ pub const Op = enum(u8) {
             // 2 byte operand
             .push_const, .load_global, .store_global,
             .make_vec, .jmp, .jmp_nil, .jmp_not_nil,
-            .load_upvalue, .store_upvalue,
+            .load_upvalue, .store_upvalue, .push_catch,
             => 2,
 
             // 3 byte operand
