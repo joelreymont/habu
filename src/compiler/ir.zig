@@ -291,6 +291,17 @@ pub const Ir = union(enum) {
     typep: BinaryOp, // Check if object is of given type
 
     // ========================================================================
+    // Primitives - Numeric predicates
+    // ========================================================================
+
+    abs: UnaryOp,
+    zerop: UnaryOp,
+    plusp: UnaryOp,
+    minusp: UnaryOp,
+    evenp: UnaryOp,
+    oddp: UnaryOp,
+
+    // ========================================================================
     // Primitives - Vector operations
     // ========================================================================
 
@@ -784,6 +795,43 @@ pub const IrBuilder = struct {
     pub fn typep(self: IrBuilder, obj: *const Ir, type_spec: *const Ir) !*Ir {
         const node = try self.allocator.create(Ir);
         node.* = .{ .typep = .{ .left = obj, .right = type_spec } };
+        return node;
+    }
+
+    // Numeric predicates
+    pub fn abs(self: IrBuilder, n: *const Ir) !*Ir {
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .abs = .{ .operand = n } };
+        return node;
+    }
+
+    pub fn zerop(self: IrBuilder, n: *const Ir) !*Ir {
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .zerop = .{ .operand = n } };
+        return node;
+    }
+
+    pub fn plusp(self: IrBuilder, n: *const Ir) !*Ir {
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .plusp = .{ .operand = n } };
+        return node;
+    }
+
+    pub fn minusp(self: IrBuilder, n: *const Ir) !*Ir {
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .minusp = .{ .operand = n } };
+        return node;
+    }
+
+    pub fn evenp(self: IrBuilder, n: *const Ir) !*Ir {
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .evenp = .{ .operand = n } };
+        return node;
+    }
+
+    pub fn oddp(self: IrBuilder, n: *const Ir) !*Ir {
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .oddp = .{ .operand = n } };
         return node;
     }
 

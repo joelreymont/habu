@@ -216,6 +216,14 @@ pub const Emitter = struct {
             .symbol_function => |op| try self.emitUnaryOp(op.operand, .symbol_function),
             .typep => |op| try self.emitBinaryOp(op, .typep),
 
+            // Numeric predicates
+            .abs => |op| try self.emitUnaryOp(op.operand, .abs),
+            .zerop => |op| try self.emitUnaryOp(op.operand, .zerop),
+            .plusp => |op| try self.emitUnaryOp(op.operand, .plusp),
+            .minusp => |op| try self.emitUnaryOp(op.operand, .minusp),
+            .evenp => |op| try self.emitUnaryOp(op.operand, .evenp),
+            .oddp => |op| try self.emitUnaryOp(op.operand, .oddp),
+
             // Vector operations
             .vec_new => |v| try self.emitVecNew(v),
             .vec_ref => |op| try self.emitBinaryOp(op, .vec_ref),

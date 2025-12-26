@@ -2257,6 +2257,26 @@ pub const Compiler = struct {
             return self.compileBinaryPrim(args, env, .typep);
         }
 
+        // Numeric predicates
+        if (std.mem.eql(u8, name, "abs")) {
+            return self.compileUnaryPrim(args, env, .abs);
+        }
+        if (std.mem.eql(u8, name, "zerop")) {
+            return self.compileUnaryPrim(args, env, .zerop);
+        }
+        if (std.mem.eql(u8, name, "plusp")) {
+            return self.compileUnaryPrim(args, env, .plusp);
+        }
+        if (std.mem.eql(u8, name, "minusp")) {
+            return self.compileUnaryPrim(args, env, .minusp);
+        }
+        if (std.mem.eql(u8, name, "evenp")) {
+            return self.compileUnaryPrim(args, env, .evenp);
+        }
+        if (std.mem.eql(u8, name, "oddp")) {
+            return self.compileUnaryPrim(args, env, .oddp);
+        }
+
         // Vector operations
         if (std.mem.eql(u8, name, "vector-ref")) {
             return self.compileBinaryPrim(args, env, .vec_ref);
@@ -2332,7 +2352,7 @@ pub const Compiler = struct {
         return error.InvalidSyntax; // Not a known primitive
     }
 
-    const PrimTag = enum { add, sub, mul, div, mod, eq, lt, gt, le, ge, num_eq, cons, car, cdr, consp, symbolp, numberp, stringp, vectorp, nilp, not, vec_ref, vec_len, str_ref, str_len, str_eq, print, random, intern, sym_name, type_of, characterp, char_code, code_char, char_eq, char_lt, char_gt, read_char, peek_char, unread_char, boundp, fboundp, symbol_value, symbol_function, typep };
+    const PrimTag = enum { add, sub, mul, div, mod, eq, lt, gt, le, ge, num_eq, cons, car, cdr, consp, symbolp, numberp, stringp, vectorp, nilp, not, vec_ref, vec_len, str_ref, str_len, str_eq, print, random, intern, sym_name, type_of, characterp, char_code, code_char, char_eq, char_lt, char_gt, read_char, peek_char, unread_char, boundp, fboundp, symbol_value, symbol_function, typep, abs, zerop, plusp, minusp, evenp, oddp };
 
     fn compileBinaryPrim(self: *Compiler, args: Value, env: *const Env, prim: PrimTag) CompileError!*Ir {
         if (!args.isCons()) return error.InvalidSyntax;
@@ -2441,6 +2461,12 @@ pub const Compiler = struct {
             .fboundp => self.builder.fboundp(operand),
             .symbol_value => self.builder.symbolValue(operand),
             .symbol_function => self.builder.symbolFunction(operand),
+            .abs => self.builder.abs(operand),
+            .zerop => self.builder.zerop(operand),
+            .plusp => self.builder.plusp(operand),
+            .minusp => self.builder.minusp(operand),
+            .evenp => self.builder.evenp(operand),
+            .oddp => self.builder.oddp(operand),
             else => error.InvalidSyntax,
         } catch return error.OutOfMemory;
     }

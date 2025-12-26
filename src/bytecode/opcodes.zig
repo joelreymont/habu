@@ -446,6 +446,34 @@ pub const Op = enum(u8) {
     typep = 0xAF,
 
     // ========================================================================
+    // Numeric predicates
+    // ========================================================================
+
+    /// Absolute value
+    /// ( n -- |n| )
+    abs = 0xD0,
+
+    /// Check if zero
+    /// ( n -- t/nil )
+    zerop = 0xD1,
+
+    /// Check if positive
+    /// ( n -- t/nil )
+    plusp = 0xD2,
+
+    /// Check if negative
+    /// ( n -- t/nil )
+    minusp = 0xD3,
+
+    /// Check if even
+    /// ( n -- t/nil )
+    evenp = 0xD4,
+
+    /// Check if odd
+    /// ( n -- t/nil )
+    oddp = 0xD5,
+
+    // ========================================================================
     // Dynamic exception handling (catch/throw)
     // ========================================================================
 
@@ -513,6 +541,7 @@ pub const Op = enum(u8) {
             .characterp, .char_code, .code_char, .char_eq, .char_lt, .char_gt,
             .read_char, .peek_char, .unread_char, .boundp, .fboundp,
             .symbol_value, .symbol_function, .typep,
+            .abs, .zerop, .plusp, .minusp, .evenp, .oddp,
             => 0,
 
             // 1 byte operand

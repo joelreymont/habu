@@ -972,6 +972,39 @@ pub const Vm = struct {
                     try self.push(if (matches) Value.t else Value.nil);
                 },
 
+                // Numeric predicates
+                .abs => {
+                    const val = try self.pop();
+                    if (!val.isFixnum()) return error.TypeMismatch;
+                    const n = val.toFixnum();
+                    try self.push(Value.makeFixnum(if (n < 0) -n else n));
+                },
+                .zerop => {
+                    const val = try self.pop();
+                    if (!val.isFixnum()) return error.TypeMismatch;
+                    try self.push(if (val.toFixnum() == 0) Value.t else Value.nil);
+                },
+                .plusp => {
+                    const val = try self.pop();
+                    if (!val.isFixnum()) return error.TypeMismatch;
+                    try self.push(if (val.toFixnum() > 0) Value.t else Value.nil);
+                },
+                .minusp => {
+                    const val = try self.pop();
+                    if (!val.isFixnum()) return error.TypeMismatch;
+                    try self.push(if (val.toFixnum() < 0) Value.t else Value.nil);
+                },
+                .evenp => {
+                    const val = try self.pop();
+                    if (!val.isFixnum()) return error.TypeMismatch;
+                    try self.push(if (@mod(val.toFixnum(), 2) == 0) Value.t else Value.nil);
+                },
+                .oddp => {
+                    const val = try self.pop();
+                    if (!val.isFixnum()) return error.TypeMismatch;
+                    try self.push(if (@mod(val.toFixnum(), 2) != 0) Value.t else Value.nil);
+                },
+
                 .halt => return error.Halt,
             }
         }
