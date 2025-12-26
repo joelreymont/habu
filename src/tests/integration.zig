@@ -642,3 +642,48 @@ test "the in function failure" {
     const err = repl.eval("(double \"hello\")");
     try testing.expectError(error.RuntimeError, err);
 }
+
+test "occurrence typing skips redundant check" {
+    // When we have (if (consp x) (the cons x) ...), the (the cons x) check
+    // is skipped because the predicate already verified x is a cons.
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl = Repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+
+    // safe-car uses occurrence typing: (the cons x) is redundant after (consp x)
+    _ = try repl.eval("(defun safe-car (x) (if (consp x) (car (the cons x)) nil))");
+
+    // Works on cons
+    const result = try repl.eval("(safe-car (cons 42 nil))");
+    try testing.expect(result.isFixnum());
+    try testing.expectEqual(@as(i64, 42), result.toFixnum());
+
+    // Returns nil for non-cons (no error because we use if)
+    const result2 = try repl.eval("(safe-car nil)");
+    try testing.expect(result2.isNil());
+}
+
+test "occurrence typing with numberp" {
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl = Repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+
+    // After (numberp x), (the fixnum x) should be skipped
+    _ = try repl.eval("(defun safe-double (x) (if (numberp x) (* 2 (the fixnum x)) 0))");
+
+    const result = try repl.eval("(safe-double 21)");
+    try testing.expect(result.isFixnum());
+    try testing.expectEqual(@as(i64, 42), result.toFixnum());
+
+    const result2 = try repl.eval("(safe-double \"not a number\")");
+    try testing.expect(result2.isFixnum());
+    try testing.expectEqual(@as(i64, 0), result2.toFixnum());
+}

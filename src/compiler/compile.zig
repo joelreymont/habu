@@ -275,6 +275,8 @@ pub const Compiler = struct {
     globals: GlobalEnv,
     /// Pre-interned builtin symbols for identity comparison
     builtins: ?Builtins,
+    /// Current occurrence context for type narrowing (set during if compilation)
+    occ: ?*const OccurrenceCtx,
 
     pub fn init(allocator: std.mem.Allocator) Compiler {
         return .{
@@ -284,6 +286,7 @@ pub const Compiler = struct {
             .type_checking_enabled = false, // Off by default for gradual typing
             .globals = GlobalEnv.init(allocator),
             .builtins = null, // Lazily initialized when heap is available
+            .occ = null,
         };
     }
 
@@ -296,6 +299,7 @@ pub const Compiler = struct {
             .type_checking_enabled = false,
             .globals = GlobalEnv.init(allocator),
             .builtins = Builtins.init(heap),
+            .occ = null,
         };
     }
 
@@ -685,8 +689,30 @@ pub const Compiler = struct {
             Value.nil;
 
         const test_ir = try self.compile(test_expr, env);
-        // Both branches are in tail position if the if is
-        const then_ir = try self.compileWithTail(then_expr, env, in_tail);
+
+        // Check for type predicate to enable occurrence typing
+        const pred_info = extractPredicateInfo(test_ir);
+
+        // Compile then-branch with narrowed type context if predicate detected
+        const then_ir = blk: {
+            if (pred_info) |info| {
+                // Create occurrence context for then-branch
+                var then_occ = OccurrenceCtx.init(self.allocator);
+                defer then_occ.deinit();
+                then_occ.narrowed.put(info.var_name, info.narrowed_type) catch
+                    return error.OutOfMemory;
+
+                // Save and restore outer occ context
+                const saved_occ = self.occ;
+                self.occ = &then_occ;
+                defer self.occ = saved_occ;
+
+                break :blk try self.compileWithTail(then_expr, env, in_tail);
+            } else {
+                break :blk try self.compileWithTail(then_expr, env, in_tail);
+            }
+        };
+
         const else_ir = try self.compileWithTail(else_expr, env, in_tail);
 
         return self.builder.ifExpr(test_ir, then_ir, else_ir) catch return error.OutOfMemory;
@@ -1356,6 +1382,7 @@ pub const Compiler = struct {
 
     /// Compile type assertion: (the type expr)
     /// Supported types: fixnum, cons, symbol, string, vector, closure, non-nil
+    /// Uses occurrence typing: skips check if variable already narrowed to type
     fn compileThe(self: *Compiler, args: Value, env: *const Env) CompileError!*Ir {
         // (the type expr)
         if (!args.isCons()) return error.InvalidSyntax;
@@ -1372,6 +1399,22 @@ pub const Compiler = struct {
         if (!type_spec.isSymbol()) return error.InvalidSyntax;
         const type_sym = type_spec.toPtr(Symbol);
         const type_name = type_sym.getName();
+
+        // Check occurrence typing: if expr is a variable narrowed to this type, skip check
+        if (expr.isSymbol()) {
+            const var_sym = expr.toPtr(Symbol);
+            const var_name = var_sym.getName();
+
+            if (self.occ) |occ| {
+                if (occ.getNarrowed(var_name)) |narrowed_type| {
+                    // Check if narrowed type matches requested type
+                    if (self.typeMatchesName(narrowed_type, type_name)) {
+                        // Already narrowed - just compile the expression, skip the check
+                        return self.compile(expr, env);
+                    }
+                }
+            }
+        }
 
         // Compile the expression
         const expr_ir = try self.compile(expr, env);
@@ -1401,6 +1444,15 @@ pub const Compiler = struct {
 
         // Unknown type
         return error.InvalidSyntax;
+    }
+
+    /// Check if a Type matches a type name string
+    fn typeMatchesName(self: *Compiler, ty: *const Type, name: []const u8) bool {
+        _ = self;
+        if (ty.* == .primitive) {
+            return std.mem.eql(u8, ty.primitive.name(), name);
+        }
+        return false;
     }
 
     fn compileBody(self: *Compiler, exprs: Value, env: *const Env) CompileError!*Ir {
