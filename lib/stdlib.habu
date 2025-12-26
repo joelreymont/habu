@@ -26,30 +26,30 @@
 (defun list3 (a b c) (cons a (cons b (cons c nil))))
 
 ;;; List operations
-(defun length (lst)
+(defun (length -> fixnum) ((lst list))
   (if (null? lst)
       0
       (+ 1 (length (cdr lst)))))
 
-(defun append (lst1 lst2)
+(defun (append -> list) ((lst1 list) (lst2 list))
   (if (null? lst1)
       lst2
       (cons (car lst1) (append (cdr lst1) lst2))))
 
-(defun reverse-acc (lst acc)
+(defun (reverse-acc -> list) ((lst list) (acc list))
   (if (null? lst)
       acc
       (reverse-acc (cdr lst) (cons (car lst) acc))))
 
-(defun reverse (lst)
+(defun (reverse -> list) ((lst list))
   (reverse-acc lst nil))
 
-(defun nth (n lst)
+(defun nth ((n fixnum) (lst list))
   (if (= n 0)
       (car lst)
       (nth (- n 1) (cdr lst))))
 
-(defun last (lst)
+(defun last ((lst cons))
   (if (null? (cdr lst))
       (car lst)
       (last (cdr lst))))
@@ -124,20 +124,20 @@
   (member x lst))
 
 ;;; Numeric utilities
-(defun abs (n)
+(defun (abs -> fixnum) ((n fixnum))
   (if (< n 0) (- 0 n) n))
 
-(defun min (a b)
+(defun (min -> fixnum) ((a fixnum) (b fixnum))
   (if (< a b) a b))
 
-(defun max (a b)
+(defun (max -> fixnum) ((a fixnum) (b fixnum))
   (if (> a b) a b))
 
-(defun zero? (n) (= n 0))
-(defun positive? (n) (> n 0))
-(defun negative? (n) (< n 0))
-(defun even? (n) (= (mod n 2) 0))
-(defun odd? (n) (not (even? n)))
+(defun zero? ((n fixnum)) (= n 0))
+(defun positive? ((n fixnum)) (> n 0))
+(defun negative? ((n fixnum)) (< n 0))
+(defun even? ((n fixnum)) (= (mod n 2) 0))
+(defun odd? ((n fixnum)) (not (even? n)))
 
 ;;; Boolean operations
 (defun and2 (a b) (if a b nil))
@@ -249,19 +249,19 @@
 ;;; Math utilities
 
 ;;; gcd - greatest common divisor (Euclidean algorithm)
-(defun gcd (a b)
+(defun (gcd -> fixnum) ((a fixnum) (b fixnum))
   (if (= b 0)
       (abs a)
       (gcd b (mod a b))))
 
 ;;; lcm - least common multiple
-(defun lcm (a b)
+(defun (lcm -> fixnum) ((a fixnum) (b fixnum))
   (if (or2 (= a 0) (= b 0))
       0
       (abs (* (/ a (gcd a b)) b))))
 
 ;;; expt - exponentiation (positive integer exponents)
-(defun expt (base exp)
+(defun (expt -> fixnum) ((base fixnum) (exp fixnum))
   (if (= exp 0)
       1
       (if (even? exp)
@@ -270,10 +270,10 @@
           (* base (expt base (- exp 1))))))
 
 ;;; Integer division utilities (for fixnums only)
-(defun truncate (n d)
+(defun (truncate -> fixnum) ((n fixnum) (d fixnum))
   (/ n d))
 
-(defun floor-div (n d)
+(defun (floor-div -> fixnum) ((n fixnum) (d fixnum))
   (let ((q (/ n d)))
     (if (and2 (negative? (mod n d))
               (or2 (positive? n) (positive? d)))
@@ -284,7 +284,7 @@
                 q))
         q)))
 
-(defun ceiling-div (n d)
+(defun (ceiling-div -> fixnum) ((n fixnum) (d fixnum))
   (let ((q (/ n d))
         (r (mod n d)))
     (if (= r 0)
