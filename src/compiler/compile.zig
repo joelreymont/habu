@@ -2234,6 +2234,9 @@ pub const Compiler = struct {
         if (std.mem.eql(u8, name, "print")) {
             return self.compileUnaryPrim(args, env, .print);
         }
+        if (std.mem.eql(u8, name, "format")) {
+            return self.compileFormat(args, env);
+        }
 
         // Random
         if (std.mem.eql(u8, name, "random")) {
@@ -2372,6 +2375,31 @@ pub const Compiler = struct {
         const node = self.allocator.create(Ir) catch return error.OutOfMemory;
         node.* = .{ .substring = .{ .str = str_ir, .start = start_ir, .end = end_ir } };
         return node;
+    }
+
+    fn compileFormat(self: *Compiler, args: Value, env: *const Env) CompileError!*Ir {
+        // (format dest control-string args...)
+        if (!args.isCons()) return error.InvalidSyntax;
+        const cons1 = args.toPtr(Cons);
+        const dest_ir = try self.compile(cons1.car, env);
+
+        if (!cons1.cdr.isCons()) return error.InvalidSyntax;
+        const cons2 = cons1.cdr.toPtr(Cons);
+        const control_ir = try self.compile(cons2.car, env);
+
+        // Collect remaining args
+        var arg_list = std.ArrayList(*const Ir){};
+        defer arg_list.deinit(self.allocator);
+
+        var rest = cons2.cdr;
+        while (rest.isCons()) {
+            const cons = rest.toPtr(Cons);
+            const arg_ir = try self.compile(cons.car, env);
+            arg_list.append(self.allocator, arg_ir) catch return error.OutOfMemory;
+            rest = cons.cdr;
+        }
+
+        return self.builder.format(dest_ir, control_ir, arg_list.items) catch return error.OutOfMemory;
     }
 
     fn compileCall(self: *Compiler, func_expr: Value, args_expr: Value, env: *const Env) CompileError!*Ir {

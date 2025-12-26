@@ -311,6 +311,11 @@ pub const Op = enum(u8) {
     /// ( x -- type-sym )
     type_of = 0x92,
 
+    /// Format string with arguments (operand: u8 argc)
+    /// ( dest control-str arg1 ... argN -- result )
+    /// dest=nil: return string, dest=t: print and return nil
+    format = 0x93,
+
     // ========================================================================
     // Type assertions (gradual typing)
     // ========================================================================
@@ -406,7 +411,7 @@ pub const Op = enum(u8) {
 
             // 1 byte operand
             .load_local, .store_local, .load_capture,
-            .call, .tail_call, .make_list, .values, .mv_bind,
+            .call, .tail_call, .make_list, .values, .mv_bind, .format,
             => 1,
 
             // 2 byte operand

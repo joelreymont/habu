@@ -1494,6 +1494,71 @@ test "multiple-value-bind single var" {
 }
 
 // ============================================================================
+// format tests
+// ============================================================================
+
+test "format nil returns string" {
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl = Repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+
+    const result = try repl.eval(
+        \\(format nil "Hello ~A" "World")
+    );
+    try testing.expect(result.isString());
+}
+
+test "format ~D decimal" {
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl = Repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+
+    const result = try repl.eval(
+        \\(format nil "Value is ~D" 42)
+    );
+    try testing.expect(result.isString());
+}
+
+test "format ~% newline" {
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl = Repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+
+    const result = try repl.eval(
+        \\(format nil "Line1~%Line2")
+    );
+    try testing.expect(result.isString());
+}
+
+test "format ~S standard" {
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl = Repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+
+    // ~S should quote strings
+    const result = try repl.eval(
+        \\(format nil "Got ~S" "test")
+    );
+    try testing.expect(result.isString());
+}
+
+// ============================================================================
 // stdlib tests
 // ============================================================================
 

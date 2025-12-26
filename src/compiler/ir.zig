@@ -154,6 +154,13 @@ pub const Ir = union(enum) {
         body: *const Ir,
     },
 
+    /// Format: (format dest control-string args...)
+    format: struct {
+        dest: *const Ir,
+        control: *const Ir,
+        args: []const *const Ir,
+    },
+
     // ========================================================================
     // Function calls
     // ========================================================================
@@ -506,6 +513,13 @@ pub const IrBuilder = struct {
         const node = try self.allocator.create(Ir);
         const vars_copy = try self.allocator.dupe([]const u8, vars);
         node.* = .{ .mv_bind = .{ .vars = vars_copy, .expr = expr, .body = body } };
+        return node;
+    }
+
+    pub fn format(self: IrBuilder, dest: *const Ir, control: *const Ir, args: []const *const Ir) !*Ir {
+        const node = try self.allocator.create(Ir);
+        const args_copy = try self.allocator.dupe(*const Ir, args);
+        node.* = .{ .format = .{ .dest = dest, .control = control, .args = args_copy } };
         return node;
     }
 

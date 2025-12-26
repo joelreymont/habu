@@ -698,6 +698,24 @@ pub const Vm = struct {
                     self.secondary_values_count = 0;
                 },
 
+                .format => {
+                    const argc = self.readU8();
+                    // Stack: dest, control-string, arg1, ..., argN (argN on top)
+                    // Pop args in reverse order
+                    var args: [32]Value = undefined;
+                    var arg_idx: usize = argc;
+                    while (arg_idx > 0) : (arg_idx -= 1) {
+                        args[arg_idx - 1] = try self.pop();
+                    }
+                    const control = try self.pop();
+                    const dest = try self.pop();
+
+                    if (!control.isString()) return error.TypeMismatch;
+
+                    const result = try self.doFormat(dest, control, args[0..argc]);
+                    try self.push(result);
+                },
+
                 .halt => return error.Halt,
             }
         }
@@ -727,6 +745,151 @@ pub const Vm = struct {
         }
         // No matching catch found
         return error.UnhandledThrow;
+    }
+
+    // ========================================================================
+    // Format string support
+    // ========================================================================
+
+    fn doFormat(self: *Vm, dest: Value, control: Value, args: []const Value) VmError!Value {
+        const control_str = control.toPtr(runtime.String);
+        const fmt = control_str.bytes();
+
+        // Build result string
+        var result = std.ArrayList(u8){};
+        defer result.deinit(self.allocator);
+
+        var arg_idx: usize = 0;
+        var i: usize = 0;
+
+        while (i < fmt.len) {
+            if (fmt[i] == '~' and i + 1 < fmt.len) {
+                const directive = fmt[i + 1];
+                switch (directive) {
+                    'A', 'a' => {
+                        // Aesthetic - print without quotes
+                        if (arg_idx < args.len) {
+                            try self.formatValueAesthetic(args[arg_idx], &result);
+                            arg_idx += 1;
+                        }
+                        i += 2;
+                    },
+                    'S', 's' => {
+                        // Standard - print with quotes for strings
+                        if (arg_idx < args.len) {
+                            try self.formatValueStandard(args[arg_idx], &result);
+                            arg_idx += 1;
+                        }
+                        i += 2;
+                    },
+                    'D', 'd' => {
+                        // Decimal integer
+                        if (arg_idx < args.len) {
+                            const val = args[arg_idx];
+                            if (val.isFixnum()) {
+                                var buf: [32]u8 = undefined;
+                                const num_str = std.fmt.bufPrint(&buf, "{d}", .{val.toFixnum()}) catch return error.OutOfMemory;
+                                result.appendSlice(self.allocator, num_str) catch return error.OutOfMemory;
+                            }
+                            arg_idx += 1;
+                        }
+                        i += 2;
+                    },
+                    '%' => {
+                        // Newline
+                        result.append(self.allocator, '\n') catch return error.OutOfMemory;
+                        i += 2;
+                    },
+                    '~' => {
+                        // Literal tilde
+                        result.append(self.allocator, '~') catch return error.OutOfMemory;
+                        i += 2;
+                    },
+                    else => {
+                        // Unknown directive, output as-is
+                        result.append(self.allocator, fmt[i]) catch return error.OutOfMemory;
+                        i += 1;
+                    },
+                }
+            } else {
+                result.append(self.allocator, fmt[i]) catch return error.OutOfMemory;
+                i += 1;
+            }
+        }
+
+        // Handle destination
+        if (dest.isNil()) {
+            // Return as string
+            return self.heap.allocString(result.items) orelse return error.OutOfMemory;
+        } else {
+            // Print to stdout (dest = t)
+            const stdout_file = std.fs.File.stdout();
+            var buf: [4096]u8 = undefined;
+            var file_writer = stdout_file.writer(&buf);
+            const w = &file_writer.interface;
+            w.writeAll(result.items) catch return error.OutOfMemory;
+            w.flush() catch return error.OutOfMemory;
+            return Value.nil;
+        }
+    }
+
+    fn formatValueAesthetic(self: *Vm, val: Value, result: *std.ArrayList(u8)) VmError!void {
+        if (val.isNil()) {
+            result.appendSlice(self.allocator, "nil") catch return error.OutOfMemory;
+        } else if (val.isFixnum()) {
+            var buf: [32]u8 = undefined;
+            const num_str = std.fmt.bufPrint(&buf, "{d}", .{val.toFixnum()}) catch return error.OutOfMemory;
+            result.appendSlice(self.allocator, num_str) catch return error.OutOfMemory;
+        } else if (val.isString()) {
+            const str = val.toPtr(runtime.String);
+            result.appendSlice(self.allocator, str.bytes()) catch return error.OutOfMemory;
+        } else if (val.isSymbol()) {
+            const sym = val.toPtr(Symbol);
+            result.appendSlice(self.allocator, sym.getName()) catch return error.OutOfMemory;
+        } else if (val.isKeyword()) {
+            const kw = val.toPtr(runtime.Keyword);
+            result.append(self.allocator, ':') catch return error.OutOfMemory;
+            result.appendSlice(self.allocator, kw.getName()) catch return error.OutOfMemory;
+        } else if (val.isCons()) {
+            try self.formatListAesthetic(val, result);
+        } else if (val.isClosure()) {
+            result.appendSlice(self.allocator, "#<closure>") catch return error.OutOfMemory;
+        } else if (val.isVector()) {
+            result.appendSlice(self.allocator, "#<vector>") catch return error.OutOfMemory;
+        } else {
+            result.appendSlice(self.allocator, "#<unknown>") catch return error.OutOfMemory;
+        }
+    }
+
+    fn formatValueStandard(self: *Vm, val: Value, result: *std.ArrayList(u8)) VmError!void {
+        if (val.isString()) {
+            // Strings get quoted
+            result.append(self.allocator, '"') catch return error.OutOfMemory;
+            const str = val.toPtr(runtime.String);
+            result.appendSlice(self.allocator, str.bytes()) catch return error.OutOfMemory;
+            result.append(self.allocator, '"') catch return error.OutOfMemory;
+        } else {
+            // Everything else same as aesthetic
+            try self.formatValueAesthetic(val, result);
+        }
+    }
+
+    fn formatListAesthetic(self: *Vm, val: Value, result: *std.ArrayList(u8)) VmError!void {
+        result.append(self.allocator, '(') catch return error.OutOfMemory;
+        var current = val;
+        var first = true;
+        while (current.isCons()) {
+            if (!first) result.append(self.allocator, ' ') catch return error.OutOfMemory;
+            first = false;
+            const cons = current.toPtr(runtime.Cons);
+            try self.formatValueAesthetic(cons.car, result);
+            current = cons.cdr;
+        }
+        if (!current.isNil()) {
+            result.appendSlice(self.allocator, " . ") catch return error.OutOfMemory;
+            try self.formatValueAesthetic(current, result);
+        }
+        result.append(self.allocator, ')') catch return error.OutOfMemory;
     }
 
     // ========================================================================

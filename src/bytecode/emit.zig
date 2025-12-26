@@ -154,6 +154,7 @@ pub const Emitter = struct {
             .go => |g| try self.emitGo(g),
             .values => |v| try self.emitValues(v),
             .mv_bind => |m| try self.emitMvBind(m),
+            .format => |f| try self.emitFormat(f),
             .call => |c| try self.emitCall(c, false),
             .tailcall => |c| try self.emitCall(c, true),
             .apply => |a| try self.emitApply(a),
@@ -809,6 +810,21 @@ pub const Emitter = struct {
 
         // Emit body - variables are now on stack as locals
         try self.emit(m.body);
+    }
+
+    fn emitFormat(self: *Emitter, f: anytype) EmitError!void {
+        // Emit destination
+        try self.emit(f.dest);
+        // Emit control string
+        try self.emit(f.control);
+        // Emit arguments
+        for (f.args) |arg| {
+            try self.emit(arg);
+        }
+        // Emit format opcode with argument count
+        if (f.args.len > 255) return error.TooManyLocals;
+        try self.emitOp(.format);
+        try self.emitU8(@intCast(f.args.len));
     }
 
     /// Patch a jump to a specific target offset
