@@ -199,6 +199,14 @@ pub const Emitter = struct {
             .closurep => |op| try self.emitUnaryOp(op.operand, .closurep),
             .keywordp => |op| try self.emitUnaryOp(op.operand, .keywordp),
             .nilp => |op| try self.emitUnaryOp(op.operand, .nilp),
+            .characterp => |op| try self.emitUnaryOp(op.operand, .characterp),
+
+            // Character operations
+            .char_code => |op| try self.emitUnaryOp(op.operand, .char_code),
+            .code_char => |op| try self.emitUnaryOp(op.operand, .code_char),
+            .char_eq => |op| try self.emitBinaryOp(op, .char_eq),
+            .char_lt => |op| try self.emitBinaryOp(op, .char_lt),
+            .char_gt => |op| try self.emitBinaryOp(op, .char_gt),
 
             // Vector operations
             .vec_new => |v| try self.emitVecNew(v),

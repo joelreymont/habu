@@ -270,6 +270,17 @@ pub const Ir = union(enum) {
     closurep: UnaryOp,
     keywordp: UnaryOp,
     nilp: UnaryOp,
+    characterp: UnaryOp,
+
+    // ========================================================================
+    // Primitives - Character operations
+    // ========================================================================
+
+    char_code: UnaryOp,
+    code_char: UnaryOp,
+    char_eq: BinaryOp,
+    char_lt: BinaryOp,
+    char_gt: BinaryOp,
 
     // ========================================================================
     // Primitives - Vector operations
@@ -677,9 +688,46 @@ pub const IrBuilder = struct {
         return node;
     }
 
+    pub fn characterp(self: IrBuilder, operand: *const Ir) !*Ir {
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .characterp = .{ .operand = operand } };
+        return node;
+    }
+
     pub fn not(self: IrBuilder, operand: *const Ir) !*Ir {
         const node = try self.allocator.create(Ir);
         node.* = .{ .not = .{ .operand = operand } };
+        return node;
+    }
+
+    // Character operations
+    pub fn charCode(self: IrBuilder, operand: *const Ir) !*Ir {
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .char_code = .{ .operand = operand } };
+        return node;
+    }
+
+    pub fn codeChar(self: IrBuilder, operand: *const Ir) !*Ir {
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .code_char = .{ .operand = operand } };
+        return node;
+    }
+
+    pub fn charEq(self: IrBuilder, left: *const Ir, right: *const Ir) !*Ir {
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .char_eq = .{ .left = left, .right = right } };
+        return node;
+    }
+
+    pub fn charLt(self: IrBuilder, left: *const Ir, right: *const Ir) !*Ir {
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .char_lt = .{ .left = left, .right = right } };
+        return node;
+    }
+
+    pub fn charGt(self: IrBuilder, left: *const Ir, right: *const Ir) !*Ir {
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .char_gt = .{ .left = left, .right = right } };
         return node;
     }
 

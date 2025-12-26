@@ -117,6 +117,21 @@ fn printValueTo(val: Value, w: anytype) !void {
         try w.writeAll("nil");
     } else if (val.isFixnum()) {
         try w.print("{d}", .{val.toFixnum()});
+    } else if (val.isCharacter()) {
+        const cp = val.toCharacter();
+        if (cp == ' ') {
+            try w.writeAll("#\\space");
+        } else if (cp == '\n') {
+            try w.writeAll("#\\newline");
+        } else if (cp == '\t') {
+            try w.writeAll("#\\tab");
+        } else if (cp == '\r') {
+            try w.writeAll("#\\return");
+        } else if (cp >= 32 and cp < 127) {
+            try w.print("#\\{c}", .{@as(u8, @intCast(cp))});
+        } else {
+            try w.print("#\\U+{X:0>4}", .{cp});
+        }
     } else if (val.isCons()) {
         // Print as list
         try w.writeByte('(');

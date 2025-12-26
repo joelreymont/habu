@@ -25,6 +25,7 @@ pub const VmError = error{
     DivisionByZero,
     InvalidOpcode,
     InvalidConstant,
+    InvalidArgument,
     OutOfMemory,
     Halt,
     UnhandledThrow,
@@ -606,6 +607,8 @@ pub const Vm = struct {
                         "nil"
                     else if (val.isFixnum())
                         "fixnum"
+                    else if (val.isCharacter())
+                        "character"
                     else if (val.isCons())
                         "cons"
                     else if (val.isSymbol())
@@ -826,6 +829,43 @@ pub const Vm = struct {
                 .hashtablep => {
                     const val = try self.pop();
                     try self.push(if (val.isHashTable()) Value.t else Value.nil);
+                },
+
+                // Character operations
+                .characterp => {
+                    const val = try self.pop();
+                    try self.push(if (val.isCharacter()) Value.t else Value.nil);
+                },
+                .char_code => {
+                    const val = try self.pop();
+                    if (!val.isCharacter()) return error.TypeMismatch;
+                    const cp = val.toCharacter();
+                    try self.push(Value.makeFixnum(@intCast(cp)));
+                },
+                .code_char => {
+                    const val = try self.pop();
+                    if (!val.isFixnum()) return error.TypeMismatch;
+                    const n = val.toFixnum();
+                    if (n < 0 or n > 0x10FFFF) return error.InvalidArgument;
+                    try self.push(Value.makeCharacter(@intCast(@as(u64, @bitCast(n)))));
+                },
+                .char_eq => {
+                    const b = try self.pop();
+                    const a = try self.pop();
+                    if (!a.isCharacter() or !b.isCharacter()) return error.TypeMismatch;
+                    try self.push(if (a.raw == b.raw) Value.t else Value.nil);
+                },
+                .char_lt => {
+                    const b = try self.pop();
+                    const a = try self.pop();
+                    if (!a.isCharacter() or !b.isCharacter()) return error.TypeMismatch;
+                    try self.push(if (a.toCharacter() < b.toCharacter()) Value.t else Value.nil);
+                },
+                .char_gt => {
+                    const b = try self.pop();
+                    const a = try self.pop();
+                    if (!a.isCharacter() or !b.isCharacter()) return error.TypeMismatch;
+                    try self.push(if (a.toCharacter() > b.toCharacter()) Value.t else Value.nil);
                 },
 
                 .halt => return error.Halt,

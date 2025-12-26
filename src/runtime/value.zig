@@ -6,10 +6,12 @@
 //!     0: cons, 2: symbol, 4: vector, 6: string
 //!     8: closure, 10: keyword, 14: forwarding (GC)
 //!   Special: 0 = nil
+//!   Character: bit63=1, codepoint in bits 0-20
 //!
 //! This scheme allows:
 //! - Fast fixnum check: (v & 1) == 1
 //! - Fast nil check: v == 0
+//! - Fast character check: (v >> 63) == 1
 //! - Pointer extraction: v & ~0xF (mask off low 4 bits)
 //! - Tag extraction: v & 0xE (bits 1-3, ignoring bit 0)
 
@@ -55,9 +57,10 @@ pub const Value = packed struct {
         return (self.raw & 1) == 1;
     }
 
-    /// Check if value is a pointer (bit0 = 0, not nil)
+    /// Check if value is a pointer (bit0 = 0, bit63 = 0, not nil)
     pub inline fn isPointer(self: Value) bool {
-        return self.raw != 0 and (self.raw & 1) == 0;
+        // bit0=0 and bit63=0 distinguishes pointers from fixnums and characters
+        return self.raw != 0 and (self.raw & 1) == 0 and (self.raw >> 63) == 0;
     }
 
     /// Check if value is a cons cell
@@ -105,6 +108,11 @@ pub const Value = packed struct {
         return !self.isNil();
     }
 
+    /// Check if value is a character (bit63=1)
+    pub inline fn isCharacter(self: Value) bool {
+        return (self.raw >> 63) == 1;
+    }
+
     // ========================================================================
     // Tag and pointer extraction
     // ========================================================================
@@ -144,6 +152,25 @@ pub const Value = packed struct {
         // Arithmetic right shift to preserve sign
         const signed: i64 = @bitCast(self.raw);
         return signed >> 1;
+    }
+
+    // ========================================================================
+    // Character operations
+    // ========================================================================
+
+    const CHAR_TAG: u64 = 1 << 63;
+
+    /// Create a character from a Unicode code point
+    pub inline fn makeCharacter(codepoint: u21) Value {
+        // Encoding: bit63=1, bit0=0, codepoint in bits 1-21
+        // This ensures bit0=0 so it's not confused with fixnum
+        return .{ .raw = CHAR_TAG | (@as(u64, codepoint) << 1) };
+    }
+
+    /// Extract character code point
+    pub inline fn toCharacter(self: Value) u21 {
+        std.debug.assert(self.isCharacter());
+        return @truncate((self.raw >> 1) & 0x1FFFFF); // Bits 1-21
     }
 
     // ========================================================================
@@ -220,6 +247,13 @@ pub const Value = packed struct {
             try writer.writeAll("nil");
         } else if (self.isFixnum()) {
             try writer.print("{d}", .{self.toFixnum()});
+        } else if (self.isCharacter()) {
+            const cp = self.toCharacter();
+            if (cp < 128) {
+                try writer.print("#\\{c}", .{@as(u8, @intCast(cp))});
+            } else {
+                try writer.print("#\\U+{X:0>4}", .{cp});
+            }
         } else {
             const tag = self.getTag();
             const addr = self.toPtrAddr();

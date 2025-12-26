@@ -346,6 +346,34 @@ pub const Op = enum(u8) {
     hashtablep = 0x99,
 
     // ========================================================================
+    // Character operations
+    // ========================================================================
+
+    /// Check if value is a character
+    /// ( x -- t/nil )
+    characterp = 0x9A,
+
+    /// Get character code point
+    /// ( char -- fixnum )
+    char_code = 0x9B,
+
+    /// Make character from code point
+    /// ( fixnum -- char )
+    code_char = 0x9C,
+
+    /// Character equality
+    /// ( c1 c2 -- t/nil )
+    char_eq = 0x9D,
+
+    /// Character less than
+    /// ( c1 c2 -- t/nil )
+    char_lt = 0x9E,
+
+    /// Character greater than
+    /// ( c1 c2 -- t/nil )
+    char_gt = 0x9F,
+
+    // ========================================================================
     // Type assertions (gradual typing)
     // ========================================================================
 
@@ -446,6 +474,7 @@ pub const Op = enum(u8) {
             .check_vector, .check_closure, .check_non_nil, .check_list,
             .apply, .pop_catch, .throw,
             .hash_get, .hash_set, .hash_rem, .hash_count, .hashtablep,
+            .characterp, .char_code, .code_char, .char_eq, .char_lt, .char_gt,
             => 0,
 
             // 1 byte operand

@@ -250,6 +250,22 @@ pub const Repl = struct {
         } else if (val.isFixnum()) {
             // Note: t is fixnum 1, print both as number for clarity
             try writer.print("{d}", .{val.toFixnum()});
+        } else if (val.isCharacter()) {
+            const cp = val.toCharacter();
+            // Named characters
+            if (cp == ' ') {
+                try writer.writeAll("#\\space");
+            } else if (cp == '\n') {
+                try writer.writeAll("#\\newline");
+            } else if (cp == '\t') {
+                try writer.writeAll("#\\tab");
+            } else if (cp == '\r') {
+                try writer.writeAll("#\\return");
+            } else if (cp >= 32 and cp < 127) {
+                try writer.print("#\\{c}", .{@as(u8, @intCast(cp))});
+            } else {
+                try writer.print("#\\U+{X:0>4}", .{cp});
+            }
         } else if (val.isCons()) {
             try self.printList(val, writer);
         } else if (val.isSymbol()) {

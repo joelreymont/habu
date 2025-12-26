@@ -542,6 +542,11 @@ pub const Compiler = struct {
             return self.builder.lit(expr) catch return error.OutOfMemory;
         }
 
+        // Character
+        if (expr.isCharacter()) {
+            return self.builder.lit(expr) catch return error.OutOfMemory;
+        }
+
         // Symbol (variable reference)
         if (expr.isSymbol()) {
             const sym = expr.toPtr(Symbol);
@@ -970,7 +975,7 @@ pub const Compiler = struct {
 
     /// Collect free variables in an expression
     fn collectFreeVars(self: *Compiler, expr: Value, env: *const Env, captures: *CaptureSet) error{OutOfMemory}!void {
-        if (expr.isNil() or expr.isFixnum() or expr.isString() or expr.isKeyword()) {
+        if (expr.isNil() or expr.isFixnum() or expr.isString() or expr.isKeyword() or expr.isCharacter()) {
             return; // Literals have no free variables
         }
 
@@ -2207,6 +2212,26 @@ pub const Compiler = struct {
         if (std.mem.eql(u8, name, "not")) {
             return self.compileUnaryPrim(args, env, .not);
         }
+        if (std.mem.eql(u8, name, "characterp") or std.mem.eql(u8, name, "character?")) {
+            return self.compileUnaryPrim(args, env, .characterp);
+        }
+
+        // Character operations
+        if (std.mem.eql(u8, name, "char-code")) {
+            return self.compileUnaryPrim(args, env, .char_code);
+        }
+        if (std.mem.eql(u8, name, "code-char")) {
+            return self.compileUnaryPrim(args, env, .code_char);
+        }
+        if (std.mem.eql(u8, name, "char=")) {
+            return self.compileBinaryPrim(args, env, .char_eq);
+        }
+        if (std.mem.eql(u8, name, "char<")) {
+            return self.compileBinaryPrim(args, env, .char_lt);
+        }
+        if (std.mem.eql(u8, name, "char>")) {
+            return self.compileBinaryPrim(args, env, .char_gt);
+        }
 
         // Vector operations
         if (std.mem.eql(u8, name, "vector-ref")) {
@@ -2283,7 +2308,7 @@ pub const Compiler = struct {
         return error.InvalidSyntax; // Not a known primitive
     }
 
-    const PrimTag = enum { add, sub, mul, div, mod, eq, lt, gt, le, ge, num_eq, cons, car, cdr, consp, symbolp, numberp, stringp, vectorp, nilp, not, vec_ref, vec_len, str_ref, str_len, str_eq, print, random, intern, sym_name, type_of };
+    const PrimTag = enum { add, sub, mul, div, mod, eq, lt, gt, le, ge, num_eq, cons, car, cdr, consp, symbolp, numberp, stringp, vectorp, nilp, not, vec_ref, vec_len, str_ref, str_len, str_eq, print, random, intern, sym_name, type_of, characterp, char_code, code_char, char_eq, char_lt, char_gt };
 
     fn compileBinaryPrim(self: *Compiler, args: Value, env: *const Env, prim: PrimTag) CompileError!*Ir {
         if (!args.isCons()) return error.InvalidSyntax;
@@ -2334,6 +2359,9 @@ pub const Compiler = struct {
                 node.* = .{ .str_eq = .{ .left = left, .right = right } };
                 break :blk node;
             },
+            .char_eq => self.builder.charEq(left, right),
+            .char_lt => self.builder.charLt(left, right),
+            .char_gt => self.builder.charGt(left, right),
             else => error.InvalidSyntax,
         } catch return error.OutOfMemory;
     }
@@ -2380,6 +2408,9 @@ pub const Compiler = struct {
                 break :blk node;
             },
             .type_of => self.builder.typeOf(operand),
+            .characterp => self.builder.characterp(operand),
+            .char_code => self.builder.charCode(operand),
+            .code_char => self.builder.codeChar(operand),
             else => error.InvalidSyntax,
         } catch return error.OutOfMemory;
     }

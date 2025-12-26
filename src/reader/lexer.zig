@@ -25,6 +25,7 @@ pub const TokenKind = enum {
     string,
     symbol,
     keyword,
+    character,
 
     // Special
     eof,
@@ -95,6 +96,7 @@ pub const Lexer = struct {
             ':' => self.readKeyword(),
             '.' => if (isDelimiter(self.peek())) self.makeToken(.dot) else self.readSymbolFromDot(),
             '-', '+' => if (isDigit(self.peek())) self.readNumber() else self.readSymbolFromSign(c),
+            '#' => self.readHash(),
             else => {
                 if (isDigit(c)) {
                     return self.readNumber();
@@ -212,6 +214,35 @@ pub const Lexer = struct {
             _ = self.advance();
         }
         return self.makeToken(.keyword);
+    }
+
+    fn readHash(self: *Lexer) Token {
+        // Already consumed '#'
+        if (self.isAtEnd()) return self.makeToken(.err);
+
+        const c = self.peek();
+        if (c == '\\') {
+            // Character literal: #\a, #\newline, etc.
+            _ = self.advance(); // consume backslash
+            return self.readCharacter();
+        }
+        // Future: #( for vectors, #' for function, etc.
+        return self.makeToken(.err);
+    }
+
+    fn readCharacter(self: *Lexer) Token {
+        // Already consumed '#\'
+        if (self.isAtEnd()) return self.makeToken(.err);
+
+        // Read character name or single char
+        const start = self.pos;
+        while (!self.isAtEnd() and !isDelimiter(self.peek())) {
+            _ = self.advance();
+        }
+
+        if (self.pos == start) return self.makeToken(.err);
+
+        return self.makeToken(.character);
     }
 
     fn makeToken(self: *Lexer, kind: TokenKind) Token {
@@ -379,4 +410,22 @@ test "dot token" {
     try testing.expectEqual(TokenKind.dot, lexer.next().kind);
     try testing.expectEqual(TokenKind.symbol, lexer.next().kind);
     try testing.expectEqual(TokenKind.rparen, lexer.next().kind);
+}
+
+test "lex characters" {
+    const testing = std.testing;
+
+    var lexer = Lexer.init("#\\a #\\newline #\\space");
+
+    const t1 = lexer.next();
+    try testing.expectEqual(TokenKind.character, t1.kind);
+    try testing.expectEqualStrings("#\\a", t1.text);
+
+    const t2 = lexer.next();
+    try testing.expectEqual(TokenKind.character, t2.kind);
+    try testing.expectEqualStrings("#\\newline", t2.text);
+
+    const t3 = lexer.next();
+    try testing.expectEqual(TokenKind.character, t3.kind);
+    try testing.expectEqualStrings("#\\space", t3.text);
 }

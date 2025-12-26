@@ -61,6 +61,7 @@ pub const Parser = struct {
             .string => return self.parseString(),
             .symbol => return self.parseSymbol(),
             .keyword => return self.parseKeyword(),
+            .character => return self.parseCharacter(),
             .eof => return Value.nil,
             .rparen, .dot => return error.UnexpectedToken,
             .err => return error.UnexpectedToken,
@@ -203,6 +204,41 @@ pub const Parser = struct {
         };
 
         return Value.makeKeyword(kw);
+    }
+
+    fn parseCharacter(self: *Parser) ParseError!Value {
+        const text = self.current.text;
+        self.advance();
+
+        // Text is "#\..." - extract the character part after "#\"
+        if (text.len < 3) return error.UnexpectedToken;
+        const char_part = text[2..];
+
+        // Single character
+        if (char_part.len == 1) {
+            return Value.makeCharacter(char_part[0]);
+        }
+
+        // Named characters
+        if (std.mem.eql(u8, char_part, "space")) return Value.makeCharacter(' ');
+        if (std.mem.eql(u8, char_part, "newline")) return Value.makeCharacter('\n');
+        if (std.mem.eql(u8, char_part, "tab")) return Value.makeCharacter('\t');
+        if (std.mem.eql(u8, char_part, "return")) return Value.makeCharacter('\r');
+        if (std.mem.eql(u8, char_part, "backspace")) return Value.makeCharacter(0x08);
+        if (std.mem.eql(u8, char_part, "linefeed")) return Value.makeCharacter('\n');
+        if (std.mem.eql(u8, char_part, "page")) return Value.makeCharacter(0x0C);
+        if (std.mem.eql(u8, char_part, "rubout")) return Value.makeCharacter(0x7F);
+        if (std.mem.eql(u8, char_part, "nul") or std.mem.eql(u8, char_part, "null")) return Value.makeCharacter(0);
+
+        // Unicode escape: #\uXXXX or #\U+XXXX
+        if (char_part.len >= 2 and (char_part[0] == 'u' or char_part[0] == 'U')) {
+            var hex_part = char_part[1..];
+            if (hex_part.len > 0 and hex_part[0] == '+') hex_part = hex_part[1..];
+            const codepoint = std.fmt.parseInt(u21, hex_part, 16) catch return error.UnexpectedToken;
+            return Value.makeCharacter(codepoint);
+        }
+
+        return error.UnexpectedToken;
     }
 
     fn advance(self: *Parser) void {
