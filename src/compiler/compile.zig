@@ -49,6 +49,8 @@ pub const Builtins = struct {
     let: Value,
     @"let*": Value,
     letrec: Value,
+    flet: Value,
+    labels: Value,
     lambda: Value,
     define: Value,
     defun: Value,
@@ -102,6 +104,8 @@ pub const Builtins = struct {
             .defmacro = heap.intern("defmacro") orelse return null,
             .macroexpand = heap.intern("macroexpand") orelse return null,
             .the = heap.intern("the") orelse return null,
+            .flet = heap.intern("flet") orelse return null,
+            .labels = heap.intern("labels") orelse return null,
         };
     }
 };
@@ -563,6 +567,8 @@ pub const Compiler = struct {
         cond,
         progn,
         begin,
+        flet,
+        labels,
         // Non-tail forms
         lambda,
         @"and",
@@ -587,6 +593,8 @@ pub const Compiler = struct {
         .{ "cond", .cond },
         .{ "progn", .progn },
         .{ "begin", .begin },
+        .{ "flet", .flet },
+        .{ "labels", .labels },
         .{ "lambda", .lambda },
         .{ "and", .@"and" },
         .{ "or", .@"or" },
@@ -616,6 +624,8 @@ pub const Compiler = struct {
                 if (head.raw == b.@"let*".raw) return self.compileLetStarWithTail(tail, env, in_tail);
                 if (head.raw == b.cond.raw) return self.compileCondWithTail(tail, env, in_tail);
                 if (head.raw == b.progn.raw or head.raw == b.begin.raw) return self.compilePrognWithTail(tail, env, in_tail);
+                if (head.raw == b.flet.raw) return self.compileFletWithTail(tail, env, in_tail);
+                if (head.raw == b.labels.raw) return self.compileLabelsWithTail(tail, env, in_tail);
                 if (head.raw == b.lambda.raw) return self.compileLambda(tail, env);
                 if (head.raw == b.@"and".raw) return self.compileAnd(tail, env);
                 if (head.raw == b.@"or".raw) return self.compileOr(tail, env);
@@ -642,6 +652,8 @@ pub const Compiler = struct {
                         .@"let*" => self.compileLetStarWithTail(tail, env, in_tail),
                         .cond => self.compileCondWithTail(tail, env, in_tail),
                         .progn, .begin => self.compilePrognWithTail(tail, env, in_tail),
+                        .flet => self.compileFletWithTail(tail, env, in_tail),
+                        .labels => self.compileLabelsWithTail(tail, env, in_tail),
                         // Non-tail forms
                         .lambda => self.compileLambda(tail, env),
                         .@"and" => self.compileAnd(tail, env),
@@ -1112,6 +1124,119 @@ pub const Compiler = struct {
         }
 
         // Compile body (in tail position if letrec is)
+        const body_ir = try self.compileBodyWithTail(body_exprs, env, in_tail);
+        exprs.append(self.allocator, body_ir) catch return error.OutOfMemory;
+
+        // Return progn of defines + body
+        const items = self.allocator.dupe(*const Ir, exprs.items) catch return error.OutOfMemory;
+        return self.builder.progn(items) catch return error.OutOfMemory;
+    }
+
+    fn compileFletWithTail(self: *Compiler, args: Value, env: *const Env, in_tail: bool) CompileError!*Ir {
+        // (flet ((fname (args) body...) ...) body)
+        // Desugars to let with lambdas - functions don't see each other
+        if (!args.isCons()) return error.InvalidLet;
+
+        const cons = args.toPtr(Cons);
+        const bindings_expr = cons.car;
+        const body_exprs = cons.cdr;
+
+        // Parse function definitions and create lambda bindings
+        var bindings = std.ArrayList(Ir.Binding){};
+        defer bindings.deinit(self.allocator);
+
+        var binding_list = bindings_expr;
+        while (binding_list.isCons()) {
+            const binding_cons = binding_list.toPtr(Cons);
+            const fdef = binding_cons.car;
+
+            // Each fdef is (fname (params) body...)
+            if (!fdef.isCons()) return error.InvalidLet;
+            const f = fdef.toPtr(Cons);
+
+            if (!f.car.isSymbol()) return error.InvalidLet;
+            const name_sym = f.car.toPtr(Symbol);
+            const name = name_sym.getName();
+
+            // Build lambda from rest: ((params) body...) -> compile as lambda
+            if (!f.cdr.isCons()) return error.InvalidLet;
+            const lambda_ir = try self.compileLambda(f.cdr, env);
+
+            bindings.append(self.allocator, .{ .name = name, .value = lambda_ir }) catch
+                return error.OutOfMemory;
+
+            binding_list = binding_cons.cdr;
+        }
+
+        // Create same-frame environment with bindings
+        var flet_env = Env.initLet(self.allocator, env);
+        defer flet_env.deinit();
+
+        for (bindings.items) |b| {
+            _ = flet_env.bind(b.name) catch return error.OutOfMemory;
+        }
+
+        // Compile body in new environment
+        const body_ir = try self.compileBodyWithTail(body_exprs, &flet_env, in_tail);
+
+        return self.builder.letExpr(bindings.items, body_ir) catch return error.OutOfMemory;
+    }
+
+    fn compileLabelsWithTail(self: *Compiler, args: Value, env: *const Env, in_tail: bool) CompileError!*Ir {
+        // (labels ((fname (args) body...) ...) body)
+        // Like letrec - functions can see each other and themselves
+        if (!args.isCons()) return error.InvalidLet;
+
+        const cons = args.toPtr(Cons);
+        const bindings_expr = cons.car;
+        const body_exprs = cons.cdr;
+
+        // First pass: pre-register all globals for mutual visibility
+        var names = std.ArrayList([]const u8){};
+        defer names.deinit(self.allocator);
+
+        var lambda_args = std.ArrayList(Value){};
+        defer lambda_args.deinit(self.allocator);
+
+        var indices = std.ArrayList(u16){};
+        defer indices.deinit(self.allocator);
+
+        var binding_list = bindings_expr;
+        while (binding_list.isCons()) {
+            const binding_cons = binding_list.toPtr(Cons);
+            const fdef = binding_cons.car;
+
+            // Each fdef is (fname (params) body...)
+            if (!fdef.isCons()) return error.InvalidLet;
+            const f = fdef.toPtr(Cons);
+
+            if (!f.car.isSymbol()) return error.InvalidLet;
+            const name_sym = f.car.toPtr(Symbol);
+            const name = name_sym.getName();
+
+            // Pre-register global for recursive visibility
+            const idx = self.globals.define(name) catch return error.OutOfMemory;
+
+            if (!f.cdr.isCons()) return error.InvalidLet;
+
+            names.append(self.allocator, name) catch return error.OutOfMemory;
+            lambda_args.append(self.allocator, f.cdr) catch return error.OutOfMemory;
+            indices.append(self.allocator, idx) catch return error.OutOfMemory;
+
+            binding_list = binding_cons.cdr;
+        }
+
+        // Second pass: compile lambdas and create defines
+        var exprs = std.ArrayList(*const Ir){};
+        defer exprs.deinit(self.allocator);
+
+        for (names.items, lambda_args.items, indices.items) |name, largs, idx| {
+            const lambda_ir = try self.compileLambda(largs, env);
+            const define_ir = self.builder.define(name, idx, lambda_ir) catch return error.OutOfMemory;
+            exprs.append(self.allocator, define_ir) catch return error.OutOfMemory;
+        }
+
+        // Compile body
         const body_ir = try self.compileBodyWithTail(body_exprs, env, in_tail);
         exprs.append(self.allocator, body_ir) catch return error.OutOfMemory;
 

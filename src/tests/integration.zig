@@ -1023,3 +1023,91 @@ test "defun return type cons" {
     const result = try repl.eval("(make-pair 1 2)");
     try testing.expect(result.isCons());
 }
+
+// ============================================================================
+// flet and labels tests
+// ============================================================================
+
+test "flet basic" {
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl = Repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+
+    // flet binds local functions
+    const result = try repl.eval(
+        \\(flet ((double (x) (* x 2))
+        \\       (triple (x) (* x 3)))
+        \\  (+ (double 5) (triple 4)))
+    );
+    try testing.expect(result.isFixnum());
+    try testing.expectEqual(@as(i64, 22), result.toFixnum()); // 10 + 12
+}
+
+test "flet shadowing" {
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl = Repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+
+    // Define a global function
+    _ = try repl.eval("(defun square (x) (* x x))");
+
+    // flet shadows the global
+    const result = try repl.eval(
+        \\(flet ((square (x) (+ x x)))
+        \\  (square 5))
+    );
+    try testing.expect(result.isFixnum());
+    try testing.expectEqual(@as(i64, 10), result.toFixnum()); // 5 + 5, not 25
+
+    // Global is still available outside
+    const global_result = try repl.eval("(square 5)");
+    try testing.expectEqual(@as(i64, 25), global_result.toFixnum());
+}
+
+test "labels recursive" {
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl = Repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+
+    // labels allows recursion
+    const result = try repl.eval(
+        \\(labels ((fact (n)
+        \\          (if (= n 0) 1 (* n (fact (- n 1))))))
+        \\  (fact 5))
+    );
+    try testing.expect(result.isFixnum());
+    try testing.expectEqual(@as(i64, 120), result.toFixnum());
+}
+
+test "labels mutual recursion" {
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl = Repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+
+    // labels with mutual recursion (even?/odd?)
+    const result = try repl.eval(
+        \\(labels ((is-even (n) (if (= n 0) t (is-odd (- n 1))))
+        \\         (is-odd (n) (if (= n 0) nil (is-even (- n 1)))))
+        \\  (cons (is-even 4) (is-odd 5)))
+    );
+    try testing.expect(result.isCons());
+    const cons = result.toPtr(@import("../runtime/objects.zig").Cons);
+    try testing.expect(!cons.car.isNil()); // is-even 4 = t
+    try testing.expect(!cons.cdr.isNil()); // is-odd 5 = t
+}
