@@ -519,3 +519,126 @@ test "eval defmacro unless" {
     try testing.expect(result.isFixnum());
     try testing.expectEqual(@as(i64, 99), result.toFixnum());
 }
+
+// ============================================================================
+// Type assertions: (the type expr)
+// ============================================================================
+
+test "the fixnum success" {
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    const result = try evalExpr(allocator, &heap, "(the fixnum 42)");
+    try testing.expect(result.isFixnum());
+    try testing.expectEqual(@as(i64, 42), result.toFixnum());
+}
+
+test "the fixnum failure" {
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    // String is not a fixnum
+    const err = evalExpr(allocator, &heap, "(the fixnum \"hello\")");
+    try testing.expectError(error.TypeMismatch, err);
+}
+
+test "the cons success" {
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    const result = try evalExpr(allocator, &heap, "(the cons (cons 1 2))");
+    try testing.expect(result.isCons());
+}
+
+test "the cons failure" {
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    // nil is not a cons
+    const err = evalExpr(allocator, &heap, "(the cons nil)");
+    try testing.expectError(error.TypeMismatch, err);
+}
+
+test "the symbol success" {
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    const result = try evalExpr(allocator, &heap, "(the symbol 'foo)");
+    try testing.expect(result.isSymbol());
+}
+
+test "the string success" {
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    const result = try evalExpr(allocator, &heap, "(the string \"hello\")");
+    try testing.expect(result.isString());
+}
+
+test "the non-nil success" {
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    const result = try evalExpr(allocator, &heap, "(the non-nil 42)");
+    try testing.expect(result.isFixnum());
+    try testing.expectEqual(@as(i64, 42), result.toFixnum());
+}
+
+test "the non-nil failure" {
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    const err = evalExpr(allocator, &heap, "(the non-nil nil)");
+    try testing.expectError(error.TypeMismatch, err);
+}
+
+test "the in function" {
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl = Repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+
+    // Define a function that asserts its argument is a fixnum
+    _ = try repl.eval("(defun double (x) (* 2 (the fixnum x)))");
+
+    // Valid call
+    const result = try repl.eval("(double 21)");
+    try testing.expect(result.isFixnum());
+    try testing.expectEqual(@as(i64, 42), result.toFixnum());
+}
+
+test "the in function failure" {
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl = Repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+
+    // Define a function that asserts its argument is a fixnum
+    _ = try repl.eval("(defun double (x) (* 2 (the fixnum x)))");
+
+    // Invalid call - string is not fixnum (REPL wraps as RuntimeError)
+    const err = repl.eval("(double \"hello\")");
+    try testing.expectError(error.RuntimeError, err);
+}

@@ -73,6 +73,9 @@ pub const Builtins = struct {
     defmacro: Value,
     macroexpand: Value,
 
+    // Type assertions
+    the: Value,
+
     /// Initialize all builtin symbols from heap
     pub fn init(heap: *Heap) ?Builtins {
         return .{
@@ -98,6 +101,7 @@ pub const Builtins = struct {
             .apply = heap.intern("apply") orelse return null,
             .defmacro = heap.intern("defmacro") orelse return null,
             .macroexpand = heap.intern("macroexpand") orelse return null,
+            .the = heap.intern("the") orelse return null,
         };
     }
 };
@@ -559,6 +563,7 @@ pub const Compiler = struct {
         @"while",
         define,
         defun,
+        the,
     };
 
     /// Comptime dispatch table for special forms
@@ -581,6 +586,7 @@ pub const Compiler = struct {
         .{ "while", .@"while" },
         .{ "define", .define },
         .{ "defun", .defun },
+        .{ "the", .the },
     });
 
     fn compileListWithTail(self: *Compiler, expr: Value, env: *const Env, in_tail: bool) CompileError!*Ir {
@@ -609,6 +615,7 @@ pub const Compiler = struct {
                 if (head.raw == b.@"while".raw) return self.compileWhile(tail, env);
                 if (head.raw == b.define.raw) return self.compileDefine(tail, env);
                 if (head.raw == b.defun.raw) return self.compileDefun(tail, env);
+                if (head.raw == b.the.raw) return self.compileThe(tail, env);
             } else {
                 // Fallback: string comparison via StaticStringMap
                 const sym = head.toPtr(Symbol);
@@ -635,6 +642,7 @@ pub const Compiler = struct {
                         .@"while" => self.compileWhile(tail, env),
                         .define => self.compileDefine(tail, env),
                         .defun => self.compileDefun(tail, env),
+                        .the => self.compileThe(tail, env),
                     };
                 }
             }
@@ -1344,6 +1352,55 @@ pub const Compiler = struct {
         const lambda_ir = try self.compileLambda(lambda_args, env);
 
         return self.builder.define(name, idx, lambda_ir) catch return error.OutOfMemory;
+    }
+
+    /// Compile type assertion: (the type expr)
+    /// Supported types: fixnum, cons, symbol, string, vector, closure, non-nil
+    fn compileThe(self: *Compiler, args: Value, env: *const Env) CompileError!*Ir {
+        // (the type expr)
+        if (!args.isCons()) return error.InvalidSyntax;
+
+        const cons1 = args.toPtr(Cons);
+        const type_spec = cons1.car;
+        const rest = cons1.cdr;
+
+        if (!rest.isCons()) return error.InvalidSyntax;
+        const cons2 = rest.toPtr(Cons);
+        const expr = cons2.car;
+
+        // Type must be a symbol
+        if (!type_spec.isSymbol()) return error.InvalidSyntax;
+        const type_sym = type_spec.toPtr(Symbol);
+        const type_name = type_sym.getName();
+
+        // Compile the expression
+        const expr_ir = try self.compile(expr, env);
+
+        // Map type name to assertion IR
+        if (std.mem.eql(u8, type_name, "fixnum")) {
+            return self.builder.assertFixnum(expr_ir) catch return error.OutOfMemory;
+        }
+        if (std.mem.eql(u8, type_name, "cons")) {
+            return self.builder.assertCons(expr_ir) catch return error.OutOfMemory;
+        }
+        if (std.mem.eql(u8, type_name, "symbol")) {
+            return self.builder.assertSymbol(expr_ir) catch return error.OutOfMemory;
+        }
+        if (std.mem.eql(u8, type_name, "string")) {
+            return self.builder.assertString(expr_ir) catch return error.OutOfMemory;
+        }
+        if (std.mem.eql(u8, type_name, "vector")) {
+            return self.builder.assertVector(expr_ir) catch return error.OutOfMemory;
+        }
+        if (std.mem.eql(u8, type_name, "closure")) {
+            return self.builder.assertClosure(expr_ir) catch return error.OutOfMemory;
+        }
+        if (std.mem.eql(u8, type_name, "non-nil")) {
+            return self.builder.assertNonNil(expr_ir) catch return error.OutOfMemory;
+        }
+
+        // Unknown type
+        return error.InvalidSyntax;
     }
 
     fn compileBody(self: *Compiler, exprs: Value, env: *const Env) CompileError!*Ir {
