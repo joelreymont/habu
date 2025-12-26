@@ -284,6 +284,8 @@ pub const Ir = union(enum) {
     read_char: void, // No operands - reads from stdin
     peek_char: void, // No operands - peeks at stdin
     unread_char: UnaryOp, // Push character back
+    boundp: UnaryOp, // Check if symbol has global binding
+    fboundp: UnaryOp, // Check if symbol has function binding
 
     // ========================================================================
     // Primitives - Vector operations
@@ -749,6 +751,18 @@ pub const IrBuilder = struct {
     pub fn unreadChar(self: IrBuilder, char: *const Ir) !*Ir {
         const node = try self.allocator.create(Ir);
         node.* = .{ .unread_char = .{ .operand = char } };
+        return node;
+    }
+
+    pub fn boundp(self: IrBuilder, sym: *const Ir) !*Ir {
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .boundp = .{ .operand = sym } };
+        return node;
+    }
+
+    pub fn fboundp(self: IrBuilder, sym: *const Ir) !*Ir {
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .fboundp = .{ .operand = sym } };
         return node;
     }
 

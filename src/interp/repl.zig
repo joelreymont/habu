@@ -61,7 +61,7 @@ pub const Repl = struct {
     macros: std.StringHashMap(Value),
 
     pub fn init(allocator: std.mem.Allocator, heap: *Heap, config: Config) Repl {
-        return .{
+        return Repl{
             .allocator = allocator,
             .heap = heap,
             .vm = Vm.init(allocator, heap),
@@ -70,6 +70,11 @@ pub const Repl = struct {
             .persistent_chunk_ptrs = std.ArrayList(*bytecode.Chunk){},
             .macros = std.StringHashMap(Value).init(allocator),
         };
+    }
+
+    /// Wire up VM to compiler's global environment. Must be called after init.
+    pub fn wireGlobalEnv(self: *Repl) void {
+        self.vm.setGlobalEnv(&self.compiler.globals);
     }
 
     pub fn deinit(self: *Repl) void {

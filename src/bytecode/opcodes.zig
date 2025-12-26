@@ -425,6 +425,14 @@ pub const Op = enum(u8) {
     /// ( char -- )
     unread_char = 0xAA,
 
+    /// Check if symbol has a global value binding
+    /// ( symbol -- t/nil )
+    boundp = 0xAB,
+
+    /// Check if symbol has a function binding (same as boundp in Habu)
+    /// ( symbol -- t/nil )
+    fboundp = 0xAC,
+
     // ========================================================================
     // Dynamic exception handling (catch/throw)
     // ========================================================================
@@ -491,7 +499,7 @@ pub const Op = enum(u8) {
             .apply, .pop_catch, .throw,
             .hash_get, .hash_set, .hash_rem, .hash_count, .hashtablep,
             .characterp, .char_code, .code_char, .char_eq, .char_lt, .char_gt,
-            .read_char, .peek_char, .unread_char,
+            .read_char, .peek_char, .unread_char, .boundp, .fboundp,
             => 0,
 
             // 1 byte operand

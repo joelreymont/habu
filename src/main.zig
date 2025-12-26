@@ -34,5 +34,6 @@ pub fn main() !void {
 
     // Run REPL
     var repl = Repl.init(allocator, &heap, .{});
+    repl.wireGlobalEnv();
     try repl.runWithFiles(fs.File.stdin(), stdout);
 }

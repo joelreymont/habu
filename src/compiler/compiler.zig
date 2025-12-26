@@ -11,6 +11,7 @@ pub const Compiler = compile.Compiler;
 pub const Env = compile.Env;
 pub const CompileError = compile.CompileError;
 pub const TypedIr = compile.TypedIr;
+pub const GlobalEnv = compile.GlobalEnv;
 
 test {
     _ = ir;

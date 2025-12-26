@@ -17,6 +17,8 @@ const arith = @import("../runtime/primitives/arith.zig");
 const io = @import("../runtime/primitives/io.zig");
 const stringPrims = @import("../runtime/primitives/string.zig");
 const HashTable = runtime.HashTable;
+const compiler = @import("../compiler/compiler.zig");
+const GlobalEnv = compiler.GlobalEnv;
 
 pub const VmError = error{
     StackOverflow,
@@ -121,6 +123,9 @@ pub const Vm = struct {
     /// Number of secondary values currently available
     secondary_values_count: usize,
 
+    /// Global environment for boundp/fboundp lookups
+    global_env: ?*const GlobalEnv,
+
     const STACK_SIZE = 1024;
     const MAX_SECONDARY_VALUES = 20;
     const MAX_FRAMES = 64;
@@ -151,6 +156,7 @@ pub const Vm = struct {
             .is_unwinding = false,
             .secondary_values = undefined,
             .secondary_values_count = 0,
+            .global_env = null,
         };
         // Initialize globals to nil
         for (&vm.globals) |*g| {
@@ -169,6 +175,11 @@ pub const Vm = struct {
     pub fn setChunkPool(self: *Vm, chunks: []*Chunk) void {
         self.chunk_pool = chunks;
         self.chunk_base = 0;
+    }
+
+    /// Set the global environment for boundp/fboundp lookups
+    pub fn setGlobalEnv(self: *Vm, env: *const GlobalEnv) void {
+        self.global_env = env;
     }
 
     /// Run a chunk to completion
@@ -889,6 +900,19 @@ pub const Vm = struct {
                     if (!val.isCharacter()) return error.TypeMismatch;
                     io.sysUnreadChar(@intCast(val.toCharacter()));
                     try self.push(Value.nil);
+                },
+
+                .boundp, .fboundp => {
+                    const val = try self.pop();
+                    if (!val.isSymbol()) return error.TypeMismatch;
+                    const sym = val.toPtr(Symbol);
+                    const name = sym.getName();
+                    // Check if symbol exists in global environment
+                    const is_bound = if (self.global_env) |env|
+                        env.lookup(name) != null
+                    else
+                        false;
+                    try self.push(if (is_bound) Value.t else Value.nil);
                 },
 
                 .halt => return error.Halt,
