@@ -152,3 +152,96 @@
       (and2 (equal? (car a) (car b))
             (equal? (cdr a) (cdr b)))
       (eq a b)))
+
+;;; CL-style reduce (alias for foldl)
+(defun reduce (f lst)
+  (if (null? lst)
+      nil
+      (if (null? (cdr lst))
+          (car lst)
+          (foldl f (car lst) (cdr lst)))))
+
+;;; every/some/notevery/notany
+(defun every (pred lst)
+  (if (null? lst)
+      t
+      (if (pred (car lst))
+          (every pred (cdr lst))
+          nil)))
+
+(defun some (pred lst)
+  (if (null? lst)
+      nil
+      (if (pred (car lst))
+          (car lst)
+          (some pred (cdr lst)))))
+
+(defun notevery (pred lst)
+  (not (every pred lst)))
+
+(defun notany (pred lst)
+  (not (some pred lst)))
+
+;;; find-if/remove-if/count-if
+(defun find-if (pred lst)
+  (if (null? lst)
+      nil
+      (if (pred (car lst))
+          (car lst)
+          (find-if pred (cdr lst)))))
+
+(defun remove-if (pred lst)
+  (if (null? lst)
+      nil
+      (if (pred (car lst))
+          (remove-if pred (cdr lst))
+          (cons (car lst) (remove-if pred (cdr lst))))))
+
+(defun remove-if-not (pred lst)
+  (filter pred lst))
+
+(defun count-if (pred lst)
+  (if (null? lst)
+      0
+      (if (pred (car lst))
+          (+ 1 (count-if pred (cdr lst)))
+          (count-if pred (cdr lst)))))
+
+;;; rassoc - reverse assoc (search by value)
+(defun rassoc (val alist)
+  (if (null? alist)
+      nil
+      (if (eq val (cdar alist))
+          (car alist)
+          (rassoc val (cdr alist)))))
+
+;;; butlast - all but last element
+(defun butlast (lst)
+  (if (null? lst)
+      nil
+      (if (null? (cdr lst))
+          nil
+          (cons (car lst) (butlast (cdr lst))))))
+
+;;; nthcdr - cdr n times
+(defun nthcdr (n lst)
+  (if (= n 0)
+      lst
+      (nthcdr (- n 1) (cdr lst))))
+
+;;; subseq - subsequence (simple version)
+(defun subseq (lst start end)
+  (if (= start end)
+      nil
+      (cons (nth start lst) (subseq lst (+ start 1) end))))
+
+;;; identity function
+(defun identity (x) x)
+
+;;; constantly - return a function that always returns the same value
+(defun constantly (val)
+  (lambda (x) val))
+
+;;; complement - return a function that returns the opposite of pred
+(defun complement (pred)
+  (lambda (x) (not (pred x))))
