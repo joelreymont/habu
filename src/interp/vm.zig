@@ -44,6 +44,18 @@ pub const CatchFrame = struct {
     catch_fp: usize,
 };
 
+/// Unwind frame for unwind-protect
+pub const UnwindFrame = struct {
+    /// Chunk containing the cleanup code
+    chunk: *const Chunk,
+    /// IP of cleanup code start
+    cleanup_ip: usize,
+    /// Stack pointer when push_unwind was executed
+    unwind_sp: usize,
+    /// Frame pointer when push_unwind was executed
+    unwind_fp: usize,
+};
+
 /// Call frame for function calls
 pub const Frame = struct {
     /// Return address (chunk + ip)
@@ -93,6 +105,16 @@ pub const Vm = struct {
     /// Catch stack pointer
     catch_sp: usize,
 
+    /// Unwind stack for unwind-protect
+    unwind_stack: [MAX_UNWINDS]UnwindFrame,
+    /// Unwind stack pointer
+    unwind_sp: usize,
+
+    /// Saved throw state for unwinding through unwind-protect
+    pending_throw_tag: Value,
+    pending_throw_value: Value,
+    is_unwinding: bool,
+
     /// Secondary values buffer for multiple-value-bind
     secondary_values: [MAX_SECONDARY_VALUES]Value,
     /// Number of secondary values currently available
@@ -103,6 +125,7 @@ pub const Vm = struct {
     const MAX_FRAMES = 64;
     const MAX_GLOBALS = 256;
     const MAX_CATCHES = 32;
+    const MAX_UNWINDS = 32;
 
     pub fn init(allocator: std.mem.Allocator, heap: *Heap) Vm {
         var vm = Vm{
@@ -120,6 +143,11 @@ pub const Vm = struct {
             .chunk_base = 0,
             .catch_stack = undefined,
             .catch_sp = 0,
+            .unwind_stack = undefined,
+            .unwind_sp = 0,
+            .pending_throw_tag = Value.nil,
+            .pending_throw_value = Value.nil,
+            .is_unwinding = false,
             .secondary_values = undefined,
             .secondary_values_count = 0,
         };
@@ -658,6 +686,36 @@ pub const Vm = struct {
                     try self.doThrow(tag, value);
                 },
 
+                .push_unwind => {
+                    const offset = self.readI16();
+                    const cleanup_ip = @as(usize, @intCast(@as(isize, @intCast(self.ip)) + offset));
+                    if (self.unwind_sp >= MAX_UNWINDS) return error.StackOverflow;
+                    self.unwind_stack[self.unwind_sp] = .{
+                        .chunk = self.chunk,
+                        .cleanup_ip = cleanup_ip,
+                        .unwind_sp = self.sp,
+                        .unwind_fp = self.fp,
+                    };
+                    self.unwind_sp += 1;
+                },
+
+                .pop_unwind => {
+                    _ = self.readI16(); // Skip unused operand
+                    // For normal exit, pop the unwind frame (doThrow already popped for throw case)
+                    if (!self.is_unwinding and self.unwind_sp > 0) {
+                        self.unwind_sp -= 1;
+                    }
+                    // If we're unwinding (cleanup ran due to throw), re-throw
+                    if (self.is_unwinding) {
+                        self.is_unwinding = false;
+                        const tag = self.pending_throw_tag;
+                        const value = self.pending_throw_value;
+                        self.pending_throw_tag = Value.nil;
+                        self.pending_throw_value = Value.nil;
+                        try self.doThrow(tag, value);
+                    }
+                },
+
                 // Multiple values
                 .values => {
                     const count = self.readU8();
@@ -771,7 +829,27 @@ pub const Vm = struct {
     // ========================================================================
 
     fn doThrow(self: *Vm, tag: Value, value: Value) VmError!void {
-        // Search for matching catch frame (from innermost to outermost)
+        // First, check if there's an unwind-protect that needs cleanup
+        // Unwind frames take precedence - we must run cleanup before continuing
+        if (self.unwind_sp > 0) {
+            // Pop the unwind frame
+            self.unwind_sp -= 1;
+            const unwind_frame = self.unwind_stack[self.unwind_sp];
+
+            // Save throw state for after cleanup
+            self.pending_throw_tag = tag;
+            self.pending_throw_value = value;
+            self.is_unwinding = true;
+
+            // Jump to cleanup code
+            self.chunk = unwind_frame.chunk;
+            self.ip = unwind_frame.cleanup_ip;
+            // Note: stack is NOT restored - cleanup runs with current stack
+            // pop_unwind will re-throw after cleanup completes
+            return;
+        }
+
+        // No unwind frames - search for matching catch frame
         while (self.catch_sp > 0) {
             self.catch_sp -= 1;
             const frame = self.catch_stack[self.catch_sp];

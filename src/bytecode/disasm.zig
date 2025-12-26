@@ -69,7 +69,7 @@ pub fn disassembleInstruction(chunk: *const Chunk, offset: usize, writer: anytyp
         },
 
         // 2 byte operand (i16 jump)
-        .jmp, .jmp_nil, .jmp_not_nil, .push_catch => {
+        .jmp, .jmp_nil, .jmp_not_nil, .push_catch, .push_unwind, .pop_unwind => {
             const displacement = chunk.readI16(offset + 1);
             const target = @as(i32, @intCast(offset)) + 3 + displacement;
             try writer.print("{s} {d} (-> {d})\n", .{ op.name(), displacement, target });

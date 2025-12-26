@@ -398,6 +398,15 @@ pub const Op = enum(u8) {
     /// ( tag value -- )
     throw = 0xB2,
 
+    /// Push unwind-protect frame (operand: i16 offset to cleanup code)
+    /// ( -- )
+    push_unwind = 0xB3,
+
+    /// Pop unwind-protect frame on normal exit, jump to cleanup
+    /// (operand: i16 offset past cleanup)
+    /// ( -- )
+    pop_unwind = 0xB4,
+
     // ========================================================================
     // Multiple values
     // ========================================================================
@@ -448,6 +457,7 @@ pub const Op = enum(u8) {
             .push_const, .load_global, .store_global,
             .make_vec, .jmp, .jmp_nil, .jmp_not_nil,
             .load_upvalue, .store_upvalue, .push_catch, .make_hash,
+            .push_unwind, .pop_unwind,
             => 2,
 
             // 3 byte operand

@@ -647,22 +647,41 @@ pub const Emitter = struct {
     }
 
     fn emitUnwindProtect(self: *Emitter, u: anytype) EmitError!void {
-        // Push unwind-protect onto control stack
+        // Bytecode layout:
+        // push_unwind -> cleanup_addr   ; saves cleanup IP for throw case
+        // <protected code>              ; leaves result on stack (or throws)
+        // cleanup_addr:                 ; falls through on normal exit
+        // <cleanup code>
+        // pop                           ; discard cleanup result
+        // pop_unwind                    ; remove frame, continue (or re-throw)
+
+        // Push unwind-protect onto control stack (for return-from handling)
         const entry = ControlEntry{
             .unwind_protect = .{ .cleanup = u.cleanup },
         };
         self.control_stack.append(self.allocator, entry) catch return error.OutOfMemory;
 
+        // Emit push_unwind with forward jump to cleanup code
+        const unwind_jump = try self.emitJump(.push_unwind);
+
         // Emit protected form
         try self.emit(u.protected);
 
-        // Pop unwind-protect
+        // Pop from control stack (compile-time only)
         _ = self.control_stack.pop();
 
-        // Emit cleanup (for normal exit)
-        // The cleanup result is discarded, protected value is already on stack
+        // Patch push_unwind to point here (cleanup start)
+        try self.patchJump(unwind_jump);
+
+        // Emit cleanup code (falls through for normal exit, jumped to for throw)
         try self.emit(u.cleanup);
-        try self.emitOp(.pop);
+        try self.emitOp(.pop); // Discard cleanup result
+
+        // pop_unwind signals end of cleanup region
+        // The operand is unused (0) - VM tracks state internally
+        try self.emitOp(.pop_unwind);
+        try self.code.append(self.allocator, 0);
+        try self.code.append(self.allocator, 0);
     }
 
     fn emitCatch(self: *Emitter, c: anytype) EmitError!void {
