@@ -37,6 +37,15 @@ pub const Parser = struct {
         // Symbol table is now owned by Heap - nothing to clean up here
     }
 
+    /// Get the current token's location for error reporting
+    pub fn getErrorLocation(self: *Parser) struct { line: u32, column: u32, text: []const u8 } {
+        return .{
+            .line = self.current.line,
+            .column = self.current.column,
+            .text = self.current.text,
+        };
+    }
+
     /// Parse one S-expression
     pub fn parse(self: *Parser) ParseError!Value {
         return self.parseExpr();

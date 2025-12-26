@@ -26,6 +26,7 @@ const Heap = runtime.Heap;
 const Cons = runtime.Cons;
 const Symbol = runtime.Symbol;
 const String = runtime.String;
+const diagnostic = @import("../diagnostic.zig");
 
 pub const ReplError = error{
     ParseError,
@@ -125,10 +126,8 @@ pub const Repl = struct {
                 continue;
             }
 
-            // Eval and print
-            self.evalPrint(trimmed, writer) catch |err| {
-                try writer.print("Error: {s}\n", .{@errorName(err)});
-            };
+            // Eval and print (evalPrint handles error formatting)
+            self.evalPrint(trimmed, writer) catch {};
         }
     }
 
@@ -140,11 +139,205 @@ pub const Repl = struct {
         // This version is for tests only - use runWithFiles for actual REPL
     }
 
-    /// Evaluate a string and print the result
+    /// Error information for better diagnostics
+    pub const ErrorInfo = struct {
+        kind: ErrorKind,
+        line: u32,
+        column: u32,
+        text: []const u8,
+    };
+
+    pub const ErrorKind = enum {
+        parse_unexpected_token,
+        parse_unterminated_list,
+        parse_invalid_number,
+        compile_unbound_variable,
+        compile_invalid_syntax,
+        runtime_type_mismatch,
+        other,
+    };
+
+    /// Evaluate a string and print the result, with nice error messages
     pub fn evalPrint(self: *Repl, source: []const u8, writer: anytype) !void {
-        const result = try self.eval(source);
+        var err_info: ?ErrorInfo = null;
+        const result = self.evalCapturingError(source, &err_info) catch |err| {
+            if (err_info) |info| {
+                try self.printDiagnostic(source, info, writer);
+            } else {
+                try writer.print("Error: {s}\n", .{@errorName(err)});
+            }
+            return err;
+        };
         try self.printValue(result, writer);
         try writer.writeAll("\n");
+    }
+
+    fn printDiagnostic(self: *Repl, source: []const u8, info: ErrorInfo, writer: anytype) !void {
+        _ = self;
+        // Format: error: message at line:column
+        const msg = switch (info.kind) {
+            .parse_unexpected_token => "unexpected token",
+            .parse_unterminated_list => "unterminated list",
+            .parse_invalid_number => "invalid number",
+            .compile_unbound_variable => "unbound variable",
+            .compile_invalid_syntax => "invalid syntax",
+            .runtime_type_mismatch => "type mismatch",
+            .other => "error",
+        };
+
+        try writer.print("\x1b[1;31merror\x1b[0m: {s}\n", .{msg});
+        try writer.print("  \x1b[1;34m-->\x1b[0m <repl>:{d}:{d}\n", .{ info.line, info.column });
+        try writer.print("   \x1b[1;34m|\x1b[0m\n", .{});
+
+        // Print the source line
+        var line_num: u32 = 1;
+        var line_start: usize = 0;
+        for (source, 0..) |c, i| {
+            if (line_num == info.line) {
+                // Find end of line
+                var line_end = i;
+                while (line_end < source.len and source[line_end] != '\n') line_end += 1;
+                try writer.print("\x1b[1;34m{d:>3} |\x1b[0m {s}\n", .{ line_num, source[line_start..line_end] });
+                break;
+            }
+            if (c == '\n') {
+                line_num += 1;
+                line_start = i + 1;
+            }
+        } else {
+            // Single line input
+            try writer.print("\x1b[1;34m  1 |\x1b[0m {s}\n", .{source});
+        }
+
+        // Print caret pointing to error
+        try writer.print("   \x1b[1;34m|\x1b[0m ", .{});
+        var col: u32 = 1;
+        while (col < info.column) : (col += 1) {
+            try writer.writeAll(" ");
+        }
+        try writer.print("\x1b[1;31m^\x1b[0m", .{});
+        if (info.text.len > 1) {
+            for (info.text[1..]) |_| {
+                try writer.print("\x1b[1;31m^\x1b[0m", .{});
+            }
+        }
+        try writer.print(" {s}\n", .{info.text});
+    }
+
+    /// Evaluate a string, capture error info for diagnostics
+    fn evalCapturingError(self: *Repl, source: []const u8, err_info: *?ErrorInfo) !Value {
+        // Use arena for IR nodes to simplify cleanup
+        var arena = std.heap.ArenaAllocator.init(self.allocator);
+        defer arena.deinit();
+        const arena_alloc = arena.allocator();
+
+        // Parse
+        var parser = Parser.init(arena_alloc, self.heap, source);
+        defer parser.deinit();
+
+        var expr = parser.parse() catch |err| {
+            const loc = parser.getErrorLocation();
+            err_info.* = .{
+                .kind = switch (err) {
+                    error.UnexpectedToken => .parse_unexpected_token,
+                    error.UnterminatedList => .parse_unterminated_list,
+                    error.InvalidNumber => .parse_invalid_number,
+                    else => .other,
+                },
+                .line = loc.line,
+                .column = loc.column,
+                .text = loc.text,
+            };
+            return error.ParseError;
+        };
+
+        // Check for defmacro
+        if (self.isDefmacro(expr)) {
+            return self.handleDefmacro(expr, arena_alloc);
+        }
+
+        // Expand macros before compilation
+        expr = self.expandMacros(expr) catch return error.CompileError;
+
+        // Compile - use persistent compiler for globals, but temp builder/allocator
+        // Save and restore since they use arena allocator
+        const saved_builder = self.compiler.builder;
+        const saved_allocator = self.compiler.allocator;
+        self.compiler.builder = IrBuilder.init(arena_alloc);
+        self.compiler.allocator = arena_alloc;
+
+        var env = Env.init(arena_alloc, null);
+        defer env.deinit();
+
+        const ir_node = self.compiler.compile(expr, &env) catch |err| {
+            self.compiler.builder = saved_builder;
+            self.compiler.allocator = saved_allocator;
+            err_info.* = .{
+                .kind = if (err == error.UnboundVariable) .compile_unbound_variable else .compile_invalid_syntax,
+                .line = 1,
+                .column = 1,
+                .text = "",
+            };
+            return error.CompileError;
+        };
+        self.compiler.builder = saved_builder;
+        self.compiler.allocator = saved_allocator;
+
+        // Emit bytecode (with heap for symbol interning)
+        var emitter = Emitter.initWithHeap(self.allocator, self.heap);
+
+        emitter.emit(ir_node) catch {
+            emitter.deinit();
+            return error.EmitError;
+        };
+        const chunk = emitter.finalize() catch {
+            emitter.deinit();
+            return error.EmitError;
+        };
+        const child_chunks = emitter.getChildChunks() catch {
+            self.allocator.free(chunk.code);
+            self.allocator.free(chunk.constants);
+            emitter.deinit();
+            return error.EmitError;
+        };
+
+        // Store child chunks persistently (closures need them beyond this eval)
+        for (child_chunks) |child| {
+            const chunk_ptr = self.allocator.create(bytecode.Chunk) catch {
+                self.allocator.free(chunk.code);
+                self.allocator.free(chunk.constants);
+                return error.EmitError;
+            };
+            chunk_ptr.* = child;
+
+            self.persistent_chunk_ptrs.append(self.allocator, chunk_ptr) catch {
+                self.allocator.destroy(chunk_ptr);
+                self.allocator.free(chunk.code);
+                self.allocator.free(chunk.constants);
+                return error.EmitError;
+            };
+        }
+
+        // Free child chunk array (but not the contents, now owned by persistent storage)
+        self.allocator.free(child_chunks);
+        emitter.deinit();
+
+        // Set chunk pool - VM uses absolute indices now
+        self.vm.setChunkPool(self.persistent_chunk_ptrs.items);
+        const result = self.vm.run(&chunk) catch {
+            self.allocator.free(chunk.code);
+            self.allocator.free(chunk.constants);
+            err_info.* = .{
+                .kind = .runtime_type_mismatch,
+                .line = 1,
+                .column = 1,
+                .text = "",
+            };
+            return error.RuntimeError;
+        };
+        self.allocator.free(chunk.code);
+        self.allocator.free(chunk.constants);
+        return result;
     }
 
     /// Evaluate a string, return the result
