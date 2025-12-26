@@ -151,19 +151,23 @@ pub const Repl = struct {
 
         const expr = parser.parse() catch return error.ParseError;
 
-        // Compile - use persistent compiler for globals, but temp builder
-        // Save and restore the builder since it uses arena allocator
+        // Compile - use persistent compiler for globals, but temp builder/allocator
+        // Save and restore since they use arena allocator
         const saved_builder = self.compiler.builder;
+        const saved_allocator = self.compiler.allocator;
         self.compiler.builder = IrBuilder.init(arena_alloc);
+        self.compiler.allocator = arena_alloc;
 
         var env = Env.init(arena_alloc, null);
         defer env.deinit();
 
         const ir_node = self.compiler.compile(expr, &env) catch |err| {
             self.compiler.builder = saved_builder;
+            self.compiler.allocator = saved_allocator;
             return if (err == error.UnboundVariable) error.CompileError else error.CompileError;
         };
         self.compiler.builder = saved_builder;
+        self.compiler.allocator = saved_allocator;
 
         // Emit bytecode
         var emitter = Emitter.init(self.allocator);
@@ -441,6 +445,7 @@ fn patchMakeClosureIndices(code: []u8, base: u16) void {
 /// Convenience function to evaluate a string
 pub fn evalString(allocator: std.mem.Allocator, heap: *Heap, source: []const u8) !Value {
     var repl = Repl.init(allocator, heap, .{});
+    defer repl.deinit();
     return repl.eval(source);
 }
 

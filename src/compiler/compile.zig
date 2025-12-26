@@ -476,6 +476,9 @@ pub const Compiler = struct {
             if (std.mem.eql(u8, name, "let")) {
                 return self.compileLetWithTail(tail, env, in_tail);
             }
+            if (std.mem.eql(u8, name, "letrec")) {
+                return self.compileLetrecWithTail(tail, env, in_tail);
+            }
             if (std.mem.eql(u8, name, "set!")) {
                 return self.compileSet(tail, env);
             }
@@ -742,6 +745,70 @@ pub const Compiler = struct {
         const body_ir = try self.compileBodyWithTail(body_exprs, &let_env, in_tail);
 
         return self.builder.letExpr(bindings.items, body_ir) catch return error.OutOfMemory;
+    }
+
+    fn compileLetrecWithTail(self: *Compiler, args: Value, env: *const Env, in_tail: bool) CompileError!*Ir {
+        // (letrec ((f (lambda ...)) (g (lambda ...))) body)
+        // Compile as: pre-register globals, define each, then body
+        // This allows recursive/mutual recursion via global references
+        if (!args.isCons()) return error.InvalidLet;
+
+        const cons = args.toPtr(Cons);
+        const bindings_expr = cons.car;
+        const body_exprs = cons.cdr;
+
+        // First pass: pre-register all globals (like defun does)
+        var names = std.ArrayList([]const u8){};
+        defer names.deinit(self.allocator);
+
+        var val_exprs = std.ArrayList(Value){};
+        defer val_exprs.deinit(self.allocator);
+
+        var indices = std.ArrayList(u16){};
+        defer indices.deinit(self.allocator);
+
+        var binding_list = bindings_expr;
+        while (binding_list.isCons()) {
+            const binding_cons = binding_list.toPtr(Cons);
+            const binding = binding_cons.car;
+
+            if (!binding.isCons()) return error.InvalidLet;
+            const b = binding.toPtr(Cons);
+
+            if (!b.car.isSymbol()) return error.InvalidLet;
+            const name_sym = b.car.toPtr(Symbol);
+            const name = name_sym.getName();
+
+            if (!b.cdr.isCons()) return error.InvalidLet;
+            const val_cons = b.cdr.toPtr(Cons);
+
+            // Pre-register global for recursive visibility
+            const idx = self.globals.define(name) catch return error.OutOfMemory;
+
+            names.append(self.allocator, name) catch return error.OutOfMemory;
+            val_exprs.append(self.allocator, val_cons.car) catch return error.OutOfMemory;
+            indices.append(self.allocator, idx) catch return error.OutOfMemory;
+
+            binding_list = binding_cons.cdr;
+        }
+
+        // Second pass: compile values and create defines
+        var exprs = std.ArrayList(*const Ir){};
+        defer exprs.deinit(self.allocator);
+
+        for (names.items, val_exprs.items, indices.items) |name, val_expr, idx| {
+            const val_ir = try self.compile(val_expr, env);
+            const define_ir = self.builder.define(name, idx, val_ir) catch return error.OutOfMemory;
+            exprs.append(self.allocator, define_ir) catch return error.OutOfMemory;
+        }
+
+        // Compile body (in tail position if letrec is)
+        const body_ir = try self.compileBodyWithTail(body_exprs, env, in_tail);
+        exprs.append(self.allocator, body_ir) catch return error.OutOfMemory;
+
+        // Return progn of defines + body
+        const items = self.allocator.dupe(*const Ir, exprs.items) catch return error.OutOfMemory;
+        return self.builder.progn(items) catch return error.OutOfMemory;
     }
 
     fn compileSet(self: *Compiler, args: Value, env: *const Env) CompileError!*Ir {

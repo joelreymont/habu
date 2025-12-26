@@ -410,3 +410,31 @@ test "eval defun recursive" {
     try testing.expect(result.isFixnum());
     try testing.expectEqual(@as(i64, 120), result.toFixnum());
 }
+
+test "eval letrec simple" {
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl = Repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+
+    const result = try repl.eval("(letrec ((x 5)) x)");
+    try testing.expect(result.isFixnum());
+    try testing.expectEqual(@as(i64, 5), result.toFixnum());
+}
+
+test "eval letrec recursive" {
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl = Repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+
+    const result = try repl.eval("(letrec ((fact (lambda (n) (if (= n 0) 1 (* n (fact (- n 1))))))) (fact 5))");
+    try testing.expect(result.isFixnum());
+    try testing.expectEqual(@as(i64, 120), result.toFixnum());
+}
