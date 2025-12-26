@@ -60,6 +60,22 @@
       nil
       (cons (f (car lst)) (map f (cdr lst)))))
 
+(defun mapcar (f lst)
+  (map f lst))
+
+(defun mapc (f lst)
+  (if (null? lst)
+      lst
+      (progn
+        (f (car lst))
+        (mapc f (cdr lst))
+        lst)))
+
+(defun maplist (f lst)
+  (if (null? lst)
+      nil
+      (cons (f lst) (maplist f (cdr lst)))))
+
 (defun filter (pred lst)
   (if (null? lst)
       nil
