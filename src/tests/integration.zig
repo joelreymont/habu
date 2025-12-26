@@ -911,6 +911,48 @@ test "typed lambda" {
     try testing.expectEqual(@as(i64, 42), result.toFixnum());
 }
 
+test "closure captures value" {
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl = Repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+
+    // make-adder captures n and returns a closure that adds n
+    _ = try repl.eval("(defun make-adder (n) (lambda (x) (+ x n)))");
+
+    // Create an adder that adds 10
+    _ = try repl.eval("(define add10 (make-adder 10))");
+
+    // Use the closure
+    const result = try repl.eval("(add10 32)");
+    try testing.expect(result.isFixnum());
+    try testing.expectEqual(@as(i64, 42), result.toFixnum());
+}
+
+test "closure captures multiple values" {
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    var repl = Repl.init(allocator, &heap, .{});
+    defer repl.deinit();
+
+    // Create a linear function y = ax + b
+    _ = try repl.eval("(defun make-linear (a b) (lambda (x) (+ (* a x) b)))");
+
+    // Create y = 2x + 5
+    _ = try repl.eval("(define f (make-linear 2 5))");
+
+    // f(10) = 2*10 + 5 = 25
+    const result = try repl.eval("(f 10)");
+    try testing.expect(result.isFixnum());
+    try testing.expectEqual(@as(i64, 25), result.toFixnum());
+}
+
 // ============================================================================
 // Return type declarations: (defun (name -> type) ...)
 // ============================================================================

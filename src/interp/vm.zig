@@ -183,11 +183,44 @@ pub const Vm = struct {
                         return error.InvalidConstant;
                     }
                 },
-                .load_upvalue, .store_upvalue => {
-                    // TODO: Implement nested closures
-                    _ = self.readU8();
-                    _ = self.readU8();
-                    try self.push(Value.nil);
+                .load_upvalue => {
+                    _ = self.readU8(); // depth (unused with flat closures)
+                    const index = self.readU8();
+                    // Get current frame's closure
+                    if (self.fp > 0) {
+                        if (self.frames[self.fp - 1].closure) |closure| {
+                            if (index < closure.num_captures) {
+                                try self.push(closure.getCapture(index));
+                            } else {
+                                return error.InvalidConstant;
+                            }
+                        } else {
+                            return error.TypeMismatch; // No closure in frame
+                        }
+                    } else {
+                        return error.TypeMismatch; // No frame
+                    }
+                },
+                .store_upvalue => {
+                    _ = self.readU8(); // depth (unused with flat closures)
+                    const index = self.readU8();
+                    const val = try self.pop();
+                    // Get current frame's closure
+                    if (self.fp > 0) {
+                        if (self.frames[self.fp - 1].closure) |closure| {
+                            if (index < closure.num_captures) {
+                                // Note: captures array is mutable
+                                const captures: [*]Value = @constCast(closure.captures);
+                                captures[index] = val;
+                            } else {
+                                return error.InvalidConstant;
+                            }
+                        } else {
+                            return error.TypeMismatch;
+                        }
+                    } else {
+                        return error.TypeMismatch;
+                    }
                 },
                 .load_global => {
                     const idx = self.readU16();
