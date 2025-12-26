@@ -475,10 +475,19 @@ pub const Vm = struct {
                     try self.push(Value.makeFixnum(@intCast(str.length)));
                 },
                 .str_concat => {
-                    // TODO: Implement string concatenation
-                    _ = try self.pop();
-                    _ = try self.pop();
-                    try self.push(Value.nil);
+                    const s2 = try self.pop();
+                    const s1 = try self.pop();
+                    if (!s1.isString() or !s2.isString()) return error.TypeMismatch;
+                    const str1 = s1.toPtr(runtime.String);
+                    const str2 = s2.toPtr(runtime.String);
+                    // Allocate new string with combined length
+                    const new_len = str1.length + str2.length;
+                    const result = self.heap.allocStringUninitialized(new_len) orelse return error.OutOfMemory;
+                    const result_str = result.toPtr(runtime.String);
+                    const dest = result_str.mutableBytes();
+                    @memcpy(dest[0..str1.length], str1.bytes());
+                    @memcpy(dest[str1.length..new_len], str2.bytes());
+                    try self.push(result);
                 },
 
                 // Control flow

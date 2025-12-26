@@ -215,6 +215,25 @@ pub const Heap = struct {
         return Value.makeString(str);
     }
 
+    /// Allocate an uninitialized string of given length
+    pub fn allocStringUninitialized(self: *Heap, len: usize) ?Value {
+        const aligned_len = std.mem.alignForward(usize, len, 8);
+        const total_size = @sizeOf(objects.String) + aligned_len;
+
+        const ptr = self.allocRaw(total_size) orelse return null;
+        const str: *objects.String = @ptrCast(@alignCast(ptr));
+
+        // Data follows immediately after header
+        const data_ptr: [*]u8 = @ptrCast(ptr + @sizeOf(objects.String));
+
+        str.* = .{
+            .length = len,
+            .data = data_ptr,
+        };
+
+        return Value.makeString(str);
+    }
+
     /// Allocate a closure
     pub fn allocClosure(self: *Heap, code: *const anyopaque, arity: u32, captures: []const Value) ?Value {
         const total_size = @sizeOf(objects.Closure) + captures.len * @sizeOf(Value);

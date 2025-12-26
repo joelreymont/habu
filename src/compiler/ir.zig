@@ -709,6 +709,12 @@ pub const IrBuilder = struct {
         return node;
     }
 
+    pub fn strConcat(self: IrBuilder, left: *const Ir, right: *const Ir) !*Ir {
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .str_concat = .{ .left = left, .right = right } };
+        return node;
+    }
+
     // I/O
     pub fn print(self: IrBuilder, operand: *const Ir) !*Ir {
         const node = try self.allocator.create(Ir);

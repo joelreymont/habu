@@ -2229,6 +2229,12 @@ pub const Compiler = struct {
         if (std.mem.eql(u8, name, "substring")) {
             return self.compileSubstring(args, env);
         }
+        if (std.mem.eql(u8, name, "subseq")) {
+            return self.compileSubseq(args, env);
+        }
+        if (std.mem.eql(u8, name, "concatenate")) {
+            return self.compileConcatenate(args, env);
+        }
 
         // I/O
         if (std.mem.eql(u8, name, "print")) {
@@ -2395,6 +2401,62 @@ pub const Compiler = struct {
         const node = self.allocator.create(Ir) catch return error.OutOfMemory;
         node.* = .{ .substring = .{ .str = str_ir, .start = start_ir, .end = end_ir } };
         return node;
+    }
+
+    fn compileSubseq(self: *Compiler, args: Value, env: *const Env) CompileError!*Ir {
+        // (subseq seq start &optional end)
+        // For now, just works like substring for strings
+        if (!args.isCons()) return error.InvalidSyntax;
+        const cons1 = args.toPtr(Cons);
+        const seq_ir = try self.compile(cons1.car, env);
+
+        if (!cons1.cdr.isCons()) return error.InvalidSyntax;
+        const cons2 = cons1.cdr.toPtr(Cons);
+        const start_ir = try self.compile(cons2.car, env);
+
+        // End is optional - if not provided, use string-length
+        const end_ir = if (cons2.cdr.isCons()) blk: {
+            const cons3 = cons2.cdr.toPtr(Cons);
+            break :blk try self.compile(cons3.car, env);
+        } else blk: {
+            // Use string-length as default end
+            break :blk self.builder.strLen(seq_ir) catch return error.OutOfMemory;
+        };
+
+        const node = self.allocator.create(Ir) catch return error.OutOfMemory;
+        node.* = .{ .substring = .{ .str = seq_ir, .start = start_ir, .end = end_ir } };
+        return node;
+    }
+
+    fn compileConcatenate(self: *Compiler, args: Value, env: *const Env) CompileError!*Ir {
+        // (concatenate 'string s1 s2 ...)
+        // For now, only supports 'string type
+        if (!args.isCons()) return error.InvalidSyntax;
+        const cons1 = args.toPtr(Cons);
+        // Skip the type argument (assume 'string)
+        _ = cons1.car;
+
+        // Get the sequences
+        var rest = cons1.cdr;
+        if (!rest.isCons()) {
+            // No sequences, return empty string
+            return self.builder.lit(Value.nil) catch return error.OutOfMemory;
+        }
+
+        // Compile first sequence
+        const first_cons = rest.toPtr(Cons);
+        var result_ir = try self.compile(first_cons.car, env);
+        rest = first_cons.cdr;
+
+        // Concatenate remaining sequences
+        while (rest.isCons()) {
+            const cons = rest.toPtr(Cons);
+            const next_ir = try self.compile(cons.car, env);
+            result_ir = self.builder.strConcat(result_ir, next_ir) catch return error.OutOfMemory;
+            rest = cons.cdr;
+        }
+
+        return result_ir;
     }
 
     fn compileFormat(self: *Compiler, args: Value, env: *const Env) CompileError!*Ir {
