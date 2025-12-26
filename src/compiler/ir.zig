@@ -333,6 +333,14 @@ pub const Ir = union(enum) {
     vec_len: UnaryOp,
 
     // ========================================================================
+    // Primitives - Box operations (mutable cells)
+    // ========================================================================
+
+    make_box: UnaryOp,
+    box_ref: UnaryOp,
+    box_set: BinaryOp,
+
+    // ========================================================================
     // Primitives - String operations
     // ========================================================================
 
@@ -431,7 +439,7 @@ pub const Ir = union(enum) {
             .not,
             .cons, .car, .cdr, .list,
             .consp, .symbolp, .numberp, .stringp, .vectorp, .closurep, .keywordp, .nilp,
-            .vec_new, .vec_ref, .vec_set, .vec_len,
+            .vec_new, .vec_ref, .vec_set, .vec_len, .make_box, .box_ref, .box_set,
             .str_ref, .str_len, .str_concat, .str_eq, .substring,
             .print, .random, .intern, .sym_name, .type_of,
             .assert_fixnum, .assert_cons, .assert_symbol, .assert_string,

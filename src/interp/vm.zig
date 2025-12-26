@@ -472,6 +472,32 @@ pub const Vm = struct {
                     try self.push(Value.makeFixnum(@intCast(vec.length)));
                 },
 
+                // Box operations (mutable cells for closures)
+                .make_box => {
+                    const val = try self.pop();
+                    // Allocate a 1-element vector as a box
+                    const box = self.heap.allocVector(1, 1) orelse return error.OutOfMemory;
+                    const vec = box.toPtr(runtime.Vector);
+                    vec.set(0, val);
+                    try self.push(box);
+                },
+                .box_ref => {
+                    const box = try self.pop();
+                    if (!box.isVector()) return error.TypeMismatch;
+                    const vec = box.toPtr(runtime.Vector);
+                    if (vec.length < 1) return error.TypeMismatch;
+                    try self.push(vec.get(0));
+                },
+                .box_set => {
+                    const val = try self.pop();
+                    const box = try self.pop();
+                    if (!box.isVector()) return error.TypeMismatch;
+                    const vec = box.toPtr(runtime.Vector);
+                    if (vec.length < 1) return error.TypeMismatch;
+                    vec.set(0, val);
+                    try self.push(val); // Return the value written
+                },
+
                 // String operations
                 .str_ref => {
                     const idx_val = try self.pop();

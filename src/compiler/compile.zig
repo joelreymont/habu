@@ -2356,6 +2356,17 @@ pub const Compiler = struct {
             return self.compileUnaryPrim(args, env, .vec_len);
         }
 
+        // Box operations (mutable cells)
+        if (std.mem.eql(u8, name, "make-box")) {
+            return self.compileUnaryPrim(args, env, .make_box);
+        }
+        if (std.mem.eql(u8, name, "box-ref") or std.mem.eql(u8, name, "unbox")) {
+            return self.compileUnaryPrim(args, env, .box_ref);
+        }
+        if (std.mem.eql(u8, name, "box-set!") or std.mem.eql(u8, name, "set-box!")) {
+            return self.compileBinaryPrim(args, env, .box_set);
+        }
+
         // String operations
         if (std.mem.eql(u8, name, "string-ref")) {
             return self.compileBinaryPrim(args, env, .str_ref);
@@ -2423,7 +2434,7 @@ pub const Compiler = struct {
         return error.InvalidSyntax; // Not a known primitive
     }
 
-    const PrimTag = enum { add, sub, mul, div, mod, eq, lt, gt, le, ge, num_eq, cons, car, cdr, consp, symbolp, numberp, stringp, vectorp, nilp, not, vec_ref, vec_len, str_ref, str_len, str_eq, print, random, intern, sym_name, type_of, characterp, floatp, char_code, code_char, char_eq, char_lt, char_gt, read_char, peek_char, read, unread_char, boundp, fboundp, symbol_value, symbol_function, typep, abs, zerop, plusp, minusp, evenp, oddp };
+    const PrimTag = enum { add, sub, mul, div, mod, eq, lt, gt, le, ge, num_eq, cons, car, cdr, consp, symbolp, numberp, stringp, vectorp, nilp, not, vec_ref, vec_len, make_box, box_ref, box_set, str_ref, str_len, str_eq, print, random, intern, sym_name, type_of, characterp, floatp, char_code, code_char, char_eq, char_lt, char_gt, read_char, peek_char, read, unread_char, boundp, fboundp, symbol_value, symbol_function, typep, abs, zerop, plusp, minusp, evenp, oddp };
 
     fn compileBinaryPrim(self: *Compiler, args: Value, env: *const Env, prim: PrimTag) CompileError!*Ir {
         if (!args.isCons()) return error.InvalidSyntax;
@@ -2464,6 +2475,11 @@ pub const Compiler = struct {
             },
             .cons => self.builder.cons(left, right),
             .vec_ref => self.builder.vecRef(left, right),
+            .box_set => blk: {
+                const node = self.allocator.create(Ir) catch return error.OutOfMemory;
+                node.* = .{ .box_set = .{ .left = left, .right = right } };
+                break :blk node;
+            },
             .str_ref => blk: {
                 const node = self.allocator.create(Ir) catch return error.OutOfMemory;
                 node.* = .{ .str_ref = .{ .left = left, .right = right } };
@@ -2496,6 +2512,16 @@ pub const Compiler = struct {
             .nilp => self.builder.nilp(operand),
             .not => self.builder.not(operand),
             .vec_len => self.builder.vecLen(operand),
+            .make_box => blk: {
+                const node = self.allocator.create(Ir) catch return error.OutOfMemory;
+                node.* = .{ .make_box = .{ .operand = operand } };
+                break :blk node;
+            },
+            .box_ref => blk: {
+                const node = self.allocator.create(Ir) catch return error.OutOfMemory;
+                node.* = .{ .box_ref = .{ .operand = operand } };
+                break :blk node;
+            },
             .str_len => self.builder.strLen(operand),
             .print => self.builder.print(operand),
             .stringp => blk: {

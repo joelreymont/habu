@@ -34,6 +34,7 @@ pub fn main() !void {
 
     // Run REPL
     var repl = Repl.init(allocator, &heap, .{});
+    defer repl.deinit();
     repl.wireGlobalEnv();
 
     // Load files from command line arguments

@@ -223,6 +223,18 @@ pub const Op = enum(u8) {
     /// ( vec -- len )
     vec_len = 0x63,
 
+    /// Create box (mutable cell for closure capture)
+    /// ( val -- box )
+    make_box = 0x64,
+
+    /// Read from box
+    /// ( box -- val )
+    box_ref = 0x65,
+
+    /// Write to box (returns the value written)
+    /// ( box val -- val )
+    box_set = 0x66,
+
     // ========================================================================
     // String operations
     // ========================================================================
@@ -545,7 +557,7 @@ pub const Op = enum(u8) {
             .eq, .lt, .gt, .le, .ge, .num_eq, .not,
             .cons, .car, .cdr, .append_lists,
             .consp, .symbolp, .numberp, .stringp, .vectorp, .closurep, .keywordp, .nilp,
-            .vec_ref, .vec_set, .vec_len,
+            .vec_ref, .vec_set, .vec_len, .make_box, .box_ref, .box_set,
             .str_ref, .str_len, .str_concat,
             .ret, .print, .random, .type_of, .intern, .substring, .sym_name, .str_eq, .halt,
             .check_fixnum, .check_cons, .check_symbol, .check_string,
