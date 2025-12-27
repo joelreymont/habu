@@ -352,3 +352,15 @@
 ;;; Arithmetic helpers
 (defun (inc -> fixnum) ((n fixnum)) (+ n 1))
 (defun (dec -> fixnum) ((n fixnum)) (- n 1))
+
+;;; Primitive wrappers (for passing to higher-order functions)
+;;; Use: (reduce #'plus '(1 2 3 4)) instead of (reduce + ...)
+(defun plus (a b) (+ a b))
+(defun minus (a b) (- a b))
+(defun times (a b) (* a b))
+(defun divide (a b) (/ a b))
+(defun less-than (a b) (< a b))
+(defun greater-than (a b) (> a b))
+(defun less-or-equal (a b) (<= a b))
+(defun greater-or-equal (a b) (>= a b))
+(defun equals (a b) (= a b))
