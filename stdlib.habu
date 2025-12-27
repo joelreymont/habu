@@ -84,6 +84,9 @@
       nil
       (cons (f (car lst)) (map f (cdr lst)))))
 
+; CL-compatible mapcar alias
+(defun mapcar (f lst) (map f lst))
+
 ; Filter (keeps elements where pred is true)
 (defun filter (pred lst)
   (if (null lst)

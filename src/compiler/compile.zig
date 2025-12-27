@@ -3266,18 +3266,18 @@ pub const Compiler = struct {
     }
 
     fn compileSethash(self: *Compiler, args: Value, env: *const Env) CompileError!*Ir {
-        // (sethash key hashtable value)
+        // (puthash key value hash-table) - CL convention
         if (!args.isCons()) return error.InvalidSyntax;
         const cons1 = args.toPtr(Cons);
         const key_ir = try self.compile(cons1.car, env);
 
         if (!cons1.cdr.isCons()) return error.InvalidSyntax;
         const cons2 = cons1.cdr.toPtr(Cons);
-        const table_ir = try self.compile(cons2.car, env);
+        const value_ir = try self.compile(cons2.car, env);
 
         if (!cons2.cdr.isCons()) return error.InvalidSyntax;
         const cons3 = cons2.cdr.toPtr(Cons);
-        const value_ir = try self.compile(cons3.car, env);
+        const table_ir = try self.compile(cons3.car, env);
 
         const node = self.allocator.create(Ir) catch return error.OutOfMemory;
         node.* = .{ .hash_set = .{ .table = table_ir, .key = key_ir, .value = value_ir } };
