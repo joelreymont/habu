@@ -19,6 +19,7 @@ pub const TokenKind = enum {
     backquote,
     comma,
     comma_at,
+    function_quote, // #'
 
     // Literals
     number,
@@ -260,7 +261,12 @@ pub const Lexer = struct {
             _ = self.advance(); // consume backslash
             return self.readCharacter();
         }
-        // Future: #( for vectors, #' for function, etc.
+        if (c == '\'') {
+            // Function quote: #'name
+            _ = self.advance(); // consume quote
+            return self.makeToken(.function_quote);
+        }
+        // Future: #( for vectors, etc.
         return self.makeToken(.err);
     }
 

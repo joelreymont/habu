@@ -66,6 +66,7 @@ pub const Parser = struct {
             .backquote => return self.parseQuote("quasiquote"),
             .comma => return self.parseQuote("unquote"),
             .comma_at => return self.parseQuote("unquote-splicing"),
+            .function_quote => return self.parseQuote("function"),
             .number => return self.parseNumber(),
             .float => return self.parseFloat(),
             .string => return self.parseString(),

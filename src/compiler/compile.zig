@@ -67,6 +67,7 @@ pub const Builtins = struct {
     quasiquote: Value,
     unquote: Value,
     @"unquote-splicing": Value,
+    function: Value,
 
     // Function application
     funcall: Value,
@@ -223,6 +224,7 @@ pub const Builtins = struct {
             .quasiquote = heap.intern("quasiquote") orelse return null,
             .unquote = heap.intern("unquote") orelse return null,
             .@"unquote-splicing" = heap.intern("unquote-splicing") orelse return null,
+            .function = heap.intern("function") orelse return null,
             .funcall = heap.intern("funcall") orelse return null,
             .apply = heap.intern("apply") orelse return null,
             .defmacro = heap.intern("defmacro") orelse return null,
@@ -876,6 +878,7 @@ pub const Compiler = struct {
         apply,
         @"set!",
         quote,
+        function,
         quasiquote,
         @"while",
         define,
@@ -911,6 +914,7 @@ pub const Compiler = struct {
         .{ "apply", .apply },
         .{ "set!", .@"set!" },
         .{ "quote", .quote },
+        .{ "function", .function },
         .{ "quasiquote", .quasiquote },
         .{ "while", .@"while" },
         .{ "define", .define },
@@ -964,6 +968,7 @@ pub const Compiler = struct {
                 if (head.raw == b.apply.raw) return self.compileApply(tail, env);
                 if (head.raw == b.@"set!".raw) return self.compileSet(tail, env);
                 if (head.raw == b.quote.raw) return self.compileQuote(tail);
+                if (head.raw == b.function.raw) return self.compileFunction(tail, env);
                 if (head.raw == b.quasiquote.raw) return self.compileQuasiquote(tail, env);
                 if (head.raw == b.@"while".raw) return self.compileWhile(tail, env);
                 if (head.raw == b.define.raw) return self.compileDefine(tail, env);
@@ -994,6 +999,7 @@ pub const Compiler = struct {
                         .apply => self.compileApply(tail, env),
                         .@"set!" => self.compileSet(tail, env),
                         .quote => self.compileQuote(tail),
+                        .function => self.compileFunction(tail, env),
                         .quasiquote => self.compileQuasiquote(tail, env),
                         .@"while" => self.compileWhile(tail, env),
                         .define => self.compileDefine(tail, env),
@@ -2097,6 +2103,36 @@ pub const Compiler = struct {
 
         // For other values, return as literal
         return self.builder.lit(quoted) catch return error.OutOfMemory;
+    }
+
+    /// Compile function special form: (function name) or (function (lambda ...))
+    /// #'name is reader syntax that expands to (function name)
+    fn compileFunction(self: *Compiler, args: Value, env: *const Env) CompileError!*Ir {
+        // (function expr)
+        if (!args.isCons()) return error.InvalidSyntax;
+
+        const cons = args.toPtr(Cons);
+        const func_spec = cons.car;
+
+        // (function symbol) - look up function binding as variable reference
+        if (func_spec.isSymbol()) {
+            // Compile symbol as a variable reference (will look up in env/globals)
+            return self.compile(func_spec, env);
+        }
+
+        // (function (lambda ...)) - compile the lambda
+        if (func_spec.isCons()) {
+            const inner = func_spec.toPtr(Cons);
+            if (inner.car.isSymbol()) {
+                if (self.builtins) |b| {
+                    if (inner.car.raw == b.lambda.raw or inner.car.raw == b.@"fn".raw) {
+                        return self.compileLambda(inner.cdr, env);
+                    }
+                }
+            }
+        }
+
+        return error.InvalidSyntax;
     }
 
     /// Compile quasiquote (backquote)
