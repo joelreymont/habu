@@ -1092,6 +1092,20 @@ pub const Vm = struct {
                     }
                 },
 
+                .read_from_string => {
+                    // Parse a string into a Lisp value
+                    const str_val = try self.pop();
+                    if (!str_val.isString()) return error.TypeMismatch;
+
+                    const str = str_val.toPtr(String);
+                    var parser = Parser.init(self.allocator, self.heap, str.bytes());
+                    const result = parser.parse() catch {
+                        try self.push(Value.nil);
+                        continue;
+                    };
+                    try self.push(result);
+                },
+
                 .unread_char => {
                     const val = try self.pop();
                     if (!val.isCharacter()) return error.TypeMismatch;

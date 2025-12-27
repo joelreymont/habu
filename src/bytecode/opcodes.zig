@@ -517,6 +517,10 @@ pub const Op = enum(u8) {
     /// ( filename -- result )
     load = 0xD7,
 
+    /// Read S-expression from string
+    /// ( string -- value )
+    read_from_string = 0xD8,
+
     // ========================================================================
     // Dynamic exception handling (catch/throw)
     // ========================================================================
@@ -596,7 +600,7 @@ pub const Op = enum(u8) {
             .read_char, .peek_char, .unread_char, .boundp, .fboundp,
             .symbol_value, .symbol_function, .typep,
             .abs, .zerop, .plusp, .minusp, .evenp, .oddp,
-            .mv_list, .read, .load,
+            .mv_list, .read, .load, .read_from_string,
             => 0,
 
             // 1 byte operand

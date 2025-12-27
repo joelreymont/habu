@@ -223,6 +223,7 @@ pub const Emitter = struct {
             .read_char => try self.emitOp(.read_char),
             .peek_char => try self.emitOp(.peek_char),
             .read => try self.emitOp(.read),
+            .read_from_string => |op| try self.emitUnaryOp(op.operand, .read_from_string),
             .load => |op| try self.emitUnaryOp(op.operand, .load),
             .unread_char => |op| try self.emitUnaryOp(op.operand, .unread_char),
             .boundp => |op| try self.emitUnaryOp(op.operand, .boundp),
