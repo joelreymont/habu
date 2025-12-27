@@ -481,6 +481,9 @@ pub const Emitter = struct {
         // Emit value first
         try self.emit(s.value);
 
+        // Dup value so setq returns it (store will pop one copy)
+        try self.emitOp(.dup);
+
         // Then store
         if (s.depth == 0) {
             if (s.index > 255) return error.TooManyLocals;
