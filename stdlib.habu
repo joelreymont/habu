@@ -33,6 +33,23 @@
 (defun max2 (a b) (if (> a b) a b))
 (defun min2 (a b) (if (< a b) a b))
 
+; Equality - eql is same as eq for now (no floats with identity)
+(defun eql (a b) (eq a b))
+
+; Structural equality
+(defun equal (a b)
+  (cond
+    ((eq a b) t)
+    ((and (consp a) (consp b))
+     (and (equal (car a) (car b))
+          (equal (cdr a) (cdr b))))
+    ((and (stringp a) (stringp b))
+     (string= a b))
+    (t nil)))
+
+; Error signaling via throw
+(defun error (msg) (throw (quote error) msg))
+
 ; List operations
 (defun null (x) (eq x nil))
 (defun atom (x) (not (consp x)))
