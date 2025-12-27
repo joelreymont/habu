@@ -56,6 +56,7 @@ pub const Builtins = struct {
     define: Value,
     defun: Value,
     @"set!": Value,
+    setq: Value,
 
     // Sequencing
     progn: Value,
@@ -217,6 +218,7 @@ pub const Builtins = struct {
             .define = heap.intern("define") orelse return null,
             .defun = heap.intern("defun") orelse return null,
             .@"set!" = heap.intern("set!") orelse return null,
+            .setq = heap.intern("setq") orelse return null,
             .progn = heap.intern("progn") orelse return null,
             .begin = heap.intern("begin") orelse return null,
             .@"while" = heap.intern("while") orelse return null,
@@ -877,6 +879,7 @@ pub const Compiler = struct {
         funcall,
         apply,
         @"set!",
+        setq,
         quote,
         function,
         quasiquote,
@@ -913,6 +916,7 @@ pub const Compiler = struct {
         .{ "funcall", .funcall },
         .{ "apply", .apply },
         .{ "set!", .@"set!" },
+        .{ "setq", .setq },
         .{ "quote", .quote },
         .{ "function", .function },
         .{ "quasiquote", .quasiquote },
@@ -966,7 +970,7 @@ pub const Compiler = struct {
                 if (head.raw == b.@"or".raw) return self.compileOr(tail, env);
                 if (head.raw == b.funcall.raw) return self.compileFuncall(tail, env);
                 if (head.raw == b.apply.raw) return self.compileApply(tail, env);
-                if (head.raw == b.@"set!".raw) return self.compileSet(tail, env);
+                if (head.raw == b.@"set!".raw or head.raw == b.setq.raw) return self.compileSet(tail, env);
                 if (head.raw == b.quote.raw) return self.compileQuote(tail);
                 if (head.raw == b.function.raw) return self.compileFunction(tail, env);
                 if (head.raw == b.quasiquote.raw) return self.compileQuasiquote(tail, env);
@@ -997,7 +1001,7 @@ pub const Compiler = struct {
                         .@"or" => self.compileOr(tail, env),
                         .funcall => self.compileFuncall(tail, env),
                         .apply => self.compileApply(tail, env),
-                        .@"set!" => self.compileSet(tail, env),
+                        .@"set!", .setq => self.compileSet(tail, env),
                         .quote => self.compileQuote(tail),
                         .function => self.compileFunction(tail, env),
                         .quasiquote => self.compileQuasiquote(tail, env),
@@ -2057,7 +2061,7 @@ pub const Compiler = struct {
     }
 
     fn compileSet(self: *Compiler, args: Value, env: *const Env) CompileError!*Ir {
-        // (set! var value)
+        // (set! var value) or (setq var value)
         if (!args.isCons()) return error.InvalidSet;
 
         const cons1 = args.toPtr(Cons);
@@ -2069,6 +2073,7 @@ pub const Compiler = struct {
         const cons2 = cons1.cdr.toPtr(Cons);
         const val_ir = try self.compile(cons2.car, env);
 
+        // First check local environment
         if (env.lookup(name)) |binding| {
             // If this variable is boxed, use box-set! instead
             if (self.boxed_vars) |bv| {
@@ -2082,6 +2087,13 @@ pub const Compiler = struct {
                 }
             }
             return self.builder.set(name, binding.depth, binding.index, val_ir) catch
+                return error.OutOfMemory;
+        }
+
+        // Check globals - if defined, use define to update
+        if (self.globals.lookup(name)) |_| {
+            // Re-define the global with the new value
+            return self.builder.define(name, self.globals.lookup(name).?, val_ir) catch
                 return error.OutOfMemory;
         }
 
