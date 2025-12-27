@@ -311,6 +311,7 @@ pub const Ir = union(enum) {
     unread_char: UnaryOp, // Push character back
     eval: UnaryOp, // Evaluate expression at runtime
     gensym: void, // Generate unique symbol
+    macroexpand: UnaryOp, // Expand macros in expression
     boundp: UnaryOp, // Check if symbol has global binding
     fboundp: UnaryOp, // Check if symbol has function binding
     symbol_value: UnaryOp, // Get symbol's global value
@@ -850,6 +851,12 @@ pub const IrBuilder = struct {
     pub fn gensym(self: IrBuilder) !*Ir {
         const node = try self.allocator.create(Ir);
         node.* = .{ .gensym = {} };
+        return node;
+    }
+
+    pub fn macroexpand(self: IrBuilder, expr: *const Ir) !*Ir {
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .macroexpand = .{ .operand = expr } };
         return node;
     }
 

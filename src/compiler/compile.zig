@@ -2850,6 +2850,7 @@ pub const Compiler = struct {
         if (s == b.@"unread-char".raw) return self.compileUnaryPrim(args, env, .unread_char);
         if (s == b.eval.raw) return self.compileUnaryPrim(args, env, .eval);
         if (s == b.gensym.raw) return self.compileNullaryPrim(.gensym);
+        if (s == b.macroexpand.raw) return self.compileUnaryPrim(args, env, .macroexpand);
 
         // Symbol operations
         if (s == b.boundp.raw) return self.compileUnaryPrim(args, env, .boundp);
@@ -2899,7 +2900,7 @@ pub const Compiler = struct {
         return error.InvalidSyntax; // Not a known primitive
     }
 
-    const PrimTag = enum { add, sub, mul, div, mod, eq, lt, gt, le, ge, num_eq, cons, car, cdr, append, length, reverse, nth, nthcdr, last, member, consp, symbolp, numberp, stringp, vectorp, nilp, not, vec_ref, vec_len, make_box, box_ref, box_set, str_ref, str_len, str_eq, str_concat, print, random, intern, sym_name, type_of, characterp, floatp, char_code, code_char, char_eq, char_lt, char_gt, read_char, peek_char, read, read_from_string, load, unread_char, eval, gensym, boundp, fboundp, symbol_value, symbol_function, typep, abs, zerop, plusp, minusp, evenp, oddp };
+    const PrimTag = enum { add, sub, mul, div, mod, eq, lt, gt, le, ge, num_eq, cons, car, cdr, append, length, reverse, nth, nthcdr, last, member, consp, symbolp, numberp, stringp, vectorp, nilp, not, vec_ref, vec_len, make_box, box_ref, box_set, str_ref, str_len, str_eq, str_concat, print, random, intern, sym_name, type_of, characterp, floatp, char_code, code_char, char_eq, char_lt, char_gt, read_char, peek_char, read, read_from_string, load, unread_char, eval, gensym, macroexpand, boundp, fboundp, symbol_value, symbol_function, typep, abs, zerop, plusp, minusp, evenp, oddp };
 
     /// Compile variadic arithmetic: +, -, *, /
     /// identity: for + (0), * (1). null means no identity (- and / need args)
@@ -3094,6 +3095,7 @@ pub const Compiler = struct {
             .load => self.builder.load(operand),
             .read_from_string => self.builder.readFromString(operand),
             .eval => self.builder.eval(operand),
+            .macroexpand => self.builder.macroexpand(operand),
             .boundp => self.builder.boundp(operand),
             .fboundp => self.builder.fboundp(operand),
             .symbol_value => self.builder.symbolValue(operand),

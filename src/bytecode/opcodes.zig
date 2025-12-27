@@ -529,6 +529,10 @@ pub const Op = enum(u8) {
     /// ( -- symbol )
     gensym = 0xDA,
 
+    /// Expand macros in expression
+    /// ( expr -- expanded )
+    macroexpand = 0xDB,
+
     // ========================================================================
     // Dynamic exception handling (catch/throw)
     // ========================================================================
@@ -608,7 +612,7 @@ pub const Op = enum(u8) {
             .read_char, .peek_char, .unread_char, .boundp, .fboundp,
             .symbol_value, .symbol_function, .typep,
             .abs, .zerop, .plusp, .minusp, .evenp, .oddp,
-            .mv_list, .read, .load, .read_from_string, .eval, .gensym,
+            .mv_list, .read, .load, .read_from_string, .eval, .gensym, .macroexpand,
             => 0,
 
             // 1 byte operand

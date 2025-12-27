@@ -85,6 +85,8 @@ pub const Repl = struct {
         self.vm.setLoadCallback(&loadCallback, @ptrCast(self));
         // Set up eval callback
         self.vm.setEvalCallback(&evalCallback, @ptrCast(self));
+        // Set up macroexpand callback
+        self.vm.setMacroexpandCallback(&macroexpandCallback, @ptrCast(self));
     }
 
     /// Callback for (load "filename") from VM
@@ -99,6 +101,14 @@ pub const Repl = struct {
     fn evalCallback(expr: Value, context: *anyopaque) vm_mod.VmError!Value {
         const self: *Repl = @ptrCast(@alignCast(context));
         return self.evalExpression(expr) catch {
+            return vm_mod.VmError.InvalidArgument;
+        };
+    }
+
+    /// Callback for (macroexpand expr) from VM
+    fn macroexpandCallback(expr: Value, context: *anyopaque) vm_mod.VmError!Value {
+        const self: *Repl = @ptrCast(@alignCast(context));
+        return self.expandMacros(expr) catch {
             return vm_mod.VmError.InvalidArgument;
         };
     }
@@ -173,6 +183,7 @@ pub const Repl = struct {
         nested_vm.setGlobalEnv(&self.compiler.globals);
         nested_vm.setLoadCallback(&loadCallback, @ptrCast(self));
         nested_vm.setEvalCallback(&evalCallback, @ptrCast(self));
+        nested_vm.setMacroexpandCallback(&macroexpandCallback, @ptrCast(self));
 
         // Copy globals from main VM
         for (self.vm.globals, 0..) |g, i| {
@@ -1278,8 +1289,21 @@ pub const Repl = struct {
             .name = "<macro-call>",
         };
 
-        self.vm.setChunkPool(self.persistent_chunk_ptrs.items);
-        return self.vm.run(&chunk) catch return error.RuntimeError;
+        // Use a separate VM to avoid corrupting the main VM state
+        var nested_vm = Vm.init(self.allocator, self.heap);
+        nested_vm.setGlobalEnv(&self.compiler.globals);
+        nested_vm.setLoadCallback(&loadCallback, @ptrCast(self));
+        nested_vm.setEvalCallback(&evalCallback, @ptrCast(self));
+        nested_vm.setMacroexpandCallback(&macroexpandCallback, @ptrCast(self));
+
+        // Copy globals from main VM
+        for (self.vm.globals, 0..) |g, i| {
+            nested_vm.globals[i] = g;
+        }
+        nested_vm.num_globals = self.vm.num_globals;
+
+        nested_vm.setChunkPool(self.persistent_chunk_ptrs.items);
+        return nested_vm.run(&chunk) catch return error.RuntimeError;
     }
 };
 

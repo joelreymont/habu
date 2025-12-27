@@ -136,6 +136,10 @@ pub const Vm = struct {
     eval_callback: ?*const fn (Value, *anyopaque) VmError!Value,
     eval_context: ?*anyopaque,
 
+    /// Callback for (macroexpand expr) - set by REPL
+    macroexpand_callback: ?*const fn (Value, *anyopaque) VmError!Value,
+    macroexpand_context: ?*anyopaque,
+
     /// Counter for gensym
     gensym_counter: u64,
 
@@ -174,6 +178,8 @@ pub const Vm = struct {
             .load_context = null,
             .eval_callback = null,
             .eval_context = null,
+            .macroexpand_callback = null,
+            .macroexpand_context = null,
             .gensym_counter = 0,
         };
         // Initialize globals to nil
@@ -210,6 +216,12 @@ pub const Vm = struct {
     pub fn setEvalCallback(self: *Vm, callback: *const fn (Value, *anyopaque) VmError!Value, context: *anyopaque) void {
         self.eval_callback = callback;
         self.eval_context = context;
+    }
+
+    /// Set the macroexpand callback for (macroexpand expr)
+    pub fn setMacroexpandCallback(self: *Vm, callback: *const fn (Value, *anyopaque) VmError!Value, context: *anyopaque) void {
+        self.macroexpand_callback = callback;
+        self.macroexpand_context = context;
     }
 
     /// Run a chunk to completion
@@ -1146,6 +1158,20 @@ pub const Vm = struct {
                     self.gensym_counter += 1;
                     const sym = self.heap.allocSymbol(name) orelse return error.OutOfMemory;
                     try self.push(sym);
+                },
+
+                .macroexpand => {
+                    // Expand macros in expression
+                    const expr = try self.pop();
+
+                    // Call the macroexpand callback if set
+                    if (self.macroexpand_callback) |callback| {
+                        const result = try callback(expr, self.macroexpand_context.?);
+                        try self.push(result);
+                    } else {
+                        // No callback set - return the expression unchanged
+                        try self.push(expr);
+                    }
                 },
 
                 .unread_char => {
