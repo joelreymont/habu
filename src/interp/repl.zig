@@ -27,6 +27,8 @@ const Cons = runtime.Cons;
 const Symbol = runtime.Symbol;
 const String = runtime.String;
 const diagnostic = @import("../diagnostic.zig");
+const lineedit = @import("lineedit.zig");
+const LineEditor = lineedit.LineEditor;
 
 pub const ReplError = error{
     ParseError,
@@ -60,6 +62,8 @@ pub const Repl = struct {
     persistent_chunk_ptrs: std.ArrayList(*bytecode.Chunk),
     /// Macro definitions: name -> closure
     macros: std.StringHashMap(Value),
+    /// Line editor for interactive input
+    line_editor: LineEditor,
 
     pub fn init(allocator: std.mem.Allocator, heap: *Heap, config: Config) Repl {
         return Repl{
@@ -70,6 +74,7 @@ pub const Repl = struct {
             .compiler = Compiler.initWithHeap(allocator, heap),
             .persistent_chunk_ptrs = std.ArrayList(*bytecode.Chunk){},
             .macros = std.StringHashMap(Value).init(allocator),
+            .line_editor = LineEditor.init(allocator),
         };
     }
 
@@ -79,6 +84,7 @@ pub const Repl = struct {
     }
 
     pub fn deinit(self: *Repl) void {
+        self.line_editor.deinit();
         self.compiler.deinit();
         for (self.persistent_chunk_ptrs.items) |chunk_ptr| {
             self.allocator.free(chunk_ptr.code);
@@ -91,6 +97,8 @@ pub const Repl = struct {
 
     /// Run the REPL loop with File-based I/O
     pub fn runWithFiles(self: *Repl, stdin: std.fs.File, stdout: std.fs.File) !void {
+        _ = stdin; // Line editor reads directly from stdin
+
         var out_buf: [4096]u8 = undefined;
         var out_writer = stdout.writer(&out_buf);
         const writer = &out_writer.interface;
@@ -100,31 +108,24 @@ pub const Repl = struct {
         defer input_buf.deinit(self.allocator);
 
         while (true) {
-            // Print appropriate prompt
+            // Get appropriate prompt
             const prompt = if (input_buf.items.len == 0) self.config.prompt else self.config.cont_prompt;
-            try writer.writeAll(prompt);
-            try writer.flush();
 
-            // Read line manually
-            var line_buf: [4096]u8 = undefined;
-            var i: usize = 0;
-            while (i < line_buf.len) {
-                var byte_buf: [1]u8 = undefined;
-                const n = stdin.read(&byte_buf) catch break;
-                if (n == 0) {
-                    // EOF - try to eval what we have
-                    if (input_buf.items.len > 0) {
-                        self.evalPrint(input_buf.items, writer) catch {};
-                        input_buf.clearRetainingCapacity();
-                    }
-                    return;
+            // Read line with editing
+            const line = self.line_editor.readline(prompt) catch {
+                // Error reading - try to eval what we have and exit
+                if (input_buf.items.len > 0) {
+                    self.evalPrint(input_buf.items, writer) catch {};
                 }
-                if (byte_buf[0] == '\n') break;
-                line_buf[i] = byte_buf[0];
-                i += 1;
-            }
+                return;
+            } orelse {
+                // EOF (Ctrl-D on empty line)
+                if (input_buf.items.len > 0) {
+                    self.evalPrint(input_buf.items, writer) catch {};
+                }
+                return;
+            };
 
-            const line = line_buf[0..i];
             const trimmed = std.mem.trim(u8, line, " \t\r\n");
 
             // Empty line on fresh input: skip
@@ -133,6 +134,7 @@ pub const Repl = struct {
             // Handle commands only on fresh input
             if (input_buf.items.len == 0 and trimmed.len > 0 and trimmed[0] == ',') {
                 try self.handleCommand(trimmed, writer);
+                try writer.flush();
                 continue;
             }
 
@@ -147,6 +149,7 @@ pub const Repl = struct {
             if (balance < 0) {
                 // Too many closing parens - error
                 try writer.writeAll("\x1b[1;31merror\x1b[0m: unexpected ')'\n");
+                try writer.flush();
                 input_buf.clearRetainingCapacity();
                 continue;
             }
@@ -159,6 +162,7 @@ pub const Repl = struct {
             const trimmed_input = std.mem.trim(u8, input_buf.items, " \t\r\n");
             if (trimmed_input.len > 0) {
                 self.evalPrint(trimmed_input, writer) catch {};
+                try writer.flush();
             }
             input_buf.clearRetainingCapacity();
         }

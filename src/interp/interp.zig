@@ -11,7 +11,11 @@ pub const repl = @import("repl.zig");
 pub const Repl = repl.Repl;
 pub const evalString = repl.evalString;
 
+pub const lineedit = @import("lineedit.zig");
+pub const LineEditor = lineedit.LineEditor;
+
 test {
     _ = vm;
     _ = repl;
+    _ = lineedit;
 }
