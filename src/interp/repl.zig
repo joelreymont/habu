@@ -365,7 +365,8 @@ pub const Repl = struct {
             return error.OutOfMemory;
         };
 
-        // Store chunks persistently (need to allocate pointers)
+        // Store chunks persistently and patch indices
+        const chunk_base: u16 = @intCast(self.persistent_chunk_ptrs.items.len);
         for (child_chunks) |child_chunk| {
             const chunk_ptr = self.allocator.create(bytecode.Chunk) catch {
                 self.allocator.free(chunk.code);
@@ -373,6 +374,7 @@ pub const Repl = struct {
                 return error.OutOfMemory;
             };
             chunk_ptr.* = child_chunk;
+            patchMakeClosureIndices(chunk_ptr.code, chunk_base);
             self.persistent_chunk_ptrs.append(self.allocator, chunk_ptr) catch {
                 self.allocator.destroy(chunk_ptr);
                 self.allocator.free(chunk.code);
@@ -381,6 +383,7 @@ pub const Repl = struct {
             };
         }
         self.allocator.free(child_chunks);
+        patchMakeClosureIndices(chunk.code, chunk_base);
 
         // Set chunk pool and run
         vm.setChunkPool(self.persistent_chunk_ptrs.items);
