@@ -364,3 +364,60 @@
 (defun less-or-equal (a b) (<= a b))
 (defun greater-or-equal (a b) (>= a b))
 (defun equals (a b) (= a b))
+
+;;; zip - combine two lists into list of pairs
+(defun zip (lst1 lst2)
+  (if (or2 (null? lst1) (null? lst2))
+      nil
+      (cons (cons (car lst1) (car lst2))
+            (zip (cdr lst1) (cdr lst2)))))
+
+;;; zip-with - combine two lists using function
+(defun zip-with (f lst1 lst2)
+  (if (or2 (null? lst1) (null? lst2))
+      nil
+      (cons (funcall f (car lst1) (car lst2))
+            (zip-with f (cdr lst1) (cdr lst2)))))
+
+;;; partition - split list by predicate into (passing . failing)
+(defun partition (pred lst)
+  (if (null? lst)
+      (cons nil nil)
+      (let ((rest (partition pred (cdr lst))))
+        (if (funcall pred (car lst))
+            (cons (cons (car lst) (car rest)) (cdr rest))
+            (cons (car rest) (cons (car lst) (cdr rest)))))))
+
+;;; take-while - take elements while predicate holds
+(defun take-while (pred lst)
+  (if (null? lst)
+      nil
+      (if (funcall pred (car lst))
+          (cons (car lst) (take-while pred (cdr lst)))
+          nil)))
+
+;;; drop-while - drop elements while predicate holds
+(defun drop-while (pred lst)
+  (if (null? lst)
+      nil
+      (if (funcall pred (car lst))
+          (drop-while pred (cdr lst))
+          lst)))
+
+;;; assoc-update - add elem to list associated with key
+(defun assoc-update (key elem alist)
+  (if (null? alist)
+      (list1 (cons key (list1 elem)))
+      (if (eq key (caar alist))
+          (cons (cons key (cons elem (cdar alist))) (cdr alist))
+          (cons (car alist) (assoc-update key elem (cdr alist))))))
+
+;;; group-by-helper - helper for group-by
+(defun group-by-helper (key-fn groups elem)
+  (assoc-update (funcall key-fn elem) elem groups))
+
+;;; group-by - group elements by key function
+(defun group-by (key-fn lst)
+  (foldl (lambda (groups elem) (group-by-helper key-fn groups elem))
+         nil
+         lst))
