@@ -8,6 +8,26 @@
 (defmacro unless (test . body)
   `(if ,test nil (progn ,@body)))
 
+;;; Mutation macros
+(defmacro incf (place . delta)
+  (if delta
+      `(setq ,place (+ ,place ,(car delta)))
+      `(setq ,place (+ ,place 1))))
+
+(defmacro decf (place . delta)
+  (if delta
+      `(setq ,place (- ,place ,(car delta)))
+      `(setq ,place (- ,place 1))))
+
+;;; List mutation macros
+(defmacro push (item place)
+  `(setq ,place (cons ,item ,place)))
+
+(defmacro pop (place)
+  `(let ((result (car ,place)))
+     (setq ,place (cdr ,place))
+     result))
+
 ;;; List predicates
 (defun null? (x) (eq x nil))
 (defun atom? (x) (not (consp x)))
