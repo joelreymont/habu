@@ -336,7 +336,6 @@ pub const LineEditor = struct {
 
     /// Simple fallback readline without editing
     fn readlineSimple(self: *LineEditor, prompt: []const u8) !?[]const u8 {
-        _ = self;
         const stdout = std.fs.File{ .handle = std.posix.STDOUT_FILENO };
         const stdin = std.fs.File{ .handle = std.posix.STDIN_FILENO };
 
@@ -345,17 +344,17 @@ pub const LineEditor = struct {
         try writer.interface.writeAll(prompt);
         try writer.interface.flush();
 
-        var line_buf: [MAX_LINE]u8 = undefined;
-        var i: usize = 0;
-        while (i < line_buf.len) {
+        // Use self.buf instead of a local array so the slice remains valid
+        self.len = 0;
+        while (self.len < self.buf.len) {
             var byte: [1]u8 = undefined;
             const n = stdin.read(&byte) catch return null;
             if (n == 0) return null;
             if (byte[0] == '\n') break;
-            line_buf[i] = byte[0];
-            i += 1;
+            self.buf[self.len] = byte[0];
+            self.len += 1;
         }
-        if (i == 0) return "";
-        return line_buf[0..i];
+        if (self.len == 0) return "";
+        return self.buf[0..self.len];
     }
 };
