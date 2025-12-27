@@ -73,6 +73,8 @@ pub const Ir = union(enum) {
     /// Lambda: (lambda (x y) body)
     lambda: struct {
         params: []const []const u8,
+        /// Rest parameter name (for dotted param lists like (a b . rest))
+        rest_param: ?[]const u8,
         /// Free variables captured from enclosing scope
         captures: []const Capture,
         body: *const Ir,
@@ -517,7 +519,7 @@ pub const IrBuilder = struct {
         return node;
     }
 
-    pub fn lambda(self: IrBuilder, params: []const []const u8, captures: []const Ir.Capture, body: *const Ir) !*Ir {
+    pub fn lambda(self: IrBuilder, params: []const []const u8, rest_param: ?[]const u8, captures: []const Ir.Capture, body: *const Ir) !*Ir {
         const node = try self.allocator.create(Ir);
         // Copy params
         var params_copy = try self.allocator.alloc([]const u8, params.len);
@@ -525,7 +527,8 @@ pub const IrBuilder = struct {
             params_copy[i] = try self.allocator.dupe(u8, p);
         }
         const captures_copy = try self.allocator.dupe(Ir.Capture, captures);
-        node.* = .{ .lambda = .{ .params = params_copy, .captures = captures_copy, .body = body } };
+        const rest_copy = if (rest_param) |rp| try self.allocator.dupe(u8, rp) else null;
+        node.* = .{ .lambda = .{ .params = params_copy, .rest_param = rest_copy, .captures = captures_copy, .body = body } };
         return node;
     }
 
@@ -1040,7 +1043,7 @@ test "ir lambda" {
     const body = try builder.lit(Value.nil);
     const params = [_][]const u8{ "x", "y" };
     const captures = [_]Ir.Capture{};
-    const lam = try builder.lambda(&params, &captures, body);
+    const lam = try builder.lambda(&params, null, &captures, body);
     defer {
         allocator.destroy(body);
         for (lam.lambda.params) |p| allocator.free(p);

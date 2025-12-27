@@ -972,6 +972,7 @@ pub const Repl = struct {
             .code = code_buf[0..code_len],
             .constants = constants,
             .arity = 0,
+            .has_rest = false,
             .num_locals = 0,
             .name = "<macro-call>",
         };

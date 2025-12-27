@@ -606,8 +606,10 @@ pub const Chunk = struct {
     /// Constant pool
     constants: []const u64, // Values stored as raw u64
 
-    /// Arity (number of parameters)
+    /// Arity (number of required parameters)
     arity: u8,
+    /// Whether function accepts rest parameter
+    has_rest: bool,
     /// Number of local variables
     num_locals: u8,
     /// Function name (for debugging)
@@ -665,6 +667,7 @@ test "chunk read" {
         .code = @constCast(&code),
         .constants = &[_]u64{},
         .arity = 0,
+        .has_rest = false,
         .num_locals = 0,
         .name = "test",
     };

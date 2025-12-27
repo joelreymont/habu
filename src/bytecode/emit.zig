@@ -66,8 +66,10 @@ pub const Emitter = struct {
     child_chunks: std.ArrayList(Chunk),
     /// Number of local variables
     num_locals: u8,
-    /// Function arity
+    /// Function arity (required params)
     arity: u8,
+    /// Whether function accepts rest parameter
+    has_rest: bool,
     /// Function name
     name: []const u8,
     /// Captured variables (for inner lambdas)
@@ -85,6 +87,7 @@ pub const Emitter = struct {
             .child_chunks = std.ArrayList(Chunk){},
             .num_locals = 0,
             .arity = 0,
+            .has_rest = false,
             .name = "",
             .captures = &[_]Ir.Capture{},
             .heap = null,
@@ -100,6 +103,7 @@ pub const Emitter = struct {
             .child_chunks = std.ArrayList(Chunk){},
             .num_locals = 0,
             .arity = 0,
+            .has_rest = false,
             .name = "",
             .captures = &[_]Ir.Capture{},
             .heap = heap,
@@ -286,6 +290,7 @@ pub const Emitter = struct {
             .code = try self.allocator.dupe(u8, self.code.items),
             .constants = try self.allocator.dupe(u64, self.constants.items),
             .arity = self.arity,
+            .has_rest = self.has_rest,
             .num_locals = self.num_locals,
             .name = self.name,
         };
@@ -502,7 +507,10 @@ pub const Emitter = struct {
             Emitter.init(self.allocator);
 
         lambda_emitter.arity = @intCast(lam.params.len);
-        lambda_emitter.num_locals = @intCast(lam.params.len);
+        lambda_emitter.has_rest = lam.rest_param != null;
+        // num_locals = required params + optional rest param
+        const rest_count: u8 = if (lam.rest_param != null) 1 else 0;
+        lambda_emitter.num_locals = @intCast(lam.params.len + rest_count);
         // Pass captures so emitVar knows which variables to load from capture array
         lambda_emitter.captures = lam.captures;
 

@@ -951,12 +951,28 @@ pub const Compiler = struct {
             param_list = param_cons.cdr;
         }
 
+        // Check for rest parameter (dotted list: (a b . rest))
+        var rest_param: ?[]const u8 = null;
+        if (!param_list.isNil()) {
+            if (param_list.isSymbol()) {
+                const rest_sym = param_list.toPtr(Symbol);
+                rest_param = rest_sym.getName();
+            } else {
+                return error.InvalidLambda;
+            }
+        }
+
         // Create new environment with parameters
         var lambda_env = Env.init(self.allocator, env);
         defer lambda_env.deinit();
 
         for (params.items) |param| {
             _ = lambda_env.bind(param) catch return error.OutOfMemory;
+        }
+
+        // Bind rest parameter if present
+        if (rest_param) |rp| {
+            _ = lambda_env.bind(rp) catch return error.OutOfMemory;
         }
 
         // Capture analysis: collect free variables before compiling body
@@ -1010,7 +1026,7 @@ pub const Compiler = struct {
         const captures = self.allocator.dupe(Ir.Capture, capture_set.captures.items) catch
             return error.OutOfMemory;
 
-        return self.builder.lambda(params.items, captures, body_ir) catch
+        return self.builder.lambda(params.items, rest_param, captures, body_ir) catch
             return error.OutOfMemory;
     }
 

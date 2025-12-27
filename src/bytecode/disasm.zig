@@ -134,6 +134,7 @@ test "disassemble simple" {
         .code = @constCast(&code),
         .constants = &[_]u64{},
         .arity = 0,
+        .has_rest = false,
         .num_locals = 0,
         .name = "test",
     };
@@ -166,6 +167,7 @@ test "disassemble with operands" {
         .code = @constCast(&code),
         .constants = &[_]u64{},
         .arity = 2,
+        .has_rest = false,
         .num_locals = 6,
         .name = "with_args",
     };
@@ -199,6 +201,7 @@ test "disassemble jump" {
         .code = @constCast(&code),
         .constants = &[_]u64{},
         .arity = 0,
+        .has_rest = false,
         .num_locals = 0,
         .name = "jumpy",
     };
