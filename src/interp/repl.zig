@@ -83,6 +83,8 @@ pub const Repl = struct {
         self.vm.setGlobalEnv(&self.compiler.globals);
         // Set up load callback
         self.vm.setLoadCallback(&loadCallback, @ptrCast(self));
+        // Set up eval callback
+        self.vm.setEvalCallback(&evalCallback, @ptrCast(self));
     }
 
     /// Callback for (load "filename") from VM
@@ -91,6 +93,110 @@ pub const Repl = struct {
         return self.loadFileValue(filename) catch {
             return vm_mod.VmError.InvalidArgument;
         };
+    }
+
+    /// Callback for (eval expr) from VM
+    fn evalCallback(expr: Value, context: *anyopaque) vm_mod.VmError!Value {
+        const self: *Repl = @ptrCast(@alignCast(context));
+        return self.evalExpression(expr) catch {
+            return vm_mod.VmError.InvalidArgument;
+        };
+    }
+
+    /// Evaluate an expression using a separate VM
+    fn evalExpression(self: *Repl, expr: Value) !Value {
+        // Use arena for compilation
+        var arena = std.heap.ArenaAllocator.init(self.allocator);
+        defer arena.deinit();
+        const arena_alloc = arena.allocator();
+
+        // Save and set compiler state
+        const saved_builder = self.compiler.builder;
+        const saved_allocator = self.compiler.allocator;
+        self.compiler.builder = ir.IrBuilder.init(arena_alloc);
+        self.compiler.allocator = arena_alloc;
+
+        var env = Env.init(arena_alloc, null);
+        defer env.deinit();
+
+        const ir_node = self.compiler.compile(expr, &env) catch {
+            self.compiler.builder = saved_builder;
+            self.compiler.allocator = saved_allocator;
+            return error.CompileError;
+        };
+        self.compiler.builder = saved_builder;
+        self.compiler.allocator = saved_allocator;
+
+        // Emit bytecode
+        var emitter = Emitter.initWithHeap(self.allocator, self.heap);
+        emitter.emit(ir_node) catch {
+            emitter.deinit();
+            return error.EmitError;
+        };
+        const chunk = emitter.finalize() catch {
+            emitter.deinit();
+            return error.EmitError;
+        };
+        const child_chunks = emitter.getChildChunks() catch {
+            self.allocator.free(chunk.code);
+            self.allocator.free(chunk.constants);
+            emitter.deinit();
+            return error.EmitError;
+        };
+        emitter.deinit();
+
+        defer self.allocator.free(chunk.code);
+        defer self.allocator.free(chunk.constants);
+
+        // Store child chunks for closures
+        const chunk_base: u16 = @intCast(self.persistent_chunk_ptrs.items.len);
+        for (child_chunks) |c| {
+            const chunk_ptr = self.allocator.create(bytecode.Chunk) catch {
+                self.allocator.free(child_chunks);
+                return error.EmitError;
+            };
+            chunk_ptr.* = c;
+            patchMakeClosureIndices(chunk_ptr.code, chunk_base);
+            self.persistent_chunk_ptrs.append(self.allocator, chunk_ptr) catch {
+                self.allocator.free(c.code);
+                self.allocator.free(c.constants);
+                self.allocator.destroy(chunk_ptr);
+                self.allocator.free(child_chunks);
+                return error.EmitError;
+            };
+        }
+        self.allocator.free(child_chunks);
+        patchMakeClosureIndices(chunk.code, chunk_base);
+
+        // Use a separate VM to avoid stack issues
+        var nested_vm = Vm.init(self.allocator, self.heap);
+        nested_vm.setGlobalEnv(&self.compiler.globals);
+        nested_vm.setLoadCallback(&loadCallback, @ptrCast(self));
+        nested_vm.setEvalCallback(&evalCallback, @ptrCast(self));
+
+        // Copy globals from main VM
+        for (self.vm.globals, 0..) |g, i| {
+            nested_vm.globals[i] = g;
+        }
+        nested_vm.num_globals = self.vm.num_globals;
+
+        // Set up chunk pool for closures
+        nested_vm.setChunkPool(self.persistent_chunk_ptrs.items);
+
+        // Execute
+        const result = nested_vm.run(&chunk) catch {
+            return error.RuntimeError;
+        };
+
+        // Copy back any new globals
+        for (nested_vm.globals, 0..) |g, i| {
+            self.vm.globals[i] = g;
+        }
+        if (nested_vm.num_globals > self.vm.num_globals) {
+            self.vm.num_globals = nested_vm.num_globals;
+        }
+
+        return result;
     }
 
     /// Load a file and return the last value (for (load ...) primitive)

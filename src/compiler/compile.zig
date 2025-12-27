@@ -158,6 +158,8 @@ pub const Builtins = struct {
     @"read-from-string": Value,
     load: Value,
     @"unread-char": Value,
+    eval: Value,
+    gensym: Value,
 
     // Primitives - Symbol operations
     boundp: Value,
@@ -306,6 +308,8 @@ pub const Builtins = struct {
             .@"read-from-string" = heap.intern("read-from-string") orelse return null,
             .load = heap.intern("load") orelse return null,
             .@"unread-char" = heap.intern("unread-char") orelse return null,
+            .eval = heap.intern("eval") orelse return null,
+            .gensym = heap.intern("gensym") orelse return null,
             // Primitives - Symbol operations
             .boundp = heap.intern("boundp") orelse return null,
             .fboundp = heap.intern("fboundp") orelse return null,
@@ -2844,6 +2848,8 @@ pub const Compiler = struct {
         if (s == b.@"read-from-string".raw) return self.compileUnaryPrim(args, env, .read_from_string);
         if (s == b.load.raw) return self.compileUnaryPrim(args, env, .load);
         if (s == b.@"unread-char".raw) return self.compileUnaryPrim(args, env, .unread_char);
+        if (s == b.eval.raw) return self.compileUnaryPrim(args, env, .eval);
+        if (s == b.gensym.raw) return self.compileNullaryPrim(.gensym);
 
         // Symbol operations
         if (s == b.boundp.raw) return self.compileUnaryPrim(args, env, .boundp);
@@ -2893,7 +2899,7 @@ pub const Compiler = struct {
         return error.InvalidSyntax; // Not a known primitive
     }
 
-    const PrimTag = enum { add, sub, mul, div, mod, eq, lt, gt, le, ge, num_eq, cons, car, cdr, append, length, reverse, nth, nthcdr, last, member, consp, symbolp, numberp, stringp, vectorp, nilp, not, vec_ref, vec_len, make_box, box_ref, box_set, str_ref, str_len, str_eq, str_concat, print, random, intern, sym_name, type_of, characterp, floatp, char_code, code_char, char_eq, char_lt, char_gt, read_char, peek_char, read, read_from_string, load, unread_char, boundp, fboundp, symbol_value, symbol_function, typep, abs, zerop, plusp, minusp, evenp, oddp };
+    const PrimTag = enum { add, sub, mul, div, mod, eq, lt, gt, le, ge, num_eq, cons, car, cdr, append, length, reverse, nth, nthcdr, last, member, consp, symbolp, numberp, stringp, vectorp, nilp, not, vec_ref, vec_len, make_box, box_ref, box_set, str_ref, str_len, str_eq, str_concat, print, random, intern, sym_name, type_of, characterp, floatp, char_code, code_char, char_eq, char_lt, char_gt, read_char, peek_char, read, read_from_string, load, unread_char, eval, gensym, boundp, fboundp, symbol_value, symbol_function, typep, abs, zerop, plusp, minusp, evenp, oddp };
 
     /// Compile variadic arithmetic: +, -, *, /
     /// identity: for + (0), * (1). null means no identity (- and / need args)
@@ -3087,6 +3093,7 @@ pub const Compiler = struct {
             .unread_char => self.builder.unreadChar(operand),
             .load => self.builder.load(operand),
             .read_from_string => self.builder.readFromString(operand),
+            .eval => self.builder.eval(operand),
             .boundp => self.builder.boundp(operand),
             .fboundp => self.builder.fboundp(operand),
             .symbol_value => self.builder.symbolValue(operand),
@@ -3121,6 +3128,7 @@ pub const Compiler = struct {
             .read_char => self.builder.readChar(),
             .peek_char => self.builder.peekChar(),
             .read => self.builder.readSexp(),
+            .gensym => self.builder.gensym(),
             else => error.InvalidSyntax,
         } catch return error.OutOfMemory;
     }

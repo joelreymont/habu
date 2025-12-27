@@ -521,6 +521,14 @@ pub const Op = enum(u8) {
     /// ( string -- value )
     read_from_string = 0xD8,
 
+    /// Evaluate expression at runtime
+    /// ( expr -- result )
+    eval = 0xD9,
+
+    /// Generate unique symbol
+    /// ( -- symbol )
+    gensym = 0xDA,
+
     // ========================================================================
     // Dynamic exception handling (catch/throw)
     // ========================================================================
@@ -600,7 +608,7 @@ pub const Op = enum(u8) {
             .read_char, .peek_char, .unread_char, .boundp, .fboundp,
             .symbol_value, .symbol_function, .typep,
             .abs, .zerop, .plusp, .minusp, .evenp, .oddp,
-            .mv_list, .read, .load, .read_from_string,
+            .mv_list, .read, .load, .read_from_string, .eval, .gensym,
             => 0,
 
             // 1 byte operand

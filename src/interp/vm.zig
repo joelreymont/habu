@@ -132,6 +132,13 @@ pub const Vm = struct {
     load_callback: ?*const fn ([]const u8, *anyopaque) VmError!Value,
     load_context: ?*anyopaque,
 
+    /// Callback for (eval expr) - set by REPL
+    eval_callback: ?*const fn (Value, *anyopaque) VmError!Value,
+    eval_context: ?*anyopaque,
+
+    /// Counter for gensym
+    gensym_counter: u64,
+
     const STACK_SIZE = 1024;
     const MAX_SECONDARY_VALUES = 20;
     const MAX_FRAMES = 64;
@@ -165,6 +172,9 @@ pub const Vm = struct {
             .global_env = null,
             .load_callback = null,
             .load_context = null,
+            .eval_callback = null,
+            .eval_context = null,
+            .gensym_counter = 0,
         };
         // Initialize globals to nil
         for (&vm.globals) |*g| {
@@ -194,6 +204,12 @@ pub const Vm = struct {
     pub fn setLoadCallback(self: *Vm, callback: *const fn ([]const u8, *anyopaque) VmError!Value, context: *anyopaque) void {
         self.load_callback = callback;
         self.load_context = context;
+    }
+
+    /// Set the eval callback for (eval expr)
+    pub fn setEvalCallback(self: *Vm, callback: *const fn (Value, *anyopaque) VmError!Value, context: *anyopaque) void {
+        self.eval_callback = callback;
+        self.eval_context = context;
     }
 
     /// Run a chunk to completion
@@ -1104,6 +1120,32 @@ pub const Vm = struct {
                         continue;
                     };
                     try self.push(result);
+                },
+
+                .eval => {
+                    // Evaluate expression at runtime
+                    const expr = try self.pop();
+
+                    // Call the eval callback if set
+                    if (self.eval_callback) |callback| {
+                        const result = try callback(expr, self.eval_context.?);
+                        try self.push(result);
+                    } else {
+                        // No callback set - return nil
+                        try self.push(Value.nil);
+                    }
+                },
+
+                .gensym => {
+                    // Generate a unique symbol
+                    var buf: [32]u8 = undefined;
+                    const name = std.fmt.bufPrint(&buf, "G{d}", .{self.gensym_counter}) catch {
+                        try self.push(Value.nil);
+                        continue;
+                    };
+                    self.gensym_counter += 1;
+                    const sym = self.heap.allocSymbol(name) orelse return error.OutOfMemory;
+                    try self.push(sym);
                 },
 
                 .unread_char => {

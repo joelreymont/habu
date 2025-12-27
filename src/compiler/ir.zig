@@ -309,6 +309,8 @@ pub const Ir = union(enum) {
     read_from_string: UnaryOp, // Parse string to value
     load: UnaryOp, // Load and evaluate a file
     unread_char: UnaryOp, // Push character back
+    eval: UnaryOp, // Evaluate expression at runtime
+    gensym: void, // Generate unique symbol
     boundp: UnaryOp, // Check if symbol has global binding
     fboundp: UnaryOp, // Check if symbol has function binding
     symbol_value: UnaryOp, // Get symbol's global value
@@ -836,6 +838,18 @@ pub const IrBuilder = struct {
     pub fn unreadChar(self: IrBuilder, char: *const Ir) !*Ir {
         const node = try self.allocator.create(Ir);
         node.* = .{ .unread_char = .{ .operand = char } };
+        return node;
+    }
+
+    pub fn eval(self: IrBuilder, expr: *const Ir) !*Ir {
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .eval = .{ .operand = expr } };
+        return node;
+    }
+
+    pub fn gensym(self: IrBuilder) !*Ir {
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .gensym = {} };
         return node;
     }
 
