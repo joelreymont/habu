@@ -355,15 +355,34 @@
 
 ;;; Primitive wrappers (for passing to higher-order functions)
 ;;; Use: (reduce #'plus '(1 2 3 4)) instead of (reduce + ...)
+
+;; Arithmetic
 (defun plus (a b) (+ a b))
 (defun minus (a b) (- a b))
 (defun times (a b) (* a b))
 (defun divide (a b) (/ a b))
+
+;; Comparison
 (defun less-than (a b) (< a b))
 (defun greater-than (a b) (> a b))
 (defun less-or-equal (a b) (<= a b))
 (defun greater-or-equal (a b) (>= a b))
 (defun equals (a b) (= a b))
+
+;; Predicates (unary) - use: (filter #'odd? '(1 2 3))
+(defun odd? (x) (oddp x))
+(defun even? (x) (evenp x))
+(defun zero? (x) (zerop x))
+(defun pos? (x) (plusp x))
+(defun neg? (x) (minusp x))
+(defun cons-pair? (x) (consp x))
+(defun symbol-val? (x) (symbolp x))
+(defun number-val? (x) (numberp x))
+(defun string-val? (x) (stringp x))
+(defun vector-val? (x) (vectorp x))
+
+;; List ops
+(defun pair (a b) (cons a b))
 
 ;;; zip - combine two lists into list of pairs
 (defun zip (lst1 lst2)
