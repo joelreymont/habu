@@ -29,7 +29,7 @@
      result))
 
 
-;;; List predicates
+;;; List predicates (return nil or t)
 (defun null? (x) (eq x nil))
 (defun atom? (x) (not (consp x)))
 (defun list? (x) (if (null? x) t (consp x)))
@@ -182,7 +182,7 @@
       (eq a b)))
 
 ;;; CL-style reduce (alias for foldl)
-(defun reduce (f lst)
+(defun reduce ((f closure) (lst list))
   (if (null? lst)
       nil
       (if (null? (cdr lst))
@@ -264,7 +264,7 @@
       (cons (nth start lst) (subseq lst (+ start 1) end))))
 
 ;;; identity function
-(defun identity (x) x)
+(defun (identity -> any) (x) x)
 
 ;;; constantly - return a function that always returns the same value
 (defun (constantly -> closure) (val)
@@ -385,24 +385,21 @@
 ;;; Use: (reduce #'plus '(1 2 3 4)) instead of (reduce + ...)
 
 ;; Arithmetic
-(defun plus (a b) (+ a b))
-(defun minus (a b) (- a b))
-(defun times (a b) (* a b))
-(defun divide (a b) (/ a b))
+(defun (plus -> fixnum) ((a fixnum) (b fixnum)) (+ a b))
+(defun (minus -> fixnum) ((a fixnum) (b fixnum)) (- a b))
+(defun (times -> fixnum) ((a fixnum) (b fixnum)) (* a b))
+(defun (divide -> fixnum) ((a fixnum) (b fixnum)) (/ a b))
 
 ;; Comparison
-(defun less-than (a b) (< a b))
-(defun greater-than (a b) (> a b))
-(defun less-or-equal (a b) (<= a b))
-(defun greater-or-equal (a b) (>= a b))
-(defun equals (a b) (= a b))
+(defun less-than ((a fixnum) (b fixnum)) (< a b))
+(defun greater-than ((a fixnum) (b fixnum)) (> a b))
+(defun less-or-equal ((a fixnum) (b fixnum)) (<= a b))
+(defun greater-or-equal ((a fixnum) (b fixnum)) (>= a b))
+(defun equals ((a fixnum) (b fixnum)) (= a b))
 
-;; Predicates (unary) - use: (filter #'odd? '(1 2 3))
-(defun odd? (x) (oddp x))
-(defun even? (x) (evenp x))
-(defun zero? (x) (zerop x))
-(defun pos? (x) (plusp x))
-(defun neg? (x) (minusp x))
+;; Predicates (unary type wrappers)
+(defun pos? ((x fixnum)) (plusp x))
+(defun neg? ((x fixnum)) (minusp x))
 (defun cons-pair? (x) (consp x))
 (defun symbol-val? (x) (symbolp x))
 (defun number-val? (x) (numberp x))
@@ -410,24 +407,24 @@
 (defun vector-val? (x) (vectorp x))
 
 ;; List ops
-(defun pair (a b) (cons a b))
+(defun (pair -> cons) (a b) (cons a b))
 
 ;;; zip - combine two lists into list of pairs
-(defun zip (lst1 lst2)
+(defun (zip -> list) ((lst1 list) (lst2 list))
   (if (or2 (null? lst1) (null? lst2))
       nil
       (cons (cons (car lst1) (car lst2))
             (zip (cdr lst1) (cdr lst2)))))
 
 ;;; zip-with - combine two lists using function
-(defun zip-with (f lst1 lst2)
+(defun (zip-with -> list) ((f closure) (lst1 list) (lst2 list))
   (if (or2 (null? lst1) (null? lst2))
       nil
       (cons (funcall f (car lst1) (car lst2))
             (zip-with f (cdr lst1) (cdr lst2)))))
 
 ;;; partition - split list by predicate into (passing . failing)
-(defun partition (pred lst)
+(defun (partition -> cons) ((pred closure) (lst list))
   (if (null? lst)
       (cons nil nil)
       (let ((rest (partition pred (cdr lst))))
@@ -436,7 +433,7 @@
             (cons (car rest) (cons (car lst) (cdr rest)))))))
 
 ;;; take-while - take elements while predicate holds
-(defun take-while (pred lst)
+(defun (take-while -> list) ((pred closure) (lst list))
   (if (null? lst)
       nil
       (if (funcall pred (car lst))
@@ -444,7 +441,7 @@
           nil)))
 
 ;;; drop-while - drop elements while predicate holds
-(defun drop-while (pred lst)
+(defun (drop-while -> list) ((pred closure) (lst list))
   (if (null? lst)
       nil
       (if (funcall pred (car lst))
@@ -452,7 +449,7 @@
           lst)))
 
 ;;; assoc-update - add elem to list associated with key
-(defun assoc-update (key elem alist)
+(defun (assoc-update -> list) (key elem (alist list))
   (if (null? alist)
       (list1 (cons key (list1 elem)))
       (if (eq key (caar alist))
@@ -460,11 +457,11 @@
           (cons (car alist) (assoc-update key elem (cdr alist))))))
 
 ;;; group-by-helper - helper for group-by
-(defun group-by-helper (key-fn groups elem)
+(defun (group-by-helper -> list) ((key-fn closure) (groups list) elem)
   (assoc-update (funcall key-fn elem) elem groups))
 
 ;;; group-by - group elements by key function
-(defun group-by (key-fn lst)
+(defun (group-by -> list) ((key-fn closure) (lst list))
   (foldl (lambda (groups elem) (group-by-helper key-fn groups elem))
          nil
          lst))
