@@ -377,6 +377,8 @@ pub const Repl = struct {
         };
 
         // Store child chunks persistently (closures need them beyond this eval)
+        // Store the base index for this eval's chunks
+        const chunk_base: u16 = @intCast(self.persistent_chunk_ptrs.items.len);
         for (child_chunks) |child| {
             const chunk_ptr = self.allocator.create(bytecode.Chunk) catch {
                 self.allocator.free(chunk.code);
@@ -384,6 +386,8 @@ pub const Repl = struct {
                 return error.EmitError;
             };
             chunk_ptr.* = child;
+            // Patch make_closure indices to absolute
+            patchMakeClosureIndices(chunk_ptr.code, chunk_base);
 
             self.persistent_chunk_ptrs.append(self.allocator, chunk_ptr) catch {
                 self.allocator.destroy(chunk_ptr);
@@ -396,6 +400,9 @@ pub const Repl = struct {
         // Free child chunk array (but not the contents, now owned by persistent storage)
         self.allocator.free(child_chunks);
         emitter.deinit();
+
+        // Patch main chunk as well
+        patchMakeClosureIndices(chunk.code, chunk_base);
 
         // Set chunk pool - VM uses absolute indices now
         self.vm.setChunkPool(self.persistent_chunk_ptrs.items);
