@@ -2871,6 +2871,7 @@ pub const Compiler = struct {
         if (s == b.@"string-ref".raw) return self.compileBinaryPrim(args, env, .str_ref);
         if (s == b.@"string-length".raw) return self.compileUnaryPrim(args, env, .str_len);
         if (s == b.@"string=".raw) return self.compileBinaryPrim(args, env, .str_eq);
+        if (s == b.@"string-concat".raw) return self.compileBinaryPrim(args, env, .str_concat);
         if (s == b.substring.raw) return self.compileSubstring(args, env);
         if (s == b.subseq.raw) return self.compileSubseq(args, env);
 
@@ -2892,7 +2893,7 @@ pub const Compiler = struct {
         return error.InvalidSyntax; // Not a known primitive
     }
 
-    const PrimTag = enum { add, sub, mul, div, mod, eq, lt, gt, le, ge, num_eq, cons, car, cdr, append, length, reverse, nth, nthcdr, last, member, consp, symbolp, numberp, stringp, vectorp, nilp, not, vec_ref, vec_len, make_box, box_ref, box_set, str_ref, str_len, str_eq, print, random, intern, sym_name, type_of, characterp, floatp, char_code, code_char, char_eq, char_lt, char_gt, read_char, peek_char, read, read_from_string, load, unread_char, boundp, fboundp, symbol_value, symbol_function, typep, abs, zerop, plusp, minusp, evenp, oddp };
+    const PrimTag = enum { add, sub, mul, div, mod, eq, lt, gt, le, ge, num_eq, cons, car, cdr, append, length, reverse, nth, nthcdr, last, member, consp, symbolp, numberp, stringp, vectorp, nilp, not, vec_ref, vec_len, make_box, box_ref, box_set, str_ref, str_len, str_eq, str_concat, print, random, intern, sym_name, type_of, characterp, floatp, char_code, code_char, char_eq, char_lt, char_gt, read_char, peek_char, read, read_from_string, load, unread_char, boundp, fboundp, symbol_value, symbol_function, typep, abs, zerop, plusp, minusp, evenp, oddp };
 
     /// Compile variadic arithmetic: +, -, *, /
     /// identity: for + (0), * (1). null means no identity (- and / need args)
@@ -3002,6 +3003,7 @@ pub const Compiler = struct {
                 node.* = .{ .str_eq = .{ .left = left, .right = right } };
                 break :blk node;
             },
+            .str_concat => self.builder.strConcat(left, right),
             .char_eq => self.builder.charEq(left, right),
             .char_lt => self.builder.charLt(left, right),
             .char_gt => self.builder.charGt(left, right),
