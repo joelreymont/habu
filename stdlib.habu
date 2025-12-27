@@ -154,6 +154,20 @@
           lst
           (member x (cdr lst)))))
 
+; Assoc - find pair in alist by key
+(defun assoc (key alist)
+  (if (null alist)
+      nil
+      (if (eq key (car (car alist)))
+          (car alist)
+          (assoc key (cdr alist)))))
+
+; list* - like list but last arg is tail
+(defun list* args
+  (if (null (cdr args))
+      (car args)
+      (cons (car args) (apply list* (cdr args)))))
+
 ; Zip two lists
 (defun zip (xs ys)
   (if (or2 (null xs) (null ys))
