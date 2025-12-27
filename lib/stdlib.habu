@@ -1,6 +1,13 @@
 ;;; Habu Standard Library
 ;;; Core functions for self-hosting
 
+;;; Control flow macros
+(defmacro when (test . body)
+  `(if ,test (progn ,@body)))
+
+(defmacro unless (test . body)
+  `(if ,test nil (progn ,@body)))
+
 ;;; List predicates
 (defun null? (x) (eq x nil))
 (defun atom? (x) (not (consp x)))
