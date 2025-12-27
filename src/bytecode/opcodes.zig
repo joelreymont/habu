@@ -167,6 +167,30 @@ pub const Op = enum(u8) {
     /// ( list1 list2 -- result )
     append_lists = 0x44,
 
+    /// List length
+    /// ( list -- fixnum )
+    list_length = 0x45,
+
+    /// Reverse a list
+    /// ( list -- reversed )
+    list_reverse = 0x46,
+
+    /// Get nth element (0-indexed)
+    /// ( list n -- element )
+    list_nth = 0x47,
+
+    /// Get last cons cell
+    /// ( list -- last-cons )
+    list_last = 0x48,
+
+    /// Find element in list (using eq)
+    /// ( item list -- tail-or-nil )
+    list_member = 0x49,
+
+    /// Get nthcdr (drop first n elements)
+    /// ( list n -- tail )
+    list_nthcdr = 0x4A,
+
     // ========================================================================
     // Type predicates
     // ========================================================================
@@ -555,7 +579,7 @@ pub const Op = enum(u8) {
             .push_nil, .push_t, .dup, .pop, .swap,
             .add, .sub, .mul, .div, .mod, .neg,
             .eq, .lt, .gt, .le, .ge, .num_eq, .not,
-            .cons, .car, .cdr, .append_lists,
+            .cons, .car, .cdr, .append_lists, .list_length, .list_reverse, .list_nth, .list_last, .list_member, .list_nthcdr,
             .consp, .symbolp, .numberp, .stringp, .vectorp, .closurep, .keywordp, .nilp,
             .vec_ref, .vec_set, .vec_len, .make_box, .box_ref, .box_set,
             .str_ref, .str_len, .str_concat,

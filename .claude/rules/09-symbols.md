@@ -1,10 +1,16 @@
 # Symbol Interning - MANDATORY
 
+## STOP! READ THIS BEFORE WRITING CODE!
+
+**NEVER use `std.mem.eql(u8, name, "...")` for symbol dispatch.**
+
+This is a BLOCKING requirement. If you are about to write string comparisons for symbol names, STOP and refactor to use symbol identity.
+
 ## Core Principle
 
-**ALL string comparisons for language constructs MUST use interned symbols.**
+**ALL symbol comparisons MUST use interned symbol identity (Value.raw equality).**
 
-Strings are interned once at parse time. After that, use symbol identity (pointer/Value equality), never string comparison.
+Strings are interned once at parse time. After that, use `sym.raw == builtins.foo.raw`, NEVER string comparison.
 
 ## Anti-patterns (NEVER do this)
 

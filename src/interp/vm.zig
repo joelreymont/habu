@@ -403,6 +403,99 @@ pub const Vm = struct {
                     }
                 },
 
+                .list_length => {
+                    const list = try self.pop();
+                    var len: i64 = 0;
+                    var curr = list;
+                    while (curr.isCons()) {
+                        len += 1;
+                        curr = curr.toPtr(Cons).cdr;
+                    }
+                    try self.push(Value.makeFixnum(len));
+                },
+
+                .list_reverse => {
+                    const list = try self.pop();
+                    var reversed = Value.nil;
+                    var curr = list;
+                    while (curr.isCons()) {
+                        const c = curr.toPtr(Cons);
+                        reversed = self.heap.allocCons(c.car, reversed) orelse return error.OutOfMemory;
+                        curr = c.cdr;
+                    }
+                    try self.push(reversed);
+                },
+
+                .list_nth => {
+                    const list = try self.pop();
+                    const n_val = try self.pop();
+                    if (!n_val.isFixnum()) return error.TypeMismatch;
+                    const n = n_val.toFixnum();
+                    if (n < 0) return error.TypeMismatch;
+                    var idx: i64 = 0;
+                    var curr = list;
+                    while (curr.isCons()) {
+                        if (idx == n) {
+                            try self.push(curr.toPtr(Cons).car);
+                            break;
+                        }
+                        idx += 1;
+                        curr = curr.toPtr(Cons).cdr;
+                    } else {
+                        try self.push(Value.nil);
+                    }
+                },
+
+                .list_nthcdr => {
+                    const list = try self.pop();
+                    const n_val = try self.pop();
+                    if (!n_val.isFixnum()) return error.TypeMismatch;
+                    const n = n_val.toFixnum();
+                    if (n < 0) return error.TypeMismatch;
+                    var idx: i64 = 0;
+                    var curr = list;
+                    while (idx < n and curr.isCons()) {
+                        idx += 1;
+                        curr = curr.toPtr(Cons).cdr;
+                    }
+                    try self.push(curr);
+                },
+
+                .list_last => {
+                    const list = try self.pop();
+                    if (list.isNil()) {
+                        try self.push(Value.nil);
+                    } else if (!list.isCons()) {
+                        return error.TypeMismatch;
+                    } else {
+                        var curr = list;
+                        while (curr.isCons()) {
+                            const c = curr.toPtr(Cons);
+                            if (!c.cdr.isCons()) {
+                                try self.push(curr);
+                                break;
+                            }
+                            curr = c.cdr;
+                        }
+                    }
+                },
+
+                .list_member => {
+                    const list = try self.pop();
+                    const item = try self.pop();
+                    var curr = list;
+                    while (curr.isCons()) {
+                        const c = curr.toPtr(Cons);
+                        if (c.car.raw == item.raw) {
+                            try self.push(curr);
+                            break;
+                        }
+                        curr = c.cdr;
+                    } else {
+                        try self.push(Value.nil);
+                    }
+                },
+
                 // Type predicates
                 .consp => {
                     const a = try self.pop();

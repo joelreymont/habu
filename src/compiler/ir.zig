@@ -272,6 +272,12 @@ pub const Ir = union(enum) {
     cdr: UnaryOp,
     list: []const *const Ir, // (list a b c)
     append: BinaryOp, // (append list1 list2)
+    length: UnaryOp, // (length list)
+    reverse: UnaryOp, // (reverse list)
+    nth: BinaryOp, // (nth n list)
+    nthcdr: BinaryOp, // (nthcdr n list)
+    last: UnaryOp, // (last list)
+    member: BinaryOp, // (member item list)
 
     // ========================================================================
     // Primitives - Type predicates

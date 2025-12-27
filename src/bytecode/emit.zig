@@ -195,6 +195,12 @@ pub const Emitter = struct {
             .cdr => |op| try self.emitUnaryOp(op.operand, .cdr),
             .list => |elements| try self.emitList(elements),
             .append => |op| try self.emitBinaryOp(op, .append_lists),
+            .length => |op| try self.emitUnaryOp(op.operand, .list_length),
+            .reverse => |op| try self.emitUnaryOp(op.operand, .list_reverse),
+            .nth => |op| try self.emitBinaryOp(op, .list_nth),
+            .nthcdr => |op| try self.emitBinaryOp(op, .list_nthcdr),
+            .last => |op| try self.emitUnaryOp(op.operand, .list_last),
+            .member => |op| try self.emitBinaryOp(op, .list_member),
 
             // Type predicates
             .consp => |op| try self.emitUnaryOp(op.operand, .consp),

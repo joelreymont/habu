@@ -92,6 +92,114 @@ pub const Builtins = struct {
     @"multiple-value-call": Value,
     @"multiple-value-list": Value,
 
+    // Primitives - Arithmetic
+    @"+": Value,
+    @"-": Value,
+    @"*": Value,
+    @"/": Value,
+    mod: Value,
+    @"%": Value,
+
+    // Primitives - Comparison
+    eq: Value,
+    @"<": Value,
+    @">": Value,
+    @"<=": Value,
+    @">=": Value,
+    @"=": Value,
+
+    // Primitives - List operations
+    cons: Value,
+    car: Value,
+    cdr: Value,
+    append: Value,
+    length: Value,
+    reverse: Value,
+    nth: Value,
+    nthcdr: Value,
+    last: Value,
+    member: Value,
+    list: Value,
+
+    // Primitives - Type predicates
+    consp: Value,
+    @"cons?": Value,
+    symbolp: Value,
+    @"symbol?": Value,
+    numberp: Value,
+    @"number?": Value,
+    stringp: Value,
+    @"string?": Value,
+    vectorp: Value,
+    @"vector?": Value,
+    closurep: Value,
+    @"closure?": Value,
+    keywordp: Value,
+    @"keyword?": Value,
+    null: Value,
+    @"null?": Value,
+    not: Value,
+    characterp: Value,
+    @"character?": Value,
+    floatp: Value,
+    @"float?": Value,
+
+    // Primitives - Character operations
+    @"char-code": Value,
+    @"code-char": Value,
+    @"char=": Value,
+    @"char<": Value,
+    @"char>": Value,
+    @"read-char": Value,
+    @"peek-char": Value,
+    read: Value,
+    @"unread-char": Value,
+
+    // Primitives - Symbol operations
+    boundp: Value,
+    fboundp: Value,
+    @"symbol-value": Value,
+    @"symbol-function": Value,
+    typep: Value,
+    @"type-of": Value,
+    intern: Value,
+    @"symbol-name": Value,
+
+    // Primitives - Numeric
+    abs: Value,
+    zerop: Value,
+    plusp: Value,
+    minusp: Value,
+    evenp: Value,
+    oddp: Value,
+
+    // Primitives - Vector operations
+    @"vector-ref": Value,
+    @"vector-length": Value,
+    @"vector-set!": Value,
+    @"make-vector": Value,
+
+    // Primitives - String operations
+    @"string-ref": Value,
+    @"string-length": Value,
+    @"string-concat": Value,
+    @"string=": Value,
+    substring: Value,
+    subseq: Value,
+
+    // Primitives - I/O and misc
+    print: Value,
+    random: Value,
+    format: Value,
+
+    // Primitives - Hash tables
+    @"make-hash-table": Value,
+    gethash: Value,
+    puthash: Value,
+    remhash: Value,
+    @"hash-table-count": Value,
+    @"hash-table-p": Value,
+
     /// Initialize all builtin symbols from heap
     pub fn init(heap: *Heap) ?Builtins {
         return .{
@@ -132,6 +240,103 @@ pub const Builtins = struct {
             .@"multiple-value-bind" = heap.intern("multiple-value-bind") orelse return null,
             .@"multiple-value-call" = heap.intern("multiple-value-call") orelse return null,
             .@"multiple-value-list" = heap.intern("multiple-value-list") orelse return null,
+            // Primitives - Arithmetic
+            .@"+" = heap.intern("+") orelse return null,
+            .@"-" = heap.intern("-") orelse return null,
+            .@"*" = heap.intern("*") orelse return null,
+            .@"/" = heap.intern("/") orelse return null,
+            .mod = heap.intern("mod") orelse return null,
+            .@"%" = heap.intern("%") orelse return null,
+            // Primitives - Comparison
+            .eq = heap.intern("eq") orelse return null,
+            .@"<" = heap.intern("<") orelse return null,
+            .@">" = heap.intern(">") orelse return null,
+            .@"<=" = heap.intern("<=") orelse return null,
+            .@">=" = heap.intern(">=") orelse return null,
+            .@"=" = heap.intern("=") orelse return null,
+            // Primitives - List operations
+            .cons = heap.intern("cons") orelse return null,
+            .car = heap.intern("car") orelse return null,
+            .cdr = heap.intern("cdr") orelse return null,
+            .append = heap.intern("append") orelse return null,
+            .length = heap.intern("length") orelse return null,
+            .reverse = heap.intern("reverse") orelse return null,
+            .nth = heap.intern("nth") orelse return null,
+            .nthcdr = heap.intern("nthcdr") orelse return null,
+            .last = heap.intern("last") orelse return null,
+            .member = heap.intern("member") orelse return null,
+            .list = heap.intern("list") orelse return null,
+            // Primitives - Type predicates
+            .consp = heap.intern("consp") orelse return null,
+            .@"cons?" = heap.intern("cons?") orelse return null,
+            .symbolp = heap.intern("symbolp") orelse return null,
+            .@"symbol?" = heap.intern("symbol?") orelse return null,
+            .numberp = heap.intern("numberp") orelse return null,
+            .@"number?" = heap.intern("number?") orelse return null,
+            .stringp = heap.intern("stringp") orelse return null,
+            .@"string?" = heap.intern("string?") orelse return null,
+            .vectorp = heap.intern("vectorp") orelse return null,
+            .@"vector?" = heap.intern("vector?") orelse return null,
+            .closurep = heap.intern("closurep") orelse return null,
+            .@"closure?" = heap.intern("closure?") orelse return null,
+            .keywordp = heap.intern("keywordp") orelse return null,
+            .@"keyword?" = heap.intern("keyword?") orelse return null,
+            .null = heap.intern("null") orelse return null,
+            .@"null?" = heap.intern("null?") orelse return null,
+            .not = heap.intern("not") orelse return null,
+            .characterp = heap.intern("characterp") orelse return null,
+            .@"character?" = heap.intern("character?") orelse return null,
+            .floatp = heap.intern("floatp") orelse return null,
+            .@"float?" = heap.intern("float?") orelse return null,
+            // Primitives - Character operations
+            .@"char-code" = heap.intern("char-code") orelse return null,
+            .@"code-char" = heap.intern("code-char") orelse return null,
+            .@"char=" = heap.intern("char=") orelse return null,
+            .@"char<" = heap.intern("char<") orelse return null,
+            .@"char>" = heap.intern("char>") orelse return null,
+            .@"read-char" = heap.intern("read-char") orelse return null,
+            .@"peek-char" = heap.intern("peek-char") orelse return null,
+            .read = heap.intern("read") orelse return null,
+            .@"unread-char" = heap.intern("unread-char") orelse return null,
+            // Primitives - Symbol operations
+            .boundp = heap.intern("boundp") orelse return null,
+            .fboundp = heap.intern("fboundp") orelse return null,
+            .@"symbol-value" = heap.intern("symbol-value") orelse return null,
+            .@"symbol-function" = heap.intern("symbol-function") orelse return null,
+            .typep = heap.intern("typep") orelse return null,
+            .@"type-of" = heap.intern("type-of") orelse return null,
+            .intern = heap.intern("intern") orelse return null,
+            .@"symbol-name" = heap.intern("symbol-name") orelse return null,
+            // Primitives - Numeric
+            .abs = heap.intern("abs") orelse return null,
+            .zerop = heap.intern("zerop") orelse return null,
+            .plusp = heap.intern("plusp") orelse return null,
+            .minusp = heap.intern("minusp") orelse return null,
+            .evenp = heap.intern("evenp") orelse return null,
+            .oddp = heap.intern("oddp") orelse return null,
+            // Primitives - Vector operations
+            .@"vector-ref" = heap.intern("vector-ref") orelse return null,
+            .@"vector-length" = heap.intern("vector-length") orelse return null,
+            .@"vector-set!" = heap.intern("vector-set!") orelse return null,
+            .@"make-vector" = heap.intern("make-vector") orelse return null,
+            // Primitives - String operations
+            .@"string-ref" = heap.intern("string-ref") orelse return null,
+            .@"string-length" = heap.intern("string-length") orelse return null,
+            .@"string-concat" = heap.intern("string-concat") orelse return null,
+            .@"string=" = heap.intern("string=") orelse return null,
+            .substring = heap.intern("substring") orelse return null,
+            .subseq = heap.intern("subseq") orelse return null,
+            // Primitives - I/O and misc
+            .print = heap.intern("print") orelse return null,
+            .random = heap.intern("random") orelse return null,
+            .format = heap.intern("format") orelse return null,
+            // Primitives - Hash tables
+            .@"make-hash-table" = heap.intern("make-hash-table") orelse return null,
+            .gethash = heap.intern("gethash") orelse return null,
+            .puthash = heap.intern("puthash") orelse return null,
+            .remhash = heap.intern("remhash") orelse return null,
+            .@"hash-table-count" = heap.intern("hash-table-count") orelse return null,
+            .@"hash-table-p" = heap.intern("hash-table-p") orelse return null,
         };
     }
 };
@@ -807,9 +1012,7 @@ pub const Compiler = struct {
             }
 
             // Check for primitives (both paths need this)
-            const sym = head.toPtr(Symbol);
-            const name = sym.getName();
-            if (self.compilePrimitive(name, tail, env)) |prim| {
+            if (self.compilePrimitive(head, tail, env)) |prim| {
                 return prim;
             } else |_| {
                 // Fall through to function call
@@ -2534,235 +2737,108 @@ pub const Compiler = struct {
         return self.builder.progn(items) catch return error.OutOfMemory;
     }
 
-    fn compilePrimitive(self: *Compiler, name: []const u8, args: Value, env: *const Env) CompileError!*Ir {
+    fn compilePrimitive(self: *Compiler, sym: Value, args: Value, env: *const Env) CompileError!*Ir {
+        const s = sym.raw;
+        const b = self.builtins orelse return error.InvalidSyntax;
+
         // Binary arithmetic
-        if (std.mem.eql(u8, name, "+")) {
-            return self.compileBinaryPrim(args, env, .add);
-        }
-        if (std.mem.eql(u8, name, "-")) {
-            return self.compileBinaryPrim(args, env, .sub);
-        }
-        if (std.mem.eql(u8, name, "*")) {
-            return self.compileBinaryPrim(args, env, .mul);
-        }
-        if (std.mem.eql(u8, name, "/")) {
-            return self.compileBinaryPrim(args, env, .div);
-        }
-        if (std.mem.eql(u8, name, "mod") or std.mem.eql(u8, name, "%")) {
-            return self.compileBinaryPrim(args, env, .mod);
-        }
+        if (s == b.@"+".raw) return self.compileBinaryPrim(args, env, .add);
+        if (s == b.@"-".raw) return self.compileBinaryPrim(args, env, .sub);
+        if (s == b.@"*".raw) return self.compileBinaryPrim(args, env, .mul);
+        if (s == b.@"/".raw) return self.compileBinaryPrim(args, env, .div);
+        if (s == b.mod.raw or s == b.@"%".raw) return self.compileBinaryPrim(args, env, .mod);
 
         // Comparison
-        if (std.mem.eql(u8, name, "eq")) {
-            return self.compileBinaryPrim(args, env, .eq);
-        }
-        if (std.mem.eql(u8, name, "<")) {
-            return self.compileBinaryPrim(args, env, .lt);
-        }
-        if (std.mem.eql(u8, name, ">")) {
-            return self.compileBinaryPrim(args, env, .gt);
-        }
-        if (std.mem.eql(u8, name, "<=")) {
-            return self.compileBinaryPrim(args, env, .le);
-        }
-        if (std.mem.eql(u8, name, ">=")) {
-            return self.compileBinaryPrim(args, env, .ge);
-        }
-        if (std.mem.eql(u8, name, "=")) {
-            return self.compileBinaryPrim(args, env, .num_eq);
-        }
+        if (s == b.eq.raw) return self.compileBinaryPrim(args, env, .eq);
+        if (s == b.@"<".raw) return self.compileBinaryPrim(args, env, .lt);
+        if (s == b.@">".raw) return self.compileBinaryPrim(args, env, .gt);
+        if (s == b.@"<=".raw) return self.compileBinaryPrim(args, env, .le);
+        if (s == b.@">=".raw) return self.compileBinaryPrim(args, env, .ge);
+        if (s == b.@"=".raw) return self.compileBinaryPrim(args, env, .num_eq);
 
         // List operations
-        if (std.mem.eql(u8, name, "cons")) {
-            return self.compileBinaryPrim(args, env, .cons);
-        }
-        if (std.mem.eql(u8, name, "car")) {
-            return self.compileUnaryPrim(args, env, .car);
-        }
-        if (std.mem.eql(u8, name, "cdr")) {
-            return self.compileUnaryPrim(args, env, .cdr);
-        }
+        if (s == b.cons.raw) return self.compileBinaryPrim(args, env, .cons);
+        if (s == b.car.raw) return self.compileUnaryPrim(args, env, .car);
+        if (s == b.cdr.raw) return self.compileUnaryPrim(args, env, .cdr);
+        if (s == b.append.raw) return self.compileBinaryPrim(args, env, .append);
+        if (s == b.length.raw) return self.compileUnaryPrim(args, env, .length);
+        if (s == b.reverse.raw) return self.compileUnaryPrim(args, env, .reverse);
+        if (s == b.nth.raw) return self.compileBinaryPrim(args, env, .nth);
+        if (s == b.nthcdr.raw) return self.compileBinaryPrim(args, env, .nthcdr);
+        if (s == b.last.raw) return self.compileUnaryPrim(args, env, .last);
+        if (s == b.member.raw) return self.compileBinaryPrim(args, env, .member);
+        if (s == b.list.raw) return self.compileListPrim(args, env);
 
         // Type predicates
-        if (std.mem.eql(u8, name, "consp") or std.mem.eql(u8, name, "cons?")) {
-            return self.compileUnaryPrim(args, env, .consp);
-        }
-        if (std.mem.eql(u8, name, "symbolp") or std.mem.eql(u8, name, "symbol?")) {
-            return self.compileUnaryPrim(args, env, .symbolp);
-        }
-        if (std.mem.eql(u8, name, "numberp") or std.mem.eql(u8, name, "number?")) {
-            return self.compileUnaryPrim(args, env, .numberp);
-        }
-        if (std.mem.eql(u8, name, "stringp") or std.mem.eql(u8, name, "string?")) {
-            return self.compileUnaryPrim(args, env, .stringp);
-        }
-        if (std.mem.eql(u8, name, "vectorp") or std.mem.eql(u8, name, "vector?")) {
-            return self.compileUnaryPrim(args, env, .vectorp);
-        }
-        if (std.mem.eql(u8, name, "null") or std.mem.eql(u8, name, "null?")) {
-            return self.compileUnaryPrim(args, env, .nilp);
-        }
-        if (std.mem.eql(u8, name, "not")) {
-            return self.compileUnaryPrim(args, env, .not);
-        }
-        if (std.mem.eql(u8, name, "characterp") or std.mem.eql(u8, name, "character?")) {
-            return self.compileUnaryPrim(args, env, .characterp);
-        }
-        if (std.mem.eql(u8, name, "floatp") or std.mem.eql(u8, name, "float?")) {
-            return self.compileUnaryPrim(args, env, .floatp);
-        }
+        if (s == b.consp.raw or s == b.@"cons?".raw) return self.compileUnaryPrim(args, env, .consp);
+        if (s == b.symbolp.raw or s == b.@"symbol?".raw) return self.compileUnaryPrim(args, env, .symbolp);
+        if (s == b.numberp.raw or s == b.@"number?".raw) return self.compileUnaryPrim(args, env, .numberp);
+        if (s == b.stringp.raw or s == b.@"string?".raw) return self.compileUnaryPrim(args, env, .stringp);
+        if (s == b.vectorp.raw or s == b.@"vector?".raw) return self.compileUnaryPrim(args, env, .vectorp);
+        if (s == b.null.raw or s == b.@"null?".raw) return self.compileUnaryPrim(args, env, .nilp);
+        if (s == b.not.raw) return self.compileUnaryPrim(args, env, .not);
+        if (s == b.characterp.raw or s == b.@"character?".raw) return self.compileUnaryPrim(args, env, .characterp);
+        if (s == b.floatp.raw or s == b.@"float?".raw) return self.compileUnaryPrim(args, env, .floatp);
 
         // Character operations
-        if (std.mem.eql(u8, name, "char-code")) {
-            return self.compileUnaryPrim(args, env, .char_code);
-        }
-        if (std.mem.eql(u8, name, "code-char")) {
-            return self.compileUnaryPrim(args, env, .code_char);
-        }
-        if (std.mem.eql(u8, name, "char=")) {
-            return self.compileBinaryPrim(args, env, .char_eq);
-        }
-        if (std.mem.eql(u8, name, "char<")) {
-            return self.compileBinaryPrim(args, env, .char_lt);
-        }
-        if (std.mem.eql(u8, name, "char>")) {
-            return self.compileBinaryPrim(args, env, .char_gt);
-        }
-        if (std.mem.eql(u8, name, "read-char")) {
-            return self.compileNullaryPrim(.read_char);
-        }
-        if (std.mem.eql(u8, name, "peek-char")) {
-            return self.compileNullaryPrim(.peek_char);
-        }
-        if (std.mem.eql(u8, name, "read")) {
-            return self.compileNullaryPrim(.read);
-        }
-        if (std.mem.eql(u8, name, "unread-char")) {
-            return self.compileUnaryPrim(args, env, .unread_char);
-        }
-        if (std.mem.eql(u8, name, "boundp")) {
-            return self.compileUnaryPrim(args, env, .boundp);
-        }
-        if (std.mem.eql(u8, name, "fboundp")) {
-            return self.compileUnaryPrim(args, env, .fboundp);
-        }
-        if (std.mem.eql(u8, name, "symbol-value")) {
-            return self.compileUnaryPrim(args, env, .symbol_value);
-        }
-        if (std.mem.eql(u8, name, "symbol-function")) {
-            return self.compileUnaryPrim(args, env, .symbol_function);
-        }
-        if (std.mem.eql(u8, name, "typep")) {
-            return self.compileBinaryPrim(args, env, .typep);
-        }
+        if (s == b.@"char-code".raw) return self.compileUnaryPrim(args, env, .char_code);
+        if (s == b.@"code-char".raw) return self.compileUnaryPrim(args, env, .code_char);
+        if (s == b.@"char=".raw) return self.compileBinaryPrim(args, env, .char_eq);
+        if (s == b.@"char<".raw) return self.compileBinaryPrim(args, env, .char_lt);
+        if (s == b.@"char>".raw) return self.compileBinaryPrim(args, env, .char_gt);
+        if (s == b.@"read-char".raw) return self.compileNullaryPrim(.read_char);
+        if (s == b.@"peek-char".raw) return self.compileNullaryPrim(.peek_char);
+        if (s == b.read.raw) return self.compileNullaryPrim(.read);
+        if (s == b.@"unread-char".raw) return self.compileUnaryPrim(args, env, .unread_char);
+
+        // Symbol operations
+        if (s == b.boundp.raw) return self.compileUnaryPrim(args, env, .boundp);
+        if (s == b.fboundp.raw) return self.compileUnaryPrim(args, env, .fboundp);
+        if (s == b.@"symbol-value".raw) return self.compileUnaryPrim(args, env, .symbol_value);
+        if (s == b.@"symbol-function".raw) return self.compileUnaryPrim(args, env, .symbol_function);
+        if (s == b.typep.raw) return self.compileBinaryPrim(args, env, .typep);
+        if (s == b.@"type-of".raw) return self.compileUnaryPrim(args, env, .type_of);
+        if (s == b.intern.raw) return self.compileUnaryPrim(args, env, .intern);
+        if (s == b.@"symbol-name".raw) return self.compileUnaryPrim(args, env, .sym_name);
 
         // Numeric predicates
-        if (std.mem.eql(u8, name, "abs")) {
-            return self.compileUnaryPrim(args, env, .abs);
-        }
-        if (std.mem.eql(u8, name, "zerop")) {
-            return self.compileUnaryPrim(args, env, .zerop);
-        }
-        if (std.mem.eql(u8, name, "plusp")) {
-            return self.compileUnaryPrim(args, env, .plusp);
-        }
-        if (std.mem.eql(u8, name, "minusp")) {
-            return self.compileUnaryPrim(args, env, .minusp);
-        }
-        if (std.mem.eql(u8, name, "evenp")) {
-            return self.compileUnaryPrim(args, env, .evenp);
-        }
-        if (std.mem.eql(u8, name, "oddp")) {
-            return self.compileUnaryPrim(args, env, .oddp);
-        }
+        if (s == b.abs.raw) return self.compileUnaryPrim(args, env, .abs);
+        if (s == b.zerop.raw) return self.compileUnaryPrim(args, env, .zerop);
+        if (s == b.plusp.raw) return self.compileUnaryPrim(args, env, .plusp);
+        if (s == b.minusp.raw) return self.compileUnaryPrim(args, env, .minusp);
+        if (s == b.evenp.raw) return self.compileUnaryPrim(args, env, .evenp);
+        if (s == b.oddp.raw) return self.compileUnaryPrim(args, env, .oddp);
 
         // Vector operations
-        if (std.mem.eql(u8, name, "vector-ref")) {
-            return self.compileBinaryPrim(args, env, .vec_ref);
-        }
-        if (std.mem.eql(u8, name, "vector-length")) {
-            return self.compileUnaryPrim(args, env, .vec_len);
-        }
-
-        // Box operations (mutable cells)
-        if (std.mem.eql(u8, name, "make-box")) {
-            return self.compileUnaryPrim(args, env, .make_box);
-        }
-        if (std.mem.eql(u8, name, "box-ref") or std.mem.eql(u8, name, "unbox")) {
-            return self.compileUnaryPrim(args, env, .box_ref);
-        }
-        if (std.mem.eql(u8, name, "box-set!") or std.mem.eql(u8, name, "set-box!")) {
-            return self.compileBinaryPrim(args, env, .box_set);
-        }
+        if (s == b.@"vector-ref".raw) return self.compileBinaryPrim(args, env, .vec_ref);
+        if (s == b.@"vector-length".raw) return self.compileUnaryPrim(args, env, .vec_len);
 
         // String operations
-        if (std.mem.eql(u8, name, "string-ref")) {
-            return self.compileBinaryPrim(args, env, .str_ref);
-        }
-        if (std.mem.eql(u8, name, "string-length")) {
-            return self.compileUnaryPrim(args, env, .str_len);
-        }
-        if (std.mem.eql(u8, name, "string=")) {
-            return self.compileBinaryPrim(args, env, .str_eq);
-        }
-        if (std.mem.eql(u8, name, "substring")) {
-            return self.compileSubstring(args, env);
-        }
-        if (std.mem.eql(u8, name, "subseq")) {
-            return self.compileSubseq(args, env);
-        }
-        if (std.mem.eql(u8, name, "concatenate")) {
-            return self.compileConcatenate(args, env);
-        }
+        if (s == b.@"string-ref".raw) return self.compileBinaryPrim(args, env, .str_ref);
+        if (s == b.@"string-length".raw) return self.compileUnaryPrim(args, env, .str_len);
+        if (s == b.@"string=".raw) return self.compileBinaryPrim(args, env, .str_eq);
+        if (s == b.substring.raw) return self.compileSubstring(args, env);
+        if (s == b.subseq.raw) return self.compileSubseq(args, env);
 
         // I/O
-        if (std.mem.eql(u8, name, "print")) {
-            return self.compileUnaryPrim(args, env, .print);
-        }
-        if (std.mem.eql(u8, name, "format")) {
-            return self.compileFormat(args, env);
-        }
+        if (s == b.print.raw) return self.compileUnaryPrim(args, env, .print);
+        if (s == b.format.raw) return self.compileFormat(args, env);
 
         // Hash tables
-        if (std.mem.eql(u8, name, "make-hash-table")) {
-            return self.compileMakeHash(args);
-        }
-        if (std.mem.eql(u8, name, "gethash")) {
-            return self.compileGethash(args, env);
-        }
-        if (std.mem.eql(u8, name, "sethash")) {
-            return self.compileSethash(args, env);
-        }
-        if (std.mem.eql(u8, name, "remhash")) {
-            return self.compileRemhash(args, env);
-        }
-        if (std.mem.eql(u8, name, "hash-table-count")) {
-            return self.compileHashTableCount(args, env);
-        }
-        if (std.mem.eql(u8, name, "hash-table-p")) {
-            return self.compileHashTableP(args, env);
-        }
+        if (s == b.@"make-hash-table".raw) return self.compileMakeHash(args);
+        if (s == b.gethash.raw) return self.compileGethash(args, env);
+        if (s == b.puthash.raw) return self.compileSethash(args, env);
+        if (s == b.remhash.raw) return self.compileRemhash(args, env);
+        if (s == b.@"hash-table-count".raw) return self.compileHashTableCount(args, env);
+        if (s == b.@"hash-table-p".raw) return self.compileHashTableP(args, env);
 
         // Random
-        if (std.mem.eql(u8, name, "random")) {
-            return self.compileUnaryPrim(args, env, .random);
-        }
-
-        // Symbol creation
-        if (std.mem.eql(u8, name, "intern")) {
-            return self.compileUnaryPrim(args, env, .intern);
-        }
-        if (std.mem.eql(u8, name, "symbol-name")) {
-            return self.compileUnaryPrim(args, env, .sym_name);
-        }
-        if (std.mem.eql(u8, name, "type-of")) {
-            return self.compileUnaryPrim(args, env, .type_of);
-        }
+        if (s == b.random.raw) return self.compileUnaryPrim(args, env, .random);
 
         return error.InvalidSyntax; // Not a known primitive
     }
 
-    const PrimTag = enum { add, sub, mul, div, mod, eq, lt, gt, le, ge, num_eq, cons, car, cdr, consp, symbolp, numberp, stringp, vectorp, nilp, not, vec_ref, vec_len, make_box, box_ref, box_set, str_ref, str_len, str_eq, print, random, intern, sym_name, type_of, characterp, floatp, char_code, code_char, char_eq, char_lt, char_gt, read_char, peek_char, read, unread_char, boundp, fboundp, symbol_value, symbol_function, typep, abs, zerop, plusp, minusp, evenp, oddp };
+    const PrimTag = enum { add, sub, mul, div, mod, eq, lt, gt, le, ge, num_eq, cons, car, cdr, append, length, reverse, nth, nthcdr, last, member, consp, symbolp, numberp, stringp, vectorp, nilp, not, vec_ref, vec_len, make_box, box_ref, box_set, str_ref, str_len, str_eq, print, random, intern, sym_name, type_of, characterp, floatp, char_code, code_char, char_eq, char_lt, char_gt, read_char, peek_char, read, unread_char, boundp, fboundp, symbol_value, symbol_function, typep, abs, zerop, plusp, minusp, evenp, oddp };
 
     fn compileBinaryPrim(self: *Compiler, args: Value, env: *const Env, prim: PrimTag) CompileError!*Ir {
         if (!args.isCons()) return error.InvalidSyntax;
@@ -2822,6 +2898,22 @@ pub const Compiler = struct {
             .char_lt => self.builder.charLt(left, right),
             .char_gt => self.builder.charGt(left, right),
             .typep => self.builder.typep(left, right),
+            .append => self.builder.append(left, right),
+            .nth => blk: {
+                const node = self.allocator.create(Ir) catch return error.OutOfMemory;
+                node.* = .{ .nth = .{ .left = left, .right = right } };
+                break :blk node;
+            },
+            .nthcdr => blk: {
+                const node = self.allocator.create(Ir) catch return error.OutOfMemory;
+                node.* = .{ .nthcdr = .{ .left = left, .right = right } };
+                break :blk node;
+            },
+            .member => blk: {
+                const node = self.allocator.create(Ir) catch return error.OutOfMemory;
+                node.* = .{ .member = .{ .left = left, .right = right } };
+                break :blk node;
+            },
             else => error.InvalidSyntax,
         } catch return error.OutOfMemory;
     }
@@ -2893,6 +2985,21 @@ pub const Compiler = struct {
             .minusp => self.builder.minusp(operand),
             .evenp => self.builder.evenp(operand),
             .oddp => self.builder.oddp(operand),
+            .length => blk: {
+                const node = self.allocator.create(Ir) catch return error.OutOfMemory;
+                node.* = .{ .length = .{ .operand = operand } };
+                break :blk node;
+            },
+            .reverse => blk: {
+                const node = self.allocator.create(Ir) catch return error.OutOfMemory;
+                node.* = .{ .reverse = .{ .operand = operand } };
+                break :blk node;
+            },
+            .last => blk: {
+                const node = self.allocator.create(Ir) catch return error.OutOfMemory;
+                node.* = .{ .last = .{ .operand = operand } };
+                break :blk node;
+            },
             else => error.InvalidSyntax,
         } catch return error.OutOfMemory;
     }
@@ -2904,6 +3011,22 @@ pub const Compiler = struct {
             .read => self.builder.readSexp(),
             else => error.InvalidSyntax,
         } catch return error.OutOfMemory;
+    }
+
+    fn compileListPrim(self: *Compiler, args: Value, env: *const Env) CompileError!*Ir {
+        // (list a b c ...) -> variadic
+        var elements = std.ArrayList(*const Ir){};
+        defer elements.deinit(self.allocator);
+
+        var current = args;
+        while (current.isCons()) {
+            const cons = current.toPtr(Cons);
+            const elem_ir = try self.compile(cons.car, env);
+            elements.append(self.allocator, elem_ir) catch return error.OutOfMemory;
+            current = cons.cdr;
+        }
+
+        return self.builder.list(elements.items) catch return error.OutOfMemory;
     }
 
     fn compileSubstring(self: *Compiler, args: Value, env: *const Env) CompileError!*Ir {

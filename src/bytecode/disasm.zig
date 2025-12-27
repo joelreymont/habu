@@ -40,7 +40,7 @@ pub fn disassembleInstruction(chunk: *const Chunk, offset: usize, writer: anytyp
         .push_nil, .push_t, .dup, .pop, .swap,
         .add, .sub, .mul, .div, .mod, .neg,
         .eq, .lt, .gt, .le, .ge, .num_eq, .not,
-        .cons, .car, .cdr, .append_lists,
+        .cons, .car, .cdr, .append_lists, .list_length, .list_reverse, .list_nth, .list_last, .list_member, .list_nthcdr,
         .consp, .symbolp, .numberp, .stringp, .vectorp, .closurep, .keywordp, .nilp,
         .vec_ref, .vec_set, .vec_len, .make_box, .box_ref, .box_set,
         .str_ref, .str_len, .str_concat,
