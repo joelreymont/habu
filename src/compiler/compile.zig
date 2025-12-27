@@ -2779,11 +2779,11 @@ pub const Compiler = struct {
         const s = sym.raw;
         const b = self.builtins orelse return error.InvalidSyntax;
 
-        // Binary arithmetic
-        if (s == b.@"+".raw) return self.compileBinaryPrim(args, env, .add);
-        if (s == b.@"-".raw) return self.compileBinaryPrim(args, env, .sub);
-        if (s == b.@"*".raw) return self.compileBinaryPrim(args, env, .mul);
-        if (s == b.@"/".raw) return self.compileBinaryPrim(args, env, .div);
+        // Variadic arithmetic (+, -, *, /)
+        if (s == b.@"+".raw) return self.compileVariadicArith(args, env, .add, 0);
+        if (s == b.@"-".raw) return self.compileVariadicArith(args, env, .sub, null);
+        if (s == b.@"*".raw) return self.compileVariadicArith(args, env, .mul, 1);
+        if (s == b.@"/".raw) return self.compileVariadicArith(args, env, .div, null);
         if (s == b.mod.raw or s == b.@"%".raw) return self.compileBinaryPrim(args, env, .mod);
 
         // Comparison
@@ -2878,6 +2878,60 @@ pub const Compiler = struct {
     }
 
     const PrimTag = enum { add, sub, mul, div, mod, eq, lt, gt, le, ge, num_eq, cons, car, cdr, append, length, reverse, nth, nthcdr, last, member, consp, symbolp, numberp, stringp, vectorp, nilp, not, vec_ref, vec_len, make_box, box_ref, box_set, str_ref, str_len, str_eq, print, random, intern, sym_name, type_of, characterp, floatp, char_code, code_char, char_eq, char_lt, char_gt, read_char, peek_char, read, load, unread_char, boundp, fboundp, symbol_value, symbol_function, typep, abs, zerop, plusp, minusp, evenp, oddp };
+
+    /// Compile variadic arithmetic: +, -, *, /
+    /// identity: for + (0), * (1). null means no identity (- and / need args)
+    fn compileVariadicArith(self: *Compiler, args: Value, env: *const Env, op: PrimTag, identity: ?i64) CompileError!*Ir {
+        // Collect args
+        var arg_list = std.ArrayList(*Ir){};
+        defer arg_list.deinit(self.allocator);
+
+        var current = args;
+        while (current.isCons()) {
+            const c = current.toPtr(Cons);
+            const compiled = try self.compile(c.car, env);
+            arg_list.append(self.allocator, compiled) catch return error.OutOfMemory;
+            current = c.cdr;
+        }
+
+        const arg_count = arg_list.items.len;
+
+        // Handle different arities
+        if (arg_count == 0) {
+            // (+) -> 0, (*) -> 1, (-) and (/) are errors
+            if (identity) |id| {
+                return self.builder.lit(Value.makeFixnum(id)) catch return error.OutOfMemory;
+            }
+            return error.InvalidSyntax;
+        }
+
+        if (arg_count == 1) {
+            // (+ x) -> x, (* x) -> x
+            // (- x) -> (- 0 x), (/ x) -> (/ 1 x)
+            if (op == .sub) {
+                const zero = self.builder.lit(Value.makeFixnum(0)) catch return error.OutOfMemory;
+                return self.builder.sub(zero, arg_list.items[0]) catch return error.OutOfMemory;
+            }
+            if (op == .div) {
+                const one = self.builder.lit(Value.makeFixnum(1)) catch return error.OutOfMemory;
+                return self.builder.div(one, arg_list.items[0]) catch return error.OutOfMemory;
+            }
+            return arg_list.items[0];
+        }
+
+        // 2+ args: fold left
+        var result = arg_list.items[0];
+        for (arg_list.items[1..]) |arg| {
+            result = switch (op) {
+                .add => self.builder.add(result, arg),
+                .sub => self.builder.sub(result, arg),
+                .mul => self.builder.mul(result, arg),
+                .div => self.builder.div(result, arg),
+                else => unreachable,
+            } catch return error.OutOfMemory;
+        }
+        return result;
+    }
 
     fn compileBinaryPrim(self: *Compiler, args: Value, env: *const Env, prim: PrimTag) CompileError!*Ir {
         if (!args.isCons()) return error.InvalidSyntax;
