@@ -209,8 +209,6 @@ pub fn printValue(val: Value) !void {
 fn printValueTo(val: Value, w: anytype) !void {
     if (val.isNil()) {
         try w.writeAll("nil");
-    } else if (val.raw == Value.t.raw) {
-        try w.writeAll("t");
     } else if (val.isFixnum()) {
         try w.print("{d}", .{val.toFixnum()});
     } else if (val.isFloat()) {

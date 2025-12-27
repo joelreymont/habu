@@ -845,8 +845,6 @@ pub const Repl = struct {
     pub fn printValue(self: *Repl, val: Value, writer: anytype) anyerror!void {
         if (val.isNil()) {
             try writer.writeAll("nil");
-        } else if (val.raw == Value.t.raw) {
-            try writer.writeAll("t");
         } else if (val.isFixnum()) {
             try writer.print("{d}", .{val.toFixnum()});
         } else if (val.isFloat()) {
