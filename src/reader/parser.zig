@@ -195,7 +195,7 @@ pub const Parser = struct {
             text = text[1..];
         }
 
-        return self.allocKeyword(text);
+        return self.internKeyword(text);
     }
 
     /// Intern a symbol (same name = same Value)
@@ -203,25 +203,9 @@ pub const Parser = struct {
         return self.heap.intern(name) orelse error.OutOfMemory;
     }
 
-    fn allocKeyword(self: *Parser, name: []const u8) ParseError!Value {
-        const objects = @import("../runtime/objects.zig");
-
-        const aligned_name_len = std.mem.alignForward(usize, name.len, 8);
-        const total_size = @sizeOf(objects.Keyword) + aligned_name_len;
-
-        const ptr = self.heap.allocRaw(total_size) orelse return error.OutOfMemory;
-        const kw: *objects.Keyword = @ptrCast(@alignCast(ptr));
-        const name_ptr: [*]u8 = @ptrCast(ptr + @sizeOf(objects.Keyword));
-
-        @memcpy(name_ptr[0..name.len], name);
-
-        kw.* = .{
-            .name_len = name.len,
-            .name_ptr = name_ptr,
-            .hash = 0, // TODO: compute hash
-        };
-
-        return Value.makeKeyword(kw);
+    /// Intern a keyword (same name = same Value)
+    fn internKeyword(self: *Parser, name: []const u8) ParseError!Value {
+        return self.heap.internKeyword(name) orelse error.OutOfMemory;
     }
 
     fn parseCharacter(self: *Parser) ParseError!Value {

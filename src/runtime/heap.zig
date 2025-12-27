@@ -77,6 +77,8 @@ pub const Heap = struct {
     stats: Stats,
     /// Interned symbol table
     symbols: SymbolTable,
+    /// Interned keyword table
+    keywords: SymbolTable,
 
     pub const Stats = struct {
         allocations: usize = 0,
@@ -105,12 +107,14 @@ pub const Heap = struct {
             .backing_allocator = allocator,
             .stats = .{},
             .symbols = SymbolTable.init(allocator),
+            .keywords = SymbolTable.init(allocator),
         };
     }
 
     /// Deinitialize heap
     pub fn deinit(self: *Heap) void {
         self.symbols.deinit();
+        self.keywords.deinit();
         self.backing_allocator.free(self.memory);
     }
 
@@ -323,6 +327,43 @@ pub const Heap = struct {
         self.symbols.put(name, sym) catch return null;
 
         return sym;
+    }
+
+    /// Allocate a keyword in the heap
+    pub fn allocKeyword(self: *Heap, name: []const u8) ?Value {
+        const aligned_name_len = std.mem.alignForward(usize, name.len, 8);
+        const total_size = @sizeOf(objects.Keyword) + aligned_name_len;
+
+        const ptr = self.allocRaw(total_size) orelse return null;
+        const kw: *objects.Keyword = @ptrCast(@alignCast(ptr));
+        const name_ptr: [*]u8 = @ptrCast(ptr + @sizeOf(objects.Keyword));
+
+        @memcpy(name_ptr[0..name.len], name);
+
+        kw.* = .{
+            .name_len = name.len,
+            .name_ptr = name_ptr,
+            .hash = 0, // TODO: compute hash
+        };
+
+        return Value.makeKeyword(kw);
+    }
+
+    /// Intern a keyword (same name = same Value)
+    /// Returns existing keyword if already interned, otherwise creates new one
+    pub fn internKeyword(self: *Heap, name: []const u8) ?Value {
+        // Check for existing keyword
+        if (self.keywords.get(name)) |existing| {
+            return existing;
+        }
+
+        // Allocate new keyword
+        const kw = self.allocKeyword(name) orelse return null;
+
+        // Add to keyword table
+        self.keywords.put(name, kw) catch return null;
+
+        return kw;
     }
 
     /// Swap from-space and to-space
