@@ -128,6 +128,10 @@ pub const Vm = struct {
     /// Global environment for boundp/fboundp lookups
     global_env: ?*const GlobalEnv,
 
+    /// Callback for (load "filename") - set by REPL
+    load_callback: ?*const fn ([]const u8, *anyopaque) VmError!Value,
+    load_context: ?*anyopaque,
+
     const STACK_SIZE = 1024;
     const MAX_SECONDARY_VALUES = 20;
     const MAX_FRAMES = 64;
@@ -159,6 +163,8 @@ pub const Vm = struct {
             .secondary_values = undefined,
             .secondary_values_count = 0,
             .global_env = null,
+            .load_callback = null,
+            .load_context = null,
         };
         // Initialize globals to nil
         for (&vm.globals) |*g| {
@@ -182,6 +188,12 @@ pub const Vm = struct {
     /// Set the global environment for boundp/fboundp lookups
     pub fn setGlobalEnv(self: *Vm, env: *const GlobalEnv) void {
         self.global_env = env;
+    }
+
+    /// Set the load callback for (load "filename")
+    pub fn setLoadCallback(self: *Vm, callback: *const fn ([]const u8, *anyopaque) VmError!Value, context: *anyopaque) void {
+        self.load_callback = callback;
+        self.load_context = context;
     }
 
     /// Run a chunk to completion
@@ -1060,6 +1072,24 @@ pub const Vm = struct {
                         continue;
                     };
                     try self.push(result);
+                },
+
+                .load => {
+                    // Load and evaluate a file
+                    const filename_val = try self.pop();
+                    if (!filename_val.isString()) return error.TypeMismatch;
+
+                    const str = filename_val.toPtr(String);
+                    const filename = str.bytes();
+
+                    // Call the load callback if set
+                    if (self.load_callback) |callback| {
+                        const result = try callback(filename, self.load_context.?);
+                        try self.push(result);
+                    } else {
+                        // No callback set - return nil
+                        try self.push(Value.nil);
+                    }
                 },
 
                 .unread_char => {

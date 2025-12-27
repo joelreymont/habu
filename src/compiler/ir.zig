@@ -306,6 +306,7 @@ pub const Ir = union(enum) {
     read_char: void, // No operands - reads from stdin
     peek_char: void, // No operands - peeks at stdin
     read: void, // Read S-expression from stdin
+    load: UnaryOp, // Load and evaluate a file
     unread_char: UnaryOp, // Push character back
     boundp: UnaryOp, // Check if symbol has global binding
     fboundp: UnaryOp, // Check if symbol has function binding
@@ -816,6 +817,12 @@ pub const IrBuilder = struct {
     pub fn readSexp(self: IrBuilder) !*Ir {
         const node = try self.allocator.create(Ir);
         node.* = .{ .read = {} };
+        return node;
+    }
+
+    pub fn load(self: IrBuilder, filename: *const Ir) !*Ir {
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .load = .{ .operand = filename } };
         return node;
     }
 

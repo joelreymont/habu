@@ -153,6 +153,7 @@ pub const Builtins = struct {
     @"read-char": Value,
     @"peek-char": Value,
     read: Value,
+    load: Value,
     @"unread-char": Value,
 
     // Primitives - Symbol operations
@@ -297,6 +298,7 @@ pub const Builtins = struct {
             .@"read-char" = heap.intern("read-char") orelse return null,
             .@"peek-char" = heap.intern("peek-char") orelse return null,
             .read = heap.intern("read") orelse return null,
+            .load = heap.intern("load") orelse return null,
             .@"unread-char" = heap.intern("unread-char") orelse return null,
             // Primitives - Symbol operations
             .boundp = heap.intern("boundp") orelse return null,
@@ -2789,6 +2791,7 @@ pub const Compiler = struct {
         if (s == b.@"read-char".raw) return self.compileNullaryPrim(.read_char);
         if (s == b.@"peek-char".raw) return self.compileNullaryPrim(.peek_char);
         if (s == b.read.raw) return self.compileNullaryPrim(.read);
+        if (s == b.load.raw) return self.compileUnaryPrim(args, env, .load);
         if (s == b.@"unread-char".raw) return self.compileUnaryPrim(args, env, .unread_char);
 
         // Symbol operations
@@ -2838,7 +2841,7 @@ pub const Compiler = struct {
         return error.InvalidSyntax; // Not a known primitive
     }
 
-    const PrimTag = enum { add, sub, mul, div, mod, eq, lt, gt, le, ge, num_eq, cons, car, cdr, append, length, reverse, nth, nthcdr, last, member, consp, symbolp, numberp, stringp, vectorp, nilp, not, vec_ref, vec_len, make_box, box_ref, box_set, str_ref, str_len, str_eq, print, random, intern, sym_name, type_of, characterp, floatp, char_code, code_char, char_eq, char_lt, char_gt, read_char, peek_char, read, unread_char, boundp, fboundp, symbol_value, symbol_function, typep, abs, zerop, plusp, minusp, evenp, oddp };
+    const PrimTag = enum { add, sub, mul, div, mod, eq, lt, gt, le, ge, num_eq, cons, car, cdr, append, length, reverse, nth, nthcdr, last, member, consp, symbolp, numberp, stringp, vectorp, nilp, not, vec_ref, vec_len, make_box, box_ref, box_set, str_ref, str_len, str_eq, print, random, intern, sym_name, type_of, characterp, floatp, char_code, code_char, char_eq, char_lt, char_gt, read_char, peek_char, read, load, unread_char, boundp, fboundp, symbol_value, symbol_function, typep, abs, zerop, plusp, minusp, evenp, oddp };
 
     fn compileBinaryPrim(self: *Compiler, args: Value, env: *const Env, prim: PrimTag) CompileError!*Ir {
         if (!args.isCons()) return error.InvalidSyntax;
@@ -2975,6 +2978,7 @@ pub const Compiler = struct {
             .char_code => self.builder.charCode(operand),
             .code_char => self.builder.codeChar(operand),
             .unread_char => self.builder.unreadChar(operand),
+            .load => self.builder.load(operand),
             .boundp => self.builder.boundp(operand),
             .fboundp => self.builder.fboundp(operand),
             .symbol_value => self.builder.symbolValue(operand),

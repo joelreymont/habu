@@ -81,6 +81,200 @@ pub const Repl = struct {
     /// Wire up VM to compiler's global environment. Must be called after init.
     pub fn wireGlobalEnv(self: *Repl) void {
         self.vm.setGlobalEnv(&self.compiler.globals);
+        // Set up load callback
+        self.vm.setLoadCallback(&loadCallback, @ptrCast(self));
+    }
+
+    /// Callback for (load "filename") from VM
+    fn loadCallback(filename: []const u8, context: *anyopaque) vm_mod.VmError!Value {
+        const self: *Repl = @ptrCast(@alignCast(context));
+        return self.loadFileValue(filename) catch {
+            return vm_mod.VmError.InvalidArgument;
+        };
+    }
+
+    /// Load a file and return the last value (for (load ...) primitive)
+    /// Uses a separate VM to avoid recursive execution issues
+    fn loadFileValue(self: *Repl, path: []const u8) !Value {
+        const file = std.fs.cwd().openFile(path, .{}) catch {
+            return error.IoError;
+        };
+        defer file.close();
+
+        const content = file.readToEndAlloc(self.allocator, 1024 * 1024) catch {
+            return error.IoError;
+        };
+        defer self.allocator.free(content);
+
+        // Evaluate all expressions using a fresh VM, return last value
+        return self.evalFileContentSeparateVm(content);
+    }
+
+    /// Evaluate file content using a separate VM to avoid stack corruption
+    fn evalFileContentSeparateVm(self: *Repl, content: []const u8) !Value {
+        var pos: usize = 0;
+        var last_value = Value.nil;
+
+        // Create a temporary VM for nested evaluation
+        var nested_vm = Vm.init(self.allocator, self.heap);
+        nested_vm.setGlobalEnv(&self.compiler.globals);
+
+        // Copy globals from main VM
+        for (self.vm.globals, 0..) |g, i| {
+            nested_vm.globals[i] = g;
+        }
+        nested_vm.num_globals = self.vm.num_globals;
+
+        while (pos < content.len) {
+            // Skip whitespace and comments
+            while (pos < content.len) {
+                if (content[pos] == ' ' or content[pos] == '\t' or
+                    content[pos] == '\n' or content[pos] == '\r')
+                {
+                    pos += 1;
+                } else if (content[pos] == ';') {
+                    while (pos < content.len and content[pos] != '\n') {
+                        pos += 1;
+                    }
+                } else {
+                    break;
+                }
+            }
+
+            if (pos >= content.len) break;
+
+            // Find the expression extent
+            const expr_start = pos;
+            var depth: usize = 0;
+            var in_string = false;
+            var in_char = false;
+
+            while (pos < content.len) {
+                const c = content[pos];
+                if (in_string) {
+                    if (c == '\\' and pos + 1 < content.len) {
+                        pos += 2;
+                        continue;
+                    }
+                    if (c == '"') in_string = false;
+                } else if (in_char) {
+                    in_char = false;
+                } else {
+                    if (c == '"') in_string = true;
+                    if (c == '#' and pos + 1 < content.len and content[pos + 1] == '\\') {
+                        pos += 1;
+                        in_char = true;
+                    }
+                    if (c == '(') depth += 1;
+                    if (c == ')') {
+                        if (depth > 0) depth -= 1;
+                        if (depth == 0) {
+                            pos += 1;
+                            break;
+                        }
+                    }
+                    if (depth == 0 and (c == ' ' or c == '\t' or c == '\n' or c == '\r')) {
+                        break;
+                    }
+                }
+                pos += 1;
+            }
+
+            const expr_slice = content[expr_start..pos];
+            if (expr_slice.len > 0) {
+                // Use evalWithVm for the nested VM
+                last_value = self.evalWithVm(expr_slice, &nested_vm) catch {
+                    continue;
+                };
+            }
+        }
+
+        // Copy globals back to main VM
+        for (nested_vm.globals, 0..) |g, i| {
+            self.vm.globals[i] = g;
+        }
+        self.vm.num_globals = nested_vm.num_globals;
+
+        return last_value;
+    }
+
+    /// Evaluate with a specific VM instance
+    fn evalWithVm(self: *Repl, source: []const u8, vm: *Vm) !Value {
+        // Use arena for IR nodes
+        var arena = std.heap.ArenaAllocator.init(self.allocator);
+        defer arena.deinit();
+        const arena_alloc = arena.allocator();
+
+        // Parse
+        var parser = Parser.init(arena_alloc, self.heap, source);
+        var expr = parser.parse() catch {
+            return error.ParseError;
+        };
+
+        // Expand macros
+        expr = self.expandMacros(expr) catch return error.CompileError;
+
+        // Compile
+        const saved_builder = self.compiler.builder;
+        const saved_allocator = self.compiler.allocator;
+        self.compiler.builder = IrBuilder.init(arena_alloc);
+        self.compiler.allocator = arena_alloc;
+
+        var env = Env.init(arena_alloc, null);
+        defer env.deinit();
+
+        const ir_node = self.compiler.compile(expr, &env) catch {
+            self.compiler.builder = saved_builder;
+            self.compiler.allocator = saved_allocator;
+            return error.CompileError;
+        };
+        self.compiler.builder = saved_builder;
+        self.compiler.allocator = saved_allocator;
+
+        // Emit bytecode
+        var emitter = Emitter.initWithHeap(self.allocator, self.heap);
+        emitter.emit(ir_node) catch {
+            emitter.deinit();
+            return error.EmitError;
+        };
+        const chunk = emitter.finalize() catch {
+            emitter.deinit();
+            return error.EmitError;
+        };
+        const child_chunks = emitter.getChildChunks() catch {
+            self.allocator.free(chunk.code);
+            self.allocator.free(chunk.constants);
+            emitter.deinit();
+            return error.OutOfMemory;
+        };
+
+        // Store chunks persistently (need to allocate pointers)
+        for (child_chunks) |child_chunk| {
+            const chunk_ptr = self.allocator.create(bytecode.Chunk) catch {
+                self.allocator.free(chunk.code);
+                self.allocator.free(chunk.constants);
+                return error.OutOfMemory;
+            };
+            chunk_ptr.* = child_chunk;
+            self.persistent_chunk_ptrs.append(self.allocator, chunk_ptr) catch {
+                self.allocator.destroy(chunk_ptr);
+                self.allocator.free(chunk.code);
+                self.allocator.free(chunk.constants);
+                return error.OutOfMemory;
+            };
+        }
+        self.allocator.free(child_chunks);
+
+        // Set chunk pool and run
+        vm.setChunkPool(self.persistent_chunk_ptrs.items);
+        const result = vm.run(&chunk) catch {
+            self.allocator.free(chunk.code);
+            self.allocator.free(chunk.constants);
+            return error.RuntimeError;
+        };
+        self.allocator.free(chunk.code);
+        self.allocator.free(chunk.constants);
+        return result;
     }
 
     pub fn deinit(self: *Repl) void {
