@@ -105,6 +105,8 @@ pub const Builtins = struct {
 
     // Primitives - Comparison
     eq: Value,
+    equal: Value,
+    eql: Value,
     @"<": Value,
     @">": Value,
     @"<=": Value,
@@ -321,6 +323,8 @@ pub const Builtins = struct {
             .@"%" = heap.intern("%") orelse return null,
             // Primitives - Comparison
             .eq = heap.intern("eq") orelse return null,
+            .equal = heap.intern("equal") orelse return null,
+            .eql = heap.intern("eql") orelse return null,
             .@"<" = heap.intern("<") orelse return null,
             .@">" = heap.intern(">") orelse return null,
             .@"<=" = heap.intern("<=") orelse return null,
@@ -2929,6 +2933,8 @@ pub const Compiler = struct {
 
         // Comparison
         if (s == b.eq.raw) return self.compileBinaryPrim(args, env, .eq);
+        if (s == b.equal.raw) return self.compileBinaryPrim(args, env, .equal);
+        if (s == b.eql.raw) return self.compileBinaryPrim(args, env, .eql);
         if (s == b.@"<".raw) return self.compileBinaryPrim(args, env, .lt);
         if (s == b.@">".raw) return self.compileBinaryPrim(args, env, .gt);
         if (s == b.@"<=".raw) return self.compileBinaryPrim(args, env, .le);
@@ -3077,7 +3083,7 @@ pub const Compiler = struct {
         return error.InvalidSyntax; // Not a known primitive
     }
 
-    const PrimTag = enum { add, sub, mul, div, mod, eq, lt, gt, le, ge, num_eq, cons, car, cdr, append, length, reverse, nth, nthcdr, last, member, assoc, consp, symbolp, numberp, stringp, vectorp, nilp, not, vec_ref, vec_len, make_box, box_ref, box_set, str_ref, str_len, str_eq, str_concat, print, princ, terpri, write_char, random, intern, sym_name, type_of, characterp, floatp, listp, atom, char_code, code_char, char_eq, char_lt, char_gt, char_upcase, char_downcase, digit_char_p, alpha_char_p, read_char, peek_char, read, read_from_string, load, unread_char, eval, gensym, macroexpand, parse_integer, write_to_string, logand, logior, logxor, lognot, ash, read_file, write_file, make_string, string_to_list, list_to_string, string_upcase, string_downcase, boundp, fboundp, symbol_value, symbol_function, typep, abs, zerop, plusp, minusp, evenp, oddp };
+    const PrimTag = enum { add, sub, mul, div, mod, eq, equal, eql, lt, gt, le, ge, num_eq, cons, car, cdr, append, length, reverse, nth, nthcdr, last, member, assoc, consp, symbolp, numberp, stringp, vectorp, nilp, not, vec_ref, vec_len, make_box, box_ref, box_set, str_ref, str_len, str_eq, str_concat, print, princ, terpri, write_char, random, intern, sym_name, type_of, characterp, floatp, listp, atom, char_code, code_char, char_eq, char_lt, char_gt, char_upcase, char_downcase, digit_char_p, alpha_char_p, read_char, peek_char, read, read_from_string, load, unread_char, eval, gensym, macroexpand, parse_integer, write_to_string, logand, logior, logxor, lognot, ash, read_file, write_file, make_string, string_to_list, list_to_string, string_upcase, string_downcase, boundp, fboundp, symbol_value, symbol_function, typep, abs, zerop, plusp, minusp, evenp, oddp };
 
     /// Compile variadic arithmetic: +, -, *, /
     /// identity: for + (0), * (1). null means no identity (- and / need args)
@@ -3153,6 +3159,8 @@ pub const Compiler = struct {
                 break :blk node;
             },
             .eq => self.builder.eq(left, right),
+            .equal => self.builder.equal(left, right),
+            .eql => self.builder.eql(left, right),
             .lt => self.builder.lt(left, right),
             .gt => self.builder.gt(left, right),
             .le => blk: {

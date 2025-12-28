@@ -1313,6 +1313,18 @@ pub const Vm = struct {
                         try self.push(Value.nil);
                     }
                 },
+                .equal => {
+                    const b = try self.pop();
+                    const a = try self.pop();
+                    try self.push(if (valueEqual(a, b)) Value.t else Value.nil);
+                },
+                .eql => {
+                    const b = try self.pop();
+                    const a = try self.pop();
+                    // eql is like eq but also considers numeric equality for fixnums
+                    // Since fixnums are immediate, eq already handles them correctly
+                    try self.push(if (a.eq(b)) Value.t else Value.nil);
+                },
                 .char_code => {
                     const val = try self.pop();
                     if (!val.isCharacter()) return error.TypeMismatch;
@@ -2034,6 +2046,53 @@ pub const Vm = struct {
         return if (a == b) Value.t else Value.nil;
     }
 };
+
+// ============================================================================
+// Equality helpers
+// ============================================================================
+
+/// Structural equality (equal in Lisp)
+/// Returns true if two values are structurally equal
+fn valueEqual(a: Value, b: Value) bool {
+    // Fast path: identical values
+    if (a.raw == b.raw) return true;
+
+    // Both must be same type for structural equality
+    // Fixnums are immediate, so if they're not identical, they're not equal
+    if (a.isFixnum() or b.isFixnum()) return false;
+
+    // Characters are immediate
+    if (a.isCharacter() or b.isCharacter()) return false;
+
+    // Check tag type
+    const tag_a = a.raw & 0xF;
+    const tag_b = b.raw & 0xF;
+    if (tag_a != tag_b) return false;
+
+    // Both are pointers of same type
+    if (a.isCons()) {
+        // Recursively compare car and cdr
+        const cons_a = a.toPtr(Cons);
+        const cons_b = b.toPtr(Cons);
+        return valueEqual(cons_a.car, cons_b.car) and valueEqual(cons_a.cdr, cons_b.cdr);
+    } else if (a.isString()) {
+        // Compare strings character by character
+        const str_a = a.toPtr(String);
+        const str_b = b.toPtr(String);
+        return std.mem.eql(u8, str_a.bytes(), str_b.bytes());
+    } else if (a.isVector()) {
+        // Compare vectors element by element
+        const vec_a = a.toPtr(Vector);
+        const vec_b = b.toPtr(Vector);
+        if (vec_a.length != vec_b.length) return false;
+        for (vec_a.items(), vec_b.items()) |ea, eb| {
+            if (!valueEqual(ea, eb)) return false;
+        }
+        return true;
+    }
+    // Symbols, closures, keywords: use eq
+    return false;
+}
 
 // ============================================================================
 // Hash table helpers (open addressing with linear probing)

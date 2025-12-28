@@ -637,6 +637,14 @@ pub const Op = enum(u8) {
     /// ( key alist -- cons-or-nil )
     assoc = 0xF3,
 
+    /// Structural equality (recursive)
+    /// ( a b -- t/nil )
+    equal = 0xF4,
+
+    /// Extended equality (eql)
+    /// ( a b -- t/nil )
+    eql = 0xF5,
+
     // ========================================================================
     // Dynamic exception handling (catch/throw)
     // ========================================================================
@@ -722,7 +730,7 @@ pub const Op = enum(u8) {
             .logand, .logior, .logxor, .lognot, .ash,
             .read_file, .write_file, .make_string, .string_to_list, .list_to_string,
         .string_upcase, .string_downcase,
-        .listp, .atom, .assoc,
+        .listp, .atom, .assoc, .equal, .eql,
             => 0,
 
             // 1 byte operand

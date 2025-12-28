@@ -256,6 +256,8 @@ pub const Ir = union(enum) {
     le: BinaryOp,
     ge: BinaryOp,
     num_eq: BinaryOp, // = (numeric equality)
+    equal: BinaryOp, // equal (structural equality)
+    eql: BinaryOp, // eql (extended equality)
 
     // ========================================================================
     // Primitives - Logic
@@ -722,6 +724,18 @@ pub const IrBuilder = struct {
     pub fn gt(self: IrBuilder, left: *const Ir, right: *const Ir) !*Ir {
         const node = try self.allocator.create(Ir);
         node.* = .{ .gt = .{ .left = left, .right = right } };
+        return node;
+    }
+
+    pub fn equal(self: IrBuilder, left: *const Ir, right: *const Ir) !*Ir {
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .equal = .{ .left = left, .right = right } };
+        return node;
+    }
+
+    pub fn eql(self: IrBuilder, left: *const Ir, right: *const Ir) !*Ir {
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .eql = .{ .left = left, .right = right } };
         return node;
     }
 
