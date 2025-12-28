@@ -115,6 +115,8 @@ pub const Builtins = struct {
     cons: Value,
     car: Value,
     cdr: Value,
+    first: Value, // CL alias for car
+    rest: Value, // CL alias for cdr
     append: Value,
     length: Value,
     reverse: Value,
@@ -301,6 +303,8 @@ pub const Builtins = struct {
             .cons = heap.intern("cons") orelse return null,
             .car = heap.intern("car") orelse return null,
             .cdr = heap.intern("cdr") orelse return null,
+            .first = heap.intern("first") orelse return null,
+            .rest = heap.intern("rest") orelse return null,
             .append = heap.intern("append") orelse return null,
             .length = heap.intern("length") orelse return null,
             .reverse = heap.intern("reverse") orelse return null,
@@ -2879,8 +2883,8 @@ pub const Compiler = struct {
 
         // List operations
         if (s == b.cons.raw) return self.compileBinaryPrim(args, env, .cons);
-        if (s == b.car.raw) return self.compileUnaryPrim(args, env, .car);
-        if (s == b.cdr.raw) return self.compileUnaryPrim(args, env, .cdr);
+        if (s == b.car.raw or s == b.first.raw) return self.compileUnaryPrim(args, env, .car);
+        if (s == b.cdr.raw or s == b.rest.raw) return self.compileUnaryPrim(args, env, .cdr);
         if (s == b.append.raw) return self.compileBinaryPrim(args, env, .append);
         if (s == b.length.raw) return self.compileUnaryPrim(args, env, .length);
         if (s == b.reverse.raw) return self.compileUnaryPrim(args, env, .reverse);
