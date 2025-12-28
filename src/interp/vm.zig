@@ -1294,6 +1294,25 @@ pub const Vm = struct {
                     // atom: not a cons (everything except cons)
                     try self.push(if (!val.isCons()) Value.t else Value.nil);
                 },
+                .assoc => {
+                    const alist = try self.pop();
+                    const key = try self.pop();
+                    var curr = alist;
+                    while (curr.isCons()) {
+                        const c = curr.toPtr(Cons);
+                        // Each element should be a cons (key . value)
+                        if (c.car.isCons()) {
+                            const pair = c.car.toPtr(Cons);
+                            if (pair.car.raw == key.raw) {
+                                try self.push(c.car);
+                                break;
+                            }
+                        }
+                        curr = c.cdr;
+                    } else {
+                        try self.push(Value.nil);
+                    }
+                },
                 .char_code => {
                     const val = try self.pop();
                     if (!val.isCharacter()) return error.TypeMismatch;

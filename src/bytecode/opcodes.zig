@@ -633,6 +633,10 @@ pub const Op = enum(u8) {
     /// ( val -- t/nil )
     atom = 0xF2,
 
+    /// Association list lookup
+    /// ( key alist -- cons-or-nil )
+    assoc = 0xF3,
+
     // ========================================================================
     // Dynamic exception handling (catch/throw)
     // ========================================================================
@@ -718,7 +722,7 @@ pub const Op = enum(u8) {
             .logand, .logior, .logxor, .lognot, .ash,
             .read_file, .write_file, .make_string, .string_to_list, .list_to_string,
         .string_upcase, .string_downcase,
-        .listp, .atom,
+        .listp, .atom, .assoc,
             => 0,
 
             // 1 byte operand

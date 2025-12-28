@@ -278,6 +278,7 @@ pub const Ir = union(enum) {
     nthcdr: BinaryOp, // (nthcdr n list)
     last: UnaryOp, // (last list)
     member: BinaryOp, // (member item list)
+    assoc: BinaryOp, // (assoc key alist)
 
     // ========================================================================
     // Primitives - Type predicates
@@ -802,6 +803,12 @@ pub const IrBuilder = struct {
     pub fn atomp(self: IrBuilder, operand: *const Ir) !*Ir {
         const node = try self.allocator.create(Ir);
         node.* = .{ .atom = .{ .operand = operand } };
+        return node;
+    }
+
+    pub fn assoc(self: IrBuilder, key: *const Ir, alist: *const Ir) !*Ir {
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .assoc = .{ .left = key, .right = alist } };
         return node;
     }
 

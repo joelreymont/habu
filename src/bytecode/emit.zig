@@ -201,6 +201,7 @@ pub const Emitter = struct {
             .nthcdr => |op| try self.emitBinaryOp(op, .list_nthcdr),
             .last => |op| try self.emitUnaryOp(op.operand, .list_last),
             .member => |op| try self.emitBinaryOp(op, .list_member),
+            .assoc => |op| try self.emitBinaryOp(op, .assoc),
 
             // Type predicates
             .consp => |op| try self.emitUnaryOp(op.operand, .consp),
