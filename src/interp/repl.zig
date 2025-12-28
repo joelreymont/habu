@@ -328,6 +328,11 @@ pub const Repl = struct {
             return error.ParseError;
         };
 
+        // Check for defmacro - handle specially like main eval
+        if (self.isDefmacro(expr)) {
+            return self.handleDefmacro(expr, arena_alloc);
+        }
+
         // Expand macros
         expr = self.expandMacros(expr) catch return error.CompileError;
 
