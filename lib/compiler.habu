@@ -569,6 +569,12 @@
        (ir-length (compile-expr (car args) env state)))
       ((and (eq func 'reverse) (= nargs 1))
        (ir-reverse (compile-expr (car args) env state)))
+      ((and (eq func 'rplaca) (= nargs 2))
+       (ir-rplaca (compile-expr (car args) env state)
+                  (compile-expr (car (cdr args)) env state)))
+      ((and (eq func 'rplacd) (= nargs 2))
+       (ir-rplacd (compile-expr (car args) env state)
+                  (compile-expr (car (cdr args)) env state)))
 
       ;; Type predicates
       ((and (eq func 'consp) (= nargs 1))
@@ -586,11 +592,60 @@
       ((and (eq func 'listp) (= nargs 1))
        (ir-listp (compile-expr (car args) env state)))
 
+      ;; More list operations
+      ((and (eq func 'nth) (= nargs 2))
+       (ir-nth (compile-expr (car args) env state)
+               (compile-expr (car (cdr args)) env state)))
+      ((and (eq func 'member) (= nargs 2))
+       (ir-member (compile-expr (car args) env state)
+                  (compile-expr (car (cdr args)) env state)))
+      ((and (eq func 'assoc) (= nargs 2))
+       (ir-assoc (compile-expr (car args) env state)
+                 (compile-expr (car (cdr args)) env state)))
+
+      ;; Symbol operations
+      ((and (eq func 'gensym) (= nargs 0))
+       (ir-gensym))
+      ((and (eq func 'intern) (= nargs 1))
+       (ir-intern (compile-expr (car args) env state)))
+      ((and (eq func 'symbol-name) (= nargs 1))
+       (ir-sym-name (compile-expr (car args) env state)))
+
+      ;; Vector operations
+      ((and (eq func 'make-vector) (= nargs 2))
+       (ir-make-vec (compile-expr (car args) env state)
+                    (compile-expr (car (cdr args)) env state)))
+      ((and (eq func 'vector-ref) (= nargs 2))
+       (ir-vec-ref (compile-expr (car args) env state)
+                   (compile-expr (car (cdr args)) env state)))
+      ((and (eq func 'vector-set!) (= nargs 3))
+       (ir-vec-set (compile-expr (car args) env state)
+                   (compile-expr (car (cdr args)) env state)
+                   (compile-expr (car (cdr (cdr args))) env state)))
+      ((and (eq func 'vector-length) (= nargs 1))
+       (ir-vec-len (compile-expr (car args) env state)))
+
+      ;; String operations
+      ((and (eq func 'string-ref) (= nargs 2))
+       (ir-str-ref (compile-expr (car args) env state)
+                   (compile-expr (car (cdr args)) env state)))
+      ((and (eq func 'string-length) (= nargs 1))
+       (ir-str-len (compile-expr (car args) env state)))
+      ((and (eq func 'string=) (= nargs 2))
+       (ir-str-eq (compile-expr (car args) env state)
+                  (compile-expr (car (cdr args)) env state)))
+
       ;; I/O
       ((and (eq func 'print) (= nargs 1))
        (ir-print (compile-expr (car args) env state)))
       ((and (eq func 'princ) (= nargs 1))
        (ir-princ (compile-expr (car args) env state)))
+      ((and (eq func 'terpri) (= nargs 0))
+       (ir-terpri))
+      ((and (eq func 'read) (= nargs 0))
+       (ir-read))
+      ((and (eq func 'read-char) (= nargs 0))
+       (ir-read-char))
       ((and (eq func 'error) (= nargs 1))
        (ir-error (compile-expr (car args) env state)))
 

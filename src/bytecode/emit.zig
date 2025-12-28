@@ -540,7 +540,14 @@ pub const Emitter = struct {
         // Emit body
         try self.emit(l.body);
 
-        // TODO: Pop locals when let scope ends
+        // Pop locals when let scope ends
+        // After body: stack = [b1, b2, ..., bN, result]
+        // We want: stack = [result]
+        // Emit (swap, pop) for each binding to bubble result down
+        for (l.bindings) |_| {
+            try self.emitOp(.swap);
+            try self.emitOp(.pop);
+        }
     }
 
     fn emitLambda(self: *Emitter, lam: anytype) EmitError!void {

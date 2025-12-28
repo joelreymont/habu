@@ -644,7 +644,11 @@
   ;; Emit binding values (they become locals on stack)
   (let ((e1 (emit-let-bindings e bindings)))
     ;; Emit body
-    (emit-ir e1 body)))
+    (let ((e2 (emit-ir e1 body)))
+      ;; Pop locals when let scope ends
+      ;; After body: stack = [b1, b2, ..., bN, result]
+      ;; Emit (swap, pop) for each binding to bubble result down
+      (emit-let-cleanup e2 (length bindings)))))
 
 (defun emit-let-bindings (e bindings)
   "Emit binding value expressions"
@@ -652,6 +656,14 @@
       e
       (let ((e1 (emit-ir e (binding-value (car bindings)))))
         (emit-let-bindings e1 (cdr bindings)))))
+
+(defun emit-let-cleanup (e n)
+  "Emit swap/pop n times to clean up let bindings"
+  (if (= n 0)
+      e
+      (let* ((e1 (emit-op e *op-swap*))
+             (e2 (emit-op e1 *op-pop*)))
+        (emit-let-cleanup e2 (- n 1)))))
 
 (defun emit-lambda (e params rest-param captures body)
   "Emit lambda/closure.
