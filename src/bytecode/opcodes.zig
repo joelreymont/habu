@@ -537,6 +537,38 @@ pub const Op = enum(u8) {
     /// ( val -- val )
     princ = 0xDC,
 
+    /// Print newline
+    /// ( -- nil )
+    terpri = 0xDD,
+
+    /// Write single character to stdout
+    /// ( char -- char )
+    write_char = 0xDE,
+
+    /// Convert character to uppercase
+    /// ( char -- char )
+    char_upcase = 0xDF,
+
+    /// Convert character to lowercase
+    /// ( char -- char )
+    char_downcase = 0xE0,
+
+    /// Check if character is a digit
+    /// ( char -- t/nil )
+    digit_char_p = 0xE1,
+
+    /// Check if character is alphabetic
+    /// ( char -- t/nil )
+    alpha_char_p = 0xE2,
+
+    /// Parse string to integer
+    /// ( string -- fixnum )
+    parse_integer = 0xE3,
+
+    /// Convert value to string representation
+    /// ( value -- string )
+    write_to_string = 0xE4,
+
     // ========================================================================
     // Dynamic exception handling (catch/throw)
     // ========================================================================
@@ -617,6 +649,8 @@ pub const Op = enum(u8) {
             .symbol_value, .symbol_function, .typep,
             .abs, .zerop, .plusp, .minusp, .evenp, .oddp,
             .mv_list, .read, .load, .read_from_string, .eval, .gensym, .macroexpand, .princ,
+            .terpri, .write_char, .char_upcase, .char_downcase,
+            .digit_char_p, .alpha_char_p, .parse_integer, .write_to_string,
             => 0,
 
             // 1 byte operand

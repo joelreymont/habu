@@ -197,8 +197,20 @@ pub const Builtins = struct {
     // Primitives - I/O and misc
     print: Value,
     princ: Value,
+    terpri: Value,
+    @"write-char": Value,
     random: Value,
     format: Value,
+
+    // Primitives - Character functions
+    @"char-upcase": Value,
+    @"char-downcase": Value,
+    @"digit-char-p": Value,
+    @"alpha-char-p": Value,
+
+    // Primitives - String/number conversion
+    @"parse-integer": Value,
+    @"write-to-string": Value,
 
     // Primitives - Hash tables
     @"make-hash-table": Value,
@@ -344,8 +356,18 @@ pub const Builtins = struct {
             // Primitives - I/O and misc
             .print = heap.intern("print") orelse return null,
             .princ = heap.intern("princ") orelse return null,
+            .terpri = heap.intern("terpri") orelse return null,
+            .@"write-char" = heap.intern("write-char") orelse return null,
             .random = heap.intern("random") orelse return null,
             .format = heap.intern("format") orelse return null,
+            // Primitives - Character functions
+            .@"char-upcase" = heap.intern("char-upcase") orelse return null,
+            .@"char-downcase" = heap.intern("char-downcase") orelse return null,
+            .@"digit-char-p" = heap.intern("digit-char-p") orelse return null,
+            .@"alpha-char-p" = heap.intern("alpha-char-p") orelse return null,
+            // Primitives - String/number conversion
+            .@"parse-integer" = heap.intern("parse-integer") orelse return null,
+            .@"write-to-string" = heap.intern("write-to-string") orelse return null,
             // Primitives - Hash tables
             .@"make-hash-table" = heap.intern("make-hash-table") orelse return null,
             .gethash = heap.intern("gethash") orelse return null,
@@ -2891,7 +2913,19 @@ pub const Compiler = struct {
         // I/O
         if (s == b.print.raw) return self.compileUnaryPrim(args, env, .print);
         if (s == b.princ.raw) return self.compileUnaryPrim(args, env, .princ);
+        if (s == b.terpri.raw) return self.compileNullaryPrim(.terpri);
+        if (s == b.@"write-char".raw) return self.compileUnaryPrim(args, env, .write_char);
         if (s == b.format.raw) return self.compileFormat(args, env);
+
+        // Character functions
+        if (s == b.@"char-upcase".raw) return self.compileUnaryPrim(args, env, .char_upcase);
+        if (s == b.@"char-downcase".raw) return self.compileUnaryPrim(args, env, .char_downcase);
+        if (s == b.@"digit-char-p".raw) return self.compileUnaryPrim(args, env, .digit_char_p);
+        if (s == b.@"alpha-char-p".raw) return self.compileUnaryPrim(args, env, .alpha_char_p);
+
+        // String/number conversion
+        if (s == b.@"parse-integer".raw) return self.compileUnaryPrim(args, env, .parse_integer);
+        if (s == b.@"write-to-string".raw) return self.compileUnaryPrim(args, env, .write_to_string);
 
         // Hash tables
         if (s == b.@"make-hash-table".raw) return self.compileMakeHash(args);
@@ -2907,7 +2941,7 @@ pub const Compiler = struct {
         return error.InvalidSyntax; // Not a known primitive
     }
 
-    const PrimTag = enum { add, sub, mul, div, mod, eq, lt, gt, le, ge, num_eq, cons, car, cdr, append, length, reverse, nth, nthcdr, last, member, consp, symbolp, numberp, stringp, vectorp, nilp, not, vec_ref, vec_len, make_box, box_ref, box_set, str_ref, str_len, str_eq, str_concat, print, princ, random, intern, sym_name, type_of, characterp, floatp, char_code, code_char, char_eq, char_lt, char_gt, read_char, peek_char, read, read_from_string, load, unread_char, eval, gensym, macroexpand, boundp, fboundp, symbol_value, symbol_function, typep, abs, zerop, plusp, minusp, evenp, oddp };
+    const PrimTag = enum { add, sub, mul, div, mod, eq, lt, gt, le, ge, num_eq, cons, car, cdr, append, length, reverse, nth, nthcdr, last, member, consp, symbolp, numberp, stringp, vectorp, nilp, not, vec_ref, vec_len, make_box, box_ref, box_set, str_ref, str_len, str_eq, str_concat, print, princ, terpri, write_char, random, intern, sym_name, type_of, characterp, floatp, char_code, code_char, char_eq, char_lt, char_gt, char_upcase, char_downcase, digit_char_p, alpha_char_p, read_char, peek_char, read, read_from_string, load, unread_char, eval, gensym, macroexpand, parse_integer, write_to_string, boundp, fboundp, symbol_value, symbol_function, typep, abs, zerop, plusp, minusp, evenp, oddp };
 
     /// Compile variadic arithmetic: +, -, *, /
     /// identity: for + (0), * (1). null means no identity (- and / need args)
@@ -3069,6 +3103,13 @@ pub const Compiler = struct {
             .str_len => self.builder.strLen(operand),
             .print => self.builder.print(operand),
             .princ => self.builder.princ(operand),
+            .write_char => self.builder.writeChar(operand),
+            .char_upcase => self.builder.charUpcase(operand),
+            .char_downcase => self.builder.charDowncase(operand),
+            .digit_char_p => self.builder.digitCharP(operand),
+            .alpha_char_p => self.builder.alphaCharP(operand),
+            .parse_integer => self.builder.parseInteger(operand),
+            .write_to_string => self.builder.writeToString(operand),
             .stringp => blk: {
                 const node = self.allocator.create(Ir) catch return error.OutOfMemory;
                 node.* = .{ .stringp = .{ .operand = operand } };
@@ -3139,6 +3180,7 @@ pub const Compiler = struct {
             .peek_char => self.builder.peekChar(),
             .read => self.builder.readSexp(),
             .gensym => self.builder.gensym(),
+            .terpri => self.builder.terpri(),
             else => error.InvalidSyntax,
         } catch return error.OutOfMemory;
     }

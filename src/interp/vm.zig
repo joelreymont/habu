@@ -749,6 +749,89 @@ pub const Vm = struct {
                     // Note: no newline for princ
                     try self.push(val); // Return the printed value
                 },
+                .terpri => {
+                    io.sysNewline() catch return error.Halt;
+                    try self.push(Value.nil);
+                },
+                .write_char => {
+                    const val = try self.pop();
+                    if (!val.isCharacter()) return error.TypeMismatch;
+                    const cp = val.toCharacter();
+                    if (cp < 128) {
+                        io.sysWriteChar(@intCast(cp)) catch return error.Halt;
+                    } else {
+                        // UTF-8 encode for non-ASCII
+                        var buf: [4]u8 = undefined;
+                        const len = std.unicode.utf8Encode(@intCast(cp), &buf) catch 0;
+                        io.sysWriteBytes(buf[0..len]) catch return error.Halt;
+                    }
+                    try self.push(val);
+                },
+                .char_upcase => {
+                    const val = try self.pop();
+                    if (!val.isCharacter()) return error.TypeMismatch;
+                    const cp = val.toCharacter();
+                    const upper = if (cp >= 'a' and cp <= 'z') cp - 32 else cp;
+                    try self.push(Value.makeCharacter(upper));
+                },
+                .char_downcase => {
+                    const val = try self.pop();
+                    if (!val.isCharacter()) return error.TypeMismatch;
+                    const cp = val.toCharacter();
+                    const lower = if (cp >= 'A' and cp <= 'Z') cp + 32 else cp;
+                    try self.push(Value.makeCharacter(lower));
+                },
+                .digit_char_p => {
+                    const val = try self.pop();
+                    if (!val.isCharacter()) return error.TypeMismatch;
+                    const cp = val.toCharacter();
+                    const is_digit = cp >= '0' and cp <= '9';
+                    try self.push(if (is_digit) Value.t else Value.nil);
+                },
+                .alpha_char_p => {
+                    const val = try self.pop();
+                    if (!val.isCharacter()) return error.TypeMismatch;
+                    const cp = val.toCharacter();
+                    const is_alpha = (cp >= 'A' and cp <= 'Z') or (cp >= 'a' and cp <= 'z');
+                    try self.push(if (is_alpha) Value.t else Value.nil);
+                },
+                .parse_integer => {
+                    const val = try self.pop();
+                    if (!val.isString()) return error.TypeMismatch;
+                    const str = val.toPtr(String);
+                    const bytes = str.bytes();
+                    // Parse integer from string
+                    var result: i64 = 0;
+                    var negative = false;
+                    var i: usize = 0;
+                    if (bytes.len > 0 and bytes[0] == '-') {
+                        negative = true;
+                        i = 1;
+                    }
+                    while (i < bytes.len) : (i += 1) {
+                        const c = bytes[i];
+                        if (c >= '0' and c <= '9') {
+                            result = result * 10 + (c - '0');
+                        } else {
+                            break;
+                        }
+                    }
+                    if (negative) result = -result;
+                    try self.push(Value.makeFixnum(result));
+                },
+                .write_to_string => {
+                    const val = try self.pop();
+                    // Convert value to string representation
+                    var buf: [256]u8 = undefined;
+                    var fbs = std.io.fixedBufferStream(&buf);
+                    io.writeValueToBuffer(val, fbs.writer().any()) catch {
+                        try self.push(Value.nil);
+                        continue;
+                    };
+                    const written = fbs.getWritten();
+                    const result = self.heap.allocString(written) orelse return error.OutOfMemory;
+                    try self.push(result);
+                },
                 .random => {
                     const n = try self.pop();
                     const result = arith.random(n);

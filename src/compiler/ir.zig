@@ -313,6 +313,14 @@ pub const Ir = union(enum) {
     gensym: void, // Generate unique symbol
     macroexpand: UnaryOp, // Expand macros in expression
     princ: UnaryOp, // Print without escaping
+    terpri: void, // Print newline
+    write_char: UnaryOp, // Write character to stdout
+    char_upcase: UnaryOp, // Convert char to uppercase
+    char_downcase: UnaryOp, // Convert char to lowercase
+    digit_char_p: UnaryOp, // Check if char is digit
+    alpha_char_p: UnaryOp, // Check if char is alphabetic
+    parse_integer: UnaryOp, // Parse string to integer
+    write_to_string: UnaryOp, // Convert value to string
     boundp: UnaryOp, // Check if symbol has global binding
     fboundp: UnaryOp, // Check if symbol has function binding
     symbol_value: UnaryOp, // Get symbol's global value
@@ -864,6 +872,54 @@ pub const IrBuilder = struct {
     pub fn princ(self: IrBuilder, val: *const Ir) !*Ir {
         const node = try self.allocator.create(Ir);
         node.* = .{ .princ = .{ .operand = val } };
+        return node;
+    }
+
+    pub fn terpri(self: IrBuilder) !*Ir {
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .terpri = {} };
+        return node;
+    }
+
+    pub fn writeChar(self: IrBuilder, val: *const Ir) !*Ir {
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .write_char = .{ .operand = val } };
+        return node;
+    }
+
+    pub fn charUpcase(self: IrBuilder, val: *const Ir) !*Ir {
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .char_upcase = .{ .operand = val } };
+        return node;
+    }
+
+    pub fn charDowncase(self: IrBuilder, val: *const Ir) !*Ir {
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .char_downcase = .{ .operand = val } };
+        return node;
+    }
+
+    pub fn digitCharP(self: IrBuilder, val: *const Ir) !*Ir {
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .digit_char_p = .{ .operand = val } };
+        return node;
+    }
+
+    pub fn alphaCharP(self: IrBuilder, val: *const Ir) !*Ir {
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .alpha_char_p = .{ .operand = val } };
+        return node;
+    }
+
+    pub fn parseInteger(self: IrBuilder, val: *const Ir) !*Ir {
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .parse_integer = .{ .operand = val } };
+        return node;
+    }
+
+    pub fn writeToString(self: IrBuilder, val: *const Ir) !*Ir {
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .write_to_string = .{ .operand = val } };
         return node;
     }
 

@@ -281,6 +281,11 @@ fn princValueTo(val: Value, w: anytype) !void {
     }
 }
 
+/// Write value to any writer (for write-to-string)
+pub fn writeValueToBuffer(val: Value, w: anytype) !void {
+    try printValueTo(val, w);
+}
+
 fn printValueTo(val: Value, w: anytype) !void {
     if (val.isNil()) {
         try w.writeAll("nil");
