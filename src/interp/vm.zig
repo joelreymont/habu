@@ -502,6 +502,24 @@ pub const Vm = struct {
                     try self.push(curr);
                 },
 
+                .rplaca => {
+                    const new_car = try self.pop();
+                    const cons_val = try self.pop();
+                    if (!cons_val.isCons()) return error.TypeMismatch;
+                    const c = cons_val.toPtr(Cons);
+                    c.car = new_car;
+                    try self.push(new_car);
+                },
+
+                .rplacd => {
+                    const new_cdr = try self.pop();
+                    const cons_val = try self.pop();
+                    if (!cons_val.isCons()) return error.TypeMismatch;
+                    const c = cons_val.toPtr(Cons);
+                    c.cdr = new_cdr;
+                    try self.push(new_cdr);
+                },
+
                 .list_last => {
                     const list = try self.pop();
                     if (list.isNil()) {

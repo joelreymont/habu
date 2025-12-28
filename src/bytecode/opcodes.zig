@@ -191,6 +191,14 @@ pub const Op = enum(u8) {
     /// ( list n -- tail )
     list_nthcdr = 0x4A,
 
+    /// Mutate car of cons cell (destructive!)
+    /// ( cons value -- value )
+    rplaca = 0x4B,
+
+    /// Mutate cdr of cons cell (destructive!)
+    /// ( cons value -- value )
+    rplacd = 0x4C,
+
     // ========================================================================
     // Type predicates
     // ========================================================================
@@ -730,7 +738,7 @@ pub const Op = enum(u8) {
             .logand, .logior, .logxor, .lognot, .ash,
             .read_file, .write_file, .make_string, .string_to_list, .list_to_string,
         .string_upcase, .string_downcase,
-        .listp, .atom, .assoc, .equal, .eql,
+        .listp, .atom, .assoc, .equal, .eql, .rplaca, .rplacd,
             => 0,
 
             // 1 byte operand

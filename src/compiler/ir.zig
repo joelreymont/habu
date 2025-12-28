@@ -281,6 +281,8 @@ pub const Ir = union(enum) {
     last: UnaryOp, // (last list)
     member: BinaryOp, // (member item list)
     assoc: BinaryOp, // (assoc key alist)
+    rplaca: BinaryOp, // (rplaca cons value) - destructive!
+    rplacd: BinaryOp, // (rplacd cons value) - destructive!
 
     // ========================================================================
     // Primitives - Type predicates
@@ -823,6 +825,18 @@ pub const IrBuilder = struct {
     pub fn assoc(self: IrBuilder, key: *const Ir, alist: *const Ir) !*Ir {
         const node = try self.allocator.create(Ir);
         node.* = .{ .assoc = .{ .left = key, .right = alist } };
+        return node;
+    }
+
+    pub fn rplaca(self: IrBuilder, cons_ir: *const Ir, value: *const Ir) !*Ir {
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .rplaca = .{ .left = cons_ir, .right = value } };
+        return node;
+    }
+
+    pub fn rplacd(self: IrBuilder, cons_ir: *const Ir, value: *const Ir) !*Ir {
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .rplacd = .{ .left = cons_ir, .right = value } };
         return node;
     }
 
