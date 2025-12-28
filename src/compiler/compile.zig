@@ -195,6 +195,9 @@ pub const Builtins = struct {
     @"type-of": Value,
     intern: Value,
     @"symbol-name": Value,
+    // Type specifier symbols for concatenate/coerce
+    string: Value,
+    character: Value,
 
     // Primitives - Numeric
     abs: Value,
@@ -255,6 +258,8 @@ pub const Builtins = struct {
     @"list-to-string": Value,
     @"string-upcase": Value,
     @"string-downcase": Value,
+    concatenate: Value,
+    coerce: Value,
 
     // Primitives - Hash tables
     @"make-hash-table": Value,
@@ -402,6 +407,9 @@ pub const Builtins = struct {
             .@"type-of" = heap.intern("type-of") orelse return null,
             .intern = heap.intern("intern") orelse return null,
             .@"symbol-name" = heap.intern("symbol-name") orelse return null,
+            // Type specifier symbols for concatenate/coerce
+            .string = heap.intern("string") orelse return null,
+            .character = heap.intern("character") orelse return null,
             // Primitives - Numeric
             .abs = heap.intern("abs") orelse return null,
             .zerop = heap.intern("zerop") orelse return null,
@@ -453,6 +461,8 @@ pub const Builtins = struct {
             .@"list-to-string" = heap.intern("list-to-string") orelse return null,
             .@"string-upcase" = heap.intern("string-upcase") orelse return null,
             .@"string-downcase" = heap.intern("string-downcase") orelse return null,
+            .concatenate = heap.intern("concatenate") orelse return null,
+            .coerce = heap.intern("coerce") orelse return null,
             // Primitives - Hash tables
             .@"make-hash-table" = heap.intern("make-hash-table") orelse return null,
             .gethash = heap.intern("gethash") orelse return null,
@@ -3050,6 +3060,8 @@ pub const Compiler = struct {
         if (s == b.@"list-to-string".raw) return self.compileUnaryPrim(args, env, .list_to_string);
         if (s == b.@"string-upcase".raw) return self.compileUnaryPrim(args, env, .string_upcase);
         if (s == b.@"string-downcase".raw) return self.compileUnaryPrim(args, env, .string_downcase);
+        if (s == b.concatenate.raw) return self.compileConcatenate(args, env);
+        if (s == b.coerce.raw) return self.compileCoerce(args, env);
 
         // Hash tables
         if (s == b.@"make-hash-table".raw) return self.compileMakeHash(args);
@@ -3385,18 +3397,40 @@ pub const Compiler = struct {
     }
 
     fn compileConcatenate(self: *Compiler, args: Value, env: *const Env) CompileError!*Ir {
-        // (concatenate 'string s1 s2 ...)
-        // For now, only supports 'string type
+        // (concatenate 'string str1 str2 ...)
+        // (concatenate 'list list1 list2 ...)
         if (!args.isCons()) return error.InvalidSyntax;
         const cons1 = args.toPtr(Cons);
-        // Skip the type argument (assume 'string)
-        _ = cons1.car;
+        const b = self.builtins orelse return error.InvalidSyntax;
+
+        // First arg should be a quoted type: (quote string) or (quote list)
+        var type_sym: Value = undefined;
+        if (cons1.car.isCons()) {
+            const quote_cons = cons1.car.toPtr(Cons);
+            // Check if it's (quote xxx)
+            if (quote_cons.car.isSymbol()) {
+                const sym = quote_cons.car.toPtr(Symbol);
+                if (std.mem.eql(u8, sym.getName(), "quote") and quote_cons.cdr.isCons()) {
+                    type_sym = quote_cons.cdr.toPtr(Cons).car;
+                } else {
+                    return error.InvalidSyntax;
+                }
+            } else {
+                return error.InvalidSyntax;
+            }
+        } else {
+            return error.InvalidSyntax;
+        }
 
         // Get the sequences
         var rest = cons1.cdr;
         if (!rest.isCons()) {
-            // No sequences, return empty string
-            return self.builder.lit(Value.nil) catch return error.OutOfMemory;
+            // No sequences, return empty string or nil
+            if (type_sym.raw == b.string.raw) {
+                return self.builder.lit(Value.nil) catch return error.OutOfMemory;
+            } else {
+                return self.builder.lit(Value.nil) catch return error.OutOfMemory;
+            }
         }
 
         // Compile first sequence
@@ -3404,15 +3438,71 @@ pub const Compiler = struct {
         var result_ir = try self.compile(first_cons.car, env);
         rest = first_cons.cdr;
 
-        // Concatenate remaining sequences
-        while (rest.isCons()) {
-            const cons = rest.toPtr(Cons);
-            const next_ir = try self.compile(cons.car, env);
-            result_ir = self.builder.strConcat(result_ir, next_ir) catch return error.OutOfMemory;
-            rest = cons.cdr;
+        // Concatenate remaining sequences based on type
+        if (type_sym.raw == b.string.raw) {
+            while (rest.isCons()) {
+                const cons = rest.toPtr(Cons);
+                const next_ir = try self.compile(cons.car, env);
+                result_ir = self.builder.strConcat(result_ir, next_ir) catch return error.OutOfMemory;
+                rest = cons.cdr;
+            }
+        } else if (type_sym.raw == b.list.raw) {
+            while (rest.isCons()) {
+                const cons = rest.toPtr(Cons);
+                const next_ir = try self.compile(cons.car, env);
+                result_ir = self.builder.append(result_ir, next_ir) catch return error.OutOfMemory;
+                rest = cons.cdr;
+            }
+        } else {
+            return error.InvalidSyntax;
         }
 
         return result_ir;
+    }
+
+    fn compileCoerce(self: *Compiler, args: Value, env: *const Env) CompileError!*Ir {
+        // (coerce obj 'type)
+        if (!args.isCons()) return error.InvalidSyntax;
+        const cons1 = args.toPtr(Cons);
+        const obj_ir = try self.compile(cons1.car, env);
+
+        if (!cons1.cdr.isCons()) return error.InvalidSyntax;
+        const cons2 = cons1.cdr.toPtr(Cons);
+        const b = self.builtins orelse return error.InvalidSyntax;
+
+        // Second arg should be a quoted type
+        var type_sym: Value = undefined;
+        if (cons2.car.isCons()) {
+            const quote_cons = cons2.car.toPtr(Cons);
+            if (quote_cons.car.isSymbol()) {
+                const sym = quote_cons.car.toPtr(Symbol);
+                if (std.mem.eql(u8, sym.getName(), "quote") and quote_cons.cdr.isCons()) {
+                    type_sym = quote_cons.cdr.toPtr(Cons).car;
+                } else {
+                    return error.InvalidSyntax;
+                }
+            } else {
+                return error.InvalidSyntax;
+            }
+        } else {
+            return error.InvalidSyntax;
+        }
+
+        // Generate conversion based on target type
+        if (type_sym.raw == b.list.raw) {
+            // (coerce x 'list) - convert sequence to list
+            // For strings, use string-to-list
+            return self.builder.stringToList(obj_ir) catch return error.OutOfMemory;
+        } else if (type_sym.raw == b.string.raw) {
+            // (coerce x 'string) - convert sequence to string
+            // For lists, use list-to-string
+            return self.builder.listToString(obj_ir) catch return error.OutOfMemory;
+        } else if (type_sym.raw == b.character.raw) {
+            // (coerce x 'character) - convert to character
+            return self.builder.codeChar(obj_ir) catch return error.OutOfMemory;
+        } else {
+            return error.InvalidSyntax;
+        }
     }
 
     fn compileFormat(self: *Compiler, args: Value, env: *const Env) CompileError!*Ir {
