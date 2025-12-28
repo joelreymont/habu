@@ -947,12 +947,21 @@ pub const Repl = struct {
             self.loadFile(path, writer) catch |err| {
                 try writer.print("Load error: {s}\n", .{@errorName(err)});
             };
+        } else if (std.mem.startsWith(u8, cmd, ",t ") or std.mem.startsWith(u8, cmd, ",type ")) {
+            const expr_str = if (std.mem.startsWith(u8, cmd, ",t "))
+                std.mem.trim(u8, cmd[3..], " \t")
+            else
+                std.mem.trim(u8, cmd[6..], " \t");
+            self.showType(expr_str, writer) catch |err| {
+                try writer.print("Type error: {s}\n", .{@errorName(err)});
+            };
         } else if (std.mem.eql(u8, cmd, ",h") or std.mem.eql(u8, cmd, ",help")) {
             try writer.writeAll(
                 \\Commands:
                 \\  ,q ,quit       Exit REPL
                 \\  ,d ,disasm     Toggle disassembly display
                 \\  ,l ,load FILE  Load and evaluate a file
+                \\  ,t ,type EXPR  Show inferred type of expression
                 \\  ,h ,help       Show this help
                 \\
             );
@@ -1327,6 +1336,58 @@ pub const Repl = struct {
 
         nested_vm.setChunkPool(self.persistent_chunk_ptrs.items);
         return nested_vm.run(&chunk) catch return error.RuntimeError;
+    }
+
+    // ========================================================================
+    // Type inference
+    // ========================================================================
+
+    /// Show the inferred type of an expression
+    fn showType(self: *Repl, expr_str: []const u8, writer: anytype) !void {
+        // Parse expression
+        var parser = @import("../reader/parser.zig").Parser.init(self.allocator, self.heap, expr_str);
+        const expr = parser.parse() catch {
+            try writer.writeAll("Parse error\n");
+            return;
+        };
+        if (expr.isNil()) {
+            try writer.writeAll("Empty expression\n");
+            return;
+        }
+
+        // Use arena allocator for compilation
+        var arena = std.heap.ArenaAllocator.init(self.allocator);
+        defer arena.deinit();
+        const arena_alloc = arena.allocator();
+
+        // Save and set up compiler state
+        const saved_builder = self.compiler.builder;
+        const saved_allocator = self.compiler.allocator;
+        self.compiler.builder = IrBuilder.init(arena_alloc);
+        self.compiler.allocator = arena_alloc;
+
+        var env = Env.init(arena_alloc, null);
+        defer env.deinit();
+
+        // Compile to IR
+        const ir_node = self.compiler.compile(expr, &env) catch |err| {
+            self.compiler.builder = saved_builder;
+            self.compiler.allocator = saved_allocator;
+            try writer.print("Compile error: {s}\n", .{@errorName(err)});
+            return;
+        };
+        self.compiler.builder = saved_builder;
+        self.compiler.allocator = saved_allocator;
+
+        // Run type inference
+        const inferred = self.compiler.typeInfer(ir_node) catch |err| {
+            try writer.print("Type inference failed: {s}\n", .{@errorName(err)});
+            return;
+        };
+
+        // Print the inferred type using custom format method
+        try inferred.format("", .{}, writer);
+        try writer.writeAll("\n");
     }
 };
 

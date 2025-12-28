@@ -54,16 +54,22 @@ pub const InferType = union(enum) {
     ) !void {
         switch (self) {
             .concrete => |t| try writer.print("{s}", .{t.name()}),
-            .variable => |v| try writer.print("{}", .{v}),
+            .variable => |v| try v.format("", .{}, writer),
             .arrow => |a| {
                 try writer.writeAll("(-> (");
                 for (a.domain, 0..) |d, i| {
                     if (i > 0) try writer.writeAll(" ");
-                    try writer.print("{}", .{d.*});
+                    try d.format("", .{}, writer);
                 }
-                try writer.print(") {})", .{a.range.*});
+                try writer.writeAll(") ");
+                try a.range.format("", .{}, writer);
+                try writer.writeAll(")");
             },
-            .list => |elem| try writer.print("(list {})", .{elem.*}),
+            .list => |elem| {
+                try writer.writeAll("(list ");
+                try elem.format("", .{}, writer);
+                try writer.writeAll(")");
+            },
         }
     }
 };
@@ -90,7 +96,7 @@ pub const TypeScheme = struct {
             }
             try writer.writeAll(". ");
         }
-        try writer.print("{}", .{self.body.*});
+        try self.body.format("", .{}, writer);
     }
 
     /// Check if this is a monomorphic type (no bound variables)

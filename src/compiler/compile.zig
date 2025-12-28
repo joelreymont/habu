@@ -4375,6 +4375,58 @@ pub const Compiler = struct {
             return self.builder.call(func_ir, items) catch return error.OutOfMemory;
         }
     }
+
+    // ========================================================================
+    // Type Inference
+    // ========================================================================
+
+    /// Type inference error types
+    pub const InferError = error{
+        TypeMismatch,
+        ArityMismatch,
+        InfiniteType,
+        OutOfMemory,
+        InferenceFailed,
+    };
+
+    /// Run type inference on an IR tree
+    /// Returns the inferred type, or an error with a descriptive message
+    pub fn typeInfer(self: *Compiler, ir_node: *const Ir) InferError!*const types.InferType {
+        // Create inference context
+        var ctx = types.InferCtx.init(self.allocator);
+        defer ctx.deinit();
+
+        // Create type environment
+        var type_env = types.infer.InferCtx.TypeEnv.init(self.allocator);
+        defer type_env.deinit();
+
+        // Infer types and collect constraints
+        const inferred = ctx.infer(ir_node, &type_env) catch |err| {
+            return switch (err) {
+                error.OutOfMemory => error.OutOfMemory,
+                else => error.InferenceFailed,
+            };
+        };
+
+        // Solve constraints via unification
+        ctx.solve() catch |err| {
+            return switch (err) {
+                error.TypeMismatch => error.TypeMismatch,
+                error.ArityMismatch => error.ArityMismatch,
+                error.InfiniteType => error.InfiniteType,
+                error.OutOfMemory => error.OutOfMemory,
+            };
+        };
+
+        // Return the resolved type
+        return ctx.resolve(inferred);
+    }
+
+    /// Type-check an IR tree, returning an error if it's ill-typed
+    /// This is a simplified check - just runs inference and solve
+    pub fn typeCheck(self: *Compiler, ir_node: *const Ir) InferError!void {
+        _ = try self.typeInfer(ir_node);
+    }
 };
 
 // ============================================================================
