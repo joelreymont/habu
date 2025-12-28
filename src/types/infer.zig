@@ -245,9 +245,386 @@ pub const InferCtx = struct {
             }
         }
     }
+
+    // ========================================================================
+    // Type Inference - walks IR and generates constraints
+    // ========================================================================
+
+    /// Helper to infer function call types
+    fn inferCall(self: *InferCtx, func: *const ir_mod.Ir, args: []const *const ir_mod.Ir, env: *TypeEnv) InferError!*const InferType {
+        const func_ty = try self.infer(func, env);
+
+        // Infer argument types
+        var arg_types = try self.allocator.alloc(*const InferType, args.len);
+        for (args, 0..) |arg, i| {
+            arg_types[i] = try self.infer(arg, env);
+        }
+
+        // Create expected arrow type with fresh result variable
+        const result_ty = try self.freshVar();
+        const expected_arrow = try self.allocator.create(InferType);
+        expected_arrow.* = .{ .arrow = .{ .domain = arg_types, .range = result_ty } };
+
+        // Constrain function type to match
+        try self.addEq(func_ty, expected_arrow);
+
+        return result_ty;
+    }
+
+    /// Type environment for tracking variable types during inference
+    pub const TypeEnv = struct {
+        parent: ?*const TypeEnv,
+        bindings: std.StringHashMap(*const InferType),
+        allocator: std.mem.Allocator,
+
+        pub fn init(allocator: std.mem.Allocator) TypeEnv {
+            return .{
+                .parent = null,
+                .bindings = std.StringHashMap(*const InferType).init(allocator),
+                .allocator = allocator,
+            };
+        }
+
+        pub fn initWithParent(allocator: std.mem.Allocator, parent: *const TypeEnv) TypeEnv {
+            return .{
+                .parent = parent,
+                .bindings = std.StringHashMap(*const InferType).init(allocator),
+                .allocator = allocator,
+            };
+        }
+
+        pub fn deinit(self: *TypeEnv) void {
+            self.bindings.deinit();
+        }
+
+        pub fn lookup(self: TypeEnv, name: []const u8) ?*const InferType {
+            if (self.bindings.get(name)) |ty| {
+                return ty;
+            }
+            if (self.parent) |p| {
+                return p.lookup(name);
+            }
+            return null;
+        }
+
+        pub fn bind(self: *TypeEnv, name: []const u8, ty: *const InferType) !void {
+            try self.bindings.put(name, ty);
+        }
+    };
+
+    /// Infer the type of an IR node, generating constraints as needed
+    /// Returns the inferred type (may contain type variables)
+    pub fn infer(self: *InferCtx, node: *const ir_mod.Ir, env: *TypeEnv) InferError!*const InferType {
+        switch (node.*) {
+            // Literals - return concrete types
+            .lit => |v| {
+                if (v.isFixnum()) return try self.concrete(&types.t_fixnum);
+                if (v.isNil()) return try self.concrete(&types.t_nil);
+                if (v.isCharacter()) return try self.concrete(&types.t_char);
+                // t (true) is represented as fixnum 1
+                return try self.concrete(&types.t_any);
+            },
+            .quote_sym => return try self.concrete(&types.t_symbol),
+            .quote => return try self.concrete(&types.t_any),
+
+            // Variables - look up in environment or return fresh var
+            .@"var" => |v| {
+                if (env.lookup(v.name)) |ty| {
+                    return ty;
+                }
+                // Unknown variable - create fresh type variable
+                return try self.freshVar();
+            },
+            .global_ref => {
+                // Globals are dynamically typed - return any
+                return try self.concrete(&types.t_any);
+            },
+
+            // Arithmetic - operands must be fixnum, result is fixnum
+            .add, .sub, .mul, .div, .mod => |op| {
+                const left_ty = try self.infer(op.left, env);
+                const right_ty = try self.infer(op.right, env);
+                const fixnum_ty = try self.concrete(&types.t_fixnum);
+
+                try self.addEq(left_ty, fixnum_ty);
+                try self.addEq(right_ty, fixnum_ty);
+
+                return fixnum_ty;
+            },
+
+            // Numeric predicates - operand is fixnum, result is boolean (any)
+            .zerop, .plusp, .minusp, .evenp, .oddp, .abs => |op| {
+                const operand_ty = try self.infer(op.operand, env);
+                const fixnum_ty = try self.concrete(&types.t_fixnum);
+                try self.addEq(operand_ty, fixnum_ty);
+                return try self.concrete(&types.t_any); // CL returns nil or t
+            },
+
+            // Comparisons - result is boolean (any in CL)
+            .lt, .gt, .le, .ge, .num_eq => |op| {
+                const left_ty = try self.infer(op.left, env);
+                const right_ty = try self.infer(op.right, env);
+                const fixnum_ty = try self.concrete(&types.t_fixnum);
+
+                try self.addEq(left_ty, fixnum_ty);
+                try self.addEq(right_ty, fixnum_ty);
+
+                return try self.concrete(&types.t_any);
+            },
+
+            // Equality - any types, result is boolean
+            .eq, .equal, .eql => |op| {
+                _ = try self.infer(op.left, env);
+                _ = try self.infer(op.right, env);
+                return try self.concrete(&types.t_any);
+            },
+
+            // Logic
+            .not => |op| {
+                _ = try self.infer(op.operand, env);
+                return try self.concrete(&types.t_any);
+            },
+
+            // List operations
+            .cons => |op| {
+                _ = try self.infer(op.left, env);
+                _ = try self.infer(op.right, env);
+                return try self.concrete(&types.t_cons);
+            },
+            .car, .cdr => |op| {
+                const operand_ty = try self.infer(op.operand, env);
+                // Operand should be cons or list
+                // For now, just return any (full list typing needs more work)
+                _ = operand_ty;
+                return try self.concrete(&types.t_any);
+            },
+            .list => |elems| {
+                for (elems) |elem| {
+                    _ = try self.infer(elem, env);
+                }
+                // Return list type (for now, list of any)
+                const elem_ty = try self.concrete(&types.t_any);
+                const list_ty = try self.allocator.create(InferType);
+                list_ty.* = .{ .list = elem_ty };
+                return list_ty;
+            },
+            .append, .nth, .nthcdr, .member, .assoc => |op| {
+                _ = try self.infer(op.left, env);
+                _ = try self.infer(op.right, env);
+                return try self.concrete(&types.t_any);
+            },
+            .length, .reverse, .last => |op| {
+                _ = try self.infer(op.operand, env);
+                return try self.concrete(&types.t_fixnum);
+            },
+
+            // Type predicates - return boolean
+            .consp, .symbolp, .numberp, .stringp, .vectorp,
+            .closurep, .keywordp, .nilp, .characterp, .floatp,
+            .listp, .atom => |op| {
+                _ = try self.infer(op.operand, env);
+                return try self.concrete(&types.t_any);
+            },
+
+            // If expression - both branches should have same type
+            .@"if" => |if_expr| {
+                _ = try self.infer(if_expr.cond, env);
+                const then_ty = try self.infer(if_expr.then_branch, env);
+                const else_ty = try self.infer(if_expr.else_branch, env);
+
+                // Create fresh variable and constrain both branches to it
+                const result_ty = try self.freshVar();
+                try self.addEq(then_ty, result_ty);
+                try self.addEq(else_ty, result_ty);
+
+                return result_ty;
+            },
+
+            // Progn - type is type of last expression
+            .progn => |exprs| {
+                if (exprs.len == 0) {
+                    return try self.concrete(&types.t_nil);
+                }
+                var last_ty: *const InferType = undefined;
+                for (exprs) |expr| {
+                    last_ty = try self.infer(expr, env);
+                }
+                return last_ty;
+            },
+
+            // Let binding
+            .let => |let_expr| {
+                // Create child environment
+                var child_env = TypeEnv.initWithParent(self.allocator, env);
+                defer child_env.deinit();
+
+                // Infer types for each binding
+                for (let_expr.bindings) |binding| {
+                    const val_ty = try self.infer(binding.value, env);
+                    try child_env.bind(binding.name, val_ty);
+                }
+
+                // Infer body type in extended environment
+                return try self.infer(let_expr.body, &child_env);
+            },
+
+            // Lambda - create arrow type
+            .lambda => |lam| {
+                // Create child environment with parameters
+                var child_env = TypeEnv.initWithParent(self.allocator, env);
+                defer child_env.deinit();
+
+                // Create fresh type variables for each parameter
+                var param_types = try self.allocator.alloc(*const InferType, lam.params.len);
+                for (lam.params, 0..) |param, i| {
+                    param_types[i] = try self.freshVar();
+                    try child_env.bind(param, param_types[i]);
+                }
+
+                // Handle rest parameter
+                if (lam.rest_param) |rest| {
+                    const rest_ty = try self.concrete(&types.t_any);
+                    try child_env.bind(rest, rest_ty);
+                }
+
+                // Infer body type
+                const body_ty = try self.infer(lam.body, &child_env);
+
+                // Create arrow type
+                const arrow_ty = try self.allocator.create(InferType);
+                arrow_ty.* = .{ .arrow = .{ .domain = param_types, .range = body_ty } };
+
+                return arrow_ty;
+            },
+
+            // Function call
+            .call => |call_expr| {
+                return try self.inferCall(call_expr.func, call_expr.args, env);
+            },
+            .tailcall => |tailcall_expr| {
+                return try self.inferCall(tailcall_expr.func, tailcall_expr.args, env);
+            },
+
+            // Set - returns value type
+            .set => |s| {
+                return try self.infer(s.value, env);
+            },
+            .define => |d| {
+                return try self.infer(d.value, env);
+            },
+
+            // Loop - returns nil
+            .loop => |l| {
+                _ = try self.infer(l.cond, env);
+                _ = try self.infer(l.body, env);
+                return try self.concrete(&types.t_nil);
+            },
+
+            // Vector operations
+            .vec_new => |v| {
+                _ = try self.infer(v.size, env);
+                if (v.init) |init_val| {
+                    _ = try self.infer(init_val, env);
+                }
+                return try self.concrete(&types.t_vector);
+            },
+            .vec => |elems| {
+                for (elems) |elem| {
+                    _ = try self.infer(elem, env);
+                }
+                return try self.concrete(&types.t_vector);
+            },
+            .vec_ref => |op| {
+                _ = try self.infer(op.left, env);
+                _ = try self.infer(op.right, env);
+                return try self.concrete(&types.t_any);
+            },
+            .vec_set => |v| {
+                _ = try self.infer(v.vec, env);
+                _ = try self.infer(v.index, env);
+                _ = try self.infer(v.value, env);
+                return try self.concrete(&types.t_any);
+            },
+            .vec_len => |op| {
+                _ = try self.infer(op.operand, env);
+                return try self.concrete(&types.t_fixnum);
+            },
+
+            // String operations
+            .str_ref => |op| {
+                _ = try self.infer(op.left, env);
+                _ = try self.infer(op.right, env);
+                return try self.concrete(&types.t_char);
+            },
+            .str_len => |op| {
+                _ = try self.infer(op.operand, env);
+                return try self.concrete(&types.t_fixnum);
+            },
+            .str_concat, .str_eq => |op| {
+                _ = try self.infer(op.left, env);
+                _ = try self.infer(op.right, env);
+                return try self.concrete(&types.t_string);
+            },
+            .substring => |s| {
+                _ = try self.infer(s.str, env);
+                _ = try self.infer(s.start, env);
+                _ = try self.infer(s.end, env);
+                return try self.concrete(&types.t_string);
+            },
+
+            // I/O - return any
+            .print, .princ, .write_char => |op| {
+                _ = try self.infer(op.operand, env);
+                return try self.concrete(&types.t_any);
+            },
+            .read_char, .peek_char, .read, .gensym, .terpri => {
+                return try self.concrete(&types.t_any);
+            },
+
+            // Type assertions - return operand type
+            .assert_fixnum => |op| {
+                _ = try self.infer(op.operand, env);
+                return try self.concrete(&types.t_fixnum);
+            },
+            .assert_cons => |op| {
+                _ = try self.infer(op.operand, env);
+                return try self.concrete(&types.t_cons);
+            },
+            .assert_symbol => |op| {
+                _ = try self.infer(op.operand, env);
+                return try self.concrete(&types.t_symbol);
+            },
+            .assert_string => |op| {
+                _ = try self.infer(op.operand, env);
+                return try self.concrete(&types.t_string);
+            },
+            .assert_vector => |op| {
+                _ = try self.infer(op.operand, env);
+                return try self.concrete(&types.t_vector);
+            },
+            .assert_closure => |op| {
+                _ = try self.infer(op.operand, env);
+                return try self.concrete(&types.t_closure);
+            },
+            .assert_non_nil, .assert_list => |op| {
+                _ = try self.infer(op.operand, env);
+                return try self.concrete(&types.t_any);
+            },
+
+            // Everything else returns any for now
+            else => return try self.concrete(&types.t_any),
+        }
+    }
 };
 
 pub const UnifyError = error{
+    TypeMismatch,
+    ArityMismatch,
+    InfiniteType,
+    OutOfMemory,
+};
+
+pub const InferError = error{
     TypeMismatch,
     ArityMismatch,
     InfiniteType,
@@ -340,4 +717,121 @@ test "occurs check prevents infinite types" {
 
     // Trying to unify v = (list v) should fail with infinite type
     try testing.expectError(error.InfiniteType, ctx.unify(v, list_v));
+}
+
+test "infer literal fixnum" {
+    const testing = std.testing;
+    var ctx = InferCtx.init(testing.allocator);
+    defer ctx.deinit();
+
+    const builder = ir_mod.IrBuilder.init(testing.allocator);
+    const lit_node = try builder.lit(value_mod.Value.makeFixnum(42));
+    defer testing.allocator.destroy(lit_node);
+
+    var env = InferCtx.TypeEnv.init(testing.allocator);
+    defer env.deinit();
+
+    const inferred = try ctx.infer(lit_node, &env);
+    try testing.expect(inferred.* == .concrete);
+    try testing.expectEqual(types.Primitive.fixnum, inferred.concrete.primitive);
+}
+
+test "infer arithmetic constrains to fixnum" {
+    const testing = std.testing;
+    var ctx = InferCtx.init(testing.allocator);
+    defer ctx.deinit();
+
+    const builder = ir_mod.IrBuilder.init(testing.allocator);
+    const left = try builder.lit(value_mod.Value.makeFixnum(1));
+    const right = try builder.lit(value_mod.Value.makeFixnum(2));
+    const add_node = try builder.add(left, right);
+    defer {
+        testing.allocator.destroy(left);
+        testing.allocator.destroy(right);
+        testing.allocator.destroy(add_node);
+    }
+
+    var env = InferCtx.TypeEnv.init(testing.allocator);
+    defer env.deinit();
+
+    const inferred = try ctx.infer(add_node, &env);
+
+    // Result should be fixnum
+    try testing.expect(inferred.* == .concrete);
+    try testing.expectEqual(types.Primitive.fixnum, inferred.concrete.primitive);
+
+    // Should have generated constraints for operands
+    try testing.expectEqual(@as(usize, 2), ctx.constraints.items.len);
+}
+
+test "infer lambda creates arrow type" {
+    const testing = std.testing;
+    var ctx = InferCtx.init(testing.allocator);
+    defer ctx.deinit();
+
+    const builder = ir_mod.IrBuilder.init(testing.allocator);
+    const body = try builder.lit(value_mod.Value.makeFixnum(42));
+    const params = [_][]const u8{"x"};
+    const captures = [_]ir_mod.Ir.Capture{};
+    const lam = try builder.lambda(&params, null, &captures, body);
+    defer {
+        testing.allocator.destroy(body);
+        for (lam.lambda.params) |p| testing.allocator.free(p);
+        testing.allocator.free(lam.lambda.params);
+        testing.allocator.free(lam.lambda.captures);
+        testing.allocator.destroy(lam);
+    }
+
+    var env = InferCtx.TypeEnv.init(testing.allocator);
+    defer env.deinit();
+
+    const inferred = try ctx.infer(lam, &env);
+
+    // Should be arrow type
+    try testing.expect(inferred.* == .arrow);
+    try testing.expectEqual(@as(usize, 1), inferred.arrow.domain.len);
+
+    // Parameter should be type variable
+    try testing.expect(inferred.arrow.domain[0].* == .variable);
+
+    // Return type should be fixnum
+    try testing.expect(inferred.arrow.range.* == .concrete);
+    try testing.expectEqual(types.Primitive.fixnum, inferred.arrow.range.concrete.primitive);
+}
+
+test "infer if unifies branches" {
+    const testing = std.testing;
+    var ctx = InferCtx.init(testing.allocator);
+    defer ctx.deinit();
+
+    const builder = ir_mod.IrBuilder.init(testing.allocator);
+    const cond = try builder.lit(value_mod.Value.t);
+    const then_expr = try builder.lit(value_mod.Value.makeFixnum(1));
+    const else_expr = try builder.lit(value_mod.Value.makeFixnum(2));
+    const if_node = try builder.ifExpr(cond, then_expr, else_expr);
+    defer {
+        testing.allocator.destroy(cond);
+        testing.allocator.destroy(then_expr);
+        testing.allocator.destroy(else_expr);
+        testing.allocator.destroy(if_node);
+    }
+
+    var env = InferCtx.TypeEnv.init(testing.allocator);
+    defer env.deinit();
+
+    const inferred = try ctx.infer(if_node, &env);
+
+    // Result should be type variable (before solving)
+    try testing.expect(inferred.* == .variable);
+
+    // Should have constraints equating both branches to result
+    try testing.expectEqual(@as(usize, 2), ctx.constraints.items.len);
+
+    // Solve constraints
+    try ctx.solve();
+
+    // After solving, should resolve to fixnum
+    const resolved = ctx.resolve(inferred);
+    try testing.expect(resolved.* == .concrete);
+    try testing.expectEqual(types.Primitive.fixnum, resolved.concrete.primitive);
 }

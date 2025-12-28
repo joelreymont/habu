@@ -10,6 +10,7 @@ pub const type_adt = @import("type.zig");
 pub const contract = @import("contract.zig");
 pub const blame = @import("blame.zig");
 pub const check = @import("check.zig");
+pub const infer = @import("infer.zig");
 
 // Re-export commonly used types
 pub const Type = type_adt.Type;
@@ -28,6 +29,11 @@ pub const ContractError = blame.ContractError;
 pub const TypeEnv = check.TypeEnv;
 pub const OccurrenceCtx = check.OccurrenceCtx;
 pub const TypeChecker = check.TypeChecker;
+
+pub const InferCtx = infer.InferCtx;
+pub const TypeVar = infer.TypeVar;
+pub const InferType = infer.InferType;
+pub const Constraint = infer.Constraint;
 
 // Common type constants
 pub const t_fixnum = type_adt.t_fixnum;
@@ -49,4 +55,5 @@ test {
     _ = contract;
     _ = blame;
     _ = check;
+    _ = infer;
 }
