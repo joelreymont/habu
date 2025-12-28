@@ -384,6 +384,7 @@ pub const Repl = struct {
         }
         self.allocator.free(child_chunks);
         patchMakeClosureIndices(chunk.code, chunk_base);
+        emitter.deinit();
 
         // Set chunk pool and run
         vm.setChunkPool(self.persistent_chunk_ptrs.items);
