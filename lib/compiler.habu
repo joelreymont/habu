@@ -71,6 +71,130 @@
             (lookup-in-bindings (cdr bindings) name)))))
 
 ;; =============================================================================
+;; Capture Analysis
+;; =============================================================================
+
+;; Captures are collected as (name depth index) triples
+;; where depth/index refer to the variable in the ENCLOSING scope
+
+(defun collect-free-vars (expr env captures)
+  "Collect free variables in expr. Returns updated captures list."
+  (cond
+    ;; Literals have no free variables
+    ((null expr) captures)
+    ((eq expr t) captures)
+    ((numberp expr) captures)
+    ((stringp expr) captures)
+    ((keywordp expr) captures)
+
+    ;; Symbol - check if free variable
+    ((symbolp expr)
+     (collect-free-var-symbol expr env captures))
+
+    ;; List - special form or function call
+    ((consp expr)
+     (collect-free-vars-form expr env captures))
+
+    ;; Unknown
+    (t captures)))
+
+(defun collect-free-var-symbol (name env captures)
+  "Check if symbol is a free variable needing capture"
+  (let ((binding (env-lookup env name)))
+    (if binding
+        (let ((depth (car binding))
+              (index (cdr binding)))
+          (if (> depth 0)
+              ;; Found in outer scope - needs capture
+              (add-capture captures name depth index)
+              ;; Local variable - no capture needed
+              captures))
+        ;; Not found - global, no capture
+        captures)))
+
+(defun add-capture (captures name depth index)
+  "Add capture if not already present"
+  (if (capture-exists captures name)
+      captures
+      (cons (make-capture name depth index) captures)))
+
+(defun capture-exists (captures name)
+  "Check if name is already in captures"
+  (if (null captures)
+      nil
+      (if (eq (capture-name (car captures)) name)
+          t
+          (capture-exists (cdr captures) name))))
+
+(defun collect-free-vars-form (expr env captures)
+  "Collect free vars in a list form (special form or call)"
+  (let ((head (car expr))
+        (tail (cdr expr)))
+    (cond
+      ;; Quote - no free variables in quoted data
+      ((eq head 'quote) captures)
+
+      ;; Lambda/fn - creates new scope, skip (handled by compile-lambda)
+      ((eq head 'lambda) captures)
+      ((eq head 'fn) captures)
+
+      ;; Let - bindings shadow, then check body
+      ((eq head 'let)
+       (collect-free-vars-let tail env captures))
+
+      ;; Let* - sequential bindings
+      ((eq head 'let*)
+       (collect-free-vars-let* tail env captures))
+
+      ;; Defun - like lambda, creates new scope
+      ((eq head 'defun) captures)
+
+      ;; Other special forms and calls - check all subexpressions
+      (t (collect-free-vars-list (cons head tail) env captures)))))
+
+(defun collect-free-vars-let (args env captures)
+  "Handle let: check values in current env, body with extended env"
+  (let ((bindings (car args))
+        (body (cdr args)))
+    (let ((names (extract-binding-names bindings))
+          (values (extract-binding-values bindings)))
+      ;; Check values in current env
+      (let ((caps1 (collect-free-vars-list values env captures)))
+        ;; Check body with extended env (bindings shadow)
+        (let ((new-env (env-extend env names)))
+          (collect-free-vars-list body new-env caps1))))))
+
+(defun collect-free-vars-let* (args env captures)
+  "Handle let*: sequential extension"
+  (let ((bindings (car args))
+        (body (cdr args)))
+    (if (null bindings)
+        (collect-free-vars-list body env captures)
+        (let ((first-binding (car bindings))
+              (rest-bindings (cdr bindings)))
+          (let ((name (car first-binding))
+                (value (car (cdr first-binding))))
+            ;; Check value in current env
+            (let ((caps1 (collect-free-vars value env captures)))
+              ;; Extend env and continue
+              (let ((new-env (env-extend env (list name))))
+                (collect-free-vars-let* (cons rest-bindings body) new-env caps1))))))))
+
+(defun extract-binding-values (bindings)
+  "Extract value expressions from let bindings"
+  (if (null bindings)
+      nil
+      (cons (car (cdr (car bindings)))
+            (extract-binding-values (cdr bindings)))))
+
+(defun collect-free-vars-list (exprs env captures)
+  "Collect free vars in a list of expressions"
+  (if (null exprs)
+      captures
+      (let ((caps1 (collect-free-vars (car exprs) env captures)))
+        (collect-free-vars-list (cdr exprs) env caps1))))
+
+;; =============================================================================
 ;; Global definitions table
 ;; =============================================================================
 
@@ -270,9 +394,10 @@
       (let ((lambda-env (env-push-scope env)))
         ;; Add params as locals at indices 0, 1, ...
         (let ((new-env (env-extend lambda-env param-names)))
-          ;; TODO: capture analysis
-          (ir-lambda param-names rest-param nil
-                     (compile-progn body new-env state)))))))
+          ;; Capture analysis: find free variables in body
+          (let ((captures (collect-free-vars-list body new-env nil)))
+            (ir-lambda param-names rest-param captures
+                       (compile-progn body new-env state))))))))
 
 (defun extract-params (params)
   "Extract parameter names from lambda list"

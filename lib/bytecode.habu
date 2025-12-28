@@ -207,15 +207,16 @@
 ;; Emitter State
 ;; =============================================================================
 
-;; Emitter state: (code constants num-locals child-chunks)
+;; Emitter state: (code constants num-locals child-chunks captures)
 ;; code: list of bytes (reversed, will be reversed at finalize)
 ;; constants: list of constant values (reversed)
 ;; num-locals: number of local variables
 ;; child-chunks: list of child chunk results (for lambdas)
+;; captures: list of captures for current lambda (nil at top-level)
 
 (defun make-emitter ()
   "Create new emitter state"
-  (list nil nil 0 nil))
+  (list nil nil 0 nil nil))
 
 (defun emitter-code (e)
   "Get code bytes (reversed)"
@@ -233,21 +234,29 @@
   "Get child chunks"
   (car (cdr (cdr (cdr e)))))
 
+(defun emitter-captures (e)
+  "Get captures list"
+  (car (cdr (cdr (cdr (cdr e))))))
+
 (defun emitter-set-code (e code)
   "Set code bytes"
-  (list code (emitter-constants e) (emitter-num-locals e) (emitter-child-chunks e)))
+  (list code (emitter-constants e) (emitter-num-locals e) (emitter-child-chunks e) (emitter-captures e)))
 
 (defun emitter-set-constants (e consts)
   "Set constants"
-  (list (emitter-code e) consts (emitter-num-locals e) (emitter-child-chunks e)))
+  (list (emitter-code e) consts (emitter-num-locals e) (emitter-child-chunks e) (emitter-captures e)))
 
 (defun emitter-set-num-locals (e n)
   "Set number of locals"
-  (list (emitter-code e) (emitter-constants e) n (emitter-child-chunks e)))
+  (list (emitter-code e) (emitter-constants e) n (emitter-child-chunks e) (emitter-captures e)))
 
 (defun emitter-set-child-chunks (e chunks)
   "Set child chunks"
-  (list (emitter-code e) (emitter-constants e) (emitter-num-locals e) chunks))
+  (list (emitter-code e) (emitter-constants e) (emitter-num-locals e) chunks (emitter-captures e)))
+
+(defun emitter-set-captures (e caps)
+  "Set captures list"
+  (list (emitter-code e) (emitter-constants e) (emitter-num-locals e) (emitter-child-chunks e) caps))
 
 (defun emitter-add-child-chunk (e chunk)
   "Add a child chunk, return (index . updated-emitter)"
@@ -578,10 +587,27 @@
       ;; Local variable
       (let ((e1 (emit-op e *op-load-local*)))
         (emit-u8 e1 index))
-      ;; Upvalue
-      (let* ((e1 (emit-op e *op-load-upvalue*))
-             (e2 (emit-u8 e1 depth)))
-        (emit-u8 e2 index))))
+      ;; Check if this is a captured variable
+      (let ((cap-idx (find-capture-index (emitter-captures e) depth index 0)))
+        (if cap-idx
+            ;; Load from capture array
+            (let ((e1 (emit-op e *op-load-capture*)))
+              (emit-u8 e1 cap-idx))
+            ;; Not captured - load as upvalue
+            (let* ((e1 (emit-op e *op-load-upvalue*))
+                   (e2 (emit-u8 e1 depth)))
+              (emit-u8 e2 index))))))
+
+(defun find-capture-index (captures depth index idx)
+  "Find capture matching (depth, index), return capture index or nil"
+  (if (null captures)
+      nil
+      (let* ((cap (car captures))
+             (cap-depth (capture-depth cap))
+             (cap-index (capture-index cap)))
+        (if (and (= cap-depth depth) (= cap-index index))
+            idx
+            (find-capture-index (cdr captures) depth index (+ idx 1))))))
 
 (defun emit-global-ref (e index)
   "Emit global variable reference"
@@ -630,12 +656,14 @@
 (defun emit-lambda (e params rest-param captures body)
   "Emit lambda/closure.
    Creates a child chunk for the lambda body and emits make_closure."
-  ;; Create new emitter for lambda body
+  ;; Create new emitter for lambda body with captures
   (let* ((lambda-emitter (make-emitter))
          ;; Set num-locals = params + optional rest
          (num-params (length params))
          (num-locals (if rest-param (+ num-params 1) num-params))
-         (lambda-emitter (emitter-set-num-locals lambda-emitter num-locals)))
+         (lambda-emitter (emitter-set-num-locals lambda-emitter num-locals))
+         ;; Set captures so emit-var can use load_capture
+         (lambda-emitter (emitter-set-captures lambda-emitter captures)))
     ;; Emit body into lambda emitter
     (let* ((lambda-emitter (emit-ir lambda-emitter body))
            ;; Finalize lambda chunk (adds ret if needed)
@@ -652,21 +680,28 @@
             (emit-u8 e4 (length captures))))))))
 
 (defun emit-captures (e captures)
-  "Emit code to load captured variables onto stack"
+  "Emit code to load captured variables onto stack.
+   Capture depth is from lambda's perspective:
+   - depth=1: variable in immediate enclosing scope (load_local)
+   - depth>1: variable in outer scope (load_upvalue)"
   (if (null captures)
       e
       (let* ((cap (car captures))
              (depth (capture-depth cap))
              (index (capture-index cap)))
-        (let ((e1 (if (= depth 0)
-                      ;; Local capture
-                      (let ((e1 (emit-op e *op-load-local*)))
-                        (emit-u8 e1 index))
-                      ;; Upvalue capture
-                      (let* ((e1 (emit-op e *op-load-upvalue*))
-                             (e2 (emit-u8 e1 (- depth 1))))
-                        (emit-u8 e2 index)))))
-          (emit-captures e1 (cdr captures))))))
+        (let ((new-e (emit-one-capture e depth index)))
+          (emit-captures new-e (cdr captures))))))
+
+(defun emit-one-capture (e depth index)
+  "Emit code to load one captured variable"
+  (if (= depth 1)
+      ;; In immediate enclosing scope - load as local
+      (let ((e1 (emit-op e *op-load-local*)))
+        (emit-u8 e1 index))
+      ;; In outer scope - load as upvalue
+      (let* ((e1 (emit-op e *op-load-upvalue*))
+             (e2 (emit-u8 e1 (- depth 2))))
+        (emit-u8 e2 index))))
 
 (defun finalize-chunk (e)
   "Finalize a chunk - add ret if needed, return (code . constants)"
