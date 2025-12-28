@@ -206,6 +206,81 @@ pub fn printValue(val: Value) !void {
     try w.flush();
 }
 
+/// Print a Habu value to stdout without escaping (princ style)
+pub fn princValue(val: Value) !void {
+    const stdout_file = fs.File.stdout();
+    var buf: [4096]u8 = undefined;
+    var file_writer = stdout_file.writer(&buf);
+    const w = &file_writer.interface;
+
+    try princValueTo(val, w);
+    try w.flush();
+}
+
+fn princValueTo(val: Value, w: anytype) !void {
+    if (val.isNil()) {
+        try w.writeAll("nil");
+    } else if (val.isFixnum()) {
+        try w.print("{d}", .{val.toFixnum()});
+    } else if (val.isFloat()) {
+        try w.print("{d}", .{val.toFloat()});
+    } else if (val.isCharacter()) {
+        const cp = val.toCharacter();
+        if (cp < 128) {
+            try w.writeByte(@as(u8, @intCast(cp)));
+        } else {
+            // For non-ASCII, write UTF-8
+            var utf8_buf: [4]u8 = undefined;
+            const len = std.unicode.utf8Encode(@intCast(cp), &utf8_buf) catch 0;
+            try w.writeAll(utf8_buf[0..len]);
+        }
+    } else if (val.isCons()) {
+        // Print as list
+        try w.writeByte('(');
+        var current = val;
+        var first = true;
+        while (current.isCons()) {
+            if (!first) try w.writeByte(' ');
+            first = false;
+            const cons = current.toPtr(objects.Cons);
+            try princValueTo(cons.car, w);
+            current = cons.cdr;
+        }
+        // Handle dotted list
+        if (!current.isNil()) {
+            try w.writeAll(" . ");
+            try princValueTo(current, w);
+        }
+        try w.writeByte(')');
+    } else if (val.isSymbol()) {
+        const sym = val.toPtr(objects.Symbol);
+        try w.writeAll(sym.getName());
+    } else if (val.isString()) {
+        const str = val.toPtr(objects.String);
+        // No quotes for princ
+        try w.writeAll(str.bytes());
+    } else if (val.isClosure()) {
+        try w.writeAll("#<closure>");
+    } else if (val.isKeyword()) {
+        const kw = val.toPtr(objects.Keyword);
+        try w.writeByte(':');
+        try w.writeAll(kw.getName());
+    } else if (val.isVector()) {
+        const vec = val.toPtr(objects.Vector);
+        try w.writeAll("#(");
+        for (vec.items(), 0..) |item, i| {
+            if (i > 0) try w.writeByte(' ');
+            try princValueTo(item, w);
+        }
+        try w.writeByte(')');
+    } else if (val.isHashTable()) {
+        const ht = val.toPtr(objects.HashTable);
+        try w.print("#<hash-table count={d}>", .{ht.count});
+    } else {
+        try w.writeAll("#<unknown>");
+    }
+}
+
 fn printValueTo(val: Value, w: anytype) !void {
     if (val.isNil()) {
         try w.writeAll("nil");

@@ -196,6 +196,7 @@ pub const Builtins = struct {
 
     // Primitives - I/O and misc
     print: Value,
+    princ: Value,
     random: Value,
     format: Value,
 
@@ -342,6 +343,7 @@ pub const Builtins = struct {
             .subseq = heap.intern("subseq") orelse return null,
             // Primitives - I/O and misc
             .print = heap.intern("print") orelse return null,
+            .princ = heap.intern("princ") orelse return null,
             .random = heap.intern("random") orelse return null,
             .format = heap.intern("format") orelse return null,
             // Primitives - Hash tables
@@ -2888,6 +2890,7 @@ pub const Compiler = struct {
 
         // I/O
         if (s == b.print.raw) return self.compileUnaryPrim(args, env, .print);
+        if (s == b.princ.raw) return self.compileUnaryPrim(args, env, .princ);
         if (s == b.format.raw) return self.compileFormat(args, env);
 
         // Hash tables
@@ -2904,7 +2907,7 @@ pub const Compiler = struct {
         return error.InvalidSyntax; // Not a known primitive
     }
 
-    const PrimTag = enum { add, sub, mul, div, mod, eq, lt, gt, le, ge, num_eq, cons, car, cdr, append, length, reverse, nth, nthcdr, last, member, consp, symbolp, numberp, stringp, vectorp, nilp, not, vec_ref, vec_len, make_box, box_ref, box_set, str_ref, str_len, str_eq, str_concat, print, random, intern, sym_name, type_of, characterp, floatp, char_code, code_char, char_eq, char_lt, char_gt, read_char, peek_char, read, read_from_string, load, unread_char, eval, gensym, macroexpand, boundp, fboundp, symbol_value, symbol_function, typep, abs, zerop, plusp, minusp, evenp, oddp };
+    const PrimTag = enum { add, sub, mul, div, mod, eq, lt, gt, le, ge, num_eq, cons, car, cdr, append, length, reverse, nth, nthcdr, last, member, consp, symbolp, numberp, stringp, vectorp, nilp, not, vec_ref, vec_len, make_box, box_ref, box_set, str_ref, str_len, str_eq, str_concat, print, princ, random, intern, sym_name, type_of, characterp, floatp, char_code, code_char, char_eq, char_lt, char_gt, read_char, peek_char, read, read_from_string, load, unread_char, eval, gensym, macroexpand, boundp, fboundp, symbol_value, symbol_function, typep, abs, zerop, plusp, minusp, evenp, oddp };
 
     /// Compile variadic arithmetic: +, -, *, /
     /// identity: for + (0), * (1). null means no identity (- and / need args)
@@ -3065,6 +3068,7 @@ pub const Compiler = struct {
             },
             .str_len => self.builder.strLen(operand),
             .print => self.builder.print(operand),
+            .princ => self.builder.princ(operand),
             .stringp => blk: {
                 const node = self.allocator.create(Ir) catch return error.OutOfMemory;
                 node.* = .{ .stringp = .{ .operand = operand } };

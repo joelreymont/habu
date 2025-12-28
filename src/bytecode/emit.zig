@@ -229,6 +229,7 @@ pub const Emitter = struct {
             .eval => |op| try self.emitUnaryOp(op.operand, .eval),
             .gensym => try self.emitOp(.gensym),
             .macroexpand => |op| try self.emitUnaryOp(op.operand, .macroexpand),
+            .princ => |op| try self.emitUnaryOp(op.operand, .princ),
             .boundp => |op| try self.emitUnaryOp(op.operand, .boundp),
             .fboundp => |op| try self.emitUnaryOp(op.operand, .fboundp),
             .symbol_value => |op| try self.emitUnaryOp(op.operand, .symbol_value),

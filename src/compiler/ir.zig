@@ -312,6 +312,7 @@ pub const Ir = union(enum) {
     eval: UnaryOp, // Evaluate expression at runtime
     gensym: void, // Generate unique symbol
     macroexpand: UnaryOp, // Expand macros in expression
+    princ: UnaryOp, // Print without escaping
     boundp: UnaryOp, // Check if symbol has global binding
     fboundp: UnaryOp, // Check if symbol has function binding
     symbol_value: UnaryOp, // Get symbol's global value
@@ -857,6 +858,12 @@ pub const IrBuilder = struct {
     pub fn macroexpand(self: IrBuilder, expr: *const Ir) !*Ir {
         const node = try self.allocator.create(Ir);
         node.* = .{ .macroexpand = .{ .operand = expr } };
+        return node;
+    }
+
+    pub fn princ(self: IrBuilder, val: *const Ir) !*Ir {
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .princ = .{ .operand = val } };
         return node;
     }
 

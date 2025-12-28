@@ -743,6 +743,12 @@ pub const Vm = struct {
                     io.sysNewline() catch return error.Halt;
                     try self.push(val); // Return the printed value
                 },
+                .princ => {
+                    const val = try self.pop();
+                    io.princValue(val) catch return error.Halt;
+                    // Note: no newline for princ
+                    try self.push(val); // Return the printed value
+                },
                 .random => {
                     const n = try self.pop();
                     const result = arith.random(n);

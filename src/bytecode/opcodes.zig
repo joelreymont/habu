@@ -533,6 +533,10 @@ pub const Op = enum(u8) {
     /// ( expr -- expanded )
     macroexpand = 0xDB,
 
+    /// Print value without escaping (princ style)
+    /// ( val -- val )
+    princ = 0xDC,
+
     // ========================================================================
     // Dynamic exception handling (catch/throw)
     // ========================================================================
@@ -612,7 +616,7 @@ pub const Op = enum(u8) {
             .read_char, .peek_char, .unread_char, .boundp, .fboundp,
             .symbol_value, .symbol_function, .typep,
             .abs, .zerop, .plusp, .minusp, .evenp, .oddp,
-            .mv_list, .read, .load, .read_from_string, .eval, .gensym, .macroexpand,
+            .mv_list, .read, .load, .read_from_string, .eval, .gensym, .macroexpand, .princ,
             => 0,
 
             // 1 byte operand
