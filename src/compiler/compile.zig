@@ -649,7 +649,9 @@ pub const GlobalEnv = struct {
             return idx; // Already defined, return existing index
         }
         const idx = self.next_index;
-        try self.bindings.put(name, idx);
+        // Dupe name - callers may pass transient slices (e.g. from symbol storage)
+        const name_copy = try self.allocator.dupe(u8, name);
+        try self.bindings.put(name_copy, idx);
         self.next_index += 1;
         return idx;
     }
@@ -676,6 +678,14 @@ pub const Compiler = struct {
     occ: ?*const OccurrenceCtx,
     /// Variables that need boxing (mutable + captured) - set during let compilation
     boxed_vars: ?*const BoxingSet,
+    /// Defined ADT types for match exhaustiveness checking
+    defined_types: std.StringHashMap([]const Variant),
+
+    /// ADT variant definition
+    pub const Variant = struct {
+        name: []const u8,
+        fields: []const []const u8,
+    };
 
     pub fn init(allocator: std.mem.Allocator) Compiler {
         return .{
@@ -687,6 +697,7 @@ pub const Compiler = struct {
             .builtins = null, // Lazily initialized when heap is available
             .occ = null,
             .boxed_vars = null,
+            .defined_types = std.StringHashMap([]const Variant).init(allocator),
         };
     }
 
@@ -701,6 +712,7 @@ pub const Compiler = struct {
             .builtins = Builtins.init(heap),
             .occ = null,
             .boxed_vars = null,
+            .defined_types = std.StringHashMap([]const Variant).init(allocator),
         };
     }
 
@@ -1029,6 +1041,9 @@ pub const Compiler = struct {
         @"multiple-value-bind",
         @"multiple-value-call",
         @"multiple-value-list",
+        // ADT support
+        deftype,
+        match,
     };
 
     /// Comptime dispatch table for special forms
@@ -1068,6 +1083,9 @@ pub const Compiler = struct {
         .{ "multiple-value-bind", .@"multiple-value-bind" },
         .{ "multiple-value-call", .@"multiple-value-call" },
         .{ "multiple-value-list", .@"multiple-value-list" },
+        // ADT support
+        .{ "deftype", .deftype },
+        .{ "match", .match },
     });
 
     fn compileListWithTail(self: *Compiler, expr: Value, env: *const Env, in_tail: bool) CompileError!*Ir {
@@ -1116,6 +1134,9 @@ pub const Compiler = struct {
                     .@"multiple-value-bind" => self.compileMvBind(tail, env),
                     .@"multiple-value-call" => self.compileMvCall(tail, env),
                     .@"multiple-value-list" => self.compileMvList(tail, env),
+                    // ADT support
+                    .deftype => self.compileDeftype(tail, env),
+                    .match => self.compileMatch(tail, env),
                 };
             }
 
@@ -2681,6 +2702,410 @@ pub const Compiler = struct {
         const lambda_ir = try self.compileLambdaWithReturnType(lambda_args, env, return_type);
 
         return self.builder.define(name, idx, lambda_ir) catch return error.OutOfMemory;
+    }
+
+    // ========================================================================
+    // ADT Support: deftype and match
+    // ========================================================================
+
+    /// Compile deftype: (deftype type-name (variant1 field1 field2) (variant2 field3) ...)
+    /// Generates: constructors, type predicate, variant predicates, field accessors
+    /// Runtime representation: #(:variant-tag field1 field2 ...)
+    fn compileDeftype(self: *Compiler, args: Value, env: *const Env) CompileError!*Ir {
+        _ = env;
+        // Parse: (type-name (variant1 f1 f2) (variant2 f3) ...)
+        if (!args.isCons()) return error.InvalidSyntax;
+
+        const cons1 = args.toPtr(Cons);
+        const type_name_val = cons1.car;
+        if (!type_name_val.isSymbol()) return error.InvalidSyntax;
+        const type_name_raw = type_name_val.toPtr(Symbol).getName();
+        // Dupe type name - symbol internal storage may be invalidated by GC
+        const type_name = self.allocator.dupe(u8, type_name_raw) catch return error.OutOfMemory;
+
+        // Collect variants
+        var variants = std.ArrayList(Variant){};
+        var current = cons1.cdr;
+        while (current.isCons()) {
+            const variant_cons = current.toPtr(Cons);
+            const variant = try self.parseVariant(variant_cons.car);
+            variants.append(self.allocator, variant) catch return error.OutOfMemory;
+            current = variant_cons.cdr;
+        }
+
+        if (variants.items.len == 0) return error.InvalidSyntax;
+
+        // Store type definition for match exhaustiveness checking
+        self.defined_types.put(type_name, variants.items) catch return error.OutOfMemory;
+
+        // Generate definitions as a progn:
+        // 1. Constructor for each variant: (defun variant-name (fields...) (vector :variant-name fields...))
+        // 2. Type predicate: (defun type-name? (x) (and (vectorp x) (member (aref x 0) '(:v1 :v2 ...))))
+        // 3. Variant predicates: (defun variant-name? (x) (and (vectorp x) (eq (aref x 0) :variant-name)))
+        // 4. Field accessors: (defun variant-name-field (x) (aref x field-index))
+
+        var defs = std.ArrayList(*const Ir){};
+
+        for (variants.items) |variant| {
+            // Constructor: (variant-name f1 f2) -> #(:variant-name f1 f2)
+            const ctor = try self.generateAdtConstructor(variant);
+            defs.append(self.allocator, ctor) catch return error.OutOfMemory;
+
+            // Variant predicate: (variant-name? x) -> (and (vectorp x) (eq (aref x 0) :variant-name))
+            const pred = try self.generateVariantPredicate(variant);
+            defs.append(self.allocator, pred) catch return error.OutOfMemory;
+
+            // Field accessors: (variant-name-field x) -> (aref x index)
+            for (variant.fields, 1..) |field, idx| {
+                const accessor = try self.generateFieldAccessor(variant.name, field, @intCast(idx));
+                defs.append(self.allocator, accessor) catch return error.OutOfMemory;
+            }
+        }
+
+        // Type predicate: (type-name? x) -> checks if any variant matches
+        const type_pred = try self.generateTypePredicate(type_name, variants.items);
+        defs.append(self.allocator, type_pred) catch return error.OutOfMemory;
+
+        // Return progn of all definitions
+        const slice = defs.toOwnedSlice(self.allocator) catch return error.OutOfMemory;
+        const node = self.allocator.create(Ir) catch return error.OutOfMemory;
+        node.* = .{ .progn = slice };
+        return node;
+    }
+
+    fn parseVariant(self: *Compiler, expr: Value) CompileError!Variant {
+        // (variant-name field1 field2 ...)
+        if (!expr.isCons()) return error.InvalidSyntax;
+
+        const cons1 = expr.toPtr(Cons);
+        if (!cons1.car.isSymbol()) return error.InvalidSyntax;
+        const sym_name = cons1.car.toPtr(Symbol).getName();
+        // Dupe name to heap - symbol internal storage may be invalidated by GC
+        const name = self.allocator.dupe(u8, sym_name) catch return error.OutOfMemory;
+
+        var fields = std.ArrayList([]const u8){};
+        var current = cons1.cdr;
+        while (current.isCons()) {
+            const field_cons = current.toPtr(Cons);
+            if (!field_cons.car.isSymbol()) return error.InvalidSyntax;
+            const field_sym_name = field_cons.car.toPtr(Symbol).getName();
+            // Dupe field name to heap
+            const field_name = self.allocator.dupe(u8, field_sym_name) catch return error.OutOfMemory;
+            fields.append(self.allocator, field_name) catch return error.OutOfMemory;
+            current = field_cons.cdr;
+        }
+
+        return .{
+            .name = name,
+            .fields = fields.toOwnedSlice(self.allocator) catch return error.OutOfMemory,
+        };
+    }
+
+    fn generateAdtConstructor(self: *Compiler, variant: Variant) CompileError!*Ir {
+        // Creates: (defun variant-name (f1 f2 ...) (vector :variant-name f1 f2 ...))
+        const idx = self.globals.define(variant.name) catch return error.OutOfMemory;
+
+        // Build lambda body: (vector :variant-name f1 f2 ...)
+        const num_elems = variant.fields.len + 1; // tag + fields
+        var elems = self.allocator.alloc(*const Ir, num_elems) catch return error.OutOfMemory;
+
+        // First element: keyword tag
+        const tag_node = self.allocator.create(Ir) catch return error.OutOfMemory;
+        tag_node.* = .{ .quote_sym = variant.name };
+        elems[0] = tag_node;
+
+        // Rest: variable references to parameters
+        for (variant.fields, 0..) |field, i| {
+            const var_node = self.builder.variable(field, 0, @intCast(i)) catch return error.OutOfMemory;
+            elems[i + 1] = var_node;
+        }
+
+        const vec_node = self.allocator.create(Ir) catch return error.OutOfMemory;
+        vec_node.* = .{ .vec = elems };
+
+        // Build lambda
+        const params = self.allocator.dupe([]const u8, variant.fields) catch return error.OutOfMemory;
+        const lambda_node = self.allocator.create(Ir) catch return error.OutOfMemory;
+        lambda_node.* = .{ .lambda = .{
+            .params = params,
+            .rest_param = null,
+            .captures = &[_]Ir.Capture{},
+            .body = vec_node,
+        } };
+
+        return self.builder.define(variant.name, idx, lambda_node) catch return error.OutOfMemory;
+    }
+
+    fn generateVariantPredicate(self: *Compiler, variant: Variant) CompileError!*Ir {
+        // Creates: (defun variant-name? (x) (and (vectorp x) (eq (aref x 0) :variant-name)))
+        var name_buf: [256]u8 = undefined;
+        const pred_name = std.fmt.bufPrint(&name_buf, "{s}?", .{variant.name}) catch return error.OutOfMemory;
+        const pred_name_copy = self.allocator.dupe(u8, pred_name) catch return error.OutOfMemory;
+
+        const idx = self.globals.define(pred_name_copy) catch return error.OutOfMemory;
+
+        // Build: (and (vectorp x) (eq (aref x 0) :variant-name))
+        // Param x at index 0
+        const x_var = self.builder.variable("x", 0, 0) catch return error.OutOfMemory;
+
+        // (vectorp x)
+        const vectorp_node = self.allocator.create(Ir) catch return error.OutOfMemory;
+        vectorp_node.* = .{ .vectorp = .{ .operand = x_var } };
+
+        // (aref x 0)
+        const x_var2 = self.builder.variable("x", 0, 0) catch return error.OutOfMemory;
+        const zero = self.builder.lit(Value.makeFixnum(0)) catch return error.OutOfMemory;
+        const aref_node = self.allocator.create(Ir) catch return error.OutOfMemory;
+        aref_node.* = .{ .vec_ref = .{ .left = x_var2, .right = zero } };
+
+        // :variant-name (as quoted symbol)
+        const tag_node = self.allocator.create(Ir) catch return error.OutOfMemory;
+        tag_node.* = .{ .quote_sym = variant.name };
+
+        // (eq (aref x 0) :variant-name)
+        const eq_node = self.allocator.create(Ir) catch return error.OutOfMemory;
+        eq_node.* = .{ .eq = .{ .left = aref_node, .right = tag_node } };
+
+        // (if (vectorp x) (eq ...) nil)
+        const nil_node = self.builder.lit(Value.nil) catch return error.OutOfMemory;
+        const if_node = self.allocator.create(Ir) catch return error.OutOfMemory;
+        if_node.* = .{ .@"if" = .{
+            .cond = vectorp_node,
+            .then_branch = eq_node,
+            .else_branch = nil_node,
+        } };
+
+        // Lambda wrapper
+        const params = self.allocator.alloc([]const u8, 1) catch return error.OutOfMemory;
+        params[0] = "x";
+        const lambda_node = self.allocator.create(Ir) catch return error.OutOfMemory;
+        lambda_node.* = .{ .lambda = .{
+            .params = params,
+            .rest_param = null,
+            .captures = &[_]Ir.Capture{},
+            .body = if_node,
+        } };
+
+        return self.builder.define(pred_name_copy, idx, lambda_node) catch return error.OutOfMemory;
+    }
+
+    fn generateFieldAccessor(self: *Compiler, variant_name: []const u8, field_name: []const u8, field_idx: u16) CompileError!*Ir {
+        // Creates: (defun variant-name-field (x) (aref x field-idx))
+        var name_buf: [256]u8 = undefined;
+        const accessor_name = std.fmt.bufPrint(&name_buf, "{s}-{s}", .{ variant_name, field_name }) catch return error.OutOfMemory;
+        const accessor_name_copy = self.allocator.dupe(u8, accessor_name) catch return error.OutOfMemory;
+
+        const idx = self.globals.define(accessor_name_copy) catch return error.OutOfMemory;
+
+        // Build: (aref x field-idx)
+        const x_var = self.builder.variable("x", 0, 0) catch return error.OutOfMemory;
+        const idx_lit = self.builder.lit(Value.makeFixnum(@intCast(field_idx))) catch return error.OutOfMemory;
+        const aref_node = self.allocator.create(Ir) catch return error.OutOfMemory;
+        aref_node.* = .{ .vec_ref = .{ .left = x_var, .right = idx_lit } };
+
+        // Lambda wrapper
+        const params = self.allocator.alloc([]const u8, 1) catch return error.OutOfMemory;
+        params[0] = "x";
+        const lambda_node = self.allocator.create(Ir) catch return error.OutOfMemory;
+        lambda_node.* = .{ .lambda = .{
+            .params = params,
+            .rest_param = null,
+            .captures = &[_]Ir.Capture{},
+            .body = aref_node,
+        } };
+
+        return self.builder.define(accessor_name_copy, idx, lambda_node) catch return error.OutOfMemory;
+    }
+
+    fn generateTypePredicate(self: *Compiler, type_name: []const u8, variants: []const Variant) CompileError!*Ir {
+        // Creates: (defun type-name? (x) (or (variant1? x) (variant2? x) ...))
+        var name_buf: [256]u8 = undefined;
+        const pred_name = std.fmt.bufPrint(&name_buf, "{s}?", .{type_name}) catch return error.OutOfMemory;
+        const pred_name_copy = self.allocator.dupe(u8, pred_name) catch return error.OutOfMemory;
+
+        const idx = self.globals.define(pred_name_copy) catch return error.OutOfMemory;
+
+        // Build body: chain of or's checking each variant
+        // Start from the last variant and work backwards
+        var body: *Ir = self.builder.lit(Value.nil) catch return error.OutOfMemory;
+
+        var i: usize = variants.len;
+        while (i > 0) {
+            i -= 1;
+            const variant = variants[i];
+
+            // Build variant check inline (like variant-name? but without function call)
+            const x_var = self.builder.variable("x", 0, 0) catch return error.OutOfMemory;
+            const vectorp_node = self.allocator.create(Ir) catch return error.OutOfMemory;
+            vectorp_node.* = .{ .vectorp = .{ .operand = x_var } };
+
+            const x_var2 = self.builder.variable("x", 0, 0) catch return error.OutOfMemory;
+            const zero = self.builder.lit(Value.makeFixnum(0)) catch return error.OutOfMemory;
+            const aref_node = self.allocator.create(Ir) catch return error.OutOfMemory;
+            aref_node.* = .{ .vec_ref = .{ .left = x_var2, .right = zero } };
+
+            const tag_node = self.allocator.create(Ir) catch return error.OutOfMemory;
+            tag_node.* = .{ .quote_sym = variant.name };
+
+            const eq_node = self.allocator.create(Ir) catch return error.OutOfMemory;
+            eq_node.* = .{ .eq = .{ .left = aref_node, .right = tag_node } };
+
+            const nil_node = self.builder.lit(Value.nil) catch return error.OutOfMemory;
+            const check_node = self.allocator.create(Ir) catch return error.OutOfMemory;
+            check_node.* = .{ .@"if" = .{
+                .cond = vectorp_node,
+                .then_branch = eq_node,
+                .else_branch = nil_node,
+            } };
+
+            // (if check_node t body)
+            const t_val = self.builder.lit(Value.t) catch return error.OutOfMemory;
+            const or_node = self.allocator.create(Ir) catch return error.OutOfMemory;
+            or_node.* = .{ .@"if" = .{
+                .cond = check_node,
+                .then_branch = t_val,
+                .else_branch = body,
+            } };
+            body = or_node;
+        }
+
+        // Lambda wrapper
+        const params = self.allocator.alloc([]const u8, 1) catch return error.OutOfMemory;
+        params[0] = "x";
+        const lambda_node = self.allocator.create(Ir) catch return error.OutOfMemory;
+        lambda_node.* = .{ .lambda = .{
+            .params = params,
+            .rest_param = null,
+            .captures = &[_]Ir.Capture{},
+            .body = body,
+        } };
+
+        return self.builder.define(pred_name_copy, idx, lambda_node) catch return error.OutOfMemory;
+    }
+
+    /// Compile match: (match expr ((variant1 f1 f2) body1) ((variant2 f3) body2) (_ default))
+    fn compileMatch(self: *Compiler, args: Value, env: *const Env) CompileError!*Ir {
+        // Parse: (expr clause1 clause2 ...)
+        if (!args.isCons()) return error.InvalidSyntax;
+
+        const cons1 = args.toPtr(Cons);
+        const scrutinee = try self.compile(cons1.car, env);
+
+        // We need to evaluate scrutinee once and bind to a temp variable
+        // Compile as: (let ((_match_val expr)) (if (variant1? _match_val) (let ((f1 ...) body1) ...)))
+
+        // For simplicity, generate nested ifs with repeated scrutinee eval for now
+        // TODO: Bind scrutinee to temp variable to avoid re-evaluation
+        const clauses = cons1.cdr;
+        return self.compileMatchClauses(scrutinee, clauses, env);
+    }
+
+    fn compileMatchClauses(self: *Compiler, scrutinee: *const Ir, clauses: Value, env: *const Env) CompileError!*Ir {
+        if (!clauses.isCons()) {
+            // No more clauses - return nil (or could be error for non-exhaustive)
+            return self.builder.lit(Value.nil) catch return error.OutOfMemory;
+        }
+
+        const clause_cons = clauses.toPtr(Cons);
+        const clause = clause_cons.car;
+
+        if (!clause.isCons()) return error.InvalidSyntax;
+        const pattern_cons = clause.toPtr(Cons);
+        const pattern = pattern_cons.car;
+        const body_list = pattern_cons.cdr;
+
+        // Check for wildcard pattern: _
+        if (pattern.isSymbol()) {
+            const sym = pattern.toPtr(Symbol);
+            if (std.mem.eql(u8, sym.getName(), "_")) {
+                // Wildcard - compile body as progn
+                return self.compileProgn(body_list, env);
+            }
+        }
+
+        // Pattern: (variant-name field1 field2 ...)
+        if (!pattern.isCons()) return error.InvalidSyntax;
+        const variant_cons = pattern.toPtr(Cons);
+        if (!variant_cons.car.isSymbol()) return error.InvalidSyntax;
+        const variant_name = variant_cons.car.toPtr(Symbol).getName();
+
+        // Collect field bindings
+        var field_names = std.ArrayList([]const u8){};
+        var field_current = variant_cons.cdr;
+        while (field_current.isCons()) {
+            const fc = field_current.toPtr(Cons);
+            if (!fc.car.isSymbol()) return error.InvalidSyntax;
+            const field_name = fc.car.toPtr(Symbol).getName();
+            field_names.append(self.allocator, field_name) catch return error.OutOfMemory;
+            field_current = fc.cdr;
+        }
+
+        // Build condition: (and (vectorp scrutinee) (eq (aref scrutinee 0) :variant-name))
+        const vectorp_node = self.allocator.create(Ir) catch return error.OutOfMemory;
+        vectorp_node.* = .{ .vectorp = .{ .operand = scrutinee } };
+
+        const zero = self.builder.lit(Value.makeFixnum(0)) catch return error.OutOfMemory;
+        const aref_node = self.allocator.create(Ir) catch return error.OutOfMemory;
+        aref_node.* = .{ .vec_ref = .{ .left = scrutinee, .right = zero } };
+
+        const tag_node = self.allocator.create(Ir) catch return error.OutOfMemory;
+        tag_node.* = .{ .quote_sym = variant_name };
+
+        const eq_node = self.allocator.create(Ir) catch return error.OutOfMemory;
+        eq_node.* = .{ .eq = .{ .left = aref_node, .right = tag_node } };
+
+        const nil_lit = self.builder.lit(Value.nil) catch return error.OutOfMemory;
+        const cond_node = self.allocator.create(Ir) catch return error.OutOfMemory;
+        cond_node.* = .{ .@"if" = .{
+            .cond = vectorp_node,
+            .then_branch = eq_node,
+            .else_branch = nil_lit,
+        } };
+
+        // Build then branch: (let ((f1 (aref scrutinee 1)) (f2 (aref scrutinee 2)) ...) body...)
+        var bindings = self.allocator.alloc(Ir.Binding, field_names.items.len) catch return error.OutOfMemory;
+        for (field_names.items, 0..) |field_name, i| {
+            const idx_lit = self.builder.lit(Value.makeFixnum(@intCast(i + 1))) catch return error.OutOfMemory;
+            const field_aref = self.allocator.create(Ir) catch return error.OutOfMemory;
+            field_aref.* = .{ .vec_ref = .{ .left = scrutinee, .right = idx_lit } };
+
+            bindings[i] = .{
+                .name = field_name,
+                .value = field_aref,
+            };
+        }
+
+        // Compile body in extended environment
+        var let_env = Env.initLet(self.allocator, env);
+        defer let_env.deinit();
+        for (field_names.items) |field_name| {
+            _ = let_env.bind(field_name) catch return error.OutOfMemory;
+        }
+        const body_ir = try self.compileProgn(body_list, &let_env);
+
+        var then_ir: *Ir = undefined;
+        if (bindings.len > 0) {
+            then_ir = self.allocator.create(Ir) catch return error.OutOfMemory;
+            then_ir.* = .{ .let = .{
+                .bindings = bindings,
+                .body = body_ir,
+            } };
+        } else {
+            then_ir = body_ir;
+        }
+
+        // Compile else branch (remaining clauses)
+        const else_ir = try self.compileMatchClauses(scrutinee, clause_cons.cdr, env);
+
+        // Build if node
+        const if_node = self.allocator.create(Ir) catch return error.OutOfMemory;
+        if_node.* = .{ .@"if" = .{
+            .cond = cond_node,
+            .then_branch = then_ir,
+            .else_branch = else_ir,
+        } };
+
+        return if_node;
     }
 
     fn compileLambdaWithReturnType(self: *Compiler, args: Value, env: *const Env, return_type: ?[]const u8) CompileError!*Ir {
