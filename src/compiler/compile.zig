@@ -166,6 +166,9 @@ pub const Builtins = struct {
     @"character?": Value,
     floatp: Value,
     @"float?": Value,
+    listp: Value,
+    @"list?": Value,
+    atom: Value,
 
     // Primitives - Character operations
     @"char-code": Value,
@@ -371,6 +374,9 @@ pub const Builtins = struct {
             .@"character?" = heap.intern("character?") orelse return null,
             .floatp = heap.intern("floatp") orelse return null,
             .@"float?" = heap.intern("float?") orelse return null,
+            .listp = heap.intern("listp") orelse return null,
+            .@"list?" = heap.intern("list?") orelse return null,
+            .atom = heap.intern("atom") orelse return null,
             // Primitives - Character operations
             .@"char-code" = heap.intern("char-code") orelse return null,
             .@"code-char" = heap.intern("code-char") orelse return null,
@@ -2956,6 +2962,8 @@ pub const Compiler = struct {
         if (s == b.not.raw) return self.compileUnaryPrim(args, env, .not);
         if (s == b.characterp.raw or s == b.@"character?".raw) return self.compileUnaryPrim(args, env, .characterp);
         if (s == b.floatp.raw or s == b.@"float?".raw) return self.compileUnaryPrim(args, env, .floatp);
+        if (s == b.listp.raw or s == b.@"list?".raw) return self.compileUnaryPrim(args, env, .listp);
+        if (s == b.atom.raw) return self.compileUnaryPrim(args, env, .atom);
 
         // Character operations
         if (s == b.@"char-code".raw) return self.compileUnaryPrim(args, env, .char_code);
@@ -3054,7 +3062,7 @@ pub const Compiler = struct {
         return error.InvalidSyntax; // Not a known primitive
     }
 
-    const PrimTag = enum { add, sub, mul, div, mod, eq, lt, gt, le, ge, num_eq, cons, car, cdr, append, length, reverse, nth, nthcdr, last, member, consp, symbolp, numberp, stringp, vectorp, nilp, not, vec_ref, vec_len, make_box, box_ref, box_set, str_ref, str_len, str_eq, str_concat, print, princ, terpri, write_char, random, intern, sym_name, type_of, characterp, floatp, char_code, code_char, char_eq, char_lt, char_gt, char_upcase, char_downcase, digit_char_p, alpha_char_p, read_char, peek_char, read, read_from_string, load, unread_char, eval, gensym, macroexpand, parse_integer, write_to_string, logand, logior, logxor, lognot, ash, read_file, write_file, make_string, string_to_list, list_to_string, string_upcase, string_downcase, boundp, fboundp, symbol_value, symbol_function, typep, abs, zerop, plusp, minusp, evenp, oddp };
+    const PrimTag = enum { add, sub, mul, div, mod, eq, lt, gt, le, ge, num_eq, cons, car, cdr, append, length, reverse, nth, nthcdr, last, member, consp, symbolp, numberp, stringp, vectorp, nilp, not, vec_ref, vec_len, make_box, box_ref, box_set, str_ref, str_len, str_eq, str_concat, print, princ, terpri, write_char, random, intern, sym_name, type_of, characterp, floatp, listp, atom, char_code, code_char, char_eq, char_lt, char_gt, char_upcase, char_downcase, digit_char_p, alpha_char_p, read_char, peek_char, read, read_from_string, load, unread_char, eval, gensym, macroexpand, parse_integer, write_to_string, logand, logior, logxor, lognot, ash, read_file, write_file, make_string, string_to_list, list_to_string, string_upcase, string_downcase, boundp, fboundp, symbol_value, symbol_function, typep, abs, zerop, plusp, minusp, evenp, oddp };
 
     /// Compile variadic arithmetic: +, -, *, /
     /// identity: for + (0), * (1). null means no identity (- and / need args)
@@ -3263,6 +3271,8 @@ pub const Compiler = struct {
             .type_of => self.builder.typeOf(operand),
             .characterp => self.builder.characterp(operand),
             .floatp => self.builder.floatp(operand),
+            .listp => self.builder.listp(operand),
+            .atom => self.builder.atomp(operand),
             .char_code => self.builder.charCode(operand),
             .code_char => self.builder.codeChar(operand),
             .unread_char => self.builder.unreadChar(operand),

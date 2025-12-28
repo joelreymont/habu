@@ -1284,6 +1284,16 @@ pub const Vm = struct {
                     const val = try self.pop();
                     try self.push(if (val.isFloat()) Value.t else Value.nil);
                 },
+                .listp => {
+                    const val = try self.pop();
+                    // listp: nil or cons
+                    try self.push(if (val == Value.nil or val.isCons()) Value.t else Value.nil);
+                },
+                .atom => {
+                    const val = try self.pop();
+                    // atom: not a cons (everything except cons)
+                    try self.push(if (!val.isCons()) Value.t else Value.nil);
+                },
                 .char_code => {
                     const val = try self.pop();
                     if (!val.isCharacter()) return error.TypeMismatch;

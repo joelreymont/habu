@@ -625,6 +625,14 @@ pub const Op = enum(u8) {
     /// ( string -- string )
     string_downcase = 0xF0,
 
+    /// Check if value is a list (nil or cons)
+    /// ( val -- t/nil )
+    listp = 0xF1,
+
+    /// Check if value is an atom (not a cons)
+    /// ( val -- t/nil )
+    atom = 0xF2,
+
     // ========================================================================
     // Dynamic exception handling (catch/throw)
     // ========================================================================
@@ -710,6 +718,7 @@ pub const Op = enum(u8) {
             .logand, .logior, .logxor, .lognot, .ash,
             .read_file, .write_file, .make_string, .string_to_list, .list_to_string,
         .string_upcase, .string_downcase,
+        .listp, .atom,
             => 0,
 
             // 1 byte operand

@@ -293,6 +293,8 @@ pub const Ir = union(enum) {
     nilp: UnaryOp,
     characterp: UnaryOp,
     floatp: UnaryOp,
+    listp: UnaryOp, // nil or cons
+    atom: UnaryOp, // not a cons
 
     // ========================================================================
     // Primitives - Character operations
@@ -473,7 +475,7 @@ pub const Ir = union(enum) {
             .eq, .lt, .gt, .le, .ge, .num_eq,
             .not,
             .cons, .car, .cdr, .list,
-            .consp, .symbolp, .numberp, .stringp, .vectorp, .closurep, .keywordp, .nilp,
+            .consp, .symbolp, .numberp, .stringp, .vectorp, .closurep, .keywordp, .nilp, .listp, .atom,
             .vec_new, .vec, .vec_ref, .vec_set, .vec_len, .make_box, .box_ref, .box_set,
             .str_ref, .str_len, .str_concat, .str_eq, .substring, .string_upcase, .string_downcase,
             .print, .random, .intern, .sym_name, .type_of,
@@ -788,6 +790,18 @@ pub const IrBuilder = struct {
     pub fn floatp(self: IrBuilder, operand: *const Ir) !*Ir {
         const node = try self.allocator.create(Ir);
         node.* = .{ .floatp = .{ .operand = operand } };
+        return node;
+    }
+
+    pub fn listp(self: IrBuilder, operand: *const Ir) !*Ir {
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .listp = .{ .operand = operand } };
+        return node;
+    }
+
+    pub fn atomp(self: IrBuilder, operand: *const Ir) !*Ir {
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .atom = .{ .operand = operand } };
         return node;
     }
 
