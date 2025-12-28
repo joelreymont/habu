@@ -1075,88 +1075,51 @@ pub const Compiler = struct {
         const head = cons.car;
         const tail = cons.cdr;
 
-        // Check for special forms using symbol identity comparison
+        // Check for special forms via StaticStringMap (O(1) perfect hash lookup)
         if (head.isSymbol()) {
-            if (self.builtins) |b| {
-                // Fast path: identity comparison (single u64 compare)
-                if (head.raw == b.@"if".raw) return self.compileIfWithTail(tail, env, in_tail);
-                if (head.raw == b.let.raw) return self.compileLetWithTail(tail, env, in_tail);
-                if (head.raw == b.letrec.raw) return self.compileLetrecWithTail(tail, env, in_tail);
-                if (head.raw == b.@"let*".raw) return self.compileLetStarWithTail(tail, env, in_tail);
-                if (head.raw == b.cond.raw) return self.compileCondWithTail(tail, env, in_tail);
-                if (head.raw == b.progn.raw or head.raw == b.begin.raw) return self.compilePrognWithTail(tail, env, in_tail);
-                if (head.raw == b.flet.raw) return self.compileFletWithTail(tail, env, in_tail);
-                if (head.raw == b.labels.raw) return self.compileLabelsWithTail(tail, env, in_tail);
-                if (head.raw == b.block.raw) return self.compileBlockWithTail(tail, env, in_tail);
-                if (head.raw == b.@"return-from".raw) return self.compileReturnFrom(tail, env);
-                if (head.raw == b.@"unwind-protect".raw) return self.compileUnwindProtectWithTail(tail, env, in_tail);
-                if (head.raw == b.@"catch".raw) return self.compileCatchWithTail(tail, env, in_tail);
-                if (head.raw == b.throw.raw) return self.compileThrow(tail, env);
-                if (head.raw == b.tagbody.raw) return self.compileTagbody(tail, env);
-                if (head.raw == b.go.raw) return self.compileGo(tail);
-                if (head.raw == b.values.raw) return self.compileValues(tail, env);
-                if (head.raw == b.@"multiple-value-bind".raw) return self.compileMvBind(tail, env);
-                if (head.raw == b.@"multiple-value-call".raw) return self.compileMvCall(tail, env);
-                if (head.raw == b.@"multiple-value-list".raw) return self.compileMvList(tail, env);
-                if (head.raw == b.lambda.raw) return self.compileLambda(tail, env);
-                if (head.raw == b.@"and".raw) return self.compileAnd(tail, env);
-                if (head.raw == b.@"or".raw) return self.compileOr(tail, env);
-                if (head.raw == b.funcall.raw) return self.compileFuncall(tail, env);
-                if (head.raw == b.apply.raw) return self.compileApply(tail, env);
-                if (head.raw == b.@"set!".raw or head.raw == b.setq.raw) return self.compileSet(tail, env);
-                if (head.raw == b.quote.raw) return self.compileQuote(tail);
-                if (head.raw == b.function.raw) return self.compileFunction(tail, env);
-                if (head.raw == b.quasiquote.raw) return self.compileQuasiquote(tail, env);
-                if (head.raw == b.@"while".raw) return self.compileWhile(tail, env);
-                if (head.raw == b.define.raw or head.raw == b.defvar.raw) return self.compileDefine(tail, env);
-                if (head.raw == b.defun.raw) return self.compileDefun(tail, env);
-                if (head.raw == b.the.raw) return self.compileThe(tail, env);
-            } else {
-                // Fallback: string comparison via StaticStringMap
-                const sym = head.toPtr(Symbol);
-                const name = sym.getName();
+            const sym = head.toPtr(Symbol);
+            const name = sym.getName();
 
-                if (special_forms.get(name)) |form| {
-                    return switch (form) {
-                        // Tail-position aware forms
-                        .@"if" => self.compileIfWithTail(tail, env, in_tail),
-                        .let => self.compileLetWithTail(tail, env, in_tail),
-                        .letrec => self.compileLetrecWithTail(tail, env, in_tail),
-                        .@"let*" => self.compileLetStarWithTail(tail, env, in_tail),
-                        .cond => self.compileCondWithTail(tail, env, in_tail),
-                        .progn, .begin => self.compilePrognWithTail(tail, env, in_tail),
-                        .flet => self.compileFletWithTail(tail, env, in_tail),
-                        .labels => self.compileLabelsWithTail(tail, env, in_tail),
-                        .block => self.compileBlockWithTail(tail, env, in_tail),
-                        // Non-tail forms
-                        .lambda => self.compileLambda(tail, env),
-                        .@"and" => self.compileAnd(tail, env),
-                        .@"or" => self.compileOr(tail, env),
-                        .funcall => self.compileFuncall(tail, env),
-                        .apply => self.compileApply(tail, env),
-                        .@"set!", .setq => self.compileSet(tail, env),
-                        .quote => self.compileQuote(tail),
-                        .function => self.compileFunction(tail, env),
-                        .quasiquote => self.compileQuasiquote(tail, env),
-                        .@"while" => self.compileWhile(tail, env),
-                        .define, .defvar => self.compileDefine(tail, env),
-                        .defun => self.compileDefun(tail, env),
-                        .the => self.compileThe(tail, env),
-                        .@"return-from" => self.compileReturnFrom(tail, env),
-                        .@"unwind-protect" => self.compileUnwindProtectWithTail(tail, env, in_tail),
-                        .@"catch" => self.compileCatchWithTail(tail, env, in_tail),
-                        .throw => self.compileThrow(tail, env),
-                        .tagbody => self.compileTagbody(tail, env),
-                        .go => self.compileGo(tail),
-                        .values => self.compileValues(tail, env),
-                        .@"multiple-value-bind" => self.compileMvBind(tail, env),
-                        .@"multiple-value-call" => self.compileMvCall(tail, env),
-                        .@"multiple-value-list" => self.compileMvList(tail, env),
-                    };
-                }
+            if (special_forms.get(name)) |form| {
+                return switch (form) {
+                    // Tail-position aware forms
+                    .@"if" => self.compileIfWithTail(tail, env, in_tail),
+                    .let => self.compileLetWithTail(tail, env, in_tail),
+                    .letrec => self.compileLetrecWithTail(tail, env, in_tail),
+                    .@"let*" => self.compileLetStarWithTail(tail, env, in_tail),
+                    .cond => self.compileCondWithTail(tail, env, in_tail),
+                    .progn, .begin => self.compilePrognWithTail(tail, env, in_tail),
+                    .flet => self.compileFletWithTail(tail, env, in_tail),
+                    .labels => self.compileLabelsWithTail(tail, env, in_tail),
+                    .block => self.compileBlockWithTail(tail, env, in_tail),
+                    .@"unwind-protect" => self.compileUnwindProtectWithTail(tail, env, in_tail),
+                    .@"catch" => self.compileCatchWithTail(tail, env, in_tail),
+                    // Non-tail forms
+                    .lambda => self.compileLambda(tail, env),
+                    .@"and" => self.compileAnd(tail, env),
+                    .@"or" => self.compileOr(tail, env),
+                    .funcall => self.compileFuncall(tail, env),
+                    .apply => self.compileApply(tail, env),
+                    .@"set!", .setq => self.compileSet(tail, env),
+                    .quote => self.compileQuote(tail),
+                    .function => self.compileFunction(tail, env),
+                    .quasiquote => self.compileQuasiquote(tail, env),
+                    .@"while" => self.compileWhile(tail, env),
+                    .define, .defvar => self.compileDefine(tail, env),
+                    .defun => self.compileDefun(tail, env),
+                    .the => self.compileThe(tail, env),
+                    .@"return-from" => self.compileReturnFrom(tail, env),
+                    .throw => self.compileThrow(tail, env),
+                    .tagbody => self.compileTagbody(tail, env),
+                    .go => self.compileGo(tail),
+                    .values => self.compileValues(tail, env),
+                    .@"multiple-value-bind" => self.compileMvBind(tail, env),
+                    .@"multiple-value-call" => self.compileMvCall(tail, env),
+                    .@"multiple-value-list" => self.compileMvList(tail, env),
+                };
             }
 
-            // Check for primitives (both paths need this)
+            // Check for primitives
             if (self.compilePrimitive(head, tail, env)) |prim| {
                 return prim;
             } else |_| {
