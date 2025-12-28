@@ -219,6 +219,10 @@ pub const Builtins = struct {
     lognot: Value,
     ash: Value,
 
+    // Primitives - File I/O
+    @"read-file": Value,
+    @"write-file": Value,
+
     // Primitives - Hash tables
     @"make-hash-table": Value,
     gethash: Value,
@@ -381,6 +385,9 @@ pub const Builtins = struct {
             .logxor = heap.intern("logxor") orelse return null,
             .lognot = heap.intern("lognot") orelse return null,
             .ash = heap.intern("ash") orelse return null,
+            // Primitives - File I/O
+            .@"read-file" = heap.intern("read-file") orelse return null,
+            .@"write-file" = heap.intern("write-file") orelse return null,
             // Primitives - Hash tables
             .@"make-hash-table" = heap.intern("make-hash-table") orelse return null,
             .gethash = heap.intern("gethash") orelse return null,
@@ -2947,6 +2954,10 @@ pub const Compiler = struct {
         if (s == b.lognot.raw) return self.compileUnaryPrim(args, env, .lognot);
         if (s == b.ash.raw) return self.compileBinaryPrim(args, env, .ash);
 
+        // File I/O
+        if (s == b.@"read-file".raw) return self.compileUnaryPrim(args, env, .read_file);
+        if (s == b.@"write-file".raw) return self.compileBinaryPrim(args, env, .write_file);
+
         // Hash tables
         if (s == b.@"make-hash-table".raw) return self.compileMakeHash(args);
         if (s == b.gethash.raw) return self.compileGethash(args, env);
@@ -2961,7 +2972,7 @@ pub const Compiler = struct {
         return error.InvalidSyntax; // Not a known primitive
     }
 
-    const PrimTag = enum { add, sub, mul, div, mod, eq, lt, gt, le, ge, num_eq, cons, car, cdr, append, length, reverse, nth, nthcdr, last, member, consp, symbolp, numberp, stringp, vectorp, nilp, not, vec_ref, vec_len, make_box, box_ref, box_set, str_ref, str_len, str_eq, str_concat, print, princ, terpri, write_char, random, intern, sym_name, type_of, characterp, floatp, char_code, code_char, char_eq, char_lt, char_gt, char_upcase, char_downcase, digit_char_p, alpha_char_p, read_char, peek_char, read, read_from_string, load, unread_char, eval, gensym, macroexpand, parse_integer, write_to_string, logand, logior, logxor, lognot, ash, boundp, fboundp, symbol_value, symbol_function, typep, abs, zerop, plusp, minusp, evenp, oddp };
+    const PrimTag = enum { add, sub, mul, div, mod, eq, lt, gt, le, ge, num_eq, cons, car, cdr, append, length, reverse, nth, nthcdr, last, member, consp, symbolp, numberp, stringp, vectorp, nilp, not, vec_ref, vec_len, make_box, box_ref, box_set, str_ref, str_len, str_eq, str_concat, print, princ, terpri, write_char, random, intern, sym_name, type_of, characterp, floatp, char_code, code_char, char_eq, char_lt, char_gt, char_upcase, char_downcase, digit_char_p, alpha_char_p, read_char, peek_char, read, read_from_string, load, unread_char, eval, gensym, macroexpand, parse_integer, write_to_string, logand, logior, logxor, lognot, ash, read_file, write_file, boundp, fboundp, symbol_value, symbol_function, typep, abs, zerop, plusp, minusp, evenp, oddp };
 
     /// Compile variadic arithmetic: +, -, *, /
     /// identity: for + (0), * (1). null means no identity (- and / need args)
@@ -3096,6 +3107,7 @@ pub const Compiler = struct {
             .logior => self.builder.logior(left, right),
             .logxor => self.builder.logxor(left, right),
             .ash => self.builder.ash(left, right),
+            .write_file => self.builder.writeFile(left, right),
             else => error.InvalidSyntax,
         } catch return error.OutOfMemory;
     }
@@ -3135,6 +3147,7 @@ pub const Compiler = struct {
             .parse_integer => self.builder.parseInteger(operand),
             .write_to_string => self.builder.writeToString(operand),
             .lognot => self.builder.lognot(operand),
+            .read_file => self.builder.readFile(operand),
             .stringp => blk: {
                 const node = self.allocator.create(Ir) catch return error.OutOfMemory;
                 node.* = .{ .stringp = .{ .operand = operand } };

@@ -871,6 +871,27 @@ pub const Vm = struct {
                         n >> @intCast(@min(-count, 63));
                     try self.push(Value.makeFixnum(result));
                 },
+                .read_file => {
+                    const path_val = try self.pop();
+                    if (!path_val.isString()) return error.TypeMismatch;
+                    const path_str = path_val.toPtr(String);
+                    const result = io.readFile(self.heap, path_str.bytes()) catch {
+                        try self.push(Value.nil);
+                        continue;
+                    };
+                    try self.push(result);
+                },
+                .write_file => {
+                    const content_val = try self.pop();
+                    const path_val = try self.pop();
+                    if (!path_val.isString()) return error.TypeMismatch;
+                    const path_str = path_val.toPtr(String);
+                    io.writeFile(path_str.bytes(), content_val) catch {
+                        try self.push(Value.nil);
+                        continue;
+                    };
+                    try self.push(Value.nil);
+                },
                 .random => {
                     const n = try self.pop();
                     const result = arith.random(n);

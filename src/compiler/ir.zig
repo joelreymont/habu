@@ -326,6 +326,8 @@ pub const Ir = union(enum) {
     logxor: BinaryOp, // Bitwise XOR
     lognot: UnaryOp, // Bitwise NOT
     ash: BinaryOp, // Arithmetic shift
+    read_file: UnaryOp, // Read file to string
+    write_file: BinaryOp, // Write string to file
     boundp: UnaryOp, // Check if symbol has global binding
     fboundp: UnaryOp, // Check if symbol has function binding
     symbol_value: UnaryOp, // Get symbol's global value
@@ -955,6 +957,18 @@ pub const IrBuilder = struct {
     pub fn ash(self: IrBuilder, n: *const Ir, count: *const Ir) !*Ir {
         const node = try self.allocator.create(Ir);
         node.* = .{ .ash = .{ .left = n, .right = count } };
+        return node;
+    }
+
+    pub fn readFile(self: IrBuilder, path: *const Ir) !*Ir {
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .read_file = .{ .operand = path } };
+        return node;
+    }
+
+    pub fn writeFile(self: IrBuilder, path: *const Ir, content: *const Ir) !*Ir {
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .write_file = .{ .left = path, .right = content } };
         return node;
     }
 

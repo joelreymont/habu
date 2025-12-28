@@ -593,6 +593,14 @@ pub const Op = enum(u8) {
     /// ( n count -- shifted )
     ash = 0xE9,
 
+    /// Read entire file contents to string
+    /// ( path-string -- string )
+    read_file = 0xEA,
+
+    /// Write string to file
+    /// ( path-string content-string -- nil )
+    write_file = 0xEB,
+
     // ========================================================================
     // Dynamic exception handling (catch/throw)
     // ========================================================================
@@ -676,6 +684,7 @@ pub const Op = enum(u8) {
             .terpri, .write_char, .char_upcase, .char_downcase,
             .digit_char_p, .alpha_char_p, .parse_integer, .write_to_string,
             .logand, .logior, .logxor, .lognot, .ash,
+            .read_file, .write_file,
             => 0,
 
             // 1 byte operand
