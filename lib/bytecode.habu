@@ -207,14 +207,15 @@
 ;; Emitter State
 ;; =============================================================================
 
-;; Emitter state: (code constants num-locals)
+;; Emitter state: (code constants num-locals child-chunks)
 ;; code: list of bytes (reversed, will be reversed at finalize)
 ;; constants: list of constant values (reversed)
 ;; num-locals: number of local variables
+;; child-chunks: list of child chunk results (for lambdas)
 
 (defun make-emitter ()
   "Create new emitter state"
-  (list nil nil 0))
+  (list nil nil 0 nil))
 
 (defun emitter-code (e)
   "Get code bytes (reversed)"
@@ -228,17 +229,31 @@
   "Get number of locals"
   (car (cdr (cdr e))))
 
+(defun emitter-child-chunks (e)
+  "Get child chunks"
+  (car (cdr (cdr (cdr e)))))
+
 (defun emitter-set-code (e code)
   "Set code bytes"
-  (list code (emitter-constants e) (emitter-num-locals e)))
+  (list code (emitter-constants e) (emitter-num-locals e) (emitter-child-chunks e)))
 
 (defun emitter-set-constants (e consts)
   "Set constants"
-  (list (emitter-code e) consts (emitter-num-locals e)))
+  (list (emitter-code e) consts (emitter-num-locals e) (emitter-child-chunks e)))
 
 (defun emitter-set-num-locals (e n)
   "Set number of locals"
-  (list (emitter-code e) (emitter-constants e) n))
+  (list (emitter-code e) (emitter-constants e) n (emitter-child-chunks e)))
+
+(defun emitter-set-child-chunks (e chunks)
+  "Set child chunks"
+  (list (emitter-code e) (emitter-constants e) (emitter-num-locals e) chunks))
+
+(defun emitter-add-child-chunk (e chunk)
+  "Add a child chunk, return (index . updated-emitter)"
+  (let ((chunks (emitter-child-chunks e))
+        (idx (length (emitter-child-chunks e))))
+    (cons idx (emitter-set-child-chunks e (append chunks (list chunk))))))
 
 ;; =============================================================================
 ;; Low-level emission helpers
@@ -614,12 +629,55 @@
 
 (defun emit-lambda (e params rest-param captures body)
   "Emit lambda/closure.
-   Note: For full implementation, we need to emit a child chunk
-   and reference it. For now, emit a simplified inline version."
-  ;; TODO: Full closure compilation requires child chunks
-  ;; For now, this is a placeholder that would need integration
-  ;; with the runtime's closure creation
-  (error "Lambda emission requires child chunk support - not yet implemented"))
+   Creates a child chunk for the lambda body and emits make_closure."
+  ;; Create new emitter for lambda body
+  (let* ((lambda-emitter (make-emitter))
+         ;; Set num-locals = params + optional rest
+         (num-params (length params))
+         (num-locals (if rest-param (+ num-params 1) num-params))
+         (lambda-emitter (emitter-set-num-locals lambda-emitter num-locals)))
+    ;; Emit body into lambda emitter
+    (let* ((lambda-emitter (emit-ir lambda-emitter body))
+           ;; Finalize lambda chunk (adds ret if needed)
+           (lambda-chunk (finalize-chunk lambda-emitter)))
+      ;; Add child chunk to parent, get index
+      (let* ((result (emitter-add-child-chunk e lambda-chunk))
+             (chunk-idx (car result))
+             (e1 (cdr result)))
+        ;; Emit capture values (load from upvalues)
+        (let ((e2 (emit-captures e1 captures)))
+          ;; Emit make_closure: u16 chunk_index, u8 num_captures
+          (let* ((e3 (emit-op e2 *op-make-closure*))
+                 (e4 (emit-u16 e3 chunk-idx)))
+            (emit-u8 e4 (length captures))))))))
+
+(defun emit-captures (e captures)
+  "Emit code to load captured variables onto stack"
+  (if (null captures)
+      e
+      (let* ((cap (car captures))
+             (depth (capture-depth cap))
+             (index (capture-index cap)))
+        (let ((e1 (if (= depth 0)
+                      ;; Local capture
+                      (let ((e1 (emit-op e *op-load-local*)))
+                        (emit-u8 e1 index))
+                      ;; Upvalue capture
+                      (let* ((e1 (emit-op e *op-load-upvalue*))
+                             (e2 (emit-u8 e1 (- depth 1))))
+                        (emit-u8 e2 index)))))
+          (emit-captures e1 (cdr captures))))))
+
+(defun finalize-chunk (e)
+  "Finalize a chunk - add ret if needed, return (code . constants)"
+  (let* ((code (reverse (emitter-code e)))
+         (constants (reverse (emitter-constants e))))
+    ;; Add ret if not empty and doesn't end with ret
+    (if (null code)
+        (list (list *op-push-nil* *op-ret*) constants (emitter-num-locals e))
+        (if (= (list-last-item code) *op-ret*)
+            (list code constants (emitter-num-locals e))
+            (list (append code (list *op-ret*)) constants (emitter-num-locals e))))))
 
 (defun emit-if (e cond-expr then-branch else-branch)
   "Emit if expression"
@@ -820,16 +878,21 @@
 ;; =============================================================================
 
 (defun finalize-emitter (e)
-  "Finalize emitter, return (code . constants) with code/constants in order.
+  "Finalize emitter, return bytecode result structure:
+   (code constants num-locals child-chunks)
    Adds implicit return if needed."
   (let* ((code (reverse (emitter-code e)))
-         (constants (reverse (emitter-constants e))))
+         (constants (reverse (emitter-constants e)))
+         (num-locals (emitter-num-locals e))
+         (child-chunks (emitter-child-chunks e)))
     ;; Add ret if not empty and doesn't end with ret
-    (if (null code)
-        (cons (list *op-push-nil* *op-ret*) constants)
-        (if (= (list-last-item code) *op-ret*)
-            (cons code constants)
-            (cons (append code (list *op-ret*)) constants)))))
+    (let ((final-code
+           (if (null code)
+               (list *op-push-nil* *op-ret*)
+               (if (= (list-last-item code) *op-ret*)
+                   code
+                   (append code (list *op-ret*))))))
+      (list final-code constants num-locals child-chunks))))
 
 (defun list-last-item (lst)
   "Get last item of list"
@@ -838,12 +901,36 @@
       (list-last-item (cdr lst))))
 
 ;; =============================================================================
+;; Bytecode result accessors
+;; =============================================================================
+
+(defun bytecode-code (result)
+  "Get bytecode from result"
+  (car result))
+
+(defun bytecode-constants (result)
+  "Get constants from result"
+  (car (cdr result)))
+
+(defun bytecode-num-locals (result)
+  "Get num-locals from result"
+  (car (cdr (cdr result))))
+
+(defun bytecode-child-chunks (result)
+  "Get child chunks from result"
+  (car (cdr (cdr (cdr result)))))
+
+;; =============================================================================
 ;; Top-level interface
 ;; =============================================================================
 
 (defun emit-top (ir)
   "Emit bytecode for top-level IR expression.
-   Returns (code . constants) where code is a list of bytes."
+   Returns (code constants num-locals child-chunks) where:
+   - code is a list of bytes
+   - constants is a list of constant values
+   - num-locals is the number of local variables
+   - child-chunks is a list of (code constants num-locals) for nested lambdas"
   (let* ((e (make-emitter))
          (e1 (emit-ir e ir)))
     (finalize-emitter e1)))
