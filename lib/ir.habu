@@ -1,0 +1,173 @@
+;;; IR - Intermediate Representation for Habu Compiler
+;;;
+;;; Defines the IR ADT using deftype. Each variant corresponds to
+;;; a node type in the Zig compiler's ir.zig.
+
+;; =============================================================================
+;; Core IR ADT
+;; =============================================================================
+
+(deftype ir
+  ;; Literals
+  (ir-lit value)                    ; Literal value (fixnum, nil, t, string)
+  (ir-quote-sym name)               ; Quoted symbol name
+
+  ;; Variables
+  (ir-var name depth index)         ; Variable reference
+  (ir-set name depth index value)   ; Variable assignment
+  (ir-global-ref name index)        ; Global variable reference
+  (ir-define name index value)      ; Global definition
+
+  ;; Binding forms
+  (ir-let bindings body)            ; Let: bindings is list of (name . ir)
+  (ir-lambda params rest-param captures body) ; Lambda
+
+  ;; Control flow
+  (ir-if cond then-branch else-branch)
+  (ir-progn forms)                  ; Sequence of expressions
+  (ir-loop cond body)               ; While loop
+  (ir-block name body)              ; Named block
+  (ir-return-from name value)       ; Return from block
+
+  ;; Exception handling
+  (ir-catch tag body)
+  (ir-throw tag value)
+  (ir-unwind-protect protected cleanup)
+
+  ;; Function calls
+  (ir-call func args)               ; Regular function call
+  (ir-tailcall func args)           ; Tail call
+  (ir-apply func args-list)         ; Apply function to list
+
+  ;; Arithmetic
+  (ir-add left right)
+  (ir-sub left right)
+  (ir-mul left right)
+  (ir-div left right)
+  (ir-mod left right)
+  (ir-neg operand)
+
+  ;; Comparison
+  (ir-eq left right)
+  (ir-lt left right)
+  (ir-gt left right)
+  (ir-le left right)
+  (ir-ge left right)
+  (ir-num-eq left right)
+  (ir-equal left right)
+
+  ;; Logic
+  (ir-not operand)
+
+  ;; List operations
+  (ir-cons car cdr)
+  (ir-car operand)
+  (ir-cdr operand)
+  (ir-list elements)                ; (list a b c)
+  (ir-append left right)
+  (ir-length operand)
+  (ir-reverse operand)
+  (ir-nth index list)
+  (ir-member item list)
+  (ir-assoc key alist)
+  (ir-rplaca cons-cell value)
+  (ir-rplacd cons-cell value)
+
+  ;; Type predicates
+  (ir-consp operand)
+  (ir-symbolp operand)
+  (ir-numberp operand)
+  (ir-stringp operand)
+  (ir-vectorp operand)
+  (ir-closurep operand)
+  (ir-keywordp operand)
+  (ir-nilp operand)
+  (ir-listp operand)
+  (ir-atom operand)
+
+  ;; Vector operations
+  (ir-make-vec size init)
+  (ir-vec elements)
+  (ir-vec-ref vec index)
+  (ir-vec-set vec index value)
+  (ir-vec-len operand)
+
+  ;; String operations
+  (ir-str-ref str index)
+  (ir-str-len operand)
+  (ir-str-concat left right)
+  (ir-str-eq left right)
+  (ir-substring str start end)
+
+  ;; Symbol operations
+  (ir-intern operand)
+  (ir-sym-name operand)
+  (ir-gensym)
+
+  ;; I/O
+  (ir-print operand)
+  (ir-princ operand)
+  (ir-terpri)
+  (ir-read)
+  (ir-read-char)
+  (ir-write-char operand)
+
+  ;; Error handling
+  (ir-error operand))
+
+;; =============================================================================
+;; Binding structure for let
+;; =============================================================================
+
+;; A binding is represented as (name . ir-node)
+;; Example: (let ((x 1) (y 2)) body)
+;; bindings = ((x . (ir-lit 1)) (y . (ir-lit 2)))
+
+(defun make-binding (name value)
+  "Create a binding pair"
+  (cons name value))
+
+(defun binding-name (binding)
+  "Get name from binding"
+  (car binding))
+
+(defun binding-value (binding)
+  "Get value IR from binding"
+  (cdr binding))
+
+;; =============================================================================
+;; Capture structure for closures
+;; =============================================================================
+
+;; A capture records a free variable: (name depth index)
+;; depth = how many scopes up (0 = immediate enclosing)
+;; index = slot within that scope
+
+(defun make-capture (name depth index)
+  "Create a capture record"
+  (list name depth index))
+
+(defun capture-name (cap)
+  (car cap))
+
+(defun capture-depth (cap)
+  (car (cdr cap)))
+
+(defun capture-index (cap)
+  (car (cdr (cdr cap))))
+
+;; =============================================================================
+;; IR constructors (convenience functions)
+;; =============================================================================
+
+(defun ir-nil ()
+  "Create nil literal"
+  (ir-lit nil))
+
+(defun ir-t ()
+  "Create t literal"
+  (ir-lit t))
+
+(defun ir-fixnum (n)
+  "Create fixnum literal"
+  (ir-lit n))

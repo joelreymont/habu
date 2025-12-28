@@ -1,0 +1,367 @@
+;;; Habu Compiler - S-expression to IR
+;;;
+;;; Compiles Habu source code (S-expressions) to IR nodes.
+;;; Uses the IR ADT defined in ir.habu.
+
+(load "lib/ir.habu")
+
+;; =============================================================================
+;; Environment
+;; =============================================================================
+
+;; An environment is a list of frames, each frame is a list of (name . info)
+;; info is (index . is-captured)
+;; The outermost (global) frame is at the end.
+
+(defun empty-env ()
+  "Create empty environment"
+  nil)
+
+(defun env-extend (env bindings)
+  "Extend environment with new frame of bindings.
+   bindings is a list of names."
+  (let ((frame (make-frame bindings 0)))
+    (cons frame env)))
+
+(defun make-frame (names index)
+  "Create frame from list of names starting at index"
+  (if (null names)
+      nil
+      (cons (cons (car names) (cons index nil))
+            (make-frame (cdr names) (+ index 1)))))
+
+(defun env-lookup (env name)
+  "Look up name in environment, return (depth . index) or nil"
+  (env-lookup-depth env name 0))
+
+(defun env-lookup-depth (env name depth)
+  (if (null env)
+      nil
+      (let ((found (frame-lookup (car env) name)))
+        (if found
+            (cons depth (car found))
+            (env-lookup-depth (cdr env) name (+ depth 1))))))
+
+(defun frame-lookup (frame name)
+  "Look up name in frame, return (index . captured?) or nil"
+  (if (null frame)
+      nil
+      (if (eq (car (car frame)) name)
+          (cdr (car frame))
+          (frame-lookup (cdr frame) name))))
+
+;; =============================================================================
+;; Global definitions table
+;; =============================================================================
+
+(defun make-globals ()
+  "Create empty globals table"
+  (make-hash-table))
+
+(defun globals-define (globals name)
+  "Define or get global index for name"
+  (let ((existing (gethash name globals)))
+    (if existing
+        existing
+        (let ((idx (hash-table-count globals)))
+          (puthash name idx globals)
+          idx))))
+
+(defun globals-lookup (globals name)
+  "Look up global, return index or nil"
+  (gethash name globals))
+
+;; =============================================================================
+;; Compiler state
+;; =============================================================================
+
+;; Compiler state is a list: (globals . captures)
+;; globals: hash table of name -> index
+;; captures: list of captured variables (for current lambda)
+
+(defun make-compiler-state ()
+  (cons (make-globals) nil))
+
+(defun state-globals (state)
+  (car state))
+
+(defun state-captures (state)
+  (cdr state))
+
+;; =============================================================================
+;; Main compile function
+;; =============================================================================
+
+(defun compile-expr (expr env state)
+  "Compile expression to IR"
+  (cond
+    ;; Self-evaluating
+    ((null expr) (ir-lit nil))
+    ((eq expr t) (ir-lit t))
+    ((numberp expr) (ir-lit expr))
+    ((stringp expr) (ir-lit expr))
+    ((keywordp expr) (ir-lit expr))
+
+    ;; Symbol - variable reference
+    ((symbolp expr)
+     (compile-variable expr env state))
+
+    ;; List - special form or function call
+    ((consp expr)
+     (compile-list expr env state))
+
+    ;; Unknown
+    (t (error "Unknown expression type"))))
+
+(defun compile-variable (name env state)
+  "Compile variable reference"
+  (let ((local (env-lookup env name)))
+    (if local
+        (ir-var name (car local) (cdr local))
+        ;; Global - use late binding (define if not already defined)
+        (let ((global-idx (globals-lookup (state-globals state) name)))
+          (ir-global-ref name
+            (if global-idx
+                global-idx
+                (globals-define (state-globals state) name)))))))
+
+(defun compile-list (expr env state)
+  "Compile list expression (special form or call)"
+  (let ((head (car expr))
+        (tail (cdr expr)))
+    (cond
+      ;; Quote
+      ((eq head 'quote)
+       (compile-quote (car tail)))
+
+      ;; If
+      ((eq head 'if)
+       (compile-if tail env state))
+
+      ;; Let
+      ((eq head 'let)
+       (compile-let tail env state))
+
+      ;; Let*
+      ((eq head 'let*)
+       (compile-let* tail env state))
+
+      ;; Lambda
+      ((eq head 'lambda)
+       (compile-lambda tail env state))
+
+      ;; Progn
+      ((eq head 'progn)
+       (compile-progn tail env state))
+
+      ;; Setq
+      ((eq head 'setq)
+       (compile-setq tail env state))
+
+      ;; Defun
+      ((eq head 'defun)
+       (compile-defun tail env state))
+
+      ;; Cond
+      ((eq head 'cond)
+       (compile-cond tail env state))
+
+      ;; And
+      ((eq head 'and)
+       (compile-and tail env state))
+
+      ;; Or
+      ((eq head 'or)
+       (compile-or tail env state))
+
+      ;; Function call
+      (t (compile-call expr env state)))))
+
+;; =============================================================================
+;; Special form compilers
+;; =============================================================================
+
+(defun compile-quote (datum)
+  "Compile quoted expression"
+  (if (symbolp datum)
+      (ir-quote-sym datum)
+      (ir-lit datum)))
+
+(defun compile-if (args env state)
+  "Compile (if cond then else)"
+  (let ((cond-ir (compile-expr (car args) env state))
+        (then-ir (compile-expr (car (cdr args)) env state))
+        (else-ir (if (cdr (cdr args))
+                     (compile-expr (car (cdr (cdr args))) env state)
+                     (ir-lit nil))))
+    (ir-if cond-ir then-ir else-ir)))
+
+(defun compile-let (args env state)
+  "Compile (let ((x e1) (y e2)) body)"
+  (let ((bindings (car args))
+        (body (cdr args)))
+    (let ((names (extract-binding-names bindings))
+          (values (compile-binding-values bindings env state)))
+      (let ((new-env (env-extend env names))
+            (binding-pairs (make-let-bindings names values 0)))
+        (ir-let binding-pairs
+                (compile-progn body new-env state))))))
+
+(defun extract-binding-names (bindings)
+  "Extract list of names from let bindings"
+  (if (null bindings)
+      nil
+      (cons (car (car bindings))
+            (extract-binding-names (cdr bindings)))))
+
+(defun compile-binding-values (bindings env state)
+  "Compile list of binding values to IR nodes"
+  (if (null bindings)
+      nil
+      (cons (compile-expr (car (cdr (car bindings))) env state)
+            (compile-binding-values (cdr bindings) env state))))
+
+(defun make-let-bindings (names values index)
+  "Create list of (name . ir) pairs"
+  (if (null names)
+      nil
+      (cons (make-binding (car names) (car values))
+            (make-let-bindings (cdr names) (cdr values) (+ index 1)))))
+
+(defun compile-let* (args env state)
+  "Compile (let* ((x e1) (y e2)) body) as nested lets"
+  (let ((bindings (car args))
+        (body (cdr args)))
+    (if (null bindings)
+        (compile-progn body env state)
+        (let ((first-binding (car bindings))
+              (rest-bindings (cdr bindings)))
+          (compile-let (list (list first-binding)
+                            (cons 'let* (cons rest-bindings body)))
+                      env state)))))
+
+(defun compile-lambda (args env state)
+  "Compile (lambda (params) body)"
+  (let ((params (car args))
+        (body (cdr args)))
+    (let ((param-names (extract-params params))
+          (rest-param (extract-rest-param params)))
+      (let ((new-env (env-extend env param-names)))
+        ;; TODO: capture analysis
+        (ir-lambda param-names rest-param nil
+                   (compile-progn body new-env state))))))
+
+(defun extract-params (params)
+  "Extract parameter names from lambda list"
+  (if (null params)
+      nil
+      (if (symbolp params)  ; rest param only: (lambda x ...)
+          nil
+          (if (consp params)
+              (cons (car params) (extract-params (cdr params)))
+              nil))))  ; dotted rest param
+
+(defun extract-rest-param (params)
+  "Extract rest parameter if present"
+  (if (null params)
+      nil
+      (if (symbolp params)  ; (lambda x ...) - x is rest
+          params
+          (if (consp params)
+              (extract-rest-param (cdr params))
+              params))))  ; dotted pair - cdr is rest
+
+(defun compile-progn (forms env state)
+  "Compile (progn e1 e2 ... en)"
+  (if (null forms)
+      (ir-lit nil)
+      (if (null (cdr forms))
+          (compile-expr (car forms) env state)
+          (ir-progn (compile-forms forms env state)))))
+
+(defun compile-forms (forms env state)
+  "Compile list of forms to list of IR nodes"
+  (if (null forms)
+      nil
+      (cons (compile-expr (car forms) env state)
+            (compile-forms (cdr forms) env state))))
+
+(defun compile-setq (args env state)
+  "Compile (setq name value)"
+  (let ((name (car args))
+        (value-expr (car (cdr args))))
+    (let ((local (env-lookup env name))
+          (value-ir (compile-expr value-expr env state)))
+      (if local
+          (ir-set name (car local) (cdr local) value-ir)
+          (let ((idx (globals-define (state-globals state) name)))
+            (ir-define name idx value-ir))))))
+
+(defun compile-defun (args env state)
+  "Compile (defun name (params) body)"
+  (let ((name (car args))
+        (params (car (cdr args)))
+        (body (cdr (cdr args))))
+    (let ((lambda-ir (compile-lambda (cons params body) env state))
+          (idx (globals-define (state-globals state) name)))
+      (ir-define name idx lambda-ir))))
+
+(defun compile-cond (clauses env state)
+  "Compile (cond (test1 e1) (test2 e2) ...)"
+  (if (null clauses)
+      (ir-lit nil)
+      (let ((clause (car clauses))
+            (rest (cdr clauses)))
+        (let ((test (car clause))
+              (body (cdr clause)))
+          (if (eq test t)
+              (compile-progn body env state)
+              (ir-if (compile-expr test env state)
+                     (compile-progn body env state)
+                     (compile-cond rest env state)))))))
+
+(defun compile-and (forms env state)
+  "Compile (and e1 e2 ...)"
+  (if (null forms)
+      (ir-lit t)
+      (if (null (cdr forms))
+          (compile-expr (car forms) env state)
+          (ir-if (compile-expr (car forms) env state)
+                 (compile-and (cdr forms) env state)
+                 (ir-lit nil)))))
+
+(defun compile-or (forms env state)
+  "Compile (or e1 e2 ...)"
+  (if (null forms)
+      (ir-lit nil)
+      (if (null (cdr forms))
+          (compile-expr (car forms) env state)
+          ;; Need let to avoid evaluating first expr twice
+          ;; For now, just inline (loses short-circuit for complex exprs)
+          (ir-if (compile-expr (car forms) env state)
+                 (compile-expr (car forms) env state)  ; TODO: use temp var
+                 (compile-or (cdr forms) env state)))))
+
+(defun compile-call (expr env state)
+  "Compile function call (f arg1 arg2 ...)"
+  (let ((func (car expr))
+        (args (cdr expr)))
+    (let ((func-ir (compile-expr func env state))
+          (args-ir (compile-args args env state)))
+      (ir-call func-ir args-ir))))
+
+(defun compile-args (args env state)
+  "Compile list of arguments to list of IR nodes"
+  (if (null args)
+      nil
+      (cons (compile-expr (car args) env state)
+            (compile-args (cdr args) env state))))
+
+;; =============================================================================
+;; Top-level interface
+;; =============================================================================
+
+(defun compile-top (expr)
+  "Compile a top-level expression"
+  (let ((state (make-compiler-state)))
+    (compile-expr expr (empty-env) state)))

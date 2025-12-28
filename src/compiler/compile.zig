@@ -988,13 +988,11 @@ pub const Compiler = struct {
                 }
                 return var_ir;
             }
-            // Check globals
-            if (self.globals.lookup(name)) |idx| {
-                return self.builder.globalRef(name, idx) catch
-                    return error.OutOfMemory;
-            }
-            // Unbound variable
-            return error.UnboundVariable;
+            // Check globals - if not found, assume it will be defined later (late binding)
+            const idx = self.globals.lookup(name) orelse
+                (self.globals.define(name) catch return error.OutOfMemory);
+            return self.builder.globalRef(name, idx) catch
+                return error.OutOfMemory;
         }
 
         // List (special form or function call)

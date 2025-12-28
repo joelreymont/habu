@@ -64,6 +64,8 @@ pub const Repl = struct {
     macros: std.StringHashMap(Value),
     /// Line editor for interactive input
     line_editor: LineEditor,
+    /// Current VM being used (for nested loads)
+    current_vm: ?*Vm,
 
     pub fn init(allocator: std.mem.Allocator, heap: *Heap, config: Config) Repl {
         return Repl{
@@ -75,6 +77,7 @@ pub const Repl = struct {
             .persistent_chunk_ptrs = std.ArrayList(*bytecode.Chunk){},
             .macros = std.StringHashMap(Value).init(allocator),
             .line_editor = LineEditor.init(allocator),
+            .current_vm = null,
         };
     }
 
@@ -235,12 +238,21 @@ pub const Repl = struct {
         // Create a temporary VM for nested evaluation
         var nested_vm = Vm.init(self.allocator, self.heap);
         nested_vm.setGlobalEnv(&self.compiler.globals);
+        nested_vm.setLoadCallback(&loadCallback, @ptrCast(self));
+        nested_vm.setEvalCallback(&evalCallback, @ptrCast(self));
+        nested_vm.setMacroexpandCallback(&macroexpandCallback, @ptrCast(self));
 
-        // Copy globals from main VM
-        for (self.vm.globals, 0..) |g, i| {
+        // Copy globals from current VM context (for nested loads)
+        const source_vm = self.current_vm orelse &self.vm;
+        for (source_vm.globals, 0..) |g, i| {
             nested_vm.globals[i] = g;
         }
-        nested_vm.num_globals = self.vm.num_globals;
+        nested_vm.num_globals = source_vm.num_globals;
+
+        // Save previous current_vm and set nested_vm as current
+        const saved_current_vm = self.current_vm;
+        self.current_vm = &nested_vm;
+        defer self.current_vm = saved_current_vm;
 
         while (pos < content.len) {
             // Skip whitespace and comments
@@ -306,11 +318,11 @@ pub const Repl = struct {
             }
         }
 
-        // Copy globals back to main VM
+        // Copy globals back to source VM
         for (nested_vm.globals, 0..) |g, i| {
-            self.vm.globals[i] = g;
+            source_vm.globals[i] = g;
         }
-        self.vm.num_globals = nested_vm.num_globals;
+        source_vm.num_globals = nested_vm.num_globals;
 
         return last_value;
     }

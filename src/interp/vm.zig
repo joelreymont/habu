@@ -148,7 +148,7 @@ pub const Vm = struct {
     const STACK_SIZE = 1024;
     const MAX_SECONDARY_VALUES = 20;
     const MAX_FRAMES = 64;
-    const MAX_GLOBALS = 256;
+    const MAX_GLOBALS = 2048;
     const MAX_CATCHES = 32;
     const MAX_UNWINDS = 32;
 
