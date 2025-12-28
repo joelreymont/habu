@@ -586,6 +586,18 @@ pub const Vm = struct {
                     }
                     try self.push(vec);
                 },
+                .make_vec_n => {
+                    const count = self.readU8();
+                    const vec = self.heap.allocVector(count, count) orelse return error.OutOfMemory;
+                    const vec_obj = vec.toPtr(Vector);
+                    // Pop elements in reverse order (last element pushed first)
+                    var i: usize = count;
+                    while (i > 0) {
+                        i -= 1;
+                        vec_obj.data[i] = try self.pop();
+                    }
+                    try self.push(vec);
+                },
                 .vec_ref => {
                     const idx_val = try self.pop();
                     const vec_val = try self.pop();

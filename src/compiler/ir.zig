@@ -356,6 +356,7 @@ pub const Ir = union(enum) {
         size: *const Ir,
         init: ?*const Ir,
     },
+    vec: []const *const Ir, // (vector a b c)
     vec_ref: BinaryOp,
     vec_set: struct {
         vec: *const Ir,
@@ -471,7 +472,7 @@ pub const Ir = union(enum) {
             .not,
             .cons, .car, .cdr, .list,
             .consp, .symbolp, .numberp, .stringp, .vectorp, .closurep, .keywordp, .nilp,
-            .vec_new, .vec_ref, .vec_set, .vec_len, .make_box, .box_ref, .box_set,
+            .vec_new, .vec, .vec_ref, .vec_set, .vec_len, .make_box, .box_ref, .box_set,
             .str_ref, .str_len, .str_concat, .str_eq, .substring,
             .print, .random, .intern, .sym_name, .type_of,
             .assert_fixnum, .assert_cons, .assert_symbol, .assert_string,
@@ -1067,15 +1068,22 @@ pub const IrBuilder = struct {
         return node;
     }
 
-    pub fn vecRef(self: IrBuilder, vec: *const Ir, index: *const Ir) !*Ir {
+    pub fn vec(self: IrBuilder, elements: []const *const Ir) !*Ir {
         const node = try self.allocator.create(Ir);
-        node.* = .{ .vec_ref = .{ .left = vec, .right = index } };
+        const elems_copy = try self.allocator.dupe(*const Ir, elements);
+        node.* = .{ .vec = elems_copy };
         return node;
     }
 
-    pub fn vecLen(self: IrBuilder, vec: *const Ir) !*Ir {
+    pub fn vecRef(self: IrBuilder, v: *const Ir, index: *const Ir) !*Ir {
         const node = try self.allocator.create(Ir);
-        node.* = .{ .vec_len = .{ .operand = vec } };
+        node.* = .{ .vec_ref = .{ .left = v, .right = index } };
+        return node;
+    }
+
+    pub fn vecLen(self: IrBuilder, v: *const Ir) !*Ir {
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .vec_len = .{ .operand = v } };
         return node;
     }
 

@@ -264,6 +264,7 @@ pub const Emitter = struct {
 
             // Vector operations
             .vec_new => |v| try self.emitVecNew(v),
+            .vec => |elements| try self.emitVec(elements),
             .vec_ref => |op| try self.emitBinaryOp(op, .vec_ref),
             .vec_set => |v| try self.emitVecSet(v),
             .vec_len => |op| try self.emitUnaryOp(op.operand, .vec_len),
@@ -1065,6 +1066,18 @@ pub const Emitter = struct {
         }
         try self.emitOp(.make_vec);
         try self.emitU16(0); // Size from stack (u16 unused)
+    }
+
+    fn emitVec(self: *Emitter, elements: []const *const Ir) EmitError!void {
+        // Emit elements in order
+        for (elements) |elem| {
+            try self.emit(elem);
+        }
+
+        // Make vector from N elements
+        if (elements.len > 255) return error.TooManyLocals;
+        try self.emitOp(.make_vec_n);
+        try self.emitU8(@intCast(elements.len));
     }
 
     fn emitVecSet(self: *Emitter, v: anytype) EmitError!void {

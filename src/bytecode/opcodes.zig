@@ -259,6 +259,10 @@ pub const Op = enum(u8) {
     /// ( box val -- val )
     box_set = 0x66,
 
+    /// Create vector from N stack elements (operand: u8 count)
+    /// ( v0 v1 ... vN-1 -- vec )
+    make_vec_n = 0x67,
+
     // ========================================================================
     // String operations
     // ========================================================================
@@ -701,7 +705,7 @@ pub const Op = enum(u8) {
 
             // 1 byte operand
             .load_local, .store_local, .load_capture,
-            .call, .tail_call, .make_list, .values, .mv_bind, .format,
+            .call, .tail_call, .make_list, .make_vec_n, .values, .mv_bind, .format,
             => 1,
 
             // 2 byte operand

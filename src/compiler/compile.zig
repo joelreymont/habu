@@ -185,6 +185,7 @@ pub const Builtins = struct {
     @"vector-length": Value,
     @"vector-set!": Value,
     @"make-vector": Value,
+    vector: Value,
 
     // Primitives - String operations
     @"string-ref": Value,
@@ -362,6 +363,7 @@ pub const Builtins = struct {
             .@"vector-length" = heap.intern("vector-length") orelse return null,
             .@"vector-set!" = heap.intern("vector-set!") orelse return null,
             .@"make-vector" = heap.intern("make-vector") orelse return null,
+            .vector = heap.intern("vector") orelse return null,
             // Primitives - String operations
             .@"string-ref" = heap.intern("string-ref") orelse return null,
             .@"string-length" = heap.intern("string-length") orelse return null,
@@ -2931,6 +2933,7 @@ pub const Compiler = struct {
         if (s == b.@"vector-ref".raw) return self.compileBinaryPrim(args, env, .vec_ref);
         if (s == b.@"vector-length".raw) return self.compileUnaryPrim(args, env, .vec_len);
         if (s == b.@"make-vector".raw) return self.compileMakeVector(args, env);
+        if (s == b.vector.raw) return self.compileVectorPrim(args, env);
 
         // String operations
         if (s == b.@"string-ref".raw) return self.compileBinaryPrim(args, env, .str_ref);
@@ -3379,6 +3382,22 @@ pub const Compiler = struct {
         }
 
         return self.builder.vecNew(size_ir, init_ir) catch return error.OutOfMemory;
+    }
+
+    fn compileVectorPrim(self: *Compiler, args: Value, env: *const Env) CompileError!*Ir {
+        // (vector a b c ...) -> create vector from elements
+        var elements = std.ArrayList(*const Ir){};
+        defer elements.deinit(self.allocator);
+
+        var current = args;
+        while (current.isCons()) {
+            const cons = current.toPtr(Cons);
+            const elem_ir = try self.compile(cons.car, env);
+            elements.append(self.allocator, elem_ir) catch return error.OutOfMemory;
+            current = cons.cdr;
+        }
+
+        return self.builder.vec(elements.items) catch return error.OutOfMemory;
     }
 
     fn compileGethash(self: *Compiler, args: Value, env: *const Env) CompileError!*Ir {
