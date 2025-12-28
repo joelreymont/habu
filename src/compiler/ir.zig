@@ -405,6 +405,7 @@ pub const Ir = union(enum) {
     intern: UnaryOp,
     sym_name: UnaryOp,
     type_of: UnaryOp, // Get type of value as symbol
+    error_user: UnaryOp, // Signal user error with message
 
     // ========================================================================
     // Type assertions (gradual typing)
@@ -1173,6 +1174,12 @@ pub const IrBuilder = struct {
     pub fn typeOf(self: IrBuilder, operand: *const Ir) !*Ir {
         const node = try self.allocator.create(Ir);
         node.* = .{ .type_of = .{ .operand = operand } };
+        return node;
+    }
+
+    pub fn errorUser(self: IrBuilder, operand: *const Ir) !*Ir {
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .error_user = .{ .operand = operand } };
         return node;
     }
 

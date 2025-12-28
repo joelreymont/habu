@@ -553,6 +553,7 @@ pub const Repl = struct {
         compile_unbound_variable,
         compile_invalid_syntax,
         runtime_type_mismatch,
+        runtime_user_error,
         other,
     };
 
@@ -581,6 +582,7 @@ pub const Repl = struct {
             .compile_unbound_variable => "unbound variable",
             .compile_invalid_syntax => "invalid syntax",
             .runtime_type_mismatch => "type mismatch",
+            .runtime_user_error => "user error",
             .other => "error",
         };
 
@@ -730,11 +732,11 @@ pub const Repl = struct {
 
         // Set chunk pool - VM uses absolute indices now
         self.vm.setChunkPool(self.persistent_chunk_ptrs.items);
-        const result = self.vm.run(&chunk) catch {
+        const result = self.vm.run(&chunk) catch |err| {
             self.allocator.free(chunk.code);
             self.allocator.free(chunk.constants);
             err_info.* = .{
-                .kind = .runtime_type_mismatch,
+                .kind = if (err == error.UserError) .runtime_user_error else .runtime_type_mismatch,
                 .line = 1,
                 .column = 1,
                 .text = "",

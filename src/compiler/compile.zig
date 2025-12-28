@@ -199,6 +199,7 @@ pub const Builtins = struct {
     @"type-of": Value,
     intern: Value,
     @"symbol-name": Value,
+    @"error": Value,
     // Type specifier symbols for concatenate/coerce
     string: Value,
     character: Value,
@@ -415,6 +416,7 @@ pub const Builtins = struct {
             .@"type-of" = heap.intern("type-of") orelse return null,
             .intern = heap.intern("intern") orelse return null,
             .@"symbol-name" = heap.intern("symbol-name") orelse return null,
+            .@"error" = heap.intern("error") orelse return null,
             // Type specifier symbols for concatenate/coerce
             .string = heap.intern("string") orelse return null,
             .character = heap.intern("character") orelse return null,
@@ -3511,6 +3513,7 @@ pub const Compiler = struct {
         if (s == b.@"type-of".raw) return self.compileUnaryPrim(args, env, .type_of);
         if (s == b.intern.raw) return self.compileUnaryPrim(args, env, .intern);
         if (s == b.@"symbol-name".raw) return self.compileUnaryPrim(args, env, .sym_name);
+        if (s == b.@"error".raw) return self.compileUnaryPrim(args, env, .error_user);
 
         // Numeric predicates
         if (s == b.abs.raw) return self.compileUnaryPrim(args, env, .abs);
@@ -3585,7 +3588,7 @@ pub const Compiler = struct {
         return error.InvalidSyntax; // Not a known primitive
     }
 
-    const PrimTag = enum { add, sub, mul, div, mod, eq, equal, eql, lt, gt, le, ge, num_eq, cons, car, cdr, append, length, reverse, nth, nthcdr, last, member, assoc, rplaca, rplacd, consp, symbolp, numberp, stringp, vectorp, nilp, not, vec_ref, vec_len, make_box, box_ref, box_set, str_ref, str_len, str_eq, str_concat, print, princ, terpri, write_char, random, intern, sym_name, type_of, characterp, floatp, listp, atom, char_code, code_char, char_eq, char_lt, char_gt, char_upcase, char_downcase, digit_char_p, alpha_char_p, read_char, peek_char, read, read_from_string, load, unread_char, eval, gensym, macroexpand, parse_integer, write_to_string, logand, logior, logxor, lognot, ash, read_file, write_file, make_string, string_to_list, list_to_string, string_upcase, string_downcase, boundp, fboundp, symbol_value, symbol_function, typep, abs, zerop, plusp, minusp, evenp, oddp };
+    const PrimTag = enum { add, sub, mul, div, mod, eq, equal, eql, lt, gt, le, ge, num_eq, cons, car, cdr, append, length, reverse, nth, nthcdr, last, member, assoc, rplaca, rplacd, consp, symbolp, numberp, stringp, vectorp, nilp, not, vec_ref, vec_len, make_box, box_ref, box_set, str_ref, str_len, str_eq, str_concat, print, princ, terpri, write_char, random, intern, sym_name, type_of, error_user, characterp, floatp, listp, atom, char_code, code_char, char_eq, char_lt, char_gt, char_upcase, char_downcase, digit_char_p, alpha_char_p, read_char, peek_char, read, read_from_string, load, unread_char, eval, gensym, macroexpand, parse_integer, write_to_string, logand, logior, logxor, lognot, ash, read_file, write_file, make_string, string_to_list, list_to_string, string_upcase, string_downcase, boundp, fboundp, symbol_value, symbol_function, typep, abs, zerop, plusp, minusp, evenp, oddp };
 
     /// Compile variadic arithmetic: +, -, *, /
     /// identity: for + (0), * (1). null means no identity (- and / need args)
@@ -3797,6 +3800,7 @@ pub const Compiler = struct {
                 break :blk node;
             },
             .type_of => self.builder.typeOf(operand),
+            .error_user => self.builder.errorUser(operand),
             .characterp => self.builder.characterp(operand),
             .floatp => self.builder.floatp(operand),
             .listp => self.builder.listp(operand),

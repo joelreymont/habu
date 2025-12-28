@@ -301,6 +301,7 @@ pub const Emitter = struct {
             .intern => |op| try self.emitUnaryOp(op.operand, .intern),
             .sym_name => |op| try self.emitUnaryOp(op.operand, .sym_name),
             .type_of => |op| try self.emitUnaryOp(op.operand, .type_of),
+            .error_user => |op| try self.emitUnaryOp(op.operand, .error_user),
 
             // Type assertions
             .assert_fixnum => |op| try self.emitUnaryOp(op.operand, .check_fixnum),

@@ -199,6 +199,10 @@ pub const Op = enum(u8) {
     /// ( cons value -- value )
     rplacd = 0x4C,
 
+    /// Signal user error with message
+    /// ( message-string -- ) never returns
+    error_user = 0x4D,
+
     // ========================================================================
     // Type predicates
     // ========================================================================
@@ -738,7 +742,7 @@ pub const Op = enum(u8) {
             .logand, .logior, .logxor, .lognot, .ash,
             .read_file, .write_file, .make_string, .string_to_list, .list_to_string,
         .string_upcase, .string_downcase,
-        .listp, .atom, .assoc, .equal, .eql, .rplaca, .rplacd,
+        .listp, .atom, .assoc, .equal, .eql, .rplaca, .rplacd, .error_user,
             => 0,
 
             // 1 byte operand

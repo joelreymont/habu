@@ -34,6 +34,7 @@ pub const VmError = error{
     Halt,
     UnhandledThrow,
     UnboundSymbol,
+    UserError,
 };
 
 /// Catch frame for exception handling
@@ -518,6 +519,13 @@ pub const Vm = struct {
                     const c = cons_val.toPtr(Cons);
                     c.cdr = new_cdr;
                     try self.push(new_cdr);
+                },
+
+                .error_user => {
+                    const msg_val = try self.pop();
+                    // Accept any value (not just strings) for flexibility
+                    _ = msg_val;
+                    return error.UserError;
                 },
 
                 .list_last => {
