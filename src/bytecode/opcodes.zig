@@ -601,6 +601,18 @@ pub const Op = enum(u8) {
     /// ( path-string content-string -- nil )
     write_file = 0xEB,
 
+    /// Create string of given length filled with character
+    /// ( length char -- string )
+    make_string = 0xEC,
+
+    /// Convert string to list of character codes
+    /// ( string -- list )
+    string_to_list = 0xED,
+
+    /// Convert list of character codes to string
+    /// ( list -- string )
+    list_to_string = 0xEE,
+
     // ========================================================================
     // Dynamic exception handling (catch/throw)
     // ========================================================================
@@ -684,7 +696,7 @@ pub const Op = enum(u8) {
             .terpri, .write_char, .char_upcase, .char_downcase,
             .digit_char_p, .alpha_char_p, .parse_integer, .write_to_string,
             .logand, .logior, .logxor, .lognot, .ash,
-            .read_file, .write_file,
+            .read_file, .write_file, .make_string, .string_to_list, .list_to_string,
             => 0,
 
             // 1 byte operand

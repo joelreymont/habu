@@ -223,6 +223,11 @@ pub const Builtins = struct {
     @"read-file": Value,
     @"write-file": Value,
 
+    // Primitives - String construction
+    @"make-string": Value,
+    @"string-to-list": Value,
+    @"list-to-string": Value,
+
     // Primitives - Hash tables
     @"make-hash-table": Value,
     gethash: Value,
@@ -388,6 +393,10 @@ pub const Builtins = struct {
             // Primitives - File I/O
             .@"read-file" = heap.intern("read-file") orelse return null,
             .@"write-file" = heap.intern("write-file") orelse return null,
+            // Primitives - String construction
+            .@"make-string" = heap.intern("make-string") orelse return null,
+            .@"string-to-list" = heap.intern("string-to-list") orelse return null,
+            .@"list-to-string" = heap.intern("list-to-string") orelse return null,
             // Primitives - Hash tables
             .@"make-hash-table" = heap.intern("make-hash-table") orelse return null,
             .gethash = heap.intern("gethash") orelse return null,
@@ -2958,6 +2967,11 @@ pub const Compiler = struct {
         if (s == b.@"read-file".raw) return self.compileUnaryPrim(args, env, .read_file);
         if (s == b.@"write-file".raw) return self.compileBinaryPrim(args, env, .write_file);
 
+        // String construction
+        if (s == b.@"make-string".raw) return self.compileBinaryPrim(args, env, .make_string);
+        if (s == b.@"string-to-list".raw) return self.compileUnaryPrim(args, env, .string_to_list);
+        if (s == b.@"list-to-string".raw) return self.compileUnaryPrim(args, env, .list_to_string);
+
         // Hash tables
         if (s == b.@"make-hash-table".raw) return self.compileMakeHash(args);
         if (s == b.gethash.raw) return self.compileGethash(args, env);
@@ -2972,7 +2986,7 @@ pub const Compiler = struct {
         return error.InvalidSyntax; // Not a known primitive
     }
 
-    const PrimTag = enum { add, sub, mul, div, mod, eq, lt, gt, le, ge, num_eq, cons, car, cdr, append, length, reverse, nth, nthcdr, last, member, consp, symbolp, numberp, stringp, vectorp, nilp, not, vec_ref, vec_len, make_box, box_ref, box_set, str_ref, str_len, str_eq, str_concat, print, princ, terpri, write_char, random, intern, sym_name, type_of, characterp, floatp, char_code, code_char, char_eq, char_lt, char_gt, char_upcase, char_downcase, digit_char_p, alpha_char_p, read_char, peek_char, read, read_from_string, load, unread_char, eval, gensym, macroexpand, parse_integer, write_to_string, logand, logior, logxor, lognot, ash, read_file, write_file, boundp, fboundp, symbol_value, symbol_function, typep, abs, zerop, plusp, minusp, evenp, oddp };
+    const PrimTag = enum { add, sub, mul, div, mod, eq, lt, gt, le, ge, num_eq, cons, car, cdr, append, length, reverse, nth, nthcdr, last, member, consp, symbolp, numberp, stringp, vectorp, nilp, not, vec_ref, vec_len, make_box, box_ref, box_set, str_ref, str_len, str_eq, str_concat, print, princ, terpri, write_char, random, intern, sym_name, type_of, characterp, floatp, char_code, code_char, char_eq, char_lt, char_gt, char_upcase, char_downcase, digit_char_p, alpha_char_p, read_char, peek_char, read, read_from_string, load, unread_char, eval, gensym, macroexpand, parse_integer, write_to_string, logand, logior, logxor, lognot, ash, read_file, write_file, make_string, string_to_list, list_to_string, boundp, fboundp, symbol_value, symbol_function, typep, abs, zerop, plusp, minusp, evenp, oddp };
 
     /// Compile variadic arithmetic: +, -, *, /
     /// identity: for + (0), * (1). null means no identity (- and / need args)
@@ -3108,6 +3122,7 @@ pub const Compiler = struct {
             .logxor => self.builder.logxor(left, right),
             .ash => self.builder.ash(left, right),
             .write_file => self.builder.writeFile(left, right),
+            .make_string => self.builder.makeString(left, right),
             else => error.InvalidSyntax,
         } catch return error.OutOfMemory;
     }
@@ -3148,6 +3163,8 @@ pub const Compiler = struct {
             .write_to_string => self.builder.writeToString(operand),
             .lognot => self.builder.lognot(operand),
             .read_file => self.builder.readFile(operand),
+            .string_to_list => self.builder.stringToList(operand),
+            .list_to_string => self.builder.listToString(operand),
             .stringp => blk: {
                 const node = self.allocator.create(Ir) catch return error.OutOfMemory;
                 node.* = .{ .stringp = .{ .operand = operand } };

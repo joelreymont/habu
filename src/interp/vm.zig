@@ -892,6 +892,63 @@ pub const Vm = struct {
                     };
                     try self.push(Value.nil);
                 },
+                .make_string => {
+                    const char_val = try self.pop();
+                    const len_val = try self.pop();
+                    if (!len_val.isFixnum()) return error.TypeMismatch;
+                    const len: usize = @intCast(len_val.toFixnum());
+                    // If char provided, use it; otherwise use space
+                    const fill_char: u8 = if (char_val.isCharacter())
+                        @intCast(char_val.toCharacter())
+                    else if (char_val == Value.nil)
+                        ' '
+                    else
+                        return error.TypeMismatch;
+                    const str = self.heap.allocStringUninitialized(len) orelse return error.OutOfMemory;
+                    const str_obj = str.toPtr(String);
+                    @memset(str_obj.data[0..len], fill_char);
+                    try self.push(str);
+                },
+                .string_to_list => {
+                    const str_val = try self.pop();
+                    if (!str_val.isString()) return error.TypeMismatch;
+                    const str = str_val.toPtr(String);
+                    const bytes = str.bytes();
+                    // Build list in reverse, then result is in correct order
+                    var result = Value.nil;
+                    var i: usize = bytes.len;
+                    while (i > 0) {
+                        i -= 1;
+                        const char = Value.makeCharacter(bytes[i]);
+                        result = self.heap.allocCons(char, result) orelse return error.OutOfMemory;
+                    }
+                    try self.push(result);
+                },
+                .list_to_string => {
+                    const list_val = try self.pop();
+                    // Count length first
+                    var len: usize = 0;
+                    var p = list_val;
+                    while (p != Value.nil) {
+                        if (!p.isCons()) return error.TypeMismatch;
+                        const c = p.toPtr(Cons);
+                        if (!c.car.isCharacter()) return error.TypeMismatch;
+                        len += 1;
+                        p = c.cdr;
+                    }
+                    // Allocate and fill
+                    const str = self.heap.allocStringUninitialized(len) orelse return error.OutOfMemory;
+                    const str_obj = str.toPtr(String);
+                    var i: usize = 0;
+                    p = list_val;
+                    while (p != Value.nil) {
+                        const c = p.toPtr(Cons);
+                        str_obj.data[i] = @intCast(c.car.toCharacter());
+                        i += 1;
+                        p = c.cdr;
+                    }
+                    try self.push(str);
+                },
                 .random => {
                     const n = try self.pop();
                     const result = arith.random(n);

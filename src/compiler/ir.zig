@@ -328,6 +328,9 @@ pub const Ir = union(enum) {
     ash: BinaryOp, // Arithmetic shift
     read_file: UnaryOp, // Read file to string
     write_file: BinaryOp, // Write string to file
+    make_string: BinaryOp, // Create string (length, char)
+    string_to_list: UnaryOp, // String to list of chars
+    list_to_string: UnaryOp, // List of chars to string
     boundp: UnaryOp, // Check if symbol has global binding
     fboundp: UnaryOp, // Check if symbol has function binding
     symbol_value: UnaryOp, // Get symbol's global value
@@ -969,6 +972,24 @@ pub const IrBuilder = struct {
     pub fn writeFile(self: IrBuilder, path: *const Ir, content: *const Ir) !*Ir {
         const node = try self.allocator.create(Ir);
         node.* = .{ .write_file = .{ .left = path, .right = content } };
+        return node;
+    }
+
+    pub fn makeString(self: IrBuilder, len: *const Ir, char: *const Ir) !*Ir {
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .make_string = .{ .left = len, .right = char } };
+        return node;
+    }
+
+    pub fn stringToList(self: IrBuilder, str: *const Ir) !*Ir {
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .string_to_list = .{ .operand = str } };
+        return node;
+    }
+
+    pub fn listToString(self: IrBuilder, lst: *const Ir) !*Ir {
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .list_to_string = .{ .operand = lst } };
         return node;
     }
 
