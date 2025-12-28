@@ -2991,13 +2991,83 @@ pub const Compiler = struct {
         const cons1 = args.toPtr(Cons);
         const scrutinee = try self.compile(cons1.car, env);
 
-        // We need to evaluate scrutinee once and bind to a temp variable
-        // Compile as: (let ((_match_val expr)) (if (variant1? _match_val) (let ((f1 ...) body1) ...)))
-
-        // For simplicity, generate nested ifs with repeated scrutinee eval for now
-        // TODO: Bind scrutinee to temp variable to avoid re-evaluation
         const clauses = cons1.cdr;
+
+        // Exhaustiveness checking: collect variant names from clauses
+        self.checkMatchExhaustiveness(clauses);
+
         return self.compileMatchClauses(scrutinee, clauses, env);
+    }
+
+    /// Check if match covers all variants of the ADT (warning only, doesn't fail)
+    fn checkMatchExhaustiveness(self: *Compiler, clauses: Value) void {
+        var has_wildcard = false;
+        var covered = std.StringHashMap(void).init(self.allocator);
+        defer covered.deinit();
+
+        // Scan clauses to find variant names and wildcards
+        var current = clauses;
+        while (current.isCons()) {
+            const clause_cons = current.toPtr(Cons);
+            const clause = clause_cons.car;
+
+            if (!clause.isCons()) {
+                current = clause_cons.cdr;
+                continue;
+            }
+
+            const pattern_cons = clause.toPtr(Cons);
+            const pattern = pattern_cons.car;
+
+            // Check for wildcard
+            if (pattern.isSymbol()) {
+                const sym = pattern.toPtr(Symbol);
+                if (std.mem.eql(u8, sym.getName(), "_")) {
+                    has_wildcard = true;
+                    break;
+                }
+            }
+
+            // Extract variant name from pattern (variant-name field1 field2 ...)
+            if (pattern.isCons()) {
+                const variant_cons = pattern.toPtr(Cons);
+                if (variant_cons.car.isSymbol()) {
+                    const variant_name = variant_cons.car.toPtr(Symbol).getName();
+                    covered.put(variant_name, {}) catch {};
+                }
+            }
+
+            current = clause_cons.cdr;
+        }
+
+        if (has_wildcard) return; // Wildcard covers everything
+
+        // Find the ADT type from the first variant
+        var type_variants: ?[]const Variant = null;
+        var iter = covered.keyIterator();
+        while (iter.next()) |variant_name| {
+            // Search all defined types for this variant
+            var type_iter = self.defined_types.iterator();
+            while (type_iter.next()) |entry| {
+                for (entry.value_ptr.*) |v| {
+                    if (std.mem.eql(u8, v.name, variant_name.*)) {
+                        type_variants = entry.value_ptr.*;
+                        break;
+                    }
+                }
+                if (type_variants != null) break;
+            }
+            if (type_variants != null) break;
+        }
+
+        if (type_variants) |variants| {
+            // Check which variants are missing
+            for (variants) |v| {
+                if (!covered.contains(v.name)) {
+                    std.log.warn("match: missing case for variant '{s}'", .{v.name});
+                }
+            }
+        }
     }
 
     fn compileMatchClauses(self: *Compiler, scrutinee: *const Ir, clauses: Value, env: *const Env) CompileError!*Ir {
