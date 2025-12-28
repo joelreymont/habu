@@ -186,6 +186,7 @@ pub const Builtins = struct {
     @"vector-set!": Value,
     @"make-vector": Value,
     vector: Value,
+    aref: Value, // CL alias for vector-ref
 
     // Primitives - String operations
     @"string-ref": Value,
@@ -366,6 +367,7 @@ pub const Builtins = struct {
             .@"vector-set!" = heap.intern("vector-set!") orelse return null,
             .@"make-vector" = heap.intern("make-vector") orelse return null,
             .vector = heap.intern("vector") orelse return null,
+            .aref = heap.intern("aref") orelse return null,
             // Primitives - String operations
             .@"string-ref" = heap.intern("string-ref") orelse return null,
             .@"string-length" = heap.intern("string-length") orelse return null,
@@ -2934,7 +2936,7 @@ pub const Compiler = struct {
         if (s == b.oddp.raw) return self.compileUnaryPrim(args, env, .oddp);
 
         // Vector operations
-        if (s == b.@"vector-ref".raw) return self.compileBinaryPrim(args, env, .vec_ref);
+        if (s == b.@"vector-ref".raw or s == b.aref.raw) return self.compileBinaryPrim(args, env, .vec_ref);
         if (s == b.@"vector-length".raw) return self.compileUnaryPrim(args, env, .vec_len);
         if (s == b.@"make-vector".raw) return self.compileMakeVector(args, env);
         if (s == b.vector.raw) return self.compileVectorPrim(args, env);
