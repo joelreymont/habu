@@ -1,23 +1,25 @@
 ;;; Habu Standard Library
 ;;; Core functions for self-hosting
 
-;;; Control flow macros
-(defmacro when (test . body)
-  `(if ,test (progn ,@body)))
+;;; Control flow macros (single-body versions - no &rest support yet)
+(defmacro when (test body)
+  `(if ,test ,body nil))
 
-(defmacro unless (test . body)
-  `(if ,test nil (progn ,@body)))
+(defmacro unless (test body)
+  `(if ,test nil ,body))
 
-;;; Mutation macros
-(defmacro incf (place . delta)
-  (if delta
-      `(setq ,place (+ ,place ,(car delta)))
-      `(setq ,place (+ ,place 1))))
+;;; Mutation macros (fixed arity)
+(defmacro incf (place)
+  `(setq ,place (+ ,place 1)))
 
-(defmacro decf (place . delta)
-  (if delta
-      `(setq ,place (- ,place ,(car delta)))
-      `(setq ,place (- ,place 1))))
+(defmacro decf (place)
+  `(setq ,place (- ,place 1)))
+
+(defmacro incf-by (place delta)
+  `(setq ,place (+ ,place ,delta)))
+
+(defmacro decf-by (place delta)
+  `(setq ,place (- ,place ,delta)))
 
 ;;; List mutation macros
 (defmacro push (item place)
