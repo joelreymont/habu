@@ -145,9 +145,9 @@ pub const Vm = struct {
     /// Counter for gensym
     gensym_counter: u64,
 
-    const STACK_SIZE = 1024;
+    const STACK_SIZE = 4096;
     const MAX_SECONDARY_VALUES = 20;
-    const MAX_FRAMES = 64;
+    const MAX_FRAMES = 256;
     const MAX_GLOBALS = 2048;
     const MAX_CATCHES = 32;
     const MAX_UNWINDS = 32;
