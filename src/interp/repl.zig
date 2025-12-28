@@ -347,6 +347,15 @@ pub const Repl = struct {
             return self.handleDefmacro(expr, arena_alloc);
         }
 
+        // Check for eval-when - compile-time evaluation
+        if (self.isEvalWhen(expr)) {
+            const result = self.handleEvalWhen(expr, arena_alloc) catch return error.CompileError;
+            // If eval-when returned nil (only :compile-toplevel), we're done
+            if (result.isNil()) return Value.nil;
+            // Otherwise compile the returned progn for runtime
+            expr = result;
+        }
+
         // Expand macros
         expr = self.expandMacros(expr) catch return error.CompileError;
 
@@ -671,6 +680,13 @@ pub const Repl = struct {
             return self.handleDefmacro(expr, arena_alloc);
         }
 
+        // Check for eval-when - compile-time evaluation
+        if (self.isEvalWhen(expr)) {
+            const result = self.handleEvalWhen(expr, arena_alloc) catch return error.CompileError;
+            if (result.isNil()) return Value.nil;
+            expr = result;
+        }
+
         // Expand macros before compilation
         expr = self.expandMacros(expr) catch return error.CompileError;
 
@@ -778,6 +794,13 @@ pub const Repl = struct {
         // Check for defmacro
         if (self.isDefmacro(expr)) {
             return self.handleDefmacro(expr, arena_alloc);
+        }
+
+        // Check for eval-when - compile-time evaluation
+        if (self.isEvalWhen(expr)) {
+            const result = self.handleEvalWhen(expr, arena_alloc) catch return error.CompileError;
+            if (result.isNil()) return Value.nil;
+            expr = result;
         }
 
         // Expand macros before compilation
@@ -1185,8 +1208,20 @@ pub const Repl = struct {
         var mutable_chunk = chunk;
         patchMakeClosureIndices(mutable_chunk.code, chunk_base);
 
-        self.vm.setChunkPool(self.persistent_chunk_ptrs.items);
-        const closure = self.vm.run(&mutable_chunk) catch return error.RuntimeError;
+        // Use a separate VM to avoid corrupting the main VM's state
+        // (handleDefmacro may be called during a load from within the main VM)
+        var macro_vm = Vm.init(self.allocator, self.heap);
+        macro_vm.setGlobalEnv(&self.compiler.globals);
+        macro_vm.setChunkPool(self.persistent_chunk_ptrs.items);
+
+        // Copy globals from current context
+        const source_vm = self.current_vm orelse &self.vm;
+        for (source_vm.globals, 0..) |g, i| {
+            macro_vm.globals[i] = g;
+        }
+        macro_vm.num_globals = source_vm.num_globals;
+
+        const closure = macro_vm.run(&mutable_chunk) catch return error.RuntimeError;
 
         if (!closure.isClosure()) return error.CompileError;
 
@@ -1197,6 +1232,176 @@ pub const Repl = struct {
         return cons2.car;
     }
 
+    /// Check if expression is (eval-when (situations...) body...)
+    fn isEvalWhen(self: *Repl, expr: Value) bool {
+        if (!expr.isCons()) return false;
+        const cons = expr.toPtr(Cons);
+        if (!cons.car.isSymbol()) return false;
+
+        const sym = cons.car.toPtr(Symbol);
+        _ = self;
+        return std.mem.eql(u8, sym.getName(), "eval-when");
+    }
+
+    /// Handle eval-when: evaluate at compile time if :compile-toplevel
+    /// (eval-when (situations...) body...) -> evaluates body based on situations
+    fn handleEvalWhen(self: *Repl, expr: Value, arena_alloc: std.mem.Allocator) ReplError!Value {
+        // Extract: (eval-when (situations...) body...)
+        const cons1 = expr.toPtr(Cons);
+        const rest1 = cons1.cdr;
+        if (!rest1.isCons()) return error.CompileError;
+
+        const cons2 = rest1.toPtr(Cons);
+        const situations = cons2.car;
+        const body = cons2.cdr;
+
+        // Check situations for :compile-toplevel and :execute
+        var compile_toplevel = false;
+        var execute = false;
+
+        var sit = situations;
+        while (sit.isCons()) {
+            const sit_cons = sit.toPtr(Cons);
+            const situation = sit_cons.car;
+
+            if (situation.isKeyword()) {
+                const kw = situation.toPtr(runtime.Keyword);
+                const kw_name = kw.getName();
+                if (std.mem.eql(u8, kw_name, "compile-toplevel")) {
+                    compile_toplevel = true;
+                } else if (std.mem.eql(u8, kw_name, "execute") or std.mem.eql(u8, kw_name, "load-toplevel")) {
+                    execute = true;
+                }
+            }
+            sit = sit_cons.cdr;
+        }
+
+        // If :compile-toplevel, evaluate each form now
+        if (compile_toplevel) {
+            var form = body;
+            while (form.isCons()) {
+                const form_cons = form.toPtr(Cons);
+                _ = try self.evalSingleExpr(form_cons.car, arena_alloc);
+                form = form_cons.cdr;
+            }
+        }
+
+        // If :execute, return progn of body for runtime execution
+        if (execute) {
+            const progn_sym = self.heap.intern("progn") orelse return error.CompileError;
+            return self.heap.allocCons(progn_sym, body) orelse error.CompileError;
+        }
+
+        // Neither - return nil
+        return Value.nil;
+    }
+
+    /// Evaluate a single expression (used by eval-when for compile-time evaluation)
+    fn evalSingleExpr(self: *Repl, expr_val: Value, arena_alloc: std.mem.Allocator) ReplError!Value {
+        var expr = expr_val;
+
+        // Check for defmacro
+        if (self.isDefmacro(expr)) {
+            return self.handleDefmacro(expr, arena_alloc);
+        }
+
+        // Check for nested eval-when
+        if (self.isEvalWhen(expr)) {
+            return self.handleEvalWhen(expr, arena_alloc);
+        }
+
+        // Expand macros
+        expr = self.expandMacros(expr) catch return error.CompileError;
+
+        // Compile
+        const saved_builder = self.compiler.builder;
+        const saved_allocator = self.compiler.allocator;
+        self.compiler.builder = IrBuilder.init(arena_alloc);
+        self.compiler.allocator = arena_alloc;
+
+        var env = Env.init(arena_alloc, null);
+        defer env.deinit();
+
+        const ir_node = self.compiler.compile(expr, &env) catch |err| {
+            self.compiler.builder = saved_builder;
+            self.compiler.allocator = saved_allocator;
+            return if (err == error.UnboundVariable) error.CompileError else error.CompileError;
+        };
+        self.compiler.builder = saved_builder;
+        self.compiler.allocator = saved_allocator;
+
+        // Emit bytecode
+        var emitter = Emitter.initWithHeap(self.allocator, self.heap);
+        emitter.emit(ir_node) catch {
+            emitter.deinit();
+            return error.EmitError;
+        };
+        const chunk = emitter.finalize() catch {
+            emitter.deinit();
+            return error.EmitError;
+        };
+        const child_chunks = emitter.getChildChunks() catch {
+            self.allocator.free(chunk.code);
+            self.allocator.free(chunk.constants);
+            emitter.deinit();
+            return error.EmitError;
+        };
+        emitter.deinit();
+
+        defer self.allocator.free(chunk.code);
+        defer self.allocator.free(chunk.constants);
+
+        // Add child chunks
+        const chunk_base: u16 = @intCast(self.persistent_chunk_ptrs.items.len);
+        for (child_chunks) |c| {
+            const chunk_ptr = self.allocator.create(bytecode.Chunk) catch {
+                self.allocator.free(child_chunks);
+                return error.EmitError;
+            };
+            chunk_ptr.* = c;
+            patchMakeClosureIndices(chunk_ptr.code, chunk_base);
+            self.persistent_chunk_ptrs.append(self.allocator, chunk_ptr) catch {
+                self.allocator.free(c.code);
+                self.allocator.free(c.constants);
+                self.allocator.destroy(chunk_ptr);
+                self.allocator.free(child_chunks);
+                return error.EmitError;
+            };
+        }
+        self.allocator.free(child_chunks);
+
+        var mutable_chunk = chunk;
+        patchMakeClosureIndices(mutable_chunk.code, chunk_base);
+
+        // Use a separate VM to avoid corrupting the main VM's state
+        var eval_vm = Vm.init(self.allocator, self.heap);
+        eval_vm.setGlobalEnv(&self.compiler.globals);
+        eval_vm.setChunkPool(self.persistent_chunk_ptrs.items);
+        eval_vm.setLoadCallback(&loadCallback, @ptrCast(self));
+        eval_vm.setEvalCallback(&evalCallback, @ptrCast(self));
+        eval_vm.setMacroexpandCallback(&macroexpandCallback, @ptrCast(self));
+
+        // Copy globals from current context
+        const source_vm = self.current_vm orelse &self.vm;
+        for (source_vm.globals, 0..) |g, i| {
+            eval_vm.globals[i] = g;
+        }
+        eval_vm.num_globals = source_vm.num_globals;
+
+        const result = eval_vm.run(&mutable_chunk) catch return error.RuntimeError;
+
+        // Copy back any new globals
+        const dest_vm = self.current_vm orelse &self.vm;
+        for (eval_vm.globals, 0..) |g, i| {
+            dest_vm.globals[i] = g;
+        }
+        if (eval_vm.num_globals > dest_vm.num_globals) {
+            dest_vm.num_globals = eval_vm.num_globals;
+        }
+
+        return result;
+    }
+
     /// Expand macros in an expression (recursive)
     fn expandMacros(self: *Repl, expr: Value) ReplError!Value {
         // Non-list: no expansion
@@ -1205,10 +1410,26 @@ pub const Repl = struct {
         const cons = expr.toPtr(Cons);
         const head = cons.car;
 
-        // Check if head is a macro
+        // Check if head is a macro or special form
         if (head.isSymbol()) {
             const sym = head.toPtr(Symbol);
             const name = sym.getName();
+
+            // Handle eval-when during macro expansion
+            if (std.mem.eql(u8, name, "eval-when")) {
+                // Use arena for compile-time evaluation
+                var arena = std.heap.ArenaAllocator.init(self.allocator);
+                defer arena.deinit();
+                const arena_alloc = arena.allocator();
+
+                const result = self.handleEvalWhen(expr, arena_alloc) catch return error.CompileError;
+                // If eval-when returned a progn (has :execute), expand it too
+                if (!result.isNil()) {
+                    return self.expandMacros(result);
+                }
+                // Only :compile-toplevel - return nil
+                return Value.nil;
+            }
 
             // Skip special forms that shouldn't be expanded
             if (self.compiler.builtins) |b| {

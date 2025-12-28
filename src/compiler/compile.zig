@@ -1075,6 +1075,8 @@ pub const Compiler = struct {
         match,
         // Macro support
         defmacro,
+        // Compile-time evaluation
+        @"eval-when",
     };
 
     /// Comptime dispatch table for special forms
@@ -1119,6 +1121,8 @@ pub const Compiler = struct {
         .{ "match", .match },
         // Macro support
         .{ "defmacro", .defmacro },
+        // Compile-time evaluation
+        .{ "eval-when", .@"eval-when" },
     });
 
     fn compileListWithTail(self: *Compiler, expr: Value, env: *const Env, in_tail: bool) CompileError!*Ir {
@@ -1172,6 +1176,8 @@ pub const Compiler = struct {
                     .match => self.compileMatch(tail, env),
                     // Macro support
                     .defmacro => self.compileDefmacro(tail, env),
+                    // Compile-time evaluation
+                    .@"eval-when" => self.compileEvalWhen(tail, env),
                 };
             }
 
@@ -2892,6 +2898,43 @@ pub const Compiler = struct {
         self.macro_table.put(name, lambda_args) catch return error.OutOfMemory;
 
         // defmacro has no runtime effect - return nil
+        return self.builder.lit(Value.nil) catch return error.OutOfMemory;
+    }
+
+    /// Compile eval-when: (eval-when (situations...) body...)
+    /// The REPL handles compile-time evaluation; compiler just handles :execute
+    fn compileEvalWhen(self: *Compiler, args: Value, env: *const Env) CompileError!*Ir {
+        // Parse: (situations... body...)
+        if (!args.isCons()) return error.InvalidSyntax;
+
+        const cons1 = args.toPtr(Cons);
+        const situations = cons1.car;
+        const body = cons1.cdr;
+
+        // Check situations for :execute (or :load-toplevel)
+        var execute = false;
+        var sit = situations;
+        while (sit.isCons()) {
+            const sit_cons = sit.toPtr(Cons);
+            const situation = sit_cons.car;
+
+            if (situation.isKeyword()) {
+                const kw = situation.toPtr(runtime.Keyword);
+                const kw_name = kw.getName();
+                if (std.mem.eql(u8, kw_name, "execute") or std.mem.eql(u8, kw_name, "load-toplevel")) {
+                    execute = true;
+                    break;
+                }
+            }
+            sit = sit_cons.cdr;
+        }
+
+        // If :execute, compile body as progn
+        if (execute) {
+            return self.compileProgn(body, env);
+        }
+
+        // Otherwise return nil (compile-time only)
         return self.builder.lit(Value.nil) catch return error.OutOfMemory;
     }
 

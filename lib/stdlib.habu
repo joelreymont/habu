@@ -56,23 +56,12 @@
 (defun (list3 -> cons) (a b c) (cons a (cons b (cons c nil))))
 
 ;;; List operations
-(defun (length -> fixnum) ((lst list))
-  (if (null? lst)
-      0
-      (+ 1 (length (cdr lst)))))
-
-(defun (append -> list) ((lst1 list) (lst2 list))
-  (if (null? lst1)
-      lst2
-      (cons (car lst1) (append (cdr lst1) lst2))))
+;; length, append, reverse are built-in primitives
 
 (defun (reverse-acc -> list) ((lst list) (acc list))
   (if (null? lst)
       acc
       (reverse-acc (cdr lst) (cons (car lst) acc))))
-
-(defun (reverse -> list) ((lst list))
-  (reverse-acc lst nil))
 
 (defun nth ((n fixnum) (lst list))
   (if (= n 0)
@@ -131,36 +120,25 @@
         (for-each f (cdr lst)))))
 
 ;;; Association lists
-(defun assoc (key (alist list))
-  (if (null? alist)
-      nil
-      (if (eq key (caar alist))
-          (car alist)
-          (assoc key (cdr alist)))))
+;; assoc is a built-in primitive
 
 (defun assoc-ref (key (alist list))
   (let ((pair (assoc key alist)))
     (if pair (cdr pair) nil)))
 
 ;;; Membership
-(defun (member -> list) (x (lst list))
-  (if (null? lst)
-      nil
-      (if (eq x (car lst))
-          lst
-          (member x (cdr lst)))))
+;; member is a built-in primitive
 
-(defun (memq -> list) (x (lst list))
+(defun memq (x (lst list))
   (member x lst))
 
 ;;; Numeric utilities
-(defun (abs -> fixnum) ((n fixnum))
-  (if (< n 0) (- 0 n) n))
+;; abs is a built-in primitive
 
-(defun (min -> fixnum) ((a fixnum) (b fixnum))
+(defun min2 ((a fixnum) (b fixnum))
   (if (< a b) a b))
 
-(defun (max -> fixnum) ((a fixnum) (b fixnum))
+(defun max2 ((a fixnum) (b fixnum))
   (if (> a b) a b))
 
 (defun zero? ((n fixnum)) (= n 0))
