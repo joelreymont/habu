@@ -680,6 +680,9 @@ pub const Compiler = struct {
     boxed_vars: ?*const BoxingSet,
     /// Defined ADT types for match exhaustiveness checking
     defined_types: std.StringHashMap([]const Variant),
+    /// Macro table: maps macro name to closure (expander function)
+    /// When a form (macro-name args...) is compiled, the macro is expanded first
+    macro_table: std.StringHashMap(Value),
 
     /// ADT variant definition
     pub const Variant = struct {
@@ -698,6 +701,7 @@ pub const Compiler = struct {
             .occ = null,
             .boxed_vars = null,
             .defined_types = std.StringHashMap([]const Variant).init(allocator),
+            .macro_table = std.StringHashMap(Value).init(allocator),
         };
     }
 
@@ -713,12 +717,14 @@ pub const Compiler = struct {
             .occ = null,
             .boxed_vars = null,
             .defined_types = std.StringHashMap([]const Variant).init(allocator),
+            .macro_table = std.StringHashMap(Value).init(allocator),
         };
     }
 
     pub fn deinit(self: *Compiler) void {
         self.type_checker.deinit();
         self.globals.deinit();
+        self.macro_table.deinit();
     }
 
     /// Enable type checking mode
