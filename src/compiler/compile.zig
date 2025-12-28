@@ -117,6 +117,24 @@ pub const Builtins = struct {
     cdr: Value,
     first: Value, // CL alias for car
     rest: Value, // CL alias for cdr
+    // Composed accessors (2-level)
+    caar: Value,
+    cadr: Value,
+    cdar: Value,
+    cddr: Value,
+    // Composed accessors (3-level)
+    caaar: Value,
+    caadr: Value,
+    cadar: Value,
+    caddr: Value,
+    cdaar: Value,
+    cdadr: Value,
+    cddar: Value,
+    cdddr: Value,
+    // Positional accessors
+    second: Value,
+    third: Value,
+    fourth: Value,
     append: Value,
     length: Value,
     reverse: Value,
@@ -305,6 +323,24 @@ pub const Builtins = struct {
             .cdr = heap.intern("cdr") orelse return null,
             .first = heap.intern("first") orelse return null,
             .rest = heap.intern("rest") orelse return null,
+            // Composed accessors (2-level)
+            .caar = heap.intern("caar") orelse return null,
+            .cadr = heap.intern("cadr") orelse return null,
+            .cdar = heap.intern("cdar") orelse return null,
+            .cddr = heap.intern("cddr") orelse return null,
+            // Composed accessors (3-level)
+            .caaar = heap.intern("caaar") orelse return null,
+            .caadr = heap.intern("caadr") orelse return null,
+            .cadar = heap.intern("cadar") orelse return null,
+            .caddr = heap.intern("caddr") orelse return null,
+            .cdaar = heap.intern("cdaar") orelse return null,
+            .cdadr = heap.intern("cdadr") orelse return null,
+            .cddar = heap.intern("cddar") orelse return null,
+            .cdddr = heap.intern("cdddr") orelse return null,
+            // Positional accessors
+            .second = heap.intern("second") orelse return null,
+            .third = heap.intern("third") orelse return null,
+            .fourth = heap.intern("fourth") orelse return null,
             .append = heap.intern("append") orelse return null,
             .length = heap.intern("length") orelse return null,
             .reverse = heap.intern("reverse") orelse return null,
@@ -2885,6 +2921,22 @@ pub const Compiler = struct {
         if (s == b.cons.raw) return self.compileBinaryPrim(args, env, .cons);
         if (s == b.car.raw or s == b.first.raw) return self.compileUnaryPrim(args, env, .car);
         if (s == b.cdr.raw or s == b.rest.raw) return self.compileUnaryPrim(args, env, .cdr);
+        // Composed accessors (2-level)
+        if (s == b.caar.raw) return self.compileComposedAccessor(args, env, "aa");
+        if (s == b.cadr.raw or s == b.second.raw) return self.compileComposedAccessor(args, env, "ad");
+        if (s == b.cdar.raw) return self.compileComposedAccessor(args, env, "da");
+        if (s == b.cddr.raw) return self.compileComposedAccessor(args, env, "dd");
+        // Composed accessors (3-level)
+        if (s == b.caaar.raw) return self.compileComposedAccessor(args, env, "aaa");
+        if (s == b.caadr.raw) return self.compileComposedAccessor(args, env, "aad");
+        if (s == b.cadar.raw) return self.compileComposedAccessor(args, env, "ada");
+        if (s == b.caddr.raw or s == b.third.raw) return self.compileComposedAccessor(args, env, "add");
+        if (s == b.cdaar.raw) return self.compileComposedAccessor(args, env, "daa");
+        if (s == b.cdadr.raw) return self.compileComposedAccessor(args, env, "dad");
+        if (s == b.cddar.raw) return self.compileComposedAccessor(args, env, "dda");
+        if (s == b.cdddr.raw) return self.compileComposedAccessor(args, env, "ddd");
+        // fourth = (car (cdr (cdr (cdr x)))) = cadddr
+        if (s == b.fourth.raw) return self.compileComposedAccessor(args, env, "addd");
         if (s == b.append.raw) return self.compileBinaryPrim(args, env, .append);
         if (s == b.length.raw) return self.compileUnaryPrim(args, env, .length);
         if (s == b.reverse.raw) return self.compileUnaryPrim(args, env, .reverse);
@@ -3381,6 +3433,27 @@ pub const Compiler = struct {
         const node = self.allocator.create(Ir) catch return error.OutOfMemory;
         node.* = .{ .make_hash = .{ .capacity = 16 } };
         return node;
+    }
+
+    /// Compile composed car/cdr accessor like cadr, caddr, etc.
+    /// Pattern string: 'a' = car, 'd' = cdr, applied right-to-left
+    /// e.g., "ad" for cadr means (car (cdr x))
+    fn compileComposedAccessor(self: *Compiler, args: Value, env: *const Env, pattern: []const u8) CompileError!*Ir {
+        if (!args.isCons()) return error.InvalidSyntax;
+        const cons = args.toPtr(Cons);
+        var result = try self.compile(cons.car, env);
+
+        // Apply pattern right-to-left (innermost to outermost)
+        var i: usize = pattern.len;
+        while (i > 0) {
+            i -= 1;
+            result = switch (pattern[i]) {
+                'a' => self.builder.car(result) catch return error.OutOfMemory,
+                'd' => self.builder.cdr(result) catch return error.OutOfMemory,
+                else => return error.InvalidSyntax,
+            };
+        }
+        return result;
     }
 
     fn compileMakeVector(self: *Compiler, args: Value, env: *const Env) CompileError!*Ir {
