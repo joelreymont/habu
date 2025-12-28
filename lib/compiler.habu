@@ -9,46 +9,66 @@
 ;; Environment
 ;; =============================================================================
 
-;; An environment is a list of frames, each frame is a list of (name . info)
-;; info is (index . is-captured)
-;; The outermost (global) frame is at the end.
+;; An environment is (bindings . next-index)
+;; bindings is a list of (name depth index)
+;; next-index is the next available local index
+;; depth=0 means current function, depth>0 means enclosing function
 
 (defun empty-env ()
   "Create empty environment"
-  nil)
+  (cons nil 0))
 
-(defun env-extend (env bindings)
-  "Extend environment with new frame of bindings.
-   bindings is a list of names."
-  (let ((frame (make-frame bindings 0)))
-    (cons frame env)))
+(defun env-bindings (env)
+  "Get bindings list from environment"
+  (car env))
 
-(defun make-frame (names index)
-  "Create frame from list of names starting at index"
+(defun env-next-index (env)
+  "Get next available index"
+  (cdr env))
+
+(defun env-extend (env names)
+  "Extend environment with new bindings at current depth.
+   Returns updated environment."
+  (let ((start-idx (env-next-index env)))
+    (let ((new-bindings (make-bindings names 0 start-idx (env-bindings env))))
+      (cons new-bindings (+ start-idx (length names))))))
+
+(defun make-bindings (names depth start-idx existing)
+  "Create bindings and prepend to existing list"
+  (make-bindings-helper names depth start-idx existing))
+
+(defun make-bindings-helper (names depth idx existing)
+  "Helper: create binding for each name at consecutive indices"
   (if (null names)
+      existing
+      (cons (list (car names) depth idx)
+            (make-bindings-helper (cdr names) depth (+ idx 1) existing))))
+
+(defun env-push-scope (env)
+  "Push a new function scope - resets indices, increments depth of existing"
+  (let ((shifted (shift-depth (env-bindings env))))
+    (cons shifted 0)))
+
+(defun shift-depth (bindings)
+  "Increment depth of all bindings"
+  (if (null bindings)
       nil
-      (cons (cons (car names) (cons index nil))
-            (make-frame (cdr names) (+ index 1)))))
+      (let ((b (car bindings)))
+        (cons (list (car b) (+ (car (cdr b)) 1) (car (cdr (cdr b))))
+              (shift-depth (cdr bindings))))))
 
 (defun env-lookup (env name)
   "Look up name in environment, return (depth . index) or nil"
-  (env-lookup-depth env name 0))
+  (lookup-in-bindings (env-bindings env) name))
 
-(defun env-lookup-depth (env name depth)
-  (if (null env)
+(defun lookup-in-bindings (bindings name)
+  "Search bindings for name"
+  (if (null bindings)
       nil
-      (let ((found (frame-lookup (car env) name)))
-        (if found
-            (cons depth (car found))
-            (env-lookup-depth (cdr env) name (+ depth 1))))))
-
-(defun frame-lookup (frame name)
-  "Look up name in frame, return (index . captured?) or nil"
-  (if (null frame)
-      nil
-      (if (eq (car (car frame)) name)
-          (cdr (car frame))
-          (frame-lookup (cdr frame) name))))
+      (let ((b (car bindings)))
+        (if (eq (car b) name)
+            (cons (car (cdr b)) (car (cdr (cdr b))))
+            (lookup-in-bindings (cdr bindings) name)))))
 
 ;; =============================================================================
 ;; Global definitions table
@@ -246,10 +266,13 @@
         (body (cdr args)))
     (let ((param-names (extract-params params))
           (rest-param (extract-rest-param params)))
-      (let ((new-env (env-extend env param-names)))
-        ;; TODO: capture analysis
-        (ir-lambda param-names rest-param nil
-                   (compile-progn body new-env state))))))
+      ;; Push new function scope (resets indices, shifts existing bindings up)
+      (let ((lambda-env (env-push-scope env)))
+        ;; Add params as locals at indices 0, 1, ...
+        (let ((new-env (env-extend lambda-env param-names)))
+          ;; TODO: capture analysis
+          (ir-lambda param-names rest-param nil
+                     (compile-progn body new-env state)))))))
 
 (defun extract-params (params)
   "Extract parameter names from lambda list"
