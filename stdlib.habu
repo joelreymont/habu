@@ -28,7 +28,7 @@
 (defun plusp (n) (> n 0))
 (defun minusp (n) (< n 0))
 (defun evenp (n) (= (mod n 2) 0))
-(defun oddp (n) (= (mod n 1) 1))
+(defun oddp (n) (= (mod n 2) 1))
 (defun abs (n) (if (< n 0) (- 0 n) n))
 (defun max2 (a b) (if (> a b) a b))
 (defun min2 (a b) (if (< a b) a b))

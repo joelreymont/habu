@@ -54,6 +54,7 @@ pub const Builtins = struct {
     lambda: Value,
     @"fn": Value,
     define: Value,
+    defvar: Value,
     defun: Value,
     @"set!": Value,
     setq: Value,
@@ -219,6 +220,7 @@ pub const Builtins = struct {
             .lambda = heap.intern("lambda") orelse return null,
             .@"fn" = heap.intern("fn") orelse return null,
             .define = heap.intern("define") orelse return null,
+            .defvar = heap.intern("defvar") orelse return null,
             .defun = heap.intern("defun") orelse return null,
             .@"set!" = heap.intern("set!") orelse return null,
             .setq = heap.intern("setq") orelse return null,
@@ -891,6 +893,7 @@ pub const Compiler = struct {
         quasiquote,
         @"while",
         define,
+        defvar,
         defun,
         the,
         @"return-from",
@@ -928,6 +931,7 @@ pub const Compiler = struct {
         .{ "quasiquote", .quasiquote },
         .{ "while", .@"while" },
         .{ "define", .define },
+        .{ "defvar", .defvar },
         .{ "defun", .defun },
         .{ "the", .the },
         .{ "block", .block },
@@ -981,7 +985,7 @@ pub const Compiler = struct {
                 if (head.raw == b.function.raw) return self.compileFunction(tail, env);
                 if (head.raw == b.quasiquote.raw) return self.compileQuasiquote(tail, env);
                 if (head.raw == b.@"while".raw) return self.compileWhile(tail, env);
-                if (head.raw == b.define.raw) return self.compileDefine(tail, env);
+                if (head.raw == b.define.raw or head.raw == b.defvar.raw) return self.compileDefine(tail, env);
                 if (head.raw == b.defun.raw) return self.compileDefun(tail, env);
                 if (head.raw == b.the.raw) return self.compileThe(tail, env);
             } else {
@@ -1012,7 +1016,7 @@ pub const Compiler = struct {
                         .function => self.compileFunction(tail, env),
                         .quasiquote => self.compileQuasiquote(tail, env),
                         .@"while" => self.compileWhile(tail, env),
-                        .define => self.compileDefine(tail, env),
+                        .define, .defvar => self.compileDefine(tail, env),
                         .defun => self.compileDefun(tail, env),
                         .the => self.compileThe(tail, env),
                         .@"return-from" => self.compileReturnFrom(tail, env),
