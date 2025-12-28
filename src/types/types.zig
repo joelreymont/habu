@@ -33,6 +33,7 @@ pub const TypeChecker = check.TypeChecker;
 pub const InferCtx = infer.InferCtx;
 pub const TypeVar = infer.TypeVar;
 pub const InferType = infer.InferType;
+pub const TypeScheme = infer.TypeScheme;
 pub const Constraint = infer.Constraint;
 
 // Common type constants

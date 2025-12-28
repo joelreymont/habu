@@ -68,6 +68,37 @@ pub const InferType = union(enum) {
     }
 };
 
+/// Type scheme for let-polymorphism: ∀a1,a2,...an. T
+/// Represents a polymorphic type where bound vars can be instantiated
+pub const TypeScheme = struct {
+    /// IDs of bound type variables (quantified)
+    bound_vars: []const u32,
+    /// The body type (may reference bound vars)
+    body: *const InferType,
+
+    pub fn format(
+        self: TypeScheme,
+        comptime _: []const u8,
+        _: std.fmt.FormatOptions,
+        writer: anytype,
+    ) !void {
+        if (self.bound_vars.len > 0) {
+            try writer.writeAll("∀");
+            for (self.bound_vars, 0..) |v, i| {
+                if (i > 0) try writer.writeAll(",");
+                try writer.print("T{d}", .{v});
+            }
+            try writer.writeAll(". ");
+        }
+        try writer.print("{}", .{self.body.*});
+    }
+
+    /// Check if this is a monomorphic type (no bound variables)
+    pub fn isMono(self: TypeScheme) bool {
+        return self.bound_vars.len == 0;
+    }
+};
+
 /// Constraint between two types that must be satisfied
 pub const Constraint = union(enum) {
     /// Types must be equal: T1 = T2
@@ -243,6 +274,131 @@ pub const InferCtx = struct {
                     try self.unify(sub.sub, sub.super);
                 },
             }
+        }
+    }
+
+    // ========================================================================
+    // Let-polymorphism: Generalization and Instantiation
+    // ========================================================================
+
+    /// Collect all free type variables in a type
+    fn collectFreeVars(self: *const InferCtx, t: *const InferType, free_vars: *std.ArrayList(u32)) !void {
+        const resolved = self.resolve(t);
+        switch (resolved.*) {
+            .variable => |v| {
+                // Add if not already present
+                for (free_vars.items) |fv| {
+                    if (fv == v.id) return;
+                }
+                try free_vars.append(self.allocator, v.id);
+            },
+            .concrete => {}, // No type variables in concrete types
+            .arrow => |a| {
+                for (a.domain) |d| {
+                    try self.collectFreeVars(d, free_vars);
+                }
+                try self.collectFreeVars(a.range, free_vars);
+            },
+            .list => |elem| {
+                try self.collectFreeVars(elem, free_vars);
+            },
+        }
+    }
+
+    /// Collect all free type variables in a type environment
+    fn collectEnvFreeVars(self: *const InferCtx, env: *const TypeEnv, free_vars: *std.ArrayList(u32)) !void {
+        var it = env.bindings.iterator();
+        while (it.next()) |entry| {
+            try self.collectFreeVars(entry.value_ptr.*, free_vars);
+        }
+        if (env.parent) |parent| {
+            try self.collectEnvFreeVars(parent, free_vars);
+        }
+    }
+
+    /// Generalize a type with respect to an environment
+    /// Free variables in the type that are NOT free in the env become bound
+    /// This implements the Gen rule: Gen(Γ, τ) = ∀(FV(τ) - FV(Γ)). τ
+    pub fn generalize(self: *InferCtx, t: *const InferType, env: *const TypeEnv) !TypeScheme {
+        // Collect free vars in the type
+        var type_vars = std.ArrayList(u32){};
+        defer type_vars.deinit(self.allocator);
+        try self.collectFreeVars(t, &type_vars);
+
+        // Collect free vars in the environment
+        var env_vars = std.ArrayList(u32){};
+        defer env_vars.deinit(self.allocator);
+        try self.collectEnvFreeVars(env, &env_vars);
+
+        // Find vars free in type but not in env (these get generalized)
+        var bound_vars = std.ArrayList(u32){};
+        for (type_vars.items) |tv| {
+            var in_env = false;
+            for (env_vars.items) |ev| {
+                if (tv == ev) {
+                    in_env = true;
+                    break;
+                }
+            }
+            if (!in_env) {
+                try bound_vars.append(self.allocator, tv);
+            }
+        }
+
+        return TypeScheme{
+            .bound_vars = try bound_vars.toOwnedSlice(self.allocator),
+            .body = t,
+        };
+    }
+
+    /// Instantiate a type scheme with fresh type variables
+    /// This implements the Inst rule: Inst(∀a1...an. τ) = τ[a1 := β1, ..., an := βn]
+    pub fn instantiate(self: *InferCtx, scheme: TypeScheme) !*const InferType {
+        if (scheme.bound_vars.len == 0) {
+            // Monomorphic type - no instantiation needed
+            return scheme.body;
+        }
+
+        // Create mapping from bound vars to fresh vars
+        var var_map = std.AutoHashMap(u32, *const InferType).init(self.allocator);
+        defer var_map.deinit();
+
+        for (scheme.bound_vars) |bv| {
+            const fresh = try self.freshVar();
+            try var_map.put(bv, fresh);
+        }
+
+        // Substitute bound vars with fresh vars
+        return try self.substituteVars(scheme.body, &var_map);
+    }
+
+    /// Substitute type variables according to a mapping
+    fn substituteVars(self: *InferCtx, t: *const InferType, var_map: *const std.AutoHashMap(u32, *const InferType)) !*const InferType {
+        switch (t.*) {
+            .variable => |v| {
+                if (var_map.get(v.id)) |replacement| {
+                    return replacement;
+                }
+                return t;
+            },
+            .concrete => return t,
+            .arrow => |a| {
+                var new_domain = try self.allocator.alloc(*const InferType, a.domain.len);
+                for (a.domain, 0..) |d, i| {
+                    new_domain[i] = try self.substituteVars(d, var_map);
+                }
+                const new_range = try self.substituteVars(a.range, var_map);
+
+                const new_t = try self.allocator.create(InferType);
+                new_t.* = .{ .arrow = .{ .domain = new_domain, .range = new_range } };
+                return new_t;
+            },
+            .list => |elem| {
+                const new_elem = try self.substituteVars(elem, var_map);
+                const new_t = try self.allocator.create(InferType);
+                new_t.* = .{ .list = new_elem };
+                return new_t;
+            },
         }
     }
 
@@ -834,4 +990,81 @@ test "infer if unifies branches" {
     const resolved = ctx.resolve(inferred);
     try testing.expect(resolved.* == .concrete);
     try testing.expectEqual(types.Primitive.fixnum, resolved.concrete.primitive);
+}
+
+test "generalize type with free variables" {
+    const testing = std.testing;
+    var ctx = InferCtx.init(testing.allocator);
+    defer ctx.deinit();
+
+    // Create arrow type: ?T0 -> ?T0 (identity function)
+    const param = try ctx.freshVar(); // ?T0
+    var domain = [_]*const InferType{param};
+    const arrow = try ctx.allocator.create(InferType);
+    arrow.* = .{ .arrow = .{ .domain = &domain, .range = param } };
+
+    // Empty environment
+    var env = InferCtx.TypeEnv.init(testing.allocator);
+    defer env.deinit();
+
+    // Generalize: should bind ?T0
+    const scheme = try ctx.generalize(arrow, &env);
+    defer testing.allocator.free(scheme.bound_vars);
+
+    try testing.expectEqual(@as(usize, 1), scheme.bound_vars.len);
+    try testing.expectEqual(@as(u32, 0), scheme.bound_vars[0]);
+}
+
+test "generalize respects environment" {
+    const testing = std.testing;
+    var ctx = InferCtx.init(testing.allocator);
+    defer ctx.deinit();
+
+    // Create type variable that's also in environment
+    const env_var = try ctx.freshVar(); // ?T0
+
+    // Environment has binding for ?T0
+    var env = InferCtx.TypeEnv.init(testing.allocator);
+    defer env.deinit();
+    try env.bind("x", env_var);
+
+    // Type to generalize also uses ?T0
+    const arrow = try ctx.allocator.create(InferType);
+    var domain = [_]*const InferType{env_var};
+    arrow.* = .{ .arrow = .{ .domain = &domain, .range = env_var } };
+
+    // Generalize: ?T0 is in env, so shouldn't be bound
+    const scheme = try ctx.generalize(arrow, &env);
+    defer testing.allocator.free(scheme.bound_vars);
+
+    try testing.expectEqual(@as(usize, 0), scheme.bound_vars.len);
+    try testing.expect(scheme.isMono());
+}
+
+test "instantiate creates fresh variables" {
+    const testing = std.testing;
+    var ctx = InferCtx.init(testing.allocator);
+    defer ctx.deinit();
+
+    // Create arrow type: ?T0 -> ?T0
+    const param = try ctx.freshVar(); // ?T0
+    var domain = [_]*const InferType{param};
+    const arrow = try ctx.allocator.create(InferType);
+    arrow.* = .{ .arrow = .{ .domain = &domain, .range = param } };
+
+    // Create scheme: ∀T0. T0 -> T0
+    var bound = [_]u32{0};
+    const scheme = TypeScheme{ .bound_vars = &bound, .body = arrow };
+
+    // Instantiate twice - should get different fresh variables each time
+    const inst1 = try ctx.instantiate(scheme);
+    const inst2 = try ctx.instantiate(scheme);
+
+    try testing.expect(inst1.* == .arrow);
+    try testing.expect(inst2.* == .arrow);
+
+    // Both should have variable domains, but different var ids
+    try testing.expect(inst1.arrow.domain[0].* == .variable);
+    try testing.expect(inst2.arrow.domain[0].* == .variable);
+    try testing.expect(inst1.arrow.domain[0].variable.id != inst2.arrow.domain[0].variable.id);
 }
