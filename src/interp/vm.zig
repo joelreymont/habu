@@ -968,6 +968,30 @@ pub const Vm = struct {
                     }
                     try self.push(str);
                 },
+                .string_upcase => {
+                    const str_val = try self.pop();
+                    if (!str_val.isString()) return error.TypeMismatch;
+                    const src = str_val.toPtr(String);
+                    const src_bytes = src.bytes();
+                    const result = self.heap.allocStringUninitialized(src_bytes.len) orelse return error.OutOfMemory;
+                    const dst = result.toPtr(String);
+                    for (src_bytes, 0..) |c, i| {
+                        dst.data[i] = std.ascii.toUpper(c);
+                    }
+                    try self.push(result);
+                },
+                .string_downcase => {
+                    const str_val = try self.pop();
+                    if (!str_val.isString()) return error.TypeMismatch;
+                    const src = str_val.toPtr(String);
+                    const src_bytes = src.bytes();
+                    const result = self.heap.allocStringUninitialized(src_bytes.len) orelse return error.OutOfMemory;
+                    const dst = result.toPtr(String);
+                    for (src_bytes, 0..) |c, i| {
+                        dst.data[i] = std.ascii.toLower(c);
+                    }
+                    try self.push(result);
+                },
                 .random => {
                     const n = try self.pop();
                     const result = arith.random(n);

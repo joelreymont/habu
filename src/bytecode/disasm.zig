@@ -58,6 +58,7 @@ pub fn disassembleInstruction(chunk: *const Chunk, offset: usize, writer: anytyp
         .digit_char_p, .alpha_char_p, .parse_integer, .write_to_string,
         .logand, .logior, .logxor, .lognot, .ash,
         .read_file, .write_file, .make_string, .string_to_list, .list_to_string,
+        .string_upcase, .string_downcase,
         => {
             try writer.print("{s}\n", .{op.name()});
             return offset + 1;

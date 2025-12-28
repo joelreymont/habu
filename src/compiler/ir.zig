@@ -331,6 +331,8 @@ pub const Ir = union(enum) {
     make_string: BinaryOp, // Create string (length, char)
     string_to_list: UnaryOp, // String to list of chars
     list_to_string: UnaryOp, // List of chars to string
+    string_upcase: UnaryOp, // Convert string to uppercase
+    string_downcase: UnaryOp, // Convert string to lowercase
     boundp: UnaryOp, // Check if symbol has global binding
     fboundp: UnaryOp, // Check if symbol has function binding
     symbol_value: UnaryOp, // Get symbol's global value
@@ -473,7 +475,7 @@ pub const Ir = union(enum) {
             .cons, .car, .cdr, .list,
             .consp, .symbolp, .numberp, .stringp, .vectorp, .closurep, .keywordp, .nilp,
             .vec_new, .vec, .vec_ref, .vec_set, .vec_len, .make_box, .box_ref, .box_set,
-            .str_ref, .str_len, .str_concat, .str_eq, .substring,
+            .str_ref, .str_len, .str_concat, .str_eq, .substring, .string_upcase, .string_downcase,
             .print, .random, .intern, .sym_name, .type_of,
             .assert_fixnum, .assert_cons, .assert_symbol, .assert_string,
             .assert_vector, .assert_closure, .assert_non_nil, .assert_list,
@@ -991,6 +993,18 @@ pub const IrBuilder = struct {
     pub fn listToString(self: IrBuilder, lst: *const Ir) !*Ir {
         const node = try self.allocator.create(Ir);
         node.* = .{ .list_to_string = .{ .operand = lst } };
+        return node;
+    }
+
+    pub fn stringUpcase(self: IrBuilder, str: *const Ir) !*Ir {
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .string_upcase = .{ .operand = str } };
+        return node;
+    }
+
+    pub fn stringDowncase(self: IrBuilder, str: *const Ir) !*Ir {
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .string_downcase = .{ .operand = str } };
         return node;
     }
 

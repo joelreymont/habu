@@ -617,6 +617,14 @@ pub const Op = enum(u8) {
     /// ( list -- string )
     list_to_string = 0xEE,
 
+    /// Convert string to uppercase
+    /// ( string -- string )
+    string_upcase = 0xEF,
+
+    /// Convert string to lowercase
+    /// ( string -- string )
+    string_downcase = 0xF0,
+
     // ========================================================================
     // Dynamic exception handling (catch/throw)
     // ========================================================================
@@ -701,6 +709,7 @@ pub const Op = enum(u8) {
             .digit_char_p, .alpha_char_p, .parse_integer, .write_to_string,
             .logand, .logior, .logxor, .lognot, .ash,
             .read_file, .write_file, .make_string, .string_to_list, .list_to_string,
+        .string_upcase, .string_downcase,
             => 0,
 
             // 1 byte operand

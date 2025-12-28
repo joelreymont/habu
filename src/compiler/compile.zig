@@ -228,6 +228,8 @@ pub const Builtins = struct {
     @"make-string": Value,
     @"string-to-list": Value,
     @"list-to-string": Value,
+    @"string-upcase": Value,
+    @"string-downcase": Value,
 
     // Primitives - Hash tables
     @"make-hash-table": Value,
@@ -399,6 +401,8 @@ pub const Builtins = struct {
             .@"make-string" = heap.intern("make-string") orelse return null,
             .@"string-to-list" = heap.intern("string-to-list") orelse return null,
             .@"list-to-string" = heap.intern("list-to-string") orelse return null,
+            .@"string-upcase" = heap.intern("string-upcase") orelse return null,
+            .@"string-downcase" = heap.intern("string-downcase") orelse return null,
             // Primitives - Hash tables
             .@"make-hash-table" = heap.intern("make-hash-table") orelse return null,
             .gethash = heap.intern("gethash") orelse return null,
@@ -2975,6 +2979,8 @@ pub const Compiler = struct {
         if (s == b.@"make-string".raw) return self.compileBinaryPrim(args, env, .make_string);
         if (s == b.@"string-to-list".raw) return self.compileUnaryPrim(args, env, .string_to_list);
         if (s == b.@"list-to-string".raw) return self.compileUnaryPrim(args, env, .list_to_string);
+        if (s == b.@"string-upcase".raw) return self.compileUnaryPrim(args, env, .string_upcase);
+        if (s == b.@"string-downcase".raw) return self.compileUnaryPrim(args, env, .string_downcase);
 
         // Hash tables
         if (s == b.@"make-hash-table".raw) return self.compileMakeHash(args);
@@ -2990,7 +2996,7 @@ pub const Compiler = struct {
         return error.InvalidSyntax; // Not a known primitive
     }
 
-    const PrimTag = enum { add, sub, mul, div, mod, eq, lt, gt, le, ge, num_eq, cons, car, cdr, append, length, reverse, nth, nthcdr, last, member, consp, symbolp, numberp, stringp, vectorp, nilp, not, vec_ref, vec_len, make_box, box_ref, box_set, str_ref, str_len, str_eq, str_concat, print, princ, terpri, write_char, random, intern, sym_name, type_of, characterp, floatp, char_code, code_char, char_eq, char_lt, char_gt, char_upcase, char_downcase, digit_char_p, alpha_char_p, read_char, peek_char, read, read_from_string, load, unread_char, eval, gensym, macroexpand, parse_integer, write_to_string, logand, logior, logxor, lognot, ash, read_file, write_file, make_string, string_to_list, list_to_string, boundp, fboundp, symbol_value, symbol_function, typep, abs, zerop, plusp, minusp, evenp, oddp };
+    const PrimTag = enum { add, sub, mul, div, mod, eq, lt, gt, le, ge, num_eq, cons, car, cdr, append, length, reverse, nth, nthcdr, last, member, consp, symbolp, numberp, stringp, vectorp, nilp, not, vec_ref, vec_len, make_box, box_ref, box_set, str_ref, str_len, str_eq, str_concat, print, princ, terpri, write_char, random, intern, sym_name, type_of, characterp, floatp, char_code, code_char, char_eq, char_lt, char_gt, char_upcase, char_downcase, digit_char_p, alpha_char_p, read_char, peek_char, read, read_from_string, load, unread_char, eval, gensym, macroexpand, parse_integer, write_to_string, logand, logior, logxor, lognot, ash, read_file, write_file, make_string, string_to_list, list_to_string, string_upcase, string_downcase, boundp, fboundp, symbol_value, symbol_function, typep, abs, zerop, plusp, minusp, evenp, oddp };
 
     /// Compile variadic arithmetic: +, -, *, /
     /// identity: for + (0), * (1). null means no identity (- and / need args)
@@ -3169,6 +3175,8 @@ pub const Compiler = struct {
             .read_file => self.builder.readFile(operand),
             .string_to_list => self.builder.stringToList(operand),
             .list_to_string => self.builder.listToString(operand),
+            .string_upcase => self.builder.stringUpcase(operand),
+            .string_downcase => self.builder.stringDowncase(operand),
             .stringp => blk: {
                 const node = self.allocator.create(Ir) catch return error.OutOfMemory;
                 node.* = .{ .stringp = .{ .operand = operand } };
