@@ -1050,6 +1050,8 @@ pub const Compiler = struct {
         // ADT support
         deftype,
         match,
+        // Macro support
+        defmacro,
     };
 
     /// Comptime dispatch table for special forms
@@ -1092,6 +1094,8 @@ pub const Compiler = struct {
         // ADT support
         .{ "deftype", .deftype },
         .{ "match", .match },
+        // Macro support
+        .{ "defmacro", .defmacro },
     });
 
     fn compileListWithTail(self: *Compiler, expr: Value, env: *const Env, in_tail: bool) CompileError!*Ir {
@@ -1143,6 +1147,8 @@ pub const Compiler = struct {
                     // ADT support
                     .deftype => self.compileDeftype(tail, env),
                     .match => self.compileMatch(tail, env),
+                    // Macro support
+                    .defmacro => self.compileDefmacro(tail, env),
                 };
             }
 
@@ -2708,6 +2714,32 @@ pub const Compiler = struct {
         const lambda_ir = try self.compileLambdaWithReturnType(lambda_args, env, return_type);
 
         return self.builder.define(name, idx, lambda_ir) catch return error.OutOfMemory;
+    }
+
+    /// Compile defmacro: (defmacro name (params...) body...)
+    /// Stores the lambda-args in macro_table for expansion during macro calls.
+    /// Returns nil since defmacro has no runtime effect.
+    fn compileDefmacro(self: *Compiler, args: Value, env: *const Env) CompileError!*Ir {
+        _ = env;
+        // Parse: (name (params...) body...)
+        if (!args.isCons()) return error.InvalidSyntax;
+
+        const cons1 = args.toPtr(Cons);
+        const name_val = cons1.car;
+        if (!name_val.isSymbol()) return error.InvalidSyntax;
+
+        const name_sym = name_val.toPtr(Symbol);
+        const name = name_sym.getName();
+
+        // Rest is ((params...) body...) - store as lambda-args for later expansion
+        const lambda_args = cons1.cdr;
+        if (!lambda_args.isCons()) return error.InvalidSyntax;
+
+        // Store in macro_table: name -> lambda-args
+        self.macro_table.put(name, lambda_args) catch return error.OutOfMemory;
+
+        // defmacro has no runtime effect - return nil
+        return self.builder.lit(Value.nil) catch return error.OutOfMemory;
     }
 
     // ========================================================================
