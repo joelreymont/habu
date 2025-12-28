@@ -6,20 +6,18 @@
 //! - Contract insertion at typed/untyped boundaries
 
 const std = @import("std");
-const Type = @import("type.zig").Type;
-const Primitive = @import("type.zig").Primitive;
-const t = @import("type.zig");
+const types = @import("type.zig");
 
 /// Type environment: maps variable names to types
 pub const TypeEnv = struct {
     parent: ?*const TypeEnv,
-    bindings: std.StringHashMap(*const Type),
+    bindings: std.StringHashMap(*const types.Type),
     allocator: std.mem.Allocator,
 
     pub fn init(allocator: std.mem.Allocator) TypeEnv {
         return .{
             .parent = null,
-            .bindings = std.StringHashMap(*const Type).init(allocator),
+            .bindings = std.StringHashMap(*const types.Type).init(allocator),
             .allocator = allocator,
         };
     }
@@ -27,7 +25,7 @@ pub const TypeEnv = struct {
     pub fn initWithParent(allocator: std.mem.Allocator, parent: *const TypeEnv) TypeEnv {
         return .{
             .parent = parent,
-            .bindings = std.StringHashMap(*const Type).init(allocator),
+            .bindings = std.StringHashMap(*const types.Type).init(allocator),
             .allocator = allocator,
         };
     }
@@ -36,7 +34,7 @@ pub const TypeEnv = struct {
         self.bindings.deinit();
     }
 
-    pub fn lookup(self: TypeEnv, name: []const u8) ?*const Type {
+    pub fn lookup(self: TypeEnv, name: []const u8) ?*const types.Type {
         if (self.bindings.get(name)) |ty| {
             return ty;
         }
@@ -46,7 +44,7 @@ pub const TypeEnv = struct {
         return null;
     }
 
-    pub fn bind(self: *TypeEnv, name: []const u8, ty: *const Type) !void {
+    pub fn bind(self: *TypeEnv, name: []const u8, ty: *const types.Type) !void {
         try self.bindings.put(name, ty);
     }
 };
@@ -55,12 +53,12 @@ pub const TypeEnv = struct {
 /// Tracks type refinements from conditionals
 pub const OccurrenceCtx = struct {
     /// Narrowed types for variables (after predicates)
-    narrowed: std.StringHashMap(*const Type),
+    narrowed: std.StringHashMap(*const types.Type),
     allocator: std.mem.Allocator,
 
     pub fn init(allocator: std.mem.Allocator) OccurrenceCtx {
         return .{
-            .narrowed = std.StringHashMap(*const Type).init(allocator),
+            .narrowed = std.StringHashMap(*const types.Type).init(allocator),
             .allocator = allocator,
         };
     }
@@ -71,31 +69,31 @@ pub const OccurrenceCtx = struct {
 
     /// After (consp x), narrow x to cons type
     pub fn narrowToCons(self: *OccurrenceCtx, var_name: []const u8) !void {
-        try self.narrowed.put(var_name, &t.t_cons);
+        try self.narrowed.put(var_name, &types.t_cons);
     }
 
     /// After (null x) or (not x), narrow x to nil type
     pub fn narrowToNil(self: *OccurrenceCtx, var_name: []const u8) !void {
-        try self.narrowed.put(var_name, &t.t_nil);
+        try self.narrowed.put(var_name, &types.t_nil);
     }
 
     /// After (symbolp x), narrow x to symbol type
     pub fn narrowToSymbol(self: *OccurrenceCtx, var_name: []const u8) !void {
-        try self.narrowed.put(var_name, &t.t_symbol);
+        try self.narrowed.put(var_name, &types.t_symbol);
     }
 
     /// After (stringp x), narrow x to string type
     pub fn narrowToString(self: *OccurrenceCtx, var_name: []const u8) !void {
-        try self.narrowed.put(var_name, &t.t_string);
+        try self.narrowed.put(var_name, &types.t_string);
     }
 
     /// After (numberp x), narrow x to fixnum type
     pub fn narrowToFixnum(self: *OccurrenceCtx, var_name: []const u8) !void {
-        try self.narrowed.put(var_name, &t.t_fixnum);
+        try self.narrowed.put(var_name, &types.t_fixnum);
     }
 
     /// Get narrowed type for a variable, or null if not narrowed
-    pub fn getNarrowed(self: OccurrenceCtx, var_name: []const u8) ?*const Type {
+    pub fn getNarrowed(self: OccurrenceCtx, var_name: []const u8) ?*const types.Type {
         return self.narrowed.get(var_name);
     }
 
@@ -106,8 +104,8 @@ pub const OccurrenceCtx = struct {
         while (it.next()) |entry| {
             if (other.narrowed.get(entry.key_ptr.*)) |other_ty| {
                 // Both branches have a type for this var - union them
-                const types = [_]*const Type{ entry.value_ptr.*, other_ty };
-                const union_ty = try builder.makeOr(&types);
+                const type_arr = [_]*const types.Type{ entry.value_ptr.*, other_ty };
+                const union_ty = try builder.makeOr(&type_arr);
                 try self.narrowed.put(entry.key_ptr.*, union_ty);
             }
             // If only in self, it stays narrowed only on that path
@@ -118,7 +116,7 @@ pub const OccurrenceCtx = struct {
 /// Type checking result
 pub const CheckResult = union(enum) {
     /// Successfully inferred type
-    ok: *const Type,
+    ok: *const types.Type,
     /// Type error
     err: TypeError,
 };
@@ -126,8 +124,8 @@ pub const CheckResult = union(enum) {
 /// Type error information
 pub const TypeError = struct {
     message: []const u8,
-    expected: ?*const Type,
-    got: ?*const Type,
+    expected: ?*const types.Type,
+    got: ?*const types.Type,
     span_start: usize,
     span_end: usize,
 };
@@ -136,13 +134,13 @@ pub const TypeError = struct {
 pub const TypeChecker = struct {
     allocator: std.mem.Allocator,
     errors: std.ArrayList(TypeError),
-    builder: @import("type.zig").TypeBuilder,
+    builder: types.TypeBuilder,
 
     pub fn init(allocator: std.mem.Allocator) TypeChecker {
         return .{
             .allocator = allocator,
             .errors = std.ArrayList(TypeError){},
-            .builder = @import("type.zig").TypeBuilder.init(allocator),
+            .builder = types.TypeBuilder.init(allocator),
         };
     }
 
@@ -169,8 +167,8 @@ pub const TypeChecker = struct {
     pub fn reportMismatch(
         self: *TypeChecker,
         message: []const u8,
-        expected: *const Type,
-        got: *const Type,
+        expected: *const types.Type,
+        got: *const types.Type,
         span_start: usize,
         span_end: usize,
     ) !void {
@@ -188,17 +186,17 @@ pub const TypeChecker = struct {
     // ========================================================================
 
     /// Check/infer type of a literal
-    pub fn checkLiteral(self: *TypeChecker, value: anytype) *const Type {
+    pub fn checkLiteral(self: *TypeChecker, value: anytype) *const types.Type {
         _ = self;
         const T = @TypeOf(value);
         if (T == i64 or T == i32 or T == comptime_int) {
-            return &t.t_fixnum;
+            return &types.t_fixnum;
         }
-        return &t.t_any;
+        return &types.t_any;
     }
 
     /// Check type of variable reference
-    pub fn checkVar(self: *TypeChecker, name: []const u8, env: *const TypeEnv, occ: *const OccurrenceCtx) *const Type {
+    pub fn checkVar(self: *TypeChecker, name: []const u8, env: *const TypeEnv, occ: *const OccurrenceCtx) *const types.Type {
         _ = self;
         // First check occurrence typing (narrowed types)
         if (occ.getNarrowed(name)) |narrowed| {
@@ -209,11 +207,11 @@ pub const TypeChecker = struct {
             return ty;
         }
         // Unknown variable - return any (will be caught elsewhere)
-        return &t.t_any;
+        return &types.t_any;
     }
 
     /// Check that a type is a subtype of another
-    pub fn isSubtype(self: *TypeChecker, sub: *const Type, super: *const Type) bool {
+    pub fn isSubtype(self: *TypeChecker, sub: *const types.Type, super: *const types.Type) bool {
         // Any is supertype of everything
         if (super.* == .any) return true;
 
@@ -250,9 +248,9 @@ test "type environment" {
     var env = TypeEnv.init(testing.allocator);
     defer env.deinit();
 
-    try env.bind("x", &t.t_fixnum);
-    try testing.expectEqual(&t.t_fixnum, env.lookup("x").?);
-    try testing.expectEqual(@as(?*const Type, null), env.lookup("y"));
+    try env.bind("x", &types.t_fixnum);
+    try testing.expectEqual(&types.t_fixnum, env.lookup("x").?);
+    try testing.expectEqual(@as(?*const types.Type, null), env.lookup("y"));
 }
 
 test "occurrence typing" {
@@ -261,7 +259,7 @@ test "occurrence typing" {
     defer occ.deinit();
 
     try occ.narrowToCons("x");
-    try testing.expectEqual(&t.t_cons, occ.getNarrowed("x").?);
+    try testing.expectEqual(&types.t_cons, occ.getNarrowed("x").?);
 }
 
 test "subtype" {
@@ -270,12 +268,12 @@ test "subtype" {
     defer checker.deinit();
 
     // Everything is subtype of any
-    try testing.expect(checker.isSubtype(&t.t_fixnum, &t.t_any));
-    try testing.expect(checker.isSubtype(&t.t_cons, &t.t_any));
+    try testing.expect(checker.isSubtype(&types.t_fixnum, &types.t_any));
+    try testing.expect(checker.isSubtype(&types.t_cons, &types.t_any));
 
     // Same type
-    try testing.expect(checker.isSubtype(&t.t_fixnum, &t.t_fixnum));
+    try testing.expect(checker.isSubtype(&types.t_fixnum, &types.t_fixnum));
 
     // Nil is subtype of list
-    try testing.expect(checker.isSubtype(&t.t_nil, &t.t_list_any));
+    try testing.expect(checker.isSubtype(&types.t_nil, &types.t_list_any));
 }

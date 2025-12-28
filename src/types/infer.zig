@@ -7,10 +7,9 @@
 //! - Occurs check for infinite type prevention
 
 const std = @import("std");
-const Type = @import("type.zig").Type;
-const Primitive = @import("type.zig").Primitive;
-const t_fixnum = @import("type.zig").t_fixnum;
-const t_any = @import("type.zig").t_any;
+const types = @import("type.zig");
+const ir_mod = @import("../compiler/ir.zig");
+const value_mod = @import("../runtime/value.zig");
 
 /// A type variable representing an unknown type
 pub const TypeVar = struct {
@@ -29,7 +28,7 @@ pub const TypeVar = struct {
 /// Extended type that includes type variables for inference
 pub const InferType = union(enum) {
     /// Concrete type (from type.zig)
-    concrete: *const Type,
+    concrete: *const types.Type,
 
     /// Type variable (unknown, to be solved)
     variable: TypeVar,
@@ -123,7 +122,7 @@ pub const InferCtx = struct {
     }
 
     /// Wrap a concrete type in InferType
-    pub fn concrete(self: *InferCtx, t: *const Type) !*InferType {
+    pub fn concrete(self: *InferCtx, t: *const types.Type) !*InferType {
         const it = try self.allocator.create(InferType);
         it.* = .{ .concrete = t };
         return it;
@@ -256,7 +255,7 @@ pub const UnifyError = error{
 };
 
 /// Check if two concrete types are equal
-fn typeEquals(t1: *const Type, t2: *const Type) bool {
+fn typeEquals(t1: *const types.Type, t2: *const types.Type) bool {
     if (t1 == t2) return true;
 
     // Check structural equality
@@ -297,13 +296,13 @@ test "unify variables" {
     defer ctx.deinit();
 
     const v1 = try ctx.freshVar();
-    const fixnum = try ctx.concrete(&t_fixnum);
+    const fixnum = try ctx.concrete(&types.t_fixnum);
 
     try ctx.unify(v1, fixnum);
 
     const resolved = ctx.resolve(v1);
     try testing.expect(resolved.* == .concrete);
-    try testing.expectEqual(Primitive.fixnum, resolved.concrete.primitive);
+    try testing.expectEqual(types.Primitive.fixnum, resolved.concrete.primitive);
 }
 
 test "unify same concrete types" {
@@ -311,21 +310,19 @@ test "unify same concrete types" {
     var ctx = InferCtx.init(testing.allocator);
     defer ctx.deinit();
 
-    const f1 = try ctx.concrete(&t_fixnum);
-    const f2 = try ctx.concrete(&t_fixnum);
+    const f1 = try ctx.concrete(&types.t_fixnum);
+    const f2 = try ctx.concrete(&types.t_fixnum);
 
     try ctx.unify(f1, f2); // Should succeed
 }
 
 test "unify different concrete types fails" {
     const testing = std.testing;
-    const t_string = @import("type.zig").t_string;
-
     var ctx = InferCtx.init(testing.allocator);
     defer ctx.deinit();
 
-    const f = try ctx.concrete(&t_fixnum);
-    const s = try ctx.concrete(&t_string);
+    const f = try ctx.concrete(&types.t_fixnum);
+    const s = try ctx.concrete(&types.t_string);
 
     try testing.expectError(error.TypeMismatch, ctx.unify(f, s));
 }

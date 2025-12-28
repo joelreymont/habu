@@ -12,8 +12,7 @@
 //! - (or T1 T2) → or combinator
 
 const std = @import("std");
-const Type = @import("type.zig").Type;
-const Primitive = @import("type.zig").Primitive;
+const types = @import("type.zig");
 const Blame = @import("blame.zig").Blame;
 const runtime = @import("../runtime/runtime.zig");
 const Value = runtime.Value;
@@ -220,7 +219,7 @@ pub const ContractCompiler = struct {
     }
 
     /// Compile a type to its corresponding contract
-    pub fn compile(self: *ContractCompiler, ty: *const Type) !*Contract {
+    pub fn compile(self: *ContractCompiler, ty: *const types.Type) !*Contract {
         const alloc = self.allocator();
         const ctc = try alloc.create(Contract);
 
@@ -241,13 +240,13 @@ pub const ContractCompiler = struct {
                     },
                 };
             },
-            .@"or" => |types| {
+            .@"or" => |or_types| {
                 // Build chain of or combinators: (or A (or B C))
-                var result = try self.compile(types[types.len - 1]);
-                var i: usize = types.len - 1;
+                var result = try self.compile(or_types[or_types.len - 1]);
+                var i: usize = or_types.len - 1;
                 while (i > 0) {
                     i -= 1;
-                    const left = try self.compile(types[i]);
+                    const left = try self.compile(or_types[i]);
                     const new_ctc = try alloc.create(Contract);
                     new_ctc.* = .{ .@"or" = .{ .left = left, .right = result } };
                     result = new_ctc;
@@ -298,7 +297,7 @@ pub const ContractCompiler = struct {
         return ctc;
     }
 
-    fn predicateForPrimitive(p: Primitive) *const fn (u64) bool {
+    fn predicateForPrimitive(p: types.Primitive) *const fn (u64) bool {
         return switch (p) {
             .fixnum => predicates.isFixnum,
             .float => predicates.isFloat,
@@ -342,28 +341,26 @@ test "flat contract check" {
 
 test "type to contract compilation" {
     const testing = std.testing;
-    const t = @import("type.zig");
 
     var compiler = ContractCompiler.init(testing.allocator);
     defer compiler.deinit();
 
     // Compile fixnum type
-    const fixnum_ctc = try compiler.compile(&t.t_fixnum);
+    const fixnum_ctc = try compiler.compile(&types.t_fixnum);
     try testing.expect(fixnum_ctc.* == .flat);
     try testing.expectEqualStrings("fixnum", fixnum_ctc.flat.type_name);
 
     // Compile list type
-    const list_ctc = try compiler.compile(&t.t_list_any);
+    const list_ctc = try compiler.compile(&types.t_list_any);
     try testing.expect(list_ctc.* == .listof);
 }
 
 test "contract check" {
     const testing = std.testing;
-    const t = @import("type.zig");
 
     var compiler = ContractCompiler.init(testing.allocator);
     defer compiler.deinit();
-    const fixnum_ctc = try compiler.compile(&t.t_fixnum);
+    const fixnum_ctc = try compiler.compile(&types.t_fixnum);
 
     const blame = Blame{
         .positive = .{ .name = "test" },
@@ -381,14 +378,13 @@ test "contract check" {
 
 test "listof contract check" {
     const testing = std.testing;
-    const t = @import("type.zig");
     const Heap = @import("../runtime/runtime.zig").Heap;
 
     var compiler = ContractCompiler.init(testing.allocator);
     defer compiler.deinit();
 
     // Create (listof any) contract
-    const listof_any = try compiler.compile(&t.t_list_any);
+    const listof_any = try compiler.compile(&types.t_list_any);
 
     // Create a heap for allocating cons cells
     var heap = Heap.init(testing.allocator, .{ .total_size = 1024 * 64 }) catch unreachable;

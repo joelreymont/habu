@@ -6,6 +6,19 @@
 
 ## Conventions
 
+### Import Once, Reference via Namespace
+```zig
+// WRONG: Multiple imports from same module
+const Type = @import("type.zig").Type;
+const Primitive = @import("type.zig").Primitive;
+const t_fixnum = @import("type.zig").t_fixnum;
+const t_string = @import("type.zig").t_string;
+
+// RIGHT: Import module once, use namespace
+const types = @import("type.zig");
+// Then use: types.Type, types.Primitive, types.t_fixnum, types.t_string
+```
+
 ### Allocator First
 Allocator is ALWAYS the first argument to any function that allocates:
 ```zig
