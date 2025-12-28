@@ -266,8 +266,47 @@ pub const Lexer = struct {
             _ = self.advance(); // consume quote
             return self.makeToken(.function_quote);
         }
+        if (c == 'x' or c == 'X') {
+            // Hex literal: #xABC or #XABC
+            _ = self.advance(); // consume 'x'
+            return self.readHexNumber();
+        }
+        if (c == 'b' or c == 'B') {
+            // Binary literal: #b101 or #B101
+            _ = self.advance(); // consume 'b'
+            return self.readBinaryNumber();
+        }
+        if (c == 'o' or c == 'O') {
+            // Octal literal: #o777 or #O777
+            _ = self.advance(); // consume 'o'
+            return self.readOctalNumber();
+        }
         // Future: #( for vectors, etc.
         return self.makeToken(.err);
+    }
+
+    fn readHexNumber(self: *Lexer) Token {
+        // Already consumed '#x'
+        while (!self.isAtEnd() and isHexDigit(self.peek())) {
+            _ = self.advance();
+        }
+        return self.makeToken(.number);
+    }
+
+    fn readBinaryNumber(self: *Lexer) Token {
+        // Already consumed '#b'
+        while (!self.isAtEnd() and (self.peek() == '0' or self.peek() == '1')) {
+            _ = self.advance();
+        }
+        return self.makeToken(.number);
+    }
+
+    fn readOctalNumber(self: *Lexer) Token {
+        // Already consumed '#o'
+        while (!self.isAtEnd() and self.peek() >= '0' and self.peek() <= '7') {
+            _ = self.advance();
+        }
+        return self.makeToken(.number);
     }
 
     fn readCharacter(self: *Lexer) Token {
@@ -302,6 +341,10 @@ pub const Lexer = struct {
 
 fn isDigit(c: u8) bool {
     return c >= '0' and c <= '9';
+}
+
+fn isHexDigit(c: u8) bool {
+    return isDigit(c) or (c >= 'a' and c <= 'f') or (c >= 'A' and c <= 'F');
 }
 
 fn isSymbolStart(c: u8) bool {
@@ -468,4 +511,62 @@ test "lex characters" {
     const t3 = lexer.next();
     try testing.expectEqual(TokenKind.character, t3.kind);
     try testing.expectEqualStrings("#\\space", t3.text);
+}
+
+test "lex hex numbers" {
+    const testing = std.testing;
+
+    var lexer = Lexer.init("#x20 #xFF #xABCD #X1a2B");
+
+    const t1 = lexer.next();
+    try testing.expectEqual(TokenKind.number, t1.kind);
+    try testing.expectEqualStrings("#x20", t1.text);
+
+    const t2 = lexer.next();
+    try testing.expectEqual(TokenKind.number, t2.kind);
+    try testing.expectEqualStrings("#xFF", t2.text);
+
+    const t3 = lexer.next();
+    try testing.expectEqual(TokenKind.number, t3.kind);
+    try testing.expectEqualStrings("#xABCD", t3.text);
+
+    const t4 = lexer.next();
+    try testing.expectEqual(TokenKind.number, t4.kind);
+    try testing.expectEqualStrings("#X1a2B", t4.text);
+}
+
+test "lex binary numbers" {
+    const testing = std.testing;
+
+    var lexer = Lexer.init("#b101 #B11111111 #b0");
+
+    const t1 = lexer.next();
+    try testing.expectEqual(TokenKind.number, t1.kind);
+    try testing.expectEqualStrings("#b101", t1.text);
+
+    const t2 = lexer.next();
+    try testing.expectEqual(TokenKind.number, t2.kind);
+    try testing.expectEqualStrings("#B11111111", t2.text);
+
+    const t3 = lexer.next();
+    try testing.expectEqual(TokenKind.number, t3.kind);
+    try testing.expectEqualStrings("#b0", t3.text);
+}
+
+test "lex octal numbers" {
+    const testing = std.testing;
+
+    var lexer = Lexer.init("#o77 #O755 #o0");
+
+    const t1 = lexer.next();
+    try testing.expectEqual(TokenKind.number, t1.kind);
+    try testing.expectEqualStrings("#o77", t1.text);
+
+    const t2 = lexer.next();
+    try testing.expectEqual(TokenKind.number, t2.kind);
+    try testing.expectEqualStrings("#O755", t2.text);
+
+    const t3 = lexer.next();
+    try testing.expectEqual(TokenKind.number, t3.kind);
+    try testing.expectEqualStrings("#o0", t3.text);
 }

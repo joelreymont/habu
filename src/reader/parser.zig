@@ -147,6 +147,22 @@ pub const Parser = struct {
         const text = self.current.text;
         self.advance();
 
+        // Check for radix prefixes: #x (hex), #b (binary), #o (octal)
+        if (text.len >= 2 and text[0] == '#') {
+            const radix_char = text[1];
+            const digits = text[2..];
+            if (digits.len == 0) return error.InvalidNumber;
+
+            const radix: u8 = switch (radix_char) {
+                'x', 'X' => 16,
+                'b', 'B' => 2,
+                'o', 'O' => 8,
+                else => return error.InvalidNumber,
+            };
+            const n = std.fmt.parseInt(i64, digits, radix) catch return error.InvalidNumber;
+            return Value.makeFixnum(n);
+        }
+
         const n = std.fmt.parseInt(i64, text, 10) catch return error.InvalidNumber;
         return Value.makeFixnum(n);
     }
@@ -466,4 +482,88 @@ test "parse expression" {
 
     try testing.expectEqual(@as(i64, 1), list.car(list.cdr(val)).toFixnum());
     try testing.expectEqual(@as(i64, 2), list.car(list.cdr(list.cdr(val))).toFixnum());
+}
+
+test "parse hex number" {
+    const testing = std.testing;
+
+    var heap = try Heap.init(testing.allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    // #x20 = 32
+    var parser1 = Parser.init(testing.allocator, &heap, "#x20");
+    defer parser1.deinit();
+    const val1 = try parser1.parse();
+    try testing.expect(val1.isFixnum());
+    try testing.expectEqual(@as(i64, 32), val1.toFixnum());
+
+    // #xFF = 255
+    var parser2 = Parser.init(testing.allocator, &heap, "#xFF");
+    defer parser2.deinit();
+    const val2 = try parser2.parse();
+    try testing.expectEqual(@as(i64, 255), val2.toFixnum());
+
+    // #xABCD = 43981
+    var parser3 = Parser.init(testing.allocator, &heap, "#xABCD");
+    defer parser3.deinit();
+    const val3 = try parser3.parse();
+    try testing.expectEqual(@as(i64, 43981), val3.toFixnum());
+
+    // Case insensitive: #X1a2B = 6699
+    var parser4 = Parser.init(testing.allocator, &heap, "#X1a2B");
+    defer parser4.deinit();
+    const val4 = try parser4.parse();
+    try testing.expectEqual(@as(i64, 6699), val4.toFixnum());
+}
+
+test "parse binary number" {
+    const testing = std.testing;
+
+    var heap = try Heap.init(testing.allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    // #b101 = 5
+    var parser1 = Parser.init(testing.allocator, &heap, "#b101");
+    defer parser1.deinit();
+    const val1 = try parser1.parse();
+    try testing.expect(val1.isFixnum());
+    try testing.expectEqual(@as(i64, 5), val1.toFixnum());
+
+    // #B11111111 = 255
+    var parser2 = Parser.init(testing.allocator, &heap, "#B11111111");
+    defer parser2.deinit();
+    const val2 = try parser2.parse();
+    try testing.expectEqual(@as(i64, 255), val2.toFixnum());
+
+    // #b0 = 0
+    var parser3 = Parser.init(testing.allocator, &heap, "#b0");
+    defer parser3.deinit();
+    const val3 = try parser3.parse();
+    try testing.expectEqual(@as(i64, 0), val3.toFixnum());
+}
+
+test "parse octal number" {
+    const testing = std.testing;
+
+    var heap = try Heap.init(testing.allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    // #o77 = 63
+    var parser1 = Parser.init(testing.allocator, &heap, "#o77");
+    defer parser1.deinit();
+    const val1 = try parser1.parse();
+    try testing.expect(val1.isFixnum());
+    try testing.expectEqual(@as(i64, 63), val1.toFixnum());
+
+    // #O755 = 493
+    var parser2 = Parser.init(testing.allocator, &heap, "#O755");
+    defer parser2.deinit();
+    const val2 = try parser2.parse();
+    try testing.expectEqual(@as(i64, 493), val2.toFixnum());
+
+    // #o0 = 0
+    var parser3 = Parser.init(testing.allocator, &heap, "#o0");
+    defer parser3.deinit();
+    const val3 = try parser3.parse();
+    try testing.expectEqual(@as(i64, 0), val3.toFixnum());
 }

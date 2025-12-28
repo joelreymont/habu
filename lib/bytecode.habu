@@ -1,0 +1,849 @@
+;;; Bytecode Emitter - IR to Bytecode
+;;;
+;;; Compiles IR nodes to bytecode. Uses the IR ADT from ir.habu.
+;;; Outputs bytecode matching the format defined in src/bytecode/opcodes.zig.
+
+(load "lib/ir.habu")
+
+;; =============================================================================
+;; Opcode Constants
+;; =============================================================================
+
+;; Stack manipulation
+(defvar *op-push-nil*     #x00)
+(defvar *op-push-t*       #x01)
+(defvar *op-push-i32*     #x02)
+(defvar *op-push-const*   #x03)
+(defvar *op-dup*          #x04)
+(defvar *op-pop*          #x05)
+(defvar *op-swap*         #x06)
+
+;; Variable access
+(defvar *op-load-local*   #x10)
+(defvar *op-store-local*  #x11)
+(defvar *op-load-capture* #x12)
+(defvar *op-load-upvalue* #x13)
+(defvar *op-store-upvalue* #x14)
+(defvar *op-load-global*  #x15)
+(defvar *op-store-global* #x16)
+
+;; Arithmetic
+(defvar *op-add*          #x20)
+(defvar *op-sub*          #x21)
+(defvar *op-mul*          #x22)
+(defvar *op-div*          #x23)
+(defvar *op-mod*          #x24)
+(defvar *op-neg*          #x25)
+
+;; Comparison
+(defvar *op-eq*           #x30)
+(defvar *op-lt*           #x31)
+(defvar *op-gt*           #x32)
+(defvar *op-le*           #x33)
+(defvar *op-ge*           #x34)
+(defvar *op-num-eq*       #x35)
+
+;; Logical
+(defvar *op-not*          #x38)
+
+;; List operations
+(defvar *op-cons*         #x40)
+(defvar *op-car*          #x41)
+(defvar *op-cdr*          #x42)
+(defvar *op-make-list*    #x43)
+(defvar *op-append*       #x44)
+(defvar *op-list-length*  #x45)
+(defvar *op-list-reverse* #x46)
+(defvar *op-list-nth*     #x47)
+(defvar *op-list-last*    #x48)
+(defvar *op-list-member*  #x49)
+(defvar *op-list-nthcdr*  #x4A)
+(defvar *op-rplaca*       #x4B)
+(defvar *op-rplacd*       #x4C)
+(defvar *op-error-user*   #x4D)
+
+;; Type predicates
+(defvar *op-consp*        #x50)
+(defvar *op-symbolp*      #x51)
+(defvar *op-numberp*      #x52)
+(defvar *op-stringp*      #x53)
+(defvar *op-vectorp*      #x54)
+(defvar *op-closurep*     #x55)
+(defvar *op-keywordp*     #x56)
+(defvar *op-nilp*         #x57)
+
+;; Vector operations
+(defvar *op-make-vec*     #x60)
+(defvar *op-vec-ref*      #x61)
+(defvar *op-vec-set*      #x62)
+(defvar *op-vec-len*      #x63)
+(defvar *op-make-box*     #x64)
+(defvar *op-box-ref*      #x65)
+(defvar *op-box-set*      #x66)
+(defvar *op-make-vec-n*   #x67)
+
+;; String operations
+(defvar *op-str-ref*      #x68)
+(defvar *op-str-len*      #x69)
+(defvar *op-str-concat*   #x6A)
+(defvar *op-intern*       #x6B)
+(defvar *op-substring*    #x6C)
+(defvar *op-sym-name*     #x6D)
+(defvar *op-str-eq*       #x6E)
+
+;; Control flow
+(defvar *op-jmp*          #x70)
+(defvar *op-jmp-nil*      #x71)
+(defvar *op-jmp-not-nil*  #x72)
+
+;; Function calls
+(defvar *op-call*         #x80)
+(defvar *op-tail-call*    #x81)
+(defvar *op-ret*          #x82)
+(defvar *op-make-closure* #x83)
+(defvar *op-apply*        #x84)
+
+;; I/O
+(defvar *op-print*        #x90)
+(defvar *op-random*       #x91)
+(defvar *op-type-of*      #x92)
+(defvar *op-format*       #x93)
+
+;; Hash tables
+(defvar *op-make-hash*    #x94)
+(defvar *op-hash-get*     #x95)
+(defvar *op-hash-set*     #x96)
+(defvar *op-hash-rem*     #x97)
+(defvar *op-hash-count*   #x98)
+(defvar *op-hashtablep*   #x99)
+
+;; Characters
+(defvar *op-characterp*   #x9A)
+(defvar *op-char-code*    #x9B)
+(defvar *op-code-char*    #x9C)
+(defvar *op-char-eq*      #x9D)
+(defvar *op-char-lt*      #x9E)
+(defvar *op-char-gt*      #x9F)
+
+;; Type assertions
+(defvar *op-check-fixnum* #xA0)
+(defvar *op-check-cons*   #xA1)
+(defvar *op-check-symbol* #xA2)
+(defvar *op-check-string* #xA3)
+(defvar *op-check-vector* #xA4)
+(defvar *op-check-closure* #xA5)
+(defvar *op-check-non-nil* #xA6)
+(defvar *op-check-list*   #xA7)
+
+;; Character I/O
+(defvar *op-read-char*    #xA8)
+(defvar *op-peek-char*    #xA9)
+(defvar *op-unread-char*  #xAA)
+(defvar *op-boundp*       #xAB)
+(defvar *op-fboundp*      #xAC)
+(defvar *op-symbol-value* #xAD)
+(defvar *op-symbol-function* #xAE)
+(defvar *op-typep*        #xAF)
+
+;; Exception handling
+(defvar *op-push-catch*   #xB0)
+(defvar *op-pop-catch*    #xB1)
+(defvar *op-throw*        #xB2)
+(defvar *op-push-unwind*  #xB3)
+(defvar *op-pop-unwind*   #xB4)
+(defvar *op-floatp*       #xB5)
+
+;; Multiple values
+(defvar *op-values*       #xC0)
+(defvar *op-mv-bind*      #xC1)
+(defvar *op-mv-list*      #xC2)
+
+;; Numeric predicates
+(defvar *op-abs*          #xD0)
+(defvar *op-zerop*        #xD1)
+(defvar *op-plusp*        #xD2)
+(defvar *op-minusp*       #xD3)
+(defvar *op-evenp*        #xD4)
+(defvar *op-oddp*         #xD5)
+(defvar *op-read*         #xD6)
+(defvar *op-load*         #xD7)
+(defvar *op-read-from-string* #xD8)
+(defvar *op-eval*         #xD9)
+(defvar *op-gensym*       #xDA)
+(defvar *op-macroexpand*  #xDB)
+(defvar *op-princ*        #xDC)
+(defvar *op-terpri*       #xDD)
+(defvar *op-write-char*   #xDE)
+(defvar *op-char-upcase*  #xDF)
+(defvar *op-char-downcase* #xE0)
+(defvar *op-digit-char-p* #xE1)
+(defvar *op-alpha-char-p* #xE2)
+(defvar *op-parse-integer* #xE3)
+(defvar *op-write-to-string* #xE4)
+
+;; Bitwise
+(defvar *op-logand*       #xE5)
+(defvar *op-logior*       #xE6)
+(defvar *op-logxor*       #xE7)
+(defvar *op-lognot*       #xE8)
+(defvar *op-ash*          #xE9)
+(defvar *op-read-file*    #xEA)
+(defvar *op-write-file*   #xEB)
+(defvar *op-make-string*  #xEC)
+(defvar *op-string-to-list* #xED)
+(defvar *op-list-to-string* #xEE)
+(defvar *op-string-upcase* #xEF)
+(defvar *op-string-downcase* #xF0)
+(defvar *op-listp*        #xF1)
+(defvar *op-atom*         #xF2)
+(defvar *op-assoc*        #xF3)
+(defvar *op-equal*        #xF4)
+(defvar *op-eql*          #xF5)
+
+;; Halt
+(defvar *op-halt*         #xFF)
+
+;; =============================================================================
+;; Emitter State
+;; =============================================================================
+
+;; Emitter state: (code constants num-locals)
+;; code: list of bytes (reversed, will be reversed at finalize)
+;; constants: list of constant values (reversed)
+;; num-locals: number of local variables
+
+(defun make-emitter ()
+  "Create new emitter state"
+  (list nil nil 0))
+
+(defun emitter-code (e)
+  "Get code bytes (reversed)"
+  (car e))
+
+(defun emitter-constants (e)
+  "Get constant pool (reversed)"
+  (car (cdr e)))
+
+(defun emitter-num-locals (e)
+  "Get number of locals"
+  (car (cdr (cdr e))))
+
+(defun emitter-set-code (e code)
+  "Set code bytes"
+  (list code (emitter-constants e) (emitter-num-locals e)))
+
+(defun emitter-set-constants (e consts)
+  "Set constants"
+  (list (emitter-code e) consts (emitter-num-locals e)))
+
+(defun emitter-set-num-locals (e n)
+  "Set number of locals"
+  (list (emitter-code e) (emitter-constants e) n))
+
+;; =============================================================================
+;; Low-level emission helpers
+;; =============================================================================
+
+(defun emit-byte (e byte)
+  "Emit a single byte, return updated emitter"
+  (emitter-set-code e (cons byte (emitter-code e))))
+
+(defun emit-u8 (e val)
+  "Emit u8 value"
+  (emit-byte e (logand val #xFF)))
+
+(defun emit-u16 (e val)
+  "Emit u16 value (little-endian)"
+  (let ((e1 (emit-byte e (logand val #xFF))))
+    (emit-byte e1 (logand (ash val -8) #xFF))))
+
+(defun emit-i16 (e val)
+  "Emit i16 value (little-endian)"
+  (emit-u16 e (if (< val 0) (+ val 65536) val)))
+
+(defun emit-i32 (e val)
+  "Emit i32 value (little-endian)"
+  (let* ((e1 (emit-byte e (logand val #xFF)))
+         (e2 (emit-byte e1 (logand (ash val -8) #xFF)))
+         (e3 (emit-byte e2 (logand (ash val -16) #xFF))))
+    (emit-byte e3 (logand (ash val -24) #xFF))))
+
+(defun emit-op (e op)
+  "Emit opcode byte"
+  (emit-byte e op))
+
+(defun code-offset (e)
+  "Get current code offset (length of emitted bytes)"
+  (length (emitter-code e)))
+
+;; =============================================================================
+;; Constant pool
+;; =============================================================================
+
+(defun add-constant (e val)
+  "Add constant to pool, return (index . updated-emitter)"
+  (let ((consts (emitter-constants e)))
+    ;; Check if already in pool (linear search)
+    (let ((idx (find-constant consts val 0)))
+      (if idx
+          (cons idx e)
+          ;; Add new constant
+          (let ((new-idx (length consts)))
+            (cons new-idx (emitter-set-constants e (cons val consts))))))))
+
+(defun find-constant (consts val idx)
+  "Find constant in reversed list, return index or nil"
+  (if (null consts)
+      nil
+      (if (eql (car consts) val)
+          (- (length consts) 1)  ; Adjust for reversed list
+          (find-constant (cdr consts) val (+ idx 1)))))
+
+;; =============================================================================
+;; Jump handling
+;; =============================================================================
+
+(defun emit-jump (e op)
+  "Emit jump instruction with placeholder, return (offset . emitter)"
+  (let* ((e1 (emit-op e op))
+         (offset (code-offset e1))
+         (e2 (emit-i16 e1 0)))  ; Placeholder
+    (cons offset e2)))
+
+(defun patch-jump (e offset)
+  "Patch jump at offset to current position.
+   Returns updated emitter with patched code."
+  (let* ((code (reverse (emitter-code e)))  ; Get code in order
+         (current (length code))
+         (distance (- current (+ offset 2)))
+         (patched (patch-bytes code offset distance)))
+    (emitter-set-code e (reverse patched))))
+
+(defun patch-bytes (code offset distance)
+  "Patch two bytes at offset with i16 distance"
+  (let ((low (logand distance #xFF))
+        (high (logand (ash distance -8) #xFF)))
+    (patch-byte (patch-byte code offset low) (+ offset 1) high)))
+
+(defun patch-byte (code offset byte)
+  "Replace byte at offset in code list"
+  (patch-byte-helper code offset byte 0))
+
+(defun patch-byte-helper (code offset byte idx)
+  (if (null code)
+      nil
+      (cons (if (= idx offset) byte (car code))
+            (patch-byte-helper (cdr code) offset byte (+ idx 1)))))
+
+;; =============================================================================
+;; IR Emission
+;; =============================================================================
+
+(defun emit-ir (e ir)
+  "Emit bytecode for IR node, return updated emitter"
+  (match ir
+    ;; Literals
+    ((ir-lit value)
+     (emit-literal e value))
+    ((ir-quote-sym name)
+     (emit-quote-sym e name))
+
+    ;; Variables
+    ((ir-var name depth index)
+     (emit-var e depth index))
+    ((ir-global-ref name index)
+     (emit-global-ref e index))
+    ((ir-set name depth index value)
+     (emit-set e depth index value))
+    ((ir-define name index value)
+     (emit-define e index value))
+
+    ;; Binding forms
+    ((ir-let bindings body)
+     (emit-let e bindings body))
+    ((ir-lambda params rest-param captures body)
+     (emit-lambda e params rest-param captures body))
+
+    ;; Control flow
+    ((ir-if cond then-branch else-branch)
+     (emit-if e cond then-branch else-branch))
+    ((ir-progn forms)
+     (emit-progn e forms))
+    ((ir-loop cond body)
+     (emit-loop e cond body))
+
+    ;; Function calls
+    ((ir-call func args)
+     (emit-call e func args nil))
+    ((ir-tailcall func args)
+     (emit-call e func args t))
+    ((ir-apply func args-list)
+     (emit-apply e func args-list))
+
+    ;; Arithmetic - binary ops
+    ((ir-add left right)
+     (emit-binary-op e left right *op-add*))
+    ((ir-sub left right)
+     (emit-binary-op e left right *op-sub*))
+    ((ir-mul left right)
+     (emit-binary-op e left right *op-mul*))
+    ((ir-div left right)
+     (emit-binary-op e left right *op-div*))
+    ((ir-mod left right)
+     (emit-binary-op e left right *op-mod*))
+
+    ;; Comparison
+    ((ir-eq left right)
+     (emit-binary-op e left right *op-eq*))
+    ((ir-lt left right)
+     (emit-binary-op e left right *op-lt*))
+    ((ir-gt left right)
+     (emit-binary-op e left right *op-gt*))
+    ((ir-le left right)
+     (emit-binary-op e left right *op-le*))
+    ((ir-ge left right)
+     (emit-binary-op e left right *op-ge*))
+    ((ir-num-eq left right)
+     (emit-binary-op e left right *op-num-eq*))
+    ((ir-equal left right)
+     (emit-binary-op e left right *op-equal*))
+
+    ;; Logic
+    ((ir-not operand)
+     (emit-unary-op e operand *op-not*))
+
+    ;; List operations
+    ((ir-cons car-val cdr-val)
+     (emit-binary-op e car-val cdr-val *op-cons*))
+    ((ir-car operand)
+     (emit-unary-op e operand *op-car*))
+    ((ir-cdr operand)
+     (emit-unary-op e operand *op-cdr*))
+    ((ir-list elements)
+     (emit-list e elements))
+    ((ir-append left right)
+     (emit-binary-op e left right *op-append*))
+    ((ir-length operand)
+     (emit-unary-op e operand *op-list-length*))
+    ((ir-reverse operand)
+     (emit-unary-op e operand *op-list-reverse*))
+    ((ir-nth index list)
+     (emit-binary-op e index list *op-list-nth*))
+    ((ir-member item list)
+     (emit-binary-op e item list *op-list-member*))
+    ((ir-assoc key alist)
+     (emit-binary-op e key alist *op-assoc*))
+    ((ir-rplaca cons-cell value)
+     (emit-binary-op e cons-cell value *op-rplaca*))
+    ((ir-rplacd cons-cell value)
+     (emit-binary-op e cons-cell value *op-rplacd*))
+
+    ;; Type predicates
+    ((ir-consp operand)
+     (emit-unary-op e operand *op-consp*))
+    ((ir-symbolp operand)
+     (emit-unary-op e operand *op-symbolp*))
+    ((ir-numberp operand)
+     (emit-unary-op e operand *op-numberp*))
+    ((ir-stringp operand)
+     (emit-unary-op e operand *op-stringp*))
+    ((ir-vectorp operand)
+     (emit-unary-op e operand *op-vectorp*))
+    ((ir-closurep operand)
+     (emit-unary-op e operand *op-closurep*))
+    ((ir-keywordp operand)
+     (emit-unary-op e operand *op-keywordp*))
+    ((ir-nilp operand)
+     (emit-unary-op e operand *op-nilp*))
+    ((ir-listp operand)
+     (emit-unary-op e operand *op-listp*))
+    ((ir-atom operand)
+     (emit-unary-op e operand *op-atom*))
+
+    ;; Vector operations
+    ((ir-make-vec size init)
+     (emit-make-vec e size init))
+    ((ir-vec elements)
+     (emit-vec e elements))
+    ((ir-vec-ref vec index)
+     (emit-binary-op e vec index *op-vec-ref*))
+    ((ir-vec-set vec index value)
+     (emit-vec-set e vec index value))
+    ((ir-vec-len operand)
+     (emit-unary-op e operand *op-vec-len*))
+
+    ;; String operations
+    ((ir-str-ref str index)
+     (emit-binary-op e str index *op-str-ref*))
+    ((ir-str-len operand)
+     (emit-unary-op e operand *op-str-len*))
+    ((ir-str-concat left right)
+     (emit-binary-op e left right *op-str-concat*))
+    ((ir-str-eq left right)
+     (emit-binary-op e left right *op-str-eq*))
+    ((ir-substring str start end)
+     (emit-substring e str start end))
+
+    ;; Symbol operations
+    ((ir-intern operand)
+     (emit-unary-op e operand *op-intern*))
+    ((ir-sym-name operand)
+     (emit-unary-op e operand *op-sym-name*))
+    ((ir-gensym)
+     (emit-op e *op-gensym*))
+
+    ;; I/O
+    ((ir-print operand)
+     (emit-unary-op e operand *op-print*))
+    ((ir-princ operand)
+     (emit-unary-op e operand *op-princ*))
+    ((ir-terpri)
+     (emit-op e *op-terpri*))
+    ((ir-read)
+     (emit-op e *op-read*))
+    ((ir-read-char)
+     (emit-op e *op-read-char*))
+    ((ir-write-char operand)
+     (emit-unary-op e operand *op-write-char*))
+
+    ;; Error
+    ((ir-error operand)
+     (emit-unary-op e operand *op-error-user*))
+
+    ;; Exception handling
+    ((ir-catch tag body)
+     (emit-catch e tag body))
+    ((ir-throw tag value)
+     (emit-throw e tag value))
+    ((ir-unwind-protect protected cleanup)
+     (emit-unwind-protect e protected cleanup))
+
+    ;; Default case - should never reach here with well-formed IR
+    (_ (error "Unknown IR node type"))))
+
+;; =============================================================================
+;; Emission helpers
+;; =============================================================================
+
+(defun emit-literal (e val)
+  "Emit literal value"
+  (cond
+    ((null val) (emit-op e *op-push-nil*))
+    ((eq val t) (emit-op e *op-push-t*))
+    ((numberp val)
+     (if (and (>= val -2147483648) (<= val 2147483647))
+         ;; Fits in i32
+         (let ((e1 (emit-op e *op-push-i32*)))
+           (emit-i32 e1 val))
+         ;; Large number - use constant pool
+         (let* ((result (add-constant e val))
+                (idx (car result))
+                (e1 (cdr result))
+                (e2 (emit-op e1 *op-push-const*)))
+           (emit-u16 e2 idx))))
+    (t
+     ;; Other values (strings, etc.) go to constant pool
+     (let* ((result (add-constant e val))
+            (idx (car result))
+            (e1 (cdr result))
+            (e2 (emit-op e1 *op-push-const*)))
+       (emit-u16 e2 idx)))))
+
+(defun emit-quote-sym (e name)
+  "Emit quoted symbol - add to constant pool"
+  (let* ((result (add-constant e name))
+         (idx (car result))
+         (e1 (cdr result))
+         (e2 (emit-op e1 *op-push-const*)))
+    (emit-u16 e2 idx)))
+
+(defun emit-var (e depth index)
+  "Emit variable reference"
+  (if (= depth 0)
+      ;; Local variable
+      (let ((e1 (emit-op e *op-load-local*)))
+        (emit-u8 e1 index))
+      ;; Upvalue
+      (let* ((e1 (emit-op e *op-load-upvalue*))
+             (e2 (emit-u8 e1 depth)))
+        (emit-u8 e2 index))))
+
+(defun emit-global-ref (e index)
+  "Emit global variable reference"
+  (let ((e1 (emit-op e *op-load-global*)))
+    (emit-u16 e1 index)))
+
+(defun emit-set (e depth index value)
+  "Emit variable assignment"
+  ;; Emit value first
+  (let ((e1 (emit-ir e value)))
+    ;; Dup so setq returns the value
+    (let ((e2 (emit-op e1 *op-dup*)))
+      ;; Then store
+      (if (= depth 0)
+          (let ((e3 (emit-op e2 *op-store-local*)))
+            (emit-u8 e3 index))
+          (let* ((e3 (emit-op e2 *op-store-upvalue*))
+                 (e4 (emit-u8 e3 depth)))
+            (emit-u8 e4 index))))))
+
+(defun emit-define (e index value)
+  "Emit global definition"
+  ;; Emit value
+  (let ((e1 (emit-ir e value)))
+    ;; Store to global
+    (let* ((e2 (emit-op e1 *op-store-global*))
+           (e3 (emit-u16 e2 index)))
+      ;; Load it back (defun returns the value for REPL)
+      (let ((e4 (emit-op e3 *op-load-global*)))
+        (emit-u16 e4 index)))))
+
+(defun emit-let (e bindings body)
+  "Emit let expression"
+  ;; Emit binding values (they become locals on stack)
+  (let ((e1 (emit-let-bindings e bindings)))
+    ;; Emit body
+    (emit-ir e1 body)))
+
+(defun emit-let-bindings (e bindings)
+  "Emit binding value expressions"
+  (if (null bindings)
+      e
+      (let ((e1 (emit-ir e (binding-value (car bindings)))))
+        (emit-let-bindings e1 (cdr bindings)))))
+
+(defun emit-lambda (e params rest-param captures body)
+  "Emit lambda/closure.
+   Note: For full implementation, we need to emit a child chunk
+   and reference it. For now, emit a simplified inline version."
+  ;; TODO: Full closure compilation requires child chunks
+  ;; For now, this is a placeholder that would need integration
+  ;; with the runtime's closure creation
+  (error "Lambda emission requires child chunk support - not yet implemented"))
+
+(defun emit-if (e cond-expr then-branch else-branch)
+  "Emit if expression"
+  ;; Emit condition
+  (let ((e1 (emit-ir e cond-expr)))
+    ;; Jump to else if nil
+    (let* ((else-result (emit-jump e1 *op-jmp-nil*))
+           (else-offset (car else-result))
+           (e2 (cdr else-result)))
+      ;; Emit then branch
+      (let ((e3 (emit-ir e2 then-branch)))
+        ;; Jump over else
+        (let* ((end-result (emit-jump e3 *op-jmp*))
+               (end-offset (car end-result))
+               (e4 (cdr end-result)))
+          ;; Patch else jump to here
+          (let ((e5 (patch-jump e4 else-offset)))
+            ;; Emit else branch
+            (let ((e6 (emit-ir e5 else-branch)))
+              ;; Patch end jump
+              (patch-jump e6 end-offset))))))))
+
+(defun emit-progn (e forms)
+  "Emit sequence of expressions"
+  (if (null forms)
+      (emit-op e *op-push-nil*)
+      (emit-progn-forms e forms)))
+
+(defun emit-progn-forms (e forms)
+  "Emit forms, popping all but last result"
+  (if (null (cdr forms))
+      ;; Last form - keep result
+      (emit-ir e (car forms))
+      ;; Not last - emit and pop
+      (let* ((e1 (emit-ir e (car forms)))
+             (e2 (emit-op e1 *op-pop*)))
+        (emit-progn-forms e2 (cdr forms)))))
+
+(defun emit-loop (e cond-expr body)
+  "Emit while loop"
+  ;; Record loop start
+  (let ((loop-start (code-offset e)))
+    ;; Emit condition
+    (let ((e1 (emit-ir e cond-expr)))
+      ;; Jump out if nil
+      (let* ((exit-result (emit-jump e1 *op-jmp-nil*))
+             (exit-offset (car exit-result))
+             (e2 (cdr exit-result)))
+        ;; Emit body
+        (let ((e3 (emit-ir e2 body)))
+          ;; Pop body result
+          (let ((e4 (emit-op e3 *op-pop*)))
+            ;; Jump back to start
+            (let* ((back-result (emit-jump e4 *op-jmp*))
+                   (back-offset (car back-result))
+                   (e5 (cdr back-result)))
+              ;; Patch back jump to loop start
+              (let ((e6 (patch-jump-to e5 back-offset loop-start)))
+                ;; Patch exit jump to here
+                (let ((e7 (patch-jump e6 exit-offset)))
+                  ;; Push nil as loop result
+                  (emit-op e7 *op-push-nil*))))))))))
+
+(defun patch-jump-to (e offset target)
+  "Patch jump at offset to specific target"
+  (let* ((code (reverse (emitter-code e)))
+         (distance (- target (+ offset 2)))
+         (patched (patch-bytes code offset distance)))
+    (emitter-set-code e (reverse patched))))
+
+(defun emit-call (e func args is-tail)
+  "Emit function call"
+  ;; Emit function
+  (let ((e1 (emit-ir e func)))
+    ;; Emit arguments
+    (let ((e2 (emit-call-args e1 args)))
+      ;; Emit call/tail_call
+      (let ((e3 (emit-op e2 (if is-tail *op-tail-call* *op-call*))))
+        (emit-u8 e3 (length args))))))
+
+(defun emit-call-args (e args)
+  "Emit call arguments"
+  (if (null args)
+      e
+      (let ((e1 (emit-ir e (car args))))
+        (emit-call-args e1 (cdr args)))))
+
+(defun emit-apply (e func args-list)
+  "Emit apply"
+  ;; Emit function then args list
+  (let* ((e1 (emit-ir e func))
+         (e2 (emit-ir e1 args-list)))
+    (emit-op e2 *op-apply*)))
+
+(defun emit-binary-op (e left right opcode)
+  "Emit binary operation"
+  (let* ((e1 (emit-ir e left))
+         (e2 (emit-ir e1 right)))
+    (emit-op e2 opcode)))
+
+(defun emit-unary-op (e operand opcode)
+  "Emit unary operation"
+  (let ((e1 (emit-ir e operand)))
+    (emit-op e1 opcode)))
+
+(defun emit-list (e elements)
+  "Emit list construction"
+  ;; Emit elements in order
+  (let ((e1 (emit-list-elements e elements)))
+    ;; Make list opcode with count
+    (let ((e2 (emit-op e1 *op-make-list*)))
+      (emit-u8 e2 (length elements)))))
+
+(defun emit-list-elements (e elements)
+  (if (null elements)
+      e
+      (let ((e1 (emit-ir e (car elements))))
+        (emit-list-elements e1 (cdr elements)))))
+
+(defun emit-make-vec (e size init)
+  "Emit vector creation"
+  (let ((e1 (emit-ir e size)))
+    (let ((e2 (if init
+                  (emit-ir e1 init)
+                  (emit-op e1 *op-push-nil*))))
+      (let ((e3 (emit-op e2 *op-make-vec*)))
+        (emit-u16 e3 0)))))
+
+(defun emit-vec (e elements)
+  "Emit vector from elements"
+  (let ((e1 (emit-list-elements e elements)))
+    (let ((e2 (emit-op e1 *op-make-vec-n*)))
+      (emit-u8 e2 (length elements)))))
+
+(defun emit-vec-set (e vec index value)
+  "Emit vector-set"
+  (let* ((e1 (emit-ir e vec))
+         (e2 (emit-ir e1 index))
+         (e3 (emit-ir e2 value)))
+    (emit-op e3 *op-vec-set*)))
+
+(defun emit-substring (e str start end)
+  "Emit substring"
+  (let* ((e1 (emit-ir e str))
+         (e2 (emit-ir e1 start))
+         (e3 (emit-ir e2 end)))
+    (emit-op e3 *op-substring*)))
+
+(defun emit-catch (e tag body)
+  "Emit catch block"
+  ;; Emit tag
+  (let ((e1 (emit-ir e tag)))
+    ;; push_catch with forward jump to handler/end
+    (let* ((catch-result (emit-jump e1 *op-push-catch*))
+           (catch-offset (car catch-result))
+           (e2 (cdr catch-result)))
+      ;; Emit body
+      (let ((e3 (emit-ir e2 body)))
+        ;; Normal exit: pop catch frame
+        (let ((e4 (emit-op e3 *op-pop-catch*)))
+          ;; Jump over throw handler
+          (let* ((end-result (emit-jump e4 *op-jmp*))
+                 (end-offset (car end-result))
+                 (e5 (cdr end-result)))
+            ;; Patch catch jump to here
+            (let ((e6 (patch-jump e5 catch-offset)))
+              ;; Thrown value is already on stack
+              ;; Patch end jump
+              (patch-jump e6 end-offset))))))))
+
+(defun emit-throw (e tag value)
+  "Emit throw"
+  (let* ((e1 (emit-ir e tag))
+         (e2 (emit-ir e1 value)))
+    (emit-op e2 *op-throw*)))
+
+(defun emit-unwind-protect (e protected cleanup)
+  "Emit unwind-protect"
+  ;; Emit push_unwind with forward jump to cleanup
+  (let* ((unwind-result (emit-jump e *op-push-unwind*))
+         (unwind-offset (car unwind-result))
+         (e1 (cdr unwind-result)))
+    ;; Emit protected form
+    (let ((e2 (emit-ir e1 protected)))
+      ;; Patch push_unwind to point here
+      (let ((e3 (patch-jump e2 unwind-offset)))
+        ;; Emit cleanup
+        (let ((e4 (emit-ir e3 cleanup)))
+          ;; Pop cleanup result
+          (let ((e5 (emit-op e4 *op-pop*)))
+            ;; pop_unwind
+            (let ((e6 (emit-op e5 *op-pop-unwind*)))
+              ;; Pop unwind has 2-byte operand (unused)
+              (emit-u16 e6 0))))))))
+
+;; =============================================================================
+;; Finalization
+;; =============================================================================
+
+(defun finalize-emitter (e)
+  "Finalize emitter, return (code . constants) with code/constants in order.
+   Adds implicit return if needed."
+  (let* ((code (reverse (emitter-code e)))
+         (constants (reverse (emitter-constants e))))
+    ;; Add ret if not empty and doesn't end with ret
+    (if (null code)
+        (cons (list *op-push-nil* *op-ret*) constants)
+        (if (= (list-last-item code) *op-ret*)
+            (cons code constants)
+            (cons (append code (list *op-ret*)) constants)))))
+
+(defun list-last-item (lst)
+  "Get last item of list"
+  (if (null (cdr lst))
+      (car lst)
+      (list-last-item (cdr lst))))
+
+;; =============================================================================
+;; Top-level interface
+;; =============================================================================
+
+(defun emit-top (ir)
+  "Emit bytecode for top-level IR expression.
+   Returns (code . constants) where code is a list of bytes."
+  (let* ((e (make-emitter))
+         (e1 (emit-ir e ir)))
+    (finalize-emitter e1)))
