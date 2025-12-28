@@ -226,6 +226,62 @@ pub const Vm = struct {
         self.macroexpand_context = context;
     }
 
+    /// Call a closure with arguments already on stack
+    /// Expects args to be pushed already at positions [0..argc)
+    pub fn callClosure(self: *Vm, closure: *const runtime.Closure, argc: u8) VmError!Value {
+        // Save current state for restoration
+        const saved_chunk = self.chunk;
+        const saved_ip = self.ip;
+        const saved_fp = self.fp;
+        const saved_sp = self.sp;
+        const saved_chunk_pool = self.chunk_pool;
+        const saved_chunk_base = self.chunk_base;
+
+        // Set up to execute the closure's chunk directly (like vm.run)
+        const closure_chunk: *const Chunk = @ptrCast(@alignCast(closure.code));
+        self.chunk = closure_chunk;
+        self.ip = 0;
+        self.fp = 0; // No frame - ret at fp=0 returns immediately
+
+        // Args are already on stack as locals (at positions 0..argc)
+        // Reset sp to argc (in case it was different)
+        self.sp = argc;
+        // If closure needs more locals, push nil for them
+        while (self.sp < closure_chunk.num_locals) {
+            try self.push(Value.nil);
+        }
+
+        // Store closure for capture access (use frames[0] as storage)
+        self.frames[0] = .{
+            .chunk = undefined,
+            .return_ip = 0,
+            .bp = 0,
+            .closure = closure,
+        };
+
+        // Execute until return
+        const result = self.execute() catch |err| {
+            // Restore state on error
+            self.chunk = saved_chunk;
+            self.ip = saved_ip;
+            self.fp = saved_fp;
+            self.sp = saved_sp;
+            self.chunk_pool = saved_chunk_pool;
+            self.chunk_base = saved_chunk_base;
+            return err;
+        };
+
+        // Restore state
+        self.chunk = saved_chunk;
+        self.ip = saved_ip;
+        self.fp = saved_fp;
+        self.sp = saved_sp;
+        self.chunk_pool = saved_chunk_pool;
+        self.chunk_base = saved_chunk_base;
+
+        return result;
+    }
+
     /// Run a chunk to completion
     pub fn run(self: *Vm, chunk: *const Chunk) VmError!Value {
         self.chunk = chunk;
@@ -1968,7 +2024,7 @@ pub const Vm = struct {
     // Stack operations
     // ========================================================================
 
-    fn push(self: *Vm, val: Value) VmError!void {
+    pub fn push(self: *Vm, val: Value) VmError!void {
         if (self.sp >= STACK_SIZE) return error.StackOverflow;
         self.stack[self.sp] = val;
         self.sp += 1;

@@ -21,11 +21,17 @@ const Value = runtime.Value;
 const Cons = runtime.Cons;
 const Symbol = runtime.Symbol;
 const Heap = runtime.Heap;
+const Closure = runtime.Closure;
 const types = @import("../types/types.zig");
 const Type = types.Type;
 const TypeEnv = types.TypeEnv;
 const OccurrenceCtx = types.OccurrenceCtx;
 const TypeChecker = types.TypeChecker;
+const vm_mod = @import("../interp/vm.zig");
+const Vm = vm_mod.Vm;
+const bytecode = @import("../bytecode/bytecode.zig");
+const Emitter = bytecode.Emitter;
+const Chunk = bytecode.Chunk;
 
 pub const CompileError = error{
     InvalidSyntax,
@@ -689,6 +695,10 @@ pub const Compiler = struct {
     /// Macro table: maps macro name to closure (expander function)
     /// When a form (macro-name args...) is compiled, the macro is expanded first
     macro_table: std.StringHashMap(Value),
+    /// Optional VM for compile-time macro expansion
+    vm: ?*Vm,
+    /// Heap for creating runtime values during macro expansion
+    heap: ?*Heap,
 
     /// ADT variant definition
     pub const Variant = struct {
@@ -708,6 +718,8 @@ pub const Compiler = struct {
             .boxed_vars = null,
             .defined_types = std.StringHashMap([]const Variant).init(allocator),
             .macro_table = std.StringHashMap(Value).init(allocator),
+            .vm = null,
+            .heap = null,
         };
     }
 
@@ -724,7 +736,14 @@ pub const Compiler = struct {
             .boxed_vars = null,
             .defined_types = std.StringHashMap([]const Variant).init(allocator),
             .macro_table = std.StringHashMap(Value).init(allocator),
+            .vm = null,
+            .heap = heap,
         };
+    }
+
+    /// Set VM for compile-time macro expansion
+    pub fn setVm(self: *Compiler, vm: *Vm) void {
+        self.vm = vm;
     }
 
     pub fn deinit(self: *Compiler) void {
@@ -1156,6 +1175,15 @@ pub const Compiler = struct {
                 };
             }
 
+            // Check for macros - expand at compile time if VM is available
+            if (self.macro_table.get(name)) |macro_def| {
+                if (self.vm) |vm| {
+                    const expanded = self.expandMacro(macro_def, tail, vm) catch return error.InvalidSyntax;
+                    return self.compileWithTail(expanded, env, in_tail);
+                }
+                // No VM - can't expand macro, treat as function call
+            }
+
             // Check for primitives
             if (self.compilePrimitive(head, tail, env)) |prim| {
                 return prim;
@@ -1166,6 +1194,127 @@ pub const Compiler = struct {
 
         // Function call - pass tail position
         return self.compileCallWithTail(head, tail, env, in_tail);
+    }
+
+    /// Expand a macro by calling its expander function with the arguments
+    fn expandMacro(self: *Compiler, macro_def: Value, args: Value, vm: *Vm) !Value {
+        const heap = self.heap orelse return error.InvalidSyntax;
+
+        // macro_def is ((params...) body...)
+        // Create a lambda: (lambda (params...) body...)
+        if (!macro_def.isCons()) return error.InvalidSyntax;
+        const def_cons = macro_def.toPtr(Cons);
+        const params = def_cons.car;
+        const body_list = def_cons.cdr;
+
+        // Get first body form (for simple single-body macros)
+        if (!body_list.isCons()) return error.InvalidSyntax;
+        const body_cons = body_list.toPtr(Cons);
+        const body = body_cons.car;
+
+        // Build (lambda (params...) body) and compile it
+        const lambda_sym = heap.intern("lambda") orelse return error.OutOfMemory;
+        // Build: (lambda params body)
+        const body_cell = heap.allocCons(body, Value.nil) orelse return error.OutOfMemory;
+        const params_body = heap.allocCons(params, body_cell) orelse return error.OutOfMemory;
+        const lambda_list = heap.allocCons(lambda_sym, params_body) orelse return error.OutOfMemory;
+
+        // Compile the lambda to get a closure
+        var macro_compiler = Compiler.initWithHeap(self.allocator, heap);
+        defer macro_compiler.deinit();
+        macro_compiler.vm = vm;
+
+        var empty_env = Env.init(self.allocator, null);
+        const lambda_ir = macro_compiler.compile(lambda_list, &empty_env) catch
+            return error.InvalidSyntax;
+
+        // Emit to bytecode
+        var emitter = Emitter.initWithHeap(self.allocator, heap);
+        emitter.emit(lambda_ir) catch {
+            emitter.deinit();
+            return error.InvalidSyntax;
+        };
+
+        // Get child chunks and main chunk
+        const child_chunks = emitter.getChildChunks() catch {
+            emitter.deinit();
+            return error.OutOfMemory;
+        };
+        var chunk = emitter.finalize() catch {
+            self.allocator.free(child_chunks);
+            emitter.deinit();
+            return error.OutOfMemory;
+        };
+        emitter.deinit();
+
+        // Create temporary chunk pool for macro execution
+        var chunk_ptrs = self.allocator.alloc(*Chunk, child_chunks.len) catch {
+            self.allocator.free(child_chunks);
+            return error.OutOfMemory;
+        };
+        defer self.allocator.free(chunk_ptrs);
+
+        for (child_chunks, 0..) |*child_chunk, i| {
+            const chunk_ptr = self.allocator.create(Chunk) catch {
+                // Clean up already allocated
+                for (chunk_ptrs[0..i]) |ptr| {
+                    self.allocator.destroy(ptr);
+                }
+                self.allocator.free(child_chunks);
+                return error.OutOfMemory;
+            };
+            chunk_ptr.* = child_chunk.*;
+            chunk_ptrs[i] = chunk_ptr;
+        }
+        self.allocator.free(child_chunks);
+
+        // Set chunk pool and run
+        vm.setChunkPool(chunk_ptrs);
+        const closure_val = vm.run(&chunk) catch {
+            for (chunk_ptrs) |ptr| {
+                self.allocator.destroy(ptr);
+            }
+            return error.InvalidSyntax;
+        };
+
+        if (!closure_val.isClosure()) {
+            for (chunk_ptrs) |ptr| {
+                self.allocator.destroy(ptr);
+            }
+            return error.InvalidSyntax;
+        }
+        const closure = closure_val.toPtr(Closure);
+
+        // Now call the closure with the macro arguments
+        // Push args onto stack, then call
+        var arg_count: u8 = 0;
+        var arg_list = args;
+        while (arg_list.isCons()) {
+            const arg_cons = arg_list.toPtr(Cons);
+            vm.push(arg_cons.car) catch {
+                for (chunk_ptrs) |ptr| {
+                    self.allocator.destroy(ptr);
+                }
+                return error.InvalidSyntax;
+            };
+            arg_count += 1;
+            arg_list = arg_cons.cdr;
+        }
+
+        // Call the macro expander
+        const result = vm.callClosure(closure, arg_count) catch {
+            for (chunk_ptrs) |ptr| {
+                self.allocator.destroy(ptr);
+            }
+            return error.InvalidSyntax;
+        };
+
+        // Clean up temporary chunks (closure is no longer needed)
+        for (chunk_ptrs) |ptr| {
+            self.allocator.destroy(ptr);
+        }
+
+        return result;
     }
 
     fn compileIf(self: *Compiler, args: Value, env: *const Env) CompileError!*Ir {

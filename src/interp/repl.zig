@@ -90,6 +90,8 @@ pub const Repl = struct {
         self.vm.setEvalCallback(&evalCallback, @ptrCast(self));
         // Set up macroexpand callback
         self.vm.setMacroexpandCallback(&macroexpandCallback, @ptrCast(self));
+        // Set VM on compiler for macro expansion
+        self.compiler.setVm(&self.vm);
     }
 
     /// Callback for (load "filename") from VM
