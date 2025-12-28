@@ -3481,6 +3481,8 @@ pub const Compiler = struct {
         if (s == b.numberp.raw or s == b.@"number?".raw) return self.compileUnaryPrim(args, env, .numberp);
         if (s == b.stringp.raw or s == b.@"string?".raw) return self.compileUnaryPrim(args, env, .stringp);
         if (s == b.vectorp.raw or s == b.@"vector?".raw) return self.compileUnaryPrim(args, env, .vectorp);
+        if (s == b.closurep.raw or s == b.@"closure?".raw) return self.compileUnaryPrim(args, env, .closurep);
+        if (s == b.keywordp.raw or s == b.@"keyword?".raw) return self.compileUnaryPrim(args, env, .keywordp);
         if (s == b.null.raw or s == b.@"null?".raw) return self.compileUnaryPrim(args, env, .nilp);
         if (s == b.not.raw) return self.compileUnaryPrim(args, env, .not);
         if (s == b.characterp.raw or s == b.@"character?".raw) return self.compileUnaryPrim(args, env, .characterp);
@@ -3527,6 +3529,7 @@ pub const Compiler = struct {
         if (s == b.@"vector-ref".raw or s == b.aref.raw) return self.compileBinaryPrim(args, env, .vec_ref);
         if (s == b.@"vector-length".raw) return self.compileUnaryPrim(args, env, .vec_len);
         if (s == b.@"make-vector".raw) return self.compileMakeVector(args, env);
+        if (s == b.@"vector-set!".raw) return self.compileVectorSet(args, env);
         if (s == b.vector.raw) return self.compileVectorPrim(args, env);
 
         // String operations
@@ -3588,7 +3591,7 @@ pub const Compiler = struct {
         return error.InvalidSyntax; // Not a known primitive
     }
 
-    const PrimTag = enum { add, sub, mul, div, mod, eq, equal, eql, lt, gt, le, ge, num_eq, cons, car, cdr, append, length, reverse, nth, nthcdr, last, member, assoc, rplaca, rplacd, consp, symbolp, numberp, stringp, vectorp, nilp, not, vec_ref, vec_len, make_box, box_ref, box_set, str_ref, str_len, str_eq, str_concat, print, princ, terpri, write_char, random, intern, sym_name, type_of, error_user, characterp, floatp, listp, atom, char_code, code_char, char_eq, char_lt, char_gt, char_upcase, char_downcase, digit_char_p, alpha_char_p, read_char, peek_char, read, read_from_string, load, unread_char, eval, gensym, macroexpand, parse_integer, write_to_string, logand, logior, logxor, lognot, ash, read_file, write_file, make_string, string_to_list, list_to_string, string_upcase, string_downcase, boundp, fboundp, symbol_value, symbol_function, typep, abs, zerop, plusp, minusp, evenp, oddp };
+    const PrimTag = enum { add, sub, mul, div, mod, eq, equal, eql, lt, gt, le, ge, num_eq, cons, car, cdr, append, length, reverse, nth, nthcdr, last, member, assoc, rplaca, rplacd, consp, symbolp, numberp, stringp, vectorp, closurep, keywordp, nilp, not, vec_ref, vec_len, make_box, box_ref, box_set, str_ref, str_len, str_eq, str_concat, print, princ, terpri, write_char, random, intern, sym_name, type_of, error_user, characterp, floatp, listp, atom, char_code, code_char, char_eq, char_lt, char_gt, char_upcase, char_downcase, digit_char_p, alpha_char_p, read_char, peek_char, read, read_from_string, load, unread_char, eval, gensym, macroexpand, parse_integer, write_to_string, logand, logior, logxor, lognot, ash, read_file, write_file, make_string, string_to_list, list_to_string, string_upcase, string_downcase, boundp, fboundp, symbol_value, symbol_function, typep, abs, zerop, plusp, minusp, evenp, oddp };
 
     /// Compile variadic arithmetic: +, -, *, /
     /// identity: for + (0), * (1). null means no identity (- and / need args)
@@ -3784,6 +3787,8 @@ pub const Compiler = struct {
                 node.* = .{ .vectorp = .{ .operand = operand } };
                 break :blk node;
             },
+            .closurep => self.builder.closurep(operand),
+            .keywordp => self.builder.keywordp(operand),
             .random => blk: {
                 const node = self.allocator.create(Ir) catch return error.OutOfMemory;
                 node.* = .{ .random = .{ .operand = operand } };
@@ -4105,6 +4110,23 @@ pub const Compiler = struct {
         }
 
         return self.builder.vec(elements.items) catch return error.OutOfMemory;
+    }
+
+    fn compileVectorSet(self: *Compiler, args: Value, env: *const Env) CompileError!*Ir {
+        // (vector-set! vec index value)
+        if (!args.isCons()) return error.InvalidSyntax;
+        const cons1 = args.toPtr(Cons);
+        const vec_ir = try self.compile(cons1.car, env);
+
+        if (!cons1.cdr.isCons()) return error.InvalidSyntax;
+        const cons2 = cons1.cdr.toPtr(Cons);
+        const idx_ir = try self.compile(cons2.car, env);
+
+        if (!cons2.cdr.isCons()) return error.InvalidSyntax;
+        const cons3 = cons2.cdr.toPtr(Cons);
+        const val_ir = try self.compile(cons3.car, env);
+
+        return self.builder.vecSet(vec_ir, idx_ir, val_ir) catch return error.OutOfMemory;
     }
 
     fn compileGethash(self: *Compiler, args: Value, env: *const Env) CompileError!*Ir {

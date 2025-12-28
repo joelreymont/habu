@@ -823,6 +823,18 @@ pub const IrBuilder = struct {
         return node;
     }
 
+    pub fn closurep(self: IrBuilder, operand: *const Ir) !*Ir {
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .closurep = .{ .operand = operand } };
+        return node;
+    }
+
+    pub fn keywordp(self: IrBuilder, operand: *const Ir) !*Ir {
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .keywordp = .{ .operand = operand } };
+        return node;
+    }
+
     pub fn assoc(self: IrBuilder, key: *const Ir, alist: *const Ir) !*Ir {
         const node = try self.allocator.create(Ir);
         node.* = .{ .assoc = .{ .left = key, .right = alist } };
@@ -1148,6 +1160,12 @@ pub const IrBuilder = struct {
     pub fn vecLen(self: IrBuilder, v: *const Ir) !*Ir {
         const node = try self.allocator.create(Ir);
         node.* = .{ .vec_len = .{ .operand = v } };
+        return node;
+    }
+
+    pub fn vecSet(self: IrBuilder, v: *const Ir, index: *const Ir, val: *const Ir) !*Ir {
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .vec_set = .{ .vec = v, .index = index, .value = val } };
         return node;
     }
 
