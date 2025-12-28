@@ -321,6 +321,11 @@ pub const Ir = union(enum) {
     alpha_char_p: UnaryOp, // Check if char is alphabetic
     parse_integer: UnaryOp, // Parse string to integer
     write_to_string: UnaryOp, // Convert value to string
+    logand: BinaryOp, // Bitwise AND
+    logior: BinaryOp, // Bitwise OR
+    logxor: BinaryOp, // Bitwise XOR
+    lognot: UnaryOp, // Bitwise NOT
+    ash: BinaryOp, // Arithmetic shift
     boundp: UnaryOp, // Check if symbol has global binding
     fboundp: UnaryOp, // Check if symbol has function binding
     symbol_value: UnaryOp, // Get symbol's global value
@@ -920,6 +925,36 @@ pub const IrBuilder = struct {
     pub fn writeToString(self: IrBuilder, val: *const Ir) !*Ir {
         const node = try self.allocator.create(Ir);
         node.* = .{ .write_to_string = .{ .operand = val } };
+        return node;
+    }
+
+    pub fn logand(self: IrBuilder, left: *const Ir, right: *const Ir) !*Ir {
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .logand = .{ .left = left, .right = right } };
+        return node;
+    }
+
+    pub fn logior(self: IrBuilder, left: *const Ir, right: *const Ir) !*Ir {
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .logior = .{ .left = left, .right = right } };
+        return node;
+    }
+
+    pub fn logxor(self: IrBuilder, left: *const Ir, right: *const Ir) !*Ir {
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .logxor = .{ .left = left, .right = right } };
+        return node;
+    }
+
+    pub fn lognot(self: IrBuilder, val: *const Ir) !*Ir {
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .lognot = .{ .operand = val } };
+        return node;
+    }
+
+    pub fn ash(self: IrBuilder, n: *const Ir, count: *const Ir) !*Ir {
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .ash = .{ .left = n, .right = count } };
         return node;
     }
 

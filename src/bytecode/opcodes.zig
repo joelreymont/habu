@@ -570,6 +570,30 @@ pub const Op = enum(u8) {
     write_to_string = 0xE4,
 
     // ========================================================================
+    // Bitwise operations
+    // ========================================================================
+
+    /// Bitwise AND
+    /// ( a b -- a&b )
+    logand = 0xE5,
+
+    /// Bitwise OR
+    /// ( a b -- a|b )
+    logior = 0xE6,
+
+    /// Bitwise XOR
+    /// ( a b -- a^b )
+    logxor = 0xE7,
+
+    /// Bitwise NOT
+    /// ( a -- ~a )
+    lognot = 0xE8,
+
+    /// Arithmetic shift (positive=left, negative=right)
+    /// ( n count -- shifted )
+    ash = 0xE9,
+
+    // ========================================================================
     // Dynamic exception handling (catch/throw)
     // ========================================================================
 
@@ -651,6 +675,7 @@ pub const Op = enum(u8) {
             .mv_list, .read, .load, .read_from_string, .eval, .gensym, .macroexpand, .princ,
             .terpri, .write_char, .char_upcase, .char_downcase,
             .digit_char_p, .alpha_char_p, .parse_integer, .write_to_string,
+            .logand, .logior, .logxor, .lognot, .ash,
             => 0,
 
             // 1 byte operand

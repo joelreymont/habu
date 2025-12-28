@@ -832,6 +832,45 @@ pub const Vm = struct {
                     const result = self.heap.allocString(written) orelse return error.OutOfMemory;
                     try self.push(result);
                 },
+                .logand => {
+                    const b = try self.pop();
+                    const a = try self.pop();
+                    if (!a.isFixnum() or !b.isFixnum()) return error.TypeMismatch;
+                    const result = a.toFixnum() & b.toFixnum();
+                    try self.push(Value.makeFixnum(result));
+                },
+                .logior => {
+                    const b = try self.pop();
+                    const a = try self.pop();
+                    if (!a.isFixnum() or !b.isFixnum()) return error.TypeMismatch;
+                    const result = a.toFixnum() | b.toFixnum();
+                    try self.push(Value.makeFixnum(result));
+                },
+                .logxor => {
+                    const b = try self.pop();
+                    const a = try self.pop();
+                    if (!a.isFixnum() or !b.isFixnum()) return error.TypeMismatch;
+                    const result = a.toFixnum() ^ b.toFixnum();
+                    try self.push(Value.makeFixnum(result));
+                },
+                .lognot => {
+                    const a = try self.pop();
+                    if (!a.isFixnum()) return error.TypeMismatch;
+                    const result = ~a.toFixnum();
+                    try self.push(Value.makeFixnum(result));
+                },
+                .ash => {
+                    const count_val = try self.pop();
+                    const n_val = try self.pop();
+                    if (!n_val.isFixnum() or !count_val.isFixnum()) return error.TypeMismatch;
+                    const n = n_val.toFixnum();
+                    const count = count_val.toFixnum();
+                    const result = if (count >= 0)
+                        n << @intCast(@min(count, 63))
+                    else
+                        n >> @intCast(@min(-count, 63));
+                    try self.push(Value.makeFixnum(result));
+                },
                 .random => {
                     const n = try self.pop();
                     const result = arith.random(n);
