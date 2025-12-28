@@ -17,6 +17,7 @@ const arith = @import("../runtime/primitives/arith.zig");
 const io = @import("../runtime/primitives/io.zig");
 const stringPrims = @import("../runtime/primitives/string.zig");
 const HashTable = runtime.HashTable;
+const Vector = runtime.Vector;
 const compiler = @import("../compiler/compiler.zig");
 const GlobalEnv = compiler.GlobalEnv;
 const Parser = @import("../reader/parser.zig").Parser;
@@ -573,10 +574,16 @@ pub const Vm = struct {
                 // Vector operations
                 .make_vec => {
                     _ = self.readU16(); // Size operand (unused, size from stack)
+                    const init_val = try self.pop();
                     const size_val = try self.pop();
                     if (!size_val.isFixnum()) return error.TypeMismatch;
                     const size: usize = @intCast(size_val.toFixnum());
                     const vec = self.heap.allocVector(size, size) orelse return error.OutOfMemory;
+                    // Fill with init value (nil or specified)
+                    const vec_obj = vec.toPtr(Vector);
+                    for (0..size) |i| {
+                        vec_obj.data[i] = init_val;
+                    }
                     try self.push(vec);
                 },
                 .vec_ref => {

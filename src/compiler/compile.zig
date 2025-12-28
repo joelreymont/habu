@@ -2930,6 +2930,7 @@ pub const Compiler = struct {
         // Vector operations
         if (s == b.@"vector-ref".raw) return self.compileBinaryPrim(args, env, .vec_ref);
         if (s == b.@"vector-length".raw) return self.compileUnaryPrim(args, env, .vec_len);
+        if (s == b.@"make-vector".raw) return self.compileMakeVector(args, env);
 
         // String operations
         if (s == b.@"string-ref".raw) return self.compileBinaryPrim(args, env, .str_ref);
@@ -3363,6 +3364,21 @@ pub const Compiler = struct {
         const node = self.allocator.create(Ir) catch return error.OutOfMemory;
         node.* = .{ .make_hash = .{ .capacity = 16 } };
         return node;
+    }
+
+    fn compileMakeVector(self: *Compiler, args: Value, env: *const Env) CompileError!*Ir {
+        // (make-vector size &optional init)
+        if (!args.isCons()) return error.InvalidSyntax;
+        const cons1 = args.toPtr(Cons);
+        const size_ir = try self.compile(cons1.car, env);
+
+        var init_ir: ?*const Ir = null;
+        if (cons1.cdr.isCons()) {
+            const cons2 = cons1.cdr.toPtr(Cons);
+            init_ir = try self.compile(cons2.car, env);
+        }
+
+        return self.builder.vecNew(size_ir, init_ir) catch return error.OutOfMemory;
     }
 
     fn compileGethash(self: *Compiler, args: Value, env: *const Env) CompileError!*Ir {

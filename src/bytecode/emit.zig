@@ -1060,10 +1060,11 @@ pub const Emitter = struct {
         try self.emit(v.size);
         if (v.init) |init_val| {
             try self.emit(init_val);
-            // TODO: Need vec_new_init opcode
+        } else {
+            try self.emitOp(.push_nil);
         }
         try self.emitOp(.make_vec);
-        try self.emitU16(0); // Size from stack
+        try self.emitU16(0); // Size from stack (u16 unused)
     }
 
     fn emitVecSet(self: *Emitter, v: anytype) EmitError!void {
