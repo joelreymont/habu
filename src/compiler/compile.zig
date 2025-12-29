@@ -41,6 +41,7 @@ pub const Error = error{
     InvalidIf,
     InvalidSet,
     OutOfMemory,
+    NoSpaceLeft, // Buffer overflow in name generation
 };
 
 /// Pre-interned special form symbols for identity comparison
@@ -972,27 +973,27 @@ pub const Compiler = struct {
     fn compileWithTail(self: *Compiler, expr: Value, env: *const Env, in_tail: bool) Error!*Ir {
         // Nil
         if (expr.isNil()) {
-            return self.builder.lit(Value.nil) catch return error.OutOfMemory;
+            return try self.builder.lit(Value.nil);
         }
 
         // Fixnum
         if (expr.isFixnum()) {
-            return self.builder.lit(expr) catch return error.OutOfMemory;
+            return try self.builder.lit(expr);
         }
 
         // Float
         if (expr.isFloat()) {
-            return self.builder.lit(expr) catch return error.OutOfMemory;
+            return try self.builder.lit(expr);
         }
 
         // String
         if (expr.isString()) {
-            return self.builder.lit(expr) catch return error.OutOfMemory;
+            return try self.builder.lit(expr);
         }
 
         // Character
         if (expr.isCharacter()) {
-            return self.builder.lit(expr) catch return error.OutOfMemory;
+            return try self.builder.lit(expr);
         }
 
         // Symbol (variable reference)
@@ -1007,7 +1008,7 @@ pub const Compiler = struct {
                 // If this variable is boxed, wrap with box-ref
                 if (self.boxed_vars) |bv| {
                     if (bv.contains(name)) {
-                        const box_ref = self.allocator.create(Ir) catch return error.OutOfMemory;
+                        const box_ref = try self.allocator.create(Ir);
                         box_ref.* = .{ .box_ref = .{ .operand = var_ir } };
                         return box_ref;
                     }
@@ -1016,9 +1017,8 @@ pub const Compiler = struct {
             }
             // Check globals - if not found, assume it will be defined later (late binding)
             const idx = self.globals.lookup(name) orelse
-                (self.globals.define(name) catch return error.OutOfMemory);
-            return self.builder.globalRef(name, idx) catch
-                return error.OutOfMemory;
+                (try self.globals.define(name));
+            return try self.builder.globalRef(name, idx);
         }
 
         // List (special form or function call)
@@ -1028,7 +1028,7 @@ pub const Compiler = struct {
 
         // Keyword - just return as literal
         if (expr.isKeyword()) {
-            return self.builder.lit(expr) catch return error.OutOfMemory;
+            return try self.builder.lit(expr);
         }
 
         return error.InvalidSyntax;
@@ -1063,6 +1063,7 @@ pub const Compiler = struct {
         function,
         quasiquote,
         @"while",
+        loop,
         define,
         defvar,
         defun,
@@ -1108,6 +1109,7 @@ pub const Compiler = struct {
         .{ "function", .function },
         .{ "quasiquote", .quasiquote },
         .{ "while", .@"while" },
+        .{ "loop", .loop },
         .{ "define", .define },
         .{ "defvar", .defvar },
         .{ "defun", .defun },
@@ -1167,6 +1169,7 @@ pub const Compiler = struct {
                     .function => self.compileFunction(tail, env),
                     .quasiquote => self.compileQuasiquote(tail, env),
                     .@"while" => self.compileWhile(tail, env),
+                    .loop => self.compileLoop(tail, env),
                     .define, .defvar => self.compileDefine(tail, env),
                     .defun => self.compileDefun(tail, env),
                     .the => self.compileThe(tail, env),
@@ -1370,7 +1373,7 @@ pub const Compiler = struct {
             break :blk try self.compileWithTail(else_expr, env, in_tail);
         };
 
-        return self.builder.ifExpr(test_ir, then_ir, else_ir) catch return error.OutOfMemory;
+        return try self.builder.ifExpr(test_ir, then_ir, else_ir);
     }
 
     /// Typed parameter info for function declarations
@@ -1446,21 +1449,21 @@ pub const Compiler = struct {
 
                 if (in_key) {
                     // Key parameter with nil default, keyword = name
-                    key_params.append(self.allocator, .{
+                    try key_params.append(self.allocator, .{
                         .keyword = name,
                         .name = name,
                         .default = null,
-                    }) catch return error.OutOfMemory;
+                    });
                 } else if (in_optional) {
                     // Optional parameter with nil default
-                    optional_params.append(self.allocator, .{
+                    try optional_params.append(self.allocator, .{
                         .name = name,
                         .default = null,
-                    }) catch return error.OutOfMemory;
+                    });
                 } else {
                     // Untyped parameter: just a symbol
-                    params.append(self.allocator, name) catch return error.OutOfMemory;
-                    typed_params.append(self.allocator, .{ .name = name, .type_name = null }) catch return error.OutOfMemory;
+                    try params.append(self.allocator, name);
+                    try typed_params.append(self.allocator, .{ .name = name, .type_name = null });
                 }
             } else if (param_item.isCons()) {
                 const typed = param_item.toPtr(Cons);
@@ -1476,11 +1479,11 @@ pub const Compiler = struct {
                         const default_cons = typed.cdr.toPtr(Cons);
                         default_ir = try self.compile(default_cons.car, env);
                     }
-                    key_params.append(self.allocator, .{
+                    try key_params.append(self.allocator, .{
                         .keyword = name,
                         .name = name,
                         .default = default_ir,
-                    }) catch return error.OutOfMemory;
+                    });
                 } else if (in_optional) {
                     // Optional parameter: (name default-expr)
                     // Compile default in parent env (not lambda env)
@@ -1489,10 +1492,10 @@ pub const Compiler = struct {
                         const default_cons = typed.cdr.toPtr(Cons);
                         default_ir = try self.compile(default_cons.car, env);
                     }
-                    optional_params.append(self.allocator, .{
+                    try optional_params.append(self.allocator, .{
                         .name = name,
                         .default = default_ir,
-                    }) catch return error.OutOfMemory;
+                    });
                 } else {
                     // Typed parameter: (name type)
                     if (!typed.cdr.isCons()) return error.InvalidLambda;
@@ -1501,8 +1504,8 @@ pub const Compiler = struct {
                     const type_sym = type_cons.car.toPtr(Symbol);
                     const type_name = type_sym.getName();
 
-                    params.append(self.allocator, name) catch return error.OutOfMemory;
-                    typed_params.append(self.allocator, .{ .name = name, .type_name = type_name }) catch return error.OutOfMemory;
+                    try params.append(self.allocator, name);
+                    try typed_params.append(self.allocator, .{ .name = name, .type_name = type_name });
                 }
             } else {
                 return error.InvalidLambda;
@@ -1526,22 +1529,22 @@ pub const Compiler = struct {
         defer lambda_env.deinit();
 
         for (params.items) |param| {
-            _ = lambda_env.bind(param) catch return error.OutOfMemory;
+            _ = try lambda_env.bind(param);
         }
 
         // Bind optional parameters
         for (optional_params.items) |op| {
-            _ = lambda_env.bind(op.name) catch return error.OutOfMemory;
+            _ = try lambda_env.bind(op.name);
         }
 
         // Bind key parameters
         for (key_params.items) |kp| {
-            _ = lambda_env.bind(kp.name) catch return error.OutOfMemory;
+            _ = try lambda_env.bind(kp.name);
         }
 
         // Bind rest parameter if present
         if (rest_param) |rp| {
-            _ = lambda_env.bind(rp) catch return error.OutOfMemory;
+            _ = try lambda_env.bind(rp);
         }
 
         // Capture analysis: collect free variables before compiling body
@@ -1569,17 +1572,17 @@ pub const Compiler = struct {
                 const assert_ir = self.makeTypeAssertion(var_ir, type_name) catch
                     return error.InvalidSyntax;
                 if (assert_ir) |assert_node| {
-                    assertions.append(self.allocator, assert_node) catch return error.OutOfMemory;
+                    try assertions.append(self.allocator, assert_node);
                 }
             }
         }
 
         // If we have assertions, wrap body in progn with assertions first
         if (assertions.items.len > 0) {
-            assertions.append(self.allocator, body_ir) catch return error.OutOfMemory;
+            try assertions.append(self.allocator, body_ir);
             const items = self.allocator.dupe(*const Ir, assertions.items) catch
                 return error.OutOfMemory;
-            body_ir = self.builder.progn(items) catch return error.OutOfMemory;
+            body_ir = try self.builder.progn(items);
         }
 
         // Wrap body in return type assertion if specified
@@ -1996,13 +1999,13 @@ pub const Compiler = struct {
 
             if (!b.car.isSymbol()) return error.InvalidLet;
             const name_sym = b.car.toPtr(Symbol);
-            binding_names.append(self.allocator, name_sym.getName()) catch return error.OutOfMemory;
+            try binding_names.append(self.allocator, name_sym.getName());
 
             binding_list = binding_cons.cdr;
         }
 
         // Find variables that need boxing (mutable + captured by lambda)
-        var boxed = self.findBoxedVars(body_exprs, binding_names.items) catch return error.OutOfMemory;
+        var boxed = try self.findBoxedVars(body_exprs, binding_names.items);
         defer boxed.deinit();
 
         // Second pass: compile bindings, wrapping boxed ones with make-box
@@ -2025,7 +2028,7 @@ pub const Compiler = struct {
 
             // If this variable needs boxing, wrap value in make-box
             if (boxed.contains(name)) {
-                const box_ir = self.allocator.create(Ir) catch return error.OutOfMemory;
+                const box_ir = try self.allocator.create(Ir);
                 box_ir.* = .{ .make_box = .{ .operand = val_ir } };
                 val_ir = box_ir;
             }
@@ -2041,7 +2044,7 @@ pub const Compiler = struct {
         defer let_env.deinit();
 
         for (bindings.items) |b| {
-            _ = let_env.bind(b.name) catch return error.OutOfMemory;
+            _ = try let_env.bind(b.name);
         }
 
         // Set boxed_vars so that variable refs and set! use box operations
@@ -2056,7 +2059,7 @@ pub const Compiler = struct {
         // Restore previous boxed_vars
         self.boxed_vars = saved_boxed;
 
-        return self.builder.letExpr(bindings.items, body_ir) catch return error.OutOfMemory;
+        return try self.builder.letExpr(bindings.items, body_ir);
     }
 
     fn compileLetrecWithTail(self: *Compiler, args: Value, env: *const Env, in_tail: bool) Error!*Ir {
@@ -2095,11 +2098,11 @@ pub const Compiler = struct {
             const val_cons = b.cdr.toPtr(Cons);
 
             // Pre-register global for recursive visibility
-            const idx = self.globals.define(name) catch return error.OutOfMemory;
+            const idx = try self.globals.define(name);
 
-            names.append(self.allocator, name) catch return error.OutOfMemory;
-            val_exprs.append(self.allocator, val_cons.car) catch return error.OutOfMemory;
-            indices.append(self.allocator, idx) catch return error.OutOfMemory;
+            try names.append(self.allocator, name);
+            try val_exprs.append(self.allocator, val_cons.car);
+            try indices.append(self.allocator, idx);
 
             binding_list = binding_cons.cdr;
         }
@@ -2110,17 +2113,17 @@ pub const Compiler = struct {
 
         for (names.items, val_exprs.items, indices.items) |name, val_expr, idx| {
             const val_ir = try self.compile(val_expr, env);
-            const define_ir = self.builder.define(name, idx, val_ir) catch return error.OutOfMemory;
-            exprs.append(self.allocator, define_ir) catch return error.OutOfMemory;
+            const define_ir = try self.builder.define(name, idx, val_ir);
+            try exprs.append(self.allocator, define_ir);
         }
 
         // Compile body (in tail position if letrec is)
         const body_ir = try self.compileBodyWithTail(body_exprs, env, in_tail);
-        exprs.append(self.allocator, body_ir) catch return error.OutOfMemory;
+        try exprs.append(self.allocator, body_ir);
 
         // Return progn of defines + body
-        const items = self.allocator.dupe(*const Ir, exprs.items) catch return error.OutOfMemory;
-        return self.builder.progn(items) catch return error.OutOfMemory;
+        const items = try self.allocator.dupe(*const Ir, exprs.items);
+        return try self.builder.progn(items);
     }
 
     fn compileFletWithTail(self: *Compiler, args: Value, env: *const Env, in_tail: bool) Error!*Ir {
@@ -2164,13 +2167,13 @@ pub const Compiler = struct {
         defer flet_env.deinit();
 
         for (bindings.items) |b| {
-            _ = flet_env.bind(b.name) catch return error.OutOfMemory;
+            _ = try flet_env.bind(b.name);
         }
 
         // Compile body in new environment
         const body_ir = try self.compileBodyWithTail(body_exprs, &flet_env, in_tail);
 
-        return self.builder.letExpr(bindings.items, body_ir) catch return error.OutOfMemory;
+        return try self.builder.letExpr(bindings.items, body_ir);
     }
 
     fn compileLabelsWithTail(self: *Compiler, args: Value, env: *const Env, in_tail: bool) Error!*Ir {
@@ -2206,13 +2209,13 @@ pub const Compiler = struct {
             const name = name_sym.getName();
 
             // Pre-register global for recursive visibility
-            const idx = self.globals.define(name) catch return error.OutOfMemory;
+            const idx = try self.globals.define(name);
 
             if (!f.cdr.isCons()) return error.InvalidLet;
 
-            names.append(self.allocator, name) catch return error.OutOfMemory;
-            lambda_args.append(self.allocator, f.cdr) catch return error.OutOfMemory;
-            indices.append(self.allocator, idx) catch return error.OutOfMemory;
+            try names.append(self.allocator, name);
+            try lambda_args.append(self.allocator, f.cdr);
+            try indices.append(self.allocator, idx);
 
             binding_list = binding_cons.cdr;
         }
@@ -2223,17 +2226,17 @@ pub const Compiler = struct {
 
         for (names.items, lambda_args.items, indices.items) |name, largs, idx| {
             const lambda_ir = try self.compileLambda(largs, env);
-            const define_ir = self.builder.define(name, idx, lambda_ir) catch return error.OutOfMemory;
-            exprs.append(self.allocator, define_ir) catch return error.OutOfMemory;
+            const define_ir = try self.builder.define(name, idx, lambda_ir);
+            try exprs.append(self.allocator, define_ir);
         }
 
         // Compile body
         const body_ir = try self.compileBodyWithTail(body_exprs, env, in_tail);
-        exprs.append(self.allocator, body_ir) catch return error.OutOfMemory;
+        try exprs.append(self.allocator, body_ir);
 
         // Return progn of defines + body
-        const items = self.allocator.dupe(*const Ir, exprs.items) catch return error.OutOfMemory;
-        return self.builder.progn(items) catch return error.OutOfMemory;
+        const items = try self.allocator.dupe(*const Ir, exprs.items);
+        return try self.builder.progn(items);
     }
 
     fn compileLetStarWithTail(self: *Compiler, args: Value, env: *const Env, in_tail: bool) Error!*Ir {
@@ -2290,14 +2293,14 @@ pub const Compiler = struct {
         else
             try self.compileLetStarBindings(rest, body_exprs, &let_env, in_tail);
 
-        return self.builder.letExpr(&binding_array, inner_ir) catch return error.OutOfMemory;
+        return try self.builder.letExpr(&binding_array, inner_ir);
     }
 
     fn compileCondWithTail(self: *Compiler, args: Value, env: *const Env, in_tail: bool) Error!*Ir {
         // (cond (test1 expr1...) (test2 expr2...) ... [(t exprN...)])
         // Transform to nested ifs
         if (args.isNil()) {
-            return self.builder.lit(Value.nil) catch return error.OutOfMemory;
+            return try self.builder.lit(Value.nil);
         }
 
         if (!args.isCons()) return error.InvalidSyntax;
@@ -2326,7 +2329,7 @@ pub const Compiler = struct {
         const then_ir = try self.compileBodyWithTail(body_exprs, env, in_tail);
         const else_ir = try self.compileCondWithTail(rest_clauses, env, in_tail);
 
-        return self.builder.ifExpr(test_ir, then_ir, else_ir) catch return error.OutOfMemory;
+        return try self.builder.ifExpr(test_ir, then_ir, else_ir);
     }
 
     fn compileAnd(self: *Compiler, args: Value, env: *const Env) Error!*Ir {
@@ -2350,14 +2353,14 @@ pub const Compiler = struct {
             const nested_and = try self.compileAnd(rest, env);
             const first_ir = try self.compile(first, env);
             const nil_ir = try self.builder.lit(Value.nil);
-            return self.builder.ifExpr(first_ir, nested_and, nil_ir) catch return error.OutOfMemory;
+            return try self.builder.ifExpr(first_ir, nested_and, nil_ir);
         }
 
         const first_ir = try self.compile(first, env);
         const second_ir = try self.compile(second, env);
         const nil_ir = try self.builder.lit(Value.nil);
 
-        return self.builder.ifExpr(first_ir, second_ir, nil_ir) catch return error.OutOfMemory;
+        return try self.builder.ifExpr(first_ir, second_ir, nil_ir);
     }
 
     fn compileOr(self: *Compiler, args: Value, env: *const Env) Error!*Ir {
@@ -2380,7 +2383,7 @@ pub const Compiler = struct {
 
         // Create let binding for tmp
         const tmp_name = "__or_tmp";
-        const bindings = self.allocator.alloc(ir.Ir.Binding, 1) catch return error.OutOfMemory;
+        const bindings = try self.allocator.alloc(ir.Ir.Binding, 1);
         bindings[0] = .{ .name = tmp_name, .value = first_ir };
 
         var tmp_env = Env.initLet(self.allocator, env);
@@ -2391,7 +2394,7 @@ pub const Compiler = struct {
         const tmp_var2 = try self.builder.variable(tmp_name, 0, tmp_idx);
 
         const body = try self.builder.ifExpr(tmp_var1, tmp_var2, else_ir);
-        return self.builder.letExpr(bindings, body) catch return error.OutOfMemory;
+        return try self.builder.letExpr(bindings, body);
     }
 
     fn compileFuncall(self: *Compiler, args: Value, env: *const Env) Error!*Ir {
@@ -2417,7 +2420,7 @@ pub const Compiler = struct {
         const fn_ir = try self.compile(fn_expr, env);
         const args_ir = try self.compile(args_list_expr, env);
 
-        const node = self.allocator.create(ir.Ir) catch return error.OutOfMemory;
+        const node = try self.allocator.create(ir.Ir);
         node.* = .{ .apply = .{ .func = fn_ir, .args = args_ir } };
         return node;
     }
@@ -2443,7 +2446,7 @@ pub const Compiler = struct {
                     // Compile (box-set! var val) instead of (set! var val)
                     const var_ir = self.builder.variable(name, binding.depth, binding.index) catch
                         return error.OutOfMemory;
-                    const box_set = self.allocator.create(Ir) catch return error.OutOfMemory;
+                    const box_set = try self.allocator.create(Ir);
                     box_set.* = .{ .box_set = .{ .left = var_ir, .right = val_ir } };
                     return box_set;
                 }
@@ -2472,11 +2475,11 @@ pub const Compiler = struct {
         // For symbols, use quote_sym
         if (quoted.isSymbol()) {
             const sym = quoted.toPtr(Symbol);
-            return self.builder.quoteSym(sym.getName()) catch return error.OutOfMemory;
+            return try self.builder.quoteSym(sym.getName());
         }
 
         // For other values, return as literal
-        return self.builder.lit(quoted) catch return error.OutOfMemory;
+        return try self.builder.lit(quoted);
     }
 
     /// Compile function special form: (function name) or (function (lambda ...))
@@ -2527,9 +2530,9 @@ pub const Compiler = struct {
         if (!expr.isCons()) {
             if (expr.isSymbol()) {
                 const sym = expr.toPtr(Symbol);
-                return self.builder.quoteSym(sym.getName()) catch return error.OutOfMemory;
+                return try self.builder.quoteSym(sym.getName());
             }
-            return self.builder.lit(expr) catch return error.OutOfMemory;
+            return try self.builder.lit(expr);
         }
 
         const cons = expr.toPtr(Cons);
@@ -2570,16 +2573,16 @@ pub const Compiler = struct {
     /// Build a list from quasiquoted elements using cons/append
     fn quasiquoteList(self: *Compiler, list: Value, env: *const Env) Error!*Ir {
         if (list.isNil()) {
-            return self.builder.lit(Value.nil) catch return error.OutOfMemory;
+            return try self.builder.lit(Value.nil);
         }
 
         if (!list.isCons()) {
             // Improper list tail - just quote it
             if (list.isSymbol()) {
                 const sym = list.toPtr(Symbol);
-                return self.builder.quoteSym(sym.getName()) catch return error.OutOfMemory;
+                return try self.builder.quoteSym(sym.getName());
             }
-            return self.builder.lit(list) catch return error.OutOfMemory;
+            return try self.builder.lit(list);
         }
 
         const cons = list.toPtr(Cons);
@@ -2605,7 +2608,7 @@ pub const Compiler = struct {
                     const rest_ir = try self.quasiquoteList(tail, env);
 
                     // Build (append spliced rest)
-                    return self.builder.append(spliced_ir, rest_ir) catch return error.OutOfMemory;
+                    return try self.builder.append(spliced_ir, rest_ir);
                 }
             }
         }
@@ -2614,7 +2617,7 @@ pub const Compiler = struct {
         const head_ir = try self.quasiquoteExpr(head, env);
         const tail_ir = try self.quasiquoteList(tail, env);
 
-        return self.builder.cons(head_ir, tail_ir) catch return error.OutOfMemory;
+        return try self.builder.cons(head_ir, tail_ir);
     }
 
     fn compileProgn(self: *Compiler, args: Value, env: *const Env) Error!*Ir {
@@ -2636,7 +2639,15 @@ pub const Compiler = struct {
         const test_ir = try self.compile(test_expr, env);
         const body_ir = try self.compileBody(body_exprs, env);
 
-        return self.builder.loop(test_ir, body_ir) catch return error.OutOfMemory;
+        return try self.builder.loop(test_ir, body_ir);
+    }
+
+    fn compileLoop(self: *Compiler, args: Value, env: *const Env) Error!*Ir {
+        // (loop body...) - infinite loop, exits via return-from
+        // Compiles to (while t body...)
+        const test_ir = try self.builder.lit(Value.t);
+        const body_ir = try self.compileBody(args, env);
+        return try self.builder.loop(test_ir, body_ir);
     }
 
     fn compileBlockWithTail(self: *Compiler, args: Value, env: *const Env, in_tail: bool) Error!*Ir {
@@ -2654,7 +2665,7 @@ pub const Compiler = struct {
         // Compile body
         const body_ir = try self.compileBodyWithTail(cons.cdr, env, in_tail);
 
-        return self.builder.block(name, body_ir) catch return error.OutOfMemory;
+        return try self.builder.block(name, body_ir);
     }
 
     fn compileReturnFrom(self: *Compiler, args: Value, env: *const Env) Error!*Ir {
@@ -2677,7 +2688,7 @@ pub const Compiler = struct {
 
         const value_ir = try self.compile(value, env);
 
-        return self.builder.returnFrom(name, value_ir) catch return error.OutOfMemory;
+        return try self.builder.returnFrom(name, value_ir);
     }
 
     fn compileUnwindProtectWithTail(self: *Compiler, args: Value, env: *const Env, in_tail: bool) Error!*Ir {
@@ -2693,7 +2704,7 @@ pub const Compiler = struct {
         // Cleanup forms are never in tail position (value discarded)
         const cleanup_ir = try self.compileBody(cons.cdr, env);
 
-        return self.builder.unwindProtect(protected_ir, cleanup_ir) catch return error.OutOfMemory;
+        return try self.builder.unwindProtect(protected_ir, cleanup_ir);
     }
 
     fn compileCatchWithTail(self: *Compiler, args: Value, env: *const Env, in_tail: bool) Error!*Ir {
@@ -2709,7 +2720,7 @@ pub const Compiler = struct {
         // Body can be in tail position
         const body_ir = try self.compileBodyWithTail(cons.cdr, env, in_tail);
 
-        return self.builder.@"catch"(tag_ir, body_ir) catch return error.OutOfMemory;
+        return try self.builder.@"catch"(tag_ir, body_ir);
     }
 
     fn compileThrow(self: *Compiler, args: Value, env: *const Env) Error!*Ir {
@@ -2726,7 +2737,7 @@ pub const Compiler = struct {
         const value = if (cons.cdr.isCons()) cons.cdr.toPtr(Cons).car else Value.nil;
         const value_ir = try self.compile(value, env);
 
-        return self.builder.throw(tag_ir, value_ir) catch return error.OutOfMemory;
+        return try self.builder.throw(tag_ir, value_ir);
     }
 
     fn compileTagbody(self: *Compiler, args: Value, env: *const Env) Error!*Ir {
@@ -2751,30 +2762,30 @@ pub const Compiler = struct {
             if (elem.isSymbol()) {
                 // This is a tag - close current segment and start new one
                 const segment_ir = try self.compileFormsToProgn(current_forms.items, env);
-                segments.append(self.allocator, segment_ir) catch return error.OutOfMemory;
+                try segments.append(self.allocator, segment_ir);
                 current_forms.clearRetainingCapacity();
 
                 const sym = elem.toPtr(Symbol);
-                tags.append(self.allocator, sym.getName()) catch return error.OutOfMemory;
+                try tags.append(self.allocator, sym.getName());
             } else {
                 // This is a form - add to current segment
-                current_forms.append(self.allocator, elem) catch return error.OutOfMemory;
+                try current_forms.append(self.allocator, elem);
             }
         }
 
         // Close final segment
         const final_segment = try self.compileFormsToProgn(current_forms.items, env);
-        segments.append(self.allocator, final_segment) catch return error.OutOfMemory;
+        try segments.append(self.allocator, final_segment);
 
-        return self.builder.tagbody(
+        return try self.builder.tagbody(
             tags.items,
             segments.items,
-        ) catch return error.OutOfMemory;
+        );
     }
 
     fn compileFormsToProgn(self: *Compiler, forms: []const Value, env: *const Env) Error!*Ir {
         if (forms.len == 0) {
-            return self.builder.lit(Value.nil) catch return error.OutOfMemory;
+            return try self.builder.lit(Value.nil);
         }
         if (forms.len == 1) {
             return self.compile(forms[0], env);
@@ -2783,9 +2794,9 @@ pub const Compiler = struct {
         defer exprs.deinit(self.allocator);
         for (forms) |form| {
             const form_ir = try self.compile(form, env);
-            exprs.append(self.allocator, form_ir) catch return error.OutOfMemory;
+            try exprs.append(self.allocator, form_ir);
         }
-        return self.builder.progn(exprs.items) catch return error.OutOfMemory;
+        return try self.builder.progn(exprs.items);
     }
 
     fn compileGo(self: *Compiler, args: Value) Error!*Ir {
@@ -2798,7 +2809,7 @@ pub const Compiler = struct {
         const sym = cons.car.toPtr(Symbol);
         const name = sym.getName();
 
-        return self.builder.go(name) catch return error.OutOfMemory;
+        return try self.builder.go(name);
     }
 
     fn compileValues(self: *Compiler, args: Value, env: *const Env) Error!*Ir {
@@ -2810,11 +2821,11 @@ pub const Compiler = struct {
         while (current.isCons()) {
             const cons = current.toPtr(Cons);
             const val_ir = try self.compile(cons.car, env);
-            vals.append(self.allocator, val_ir) catch return error.OutOfMemory;
+            try vals.append(self.allocator, val_ir);
             current = cons.cdr;
         }
 
-        return self.builder.values(vals.items) catch return error.OutOfMemory;
+        return try self.builder.values(vals.items);
     }
 
     fn compileMvBind(self: *Compiler, args: Value, env: *const Env) Error!*Ir {
@@ -2831,7 +2842,7 @@ pub const Compiler = struct {
             const var_cons = var_list.toPtr(Cons);
             if (!var_cons.car.isSymbol()) return error.InvalidSyntax;
             const sym = var_cons.car.toPtr(Symbol);
-            vars.append(self.allocator, sym.getName()) catch return error.OutOfMemory;
+            try vars.append(self.allocator, sym.getName());
             var_list = var_cons.cdr;
         }
 
@@ -2846,13 +2857,13 @@ pub const Compiler = struct {
         defer let_env.deinit();
 
         for (vars.items) |var_name| {
-            _ = let_env.bind(var_name) catch return error.OutOfMemory;
+            _ = try let_env.bind(var_name);
         }
 
         // Compile body forms
         const body_ir = try self.compileBody(cons2.cdr, &let_env);
 
-        return self.builder.mvBind(vars.items, expr_ir, body_ir) catch return error.OutOfMemory;
+        return try self.builder.mvBind(vars.items, expr_ir, body_ir);
     }
 
     fn compileMvCall(self: *Compiler, args: Value, env: *const Env) Error!*Ir {
@@ -2871,11 +2882,11 @@ pub const Compiler = struct {
         while (current.isCons()) {
             const cons = current.toPtr(Cons);
             const form_ir = try self.compile(cons.car, env);
-            forms.append(self.allocator, form_ir) catch return error.OutOfMemory;
+            try forms.append(self.allocator, form_ir);
             current = cons.cdr;
         }
 
-        return self.builder.mvCall(func_ir, forms.items) catch return error.OutOfMemory;
+        return try self.builder.mvCall(func_ir, forms.items);
     }
 
     fn compileMvList(self: *Compiler, args: Value, env: *const Env) Error!*Ir {
@@ -2884,7 +2895,7 @@ pub const Compiler = struct {
         const cons = args.toPtr(Cons);
 
         const expr_ir = try self.compile(cons.car, env);
-        return self.builder.mvList(expr_ir) catch return error.OutOfMemory;
+        return try self.builder.mvList(expr_ir);
     }
 
     fn compileDefine(self: *Compiler, args: Value, env: *const Env) Error!*Ir {
@@ -2901,9 +2912,9 @@ pub const Compiler = struct {
         const value_ir = try self.compile(cons2.car, env);
 
         // Register global
-        const idx = self.globals.define(name) catch return error.OutOfMemory;
+        const idx = try self.globals.define(name);
 
-        return self.builder.define(name, idx, value_ir) catch return error.OutOfMemory;
+        return try self.builder.define(name, idx, value_ir);
     }
 
     fn compileDefun(self: *Compiler, args: Value, env: *const Env) Error!*Ir {
@@ -2946,13 +2957,13 @@ pub const Compiler = struct {
         }
 
         // Pre-register the global so recursive calls work
-        const idx = self.globals.define(name) catch return error.OutOfMemory;
+        const idx = try self.globals.define(name);
 
         // Rest is (params...) body...
         const lambda_args = cons1.cdr;
         const lambda_ir = try self.compileLambdaWithReturnType(lambda_args, env, return_type);
 
-        return self.builder.define(name, idx, lambda_ir) catch return error.OutOfMemory;
+        return try self.builder.define(name, idx, lambda_ir);
     }
 
     /// Compile defmacro: (defmacro name (params...) body...)
@@ -2975,10 +2986,10 @@ pub const Compiler = struct {
         if (!lambda_args.isCons()) return error.InvalidSyntax;
 
         // Store in macro_table: name -> lambda-args
-        self.macro_table.put(name, lambda_args) catch return error.OutOfMemory;
+        try self.macro_table.put(name, lambda_args);
 
         // defmacro has no runtime effect - return nil
-        return self.builder.lit(Value.nil) catch return error.OutOfMemory;
+        return try self.builder.lit(Value.nil);
     }
 
     /// Compile eval-when: (eval-when (situations...) body...)
@@ -3015,7 +3026,7 @@ pub const Compiler = struct {
         }
 
         // Otherwise return nil (compile-time only)
-        return self.builder.lit(Value.nil) catch return error.OutOfMemory;
+        return try self.builder.lit(Value.nil);
     }
 
     // ========================================================================
@@ -3035,7 +3046,7 @@ pub const Compiler = struct {
         if (!type_name_val.isSymbol()) return error.InvalidSyntax;
         const type_name_raw = type_name_val.toPtr(Symbol).getName();
         // Dupe type name - symbol internal storage may be invalidated by GC
-        const type_name = self.allocator.dupe(u8, type_name_raw) catch return error.OutOfMemory;
+        const type_name = try self.allocator.dupe(u8, type_name_raw);
 
         // Collect variants
         var variants = std.ArrayList(Variant){};
@@ -3043,14 +3054,14 @@ pub const Compiler = struct {
         while (current.isCons()) {
             const variant_cons = current.toPtr(Cons);
             const variant = try self.parseVariant(variant_cons.car);
-            variants.append(self.allocator, variant) catch return error.OutOfMemory;
+            try variants.append(self.allocator, variant);
             current = variant_cons.cdr;
         }
 
         if (variants.items.len == 0) return error.InvalidSyntax;
 
         // Store type definition for match exhaustiveness checking
-        self.defined_types.put(type_name, variants.items) catch return error.OutOfMemory;
+        try self.defined_types.put(type_name, variants.items);
 
         // Generate definitions as a progn:
         // 1. Constructor for each variant: (defun variant-name (fields...) (vector :variant-name fields...))
@@ -3063,26 +3074,26 @@ pub const Compiler = struct {
         for (variants.items) |variant| {
             // Constructor: (variant-name f1 f2) -> #(:variant-name f1 f2)
             const ctor = try self.generateAdtConstructor(variant);
-            defs.append(self.allocator, ctor) catch return error.OutOfMemory;
+            try defs.append(self.allocator, ctor);
 
             // Variant predicate: (variant-name? x) -> (and (vectorp x) (eq (aref x 0) :variant-name))
             const pred = try self.generateVariantPredicate(variant);
-            defs.append(self.allocator, pred) catch return error.OutOfMemory;
+            try defs.append(self.allocator, pred);
 
             // Field accessors: (variant-name-field x) -> (aref x index)
             for (variant.fields, 1..) |field, idx| {
                 const accessor = try self.generateFieldAccessor(variant.name, field, @intCast(idx));
-                defs.append(self.allocator, accessor) catch return error.OutOfMemory;
+                try defs.append(self.allocator, accessor);
             }
         }
 
         // Type predicate: (type-name? x) -> checks if any variant matches
         const type_pred = try self.generateTypePredicate(type_name, variants.items);
-        defs.append(self.allocator, type_pred) catch return error.OutOfMemory;
+        try defs.append(self.allocator, type_pred);
 
         // Return progn of all definitions
-        const slice = defs.toOwnedSlice(self.allocator) catch return error.OutOfMemory;
-        const node = self.allocator.create(Ir) catch return error.OutOfMemory;
+        const slice = try defs.toOwnedSlice(self.allocator);
+        const node = try self.allocator.create(Ir);
         node.* = .{ .progn = slice };
         return node;
     }
@@ -3095,7 +3106,7 @@ pub const Compiler = struct {
         if (!cons1.car.isSymbol()) return error.InvalidSyntax;
         const sym_name = cons1.car.toPtr(Symbol).getName();
         // Dupe name to heap - symbol internal storage may be invalidated by GC
-        const name = self.allocator.dupe(u8, sym_name) catch return error.OutOfMemory;
+        const name = try self.allocator.dupe(u8, sym_name);
 
         var fields = std.ArrayList([]const u8){};
         var current = cons1.cdr;
@@ -3104,42 +3115,42 @@ pub const Compiler = struct {
             if (!field_cons.car.isSymbol()) return error.InvalidSyntax;
             const field_sym_name = field_cons.car.toPtr(Symbol).getName();
             // Dupe field name to heap
-            const field_name = self.allocator.dupe(u8, field_sym_name) catch return error.OutOfMemory;
-            fields.append(self.allocator, field_name) catch return error.OutOfMemory;
+            const field_name = try self.allocator.dupe(u8, field_sym_name);
+            try fields.append(self.allocator, field_name);
             current = field_cons.cdr;
         }
 
         return .{
             .name = name,
-            .fields = fields.toOwnedSlice(self.allocator) catch return error.OutOfMemory,
+            .fields = try fields.toOwnedSlice(self.allocator),
         };
     }
 
     fn generateAdtConstructor(self: *Compiler, variant: Variant) Error!*Ir {
         // Creates: (defun variant-name (f1 f2 ...) (vector :variant-name f1 f2 ...))
-        const idx = self.globals.define(variant.name) catch return error.OutOfMemory;
+        const idx = try self.globals.define(variant.name);
 
         // Build lambda body: (vector :variant-name f1 f2 ...)
         const num_elems = variant.fields.len + 1; // tag + fields
-        var elems = self.allocator.alloc(*const Ir, num_elems) catch return error.OutOfMemory;
+        var elems = try self.allocator.alloc(*const Ir, num_elems);
 
         // First element: keyword tag
-        const tag_node = self.allocator.create(Ir) catch return error.OutOfMemory;
+        const tag_node = try self.allocator.create(Ir);
         tag_node.* = .{ .quote_sym = variant.name };
         elems[0] = tag_node;
 
         // Rest: variable references to parameters
         for (variant.fields, 0..) |field, i| {
-            const var_node = self.builder.variable(field, 0, @intCast(i)) catch return error.OutOfMemory;
+            const var_node = try self.builder.variable(field, 0, @intCast(i));
             elems[i + 1] = var_node;
         }
 
-        const vec_node = self.allocator.create(Ir) catch return error.OutOfMemory;
+        const vec_node = try self.allocator.create(Ir);
         vec_node.* = .{ .vec = elems };
 
         // Build lambda
-        const params = self.allocator.dupe([]const u8, variant.fields) catch return error.OutOfMemory;
-        const lambda_node = self.allocator.create(Ir) catch return error.OutOfMemory;
+        const params = try self.allocator.dupe([]const u8, variant.fields);
+        const lambda_node = try self.allocator.create(Ir);
         lambda_node.* = .{ .lambda = .{
             .params = params,
             .optional_params = &.{},
@@ -3149,42 +3160,42 @@ pub const Compiler = struct {
             .body = vec_node,
         } };
 
-        return self.builder.define(variant.name, idx, lambda_node) catch return error.OutOfMemory;
+        return try self.builder.define(variant.name, idx, lambda_node);
     }
 
     fn generateVariantPredicate(self: *Compiler, variant: Variant) Error!*Ir {
         // Creates: (defun variant-name? (x) (and (vectorp x) (eq (aref x 0) :variant-name)))
         var name_buf: [256]u8 = undefined;
-        const pred_name = std.fmt.bufPrint(&name_buf, "{s}?", .{variant.name}) catch return error.OutOfMemory;
-        const pred_name_copy = self.allocator.dupe(u8, pred_name) catch return error.OutOfMemory;
+        const pred_name = try std.fmt.bufPrint(&name_buf, "{s}?", .{variant.name});
+        const pred_name_copy = try self.allocator.dupe(u8, pred_name);
 
-        const idx = self.globals.define(pred_name_copy) catch return error.OutOfMemory;
+        const idx = try self.globals.define(pred_name_copy);
 
         // Build: (and (vectorp x) (eq (aref x 0) :variant-name))
         // Param x at index 0
-        const x_var = self.builder.variable("x", 0, 0) catch return error.OutOfMemory;
+        const x_var = try self.builder.variable("x", 0, 0);
 
         // (vectorp x)
-        const vectorp_node = self.allocator.create(Ir) catch return error.OutOfMemory;
+        const vectorp_node = try self.allocator.create(Ir);
         vectorp_node.* = .{ .vectorp = .{ .operand = x_var } };
 
         // (aref x 0)
-        const x_var2 = self.builder.variable("x", 0, 0) catch return error.OutOfMemory;
-        const zero = self.builder.lit(Value.makeFixnum(0)) catch return error.OutOfMemory;
-        const aref_node = self.allocator.create(Ir) catch return error.OutOfMemory;
+        const x_var2 = try self.builder.variable("x", 0, 0);
+        const zero = try self.builder.lit(Value.makeFixnum(0));
+        const aref_node = try self.allocator.create(Ir);
         aref_node.* = .{ .vec_ref = .{ .left = x_var2, .right = zero } };
 
         // :variant-name (as quoted symbol)
-        const tag_node = self.allocator.create(Ir) catch return error.OutOfMemory;
+        const tag_node = try self.allocator.create(Ir);
         tag_node.* = .{ .quote_sym = variant.name };
 
         // (eq (aref x 0) :variant-name)
-        const eq_node = self.allocator.create(Ir) catch return error.OutOfMemory;
+        const eq_node = try self.allocator.create(Ir);
         eq_node.* = .{ .eq = .{ .left = aref_node, .right = tag_node } };
 
         // (if (vectorp x) (eq ...) nil)
-        const nil_node = self.builder.lit(Value.nil) catch return error.OutOfMemory;
-        const if_node = self.allocator.create(Ir) catch return error.OutOfMemory;
+        const nil_node = try self.builder.lit(Value.nil);
+        const if_node = try self.allocator.create(Ir);
         if_node.* = .{ .@"if" = .{
             .cond = vectorp_node,
             .then_branch = eq_node,
@@ -3192,9 +3203,9 @@ pub const Compiler = struct {
         } };
 
         // Lambda wrapper
-        const params = self.allocator.alloc([]const u8, 1) catch return error.OutOfMemory;
+        const params = try self.allocator.alloc([]const u8, 1);
         params[0] = "x";
-        const lambda_node = self.allocator.create(Ir) catch return error.OutOfMemory;
+        const lambda_node = try self.allocator.create(Ir);
         lambda_node.* = .{ .lambda = .{
             .params = params,
             .optional_params = &.{},
@@ -3204,27 +3215,27 @@ pub const Compiler = struct {
             .body = if_node,
         } };
 
-        return self.builder.define(pred_name_copy, idx, lambda_node) catch return error.OutOfMemory;
+        return try self.builder.define(pred_name_copy, idx, lambda_node);
     }
 
     fn generateFieldAccessor(self: *Compiler, variant_name: []const u8, field_name: []const u8, field_idx: u16) Error!*Ir {
         // Creates: (defun variant-name-field (x) (aref x field-idx))
         var name_buf: [256]u8 = undefined;
-        const accessor_name = std.fmt.bufPrint(&name_buf, "{s}-{s}", .{ variant_name, field_name }) catch return error.OutOfMemory;
-        const accessor_name_copy = self.allocator.dupe(u8, accessor_name) catch return error.OutOfMemory;
+        const accessor_name = try std.fmt.bufPrint(&name_buf, "{s}-{s}", .{ variant_name, field_name });
+        const accessor_name_copy = try self.allocator.dupe(u8, accessor_name);
 
-        const idx = self.globals.define(accessor_name_copy) catch return error.OutOfMemory;
+        const idx = try self.globals.define(accessor_name_copy);
 
         // Build: (aref x field-idx)
-        const x_var = self.builder.variable("x", 0, 0) catch return error.OutOfMemory;
-        const idx_lit = self.builder.lit(Value.makeFixnum(@intCast(field_idx))) catch return error.OutOfMemory;
-        const aref_node = self.allocator.create(Ir) catch return error.OutOfMemory;
+        const x_var = try self.builder.variable("x", 0, 0);
+        const idx_lit = try self.builder.lit(Value.makeFixnum(@intCast(field_idx)));
+        const aref_node = try self.allocator.create(Ir);
         aref_node.* = .{ .vec_ref = .{ .left = x_var, .right = idx_lit } };
 
         // Lambda wrapper
-        const params = self.allocator.alloc([]const u8, 1) catch return error.OutOfMemory;
+        const params = try self.allocator.alloc([]const u8, 1);
         params[0] = "x";
-        const lambda_node = self.allocator.create(Ir) catch return error.OutOfMemory;
+        const lambda_node = try self.allocator.create(Ir);
         lambda_node.* = .{ .lambda = .{
             .params = params,
             .optional_params = &.{},
@@ -3234,20 +3245,20 @@ pub const Compiler = struct {
             .body = aref_node,
         } };
 
-        return self.builder.define(accessor_name_copy, idx, lambda_node) catch return error.OutOfMemory;
+        return try self.builder.define(accessor_name_copy, idx, lambda_node);
     }
 
     fn generateTypePredicate(self: *Compiler, type_name: []const u8, variants: []const Variant) Error!*Ir {
         // Creates: (defun type-name? (x) (or (variant1? x) (variant2? x) ...))
         var name_buf: [256]u8 = undefined;
-        const pred_name = std.fmt.bufPrint(&name_buf, "{s}?", .{type_name}) catch return error.OutOfMemory;
-        const pred_name_copy = self.allocator.dupe(u8, pred_name) catch return error.OutOfMemory;
+        const pred_name = try std.fmt.bufPrint(&name_buf, "{s}?", .{type_name});
+        const pred_name_copy = try self.allocator.dupe(u8, pred_name);
 
-        const idx = self.globals.define(pred_name_copy) catch return error.OutOfMemory;
+        const idx = try self.globals.define(pred_name_copy);
 
         // Build body: chain of or's checking each variant
         // Start from the last variant and work backwards
-        var body: *Ir = self.builder.lit(Value.nil) catch return error.OutOfMemory;
+        var body: *Ir = try self.builder.lit(Value.nil);
 
         var i: usize = variants.len;
         while (i > 0) {
@@ -3255,23 +3266,23 @@ pub const Compiler = struct {
             const variant = variants[i];
 
             // Build variant check inline (like variant-name? but without function call)
-            const x_var = self.builder.variable("x", 0, 0) catch return error.OutOfMemory;
-            const vectorp_node = self.allocator.create(Ir) catch return error.OutOfMemory;
+            const x_var = try self.builder.variable("x", 0, 0);
+            const vectorp_node = try self.allocator.create(Ir);
             vectorp_node.* = .{ .vectorp = .{ .operand = x_var } };
 
-            const x_var2 = self.builder.variable("x", 0, 0) catch return error.OutOfMemory;
-            const zero = self.builder.lit(Value.makeFixnum(0)) catch return error.OutOfMemory;
-            const aref_node = self.allocator.create(Ir) catch return error.OutOfMemory;
+            const x_var2 = try self.builder.variable("x", 0, 0);
+            const zero = try self.builder.lit(Value.makeFixnum(0));
+            const aref_node = try self.allocator.create(Ir);
             aref_node.* = .{ .vec_ref = .{ .left = x_var2, .right = zero } };
 
-            const tag_node = self.allocator.create(Ir) catch return error.OutOfMemory;
+            const tag_node = try self.allocator.create(Ir);
             tag_node.* = .{ .quote_sym = variant.name };
 
-            const eq_node = self.allocator.create(Ir) catch return error.OutOfMemory;
+            const eq_node = try self.allocator.create(Ir);
             eq_node.* = .{ .eq = .{ .left = aref_node, .right = tag_node } };
 
-            const nil_node = self.builder.lit(Value.nil) catch return error.OutOfMemory;
-            const check_node = self.allocator.create(Ir) catch return error.OutOfMemory;
+            const nil_node = try self.builder.lit(Value.nil);
+            const check_node = try self.allocator.create(Ir);
             check_node.* = .{ .@"if" = .{
                 .cond = vectorp_node,
                 .then_branch = eq_node,
@@ -3279,8 +3290,8 @@ pub const Compiler = struct {
             } };
 
             // (if check_node t body)
-            const t_val = self.builder.lit(Value.t) catch return error.OutOfMemory;
-            const or_node = self.allocator.create(Ir) catch return error.OutOfMemory;
+            const t_val = try self.builder.lit(Value.t);
+            const or_node = try self.allocator.create(Ir);
             or_node.* = .{ .@"if" = .{
                 .cond = check_node,
                 .then_branch = t_val,
@@ -3290,9 +3301,9 @@ pub const Compiler = struct {
         }
 
         // Lambda wrapper
-        const params = self.allocator.alloc([]const u8, 1) catch return error.OutOfMemory;
+        const params = try self.allocator.alloc([]const u8, 1);
         params[0] = "x";
-        const lambda_node = self.allocator.create(Ir) catch return error.OutOfMemory;
+        const lambda_node = try self.allocator.create(Ir);
         lambda_node.* = .{ .lambda = .{
             .params = params,
             .optional_params = &.{},
@@ -3302,7 +3313,7 @@ pub const Compiler = struct {
             .body = body,
         } };
 
-        return self.builder.define(pred_name_copy, idx, lambda_node) catch return error.OutOfMemory;
+        return try self.builder.define(pred_name_copy, idx, lambda_node);
     }
 
     /// Compile match: (match expr ((variant1 f1 f2) body1) ((variant2 f3) body2) (_ default))
@@ -3395,7 +3406,7 @@ pub const Compiler = struct {
     fn compileMatchClauses(self: *Compiler, scrutinee: *const Ir, clauses: Value, env: *const Env) Error!*Ir {
         if (!clauses.isCons()) {
             // No more clauses - return nil (or could be error for non-exhaustive)
-            return self.builder.lit(Value.nil) catch return error.OutOfMemory;
+            return try self.builder.lit(Value.nil);
         }
 
         const clause_cons = clauses.toPtr(Cons);
@@ -3428,26 +3439,26 @@ pub const Compiler = struct {
             const fc = field_current.toPtr(Cons);
             if (!fc.car.isSymbol()) return error.InvalidSyntax;
             const field_name = fc.car.toPtr(Symbol).getName();
-            field_names.append(self.allocator, field_name) catch return error.OutOfMemory;
+            try field_names.append(self.allocator, field_name);
             field_current = fc.cdr;
         }
 
         // Build condition: (and (vectorp scrutinee) (eq (aref scrutinee 0) :variant-name))
-        const vectorp_node = self.allocator.create(Ir) catch return error.OutOfMemory;
+        const vectorp_node = try self.allocator.create(Ir);
         vectorp_node.* = .{ .vectorp = .{ .operand = scrutinee } };
 
-        const zero = self.builder.lit(Value.makeFixnum(0)) catch return error.OutOfMemory;
-        const aref_node = self.allocator.create(Ir) catch return error.OutOfMemory;
+        const zero = try self.builder.lit(Value.makeFixnum(0));
+        const aref_node = try self.allocator.create(Ir);
         aref_node.* = .{ .vec_ref = .{ .left = scrutinee, .right = zero } };
 
-        const tag_node = self.allocator.create(Ir) catch return error.OutOfMemory;
+        const tag_node = try self.allocator.create(Ir);
         tag_node.* = .{ .quote_sym = variant_name };
 
-        const eq_node = self.allocator.create(Ir) catch return error.OutOfMemory;
+        const eq_node = try self.allocator.create(Ir);
         eq_node.* = .{ .eq = .{ .left = aref_node, .right = tag_node } };
 
-        const nil_lit = self.builder.lit(Value.nil) catch return error.OutOfMemory;
-        const cond_node = self.allocator.create(Ir) catch return error.OutOfMemory;
+        const nil_lit = try self.builder.lit(Value.nil);
+        const cond_node = try self.allocator.create(Ir);
         cond_node.* = .{ .@"if" = .{
             .cond = vectorp_node,
             .then_branch = eq_node,
@@ -3455,10 +3466,10 @@ pub const Compiler = struct {
         } };
 
         // Build then branch: (let ((f1 (aref scrutinee 1)) (f2 (aref scrutinee 2)) ...) body...)
-        var bindings = self.allocator.alloc(Ir.Binding, field_names.items.len) catch return error.OutOfMemory;
+        var bindings = try self.allocator.alloc(Ir.Binding, field_names.items.len);
         for (field_names.items, 0..) |field_name, i| {
-            const idx_lit = self.builder.lit(Value.makeFixnum(@intCast(i + 1))) catch return error.OutOfMemory;
-            const field_aref = self.allocator.create(Ir) catch return error.OutOfMemory;
+            const idx_lit = try self.builder.lit(Value.makeFixnum(@intCast(i + 1)));
+            const field_aref = try self.allocator.create(Ir);
             field_aref.* = .{ .vec_ref = .{ .left = scrutinee, .right = idx_lit } };
 
             bindings[i] = .{
@@ -3471,13 +3482,13 @@ pub const Compiler = struct {
         var let_env = Env.initLet(self.allocator, env);
         defer let_env.deinit();
         for (field_names.items) |field_name| {
-            _ = let_env.bind(field_name) catch return error.OutOfMemory;
+            _ = try let_env.bind(field_name);
         }
         const body_ir = try self.compileProgn(body_list, &let_env);
 
         var then_ir: *Ir = undefined;
         if (bindings.len > 0) {
-            then_ir = self.allocator.create(Ir) catch return error.OutOfMemory;
+            then_ir = try self.allocator.create(Ir);
             then_ir.* = .{ .let = .{
                 .bindings = bindings,
                 .body = body_ir,
@@ -3490,7 +3501,7 @@ pub const Compiler = struct {
         const else_ir = try self.compileMatchClauses(scrutinee, clause_cons.cdr, env);
 
         // Build if node
-        const if_node = self.allocator.create(Ir) catch return error.OutOfMemory;
+        const if_node = try self.allocator.create(Ir);
         if_node.* = .{ .@"if" = .{
             .cond = cond_node,
             .then_branch = then_ir,
@@ -3557,28 +3568,28 @@ pub const Compiler = struct {
     fn compileSimpleTypeCheck(self: *Compiler, type_name: []const u8, expr_ir: *const Ir) Error!*Ir {
         // Map type name to assertion IR
         if (std.mem.eql(u8, type_name, "fixnum")) {
-            return self.builder.assertFixnum(expr_ir) catch return error.OutOfMemory;
+            return try self.builder.assertFixnum(expr_ir);
         }
         if (std.mem.eql(u8, type_name, "cons")) {
-            return self.builder.assertCons(expr_ir) catch return error.OutOfMemory;
+            return try self.builder.assertCons(expr_ir);
         }
         if (std.mem.eql(u8, type_name, "symbol")) {
-            return self.builder.assertSymbol(expr_ir) catch return error.OutOfMemory;
+            return try self.builder.assertSymbol(expr_ir);
         }
         if (std.mem.eql(u8, type_name, "string")) {
-            return self.builder.assertString(expr_ir) catch return error.OutOfMemory;
+            return try self.builder.assertString(expr_ir);
         }
         if (std.mem.eql(u8, type_name, "vector")) {
-            return self.builder.assertVector(expr_ir) catch return error.OutOfMemory;
+            return try self.builder.assertVector(expr_ir);
         }
         if (std.mem.eql(u8, type_name, "closure")) {
-            return self.builder.assertClosure(expr_ir) catch return error.OutOfMemory;
+            return try self.builder.assertClosure(expr_ir);
         }
         if (std.mem.eql(u8, type_name, "non-nil")) {
-            return self.builder.assertNonNil(expr_ir) catch return error.OutOfMemory;
+            return try self.builder.assertNonNil(expr_ir);
         }
         if (std.mem.eql(u8, type_name, "list")) {
-            return self.builder.assertList(expr_ir) catch return error.OutOfMemory;
+            return try self.builder.assertList(expr_ir);
         }
         if (std.mem.eql(u8, type_name, "any")) {
             // No check needed for any type
@@ -3617,10 +3628,10 @@ pub const Compiler = struct {
             const c = list.toPtr(Cons);
             if (c.car.isSymbol()) {
                 const type_sym = c.car.toPtr(Symbol);
-                type_names.append(self.allocator, type_sym.getName()) catch return error.OutOfMemory;
+                try type_names.append(self.allocator, type_sym.getName());
             } else if (c.car.isNil()) {
                 // nil value in type position means the nil type
-                type_names.append(self.allocator, "nil") catch return error.OutOfMemory;
+                try type_names.append(self.allocator, "nil");
             } else {
                 return error.InvalidSyntax;
             }
@@ -3638,7 +3649,7 @@ pub const Compiler = struct {
                 if (std.mem.eql(u8, n, "nil")) break true;
             } else false;
             if (has_cons and has_nil) {
-                return self.builder.assertList(expr_ir) catch return error.OutOfMemory;
+                return try self.builder.assertList(expr_ir);
             }
         }
 
@@ -3664,7 +3675,7 @@ pub const Compiler = struct {
 
     fn compileBodyWithTail(self: *Compiler, exprs: Value, env: *const Env, in_tail: bool) Error!*Ir {
         if (exprs.isNil()) {
-            return self.builder.lit(Value.nil) catch return error.OutOfMemory;
+            return try self.builder.lit(Value.nil);
         }
 
         // Count expressions first to know which is last
@@ -3685,7 +3696,7 @@ pub const Compiler = struct {
             const is_last = idx == count - 1;
             // Only last expression is in tail position
             const expr_ir = try self.compileWithTail(cons.car, env, in_tail and is_last);
-            expr_list.append(self.allocator, expr_ir) catch return error.OutOfMemory;
+            try expr_list.append(self.allocator, expr_ir);
             list = cons.cdr;
             idx += 1;
         }
@@ -3697,7 +3708,7 @@ pub const Compiler = struct {
         // Convert to const slice for progn
         const items = self.allocator.dupe(*const Ir, expr_list.items) catch
             return error.OutOfMemory;
-        return self.builder.progn(items) catch return error.OutOfMemory;
+        return try self.builder.progn(items);
     }
 
     fn compilePrimitive(self: *Compiler, sym: Value, args: Value, env: *const Env) Error!*Ir {
@@ -3882,7 +3893,7 @@ pub const Compiler = struct {
         while (current.isCons()) {
             const c = current.toPtr(Cons);
             const compiled = try self.compile(c.car, env);
-            arg_list.append(self.allocator, compiled) catch return error.OutOfMemory;
+            try arg_list.append(self.allocator, compiled);
             current = c.cdr;
         }
 
@@ -3892,7 +3903,7 @@ pub const Compiler = struct {
         if (arg_count == 0) {
             // (+) -> 0, (*) -> 1, (-) and (/) are errors
             if (identity) |id| {
-                return self.builder.lit(Value.makeFixnum(id)) catch return error.OutOfMemory;
+                return try self.builder.lit(Value.makeFixnum(id));
             }
             return error.InvalidSyntax;
         }
@@ -3901,12 +3912,12 @@ pub const Compiler = struct {
             // (+ x) -> x, (* x) -> x
             // (- x) -> (- 0 x), (/ x) -> (/ 1 x)
             if (op == .sub) {
-                const zero = self.builder.lit(Value.makeFixnum(0)) catch return error.OutOfMemory;
-                return self.builder.sub(zero, arg_list.items[0]) catch return error.OutOfMemory;
+                const zero = try self.builder.lit(Value.makeFixnum(0));
+                return try self.builder.sub(zero, arg_list.items[0]);
             }
             if (op == .div) {
-                const one = self.builder.lit(Value.makeFixnum(1)) catch return error.OutOfMemory;
-                return self.builder.div(one, arg_list.items[0]) catch return error.OutOfMemory;
+                const one = try self.builder.lit(Value.makeFixnum(1));
+                return try self.builder.div(one, arg_list.items[0]);
             }
             return arg_list.items[0];
         }
@@ -3915,12 +3926,12 @@ pub const Compiler = struct {
         var result = arg_list.items[0];
         for (arg_list.items[1..]) |arg| {
             result = switch (op) {
-                .add => self.builder.add(result, arg),
-                .sub => self.builder.sub(result, arg),
-                .mul => self.builder.mul(result, arg),
-                .div => self.builder.div(result, arg),
+                .add => try self.builder.add(result, arg),
+                .sub => try self.builder.sub(result, arg),
+                .mul => try self.builder.mul(result, arg),
+                .div => try self.builder.div(result, arg),
                 else => unreachable,
-            } catch return error.OutOfMemory;
+            };
         }
         return result;
     }
@@ -3935,84 +3946,84 @@ pub const Compiler = struct {
         const right = try self.compile(cons2.car, env);
 
         return switch (prim) {
-            .add => self.builder.add(left, right),
-            .sub => self.builder.sub(left, right),
-            .mul => self.builder.mul(left, right),
-            .div => self.builder.div(left, right),
+            .add => try self.builder.add(left, right),
+            .sub => try self.builder.sub(left, right),
+            .mul => try self.builder.mul(left, right),
+            .div => try self.builder.div(left, right),
             .mod => blk: {
-                const node = self.allocator.create(Ir) catch return error.OutOfMemory;
+                const node = try self.allocator.create(Ir);
                 node.* = .{ .mod = .{ .left = left, .right = right } };
                 break :blk node;
             },
-            .eq => self.builder.eq(left, right),
-            .equal => self.builder.equal(left, right),
-            .eql => self.builder.eql(left, right),
-            .lt => self.builder.lt(left, right),
-            .gt => self.builder.gt(left, right),
+            .eq => try self.builder.eq(left, right),
+            .equal => try self.builder.equal(left, right),
+            .eql => try self.builder.eql(left, right),
+            .lt => try self.builder.lt(left, right),
+            .gt => try self.builder.gt(left, right),
             .le => blk: {
-                const node = self.allocator.create(Ir) catch return error.OutOfMemory;
+                const node = try self.allocator.create(Ir);
                 node.* = .{ .le = .{ .left = left, .right = right } };
                 break :blk node;
             },
             .ge => blk: {
-                const node = self.allocator.create(Ir) catch return error.OutOfMemory;
+                const node = try self.allocator.create(Ir);
                 node.* = .{ .ge = .{ .left = left, .right = right } };
                 break :blk node;
             },
             .num_eq => blk: {
-                const node = self.allocator.create(Ir) catch return error.OutOfMemory;
+                const node = try self.allocator.create(Ir);
                 node.* = .{ .num_eq = .{ .left = left, .right = right } };
                 break :blk node;
             },
-            .cons => self.builder.cons(left, right),
-            .vec_ref => self.builder.vecRef(left, right),
+            .cons => try self.builder.cons(left, right),
+            .vec_ref => try self.builder.vecRef(left, right),
             .box_set => blk: {
-                const node = self.allocator.create(Ir) catch return error.OutOfMemory;
+                const node = try self.allocator.create(Ir);
                 node.* = .{ .box_set = .{ .left = left, .right = right } };
                 break :blk node;
             },
             .str_ref => blk: {
-                const node = self.allocator.create(Ir) catch return error.OutOfMemory;
+                const node = try self.allocator.create(Ir);
                 node.* = .{ .str_ref = .{ .left = left, .right = right } };
                 break :blk node;
             },
             .str_eq => blk: {
-                const node = self.allocator.create(Ir) catch return error.OutOfMemory;
+                const node = try self.allocator.create(Ir);
                 node.* = .{ .str_eq = .{ .left = left, .right = right } };
                 break :blk node;
             },
-            .str_concat => self.builder.strConcat(left, right),
-            .char_eq => self.builder.charEq(left, right),
-            .char_lt => self.builder.charLt(left, right),
-            .char_gt => self.builder.charGt(left, right),
-            .typep => self.builder.typep(left, right),
-            .append => self.builder.append(left, right),
+            .str_concat => try self.builder.strConcat(left, right),
+            .char_eq => try self.builder.charEq(left, right),
+            .char_lt => try self.builder.charLt(left, right),
+            .char_gt => try self.builder.charGt(left, right),
+            .typep => try self.builder.typep(left, right),
+            .append => try self.builder.append(left, right),
             .nth => blk: {
-                const node = self.allocator.create(Ir) catch return error.OutOfMemory;
+                const node = try self.allocator.create(Ir);
                 node.* = .{ .nth = .{ .left = left, .right = right } };
                 break :blk node;
             },
             .nthcdr => blk: {
-                const node = self.allocator.create(Ir) catch return error.OutOfMemory;
+                const node = try self.allocator.create(Ir);
                 node.* = .{ .nthcdr = .{ .left = left, .right = right } };
                 break :blk node;
             },
             .member => blk: {
-                const node = self.allocator.create(Ir) catch return error.OutOfMemory;
+                const node = try self.allocator.create(Ir);
                 node.* = .{ .member = .{ .left = left, .right = right } };
                 break :blk node;
             },
-            .assoc => self.builder.assoc(left, right),
-            .logand => self.builder.logand(left, right),
-            .logior => self.builder.logior(left, right),
-            .logxor => self.builder.logxor(left, right),
-            .ash => self.builder.ash(left, right),
-            .write_file => self.builder.writeFile(left, right),
-            .make_string => self.builder.makeString(left, right),
-            .rplaca => self.builder.rplaca(left, right),
-            .rplacd => self.builder.rplacd(left, right),
-            else => error.InvalidSyntax,
-        } catch return error.OutOfMemory;
+            .assoc => try self.builder.assoc(left, right),
+            .logand => try self.builder.logand(left, right),
+            .logior => try self.builder.logior(left, right),
+            .logxor => try self.builder.logxor(left, right),
+            .ash => try self.builder.ash(left, right),
+            .write_file => try self.builder.writeFile(left, right),
+            .make_string => try self.builder.makeString(left, right),
+            .rplaca => try self.builder.rplaca(left, right),
+            .rplacd => try self.builder.rplacd(left, right),
+            else => return error.InvalidSyntax,
+        };
     }
 
     fn compileUnaryPrim(self: *Compiler, args: Value, env: *const Env, prim: PrimTag) Error!*Ir {
@@ -4021,118 +4032,118 @@ pub const Compiler = struct {
         const operand = try self.compile(cons.car, env);
 
         return switch (prim) {
-            .car => self.builder.car(operand),
-            .cdr => self.builder.cdr(operand),
-            .consp => self.builder.consp(operand),
-            .symbolp => self.builder.symbolp(operand),
-            .numberp => self.builder.numberp(operand),
-            .nilp => self.builder.nilp(operand),
-            .not => self.builder.not(operand),
-            .vec_len => self.builder.vecLen(operand),
+            .car => try self.builder.car(operand),
+            .cdr => try self.builder.cdr(operand),
+            .consp => try self.builder.consp(operand),
+            .symbolp => try self.builder.symbolp(operand),
+            .numberp => try self.builder.numberp(operand),
+            .nilp => try self.builder.nilp(operand),
+            .not => try self.builder.not(operand),
+            .vec_len => try self.builder.vecLen(operand),
             .make_box => blk: {
-                const node = self.allocator.create(Ir) catch return error.OutOfMemory;
+                const node = try self.allocator.create(Ir);
                 node.* = .{ .make_box = .{ .operand = operand } };
                 break :blk node;
             },
             .box_ref => blk: {
-                const node = self.allocator.create(Ir) catch return error.OutOfMemory;
+                const node = try self.allocator.create(Ir);
                 node.* = .{ .box_ref = .{ .operand = operand } };
                 break :blk node;
             },
-            .str_len => self.builder.strLen(operand),
-            .print => self.builder.print(operand),
-            .princ => self.builder.princ(operand),
-            .write_char => self.builder.writeChar(operand),
-            .char_upcase => self.builder.charUpcase(operand),
-            .char_downcase => self.builder.charDowncase(operand),
-            .digit_char_p => self.builder.digitCharP(operand),
-            .alpha_char_p => self.builder.alphaCharP(operand),
-            .parse_integer => self.builder.parseInteger(operand),
-            .write_to_string => self.builder.writeToString(operand),
-            .lognot => self.builder.lognot(operand),
-            .read_file => self.builder.readFile(operand),
-            .string_to_list => self.builder.stringToList(operand),
-            .list_to_string => self.builder.listToString(operand),
-            .string_upcase => self.builder.stringUpcase(operand),
-            .string_downcase => self.builder.stringDowncase(operand),
+            .str_len => try self.builder.strLen(operand),
+            .print => try self.builder.print(operand),
+            .princ => try self.builder.princ(operand),
+            .write_char => try self.builder.writeChar(operand),
+            .char_upcase => try self.builder.charUpcase(operand),
+            .char_downcase => try self.builder.charDowncase(operand),
+            .digit_char_p => try self.builder.digitCharP(operand),
+            .alpha_char_p => try self.builder.alphaCharP(operand),
+            .parse_integer => try self.builder.parseInteger(operand),
+            .write_to_string => try self.builder.writeToString(operand),
+            .lognot => try self.builder.lognot(operand),
+            .read_file => try self.builder.readFile(operand),
+            .string_to_list => try self.builder.stringToList(operand),
+            .list_to_string => try self.builder.listToString(operand),
+            .string_upcase => try self.builder.stringUpcase(operand),
+            .string_downcase => try self.builder.stringDowncase(operand),
             .stringp => blk: {
-                const node = self.allocator.create(Ir) catch return error.OutOfMemory;
+                const node = try self.allocator.create(Ir);
                 node.* = .{ .stringp = .{ .operand = operand } };
                 break :blk node;
             },
             .vectorp => blk: {
-                const node = self.allocator.create(Ir) catch return error.OutOfMemory;
+                const node = try self.allocator.create(Ir);
                 node.* = .{ .vectorp = .{ .operand = operand } };
                 break :blk node;
             },
-            .closurep => self.builder.closurep(operand),
-            .keywordp => self.builder.keywordp(operand),
+            .closurep => try self.builder.closurep(operand),
+            .keywordp => try self.builder.keywordp(operand),
             .random => blk: {
-                const node = self.allocator.create(Ir) catch return error.OutOfMemory;
+                const node = try self.allocator.create(Ir);
                 node.* = .{ .random = .{ .operand = operand } };
                 break :blk node;
             },
             .intern => blk: {
-                const node = self.allocator.create(Ir) catch return error.OutOfMemory;
+                const node = try self.allocator.create(Ir);
                 node.* = .{ .intern = .{ .operand = operand } };
                 break :blk node;
             },
             .sym_name => blk: {
-                const node = self.allocator.create(Ir) catch return error.OutOfMemory;
+                const node = try self.allocator.create(Ir);
                 node.* = .{ .sym_name = .{ .operand = operand } };
                 break :blk node;
             },
-            .type_of => self.builder.typeOf(operand),
-            .error_user => self.builder.errorUser(operand),
-            .characterp => self.builder.characterp(operand),
-            .floatp => self.builder.floatp(operand),
-            .listp => self.builder.listp(operand),
-            .atom => self.builder.atomp(operand),
-            .char_code => self.builder.charCode(operand),
-            .code_char => self.builder.codeChar(operand),
-            .unread_char => self.builder.unreadChar(operand),
-            .load => self.builder.load(operand),
-            .read_from_string => self.builder.readFromString(operand),
-            .eval => self.builder.eval(operand),
-            .macroexpand => self.builder.macroexpand(operand),
-            .boundp => self.builder.boundp(operand),
-            .fboundp => self.builder.fboundp(operand),
-            .symbol_value => self.builder.symbolValue(operand),
-            .symbol_function => self.builder.symbolFunction(operand),
-            .abs => self.builder.abs(operand),
-            .zerop => self.builder.zerop(operand),
-            .plusp => self.builder.plusp(operand),
-            .minusp => self.builder.minusp(operand),
-            .evenp => self.builder.evenp(operand),
-            .oddp => self.builder.oddp(operand),
+            .type_of => try self.builder.typeOf(operand),
+            .error_user => try self.builder.errorUser(operand),
+            .characterp => try self.builder.characterp(operand),
+            .floatp => try self.builder.floatp(operand),
+            .listp => try self.builder.listp(operand),
+            .atom => try self.builder.atomp(operand),
+            .char_code => try self.builder.charCode(operand),
+            .code_char => try self.builder.codeChar(operand),
+            .unread_char => try self.builder.unreadChar(operand),
+            .load => try self.builder.load(operand),
+            .read_from_string => try self.builder.readFromString(operand),
+            .eval => try self.builder.eval(operand),
+            .macroexpand => try self.builder.macroexpand(operand),
+            .boundp => try self.builder.boundp(operand),
+            .fboundp => try self.builder.fboundp(operand),
+            .symbol_value => try self.builder.symbolValue(operand),
+            .symbol_function => try self.builder.symbolFunction(operand),
+            .abs => try self.builder.abs(operand),
+            .zerop => try self.builder.zerop(operand),
+            .plusp => try self.builder.plusp(operand),
+            .minusp => try self.builder.minusp(operand),
+            .evenp => try self.builder.evenp(operand),
+            .oddp => try self.builder.oddp(operand),
             .length => blk: {
-                const node = self.allocator.create(Ir) catch return error.OutOfMemory;
+                const node = try self.allocator.create(Ir);
                 node.* = .{ .length = .{ .operand = operand } };
                 break :blk node;
             },
             .reverse => blk: {
-                const node = self.allocator.create(Ir) catch return error.OutOfMemory;
+                const node = try self.allocator.create(Ir);
                 node.* = .{ .reverse = .{ .operand = operand } };
                 break :blk node;
             },
             .last => blk: {
-                const node = self.allocator.create(Ir) catch return error.OutOfMemory;
+                const node = try self.allocator.create(Ir);
                 node.* = .{ .last = .{ .operand = operand } };
                 break :blk node;
             },
-            else => error.InvalidSyntax,
-        } catch return error.OutOfMemory;
+            else => return error.InvalidSyntax,
+        };
     }
 
     fn compileNullaryPrim(self: *Compiler, prim: PrimTag) Error!*Ir {
         return switch (prim) {
-            .read_char => self.builder.readChar(),
-            .peek_char => self.builder.peekChar(),
-            .read => self.builder.readSexp(),
-            .gensym => self.builder.gensym(),
-            .terpri => self.builder.terpri(),
-            else => error.InvalidSyntax,
-        } catch return error.OutOfMemory;
+            .read_char => try self.builder.readChar(),
+            .peek_char => try self.builder.peekChar(),
+            .read => try self.builder.readSexp(),
+            .gensym => try self.builder.gensym(),
+            .terpri => try self.builder.terpri(),
+            else => return error.InvalidSyntax,
+        };
     }
 
     fn compileListPrim(self: *Compiler, args: Value, env: *const Env) Error!*Ir {
@@ -4144,11 +4155,11 @@ pub const Compiler = struct {
         while (current.isCons()) {
             const cons = current.toPtr(Cons);
             const elem_ir = try self.compile(cons.car, env);
-            elements.append(self.allocator, elem_ir) catch return error.OutOfMemory;
+            try elements.append(self.allocator, elem_ir);
             current = cons.cdr;
         }
 
-        return self.builder.list(elements.items) catch return error.OutOfMemory;
+        return try self.builder.list(elements.items);
     }
 
     fn compileSubstring(self: *Compiler, args: Value, env: *const Env) Error!*Ir {
@@ -4165,7 +4176,7 @@ pub const Compiler = struct {
         const cons3 = cons2.cdr.toPtr(Cons);
         const end_ir = try self.compile(cons3.car, env);
 
-        const node = self.allocator.create(Ir) catch return error.OutOfMemory;
+        const node = try self.allocator.create(Ir);
         node.* = .{ .substring = .{ .str = str_ir, .start = start_ir, .end = end_ir } };
         return node;
     }
@@ -4187,10 +4198,10 @@ pub const Compiler = struct {
             break :blk try self.compile(cons3.car, env);
         } else blk: {
             // Use string-length as default end
-            break :blk self.builder.strLen(seq_ir) catch return error.OutOfMemory;
+            break :blk try self.builder.strLen(seq_ir);
         };
 
-        const node = self.allocator.create(Ir) catch return error.OutOfMemory;
+        const node = try self.allocator.create(Ir);
         node.* = .{ .substring = .{ .str = seq_ir, .start = start_ir, .end = end_ir } };
         return node;
     }
@@ -4226,9 +4237,9 @@ pub const Compiler = struct {
         if (!rest.isCons()) {
             // No sequences, return empty string or nil
             if (type_sym.raw == b.string.raw) {
-                return self.builder.lit(Value.nil) catch return error.OutOfMemory;
+                return try self.builder.lit(Value.nil);
             } else {
-                return self.builder.lit(Value.nil) catch return error.OutOfMemory;
+                return try self.builder.lit(Value.nil);
             }
         }
 
@@ -4242,14 +4253,14 @@ pub const Compiler = struct {
             while (rest.isCons()) {
                 const cons = rest.toPtr(Cons);
                 const next_ir = try self.compile(cons.car, env);
-                result_ir = self.builder.strConcat(result_ir, next_ir) catch return error.OutOfMemory;
+                result_ir = try self.builder.strConcat(result_ir, next_ir);
                 rest = cons.cdr;
             }
         } else if (type_sym.raw == b.list.raw) {
             while (rest.isCons()) {
                 const cons = rest.toPtr(Cons);
                 const next_ir = try self.compile(cons.car, env);
-                result_ir = self.builder.append(result_ir, next_ir) catch return error.OutOfMemory;
+                result_ir = try self.builder.append(result_ir, next_ir);
                 rest = cons.cdr;
             }
         } else {
@@ -4291,14 +4302,14 @@ pub const Compiler = struct {
         if (type_sym.raw == b.list.raw) {
             // (coerce x 'list) - convert sequence to list
             // For strings, use string-to-list
-            return self.builder.stringToList(obj_ir) catch return error.OutOfMemory;
+            return try self.builder.stringToList(obj_ir);
         } else if (type_sym.raw == b.string.raw) {
             // (coerce x 'string) - convert sequence to string
             // For lists, use list-to-string
-            return self.builder.listToString(obj_ir) catch return error.OutOfMemory;
+            return try self.builder.listToString(obj_ir);
         } else if (type_sym.raw == b.character.raw) {
             // (coerce x 'character) - convert to character
-            return self.builder.codeChar(obj_ir) catch return error.OutOfMemory;
+            return try self.builder.codeChar(obj_ir);
         } else {
             return error.InvalidSyntax;
         }
@@ -4322,18 +4333,18 @@ pub const Compiler = struct {
         while (rest.isCons()) {
             const cons = rest.toPtr(Cons);
             const arg_ir = try self.compile(cons.car, env);
-            arg_list.append(self.allocator, arg_ir) catch return error.OutOfMemory;
+            try arg_list.append(self.allocator, arg_ir);
             rest = cons.cdr;
         }
 
-        return self.builder.format(dest_ir, control_ir, arg_list.items) catch return error.OutOfMemory;
+        return try self.builder.format(dest_ir, control_ir, arg_list.items);
     }
 
     fn compileMakeHash(self: *Compiler, args: Value) Error!*Ir {
         // (make-hash-table) or (make-hash-table :size n)
         // For now, just use default capacity
         _ = args;
-        const node = self.allocator.create(Ir) catch return error.OutOfMemory;
+        const node = try self.allocator.create(Ir);
         node.* = .{ .make_hash = .{ .capacity = 16 } };
         return node;
     }
@@ -4351,8 +4362,8 @@ pub const Compiler = struct {
         while (i > 0) {
             i -= 1;
             result = switch (pattern[i]) {
-                'a' => self.builder.car(result) catch return error.OutOfMemory,
-                'd' => self.builder.cdr(result) catch return error.OutOfMemory,
+                'a' => try self.builder.car(result),
+                'd' => try self.builder.cdr(result),
                 else => return error.InvalidSyntax,
             };
         }
@@ -4371,7 +4382,7 @@ pub const Compiler = struct {
             init_ir = try self.compile(cons2.car, env);
         }
 
-        return self.builder.vecNew(size_ir, init_ir) catch return error.OutOfMemory;
+        return try self.builder.vecNew(size_ir, init_ir);
     }
 
     fn compileVectorPrim(self: *Compiler, args: Value, env: *const Env) Error!*Ir {
@@ -4383,11 +4394,11 @@ pub const Compiler = struct {
         while (current.isCons()) {
             const cons = current.toPtr(Cons);
             const elem_ir = try self.compile(cons.car, env);
-            elements.append(self.allocator, elem_ir) catch return error.OutOfMemory;
+            try elements.append(self.allocator, elem_ir);
             current = cons.cdr;
         }
 
-        return self.builder.vec(elements.items) catch return error.OutOfMemory;
+        return try self.builder.vec(elements.items);
     }
 
     fn compileSvset(self: *Compiler, args: Value, env: *const Env) Error!*Ir {
@@ -4404,7 +4415,7 @@ pub const Compiler = struct {
         const cons3 = cons2.cdr.toPtr(Cons);
         const val_ir = try self.compile(cons3.car, env);
 
-        return self.builder.vecSet(vec_ir, idx_ir, val_ir) catch return error.OutOfMemory;
+        return try self.builder.vecSet(vec_ir, idx_ir, val_ir);
     }
 
     fn compileGethash(self: *Compiler, args: Value, env: *const Env) Error!*Ir {
@@ -4417,7 +4428,7 @@ pub const Compiler = struct {
         const cons2 = cons1.cdr.toPtr(Cons);
         const table_ir = try self.compile(cons2.car, env);
 
-        const node = self.allocator.create(Ir) catch return error.OutOfMemory;
+        const node = try self.allocator.create(Ir);
         node.* = .{ .hash_get = .{ .table = table_ir, .key = key_ir } };
         return node;
     }
@@ -4436,7 +4447,7 @@ pub const Compiler = struct {
         const cons3 = cons2.cdr.toPtr(Cons);
         const table_ir = try self.compile(cons3.car, env);
 
-        const node = self.allocator.create(Ir) catch return error.OutOfMemory;
+        const node = try self.allocator.create(Ir);
         node.* = .{ .hash_set = .{ .table = table_ir, .key = key_ir, .value = value_ir } };
         return node;
     }
@@ -4451,7 +4462,7 @@ pub const Compiler = struct {
         const cons2 = cons1.cdr.toPtr(Cons);
         const table_ir = try self.compile(cons2.car, env);
 
-        const node = self.allocator.create(Ir) catch return error.OutOfMemory;
+        const node = try self.allocator.create(Ir);
         node.* = .{ .hash_rem = .{ .table = table_ir, .key = key_ir } };
         return node;
     }
@@ -4462,7 +4473,7 @@ pub const Compiler = struct {
         const cons = args.toPtr(Cons);
         const table_ir = try self.compile(cons.car, env);
 
-        const node = self.allocator.create(Ir) catch return error.OutOfMemory;
+        const node = try self.allocator.create(Ir);
         node.* = .{ .hash_count = .{ .operand = table_ir } };
         return node;
     }
@@ -4473,7 +4484,7 @@ pub const Compiler = struct {
         const cons = args.toPtr(Cons);
         const operand_ir = try self.compile(cons.car, env);
 
-        const node = self.allocator.create(Ir) catch return error.OutOfMemory;
+        const node = try self.allocator.create(Ir);
         node.* = .{ .hashtablep = .{ .operand = operand_ir } };
         return node;
     }
@@ -4492,7 +4503,7 @@ pub const Compiler = struct {
         while (list.isCons()) {
             const cons = list.toPtr(Cons);
             const arg_ir = try self.compile(cons.car, env);
-            args.append(self.allocator, arg_ir) catch return error.OutOfMemory;
+            try args.append(self.allocator, arg_ir);
             list = cons.cdr;
         }
 
@@ -4501,9 +4512,9 @@ pub const Compiler = struct {
             return error.OutOfMemory;
 
         if (in_tail) {
-            return self.builder.tailcall(func_ir, items) catch return error.OutOfMemory;
+            return try self.builder.tailcall(func_ir, items);
         } else {
-            return self.builder.call(func_ir, items) catch return error.OutOfMemory;
+            return try self.builder.call(func_ir, items);
         }
     }
 

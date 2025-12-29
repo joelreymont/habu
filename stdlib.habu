@@ -104,6 +104,13 @@
 ; CL-compatible mapcar alias
 (defun mapcar (f lst) (map f lst))
 
+; Mapc - like map but for side effects, returns nil
+(defun mapc (f lst)
+  (if (null lst)
+      nil
+      (progn (f (car lst))
+             (mapc f (cdr lst)))))
+
 ; Filter (keeps elements where pred is true)
 (defun filter (pred lst)
   (if (null lst)
@@ -225,3 +232,133 @@
 
 (defun fib (n)
   (fib-aux n 0 1))
+
+; ============================================================================
+; Macros
+; ============================================================================
+
+; when - execute body if test is true
+(defmacro when (test &rest body)
+  (list 'if test (cons 'progn body)))
+
+; unless - execute body if test is false
+(defmacro unless (test &rest body)
+  (list 'if test nil (cons 'progn body)))
+
+; dolist - iterate over list elements
+; (dolist (var list) body...) => nil
+(defmacro dolist (spec &rest body)
+  (let ((var (car spec))
+        (lst (cadr spec))
+        (loop-fn (gensym)))
+    (list 'let (list (list loop-fn
+                           (list 'lambda (list var)
+                                 (cons 'progn body))))
+          (list 'mapc loop-fn lst)
+          nil)))
+
+; dotimes - iterate n times
+; (dotimes (var n) body...) => nil
+(defmacro dotimes (spec &rest body)
+  (let ((var (car spec))
+        (count (cadr spec))
+        (loop-fn (gensym))
+        (i (gensym)))
+    (list 'let (list (list loop-fn
+                           (list 'lambda (list var)
+                                 (cons 'progn body))))
+          (list 'let (list (list i 0))
+                (list 'block nil
+                      (list 'loop
+                            (list 'when (list '>= i count)
+                                  (list 'return-from nil nil))
+                            (list loop-fn i)
+                            (list 'setq i (list '+ i 1))))))))
+
+; incf - increment place (simple version for variables only)
+(defmacro incf (place &optional (delta 1))
+  (list 'setq place (list '+ place delta)))
+
+; decf - decrement place
+(defmacro decf (place &optional (delta 1))
+  (list 'setq place (list '- place delta)))
+
+; push - push value onto list (destructive)
+; (push val place) => new-list
+(defmacro push (val place)
+  (list 'setq place (list 'cons val place)))
+
+; pop - pop value from list (destructive)
+; (pop place) => first-element
+(defmacro pop (place)
+  (let ((temp (gensym)))
+    (list 'let (list (list temp (list 'car place)))
+          (list 'setq place (list 'cdr place))
+          temp)))
+
+; cond - multi-way conditional
+; Already have this as a special form, but define macro version for completeness
+; (Note: cond is a special form in Habu, so this is just documentation)
+
+; case - dispatch on value (simple version)
+(defmacro case (keyform &rest clauses)
+  (let ((key (gensym)))
+    (list 'let (list (list key keyform))
+          (cons 'cond
+                (mapcar (lambda (clause)
+                          (let ((keys (car clause))
+                                (body (cdr clause)))
+                            (if (or (eq keys 't) (eq keys 'otherwise))
+                                (cons t body)
+                                (list (list 'member key (list 'quote
+                                              (if (consp keys) keys (list keys))))
+                                      (cons 'progn body)))))
+                        clauses)))))
+
+; prog1 - evaluate forms, return first value
+(defmacro prog1 (first &rest rest)
+  (let ((result (gensym)))
+    (list 'let (list (list result first))
+          (cons 'progn rest)
+          result)))
+
+; prog2 - evaluate forms, return second value
+(defmacro prog2 (first second &rest rest)
+  (list 'progn first
+        (cons 'prog1 (cons second rest))))
+
+; and - short-circuit logical and (macro version)
+(defmacro and (&rest forms)
+  (if (null forms)
+      t
+      (if (null (cdr forms))
+          (car forms)
+          (list 'if (car forms)
+                (cons 'and (cdr forms))
+                nil))))
+
+; or - short-circuit logical or (macro version)
+(defmacro or (&rest forms)
+  (if (null forms)
+      nil
+      (if (null (cdr forms))
+          (car forms)
+          (let ((temp (gensym)))
+            (list 'let (list (list temp (car forms)))
+                  (list 'if temp temp
+                        (cons 'or (cdr forms))))))))
+
+; aif - anaphoric if (binds 'it' to test value)
+(defmacro aif (test then &optional else)
+  (list 'let (list (list 'it test))
+        (list 'if 'it then else)))
+
+; awhen - anaphoric when
+(defmacro awhen (test &rest body)
+  (list 'aif test (cons 'progn body)))
+
+; with-gensyms - bind multiple gensyms
+(defmacro with-gensyms (names &rest body)
+  (list 'let
+        (mapcar (lambda (name) (list name (list 'gensym))) names)
+        (cons 'progn body)))
