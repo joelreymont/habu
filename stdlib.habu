@@ -881,3 +881,32 @@
     (let ((count (min (- real-end1 start1) (- real-end2 start2))))
       (dotimes (i count seq1)
         (setf (elt seq1 (+ start1 i)) (elt seq2 (+ start2 i)))))))
+
+;; ============================================================
+;; Prog Special Forms
+;; ============================================================
+
+; prog - sequential execution with local bindings and tags
+(defmacro prog (bindings &rest body)
+  (list 'block nil
+        (cons 'let bindings
+              (list (cons 'tagbody body)))))
+
+; prog* - like prog but bindings are sequential
+(defmacro prog* (bindings &rest body)
+  (list 'block nil
+        (cons 'let* bindings
+              (list (cons 'tagbody body)))))
+
+; prog1 - evaluate forms, return first value
+(defmacro prog1 (first &rest rest)
+  (let ((result (gensym "RESULT")))
+    (list 'let (list (list result first))
+          (cons 'progn rest)
+          result)))
+
+; prog2 - evaluate forms, return second value  
+(defmacro prog2 (first second &rest rest)
+  (list 'progn
+        first
+        (cons 'prog1 (cons second rest))))
