@@ -1748,3 +1748,114 @@
 ; make-symbol - create uninterned symbol
 (defun make-symbol (name)
   (gensym name))
+
+;; ============================================================
+;; Mapping Variations
+;; ============================================================
+
+; mapcan - map and nconc results
+(defun mapcan (fn list &rest more-lists)
+  (apply #'nconc (apply #'mapcar fn list more-lists)))
+
+; mapcon - maplist and nconc results
+(defun mapcon (fn list &rest more-lists)
+  (apply #'nconc (apply #'maplist fn list more-lists)))
+
+; maplist - map over successive cdrs
+(defun maplist (fn list &rest more-lists)
+  (if (or (null list) (some #'null more-lists))
+      nil
+      (cons (apply fn list more-lists)
+            (apply #'maplist fn (cdr list) (mapcar #'cdr more-lists)))))
+
+; mapl - like maplist but for side effects
+(defun mapl (fn list &rest more-lists)
+  (let ((lists (cons list more-lists)))
+    (loop while (notany #'null lists)
+          do (apply fn lists)
+             (setq lists (mapcar #'cdr lists))))
+  list)
+
+;; ============================================================
+;; Loop Extensions
+;; ============================================================
+
+; dotimes* - dotimes with explicit step
+(defmacro dotimes* ((var count &optional result step) &rest body)
+  (let ((max (gensym "MAX"))
+        (s (or step 1)))
+    (list 'let (list (list max count))
+          (list 'do (list (list var 0 (list '+ var s)))
+                    (list (list '>= var max) result)
+                (cons 'progn body)))))
+
+; doseq - iterate over any sequence
+(defmacro doseq ((var sequence &optional result) &rest body)
+  (let ((seq (gensym "SEQ"))
+        (i (gensym "I"))
+        (len (gensym "LEN")))
+    (list 'let* (list (list seq sequence)
+                      (list len (list 'length seq)))
+          (list 'if (list 'vectorp seq)
+                (list 'dotimes (list i len result)
+                      (list 'let (list (list var (list 'svref seq i)))
+                            (cons 'progn body)))
+                (list 'dolist (list var seq result)
+                      (cons 'progn body))))))
+
+;; ============================================================
+;; Predicates
+;; ============================================================
+
+; endp - check for end of proper list
+(defun endp (x)
+  (if (null x)
+      t
+      (if (consp x)
+          nil
+          (error "Not a list"))))
+
+; functionp - check if callable
+(defun functionp (x)
+  (or (closurep x) (symbolp x)))
+
+; compiled-function-p - check if compiled
+(defun compiled-function-p (x)
+  (closurep x))
+
+; arrayp - check if array (vectors are arrays)
+(defun arrayp (x)
+  (vectorp x))
+
+; simple-vector-p - check if simple vector
+(defun simple-vector-p (x)
+  (vectorp x))
+
+; simple-string-p - check if simple string
+(defun simple-string-p (x)
+  (stringp x))
+
+; bit-vector-p - no bit vectors yet
+(defun bit-vector-p (x)
+  (declare (ignore x))
+  nil)
+
+; packagep - no packages yet
+(defun packagep (x)
+  (declare (ignore x))
+  nil)
+
+; pathnamep - no pathnames yet
+(defun pathnamep (x)
+  (declare (ignore x))
+  nil)
+
+; streamp - no stream objects yet
+(defun streamp (x)
+  (declare (ignore x))
+  nil)
+
+; readtablep - no readtable objects
+(defun readtablep (x)
+  (declare (ignore x))
+  nil)
