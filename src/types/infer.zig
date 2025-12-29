@@ -872,6 +872,13 @@ pub const InferCtx = struct {
                 return try self.concrete(&types.t_any);
             },
 
+            // Struct type predicate - returns boolean (any)
+            .struct_p => |sp| {
+                _ = try self.infer(sp.operand, env);
+                // Returns t or nil (boolean in CL)
+                return try self.concrete(&types.t_any);
+            },
+
             // Everything else returns any for now
             else => return try self.concrete(&types.t_any),
         }
@@ -905,8 +912,15 @@ fn typeEquals(t1: *const types.Type, t2: *const types.Type) bool {
             return false;
         },
         .any => return t2.* == .any,
+        .@"struct" => |s1| {
+            // Structs are nominally typed - must have same name
+            if (t2.* == .@"struct") {
+                return std.mem.eql(u8, s1.name, t2.@"struct".name);
+            }
+            return false;
+        },
         else => {
-            // TODO: structural equality for compound types
+            // TODO: structural equality for other compound types (or, arrow, list, vec)
             return false;
         },
     }
@@ -1205,7 +1219,7 @@ test "let-polymorphism: identity used at multiple types" {
 
     // Build: (let ((id (lambda (x) x))) ...)
     const bindings = [_]ir_mod.Ir.Binding{
-        .{ .name = "id", .value = id_lambda },
+        .{ .name = "id", .value = id_lambda, .index = 0 },
     };
     const let_node = try builder.letExpr(&bindings, progn);
 

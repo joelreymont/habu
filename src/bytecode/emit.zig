@@ -21,6 +21,7 @@ pub const Error = error{
     TooManyLocals,
     JumpTooLong,
     InvalidIr,
+    NoHeap,
 };
 
 /// Block info for tracking named exits
@@ -166,6 +167,7 @@ pub const Emitter = struct {
             .return_from => |r| try self.emitReturnFrom(r),
             .unwind_protect => |u| try self.emitUnwindProtect(u),
             .@"catch" => |c| try self.emitCatch(c),
+            .handler_case => |hc| try self.emitHandlerCase(hc),
             .throw => |t| try self.emitThrow(t),
             .tagbody => |tb| try self.emitTagbody(tb),
             .go => |g| try self.emitGo(g),
@@ -216,7 +218,23 @@ pub const Emitter = struct {
             .nthcdr => |op| try self.emitBinaryOp(op, .list_nthcdr),
             .last => |op| try self.emitUnaryOp(op.operand, .list_last),
             .member => |op| try self.emitBinaryOp(op, .list_member),
+            .member_eql => |op| try self.emitBinaryOp(op, .list_member_eql),
+            .member_equal => |op| try self.emitBinaryOp(op, .list_member_equal),
             .assoc => |op| try self.emitBinaryOp(op, .assoc),
+            .assoc_eql => |op| try self.emitBinaryOp(op, .assoc_eql),
+            .assoc_equal => |op| try self.emitBinaryOp(op, .assoc_equal),
+            .find => |op| try self.emitBinaryOp(op, .list_find),
+            .find_eq => |op| try self.emitBinaryOp(op, .list_find_eq),
+            .find_equal => |op| try self.emitBinaryOp(op, .list_find_equal),
+            .position => |op| try self.emitBinaryOp(op, .list_position),
+            .position_eq => |op| try self.emitBinaryOp(op, .list_position_eq),
+            .position_equal => |op| try self.emitBinaryOp(op, .list_position_equal),
+            .count => |op| try self.emitBinaryOp(op, .list_count),
+            .count_eq => |op| try self.emitBinaryOp(op, .list_count_eq),
+            .count_equal => |op| try self.emitBinaryOp(op, .list_count_equal),
+            .remove => |op| try self.emitBinaryOp(op, .list_remove),
+            .remove_eq => |op| try self.emitBinaryOp(op, .list_remove_eq),
+            .remove_equal => |op| try self.emitBinaryOp(op, .list_remove_equal),
             .rplaca => |op| try self.emitBinaryOp(op, .rplaca),
             .rplacd => |op| try self.emitBinaryOp(op, .rplacd),
 
@@ -233,6 +251,7 @@ pub const Emitter = struct {
             .floatp => |op| try self.emitUnaryOp(op.operand, .floatp),
             .listp => |op| try self.emitUnaryOp(op.operand, .listp),
             .atom => |op| try self.emitUnaryOp(op.operand, .atom),
+            .struct_p => |sp| try self.emitStructP(sp.operand, sp.struct_name),
 
             // Character operations
             .char_code => |op| try self.emitUnaryOp(op.operand, .char_code),
@@ -387,10 +406,8 @@ pub const Emitter = struct {
 
     fn emitI32(self: *Emitter, val: i32) Error!void {
         const u: u32 = @bitCast(val);
-        self.code.append(self.allocator, @truncate(u)) catch return error.OutOfMemory;
-        self.code.append(self.allocator, @truncate(u >> 8)) catch return error.OutOfMemory;
-        self.code.append(self.allocator, @truncate(u >> 16)) catch return error.OutOfMemory;
-        self.code.append(self.allocator, @truncate(u >> 24)) catch return error.OutOfMemory;
+        const bytes = [_]u8{ @truncate(u), @truncate(u >> 8), @truncate(u >> 16), @truncate(u >> 24) };
+        self.code.appendSlice(self.allocator, &bytes) catch return error.OutOfMemory;
     }
 
     /// Add constant to pool, return index (O(1) deduplication via hash map)
@@ -472,7 +489,7 @@ pub const Emitter = struct {
     fn emitQuoteSym(self: *Emitter, name: []const u8) Error!void {
         if (self.heap) |heap| {
             // Intern symbol and add to constant pool
-            const sym = heap.intern(name) orelse return error.OutOfMemory;
+            const sym = try heap.intern(name);
             const idx = try self.addConstant(sym.raw);
             try self.emitOp(.push_const);
             try self.emitU16(idx);
@@ -550,10 +567,9 @@ pub const Emitter = struct {
     }
 
     fn emitLet(self: *Emitter, l: anytype) Error!void {
-        // Emit binding values
+        // Emit binding values - push them onto the stack as locals
         for (l.bindings) |b| {
             try self.emit(b.value);
-            // Values are now on stack as locals
         }
 
         // Emit body
@@ -626,7 +642,7 @@ pub const Emitter = struct {
 
             // Add keyword to constant pool for find_key opcode
             if (lambda_emitter.heap) |heap| {
-                const kw = heap.internKeyword(key_param.keyword) orelse {
+                const kw = heap.internKeyword(key_param.keyword) catch {
                     lambda_emitter.deinit();
                     return error.OutOfMemory;
                 };
@@ -800,6 +816,57 @@ pub const Emitter = struct {
         try self.emitOp(.push_nil);
     }
 
+    /// Emit struct predicate check: (if (vectorp obj) (eq (vec-ref obj 0) 'name) nil)
+    fn emitStructP(self: *Emitter, operand: *const Ir, struct_name: []const u8) Error!void {
+        // Emit the operand
+        try self.emit(operand);
+
+        // Duplicate for vectorp check (need value again for vec-ref)
+        try self.emitOp(.dup);
+
+        // Check if it's a vector
+        try self.emitOp(.vectorp);
+
+        // Jump to nil if not a vector
+        const nil_jump = try self.emitJump(.jmp_nil);
+
+        // It's a vector - check the type tag at index 0
+        // Stack: [obj] - duplicate for vec-ref
+        try self.emitOp(.dup);
+
+        // Push index 0
+        try self.emitOp(.push_i32);
+        try self.emitI32(0);
+
+        // Get element at index 0
+        try self.emitOp(.vec_ref);
+
+        // Push struct name symbol as constant
+        const heap = self.heap orelse return error.NoHeap;
+        const name_sym = try heap.intern(struct_name);
+        const const_idx = try self.addConstant(name_sym.raw);
+        try self.emitOp(.push_const);
+        try self.emitU16(const_idx);
+
+        // Compare with eq
+        try self.emitOp(.eq);
+
+        // Swap and pop the extra obj copy (stack: [obj, result] -> [result])
+        try self.emitOp(.swap);
+        try self.emitOp(.pop);
+
+        // Jump to end
+        const end_jump = try self.emitJump(.jmp);
+
+        // Nil case: pop the extra copy and push nil
+        try self.patchJump(nil_jump);
+        try self.emitOp(.pop); // Remove obj copy
+        try self.emitOp(.push_nil);
+
+        // End
+        try self.patchJump(end_jump);
+    }
+
     fn emitBlock(self: *Emitter, b: anytype) Error!void {
         // Push a new block onto the control stack
         const entry = ControlEntry{
@@ -894,8 +961,7 @@ pub const Emitter = struct {
         // pop_unwind signals end of cleanup region
         // The operand is unused (0) - VM tracks state internally
         try self.emitOp(.pop_unwind);
-        try self.code.append(self.allocator, 0);
-        try self.code.append(self.allocator, 0);
+        try self.code.appendSlice(self.allocator, &[_]u8{ 0, 0 });
     }
 
     fn emitCatch(self: *Emitter, c: anytype) Error!void {
@@ -920,6 +986,42 @@ pub const Emitter = struct {
 
         // When throw happens, thrown value is on stack (pushed by throw opcode)
         // Nothing more needed - value is already the result
+
+        // Patch end_jump
+        try self.patchJumpAt(end_jump);
+    }
+
+    fn emitHandlerCase(self: *Emitter, hc: anytype) Error!void {
+        // handler-case is like catch but uses let-style binding for the caught value
+        // The caught value is on the stack when the handler runs
+
+        // Emit tag expression (will be on stack for push_catch)
+        try self.emit(hc.tag);
+
+        // Emit push_catch with forward jump to handler
+        const catch_jump = try self.emitJump(.push_catch);
+
+        // Emit protected body
+        try self.emit(hc.body);
+
+        // Normal exit: pop catch frame
+        try self.emitOp(.pop_catch);
+
+        // Jump over the handler (body completed normally)
+        const end_jump = try self.emitJump(.jmp);
+
+        // Patch catch_jump to point here (throw lands here)
+        try self.patchJumpAt(catch_jump);
+
+        // When throw happens, thrown value is on stack (like a let binding)
+        // The handler code was compiled with the condition variable referencing this stack slot
+        // Emit handler dispatch code
+        try self.emit(hc.handler);
+
+        // After handler: stack has [caught-value, result]
+        // Swap and pop to leave just result (like let cleanup)
+        try self.emitOp(.swap);
+        try self.emitOp(.pop);
 
         // Patch end_jump
         try self.patchJumpAt(end_jump);

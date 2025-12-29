@@ -11,6 +11,7 @@
 const std = @import("std");
 const Value = @import("../runtime/value.zig").Value;
 pub const HashTest = @import("../runtime/objects.zig").HashTest;
+const types = @import("../types/types.zig");
 
 /// IR node - represents a Habu expression
 pub const Ir = union(enum) {
@@ -133,6 +134,15 @@ pub const Ir = union(enum) {
     throw: struct {
         tag: *const Ir,
         value: *const Ir,
+    },
+
+    /// Handler-case: like catch but binds caught value to a variable
+    /// (handler-case protected-expr (type (var) handler-body)...)
+    handler_case: struct {
+        tag: *const Ir, // The catch tag (usually %condition%)
+        body: *const Ir, // The protected expression
+        handler: *const Ir, // Handler dispatch code
+        cond_var: []const u8, // Variable name for caught condition
     },
 
     /// Tagbody: (tagbody tag1 form1 tag2 form2 ...)
@@ -285,8 +295,24 @@ pub const Ir = union(enum) {
     nth: BinaryOp, // (nth n list)
     nthcdr: BinaryOp, // (nthcdr n list)
     last: UnaryOp, // (last list)
-    member: BinaryOp, // (member item list)
-    assoc: BinaryOp, // (assoc key alist)
+    member: BinaryOp, // (member item list) - uses eq
+    member_eql: BinaryOp, // (member item list :test #'eql)
+    member_equal: BinaryOp, // (member item list :test #'equal)
+    assoc: BinaryOp, // (assoc key alist) - uses eq
+    assoc_eql: BinaryOp, // (assoc key alist :test #'eql)
+    assoc_equal: BinaryOp, // (assoc key alist :test #'equal)
+    find: BinaryOp, // (find item sequence) - uses eql
+    find_eq: BinaryOp, // (find item sequence :test #'eq)
+    find_equal: BinaryOp, // (find item sequence :test #'equal)
+    position: BinaryOp, // (position item sequence) - uses eql
+    position_eq: BinaryOp, // (position item sequence :test #'eq)
+    position_equal: BinaryOp, // (position item sequence :test #'equal)
+    count: BinaryOp, // (count item sequence) - uses eql
+    count_eq: BinaryOp, // (count item sequence :test #'eq)
+    count_equal: BinaryOp, // (count item sequence :test #'equal)
+    remove: BinaryOp, // (remove item sequence) - uses eql
+    remove_eq: BinaryOp, // (remove item sequence :test #'eq)
+    remove_equal: BinaryOp, // (remove item sequence :test #'equal)
     rplaca: BinaryOp, // (rplaca cons value) - destructive!
     rplacd: BinaryOp, // (rplacd cons value) - destructive!
 
@@ -306,6 +332,14 @@ pub const Ir = union(enum) {
     floatp: UnaryOp,
     listp: UnaryOp, // nil or cons
     atom: UnaryOp, // not a cons
+    /// Struct type predicate: checks if value is a specific struct type
+    /// Used for occurrence typing to narrow to struct types
+    struct_p: struct {
+        operand: *const Ir,
+        struct_name: []const u8,
+        /// Reference to the struct Type for occurrence typing
+        struct_type: *const types.Type,
+    },
 
     // ========================================================================
     // Primitives - Character operations
@@ -458,6 +492,8 @@ pub const Ir = union(enum) {
     pub const Binding = struct {
         name: []const u8,
         value: *const Ir,
+        /// Stack slot index for this binding (for proper nested let handling)
+        index: u16,
     };
 
     pub const Capture = struct {
@@ -665,6 +701,26 @@ pub const IrBuilder = struct {
     pub fn throw(self: IrBuilder, tag: *const Ir, value: *const Ir) !*Ir {
         const node = try self.allocator.create(Ir);
         node.* = .{ .throw = .{ .tag = tag, .value = value } };
+        return node;
+    }
+
+    pub fn handlerCase(self: IrBuilder, tag: *const Ir, body: *const Ir, handler: *const Ir, cond_var: []const u8) !*Ir {
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .handler_case = .{
+            .tag = tag,
+            .body = body,
+            .handler = handler,
+            .cond_var = cond_var,
+        } };
+        return node;
+    }
+
+    /// Single-binding let for handler-case variable binding
+    pub fn let1(self: IrBuilder, name: []const u8, index: u16, initializer: *const Ir, body: *const Ir) !*Ir {
+        const node = try self.allocator.create(Ir);
+        const bindings = try self.allocator.alloc(Ir.Binding, 1);
+        bindings[0] = .{ .name = name, .value = initializer, .index = index };
+        node.* = .{ .let = .{ .bindings = bindings, .body = body } };
         return node;
     }
 
@@ -877,6 +933,29 @@ pub const IrBuilder = struct {
     pub fn keywordp(self: IrBuilder, operand: *const Ir) !*Ir {
         const node = try self.allocator.create(Ir);
         node.* = .{ .keywordp = .{ .operand = operand } };
+        return node;
+    }
+
+    pub fn stringp(self: IrBuilder, operand: *const Ir) !*Ir {
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .stringp = .{ .operand = operand } };
+        return node;
+    }
+
+    pub fn vectorp(self: IrBuilder, operand: *const Ir) !*Ir {
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .vectorp = .{ .operand = operand } };
+        return node;
+    }
+
+    pub fn structp(self: IrBuilder, operand: *const Ir, struct_name: []const u8, struct_type: *const types.Type) !*Ir {
+        const node = try self.allocator.create(Ir);
+        const name_copy = try self.allocator.dupe(u8, struct_name);
+        node.* = .{ .struct_p = .{
+            .operand = operand,
+            .struct_name = name_copy,
+            .struct_type = struct_type,
+        } };
         return node;
     }
 

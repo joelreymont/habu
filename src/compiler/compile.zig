@@ -95,12 +95,27 @@ pub const Builtins = struct {
     @"unwind-protect": Value,
     @"catch": Value,
     throw: Value,
+    @"handler-case": Value,
+    signal: Value,
+    @"%condition%": Value, // Internal tag for condition system
     tagbody: Value,
     go: Value,
     values: Value,
     @"multiple-value-bind": Value,
     @"multiple-value-call": Value,
     @"multiple-value-list": Value,
+
+    // Packages
+    defpackage: Value,
+    @"in-package": Value,
+    @"export": Value,
+    @"use-package": Value,
+
+    // Structure definition
+    defstruct: Value,
+
+    // eval-when for compile-time evaluation
+    @"eval-when": Value,
 
     // Primitives - Arithmetic
     @"+": Value,
@@ -152,6 +167,10 @@ pub const Builtins = struct {
     last: Value,
     member: Value,
     assoc: Value,
+    find: Value,
+    position: Value,
+    count: Value,
+    remove: Value,
     list: Value,
     rplaca: Value,
     rplacd: Value,
@@ -282,213 +301,310 @@ pub const Builtins = struct {
     @"hash-table-count": Value,
     @"hash-table-p": Value,
 
+    // Type name symbols (for type dispatch)
+    ty_fixnum: Value,
+    ty_integer: Value, // alias for fixnum
+    ty_symbol: Value,
+    ty_vector: Value,
+    ty_closure: Value,
+    ty_function: Value, // alias for closure
+    ty_list: Value,
+    @"ty_non-nil": Value,
+    ty_any: Value,
+    ty_nil: Value,
+    ty_float: Value,
+    @"ty_hash-table": Value,
+    ty_keyword: Value,
+    ty_cons: Value,
+    ty_string: Value,
+    ty_char: Value,
+    ty_character: Value, // alias for char
+    ty_t: Value,
+
+    // Lambda parameter markers
+    @"&rest": Value,
+    @"&body": Value,
+    @"&optional": Value,
+    @"&key": Value,
+
+    // Special dispatch symbols
+    @"_": Value,
+    @"else": Value,
+    @"->": Value,
+
+    // eval-when keywords (interned as keywords for identity comparison)
+    kw_execute: Value,
+    @"kw_load-toplevel": Value,
+    @"kw_compile-toplevel": Value,
+    kw_use: Value,
+    kw_export: Value,
+    kw_size: Value,
+    kw_test: Value,
+    kw_eq: Value,
+    kw_eql: Value,
+    kw_equal: Value,
+
     /// Initialize all builtin symbols from heap
-    pub fn init(heap: *Heap) ?Builtins {
+    pub fn init(heap: *Heap) !Builtins {
         return .{
-            .@"if" = heap.intern("if") orelse return null,
-            .cond = heap.intern("cond") orelse return null,
-            .@"and" = heap.intern("and") orelse return null,
-            .@"or" = heap.intern("or") orelse return null,
-            .let = heap.intern("let") orelse return null,
-            .@"let*" = heap.intern("let*") orelse return null,
-            .letrec = heap.intern("letrec") orelse return null,
-            .lambda = heap.intern("lambda") orelse return null,
-            .@"fn" = heap.intern("fn") orelse return null,
-            .define = heap.intern("define") orelse return null,
-            .defvar = heap.intern("defvar") orelse return null,
-            .defun = heap.intern("defun") orelse return null,
-            .@"set!" = heap.intern("set!") orelse return null,
-            .setq = heap.intern("setq") orelse return null,
-            .progn = heap.intern("progn") orelse return null,
-            .begin = heap.intern("begin") orelse return null,
-            .@"while" = heap.intern("while") orelse return null,
-            .quote = heap.intern("quote") orelse return null,
-            .quasiquote = heap.intern("quasiquote") orelse return null,
-            .unquote = heap.intern("unquote") orelse return null,
-            .@"unquote-splicing" = heap.intern("unquote-splicing") orelse return null,
-            .function = heap.intern("function") orelse return null,
-            .funcall = heap.intern("funcall") orelse return null,
-            .apply = heap.intern("apply") orelse return null,
-            .defmacro = heap.intern("defmacro") orelse return null,
-            .macroexpand = heap.intern("macroexpand") orelse return null,
-            .the = heap.intern("the") orelse return null,
-            .flet = heap.intern("flet") orelse return null,
-            .labels = heap.intern("labels") orelse return null,
-            .block = heap.intern("block") orelse return null,
-            .@"return-from" = heap.intern("return-from") orelse return null,
-            .@"unwind-protect" = heap.intern("unwind-protect") orelse return null,
-            .@"catch" = heap.intern("catch") orelse return null,
-            .throw = heap.intern("throw") orelse return null,
-            .tagbody = heap.intern("tagbody") orelse return null,
-            .go = heap.intern("go") orelse return null,
-            .values = heap.intern("values") orelse return null,
-            .@"multiple-value-bind" = heap.intern("multiple-value-bind") orelse return null,
-            .@"multiple-value-call" = heap.intern("multiple-value-call") orelse return null,
-            .@"multiple-value-list" = heap.intern("multiple-value-list") orelse return null,
+            .@"if" = try heap.intern("if"),
+            .cond = try heap.intern("cond"),
+            .@"and" = try heap.intern("and"),
+            .@"or" = try heap.intern("or"),
+            .let = try heap.intern("let"),
+            .@"let*" = try heap.intern("let*"),
+            .letrec = try heap.intern("letrec"),
+            .lambda = try heap.intern("lambda"),
+            .@"fn" = try heap.intern("fn"),
+            .define = try heap.intern("define"),
+            .defvar = try heap.intern("defvar"),
+            .defun = try heap.intern("defun"),
+            .@"set!" = try heap.intern("set!"),
+            .setq = try heap.intern("setq"),
+            .progn = try heap.intern("progn"),
+            .begin = try heap.intern("begin"),
+            .@"while" = try heap.intern("while"),
+            .quote = try heap.intern("quote"),
+            .quasiquote = try heap.intern("quasiquote"),
+            .unquote = try heap.intern("unquote"),
+            .@"unquote-splicing" = try heap.intern("unquote-splicing"),
+            .function = try heap.intern("function"),
+            .funcall = try heap.intern("funcall"),
+            .apply = try heap.intern("apply"),
+            .defmacro = try heap.intern("defmacro"),
+            .macroexpand = try heap.intern("macroexpand"),
+            .the = try heap.intern("the"),
+            .flet = try heap.intern("flet"),
+            .labels = try heap.intern("labels"),
+            .block = try heap.intern("block"),
+            .@"return-from" = try heap.intern("return-from"),
+            .@"unwind-protect" = try heap.intern("unwind-protect"),
+            .@"catch" = try heap.intern("catch"),
+            .throw = try heap.intern("throw"),
+            .@"handler-case" = try heap.intern("handler-case"),
+            .signal = try heap.intern("signal"),
+            .@"%condition%" = try heap.intern("%condition%"),
+            .tagbody = try heap.intern("tagbody"),
+            .go = try heap.intern("go"),
+            .values = try heap.intern("values"),
+            .@"multiple-value-bind" = try heap.intern("multiple-value-bind"),
+            .@"multiple-value-call" = try heap.intern("multiple-value-call"),
+            .@"multiple-value-list" = try heap.intern("multiple-value-list"),
+            // Packages
+            .defpackage = try heap.intern("defpackage"),
+            .@"in-package" = try heap.intern("in-package"),
+            .@"export" = try heap.intern("export"),
+            .@"use-package" = try heap.intern("use-package"),
+            // Structure definition
+            .defstruct = try heap.intern("defstruct"),
+            .@"eval-when" = try heap.intern("eval-when"),
             // Primitives - Arithmetic
-            .@"+" = heap.intern("+") orelse return null,
-            .@"-" = heap.intern("-") orelse return null,
-            .@"*" = heap.intern("*") orelse return null,
-            .@"/" = heap.intern("/") orelse return null,
-            .mod = heap.intern("mod") orelse return null,
-            .@"%" = heap.intern("%") orelse return null,
+            .@"+" = try heap.intern("+"),
+            .@"-" = try heap.intern("-"),
+            .@"*" = try heap.intern("*"),
+            .@"/" = try heap.intern("/"),
+            .mod = try heap.intern("mod"),
+            .@"%" = try heap.intern("%"),
             // Primitives - Comparison
-            .eq = heap.intern("eq") orelse return null,
-            .equal = heap.intern("equal") orelse return null,
-            .eql = heap.intern("eql") orelse return null,
-            .@"<" = heap.intern("<") orelse return null,
-            .@">" = heap.intern(">") orelse return null,
-            .@"<=" = heap.intern("<=") orelse return null,
-            .@">=" = heap.intern(">=") orelse return null,
-            .@"=" = heap.intern("=") orelse return null,
+            .eq = try heap.intern("eq"),
+            .equal = try heap.intern("equal"),
+            .eql = try heap.intern("eql"),
+            .@"<" = try heap.intern("<"),
+            .@">" = try heap.intern(">"),
+            .@"<=" = try heap.intern("<="),
+            .@">=" = try heap.intern(">="),
+            .@"=" = try heap.intern("="),
             // Primitives - List operations
-            .cons = heap.intern("cons") orelse return null,
-            .car = heap.intern("car") orelse return null,
-            .cdr = heap.intern("cdr") orelse return null,
-            .first = heap.intern("first") orelse return null,
-            .rest = heap.intern("rest") orelse return null,
+            .cons = try heap.intern("cons"),
+            .car = try heap.intern("car"),
+            .cdr = try heap.intern("cdr"),
+            .first = try heap.intern("first"),
+            .rest = try heap.intern("rest"),
             // Composed accessors (2-level)
-            .caar = heap.intern("caar") orelse return null,
-            .cadr = heap.intern("cadr") orelse return null,
-            .cdar = heap.intern("cdar") orelse return null,
-            .cddr = heap.intern("cddr") orelse return null,
+            .caar = try heap.intern("caar"),
+            .cadr = try heap.intern("cadr"),
+            .cdar = try heap.intern("cdar"),
+            .cddr = try heap.intern("cddr"),
             // Composed accessors (3-level)
-            .caaar = heap.intern("caaar") orelse return null,
-            .caadr = heap.intern("caadr") orelse return null,
-            .cadar = heap.intern("cadar") orelse return null,
-            .caddr = heap.intern("caddr") orelse return null,
-            .cdaar = heap.intern("cdaar") orelse return null,
-            .cdadr = heap.intern("cdadr") orelse return null,
-            .cddar = heap.intern("cddar") orelse return null,
-            .cdddr = heap.intern("cdddr") orelse return null,
+            .caaar = try heap.intern("caaar"),
+            .caadr = try heap.intern("caadr"),
+            .cadar = try heap.intern("cadar"),
+            .caddr = try heap.intern("caddr"),
+            .cdaar = try heap.intern("cdaar"),
+            .cdadr = try heap.intern("cdadr"),
+            .cddar = try heap.intern("cddar"),
+            .cdddr = try heap.intern("cdddr"),
             // Positional accessors
-            .second = heap.intern("second") orelse return null,
-            .third = heap.intern("third") orelse return null,
-            .fourth = heap.intern("fourth") orelse return null,
-            .append = heap.intern("append") orelse return null,
-            .length = heap.intern("length") orelse return null,
-            .reverse = heap.intern("reverse") orelse return null,
-            .nth = heap.intern("nth") orelse return null,
-            .nthcdr = heap.intern("nthcdr") orelse return null,
-            .last = heap.intern("last") orelse return null,
-            .member = heap.intern("member") orelse return null,
-            .assoc = heap.intern("assoc") orelse return null,
-            .list = heap.intern("list") orelse return null,
-            .rplaca = heap.intern("rplaca") orelse return null,
-            .rplacd = heap.intern("rplacd") orelse return null,
+            .second = try heap.intern("second"),
+            .third = try heap.intern("third"),
+            .fourth = try heap.intern("fourth"),
+            .append = try heap.intern("append"),
+            .length = try heap.intern("length"),
+            .reverse = try heap.intern("reverse"),
+            .nth = try heap.intern("nth"),
+            .nthcdr = try heap.intern("nthcdr"),
+            .last = try heap.intern("last"),
+            .member = try heap.intern("member"),
+            .assoc = try heap.intern("assoc"),
+            .find = try heap.intern("find"),
+            .position = try heap.intern("position"),
+            .count = try heap.intern("count"),
+            .remove = try heap.intern("remove"),
+            .list = try heap.intern("list"),
+            .rplaca = try heap.intern("rplaca"),
+            .rplacd = try heap.intern("rplacd"),
             // Primitives - Type predicates
-            .consp = heap.intern("consp") orelse return null,
-            .@"cons?" = heap.intern("cons?") orelse return null,
-            .symbolp = heap.intern("symbolp") orelse return null,
-            .@"symbol?" = heap.intern("symbol?") orelse return null,
-            .numberp = heap.intern("numberp") orelse return null,
-            .@"number?" = heap.intern("number?") orelse return null,
-            .stringp = heap.intern("stringp") orelse return null,
-            .@"string?" = heap.intern("string?") orelse return null,
-            .vectorp = heap.intern("vectorp") orelse return null,
-            .@"vector?" = heap.intern("vector?") orelse return null,
-            .closurep = heap.intern("closurep") orelse return null,
-            .@"closure?" = heap.intern("closure?") orelse return null,
-            .keywordp = heap.intern("keywordp") orelse return null,
-            .@"keyword?" = heap.intern("keyword?") orelse return null,
-            .null = heap.intern("null") orelse return null,
-            .@"null?" = heap.intern("null?") orelse return null,
-            .not = heap.intern("not") orelse return null,
-            .characterp = heap.intern("characterp") orelse return null,
-            .@"character?" = heap.intern("character?") orelse return null,
-            .floatp = heap.intern("floatp") orelse return null,
-            .@"float?" = heap.intern("float?") orelse return null,
-            .listp = heap.intern("listp") orelse return null,
-            .@"list?" = heap.intern("list?") orelse return null,
-            .atom = heap.intern("atom") orelse return null,
+            .consp = try heap.intern("consp"),
+            .@"cons?" = try heap.intern("cons?"),
+            .symbolp = try heap.intern("symbolp"),
+            .@"symbol?" = try heap.intern("symbol?"),
+            .numberp = try heap.intern("numberp"),
+            .@"number?" = try heap.intern("number?"),
+            .stringp = try heap.intern("stringp"),
+            .@"string?" = try heap.intern("string?"),
+            .vectorp = try heap.intern("vectorp"),
+            .@"vector?" = try heap.intern("vector?"),
+            .closurep = try heap.intern("closurep"),
+            .@"closure?" = try heap.intern("closure?"),
+            .keywordp = try heap.intern("keywordp"),
+            .@"keyword?" = try heap.intern("keyword?"),
+            .null = try heap.intern("null"),
+            .@"null?" = try heap.intern("null?"),
+            .not = try heap.intern("not"),
+            .characterp = try heap.intern("characterp"),
+            .@"character?" = try heap.intern("character?"),
+            .floatp = try heap.intern("floatp"),
+            .@"float?" = try heap.intern("float?"),
+            .listp = try heap.intern("listp"),
+            .@"list?" = try heap.intern("list?"),
+            .atom = try heap.intern("atom"),
             // Primitives - Character operations
-            .@"char-code" = heap.intern("char-code") orelse return null,
-            .@"code-char" = heap.intern("code-char") orelse return null,
-            .@"char=" = heap.intern("char=") orelse return null,
-            .@"char<" = heap.intern("char<") orelse return null,
-            .@"char>" = heap.intern("char>") orelse return null,
-            .@"read-char" = heap.intern("read-char") orelse return null,
-            .@"peek-char" = heap.intern("peek-char") orelse return null,
-            .read = heap.intern("read") orelse return null,
-            .@"read-from-string" = heap.intern("read-from-string") orelse return null,
-            .load = heap.intern("load") orelse return null,
-            .@"unread-char" = heap.intern("unread-char") orelse return null,
-            .eval = heap.intern("eval") orelse return null,
-            .gensym = heap.intern("gensym") orelse return null,
+            .@"char-code" = try heap.intern("char-code"),
+            .@"code-char" = try heap.intern("code-char"),
+            .@"char=" = try heap.intern("char="),
+            .@"char<" = try heap.intern("char<"),
+            .@"char>" = try heap.intern("char>"),
+            .@"read-char" = try heap.intern("read-char"),
+            .@"peek-char" = try heap.intern("peek-char"),
+            .read = try heap.intern("read"),
+            .@"read-from-string" = try heap.intern("read-from-string"),
+            .load = try heap.intern("load"),
+            .@"unread-char" = try heap.intern("unread-char"),
+            .eval = try heap.intern("eval"),
+            .gensym = try heap.intern("gensym"),
             // Primitives - Symbol operations
-            .boundp = heap.intern("boundp") orelse return null,
-            .fboundp = heap.intern("fboundp") orelse return null,
-            .@"symbol-value" = heap.intern("symbol-value") orelse return null,
-            .@"symbol-function" = heap.intern("symbol-function") orelse return null,
-            .typep = heap.intern("typep") orelse return null,
-            .@"type-of" = heap.intern("type-of") orelse return null,
-            .intern = heap.intern("intern") orelse return null,
-            .@"symbol-name" = heap.intern("symbol-name") orelse return null,
-            .@"error" = heap.intern("error") orelse return null,
+            .boundp = try heap.intern("boundp"),
+            .fboundp = try heap.intern("fboundp"),
+            .@"symbol-value" = try heap.intern("symbol-value"),
+            .@"symbol-function" = try heap.intern("symbol-function"),
+            .typep = try heap.intern("typep"),
+            .@"type-of" = try heap.intern("type-of"),
+            .intern = try heap.intern("intern"),
+            .@"symbol-name" = try heap.intern("symbol-name"),
+            .@"error" = try heap.intern("error"),
             // Type specifier symbols for concatenate/coerce
-            .string = heap.intern("string") orelse return null,
-            .character = heap.intern("character") orelse return null,
+            .string = try heap.intern("string"),
+            .character = try heap.intern("character"),
             // Primitives - Numeric
-            .abs = heap.intern("abs") orelse return null,
-            .zerop = heap.intern("zerop") orelse return null,
-            .plusp = heap.intern("plusp") orelse return null,
-            .minusp = heap.intern("minusp") orelse return null,
-            .evenp = heap.intern("evenp") orelse return null,
-            .oddp = heap.intern("oddp") orelse return null,
+            .abs = try heap.intern("abs"),
+            .zerop = try heap.intern("zerop"),
+            .plusp = try heap.intern("plusp"),
+            .minusp = try heap.intern("minusp"),
+            .evenp = try heap.intern("evenp"),
+            .oddp = try heap.intern("oddp"),
             // Primitives - Vector operations (CL names)
-            .aref = heap.intern("aref") orelse return null,
-            .svref = heap.intern("svref") orelse return null,
-            .@"%svset" = heap.intern("%svset") orelse return null,
-            .@"vector-length" = heap.intern("vector-length") orelse return null,
-            .@"make-vector" = heap.intern("make-vector") orelse return null,
-            .vector = heap.intern("vector") orelse return null,
+            .aref = try heap.intern("aref"),
+            .svref = try heap.intern("svref"),
+            .@"%svset" = try heap.intern("%svset"),
+            .@"vector-length" = try heap.intern("vector-length"),
+            .@"make-vector" = try heap.intern("make-vector"),
+            .vector = try heap.intern("vector"),
             // Primitives - String operations (CL names)
-            .char = heap.intern("char") orelse return null,
-            .schar = heap.intern("schar") orelse return null,
-            .@"string-length" = heap.intern("string-length") orelse return null,
-            .@"string-concat" = heap.intern("string-concat") orelse return null,
-            .@"string=" = heap.intern("string=") orelse return null,
-            .substring = heap.intern("substring") orelse return null,
-            .subseq = heap.intern("subseq") orelse return null,
+            .char = try heap.intern("char"),
+            .schar = try heap.intern("schar"),
+            .@"string-length" = try heap.intern("string-length"),
+            .@"string-concat" = try heap.intern("string-concat"),
+            .@"string=" = try heap.intern("string="),
+            .substring = try heap.intern("substring"),
+            .subseq = try heap.intern("subseq"),
             // Primitives - I/O and misc
-            .print = heap.intern("print") orelse return null,
-            .princ = heap.intern("princ") orelse return null,
-            .terpri = heap.intern("terpri") orelse return null,
-            .@"write-char" = heap.intern("write-char") orelse return null,
-            .random = heap.intern("random") orelse return null,
-            .format = heap.intern("format") orelse return null,
+            .print = try heap.intern("print"),
+            .princ = try heap.intern("princ"),
+            .terpri = try heap.intern("terpri"),
+            .@"write-char" = try heap.intern("write-char"),
+            .random = try heap.intern("random"),
+            .format = try heap.intern("format"),
             // Primitives - Character functions
-            .@"char-upcase" = heap.intern("char-upcase") orelse return null,
-            .@"char-downcase" = heap.intern("char-downcase") orelse return null,
-            .@"digit-char-p" = heap.intern("digit-char-p") orelse return null,
-            .@"alpha-char-p" = heap.intern("alpha-char-p") orelse return null,
+            .@"char-upcase" = try heap.intern("char-upcase"),
+            .@"char-downcase" = try heap.intern("char-downcase"),
+            .@"digit-char-p" = try heap.intern("digit-char-p"),
+            .@"alpha-char-p" = try heap.intern("alpha-char-p"),
             // Primitives - String/number conversion
-            .@"parse-integer" = heap.intern("parse-integer") orelse return null,
-            .@"write-to-string" = heap.intern("write-to-string") orelse return null,
+            .@"parse-integer" = try heap.intern("parse-integer"),
+            .@"write-to-string" = try heap.intern("write-to-string"),
             // Primitives - Bitwise operations
-            .logand = heap.intern("logand") orelse return null,
-            .logior = heap.intern("logior") orelse return null,
-            .logxor = heap.intern("logxor") orelse return null,
-            .lognot = heap.intern("lognot") orelse return null,
-            .ash = heap.intern("ash") orelse return null,
+            .logand = try heap.intern("logand"),
+            .logior = try heap.intern("logior"),
+            .logxor = try heap.intern("logxor"),
+            .lognot = try heap.intern("lognot"),
+            .ash = try heap.intern("ash"),
             // Primitives - File I/O
-            .@"read-file" = heap.intern("read-file") orelse return null,
-            .@"write-file" = heap.intern("write-file") orelse return null,
+            .@"read-file" = try heap.intern("read-file"),
+            .@"write-file" = try heap.intern("write-file"),
             // Primitives - String construction
-            .@"make-string" = heap.intern("make-string") orelse return null,
-            .@"string-to-list" = heap.intern("string-to-list") orelse return null,
-            .@"list-to-string" = heap.intern("list-to-string") orelse return null,
-            .@"string-upcase" = heap.intern("string-upcase") orelse return null,
-            .@"string-downcase" = heap.intern("string-downcase") orelse return null,
-            .concatenate = heap.intern("concatenate") orelse return null,
-            .coerce = heap.intern("coerce") orelse return null,
+            .@"make-string" = try heap.intern("make-string"),
+            .@"string-to-list" = try heap.intern("string-to-list"),
+            .@"list-to-string" = try heap.intern("list-to-string"),
+            .@"string-upcase" = try heap.intern("string-upcase"),
+            .@"string-downcase" = try heap.intern("string-downcase"),
+            .concatenate = try heap.intern("concatenate"),
+            .coerce = try heap.intern("coerce"),
             // Primitives - Hash tables
-            .@"make-hash-table" = heap.intern("make-hash-table") orelse return null,
-            .gethash = heap.intern("gethash") orelse return null,
-            .puthash = heap.intern("puthash") orelse return null,
-            .remhash = heap.intern("remhash") orelse return null,
-            .@"hash-table-count" = heap.intern("hash-table-count") orelse return null,
-            .@"hash-table-p" = heap.intern("hash-table-p") orelse return null,
+            .@"make-hash-table" = try heap.intern("make-hash-table"),
+            .gethash = try heap.intern("gethash"),
+            .puthash = try heap.intern("puthash"),
+            .remhash = try heap.intern("remhash"),
+            .@"hash-table-count" = try heap.intern("hash-table-count"),
+            .@"hash-table-p" = try heap.intern("hash-table-p"),
+            // Type name symbols
+            .ty_fixnum = try heap.intern("fixnum"),
+            .ty_integer = try heap.intern("integer"),
+            .ty_symbol = try heap.intern("symbol"),
+            .ty_vector = try heap.intern("vector"),
+            .ty_closure = try heap.intern("closure"),
+            .ty_function = try heap.intern("function"),
+            .ty_list = try heap.intern("list"),
+            .@"ty_non-nil" = try heap.intern("non-nil"),
+            .ty_any = try heap.intern("any"),
+            .ty_nil = try heap.intern("nil"),
+            .ty_float = try heap.intern("float"),
+            .@"ty_hash-table" = try heap.intern("hash-table"),
+            .ty_keyword = try heap.intern("keyword"),
+            .ty_cons = try heap.intern("cons"),
+            .ty_string = try heap.intern("string"),
+            .ty_char = try heap.intern("char"),
+            .ty_character = try heap.intern("character"),
+            .ty_t = try heap.intern("t"),
+            // Lambda parameter markers
+            .@"&rest" = try heap.intern("&rest"),
+            .@"&body" = try heap.intern("&body"),
+            .@"&optional" = try heap.intern("&optional"),
+            .@"&key" = try heap.intern("&key"),
+            // Special dispatch symbols
+            .@"_" = try heap.intern("_"),
+            .@"else" = try heap.intern("else"),
+            .@"->" = try heap.intern("->"),
+            // eval-when keywords (interned as keywords, not symbols)
+            .kw_execute = try heap.internKeyword("execute"),
+            .@"kw_load-toplevel" = try heap.internKeyword("load-toplevel"),
+            .@"kw_compile-toplevel" = try heap.internKeyword("compile-toplevel"),
+            .kw_use = try heap.internKeyword("use"),
+            .kw_export = try heap.internKeyword("export"),
+            .kw_size = try heap.internKeyword("size"),
+            .kw_test = try heap.internKeyword("test"),
+            .kw_eq = try heap.internKeyword("eq"),
+            .kw_eql = try heap.internKeyword("eql"),
+            .kw_equal = try heap.internKeyword("equal"),
         };
     }
 };
@@ -700,6 +816,12 @@ pub const Compiler = struct {
     boxed_vars: ?*const BoxingSet,
     /// Defined ADT types for match exhaustiveness checking
     defined_types: std.StringHashMap([]const Variant),
+    /// Defined struct types for typed struct support
+    /// Maps struct name to its Type definition
+    struct_types: std.StringHashMap(*const types.Type),
+    /// Struct predicate names mapped to struct types (for occurrence typing)
+    /// Maps "point-p" -> pointer to point struct type
+    struct_predicates: std.StringHashMap(*const types.Type),
     /// Macro table: maps macro name to closure (expander function)
     /// When a form (macro-name args...) is compiled, the macro is expanded first
     macro_table: std.StringHashMap(Value),
@@ -725,6 +847,8 @@ pub const Compiler = struct {
             .occ = null,
             .boxed_vars = null,
             .defined_types = std.StringHashMap([]const Variant).init(allocator),
+            .struct_types = std.StringHashMap(*const types.Type).init(allocator),
+            .struct_predicates = std.StringHashMap(*const types.Type).init(allocator),
             .macro_table = std.StringHashMap(Value).init(allocator),
             .vm = null,
             .heap = null,
@@ -732,17 +856,25 @@ pub const Compiler = struct {
     }
 
     /// Initialize with heap for symbol interning
-    pub fn initWithHeap(allocator: std.mem.Allocator, heap: *Heap) Compiler {
+    pub fn initWithHeap(allocator: std.mem.Allocator, heap: *Heap) !Compiler {
+        // Builtins are interned in CL package (current_package starts as CL)
+        const builtins = try Builtins.init(heap);
+        // Switch to CL-USER for user code
+        if (heap.cl_user_package) |cl_user| {
+            heap.setCurrentPackage(cl_user);
+        }
         return .{
             .builder = IrBuilder.init(allocator),
             .allocator = allocator,
             .type_checker = TypeChecker.init(allocator),
             .type_checking_enabled = false,
             .globals = GlobalEnv.init(allocator),
-            .builtins = Builtins.init(heap),
+            .builtins = builtins,
             .occ = null,
             .boxed_vars = null,
             .defined_types = std.StringHashMap([]const Variant).init(allocator),
+            .struct_types = std.StringHashMap(*const types.Type).init(allocator),
+            .struct_predicates = std.StringHashMap(*const types.Type).init(allocator),
             .macro_table = std.StringHashMap(Value).init(allocator),
             .vm = null,
             .heap = heap,
@@ -756,8 +888,36 @@ pub const Compiler = struct {
 
     pub fn deinit(self: *Compiler) void {
         self.type_checker.deinit();
+        // Free struct_predicates keys (allocated with globals.allocator)
+        var pred_iter = self.struct_predicates.keyIterator();
+        while (pred_iter.next()) |key| {
+            self.globals.allocator.free(key.*);
+        }
+        self.struct_predicates.deinit();
+        // Free struct_types keys (allocated with globals.allocator)
+        var type_iter = self.struct_types.keyIterator();
+        while (type_iter.next()) |key| {
+            self.globals.allocator.free(key.*);
+        }
+        self.struct_types.deinit();
         self.globals.deinit();
         self.macro_table.deinit();
+        // Note: defined_types contains references to ArrayList buffers and duped strings
+        // that are intentionally not freed - they persist for the compiler's lifetime
+        // and the memory is small (type definitions). The hashmap itself is freed.
+        self.defined_types.deinit();
+    }
+
+    /// Register a struct type definition
+    pub fn registerStructType(self: *Compiler, struct_name: []const u8, struct_type: *const types.Type) !void {
+        // Use globals.allocator for persistence across expressions
+        const name_copy = try self.globals.allocator.dupe(u8, struct_name);
+        try self.struct_types.put(name_copy, struct_type);
+    }
+
+    /// Look up a struct type by name
+    pub fn getStructType(self: *const Compiler, struct_name: []const u8) ?*const types.Type {
+        return self.struct_types.get(struct_name);
     }
 
     /// Enable type checking mode
@@ -885,7 +1045,21 @@ pub const Compiler = struct {
     /// Extract predicate narrowing info from an IR node
     /// For (consp x), returns info to narrow x to cons in then-branch
     /// For (nilp x), returns info to narrow x to nil in then, non-nil in else
+    /// For (struct-p x), returns info to narrow x to the struct type
     fn extractPredicateInfo(node: *const Ir) ?PredicateInfo {
+        // Handle struct_p specially - it carries the type directly
+        if (node.* == .struct_p) {
+            const sp = node.struct_p;
+            if (sp.operand.* == .@"var") {
+                return .{
+                    .var_name = sp.operand.@"var".name,
+                    .narrowed_type = sp.struct_type,
+                    .else_type = null,
+                };
+            }
+            return null;
+        }
+
         const tag = std.meta.activeTag(node.*);
 
         for (predicate_types) |entry| {
@@ -1083,6 +1257,8 @@ pub const Compiler = struct {
         @"unwind-protect",
         @"catch",
         throw,
+        @"handler-case",
+        signal,
         tagbody,
         go,
         values,
@@ -1096,6 +1272,13 @@ pub const Compiler = struct {
         defmacro,
         // Compile-time evaluation
         @"eval-when",
+        // Packages
+        defpackage,
+        @"in-package",
+        @"export",
+        @"use-package",
+        // Structure definition
+        defstruct,
     };
 
     /// Comptime dispatch table for special forms
@@ -1130,6 +1313,8 @@ pub const Compiler = struct {
         .{ "unwind-protect", .@"unwind-protect" },
         .{ "catch", .@"catch" },
         .{ "throw", .throw },
+        .{ "handler-case", .@"handler-case" },
+        .{ "signal", .signal },
         .{ "tagbody", .tagbody },
         .{ "go", .go },
         .{ "values", .values },
@@ -1143,6 +1328,13 @@ pub const Compiler = struct {
         .{ "defmacro", .defmacro },
         // Compile-time evaluation
         .{ "eval-when", .@"eval-when" },
+        // Packages
+        .{ "defpackage", .defpackage },
+        .{ "in-package", .@"in-package" },
+        .{ "export", .@"export" },
+        .{ "use-package", .@"use-package" },
+        // Structure definition
+        .{ "defstruct", .defstruct },
     });
 
     fn compileListWithTail(self: *Compiler, expr: Value, env: *const Env, in_tail: bool) Error!*Ir {
@@ -1169,6 +1361,7 @@ pub const Compiler = struct {
                     .block => self.compileBlockWithTail(tail, env, in_tail),
                     .@"unwind-protect" => self.compileUnwindProtectWithTail(tail, env, in_tail),
                     .@"catch" => self.compileCatchWithTail(tail, env, in_tail),
+                    .@"handler-case" => self.compileHandlerCaseWithTail(tail, env, in_tail),
                     // Non-tail forms
                     .lambda => self.compileLambda(tail, env),
                     .@"and" => self.compileAnd(tail, env),
@@ -1186,6 +1379,7 @@ pub const Compiler = struct {
                     .the => self.compileThe(tail, env),
                     .@"return-from" => self.compileReturnFrom(tail, env),
                     .throw => self.compileThrow(tail, env),
+                    .signal => self.compileSignal(tail, env),
                     .tagbody => self.compileTagbody(tail, env),
                     .go => self.compileGo(tail),
                     .values => self.compileValues(tail, env),
@@ -1199,6 +1393,13 @@ pub const Compiler = struct {
                     .defmacro => self.compileDefmacro(tail, env),
                     // Compile-time evaluation
                     .@"eval-when" => self.compileEvalWhen(tail, env),
+                    // Packages
+                    .defpackage => self.compileDefpackage(tail),
+                    .@"in-package" => self.compileInPackage(tail),
+                    .@"export" => self.compileExport(tail),
+                    .@"use-package" => self.compileUsePackage(tail),
+                    // Structure definition
+                    .defstruct => self.compileDefstruct(tail, env),
                 };
             }
 
@@ -1240,14 +1441,15 @@ pub const Compiler = struct {
         const body = body_cons.car;
 
         // Build (lambda (params...) body) and compile it
-        const lambda_sym = heap.intern("lambda") orelse return error.OutOfMemory;
+        const lambda_sym = try heap.intern("lambda");
         // Build: (lambda params body)
-        const body_cell = heap.allocCons(body, Value.nil) orelse return error.OutOfMemory;
-        const params_body = heap.allocCons(params, body_cell) orelse return error.OutOfMemory;
-        const lambda_list = heap.allocCons(lambda_sym, params_body) orelse return error.OutOfMemory;
+        const body_cell = try heap.allocCons(body, Value.nil);
+        const params_body = try heap.allocCons(params, body_cell);
+        const lambda_list = try heap.allocCons(lambda_sym, params_body);
 
         // Compile the lambda to get a closure
-        var macro_compiler = Compiler.initWithHeap(self.allocator, heap);
+        var macro_compiler = Compiler.initWithHeap(self.allocator, heap) catch
+            return error.OutOfMemory;
         defer macro_compiler.deinit();
         macro_compiler.vm = vm;
 
@@ -1390,14 +1592,14 @@ pub const Compiler = struct {
     /// Typed parameter info for function declarations
     const TypedParam = struct {
         name: []const u8,
-        type_name: ?[]const u8, // null for untyped
+        type_sym: ?Value, // null for untyped, otherwise the type symbol
     };
 
     fn compileLambda(self: *Compiler, args: Value, env: *const Env) Error!*Ir {
         return self.compileLambdaCore(args, env, null);
     }
 
-    fn compileLambdaCore(self: *Compiler, args: Value, env: *const Env, return_type: ?[]const u8) Error!*Ir {
+    fn compileLambdaCore(self: *Compiler, args: Value, env: *const Env, return_type: ?Value) Error!*Ir {
         // (lambda (params...) body)
         // Params can be: symbol for untyped, (symbol type) for typed
         if (!args.isCons()) return error.InvalidLambda;
@@ -1428,11 +1630,10 @@ pub const Compiler = struct {
             const param_item = param_cons.car;
 
             if (param_item.isSymbol()) {
-                const param_sym = param_item.toPtr(Symbol);
-                const name = param_sym.getName();
+                const b = self.builtins orelse unreachable;
 
-                // Check for &rest keyword
-                if (std.mem.eql(u8, name, "&rest") or std.mem.eql(u8, name, "&body")) {
+                // Check for &rest/&body keyword (use symbol identity)
+                if (param_item.raw == b.@"&rest".raw or param_item.raw == b.@"&body".raw) {
                     // Next element is the rest parameter name
                     if (!param_cons.cdr.isCons()) return error.InvalidLambda;
                     const rest_cons = param_cons.cdr.toPtr(Cons);
@@ -1442,21 +1643,24 @@ pub const Compiler = struct {
                     break; // &rest must be last
                 }
 
-                // Check for &optional keyword
-                if (std.mem.eql(u8, name, "&optional")) {
+                // Check for &optional keyword (use symbol identity)
+                if (param_item.raw == b.@"&optional".raw) {
                     in_optional = true;
                     in_key = false;
                     param_list = param_cons.cdr;
                     continue;
                 }
 
-                // Check for &key keyword
-                if (std.mem.eql(u8, name, "&key")) {
+                // Check for &key keyword (use symbol identity)
+                if (param_item.raw == b.@"&key".raw) {
                     in_key = true;
                     in_optional = false;
                     param_list = param_cons.cdr;
                     continue;
                 }
+
+                const param_sym = param_item.toPtr(Symbol);
+                const name = param_sym.getName();
 
                 if (in_key) {
                     // Key parameter with nil default, keyword = name
@@ -1474,7 +1678,7 @@ pub const Compiler = struct {
                 } else {
                     // Untyped parameter: just a symbol
                     try params.append(self.allocator, name);
-                    try typed_params.append(self.allocator, .{ .name = name, .type_name = null });
+                    try typed_params.append(self.allocator, .{ .name = name, .type_sym = null });
                 }
             } else if (param_item.isCons()) {
                 const typed = param_item.toPtr(Cons);
@@ -1512,11 +1716,9 @@ pub const Compiler = struct {
                     if (!typed.cdr.isCons()) return error.InvalidLambda;
                     const type_cons = typed.cdr.toPtr(Cons);
                     if (!type_cons.car.isSymbol()) return error.InvalidLambda;
-                    const type_sym = type_cons.car.toPtr(Symbol);
-                    const type_name = type_sym.getName();
 
                     try params.append(self.allocator, name);
-                    try typed_params.append(self.allocator, .{ .name = name, .type_name = type_name });
+                    try typed_params.append(self.allocator, .{ .name = name, .type_sym = type_cons.car });
                 }
             } else {
                 return error.InvalidLambda;
@@ -1573,14 +1775,14 @@ pub const Compiler = struct {
         defer assertions.deinit(self.allocator);
 
         for (typed_params.items) |tp| {
-            if (tp.type_name) |type_name| {
+            if (tp.type_sym) |type_sym| {
                 // Create variable reference for parameter
-                const binding = lambda_env.lookup(tp.name) orelse return error.OutOfMemory;
+                const binding = lambda_env.lookup(tp.name) orelse continue;
                 const var_ir = self.builder.variable(tp.name, binding.depth, binding.index) catch
                     return error.OutOfMemory;
 
-                // Create assertion based on type name
-                const assert_ir = self.makeTypeAssertion(var_ir, type_name) catch
+                // Create assertion based on type symbol
+                const assert_ir = self.makeTypeAssertionSym(var_ir, type_sym) catch
                     return error.InvalidSyntax;
                 if (assert_ir) |assert_node| {
                     try assertions.append(self.allocator, assert_node);
@@ -1597,8 +1799,8 @@ pub const Compiler = struct {
         }
 
         // Wrap body in return type assertion if specified
-        if (return_type) |ret_type| {
-            const assert_ir = self.makeTypeAssertion(body_ir, ret_type) catch
+        if (return_type) |ret_type_sym| {
+            const assert_ir = self.makeTypeAssertionSym(body_ir, ret_type_sym) catch
                 return error.InvalidSyntax;
             if (assert_ir) |wrapped| {
                 body_ir = wrapped;
@@ -1621,36 +1823,19 @@ pub const Compiler = struct {
             return error.OutOfMemory;
     }
 
-    /// Create a type assertion IR node for a given type name
-    fn makeTypeAssertion(self: *Compiler, expr_ir: *Ir, type_name: []const u8) !?*Ir {
-        if (std.mem.eql(u8, type_name, "fixnum")) {
-            return self.builder.assertFixnum(expr_ir);
-        }
-        if (std.mem.eql(u8, type_name, "cons")) {
-            return self.builder.assertCons(expr_ir);
-        }
-        if (std.mem.eql(u8, type_name, "symbol")) {
-            return self.builder.assertSymbol(expr_ir);
-        }
-        if (std.mem.eql(u8, type_name, "string")) {
-            return self.builder.assertString(expr_ir);
-        }
-        if (std.mem.eql(u8, type_name, "vector")) {
-            return self.builder.assertVector(expr_ir);
-        }
-        if (std.mem.eql(u8, type_name, "closure")) {
-            return self.builder.assertClosure(expr_ir);
-        }
-        if (std.mem.eql(u8, type_name, "list")) {
-            return self.builder.assertList(expr_ir);
-        }
-        if (std.mem.eql(u8, type_name, "non-nil")) {
-            return self.builder.assertNonNil(expr_ir);
-        }
-        // "any" means no check needed
-        if (std.mem.eql(u8, type_name, "any")) {
-            return null;
-        }
+    /// Create a type assertion IR node for a given type symbol
+    fn makeTypeAssertionSym(self: *Compiler, expr_ir: *Ir, type_sym: Value) !?*Ir {
+        const b = self.builtins orelse unreachable;
+        // Dispatch by symbol identity (no string comparison)
+        if (type_sym.raw == b.ty_fixnum.raw) return self.builder.assertFixnum(expr_ir);
+        if (type_sym.raw == b.cons.raw) return self.builder.assertCons(expr_ir);
+        if (type_sym.raw == b.ty_symbol.raw) return self.builder.assertSymbol(expr_ir);
+        if (type_sym.raw == b.string.raw) return self.builder.assertString(expr_ir);
+        if (type_sym.raw == b.ty_vector.raw) return self.builder.assertVector(expr_ir);
+        if (type_sym.raw == b.ty_closure.raw) return self.builder.assertClosure(expr_ir);
+        if (type_sym.raw == b.ty_list.raw) return self.builder.assertList(expr_ir);
+        if (type_sym.raw == b.@"ty_non-nil".raw) return self.builder.assertNonNil(expr_ir);
+        if (type_sym.raw == b.ty_any.raw) return null; // any = no check
         return error.InvalidSyntax;
     }
 
@@ -2033,7 +2218,11 @@ pub const Compiler = struct {
         var boxed = try self.findBoxedVars(body_exprs, binding_names.items);
         defer boxed.deinit();
 
-        // Second pass: compile bindings, wrapping boxed ones with make-box
+        // Create let_env first so we can get indices for each binding
+        var let_env = Env.initLet(self.allocator, env);
+        defer let_env.deinit();
+
+        // Second pass: compile bindings, get indices, wrap boxed ones with make-box
         var bindings = std.ArrayList(Ir.Binding){};
         defer bindings.deinit(self.allocator);
 
@@ -2046,7 +2235,10 @@ pub const Compiler = struct {
             const b = binding.toPtr(Cons);
             const name = binding_names.items[name_idx];
 
-            // Get value expression
+            // Bind name in let_env to get stack slot index
+            const index = try let_env.bind(name);
+
+            // Get value expression - compile in outer env (let semantics)
             if (!b.cdr.isCons()) return error.InvalidLet;
             const val_cons = b.cdr.toPtr(Cons);
             var val_ir = try self.compile(val_cons.car, env);
@@ -2058,18 +2250,10 @@ pub const Compiler = struct {
                 val_ir = box_ir;
             }
 
-            bindings.append(self.allocator, .{ .name = name, .value = val_ir }) catch
+            bindings.append(self.allocator, .{ .name = name, .value = val_ir, .index = index }) catch
                 return error.OutOfMemory;
 
             binding_list = binding_cons.cdr;
-        }
-
-        // Create same-frame environment with bindings (let doesn't create new frame)
-        var let_env = Env.initLet(self.allocator, env);
-        defer let_env.deinit();
-
-        for (bindings.items) |b| {
-            _ = try let_env.bind(b.name);
         }
 
         // Set boxed_vars so that variable refs and set! use box operations
@@ -2160,6 +2344,10 @@ pub const Compiler = struct {
         const bindings_expr = cons.car;
         const body_exprs = cons.cdr;
 
+        // Create environment first to get binding indices
+        var flet_env = Env.initLet(self.allocator, env);
+        defer flet_env.deinit();
+
         // Parse function definitions and create lambda bindings
         var bindings = std.ArrayList(Ir.Binding){};
         defer bindings.deinit(self.allocator);
@@ -2177,22 +2365,17 @@ pub const Compiler = struct {
             const name_sym = f.car.toPtr(Symbol);
             const name = name_sym.getName();
 
+            // Get index from env
+            const index = try flet_env.bind(name);
+
             // Build lambda from rest: ((params) body...) -> compile as lambda
             if (!f.cdr.isCons()) return error.InvalidLet;
             const lambda_ir = try self.compileLambda(f.cdr, env);
 
-            bindings.append(self.allocator, .{ .name = name, .value = lambda_ir }) catch
+            bindings.append(self.allocator, .{ .name = name, .value = lambda_ir, .index = index }) catch
                 return error.OutOfMemory;
 
             binding_list = binding_cons.cdr;
-        }
-
-        // Create same-frame environment with bindings
-        var flet_env = Env.initLet(self.allocator, env);
-        defer flet_env.deinit();
-
-        for (bindings.items) |b| {
-            _ = try flet_env.bind(b.name);
         }
 
         // Compile body in new environment
@@ -2301,16 +2484,16 @@ pub const Compiler = struct {
         if (!b.cdr.isCons()) return error.InvalidLet;
         const val_cons = b.cdr.toPtr(Cons);
 
+        // Create extended environment first to get binding index
+        var let_env = Env.initLet(self.allocator, env);
+        defer let_env.deinit();
+        const index = try let_env.bind(name);
+
         // Compile value in current environment
         const val_ir = try self.compile(val_cons.car, env);
 
-        // Create single-binding array
-        const binding_array = [_]ir.Ir.Binding{.{ .name = name, .value = val_ir }};
-
-        // Create extended environment for rest
-        var let_env = Env.initLet(self.allocator, env);
-        defer let_env.deinit();
-        _ = try let_env.bind(name);
+        // Create single-binding array with index
+        const binding_array = [_]ir.Ir.Binding{.{ .name = name, .value = val_ir, .index = index }};
 
         // Compile rest or body
         const inner_ir = if (rest.isNil())
@@ -2339,12 +2522,14 @@ pub const Compiler = struct {
         const test_expr = clause_cons.car;
         const body_exprs = clause_cons.cdr;
 
-        // Check for default clause (t or else)
-        const is_default = if (test_expr.isSymbol()) blk: {
-            const sym = test_expr.toPtr(Symbol);
-            const name = sym.getName();
-            break :blk std.mem.eql(u8, name, "t") or std.mem.eql(u8, name, "else");
-        } else false;
+        // Check for default clause (t or else) - use symbol identity
+        const is_default = blk: {
+            // t is magic value, else is interned symbol
+            if (test_expr.raw == Value.t.raw) break :blk true;
+            const b = self.builtins orelse unreachable;
+            if (test_expr.raw == b.@"else".raw) break :blk true;
+            break :blk false;
+        };
 
         if (is_default) {
             return self.compileBodyWithTail(body_exprs, env, in_tail);
@@ -2408,12 +2593,12 @@ pub const Compiler = struct {
 
         // Create let binding for tmp
         const tmp_name = "__or_tmp";
-        const bindings = try self.allocator.alloc(ir.Ir.Binding, 1);
-        bindings[0] = .{ .name = tmp_name, .value = first_ir };
-
         var tmp_env = Env.initLet(self.allocator, env);
         defer tmp_env.deinit();
         const tmp_idx = try tmp_env.bind(tmp_name);
+
+        const bindings = try self.allocator.alloc(ir.Ir.Binding, 1);
+        bindings[0] = .{ .name = tmp_name, .value = first_ir, .index = tmp_idx };
 
         const tmp_var1 = try self.builder.variable(tmp_name, 0, tmp_idx);
         const tmp_var2 = try self.builder.variable(tmp_name, 0, tmp_idx);
@@ -2563,31 +2748,18 @@ pub const Compiler = struct {
         const cons = expr.toPtr(Cons);
         const head = cons.car;
 
-        // Check for (unquote x) - evaluate x
+        // Check for (unquote x) - evaluate x (use symbol identity)
         if (head.isSymbol()) {
-            if (self.builtins) |b| {
-                if (head.raw == b.unquote.raw) {
-                    // (unquote x) -> compile x
-                    if (!cons.cdr.isCons()) return error.InvalidSyntax;
-                    const unquoted = cons.cdr.toPtr(Cons).car;
-                    return self.compile(unquoted, env);
-                }
-                if (head.raw == b.@"unquote-splicing".raw) {
-                    // unquote-splicing outside of list context is an error
-                    return error.InvalidSyntax;
-                }
-            } else {
-                // Fallback: string comparison
-                const sym = head.toPtr(Symbol);
-                const name = sym.getName();
-                if (std.mem.eql(u8, name, "unquote")) {
-                    if (!cons.cdr.isCons()) return error.InvalidSyntax;
-                    const unquoted = cons.cdr.toPtr(Cons).car;
-                    return self.compile(unquoted, env);
-                }
-                if (std.mem.eql(u8, name, "unquote-splicing")) {
-                    return error.InvalidSyntax;
-                }
+            const b = self.builtins orelse unreachable;
+            if (head.raw == b.unquote.raw) {
+                // (unquote x) -> compile x
+                if (!cons.cdr.isCons()) return error.InvalidSyntax;
+                const unquoted = cons.cdr.toPtr(Cons).car;
+                return self.compile(unquoted, env);
+            }
+            if (head.raw == b.@"unquote-splicing".raw) {
+                // unquote-splicing outside of list context is an error
+                return error.InvalidSyntax;
             }
         }
 
@@ -2614,18 +2786,12 @@ pub const Compiler = struct {
         const head = cons.car;
         const tail = cons.cdr;
 
-        // Check for (unquote-splicing x) - splice x into result
+        // Check for (unquote-splicing x) - splice x into result (use symbol identity)
         if (head.isCons()) {
             const head_cons = head.toPtr(Cons);
             if (head_cons.car.isSymbol()) {
-                const is_splice = if (self.builtins) |b|
-                    head_cons.car.raw == b.@"unquote-splicing".raw
-                else blk: {
-                    const sym = head_cons.car.toPtr(Symbol);
-                    break :blk std.mem.eql(u8, sym.getName(), "unquote-splicing");
-                };
-
-                if (is_splice) {
+                const b = self.builtins orelse unreachable;
+                if (head_cons.car.raw == b.@"unquote-splicing".raw) {
                     // (,@x ...) -> (append x (quasiquote-list ...))
                     if (!head_cons.cdr.isCons()) return error.InvalidSyntax;
                     const spliced = head_cons.cdr.toPtr(Cons).car;
@@ -2763,6 +2929,169 @@ pub const Compiler = struct {
         const value_ir = try self.compile(value, env);
 
         return try self.builder.throw(tag_ir, value_ir);
+    }
+
+    /// Compile (signal condition-type value) - signals a condition
+    /// This is syntactic sugar for (throw '%condition% (cons condition-type value))
+    fn compileSignal(self: *Compiler, args: Value, env: *const Env) Error!*Ir {
+        // (signal type value) or (signal type)
+        if (!args.isCons()) return error.InvalidSyntax;
+
+        const b = self.builtins.?;
+        const cons = args.toPtr(Cons);
+        const condition_type = cons.car;
+
+        // Compile condition type
+        const type_ir = try self.compile(condition_type, env);
+
+        // Value defaults to nil
+        const value = if (cons.cdr.isCons()) cons.cdr.toPtr(Cons).car else Value.nil;
+        const value_ir = try self.compile(value, env);
+
+        // Build (cons type value) for the condition
+        const condition_ir = try self.builder.cons(type_ir, value_ir);
+
+        // Throw with special %condition% tag
+        const tag_ir = try self.builder.lit(b.@"%condition%");
+        return try self.builder.throw(tag_ir, condition_ir);
+    }
+
+    /// Compile handler-case with tail position tracking
+    /// (handler-case expression
+    ///   (condition-type (var) handler-body...)
+    ///   ...)
+    fn compileHandlerCaseWithTail(self: *Compiler, args: Value, env: *const Env, in_tail: bool) Error!*Ir {
+        // (handler-case expr (type1 (var1) body1...) (type2 (var2) body2...) ...)
+        if (!args.isCons()) return error.InvalidSyntax;
+
+        const b = self.builtins.?;
+        const args_cons = args.toPtr(Cons);
+        const protected_expr = args_cons.car;
+        const handlers = args_cons.cdr;
+
+        // Build the handler dispatch code
+        // This will be wrapped in a catch with %condition% tag
+        // The caught value is (type . data), we need to match type and bind data
+
+        // Use a fixed internal name for the condition variable
+        // Each handler-case has its own scope, so this won't conflict
+        const cond_name = "%hc-cond%";
+
+        // Create environment with condition variable bound
+        // This is where the caught value will be stored
+        var handler_env = Env.initLet(self.allocator, env);
+        defer handler_env.deinit();
+        const cond_idx = try handler_env.bind(cond_name);
+
+        // Build handler dispatch as nested if/progn:
+        // (if (eq (car cond) 'type1)
+        //     (let ((var1 (cdr cond))) body1...)
+        //     (if (eq (car cond) 'type2)
+        //         (let ((var2 (cdr cond))) body2...)
+        //         (throw '%condition% cond)))  ; re-throw if no match
+
+        var handler_ir = try self.buildRethrow(cond_name, cond_idx, &handler_env);
+
+        // Process handlers in reverse order to build nested if
+        var handler_list = std.ArrayList(Value){};
+        defer handler_list.deinit(self.allocator);
+
+        var curr = handlers;
+        while (curr.isCons()) {
+            const c = curr.toPtr(Cons);
+            try handler_list.append(self.allocator, c.car);
+            curr = c.cdr;
+        }
+
+        // Build from last to first
+        var i = handler_list.items.len;
+        while (i > 0) {
+            i -= 1;
+            const handler = handler_list.items[i];
+            handler_ir = try self.buildHandlerClause(handler, cond_name, cond_idx, handler_ir, &handler_env, in_tail);
+        }
+
+        // Compile protected expression
+        const protected_ir = try self.compileWithTail(protected_expr, env, in_tail);
+
+        // Build catch with %condition% tag
+        // The handler_ir is the dispatch code that runs when a condition is caught
+        const tag_ir = try self.builder.lit(b.@"%condition%");
+
+        // Create a handler-case IR node (which is like catch but binds the caught value)
+        return try self.builder.handlerCase(tag_ir, protected_ir, handler_ir, cond_name);
+    }
+
+    /// Build re-throw for unhandled conditions
+    fn buildRethrow(self: *Compiler, cond_name: []const u8, cond_idx: u16, env: *const Env) Error!*Ir {
+        const b = self.builtins.?;
+        _ = env;
+        // (throw '%condition% cond)
+        const tag_ir = try self.builder.lit(b.@"%condition%");
+        const cond_ir = try self.builder.variable(cond_name, 0, cond_idx);
+        return try self.builder.throw(tag_ir, cond_ir);
+    }
+
+    /// Build a single handler clause as if-then-else
+    fn buildHandlerClause(
+        self: *Compiler,
+        handler: Value,
+        cond_name: []const u8,
+        cond_idx: u16,
+        else_ir: *Ir,
+        env: *const Env,
+        in_tail: bool,
+    ) Error!*Ir {
+        // handler is (type (var) body...)
+        if (!handler.isCons()) return error.InvalidSyntax;
+
+        const handler_cons = handler.toPtr(Cons);
+        const condition_type = handler_cons.car;
+
+        if (!handler_cons.cdr.isCons()) return error.InvalidSyntax;
+        const rest = handler_cons.cdr.toPtr(Cons);
+        const lambda_list = rest.car;
+        const body = rest.cdr;
+
+        // Get variable name from lambda list
+        var var_name: []const u8 = "_"; // default if no variable
+        if (lambda_list.isCons()) {
+            const ll_cons = lambda_list.toPtr(Cons);
+            if (ll_cons.car.isSymbol()) {
+                var_name = ll_cons.car.toPtr(runtime.Symbol).getName();
+            }
+        }
+
+        // Build: (if (eq (car cond) 'type) (let ((var (cdr cond))) body...) else)
+
+        // (car cond)
+        const cond_var_ir = try self.builder.variable(cond_name, 0, cond_idx);
+        const car_cond = try self.builder.car(cond_var_ir);
+
+        // 'type - the condition type symbol
+        const type_ir = try self.builder.lit(condition_type);
+
+        // (eq (car cond) 'type)
+        const test_ir = try self.builder.eq(car_cond, type_ir);
+
+        // Build handler body with variable binding
+        // (let ((var (cdr cond))) body...)
+        const cond_var_ir2 = try self.builder.variable(cond_name, 0, cond_idx);
+        const cdr_cond = try self.builder.cdr(cond_var_ir2);
+
+        // Create environment with binding
+        var inner_env = Env.initLet(self.allocator, env);
+        defer inner_env.deinit();
+        const var_idx = try inner_env.bind(var_name);
+
+        // Compile body
+        const body_ir = try self.compileBodyWithTail(body, &inner_env, in_tail);
+
+        // Build let node
+        const let_ir = try self.builder.let1(var_name, var_idx, cdr_cond, body_ir);
+
+        // Build if node
+        return try self.builder.ifExpr(test_ir, let_ir, else_ir);
     }
 
     fn compileTagbody(self: *Compiler, args: Value, env: *const Env) Error!*Ir {
@@ -2951,7 +3280,7 @@ pub const Compiler = struct {
         const name_spec = cons1.car;
 
         var name: []const u8 = undefined;
-        var return_type: ?[]const u8 = null;
+        var return_type: ?Value = null;
 
         if (name_spec.isSymbol()) {
             // Simple: (defun name ...)
@@ -2964,19 +3293,17 @@ pub const Compiler = struct {
             const name_sym = spec_cons.car.toPtr(Symbol);
             name = name_sym.getName();
 
-            // Check for -> arrow
+            // Check for -> arrow (use symbol identity)
             if (!spec_cons.cdr.isCons()) return error.InvalidSyntax;
             const arrow_cons = spec_cons.cdr.toPtr(Cons);
-            if (!arrow_cons.car.isSymbol()) return error.InvalidSyntax;
-            const arrow_sym = arrow_cons.car.toPtr(Symbol);
-            if (!std.mem.eql(u8, arrow_sym.getName(), "->")) return error.InvalidSyntax;
+            const b = self.builtins orelse unreachable;
+            if (arrow_cons.car.raw != b.@"->".raw) return error.InvalidSyntax;
 
-            // Get return type
+            // Get return type symbol
             if (!arrow_cons.cdr.isCons()) return error.InvalidSyntax;
             const type_cons = arrow_cons.cdr.toPtr(Cons);
             if (!type_cons.car.isSymbol()) return error.InvalidSyntax;
-            const type_sym = type_cons.car.toPtr(Symbol);
-            return_type = type_sym.getName();
+            return_type = type_cons.car;
         } else {
             return error.InvalidSyntax;
         }
@@ -3035,9 +3362,11 @@ pub const Compiler = struct {
             const situation = sit_cons.car;
 
             if (situation.isKeyword()) {
-                const kw = situation.toPtr(runtime.Keyword);
-                const kw_name = kw.getName();
-                if (std.mem.eql(u8, kw_name, "execute") or std.mem.eql(u8, kw_name, "load-toplevel")) {
+                const b = self.builtins.?;
+                // Compare by identity with pre-interned keywords
+                if (situation.raw == b.kw_execute.raw or
+                    situation.raw == b.@"kw_load-toplevel".raw)
+                {
                     execute = true;
                     break;
                 }
@@ -3052,6 +3381,470 @@ pub const Compiler = struct {
 
         // Otherwise return nil (compile-time only)
         return try self.builder.lit(Value.nil);
+    }
+
+    // ========================================================================
+    // Package Support
+    // ========================================================================
+
+    /// Compile defpackage: (defpackage "name" (:use "other-pkg") (:export "sym1" "sym2"))
+    /// Creates a new package with the given name
+    fn compileDefpackage(self: *Compiler, args: Value) Error!*Ir {
+        const heap = self.heap orelse return error.InvalidSyntax;
+        if (!args.isCons()) return error.InvalidSyntax;
+
+        const cons1 = args.toPtr(Cons);
+        const pkg_name_val = cons1.car;
+
+        // Get package name from string or symbol
+        var pkg_name: []const u8 = undefined;
+        if (pkg_name_val.isString()) {
+            const str = pkg_name_val.toPtr(runtime.String);
+            pkg_name = str.bytes();
+        } else if (pkg_name_val.isSymbol()) {
+            const sym = pkg_name_val.toPtr(Symbol);
+            pkg_name = sym.getName();
+        } else {
+            return error.InvalidSyntax;
+        }
+
+        // Create or find the package
+        const pkg = try heap.findOrCreatePackage(pkg_name);
+
+        // Process options: (:use ...) (:export ...)
+        var options = cons1.cdr;
+        while (options.isCons()) {
+            const opt_cons = options.toPtr(Cons);
+            const opt = opt_cons.car;
+
+            if (opt.isCons()) {
+                const opt_list = opt.toPtr(Cons);
+                if (opt_list.car.isKeyword()) {
+                    const kw = opt_list.car;
+                    const b = self.builtins.?;
+
+                    if (kw.raw == b.kw_use.raw) {
+                        // (:use "pkg1" "pkg2" ...)
+                        var use_list = opt_list.cdr;
+                        while (use_list.isCons()) {
+                            const use_cons = use_list.toPtr(Cons);
+                            const use_pkg_name = self.getStringOrSymbolName(use_cons.car) orelse return error.InvalidSyntax;
+                            const use_pkg = heap.findPackage(use_pkg_name) orelse return error.InvalidSyntax;
+                            pkg.usePackage(use_pkg) catch return error.OutOfMemory;
+                            use_list = use_cons.cdr;
+                        }
+                    } else if (kw.raw == b.kw_export.raw) {
+                        // (:export "sym1" "sym2" ...)
+                        var export_list = opt_list.cdr;
+                        while (export_list.isCons()) {
+                            const export_cons = export_list.toPtr(Cons);
+                            const export_name = self.getStringOrSymbolName(export_cons.car) orelse return error.InvalidSyntax;
+                            pkg.exportSymbol(export_name) catch return error.OutOfMemory;
+                            export_list = export_cons.cdr;
+                        }
+                    }
+                }
+            }
+            options = opt_cons.cdr;
+        }
+
+        // Return the package name as a symbol
+        return try self.builder.lit(try heap.intern(pkg_name));
+    }
+
+    /// Compile in-package: (in-package "name")
+    /// Switches the current package
+    fn compileInPackage(self: *Compiler, args: Value) Error!*Ir {
+        const heap = self.heap orelse return error.InvalidSyntax;
+        if (!args.isCons()) return error.InvalidSyntax;
+
+        const cons1 = args.toPtr(Cons);
+        const pkg_name = self.getStringOrSymbolName(cons1.car) orelse return error.InvalidSyntax;
+
+        // Find or create the package and set it as current
+        const pkg = try heap.findOrCreatePackage(pkg_name);
+        heap.setCurrentPackage(pkg);
+
+        // Return the package name
+        return try self.builder.lit(try heap.intern(pkg_name));
+    }
+
+    /// Compile export: (export 'sym1 'sym2 ...)
+    /// Exports symbols from the current package
+    fn compileExport(self: *Compiler, args: Value) Error!*Ir {
+        const heap = self.heap orelse return error.InvalidSyntax;
+        const pkg = heap.current_package orelse return error.InvalidSyntax;
+
+        var syms = args;
+        while (syms.isCons()) {
+            const cons = syms.toPtr(Cons);
+            const sym_name = self.getStringOrSymbolName(cons.car) orelse return error.InvalidSyntax;
+            pkg.exportSymbol(sym_name) catch return error.OutOfMemory;
+            syms = cons.cdr;
+        }
+
+        return try self.builder.lit(Value.t);
+    }
+
+    /// Compile use-package: (use-package "pkg")
+    /// Makes another package's exports available in current package
+    fn compileUsePackage(self: *Compiler, args: Value) Error!*Ir {
+        const heap = self.heap orelse return error.InvalidSyntax;
+        if (!args.isCons()) return error.InvalidSyntax;
+
+        const pkg = heap.current_package orelse return error.InvalidSyntax;
+        const cons1 = args.toPtr(Cons);
+        const other_name = self.getStringOrSymbolName(cons1.car) orelse return error.InvalidSyntax;
+
+        const other_pkg = heap.findPackage(other_name) orelse return error.InvalidSyntax;
+        pkg.usePackage(other_pkg) catch return error.OutOfMemory;
+
+        return try self.builder.lit(Value.t);
+    }
+
+    /// Helper to get string from a string or symbol value
+    fn getStringOrSymbolName(self: *Compiler, val: Value) ?[]const u8 {
+        _ = self;
+        if (val.isString()) {
+            return val.toPtr(runtime.String).bytes();
+        } else if (val.isSymbol()) {
+            return val.toPtr(Symbol).getName();
+        }
+        return null;
+    }
+
+    // ========================================================================
+    // Structure Definition (defstruct)
+    // ========================================================================
+
+    /// Compile defstruct: (defstruct name slot1 slot2 ...)
+    /// Generates: constructor (make-name), accessors (name-slot), predicate (name-p), copier (copy-name)
+    /// Runtime representation: #(name slot1-val slot2-val ...)
+    /// Registers struct type with type system for occurrence typing and type checking
+    fn compileDefstruct(self: *Compiler, args: Value, env: *const Env) Error!*Ir {
+        const heap = self.heap orelse return error.InvalidSyntax;
+
+        // Parse: (name slot1 slot2 ...)
+        if (!args.isCons()) return error.InvalidSyntax;
+        const cons1 = args.toPtr(Cons);
+        const name_val = cons1.car;
+        if (!name_val.isSymbol()) return error.InvalidSyntax;
+        // Dupe struct name to avoid dangling pointer if heap moves
+        const struct_name_raw = name_val.toPtr(Symbol).getName();
+        const struct_name = self.allocator.dupe(u8, struct_name_raw) catch return error.OutOfMemory;
+
+        // Collect slot specs: either `slot` or `(slot type)`
+        var slot_specs = std.ArrayList(SlotSpec){};
+        defer slot_specs.deinit(self.allocator);
+        var rest = cons1.cdr;
+        while (rest.isCons()) {
+            const c = rest.toPtr(Cons);
+            const slot_spec = c.car;
+
+            if (slot_spec.isSymbol()) {
+                // Simple slot: `x` -> type is any
+                const slot_name_raw = slot_spec.toPtr(Symbol).getName();
+                const slot_name = self.allocator.dupe(u8, slot_name_raw) catch return error.OutOfMemory;
+                slot_specs.append(self.allocator, .{ .name = slot_name, .field_type = &types.t_any }) catch return error.OutOfMemory;
+            } else if (slot_spec.isCons()) {
+                // Typed slot: `(x fixnum)` -> parse name and type
+                const spec_cons = slot_spec.toPtr(Cons);
+                if (!spec_cons.car.isSymbol()) return error.InvalidSyntax;
+                const slot_name_raw = spec_cons.car.toPtr(Symbol).getName();
+                const slot_name = self.allocator.dupe(u8, slot_name_raw) catch return error.OutOfMemory;
+
+                // Get type from second element
+                if (!spec_cons.cdr.isCons()) return error.InvalidSyntax;
+                const type_cons = spec_cons.cdr.toPtr(Cons);
+                if (!type_cons.car.isSymbol()) return error.InvalidSyntax;
+                const type_sym = type_cons.car;
+
+                // Parse type symbol to Type using symbol identity
+                const field_type = self.parseTypeSym(type_sym) orelse return error.InvalidSyntax;
+                slot_specs.append(self.allocator, .{ .name = slot_name, .field_type = field_type }) catch return error.OutOfMemory;
+            } else {
+                return error.InvalidSyntax;
+            }
+            rest = c.cdr;
+        }
+
+        // Create struct fields from specs
+        const struct_fields = try self.allocator.alloc(types.StructField, slot_specs.items.len);
+        for (slot_specs.items, 0..) |spec, i| {
+            struct_fields[i] = .{
+                .name = try self.allocator.dupe(u8, spec.name),
+                .type = spec.field_type,
+            };
+        }
+        const type_builder = types.TypeBuilder.init(self.allocator);
+        const struct_type = type_builder.makeStruct(struct_name, struct_fields) catch return error.OutOfMemory;
+        self.registerStructType(struct_name, struct_type) catch return error.OutOfMemory;
+
+        // Extract slot names for constructor params
+        var slot_names = try self.allocator.alloc([]const u8, slot_specs.items.len);
+        for (slot_specs.items, 0..) |spec, i| {
+            slot_names[i] = spec.name;
+        }
+
+        // Pre-allocate array: constructor + accessors + predicate + copier + name_lit
+        const num_defs = 4 + slot_specs.items.len;
+        const defs = try self.allocator.alloc(*Ir, num_defs);
+        var def_idx: usize = 0;
+
+        // 1. Constructor: (defun make-name (slot1 slot2 ...) (vector 'name slot1 slot2 ...))
+        const make_name = try self.concatStrings("make-", struct_name);
+        defs[def_idx] = try self.generateStructConstructor(heap, make_name, struct_name, slot_specs.items, env);
+        def_idx += 1;
+
+        // 2. Accessors: (defun name-slotN (obj) (if (name-p obj) (aref obj N+1) (error)))
+        for (slot_specs.items, 0..) |spec, i| {
+            const accessor_name = try self.concatStrings3(struct_name, "-", spec.name);
+            defs[def_idx] = try self.generateStructAccessor(heap, accessor_name, struct_name, i);
+            def_idx += 1;
+        }
+
+        // 3. Predicate: (defun name-p (obj) (and (vectorp obj) (eq (aref obj 0) 'name)))
+        const pred_name = try self.concatStrings(struct_name, "-p");
+        defs[def_idx] = try self.generateStructPredicate(heap, pred_name, struct_name);
+        def_idx += 1;
+
+        // Register predicate for occurrence typing
+        // Use globals.allocator for persistence across expressions (arena gets freed)
+        const persistent_pred_name = self.globals.allocator.dupe(u8, pred_name) catch return error.OutOfMemory;
+        self.struct_predicates.put(persistent_pred_name, struct_type) catch return error.OutOfMemory;
+
+        // 4. Copier: (defun copy-name (obj) (copy-seq obj))
+        const copy_name = try self.concatStrings("copy-", struct_name);
+        defs[def_idx] = try self.generateStructCopier(copy_name);
+        def_idx += 1;
+
+        // 5. Return struct name
+        defs[def_idx] = try self.builder.lit(name_val);
+
+        return try self.builder.progn(defs);
+    }
+
+    /// Slot specification with name and type
+    const SlotSpec = struct {
+        name: []const u8,
+        field_type: *const types.Type,
+    };
+
+    /// Generate constructor: creates a closure that takes args, checks types, returns vector
+    fn generateStructConstructor(self: *Compiler, heap: *Heap, make_name: []const u8, struct_name: []const u8, slots: []const SlotSpec, env: *const Env) Error!*Ir {
+        _ = env;
+        const global_idx = self.globals.define(make_name) catch return error.OutOfMemory;
+
+        // Extract just the names for lambda params
+        const slot_names = try self.allocator.alloc([]const u8, slots.len);
+        for (slots, 0..) |spec, i| {
+            slot_names[i] = spec.name;
+        }
+
+        // Build body: type assertions + vector creation
+        // Count non-any type assertions needed
+        var num_assertions: usize = 0;
+        for (slots) |spec| {
+            if (!spec.field_type.isAny()) num_assertions += 1;
+        }
+
+        // Pre-allocate vector args: name_sym + one per slot
+        const vec_args = try self.allocator.alloc(*Ir, 1 + slots.len);
+        const name_sym = try heap.intern(struct_name);
+        vec_args[0] = try self.builder.lit(name_sym);
+        for (slots, 0..) |spec, i| {
+            vec_args[1 + i] = try self.builder.variable(spec.name, 0, @intCast(i));
+        }
+        const vec_ir = try self.builder.vec(vec_args);
+
+        // If no type assertions needed, just return the vector
+        var body_ir: *Ir = vec_ir;
+        if (num_assertions > 0) {
+            // Build progn with type assertions followed by vector
+            const progn_items = try self.allocator.alloc(*Ir, num_assertions + 1);
+            var idx: usize = 0;
+            for (slots, 0..) |spec, i| {
+                if (!spec.field_type.isAny()) {
+                    // Generate type assertion for this field
+                    const var_ref = try self.builder.variable(spec.name, 0, @intCast(i));
+                    progn_items[idx] = try self.generateTypeAssertion(var_ref, spec.field_type, spec.name);
+                    idx += 1;
+                }
+            }
+            progn_items[num_assertions] = vec_ir;
+            body_ir = try self.builder.progn(progn_items);
+        }
+
+        const lambda_ir = self.builder.lambda(
+            slot_names,
+            &[_]Ir.OptionalParam{},
+            &[_]Ir.KeyParam{},
+            null,
+            &[_]Ir.Capture{},
+            body_ir,
+        ) catch return error.OutOfMemory;
+
+        return try self.builder.define(make_name, global_idx, lambda_ir);
+    }
+
+    /// Generate a type assertion IR node
+    fn generateTypeAssertion(self: *Compiler, value: *Ir, expected_type: *const types.Type, field_name: []const u8) Error!*Ir {
+        _ = field_name; // Could be used for error messages
+        // Use the appropriate assert_* IR based on type
+        return switch (expected_type.*) {
+            .primitive => |p| switch (p) {
+                .fixnum => try self.builder.assertFixnum(value),
+                .cons => try self.builder.assertCons(value),
+                .symbol => try self.builder.assertSymbol(value),
+                .string => try self.builder.assertString(value),
+                .vector => try self.builder.assertVector(value),
+                .closure => try self.builder.assertClosure(value),
+                else => value, // No assertion for nil, float, char, keyword yet
+            },
+            else => value, // No assertion for compound types yet
+        };
+    }
+
+    /// Parse type symbol to Type pointer using symbol identity
+    fn parseTypeSym(self: *Compiler, type_sym: Value) ?*const types.Type {
+        const b = self.builtins orelse return null;
+
+        // Type symbol table - match by Value.raw identity
+        const entries = [_]struct { sym: Value, ty: *const types.Type }{
+            .{ .sym = b.ty_fixnum, .ty = &types.t_fixnum },
+            .{ .sym = b.ty_integer, .ty = &types.t_fixnum }, // alias
+            .{ .sym = b.ty_float, .ty = &types.t_float },
+            .{ .sym = b.ty_cons, .ty = &types.t_cons },
+            .{ .sym = b.ty_symbol, .ty = &types.t_symbol },
+            .{ .sym = b.ty_string, .ty = &types.t_string },
+            .{ .sym = b.ty_vector, .ty = &types.t_vector },
+            .{ .sym = b.ty_closure, .ty = &types.t_closure },
+            .{ .sym = b.ty_function, .ty = &types.t_closure }, // alias
+            .{ .sym = b.ty_keyword, .ty = &types.t_keyword },
+            .{ .sym = b.ty_nil, .ty = &types.t_nil },
+            .{ .sym = b.ty_char, .ty = &types.t_char },
+            .{ .sym = b.ty_character, .ty = &types.t_char }, // alias
+            .{ .sym = b.ty_any, .ty = &types.t_any },
+            .{ .sym = b.ty_t, .ty = &types.t_any }, // t = any
+            .{ .sym = b.ty_list, .ty = &types.t_list_any },
+        };
+
+        for (entries) |e| if (type_sym.raw == e.sym.raw) return e.ty;
+        return null;
+    }
+
+    /// Generate accessor with runtime type check:
+    /// (lambda (obj)
+    ///   (if (and (vectorp obj) (eq (vec-ref obj 0) 'struct-name))
+    ///       (vec-ref obj slot_idx+1)
+    ///       (error "type error")))
+    fn generateStructAccessor(self: *Compiler, heap: *Heap, accessor_name: []const u8, struct_name: []const u8, slot_idx: usize) Error!*Ir {
+        const global_idx = self.globals.define(accessor_name) catch return error.OutOfMemory;
+
+        // Variable reference for obj parameter
+        const obj_ref = try self.builder.variable("obj", 0, 0);
+
+        // Build condition: (if (vectorp obj) (eq (vec-ref obj 0) 'name) nil)
+        const vectorp_ir = try self.builder.vectorp(obj_ref);
+        const idx0 = try self.builder.lit(Value.makeFixnum(0));
+        // Need fresh obj_ref for second use (IR nodes are consumed)
+        const obj_ref2 = try self.builder.variable("obj", 0, 0);
+        const vecref0 = try self.builder.vecRef(obj_ref2, idx0);
+        const name_sym = try heap.intern(struct_name);
+        const name_lit = try self.builder.lit(name_sym);
+        const eq_ir = try self.builder.eq(vecref0, name_lit);
+        const nil_ir = try self.builder.lit(Value.nil);
+        const type_check = try self.builder.ifExpr(vectorp_ir, eq_ir, nil_ir);
+
+        // Then branch: (vec-ref obj slot_idx+1)
+        const obj_ref3 = try self.builder.variable("obj", 0, 0);
+        const idx_lit = try self.builder.lit(Value.makeFixnum(@intCast(slot_idx + 1)));
+        const vecref_ir = try self.builder.vecRef(obj_ref3, idx_lit);
+
+        // Else branch: (error "type error: expected struct-name")
+        const error_msg = try self.concatStrings3("type error: expected ", struct_name, "");
+        const error_str = try heap.allocString(error_msg);
+        const error_lit = try self.builder.lit(error_str);
+        const error_call = try self.builder.errorUser(error_lit);
+
+        // Full body: (if type-check (vec-ref obj idx) (error ...))
+        const body_ir = try self.builder.ifExpr(type_check, vecref_ir, error_call);
+
+        // Lambda with 1 param named "obj"
+        const lambda_ir = self.builder.lambda(
+            &[_][]const u8{"obj"},
+            &[_]Ir.OptionalParam{},
+            &[_]Ir.KeyParam{},
+            null,
+            &[_]Ir.Capture{},
+            body_ir,
+        ) catch return error.OutOfMemory;
+
+        return try self.builder.define(accessor_name, global_idx, lambda_ir);
+    }
+
+    /// Generate predicate: checks if obj is a vector with correct type tag
+    fn generateStructPredicate(self: *Compiler, heap: *Heap, pred_name: []const u8, struct_name: []const u8) Error!*Ir {
+        const global_idx = self.globals.define(pred_name) catch return error.OutOfMemory;
+
+        // Body: (if (vectorp obj) (eq (vec-ref obj 0) 'name) nil)
+        const obj_ref = try self.builder.variable("obj", 0, 0);
+        const vectorp_ir = try self.builder.vectorp(obj_ref);
+        const idx0 = try self.builder.lit(Value.makeFixnum(0));
+        const vecref0 = try self.builder.vecRef(obj_ref, idx0);
+        const name_sym = try heap.intern(struct_name);
+        const name_lit = try self.builder.lit(name_sym);
+        const eq_ir = try self.builder.eq(vecref0, name_lit);
+        const nil_ir = try self.builder.lit(Value.nil);
+        const body_ir = try self.builder.ifExpr(vectorp_ir, eq_ir, nil_ir);
+
+        const lambda_ir = self.builder.lambda(
+            &[_][]const u8{"obj"},
+            &[_]Ir.OptionalParam{},
+            &[_]Ir.KeyParam{},
+            null,
+            &[_]Ir.Capture{},
+            body_ir,
+        ) catch return error.OutOfMemory;
+
+        return try self.builder.define(pred_name, global_idx, lambda_ir);
+    }
+
+    /// Generate copier: (lambda (obj) obj)
+    /// TODO: implement proper copy-seq when available
+    fn generateStructCopier(self: *Compiler, copy_name: []const u8) Error!*Ir {
+        const global_idx = self.globals.define(copy_name) catch return error.OutOfMemory;
+
+        // For now just return identity - proper copy-seq needs implementation
+        const obj_ref = try self.builder.variable("obj", 0, 0);
+
+        const lambda_ir = self.builder.lambda(
+            &[_][]const u8{"obj"},
+            &[_]Ir.OptionalParam{},
+            &[_]Ir.KeyParam{},
+            null,
+            &[_]Ir.Capture{},
+            obj_ref,
+        ) catch return error.OutOfMemory;
+
+        return try self.builder.define(copy_name, global_idx, lambda_ir);
+    }
+
+    /// Concatenate two strings
+    fn concatStrings(self: *Compiler, a: []const u8, b: []const u8) ![]const u8 {
+        const result = try self.allocator.alloc(u8, a.len + b.len);
+        @memcpy(result[0..a.len], a);
+        @memcpy(result[a.len..], b);
+        return result;
+    }
+
+    /// Concatenate three strings
+    fn concatStrings3(self: *Compiler, a: []const u8, b: []const u8, c: []const u8) ![]const u8 {
+        const result = try self.allocator.alloc(u8, a.len + b.len + c.len);
+        @memcpy(result[0..a.len], a);
+        @memcpy(result[a.len .. a.len + b.len], b);
+        @memcpy(result[a.len + b.len ..], c);
+        return result;
     }
 
     // ========================================================================
@@ -3377,10 +4170,10 @@ pub const Compiler = struct {
             const pattern_cons = clause.toPtr(Cons);
             const pattern = pattern_cons.car;
 
-            // Check for wildcard
+            // Check for wildcard (use symbol identity)
             if (pattern.isSymbol()) {
-                const sym = pattern.toPtr(Symbol);
-                if (std.mem.eql(u8, sym.getName(), "_")) {
+                const b = self.builtins orelse unreachable;
+                if (pattern.raw == b.@"_".raw) {
                     has_wildcard = true;
                     break;
                 }
@@ -3442,10 +4235,10 @@ pub const Compiler = struct {
         const pattern = pattern_cons.car;
         const body_list = pattern_cons.cdr;
 
-        // Check for wildcard pattern: _
+        // Check for wildcard pattern: _ (use symbol identity)
         if (pattern.isSymbol()) {
-            const sym = pattern.toPtr(Symbol);
-            if (std.mem.eql(u8, sym.getName(), "_")) {
+            const b = self.builtins orelse unreachable;
+            if (pattern.raw == b.@"_".raw) {
                 // Wildcard - compile body as progn
                 return self.compileProgn(body_list, env);
             }
@@ -3490,6 +4283,10 @@ pub const Compiler = struct {
             .else_branch = nil_lit,
         } };
 
+        // Compile body in extended environment - create env first to get indices
+        var let_env = Env.initLet(self.allocator, env);
+        defer let_env.deinit();
+
         // Build then branch: (let ((f1 (aref scrutinee 1)) (f2 (aref scrutinee 2)) ...) body...)
         var bindings = try self.allocator.alloc(Ir.Binding, field_names.items.len);
         for (field_names.items, 0..) |field_name, i| {
@@ -3497,17 +4294,12 @@ pub const Compiler = struct {
             const field_aref = try self.allocator.create(Ir);
             field_aref.* = .{ .vec_ref = .{ .left = scrutinee, .right = idx_lit } };
 
+            const binding_idx = try let_env.bind(field_name);
             bindings[i] = .{
                 .name = field_name,
                 .value = field_aref,
+                .index = binding_idx,
             };
-        }
-
-        // Compile body in extended environment
-        var let_env = Env.initLet(self.allocator, env);
-        defer let_env.deinit();
-        for (field_names.items) |field_name| {
-            _ = try let_env.bind(field_name);
         }
         const body_ir = try self.compileProgn(body_list, &let_env);
 
@@ -3536,7 +4328,7 @@ pub const Compiler = struct {
         return if_node;
     }
 
-    fn compileLambdaWithReturnType(self: *Compiler, args: Value, env: *const Env, return_type: ?[]const u8) Error!*Ir {
+    fn compileLambdaWithReturnType(self: *Compiler, args: Value, env: *const Env, return_type: ?Value) Error!*Ir {
         // Delegate to compileLambda but wrap result if return type specified
         const lambda_ir = try self.compileLambdaCore(args, env, return_type);
         return lambda_ir;
@@ -3567,8 +4359,6 @@ pub const Compiler = struct {
 
         // Type must be a symbol for simple types
         if (!type_spec.isSymbol()) return error.InvalidSyntax;
-        const type_sym = type_spec.toPtr(Symbol);
-        const type_name = type_sym.getName();
 
         // Check occurrence typing: if expr is a variable narrowed to this type, skip check
         if (expr.isSymbol()) {
@@ -3577,8 +4367,8 @@ pub const Compiler = struct {
 
             if (self.occ) |occ| {
                 if (occ.getNarrowed(var_name)) |narrowed_type| {
-                    // Check if narrowed type matches requested type
-                    if (self.typeMatchesName(narrowed_type, type_name)) {
+                    // Check if narrowed type matches requested type (by symbol identity)
+                    if (self.typeMatchesSym(narrowed_type, type_spec)) {
                         // Already narrowed - just compile the expression, skip the check
                         return expr_ir;
                     }
@@ -3586,42 +4376,22 @@ pub const Compiler = struct {
             }
         }
 
-        return self.compileSimpleTypeCheck(type_name, expr_ir);
+        return self.compileSimpleTypeCheckSym(type_spec, expr_ir);
     }
 
-    /// Compile a simple type check for a single type name
-    fn compileSimpleTypeCheck(self: *Compiler, type_name: []const u8, expr_ir: *const Ir) Error!*Ir {
-        // Map type name to assertion IR
-        if (std.mem.eql(u8, type_name, "fixnum")) {
-            return try self.builder.assertFixnum(expr_ir);
-        }
-        if (std.mem.eql(u8, type_name, "cons")) {
-            return try self.builder.assertCons(expr_ir);
-        }
-        if (std.mem.eql(u8, type_name, "symbol")) {
-            return try self.builder.assertSymbol(expr_ir);
-        }
-        if (std.mem.eql(u8, type_name, "string")) {
-            return try self.builder.assertString(expr_ir);
-        }
-        if (std.mem.eql(u8, type_name, "vector")) {
-            return try self.builder.assertVector(expr_ir);
-        }
-        if (std.mem.eql(u8, type_name, "closure")) {
-            return try self.builder.assertClosure(expr_ir);
-        }
-        if (std.mem.eql(u8, type_name, "non-nil")) {
-            return try self.builder.assertNonNil(expr_ir);
-        }
-        if (std.mem.eql(u8, type_name, "list")) {
-            return try self.builder.assertList(expr_ir);
-        }
-        if (std.mem.eql(u8, type_name, "any")) {
-            // No check needed for any type
-            return @constCast(expr_ir);
-        }
-
-        // Unknown type
+    /// Compile a simple type check for a single type symbol (uses symbol identity)
+    fn compileSimpleTypeCheckSym(self: *Compiler, type_sym: Value, expr_ir: *const Ir) Error!*Ir {
+        const b = self.builtins orelse unreachable;
+        // Dispatch by symbol identity (no string comparison)
+        if (type_sym.raw == b.ty_fixnum.raw) return self.builder.assertFixnum(expr_ir);
+        if (type_sym.raw == b.cons.raw) return self.builder.assertCons(expr_ir);
+        if (type_sym.raw == b.ty_symbol.raw) return self.builder.assertSymbol(expr_ir);
+        if (type_sym.raw == b.string.raw) return self.builder.assertString(expr_ir);
+        if (type_sym.raw == b.ty_vector.raw) return self.builder.assertVector(expr_ir);
+        if (type_sym.raw == b.ty_closure.raw) return self.builder.assertClosure(expr_ir);
+        if (type_sym.raw == b.@"ty_non-nil".raw) return self.builder.assertNonNil(expr_ir);
+        if (type_sym.raw == b.ty_list.raw) return self.builder.assertList(expr_ir);
+        if (type_sym.raw == b.ty_any.raw) return @constCast(expr_ir); // no check
         return error.InvalidSyntax;
     }
 
@@ -3630,10 +4400,9 @@ pub const Compiler = struct {
         const cons = type_spec.toPtr(Cons);
         if (!cons.car.isSymbol()) return error.InvalidSyntax;
 
-        const head_sym = cons.car.toPtr(Symbol);
-        const head_name = head_sym.getName();
-
-        if (std.mem.eql(u8, head_name, "or")) {
+        // Check for 'or' by symbol identity
+        const b = self.builtins orelse unreachable;
+        if (cons.car.raw == b.@"or".raw) {
             return self.compileOrTypeCheck(cons.cdr, expr_ir);
         }
 
@@ -3644,34 +4413,35 @@ pub const Compiler = struct {
     /// Compile (or type1 type2 ...) check
     /// Expands to: check_list if (or cons nil), else check each type
     fn compileOrTypeCheck(self: *Compiler, type_list: Value, expr_ir: *const Ir) Error!*Ir {
-        // Collect type names (symbols are names, nil value means "nil" type)
-        var type_names = std.ArrayList([]const u8){};
-        defer type_names.deinit(self.allocator);
+        const b = self.builtins orelse return error.InvalidSyntax;
+
+        // Collect type symbols (symbol Values or nil for "nil" type)
+        var type_syms = std.ArrayList(Value){};
+        defer type_syms.deinit(self.allocator);
 
         var list = type_list;
         while (list.isCons()) {
             const c = list.toPtr(Cons);
             if (c.car.isSymbol()) {
-                const type_sym = c.car.toPtr(Symbol);
-                try type_names.append(self.allocator, type_sym.getName());
+                try type_syms.append(self.allocator, c.car);
             } else if (c.car.isNil()) {
-                // nil value in type position means the nil type
-                try type_names.append(self.allocator, "nil");
+                // nil value in type position means the nil type symbol
+                try type_syms.append(self.allocator, b.ty_nil);
             } else {
                 return error.InvalidSyntax;
             }
             list = c.cdr;
         }
 
-        if (type_names.items.len == 0) return error.InvalidSyntax;
+        if (type_syms.items.len == 0) return error.InvalidSyntax;
 
         // Special case: (or cons nil) or (or nil cons) -> list
-        if (type_names.items.len == 2) {
-            const has_cons = for (type_names.items) |n| {
-                if (std.mem.eql(u8, n, "cons")) break true;
+        if (type_syms.items.len == 2) {
+            const has_cons = for (type_syms.items) |sym| {
+                if (sym.raw == b.ty_cons.raw) break true;
             } else false;
-            const has_nil = for (type_names.items) |n| {
-                if (std.mem.eql(u8, n, "nil")) break true;
+            const has_nil = for (type_syms.items) |sym| {
+                if (sym.raw == b.ty_nil.raw) break true;
             } else false;
             if (has_cons and has_nil) {
                 return try self.builder.assertList(expr_ir);
@@ -3684,14 +4454,31 @@ pub const Compiler = struct {
         return @constCast(expr_ir);
     }
 
-    /// Check if a Type matches a type name string
-    fn typeMatchesName(self: *Compiler, ty: *const Type, name: []const u8) bool {
-        _ = self;
-        switch (ty.*) {
-            .primitive => |p| return std.mem.eql(u8, p.name(), name),
-            .non_nil => return std.mem.eql(u8, name, "non-nil"),
-            else => return false,
+    /// Check if a Type matches a type symbol (using pointer comparison)
+    fn typeMatchesSym(self: *Compiler, ty: *const Type, type_sym: Value) bool {
+        const b = self.builtins orelse return false;
+
+        // Table mapping type symbols to type pointers
+        const TypeMapping = struct { sym: Value, ty: *const Type };
+        const mappings = [_]TypeMapping{
+            .{ .sym = b.ty_fixnum, .ty = &types.t_fixnum },
+            .{ .sym = b.ty_cons, .ty = &types.t_cons },
+            .{ .sym = b.ty_symbol, .ty = &types.t_symbol },
+            .{ .sym = b.ty_string, .ty = &types.t_string },
+            .{ .sym = b.ty_nil, .ty = &types.t_nil },
+            .{ .sym = b.ty_float, .ty = &types.t_float },
+            .{ .sym = b.ty_keyword, .ty = &types.t_keyword },
+            .{ .sym = b.ty_char, .ty = &types.t_char },
+            .{ .sym = b.ty_character, .ty = &types.t_char }, // alias
+            .{ .sym = b.@"ty_non-nil", .ty = &types.t_non_nil },
+        };
+
+        for (mappings) |m| {
+            if (type_sym.raw == m.sym.raw) {
+                return ty == m.ty;
+            }
         }
+        return false;
     }
 
     fn compileBody(self: *Compiler, exprs: Value, env: *const Env) Error!*Ir {
@@ -3783,8 +4570,12 @@ pub const Compiler = struct {
         if (s == b.nth.raw) return self.compileBinaryPrim(args, env, .nth);
         if (s == b.nthcdr.raw) return self.compileBinaryPrim(args, env, .nthcdr);
         if (s == b.last.raw) return self.compileUnaryPrim(args, env, .last);
-        if (s == b.member.raw) return self.compileBinaryPrim(args, env, .member);
-        if (s == b.assoc.raw) return self.compileBinaryPrim(args, env, .assoc);
+        if (s == b.member.raw) return self.compileMemberWithTest(args, env);
+        if (s == b.assoc.raw) return self.compileAssocWithTest(args, env);
+        if (s == b.find.raw) return self.compileFindWithTest(args, env);
+        if (s == b.position.raw) return self.compilePositionWithTest(args, env);
+        if (s == b.count.raw) return self.compileCountWithTest(args, env);
+        if (s == b.remove.raw) return self.compileRemoveWithTest(args, env);
         if (s == b.list.raw) return self.compileListPrim(args, env);
         if (s == b.rplaca.raw) return self.compileBinaryPrim(args, env, .rplaca);
         if (s == b.rplacd.raw) return self.compileBinaryPrim(args, env, .rplacd);
@@ -3829,7 +4620,7 @@ pub const Compiler = struct {
         if (s == b.@"type-of".raw) return self.compileUnaryPrim(args, env, .type_of);
         if (s == b.intern.raw) return self.compileUnaryPrim(args, env, .intern);
         if (s == b.@"symbol-name".raw) return self.compileUnaryPrim(args, env, .sym_name);
-        if (s == b.@"error".raw) return self.compileUnaryPrim(args, env, .error_user);
+        // Note: `error` is now defined in stdlib using signal/handler-case
 
         // Numeric predicates
         if (s == b.abs.raw) return self.compileUnaryPrim(args, env, .abs);
@@ -4242,14 +5033,9 @@ pub const Compiler = struct {
         var type_sym: Value = undefined;
         if (cons1.car.isCons()) {
             const quote_cons = cons1.car.toPtr(Cons);
-            // Check if it's (quote xxx)
-            if (quote_cons.car.isSymbol()) {
-                const sym = quote_cons.car.toPtr(Symbol);
-                if (std.mem.eql(u8, sym.getName(), "quote") and quote_cons.cdr.isCons()) {
-                    type_sym = quote_cons.cdr.toPtr(Cons).car;
-                } else {
-                    return error.InvalidSyntax;
-                }
+            // Check if it's (quote xxx) - use symbol identity
+            if (quote_cons.car.raw == b.quote.raw and quote_cons.cdr.isCons()) {
+                type_sym = quote_cons.cdr.toPtr(Cons).car;
             } else {
                 return error.InvalidSyntax;
             }
@@ -4305,17 +5091,12 @@ pub const Compiler = struct {
         const cons2 = cons1.cdr.toPtr(Cons);
         const b = self.builtins orelse return error.InvalidSyntax;
 
-        // Second arg should be a quoted type
+        // Second arg should be a quoted type - use symbol identity
         var type_sym: Value = undefined;
         if (cons2.car.isCons()) {
             const quote_cons = cons2.car.toPtr(Cons);
-            if (quote_cons.car.isSymbol()) {
-                const sym = quote_cons.car.toPtr(Symbol);
-                if (std.mem.eql(u8, sym.getName(), "quote") and quote_cons.cdr.isCons()) {
-                    type_sym = quote_cons.cdr.toPtr(Cons).car;
-                } else {
-                    return error.InvalidSyntax;
-                }
+            if (quote_cons.car.raw == b.quote.raw and quote_cons.cdr.isCons()) {
+                type_sym = quote_cons.cdr.toPtr(Cons).car;
             } else {
                 return error.InvalidSyntax;
             }
@@ -4368,6 +5149,7 @@ pub const Compiler = struct {
     fn compileMakeHash(self: *Compiler, args: Value) Error!*Ir {
         // (make-hash-table) or (make-hash-table :size n :test test-fn)
         // Defaults: size=16, test=eql
+        const b = self.builtins.?;
         var capacity: u16 = 16;
         var test_type: ir.HashTest = .eql;
 
@@ -4377,22 +5159,21 @@ pub const Compiler = struct {
             const cons = current.toPtr(Cons);
             const key = cons.car;
 
-            // Get the keyword name
+            // Check if it's a keyword
             if (!key.isKeyword()) break; // Not a keyword, stop parsing
-            const kw_name = key.toPtr(runtime.Keyword).getName();
 
             // Get the value
             if (!cons.cdr.isCons()) return error.InvalidSyntax;
             const val_cons = cons.cdr.toPtr(Cons);
             const val = val_cons.car;
 
-            if (std.mem.eql(u8, kw_name, "size")) {
+            if (key.raw == b.kw_size.raw) {
                 // :size n - capacity
                 if (!val.isFixnum()) return error.InvalidSyntax;
                 const n = val.toFixnum();
                 if (n < 1 or n > 65535) return error.InvalidSyntax;
                 capacity = @intCast(@as(u64, @bitCast(n)));
-            } else if (std.mem.eql(u8, kw_name, "test")) {
+            } else if (key.raw == b.kw_test.raw) {
                 // :test 'eq or :test 'eql or :test 'equal
                 // The value should be a quoted symbol or just a symbol
                 var test_sym = val;
@@ -4404,12 +5185,12 @@ pub const Compiler = struct {
                     }
                 }
                 if (test_sym.isSymbol()) {
-                    const sym_name = test_sym.toPtr(Symbol).getName();
-                    if (std.mem.eql(u8, sym_name, "eq")) {
+                    // Compare by identity with pre-interned symbols
+                    if (test_sym.raw == b.eq.raw) {
                         test_type = .eq;
-                    } else if (std.mem.eql(u8, sym_name, "eql")) {
+                    } else if (test_sym.raw == b.eql.raw) {
                         test_type = .eql;
-                    } else if (std.mem.eql(u8, sym_name, "equal")) {
+                    } else if (test_sym.raw == b.equal.raw) {
                         test_type = .equal;
                     } else {
                         return error.InvalidSyntax;
@@ -4424,6 +5205,404 @@ pub const Compiler = struct {
 
         const node = try self.allocator.create(Ir);
         node.* = .{ .make_hash = .{ .capacity = capacity, .test_type = test_type } };
+        return node;
+    }
+
+    /// Compile (member item list &key test) with optional :test keyword
+    fn compileMemberWithTest(self: *Compiler, args: Value, env: *const Env) Error!*Ir {
+        const b = self.builtins.?;
+
+        // Parse positional arguments: (member item list ...)
+        if (!args.isCons()) return error.InvalidSyntax;
+        const arg1_cons = args.toPtr(Cons);
+        const item_expr = arg1_cons.car;
+
+        if (!arg1_cons.cdr.isCons()) return error.InvalidSyntax;
+        const arg2_cons = arg1_cons.cdr.toPtr(Cons);
+        const list_expr = arg2_cons.car;
+
+        // Compile positional arguments
+        const item = try self.compile(item_expr, env);
+        const list = try self.compile(list_expr, env);
+
+        // Default test is eq
+        var test_type: enum { eq, eql, equal } = .eq;
+
+        // Parse optional :test keyword
+        var current = arg2_cons.cdr;
+        while (current.isCons()) {
+            const cons = current.toPtr(Cons);
+            const key = cons.car;
+
+            if (!key.isKeyword()) break;
+
+            if (!cons.cdr.isCons()) return error.InvalidSyntax;
+            const val_cons = cons.cdr.toPtr(Cons);
+            const val = val_cons.car;
+
+            if (key.raw == b.kw_test.raw) {
+                // :test 'eq or :test 'eql or :test 'equal
+                var test_sym = val;
+                if (val.isCons()) {
+                    // Could be (quote eq)
+                    const quote_cons = val.toPtr(Cons);
+                    if (quote_cons.cdr.isCons()) {
+                        test_sym = quote_cons.cdr.toPtr(Cons).car;
+                    }
+                }
+                if (test_sym.isSymbol()) {
+                    if (test_sym.raw == b.eq.raw) {
+                        test_type = .eq;
+                    } else if (test_sym.raw == b.eql.raw) {
+                        test_type = .eql;
+                    } else if (test_sym.raw == b.equal.raw) {
+                        test_type = .equal;
+                    } else {
+                        return error.InvalidSyntax;
+                    }
+                } else {
+                    return error.InvalidSyntax;
+                }
+            }
+            current = val_cons.cdr;
+        }
+
+        // Create appropriate IR node based on test type
+        const node = try self.allocator.create(Ir);
+        node.* = switch (test_type) {
+            .eq => .{ .member = .{ .left = item, .right = list } },
+            .eql => .{ .member_eql = .{ .left = item, .right = list } },
+            .equal => .{ .member_equal = .{ .left = item, .right = list } },
+        };
+        return node;
+    }
+
+    /// Compile (assoc key alist &key test) with optional :test keyword
+    fn compileAssocWithTest(self: *Compiler, args: Value, env: *const Env) Error!*Ir {
+        const b = self.builtins.?;
+
+        // Parse positional arguments: (assoc key alist ...)
+        if (!args.isCons()) return error.InvalidSyntax;
+        const arg1_cons = args.toPtr(Cons);
+        const key_expr = arg1_cons.car;
+
+        if (!arg1_cons.cdr.isCons()) return error.InvalidSyntax;
+        const arg2_cons = arg1_cons.cdr.toPtr(Cons);
+        const alist_expr = arg2_cons.car;
+
+        // Compile positional arguments
+        const key = try self.compile(key_expr, env);
+        const alist = try self.compile(alist_expr, env);
+
+        // Default test is eq
+        var test_type: enum { eq, eql, equal } = .eq;
+
+        // Parse optional :test keyword
+        var current = arg2_cons.cdr;
+        while (current.isCons()) {
+            const cons = current.toPtr(Cons);
+            const kw = cons.car;
+
+            if (!kw.isKeyword()) break;
+
+            if (!cons.cdr.isCons()) return error.InvalidSyntax;
+            const val_cons = cons.cdr.toPtr(Cons);
+            const val = val_cons.car;
+
+            if (kw.raw == b.kw_test.raw) {
+                // :test 'eq or :test 'eql or :test 'equal
+                var test_sym = val;
+                if (val.isCons()) {
+                    // Could be (quote eq)
+                    const quote_cons = val.toPtr(Cons);
+                    if (quote_cons.cdr.isCons()) {
+                        test_sym = quote_cons.cdr.toPtr(Cons).car;
+                    }
+                }
+                if (test_sym.isSymbol()) {
+                    if (test_sym.raw == b.eq.raw) {
+                        test_type = .eq;
+                    } else if (test_sym.raw == b.eql.raw) {
+                        test_type = .eql;
+                    } else if (test_sym.raw == b.equal.raw) {
+                        test_type = .equal;
+                    } else {
+                        return error.InvalidSyntax;
+                    }
+                } else {
+                    return error.InvalidSyntax;
+                }
+            }
+            current = val_cons.cdr;
+        }
+
+        // Create appropriate IR node based on test type
+        const node = try self.allocator.create(Ir);
+        node.* = switch (test_type) {
+            .eq => .{ .assoc = .{ .left = key, .right = alist } },
+            .eql => .{ .assoc_eql = .{ .left = key, .right = alist } },
+            .equal => .{ .assoc_equal = .{ .left = key, .right = alist } },
+        };
+        return node;
+    }
+
+    /// Compile (find item sequence &key test) with optional :test keyword
+    /// Default test is eql (CL spec)
+    fn compileFindWithTest(self: *Compiler, args: Value, env: *const Env) Error!*Ir {
+        const b = self.builtins.?;
+
+        // Parse positional arguments: (find item sequence ...)
+        if (!args.isCons()) return error.InvalidSyntax;
+        const arg1_cons = args.toPtr(Cons);
+        const item_expr = arg1_cons.car;
+
+        if (!arg1_cons.cdr.isCons()) return error.InvalidSyntax;
+        const arg2_cons = arg1_cons.cdr.toPtr(Cons);
+        const seq_expr = arg2_cons.car;
+
+        // Compile positional arguments
+        const item = try self.compile(item_expr, env);
+        const seq = try self.compile(seq_expr, env);
+
+        // Default test is eql (CL spec for find)
+        var test_type: enum { eq, eql, equal } = .eql;
+
+        // Parse optional :test keyword
+        var current = arg2_cons.cdr;
+        while (current.isCons()) {
+            const cons = current.toPtr(Cons);
+            const key = cons.car;
+
+            if (!key.isKeyword()) break;
+
+            if (!cons.cdr.isCons()) return error.InvalidSyntax;
+            const val_cons = cons.cdr.toPtr(Cons);
+            const val = val_cons.car;
+
+            if (key.raw == b.kw_test.raw) {
+                var test_sym = val;
+                if (val.isCons()) {
+                    const quote_cons = val.toPtr(Cons);
+                    if (quote_cons.cdr.isCons()) {
+                        test_sym = quote_cons.cdr.toPtr(Cons).car;
+                    }
+                }
+                if (test_sym.isSymbol()) {
+                    if (test_sym.raw == b.eq.raw) {
+                        test_type = .eq;
+                    } else if (test_sym.raw == b.eql.raw) {
+                        test_type = .eql;
+                    } else if (test_sym.raw == b.equal.raw) {
+                        test_type = .equal;
+                    } else {
+                        return error.InvalidSyntax;
+                    }
+                } else {
+                    return error.InvalidSyntax;
+                }
+            }
+            current = val_cons.cdr;
+        }
+
+        const node = try self.allocator.create(Ir);
+        node.* = switch (test_type) {
+            .eq => .{ .find_eq = .{ .left = item, .right = seq } },
+            .eql => .{ .find = .{ .left = item, .right = seq } },
+            .equal => .{ .find_equal = .{ .left = item, .right = seq } },
+        };
+        return node;
+    }
+
+    /// Compile (position item sequence &key test) with optional :test keyword
+    /// Default test is eql (CL spec)
+    fn compilePositionWithTest(self: *Compiler, args: Value, env: *const Env) Error!*Ir {
+        const b = self.builtins.?;
+
+        // Parse positional arguments: (position item sequence ...)
+        if (!args.isCons()) return error.InvalidSyntax;
+        const arg1_cons = args.toPtr(Cons);
+        const item_expr = arg1_cons.car;
+
+        if (!arg1_cons.cdr.isCons()) return error.InvalidSyntax;
+        const arg2_cons = arg1_cons.cdr.toPtr(Cons);
+        const seq_expr = arg2_cons.car;
+
+        // Compile positional arguments
+        const item = try self.compile(item_expr, env);
+        const seq = try self.compile(seq_expr, env);
+
+        // Default test is eql (CL spec for position)
+        var test_type: enum { eq, eql, equal } = .eql;
+
+        // Parse optional :test keyword
+        var current = arg2_cons.cdr;
+        while (current.isCons()) {
+            const cons = current.toPtr(Cons);
+            const key = cons.car;
+
+            if (!key.isKeyword()) break;
+
+            if (!cons.cdr.isCons()) return error.InvalidSyntax;
+            const val_cons = cons.cdr.toPtr(Cons);
+            const val = val_cons.car;
+
+            if (key.raw == b.kw_test.raw) {
+                var test_sym = val;
+                if (val.isCons()) {
+                    const quote_cons = val.toPtr(Cons);
+                    if (quote_cons.cdr.isCons()) {
+                        test_sym = quote_cons.cdr.toPtr(Cons).car;
+                    }
+                }
+                if (test_sym.isSymbol()) {
+                    if (test_sym.raw == b.eq.raw) {
+                        test_type = .eq;
+                    } else if (test_sym.raw == b.eql.raw) {
+                        test_type = .eql;
+                    } else if (test_sym.raw == b.equal.raw) {
+                        test_type = .equal;
+                    } else {
+                        return error.InvalidSyntax;
+                    }
+                } else {
+                    return error.InvalidSyntax;
+                }
+            }
+            current = val_cons.cdr;
+        }
+
+        const node = try self.allocator.create(Ir);
+        node.* = switch (test_type) {
+            .eq => .{ .position_eq = .{ .left = item, .right = seq } },
+            .eql => .{ .position = .{ .left = item, .right = seq } },
+            .equal => .{ .position_equal = .{ .left = item, .right = seq } },
+        };
+        return node;
+    }
+
+    /// Compile (count item sequence &key test) with optional :test keyword
+    /// Default test is eql (CL spec)
+    fn compileCountWithTest(self: *Compiler, args: Value, env: *const Env) Error!*Ir {
+        const b = self.builtins.?;
+
+        if (!args.isCons()) return error.InvalidSyntax;
+        const arg1_cons = args.toPtr(Cons);
+        const item_expr = arg1_cons.car;
+
+        if (!arg1_cons.cdr.isCons()) return error.InvalidSyntax;
+        const arg2_cons = arg1_cons.cdr.toPtr(Cons);
+        const seq_expr = arg2_cons.car;
+
+        const item = try self.compile(item_expr, env);
+        const seq = try self.compile(seq_expr, env);
+
+        var test_type: enum { eq, eql, equal } = .eql;
+
+        var current = arg2_cons.cdr;
+        while (current.isCons()) {
+            const cons = current.toPtr(Cons);
+            const key = cons.car;
+
+            if (!key.isKeyword()) break;
+
+            if (!cons.cdr.isCons()) return error.InvalidSyntax;
+            const val_cons = cons.cdr.toPtr(Cons);
+            const val = val_cons.car;
+
+            if (key.raw == b.kw_test.raw) {
+                var test_sym = val;
+                if (val.isCons()) {
+                    const quote_cons = val.toPtr(Cons);
+                    if (quote_cons.cdr.isCons()) {
+                        test_sym = quote_cons.cdr.toPtr(Cons).car;
+                    }
+                }
+                if (test_sym.isSymbol()) {
+                    if (test_sym.raw == b.eq.raw) {
+                        test_type = .eq;
+                    } else if (test_sym.raw == b.eql.raw) {
+                        test_type = .eql;
+                    } else if (test_sym.raw == b.equal.raw) {
+                        test_type = .equal;
+                    } else {
+                        return error.InvalidSyntax;
+                    }
+                } else {
+                    return error.InvalidSyntax;
+                }
+            }
+            current = val_cons.cdr;
+        }
+
+        const node = try self.allocator.create(Ir);
+        node.* = switch (test_type) {
+            .eq => .{ .count_eq = .{ .left = item, .right = seq } },
+            .eql => .{ .count = .{ .left = item, .right = seq } },
+            .equal => .{ .count_equal = .{ .left = item, .right = seq } },
+        };
+        return node;
+    }
+
+    /// Compile (remove item sequence &key test) with optional :test keyword
+    /// Default test is eql (CL spec)
+    fn compileRemoveWithTest(self: *Compiler, args: Value, env: *const Env) Error!*Ir {
+        const b = self.builtins.?;
+
+        if (!args.isCons()) return error.InvalidSyntax;
+        const arg1_cons = args.toPtr(Cons);
+        const item_expr = arg1_cons.car;
+
+        if (!arg1_cons.cdr.isCons()) return error.InvalidSyntax;
+        const arg2_cons = arg1_cons.cdr.toPtr(Cons);
+        const seq_expr = arg2_cons.car;
+
+        const item = try self.compile(item_expr, env);
+        const seq = try self.compile(seq_expr, env);
+
+        var test_type: enum { eq, eql, equal } = .eql;
+
+        var current = arg2_cons.cdr;
+        while (current.isCons()) {
+            const cons = current.toPtr(Cons);
+            const key = cons.car;
+
+            if (!key.isKeyword()) break;
+
+            if (!cons.cdr.isCons()) return error.InvalidSyntax;
+            const val_cons = cons.cdr.toPtr(Cons);
+            const val = val_cons.car;
+
+            if (key.raw == b.kw_test.raw) {
+                var test_sym = val;
+                if (val.isCons()) {
+                    const quote_cons = val.toPtr(Cons);
+                    if (quote_cons.cdr.isCons()) {
+                        test_sym = quote_cons.cdr.toPtr(Cons).car;
+                    }
+                }
+                if (test_sym.isSymbol()) {
+                    if (test_sym.raw == b.eq.raw) {
+                        test_type = .eq;
+                    } else if (test_sym.raw == b.eql.raw) {
+                        test_type = .eql;
+                    } else if (test_sym.raw == b.equal.raw) {
+                        test_type = .equal;
+                    } else {
+                        return error.InvalidSyntax;
+                    }
+                } else {
+                    return error.InvalidSyntax;
+                }
+            }
+            current = val_cons.cdr;
+        }
+
+        const node = try self.allocator.create(Ir);
+        node.* = switch (test_type) {
+            .eq => .{ .remove_eq = .{ .left = item, .right = seq } },
+            .eql => .{ .remove = .{ .left = item, .right = seq } },
+            .equal => .{ .remove_equal = .{ .left = item, .right = seq } },
+        };
         return node;
     }
 
@@ -4572,6 +5751,32 @@ pub const Compiler = struct {
     }
 
     fn compileCallWithTail(self: *Compiler, func_expr: Value, args_expr: Value, env: *const Env, in_tail: bool) Error!*Ir {
+        // Check for struct predicate calls (for occurrence typing)
+        // If calling a known struct predicate like point-p, generate struct_p IR
+        if (func_expr.isSymbol() and self.struct_predicates.count() > 0) {
+            // Copy name to avoid dangling pointer if heap moves
+            const sym_name_raw = func_expr.toPtr(Symbol).getName();
+            const sym_name = self.allocator.dupe(u8, sym_name_raw) catch return error.OutOfMemory;
+            defer self.allocator.free(sym_name);
+            if (self.struct_predicates.get(sym_name)) |struct_type| {
+                // This is a struct predicate call - generate struct_p IR
+                // Extract struct name from predicate (remove "-p" suffix)
+                const struct_name = if (sym_name.len > 2 and
+                    std.mem.endsWith(u8, sym_name, "-p"))
+                    sym_name[0 .. sym_name.len - 2]
+                else
+                    sym_name;
+
+                // Compile the single argument
+                if (!args_expr.isCons()) return error.InvalidSyntax;
+                const arg_cons = args_expr.toPtr(Cons);
+                if (!arg_cons.cdr.isNil()) return error.InvalidSyntax; // Must have exactly 1 arg
+                const arg_ir = try self.compile(arg_cons.car, env);
+
+                return try self.builder.structp(arg_ir, struct_name, struct_type);
+            }
+        }
+
         const func_ir = try self.compile(func_expr, env);
 
         var args = std.ArrayList(*Ir){};
