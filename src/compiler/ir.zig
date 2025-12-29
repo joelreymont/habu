@@ -1256,101 +1256,77 @@ pub const IrBuilder = struct {
 // ============================================================================
 
 test "ir literal" {
-    const testing = std.testing;
-    const allocator = testing.allocator;
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
 
-    const builder = IrBuilder.init(allocator);
+    const builder = IrBuilder.init(arena.allocator());
     const node = try builder.lit(Value.makeFixnum(42));
-    defer allocator.destroy(node);
 
-    try testing.expectEqual(Ir.lit, std.meta.activeTag(node.*));
-    try testing.expectEqual(@as(i64, 42), node.lit.toFixnum());
+    try std.testing.expectEqual(Ir.lit, std.meta.activeTag(node.*));
+    try std.testing.expectEqual(@as(i64, 42), node.lit.toFixnum());
 }
 
 test "ir binary op" {
-    const testing = std.testing;
-    const allocator = testing.allocator;
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
 
-    const builder = IrBuilder.init(allocator);
+    const builder = IrBuilder.init(arena.allocator());
     const left = try builder.lit(Value.makeFixnum(1));
     const right = try builder.lit(Value.makeFixnum(2));
     const sum = try builder.add(left, right);
-    defer {
-        allocator.destroy(left);
-        allocator.destroy(right);
-        allocator.destroy(sum);
-    }
 
-    try testing.expectEqual(Ir.add, std.meta.activeTag(sum.*));
-    try testing.expect(sum.isPrimitive());
+    try std.testing.expectEqual(Ir.add, std.meta.activeTag(sum.*));
+    try std.testing.expect(sum.isPrimitive());
 }
 
 test "ir if expression" {
-    const testing = std.testing;
-    const allocator = testing.allocator;
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
 
-    const builder = IrBuilder.init(allocator);
+    const builder = IrBuilder.init(arena.allocator());
     const test_expr = try builder.lit(Value.t);
     const then_expr = try builder.lit(Value.makeFixnum(1));
     const else_expr = try builder.lit(Value.makeFixnum(0));
     const if_node = try builder.ifExpr(test_expr, then_expr, else_expr);
-    defer {
-        allocator.destroy(test_expr);
-        allocator.destroy(then_expr);
-        allocator.destroy(else_expr);
-        allocator.destroy(if_node);
-    }
 
-    try testing.expectEqual(Ir.@"if", std.meta.activeTag(if_node.*));
-    try testing.expect(!if_node.isPrimitive());
+    try std.testing.expectEqual(Ir.@"if", std.meta.activeTag(if_node.*));
+    try std.testing.expect(!if_node.isPrimitive());
 }
 
 test "ir lambda" {
-    const testing = std.testing;
-    const allocator = testing.allocator;
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
 
-    const builder = IrBuilder.init(allocator);
+    const builder = IrBuilder.init(arena.allocator());
     const body = try builder.lit(Value.nil);
     const params = [_][]const u8{ "x", "y" };
     const captures = [_]Ir.Capture{};
     const lam = try builder.lambda(&params, null, &captures, body);
-    defer {
-        allocator.destroy(body);
-        for (lam.lambda.params) |p| allocator.free(p);
-        allocator.free(lam.lambda.params);
-        allocator.free(lam.lambda.captures);
-        allocator.destroy(lam);
-    }
 
-    try testing.expectEqual(Ir.lambda, std.meta.activeTag(lam.*));
-    try testing.expectEqual(@as(usize, 2), lam.lambda.params.len);
-    try testing.expectEqualStrings("x", lam.lambda.params[0]);
+    try std.testing.expectEqual(Ir.lambda, std.meta.activeTag(lam.*));
+    try std.testing.expectEqual(@as(usize, 2), lam.lambda.params.len);
+    try std.testing.expectEqualStrings("x", lam.lambda.params[0]);
 }
 
 test "ir variable" {
-    const testing = std.testing;
-    const allocator = testing.allocator;
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
 
-    const builder = IrBuilder.init(allocator);
+    const builder = IrBuilder.init(arena.allocator());
     const v = try builder.variable("foo", 0, 3);
-    defer {
-        allocator.free(v.@"var".name);
-        allocator.destroy(v);
-    }
 
-    try testing.expectEqual(Ir.@"var", std.meta.activeTag(v.*));
-    try testing.expectEqualStrings("foo", v.@"var".name);
-    try testing.expectEqual(@as(u16, 0), v.@"var".depth);
-    try testing.expectEqual(@as(u16, 3), v.@"var".index);
+    try std.testing.expectEqual(Ir.@"var", std.meta.activeTag(v.*));
+    try std.testing.expectEqualStrings("foo", v.@"var".name);
+    try std.testing.expectEqual(@as(u16, 0), v.@"var".depth);
+    try std.testing.expectEqual(@as(u16, 3), v.@"var".index);
 }
 
 test "ir tag name" {
-    const testing = std.testing;
-    const allocator = testing.allocator;
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
 
-    const builder = IrBuilder.init(allocator);
+    const builder = IrBuilder.init(arena.allocator());
     const node = try builder.lit(Value.nil);
-    defer allocator.destroy(node);
 
-    try testing.expectEqualStrings("lit", node.tagName());
+    try std.testing.expectEqualStrings("lit", node.tagName());
 }
