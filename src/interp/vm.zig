@@ -72,6 +72,8 @@ pub const Frame = struct {
     bp: usize,
     /// Current closure (for accessing captures)
     closure: ?*const runtime.Closure,
+    /// Argument count passed to this function call
+    argc: u8,
 };
 
 /// Saved execution state for nested calls
@@ -286,6 +288,7 @@ pub const Vm = struct {
             .return_ip = 0,
             .bp = 0,
             .closure = closure,
+            .argc = argc,
         };
 
         // Execute until return
@@ -422,6 +425,11 @@ pub const Vm = struct {
                     if (idx >= self.num_globals) {
                         self.num_globals = idx + 1;
                     }
+                },
+                .load_argc => {
+                    // Get argc from current frame
+                    const frame_argc = if (self.fp > 0) self.frames[self.fp - 1].argc else 0;
+                    try self.push(Value.makeFixnum(frame_argc));
                 },
 
                 // Arithmetic
@@ -1919,11 +1927,18 @@ pub const Vm = struct {
         const closure = fn_val.toPtr(runtime.Closure);
         const callee_chunk: *const Chunk = @ptrCast(@alignCast(closure.code));
         const arity = callee_chunk.arity;
+        const optional_count = callee_chunk.optional_count;
+        const max_arity = arity + optional_count;
 
         // Check arity
         if (callee_chunk.has_rest) {
             // Variadic: need at least required args
             if (argc < arity) {
+                return error.TypeMismatch;
+            }
+        } else if (optional_count > 0) {
+            // Has optional params: argc must be in [arity, arity + optional_count]
+            if (argc < arity or argc > max_arity) {
                 return error.TypeMismatch;
             }
         } else {
@@ -1934,10 +1949,11 @@ pub const Vm = struct {
         }
 
         // Build rest list if variadic (before we modify the stack)
+        // Rest list contains args beyond required + optional params
         var rest_list = Value.nil;
-        if (callee_chunk.has_rest and argc > arity) {
+        if (callee_chunk.has_rest and argc > max_arity) {
             // Build list from extra args (in reverse since we pop from end)
-            const extra_count = argc - arity;
+            const extra_count = argc - max_arity;
             var i: u8 = 0;
             while (i < extra_count) : (i += 1) {
                 const idx = self.sp - 1 - i;
@@ -1947,24 +1963,25 @@ pub const Vm = struct {
             self.sp -= extra_count;
         }
 
-        // After popping extra args, we have exactly `arity` args on stack
-        const required_argc = arity;
+        // After popping extra args for rest, we have at most max_arity args on stack
+        // actual_argc is the number of args that will be used for required + optional params
+        const actual_argc: u8 = @min(argc, max_arity);
 
         if (tail) {
             // Tail call: reuse current frame
             // Move arguments to start of current frame
             const current_bp = if (self.fp > 0) self.frames[self.fp - 1].bp else 0;
-            const arg_start = self.sp - required_argc;
+            const arg_start = self.sp - actual_argc;
 
-            // Copy required args to current frame's base
-            for (0..required_argc) |i| {
+            // Copy args to current frame's base
+            for (0..actual_argc) |i| {
                 self.stack[current_bp + i] = self.stack[arg_start + i];
             }
 
             // Reset stack pointer
-            self.sp = current_bp + required_argc;
+            self.sp = current_bp + actual_argc;
 
-            // If variadic, push rest list as next local
+            // If variadic, push rest list as next local (after required + optional)
             if (callee_chunk.has_rest) {
                 try self.push(rest_list);
             }
@@ -1973,13 +1990,14 @@ pub const Vm = struct {
             self.chunk = callee_chunk;
             self.ip = 0;
 
-            // Update closure in current frame for captures
+            // Update closure and argc in current frame
             if (self.fp > 0) {
                 self.frames[self.fp - 1].closure = closure;
+                self.frames[self.fp - 1].argc = argc;
             }
 
-            // Reserve space for additional locals (after required + rest)
-            const used_locals: usize = required_argc + @as(u8, if (callee_chunk.has_rest) 1 else 0);
+            // Reserve space for additional locals (after args + rest)
+            const used_locals: usize = actual_argc + @as(u8, if (callee_chunk.has_rest) 1 else 0);
             var i: usize = used_locals;
             while (i < callee_chunk.num_locals) : (i += 1) {
                 try self.push(Value.nil);
@@ -1994,22 +2012,23 @@ pub const Vm = struct {
             self.frames[self.fp] = .{
                 .chunk = self.chunk,
                 .return_ip = self.ip,
-                .bp = self.sp - required_argc - 1, // -1 for function value
+                .bp = self.sp - actual_argc - 1, // -1 for function value
                 .closure = closure,
+                .argc = argc,
             };
             self.fp += 1;
 
             // The arguments are already on stack above the function value
             // We need to set bp to point to first arg (overwriting fn_val slot)
-            const new_bp = self.sp - required_argc - 1;
+            const new_bp = self.sp - actual_argc - 1;
 
-            // Copy args down to overwrite fn_val (args are now locals 0..arity-1)
-            for (0..required_argc) |i| {
+            // Copy args down to overwrite fn_val (args are now locals 0..actual_argc-1)
+            for (0..actual_argc) |i| {
                 self.stack[new_bp + i] = self.stack[new_bp + 1 + i];
             }
-            self.sp = new_bp + required_argc;
+            self.sp = new_bp + actual_argc;
 
-            // If variadic, push rest list as next local (at index `arity`)
+            // If variadic, push rest list as next local (after required + optional)
             if (callee_chunk.has_rest) {
                 try self.push(rest_list);
             }
@@ -2021,8 +2040,8 @@ pub const Vm = struct {
             self.chunk = callee_chunk;
             self.ip = 0;
 
-            // Reserve space for additional locals (after required + rest)
-            const used: usize = required_argc + @as(u8, if (callee_chunk.has_rest) 1 else 0);
+            // Reserve space for additional locals (after args + rest)
+            const used: usize = actual_argc + @as(u8, if (callee_chunk.has_rest) 1 else 0);
             var i: usize = used;
             while (i < callee_chunk.num_locals) : (i += 1) {
                 try self.push(Value.nil);
@@ -2357,6 +2376,7 @@ test "vm push and return" {
         .code = @constCast(&code),
         .constants = &[_]u64{},
         .arity = 0,
+        .optional_count = 0,
         .has_rest = false,
         .num_locals = 0,
         .name = "test",
@@ -2387,6 +2407,7 @@ test "vm arithmetic" {
         .code = @constCast(&code),
         .constants = &[_]u64{},
         .arity = 0,
+        .optional_count = 0,
         .has_rest = false,
         .num_locals = 0,
         .name = "test",
@@ -2418,6 +2439,7 @@ test "vm cons car cdr" {
         .code = @constCast(&code),
         .constants = &[_]u64{},
         .arity = 0,
+        .optional_count = 0,
         .has_rest = false,
         .num_locals = 0,
         .name = "test",
@@ -2450,6 +2472,7 @@ test "vm conditional" {
         .code = @constCast(&code),
         .constants = &[_]u64{},
         .arity = 0,
+        .optional_count = 0,
         .has_rest = false,
         .num_locals = 0,
         .name = "test",
@@ -2480,6 +2503,7 @@ test "vm locals" {
         .code = @constCast(&code),
         .constants = &[_]u64{},
         .arity = 0,
+        .optional_count = 0,
         .has_rest = false,
         .num_locals = 1,
         .name = "test",
@@ -2521,6 +2545,7 @@ test "vm hash table" {
         .code = @constCast(&code),
         .constants = &[_]u64{},
         .arity = 0,
+        .optional_count = 0,
         .has_rest = false,
         .num_locals = 1,
         .name = "test",
@@ -2567,6 +2592,7 @@ test "vm hash table count and remove" {
         .code = @constCast(&code),
         .constants = &[_]u64{},
         .arity = 0,
+        .optional_count = 0,
         .has_rest = false,
         .num_locals = 1,
         .name = "test",

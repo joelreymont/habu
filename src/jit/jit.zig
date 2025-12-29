@@ -365,6 +365,7 @@ test "jit compile simple" {
         .code = @constCast(&code),
         .constants = &[_]u64{},
         .arity = 0,
+        .optional_count = 0,
         .has_rest = false,
         .num_locals = 0,
         .name = "test",

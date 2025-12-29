@@ -79,6 +79,10 @@ pub const Op = enum(u8) {
     /// ( val -- )
     store_global = 0x16,
 
+    /// Load argument count for current function call
+    /// ( -- argc )
+    load_argc = 0x17,
+
     // ========================================================================
     // Arithmetic
     // ========================================================================
@@ -720,7 +724,7 @@ pub const Op = enum(u8) {
     pub fn operandSize(self: Op) u8 {
         return switch (self) {
             // No operand
-            .push_nil, .push_t, .dup, .pop, .swap,
+            .push_nil, .push_t, .dup, .pop, .swap, .load_argc,
             .add, .sub, .mul, .div, .mod, .neg,
             .eq, .lt, .gt, .le, .ge, .num_eq, .not,
             .cons, .car, .cdr, .append_lists, .list_length, .list_reverse, .list_nth, .list_last, .list_member, .list_nthcdr,
@@ -782,6 +786,8 @@ pub const Chunk = struct {
 
     /// Arity (number of required parameters)
     arity: u8,
+    /// Number of optional parameters
+    optional_count: u8,
     /// Whether function accepts rest parameter
     has_rest: bool,
     /// Number of local variables
@@ -841,6 +847,7 @@ test "chunk read" {
         .code = @constCast(&code),
         .constants = &[_]u64{},
         .arity = 0,
+        .optional_count = 0,
         .has_rest = false,
         .num_locals = 0,
         .name = "test",

@@ -73,6 +73,8 @@ pub const Ir = union(enum) {
     /// Lambda: (lambda (x y) body)
     lambda: struct {
         params: []const []const u8,
+        /// Optional parameters with defaults: (x &optional (y 10) (z nil))
+        optional_params: []const OptionalParam,
         /// Rest parameter name (for dotted param lists like (a b . rest))
         rest_param: ?[]const u8,
         /// Free variables captured from enclosing scope
@@ -462,6 +464,12 @@ pub const Ir = union(enum) {
         index: u16,
     };
 
+    /// Optional parameter with default value
+    pub const OptionalParam = struct {
+        name: []const u8,
+        default: ?*const Ir, // null means nil default
+    };
+
     // ========================================================================
     // Predicates
     // ========================================================================
@@ -560,16 +568,30 @@ pub const IrBuilder = struct {
         return node;
     }
 
-    pub fn lambda(self: IrBuilder, params: []const []const u8, rest_param: ?[]const u8, captures: []const Ir.Capture, body: *const Ir) !*Ir {
+    pub fn lambda(self: IrBuilder, params: []const []const u8, optional_params: []const Ir.OptionalParam, rest_param: ?[]const u8, captures: []const Ir.Capture, body: *const Ir) !*Ir {
         const node = try self.allocator.create(Ir);
         // Copy params
         var params_copy = try self.allocator.alloc([]const u8, params.len);
         for (params, 0..) |p, i| {
             params_copy[i] = try self.allocator.dupe(u8, p);
         }
+        // Copy optional params
+        var opt_copy = try self.allocator.alloc(Ir.OptionalParam, optional_params.len);
+        for (optional_params, 0..) |op, i| {
+            opt_copy[i] = .{
+                .name = try self.allocator.dupe(u8, op.name),
+                .default = op.default,
+            };
+        }
         const captures_copy = try self.allocator.dupe(Ir.Capture, captures);
         const rest_copy = if (rest_param) |rp| try self.allocator.dupe(u8, rp) else null;
-        node.* = .{ .lambda = .{ .params = params_copy, .rest_param = rest_copy, .captures = captures_copy, .body = body } };
+        node.* = .{ .lambda = .{
+            .params = params_copy,
+            .optional_params = opt_copy,
+            .rest_param = rest_copy,
+            .captures = captures_copy,
+            .body = body,
+        } };
         return node;
     }
 
@@ -1301,7 +1323,7 @@ test "ir lambda" {
     const body = try builder.lit(Value.nil);
     const params = [_][]const u8{ "x", "y" };
     const captures = [_]Ir.Capture{};
-    const lam = try builder.lambda(&params, null, &captures, body);
+    const lam = try builder.lambda(&params, &.{}, null, &captures, body);
 
     try std.testing.expectEqual(Ir.lambda, std.meta.activeTag(lam.*));
     try std.testing.expectEqual(@as(usize, 2), lam.lambda.params.len);

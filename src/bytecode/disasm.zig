@@ -37,7 +37,7 @@ pub fn disassembleInstruction(chunk: *const Chunk, offset: usize, writer: anytyp
 
     return switch (op) {
         // No operand
-        .push_nil, .push_t, .dup, .pop, .swap,
+        .push_nil, .push_t, .dup, .pop, .swap, .load_argc,
         .add, .sub, .mul, .div, .mod, .neg,
         .eq, .lt, .gt, .le, .ge, .num_eq, .not,
         .cons, .car, .cdr, .append_lists, .list_length, .list_reverse, .list_nth, .list_last, .list_member, .list_nthcdr,
@@ -140,6 +140,7 @@ test "disassemble simple" {
         .code = @constCast(&code),
         .constants = &[_]u64{},
         .arity = 0,
+        .optional_count = 0,
         .has_rest = false,
         .num_locals = 0,
         .name = "test",
@@ -173,6 +174,7 @@ test "disassemble with operands" {
         .code = @constCast(&code),
         .constants = &[_]u64{},
         .arity = 2,
+        .optional_count = 0,
         .has_rest = false,
         .num_locals = 6,
         .name = "with_args",
@@ -207,6 +209,7 @@ test "disassemble jump" {
         .code = @constCast(&code),
         .constants = &[_]u64{},
         .arity = 0,
+        .optional_count = 0,
         .has_rest = false,
         .num_locals = 0,
         .name = "jumpy",

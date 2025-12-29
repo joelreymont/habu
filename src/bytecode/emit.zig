@@ -70,6 +70,8 @@ pub const Emitter = struct {
     num_locals: u8,
     /// Function arity (required params)
     arity: u8,
+    /// Number of optional parameters
+    optional_count: u8,
     /// Whether function accepts rest parameter
     has_rest: bool,
     /// Function name
@@ -90,6 +92,7 @@ pub const Emitter = struct {
             .child_chunks = std.ArrayList(Chunk){},
             .num_locals = 0,
             .arity = 0,
+            .optional_count = 0,
             .has_rest = false,
             .name = "",
             .captures = &[_]Ir.Capture{},
@@ -107,6 +110,7 @@ pub const Emitter = struct {
             .child_chunks = std.ArrayList(Chunk){},
             .num_locals = 0,
             .arity = 0,
+            .optional_count = 0,
             .has_rest = false,
             .name = "",
             .captures = &[_]Ir.Capture{},
@@ -336,6 +340,7 @@ pub const Emitter = struct {
             .code = try self.allocator.dupe(u8, self.code.items),
             .constants = try self.allocator.dupe(u64, self.constants.items),
             .arity = self.arity,
+            .optional_count = self.optional_count,
             .has_rest = self.has_rest,
             .num_locals = self.num_locals,
             .name = self.name,
@@ -566,13 +571,45 @@ pub const Emitter = struct {
         else
             Emitter.init(self.allocator);
 
-        lambda_emitter.arity = @intCast(lam.params.len);
+        const arity: u8 = @intCast(lam.params.len);
+        const optional_count: u8 = @intCast(lam.optional_params.len);
+        lambda_emitter.arity = arity;
+        lambda_emitter.optional_count = optional_count;
         lambda_emitter.has_rest = lam.rest_param != null;
-        // num_locals = required params + optional rest param
+        // num_locals = required params + optional params + optional rest param
         const rest_count: u8 = if (lam.rest_param != null) 1 else 0;
-        lambda_emitter.num_locals = @intCast(lam.params.len + rest_count);
+        lambda_emitter.num_locals = arity + optional_count + rest_count;
         // Pass captures so emitVar knows which variables to load from capture array
         lambda_emitter.captures = lam.captures;
+
+        // Emit preamble for optional parameters: check argc and fill defaults
+        for (lam.optional_params, 0..) |opt_param, i| {
+            const slot_index: u8 = arity + @as(u8, @intCast(i));
+
+            // Check if argument was provided: argc > slot_index
+            try lambda_emitter.emitOp(.load_argc);
+            try lambda_emitter.emitOp(.push_i32);
+            try lambda_emitter.emitI32(@as(i32, slot_index));
+            try lambda_emitter.emitOp(.gt);
+
+            // Jump over default assignment if arg was provided
+            const skip_jump = try lambda_emitter.emitJump(.jmp_not_nil);
+
+            // Emit default value and store to slot
+            if (opt_param.default) |default_ir| {
+                lambda_emitter.emit(default_ir) catch {
+                    lambda_emitter.deinit();
+                    return error.InvalidIr;
+                };
+            } else {
+                try lambda_emitter.emitOp(.push_nil);
+            }
+            try lambda_emitter.emitOp(.store_local);
+            try lambda_emitter.emitU8(slot_index);
+
+            // Patch jump to skip default
+            try lambda_emitter.patchJump(skip_jump);
+        }
 
         // Emit body
         lambda_emitter.emit(lam.body) catch {

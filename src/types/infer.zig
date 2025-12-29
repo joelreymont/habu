@@ -1037,7 +1037,7 @@ test "infer lambda creates arrow type" {
     const body = try builder.lit(value_mod.Value.makeFixnum(42));
     const params = [_][]const u8{"x"};
     const captures = [_]ir_mod.Ir.Capture{};
-    const lam = try builder.lambda(&params, null, &captures, body);
+    const lam = try builder.lambda(&params, &.{}, null, &captures, body);
 
     var env = InferCtx.TypeEnv.init(alloc);
     defer env.deinit();
@@ -1185,7 +1185,7 @@ test "let-polymorphism: identity used at multiple types" {
     const x_var = try builder.variable("x", 0, 0);
     const params = [_][]const u8{"x"};
     const captures = [_]ir_mod.Ir.Capture{};
-    const id_lambda = try builder.lambda(&params, null, &captures, x_var);
+    const id_lambda = try builder.lambda(&params, &.{}, null, &captures, x_var);
 
     // Build: (id 42)
     const id_ref1 = try builder.variable("id", 0, 0);

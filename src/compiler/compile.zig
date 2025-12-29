@@ -1399,7 +1399,11 @@ pub const Compiler = struct {
         var typed_params = std.ArrayList(TypedParam){};
         defer typed_params.deinit(self.allocator);
 
+        var optional_params = std.ArrayList(Ir.OptionalParam){};
+        defer optional_params.deinit(self.allocator);
+
         var rest_param: ?[]const u8 = null;
+        var in_optional = false;
         var param_list = params_expr;
         while (param_list.isCons()) {
             const param_cons = param_list.toPtr(Cons);
@@ -1420,24 +1424,53 @@ pub const Compiler = struct {
                     break; // &rest must be last
                 }
 
-                // Untyped parameter: just a symbol
-                params.append(self.allocator, name) catch return error.OutOfMemory;
-                typed_params.append(self.allocator, .{ .name = name, .type_name = null }) catch return error.OutOfMemory;
+                // Check for &optional keyword
+                if (std.mem.eql(u8, name, "&optional")) {
+                    in_optional = true;
+                    param_list = param_cons.cdr;
+                    continue;
+                }
+
+                if (in_optional) {
+                    // Optional parameter with nil default
+                    optional_params.append(self.allocator, .{
+                        .name = name,
+                        .default = null,
+                    }) catch return error.OutOfMemory;
+                } else {
+                    // Untyped parameter: just a symbol
+                    params.append(self.allocator, name) catch return error.OutOfMemory;
+                    typed_params.append(self.allocator, .{ .name = name, .type_name = null }) catch return error.OutOfMemory;
+                }
             } else if (param_item.isCons()) {
-                // Typed parameter: (name type)
                 const typed = param_item.toPtr(Cons);
                 if (!typed.car.isSymbol()) return error.InvalidLambda;
                 const name_sym = typed.car.toPtr(Symbol);
                 const name = name_sym.getName();
 
-                if (!typed.cdr.isCons()) return error.InvalidLambda;
-                const type_cons = typed.cdr.toPtr(Cons);
-                if (!type_cons.car.isSymbol()) return error.InvalidLambda;
-                const type_sym = type_cons.car.toPtr(Symbol);
-                const type_name = type_sym.getName();
+                if (in_optional) {
+                    // Optional parameter: (name default-expr)
+                    // Compile default in parent env (not lambda env)
+                    var default_ir: ?*const Ir = null;
+                    if (typed.cdr.isCons()) {
+                        const default_cons = typed.cdr.toPtr(Cons);
+                        default_ir = try self.compile(default_cons.car, env);
+                    }
+                    optional_params.append(self.allocator, .{
+                        .name = name,
+                        .default = default_ir,
+                    }) catch return error.OutOfMemory;
+                } else {
+                    // Typed parameter: (name type)
+                    if (!typed.cdr.isCons()) return error.InvalidLambda;
+                    const type_cons = typed.cdr.toPtr(Cons);
+                    if (!type_cons.car.isSymbol()) return error.InvalidLambda;
+                    const type_sym = type_cons.car.toPtr(Symbol);
+                    const type_name = type_sym.getName();
 
-                params.append(self.allocator, name) catch return error.OutOfMemory;
-                typed_params.append(self.allocator, .{ .name = name, .type_name = type_name }) catch return error.OutOfMemory;
+                    params.append(self.allocator, name) catch return error.OutOfMemory;
+                    typed_params.append(self.allocator, .{ .name = name, .type_name = type_name }) catch return error.OutOfMemory;
+                }
             } else {
                 return error.InvalidLambda;
             }
@@ -1461,6 +1494,11 @@ pub const Compiler = struct {
 
         for (params.items) |param| {
             _ = lambda_env.bind(param) catch return error.OutOfMemory;
+        }
+
+        // Bind optional parameters
+        for (optional_params.items) |op| {
+            _ = lambda_env.bind(op.name) catch return error.OutOfMemory;
         }
 
         // Bind rest parameter if present
@@ -1519,7 +1557,11 @@ pub const Compiler = struct {
         const captures = self.allocator.dupe(Ir.Capture, capture_set.captures.items) catch
             return error.OutOfMemory;
 
-        return self.builder.lambda(params.items, rest_param, captures, body_ir) catch
+        // Copy optional params
+        const opt_params = self.allocator.dupe(Ir.OptionalParam, optional_params.items) catch
+            return error.OutOfMemory;
+
+        return self.builder.lambda(params.items, opt_params, rest_param, captures, body_ir) catch
             return error.OutOfMemory;
     }
 
@@ -3058,6 +3100,7 @@ pub const Compiler = struct {
         const lambda_node = self.allocator.create(Ir) catch return error.OutOfMemory;
         lambda_node.* = .{ .lambda = .{
             .params = params,
+            .optional_params = &.{},
             .rest_param = null,
             .captures = &[_]Ir.Capture{},
             .body = vec_node,
@@ -3111,6 +3154,7 @@ pub const Compiler = struct {
         const lambda_node = self.allocator.create(Ir) catch return error.OutOfMemory;
         lambda_node.* = .{ .lambda = .{
             .params = params,
+            .optional_params = &.{},
             .rest_param = null,
             .captures = &[_]Ir.Capture{},
             .body = if_node,
@@ -3139,6 +3183,7 @@ pub const Compiler = struct {
         const lambda_node = self.allocator.create(Ir) catch return error.OutOfMemory;
         lambda_node.* = .{ .lambda = .{
             .params = params,
+            .optional_params = &.{},
             .rest_param = null,
             .captures = &[_]Ir.Capture{},
             .body = aref_node,
@@ -3205,6 +3250,7 @@ pub const Compiler = struct {
         const lambda_node = self.allocator.create(Ir) catch return error.OutOfMemory;
         lambda_node.* = .{ .lambda = .{
             .params = params,
+            .optional_params = &.{},
             .rest_param = null,
             .captures = &[_]Ir.Capture{},
             .body = body,
