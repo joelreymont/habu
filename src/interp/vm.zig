@@ -698,6 +698,7 @@ pub const Vm = struct {
                     const idx: usize = @intCast(idx_val.toFixnum());
                     if (idx >= vec.length) return error.TypeMismatch;
                     vec.set(idx, val);
+                    try self.push(val); // Return the value that was set
                 },
                 .vec_len => {
                     const vec_val = try self.pop();

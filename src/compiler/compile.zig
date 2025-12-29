@@ -218,16 +218,17 @@ pub const Builtins = struct {
     evenp: Value,
     oddp: Value,
 
-    // Primitives - Vector operations
-    @"vector-ref": Value,
+    // Primitives - Vector operations (CL names)
+    aref: Value, // CL: array element access
+    svref: Value, // CL: simple-vector element access
+    @"%svset": Value, // internal: (setf (svref ...)) expands to this
     @"vector-length": Value,
-    @"vector-set!": Value,
     @"make-vector": Value,
     vector: Value,
-    aref: Value, // CL alias for vector-ref
 
-    // Primitives - String operations
-    @"string-ref": Value,
+    // Primitives - String operations (CL names)
+    char: Value, // CL: character at index
+    schar: Value, // CL: simple-string character access
     @"string-length": Value,
     @"string-concat": Value,
     @"string=": Value,
@@ -433,15 +434,16 @@ pub const Builtins = struct {
             .minusp = heap.intern("minusp") orelse return null,
             .evenp = heap.intern("evenp") orelse return null,
             .oddp = heap.intern("oddp") orelse return null,
-            // Primitives - Vector operations
-            .@"vector-ref" = heap.intern("vector-ref") orelse return null,
+            // Primitives - Vector operations (CL names)
+            .aref = heap.intern("aref") orelse return null,
+            .svref = heap.intern("svref") orelse return null,
+            .@"%svset" = heap.intern("%svset") orelse return null,
             .@"vector-length" = heap.intern("vector-length") orelse return null,
-            .@"vector-set!" = heap.intern("vector-set!") orelse return null,
             .@"make-vector" = heap.intern("make-vector") orelse return null,
             .vector = heap.intern("vector") orelse return null,
-            .aref = heap.intern("aref") orelse return null,
-            // Primitives - String operations
-            .@"string-ref" = heap.intern("string-ref") orelse return null,
+            // Primitives - String operations (CL names)
+            .char = heap.intern("char") orelse return null,
+            .schar = heap.intern("schar") orelse return null,
             .@"string-length" = heap.intern("string-length") orelse return null,
             .@"string-concat" = heap.intern("string-concat") orelse return null,
             .@"string=" = heap.intern("string=") orelse return null,
@@ -3715,15 +3717,15 @@ pub const Compiler = struct {
         if (s == b.evenp.raw) return self.compileUnaryPrim(args, env, .evenp);
         if (s == b.oddp.raw) return self.compileUnaryPrim(args, env, .oddp);
 
-        // Vector operations
-        if (s == b.@"vector-ref".raw or s == b.aref.raw) return self.compileBinaryPrim(args, env, .vec_ref);
+        // Vector operations (CL names: aref, svref, %svset)
+        if (s == b.aref.raw or s == b.svref.raw) return self.compileBinaryPrim(args, env, .vec_ref);
         if (s == b.@"vector-length".raw) return self.compileUnaryPrim(args, env, .vec_len);
         if (s == b.@"make-vector".raw) return self.compileMakeVector(args, env);
-        if (s == b.@"vector-set!".raw) return self.compileVectorSet(args, env);
+        if (s == b.@"%svset".raw) return self.compileSvset(args, env);
         if (s == b.vector.raw) return self.compileVectorPrim(args, env);
 
-        // String operations
-        if (s == b.@"string-ref".raw) return self.compileBinaryPrim(args, env, .str_ref);
+        // String operations (CL names: char, schar)
+        if (s == b.char.raw or s == b.schar.raw) return self.compileBinaryPrim(args, env, .str_ref);
         if (s == b.@"string-length".raw) return self.compileUnaryPrim(args, env, .str_len);
         if (s == b.@"string=".raw) return self.compileBinaryPrim(args, env, .str_eq);
         if (s == b.@"string-concat".raw) return self.compileBinaryPrim(args, env, .str_concat);
@@ -4302,8 +4304,8 @@ pub const Compiler = struct {
         return self.builder.vec(elements.items) catch return error.OutOfMemory;
     }
 
-    fn compileVectorSet(self: *Compiler, args: Value, env: *const Env) CompileError!*Ir {
-        // (vector-set! vec index value)
+    fn compileSvset(self: *Compiler, args: Value, env: *const Env) CompileError!*Ir {
+        // (%svset vec index value) - internal setter for (setf (svref ...))
         if (!args.isCons()) return error.InvalidSyntax;
         const cons1 = args.toPtr(Cons);
         const vec_ir = try self.compile(cons1.car, env);
