@@ -1332,3 +1332,86 @@
   (if (member item list :test test)
       list
       (cons item list)))
+
+;; ============================================================
+;; Numeric Utilities
+;; ============================================================
+
+; max - maximum of numbers
+(defun max (first &rest rest)
+  (reduce (lambda (a b) (if (> a b) a b)) rest :initial-value first))
+
+; min - minimum of numbers
+(defun min (first &rest rest)
+  (reduce (lambda (a b) (if (< a b) a b)) rest :initial-value first))
+
+; gcd - greatest common divisor
+(defun gcd (&rest integers)
+  (reduce #'gcd2 integers :initial-value 0))
+
+(defun gcd2 (a b)
+  (if (= b 0)
+      (abs a)
+      (gcd2 b (mod a b))))
+
+; lcm - least common multiple
+(defun lcm (&rest integers)
+  (reduce #'lcm2 integers :initial-value 1))
+
+(defun lcm2 (a b)
+  (if (or (= a 0) (= b 0))
+      0
+      (abs (* (truncate a (gcd2 a b)) b))))
+
+; expt - exponentiation
+(defun expt (base power)
+  (cond
+    ((= power 0) 1)
+    ((< power 0) (/ 1 (expt base (- power))))
+    ((evenp power)
+     (let ((half (expt base (truncate power 2))))
+       (* half half)))
+    (t (* base (expt base (- power 1))))))
+
+; isqrt - integer square root
+(defun isqrt (n)
+  (if (< n 2)
+      n
+      (let ((small (isqrt (ash n -2))))
+        (let ((large (ash (+ small 1) 1)))
+          (if (> (* large large) n)
+              (- large 1)
+              large)))))
+
+; signum - sign of number
+(defun signum (n)
+  (cond ((< n 0) -1)
+        ((> n 0) 1)
+        (t 0)))
+
+; floor - floor division
+(defun floor (number &optional (divisor 1))
+  (let ((q (truncate number divisor)))
+    (if (and (not (zerop (mod number divisor)))
+             (if (< divisor 0) (> number 0) (< number 0)))
+        (- q 1)
+        q)))
+
+; ceiling - ceiling division
+(defun ceiling (number &optional (divisor 1))
+  (let ((q (truncate number divisor)))
+    (if (and (not (zerop (mod number divisor)))
+             (if (< divisor 0) (< number 0) (> number 0)))
+        (+ q 1)
+        q)))
+
+; round - round to nearest
+(defun round (number &optional (divisor 1))
+  (let* ((q (truncate number divisor))
+         (r (mod number divisor))
+         (half (/ (abs divisor) 2)))
+    (cond
+      ((< (abs r) half) q)
+      ((> (abs r) half) (if (< (* number divisor) 0) (- q 1) (+ q 1)))
+      ((evenp q) q)  ; Round to even
+      (t (if (< (* number divisor) 0) (- q 1) (+ q 1))))))
