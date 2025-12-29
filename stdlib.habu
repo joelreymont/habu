@@ -440,6 +440,28 @@
 (defun count-if-not (pred lst)
   (count-if (lambda (x) (not (pred x))) lst))
 
+; every - true if predicate holds for all elements
+(defun every (pred lst)
+  (cond
+    ((null lst) t)
+    ((not (pred (car lst))) nil)
+    (t (every pred (cdr lst)))))
+
+; some - true if predicate holds for some element, returns that element
+(defun some (pred lst)
+  (cond
+    ((null lst) nil)
+    ((pred (car lst)) (car lst))
+    (t (some pred (cdr lst)))))
+
+; notevery - true if predicate fails for some element
+(defun notevery (pred lst)
+  (not (every pred lst)))
+
+; notany - true if predicate fails for all elements
+(defun notany (pred lst)
+  (not (some pred lst)))
+
 ; subseq - extract subsequence (start is inclusive, end is exclusive)
 (defun subseq (seq start &optional end)
   (let ((lst (drop start seq)))
@@ -535,3 +557,75 @@
              (cons (list var (list 'if expr (list 'car expr) default))
                    (destructuring-bind-optional rest (list 'cdr expr)))))
           (t (error "Invalid &optional parameter"))))))
+
+;; ============================================================
+;; String Functions
+;; ============================================================
+
+; string= - case-sensitive string equality
+(defun string= (s1 s2)
+  (string-equal s1 s2))
+
+; string/= - case-sensitive string inequality  
+(defun string/= (s1 s2)
+  (not (string= s1 s2)))
+
+; string< - lexicographic less-than
+(defun string< (s1 s2)
+  (string-lt s1 s2))
+
+; string> - lexicographic greater-than
+(defun string> (s1 s2)
+  (string< s2 s1))
+
+; string<= - lexicographic less-than-or-equal
+(defun string<= (s1 s2)
+  (not (string> s1 s2)))
+
+; string>= - lexicographic greater-than-or-equal
+(defun string>= (s1 s2)
+  (not (string< s1 s2)))
+
+; char-whitespace-p - check if character is whitespace
+(defun char-whitespace-p (c)
+  (or (char= c #\Space)
+      (char= c #\Tab)
+      (char= c #\Newline)
+      (char= c #\Return)))
+
+; string-trim-left-aux - helper for left trim
+(defun string-trim-left-aux (chars s i)
+  (if (>= i (length s))
+      ""
+      (if (member (char s i) chars :test #'char=)
+          (string-trim-left-aux chars s (+ i 1))
+          (subseq s i))))
+
+; string-left-trim - remove leading characters
+(defun string-left-trim (chars s)
+  (let ((char-list (if (stringp chars)
+                       (string-to-list chars)
+                       chars)))
+    (string-trim-left-aux char-list s 0)))
+
+; string-trim-right-aux - helper for right trim  
+(defun string-trim-right-aux (chars s i)
+  (if (< i 0)
+      ""
+      (if (member (char s i) chars :test #'char=)
+          (string-trim-right-aux chars s (- i 1))
+          (subseq s 0 (+ i 1)))))
+
+; string-right-trim - remove trailing characters
+(defun string-right-trim (chars s)
+  (let ((char-list (if (stringp chars)
+                       (string-to-list chars)
+                       chars))
+        (len (length s)))
+    (if (= len 0)
+        ""
+        (string-trim-right-aux char-list s (- len 1)))))
+
+; string-trim - remove leading and trailing characters
+(defun string-trim (chars s)
+  (string-right-trim chars (string-left-trim chars s)))
