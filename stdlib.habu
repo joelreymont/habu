@@ -713,3 +713,92 @@
 ; ctypecase - correctable etypecase (for now, same as etypecase)
 (defmacro ctypecase (keyform &rest clauses)
   (cons 'etypecase (cons keyform clauses)))
+
+;; ============================================================
+;; Sorting Functions
+;; ============================================================
+
+; merge - merge two sorted lists
+(defun merge-lists (l1 l2 pred)
+  (cond
+    ((null l1) l2)
+    ((null l2) l1)
+    ((funcall pred (car l1) (car l2))
+     (cons (car l1) (merge-lists (cdr l1) l2 pred)))
+    (t
+     (cons (car l2) (merge-lists l1 (cdr l2) pred)))))
+
+; split-list - split list into two halves
+(defun split-list (lst)
+  (let ((slow lst)
+        (fast (cdr lst)))
+    (loop while (and fast (cdr fast))
+          do (setq slow (cdr slow))
+             (setq fast (cddr fast)))
+    (let ((second (cdr slow)))
+      (rplacd slow nil)
+      (values lst second))))
+
+; sort - merge sort (stable)
+(defun sort (seq pred)
+  (if (or (null seq) (null (cdr seq)))
+      seq
+      (multiple-value-bind (left right) (split-list (copy-list seq))
+        (merge-lists (sort left pred)
+                     (sort right pred)
+                     pred))))
+
+; stable-sort - same as sort (merge sort is stable)
+(defun stable-sort (seq pred)
+  (sort seq pred))
+
+;; ============================================================
+;; Sequence Concatenation
+;; ============================================================
+
+; concatenate - concatenate sequences into result type
+(defun concatenate (result-type &rest seqs)
+  (let ((combined (apply #'append (mapcar (lambda (s)
+                                            (if (vectorp s)
+                                                (coerce s 'list)
+                                                s))
+                                          seqs))))
+    (cond
+      ((eq result-type 'list) combined)
+      ((eq result-type 'string)
+       (list-to-string combined))
+      ((eq result-type 'vector)
+       (coerce combined 'vector))
+      (t combined))))
+
+; coerce - convert between sequence types
+(defun coerce (object result-type)
+  (cond
+    ; Same type - return as-is
+    ((and (eq result-type 'list) (listp object)) object)
+    ((and (eq result-type 'vector) (vectorp object)) object)
+    ((and (eq result-type 'string) (stringp object)) object)
+    ; List to vector
+    ((and (eq result-type 'vector) (listp object))
+     (let* ((len (length object))
+            (vec (make-vector len nil)))
+       (let ((i 0))
+         (dolist (x object vec)
+           (setf (svref vec i) x)
+           (setq i (+ i 1))))))
+    ; Vector to list
+    ((and (eq result-type 'list) (vectorp object))
+     (let ((lst nil)
+           (len (length object)))
+       (dotimes (i len (nreverse lst))
+         (push (svref object (- len i 1)) lst))))
+    ; String to list
+    ((and (eq result-type 'list) (stringp object))
+     (string-to-list object))
+    ; List to string
+    ((and (eq result-type 'string) (listp object))
+     (list-to-string object))
+    ; Character to string
+    ((and (eq result-type 'string) (characterp object))
+     (make-string 1 object))
+    (t (error "Cannot coerce to type"))))
