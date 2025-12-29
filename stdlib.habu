@@ -1527,3 +1527,111 @@
 ; nstring-capitalize - destructive capitalize
 (defun nstring-capitalize (s)
   (string-capitalize s))
+
+;; ============================================================
+;; Additional Sequence Functions
+;; ============================================================
+
+; elt - generic sequence element access
+(defun elt (sequence index)
+  (if (vectorp sequence)
+      (svref sequence index)
+      (nth index sequence)))
+
+; (setf elt) is handled by setf expansion
+
+; make-sequence - create sequence of given type
+(defun make-sequence (type size &key initial-element)
+  (cond
+    ((eq type 'list)
+     (make-list size :initial-element initial-element))
+    ((eq type 'vector)
+     (make-vector size initial-element))
+    ((eq type 'string)
+     (make-string size (or initial-element #\Space)))
+    (t (error "Unknown sequence type"))))
+
+; make-list - create list of given size
+(defun make-list (size &key initial-element)
+  (if (<= size 0)
+      nil
+      (cons initial-element (make-list (- size 1) :initial-element initial-element))))
+
+; delete - destructive remove (for now, same as remove)
+(defun delete (item sequence &key (test 'eql))
+  (remove item sequence :test test))
+
+; delete-if - destructive remove-if
+(defun delete-if (pred sequence)
+  (remove-if pred sequence))
+
+; delete-if-not - destructive remove-if-not
+(defun delete-if-not (pred sequence)
+  (remove-if-not pred sequence))
+
+; delete-duplicates - remove duplicate elements
+(defun delete-duplicates (sequence &key (test 'eql))
+  (remove-duplicates sequence :test test))
+
+; remove-duplicates - non-destructive duplicate removal
+(defun remove-duplicates (sequence &key (test 'eql))
+  (if (null sequence)
+      nil
+      (let ((first (car sequence))
+            (rest (remove-duplicates (cdr sequence) :test test)))
+        (if (member first rest :test test)
+            rest
+            (cons first rest)))))
+
+; nreverse - destructive reverse (for now, same as reverse)
+(defun nreverse (sequence)
+  (reverse sequence))
+
+; nconc - destructive append
+(defun nconc (&rest lists)
+  (apply #'append lists))
+
+; revappend - reverse first list and append second
+(defun revappend (list tail)
+  (append (reverse list) tail))
+
+; nreconc - destructive revappend
+(defun nreconc (list tail)
+  (revappend list tail))
+
+;; ============================================================
+;; Control Flow Utilities
+;; ============================================================
+
+; case - key-based dispatch (already exists as special form, but add as macro backup)
+; Note: The compiler handles case specially
+
+; when-let - bind and conditionally execute
+(defmacro when-let ((var expr) &rest body)
+  (list 'let (list (list var expr))
+        (cons 'when (cons var body))))
+
+; if-let - bind and branch
+(defmacro if-let ((var expr) then &optional else)
+  (list 'let (list (list var expr))
+        (list 'if var then else)))
+
+; unless - execute unless condition is true
+; (already a special form, adding for completeness)
+
+; with-gensyms - create gensyms for hygiene
+(defmacro with-gensyms (names &rest body)
+  (list 'let
+        (mapcar (lambda (n) 
+                  (list n (list 'gensym (symbol-name n))))
+                names)
+        (cons 'progn body)))
+
+; once-only - evaluate expressions once
+(defmacro once-only (names &rest body)
+  (let ((gensyms (mapcar (lambda (n) 
+                           (declare (ignore n))
+                           (gensym))
+                         names)))
+    (list 'let (mapcar #'list gensyms names)
+          (cons 'progn body))))
