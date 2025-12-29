@@ -475,7 +475,7 @@ pub const Repl = struct {
             if (trimmed.len == 0 and input_buf.items.len == 0) continue;
 
             // Handle commands only on fresh input
-            if (input_buf.items.len == 0 and trimmed.len > 0 and trimmed[0] == ',') {
+            if (input_buf.items.len == 0 and trimmed.len > 0 and trimmed[0] == ':') {
                 try self.handleCommand(trimmed, writer);
                 try writer.flush();
                 continue;
@@ -956,40 +956,70 @@ pub const Repl = struct {
         try writer.writeAll(")");
     }
 
+    const Command = struct {
+        short: []const u8,
+        long: []const u8,
+        has_arg: bool,
+        help: []const u8,
+    };
+
+    const commands = [_]Command{
+        .{ .short = ":q", .long = ":quit", .has_arg = false, .help = "Exit REPL" },
+        .{ .short = ":d", .long = ":disasm", .has_arg = false, .help = "Toggle disassembly display" },
+        .{ .short = ":l", .long = ":load", .has_arg = true, .help = "Load and evaluate a file" },
+        .{ .short = ":t", .long = ":type", .has_arg = true, .help = "Show inferred type of expression" },
+        .{ .short = ":h", .long = ":help", .has_arg = false, .help = "Show this help" },
+    };
+
+    fn matchCommand(cmd: []const u8) ?struct { idx: usize, arg: []const u8 } {
+        inline for (commands, 0..) |c, i| {
+            if (c.has_arg) {
+                // Commands with args: ":x " or ":long "
+                if (std.mem.startsWith(u8, cmd, c.short ++ " ")) {
+                    return .{ .idx = i, .arg = std.mem.trim(u8, cmd[c.short.len + 1 ..], " \t") };
+                }
+                if (std.mem.startsWith(u8, cmd, c.long ++ " ")) {
+                    return .{ .idx = i, .arg = std.mem.trim(u8, cmd[c.long.len + 1 ..], " \t") };
+                }
+            } else {
+                // Commands without args: exact match
+                if (std.mem.eql(u8, cmd, c.short) or std.mem.eql(u8, cmd, c.long)) {
+                    return .{ .idx = i, .arg = "" };
+                }
+            }
+        }
+        return null;
+    }
+
     fn handleCommand(self: *Repl, cmd: []const u8, writer: anytype) !void {
-        if (std.mem.eql(u8, cmd, ",q") or std.mem.eql(u8, cmd, ",quit")) {
-            std.process.exit(0);
-        } else if (std.mem.eql(u8, cmd, ",d") or std.mem.eql(u8, cmd, ",disasm")) {
-            self.config.show_disasm = !self.config.show_disasm;
-            try writer.print("Disassembly: {s}\n", .{if (self.config.show_disasm) "on" else "off"});
-        } else if (std.mem.startsWith(u8, cmd, ",l ") or std.mem.startsWith(u8, cmd, ",load ")) {
-            const path = if (std.mem.startsWith(u8, cmd, ",l "))
-                std.mem.trim(u8, cmd[3..], " \t")
-            else
-                std.mem.trim(u8, cmd[6..], " \t");
-            self.loadFile(path, writer) catch |err| {
-                try writer.print("Load error: {s}\n", .{@errorName(err)});
-            };
-        } else if (std.mem.startsWith(u8, cmd, ",t ") or std.mem.startsWith(u8, cmd, ",type ")) {
-            const expr_str = if (std.mem.startsWith(u8, cmd, ",t "))
-                std.mem.trim(u8, cmd[3..], " \t")
-            else
-                std.mem.trim(u8, cmd[6..], " \t");
-            self.showType(expr_str, writer) catch |err| {
-                try writer.print("Type error: {s}\n", .{@errorName(err)});
-            };
-        } else if (std.mem.eql(u8, cmd, ",h") or std.mem.eql(u8, cmd, ",help")) {
-            try writer.writeAll(
-                \\Commands:
-                \\  ,q ,quit       Exit REPL
-                \\  ,d ,disasm     Toggle disassembly display
-                \\  ,l ,load FILE  Load and evaluate a file
-                \\  ,t ,type EXPR  Show inferred type of expression
-                \\  ,h ,help       Show this help
-                \\
-            );
-        } else {
+        const match = matchCommand(cmd) orelse {
             try writer.print("Unknown command: {s}\n", .{cmd});
+            return;
+        };
+
+        switch (match.idx) {
+            0 => std.process.exit(0), // :q
+            1 => { // :d
+                self.config.show_disasm = !self.config.show_disasm;
+                try writer.print("Disassembly: {s}\n", .{if (self.config.show_disasm) "on" else "off"});
+            },
+            2 => { // :l
+                self.loadFile(match.arg, writer) catch |err| {
+                    try writer.print("Load error: {s}\n", .{@errorName(err)});
+                };
+            },
+            3 => { // :t
+                self.showType(match.arg, writer) catch |err| {
+                    try writer.print("Type error: {s}\n", .{@errorName(err)});
+                };
+            },
+            4 => { // :h
+                try writer.writeAll("Commands:\n");
+                inline for (commands) |c| {
+                    try writer.print("  {s: <3} {s: <8} {s}\n", .{ c.short, c.long, c.help });
+                }
+            },
+            else => unreachable,
         }
     }
 

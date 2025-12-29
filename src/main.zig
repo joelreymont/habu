@@ -29,7 +29,7 @@ pub fn main() !void {
     const writer = &stdout_writer.interface;
 
     try writer.print("🐍 Habu Lisp v0.1.0\n", .{});
-    try writer.print("Type expressions to evaluate, ,h for help, ,q to quit\n\n", .{});
+    try writer.print("Type expressions to evaluate, :h for help, :q to quit\n\n", .{});
     try writer.flush();
 
     // Run REPL
