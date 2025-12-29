@@ -407,19 +407,22 @@ pub const Emitter = struct {
         return offset;
     }
 
-    /// Patch jump at offset to current position
-    fn patchJump(self: *Emitter, offset: usize) EmitError!void {
-        const target = self.currentOffset();
-        const distance = @as(i32, @intCast(target)) - @as(i32, @intCast(offset + 2));
-
+    /// Write a 16-bit displacement at a jump location
+    /// Core helper used by all jump patching functions
+    fn writeJumpDisplacement(self: *Emitter, jump_loc: usize, target: usize) EmitError!void {
+        const distance = @as(i32, @intCast(target)) - @as(i32, @intCast(jump_loc + 2));
         if (distance > 32767 or distance < -32768) {
             return error.JumpTooLong;
         }
-
         const val: i16 = @intCast(distance);
         const u: u16 = @bitCast(val);
-        self.code.items[offset] = @truncate(u);
-        self.code.items[offset + 1] = @truncate(u >> 8);
+        self.code.items[jump_loc] = @truncate(u);
+        self.code.items[jump_loc + 1] = @truncate(u >> 8);
+    }
+
+    /// Patch jump at offset to current position
+    fn patchJump(self: *Emitter, offset: usize) EmitError!void {
+        try self.writeJumpDisplacement(offset, self.currentOffset());
     }
 
     // ========================================================================
@@ -1008,25 +1011,12 @@ pub const Emitter = struct {
 
     /// Patch a jump to a specific target offset
     fn patchJumpTo(self: *Emitter, jump_loc: usize, target: usize) EmitError!void {
-        const offset = @as(i32, @intCast(target)) - @as(i32, @intCast(jump_loc + 2));
-        if (offset > 32767 or offset < -32768) {
-            return error.JumpTooLong;
-        }
-        const displacement: i16 = @intCast(offset);
-        self.code.items[jump_loc] = @bitCast(@as(u8, @truncate(@as(u16, @bitCast(displacement)))));
-        self.code.items[jump_loc + 1] = @bitCast(@as(u8, @truncate(@as(u16, @bitCast(displacement)) >> 8)));
+        try self.writeJumpDisplacement(jump_loc, target);
     }
 
     /// Patch a jump at a specific location to jump to current offset
     fn patchJumpAt(self: *Emitter, jump_loc: usize) EmitError!void {
-        const target = self.currentOffset();
-        const offset = @as(i32, @intCast(target)) - @as(i32, @intCast(jump_loc + 2));
-        if (offset > 32767 or offset < -32768) {
-            return error.JumpTooLong;
-        }
-        const displacement: i16 = @intCast(offset);
-        self.code.items[jump_loc] = @bitCast(@as(u8, @truncate(@as(u16, @bitCast(displacement)))));
-        self.code.items[jump_loc + 1] = @bitCast(@as(u8, @truncate(@as(u16, @bitCast(displacement)) >> 8)));
+        try self.writeJumpDisplacement(jump_loc, self.currentOffset());
     }
 
     fn emitCall(self: *Emitter, c: anytype, tail: bool) EmitError!void {
