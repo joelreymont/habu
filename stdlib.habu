@@ -1635,3 +1635,116 @@
                          names)))
     (list 'let (mapcar #'list gensyms names)
           (cons 'progn body))))
+
+;; ============================================================
+;; Assertions and Debugging
+;; ============================================================
+
+; assert - check condition, signal error if false
+(defmacro assert (test-form &optional places datum &rest arguments)
+  (declare (ignore places))
+  (if datum
+      (list 'unless test-form
+            (cons 'error (cons datum arguments)))
+      (list 'unless test-form
+            (list 'error "Assertion failed"))))
+
+; check-type - verify type of place
+(defmacro check-type (place typespec &optional string)
+  (declare (ignore string))
+  (list 'unless (list 'typep place (list 'quote typespec))
+        (list 'error "Type check failed")))
+
+; ecase - exhaustive case (already defined above)
+
+; etypecase - exhaustive typecase (already defined above)
+
+;; ============================================================
+;; I/O Utilities
+;; ============================================================
+
+; fresh-line - output newline if not at beginning of line
+(defun fresh-line (&optional stream)
+  (declare (ignore stream))
+  (terpri)
+  t)
+
+; write-string - write string to output
+(defun write-string (string &optional stream)
+  (declare (ignore stream))
+  (princ string)
+  string)
+
+; write-line - write string followed by newline
+(defun write-line (string &optional stream)
+  (declare (ignore stream))
+  (princ string)
+  (terpri)
+  string)
+
+; read-line - read line from input (placeholder)
+(defun read-line (&optional stream eof-error-p eof-value)
+  (declare (ignore stream eof-error-p eof-value))
+  (let ((chars nil)
+        (c (read-char)))
+    (loop while (and c (char/= c #\Newline))
+          do (push c chars)
+             (setq c (read-char nil nil nil)))
+    (if chars
+        (coerce (nreverse chars) 'string)
+        "")))
+
+; prin1-to-string - convert to string with escaping
+(defun prin1-to-string (object)
+  (write-to-string object))
+
+; princ-to-string - convert to string without escaping
+(defun princ-to-string (object)
+  (write-to-string object))
+
+; with-output-to-string - capture output to string
+; (simplified - returns result of body, not captured output)
+(defmacro with-output-to-string ((var) &rest body)
+  (declare (ignore var))
+  (cons 'progn body))
+
+;; ============================================================
+;; Symbol Utilities
+;; ============================================================
+
+; symbol-plist - get symbol's property list
+(defun symbol-plist (symbol)
+  (declare (ignore symbol))
+  nil)  ; Placeholder - property lists not yet implemented
+
+; get - get property from symbol
+(defun get (symbol indicator &optional default)
+  (declare (ignore symbol indicator))
+  default)  ; Placeholder
+
+; getf - get property from plist
+(defun getf (plist indicator &optional default)
+  (if (null plist)
+      default
+      (if (eq (car plist) indicator)
+          (cadr plist)
+          (getf (cddr plist) indicator default))))
+
+; putf - helper to set property in plist (returns new plist)
+(defun putf (plist indicator value)
+  (cons indicator (cons value plist)))
+
+; remf - remove property from plist (returns new plist)
+(defun remf (plist indicator)
+  (cond
+    ((null plist) nil)
+    ((eq (car plist) indicator) (cddr plist))
+    (t (cons (car plist)
+             (cons (cadr plist)
+                   (remf (cddr plist) indicator))))))
+
+; keywordp - check if symbol is keyword (already primitive)
+
+; make-symbol - create uninterned symbol
+(defun make-symbol (name)
+  (gensym name))
