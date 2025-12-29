@@ -134,18 +134,53 @@ pub const InferCtx = struct {
     /// Collected constraints to solve
     constraints: std.ArrayList(Constraint),
 
+    /// Track all allocated InferTypes for cleanup
+    allocated: std.ArrayList(*InferType),
+
+    /// Track all allocated slices for cleanup
+    allocated_slices: std.ArrayList([*]*const InferType),
+    slice_lens: std.ArrayList(usize),
+
     pub fn init(allocator: std.mem.Allocator) InferCtx {
         return .{
             .allocator = allocator,
             .next_var_id = 0,
             .substitutions = std.AutoHashMap(u32, *const InferType).init(allocator),
             .constraints = std.ArrayList(Constraint){},
+            .allocated = std.ArrayList(*InferType){},
+            .allocated_slices = std.ArrayList([*]*const InferType){},
+            .slice_lens = std.ArrayList(usize){},
         };
     }
 
     pub fn deinit(self: *InferCtx) void {
+        for (self.allocated.items) |t| {
+            self.allocator.destroy(t);
+        }
+        self.allocated.deinit(self.allocator);
+        // Free tracked slices
+        for (self.allocated_slices.items, self.slice_lens.items) |ptr, len| {
+            self.allocator.free(ptr[0..len]);
+        }
+        self.allocated_slices.deinit(self.allocator);
+        self.slice_lens.deinit(self.allocator);
         self.substitutions.deinit();
         self.constraints.deinit(self.allocator);
+    }
+
+    /// Allocate and track an InferType
+    pub fn alloc(self: *InferCtx) !*InferType {
+        const t = try self.allocator.create(InferType);
+        try self.allocated.append(self.allocator, t);
+        return t;
+    }
+
+    /// Allocate and track a slice of InferType pointers
+    pub fn allocSlice(self: *InferCtx, len: usize) ![]*const InferType {
+        const slice = try self.allocator.alloc(*const InferType, len);
+        try self.allocated_slices.append(self.allocator, slice.ptr);
+        try self.slice_lens.append(self.allocator, len);
+        return slice;
     }
 
     /// Generate a fresh type variable
@@ -153,14 +188,14 @@ pub const InferCtx = struct {
         const id = self.next_var_id;
         self.next_var_id += 1;
 
-        const t = try self.allocator.create(InferType);
+        const t = try self.alloc();
         t.* = .{ .variable = .{ .id = id } };
         return t;
     }
 
     /// Wrap a concrete type in InferType
     pub fn concrete(self: *InferCtx, t: *const types.Type) !*InferType {
-        const it = try self.allocator.create(InferType);
+        const it = try self.alloc();
         it.* = .{ .concrete = t };
         return it;
     }
@@ -389,19 +424,19 @@ pub const InferCtx = struct {
             },
             .concrete => return t,
             .arrow => |a| {
-                var new_domain = try self.allocator.alloc(*const InferType, a.domain.len);
+                var new_domain = try self.allocSlice(a.domain.len);
                 for (a.domain, 0..) |d, i| {
                     new_domain[i] = try self.substituteVars(d, var_map);
                 }
                 const new_range = try self.substituteVars(a.range, var_map);
 
-                const new_t = try self.allocator.create(InferType);
+                const new_t = try self.alloc();
                 new_t.* = .{ .arrow = .{ .domain = new_domain, .range = new_range } };
                 return new_t;
             },
             .list => |elem| {
                 const new_elem = try self.substituteVars(elem, var_map);
-                const new_t = try self.allocator.create(InferType);
+                const new_t = try self.alloc();
                 new_t.* = .{ .list = new_elem };
                 return new_t;
             },
@@ -417,14 +452,14 @@ pub const InferCtx = struct {
         const func_ty = try self.infer(func, env);
 
         // Infer argument types
-        var arg_types = try self.allocator.alloc(*const InferType, args.len);
+        var arg_types = try self.allocSlice(args.len);
         for (args, 0..) |arg, i| {
             arg_types[i] = try self.infer(arg, env);
         }
 
         // Create expected arrow type with fresh result variable
         const result_ty = try self.freshVar();
-        const expected_arrow = try self.allocator.create(InferType);
+        const expected_arrow = try self.alloc();
         expected_arrow.* = .{ .arrow = .{ .domain = arg_types, .range = result_ty } };
 
         // Constrain function type to match
@@ -566,7 +601,7 @@ pub const InferCtx = struct {
                 }
                 // Return list type (for now, list of any)
                 const elem_ty = try self.concrete(&types.t_any);
-                const list_ty = try self.allocator.create(InferType);
+                const list_ty = try self.alloc();
                 list_ty.* = .{ .list = elem_ty };
                 return list_ty;
             },
@@ -637,7 +672,7 @@ pub const InferCtx = struct {
                 defer child_env.deinit();
 
                 // Create fresh type variables for each parameter
-                var param_types = try self.allocator.alloc(*const InferType, lam.params.len);
+                var param_types = try self.allocSlice(lam.params.len);
                 for (lam.params, 0..) |param, i| {
                     param_types[i] = try self.freshVar();
                     try child_env.bind(param, param_types[i]);
@@ -653,7 +688,7 @@ pub const InferCtx = struct {
                 const body_ty = try self.infer(lam.body, &child_env);
 
                 // Create arrow type
-                const arrow_ty = try self.allocator.create(InferType);
+                const arrow_ty = try self.alloc();
                 arrow_ty.* = .{ .arrow = .{ .domain = param_types, .range = body_ty } };
 
                 return arrow_ty;
@@ -874,7 +909,7 @@ test "occurs check prevents infinite types" {
     const v = try ctx.freshVar();
 
     // Create (list v) where v is a type variable
-    const list_v = try ctx.allocator.create(InferType);
+    const list_v = try ctx.alloc();
     list_v.* = .{ .list = v };
 
     // Trying to unify v = (list v) should fail with infinite type
@@ -1006,7 +1041,7 @@ test "generalize type with free variables" {
     // Create arrow type: ?T0 -> ?T0 (identity function)
     const param = try ctx.freshVar(); // ?T0
     var domain = [_]*const InferType{param};
-    const arrow = try ctx.allocator.create(InferType);
+    const arrow = try ctx.alloc();
     arrow.* = .{ .arrow = .{ .domain = &domain, .range = param } };
 
     // Empty environment
@@ -1035,7 +1070,7 @@ test "generalize respects environment" {
     try env.bind("x", env_var);
 
     // Type to generalize also uses ?T0
-    const arrow = try ctx.allocator.create(InferType);
+    const arrow = try ctx.alloc();
     var domain = [_]*const InferType{env_var};
     arrow.* = .{ .arrow = .{ .domain = &domain, .range = env_var } };
 
@@ -1055,7 +1090,7 @@ test "instantiate creates fresh variables" {
     // Create arrow type: ?T0 -> ?T0
     const param = try ctx.freshVar(); // ?T0
     var domain = [_]*const InferType{param};
-    const arrow = try ctx.allocator.create(InferType);
+    const arrow = try ctx.alloc();
     arrow.* = .{ .arrow = .{ .domain = &domain, .range = param } };
 
     // Create scheme: ∀T0. T0 -> T0

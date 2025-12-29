@@ -654,6 +654,11 @@ pub const GlobalEnv = struct {
     }
 
     pub fn deinit(self: *GlobalEnv) void {
+        // Free all allocated name strings
+        var iter = self.bindings.keyIterator();
+        while (iter.next()) |key| {
+            self.allocator.free(key.*);
+        }
         self.bindings.deinit();
     }
 
