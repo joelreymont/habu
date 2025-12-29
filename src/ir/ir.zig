@@ -9,6 +9,8 @@
 pub const instruction = @import("instruction.zig");
 pub const regalloc = @import("regalloc.zig");
 pub const arm64 = @import("arm64.zig");
+pub const ffi = @import("ffi.zig");
+pub const lower = @import("lower.zig");
 
 // Re-export commonly used types
 pub const Inst = instruction.Inst;
@@ -29,8 +31,22 @@ pub const ARM64 = arm64.ARM64;
 pub const Emitter = arm64.Emitter;
 pub const generate = arm64.generate;
 
+// FFI
+pub const toZig = ffi.toZig;
+pub const fromZig = ffi.fromZig;
+pub const FfiFunc = ffi.FfiFunc;
+pub const NativeRegistry = ffi.NativeRegistry;
+pub const FfiError = ffi.FfiError;
+
+// IR lowering
+pub const Lowerer = lower.Lowerer;
+pub const lowerToFunction = lower.lowerToFunction;
+pub const LowerError = lower.LowerError;
+
 test {
     _ = instruction;
     _ = regalloc;
     _ = arm64;
+    _ = ffi;
+    _ = lower;
 }

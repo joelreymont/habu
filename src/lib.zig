@@ -14,6 +14,7 @@ pub const compiler = @import("compiler/compiler.zig");
 pub const bytecode = @import("bytecode/bytecode.zig");
 pub const interp = @import("interp/interp.zig");
 pub const jit = @import("jit/mod.zig");
+pub const ir = @import("ir/ir.zig");
 pub const tests = @import("tests/tests.zig");
 
 test {
@@ -25,5 +26,6 @@ test {
     _ = bytecode;
     _ = interp;
     _ = jit;
+    _ = ir;
     _ = tests;
 }
