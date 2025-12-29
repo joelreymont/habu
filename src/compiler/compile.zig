@@ -1428,15 +1428,28 @@ pub const Compiler = struct {
         var typed_params = std.ArrayList(TypedParam){};
         defer typed_params.deinit(self.allocator);
 
+        var rest_param: ?[]const u8 = null;
         var param_list = params_expr;
         while (param_list.isCons()) {
             const param_cons = param_list.toPtr(Cons);
             const param_item = param_cons.car;
 
             if (param_item.isSymbol()) {
-                // Untyped parameter: just a symbol
                 const param_sym = param_item.toPtr(Symbol);
                 const name = param_sym.getName();
+
+                // Check for &rest keyword
+                if (std.mem.eql(u8, name, "&rest") or std.mem.eql(u8, name, "&body")) {
+                    // Next element is the rest parameter name
+                    if (!param_cons.cdr.isCons()) return error.InvalidLambda;
+                    const rest_cons = param_cons.cdr.toPtr(Cons);
+                    if (!rest_cons.car.isSymbol()) return error.InvalidLambda;
+                    const rest_sym = rest_cons.car.toPtr(Symbol);
+                    rest_param = rest_sym.getName();
+                    break; // &rest must be last
+                }
+
+                // Untyped parameter: just a symbol
                 params.append(self.allocator, name) catch return error.OutOfMemory;
                 typed_params.append(self.allocator, .{ .name = name, .type_name = null }) catch return error.OutOfMemory;
             } else if (param_item.isCons()) {
@@ -1461,9 +1474,8 @@ pub const Compiler = struct {
             param_list = param_cons.cdr;
         }
 
-        // Check for rest parameter (dotted list: (a b . rest))
-        var rest_param: ?[]const u8 = null;
-        if (!param_list.isNil()) {
+        // Also check for rest parameter via dotted list: (a b . rest)
+        if (rest_param == null and !param_list.isNil()) {
             if (param_list.isSymbol()) {
                 const rest_sym = param_list.toPtr(Symbol);
                 rest_param = rest_sym.getName();
@@ -2573,13 +2585,16 @@ pub const Compiler = struct {
     }
 
     fn compileBlockWithTail(self: *Compiler, args: Value, env: *const Env, in_tail: bool) CompileError!*Ir {
-        // (block name body...)
+        // (block name body...) - name can be symbol or nil
         if (!args.isCons()) return error.InvalidSyntax;
 
         const cons = args.toPtr(Cons);
-        if (!cons.car.isSymbol()) return error.InvalidSyntax;
-        const name_sym = cons.car.toPtr(Symbol);
-        const name = name_sym.getName();
+        const name = if (cons.car.isNil())
+            "nil" // nil block name (used by dolist/dotimes)
+        else if (cons.car.isSymbol())
+            cons.car.toPtr(Symbol).getName()
+        else
+            return error.InvalidSyntax;
 
         // Compile body
         const body_ir = try self.compileBodyWithTail(cons.cdr, env, in_tail);
@@ -2588,13 +2603,16 @@ pub const Compiler = struct {
     }
 
     fn compileReturnFrom(self: *Compiler, args: Value, env: *const Env) CompileError!*Ir {
-        // (return-from name value)
+        // (return-from name value) - name can be symbol or nil
         if (!args.isCons()) return error.InvalidSyntax;
 
         const cons = args.toPtr(Cons);
-        if (!cons.car.isSymbol()) return error.InvalidSyntax;
-        const name_sym = cons.car.toPtr(Symbol);
-        const name = name_sym.getName();
+        const name = if (cons.car.isNil())
+            "nil"
+        else if (cons.car.isSymbol())
+            cons.car.toPtr(Symbol).getName()
+        else
+            return error.InvalidSyntax;
 
         // Get value (defaults to nil if not provided)
         const value = if (cons.cdr.isCons())

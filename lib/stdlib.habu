@@ -1,12 +1,41 @@
 ;;; Habu Standard Library
 ;;; Core functions for self-hosting
 
-;;; Control flow macros (single-body versions - no &rest support yet)
-(defmacro when (test body)
-  `(if ,test ,body nil))
+;;; Control flow macros (now with &rest support)
+(defmacro when (test &rest body)
+  `(if ,test (progn ,@body) nil))
 
-(defmacro unless (test body)
-  `(if ,test nil ,body))
+(defmacro unless (test &rest body)
+  `(if ,test nil (progn ,@body)))
+
+;;; Iteration macros
+(defmacro dolist (binding &rest body)
+  ;; (dolist (var list) body...) or (dolist (var list result) body...)
+  (let ((var (car binding))
+        (list-form (cadr binding))
+        (result-form (if (cddr binding) (caddr binding) nil))
+        (list-var (gensym "list")))
+    `(let ((,list-var ,list-form))
+       (block nil
+         (while ,list-var
+           (let ((,var (car ,list-var)))
+             ,@body)
+           (setq ,list-var (cdr ,list-var)))
+         ,result-form))))
+
+(defmacro dotimes (binding &rest body)
+  ;; (dotimes (var count) body...) or (dotimes (var count result) body...)
+  (let ((var (car binding))
+        (count-form (cadr binding))
+        (result-form (if (cddr binding) (caddr binding) nil))
+        (count-var (gensym "count")))
+    `(let ((,count-var ,count-form)
+           (,var 0))
+       (block nil
+         (while (< ,var ,count-var)
+           ,@body
+           (setq ,var (+ ,var 1)))
+         ,result-form))))
 
 ;;; Mutation macros (fixed arity)
 (defmacro incf (place)
