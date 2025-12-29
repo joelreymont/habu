@@ -1415,3 +1415,115 @@
       ((> (abs r) half) (if (< (* number divisor) 0) (- q 1) (+ q 1)))
       ((evenp q) q)  ; Round to even
       (t (if (< (* number divisor) 0) (- q 1) (+ q 1))))))
+
+;; ============================================================
+;; Character Utilities
+;; ============================================================
+
+; char-equal - case-insensitive char comparison
+(defun char-equal (c1 c2)
+  (char= (char-upcase c1) (char-upcase c2)))
+
+; char-not-equal - case-insensitive inequality
+(defun char-not-equal (c1 c2)
+  (not (char-equal c1 c2)))
+
+; char-lessp - case-insensitive less-than
+(defun char-lessp (c1 c2)
+  (char< (char-upcase c1) (char-upcase c2)))
+
+; char-greaterp - case-insensitive greater-than
+(defun char-greaterp (c1 c2)
+  (char> (char-upcase c1) (char-upcase c2)))
+
+; char-not-lessp - case-insensitive >=
+(defun char-not-lessp (c1 c2)
+  (not (char-lessp c1 c2)))
+
+; char-not-greaterp - case-insensitive <=
+(defun char-not-greaterp (c1 c2)
+  (not (char-greaterp c1 c2)))
+
+; upper-case-p - check if char is uppercase
+(defun upper-case-p (c)
+  (and (alpha-char-p c)
+       (char= c (char-upcase c))))
+
+; lower-case-p - check if char is lowercase
+(defun lower-case-p (c)
+  (and (alpha-char-p c)
+       (char= c (char-downcase c))))
+
+; both-case-p - check if char has case variants
+(defun both-case-p (c)
+  (and (alpha-char-p c)
+       (char/= (char-upcase c) (char-downcase c))))
+
+; alphanumericp - check if char is alphanumeric
+(defun alphanumericp (c)
+  (or (alpha-char-p c) (digit-char-p c)))
+
+; graphic-char-p - check if char is graphic (printable)
+(defun graphic-char-p (c)
+  (let ((code (char-code c)))
+    (and (>= code 32) (<= code 126))))
+
+; standard-char-p - check if char is standard
+(defun standard-char-p (c)
+  (graphic-char-p c))
+
+;; ============================================================
+;; String Case Functions
+;; ============================================================
+
+; string-equal - case-insensitive string equality
+(defun string-equal (s1 s2)
+  (string= (string-upcase s1) (string-upcase s2)))
+
+; string-not-equal - case-insensitive string inequality
+(defun string-not-equal (s1 s2)
+  (not (string-equal s1 s2)))
+
+; string-lessp - case-insensitive string <
+(defun string-lessp (s1 s2)
+  (string< (string-upcase s1) (string-upcase s2)))
+
+; string-greaterp - case-insensitive string >
+(defun string-greaterp (s1 s2)
+  (string> (string-upcase s1) (string-upcase s2)))
+
+; string-not-lessp - case-insensitive string >=
+(defun string-not-lessp (s1 s2)
+  (not (string-lessp s1 s2)))
+
+; string-not-greaterp - case-insensitive string <=
+(defun string-not-greaterp (s1 s2)
+  (not (string-greaterp s1 s2)))
+
+; string-capitalize - capitalize first letter of each word
+(defun string-capitalize (s)
+  (let ((result (make-string (length s) #\Space))
+        (capitalize-next t))
+    (dotimes (i (length s) result)
+      (let ((c (char s i)))
+        (setf (char result i)
+              (cond
+                ((not (alpha-char-p c))
+                 (setq capitalize-next t)
+                 c)
+                (capitalize-next
+                 (setq capitalize-next nil)
+                 (char-upcase c))
+                (t (char-downcase c))))))))
+
+; nstring-upcase - destructive uppercase (same as string-upcase for now)
+(defun nstring-upcase (s)
+  (string-upcase s))
+
+; nstring-downcase - destructive lowercase
+(defun nstring-downcase (s)
+  (string-downcase s))
+
+; nstring-capitalize - destructive capitalize
+(defun nstring-capitalize (s)
+  (string-capitalize s))
