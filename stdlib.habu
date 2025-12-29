@@ -802,3 +802,82 @@
     ((and (eq result-type 'string) (characterp object))
      (make-string 1 object))
     (t (error "Cannot coerce to type"))))
+
+;; ============================================================
+;; Multiple Value Utilities
+;; ============================================================
+
+; multiple-value-setq - set variables from multiple values
+(defmacro multiple-value-setq (vars form)
+  (let ((vals (gensym "VALS")))
+    (list 'let (list (list vals (list 'multiple-value-list form)))
+          (cons 'progn
+                (let ((i 0))
+                  (mapcar (lambda (var)
+                            (prog1
+                                (list 'setq var (list 'nth i vals))
+                              (setq i (+ i 1))))
+                          vars))))))
+
+; nth-value - get nth value from multiple-value form
+(defmacro nth-value (n form)
+  (list 'nth n (list 'multiple-value-list form)))
+
+;; ============================================================
+;; Search and Fill Functions
+;; ============================================================
+
+; search - find subsequence in sequence
+(defun search (seq1 seq2 &key (test 'eql) (start1 0) (start2 0))
+  (let ((len1 (- (length seq1) start1))
+        (len2 (- (length seq2) start2)))
+    (if (> len1 len2)
+        nil
+        (search-aux seq1 seq2 start1 start2 len1 test))))
+
+(defun search-aux (seq1 seq2 s1 s2 len1 test)
+  (cond
+    ((> (+ s2 len1) (length seq2)) nil)
+    ((search-match seq1 seq2 s1 s2 len1 test) s2)
+    (t (search-aux seq1 seq2 s1 (+ s2 1) len1 test))))
+
+(defun search-match (seq1 seq2 s1 s2 len test)
+  (if (= len 0)
+      t
+      (and (funcall test (elt seq1 s1) (elt seq2 s2))
+           (search-match seq1 seq2 (+ s1 1) (+ s2 1) (- len 1) test))))
+
+; mismatch - find first position where sequences differ
+(defun mismatch (seq1 seq2 &key (test 'eql) (start1 0) (start2 0))
+  (mismatch-aux seq1 seq2 start1 start2 test))
+
+(defun mismatch-aux (seq1 seq2 i1 i2 test)
+  (cond
+    ((>= i1 (length seq1))
+     (if (>= i2 (length seq2)) nil i1))
+    ((>= i2 (length seq2)) i1)
+    ((not (funcall test (elt seq1 i1) (elt seq2 i2))) i1)
+    (t (mismatch-aux seq1 seq2 (+ i1 1) (+ i2 1) test))))
+
+; fill - fill sequence with value
+(defun fill (seq item &key (start 0) end)
+  (let ((real-end (or end (length seq))))
+    (if (vectorp seq)
+        (dotimes (i (- real-end start) seq)
+          (setf (svref seq (+ start i)) item))
+        (fill-list seq item start real-end 0))))
+
+(defun fill-list (lst item start end i)
+  (cond
+    ((null lst) nil)
+    ((>= i end) lst)
+    ((< i start) (cons (car lst) (fill-list (cdr lst) item start end (+ i 1))))
+    (t (cons item (fill-list (cdr lst) item start end (+ i 1))))))
+
+; replace - copy elements from one sequence to another
+(defun replace (seq1 seq2 &key (start1 0) end1 (start2 0) end2)
+  (let ((real-end1 (or end1 (length seq1)))
+        (real-end2 (or end2 (length seq2))))
+    (let ((count (min (- real-end1 start1) (- real-end2 start2))))
+      (dotimes (i count seq1)
+        (setf (elt seq1 (+ start1 i)) (elt seq2 (+ start2 i)))))))
