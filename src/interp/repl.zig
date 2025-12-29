@@ -1388,15 +1388,19 @@ pub const Repl = struct {
         }
         eval_vm.num_globals = source_vm.num_globals;
 
+        // Set eval_vm as current so nested loads use it for globals
+        const saved_current_vm = self.current_vm;
+        self.current_vm = &eval_vm;
+        defer self.current_vm = saved_current_vm;
+
         const result = eval_vm.run(&mutable_chunk) catch return error.RuntimeError;
 
-        // Copy back any new globals
-        const dest_vm = self.current_vm orelse &self.vm;
+        // Copy back any new globals to the original source
         for (eval_vm.globals, 0..) |g, i| {
-            dest_vm.globals[i] = g;
+            source_vm.globals[i] = g;
         }
-        if (eval_vm.num_globals > dest_vm.num_globals) {
-            dest_vm.num_globals = eval_vm.num_globals;
+        if (eval_vm.num_globals > source_vm.num_globals) {
+            source_vm.num_globals = eval_vm.num_globals;
         }
 
         return result;
