@@ -61,8 +61,38 @@ All tests pass.
 bit0=1: fixnum (63-bit, val >> 1)
 bit0=0: pointer | tag in bits 1-3
   0: cons, 2: symbol, 4: vector, 6: string, 8: closure, 10: keyword, 14: forwarding
-nil = 0, t = fixnum 1
+nil = 0 (special symbol)
+t = 2 (symbol tag with address 0, special symbol)
 ```
+
+### Type Dispatch Anti-Pattern
+
+**NEVER chain if-else on type predicates.** Use `switch (val.typeKind())` instead.
+
+```zig
+// WRONG: if-else chain on type predicates
+if (val.isNil()) {
+    ...
+} else if (val.isFixnum()) {
+    ...
+} else if (val.isSymbol()) {
+    ...
+}
+
+// RIGHT: switch on typeKind
+switch (val.typeKind()) {
+    .nil => ...,
+    .t => ...,
+    .fixnum => ...,
+    .symbol => ...,
+    // exhaustive - compiler catches missing cases
+}
+```
+
+Benefits:
+- Exhaustive: adding new types forces handling everywhere
+- Single dispatch point: typeKind() handles all type detection logic
+- Faster: one computed jump vs chain of comparisons
 
 ### Zig 0.15 Patterns
 - See `docs/zig-0.15-api.md` for API reference

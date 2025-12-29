@@ -43,6 +43,13 @@ pub fn stringBytes(val: Value) ?[]const u8 {
 
 /// Get symbol name as string value
 pub fn symbolName(heap: *Heap, val: Value) error{OutOfMemory}!Value {
+    // Handle special symbols nil and t
+    if (val.isNil()) {
+        return heap.allocString("nil") orelse error.OutOfMemory;
+    }
+    if (val.isT()) {
+        return heap.allocString("t") orelse error.OutOfMemory;
+    }
     if (!val.isSymbol()) return Value.nil;
     const sym = val.toPtr(objects.Symbol);
     const name_bytes = sym.getName();
@@ -51,6 +58,9 @@ pub fn symbolName(heap: *Heap, val: Value) error{OutOfMemory}!Value {
 
 /// Get symbol name bytes directly
 pub fn symbolNameBytes(val: Value) ?[]const u8 {
+    // Handle special symbols nil and t
+    if (val.isNil()) return "nil";
+    if (val.isT()) return "t";
     if (!val.isSymbol()) return null;
     const sym = val.toPtr(objects.Symbol);
     return sym.getName();
@@ -61,9 +71,9 @@ pub fn stringp(val: Value) bool {
     return val.isString();
 }
 
-/// Check if value is a symbol
+/// Check if value is a symbol (includes nil and t as per CL)
 pub fn symbolp(val: Value) bool {
-    return val.isSymbol();
+    return val.isSymbolLike();
 }
 
 /// String equality
@@ -94,7 +104,8 @@ pub fn stringConcat(heap: *Heap, a: Value, b: Value) error{OutOfMemory}!Value {
     const str_a = a.toPtr(objects.String);
     const str_b = b.toPtr(objects.String);
 
-    const new_len = str_a.length + str_b.length;
+    // Use checked addition to prevent overflow
+    const new_len = std.math.add(usize, str_a.length, str_b.length) catch return error.OutOfMemory;
     const aligned_len = std.mem.alignForward(usize, new_len, 8);
     const total_size = @sizeOf(objects.String) + aligned_len;
 

@@ -11,6 +11,7 @@
 const std = @import("std");
 const Value = @import("value.zig").Value;
 const objects = @import("objects.zig");
+const GC = @import("gc.zig").GC;
 
 pub const ALIGNMENT: usize = 16;
 
@@ -263,9 +264,23 @@ pub const Heap = struct {
         return Value.makeClosure(closure);
     }
 
-    /// Allocate a hash table with given initial capacity
-    pub fn allocHashTable(self: *Heap, capacity: usize) ?Value {
-        const actual_capacity = if (capacity < 8) 8 else capacity;
+    /// Round up to next power of two (for hash table capacity)
+    fn nextPowerOfTwo(n: usize) usize {
+        if (n == 0) return 1;
+        var v = n - 1;
+        v |= v >> 1;
+        v |= v >> 2;
+        v |= v >> 4;
+        v |= v >> 8;
+        v |= v >> 16;
+        v |= v >> 32;
+        return v + 1;
+    }
+
+    /// Allocate a hash table with given initial capacity (will be rounded to power of 2)
+    pub fn allocHashTable(self: *Heap, capacity: usize, test_type: objects.HashTest) ?Value {
+        // Ensure power-of-two capacity for correct linear probing with mask
+        const actual_capacity = nextPowerOfTwo(if (capacity < 8) 8 else capacity);
         const total_size = @sizeOf(objects.HashTable) + actual_capacity * @sizeOf(objects.HashEntry);
 
         const ptr = self.allocRaw(total_size) orelse return null;
@@ -286,6 +301,7 @@ pub const Heap = struct {
             .count = 0,
             .capacity = actual_capacity,
             .entries = entries_ptr,
+            .test_type = test_type,
         };
 
         return Value.makeHashTable(ht);
@@ -378,6 +394,82 @@ pub const Heap = struct {
     /// Reset allocation pointer (used after GC)
     pub fn resetAllocPtr(self: *Heap, new_ptr: [*]align(ALIGNMENT) u8) void {
         self.alloc_ptr = new_ptr;
+    }
+
+    /// Run garbage collection with external roots (from VM stack, globals, etc.)
+    /// Returns bytes reclaimed (space_used_before - space_used_after)
+    pub fn collectGarbage(self: *Heap, external_roots: []Value) usize {
+        const before = self.bytesUsed();
+
+        // Build root set: external roots + interned symbol/keyword values
+        var all_roots = std.ArrayList(Value){};
+        defer all_roots.deinit(self.backing_allocator);
+
+        // Add external roots
+        all_roots.appendSlice(self.backing_allocator, external_roots) catch return 0;
+
+        // Add symbol table values (the Values need to be updated after GC)
+        var sym_it = self.symbols.map.valueIterator();
+        while (sym_it.next()) |v| {
+            all_roots.append(self.backing_allocator, v.*) catch return 0;
+        }
+
+        // Add keyword table values
+        var kw_it = self.keywords.map.valueIterator();
+        while (kw_it.next()) |v| {
+            all_roots.append(self.backing_allocator, v.*) catch return 0;
+        }
+
+        // Run GC
+        var gc = GC.init(self, self.backing_allocator);
+        defer gc.deinit();
+        _ = gc.collect(all_roots.items) catch return 0;
+
+        // Update symbol table with new locations
+        const sym_count = self.symbols.map.count();
+        const kw_count = self.keywords.map.count();
+        const ext_count = external_roots.len;
+
+        // External roots are updated in-place by GC.collect
+        // Copy external roots back (they were passed by value to ArrayList)
+        for (external_roots, 0..) |_, i| {
+            external_roots[i] = all_roots.items[i];
+        }
+
+        // Update symbol table values
+        var sym_idx: usize = 0;
+        var sym_update_it = self.symbols.map.valueIterator();
+        while (sym_update_it.next()) |v| {
+            v.* = all_roots.items[ext_count + sym_idx];
+            sym_idx += 1;
+        }
+
+        // Update keyword table values
+        var kw_idx: usize = 0;
+        var kw_update_it = self.keywords.map.valueIterator();
+        while (kw_update_it.next()) |v| {
+            v.* = all_roots.items[ext_count + sym_count + kw_idx];
+            kw_idx += 1;
+        }
+        _ = kw_count;
+
+        const after = self.bytesUsed();
+        return if (before > after) before - after else 0;
+    }
+
+    /// Try to allocate, running GC if needed
+    /// external_roots should contain VM stack, globals, etc.
+    pub fn allocWithGC(self: *Heap, comptime T: type, external_roots: []Value) ?*T {
+        // Try allocation first
+        if (self.alloc(T)) |ptr| {
+            return ptr;
+        }
+
+        // Run GC and retry
+        _ = self.collectGarbage(external_roots);
+
+        // Try again
+        return self.alloc(T);
     }
 };
 

@@ -20,7 +20,7 @@
   (ir-lambda params opt-params key-params rest-param captures body)
 
   ;; Control flow
-  (ir-if cond then-br else-br) ; conditional
+  (ir-if cond then else) ; conditional
   (ir-progn forms)            ; sequence
   (ir-loop cond body)         ; while loop
   (ir-block name body)        ; named block

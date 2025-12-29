@@ -793,6 +793,7 @@ pub const Compiler = struct {
         return switch (node.*) {
             .lit => |val| return switch (val.typeKind()) {
                 .nil => &types.t_nil,
+                .t => &types.t_symbol, // t is a symbol
                 .fixnum => &types.t_fixnum,
                 .float => &types.t_float,
                 .char => &types.t_char,
@@ -993,6 +994,16 @@ pub const Compiler = struct {
 
         // Character
         if (expr.isCharacter()) {
+            return try self.builder.lit(expr);
+        }
+
+        // t and nil are self-evaluating (also symbols, but special)
+        if (expr.isMagicSymbol()) {
+            return try self.builder.lit(expr);
+        }
+
+        // Vector (literal - #(1 2 3))
+        if (expr.isVector()) {
             return try self.builder.lit(expr);
         }
 
@@ -1645,7 +1656,7 @@ pub const Compiler = struct {
 
     /// Collect free variables in an expression
     fn collectFreeVars(self: *Compiler, expr: Value, env: *const Env, captures: *CaptureSet) error{OutOfMemory}!void {
-        if (expr.isNil() or expr.isFixnum() or expr.isString() or expr.isKeyword() or expr.isCharacter()) {
+        if (expr.isNil() or expr.isFixnum() or expr.isString() or expr.isKeyword() or expr.isCharacter() or expr.isMagicSymbol() or expr.isVector()) {
             return; // Literals have no free variables
         }
 
@@ -1653,15 +1664,29 @@ pub const Compiler = struct {
             const sym = expr.toPtr(Symbol);
             const name = sym.getName();
 
-            // Check if bound locally
-            if (env.bindings.get(name) != null) return;
+            // Check if bound in current scope (including same-frame let environments)
+            var check_env: ?*const Env = env;
+            while (check_env) |e| {
+                if (e.bindings.get(name) != null) return; // Bound locally, not a free var
+                if (e.new_frame) break; // Stop at frame boundary
+                check_env = e.parent;
+            }
 
-            // Check if in outer scope (free variable)
-            if (env.parent) |parent| {
-                if (parent.lookup(name)) |binding| {
-                    // This is a free variable - needs to be captured
-                    // Store original depth for loading, emitVar adjusts for matching
-                    try captures.addCapture(name, binding.depth, binding.index);
+            // Find the lambda frame (the nearest new_frame environment)
+            var lambda_env: ?*const Env = env;
+            while (lambda_env) |e| {
+                if (e.new_frame) break;
+                lambda_env = e.parent;
+            }
+
+            // Look up from the lambda's parent to get correct capture depth
+            if (lambda_env) |le| {
+                if (le.parent) |lambda_parent| {
+                    if (lambda_parent.lookup(name)) |binding| {
+                        // This is a free variable - needs to be captured
+                        // Store depth from lambda's parent perspective for correct loading
+                        try captures.addCapture(name, binding.depth, binding.index);
+                    }
                 }
             }
             return;
@@ -1779,7 +1804,7 @@ pub const Compiler = struct {
         mutated: *std.StringHashMap(void),
         captured: *std.StringHashMap(void),
     ) error{OutOfMemory}!void {
-        if (expr.isNil() or expr.isFixnum() or expr.isString() or expr.isKeyword() or expr.isCharacter()) {
+        if (expr.isNil() or expr.isFixnum() or expr.isString() or expr.isKeyword() or expr.isCharacter() or expr.isVector()) {
             return;
         }
 
@@ -1890,7 +1915,7 @@ pub const Compiler = struct {
         params: *std.StringHashMap(void),
         captured: *std.StringHashMap(void),
     ) error{OutOfMemory}!void {
-        if (expr.isNil() or expr.isFixnum() or expr.isString() or expr.isKeyword() or expr.isCharacter()) {
+        if (expr.isNil() or expr.isFixnum() or expr.isString() or expr.isKeyword() or expr.isCharacter() or expr.isVector()) {
             return;
         }
 
@@ -4341,11 +4366,64 @@ pub const Compiler = struct {
     }
 
     fn compileMakeHash(self: *Compiler, args: Value) Error!*Ir {
-        // (make-hash-table) or (make-hash-table :size n)
-        // For now, just use default capacity
-        _ = args;
+        // (make-hash-table) or (make-hash-table :size n :test test-fn)
+        // Defaults: size=16, test=eql
+        var capacity: u16 = 16;
+        var test_type: ir.HashTest = .eql;
+
+        // Parse keyword arguments
+        var current = args;
+        while (current.isCons()) {
+            const cons = current.toPtr(Cons);
+            const key = cons.car;
+
+            // Get the keyword name
+            if (!key.isKeyword()) break; // Not a keyword, stop parsing
+            const kw_name = key.toPtr(runtime.Keyword).getName();
+
+            // Get the value
+            if (!cons.cdr.isCons()) return error.InvalidSyntax;
+            const val_cons = cons.cdr.toPtr(Cons);
+            const val = val_cons.car;
+
+            if (std.mem.eql(u8, kw_name, "size")) {
+                // :size n - capacity
+                if (!val.isFixnum()) return error.InvalidSyntax;
+                const n = val.toFixnum();
+                if (n < 1 or n > 65535) return error.InvalidSyntax;
+                capacity = @intCast(@as(u64, @bitCast(n)));
+            } else if (std.mem.eql(u8, kw_name, "test")) {
+                // :test 'eq or :test 'eql or :test 'equal
+                // The value should be a quoted symbol or just a symbol
+                var test_sym = val;
+                if (val.isCons()) {
+                    // Could be (quote eq)
+                    const quote_cons = val.toPtr(Cons);
+                    if (quote_cons.cdr.isCons()) {
+                        test_sym = quote_cons.cdr.toPtr(Cons).car;
+                    }
+                }
+                if (test_sym.isSymbol()) {
+                    const sym_name = test_sym.toPtr(Symbol).getName();
+                    if (std.mem.eql(u8, sym_name, "eq")) {
+                        test_type = .eq;
+                    } else if (std.mem.eql(u8, sym_name, "eql")) {
+                        test_type = .eql;
+                    } else if (std.mem.eql(u8, sym_name, "equal")) {
+                        test_type = .equal;
+                    } else {
+                        return error.InvalidSyntax;
+                    }
+                } else {
+                    return error.InvalidSyntax;
+                }
+            }
+            // Move to next key-value pair
+            current = val_cons.cdr;
+        }
+
         const node = try self.allocator.create(Ir);
-        node.* = .{ .make_hash = .{ .capacity = 16 } };
+        node.* = .{ .make_hash = .{ .capacity = capacity, .test_type = test_type } };
         return node;
     }
 

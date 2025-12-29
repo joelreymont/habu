@@ -171,8 +171,8 @@
   "Compile let expression"
   (let ((bindings (car args))
         (body (cdr args)))
-    (let ((names (mapcar car bindings))
-          (values (mapcar cadr bindings)))
+    (let ((names (mapcar (lambda (b) (car b)) bindings))
+          (values (mapcar (lambda (b) (cadr b)) bindings)))
       (let ((new-env (env-extend env names depth))
             (ir-bindings (compile-let-bindings names values env depth)))
         (ir-let ir-bindings

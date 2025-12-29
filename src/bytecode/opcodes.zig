@@ -764,12 +764,13 @@ pub const Op = enum(u8) {
             // 2 byte operand
             .push_const, .load_global, .store_global,
             .make_vec, .jmp, .jmp_nil, .jmp_not_nil,
-            .load_upvalue, .store_upvalue, .push_catch, .make_hash,
+            .load_upvalue, .store_upvalue, .push_catch,
             .push_unwind, .pop_unwind, .find_key,
             => 2,
 
             // 3 byte operand
             .make_closure, // u16 code index + u8 captures
+            .make_hash, // u16 capacity + u8 test_type
             => 3,
 
             // 4 byte operand
@@ -788,8 +789,8 @@ pub const Op = enum(u8) {
 pub const Chunk = struct {
     /// Bytecode instructions
     code: []u8,
-    /// Constant pool
-    constants: []const u64, // Values stored as raw u64
+    /// Constant pool (mutable for GC relocation)
+    constants: []u64, // Values stored as raw u64
 
     /// Arity (number of required parameters)
     arity: u8,

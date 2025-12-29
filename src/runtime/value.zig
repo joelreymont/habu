@@ -34,6 +34,7 @@ pub const Tag = enum(u4) {
 /// High-level type kind for dispatching (covers all value types)
 pub const TypeKind = enum {
     nil,
+    t, // special symbol for true
     fixnum,
     float,
     char,
@@ -55,7 +56,9 @@ pub const Value = packed struct {
     // ========================================================================
 
     pub const nil: Value = .{ .raw = 0 };
-    pub const t: Value = Value.makeFixnum(1); // true = fixnum 1
+    /// Special symbol value for t - uses symbol tag with reserved address 0
+    /// This makes (symbolp t) true and (eq t 1) false
+    pub const t: Value = .{ .raw = 2 }; // symbol tag (2) with ptr 0
 
     const TAG_MASK: u64 = 0xE; // bits 1-3
     const PTR_MASK: u64 = ~@as(u64, 0xF); // clear low 4 bits
@@ -67,6 +70,21 @@ pub const Value = packed struct {
     /// Check if value is nil (the empty list)
     pub inline fn isNil(self: Value) bool {
         return self.raw == 0;
+    }
+
+    /// Check if value is t (the canonical true value)
+    pub inline fn isT(self: Value) bool {
+        return self.raw == t.raw;
+    }
+
+    /// Check if value is a "magic" symbol (t or nil) that can't be dereferenced
+    pub inline fn isMagicSymbol(self: Value) bool {
+        return self.isNil() or self.isT();
+    }
+
+    /// Check if value is symbol-like for symbolp (includes nil and t)
+    pub inline fn isSymbolLike(self: Value) bool {
+        return self.isNil() or self.isT() or self.isSymbol();
     }
 
     /// Check if value is a fixnum (bit0 = 1)
@@ -85,9 +103,10 @@ pub const Value = packed struct {
         return self.isPointer() and self.getTag() == .cons;
     }
 
-    /// Check if value is a symbol
+    /// Check if value is a heap-allocated symbol (excludes t which is special)
     pub inline fn isSymbol(self: Value) bool {
-        return self.isPointer() and self.getTag() == .symbol;
+        // t has symbol tag but address 0, so exclude it
+        return self.isPointer() and self.getTag() == .symbol and (self.raw & PTR_MASK) != 0;
     }
 
     /// Check if value is a vector
@@ -143,6 +162,7 @@ pub const Value = packed struct {
     /// Get the high-level type kind for this value
     pub inline fn typeKind(self: Value) TypeKind {
         if (self.raw == 0) return .nil;
+        if (self.raw == t.raw) return .t;
         if ((self.raw & 1) == 1) return .fixnum;
         if ((self.raw >> 63) == 1) return .char;
         if (((self.raw >> 62) & 3) == 1) return .float;

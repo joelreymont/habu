@@ -46,22 +46,22 @@ pub const GC = struct {
     }
 
     /// Run a garbage collection cycle
-    /// Returns the number of bytes copied
-    pub fn collect(self: *GC, roots: []Value) usize {
+    /// Returns the number of bytes copied, or error on OOM during work list allocation
+    pub fn collect(self: *GC, roots: []Value) !usize {
         // Clear work list
         self.work_list.clearRetainingCapacity();
         var alloc_ptr = self.heap.to_start;
 
         // Phase 1: Copy roots
         for (roots) |*root| {
-            root.* = self.copyValue(root.*, &alloc_ptr);
+            root.* = try self.copyValue(root.*, &alloc_ptr);
         }
 
         // Phase 2: Process work list, scanning objects and copying references
         while (self.work_list.items.len > 0) {
             const item = self.work_list.items[self.work_list.items.len - 1];
             self.work_list.items.len -= 1;
-            self.scanObject(item.addr, item.tag, &alloc_ptr);
+            try self.scanObject(item.addr, item.tag, &alloc_ptr);
         }
 
         // Calculate bytes copied
@@ -79,9 +79,14 @@ pub const GC = struct {
     }
 
     /// Copy a value to to-space if needed
-    fn copyValue(self: *GC, val: Value, alloc_ptr: *[*]align(ALIGNMENT) u8) Value {
-        // Nil and fixnums don't need copying
-        if (val.isNil() or val.isFixnum()) {
+    fn copyValue(self: *GC, val: Value, alloc_ptr: *[*]align(ALIGNMENT) u8) !Value {
+        // Immediates don't need copying: nil, fixnums, floats, characters
+        if (val.isNil() or val.isFixnum() or val.isFloat() or val.isCharacter()) {
+            return val;
+        }
+
+        // Only process actual heap pointers
+        if (!val.isPointer()) {
             return val;
         }
 
@@ -123,16 +128,22 @@ pub const GC = struct {
         // Update alloc pointer
         alloc_ptr.* = @ptrFromInt(@intFromPtr(alloc_ptr.*) + aligned_size);
 
-        // Install forwarding pointer in old location
         const new_addr = @intFromPtr(dest);
+
+        // Repair interior pointers that point to inline data
+        // These pointers are relative to the object start and need adjustment
+        const addr_delta: isize = @as(isize, @intCast(new_addr)) - @as(isize, @intCast(obj_addr));
+        self.repairInteriorPointers(new_addr, tag, addr_delta);
+
+        // Install forwarding pointer in old location
         first_word.* = Value.makeForwarding(@as(*u8, @ptrFromInt(new_addr)));
 
         // Add to work list for scanning (except strings/keywords which have no Value refs)
         if (tag != .string and tag != .keyword) {
-            self.work_list.append(self.allocator, .{
+            try self.work_list.append(self.allocator, .{
                 .addr = new_addr,
                 .tag = tag,
-            }) catch {};
+            });
         }
 
         // Return new tagged pointer
@@ -145,8 +156,54 @@ pub const GC = struct {
         return val.getTag();
     }
 
+    /// Repair interior pointers after copying an object
+    /// Interior pointers point to inline data that follows the object header
+    fn repairInteriorPointers(_: *GC, new_addr: usize, tag: Tag, addr_delta: isize) void {
+        switch (tag) {
+            .symbol => {
+                // Symbol.name_ptr points to inline name data after header
+                const sym: *objects.Symbol = @ptrFromInt(new_addr);
+                const old_ptr = @intFromPtr(sym.name_ptr);
+                sym.name_ptr = @ptrFromInt(@as(usize, @intCast(@as(isize, @intCast(old_ptr)) + addr_delta)));
+            },
+            .keyword => {
+                // Keyword.name_ptr points to inline name data after header
+                const kw: *objects.Keyword = @ptrFromInt(new_addr);
+                const old_ptr = @intFromPtr(kw.name_ptr);
+                kw.name_ptr = @ptrFromInt(@as(usize, @intCast(@as(isize, @intCast(old_ptr)) + addr_delta)));
+            },
+            .vector => {
+                // Vector.data points to inline element array after header
+                const vec: *objects.Vector = @ptrFromInt(new_addr);
+                const old_ptr = @intFromPtr(vec.data);
+                vec.data = @ptrFromInt(@as(usize, @intCast(@as(isize, @intCast(old_ptr)) + addr_delta)));
+            },
+            .string => {
+                // String.data points to inline byte data after header
+                const str: *objects.String = @ptrFromInt(new_addr);
+                const old_ptr = @intFromPtr(str.data);
+                str.data = @ptrFromInt(@as(usize, @intCast(@as(isize, @intCast(old_ptr)) + addr_delta)));
+            },
+            .closure => {
+                // Closure.captures points to inline captures array after header
+                const cls: *objects.Closure = @ptrFromInt(new_addr);
+                const old_ptr = @intFromPtr(cls.captures);
+                cls.captures = @ptrFromInt(@as(usize, @intCast(@as(isize, @intCast(old_ptr)) + addr_delta)));
+            },
+            .hashtable => {
+                // HashTable.entries points to inline entries array after header
+                const ht: *objects.HashTable = @ptrFromInt(new_addr);
+                const old_ptr = @intFromPtr(ht.entries);
+                ht.entries = @ptrFromInt(@as(usize, @intCast(@as(isize, @intCast(old_ptr)) + addr_delta)));
+            },
+            .cons, .forwarding => {
+                // No interior pointers to repair
+            },
+        }
+    }
+
     /// Scan an object and copy its referenced values
-    fn scanObject(self: *GC, addr: usize, tag: Tag, alloc_ptr: *[*]align(ALIGNMENT) u8) void {
+    fn scanObject(self: *GC, addr: usize, tag: Tag, alloc_ptr: *[*]align(ALIGNMENT) u8) !void {
         switch (tag) {
             .cons => {
                 // Scan car and cdr
@@ -154,17 +211,17 @@ pub const GC = struct {
                 const cdr_ptr: *Value = @ptrFromInt(addr + @sizeOf(Value));
 
                 if (car_ptr.isPointer() and !car_ptr.isNil()) {
-                    car_ptr.* = self.copyValue(car_ptr.*, alloc_ptr);
+                    car_ptr.* = try self.copyValue(car_ptr.*, alloc_ptr);
                 }
                 if (cdr_ptr.isPointer() and !cdr_ptr.isNil()) {
-                    cdr_ptr.* = self.copyValue(cdr_ptr.*, alloc_ptr);
+                    cdr_ptr.* = try self.copyValue(cdr_ptr.*, alloc_ptr);
                 }
             },
             .symbol => {
                 // Scan plist (offset 16: after name_len and name_ptr)
                 const plist_ptr: *Value = @ptrFromInt(addr + 16);
                 if (plist_ptr.isPointer() and !plist_ptr.isNil()) {
-                    plist_ptr.* = self.copyValue(plist_ptr.*, alloc_ptr);
+                    plist_ptr.* = try self.copyValue(plist_ptr.*, alloc_ptr);
                 }
             },
             .vector => {
@@ -172,7 +229,7 @@ pub const GC = struct {
                 const vec: *objects.Vector = @ptrFromInt(addr);
                 for (vec.items()) |*item| {
                     if (item.isPointer() and !item.isNil()) {
-                        item.* = self.copyValue(item.*, alloc_ptr);
+                        item.* = try self.copyValue(item.*, alloc_ptr);
                     }
                 }
             },
@@ -181,7 +238,7 @@ pub const GC = struct {
                 const cls: *objects.Closure = @ptrFromInt(addr);
                 for (cls.getCapturedValues()) |*cap| {
                     if (cap.isPointer() and !cap.isNil()) {
-                        cap.* = self.copyValue(cap.*, alloc_ptr);
+                        cap.* = try self.copyValue(cap.*, alloc_ptr);
                     }
                 }
             },
@@ -191,10 +248,10 @@ pub const GC = struct {
                 for (ht.getEntries()) |*entry| {
                     if (!objects.HashTable.isAvailable(entry.*)) {
                         if (entry.key.isPointer() and !entry.key.isNil()) {
-                            entry.key = self.copyValue(entry.key, alloc_ptr);
+                            entry.key = try self.copyValue(entry.key, alloc_ptr);
                         }
                         if (entry.value.isPointer() and !entry.value.isNil()) {
-                            entry.value = self.copyValue(entry.value, alloc_ptr);
+                            entry.value = try self.copyValue(entry.value, alloc_ptr);
                         }
                     }
                 }
@@ -264,7 +321,7 @@ test "gc collect empty" {
     defer gc.deinit();
 
     var roots = [_]Value{};
-    const bytes = gc.collect(&roots);
+    const bytes = try gc.collect(&roots);
 
     try testing.expectEqual(@as(usize, 0), bytes);
 }
@@ -286,7 +343,7 @@ test "gc collect with cons" {
 
     // Collect with root
     var roots = [_]Value{root};
-    const bytes = gc.collect(&roots);
+    const bytes = try gc.collect(&roots);
 
     // Should have copied the cons cell
     try testing.expect(bytes >= @sizeOf(objects.Cons));
@@ -316,7 +373,7 @@ test "gc collect with nested cons" {
     defer gc.deinit();
 
     var roots = [_]Value{root};
-    _ = gc.collect(&roots);
+    _ = try gc.collect(&roots);
 
     // Verify structure is preserved
     root = roots[0];

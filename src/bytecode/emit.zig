@@ -1107,6 +1107,7 @@ pub const Emitter = struct {
     fn emitMakeHash(self: *Emitter, h: anytype) Error!void {
         try self.emitOp(.make_hash);
         try self.emitU16(h.capacity);
+        try self.emitU8(@intFromEnum(h.test_type));
     }
 
     fn emitHashGet(self: *Emitter, h: anytype) Error!void {

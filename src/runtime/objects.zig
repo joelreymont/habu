@@ -124,9 +124,16 @@ pub const HashEntry = extern struct {
     value: Value,
 };
 
+/// Hash table test function type
+pub const HashTest = enum(u8) {
+    eq = 0, // Identity comparison
+    eql = 1, // Identity + numeric equality (default)
+    equal = 2, // Structural equality
+};
+
 /// Hash table: mutable key-value mapping
 /// Uses open addressing with linear probing
-/// Size: 24 bytes header + entries array
+/// Size: 32 bytes header + entries array
 pub const HashTable = extern struct {
     /// Number of entries currently stored
     count: u64,
@@ -134,11 +141,16 @@ pub const HashTable = extern struct {
     capacity: u64,
     /// Pointer to entries array
     entries: [*]HashEntry,
+    /// Test function type (eq, eql, equal)
+    test_type: HashTest,
+    /// Padding for alignment
+    _pad: [7]u8 = .{ 0, 0, 0, 0, 0, 0, 0 },
 
-    /// Sentinel for empty entry
-    pub const EMPTY: Value = Value{ .raw = 0xFFFFFFFFFFFFFFFF };
-    /// Sentinel for deleted entry
-    pub const DELETED: Value = Value{ .raw = 0xFFFFFFFFFFFFFFFE };
+    /// Sentinel for empty entry - uses impossible character codepoint (> Unicode max 0x10FFFF)
+    /// This ensures it won't collide with any valid fixnum, float, character, or pointer
+    pub const EMPTY: Value = Value{ .raw = 0x80000000003FFFFE }; // char with codepoint 0x1FFFFF
+    /// Sentinel for deleted entry - uses another impossible character codepoint
+    pub const DELETED: Value = Value{ .raw = 0x80000000003FFFFC }; // char with codepoint 0x1FFFFE
 
     /// Check if an entry is empty
     pub fn isEmpty(entry: HashEntry) bool {
@@ -166,11 +178,16 @@ pub const HashTable = extern struct {
 // ============================================================================
 
 /// Get the size of an object in bytes given its tag
+/// This includes inline data (name bytes for symbols/keywords)
 pub fn objectSize(val: Value) usize {
     const tag = val.getTag();
     return switch (tag) {
         .cons => @sizeOf(Cons),
-        .symbol => @sizeOf(Symbol),
+        .symbol => blk: {
+            const sym = val.toPtr(Symbol);
+            // Header + inline name bytes (aligned to 8)
+            break :blk @sizeOf(Symbol) + std.mem.alignForward(usize, sym.name_len, 8);
+        },
         .vector => blk: {
             const vec = val.toPtr(Vector);
             // Header + data array
@@ -186,7 +203,11 @@ pub fn objectSize(val: Value) usize {
             // Header + captures array
             break :blk @sizeOf(Closure) + cls.num_captures * @sizeOf(Value);
         },
-        .keyword => @sizeOf(Keyword),
+        .keyword => blk: {
+            const kw = val.toPtr(Keyword);
+            // Header + inline name bytes (aligned to 8)
+            break :blk @sizeOf(Keyword) + std.mem.alignForward(usize, kw.name_len, 8);
+        },
         .hashtable => blk: {
             const ht = val.toPtr(HashTable);
             // Header + entries array

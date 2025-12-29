@@ -301,6 +301,8 @@
 ; (Note: cond is a special form in Habu, so this is just documentation)
 
 ; case - dispatch on value (simple version)
+; Note: In Habu, 't' at read time becomes the value t (= fixnum 1), not a symbol.
+; So we check (eq keys t) not (eq keys 't)
 (defmacro case (keyform &rest clauses)
   (let ((key (gensym)))
     (list 'let (list (list key keyform))
@@ -308,7 +310,7 @@
                 (mapcar (lambda (clause)
                           (let ((keys (car clause))
                                 (body (cdr clause)))
-                            (if (or (eq keys 't) (eq keys 'otherwise))
+                            (if (or (eq keys t) (eq keys 'otherwise))
                                 (cons t body)
                                 (list (list 'member key (list 'quote
                                               (if (consp keys) keys (list keys))))

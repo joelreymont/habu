@@ -888,47 +888,37 @@ pub const Repl = struct {
 
     /// Print a value in Lisp notation
     pub fn printValue(self: *Repl, val: Value, writer: anytype) anyerror!void {
-        if (val.isNil()) {
-            try writer.writeAll("nil");
-        } else if (val.isFixnum()) {
-            try writer.print("{d}", .{val.toFixnum()});
-        } else if (val.isFloat()) {
-            try writer.print("{d}", .{val.toFloat()});
-        } else if (val.isCharacter()) {
-            const cp = val.toCharacter();
-            // Named characters
-            if (cp == ' ') {
-                try writer.writeAll("#\\space");
-            } else if (cp == '\n') {
-                try writer.writeAll("#\\newline");
-            } else if (cp == '\t') {
-                try writer.writeAll("#\\tab");
-            } else if (cp == '\r') {
-                try writer.writeAll("#\\return");
-            } else if (cp >= 32 and cp < 127) {
-                try writer.print("#\\{c}", .{@as(u8, @intCast(cp))});
-            } else {
-                try writer.print("#\\U+{X:0>4}", .{cp});
-            }
-        } else if (val.isCons()) {
-            try self.printList(val, writer);
-        } else if (val.isSymbol()) {
-            const sym = val.toPtr(Symbol);
-            try writer.writeAll(sym.getName());
-        } else if (val.isString()) {
-            const str = val.toPtr(String);
-            try writer.print("\"{s}\"", .{str.bytes()});
-        } else if (val.isKeyword()) {
-            try writer.writeAll(":<keyword>");
-        } else if (val.isClosure()) {
-            try writer.writeAll("#<closure>");
-        } else if (val.isVector()) {
-            try writer.writeAll("#<vector>");
-        } else if (val.isHashTable()) {
-            const ht = val.toPtr(runtime.HashTable);
-            try writer.print("#<hash-table count={d}>", .{ht.count});
-        } else {
-            try writer.print("#<unknown 0x{x}>", .{val.raw});
+        switch (val.typeKind()) {
+            .nil => try writer.writeAll("nil"),
+            .t => try writer.writeAll("t"),
+            .fixnum => try writer.print("{d}", .{val.toFixnum()}),
+            .float => try writer.print("{d}", .{val.toFloat()}),
+            .char => {
+                const cp = val.toCharacter();
+                if (cp == ' ') {
+                    try writer.writeAll("#\\space");
+                } else if (cp == '\n') {
+                    try writer.writeAll("#\\newline");
+                } else if (cp == '\t') {
+                    try writer.writeAll("#\\tab");
+                } else if (cp == '\r') {
+                    try writer.writeAll("#\\return");
+                } else if (cp >= 32 and cp < 127) {
+                    try writer.print("#\\{c}", .{@as(u8, @intCast(cp))});
+                } else {
+                    try writer.print("#\\U+{X:0>4}", .{cp});
+                }
+            },
+            .cons => try self.printList(val, writer),
+            .symbol => try writer.writeAll(val.toPtr(Symbol).getName()),
+            .string => try writer.print("\"{s}\"", .{val.toPtr(String).bytes()}),
+            .keyword => {
+                try writer.writeByte(':');
+                try writer.writeAll(val.toPtr(runtime.Keyword).getName());
+            },
+            .closure => try writer.writeAll("#<closure>"),
+            .vector => try self.printVector(val, writer),
+            .hashtable => try writer.print("#<hash-table count={d}>", .{val.toPtr(runtime.HashTable).count}),
         }
     }
 
@@ -951,6 +941,18 @@ pub const Repl = struct {
         if (!current.isNil()) {
             try writer.writeAll(" . ");
             try self.printValue(current, writer);
+        }
+
+        try writer.writeAll(")");
+    }
+
+    fn printVector(self: *Repl, val: Value, writer: anytype) anyerror!void {
+        const vec = val.toPtr(runtime.Vector);
+        try writer.writeAll("#(");
+
+        for (0..vec.length) |i| {
+            if (i > 0) try writer.writeAll(" ");
+            try self.printValue(vec.data[i], writer);
         }
 
         try writer.writeAll(")");
@@ -1578,21 +1580,22 @@ pub const Repl = struct {
             .name = "<macro-call>",
         };
 
-        // Use a separate VM to avoid corrupting the main VM state
-        var nested_vm = Vm.init(self.allocator, self.heap);
-        nested_vm.setGlobalEnv(&self.compiler.globals);
-        nested_vm.setLoadCallback(&loadCallback, @ptrCast(self));
-        nested_vm.setEvalCallback(&evalCallback, @ptrCast(self));
-        nested_vm.setMacroexpandCallback(&macroexpandCallback, @ptrCast(self));
+        // Use a separate VM to avoid corrupting the current VM state
+        var macro_vm = Vm.init(self.allocator, self.heap);
+        macro_vm.setGlobalEnv(&self.compiler.globals);
+        macro_vm.setLoadCallback(&loadCallback, @ptrCast(self));
+        macro_vm.setEvalCallback(&evalCallback, @ptrCast(self));
+        macro_vm.setMacroexpandCallback(&macroexpandCallback, @ptrCast(self));
 
-        // Copy globals from main VM
-        for (self.vm.globals, 0..) |g, i| {
-            nested_vm.globals[i] = g;
+        // Copy globals from current context (nested VM if loading, main VM otherwise)
+        const source_vm = self.current_vm orelse &self.vm;
+        for (source_vm.globals, 0..) |g, i| {
+            macro_vm.globals[i] = g;
         }
-        nested_vm.num_globals = self.vm.num_globals;
+        macro_vm.num_globals = source_vm.num_globals;
 
-        nested_vm.setChunkPool(self.persistent_chunk_ptrs.items);
-        return nested_vm.run(&chunk) catch return error.RuntimeError;
+        macro_vm.setChunkPool(self.persistent_chunk_ptrs.items);
+        return macro_vm.run(&chunk) catch return error.RuntimeError;
     }
 
     // ========================================================================

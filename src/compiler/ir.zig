@@ -10,6 +10,7 @@
 
 const std = @import("std");
 const Value = @import("../runtime/value.zig").Value;
+pub const HashTest = @import("../runtime/objects.zig").HashTest;
 
 /// IR node - represents a Habu expression
 pub const Ir = union(enum) {
@@ -177,9 +178,10 @@ pub const Ir = union(enum) {
     // Hash table operations
     // ========================================================================
 
-    /// Make hash table: (make-hash-table)
+    /// Make hash table: (make-hash-table &key size test)
     make_hash: struct {
         capacity: u16,
+        test_type: HashTest,
     },
 
     /// Hash table get: (gethash key hashtable)

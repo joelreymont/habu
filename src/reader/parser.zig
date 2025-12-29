@@ -14,6 +14,7 @@ pub const Error = error{
     UnexpectedToken,
     UnterminatedList,
     InvalidNumber,
+    VectorTooLarge,
     OutOfMemory,
 };
 
@@ -62,6 +63,7 @@ pub const Parser = struct {
     fn parseExpr(self: *Parser) Error!Value {
         switch (self.current.kind) {
             .lparen => return self.parseList(),
+            .vector_open => return self.parseVector(),
             .quote => return self.parseQuote("quote"),
             .backquote => return self.parseQuote("quasiquote"),
             .comma => return self.parseQuote("unquote"),
@@ -133,6 +135,35 @@ pub const Parser = struct {
         return self.heap.allocCons(car, cdr) orelse error.OutOfMemory;
     }
 
+    fn parseVector(self: *Parser) Error!Value {
+        self.advance(); // consume '#('
+
+        // Collect elements into temporary stack buffer
+        var elements: [256]Value = undefined;
+        var count: usize = 0;
+
+        while (self.current.kind != .rparen) {
+            if (self.current.kind == .eof) {
+                return error.UnterminatedList;
+            }
+            if (count >= elements.len) {
+                return error.VectorTooLarge;
+            }
+            elements[count] = try self.parseExpr();
+            count += 1;
+        }
+        self.advance(); // consume ')'
+
+        // Allocate vector and copy elements
+        const vec_val = self.heap.allocVector(count, count) orelse return error.OutOfMemory;
+        const vec = vec_val.toPtr(runtime.Vector);
+        for (0..count) |i| {
+            vec.data[i] = elements[i];
+        }
+
+        return vec_val;
+    }
+
     fn parseQuote(self: *Parser, quote_name: []const u8) Error!Value {
         self.advance(); // consume quote token
         const quoted = try self.parseExpr();
@@ -184,20 +215,72 @@ pub const Parser = struct {
             text = text[1 .. text.len - 1];
         }
 
-        // TODO: Handle escape sequences properly
+        // Check if we need to decode escapes
+        if (std.mem.indexOf(u8, text, "\\")) |_| {
+            // Has escapes - decode them directly into allocated string
+            return self.decodeStringEscapes(text) orelse error.OutOfMemory;
+        }
+
         return self.heap.allocString(text) orelse error.OutOfMemory;
+    }
+
+    /// Decode escape sequences in a string, allocating result in heap's string space
+    fn decodeStringEscapes(self: *Parser, text: []const u8) ?Value {
+        // First pass: count output size
+        var out_len: usize = 0;
+        var i: usize = 0;
+        while (i < text.len) {
+            if (text[i] == '\\' and i + 1 < text.len) {
+                out_len += 1;
+                i += 2;
+            } else {
+                out_len += 1;
+                i += 1;
+            }
+        }
+
+        // Allocate string with uninitialized content
+        const str_val = self.heap.allocStringUninitialized(out_len) orelse return null;
+        const str = str_val.toPtr(runtime.String);
+        const buffer = str.mutableBytes();
+
+        // Second pass: decode into buffer
+        var out_idx: usize = 0;
+        i = 0;
+        while (i < text.len) {
+            if (text[i] == '\\' and i + 1 < text.len) {
+                const next = text[i + 1];
+                buffer[out_idx] = switch (next) {
+                    'n' => '\n',
+                    't' => '\t',
+                    'r' => '\r',
+                    '\\' => '\\',
+                    '"' => '"',
+                    '0' => 0, // null character
+                    else => next, // Unknown escape - keep as-is
+                };
+                out_idx += 1;
+                i += 2;
+            } else {
+                buffer[out_idx] = text[i];
+                out_idx += 1;
+                i += 1;
+            }
+        }
+
+        return str_val;
     }
 
     fn parseSymbol(self: *Parser) Error!Value {
         const text = self.current.text;
         self.advance();
 
-        // Check for nil and t
+        // Check for nil and t (special symbols)
         if (std.mem.eql(u8, text, "nil")) {
             return Value.nil;
         }
         if (std.mem.eql(u8, text, "t")) {
-            return Value.makeFixnum(1); // t is just fixnum 1
+            return Value.t;
         }
 
         return self.internSymbol(text);

@@ -273,21 +273,20 @@ test "eval let with arithmetic" {
     try testing.expectEqual(@as(i64, 7), result.toFixnum());
 }
 
-// TODO: Nested let with outer variable reference - needs upvalue support
-// test "eval nested let" {
-//     const allocator = testing.allocator;
-//
-//     var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
-//     defer heap.deinit();
-//
-//     const result = try evalExpr(allocator, &heap,
-//         \\(let ((x 10))
-//         \\  (let ((y 20))
-//         \\    (+ x y)))
-//     );
-//     try testing.expect(result.isFixnum());
-//     try testing.expectEqual(@as(i64, 30), result.toFixnum());
-// }
+test "eval nested let" {
+    const allocator = testing.allocator;
+
+    var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
+    defer heap.deinit();
+
+    const result = try evalExpr(allocator, &heap,
+        \\(let ((x 10))
+        \\  (let ((y 20))
+        \\    (+ x y)))
+    );
+    try testing.expect(result.isFixnum());
+    try testing.expectEqual(@as(i64, 30), result.toFixnum());
+}
 
 // ============================================================================
 // Progn Tests

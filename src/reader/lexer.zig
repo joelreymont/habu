@@ -13,6 +13,7 @@ pub const TokenKind = enum {
     lparen,
     rparen,
     dot,
+    vector_open, // #(
 
     // Quotes
     quote,
@@ -281,7 +282,17 @@ pub const Lexer = struct {
             _ = self.advance(); // consume 'o'
             return self.readOctalNumber();
         }
-        // Future: #( for vectors, etc.
+        if (c == '(') {
+            // Vector literal: #(1 2 3)
+            _ = self.advance(); // consume '('
+            return self.makeToken(.vector_open);
+        }
+        if (c == '|') {
+            // Block comment: #| ... |#
+            _ = self.advance(); // consume '|'
+            return self.readBlockComment();
+        }
+        // Unknown # dispatch
         return self.makeToken(.err);
     }
 
@@ -322,6 +333,24 @@ pub const Lexer = struct {
         if (self.pos == start) return self.makeToken(.err);
 
         return self.makeToken(.character);
+    }
+
+    fn readBlockComment(self: *Lexer) Token {
+        // Already consumed '#|'
+        // Block comments can nest: #| outer #| inner |# still outer |#
+        var depth: u32 = 1;
+        while (!self.isAtEnd() and depth > 0) {
+            const c = self.advance();
+            if (c == '|' and self.peek() == '#') {
+                _ = self.advance(); // consume '#'
+                depth -= 1;
+            } else if (c == '#' and self.peek() == '|') {
+                _ = self.advance(); // consume '|'
+                depth += 1;
+            }
+        }
+        // Block comment is just whitespace - get next token
+        return self.next();
     }
 
     fn makeToken(self: *Lexer, kind: TokenKind) Token {
@@ -569,4 +598,40 @@ test "lex octal numbers" {
     const t3 = lexer.next();
     try testing.expectEqual(TokenKind.number, t3.kind);
     try testing.expectEqualStrings("#o0", t3.text);
+}
+
+test "lex vector literal" {
+    const testing = std.testing;
+
+    var lexer = Lexer.init("#(1 2 3)");
+
+    const t1 = lexer.next();
+    try testing.expectEqual(TokenKind.vector_open, t1.kind);
+    try testing.expectEqualStrings("#(", t1.text);
+
+    try testing.expectEqual(TokenKind.number, lexer.next().kind);
+    try testing.expectEqual(TokenKind.number, lexer.next().kind);
+    try testing.expectEqual(TokenKind.number, lexer.next().kind);
+    try testing.expectEqual(TokenKind.rparen, lexer.next().kind);
+    try testing.expectEqual(TokenKind.eof, lexer.next().kind);
+}
+
+test "lex block comment" {
+    const testing = std.testing;
+
+    var lexer = Lexer.init("foo #| this is a comment |# bar");
+
+    try testing.expectEqualStrings("foo", lexer.next().text);
+    try testing.expectEqualStrings("bar", lexer.next().text);
+    try testing.expectEqual(TokenKind.eof, lexer.next().kind);
+}
+
+test "lex nested block comment" {
+    const testing = std.testing;
+
+    var lexer = Lexer.init("foo #| outer #| inner |# still outer |# bar");
+
+    try testing.expectEqualStrings("foo", lexer.next().text);
+    try testing.expectEqualStrings("bar", lexer.next().text);
+    try testing.expectEqual(TokenKind.eof, lexer.next().kind);
 }

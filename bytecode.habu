@@ -1,0 +1,521 @@
+;; bytecode.habu - IR to bytecode emitter for Habu
+;; Compiles IR nodes (from compiler.habu) to stack-based bytecode
+
+(load "stdlib.habu")
+(load "ir.habu")
+
+;; ============================================================================
+;; Opcode constants
+;; ============================================================================
+
+;; Stack manipulation
+(defvar *op-push-nil*     #x00)
+(defvar *op-push-t*       #x01)
+(defvar *op-push-i32*     #x02)
+(defvar *op-push-const*   #x03)
+(defvar *op-dup*          #x04)
+(defvar *op-pop*          #x05)
+
+;; Variable access
+(defvar *op-load-local*   #x10)
+(defvar *op-store-local*  #x11)
+(defvar *op-load-capture* #x12)
+(defvar *op-load-upvalue* #x13)
+(defvar *op-store-upvalue* #x14)
+(defvar *op-load-global*  #x15)
+(defvar *op-store-global* #x16)
+
+;; Arithmetic
+(defvar *op-add*          #x20)
+(defvar *op-sub*          #x21)
+(defvar *op-mul*          #x22)
+(defvar *op-div*          #x23)
+(defvar *op-mod*          #x24)
+
+;; Comparison
+(defvar *op-eq*           #x30)
+(defvar *op-lt*           #x31)
+(defvar *op-gt*           #x32)
+(defvar *op-le*           #x33)
+(defvar *op-ge*           #x34)
+(defvar *op-num-eq*       #x35)
+
+;; Logic
+(defvar *op-not*          #x38)
+
+;; List operations
+(defvar *op-cons*         #x40)
+(defvar *op-car*          #x41)
+(defvar *op-cdr*          #x42)
+
+;; Type predicates
+(defvar *op-consp*        #x50)
+(defvar *op-symbolp*      #x51)
+(defvar *op-numberp*      #x52)
+(defvar *op-stringp*      #x53)
+(defvar *op-nilp*         #x57)
+
+;; Control flow
+(defvar *op-jump*         #x70)
+(defvar *op-jump-if-nil*  #x71)
+(defvar *op-call*         #x80)
+(defvar *op-tail-call*    #x81)
+(defvar *op-ret*          #x82)
+(defvar *op-make-closure* #x83)
+
+;; I/O
+(defvar *op-print*        #x90)
+
+;; ============================================================================
+;; Emitter state
+;; ============================================================================
+
+(defvar *code* nil)           ; bytecode buffer (list of bytes, reversed)
+(defvar *code-len* 0)         ; current code length
+(defvar *constants* nil)      ; constant pool (list of values, reversed)
+(defvar *const-count* 0)      ; number of constants
+(defvar *child-chunks* nil)   ; child chunks for lambdas
+(defvar *num-locals* 0)       ; number of local variables
+(defvar *arity* 0)            ; function arity
+
+(defun emitter-reset ()
+  "Reset emitter state for new compilation"
+  (setq *code* nil)
+  (setq *code-len* 0)
+  (setq *constants* nil)
+  (setq *const-count* 0)
+  (setq *child-chunks* nil)
+  (setq *num-locals* 0)
+  (setq *arity* 0))
+
+;; ============================================================================
+;; Low-level emission
+;; ============================================================================
+
+(defun emit-byte (b)
+  "Emit a single byte"
+  (setq *code* (cons b *code*))
+  (setq *code-len* (+ *code-len* 1)))
+
+(defun emit-u16 (n)
+  "Emit a 16-bit little-endian value"
+  (emit-byte (mod n 256))
+  (emit-byte (/ n 256)))
+
+(defun emit-i32 (n)
+  "Emit a 32-bit little-endian value"
+  (emit-byte (mod n 256))
+  (emit-byte (mod (/ n 256) 256))
+  (emit-byte (mod (/ n 65536) 256))
+  (emit-byte (mod (/ n 16777216) 256)))
+
+(defun emit-op (op)
+  "Emit an opcode"
+  (emit-byte op))
+
+(defun current-pos ()
+  "Get current bytecode position"
+  *code-len*)
+
+(defun list-set (lst idx val)
+  "Set element at index idx in list to val (destructive)"
+  (if (= idx 0)
+      (rplaca lst val)
+      (list-set (cdr lst) (- idx 1) val)))
+
+(defun patch-u16 (pos val)
+  "Patch a 16-bit value at position pos (little-endian)"
+  ;; *code* is reversed, so position pos is at index (*code-len* - 1 - pos)
+  (let ((lo-byte (mod val 256))
+        (hi-byte (/ val 256))
+        (lo-idx (- *code-len* 1 pos))
+        (hi-idx (- *code-len* 2 pos)))
+    (list-set *code* lo-idx lo-byte)
+    (list-set *code* hi-idx hi-byte)))
+
+;; ============================================================================
+;; Constant pool
+;; ============================================================================
+
+(defun add-constant (val)
+  "Add value to constant pool, return index"
+  (let ((idx *const-count*))
+    (setq *constants* (cons val *constants*))
+    (setq *const-count* (+ *const-count* 1))
+    idx))
+
+(defun emit-constant (val)
+  "Emit push_const with value"
+  (emit-op *op-push-const*)
+  (emit-u16 (add-constant val)))
+
+;; ============================================================================
+;; IR node emission
+;; ============================================================================
+
+(defun emit-ir (node)
+  "Emit bytecode for an IR node"
+  (cond
+    ;; Literals - ir-nil and ir-t are actually ir-lit with nil/t values
+    ((ir-lit? node)
+     (let ((val (ir-lit-value node)))
+       (cond
+         ((null val)
+          (emit-op *op-push-nil*))
+         ((eq val t)
+          (emit-op *op-push-t*))
+         ((numberp val)
+          (if (and (>= val -2147483648) (<= val 2147483647))
+              (progn
+                (emit-op *op-push-i32*)
+                (emit-i32 val))
+              (emit-constant val)))
+         (t
+          (emit-constant val)))))
+
+    ((ir-quote-sym? node)
+     (emit-constant (ir-quote-sym-name node)))
+
+    ;; Variables
+    ((ir-var? node)
+     (let ((depth (ir-var-depth node))
+           (index (ir-var-index node)))
+       (if (= depth 0)
+           (progn
+             (emit-op *op-load-local*)
+             (emit-byte index))
+           (progn
+             (emit-op *op-load-upvalue*)
+             (emit-byte depth)
+             (emit-byte index)))))
+
+    ((ir-global-ref? node)
+     (emit-op *op-load-global*)
+     (emit-u16 (ir-global-ref-index node)))
+
+    ;; Definitions
+    ((ir-define? node)
+     (emit-ir (ir-define-value node))
+     (emit-op *op-store-global*)
+     (emit-u16 (ir-define-index node)))
+
+    ;; Let binding
+    ((ir-let? node)
+     (let ((bindings (ir-let-bindings node))
+           (body (ir-let-body node)))
+       ;; Emit values for each binding
+       (dolist (binding bindings)
+         (emit-ir (make-binding-value binding)))
+       ;; Store into locals (bindings are already allocated)
+       ;; Body can reference them
+       (emit-ir body)))
+
+    ;; Lambda
+    ((ir-lambda? node)
+     (emit-lambda node))
+
+    ;; If
+    ((ir-if? node)
+     (emit-if node))
+
+    ;; Progn
+    ((ir-progn? node)
+     (emit-progn (ir-progn-forms node)))
+
+    ;; Setq
+    ((ir-set? node)
+     (emit-ir (ir-set-value node))
+     (let ((depth (ir-set-depth node))
+           (index (ir-set-index node)))
+       (if (= depth 0)
+           (progn
+             (emit-op *op-store-local*)
+             (emit-byte index))
+           (progn
+             (emit-op *op-store-upvalue*)
+             (emit-byte depth)
+             (emit-byte index)))))
+
+    ;; Arithmetic
+    ((ir-add? node)
+     (emit-ir (ir-add-left node))
+     (emit-ir (ir-add-right node))
+     (emit-op *op-add*))
+
+    ((ir-sub? node)
+     (emit-ir (ir-sub-left node))
+     (emit-ir (ir-sub-right node))
+     (emit-op *op-sub*))
+
+    ((ir-mul? node)
+     (emit-ir (ir-mul-left node))
+     (emit-ir (ir-mul-right node))
+     (emit-op *op-mul*))
+
+    ((ir-div? node)
+     (emit-ir (ir-div-left node))
+     (emit-ir (ir-div-right node))
+     (emit-op *op-div*))
+
+    ((ir-mod? node)
+     (emit-ir (ir-mod-left node))
+     (emit-ir (ir-mod-right node))
+     (emit-op *op-mod*))
+
+    ;; Comparison
+    ((ir-eq? node)
+     (emit-ir (ir-eq-left node))
+     (emit-ir (ir-eq-right node))
+     (emit-op *op-eq*))
+
+    ((ir-lt? node)
+     (emit-ir (ir-lt-left node))
+     (emit-ir (ir-lt-right node))
+     (emit-op *op-lt*))
+
+    ((ir-gt? node)
+     (emit-ir (ir-gt-left node))
+     (emit-ir (ir-gt-right node))
+     (emit-op *op-gt*))
+
+    ((ir-le? node)
+     (emit-ir (ir-le-left node))
+     (emit-ir (ir-le-right node))
+     (emit-op *op-le*))
+
+    ((ir-ge? node)
+     (emit-ir (ir-ge-left node))
+     (emit-ir (ir-ge-right node))
+     (emit-op *op-ge*))
+
+    ((ir-num-eq? node)
+     (emit-ir (ir-num-eq-left node))
+     (emit-ir (ir-num-eq-right node))
+     (emit-op *op-num-eq*))
+
+    ;; Logic
+    ((ir-not? node)
+     (emit-ir (ir-not-operand node))
+     (emit-op *op-not*))
+
+    ;; List operations
+    ((ir-cons? node)
+     (emit-ir (ir-cons-left node))
+     (emit-ir (ir-cons-right node))
+     (emit-op *op-cons*))
+
+    ((ir-car? node)
+     (emit-ir (ir-car-operand node))
+     (emit-op *op-car*))
+
+    ((ir-cdr? node)
+     (emit-ir (ir-cdr-operand node))
+     (emit-op *op-cdr*))
+
+    ;; Type predicates
+    ((ir-consp? node)
+     (emit-ir (ir-consp-operand node))
+     (emit-op *op-consp*))
+
+    ((ir-symbolp? node)
+     (emit-ir (ir-symbolp-operand node))
+     (emit-op *op-symbolp*))
+
+    ((ir-numberp? node)
+     (emit-ir (ir-numberp-operand node))
+     (emit-op *op-numberp*))
+
+    ((ir-stringp? node)
+     (emit-ir (ir-stringp-operand node))
+     (emit-op *op-stringp*))
+
+    ((ir-nilp? node)
+     (emit-ir (ir-nilp-operand node))
+     (emit-op *op-nilp*))
+
+    ;; I/O
+    ((ir-print? node)
+     (emit-ir (ir-print-operand node))
+     (emit-op *op-print*))
+
+    ;; Function call
+    ((ir-call? node)
+     (emit-call node))
+
+    (t (error "Unknown IR node type"))))
+
+;; ============================================================================
+;; Complex emission helpers
+;; ============================================================================
+
+(defun emit-if (node)
+  "Emit bytecode for if expression"
+  (let ((cond-ir (ir-if-cond node))
+        (then-ir (ir-if-then node))
+        (else-ir (ir-if-else node)))
+    ;; Emit condition
+    (emit-ir cond-ir)
+    ;; Jump if nil to else branch
+    (emit-op *op-jump-if-nil*)
+    (let ((else-jump-pos (current-pos)))
+      (emit-u16 0)  ; placeholder for else target
+      ;; Emit then branch
+      (emit-ir then-ir)
+      ;; Jump over else to end
+      (emit-op *op-jump*)
+      (let ((end-jump-pos (current-pos)))
+        (emit-u16 0)  ; placeholder for end target
+        ;; Patch else jump to here (start of else branch)
+        (patch-u16 else-jump-pos (current-pos))
+        ;; Emit else branch
+        (emit-ir else-ir)
+        ;; Patch end jump to here (after else branch)
+        (patch-u16 end-jump-pos (current-pos))))))
+
+(defun emit-progn (exprs)
+  "Emit bytecode for progn"
+  (if (null exprs)
+      (emit-op *op-push-nil*)
+      (if (null (cdr exprs))
+          (emit-ir (car exprs))
+          (progn
+            (emit-ir (car exprs))
+            (emit-op *op-pop*)
+            (emit-progn (cdr exprs))))))
+
+(defun emit-lambda (node)
+  "Emit bytecode for lambda - creates a child chunk"
+  (let ((params (ir-lambda-params node))
+        (body (ir-lambda-body node)))
+    ;; Save emitter state
+    (let ((saved-code *code*)
+          (saved-len *code-len*)
+          (saved-consts *constants*)
+          (saved-const-count *const-count*)
+          (saved-num-locals *num-locals*))
+      ;; Reset for lambda body
+      (setq *code* nil)
+      (setq *code-len* 0)
+      (setq *constants* nil)
+      (setq *const-count* 0)
+      (setq *num-locals* (length params))
+      ;; Emit body
+      (emit-ir body)
+      (emit-op *op-ret*)
+      ;; Create child chunk
+      (let ((chunk-idx (length *child-chunks*))
+            (lambda-code (reverse *code*))
+            (lambda-consts (reverse *constants*)))
+        (setq *child-chunks*
+              (cons (list lambda-code lambda-consts (length params) *num-locals*)
+                    *child-chunks*))
+        ;; Restore emitter state
+        (setq *code* saved-code)
+        (setq *code-len* saved-len)
+        (setq *constants* saved-consts)
+        (setq *const-count* saved-const-count)
+        (setq *num-locals* saved-num-locals)
+        ;; Emit make_closure instruction
+        (emit-op *op-make-closure*)
+        (emit-u16 chunk-idx)
+        (emit-byte 0)))))  ; num captures (TODO)
+
+(defun emit-call (node)
+  "Emit bytecode for function call"
+  (let ((func (ir-call-func node))
+        (args (ir-call-args node)))
+    ;; Emit function
+    (emit-ir func)
+    ;; Emit arguments
+    (let ((argc 0))
+      (dolist (arg args)
+        (emit-ir arg)
+        (setq argc (+ argc 1)))
+      ;; Call with argc
+      (emit-op *op-call*)
+      (emit-byte argc))))
+
+;; ============================================================================
+;; Top-level compilation
+;; ============================================================================
+
+(defun emit-top (ir)
+  "Compile IR to bytecode, returns (code constants child-chunks)"
+  (emitter-reset)
+  (emit-ir ir)
+  (emit-op *op-ret*)
+  (list (reverse *code*)
+        (reverse *constants*)
+        (reverse *child-chunks*)))
+
+;; ============================================================================
+;; Tests
+;; ============================================================================
+
+(defun test-emit ()
+  (progn
+    (print "Testing emitter...")
+
+    ;; Test literal
+    (print "Literal 42:")
+    (let ((result (emit-top (ir-lit 42))))
+      (print (car result)))
+
+    ;; Test arithmetic
+    (print "Arithmetic (+ 1 2):")
+    (let ((result (emit-top (ir-add (ir-lit 1) (ir-lit 2)))))
+      (print (car result)))
+
+    ;; Test if with proper jump targets
+    (print "If (with patched jumps):")
+    (let ((result (emit-top (ir-if (ir-t) (ir-lit 1) (ir-lit 2)))))
+      (print (car result)))
+
+    ;; Test nested if
+    (print "Nested if:")
+    (let ((result (emit-top (ir-if (ir-nil)
+                                   (ir-lit 100)
+                                   (ir-if (ir-t)
+                                          (ir-lit 200)
+                                          (ir-lit 300))))))
+      (print (car result)))
+
+    t))
+
+;; Full pipeline test: source -> IR -> bytecode
+;; Run with: (load "compiler.habu") (load "bytecode.habu") (test-pipeline)
+(defun test-pipeline ()
+  (progn
+    (print "Testing full pipeline...")
+
+    ;; Test simple expression
+    (print "Pipeline: (+ 1 2)")
+    (let ((compiled-ir (compile-top '(+ 1 2))))
+      (let ((result (emit-top compiled-ir)))
+        (print "  Bytecode:")
+        (print (car result))))
+
+    ;; Test if expression
+    (print "Pipeline: (if t 42 0)")
+    (let ((compiled-ir (compile-top '(if t 42 0))))
+      (let ((result (emit-top compiled-ir)))
+        (print "  Bytecode:")
+        (print (car result))))
+
+    ;; Test let
+    (print "Pipeline: (let ((x 10)) (+ x 1))")
+    (let ((compiled-ir (compile-top '(let ((x 10)) (+ x 1)))))
+      (let ((result (emit-top compiled-ir)))
+        (print "  Bytecode:")
+        (print (car result))))
+
+    ;; Test lambda
+    (print "Pipeline: (lambda (x) (+ x 1))")
+    (let ((compiled-ir (compile-top '(lambda (x) (+ x 1)))))
+      (let ((result (emit-top compiled-ir)))
+        (print "  Bytecode:")
+        (print (car result))
+        (print "  Child chunks:")
+        (print (caddr result))))
+
+    t))
