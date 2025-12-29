@@ -37,6 +37,40 @@
            (setq ,var (+ ,var 1)))
          ,result-form))))
 
+;;; do* - sequential iteration with stepping
+;;; (do* ((var init step)...) (end-test result...) body...)
+;;; Example: (do* ((i 0 (+ i 1))) ((>= i 5) i) (print i))
+(defmacro do* (bindings end-clause &rest body)
+  ;; Build let* bindings: ((var init) ...) from ((var init step) ...)
+  (let ((let-bindings (do*-bindings bindings))
+        (step-forms (do*-steps bindings))
+        (end-test (car end-clause))
+        (result-forms (cdr end-clause)))
+    `(let* ,let-bindings
+       (block nil
+         (while (not ,end-test)
+           ,@body
+           ,@step-forms)
+         ,@result-forms))))
+
+;;; Helper: extract (var init) pairs from do* bindings
+(defun do*-bindings (bindings)
+  (if (null bindings)
+      nil
+      (let ((b (car bindings)))
+        (cons (list (car b) (cadr b))
+              (do*-bindings (cdr bindings))))))
+
+;;; Helper: extract (setq var step) forms from do* bindings
+(defun do*-steps (bindings)
+  (if (null bindings)
+      nil
+      (let ((b (car bindings)))
+        (if (cddr b)  ; has step form?
+            (cons (list 'setq (car b) (caddr b))
+                  (do*-steps (cdr bindings)))
+            (do*-steps (cdr bindings))))))
+
 ;;; Mutation macros (fixed arity)
 (defmacro incf (place)
   `(setq ,place (+ ,place 1)))
