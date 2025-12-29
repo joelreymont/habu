@@ -10,7 +10,7 @@ pub const Token = lexer.Token;
 pub const TokenKind = lexer.TokenKind;
 
 pub const Parser = parser.Parser;
-pub const ParseError = parser.ParseError;
+pub const ParseError = parser.Error;
 
 test {
     _ = lexer;

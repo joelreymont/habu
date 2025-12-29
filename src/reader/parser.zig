@@ -10,7 +10,7 @@ const runtime = @import("../runtime/runtime.zig");
 const Value = runtime.Value;
 const Heap = runtime.Heap;
 
-pub const ParseError = error{
+pub const Error = error{
     UnexpectedToken,
     UnterminatedList,
     InvalidNumber,
@@ -47,19 +47,19 @@ pub const Parser = struct {
     }
 
     /// Parse one S-expression
-    pub fn parse(self: *Parser) ParseError!Value {
+    pub fn parse(self: *Parser) Error!Value {
         return self.parseExpr();
     }
 
     /// Parse all expressions until EOF
-    pub fn parseAll(self: *Parser, allocator: std.mem.Allocator, results: *std.ArrayList(Value)) ParseError!void {
+    pub fn parseAll(self: *Parser, allocator: std.mem.Allocator, results: *std.ArrayList(Value)) Error!void {
         while (self.current.kind != .eof) {
             const expr = try self.parseExpr();
             results.append(allocator, expr) catch return error.OutOfMemory;
         }
     }
 
-    fn parseExpr(self: *Parser) ParseError!Value {
+    fn parseExpr(self: *Parser) Error!Value {
         switch (self.current.kind) {
             .lparen => return self.parseList(),
             .quote => return self.parseQuote("quote"),
@@ -79,7 +79,7 @@ pub const Parser = struct {
         }
     }
 
-    fn parseList(self: *Parser) ParseError!Value {
+    fn parseList(self: *Parser) Error!Value {
         self.advance(); // consume '('
 
         if (self.current.kind == .rparen) {
@@ -108,7 +108,7 @@ pub const Parser = struct {
         return self.heap.allocCons(first, rest) orelse error.OutOfMemory;
     }
 
-    fn parseListTail(self: *Parser) ParseError!Value {
+    fn parseListTail(self: *Parser) Error!Value {
         if (self.current.kind == .rparen) {
             self.advance();
             return Value.nil;
@@ -133,7 +133,7 @@ pub const Parser = struct {
         return self.heap.allocCons(car, cdr) orelse error.OutOfMemory;
     }
 
-    fn parseQuote(self: *Parser, quote_name: []const u8) ParseError!Value {
+    fn parseQuote(self: *Parser, quote_name: []const u8) Error!Value {
         self.advance(); // consume quote token
         const quoted = try self.parseExpr();
 
@@ -143,7 +143,7 @@ pub const Parser = struct {
         return self.heap.allocCons(quote_sym, inner) orelse error.OutOfMemory;
     }
 
-    fn parseNumber(self: *Parser) ParseError!Value {
+    fn parseNumber(self: *Parser) Error!Value {
         const text = self.current.text;
         self.advance();
 
@@ -167,7 +167,7 @@ pub const Parser = struct {
         return Value.makeFixnum(n);
     }
 
-    fn parseFloat(self: *Parser) ParseError!Value {
+    fn parseFloat(self: *Parser) Error!Value {
         const text = self.current.text;
         self.advance();
 
@@ -175,7 +175,7 @@ pub const Parser = struct {
         return Value.makeFloat(f);
     }
 
-    fn parseString(self: *Parser) ParseError!Value {
+    fn parseString(self: *Parser) Error!Value {
         var text = self.current.text;
         self.advance();
 
@@ -188,7 +188,7 @@ pub const Parser = struct {
         return self.heap.allocString(text) orelse error.OutOfMemory;
     }
 
-    fn parseSymbol(self: *Parser) ParseError!Value {
+    fn parseSymbol(self: *Parser) Error!Value {
         const text = self.current.text;
         self.advance();
 
@@ -203,7 +203,7 @@ pub const Parser = struct {
         return self.internSymbol(text);
     }
 
-    fn parseKeyword(self: *Parser) ParseError!Value {
+    fn parseKeyword(self: *Parser) Error!Value {
         var text = self.current.text;
         self.advance();
 
@@ -216,16 +216,16 @@ pub const Parser = struct {
     }
 
     /// Intern a symbol (same name = same Value)
-    fn internSymbol(self: *Parser, name: []const u8) ParseError!Value {
+    fn internSymbol(self: *Parser, name: []const u8) Error!Value {
         return self.heap.intern(name) orelse error.OutOfMemory;
     }
 
     /// Intern a keyword (same name = same Value)
-    fn internKeyword(self: *Parser, name: []const u8) ParseError!Value {
+    fn internKeyword(self: *Parser, name: []const u8) Error!Value {
         return self.heap.internKeyword(name) orelse error.OutOfMemory;
     }
 
-    fn parseCharacter(self: *Parser) ParseError!Value {
+    fn parseCharacter(self: *Parser) Error!Value {
         const text = self.current.text;
         self.advance();
 

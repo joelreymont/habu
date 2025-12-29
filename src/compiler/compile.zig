@@ -33,7 +33,7 @@ const bytecode = @import("../bytecode/bytecode.zig");
 const Emitter = bytecode.Emitter;
 const Chunk = bytecode.Chunk;
 
-pub const CompileError = error{
+pub const Error = error{
     InvalidSyntax,
     UnboundVariable,
     InvalidLambda,
@@ -777,7 +777,7 @@ pub const Compiler = struct {
         env: *const Env,
         type_env: *const TypeEnv,
         occ: *const OccurrenceCtx,
-    ) CompileError!TypedIr {
+    ) Error!TypedIr {
         const ir_node = try self.compile(expr, env);
 
         // Infer type based on IR node
@@ -910,7 +910,7 @@ pub const Compiler = struct {
         env: *const Env,
         type_env: *const TypeEnv,
         occ: *OccurrenceCtx,
-    ) CompileError!TypedIr {
+    ) Error!TypedIr {
         // (if test then else?)
         if (!args.isCons()) return error.InvalidIf;
 
@@ -964,12 +964,12 @@ pub const Compiler = struct {
     }
 
     /// Compile a single expression
-    pub fn compile(self: *Compiler, expr: Value, env: *const Env) CompileError!*Ir {
+    pub fn compile(self: *Compiler, expr: Value, env: *const Env) Error!*Ir {
         return self.compileWithTail(expr, env, false);
     }
 
     /// Compile with tail position tracking
-    fn compileWithTail(self: *Compiler, expr: Value, env: *const Env, in_tail: bool) CompileError!*Ir {
+    fn compileWithTail(self: *Compiler, expr: Value, env: *const Env, in_tail: bool) Error!*Ir {
         // Nil
         if (expr.isNil()) {
             return self.builder.lit(Value.nil) catch return error.OutOfMemory;
@@ -1034,7 +1034,7 @@ pub const Compiler = struct {
         return error.InvalidSyntax;
     }
 
-    fn compileList(self: *Compiler, expr: Value, env: *const Env) CompileError!*Ir {
+    fn compileList(self: *Compiler, expr: Value, env: *const Env) Error!*Ir {
         return self.compileListWithTail(expr, env, false);
     }
 
@@ -1132,7 +1132,7 @@ pub const Compiler = struct {
         .{ "eval-when", .@"eval-when" },
     });
 
-    fn compileListWithTail(self: *Compiler, expr: Value, env: *const Env, in_tail: bool) CompileError!*Ir {
+    fn compileListWithTail(self: *Compiler, expr: Value, env: *const Env, in_tail: bool) Error!*Ir {
         const cons = expr.toPtr(Cons);
         const head = cons.car;
         const tail = cons.cdr;
@@ -1301,11 +1301,11 @@ pub const Compiler = struct {
         return vm.callClosure(closure, arg_count) catch return error.InvalidSyntax;
     }
 
-    fn compileIf(self: *Compiler, args: Value, env: *const Env) CompileError!*Ir {
+    fn compileIf(self: *Compiler, args: Value, env: *const Env) Error!*Ir {
         return self.compileIfWithTail(args, env, false);
     }
 
-    fn compileIfWithTail(self: *Compiler, args: Value, env: *const Env, in_tail: bool) CompileError!*Ir {
+    fn compileIfWithTail(self: *Compiler, args: Value, env: *const Env, in_tail: bool) Error!*Ir {
         // (if test then else?)
         if (!args.isCons()) return error.InvalidIf;
 
@@ -1379,11 +1379,11 @@ pub const Compiler = struct {
         type_name: ?[]const u8, // null for untyped
     };
 
-    fn compileLambda(self: *Compiler, args: Value, env: *const Env) CompileError!*Ir {
+    fn compileLambda(self: *Compiler, args: Value, env: *const Env) Error!*Ir {
         return self.compileLambdaCore(args, env, null);
     }
 
-    fn compileLambdaCore(self: *Compiler, args: Value, env: *const Env, return_type: ?[]const u8) CompileError!*Ir {
+    fn compileLambdaCore(self: *Compiler, args: Value, env: *const Env, return_type: ?[]const u8) Error!*Ir {
         // (lambda (params...) body)
         // Params can be: symbol for untyped, (symbol type) for typed
         if (!args.isCons()) return error.InvalidLambda;
@@ -1886,11 +1886,11 @@ pub const Compiler = struct {
         }
     }
 
-    fn compileLet(self: *Compiler, args: Value, env: *const Env) CompileError!*Ir {
+    fn compileLet(self: *Compiler, args: Value, env: *const Env) Error!*Ir {
         return self.compileLetWithTail(args, env, false);
     }
 
-    fn compileLetWithTail(self: *Compiler, args: Value, env: *const Env, in_tail: bool) CompileError!*Ir {
+    fn compileLetWithTail(self: *Compiler, args: Value, env: *const Env, in_tail: bool) Error!*Ir {
         // (let ((x 1) (y 2)) body)
         if (!args.isCons()) return error.InvalidLet;
 
@@ -1975,7 +1975,7 @@ pub const Compiler = struct {
         return self.builder.letExpr(bindings.items, body_ir) catch return error.OutOfMemory;
     }
 
-    fn compileLetrecWithTail(self: *Compiler, args: Value, env: *const Env, in_tail: bool) CompileError!*Ir {
+    fn compileLetrecWithTail(self: *Compiler, args: Value, env: *const Env, in_tail: bool) Error!*Ir {
         // (letrec ((f (lambda ...)) (g (lambda ...))) body)
         // Compile as: pre-register globals, define each, then body
         // This allows recursive/mutual recursion via global references
@@ -2039,7 +2039,7 @@ pub const Compiler = struct {
         return self.builder.progn(items) catch return error.OutOfMemory;
     }
 
-    fn compileFletWithTail(self: *Compiler, args: Value, env: *const Env, in_tail: bool) CompileError!*Ir {
+    fn compileFletWithTail(self: *Compiler, args: Value, env: *const Env, in_tail: bool) Error!*Ir {
         // (flet ((fname (args) body...) ...) body)
         // Desugars to let with lambdas - functions don't see each other
         if (!args.isCons()) return error.InvalidLet;
@@ -2089,7 +2089,7 @@ pub const Compiler = struct {
         return self.builder.letExpr(bindings.items, body_ir) catch return error.OutOfMemory;
     }
 
-    fn compileLabelsWithTail(self: *Compiler, args: Value, env: *const Env, in_tail: bool) CompileError!*Ir {
+    fn compileLabelsWithTail(self: *Compiler, args: Value, env: *const Env, in_tail: bool) Error!*Ir {
         // (labels ((fname (args) body...) ...) body)
         // Like letrec - functions can see each other and themselves
         if (!args.isCons()) return error.InvalidLet;
@@ -2152,7 +2152,7 @@ pub const Compiler = struct {
         return self.builder.progn(items) catch return error.OutOfMemory;
     }
 
-    fn compileLetStarWithTail(self: *Compiler, args: Value, env: *const Env, in_tail: bool) CompileError!*Ir {
+    fn compileLetStarWithTail(self: *Compiler, args: Value, env: *const Env, in_tail: bool) Error!*Ir {
         // (let* ((x 1) (y (+ x 1))) body)
         // Compiles to nested lets: (let ((x 1)) (let ((y (+ x 1))) body))
         if (!args.isCons()) return error.InvalidLet;
@@ -2172,7 +2172,7 @@ pub const Compiler = struct {
         return self.compileLetStarBindings(bindings_expr, body_exprs, env, in_tail);
     }
 
-    fn compileLetStarBindings(self: *Compiler, bindings_list: Value, body_exprs: Value, env: *const Env, in_tail: bool) CompileError!*Ir {
+    fn compileLetStarBindings(self: *Compiler, bindings_list: Value, body_exprs: Value, env: *const Env, in_tail: bool) Error!*Ir {
         if (!bindings_list.isCons()) return error.InvalidLet;
 
         const binding_cons = bindings_list.toPtr(Cons);
@@ -2209,7 +2209,7 @@ pub const Compiler = struct {
         return self.builder.letExpr(&binding_array, inner_ir) catch return error.OutOfMemory;
     }
 
-    fn compileCondWithTail(self: *Compiler, args: Value, env: *const Env, in_tail: bool) CompileError!*Ir {
+    fn compileCondWithTail(self: *Compiler, args: Value, env: *const Env, in_tail: bool) Error!*Ir {
         // (cond (test1 expr1...) (test2 expr2...) ... [(t exprN...)])
         // Transform to nested ifs
         if (args.isNil()) {
@@ -2245,7 +2245,7 @@ pub const Compiler = struct {
         return self.builder.ifExpr(test_ir, then_ir, else_ir) catch return error.OutOfMemory;
     }
 
-    fn compileAnd(self: *Compiler, args: Value, env: *const Env) CompileError!*Ir {
+    fn compileAnd(self: *Compiler, args: Value, env: *const Env) Error!*Ir {
         // (and a b) -> (if a b nil)
         if (!args.isCons()) return error.InvalidSyntax;
 
@@ -2276,7 +2276,7 @@ pub const Compiler = struct {
         return self.builder.ifExpr(first_ir, second_ir, nil_ir) catch return error.OutOfMemory;
     }
 
-    fn compileOr(self: *Compiler, args: Value, env: *const Env) CompileError!*Ir {
+    fn compileOr(self: *Compiler, args: Value, env: *const Env) Error!*Ir {
         // (or a b) -> (let ((tmp a)) (if tmp tmp b))
         if (!args.isCons()) return error.InvalidSyntax;
 
@@ -2310,7 +2310,7 @@ pub const Compiler = struct {
         return self.builder.letExpr(bindings, body) catch return error.OutOfMemory;
     }
 
-    fn compileFuncall(self: *Compiler, args: Value, env: *const Env) CompileError!*Ir {
+    fn compileFuncall(self: *Compiler, args: Value, env: *const Env) Error!*Ir {
         // (funcall fn arg1 arg2 ...) - same as regular call with computed function
         if (!args.isCons()) return error.InvalidSyntax;
 
@@ -2318,7 +2318,7 @@ pub const Compiler = struct {
         return self.compileCallWithTail(cons1.car, cons1.cdr, env, false);
     }
 
-    fn compileApply(self: *Compiler, args: Value, env: *const Env) CompileError!*Ir {
+    fn compileApply(self: *Compiler, args: Value, env: *const Env) Error!*Ir {
         // (apply fn args-list)
         if (!args.isCons()) return error.InvalidSyntax;
 
@@ -2338,7 +2338,7 @@ pub const Compiler = struct {
         return node;
     }
 
-    fn compileSet(self: *Compiler, args: Value, env: *const Env) CompileError!*Ir {
+    fn compileSet(self: *Compiler, args: Value, env: *const Env) Error!*Ir {
         // (set! var value) or (setq var value)
         if (!args.isCons()) return error.InvalidSet;
 
@@ -2378,7 +2378,7 @@ pub const Compiler = struct {
         return error.UnboundVariable;
     }
 
-    fn compileQuote(self: *Compiler, args: Value) CompileError!*Ir {
+    fn compileQuote(self: *Compiler, args: Value) Error!*Ir {
         // (quote expr)
         if (!args.isCons()) return error.InvalidSyntax;
 
@@ -2397,7 +2397,7 @@ pub const Compiler = struct {
 
     /// Compile function special form: (function name) or (function (lambda ...))
     /// #'name is reader syntax that expands to (function name)
-    fn compileFunction(self: *Compiler, args: Value, env: *const Env) CompileError!*Ir {
+    fn compileFunction(self: *Compiler, args: Value, env: *const Env) Error!*Ir {
         // (function expr)
         if (!args.isCons()) return error.InvalidSyntax;
 
@@ -2427,7 +2427,7 @@ pub const Compiler = struct {
 
     /// Compile quasiquote (backquote)
     /// Handles unquote (,) and unquote-splicing (,@)
-    fn compileQuasiquote(self: *Compiler, args: Value, env: *const Env) CompileError!*Ir {
+    fn compileQuasiquote(self: *Compiler, args: Value, env: *const Env) Error!*Ir {
         // (quasiquote expr)
         if (!args.isCons()) return error.InvalidSyntax;
 
@@ -2438,7 +2438,7 @@ pub const Compiler = struct {
     }
 
     /// Process an expression inside quasiquote
-    fn quasiquoteExpr(self: *Compiler, expr: Value, env: *const Env) CompileError!*Ir {
+    fn quasiquoteExpr(self: *Compiler, expr: Value, env: *const Env) Error!*Ir {
         // Non-list: return as quoted literal
         if (!expr.isCons()) {
             if (expr.isSymbol()) {
@@ -2484,7 +2484,7 @@ pub const Compiler = struct {
     }
 
     /// Build a list from quasiquoted elements using cons/append
-    fn quasiquoteList(self: *Compiler, list: Value, env: *const Env) CompileError!*Ir {
+    fn quasiquoteList(self: *Compiler, list: Value, env: *const Env) Error!*Ir {
         if (list.isNil()) {
             return self.builder.lit(Value.nil) catch return error.OutOfMemory;
         }
@@ -2533,15 +2533,15 @@ pub const Compiler = struct {
         return self.builder.cons(head_ir, tail_ir) catch return error.OutOfMemory;
     }
 
-    fn compileProgn(self: *Compiler, args: Value, env: *const Env) CompileError!*Ir {
+    fn compileProgn(self: *Compiler, args: Value, env: *const Env) Error!*Ir {
         return self.compileBody(args, env);
     }
 
-    fn compilePrognWithTail(self: *Compiler, args: Value, env: *const Env, in_tail: bool) CompileError!*Ir {
+    fn compilePrognWithTail(self: *Compiler, args: Value, env: *const Env, in_tail: bool) Error!*Ir {
         return self.compileBodyWithTail(args, env, in_tail);
     }
 
-    fn compileWhile(self: *Compiler, args: Value, env: *const Env) CompileError!*Ir {
+    fn compileWhile(self: *Compiler, args: Value, env: *const Env) Error!*Ir {
         // (while test body...)
         if (!args.isCons()) return error.InvalidSyntax;
 
@@ -2555,7 +2555,7 @@ pub const Compiler = struct {
         return self.builder.loop(test_ir, body_ir) catch return error.OutOfMemory;
     }
 
-    fn compileBlockWithTail(self: *Compiler, args: Value, env: *const Env, in_tail: bool) CompileError!*Ir {
+    fn compileBlockWithTail(self: *Compiler, args: Value, env: *const Env, in_tail: bool) Error!*Ir {
         // (block name body...) - name can be symbol or nil
         if (!args.isCons()) return error.InvalidSyntax;
 
@@ -2573,7 +2573,7 @@ pub const Compiler = struct {
         return self.builder.block(name, body_ir) catch return error.OutOfMemory;
     }
 
-    fn compileReturnFrom(self: *Compiler, args: Value, env: *const Env) CompileError!*Ir {
+    fn compileReturnFrom(self: *Compiler, args: Value, env: *const Env) Error!*Ir {
         // (return-from name value) - name can be symbol or nil
         if (!args.isCons()) return error.InvalidSyntax;
 
@@ -2596,7 +2596,7 @@ pub const Compiler = struct {
         return self.builder.returnFrom(name, value_ir) catch return error.OutOfMemory;
     }
 
-    fn compileUnwindProtectWithTail(self: *Compiler, args: Value, env: *const Env, in_tail: bool) CompileError!*Ir {
+    fn compileUnwindProtectWithTail(self: *Compiler, args: Value, env: *const Env, in_tail: bool) Error!*Ir {
         // (unwind-protect protected cleanup...)
         if (!args.isCons()) return error.InvalidSyntax;
 
@@ -2612,7 +2612,7 @@ pub const Compiler = struct {
         return self.builder.unwindProtect(protected_ir, cleanup_ir) catch return error.OutOfMemory;
     }
 
-    fn compileCatchWithTail(self: *Compiler, args: Value, env: *const Env, in_tail: bool) CompileError!*Ir {
+    fn compileCatchWithTail(self: *Compiler, args: Value, env: *const Env, in_tail: bool) Error!*Ir {
         // (catch tag body...)
         if (!args.isCons()) return error.InvalidSyntax;
 
@@ -2628,7 +2628,7 @@ pub const Compiler = struct {
         return self.builder.@"catch"(tag_ir, body_ir) catch return error.OutOfMemory;
     }
 
-    fn compileThrow(self: *Compiler, args: Value, env: *const Env) CompileError!*Ir {
+    fn compileThrow(self: *Compiler, args: Value, env: *const Env) Error!*Ir {
         // (throw tag value)
         if (!args.isCons()) return error.InvalidSyntax;
 
@@ -2645,7 +2645,7 @@ pub const Compiler = struct {
         return self.builder.throw(tag_ir, value_ir) catch return error.OutOfMemory;
     }
 
-    fn compileTagbody(self: *Compiler, args: Value, env: *const Env) CompileError!*Ir {
+    fn compileTagbody(self: *Compiler, args: Value, env: *const Env) Error!*Ir {
         // (tagbody [tag | form]...)
         // Parse body into tags and segments
         var tags = std.ArrayList([]const u8){};
@@ -2688,7 +2688,7 @@ pub const Compiler = struct {
         ) catch return error.OutOfMemory;
     }
 
-    fn compileFormsToProgn(self: *Compiler, forms: []const Value, env: *const Env) CompileError!*Ir {
+    fn compileFormsToProgn(self: *Compiler, forms: []const Value, env: *const Env) Error!*Ir {
         if (forms.len == 0) {
             return self.builder.lit(Value.nil) catch return error.OutOfMemory;
         }
@@ -2704,7 +2704,7 @@ pub const Compiler = struct {
         return self.builder.progn(exprs.items) catch return error.OutOfMemory;
     }
 
-    fn compileGo(self: *Compiler, args: Value) CompileError!*Ir {
+    fn compileGo(self: *Compiler, args: Value) Error!*Ir {
         // (go tag)
         if (!args.isCons()) return error.InvalidSyntax;
 
@@ -2717,7 +2717,7 @@ pub const Compiler = struct {
         return self.builder.go(name) catch return error.OutOfMemory;
     }
 
-    fn compileValues(self: *Compiler, args: Value, env: *const Env) CompileError!*Ir {
+    fn compileValues(self: *Compiler, args: Value, env: *const Env) Error!*Ir {
         // (values v1 v2 ...)
         var vals = std.ArrayList(*const Ir){};
         defer vals.deinit(self.allocator);
@@ -2733,7 +2733,7 @@ pub const Compiler = struct {
         return self.builder.values(vals.items) catch return error.OutOfMemory;
     }
 
-    fn compileMvBind(self: *Compiler, args: Value, env: *const Env) CompileError!*Ir {
+    fn compileMvBind(self: *Compiler, args: Value, env: *const Env) Error!*Ir {
         // (multiple-value-bind (var1 var2 ...) expr body...)
         if (!args.isCons()) return error.InvalidSyntax;
         const cons1 = args.toPtr(Cons);
@@ -2771,7 +2771,7 @@ pub const Compiler = struct {
         return self.builder.mvBind(vars.items, expr_ir, body_ir) catch return error.OutOfMemory;
     }
 
-    fn compileMvCall(self: *Compiler, args: Value, env: *const Env) CompileError!*Ir {
+    fn compileMvCall(self: *Compiler, args: Value, env: *const Env) Error!*Ir {
         // (multiple-value-call fn form1 form2 ...)
         if (!args.isCons()) return error.InvalidSyntax;
         const cons1 = args.toPtr(Cons);
@@ -2794,7 +2794,7 @@ pub const Compiler = struct {
         return self.builder.mvCall(func_ir, forms.items) catch return error.OutOfMemory;
     }
 
-    fn compileMvList(self: *Compiler, args: Value, env: *const Env) CompileError!*Ir {
+    fn compileMvList(self: *Compiler, args: Value, env: *const Env) Error!*Ir {
         // (multiple-value-list expr)
         if (!args.isCons()) return error.InvalidSyntax;
         const cons = args.toPtr(Cons);
@@ -2803,7 +2803,7 @@ pub const Compiler = struct {
         return self.builder.mvList(expr_ir) catch return error.OutOfMemory;
     }
 
-    fn compileDefine(self: *Compiler, args: Value, env: *const Env) CompileError!*Ir {
+    fn compileDefine(self: *Compiler, args: Value, env: *const Env) Error!*Ir {
         // (define name value)
         if (!args.isCons()) return error.InvalidSyntax;
 
@@ -2822,7 +2822,7 @@ pub const Compiler = struct {
         return self.builder.define(name, idx, value_ir) catch return error.OutOfMemory;
     }
 
-    fn compileDefun(self: *Compiler, args: Value, env: *const Env) CompileError!*Ir {
+    fn compileDefun(self: *Compiler, args: Value, env: *const Env) Error!*Ir {
         // (defun name (params...) body...) -> (define name (lambda (params...) body...))
         // (defun (name -> type) (params...) body...) -> with return type assertion
         if (!args.isCons()) return error.InvalidSyntax;
@@ -2874,7 +2874,7 @@ pub const Compiler = struct {
     /// Compile defmacro: (defmacro name (params...) body...)
     /// Stores the lambda-args in macro_table for expansion during macro calls.
     /// Returns nil since defmacro has no runtime effect.
-    fn compileDefmacro(self: *Compiler, args: Value, env: *const Env) CompileError!*Ir {
+    fn compileDefmacro(self: *Compiler, args: Value, env: *const Env) Error!*Ir {
         _ = env;
         // Parse: (name (params...) body...)
         if (!args.isCons()) return error.InvalidSyntax;
@@ -2899,7 +2899,7 @@ pub const Compiler = struct {
 
     /// Compile eval-when: (eval-when (situations...) body...)
     /// The REPL handles compile-time evaluation; compiler just handles :execute
-    fn compileEvalWhen(self: *Compiler, args: Value, env: *const Env) CompileError!*Ir {
+    fn compileEvalWhen(self: *Compiler, args: Value, env: *const Env) Error!*Ir {
         // Parse: (situations... body...)
         if (!args.isCons()) return error.InvalidSyntax;
 
@@ -2941,7 +2941,7 @@ pub const Compiler = struct {
     /// Compile deftype: (deftype type-name (variant1 field1 field2) (variant2 field3) ...)
     /// Generates: constructors, type predicate, variant predicates, field accessors
     /// Runtime representation: #(:variant-tag field1 field2 ...)
-    fn compileDeftype(self: *Compiler, args: Value, env: *const Env) CompileError!*Ir {
+    fn compileDeftype(self: *Compiler, args: Value, env: *const Env) Error!*Ir {
         _ = env;
         // Parse: (type-name (variant1 f1 f2) (variant2 f3) ...)
         if (!args.isCons()) return error.InvalidSyntax;
@@ -3003,7 +3003,7 @@ pub const Compiler = struct {
         return node;
     }
 
-    fn parseVariant(self: *Compiler, expr: Value) CompileError!Variant {
+    fn parseVariant(self: *Compiler, expr: Value) Error!Variant {
         // (variant-name field1 field2 ...)
         if (!expr.isCons()) return error.InvalidSyntax;
 
@@ -3031,7 +3031,7 @@ pub const Compiler = struct {
         };
     }
 
-    fn generateAdtConstructor(self: *Compiler, variant: Variant) CompileError!*Ir {
+    fn generateAdtConstructor(self: *Compiler, variant: Variant) Error!*Ir {
         // Creates: (defun variant-name (f1 f2 ...) (vector :variant-name f1 f2 ...))
         const idx = self.globals.define(variant.name) catch return error.OutOfMemory;
 
@@ -3066,7 +3066,7 @@ pub const Compiler = struct {
         return self.builder.define(variant.name, idx, lambda_node) catch return error.OutOfMemory;
     }
 
-    fn generateVariantPredicate(self: *Compiler, variant: Variant) CompileError!*Ir {
+    fn generateVariantPredicate(self: *Compiler, variant: Variant) Error!*Ir {
         // Creates: (defun variant-name? (x) (and (vectorp x) (eq (aref x 0) :variant-name)))
         var name_buf: [256]u8 = undefined;
         const pred_name = std.fmt.bufPrint(&name_buf, "{s}?", .{variant.name}) catch return error.OutOfMemory;
@@ -3119,7 +3119,7 @@ pub const Compiler = struct {
         return self.builder.define(pred_name_copy, idx, lambda_node) catch return error.OutOfMemory;
     }
 
-    fn generateFieldAccessor(self: *Compiler, variant_name: []const u8, field_name: []const u8, field_idx: u16) CompileError!*Ir {
+    fn generateFieldAccessor(self: *Compiler, variant_name: []const u8, field_name: []const u8, field_idx: u16) Error!*Ir {
         // Creates: (defun variant-name-field (x) (aref x field-idx))
         var name_buf: [256]u8 = undefined;
         const accessor_name = std.fmt.bufPrint(&name_buf, "{s}-{s}", .{ variant_name, field_name }) catch return error.OutOfMemory;
@@ -3147,7 +3147,7 @@ pub const Compiler = struct {
         return self.builder.define(accessor_name_copy, idx, lambda_node) catch return error.OutOfMemory;
     }
 
-    fn generateTypePredicate(self: *Compiler, type_name: []const u8, variants: []const Variant) CompileError!*Ir {
+    fn generateTypePredicate(self: *Compiler, type_name: []const u8, variants: []const Variant) Error!*Ir {
         // Creates: (defun type-name? (x) (or (variant1? x) (variant2? x) ...))
         var name_buf: [256]u8 = undefined;
         const pred_name = std.fmt.bufPrint(&name_buf, "{s}?", .{type_name}) catch return error.OutOfMemory;
@@ -3214,7 +3214,7 @@ pub const Compiler = struct {
     }
 
     /// Compile match: (match expr ((variant1 f1 f2) body1) ((variant2 f3) body2) (_ default))
-    fn compileMatch(self: *Compiler, args: Value, env: *const Env) CompileError!*Ir {
+    fn compileMatch(self: *Compiler, args: Value, env: *const Env) Error!*Ir {
         // Parse: (expr clause1 clause2 ...)
         if (!args.isCons()) return error.InvalidSyntax;
 
@@ -3300,7 +3300,7 @@ pub const Compiler = struct {
         }
     }
 
-    fn compileMatchClauses(self: *Compiler, scrutinee: *const Ir, clauses: Value, env: *const Env) CompileError!*Ir {
+    fn compileMatchClauses(self: *Compiler, scrutinee: *const Ir, clauses: Value, env: *const Env) Error!*Ir {
         if (!clauses.isCons()) {
             // No more clauses - return nil (or could be error for non-exhaustive)
             return self.builder.lit(Value.nil) catch return error.OutOfMemory;
@@ -3408,7 +3408,7 @@ pub const Compiler = struct {
         return if_node;
     }
 
-    fn compileLambdaWithReturnType(self: *Compiler, args: Value, env: *const Env, return_type: ?[]const u8) CompileError!*Ir {
+    fn compileLambdaWithReturnType(self: *Compiler, args: Value, env: *const Env, return_type: ?[]const u8) Error!*Ir {
         // Delegate to compileLambda but wrap result if return type specified
         const lambda_ir = try self.compileLambdaCore(args, env, return_type);
         return lambda_ir;
@@ -3417,7 +3417,7 @@ pub const Compiler = struct {
     /// Compile type assertion: (the type expr)
     /// Supported types: fixnum, cons, symbol, string, vector, closure, non-nil
     /// Uses occurrence typing: skips check if variable already narrowed to type
-    fn compileThe(self: *Compiler, args: Value, env: *const Env) CompileError!*Ir {
+    fn compileThe(self: *Compiler, args: Value, env: *const Env) Error!*Ir {
         // (the type expr)
         if (!args.isCons()) return error.InvalidSyntax;
 
@@ -3462,7 +3462,7 @@ pub const Compiler = struct {
     }
 
     /// Compile a simple type check for a single type name
-    fn compileSimpleTypeCheck(self: *Compiler, type_name: []const u8, expr_ir: *const Ir) CompileError!*Ir {
+    fn compileSimpleTypeCheck(self: *Compiler, type_name: []const u8, expr_ir: *const Ir) Error!*Ir {
         // Map type name to assertion IR
         if (std.mem.eql(u8, type_name, "fixnum")) {
             return self.builder.assertFixnum(expr_ir) catch return error.OutOfMemory;
@@ -3498,7 +3498,7 @@ pub const Compiler = struct {
     }
 
     /// Compile a compound type check: (or type1 type2 ...)
-    fn compileCompoundTypeCheck(self: *Compiler, type_spec: Value, expr_ir: *const Ir) CompileError!*Ir {
+    fn compileCompoundTypeCheck(self: *Compiler, type_spec: Value, expr_ir: *const Ir) Error!*Ir {
         const cons = type_spec.toPtr(Cons);
         if (!cons.car.isSymbol()) return error.InvalidSyntax;
 
@@ -3515,7 +3515,7 @@ pub const Compiler = struct {
 
     /// Compile (or type1 type2 ...) check
     /// Expands to: check_list if (or cons nil), else check each type
-    fn compileOrTypeCheck(self: *Compiler, type_list: Value, expr_ir: *const Ir) CompileError!*Ir {
+    fn compileOrTypeCheck(self: *Compiler, type_list: Value, expr_ir: *const Ir) Error!*Ir {
         // Collect type names (symbols are names, nil value means "nil" type)
         var type_names = std.ArrayList([]const u8){};
         defer type_names.deinit(self.allocator);
@@ -3566,11 +3566,11 @@ pub const Compiler = struct {
         }
     }
 
-    fn compileBody(self: *Compiler, exprs: Value, env: *const Env) CompileError!*Ir {
+    fn compileBody(self: *Compiler, exprs: Value, env: *const Env) Error!*Ir {
         return self.compileBodyWithTail(exprs, env, false);
     }
 
-    fn compileBodyWithTail(self: *Compiler, exprs: Value, env: *const Env, in_tail: bool) CompileError!*Ir {
+    fn compileBodyWithTail(self: *Compiler, exprs: Value, env: *const Env, in_tail: bool) Error!*Ir {
         if (exprs.isNil()) {
             return self.builder.lit(Value.nil) catch return error.OutOfMemory;
         }
@@ -3608,7 +3608,7 @@ pub const Compiler = struct {
         return self.builder.progn(items) catch return error.OutOfMemory;
     }
 
-    fn compilePrimitive(self: *Compiler, sym: Value, args: Value, env: *const Env) CompileError!*Ir {
+    fn compilePrimitive(self: *Compiler, sym: Value, args: Value, env: *const Env) Error!*Ir {
         const s = sym.raw;
         const b = self.builtins orelse return error.InvalidSyntax;
 
@@ -3781,7 +3781,7 @@ pub const Compiler = struct {
 
     /// Compile variadic arithmetic: +, -, *, /
     /// identity: for + (0), * (1). null means no identity (- and / need args)
-    fn compileVariadicArith(self: *Compiler, args: Value, env: *const Env, op: PrimTag, identity: ?i64) CompileError!*Ir {
+    fn compileVariadicArith(self: *Compiler, args: Value, env: *const Env, op: PrimTag, identity: ?i64) Error!*Ir {
         // Collect args
         var arg_list = std.ArrayList(*Ir){};
         defer arg_list.deinit(self.allocator);
@@ -3833,7 +3833,7 @@ pub const Compiler = struct {
         return result;
     }
 
-    fn compileBinaryPrim(self: *Compiler, args: Value, env: *const Env, prim: PrimTag) CompileError!*Ir {
+    fn compileBinaryPrim(self: *Compiler, args: Value, env: *const Env, prim: PrimTag) Error!*Ir {
         if (!args.isCons()) return error.InvalidSyntax;
         const cons1 = args.toPtr(Cons);
         const left = try self.compile(cons1.car, env);
@@ -3923,7 +3923,7 @@ pub const Compiler = struct {
         } catch return error.OutOfMemory;
     }
 
-    fn compileUnaryPrim(self: *Compiler, args: Value, env: *const Env, prim: PrimTag) CompileError!*Ir {
+    fn compileUnaryPrim(self: *Compiler, args: Value, env: *const Env, prim: PrimTag) Error!*Ir {
         if (!args.isCons()) return error.InvalidSyntax;
         const cons = args.toPtr(Cons);
         const operand = try self.compile(cons.car, env);
@@ -4032,7 +4032,7 @@ pub const Compiler = struct {
         } catch return error.OutOfMemory;
     }
 
-    fn compileNullaryPrim(self: *Compiler, prim: PrimTag) CompileError!*Ir {
+    fn compileNullaryPrim(self: *Compiler, prim: PrimTag) Error!*Ir {
         return switch (prim) {
             .read_char => self.builder.readChar(),
             .peek_char => self.builder.peekChar(),
@@ -4043,7 +4043,7 @@ pub const Compiler = struct {
         } catch return error.OutOfMemory;
     }
 
-    fn compileListPrim(self: *Compiler, args: Value, env: *const Env) CompileError!*Ir {
+    fn compileListPrim(self: *Compiler, args: Value, env: *const Env) Error!*Ir {
         // (list a b c ...) -> variadic
         var elements = std.ArrayList(*const Ir){};
         defer elements.deinit(self.allocator);
@@ -4059,7 +4059,7 @@ pub const Compiler = struct {
         return self.builder.list(elements.items) catch return error.OutOfMemory;
     }
 
-    fn compileSubstring(self: *Compiler, args: Value, env: *const Env) CompileError!*Ir {
+    fn compileSubstring(self: *Compiler, args: Value, env: *const Env) Error!*Ir {
         // (substring str start end) - 3 arguments
         if (!args.isCons()) return error.InvalidSyntax;
         const cons1 = args.toPtr(Cons);
@@ -4078,7 +4078,7 @@ pub const Compiler = struct {
         return node;
     }
 
-    fn compileSubseq(self: *Compiler, args: Value, env: *const Env) CompileError!*Ir {
+    fn compileSubseq(self: *Compiler, args: Value, env: *const Env) Error!*Ir {
         // (subseq seq start &optional end)
         // For now, just works like substring for strings
         if (!args.isCons()) return error.InvalidSyntax;
@@ -4103,7 +4103,7 @@ pub const Compiler = struct {
         return node;
     }
 
-    fn compileConcatenate(self: *Compiler, args: Value, env: *const Env) CompileError!*Ir {
+    fn compileConcatenate(self: *Compiler, args: Value, env: *const Env) Error!*Ir {
         // (concatenate 'string str1 str2 ...)
         // (concatenate 'list list1 list2 ...)
         if (!args.isCons()) return error.InvalidSyntax;
@@ -4167,7 +4167,7 @@ pub const Compiler = struct {
         return result_ir;
     }
 
-    fn compileCoerce(self: *Compiler, args: Value, env: *const Env) CompileError!*Ir {
+    fn compileCoerce(self: *Compiler, args: Value, env: *const Env) Error!*Ir {
         // (coerce obj 'type)
         if (!args.isCons()) return error.InvalidSyntax;
         const cons1 = args.toPtr(Cons);
@@ -4212,7 +4212,7 @@ pub const Compiler = struct {
         }
     }
 
-    fn compileFormat(self: *Compiler, args: Value, env: *const Env) CompileError!*Ir {
+    fn compileFormat(self: *Compiler, args: Value, env: *const Env) Error!*Ir {
         // (format dest control-string args...)
         if (!args.isCons()) return error.InvalidSyntax;
         const cons1 = args.toPtr(Cons);
@@ -4237,7 +4237,7 @@ pub const Compiler = struct {
         return self.builder.format(dest_ir, control_ir, arg_list.items) catch return error.OutOfMemory;
     }
 
-    fn compileMakeHash(self: *Compiler, args: Value) CompileError!*Ir {
+    fn compileMakeHash(self: *Compiler, args: Value) Error!*Ir {
         // (make-hash-table) or (make-hash-table :size n)
         // For now, just use default capacity
         _ = args;
@@ -4249,7 +4249,7 @@ pub const Compiler = struct {
     /// Compile composed car/cdr accessor like cadr, caddr, etc.
     /// Pattern string: 'a' = car, 'd' = cdr, applied right-to-left
     /// e.g., "ad" for cadr means (car (cdr x))
-    fn compileComposedAccessor(self: *Compiler, args: Value, env: *const Env, pattern: []const u8) CompileError!*Ir {
+    fn compileComposedAccessor(self: *Compiler, args: Value, env: *const Env, pattern: []const u8) Error!*Ir {
         if (!args.isCons()) return error.InvalidSyntax;
         const cons = args.toPtr(Cons);
         var result = try self.compile(cons.car, env);
@@ -4267,7 +4267,7 @@ pub const Compiler = struct {
         return result;
     }
 
-    fn compileMakeVector(self: *Compiler, args: Value, env: *const Env) CompileError!*Ir {
+    fn compileMakeVector(self: *Compiler, args: Value, env: *const Env) Error!*Ir {
         // (make-vector size &optional init)
         if (!args.isCons()) return error.InvalidSyntax;
         const cons1 = args.toPtr(Cons);
@@ -4282,7 +4282,7 @@ pub const Compiler = struct {
         return self.builder.vecNew(size_ir, init_ir) catch return error.OutOfMemory;
     }
 
-    fn compileVectorPrim(self: *Compiler, args: Value, env: *const Env) CompileError!*Ir {
+    fn compileVectorPrim(self: *Compiler, args: Value, env: *const Env) Error!*Ir {
         // (vector a b c ...) -> create vector from elements
         var elements = std.ArrayList(*const Ir){};
         defer elements.deinit(self.allocator);
@@ -4298,7 +4298,7 @@ pub const Compiler = struct {
         return self.builder.vec(elements.items) catch return error.OutOfMemory;
     }
 
-    fn compileSvset(self: *Compiler, args: Value, env: *const Env) CompileError!*Ir {
+    fn compileSvset(self: *Compiler, args: Value, env: *const Env) Error!*Ir {
         // (%svset vec index value) - internal setter for (setf (svref ...))
         if (!args.isCons()) return error.InvalidSyntax;
         const cons1 = args.toPtr(Cons);
@@ -4315,7 +4315,7 @@ pub const Compiler = struct {
         return self.builder.vecSet(vec_ir, idx_ir, val_ir) catch return error.OutOfMemory;
     }
 
-    fn compileGethash(self: *Compiler, args: Value, env: *const Env) CompileError!*Ir {
+    fn compileGethash(self: *Compiler, args: Value, env: *const Env) Error!*Ir {
         // (gethash key hashtable)
         if (!args.isCons()) return error.InvalidSyntax;
         const cons1 = args.toPtr(Cons);
@@ -4330,7 +4330,7 @@ pub const Compiler = struct {
         return node;
     }
 
-    fn compileSethash(self: *Compiler, args: Value, env: *const Env) CompileError!*Ir {
+    fn compileSethash(self: *Compiler, args: Value, env: *const Env) Error!*Ir {
         // (puthash key value hash-table) - CL convention
         if (!args.isCons()) return error.InvalidSyntax;
         const cons1 = args.toPtr(Cons);
@@ -4349,7 +4349,7 @@ pub const Compiler = struct {
         return node;
     }
 
-    fn compileRemhash(self: *Compiler, args: Value, env: *const Env) CompileError!*Ir {
+    fn compileRemhash(self: *Compiler, args: Value, env: *const Env) Error!*Ir {
         // (remhash key hashtable)
         if (!args.isCons()) return error.InvalidSyntax;
         const cons1 = args.toPtr(Cons);
@@ -4364,7 +4364,7 @@ pub const Compiler = struct {
         return node;
     }
 
-    fn compileHashTableCount(self: *Compiler, args: Value, env: *const Env) CompileError!*Ir {
+    fn compileHashTableCount(self: *Compiler, args: Value, env: *const Env) Error!*Ir {
         // (hash-table-count hashtable)
         if (!args.isCons()) return error.InvalidSyntax;
         const cons = args.toPtr(Cons);
@@ -4375,7 +4375,7 @@ pub const Compiler = struct {
         return node;
     }
 
-    fn compileHashTableP(self: *Compiler, args: Value, env: *const Env) CompileError!*Ir {
+    fn compileHashTableP(self: *Compiler, args: Value, env: *const Env) Error!*Ir {
         // (hash-table-p x)
         if (!args.isCons()) return error.InvalidSyntax;
         const cons = args.toPtr(Cons);
@@ -4386,11 +4386,11 @@ pub const Compiler = struct {
         return node;
     }
 
-    fn compileCall(self: *Compiler, func_expr: Value, args_expr: Value, env: *const Env) CompileError!*Ir {
+    fn compileCall(self: *Compiler, func_expr: Value, args_expr: Value, env: *const Env) Error!*Ir {
         return self.compileCallWithTail(func_expr, args_expr, env, false);
     }
 
-    fn compileCallWithTail(self: *Compiler, func_expr: Value, args_expr: Value, env: *const Env, in_tail: bool) CompileError!*Ir {
+    fn compileCallWithTail(self: *Compiler, func_expr: Value, args_expr: Value, env: *const Env, in_tail: bool) Error!*Ir {
         const func_ir = try self.compile(func_expr, env);
 
         var args = std.ArrayList(*Ir){};

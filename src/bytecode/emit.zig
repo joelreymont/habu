@@ -15,7 +15,7 @@ const Chunk = opcodes.Chunk;
 const Value = @import("../runtime/value.zig").Value;
 const Heap = @import("../runtime/heap.zig").Heap;
 
-pub const EmitError = error{
+pub const Error = error{
     OutOfMemory,
     TooManyConstants,
     TooManyLocals,
@@ -140,7 +140,7 @@ pub const Emitter = struct {
     }
 
     /// Emit bytecode for an IR node
-    pub fn emit(self: *Emitter, node: *const Ir) EmitError!void {
+    pub fn emit(self: *Emitter, node: *const Ir) Error!void {
         switch (node.*) {
             .lit => |v| try self.emitLiteral(v),
             .quote_sym => |name| try self.emitQuoteSym(name),
@@ -321,7 +321,7 @@ pub const Emitter = struct {
     }
 
     /// Finalize and return the chunk
-    pub fn finalize(self: *Emitter) EmitError!Chunk {
+    pub fn finalize(self: *Emitter) Error!Chunk {
         // Add implicit return if not present
         if (self.code.items.len == 0) {
             // Empty function returns nil
@@ -354,28 +354,28 @@ pub const Emitter = struct {
     // Emission helpers
     // ========================================================================
 
-    fn emitOp(self: *Emitter, op: Op) EmitError!void {
+    fn emitOp(self: *Emitter, op: Op) Error!void {
         self.code.append(self.allocator, @intFromEnum(op)) catch
             return error.OutOfMemory;
     }
 
-    fn emitU8(self: *Emitter, val: u8) EmitError!void {
+    fn emitU8(self: *Emitter, val: u8) Error!void {
         self.code.append(self.allocator, val) catch
             return error.OutOfMemory;
     }
 
-    fn emitU16(self: *Emitter, val: u16) EmitError!void {
+    fn emitU16(self: *Emitter, val: u16) Error!void {
         self.code.append(self.allocator, @truncate(val)) catch
             return error.OutOfMemory;
         self.code.append(self.allocator, @truncate(val >> 8)) catch
             return error.OutOfMemory;
     }
 
-    fn emitI16(self: *Emitter, val: i16) EmitError!void {
+    fn emitI16(self: *Emitter, val: i16) Error!void {
         try self.emitU16(@bitCast(val));
     }
 
-    fn emitI32(self: *Emitter, val: i32) EmitError!void {
+    fn emitI32(self: *Emitter, val: i32) Error!void {
         const u: u32 = @bitCast(val);
         self.code.append(self.allocator, @truncate(u)) catch return error.OutOfMemory;
         self.code.append(self.allocator, @truncate(u >> 8)) catch return error.OutOfMemory;
@@ -384,7 +384,7 @@ pub const Emitter = struct {
     }
 
     /// Add constant to pool, return index (O(1) deduplication via hash map)
-    fn addConstant(self: *Emitter, val: u64) EmitError!u16 {
+    fn addConstant(self: *Emitter, val: u64) Error!u16 {
         // O(1) lookup in hash map
         if (self.constant_map.get(val)) |idx| {
             return idx;
@@ -406,7 +406,7 @@ pub const Emitter = struct {
     }
 
     /// Emit placeholder jump, return offset to patch
-    fn emitJump(self: *Emitter, op: Op) EmitError!usize {
+    fn emitJump(self: *Emitter, op: Op) Error!usize {
         try self.emitOp(op);
         const offset = self.currentOffset();
         try self.emitI16(0); // Placeholder
@@ -415,7 +415,7 @@ pub const Emitter = struct {
 
     /// Write a 16-bit displacement at a jump location
     /// Core helper used by all jump patching functions
-    fn writeJumpDisplacement(self: *Emitter, jump_loc: usize, target: usize) EmitError!void {
+    fn writeJumpDisplacement(self: *Emitter, jump_loc: usize, target: usize) Error!void {
         const distance = @as(i32, @intCast(target)) - @as(i32, @intCast(jump_loc + 2));
         if (distance > 32767 or distance < -32768) {
             return error.JumpTooLong;
@@ -427,7 +427,7 @@ pub const Emitter = struct {
     }
 
     /// Patch jump at offset to current position
-    fn patchJump(self: *Emitter, offset: usize) EmitError!void {
+    fn patchJump(self: *Emitter, offset: usize) Error!void {
         try self.writeJumpDisplacement(offset, self.currentOffset());
     }
 
@@ -435,7 +435,7 @@ pub const Emitter = struct {
     // IR emission
     // ========================================================================
 
-    fn emitLiteral(self: *Emitter, val: Value) EmitError!void {
+    fn emitLiteral(self: *Emitter, val: Value) Error!void {
         if (val.isNil()) {
             try self.emitOp(.push_nil);
         } else if (val.eq(Value.t)) {
@@ -459,7 +459,7 @@ pub const Emitter = struct {
         }
     }
 
-    fn emitQuoteSym(self: *Emitter, name: []const u8) EmitError!void {
+    fn emitQuoteSym(self: *Emitter, name: []const u8) Error!void {
         if (self.heap) |heap| {
             // Intern symbol and add to constant pool
             const sym = heap.intern(name) orelse return error.OutOfMemory;
@@ -472,12 +472,12 @@ pub const Emitter = struct {
         }
     }
 
-    fn emitQuote(self: *Emitter, inner: *const Ir) EmitError!void {
+    fn emitQuote(self: *Emitter, inner: *const Ir) Error!void {
         // Quote just emits the literal value
         try self.emit(inner);
     }
 
-    fn emitVar(self: *Emitter, depth: u16, index: u16) EmitError!void {
+    fn emitVar(self: *Emitter, depth: u16, index: u16) Error!void {
         if (depth == 0) {
             // Local variable
             if (index > 255) return error.TooManyLocals;
@@ -503,12 +503,12 @@ pub const Emitter = struct {
         }
     }
 
-    fn emitGlobalRef(self: *Emitter, index: u16) EmitError!void {
+    fn emitGlobalRef(self: *Emitter, index: u16) Error!void {
         try self.emitOp(.load_global);
         try self.emitU16(index);
     }
 
-    fn emitDefine(self: *Emitter, d: anytype) EmitError!void {
+    fn emitDefine(self: *Emitter, d: anytype) Error!void {
         // Emit value
         try self.emit(d.value);
         // Store to global
@@ -519,7 +519,7 @@ pub const Emitter = struct {
         try self.emitU16(d.index);
     }
 
-    fn emitSet(self: *Emitter, s: anytype) EmitError!void {
+    fn emitSet(self: *Emitter, s: anytype) Error!void {
         // Emit value first
         try self.emit(s.value);
 
@@ -539,7 +539,7 @@ pub const Emitter = struct {
         }
     }
 
-    fn emitLet(self: *Emitter, l: anytype) EmitError!void {
+    fn emitLet(self: *Emitter, l: anytype) Error!void {
         // Emit binding values
         for (l.bindings) |b| {
             try self.emit(b.value);
@@ -559,7 +559,7 @@ pub const Emitter = struct {
         }
     }
 
-    fn emitLambda(self: *Emitter, lam: anytype) EmitError!void {
+    fn emitLambda(self: *Emitter, lam: anytype) Error!void {
         // Create nested emitter for lambda body - inherit heap for symbol interning
         var lambda_emitter = if (self.heap) |h|
             Emitter.initWithHeap(self.allocator, h)
@@ -619,7 +619,7 @@ pub const Emitter = struct {
         try self.emitU8(@intCast(lam.captures.len));
     }
 
-    fn emitIf(self: *Emitter, i: anytype) EmitError!void {
+    fn emitIf(self: *Emitter, i: anytype) Error!void {
         // Emit test
         try self.emit(i.cond);
 
@@ -642,7 +642,7 @@ pub const Emitter = struct {
         try self.patchJump(end_jump);
     }
 
-    fn emitProgn(self: *Emitter, exprs: []const *const Ir) EmitError!void {
+    fn emitProgn(self: *Emitter, exprs: []const *const Ir) Error!void {
         if (exprs.len == 0) {
             try self.emitOp(.push_nil);
             return;
@@ -657,7 +657,7 @@ pub const Emitter = struct {
         }
     }
 
-    fn emitLoop(self: *Emitter, l: anytype) EmitError!void {
+    fn emitLoop(self: *Emitter, l: anytype) Error!void {
         // Loop start
         const loop_start = self.currentOffset();
 
@@ -687,7 +687,7 @@ pub const Emitter = struct {
         try self.emitOp(.push_nil);
     }
 
-    fn emitBlock(self: *Emitter, b: anytype) EmitError!void {
+    fn emitBlock(self: *Emitter, b: anytype) Error!void {
         // Push a new block onto the control stack
         const entry = ControlEntry{
             .block = .{
@@ -713,7 +713,7 @@ pub const Emitter = struct {
         }
     }
 
-    fn emitReturnFrom(self: *Emitter, r: anytype) EmitError!void {
+    fn emitReturnFrom(self: *Emitter, r: anytype) Error!void {
         // Emit the return value
         try self.emit(r.value);
 
@@ -747,7 +747,7 @@ pub const Emitter = struct {
         return error.InvalidIr;
     }
 
-    fn emitUnwindProtect(self: *Emitter, u: anytype) EmitError!void {
+    fn emitUnwindProtect(self: *Emitter, u: anytype) Error!void {
         // Bytecode layout:
         // push_unwind -> cleanup_addr   ; saves cleanup IP for throw case
         // <protected code>              ; leaves result on stack (or throws)
@@ -785,7 +785,7 @@ pub const Emitter = struct {
         try self.code.append(self.allocator, 0);
     }
 
-    fn emitCatch(self: *Emitter, c: anytype) EmitError!void {
+    fn emitCatch(self: *Emitter, c: anytype) Error!void {
         // Emit tag expression (will be on stack for push_catch)
         try self.emit(c.tag);
 
@@ -812,7 +812,7 @@ pub const Emitter = struct {
         try self.patchJumpAt(end_jump);
     }
 
-    fn emitThrow(self: *Emitter, t: anytype) EmitError!void {
+    fn emitThrow(self: *Emitter, t: anytype) Error!void {
         // Emit tag and value
         try self.emit(t.tag);
         try self.emit(t.value);
@@ -821,7 +821,7 @@ pub const Emitter = struct {
         try self.emitOp(.throw);
     }
 
-    fn emitTagbody(self: *Emitter, tb: anytype) EmitError!void {
+    fn emitTagbody(self: *Emitter, tb: anytype) Error!void {
         // Allocate offset array for tags
         const tag_offsets = self.allocator.alloc(usize, tb.tags.len) catch return error.OutOfMemory;
         @memset(tag_offsets, 0);
@@ -876,7 +876,7 @@ pub const Emitter = struct {
         try self.emitOp(.push_nil);
     }
 
-    fn emitGo(self: *Emitter, g: anytype) EmitError!void {
+    fn emitGo(self: *Emitter, g: anytype) Error!void {
         // Find enclosing tagbody with matching tag
         var i = self.control_stack.items.len;
         while (i > 0) {
@@ -911,7 +911,7 @@ pub const Emitter = struct {
         return error.InvalidIr;
     }
 
-    fn emitValues(self: *Emitter, v: anytype) EmitError!void {
+    fn emitValues(self: *Emitter, v: anytype) Error!void {
         // Emit each value expression
         for (v) |val| {
             try self.emit(val);
@@ -923,7 +923,7 @@ pub const Emitter = struct {
         try self.emitU8(@intCast(v.len));
     }
 
-    fn emitMvBind(self: *Emitter, m: anytype) EmitError!void {
+    fn emitMvBind(self: *Emitter, m: anytype) Error!void {
         // Emit the expression that produces multiple values
         // This may produce a `values` opcode that stores secondary values
         try self.emit(m.expr);
@@ -938,14 +938,14 @@ pub const Emitter = struct {
         try self.emit(m.body);
     }
 
-    fn emitMvList(self: *Emitter, m: anytype) EmitError!void {
+    fn emitMvList(self: *Emitter, m: anytype) Error!void {
         // Evaluate the expression (leaves primary on stack, secondaries in buffer)
         try self.emit(m.expr);
         // Emit mv_list opcode - gathers all values into a list
         try self.emitOp(.mv_list);
     }
 
-    fn emitMvCall(self: *Emitter, m: anytype) EmitError!void {
+    fn emitMvCall(self: *Emitter, m: anytype) Error!void {
         // (multiple-value-call fn form1 form2 ...)
         // Compiles to: (apply fn (append (mv-list form1) (mv-list form2) ...))
 
@@ -976,7 +976,7 @@ pub const Emitter = struct {
         try self.emitOp(.apply);
     }
 
-    fn emitFormat(self: *Emitter, f: anytype) EmitError!void {
+    fn emitFormat(self: *Emitter, f: anytype) Error!void {
         // Emit destination
         try self.emit(f.dest);
         // Emit control string
@@ -991,41 +991,41 @@ pub const Emitter = struct {
         try self.emitU8(@intCast(f.args.len));
     }
 
-    fn emitMakeHash(self: *Emitter, h: anytype) EmitError!void {
+    fn emitMakeHash(self: *Emitter, h: anytype) Error!void {
         try self.emitOp(.make_hash);
         try self.emitU16(h.capacity);
     }
 
-    fn emitHashGet(self: *Emitter, h: anytype) EmitError!void {
+    fn emitHashGet(self: *Emitter, h: anytype) Error!void {
         try self.emit(h.table);
         try self.emit(h.key);
         try self.emitOp(.hash_get);
     }
 
-    fn emitHashSet(self: *Emitter, h: anytype) EmitError!void {
+    fn emitHashSet(self: *Emitter, h: anytype) Error!void {
         try self.emit(h.table);
         try self.emit(h.key);
         try self.emit(h.value);
         try self.emitOp(.hash_set);
     }
 
-    fn emitHashRem(self: *Emitter, h: anytype) EmitError!void {
+    fn emitHashRem(self: *Emitter, h: anytype) Error!void {
         try self.emit(h.table);
         try self.emit(h.key);
         try self.emitOp(.hash_rem);
     }
 
     /// Patch a jump to a specific target offset
-    fn patchJumpTo(self: *Emitter, jump_loc: usize, target: usize) EmitError!void {
+    fn patchJumpTo(self: *Emitter, jump_loc: usize, target: usize) Error!void {
         try self.writeJumpDisplacement(jump_loc, target);
     }
 
     /// Patch a jump at a specific location to jump to current offset
-    fn patchJumpAt(self: *Emitter, jump_loc: usize) EmitError!void {
+    fn patchJumpAt(self: *Emitter, jump_loc: usize) Error!void {
         try self.writeJumpDisplacement(jump_loc, self.currentOffset());
     }
 
-    fn emitCall(self: *Emitter, c: anytype, tail: bool) EmitError!void {
+    fn emitCall(self: *Emitter, c: anytype, tail: bool) Error!void {
         // Emit function
         try self.emit(c.func);
 
@@ -1040,25 +1040,25 @@ pub const Emitter = struct {
         try self.emitU8(@intCast(c.args.len));
     }
 
-    fn emitApply(self: *Emitter, a: anytype) EmitError!void {
+    fn emitApply(self: *Emitter, a: anytype) Error!void {
         // Emit function then args list
         try self.emit(a.func);
         try self.emit(a.args);
         try self.emitOp(.apply);
     }
 
-    fn emitBinaryOp(self: *Emitter, op: Ir.BinaryOp, opcode: Op) EmitError!void {
+    fn emitBinaryOp(self: *Emitter, op: Ir.BinaryOp, opcode: Op) Error!void {
         try self.emit(op.left);
         try self.emit(op.right);
         try self.emitOp(opcode);
     }
 
-    fn emitUnaryOp(self: *Emitter, operand: *const Ir, opcode: Op) EmitError!void {
+    fn emitUnaryOp(self: *Emitter, operand: *const Ir, opcode: Op) Error!void {
         try self.emit(operand);
         try self.emitOp(opcode);
     }
 
-    fn emitList(self: *Emitter, elements: []const *const Ir) EmitError!void {
+    fn emitList(self: *Emitter, elements: []const *const Ir) Error!void {
         // Emit elements in order
         for (elements) |elem| {
             try self.emit(elem);
@@ -1070,7 +1070,7 @@ pub const Emitter = struct {
         try self.emitU8(@intCast(elements.len));
     }
 
-    fn emitVecNew(self: *Emitter, v: anytype) EmitError!void {
+    fn emitVecNew(self: *Emitter, v: anytype) Error!void {
         try self.emit(v.size);
         if (v.init) |init_val| {
             try self.emit(init_val);
@@ -1081,7 +1081,7 @@ pub const Emitter = struct {
         try self.emitU16(0); // Size from stack (u16 unused)
     }
 
-    fn emitVec(self: *Emitter, elements: []const *const Ir) EmitError!void {
+    fn emitVec(self: *Emitter, elements: []const *const Ir) Error!void {
         // Emit elements in order
         for (elements) |elem| {
             try self.emit(elem);
@@ -1093,7 +1093,7 @@ pub const Emitter = struct {
         try self.emitU8(@intCast(elements.len));
     }
 
-    fn emitVecSet(self: *Emitter, v: anytype) EmitError!void {
+    fn emitVecSet(self: *Emitter, v: anytype) Error!void {
         try self.emit(v.vec);
         try self.emit(v.index);
         try self.emit(v.value);

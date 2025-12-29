@@ -95,26 +95,26 @@ pub const Repl = struct {
     }
 
     /// Callback for (load "filename") from VM
-    fn loadCallback(filename: []const u8, context: *anyopaque) vm_mod.VmError!Value {
+    fn loadCallback(filename: []const u8, context: *anyopaque) vm_mod.Error!Value {
         const self: *Repl = @ptrCast(@alignCast(context));
         return self.loadFileValue(filename) catch {
-            return vm_mod.VmError.InvalidArgument;
+            return vm_mod.Error.InvalidArgument;
         };
     }
 
     /// Callback for (eval expr) from VM
-    fn evalCallback(expr: Value, context: *anyopaque) vm_mod.VmError!Value {
+    fn evalCallback(expr: Value, context: *anyopaque) vm_mod.Error!Value {
         const self: *Repl = @ptrCast(@alignCast(context));
         return self.evalExpression(expr) catch {
-            return vm_mod.VmError.InvalidArgument;
+            return vm_mod.Error.InvalidArgument;
         };
     }
 
     /// Callback for (macroexpand expr) from VM
-    fn macroexpandCallback(expr: Value, context: *anyopaque) vm_mod.VmError!Value {
+    fn macroexpandCallback(expr: Value, context: *anyopaque) vm_mod.Error!Value {
         const self: *Repl = @ptrCast(@alignCast(context));
         return self.expandMacros(expr) catch {
-            return vm_mod.VmError.InvalidArgument;
+            return vm_mod.Error.InvalidArgument;
         };
     }
 

@@ -9,7 +9,7 @@ pub const IrBuilder = ir.IrBuilder;
 pub const compile = @import("compile.zig");
 pub const Compiler = compile.Compiler;
 pub const Env = compile.Env;
-pub const CompileError = compile.CompileError;
+pub const Error = compile.Error;
 pub const TypedIr = compile.TypedIr;
 pub const GlobalEnv = compile.GlobalEnv;
 

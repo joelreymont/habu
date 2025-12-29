@@ -22,7 +22,7 @@ const compiler = @import("../compiler/compiler.zig");
 const GlobalEnv = compiler.GlobalEnv;
 const Parser = @import("../reader/parser.zig").Parser;
 
-pub const VmError = error{
+pub const Error = error{
     StackOverflow,
     StackUnderflow,
     TypeMismatch,
@@ -162,15 +162,15 @@ pub const Vm = struct {
     global_env: ?*const GlobalEnv,
 
     /// Callback for (load "filename") - set by REPL
-    load_callback: ?*const fn ([]const u8, *anyopaque) VmError!Value,
+    load_callback: ?*const fn ([]const u8, *anyopaque) Error!Value,
     load_context: ?*anyopaque,
 
     /// Callback for (eval expr) - set by REPL
-    eval_callback: ?*const fn (Value, *anyopaque) VmError!Value,
+    eval_callback: ?*const fn (Value, *anyopaque) Error!Value,
     eval_context: ?*anyopaque,
 
     /// Callback for (macroexpand expr) - set by REPL
-    macroexpand_callback: ?*const fn (Value, *anyopaque) VmError!Value,
+    macroexpand_callback: ?*const fn (Value, *anyopaque) Error!Value,
     macroexpand_context: ?*anyopaque,
 
     /// Counter for gensym
@@ -240,26 +240,26 @@ pub const Vm = struct {
     }
 
     /// Set the load callback for (load "filename")
-    pub fn setLoadCallback(self: *Vm, callback: *const fn ([]const u8, *anyopaque) VmError!Value, context: *anyopaque) void {
+    pub fn setLoadCallback(self: *Vm, callback: *const fn ([]const u8, *anyopaque) Error!Value, context: *anyopaque) void {
         self.load_callback = callback;
         self.load_context = context;
     }
 
     /// Set the eval callback for (eval expr)
-    pub fn setEvalCallback(self: *Vm, callback: *const fn (Value, *anyopaque) VmError!Value, context: *anyopaque) void {
+    pub fn setEvalCallback(self: *Vm, callback: *const fn (Value, *anyopaque) Error!Value, context: *anyopaque) void {
         self.eval_callback = callback;
         self.eval_context = context;
     }
 
     /// Set the macroexpand callback for (macroexpand expr)
-    pub fn setMacroexpandCallback(self: *Vm, callback: *const fn (Value, *anyopaque) VmError!Value, context: *anyopaque) void {
+    pub fn setMacroexpandCallback(self: *Vm, callback: *const fn (Value, *anyopaque) Error!Value, context: *anyopaque) void {
         self.macroexpand_callback = callback;
         self.macroexpand_context = context;
     }
 
     /// Call a closure with arguments already on stack
     /// Expects args to be pushed already at positions [0..argc)
-    pub fn callClosure(self: *Vm, closure: *const runtime.Closure, argc: u8) VmError!Value {
+    pub fn callClosure(self: *Vm, closure: *const runtime.Closure, argc: u8) Error!Value {
         // Save state - will be restored on both success and error
         const saved_state = State.save(self);
 
@@ -299,7 +299,7 @@ pub const Vm = struct {
     }
 
     /// Run a chunk to completion
-    pub fn run(self: *Vm, chunk: *const Chunk) VmError!Value {
+    pub fn run(self: *Vm, chunk: *const Chunk) Error!Value {
         self.chunk = chunk;
         self.ip = 0;
         self.sp = 0;
@@ -314,7 +314,7 @@ pub const Vm = struct {
         return self.execute();
     }
 
-    fn execute(self: *Vm) VmError!Value {
+    fn execute(self: *Vm) Error!Value {
         while (true) {
             const op = self.readOp();
 
@@ -1681,7 +1681,7 @@ pub const Vm = struct {
     // Exception handling
     // ========================================================================
 
-    fn doThrow(self: *Vm, tag: Value, value: Value) VmError!void {
+    fn doThrow(self: *Vm, tag: Value, value: Value) Error!void {
         // First, check if there's an unwind-protect that needs cleanup
         // Unwind frames take precedence - we must run cleanup before continuing
         if (self.unwind_sp > 0) {
@@ -1727,7 +1727,7 @@ pub const Vm = struct {
     // Format string support
     // ========================================================================
 
-    fn doFormat(self: *Vm, dest: Value, control: Value, args: []const Value) VmError!Value {
+    fn doFormat(self: *Vm, dest: Value, control: Value, args: []const Value) Error!Value {
         const control_str = control.toPtr(runtime.String);
         const fmt = control_str.bytes();
 
@@ -1809,7 +1809,7 @@ pub const Vm = struct {
         }
     }
 
-    fn formatValueAesthetic(self: *Vm, val: Value, result: *std.ArrayList(u8)) VmError!void {
+    fn formatValueAesthetic(self: *Vm, val: Value, result: *std.ArrayList(u8)) Error!void {
         if (val.isNil()) {
             result.appendSlice(self.allocator, "nil") catch return error.OutOfMemory;
         } else if (val.isFixnum()) {
@@ -1839,7 +1839,7 @@ pub const Vm = struct {
         }
     }
 
-    fn formatValueStandard(self: *Vm, val: Value, result: *std.ArrayList(u8)) VmError!void {
+    fn formatValueStandard(self: *Vm, val: Value, result: *std.ArrayList(u8)) Error!void {
         if (val.isString()) {
             // Strings get quoted
             result.append(self.allocator, '"') catch return error.OutOfMemory;
@@ -1852,7 +1852,7 @@ pub const Vm = struct {
         }
     }
 
-    fn formatListAesthetic(self: *Vm, val: Value, result: *std.ArrayList(u8)) VmError!void {
+    fn formatListAesthetic(self: *Vm, val: Value, result: *std.ArrayList(u8)) Error!void {
         result.append(self.allocator, '(') catch return error.OutOfMemory;
         var current = val;
         var first = true;
@@ -1874,7 +1874,7 @@ pub const Vm = struct {
     // Function call support
     // ========================================================================
 
-    fn doCall(self: *Vm, argc: u8, tail: bool) VmError!void {
+    fn doCall(self: *Vm, argc: u8, tail: bool) Error!void {
         // Get function value (below args on stack)
         const fn_val = self.stack[self.sp - argc - 1];
 
@@ -1996,7 +1996,7 @@ pub const Vm = struct {
         }
     }
 
-    fn doApply(self: *Vm) VmError!void {
+    fn doApply(self: *Vm) Error!void {
         // Stack: ... fn args-list
         const args_list = try self.pop();
         const fn_val = try self.pop();
@@ -2041,19 +2041,19 @@ pub const Vm = struct {
     // Stack operations
     // ========================================================================
 
-    pub fn push(self: *Vm, val: Value) VmError!void {
+    pub fn push(self: *Vm, val: Value) Error!void {
         if (self.sp >= STACK_SIZE) return error.StackOverflow;
         self.stack[self.sp] = val;
         self.sp += 1;
     }
 
-    fn pop(self: *Vm) VmError!Value {
+    fn pop(self: *Vm) Error!Value {
         if (self.sp == 0) return error.StackUnderflow;
         self.sp -= 1;
         return self.stack[self.sp];
     }
 
-    fn peek(self: *Vm, distance: usize) VmError!Value {
+    fn peek(self: *Vm, distance: usize) Error!Value {
         if (distance >= self.sp) return error.StackUnderflow;
         return self.stack[self.sp - 1 - distance];
     }
@@ -2096,52 +2096,52 @@ pub const Vm = struct {
     // Binary operations
     // ========================================================================
 
-    fn binaryOp(self: *Vm, comptime op: fn (i64, i64) VmError!Value) VmError!void {
+    fn binaryOp(self: *Vm, comptime op: fn (i64, i64) Error!Value) Error!void {
         const b = try self.pop();
         const a = try self.pop();
         if (!a.isFixnum() or !b.isFixnum()) return error.TypeMismatch;
         try self.push(try op(a.toFixnum(), b.toFixnum()));
     }
 
-    fn binaryAdd(a: i64, b: i64) VmError!Value {
+    fn binaryAdd(a: i64, b: i64) Error!Value {
         return Value.makeFixnum(a + b);
     }
 
-    fn binarySub(a: i64, b: i64) VmError!Value {
+    fn binarySub(a: i64, b: i64) Error!Value {
         return Value.makeFixnum(a - b);
     }
 
-    fn binaryMul(a: i64, b: i64) VmError!Value {
+    fn binaryMul(a: i64, b: i64) Error!Value {
         return Value.makeFixnum(a * b);
     }
 
-    fn binaryDiv(a: i64, b: i64) VmError!Value {
+    fn binaryDiv(a: i64, b: i64) Error!Value {
         if (b == 0) return error.DivisionByZero;
         return Value.makeFixnum(@divTrunc(a, b));
     }
 
-    fn binaryMod(a: i64, b: i64) VmError!Value {
+    fn binaryMod(a: i64, b: i64) Error!Value {
         if (b == 0) return error.DivisionByZero;
         return Value.makeFixnum(@mod(a, b));
     }
 
-    fn binaryLt(a: i64, b: i64) VmError!Value {
+    fn binaryLt(a: i64, b: i64) Error!Value {
         return if (a < b) Value.t else Value.nil;
     }
 
-    fn binaryGt(a: i64, b: i64) VmError!Value {
+    fn binaryGt(a: i64, b: i64) Error!Value {
         return if (a > b) Value.t else Value.nil;
     }
 
-    fn binaryLe(a: i64, b: i64) VmError!Value {
+    fn binaryLe(a: i64, b: i64) Error!Value {
         return if (a <= b) Value.t else Value.nil;
     }
 
-    fn binaryGe(a: i64, b: i64) VmError!Value {
+    fn binaryGe(a: i64, b: i64) Error!Value {
         return if (a >= b) Value.t else Value.nil;
     }
 
-    fn binaryNumEq(a: i64, b: i64) VmError!Value {
+    fn binaryNumEq(a: i64, b: i64) Error!Value {
         return if (a == b) Value.t else Value.nil;
     }
 };

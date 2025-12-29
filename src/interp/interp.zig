@@ -4,7 +4,7 @@
 
 pub const vm = @import("vm.zig");
 pub const Vm = vm.Vm;
-pub const VmError = vm.VmError;
+pub const Error = vm.Error;
 pub const Frame = vm.Frame;
 
 pub const repl = @import("repl.zig");

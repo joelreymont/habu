@@ -8,7 +8,7 @@ pub const Chunk = opcodes.Chunk;
 
 pub const emit = @import("emit.zig");
 pub const Emitter = emit.Emitter;
-pub const EmitError = emit.EmitError;
+pub const Error = emit.Error;
 
 pub const disasm = @import("disasm.zig");
 pub const disassemble = disasm.disassemble;
