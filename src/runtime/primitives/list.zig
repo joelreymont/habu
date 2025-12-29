@@ -113,14 +113,28 @@ pub fn list(heap: *Heap, values: []const Value) error{OutOfMemory}!Value {
     return result;
 }
 
-/// Append two lists
+/// Append two lists (iterative, O(n) time/space, no stack overflow)
 pub fn append(heap: *Heap, list1: Value, list2: Value) error{OutOfMemory}!Value {
     if (list1.isNil()) return list2;
     if (!list1.isCons()) return list2;
 
-    const c = list1.toPtr(objects.Cons);
-    const new_cdr = try append(heap, c.cdr, list2);
-    return try cons(heap, c.car, new_cdr);
+    // Build reversed copy of list1
+    var reversed = Value.nil;
+    var curr = list1;
+    while (curr.isCons()) {
+        const c = curr.toPtr(objects.Cons);
+        reversed = try cons(heap, c.car, reversed);
+        curr = c.cdr;
+    }
+
+    // Cons reversed elements onto list2
+    var result = list2;
+    while (reversed.isCons()) {
+        const c = reversed.toPtr(objects.Cons);
+        result = try cons(heap, c.car, result);
+        reversed = c.cdr;
+    }
+    return result;
 }
 
 /// Reverse a list
