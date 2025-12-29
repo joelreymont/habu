@@ -1771,6 +1771,40 @@ pub const Vm = struct {
                         }
                         i += 2;
                     },
+                    'X', 'x' => {
+                        // Hexadecimal integer
+                        if (arg_idx < args.len) {
+                            const val = args[arg_idx];
+                            if (val.isFixnum()) {
+                                var buf: [32]u8 = undefined;
+                                const n = val.toFixnum();
+                                const num_str = if (n >= 0)
+                                    std.fmt.bufPrint(&buf, "{X}", .{@as(u64, @intCast(n))}) catch return error.OutOfMemory
+                                else
+                                    std.fmt.bufPrint(&buf, "-{X}", .{@as(u64, @intCast(-n))}) catch return error.OutOfMemory;
+                                result.appendSlice(self.allocator, num_str) catch return error.OutOfMemory;
+                            }
+                            arg_idx += 1;
+                        }
+                        i += 2;
+                    },
+                    'B', 'b' => {
+                        // Binary integer
+                        if (arg_idx < args.len) {
+                            const val = args[arg_idx];
+                            if (val.isFixnum()) {
+                                var buf: [80]u8 = undefined;
+                                const n = val.toFixnum();
+                                const num_str = if (n >= 0)
+                                    std.fmt.bufPrint(&buf, "{b}", .{@as(u64, @intCast(n))}) catch return error.OutOfMemory
+                                else
+                                    std.fmt.bufPrint(&buf, "-{b}", .{@as(u64, @intCast(-n))}) catch return error.OutOfMemory;
+                                result.appendSlice(self.allocator, num_str) catch return error.OutOfMemory;
+                            }
+                            arg_idx += 1;
+                        }
+                        i += 2;
+                    },
                     '%' => {
                         // Newline
                         result.append(self.allocator, '\n') catch return error.OutOfMemory;
