@@ -1122,3 +1122,111 @@
 ; decf - decrement place
 (defmacro decf (place &optional (delta 1))
   (list 'setf place (list '- place delta)))
+
+;; ============================================================
+;; Additional Utilities
+;; ============================================================
+
+; constantly - return a function that always returns value
+(defun constantly (value)
+  (lambda (&rest args)
+    (declare (ignore args))
+    value))
+
+; complement - return negation of predicate
+(defun complement (fn)
+  (lambda (&rest args)
+    (not (apply fn args))))
+
+; compose - compose two functions
+(defun compose (f g)
+  (lambda (&rest args)
+    (funcall f (apply g args))))
+
+; identity - return argument unchanged
+(defun identity (x) x)
+
+; conjoin - combine predicates with AND
+(defun conjoin (&rest predicates)
+  (lambda (&rest args)
+    (every (lambda (p) (apply p args)) predicates)))
+
+; disjoin - combine predicates with OR
+(defun disjoin (&rest predicates)
+  (lambda (&rest args)
+    (some (lambda (p) (apply p args)) predicates)))
+
+; curry - partial application (first arg)
+(defun curry (fn arg)
+  (lambda (&rest args)
+    (apply fn arg args)))
+
+; rcurry - partial application (last arg)
+(defun rcurry (fn arg)
+  (lambda (&rest args)
+    (apply fn (append args (list arg)))))
+
+; flip - swap first two arguments
+(defun flip (fn)
+  (lambda (a b &rest args)
+    (apply fn b a args)))
+
+; juxt - apply multiple functions, return list of results
+(defun juxt (&rest fns)
+  (lambda (&rest args)
+    (mapcar (lambda (f) (apply f args)) fns)))
+
+;; ============================================================
+;; List Utilities
+;; ============================================================
+
+; iota - generate list of integers
+(defun iota (count &optional (start 0) (step 1))
+  (if (<= count 0)
+      nil
+      (cons start (iota (- count 1) (+ start step) step))))
+
+; partition - split list by predicate
+(defun partition (pred lst)
+  (let ((yes nil)
+        (no nil))
+    (dolist (x lst (values (nreverse yes) (nreverse no)))
+      (if (funcall pred x)
+          (push x yes)
+          (push x no)))))
+
+; partition-if - same as partition
+(defun partition-if (pred lst)
+  (partition pred lst))
+
+; group-by - group elements by key function
+(defun group-by (key-fn lst)
+  (let ((groups (make-hash-table :test 'equal)))
+    (dolist (x lst)
+      (let ((k (funcall key-fn x)))
+        (push x (gethash k groups nil))))
+    ; Convert to alist with reversed lists
+    (let ((result nil))
+      (maphash (lambda (k v)
+                 (push (cons k (nreverse v)) result))
+               groups)
+      result)))
+
+; frequencies - count occurrences
+(defun frequencies (lst)
+  (let ((counts (make-hash-table :test 'equal)))
+    (dolist (x lst)
+      (incf (gethash x counts 0)))
+    (hash-table-alist counts)))
+
+; interpose - insert separator between elements
+(defun interpose (sep lst)
+  (if (or (null lst) (null (cdr lst)))
+      lst
+      (cons (car lst)
+            (cons sep
+                  (interpose sep (cdr lst))))))
+
+; intersperse - same as interpose
+(defun intersperse (sep lst)
+  (interpose sep lst))
