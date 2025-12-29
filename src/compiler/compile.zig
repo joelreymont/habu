@@ -1260,19 +1260,18 @@ pub const Compiler = struct {
         };
         emitter.deinit();
 
+        // Use arena for temporary chunk allocations - single cleanup handles all error paths
+        var arena = std.heap.ArenaAllocator.init(self.allocator);
+        defer arena.deinit();
+
         // Create temporary chunk pool for macro execution
-        var chunk_ptrs = self.allocator.alloc(*Chunk, child_chunks.len) catch {
+        var chunk_ptrs = arena.allocator().alloc(*Chunk, child_chunks.len) catch {
             self.allocator.free(child_chunks);
             return error.OutOfMemory;
         };
-        defer self.allocator.free(chunk_ptrs);
 
         for (child_chunks, 0..) |*child_chunk, i| {
-            const chunk_ptr = self.allocator.create(Chunk) catch {
-                // Clean up already allocated
-                for (chunk_ptrs[0..i]) |ptr| {
-                    self.allocator.destroy(ptr);
-                }
+            const chunk_ptr = arena.allocator().create(Chunk) catch {
                 self.allocator.free(child_chunks);
                 return error.OutOfMemory;
             };
@@ -1281,53 +1280,25 @@ pub const Compiler = struct {
         }
         self.allocator.free(child_chunks);
 
-        // Set chunk pool and run
+        // Set chunk pool and run - all error paths now cleaned up by arena.deinit
         vm.setChunkPool(chunk_ptrs);
-        const closure_val = vm.run(&chunk) catch {
-            for (chunk_ptrs) |ptr| {
-                self.allocator.destroy(ptr);
-            }
-            return error.InvalidSyntax;
-        };
+        const closure_val = vm.run(&chunk) catch return error.InvalidSyntax;
 
-        if (!closure_val.isClosure()) {
-            for (chunk_ptrs) |ptr| {
-                self.allocator.destroy(ptr);
-            }
-            return error.InvalidSyntax;
-        }
+        if (!closure_val.isClosure()) return error.InvalidSyntax;
         const closure = closure_val.toPtr(Closure);
 
         // Now call the closure with the macro arguments
-        // Push args onto stack, then call
         var arg_count: u8 = 0;
         var arg_list = args;
         while (arg_list.isCons()) {
             const arg_cons = arg_list.toPtr(Cons);
-            vm.push(arg_cons.car) catch {
-                for (chunk_ptrs) |ptr| {
-                    self.allocator.destroy(ptr);
-                }
-                return error.InvalidSyntax;
-            };
+            vm.push(arg_cons.car) catch return error.InvalidSyntax;
             arg_count += 1;
             arg_list = arg_cons.cdr;
         }
 
         // Call the macro expander
-        const result = vm.callClosure(closure, arg_count) catch {
-            for (chunk_ptrs) |ptr| {
-                self.allocator.destroy(ptr);
-            }
-            return error.InvalidSyntax;
-        };
-
-        // Clean up temporary chunks (closure is no longer needed)
-        for (chunk_ptrs) |ptr| {
-            self.allocator.destroy(ptr);
-        }
-
-        return result;
+        return vm.callClosure(closure, arg_count) catch return error.InvalidSyntax;
     }
 
     fn compileIf(self: *Compiler, args: Value, env: *const Env) CompileError!*Ir {
