@@ -981,120 +981,113 @@ test "occurs check prevents infinite types" {
 }
 
 test "infer literal fixnum" {
-    const testing = std.testing;
-    var ctx = InferCtx.init(testing.allocator);
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
+    var ctx = InferCtx.init(alloc);
     defer ctx.deinit();
 
-    const builder = ir_mod.IrBuilder.init(testing.allocator);
+    const builder = ir_mod.IrBuilder.init(alloc);
     const lit_node = try builder.lit(value_mod.Value.makeFixnum(42));
-    defer testing.allocator.destroy(lit_node);
 
-    var env = InferCtx.TypeEnv.init(testing.allocator);
+    var env = InferCtx.TypeEnv.init(alloc);
     defer env.deinit();
 
     const inferred = try ctx.infer(lit_node, &env);
-    try testing.expect(inferred.* == .concrete);
-    try testing.expectEqual(types.Primitive.fixnum, inferred.concrete.primitive);
+    try std.testing.expect(inferred.* == .concrete);
+    try std.testing.expectEqual(types.Primitive.fixnum, inferred.concrete.primitive);
 }
 
 test "infer arithmetic constrains to fixnum" {
-    const testing = std.testing;
-    var ctx = InferCtx.init(testing.allocator);
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
+    var ctx = InferCtx.init(alloc);
     defer ctx.deinit();
 
-    const builder = ir_mod.IrBuilder.init(testing.allocator);
+    const builder = ir_mod.IrBuilder.init(alloc);
     const left = try builder.lit(value_mod.Value.makeFixnum(1));
     const right = try builder.lit(value_mod.Value.makeFixnum(2));
     const add_node = try builder.add(left, right);
-    defer {
-        testing.allocator.destroy(left);
-        testing.allocator.destroy(right);
-        testing.allocator.destroy(add_node);
-    }
 
-    var env = InferCtx.TypeEnv.init(testing.allocator);
+    var env = InferCtx.TypeEnv.init(alloc);
     defer env.deinit();
 
     const inferred = try ctx.infer(add_node, &env);
 
     // Result should be fixnum
-    try testing.expect(inferred.* == .concrete);
-    try testing.expectEqual(types.Primitive.fixnum, inferred.concrete.primitive);
+    try std.testing.expect(inferred.* == .concrete);
+    try std.testing.expectEqual(types.Primitive.fixnum, inferred.concrete.primitive);
 
     // Should have generated constraints for operands
-    try testing.expectEqual(@as(usize, 2), ctx.constraints.items.len);
+    try std.testing.expectEqual(@as(usize, 2), ctx.constraints.items.len);
 }
 
 test "infer lambda creates arrow type" {
-    const testing = std.testing;
-    var ctx = InferCtx.init(testing.allocator);
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
+    var ctx = InferCtx.init(alloc);
     defer ctx.deinit();
 
-    const builder = ir_mod.IrBuilder.init(testing.allocator);
+    const builder = ir_mod.IrBuilder.init(alloc);
     const body = try builder.lit(value_mod.Value.makeFixnum(42));
     const params = [_][]const u8{"x"};
     const captures = [_]ir_mod.Ir.Capture{};
     const lam = try builder.lambda(&params, null, &captures, body);
-    defer {
-        testing.allocator.destroy(body);
-        for (lam.lambda.params) |p| testing.allocator.free(p);
-        testing.allocator.free(lam.lambda.params);
-        testing.allocator.free(lam.lambda.captures);
-        testing.allocator.destroy(lam);
-    }
 
-    var env = InferCtx.TypeEnv.init(testing.allocator);
+    var env = InferCtx.TypeEnv.init(alloc);
     defer env.deinit();
 
     const inferred = try ctx.infer(lam, &env);
 
     // Should be arrow type
-    try testing.expect(inferred.* == .arrow);
-    try testing.expectEqual(@as(usize, 1), inferred.arrow.domain.len);
+    try std.testing.expect(inferred.* == .arrow);
+    try std.testing.expectEqual(@as(usize, 1), inferred.arrow.domain.len);
 
     // Parameter should be type variable
-    try testing.expect(inferred.arrow.domain[0].* == .variable);
+    try std.testing.expect(inferred.arrow.domain[0].* == .variable);
 
     // Return type should be fixnum
-    try testing.expect(inferred.arrow.range.* == .concrete);
-    try testing.expectEqual(types.Primitive.fixnum, inferred.arrow.range.concrete.primitive);
+    try std.testing.expect(inferred.arrow.range.* == .concrete);
+    try std.testing.expectEqual(types.Primitive.fixnum, inferred.arrow.range.concrete.primitive);
 }
 
 test "infer if unifies branches" {
-    const testing = std.testing;
-    var ctx = InferCtx.init(testing.allocator);
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
+    var ctx = InferCtx.init(alloc);
     defer ctx.deinit();
 
-    const builder = ir_mod.IrBuilder.init(testing.allocator);
+    const builder = ir_mod.IrBuilder.init(alloc);
     const cond = try builder.lit(value_mod.Value.t);
     const then_expr = try builder.lit(value_mod.Value.makeFixnum(1));
     const else_expr = try builder.lit(value_mod.Value.makeFixnum(2));
     const if_node = try builder.ifExpr(cond, then_expr, else_expr);
-    defer {
-        testing.allocator.destroy(cond);
-        testing.allocator.destroy(then_expr);
-        testing.allocator.destroy(else_expr);
-        testing.allocator.destroy(if_node);
-    }
 
-    var env = InferCtx.TypeEnv.init(testing.allocator);
+    var env = InferCtx.TypeEnv.init(alloc);
     defer env.deinit();
 
     const inferred = try ctx.infer(if_node, &env);
 
     // Result should be type variable (before solving)
-    try testing.expect(inferred.* == .variable);
+    try std.testing.expect(inferred.* == .variable);
 
     // Should have constraints equating both branches to result
-    try testing.expectEqual(@as(usize, 2), ctx.constraints.items.len);
+    try std.testing.expectEqual(@as(usize, 2), ctx.constraints.items.len);
 
     // Solve constraints
     try ctx.solve();
 
     // After solving, should resolve to fixnum
     const resolved = ctx.resolve(inferred);
-    try testing.expect(resolved.* == .concrete);
-    try testing.expectEqual(types.Primitive.fixnum, resolved.concrete.primitive);
+    try std.testing.expect(resolved.* == .concrete);
+    try std.testing.expectEqual(types.Primitive.fixnum, resolved.concrete.primitive);
 }
 
 test "generalize type with free variables" {
@@ -1179,11 +1172,14 @@ test "let-polymorphism: identity used at multiple types" {
     //   (progn (id 42) (id "hello")))
     // In HM, id should be generalized to ∀T. T -> T
     // Then instantiated differently for each use
-    const testing = std.testing;
-    var ctx = InferCtx.init(testing.allocator);
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
+    var ctx = InferCtx.init(alloc);
     defer ctx.deinit();
 
-    const builder = ir_mod.IrBuilder.init(testing.allocator);
+    const builder = ir_mod.IrBuilder.init(alloc);
 
     // Build: (lambda (x) x)
     const x_var = try builder.variable("x", 0, 0);
@@ -1213,32 +1209,7 @@ test "let-polymorphism: identity used at multiple types" {
     };
     const let_node = try builder.letExpr(&bindings, progn);
 
-    defer {
-        // Free variable nodes (they dupe the name)
-        testing.allocator.free(x_var.@"var".name);
-        testing.allocator.destroy(x_var);
-        for (id_lambda.lambda.params) |p| testing.allocator.free(p);
-        testing.allocator.free(id_lambda.lambda.params);
-        testing.allocator.free(id_lambda.lambda.captures);
-        testing.allocator.destroy(id_lambda);
-        testing.allocator.free(id_ref1.@"var".name);
-        testing.allocator.destroy(id_ref1);
-        testing.allocator.destroy(lit42);
-        testing.allocator.free(@constCast(call1.call.args));
-        testing.allocator.destroy(call1);
-        testing.allocator.free(id_ref2.@"var".name);
-        testing.allocator.destroy(id_ref2);
-        testing.allocator.free(hello.quote_sym);
-        testing.allocator.destroy(hello);
-        testing.allocator.free(@constCast(call2.call.args));
-        testing.allocator.destroy(call2);
-        testing.allocator.free(@constCast(progn.progn));
-        testing.allocator.destroy(progn);
-        testing.allocator.free(@constCast(let_node.let.bindings));
-        testing.allocator.destroy(let_node);
-    }
-
-    var env = InferCtx.TypeEnv.init(testing.allocator);
+    var env = InferCtx.TypeEnv.init(alloc);
     defer env.deinit();
 
     // This should NOT error - id is polymorphic
