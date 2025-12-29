@@ -141,6 +141,9 @@ pub const InferCtx = struct {
     allocated_slices: std.ArrayList([*]*const InferType),
     slice_lens: std.ArrayList(usize),
 
+    /// Track bound_vars slices from generalize for cleanup
+    bound_vars_slices: std.ArrayList([]const u32),
+
     pub fn init(allocator: std.mem.Allocator) InferCtx {
         return .{
             .allocator = allocator,
@@ -150,6 +153,7 @@ pub const InferCtx = struct {
             .allocated = std.ArrayList(*InferType){},
             .allocated_slices = std.ArrayList([*]*const InferType){},
             .slice_lens = std.ArrayList(usize){},
+            .bound_vars_slices = std.ArrayList([]const u32){},
         };
     }
 
@@ -164,6 +168,11 @@ pub const InferCtx = struct {
         }
         self.allocated_slices.deinit(self.allocator);
         self.slice_lens.deinit(self.allocator);
+        // Free bound_vars slices from generalize
+        for (self.bound_vars_slices.items) |slice| {
+            self.allocator.free(slice);
+        }
+        self.bound_vars_slices.deinit(self.allocator);
         self.substitutions.deinit();
         self.constraints.deinit(self.allocator);
     }
@@ -347,10 +356,39 @@ pub const InferCtx = struct {
     }
 
     /// Collect all free type variables in a type environment
+    /// For TypeSchemes, only collects vars that are NOT bound by the scheme
     fn collectEnvFreeVars(self: *const InferCtx, env: *const TypeEnv, free_vars: *std.ArrayList(u32)) !void {
         var it = env.bindings.iterator();
         while (it.next()) |entry| {
-            try self.collectFreeVars(entry.value_ptr.*, free_vars);
+            const scheme = entry.value_ptr.*;
+            // Collect all vars in the body, then exclude bound vars
+            var body_vars = std.ArrayList(u32){};
+            defer body_vars.deinit(self.allocator);
+            try self.collectFreeVars(scheme.body, &body_vars);
+
+            // Add to free_vars only those not bound by scheme
+            for (body_vars.items) |bv| {
+                var is_bound = false;
+                for (scheme.bound_vars) |bound| {
+                    if (bv == bound) {
+                        is_bound = true;
+                        break;
+                    }
+                }
+                if (!is_bound) {
+                    // Add if not already present
+                    var already_present = false;
+                    for (free_vars.items) |fv| {
+                        if (fv == bv) {
+                            already_present = true;
+                            break;
+                        }
+                    }
+                    if (!already_present) {
+                        try free_vars.append(self.allocator, bv);
+                    }
+                }
+            }
         }
         if (env.parent) |parent| {
             try self.collectEnvFreeVars(parent, free_vars);
@@ -386,8 +424,11 @@ pub const InferCtx = struct {
             }
         }
 
+        const bound_slice = try bound_vars.toOwnedSlice(self.allocator);
+        // Track for cleanup
+        try self.bound_vars_slices.append(self.allocator, bound_slice);
         return TypeScheme{
-            .bound_vars = try bound_vars.toOwnedSlice(self.allocator),
+            .bound_vars = bound_slice,
             .body = t,
         };
     }
@@ -469,15 +510,16 @@ pub const InferCtx = struct {
     }
 
     /// Type environment for tracking variable types during inference
+    /// Stores TypeSchemes for let-polymorphism support
     pub const TypeEnv = struct {
         parent: ?*const TypeEnv,
-        bindings: std.StringHashMap(*const InferType),
+        bindings: std.StringHashMap(TypeScheme),
         allocator: std.mem.Allocator,
 
         pub fn init(allocator: std.mem.Allocator) TypeEnv {
             return .{
                 .parent = null,
-                .bindings = std.StringHashMap(*const InferType).init(allocator),
+                .bindings = std.StringHashMap(TypeScheme).init(allocator),
                 .allocator = allocator,
             };
         }
@@ -485,7 +527,7 @@ pub const InferCtx = struct {
         pub fn initWithParent(allocator: std.mem.Allocator, parent: *const TypeEnv) TypeEnv {
             return .{
                 .parent = parent,
-                .bindings = std.StringHashMap(*const InferType).init(allocator),
+                .bindings = std.StringHashMap(TypeScheme).init(allocator),
                 .allocator = allocator,
             };
         }
@@ -494,18 +536,28 @@ pub const InferCtx = struct {
             self.bindings.deinit();
         }
 
-        pub fn lookup(self: TypeEnv, name: []const u8) ?*const InferType {
-            if (self.bindings.get(name)) |ty| {
-                return ty;
+        /// Look up a variable's type scheme
+        pub fn lookupScheme(self: TypeEnv, name: []const u8) ?TypeScheme {
+            if (self.bindings.get(name)) |scheme| {
+                return scheme;
             }
             if (self.parent) |p| {
-                return p.lookup(name);
+                return p.lookupScheme(name);
             }
             return null;
         }
 
-        pub fn bind(self: *TypeEnv, name: []const u8, ty: *const InferType) !void {
-            try self.bindings.put(name, ty);
+        /// Bind a type scheme to a name (for let-polymorphism)
+        pub fn bindScheme(self: *TypeEnv, name: []const u8, scheme: TypeScheme) !void {
+            try self.bindings.put(name, scheme);
+        }
+
+        /// Bind a monomorphic type (convenience for lambda params)
+        pub fn bindMono(self: *TypeEnv, name: []const u8, ty: *const InferType) !void {
+            try self.bindings.put(name, TypeScheme{
+                .bound_vars = &.{},
+                .body = ty,
+            });
         }
     };
 
@@ -524,10 +576,11 @@ pub const InferCtx = struct {
             .quote_sym => return try self.concrete(&types.t_symbol),
             .quote => return try self.concrete(&types.t_any),
 
-            // Variables - look up in environment or return fresh var
+            // Variables - look up in environment, instantiate scheme
             .@"var" => |v| {
-                if (env.lookup(v.name)) |ty| {
-                    return ty;
+                if (env.lookupScheme(v.name)) |scheme| {
+                    // Instantiate the scheme with fresh type variables
+                    return try self.instantiate(scheme);
                 }
                 // Unknown variable - create fresh type variable
                 return try self.freshVar();
@@ -649,16 +702,26 @@ pub const InferCtx = struct {
                 return last_ty;
             },
 
-            // Let binding
+            // Let binding with let-polymorphism
             .let => |let_expr| {
                 // Create child environment
                 var child_env = TypeEnv.initWithParent(self.allocator, env);
                 defer child_env.deinit();
 
-                // Infer types for each binding
+                // Infer types for each binding with generalization
                 for (let_expr.bindings) |binding| {
+                    // 1. Infer the binding's value type
                     const val_ty = try self.infer(binding.value, env);
-                    try child_env.bind(binding.name, val_ty);
+
+                    // 2. Solve constraints so far (eager unification)
+                    //    This ensures type vars are resolved before generalizing
+                    try self.solve();
+
+                    // 3. Generalize: free vars not in env become bound
+                    const scheme = try self.generalize(val_ty, env);
+
+                    // 4. Bind the scheme (enables polymorphic use in body)
+                    try child_env.bindScheme(binding.name, scheme);
                 }
 
                 // Infer body type in extended environment
@@ -672,16 +735,17 @@ pub const InferCtx = struct {
                 defer child_env.deinit();
 
                 // Create fresh type variables for each parameter
+                // Lambda params are monomorphic (not generalized)
                 var param_types = try self.allocSlice(lam.params.len);
                 for (lam.params, 0..) |param, i| {
                     param_types[i] = try self.freshVar();
-                    try child_env.bind(param, param_types[i]);
+                    try child_env.bindMono(param, param_types[i]);
                 }
 
                 // Handle rest parameter
                 if (lam.rest_param) |rest| {
                     const rest_ty = try self.concrete(&types.t_any);
-                    try child_env.bind(rest, rest_ty);
+                    try child_env.bindMono(rest, rest_ty);
                 }
 
                 // Infer body type
@@ -1049,8 +1113,8 @@ test "generalize type with free variables" {
     defer env.deinit();
 
     // Generalize: should bind ?T0
+    // Note: InferCtx.deinit frees scheme.bound_vars
     const scheme = try ctx.generalize(arrow, &env);
-    defer testing.allocator.free(scheme.bound_vars);
 
     try testing.expectEqual(@as(usize, 1), scheme.bound_vars.len);
     try testing.expectEqual(@as(u32, 0), scheme.bound_vars[0]);
@@ -1067,7 +1131,7 @@ test "generalize respects environment" {
     // Environment has binding for ?T0
     var env = InferCtx.TypeEnv.init(testing.allocator);
     defer env.deinit();
-    try env.bind("x", env_var);
+    try env.bindMono("x", env_var);
 
     // Type to generalize also uses ?T0
     const arrow = try ctx.alloc();
@@ -1075,8 +1139,8 @@ test "generalize respects environment" {
     arrow.* = .{ .arrow = .{ .domain = &domain, .range = env_var } };
 
     // Generalize: ?T0 is in env, so shouldn't be bound
+    // Note: InferCtx.deinit frees scheme.bound_vars
     const scheme = try ctx.generalize(arrow, &env);
-    defer testing.allocator.free(scheme.bound_vars);
 
     try testing.expectEqual(@as(usize, 0), scheme.bound_vars.len);
     try testing.expect(scheme.isMono());
@@ -1108,4 +1172,79 @@ test "instantiate creates fresh variables" {
     try testing.expect(inst1.arrow.domain[0].* == .variable);
     try testing.expect(inst2.arrow.domain[0].* == .variable);
     try testing.expect(inst1.arrow.domain[0].variable.id != inst2.arrow.domain[0].variable.id);
+}
+
+test "let-polymorphism: identity used at multiple types" {
+    // (let ((id (lambda (x) x)))
+    //   (progn (id 42) (id "hello")))
+    // In HM, id should be generalized to ∀T. T -> T
+    // Then instantiated differently for each use
+    const testing = std.testing;
+    var ctx = InferCtx.init(testing.allocator);
+    defer ctx.deinit();
+
+    const builder = ir_mod.IrBuilder.init(testing.allocator);
+
+    // Build: (lambda (x) x)
+    const x_var = try builder.variable("x", 0, 0);
+    const params = [_][]const u8{"x"};
+    const captures = [_]ir_mod.Ir.Capture{};
+    const id_lambda = try builder.lambda(&params, null, &captures, x_var);
+
+    // Build: (id 42)
+    const id_ref1 = try builder.variable("id", 0, 0);
+    const lit42 = try builder.lit(value_mod.Value.makeFixnum(42));
+    const args1 = [_]*const ir_mod.Ir{lit42};
+    const call1 = try builder.call(id_ref1, &args1);
+
+    // Build: (id "hello") - using a symbol as proxy for string
+    const id_ref2 = try builder.variable("id", 0, 0);
+    const hello = try builder.quoteSym("hello");
+    const args2 = [_]*const ir_mod.Ir{hello};
+    const call2 = try builder.call(id_ref2, &args2);
+
+    // Build: (progn (id 42) (id "hello"))
+    const progn_exprs = [_]*const ir_mod.Ir{ call1, call2 };
+    const progn = try builder.progn(&progn_exprs);
+
+    // Build: (let ((id (lambda (x) x))) ...)
+    const bindings = [_]ir_mod.Ir.Binding{
+        .{ .name = "id", .value = id_lambda },
+    };
+    const let_node = try builder.letExpr(&bindings, progn);
+
+    defer {
+        // Free variable nodes (they dupe the name)
+        testing.allocator.free(x_var.@"var".name);
+        testing.allocator.destroy(x_var);
+        for (id_lambda.lambda.params) |p| testing.allocator.free(p);
+        testing.allocator.free(id_lambda.lambda.params);
+        testing.allocator.free(id_lambda.lambda.captures);
+        testing.allocator.destroy(id_lambda);
+        testing.allocator.free(id_ref1.@"var".name);
+        testing.allocator.destroy(id_ref1);
+        testing.allocator.destroy(lit42);
+        testing.allocator.free(@constCast(call1.call.args));
+        testing.allocator.destroy(call1);
+        testing.allocator.free(id_ref2.@"var".name);
+        testing.allocator.destroy(id_ref2);
+        testing.allocator.free(hello.quote_sym);
+        testing.allocator.destroy(hello);
+        testing.allocator.free(@constCast(call2.call.args));
+        testing.allocator.destroy(call2);
+        testing.allocator.free(@constCast(progn.progn));
+        testing.allocator.destroy(progn);
+        testing.allocator.free(@constCast(let_node.let.bindings));
+        testing.allocator.destroy(let_node);
+    }
+
+    var env = InferCtx.TypeEnv.init(testing.allocator);
+    defer env.deinit();
+
+    // This should NOT error - id is polymorphic
+    const result = try ctx.infer(let_node, &env);
+    _ = result;
+
+    // Solve constraints - both calls should work despite different arg types
+    try ctx.solve();
 }
