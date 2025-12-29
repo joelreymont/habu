@@ -629,3 +629,87 @@
 ; string-trim - remove leading and trailing characters
 (defun string-trim (chars s)
   (string-right-trim chars (string-left-trim chars s)))
+
+;; ============================================================
+;; Copy Functions
+;; ============================================================
+
+; copy-list - shallow copy of list structure
+(defun copy-list (lst)
+  (if (null lst)
+      nil
+      (cons (car lst) (copy-list (cdr lst)))))
+
+; copy-tree - deep copy of tree structure
+(defun copy-tree (tree)
+  (if (consp tree)
+      (cons (copy-tree (car tree))
+            (copy-tree (cdr tree)))
+      tree))
+
+; copy-seq - copy sequence (for lists, same as copy-list)
+(defun copy-seq (seq)
+  (if (vectorp seq)
+      (let* ((len (length seq))
+             (new (make-vector len nil)))
+        (dotimes (i len new)
+          (setf (svref new i) (svref seq i))))
+      (copy-list seq)))
+
+;; ============================================================
+;; Type Dispatch Macros
+;; ============================================================
+
+; typecase - dispatch on type of expression
+(defmacro typecase (keyform &rest clauses)
+  (let ((key (gensym "KEY")))
+    (list 'let (list (list key keyform))
+          (cons 'cond
+                (mapcar (lambda (clause)
+                          (let ((type-spec (car clause))
+                                (body (cdr clause)))
+                            (if (or (eq type-spec 't)
+                                    (eq type-spec 'otherwise))
+                                (cons t body)
+                                (cons (list 'typep key (list 'quote type-spec))
+                                      body))))
+                        clauses)))))
+
+; etypecase - error-signaling typecase
+(defmacro etypecase (keyform &rest clauses)
+  (let ((key (gensym "KEY")))
+    (list 'let (list (list key keyform))
+          (cons 'cond
+                (append
+                 (mapcar (lambda (clause)
+                           (let ((type-spec (car clause))
+                                 (body (cdr clause)))
+                             (cons (list 'typep key (list 'quote type-spec))
+                                   body)))
+                         clauses)
+                 (list (list t (list 'error "No matching type in etypecase"))))))))
+
+; ecase - error-signaling case
+(defmacro ecase (keyform &rest clauses)
+  (let ((key (gensym "KEY")))
+    (list 'let (list (list key keyform))
+          (cons 'cond
+                (append
+                 (mapcar (lambda (clause)
+                           (let ((keys (car clause))
+                                 (body (cdr clause)))
+                             (if (listp keys)
+                                 (cons (cons 'member (list key (list 'quote keys)))
+                                       body)
+                                 (cons (list 'eql key (list 'quote keys))
+                                       body))))
+                         clauses)
+                 (list (list t (list 'error "No matching key in ecase"))))))))
+
+; ccase - correctable ecase (for now, same as ecase)
+(defmacro ccase (keyform &rest clauses)
+  (cons 'ecase (cons keyform clauses)))
+
+; ctypecase - correctable etypecase (for now, same as etypecase)
+(defmacro ctypecase (keyform &rest clauses)
+  (cons 'etypecase (cons keyform clauses)))
