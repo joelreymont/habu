@@ -62,6 +62,8 @@ pub const Emitter = struct {
     code: std.ArrayList(u8),
     /// Constant pool (raw u64 values)
     constants: std.ArrayList(u64),
+    /// Constant deduplication map: value -> index (O(1) lookup)
+    constant_map: std.AutoHashMap(u64, u16),
     /// Child chunks (for lambdas)
     child_chunks: std.ArrayList(Chunk),
     /// Number of local variables
@@ -84,6 +86,7 @@ pub const Emitter = struct {
             .allocator = allocator,
             .code = std.ArrayList(u8){},
             .constants = std.ArrayList(u64){},
+            .constant_map = std.AutoHashMap(u64, u16).init(allocator),
             .child_chunks = std.ArrayList(Chunk){},
             .num_locals = 0,
             .arity = 0,
@@ -100,6 +103,7 @@ pub const Emitter = struct {
             .allocator = allocator,
             .code = std.ArrayList(u8){},
             .constants = std.ArrayList(u64){},
+            .constant_map = std.AutoHashMap(u64, u16).init(allocator),
             .child_chunks = std.ArrayList(Chunk){},
             .num_locals = 0,
             .arity = 0,
@@ -114,6 +118,7 @@ pub const Emitter = struct {
     pub fn deinit(self: *Emitter) void {
         self.code.deinit(self.allocator);
         self.constants.deinit(self.allocator);
+        self.constant_map.deinit();
         // Free child chunks
         for (self.child_chunks.items) |chunk| {
             self.allocator.free(chunk.code);
@@ -378,11 +383,11 @@ pub const Emitter = struct {
         self.code.append(self.allocator, @truncate(u >> 24)) catch return error.OutOfMemory;
     }
 
-    /// Add constant to pool, return index
+    /// Add constant to pool, return index (O(1) deduplication via hash map)
     fn addConstant(self: *Emitter, val: u64) EmitError!u16 {
-        // Check if already in pool
-        for (self.constants.items, 0..) |c, i| {
-            if (c == val) return @intCast(i);
+        // O(1) lookup in hash map
+        if (self.constant_map.get(val)) |idx| {
+            return idx;
         }
 
         if (self.constants.items.len >= 65535) {
@@ -391,6 +396,7 @@ pub const Emitter = struct {
 
         const idx: u16 = @intCast(self.constants.items.len);
         self.constants.append(self.allocator, val) catch return error.OutOfMemory;
+        self.constant_map.put(val, idx) catch return error.OutOfMemory;
         return idx;
     }
 
