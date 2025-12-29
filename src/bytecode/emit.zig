@@ -72,6 +72,8 @@ pub const Emitter = struct {
     arity: u8,
     /// Number of optional parameters
     optional_count: u8,
+    /// Number of keyword parameters
+    key_count: u8,
     /// Whether function accepts rest parameter
     has_rest: bool,
     /// Function name
@@ -93,6 +95,7 @@ pub const Emitter = struct {
             .num_locals = 0,
             .arity = 0,
             .optional_count = 0,
+            .key_count = 0,
             .has_rest = false,
             .name = "",
             .captures = &[_]Ir.Capture{},
@@ -111,6 +114,7 @@ pub const Emitter = struct {
             .num_locals = 0,
             .arity = 0,
             .optional_count = 0,
+            .key_count = 0,
             .has_rest = false,
             .name = "",
             .captures = &[_]Ir.Capture{},
@@ -341,6 +345,7 @@ pub const Emitter = struct {
             .constants = try self.allocator.dupe(u64, self.constants.items),
             .arity = self.arity,
             .optional_count = self.optional_count,
+            .key_count = self.key_count,
             .has_rest = self.has_rest,
             .num_locals = self.num_locals,
             .name = self.name,
@@ -573,12 +578,16 @@ pub const Emitter = struct {
 
         const arity: u8 = @intCast(lam.params.len);
         const optional_count: u8 = @intCast(lam.optional_params.len);
+        const key_count: u8 = @intCast(lam.key_params.len);
         lambda_emitter.arity = arity;
         lambda_emitter.optional_count = optional_count;
+        lambda_emitter.key_count = key_count;
         lambda_emitter.has_rest = lam.rest_param != null;
-        // num_locals = required params + optional params + optional rest param
+        // Layout: [positional] [key params] [keyword pairs] [rest]
+        // num_locals = positional + key params + keyword pair space + rest
         const rest_count: u8 = if (lam.rest_param != null) 1 else 0;
-        lambda_emitter.num_locals = arity + optional_count + rest_count;
+        const key_pair_slots: u8 = key_count * 2; // max space for keyword-value pairs
+        lambda_emitter.num_locals = arity + optional_count + key_count + key_pair_slots + rest_count;
         // Pass captures so emitVar knows which variables to load from capture array
         lambda_emitter.captures = lam.captures;
 
@@ -609,6 +618,73 @@ pub const Emitter = struct {
 
             // Patch jump to skip default
             try lambda_emitter.patchJump(skip_jump);
+        }
+
+        // Emit preamble for keyword parameters: find keyword in args and fill defaults
+        for (lam.key_params, 0..) |key_param, i| {
+            const slot_index: u8 = arity + optional_count + @as(u8, @intCast(i));
+
+            // Add keyword to constant pool for find_key opcode
+            if (lambda_emitter.heap) |heap| {
+                const kw = heap.internKeyword(key_param.keyword) orelse {
+                    lambda_emitter.deinit();
+                    return error.OutOfMemory;
+                };
+                const kw_idx = lambda_emitter.addConstant(kw.raw) catch {
+                    lambda_emitter.deinit();
+                    return error.TooManyConstants;
+                };
+
+                // Emit find_key which pushes (found_flag, value)
+                try lambda_emitter.emitOp(.find_key);
+                try lambda_emitter.emitU16(kw_idx);
+
+                // Stack: ..., found_flag, value
+                // Swap so value is below, found_flag on top for jmp_nil
+                try lambda_emitter.emitOp(.swap);
+                // Stack: ..., value, found_flag
+
+                // Jump to use_default if found_flag is nil
+                const use_default_jump = try lambda_emitter.emitJump(.jmp_nil);
+
+                // Keyword was found - value is on stack, store it
+                try lambda_emitter.emitOp(.store_local);
+                try lambda_emitter.emitU8(slot_index);
+
+                // Jump past default handling
+                const done_jump = try lambda_emitter.emitJump(.jmp);
+
+                // use_default: pop the nil value, emit default
+                try lambda_emitter.patchJump(use_default_jump);
+                try lambda_emitter.emitOp(.pop); // discard nil value
+
+                // Emit default value and store to slot
+                if (key_param.default) |default_ir| {
+                    lambda_emitter.emit(default_ir) catch {
+                        lambda_emitter.deinit();
+                        return error.InvalidIr;
+                    };
+                } else {
+                    try lambda_emitter.emitOp(.push_nil);
+                }
+                try lambda_emitter.emitOp(.store_local);
+                try lambda_emitter.emitU8(slot_index);
+
+                // done:
+                try lambda_emitter.patchJump(done_jump);
+            } else {
+                // No heap - just initialize to nil or default
+                if (key_param.default) |default_ir| {
+                    lambda_emitter.emit(default_ir) catch {
+                        lambda_emitter.deinit();
+                        return error.InvalidIr;
+                    };
+                } else {
+                    try lambda_emitter.emitOp(.push_nil);
+                }
+                try lambda_emitter.emitOp(.store_local);
+                try lambda_emitter.emitU8(slot_index);
+            }
         }
 
         // Emit body

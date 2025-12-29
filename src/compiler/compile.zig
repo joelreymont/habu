@@ -1402,8 +1402,12 @@ pub const Compiler = struct {
         var optional_params = std.ArrayList(Ir.OptionalParam){};
         defer optional_params.deinit(self.allocator);
 
+        var key_params = std.ArrayList(Ir.KeyParam){};
+        defer key_params.deinit(self.allocator);
+
         var rest_param: ?[]const u8 = null;
         var in_optional = false;
+        var in_key = false;
         var param_list = params_expr;
         while (param_list.isCons()) {
             const param_cons = param_list.toPtr(Cons);
@@ -1427,11 +1431,27 @@ pub const Compiler = struct {
                 // Check for &optional keyword
                 if (std.mem.eql(u8, name, "&optional")) {
                     in_optional = true;
+                    in_key = false;
                     param_list = param_cons.cdr;
                     continue;
                 }
 
-                if (in_optional) {
+                // Check for &key keyword
+                if (std.mem.eql(u8, name, "&key")) {
+                    in_key = true;
+                    in_optional = false;
+                    param_list = param_cons.cdr;
+                    continue;
+                }
+
+                if (in_key) {
+                    // Key parameter with nil default, keyword = name
+                    key_params.append(self.allocator, .{
+                        .keyword = name,
+                        .name = name,
+                        .default = null,
+                    }) catch return error.OutOfMemory;
+                } else if (in_optional) {
                     // Optional parameter with nil default
                     optional_params.append(self.allocator, .{
                         .name = name,
@@ -1448,7 +1468,20 @@ pub const Compiler = struct {
                 const name_sym = typed.car.toPtr(Symbol);
                 const name = name_sym.getName();
 
-                if (in_optional) {
+                if (in_key) {
+                    // Key parameter: (name default-expr) or just name
+                    // Compile default in parent env (not lambda env)
+                    var default_ir: ?*const Ir = null;
+                    if (typed.cdr.isCons()) {
+                        const default_cons = typed.cdr.toPtr(Cons);
+                        default_ir = try self.compile(default_cons.car, env);
+                    }
+                    key_params.append(self.allocator, .{
+                        .keyword = name,
+                        .name = name,
+                        .default = default_ir,
+                    }) catch return error.OutOfMemory;
+                } else if (in_optional) {
                     // Optional parameter: (name default-expr)
                     // Compile default in parent env (not lambda env)
                     var default_ir: ?*const Ir = null;
@@ -1499,6 +1532,11 @@ pub const Compiler = struct {
         // Bind optional parameters
         for (optional_params.items) |op| {
             _ = lambda_env.bind(op.name) catch return error.OutOfMemory;
+        }
+
+        // Bind key parameters
+        for (key_params.items) |kp| {
+            _ = lambda_env.bind(kp.name) catch return error.OutOfMemory;
         }
 
         // Bind rest parameter if present
@@ -1561,7 +1599,11 @@ pub const Compiler = struct {
         const opt_params = self.allocator.dupe(Ir.OptionalParam, optional_params.items) catch
             return error.OutOfMemory;
 
-        return self.builder.lambda(params.items, opt_params, rest_param, captures, body_ir) catch
+        // Copy key params
+        const kp_params = self.allocator.dupe(Ir.KeyParam, key_params.items) catch
+            return error.OutOfMemory;
+
+        return self.builder.lambda(params.items, opt_params, kp_params, rest_param, captures, body_ir) catch
             return error.OutOfMemory;
     }
 
@@ -3101,6 +3143,7 @@ pub const Compiler = struct {
         lambda_node.* = .{ .lambda = .{
             .params = params,
             .optional_params = &.{},
+            .key_params = &.{},
             .rest_param = null,
             .captures = &[_]Ir.Capture{},
             .body = vec_node,
@@ -3155,6 +3198,7 @@ pub const Compiler = struct {
         lambda_node.* = .{ .lambda = .{
             .params = params,
             .optional_params = &.{},
+            .key_params = &.{},
             .rest_param = null,
             .captures = &[_]Ir.Capture{},
             .body = if_node,
@@ -3184,6 +3228,7 @@ pub const Compiler = struct {
         lambda_node.* = .{ .lambda = .{
             .params = params,
             .optional_params = &.{},
+            .key_params = &.{},
             .rest_param = null,
             .captures = &[_]Ir.Capture{},
             .body = aref_node,
@@ -3251,6 +3296,7 @@ pub const Compiler = struct {
         lambda_node.* = .{ .lambda = .{
             .params = params,
             .optional_params = &.{},
+            .key_params = &.{},
             .rest_param = null,
             .captures = &[_]Ir.Capture{},
             .body = body,

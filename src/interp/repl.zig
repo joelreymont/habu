@@ -1572,6 +1572,7 @@ pub const Repl = struct {
             .constants = constants,
             .arity = 0,
             .optional_count = 0,
+            .key_count = 0,
             .has_rest = false,
             .num_locals = 0,
             .name = "<macro-call>",

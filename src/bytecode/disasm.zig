@@ -73,7 +73,7 @@ pub fn disassembleInstruction(chunk: *const Chunk, offset: usize, writer: anytyp
         },
 
         // 2 byte operand (u16)
-        .push_const, .load_global, .store_global, .make_vec, .make_hash => {
+        .push_const, .load_global, .store_global, .make_vec, .make_hash, .find_key => {
             const operand = chunk.readU16(offset + 1);
             try writer.print("{s} {d}\n", .{ op.name(), operand });
             return offset + 3;
@@ -141,6 +141,7 @@ test "disassemble simple" {
         .constants = &[_]u64{},
         .arity = 0,
         .optional_count = 0,
+        .key_count = 0,
         .has_rest = false,
         .num_locals = 0,
         .name = "test",
@@ -175,6 +176,7 @@ test "disassemble with operands" {
         .constants = &[_]u64{},
         .arity = 2,
         .optional_count = 0,
+        .key_count = 0,
         .has_rest = false,
         .num_locals = 6,
         .name = "with_args",
@@ -210,6 +212,7 @@ test "disassemble jump" {
         .constants = &[_]u64{},
         .arity = 0,
         .optional_count = 0,
+        .key_count = 0,
         .has_rest = false,
         .num_locals = 0,
         .name = "jumpy",

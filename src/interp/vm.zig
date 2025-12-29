@@ -431,6 +431,45 @@ pub const Vm = struct {
                     const frame_argc = if (self.fp > 0) self.frames[self.fp - 1].argc else 0;
                     try self.push(Value.makeFixnum(frame_argc));
                 },
+                .find_key => {
+                    // Get keyword to search for from constant pool
+                    const kw_idx = self.readU16();
+                    const keyword = Value{ .raw = self.chunk.constants[kw_idx] };
+
+                    // Get current frame info
+                    const frame = if (self.fp > 0) &self.frames[self.fp - 1] else null;
+                    if (frame) |f| {
+                        const chunk: *const Chunk = @ptrCast(@alignCast(f.closure.?.code));
+                        // Layout: [positional] [key params] [keyword pairs]
+                        // Keyword pairs start after positional + key param slots
+                        const max_positional = chunk.arity + chunk.optional_count;
+                        const kw_pair_start: usize = max_positional + chunk.key_count;
+                        const frame_argc = f.argc;
+                        const positional_count = @min(frame_argc, max_positional);
+                        const kw_pair_count = frame_argc - positional_count;
+
+                        // Scan keyword-value pairs
+                        var found = false;
+                        var found_value = Value.nil;
+                        var idx: usize = 0;
+                        while (idx + 1 < kw_pair_count) : (idx += 2) {
+                            const kw = self.stack[f.bp + kw_pair_start + idx];
+                            if (kw.raw == keyword.raw) {
+                                found = true;
+                                found_value = self.stack[f.bp + kw_pair_start + idx + 1];
+                                break;
+                            }
+                        }
+
+                        // Push (found_flag, value)
+                        try self.push(if (found) Value.t else Value.nil);
+                        try self.push(found_value);
+                    } else {
+                        // No frame - push (nil, nil)
+                        try self.push(Value.nil);
+                        try self.push(Value.nil);
+                    }
+                },
 
                 // Arithmetic
                 .add => try self.binaryOp(binaryAdd),
@@ -1928,7 +1967,8 @@ pub const Vm = struct {
         const callee_chunk: *const Chunk = @ptrCast(@alignCast(closure.code));
         const arity = callee_chunk.arity;
         const optional_count = callee_chunk.optional_count;
-        const max_arity = arity + optional_count;
+        const key_count = callee_chunk.key_count;
+        const max_positional = arity + optional_count;
 
         // Check arity
         if (callee_chunk.has_rest) {
@@ -1936,9 +1976,19 @@ pub const Vm = struct {
             if (argc < arity) {
                 return error.TypeMismatch;
             }
+        } else if (key_count > 0) {
+            // Has keyword params: need at least required args
+            // Extra args beyond (arity + optional_count) are keyword-value pairs
+            if (argc < arity) {
+                return error.TypeMismatch;
+            }
+            // Keyword args must come in pairs
+            if (argc > max_positional and (argc - max_positional) % 2 != 0) {
+                return error.TypeMismatch;
+            }
         } else if (optional_count > 0) {
             // Has optional params: argc must be in [arity, arity + optional_count]
-            if (argc < arity or argc > max_arity) {
+            if (argc < arity or argc > max_positional) {
                 return error.TypeMismatch;
             }
         } else {
@@ -1949,11 +1999,11 @@ pub const Vm = struct {
         }
 
         // Build rest list if variadic (before we modify the stack)
-        // Rest list contains args beyond required + optional params
+        // Rest list contains args beyond required + optional + key params
         var rest_list = Value.nil;
-        if (callee_chunk.has_rest and argc > max_arity) {
+        if (callee_chunk.has_rest and argc > max_positional) {
             // Build list from extra args (in reverse since we pop from end)
-            const extra_count = argc - max_arity;
+            const extra_count = argc - max_positional;
             var i: u8 = 0;
             while (i < extra_count) : (i += 1) {
                 const idx = self.sp - 1 - i;
@@ -1963,9 +2013,9 @@ pub const Vm = struct {
             self.sp -= extra_count;
         }
 
-        // After popping extra args for rest, we have at most max_arity args on stack
-        // actual_argc is the number of args that will be used for required + optional params
-        const actual_argc: u8 = @min(argc, max_arity);
+        // Determine how many args to copy as locals
+        // For keyword args, we need to keep ALL args for find_key to scan
+        const actual_argc: u8 = if (key_count > 0) argc else @min(argc, max_positional);
 
         if (tail) {
             // Tail call: reuse current frame
@@ -1973,13 +2023,39 @@ pub const Vm = struct {
             const current_bp = if (self.fp > 0) self.frames[self.fp - 1].bp else 0;
             const arg_start = self.sp - actual_argc;
 
-            // Copy args to current frame's base
-            for (0..actual_argc) |i| {
-                self.stack[current_bp + i] = self.stack[arg_start + i];
-            }
+            if (key_count > 0) {
+                // For key args, layout is:
+                // [required + optional args] [key params (nil)] [keyword pairs]
+                const positional_args: u8 = @min(actual_argc, max_positional);
+                const kw_pair_count: u8 = actual_argc - positional_args;
+                const key_slot_start = max_positional;
+                const kw_pair_start = max_positional + key_count;
 
-            // Reset stack pointer
-            self.sp = current_bp + actual_argc;
+                // First, move keyword pairs to their slots
+                var i: usize = kw_pair_count;
+                while (i > 0) {
+                    i -= 1;
+                    self.stack[current_bp + kw_pair_start + i] = self.stack[arg_start + positional_args + i];
+                }
+
+                // Copy positional args
+                for (0..positional_args) |j| {
+                    self.stack[current_bp + j] = self.stack[arg_start + j];
+                }
+
+                // Initialize key param slots to nil
+                for (0..key_count) |k| {
+                    self.stack[current_bp + key_slot_start + k] = Value.nil;
+                }
+
+                self.sp = current_bp + kw_pair_start + kw_pair_count;
+            } else {
+                // Copy args to current frame's base
+                for (0..actual_argc) |i| {
+                    self.stack[current_bp + i] = self.stack[arg_start + i];
+                }
+                self.sp = current_bp + actual_argc;
+            }
 
             // If variadic, push rest list as next local (after required + optional)
             if (callee_chunk.has_rest) {
@@ -2022,11 +2098,42 @@ pub const Vm = struct {
             // We need to set bp to point to first arg (overwriting fn_val slot)
             const new_bp = self.sp - actual_argc - 1;
 
-            // Copy args down to overwrite fn_val (args are now locals 0..actual_argc-1)
-            for (0..actual_argc) |i| {
-                self.stack[new_bp + i] = self.stack[new_bp + 1 + i];
+            if (key_count > 0) {
+                // For key args, layout is:
+                // [required + optional args] [key params (nil)] [keyword pairs]
+                // Caller passes: positional args, then keyword pairs
+                // Split point is at max_positional
+                const positional_args: u8 = @min(actual_argc, max_positional);
+                const kw_pair_count: u8 = actual_argc - positional_args;
+                const key_slot_start = max_positional;
+                const kw_pair_start = max_positional + key_count;
+
+                // First, move keyword pairs to their slots (from the end to avoid overlap)
+                // Keyword pairs are the last kw_pair_count args
+                var i: usize = kw_pair_count;
+                while (i > 0) {
+                    i -= 1;
+                    self.stack[new_bp + kw_pair_start + i] = self.stack[new_bp + 1 + positional_args + i];
+                }
+
+                // Copy positional args to their slots
+                for (0..positional_args) |j| {
+                    self.stack[new_bp + j] = self.stack[new_bp + 1 + j];
+                }
+
+                // Initialize key param slots to nil
+                for (0..key_count) |k| {
+                    self.stack[new_bp + key_slot_start + k] = Value.nil;
+                }
+
+                self.sp = new_bp + kw_pair_start + kw_pair_count;
+            } else {
+                // Normal case: copy args to slots [0, argc)
+                for (0..actual_argc) |i| {
+                    self.stack[new_bp + i] = self.stack[new_bp + 1 + i];
+                }
+                self.sp = new_bp + actual_argc;
             }
-            self.sp = new_bp + actual_argc;
 
             // If variadic, push rest list as next local (after required + optional)
             if (callee_chunk.has_rest) {
@@ -2377,6 +2484,7 @@ test "vm push and return" {
         .constants = &[_]u64{},
         .arity = 0,
         .optional_count = 0,
+        .key_count = 0,
         .has_rest = false,
         .num_locals = 0,
         .name = "test",
@@ -2408,6 +2516,7 @@ test "vm arithmetic" {
         .constants = &[_]u64{},
         .arity = 0,
         .optional_count = 0,
+        .key_count = 0,
         .has_rest = false,
         .num_locals = 0,
         .name = "test",
@@ -2440,6 +2549,7 @@ test "vm cons car cdr" {
         .constants = &[_]u64{},
         .arity = 0,
         .optional_count = 0,
+        .key_count = 0,
         .has_rest = false,
         .num_locals = 0,
         .name = "test",
@@ -2473,6 +2583,7 @@ test "vm conditional" {
         .constants = &[_]u64{},
         .arity = 0,
         .optional_count = 0,
+        .key_count = 0,
         .has_rest = false,
         .num_locals = 0,
         .name = "test",
@@ -2504,6 +2615,7 @@ test "vm locals" {
         .constants = &[_]u64{},
         .arity = 0,
         .optional_count = 0,
+        .key_count = 0,
         .has_rest = false,
         .num_locals = 1,
         .name = "test",
@@ -2546,6 +2658,7 @@ test "vm hash table" {
         .constants = &[_]u64{},
         .arity = 0,
         .optional_count = 0,
+        .key_count = 0,
         .has_rest = false,
         .num_locals = 1,
         .name = "test",
@@ -2593,6 +2706,7 @@ test "vm hash table count and remove" {
         .constants = &[_]u64{},
         .arity = 0,
         .optional_count = 0,
+        .key_count = 0,
         .has_rest = false,
         .num_locals = 1,
         .name = "test",

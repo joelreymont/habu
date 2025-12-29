@@ -83,6 +83,13 @@ pub const Op = enum(u8) {
     /// ( -- argc )
     load_argc = 0x17,
 
+    /// Find keyword argument value (operand: u16 keyword constant index)
+    /// Scans args from (arity + optional_count + key_count) to argc for keyword
+    /// ( -- found_flag value )
+    /// found_flag is t if keyword found, nil if not
+    /// value is the keyword's value if found, nil if not
+    find_key = 0x18,
+
     // ========================================================================
     // Arithmetic
     // ========================================================================
@@ -758,7 +765,7 @@ pub const Op = enum(u8) {
             .push_const, .load_global, .store_global,
             .make_vec, .jmp, .jmp_nil, .jmp_not_nil,
             .load_upvalue, .store_upvalue, .push_catch, .make_hash,
-            .push_unwind, .pop_unwind,
+            .push_unwind, .pop_unwind, .find_key,
             => 2,
 
             // 3 byte operand
@@ -788,6 +795,8 @@ pub const Chunk = struct {
     arity: u8,
     /// Number of optional parameters
     optional_count: u8,
+    /// Number of keyword parameters
+    key_count: u8,
     /// Whether function accepts rest parameter
     has_rest: bool,
     /// Number of local variables
@@ -848,6 +857,7 @@ test "chunk read" {
         .constants = &[_]u64{},
         .arity = 0,
         .optional_count = 0,
+        .key_count = 0,
         .has_rest = false,
         .num_locals = 0,
         .name = "test",
