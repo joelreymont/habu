@@ -11,6 +11,7 @@ pub const regalloc = @import("regalloc.zig");
 pub const arm64 = @import("arm64.zig");
 pub const ffi = @import("ffi.zig");
 pub const lower = @import("lower.zig");
+pub const pipeline = @import("pipeline.zig");
 
 // Re-export commonly used types
 pub const Inst = instruction.Inst;
@@ -43,10 +44,17 @@ pub const Lowerer = lower.Lowerer;
 pub const lowerToFunction = lower.lowerToFunction;
 pub const LowerError = lower.LowerError;
 
+// Compilation pipeline
+pub const compile = pipeline.compile;
+pub const CompiledFunction = pipeline.CompiledFunction;
+pub const PipelineConfig = pipeline.PipelineConfig;
+pub const PipelineError = pipeline.PipelineError;
+
 test {
     _ = instruction;
     _ = regalloc;
     _ = arm64;
     _ = ffi;
     _ = lower;
+    _ = pipeline;
 }
