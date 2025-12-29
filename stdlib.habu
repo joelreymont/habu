@@ -1049,3 +1049,76 @@
   (cons 'simple-error
         (list (cons 'format-control format-control)
               (cons 'format-arguments format-arguments))))
+
+;; ============================================================
+;; Generalized Reference (SETF)
+;; ============================================================
+
+; psetf - parallel setf (evaluate all values before assigning)
+(defmacro psetf (&rest pairs)
+  (if (null pairs)
+      nil
+      (let ((places nil)
+            (values nil)
+            (temps nil))
+        ; Collect places, values, and generate temps
+        (let ((rest pairs))
+          (loop while rest do
+                (let ((place (car rest))
+                      (value (cadr rest))
+                      (temp (gensym "TEMP")))
+                  (push place places)
+                  (push (list temp value) temps)
+                  (push temp values)
+                  (setq rest (cddr rest)))))
+        ; Generate let with all temps, then setf all places
+        (list 'let (nreverse temps)
+              (cons 'progn
+                    (mapcar (lambda (p v) (list 'setf p v))
+                            (nreverse places)
+                            (nreverse values)))))))
+
+; rotatef - rotate values through places
+(defmacro rotatef (&rest places)
+  (if (null places)
+      nil
+      (if (null (cdr places))
+          nil
+          (let ((temps (mapcar (lambda (p) 
+                                 (declare (ignore p))
+                                 (gensym "TEMP"))
+                               places)))
+            (list 'let (mapcar #'list temps places)
+                  (cons 'psetf
+                        (apply #'append
+                               (mapcar #'list 
+                                       places
+                                       (append (cdr temps) (list (car temps)))))))))))
+
+; shiftf - shift values through places, return first
+(defmacro shiftf (&rest places-and-value)
+  (let ((places (butlast places-and-value))
+        (value (car (last places-and-value))))
+    (if (null places)
+        value
+        (let ((result (gensym "RESULT"))
+              (temps (mapcar (lambda (p)
+                               (declare (ignore p))
+                               (gensym "TEMP"))
+                             (cdr places))))
+          (list 'let (cons (list result (car places))
+                           (mapcar #'list temps (cdr places)))
+                (cons 'psetf
+                      (apply #'append
+                             (mapcar #'list
+                                     places
+                                     (append temps (list value)))))
+                result)))))
+
+; incf - increment place
+(defmacro incf (place &optional (delta 1))
+  (list 'setf place (list '+ place delta)))
+
+; decf - decrement place
+(defmacro decf (place &optional (delta 1))
+  (list 'setf place (list '- place delta)))
