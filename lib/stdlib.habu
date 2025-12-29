@@ -71,6 +71,58 @@
                   (do*-steps (cdr bindings)))
             (do*-steps (cdr bindings))))))
 
+;;; do - parallel iteration with stepping
+;;; (do ((var init step)...) (end-test result...) body...)
+;;; Example: (do ((i 0 (+ i 1)) (sum 0 (+ sum i))) ((>= i 5) sum))
+;;; Unlike do*, all step forms see old values (parallel assignment)
+(defmacro do (bindings end-clause &rest body)
+  (let ((let-bindings (do*-bindings bindings))
+        (step-gensyms (do-gensyms bindings))
+        (end-test (car end-clause))
+        (result-forms (cdr end-clause)))
+    ;; Generate: (let ((v1 init1)...) (while (not end-test) body... (let ((g1 step1)...) (setq v1 g1)...)))
+    `(let ,let-bindings
+       (block nil
+         (while (not ,end-test)
+           ,@body
+           ,(do-parallel-step bindings step-gensyms))
+         ,@result-forms))))
+
+;;; Helper: generate gensyms for parallel step
+(defun do-gensyms (bindings)
+  (if (null bindings)
+      nil
+      (cons (gensym "step") (do-gensyms (cdr bindings)))))
+
+;;; Helper: build parallel step form
+;;; (let ((g1 step1) (g2 step2)...) (setq v1 g1) (setq v2 g2)...)
+(defun do-parallel-step (bindings gensyms)
+  (let ((temp-binds (do-temp-bindings bindings gensyms))
+        (assigns (do-assigns bindings gensyms)))
+    `(let ,temp-binds ,@assigns)))
+
+;;; Helper: build ((gensym step) ...) for bindings with steps
+(defun do-temp-bindings (bindings gensyms)
+  (if (null bindings)
+      nil
+      (let ((b (car bindings))
+            (g (car gensyms)))
+        (if (cddr b)  ; has step?
+            (cons (list g (caddr b))
+                  (do-temp-bindings (cdr bindings) (cdr gensyms)))
+            (do-temp-bindings (cdr bindings) (cdr gensyms))))))
+
+;;; Helper: build (setq var gensym) forms
+(defun do-assigns (bindings gensyms)
+  (if (null bindings)
+      nil
+      (let ((b (car bindings))
+            (g (car gensyms)))
+        (if (cddr b)  ; has step?
+            (cons (list 'setq (car b) g)
+                  (do-assigns (cdr bindings) (cdr gensyms)))
+            (do-assigns (cdr bindings) (cdr gensyms))))))
+
 ;;; Mutation macros (fixed arity)
 (defmacro incf (place)
   `(setq ,place (+ ,place 1)))
