@@ -130,25 +130,18 @@
   "Collect free vars in a list form (special form or call)"
   (let ((head (car expr))
         (tail (cdr expr)))
-    (cond
-      ;; Quote - no free variables in quoted data
-      ((eq head 'quote) captures)
-
-      ;; Lambda/fn - creates new scope, skip (handled by compile-lambda)
-      ((eq head 'lambda) captures)
-      ((eq head 'fn) captures)
-
-      ;; Let - bindings shadow, then check body
-      ((eq head 'let)
-       (collect-free-vars-let tail env captures))
-
-      ;; Let* - sequential bindings
-      ((eq head 'let*)
-       (collect-free-vars-let* tail env captures))
-
+    (case head
+      ;; No free variables in quoted data
+      (quote captures)
+      ;; Lambda/fn creates new scope, skip (handled by compile-lambda)
+      (lambda captures)
+      (fn captures)
       ;; Defun - like lambda, creates new scope
-      ((eq head 'defun) captures)
-
+      (defun captures)
+      ;; Let - bindings shadow, then check body
+      (let (collect-free-vars-let tail env captures))
+      ;; Let* - sequential bindings
+      (let* (collect-free-vars-let* tail env captures))
       ;; Other special forms and calls - check all subexpressions
       (t (collect-free-vars-list (cons head tail) env captures)))))
 
@@ -273,53 +266,19 @@
   "Compile list expression (special form or call)"
   (let ((head (car expr))
         (tail (cdr expr)))
-    (cond
-      ;; Quote
-      ((eq head 'quote)
-       (compile-quote (car tail)))
-
-      ;; If
-      ((eq head 'if)
-       (compile-if tail env state))
-
-      ;; Let
-      ((eq head 'let)
-       (compile-let tail env state))
-
-      ;; Let*
-      ((eq head 'let*)
-       (compile-let* tail env state))
-
-      ;; Lambda
-      ((eq head 'lambda)
-       (compile-lambda tail env state))
-
-      ;; Progn
-      ((eq head 'progn)
-       (compile-progn tail env state))
-
-      ;; Setq
-      ((eq head 'setq)
-       (compile-setq tail env state))
-
-      ;; Defun
-      ((eq head 'defun)
-       (compile-defun tail env state))
-
-      ;; Cond
-      ((eq head 'cond)
-       (compile-cond tail env state))
-
-      ;; And
-      ((eq head 'and)
-       (compile-and tail env state))
-
-      ;; Or
-      ((eq head 'or)
-       (compile-or tail env state))
-
-      ;; Function call
-      (t (compile-call expr env state)))))
+    (case head
+      (quote  (compile-quote (car tail)))
+      (if     (compile-if tail env state))
+      (let    (compile-let tail env state))
+      (let*   (compile-let* tail env state))
+      (lambda (compile-lambda tail env state))
+      (progn  (compile-progn tail env state))
+      (setq   (compile-setq tail env state))
+      (defun  (compile-defun tail env state))
+      (cond   (compile-cond tail env state))
+      (and    (compile-and tail env state))
+      (or     (compile-or tail env state))
+      (t      (compile-call expr env state)))))
 
 ;; =============================================================================
 ;; Special form compilers

@@ -1,0 +1,138 @@
+;; ir.habu - IR representation for self-hosting Habu compiler
+;; Uses deftype for ADT support
+
+;; Core IR node types
+;; This is a simplified subset for bootstrap - full compiler uses more nodes
+
+(deftype ir-node
+  ;; Literals
+  (ir-lit value)              ; literal value (fixnum, nil, t)
+  (ir-quote-sym name)         ; quoted symbol
+
+  ;; Variables
+  (ir-var name depth index)   ; local variable reference
+  (ir-set name depth index value) ; local variable assignment
+  (ir-global-ref name index)  ; global variable reference
+  (ir-define name index value) ; global definition
+
+  ;; Binding forms
+  (ir-let bindings body)      ; let: bindings is list of (name . ir-node)
+  (ir-lambda params opt-params key-params rest-param captures body)
+
+  ;; Control flow
+  (ir-if cond then-br else-br) ; conditional
+  (ir-progn forms)            ; sequence
+  (ir-loop cond body)         ; while loop
+  (ir-block name body)        ; named block
+  (ir-return-from name value) ; non-local return
+
+  ;; Function calls
+  (ir-call func args)         ; function call
+  (ir-tailcall func args)     ; tail call
+  (ir-apply func args)        ; apply
+
+  ;; Primitives - arithmetic
+  (ir-add left right)
+  (ir-sub left right)
+  (ir-mul left right)
+  (ir-div left right)
+  (ir-mod left right)
+
+  ;; Primitives - comparison
+  (ir-eq left right)          ; eq
+  (ir-lt left right)          ; <
+  (ir-gt left right)          ; >
+  (ir-le left right)          ; <=
+  (ir-ge left right)          ; >=
+  (ir-num-eq left right)      ; =
+
+  ;; Primitives - cons operations
+  (ir-cons left right)
+  (ir-car operand)
+  (ir-cdr operand)
+  (ir-rplaca cons val)
+  (ir-rplacd cons val)
+
+  ;; Primitives - type predicates
+  (ir-consp operand)
+  (ir-symbolp operand)
+  (ir-numberp operand)
+  (ir-nilp operand)
+  (ir-not operand)
+  (ir-stringp operand)
+  (ir-vectorp operand)
+
+  ;; Primitives - vectors
+  (ir-make-vector size init)
+  (ir-vec-ref vec index)
+  (ir-vec-set vec index value)
+  (ir-vec-len operand)
+
+  ;; Primitives - strings
+  (ir-str-ref str index)
+  (ir-str-len operand)
+  (ir-str-eq left right)
+  (ir-substring str start end)
+
+  ;; Primitives - I/O
+  (ir-print operand)
+  (ir-read)
+  (ir-intern operand)
+  (ir-sym-name operand)
+  (ir-gensym)
+
+  ;; Primitives - error handling
+  (ir-throw tag value)
+  (ir-catch tag body)
+  (ir-error msg))
+
+;; Optional parameter structure
+(deftype opt-param
+  (make-opt-param name default))
+
+;; Key parameter structure
+(deftype key-param
+  (make-key-param keyword name default))
+
+;; Capture (closed-over variable)
+(deftype capture
+  (make-capture name depth index))
+
+;; Binding in let
+(deftype binding
+  (make-binding name value))
+
+;; Helper constructors for common patterns
+(defun ir-nil () (ir-lit nil))
+(defun ir-t () (ir-lit t))
+(defun ir-fixnum (n) (ir-lit n))
+
+;; Simple predicates
+(defun ir-literal? (node)
+  (or (ir-lit? node)
+      (ir-quote-sym? node)))
+
+(defun ir-variable? (node)
+  (or (ir-var? node)
+      (ir-global-ref? node)))
+
+;; Test the IR
+(defun test-ir ()
+  (let ((lit (ir-lit 42))
+        (add (ir-add (ir-lit 1) (ir-lit 2)))
+        (fn (ir-lambda
+              (list 'x 'y)  ; params
+              nil           ; opt-params
+              nil           ; key-params
+              nil           ; rest-param
+              nil           ; captures
+              (ir-add (ir-var 'x 0 0) (ir-var 'y 0 1)))))
+    (progn
+      (print "IR lit:")
+      (print (ir-lit? lit))
+      (print (ir-lit-value lit))
+      (print "IR add:")
+      (print (ir-add? add))
+      (print "IR lambda:")
+      (print (ir-lambda? fn))
+      t)))
