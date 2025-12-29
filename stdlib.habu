@@ -47,8 +47,14 @@
      (string= a b))
     (t nil)))
 
-; Error signaling via throw
-(defun error (msg) (throw (quote error) msg))
+; Error signaling via condition system
+(defun error (msg) (signal (quote error) msg))
+(defun warn (msg) (signal (quote warning) msg))
+
+; ignore-errors - catch any error and return nil
+(defmacro ignore-errors (&rest forms)
+  `(handler-case (progn ,@forms)
+     (error (c) (values nil c))))
 
 ; List operations
 (defun null (x) (eq x nil))
@@ -130,6 +136,21 @@
   (if (null lst)
       acc
       (f (car lst) (foldr f acc (cdr lst)))))
+
+;; CL-compatible reduce
+;; Type: (fn: A -> B -> A) -> (seq: List<B>) -> A  [with initial-value]
+;;       (fn: A -> A -> A) -> (seq: List<A>) -> A  [without initial-value]
+;; TYPING NOTE: CL reduce has complex polymorphism - the return type depends on
+;; whether initial-value is provided. With initial-value, fn:(A,B)->A returns A.
+;; Without initial-value, fn:(A,A)->A and seq must be non-empty, returns A.
+;; A fully typed version would need dependent types or overloading.
+(defun reduce (fn seq &key initial-value from-end)
+  (let ((lst (if from-end (reverse seq) seq)))
+    (if initial-value
+        (foldl fn initial-value lst)
+        (if (null lst)
+            (fn)  ; CL spec: call fn with no args if seq empty and no init
+            (foldl fn (car lst) (cdr lst))))))
 
 ; Take first n elements
 (defun take (n lst)
@@ -364,3 +385,153 @@
   (list 'let
         (mapcar (lambda (name) (list name (list 'gensym))) names)
         (cons 'progn body)))
+
+;; ============================================================
+;; Higher-order sequence functions
+;; ============================================================
+
+; remove-if - remove elements satisfying predicate
+(defun remove-if (pred lst)
+  (cond
+    ((null lst) nil)
+    ((pred (car lst)) (remove-if pred (cdr lst)))
+    (t (cons (car lst) (remove-if pred (cdr lst))))))
+
+; remove-if-not - remove elements NOT satisfying predicate
+(defun remove-if-not (pred lst)
+  (remove-if (lambda (x) (not (pred x))) lst))
+
+; find-if - find first element satisfying predicate
+(defun find-if (pred lst)
+  (cond
+    ((null lst) nil)
+    ((pred (car lst)) (car lst))
+    (t (find-if pred (cdr lst)))))
+
+; find-if-not - find first element NOT satisfying predicate
+(defun find-if-not (pred lst)
+  (find-if (lambda (x) (not (pred x))) lst))
+
+; position-if - find position of first element satisfying predicate
+(defun position-if-aux (pred lst n)
+  (cond
+    ((null lst) nil)
+    ((pred (car lst)) n)
+    (t (position-if-aux pred (cdr lst) (+ n 1)))))
+
+(defun position-if (pred lst)
+  (position-if-aux pred lst 0))
+
+; position-if-not - find position of first element NOT satisfying predicate
+(defun position-if-not (pred lst)
+  (position-if (lambda (x) (not (pred x))) lst))
+
+; count-if - count elements satisfying predicate
+(defun count-if-aux (pred lst n)
+  (cond
+    ((null lst) n)
+    ((pred (car lst)) (count-if-aux pred (cdr lst) (+ n 1)))
+    (t (count-if-aux pred (cdr lst) n))))
+
+(defun count-if (pred lst)
+  (count-if-aux pred lst 0))
+
+; count-if-not - count elements NOT satisfying predicate
+(defun count-if-not (pred lst)
+  (count-if (lambda (x) (not (pred x))) lst))
+
+; subseq - extract subsequence (start is inclusive, end is exclusive)
+(defun subseq (seq start &optional end)
+  (let ((lst (drop start seq)))
+    (if end
+        (take (- end start) lst)
+        lst)))
+
+; substitute - replace old with new in sequence
+(defun substitute (new old seq &key (test 'eql))
+  (mapcar (lambda (x) (if (test x old) new x)) seq))
+
+; substitute-if - replace elements satisfying pred with new
+(defun substitute-if (new pred seq)
+  (mapcar (lambda (x) (if (pred x) new x)) seq))
+
+; substitute-if-not - replace elements NOT satisfying pred with new
+(defun substitute-if-not (new pred seq)
+  (substitute-if new (lambda (x) (not (pred x))) seq))
+
+; nsubstitute - destructive substitute (for now, same as substitute)
+(defun nsubstitute (new old seq &key (test 'eql))
+  (substitute new old seq :test test))
+
+;; ============================================================
+;; Destructuring
+;; ============================================================
+
+; destructuring-bind - bind pattern to value and evaluate body
+; Supports: symbols, (a b c), (a . rest), (a b &rest rest), (a &optional b)
+(defmacro destructuring-bind (pattern expr &rest body)
+  (let ((temp (gensym "EXPR")))
+    (list 'let (list (list temp expr))
+          (cons 'let
+                (cons (destructuring-bind-bindings pattern temp)
+                      body)))))
+
+; Helper: generate binding list for destructuring-bind
+(defun destructuring-bind-bindings (pattern expr)
+  (cond
+    ; Simple variable
+    ((symbolp pattern)
+     (if (eq pattern '_)
+         nil  ; Ignore underscore
+         (list (list pattern expr))))
+
+    ; Null pattern - no bindings
+    ((null pattern) nil)
+
+    ; Cons pattern (a . b) or list pattern (a b c)
+    ((consp pattern)
+     (let ((first (car pattern))
+           (rest (cdr pattern)))
+       (cond
+         ; &rest binding
+         ((eq first '&rest)
+          (if (and (consp rest) (symbolp (car rest)))
+              (list (list (car rest) expr))
+              (error "Invalid &rest pattern")))
+
+         ; &optional binding
+         ((eq first '&optional)
+          (destructuring-bind-optional rest expr))
+
+         ; Dotted pair (a . b)
+         ((and (symbolp first) (symbolp rest) rest)
+          (append (destructuring-bind-bindings first (list 'car expr))
+                  (destructuring-bind-bindings rest (list 'cdr expr))))
+
+         ; List pattern
+         (t
+          (append (destructuring-bind-bindings first (list 'car expr))
+                  (destructuring-bind-bindings rest (list 'cdr expr)))))))
+
+    ; Unknown pattern
+    (t (error "Invalid destructuring pattern"))))
+
+; Helper for &optional parameters
+(defun destructuring-bind-optional (params expr)
+  (if (null params)
+      nil
+      (let ((param (car params))
+            (rest (cdr params)))
+        (cond
+          ((eq param '&rest)
+           (destructuring-bind-bindings (cons '&rest rest) expr))
+          ((symbolp param)
+           (cons (list param (list 'car expr))
+                 (destructuring-bind-optional rest (list 'cdr expr))))
+          ((consp param)
+           ; (var default) form
+           (let ((var (car param))
+                 (default (cadr param)))
+             (cons (list var (list 'if expr (list 'car expr) default))
+                   (destructuring-bind-optional rest (list 'cdr expr)))))
+          (t (error "Invalid &optional parameter"))))))
