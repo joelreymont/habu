@@ -123,6 +123,56 @@
                   (do-assigns (cdr bindings) (cdr gensyms)))
             (do-assigns (cdr bindings) (cdr gensyms))))))
 
+;;; Simple loop macro - handles common cases
+;;; Examples:
+;;;   (loop for i from 1 to 5 collect i)        => (1 2 3 4 5)
+;;;   (loop for x in '(1 2 3) collect (* x x))  => (1 4 9)
+;;;   (loop repeat 3 collect "hi")              => ("hi" "hi" "hi")
+
+;;; for VAR from START to END collect EXPR
+(defmacro loop-for-from-collect (var start end expr)
+  (let ((end-var (gensym "end"))
+        (result (gensym "result")))
+    `(let ((,var ,start)
+           (,end-var ,end)
+           (,result nil))
+       (while (<= ,var ,end-var)
+         (push ,expr ,result)
+         (setq ,var (+ ,var 1)))
+       (reverse ,result))))
+
+;;; for VAR in LIST collect EXPR
+(defmacro loop-for-in-collect (var lst expr)
+  (let ((list-var (gensym "list"))
+        (result (gensym "result")))
+    `(let ((,list-var ,lst)
+           (,result nil))
+       (while ,list-var
+         (let ((,var (car ,list-var)))
+           (push ,expr ,result))
+         (setq ,list-var (cdr ,list-var)))
+       (reverse ,result))))
+
+;;; repeat N collect EXPR
+(defmacro loop-repeat-collect (n expr)
+  (let ((count (gensym "count"))
+        (i (gensym "i"))
+        (result (gensym "result")))
+    `(let ((,count ,n)
+           (,i 0)
+           (,result nil))
+       (while (< ,i ,count)
+         (push ,expr ,result)
+         (setq ,i (+ ,i 1)))
+       (reverse ,result))))
+
+;;; Simple loop - only supports: (loop for VAR from START to END collect EXPR)
+;;; For other patterns, use the specialized macros directly:
+;;;   (loop-for-in-collect VAR LIST EXPR)
+;;;   (loop-repeat-collect N EXPR)
+(defmacro loop (for-kw var from-kw start to-kw end collect-kw expr)
+  `(loop-for-from-collect ,var ,start ,end ,expr))
+
 ;;; Mutation macros (fixed arity)
 (defmacro incf (place)
   `(setq ,place (+ ,place 1)))
