@@ -5,90 +5,90 @@
 const std = @import("std");
 const Value = @import("../value.zig").Value;
 
+pub const Error = error{ TypeMismatch, DivisionByZero };
+
 /// Add two fixnums
-/// Returns nil on type error
-pub fn add(a: Value, b: Value) Value {
-    if (!a.isFixnum() or !b.isFixnum()) return Value.nil;
+pub fn add(a: Value, b: Value) Error!Value {
+    if (!a.isFixnum() or !b.isFixnum()) return error.TypeMismatch;
     return Value.makeFixnum(a.toFixnum() + b.toFixnum());
 }
 
 /// Subtract two fixnums
-pub fn sub(a: Value, b: Value) Value {
-    if (!a.isFixnum() or !b.isFixnum()) return Value.nil;
+pub fn sub(a: Value, b: Value) Error!Value {
+    if (!a.isFixnum() or !b.isFixnum()) return error.TypeMismatch;
     return Value.makeFixnum(a.toFixnum() - b.toFixnum());
 }
 
 /// Multiply two fixnums
-pub fn mul(a: Value, b: Value) Value {
-    if (!a.isFixnum() or !b.isFixnum()) return Value.nil;
+pub fn mul(a: Value, b: Value) Error!Value {
+    if (!a.isFixnum() or !b.isFixnum()) return error.TypeMismatch;
     return Value.makeFixnum(a.toFixnum() * b.toFixnum());
 }
 
 /// Divide two fixnums (integer division)
-/// Returns nil on division by zero or type error
-pub fn div(a: Value, b: Value) Value {
-    if (!a.isFixnum() or !b.isFixnum()) return Value.nil;
+pub fn div(a: Value, b: Value) Error!Value {
+    if (!a.isFixnum() or !b.isFixnum()) return error.TypeMismatch;
     const divisor = b.toFixnum();
-    if (divisor == 0) return Value.nil;
+    if (divisor == 0) return error.DivisionByZero;
     return Value.makeFixnum(@divTrunc(a.toFixnum(), divisor));
 }
 
 /// Modulo operation
-pub fn mod(a: Value, b: Value) Value {
-    if (!a.isFixnum() or !b.isFixnum()) return Value.nil;
+pub fn mod(a: Value, b: Value) Error!Value {
+    if (!a.isFixnum() or !b.isFixnum()) return error.TypeMismatch;
     const divisor = b.toFixnum();
-    if (divisor == 0) return Value.nil;
+    if (divisor == 0) return error.DivisionByZero;
     return Value.makeFixnum(@mod(a.toFixnum(), divisor));
 }
 
 /// Remainder operation (can be negative)
-pub fn rem(a: Value, b: Value) Value {
-    if (!a.isFixnum() or !b.isFixnum()) return Value.nil;
+pub fn rem(a: Value, b: Value) Error!Value {
+    if (!a.isFixnum() or !b.isFixnum()) return error.TypeMismatch;
     const divisor = b.toFixnum();
-    if (divisor == 0) return Value.nil;
+    if (divisor == 0) return error.DivisionByZero;
     return Value.makeFixnum(@rem(a.toFixnum(), divisor));
 }
 
 /// Negate a fixnum
-pub fn negate(a: Value) Value {
-    if (!a.isFixnum()) return Value.nil;
+pub fn negate(a: Value) Error!Value {
+    if (!a.isFixnum()) return error.TypeMismatch;
     return Value.makeFixnum(-a.toFixnum());
 }
 
 /// Bitwise AND
-pub fn logand(a: Value, b: Value) Value {
-    if (!a.isFixnum() or !b.isFixnum()) return Value.nil;
+pub fn logand(a: Value, b: Value) Error!Value {
+    if (!a.isFixnum() or !b.isFixnum()) return error.TypeMismatch;
     const ua: u64 = @bitCast(a.toFixnum());
     const ub: u64 = @bitCast(b.toFixnum());
     return Value.makeFixnum(@bitCast(ua & ub));
 }
 
 /// Bitwise OR
-pub fn logior(a: Value, b: Value) Value {
-    if (!a.isFixnum() or !b.isFixnum()) return Value.nil;
+pub fn logior(a: Value, b: Value) Error!Value {
+    if (!a.isFixnum() or !b.isFixnum()) return error.TypeMismatch;
     const ua: u64 = @bitCast(a.toFixnum());
     const ub: u64 = @bitCast(b.toFixnum());
     return Value.makeFixnum(@bitCast(ua | ub));
 }
 
 /// Bitwise XOR
-pub fn logxor(a: Value, b: Value) Value {
-    if (!a.isFixnum() or !b.isFixnum()) return Value.nil;
+pub fn logxor(a: Value, b: Value) Error!Value {
+    if (!a.isFixnum() or !b.isFixnum()) return error.TypeMismatch;
     const ua: u64 = @bitCast(a.toFixnum());
     const ub: u64 = @bitCast(b.toFixnum());
     return Value.makeFixnum(@bitCast(ua ^ ub));
 }
 
 /// Bitwise NOT
-pub fn lognot(a: Value) Value {
-    if (!a.isFixnum()) return Value.nil;
+pub fn lognot(a: Value) Error!Value {
+    if (!a.isFixnum()) return error.TypeMismatch;
     const ua: u64 = @bitCast(a.toFixnum());
     return Value.makeFixnum(@bitCast(~ua));
 }
 
 /// Arithmetic shift (positive = left, negative = right)
-pub fn ash(val: Value, count: Value) Value {
-    if (!val.isFixnum() or !count.isFixnum()) return Value.nil;
+pub fn ash(val: Value, count: Value) Error!Value {
+    if (!val.isFixnum() or !count.isFixnum()) return error.TypeMismatch;
 
     const v = val.toFixnum();
     const c = count.toFixnum();
@@ -140,21 +140,21 @@ pub fn oddp(a: Value) bool {
 }
 
 /// Absolute value
-pub fn abs_val(a: Value) Value {
-    if (!a.isFixnum()) return Value.nil;
+pub fn abs_val(a: Value) Error!Value {
+    if (!a.isFixnum()) return error.TypeMismatch;
     const n = a.toFixnum();
     return Value.makeFixnum(if (n < 0) -n else n);
 }
 
 /// Maximum of two values
-pub fn max_val(a: Value, b: Value) Value {
-    if (!a.isFixnum() or !b.isFixnum()) return Value.nil;
+pub fn max_val(a: Value, b: Value) Error!Value {
+    if (!a.isFixnum() or !b.isFixnum()) return error.TypeMismatch;
     return if (a.toFixnum() > b.toFixnum()) a else b;
 }
 
 /// Minimum of two values
-pub fn min_val(a: Value, b: Value) Value {
-    if (!a.isFixnum() or !b.isFixnum()) return Value.nil;
+pub fn min_val(a: Value, b: Value) Error!Value {
+    if (!a.isFixnum() or !b.isFixnum()) return error.TypeMismatch;
     return if (a.toFixnum() < b.toFixnum()) a else b;
 }
 
@@ -199,9 +199,11 @@ pub fn ge(a: Value, b: Value) bool {
 var prng: std.Random.DefaultPrng = std.Random.DefaultPrng.init(0);
 var prng_seeded: bool = false;
 
+pub const RangeError = error{InvalidRange};
+
 /// Seed the random number generator
-pub fn randomSeed(seed: Value) Value {
-    if (!seed.isFixnum()) return Value.nil;
+pub fn randomSeed(seed: Value) Error!Value {
+    if (!seed.isFixnum()) return error.TypeMismatch;
     const s: u64 = @bitCast(seed.toFixnum());
     prng = std.Random.DefaultPrng.init(s);
     prng_seeded = true;
@@ -209,10 +211,10 @@ pub fn randomSeed(seed: Value) Value {
 }
 
 /// Generate random integer in [0, n)
-pub fn random(n: Value) Value {
-    if (!n.isFixnum()) return Value.nil;
+pub fn random(n: Value) (Error || RangeError)!Value {
+    if (!n.isFixnum()) return error.TypeMismatch;
     const max = n.toFixnum();
-    if (max <= 0) return Value.nil;
+    if (max <= 0) return error.InvalidRange;
 
     // Auto-seed on first use
     if (!prng_seeded) {
@@ -237,11 +239,11 @@ test "basic arithmetic" {
     const a = Value.makeFixnum(10);
     const b = Value.makeFixnum(3);
 
-    try testing.expectEqual(@as(i64, 13), add(a, b).toFixnum());
-    try testing.expectEqual(@as(i64, 7), sub(a, b).toFixnum());
-    try testing.expectEqual(@as(i64, 30), mul(a, b).toFixnum());
-    try testing.expectEqual(@as(i64, 3), div(a, b).toFixnum());
-    try testing.expectEqual(@as(i64, 1), mod(a, b).toFixnum());
+    try testing.expectEqual(@as(i64, 13), (try add(a, b)).toFixnum());
+    try testing.expectEqual(@as(i64, 7), (try sub(a, b)).toFixnum());
+    try testing.expectEqual(@as(i64, 30), (try mul(a, b)).toFixnum());
+    try testing.expectEqual(@as(i64, 3), (try div(a, b)).toFixnum());
+    try testing.expectEqual(@as(i64, 1), (try mod(a, b)).toFixnum());
 }
 
 test "division by zero" {
@@ -250,15 +252,15 @@ test "division by zero" {
     const a = Value.makeFixnum(10);
     const zero = Value.makeFixnum(0);
 
-    try testing.expect(div(a, zero).isNil());
-    try testing.expect(mod(a, zero).isNil());
+    try testing.expectError(error.DivisionByZero, div(a, zero));
+    try testing.expectError(error.DivisionByZero, mod(a, zero));
 }
 
 test "negate" {
     const testing = std.testing;
 
-    try testing.expectEqual(@as(i64, -5), negate(Value.makeFixnum(5)).toFixnum());
-    try testing.expectEqual(@as(i64, 5), negate(Value.makeFixnum(-5)).toFixnum());
+    try testing.expectEqual(@as(i64, -5), (try negate(Value.makeFixnum(5))).toFixnum());
+    try testing.expectEqual(@as(i64, 5), (try negate(Value.makeFixnum(-5))).toFixnum());
 }
 
 test "bitwise operations" {
@@ -267,9 +269,9 @@ test "bitwise operations" {
     const a = Value.makeFixnum(0b1100);
     const b = Value.makeFixnum(0b1010);
 
-    try testing.expectEqual(@as(i64, 0b1000), logand(a, b).toFixnum());
-    try testing.expectEqual(@as(i64, 0b1110), logior(a, b).toFixnum());
-    try testing.expectEqual(@as(i64, 0b0110), logxor(a, b).toFixnum());
+    try testing.expectEqual(@as(i64, 0b1000), (try logand(a, b)).toFixnum());
+    try testing.expectEqual(@as(i64, 0b1110), (try logior(a, b)).toFixnum());
+    try testing.expectEqual(@as(i64, 0b0110), (try logxor(a, b)).toFixnum());
 }
 
 test "shift" {
@@ -277,8 +279,8 @@ test "shift" {
 
     const a = Value.makeFixnum(4);
 
-    try testing.expectEqual(@as(i64, 16), ash(a, Value.makeFixnum(2)).toFixnum());
-    try testing.expectEqual(@as(i64, 1), ash(a, Value.makeFixnum(-2)).toFixnum());
+    try testing.expectEqual(@as(i64, 16), (try ash(a, Value.makeFixnum(2))).toFixnum());
+    try testing.expectEqual(@as(i64, 1), (try ash(a, Value.makeFixnum(-2))).toFixnum());
 }
 
 test "predicates" {
@@ -303,14 +305,14 @@ test "predicates" {
 test "abs min max" {
     const testing = std.testing;
 
-    try testing.expectEqual(@as(i64, 5), abs_val(Value.makeFixnum(-5)).toFixnum());
-    try testing.expectEqual(@as(i64, 5), abs_val(Value.makeFixnum(5)).toFixnum());
+    try testing.expectEqual(@as(i64, 5), (try abs_val(Value.makeFixnum(-5))).toFixnum());
+    try testing.expectEqual(@as(i64, 5), (try abs_val(Value.makeFixnum(5))).toFixnum());
 
     const a = Value.makeFixnum(3);
     const b = Value.makeFixnum(7);
 
-    try testing.expectEqual(@as(i64, 7), max_val(a, b).toFixnum());
-    try testing.expectEqual(@as(i64, 3), min_val(a, b).toFixnum());
+    try testing.expectEqual(@as(i64, 7), (try max_val(a, b)).toFixnum());
+    try testing.expectEqual(@as(i64, 3), (try min_val(a, b)).toFixnum());
 }
 
 test "comparisons" {

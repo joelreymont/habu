@@ -1093,7 +1093,7 @@ pub const Vm = struct {
                 },
                 .random => {
                     const n = try self.pop();
-                    const result = arith.random(n);
+                    const result = arith.random(n) catch return error.InvalidArgument;
                     try self.push(result);
                 },
                 .intern => {
