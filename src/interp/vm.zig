@@ -74,6 +74,37 @@ pub const Frame = struct {
     closure: ?*const runtime.Closure,
 };
 
+/// Saved execution state for nested calls
+/// Used by callClosure to save/restore state atomically
+const State = struct {
+    chunk: *const Chunk,
+    ip: usize,
+    fp: usize,
+    sp: usize,
+    chunk_pool: []*Chunk,
+    chunk_base: usize,
+
+    fn save(vm: *const Vm) State {
+        return .{
+            .chunk = vm.chunk,
+            .ip = vm.ip,
+            .fp = vm.fp,
+            .sp = vm.sp,
+            .chunk_pool = vm.chunk_pool,
+            .chunk_base = vm.chunk_base,
+        };
+    }
+
+    fn restore(self: State, vm: *Vm) void {
+        vm.chunk = self.chunk;
+        vm.ip = self.ip;
+        vm.fp = self.fp;
+        vm.sp = self.sp;
+        vm.chunk_pool = self.chunk_pool;
+        vm.chunk_base = self.chunk_base;
+    }
+};
+
 /// Virtual Machine
 pub const Vm = struct {
     /// Value stack
@@ -229,13 +260,8 @@ pub const Vm = struct {
     /// Call a closure with arguments already on stack
     /// Expects args to be pushed already at positions [0..argc)
     pub fn callClosure(self: *Vm, closure: *const runtime.Closure, argc: u8) VmError!Value {
-        // Save current state for restoration
-        const saved_chunk = self.chunk;
-        const saved_ip = self.ip;
-        const saved_fp = self.fp;
-        const saved_sp = self.sp;
-        const saved_chunk_pool = self.chunk_pool;
-        const saved_chunk_base = self.chunk_base;
+        // Save state - will be restored on both success and error
+        const saved_state = State.save(self);
 
         // Set up to execute the closure's chunk directly (like vm.run)
         const closure_chunk: *const Chunk = @ptrCast(@alignCast(closure.code));
@@ -248,7 +274,10 @@ pub const Vm = struct {
         self.sp = argc;
         // If closure needs more locals, push nil for them
         while (self.sp < closure_chunk.num_locals) {
-            try self.push(Value.nil);
+            self.push(Value.nil) catch |err| {
+                saved_state.restore(self);
+                return err;
+            };
         }
 
         // Store closure for capture access (use frames[0] as storage)
@@ -261,24 +290,11 @@ pub const Vm = struct {
 
         // Execute until return
         const result = self.execute() catch |err| {
-            // Restore state on error
-            self.chunk = saved_chunk;
-            self.ip = saved_ip;
-            self.fp = saved_fp;
-            self.sp = saved_sp;
-            self.chunk_pool = saved_chunk_pool;
-            self.chunk_base = saved_chunk_base;
+            saved_state.restore(self);
             return err;
         };
 
-        // Restore state
-        self.chunk = saved_chunk;
-        self.ip = saved_ip;
-        self.fp = saved_fp;
-        self.sp = saved_sp;
-        self.chunk_pool = saved_chunk_pool;
-        self.chunk_base = saved_chunk_base;
-
+        saved_state.restore(self);
         return result;
     }
 
