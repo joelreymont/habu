@@ -615,10 +615,10 @@
       ((and (eq func 'make-vector) (= nargs 2))
        (ir-make-vec (compile-expr (car args) env state)
                     (compile-expr (car (cdr args)) env state)))
-      ((and (eq func 'vector-ref) (= nargs 2))
+      ((and (or (eq func 'aref) (eq func 'svref)) (= nargs 2))
        (ir-vec-ref (compile-expr (car args) env state)
                    (compile-expr (car (cdr args)) env state)))
-      ((and (eq func 'vector-set!) (= nargs 3))
+      ((and (eq func '%svset) (= nargs 3))
        (ir-vec-set (compile-expr (car args) env state)
                    (compile-expr (car (cdr args)) env state)
                    (compile-expr (car (cdr (cdr args))) env state)))
@@ -626,7 +626,7 @@
        (ir-vec-len (compile-expr (car args) env state)))
 
       ;; String operations
-      ((and (eq func 'string-ref) (= nargs 2))
+      ((and (or (eq func 'char) (eq func 'schar)) (= nargs 2))
        (ir-str-ref (compile-expr (car args) env state)
                    (compile-expr (car (cdr args)) env state)))
       ((and (eq func 'string-length) (= nargs 1))
