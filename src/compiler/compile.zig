@@ -2,7 +2,7 @@
 //!
 //! Compiles parsed Habu expressions (cons trees) to IR nodes.
 //! Handles:
-//! - Special forms: if, lambda, let, set!, quote, progn, while
+//! - Special forms: if, lambda, let, setq, quote, progn, while
 //! - Primitive operations: +, -, *, /, cons, car, cdr, etc.
 //! - Function calls
 //! - Variable references with lexical scoping
@@ -65,7 +65,6 @@ pub const Builtins = struct {
     define: Value,
     defvar: Value,
     defun: Value,
-    @"set!": Value,
     setq: Value,
 
     // Sequencing
@@ -177,30 +176,19 @@ pub const Builtins = struct {
     rplaca: Value,
     rplacd: Value,
 
-    // Primitives - Type predicates
+    // Primitives - Type predicates (CL-style -p suffix)
     consp: Value,
-    @"cons?": Value,
     symbolp: Value,
-    @"symbol?": Value,
     numberp: Value,
-    @"number?": Value,
     stringp: Value,
-    @"string?": Value,
     vectorp: Value,
-    @"vector?": Value,
     closurep: Value,
-    @"closure?": Value,
     keywordp: Value,
-    @"keyword?": Value,
     null: Value,
-    @"null?": Value,
     not: Value,
     characterp: Value,
-    @"character?": Value,
     floatp: Value,
-    @"float?": Value,
     listp: Value,
-    @"list?": Value,
     atom: Value,
 
     // Primitives - Character operations
@@ -368,7 +356,6 @@ pub const Builtins = struct {
             .define = try heap.intern("define"),
             .defvar = try heap.intern("defvar"),
             .defun = try heap.intern("defun"),
-            .@"set!" = try heap.intern("set!"),
             .setq = try heap.intern("setq"),
             .progn = try heap.intern("progn"),
             .begin = try heap.intern("begin"),
@@ -462,30 +449,19 @@ pub const Builtins = struct {
             .list = try heap.intern("list"),
             .rplaca = try heap.intern("rplaca"),
             .rplacd = try heap.intern("rplacd"),
-            // Primitives - Type predicates
+            // Primitives - Type predicates (CL-style -p suffix)
             .consp = try heap.intern("consp"),
-            .@"cons?" = try heap.intern("cons?"),
             .symbolp = try heap.intern("symbolp"),
-            .@"symbol?" = try heap.intern("symbol?"),
             .numberp = try heap.intern("numberp"),
-            .@"number?" = try heap.intern("number?"),
             .stringp = try heap.intern("stringp"),
-            .@"string?" = try heap.intern("string?"),
             .vectorp = try heap.intern("vectorp"),
-            .@"vector?" = try heap.intern("vector?"),
             .closurep = try heap.intern("closurep"),
-            .@"closure?" = try heap.intern("closure?"),
             .keywordp = try heap.intern("keywordp"),
-            .@"keyword?" = try heap.intern("keyword?"),
             .null = try heap.intern("null"),
-            .@"null?" = try heap.intern("null?"),
             .not = try heap.intern("not"),
             .characterp = try heap.intern("characterp"),
-            .@"character?" = try heap.intern("character?"),
             .floatp = try heap.intern("floatp"),
-            .@"float?" = try heap.intern("float?"),
             .listp = try heap.intern("listp"),
-            .@"list?" = try heap.intern("list?"),
             .atom = try heap.intern("atom"),
             // Primitives - Character operations
             .@"char-code" = try heap.intern("char-code"),
@@ -1316,7 +1292,6 @@ pub const Compiler = struct {
         @"or",
         funcall,
         apply,
-        @"set!",
         setq,
         quote,
         function,
@@ -1371,7 +1346,6 @@ pub const Compiler = struct {
         .{ "or", .@"or" },
         .{ "funcall", .funcall },
         .{ "apply", .apply },
-        .{ "set!", .@"set!" },
         .{ "setq", .setq },
         .{ "quote", .quote },
         .{ "function", .function },
@@ -1442,7 +1416,7 @@ pub const Compiler = struct {
                     .@"or" => self.compileOr(tail, env),
                     .funcall => self.compileFuncall(tail, env),
                     .apply => self.compileApply(tail, env),
-                    .@"set!", .setq => self.compileSet(tail, env),
+                    .setq => self.compileSet(tail, env),
                     .quote => self.compileQuote(tail),
                     .function => self.compileFunction(tail, env),
                     .quasiquote => self.compileQuasiquote(tail, env),
@@ -2076,8 +2050,8 @@ pub const Compiler = struct {
         const tail = cons.cdr;
 
         if (head.isSymbol()) {
-            // Check for (set! var ...)
-            if (head.raw == b.@"set!".raw) {
+            // Check for (setq var ...)
+            if (head.raw == b.setq.raw) {
                 if (tail.isCons()) {
                     const set_cons = tail.toPtr(Cons);
                     if (set_cons.car.isSymbol()) {
@@ -5240,19 +5214,19 @@ pub const Compiler = struct {
         if (s == b.rplaca.raw) return self.compileBinaryPrim(args, env, .rplaca);
         if (s == b.rplacd.raw) return self.compileBinaryPrim(args, env, .rplacd);
 
-        // Type predicates
-        if (s == b.consp.raw or s == b.@"cons?".raw) return self.compileUnaryPrim(args, env, .consp);
-        if (s == b.symbolp.raw or s == b.@"symbol?".raw) return self.compileUnaryPrim(args, env, .symbolp);
-        if (s == b.numberp.raw or s == b.@"number?".raw) return self.compileUnaryPrim(args, env, .numberp);
-        if (s == b.stringp.raw or s == b.@"string?".raw) return self.compileUnaryPrim(args, env, .stringp);
-        if (s == b.vectorp.raw or s == b.@"vector?".raw) return self.compileUnaryPrim(args, env, .vectorp);
-        if (s == b.closurep.raw or s == b.@"closure?".raw) return self.compileUnaryPrim(args, env, .closurep);
-        if (s == b.keywordp.raw or s == b.@"keyword?".raw) return self.compileUnaryPrim(args, env, .keywordp);
-        if (s == b.null.raw or s == b.@"null?".raw) return self.compileUnaryPrim(args, env, .nilp);
+        // Type predicates (CL-style -p suffix)
+        if (s == b.consp.raw) return self.compileUnaryPrim(args, env, .consp);
+        if (s == b.symbolp.raw) return self.compileUnaryPrim(args, env, .symbolp);
+        if (s == b.numberp.raw) return self.compileUnaryPrim(args, env, .numberp);
+        if (s == b.stringp.raw) return self.compileUnaryPrim(args, env, .stringp);
+        if (s == b.vectorp.raw) return self.compileUnaryPrim(args, env, .vectorp);
+        if (s == b.closurep.raw) return self.compileUnaryPrim(args, env, .closurep);
+        if (s == b.keywordp.raw) return self.compileUnaryPrim(args, env, .keywordp);
+        if (s == b.null.raw) return self.compileUnaryPrim(args, env, .nilp);
         if (s == b.not.raw) return self.compileUnaryPrim(args, env, .not);
-        if (s == b.characterp.raw or s == b.@"character?".raw) return self.compileUnaryPrim(args, env, .characterp);
-        if (s == b.floatp.raw or s == b.@"float?".raw) return self.compileUnaryPrim(args, env, .floatp);
-        if (s == b.listp.raw or s == b.@"list?".raw) return self.compileUnaryPrim(args, env, .listp);
+        if (s == b.characterp.raw) return self.compileUnaryPrim(args, env, .characterp);
+        if (s == b.floatp.raw) return self.compileUnaryPrim(args, env, .floatp);
+        if (s == b.listp.raw) return self.compileUnaryPrim(args, env, .listp);
         if (s == b.atom.raw) return self.compileUnaryPrim(args, env, .atom);
 
         // Character operations

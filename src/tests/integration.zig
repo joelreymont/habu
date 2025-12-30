@@ -760,8 +760,8 @@ test "occurrence typing with numberp" {
     try testing.expectEqual(@as(i64, 0), result2.toFixnum());
 }
 
-test "else-branch occurrence typing with null?" {
-    // After (null? x) in if condition:
+test "else-branch occurrence typing with null" {
+    // After (null x) in if condition:
     // - then-branch: x is nil
     // - else-branch: x is non-nil (check skipped)
     const allocator = testing.allocator;
@@ -774,7 +774,7 @@ test "else-branch occurrence typing with null?" {
 
     // safe-first: if null, return 0; else car the non-nil value
     // The (the non-nil x) should be skipped in else-branch because we know x is not nil
-    _ = try repl.eval("(defun safe-first (x) (if (null? x) 0 (car (the non-nil x))))");
+    _ = try repl.eval("(defun safe-first (x) (if (null x) 0 (car (the non-nil x))))");
 
     // Works on cons - x is non-nil, assertion skipped
     const result = try repl.eval("(safe-first (cons 42 nil))");

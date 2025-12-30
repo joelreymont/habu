@@ -38,7 +38,6 @@ pub const LiftSymbols = struct {
     lambda: Value,
     @"fn": Value,
     define: Value,
-    @"set!": Value,
     setq: Value,
     // Sequencing
     progn: Value,
@@ -80,7 +79,6 @@ pub const LiftSymbols = struct {
             .lambda = try heap.intern("lambda"),
             .@"fn" = try heap.intern("fn"),
             .define = try heap.intern("define"),
-            .@"set!" = try heap.intern("set!"),
             .setq = try heap.intern("setq"),
             .progn = try heap.intern("progn"),
             .begin = try heap.intern("begin"),
@@ -192,7 +190,7 @@ pub const Lifter = struct {
             if (head.raw == s.let.raw) return self.liftLet(tail);
             if (head.raw == s.lambda.raw or head.raw == s.@"fn".raw) return self.liftLambda(tail);
             if (head.raw == s.define.raw) return self.liftDefine(tail);
-            if (head.raw == s.@"set!".raw or head.raw == s.setq.raw) return self.liftSet(tail);
+            if (head.raw == s.setq.raw) return self.liftSet(tail);
             if (head.raw == s.progn.raw or head.raw == s.begin.raw) return self.liftProgn(tail);
             if (head.raw == s.@"while".raw) return self.liftWhile(tail);
             if (head.raw == s.quote.raw) return self.liftQuote(tail);
@@ -347,7 +345,7 @@ pub const Lifter = struct {
             return error.OutOfMemory;
     }
 
-    /// Lift (set! name value)
+    /// Lift (setq name value)
     fn liftSet(self: *Lifter, args: Value) Error!*Ir {
         if (!args.isCons()) return error.InvalidSyntax;
 
