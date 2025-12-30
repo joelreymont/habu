@@ -13,7 +13,15 @@ pub const Error = compile.Error;
 pub const TypedIr = compile.TypedIr;
 pub const GlobalEnv = compile.GlobalEnv;
 
+pub const passes = @import("passes/passes.zig");
+pub const Pass = passes.Pass;
+pub const Pipeline = passes.Pipeline;
+pub const PipelineConfig = passes.PipelineConfig;
+pub const TypeCheckPass = passes.TypeCheckPass;
+pub const ErasurePass = passes.ErasurePass;
+
 test {
     _ = ir;
     _ = compile;
+    _ = passes;
 }

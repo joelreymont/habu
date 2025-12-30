@@ -13,7 +13,9 @@ const compiler = @import("../compiler/compiler.zig");
 const Compiler = compiler.Compiler;
 const Env = compiler.Env;
 const ir = @import("../compiler/ir.zig");
+const Ir = ir.Ir;
 const IrBuilder = ir.IrBuilder;
+const passes = @import("../compiler/passes/passes.zig");
 const bytecode = @import("../bytecode/bytecode.zig");
 const Emitter = bytecode.Emitter;
 const Op = bytecode.Op;
@@ -49,6 +51,12 @@ pub const Config = struct {
     prompt: []const u8 = "🐍 ",
     /// Continuation prompt (for multi-line input)
     cont_prompt: []const u8 = "   ",
+    /// Enable type checking pipeline pass
+    typecheck: bool = false,
+    /// Enable erasure pipeline pass (requires typecheck)
+    erasure: bool = false,
+    /// Show pipeline timing
+    pipeline_timing: bool = false,
 };
 
 /// REPL state
@@ -67,6 +75,10 @@ pub const Repl = struct {
     line_editor: LineEditor,
     /// Current VM being used (for nested loads)
     current_vm: ?*Vm,
+    /// Type checking pass (optional)
+    typecheck_pass: ?passes.TypeCheckPass,
+    /// Erasure pass (optional)
+    erasure_pass: ?passes.ErasurePass,
 
     pub fn init(allocator: std.mem.Allocator, heap: *Heap, config: Config) !Repl {
         return Repl{
@@ -79,6 +91,8 @@ pub const Repl = struct {
             .macros = std.StringHashMap(Value).init(allocator),
             .line_editor = LineEditor.init(allocator),
             .current_vm = null,
+            .typecheck_pass = if (config.typecheck) passes.TypeCheckPass.init(allocator, .{}) else null,
+            .erasure_pass = if (config.erasure) passes.ErasurePass.init(allocator, .{}) else null,
         };
     }
 
@@ -437,6 +451,51 @@ pub const Repl = struct {
         }
         self.persistent_chunk_ptrs.deinit(self.allocator);
         self.macros.deinit();
+        // Clean up passes
+        if (self.typecheck_pass) |*p| p.deinit();
+        if (self.erasure_pass) |*p| p.deinit();
+    }
+
+    /// Run pipeline passes on IR, returning transformed IR
+    /// Returns the original IR if no passes are enabled
+    fn runPipeline(self: *Repl, ir_node: *const Ir) !*const Ir {
+        var current_ir = ir_node;
+
+        // Run type checking pass
+        if (self.typecheck_pass) |*typecheck| {
+            const result = typecheck.run(self.allocator, current_ir) catch |err| {
+                if (self.config.pipeline_timing) {
+                    std.debug.print("[pipeline] typecheck failed: {any}\n", .{err});
+                }
+                return err;
+            };
+
+            if (result.errors.len > 0 and self.config.pipeline_timing) {
+                for (result.errors) |diag| {
+                    std.debug.print("[typecheck] {s}: {s}\n", .{ @tagName(diag.level), diag.message });
+                }
+            }
+
+            current_ir = result.ir;
+        }
+
+        // Run erasure pass
+        if (self.erasure_pass) |*erasure| {
+            const result = erasure.run(self.allocator, current_ir) catch |err| {
+                if (self.config.pipeline_timing) {
+                    std.debug.print("[pipeline] erasure failed: {any}\n", .{err});
+                }
+                return err;
+            };
+
+            if (result.modified and self.config.pipeline_timing) {
+                std.debug.print("[pipeline] erasure: IR modified\n", .{});
+            }
+
+            current_ir = result.ir;
+        }
+
+        return current_ir;
     }
 
     /// Run the REPL loop with File-based I/O
@@ -825,10 +884,15 @@ pub const Repl = struct {
         self.compiler.builder = saved_builder;
         self.compiler.allocator = saved_allocator;
 
+        // Run pipeline passes (typecheck, erasure)
+        const final_ir = self.runPipeline(ir_node) catch {
+            return error.CompileError;
+        };
+
         // Emit bytecode (with heap for symbol interning)
         var emitter = Emitter.initWithHeap(self.allocator, self.heap);
 
-        emitter.emit(ir_node) catch {
+        emitter.emit(final_ir) catch {
             emitter.deinit();
             return error.EmitError;
         };
@@ -1381,9 +1445,14 @@ pub const Repl = struct {
         self.compiler.builder = saved_builder;
         self.compiler.allocator = saved_allocator;
 
+        // Run pipeline passes (typecheck, erasure)
+        const final_ir = self.runPipeline(ir_node) catch {
+            return error.CompileError;
+        };
+
         // Emit bytecode
         var emitter = Emitter.initWithHeap(self.allocator, self.heap);
-        emitter.emit(ir_node) catch {
+        emitter.emit(final_ir) catch {
             emitter.deinit();
             return error.EmitError;
         };
