@@ -13,6 +13,10 @@ const Value = @import("../runtime/value.zig").Value;
 pub const HashTest = @import("../runtime/objects.zig").HashTest;
 const types = @import("../types/types.zig");
 
+/// Sentinel value for unresolved variable depth/index
+/// Used by p03_lift, resolved by p04_resolve
+pub const UNRESOLVED: u16 = 0xFFFF;
+
 /// IR node - represents a Habu expression
 pub const Ir = union(enum) {
     // ========================================================================

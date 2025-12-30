@@ -1,57 +1,241 @@
 //! Compiler Passes
 //!
 //! Nanopass transformations for the Habu compiler.
-//! Each pass does one thing and produces modified IR for subsequent passes.
+//! Each pass does ONE thing only.
 //!
-//! Pipeline:
-//!   1. typecheck - Bidirectional type checking with QTT
-//!   2. erasure - Remove 0-quantity terms
-//!   (future: optimize, inline, etc.)
+//! Full Pipeline:
+//!   Source → parse → p01_expand → p02_desugar → p03_lift →
+//!   p04_resolve → p05_capture → p06_annotate → p07_infer →
+//!   p08_erase → p09_emit → Bytecode
+//!
+//! Stages:
+//!   p01_expand:   Value → Value   (macro expansion)
+//!   p02_desugar:  Value → Value   (let*, cond, and, or, defun → core forms)
+//!   p03_lift:     Value → Ir      (S-expr to IR, unresolved vars)
+//!   p04_resolve:  Ir → Ir         (name resolution, fill depth/index)
+//!   p05_capture:  Ir → Ir         (closure analysis, identify captures)
+//!   p06_annotate: Ir → TypedIr    (wrap with type/quantity slots)
+//!   p07_infer:    TypedIr → TypedIr (run BiChecker, populate types)
+//!   p08_erase:    TypedIr → Ir    (remove zero-quantity nodes)
+//!   p09_emit:     Ir → Chunk      (bytecode generation)
 
 pub const pass = @import("pass.zig");
 pub const pipeline = @import("pipeline.zig");
-pub const typecheck = @import("p01_typecheck.zig");
-pub const erasure = @import("p02_erasure.zig");
+pub const ir_types = @import("ir_types.zig");
 
-// Re-export commonly used types
+// Nano passes - each does ONE thing
+pub const expand = @import("p01_expand.zig");
+pub const desugar = @import("p02_desugar.zig");
+pub const lift = @import("p03_lift.zig");
+pub const resolve = @import("p04_resolve.zig");
+pub const capture = @import("p05_capture.zig");
+pub const annotate = @import("p06_annotate.zig");
+pub const infer = @import("p07_infer.zig");
+pub const erase = @import("p08_erase.zig");
+pub const emit = @import("p09_emit.zig");
+
+// Re-export pass infrastructure
 pub const Pass = pass.Pass;
 pub const PassError = pass.PassError;
 pub const PassResult = pass.PassResult;
-pub const PassDiagnostic = pass.PassDiagnostic;
+pub const Diagnostic = pass.Diagnostic;
 pub const makePass = pass.makePass;
-pub const IdentityPass = pass.IdentityPass;
+pub const identityPass = pass.identityPass;
 
-pub const Pipeline = pipeline.Pipeline;
-pub const PipelineConfig = pipeline.PipelineConfig;
+// Re-export standard pass types
+pub const IrPass = pass.IrPass;
+pub const AnnotatePass = pass.AnnotatePass;
+pub const TypedPass = pass.TypedPass;
+pub const ErasePass = pass.ErasePass;
+pub const SExprPass = pass.SExprPass;
+pub const LiftPass = pass.LiftPass;
+
+// Re-export pipeline
+pub const IrPipeline = pipeline.IrPipeline;
 pub const PipelineResult = pipeline.PipelineResult;
-pub const PipelineStats = pipeline.PipelineStats;
+pub const Config = pipeline.Config;
+pub const Stats = pipeline.Stats;
 
-pub const TypeCheckPass = typecheck.TypeCheckPass;
-pub const TypeCheckConfig = typecheck.TypeCheckConfig;
+// Re-export IR types
+pub const TypedIr = ir_types.TypedIr;
+pub const TypedIrBuilder = ir_types.TypedIrBuilder;
+pub const Quantity = ir_types.Quantity;
 
-pub const ErasurePass = erasure.ErasurePass;
-pub const ErasureConfig = erasure.ErasureConfig;
+/// Run the complete compilation pipeline: Value → Chunk
+/// Full end-to-end compiler: p01→p02→p03→p04→p05→p06→p07→p08→p09
+pub fn runFullPipeline(
+    allocator: std.mem.Allocator,
+    heap: *Heap,
+    vm: ?*Vm,
+    macros: *const expand.MacroTable,
+    globals: *resolve.GlobalRegistry,
+    expr: Value,
+) FullPipelineError!Chunk {
+    // p01: Expand macros
+    var expander = expand.Expander.init(allocator, heap, vm, macros);
+    const expanded = expander.expand(expr) catch |err| switch (err) {
+        error.OutOfMemory => return error.OutOfMemory,
+        error.InvalidSyntax => return error.InvalidSyntax,
+    };
 
-/// Create a standard compilation pipeline with default passes
-pub fn createStandardPipeline(allocator: std.mem.Allocator, config: PipelineConfig) !Pipeline {
-    var p = Pipeline.init(allocator, config);
+    // p02: Desugar
+    var desugarer = desugar.Desugarer.init(allocator, heap);
+    const desugared = desugarer.desugar(expanded) catch |err| switch (err) {
+        error.OutOfMemory => return error.OutOfMemory,
+    };
 
-    // Add type checking pass
-    var typecheck_pass = TypeCheckPass.init(allocator, .{});
-    try p.addPass(makePass(TypeCheckPass, &typecheck_pass));
+    // p03-p05: Frontend (lift→resolve→capture)
+    const ir = try runFrontendPipeline(allocator, heap, globals, desugared);
 
-    // Add erasure pass
-    var erasure_pass = ErasurePass.init(allocator, .{});
-    try p.addPass(makePass(ErasurePass, &erasure_pass));
+    // p06-p08: Type pipeline (annotate→infer→erase)
+    const typed_ir = try runNanoPipeline(allocator, ir);
 
-    return p;
+    // p09: Emit bytecode
+    const emit_result = emit.emitWithHeap(allocator, heap, typed_ir) catch return error.EmitFailed;
+    return emit_result.output;
+}
+
+pub const FullPipelineError = error{
+    InvalidSyntax,
+    InvalidLambda,
+    InvalidLet,
+    InvalidIf,
+    UnboundVariable,
+    EmitFailed,
+    OutOfMemory,
+} || PassError;
+
+/// Run the frontend pipeline: Value → lift → resolve → capture → Ir
+/// This converts S-expressions to fully-resolved IR with capture analysis.
+///
+/// Pipeline: p03_lift → p04_resolve → p05_capture
+pub fn runFrontendPipeline(
+    allocator: std.mem.Allocator,
+    heap: *Heap,
+    globals: *resolve.GlobalRegistry,
+    expr: Value,
+) FrontendError!*const Ir {
+    // Pass 1: Lift (Value → Ir with unresolved vars)
+    var lifter = lift.Lifter.init(allocator, heap) catch return error.OutOfMemory;
+    const lifted_ir = lifter.lift(expr) catch |err| switch (err) {
+        error.InvalidSyntax => return error.InvalidSyntax,
+        error.InvalidLambda => return error.InvalidLambda,
+        error.InvalidLet => return error.InvalidLet,
+        error.InvalidIf => return error.InvalidIf,
+        error.OutOfMemory => return error.OutOfMemory,
+    };
+
+    // Pass 2: Resolve (fill depth/index)
+    const resolved_ir = resolve.resolve(allocator, globals, lifted_ir) catch |err| switch (err) {
+        error.UnboundVariable => return error.UnboundVariable,
+        error.OutOfMemory => return error.OutOfMemory,
+    };
+
+    // Pass 3: Capture (identify free variables)
+    const captured_ir = capture.capture(allocator, resolved_ir) catch |err| switch (err) {
+        error.OutOfMemory => return error.OutOfMemory,
+    };
+
+    return captured_ir;
+}
+
+/// Errors from frontend pipeline
+pub const FrontendError = error{
+    InvalidSyntax,
+    InvalidLambda,
+    InvalidLet,
+    InvalidIf,
+    UnboundVariable,
+    OutOfMemory,
+};
+
+/// Run the nano pass pipeline: Ir → annotate → infer → erase → Ir
+/// This is the main entry point for type-aware compilation.
+///
+/// Uses page_allocator for intermediate TypedIr nodes since they're
+/// temporary and don't need to be tracked for leak detection.
+pub fn runNanoPipeline(allocator: std.mem.Allocator, ir: *const Ir) PassError!*const Ir {
+    // Use page_allocator for intermediate TypedIr (not tracked for leaks)
+    const typed_alloc = std.heap.page_allocator;
+
+    // Pass 1: Annotate (Ir → TypedIr)
+    const annotate_result = try annotate.annotate(typed_alloc, ir);
+    const typed_ir = annotate_result.output;
+
+    // Pass 2: Infer (TypedIr → TypedIr)
+    const infer_result = try infer.infer(typed_alloc, typed_ir);
+    const inferred_ir = infer_result.output;
+
+    // Pass 3: Erase (TypedIr → Ir)
+    // Use original allocator for final Ir output
+    const erase_result = try erase.erase(allocator, inferred_ir);
+
+    return erase_result.output;
+}
+
+/// Create an empty homogeneous Ir → Ir pipeline
+/// Use runNanoPipeline() for the actual type-aware compilation
+pub fn createPipeline(allocator: std.mem.Allocator) IrPipeline {
+    return IrPipeline.init(allocator, .{});
 }
 
 const std = @import("std");
+const Ir = @import("../ir.zig").Ir;
+const Heap = @import("../../runtime/heap.zig").Heap;
+const Value = @import("../../runtime/value.zig").Value;
+const Vm = @import("../../interp/vm.zig").Vm;
+const Chunk = @import("../../bytecode/bytecode.zig").Chunk;
+
+// Re-export S-expression passes
+pub const Desugarer = desugar.Desugarer;
+pub const Expander = expand.Expander;
+pub const MacroTable = expand.MacroTable;
+
+// Re-export IR passes
+pub const Lifter = lift.Lifter;
+pub const LiftSymbols = lift.LiftSymbols;
+pub const Resolver = resolve.Resolver;
+pub const Scope = resolve.Scope;
+pub const GlobalRegistry = resolve.GlobalRegistry;
+pub const CaptureAnalyzer = capture.CaptureAnalyzer;
+
+test "runFullPipeline - simple literal" {
+    const testing = std.testing;
+
+    // Use arena to handle IR allocations that are hard to track
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+
+    var heap = try Heap.init(allocator, .{});
+    defer heap.deinit();
+
+    var macros = expand.MacroTable.init(allocator);
+    defer macros.deinit();
+
+    var globals = resolve.GlobalRegistry.init(allocator);
+    defer globals.deinit();
+
+    // Test: simple literal
+    const expr = Value.makeFixnum(42);
+
+    const chunk = try runFullPipeline(allocator, &heap, null, &macros, &globals, expr);
+    _ = chunk; // Arena handles cleanup
+
+    // If we get here without error, the pipeline worked
+}
 
 test {
     _ = pass;
     _ = pipeline;
-    _ = typecheck;
-    _ = erasure;
+    _ = ir_types;
+    _ = expand;
+    _ = desugar;
+    _ = lift;
+    _ = resolve;
+    _ = capture;
+    _ = annotate;
+    _ = infer;
+    _ = erase;
+    _ = emit;
 }

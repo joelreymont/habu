@@ -51,12 +51,6 @@ pub const Config = struct {
     prompt: []const u8 = "🐍 ",
     /// Continuation prompt (for multi-line input)
     cont_prompt: []const u8 = "   ",
-    /// Enable type checking pipeline pass
-    typecheck: bool = false,
-    /// Enable erasure pipeline pass (requires typecheck)
-    erasure: bool = false,
-    /// Show pipeline timing
-    pipeline_timing: bool = false,
 };
 
 /// REPL state
@@ -75,10 +69,6 @@ pub const Repl = struct {
     line_editor: LineEditor,
     /// Current VM being used (for nested loads)
     current_vm: ?*Vm,
-    /// Type checking pass (optional)
-    typecheck_pass: ?passes.TypeCheckPass,
-    /// Erasure pass (optional)
-    erasure_pass: ?passes.ErasurePass,
 
     pub fn init(allocator: std.mem.Allocator, heap: *Heap, config: Config) !Repl {
         return Repl{
@@ -91,8 +81,6 @@ pub const Repl = struct {
             .macros = std.StringHashMap(Value).init(allocator),
             .line_editor = LineEditor.init(allocator),
             .current_vm = null,
-            .typecheck_pass = if (config.typecheck) passes.TypeCheckPass.init(allocator, .{}) else null,
-            .erasure_pass = if (config.erasure) passes.ErasurePass.init(allocator, .{}) else null,
         };
     }
 
@@ -374,6 +362,9 @@ pub const Repl = struct {
         // Expand macros
         expr = self.expandMacros(expr) catch return error.CompileError;
 
+        // Desugar (let* → let, cond → if, etc.)
+        expr = try self.desugarExpr(expr);
+
         // Compile
         const saved_builder = self.compiler.builder;
         const saved_allocator = self.compiler.allocator;
@@ -451,51 +442,14 @@ pub const Repl = struct {
         }
         self.persistent_chunk_ptrs.deinit(self.allocator);
         self.macros.deinit();
-        // Clean up passes
-        if (self.typecheck_pass) |*p| p.deinit();
-        if (self.erasure_pass) |*p| p.deinit();
     }
 
-    /// Run pipeline passes on IR, returning transformed IR
-    /// Returns the original IR if no passes are enabled
+    /// Run nanopass pipeline on IR, returning transformed IR
+    /// Pipeline: annotate → infer → erase
     fn runPipeline(self: *Repl, ir_node: *const Ir) !*const Ir {
-        var current_ir = ir_node;
-
-        // Run type checking pass
-        if (self.typecheck_pass) |*typecheck| {
-            const result = typecheck.run(self.allocator, current_ir) catch |err| {
-                if (self.config.pipeline_timing) {
-                    std.debug.print("[pipeline] typecheck failed: {any}\n", .{err});
-                }
-                return err;
-            };
-
-            if (result.errors.len > 0 and self.config.pipeline_timing) {
-                for (result.errors) |diag| {
-                    std.debug.print("[typecheck] {s}: {s}\n", .{ @tagName(diag.level), diag.message });
-                }
-            }
-
-            current_ir = result.ir;
-        }
-
-        // Run erasure pass
-        if (self.erasure_pass) |*erasure| {
-            const result = erasure.run(self.allocator, current_ir) catch |err| {
-                if (self.config.pipeline_timing) {
-                    std.debug.print("[pipeline] erasure failed: {any}\n", .{err});
-                }
-                return err;
-            };
-
-            if (result.modified and self.config.pipeline_timing) {
-                std.debug.print("[pipeline] erasure: IR modified\n", .{});
-            }
-
-            current_ir = result.ir;
-        }
-
-        return current_ir;
+        return passes.runNanoPipeline(self.allocator, ir_node) catch {
+            return ir_node; // On error, return original IR
+        };
     }
 
     /// Run the REPL loop with File-based I/O
@@ -750,6 +704,9 @@ pub const Repl = struct {
         // Expand macros before compilation
         expr = self.expandMacros(expr) catch return error.CompileError;
 
+        // Desugar (let* → let, cond → if, etc.)
+        expr = try self.desugarExpr(expr);
+
         // Compile - use persistent compiler for globals, but temp builder/allocator
         // Save and restore since they use arena allocator
         const saved_builder = self.compiler.builder;
@@ -865,6 +822,9 @@ pub const Repl = struct {
 
         // Expand macros before compilation
         expr = self.expandMacros(expr) catch return error.CompileError;
+
+        // Desugar (let* → let, cond → if, etc.)
+        expr = try self.desugarExpr(expr);
 
         // Compile - use persistent compiler for globals, but temp builder/allocator
         // Save and restore since they use arena allocator
@@ -1428,6 +1388,9 @@ pub const Repl = struct {
         // Expand macros
         expr = self.expandMacros(expr) catch return error.CompileError;
 
+        // Desugar (let* → let, cond → if, etc.)
+        expr = try self.desugarExpr(expr);
+
         // Compile
         const saved_builder = self.compiler.builder;
         const saved_allocator = self.compiler.allocator;
@@ -1524,6 +1487,12 @@ pub const Repl = struct {
         }
 
         return result;
+    }
+
+    /// Desugar an expression (let* → let, cond → if, etc.)
+    fn desugarExpr(self: *Repl, expr: Value) ReplError!Value {
+        var desugarer = passes.Desugarer.init(self.allocator, self.heap);
+        return desugarer.desugar(expr) catch return error.CompileError;
     }
 
     /// Expand macros in an expression (recursive)

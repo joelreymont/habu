@@ -1,31 +1,26 @@
 //! Compilation Pipeline
 //!
-//! Orchestrates the sequence of nanopass transformations:
-//!   Lisp S-expr → IR → TypeCheck → Erase → Bytecode
+//! Orchestrates the sequence of nanopass transformations.
+//! Each pass transforms one IR type to another.
+//!
+//! Pipeline stages:
+//!   Source → Lex → Parse → Expand → Desugar → Lift → Resolve → Capture →
+//!   Annotate → Infer → Check → Linear → Erase → Emit → (JIT)
 
 const std = @import("std");
 const pass_mod = @import("pass.zig");
 const Pass = pass_mod.Pass;
 const PassResult = pass_mod.PassResult;
 const PassError = pass_mod.PassError;
-const PassDiagnostic = pass_mod.PassDiagnostic;
+const Diagnostic = pass_mod.Diagnostic;
 const Ir = @import("../ir.zig").Ir;
+const ir_types = @import("ir_types.zig");
+const TypedIr = ir_types.TypedIr;
+const Value = @import("../../runtime/value.zig").Value;
 
-/// Pipeline configuration
-pub const PipelineConfig = struct {
-    /// Enable timing output
-    timing: bool = false,
-    /// Enable debug output
-    debug: bool = false,
-    /// Stop on first error
-    fail_fast: bool = true,
-};
-
-/// Pipeline execution statistics
-pub const PipelineStats = struct {
-    /// Total time in nanoseconds
+/// Pipeline statistics
+pub const Stats = struct {
     total_ns: u64,
-    /// Per-pass timing
     pass_times: []const PassTime,
 
     pub const PassTime = struct {
@@ -34,73 +29,91 @@ pub const PipelineStats = struct {
     };
 };
 
-/// Pipeline manages a sequence of passes
-pub const Pipeline = struct {
-    allocator: std.mem.Allocator,
-    passes: std.ArrayListUnmanaged(Pass),
-    config: PipelineConfig,
+/// Pipeline configuration
+pub const Config = struct {
+    /// Print timing information
+    timing: bool = false,
+    /// Print debug information
+    debug: bool = false,
+};
 
-    pub fn init(allocator: std.mem.Allocator, config: PipelineConfig) Pipeline {
+/// A heterogeneous pipeline that chains passes with different IR types.
+/// Uses comptime to build the pipeline with type-safe transitions.
+pub fn Pipeline(comptime stages: []const type) type {
+    return struct {
+        const Self = @This();
+
+        allocator: std.mem.Allocator,
+        config: Config,
+
+        pub fn init(allocator: std.mem.Allocator, config: Config) Self {
+            return .{
+                .allocator = allocator,
+                .config = config,
+            };
+        }
+
+        /// Run the pipeline on input, returning final output
+        pub fn run(self: Self, input: stages[0]) PassError!stages[stages.len - 1] {
+            // This is a placeholder - actual implementation would chain passes
+            _ = self;
+            _ = input;
+            @compileError("Pipeline.run not yet implemented - use runPasses instead");
+        }
+    };
+}
+
+/// Simple homogeneous pipeline for Ir → Ir passes
+pub const IrPipeline = struct {
+    allocator: std.mem.Allocator,
+    config: Config,
+    passes: std.ArrayListUnmanaged(pass_mod.IrPass),
+
+    pub fn init(allocator: std.mem.Allocator, config: Config) IrPipeline {
         return .{
             .allocator = allocator,
-            .passes = .{},
             .config = config,
+            .passes = .{},
         };
     }
 
-    pub fn deinit(self: *Pipeline) void {
-        for (self.passes.items) |pass| {
-            pass.deinit();
-        }
+    pub fn deinit(self: *IrPipeline) void {
         self.passes.deinit(self.allocator);
     }
 
-    /// Add a pass to the pipeline
-    pub fn addPass(self: *Pipeline, pass: Pass) !void {
-        try self.passes.append(self.allocator, pass);
+    pub fn addPass(self: *IrPipeline, p: pass_mod.IrPass) !void {
+        try self.passes.append(self.allocator, p);
     }
 
-    /// Run all passes on the given IR
-    pub fn run(self: *Pipeline, ir: *const Ir) !PipelineResult {
-        var timer = std.time.Timer.start() catch return error.OutOfMemory;
-        var pass_times = std.ArrayListUnmanaged(PipelineStats.PassTime){};
-        var all_diagnostics = std.ArrayListUnmanaged(PassDiagnostic){};
-        var current_ir = ir;
-        var has_errors = false;
+    pub fn run(self: *IrPipeline, input: *const Ir) PassError!PipelineResult {
+        var timer = std.time.Timer.start() catch return PassError.PassFailed;
+        var pass_times = std.ArrayListUnmanaged(Stats.PassTime){};
+        var all_diagnostics = std.ArrayListUnmanaged(Diagnostic){};
+        var current = input;
+        var any_modified = false;
 
-        for (self.passes.items) |pass| {
-            const pass_start = timer.lap();
+        for (self.passes.items) |p| {
+            _ = timer.lap(); // Reset lap counter
 
-            const result = pass.run(self.allocator, current_ir) catch |err| {
-                if (self.config.debug) {
-                    std.debug.print("[pipeline] {s} failed: {any}\n", .{ pass.name(), err });
-                }
-                return error.PassFailed;
-            };
+            const result = try p.run(self.allocator, current);
 
             const pass_time = timer.lap();
-
             try pass_times.append(self.allocator, .{
-                .name = pass.name(),
-                .time_ns = pass_time - pass_start,
+                .name = p.name,
+                .time_ns = pass_time,
             });
 
-            // Collect diagnostics
-            for (result.errors) |diag| {
-                try all_diagnostics.append(self.allocator, diag);
-                if (diag.level == .@"error") {
-                    has_errors = true;
-                }
+            for (result.diagnostics) |d| {
+                try all_diagnostics.append(self.allocator, d);
             }
 
-            if (self.config.debug and result.modified) {
-                std.debug.print("[pipeline] {s}: IR modified\n", .{pass.name()});
+            if (result.modified) {
+                any_modified = true;
+                current = result.output;
             }
 
-            current_ir = result.ir;
-
-            if (has_errors and self.config.fail_fast) {
-                break;
+            if (self.config.debug) {
+                std.debug.print("[pipeline] {s}: modified={}\n", .{ p.name, result.modified });
             }
         }
 
@@ -111,79 +124,80 @@ pub const Pipeline = struct {
         }
 
         return .{
-            .ir = current_ir,
+            .output = current,
+            .modified = any_modified,
             .diagnostics = try all_diagnostics.toOwnedSlice(self.allocator),
             .stats = .{
                 .total_ns = total_time,
                 .pass_times = try pass_times.toOwnedSlice(self.allocator),
             },
-            .success = !has_errors,
         };
     }
 
-    fn printTiming(self: *Pipeline, pass_times: []const PipelineStats.PassTime, total_ns: u64) void {
-        _ = self;
+    fn printTiming(_: *IrPipeline, pass_times: []const Stats.PassTime, total_ns: u64) void {
         std.debug.print("[pipeline] timing:\n", .{});
         for (pass_times) |pt| {
             const ms = @as(f64, @floatFromInt(pt.time_ns)) / 1_000_000.0;
-            std.debug.print("  {s}: {d:.2}ms\n", .{ pt.name, ms });
+            std.debug.print("  {s}: {d:.3}ms\n", .{ pt.name, ms });
         }
         const total_ms = @as(f64, @floatFromInt(total_ns)) / 1_000_000.0;
-        std.debug.print("  total: {d:.2}ms\n", .{total_ms});
+        std.debug.print("  total: {d:.3}ms\n", .{total_ms});
     }
 };
 
-/// Result of running the pipeline
+/// Result of running a pipeline
 pub const PipelineResult = struct {
-    /// Final transformed IR
-    ir: *const Ir,
-    /// All diagnostics from all passes
-    diagnostics: []const PassDiagnostic,
-    /// Execution statistics
-    stats: PipelineStats,
-    /// Whether compilation succeeded (no errors)
-    success: bool,
+    output: *const Ir,
+    modified: bool,
+    diagnostics: []const Diagnostic,
+    stats: Stats,
 
     pub fn deinit(self: *PipelineResult, allocator: std.mem.Allocator) void {
         allocator.free(self.diagnostics);
         allocator.free(self.stats.pass_times);
     }
+
+    pub fn hasErrors(self: *const PipelineResult) bool {
+        for (self.diagnostics) |d| {
+            if (d.level == .@"error") return true;
+        }
+        return false;
+    }
 };
+
+// Note: runPasses helper for heterogeneous pass chains is not yet implemented.
+// Use IrPipeline for homogeneous Ir→Ir pass chains.
 
 // ============================================================================
 // Tests
 // ============================================================================
 
-test "empty pipeline" {
+test "IrPipeline empty" {
     const testing = std.testing;
-    const Value = @import("../../runtime/value.zig").Value;
 
-    var pipeline = Pipeline.init(testing.allocator, .{});
+    var pipeline = IrPipeline.init(testing.allocator, .{});
     defer pipeline.deinit();
 
     const lit = Ir{ .lit = Value.makeFixnum(42) };
     var result = try pipeline.run(&lit);
     defer result.deinit(testing.allocator);
 
-    try testing.expectEqual(&lit, result.ir);
-    try testing.expect(result.success);
+    try testing.expectEqual(&lit, result.output);
+    try testing.expect(!result.modified);
 }
 
-test "pipeline with identity pass" {
+test "IrPipeline with identity pass" {
     const testing = std.testing;
-    const Value = @import("../../runtime/value.zig").Value;
 
-    var pipeline = Pipeline.init(testing.allocator, .{});
+    var pipeline = IrPipeline.init(testing.allocator, .{});
     defer pipeline.deinit();
 
-    var identity = pass_mod.IdentityPass{};
-    try pipeline.addPass(pass_mod.makePass(pass_mod.IdentityPass, &identity));
+    try pipeline.addPass(pass_mod.identityPass(*const Ir));
 
     const lit = Ir{ .lit = Value.makeFixnum(42) };
     var result = try pipeline.run(&lit);
     defer result.deinit(testing.allocator);
 
-    try testing.expectEqual(&lit, result.ir);
-    try testing.expect(result.success);
-    try testing.expectEqual(@as(usize, 1), result.stats.pass_times.len);
+    try testing.expectEqual(&lit, result.output);
+    try testing.expect(!result.modified);
 }

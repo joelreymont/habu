@@ -1,11 +1,13 @@
-//! Pass Infrastructure
+//! Nanopass Infrastructure
 //!
-//! Defines the interface for nanopass transformations.
-//! Each pass takes IR and produces modified IR.
+//! Each pass takes one IR type and produces another (possibly different) IR.
+//! Passes are small, focused transformations.
 
 const std = @import("std");
 const Ir = @import("../ir.zig").Ir;
-const IrBuilder = @import("../ir.zig").IrBuilder;
+const ir_types = @import("ir_types.zig");
+const TypedIr = ir_types.TypedIr;
+const Value = @import("../../runtime/value.zig").Value;
 
 /// Error type for passes
 pub const PassError = error{
@@ -13,110 +15,115 @@ pub const PassError = error{
     PassFailed,
     TypeError,
     InvalidIr,
+    SyntaxError,
+};
+
+/// Diagnostic from a pass
+pub const Diagnostic = struct {
+    level: Level,
+    message: []const u8,
+
+    pub const Level = enum { @"error", warning, note };
 };
 
 /// Result of running a pass
-pub const PassResult = struct {
-    /// The transformed IR (or original if unchanged)
-    ir: *const Ir,
-    /// Whether the pass modified the IR
-    modified: bool,
-    /// Any errors encountered (pass can continue with errors)
-    errors: []const PassDiagnostic,
-};
+pub fn PassResult(comptime Out: type) type {
+    return struct {
+        /// Output of the pass
+        output: Out,
+        /// Whether the output differs from input
+        modified: bool,
+        /// Diagnostics collected during pass
+        diagnostics: []const Diagnostic,
 
-/// Diagnostic message from a pass
-pub const PassDiagnostic = struct {
-    /// Error or warning level
-    level: Level,
-    /// Message describing the issue
-    message: []const u8,
-    /// Optional source location
-    loc: ?Loc,
-
-    pub const Level = enum {
-        @"error",
-        warning,
-        note,
-    };
-
-    pub const Loc = struct {
-        file: []const u8,
-        line: u32,
-        column: u32,
-    };
-};
-
-/// Pass interface - implemented by each nanopass
-pub const Pass = struct {
-    ptr: *anyopaque,
-    vtable: *const VTable,
-
-    pub const VTable = struct {
-        /// Name of the pass for diagnostics/timing
-        name: []const u8,
-        /// Run the pass on the given IR
-        run: *const fn (ptr: *anyopaque, allocator: std.mem.Allocator, ir: *const Ir) PassError!PassResult,
-        /// Clean up any pass-specific state
-        deinit: *const fn (ptr: *anyopaque) void,
-    };
-
-    /// Get the pass name
-    pub fn name(self: Pass) []const u8 {
-        return self.vtable.name;
-    }
-
-    /// Run the pass
-    pub fn run(self: Pass, allocator: std.mem.Allocator, ir: *const Ir) PassError!PassResult {
-        return self.vtable.run(self.ptr, allocator, ir);
-    }
-
-    /// Deinitialize the pass
-    pub fn deinit(self: Pass) void {
-        self.vtable.deinit(self.ptr);
-    }
-};
-
-/// Create a Pass from a concrete implementation
-pub fn makePass(comptime T: type, impl: *T) Pass {
-    const gen = struct {
-        fn run(ptr: *anyopaque, allocator: std.mem.Allocator, ir: *const Ir) PassError!PassResult {
-            const self: *T = @ptrCast(@alignCast(ptr));
-            return self.run(allocator, ir);
+        pub fn unchanged(input: Out) @This() {
+            return .{
+                .output = input,
+                .modified = false,
+                .diagnostics = &.{},
+            };
         }
 
-        fn deinit(ptr: *anyopaque) void {
-            const self: *T = @ptrCast(@alignCast(ptr));
-            self.deinit();
+        pub fn changed(output: Out) @This() {
+            return .{
+                .output = output,
+                .modified = true,
+                .diagnostics = &.{},
+            };
         }
 
-        const vtable = Pass.VTable{
-            .name = T.pass_name,
-            .run = run,
-            .deinit = deinit,
-        };
-    };
-
-    return .{
-        .ptr = impl,
-        .vtable = &gen.vtable,
+        pub fn withDiagnostics(output: Out, modified: bool, diags: []const Diagnostic) @This() {
+            return .{
+                .output = output,
+                .modified = modified,
+                .diagnostics = diags,
+            };
+        }
     };
 }
 
-/// Identity pass - returns IR unchanged (for testing)
-pub const IdentityPass = struct {
-    pub const pass_name = "identity";
+/// A pass transforms In to Out
+pub fn Pass(comptime In: type, comptime Out: type) type {
+    return struct {
+        const Self = @This();
 
-    pub fn run(_: *IdentityPass, _: std.mem.Allocator, ir: *const Ir) PassError!PassResult {
-        return .{
-            .ir = ir,
-            .modified = false,
-            .errors = &[_]PassDiagnostic{},
-        };
-    }
+        name: []const u8,
+        runFn: *const fn (allocator: std.mem.Allocator, input: In) PassError!PassResult(Out),
 
-    pub fn deinit(_: *IdentityPass) void {}
-};
+        pub fn run(self: Self, allocator: std.mem.Allocator, input: In) PassError!PassResult(Out) {
+            return self.runFn(allocator, input);
+        }
+    };
+}
+
+/// Create a pass from a function
+pub fn makePass(
+    comptime In: type,
+    comptime Out: type,
+    comptime name: []const u8,
+    comptime runFn: fn (std.mem.Allocator, In) PassError!PassResult(Out),
+) Pass(In, Out) {
+    return .{
+        .name = name,
+        .runFn = runFn,
+    };
+}
+
+// ============================================================================
+// Standard Pass Types
+// ============================================================================
+
+/// Ir → Ir transformation
+pub const IrPass = Pass(*const Ir, *const Ir);
+
+/// Ir → TypedIr transformation (adds type annotations)
+pub const AnnotatePass = Pass(*const Ir, *const TypedIr);
+
+/// TypedIr → TypedIr transformation
+pub const TypedPass = Pass(*const TypedIr, *const TypedIr);
+
+/// TypedIr → Ir transformation (removes type annotations, e.g., erasure)
+pub const ErasePass = Pass(*const TypedIr, *const Ir);
+
+/// Value (S-expr) → Value transformation
+pub const SExprPass = Pass(Value, Value);
+
+/// Value → Ir transformation (lifting)
+pub const LiftPass = Pass(Value, *const Ir);
+
+// ============================================================================
+// Built-in Passes
+// ============================================================================
+
+/// Identity pass - returns input unchanged (for testing)
+pub fn identityPass(comptime T: type) Pass(T, T) {
+    const Impl = struct {
+        fn run(_: std.mem.Allocator, input: T) PassError!PassResult(T) {
+            return PassResult(T).unchanged(input);
+        }
+    };
+    return makePass(T, T, "identity", Impl.run);
+}
 
 // ============================================================================
 // Tests
@@ -124,21 +131,26 @@ pub const IdentityPass = struct {
 
 test "identity pass" {
     const testing = std.testing;
-    const Value = @import("../../runtime/value.zig").Value;
 
-    var identity = IdentityPass{};
-    const pass = makePass(IdentityPass, &identity);
-
+    const pass = identityPass(*const Ir);
     const lit = Ir{ .lit = Value.makeFixnum(42) };
-    const result = try pass.run(testing.allocator, &lit);
 
-    try testing.expectEqual(&lit, result.ir);
+    const result = try pass.run(testing.allocator, &lit);
+    try testing.expectEqual(&lit, result.output);
     try testing.expect(!result.modified);
 }
 
-test "pass name" {
-    var identity = IdentityPass{};
-    const pass = makePass(IdentityPass, &identity);
+test "makePass" {
+    const testing = std.testing;
 
-    try std.testing.expectEqualStrings("identity", pass.name());
+    const double = struct {
+        fn run(alloc: std.mem.Allocator, input: *const Ir) PassError!PassResult(*const Ir) {
+            _ = alloc;
+            // Just return unchanged for this test
+            return PassResult(*const Ir).unchanged(input);
+        }
+    };
+
+    const pass = makePass(*const Ir, *const Ir, "double", double.run);
+    try testing.expectEqualStrings("double", pass.name);
 }

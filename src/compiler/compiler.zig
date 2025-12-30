@@ -14,11 +14,11 @@ pub const TypedIr = compile.TypedIr;
 pub const GlobalEnv = compile.GlobalEnv;
 
 pub const passes = @import("passes/passes.zig");
-pub const Pass = passes.Pass;
-pub const Pipeline = passes.Pipeline;
-pub const PipelineConfig = passes.PipelineConfig;
-pub const TypeCheckPass = passes.TypeCheckPass;
-pub const ErasurePass = passes.ErasurePass;
+pub const IrPass = passes.IrPass;
+pub const IrPipeline = passes.IrPipeline;
+pub const PipelineResult = passes.PipelineResult;
+pub const runPipeline = passes.runPipeline;
+pub const createPipeline = passes.createPipeline;
 
 test {
     _ = ir;
