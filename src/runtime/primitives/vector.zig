@@ -10,12 +10,12 @@ const Heap = @import("../heap.zig").Heap;
 
 /// Create a new vector
 pub fn makeVector(heap: *Heap, length: usize) error{OutOfMemory}!Value {
-    return heap.allocVector(length, length) orelse error.OutOfMemory;
+    return try heap.allocVector(length, length);
 }
 
 /// Create a vector with specified capacity
 pub fn makeVectorWithCapacity(heap: *Heap, length: usize, capacity: usize) error{OutOfMemory}!Value {
-    return heap.allocVector(length, capacity) orelse error.OutOfMemory;
+    return try heap.allocVector(length, capacity);
 }
 
 /// Create a vector initialized with a fill value

@@ -102,12 +102,12 @@ pub const Parser = struct {
             }
             self.advance();
 
-            return self.heap.allocCons(first, second) orelse error.OutOfMemory;
+            return try self.heap.allocCons(first, second);
         }
 
         // Parse rest as proper list
         const rest = try self.parseListTail();
-        return self.heap.allocCons(first, rest) orelse error.OutOfMemory;
+        return try self.heap.allocCons(first, rest);
     }
 
     fn parseListTail(self: *Parser) Error!Value {
@@ -132,7 +132,7 @@ pub const Parser = struct {
 
         const car = try self.parseExpr();
         const cdr = try self.parseListTail();
-        return self.heap.allocCons(car, cdr) orelse error.OutOfMemory;
+        return try self.heap.allocCons(car, cdr);
     }
 
     fn parseVector(self: *Parser) Error!Value {
@@ -155,7 +155,7 @@ pub const Parser = struct {
         self.advance(); // consume ')'
 
         // Allocate vector and copy elements
-        const vec_val = self.heap.allocVector(count, count) orelse return error.OutOfMemory;
+        const vec_val = try self.heap.allocVector(count, count);
         const vec = vec_val.toPtr(runtime.Vector);
         for (0..count) |i| {
             vec.data[i] = elements[i];
@@ -170,8 +170,8 @@ pub const Parser = struct {
 
         // Build (quote <expr>) or (quasiquote <expr>) etc.
         const quote_sym = try self.internSymbol(quote_name);
-        const inner = self.heap.allocCons(quoted, Value.nil) orelse return error.OutOfMemory;
-        return self.heap.allocCons(quote_sym, inner) orelse error.OutOfMemory;
+        const inner = try self.heap.allocCons(quoted, Value.nil);
+        return try self.heap.allocCons(quote_sym, inner);
     }
 
     fn parseNumber(self: *Parser) Error!Value {
@@ -221,7 +221,7 @@ pub const Parser = struct {
             return self.decodeStringEscapes(text) orelse error.OutOfMemory;
         }
 
-        return self.heap.allocString(text) orelse error.OutOfMemory;
+        return try self.heap.allocString(text);
     }
 
     /// Decode escape sequences in a string, allocating result in heap's string space
@@ -240,7 +240,7 @@ pub const Parser = struct {
         }
 
         // Allocate string with uninitialized content
-        const str_val = self.heap.allocStringUninitialized(out_len) orelse return null;
+        const str_val = self.heap.allocStringUninitialized(out_len) catch return null;
         const str = str_val.toPtr(runtime.String);
         const buffer = str.mutableBytes();
 
@@ -283,6 +283,24 @@ pub const Parser = struct {
             return Value.t;
         }
 
+        // Check for package-qualified symbol (pkg:sym or pkg::sym)
+        if (std.mem.indexOf(u8, text, ":")) |colon_pos| {
+            if (colon_pos > 0) {
+                const pkg_name = text[0..colon_pos];
+                // Skip one or two colons
+                var sym_start = colon_pos + 1;
+                if (sym_start < text.len and text[sym_start] == ':') {
+                    sym_start += 1;
+                }
+                if (sym_start >= text.len) {
+                    // Just "pkg:" or "pkg::" with no symbol name
+                    return error.UnexpectedToken;
+                }
+                const sym_name = text[sym_start..];
+                return self.internSymbolInPackage(pkg_name, sym_name);
+            }
+        }
+
         return self.internSymbol(text);
     }
 
@@ -300,12 +318,27 @@ pub const Parser = struct {
 
     /// Intern a symbol (same name = same Value)
     fn internSymbol(self: *Parser, name: []const u8) Error!Value {
-        return self.heap.intern(name) orelse error.OutOfMemory;
+        return try self.heap.intern(name);
+    }
+
+    /// Intern a symbol in a specific package
+    fn internSymbolInPackage(self: *Parser, pkg_name: []const u8, sym_name: []const u8) Error!Value {
+        // Uppercase package name for CL-spec case-insensitivity
+        var upper_buf: [128]u8 = undefined;
+        const upper_name = if (pkg_name.len <= upper_buf.len) blk: {
+            for (pkg_name, 0..) |c, i| {
+                upper_buf[i] = std.ascii.toUpper(c);
+            }
+            break :blk upper_buf[0..pkg_name.len];
+        } else pkg_name; // Fallback for very long names
+        // Find or create the package
+        const pkg = try self.heap.findOrCreatePackage(upper_name);
+        return try pkg.intern(self.heap, sym_name);
     }
 
     /// Intern a keyword (same name = same Value)
     fn internKeyword(self: *Parser, name: []const u8) Error!Value {
-        return self.heap.internKeyword(name) orelse error.OutOfMemory;
+        return try self.heap.internKeyword(name);
     }
 
     fn parseCharacter(self: *Parser) Error!Value {
@@ -321,16 +354,16 @@ pub const Parser = struct {
             return Value.makeCharacter(char_part[0]);
         }
 
-        // Named characters
-        if (std.mem.eql(u8, char_part, "space")) return Value.makeCharacter(' ');
-        if (std.mem.eql(u8, char_part, "newline")) return Value.makeCharacter('\n');
-        if (std.mem.eql(u8, char_part, "tab")) return Value.makeCharacter('\t');
-        if (std.mem.eql(u8, char_part, "return")) return Value.makeCharacter('\r');
-        if (std.mem.eql(u8, char_part, "backspace")) return Value.makeCharacter(0x08);
-        if (std.mem.eql(u8, char_part, "linefeed")) return Value.makeCharacter('\n');
-        if (std.mem.eql(u8, char_part, "page")) return Value.makeCharacter(0x0C);
-        if (std.mem.eql(u8, char_part, "rubout")) return Value.makeCharacter(0x7F);
-        if (std.mem.eql(u8, char_part, "nul") or std.mem.eql(u8, char_part, "null")) return Value.makeCharacter(0);
+        // Named characters (case-insensitive, per CL spec)
+        if (std.ascii.eqlIgnoreCase(char_part, "space")) return Value.makeCharacter(' ');
+        if (std.ascii.eqlIgnoreCase(char_part, "newline")) return Value.makeCharacter('\n');
+        if (std.ascii.eqlIgnoreCase(char_part, "tab")) return Value.makeCharacter('\t');
+        if (std.ascii.eqlIgnoreCase(char_part, "return")) return Value.makeCharacter('\r');
+        if (std.ascii.eqlIgnoreCase(char_part, "backspace")) return Value.makeCharacter(0x08);
+        if (std.ascii.eqlIgnoreCase(char_part, "linefeed")) return Value.makeCharacter('\n');
+        if (std.ascii.eqlIgnoreCase(char_part, "page")) return Value.makeCharacter(0x0C);
+        if (std.ascii.eqlIgnoreCase(char_part, "rubout")) return Value.makeCharacter(0x7F);
+        if (std.ascii.eqlIgnoreCase(char_part, "nul") or std.ascii.eqlIgnoreCase(char_part, "null")) return Value.makeCharacter(0);
 
         // Unicode escape: #\uXXXX or #\U+XXXX
         if (char_part.len >= 2 and (char_part[0] == 'u' or char_part[0] == 'U')) {

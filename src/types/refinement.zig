@@ -200,7 +200,8 @@ test "refinement satisfiability" {
     var checker = RefinementChecker.init(allocator);
     defer checker.deinit();
 
-    const builder = term_mod.TermBuilder.init(allocator);
+    var builder = term_mod.TermBuilder.init(allocator);
+    defer builder.deinit();
 
     // {x : int | x > 0} - satisfiable
     const x = try builder.varByName("x");
@@ -216,7 +217,8 @@ test "refinement unsatisfiable" {
     var checker = RefinementChecker.init(allocator);
     defer checker.deinit();
 
-    const builder = term_mod.TermBuilder.init(allocator);
+    var builder = term_mod.TermBuilder.init(allocator);
+    defer builder.deinit();
 
     // {x : int | x > 0 and x < 0} - unsatisfiable!
     const x = try builder.varByName("x");
@@ -234,7 +236,8 @@ test "refinement subtyping valid" {
     var checker = RefinementChecker.init(allocator);
     defer checker.deinit();
 
-    const builder = term_mod.TermBuilder.init(allocator);
+    var builder = term_mod.TermBuilder.init(allocator);
+    defer builder.deinit();
 
     // {x | x > 0} <: {x | x >= 0}  -- valid!
     const x = try builder.varByName("x");
@@ -251,7 +254,8 @@ test "refinement subtyping invalid" {
     var checker = RefinementChecker.init(allocator);
     defer checker.deinit();
 
-    const builder = term_mod.TermBuilder.init(allocator);
+    var builder = term_mod.TermBuilder.init(allocator);
+    defer builder.deinit();
 
     // {x | x >= 0} <: {x | x > 0}  -- invalid! (x=0 is counterexample)
     const x = try builder.varByName("x");
@@ -268,7 +272,8 @@ test "refinement equivalence" {
     var checker = RefinementChecker.init(allocator);
     defer checker.deinit();
 
-    const builder = term_mod.TermBuilder.init(allocator);
+    var builder = term_mod.TermBuilder.init(allocator);
+    defer builder.deinit();
 
     // {x | x > 0} == {x | x >= 1}  -- equivalent for integers!
     const x = try builder.varByName("x");
@@ -286,7 +291,8 @@ test "refinement with arithmetic" {
     var checker = RefinementChecker.init(allocator);
     defer checker.deinit();
 
-    const builder = term_mod.TermBuilder.init(allocator);
+    var builder = term_mod.TermBuilder.init(allocator);
+    defer builder.deinit();
 
     // {x | x + 1 > 1} <: {x | x >= 0}  -- valid!
     const x = try builder.varByName("x");

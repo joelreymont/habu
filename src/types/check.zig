@@ -92,6 +92,12 @@ pub const OccurrenceCtx = struct {
         try self.narrowed.put(var_name, &types.t_fixnum);
     }
 
+    /// After (struct-name-p x), narrow x to struct type
+    /// struct_type should be a pointer to a Type with .@"struct" variant
+    pub fn narrowToStruct(self: *OccurrenceCtx, var_name: []const u8, struct_type: *const types.Type) !void {
+        try self.narrowed.put(var_name, struct_type);
+    }
+
     /// Get narrowed type for a variable, or null if not narrowed
     pub fn getNarrowed(self: OccurrenceCtx, var_name: []const u8) ?*const types.Type {
         return self.narrowed.get(var_name);
@@ -146,6 +152,7 @@ pub const TypeChecker = struct {
 
     pub fn deinit(self: *TypeChecker) void {
         self.errors.deinit(self.allocator);
+        self.builder.deinit();
     }
 
     pub fn hasErrors(self: TypeChecker) bool {
@@ -215,8 +222,18 @@ pub const TypeChecker = struct {
         // Any is supertype of everything
         if (super.* == .any) return true;
 
-        // Same type
-        if (std.meta.eql(sub.*, super.*)) return true;
+        // Pointer equality (same type object)
+        if (sub == super) return true;
+
+        // Struct types: nominally typed (same name = same type)
+        if (sub.* == .@"struct" and super.* == .@"struct") {
+            return std.mem.eql(u8, sub.@"struct".name, super.@"struct".name);
+        }
+
+        // Primitive types: compare by enum value
+        if (sub.* == .primitive and super.* == .primitive) {
+            return sub.primitive == super.primitive;
+        }
 
         // Nil is subtype of list (empty list)
         if (sub.* == .primitive and sub.primitive == .nil) {
@@ -233,6 +250,16 @@ pub const TypeChecker = struct {
         // Non-nil T is subtype of T
         if (sub.* == .non_nil) {
             return self.isSubtype(sub.non_nil, super);
+        }
+
+        // List: covariant element type
+        if (sub.* == .list and super.* == .list) {
+            return self.isSubtype(sub.list, super.list);
+        }
+
+        // Vec: covariant element type (for read-only usage)
+        if (sub.* == .vec and super.* == .vec) {
+            return self.isSubtype(sub.vec, super.vec);
         }
 
         return false;

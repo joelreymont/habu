@@ -10,6 +10,7 @@ pub const value = @import("value.zig");
 pub const objects = @import("objects.zig");
 pub const heap = @import("heap.zig");
 pub const gc = @import("gc.zig");
+pub const interner = @import("interner.zig");
 pub const primitives = @import("primitives/primitives.zig");
 
 // Re-export commonly used types
@@ -30,11 +31,13 @@ pub const HashTest = objects.HashTest;
 pub const Heap = heap.Heap;
 pub const GC = gc.GC;
 pub const RootSet = gc.RootSet;
+pub const Interner = interner.Interner;
 
 test {
     _ = value;
     _ = objects;
     _ = heap;
     _ = gc;
+    _ = interner;
     _ = primitives;
 }

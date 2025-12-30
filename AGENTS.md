@@ -248,6 +248,31 @@ String comparison is ONLY acceptable for:
 - Debug/error message formatting
 - Comparing actual string objects (not their symbolic meaning)
 
+### Lisp Code (stdlib.habu) - Symbol Dispatch
+
+**Use `case` for symbol dispatch, NEVER `cond` with `eq` chains.**
+
+```lisp
+;; WRONG - cond with eq chains
+(cond
+  ((eq kw 'from) ...)
+  ((eq kw 'to) ...)
+  ((eq kw 'by) ...))
+
+;; RIGHT - case for symbol dispatch
+(case kw
+  (from ...)
+  (to ...)
+  (by ...)
+  (t (error "Unknown keyword")))
+```
+
+Benefits:
+- **Cleaner**: No repetitive `(eq kw ...)` boilerplate
+- **Faster**: Single dispatch vs chain of comparisons
+- **Maintainable**: Easy to add/remove cases
+- **Readable**: Intent is clear - dispatching on symbol value
+
 ### DRY: Table-Driven Dispatch
 
 Replace repetitive if/switch chains with data tables:

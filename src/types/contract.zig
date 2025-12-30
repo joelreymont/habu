@@ -39,6 +39,12 @@ pub const Contract = union(enum) {
     /// Vector contract: check each element
     vectorof: *const Contract,
 
+    /// Struct contract: check vector with struct name at index 0
+    structof: struct {
+        name_sym: Value, // interned struct name symbol
+        type_name: []const u8, // for error messages
+    },
+
     /// And combinator
     @"and": struct {
         left: *const Contract,
@@ -114,6 +120,27 @@ pub fn check(value: u64, contract: *const Contract, blame: Blame) !u64 {
             const items = vec.items();
             for (items) |elem| {
                 _ = try check(elem.raw, elem_ctc, blame);
+            }
+
+            return value;
+        },
+        .structof => |s| {
+            // Struct check: (and (vectorp v) (>= (length v) 1) (eq (vec-ref v 0) name))
+            const val = Value{ .raw = value };
+
+            if (!val.isVector()) {
+                return blame.raise(s.type_name, value);
+            }
+
+            const vec = val.toPtr(Vector);
+            const items = vec.items();
+            if (items.len < 1) {
+                return blame.raise(s.type_name, value);
+            }
+
+            // Check struct name symbol at index 0 using identity
+            if (items[0].raw != s.name_sym.raw) {
+                return blame.raise(s.type_name, value);
             }
 
             return value;
@@ -203,10 +230,19 @@ pub const predicates = struct {
 /// Uses an arena allocator - all contracts freed when compiler is deinited
 pub const ContractCompiler = struct {
     arena: std.heap.ArenaAllocator,
+    interner: ?runtime.Interner,
 
-    pub fn init(backing_allocator: std.mem.Allocator) ContractCompiler {
+    pub fn init(allocator: std.mem.Allocator) ContractCompiler {
         return .{
-            .arena = std.heap.ArenaAllocator.init(backing_allocator),
+            .arena = std.heap.ArenaAllocator.init(allocator),
+            .interner = null,
+        };
+    }
+
+    pub fn initWithInterner(allocator: std.mem.Allocator, interner: runtime.Interner) ContractCompiler {
+        return .{
+            .arena = std.heap.ArenaAllocator.init(allocator),
+            .interner = interner,
         };
     }
 
@@ -214,13 +250,9 @@ pub const ContractCompiler = struct {
         self.arena.deinit();
     }
 
-    fn allocator(self: *ContractCompiler) std.mem.Allocator {
-        return self.arena.allocator();
-    }
-
     /// Compile a type to its corresponding contract
     pub fn compile(self: *ContractCompiler, ty: *const types.Type) !*Contract {
-        const alloc = self.allocator();
+        const alloc = self.arena.allocator();
         const ctc = try alloc.create(Contract);
 
         switch (ty.*) {
@@ -290,6 +322,77 @@ pub const ContractCompiler = struct {
                     .@"and" = .{
                         .left = non_nil_ctc,
                         .right = inner_ctc,
+                    },
+                };
+            },
+            .@"struct" => |s| {
+                // Struct contract: check vector with struct name symbol at index 0
+                if (self.interner) |interner| {
+                    // Use symbol identity - intern the struct name
+                    const name_sym = try interner.intern(s.name);
+                    ctc.* = .{
+                        .structof = .{
+                            .name_sym = name_sym,
+                            .type_name = s.name,
+                        },
+                    };
+                } else {
+                    // Fallback without interner: just check vectorp (less precise)
+                    ctc.* = .{
+                        .flat = .{
+                            .predicate = predicates.isVector,
+                            .type_name = s.name,
+                        },
+                    };
+                }
+            },
+            // Dependent types - require runtime evaluation for full support
+            // For now, fall back to base type checks where possible
+            .pi => {
+                // Pi types are function types - check for closure
+                ctc.* = .{
+                    .flat = .{
+                        .predicate = predicates.isClosure,
+                        .type_name = "(pi ...)",
+                    },
+                };
+            },
+            .sigma => {
+                // Sigma types are pair types - could be cons or custom structure
+                // For now, accept any value (gradual typing escape)
+                ctc.* = .{
+                    .flat = .{
+                        .predicate = predicates.isAny,
+                        .type_name = "(sigma ...)",
+                    },
+                };
+            },
+            .refinement => |r| {
+                // Refinement type: check base type, predicate checked at runtime
+                // Full refinement checking requires SMT solver (Phase 3)
+                return try self.compile(r.base_type);
+            },
+            .type_var => {
+                // Unresolved type variable - accept any value
+                ctc.* = .{
+                    .flat = .{
+                        .predicate = predicates.isAny,
+                        .type_name = "type-var",
+                    },
+                };
+            },
+            .type_app => |ta| {
+                // Type application - try to evaluate, fall back to func type
+                // Full support requires normalizer (Phase 1)
+                return try self.compile(ta.func);
+            },
+            .type_level => {
+                // Universe types - should only appear in type-level code
+                // At runtime, represents the Type type itself
+                ctc.* = .{
+                    .flat = .{
+                        .predicate = predicates.isAny,
+                        .type_name = "Type",
                     },
                 };
             },
@@ -402,11 +505,11 @@ test "listof contract check" {
 
     // Build a list: (1 2 3)
     const fixnum3 = Value.makeFixnum(3);
-    const pair3 = heap.allocCons(fixnum3, Value.nil) orelse unreachable;
+    const pair3 = heap.allocCons(fixnum3, Value.nil) catch unreachable;
     const fixnum2 = Value.makeFixnum(2);
-    const pair2 = heap.allocCons(fixnum2, pair3) orelse unreachable;
+    const pair2 = heap.allocCons(fixnum2, pair3) catch unreachable;
     const fixnum1 = Value.makeFixnum(1);
-    const pair1 = heap.allocCons(fixnum1, pair2) orelse unreachable;
+    const pair1 = heap.allocCons(fixnum1, pair2) catch unreachable;
 
     // For now just test that list traversal doesn't crash
     // (since t_list_any uses isAny which always passes)

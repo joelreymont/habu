@@ -46,7 +46,7 @@ pub fn disassembleInstruction(chunk: *const Chunk, offset: usize, writer: anytyp
         .str_ref, .str_len, .str_concat,
         .ret, .print, .random, .type_of, .intern, .substring, .sym_name, .str_eq, .halt,
         .check_fixnum, .check_cons, .check_symbol, .check_string,
-        .check_vector, .check_closure, .check_non_nil, .check_list,
+        .check_vector, .check_closure, .check_non_nil, .check_list, .check_refine,
         .apply, .pop_catch, .throw,
         .hash_get, .hash_set, .hash_rem, .hash_count, .hashtablep,
         .characterp, .floatp, .char_code, .code_char, .char_eq, .char_lt, .char_gt,
@@ -60,13 +60,18 @@ pub fn disassembleInstruction(chunk: *const Chunk, offset: usize, writer: anytyp
         .read_file, .write_file, .make_string, .string_to_list, .list_to_string,
         .string_upcase, .string_downcase,
         .listp, .atom, .assoc, .equal, .eql, .rplaca, .rplacd, .error_user,
+        .list_member_eql, .list_member_equal, .assoc_eql, .assoc_equal,
+        .list_find, .list_find_eq, .list_find_equal,
+        .list_position, .list_position_eq, .list_position_equal,
+        .list_count, .list_count_eq, .list_count_equal,
+        .list_remove, .list_remove_eq, .list_remove_equal,
         => {
             try writer.print("{s}\n", .{op.name()});
             return offset + 1;
         },
 
         // 1 byte operand
-        .load_local, .store_local, .load_capture, .call, .tail_call, .make_list, .make_vec_n, .values, .mv_bind, .format => {
+        .load_local, .store_local, .load_capture, .call, .tail_call, .make_list, .make_vec_n, .values, .mv_bind, .format, .enter_scope, .exit_scope => {
             const operand = chunk.readU8(offset + 1);
             try writer.print("{s} {d}\n", .{ op.name(), operand });
             return offset + 2;

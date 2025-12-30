@@ -10,7 +10,7 @@ const Heap = @import("../heap.zig").Heap;
 
 /// Create a cons cell
 pub fn cons(heap: *Heap, car_val: Value, cdr_val: Value) error{OutOfMemory}!Value {
-    return heap.allocCons(car_val, cdr_val) orelse error.OutOfMemory;
+    return try heap.allocCons(car_val, cdr_val);
 }
 
 /// Get the car of a cons cell

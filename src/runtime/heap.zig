@@ -46,6 +46,75 @@ pub const SymbolTable = struct {
         const key = try self.allocator.dupe(u8, name);
         try self.map.put(self.allocator, key, sym);
     }
+
+    pub fn iterator(self: *const SymbolTable) std.StringHashMapUnmanaged(Value).Iterator {
+        return self.map.iterator();
+    }
+};
+
+/// Package: a namespace for symbols
+pub const Package = struct {
+    name: []const u8,
+    symbols: SymbolTable,
+    /// Packages whose exported symbols are accessible
+    use_list: std.ArrayList(*Package),
+    /// Symbols exported from this package
+    exports: std.StringHashMapUnmanaged(void),
+    allocator: std.mem.Allocator,
+    /// If true, all interned symbols are automatically exported (for CL package)
+    auto_export: bool,
+
+    pub fn init(allocator: std.mem.Allocator, name: []const u8) !*Package {
+        const pkg = try allocator.create(Package);
+        pkg.* = .{
+            .name = try allocator.dupe(u8, name),
+            .symbols = SymbolTable.init(allocator),
+            .use_list = std.ArrayList(*Package){},
+            .exports = .{},
+            .allocator = allocator,
+            .auto_export = false,
+        };
+        return pkg;
+    }
+
+    pub fn deinit(self: *Package) void {
+        self.symbols.deinit();
+        self.use_list.deinit(self.allocator);
+        self.exports.deinit(self.allocator);
+        self.allocator.free(self.name);
+        self.allocator.destroy(self);
+    }
+
+    pub fn intern(self: *Package, heap: *Heap, name: []const u8) error{OutOfMemory}!Value {
+        // Check own symbols first
+        if (self.symbols.get(name)) |existing| {
+            return existing;
+        }
+        // Check used packages for exported symbols
+        for (self.use_list.items) |used_pkg| {
+            if (used_pkg.exports.contains(name) or used_pkg.auto_export) {
+                if (used_pkg.symbols.get(name)) |sym| {
+                    return sym;
+                }
+            }
+        }
+        // Allocate new symbol in this package
+        const sym = try heap.allocSymbol(name);
+        try self.symbols.put(name, sym);
+        // Auto-export if flag is set (for CL package)
+        if (self.auto_export) {
+            try self.exports.put(self.allocator, name, {});
+        }
+        return sym;
+    }
+
+    pub fn exportSymbol(self: *Package, name: []const u8) !void {
+        try self.exports.put(self.allocator, name, {});
+    }
+
+    pub fn usePackage(self: *Package, other: *Package) !void {
+        try self.use_list.append(self.allocator, other);
+    }
 };
 
 /// Heap configuration
@@ -76,10 +145,20 @@ pub const Heap = struct {
     backing_allocator: std.mem.Allocator,
     /// Statistics
     stats: Stats,
-    /// Interned symbol table
+    /// Interned symbol table (legacy, for backward compat - use packages)
     symbols: SymbolTable,
     /// Interned keyword table
     keywords: SymbolTable,
+    /// Package registry
+    packages: std.StringHashMapUnmanaged(*Package),
+    /// Current package for symbol interning
+    current_package: ?*Package,
+    /// The COMMON-LISP package (primitives)
+    cl_package: ?*Package,
+    /// The CL-USER package (default user package)
+    cl_user_package: ?*Package,
+    /// The KEYWORD package
+    keyword_package: ?*Package,
 
     pub const Stats = struct {
         allocations: usize = 0,
@@ -97,7 +176,7 @@ pub const Heap = struct {
         const from_start: [*]align(ALIGNMENT) u8 = @alignCast(memory.ptr);
         const to_start: [*]align(ALIGNMENT) u8 = @alignCast(memory.ptr + space_size);
 
-        return .{
+        var heap = Heap{
             .memory = memory,
             .space_size = space_size,
             .from_start = from_start,
@@ -109,13 +188,47 @@ pub const Heap = struct {
             .stats = .{},
             .symbols = SymbolTable.init(allocator),
             .keywords = SymbolTable.init(allocator),
+            .packages = .{},
+            .current_package = null,
+            .cl_package = null,
+            .cl_user_package = null,
+            .keyword_package = null,
         };
+
+        // Create COMMON-LISP package (holds primitives, all symbols exported)
+        heap.cl_package = Package.init(allocator, "COMMON-LISP") catch return error.OutOfMemory;
+        heap.cl_package.?.auto_export = true; // All CL symbols are exported
+        heap.packages.put(allocator, "COMMON-LISP", heap.cl_package.?) catch return error.OutOfMemory;
+        // Also register as "CL" alias
+        heap.packages.put(allocator, "CL", heap.cl_package.?) catch return error.OutOfMemory;
+
+        // Create CL-USER package (uses CL)
+        heap.cl_user_package = Package.init(allocator, "CL-USER") catch return error.OutOfMemory;
+        heap.cl_user_package.?.usePackage(heap.cl_package.?) catch return error.OutOfMemory;
+        heap.packages.put(allocator, "CL-USER", heap.cl_user_package.?) catch return error.OutOfMemory;
+
+        // Start in CL package so primitives get interned there
+        // VM will switch to CL-USER after primitive registration
+        heap.current_package = heap.cl_package;
+
+        return heap;
     }
 
     /// Deinitialize heap
     pub fn deinit(self: *Heap) void {
         self.symbols.deinit();
         self.keywords.deinit();
+        // Free all packages (dedup since CL is alias for COMMON-LISP)
+        var seen = std.AutoHashMap(*Package, void).init(self.backing_allocator);
+        defer seen.deinit();
+        var pkg_iter = self.packages.valueIterator();
+        while (pkg_iter.next()) |pkg| {
+            if (!seen.contains(pkg.*)) {
+                seen.put(pkg.*, {}) catch {};
+                pkg.*.deinit();
+            }
+        }
+        self.packages.deinit(self.backing_allocator);
         self.backing_allocator.free(self.memory);
     }
 
@@ -140,14 +253,14 @@ pub const Heap = struct {
     }
 
     /// Allocate raw bytes (16-byte aligned)
-    pub fn allocRaw(self: *Heap, size: usize) ?[*]align(ALIGNMENT) u8 {
+    pub fn allocRaw(self: *Heap, size: usize) error{OutOfMemory}![*]align(ALIGNMENT) u8 {
         const aligned_size = std.mem.alignForward(usize, size, ALIGNMENT);
 
         const current = @intFromPtr(self.alloc_ptr);
         const end = @intFromPtr(self.from_end);
 
         if (current + aligned_size > end) {
-            return null; // Out of memory, need GC
+            return error.OutOfMemory;
         }
 
         const result = self.alloc_ptr;
@@ -160,25 +273,25 @@ pub const Heap = struct {
     }
 
     /// Allocate an object of a specific type
-    pub fn alloc(self: *Heap, comptime T: type) ?*T {
-        const ptr = self.allocRaw(@sizeOf(T)) orelse return null;
+    pub fn alloc(self: *Heap, comptime T: type) error{OutOfMemory}!*T {
+        const ptr = try self.allocRaw(@sizeOf(T));
         return @ptrCast(@alignCast(ptr));
     }
 
     /// Allocate a cons cell
-    pub fn allocCons(self: *Heap, car: Value, cdr: Value) ?Value {
-        const cons = self.alloc(objects.Cons) orelse return null;
+    pub fn allocCons(self: *Heap, car: Value, cdr: Value) error{OutOfMemory}!Value {
+        const cons = try self.alloc(objects.Cons);
         cons.* = objects.Cons.init(car, cdr);
         return Value.makeCons(cons);
     }
 
     /// Allocate a vector with given capacity
-    pub fn allocVector(self: *Heap, length: usize, capacity: usize) ?Value {
+    pub fn allocVector(self: *Heap, length: usize, capacity: usize) error{OutOfMemory}!Value {
         // Allocate header + data array together
         const data_size = capacity * @sizeOf(Value);
         const total_size = @sizeOf(objects.Vector) + data_size;
 
-        const ptr = self.allocRaw(total_size) orelse return null;
+        const ptr = try self.allocRaw(total_size);
         const vec: *objects.Vector = @ptrCast(@alignCast(ptr));
 
         // Data follows immediately after header
@@ -199,11 +312,11 @@ pub const Heap = struct {
     }
 
     /// Allocate a string (copies the bytes)
-    pub fn allocString(self: *Heap, bytes: []const u8) ?Value {
+    pub fn allocString(self: *Heap, bytes: []const u8) error{OutOfMemory}!Value {
         const aligned_len = std.mem.alignForward(usize, bytes.len, 8);
         const total_size = @sizeOf(objects.String) + aligned_len;
 
-        const ptr = self.allocRaw(total_size) orelse return null;
+        const ptr = try self.allocRaw(total_size);
         const str: *objects.String = @ptrCast(@alignCast(ptr));
 
         // Data follows immediately after header
@@ -221,11 +334,11 @@ pub const Heap = struct {
     }
 
     /// Allocate an uninitialized string of given length
-    pub fn allocStringUninitialized(self: *Heap, len: usize) ?Value {
+    pub fn allocStringUninitialized(self: *Heap, len: usize) error{OutOfMemory}!Value {
         const aligned_len = std.mem.alignForward(usize, len, 8);
         const total_size = @sizeOf(objects.String) + aligned_len;
 
-        const ptr = self.allocRaw(total_size) orelse return null;
+        const ptr = try self.allocRaw(total_size);
         const str: *objects.String = @ptrCast(@alignCast(ptr));
 
         // Data follows immediately after header
@@ -240,10 +353,10 @@ pub const Heap = struct {
     }
 
     /// Allocate a closure
-    pub fn allocClosure(self: *Heap, code: *const anyopaque, arity: u32, captures: []const Value) ?Value {
+    pub fn allocClosure(self: *Heap, code: *const anyopaque, arity: u32, captures: []const Value) error{OutOfMemory}!Value {
         const total_size = @sizeOf(objects.Closure) + captures.len * @sizeOf(Value);
 
-        const ptr = self.allocRaw(total_size) orelse return null;
+        const ptr = try self.allocRaw(total_size);
         const closure: *objects.Closure = @ptrCast(@alignCast(ptr));
 
         // Captures follow immediately after header
@@ -278,12 +391,12 @@ pub const Heap = struct {
     }
 
     /// Allocate a hash table with given initial capacity (will be rounded to power of 2)
-    pub fn allocHashTable(self: *Heap, capacity: usize, test_type: objects.HashTest) ?Value {
+    pub fn allocHashTable(self: *Heap, capacity: usize, test_type: objects.HashTest) error{OutOfMemory}!Value {
         // Ensure power-of-two capacity for correct linear probing with mask
         const actual_capacity = nextPowerOfTwo(if (capacity < 8) 8 else capacity);
         const total_size = @sizeOf(objects.HashTable) + actual_capacity * @sizeOf(objects.HashEntry);
 
-        const ptr = self.allocRaw(total_size) orelse return null;
+        const ptr = try self.allocRaw(total_size);
         const ht: *objects.HashTable = @ptrCast(@alignCast(ptr));
 
         // Entries follow immediately after header
@@ -308,11 +421,11 @@ pub const Heap = struct {
     }
 
     /// Allocate a symbol from a string
-    pub fn allocSymbol(self: *Heap, name: []const u8) ?Value {
+    pub fn allocSymbol(self: *Heap, name: []const u8) error{OutOfMemory}!Value {
         const aligned_name_len = std.mem.alignForward(usize, name.len, 8);
         const total_size = @sizeOf(objects.Symbol) + aligned_name_len;
 
-        const ptr = self.allocRaw(total_size) orelse return null;
+        const ptr = try self.allocRaw(total_size);
         const sym: *objects.Symbol = @ptrCast(@alignCast(ptr));
         const name_ptr: [*]u8 = @ptrCast(ptr + @sizeOf(objects.Symbol));
 
@@ -330,27 +443,64 @@ pub const Heap = struct {
 
     /// Intern a symbol (same name = same Value)
     /// Returns existing symbol if already interned, otherwise creates new one
-    pub fn intern(self: *Heap, name: []const u8) ?Value {
-        // Check for existing symbol
+    /// Uses current package if available, otherwise legacy global table
+    pub fn intern(self: *Heap, name: []const u8) error{OutOfMemory}!Value {
+        // Use current package if available
+        if (self.current_package) |pkg| {
+            return pkg.intern(self, name);
+        }
+
+        // Fallback to legacy global table
         if (self.symbols.get(name)) |existing| {
             return existing;
         }
 
-        // Allocate new symbol
-        const sym = self.allocSymbol(name) orelse return null;
-
-        // Add to symbol table
-        self.symbols.put(name, sym) catch return null;
-
+        const sym = try self.allocSymbol(name);
+        try self.symbols.put(name, sym);
         return sym;
     }
 
+    /// Intern a symbol in a specific package by name
+    pub fn internInPackage(self: *Heap, pkg_name: []const u8, sym_name: []const u8) ?Value {
+        const pkg = self.findPackage(pkg_name) orelse return null;
+        return pkg.intern(self, sym_name) catch return null;
+    }
+
+    /// Find a package by name
+    pub fn findPackage(self: *Heap, name: []const u8) ?*Package {
+        return self.packages.get(name);
+    }
+
+    /// Create or find a package
+    pub fn findOrCreatePackage(self: *Heap, name: []const u8) error{OutOfMemory}!*Package {
+        if (self.packages.get(name)) |existing| {
+            return existing;
+        }
+        const pkg = try Package.init(self.backing_allocator, name);
+        errdefer pkg.deinit();
+        try self.packages.put(self.backing_allocator, name, pkg);
+        return pkg;
+    }
+
+    /// Set current package
+    pub fn setCurrentPackage(self: *Heap, pkg: *Package) void {
+        self.current_package = pkg;
+    }
+
+    /// Get current package name
+    pub fn getCurrentPackageName(self: *const Heap) []const u8 {
+        if (self.current_package) |pkg| {
+            return pkg.name;
+        }
+        return "CL-USER";
+    }
+
     /// Allocate a keyword in the heap
-    pub fn allocKeyword(self: *Heap, name: []const u8) ?Value {
+    pub fn allocKeyword(self: *Heap, name: []const u8) error{OutOfMemory}!Value {
         const aligned_name_len = std.mem.alignForward(usize, name.len, 8);
         const total_size = @sizeOf(objects.Keyword) + aligned_name_len;
 
-        const ptr = self.allocRaw(total_size) orelse return null;
+        const ptr = try self.allocRaw(total_size);
         const kw: *objects.Keyword = @ptrCast(@alignCast(ptr));
         const name_ptr: [*]u8 = @ptrCast(ptr + @sizeOf(objects.Keyword));
 
@@ -367,17 +517,17 @@ pub const Heap = struct {
 
     /// Intern a keyword (same name = same Value)
     /// Returns existing keyword if already interned, otherwise creates new one
-    pub fn internKeyword(self: *Heap, name: []const u8) ?Value {
+    pub fn internKeyword(self: *Heap, name: []const u8) error{OutOfMemory}!Value {
         // Check for existing keyword
         if (self.keywords.get(name)) |existing| {
             return existing;
         }
 
         // Allocate new keyword
-        const kw = self.allocKeyword(name) orelse return null;
+        const kw = try self.allocKeyword(name);
 
         // Add to keyword table
-        self.keywords.put(name, kw) catch return null;
+        try self.keywords.put(name, kw);
 
         return kw;
     }
@@ -421,7 +571,7 @@ pub const Heap = struct {
         }
 
         // Run GC
-        var gc = GC.init(self, self.backing_allocator);
+        var gc = GC.init(self.backing_allocator, self);
         defer gc.deinit();
         _ = gc.collect(all_roots.items) catch return 0;
 
@@ -493,7 +643,7 @@ test "heap alloc cons" {
     var heap = try Heap.init(testing.allocator, .{ .total_size = 1024 * 1024 });
     defer heap.deinit();
 
-    const cons = heap.allocCons(Value.makeFixnum(1), Value.makeFixnum(2)) orelse return error.OutOfMemory;
+    const cons = try heap.allocCons(Value.makeFixnum(1), Value.makeFixnum(2));
 
     try testing.expect(cons.isCons());
 
@@ -508,7 +658,7 @@ test "heap alloc string" {
     var heap = try Heap.init(testing.allocator, .{ .total_size = 1024 * 1024 });
     defer heap.deinit();
 
-    const str = heap.allocString("hello") orelse return error.OutOfMemory;
+    const str = try heap.allocString("hello");
 
     try testing.expect(str.isString());
 
@@ -522,7 +672,7 @@ test "heap alloc vector" {
     var heap = try Heap.init(testing.allocator, .{ .total_size = 1024 * 1024 });
     defer heap.deinit();
 
-    const vec = heap.allocVector(3, 8) orelse return error.OutOfMemory;
+    const vec = try heap.allocVector(3, 8);
 
     try testing.expect(vec.isVector());
 

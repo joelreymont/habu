@@ -36,6 +36,7 @@ pub const ReplError = error{
     EmitError,
     RuntimeError,
     IoError,
+    OutOfMemory,
 };
 
 /// REPL configuration
@@ -67,13 +68,13 @@ pub const Repl = struct {
     /// Current VM being used (for nested loads)
     current_vm: ?*Vm,
 
-    pub fn init(allocator: std.mem.Allocator, heap: *Heap, config: Config) Repl {
+    pub fn init(allocator: std.mem.Allocator, heap: *Heap, config: Config) !Repl {
         return Repl{
             .allocator = allocator,
             .heap = heap,
-            .vm = Vm.init(allocator, heap),
+            .vm = try Vm.init(allocator, heap),
             .config = config,
-            .compiler = Compiler.initWithHeap(allocator, heap),
+            .compiler = try Compiler.initWithHeap(allocator, heap),
             .persistent_chunk_ptrs = std.ArrayList(*bytecode.Chunk){},
             .macros = std.StringHashMap(Value).init(allocator),
             .line_editor = LineEditor.init(allocator),
@@ -184,7 +185,7 @@ pub const Repl = struct {
         patchMakeClosureIndices(chunk.code, chunk_base);
 
         // Use a separate VM to avoid stack issues
-        var nested_vm = Vm.init(self.allocator, self.heap);
+        var nested_vm = Vm.init(self.allocator, self.heap) catch return error.RuntimeError;
         nested_vm.setGlobalEnv(&self.compiler.globals);
         nested_vm.setLoadCallback(&loadCallback, @ptrCast(self));
         nested_vm.setEvalCallback(&evalCallback, @ptrCast(self));
@@ -238,7 +239,7 @@ pub const Repl = struct {
         var last_value = Value.nil;
 
         // Create a temporary VM for nested evaluation
-        var nested_vm = Vm.init(self.allocator, self.heap);
+        var nested_vm = Vm.init(self.allocator, self.heap) catch return error.OutOfMemory;
         nested_vm.setGlobalEnv(&self.compiler.globals);
         nested_vm.setLoadCallback(&loadCallback, @ptrCast(self));
         nested_vm.setEvalCallback(&evalCallback, @ptrCast(self));
@@ -1155,9 +1156,12 @@ pub const Repl = struct {
         if (self.compiler.builtins) |b| {
             return cons.car.raw == b.defmacro.raw;
         }
-
-        const sym = cons.car.toPtr(Symbol);
-        return std.mem.eql(u8, sym.getName(), "defmacro");
+        // Builtins not yet initialized - check by string as fallback
+        if (cons.car.isSymbol()) {
+            const sym = cons.car.toPtr(Symbol);
+            return std.mem.eql(u8, sym.getName(), "defmacro");
+        }
+        return false;
     }
 
     /// Handle defmacro: compile the macro body and store the closure
@@ -1177,8 +1181,8 @@ pub const Repl = struct {
         if (!rest2.isCons()) return error.CompileError;
 
         // Build (lambda (args...) body...) to evaluate
-        const lambda_sym = self.heap.intern("lambda") orelse return error.CompileError;
-        const lambda_expr = self.heap.allocCons(lambda_sym, rest2) orelse return error.CompileError;
+        const lambda_sym = try self.heap.intern("lambda");
+        const lambda_expr = try self.heap.allocCons(lambda_sym, rest2);
 
         // Compile and evaluate the lambda to get a closure
         const saved_builder = self.compiler.builder;
@@ -1242,7 +1246,7 @@ pub const Repl = struct {
 
         // Use a separate VM to avoid corrupting the main VM's state
         // (handleDefmacro may be called during a load from within the main VM)
-        var macro_vm = Vm.init(self.allocator, self.heap);
+        var macro_vm = Vm.init(self.allocator, self.heap) catch return error.RuntimeError;
         macro_vm.setGlobalEnv(&self.compiler.globals);
         macro_vm.setChunkPool(self.persistent_chunk_ptrs.items);
 
@@ -1270,8 +1274,11 @@ pub const Repl = struct {
         const cons = expr.toPtr(Cons);
         if (!cons.car.isSymbol()) return false;
 
+        if (self.compiler.builtins) |b| {
+            return cons.car.raw == b.@"eval-when".raw;
+        }
+        // Builtins not yet initialized - check by string as fallback
         const sym = cons.car.toPtr(Symbol);
-        _ = self;
         return std.mem.eql(u8, sym.getName(), "eval-when");
     }
 
@@ -1297,12 +1304,24 @@ pub const Repl = struct {
             const situation = sit_cons.car;
 
             if (situation.isKeyword()) {
-                const kw = situation.toPtr(runtime.Keyword);
-                const kw_name = kw.getName();
-                if (std.mem.eql(u8, kw_name, "compile-toplevel")) {
-                    compile_toplevel = true;
-                } else if (std.mem.eql(u8, kw_name, "execute") or std.mem.eql(u8, kw_name, "load-toplevel")) {
-                    execute = true;
+                if (self.compiler.builtins) |b| {
+                    // Use keyword identity comparison
+                    if (situation.raw == b.@"kw_compile-toplevel".raw) {
+                        compile_toplevel = true;
+                    } else if (situation.raw == b.kw_execute.raw or
+                        situation.raw == b.@"kw_load-toplevel".raw)
+                    {
+                        execute = true;
+                    }
+                } else {
+                    // Fallback to string comparison if builtins not initialized
+                    const kw = situation.toPtr(runtime.Keyword);
+                    const kw_name = kw.getName();
+                    if (std.mem.eql(u8, kw_name, "compile-toplevel")) {
+                        compile_toplevel = true;
+                    } else if (std.mem.eql(u8, kw_name, "execute") or std.mem.eql(u8, kw_name, "load-toplevel")) {
+                        execute = true;
+                    }
                 }
             }
             sit = sit_cons.cdr;
@@ -1320,8 +1339,8 @@ pub const Repl = struct {
 
         // If :execute, return progn of body for runtime execution
         if (execute) {
-            const progn_sym = self.heap.intern("progn") orelse return error.CompileError;
-            return self.heap.allocCons(progn_sym, body) orelse error.CompileError;
+            const progn_sym = try self.heap.intern("progn");
+            return try self.heap.allocCons(progn_sym, body);
         }
 
         // Neither - return nil
@@ -1406,7 +1425,7 @@ pub const Repl = struct {
         patchMakeClosureIndices(mutable_chunk.code, chunk_base);
 
         // Use a separate VM to avoid corrupting the main VM's state
-        var eval_vm = Vm.init(self.allocator, self.heap);
+        var eval_vm = Vm.init(self.allocator, self.heap) catch return error.RuntimeError;
         eval_vm.setGlobalEnv(&self.compiler.globals);
         eval_vm.setChunkPool(self.persistent_chunk_ptrs.items);
         eval_vm.setLoadCallback(&loadCallback, @ptrCast(self));
@@ -1451,8 +1470,13 @@ pub const Repl = struct {
             const sym = head.toPtr(Symbol);
             const name = sym.getName();
 
-            // Handle eval-when during macro expansion
-            if (std.mem.eql(u8, name, "eval-when")) {
+            // Handle eval-when during macro expansion (using symbol identity)
+            const is_eval_when = if (self.compiler.builtins) |b|
+                head.raw == b.@"eval-when".raw
+            else
+                std.mem.eql(u8, name, "eval-when");
+
+            if (is_eval_when) {
                 // Use arena for compile-time evaluation
                 var arena = std.heap.ArenaAllocator.init(self.allocator);
                 defer arena.deinit();
@@ -1488,7 +1512,7 @@ pub const Repl = struct {
 
         // Rebuild cons if changed
         if (expanded_car.raw != cons.car.raw or expanded_cdr.raw != cons.cdr.raw) {
-            return self.heap.allocCons(expanded_car, expanded_cdr) orelse return error.RuntimeError;
+            return try self.heap.allocCons(expanded_car, expanded_cdr);
         }
         return expr;
     }
@@ -1502,7 +1526,7 @@ pub const Repl = struct {
         const expanded_cdr = try self.expandMacroList(cons.cdr);
 
         if (expanded_car.raw != cons.car.raw or expanded_cdr.raw != cons.cdr.raw) {
-            return self.heap.allocCons(expanded_car, expanded_cdr) orelse return error.RuntimeError;
+            return try self.heap.allocCons(expanded_car, expanded_cdr);
         }
         return list;
     }
@@ -1581,7 +1605,7 @@ pub const Repl = struct {
         };
 
         // Use a separate VM to avoid corrupting the current VM state
-        var macro_vm = Vm.init(self.allocator, self.heap);
+        var macro_vm = Vm.init(self.allocator, self.heap) catch return error.RuntimeError;
         macro_vm.setGlobalEnv(&self.compiler.globals);
         macro_vm.setLoadCallback(&loadCallback, @ptrCast(self));
         macro_vm.setEvalCallback(&evalCallback, @ptrCast(self));
@@ -1672,7 +1696,7 @@ fn patchMakeClosureIndices(code: []u8, base: u16) void {
 
 /// Convenience function to evaluate a string
 pub fn evalString(allocator: std.mem.Allocator, heap: *Heap, source: []const u8) !Value {
-    var repl = Repl.init(allocator, heap, .{});
+    var repl = try Repl.init(allocator, heap, .{});
     defer repl.deinit();
     return repl.eval(source);
 }

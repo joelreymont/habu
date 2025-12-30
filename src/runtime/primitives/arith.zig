@@ -7,30 +7,39 @@ const Value = @import("../value.zig").Value;
 
 pub const Error = error{ TypeMismatch, DivisionByZero };
 
-/// Add two fixnums
+/// Add two fixnums (with overflow check)
 pub fn add(a: Value, b: Value) Error!Value {
     if (!a.isFixnum() or !b.isFixnum()) return error.TypeMismatch;
-    return Value.makeFixnum(a.toFixnum() + b.toFixnum());
+    const result = @addWithOverflow(a.toFixnum(), b.toFixnum());
+    if (result[1] != 0) return error.TypeMismatch;
+    return Value.makeFixnum(result[0]);
 }
 
-/// Subtract two fixnums
+/// Subtract two fixnums (with overflow check)
 pub fn sub(a: Value, b: Value) Error!Value {
     if (!a.isFixnum() or !b.isFixnum()) return error.TypeMismatch;
-    return Value.makeFixnum(a.toFixnum() - b.toFixnum());
+    const result = @subWithOverflow(a.toFixnum(), b.toFixnum());
+    if (result[1] != 0) return error.TypeMismatch;
+    return Value.makeFixnum(result[0]);
 }
 
-/// Multiply two fixnums
+/// Multiply two fixnums (with overflow check)
 pub fn mul(a: Value, b: Value) Error!Value {
     if (!a.isFixnum() or !b.isFixnum()) return error.TypeMismatch;
-    return Value.makeFixnum(a.toFixnum() * b.toFixnum());
+    const result = @mulWithOverflow(a.toFixnum(), b.toFixnum());
+    if (result[1] != 0) return error.TypeMismatch;
+    return Value.makeFixnum(result[0]);
 }
 
 /// Divide two fixnums (integer division)
 pub fn div(a: Value, b: Value) Error!Value {
     if (!a.isFixnum() or !b.isFixnum()) return error.TypeMismatch;
+    const dividend = a.toFixnum();
     const divisor = b.toFixnum();
     if (divisor == 0) return error.DivisionByZero;
-    return Value.makeFixnum(@divTrunc(a.toFixnum(), divisor));
+    // minInt / -1 overflows
+    if (dividend == std.math.minInt(i64) and divisor == -1) return error.TypeMismatch;
+    return Value.makeFixnum(@divTrunc(dividend, divisor));
 }
 
 /// Modulo operation
@@ -52,7 +61,10 @@ pub fn rem(a: Value, b: Value) Error!Value {
 /// Negate a fixnum
 pub fn negate(a: Value) Error!Value {
     if (!a.isFixnum()) return error.TypeMismatch;
-    return Value.makeFixnum(-a.toFixnum());
+    const n = a.toFixnum();
+    // -minInt overflows
+    if (n == std.math.minInt(i64)) return error.TypeMismatch;
+    return Value.makeFixnum(-n);
 }
 
 /// Bitwise AND

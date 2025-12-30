@@ -67,8 +67,10 @@ pub const Emitter = struct {
     constant_map: std.AutoHashMap(u64, u16),
     /// Child chunks (for lambdas)
     child_chunks: std.ArrayList(Chunk),
-    /// Number of local variables
+    /// Number of local variables (set for lambdas, computed for REPL expressions)
     num_locals: u8,
+    /// Maximum local index used (for computing num_locals in REPL)
+    max_local_idx: u8,
     /// Function arity (required params)
     arity: u8,
     /// Number of optional parameters
@@ -94,6 +96,7 @@ pub const Emitter = struct {
             .constant_map = std.AutoHashMap(u64, u16).init(allocator),
             .child_chunks = std.ArrayList(Chunk){},
             .num_locals = 0,
+            .max_local_idx = 0,
             .arity = 0,
             .optional_count = 0,
             .key_count = 0,
@@ -113,6 +116,7 @@ pub const Emitter = struct {
             .constant_map = std.AutoHashMap(u64, u16).init(allocator),
             .child_chunks = std.ArrayList(Chunk){},
             .num_locals = 0,
+            .max_local_idx = 0,
             .arity = 0,
             .optional_count = 0,
             .key_count = 0,
@@ -148,8 +152,189 @@ pub const Emitter = struct {
         self.control_stack.deinit(self.allocator);
     }
 
+    /// Compute the maximum local index used in an IR tree
+    /// Returns 0 if no locals are used
+    fn computeMaxLocalIndex(node: *const Ir) u8 {
+        return computeMaxLocalIndexImpl(node, 0);
+    }
+
+    fn computeMaxLocalIndexImpl(node: *const Ir, current_max: u8) u8 {
+        var max_idx = current_max;
+
+        switch (node.*) {
+            // Let bindings - the key case
+            .let => |l| {
+                for (l.bindings) |b| {
+                    const idx: u8 = @intCast(b.index);
+                    max_idx = @max(max_idx, idx + 1);
+                    max_idx = computeMaxLocalIndexImpl(b.value, max_idx);
+                }
+                max_idx = computeMaxLocalIndexImpl(l.body, max_idx);
+            },
+
+            // Control flow with multiple branches
+            .@"if" => |i| {
+                max_idx = computeMaxLocalIndexImpl(i.cond, max_idx);
+                max_idx = computeMaxLocalIndexImpl(i.then_branch, max_idx);
+                max_idx = computeMaxLocalIndexImpl(i.else_branch, max_idx);
+            },
+            .progn => |exprs| {
+                for (exprs) |e| max_idx = computeMaxLocalIndexImpl(e, max_idx);
+            },
+            .loop => |l| {
+                max_idx = computeMaxLocalIndexImpl(l.cond, max_idx);
+                max_idx = computeMaxLocalIndexImpl(l.body, max_idx);
+            },
+            .block => |b| {
+                max_idx = computeMaxLocalIndexImpl(b.body, max_idx);
+            },
+            .return_from => |r| {
+                max_idx = computeMaxLocalIndexImpl(r.value, max_idx);
+            },
+            .unwind_protect => |u| {
+                max_idx = computeMaxLocalIndexImpl(u.protected, max_idx);
+                max_idx = computeMaxLocalIndexImpl(u.cleanup, max_idx);
+            },
+            .@"catch" => |c| {
+                max_idx = computeMaxLocalIndexImpl(c.tag, max_idx);
+                max_idx = computeMaxLocalIndexImpl(c.body, max_idx);
+            },
+            .throw => |t| {
+                max_idx = computeMaxLocalIndexImpl(t.tag, max_idx);
+                max_idx = computeMaxLocalIndexImpl(t.value, max_idx);
+            },
+            .handler_case => |hc| {
+                max_idx = computeMaxLocalIndexImpl(hc.tag, max_idx);
+                max_idx = computeMaxLocalIndexImpl(hc.body, max_idx);
+                max_idx = computeMaxLocalIndexImpl(hc.handler, max_idx);
+            },
+            .tagbody => |tb| {
+                for (tb.segments) |seg| max_idx = computeMaxLocalIndexImpl(seg, max_idx);
+            },
+            .go => {},
+            .mv_bind => |m| {
+                max_idx = computeMaxLocalIndexImpl(m.expr, max_idx);
+                max_idx = computeMaxLocalIndexImpl(m.body, max_idx);
+            },
+            .values => |v| {
+                for (v) |e| max_idx = computeMaxLocalIndexImpl(e, max_idx);
+            },
+            .mv_list => |m| {
+                max_idx = computeMaxLocalIndexImpl(m.expr, max_idx);
+            },
+            .mv_call => |m| {
+                max_idx = computeMaxLocalIndexImpl(m.func, max_idx);
+                for (m.forms) |f| max_idx = computeMaxLocalIndexImpl(f, max_idx);
+            },
+
+            // Function calls
+            .call => |c| {
+                max_idx = computeMaxLocalIndexImpl(c.func, max_idx);
+                for (c.args) |a| max_idx = computeMaxLocalIndexImpl(a, max_idx);
+            },
+            .tailcall => |c| {
+                max_idx = computeMaxLocalIndexImpl(c.func, max_idx);
+                for (c.args) |a| max_idx = computeMaxLocalIndexImpl(a, max_idx);
+            },
+            .apply => |a| {
+                max_idx = computeMaxLocalIndexImpl(a.func, max_idx);
+                max_idx = computeMaxLocalIndexImpl(a.args, max_idx);
+            },
+
+            // Set has a nested value
+            .set => |s| max_idx = computeMaxLocalIndexImpl(s.value, max_idx),
+            .define => |d| max_idx = computeMaxLocalIndexImpl(d.value, max_idx),
+
+            // Lambda creates its own frame, don't recurse
+            .lambda => {},
+
+            // BinaryOp cases - all have left/right
+            .add, .sub, .mul, .div, .mod, .eq, .num_eq, .lt, .gt, .le, .ge, .equal, .eql,
+            .cons, .append, .assoc, .assoc_eql, .assoc_equal, .rplaca, .rplacd,
+            .nth, .nthcdr, .member, .member_eql, .member_equal,
+            .find, .find_eq, .find_equal, .position, .position_eq, .position_equal,
+            .count, .count_eq, .count_equal, .remove, .remove_eq, .remove_equal,
+            .char_eq, .char_lt, .char_gt, .str_eq, .str_concat,
+            .logand, .logior, .logxor, .ash,
+            .vec_ref, .box_set, .str_ref, .typep, .make_string, .write_file,
+            => |op| {
+                max_idx = computeMaxLocalIndexImpl(op.left, max_idx);
+                max_idx = computeMaxLocalIndexImpl(op.right, max_idx);
+            },
+
+            // UnaryOp cases - all have operand
+            .not, .car, .cdr, .consp, .symbolp, .numberp, .stringp, .vectorp,
+            .listp, .atom, .closurep, .keywordp, .nilp, .characterp, .floatp,
+            .boundp, .fboundp, .zerop, .plusp, .minusp, .evenp, .oddp, .abs,
+            .length, .reverse, .last, .sym_name, .char_code, .code_char,
+            .char_upcase, .char_downcase, .digit_char_p, .alpha_char_p,
+            .print, .random, .intern, .type_of, .error_user,
+            .read_from_string, .load, .unread_char, .eval, .macroexpand, .princ,
+            .write_char, .parse_integer, .write_to_string, .lognot, .read_file,
+            .string_to_list, .list_to_string, .string_upcase, .string_downcase,
+            .symbol_value, .symbol_function, .vec_len, .make_box, .box_ref, .str_len,
+            .assert_fixnum, .assert_cons, .assert_symbol,
+            .assert_string, .assert_vector, .assert_closure, .assert_non_nil, .assert_list,
+            => |op| {
+                max_idx = computeMaxLocalIndexImpl(op.operand, max_idx);
+            },
+
+            // These have their own struct with operand field
+            .hash_count => |h| max_idx = computeMaxLocalIndexImpl(h.operand, max_idx),
+            .hashtablep => |h| max_idx = computeMaxLocalIndexImpl(h.operand, max_idx),
+            .struct_p => |sp| max_idx = computeMaxLocalIndexImpl(sp.operand, max_idx),
+
+            // List/array nodes - recurse into all elements
+            .list, .vec => |elements| {
+                for (elements) |elem| max_idx = computeMaxLocalIndexImpl(elem, max_idx);
+            },
+            .format => |f| {
+                max_idx = computeMaxLocalIndexImpl(f.dest, max_idx);
+                max_idx = computeMaxLocalIndexImpl(f.control, max_idx);
+                for (f.args) |arg| max_idx = computeMaxLocalIndexImpl(arg, max_idx);
+            },
+            .hash_get => |h| {
+                max_idx = computeMaxLocalIndexImpl(h.table, max_idx);
+                max_idx = computeMaxLocalIndexImpl(h.key, max_idx);
+            },
+            .hash_set => |h| {
+                max_idx = computeMaxLocalIndexImpl(h.table, max_idx);
+                max_idx = computeMaxLocalIndexImpl(h.key, max_idx);
+                max_idx = computeMaxLocalIndexImpl(h.value, max_idx);
+            },
+            .hash_rem => |h| {
+                max_idx = computeMaxLocalIndexImpl(h.table, max_idx);
+                max_idx = computeMaxLocalIndexImpl(h.key, max_idx);
+            },
+            .vec_new => |v| {
+                max_idx = computeMaxLocalIndexImpl(v.size, max_idx);
+                if (v.init) |init_val| max_idx = computeMaxLocalIndexImpl(init_val, max_idx);
+            },
+            .vec_set => |v| {
+                max_idx = computeMaxLocalIndexImpl(v.vec, max_idx);
+                max_idx = computeMaxLocalIndexImpl(v.index, max_idx);
+                max_idx = computeMaxLocalIndexImpl(v.value, max_idx);
+            },
+            .substring => |s| {
+                max_idx = computeMaxLocalIndexImpl(s.str, max_idx);
+                max_idx = computeMaxLocalIndexImpl(s.start, max_idx);
+                max_idx = computeMaxLocalIndexImpl(s.end, max_idx);
+            },
+
+            // Other nodes don't contain nested let bindings or we don't need to recurse
+            else => {},
+        }
+
+        return max_idx;
+    }
+
     /// Emit bytecode for an IR node
     pub fn emit(self: *Emitter, node: *const Ir) Error!void {
+        // Compute max local index on first call (when code is empty and not yet computed)
+        // Check max_local_idx == 0 to avoid recomputing on recursive emit calls
+        if (self.code.items.len == 0 and self.num_locals == 0 and self.max_local_idx == 0) {
+            self.max_local_idx = computeMaxLocalIndex(node);
+        }
         switch (node.*) {
             .lit => |v| try self.emitLiteral(v),
             .quote_sym => |name| try self.emitQuoteSym(name),
@@ -344,6 +529,12 @@ pub const Emitter = struct {
             .assert_closure => |op| try self.emitUnaryOp(op.operand, .check_closure),
             .assert_non_nil => |op| try self.emitUnaryOp(op.operand, .check_non_nil),
             .assert_list => |op| try self.emitUnaryOp(op.operand, .check_list),
+
+            // Dependent type operations
+            .assert_refine => |ar| try self.emitAssertRefine(ar),
+            .dpair => |dp| try self.emitDpair(dp),
+            .dfst => |df| try self.emitDfst(df),
+            .dsnd => |ds| try self.emitDsnd(ds),
         }
     }
 
@@ -359,6 +550,12 @@ pub const Emitter = struct {
             try self.emitOp(.ret);
         }
 
+        // Use computed max_local_idx for REPL expressions (when num_locals is 0)
+        const final_num_locals = if (self.num_locals > 0)
+            self.num_locals
+        else
+            self.max_local_idx;
+
         return Chunk{
             .code = try self.allocator.dupe(u8, self.code.items),
             .constants = try self.allocator.dupe(u64, self.constants.items),
@@ -366,7 +563,7 @@ pub const Emitter = struct {
             .optional_count = self.optional_count,
             .key_count = self.key_count,
             .has_rest = self.has_rest,
-            .num_locals = self.num_locals,
+            .num_locals = final_num_locals,
             .name = self.name,
         };
     }
@@ -567,22 +764,17 @@ pub const Emitter = struct {
     }
 
     fn emitLet(self: *Emitter, l: anytype) Error!void {
-        // Emit binding values - push them onto the stack as locals
+        // Local slots are pre-allocated by vm.run() based on num_locals.
+        // Just store each binding at its absolute slot.
         for (l.bindings) |b| {
             try self.emit(b.value);
+            try self.emitOp(.store_local);
+            try self.emitU8(@intCast(b.index)); // Use IR's absolute index
         }
 
-        // Emit body
+        // Emit body - result will be on top of stack
         try self.emit(l.body);
-
-        // Pop locals when let scope ends
-        // After body: stack = [b1, b2, ..., bN, result]
-        // We want: stack = [result]
-        // Emit (swap, pop) for each binding to bubble result down
-        for (l.bindings) |_| {
-            try self.emitOp(.swap);
-            try self.emitOp(.pop);
-        }
+        // No cleanup needed - slots remain allocated for the function's lifetime
     }
 
     fn emitLambda(self: *Emitter, lam: anytype) Error!void {
@@ -599,11 +791,15 @@ pub const Emitter = struct {
         lambda_emitter.optional_count = optional_count;
         lambda_emitter.key_count = key_count;
         lambda_emitter.has_rest = lam.rest_param != null;
-        // Layout: [positional] [key params] [keyword pairs] [rest]
-        // num_locals = positional + key params + keyword pair space + rest
+        // Layout: [positional] [key params] [keyword pairs] [rest] [let bindings]
+        // num_locals = max of (param slots, max local index used in body + 1)
         const rest_count: u8 = if (lam.rest_param != null) 1 else 0;
         const key_pair_slots: u8 = key_count * 2; // max space for keyword-value pairs
-        lambda_emitter.num_locals = arity + optional_count + key_count + key_pair_slots + rest_count;
+        const param_slots: u8 = arity + optional_count + key_count + key_pair_slots + rest_count;
+        // Compute max local index used in the body (for let bindings)
+        const body_max_idx = computeMaxLocalIndex(lam.body);
+        // num_locals must be at least param_slots, but also cover any let bindings
+        lambda_emitter.num_locals = @max(param_slots, body_max_idx);
         // Pass captures so emitVar knows which variables to load from capture array
         lambda_emitter.captures = lam.captures;
 
@@ -1314,6 +1510,63 @@ pub const Emitter = struct {
         try self.emit(v.index);
         try self.emit(v.value);
         try self.emitOp(.vec_set);
+    }
+
+    // ========================================================================
+    // Dependent type operations
+    // ========================================================================
+
+    /// Emit refinement type assertion: check predicate holds for value
+    fn emitAssertRefine(self: *Emitter, ar: anytype) Error!void {
+        // 1. Emit the operand (value to check)
+        try self.emit(ar.operand);
+
+        // 2. If we have a base type, emit that check first
+        // (base_type is optional but we don't use it for bytecode yet)
+        _ = ar.base_type;
+
+        // 3. Duplicate value for predicate application
+        try self.emitOp(.dup);
+
+        // 4. Emit the predicate (a lambda)
+        try self.emit(ar.predicate);
+
+        // 5. Swap so predicate is below value: [value, predicate, value] -> [value, value, predicate]
+        try self.emitOp(.swap);
+
+        // 6. Call predicate with value: (predicate value)
+        try self.emitOp(.call);
+        try self.emitU8(1); // 1 argument
+
+        // 7. Check result is truthy, error if not
+        try self.emitOp(.check_refine);
+        // Stack now has original value (from dup before predicate call)
+    }
+
+    /// Emit dependent pair creation
+    fn emitDpair(self: *Emitter, dp: anytype) Error!void {
+        // At runtime, a dependent pair is just a cons cell
+        // The type info is for compile-time checking only
+        _ = dp.sigma_type;
+        try self.emit(dp.first);
+        try self.emit(dp.second);
+        try self.emitOp(.cons);
+    }
+
+    /// Emit dependent pair first projection
+    fn emitDfst(self: *Emitter, df: anytype) Error!void {
+        // At runtime, just car - type info is for compile-time
+        _ = df.type_info;
+        try self.emit(df.pair);
+        try self.emitOp(.car);
+    }
+
+    /// Emit dependent pair second projection
+    fn emitDsnd(self: *Emitter, ds: anytype) Error!void {
+        // At runtime, just cdr - type info is for compile-time
+        _ = ds.type_info;
+        try self.emit(ds.pair);
+        try self.emitOp(.cdr);
     }
 };
 

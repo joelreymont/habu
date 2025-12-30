@@ -476,6 +476,40 @@ pub const Ir = union(enum) {
     /// Assert value is list (nil or cons)
     assert_list: UnaryOp,
 
+    /// Assert value satisfies a refinement predicate
+    /// (the (refine T x P) expr) -> evaluates expr, applies predicate, errors if false
+    assert_refine: struct {
+        /// The value to check
+        operand: *const Ir,
+        /// The predicate function (a lambda that takes the value and returns bool)
+        predicate: *const Ir,
+        /// Base type assertion (applied before predicate)
+        base_type: ?*const types.Type,
+    },
+
+    /// Dependent pair introduction: (dpair first second type)
+    /// Creates a pair where the type of second can depend on first
+    dpair: struct {
+        first: *const Ir,
+        second: *const Ir,
+        /// The Sigma type for type checking (optional)
+        sigma_type: ?*const types.Type,
+    },
+
+    /// Dependent pair first projection with type info
+    dfst: struct {
+        pair: *const Ir,
+        /// The expected type of the first element
+        type_info: ?*const types.Type,
+    },
+
+    /// Dependent pair second projection with type info
+    dsnd: struct {
+        pair: *const Ir,
+        /// The expected type of the second element (may depend on first)
+        type_info: ?*const types.Type,
+    },
+
     // ========================================================================
     // Helper types
     // ========================================================================
@@ -1371,6 +1405,52 @@ pub const IrBuilder = struct {
     pub fn assertList(self: IrBuilder, operand: *const Ir) !*Ir {
         const node = try self.allocator.create(Ir);
         node.* = .{ .assert_list = .{ .operand = operand } };
+        return node;
+    }
+
+    // ========================================================================
+    // Dependent type operations
+    // ========================================================================
+
+    /// Assert value satisfies a refinement type predicate
+    pub fn assertRefine(self: IrBuilder, operand: *const Ir, predicate: *const Ir, base_type: ?*const types.Type) !*Ir {
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .assert_refine = .{
+            .operand = operand,
+            .predicate = predicate,
+            .base_type = base_type,
+        } };
+        return node;
+    }
+
+    /// Create a dependent pair (Sigma type introduction)
+    pub fn dpair(self: IrBuilder, first: *const Ir, second: *const Ir, sigma_type: ?*const types.Type) !*Ir {
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .dpair = .{
+            .first = first,
+            .second = second,
+            .sigma_type = sigma_type,
+        } };
+        return node;
+    }
+
+    /// Project first element of dependent pair
+    pub fn dfst(self: IrBuilder, pair_ir: *const Ir, type_info: ?*const types.Type) !*Ir {
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .dfst = .{
+            .pair = pair_ir,
+            .type_info = type_info,
+        } };
+        return node;
+    }
+
+    /// Project second element of dependent pair
+    pub fn dsnd(self: IrBuilder, pair_ir: *const Ir, type_info: ?*const types.Type) !*Ir {
+        const node = try self.allocator.create(Ir);
+        node.* = .{ .dsnd = .{
+            .pair = pair_ir,
+            .type_info = type_info,
+        } };
         return node;
     }
 };

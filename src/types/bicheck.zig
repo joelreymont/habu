@@ -143,6 +143,9 @@ pub const BiChecker = struct {
 
     pub fn deinit(self: *BiChecker) void {
         self.errors.deinit(self.allocator);
+        self.type_builder.deinit();
+        self.term_builder.deinit();
+        self.normalizer.deinit();
     }
 
     // ========================================================================

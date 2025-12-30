@@ -37,7 +37,7 @@ fn evalExpr(allocator: std.mem.Allocator, heap: *Heap, source: []const u8) !Valu
     const expr = try parser.parse();
 
     // Compile (with heap for symbol interning)
-    var comp = Compiler.initWithHeap(arena_alloc, heap);
+    var comp = try Compiler.initWithHeap(arena_alloc, heap);
     defer comp.deinit();
 
     var env = Env.init(arena_alloc, null);
@@ -52,7 +52,7 @@ fn evalExpr(allocator: std.mem.Allocator, heap: *Heap, source: []const u8) !Valu
     // Arena handles cleanup
 
     // Run - use main allocator for VM stack
-    var vm = Vm.init(allocator, heap);
+    var vm = try Vm.init(allocator, heap);
     return vm.run(&chunk);
 }
 
@@ -316,7 +316,7 @@ test "eval define simple" {
     var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
     defer heap.deinit();
 
-    var repl = Repl.init(allocator, &heap, .{});
+    var repl = try Repl.init(allocator, &heap, .{});
     defer repl.deinit();
 
     // Define a variable
@@ -336,7 +336,7 @@ test "eval define with expression" {
     var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
     defer heap.deinit();
 
-    var repl = Repl.init(allocator, &heap, .{});
+    var repl = try Repl.init(allocator, &heap, .{});
     defer repl.deinit();
 
     // Define with computed value
@@ -354,7 +354,7 @@ test "eval multiple defines" {
     var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
     defer heap.deinit();
 
-    var repl = Repl.init(allocator, &heap, .{});
+    var repl = try Repl.init(allocator, &heap, .{});
     defer repl.deinit();
 
     _ = try repl.eval("(define a 10)");
@@ -371,7 +371,7 @@ test "eval defun simple" {
     var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
     defer heap.deinit();
 
-    var repl = Repl.init(allocator, &heap, .{});
+    var repl = try Repl.init(allocator, &heap, .{});
     defer repl.deinit();
 
     _ = try repl.eval("(defun double (x) (* x 2))");
@@ -386,7 +386,7 @@ test "eval defun two params" {
     var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
     defer heap.deinit();
 
-    var repl = Repl.init(allocator, &heap, .{});
+    var repl = try Repl.init(allocator, &heap, .{});
     defer repl.deinit();
 
     _ = try repl.eval("(defun add (a b) (+ a b))");
@@ -401,7 +401,7 @@ test "eval defun recursive" {
     var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
     defer heap.deinit();
 
-    var repl = Repl.init(allocator, &heap, .{});
+    var repl = try Repl.init(allocator, &heap, .{});
     defer repl.deinit();
 
     _ = try repl.eval("(defun fact (n) (if (= n 0) 1 (* n (fact (- n 1)))))");
@@ -416,7 +416,7 @@ test "eval letrec simple" {
     var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
     defer heap.deinit();
 
-    var repl = Repl.init(allocator, &heap, .{});
+    var repl = try Repl.init(allocator, &heap, .{});
     defer repl.deinit();
 
     const result = try repl.eval("(letrec ((x 5)) x)");
@@ -430,7 +430,7 @@ test "eval letrec recursive" {
     var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
     defer heap.deinit();
 
-    var repl = Repl.init(allocator, &heap, .{});
+    var repl = try Repl.init(allocator, &heap, .{});
     defer repl.deinit();
 
     const result = try repl.eval("(letrec ((fact (lambda (n) (if (= n 0) 1 (* n (fact (- n 1))))))) (fact 5))");
@@ -448,7 +448,7 @@ test "eval defmacro simple" {
     var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
     defer heap.deinit();
 
-    var repl = Repl.init(allocator, &heap, .{});
+    var repl = try Repl.init(allocator, &heap, .{});
     defer repl.deinit();
 
     // First test: identity macro (just returns its argument)
@@ -467,7 +467,7 @@ test "eval defmacro with cons" {
     var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
     defer heap.deinit();
 
-    var repl = Repl.init(allocator, &heap, .{});
+    var repl = try Repl.init(allocator, &heap, .{});
     defer repl.deinit();
 
     // Define macro that builds (+ x 1) using cons
@@ -485,7 +485,7 @@ test "eval defmacro with quasiquote" {
     var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
     defer heap.deinit();
 
-    var repl = Repl.init(allocator, &heap, .{});
+    var repl = try Repl.init(allocator, &heap, .{});
     defer repl.deinit();
 
     // Define when macro using quasiquote
@@ -507,7 +507,7 @@ test "eval defmacro unless" {
     var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
     defer heap.deinit();
 
-    var repl = Repl.init(allocator, &heap, .{});
+    var repl = try Repl.init(allocator, &heap, .{});
     defer repl.deinit();
 
     // Define unless macro
@@ -686,7 +686,7 @@ test "the in function" {
     var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
     defer heap.deinit();
 
-    var repl = Repl.init(allocator, &heap, .{});
+    var repl = try Repl.init(allocator, &heap, .{});
     defer repl.deinit();
 
     // Define a function that asserts its argument is a fixnum
@@ -704,7 +704,7 @@ test "the in function failure" {
     var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
     defer heap.deinit();
 
-    var repl = Repl.init(allocator, &heap, .{});
+    var repl = try Repl.init(allocator, &heap, .{});
     defer repl.deinit();
 
     // Define a function that asserts its argument is a fixnum
@@ -723,7 +723,7 @@ test "occurrence typing skips redundant check" {
     var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
     defer heap.deinit();
 
-    var repl = Repl.init(allocator, &heap, .{});
+    var repl = try Repl.init(allocator, &heap, .{});
     defer repl.deinit();
 
     // safe-car uses occurrence typing: (the cons x) is redundant after (consp x)
@@ -745,7 +745,7 @@ test "occurrence typing with numberp" {
     var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
     defer heap.deinit();
 
-    var repl = Repl.init(allocator, &heap, .{});
+    var repl = try Repl.init(allocator, &heap, .{});
     defer repl.deinit();
 
     // After (numberp x), (the fixnum x) should be skipped
@@ -769,7 +769,7 @@ test "else-branch occurrence typing with null?" {
     var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
     defer heap.deinit();
 
-    var repl = Repl.init(allocator, &heap, .{});
+    var repl = try Repl.init(allocator, &heap, .{});
     defer repl.deinit();
 
     // safe-first: if null, return 0; else car the non-nil value
@@ -797,7 +797,7 @@ test "type-of returns correct type symbols" {
     var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
     defer heap.deinit();
 
-    var repl = Repl.init(allocator, &heap, .{});
+    var repl = try Repl.init(allocator, &heap, .{});
     defer repl.deinit();
 
     // Check that type-of returns the expected symbol for each type
@@ -832,7 +832,7 @@ test "typed defun parameter" {
     var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
     defer heap.deinit();
 
-    var repl = Repl.init(allocator, &heap, .{});
+    var repl = try Repl.init(allocator, &heap, .{});
     defer repl.deinit();
 
     // Define function with typed parameter
@@ -850,7 +850,7 @@ test "typed defun parameter failure" {
     var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
     defer heap.deinit();
 
-    var repl = Repl.init(allocator, &heap, .{});
+    var repl = try Repl.init(allocator, &heap, .{});
     defer repl.deinit();
 
     // Define function with typed parameter
@@ -867,7 +867,7 @@ test "typed defun multiple params" {
     var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
     defer heap.deinit();
 
-    var repl = Repl.init(allocator, &heap, .{});
+    var repl = try Repl.init(allocator, &heap, .{});
     defer repl.deinit();
 
     // Define function with multiple typed parameters
@@ -884,7 +884,7 @@ test "typed defun mixed params" {
     var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
     defer heap.deinit();
 
-    var repl = Repl.init(allocator, &heap, .{});
+    var repl = try Repl.init(allocator, &heap, .{});
     defer repl.deinit();
 
     // Mix of typed and untyped parameters
@@ -901,7 +901,7 @@ test "typed lambda" {
     var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
     defer heap.deinit();
 
-    var repl = Repl.init(allocator, &heap, .{});
+    var repl = try Repl.init(allocator, &heap, .{});
     defer repl.deinit();
 
     // Lambda with typed parameter
@@ -916,7 +916,7 @@ test "closure captures value" {
     var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
     defer heap.deinit();
 
-    var repl = Repl.init(allocator, &heap, .{});
+    var repl = try Repl.init(allocator, &heap, .{});
     defer repl.deinit();
 
     // make-adder captures n and returns a closure that adds n
@@ -937,7 +937,7 @@ test "closure captures multiple values" {
     var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
     defer heap.deinit();
 
-    var repl = Repl.init(allocator, &heap, .{});
+    var repl = try Repl.init(allocator, &heap, .{});
     defer repl.deinit();
 
     // Create a linear function y = ax + b
@@ -962,7 +962,7 @@ test "defun with return type" {
     var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
     defer heap.deinit();
 
-    var repl = Repl.init(allocator, &heap, .{});
+    var repl = try Repl.init(allocator, &heap, .{});
     defer repl.deinit();
 
     // Function with return type
@@ -979,7 +979,7 @@ test "defun with return type and params" {
     var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
     defer heap.deinit();
 
-    var repl = Repl.init(allocator, &heap, .{});
+    var repl = try Repl.init(allocator, &heap, .{});
     defer repl.deinit();
 
     // Fully typed function
@@ -996,7 +996,7 @@ test "defun return type failure" {
     var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
     defer heap.deinit();
 
-    var repl = Repl.init(allocator, &heap, .{});
+    var repl = try Repl.init(allocator, &heap, .{});
     defer repl.deinit();
 
     // Function claims to return fixnum but returns string
@@ -1013,7 +1013,7 @@ test "defun return type cons" {
     var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
     defer heap.deinit();
 
-    var repl = Repl.init(allocator, &heap, .{});
+    var repl = try Repl.init(allocator, &heap, .{});
     defer repl.deinit();
 
     // Function returns a cons
@@ -1033,7 +1033,7 @@ test "flet basic" {
     var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
     defer heap.deinit();
 
-    var repl = Repl.init(allocator, &heap, .{});
+    var repl = try Repl.init(allocator, &heap, .{});
     defer repl.deinit();
 
     // flet binds local functions
@@ -1052,7 +1052,7 @@ test "flet shadowing" {
     var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
     defer heap.deinit();
 
-    var repl = Repl.init(allocator, &heap, .{});
+    var repl = try Repl.init(allocator, &heap, .{});
     defer repl.deinit();
 
     // Define a global function
@@ -1077,7 +1077,7 @@ test "labels recursive" {
     var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
     defer heap.deinit();
 
-    var repl = Repl.init(allocator, &heap, .{});
+    var repl = try Repl.init(allocator, &heap, .{});
     defer repl.deinit();
 
     // labels allows recursion
@@ -1096,7 +1096,7 @@ test "labels mutual recursion" {
     var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
     defer heap.deinit();
 
-    var repl = Repl.init(allocator, &heap, .{});
+    var repl = try Repl.init(allocator, &heap, .{});
     defer repl.deinit();
 
     // labels with mutual recursion (even?/odd?)
@@ -1121,7 +1121,7 @@ test "block basic" {
     var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
     defer heap.deinit();
 
-    var repl = Repl.init(allocator, &heap, .{});
+    var repl = try Repl.init(allocator, &heap, .{});
     defer repl.deinit();
 
     // block without return-from returns body value
@@ -1136,7 +1136,7 @@ test "return-from early exit" {
     var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
     defer heap.deinit();
 
-    var repl = Repl.init(allocator, &heap, .{});
+    var repl = try Repl.init(allocator, &heap, .{});
     defer repl.deinit();
 
     // return-from exits early with value
@@ -1155,7 +1155,7 @@ test "return-from in conditional" {
     var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
     defer heap.deinit();
 
-    var repl = Repl.init(allocator, &heap, .{});
+    var repl = try Repl.init(allocator, &heap, .{});
     defer repl.deinit();
 
     // return-from in conditional branch
@@ -1175,7 +1175,7 @@ test "nested blocks" {
     var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
     defer heap.deinit();
 
-    var repl = Repl.init(allocator, &heap, .{});
+    var repl = try Repl.init(allocator, &heap, .{});
     defer repl.deinit();
 
     // return-from targets outer block from inner block
@@ -1200,7 +1200,7 @@ test "unwind-protect normal exit" {
     var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
     defer heap.deinit();
 
-    var repl = Repl.init(allocator, &heap, .{});
+    var repl = try Repl.init(allocator, &heap, .{});
     defer repl.deinit();
 
     // unwind-protect returns the protected value (cleanup result discarded)
@@ -1219,7 +1219,7 @@ test "unwind-protect with return-from" {
     var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
     defer heap.deinit();
 
-    var repl = Repl.init(allocator, &heap, .{});
+    var repl = try Repl.init(allocator, &heap, .{});
     defer repl.deinit();
 
     // return-from exits block but unwind-protect still returns correct value
@@ -1240,7 +1240,7 @@ test "nested unwind-protect" {
     var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
     defer heap.deinit();
 
-    var repl = Repl.init(allocator, &heap, .{});
+    var repl = try Repl.init(allocator, &heap, .{});
     defer repl.deinit();
 
     // Nested unwind-protects with return-from
@@ -1267,7 +1267,7 @@ test "catch basic" {
     var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
     defer heap.deinit();
 
-    var repl = Repl.init(allocator, &heap, .{});
+    var repl = try Repl.init(allocator, &heap, .{});
     defer repl.deinit();
 
     // catch without throw returns body value
@@ -1282,7 +1282,7 @@ test "throw to catch" {
     var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
     defer heap.deinit();
 
-    var repl = Repl.init(allocator, &heap, .{});
+    var repl = try Repl.init(allocator, &heap, .{});
     defer repl.deinit();
 
     // throw exits to matching catch with value
@@ -1302,7 +1302,7 @@ test "nested catch" {
     var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
     defer heap.deinit();
 
-    var repl = Repl.init(allocator, &heap, .{});
+    var repl = try Repl.init(allocator, &heap, .{});
     defer repl.deinit();
 
     // throw targets inner catch, not outer
@@ -1321,7 +1321,7 @@ test "throw across function call" {
     var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
     defer heap.deinit();
 
-    var repl = Repl.init(allocator, &heap, .{});
+    var repl = try Repl.init(allocator, &heap, .{});
     defer repl.deinit();
 
     // Define a function that throws
@@ -1348,7 +1348,7 @@ test "tagbody basic" {
     var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
     defer heap.deinit();
 
-    var repl = Repl.init(allocator, &heap, .{});
+    var repl = try Repl.init(allocator, &heap, .{});
     defer repl.deinit();
 
     // tagbody without go returns nil
@@ -1362,7 +1362,7 @@ test "tagbody with go forward" {
     var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
     defer heap.deinit();
 
-    var repl = Repl.init(allocator, &heap, .{});
+    var repl = try Repl.init(allocator, &heap, .{});
     defer repl.deinit();
 
     // go skips to end tag
@@ -1384,7 +1384,7 @@ test "tagbody loop" {
     var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
     defer heap.deinit();
 
-    var repl = Repl.init(allocator, &heap, .{});
+    var repl = try Repl.init(allocator, &heap, .{});
     defer repl.deinit();
 
     // Simple loop using tagbody/go
@@ -1411,7 +1411,7 @@ test "values single" {
     var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
     defer heap.deinit();
 
-    var repl = Repl.init(allocator, &heap, .{});
+    var repl = try Repl.init(allocator, &heap, .{});
     defer repl.deinit();
 
     // (values 42) returns 42
@@ -1426,7 +1426,7 @@ test "values empty" {
     var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
     defer heap.deinit();
 
-    var repl = Repl.init(allocator, &heap, .{});
+    var repl = try Repl.init(allocator, &heap, .{});
     defer repl.deinit();
 
     // (values) returns nil
@@ -1440,7 +1440,7 @@ test "multiple-value-bind basic" {
     var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
     defer heap.deinit();
 
-    var repl = Repl.init(allocator, &heap, .{});
+    var repl = try Repl.init(allocator, &heap, .{});
     defer repl.deinit();
 
     // Bind multiple values and use them
@@ -1459,7 +1459,7 @@ test "multiple-value-bind fewer values" {
     var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
     defer heap.deinit();
 
-    var repl = Repl.init(allocator, &heap, .{});
+    var repl = try Repl.init(allocator, &heap, .{});
     defer repl.deinit();
 
     // When fewer values than variables, extras are nil
@@ -1479,7 +1479,7 @@ test "multiple-value-bind single var" {
     var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
     defer heap.deinit();
 
-    var repl = Repl.init(allocator, &heap, .{});
+    var repl = try Repl.init(allocator, &heap, .{});
     defer repl.deinit();
 
     // Single var gets primary value
@@ -1502,7 +1502,7 @@ test "format nil returns string" {
     var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
     defer heap.deinit();
 
-    var repl = Repl.init(allocator, &heap, .{});
+    var repl = try Repl.init(allocator, &heap, .{});
     defer repl.deinit();
 
     const result = try repl.eval(
@@ -1517,7 +1517,7 @@ test "format ~D decimal" {
     var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
     defer heap.deinit();
 
-    var repl = Repl.init(allocator, &heap, .{});
+    var repl = try Repl.init(allocator, &heap, .{});
     defer repl.deinit();
 
     const result = try repl.eval(
@@ -1532,7 +1532,7 @@ test "format ~% newline" {
     var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
     defer heap.deinit();
 
-    var repl = Repl.init(allocator, &heap, .{});
+    var repl = try Repl.init(allocator, &heap, .{});
     defer repl.deinit();
 
     const result = try repl.eval(
@@ -1547,7 +1547,7 @@ test "format ~S standard" {
     var heap = try Heap.init(allocator, .{ .total_size = 1024 * 1024 });
     defer heap.deinit();
 
-    var repl = Repl.init(allocator, &heap, .{});
+    var repl = try Repl.init(allocator, &heap, .{});
     defer repl.deinit();
 
     // ~S should quote strings
@@ -1567,7 +1567,7 @@ test "stdlib compiles" {
     var heap = try Heap.init(allocator, .{ .total_size = 4 * 1024 * 1024 });
     defer heap.deinit();
 
-    var repl = Repl.init(allocator, &heap, .{});
+    var repl = try Repl.init(allocator, &heap, .{});
     defer repl.deinit();
 
     // Read stdlib file

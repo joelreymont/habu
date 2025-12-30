@@ -176,10 +176,14 @@ pub const TypeConverter = struct {
                     // Base types must be equal
                     if (!try self.typeEqual(r1.base_type, r2.base_type, ctx)) return false;
 
+                    // Both predicates must be present
+                    const p1 = r1.predicate orelse return false;
+                    const p2 = r2.predicate orelse return false;
+
                     // Predicates must be convertible (term equality)
                     // Cast opaque pointers to Term pointers
-                    const pred1: *const Term = @ptrCast(@alignCast(r1.predicate));
-                    const pred2: *const Term = @ptrCast(@alignCast(r2.predicate));
+                    const pred1: *const Term = @ptrCast(@alignCast(p1));
+                    const pred2: *const Term = @ptrCast(@alignCast(p2));
 
                     var env = NormEnv.init(self.allocator);
                     defer env.deinit();
@@ -279,9 +283,13 @@ pub const TypeConverter = struct {
                         // First check base types are compatible
                         if (!try self.isSubtype(r1.base_type, r2.base_type)) return false;
 
+                        // Both predicates must be present for SMT checking
+                        const p1 = r1.predicate orelse return false;
+                        const p2 = r2.predicate orelse return false;
+
                         // Now check predicates with SMT: P => Q
-                        const pred1: *const Term = @ptrCast(@alignCast(r1.predicate));
-                        const pred2: *const Term = @ptrCast(@alignCast(r2.predicate));
+                        const pred1: *const Term = @ptrCast(@alignCast(p1));
+                        const pred2: *const Term = @ptrCast(@alignCast(p2));
 
                         // Use same variable name for both predicates
                         const var_name = r1.predicate_var;
@@ -395,12 +403,10 @@ test "list type conversion" {
 test "pi type alpha equivalence" {
     const testing = std.testing;
 
-    var arena = std.heap.ArenaAllocator.init(testing.allocator);
-    defer arena.deinit();
-    const allocator = arena.allocator();
-
-    var converter = TypeConverter.init(allocator);
-    const builder = type_mod.TypeBuilder.init(allocator);
+    var converter = TypeConverter.init(testing.allocator);
+    defer converter.deinit();
+    var builder = type_mod.TypeBuilder.init(testing.allocator);
+    defer builder.deinit();
 
     // Create (pi (x : fixnum) fixnum) and (pi (y : fixnum) fixnum)
     // These should be alpha-equivalent
@@ -413,12 +419,10 @@ test "pi type alpha equivalence" {
 test "pi type different param types" {
     const testing = std.testing;
 
-    var arena = std.heap.ArenaAllocator.init(testing.allocator);
-    defer arena.deinit();
-    const allocator = arena.allocator();
-
-    var converter = TypeConverter.init(allocator);
-    const builder = type_mod.TypeBuilder.init(allocator);
+    var converter = TypeConverter.init(testing.allocator);
+    defer converter.deinit();
+    var builder = type_mod.TypeBuilder.init(testing.allocator);
+    defer builder.deinit();
 
     // (pi (x : fixnum) fixnum) vs (pi (x : string) fixnum)
     const pi1 = try builder.makePi("x", &type_mod.t_fixnum, &type_mod.t_fixnum, .many);
@@ -430,12 +434,10 @@ test "pi type different param types" {
 test "type variable equivalence" {
     const testing = std.testing;
 
-    var arena = std.heap.ArenaAllocator.init(testing.allocator);
-    defer arena.deinit();
-    const allocator = arena.allocator();
-
-    var converter = TypeConverter.init(allocator);
-    const builder = type_mod.TypeBuilder.init(allocator);
+    var converter = TypeConverter.init(testing.allocator);
+    defer converter.deinit();
+    var builder = type_mod.TypeBuilder.init(testing.allocator);
+    defer builder.deinit();
 
     const var_a = try builder.makeTypeVar("a");
     const var_a2 = try builder.makeTypeVar("a");
@@ -447,9 +449,9 @@ test "type variable equivalence" {
 
 test "subtyping" {
     const testing = std.testing;
-    const allocator = testing.allocator;
 
-    var converter = TypeConverter.init(allocator);
+    var converter = TypeConverter.init(testing.allocator);
+    defer converter.deinit();
 
     // Any is top - everything is subtype of any
     try testing.expect(try converter.isSubtype(&type_mod.t_fixnum, &type_mod.t_any));
@@ -464,9 +466,9 @@ test "subtyping" {
 
 test "universe level conversion" {
     const testing = std.testing;
-    const allocator = testing.allocator;
 
-    var converter = TypeConverter.init(allocator);
+    var converter = TypeConverter.init(testing.allocator);
+    defer converter.deinit();
 
     try testing.expect(try converter.convertible(&type_mod.t_type, &type_mod.t_type));
     try testing.expect(try converter.convertible(&type_mod.t_type1, &type_mod.t_type1));
@@ -476,15 +478,13 @@ test "universe level conversion" {
 test "refinement subtyping with SMT" {
     const testing = std.testing;
 
-    var arena = std.heap.ArenaAllocator.init(testing.allocator);
-    defer arena.deinit();
-    const allocator = arena.allocator();
-
-    var converter = TypeConverter.init(allocator);
+    var converter = TypeConverter.init(testing.allocator);
     defer converter.deinit();
 
-    const type_builder = type_mod.TypeBuilder.init(allocator);
-    const term_builder = term_mod.TermBuilder.init(allocator);
+    var type_builder = type_mod.TypeBuilder.init(testing.allocator);
+    defer type_builder.deinit();
+    var term_builder = term_mod.TermBuilder.init(testing.allocator);
+    defer term_builder.deinit();
 
     // Create {x : fixnum | x > 0}
     const x = try term_builder.varByName("x");

@@ -76,6 +76,18 @@ pub const Frame = struct {
     argc: u8,
 };
 
+/// Let scope frame for nested let bindings
+/// Tracks where this scope's locals start on the stack
+pub const Scope = struct {
+    /// Base pointer for this scope's locals (stack index)
+    bp: usize,
+    /// Number of locals in this scope
+    num_locals: u8,
+};
+
+/// Maximum nested let scopes
+const MAX_SCOPES = 256;
+
 /// Saved execution state for nested calls
 /// Used by callClosure to save/restore state atomically
 const State = struct {
@@ -83,6 +95,7 @@ const State = struct {
     ip: usize,
     fp: usize,
     sp: usize,
+    scope_sp: usize,
     chunk_pool: []*Chunk,
     chunk_base: usize,
 
@@ -92,6 +105,7 @@ const State = struct {
             .ip = vm.ip,
             .fp = vm.fp,
             .sp = vm.sp,
+            .scope_sp = vm.scope_sp,
             .chunk_pool = vm.chunk_pool,
             .chunk_base = vm.chunk_base,
         };
@@ -102,6 +116,7 @@ const State = struct {
         vm.ip = self.ip;
         vm.fp = self.fp;
         vm.sp = self.sp;
+        vm.scope_sp = self.scope_sp;
         vm.chunk_pool = self.chunk_pool;
         vm.chunk_base = self.chunk_base;
     }
@@ -150,6 +165,11 @@ pub const Vm = struct {
     /// Unwind stack pointer
     unwind_sp: usize,
 
+    /// Let scope stack for nested let bindings
+    scope_stack: [MAX_SCOPES]Scope,
+    /// Scope stack pointer (number of active scopes)
+    scope_sp: usize,
+
     /// Saved throw state for unwinding through unwind-protect
     pending_throw_tag: Value,
     pending_throw_value: Value,
@@ -184,6 +204,48 @@ pub const Vm = struct {
     /// Current argc for load_argc when fp=0 (used by callClosure)
     current_argc: u8,
 
+    /// Pre-interned type symbols for runtime type dispatch
+    type_syms: TypeSymbols,
+
+    /// Type symbols for runtime typep dispatch
+    const TypeSymbols = struct {
+        fixnum: Value,
+        cons: Value,
+        symbol: Value,
+        string: Value,
+        vector: Value,
+        closure: Value,
+        function: Value,
+        keyword: Value,
+        character: Value,
+        @"hash-table": Value,
+        nil: Value,
+        null: Value,
+        list: Value,
+        atom: Value,
+        t: Value,
+
+        fn init(heap: *Heap) !TypeSymbols {
+            return .{
+                .fixnum = try heap.intern("fixnum"),
+                .cons = try heap.intern("cons"),
+                .symbol = try heap.intern("symbol"),
+                .string = try heap.intern("string"),
+                .vector = try heap.intern("vector"),
+                .closure = try heap.intern("closure"),
+                .function = try heap.intern("function"),
+                .keyword = try heap.intern("keyword"),
+                .character = try heap.intern("character"),
+                .@"hash-table" = try heap.intern("hash-table"),
+                .nil = try heap.intern("nil"),
+                .null = try heap.intern("null"),
+                .list = try heap.intern("list"),
+                .atom = try heap.intern("atom"),
+                .t = try heap.intern("t"),
+            };
+        }
+    };
+
     const STACK_SIZE = 4096;
     const MAX_SECONDARY_VALUES = 20;
     const MAX_FRAMES = 256;
@@ -191,7 +253,7 @@ pub const Vm = struct {
     const MAX_CATCHES = 32;
     const MAX_UNWINDS = 32;
 
-    pub fn init(allocator: std.mem.Allocator, heap: *Heap) Vm {
+    pub fn init(allocator: std.mem.Allocator, heap: *Heap) !Vm {
         var vm = Vm{
             .stack = undefined,
             .sp = 0,
@@ -209,6 +271,8 @@ pub const Vm = struct {
             .catch_sp = 0,
             .unwind_stack = undefined,
             .unwind_sp = 0,
+            .scope_stack = undefined,
+            .scope_sp = 0,
             .pending_throw_tag = Value.nil,
             .pending_throw_value = Value.nil,
             .is_unwinding = false,
@@ -224,6 +288,7 @@ pub const Vm = struct {
             .gensym_counter = 0,
             .current_closure = null,
             .current_argc = 0,
+            .type_syms = try TypeSymbols.init(heap),
         };
         // Initialize globals to nil
         for (&vm.globals) |*g| {
@@ -268,59 +333,67 @@ pub const Vm = struct {
     }
 
     /// Allocate a cons cell, running GC if needed
-    pub fn allocCons(self: *Vm, car: Value, cdr: Value) ?Value {
-        if (self.heap.allocCons(car, cdr)) |v| return v;
-        _ = self.collectGarbage();
-        return self.heap.allocCons(car, cdr);
+    pub fn allocCons(self: *Vm, car: Value, cdr: Value) error{OutOfMemory}!Value {
+        return self.heap.allocCons(car, cdr) catch {
+            _ = self.collectGarbage();
+            return try self.heap.allocCons(car, cdr);
+        };
     }
 
     /// Allocate a vector, running GC if needed
-    pub fn allocVector(self: *Vm, length: usize, capacity: usize) ?Value {
-        if (self.heap.allocVector(length, capacity)) |v| return v;
-        _ = self.collectGarbage();
-        return self.heap.allocVector(length, capacity);
+    pub fn allocVector(self: *Vm, length: usize, capacity: usize) error{OutOfMemory}!Value {
+        return self.heap.allocVector(length, capacity) catch {
+            _ = self.collectGarbage();
+            return try self.heap.allocVector(length, capacity);
+        };
     }
 
     /// Allocate a string, running GC if needed
-    pub fn allocString(self: *Vm, data: []const u8) ?Value {
-        if (self.heap.allocString(data)) |v| return v;
-        _ = self.collectGarbage();
-        return self.heap.allocString(data);
+    pub fn allocString(self: *Vm, data: []const u8) error{OutOfMemory}!Value {
+        return self.heap.allocString(data) catch {
+            _ = self.collectGarbage();
+            return try self.heap.allocString(data);
+        };
     }
 
     /// Allocate an uninitialized string, running GC if needed
-    pub fn allocStringUninitialized(self: *Vm, length: usize) ?Value {
-        if (self.heap.allocStringUninitialized(length)) |v| return v;
-        _ = self.collectGarbage();
-        return self.heap.allocStringUninitialized(length);
+    pub fn allocStringUninitialized(self: *Vm, length: usize) error{OutOfMemory}!Value {
+        return self.heap.allocStringUninitialized(length) catch {
+            _ = self.collectGarbage();
+            return try self.heap.allocStringUninitialized(length);
+        };
     }
 
     /// Allocate a symbol (uninterned), running GC if needed
-    pub fn allocSymbol(self: *Vm, name: []const u8) ?Value {
-        if (self.heap.allocSymbol(name)) |v| return v;
-        _ = self.collectGarbage();
-        return self.heap.allocSymbol(name);
+    pub fn allocSymbol(self: *Vm, name: []const u8) error{OutOfMemory}!Value {
+        return self.heap.allocSymbol(name) catch {
+            _ = self.collectGarbage();
+            return try self.heap.allocSymbol(name);
+        };
     }
 
     /// Allocate a closure, running GC if needed
-    pub fn allocClosureWithGC(self: *Vm, code: *const anyopaque, arity: u32, captures: []const Value) ?Value {
-        if (self.heap.allocClosure(code, arity, captures)) |v| return v;
-        _ = self.collectGarbage();
-        return self.heap.allocClosure(code, arity, captures);
+    pub fn allocClosureWithGC(self: *Vm, code: *const anyopaque, arity: u32, captures: []const Value) error{OutOfMemory}!Value {
+        return self.heap.allocClosure(code, arity, captures) catch {
+            _ = self.collectGarbage();
+            return try self.heap.allocClosure(code, arity, captures);
+        };
     }
 
     /// Allocate a hash table, running GC if needed
-    pub fn allocHashTable(self: *Vm, capacity: usize, test_type: runtime.HashTest) ?Value {
-        if (self.heap.allocHashTable(capacity, test_type)) |v| return v;
-        _ = self.collectGarbage();
-        return self.heap.allocHashTable(capacity, test_type);
+    pub fn allocHashTable(self: *Vm, capacity: usize, test_type: runtime.HashTest) error{OutOfMemory}!Value {
+        return self.heap.allocHashTable(capacity, test_type) catch {
+            _ = self.collectGarbage();
+            return try self.heap.allocHashTable(capacity, test_type);
+        };
     }
 
     /// Intern a symbol, running GC if needed
-    pub fn intern(self: *Vm, name: []const u8) ?Value {
-        if (self.heap.intern(name)) |v| return v;
-        _ = self.collectGarbage();
-        return self.heap.intern(name);
+    pub fn intern(self: *Vm, name: []const u8) error{OutOfMemory}!Value {
+        return self.heap.intern(name) catch {
+            _ = self.collectGarbage();
+            return try self.heap.intern(name);
+        };
     }
 
     /// Run garbage collection, using VM state as roots
@@ -444,6 +517,7 @@ pub const Vm = struct {
         self.chunk = closure_chunk;
         self.ip = 0;
         self.fp = 0; // No frame - ret at fp=0 returns immediately
+        self.scope_sp = 0; // Reset let scope stack
 
         // Args are already on stack as locals (at positions 0..argc)
         // Reset sp to argc (in case it was different)
@@ -476,6 +550,7 @@ pub const Vm = struct {
         self.ip = 0;
         self.sp = 0;
         self.fp = 0;
+        self.scope_sp = 0;
 
         // Reserve space for locals
         var i: usize = 0;
@@ -517,7 +592,8 @@ pub const Vm = struct {
                     try self.push(b);
                 },
 
-                // Variable access
+                // Variable access - always use frame's bp (not scope's bp)
+                // Indices are frame-relative, assigned by compiler
                 .load_local => {
                     const idx = self.readU8();
                     const bp = if (self.fp > 0) self.frames[self.fp - 1].bp else 0;
@@ -531,6 +607,36 @@ pub const Vm = struct {
                     const stack_idx = bp + idx;
                     if (stack_idx >= STACK_SIZE or stack_idx >= self.sp) return error.InvalidOpcode;
                     self.stack[stack_idx] = try self.pop();
+                },
+                .enter_scope => {
+                    const num_locals = self.readU8();
+                    if (self.scope_sp >= MAX_SCOPES) return error.StackOverflow;
+                    // Record current sp as base for this scope
+                    self.scope_stack[self.scope_sp] = .{
+                        .bp = self.sp,
+                        .num_locals = num_locals,
+                    };
+                    self.scope_sp += 1;
+                    // Reserve slots by pushing nil placeholders
+                    for (0..num_locals) |_| {
+                        try self.push(Value.nil);
+                    }
+                },
+                .exit_scope => {
+                    const num_locals = self.readU8();
+                    if (self.scope_sp == 0) return error.InvalidOpcode;
+                    self.scope_sp -= 1;
+                    // Result is on top of stack, locals are below
+                    // Stack: [locals...] result
+                    // We need: result
+                    if (num_locals > 0) {
+                        const result = try self.pop();
+                        // Pop the locals
+                        for (0..num_locals) |_| {
+                            _ = try self.pop();
+                        }
+                        try self.push(result);
+                    }
                 },
                 .load_capture => {
                     const idx = self.readU8();
@@ -688,7 +794,7 @@ pub const Vm = struct {
                 .cons => {
                     const cdr = try self.pop();
                     const car = try self.pop();
-                    const cell = self.allocCons(car, cdr) orelse return error.OutOfMemory;
+                    const cell = try self.allocCons(car, cdr);
                     try self.push(cell);
                 },
                 .car => {
@@ -711,7 +817,7 @@ pub const Vm = struct {
                     var i: usize = 0;
                     while (i < count) : (i += 1) {
                         const elem = self.stack[self.sp - 1 - i];
-                        list = self.allocCons(elem, list) orelse return error.OutOfMemory;
+                        list = try self.allocCons(elem, list);
                     }
                     self.sp -= count;
                     try self.push(list);
@@ -731,7 +837,7 @@ pub const Vm = struct {
                         var curr = list1;
                         while (curr.isCons()) {
                             const c = curr.toPtr(Cons);
-                            const new_cell = self.allocCons(c.car, Value.nil) orelse return error.OutOfMemory;
+                            const new_cell = try self.allocCons(c.car, Value.nil);
                             if (tail) |t| {
                                 t.cdr = new_cell;
                             } else {
@@ -765,7 +871,7 @@ pub const Vm = struct {
                     var curr = list;
                     while (curr.isCons()) {
                         const c = curr.toPtr(Cons);
-                        reversed = self.allocCons(c.car, reversed) orelse return error.OutOfMemory;
+                        reversed = try self.allocCons(c.car, reversed);
                         curr = c.cdr;
                     }
                     try self.push(reversed);
@@ -866,6 +972,40 @@ pub const Vm = struct {
                     }
                 },
 
+                .list_member_eql => {
+                    // member with eql test (compares numbers by value)
+                    const list = try self.pop();
+                    const item = try self.pop();
+                    var curr = list;
+                    while (curr.isCons()) {
+                        const c = curr.toPtr(Cons);
+                        if (hashKeyEqualWithTest(c.car, item, .eql)) {
+                            try self.push(curr);
+                            break;
+                        }
+                        curr = c.cdr;
+                    } else {
+                        try self.push(Value.nil);
+                    }
+                },
+
+                .list_member_equal => {
+                    // member with equal test (deep equality)
+                    const list = try self.pop();
+                    const item = try self.pop();
+                    var curr = list;
+                    while (curr.isCons()) {
+                        const c = curr.toPtr(Cons);
+                        if (hashKeyEqualWithTest(c.car, item, .equal)) {
+                            try self.push(curr);
+                            break;
+                        }
+                        curr = c.cdr;
+                    } else {
+                        try self.push(Value.nil);
+                    }
+                },
+
                 // Type predicates
                 .consp => {
                     const a = try self.pop();
@@ -910,7 +1050,7 @@ pub const Vm = struct {
                     const size_signed = size_val.toFixnum();
                     if (size_signed < 0) return error.TypeMismatch;
                     const size: usize = @intCast(size_signed);
-                    const vec = self.allocVector(size, size) orelse return error.OutOfMemory;
+                    const vec = try self.allocVector(size, size);
                     // Fill with init value (nil or specified)
                     const vec_obj = vec.toPtr(Vector);
                     for (0..size) |i| {
@@ -920,7 +1060,7 @@ pub const Vm = struct {
                 },
                 .make_vec_n => {
                     const count = self.readU8();
-                    const vec = self.allocVector(count, count) orelse return error.OutOfMemory;
+                    const vec = try self.allocVector(count, count);
                     const vec_obj = vec.toPtr(Vector);
                     // Pop elements in reverse order (last element pushed first)
                     var i: usize = count;
@@ -965,7 +1105,7 @@ pub const Vm = struct {
                 .make_box => {
                     const val = try self.pop();
                     // Allocate a 1-element vector as a box
-                    const box = self.allocVector(1, 1) orelse return error.OutOfMemory;
+                    const box = try self.allocVector(1, 1);
                     const vec = box.toPtr(runtime.Vector);
                     vec.set(0, val);
                     try self.push(box);
@@ -1013,7 +1153,7 @@ pub const Vm = struct {
                     const str2 = s2.toPtr(runtime.String);
                     // Allocate new string with combined length
                     const new_len = str1.length + str2.length;
-                    const result = self.allocStringUninitialized(new_len) orelse return error.OutOfMemory;
+                    const result = try self.allocStringUninitialized(new_len);
                     const result_str = result.toPtr(runtime.String);
                     const dest = result_str.mutableBytes();
                     @memcpy(dest[0..str1.length], str1.bytes());
@@ -1092,11 +1232,11 @@ pub const Vm = struct {
                     }
 
                     // Create closure
-                    const closure = self.allocClosureWithGC(
+                    const closure = try self.allocClosureWithGC(
                         @ptrCast(closure_chunk),
                         closure_chunk.arity,
                         captures[0..num_captures],
-                    ) orelse return error.OutOfMemory;
+                    );
 
                     try self.push(closure);
                 },
@@ -1210,7 +1350,7 @@ pub const Vm = struct {
                         continue;
                     };
                     const written = fbs.getWritten();
-                    const result = self.allocString(written) orelse return error.OutOfMemory;
+                    const result = try self.allocString(written);
                     try self.push(result);
                 },
                 .logand => {
@@ -1292,7 +1432,7 @@ pub const Vm = struct {
                         ' '
                     else
                         return error.TypeMismatch;
-                    const str = self.allocStringUninitialized(len) orelse return error.OutOfMemory;
+                    const str = try self.allocStringUninitialized(len);
                     const str_obj = str.toPtr(String);
                     @memset(str_obj.data[0..len], fill_char);
                     try self.push(str);
@@ -1308,7 +1448,7 @@ pub const Vm = struct {
                     while (i > 0) {
                         i -= 1;
                         const char = Value.makeCharacter(bytes[i]);
-                        result = self.allocCons(char, result) orelse return error.OutOfMemory;
+                        result = try self.allocCons(char, result);
                     }
                     try self.push(result);
                 },
@@ -1325,7 +1465,7 @@ pub const Vm = struct {
                         p = c.cdr;
                     }
                     // Allocate and fill
-                    const str = self.allocStringUninitialized(len) orelse return error.OutOfMemory;
+                    const str = try self.allocStringUninitialized(len);
                     const str_obj = str.toPtr(String);
                     var i: usize = 0;
                     p = list_val;
@@ -1345,7 +1485,7 @@ pub const Vm = struct {
                     if (!str_val.isString()) return error.TypeMismatch;
                     const src = str_val.toPtr(String);
                     const src_bytes = src.bytes();
-                    const result = self.allocStringUninitialized(src_bytes.len) orelse return error.OutOfMemory;
+                    const result = try self.allocStringUninitialized(src_bytes.len);
                     const dst = result.toPtr(String);
                     for (src_bytes, 0..) |c, i| {
                         dst.data[i] = std.ascii.toUpper(c);
@@ -1357,7 +1497,7 @@ pub const Vm = struct {
                     if (!str_val.isString()) return error.TypeMismatch;
                     const src = str_val.toPtr(String);
                     const src_bytes = src.bytes();
-                    const result = self.allocStringUninitialized(src_bytes.len) orelse return error.OutOfMemory;
+                    const result = try self.allocStringUninitialized(src_bytes.len);
                     const dst = result.toPtr(String);
                     for (src_bytes, 0..) |c, i| {
                         dst.data[i] = std.ascii.toLower(c);
@@ -1373,7 +1513,7 @@ pub const Vm = struct {
                     const str_val = try self.pop();
                     if (!str_val.isString()) return error.TypeMismatch;
                     const str = str_val.toPtr(String);
-                    const sym = self.intern(str.bytes()) orelse return error.OutOfMemory;
+                    const sym = try self.intern(str.bytes());
                     try self.push(sym);
                 },
                 .substring => {
@@ -1393,14 +1533,14 @@ pub const Vm = struct {
                     const sym_val = try self.pop();
                     // Handle magic symbols nil and t
                     if (sym_val.isNil()) {
-                        const name_str = self.allocString("nil") orelse return error.OutOfMemory;
+                        const name_str = try self.allocString("nil");
                         try self.push(name_str);
                     } else if (sym_val.isT()) {
-                        const name_str = self.allocString("t") orelse return error.OutOfMemory;
+                        const name_str = try self.allocString("t");
                         try self.push(name_str);
                     } else if (sym_val.isSymbol()) {
                         const sym = sym_val.toPtr(Symbol);
-                        const name_str = self.allocString(sym.getName()) orelse return error.OutOfMemory;
+                        const name_str = try self.allocString(sym.getName());
                         try self.push(name_str);
                     } else {
                         return error.TypeMismatch;
@@ -1431,7 +1571,7 @@ pub const Vm = struct {
                         "hash-table"
                     else
                         "unknown";
-                    const type_sym = self.heap.intern(type_name) orelse return error.OutOfMemory;
+                    const type_sym = try self.heap.intern(type_name);
                     try self.push(type_sym);
                 },
                 .str_eq => {
@@ -1473,6 +1613,13 @@ pub const Vm = struct {
                 .check_list => {
                     const val = try self.peek(0);
                     if (!val.isNil() and !val.isCons()) return error.TypeMismatch;
+                },
+                .check_refine => {
+                    // Stack: [value, predicate-result] -> [value]
+                    // Pop predicate result, check it's truthy, leave value
+                    const pred_result = try self.pop();
+                    if (pred_result.isNil()) return error.TypeMismatch;
+                    // Value is already on stack
                 },
 
                 // Catch/throw exception handling
@@ -1588,11 +1735,11 @@ pub const Vm = struct {
                     // Add secondary values in reverse order
                     var i: usize = self.secondary_values_count;
                     while (i > 0) : (i -= 1) {
-                        result = self.allocCons(self.secondary_values[i - 1], result) orelse return error.OutOfMemory;
+                        result = try self.allocCons(self.secondary_values[i - 1], result);
                     }
 
                     // Add primary at front
-                    result = self.allocCons(primary, result) orelse return error.OutOfMemory;
+                    result = try self.allocCons(primary, result);
 
                     // Clear secondary values
                     self.secondary_values_count = 0;
@@ -1624,7 +1771,7 @@ pub const Vm = struct {
                     const capacity = self.readU16();
                     const test_byte = self.readU8();
                     const test_type: runtime.HashTest = @enumFromInt(test_byte);
-                    const ht = self.allocHashTable(capacity, test_type) orelse return error.OutOfMemory;
+                    const ht = try self.allocHashTable(capacity, test_type);
                     try self.push(ht);
                 },
                 .hash_get => {
@@ -1709,6 +1856,262 @@ pub const Vm = struct {
                         try self.push(Value.nil);
                     }
                 },
+                .assoc_eql => {
+                    // assoc with eql test (compares numbers by value)
+                    const alist = try self.pop();
+                    const key = try self.pop();
+                    var curr = alist;
+                    while (curr.isCons()) {
+                        const c = curr.toPtr(Cons);
+                        if (c.car.isCons()) {
+                            const pair = c.car.toPtr(Cons);
+                            if (hashKeyEqualWithTest(pair.car, key, .eql)) {
+                                try self.push(c.car);
+                                break;
+                            }
+                        }
+                        curr = c.cdr;
+                    } else {
+                        try self.push(Value.nil);
+                    }
+                },
+                .assoc_equal => {
+                    // assoc with equal test (deep equality)
+                    const alist = try self.pop();
+                    const key = try self.pop();
+                    var curr = alist;
+                    while (curr.isCons()) {
+                        const c = curr.toPtr(Cons);
+                        if (c.car.isCons()) {
+                            const pair = c.car.toPtr(Cons);
+                            if (hashKeyEqualWithTest(pair.car, key, .equal)) {
+                                try self.push(c.car);
+                                break;
+                            }
+                        }
+                        curr = c.cdr;
+                    } else {
+                        try self.push(Value.nil);
+                    }
+                },
+
+                .list_find => {
+                    // find with eql test (default)
+                    const seq = try self.pop();
+                    const item = try self.pop();
+                    var curr = seq;
+                    while (curr.isCons()) {
+                        const c = curr.toPtr(Cons);
+                        if (hashKeyEqualWithTest(c.car, item, .eql)) {
+                            try self.push(c.car);
+                            break;
+                        }
+                        curr = c.cdr;
+                    } else {
+                        try self.push(Value.nil);
+                    }
+                },
+                .list_find_eq => {
+                    // find with eq test (identity)
+                    const seq = try self.pop();
+                    const item = try self.pop();
+                    var curr = seq;
+                    while (curr.isCons()) {
+                        const c = curr.toPtr(Cons);
+                        if (c.car.raw == item.raw) {
+                            try self.push(c.car);
+                            break;
+                        }
+                        curr = c.cdr;
+                    } else {
+                        try self.push(Value.nil);
+                    }
+                },
+                .list_find_equal => {
+                    // find with equal test (structural)
+                    const seq = try self.pop();
+                    const item = try self.pop();
+                    var curr = seq;
+                    while (curr.isCons()) {
+                        const c = curr.toPtr(Cons);
+                        if (hashKeyEqualWithTest(c.car, item, .equal)) {
+                            try self.push(c.car);
+                            break;
+                        }
+                        curr = c.cdr;
+                    } else {
+                        try self.push(Value.nil);
+                    }
+                },
+
+                .list_position => {
+                    // position with eql test (default)
+                    const seq = try self.pop();
+                    const item = try self.pop();
+                    var curr = seq;
+                    var idx: i64 = 0;
+                    while (curr.isCons()) {
+                        const c = curr.toPtr(Cons);
+                        if (hashKeyEqualWithTest(c.car, item, .eql)) {
+                            try self.push(Value.makeFixnum(idx));
+                            break;
+                        }
+                        curr = c.cdr;
+                        idx += 1;
+                    } else {
+                        try self.push(Value.nil);
+                    }
+                },
+                .list_position_eq => {
+                    // position with eq test (identity)
+                    const seq = try self.pop();
+                    const item = try self.pop();
+                    var curr = seq;
+                    var idx: i64 = 0;
+                    while (curr.isCons()) {
+                        const c = curr.toPtr(Cons);
+                        if (c.car.raw == item.raw) {
+                            try self.push(Value.makeFixnum(idx));
+                            break;
+                        }
+                        curr = c.cdr;
+                        idx += 1;
+                    } else {
+                        try self.push(Value.nil);
+                    }
+                },
+                .list_position_equal => {
+                    // position with equal test (structural)
+                    const seq = try self.pop();
+                    const item = try self.pop();
+                    var curr = seq;
+                    var idx: i64 = 0;
+                    while (curr.isCons()) {
+                        const c = curr.toPtr(Cons);
+                        if (hashKeyEqualWithTest(c.car, item, .equal)) {
+                            try self.push(Value.makeFixnum(idx));
+                            break;
+                        }
+                        curr = c.cdr;
+                        idx += 1;
+                    } else {
+                        try self.push(Value.nil);
+                    }
+                },
+
+                .list_count => {
+                    // count with eql test (default)
+                    const seq = try self.pop();
+                    const item = try self.pop();
+                    var curr = seq;
+                    var n: i64 = 0;
+                    while (curr.isCons()) {
+                        const c = curr.toPtr(Cons);
+                        if (hashKeyEqualWithTest(c.car, item, .eql)) {
+                            n += 1;
+                        }
+                        curr = c.cdr;
+                    }
+                    try self.push(Value.makeFixnum(n));
+                },
+                .list_count_eq => {
+                    // count with eq test (identity)
+                    const seq = try self.pop();
+                    const item = try self.pop();
+                    var curr = seq;
+                    var n: i64 = 0;
+                    while (curr.isCons()) {
+                        const c = curr.toPtr(Cons);
+                        if (c.car.raw == item.raw) {
+                            n += 1;
+                        }
+                        curr = c.cdr;
+                    }
+                    try self.push(Value.makeFixnum(n));
+                },
+                .list_count_equal => {
+                    // count with equal test (structural)
+                    const seq = try self.pop();
+                    const item = try self.pop();
+                    var curr = seq;
+                    var n: i64 = 0;
+                    while (curr.isCons()) {
+                        const c = curr.toPtr(Cons);
+                        if (hashKeyEqualWithTest(c.car, item, .equal)) {
+                            n += 1;
+                        }
+                        curr = c.cdr;
+                    }
+                    try self.push(Value.makeFixnum(n));
+                },
+
+                .list_remove => {
+                    // remove with eql test (default) - builds new list
+                    const seq = try self.pop();
+                    const item = try self.pop();
+                    var result = Value.nil;
+                    var tail_val = Value.nil;
+                    var curr = seq;
+                    while (curr.isCons()) {
+                        const c = curr.toPtr(Cons);
+                        if (!hashKeyEqualWithTest(c.car, item, .eql)) {
+                            const new_cons = try self.allocCons(c.car, Value.nil);
+                            if (tail_val.isCons()) {
+                                tail_val.toPtr(Cons).cdr = new_cons;
+                            } else {
+                                result = new_cons;
+                            }
+                            tail_val = new_cons;
+                        }
+                        curr = c.cdr;
+                    }
+                    try self.push(result);
+                },
+                .list_remove_eq => {
+                    // remove with eq test (identity) - builds new list
+                    const seq = try self.pop();
+                    const item = try self.pop();
+                    var result = Value.nil;
+                    var tail_val = Value.nil;
+                    var curr = seq;
+                    while (curr.isCons()) {
+                        const c = curr.toPtr(Cons);
+                        if (c.car.raw != item.raw) {
+                            const new_cons = try self.allocCons(c.car, Value.nil);
+                            if (tail_val.isCons()) {
+                                tail_val.toPtr(Cons).cdr = new_cons;
+                            } else {
+                                result = new_cons;
+                            }
+                            tail_val = new_cons;
+                        }
+                        curr = c.cdr;
+                    }
+                    try self.push(result);
+                },
+                .list_remove_equal => {
+                    // remove with equal test (structural) - builds new list
+                    const seq = try self.pop();
+                    const item = try self.pop();
+                    var result = Value.nil;
+                    var tail_val = Value.nil;
+                    var curr = seq;
+                    while (curr.isCons()) {
+                        const c = curr.toPtr(Cons);
+                        if (!hashKeyEqualWithTest(c.car, item, .equal)) {
+                            const new_cons = try self.allocCons(c.car, Value.nil);
+                            if (tail_val.isCons()) {
+                                tail_val.toPtr(Cons).cdr = new_cons;
+                            } else {
+                                result = new_cons;
+                            }
+                            tail_val = new_cons;
+                        }
+                        curr = c.cdr;
+                    }
+                    try self.push(result);
+                },
+
                 .equal => {
                     const b = try self.pop();
                     const a = try self.pop();
@@ -1848,7 +2251,7 @@ pub const Vm = struct {
                     self.gensym_counter = std.math.add(u64, self.gensym_counter, 1) catch {
                         return error.OutOfMemory; // Overflow after 2^64 gensyms
                     };
-                    const sym = self.allocSymbol(name) orelse return error.OutOfMemory;
+                    const sym = try self.allocSymbol(name);
                     try self.push(sym);
                 },
 
@@ -1907,34 +2310,34 @@ pub const Vm = struct {
                     const type_spec = try self.pop();
                     const obj = try self.pop();
                     if (!type_spec.isSymbol()) return error.TypeMismatch;
-                    const type_sym = type_spec.toPtr(Symbol);
-                    const type_name = type_sym.getName();
 
-                    const matches = if (std.mem.eql(u8, type_name, "fixnum"))
+                    // Use symbol identity for type dispatch (no string comparison)
+                    const ts = self.type_syms;
+                    const matches = if (type_spec.raw == ts.fixnum.raw)
                         obj.isFixnum()
-                    else if (std.mem.eql(u8, type_name, "cons"))
+                    else if (type_spec.raw == ts.cons.raw)
                         obj.isCons()
-                    else if (std.mem.eql(u8, type_name, "symbol"))
+                    else if (type_spec.raw == ts.symbol.raw)
                         obj.isSymbol()
-                    else if (std.mem.eql(u8, type_name, "string"))
+                    else if (type_spec.raw == ts.string.raw)
                         obj.isString()
-                    else if (std.mem.eql(u8, type_name, "vector"))
+                    else if (type_spec.raw == ts.vector.raw)
                         obj.isVector()
-                    else if (std.mem.eql(u8, type_name, "closure") or std.mem.eql(u8, type_name, "function"))
+                    else if (type_spec.raw == ts.closure.raw or type_spec.raw == ts.function.raw)
                         obj.isClosure()
-                    else if (std.mem.eql(u8, type_name, "keyword"))
+                    else if (type_spec.raw == ts.keyword.raw)
                         obj.isKeyword()
-                    else if (std.mem.eql(u8, type_name, "character"))
+                    else if (type_spec.raw == ts.character.raw)
                         obj.isCharacter()
-                    else if (std.mem.eql(u8, type_name, "hash-table"))
+                    else if (type_spec.raw == ts.@"hash-table".raw)
                         obj.isHashTable()
-                    else if (std.mem.eql(u8, type_name, "nil") or std.mem.eql(u8, type_name, "null"))
+                    else if (type_spec.raw == ts.nil.raw or type_spec.raw == ts.null.raw)
                         obj.isNil()
-                    else if (std.mem.eql(u8, type_name, "list"))
+                    else if (type_spec.raw == ts.list.raw)
                         obj.isNil() or obj.isCons()
-                    else if (std.mem.eql(u8, type_name, "atom"))
+                    else if (type_spec.raw == ts.atom.raw)
                         !obj.isCons()
-                    else if (std.mem.eql(u8, type_name, "t"))
+                    else if (type_spec.raw == ts.t.raw)
                         true // Everything is of type t
                     else
                         false; // Unknown type
@@ -2121,14 +2524,255 @@ pub const Vm = struct {
                         }
                         i += 2;
                     },
+                    'O', 'o' => {
+                        // Octal integer
+                        if (arg_idx < args.len) {
+                            const val = args[arg_idx];
+                            if (val.isFixnum()) {
+                                var buf: [32]u8 = undefined;
+                                const n = val.toFixnum();
+                                const num_str = if (n >= 0)
+                                    std.fmt.bufPrint(&buf, "{o}", .{@as(u64, @intCast(n))}) catch return error.OutOfMemory
+                                else
+                                    std.fmt.bufPrint(&buf, "-{o}", .{@as(u64, @intCast(-n))}) catch return error.OutOfMemory;
+                                result.appendSlice(self.allocator, num_str) catch return error.OutOfMemory;
+                            }
+                            arg_idx += 1;
+                        }
+                        i += 2;
+                    },
+                    'C', 'c' => {
+                        // Character
+                        if (arg_idx < args.len) {
+                            const val = args[arg_idx];
+                            if (val.isCharacter()) {
+                                const cp = val.toCharacter();
+                                if (cp < 128) {
+                                    result.append(self.allocator, @intCast(cp)) catch return error.OutOfMemory;
+                                } else {
+                                    // UTF-8 encode
+                                    var buf: [4]u8 = undefined;
+                                    const len = std.unicode.utf8Encode(cp, &buf) catch 0;
+                                    result.appendSlice(self.allocator, buf[0..len]) catch return error.OutOfMemory;
+                                }
+                            }
+                            arg_idx += 1;
+                        }
+                        i += 2;
+                    },
                     '%' => {
                         // Newline
                         result.append(self.allocator, '\n') catch return error.OutOfMemory;
                         i += 2;
                     },
+                    '&' => {
+                        // Fresh line - newline only if not at start of line
+                        if (result.items.len > 0 and result.items[result.items.len - 1] != '\n') {
+                            result.append(self.allocator, '\n') catch return error.OutOfMemory;
+                        }
+                        i += 2;
+                    },
                     '~' => {
                         // Literal tilde
                         result.append(self.allocator, '~') catch return error.OutOfMemory;
+                        i += 2;
+                    },
+                    '{' => {
+                        // Iteration: ~{...~} processes a list
+                        // Find matching ~}
+                        const start = i + 2;
+                        var depth: usize = 1;
+                        var end = start;
+                        while (end < fmt.len and depth > 0) {
+                            if (end + 1 < fmt.len and fmt[end] == '~') {
+                                if (fmt[end + 1] == '{') {
+                                    depth += 1;
+                                    end += 2;
+                                } else if (fmt[end + 1] == '}') {
+                                    depth -= 1;
+                                    if (depth == 0) break;
+                                    end += 2;
+                                } else {
+                                    end += 1;
+                                }
+                            } else {
+                                end += 1;
+                            }
+                        }
+                        if (depth != 0) {
+                            // Unmatched ~{, skip it
+                            i += 2;
+                            continue;
+                        }
+                        const body = fmt[start..end];
+                        // Get list argument
+                        if (arg_idx < args.len) {
+                            const list_arg = args[arg_idx];
+                            arg_idx += 1;
+                            // Iterate over list
+                            try self.formatIteration(list_arg, body, &result);
+                        }
+                        i = end + 2; // Skip past ~}
+                    },
+                    '}' => {
+                        // End of iteration - should not be reached at top level
+                        i += 2;
+                    },
+                    '^' => {
+                        // Escape from iteration - only valid inside ~{...~}
+                        // At top level, just skip it
+                        i += 2;
+                    },
+                    ':' => {
+                        // Check for ~:[ (boolean conditional)
+                        if (i + 2 < fmt.len and fmt[i + 2] == '[') {
+                            // Handle as boolean conditional - parse same as ~[ but interpret as nil/non-nil
+                            const start = i + 3;
+                            var depth: usize = 1;
+                            var end = start;
+                            while (end < fmt.len and depth > 0) {
+                                if (end + 1 < fmt.len and fmt[end] == '~') {
+                                    if (fmt[end + 1] == '[') {
+                                        depth += 1;
+                                        end += 2;
+                                    } else if (fmt[end + 1] == ']') {
+                                        depth -= 1;
+                                        if (depth == 0) break;
+                                        end += 2;
+                                    } else {
+                                        end += 1;
+                                    }
+                                } else {
+                                    end += 1;
+                                }
+                            }
+                            if (depth != 0) {
+                                i += 3;
+                                continue;
+                            }
+                            const body = fmt[start..end];
+                            // Split into exactly 2 clauses by ~;
+                            var clauses = std.ArrayList([]const u8){};
+                            defer clauses.deinit(self.allocator);
+                            var clause_start: usize = 0;
+                            var j: usize = 0;
+                            var clause_depth: usize = 0;
+                            while (j < body.len) {
+                                if (j + 1 < body.len and body[j] == '~') {
+                                    if (body[j + 1] == '[') {
+                                        clause_depth += 1;
+                                        j += 2;
+                                    } else if (body[j + 1] == ']') {
+                                        if (clause_depth > 0) clause_depth -= 1;
+                                        j += 2;
+                                    } else if (body[j + 1] == ';' and clause_depth == 0) {
+                                        clauses.append(self.allocator, body[clause_start..j]) catch return error.OutOfMemory;
+                                        clause_start = j + 2;
+                                        j += 2;
+                                    } else {
+                                        j += 1;
+                                    }
+                                } else {
+                                    j += 1;
+                                }
+                            }
+                            clauses.append(self.allocator, body[clause_start..]) catch return error.OutOfMemory;
+                            // Get selector for boolean conditional
+                            if (arg_idx < args.len) {
+                                const selector = args[arg_idx];
+                                arg_idx += 1;
+                                // nil = clause 0, non-nil = clause 1
+                                const clause_idx: usize = if (selector.isNil()) 0 else 1;
+                                if (clause_idx < clauses.items.len) {
+                                    result.appendSlice(self.allocator, clauses.items[clause_idx]) catch return error.OutOfMemory;
+                                }
+                            }
+                            i = end + 2;
+                        } else {
+                            // Unknown :X directive, skip
+                            i += 2;
+                        }
+                    },
+                    '[' => {
+                        // Conditional: ~[clause0~;clause1~;...~] or ~:[false~;true~]
+                        // Find matching ~]
+                        const start = i + 2;
+                        var depth: usize = 1;
+                        var end = start;
+                        while (end < fmt.len and depth > 0) {
+                            if (end + 1 < fmt.len and fmt[end] == '~') {
+                                if (fmt[end + 1] == '[') {
+                                    depth += 1;
+                                    end += 2;
+                                } else if (fmt[end + 1] == ']') {
+                                    depth -= 1;
+                                    if (depth == 0) break;
+                                    end += 2;
+                                } else {
+                                    end += 1;
+                                }
+                            } else {
+                                end += 1;
+                            }
+                        }
+                        if (depth != 0) {
+                            i += 2;
+                            continue;
+                        }
+                        const body = fmt[start..end];
+                        // Split clauses by ~;
+                        var clauses = std.ArrayList([]const u8){};
+                        defer clauses.deinit(self.allocator);
+                        var clause_start: usize = 0;
+                        var j: usize = 0;
+                        var clause_depth: usize = 0;
+                        while (j < body.len) {
+                            if (j + 1 < body.len and body[j] == '~') {
+                                if (body[j + 1] == '[') {
+                                    clause_depth += 1;
+                                    j += 2;
+                                } else if (body[j + 1] == ']') {
+                                    if (clause_depth > 0) clause_depth -= 1;
+                                    j += 2;
+                                } else if (body[j + 1] == ';' and clause_depth == 0) {
+                                    clauses.append(self.allocator, body[clause_start..j]) catch return error.OutOfMemory;
+                                    clause_start = j + 2;
+                                    j += 2;
+                                } else {
+                                    j += 1;
+                                }
+                            } else {
+                                j += 1;
+                            }
+                        }
+                        clauses.append(self.allocator, body[clause_start..]) catch return error.OutOfMemory;
+                        // Get selector
+                        if (arg_idx < args.len) {
+                            const selector = args[arg_idx];
+                            arg_idx += 1;
+                            var clause_idx: usize = 0;
+                            if (selector.isFixnum()) {
+                                const n = selector.toFixnum();
+                                if (n >= 0) clause_idx = @intCast(n);
+                            } else if (selector.isNil()) {
+                                clause_idx = 0; // For ~:[false~;true~], nil selects first
+                            } else {
+                                clause_idx = 1; // Non-nil selects second (for boolean conditional)
+                            }
+                            if (clause_idx < clauses.items.len) {
+                                // Append the selected clause text directly
+                                // (for full CL compat, would need recursive format processing)
+                                result.appendSlice(self.allocator, clauses.items[clause_idx]) catch return error.OutOfMemory;
+                            }
+                        }
+                        i = end + 2;
+                    },
+                    ']' => {
+                        // End of conditional - should not be reached at top level
+                        i += 2;
+                    },
+                    ';' => {
+                        // Clause separator - should not be reached at top level
                         i += 2;
                     },
                     else => {
@@ -2146,7 +2790,7 @@ pub const Vm = struct {
         // Handle destination
         if (dest.isNil()) {
             // Return as string
-            return self.allocString(result.items) orelse return error.OutOfMemory;
+            return try self.allocString(result.items);
         } else {
             // Print to stdout (dest = t)
             const stdout_file = std.fs.File.stdout();
@@ -2232,6 +2876,72 @@ pub const Vm = struct {
         result.append(self.allocator, ')') catch return error.OutOfMemory;
     }
 
+    /// Format iteration: process body for each element of a list
+    /// Handles ~^ (escape) directive within the body
+    fn formatIteration(self: *Vm, list: Value, body: []const u8, result: *std.ArrayList(u8)) Error!void {
+        var current = list;
+        var depth: usize = 0;
+
+        while (current.isCons()) {
+            depth += 1;
+            if (depth > MAX_FORMAT_DEPTH) break;
+
+            const cons = current.toPtr(runtime.Cons);
+            const elem = cons.car;
+            const remaining = cons.cdr;
+
+            // Process body for this element
+            var i: usize = 0;
+            while (i < body.len) {
+                if (body[i] == '~' and i + 1 < body.len) {
+                    const directive = body[i + 1];
+                    switch (directive) {
+                        'A', 'a' => {
+                            try self.formatValueAesthetic(elem, result);
+                            i += 2;
+                        },
+                        'S', 's' => {
+                            try self.formatValueStandard(elem, result);
+                            i += 2;
+                        },
+                        'D', 'd' => {
+                            if (elem.isFixnum()) {
+                                var buf: [32]u8 = undefined;
+                                const num_str = std.fmt.bufPrint(&buf, "{d}", .{elem.toFixnum()}) catch return error.OutOfMemory;
+                                result.appendSlice(self.allocator, num_str) catch return error.OutOfMemory;
+                            }
+                            i += 2;
+                        },
+                        '%' => {
+                            result.append(self.allocator, '\n') catch return error.OutOfMemory;
+                            i += 2;
+                        },
+                        '~' => {
+                            result.append(self.allocator, '~') catch return error.OutOfMemory;
+                            i += 2;
+                        },
+                        '^' => {
+                            // Escape: exit iteration if no more elements
+                            if (remaining.isNil()) {
+                                return; // Exit iteration
+                            }
+                            i += 2;
+                        },
+                        else => {
+                            result.append(self.allocator, body[i]) catch return error.OutOfMemory;
+                            i += 1;
+                        },
+                    }
+                } else {
+                    result.append(self.allocator, body[i]) catch return error.OutOfMemory;
+                    i += 1;
+                }
+            }
+
+            current = remaining;
+        }
+    }
+
     // ========================================================================
     // Function call support
     // ========================================================================
@@ -2306,7 +3016,7 @@ pub const Vm = struct {
             var i: u8 = 0;
             while (i < extra_count) : (i += 1) {
                 const idx = self.sp - 1 - i;
-                rest_list = self.allocCons(self.stack[idx], rest_list) orelse return error.OutOfMemory;
+                rest_list = try self.allocCons(self.stack[idx], rest_list);
             }
             // Pop the extra args
             self.sp -= extra_count;
@@ -2810,7 +3520,7 @@ fn hashTableGet(ht: *HashTable, key: Value) Value {
 fn hashTableResizeInPlace(vm: *Vm, ht: *HashTable) bool {
     const new_capacity = ht.capacity * 2;
     // Preserve the test_type from the original hash table
-    const new_ht_val = vm.allocHashTable(new_capacity, ht.test_type) orelse return false;
+    const new_ht_val = vm.allocHashTable(new_capacity, ht.test_type) catch return false;
     const new_ht = new_ht_val.toPtr(HashTable);
 
     // Copy all entries from old to new
@@ -2908,7 +3618,7 @@ test "vm push and return" {
     var heap = Heap.init(allocator, .{ .total_size = 1024 * 1024 }) catch unreachable;
     defer heap.deinit();
 
-    var vm = Vm.init(allocator, &heap);
+    var vm = try Vm.init(allocator, &heap);
 
     const code = [_]u8{
         @intFromEnum(Op.push_i32),
@@ -2938,7 +3648,7 @@ test "vm arithmetic" {
     var heap = Heap.init(allocator, .{ .total_size = 1024 * 1024 }) catch unreachable;
     defer heap.deinit();
 
-    var vm = Vm.init(allocator, &heap);
+    var vm = try Vm.init(allocator, &heap);
 
     // (+ 10 20) = 30
     const code = [_]u8{
@@ -2970,7 +3680,7 @@ test "vm cons car cdr" {
     var heap = Heap.init(allocator, .{ .total_size = 1024 * 1024 }) catch unreachable;
     defer heap.deinit();
 
-    var vm = Vm.init(allocator, &heap);
+    var vm = try Vm.init(allocator, &heap);
 
     // (car (cons 1 2)) = 1
     const code = [_]u8{
@@ -3003,7 +3713,7 @@ test "vm conditional" {
     var heap = Heap.init(allocator, .{ .total_size = 1024 * 1024 }) catch unreachable;
     defer heap.deinit();
 
-    var vm = Vm.init(allocator, &heap);
+    var vm = try Vm.init(allocator, &heap);
 
     // (if nil 1 2) = 2
     const code = [_]u8{
@@ -3037,7 +3747,7 @@ test "vm locals" {
     var heap = Heap.init(allocator, .{ .total_size = 1024 * 1024 }) catch unreachable;
     defer heap.deinit();
 
-    var vm = Vm.init(allocator, &heap);
+    var vm = try Vm.init(allocator, &heap);
 
     // Store 42 in local 0, load it back
     const code = [_]u8{
@@ -3069,7 +3779,7 @@ test "vm hash table" {
     var heap = Heap.init(allocator, .{ .total_size = 1024 * 1024 }) catch unreachable;
     defer heap.deinit();
 
-    var vm = Vm.init(allocator, &heap);
+    var vm = try Vm.init(allocator, &heap);
 
     // Create hash table, set key 42 to value 100, get key 42
     // Use local 0 to store ht
@@ -3112,7 +3822,7 @@ test "vm hash table count and remove" {
     var heap = Heap.init(allocator, .{ .total_size = 1024 * 1024 }) catch unreachable;
     defer heap.deinit();
 
-    var vm = Vm.init(allocator, &heap);
+    var vm = try Vm.init(allocator, &heap);
 
     // Create hash table, set 2 keys, get count
     const code = [_]u8{

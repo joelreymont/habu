@@ -45,15 +45,15 @@ pub fn stringBytes(val: Value) ?[]const u8 {
 pub fn symbolName(heap: *Heap, val: Value) error{OutOfMemory}!Value {
     // Handle special symbols nil and t
     if (val.isNil()) {
-        return heap.allocString("nil") orelse error.OutOfMemory;
+        return try heap.allocString("nil");
     }
     if (val.isT()) {
-        return heap.allocString("t") orelse error.OutOfMemory;
+        return try heap.allocString("t");
     }
     if (!val.isSymbol()) return Value.nil;
     const sym = val.toPtr(objects.Symbol);
     const name_bytes = sym.getName();
-    return heap.allocString(name_bytes) orelse error.OutOfMemory;
+    return try heap.allocString(name_bytes);
 }
 
 /// Get symbol name bytes directly
@@ -109,7 +109,7 @@ pub fn stringConcat(heap: *Heap, a: Value, b: Value) error{OutOfMemory}!Value {
     const aligned_len = std.mem.alignForward(usize, new_len, 8);
     const total_size = @sizeOf(objects.String) + aligned_len;
 
-    const ptr = heap.allocRaw(total_size) orelse return error.OutOfMemory;
+    const ptr = try heap.allocRaw(total_size);
     const str: *objects.String = @ptrCast(@alignCast(ptr));
     const data_ptr: [*]u8 = @ptrCast(ptr + @sizeOf(objects.String));
 
@@ -133,7 +133,7 @@ pub fn substring(heap: *Heap, val: Value, start: usize, end: usize) error{OutOfM
     if (start > end or end > str.length) return Value.nil;
 
     const slice = str.bytes()[start..end];
-    return heap.allocString(slice) orelse error.OutOfMemory;
+    return try heap.allocString(slice);
 }
 
 /// Convert string to uppercase
@@ -141,7 +141,7 @@ pub fn stringUpcase(heap: *Heap, val: Value) error{OutOfMemory}!Value {
     if (!val.isString()) return Value.nil;
 
     const str = val.toPtr(objects.String);
-    const new_str = heap.allocString(str.bytes()) orelse return error.OutOfMemory;
+    const new_str = try heap.allocString(str.bytes());
 
     const new_str_obj = new_str.toPtr(objects.String);
     for (new_str_obj.data[0..new_str_obj.length]) |*c| {
@@ -158,7 +158,7 @@ pub fn stringDowncase(heap: *Heap, val: Value) error{OutOfMemory}!Value {
     if (!val.isString()) return Value.nil;
 
     const str = val.toPtr(objects.String);
-    const new_str = heap.allocString(str.bytes()) orelse return error.OutOfMemory;
+    const new_str = try heap.allocString(str.bytes());
 
     const new_str_obj = new_str.toPtr(objects.String);
     for (new_str_obj.data[0..new_str_obj.length]) |*c| {
@@ -175,7 +175,7 @@ pub fn keywordName(heap: *Heap, val: Value) error{OutOfMemory}!Value {
     if (!val.isKeyword()) return Value.nil;
     const kw = val.toPtr(objects.Keyword);
     const name_bytes = kw.getName();
-    return heap.allocString(name_bytes) orelse error.OutOfMemory;
+    return try heap.allocString(name_bytes);
 }
 
 /// Get keyword name bytes
@@ -200,7 +200,7 @@ test "string length and ref" {
     var heap = try Heap.init(testing.allocator, .{ .total_size = 1024 * 1024 });
     defer heap.deinit();
 
-    const str = heap.allocString("hello") orelse return error.OutOfMemory;
+    const str = try heap.allocString("hello");
 
     try testing.expectEqual(@as(i64, 5), stringLength(str));
     try testing.expectEqual(@as(i64, 'h'), stringRef(str, 0));
@@ -215,7 +215,7 @@ test "string set" {
     var heap = try Heap.init(testing.allocator, .{ .total_size = 1024 * 1024 });
     defer heap.deinit();
 
-    const str = heap.allocString("hello") orelse return error.OutOfMemory;
+    const str = try heap.allocString("hello");
 
     try testing.expect(stringSet(str, 0, 'H'));
     try testing.expectEqual(@as(i64, 'H'), stringRef(str, 0));
@@ -228,9 +228,9 @@ test "string equality" {
     var heap = try Heap.init(testing.allocator, .{ .total_size = 1024 * 1024 });
     defer heap.deinit();
 
-    const str1 = heap.allocString("hello") orelse return error.OutOfMemory;
-    const str2 = heap.allocString("hello") orelse return error.OutOfMemory;
-    const str3 = heap.allocString("world") orelse return error.OutOfMemory;
+    const str1 = try heap.allocString("hello");
+    const str2 = try heap.allocString("hello");
+    const str3 = try heap.allocString("world");
 
     try testing.expect(stringEqual(str1, str2));
     try testing.expect(!stringEqual(str1, str3));
@@ -242,8 +242,8 @@ test "string concat" {
     var heap = try Heap.init(testing.allocator, .{ .total_size = 1024 * 1024 });
     defer heap.deinit();
 
-    const str1 = heap.allocString("hello") orelse return error.OutOfMemory;
-    const str2 = heap.allocString(" world") orelse return error.OutOfMemory;
+    const str1 = try heap.allocString("hello");
+    const str2 = try heap.allocString(" world");
 
     const combined = try stringConcat(&heap, str1, str2);
     const bytes = stringBytes(combined);
@@ -258,7 +258,7 @@ test "substring" {
     var heap = try Heap.init(testing.allocator, .{ .total_size = 1024 * 1024 });
     defer heap.deinit();
 
-    const str = heap.allocString("hello world") orelse return error.OutOfMemory;
+    const str = try heap.allocString("hello world");
 
     const sub = try substring(&heap, str, 0, 5);
     const bytes = stringBytes(sub);
@@ -273,7 +273,7 @@ test "string case conversion" {
     var heap = try Heap.init(testing.allocator, .{ .total_size = 1024 * 1024 });
     defer heap.deinit();
 
-    const str = heap.allocString("Hello World") orelse return error.OutOfMemory;
+    const str = try heap.allocString("Hello World");
 
     const upper = try stringUpcase(&heap, str);
     try testing.expectEqualStrings("HELLO WORLD", stringBytes(upper).?);
@@ -288,7 +288,7 @@ test "string predicates" {
     var heap = try Heap.init(testing.allocator, .{ .total_size = 1024 * 1024 });
     defer heap.deinit();
 
-    const str = heap.allocString("test") orelse return error.OutOfMemory;
+    const str = try heap.allocString("test");
 
     try testing.expect(stringp(str));
     try testing.expect(!stringp(Value.makeFixnum(42)));

@@ -385,7 +385,8 @@ fn isSymbolStart(c: u8) bool {
 }
 
 fn isSymbolChar(c: u8) bool {
-    return isSymbolStart(c) or isDigit(c) or c == '.';
+    // Include ':' for package-qualified symbols like pkg:sym or pkg::sym
+    return isSymbolStart(c) or isDigit(c) or c == '.' or c == ':';
 }
 
 // ============================================================================

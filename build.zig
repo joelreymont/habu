@@ -13,6 +13,13 @@ pub fn build(b: *std.Build) void {
             .optimize = optimize,
         }),
     });
+
+    // Link Z3 for SMT solving (refinement types)
+    exe.root_module.addSystemIncludePath(.{ .cwd_relative = "/opt/homebrew/include" });
+    exe.root_module.addLibraryPath(.{ .cwd_relative = "/opt/homebrew/lib" });
+    exe.root_module.linkSystemLibrary("z3", .{});
+    exe.root_module.linkSystemLibrary("c", .{});
+
     b.installArtifact(exe);
 
     // Run command
@@ -40,6 +47,13 @@ pub fn build(b: *std.Build) void {
     })) |ohsnap_dep| {
         lib_tests.root_module.addImport("ohsnap", ohsnap_dep.module("ohsnap"));
     }
+
+    // Link Z3 for SMT solving (refinement types)
+    // Z3 is optional - tests that don't use it will still work
+    lib_tests.root_module.addSystemIncludePath(.{ .cwd_relative = "/opt/homebrew/include" });
+    lib_tests.root_module.addLibraryPath(.{ .cwd_relative = "/opt/homebrew/lib" });
+    lib_tests.root_module.linkSystemLibrary("z3", .{});
+    lib_tests.root_module.linkSystemLibrary("c", .{});
 
     const test_step = b.step("test", "Run unit tests");
     test_step.dependOn(&b.addRunArtifact(lib_tests).step);

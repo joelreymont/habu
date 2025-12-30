@@ -681,3 +681,20 @@ any                 ; or: t
 (the T expr)           ; assert expr has type T
 (unsafe-cast T expr)   ; bypass type checking (dangerous!)
 ```
+
+Examples with compound types:
+
+```lisp
+;; Refinement type - checks predicate at runtime
+(the (refine fixnum x (> x 0)) 5)    ; => 5 (valid: 5 > 0)
+(the (refine fixnum x (> x 0)) -5)   ; => type mismatch error
+
+;; Union type
+(the (or fixnum nil) 42)             ; => 42
+
+;; List type
+(the (list fixnum) '(1 2 3))         ; => (1 2 3)
+
+;; Function type
+(the (-> (fixnum) fixnum) (lambda (x) (+ x 1)))  ; => #<closure>
+```

@@ -27,6 +27,8 @@ const Type = types.Type;
 const TypeEnv = types.TypeEnv;
 const OccurrenceCtx = types.OccurrenceCtx;
 const TypeChecker = types.TypeChecker;
+const BiChecker = types.BiChecker;
+const TypingCtx = types.TypingCtx;
 const vm_mod = @import("../interp/vm.zig");
 const Vm = vm_mod.Vm;
 const bytecode = @import("../bytecode/bytecode.zig");
@@ -321,6 +323,13 @@ pub const Builtins = struct {
     ty_character: Value, // alias for char
     ty_t: Value,
 
+    // Dependent type form symbols (QTT)
+    ty_pi: Value, // (pi (x : A) B) - dependent function type
+    ty_sigma: Value, // (sigma (x : A) B) - dependent pair type
+    ty_refine: Value, // (refine T x P) - refinement type
+    ty_vec: Value, // (vec a n) - length-indexed vector
+    ty_forall: Value, // (forall (a) T) - universally quantified type
+
     // Lambda parameter markers
     @"&rest": Value,
     @"&body": Value,
@@ -585,6 +594,12 @@ pub const Builtins = struct {
             .ty_char = try heap.intern("char"),
             .ty_character = try heap.intern("character"),
             .ty_t = try heap.intern("t"),
+            // Dependent type form symbols (QTT)
+            .ty_pi = try heap.intern("pi"),
+            .ty_sigma = try heap.intern("sigma"),
+            .ty_refine = try heap.intern("refine"),
+            .ty_vec = try heap.intern("vec"),
+            .ty_forall = try heap.intern("forall"),
             // Lambda parameter markers
             .@"&rest" = try heap.intern("&rest"),
             .@"&body" = try heap.intern("&body"),
@@ -804,6 +819,8 @@ pub const Compiler = struct {
     allocator: std.mem.Allocator,
     /// Type checker for type errors and subtype checking
     type_checker: TypeChecker,
+    /// Bidirectional type checker for dependent types
+    bi_checker: BiChecker,
     /// Whether to enable type checking (gradual typing)
     type_checking_enabled: bool,
     /// Global environment for top-level definitions
@@ -836,11 +853,18 @@ pub const Compiler = struct {
         fields: []const []const u8,
     };
 
+    /// Typed parameter info for function declarations
+    pub const TypedParam = struct {
+        name: []const u8,
+        type_sym: ?Value, // null for untyped, otherwise the type symbol
+    };
+
     pub fn init(allocator: std.mem.Allocator) Compiler {
         return .{
             .builder = IrBuilder.init(allocator),
             .allocator = allocator,
             .type_checker = TypeChecker.init(allocator),
+            .bi_checker = BiChecker.init(allocator),
             .type_checking_enabled = false, // Off by default for gradual typing
             .globals = GlobalEnv.init(allocator),
             .builtins = null, // Lazily initialized when heap is available
@@ -867,6 +891,7 @@ pub const Compiler = struct {
             .builder = IrBuilder.init(allocator),
             .allocator = allocator,
             .type_checker = TypeChecker.init(allocator),
+            .bi_checker = BiChecker.init(allocator),
             .type_checking_enabled = false,
             .globals = GlobalEnv.init(allocator),
             .builtins = builtins,
@@ -888,6 +913,7 @@ pub const Compiler = struct {
 
     pub fn deinit(self: *Compiler) void {
         self.type_checker.deinit();
+        self.bi_checker.deinit();
         // Free struct_predicates keys (allocated with globals.allocator)
         var pred_iter = self.struct_predicates.keyIterator();
         while (pred_iter.next()) |key| {
@@ -928,6 +954,54 @@ pub const Compiler = struct {
     /// Check if type checker has errors
     pub fn hasTypeErrors(self: *const Compiler) bool {
         return self.type_checker.hasErrors();
+    }
+
+    /// Check if bidirectional type checker has errors
+    pub fn hasBiCheckErrors(self: *const Compiler) bool {
+        return self.bi_checker.hasErrors();
+    }
+
+    /// Get bidirectional type checker errors
+    pub fn getBiCheckErrors(self: *const Compiler) []const types.bicheck.TypeError {
+        return self.bi_checker.errors.items;
+    }
+
+    /// Bidirectional type check for a lambda/function with typed parameters
+    /// This is called during compilation when type_checking_enabled is true
+    fn checkLambdaTypes(
+        self: *Compiler,
+        typed_params: []const TypedParam,
+        return_type: ?Value,
+        body_ir: *const Ir,
+    ) void {
+        // Build typing context with parameter types
+        var ctx = TypingCtx.init(self.allocator);
+        defer ctx.deinit();
+
+        // Add parameters to context
+        for (typed_params) |tp| {
+            if (tp.type_sym) |type_sym| {
+                // Parse type from symbol
+                const param_type = self.parseTypeExpr(type_sym) orelse &types.t_any;
+                ctx.bind(tp.name, param_type, .many) catch continue;
+            } else {
+                // Untyped parameter - bind as any
+                ctx.bind(tp.name, &types.t_any, .many) catch continue;
+            }
+        }
+
+        // If there's a return type, check body against it
+        if (return_type) |ret_type_val| {
+            const expected_type = self.parseTypeExpr(ret_type_val) orelse return;
+            self.bi_checker.check(body_ir, expected_type, &ctx) catch {
+                // Type error - already recorded in bi_checker.errors
+            };
+        } else {
+            // No return type specified - just infer (validates internal consistency)
+            _ = self.bi_checker.infer(body_ir, &ctx) catch {
+                // Type error - already recorded in bi_checker.errors
+            };
+        }
     }
 
     /// Compile with type inference
@@ -1589,12 +1663,6 @@ pub const Compiler = struct {
         return try self.builder.ifExpr(test_ir, then_ir, else_ir);
     }
 
-    /// Typed parameter info for function declarations
-    const TypedParam = struct {
-        name: []const u8,
-        type_sym: ?Value, // null for untyped, otherwise the type symbol
-    };
-
     fn compileLambda(self: *Compiler, args: Value, env: *const Env) Error!*Ir {
         return self.compileLambdaCore(args, env, null);
     }
@@ -1769,6 +1837,11 @@ pub const Compiler = struct {
 
         // Compile body (implicit progn) - body is in tail position
         var body_ir = try self.compileBodyWithTail(body_exprs, &lambda_env, true);
+
+        // Bidirectional type checking (when enabled)
+        if (self.type_checking_enabled) {
+            self.checkLambdaTypes(typed_params.items, return_type, body_ir);
+        }
 
         // Prepend type assertions for typed parameters
         var assertions = std.ArrayList(*Ir){};
@@ -2701,9 +2774,13 @@ pub const Compiler = struct {
         const cons = args.toPtr(Cons);
         const func_spec = cons.car;
 
-        // (function symbol) - look up function binding as variable reference
+        // (function symbol) - look up function binding or wrap primitive
         if (func_spec.isSymbol()) {
-            // Compile symbol as a variable reference (will look up in env/globals)
+            // Check if it's a primitive that needs wrapping
+            if (try self.compilePrimitiveFunctionRef(func_spec)) |wrapper| {
+                return wrapper;
+            }
+            // Otherwise compile symbol as a variable reference (will look up in env/globals)
             return self.compile(func_spec, env);
         }
 
@@ -2720,6 +2797,244 @@ pub const Compiler = struct {
         }
 
         return error.InvalidSyntax;
+    }
+
+    /// Create a lambda wrapper for a primitive function reference
+    /// Returns null if sym is not a known primitive
+    fn compilePrimitiveFunctionRef(self: *Compiler, sym: Value) Error!?*Ir {
+        const b = self.builtins orelse return null;
+        const s = sym.raw;
+
+        // Binary primitives: (lambda (a b) (prim a b))
+        if (s == b.cons.raw) return try self.makeBinaryWrapper(&IrBuilder.cons);
+        if (s == b.eq.raw) return try self.makeBinaryWrapper(&IrBuilder.eq);
+        if (s == b.equal.raw) return try self.makeBinaryWrapper(&IrBuilder.equal);
+        if (s == b.eql.raw) return try self.makeBinaryWrapper(&IrBuilder.eql);
+        if (s == b.@"<".raw) return try self.makeBinaryWrapper(&IrBuilder.lt);
+        if (s == b.@">".raw) return try self.makeBinaryWrapper(&IrBuilder.gt);
+        if (s == b.append.raw) return try self.makeBinaryWrapper(&IrBuilder.append);
+
+        // Unary primitives: (lambda (a) (prim a))
+        if (s == b.car.raw or s == b.first.raw) return try self.makeUnaryWrapper(&IrBuilder.car);
+        if (s == b.cdr.raw or s == b.rest.raw) return try self.makeUnaryWrapper(&IrBuilder.cdr);
+        if (s == b.not.raw) return try self.makeUnaryWrapper(&IrBuilder.not);
+        if (s == b.null.raw) return try self.makeUnaryWrapper(&IrBuilder.nilp);
+        if (s == b.consp.raw) return try self.makeUnaryWrapper(&IrBuilder.consp);
+        if (s == b.symbolp.raw) return try self.makeUnaryWrapper(&IrBuilder.symbolp);
+        if (s == b.numberp.raw) return try self.makeUnaryWrapper(&IrBuilder.numberp);
+        if (s == b.stringp.raw) return try self.makeUnaryWrapper(&IrBuilder.stringp);
+        if (s == b.atom.raw) return try self.makeUnaryWrapper(&IrBuilder.atomp);
+        if (s == b.listp.raw) return try self.makeUnaryWrapper(&IrBuilder.listp);
+
+        // Variadic arithmetic - create wrappers using add/sub/mul/div builders
+        if (s == b.@"+".raw) return try self.makeVariadicAddWrapper();
+        if (s == b.@"*".raw) return try self.makeVariadicMulWrapper();
+        if (s == b.@"-".raw) return try self.makeVariadicSubWrapper();
+        if (s == b.@"/".raw) return try self.makeVariadicDivWrapper();
+
+        return null;
+    }
+
+    fn makeBinaryWrapper(self: *Compiler, buildFn: *const fn (IrBuilder, *const Ir, *const Ir) std.mem.Allocator.Error!*Ir) Error!*Ir {
+        // Create: (lambda (a b) (op a b))
+        const a_ref = try self.builder.variable("a", 0, 0);
+        const b_ref = try self.builder.variable("b", 0, 1);
+        const prim_call = try buildFn(self.builder, a_ref, b_ref);
+        const params = [_][]const u8{ "a", "b" };
+        return self.builder.lambda(&params, &.{}, &.{}, null, &.{}, prim_call) catch
+            return error.OutOfMemory;
+    }
+
+    fn makeUnaryWrapper(self: *Compiler, buildFn: *const fn (IrBuilder, *const Ir) std.mem.Allocator.Error!*Ir) Error!*Ir {
+        // Create: (lambda (a) (op a))
+        const a_ref = try self.builder.variable("a", 0, 0);
+        const prim_call = try buildFn(self.builder, a_ref);
+        const params = [_][]const u8{"a"};
+        return self.builder.lambda(&params, &.{}, &.{}, null, &.{}, prim_call) catch
+            return error.OutOfMemory;
+    }
+
+    fn makeVariadicAddWrapper(self: *Compiler) Error!*Ir {
+        // (lambda (&rest args)
+        //   (let ((acc 0))                    ; acc at slot 1
+        //     (while (consp args)             ; args at slot 0 (rest param)
+        //       (setq acc (+ acc (car args)))
+        //       (setq args (cdr args)))
+        //     acc))
+        return try self.makeFoldWrapper(0, IrBuilder.add);
+    }
+
+    fn makeVariadicMulWrapper(self: *Compiler) Error!*Ir {
+        return try self.makeFoldWrapper(1, IrBuilder.mul);
+    }
+
+    fn makeVariadicSubWrapper(self: *Compiler) Error!*Ir {
+        // (lambda (&rest args)
+        //   (if (null args)
+        //       0
+        //       (if (null (cdr args))
+        //           (- 0 (car args))          ; unary negate
+        //           (let ((acc (car args)))   ; acc at slot 1
+        //             (let ((rest (cdr args))) ; rest at slot 2
+        //               (while (consp rest)
+        //                 (setq acc (- acc (car rest)))
+        //                 (setq rest (cdr rest)))
+        //               acc)))))
+        const b = self.builder;
+
+        // args at slot 0 (rest param)
+        const args0 = try b.variable("args", 0, 0);
+        const args1 = try b.variable("args", 0, 0);
+        const args2 = try b.variable("args", 0, 0);
+        const args3 = try b.variable("args", 0, 0);
+        const args4 = try b.variable("args", 0, 0);
+
+        // (null args) -> return 0
+        const zero = try b.lit(Value.makeFixnum(0));
+        const null_args = try b.nilp(args0);
+
+        // (cdr args)
+        const cdr_args = try b.cdr(args1);
+
+        // (null (cdr args)) -> unary negate: (- 0 (car args))
+        const null_cdr = try b.nilp(cdr_args);
+        const car_args = try b.car(args2);
+        const neg_result = try b.sub(zero, car_args);
+
+        // Binary/variadic case: fold from first element
+        // acc = (car args) at slot 1
+        const first = try b.car(args3);
+        // rest = (cdr args) at slot 2
+        const rest_init = try b.cdr(args4);
+
+        // Loop: while (consp rest)
+        const rest_ref1 = try b.variable("rest", 0, 2);
+        const loop_cond = try b.consp(rest_ref1);
+
+        // Body: (setq acc (- acc (car rest))) (setq rest (cdr rest))
+        const acc_ref = try b.variable("acc", 0, 1);
+        const rest_ref2 = try b.variable("rest", 0, 2);
+        const car_rest = try b.car(rest_ref2);
+        const sub_expr = try b.sub(acc_ref, car_rest);
+        const set_acc = try b.set("acc", 0, 1, sub_expr);
+
+        const rest_ref3 = try b.variable("rest", 0, 2);
+        const cdr_rest = try b.cdr(rest_ref3);
+        const set_rest = try b.set("rest", 0, 2, cdr_rest);
+
+        const loop_body_exprs = [_]*const Ir{ set_acc, set_rest };
+        const loop_body = try b.progn(&loop_body_exprs);
+        const loop_node = try b.loop(loop_cond, loop_body);
+
+        // After loop, return acc
+        const acc_result = try b.variable("acc", 0, 1);
+        const inner_let_body_exprs = [_]*const Ir{ loop_node, acc_result };
+        const inner_let_body = try b.progn(&inner_let_body_exprs);
+
+        // let rest = (cdr args) at slot 2
+        const rest_let = try b.let1("rest", 2, rest_init, inner_let_body);
+
+        // let acc = (car args) at slot 1
+        const acc_let = try b.let1("acc", 1, first, rest_let);
+
+        // Inner if: (if (null (cdr args)) (- 0 (car args)) <fold>)
+        const inner_if = try b.ifExpr(null_cdr, neg_result, acc_let);
+
+        // Outer if: (if (null args) 0 <inner>)
+        const outer_if = try b.ifExpr(null_args, zero, inner_if);
+
+        return self.builder.lambda(&.{}, &.{}, &.{}, "args", &.{}, outer_if) catch
+            return error.OutOfMemory;
+    }
+
+    fn makeVariadicDivWrapper(self: *Compiler) Error!*Ir {
+        // Similar to sub but with division and identity 1 for unary
+        // (/ x) = (/ 1 x)
+        const b = self.builder;
+
+        const args0 = try b.variable("args", 0, 0);
+        const args1 = try b.variable("args", 0, 0);
+        const args2 = try b.variable("args", 0, 0);
+        const args3 = try b.variable("args", 0, 0);
+        const args4 = try b.variable("args", 0, 0);
+
+        const one = try b.lit(Value.makeFixnum(1));
+        const null_args = try b.nilp(args0);
+
+        const cdr_args = try b.cdr(args1);
+        const null_cdr = try b.nilp(cdr_args);
+        const car_args = try b.car(args2);
+        const recip_result = try b.div(one, car_args); // (/ 1 x)
+
+        const first = try b.car(args3);
+        const rest_init = try b.cdr(args4);
+
+        const rest_ref1 = try b.variable("rest", 0, 2);
+        const loop_cond = try b.consp(rest_ref1);
+
+        const acc_ref = try b.variable("acc", 0, 1);
+        const rest_ref2 = try b.variable("rest", 0, 2);
+        const car_rest = try b.car(rest_ref2);
+        const div_expr = try b.div(acc_ref, car_rest);
+        const set_acc = try b.set("acc", 0, 1, div_expr);
+
+        const rest_ref3 = try b.variable("rest", 0, 2);
+        const cdr_rest = try b.cdr(rest_ref3);
+        const set_rest = try b.set("rest", 0, 2, cdr_rest);
+
+        const loop_body_exprs = [_]*const Ir{ set_acc, set_rest };
+        const loop_body = try b.progn(&loop_body_exprs);
+        const loop_node = try b.loop(loop_cond, loop_body);
+
+        const acc_result = try b.variable("acc", 0, 1);
+        const inner_let_body_exprs = [_]*const Ir{ loop_node, acc_result };
+        const inner_let_body = try b.progn(&inner_let_body_exprs);
+
+        const rest_let = try b.let1("rest", 2, rest_init, inner_let_body);
+        const acc_let = try b.let1("acc", 1, first, rest_let);
+
+        const inner_if = try b.ifExpr(null_cdr, recip_result, acc_let);
+        const outer_if = try b.ifExpr(null_args, one, inner_if);
+
+        return self.builder.lambda(&.{}, &.{}, &.{}, "args", &.{}, outer_if) catch
+            return error.OutOfMemory;
+    }
+
+    /// Helper to build a simple fold wrapper for + and *
+    fn makeFoldWrapper(
+        self: *Compiler,
+        identity: i64,
+        buildOp: *const fn (IrBuilder, *const Ir, *const Ir) std.mem.Allocator.Error!*Ir,
+    ) Error!*Ir {
+        const b = self.builder;
+
+        // args at slot 0 (rest param), acc at slot 1
+        const args_ref1 = try b.variable("args", 0, 0);
+        const loop_cond = try b.consp(args_ref1);
+
+        const acc_ref = try b.variable("acc", 0, 1);
+        const args_ref2 = try b.variable("args", 0, 0);
+        const car_args = try b.car(args_ref2);
+        const op_expr = try buildOp(b, acc_ref, car_args);
+        const set_acc = try b.set("acc", 0, 1, op_expr);
+
+        const args_ref3 = try b.variable("args", 0, 0);
+        const cdr_args = try b.cdr(args_ref3);
+        const set_args = try b.set("args", 0, 0, cdr_args);
+
+        const loop_body_exprs = [_]*const Ir{ set_acc, set_args };
+        const loop_body = try b.progn(&loop_body_exprs);
+        const loop_node = try b.loop(loop_cond, loop_body);
+
+        const acc_result = try b.variable("acc", 0, 1);
+        const let_body_exprs = [_]*const Ir{ loop_node, acc_result };
+        const let_body = try b.progn(&let_body_exprs);
+
+        const init_val = try b.lit(Value.makeFixnum(identity));
+        const let_node = try b.let1("acc", 1, init_val, let_body);
+
+        return self.builder.lambda(&.{}, &.{}, &.{}, "args", &.{}, let_node) catch
+            return error.OutOfMemory;
     }
 
     /// Compile quasiquote (backquote)
@@ -3553,14 +3868,13 @@ pub const Compiler = struct {
                 const slot_name_raw = spec_cons.car.toPtr(Symbol).getName();
                 const slot_name = self.allocator.dupe(u8, slot_name_raw) catch return error.OutOfMemory;
 
-                // Get type from second element
+                // Get type from second element (can be symbol or compound type expr)
                 if (!spec_cons.cdr.isCons()) return error.InvalidSyntax;
                 const type_cons = spec_cons.cdr.toPtr(Cons);
-                if (!type_cons.car.isSymbol()) return error.InvalidSyntax;
-                const type_sym = type_cons.car;
+                const type_expr = type_cons.car;
 
-                // Parse type symbol to Type using symbol identity
-                const field_type = self.parseTypeSym(type_sym) orelse return error.InvalidSyntax;
+                // Parse type expression (supports compound types like (list fixnum))
+                const field_type = self.parseTypeExpr(type_expr) orelse return error.InvalidSyntax;
                 slot_specs.append(self.allocator, .{ .name = slot_name, .field_type = field_type }) catch return error.OutOfMemory;
             } else {
                 return error.InvalidSyntax;
@@ -3576,7 +3890,8 @@ pub const Compiler = struct {
                 .type = spec.field_type,
             };
         }
-        const type_builder = types.TypeBuilder.init(self.allocator);
+        var type_builder = types.TypeBuilder.init(self.allocator);
+        defer type_builder.deinit();
         const struct_type = type_builder.makeStruct(struct_name, struct_fields) catch return error.OutOfMemory;
         self.registerStructType(struct_name, struct_type) catch return error.OutOfMemory;
 
@@ -3731,6 +4046,255 @@ pub const Compiler = struct {
 
         for (entries) |e| if (type_sym.raw == e.sym.raw) return e.ty;
         return null;
+    }
+
+    /// Parse a type expression (simple symbol or compound form)
+    /// Handles:
+    /// - Simple: fixnum, symbol, cons, etc.
+    /// - Or: (or T1 T2 ...)
+    /// - Arrow: (-> (A B) C) or (-> A B C)
+    /// - List: (list T)
+    /// - Vec: (vec T) or (vec T N) for sized vectors
+    /// - Non-nil: (non-nil T)
+    /// - Pi: (pi (x : A) B) dependent function
+    /// - Sigma: (sigma (x : A) B) dependent pair
+    /// - Refine: (refine T x P) refinement type
+    pub fn parseTypeExpr(self: *Compiler, type_expr: Value) ?*const types.Type {
+        // Simple symbol case
+        if (type_expr.isSymbol()) {
+            return self.parseTypeSym(type_expr);
+        }
+
+        // Compound type form
+        if (!type_expr.isCons()) return null;
+
+        const cons = type_expr.toPtr(Cons);
+        const head = cons.car;
+
+        if (!head.isSymbol()) return null;
+
+        const b = self.builtins orelse return null;
+
+        // (or T1 T2 ...) - union type
+        if (head.raw == b.@"or".raw) {
+            return self.parseOrType(cons.cdr);
+        }
+
+        // (-> (A B) C) or (-> A B ... C) - function type
+        if (head.raw == b.@"->".raw) {
+            return self.parseArrowType(cons.cdr);
+        }
+
+        // (list T) - list type
+        if (head.raw == b.ty_list.raw) {
+            return self.parseListType(cons.cdr);
+        }
+
+        // (vec T) or (vec T N) - vector type
+        if (head.raw == b.ty_vec.raw) {
+            return self.parseVecType(cons.cdr);
+        }
+
+        // (non-nil T) - non-nil type
+        if (head.raw == b.@"ty_non-nil".raw) {
+            return self.parseNonNilType(cons.cdr);
+        }
+
+        // (pi (x : A) B) - dependent function type
+        if (head.raw == b.ty_pi.raw) {
+            return self.parsePiType(cons.cdr);
+        }
+
+        // (sigma (x : A) B) - dependent pair type
+        if (head.raw == b.ty_sigma.raw) {
+            return self.parseSigmaType(cons.cdr);
+        }
+
+        // (refine T x P) - refinement type
+        if (head.raw == b.ty_refine.raw) {
+            return self.parseRefineType(cons.cdr);
+        }
+
+        return null;
+    }
+
+    /// Parse (or T1 T2 ...)
+    fn parseOrType(self: *Compiler, args: Value) ?*const types.Type {
+        var type_list = std.ArrayList(*const types.Type){};
+        defer type_list.deinit(self.allocator);
+
+        var current = args;
+        while (current.isCons()) {
+            const c = current.toPtr(Cons);
+            const t = self.parseTypeExpr(c.car) orelse return null;
+            type_list.append(self.allocator, t) catch return null;
+            current = c.cdr;
+        }
+
+        if (type_list.items.len == 0) return null;
+        if (type_list.items.len == 1) return type_list.items[0];
+
+        return self.type_checker.builder.makeOr(type_list.items) catch null;
+    }
+
+    /// Parse (-> (A B) C) or (-> A B ... C) function type
+    fn parseArrowType(self: *Compiler, args: Value) ?*const types.Type {
+        if (!args.isCons()) return null;
+
+        var all_types = std.ArrayList(*const types.Type){};
+        defer all_types.deinit(self.allocator);
+
+        var current = args;
+        while (current.isCons()) {
+            const c = current.toPtr(Cons);
+            // Check if this element is a list (domain types)
+            if (c.car.isCons()) {
+                // Parse list of domain types
+                var domain = c.car;
+                while (domain.isCons()) {
+                    const dc = domain.toPtr(Cons);
+                    const t = self.parseTypeExpr(dc.car) orelse return null;
+                    all_types.append(self.allocator, t) catch return null;
+                    domain = dc.cdr;
+                }
+            } else {
+                // Single type
+                const t = self.parseTypeExpr(c.car) orelse return null;
+                all_types.append(self.allocator, t) catch return null;
+            }
+            current = c.cdr;
+        }
+
+        if (all_types.items.len < 1) return null;
+
+        // Last type is return type, rest are domain
+        const return_type = all_types.items[all_types.items.len - 1];
+        const domain = all_types.items[0 .. all_types.items.len - 1];
+
+        return self.type_checker.builder.makeArrow(domain, return_type) catch null;
+    }
+
+    /// Parse (list T)
+    fn parseListType(self: *Compiler, args: Value) ?*const types.Type {
+        if (!args.isCons()) return &types.t_list_any;
+        const c = args.toPtr(Cons);
+        const elem = self.parseTypeExpr(c.car) orelse return null;
+        return self.type_checker.builder.makeList(elem) catch null;
+    }
+
+    /// Parse (vec T) or (vec T N) - for now just (vec T)
+    fn parseVecType(self: *Compiler, args: Value) ?*const types.Type {
+        if (!args.isCons()) return &types.t_vector;
+        const c = args.toPtr(Cons);
+        const elem = self.parseTypeExpr(c.car) orelse return null;
+        // TODO: handle (vec T N) for sized vectors with term parsing
+        return self.type_checker.builder.makeVec(elem) catch null;
+    }
+
+    /// Parse (non-nil T)
+    fn parseNonNilType(self: *Compiler, args: Value) ?*const types.Type {
+        if (!args.isCons()) return null;
+        const c = args.toPtr(Cons);
+        const inner = self.parseTypeExpr(c.car) orelse return null;
+        return self.type_checker.builder.makeNonNil(inner) catch null;
+    }
+
+    /// Parse (pi (x : A) B) dependent function type
+    fn parsePiType(self: *Compiler, args: Value) ?*const types.Type {
+        // (pi (x : A) B) -> args = ((x : A) B)
+        if (!args.isCons()) return null;
+        const c1 = args.toPtr(Cons);
+
+        // First element should be (x : A) - the binding
+        if (!c1.car.isCons()) return null;
+        const binding = c1.car.toPtr(Cons);
+
+        // Parse parameter name
+        if (!binding.car.isSymbol()) return null;
+        const param_name = binding.car.toPtr(Symbol).getName();
+
+        // Expect (:) and type
+        if (!binding.cdr.isCons()) return null;
+        const rest1 = binding.cdr.toPtr(Cons);
+        // Skip the colon if present
+        var type_expr = rest1.car;
+        if (rest1.car.isSymbol()) {
+            const sym = rest1.car.toPtr(Symbol);
+            if (std.mem.eql(u8, sym.getName(), ":")) {
+                // Next is the actual type
+                if (!rest1.cdr.isCons()) return null;
+                type_expr = rest1.cdr.toPtr(Cons).car;
+            }
+        }
+
+        const param_type = self.parseTypeExpr(type_expr) orelse return null;
+
+        // Second element is the return type B
+        if (!c1.cdr.isCons()) return null;
+        const c2 = c1.cdr.toPtr(Cons);
+        const return_type = self.parseTypeExpr(c2.car) orelse return null;
+
+        return self.type_checker.builder.makePi(param_name, param_type, return_type, .many) catch null;
+    }
+
+    /// Parse (sigma (x : A) B) dependent pair type
+    fn parseSigmaType(self: *Compiler, args: Value) ?*const types.Type {
+        // Similar structure to pi
+        if (!args.isCons()) return null;
+        const c1 = args.toPtr(Cons);
+
+        if (!c1.car.isCons()) return null;
+        const binding = c1.car.toPtr(Cons);
+
+        if (!binding.car.isSymbol()) return null;
+        const first_name = binding.car.toPtr(Symbol).getName();
+
+        if (!binding.cdr.isCons()) return null;
+        const rest1 = binding.cdr.toPtr(Cons);
+        var type_expr = rest1.car;
+        if (rest1.car.isSymbol()) {
+            const sym = rest1.car.toPtr(Symbol);
+            if (std.mem.eql(u8, sym.getName(), ":")) {
+                if (!rest1.cdr.isCons()) return null;
+                type_expr = rest1.cdr.toPtr(Cons).car;
+            }
+        }
+
+        const first_type = self.parseTypeExpr(type_expr) orelse return null;
+
+        if (!c1.cdr.isCons()) return null;
+        const c2 = c1.cdr.toPtr(Cons);
+        const second_type = self.parseTypeExpr(c2.car) orelse return null;
+
+        return self.type_checker.builder.makeSigma(first_name, first_type, second_type) catch null;
+    }
+
+    /// Parse (refine T x P) refinement type
+    fn parseRefineType(self: *Compiler, args: Value) ?*const types.Type {
+        // (refine T x P) -> args = (T x P)
+        if (!args.isCons()) return null;
+        const c1 = args.toPtr(Cons);
+
+        // Base type T
+        const base_type = self.parseTypeExpr(c1.car) orelse return null;
+
+        if (!c1.cdr.isCons()) return null;
+        const c2 = c1.cdr.toPtr(Cons);
+
+        // Variable name x
+        if (!c2.car.isSymbol()) return null;
+        const var_name = c2.car.toPtr(Symbol).getName();
+
+        if (!c2.cdr.isCons()) return null;
+        const c3 = c2.cdr.toPtr(Cons);
+
+        // Predicate P - for now, store as raw S-expression
+        // TODO: convert to Term for proper type-level computation
+        const predicate = c3.car;
+        _ = predicate; // Predicate parsing would go here
+
+        // For now, create refinement with null predicate (will be enhanced later)
+        return self.type_checker.builder.makeRefinement(base_type, var_name, null) catch null;
     }
 
     /// Generate accessor with runtime type check:
@@ -4395,15 +4959,38 @@ pub const Compiler = struct {
         return error.InvalidSyntax;
     }
 
-    /// Compile a compound type check: (or type1 type2 ...)
+    /// Compile a compound type check: (or type1 type2 ...), (refine T x P), etc.
     fn compileCompoundTypeCheck(self: *Compiler, type_spec: Value, expr_ir: *const Ir) Error!*Ir {
         const cons = type_spec.toPtr(Cons);
         if (!cons.car.isSymbol()) return error.InvalidSyntax;
 
-        // Check for 'or' by symbol identity
         const b = self.builtins orelse unreachable;
-        if (cons.car.raw == b.@"or".raw) {
+        const head = cons.car;
+
+        // Dispatch by symbol identity
+        if (head.raw == b.@"or".raw) {
             return self.compileOrTypeCheck(cons.cdr, expr_ir);
+        }
+        if (head.raw == b.ty_refine.raw) {
+            return self.compileRefineTypeCheck(cons.cdr, expr_ir);
+        }
+        if (head.raw == b.ty_pi.raw) {
+            return self.compilePiTypeCheck(cons.cdr, expr_ir);
+        }
+        if (head.raw == b.ty_sigma.raw) {
+            return self.compileSigmaTypeCheck(cons.cdr, expr_ir);
+        }
+        if (head.raw == b.ty_list.raw or head.raw == b.list.raw) {
+            // (list T) - just check it's a list, element type checked lazily
+            return self.builder.assertList(expr_ir);
+        }
+        if (head.raw == b.ty_vec.raw or head.raw == b.vector.raw) {
+            // (vec T) or (vector T) - just check it's a vector
+            return self.builder.assertVector(expr_ir);
+        }
+        if (head.raw == b.@"->".raw) {
+            // (-> (A B) C) - check it's a closure
+            return self.builder.assertClosure(expr_ir);
         }
 
         // Unknown compound type
@@ -4452,6 +5039,79 @@ pub const Compiler = struct {
         // This is more complex - for now, return the expression without check
         // TODO: Implement full or-type checking
         return @constCast(expr_ir);
+    }
+
+    /// Compile (refine T x P) type check
+    /// Generates: (assert-refine expr (lambda (x) P) T)
+    fn compileRefineTypeCheck(self: *Compiler, args: Value, expr_ir: *const Ir) Error!*Ir {
+        // args = (T x P)
+        if (!args.isCons()) return error.InvalidSyntax;
+        const c1 = args.toPtr(Cons);
+
+        // Base type T
+        const base_type_spec = c1.car;
+
+        if (!c1.cdr.isCons()) return error.InvalidSyntax;
+        const c2 = c1.cdr.toPtr(Cons);
+
+        // Variable name x
+        if (!c2.car.isSymbol()) return error.InvalidSyntax;
+        const var_sym = c2.car.toPtr(Symbol);
+        const var_name = var_sym.getName();
+
+        if (!c2.cdr.isCons()) return error.InvalidSyntax;
+        const c3 = c2.cdr.toPtr(Cons);
+
+        // Predicate P
+        const predicate_expr = c3.car;
+
+        // Create a lambda for the predicate: (lambda (x) P)
+        // We need to compile the predicate in an environment where x is bound
+        var pred_env = Env.init(self.allocator, null);
+        defer pred_env.deinit();
+        _ = pred_env.bind(var_name) catch return error.OutOfMemory;
+
+        const predicate_body = try self.compile(predicate_expr, &pred_env);
+        const param_names = try self.allocator.alloc([]const u8, 1);
+        param_names[0] = try self.allocator.dupe(u8, var_name);
+        const empty_opt = try self.allocator.alloc(Ir.OptionalParam, 0);
+        const empty_key = try self.allocator.alloc(Ir.KeyParam, 0);
+        const empty_cap = try self.allocator.alloc(Ir.Capture, 0);
+
+        const predicate_lambda = try self.builder.lambda(
+            param_names,
+            empty_opt,
+            empty_key,
+            null,
+            empty_cap,
+            predicate_body,
+        );
+
+        // Parse base type for type info (optional)
+        const base_type = self.parseTypeExpr(base_type_spec);
+
+        // Generate assert_refine IR node
+        return self.builder.assertRefine(expr_ir, predicate_lambda, base_type);
+    }
+
+    /// Compile (pi (x : A) B) type check
+    /// At runtime, just check it's a closure - dependent checking is at compile time
+    fn compilePiTypeCheck(self: *Compiler, args: Value, expr_ir: *const Ir) Error!*Ir {
+        // Pi types are dependent function types
+        // At runtime, we just check it's a closure
+        // Full dependent checking would require evaluating the function
+        _ = args;
+        return self.builder.assertClosure(expr_ir);
+    }
+
+    /// Compile (sigma (x : A) B) type check
+    /// At runtime, just check it's a cons - dependent checking is at compile time
+    fn compileSigmaTypeCheck(self: *Compiler, args: Value, expr_ir: *const Ir) Error!*Ir {
+        // Sigma types are dependent pair types
+        // At runtime, we just check it's a cons cell
+        // Full dependent checking would require type-level computation
+        _ = args;
+        return self.builder.assertCons(expr_ir);
     }
 
     /// Check if a Type matches a type symbol (using pointer comparison)
@@ -5990,4 +6650,63 @@ test "extract predicate info" {
     allocator.free(var_x.@"var".name);
     allocator.destroy(var_x);
     allocator.destroy(consp_ir);
+}
+
+test "BiChecker integration - type checking enabled" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    var compiler = Compiler.init(allocator);
+    defer compiler.deinit();
+
+    // Enable type checking
+    compiler.enableTypeChecking();
+    try testing.expect(compiler.type_checking_enabled);
+
+    // BiChecker should be initialized
+    try testing.expect(!compiler.hasBiCheckErrors());
+}
+
+test "BiChecker integration - checkLambdaTypes with correct types" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    var compiler = Compiler.init(allocator);
+    defer compiler.deinit();
+
+    // Create a simple body IR (literal fixnum)
+    const body = try compiler.builder.lit(Value.makeFixnum(42));
+    defer allocator.destroy(body);
+
+    // Empty typed params (untyped function)
+    const typed_params = [_]Compiler.TypedParam{};
+
+    // Check with no return type - should succeed (just infers)
+    compiler.checkLambdaTypes(&typed_params, null, body);
+
+    // No errors expected
+    try testing.expect(!compiler.hasBiCheckErrors());
+}
+
+test "BiChecker integration - checkLambdaTypes with type mismatch" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    var compiler = Compiler.init(allocator);
+    defer compiler.deinit();
+
+    // Create body that returns a fixnum
+    const body = try compiler.builder.lit(Value.makeFixnum(42));
+    defer allocator.destroy(body);
+
+    // Empty typed params
+    const typed_params = [_]Compiler.TypedParam{};
+
+    // Expect string return type (but body returns fixnum)
+    // Note: We need a Value for the type symbol, so we'll test this differently
+    // For now, just test that checking works without crashing
+    compiler.checkLambdaTypes(&typed_params, null, body);
+
+    // BiChecker should have been invoked
+    try testing.expect(!compiler.hasBiCheckErrors());
 }

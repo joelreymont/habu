@@ -19,6 +19,7 @@ pub const check = @import("check.zig");
 pub const infer = @import("infer.zig");
 pub const smt = @import("smt.zig");
 pub const refinement = @import("refinement.zig");
+pub const erasure = @import("erasure.zig");
 
 // Re-export commonly used types
 pub const Type = type_adt.Type;
@@ -77,6 +78,11 @@ pub const RefineResult = smt.RefineResult;
 // Refinement type checker
 pub const RefinementChecker = refinement.RefinementChecker;
 
+// Erasure pass for QTT
+pub const ErasureCtx = erasure.ErasureCtx;
+pub const Eraser = erasure.Eraser;
+pub const eraseZeroQuantity = erasure.eraseZeroQuantity;
+
 // Common type constants
 pub const t_fixnum = type_adt.t_fixnum;
 pub const t_float = type_adt.t_float;
@@ -109,4 +115,5 @@ test {
     _ = infer;
     _ = smt;
     _ = refinement;
+    _ = erasure;
 }

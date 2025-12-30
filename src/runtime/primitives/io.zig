@@ -85,7 +85,7 @@ pub fn sysReadLine(heap: *Heap) !Value {
 
     if (line_len == 0) return Value.nil;
 
-    return heap.allocString(line_buf[0..line_len]) orelse error.OutOfMemory;
+    return try heap.allocString(line_buf[0..line_len]);
 }
 
 /// Read a single character from stdin
@@ -360,7 +360,7 @@ pub fn readFile(heap: *Heap, path: []const u8) !Value {
     const aligned_len = std.mem.alignForward(usize, size, 8);
     const total_size = @sizeOf(objects.String) + aligned_len;
 
-    const ptr = heap.allocRaw(total_size) orelse return error.OutOfMemory;
+    const ptr = try heap.allocRaw(total_size);
     const str: *objects.String = @ptrCast(@alignCast(ptr));
     const data_ptr: [*]u8 = @ptrCast(ptr + @sizeOf(objects.String));
 

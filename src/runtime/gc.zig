@@ -33,7 +33,7 @@ pub const GC = struct {
     work_list: std.ArrayList(WorkItem),
 
     /// Initialize GC with heap
-    pub fn init(heap: *Heap, allocator: std.mem.Allocator) GC {
+    pub fn init(allocator: std.mem.Allocator, heap: *Heap) GC {
         return .{
             .heap = heap,
             .allocator = allocator,
@@ -90,11 +90,11 @@ pub const GC = struct {
             return val;
         }
 
-        // Check if already forwarded
+        // Note: val should never have a forwarding tag - forwarding pointers are only
+        // stored in from-space object locations, never passed as values. If this fires,
+        // there's a bug elsewhere in the system.
         if (val.isForwarding()) {
-            // Follow forwarding pointer
-            const fwd_addr = val.toPtrAddr();
-            return .{ .raw = fwd_addr | @as(u64, @intFromEnum(self.getOriginalTag(val))) };
+            unreachable;
         }
 
         // Check if object is in from-space
@@ -148,12 +148,6 @@ pub const GC = struct {
 
         // Return new tagged pointer
         return .{ .raw = new_addr | @as(u64, @intFromEnum(tag)) };
-    }
-
-    /// Get the original tag from a forwarding pointer
-    fn getOriginalTag(self: *GC, val: Value) Tag {
-        _ = self;
-        return val.getTag();
     }
 
     /// Repair interior pointers after copying an object
@@ -307,7 +301,7 @@ test "gc init" {
     var heap = try Heap.init(testing.allocator, .{ .total_size = 1024 * 1024 });
     defer heap.deinit();
 
-    var gc_inst = GC.init(&heap, testing.allocator);
+    var gc_inst = GC.init(testing.allocator, &heap);
     defer gc_inst.deinit();
 }
 
@@ -317,7 +311,7 @@ test "gc collect empty" {
     var heap = try Heap.init(testing.allocator, .{ .total_size = 1024 * 1024 });
     defer heap.deinit();
 
-    var gc = GC.init(&heap, testing.allocator);
+    var gc = GC.init(testing.allocator, &heap);
     defer gc.deinit();
 
     var roots = [_]Value{};
@@ -333,12 +327,12 @@ test "gc collect with cons" {
     defer heap.deinit();
 
     // Allocate a cons cell
-    var root = heap.allocCons(Value.makeFixnum(1), Value.makeFixnum(2)) orelse return error.OutOfMemory;
+    var root = try heap.allocCons(Value.makeFixnum(1), Value.makeFixnum(2));
 
     // Verify it's valid
     try testing.expect(root.isCons());
 
-    var gc = GC.init(&heap, testing.allocator);
+    var gc = GC.init(testing.allocator, &heap);
     defer gc.deinit();
 
     // Collect with root
@@ -365,11 +359,11 @@ test "gc collect with nested cons" {
     defer heap.deinit();
 
     // Build (1 . (2 . (3 . nil)))
-    const c3 = heap.allocCons(Value.makeFixnum(3), Value.nil) orelse return error.OutOfMemory;
-    const c2 = heap.allocCons(Value.makeFixnum(2), c3) orelse return error.OutOfMemory;
-    var root = heap.allocCons(Value.makeFixnum(1), c2) orelse return error.OutOfMemory;
+    const c3 = try heap.allocCons(Value.makeFixnum(3), Value.nil);
+    const c2 = try heap.allocCons(Value.makeFixnum(2), c3);
+    var root = try heap.allocCons(Value.makeFixnum(1), c2);
 
-    var gc = GC.init(&heap, testing.allocator);
+    var gc = GC.init(testing.allocator, &heap);
     defer gc.deinit();
 
     var roots = [_]Value{root};

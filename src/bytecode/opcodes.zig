@@ -90,6 +90,16 @@ pub const Op = enum(u8) {
     /// value is the keyword's value if found, nil if not
     find_key = 0x18,
 
+    /// Enter a let scope (operand: u8 num_locals)
+    /// Reserves slots for locals and pushes a scope frame
+    /// ( -- [num_locals nil values] )
+    enter_scope = 0x19,
+
+    /// Exit a let scope (operand: u8 num_locals)
+    /// Pops scope frame and removes reserved local slots, keeping result on top
+    /// ( [locals...] result -- result )
+    exit_scope = 0x1A,
+
     // ========================================================================
     // Arithmetic
     // ========================================================================
@@ -213,6 +223,14 @@ pub const Op = enum(u8) {
     /// Signal user error with message
     /// ( message-string -- ) never returns
     error_user = 0x4D,
+
+    /// Find element in list (using eql - compares numbers by value)
+    /// ( item list -- tail-or-nil )
+    list_member_eql = 0x4E,
+
+    /// Find element in list (using equal - deep equality)
+    /// ( item list -- tail-or-nil )
+    list_member_equal = 0x4F,
 
     // ========================================================================
     // Type predicates
@@ -472,6 +490,12 @@ pub const Op = enum(u8) {
     /// ( x -- x )
     check_list = 0xA7,
 
+    /// Assert refinement predicate holds, error if not
+    /// Stack: predicate result on top, original value below
+    /// Pops predicate result, leaves original value if truthy, errors if not
+    /// ( value predicate-result -- value )
+    check_refine = 0xF6,
+
     // ========================================================================
     // Character I/O
     // ========================================================================
@@ -656,7 +680,7 @@ pub const Op = enum(u8) {
     /// ( val -- t/nil )
     atom = 0xF2,
 
-    /// Association list lookup
+    /// Association list lookup (using eq)
     /// ( key alist -- cons-or-nil )
     assoc = 0xF3,
 
@@ -667,6 +691,38 @@ pub const Op = enum(u8) {
     /// Extended equality (eql)
     /// ( a b -- t/nil )
     eql = 0xF5,
+
+    /// Association list lookup (using eql - compares numbers by value)
+    /// ( key alist -- cons-or-nil )
+    assoc_eql = 0xF7,
+
+    /// Association list lookup (using equal - deep equality)
+    /// ( key alist -- cons-or-nil )
+    assoc_equal = 0xF8,
+
+    /// Find element in sequence (using eql - default)
+    /// ( item sequence -- item-or-nil )
+    list_find = 0xF9,
+
+    /// Find element in sequence (using eq - identity)
+    /// ( item sequence -- item-or-nil )
+    list_find_eq = 0xFA,
+
+    /// Find element in sequence (using equal - structural)
+    /// ( item sequence -- item-or-nil )
+    list_find_equal = 0xFB,
+
+    /// Find position of element in sequence (using eql - default)
+    /// ( item sequence -- index-or-nil )
+    list_position = 0xFC,
+
+    /// Find position of element in sequence (using eq - identity)
+    /// ( item sequence -- index-or-nil )
+    list_position_eq = 0xFD,
+
+    /// Find position of element in sequence (using equal - structural)
+    /// ( item sequence -- index-or-nil )
+    list_position_equal = 0xFE,
 
     // ========================================================================
     // Dynamic exception handling (catch/throw)
@@ -719,6 +775,30 @@ pub const Op = enum(u8) {
     /// ( primary -- list )
     mv_list = 0xC2,
 
+    /// Count occurrences of item in sequence (using eql - default)
+    /// ( item sequence -- count )
+    list_count = 0xC3,
+
+    /// Count occurrences of item in sequence (using eq - identity)
+    /// ( item sequence -- count )
+    list_count_eq = 0xC4,
+
+    /// Count occurrences of item in sequence (using equal - structural)
+    /// ( item sequence -- count )
+    list_count_equal = 0xC5,
+
+    /// Remove all occurrences of item from sequence (using eql - default)
+    /// ( item sequence -- new-sequence )
+    list_remove = 0xC6,
+
+    /// Remove all occurrences of item from sequence (using eq - identity)
+    /// ( item sequence -- new-sequence )
+    list_remove_eq = 0xC7,
+
+    /// Remove all occurrences of item from sequence (using equal - structural)
+    /// ( item sequence -- new-sequence )
+    list_remove_equal = 0xC8,
+
     // ========================================================================
     // Special
     // ========================================================================
@@ -740,7 +820,7 @@ pub const Op = enum(u8) {
             .str_ref, .str_len, .str_concat,
             .ret, .print, .random, .type_of, .intern, .substring, .sym_name, .str_eq, .halt,
             .check_fixnum, .check_cons, .check_symbol, .check_string,
-            .check_vector, .check_closure, .check_non_nil, .check_list,
+            .check_vector, .check_closure, .check_non_nil, .check_list, .check_refine,
             .apply, .pop_catch, .throw,
             .hash_get, .hash_set, .hash_rem, .hash_count, .hashtablep,
             .characterp, .floatp, .char_code, .code_char, .char_eq, .char_lt, .char_gt,
@@ -754,11 +834,17 @@ pub const Op = enum(u8) {
             .read_file, .write_file, .make_string, .string_to_list, .list_to_string,
         .string_upcase, .string_downcase,
         .listp, .atom, .assoc, .equal, .eql, .rplaca, .rplacd, .error_user,
+        .list_member_eql, .list_member_equal, .assoc_eql, .assoc_equal,
+        .list_find, .list_find_eq, .list_find_equal,
+        .list_position, .list_position_eq, .list_position_equal,
+        .list_count, .list_count_eq, .list_count_equal,
+        .list_remove, .list_remove_eq, .list_remove_equal,
             => 0,
 
             // 1 byte operand
             .load_local, .store_local, .load_capture,
             .call, .tail_call, .make_list, .make_vec_n, .values, .mv_bind, .format,
+            .enter_scope, .exit_scope,
             => 1,
 
             // 2 byte operand
