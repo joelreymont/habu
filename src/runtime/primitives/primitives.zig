@@ -15,6 +15,7 @@ pub const io = @import("io.zig");
 pub const rational = @import("rational.zig");
 pub const complex = @import("complex.zig");
 pub const clos = @import("clos.zig");
+pub const hash = @import("hash.zig");
 
 // Re-export commonly used functions
 pub const cons = list.cons;
@@ -39,4 +40,5 @@ test {
     _ = rational;
     _ = complex;
     _ = clos;
+    _ = hash;
 }
